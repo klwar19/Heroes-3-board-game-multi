@@ -110,12 +110,26 @@ describe("Mandatory start-of-turn draw — six rounds, two players", () => {
   });
 
   it("gates TURN 1 exactly like later turns, even with the real first-player roll", () => {
-    // The real game default rolls for the first player (rollFirstPlayer omitted);
-    // turn 1 must still arm the mandatory draw, withhold movement, and keep
-    // reachable paths to show as locked targets + the on-tap reminder.
-    const state = createAdventureGameState({ seed: "turn1-gate", difficulty: "normal" });
+    // The real game default rolls for the first player AND forces the opening
+    // home-tile rotation (rollFirstPlayer omitted). After that rotation, turn 1
+    // must still arm the mandatory draw, withhold movement, and keep reachable
+    // paths to show as locked targets + the on-tap reminder.
+    let state = createAdventureGameState({ seed: "turn1-gate", difficulty: "normal" });
     const active = state.activePlayerId;
     expect(state.round).toBe(1);
+
+    // The opening ceremony first forces the home-tile rotation; lock it in so the
+    // mandatory-draw gate below is exercised exactly as on later turns.
+    const pendingTile = state.adventure!.pendingTileChoice;
+    expect(pendingTile?.kind, "turn 1 first forces the home rotation").toBe("starting");
+    expect(pendingTile?.playerId).toBe(active);
+    state = apply(state, {
+      type: "SET_TILE_ROTATION",
+      playerId: active,
+      tileInstanceId: pendingTile!.tileInstanceId,
+      rotation: 0
+    });
+
     expect(state.players[active]?.canMulligan, "turn-1 draw is armed").toBe(true);
     expect(state.players[active]?.needsHandRefresh).toBe(false);
     expect(state.pendingChoice).toBeNull();

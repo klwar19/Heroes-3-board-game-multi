@@ -34,7 +34,9 @@ export const spellCards: CardLibrary = {
       amountByPower: { 0: 1, 1: 2, 2: 3 },
       duration: { type: "combat" },
       polarity: "positive",
-      removable: true
+      removable: true,
+      // House rule (BINH): Haste also gives +1 Combat movement (3 → 4).
+      movementBonus: 1
     },
     assets: {
       cardImage: "/assets/spells-haste.webp",
@@ -65,7 +67,9 @@ export const spellCards: CardLibrary = {
       amountByPower: { 0: -1, 1: -2, 2: -3 },
       duration: { type: "combat" },
       polarity: "negative",
-      removable: true
+      removable: true,
+      // House rule (BINH): Slow also reduces Combat movement by 1 (3 → 2).
+      movementBonus: -1
     },
     assets: {
       cardImage: "/assets/spells-slow.webp",

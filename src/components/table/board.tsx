@@ -788,7 +788,7 @@ export function BattlefieldBoard({
     (combat?.battlefieldTokens ?? []).some((token) => token.kind === "fire_wall");
   const planning = Boolean(routePlanningAvailable && routePlan && activeMover && routePlan.unitId === activeMover.id);
   const plannedPath = planning && routePlan ? routePlan.path : [];
-  const moveRange = activeMover ? getUnitMoveRange(activeMover) : 0;
+  const moveRange = activeMover ? getUnitMoveRange(activeMover, state) : 0;
   const routeEnd = plannedPath.length > 0 ? plannedPath[plannedPath.length - 1] : activeMover?.position ?? -1;
   const isRouteNextStep = (cell: number): boolean =>
     planning &&

@@ -134,19 +134,46 @@ Conflux — now fully engine-wired (no display-only unit clauses left):
   Monere, Pasis) AND **Luna** the Fire Wall Elementalist — I/VI place the shared
   `fire_wall` battlefield token at a FIXED 1/3 damage (`PLACE_FIRE_WALL_FIXED`),
   IV is the spell-economy choice (map discard recall OR a +2-Power spell-cast
-  reaction). All I/IV/VI implemented + tested (`conflux-content.test.ts`). Luna's
-  portrait asset is download-pending (the fetch script lists her; the UI falls
-  back to her initial), like other PC-portrait heroes.
-- Still deferred (NOT on the roster): **Ciele** (Magic Arrow) and **Tarnum
-  (Conflux)** (Enchanters). Both hinge on a subsystem the engine does NOT have:
-  casting a Spell *from your discard pile* as a free bonus cast (Ciele IV) and
-  casting Search(1)'d Spells immediately *over the one-per-round limit*, then
-  returning them to the deck/discard (Tarnum VI). A flat-damage shortcut for
-  Ciele would be unfaithful (it must respect Magic-Arrow spell immunity — e.g.
-  the Magic Elementals' own — and Power scaling), so they are left unimplemented
-  rather than stubbed. Tarnum I (Search(1) Spell) and IV (pay 10 gold for the
-  neutral Enchanters card, reusing `CONVERT_ARMY_UNIT`) are individually
-  feasible, but a hero ships only when ALL of I/IV/VI are engine-wired.
+  reaction). All I/IV/VI implemented + tested (`conflux-content.test.ts`). Conflux
+  PC portraits (incl. Luna and Tarnum) are now downloaded to `/public/assets`.
+- **Ciele** (Magic Arrow Elementalist) is now shipped — I recalls a Magic Arrow
+  from the discard, IV casts one from the Spell-deck discard for FREE over the
+  limit (the `CAST_FROM_SPELL_DISCARD` pipeline, `spellId`-filtered), VI deals 2
+  damage; each with a +Power reaction alternative. See
+  `conflux-ciele-specialty.test.ts`.
+- **Tarnum (Conflux)** (Enchanters Elementalist) is now shipped — all I/IV/VI
+  engine-wired and covered by `conflux-tarnum-specialty.test.ts` (each level fails
+  if its wiring is removed):
+  - I — `Search(1) Spell` with the new `CARD_DECK_SEARCH.allowRemove` flag: the
+    revealed Spell can be KEPT into hand OR REMOVED from the game (the deck-search
+    pipeline now carries `allowRemove` through `openSharedDeckSearch` /
+    `revealSharedDeckSearch` / the DECK_SEARCH choice and offers a "Remove …"
+    pick). The control proves a normal Search offers no Remove.
+  - IV — `CONVERT_ARMY_UNIT` extended with a `goldCost` and an optional from-unit:
+    "Pay 10 gold → the unique neutral Enchanters card" (or draw). Gated on gold
+    and the `unique` one-Enchanters limit.
+  - VI — the over-limit multi-cast subsystem (`TARNUM_OVERLIMIT_SEARCH`): an
+    **Instant** playable on your turn, off-turn in the instant window, OR as a
+    reaction inside an open attack window. It opens a per-search deck choice
+    (`TARNUM_SEARCH` pendingChoice): twice, the caster picks ONE Spell deck —
+    basic or expert — to Search 1 card from. Each taken card is flagged
+    (`combatStats.tarnumOverlimitCards`) for a FREE cast over the per-round limit
+    (never bumps `spellsCastThisRound`; forgery-validated in `castSpell` AND
+    `applyReactionPlayCore`), returning to the shared Spell deck top OR discard —
+    the caster's choice via `CAST_SPELL.tarnumReturn` / `PLAY_REACTION.tarnumReturn`
+    — instead of the caster's own discard. A flagged spell casts only when "their
+    type allows it" in the open window: a combat spell (Fireball) during your own
+    activation, a trigger-free instant anytime (both via `addSpellActions`), and an
+    attack/defense-changing reaction instant (Bless, Curse, Bloodlust…) in the
+    reaction/instant window via a dedicated free over-limit pass in
+    `getLegalReactionsForTrigger`. Used AS a reaction in an attack window, playing
+    VI runs the Search inside the still-open window and then re-derives its offers
+    (`refreshReactionWindowLegalReactions`) so a just-Searched applicable instant
+    can be cast into the SAME window; a Searched spell that does not fit just stays
+    in hand. The flag clears at combat start and each combat round. All covered in
+    `conflux-tarnum-specialty.test.ts` (per-search choice, both/same deck, the
+    on-turn vs off-turn split, the reaction-window cast with a graded CONTROL that
+    the flag is what lifts the limit, AND the in-window search-and-cast flow).
 
 This section is maintained by hand — the rule #3 enforcement test still does
 **not** exist, so re-verify any "stub" claim against `src/data/factions/units.ts`

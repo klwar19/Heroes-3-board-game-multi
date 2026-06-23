@@ -124,12 +124,15 @@ import { createSeededRandom } from "./random";
 import {
   abilityExpertIsCrownFree,
   activeSchoolFetches,
+  canAcquireSharedDeckCard,
   estatesGold,
   getRuleset,
   spellBookPowerAvailable,
   spellBookRuleEnabled,
   spellCanEnterSpellBook,
-  spellLimitFor
+  spellLimitFor,
+  SPELL_DECK_BASIC,
+  SPELL_DECK_EXPERT
 } from "./ruleset";
 import {
   destroyFortification,
@@ -311,7 +314,8 @@ import type {
   SpellSchool,
   TargetRef,
   UnitGrade,
-  UnitId
+  UnitId,
+  VisitStep
 } from "./state";
 import { NEUTRAL_PLAYER_ID } from "./state";
 
@@ -3094,10 +3098,13 @@ function finishResolvedAttack(
   // Shield of the Dwarven Lords ignored the die "and any additional effects it
   // triggered": skip every die-face-conditioned follow-up — the Azure/Basilisk
   // paralysis and die tokens, the Minotaurs' draw, and the ranged low-roll bolt.
+  // Tarnum (Fortress) Basilisks VI: the buffed (non-retaliation) attack fires
+  // every die-gated after-attack ability regardless of the rolled face.
+  const forceAbilityRoll = !details.isRetaliation && Boolean(stackItem.modifiers.forceAbilityRollsThisAttack);
   if (!dieCancelled) {
-    applyOnAttackDieTokens(state, details.attacker, details.defender, attackResult.roll, details.isRetaliation);
+    applyOnAttackDieTokens(state, details.attacker, details.defender, attackResult.roll, details.isRetaliation, forceAbilityRoll);
     // Dungeon Minotaurs: draw a card when this unit's Attack die resolves "-1".
-    applyOnAttackDieDraw(state, details.attacker, attackResult.roll);
+    applyOnAttackDieDraw(state, details.attacker, attackResult.roll, forceAbilityRoll);
     applyPostAttackAbilityDamage(
       state,
       details.attacker,
@@ -3189,18 +3196,18 @@ function finishResolvedAttack(
     return;
   }
 
-  if (applyAttackDieDamageFollowUps(state, details.attacker, details.defender)) {
+  if (applyAttackDieDamageFollowUps(state, details.attacker, details.defender, forceAbilityRoll)) {
     return;
   }
 
   // Gorgons' Death Stare: roll the extra dice and possibly reduce the target to
   // 0 Health before retaliation.
-  if (applyDeathStareFollowUps(state, details.attacker, details.defender)) {
+  if (applyDeathStareFollowUps(state, details.attacker, details.defender, forceAbilityRoll)) {
     return;
   }
 
   // Azure Dragons / Basilisks: paralyse the target on a matching Attack die.
-  applyParalysisFollowUps(state, details.attacker, details.defender, attackResult.roll);
+  applyParalysisFollowUps(state, details.attacker, details.defender, attackResult.roll, forceAbilityRoll);
 
   // Dragon Flies: dispel the enemy's ongoing buffs on the target.
   applyDispelFollowUps(state, details.attacker, details.defender);
@@ -3555,7 +3562,8 @@ function applyFireShieldDamage(
 function applyAttackDieDamageFollowUps(
   state: GameState,
   attacker: CombatUnitState,
-  defender: CombatUnitState
+  defender: CombatUnitState,
+  forceRoll = false
 ): boolean {
   const combat = state.combat;
   if (!combat || !isUnitAlive(attacker) || !isUnitAlive(defender)) {
@@ -3574,10 +3582,13 @@ function applyAttackDieDamageFollowUps(
       unitId: attacker.id,
       abilityId: followUp.abilityId,
       targetUnitId: defender.id,
-      message: `${attacker.name} rolls ${candidate.roll} for ${followUp.abilityName}.`
+      message: forceRoll
+        ? `${attacker.name} uses ${followUp.abilityName} regardless of the roll (Basilisks VI).`
+        : `${attacker.name} rolls ${candidate.roll} for ${followUp.abilityName}.`
     });
 
-    if (candidate.roll < followUp.minRoll || (followUp.maxRoll !== undefined && candidate.roll > followUp.maxRoll)) {
+    // Tarnum (Fortress) Basilisks VI forces the ability regardless of the face.
+    if (!forceRoll && (candidate.roll < followUp.minRoll || (followUp.maxRoll !== undefined && candidate.roll > followUp.maxRoll))) {
       continue;
     }
 
@@ -3610,13 +3621,15 @@ function applyOnAttackDieTokens(
   attacker: CombatUnitState,
   defender: CombatUnitState,
   attackRoll: number,
-  isRetaliation: boolean
+  isRetaliation: boolean,
+  forceRoll = false
 ): void {
   if (isRetaliation || !state.combat || !isUnitAlive(defender)) {
     return;
   }
   for (const token of getOnAttackDieTokens(attacker)) {
-    if (attackRoll !== token.onRoll) {
+    // Tarnum (Fortress) Basilisks VI forces the token regardless of the face.
+    if (!forceRoll && attackRoll !== token.onRoll) {
       continue;
     }
     placeCombatToken(state, defender, token.token, token.amount, token.abilityName);
@@ -3636,9 +3649,15 @@ function applyOnAttackDieTokens(
  * matching face; the controller draws the printed number of cards. (The neutral
  * Minotaur rerolls the "-1" instead — it never carries this ability.)
  */
-function applyOnAttackDieDraw(state: GameState, attacker: CombatUnitState, attackRoll: number): void {
+function applyOnAttackDieDraw(
+  state: GameState,
+  attacker: CombatUnitState,
+  attackRoll: number,
+  forceRoll = false
+): void {
   for (const draw of getOnAttackDieDraw(attacker)) {
-    if (attackRoll !== draw.onRoll) {
+    // Tarnum (Fortress) Basilisks VI forces the draw regardless of the face.
+    if (!forceRoll && attackRoll !== draw.onRoll) {
       continue;
     }
     drawCardsForPlayer(state, attacker.controllerId, draw.amount);
@@ -3660,7 +3679,8 @@ function applyOnAttackDieDraw(state: GameState, attacker: CombatUnitState, attac
 function applyDeathStareFollowUps(
   state: GameState,
   attacker: CombatUnitState,
-  defender: CombatUnitState
+  defender: CombatUnitState,
+  forceRoll = false
 ): boolean {
   const combat = state.combat;
   if (!combat || !isUnitAlive(attacker) || !isUnitAlive(defender)) {
@@ -3672,7 +3692,8 @@ function applyDeathStareFollowUps(
       break;
     }
     const rolls = Array.from({ length: Math.max(1, followUp.diceCount) }, () => rollAttackDie(combat));
-    const petrifies = rolls.every((roll) => roll === followUp.onRoll);
+    // Tarnum (Fortress) Basilisks VI forces the Death Stare regardless of the dice.
+    const petrifies = forceRoll || rolls.every((roll) => roll === followUp.onRoll);
     // One ability event per stare (drives the FX/sound once): its message
     // carries the outcome so the log reads correctly and tests can assert it.
     appendEvent(state, {
@@ -4109,7 +4130,8 @@ function applyParalysisFollowUps(
   state: GameState,
   attacker: CombatUnitState,
   defender: CombatUnitState,
-  attackRoll: number
+  attackRoll: number,
+  forceRoll = false
 ): void {
   const combat = state.combat;
   if (!combat) {
@@ -4131,7 +4153,8 @@ function applyParalysisFollowUps(
         message: `${attacker.name} rolls ${roll} for ${followUp.abilityName}.`
       });
     }
-    if (roll !== followUp.onRoll) {
+    // Tarnum (Fortress) Basilisks VI forces the Paralysis regardless of the face.
+    if (!forceRoll && roll !== followUp.onRoll) {
       continue;
     }
     if (unitImmuneToParalysis(state, defender)) {
@@ -4412,7 +4435,8 @@ function resolveCombatHandDiscard(
           target: toll.target,
           ...(toll.fromScroll ? { fromScroll: toll.fromScroll } : {}),
           ...(toll.fromSpellDeck ? { fromSpellDeck: toll.fromSpellDeck } : {}),
-          ...(toll.fromSpellBook ? { fromSpellBook: true } : {})
+          ...(toll.fromSpellBook ? { fromSpellBook: true } : {}),
+          ...(toll.tarnumReturn ? { tarnumReturn: toll.tarnumReturn } : {})
         },
         cards
       );
@@ -6463,6 +6487,31 @@ function finalizeSpellCardDestination(
     return;
   }
 
+  // Tarnum (Conflux) VI: the spell was moved hand → caster's discard at cast
+  // time. Pull it back out and place it on the shared Spell deck (its top, so it
+  // is the next card searched/drawn, or its discard pile) per the caster's
+  // choice — never left in the caster's own discard. Any ongoing effect it made
+  // still lives in activeEffects (the card itself is gone from the player).
+  if (stackItem.modifiers.tarnumReturn) {
+    const caster = state.players[stackItem.action.playerId];
+    const cardId = stackItem.action.cardId;
+    const spellDeck = state.decks.spells;
+    if (caster) {
+      const idx = caster.discard.lastIndexOf(cardId);
+      if (idx >= 0) {
+        caster.discard.splice(idx, 1);
+      }
+    }
+    if (spellDeck) {
+      if (stackItem.modifiers.tarnumReturn === "deck-top") {
+        spellDeck.drawPile.push(cardId);
+      } else {
+        spellDeck.discardPile.push(cardId);
+      }
+    }
+    return;
+  }
+
   const playerId = stackItem.action.playerId;
   const cardId = stackItem.action.cardId;
   const recall = stackItem.modifiers.recallSpell;
@@ -6701,7 +6750,12 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
           duration: card.effect.duration,
           polarity: card.effect.polarity ?? (amount >= 0 ? "positive" : "negative"),
           removable: card.effect.removable ?? true,
-          modifiers: [{ type: "INITIATIVE_BONUS", amount }]
+          modifiers: [
+            { type: "INITIATIVE_BONUS", amount },
+            ...(card.effect.movementBonus
+              ? [{ type: "MOVEMENT_BONUS" as const, amount: card.effect.movementBonus }]
+              : [])
+          ]
         },
         { type: "card", cardId: card.id, controllerId: stackItem.action.playerId },
         stackItem.action.playerId,
@@ -7355,6 +7409,16 @@ function castSpell(state: GameState, action: Extract<GameAction, { type: "CAST_S
     throw new Error(`Card ${action.cardId} is not a spell.`);
   }
 
+  // Tarnum (Conflux) VI: a free over-limit cast is only legal for a card the
+  // hero actually Searched and flagged this combat (guards against a forged
+  // tarnumReturn slipping a normal hand spell past the per-round limit).
+  if (action.tarnumReturn) {
+    const flagged = state.players[action.playerId]?.combatStats.tarnumOverlimitCards ?? [];
+    if (!flagged.includes(action.cardId)) {
+      throw new Error("That Spell was not Searched for a Tarnum over-limit cast.");
+    }
+  }
+
   // Creature Bank Dragon Utopia Faerie Dragons (while Stacked): a living enemy
   // Faerie Dragons forbids any Spell cast. Backstop at resolution so a forced
   // cast (one the legal-action filter never offered) still fails.
@@ -7424,7 +7488,8 @@ function openPegasiTollChoice(
       target: action.target,
       ...(action.fromScroll ? { fromScroll: action.fromScroll } : {}),
       ...(action.fromSpellDeck ? { fromSpellDeck: action.fromSpellDeck } : {}),
-      ...(action.fromSpellBook ? { fromSpellBook: true } : {})
+      ...(action.fromSpellBook ? { fromSpellBook: true } : {}),
+      ...(action.tarnumReturn ? { tarnumReturn: action.tarnumReturn } : {})
     }
   };
   state.phase = "choice";
@@ -7484,6 +7549,15 @@ function performSpellCast(state: GameState, action: Extract<GameAction, { type: 
     if (moveError) {
       throw new Error(moveError.message);
     }
+  } else if (action.tarnumReturn) {
+    // Tarnum (Conflux) VI free over-limit cast of a just-Searched hand spell:
+    // move hand → discard like a normal cast (finalizeSpellCardDestination then
+    // relocates the card to the shared Spell deck top/discard). As a bonus cast
+    // it skips the Familiars' hand tax, and the flag is consumed below.
+    const moveError = moveCardFromHandToDiscard(state, action.playerId, action.cardId);
+    if (moveError) {
+      throw new Error(moveError.message);
+    }
   } else {
     const moveError = moveCardFromHandToDiscard(state, action.playerId, action.cardId);
     if (moveError) {
@@ -7499,9 +7573,10 @@ function performSpellCast(state: GameState, action: Extract<GameAction, { type: 
   // Tower Magi Pack Power bonus lands on whichever spell is cast first — never on
   // both a free Helm cast and a later normal cast.
   const isFirstSpellThisRound = !caster.combatStats.anySpellCastThisRound;
-  // A Helm of the Alabaster Unicorn cast does not count toward the spell limit
-  // (noteSpellCast still closes the first-spell-this-round gate for it).
-  noteSpellCast(state, caster, !action.fromSpellDeck);
+  // Neither a Helm of the Alabaster Unicorn cast nor a Tarnum (Conflux) VI
+  // over-limit cast counts toward the spell limit (noteSpellCast still closes
+  // the first-spell-this-round gate for them).
+  noteSpellCast(state, caster, !action.fromSpellDeck && !action.tarnumReturn);
 
   const stackItem = makeStackItem(state, action);
 
@@ -7511,6 +7586,18 @@ function performSpellCast(state: GameState, action: Extract<GameAction, { type: 
   // through to the power hooks below.
   if (action.fromSpellDeck) {
     stackItem.modifiers.fromSpellDeck = true;
+  }
+
+  // Tarnum (Conflux) VI: flag the placement and spend the over-limit privilege
+  // for this card (remove a single flagged occurrence).
+  if (action.tarnumReturn) {
+    stackItem.modifiers.tarnumReturn = action.tarnumReturn;
+    const flagged = caster.combatStats.tarnumOverlimitCards ?? [];
+    const idx = flagged.indexOf(action.cardId);
+    if (idx >= 0) {
+      flagged.splice(idx, 1);
+      caster.combatStats.tarnumOverlimitCards = flagged;
+    }
   }
 
   // Scroll spells are locked to power 0 and cannot be boosted by any Power
@@ -7805,6 +7892,8 @@ function applyReactionPlayCore(
     fromSpellBook?: boolean;
     /** Bowstring of the Unicorn's Mane: the friendly ranged unit to activate. */
     target?: TargetRef;
+    /** Tarnum (Conflux) VI: free over-limit reaction; returns to the shared Spell deck. */
+    tarnumReturn?: "deck-top" | "discard";
   },
   cards: CardLibrary
 ): { windowEnded: boolean } {
@@ -7898,9 +7987,16 @@ function applyReactionPlayCore(
   const stackItem = state.stack.at(-1);
   const player = state.players[playerId];
 
+  // Tarnum (Conflux) VI: a free over-limit reaction is only legal for a card the
+  // hero actually Searched and flagged this combat (guards a forged tarnumReturn).
+  if (play.tarnumReturn && !(player?.combatStats.tarnumOverlimitCards ?? []).includes(play.cardId)) {
+    throw new Error("That Spell was not Searched for a Tarnum over-limit cast.");
+  }
+
   // Spell cards played as instants count toward the printed limit of one
-  // Spell card per combat round (Knowledge/Necklace raise it).
-  if (card.kind === "spell" && state.combat && player) {
+  // Spell card per combat round (Knowledge/Necklace raise it). A Tarnum VI
+  // over-limit reaction is a free bonus — it ignores the limit.
+  if (card.kind === "spell" && state.combat && player && !play.tarnumReturn) {
     if (player.combatStats.spellsCastThisRound >= spellLimitFor(state, player)) {
       throw new Error("Spell limit reached for this combat round.");
     }
@@ -7971,6 +8067,32 @@ function applyReactionPlayCore(
     if (moveError) {
       throw new Error(moveError.message);
     }
+  } else if (play.tarnumReturn) {
+    // Tarnum (Conflux) VI: pull the flagged Spell out of hand and return it to the
+    // shared Spell deck — its top or its discard pile (the caster's choice) —
+    // never the caster's own discard. Consume the over-limit flag.
+    const hand = state.players[playerId]?.hand;
+    const handIndex = hand?.indexOf(play.cardId) ?? -1;
+    if (!hand || handIndex < 0) {
+      throw new Error("That Spell is not in your hand.");
+    }
+    hand.splice(handIndex, 1);
+    const spellDeck = state.decks.spells;
+    if (spellDeck) {
+      if (play.tarnumReturn === "deck-top") {
+        spellDeck.drawPile.push(play.cardId);
+      } else {
+        spellDeck.discardPile.push(play.cardId);
+      }
+    }
+    if (player) {
+      const flagged = player.combatStats.tarnumOverlimitCards ?? [];
+      const idx = flagged.indexOf(play.cardId);
+      if (idx >= 0) {
+        flagged.splice(idx, 1);
+        player.combatStats.tarnumOverlimitCards = flagged;
+      }
+    }
   } else {
     const moveError = moveCardFromHandToDiscard(
       state,
@@ -8021,7 +8143,9 @@ function applyReactionPlayCore(
   }
 
   if (card.kind === "spell" && state.combat && player) {
-    noteSpellCast(state, player);
+    // A Tarnum VI over-limit reaction is free: it does not bump the per-round
+    // limit (noteSpellCast still closes the first-spell-this-round gate for it).
+    noteSpellCast(state, player, !play.tarnumReturn);
   }
 
   const optionLabel =
@@ -8400,9 +8524,19 @@ function applyReactionPlayCore(
       Boolean(attacker) &&
       Boolean(defender) &&
       effectiveInitiative(defender!, state.activeEffects) > effectiveInitiative(attacker!, state.activeEffects);
+    // Gundula IV: doubles when YOUR (attacking) unit is strictly faster than the
+    // attacked unit — the mirror of Cyra's defender-faster condition.
+    const attackerIsFaster =
+      Boolean(effect.doubleIfAttackerInitiativeHigher) &&
+      Boolean(attacker) &&
+      Boolean(defender) &&
+      effectiveInitiative(attacker!, state.activeEffects) > effectiveInitiative(defender!, state.activeEffects);
     const matchesDoubledType = Boolean(effect.doubleForUnitType) && affectedUnit?.type === effect.doubleForUnitType;
     const doubleFactor =
-      unitMatchesSpecialtyName(affectedUnit?.name, effect.doubleForUnitName) || matchesDoubledType || defenderIsFaster
+      unitMatchesSpecialtyName(affectedUnit?.name, effect.doubleForUnitName) ||
+      matchesDoubledType ||
+      defenderIsFaster ||
+      attackerIsFaster
         ? 2
         : 1;
     // Merist's Stone Skin I: a defense reaction grants extra Defense when the
@@ -8485,6 +8619,11 @@ function applyReactionPlayCore(
     }
     if (effect.ignoresRetaliation) {
       stackItem.modifiers.ignoresRetaliationThisAttack = true;
+    }
+    // Tarnum (Fortress) Basilisks VI: this buffed attack also fires every
+    // die-gated after-attack ability of the attacker regardless of the roll.
+    if (effect.forceAbilityRolls) {
+      stackItem.modifiers.forceAbilityRollsThisAttack = true;
     }
 
     if (effect.drawCards) {
@@ -8747,6 +8886,33 @@ function applyReactionPlayCore(
     stackItem.modifiers.playedCardIds.push(play.cardId);
   }
 
+  // First Aid (basic) played as an instant reaction the moment your unit is
+  // attacked (firstAidCardHealReactions): mend `amount` existing damage on the
+  // chosen friendly unit BEFORE the hit is calculated, then leave the window
+  // open so the paused attack resumes — the healed unit may now survive a blow
+  // that would otherwise defeat it. The chosen unit rides on play.target (one
+  // offer per wounded friendly). The card's expert side never reaches here — it
+  // rides the First Aid Tent (USE_ACTIVE_EFFECT, mode "expert"), not a card play.
+  // Naming the card as the heal's source keeps the cure FX/sound firing.
+  if (effect.type === "HEAL_DAMAGE" && play.target?.type === "unit") {
+    const unit = state.combat?.units[play.target.unitId];
+    if (unit && unit.controllerId === playerId && isUnitAlive(unit)) {
+      healUnitDamage(
+        state,
+        { type: "card", cardId: card.id, controllerId: playerId },
+        play.target,
+        getEffectDamageAmount(effect, card.power ?? 0)
+      );
+      // Rion's Battlefield Medic shares this effect: also clear paralysis / draw.
+      if (effect.removeParalysis && hasToken(unit, "paralysis")) {
+        removeToken(state, unit, "paralysis", "dispelled");
+      }
+      if (effect.drawCards) {
+        drawCardsForPlayer(state, playerId, effect.drawCards);
+      }
+    }
+  }
+
   // Targ of the Rampaging Ogre (top side): "instead of discarding, put this card
   // back into your hand." The card was moved to the discard pile above; now that
   // its effect has applied, pull it back to hand. The cost cards it discarded
@@ -8894,6 +9060,27 @@ function playReaction(
   action: Extract<GameAction, { type: "PLAY_REACTION" }>,
   cards: CardLibrary
 ): void {
+  // Tarnum (Conflux) VI played AS a reaction: consume the specialty (it cycles to
+  // the caster's discard) and open the per-search deck choice. The Search runs
+  // inside the still-open reaction window; once it finishes, resolveTarnumSearch
+  // re-derives the window's offers (so a just-Searched applicable instant can be
+  // cast into the SAME window) and hands priority back to the caster. The window
+  // is not advanced/closed here — that happens after the Search resolves.
+  const reactionCardEffect = cards[action.cardId]?.effect;
+  if (reactionCardEffect?.type === "TARNUM_OVERLIMIT_SEARCH") {
+    if (!state.reactionWindow) {
+      throw new Error("No reaction window is open.");
+    }
+    const moveError = moveCardFromHandToDiscard(state, action.playerId, action.cardId, "discard");
+    if (moveError) {
+      throw new Error(moveError.message);
+    }
+    // A fresh reaction clears everyone's prior pass so opponents get a new look.
+    state.reactionWindow.passedPlayerIds = [];
+    openTarnumSearch(state, action.playerId, reactionCardEffect.count);
+    return;
+  }
+
   // Power has no standalone effect during an attack UNLESS a Power-scaling
   // spell instant has already been played into this window: the caster keeps
   // priority and may keep empowering it (Bloodlust cast, then a Power card to
@@ -9831,6 +10018,21 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     }
   }
 
+  // Tarnum (Rampart) Sharpshooters VI (option A): borrow a Neutral-deck unit for
+  // this Combat only — placed on an empty cell on the player's side; the card
+  // returns to the Neutral discard pile when the Combat ends.
+  if (effect.type === "BORROW_NEUTRAL_UNIT" && state.combat) {
+    const borrowed = borrowNeutralUnit(state, action.playerId, effect.unitDefId, effect.tier);
+    if (borrowed) {
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: borrowed.id,
+        abilityId: card.id,
+        message: `${state.players[action.playerId]?.name ?? "A hero"} plays ${card.name}: ${borrowed.cardName} joins the Combat at ${getBattlefieldLabel(borrowed.position)}.`
+      });
+    }
+  }
+
   // Tarnum (Dungeon)'s Dragons VI (option A): toggle the selected Dragons unit's
   // Black cube — remove it if the unit has already spent its Retaliation this
   // round (so it may retaliate again), otherwise place one (so it cannot).
@@ -9957,6 +10159,44 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     gainResources(state, action.playerId, gain, `played ${card.name}`);
   }
 
+  // Octavia's "Gold" and Melodia's "Fortune" economic map plays. Morale and the
+  // location-dice buff land at once; the Resource-die roll (and the trailing
+  // gold, so it follows the chosen die) run through a queued map visit.
+  if (effect.type === "RESOURCE_FORTUNE_PLAY") {
+    if (effect.morale) {
+      changeMorale(state, action.playerId, effect.morale);
+    }
+    if (effect.locationDiceBonusTurn) {
+      createActiveEffect(
+        state,
+        {
+          name: card.name,
+          scope: "player",
+          duration: { type: "current-turn" },
+          polarity: "positive",
+          removable: false,
+          modifiers: [{ type: "LOCATION_DICE_BONUS", amount: 1 }]
+        },
+        { type: "card", cardId: card.id, controllerId: action.playerId },
+        action.playerId
+      );
+    }
+    const fortuneSteps: VisitStep[] = [];
+    if (effect.rollResourceDice) {
+      fortuneSteps.push({ type: "ROLL_RESOURCE_DICE", count: effect.rollResourceDice });
+    }
+    if (effect.gold) {
+      fortuneSteps.push({ type: "GAIN_RESOURCES", gold: effect.gold });
+    }
+    if (fortuneSteps.length > 0) {
+      state.adventure?.rewardQueue.unshift({
+        playerId: action.playerId,
+        kind: "visit-steps",
+        steps: fortuneSteps
+      });
+    }
+  }
+
   // Legion artifacts' discount side (map-only): open a blocking prompt to pick
   // the ONE unit whose recruit/reinforce cost this piece reduces, then bank a
   // voucher for that exact unit (queueLegionDiscountChoice → BANK_RECRUIT_DISCOUNT
@@ -10063,7 +10303,8 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       playerId: action.playerId,
       kind: "shared-deck-search",
       deckId: effect.deck,
-      count: effect.count
+      count: effect.count,
+      ...(effect.allowRemove ? { allowRemove: true } : {})
     });
   }
 
@@ -10165,7 +10406,12 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
         duration: effect.duration,
         polarity: effect.polarity ?? (amount >= 0 ? "positive" : "negative"),
         removable: effect.removable ?? true,
-        modifiers: [{ type: "INITIATIVE_BONUS", amount }]
+        modifiers: [
+          { type: "INITIATIVE_BONUS", amount },
+          ...(effect.movementBonus
+            ? [{ type: "MOVEMENT_BONUS" as const, amount: effect.movementBonus }]
+            : [])
+        ]
       },
       { type: "card", cardId: card.id, controllerId: action.playerId },
       action.playerId,
@@ -10498,22 +10744,39 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     }
   }
 
-  // Gelu's Sharpshooters IV: discard a Pack of Elves, then fetch the single
-  // Sharpshooters card from the silver Neutral deck into your unit deck.
+  // Gelu's Sharpshooters IV / Dracon's Enchanters IV: discard a Pack of the
+  // `from` unit, then fetch the single `to` card from a Neutral tier deck into
+  // your unit deck. Tarnum (Conflux) IV reuses this with no unit to trade in —
+  // it pays `goldCost` (10) instead of discarding a from-unit.
   if (effect.type === "CONVERT_ARMY_UNIT") {
     const player = state.players[action.playerId];
     const deck = state.decks[NEUTRAL_DECK_IDS[effect.toTier]];
-    const fromIndex =
-      player?.army.findIndex(
-        (unit) => unit.unitDefId === effect.fromUnitDefId && unit.side === effect.fromSide
-      ) ?? -1;
+    const tradesUnit = Boolean(effect.fromUnitDefId);
+    const fromIndex = tradesUnit
+      ? (player?.army.findIndex(
+          (unit) => unit.unitDefId === effect.fromUnitDefId && unit.side === effect.fromSide
+        ) ?? -1)
+      : -1;
     const alreadyHas = effect.unique
       ? (player?.army.some((unit) => unit.unitDefId === effect.toUnitDefId) ?? false)
       : false;
     const inDraw = deck?.drawPile.indexOf(effect.toUnitDefId) ?? -1;
     const inDiscard = deck?.discardPile.indexOf(effect.toUnitDefId) ?? -1;
-    if (player && deck && fromIndex >= 0 && !alreadyHas && (inDraw >= 0 || inDiscard >= 0)) {
-      player.army.splice(fromIndex, 1);
+    const hasFrom = tradesUnit ? fromIndex >= 0 : true;
+    const canPayGold = effect.goldCost ? (player?.resources.gold ?? 0) >= effect.goldCost : true;
+    if (player && deck && hasFrom && canPayGold && !alreadyHas && (inDraw >= 0 || inDiscard >= 0)) {
+      if (tradesUnit) {
+        player.army.splice(fromIndex, 1);
+      }
+      if (effect.goldCost) {
+        player.resources.gold -= effect.goldCost;
+        appendEvent(state, {
+          type: "RESOURCES_SPENT",
+          playerId: action.playerId,
+          cost: { gold: effect.goldCost },
+          reason: `acquired the ${cards[effect.toUnitDefId]?.name ?? effect.toUnitDefId}`
+        });
+      }
       if (inDraw >= 0) {
         deck.drawPile.splice(inDraw, 1);
       } else {
@@ -10525,9 +10788,18 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
         playerId: action.playerId,
         unitDefId: effect.toUnitDefId,
         kind: "recruit",
-        cost: {}
+        cost: effect.goldCost ? { gold: effect.goldCost } : {}
       });
     }
+  }
+
+  // Tarnum (Conflux) VI: "Search(1) Spell twice." Open the per-search deck
+  // choice — the caster picks ONE Spell deck (basic or expert) to Search 1 card
+  // from, `count` times. Each taken card is flagged for a free over-limit cast
+  // that returns to the shared Spell deck (top or discard) rather than the
+  // caster's own discard. Opens nothing when no Spell deck holds a card.
+  if (effect.type === "TARNUM_OVERLIMIT_SEARCH") {
+    openTarnumSearch(state, action.playerId, effect.count);
   }
 
   if (playedToDiscard) {
@@ -10754,10 +11026,16 @@ function applyActiveEffectAction(
       throw new Error("First Aid's expert side needs the First Aid card and a free expert use this round.");
     }
     spendFirstAidExpert(state, action.playerId);
-    effect.healRound = { round: combat.round, count: 1, expert: true };
+    // Pin the volley to this first target: the card heals "the same target 3
+    // times", so the follow-up heals below can only land on this unit.
+    effect.healRound = { round: combat.round, count: 1, expert: true, targetUnitId: action.target.unitId };
   } else if (!usage) {
     effect.healRound = { round: combat.round, count: 1, expert: false };
   } else if (usage.expert && usage.count < expertMax) {
+    // The expert volley resolves against the SAME target every time.
+    if (usage.targetUnitId && usage.targetUnitId !== action.target.unitId) {
+      throw new Error("First Aid's expert volley must heal the same target each time.");
+    }
     usage.count += 1;
   } else {
     throw new Error("That active effect has already been used this combat round.");
@@ -11012,6 +11290,141 @@ function placeCloneUnit(
   delete clone.armyUnitId;
   combat.units[clone.id] = clone;
   return clone;
+}
+
+/**
+ * First empty cell on the player's side of the board (back row first, so a
+ * borrowed ranged unit lands in the back), falling back to any free cell.
+ */
+function findBorrowDeploymentCell(combat: CombatState, playerId: PlayerId): number | undefined {
+  const region =
+    playerId === combat.attackerPlayerId ? [16, 17, 18, 19, 12, 13, 14, 15] : [0, 1, 2, 3, 4, 5, 6, 7];
+  const inRegion = region.find((position) => !isSpaceBlockedForSummon(combat, position));
+  if (inRegion !== undefined) {
+    return inRegion;
+  }
+  for (let position = 0; position < BATTLEFIELD_CELL_COUNT; position += 1) {
+    if (!isSpaceBlockedForSummon(combat, position)) {
+      return position;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Tarnum (Rampart) Sharpshooters VI: pull `unitDefId` out of the `tier` Neutral
+ * deck (draw pile first, else its discard pile) and place a TEMPORARY combat unit
+ * on an empty cell on the player's side. The unit carries no army card, so it is
+ * never written back to the army; finalizeAdventureCombat returns its card to the
+ * Neutral discard pile when the Combat ends. Returns the new unit, or null when
+ * it could not be borrowed (card not in the deck, or no room on the board).
+ */
+function borrowNeutralUnit(
+  state: GameState,
+  playerId: PlayerId,
+  unitDefId: string,
+  tier: "bronze" | "silver" | "gold" | "azure"
+): CombatUnitState | null {
+  const combat = state.combat;
+  const deck = state.decks[NEUTRAL_DECK_IDS[tier]];
+  if (!combat || !deck) {
+    return null;
+  }
+  const fromDraw = deck.drawPile.indexOf(unitDefId);
+  const fromDiscard = fromDraw >= 0 ? -1 : deck.discardPile.indexOf(unitDefId);
+  if (fromDraw >= 0) {
+    deck.drawPile.splice(fromDraw, 1);
+  } else if (fromDiscard >= 0) {
+    deck.discardPile.splice(fromDiscard, 1);
+  } else {
+    return null;
+  }
+
+  const position = findBorrowDeploymentCell(combat, playerId);
+  const unit =
+    position === undefined
+      ? null
+      : makeCombatUnitFromArmy(
+          { id: `borrow_${nextEventNumber(state)}`, unitDefId, side: "neutral" },
+          playerId,
+          `unit_${playerId}_borrow_${nextEventNumber(state)}`,
+          position,
+          getRuleset(state)
+        );
+  if (!unit) {
+    // Could not place it: return the borrowed card to the discard pile and bail.
+    deck.discardPile.push(unitDefId);
+    return null;
+  }
+  // Borrowed: gradeless to the neutral AI (like a summon), no army card (never
+  // written back), and it acts on its own initiative this round.
+  unit.summoned = true;
+  unit.temporary = true;
+  unit.activatedThisRound = false;
+  delete unit.armyUnitId;
+  combat.units[unit.id] = unit;
+  return unit;
+}
+
+/** Crag Hack's Offense VI aura, if the player has it up this Combat. */
+function cardsAsAttackBonusFor(state: GameState, playerId: PlayerId): number {
+  let amount = 0;
+  for (const effect of state.activeEffects) {
+    if (effect.scope !== "player" || effect.controllerId !== playerId) {
+      continue;
+    }
+    for (const modifier of effect.modifiers) {
+      if (modifier.type === "CARDS_AS_ATTACK_BONUS") {
+        amount += modifier.amount;
+      }
+    }
+  }
+  return amount;
+}
+
+/**
+ * Crag Hack's Offense VI: discard a held card during one of your unit's attacks
+ * to add the aura's bonus to that attack ("every card you play can grant +1
+ * attack instead of its regular effect"). The card is discarded for its converted
+ * effect, never its printed one.
+ */
+function convertCardToAttack(
+  state: GameState,
+  action: Extract<GameAction, { type: "CONVERT_CARD_TO_ATTACK" }>
+): void {
+  const player = state.players[action.playerId];
+  const amount = cardsAsAttackBonusFor(state, action.playerId);
+  if (!player || amount <= 0) {
+    throw new Error("Offense VI is not active.");
+  }
+  const handIndex = player.hand.indexOf(action.cardId);
+  if (handIndex === -1) {
+    throw new Error("That card is not in your hand.");
+  }
+  const stackItem = state.stack.at(-1);
+  const attackerId =
+    stackItem && (stackItem.action.type === "ATTACK_UNIT" || stackItem.action.type === "MOVE_AND_ATTACK_UNIT")
+      ? stackItem.action.attackerId
+      : null;
+  const attacker = attackerId ? state.combat?.units[attackerId] : undefined;
+  if (!stackItem || !attacker || attacker.controllerId !== action.playerId) {
+    throw new Error("Convert a card while one of your units' attacks waits to resolve.");
+  }
+  if (stackItem.modifiers.negateAttackBuffs) {
+    throw new Error("This attack cannot be buffed.");
+  }
+
+  player.hand.splice(handIndex, 1);
+  player.discard.push(action.cardId);
+  stackItem.modifiers.attackBonus += amount;
+  appendEvent(state, {
+    type: "CARD_PLAYED",
+    playerId: action.playerId,
+    cardId: action.cardId,
+    timing: cardLibrary[action.cardId]?.timing ?? "instant",
+    mode: "basic",
+    optionLabel: `Offense VI: +${amount} attack instead`
+  });
 }
 
 /**
@@ -12004,7 +12417,7 @@ function moveAndAttackUnit(
         : (planMovePath(
             from,
             destination,
-            getUnitMoveRange(attacker),
+            getUnitMoveRange(attacker, state),
             getBlockedSpaces(combat, attacker),
             getKnownHazardSpaces(combat, attacker)
           ) ?? [destination]);
@@ -12257,13 +12670,14 @@ function walkMoveThroughTokens(
  * point of letting the player pick the path.
  */
 function isLegalExplicitMovePath(
+  state: GameState,
   combat: CombatState,
   unit: CombatUnitState,
   start: number,
   path: number[],
   destination: number
 ): boolean {
-  if (path.length === 0 || path.length > getUnitMoveRange(unit)) {
+  if (path.length === 0 || path.length > getUnitMoveRange(unit, state)) {
     return false;
   }
   if (path[path.length - 1] !== destination) {
@@ -12303,7 +12717,7 @@ function moveUnit(state: GameState, action: Extract<GameAction, { type: "MOVE_UN
   // tokens and no chosen path, the walk is skipped and movement is unchanged.
   let enteredSpaces: number[] | null = null;
   if (action.path && unit.type !== "flying") {
-    if (!isLegalExplicitMovePath(combat, unit, from, action.path, destination)) {
+    if (!isLegalExplicitMovePath(state, combat, unit, from, action.path, destination)) {
       throw new Error("That movement path is not legal.");
     }
     enteredSpaces = action.path;
@@ -12314,7 +12728,7 @@ function moveUnit(state: GameState, action: Extract<GameAction, { type: "MOVE_UN
         : (planMovePath(
             from,
             destination,
-            getUnitMoveRange(unit),
+            getUnitMoveRange(unit, state),
             getBlockedSpaces(combat, unit),
             getKnownHazardSpaces(combat, unit)
           ) ?? [destination]);
@@ -12421,6 +12835,10 @@ function advanceCombatRound(state: GameState, byPlayerId: PlayerId): void {
     player.combatStats.spellsCastThisRound = 0;
     player.combatStats.spellLimitBonusThisRound = 0;
     player.combatStats.anySpellCastThisRound = false;
+    // Tarnum (Conflux) VI: "immediately cast" — the over-limit Search privilege
+    // does not survive into the next combat round (an uncast Searched spell just
+    // stays in hand as a normal card).
+    player.combatStats.tarnumOverlimitCards = [];
     // Expert uses (crowns) and the "+1 expert use this round" bonus (Pendant of
     // Courage / Helm of Heavenly Enlightenment) are a per-GAME-ROUND budget, not
     // a per-combat-round one. They are NOT reset here: a single battle's many
@@ -12673,6 +13091,133 @@ function recordDeckDrawnAbility(player: PlayerState, deckId: string, cardId: Car
   (player.deckDrawnAbilityCardIds ??= []).push(cardId);
 }
 
+/**
+ * A single non-interactive Search(1) of the named shared Spell deck: take the
+ * top card the player may acquire into hand (redrawing past any they cannot
+ * take), leaving the skipped cards tucked back under the deck. Returns the taken
+ * card id, or null when the deck holds nothing acquirable. Used by Tarnum
+ * (Conflux) VI's "Search(1) Spell twice" across the basic and expert decks.
+ */
+function takeTopAcquirableSpellToHand(state: GameState, playerId: PlayerId, deckId: string): CardId | null {
+  const deck = state.decks[deckId];
+  const player = state.players[playerId];
+  if (!deck || !player) {
+    return null;
+  }
+  const skipped: CardId[] = [];
+  let taken: CardId | null = null;
+  while (deck.drawPile.length > 0) {
+    const cardId = deck.drawPile.pop();
+    if (!cardId) {
+      break;
+    }
+    if (canAcquireSharedDeckCard(state, playerId, deckId, cardId)) {
+      taken = cardId;
+      break;
+    }
+    skipped.push(cardId);
+  }
+  if (skipped.length > 0) {
+    // Skipped cards never re-reach the top within this single pull, so tucking
+    // them under the deck (front of the array) cannot loop.
+    deck.drawPile.unshift(...skipped);
+  }
+  if (taken) {
+    player.hand.push(taken);
+    recordDeckDrawnAbility(player, deckId, taken);
+  }
+  return taken;
+}
+
+/** Spell decks with at least one card, basic first, that Tarnum VI may Search. */
+function tarnumSearchableDecks(state: GameState): string[] {
+  return [SPELL_DECK_BASIC, SPELL_DECK_EXPERT].filter(
+    (deckId) => (state.decks[deckId]?.drawPile.length ?? 0) > 0
+  );
+}
+
+/**
+ * Tarnum (Conflux) VI: open (or re-open) the "which Spell deck to Search?" step.
+ * The caster picks one deck (basic or expert) per search; with `remaining`
+ * searches left, the choice re-opens after each pick. When no deck holds a card,
+ * the step closes (nothing left to Search).
+ */
+function openTarnumSearch(state: GameState, playerId: PlayerId, remaining: number): void {
+  if (remaining <= 0 || tarnumSearchableDecks(state).length === 0) {
+    return;
+  }
+  const choiceId = `choice_${nextEventNumber(state)}`;
+  state.pendingChoice = {
+    id: choiceId,
+    type: "TARNUM_SEARCH",
+    playerId,
+    remaining,
+    returnPhase: state.combat ? "combat" : "player-turn"
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = playerId;
+  appendEvent(state, {
+    type: "PENDING_CHOICE_CREATED",
+    choiceId,
+    choiceType: "TARNUM_SEARCH",
+    playerId,
+    sourceEffectIds: [],
+    message: `${state.players[playerId]?.name ?? playerId} Searches a Spell deck.`
+  });
+}
+
+function resolveTarnumSearch(
+  state: GameState,
+  action: Extract<GameAction, { type: "CHOOSE_OPTION" }>,
+  cards: CardLibrary
+): void {
+  const choice = state.pendingChoice;
+  if (
+    !choice ||
+    choice.type !== "TARNUM_SEARCH" ||
+    choice.id !== action.choiceId ||
+    choice.playerId !== action.playerId
+  ) {
+    throw new Error("There is no Tarnum Search to resolve.");
+  }
+  const decks = tarnumSearchableDecks(state);
+  const deckId = decks[action.optionIndex];
+  if (!deckId) {
+    throw new Error("Pick one of the offered Spell decks.");
+  }
+
+  const player = state.players[action.playerId];
+  const taken = takeTopAcquirableSpellToHand(state, action.playerId, deckId);
+  if (player && taken) {
+    player.combatStats.tarnumOverlimitCards = [...(player.combatStats.tarnumOverlimitCards ?? []), taken];
+  }
+
+  appendEvent(state, {
+    type: "PENDING_CHOICE_RESOLVED",
+    choiceId: choice.id,
+    playerId: action.playerId,
+    selectedIndex: action.optionIndex
+  });
+
+  state.pendingChoice = null;
+  // Re-open the next search; leaves pendingChoice null once all are done.
+  openTarnumSearch(state, action.playerId, choice.remaining - 1);
+  if (state.pendingChoice) {
+    return;
+  }
+  // All searches resolved. When the Search ran inside a still-open reaction
+  // window (Tarnum VI used as a reaction), re-derive that window's offers so a
+  // just-Searched applicable instant can be cast into it, and return priority to
+  // the caster. Otherwise just return to the prior phase.
+  if (state.reactionWindow) {
+    state.phase = "reaction";
+    refreshReactionWindowLegalReactions(state, cards);
+  } else {
+    state.phase = choice.returnPhase;
+    state.priorityPlayerId = null;
+  }
+}
+
 function resolveDeckSearch(state: GameState, action: Extract<GameAction, { type: "RESOLVE_DECK_SEARCH" }>): void {
   const choice = state.pendingChoice;
   if (!choice || choice.type !== "DECK_SEARCH" || choice.id !== action.choiceId || choice.playerId !== action.playerId) {
@@ -12692,8 +13237,20 @@ function resolveDeckSearch(state: GameState, action: Extract<GameAction, { type:
     throw new Error("That revealed card is not available.");
   }
 
-  player.hand.push(keptCardId);
-  recordDeckDrawnAbility(player, choice.deckId, keptCardId);
+  // Tarnum (Conflux) I: "You can Remove this card instead of taking it into your
+  // hand." The picked card is removed from the game (it never re-enters the
+  // shared deck), only offered when the choice was opened with allowRemove.
+  const removePicked = Boolean(action.pick.remove);
+  if (removePicked && !choice.allowRemove) {
+    throw new Error("That revealed card cannot be removed.");
+  }
+  if (!removePicked) {
+    player.hand.push(keptCardId);
+    recordDeckDrawnAbility(player, choice.deckId, keptCardId);
+  }
+  // Removing leaves the card out of both hand and the shared deck entirely: it
+  // was already lifted off the draw pile when revealed, so dropping it here is
+  // the whole "Remove from the game" — it never reaches the discard pile below.
   const keptIndex = action.pick.index;
   const discardedCardIds = choice.revealedCardIds.filter((_, index) => index !== keptIndex);
   deck.discardPile.push(...discardedCardIds);
@@ -13195,6 +13752,7 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "USE_TOWN_BUILDING",
   "SPEND_TOWN_CUBE",
   "HALL_OF_VALHALLA_BOOST",
+  "CONVERT_CARD_TO_ATTACK",
   "ATTACK_FORTIFICATION",
   "GIVE_UP",
   "JOIN_ROOM",
@@ -13498,6 +14056,10 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         hallOfValhallaBoost(nextState, action);
         refreshReactionWindowLegalReactions(nextState, cards);
         break;
+      case "CONVERT_CARD_TO_ATTACK":
+        convertCardToAttack(nextState, action);
+        refreshReactionWindowLegalReactions(nextState, cards);
+        break;
       case "ATTACK_FORTIFICATION":
         attackFortification(nextState, action);
         break;
@@ -13509,7 +14071,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         // pick, Ghost Dragon knock-back) live in the combat reducer; every other
         // option choice is
         // handled by the adventure reducer.
-        if (
+        if (nextState.pendingChoice?.type === "TARNUM_SEARCH") {
+          resolveTarnumSearch(nextState, action, cards);
+        } else if (
           nextState.pendingChoice?.type === "OPTION_CHOICE" &&
           nextState.pendingChoice.context === "combat-reposition"
         ) {

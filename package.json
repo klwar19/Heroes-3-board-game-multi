@@ -12,6 +12,7 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "typecheck": "tsc --noEmit",
+    "render:maps": "vitest run --config vitest.render.config.ts",
     "deploy:partykit": "partykit deploy"
   },
   "dependencies": {

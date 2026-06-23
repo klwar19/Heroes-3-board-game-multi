@@ -343,7 +343,7 @@ describe("Fountain of Youth / Magic Spring effects", () => {
 
 describe("rulebook conformance fixes", () => {
   it("lets friendly heroes pass through enemies standing in a Sanctuary", () => {
-    const state = createAdventureGameState({ seed: "test-seed", difficulty: "normal" });
+    const state = createAdventureGameState({ seed: "test-seed", difficulty: "normal", rotateStartTiles: false });
   for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     const adventure = state.adventure;
     if (!adventure) {
@@ -370,7 +370,7 @@ describe("rulebook conformance fixes", () => {
   });
 
   it("only lets the Observatory flip tiles whose flowers actually touch", () => {
-    const state = createAdventureGameState({ seed: "test-seed", difficulty: "normal" });
+    const state = createAdventureGameState({ seed: "test-seed", difficulty: "normal", rotateStartTiles: false });
   for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     const adventure = state.adventure;
     if (!adventure) {
@@ -628,7 +628,7 @@ describe("rulebook conformance fixes", () => {
   });
 
   it("sells one Trading Post card for 1 gold, excluding statistics and Magic Arrow", () => {
-    const state = createAdventureGameState({ seed: "test-seed", difficulty: "normal" });
+    const state = createAdventureGameState({ seed: "test-seed", difficulty: "normal", rotateStartTiles: false });
   for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     const adventure = state.adventure;
     const player = state.players.p1;
@@ -661,7 +661,7 @@ describe("rulebook conformance fixes", () => {
   });
 
   it("locks Trading Post selling and buying once resources were traded", () => {
-    const state = createAdventureGameState({ seed: "test-seed", difficulty: "normal" });
+    const state = createAdventureGameState({ seed: "test-seed", difficulty: "normal", rotateStartTiles: false });
   for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     const adventure = state.adventure;
     const player = state.players.p1;
@@ -696,7 +696,7 @@ describe("rulebook conformance fixes", () => {
   });
 
   it("buys a war machine at the Trading Post price and ends the visit", () => {
-    const state = createAdventureGameState({ seed: "test-seed", difficulty: "normal" });
+    const state = createAdventureGameState({ seed: "test-seed", difficulty: "normal", rotateStartTiles: false });
   for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     const adventure = state.adventure;
     const player = state.players.p1;
@@ -728,7 +728,7 @@ describe("rulebook conformance fixes", () => {
   });
 
   it("sells war machines cheaper at the War Machine Factory", () => {
-    const state = createAdventureGameState({ seed: "test-seed", difficulty: "normal" });
+    const state = createAdventureGameState({ seed: "test-seed", difficulty: "normal", rotateStartTiles: false });
   for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     const adventure = state.adventure;
     const player = state.players.p1;
@@ -758,7 +758,7 @@ describe("rulebook conformance fixes", () => {
   });
 
   it("resolves the Faerie Ring by searching the removed card's own deck", () => {
-    const state = createAdventureGameState({ seed: "test-seed", difficulty: "normal" });
+    const state = createAdventureGameState({ seed: "test-seed", difficulty: "normal", rotateStartTiles: false });
   for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     const adventure = state.adventure;
     const player = state.players.p1;
@@ -802,7 +802,7 @@ describe("rulebook conformance fixes", () => {
   });
 
   it("lets multiple players flag an Obelisk while keeping the first cube", () => {
-    const state = createAdventureGameState({ seed: "test-seed", difficulty: "normal" });
+    const state = createAdventureGameState({ seed: "test-seed", difficulty: "normal", rotateStartTiles: false });
   for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     const adventure = state.adventure;
     if (!adventure) {

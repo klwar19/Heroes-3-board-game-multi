@@ -83,6 +83,8 @@ import {
   spellBookRuleEnabled,
   spellCanEnterSpellBook,
   spellLimitFor,
+  SPELL_DECK_BASIC,
+  SPELL_DECK_EXPERT,
   wisdomGoldDiscount,
   wisdomSearchCount
 } from "./ruleset";
@@ -488,12 +490,26 @@ export { isAdjacent } from "./battlefield";
  * Printed movement values: ground and flying units move up to 3 spaces,
  * ranged units up to 1 space (after shooting or instead of attacking).
  */
-export function getUnitMoveRange(unit: CombatUnitState): number {
-  if (unit.type === "ranged") {
-    return 1;
-  }
+export function getUnitMoveRange(unit: CombatUnitState, state?: GameState): number {
+  const base = unit.type === "ranged" ? 1 : 3;
 
-  return 3;
+  // House rule (BINH only): Haste / Slow (and Cyra / Gundula's specialties) also
+  // shift Combat movement by ±1 (MOVEMENT_BONUS). Legacy keeps the fixed range.
+  if (!state || getRuleset(state) !== "binh") {
+    return base;
+  }
+  let bonus = 0;
+  for (const effect of state.activeEffects) {
+    if (!effectAppliesToUnit(effect, unit)) {
+      continue;
+    }
+    for (const modifier of effect.modifiers) {
+      if (modifier.type === "MOVEMENT_BONUS") {
+        bonus += modifier.amount;
+      }
+    }
+  }
+  return Math.max(1, base + bonus);
 }
 
 export function getCombatObstacles(combat: CombatState): number[] {
@@ -634,7 +650,7 @@ export function getLegalMoveDestinations(combat: CombatState, unit: CombatUnitSt
 
   return getReachableDestinations(
     unit.position,
-    getUnitMoveRange(unit),
+    getUnitMoveRange(unit, state),
     blocked,
     unit.type === "flying"
   ).filter(isBattlefieldPosition);
@@ -1490,23 +1506,44 @@ function addSpellActions(
         !activeUnit.attackedThisActivation
     ) || playerHasSpellTimingFreedom(state, playerId);
 
+  // Tarnum (Conflux) VI: spells Searched this combat are cast for free OVER the
+  // per-round limit (a bonus), and they never go to the caster's own discard —
+  // they are offered separately from normal hand casts (which they are excluded
+  // from) so the limit-reached gate cannot block them.
+  const tarnumFlagged = new Set(player.combatStats.tarnumOverlimitCards ?? []);
+
   // Hand spells plus every Spell Scroll spell (scroll spells are not in hand;
   // they cast at power 0 and are removed once used). Both share the timing and
   // targeting rules below, and both are blocked once the spell limit is reached.
-  const castCandidates: { cardId: string; fromScroll?: string; fromSpellDeck?: string; fromSpellBook?: boolean }[] =
-    spellLimitReached
-      ? []
-      : [
-          ...[...new Set(player.hand)].map((cardId) => ({ cardId })),
-          // Spell Book (house rule): Book Spells cast like hand Spells — full
-          // Power, same one-Spell-per-round limit, same timing/targeting gates.
-          ...(spellBookRuleEnabled(state)
-            ? [...new Set(player.spellBook)].map((cardId) => ({ cardId, fromSpellBook: true }))
-            : []),
-          ...(player.scrolls ?? []).flatMap((scroll) =>
-            [...new Set(scroll.spellCardIds)].map((cardId) => ({ cardId, fromScroll: scroll.id }))
-          )
-        ];
+  const castCandidates: {
+    cardId: string;
+    fromScroll?: string;
+    fromSpellDeck?: string;
+    fromSpellBook?: boolean;
+    tarnumReturn?: "deck-top" | "discard";
+  }[] = spellLimitReached
+    ? []
+    : [
+        ...[...new Set(player.hand)].filter((cardId) => !tarnumFlagged.has(cardId)).map((cardId) => ({ cardId })),
+        // Spell Book (house rule): Book Spells cast like hand Spells — full
+        // Power, same one-Spell-per-round limit, same timing/targeting gates.
+        ...(spellBookRuleEnabled(state)
+          ? [...new Set(player.spellBook)].map((cardId) => ({ cardId, fromSpellBook: true }))
+          : []),
+        ...(player.scrolls ?? []).flatMap((scroll) =>
+          [...new Set(scroll.spellCardIds)].map((cardId) => ({ cardId, fromScroll: scroll.id }))
+        )
+      ];
+
+  // Tarnum over-limit casts: each flagged hand spell, offered with both
+  // placements ("on the top of the Spell deck or on its discard pile").
+  for (const cardId of tarnumFlagged) {
+    if (!player.hand.includes(cardId)) {
+      continue;
+    }
+    castCandidates.push({ cardId, tarnumReturn: "deck-top" });
+    castCandidates.push({ cardId, tarnumReturn: "discard" });
+  }
 
   // Helm of the Alabaster Unicorn (option B): cast the top card of the shared
   // Spell-deck discard pile. Offered like a scroll cast — the spell is sourced
@@ -1536,7 +1573,7 @@ function addSpellActions(
     }
   }
 
-  for (const { cardId, fromScroll, fromSpellDeck, fromSpellBook } of castCandidates) {
+  for (const { cardId, fromScroll, fromSpellDeck, fromSpellBook, tarnumReturn } of castCandidates) {
     const card = cards[cardId];
     if (!card || card.kind !== "spell" || card.implementationStatus !== "implemented") {
       continue;
@@ -1627,7 +1664,7 @@ function addSpellActions(
     // A Scroll/Spell-deck cast can't pair a School of Magic permanent; a Book
     // cast can (it casts like a hand cast), so it is offered the expert variant.
     const schoolExpert =
-      !fromScroll && !fromSpellDeck && expertUsesAvailable(player) > 0
+      !fromScroll && !fromSpellDeck && !tarnumReturn && expertUsesAvailable(player) > 0
         ? getPermanentSchoolBonus(state, playerId, card)
         : null;
 
@@ -1639,7 +1676,9 @@ function addSpellActions(
             ? `Cast ${card.name} (Helm of the Alabaster Unicorn)`
             : fromSpellBook
               ? `Cast ${card.name} (Spell Book)`
-              : `Cast ${card.name}`,
+              : tarnumReturn
+                ? `Cast ${card.name} (free; ${tarnumReturn === "deck-top" ? "to Spell deck top" : "to Spell discard"})`
+                : `Cast ${card.name}`,
         action: {
           type: "CAST_SPELL",
           playerId,
@@ -1647,7 +1686,8 @@ function addSpellActions(
           target,
           ...(fromScroll ? { fromScroll } : {}),
           ...(fromSpellDeck ? { fromSpellDeck } : {}),
-          ...(fromSpellBook ? { fromSpellBook: true } : {})
+          ...(fromSpellBook ? { fromSpellBook: true } : {}),
+          ...(tarnumReturn ? { tarnumReturn } : {})
         }
       });
 
@@ -1962,6 +2002,9 @@ function isOptionEffectPlayable(
     case "DISCOVER_TILE_CARD":
     case "GAIN_HERO_MOVEMENT":
     case "DIMENSION_DOOR":
+    // Octavia "Gold" / Melodia "Fortune": Resource-die roll, morale/gold gain,
+    // and the location-dice buff are all resolved through a queued map visit.
+    case "RESOURCE_FORTUNE_PLAY":
       return context === "map" && Boolean(state.adventure);
     case "REMOVE_HAND_CARD_THEN_SEARCH": {
       // Map play that removes a card matching the filter (default "removable" =
@@ -2087,6 +2130,18 @@ function isOptionEffectPlayable(
       // Shackles of War (house rule): only at the start of a player-vs-player
       // combat, where there is an enemy hero who could otherwise surrender.
       return context === "combat" && state.combat?.context.kind === "player" && state.combat.round === 1;
+    case "BORROW_NEUTRAL_UNIT": {
+      // Tarnum (Rampart) Sharpshooters VI: "Play at the start of Combat" — only on
+      // combat round 1, and only while the unit is still available to borrow from
+      // its tier's Neutral deck (draw or discard pile).
+      if (context !== "combat" || !state.combat || state.combat.round !== 1) {
+        return false;
+      }
+      const deck = state.decks[NEUTRAL_DECK_IDS[effect.tier]];
+      return Boolean(
+        deck && (deck.drawPile.includes(effect.unitDefId) || deck.discardPile.includes(effect.unitDefId))
+      );
+    }
     case "DOUBLE_FIRST_AID_TENT":
       // Gem's First Aid VI only does something with a First Aid Tent in play.
       return (
@@ -2109,14 +2164,19 @@ function isOptionEffectPlayable(
       if (!player || !deck) {
         return false;
       }
-      const hasFrom = player.army.some(
-        (unit) => unit.unitDefId === effect.fromUnitDefId && unit.side === effect.fromSide
-      );
+      // Tarnum (Conflux) IV pays gold instead of trading in a unit, so the
+      // from-unit requirement only applies when fromUnitDefId is set.
+      const hasFrom = effect.fromUnitDefId
+        ? player.army.some(
+            (unit) => unit.unitDefId === effect.fromUnitDefId && unit.side === effect.fromSide
+          )
+        : true;
+      const canPayGold = !effect.goldCost || player.resources.gold >= effect.goldCost;
       const blockedByUnique =
         Boolean(effect.unique) && player.army.some((unit) => unit.unitDefId === effect.toUnitDefId);
       const deckHasTarget =
         deck.drawPile.includes(effect.toUnitDefId) || deck.discardPile.includes(effect.toUnitDefId);
-      return hasFrom && !blockedByUnique && deckHasTarget;
+      return hasFrom && canPayGold && !blockedByUnique && deckHasTarget;
     }
     case "SIEGE_DEMOLISH": {
       const siege = state.combat?.siege;
@@ -2478,6 +2538,9 @@ function isMapPlayableEffect(state: GameState, playerId: PlayerId, card: CardDef
 
   if (
     effect.type === "GAIN_RESOURCES" ||
+    // Octavia's "Gold" / Melodia's "Fortune": roll Resource dice, gain morale /
+    // gold, or raise the location-dice count — all map-only economy plays.
+    effect.type === "RESOURCE_FORTUNE_PLAY" ||
     // Legion artifacts' discount side: banked on the map for the next recruit.
     effect.type === "GAIN_RECRUIT_DISCOUNT" ||
     effect.type === "ENEMY_MORALE_STRIP" ||
@@ -2816,13 +2879,62 @@ export function firstAidHealActions(state: GameState, playerId: PlayerId): Legal
           action: { type: "USE_ACTIVE_EFFECT", playerId, effectId: effect.id, target, mode: "expert" }
         });
       }
-      if (canExpertContinue) {
+      // The expert volley resolves against the SAME target each time, so only
+      // the unit pinned by the first expert heal is offered the continuation.
+      if (canExpertContinue && (!usage?.targetUnitId || usage.targetUnitId === unit.id)) {
         out.push({
           label: `${effect.name} heal ${unit.name} (${(usage?.count ?? 0) + 1}/${expertMax})`,
           action: { type: "USE_ACTIVE_EFFECT", playerId, effectId: effect.id, target }
         });
       }
     }
+  }
+  return out;
+}
+
+const FIRST_AID_ABILITY_CARD_ID = "ability.first_aid" as CardId;
+
+/**
+ * The First Aid ability card's BASIC heal played as an instant reaction the
+ * moment one of `playerId`'s units is attacked — one offer per wounded friendly
+ * unit, the chosen target travelling on the reaction's `target` (mirroring the
+ * Bowstring ranged-activation reaction). This is the card held in hand mending 1
+ * damage BEFORE the incoming hit is calculated, so a healed unit can survive a
+ * blow that would otherwise defeat it. It is available even WITHOUT a First Aid
+ * Tent in play (the Tent's own per-round heal is surfaced separately by
+ * firstAidHealActions). The card's EXPERT side is never played from hand — it
+ * rides the Tent's heal (USE_ACTIVE_EFFECT, mode "expert"), so only the basic
+ * side (option 0) is offered here.
+ */
+export function firstAidCardHealReactions(state: GameState, playerId: PlayerId): LegalAction[] {
+  const combat = state.combat;
+  const player = state.players[playerId];
+  if (!combat || !player || isHandLockedInCombat(state, playerId)) {
+    return [];
+  }
+  if (!player.hand.includes(FIRST_AID_ABILITY_CARD_ID)) {
+    return [];
+  }
+  const card = cardLibrary[FIRST_AID_ABILITY_CARD_ID];
+  if (!card || card.implementationStatus !== "implemented") {
+    return [];
+  }
+
+  const out: LegalAction[] = [];
+  for (const unit of Object.values(combat.units)) {
+    if (unit.controllerId !== playerId || !isUnitAlive(unit) || unit.damage <= 0) {
+      continue;
+    }
+    out.push(
+      makeReactionAction(`${card.name} heal ${unit.name}`, {
+        type: "PLAY_REACTION",
+        playerId,
+        cardId: FIRST_AID_ABILITY_CARD_ID,
+        mode: "basic",
+        optionIndex: 0,
+        target: { type: "unit", unitId: unit.id }
+      })
+    );
   }
   return out;
 }
@@ -3435,6 +3547,23 @@ export function getLegalActions(
       return actions;
     }
 
+    if (state.pendingChoice.type === "TARNUM_SEARCH") {
+      const choice = state.pendingChoice;
+      // Tarnum (Conflux) VI: pick ONE Spell deck (basic or expert) to Search 1
+      // card from — only decks that still hold a card are offered.
+      const actions: LegalAction[] = [];
+      const decks = [SPELL_DECK_BASIC, SPELL_DECK_EXPERT].filter(
+        (deckId) => (state.decks[deckId]?.drawPile.length ?? 0) > 0
+      );
+      for (const [optionIndex, deckId] of decks.entries()) {
+        actions.push({
+          label: `Search the ${deckId === SPELL_DECK_EXPERT ? "expert" : "basic"} Spell deck`,
+          action: { type: "CHOOSE_OPTION", playerId, choiceId: choice.id, optionIndex }
+        });
+      }
+      return actions;
+    }
+
     if (state.pendingChoice.type === "DECK_SEARCH") {
       const choice = state.pendingChoice;
       // The discard-top and Basic X Magic "draw from a School of Magic"
@@ -3450,6 +3579,22 @@ export function getLegalActions(
           pick: { kind: "revealed", index }
         }
       }));
+
+      // Tarnum (Conflux) I: each revealed card may instead be Removed from the
+      // game rather than kept in hand.
+      if (choice.allowRemove) {
+        for (const [index, cardId] of choice.revealedCardIds.entries()) {
+          actions.push({
+            label: `Remove ${cards[cardId]?.name ?? cardId}`,
+            action: {
+              type: "RESOLVE_DECK_SEARCH",
+              playerId,
+              choiceId: choice.id,
+              pick: { kind: "revealed", index, remove: true }
+            }
+          });
+        }
+      }
 
       return actions;
     }
@@ -4014,6 +4159,11 @@ function getMagicMirrorReactions(
   return offers;
 }
 
+/** Whether either shared Spell deck still holds a card for Tarnum VI to Search. */
+function tarnumSearchableDeckExists(state: GameState): boolean {
+  return [SPELL_DECK_BASIC, SPELL_DECK_EXPERT].some((deckId) => (state.decks[deckId]?.drawPile.length ?? 0) > 0);
+}
+
 export function getLegalReactionsForTrigger(
   state: GameState,
   triggerEvent: GameEvent,
@@ -4076,6 +4226,10 @@ export function getLegalReactionsForTrigger(
       (player.combatStats.expertUseBonusThisRound ?? 0) -
       player.combatStats.expertUsesSpentThisRound;
     const spellLimitLeft = spellLimitFor(state, player) - player.combatStats.spellsCastThisRound;
+    // Tarnum (Conflux) VI: just-Searched flagged Spells are offered as free
+    // over-limit reactions through a dedicated pass below, so the normal
+    // (limit-counting, own-discard) reaction path skips them here.
+    const tarnumFlagged = new Set(player.combatStats.tarnumOverlimitCards ?? []);
 
     const reactions: LegalAction[] = [];
     // Power has no effect of its own during an attack: it may only be paid
@@ -4097,6 +4251,10 @@ export function getLegalReactionsForTrigger(
 
     for (const { cardId, fromSpellBook } of reactionSources) {
       const card = cards[cardId];
+      // Tarnum-flagged Spells run through the dedicated free over-limit pass.
+      if (!fromSpellBook && tarnumFlagged.has(cardId)) {
+        continue;
+      }
       // Permanents join reaction windows only through their printed expert
       // side (School of Magic +3 power from hand); their basic side is the
       // enter-play action outside reaction windows.
@@ -4370,6 +4528,29 @@ export function getLegalReactionsForTrigger(
       }
     }
 
+    // Crag Hack's Offense VI: while its aura is up, discard any held card during
+    // your own unit's attack for +1 attack ("every card you play can grant +1
+    // attack instead of its effect"). One offer per distinct held card; the window
+    // reopens after each conversion, so several cards can stack on one attack.
+    if (triggerEvent.type === "UNIT_ATTACK_DECLARED") {
+      const attacker = state.combat?.units[triggerEvent.attackerId];
+      const attackLocked = Boolean(state.stack.at(-1)?.modifiers.negateAttackBuffs);
+      const auraAmount = state.activeEffects.reduce((sum, effect) => {
+        if (effect.scope !== "player" || effect.controllerId !== player.id) {
+          return sum;
+        }
+        return sum + effect.modifiers.reduce((inner, modifier) => inner + (modifier.type === "CARDS_AS_ATTACK_BONUS" ? modifier.amount : 0), 0);
+      }, 0);
+      if (attacker && attacker.controllerId === player.id && !attackLocked && auraAmount > 0) {
+        for (const cardId of [...new Set(player.hand)]) {
+          reactions.push({
+            label: `Offense VI: discard ${cardLibrary[cardId]?.name ?? cardId} for +${auraAmount} attack`,
+            action: { type: "CONVERT_CARD_TO_ATTACK", playerId: player.id, cardId }
+          });
+        }
+      }
+    }
+
     // Cage of Warlords: while an attack waits to resolve, remove a faction
     // cube for +1 attack (you are the attacker) or +1 defense (your unit is
     // the target). One per cube — offered again while cubes remain.
@@ -4484,20 +4665,97 @@ export function getLegalReactionsForTrigger(
       reactions.push(...powerReactions);
     }
 
+    // Tarnum (Conflux) VI used AS a reaction: in an attack window the holder may
+    // play the specialty to Search 2 Spells (the per-search deck choice opens),
+    // then — once the window re-derives its offers — immediately cast an
+    // applicable Searched instant into the SAME window. Offered to either side
+    // (the attacker's buffs, the defender's debuffs).
+    if (triggerEvent.type === "UNIT_ATTACK_DECLARED" && tarnumSearchableDeckExists(state)) {
+      for (const cardId of new Set(player.hand)) {
+        const card = cards[cardId];
+        if (
+          card?.kind === "hero-specialty" &&
+          card.implementationStatus === "implemented" &&
+          card.effect.type === "TARNUM_OVERLIMIT_SEARCH"
+        ) {
+          reactions.push(
+            makeReactionAction(`${card.name}: Search 2 Spells`, {
+              type: "PLAY_REACTION",
+              playerId: player.id,
+              cardId,
+              mode: "basic"
+            })
+          );
+        }
+      }
+    }
+
+    // Tarnum (Conflux) VI: a just-Searched, flagged trigger-instant Spell (Bless,
+    // Curse, Stone Skin… — the attack/defense changers) is castable here in the
+    // instant window for FREE, OVER the per-round limit, returning to the shared
+    // Spell deck top or its discard pile (the caster's choice). Offered as a
+    // dedicated pass so it bypasses the spell-limit gate the normal path applies.
+    if (!castLocked) {
+      for (const cardId of tarnumFlagged) {
+        if (!player.hand.includes(cardId)) {
+          continue;
+        }
+        const card = cards[cardId];
+        if (!card || card.kind !== "spell" || card.implementationStatus !== "implemented") {
+          continue;
+        }
+        for (const variant of getCardPlayVariants(card)) {
+          if (
+            variant.mapOnly ||
+            variant.expertOnly ||
+            Boolean(card.permanent) ||
+            variant.effect.type === "ADD_SPELL_POWER" ||
+            variant.effect.type === "REDIRECT_SPELL" ||
+            !variantMatchesTrigger(variant, triggerEvent, player.id) ||
+            !isEffectLegalForTrigger(state, player.id, variant.effect, triggerEvent, "basic")
+          ) {
+            continue;
+          }
+          const base = variant.optionLabel ? `${card.name}: ${variant.optionLabel}` : card.name;
+          for (const tarnumReturn of ["deck-top", "discard"] as const) {
+            reactions.push(
+              makeReactionAction(
+                `${base} (free; ${tarnumReturn === "deck-top" ? "to Spell deck top" : "to Spell discard"})`,
+                {
+                  type: "PLAY_REACTION",
+                  playerId: player.id,
+                  cardId,
+                  mode: "basic",
+                  ...(variant.optionIndex !== undefined ? { optionIndex: variant.optionIndex } : {}),
+                  tarnumReturn
+                }
+              )
+            );
+          }
+        }
+      }
+    }
+
     if (reactions.length > 0) {
       result[player.id] = reactions;
     }
   }
 
-  // First Aid Tent (instant): the moment one of your units is attacked, its
+  // First Aid (instant): the moment one of your units is attacked, its
   // controller may mend an existing wound on one of their units BEFORE the
-  // incoming attack's damage is calculated — the Tent heal is "usable at any
-  // time during the round, like an instant". A healed unit therefore enters the
-  // hit with more health, which can let it survive a blow that would otherwise
-  // defeat it. Optional: the defender may simply pass and take the attack.
+  // incoming attack's damage is calculated — First Aid is "usable at any time
+  // during the round, like an instant". A healed unit therefore enters the hit
+  // with more health, which can let it survive a blow that would otherwise
+  // defeat it. Optional: the defender may simply pass and take the attack. Two
+  // sources are offered to the defender: the First Aid Tent's per-round heal
+  // (and its expert volley — both via firstAidHealActions), and the First Aid
+  // ability card's basic heal played straight from hand (firstAidCardHealReactions,
+  // which needs no Tent).
   if (triggerEvent.type === "UNIT_ATTACK_DECLARED") {
     const defenderId = state.combat?.units[triggerEvent.defenderId]?.controllerId;
-    const heals = defenderId ? firstAidHealActions(state, defenderId) : [];
+    const heals = defenderId
+      ? [...firstAidHealActions(state, defenderId), ...firstAidCardHealReactions(state, defenderId)]
+      : [];
     if (defenderId && heals.length > 0) {
       result[defenderId] = [...(result[defenderId] ?? []), ...heals];
     }
