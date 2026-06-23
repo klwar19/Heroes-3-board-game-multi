@@ -2811,12 +2811,14 @@ export const artifactCards: CardLibrary = {
   },
   // Plate of the Dying Light (Relic): the Interference mechanic as a relic — a
   // Defense bonus that, unusually, also reduces Spell damage. Reuses
-  // INTERFERE_SPELL, so it is offered (like Interference) as a reaction to an
-  // enemy single-target damaging Spell aimed at one of your units, and grants
-  // that unit a Combat-long DEFENSE_BONUS (vs attacks) AND a
-  // SPELL_DAMAGE_REDUCTION (vs spells) — so it blunts the triggering Spell and
+  // INTERFERE_SPELL, so (like the Interference ability) it is offered BOTH as a
+  // plain defense reaction to a physical attack on one of your units AND as a
+  // reaction to an enemy single-target damaging Spell aimed at one of your units.
+  // Either way it grants that unit a Combat-long DEFENSE_BONUS (vs attacks) AND a
+  // SPELL_DAMAGE_REDUCTION (vs spells) — so it blunts the triggering hit/Spell and
   // any later Spell or attack on that unit. Option A grants +1 (kept/discarded);
-  // option B grants +4 and removes the card.
+  // option B grants +4 and removes the card. (Cross-offered to the attack window
+  // by variantMatchesTrigger / isEffectLegalForTrigger; resolved in the reducer.)
   "artifact.plate_of_the_dying_light": {
     id: "artifact.plate_of_the_dying_light",
     name: "Plate of the Dying Light",
