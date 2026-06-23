@@ -3138,12 +3138,61 @@ export const adventureCards: CardLibrary = {
   "specialty.eikthurn.4": withoutArt(unitHealthSpecialty("eikthurn", "Yetis", 4, 1, "Yetis")),
   "specialty.eikthurn.6": withoutArt(unitInitiativeSpecialty("eikthurn", "Yetis", 6, 1, "Yetis")),
 
-  // Oidana (Elder): the frost "Slow" caster — each level targets an enemy unit and
-  // lowers its Initiative (and movement) via the shared CREATE_INITIATIVE_BUFF
-  // (negative) machinery (Gundula's Slow factory): −2 at I, −3 at IV, −4 at VI.
-  "specialty.oidana.1": withoutArt(slowSpecialty("oidana", 1, 2, -1)),
-  "specialty.oidana.4": withoutArt(slowSpecialty("oidana", 4, 3, -1)),
-  "specialty.oidana.6": withoutArt(slowSpecialty("oidana", 6, 4, -1)),
+  // Oidana (Elder): the diplomat. Her starting ability is Diplomacy; each specialty
+  // is a CHOOSE_ONE of a scaling card draw (DRAW_CARDS 1/2/3 — a trigger-free
+  // instant) OR the same map Diplomacy recruit (DIPLOMACY_RECRUIT: draw 1 Neutral
+  // Unit card per Dwelling, recruit one by paying its cost). Both engine-wired.
+  "specialty.oidana.1": {
+    id: "specialty.oidana.1",
+    name: "Diplomacy I",
+    kind: "hero-specialty",
+    timing: "instant",
+    tags: ["hero-specialty", "instant", "oidana", "diplomacy", "Instant: draw 1 card. — OR — Map: draw 1 Neutral Unit card per Dwelling, then recruit one (pay its cost)."],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        { label: "Draw 1 card", effect: { type: "DRAW_CARDS", amount: 1 } },
+        { label: "Diplomacy: draw 1 Neutral Unit card per Dwelling, then recruit one (pay its cost)", mapOnly: true, effect: { type: "DIPLOMACY_RECRUIT" } }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: heroSource("oidana")
+  },
+  "specialty.oidana.4": {
+    id: "specialty.oidana.4",
+    name: "Diplomacy IV",
+    kind: "hero-specialty",
+    timing: "instant",
+    tags: ["hero-specialty", "instant", "oidana", "diplomacy", "Instant: draw 2 cards. — OR — Map: draw 1 Neutral Unit card per Dwelling, then recruit one (pay its cost)."],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        { label: "Draw 2 cards", effect: { type: "DRAW_CARDS", amount: 2 } },
+        { label: "Diplomacy: draw 1 Neutral Unit card per Dwelling, then recruit one (pay its cost)", mapOnly: true, effect: { type: "DIPLOMACY_RECRUIT" } }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: heroSource("oidana")
+  },
+  "specialty.oidana.6": {
+    id: "specialty.oidana.6",
+    name: "Diplomacy VI",
+    kind: "hero-specialty",
+    timing: "instant",
+    tags: ["hero-specialty", "instant", "oidana", "diplomacy", "Instant: draw 3 cards. — OR — Map: draw 1 Neutral Unit card per Dwelling, then recruit one (pay its cost)."],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        { label: "Draw 3 cards", effect: { type: "DRAW_CARDS", amount: 3 } },
+        { label: "Diplomacy: draw 1 Neutral Unit card per Dwelling, then recruit one (pay its cost)", mapOnly: true, effect: { type: "DIPLOMACY_RECRUIT" } }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: heroSource("oidana")
+  },
 
   // ---- Additional heroes, batch 2 (fan-wiki, real board art) -------------
   // Lord Haart (Castle, Knight): the Estates / gold-economy specialist. Every
