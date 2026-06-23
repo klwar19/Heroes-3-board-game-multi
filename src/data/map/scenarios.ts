@@ -47,10 +47,13 @@ export type ScenarioDefinition = {
      */
     sea?: ScenarioSeaSlot[];
     /**
-     * Face-down Subterranean tiles (the underground layer). They are placed so
-     * that every Surface tile touching one is a Ⅱ–Ⅲ land tile, so the
-     * Subterranean Gate Token always carves its GATE half on the Ⅱ–Ⅲ Surface
-     * tile and its ENTRANCE half on the cavern (recomputeSubterraneanGates).
+     * Face-down Subterranean tiles (the underground layer). A Subterranean Gate
+     * Token is carved (recomputeSubterraneanGates) wherever a Surface tile is
+     * gapless-adjacent to one — its GATE half on the Surface tile, its ENTRANCE
+     * half on the cavern — subject to the one-gate-per-tile rule (a tile already
+     * hosting a Gate never accepts a second). The 2-player underground map uses
+     * this to keep only Ⅱ–Ⅲ land on the surface and bury the Ⅳ–Ⅴ/Ⅵ–Ⅶ tiles
+     * behind the caverns, so the deep tiles are reached ONLY by delving.
      */
     subterranean?: { row: number; col: number }[];
   };
@@ -114,12 +117,42 @@ const STARTS = [
   { row: 42, col: 32 }
 ];
 
+// Underground-only geometry. The homes keep only their Ⅱ–Ⅲ land ring (OUTER +
+// FLANK); the high-value tiles form a DEEP CORE reached ONLY by delving:
+//   UG_NEAR  — the two Ⅳ–Ⅴ tiles "at top" (rows 27/28, above the hub).
+//   HUB_POS  — the Ⅵ–Ⅶ tile "in the middle"; it has NO direct Gate (a fair,
+//              mirror-symmetric Gate onto the self-mirror hub is geometrically
+//              impossible — the hub's neighbours come only in mirror pairs), so
+//              it is reached by rising to either Ⅳ–Ⅴ and walking one tile in.
+//   UG_CAVERNS — a single CONNECTED underground network (9 caverns). Each home
+//              descends through a Gate on its Ⅱ–Ⅲ tile; the network bridges the
+//              two sides (35,28) and rises to each Ⅳ–Ⅴ through one more Gate.
+// Verified mirror-symmetric, gapless, single-colour and connected by
+// symmetric-scenarios.test.ts; the per-tile Gate matching is 1:1 so the
+// one-gate-per-tile rule never has to drop a gate here.
+const UG_NEAR = [
+  { row: 27, col: 29 },
+  { row: 28, col: 32 }
+];
+const UG_CAVERNS = [
+  { row: 26, col: 27 }, // rises to the left Ⅳ–Ⅴ (27,29)
+  { row: 29, col: 34 }, // rises to the right Ⅳ–Ⅴ (28,32)
+  { row: 28, col: 25 }, // upper connectors …
+  { row: 32, col: 35 },
+  { row: 31, col: 25 }, // … mid connectors …
+  { row: 34, col: 33 },
+  { row: 34, col: 26 }, // descends from the left home Ⅱ–Ⅲ (36,24)
+  { row: 36, col: 31 }, // descends from the right home Ⅱ–Ⅲ (39,31)
+  { row: 35, col: 28 } // central bridge linking both sides (self-mirror)
+];
+
 type Terrain = "land" | "sea" | "underground";
 
 function symmetricScenario(spec: { id: string; name: string; description: string; terrain: Terrain }): ScenarioDefinition {
   const { terrain } = spec;
   // Ⅱ–Ⅲ land is the "land first" band on every terrain. For land it also lines
-  // the deep tiles; for sea/underground those deep tiles are water/cavern.
+  // the deep SUBPOS tiles; sea turns SUBPOS into water and underground replaces
+  // it with its own cavern network, so both keep only OUTER + FLANK as land.
   const landII = terrain === "land" ? [...OUTER, ...FLANK, ...SUBPOS] : [...OUTER, ...FLANK];
   const layout: ScenarioDefinition["layout"] =
     terrain === "land"
@@ -137,13 +170,16 @@ function symmetricScenario(spec: { id: string; name: string; description: string
             ]
           }
         : {
-            // underground: Ⅵ–Ⅶ LAND hub, a Ⅱ–Ⅲ inner ring, two caverns (SUBPOS),
-            // all buffered so a cavern only ever touches Ⅱ–Ⅲ land.
+            // underground: only the Ⅱ–Ⅲ home ring sits on the surface at the
+            // start. The Ⅳ–Ⅴ pair (top) and the Ⅵ–Ⅶ hub (middle) are a deep
+            // core reached ONLY by delving through the connected Subterranean
+            // network — descend on a home Ⅱ–Ⅲ tile, cross underground, rise to a
+            // Ⅳ–Ⅴ, then step to the hub. No Ⅳ–Ⅴ/Ⅵ–Ⅶ is walkable on the surface.
             starts: STARTS,
-            far: [...INNER, ...OUTER, ...FLANK],
-            near: [],
+            far: landII,
+            near: UG_NEAR,
             center: [HUB_POS],
-            subterranean: SUBPOS
+            subterranean: UG_CAVERNS
           };
 
   return {
@@ -217,7 +253,7 @@ export const scenarioDefinitions: Record<string, ScenarioDefinition> = {
     id: "underground-2p",
     name: "Twin Caverns (2P Underground)",
     description:
-      "A mirror-symmetric 2-player underground clash. Both homes start on the LAND surface; two Subterranean caverns sit in the middle, each touching ONLY Ⅱ–Ⅲ land so the Subterranean Gate carves its gate on the land tile and its entrance in the cavern. Descend through a cavern and climb back up to the central Ⅵ–Ⅶ LAND hub. Flag the enemy town to win.",
+      "A mirror-symmetric 2-player underground clash. Only Ⅱ–Ⅲ land sits on the surface around each home — everything richer is below. Descend through a Subterranean Gate on your Ⅱ–Ⅲ tile into a CONNECTED cavern network that bridges both homes, then rise through another Gate to one of the two Ⅳ–Ⅴ tiles at the top and step in to the Ⅵ–Ⅶ hub in the middle. Each tile takes at most ONE Gate. Flag the enemy town to win.",
     terrain: "underground"
   })
 };

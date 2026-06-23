@@ -99,6 +99,12 @@ export type AdventureSetupOptions = {
    * Defaults to true; deterministic tests opt out to keep seat order.
    */
   rollFirstPlayer?: boolean;
+  /**
+   * Force each player to rotate their own faction Ⅰ (home) tile at the start of
+   * their first turn, before they may move (BINH house rule). Defaults to the
+   * opening-ceremony gate (on unless `rollFirstPlayer` is explicitly false).
+   */
+  rotateStartTiles?: boolean;
 };
 
 /** Unit levels covered by each tier: bronze 1-3, silver 4-5, gold 6-7. */
@@ -551,6 +557,12 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   // Far-tile opening default ON: each player drafts a Ⅱ–Ⅲ Far-tile supply they
   // may place. Off gives no supply (the map already provides its Ⅱ–Ⅲ tiles).
   const farTileOpeningOn = setupOptions.farTileOpening ?? true;
+  // Opening home-tile free-rotation (BINH house rule): each player is forced to
+  // rotate their own faction Ⅰ tile at the start of their first turn before
+  // moving. Part of the opening ceremony, so it defaults to the same gate as the
+  // first-player roll — deterministic tests that pin seat order
+  // (rollFirstPlayer:false) skip it unless they ask for it explicitly.
+  const rotateStartTilesOn = options.rotateStartTiles ?? options.rollFirstPlayer !== false;
   const ruleset: GameRuleset = setupOptions.ruleset;
   const victoryMode: VictoryMode = setupOptions.victoryMode ?? "conquest";
   const pvpTroopLoss: PvpTroopLoss = setupOptions.pvpTroopLoss ?? "normal";
@@ -713,6 +725,12 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
         spaceId: townFieldId
       };
       adventure.lastVisitedField[heroId] = townFieldId;
+
+      // Opening home-tile rotation owed (tri-state): false = pending (forced at
+      // this player's first turn), left undefined = feature off for this game.
+      if (rotateStartTilesOn) {
+        state.players[config.id].startTileRotated = false;
+      }
     }
   });
 

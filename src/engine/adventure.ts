@@ -318,15 +318,26 @@ export function instantiateTile(
  */
 const SEA_TILE_LAND_LOCATIONS = new Set<string>(["town", "random_town", "settlement", "mine", "stables"]);
 
-/** Creates the 7 field states for a revealed tile. */
-export function materializeTileFields(adventure: AdventureState, tile: MapTileState): void {
+/**
+ * Creates the 7 field states for a revealed tile. With `onlyRing`, slot 0 (the
+ * centre) is left untouched — used when RE-materializing a tile whose rotation
+ * changed after its centre was already placed (the opening home-tile rotation:
+ * the town and main hero sit on the centre, which is rotation-invariant, so only
+ * the six ring fields turn). The ring hexes are the same six map hexes at every
+ * rotation; only WHICH slot's contents land on each is what changes.
+ */
+export function materializeTileFields(
+  adventure: AdventureState,
+  tile: MapTileState,
+  options: { onlyRing?: boolean } = {}
+): void {
   const def = allTileDefinitions[tile.tileDefId];
   if (!def) {
     return;
   }
 
   const cells = tileFootprint({ row: tile.centerRow, col: tile.centerCol }, tile.rotation);
-  for (let slot = 0; slot < cells.length; slot += 1) {
+  for (let slot = options.onlyRing ? 1 : 0; slot < cells.length; slot += 1) {
     const fieldDef = def.fields[slot];
     const spaceId = hexSpaceId(cells[slot]);
     const field: MapFieldState = {
@@ -3523,8 +3534,7 @@ function resolveSubterraneanGate(state: GameState, visit: PendingVisit): void {
  * The token covers whatever Field is closest to the far tile — a Blocked Field,
  * a Mine, even a Town all give way to it (the gate IS the field now). The only
  * thing it never lands on is another gate half: each of the token's two halves
- * needs its own hex, and a Surface tile touching two underground tiles must
- * carve a distinct gate per neighbour rather than stack them.
+ * needs its own hex.
  */
 function gateMayCoverField(field: MapFieldState | undefined): boolean {
   return field !== undefined && field.location !== "subterranean_gate";
@@ -3647,6 +3657,25 @@ function findGateHalf(adventure: AdventureState, tile: MapTileState, towardTileI
 }
 
 /**
+ * Whether `tile` already carries a Subterranean Gate half pointing at some tile
+ * OTHER than `allowedToTileId`. ONE GATE PER TILE (BINH house rule): a single
+ * map tile hosts at most one Subterranean Gate Token half, so a tile that
+ * already opened a gate to one neighbour can never accept a second to another —
+ * the extra gate is simply never carved. (`allowedToTileId` is the partner of
+ * the pair currently being placed, so an idempotent re-run of the SAME pair
+ * isn't blocked by its own half.)
+ */
+function tileHasGateTowardOther(adventure: AdventureState, tile: MapTileState, allowedToTileId: string): boolean {
+  for (const spaceId of tileRingSpaceIds(tile)) {
+    const field = adventure.fields[spaceId];
+    if (field && field.location === "subterranean_gate" && field.gateToTileId !== allowedToTileId) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Ensures the Subterranean Gate Token bridging one Surface tile and one
  * adjacent Subterranean tile exists, placing whatever halves the discovered
  * tiles allow:
@@ -3668,6 +3697,19 @@ function ensureSubterraneanGate(adventure: AdventureState, surface: MapTileState
   let undergroundHalf = findGateHalf(adventure, subterranean, surface.id);
   const surfaceUp = tileMaterialized(adventure, surface);
   const undergroundUp = tileMaterialized(adventure, subterranean);
+
+  // ONE GATE PER TILE: if either tile already hosts a gate to a DIFFERENT
+  // neighbour, this pair is never carved — neither a second surface gate nor an
+  // orphan underground entrance. A tile commits to the first gate it gets; any
+  // further underground neighbours just stay sealed behind the impassable layer
+  // divide. (Skipping the whole pair, not just one half, avoids leaving a dead
+  // gate field with no crossable partner.)
+  if (
+    (!surfaceHalf && tileHasGateTowardOther(adventure, surface, subterranean.id)) ||
+    (!undergroundHalf && tileHasGateTowardOther(adventure, subterranean, surface.id))
+  ) {
+    return;
+  }
 
   // Carve the surface gate: adjacent to the underground half if it is already
   // placed, otherwise the slot closest to the underground tile's centre.
@@ -5328,6 +5370,56 @@ export function startPlayerTurn(state: GameState, playerId: PlayerId): void {
   } else {
     finalizeStartOfTurnHand(state, playerId);
   }
+
+  // Opening free-rotation of the home (Ⅰ) tile (BINH house rule): forced ONCE,
+  // at the start of the player's first turn, before they may move. Raised AFTER
+  // the start-of-turn rewards are queued; the pendingTileChoice gate keeps those
+  // (and everything else) on hold until the rotation is locked — the queued hand
+  // step then resolves the moment SET_TILE_ROTATION clears the gate.
+  if (player.startTileRotated === false) {
+    beginStartTileRotation(state, playerId);
+  }
+}
+
+/** The player's own faction Ⅰ (starting) tile — the one whose centre their home flag sits on. */
+function findPlayerStartTile(state: GameState, playerId: PlayerId): MapTileState | null {
+  const adventure = state.adventure;
+  if (!adventure) {
+    return null;
+  }
+  for (const tile of Object.values(adventure.tiles)) {
+    if (tile.group !== "starting") {
+      continue;
+    }
+    const center = adventure.fields[hexSpaceId({ row: tile.centerRow, col: tile.centerCol })];
+    if (center?.flagOwnerId === playerId) {
+      return tile;
+    }
+  }
+  return null;
+}
+
+/**
+ * Opens the one-time opening free-rotation of `playerId`'s home (Ⅰ) tile: it is
+ * flipped to `awaitingRotation` and a "starting" pendingTileChoice is raised, so
+ * legal-actions offers ONLY the six SET_TILE_ROTATION picks until the player
+ * locks one. The town and main hero sit on the rotation-invariant centre, so
+ * they never move — only the six ring fields turn. No-op (marks done) when the
+ * player has no home tile to turn, so the turn can never get stuck.
+ */
+function beginStartTileRotation(state: GameState, playerId: PlayerId): void {
+  const adventure = state.adventure;
+  const player = state.players[playerId];
+  if (!adventure || !player) {
+    return;
+  }
+  const startTile = findPlayerStartTile(state, playerId);
+  if (!startTile) {
+    player.startTileRotated = true;
+    return;
+  }
+  startTile.awaitingRotation = true;
+  adventure.pendingTileChoice = { tileInstanceId: startTile.id, playerId, kind: "starting" };
 }
 
 /**

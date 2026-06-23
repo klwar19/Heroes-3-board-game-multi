@@ -1392,10 +1392,21 @@ export function setTileRotation(state: GameState, action: Extract<GameAction, { 
     }
   }
 
+  const isStartTile = pending.kind === "starting";
   tile.rotation = rotation;
   tile.awaitingRotation = false;
   adventure.pendingTileChoice = null;
-  materializeTileFields(adventure, tile);
+  // The opening home-tile rotation RE-materializes only the six ring fields: the
+  // centre already holds the town and main hero (placed at setup) and never
+  // turns, so it is preserved. A discovered/placed tile materializes all seven
+  // for the first time.
+  materializeTileFields(adventure, tile, { onlyRing: isStartTile });
+  if (isStartTile) {
+    const player = state.players[action.playerId];
+    if (player) {
+      player.startTileRotated = true;
+    }
+  }
   // With this tile's fields now on the board, carve any Subterranean Gate it
   // shares with an adjacent tile on the other layer (the surface gate, and the
   // entrance once the underground tile is revealed). Runs after rotation is
@@ -1412,7 +1423,10 @@ export function setTileRotation(state: GameState, action: Extract<GameAction, { 
 
   // Naval Battles optional rule: a freshly discovered Far/Near tile with a
   // Blocked Field lets the discovering player place a Creature Bank token there.
-  offerCreatureBankPlacement(state, tile, action.playerId);
+  // The home (Ⅰ) tile never offers a bank (it is not a Far/Near discovery).
+  if (!isStartTile) {
+    offerCreatureBankPlacement(state, tile, action.playerId);
+  }
 }
 
 /**
@@ -6962,6 +6976,13 @@ export function pumpAdventureQueues(state: GameState): void {
   // prep window even though a combat object exists. Every other combat blocks it.
   const inPrep = Boolean(state.combat?.prep);
   if ((state.combat && !inPrep) || state.pendingChoice || state.reactionWindow || state.stack.length > 0) {
+    return;
+  }
+
+  // A pending tile rotation (a discovery, a Far placement, or the opening
+  // home-tile rotation) is a hard now-or-never gate: nothing else — not even a
+  // queued start-of-turn reward — resolves until the player locks the rotation.
+  if (adventure.pendingTileChoice) {
     return;
   }
 

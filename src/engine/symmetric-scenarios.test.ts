@@ -83,8 +83,19 @@ const ALL_FACTIONS = [
   "cove"
 ] as const;
 const SYMMETRIC_IDS = ["land-2p", "sea-2p", "underground-2p"] as const;
-const FACE_DOWN_PER_MAP = 13;
-const TOTAL_TILES = 15;
+
+/** Total tiles the scenario layout declares (homes + every face-down slot). */
+function expectedTileCount(id: string): number {
+  const l = scenarioDefinitions[id].layout;
+  return (
+    l.starts.length +
+    (l.far?.length ?? 0) +
+    l.near.length +
+    l.center.length +
+    (l.sea?.length ?? 0) +
+    (l.subterranean?.length ?? 0)
+  );
+}
 
 function buildScenario(id: string, offset = 0): { state: GameState; scenario: ScenarioDefinition } {
   const scenario = scenarioDefinitions[id];
@@ -145,7 +156,7 @@ describe.each(SYMMETRIC_IDS)("%s", (id) => {
   it("interlocks gaplessly: one sublattice colour, no overlaps, fully connected", () => {
     const { state } = buildScenario(id);
     const centers = allTiles(state).map(tileCenter);
-    expect(centers.length).toBe(TOTAL_TILES);
+    expect(centers.length).toBe(expectedTileCount(id));
     expect(new Set(centers.map(tileLatticeColor)).size).toBe(1);
     for (let i = 0; i < centers.length; i += 1) {
       for (let j = i + 1; j < centers.length; j += 1) {
@@ -186,7 +197,8 @@ describe.each(SYMMETRIC_IDS)("%s", (id) => {
   it("places the contested tiles FACE DOWN (homes face up)", () => {
     const { state } = buildScenario(id);
     expect(seatTiles(state).every((t) => !t.faceDown)).toBe(true);
-    expect(faceDownTiles(state).length).toBe(FACE_DOWN_PER_MAP);
+    // Homes are the two face-up seats; every other tile starts face down.
+    expect(faceDownTiles(state).length).toBe(expectedTileCount(id) - 2);
   });
 
   it("EVERY faction can begin exploring from EITHER home (no faction is walled in)", () => {
@@ -248,38 +260,11 @@ describe("sea-2p gradient", () => {
   });
 });
 
-describe("underground-2p mechanics: caverns touch ONLY Ⅱ–Ⅲ land", () => {
-  it("every Surface tile adjacent to a cavern is a Ⅱ–Ⅲ land tile (group far)", () => {
-    const { state } = buildScenario("underground-2p");
-    const caverns = faceDownTiles(state).filter((t) => tileLayer(t) === "subterranean");
-    expect(caverns.length).toBe(2);
-    const byCenter = new Map(allTiles(state).map((t) => [key(tileCenter(t)), t]));
-    for (const cav of caverns) {
-      const c = tileCenter(cav);
-      for (const [dq, dr] of LATTICE_NEIGHBORS) {
-        const neighbor = byCenter.get(key(fromAxial(cube(c).q + dq, cube(c).r + dr)));
-        if (!neighbor) continue;
-        if (tileLayer(neighbor) === "subterranean") continue; // cavern↔cavern is fine
-        expect(neighbor.group, `cavern ${key(c)} neighbour ${neighbor.centerRow},${neighbor.centerCol} must be Ⅱ–Ⅲ`).toBe(
-          "far"
-        );
-      }
-    }
-  });
-
-  it("the Ⅵ–Ⅶ hub is a Surface LAND tile, not a cavern", () => {
-    const { state } = buildScenario("underground-2p");
-    const hub = tileAtCenter(state, HUB)!;
-    expect(hub.group).toBe("center");
-    expect(tileLayer(hub)).toBe("surface");
-  });
-
-  it("after reveal, the GATE half sits on a Ⅱ–Ⅲ land tile and the ENTRANCE on the cavern; the hub is reached only by delving", () => {
-    const { state } = buildScenario("underground-2p");
+describe("underground-2p: only Ⅱ–Ⅲ on the surface; the Ⅳ–Ⅴ/Ⅵ–Ⅶ deep core is reached ONLY by delving", () => {
+  // Flip every face-down tile up (rotation 0) and carve the gates, exactly as
+  // discovery would, so the materialized board and its gates can be inspected.
+  function revealAll(state: GameState) {
     const adv = state.adventure!;
-    const cavernIds = new Set(faceDownTiles(state).filter((t) => tileLayer(t) === "subterranean").map((t) => t.id));
-    const farIds = new Set(allTiles(state).filter((t) => t.group === "far").map((t) => t.id));
-
     for (const t of allTiles(state)) {
       if (t.faceDown) {
         t.faceDown = false;
@@ -287,51 +272,120 @@ describe("underground-2p mechanics: caverns touch ONLY Ⅱ–Ⅲ land", () => {
       }
     }
     recomputeSubterraneanGates(adv);
-
-    // Every gate field is either the ENTRANCE on a cavern, or the GATE on a Ⅱ–Ⅲ
-    // land tile — never on the hub, a Ⅳ–Ⅴ tile, or a home.
-    const gateFields = Object.values(adv.fields).filter((f) => f.location === "subterranean_gate");
-    expect(gateFields.length).toBeGreaterThan(0);
-    let gatesOnLand = 0;
-    let entrancesOnCavern = 0;
-    for (const g of gateFields) {
-      if (cavernIds.has(g.tileInstanceId)) entrancesOnCavern += 1;
-      else {
-        expect(farIds.has(g.tileInstanceId), `gate half on a Ⅱ–Ⅲ land tile`).toBe(true);
-        gatesOnLand += 1;
-      }
-    }
-    expect(gatesOnLand).toBeGreaterThan(0);
-    expect(entrancesOnCavern).toBeGreaterThan(0);
-
-    // BFS from a home to the hub through canCrossEdge: reachable, only via a gate.
-    const hub = tileAtCenter(state, HUB)!;
-    const hubFields = new Set(getTileFootprintSpaceIds(hub));
-    const home = seatTiles(state)[0];
-    const q = [...getTileFootprintSpaceIds(home)];
-    const seen = new Set(q);
-    let reached = false;
-    let viaGate = false;
+    return adv;
+  }
+  // Fields reachable via canCrossEdge. With `allowGate=false` any layer change is
+  // forbidden, so only same-layer steps (no Subterranean Gate crossings) count.
+  function reachable(state: GameState, from: string[], allowGate: boolean): Set<string> {
+    const adv = state.adventure!;
+    const seen = new Set(from);
+    const q = [...from];
     while (q.length) {
-      const curId = q.shift()!;
-      if (hubFields.has(curId)) {
-        reached = true;
-        break;
-      }
-      const m = /^h:(-?\d+):(-?\d+)$/.exec(curId)!;
-      const cur = { row: Number(m[1]), col: Number(m[2]) };
-      for (const nb of hexNeighbors(cur)) {
+      const cur = q.shift()!;
+      const m = /^h:(-?\d+):(-?\d+)$/.exec(cur)!;
+      const c = { row: Number(m[1]), col: Number(m[2]) };
+      for (const nb of hexNeighbors(c)) {
         const nid = hexSpaceId(nb);
         if (seen.has(nid) || !adv.fields[nid]) continue;
-        if (canCrossEdge(state, curId, nid)) {
-          if (fieldLayer(state, curId) !== fieldLayer(state, nid)) viaGate = true;
-          seen.add(nid);
-          q.push(nid);
-        }
+        if (!canCrossEdge(state, cur, nid)) continue;
+        if (!allowGate && fieldLayer(state, cur) !== fieldLayer(state, nid)) continue;
+        seen.add(nid);
+        q.push(nid);
       }
     }
-    expect(reached, "central land hub reachable from a home").toBe(true);
-    expect(viaGate, "reaching the hub requires a Subterranean Gate (a delve)").toBe(true);
+    return seen;
+  }
+  const footprintsOf = (state: GameState, group: string): string[] =>
+    allTiles(state)
+      .filter((t) => t.group === group)
+      .flatMap((t) => getTileFootprintSpaceIds(t));
+
+  it("places 2 Ⅳ–Ⅴ at the TOP, the Ⅵ–Ⅶ in the MIDDLE, both on the Surface", () => {
+    const { state } = buildScenario("underground-2p");
+    const near = allTiles(state).filter((t) => t.group === "near");
+    expect(near.length).toBe(2);
+    for (const t of near) {
+      expect(tileLayer(t)).toBe("surface");
+      expect(t.centerRow, "Ⅳ–Ⅴ sits above the hub (smaller row = higher up)").toBeLessThan(HUB.row);
+    }
+    const hub = tileAtCenter(state, HUB)!;
+    expect(hub.group).toBe("center");
+    expect(tileLayer(hub)).toBe("surface");
+  });
+
+  it("the underground is ONE connected network of MORE THAN TWO caverns", () => {
+    const { state } = buildScenario("underground-2p");
+    const caverns = allTiles(state).filter((t) => tileLayer(t) === "subterranean");
+    expect(caverns.length).toBeGreaterThan(2);
+    // Flood the caverns through gapless adjacency: all must be one component.
+    const cc = caverns.map(tileCenter);
+    const seen = new Set([0]);
+    const stack = [0];
+    while (stack.length) {
+      const x = stack.pop()!;
+      cc.forEach((c, j) => {
+        if (!seen.has(j) && tileCentersAdjacent(cc[x], c)) {
+          seen.add(j);
+          stack.push(j);
+        }
+      });
+    }
+    expect(seen.size, "every cavern reachable from every other underground").toBe(caverns.length);
+  });
+
+  it("ONLY Ⅱ–Ⅲ land is walkable from a home on the surface — no Ⅳ–Ⅴ/Ⅵ–Ⅶ field is reachable without delving", () => {
+    const { state } = buildScenario("underground-2p");
+    revealAll(state);
+    const deep = new Set([...footprintsOf(state, "near"), ...footprintsOf(state, "center")]);
+    for (const home of seatTiles(state)) {
+      const surf = reachable(state, getTileFootprintSpaceIds(home), false);
+      for (const f of surf) {
+        expect(deep.has(f), `surface walk from home ${home.centerRow},${home.centerCol} must not reach deep field ${f}`).toBe(
+          false
+        );
+      }
+    }
+  });
+
+  it("each Ⅳ–Ⅴ takes exactly ONE Gate up from a cavern; the Ⅵ–Ⅶ hub takes NONE (reached by walking from a Ⅳ–Ⅴ)", () => {
+    const { state } = buildScenario("underground-2p");
+    const adv = revealAll(state);
+    const gatesOn = (t: MapTileState): number =>
+      getTileFootprintSpaceIds(t).filter((f) => adv.fields[f]?.location === "subterranean_gate").length;
+    for (const near of allTiles(state).filter((t) => t.group === "near")) {
+      expect(gatesOn(near), `Ⅳ–Ⅴ ${near.centerRow},${near.centerCol} hosts exactly one Gate`).toBe(1);
+    }
+    expect(gatesOn(tileAtCenter(state, HUB)!), "Ⅵ–Ⅶ hub hosts no Gate").toBe(0);
+    // Every carved gate field is LINKED to a partner one hex away (a real crossing).
+    const gates = Object.values(adv.fields).filter((f) => f.location === "subterranean_gate");
+    expect(gates.length).toBeGreaterThan(0);
+    for (const g of gates) {
+      expect(g.gateLinkSpaceId, `gate ${g.spaceId} is linked to its partner`).toBeTruthy();
+    }
+  });
+
+  it("the deep core is reachable from EITHER home, but ONLY by crossing a Subterranean Gate (a delve)", () => {
+    const { state } = buildScenario("underground-2p");
+    revealAll(state);
+    const deep = [...footprintsOf(state, "near"), ...footprintsOf(state, "center")];
+    for (const home of seatTiles(state)) {
+      const start = getTileFootprintSpaceIds(home);
+      const withGates = reachable(state, start, true);
+      const noGates = reachable(state, start, false);
+      expect(deep.some((f) => withGates.has(f)), "deep core reachable by delving").toBe(true);
+      for (const f of deep) {
+        expect(noGates.has(f), `deep field ${f} cannot be reached without a gate`).toBe(false);
+      }
+    }
+  });
+
+  it("NO map tile ever hosts more than one Subterranean Gate (one-gate-per-tile)", () => {
+    const { state } = buildScenario("underground-2p");
+    const adv = revealAll(state);
+    for (const t of allTiles(state)) {
+      const gates = getTileFootprintSpaceIds(t).filter((f) => adv.fields[f]?.location === "subterranean_gate").length;
+      expect(gates, `tile ${t.centerRow},${t.centerCol} hosts at most one gate`).toBeLessThanOrEqual(1);
+    }
   });
 });
 

@@ -4434,6 +4434,15 @@ export type PlayerState = {
   /** Second negative morale token: the hand is discarded when the turn ends. */
   discardHandAtTurnEnd?: boolean;
   /**
+   * Opening free-rotation of this player's faction Ⅰ (starting) tile. A
+   * tri-state: `undefined` means the feature is off for this game (deterministic
+   * test fixtures); `false` means the rotation is still owed — the start of the
+   * player's first turn forces it before they may move; `true` once they have
+   * locked it in. "You may always rotate Map Tiles when placing OR revealing
+   * them" extended to the home tile (BINH house rule).
+   */
+  startTileRotated?: boolean;
+  /**
    * Removed from the game (gave up, or spent the grace period with no Town or
    * Settlement). An eliminated player keeps a `players` entry so the table can
    * still show them as an observer, but they leave `turnOrder` and take no
@@ -5664,10 +5673,16 @@ export type AstrologersState = {
 };
 
 export type PendingTileChoice = {
-  /** Tile just revealed/placed: this player must choose its rotation. */
+  /**
+   * Tile this player must choose a rotation for. "reveal"/"place" are the
+   * discovered/placed Far tiles; "starting" is the one-time opening free
+   * rotation of the player's own faction Ⅰ tile, forced at the start of their
+   * first turn before they may move (the town/hero on the centre stay put — only
+   * the six ring fields turn).
+   */
   tileInstanceId: string;
   playerId: PlayerId;
-  kind: "reveal" | "place";
+  kind: "reveal" | "place" | "starting";
   /**
    * The hero that placed this tile (Far placements only). The chosen rotation
    * must leave a border-line doorway this hero can cross onto the tile through.
