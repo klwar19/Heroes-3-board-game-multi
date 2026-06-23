@@ -6893,7 +6893,7 @@ export function revealSharedDeckSearch(
  * the Blood Obelisk siege trigger (which fires mid-combat, where the pump is
  * gated off).
  */
-function openDiscardPickChoice(
+export function openDiscardPickChoice(
   state: GameState,
   playerId: PlayerId,
   pick: {

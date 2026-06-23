@@ -215,16 +215,21 @@ export function standingSpellPower(state: GameState, playerId: PlayerId, card: C
 
 /** Whether the player can pay an option's card cost from hand right now. */
 function canAffordCardCost(state: GameState, playerId: PlayerId, cardId: string, cost?: CardPlayCost): boolean {
+  const player = state.players[playerId];
+  if (!player) {
+    return false;
+  }
+
+  // Resource price (Ballistics' expert bombardment): the player must hold it.
+  if (cost?.resources && !hasResources(player.resources, cost.resources)) {
+    return false;
+  }
+
   if (
     !cost ||
     (cost.discardCards === undefined && cost.discardCardsUpTo === undefined && cost.powerCost === undefined)
   ) {
     return true;
-  }
-
-  const player = state.players[playerId];
-  if (!player) {
-    return false;
   }
 
   // The played card itself cannot pay its own cost.
@@ -1983,7 +1988,10 @@ function isOptionEffectPlayable(
       // always a valid choice in either context.
       return true;
     case "TAKE_FROM_DISCARD": {
-      if (context !== "map" || !state.adventure) {
+      // Map play (needs an adventure), except Scholar's basic side
+      // (allowInCombat) which may also be played mid-Combat — every other
+      // TAKE_FROM_DISCARD card stays map-only.
+      if (context === "map" ? !state.adventure : !(effect.allowInCombat && state.combat)) {
         return false;
       }
       const player = state.players[playerId];
@@ -2086,6 +2094,10 @@ function isOptionEffectPlayable(
     case "AREA_DAMAGE_PICK_ADJACENT":
     case "CREATE_FIRE_SHIELD":
     case "GRANT_ELEMENTAL_DAMAGE":
+    // Ballistics' expert bombardment: a combat play. The primary enemy is the
+    // option's `enemy-unit` target (so an empty enemy board offers no play); the
+    // building-material price is enforced by canAffordCardCost.
+    case "BALLISTICS_BOMBARD":
     case "DAMAGE_LOWEST_INITIATIVE_ENEMY":
     // Septienna's Death Ripple: a targetless combat activation that sweeps every
     // enemy unit of a grade.
@@ -2278,6 +2290,8 @@ function optionNeedsUnitTarget(effect: ConcreteEffect): boolean {
     effect.type === "AREA_DAMAGE_PICK_ADJACENT" ||
     effect.type === "GRANT_ELEMENTAL_DAMAGE" ||
     effect.type === "DAMAGE_LOWEST_INITIATIVE_ENEMY" ||
+    // Ballistics' expert bombardment: the player picks the primary enemy unit.
+    effect.type === "BALLISTICS_BOMBARD" ||
     // Gerwulf's Ballista discard: the player picks which enemy unit it hits.
     effect.type === "DISCARD_WAR_MACHINE_DAMAGE" ||
     // Tarnum (Dungeon)'s Dragons VI: toggle the Black cube on a chosen Dragons unit.
@@ -3634,6 +3648,7 @@ export function getLegalActions(
               ? `${choice.abilityName}: redirect to`
               : choice.kind === "flat-damage" ||
                   choice.kind === "spell-splash" ||
+                  choice.kind === "ballistics-splash" ||
                   choice.kind === "area-pick" ||
                   choice.kind === "faerie-damage" ||
                   choice.kind === "chain-lightning" ||
