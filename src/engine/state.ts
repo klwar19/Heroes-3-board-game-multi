@@ -1427,6 +1427,20 @@ export type EffectDefinition =
     }
   | {
       /**
+       * Tarnum (Rampart) Sharpshooters VI: "Play at the start of Combat. Find a
+       * `unitDefId` unit in the `tier` Neutral deck (or its discard pile) and add
+       * it to your army for THIS Combat (discard it afterwards)." On play the card
+       * is pulled from that Neutral deck and a TEMPORARY combat unit (no army card)
+       * is placed on an empty cell on the player's side; when the Combat ends the
+       * borrowed card returns to the Neutral discard pile. Gated to combat round 1
+       * with the card available (legal-actions).
+       */
+      type: "BORROW_NEUTRAL_UNIT";
+      unitDefId: string;
+      tier: "bronze" | "silver" | "gold" | "azure";
+    }
+  | {
+      /**
        * Tarnum (Dungeon)'s Dragons IV: "Choose a row (straight line of 5
        * consecutive spaces). Every unit in that row suffers `amount` damage."
        * The Combat board is 4 columns × 5 rows, so the only 5-space straight line
@@ -4607,6 +4621,14 @@ export type CombatUnitState = {
    * bookkeeping, and never count as one of your units leaving for Pit Lords.
    */
   cloneOfUnitId?: UnitId;
+  /**
+   * Tarnum (Rampart) Sharpshooters VI: a Neutral-deck unit borrowed "for this
+   * Combat (discard it afterwards)". It carries no army card (no armyUnitId), so
+   * it is never written back to the army; instead, when the Combat ends its
+   * `unitDefId` is returned to its tier's Neutral discard pile (finalizeAdventure-
+   * Combat). Whether it survived or died, the borrowed card is discarded.
+   */
+  temporary?: boolean;
   assets?: {
     cardImage?: string;
     imageAlt?: string;

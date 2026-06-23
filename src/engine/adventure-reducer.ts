@@ -4520,6 +4520,16 @@ export function finalizeAdventureCombat(state: GameState): void {
       continue;
     }
 
+    // Tarnum (Rampart) Sharpshooters VI: a borrowed Neutral unit is "discarded
+    // afterwards" — return its card to its tier's Neutral discard pile (whether it
+    // lived or died) and never write it back to the army (it carries no army card).
+    if (unit.temporary && unit.unitDefId) {
+      const def = unit.grade === "gold" ? "gold" : unit.grade;
+      const deck = state.decks[NEUTRAL_DECK_IDS[def as "bronze" | "silver" | "gold" | "azure"]];
+      deck?.discardPile.push(unit.unitDefId);
+      continue;
+    }
+
     // The army card is left untouched: dead units survive and Packs are not
     // flipped to Few (a defeated Sandro's Cloak still peeled to the discard
     // pile mid-combat — that recyclable card is not a "troop").

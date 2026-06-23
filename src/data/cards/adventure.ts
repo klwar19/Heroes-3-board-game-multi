@@ -3784,6 +3784,48 @@ export const adventureCards: CardLibrary = {
     source: heroSource("tarnum_fortress")
   }),
 
+  // Tarnum (Rampart, Ranger, A1 D3 P1 K1, Leadership): the Sharpshooters specialist.
+  // I/IV are the standard creature buffs, doubled for the Elves OR Sharpshooters
+  // unit (the multi-unit descriptor unitMatchesSpecialtyName splits on "or"). VI is
+  // a CHOOSE_ONE: borrow a Sharpshooters from the silver Neutral deck for this
+  // Combat (BORROW_NEUTRAL_UNIT, gated to combat round 1) — OR — draw a card.
+  "specialty.tarnum_rampart.1": withoutArt(
+    mightSpecialtyOne("tarnum_rampart", "Sharpshooters", "Elves or Sharpshooters")
+  ),
+  "specialty.tarnum_rampart.4": withoutArt(
+    unitInitiativeSpecialty("tarnum_rampart", "Sharpshooters", 4, 1, "Elves or Sharpshooters")
+  ),
+  "specialty.tarnum_rampart.6": withoutArt({
+    id: "specialty.tarnum_rampart.6",
+    name: "Sharpshooters VI",
+    kind: "hero-specialty",
+    timing: "instant",
+    tags: [
+      "hero-specialty",
+      "instant",
+      "tarnum_rampart",
+      "sharpshooters",
+      "Play at the start of Combat. Borrow a Sharpshooters from the silver Neutral deck for this Combat (discard it afterwards). — OR — Draw a card."
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Borrow a Sharpshooters for this Combat",
+          combatOnly: true,
+          effect: { type: "BORROW_NEUTRAL_UNIT", unitDefId: "neutral.sharpshooters", tier: "silver" }
+        },
+        {
+          label: "Draw a card",
+          effect: { type: "DRAW_CARDS", amount: 1 }
+        }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: heroSource("tarnum_rampart")
+  }),
+
   // ---- Cove (expansion) specialties --------------------------------------
   // Only the two Cove heroes whose specialties are fully engine-wired are
   // registered: Cassiopeia (Oceanids creature buffs) and Astra (Cure cleanse,
