@@ -1132,8 +1132,11 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "bulwark",
     tier: "bronze",
     type: "ground",
-    few: { attack: 2, defense: 0, health: 2, initiative: 4, cost: { gold: 0 }, abilities: ["bulwark-kobold-gold"], abilityText: "[map] At the beginning of each Resource round, gain 1 [gold].", cardImage: "/assets/units-bulwark-bronze-kobolds-few.webp" },
-    pack: { attack: 2, defense: 1, health: 3, initiative: 5, cost: { gold: 2 }, abilities: ["bulwark-kobold-gold"], abilityText: "[map] At the beginning of each Resource round, gain 1 [gold].", cardImage: "/assets/units-bulwark-bronze-kobolds-pack.webp" },
+    // engine: the gold income is the Pack (Kobold Foreman) ONLY; the Few (Kobold)
+    // has no wired ability and intentionally carries no abilityText, so it stays a
+    // true no-op rather than a decorative gold-income claim.
+    few: { attack: 2, defense: 0, health: 2, initiative: 4, cost: { gold: 0 }, abilities: [], cardImage: "/assets/units-bulwark-bronze-kobolds-few.webp" },
+    pack: { attack: 2, defense: 1, health: 3, initiative: 5, cost: { gold: 2 }, abilities: ["bulwark-kobold-gold"], abilityText: "[map] At the beginning of each Resource round, gain 1 [gold] (Kobold Foreman).", cardImage: "/assets/units-bulwark-bronze-kobolds-pack.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Kobold",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Bulwark Expansion)",
@@ -1149,8 +1152,8 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     type: "ground",
     // engine: Few (Mountain Ram) has no wired ability; Pack (Argali) carries the
     // magic-resistance translation only (reduce-spell-damage-1).
-    few: { attack: 2, defense: 2, health: 3, initiative: 4, cost: { gold: 2 }, abilities: [], cardImage: "/assets/units-bulwark-bronze-mountain_rams-few.webp" },
-    pack: { attack: 3, defense: 2, health: 4, initiative: 5, cost: { gold: 4 }, abilities: ["reduce-spell-damage-1"], abilityText: "[unit_passive] Reduce any [damage] from [spell] by 1 (Argali).", cardImage: "/assets/units-bulwark-bronze-mountain_rams-pack.webp" },
+    few: { attack: 2, defense: 1, health: 3, initiative: 4, cost: { gold: 2 }, abilities: [], cardImage: "/assets/units-bulwark-bronze-mountain_rams-few.webp" },
+    pack: { attack: 2, defense: 1, health: 4, initiative: 5, cost: { gold: 4 }, abilities: ["reduce-spell-damage-1"], abilityText: "[unit_passive] Reduce any [damage] from [spell] by 1 (Argali).", cardImage: "/assets/units-bulwark-bronze-mountain_rams-pack.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Mountain_Ram",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Bulwark Expansion)",
@@ -1164,8 +1167,11 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "bulwark",
     tier: "bronze",
     type: "ranged",
-    few: { attack: 3, defense: 0, health: 2, initiative: 4, cost: { gold: 3 }, abilities: ["ignore-combat-penalties"], abilityText: "[unit_passive] No combat penalty for attacking an adjacent unit.", cardImage: "/assets/units-bulwark-bronze-snow_elves-few.webp" },
-    pack: { attack: 4, defense: 1, health: 3, initiative: 5, cost: { gold: 5 }, abilities: ["ignore-combat-penalties"], abilityText: "[unit_passive] No combat penalty for attacking an adjacent unit (Steel Elf).", cardImage: "/assets/units-bulwark-bronze-snow_elves-pack.webp" },
+    // engine: Both sides ignore the melee penalty (ignore-combat-penalties). The
+    // Pack (Steel Elf) additionally provokes NO enemy Retaliation on its attacks
+    // (ignores-retaliation).
+    few: { attack: 3, defense: 0, health: 3, initiative: 4, cost: { gold: 3 }, abilities: ["ignore-combat-penalties"], abilityText: "[unit_passive] No combat penalty for attacking an adjacent unit.", cardImage: "/assets/units-bulwark-bronze-snow_elves-few.webp" },
+    pack: { attack: 3, defense: 1, health: 3, initiative: 5, cost: { gold: 5 }, abilities: ["ignore-combat-penalties", "ignores-retaliation"], abilityText: "[unit_passive] No combat penalty for attacking an adjacent unit. [unit_attack] This unit's attacks provoke no Retaliation Attack (Steel Elf).", cardImage: "/assets/units-bulwark-bronze-snow_elves-pack.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Snow_Elf",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Bulwark Expansion)",
@@ -1179,8 +1185,8 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "bulwark",
     tier: "silver",
     type: "ground",
-    few: { attack: 4, defense: 2, health: 5, initiative: 5, cost: { gold: 6 }, abilities: ["bulwark-yeti-recover"], abilityText: "[unit_passive] At the start of its activation, this unit recovers from all negative effects.", cardImage: "/assets/units-bulwark-silver-yetis-few.webp" },
-    pack: { attack: 4, defense: 3, health: 6, initiative: 6, cost: { gold: 10 }, abilities: ["bulwark-yeti-recover"], abilityText: "[unit_passive] At the start of its activation, this unit recovers from all negative effects.", cardImage: "/assets/units-bulwark-silver-yetis-pack.webp" },
+    few: { attack: 3, defense: 2, health: 4, initiative: 5, cost: { gold: 6 }, abilities: ["bulwark-yeti-recover"], abilityText: "[unit_passive] At the start of its activation, this unit recovers from all negative effects.", cardImage: "/assets/units-bulwark-silver-yetis-few.webp" },
+    pack: { attack: 4, defense: 2, health: 5, initiative: 6, cost: { gold: 10 }, abilities: ["bulwark-yeti-recover"], abilityText: "[unit_passive] At the start of its activation, this unit recovers from all negative effects.", cardImage: "/assets/units-bulwark-silver-yetis-pack.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Yeti",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Bulwark Expansion)",
@@ -1211,8 +1217,8 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     tier: "gold",
     type: "ground",
     // engine: Few (Mammoth) has no wired ability; Pack (War Mammoth) adds Thick Hide.
-    few: { attack: 5, defense: 3, health: 8, initiative: 5, cost: { gold: 12 }, abilities: [], cardImage: "/assets/units-bulwark-golden-mammoths-few.webp" },
-    pack: { attack: 6, defense: 3, health: 8, initiative: 6, cost: { gold: 20, valuables: 1 }, abilities: ["bulwark-thick-hide"], abilityText: "[unit_passive] +2 Defense while this unit is defending (War Mammoth).", cardImage: "/assets/units-bulwark-golden-mammoths-pack.webp" },
+    few: { attack: 5, defense: 2, health: 7, initiative: 5, cost: { gold: 12 }, abilities: [], cardImage: "/assets/units-bulwark-golden-mammoths-few.webp" },
+    pack: { attack: 6, defense: 2, health: 7, initiative: 6, cost: { gold: 20, valuables: 1 }, abilities: ["bulwark-thick-hide"], abilityText: "[unit_passive] +1 Defense while this unit is defending (War Mammoth).", cardImage: "/assets/units-bulwark-golden-mammoths-pack.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Mammoth",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Bulwark Expansion)",
