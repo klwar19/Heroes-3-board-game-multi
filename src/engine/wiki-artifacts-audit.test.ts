@@ -990,3 +990,113 @@ describe("Orb of Silt (Earth Magic)", () => {
     expect(resolved.players.p1.removed).toContain("artifact.orb_of_silt");
   });
 });
+
+// ===========================================================================
+// Interference (ability) + Plate of the Dying Light (relic): their "+X defense"
+// base also works as a plain defense reaction to a PHYSICAL attack (like
+// Armorer), not only as a spell-damage reduction.
+// ===========================================================================
+
+function attackReaction(
+  state: GameState,
+  playerId: "p1" | "p2",
+  cardId: string,
+  opts: { optionIndex?: number; mode?: "basic" | "expert" } = {}
+): Extract<GameAction, { type: "PLAY_REACTION" }> | undefined {
+  const wantMode = opts.mode ?? "basic";
+  const legal = getLegalActions(state, playerId).find(
+    (entry) =>
+      entry.action.type === "PLAY_REACTION" &&
+      entry.action.cardId === cardId &&
+      entry.action.optionIndex === opts.optionIndex &&
+      (entry.action.mode ?? "basic") === wantMode &&
+      !entry.action.asPowerBoost
+  );
+  return legal?.action.type === "PLAY_REACTION" ? legal.action : undefined;
+}
+
+describe("Interference (ability) as a defense reaction vs a physical attack", () => {
+  it("control: Griffins (3) vs Vampires (defense 1) deal 2 damage", () => {
+    const resolved = passAllReactions(declareGriffinsAttack(duel("interf-control")));
+    expect(lastHitBy(resolved, "unit_p1_griffins")).toMatchObject({ defenseValue: 1, damage: 2 });
+  });
+
+  it("basic +1 defense reduces the incoming hit (2 → 1 damage)", () => {
+    const state = duel("interf-basic");
+    state.players.p2.hand = ["ability.interference"];
+    const declared = passUntil(declareGriffinsAttack(state), "p2");
+    const play = attackReaction(declared, "p2", "ability.interference");
+    expect(play, "Interference should be offered to the defender in the attack window").toBeTruthy();
+    const resolved = passAllReactions(applyOk(declared, play!));
+    expect(lastHitBy(resolved, "unit_p1_griffins")).toMatchObject({ defenseValue: 2, damage: 1 });
+  });
+
+  it("expert +2 defense reduces the incoming hit to 0 (needs an expert use)", () => {
+    const state = duel("interf-expert");
+    state.players.p2.hand = ["ability.interference"];
+    state.players.p2.limits.expertUses = 1;
+    const declared = passUntil(declareGriffinsAttack(state), "p2");
+    const play = attackReaction(declared, "p2", "ability.interference", { mode: "expert" });
+    expect(play, "expert Interference should be offered with an expert use available").toBeTruthy();
+    const resolved = passAllReactions(applyOk(declared, play!));
+    expect(lastHitBy(resolved, "unit_p1_griffins")).toMatchObject({ defenseValue: 3, damage: 0 });
+  });
+
+  it("the +defense lands on the reacting defender's OWN attacked unit, for the Combat", () => {
+    const state = duel("interf-target");
+    state.players.p2.hand = ["ability.interference"];
+    const declared = passUntil(declareGriffinsAttack(state), "p2");
+    const play = attackReaction(declared, "p2", "ability.interference");
+    expect(play).toBeTruthy();
+    const after = applyOk(declared, play!);
+    const effect = after.activeEffects.find((entry) =>
+      entry.modifiers.some((modifier) => modifier.type === "DEFENSE_BONUS")
+    );
+    // Buffs the defender's own unit (the Vampires being attacked), never the enemy,
+    // and lasts the whole Combat (so it also softens later hits on that unit).
+    expect(effect?.target).toEqual({ type: "unit", unitId: "unit_p2_vampires" });
+    expect(effect?.duration).toEqual({ type: "combat" });
+  });
+});
+
+describe("Plate of the Dying Light as a defense reaction vs a physical attack", () => {
+  it("option 0 grants +1 defense against the attack (2 → 1 damage)", () => {
+    const state = duel("plate-atk-1");
+    state.players.p2.hand = ["artifact.plate_of_the_dying_light"];
+    const declared = passUntil(declareGriffinsAttack(state), "p2");
+    const play = attackReaction(declared, "p2", "artifact.plate_of_the_dying_light", { optionIndex: 0 });
+    expect(play, "Plate option 0 should be a defender reaction to an attack").toBeTruthy();
+    const resolved = passAllReactions(applyOk(declared, play!));
+    expect(lastHitBy(resolved, "unit_p1_griffins")).toMatchObject({ defenseValue: 2, damage: 1 });
+  });
+
+  it("option 1 grants +4 defense (damage to 0) and removes the card", () => {
+    const state = duel("plate-atk-4");
+    state.players.p2.hand = ["artifact.plate_of_the_dying_light"];
+    state.players.p2.removed = [];
+    const declared = passUntil(declareGriffinsAttack(state), "p2");
+    const play = attackReaction(declared, "p2", "artifact.plate_of_the_dying_light", { optionIndex: 1 });
+    expect(play, "Plate option 1 should be a defender reaction to an attack").toBeTruthy();
+    const resolved = passAllReactions(applyOk(declared, play!));
+    expect(lastHitBy(resolved, "unit_p1_griffins")).toMatchObject({ defenseValue: 5, damage: 0 });
+    expect(resolved.players.p2.removed).toContain("artifact.plate_of_the_dying_light");
+  });
+
+  it("the +defense is a Combat-long effect on the attacked unit (persists past the hit)", () => {
+    const state = duel("plate-atk-persist");
+    state.players.p2.hand = ["artifact.plate_of_the_dying_light"];
+    const declared = passUntil(declareGriffinsAttack(state), "p2");
+    const play = attackReaction(declared, "p2", "artifact.plate_of_the_dying_light", { optionIndex: 0 });
+    const afterFirst = passAllReactions(applyOk(declared, play!));
+    // A combat-duration DEFENSE_BONUS (+ inert spell-reduction) remains on the
+    // attacked unit, so later hits on it are softened too.
+    const effect = afterFirst.activeEffects.find(
+      (entry) =>
+        entry.target?.type === "unit" &&
+        entry.target.unitId === "unit_p2_vampires" &&
+        entry.modifiers.some((modifier) => modifier.type === "DEFENSE_BONUS")
+    );
+    expect(effect?.duration).toEqual({ type: "combat" });
+    expect(effect!.modifiers.some((modifier) => modifier.type === "SPELL_DAMAGE_REDUCTION")).toBe(true);
+  });
+});

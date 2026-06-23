@@ -8874,6 +8874,39 @@ function applyReactionPlayCore(
     stackItem.modifiers.playedCardIds.push(play.cardId);
   }
 
+  // Interference / Plate of the Dying Light played as a plain DEFENSE reaction to
+  // a physical attack (their "+X defense" base mirrors Armorer). Grant the unit
+  // being attacked the same Combat-long +Defense; its SPELL_DAMAGE_REDUCTION half
+  // is simply inert against an attack. Created before the attack resolves, so
+  // getActiveDefenseBonus folds it into the very hit that triggered it and every
+  // later hit on that unit.
+  if (
+    effect.type === "INTERFERE_SPELL" &&
+    (stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
+  ) {
+    const defendingUnit = state.combat?.units[stackItem.action.defenderId];
+    if (defendingUnit && defendingUnit.controllerId === playerId && isUnitAlive(defendingUnit)) {
+      createActiveEffect(
+        state,
+        {
+          name: mode === "expert" ? `Expert ${card.name}` : card.name,
+          scope: "unit",
+          duration: { type: "combat" },
+          polarity: "positive",
+          removable: true,
+          modifiers: [
+            { type: "DEFENSE_BONUS", amount: effectAmount },
+            { type: "SPELL_DAMAGE_REDUCTION", amount: effectAmount }
+          ]
+        },
+        { type: "card", cardId: card.id, controllerId: playerId },
+        playerId,
+        { type: "unit", unitId: defendingUnit.id }
+      );
+    }
+    stackItem.modifiers.playedCardIds.push(play.cardId);
+  }
+
   // Alamar's Resurrection: arm the pending attack so it is cancelled at
   // resolution if it would destroy the defending unit. It guards against
   // normal attacks only — never spells or specialty damage. The discard cost
