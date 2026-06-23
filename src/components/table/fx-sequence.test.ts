@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { GameEvent } from "@/engine";
-import { orderFxEventsForPresentation, partitionCombatMoves } from "./fx-sequence";
+import {
+  orderFxEventsForPresentation,
+  partitionCombatMoves,
+  planActivationSpellPreamble
+} from "./fx-sequence";
 
 /** Minimal event stand-ins; only `type` (and an id for tracking) matter here. */
 function ev(type: GameEvent["type"], id: string): { type: GameEvent["type"]; id: string } {
@@ -131,5 +135,56 @@ describe("partitionCombatMoves (Harpy Strike-and-Return ordering)", () => {
     const { approach, afterAttack } = partitionCombatMoves(otherLog, [{ id: "m1", unitId: "harpy", from: "5" }]);
     expect(approach.map((m) => m.id)).toEqual(["m1"]);
     expect(afterAttack).toEqual([]);
+  });
+});
+
+describe("planActivationSpellPreamble (Faerie Dragon cast-before-move ordering)", () => {
+  const LEADING = new Set(["faerie-dragon-spell"]);
+  // A cast that presents for 800ms, then holds its damage 150ms before the move.
+  const timing = () => ({ castMs: 800, holdMs: 150 });
+
+  function ability(id: string, abilityId: string, unitId: string, targetUnitId?: string) {
+    return { type: "UNIT_ABILITY_TRIGGERED" as const, id, abilityId, unitId, targetUnitId };
+  }
+
+  it("leads the cast at t=0, lands its damage at the burst, and shifts the rest by cast+hold", () => {
+    const log = [
+      ability("bolt", "faerie-dragon-spell", "dragon", "victim"),
+      { type: "UNIT_MOVED" as const, id: "move", unitId: "dragon" },
+      { type: "DAMAGE_ASSIGNED" as const, id: "atk-dmg" }
+    ];
+    const { leadMs, casts } = planActivationSpellPreamble(log, LEADING, timing);
+    // The whole timeline (move + dice) shifts by the cast + its damage hold.
+    expect(leadMs).toBe(950);
+    expect(casts).toHaveLength(1);
+    // The cast plays first; its damage lands as the bolt bursts, BEFORE leadMs
+    // (the move starts) — i.e. cast → damage → move.
+    expect(casts[0]).toMatchObject({ eventId: "bolt", castStart: 0, damageAt: 800, targetUnitId: "victim" });
+    expect(casts[0].damageAt).toBeLessThan(leadMs);
+  });
+
+  it("does not shift a snapshot with no leading activation spell (every ordinary combat)", () => {
+    const log = [
+      ability("sting", "wyvern-sting", "wyvern", "victim"), // a normal on-attack ability
+      { type: "UNIT_MOVED" as const, id: "move", unitId: "wyvern" },
+      { type: "ATTACK_ROLLED" as const, id: "roll" }
+    ];
+    expect(planActivationSpellPreamble(log, LEADING, timing)).toEqual({ leadMs: 0, casts: [] });
+  });
+
+  it("sequences two leading casts back-to-back", () => {
+    const log = [
+      ability("b1", "faerie-dragon-spell", "d1", "v1"),
+      ability("b2", "faerie-dragon-spell", "d2", "v2")
+    ];
+    const { leadMs, casts } = planActivationSpellPreamble(log, LEADING, timing);
+    expect(casts.map((c) => c.castStart)).toEqual([0, 950]);
+    expect(casts.map((c) => c.damageAt)).toEqual([800, 1750]);
+    expect(leadMs).toBe(1900);
+  });
+
+  it("falls back to the caster as the target when no target is named", () => {
+    const log = [ability("b", "faerie-dragon-spell", "dragon")];
+    expect(planActivationSpellPreamble(log, LEADING, timing).casts[0].targetUnitId).toBe("dragon");
   });
 });

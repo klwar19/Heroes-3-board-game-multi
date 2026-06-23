@@ -84,6 +84,7 @@ import {
   leaveRoom,
   roomActionGuard,
   setRoomHosted,
+  setRoomName,
   transferHost
 } from "./room";
 import {
@@ -310,7 +311,8 @@ import type {
   SpellSchool,
   TargetRef,
   UnitGrade,
-  UnitId
+  UnitId,
+  VisitStep
 } from "./state";
 import { NEUTRAL_PLAYER_ID } from "./state";
 
@@ -3081,10 +3083,13 @@ function finishResolvedAttack(
   // Shield of the Dwarven Lords ignored the die "and any additional effects it
   // triggered": skip every die-face-conditioned follow-up — the Azure/Basilisk
   // paralysis and die tokens, the Minotaurs' draw, and the ranged low-roll bolt.
+  // Tarnum (Fortress) Basilisks VI: the buffed (non-retaliation) attack fires
+  // every die-gated after-attack ability regardless of the rolled face.
+  const forceAbilityRoll = !details.isRetaliation && Boolean(stackItem.modifiers.forceAbilityRollsThisAttack);
   if (!dieCancelled) {
-    applyOnAttackDieTokens(state, details.attacker, details.defender, attackResult.roll, details.isRetaliation);
+    applyOnAttackDieTokens(state, details.attacker, details.defender, attackResult.roll, details.isRetaliation, forceAbilityRoll);
     // Dungeon Minotaurs: draw a card when this unit's Attack die resolves "-1".
-    applyOnAttackDieDraw(state, details.attacker, attackResult.roll);
+    applyOnAttackDieDraw(state, details.attacker, attackResult.roll, forceAbilityRoll);
     applyPostAttackAbilityDamage(
       state,
       details.attacker,
@@ -3176,18 +3181,18 @@ function finishResolvedAttack(
     return;
   }
 
-  if (applyAttackDieDamageFollowUps(state, details.attacker, details.defender)) {
+  if (applyAttackDieDamageFollowUps(state, details.attacker, details.defender, forceAbilityRoll)) {
     return;
   }
 
   // Gorgons' Death Stare: roll the extra dice and possibly reduce the target to
   // 0 Health before retaliation.
-  if (applyDeathStareFollowUps(state, details.attacker, details.defender)) {
+  if (applyDeathStareFollowUps(state, details.attacker, details.defender, forceAbilityRoll)) {
     return;
   }
 
   // Azure Dragons / Basilisks: paralyse the target on a matching Attack die.
-  applyParalysisFollowUps(state, details.attacker, details.defender, attackResult.roll);
+  applyParalysisFollowUps(state, details.attacker, details.defender, attackResult.roll, forceAbilityRoll);
 
   // Dragon Flies: dispel the enemy's ongoing buffs on the target.
   applyDispelFollowUps(state, details.attacker, details.defender);
@@ -3505,7 +3510,8 @@ function applyFireShieldDamage(
 function applyAttackDieDamageFollowUps(
   state: GameState,
   attacker: CombatUnitState,
-  defender: CombatUnitState
+  defender: CombatUnitState,
+  forceRoll = false
 ): boolean {
   const combat = state.combat;
   if (!combat || !isUnitAlive(attacker) || !isUnitAlive(defender)) {
@@ -3524,10 +3530,13 @@ function applyAttackDieDamageFollowUps(
       unitId: attacker.id,
       abilityId: followUp.abilityId,
       targetUnitId: defender.id,
-      message: `${attacker.name} rolls ${candidate.roll} for ${followUp.abilityName}.`
+      message: forceRoll
+        ? `${attacker.name} uses ${followUp.abilityName} regardless of the roll (Basilisks VI).`
+        : `${attacker.name} rolls ${candidate.roll} for ${followUp.abilityName}.`
     });
 
-    if (candidate.roll < followUp.minRoll || (followUp.maxRoll !== undefined && candidate.roll > followUp.maxRoll)) {
+    // Tarnum (Fortress) Basilisks VI forces the ability regardless of the face.
+    if (!forceRoll && (candidate.roll < followUp.minRoll || (followUp.maxRoll !== undefined && candidate.roll > followUp.maxRoll))) {
       continue;
     }
 
@@ -3560,13 +3569,15 @@ function applyOnAttackDieTokens(
   attacker: CombatUnitState,
   defender: CombatUnitState,
   attackRoll: number,
-  isRetaliation: boolean
+  isRetaliation: boolean,
+  forceRoll = false
 ): void {
   if (isRetaliation || !state.combat || !isUnitAlive(defender)) {
     return;
   }
   for (const token of getOnAttackDieTokens(attacker)) {
-    if (attackRoll !== token.onRoll) {
+    // Tarnum (Fortress) Basilisks VI forces the token regardless of the face.
+    if (!forceRoll && attackRoll !== token.onRoll) {
       continue;
     }
     placeCombatToken(state, defender, token.token, token.amount, token.abilityName);
@@ -3586,9 +3597,15 @@ function applyOnAttackDieTokens(
  * matching face; the controller draws the printed number of cards. (The neutral
  * Minotaur rerolls the "-1" instead — it never carries this ability.)
  */
-function applyOnAttackDieDraw(state: GameState, attacker: CombatUnitState, attackRoll: number): void {
+function applyOnAttackDieDraw(
+  state: GameState,
+  attacker: CombatUnitState,
+  attackRoll: number,
+  forceRoll = false
+): void {
   for (const draw of getOnAttackDieDraw(attacker)) {
-    if (attackRoll !== draw.onRoll) {
+    // Tarnum (Fortress) Basilisks VI forces the draw regardless of the face.
+    if (!forceRoll && attackRoll !== draw.onRoll) {
       continue;
     }
     drawCardsForPlayer(state, attacker.controllerId, draw.amount);
@@ -3610,7 +3627,8 @@ function applyOnAttackDieDraw(state: GameState, attacker: CombatUnitState, attac
 function applyDeathStareFollowUps(
   state: GameState,
   attacker: CombatUnitState,
-  defender: CombatUnitState
+  defender: CombatUnitState,
+  forceRoll = false
 ): boolean {
   const combat = state.combat;
   if (!combat || !isUnitAlive(attacker) || !isUnitAlive(defender)) {
@@ -3622,7 +3640,8 @@ function applyDeathStareFollowUps(
       break;
     }
     const rolls = Array.from({ length: Math.max(1, followUp.diceCount) }, () => rollAttackDie(combat));
-    const petrifies = rolls.every((roll) => roll === followUp.onRoll);
+    // Tarnum (Fortress) Basilisks VI forces the Death Stare regardless of the dice.
+    const petrifies = forceRoll || rolls.every((roll) => roll === followUp.onRoll);
     // One ability event per stare (drives the FX/sound once): its message
     // carries the outcome so the log reads correctly and tests can assert it.
     appendEvent(state, {
@@ -4059,7 +4078,8 @@ function applyParalysisFollowUps(
   state: GameState,
   attacker: CombatUnitState,
   defender: CombatUnitState,
-  attackRoll: number
+  attackRoll: number,
+  forceRoll = false
 ): void {
   const combat = state.combat;
   if (!combat) {
@@ -4081,7 +4101,8 @@ function applyParalysisFollowUps(
         message: `${attacker.name} rolls ${roll} for ${followUp.abilityName}.`
       });
     }
-    if (roll !== followUp.onRoll) {
+    // Tarnum (Fortress) Basilisks VI forces the Paralysis regardless of the face.
+    if (!forceRoll && roll !== followUp.onRoll) {
       continue;
     }
     if (unitImmuneToParalysis(state, defender)) {
@@ -6655,7 +6676,12 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
           duration: card.effect.duration,
           polarity: card.effect.polarity ?? (amount >= 0 ? "positive" : "negative"),
           removable: card.effect.removable ?? true,
-          modifiers: [{ type: "INITIATIVE_BONUS", amount }]
+          modifiers: [
+            { type: "INITIATIVE_BONUS", amount },
+            ...(card.effect.movementBonus
+              ? [{ type: "MOVEMENT_BONUS" as const, amount: card.effect.movementBonus }]
+              : [])
+          ]
         },
         { type: "card", cardId: card.id, controllerId: stackItem.action.playerId },
         stackItem.action.playerId,
@@ -8424,9 +8450,19 @@ function applyReactionPlayCore(
       Boolean(attacker) &&
       Boolean(defender) &&
       effectiveInitiative(defender!, state.activeEffects) > effectiveInitiative(attacker!, state.activeEffects);
+    // Gundula IV: doubles when YOUR (attacking) unit is strictly faster than the
+    // attacked unit — the mirror of Cyra's defender-faster condition.
+    const attackerIsFaster =
+      Boolean(effect.doubleIfAttackerInitiativeHigher) &&
+      Boolean(attacker) &&
+      Boolean(defender) &&
+      effectiveInitiative(attacker!, state.activeEffects) > effectiveInitiative(defender!, state.activeEffects);
     const matchesDoubledType = Boolean(effect.doubleForUnitType) && affectedUnit?.type === effect.doubleForUnitType;
     const doubleFactor =
-      unitMatchesSpecialtyName(affectedUnit?.name, effect.doubleForUnitName) || matchesDoubledType || defenderIsFaster
+      unitMatchesSpecialtyName(affectedUnit?.name, effect.doubleForUnitName) ||
+      matchesDoubledType ||
+      defenderIsFaster ||
+      attackerIsFaster
         ? 2
         : 1;
     // Merist's Stone Skin I: a defense reaction grants extra Defense when the
@@ -8509,6 +8545,11 @@ function applyReactionPlayCore(
     }
     if (effect.ignoresRetaliation) {
       stackItem.modifiers.ignoresRetaliationThisAttack = true;
+    }
+    // Tarnum (Fortress) Basilisks VI: this buffed attack also fires every
+    // die-gated after-attack ability of the attacker regardless of the roll.
+    if (effect.forceAbilityRolls) {
+      stackItem.modifiers.forceAbilityRollsThisAttack = true;
     }
 
     if (effect.drawCards) {
@@ -9876,6 +9917,21 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     }
   }
 
+  // Tarnum (Rampart) Sharpshooters VI (option A): borrow a Neutral-deck unit for
+  // this Combat only — placed on an empty cell on the player's side; the card
+  // returns to the Neutral discard pile when the Combat ends.
+  if (effect.type === "BORROW_NEUTRAL_UNIT" && state.combat) {
+    const borrowed = borrowNeutralUnit(state, action.playerId, effect.unitDefId, effect.tier);
+    if (borrowed) {
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: borrowed.id,
+        abilityId: card.id,
+        message: `${state.players[action.playerId]?.name ?? "A hero"} plays ${card.name}: ${borrowed.cardName} joins the Combat at ${getBattlefieldLabel(borrowed.position)}.`
+      });
+    }
+  }
+
   // Tarnum (Dungeon)'s Dragons VI (option A): toggle the selected Dragons unit's
   // Black cube — remove it if the unit has already spent its Retaliation this
   // round (so it may retaliate again), otherwise place one (so it cannot).
@@ -10000,6 +10056,44 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
           ? effect.expertGain
           : effect.gain;
     gainResources(state, action.playerId, gain, `played ${card.name}`);
+  }
+
+  // Octavia's "Gold" and Melodia's "Fortune" economic map plays. Morale and the
+  // location-dice buff land at once; the Resource-die roll (and the trailing
+  // gold, so it follows the chosen die) run through a queued map visit.
+  if (effect.type === "RESOURCE_FORTUNE_PLAY") {
+    if (effect.morale) {
+      changeMorale(state, action.playerId, effect.morale);
+    }
+    if (effect.locationDiceBonusTurn) {
+      createActiveEffect(
+        state,
+        {
+          name: card.name,
+          scope: "player",
+          duration: { type: "current-turn" },
+          polarity: "positive",
+          removable: false,
+          modifiers: [{ type: "LOCATION_DICE_BONUS", amount: 1 }]
+        },
+        { type: "card", cardId: card.id, controllerId: action.playerId },
+        action.playerId
+      );
+    }
+    const fortuneSteps: VisitStep[] = [];
+    if (effect.rollResourceDice) {
+      fortuneSteps.push({ type: "ROLL_RESOURCE_DICE", count: effect.rollResourceDice });
+    }
+    if (effect.gold) {
+      fortuneSteps.push({ type: "GAIN_RESOURCES", gold: effect.gold });
+    }
+    if (fortuneSteps.length > 0) {
+      state.adventure?.rewardQueue.unshift({
+        playerId: action.playerId,
+        kind: "visit-steps",
+        steps: fortuneSteps
+      });
+    }
   }
 
   // Legion artifacts' discount side (map-only): open a blocking prompt to pick
@@ -10211,7 +10305,12 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
         duration: effect.duration,
         polarity: effect.polarity ?? (amount >= 0 ? "positive" : "negative"),
         removable: effect.removable ?? true,
-        modifiers: [{ type: "INITIATIVE_BONUS", amount }]
+        modifiers: [
+          { type: "INITIATIVE_BONUS", amount },
+          ...(effect.movementBonus
+            ? [{ type: "MOVEMENT_BONUS" as const, amount: effect.movementBonus }]
+            : [])
+        ]
       },
       { type: "card", cardId: card.id, controllerId: action.playerId },
       action.playerId,
@@ -11078,6 +11177,141 @@ function placeCloneUnit(
   delete clone.armyUnitId;
   combat.units[clone.id] = clone;
   return clone;
+}
+
+/**
+ * First empty cell on the player's side of the board (back row first, so a
+ * borrowed ranged unit lands in the back), falling back to any free cell.
+ */
+function findBorrowDeploymentCell(combat: CombatState, playerId: PlayerId): number | undefined {
+  const region =
+    playerId === combat.attackerPlayerId ? [16, 17, 18, 19, 12, 13, 14, 15] : [0, 1, 2, 3, 4, 5, 6, 7];
+  const inRegion = region.find((position) => !isSpaceBlockedForSummon(combat, position));
+  if (inRegion !== undefined) {
+    return inRegion;
+  }
+  for (let position = 0; position < BATTLEFIELD_CELL_COUNT; position += 1) {
+    if (!isSpaceBlockedForSummon(combat, position)) {
+      return position;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Tarnum (Rampart) Sharpshooters VI: pull `unitDefId` out of the `tier` Neutral
+ * deck (draw pile first, else its discard pile) and place a TEMPORARY combat unit
+ * on an empty cell on the player's side. The unit carries no army card, so it is
+ * never written back to the army; finalizeAdventureCombat returns its card to the
+ * Neutral discard pile when the Combat ends. Returns the new unit, or null when
+ * it could not be borrowed (card not in the deck, or no room on the board).
+ */
+function borrowNeutralUnit(
+  state: GameState,
+  playerId: PlayerId,
+  unitDefId: string,
+  tier: "bronze" | "silver" | "gold" | "azure"
+): CombatUnitState | null {
+  const combat = state.combat;
+  const deck = state.decks[NEUTRAL_DECK_IDS[tier]];
+  if (!combat || !deck) {
+    return null;
+  }
+  const fromDraw = deck.drawPile.indexOf(unitDefId);
+  const fromDiscard = fromDraw >= 0 ? -1 : deck.discardPile.indexOf(unitDefId);
+  if (fromDraw >= 0) {
+    deck.drawPile.splice(fromDraw, 1);
+  } else if (fromDiscard >= 0) {
+    deck.discardPile.splice(fromDiscard, 1);
+  } else {
+    return null;
+  }
+
+  const position = findBorrowDeploymentCell(combat, playerId);
+  const unit =
+    position === undefined
+      ? null
+      : makeCombatUnitFromArmy(
+          { id: `borrow_${nextEventNumber(state)}`, unitDefId, side: "neutral" },
+          playerId,
+          `unit_${playerId}_borrow_${nextEventNumber(state)}`,
+          position,
+          getRuleset(state)
+        );
+  if (!unit) {
+    // Could not place it: return the borrowed card to the discard pile and bail.
+    deck.discardPile.push(unitDefId);
+    return null;
+  }
+  // Borrowed: gradeless to the neutral AI (like a summon), no army card (never
+  // written back), and it acts on its own initiative this round.
+  unit.summoned = true;
+  unit.temporary = true;
+  unit.activatedThisRound = false;
+  delete unit.armyUnitId;
+  combat.units[unit.id] = unit;
+  return unit;
+}
+
+/** Crag Hack's Offense VI aura, if the player has it up this Combat. */
+function cardsAsAttackBonusFor(state: GameState, playerId: PlayerId): number {
+  let amount = 0;
+  for (const effect of state.activeEffects) {
+    if (effect.scope !== "player" || effect.controllerId !== playerId) {
+      continue;
+    }
+    for (const modifier of effect.modifiers) {
+      if (modifier.type === "CARDS_AS_ATTACK_BONUS") {
+        amount += modifier.amount;
+      }
+    }
+  }
+  return amount;
+}
+
+/**
+ * Crag Hack's Offense VI: discard a held card during one of your unit's attacks
+ * to add the aura's bonus to that attack ("every card you play can grant +1
+ * attack instead of its regular effect"). The card is discarded for its converted
+ * effect, never its printed one.
+ */
+function convertCardToAttack(
+  state: GameState,
+  action: Extract<GameAction, { type: "CONVERT_CARD_TO_ATTACK" }>
+): void {
+  const player = state.players[action.playerId];
+  const amount = cardsAsAttackBonusFor(state, action.playerId);
+  if (!player || amount <= 0) {
+    throw new Error("Offense VI is not active.");
+  }
+  const handIndex = player.hand.indexOf(action.cardId);
+  if (handIndex === -1) {
+    throw new Error("That card is not in your hand.");
+  }
+  const stackItem = state.stack.at(-1);
+  const attackerId =
+    stackItem && (stackItem.action.type === "ATTACK_UNIT" || stackItem.action.type === "MOVE_AND_ATTACK_UNIT")
+      ? stackItem.action.attackerId
+      : null;
+  const attacker = attackerId ? state.combat?.units[attackerId] : undefined;
+  if (!stackItem || !attacker || attacker.controllerId !== action.playerId) {
+    throw new Error("Convert a card while one of your units' attacks waits to resolve.");
+  }
+  if (stackItem.modifiers.negateAttackBuffs) {
+    throw new Error("This attack cannot be buffed.");
+  }
+
+  player.hand.splice(handIndex, 1);
+  player.discard.push(action.cardId);
+  stackItem.modifiers.attackBonus += amount;
+  appendEvent(state, {
+    type: "CARD_PLAYED",
+    playerId: action.playerId,
+    cardId: action.cardId,
+    timing: cardLibrary[action.cardId]?.timing ?? "instant",
+    mode: "basic",
+    optionLabel: `Offense VI: +${amount} attack instead`
+  });
 }
 
 /**
@@ -11957,7 +12191,7 @@ function autoResolveNeutralAbilityChoice(state: GameState, cards: CardLibrary): 
 
   const enemies = candidates.filter((unit) => unit.controllerId !== source.controllerId);
   const pool = enemies.length > 0 ? enemies : candidates;
-  const sorted = sortNeutralTargetCandidates(source, pool);
+  const sorted = sortNeutralTargetCandidates(combat, source, pool);
   const target =
     enemies.length > 0
       ? sorted[0]
@@ -12070,7 +12304,7 @@ function moveAndAttackUnit(
         : (planMovePath(
             from,
             destination,
-            getUnitMoveRange(attacker),
+            getUnitMoveRange(attacker, state),
             getBlockedSpaces(combat, attacker),
             getKnownHazardSpaces(combat, attacker)
           ) ?? [destination]);
@@ -12323,13 +12557,14 @@ function walkMoveThroughTokens(
  * point of letting the player pick the path.
  */
 function isLegalExplicitMovePath(
+  state: GameState,
   combat: CombatState,
   unit: CombatUnitState,
   start: number,
   path: number[],
   destination: number
 ): boolean {
-  if (path.length === 0 || path.length > getUnitMoveRange(unit)) {
+  if (path.length === 0 || path.length > getUnitMoveRange(unit, state)) {
     return false;
   }
   if (path[path.length - 1] !== destination) {
@@ -12369,7 +12604,7 @@ function moveUnit(state: GameState, action: Extract<GameAction, { type: "MOVE_UN
   // tokens and no chosen path, the walk is skipped and movement is unchanged.
   let enteredSpaces: number[] | null = null;
   if (action.path && unit.type !== "flying") {
-    if (!isLegalExplicitMovePath(combat, unit, from, action.path, destination)) {
+    if (!isLegalExplicitMovePath(state, combat, unit, from, action.path, destination)) {
       throw new Error("That movement path is not legal.");
     }
     enteredSpaces = action.path;
@@ -12380,7 +12615,7 @@ function moveUnit(state: GameState, action: Extract<GameAction, { type: "MOVE_UN
         : (planMovePath(
             from,
             destination,
-            getUnitMoveRange(unit),
+            getUnitMoveRange(unit, state),
             getBlockedSpaces(combat, unit),
             getKnownHazardSpaces(combat, unit)
           ) ?? [destination]);
@@ -13401,6 +13636,7 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "USE_TOWN_BUILDING",
   "SPEND_TOWN_CUBE",
   "HALL_OF_VALHALLA_BOOST",
+  "CONVERT_CARD_TO_ATTACK",
   "ATTACK_FORTIFICATION",
   "GIVE_UP",
   "JOIN_ROOM",
@@ -13408,7 +13644,8 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "SET_ROOM_HOSTED",
   "ASSIGN_SEAT",
   "KICK_MEMBER",
-  "TRANSFER_HOST"
+  "TRANSFER_HOST",
+  "SET_ROOM_NAME"
 ]);
 
 function isHandlerValidated(state: GameState, action: GameAction): boolean {
@@ -13609,6 +13846,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
       case "TRANSFER_HOST":
         transferHost(nextState, action);
         break;
+      case "SET_ROOM_NAME":
+        setRoomName(nextState, action);
+        break;
       case "RESOLVE_VISIT_STEP":
         resolveVisitStep(nextState, action);
         break;
@@ -13698,6 +13938,10 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "HALL_OF_VALHALLA_BOOST":
         hallOfValhallaBoost(nextState, action);
+        refreshReactionWindowLegalReactions(nextState, cards);
+        break;
+      case "CONVERT_CARD_TO_ATTACK":
+        convertCardToAttack(nextState, action);
         refreshReactionWindowLegalReactions(nextState, cards);
         break;
       case "ATTACK_FORTIFICATION":

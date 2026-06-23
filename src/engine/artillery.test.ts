@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { applyAction, createInitialGameState, getLegalActions } from "./index";
 import { abilityDeckBinh, abilityDeckLegacy } from "@/data/cards/abilities-extra";
 import { cardLibrary } from "@/data/cards/library";
+import { cardShotFxPlans } from "@/data/fx";
 import type { GameAction, GameEvent, GameState, PlayerId } from "./state";
 
 function applyOk(state: GameState, action: GameAction): GameState {
@@ -103,6 +104,30 @@ describe("Artillery (basic)", () => {
     expect(after.players.p1.hand).not.toContain("ability.artillery");
     expect(after.players.p1.discard).toContain("ability.artillery");
     expect(after.players.p1.combatStats.expertUsesSpentThisRound).toBe(0);
+  });
+
+  it("fires its damage from the card, so the FX layer can play the Ballista shot", () => {
+    // The table plays the Artillery shot off cardShotFxPlans[source.cardId] on
+    // the DAMAGE_ASSIGNED it logs. So the shot is only HEARD when (a) the damage
+    // names the card as its source, and (b) a shot plan is keyed there. Assert
+    // both — the link the user's "play proper sound" needs.
+    const state = basicSetup();
+    const enemies = state.combat!.units;
+    enemies.unit_p2_skeletons.initiative = 9;
+    enemies.unit_p2_vampires.initiative = 4; // uniquely slowest
+    enemies.unit_p2_dread_knights.initiative = 7;
+
+    const after = applyOk(state, artilleryPlays(state)[0].action);
+    const hit = after.eventLog.find(
+      (event): event is Extract<GameEvent, { type: "DAMAGE_ASSIGNED" }> =>
+        event.type === "DAMAGE_ASSIGNED" &&
+        event.source.type === "card" &&
+        event.source.cardId === "ability.artillery"
+    );
+    expect(hit, "Artillery damage must name the card as its source").toBeTruthy();
+    const plan = hit!.source.type === "card" ? cardShotFxPlans[hit!.source.cardId] : undefined;
+    expect(plan, "cardShotFxPlans must answer the Artillery damage").toBeTruthy();
+    expect(plan!.sound).toBe("units/ballista-shoot");
   });
 
   it("offers every tied-slowest enemy so the controller picks which is hit", () => {

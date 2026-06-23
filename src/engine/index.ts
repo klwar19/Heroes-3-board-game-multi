@@ -14,7 +14,13 @@ export {
   isBattlefieldPosition
 } from "./battlefield";
 export { applyAction, findEvent, unitMatchesSpecialtyName } from "./reducer";
-export { isRoomMembershipAction, seatOfClient } from "./room";
+export {
+  defaultRoomName,
+  isRoomMembershipAction,
+  MAX_ROOM_NAME_LENGTH,
+  roomDisplayName,
+  seatOfClient
+} from "./room";
 export { ENGINE_PROTOCOL_VERSION, ENGINE_SIGNATURE } from "./version";
 export { drawCardsForPlayer, isSharedDeckId, SHARED_DECK_IDS, shuffleCards } from "./decks";
 export type { SharedDeckId } from "./decks";

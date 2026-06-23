@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   abilityFxPlans,
+  cardShotFxPlans,
   healFxPlans,
   MAX_PRESENTATION_MS,
   MAX_PROJECTILE_FLIGHT_MS,
@@ -103,7 +104,8 @@ describe("spellPresentationMs", () => {
     const plans = [
       ...Object.values(spellFxPlans),
       ...Object.values(abilityFxPlans),
-      ...Object.values(healFxPlans)
+      ...Object.values(healFxPlans),
+      ...Object.values(cardShotFxPlans)
     ];
     for (const plan of plans) {
       const gate = spellPresentationMs(plan);
@@ -134,6 +136,81 @@ describe("healFxPlans", () => {
 
   it("does not re-animate the Cure spell (which already animates as a cast)", () => {
     expect(healFxPlans["spell.cure"]).toBeUndefined();
+  });
+});
+
+describe("paralysis abilities animate (the freeze glyph + sound)", () => {
+  // The table draws abilityFxPlans[event.abilityId] when a unit ability fires.
+  // Every paralysis ability whose id is logged ONLY on the actual paralysis (a
+  // single event) must answer with the paralyze sprite + sound, or the token
+  // lands in silence — the user's Azure Dragon complaint. The extra-die variants
+  // are excluded on purpose (they reuse the id for a "rolls X" announce).
+  it.each([
+    "azure-dragon-paralysis",
+    "fortress-basilisk-paralysis",
+    "medusa-paralyze-retaliation",
+    "bank-medusa-paralyze-stacked"
+  ])("wires %s with the paralyze freeze glyph + sound", (abilityId) => {
+    const plan = abilityFxPlans[abilityId];
+    expect(plan, `${abilityId} needs an ability FX plan`).toBeTruthy();
+    expect(plan.affect?.[0]?.key).toBe("paralyze");
+    expect(spriteDurationMs(plan.affect?.[0]?.key)).toBeGreaterThan(0);
+    expect(plan.sound).toBe("spells/paralyze");
+    expect(soundDurationMs(plan.sound)).toBeGreaterThan(0);
+    expect(spellPresentationMs(plan)).toBeGreaterThan(0);
+  });
+
+  it("does not key the extra-die paralysis variants (they share their id with a roll announce)", () => {
+    // basilisk-paralysis (extra roll) and medusa-paralyze-retaliation-die emit a
+    // "rolls X" event under the same id, so a plan there would flash the freeze
+    // before any paralysis lands. Left unwired until the engine splits that id.
+    expect(abilityFxPlans["basilisk-paralysis"]).toBeUndefined();
+    expect(abilityFxPlans["medusa-paralyze-retaliation-die"]).toBeUndefined();
+  });
+});
+
+describe("Faerie Dragon Ice Bolt animates as a flying cast (presented before the move)", () => {
+  it("flies an Ice Bolt projectile from the dragon to the target, then bursts", () => {
+    // The FX builder presents this cast as a PROJECTILE preamble before the
+    // dragon glides (page.tsx). So the plan must carry a real projectile + hit +
+    // sounds, or the cast would be silent / have nothing to lead the move with.
+    const plan = abilityFxPlans["faerie-dragon-spell"];
+    expect(plan, "faerie-dragon-spell needs an ability FX plan").toBeTruthy();
+    expect(plan.projectile).toBe("ice-bolt-projectile-0");
+    expect(spriteDurationMs(plan.projectile)).toBeGreaterThan(0);
+    expect(plan.hit).toBe("ice-bolt-hit");
+    expect(spriteDurationMs(plan.hit)).toBeGreaterThan(0);
+    expect(plan.sound).toBe("spells/ice-bolt");
+    expect(soundDurationMs(plan.sound)).toBeGreaterThan(0);
+    // A real, non-zero gate: the preamble shifts the move + dice by this much, so
+    // a zero here would let the dragon glide on top of its own cast.
+    expect(spellPresentationMs(plan)).toBeGreaterThan(0);
+  });
+});
+
+describe("war-machine ABILITY cards carry their own shot / heal cue", () => {
+  it("the First Aid ability card heals with the Cure shimmer + chime (like the Tent)", () => {
+    // Its basic side removes 1 damage; the heal logs DAMAGE_HEALED with the card
+    // as the source, so healFxPlans answers it the same way the Tent's heal is.
+    const plan = healFxPlans["ability.first_aid"];
+    expect(plan, "First Aid ability card needs a heal FX plan").toBeTruthy();
+    expect(plan.affect?.[0]?.key).toBe("cure");
+    expect(spriteDurationMs(plan.affect?.[0]?.key)).toBeGreaterThan(0);
+    expect(plan.sound).toBe("spells/cure");
+    expect(soundDurationMs(plan.sound)).toBeGreaterThan(0);
+    expect(spellPresentationMs(plan)).toBeGreaterThan(0);
+  });
+
+  it("the Artillery ability card fires a real Ballista shot", () => {
+    // Its basic side damages the lowest-initiative enemy; the shot rides the
+    // DAMAGE_ASSIGNED (source = the card) with the H3 Ballista report, just
+    // before the struck unit's hurt cry — a real measured clip, with a gate so
+    // the hit waits for the report.
+    const plan = cardShotFxPlans["ability.artillery"];
+    expect(plan, "Artillery ability card needs a shot FX plan").toBeTruthy();
+    expect(plan.sound).toBe("units/ballista-shoot");
+    expect(soundDurationMs(plan.sound)).toBeGreaterThan(0);
+    expect(spellPresentationMs(plan)).toBeGreaterThan(0);
   });
 });
 

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { GameState } from "@/engine";
-import { getRoomSnapshot, resetRoom, restoreRoom, type RoomResetOptions } from "@/server/game-room-store";
+import { closeRoom, getRoomSnapshot, resetRoom, restoreRoom, type RoomResetOptions } from "@/server/game-room-store";
 
 export const dynamic = "force-dynamic";
 
@@ -38,4 +38,20 @@ export async function POST(request: Request, context: RoomContext) {
   }
 
   return NextResponse.json(getRoomSnapshot(decodeURIComponent(roomId)));
+}
+
+/**
+ * Close (delete) a room for everyone. The caller's `actorClientId` (query or
+ * JSON body) is checked against the room's host / membership in closeRoom, so a
+ * non-host cannot delete a hosted room. Returns `{ closed, reason? }`.
+ */
+export async function DELETE(request: Request, context: RoomContext) {
+  const { roomId } = await context.params;
+  const url = new URL(request.url);
+  const fromQuery = url.searchParams.get("actorClientId") ?? undefined;
+  const body = (await request.json().catch(() => null)) as { actorClientId?: string } | null;
+  const actorClientId = typeof body?.actorClientId === "string" ? body.actorClientId : fromQuery;
+
+  const result = closeRoom(decodeURIComponent(roomId), actorClientId);
+  return NextResponse.json(result, { status: result.closed ? 200 : 403 });
 }

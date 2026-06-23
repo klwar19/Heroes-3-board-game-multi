@@ -2023,6 +2023,81 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     source: stretchGoalPcPortraitHeroSource("sephinroth", "Sephinroth")
   },
 
+  // ---- Additional heroes, batch 6 ---------------------------------------
+  // The remaining fan-wiki heroes (minus Tarnum Conflux): Octavia (Inferno) and
+  // Melodia (Rampart) are economic Resource-die / Fortune specialists; the
+  // Rampart & Fortress Tarnum variants follow below. Placeholder-art wiki heroes,
+  // so each ships its classic PC portrait and face-less specialty cards. Every
+  // I/IV/VI specialty runs in the engine (extra-heroes-batch6-specialties.test.ts).
+  octavia: {
+    id: "octavia",
+    name: "Octavia",
+    faction: "inferno",
+    class: "Demoniac",
+    type: "might",
+    startingStats: { attack: 2, defense: 2, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.scholar",
+    specialtyCardIds: {
+      1: "specialty.octavia.1",
+      4: "specialty.octavia.4",
+      6: "specialty.octavia.6"
+    },
+    portrait: "/assets/hero_portraits-octavia.webp",
+    source: stretchGoalPcPortraitHeroSource("octavia", "Octavia")
+  },
+  melodia: {
+    id: "melodia",
+    name: "Melodia",
+    faction: "rampart",
+    class: "Druid",
+    type: "magic",
+    startingStats: { attack: 0, defense: 2, power: 1, knowledge: 2 },
+    startingAbilityCardId: "ability.luck",
+    specialtyCardIds: {
+      1: "specialty.melodia.1",
+      4: "specialty.melodia.4",
+      6: "specialty.melodia.6"
+    },
+    portrait: "/assets/hero_portraits-melodia.webp",
+    source: stretchGoalPcPortraitHeroSource("melodia", "Melodia")
+  },
+  // Tarnum (Rampart): the Ranger variant — the Sharpshooters specialist. Its own
+  // class portrait (heroes.thelazy.net Tarnum (Ranger)).
+  tarnum_rampart: {
+    id: "tarnum_rampart",
+    name: "Tarnum",
+    faction: "rampart",
+    class: "Ranger",
+    type: "might",
+    startingStats: { attack: 1, defense: 3, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.leadership",
+    specialtyCardIds: {
+      1: "specialty.tarnum_rampart.1",
+      4: "specialty.tarnum_rampart.4",
+      6: "specialty.tarnum_rampart.6"
+    },
+    portrait: "/assets/hero_portraits-tarnum_ranger.webp",
+    source: stretchGoalPcPortraitHeroSource("tarnum_rampart", "Tarnum (Ranger)")
+  },
+  // Tarnum (Fortress): the Beastmaster variant — the Basilisks specialist. Its own
+  // class portrait (heroes.thelazy.net Tarnum (Beastmaster)).
+  tarnum_fortress: {
+    id: "tarnum_fortress",
+    name: "Tarnum",
+    faction: "fortress",
+    class: "Beastmaster",
+    type: "might",
+    startingStats: { attack: 0, defense: 4, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.armorer",
+    specialtyCardIds: {
+      1: "specialty.tarnum_fortress.1",
+      4: "specialty.tarnum_fortress.4",
+      6: "specialty.tarnum_fortress.6"
+    },
+    portrait: "/assets/hero_portraits-tarnum_beastmaster.webp",
+    source: stretchGoalPcPortraitHeroSource("tarnum_fortress", "Tarnum (Beastmaster)")
+  },
+
   // ---- Cove (expansion) --------------------------------------------------
   // Roster, classes, starting stats and specialties from the fan wiki Cove hero
   // pages (Navigator = magic, Captain = might). No printed board art on the wiki
@@ -2169,7 +2244,7 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     name: "Rampart",
     color: "#2e9e57",
     startingTileId: "S4",
-    heroes: ["gelu", "gem", "clancy", "mephala", "ivor"],
+    heroes: ["gelu", "gem", "clancy", "mephala", "ivor", "melodia", "tarnum_rampart"],
     buildings: buildingsOfFaction("rampart"),
     units: unitsOfFaction("rampart"),
     townImage: "/assets/towns-rampart-empty.webp",
@@ -2180,7 +2255,7 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     name: "Inferno",
     color: "#e07020",
     startingTileId: "S6",
-    heroes: ["xyron", "rashka", "zydar", "fiona", "ash"],
+    heroes: ["xyron", "rashka", "zydar", "fiona", "ash", "octavia"],
     buildings: buildingsOfFaction("inferno"),
     units: unitsOfFaction("inferno"),
     townImage: "/assets/towns-inferno-empty.webp",
@@ -2236,7 +2311,7 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     name: "Fortress",
     color: "#6b8e23",
     startingTileId: "S5",
-    heroes: ["bron", "wystan", "tazar", "adrienne", "merist", "gerwulf"],
+    heroes: ["bron", "wystan", "tazar", "adrienne", "merist", "gerwulf", "tarnum_fortress"],
     buildings: buildingsOfFaction("fortress"),
     units: unitsOfFaction("fortress"),
     source: townSource("fortress")

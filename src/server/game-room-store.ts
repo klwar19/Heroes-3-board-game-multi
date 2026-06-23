@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -8,6 +8,7 @@ import {
   createInitialGameState,
   ENGINE_SIGNATURE,
   ensureUniqueArmyUnitIds,
+  MAX_ROOM_NAME_LENGTH,
   type AdventurePlayerConfig,
   type EngineResult,
   type GameAction,
@@ -15,11 +16,34 @@ import {
   type GameMode,
   type GameState
 } from "@/engine";
+import {
+  deriveLobbyRecord,
+  isStaleRecord,
+  toDirectoryEntry as toLobbyDirectoryEntry,
+  type LobbyRoomRecord,
+  type RoomDirectoryEntry
+} from "@/server/lobby-registry";
+
+// The lobby directory's derivation, per-viewer canClose, stale-room TTL, and
+// directory-entry shape live in the shared, isomorphic lobby-registry so the
+// built-in store and the PartyKit edge present an IDENTICAL lobby. Re-exported
+// here for back-compat with existing importers/tests.
+export { STALE_ROOM_TTL_MS } from "@/server/lobby-registry";
+export type { RoomDirectoryEntry };
 
 export type GameRoomSnapshot = {
   roomId: string;
   version: number;
   updatedAt: string;
+  /** When the room was first created (ISO). Used to sort/age rooms in the lobby. */
+  createdAt?: string;
+  /** Display name of whoever created the room (lobby attribution only). */
+  createdByName?: string;
+  /**
+   * Set on the final frame a closed room broadcasts: every connected client
+   * drops back to the lobby instead of silently freezing on a deleted room.
+   */
+  closed?: boolean;
   state: GameState;
   /**
    * Identity of the server store that produced this snapshot. When the
@@ -38,6 +62,13 @@ export type RoomResetOptions = {
   difficulty?: GameDifficulty;
   scenarioId?: string;
   players?: AdventurePlayerConfig[];
+};
+
+export type RoomCreateOptions = RoomResetOptions & {
+  /** A chosen room name (seeded into `state.room.name`). */
+  name?: string;
+  /** Display name of the creator (lobby attribution only). */
+  createdByName?: string;
 };
 
 type GameRoomRecord = GameRoomSnapshot;
@@ -134,7 +165,7 @@ export function subscribeToRoom(roomId: string, listener: RoomListener): () => v
   };
 }
 
-function makeRoom(roomId: string, options: RoomResetOptions = {}): GameRoomRecord {
+function makeRoom(roomId: string, options: RoomCreateOptions = {}): GameRoomRecord {
   // Add a fresh nonce so each created/reset room rolls a new deterministic die
   // sequence instead of replaying the same rolls every game. The seed is stored
   // in the state, so the server stays authoritative and every client agrees.
@@ -142,23 +173,35 @@ function makeRoom(roomId: string, options: RoomResetOptions = {}): GameRoomRecor
   const seed = `room-${roomId}-${nonce}`;
   const mode = options.mode ?? "adventure";
 
+  const now = new Date().toISOString();
+  const state =
+    mode === "combat-sandbox"
+      ? createInitialGameState(seed)
+      : options.players?.length
+        ? createAdventureGameState({
+            seed,
+            difficulty: options.difficulty,
+            scenarioId: options.scenarioId,
+            players: options.players
+          })
+        : // New adventure rooms open in the map-setup lobby: players pick
+          // factions and heroes, then the scenario map builds itself.
+          createAdventureLobbyState({ seed, scenarioId: options.scenarioId });
+
+  // A name chosen at creation seeds an (open) room membership record so the
+  // lobby shows it before anyone joins; JOIN_ROOM then fills in members.
+  const name = options.name?.trim().slice(0, MAX_ROOM_NAME_LENGTH);
+  if (name) {
+    state.room = { hosted: false, hostClientId: null, members: [], name };
+  }
+
   return {
     roomId,
     version: 1,
-    updatedAt: new Date().toISOString(),
-    state:
-      mode === "combat-sandbox"
-        ? createInitialGameState(seed)
-        : options.players?.length
-          ? createAdventureGameState({
-              seed,
-              difficulty: options.difficulty,
-              scenarioId: options.scenarioId,
-              players: options.players
-            })
-          : // New adventure rooms open in the map-setup lobby: players pick
-            // factions and heroes, then the scenario map builds itself.
-            createAdventureLobbyState({ seed, scenarioId: options.scenarioId })
+    createdAt: now,
+    updatedAt: now,
+    ...(options.createdByName ? { createdByName: options.createdByName.trim().slice(0, 40) } : {}),
+    state
   };
 }
 
@@ -210,9 +253,17 @@ export function resetRoom(roomId: string, options: RoomResetOptions = {}): GameR
   const existing = roomStore.get(roomId) ?? loadPersistedRoom(roomId);
   const reset = makeRoom(roomId, options);
   reset.version = (existing?.version ?? 0) + 1;
-  // Carry room membership (host, seats, observers) across a game reset so the
-  // table does not have to re-host and re-seat after "New adventure".
+  // Carry room membership (host, seats, observers, name) across a game reset so
+  // the table does not have to re-host, re-seat, or re-name after "New adventure".
   reset.state.room = existing?.state.room ?? null;
+  // A reset is the SAME room continuing, so keep its original creation stamp and
+  // creator attribution rather than re-minting them.
+  if (existing?.createdAt) {
+    reset.createdAt = existing.createdAt;
+  }
+  if (existing?.createdByName) {
+    reset.createdByName = existing.createdByName;
+  }
   roomStore.set(roomId, reset);
   persistRoom(reset);
   const snapshot = withBootId(cloneSerializable(reset));
@@ -248,6 +299,9 @@ export function restoreRoom(roomId: string, state: GameState): GameRoomSnapshot 
   const next: GameRoomRecord = {
     roomId,
     version: current.version + 1,
+    // Recovery is the same room continuing — keep its creation identity.
+    ...(current.createdAt ? { createdAt: current.createdAt } : {}),
+    ...(current.createdByName ? { createdByName: current.createdByName } : {}),
     updatedAt: new Date().toISOString(),
     state
   };
@@ -277,6 +331,9 @@ export function submitRoomAction(
   const next: GameRoomRecord = {
     roomId,
     version: current.version + 1,
+    // Keep the room's identity (creation stamp / creator) across every action.
+    ...(current.createdAt ? { createdAt: current.createdAt } : {}),
+    ...(current.createdByName ? { createdByName: current.createdByName } : {}),
     updatedAt: new Date().toISOString(),
     state: result.state
   };
@@ -289,4 +346,157 @@ export function submitRoomAction(
     snapshot,
     result
   };
+}
+
+// ---------------------------------------------------------------------------
+// Lobby directory: list rooms, create a named room, and close (delete) one.
+// ---------------------------------------------------------------------------
+
+/** Reads every persisted room record off disk (best effort, skips junk files). */
+function readPersistedRecords(): GameRoomRecord[] {
+  try {
+    if (!existsSync(persistDir)) {
+      return [];
+    }
+    const records: GameRoomRecord[] = [];
+    for (const file of readdirSync(persistDir)) {
+      if (!file.endsWith(".json")) {
+        continue;
+      }
+      try {
+        const record = JSON.parse(readFileSync(join(persistDir, file), "utf8")) as GameRoomRecord;
+        if (record?.roomId && record.state) {
+          records.push(record);
+        }
+      } catch {
+        // Ignore a corrupt/partial file; it just won't list.
+      }
+    }
+    return records;
+  } catch {
+    return [];
+  }
+}
+
+function deletePersistedRoom(roomId: string): void {
+  try {
+    const path = roomFilePath(roomId);
+    if (existsSync(path)) {
+      unlinkSync(path);
+    }
+  } catch {
+    // Best effort — a read-only FS keeps the in-memory delete only.
+  }
+}
+
+/** Summarises a stored room into the shared lobby record (one per backend). */
+function lobbyRecordOf(record: GameRoomRecord): LobbyRoomRecord {
+  return deriveLobbyRecord({
+    roomId: record.roomId,
+    state: record.state,
+    createdAt: record.createdAt ?? record.updatedAt,
+    updatedAt: record.updatedAt,
+    createdByName: record.createdByName ?? null
+  });
+}
+
+/** True when nobody is a member AND the room has been idle past the TTL. */
+function isStaleRoom(record: GameRoomRecord): boolean {
+  return isStaleRecord(lobbyRecordOf(record));
+}
+
+function toDirectoryEntry(record: GameRoomRecord, viewerClientId?: string): RoomDirectoryEntry {
+  return toLobbyDirectoryEntry(lobbyRecordOf(record), viewerClientId);
+}
+
+/**
+ * The lobby room list. Merges in-memory rooms with any only on disk (after a
+ * host recycle), prunes empty rooms idle past the TTL, and returns the rest
+ * newest-activity first.
+ */
+export function listRooms(viewerClientId?: string): RoomDirectoryEntry[] {
+  const records = new Map<string, GameRoomRecord>();
+  for (const [roomId, record] of roomStore) {
+    records.set(roomId, record);
+  }
+  for (const record of readPersistedRecords()) {
+    if (!records.has(record.roomId)) {
+      records.set(record.roomId, record);
+    }
+  }
+
+  const entries: RoomDirectoryEntry[] = [];
+  for (const record of records.values()) {
+    if (isStaleRoom(record)) {
+      // Garbage-collect the abandoned room as we list.
+      roomStore.delete(record.roomId);
+      deletePersistedRoom(record.roomId);
+      continue;
+    }
+    entries.push(toDirectoryEntry(record, viewerClientId));
+  }
+
+  return entries.sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
+}
+
+/** Generates a short, URL-friendly room id. */
+function randomRoomId(): string {
+  return `room-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/**
+ * Creates a brand-new room with an optional name + creator attribution. When no
+ * roomId is given a fresh random one is minted (retried on the rare collision).
+ * Returns the created room's snapshot.
+ */
+export function createRoom(options: RoomCreateOptions & { roomId?: string } = {}): GameRoomSnapshot {
+  let roomId = options.roomId?.trim() || randomRoomId();
+  // Never silently overwrite an existing room: mint a new id on collision when
+  // the caller did not pin one, otherwise return the existing room untouched.
+  if (roomStore.has(roomId) || loadPersistedRoom(roomId)) {
+    if (options.roomId) {
+      return getRoomSnapshot(roomId);
+    }
+    for (let attempt = 0; attempt < 5 && (roomStore.has(roomId) || loadPersistedRoom(roomId)); attempt += 1) {
+      roomId = randomRoomId();
+    }
+  }
+
+  const record = makeRoom(roomId, options);
+  roomStore.set(roomId, record);
+  persistRoom(record);
+  return withBootId(cloneSerializable(record));
+}
+
+export type CloseRoomResult = { closed: boolean; reason?: string };
+
+/**
+ * Deletes a room for everyone. In a hosted room only the host may close it; in
+ * an open table any current member may (and, when the room has no members at
+ * all, anyone — there is no one to protect). Connected clients receive one
+ * final `closed` snapshot so they drop back to the lobby. Idempotent: closing a
+ * room that is already gone succeeds.
+ */
+export function closeRoom(roomId: string, actorClientId?: string): CloseRoomResult {
+  const record = roomStore.get(roomId) ?? loadPersistedRoom(roomId);
+  if (!record) {
+    return { closed: true };
+  }
+
+  const room = record.state.room ?? null;
+  const members = room?.members ?? [];
+  if (room?.hosted) {
+    if (!actorClientId || room.hostClientId !== actorClientId) {
+      return { closed: false, reason: "Only the host can close this room." };
+    }
+  } else if (members.length > 0 && actorClientId && !members.some((m) => m.clientId === actorClientId)) {
+    return { closed: false, reason: "Join the room before closing it." };
+  }
+
+  roomStore.delete(roomId);
+  deletePersistedRoom(roomId);
+  // Tell everyone still connected that the room is gone (last frame on the
+  // stream), then they unsubscribe and return to the lobby.
+  notifyRoomListeners(roomId, withBootId({ ...cloneSerializable(record), closed: true }));
+  return { closed: true };
 }
