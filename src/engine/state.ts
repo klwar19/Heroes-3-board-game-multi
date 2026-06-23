@@ -748,6 +748,15 @@ export type EffectDefinition =
       selfStatPenalty?: { stat: "attack" | "defense"; amount: number };
       /** Bloodlust/Golden Bow: only these unit types may receive the bonus. */
       unitTypes?: UnitType[];
+      /**
+       * Shield (the INSTANT defense buff): the bonus applies only when the
+       * ATTACKER is of this unit type — "ground-or-flying" (Shield) bites any
+       * non-ranged attacker, "ranged" any ranged one. Gated on the attacker's
+       * type, NOT the buffed unit's (that is `unitTypes`), so the instant is
+       * offered/applied only on a matching attack. Air Shield's whole-Combat
+       * version is a CREATE_DEFENSE_BUFF `vsAttackerType` instead.
+       */
+      vsAttackerType?: "ground-or-flying" | "ranged";
       /** Precision: the shot also ignores the ranged combat penalty. */
       ignoreRangedPenalty?: boolean;
       /** Hero specialties: the bonus doubles when the named unit is involved. */

@@ -1351,13 +1351,16 @@ export const spellCards: CardLibrary = {
   // space's obstacle tokens. The reachable UNIT grade rises with the Power paid
   // (0 → bronze, 1 → silver, 2 → gold), like Anti-Magic / Blind; obstacle tokens
   // carry no grade, so a space-targeted Dispel removes them at any Power. See
-  // DISPEL_EFFECTS in the reducer.
+  // DISPEL_EFFECTS in the reducer. Per the verbatim wiki card Dispel is an
+  // INSTANT (instant speed — castable off-turn / between actions, not only during
+  // your own unit's activation), so timing is "instant", matching Stone Skin /
+  // Counterstrike rather than an Activation cast.
   "spell.dispel": {
     id: "spell.dispel",
     name: "Dispel",
     kind: "spell",
-    timing: "combat",
-    phaseLimit: ["combat"],
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
     spellLevel: "basic",
     spellSchools: ["water"],
     power: 0,
@@ -1412,35 +1415,45 @@ export const spellCards: CardLibrary = {
     implementationStatus: "implemented",
     source: spellSource("frenzy")
   },
-  // Shield (Basic Earth, Tower Expansion): an Ongoing buff cast on a friendly
-  // unit during your activation — until the end of the Combat it gains Defense,
-  // but only against a ground or flying attacker (a ranged unit's shot is
-  // unaffected; that is Air Shield's job). Power 0/1/2 -> +1/+2/+3 Defense. The
-  // conditional bonus is read in getAttackerTypeDefenseBonus during the attack
-  // maths. The "OR Instant: +1 Power" side is the universal power-source discard.
+  // Shield (Basic Earth, Tower Expansion) — per the verbatim wiki card this is an
+  // INSTANT, not an Ongoing buff: "The defending unit gains +1/+2/+3 defense
+  // against a ground or flying unit." (No "until the end of the Combat" — the
+  // earlier Ongoing/CREATE_DEFENSE_BUFF wiring, and the "Ongoing: Until the end of
+  // the Combat" card text, were a transcription error.) So Shield is the
+  // melee/flying counterpart of Stone Skin: played in REACTION to one of your
+  // units being attacked, raising its Defense for THAT attack only, and ONLY when
+  // the attacker is a ground or flying unit (a ranged shot is unaffected — standing
+  // protection vs ranged is Air Shield's separate Ongoing job). Power 0/1/2 ->
+  // +1/+2/+3, scaling with the Power pooled into the attack window like every other
+  // instant stat buff. The attacker-type gate lives in the reaction offer
+  // (`vsAttackerType` in getLegalReactionsForTrigger). The "OR Instant: +1 Power"
+  // side is the universal power-source discard.
   "spell.shield": {
     id: "spell.shield",
     name: "Shield",
     kind: "spell",
-    timing: "combat",
-    phaseLimit: ["combat"],
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
     spellLevel: "basic",
     spellSchools: ["earth"],
     tags: [
       "spell",
       "basic",
       "earth",
-      "Ongoing: Until the end of the Combat, the selected unit gains, when it is attacked by a ground or flying unit: Power 0: +1 defense; Power 1: +2 defense; Power 2: +3 defense. — OR — Instant: +1 Power."
+      "Instant: The defending unit gains, when it is attacked by a ground or flying unit: Power 0: +1 defense; Power 1: +2 defense; Power 2: +3 defense. — OR — Instant: +1 Power."
     ],
     power: 0,
-    target: { type: "friendly-unit" },
+    // Played when one of your units is attacked (the defender is the "selected
+    // unit", like Stone Skin); gated to ground/flying attackers by vsAttackerType.
+    trigger: {
+      event: "UNIT_ATTACK_DECLARED",
+      controller: "opponent"
+    },
     effect: {
-      type: "CREATE_DEFENSE_BUFF",
-      name: "Shield",
+      type: "ADD_COMBAT_STAT",
+      stat: "defense",
+      amount: 1,
       amountByPower: { 0: 1, 1: 2, 2: 3 },
-      duration: { type: "combat" },
-      polarity: "positive",
-      removable: true,
       vsAttackerType: "ground-or-flying"
     },
     assets: {
