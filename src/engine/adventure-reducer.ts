@@ -107,7 +107,13 @@ import {
 import { drawCardsForPlayer, shuffleCards } from "./decks";
 import { getCombatStartDraws } from "./unit-abilities";
 import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
-import { applyPermanentCombatEffects, resolveWarMachineOption, startWarMachineRound } from "./permanents";
+import {
+  applyPermanentCombatEffects,
+  discardPermanentFromPlay,
+  getPermanentCardIds,
+  resolveWarMachineOption,
+  startWarMachineRound
+} from "./permanents";
 import { seedRunesForCombat } from "./runes";
 import {
   activeSchoolFetches,
@@ -6164,6 +6170,31 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     return;
   }
 
+  if (choice.context === "pandora-upkeep") {
+    const player = state.players[action.playerId];
+    state.pendingChoice = null;
+    state.phase = choice.returnPhase;
+    state.priorityPlayerId = null;
+    // Mark the upkeep paid for this turn either way, so ending the turn again
+    // does not re-open the choice; the flag clears at the next turn start.
+    if (player) {
+      player.pandoraUpkeepResolvedThisTurn = true;
+    }
+    if (action.optionIndex === 0) {
+      // Remove the upkeep permanent from play (to the discard pile).
+      const cardId = getPermanentCardIds(state, action.playerId).find(
+        (id) => cardLibrary[id]?.permanentEffect?.endTurnUpkeep === "remove-or-negative-morale"
+      );
+      if (cardId) {
+        discardPermanentFromPlay(state, action.playerId, cardId);
+      }
+    } else {
+      // Keep the card; take a Negative Morale token instead.
+      changeMorale(state, action.playerId, -1);
+    }
+    return;
+  }
+
   if (choice.context === "city-hall") {
     // Options are carried in the pending choice (game state), so the pick stays
     // resolvable across a reload/reconnect.
@@ -6397,9 +6428,46 @@ function queueNomadEndTurnMove(state: GameState, playerId: PlayerId): boolean {
   return true;
 }
 
+/**
+ * Pandora's Bargain: Power — "at the end of your turn, remove this card OR
+ * gain Negative Morale." Opens that choice when the player holds the upkeep
+ * permanent in play and has not yet resolved it this turn; returns true (which
+ * halts END_TURN until the choice is made). Choosing Negative Morale keeps the
+ * card and sets `pandoraUpkeepResolvedThisTurn` so the turn can then end.
+ */
+function queuePandoraUpkeep(state: GameState, playerId: PlayerId): boolean {
+  const player = state.players[playerId];
+  if (!player || player.pandoraUpkeepResolvedThisTurn) {
+    return false;
+  }
+  const hasUpkeep = getPermanentCardIds(state, playerId).some(
+    (cardId) => cardLibrary[cardId]?.permanentEffect?.endTurnUpkeep === "remove-or-negative-morale"
+  );
+  if (!hasUpkeep) {
+    return false;
+  }
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId,
+    prompt: "Pandora's Bargain: Power — end of turn upkeep",
+    options: [{ label: "Remove this card" }, { label: "Gain Negative Morale (keep the card)" }],
+    context: "pandora-upkeep",
+    returnPhase: "player-turn"
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = playerId;
+  return true;
+}
+
 export function endTurnAdventure(state: GameState, action: Extract<GameAction, { type: "END_TURN" }>): void {
   assertActiveTurn(state, action.playerId);
   assertNoPendingInput(state);
+
+  // Pandora's Bargain: Power — pay its end-of-turn upkeep before the turn ends.
+  if (queuePandoraUpkeep(state, action.playerId)) {
+    return;
+  }
 
   // Logistics (basic) and Nomads (army map ability): "At the end of your turn,
   // move your Hero's model to an adjacent empty field." Each opens its own

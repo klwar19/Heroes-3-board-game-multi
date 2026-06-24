@@ -65,6 +65,7 @@ import {
   firstAidVolleyHeals,
   getPermanentCardIds,
   getPermanentSchoolBonus,
+  permanentSpellPowerBonus,
   playerCanUseFirstAidVolley,
   warMachinesForSale
 } from "./permanents";
@@ -210,6 +211,8 @@ export function standingSpellPower(state: GameState, playerId: PlayerId, card: C
   if (school) {
     bonus += school.basicPower;
   }
+  // Pandora's Bargain: Power — a flat +Power on every spell while in play.
+  bonus += permanentSpellPowerBonus(state, playerId);
   return bonus;
 }
 

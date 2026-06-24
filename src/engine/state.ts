@@ -877,6 +877,26 @@ export type EffectDefinition =
     }
   | { type: "GAIN_MORALE"; amount: number; expertDrawCards?: number }
   | {
+      /**
+       * Pandora's Gift: Income — "Roll 1 Resource die and increase the income of
+       * the corresponding resource by 1 tier." A map play: rolls one Resource die
+       * (seeded) and raises the rolled resource's production by one resource-gain
+       * level (+5 gold / +2 materials / +1 valuables).
+       */
+      type: "RAISE_INCOME_BY_DIE";
+    }
+  | {
+      /**
+       * Pandora's Gift: Recruits — "Draw `count` cards from the Neutral Unit deck.
+       * You may Recruit one of them for half its recruit cost (rounded up)." A map
+       * play: draws `count` units from the `tier` Neutral deck, offers a one-of pick
+       * at half cost, and returns the cards not recruited to that deck's discard.
+       */
+      type: "DRAW_NEUTRAL_RECRUIT_OFFER";
+      count: number;
+      tier: "bronze" | "silver" | "gold" | "azure";
+    }
+  | {
       /** Estates, gold/resource artifacts: gain resources immediately. */
       type: "GAIN_RESOURCES";
       gain: ResourceCost;
@@ -2153,6 +2173,19 @@ export type PermanentEffectDefinition = {
   permanentLimitOverride?: number;
   /** Pandora's Box "Your hand is increased by 1" while the card is in play. */
   handLimitBonus?: number;
+  /**
+   * Pandora's Bargain: Power — a flat bonus added to the Power of EVERY spell
+   * the owner casts while the card is in play (folded into both the cast-time
+   * power in getCurrentSpellPower AND the affordability/preview power in
+   * standingSpellPower, so it is never display-only).
+   */
+  spellPowerBonus?: number;
+  /**
+   * Pandora's Bargain: Power — "at the end of your turn, remove this card OR
+   * gain Negative Morale." While the card is in play, ending the turn first
+   * opens this upkeep choice (see queuePandoraUpkeep in adventure-reducer).
+   */
+  endTurnUpkeep?: "remove-or-negative-morale";
 };
 
 export type CardOptionDefinition = {
@@ -4484,6 +4517,12 @@ export type PlayerState = {
   /** Second negative morale token: the hand is discarded when the turn ends. */
   discardHandAtTurnEnd?: boolean;
   /**
+   * Pandora's Bargain: Power — set once its end-of-turn upkeep has been paid
+   * (the player chose Negative Morale, keeping the card) so END_TURN does not
+   * re-offer the choice. Reset at the start of each of the player's turns.
+   */
+  pandoraUpkeepResolvedThisTurn?: boolean;
+  /**
    * Opening free-rotation of this player's faction Ⅰ (starting) tile. A
    * tri-state: `undefined` means the feature is off for this game (deterministic
    * test fixtures); `false` means the rotation is still owed — the start of the
@@ -5597,6 +5636,17 @@ export type VisitStep =
       unitDefId: string;
     }
   | {
+      /**
+       * Pandora's Gift: Recruits — resolve the draw-3 offer. `drawn` are all the
+       * units revealed; when `recruit` is set that one is recruited at half its
+       * cost (rounded up). Every drawn unit NOT recruited returns to its tier's
+       * Neutral discard pile.
+       */
+      type: "NEUTRAL_RECRUIT_RESOLVE";
+      drawn: string[];
+      recruit?: string;
+    }
+  | {
       /** Saplings / settlement perks: reinforce with only the gold halved. */
       type: "REINFORCE_HALF_GOLD";
       armyUnitId: string;
@@ -6143,6 +6193,7 @@ export type PendingChoice =
         | "visions-boost"
         | "visions-deck"
         | "visions-scry"
+        | "pandora-upkeep"
         | "place-creature-bank";
       /**
        * city-hall: the income options for the City Hall (Resource-round) choice
