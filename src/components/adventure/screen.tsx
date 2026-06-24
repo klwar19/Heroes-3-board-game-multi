@@ -68,7 +68,8 @@ import {
   TILE_BACK_IMAGES
 } from "@/data/assets/homm-assets";
 import { CARD_BACK_IMAGES, getDeckBack } from "@/data/decks";
-import { actionKey, cardName, formatCost, setUnitDragImage, titleCase } from "@/components/table/utils";
+import { actionKey, cardName, formatCost, titleCase } from "@/components/table/utils";
+import { beginUnitPointerDrag } from "@/components/table/pointer-drag";
 import { useCardZoom } from "@/components/table/zoom";
 import { listSavedMaps, type SavedMapRecord } from "@/lib/saved-maps";
 
@@ -3137,9 +3138,6 @@ export function PreBattlePanel({
 // Combat deployment panel: drag units onto the board (click still works)
 // ---------------------------------------------------------------------------
 
-/** dataTransfer payload type for dragging an army unit onto the board. */
-export const ARMY_UNIT_DRAG_TYPE = "application/x-h3-army-unit";
-
 export function PlacementPanel({
   state,
   viewerPlayerId,
@@ -3218,11 +3216,11 @@ export function PlacementPanel({
           const portrait = def?.[unit.side]?.cardImage;
           const isPlaced = placed.includes(unit.id);
           const canPlace = placeActions.some((legal) => legal.action.armyUnitId === unit.id);
+          const canDrag = canPlace || isPlaced;
           return (
             <button
-              className={`placementUnit ${selectedUnitId === unit.id ? "selected" : ""} ${isPlaced ? "placed" : ""}`}
+              className={`placementUnit ${canDrag ? "unitDraggable" : ""} ${selectedUnitId === unit.id ? "selected" : ""} ${isPlaced ? "placed" : ""}`}
               disabled={!canPlace && !isPlaced}
-              draggable={canPlace || isPlaced}
               key={unit.id}
               onClick={() => {
                 if (isPlaced) {
@@ -3236,11 +3234,18 @@ export function PlacementPanel({
                 }
                 setSelectedUnitId(selectedUnitId === unit.id ? null : unit.id);
               }}
-              onDragStart={(event) => {
-                event.dataTransfer.setData(ARMY_UNIT_DRAG_TYPE, unit.id);
-                event.dataTransfer.effectAllowed = "move";
-                // Drag a small portrait of the unit so it's clear what's moving.
-                setUnitDragImage(event, portrait);
+              onPointerDown={(event) => {
+                if (!canDrag) {
+                  return;
+                }
+                // Pointer-based drag works on touch + mouse + pen alike (the old
+                // HTML5 native drag was mouse-only). A short press still falls
+                // through to onClick (select / take back).
+                beginUnitPointerDrag(event, {
+                  portraitUrl: portrait,
+                  onDrop: (position) =>
+                    onAction({ type: "PLACE_COMBAT_UNIT", playerId: viewerPlayerId, armyUnitId: unit.id, position })
+                });
               }}
               title={isPlaced ? "Drag to another space, or click to take back" : "Drag onto your two rows (or click, then pick a space)"}
               type="button"

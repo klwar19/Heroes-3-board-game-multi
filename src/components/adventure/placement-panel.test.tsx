@@ -9,10 +9,19 @@ afterEach(cleanup);
 /**
  * The combat deployment panel lives in its own sidebar to the right of the
  * board. These tests pin the behaviour that makes that sidebar useful: every
- * army unit renders as a draggable tile (drag-to-deploy), and the lock-in /
- * Ready button is present. They fail if the drag wiring or the finish button
- * is dropped.
+ * army unit renders as a (pointer-)draggable tile that drops a placement on the
+ * battlefield, and the lock-in / Ready button is present. They fail if the drag
+ * wiring or the finish button is dropped.
+ *
+ * The drag is pointer-based, not the old mouse-only HTML5 DnD, so it works on
+ * touch devices too (see pointer-drag.ts / pointer-drag.test.ts for the drag
+ * engine itself; here we prove the panel is wired to it).
  */
+function firePointer(type: "pointermove" | "pointerup", x: number, y: number): void {
+  const event = new Event(type);
+  Object.assign(event, { clientX: x, clientY: y, isPrimary: true, button: 0 });
+  window.dispatchEvent(event);
+}
 function deployState(): GameState {
   const base = createInitialGameState("placement-panel-test");
   if (!base.combat) {
@@ -71,17 +80,18 @@ describe("PlacementPanel — deploy sidebar", () => {
 
     const tiles = container.querySelectorAll(".placementUnit");
     expect(tiles).toHaveLength(2);
-    // Both placeable tiles are draggable so they can be dropped on the board.
+    // Both placeable tiles carry the draggable affordance so they can be
+    // dragged onto the board (touch + mouse).
     for (const tile of Array.from(tiles)) {
-      expect(tile.getAttribute("draggable")).toBe("true");
+      expect(tile.classList.contains("unitDraggable")).toBe(true);
     }
 
     expect(getByText("Ready for battle")).toBeTruthy();
     expect(container.querySelector(".combatReadyButton")).toBeTruthy();
   });
 
-  it("carries the army unit id on dragstart so the board can place it", () => {
-    const onAction = vi.fn();
+  it("deploys the dragged army unit onto the battlefield cell it is dropped on", () => {
+    const onAction = vi.fn<(action: GameAction) => void>();
     const { container } = render(
       <PlacementPanel
         legalActions={PLACE_ACTIONS}
@@ -91,14 +101,31 @@ describe("PlacementPanel — deploy sidebar", () => {
       />
     );
 
-    const tile = container.querySelector(".placementUnit");
+    const tile = container.querySelector(".placementUnit") as HTMLElement;
     expect(tile).toBeTruthy();
 
-    const setData = vi.fn();
-    fireEvent.dragStart(tile as Element, {
-      dataTransfer: { setData, setDragImage: vi.fn(), effectAllowed: "" }
+    // A droppable battlefield cell (marked by the board) under the drop point.
+    // jsdom has no layout, so stand in for elementFromPoint's hit-test.
+    const cell = document.createElement("div");
+    cell.setAttribute("data-drop-cell", "true");
+    cell.setAttribute("data-fx-cell", "12");
+    document.body.appendChild(cell);
+    (document as unknown as { elementFromPoint: () => Element | null }).elementFromPoint = () => cell;
+
+    // Press the first tile (army_1), drag past the threshold, release on the cell.
+    fireEvent.pointerDown(tile, { clientX: 0, clientY: 0, isPrimary: true, button: 0 });
+    firePointer("pointermove", 60, 60);
+    firePointer("pointerup", 60, 60);
+
+    expect(onAction).toHaveBeenCalledWith({
+      type: "PLACE_COMBAT_UNIT",
+      playerId: "p1",
+      armyUnitId: "army_1",
+      position: 12
     });
-    expect(setData).toHaveBeenCalledWith("application/x-h3-army-unit", "army_1");
+
+    cell.remove();
+    window.dispatchEvent(new Event("click")); // flush the post-drag click suppressor
   });
 
   it("fires FINISH_COMBAT_PLACEMENT when the Ready button is clicked", () => {
