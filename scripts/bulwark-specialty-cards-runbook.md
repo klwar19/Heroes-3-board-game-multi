@@ -181,8 +181,8 @@ So every Bulwark specialty card is built from three things:
    - **Unit** specialist → that unit's illustration.
    - **Spell** specialist → that spell's illustration.
    - **Ability** specialist → that ability's illustration.
-   - **Rune** specialist (Kriv) → there is no creature/spell to show, so
-     **create a new carved-rune emblem** (section D).
+   - **Rune** specialist (Kriv) → there is no creature/spell to show, so it uses
+     the provided emblem `public/assets/runes-emblem.webp` (section D).
 
 > Specialty cards do **not** use the bronze/silver/gold *unit* frames
 > (`units-blank-*.webp`). Those are for unit faces. Always template a specialty
@@ -246,7 +246,7 @@ referenced here is already local in this repo. For EACH card (and the tile):
 | **Eikthurn** (`eikthurn`) | Unit | Yetis (I/IV/VI) | `units-bulwark-silver-yetis-few.webp` |
 | **Glacius** (`glacius`) | Ability | Frost Ring (I/IV/VI) | `spells-frost_ring.webp` |
 | **Oidana** (`oidana`) | Ability | Diplomacy (I/IV/VI) | `abilities-diplomacy.webp` |
-| **Kriv** (`kriv`) | Rune | Runes (I/IV/VI) | new emblem — section D (style ref `runes-basic/advanced/expert.webp`) |
+| **Kriv** (`kriv`) | Rune | Runes (I/IV/VI) | `runes-emblem.webp` (provided — section D) |
 
 Level numerals to print on each card: **I** for the `-1` file, **IV** for `-4`,
 **VI** for `-6`. The exact printed names are `Snow Elves I/IV/VI`,
@@ -314,28 +314,19 @@ shows the hero invoking that ability:
 Same as B, with **Image 3** = the spell card art, and the art window showing the
 hero casting that spell.
 
-### D. Rune-specialist card (Kriv) — first CREATE the rune emblem
+### D. Rune-specialist card (Kriv) — the rune emblem is PROVIDED
 
 Kriv specialises in the Bulwark **Runes** mechanic, which has no creature or
-spell to show. Create a new emblem first, then build the three cards.
+spell to show, so it uses a dedicated rune emblem. **The emblem already ships in
+the repo — do NOT generate one:**
 
-**D1 — generate the rune emblem** (upload the three existing rune icons
-`runes-basic.webp`, `runes-advanced.webp`, `runes-expert.webp` as style
-reference):
+- **`public/assets/runes-emblem.webp`** — a glowing golden rune carved into stone
+  with a hammer and chisel, transparent background (500×500, ~38 KB).
 
-> Create a single high-resolution fantasy **emblem of carved Norse runestones**
-> for a frozen-mountain (Bulwark) faction. Three or more glowing rune-carved
-> standing stones / a rune-inscribed shield, icy-blue magical glow, snow and
-> stone, dramatic lighting. Match the visual language of the uploaded rune icons
-> (Image 1–3) but as one richer, card-ready illustration. Clean semi-realistic
-> digital fantasy art, no text, transparent-friendly dark background. Square,
-> centered, maximum detail.
-
-Save it as `out/bulwark-specialties/runes-emblem.png`.
-
-**D2 — build Kriv's three cards** using prompt **B**, but with **Image 3** =
-`out/bulwark-specialties/runes-emblem.png`, hero `kriv`, specialty name `Runes`,
-and the art window showing Kriv before the glowing runestones.
+Build Kriv's three cards exactly like an ability specialist (prompt **B** for
+Gemini, or the Hero Creator's specialty-picture upload), using
+**`public/assets/runes-emblem.webp`** as the specialty picture — hero `kriv`,
+specialty name `Runes`, levels I / IV / VI. No `D1` generation step is needed.
 
 ## Verify, then save
 
