@@ -122,22 +122,32 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
     group: "starting",
     content: "bulwark_expansion",
     terrain: "snow",
+    // The Bulwark town tile is drawn on the SAME snow environment as the Tower
+    // starting tile (#S1, /assets/board/tiles/sx1.webp) — only the central town
+    // building is repainted as the Bulwark (frozen-Norse) town. Because a tile's
+    // field symbols are baked into its art (the engine hides the glyph overlay
+    // once `assets.tileImage` is set — see screen.tsx renderTileArt), S10's hexes
+    // mirror #S1's EXACTLY so the Tower-derived art lines up with the engine:
+    // identical ring arrangement and outer borders, with the town faction swapped
+    // to bulwark. Generation prompt: scripts/bulwark-specialty-cards-runbook.md.
     fields: [
       { location: "town", faction: "bulwark" },
+      { location: "blocked_field" },
       { location: "empty_field" },
+      { location: "treasure_symbol", difficulty: 1 },
       { location: "resource_symbol" },
       { location: "empty_field" },
       { location: "mine", difficulty: 1, resource: "buildingMaterials", amount: 2 },
-      { location: "blocked_field" },
-      { location: "treasure_symbol", difficulty: 1 },
     ],
-    outerImpassable: [true, true, true, false, true, false],
+    outerImpassable: [true, false, true, true, true, false],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Bulwark Expansion)",
-      credit: "Fan-faction starting tile; snow terrain, layout mirrors the other starting tiles. Placeholder art; verify against physical tiles before final release.",
+      credit: "Fan-faction starting tile; snow terrain and hex layout mirror the Tower starting tile (#S1), which is the art base. Placeholder art pending; verify against physical tiles before final release.",
       url: "https://heroes.thelazy.net/index.php/Bulwark"
     }
-    // Art pending (placeholder): like the other art-less tiles, no `assets` yet.
+    // Art pending: generate /assets/board/tiles/s10.webp from #S1's sx1.webp
+    // (Tower environment + a new Bulwark town), then add
+    // `assets: { tileImage: "/assets/board/tiles/s10.webp" }` here.
   },
   F19: {
     id: "F19",

@@ -1,10 +1,78 @@
-# Bulwark hero specialties — card-art runbook (browser + Gemini)
+# Bulwark art runbook — town map tile + hero specialties (browser + Gemini)
 
-End-to-end instructions to generate the **18 Bulwark hero-specialty cards** (6
-heroes × levels **I / IV / VI**) in the game's real specialty-card style, then
-wire them into the engine. It mirrors `scripts/bulwark-cards-runbook.md` (the
-unit-card runbook) — same tooling, same "copy a finished card as the template"
-trick — but for the hero board's specialty track instead of unit faces.
+End-to-end instructions to generate the missing **Bulwark** art and wire it in:
+
+1. the **town map tile** (`S10`), drawn on the Tower snow tile as the base
+   environment with a new Bulwark town (section **"Bulwark town map tile"** below);
+2. the **18 hero-specialty cards** (6 heroes × levels **I / IV / VI**).
+
+It mirrors `scripts/bulwark-cards-runbook.md` (the unit-card runbook) — same
+tooling, same "copy a finished card/tile as the template" trick.
+
+## Bulwark town map tile (S10)
+
+The Bulwark starting tile `S10` (`src/data/map/expansion-tiles.ts`) has no art
+yet, so the board draws it as bare snow terrain with glyph overlays. Generate its
+face by **editing the Tower starting tile** — both are `snow` tiles, so reuse
+Tower's whole environment and just swap the town.
+
+**The hex code is already aligned (the "fix code for correct hexes" step is done).**
+`S10`'s field arrangement and outer borders now mirror the Tower tile `#S1`
+exactly (only the town's faction is `bulwark`), because a tile's field symbols are
+baked into its art and the engine hides the glyph overlay once `assets.tileImage`
+is set (see `renderTileArt` in `src/components/adventure/screen.tsx`). So the Tower
+symbols in the base art already sit on the right engine hexes — do **not** move
+them.
+
+- **Base / template:** `public/assets/board/tiles/sx1.webp` (the Tower snow
+  starting tile, `#S1`).
+- **Output:** `public/assets/board/tiles/s10.webp`.
+
+### Tile prompt (single-image EDIT of `sx1.webp`)
+
+> This image is a finished hexagonal **map tile** from the **Heroes of Might &
+> Magic III board game** — the Tower faction's snowy starting tile. EDIT it into
+> the **Bulwark** faction's starting tile. This is a precise local edit, NOT a
+> regeneration.
+>
+> Keep EVERYTHING except the central town building **100% identical and
+> pixel-aligned**: the snowy mountain terrain, every field symbol and its exact
+> position (the blocked rocky field, the two empty fields, the treasure chest, the
+> resource symbol, the mine), the hex-flower shape, the cream/yellow outer border
+> lines, and the overall lighting and palette. Do NOT move, restyle, recolor or
+> redraw any of them.
+>
+> Change ONLY the central town: replace the Tower wizards' town with a **Bulwark
+> frozen-Norse mountain town** — timber longhouses with steep snow-laden roofs,
+> rune-carved standing stones, an icy stone palisade/wall, hearth-smoke and
+> banners, nestled into the snow and rock. Match the EXACT art style, scale,
+> perspective and lighting of the town it replaces so it sits naturally in the
+> same footprint. Render crisp and print-quality at the original resolution and
+> crop.
+
+### Finalize + wire the tile
+
+```bash
+node scripts/png-to-webp.mjs out/bulwark-tile public/assets/board/tiles
+```
+
+Then add the art reference in `src/data/map/expansion-tiles.ts` (the `S10` entry
+already notes this as its last step):
+
+```ts
+assets: { tileImage: "/assets/board/tiles/s10.webp" }
+```
+
+Confirm in-app that S10 shows the Bulwark town and the field symbols land on the
+right hexes (mine, treasure, resource, blocked, two empties). Until the webp
+exists, leave `assets` off so the board keeps drawing the (already-correct) glyph
+overlay instead of a broken image.
+
+## Hero specialty cards
+
+End-to-end for the **18 Bulwark hero-specialty cards** (6 heroes × levels
+**I / IV / VI**) in the game's real specialty-card style, then wire them into the
+engine — the hero board's specialty track instead of unit faces.
 
 This is a **card-art + wiring** task. The art itself is produced by Gemini
 ("Nano Banana", the Image tool) exactly like every other card face in this repo;
