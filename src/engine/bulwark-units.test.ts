@@ -218,6 +218,132 @@ describe("Bulwark units — Recovery (Yetis)", () => {
   });
 });
 
+describe("Bulwark units — Teleport (Jotunn Warlord)", () => {
+  /**
+   * Gives a chosen unit the Jotunn Teleport ability and advances activation onto
+   * it: every other unit has acted, and the active Griffins defends to hand the
+   * slot to our stand-in Jotunn Warlord (the Marksmen). Returns the state the
+   * instant the Jotunn's activation opens — so its start-of-activation teleport
+   * choice, if any, is already on the table.
+   */
+  function activateJotunn(abilities: string[]): GameState {
+    const state = createInitialGameState("jotunn-teleport");
+    state.combat!.obstacles = [];
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    const units = state.combat!.units;
+    units.unit_p1_marksmen.position = 0; // the stand-in Jotunn Warlord
+    units.unit_p1_marksmen.abilities = abilities;
+    units.unit_p1_marksmen.initiative = 20;
+    units.unit_p1_griffins.position = 1; // the ally that defends to advance the slot
+    units.unit_p1_crusaders.position = 2; // a friendly teleport candidate
+    units.unit_p2_skeletons.position = 16; // an enemy teleport candidate
+    for (const unit of Object.values(units)) {
+      unit.activatedThisRound = true;
+    }
+    units.unit_p1_marksmen.activatedThisRound = false;
+    units.unit_p1_griffins.activatedThisRound = false;
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    return applyOk(state, { type: "DEFEND_UNIT", playerId: "p1", unitId: "unit_p1_griffins" });
+  }
+
+  it("offers an OPTIONAL start-of-activation choice to teleport ANY unit (friend, foe, or itself)", () => {
+    const opened = activateJotunn(["bulwark-jotunn-teleport"]);
+    expect(opened.combat!.activeUnitId).toBe("unit_p1_marksmen"); // the Jotunn really activated
+    const choice = opened.pendingChoice;
+    expect(choice?.type).toBe("ABILITY_TARGET_CHOICE");
+    if (choice?.type !== "ABILITY_TARGET_CHOICE") return;
+    expect(choice.kind).toBe("jotunn-teleport");
+    expect(choice.optional).toBe(true); // "can choose to do or not"
+    // "any unit": the Jotunn itself, a friendly unit AND an enemy are all candidates.
+    expect(choice.candidateUnitIds).toContain("unit_p1_marksmen");
+    expect(choice.candidateUnitIds).toContain("unit_p1_crusaders");
+    expect(choice.candidateUnitIds).toContain("unit_p2_skeletons");
+  });
+
+  it("teleports the chosen ENEMY to the chosen empty space — and the Jotunn can still act", () => {
+    let state = activateJotunn(["bulwark-jotunn-teleport"]);
+    const pick = state.pendingChoice!;
+    const enemyFrom = state.combat!.units.unit_p2_skeletons.position;
+    const enemyDamageBefore = state.combat!.units.unit_p2_skeletons.damage;
+    // Step A — click an enemy unit (proves "any unit" includes foes).
+    state = applyOk(state, {
+      type: "CHOOSE_ABILITY_TARGET",
+      playerId: "p1",
+      choiceId: pick.id,
+      targetUnitId: "unit_p2_skeletons"
+    });
+    // Step B — the very same empty-space picker the Teleport Spell opens.
+    const dest = state.pendingChoice;
+    if (dest?.type !== "OPTION_CHOICE" || dest.context !== "combat-teleport" || !dest.teleport) {
+      throw new Error("the empty-space picker did not open");
+    }
+    expect(dest.teleport.unitId).toBe("unit_p2_skeletons");
+    const destinationCell = dest.teleport.positions[0];
+    expect(destinationCell).not.toBe(enemyFrom); // an empty cell, never the occupied origin
+    state = applyOk(state, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: dest.id, optionIndex: 0 });
+    // OBSERVABLE OUTCOME: the enemy actually moved to the chosen empty cell, with
+    // no damage — a pure relocation, exactly like the Teleport Spell.
+    const enemy = state.combat!.units.unit_p2_skeletons;
+    expect(enemy.position).toBe(destinationCell);
+    expect(enemy.position).not.toBe(enemyFrom);
+    expect(enemy.damage).toBe(enemyDamageBefore);
+    // The card-glide animation (UNIT_MOVED) and the teleport SFX cue
+    // (UNIT_ABILITY_TRIGGERED carrying the Teleport sound) both fired.
+    expect(
+      state.eventLog.some(
+        (event) => event.type === "UNIT_MOVED" && event.unitId === "unit_p2_skeletons" && event.to === destinationCell
+      )
+    ).toBe(true);
+    expect(
+      state.eventLog.some(
+        (event) => event.type === "UNIT_ABILITY_TRIGGERED" && event.abilityId === "bulwark-jotunn-teleport"
+      )
+    ).toBe(true);
+    // "can still act after that": the Jotunn is still the active unit, has neither
+    // moved nor attacked, and its activation ability is spent (won't re-prompt).
+    const jotunn = state.combat!.units.unit_p1_marksmen;
+    expect(state.combat!.activeUnitId).toBe("unit_p1_marksmen");
+    expect(jotunn.movedThisActivation).toBe(false);
+    expect(jotunn.attackedThisActivation).toBe(false);
+    expect(jotunn.activatedThisRound).toBe(false);
+    expect(jotunn.activationAbilityDone).toBe(true);
+    expect(state.pendingChoice).toBeNull();
+    // Prove it can STILL act: it defends successfully — an activation it could
+    // only take while still active and un-acted.
+    const acted = applyOk(state, { type: "DEFEND_UNIT", playerId: "p1", unitId: "unit_p1_marksmen" });
+    expect(acted.combat!.units.unit_p1_marksmen.activatedThisRound).toBe(true);
+  });
+
+  it("the SKIP option teleports no one and the Jotunn proceeds normally", () => {
+    let state = activateJotunn(["bulwark-jotunn-teleport"]);
+    const pick = state.pendingChoice!;
+    const before = Object.fromEntries(Object.values(state.combat!.units).map((unit) => [unit.id, unit.position]));
+    state = applyOk(state, { type: "CHOOSE_ABILITY_TARGET", playerId: "p1", choiceId: pick.id, targetUnitId: "skip" });
+    // No destination picker opens, nobody moved, and no teleport cue fired.
+    expect(state.pendingChoice).toBeNull();
+    for (const unit of Object.values(state.combat!.units)) {
+      expect(unit.position).toBe(before[unit.id]);
+    }
+    expect(
+      state.eventLog.some(
+        (event) => event.type === "UNIT_ABILITY_TRIGGERED" && event.abilityId === "bulwark-jotunn-teleport"
+      )
+    ).toBe(false);
+    const jotunn = state.combat!.units.unit_p1_marksmen;
+    expect(jotunn.activationAbilityDone).toBe(true);
+    expect(jotunn.movedThisActivation).toBe(false);
+  });
+
+  it("CONTROL: a unit WITHOUT the ability gets no start-of-activation teleport choice", () => {
+    const after = activateJotunn([]);
+    expect(after.combat!.activeUnitId).toBe("unit_p1_marksmen"); // it still activated
+    const choice = after.pendingChoice;
+    expect(choice?.type === "ABILITY_TARGET_CHOICE" && choice.kind === "jotunn-teleport").toBe(false);
+  });
+});
+
 describe("Bulwark units — roster & ability wiring", () => {
   const ids = [
     "bulwark.kobolds",
@@ -272,7 +398,7 @@ describe("Bulwark units — roster & ability wiring", () => {
     expect(coreUnitDefinitions["bulwark.yetis"].pack?.abilities).toEqual(["bulwark-yeti-recover"]);
     // Teleport is the Jotunn Warlord (Pack) only; the Jotunn (Few) is a no-op now.
     expect(coreUnitDefinitions["bulwark.jotunns"].few?.abilities).toEqual([]);
-    expect(coreUnitDefinitions["bulwark.jotunns"].pack?.abilities).toEqual(["teleport-move"]);
+    expect(coreUnitDefinitions["bulwark.jotunns"].pack?.abilities).toEqual(["bulwark-jotunn-teleport"]);
   });
 
   it("carries the revised printed stats across every affected unit", () => {

@@ -4692,10 +4692,15 @@ function resolveKnockbackChoice(
  * a legal destination (distance and intervening obstacles are ignored). With
  * nowhere to land the cast simply fizzles (no choice opened).
  */
-function openTeleportChoice(state: GameState, playerId: PlayerId, unit: CombatUnitState): void {
+function openTeleportChoice(
+  state: GameState,
+  playerId: PlayerId,
+  unit: CombatUnitState,
+  abilityId?: string
+): boolean {
   const combat = state.combat;
   if (!combat) {
-    return;
+    return false;
   }
 
   const positions: number[] = [];
@@ -4705,7 +4710,7 @@ function openTeleportChoice(state: GameState, playerId: PlayerId, unit: CombatUn
     }
   }
   if (positions.length === 0) {
-    return;
+    return false;
   }
 
   const choiceId = `choice_${nextEventNumber(state)}`;
@@ -4716,7 +4721,7 @@ function openTeleportChoice(state: GameState, playerId: PlayerId, unit: CombatUn
     prompt: `Teleport ${unit.cardName} to an empty space.`,
     options: positions.map((position) => ({ label: `Teleport to ${getBattlefieldLabel(position)}` })),
     context: "combat-teleport",
-    teleport: { unitId: unit.id, positions },
+    teleport: { unitId: unit.id, positions, abilityId },
     returnPhase: "combat"
   };
   appendEvent(state, {
@@ -4727,6 +4732,7 @@ function openTeleportChoice(state: GameState, playerId: PlayerId, unit: CombatUn
     sourceEffectIds: [],
     message: `${state.players[playerId]?.name ?? playerId} teleports ${unit.cardName}.`
   });
+  return true;
 }
 
 /** Resolves the Teleport destination pick: relocate the unit to the chosen space. */
@@ -4755,6 +4761,20 @@ function resolveTeleportChoice(
 
   const from = unit.position;
   unit.position = destination;
+  // A unit-ability teleport (the Jotunn Warlord) plays that ability's teleport
+  // sound here, just before the card-glide (UNIT_MOVED), so SFX and animation
+  // land together — exactly like the Teleport Spell. The Spell sets no abilityId
+  // (it already cues its own sound on SPELL_CAST_RESOLVED), so this stays silent
+  // for it and never double-plays.
+  if (choice.teleport.abilityId) {
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: unit.id,
+      abilityId: choice.teleport.abilityId,
+      targetUnitId: unit.id,
+      message: `${unit.cardName} blinks across the battlefield.`
+    });
+  }
   appendEvent(state, {
     type: "UNIT_MOVED",
     playerId: unit.controllerId,
@@ -5868,6 +5888,56 @@ function maybeOpenPlayerActivationChoice(state: GameState): void {
     unit.movedThisActivation ||
     unit.attackedThisActivation
   ) {
+    return;
+  }
+
+  // Jotunn Warlord (Bulwark, house rule): at the start of its activation the
+  // controller may teleport ANY one unit — friend, foe, or the Jotunn itself —
+  // to an empty space, optionally, then act as normal. Offer the "pick a unit"
+  // choice (chooseAbilityTarget resolves it into the empty-space picker via
+  // openTeleportChoice). With no empty space to land on there is nothing to do,
+  // so the ability is simply marked done.
+  const teleportAbility = getUnitAbilityDefinitions(unit).find(
+    (def) => def.effect?.type === "TELEPORT_ANY_AT_ACTIVATION"
+  );
+  if (teleportAbility) {
+    let hasEmptySpace = false;
+    for (let position = 0; position < BATTLEFIELD_CELL_COUNT; position += 1) {
+      if (!isSpaceBlockedForSummon(combat, position)) {
+        hasEmptySpace = true;
+        break;
+      }
+    }
+    const candidates = Object.values(combat.units).filter((candidate) => isUnitAlive(candidate));
+    if (!hasEmptySpace || candidates.length === 0) {
+      unit.activationAbilityDone = true;
+      return;
+    }
+    const choiceId = `choice_${nextEventNumber(state)}`;
+    state.pendingChoice = {
+      id: choiceId,
+      type: "ABILITY_TARGET_CHOICE",
+      playerId: unit.controllerId,
+      kind: "jotunn-teleport",
+      abilityId: teleportAbility.id,
+      abilityName: teleportAbility.name,
+      prompt: `${unit.cardName}: ${teleportAbility.name} — choose any unit to teleport, or skip.`,
+      sourceUnitId: unit.id,
+      anchorUnitId: null,
+      candidateUnitIds: candidates.map((candidate) => candidate.id),
+      optional: true,
+      skipLabel: "Don't teleport"
+    };
+    state.phase = "choice";
+    state.priorityPlayerId = unit.controllerId;
+    appendEvent(state, {
+      type: "PENDING_CHOICE_CREATED",
+      choiceId,
+      choiceType: "ABILITY_TARGET_CHOICE",
+      playerId: unit.controllerId,
+      sourceEffectIds: [],
+      message: `${unit.cardName} may teleport a unit to an empty space.`
+    });
     return;
   }
 
@@ -12405,6 +12475,28 @@ function chooseAbilityTarget(
 
   const source = choice.sourceUnitId ? combat.units[choice.sourceUnitId] : undefined;
   if (!source) {
+    return;
+  }
+
+  // Jotunn Warlord (Bulwark, house rule): the chosen unit (any side, the Jotunn
+  // included) is teleported to an empty space — picking a unit opens the very
+  // same empty-space picker the Teleport Spell uses (openTeleportChoice), while
+  // "Don't teleport" (skip) just ends the ability. Either way the Warlord stays
+  // active and acts normally, so the ability is marked done now (before the
+  // follow-up picker opens) and never re-prompts this activation.
+  if (choice.kind === "jotunn-teleport") {
+    source.activationAbilityDone = true;
+    if (isSkip) {
+      return;
+    }
+    const target = combat.units[action.targetUnitId];
+    if (target && isUnitAlive(target)) {
+      const opened = openTeleportChoice(state, source.controllerId, target, choice.abilityId ?? undefined);
+      if (opened) {
+        state.phase = "choice";
+        state.priorityPlayerId = source.controllerId;
+      }
+    }
     return;
   }
 

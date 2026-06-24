@@ -16,6 +16,19 @@ export type UnitAbilityEffectDefinition =
   | { type: "MOVE_ANYWHERE" }
   | {
       /**
+       * Jotunn Warlord (Bulwark, house rule): at the START of its activation the
+       * controller may teleport ANY one unit on the battlefield — friend or foe,
+       * the Jotunn itself included — to any empty space, exactly like the
+       * Teleport Spell (same relocation, sound and card-glide). It is OPTIONAL
+       * (a "Don't teleport" skip) and does NOT consume the activation: the Jotunn
+       * still moves and attacks normally afterwards. Resolved interactively in
+       * maybeOpenPlayerActivationChoice (pick a unit) → openTeleportChoice (pick
+       * the empty space). No damage, no Retaliation — a pure relocation.
+       */
+      type: "TELEPORT_ANY_AT_ACTIVATION";
+    }
+  | {
+      /**
        * Elemental units (Air/Earth/Fire/Water Elementals and their kin): "This
        * unit deals elemental damage." Its attack value cannot be raised by
        * attack cards or Attack tokens — only lowered by debuffs such as a
@@ -969,6 +982,13 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     name: "Thick Hide",
     text: "[unit_passive] +1 Defense while this unit is defending.",
     effect: { type: "DEFEND_BONUS", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "bulwark-jotunn-teleport": {
+    id: "bulwark-jotunn-teleport",
+    name: "Teleport",
+    text: "[activation] At the start of its activation this unit may teleport any one unit on the battlefield (friend or foe, itself included) to an empty space — optional, and it still acts as normal afterwards.",
+    effect: { type: "TELEPORT_ANY_AT_ACTIVATION" },
     implementationStatus: "implemented"
   },
   "magog-fireball-splash": {
