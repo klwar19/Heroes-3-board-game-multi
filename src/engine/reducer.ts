@@ -16,8 +16,10 @@ import {
   isSeaField,
   makeCombatUnitFromArmy,
   NEUTRAL_DECK_IDS,
+  openNeutralRecruitOffer,
   queueLegionDiscountChoice,
-  queueNecromancyReinforce
+  queueNecromancyReinforce,
+  raiseIncomeByResourceDie
 } from "./adventure";
 import {
   applyUnitCurrentSide,
@@ -115,6 +117,7 @@ import {
   getPermanentCardIds,
   getPermanentSchoolBonus,
   isLowestInitiativeEnemy,
+  permanentSpellPowerBonus,
   playerCanUseFirstAidVolley,
   putPermanentIntoPlay,
   resolveWarMachineTarget,
@@ -6214,7 +6217,9 @@ function getCurrentSpellPower(state: GameState, stackItem: ResolutionStackItem, 
     getSchoolPowerBonus(state, stackItem.action.playerId, card) +
     // Astrologers — Blue Sky / Scorched Ground: +1 Power to every spell of the
     // proclaimed schools while the card is face up (applies to all players).
-    astrologersSchoolPowerBonus(state, card);
+    astrologersSchoolPowerBonus(state, card) +
+    // Pandora's Bargain: Power — a flat +Power on every spell while in play.
+    permanentSpellPowerBonus(state, stackItem.action.playerId);
 
   // Elemental Orbs (option A): the matching in-play orb doubles the whole Power
   // brought to a spell of its School ("double the power used for this spell")
@@ -10380,6 +10385,16 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
 
   if (effect.type === "DIPLOMACY_RECRUIT") {
     openDiplomacyRecruit(state, action.playerId);
+  }
+
+  // Pandora's Gift: Income — roll 1 Resource die, raise that resource's income.
+  if (effect.type === "RAISE_INCOME_BY_DIE") {
+    raiseIncomeByResourceDie(state, action.playerId);
+  }
+
+  // Pandora's Gift: Recruits — draw N Neutral units, offer one at half cost.
+  if (effect.type === "DRAW_NEUTRAL_RECRUIT_OFFER") {
+    openNeutralRecruitOffer(state, action.playerId, effect.count, effect.tier);
   }
 
   // Visions (Map): begin the scry. The Power (how many cards) is paid by

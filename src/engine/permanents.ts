@@ -70,6 +70,19 @@ export function permanentHandLimitBonus(state: GameState, playerId: PlayerId): n
   );
 }
 
+/**
+ * Flat Power added to EVERY spell the player casts by in-play permanents
+ * (Pandora's Bargain: Power, +1). Folded into both the affordability/preview
+ * power (standingSpellPower) and the cast-time power (getCurrentSpellPower) so
+ * the bonus actually changes spell outcomes rather than being display-only.
+ */
+export function permanentSpellPowerBonus(state: GameState, playerId: PlayerId): number {
+  return getPermanentDefinitions(state, playerId).reduce(
+    (total, card) => total + (card.permanentEffect?.spellPowerBonus ?? 0),
+    0
+  );
+}
+
 function setPermanentCardIds(state: GameState, playerId: PlayerId, cardIds: CardId[]): void {
   const player = state.players[playerId];
   if (!player) {

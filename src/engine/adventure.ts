@@ -2657,6 +2657,42 @@ export function processPendingVisit(state: GameState): void {
         );
         break;
       }
+      case "NEUTRAL_RECRUIT_RESOLVE": {
+        const player = state.players[visit.playerId];
+        // Recruit the chosen unit at half cost (rounded up) when still affordable;
+        // a copy that can no longer be paid for just returns with the rest.
+        let recruited: string | null = null;
+        if (player && step.recruit) {
+          const def = coreUnitDefinitions[step.recruit];
+          const half = halfRecruitCostRoundedUp(def?.neutral?.cost ?? {});
+          if (def?.neutral && hasRecruitResources(state, visit.playerId, half)) {
+            spendRecruitResources(state, visit.playerId, half, `recruited ${def.name} from Pandora's Gift: Recruits`);
+            addArmyUnit(player, step.recruit, "neutral");
+            appendEvent(state, {
+              type: "UNIT_RECRUITED",
+              playerId: visit.playerId,
+              unitDefId: step.recruit,
+              kind: "recruit",
+              cost: half
+            });
+            recruited = step.recruit;
+          }
+        }
+        // Every drawn unit not recruited goes back to its tier's discard pile.
+        // Only ONE copy of the recruited id is consumed (duplicates still return).
+        let skipped = false;
+        for (const unitDefId of step.drawn) {
+          if (!skipped && unitDefId === recruited) {
+            skipped = true;
+            continue;
+          }
+          const def = coreUnitDefinitions[unitDefId];
+          state.decks[
+            NEUTRAL_DECK_IDS[(def?.tier ?? "bronze") as "bronze" | "silver" | "gold" | "azure"]
+          ]?.discardPile.push(unitDefId);
+        }
+        break;
+      }
       case "REINFORCE_HALF_GOLD":
         reinforceArmyUnit(state, visit.playerId, step.armyUnitId, false, true, step.roundDown ?? false);
         break;
@@ -4211,6 +4247,117 @@ export function drawFromNeutralDeck(state: GameState, tier: "bronze" | "silver" 
   return deck.drawPile.pop();
 }
 
+/**
+ * Pandora's Gift: Income — roll ONE Resource die and raise the rolled
+ * resource's production by a full resource-gain level (+5 gold / +2 materials
+ * / +1 valuables). A one-shot map play; the income increase is permanent.
+ */
+export function raiseIncomeByResourceDie(state: GameState, playerId: PlayerId): void {
+  const player = state.players[playerId];
+  if (!player) {
+    return;
+  }
+  const random = adventureRandom(state, "pandora-income-die");
+  const roll = RESOURCE_DIE_FACES[random.nextInt(0, RESOURCE_DIE_FACES.length - 1)];
+  const amount = RESOURCE_GAIN_LEVEL_AMOUNTS[roll.resource];
+  appendEvent(state, {
+    type: "ADVENTURE_DICE_ROLLED",
+    playerId,
+    dice: "resource",
+    results: [resourceDieLabel(roll)],
+    resourceRolls: [{ resource: roll.resource, amount: roll.amount }]
+  });
+  player.production[roll.resource] += amount;
+  appendEvent(state, { type: "PRODUCTION_CHANGED", playerId, resource: roll.resource, amount });
+}
+
+/** Half a recruit cost, each resource rounded UP (Pandora's Gift: Recruits). */
+function halfRecruitCostRoundedUp(cost: ResourceCost): ResourceCost {
+  const halved: ResourceCost = {};
+  for (const [resource, amount] of Object.entries(cost) as [ResourceKind, number][]) {
+    if (amount && amount > 0) {
+      halved[resource] = Math.ceil(amount / 2);
+    }
+  }
+  return halved;
+}
+
+/**
+ * Pandora's Gift: Recruits — draw `count` units from the `tier` Neutral deck
+ * and open a one-of pick: Recruit one for half its cost (rounded up), or
+ * decline. Whatever is not recruited returns to that tier's discard pile (the
+ * NEUTRAL_RECRUIT_RESOLVE visit step). Draws fewer than `count` if the deck
+ * runs dry; opens nothing when the deck is empty.
+ */
+export function openNeutralRecruitOffer(
+  state: GameState,
+  playerId: PlayerId,
+  count: number,
+  tier: "bronze" | "silver" | "gold" | "azure"
+): void {
+  const adventure = state.adventure;
+  if (!adventure) {
+    return;
+  }
+  const drawn: string[] = [];
+  for (let i = 0; i < count; i += 1) {
+    const card = drawFromNeutralDeck(state, tier);
+    if (!card) {
+      break;
+    }
+    drawn.push(card);
+  }
+  if (drawn.length === 0) {
+    return;
+  }
+
+  // One option per DISTINCT drawn unit the player can afford at half cost, plus
+  // an always-available decline. (Duplicate draws collapse to one offer; both
+  // copies still return to the discard if not the one recruited.)
+  const seen = new Set<string>();
+  const recruitOptions = drawn
+    .filter((unitDefId) => {
+      if (seen.has(unitDefId)) {
+        return false;
+      }
+      seen.add(unitDefId);
+      const cost = coreUnitDefinitions[unitDefId]?.neutral?.cost ?? {};
+      return hasRecruitResources(state, playerId, halfRecruitCostRoundedUp(cost));
+    })
+    .map((unitDefId) => {
+      const def = coreUnitDefinitions[unitDefId];
+      const half = halfRecruitCostRoundedUp(def?.neutral?.cost ?? {});
+      const costLabel =
+        (Object.entries(half) as [ResourceKind, number][])
+          .filter(([, amount]) => amount)
+          .map(([resource, amount]) => `${amount} ${resource}`)
+          .join(" + ") || "free";
+      return {
+        label: `Recruit ${def?.name ?? unitDefId} for ${costLabel} (half)`,
+        steps: [{ type: "NEUTRAL_RECRUIT_RESOLVE", drawn, recruit: unitDefId } as VisitStep]
+      };
+    });
+
+  const hero = getMainHero(state, playerId);
+  adventure.pendingVisit = {
+    heroId: hero?.id ?? "",
+    playerId,
+    fieldId: hero?.spaceId ?? "",
+    steps: [
+      {
+        type: "CHOOSE_ONE",
+        prompt: `Pandora's Gift: Recruits — drew ${drawn
+          .map((id) => coreUnitDefinitions[id]?.name ?? id)
+          .join(", ")}`,
+        options: [
+          ...recruitOptions,
+          { label: "Decline (return all to the Neutral deck)", steps: [{ type: "NEUTRAL_RECRUIT_RESOLVE", drawn } as VisitStep] }
+        ]
+      }
+    ]
+  };
+}
+
 /** Whether a copy of `unitDefId` is still in tier `tier`'s Neutral Units deck. */
 export function neutralDeckHas(
   state: GameState,
@@ -5355,6 +5502,8 @@ export function startPlayerTurn(state: GameState, playerId: PlayerId): void {
   // Army map abilities reset for the new turn (Nomads' step, Rogues' scout).
   player.nomadStepDoneThisTurn = false;
   player.rogueScoutUsedThisTurn = false;
+  // Pandora's Bargain: Power upkeep is owed again each of the player's turns.
+  player.pandoraUpkeepResolvedThisTurn = false;
   // Legion artifacts: banked discount vouchers are current-turn — they expire now
   // (the owner's next turn), like the other map abilities, so an unused voucher
   // never carries over.

@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { applyAction, createInitialGameState, getLegalActions } from "./index";
 import { abilityDeckBinh, abilityDeckLegacy } from "@/data/cards/abilities-extra";
 import { cardLibrary } from "@/data/cards/library";
-import type { GameAction, GameState, PlayerId } from "./state";
+import { cardShotFxPlans } from "@/data/fx";
+import type { GameAction, GameEvent, GameState, PlayerId } from "./state";
 
 function applyOk(state: GameState, action: GameAction): GameState {
   const result = applyAction(state, action);
@@ -162,6 +163,30 @@ describe("Ballistics expert — bombard 2 adjacent units", () => {
     expect(after.combat!.units.unit_p2_vampires.damage).toBe(1);
     // No adjacent enemy -> no splash choice opened.
     expect(after.pendingChoice).toBeNull();
+  });
+
+  it("fires the Catapult report from the card, so the FX layer plays the shot", () => {
+    // The table plays the bombard shot off cardShotFxPlans[source.cardId] on the
+    // card-sourced DAMAGE_ASSIGNED it logs. Assert both halves of that link: the
+    // damage names the card as its source, AND a shot plan is keyed there.
+    const state = combatReady("ballistics-sound");
+    const expert = ballisticsPlays(state, "p1", 2).find(
+      (legal) =>
+        legal.action.type === "PLAY_CARD" &&
+        legal.action.target?.type === "unit" &&
+        legal.action.target.unitId === "unit_p2_vampires"
+    )!;
+    const after = applyOk(state, expert.action);
+    const hit = after.eventLog.find(
+      (event): event is Extract<GameEvent, { type: "DAMAGE_ASSIGNED" }> =>
+        event.type === "DAMAGE_ASSIGNED" &&
+        event.source.type === "card" &&
+        event.source.cardId === "ability.ballistics"
+    );
+    expect(hit, "Ballistics damage must name the card as its source").toBeTruthy();
+    const plan = hit!.source.type === "card" ? cardShotFxPlans[hit!.source.cardId] : undefined;
+    expect(plan, "cardShotFxPlans must answer the Ballistics damage").toBeTruthy();
+    expect(plan!.sound).toBe("units/catapult-shoot");
   });
 
   it("is NOT offered without a building material to pay (the crown alone is not enough)", () => {

@@ -348,7 +348,11 @@ export const warMachineFxPlans: Record<string, SpellFxPlan> = {
  * visual. Keyed by source card id, mirroring `healFxPlans`.
  */
 export const cardShotFxPlans: Record<string, SpellFxPlan> = {
-  "ability.artillery": { sound: "units/ballista-shoot" }
+  "ability.artillery": { sound: "units/ballista-shoot" },
+  // Ballistics' expert bombardment fires the siege Catapult's report on each
+  // hit (primary + the adjacent splash), both logged as card-sourced
+  // DAMAGE_ASSIGNED events keyed to this card id.
+  "ability.ballistics": { sound: "units/catapult-shoot" }
 };
 
 // ---------------------------------------------------------------------------
