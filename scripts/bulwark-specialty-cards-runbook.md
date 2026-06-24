@@ -87,6 +87,64 @@ End-to-end for the **18 Bulwark hero-specialty cards** (6 heroes × levels
 **I / IV / VI**) in the game's real specialty-card style, then wire them into the
 engine — the hero board's specialty track instead of unit faces.
 
+## Specialty cards via the HoMM3 Hero Creator (PREFERRED — much more consistent than Gemini)
+
+`https://k-adam.github.io/Homm3_hero_creator/` (a **static client-side Next.js**
+fan tool; source `github.com/k-adam/Homm3_hero_creator` — check its licence before
+reusing any of its assets) is purpose-built for these exact cards and gives far
+more consistent results than an image model. Drive it with the **Playwright MCP**,
+the same way you'd drive Gemini.
+
+**Why it fits perfectly:** its `HeroCard` renders **one specialty card per level** —
+the card container is a `.card` element with a `specialtyI` / `specialtyIV` /
+`specialtyVI` modifier class, carrying the authentic frame, the hero portrait, the
+specialty icon + title + effect text, and the level badge. That is a 1:1 match for
+our `hero_specialties-<slug>-<level>.webp` slots.
+
+**It has no PNG-export button** — its only export is the browser's print-to-PDF
+(for printing physical cards). So don't use its export; instead **element-screenshot
+the rendered `.card`** with Playwright (`locator.screenshot()`), which yields a
+clean PNG of exactly one specialty card.
+
+### Flow (per hero)
+
+1. Open the tool — the live URL, or run it locally for speed/offline:
+   `git clone https://github.com/k-adam/Homm3_hero_creator && cd Homm3_hero_creator && npm i && npm run dev` → `http://localhost:3000`.
+2. Configure the hero **from our data — don't invent values**:
+   - **Name / Type (might|magic) / Class / starting stats** — from
+     `src/data/factions/core.ts` (e.g. Dhuin = Chieftain, might, 2/2/1/1).
+   - **Portrait** — upload `public/assets/hero_portraits-<slug>.webp`.
+   - **Specialty I / IV / VI** — set each level's title and effect text to the
+     `name` and the human-readable tag string on `specialty.<slug>.<level>` in
+     `src/data/cards/adventure.ts`; choose the specialty icon by type (unit / spell
+     / ability / rune) per the table below.
+   - **Unit / unit stats** — the hero's signature unit (the table's "specialty
+     picture source"), stats from `src/data/factions/units.ts`.
+   - Tip: the tool round-trips a `.homm3.json` (`stringifyHero` / `parseHero` via
+     its Save / Open). Build one JSON per hero once and load it to skip re-filling
+     forms on later passes.
+3. For each level, screenshot the matching card element
+   (`.card.specialtyI` / `…specialtyIV` / `…specialtyVI`) to
+   `out/bulwark-specialties/hero_specialties-<slug>-<level>.png`. Confirm the crop
+   is tight to the card and the level badge reads I / IV / VI.
+4. Convert + wire exactly as in "Finalize" / "Wire it up" below
+   (`png-to-webp.mjs`, then remove `withoutArt(...)` / add the `assets` block).
+
+**Caveats:** the tool's card proportions are its own — eyeball one screenshot
+against an existing `hero_specialties-*.webp` and keep all six heroes consistent.
+This tool does **not** make the map tile (S10) — keep using the Gemini tile prompt
+above. If it can't express a specialty cleanly, fall back to the Gemini prompt
+templates further down.
+
+> Bigger, optional win (no browser at all): the tool is open source, so its
+> `HeroCard` component + frame/glyph assets could be ported to render our specialty
+> cards natively from our hero data — always in sync, zero screenshots. More work;
+> note it here as the eventual endgame.
+
+---
+
+The Gemini prompt path below remains the **fallback**.
+
 This is a **card-art + wiring** task. The art itself is produced by Gemini
 ("Nano Banana", the Image tool) exactly like every other card face in this repo;
 this file is the prompt set + the per-hero source table + the wire-up step. No
