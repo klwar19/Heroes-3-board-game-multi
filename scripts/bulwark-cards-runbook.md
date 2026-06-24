@@ -41,38 +41,77 @@ file referenced here is already local in this repo.
 
 (All are in `public/assets/`. "gold" tier uses the `golden` filenames.)
 
+**Always upload the tier-matching reference card** (bronze/silver/gold) from the
+table above — that is what makes the frame correct for the tier. The prompt only
+tells Gemini to copy it.
+
 ## FEW prompt template
-> I'm giving you two images. Image 1 is a FINISHED reference card — copy its
-> exact style: the frame, the colored outer edge, the title banner at top, the
-> small star in the top-right corner, the four stat icons down the left side
-> (crossed swords, shield, red cross, running figure), the cost bar near the
-> bottom, the empty ability banner, and the same fonts and layout. Image 2 is
-> creature artwork. Produce ONE new card in that exact style:
-> - Portrait: the creature from Image 2, filling the central art window.
-> - Title: **{TITLE}**
-> - Numbers beside the four left icons, top to bottom: **{ATK}, {DEF}, {HP}, {INIT}**
-> - Star: same as the reference.
+> You are recreating a physical trading card from the **Heroes of Might & Magic III
+> board game**. Match that set's look exactly.
+>
+> **Image 1** is a FINISHED official card — treat it as the absolute template for
+> everything structural: the frame and its tier color, the blue outer edge, the
+> decorative corner filigree, the title banner, the small star in the top-right,
+> the four stat icons down the left column (crossed swords, shield, red cross,
+> running figure) each in its own beveled slot, the cost bar near the bottom, the
+> empty ability banner below it, and the small © footer line. Reproduce its
+> proportions, borders, bevels, fonts and font colors EXACTLY — same card, only
+> the contents change.
+>
+> **Image 2** is concept art of the creature.
+>
+> Produce ONE finished card, portrait orientation, as **high-resolution, crisp and
+> print-quality** as you can:
+> - Re-paint the creature from Image 2 INTO the central art window in the **same
+>   rich, painterly, semi-realistic fantasy oil-painting style as the reference
+>   card's own artwork** — cohesive lighting, soft detailed brushwork, dramatic but
+>   not cartoonish. It must look hand-painted to belong to the same set, not pasted
+>   in. Fill the whole art window behind the frame; enhance and sharpen the art so
+>   it looks more professional than the source.
+> - Title in the banner: **{TITLE}**
+> - The four numbers beside the icons, top to bottom: **{ATK}, {DEF}, {HP}, {INIT}**
+> - Star top-right: same as the reference.
 > - Cost bar: recruit (hand icon) = **{RECRUIT}**; upgrade (up-arrows icon) = **{UPGRADE}**.
 > - Ability banner: **{ABILITY_OR_EMPTY}**
-> Keep every number crisp and exactly as written. Do not add any other text or
-> change the layout.
+> Render every number and letter sharp and perfectly legible. Keep the frame
+> pixel-aligned and symmetrical. Do NOT add watermarks, extra icons, or any text
+> not specified. Output the maximum detail and resolution possible.
 
 ## PACK prompt template
-> I'm giving you two images. Image 1 is a FINISHED reference PACK card — copy its
-> exact style, including the **`# PACK` banner** in the lower-middle (where a Few
-> card's cost bar would be), the frame, the title banner, the top-right star, the
-> four left-side stat icons, and the bottom ability banner with the same fonts
-> and layout. Image 2 is creature artwork. Produce ONE new PACK card in that exact
-> style:
-> - Portrait: the creature from Image 2, filling the central art window.
-> - Title: **{TITLE}**
-> - Numbers beside the four left icons, top to bottom: **{ATK}, {DEF}, {HP}, {INIT}**
+> You are recreating a physical trading card from the **Heroes of Might & Magic III
+> board game**. Match that set's look exactly.
+>
+> **Image 1** is a FINISHED official PACK card — treat it as the absolute template:
+> the frame and its tier color, the blue outer edge, corner filigree, title banner,
+> the top-right star, the four left-column stat icons in their beveled slots, the
+> **`# PACK` banner** in the lower-middle (where a Few card's cost bar would be),
+> the bottom ability banner, and the © footer. Reproduce its proportions, borders,
+> bevels, fonts and colors EXACTLY — same card, only the contents change.
+>
+> **Image 2** is concept art of the creature.
+>
+> Produce ONE finished PACK card, portrait orientation, **high-resolution, crisp,
+> print-quality**:
+> - Re-paint the creature from Image 2 INTO the central art window in the **same
+>   painterly, semi-realistic fantasy oil-painting style as the reference card's
+>   artwork** — cohesive lighting, detailed brushwork, looks hand-painted to match
+>   the set, not pasted. Fill the window; enhance and sharpen for a more
+>   professional finish.
+> - Title in the banner: **{TITLE}**
+> - The four numbers beside the icons, top to bottom: **{ATK}, {DEF}, {HP}, {INIT}**
 > - Keep the **`# PACK`** banner exactly like the reference.
 > - Ability banner text: **{ABILITY}**
-> Keep everything crisp and exactly as written. Do not add other text or change
-> the layout.
+> Render all numbers and text sharp and legible. Keep the frame pixel-aligned and
+> symmetrical. Do NOT add watermarks, extra icons, or text not specified. Output
+> the maximum detail and resolution possible.
 
 Cost notation: "gold" = the coin icon, "gem" = the red valuables crystal icon.
+
+## Note on "HD" / resolution
+Gemini returns roughly a 1-megapixel image, so these prompts maximize *crispness
+and detail* but won't emit a true 4K file. If you need genuinely high-res cards,
+keep the approved PNGs and upscale them afterward (2x–4x) before the webp step —
+ask the cloud session to add an upscale script, or use any image upscaler.
 
 ---
 
