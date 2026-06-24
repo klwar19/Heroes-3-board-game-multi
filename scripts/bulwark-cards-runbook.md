@@ -13,24 +13,54 @@ file referenced here is already local in this repo.
   (the `gemini-profile` remembers it afterward).
 - Create the output folder: `out/bulwark/`.
 
-## The loop — repeat for each of the 14 faces in the table below
-1. Start a fresh Gemini chat (cleaner than reusing one).
-2. Upload **two** local files:
-   - the **reference card** for that row's tier+side (see "Reference" column), and
-   - the unit's **art** file (the "Art file" column).
-3. Send the matching prompt (FEW template or PACK template) with that row's
-   title / stats / cost / ability filled in.
-4. When the image appears: screenshot it and **verify against the row**, every
-   field — title, the 4 stat numbers, the cost bar (Few) or the `# PACK` banner
-   (Pack), and the ability text. If anything is wrong, reply e.g.
-   *"Regenerate. Defense must be 0, not 3; everything else stays."* Loop until
-   it's exact. After ~3 bad tries, keep the best art and note the card for the
-   programmatic-frame fallback instead of burning more attempts.
-5. Download the approved image and save it as
-   `out/bulwark/<exact basename from the Art-file column, but .png>`.
-   e.g. art `units-bulwark-bronze-kobolds-few.webp` → save
-   `out/bulwark/units-bulwark-bronze-kobolds-few.png`.
-6. Next row.
+## The loop — one ART per unit, shared across Few + Pack
+
+The Few and Pack of a unit use the **same illustration** — only the frame format
+differs (a Few has a cost bar; a Pack has a `# PACK` banner) along with the stats
+and ability text. So generate the Few once, then **re-frame that exact art** into
+the Pack. Repeat per unit (7 units → 14 faces).
+
+### Step A — generate the FEW
+1. Start a fresh Gemini chat (cleaner than reusing one). Enable the **Image**
+   tool (`+` → "Hình ảnh" / "Image — create & edit", Nano Banana) so Gemini
+   outputs an image.
+2. Upload **two** local files, in this order:
+   - the **Few reference card** for that tier (see Reference table), and
+   - the unit's **Few art** file.
+3. Send the **FEW template** with the row's title / stats / cost filled in. Add
+   any agreed art direction (e.g. the Bulwark frozen-mountain-town atmosphere).
+4. When the image appears, extract it full-res and **verify every field** — title,
+   the 4 stat numbers, the cost bar, the ability banner. If anything is wrong,
+   reply e.g. *"Regenerate. Defense must be 0, not 3; everything else stays."*
+   Loop until exact. After ~3 bad tries, keep the best art and note the card for
+   the programmatic-frame fallback instead of burning more attempts.
+5. Save the approved Few as
+   `out/bulwark/<Few basename, but .png>` (e.g.
+   `out/bulwark/units-bulwark-bronze-kobolds-few.png`).
+
+### Step B — derive the PACK from the approved Few (same art, new frame)
+Do this as a **single-image minimal EDIT** of the approved Few, NOT a two-image
+"reframe". Giving Gemini two images and asking it to "produce a Pack card" makes
+it REPAINT the creature (different pose/anatomy) — confirmed failure. Feeding only
+the finished Few and asking for a localized edit keeps the art pixel-faithful.
+
+1. Start a fresh Gemini chat with the **Image** tool enabled.
+2. Upload **one** file: the **approved Few PNG** you just saved.
+3. Send the **PACK-FROM-FEW (edit) template**, filled with the Pack stats +
+   ability.
+4. Verify: the central illustration must be **identical to the Few**; only the
+   bottom banner area and the changed stat numbers move. The banner MUST read the
+   literal **`# PACK`** (a gold hash glyph + the word PACK, exactly like the
+   reference Pack card). Gemini tends to render the `#` as a digit ("1 PACK") —
+   if it does, reply: *"The banner must read '# PACK' with the literal hash glyph,
+   not a number; change only that."* Loop until exact.
+5. Save as `out/bulwark/<Pack basename, but .png>` (e.g.
+   `out/bulwark/units-bulwark-bronze-kobolds-pack.png`).
+
+Do NOT generate a separate Pack illustration — the per-unit Pack art files in
+`public/assets` are not used as the visual source anymore; the Few art is the
+single source of truth for both faces. (The tier's Pack **reference card** is now
+only a visual guide for you, not an upload.)
 
 ## Reference cards (finished Castle cards — copy their frame/fonts/layout)
 | Tier   | Few reference                              | Pack reference                              |
@@ -60,6 +90,9 @@ tells Gemini to copy it.
 >
 > **Image 2** is concept art of the creature.
 >
+> **Depict EXACTLY ONE creature — a single individual. Never a pair, group, herd,
+> pack or family, even if the concept art or unit name is plural. One subject only.**
+>
 > Produce ONE finished card, portrait orientation, as **high-resolution, crisp and
 > print-quality** as you can:
 > - **Redraw the creature from Image 2 as a brand-new, higher-quality
@@ -80,40 +113,55 @@ tells Gemini to copy it.
 > - Ability banner: **{ABILITY_OR_EMPTY}**
 > Render every number and letter sharp and perfectly legible. Keep the frame
 > pixel-aligned and symmetrical. Do NOT add watermarks, extra icons, or any text
-> not specified. Output the maximum detail and resolution possible.
+> not specified. **CRITICAL: the ONLY coin/gold icons allowed are the two small
+> coin icons inside the cost-bar cells next to the recruit and upgrade numbers.
+> Do NOT add any other coin, gold pile, gem, treasure or currency icon anywhere —
+> especially not in the ability banner or the bottom-right corner. If the ability
+> banner is empty, it must be COMPLETELY empty (no stray icon).** Output the
+> maximum detail and resolution possible.
 
-## PACK prompt template
-> You are recreating a physical trading card from the **Heroes of Might & Magic III
-> board game**. Match that set's look exactly.
+## PACK-FROM-FEW (edit) prompt template
+Upload ONLY the approved **Few PNG**. (Fill {ATK},{DEF},{HP},{INIT} with the Pack
+stats and note which differ from the Few so the model changes only those.)
+
+**Banner styling rule (user directive):** both bottom banners use the card's
+brown woodwork, NOT a pale/teal/cream fill. The **`# PACK`** banner = dark BROWN
+background with GOLD text. The **ability** banner = dark BROWN background with
+light CREAM / pale-yellow text (never a cream/white box with dark text, never a
+green/teal tint). Gemini tends to invert these on the gold-tier cards — call it
+out explicitly and verify.
+
+**Pack-ability naming rule (user directive):** in a Pack's `{ABILITY}` text, OMIT
+the parenthetical specialty NAME that the Pack newly introduces (the upgrade name
+attached to the pack-only clause) — e.g. drop `(Freezing Shot)`, `(War Mammoth)`,
+`(Teleport)`. Keep a parenthetical name only if it already appeared in that unit's
+Few ability (e.g. Shamans keep `(Air Shield)` because the Few has it). Net effect:
+no NEW name appears on the Pack that wasn't on the Few.
+(Already-saved bronze packs — Kobolds `(Kobold Foreman)`, Mountain Rams `(Argali)`,
+Snow Elves `(Steel Elf)` — predate this rule and were kept by the user; strip them
+later only if consistency is requested.)
+
+> This image is a finished **"Few"** trading card from the **Heroes of Might &
+> Magic III board game**. EDIT it into the matching **"Pack"** version of the SAME
+> card. This is a precise local edit, NOT a regeneration.
 >
-> **Image 1** is a FINISHED official PACK card — treat it as the absolute template:
-> the frame and its tier color, the blue outer edge, corner filigree, title banner,
-> the top-right star, the four left-column stat icons in their beveled slots, the
-> **`# PACK` banner** in the lower-middle (where a Few card's cost bar would be),
-> the bottom ability banner, and the © footer. Reproduce its proportions, borders,
-> bevels, fonts and colors EXACTLY — same card, only the contents change.
+> Keep the entire creature illustration **100% pixel-identical** — do not repaint,
+> redraw, restyle, re-pose, move, recolor or alter the creature, the background,
+> the lighting, the frame, the title banner, the corner filigree, the star, or the
+> stat icons in any way. Change ONLY these three things:
+> 1. Replace the bottom **cost bar** (the hand + up-arrows row) with a single
+>    horizontal **`# PACK`** banner styled like an official Heroes III Pack card —
+>    a stylized gold hash/pound glyph (#) followed by the word PACK. Do NOT use a
+>    digit or any number; it is the literal `#` symbol. Add a small ability-text
+>    banner directly beneath it.
+> 2. Update the four left-column stat numbers to read, top to bottom:
+>    **{ATK}, {DEF}, {HP}, {INIT}** (only the ones that differ from the Few change).
+> 3. Put this exact text in the new ability banner: **{ABILITY}**
 >
-> **Image 2** is concept art of the creature.
->
-> Produce ONE finished PACK card, portrait orientation, **high-resolution, crisp,
-> print-quality**:
-> - **Redraw the creature from Image 2 as a brand-new, higher-quality
->   illustration — do NOT copy it pixel-for-pixel and do NOT paste it in.** Keep
->   the SAME subject, species, pose, composition, color palette and overall
->   mood/atmosphere, but repaint it from scratch with sharper detail, richer
->   lighting, cleaner anatomy and a more polished, professional finish; remove blur
->   and low-resolution artifacts. Render it as a **detailed, semi-realistic digital
->   fantasy illustration matching the EXACT art style of the reference card's own
->   artwork (Image 1)** — the clean Heroes of Might & Magic character-art look. NOT
->   an oil painting, NOT visible brush texture, NOT cartoon. Treat Image 2 as a
->   rough concept to elevate, not to reproduce. Fill the window.
-> - Title in the banner: **{TITLE}**
-> - The four numbers beside the icons, top to bottom: **{ATK}, {DEF}, {HP}, {INIT}**
-> - Keep the **`# PACK`** banner exactly like the reference.
-> - Ability banner text: **{ABILITY}**
-> Render all numbers and text sharp and legible. Keep the frame pixel-aligned and
-> symmetrical. Do NOT add watermarks, extra icons, or text not specified. Output
-> the maximum detail and resolution possible.
+> Keep everything else identical and pixel-aligned. **A Pack card has NO cost bar
+> and therefore NO coin/gold icons at all — do NOT add any coin, gold pile, gem or
+> currency icon anywhere (the ability banner takes only its small effect glyph, if
+> any, never a coin).** Output at full resolution, crisp and legible.
 
 Cost notation: "gold" = the coin icon, "gem" = the red valuables crystal icon.
 
@@ -134,9 +182,9 @@ ask the cloud session to add an upscale script, or use any image upscaler.
   · ability: *"Map: at the beginning of each Resource round, gain 1 gold (Kobold Foreman)."*
 
 ### 2. Mountain Rams — bronze
-- **Few** `units-bulwark-bronze-mountain_rams-few` · Title **Mountain Rams** · ATK 2 DEF 1 HP 3 INIT 4
+- **Few** `units-bulwark-bronze-mountain_rams-few` · Title **Mountain Rams** · ATK 2 DEF 1 HP 3 INIT 6
   · recruit **2 gold** · upgrade **4 gold** · ability banner **empty**
-- **Pack** `units-bulwark-bronze-mountain_rams-pack` · Title **Mountain Rams** · ATK 2 DEF 1 HP 4 INIT 5
+- **Pack** `units-bulwark-bronze-mountain_rams-pack` · Title **Mountain Rams** · ATK 2 DEF 1 HP 4 INIT 8
   · ability: *"Reduce any damage from spells by 1 (Argali)."*
 
 ### 3. Snow Elves — bronze
@@ -149,7 +197,7 @@ ask the cloud session to add an upscale script, or use any image upscaler.
 ### 4. Yetis — silver
 - **Few** `units-bulwark-silver-yetis-few` · Title **Yetis** · ATK 3 DEF 2 HP 4 INIT 5
   · recruit **6 gold** · upgrade **10 gold** · ability banner **empty**
-- **Pack** `units-bulwark-silver-yetis-pack` · Title **Yetis** · ATK 3 DEF 2 HP 5 INIT 6
+- **Pack** `units-bulwark-silver-yetis-pack` · Title **Yetis** · ATK 3 DEF 2 HP 5 INIT 7
   · ability: *"At the start of its activation, this unit recovers from all negative effects."*
 
 ### 5. Shamans — silver
