@@ -136,10 +136,17 @@ This tool does **not** make the map tile (S10) — keep using the Gemini tile pr
 above. If it can't express a specialty cleanly, fall back to the Gemini prompt
 templates further down.
 
-> Bigger, optional win (no browser at all): the tool is open source, so its
-> `HeroCard` component + frame/glyph assets could be ported to render our specialty
-> cards natively from our hero data — always in sync, zero screenshots. More work;
-> note it here as the eventual endgame.
+> No-browser path (now implemented): the Hero Creator is MIT, so its specialty
+> card is ported natively as `src/components/specialty-card.tsx` (`SpecialtyCard`)
+> + the `.sc*` rules in `globals.css`, with its frame textures vendored under
+> `public/assets/specialty-card/` (credited in `public/credits/`). It draws the
+> art-less Bulwark/Conflux specialties live from game data — no Gemini, no
+> screenshots — and crops the unit/spell/ability/rune picture to the icon window.
+> Preview them at **`/specialty-preview`** (`npm run dev`). Still TODO: tune the
+> proportions against a browser, then swap the hero board's blank specialty slot
+> (`CardArt` in `hero-board.tsx`) to render `<SpecialtyCard>` when a specialty has
+> no baked `cardImage`. Until then this runbook's image path remains the way to
+> fill the slots.
 
 ---
 
