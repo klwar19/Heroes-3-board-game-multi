@@ -1,4 +1,7 @@
+"use client";
+
 /* eslint-disable @next/next/no-img-element */
+import { useState } from "react";
 import type { CSSProperties } from "react";
 
 import { assetUrl } from "@/lib/asset-url";
@@ -8,35 +11,36 @@ import { coreHeroDefinitions } from "@/data/factions/core";
 // ---------------------------------------------------------------------------
 // Native hero-specialty card renderer.
 //
-// A faithful port of the HoMM3 Hero Creator's specialty card
-// (github.com/k-adam/Homm3_hero_creator, MIT © 2025 Adam Kecskes — see
-// public/credits/Homm3_hero_creator_LICENSE.txt). Its `HeroCard` renders ONE
-// specialty card per level (I/IV/VI); this reimplements that layout/CSS from OUR
-// data so specialty cards draw live in-app — no Gemini, no browser screenshots,
-// always in sync. The frame textures are vendored under
-// /assets/specialty-card/. Effect text is our own prose (no spell-DSL parser),
-// and the specialty "picture" is cropped from our existing unit/spell/ability
-// art (or the Bulwark rune emblem) by the slot's object-fit window.
+// The FRAME, title, level badge and effect TEXT are drawn here (a port of the
+// HoMM3 Hero Creator's HeroCard — github.com/k-adam/Homm3_hero_creator, MIT
+// © 2025 Adam Kecskes; see public/credits/). Only the central specialty PICTURE
+// comes from an image, displayed transparently (object-fit: contain) over the
+// leather panel:
+//   - spell specialists → transparent symbols from the Homm3BG asset set
+//     (CC BY-NC-SA 4.0 — see public/credits/Homm3BG_LICENSE.txt);
+//   - the rune specialist → our own emblem;
+//   - the Bulwark unit specialists + Diplomacy → a transparent symbol the owner
+//     supplies (Diplomacy provided; the three unit symbols are generated with
+//     Gemini per scripts/bulwark-specialty-cards-runbook.md). Until a symbol
+//     file exists the slot gracefully shows no icon (the frame + text still draw).
 //
-// Only heroes whose specialty cards have NO baked `cardImage` need this (the
-// art-less Bulwark/Conflux roster); everyone else keeps their scanned card.
+// Only art-less heroes need this; everyone else keeps their scanned card image.
 // ---------------------------------------------------------------------------
 
-/** The specialty "picture" for each art-less hero, plus how to crop it. */
-type IconSpec = { src: string; fit?: "cover" | "contain"; position?: string };
-
-const SPECIALTY_ICON_BY_HERO: Record<string, IconSpec> = {
-  // Unit specialists → crop the creature from the unit card's top-centre art.
-  dhuin: { src: "/assets/units-bulwark-bronze-snow_elves-few.webp", position: "center 22%" },
-  creyle: { src: "/assets/units-bulwark-golden-mammoths-few.webp", position: "center 22%" },
-  eikthurn: { src: "/assets/units-bulwark-silver-yetis-few.webp", position: "center 22%" },
-  // Spell / ability specialists → the spell / ability art.
-  glacius: { src: "/assets/spells-frost_ring.webp", position: "center 24%" },
-  oidana: { src: "/assets/abilities-diplomacy.webp", position: "center 24%" },
-  luna: { src: "/assets/spells-fire_wall.webp", position: "center 24%" },
-  ciele: { src: "/assets/spells-magic_arrow.webp", position: "center 24%" },
-  // Rune specialist → the dedicated emblem (already icon-shaped, transparent).
-  kriv: { src: "/assets/runes-emblem.webp", fit: "contain" }
+/** The transparent specialty picture for each art-less hero. */
+const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
+  // Bulwark unit specialists — Gemini-generated transparent symbols (runbook).
+  dhuin: "/assets/specialty-card/icon-dhuin.webp", // Snow Elves
+  creyle: "/assets/specialty-card/icon-creyle.webp", // Mammoths
+  eikthurn: "/assets/specialty-card/icon-eikthurn.webp", // Yetis
+  // Diplomacy — owner-supplied dove emblem.
+  oidana: "/assets/specialty-card/icon-diplomacy.webp",
+  // Spell specialists — Homm3BG transparent symbols (CC BY-NC-SA).
+  glacius: "/assets/specialty-card/icon-frost_ring.webp",
+  ciele: "/assets/specialty-card/icon-magic_arrow.webp",
+  luna: "/assets/specialty-card/icon-firewall.webp",
+  // Rune specialist — our own emblem.
+  kriv: "/assets/runes-emblem.webp"
 };
 
 /** Border texture + Roman numeral per specialty level, mirroring the source CSS. */
@@ -61,7 +65,7 @@ export function parseSpecialtyCardId(cardId: string): { slug: string; level: 1 |
   return { slug: match[1], level: Number(match[2]) as 1 | 4 | 6 };
 }
 
-/** True when we can draw this specialty natively (known hero + a picture for it). */
+/** True when we can draw this specialty natively (known hero + a mapped picture). */
 export function canRenderSpecialtyCard(cardId: string | undefined): boolean {
   if (!cardId) {
     return false;
@@ -72,11 +76,30 @@ export function canRenderSpecialtyCard(cardId: string | undefined): boolean {
   );
 }
 
-/** The human-readable rules line lives in `tags` (prose; the rest are keywords). */
-function specialtyEffectText(cardId: string): string {
-  const tags = cardLibrary[cardId]?.tags ?? [];
-  const prose = tags.filter((tag) => /\s/.test(tag)).sort((a, b) => b.length - a.length);
-  return prose[0] ?? "";
+/**
+ * The card's rules description. Prefers the prose tag (Glacius/Kriv/Oidana carry
+ * one); otherwise builds it from the CHOOSE_ONE option labels — the unit-
+ * specialist helpers (Dhuin/Creyle/Eikthurn) keep their wording there, so without
+ * this branch those cards print blank.
+ */
+export function specialtyEffectText(cardId: string): string {
+  const card = cardLibrary[cardId];
+  if (!card) {
+    return "";
+  }
+  const prose = (card.tags ?? []).filter((tag) => /\s/.test(tag)).sort((a, b) => b.length - a.length)[0];
+  if (prose) {
+    return prose;
+  }
+  const effect: unknown = card.effect;
+  if (effect && typeof effect === "object" && "type" in effect && (effect as { type: unknown }).type === "CHOOSE_ONE") {
+    const options = (effect as { options?: Array<{ label?: string }> }).options ?? [];
+    return options
+      .map((option) => option.label)
+      .filter((label): label is string => Boolean(label))
+      .join("   —  OR  —   ");
+  }
+  return "";
 }
 
 /**
@@ -85,6 +108,8 @@ function specialtyEffectText(cardId: string): string {
  * width its parent gives it.
  */
 export function SpecialtyCard({ cardId, className }: { cardId: string; className?: string }) {
+  const [iconFailed, setIconFailed] = useState(false);
+
   const parsed = parseSpecialtyCardId(cardId);
   const hero = parsed ? coreHeroDefinitions[parsed.slug] : undefined;
   const card = cardLibrary[cardId];
@@ -93,7 +118,7 @@ export function SpecialtyCard({ cardId, className }: { cardId: string; className
   }
 
   const level = LEVEL_STYLE[parsed.level];
-  const icon = SPECIALTY_ICON_BY_HERO[parsed.slug];
+  const iconSrc = SPECIALTY_ICON_BY_HERO[parsed.slug];
   const accent = FACTION_ACCENT[hero.faction] ?? "#3a3a3a";
 
   const style = {
@@ -106,14 +131,9 @@ export function SpecialtyCard({ cardId, className }: { cardId: string; className
     <div className={`scWrap${className ? ` ${className}` : ""}`} data-level={parsed.level} style={style}>
       <div className="sc">
         <div className="scContent">
-          {icon ? (
+          {iconSrc && !iconFailed ? (
             <div className="scIconBox">
-              <img
-                alt=""
-                className="scIcon"
-                src={assetUrl(icon.src)}
-                style={{ objectFit: icon.fit ?? "cover", objectPosition: icon.position ?? "center" }}
-              />
+              <img alt="" className="scIcon" onError={() => setIconFailed(true)} src={assetUrl(iconSrc)} />
             </div>
           ) : null}
           <h3 className="scName">{card.name}</h3>

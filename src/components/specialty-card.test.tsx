@@ -2,7 +2,7 @@
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { SpecialtyCard, canRenderSpecialtyCard, parseSpecialtyCardId } from "./specialty-card";
+import { SpecialtyCard, canRenderSpecialtyCard, parseSpecialtyCardId, specialtyEffectText } from "./specialty-card";
 
 afterEach(cleanup);
 
@@ -16,7 +16,7 @@ describe("parseSpecialtyCardId", () => {
 });
 
 describe("canRenderSpecialtyCard", () => {
-  it("is true only for an art-less hero we have a picture for", () => {
+  it("is true only for an art-less hero we have a picture mapping for", () => {
     expect(canRenderSpecialtyCard("specialty.kriv.1")).toBe(true); // Bulwark rune specialist
     expect(canRenderSpecialtyCard("specialty.dhuin.4")).toBe(true); // Bulwark unit specialist
     expect(canRenderSpecialtyCard("specialty.sandro.1")).toBe(false); // a hero with no native picture mapping
@@ -25,36 +25,45 @@ describe("canRenderSpecialtyCard", () => {
   });
 });
 
+describe("specialtyEffectText", () => {
+  it("uses the prose tag when present (Kriv carries one)", () => {
+    expect(specialtyEffectText("specialty.kriv.6")).toContain("4 Runes");
+  });
+
+  it("derives text from CHOOSE_ONE option labels when there is no prose tag", () => {
+    // Regression: the unit-specialist helper carries NO prose tag, so this card
+    // printed blank before. It must now read its effect from the option labels.
+    const text = specialtyEffectText("specialty.dhuin.1");
+    expect(text.length).toBeGreaterThan(0);
+    expect(text).toContain("Snow Elves"); // "+1 attack (x2 for Snow Elves)"
+  });
+});
+
 describe("SpecialtyCard", () => {
-  it("draws Kriv's Runes VI from game data: title, numeral, rune emblem, portrait, effect", () => {
+  it("draws Kriv's Runes VI: title, numeral, rune emblem, portrait, frame, effect", () => {
     const { container, getByText } = render(<SpecialtyCard cardId="specialty.kriv.6" />);
 
-    // The printed title is the card's own name.
     expect(getByText("Runes VI")).toBeTruthy();
-    // The level badge shows the Roman numeral for level 6.
     expect(container.querySelector(".scLevelBadge")?.textContent).toBe("VI");
-    // The specialty picture is the dedicated rune emblem, drawn "contain".
-    const icon = container.querySelector(".scIcon") as HTMLImageElement | null;
-    expect(icon?.getAttribute("src")).toContain("runes-emblem.webp");
-    expect(icon?.style.objectFit).toBe("contain");
-    // The hero portrait fills the portrait panel.
+    expect((container.querySelector(".scIcon") as HTMLImageElement | null)?.getAttribute("src")).toContain(
+      "runes-emblem.webp"
+    );
     expect(container.querySelector(".scPortrait")?.getAttribute("style")).toContain("hero_portraits-kriv");
-    // The level-6 frame texture is wired through the CSS var.
     const wrap = container.querySelector(".scWrap");
     expect(wrap?.getAttribute("data-level")).toBe("6");
     expect(wrap?.getAttribute("style")).toContain("border-6.webp");
-    // The effect text is the real rules prose (Runes VI grants 4 Runes).
     expect(container.querySelector(".scDesc")?.textContent ?? "").toContain("4 Runes");
   });
 
-  it("crops a unit specialist's creature art (Dhuin → Snow Elves), numeral I", () => {
+  it("a unit specialist (Dhuin → Snow Elves I) shows its symbol slot + non-empty text", () => {
     const { container, getByText } = render(<SpecialtyCard cardId="specialty.dhuin.1" />);
     expect(getByText("Snow Elves I")).toBeTruthy();
     expect(container.querySelector(".scLevelBadge")?.textContent).toBe("I");
-    const icon = container.querySelector(".scIcon") as HTMLImageElement | null;
-    expect(icon?.getAttribute("src")).toContain("snow_elves");
-    // A unit card is cropped (cover) to show the creature, not letterboxed.
-    expect(icon?.style.objectFit).toBe("cover");
+    // The unit symbol is its own transparent picture (Gemini-supplied), not the card.
+    expect((container.querySelector(".scIcon") as HTMLImageElement | null)?.getAttribute("src")).toContain(
+      "icon-dhuin.webp"
+    );
+    expect((container.querySelector(".scDesc")?.textContent ?? "").length).toBeGreaterThan(0);
   });
 
   it("renders nothing for a card it cannot express (no broken output)", () => {
