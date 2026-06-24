@@ -651,16 +651,23 @@ export const locationDefinitions: Record<string, LocationDefinition> = {
     id: "cyclops_stockpile",
     name: "Cyclops Stockpile",
     category: "visitable",
-    // Reward per the rulebook: roll and resolve 4 Treasure dice. The guard
-    // override (two golden Cyclopes added to the Neutral Army) is enforced in
-    // the engine's guard-army builder (drawGuardArmy).
+    // Reward per the wiki field page (https://en.homm3bg.wiki/fields/cyclops_stockpile/,
+    // verbatim "roll and resolve 4 Resource dice"): four RESOURCE dice, each
+    // resolved (a SEQUENCE of count:1, NOT count:2 — every die is gained, the
+    // player does not pick one). A Resource die only ever yields resources, so —
+    // unlike a Treasure die — this reward can never grant experience or an
+    // Artifact search. (It previously rolled Treasure dice, which inflated the
+    // reward with the experience/artifact faces; corrected to match the wiki and
+    // the original HOMM3 Cyclops Stockpile, which drops only resources.) The
+    // guard override (two golden Cyclopes added to the Neutral Army) is enforced
+    // in the engine's guard-army builder (drawGuardArmy).
     interaction: {
       type: "SEQUENCE",
       interactions: [
-        { type: "ROLL_TREASURE_DICE", count: 1 },
-        { type: "ROLL_TREASURE_DICE", count: 1 },
-        { type: "ROLL_TREASURE_DICE", count: 1 },
-        { type: "ROLL_TREASURE_DICE", count: 1 }
+        { type: "ROLL_RESOURCE_DICE", count: 1 },
+        { type: "ROLL_RESOURCE_DICE", count: 1 },
+        { type: "ROLL_RESOURCE_DICE", count: 1 },
+        { type: "ROLL_RESOURCE_DICE", count: 1 }
       ]
     },
     implementationStatus: "implemented",

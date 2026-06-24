@@ -1,0 +1,564 @@
+import { describe, expect, it } from "vitest";
+import type { GameState, MapFieldState, PlayerId, VisitStep } from "./state";
+import { addArmyUnit, beginFieldVisit, getMainHero } from "./adventure";
+import { resolveVisitStep } from "./adventure-reducer";
+import { getLegalActions } from "./legal-actions";
+import { createAdventureGameState } from "./index";
+import { locationDefinitions } from "@/data/map/locations";
+
+/**
+ * Map-tile field EFFECT audit (CLAUDE.md rule #1: a field is "done" only if the
+ * engine executes its effect AND a test fails if that logic is removed).
+ *
+ * These tests assert the observable game OUTCOME of visiting a Field — the gold
+ * gained, the morale token, the movement, the card moved, the OR-branch taken,
+ * the cross-player income transfer — not merely that a black cube was placed.
+ * The cube/decline invariant lives in visitable-fields-cube.test.ts; this file
+ * is the missing outcome coverage for the fields that were wired but untested,
+ * plus the cyclops-stockpile Treasure→Resource-die correction.
+ *
+ * Setup facts pinned by these tests:
+ *  - p1's faction is Castle (morale works); p2's is Necropolis (ignoresMorale),
+ *    so every morale assertion uses p1.
+ *  - A Resource die only yields gold/materials/valuables; a Treasure die can
+ *    yield experience or an Artifact search. That difference is what the
+ *    cyclops-stockpile block exploits as its die-type discriminator.
+ */
+
+const FIELD_ID = "50,50";
+
+function makeGame(seed = "map-tile-audit"): GameState {
+  return createAdventureGameState({ seed, difficulty: "normal", rollFirstPlayer: false });
+}
+
+function injectField(
+  state: GameState,
+  location: string,
+  opts: { difficulty?: number; blackCube?: boolean; flagOwnerId?: string | null; everFlagged?: boolean; spaceId?: string } = {}
+): MapFieldState {
+  const field: MapFieldState = {
+    spaceId: opts.spaceId ?? FIELD_ID,
+    tileInstanceId: "audit-tile",
+    slot: 0,
+    location,
+    difficulty: opts.difficulty,
+    blackCube: opts.blackCube ?? false,
+    flagOwnerId: opts.flagOwnerId ?? null,
+    everFlagged: opts.everFlagged ?? false,
+    settlementResource: null
+  };
+  state.adventure!.fields[field.spaceId] = field;
+  return field;
+}
+
+function visit(state: GameState, playerId: PlayerId, field: MapFieldState): void {
+  const hero = getMainHero(state, playerId)!;
+  hero.spaceId = field.spaceId;
+  beginFieldVisit(state, hero.id, field.spaceId, false);
+}
+
+/** Resolve the first pending CHOOSE_ONE step by matching an option label. */
+function choose(state: GameState, playerId: PlayerId, match: (label: string) => boolean): void {
+  const step = state.adventure!.pendingVisit?.steps[0] as Extract<VisitStep, { type: "CHOOSE_ONE" }> | undefined;
+  if (step?.type !== "CHOOSE_ONE") {
+    throw new Error(`Expected CHOOSE_ONE, got ${step?.type ?? "none"}`);
+  }
+  const optionIndex = step.options.findIndex((option) => match(option.label));
+  if (optionIndex < 0) {
+    throw new Error(`No option matched among: ${step.options.map((option) => option.label).join(" | ")}`);
+  }
+  resolveVisitStep(state, { type: "RESOLVE_VISIT_STEP", playerId, optionIndex });
+}
+
+/** A field visit that queued an Artifact/Spell/Ability search puts it here. */
+function queuedSearches(state: GameState, deckId: string): number {
+  return state
+    .adventure!.rewardQueue.filter(
+      (reward) => reward.kind === "shared-deck-search" && (reward as { deckId?: string }).deckId === deckId
+    ).length;
+}
+
+function totalResources(state: GameState, playerId: PlayerId): number {
+  const r = state.players[playerId]!.resources;
+  return r.gold + r.buildingMaterials + r.valuables;
+}
+
+// ---------------------------------------------------------------------------
+// Cyclops Stockpile — rolls RESOURCE dice, not Treasure dice (wiki correction)
+// ---------------------------------------------------------------------------
+// Wiki (https://en.homm3bg.wiki/fields/cyclops_stockpile/) reward, verbatim:
+// "roll and resolve 4 Resource dice." The data previously rolled Treasure dice,
+// which leaked the experience / Artifact-search faces into the reward.
+describe("Cyclops Stockpile rolls 4 Resource dice (not Treasure dice)", () => {
+  it("its interaction is a SEQUENCE of four Resource-die rolls (die-type guard)", () => {
+    const interaction = locationDefinitions.cyclops_stockpile.interaction;
+    expect(interaction.type).toBe("SEQUENCE");
+    if (interaction.type === "SEQUENCE") {
+      expect(interaction.interactions).toHaveLength(4);
+      for (const inner of interaction.interactions) {
+        expect(inner.type).toBe("ROLL_RESOURCE_DICE");
+      }
+    }
+  });
+
+  it("a visit only ever grants resources — never experience or an Artifact search", () => {
+    // Across many seeds the reward must stay pure resources. With Treasure dice
+    // (the prior bug) ~2/6 faces per die are experience and ~2/6 an Artifact
+    // search, so over 25 seeds the old code would have moved experience or
+    // queued an Artifact search with near-certainty — this fails on a revert.
+    for (let i = 0; i < 25; i += 1) {
+      const state = makeGame(`cyclops-${i}`);
+      const player = state.players.p1;
+      player.hand = []; // no die-reroll artifacts that would pend the roll
+      const hero = getMainHero(state, "p1")!;
+      hero.experience = 7;
+      const before = totalResources(state, "p1");
+      const field = injectField(state, "cyclops_stockpile");
+
+      visit(state, "p1", field);
+
+      expect(hero.experience).toBe(7); // Resource dice cannot grant experience
+      expect(queuedSearches(state, "artifacts")).toBe(0); // nor an Artifact search
+      expect(totalResources(state, "p1")).toBeGreaterThan(before); // 4 dice, all gained
+      expect(state.adventure!.pendingVisit).toBeNull(); // fully auto-resolved
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// "OR" choices resolve EXACTLY ONE branch (mutual exclusivity)
+// ---------------------------------------------------------------------------
+describe('Map "OR" choices resolve exactly one branch', () => {
+  it("Mystical Garden: taking gold grants +2 gold and NOT the valuables branch", () => {
+    const state = makeGame();
+    const player = state.players.p1;
+    const gold = player.resources.gold;
+    const valuables = player.resources.valuables;
+    visit(state, "p1", injectField(state, "mystical_garden"));
+
+    choose(state, "p1", (label) => label.includes("2 gold"));
+
+    expect(player.resources.gold).toBe(gold + 2);
+    expect(player.resources.valuables).toBe(valuables); // the other branch did not run
+  });
+
+  it("Mystical Garden: taking valuables grants +1 valuables and NOT the gold branch", () => {
+    const state = makeGame();
+    const player = state.players.p1;
+    const gold = player.resources.gold;
+    const valuables = player.resources.valuables;
+    visit(state, "p1", injectField(state, "mystical_garden"));
+
+    choose(state, "p1", (label) => label.includes("1 valuables"));
+
+    expect(player.resources.valuables).toBe(valuables + 1);
+    expect(player.resources.gold).toBe(gold); // the other branch did not run
+  });
+
+  it("Derelict Ship: the offer is Search(2) AND +2 gold together; declining gives nothing", () => {
+    // "You may Search(2) the Artifact deck. If you do so, you also gain 2 gold."
+    const accept = makeGame("derelict-accept");
+    const acceptPlayer = accept.players.p1;
+    const goldBefore = acceptPlayer.resources.gold;
+    visit(accept, "p1", injectField(accept, "derelict_ship"));
+    choose(accept, "p1", (label) => label.toLowerCase().includes("search"));
+    expect(acceptPlayer.resources.gold).toBe(goldBefore + 2); // the AND's gold half
+    expect(queuedSearches(accept, "artifacts")).toBe(1); // the AND's search half
+
+    const decline = makeGame("derelict-decline");
+    const declinePlayer = decline.players.p1;
+    const declineGold = declinePlayer.resources.gold;
+    const field = injectField(decline, "derelict_ship");
+    visit(decline, "p1", field);
+    choose(decline, "p1", (label) => label === "Decline");
+    expect(declinePlayer.resources.gold).toBe(declineGold); // nothing gained
+    expect(queuedSearches(decline, "artifacts")).toBe(0);
+    expect(field.blackCube).toBe(true); // but the field is still spent
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Flat resource / search amounts (exact wiki values)
+// ---------------------------------------------------------------------------
+describe("Flat-amount fields grant exactly the wiki amount", () => {
+  const cases: { id: string; resource: "gold" | "buildingMaterials" | "valuables"; amount: number }[] = [
+    { id: "water_wheel", resource: "gold", amount: 3 },
+    { id: "windmill", resource: "valuables", amount: 1 },
+    { id: "flotsam", resource: "buildingMaterials", amount: 2 }
+  ];
+  for (const testCase of cases) {
+    it(`${testCase.id}: +${testCase.amount} ${testCase.resource}`, () => {
+      const state = makeGame();
+      const player = state.players.p1;
+      const before = player.resources[testCase.resource];
+      visit(state, "p1", injectField(state, testCase.id));
+      expect(player.resources[testCase.resource]).toBe(before + testCase.amount);
+    });
+  }
+
+  it("Temple of the Sea: +10 gold AND two separate Search(2) Artifact searches", () => {
+    const state = makeGame();
+    const player = state.players.p1;
+    const gold = player.resources.gold;
+    visit(state, "p1", injectField(state, "temple_of_the_sea"));
+    expect(player.resources.gold).toBe(gold + 10);
+    expect(queuedSearches(state, "artifacts")).toBe(2); // "Search(2) ... twice"
+  });
+
+  it("Grave: -1 morale AND +3 gold AND one Search(1) (rulebook count, not the wiki's 2)", () => {
+    const state = makeGame();
+    const player = state.players.p1;
+    const gold = player.resources.gold;
+    const morale = player.morale;
+    visit(state, "p1", injectField(state, "grave"));
+    expect(player.resources.gold).toBe(gold + 3);
+    expect(player.morale).toBe(morale - 1);
+    expect(queuedSearches(state, "artifacts")).toBe(1);
+  });
+
+  it("Artifact Symbol: queues one Search(2) of the Artifact deck", () => {
+    const state = makeGame();
+    visit(state, "p1", injectField(state, "artifact_symbol"));
+    expect(queuedSearches(state, "artifacts")).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Attack-die-table sea fields (Sea Chest / Jetsam): the roll picks the branch
+// ---------------------------------------------------------------------------
+// Seeds chosen so each Attack-die face is exercised deterministically. Sea Chest
+// covers the shared ATTACK_DIE_TABLE dispatch (the +1/0/-1 selection used by
+// Jetsam too); Jetsam pins its own "+1 resolves both dice" payload.
+describe("Sea Chest resolves the Attack-die branch (+1 / 0 / -1)", () => {
+  it("+1: Search(1) the Artifact deck, no gold", () => {
+    const state = makeGame("sea_chest-6");
+    const player = state.players.p1;
+    player.hand = [];
+    const gold = player.resources.gold;
+    visit(state, "p1", injectField(state, "sea_chest"));
+    expect(queuedSearches(state, "artifacts")).toBe(1);
+    expect(player.resources.gold).toBe(gold);
+  });
+
+  it("0: gain 5 gold, no artifact search", () => {
+    const state = makeGame("sea_chest-3");
+    const player = state.players.p1;
+    player.hand = [];
+    const gold = player.resources.gold;
+    visit(state, "p1", injectField(state, "sea_chest"));
+    expect(player.resources.gold).toBe(gold + 5);
+    expect(queuedSearches(state, "artifacts")).toBe(0);
+  });
+
+  it("-1: nothing happens", () => {
+    const state = makeGame("sea_chest-0");
+    const player = state.players.p1;
+    player.hand = [];
+    const gold = player.resources.gold;
+    visit(state, "p1", injectField(state, "sea_chest"));
+    expect(player.resources.gold).toBe(gold);
+    expect(queuedSearches(state, "artifacts")).toBe(0);
+  });
+});
+
+describe("Jetsam: +1 resolves TWO resource dice; -1 gives nothing", () => {
+  it("its +1 branch resolves both dice (a SEQUENCE of count:1, not a roll-2-pick-1)", () => {
+    const jetsam = locationDefinitions.jetsam.interaction;
+    expect(jetsam.type).toBe("ATTACK_DIE_TABLE");
+    if (jetsam.type === "ATTACK_DIE_TABLE") {
+      expect(jetsam.plus.type).toBe("SEQUENCE");
+      if (jetsam.plus.type === "SEQUENCE") {
+        expect(jetsam.plus.interactions).toHaveLength(2);
+        for (const inner of jetsam.plus.interactions) {
+          expect(inner.type).toBe("ROLL_RESOURCE_DICE");
+          if (inner.type === "ROLL_RESOURCE_DICE") {
+            expect(inner.count).toBe(1);
+          }
+        }
+      }
+    }
+  });
+
+  it("-1: nothing is gained", () => {
+    const state = makeGame("jetsam-1");
+    const player = state.players.p1;
+    player.hand = [];
+    const total = totalResources(state, "p1");
+    visit(state, "p1", injectField(state, "jetsam"));
+    expect(totalResources(state, "p1")).toBe(total);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Morale & movement durations (persistent token vs this-turn movement)
+// ---------------------------------------------------------------------------
+// hero.movementPoints is the per-turn pool (reset to heroMovementMax at turn
+// start, adventure.ts ~4897), so a field's +movement lasts THIS turn only.
+// player.morale is the persistent token pool (changeMorale, adventure.ts ~1101),
+// so a morale token is kept until spent — never silently turn-scoped.
+describe("Morale tokens and this-turn movement", () => {
+  it("Temple: +1 morale token (a held token, not a movement/turn effect)", () => {
+    const state = makeGame();
+    const player = state.players.p1;
+    const morale = player.morale;
+    const hero = getMainHero(state, "p1")!;
+    const movement = hero.movementPoints;
+    visit(state, "p1", injectField(state, "temple"));
+    expect(player.morale).toBe(morale + 1);
+    expect(hero.movementPoints).toBe(movement); // morale only, no movement
+  });
+
+  it("Buoy: +1 morale token", () => {
+    const state = makeGame();
+    const player = state.players.p1;
+    const morale = player.morale;
+    visit(state, "p1", injectField(state, "buoy"));
+    expect(player.morale).toBe(morale + 1);
+  });
+
+  it("Mermaid: +1 morale AND +1 movement (both halves of the SEQUENCE)", () => {
+    const state = makeGame();
+    const player = state.players.p1;
+    const hero = getMainHero(state, "p1")!;
+    const morale = player.morale;
+    const movement = hero.movementPoints;
+    visit(state, "p1", injectField(state, "mermaid"));
+    expect(player.morale).toBe(morale + 1);
+    expect(hero.movementPoints).toBe(movement + 1);
+  });
+
+  it("Stables: +1 movement (this-turn pool), no morale, and no black cube (revisitable)", () => {
+    const state = makeGame();
+    const player = state.players.p1;
+    const hero = getMainHero(state, "p1")!;
+    const movement = hero.movementPoints;
+    const morale = player.morale;
+    const field = injectField(state, "stables");
+    visit(state, "p1", field);
+    expect(hero.movementPoints).toBe(movement + 1);
+    expect(player.morale).toBe(morale); // movement only
+    expect(field.blackCube).toBe(false); // revisitable, never cubed
+  });
+
+  it("Warrior's Tomb: two Artifact searches, then two negative tokens force a hand discard", () => {
+    // Two negative morale tokens net to 0 (the second cancels the first) but set
+    // the discard-hand-at-turn-end penalty — that flag is the observable outcome,
+    // not morale === -2.
+    const state = makeGame();
+    const player = state.players.p1;
+    expect(player.morale).toBe(0);
+    visit(state, "p1", injectField(state, "warriors_tomb"));
+    expect(queuedSearches(state, "artifacts")).toBe(2); // Search(2) twice
+    expect(player.morale).toBe(0);
+    expect(player.discardHandAtTurnEnd).toBe(true); // the -2 penalty actually bites
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Scholar (map field): the Attack-die branch decides the reward
+// ---------------------------------------------------------------------------
+// Seeds chosen so each die face is exercised deterministically (verified):
+//  scholar-0 -> +1 (gain/remove a Statistic), scholar-5 -> 0 (Ability deck),
+//  scholar-1 -> -1 (Spell deck).
+describe("Scholar field maps each Attack-die face to the right reward", () => {
+  it("+1: offers a Statistic gain, and taking Attack puts stat.attack in hand", () => {
+    const state = makeGame("scholar-0");
+    const player = state.players.p1;
+    player.hand = [];
+    visit(state, "p1", injectField(state, "scholar"));
+    const step = state.adventure!.pendingVisit?.steps[0] as Extract<VisitStep, { type: "CHOOSE_ONE" }>;
+    expect(step.type).toBe("CHOOSE_ONE");
+    expect(step.prompt).toBe("Scholar: gain a Statistic card");
+    choose(state, "p1", (label) => label === "Gain an Attack card");
+    expect(player.hand).toContain("stat.attack");
+  });
+
+  it("0: searches the Ability deck (Search(2))", () => {
+    const state = makeGame("scholar-5");
+    state.players.p1.hand = [];
+    visit(state, "p1", injectField(state, "scholar"));
+    expect(state.adventure!.pendingVisit).toBeNull();
+    expect(queuedSearches(state, "abilities")).toBe(1);
+    expect(queuedSearches(state, "spells")).toBe(0);
+  });
+
+  it("-1: searches the Spell deck (Search(2))", () => {
+    const state = makeGame("scholar-1");
+    state.players.p1.hand = [];
+    visit(state, "p1", injectField(state, "scholar"));
+    expect(state.adventure!.pendingVisit).toBeNull();
+    expect(queuedSearches(state, "spells")).toBe(1);
+    expect(queuedSearches(state, "abilities")).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// University & Market of Time (card-economy fields, previously untested)
+// ---------------------------------------------------------------------------
+describe("University: pay 6 gold to Search(4) the Ability DISCARD pile", () => {
+  it("charges 6 gold and takes a card from the abilities discard into hand", () => {
+    const state = makeGame("university");
+    const player = state.players.p1;
+    player.resources.gold = 20;
+    player.hand = [];
+    const deck = state.decks.abilities;
+    const seeded = deck.drawPile.pop()!;
+    deck.discardPile.push(seeded); // a prior turn's discard for the University to offer
+
+    visit(state, "p1", injectField(state, "university"));
+    // PAY_TO: pay the 6-gold option.
+    resolveVisitStep(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 0 });
+    expect(player.resources.gold).toBe(14);
+
+    // SEARCH_DISCARD on the abilities discard; take the offered card (index 0).
+    const search = state.adventure!.pendingVisit?.steps[0] as Extract<VisitStep, { type: "SEARCH_DISCARD" }>;
+    expect(search.type).toBe("SEARCH_DISCARD");
+    expect(search.deckId).toBe("abilities");
+    resolveVisitStep(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 0 });
+
+    expect(player.hand).toContain(seeded);
+    expect(deck.discardPile).not.toContain(seeded); // moved out of the discard
+  });
+
+  it("declining the payment charges nothing and still cubes the field", () => {
+    const state = makeGame("university-decline");
+    const player = state.players.p1;
+    player.resources.gold = 20;
+    const field = injectField(state, "university");
+    visit(state, "p1", field);
+    resolveVisitStep(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", decline: true });
+    expect(player.resources.gold).toBe(20);
+    expect(field.blackCube).toBe(true);
+  });
+});
+
+describe("Market of Time: remove a card, then Search(2) ANY shared deck", () => {
+  it("removes the chosen card and offers all three decks (unlike Faerie Ring)", () => {
+    const state = makeGame("market-of-time");
+    const player = state.players.p1;
+    player.hand = ["spell.magic_arrow"];
+    visit(state, "p1", injectField(state, "market_of_time"));
+
+    // Remove the (removable) spell.
+    resolveVisitStep(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 0 });
+    expect(player.removed).toContain("spell.magic_arrow");
+    expect(player.hand).not.toContain("spell.magic_arrow");
+
+    // The follow-up lets the player pick ANY of the three decks to search.
+    const labels = getLegalActions(state, "p1")
+      .filter((action) => action.action.type === "RESOLVE_VISIT_STEP")
+      .map((action) => action.label);
+    expect(labels).toEqual(
+      expect.arrayContaining([
+        "Search (2) the Ability deck",
+        "Search (2) the Spell deck",
+        "Search (2) the Artifact deck"
+      ])
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Hill Fort: the bronze/silver-only restriction is real (not decorative)
+// ---------------------------------------------------------------------------
+describe("Hill Fort discounts ONLY bronze/silver reinforcements", () => {
+  it("offers bronze and silver Few units but never a gold-tier one", () => {
+    const state = makeGame("hill-fort");
+    const player = state.players.p1;
+    player.resources.gold = 50;
+    player.army = [];
+    addArmyUnit(player, "castle.halberdiers", "few"); // bronze, pack cost 3 gold
+    addArmyUnit(player, "castle.crusaders", "few"); // silver, pack cost 10 gold
+    addArmyUnit(player, "castle.champions", "few"); // gold, pack cost 20 gold + 1 valuables
+
+    visit(state, "p1", injectField(state, "hill_fort"));
+    const labels = getLegalActions(state, "p1")
+      .filter((action) => action.action.type === "RESOLVE_VISIT_STEP")
+      .map((action) => action.label);
+
+    expect(labels.some((label) => label.includes("Halberdiers"))).toBe(true); // bronze
+    expect(labels.some((label) => label.includes("Crusaders"))).toBe(true); // silver
+    expect(labels.some((label) => label.includes("Champions"))).toBe(false); // gold excluded
+  });
+
+  it("reinforces the chosen bronze Few to a Pack at a 3-gold discount (free at cost 3)", () => {
+    const state = makeGame("hill-fort-reinforce");
+    const player = state.players.p1;
+    player.resources.gold = 50;
+    player.army = [];
+    const unit = addArmyUnit(player, "castle.halberdiers", "few"); // pack cost 3 gold -> 0
+
+    visit(state, "p1", injectField(state, "hill_fort"));
+    // Index 0 = the only offered (bronze) unit.
+    resolveVisitStep(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 0 });
+
+    expect(player.army.find((armyUnit) => armyUnit.id === unit.id)?.side).toBe("pack");
+    expect(player.resources.gold).toBe(50); // 3 - 3 discount = free
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PvP / multiplayer: cross-player flagging transfers
+// ---------------------------------------------------------------------------
+describe("Random Town capture transfers income between players", () => {
+  it("first captor gains +10 income and 10 gold at once; a later captor only steals the income", () => {
+    const state = makeGame("random-town-pvp");
+    const p1 = state.players.p1;
+    const p2 = state.players.p2;
+    const p1Prod = p1.production.gold;
+    const p1Gold = p1.resources.gold;
+    const p2Prod = p2.production.gold;
+    const p2Gold = p2.resources.gold;
+
+    const field = injectField(state, "random_town");
+
+    // p1 is the first-ever captor: +10 income AND +10 gold immediately.
+    visit(state, "p1", field);
+    expect(field.flagOwnerId).toBe("p1");
+    expect(p1.production.gold).toBe(p1Prod + 10);
+    expect(p1.resources.gold).toBe(p1Gold + 10);
+
+    // p2 steals it: p2 gains the +10 income, p1 LOSES the +10 income, and
+    // because it is no longer the first capture, p2 gets NO immediate 10 gold.
+    visit(state, "p2", field);
+    expect(field.flagOwnerId).toBe("p2");
+    expect(p2.production.gold).toBe(p2Prod + 10);
+    expect(p2.resources.gold).toBe(p2Gold); // no second immediate payout
+    expect(p1.production.gold).toBe(p1Prod); // income stripped back to baseline
+    expect(p1.resources.gold).toBe(p1Gold + 10); // keeps the gold it already banked
+  });
+});
+
+describe("Star Axis is flaggable: each player empowers once, on their first visit", () => {
+  it("a second player flags too and empowers their own stat; revisits empower nothing", () => {
+    const state = makeGame("star-axis-pvp");
+    const p1 = state.players.p1;
+    const p2 = state.players.p2;
+    p1.hand = ["stat.power"];
+    p2.hand = ["stat.attack"];
+
+    const field = injectField(state, "star_axis");
+
+    // p1: first visit flags the field and empowers Power.
+    visit(state, "p1", field);
+    choose(state, "p1", (label) => label === "Empower Power");
+    expect(field.flagOwnerId).toBe("p1");
+    expect(p1.hand).toContain("stat.power.empowered");
+    expect(p1.removed).toContain("stat.power");
+
+    // p2: a different player keeps their own cube (extraFlagOwnerIds) and gets
+    // their OWN empower.
+    visit(state, "p2", field);
+    choose(state, "p2", (label) => label === "Empower Attack");
+    expect(field.flagOwnerId).toBe("p1"); // p1 still the primary flag owner
+    expect(field.extraFlagOwnerIds ?? []).toContain("p2");
+    expect(p2.hand).toContain("stat.attack.empowered");
+
+    // p1 revisits: already flagged here, so NO second empower is offered.
+    p1.hand = ["stat.knowledge"];
+    visit(state, "p1", field);
+    expect(state.adventure!.pendingVisit).toBeNull();
+    expect(p1.hand).toEqual(["stat.knowledge"]); // untouched
+    expect(p1.removed).not.toContain("stat.knowledge");
+  });
+});
