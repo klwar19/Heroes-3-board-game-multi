@@ -1,0 +1,24 @@
+Homm3BG board-game asset set — attribution
+==========================================
+
+Some hero-specialty card SYMBOLS in this project are taken from the community
+"Homm3BG" asset repository and re-saved as WebP (format change only; no other
+edits):
+
+  - /assets/specialty-card/icon-frost_ring.webp   (Frost Ring — Glacius)
+  - /assets/specialty-card/icon-magic_arrow.webp  (Magic Arrow — Ciele)
+  - /assets/specialty-card/icon-firewall.webp     (Fire Wall  — Luna)
+
+Source:  https://github.com/Heegu-sama/Homm3BG  (assets/spells, assets/art)
+License: Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International
+         (CC BY-NC-SA 4.0) — https://creativecommons.org/licenses/by-nc-sa/4.0/
+
+Terms (summary): give appropriate credit, link the license, indicate changes;
+non-commercial use only; adaptations must be shared under the same license.
+
+Changes made: the original PNGs were resized down and converted to WebP. The
+transparency and artwork are otherwise unmodified.
+
+NOTE: CC BY-NC-SA is non-commercial + share-alike. These specific symbol files
+carry that license independently of the rest of this repository. Replace them
+with original art before any commercial use.

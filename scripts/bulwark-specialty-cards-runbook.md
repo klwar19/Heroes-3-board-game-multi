@@ -1,26 +1,23 @@
-# Bulwark art runbook — town map tile + hero specialties (browser + Gemini)
+# Bulwark art runbook — town map tile + hero specialties
 
-End-to-end instructions to generate the missing **Bulwark** art and wire it in:
+Two pieces of missing **Bulwark** art and how they get into the game:
 
-1. the **town map tile** (`S10`), drawn on the Tower snow tile as the base
-   environment with a new Bulwark town (section **"Bulwark town map tile"** below);
-2. the **18 hero-specialty cards** (6 heroes × levels **I / IV / VI**).
-
-It mirrors `scripts/bulwark-cards-runbook.md` (the unit-card runbook) — same
-tooling, same "copy a finished card/tile as the template" trick.
+1. the **town map tile** (`S10`) — a Gemini edit of the Tower snow tile (below);
+2. the **hero-specialty cards** (6 heroes × levels **I / IV / VI**) — now drawn
+   **natively in-app** by `SpecialtyCard`; only one transparent symbol per hero
+   is an image, and most already ship.
 
 ## Bulwark town map tile (S10)
 
-The Bulwark starting tile `S10` (`src/data/map/expansion-tiles.ts`) has no art
-yet, so the board draws it as bare snow terrain with glyph overlays. Generate its
-face by **editing the Tower starting tile** — both are `snow` tiles, so reuse
-Tower's whole environment and just swap the town.
+The Bulwark starting tile `S10` (`src/data/map/expansion-tiles.ts`) is drawn by
+**editing the Tower starting tile** — both are `snow` tiles, so reuse Tower's
+whole environment and just swap the town.
 
 **The hex code is already aligned (the "fix code for correct hexes" step is done).**
-`S10`'s field arrangement and outer borders now mirror the Tower tile `#S1`
-exactly (only the town's faction is `bulwark`), because a tile's field symbols are
-baked into its art and the engine hides the glyph overlay once `assets.tileImage`
-is set (see `renderTileArt` in `src/components/adventure/screen.tsx`). So the Tower
+`S10`'s field arrangement and outer borders mirror the Tower tile `#S1` exactly
+(only the town's faction is `bulwark`), because a tile's field symbols are baked
+into its art and the engine hides the glyph overlay once `assets.tileImage` is
+set (see `renderTileArt` in `src/components/adventure/screen.tsx`). So the Tower
 symbols in the base art already sit on the right engine hexes — do **not** move
 them.
 
@@ -69,329 +66,84 @@ render).
 node scripts/png-to-webp.mjs out/bulwark-tile public/assets/board/tiles
 ```
 
-Then add the art reference in `src/data/map/expansion-tiles.ts` (the `S10` entry
-already notes this as its last step):
+Then set `assets: { tileImage: "/assets/board/tiles/s10.webp" }` on the `S10`
+entry in `src/data/map/expansion-tiles.ts`. (Done — `s10.webp` ships and is
+wired; the field symbols land on the right hexes.)
 
-```ts
-assets: { tileImage: "/assets/board/tiles/s10.webp" }
-```
+## Hero specialty cards (native render — `SpecialtyCard`)
 
-Confirm in-app that S10 shows the Bulwark town and the field symbols land on the
-right hexes (mine, treasure, resource, blocked, two empties). Until the webp
-exists, leave `assets` off so the board keeps drawing the (already-correct) glyph
-overlay instead of a broken image.
+Specialty cards are now drawn **in-app** by `src/components/specialty-card.tsx`
+(`SpecialtyCard`) — a port of the HoMM3 Hero Creator's card (MIT; see
+`public/credits/`). It renders the **frame, title, I/IV/VI level badge and the
+effect text** from game data (`coreHeroDefinitions` + `cardLibrary`). The only
+image it needs is the central **specialty symbol**, shown transparently
+(`object-fit: contain`) over the leather panel. Preview every card at
+**`/specialty-preview`** (`npm run dev`).
 
-## Hero specialty cards
+So there are **no full cards to generate** — just one transparent symbol per
+hero. Most already ship; only the three Bulwark **unit** symbols remain.
 
-End-to-end for the **18 Bulwark hero-specialty cards** (6 heroes × levels
-**I / IV / VI**) in the game's real specialty-card style, then wire them into the
-engine — the hero board's specialty track instead of unit faces.
+### Symbol sources (one transparent picture per specialty)
 
-## Specialty cards via the HoMM3 Hero Creator (PREFERRED — much more consistent than Gemini)
+| Hero (slug) | Specialty | Symbol file under `public/assets/` | Source / status |
+|---|---|---|---|
+| Glacius (`glacius`) | Frost Ring | `specialty-card/icon-frost_ring.webp` | Homm3BG (CC BY-NC-SA) — shipped |
+| Ciele (`ciele`) | Magic Arrow | `specialty-card/icon-magic_arrow.webp` | Homm3BG — shipped |
+| Luna (`luna`) | Fire Wall | `specialty-card/icon-firewall.webp` | Homm3BG — shipped |
+| Oidana (`oidana`) | Diplomacy | `specialty-card/icon-diplomacy.webp` | owner-supplied dove — shipped |
+| Kriv (`kriv`) | Runes | `runes-emblem.webp` | owner-supplied emblem — shipped |
+| **Dhuin** (`dhuin`) | Snow Elves | `specialty-card/icon-dhuin.webp` | **Gemini — TODO (prompt below)** |
+| **Creyle** (`creyle`) | Mammoths | `specialty-card/icon-creyle.webp` | **Gemini — TODO** |
+| **Eikthurn** (`eikthurn`) | Yetis | `specialty-card/icon-eikthurn.webp` | **Gemini — TODO** |
 
-`https://k-adam.github.io/Homm3_hero_creator/` (a **static client-side Next.js**
-fan tool; source `github.com/k-adam/Homm3_hero_creator` — check its licence before
-reusing any of its assets) is purpose-built for these exact cards and gives far
-more consistent results than an image model. Drive it with the **Playwright MCP**,
-the same way you'd drive Gemini.
+`SpecialtyCard` already points at every path above, and a **missing file simply
+shows no icon** (the frame + text still draw), so dropping the three unit symbols
+in is all that's left. The Homm3BG symbols are CC BY-NC-SA — credited in
+`public/credits/Homm3BG_LICENSE.txt`; swap them for original art before any
+commercial use.
 
-**Why it fits perfectly:** its `HeroCard` renders **one specialty card per level** —
-the card container is a `.card` element with a `specialtyI` / `specialtyIV` /
-`specialtyVI` modifier class, carrying the authentic frame, the hero portrait, the
-specialty icon + title + effect text, and the level badge. That is a 1:1 match for
-our `hero_specialties-<slug>-<level>.webp` slots.
+### Generate the three Bulwark unit symbols (Gemini)
 
-**It has no PNG-export button** — its only export is the browser's print-to-PDF
-(for printing physical cards). So don't use its export; instead **element-screenshot
-the rendered `.card`** with Playwright (`locator.screenshot()`), which yields a
-clean PNG of exactly one specialty card.
+Make ONE transparent creature symbol per unit — **just the creature, no card,
+frame, stats, text or background.** Use the unit's existing card as the look
+reference:
 
-### Flow (per hero)
+- Dhuin → reference `public/assets/units-bulwark-bronze-snow_elves-few.webp`
+- Creyle → reference `public/assets/units-bulwark-golden-mammoths-few.webp`
+- Eikthurn → reference `public/assets/units-bulwark-silver-yetis-few.webp`
 
-1. Open the tool — the live URL, or run it locally for speed/offline:
-   `git clone https://github.com/k-adam/Homm3_hero_creator && cd Homm3_hero_creator && npm i && npm run dev` → `http://localhost:3000`.
-2. Configure the hero **from our data — don't invent values**:
-   - **Name / Type (might|magic) / Class / starting stats** — from
-     `src/data/factions/core.ts` (e.g. Dhuin = Chieftain, might, 2/2/1/1).
-   - **Portrait** — upload `public/assets/hero_portraits-<slug>.webp`.
-   - **Specialty I / IV / VI** — set each level's title and effect text to the
-     `name` and the human-readable tag string on `specialty.<slug>.<level>` in
-     `src/data/cards/adventure.ts`; choose the specialty icon by type (unit / spell
-     / ability / rune) per the table below.
-   - **Unit / unit stats** — the hero's signature unit (the table's "specialty
-     picture source"), stats from `src/data/factions/units.ts`.
-   - Tip: the tool round-trips a `.homm3.json` (`stringifyHero` / `parseHero` via
-     its Save / Open). Build one JSON per hero once and load it to skip re-filling
-     forms on later passes.
-3. For each level, screenshot the matching card element
-   (`.card.specialtyI` / `…specialtyIV` / `…specialtyVI`) to
-   `out/bulwark-specialties/hero_specialties-<slug>-<level>.png`. Confirm the crop
-   is tight to the card and the level badge reads I / IV / VI.
-4. Convert + wire exactly as in "Finalize" / "Wire it up" below
-   (`png-to-webp.mjs`, then remove `withoutArt(...)` / add the `assets` block).
+Prompt (upload the unit card as the reference image):
 
-**Caveats:** the tool's card proportions are its own — eyeball one screenshot
-against an existing `hero_specialties-*.webp` and keep all six heroes consistent.
-This tool does **not** make the map tile (S10) — keep using the Gemini tile prompt
-above. If it can't express a specialty cleanly, fall back to the Gemini prompt
-templates further down.
+> From the creature shown in this Heroes of Might & Magic III board-game unit
+> card, produce a clean **cut-out of ONLY the creature** — the single figure
+> alone, on a **fully transparent background**. Remove the card entirely: no
+> frame, border, title, stat icons or numbers, cost bar, ability banner, or
+> background scenery — just the creature, repainted as a crisp, high-resolution
+> semi-realistic digital fantasy illustration matching the card's art style.
+> Centre it, fill the frame, no drop shadow. Output PNG with transparency.
 
-> No-browser path (now implemented): the Hero Creator is MIT, so its specialty
-> card is ported natively as `src/components/specialty-card.tsx` (`SpecialtyCard`)
-> + the `.sc*` rules in `globals.css`, with its frame textures vendored under
-> `public/assets/specialty-card/` (credited in `public/credits/`). It draws the
-> art-less Bulwark/Conflux specialties live from game data — no Gemini, no
-> screenshots — and crops the unit/spell/ability/rune picture to the icon window.
-> Preview them at **`/specialty-preview`** (`npm run dev`). Still TODO: tune the
-> proportions against a browser, then swap the hero board's blank specialty slot
-> (`CardArt` in `hero-board.tsx`) to render `<SpecialtyCard>` when a specialty has
-> no baked `cardImage`. Until then this runbook's image path remains the way to
-> fill the slots.
-
----
-
-The Gemini prompt path below remains the **fallback**.
-
-This is a **card-art + wiring** task. The art itself is produced by Gemini
-("Nano Banana", the Image tool) exactly like every other card face in this repo;
-this file is the prompt set + the per-hero source table + the wire-up step. No
-engine behaviour changes — the specialties already run and are tested; only their
-printed faces are missing.
-
-## What a specialty card is here
-
-- A hero gains three specialty cards, at **levels I, IV and VI** (stored as `1`,
-  `4`, `6`). See `HeroDefinition.specialtyCardIds` in
-  `src/data/factions/types.ts` and the per-hero entries in
-  `src/data/factions/core.ts`.
-- Each one is a `CardLibrary` entry `specialty.<heroSlug>.<level>` in
-  `src/data/cards/adventure.ts`, and its face lives at
-  **`public/assets/hero_specialties-<heroSlug>-<level>.webp`**
-  (the path the `specialtyCardImage(slug, level)` helper builds).
-- 102 finished specialty cards for the base-game heroes already ship in
-  `public/assets/` (e.g. `hero_specialties-adelaide-1.webp`). The Bulwark ones
-  are the gap this runbook fills.
-
-### The desired composition (per the owner)
-
-> *use hero image and frame for I / IV / VI, and the correct picture for the
-> specialty — unit, spell or ability — even a new one for rune.*
-
-So every Bulwark specialty card is built from three things:
-
-1. **The hero's portrait** (`public/assets/hero_portraits-<slug>.webp`) — so a
-   glance tells you whose specialty it is.
-2. **The specialty-card frame for that level** — copied from a finished
-   reference specialty card of the matching level (I/IV/VI). The frame already
-   carries the level numeral; you only swap the contents.
-3. **The "specialty picture"** — what the hero specialises in:
-   - **Unit** specialist → that unit's illustration.
-   - **Spell** specialist → that spell's illustration.
-   - **Ability** specialist → that ability's illustration.
-   - **Rune** specialist (Kriv) → there is no creature/spell to show, so it uses
-     the provided emblem `public/assets/runes-emblem.webp` (section D).
-
-> Specialty cards do **not** use the bronze/silver/gold *unit* frames
-> (`units-blank-*.webp`). Those are for unit faces. Always template a specialty
-> card off another **specialty** card.
-
-## Reference (template) cards — copy their frame/fonts/layout
-
-Pick any finished specialty trio as the structural template and use the
-level-matching one for each card. A clean, neutral choice:
-
-| Level | Reference specialty card (frame template)   |
-|-------|---------------------------------------------|
-| I     | `public/assets/hero_specialties-alamar-1.webp` |
-| IV    | `public/assets/hero_specialties-alamar-4.webp` |
-| VI    | `public/assets/hero_specialties-alamar-6.webp` |
-
-(Any `hero_specialties-<hero>-{1,4,6}.webp` trio works — they share one frame
-format; the numeral and contents are all that change between I/IV/VI.)
-
-## Before you start (browser + Gemini, exactly like the unit runbook)
-
-This is a **browser** job — a specialty card composes **three** uploaded images
-(reference card + hero portrait + specialty picture), which the single-image API
-script (`edit-card-image.mjs`) cannot do. Drive Gemini over the browser with the
-Playwright MCP, the same way the unit cards were made.
-
-- `/mcp` must show `playwright · connected`.
-- Open gemini.google.com once and sign in with the Gemini Pro account (the
-  persistent browser profile remembers it afterward).
-- Run from the repo root. Create the output folders `out/bulwark-tile/` and
-  `out/bulwark-specialties/`.
-
-## The loop — one image at a time, in the browser
-
-Do everything yourself — **no sub-agents, no web fetching**; every file
-referenced here is already local in this repo. For EACH card (and the tile):
-
-1. Start a **fresh** Gemini chat (cleaner than reusing one). Enable the **Image**
-   tool (`+` → "Image — create & edit", Nano Banana) so Gemini outputs an image.
-2. Upload the source files **in the exact order the prompt lists them**: the tile
-   = 1 image (`sx1.webp`); a specialty card = 3 images (reference card → hero
-   portrait → specialty picture); Kriv's emblem first = the 3 rune icons.
-3. Send the matching prompt below, with `{HERO}` / `{LEVEL}` / `{SPECIALTY_NAME}`
-   filled in.
-4. When the image appears, extract it full-res and **verify every field** (frame,
-   title, level numeral, the hero likeness, the specialty picture). If anything
-   is wrong, reply with a targeted fix (e.g. *"the numeral must read VI, not IV;
-   change only that"*) and loop until exact. After ~3 bad tries, keep the best
-   and note the card for a later pass so the batch status stays honest.
-5. Save the approved PNG to the output path the section specifies, then move on.
-
-## The 18 Bulwark specialty cards (verified from `src/data/cards/adventure.ts`)
-
-`slug` → portrait `hero_portraits-<slug>.webp`; output
-`hero_specialties-<slug>-<level>.webp`.
-
-| Hero (slug) | Type | Specialty | Specialty picture source (upload) |
-|-------------|------|-----------|-----------------------------------|
-| **Dhuin** (`dhuin`) | Unit | Snow Elves (I/IV/VI) | `units-bulwark-bronze-snow_elves-few.webp` |
-| **Creyle** (`creyle`) | Unit | Mammoths (I/IV/VI) | `units-bulwark-golden-mammoths-few.webp` |
-| **Eikthurn** (`eikthurn`) | Unit | Yetis (I/IV/VI) | `units-bulwark-silver-yetis-few.webp` |
-| **Glacius** (`glacius`) | Ability | Frost Ring (I/IV/VI) | `spells-frost_ring.webp` |
-| **Oidana** (`oidana`) | Ability | Diplomacy (I/IV/VI) | `abilities-diplomacy.webp` |
-| **Kriv** (`kriv`) | Rune | Runes (I/IV/VI) | `runes-emblem.webp` (provided — section D) |
-
-Level numerals to print on each card: **I** for the `-1` file, **IV** for `-4`,
-**VI** for `-6`. The exact printed names are `Snow Elves I/IV/VI`,
-`Mammoths I/IV/VI`, `Yetis I/IV/VI`, `Frost Ring I/IV/VI`, `Diplomacy I/IV/VI`,
-`Runes I/IV/VI` (these match the `name` field on each `specialty.<slug>.<level>`
-card — keep them identical).
-
-> Optional, same recipe — the three Conflux specialists also lack faces:
-> **Luna** (`luna`, Spell → `spells-fire_wall.webp`), **Ciele** (`ciele`,
-> Spell → `spells-magic_arrow.webp`), **Tarnum** (`tarnum_conflux`, Ability →
-> the Enchanters unit art). Do them after Bulwark if wanted.
-
-## Prompt templates (the "prompt for CLI")
-
-Each prompt uploads, in order: **Image 1** = the level-matching reference
-specialty card (frame template), **Image 2** = the hero portrait, **Image 3** =
-the specialty picture source. Fill `{HERO}`, `{LEVEL}` (`I`/`IV`/`VI`) and
-`{SPECIALTY_NAME}`.
-
-### A. Unit-specialist card (Dhuin, Creyle, Eikthurn)
-
-> You are recreating a physical **hero-specialty card** from the **Heroes of
-> Might & Magic III board game**. Match that set's look exactly.
->
-> **Image 1** is a FINISHED official specialty card — treat it as the absolute
-> template for everything structural: the frame, its color and bevels, the blue
-> outer edge, the corner filigree, the title banner, the **level numeral badge**,
-> the rules-text banner, and the small © footer. Reproduce its proportions,
-> borders, fonts and colors EXACTLY — same card, only the contents change.
->
-> **Image 2** is the portrait of the hero **{HERO}**. **Image 3** is the
-> illustration of the creature this hero specialises in.
->
-> Produce ONE finished specialty card, portrait orientation, high-resolution and
-> crisp:
-> - Compose the art window as the board game does for a **unit specialist**: the
->   hero **{HERO}** (from Image 2) as the figure, with the specialised creature
->   (from Image 3) shown alongside/behind them as the subject of the specialty.
->   Repaint both as a single cohesive, semi-realistic digital fantasy
->   illustration in the EXACT art style of Image 1 (clean Heroes III character
->   art — NOT oil painting, NOT cartoon, no visible brush texture). Keep the
->   hero recognisably the same person as Image 2 and the creature the same
->   species as Image 3. Fill the whole art window behind the frame.
-> - Title banner: **{SPECIALTY_NAME} {LEVEL}**
-> - Level numeral badge: **{LEVEL}** (the Roman numeral, matching Image 1's slot).
-> - Rules-text banner: copy the wording from Image 1's banner position but leave
->   the specific effect text to be set later — render a clean empty banner if
->   unsure (do NOT invent numbers).
-> Render every letter sharp and legible, frame pixel-aligned and symmetrical. Do
-> NOT add watermarks, coins, gems, or any icon not present on Image 1.
-
-### B. Ability-specialist card (Glacius — Frost Ring; Oidana — Diplomacy)
-
-Same as A, but **Image 3** is the ability/spell illustration, and the art window
-shows the hero invoking that ability:
-
-> ...Compose the art window as the board game does for an **ability specialist**:
-> the hero **{HERO}** (Image 2) foregrounded, wielding/channelling the
-> **{SPECIALTY_NAME}** effect depicted in Image 3 (e.g. the ring of frost, or the
-> diplomatic parley). One cohesive illustration in Image 1's exact style...
-> (title **{SPECIALTY_NAME} {LEVEL}**, numeral **{LEVEL}**, same frame.)
-
-### C. Spell-specialist card (Conflux: Luna — Fire Wall; Ciele — Magic Arrow)
-
-Same as B, with **Image 3** = the spell card art, and the art window showing the
-hero casting that spell.
-
-### D. Rune-specialist card (Kriv) — the rune emblem is PROVIDED
-
-Kriv specialises in the Bulwark **Runes** mechanic, which has no creature or
-spell to show, so it uses a dedicated rune emblem. **The emblem already ships in
-the repo — do NOT generate one:**
-
-- **`public/assets/runes-emblem.webp`** — a glowing golden rune carved into stone
-  with a hammer and chisel, transparent background (500×500, ~38 KB).
-
-Build Kriv's three cards exactly like an ability specialist (prompt **B** for
-Gemini, or the Hero Creator's specialty-picture upload), using
-**`public/assets/runes-emblem.webp`** as the specialty picture — hero `kriv`,
-specialty name `Runes`, levels I / IV / VI. No `D1` generation step is needed.
-
-## Verify, then save
-
-Extract each result full-res and check: the **frame matches Image 1**, the
-**title reads `{SPECIALTY_NAME} {LEVEL}`**, the **numeral badge** is the right
-Roman numeral, the hero is recognisable, and the specialty picture is correct.
-Regenerate with a targeted note if any field is wrong (e.g. *"The numeral must
-read VI, not IV; change only that."*). Save approved PNGs as
-`out/bulwark-specialties/hero_specialties-<slug>-<level>.png`.
-
-## Finalize: PNG → WebP
+Save the three PNGs as `icon-dhuin.png` / `icon-creyle.png` / `icon-eikthurn.png`
+in `out/bulwark-symbols/`, then convert in place:
 
 ```bash
-npm install -D sharp   # if not already present
-node scripts/png-to-webp.mjs out/bulwark-specialties public/assets
+node scripts/png-to-webp.mjs out/bulwark-symbols public/assets/specialty-card
 ```
 
-Confirm the 18 (or 27 with Conflux) `hero_specialties-*.webp` files landed in
-`public/assets/`.
+Reload `/specialty-preview` — the three unit cards now show their creatures. (The
+shipped symbols were made the same way: spell symbols are the transparent Homm3BG
+art, Diplomacy is the supplied dove, Runes is the supplied emblem.)
 
-## Wire it up (code change — do this AFTER the webp files exist)
+### Still TODO: wire into the hero board
 
-The specialties already run; they just need their `cardImage` re-enabled so the
-hero board stops drawing a blank slot (`CardArt` in
-`src/components/hero-board.tsx` falls back to an empty slot when no image is
-set). In `src/data/cards/adventure.ts`:
+`SpecialtyCard` renders standalone (preview route) but is **not yet shown on the
+hero board**. The remaining step: render `<SpecialtyCard cardId={…} />` from
+`hero-board.tsx`'s `CardArt` (the specialty slot) when a specialty has no baked
+`cardImage`, and in the card zoom. Do it after tuning the proportions (the `.sc*`
+rules in `globals.css`) against the preview.
 
-- **Dhuin, Creyle, Eikthurn** — these are built by the `mightSpecialtyOne` /
-  `unitHealthSpecialty` / `unitInitiativeSpecialty` helpers (which already bake
-  in `cardImage: specialtyCardImage(slug, level)`) but are wrapped in
-  `withoutArt(...)`. **Remove the `withoutArt(...)` wrapper** on all six lines,
-  e.g.:
+## Credits
 
-  ```ts
-  // before
-  "specialty.dhuin.1": withoutArt(mightSpecialtyOne("dhuin", "Snow Elves", "Snow Elves")),
-  // after
-  "specialty.dhuin.1": mightSpecialtyOne("dhuin", "Snow Elves", "Snow Elves"),
-  ```
-
-- **Glacius, Oidana, Kriv** — these are inline objects with **no `assets`
-  block**. Add one to each level, e.g.:
-
-  ```ts
-  assets: { cardImage: specialtyCardImage("glacius", 1), imageAlt: "Frost Ring I specialty" },
-  ```
-
-  (`specialtyCardImage` is already defined in this file; use the slug and the
-  level `1`/`4`/`6`.)
-
-Then verify in the app: open a Bulwark hero's board and confirm the I/IV/VI
-specialty cards show the new faces. There is no automated test for card *art*
-(it is presentational); the engine tests already cover the specialty *effects*.
-
-## Honesty / status note
-
-Until the webp files are generated and the `cardImage` paths are re-enabled, the
-Bulwark specialty faces remain blank slots in the UI — the cards still **work**
-mechanically. Do not mark the art "done" before the files exist and the wiring
-above is in place; log any hero you skipped so the batch's status stays honest
-(same rule as the unit runbook).
+- Card frame / leather / border textures — HoMM3 Hero Creator (MIT © 2025 Adam
+  Kecskes): `public/credits/Homm3_hero_creator_LICENSE.txt`.
+- Frost Ring / Magic Arrow / Fire Wall symbols — Homm3BG (CC BY-NC-SA 4.0):
+  `public/credits/Homm3BG_LICENSE.txt`.
