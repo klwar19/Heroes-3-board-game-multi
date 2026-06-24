@@ -309,6 +309,13 @@ export const abilityFxPlans: Record<string, SpellFxPlan> = {
   // UNIT_ABILITY_TRIGGERED("dragon-fly-dispel"); reuse the same dispel shimmer +
   // sound the spell-counter cue uses (cancelFx) so the cleanse is seen and heard.
   "dragon-fly-dispel": { affect: [{ key: "dispel" }], sound: "spells/dispel" },
+  // Wraiths' / Trolls' activation Regeneration: the unit mends itself at the start
+  // of its turn. The engine now emits a UNIT_ABILITY_TRIGGERED under the ability id
+  // (alongside the "+N" heal floater), so the green Cure shimmer + heal chime play
+  // — they previously regenerated in silence.
+  "wraith-heal-1": { affect: [{ key: "cure" }], sound: "spells/cure" },
+  "wraith-heal-2": { affect: [{ key: "cure" }], sound: "spells/cure" },
+  "troll-heal-3": { affect: [{ key: "cure" }], sound: "spells/cure" },
   // Future abilities (cards not implemented yet, assets ready):
   poison: { affect: [{ key: "poison" }], sound: "spells/poison" },
   paralyze: { affect: [{ key: "paralyze" }], sound: "spells/paralyze" },

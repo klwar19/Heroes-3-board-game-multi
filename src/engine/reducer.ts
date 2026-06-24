@@ -5457,6 +5457,17 @@ function applyActivationStartAbilities(state: GameState, unit: CombatUnitState):
       }
       const healed = Math.min(ability.amount, unit.damage);
       unit.damage = Math.max(0, unit.damage - ability.amount);
+      // Fire the ability event BEFORE the heal so the FX layer can draw the
+      // regeneration cue (abilityFxPlans[ability.abilityId]) — Wraith/Troll
+      // Regeneration otherwise floated a silent "+N". (A card-sourced heal uses
+      // healFxPlans; this unit-sourced one needs the ability event to animate.)
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: unit.id,
+        abilityId: ability.abilityId,
+        targetUnitId: unit.id,
+        message: `${unit.name} regenerates ${healed} damage.`
+      });
       appendEvent(state, {
         type: "DAMAGE_HEALED",
         source: { type: "unit", unitId: unit.id, controllerId: unit.controllerId },

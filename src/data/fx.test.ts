@@ -179,7 +179,10 @@ describe("previously-silent monster abilities now carry a cue", () => {
     ["vampire-heal-on-attack", "cure", "effects/drain-life"],
     ["bank-vampire-life-drain", "cure", "effects/drain-life"],
     ["fortress-gorgon-death-stare", "death-stare", "spells/death-stare"],
-    ["dragon-fly-dispel", "dispel", "spells/dispel"]
+    ["dragon-fly-dispel", "dispel", "spells/dispel"],
+    ["wraith-heal-1", "cure", "spells/cure"],
+    ["wraith-heal-2", "cure", "spells/cure"],
+    ["troll-heal-3", "cure", "spells/cure"]
   ])("%s plays the %s sprite + sound", (abilityId, sheetKey, sound) => {
     const plan = abilityFxPlans[abilityId];
     expect(plan, `${abilityId} needs an ability FX plan`).toBeTruthy();
