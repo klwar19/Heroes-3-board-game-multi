@@ -165,6 +165,16 @@ function syncRuneEffects(state: GameState, playerId: PlayerId): void {
       name: `${spec.name} (Rune Level ${nextLevel})`,
       duration: effect.duration
     });
+    // A dedicated cue for the combat UI: a Rune Level just turned on, which the
+    // table announces with the Rune sound (effects/rune). Emitted on the climb
+    // only (the while-loop runs solely when appliedLevel < target), so it never
+    // fires for Level 0 or a no-change re-sync.
+    appendEvent(state, {
+      type: "RUNE_LEVEL_REACHED",
+      playerId,
+      level: nextLevel,
+      count: entry.count
+    });
   }
 }
 
@@ -214,6 +224,25 @@ export function gainRunes(state: GameState, playerId: PlayerId | undefined, amou
   if (entry.count !== before) {
     syncRuneEffects(state, owner);
   }
+}
+
+/**
+ * Makes a Bulwark player Rune-Empowered: their Hero then starts each combat with
+ * `amount` more Runes (added to runeEmpoweredNextCombats, capped at RUNE_MAX),
+ * until their next Resource round clears the flag. Stacks with the City Hall
+ * combat-focus option (both feed the same flag, read by seedRunesForCombat).
+ * No-op (returns the unchanged flag) for a non-Bulwark player or amount <= 0.
+ * Returns the resulting starting-rune total so the caller can log it.
+ */
+export function grantStartingRunes(state: GameState, playerId: PlayerId | undefined, amount: number): number {
+  const player = playerId ? state.players[playerId] : undefined;
+  const current = player?.runeEmpoweredNextCombats ?? 0;
+  if (amount <= 0 || !player || !isBulwarkPlayer(state, playerId)) {
+    return current;
+  }
+  const next = Math.min(RUNE_MAX, current + amount);
+  player.runeEmpoweredNextCombats = next;
+  return next;
 }
 
 /** Rune gain for a resolved attack (Attack +1) or Retaliation Attack (+1). */

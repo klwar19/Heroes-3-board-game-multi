@@ -1185,8 +1185,9 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "bulwark",
     tier: "silver",
     type: "ground",
-    few: { attack: 3, defense: 2, health: 4, initiative: 5, cost: { gold: 6 }, abilities: ["bulwark-yeti-recover"], abilityText: "[unit_passive] At the start of its activation, this unit recovers from all negative effects.", cardImage: "/assets/units-bulwark-silver-yetis-few.webp" },
-    pack: { attack: 4, defense: 2, health: 5, initiative: 6, cost: { gold: 10 }, abilities: ["bulwark-yeti-recover"], abilityText: "[unit_passive] At the start of its activation, this unit recovers from all negative effects.", cardImage: "/assets/units-bulwark-silver-yetis-pack.webp" },
+    // engine: Few (Yeti) has no wired ability; Pack (Yeti Runemaster) keeps Recovery.
+    few: { attack: 3, defense: 2, health: 4, initiative: 5, cost: { gold: 6 }, abilities: [], cardImage: "/assets/units-bulwark-silver-yetis-few.webp" },
+    pack: { attack: 3, defense: 2, health: 5, initiative: 6, cost: { gold: 10 }, abilities: ["bulwark-yeti-recover"], abilityText: "[unit_passive] At the start of its activation, this unit recovers from all negative effects.", cardImage: "/assets/units-bulwark-silver-yetis-pack.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Yeti",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Bulwark Expansion)",
@@ -1201,8 +1202,8 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     tier: "silver",
     type: "ranged",
     // engine: Few carries Air Shield only; Pack (Great Shaman) adds Freezing Shot.
-    few: { attack: 3, defense: 1, health: 5, initiative: 5, cost: { gold: 7 }, abilities: ["bulwark-air-shield"], abilityText: "[unit_passive] +1 Defense against ranged attackers (Air Shield).", cardImage: "/assets/units-bulwark-silver-shamans-few.webp" },
-    pack: { attack: 4, defense: 1, health: 5, initiative: 6, cost: { gold: 11 }, abilities: ["bulwark-air-shield", "bulwark-freezing-shot"], abilityText: "[unit_passive] +1 Defense against ranged attackers (Air Shield). [unit_attack] After the attack, reduce the target's Initiative by 2 next round (Freezing Shot).", cardImage: "/assets/units-bulwark-silver-shamans-pack.webp" },
+    few: { attack: 3, defense: 0, health: 5, initiative: 5, cost: { gold: 7 }, abilities: ["bulwark-air-shield"], abilityText: "[unit_passive] +1 Defense against ranged attackers (Air Shield).", cardImage: "/assets/units-bulwark-silver-shamans-few.webp" },
+    pack: { attack: 3, defense: 1, health: 6, initiative: 6, cost: { gold: 11 }, abilities: ["bulwark-air-shield", "bulwark-freezing-shot"], abilityText: "[unit_passive] +1 Defense against ranged attackers (Air Shield). [unit_attack] After the attack, reduce the target's Initiative by 2 next round (Freezing Shot).", cardImage: "/assets/units-bulwark-silver-shamans-pack.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Shaman_(Bulwark)",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Bulwark Expansion)",
@@ -1218,7 +1219,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     type: "ground",
     // engine: Few (Mammoth) has no wired ability; Pack (War Mammoth) adds Thick Hide.
     few: { attack: 5, defense: 2, health: 7, initiative: 5, cost: { gold: 12 }, abilities: [], cardImage: "/assets/units-bulwark-golden-mammoths-few.webp" },
-    pack: { attack: 6, defense: 2, health: 7, initiative: 6, cost: { gold: 20, valuables: 1 }, abilities: ["bulwark-thick-hide"], abilityText: "[unit_passive] +1 Defense while this unit is defending (War Mammoth).", cardImage: "/assets/units-bulwark-golden-mammoths-pack.webp" },
+    pack: { attack: 5, defense: 2, health: 8, initiative: 6, cost: { gold: 20, valuables: 1 }, abilities: ["bulwark-thick-hide"], abilityText: "[unit_passive] +1 Defense while this unit is defending (War Mammoth).", cardImage: "/assets/units-bulwark-golden-mammoths-pack.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Mammoth",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Bulwark Expansion)",
@@ -1232,10 +1233,11 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "bulwark",
     tier: "gold",
     type: "ground",
-    // engine: both sides teleport at the start of their turn (MOVE_ANYWHERE);
-    // the printed "teleport an ally" / enemy-flying-slow riders are NOT wired.
-    few: { attack: 6, defense: 3, health: 8, initiative: 6, cost: { gold: 18, valuables: 1 }, abilities: ["teleport-move"], abilityText: "As a regular movement, this unit can move to any empty space (Teleport).", cardImage: "/assets/units-bulwark-golden-jotunns-few.webp" },
-    pack: { attack: 7, defense: 3, health: 8, initiative: 8, cost: { gold: 32, valuables: 2 }, abilities: ["teleport-move"], abilityText: "As a regular movement, this unit can move to any empty space (Teleport).", cardImage: "/assets/units-bulwark-golden-jotunns-pack.webp" },
+    // engine: only the Pack (Jotunn Warlord) teleports (MOVE_ANYWHERE); the Few
+    // (Jotunn) has no wired ability. The printed "teleport an ally" / enemy-
+    // flying-slow riders are NOT wired on either side.
+    few: { attack: 5, defense: 3, health: 8, initiative: 6, cost: { gold: 18, valuables: 1 }, abilities: [], cardImage: "/assets/units-bulwark-golden-jotunns-few.webp" },
+    pack: { attack: 6, defense: 3, health: 9, initiative: 8, cost: { gold: 32, valuables: 2 }, abilities: ["teleport-move"], abilityText: "As a regular movement, this unit can move to any empty space (Teleport).", cardImage: "/assets/units-bulwark-golden-jotunns-pack.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Jotunn",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Bulwark Expansion)",

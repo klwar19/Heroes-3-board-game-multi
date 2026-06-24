@@ -3073,19 +3073,32 @@ export const adventureCards: CardLibrary = {
 
   // Kriv (Elder): the Rune-synergy hero — each level banks Runes mid-combat
   // (GAIN_RUNES) to rush the army up the Bulwark Rune track, or takes a map/spell
-  // fallback. The rune option is offered only to a Bulwark caster.
+  // fallback. I and IV add a MAP "Rune-Empowered" head-start (GAIN_STARTING_RUNES):
+  // the army then OPENS each combat already part-way up the Rune track, until the
+  // next Resource round. Both rune options are offered only to a Bulwark caster.
+  // (VI stays a pure combat/reaction card — its phaseLimit has no map window.)
   "specialty.kriv.1": {
     id: "specialty.kriv.1",
     name: "Runes I",
     kind: "hero-specialty",
     timing: "instant",
-    tags: ["hero-specialty", "kriv", "runes", "Instant (Combat): gain 2 Runes. — OR — draw a card."],
+    tags: [
+      "hero-specialty",
+      "kriv",
+      "runes",
+      "Instant (Combat): gain 2 Runes. — OR — draw a card. — OR — (Map) start your combats Rune-Empowered (+1 Rune)."
+    ],
     target: { type: "none" },
     effect: {
       type: "CHOOSE_ONE",
       options: [
         { label: "Gain 2 Runes", combatOnly: true, effect: { type: "GAIN_RUNES", amount: 2 } },
-        { label: "Draw a card", mapOnly: true, effect: { type: "DRAW_CARDS", amount: 1 } }
+        { label: "Draw a card", mapOnly: true, effect: { type: "DRAW_CARDS", amount: 1 } },
+        {
+          label: "Rune-Empowered: +1 starting Rune each combat",
+          mapOnly: true,
+          effect: { type: "GAIN_STARTING_RUNES", amount: 1 }
+        }
       ]
     },
     implementationStatus: "implemented",
@@ -3096,7 +3109,12 @@ export const adventureCards: CardLibrary = {
     name: "Runes IV",
     kind: "hero-specialty",
     timing: "instant",
-    tags: ["hero-specialty", "kriv", "runes", "Instant (Combat): gain 3 Runes. — OR — take a Spell or Specialty card from your discard pile."],
+    tags: [
+      "hero-specialty",
+      "kriv",
+      "runes",
+      "Instant (Combat): gain 3 Runes. — OR — take a Spell or Specialty card from your discard pile. — OR — (Map) start your combats Rune-Empowered (+2 Runes)."
+    ],
     target: { type: "none" },
     effect: {
       type: "CHOOSE_ONE",
@@ -3106,6 +3124,11 @@ export const adventureCards: CardLibrary = {
           label: "Take a Spell or Specialty card from your discard pile",
           mapOnly: true,
           effect: { type: "TAKE_FROM_DISCARD", count: 1, filter: "spell-or-specialty" }
+        },
+        {
+          label: "Rune-Empowered: +2 starting Runes each combat",
+          mapOnly: true,
+          effect: { type: "GAIN_STARTING_RUNES", amount: 2 }
         }
       ]
     },

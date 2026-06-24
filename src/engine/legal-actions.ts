@@ -49,6 +49,7 @@ import {
   unitIsBerserk
 } from "./active-effects";
 import { cancelSpellAllowsSchoolAndLevel, cardCanBoostPower, spellPowerValueOfCard } from "./effects";
+import { RUNE_MAX } from "./runes";
 import {
   BATTLEFIELD_CELL_COUNT,
   BATTLEFIELD_COLUMNS,
@@ -2119,6 +2120,16 @@ function isOptionEffectPlayable(
     case "GAIN_RUNES":
       // Kriv (Bulwark): bank Runes mid-combat — only a Bulwark caster benefits.
       return context === "combat" && Boolean(state.combat) && state.players[playerId]?.factionId === "bulwark";
+    case "GAIN_STARTING_RUNES":
+      // Kriv (Bulwark): become Rune-Empowered on the MAP — only a Bulwark caster
+      // benefits, and only while the starting-rune flag is below the cap (so the
+      // option is never offered once it can add nothing).
+      return (
+        context === "map" &&
+        Boolean(state.adventure) &&
+        state.players[playerId]?.factionId === "bulwark" &&
+        (state.players[playerId]?.runeEmpoweredNextCombats ?? 0) < RUNE_MAX
+      );
     case "RESHUFFLE_DISCARD_THEN_DRAW": {
       // Deemer's Meteor Shower IV deck-cycle: useful whenever there is a card to
       // shuffle back or draw (map or combat).

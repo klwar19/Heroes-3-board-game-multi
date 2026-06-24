@@ -1297,6 +1297,18 @@ export type EffectDefinition =
     }
   | {
       /**
+       * Kriv (Bulwark)'s rune-empowerment specialty: a MAP play that makes the
+       * caster Rune-Empowered — their Hero then starts EVERY combat with `amount`
+       * extra Runes (a head-start toward the Rune-Level thresholds), until the
+       * caster's next Resource round. It ADDS to PlayerState.runeEmpoweredNextCombats
+       * (the same flag the City Hall combat-focus sets), capped at RUNE_MAX, so it
+       * stacks with the City Hall option. No-op for a non-Bulwark caster.
+       */
+      type: "GAIN_STARTING_RUNES";
+      amount: number;
+    }
+  | {
+      /**
        * Gem's First Aid: take the named war machine card from the shared
        * supply into hand at no cost. When the supply has none left (already
        * taken — the player "already has" it), draw `fallbackDrawCards` instead.
@@ -3482,6 +3494,20 @@ export type GameEvent =
       controllerId: PlayerId;
       name: string;
       duration: EffectDurationDefinition;
+    }
+  | {
+      /**
+       * A Bulwark player's Rune total crossed a Rune-Level threshold (earned in
+       * battle, or already met by the starting pool at seed time), turning on
+       * that level's army-wide buff. Drives the Rune cue/sound in the combat UI
+       * (effects/rune). `level` is the new effective Rune Level (1–3) and `count`
+       * the Rune total at that moment.
+       */
+      id: string;
+      type: "RUNE_LEVEL_REACHED";
+      playerId: PlayerId;
+      level: number;
+      count: number;
     }
   | {
       id: string;

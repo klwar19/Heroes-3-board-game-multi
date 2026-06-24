@@ -124,6 +124,7 @@ import {
   TERRAIN_MOVE_SOUNDS,
   TILE_SOUNDS
 } from "@/data/map-sounds";
+import { COMBAT_EVENT_SOUNDS } from "@/data/combat-event-sounds";
 import { allTileDefinitions } from "@/data/map/tiles";
 import { playLibrarySound, playUnitSound } from "@/lib/sound";
 import { unitAttackFlourish } from "@/data/unit-sounds";
@@ -167,7 +168,9 @@ const FX_EVENT_TYPES = new Set<GameEvent["type"]>([
   // Remove Obstacle / Earthquake / siege: obstacle markers and fortifications
   // clearing off the board carry their own crumble cue.
   "COMBAT_OBSTACLE_REMOVED",
-  "FORTIFICATION_DESTROYED"
+  "FORTIFICATION_DESTROYED",
+  // Bulwark: an army crossing a Rune-Level threshold rings the rune cue.
+  "RUNE_LEVEL_REACHED"
 ]);
 
 /**
@@ -1563,6 +1566,17 @@ export default function Home() {
         // engine records the outcome first (the spell is still on the stack).
         for (const event of orderFxEventsForPresentation(freshFx)) {
           switch (event.type) {
+            case "RUNE_LEVEL_REACHED": {
+              // A Bulwark army just crossed a Rune-Level threshold — ring the rune
+              // cue at the current beat (it rides over the action that earned it,
+              // or sounds as a Rune-Empowered battle opens). It's a public board
+              // event, so it plays for either side reaching a level.
+              const runeSound = COMBAT_EVENT_SOUNDS.RUNE_LEVEL_REACHED;
+              if (runeSound) {
+                window.setTimeout(() => playLibrarySound(runeSound), timeline);
+              }
+              break;
+            }
             case "CARDS_DRAWN": {
               if (event.count <= 0 || !seatVisible(event.playerId)) {
                 break;

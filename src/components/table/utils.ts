@@ -521,6 +521,8 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       return `${playerName(state, event.playerId)} sells ${cardName(event.cardId)} from a Spell Scroll for ${event.gold} gold.`;
     case "SANDBOX_CARD_ADDED":
       return event.message;
+    case "RUNE_LEVEL_REACHED":
+      return `${playerName(state, event.playerId)} reaches Rune Level ${event.level} (${event.count} Runes) — the army-wide Rune buff turns on.`;
   }
 }
 

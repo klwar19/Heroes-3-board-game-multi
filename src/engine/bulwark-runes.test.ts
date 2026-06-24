@@ -178,6 +178,34 @@ describe("Bulwark Runes — level thresholds and army-wide buffs", () => {
   });
 });
 
+describe("Bulwark Runes — RUNE_LEVEL_REACHED cue (drives the rune sound)", () => {
+  it("emits a RUNE_LEVEL_REACHED event when a level turns on, never below the threshold", () => {
+    const state = bulwarkState();
+    // One short of the first threshold: no level, so no cue.
+    gainRunes(state, "p1", RUNE_LEVEL_THRESHOLDS[0] - 1); // 3
+    expect(state.eventLog.filter((event) => event.type === "RUNE_LEVEL_REACHED")).toHaveLength(0);
+
+    // Crossing into Level 1 emits exactly one cue carrying the new level + count.
+    gainRunes(state, "p1", 1); // 4 → Level 1
+    const events = state.eventLog.filter((event) => event.type === "RUNE_LEVEL_REACHED");
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ playerId: "p1", level: 1, count: 4 });
+  });
+
+  it("emits one cue per level climbed when a Rune-Empowered pool opens several at once (Altar seed)", () => {
+    const state = bulwarkState();
+    state.towns.town_p1.buildings.push("bulwark.sieidi", "bulwark.altar"); // cap 3
+    state.combat!.attackerPlayerId = "p1";
+    state.combat!.defenderPlayerId = "p2";
+    state.players.p1.runeEmpoweredNextCombats = RUNE_LEVEL_THRESHOLDS[2]; // 10 → opens at Level 3
+    seedRunesForCombat(state);
+    const levels = state.eventLog
+      .filter((event) => event.type === "RUNE_LEVEL_REACHED")
+      .map((event) => (event as { level: number }).level);
+    expect(levels).toEqual([1, 2, 3]); // one cue per level reached at seed time
+  });
+});
+
 describe("Bulwark Runes — gained by combat actions (Gamefound Update #3)", () => {
   it("an attack banks +1 Rune", () => {
     let state = rangedBulwarkState();
