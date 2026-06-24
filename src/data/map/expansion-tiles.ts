@@ -144,10 +144,10 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
       product: "Heroes of Might and Magic III: The Board Game (Bulwark Expansion)",
       credit: "Fan-faction starting tile; snow terrain and hex layout mirror the Tower starting tile (#S1), which is the art base. Placeholder art pending; verify against physical tiles before final release.",
       url: "https://heroes.thelazy.net/index.php/Bulwark"
+    },
+    assets: {
+      tileImage: "/assets/board/tiles/s10.webp"
     }
-    // Art pending: generate /assets/board/tiles/s10.webp from #S1's sx1.webp
-    // (Tower environment + a new Bulwark town), then add
-    // `assets: { tileImage: "/assets/board/tiles/s10.webp" }` here.
   },
   F19: {
     id: "F19",
