@@ -123,7 +123,7 @@ describe("rules engine prototype", () => {
     });
     expect(state.combat?.units.unit_p2_vampires).toMatchObject({
       unitDefId: "necropolis.vampires",
-      abilities: ["ignores-retaliation"]
+      abilities: ["ignores-retaliation", "vampire-heal-on-attack"]
     });
   });
 

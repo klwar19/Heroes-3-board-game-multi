@@ -124,6 +124,7 @@ import type {
 import { NEUTRAL_PLAYER_ID } from "./state";
 import {
   getActivationSpellPowerBoost,
+  getDiscardToIgnoreAttackDieAbility,
   getLethalSaveUnitAbility,
   getUnitAbilityDefinitions,
   hasBindAdjacentEnemies,
@@ -3890,7 +3891,8 @@ function getDieCancelReactions(
   state: GameState,
   defenderId: UnitId,
   attackerId: UnitId,
-  cards: CardLibrary
+  cards: CardLibrary,
+  roll: number
 ): Record<PlayerId, LegalAction[]> {
   const combat = state.combat;
   const defender = combat?.units[defenderId];
@@ -3941,6 +3943,18 @@ function getDieCancelReactions(
         })
       );
     }
+  }
+
+  // Castle Halberdiers (Pack): the DEFENDING unit itself may discard a card to
+  // ignore the Attack die. Offered only on a "+1" face (the sole result worth
+  // cancelling — ignoring a 0/−1 never helps the defender) and only while the
+  // controller still holds a card to pay the discard cost. Not a card play, so
+  // it is pushed as a plain unit-ability reaction (like the Archangels' save).
+  if (roll > 0 && player.hand.length > 0 && getDiscardToIgnoreAttackDieAbility(defender)) {
+    reactions.push({
+      label: `${defender.cardName}: discard a card to ignore the Attack die`,
+      action: { type: "USE_UNIT_DIE_IGNORE", playerId, defenderUnitId: defender.id }
+    });
   }
 
   return reactions.length > 0 ? { [playerId]: reactions } : {};
@@ -4230,7 +4244,7 @@ export function getLegalReactionsForTrigger(
   // Shield of the Dwarven Lords: the defender's post-roll window to ignore the
   // Attack die and the effects it triggered.
   if (triggerEvent.type === "ATTACK_DIE_SETTLED") {
-    return getDieCancelReactions(state, triggerEvent.defenderId, triggerEvent.attackerId, cards);
+    return getDieCancelReactions(state, triggerEvent.defenderId, triggerEvent.attackerId, cards, triggerEvent.roll);
   }
 
   if (

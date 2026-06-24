@@ -15,7 +15,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     tier: "bronze",
     type: "ground",
     few: { attack: 2, defense: 1, health: 2, initiative: 4, cost: { gold: 2 }, abilities: [], cardImage: "/assets/units-castle-bronze-halberdiers-few.webp" },
-    pack: { attack: 3, defense: 1, health: 2, initiative: 5, cost: { gold: 3 }, abilities: [], abilityText: "[unit_passive] When the unit is targeted by any attack, you can discard a card and ignore the Attack die's roll result.", cardImage: "/assets/units-castle-bronze-halberdiers-pack.webp" },
+    pack: { attack: 3, defense: 1, health: 2, initiative: 5, cost: { gold: 3 }, abilities: ["halberdier-die-ignore"], abilityText: "[unit_passive] When the unit is targeted by any attack, you can discard a card and ignore the Attack die's roll result.", cardImage: "/assets/units-castle-bronze-halberdiers-pack.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/halberdiers/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
@@ -165,7 +165,11 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     tier: "silver",
     type: "flying",
     few: { attack: 4, defense: 1, health: 4, initiative: 6, cost: { gold: 8 }, abilities: ["ignores-retaliation"], abilityText: "[unit_attack] Ignore the Retaliation Attack.", cardImage: "/assets/units-necropolis-silver-vampires-few.webp" },
-    pack: { attack: 5, defense: 1, health: 4, initiative: 9, cost: { gold: 12 }, abilities: ["ignores-retaliation"], abilityText: "[unit_attack] Ignore the Retaliation Attack. Then remove up to 2 [damage] from this unit.", cardImage: "/assets/units-necropolis-silver-vampires-pack.webp" },
+    // engine: ignores-retaliation + vampire-heal-on-attack (ON_ATTACK_HEAL_SELF,
+    // amount 2). The wiki Pack column reads "Ignore the Retaliation Attack. Then
+    // remove up to 2 damage from this unit." — the self-heal half was previously
+    // unwired (only the neutral guard carried it); both halves now run.
+    pack: { attack: 5, defense: 1, health: 4, initiative: 9, cost: { gold: 12 }, abilities: ["ignores-retaliation", "vampire-heal-on-attack"], abilityText: "[unit_attack] Ignore the Retaliation Attack. Then remove up to 2 [damage] from this unit.", cardImage: "/assets/units-necropolis-silver-vampires-pack.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/vampires/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
@@ -1492,6 +1496,13 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "bronze",
     type: "ground",
+    // engine: the "after defeating Skeletons … Reinforce 1 bronze unit" reward is
+    // NOT a combat ability tag — it is wired through a dedicated win path:
+    // combat-units.ts sets `combat.skeletonGuardDefeated` when a non-bank
+    // neutral.skeletons guard is destroyed, and adventure-reducer's
+    // openSkeletonReinforceChoice offers the attacker's Necropolis hero a free
+    // Few→Pack flip (covered by necromancy.test.ts / neutral-abilities-batch2).
+    // `abilities: []` is therefore correct; this is not a decorative stub.
     neutral: { attack: 2, defense: 0, health: 3, initiative: 4, cost: { gold: 3 }, abilities: [], abilityText: "[unit_passive] After defeating Skeletons, if you control a [necro] Hero , immediately Reinforce 1 of your [bronze] units.", cardImage: "/assets/units-neutral-bronze-skeletons.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/skeletons/",
     source: {

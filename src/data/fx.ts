@@ -240,6 +240,11 @@ export const abilityFxPlans: Record<string, SpellFxPlan> = {
   "wyvern-sting": { affect: [{ key: "poison" }], sound: "spells/poison" },
   "rust-dragon-acid": { hit: "acid-breath", hitSound: "effects/acid-breath" },
   "gorgon-death-stare": { affect: [{ key: "death-stare" }], sound: "spells/death-stare" },
+  // Fortress Gorgons (Pack) carry the SAME Death Stare under their own ability id
+  // (the engine emits `followUp.abilityId`), so the faction Pack needs its own
+  // plan or its stare lands silently while the neutral guard's animates. Parity
+  // with the neutral `gorgon-death-stare` above.
+  "fortress-gorgon-death-stare": { affect: [{ key: "death-stare" }], sound: "spells/death-stare" },
   // Paralysis: the H3 "paralyze" freeze glyph + paralyze sound flash over the
   // unit that gains the Paralysis token (the same sheet the Blind spell uses).
   // Keyed by every paralysis ability whose id is emitted ONLY when the token
@@ -293,6 +298,17 @@ export const abilityFxPlans: Record<string, SpellFxPlan> = {
   // target's armour. It splashes with the same acid burst the Rust Dragon's Acid
   // Breath uses (the two share the Corrosion-token mechanic).
   "behemoth-corrosion": { hit: "acid-breath", hitSound: "effects/acid-breath" },
+  // Vampires' Life Drain: after the bite, the unit heals (vampire-heal-on-attack
+  // few/pack, and the Crypt-bank "remove all damage" bank-vampire-life-drain).
+  // Both fire a UNIT_ABILITY_TRIGGERED under their own id (heal.abilityId) — they
+  // previously animated only as a silent "+N" floater. The green mend shimmer +
+  // the drain-life cry sell the heal.
+  "vampire-heal-on-attack": { affect: [{ key: "cure" }], sound: "effects/drain-life" },
+  "bank-vampire-life-drain": { affect: [{ key: "cure" }], sound: "effects/drain-life" },
+  // Dragon Flies' Dispel: stripping the enemy's own buffs off the target fires a
+  // UNIT_ABILITY_TRIGGERED("dragon-fly-dispel"); reuse the same dispel shimmer +
+  // sound the spell-counter cue uses (cancelFx) so the cleanse is seen and heard.
+  "dragon-fly-dispel": { affect: [{ key: "dispel" }], sound: "spells/dispel" },
   // Future abilities (cards not implemented yet, assets ready):
   poison: { affect: [{ key: "poison" }], sound: "spells/poison" },
   paralyze: { affect: [{ key: "paralyze" }], sound: "spells/paralyze" },

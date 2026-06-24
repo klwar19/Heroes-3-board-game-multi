@@ -169,6 +169,32 @@ describe("paralysis abilities animate (the freeze glyph + sound)", () => {
   });
 });
 
+describe("previously-silent monster abilities now carry a cue", () => {
+  // Each id below is emitted by the engine as a UNIT_ABILITY_TRIGGERED carrying
+  // that exact ability id (verified at the emit sites: heal.abilityId for Life
+  // Drain, followUp.abilityId for the Death Stare, a literal id for the Dispel),
+  // so an abilityFxPlans entry actually fires — NOT a decorative no-op. The cue
+  // dies if the plan is removed.
+  it.each([
+    ["vampire-heal-on-attack", "cure", "effects/drain-life"],
+    ["bank-vampire-life-drain", "cure", "effects/drain-life"],
+    ["fortress-gorgon-death-stare", "death-stare", "spells/death-stare"],
+    ["dragon-fly-dispel", "dispel", "spells/dispel"]
+  ])("%s plays the %s sprite + sound", (abilityId, sheetKey, sound) => {
+    const plan = abilityFxPlans[abilityId];
+    expect(plan, `${abilityId} needs an ability FX plan`).toBeTruthy();
+    expect(plan.affect?.[0]?.key).toBe(sheetKey);
+    expect(spriteDurationMs(plan.affect?.[0]?.key)).toBeGreaterThan(0);
+    expect(plan.sound).toBe(sound);
+    expect(soundDurationMs(plan.sound)).toBeGreaterThan(0);
+    expect(spellPresentationMs(plan)).toBeGreaterThan(0);
+  });
+
+  it("the Fortress Gorgon Death Stare matches its neutral sibling (parity)", () => {
+    expect(abilityFxPlans["fortress-gorgon-death-stare"]).toEqual(abilityFxPlans["gorgon-death-stare"]);
+  });
+});
+
 describe("Faerie Dragon Ice Bolt animates as a flying cast (presented before the move)", () => {
   it("flies an Ice Bolt projectile from the dragon to the target, then bursts", () => {
     // The FX builder presents this cast as a PROJECTILE preamble before the

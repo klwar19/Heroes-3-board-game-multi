@@ -2555,6 +2555,18 @@ export type GameAction =
       playerId: PlayerId;
       savingUnitId: UnitId;
     }
+  | {
+      /**
+       * Post-roll die-cancel window: a defending unit ignores the attacker's
+       * settled Attack die by paying its own ability cost — Castle Halberdiers
+       * (Pack) "discard a card and ignore the Attack die's roll result". The
+       * named unit is the defender that owns the ability; the cost is one card
+       * discarded from its controller's hand.
+       */
+      type: "USE_UNIT_DIE_IGNORE";
+      playerId: PlayerId;
+      defenderUnitId: UnitId;
+    }
   | { type: "SEARCH_DECK"; playerId: PlayerId; deckId: DeckId; count: number }
   | { type: "RESOLVE_DECK_SEARCH"; playerId: PlayerId; choiceId: string; pick: DeckSearchPick }
   /**

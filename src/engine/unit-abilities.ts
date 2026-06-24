@@ -901,6 +901,20 @@ export function getForcedAttackerDie(unit: CombatUnitState): number | null {
   return null;
 }
 
+/**
+ * Castle Halberdiers (Pack): the defender may discard a card to ignore the
+ * attacker's settled Attack die. Returns the ability id when this unit carries
+ * it (for the post-roll die-cancel reaction), else null.
+ */
+export function getDiscardToIgnoreAttackDieAbility(unit: CombatUnitState): string | null {
+  for (const ability of getAbilitiesWithEffect(unit, "DISCARD_TO_IGNORE_ATTACK_DIE")) {
+    if (ability.effect?.type === "DISCARD_TO_IGNORE_ATTACK_DIE") {
+      return ability.id;
+    }
+  }
+  return null;
+}
+
 /** Azure / Black Dragons (Pack): no damage from Specialty cards (non-damage Specialty still applies). */
 export function hasImmuneToSpecialtyDamage(unit: CombatUnitState): boolean {
   return hasUnitAbilityEffect(unit, "IMMUNE_TO_SPECIALTY_DAMAGE");

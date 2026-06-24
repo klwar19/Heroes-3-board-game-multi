@@ -248,6 +248,7 @@ import {
   hasSelfDefenseToken,
   getFlatDamageFollowUps,
   getForcedAttackerDie,
+  getDiscardToIgnoreAttackDieAbility,
   getIgnoreTargetCardDefenseAbility,
   getKnockbackAbility,
   getLethalSaveUnitAbility,
@@ -5795,7 +5796,19 @@ function applyNeutralActivationAbility(state: GameState, unit: CombatUnitState):
 
   const enchant = getEnchanterActivationAbility(unit);
   if (enchant) {
-    applyEnchanterBuffSelf(state, unit, enchant);
+    // Wiki Note: "If possible, the healing effect has to be chosen. The healing
+    // effect can not be skipped in favor of +1 Attack." A neutral Enchanter
+    // therefore heals its most-wounded OTHER ally when one exists, and only
+    // buffs its own Attack when there is nothing to heal.
+    const candidates = enchanterHealCandidates(combat, unit);
+    if (candidates.length > 0) {
+      const target = candidates.reduce((best, candidate) =>
+        candidate.damage > best.damage ? candidate : best
+      );
+      applyEnchanterHeal(state, unit, target, enchant);
+    } else {
+      applyEnchanterBuffSelf(state, unit, enchant);
+    }
     return true;
   }
 
@@ -5864,12 +5877,16 @@ function maybeOpenPlayerActivationChoice(state: GameState): void {
       kind: "enchanter-activation",
       abilityId: enchant.abilityId,
       abilityName: enchant.abilityName,
-      prompt: `${unit.cardName}: ${enchant.abilityName} — heal a friendly unit (up to ${enchant.healAmount} damage) or gain +${enchant.attackBonus} Attack.`,
+      // Wiki Note: "If possible, the healing effect has to be chosen. The
+      // healing effect can not be skipped in favor of +1 Attack." So while a
+      // wounded other ally exists the heal is MANDATORY — the player only picks
+      // WHICH ally (no skip-to-buff). The +Attack fallback fires only on the
+      // candidates.length === 0 branch above.
+      prompt: `${unit.cardName}: ${enchant.abilityName} — heal a friendly unit (up to ${enchant.healAmount} damage).`,
       sourceUnitId: unit.id,
       anchorUnitId: null,
       candidateUnitIds: candidates.map((candidate) => candidate.id),
-      optional: true,
-      skipLabel: `Gain +${enchant.attackBonus} Attack instead`
+      optional: false
     };
     state.phase = "choice";
     state.priorityPlayerId = unit.controllerId;
@@ -9218,6 +9235,59 @@ function applyUnitResurrection(
     abilityId: "archangel-lethal-save",
     targetUnitId: defender.id,
     message: `${saver.cardName} readies to cancel the killing blow on ${defender.cardName}.`
+  });
+
+  advanceReactionWindowAfterPlay(state, action.playerId, cards);
+}
+
+/**
+ * Castle Halberdiers (Pack) "Parry": in the post-roll die-cancel window the
+ * defending Halberdiers discard a card to ignore the attacker's settled Attack
+ * die. Mirrors the Shield of the Dwarven Lords arm (attackDieCancelled → the die
+ * counts as 0 and fires none of its face-triggered effects), but the cost is one
+ * card from the controller's hand instead of a played card. Only valid on a "+1"
+ * face (the legal-action layer offers it only then).
+ */
+function applyUnitDieIgnore(
+  state: GameState,
+  action: Extract<GameAction, { type: "USE_UNIT_DIE_IGNORE" }>,
+  cards: CardLibrary
+): void {
+  const window = state.reactionWindow;
+  if (!window || window.triggerEvent.type !== "ATTACK_DIE_SETTLED" || window.priorityPlayerId !== action.playerId) {
+    throw new Error("No die-cancel window is open for you.");
+  }
+  const combat = state.combat;
+  const defender = combat?.units[action.defenderUnitId];
+  const pendingAttack = state.stack.find(
+    (item) => item.action.type === "ATTACK_UNIT" || item.action.type === "MOVE_AND_ATTACK_UNIT"
+  );
+  const player = state.players[action.playerId];
+  if (!combat || !defender || !pendingAttack || !player) {
+    throw new Error("That die-cancel cannot be used now.");
+  }
+  if (
+    defender.controllerId !== action.playerId ||
+    !getDiscardToIgnoreAttackDieAbility(defender) ||
+    pendingAttack.modifiers.attackDieCancelled ||
+    window.triggerEvent.roll <= 0 ||
+    player.hand.length === 0
+  ) {
+    throw new Error("That unit cannot ignore the Attack die now.");
+  }
+
+  // Pay the cost (one card discarded from hand), then treat the settled die as
+  // ignored (0) — the same arm Shield of the Dwarven Lords uses.
+  const discarded = discardRandomCardFromHand(state, action.playerId);
+  pendingAttack.modifiers.attackDieCancelled = true;
+  appendEvent(state, {
+    type: "UNIT_ABILITY_TRIGGERED",
+    unitId: defender.id,
+    abilityId: "halberdier-die-ignore",
+    targetUnitId: defender.id,
+    message: discarded
+      ? `${defender.cardName} discards a card to ignore the Attack die.`
+      : `${defender.cardName} ignores the Attack die.`
   });
 
   advanceReactionWindowAfterPlay(state, action.playerId, cards);
@@ -14066,6 +14136,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "USE_UNIT_RESURRECTION":
         applyUnitResurrection(nextState, action, cards);
+        break;
+      case "USE_UNIT_DIE_IGNORE":
+        applyUnitDieIgnore(nextState, action, cards);
         break;
       case "SEARCH_DECK":
         searchDeck(nextState, action);

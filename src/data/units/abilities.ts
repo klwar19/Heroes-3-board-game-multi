@@ -397,11 +397,14 @@ export type UnitAbilityEffectDefinition =
   | {
       /**
        * Enchanters: "[activation] Remove up to `healAmount` damage from a
-       * friendly unit. Otherwise, gain +`attackBonus` Attack." When the unit
-       * activates the controller either heals a chosen *other* friendly unit
-       * or buffs the Enchanters' own Attack for the round — a neutral always
-       * takes the Attack bonus. It never ends the activation: the unit still
-       * moves and attacks afterwards.
+       * friendly unit. Otherwise, gain +`attackBonus` Attack." Per the wiki Note
+       * the heal is MANDATORY whenever it is possible ("the healing effect can
+       * not be skipped in favor of +1 Attack"): while a wounded *other* friendly
+       * unit exists the controller must heal one of them (a neutral heals its
+       * most-wounded ally); the +`attackBonus` self-buff (for the current combat
+       * round) is taken only when there is nothing to heal. Enchanters can never
+       * heal themselves. It never ends the activation: the unit still moves and
+       * attacks afterwards.
        */
       type: "ON_ACTIVATION_HEAL_FRIENDLY_OR_BUFF_SELF";
       healAmount: number;
@@ -642,6 +645,19 @@ export type UnitAbilityEffectDefinition =
        */
       type: "FORCE_ATTACKER_DIE";
       value: number;
+    }
+  | {
+      /**
+       * Castle Halberdiers (Pack): "[unit_passive] When the unit is targeted by
+       * any attack, you can discard a card and ignore the Attack die's roll
+       * result." A DEFENDER-side optional reaction in the post-roll die-cancel
+       * window: while this unit is the defender and the Attack die settled on a
+       * "+1" (the only face worth cancelling), its controller may discard one
+       * card from hand to treat the die as 0 (cancelling its +1 and any face-
+       * triggered effects) — the same `attackDieCancelled` the Shield of the
+       * Dwarven Lords arms. The discard is the cost (a random card from hand).
+       */
+      type: "DISCARD_TO_IGNORE_ATTACK_DIE";
     }
   | {
       /**
@@ -1362,7 +1378,7 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "enchanter-heal-or-buff": {
     id: "enchanter-heal-or-buff",
     name: "Enchant",
-    text: "[activation] Remove up to 2 damage from a chosen friendly unit, or instead gain +1 Attack for this combat round. (A neutral Enchanter always takes the +1 Attack.) This does not end the activation — the unit still moves and attacks.",
+    text: "[activation] Remove up to 2 damage from a chosen friendly unit. If — and only if — there is no friendly unit you can heal, instead gain +1 Attack for the combat round. The heal is mandatory whenever possible (it can not be skipped in favor of +1 Attack). Enchanters can not heal themselves. This does not end the activation — the unit still moves and attacks.",
     effect: { type: "ON_ACTIVATION_HEAL_FRIENDLY_OR_BUFF_SELF", healAmount: 2, attackBonus: 1 },
     implementationStatus: "implemented"
   },
@@ -1616,6 +1632,13 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     name: "Phalanx",
     text: "[unit_passive] Treat allied units adjacent to this unit as if they had a Defense token.",
     effect: { type: "DEFENSE_TOKEN_AURA" },
+    implementationStatus: "implemented"
+  },
+  "halberdier-die-ignore": {
+    id: "halberdier-die-ignore",
+    name: "Parry",
+    text: "[unit_passive] When this unit is targeted by an attack, you may discard a card to ignore the Attack die's roll result (treat it as 0). Offered in the post-roll window when the die came up \"+1\".",
+    effect: { type: "DISCARD_TO_IGNORE_ATTACK_DIE" },
     implementationStatus: "implemented"
   },
   "familiar-spell-tax": {
