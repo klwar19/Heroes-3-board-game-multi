@@ -1022,7 +1022,10 @@ button.battleCell {
     inset 0 0 16px rgb(0 0 0 / 10%);
 }
 
-.battleCell.dropTarget:hover {
+.battleCell.dropTarget:hover,
+/* The cell directly under the pointer while a unit is being dragged onto the
+   board (pointer drag has no :hover, so the drag controller toggles this). */
+.battleCell.dropTarget.dropHover {
   background: rgb(154 206 134 / 18%);
 }
 
@@ -4368,11 +4371,18 @@ button.hbSlot:disabled { cursor: default; }
   cursor: default;
 }
 
-.placementUnit[draggable="true"] {
+/* A draggable deploy tile / placed board card. `touch-action: none` keeps a
+   touch-drag from scrolling the page, so the pointer drag works on touch
+   screens (the old HTML5 drag was mouse-only); user-select stops a long-press
+   from selecting text mid-drag. */
+.unitDraggable {
   cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
-.placementUnit[draggable="true"]:active {
+.unitDraggable:active {
   cursor: grabbing;
 }
 

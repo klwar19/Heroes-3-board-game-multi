@@ -123,6 +123,42 @@ export function planActivationSpellPreamble<
 }
 
 /**
+ * Per-attacker pre-die delay for attackers that slid into range THIS snapshot.
+ *
+ * A unit that flies/walks into range and then attacks in the same snapshot logs
+ * its approach move, its declaration and its roll together. If the die were
+ * thrown at t=0 it would tumble (and the strike would land) while the card is
+ * still gliding across the board — the Harpy "rolls mid-flight". So any attacker
+ * with a fresh approach move must let its glide finish (`glideMs`) before its
+ * first die. A neutral guard adds a dramatic pre-attack pause (`neutralPauseMs`)
+ * on top so the table watches it arrive and steady before the cube is cast.
+ *
+ * The returned map is attacker-unit-id → milliseconds to hold the first die. An
+ * attacker that did not move this snapshot (already adjacent) is absent — no
+ * hold. This used to be applied to NEUTRAL movers only, which left a player's
+ * Harpy rolling mid-glide; it now covers every controller. The neutral case is
+ * unchanged (`glideMs + neutralPauseMs`), so only player/ally movers are fixed.
+ */
+export function planApproachAttackPreDelays(
+  approachMoves: readonly { unitId: string; neutral: boolean }[],
+  rolls: readonly { attackerId: string }[],
+  glideMs: number,
+  neutralPauseMs: number
+): Map<string, number> {
+  const attackerIds = new Set(rolls.map((roll) => roll.attackerId));
+  const delays = new Map<string, number>();
+  for (const move of approachMoves) {
+    // Only an approach that belongs to a unit actually rolling this snapshot
+    // gates a die; one per attacker (its first die carries the whole hold).
+    if (!attackerIds.has(move.unitId) || delays.has(move.unitId)) {
+      continue;
+    }
+    delays.set(move.unitId, glideMs + (move.neutral ? neutralPauseMs : 0));
+  }
+  return delays;
+}
+
+/**
  * Split this snapshot's combat-unit moves into the ones that happen BEFORE a
  * unit's own attack (its approach to the target) and the ones that happen AFTER
  * it (a Harpy's "Strike and Return" fly-back, or a ranged unit's step after

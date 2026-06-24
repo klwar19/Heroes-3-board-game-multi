@@ -107,13 +107,22 @@ function isNoTierTarget(unit: CombatUnitState): boolean {
 }
 
 /**
- * How far the attacker must actually MOVE to reach a target, counted along a
- * real path that treats other unit cards and obstacle tokens as walls — except
- * for flying units, which pass over them (getPathDistances keys "ignore
- * obstacles" off the mover's type). This is the rulebook's movement count: a
- * ground unit walls itself off the straight line must walk AROUND the blockers,
- * so the nearest target by walking can differ from the nearest as the crow
- * flies. A target with no walkable path sorts behind every reachable one but
+ * How far the attacker must travel to reach a target, as the "nearest" target
+ * tiebreaker counts it.
+ *
+ * A RANGED attacker shoots over obstacles and other unit cards — it never walks
+ * to its target — so for a shooter "nearest" is the straight-line grid distance,
+ * exactly like a flyer's. Ranking a shooter by a WALKED path (the branch below)
+ * walls it off behind blockers and makes it fire on a visually-FARTHER enemy:
+ * the "weird" melee targeting. An engaged ranged unit only ever melees an
+ * adjacent enemy (distance 1 either way), so straight-line is right there too.
+ *
+ * A ground unit, by contrast, must MOVE next to its target, so its distance is
+ * counted along a real path that treats other unit cards and obstacle tokens as
+ * walls (flyers pass over them — getPathDistances keys "ignore obstacles" off
+ * the mover's type). A ground unit walled off the straight line must walk AROUND
+ * the blockers, so its nearest target by walking can differ from the crow-flies
+ * nearest. A target with no walkable path sorts behind every reachable one but
  * still prefers the closer of the unreachable lot (the straight-line fallback).
  *
  * Flooding from the target's own square (its occupant excepted) yields the
@@ -125,6 +134,10 @@ function neutralMoveDistanceToTarget(
   attacker: CombatUnitState,
   target: CombatUnitState
 ): number {
+  // A shooter fires from where it stands — count the straight line, not a walk.
+  if (attacker.type === "ranged") {
+    return getBattlefieldDistance(attacker.position, target.position);
+  }
   const field = getPathDistances(combat, attacker, target.position);
   return (
     field.get(attacker.position) ??
@@ -132,7 +145,8 @@ function neutralMoveDistanceToTarget(
   );
 }
 
-/** Walking distance from the attacker to each candidate, computed once. */
+/** Travel distance from the attacker to each candidate, computed once (walked
+ * for ground movers, straight-line for shooters and flyers). */
 function neutralTargetDistances(
   combat: CombatState,
   attacker: CombatUnitState,

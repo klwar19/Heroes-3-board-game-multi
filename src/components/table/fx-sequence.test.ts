@@ -3,7 +3,8 @@ import type { GameEvent } from "@/engine";
 import {
   orderFxEventsForPresentation,
   partitionCombatMoves,
-  planActivationSpellPreamble
+  planActivationSpellPreamble,
+  planApproachAttackPreDelays
 } from "./fx-sequence";
 
 /** Minimal event stand-ins; only `type` (and an id for tracking) matter here. */
@@ -135,6 +136,52 @@ describe("partitionCombatMoves (Harpy Strike-and-Return ordering)", () => {
     const { approach, afterAttack } = partitionCombatMoves(otherLog, [{ id: "m1", unitId: "harpy", from: "5" }]);
     expect(approach.map((m) => m.id)).toEqual(["m1"]);
     expect(afterAttack).toEqual([]);
+  });
+});
+
+describe("planApproachAttackPreDelays (Harpy fly-in: glide before the die)", () => {
+  const GLIDE = 300;
+  const PAUSE = 250;
+
+  it("holds a PLAYER mover's die for the glide so it never rolls mid-flight", () => {
+    // The regression: this was neutral-only, so a player Harpy rolled while
+    // still gliding. A player mover must now get the glide hold (no pause).
+    const delays = planApproachAttackPreDelays(
+      [{ unitId: "harpy", neutral: false }],
+      [{ attackerId: "harpy" }],
+      GLIDE,
+      PAUSE
+    );
+    expect(delays.get("harpy")).toBe(GLIDE);
+  });
+
+  it("adds the dramatic pause on top for a NEUTRAL mover (unchanged behaviour)", () => {
+    const delays = planApproachAttackPreDelays(
+      [{ unitId: "guard", neutral: true }],
+      [{ attackerId: "guard" }],
+      GLIDE,
+      PAUSE
+    );
+    expect(delays.get("guard")).toBe(GLIDE + PAUSE);
+  });
+
+  it("ignores a mover that does not attack this snapshot, and an attacker that did not move", () => {
+    const delays = planApproachAttackPreDelays(
+      [
+        { unitId: "wanderer", neutral: false }, // moved but no roll → no hold
+        { unitId: "harpy", neutral: false }
+      ],
+      [
+        { attackerId: "harpy" },
+        { attackerId: "already-adjacent" } // rolled but never moved → no hold
+      ],
+      GLIDE,
+      PAUSE
+    );
+    expect(delays.has("wanderer")).toBe(false);
+    expect(delays.has("already-adjacent")).toBe(false);
+    expect(delays.get("harpy")).toBe(GLIDE);
+    expect(delays.size).toBe(1);
   });
 });
 

@@ -1,6 +1,5 @@
 import { cardLibrary } from "@/data/cards/library";
 import { CREATURE_BANKS } from "@/data/map/creature-banks";
-import { assetUrl } from "@/lib/asset-url";
 import {
   cardCanBoostPower,
   getBattlefieldLabel,
@@ -558,39 +557,4 @@ export function cardSelectionKey(action: CardBoardAction): string {
 
 export function sameCardSelection(selected: CardBoardAction | null, action: CardBoardAction): boolean {
   return Boolean(selected && cardSelectionKey(selected) === cardSelectionKey(action));
-}
-
-/**
- * Use a small square portrait as the drag ghost when deploying or shuffling a
- * combat unit. Two traps this avoids: board units have no small portrait to
- * point at — their default ghost is the whole battlefield card; and handing an
- * <img> to setDragImage makes browsers draw it at the bitmap's *natural* size
- * (the full card art), ignoring width/height — that is the "huge ghost" bug.
- * The fix is to snapshot a plain <div> that paints the art as a 46px
- * background: a non-image element is rasterised at its rendered box, so the
- * ghost is always 46px regardless of the source image's real dimensions.
- */
-export function setUnitDragImage(event: { dataTransfer: DataTransfer }, src: string | undefined): void {
-  if (!src || typeof document === "undefined") {
-    return;
-  }
-
-  // Background-image (not an <img>) so the ghost is sized by the box, not the
-  // bitmap. Escape quotes/backslashes so the path can't break out of url("").
-  const safeSrc = assetUrl(src).replace(/["\\]/g, "\\$&");
-  const ghost = document.createElement("div");
-  ghost.setAttribute("aria-hidden", "true");
-  ghost.style.cssText =
-    "position:fixed;top:-1000px;left:-1000px;width:46px;height:46px;border-radius:8px;" +
-    "border:1px solid rgba(20,12,4,0.85);box-shadow:0 3px 8px rgba(0,0,0,0.55);pointer-events:none;" +
-    `background:#0a0704 url("${safeSrc}") top center / cover no-repeat;`;
-  document.body.appendChild(ghost);
-
-  try {
-    event.dataTransfer.setDragImage(ghost, 23, 23);
-  } catch {
-    // setDragImage can throw in rare environments; the default ghost is fine.
-  }
-
-  window.setTimeout(() => ghost.remove(), 0);
 }

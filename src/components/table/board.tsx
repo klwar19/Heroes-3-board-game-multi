@@ -36,14 +36,13 @@ import {
   type LegalAction,
   type PlayerId
 } from "@/engine";
-import { ARMY_UNIT_DRAG_TYPE } from "@/components/adventure/screen";
+import { beginUnitPointerDrag } from "@/components/table/pointer-drag";
 import {
   actionKey,
   formatEvent,
   getTacticsSwapActions,
   isBoardTargetCardAction,
   sameCardSelection,
-  setUnitDragImage,
   swapPartnerActions,
   swapSelectableUnitIds,
   tacticsSetupActiveFor,
@@ -721,8 +720,11 @@ export function BattlefieldBoard({
 
   // Drag-and-drop deployment: while it is the viewer's turn to place, the
   // two own rows accept army-unit drops (fresh placements and repositions).
+  // Not during the PvP `prep` window — the engine rejects placement until both
+  // sides accept (and the deploy panel hides itself then), so the board must not
+  // advertise drop targets yet.
   const setup = combat?.setup;
-  const placing = Boolean(setup && setup.pendingPlayerIds[0] === viewerPlayerId);
+  const placing = Boolean(setup && !combat?.prep && setup.pendingPlayerIds[0] === viewerPlayerId);
   const ownRows = placing ? new Set(placementCellsFor(state, viewerPlayerId)) : new Set<number>();
 
   // Tactics start-of-combat swap: a click-to-select board interaction. Only the
@@ -930,24 +932,6 @@ export function BattlefieldBoard({
               }
             : {};
 
-          const dropProps = dropTarget
-            ? {
-                onDragOver: (event: React.DragEvent) => {
-                  if (event.dataTransfer.types.includes(ARMY_UNIT_DRAG_TYPE)) {
-                    event.preventDefault();
-                    event.dataTransfer.dropEffect = "move";
-                  }
-                },
-                onDrop: (event: React.DragEvent) => {
-                  const armyUnitId = event.dataTransfer.getData(ARMY_UNIT_DRAG_TYPE);
-                  if (armyUnitId) {
-                    event.preventDefault();
-                    onAction({ type: "PLACE_COMBAT_UNIT", playerId: viewerPlayerId, armyUnitId, position: index });
-                  }
-                }
-              }
-            : {};
-
           // Siege fortifications: walls and the gate live in the middle row.
           const isWall = wallPositions.has(index);
           const isGate = gatePosition === index;
@@ -1066,18 +1050,26 @@ export function BattlefieldBoard({
           );
 
           // During deployment your placed units stay draggable to new spaces.
-          const dragProps =
+          // Pointer-based so it works on touch devices, not just a mouse.
+          const placedUnitDraggable = Boolean(
             placing && unit && unit.controllerId === viewerPlayerId && unit.armyUnitId
-              ? {
-                  draggable: true,
-                  onDragStart: (event: React.DragEvent) => {
-                    event.dataTransfer.setData(ARMY_UNIT_DRAG_TYPE, unit.armyUnitId as string);
-                    event.dataTransfer.effectAllowed = "move";
-                    // Without this the ghost is the whole battlefield card.
-                    setUnitDragImage(event, unit.assets?.cardImage);
-                  }
+          );
+          const dragProps = placedUnitDraggable
+            ? {
+                onPointerDown: (event: React.PointerEvent) => {
+                  beginUnitPointerDrag(event, {
+                    portraitUrl: unit!.assets?.cardImage,
+                    onDrop: (position) =>
+                      onAction({
+                        type: "PLACE_COMBAT_UNIT",
+                        playerId: viewerPlayerId,
+                        armyUnitId: unit!.armyUnitId as string,
+                        position
+                      })
+                  });
                 }
-              : {};
+              }
+            : {};
 
           // Tactics swap (start-of-combat window): click a unit to select it,
           // then click an ally to switch them. Clicking the selected unit again
@@ -1228,7 +1220,7 @@ export function BattlefieldBoard({
             return (
               <button
                 aria-label={`Inspect ${unit.name}`}
-                className={className}
+                className={`${className}${placedUnitDraggable ? " unitDraggable" : ""}`}
                 data-fx-cell={index}
                 data-fx-unit={unit.id}
                 key={index}
@@ -1248,9 +1240,9 @@ export function BattlefieldBoard({
             <div
               aria-label={`${terrain} field ${getBattlefieldLabel(index)}${dropTarget ? " — drop a unit here" : ""}`}
               className={className}
+              data-drop-cell={dropTarget ? "true" : undefined}
               data-fx-cell={index}
               key={index}
-              {...dropProps}
               style={cellStyle}
             >
               {content}

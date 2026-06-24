@@ -114,7 +114,8 @@ import {
 import {
   orderFxEventsForPresentation,
   partitionCombatMoves,
-  planActivationSpellPreamble
+  planActivationSpellPreamble,
+  planApproachAttackPreDelays
 } from "@/components/table/fx-sequence";
 import {
   LOCATION_VISIT_SOUNDS,
@@ -1052,12 +1053,17 @@ export default function Home() {
         nextState.eventLog,
         freshCombatMoves
       );
-      const movedNeutralAttackerIds = new Set(
-        approachMoves
-          .filter((move) => move.playerId === NEUTRAL_PLAYER_ID && fresh.some((roll) => roll.attackerId === move.unitId))
-          .map((move) => move.unitId)
+      // An attacker that slid into range this snapshot holds its first die until
+      // its glide finishes (so the cube is never thrown over a still-moving
+      // card) — a Harpy flies IN, THEN the die rolls, THEN it strikes. Neutral
+      // guards add a dramatic pause on top. Applies to EVERY controller: it was
+      // once neutral-only, which left a player's Harpy rolling mid-glide.
+      const movePreDelayByAttacker = planApproachAttackPreDelays(
+        approachMoves.map((move) => ({ unitId: move.unitId, neutral: move.playerId === NEUTRAL_PLAYER_ID })),
+        fresh,
+        COMBAT_MOVE_MS,
+        NEUTRAL_ATTACK_PAUSE_MS
       );
-      const neutralPreDelayMs = movedNeutralAttackerIds.size > 0 ? COMBAT_MOVE_MS + NEUTRAL_ATTACK_PAUSE_MS : 0;
 
       // A leading activation spell (the neutral Faerie Dragon's Ice Bolt) is cast
       // BEFORE its caster then moves/attacks, all in one snapshot. Its cast +
@@ -1092,7 +1098,7 @@ export default function Home() {
       // those beats, and the total drives the post-action pause. Each die's
       // `preDelay` is carried into its overlay cue, so the cube and its strike
       // always share a clock — the lead below shifts BOTH together.
-      const pendingPreDelay = new Set(movedNeutralAttackerIds);
+      const pendingPreDelay = new Set(movePreDelayByAttacker.keys());
       const diceDismissAt: number[] = [];
       let diceClock = 0;
       const freshDiceCues = fresh.map((event, index) => {
@@ -1100,11 +1106,12 @@ export default function Home() {
         // Faerie Dragon's cast), so the dice — and the strikes pinned to them —
         // trail the cast rather than rolling on top of it.
         let preDelay = index === 0 ? activationSpellLeadMs : 0;
-        // The guard that just slid into range waits out its move + the
-        // pre-attack pause before its first die.
-        if (neutralPreDelayMs > 0 && pendingPreDelay.has(event.attackerId)) {
+        // An attacker that just slid into range waits out its glide (and, for a
+        // neutral guard, the pre-attack pause) before its first die is thrown.
+        const movePause = movePreDelayByAttacker.get(event.attackerId);
+        if (movePause !== undefined && pendingPreDelay.has(event.attackerId)) {
           pendingPreDelay.delete(event.attackerId);
-          preDelay += neutralPreDelayMs;
+          preDelay += movePause;
         }
         // Every later die holds for the previous attack's strike animation.
         if (index > 0) {

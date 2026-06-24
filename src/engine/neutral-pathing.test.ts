@@ -79,7 +79,7 @@ describe("neutral target choice counts walking distance around other units", () 
   // sits at 5, walling off the short hop N->5->1 up to A — so on foot A is 4
   // steps away while B is only 3. A ground unit must prefer B; a flyer, passing
   // over the blocker, still prefers A.
-  function twoTargetSandbox(neutralType: "ground" | "flying") {
+  function twoTargetSandbox(neutralType: "ground" | "flying" | "ranged") {
     const state = createInitialGameState("neutral-distance-seed");
     const combat = state.combat!;
     const neutral = combat.units.unit_p1_crusaders;
@@ -95,8 +95,11 @@ describe("neutral target choice counts walking distance around other units", () 
     neutral.attackedThisActivation = false;
 
     // Same tier, so tier priority ties and pure distance decides between them.
+    // Both are melee, so a ranged neutral's "hunt ranged first" step never fires.
     near.grade = "bronze";
     far.grade = "bronze";
+    near.type = "ground";
+    far.type = "ground";
     near.position = 1;
     far.position = 7;
 
@@ -127,6 +130,21 @@ describe("neutral target choice counts walking distance around other units", () 
 
   it("a flying neutral passes over the blocking unit and picks the crow-flies-nearer target", () => {
     const { combat, neutral, near } = twoTargetSandbox("flying");
+    expect(pickNeutralTarget(combat, neutral)?.id).toBe(near.id);
+  });
+
+  it("a RANGED neutral shoots the crow-flies-nearer target — a shooter fires over the blocker, it never walks", () => {
+    // Regression: target ranking switched to WALKING distance, which is right
+    // for a ground mover but wrong for a shooter. On foot the blocker makes A
+    // (pos 1) 4 steps away vs B (pos 7) at 3 — so a ground neutral picks B (the
+    // control above). A shooter doesn't walk: it must still fire on the
+    // straight-line-nearer A. This is the "ranged unit attacks nearest melee"
+    // the walking-distance change broke.
+    const { combat, neutral, near, far } = twoTargetSandbox("ranged");
+    // The shooter isn't engaged (no adjacent enemy), so it may fire on either.
+    expect(getBattlefieldDistance(neutral.position, near.position)).toBeLessThan(
+      getBattlefieldDistance(neutral.position, far.position)
+    );
     expect(pickNeutralTarget(combat, neutral)?.id).toBe(near.id);
   });
 
