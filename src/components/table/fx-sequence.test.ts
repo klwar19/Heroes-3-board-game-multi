@@ -4,7 +4,9 @@ import {
   orderFxEventsForPresentation,
   partitionCombatMoves,
   planActivationSpellPreamble,
-  planApproachAttackPreDelays
+  planApproachAttackPreDelays,
+  planApproachMoveDelays,
+  planReturnMoveDelays
 } from "./fx-sequence";
 
 /** Minimal event stand-ins; only `type` (and an id for tracking) matter here. */
@@ -233,5 +235,56 @@ describe("planActivationSpellPreamble (Faerie Dragon cast-before-move ordering)"
   it("falls back to the caster as the target when no target is named", () => {
     const log = [ability("b", "faerie-dragon-spell", "dragon")];
     expect(planActivationSpellPreamble(log, LEADING, timing).casts[0].targetUnitId).toBe("dragon");
+  });
+});
+
+describe("planApproachMoveDelays / planReturnMoveDelays (batched neutral activations)", () => {
+  // The neutral pump batches several guards into one snapshot when the human
+  // has nothing to react with. A Harpy that attacks AFTER an earlier guard must
+  // fly IN as its own die is thrown (not at t=0, over the earlier guard's dice)
+  // and fly BACK after its OWN strike (not after every later guard has struck).
+  it("pins a batched approach glide to the unit's own die throw, not t=0", () => {
+    // Earlier guard's die throws at 100; the Harpy's at 600, with a 300ms
+    // glide+pause folded into that wait. The glide must START at 600-300 = 300
+    // (just after the earlier guard's dice), never at the snapshot start.
+    const delays = planApproachMoveDelays(
+      [{ unitId: "harpy" }],
+      new Map([["other", 100], ["harpy", 600]]),
+      new Map([["harpy", 300]]),
+      0,
+      130
+    );
+    expect(delays).toEqual([300]);
+  });
+
+  it("floors the glide at the lead and falls back to the stagger when a mover has no die", () => {
+    // dieThrow - preDelay would be negative → floored at the lead (40).
+    const floored = planApproachMoveDelays([{ unitId: "harpy" }], new Map([["harpy", 100]]), new Map([["harpy", 300]]), 40, 130);
+    expect(floored).toEqual([40]);
+    // A plain reposition (no die this snapshot) keeps the old lead+stagger path.
+    const noDie = planApproachMoveDelays(
+      [{ unitId: "ghost-a" }, { unitId: "ghost-b" }],
+      new Map(),
+      new Map(),
+      40,
+      130
+    );
+    expect(noDie).toEqual([40, 170]);
+  });
+
+  it("leaves a fly-back after the unit's OWN strike, falling back to the timeline end with no strike", () => {
+    // The Harpy strikes (end 800) while a later guard ends at 2000: the Harpy
+    // still flies back at 800, independent of the later guard.
+    const own = planReturnMoveDelays(
+      [{ unitId: "harpy" }],
+      new Map([["harpy", 800], ["later", 2000]]),
+      9999,
+      130
+    );
+    expect(own).toEqual([800]);
+    // A player Harpy's fly-back arrives a frame later with no strike of its own,
+    // so it trails the running timeline end (the fallback).
+    const fallback = planReturnMoveDelays([{ unitId: "harpy" }], new Map(), 450, 130);
+    expect(fallback).toEqual([450]);
   });
 });

@@ -159,6 +159,65 @@ export function planApproachAttackPreDelays(
 }
 
 /**
+ * Schedule each combat-unit move against its OWN attacker's dice, for a snapshot
+ * that may BATCH several units' activations.
+ *
+ * The neutral pump runs back-to-back guard activations into one snapshot when
+ * the human has nothing to react with, so a Harpy that attacks AFTER another
+ * guard shares that guard's dice/strikes in the same FX pass. Timing the moves
+ * off the snapshot start (the old `lead + index*stagger` / global-timeline-end)
+ * then flew the Harpy in before the earlier guard's dice were thrown, and flew
+ * it home only after every later guard had also struck — the "very buggy"
+ * neutral Harpy. Pinning each move to its own attacker's beats fixes both ends:
+ *
+ * - An APPROACH glide lands exactly as its attacker's first die is thrown:
+ *   `dieThrowByAttacker - preDelayByAttacker` (the pre-die hold already folds in
+ *   the glide + pause, so backing it out gives the glide's start), floored at
+ *   `leadMs` so it never precedes a leading activation-spell cast.
+ * - A fly-back leaves just after that attacker's LAST strike has fully played:
+ *   `strikeEndByAttacker`.
+ *
+ * A move whose unit has no die in this snapshot — a player Harpy's fly-back
+ * arrives a frame later, alone, after its return choice — falls back to the
+ * staggered lead / the running `fallbackReturnAt` timeline end, matching the
+ * single-activation behaviour exactly. Beats are milliseconds from the snapshot
+ * start; `staggerMs` only separates same-class moves that share a fallback.
+ */
+export function planApproachMoveDelays(
+  approachMoves: readonly { unitId: string }[],
+  dieThrowByAttacker: ReadonlyMap<string, number>,
+  preDelayByAttacker: ReadonlyMap<string, number>,
+  leadMs: number,
+  staggerMs: number
+): number[] {
+  return approachMoves.map((move, index) => {
+    const dieThrow = dieThrowByAttacker.get(move.unitId);
+    const preDelay = preDelayByAttacker.get(move.unitId);
+    if (dieThrow !== undefined && preDelay !== undefined) {
+      // Land the glide exactly as this unit's own first die is thrown.
+      return Math.max(leadMs, dieThrow - preDelay);
+    }
+    // No die this snapshot (a plain reposition): stagger from the lead as before.
+    return leadMs + index * staggerMs;
+  });
+}
+
+export function planReturnMoveDelays(
+  returnMoves: readonly { unitId: string }[],
+  strikeEndByAttacker: ReadonlyMap<string, number>,
+  fallbackReturnAt: number,
+  staggerMs: number
+): number[] {
+  return returnMoves.map((move, index) => {
+    // Leave just after this unit's OWN strike has played; a player Harpy's
+    // fly-back (a later, separate snapshot) has no strike here, so it trails the
+    // running timeline end exactly as before.
+    const strikeEnd = strikeEndByAttacker.get(move.unitId);
+    return (strikeEnd ?? fallbackReturnAt) + index * staggerMs;
+  });
+}
+
+/**
  * Split this snapshot's combat-unit moves into the ones that happen BEFORE a
  * unit's own attack (its approach to the target) and the ones that happen AFTER
  * it (a Harpy's "Strike and Return" fly-back, or a ranged unit's step after

@@ -115,7 +115,9 @@ import {
   orderFxEventsForPresentation,
   partitionCombatMoves,
   planActivationSpellPreamble,
-  planApproachAttackPreDelays
+  planApproachAttackPreDelays,
+  planApproachMoveDelays,
+  planReturnMoveDelays
 } from "@/components/table/fx-sequence";
 import {
   LOCATION_VISIT_SOUNDS,
@@ -1122,6 +1124,17 @@ export default function Home() {
         return makeDiceCue(nextState, event, preDelay);
       });
 
+      // When each attacker's FIRST die is thrown (its strike beat backed out by
+      // the present time). A unit's approach glide is pinned to land here, so in
+      // a snapshot that batches several guards' activations the later guard's
+      // fly-in waits for the earlier guard's dice instead of playing at t=0.
+      const dieThrowByAttacker = new Map<string, number>();
+      fresh.forEach((roll, index) => {
+        if (!dieThrowByAttacker.has(roll.attackerId)) {
+          dieThrowByAttacker.set(roll.attackerId, diceDismissAt[index] - DICE_PRESENT_MS);
+        }
+      });
+
       if (freshDiceCues.length > 0) {
         setDice((current) => {
           const queue = [...current.queue, ...freshDiceCues];
@@ -1345,12 +1358,20 @@ export default function Home() {
         // resolves move → attack → return in one snapshot, so without this the
         // Harpy would teleport home before its die was ever thrown. The
         // approach/return split was computed up front (see above) so the dice
-        // pacing and this presentation share one source of truth.
+        // pacing and this presentation share one source of truth. Each approach
+        // glide is pinned to its OWN attacker's first die (planApproachMoveDelays)
+        // — so when a snapshot batches several guards, a later guard's fly-in
+        // waits for the earlier guard's dice instead of all playing at t=0.
+        const approachMoveDelays = planApproachMoveDelays(
+          approachMoves,
+          dieThrowByAttacker,
+          movePreDelayByAttacker,
+          activationSpellLeadMs,
+          130
+        );
         approachMoves.forEach((event, index) => {
           const unit = nextState.combat?.units[event.unitId];
-          // Held behind any leading-spell preamble so the cast + its damage are
-          // seen before the unit glides (the Faerie Dragon casts, then moves).
-          const moveDelay = activationSpellLeadMs + index * 130;
+          const moveDelay = approachMoveDelays[index];
           cues.push({
             kind: "move",
             id: `${event.id}-move`,
@@ -1374,10 +1395,10 @@ export default function Home() {
         // off screen until the unit has finished arriving — so a Harpy reads as
         // "fly in → attack window → (after the strike) fly back", never a window
         // popping over a card still sliding across the board.
-        const approachMovesEnd =
-          approachMoves.length > 0
-            ? activationSpellLeadMs + (approachMoves.length - 1) * 130 + COMBAT_MOVE_MS
-            : 0;
+        const approachMovesEnd = approachMoveDelays.reduce(
+          (latest, delay) => Math.max(latest, delay + COMBAT_MOVE_MS),
+          0
+        );
         combatPresentationEnd = Math.max(combatPresentationEnd, approachMovesEnd);
 
         // Attack strikes are driven off the rolls, not the declarations: an
@@ -1386,11 +1407,20 @@ export default function Home() {
         // frame. Each strike plays the instant its die finishes reading
         // (diceDismissAt), the struck unit holds its pre-hit health until the
         // blow lands, and its damage number / death are pinned to that beat.
+        // When each attacker's last strike (+ its result tail) has fully played,
+        // so its OWN fly-back leaves then — not after every later guard in a
+        // batched snapshot has also struck.
+        const strikeEndByAttacker = new Map<string, number>();
         fresh.forEach((roll, index) => {
           const strikeAt = diceDismissAt[index];
           const impactAt = strikeAt + ATTACK_IMPACT_MS;
           impactByTarget.set(roll.defenderId, impactAt);
-          combatPresentationEnd = Math.max(combatPresentationEnd, impactAt + 1200);
+          const strikeEnd = impactAt + 1200;
+          combatPresentationEnd = Math.max(combatPresentationEnd, strikeEnd);
+          strikeEndByAttacker.set(
+            roll.attackerId,
+            Math.max(strikeEndByAttacker.get(roll.attackerId) ?? 0, strikeEnd)
+          );
 
           const attacker = nextState.combat?.units[roll.attackerId];
           const defender = nextState.combat?.units[roll.defenderId];
@@ -1446,13 +1476,16 @@ export default function Home() {
         });
 
         // After-attack moves now that the strike beats are known: a Harpy's
-        // fly-back (or a shooter's step) glides home once the last strike's
+        // fly-back (or a shooter's step) glides home once its OWN strike's
         // number/death has played out, so the activation reads "move in → dice →
-        // attack/sfx → fly back". Each carries the unit's own footstep/voice and
-        // pushes out the post-action pause so the table holds until it lands.
+        // attack/sfx → fly back" — even batched behind another guard, where the
+        // global timeline end would hold the fly-back until every later guard
+        // had struck too. A player Harpy's fly-back lands in a later snapshot
+        // with no strike of its own, so it trails the running timeline end.
+        const returnMoveDelays = planReturnMoveDelays(returnMoves, strikeEndByAttacker, combatPresentationEnd, 130);
         returnMoves.forEach((event, index) => {
           const unit = nextState.combat?.units[event.unitId];
-          const moveDelay = combatPresentationEnd + index * 130;
+          const moveDelay = returnMoveDelays[index];
           cues.push({
             kind: "move",
             id: `${event.id}-move`,
