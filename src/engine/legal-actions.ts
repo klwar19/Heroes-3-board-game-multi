@@ -3659,7 +3659,9 @@ export function getLegalActions(
           ? `${choice.abilityName}: attack`
           : choice.kind === "enchanter-activation"
             ? `${choice.abilityName}: heal`
-            : choice.kind === "spell-redirect"
+            : choice.kind === "jotunn-teleport"
+              ? `${choice.abilityName}: teleport`
+              : choice.kind === "spell-redirect"
               ? `${choice.abilityName}: redirect to`
               : choice.kind === "flat-damage" ||
                   choice.kind === "spell-splash" ||

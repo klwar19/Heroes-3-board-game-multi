@@ -6277,8 +6277,11 @@ export type PendingChoice =
       /**
        * combat-teleport: the Teleport Spell moved this unit; the caster picks
        * which empty space (index-aligned with the options) it lands on.
+       * `abilityId` is set when the relocation is a unit ability rather than the
+       * Spell (the Jotunn Warlord's start-of-activation teleport) so the FX layer
+       * plays that ability's teleport sound; absent for the Spell.
        */
-      teleport?: { unitId: UnitId; positions: number[] };
+      teleport?: { unitId: UnitId; positions: number[]; abilityId?: string };
       /**
        * place-battlefield-tokens: the caster places the rest of a Quicksand /
        * Land Mine set, one token per pick. `positions` are the empty spaces still
@@ -6501,6 +6504,7 @@ export type PendingChoice =
         | "spell-redirect"
         | "enchanter-activation"
         | "faerie-damage"
+        | "jotunn-teleport"
         | "chain-lightning"
         | "sacrifice-transfer";
       abilityId: string | null;

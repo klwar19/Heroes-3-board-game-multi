@@ -236,6 +236,11 @@ export const abilityFxPlans: Record<string, SpellFxPlan> = {
   // Phoenixes' Rebirth reuses the resurrection cue when the killing blow is
   // shrugged off and the bird clings to life at 1 Health.
   "phoenix-rebirth": { affect: [{ key: "prayer" }], sound: "spells/resurrection" },
+  // Jotunn Warlord's start-of-activation Teleport: a sound-only plan, exactly
+  // like the Teleport Spell (spell.teleport) — the relocated unit's card-glide
+  // (UNIT_MOVED) is the visual, and this carries the same H3 teleport sound,
+  // emitted on the UNIT_ABILITY_TRIGGERED event in resolveTeleportChoice.
+  "bulwark-jotunn-teleport": { sound: "spells/teleport" },
   // Printed unit abilities wired with their original H3 effect + sound.
   "wyvern-sting": { affect: [{ key: "poison" }], sound: "spells/poison" },
   "rust-dragon-acid": { hit: "acid-breath", hitSound: "effects/acid-breath" },

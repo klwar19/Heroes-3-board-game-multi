@@ -217,7 +217,7 @@ ask the cloud session to add an upscale script, or use any image upscaler.
 - **Few** `units-bulwark-golden-jotunns-few` · Title **Jotunns** · ATK 5 DEF 3 HP 8 INIT 6
   · recruit **18 gold + 1 gem** · upgrade **32 gold + 2 gems** · ability banner **empty**
 - **Pack** `units-bulwark-golden-jotunns-pack` · Title **Jotunns** · ATK 6 DEF 3 HP 9 INIT 8
-  · ability: *"As a regular movement, this unit can move to any empty space (Teleport)."*
+  · ability: *"At the start of its activation, this unit may teleport any one unit on the battlefield to an empty space, then act as normal (Teleport)."*
 
 ---
 
