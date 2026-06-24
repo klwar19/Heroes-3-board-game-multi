@@ -8937,3 +8937,134 @@ img.cardBack {
   align-items: center;
   gap: 6px;
 }
+
+/* ---------------------------------------------------------------------------
+   Native hero-specialty card (SpecialtyCard) — ported from the HoMM3 Hero
+   Creator's HeroCard (github.com/k-adam/Homm3_hero_creator, MIT © 2025 Adam
+   Kecskes; see public/credits/Homm3_hero_creator_LICENSE.txt). The card is its
+   own size container, so every dimension is in cqw (1mm ≈ 1.6cqw of the 62.5mm
+   print card) and it scales to whatever width its slot gives it. Frame, leather
+   and accent come in as CSS vars so they stay CDN-safe (assetUrl).
+   --------------------------------------------------------------------------- */
+.scWrap {
+  container-type: inline-size;
+  width: 100%;
+  aspect-ratio: 625 / 879;
+}
+
+.sc {
+  position: relative;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  padding: 8cqw;
+  background: #000;
+  color: #f4ecd8;
+  font-family: "Times New Roman", Times, serif;
+  letter-spacing: 0.05em;
+  text-shadow: 0 0.4cqw 0.8cqw #000;
+  display: grid;
+  grid-template-columns: 32cqw minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) 30.4cqw;
+  overflow: hidden;
+  border-radius: 1cqw;
+}
+
+.sc::before {
+  content: "";
+  position: absolute;
+  inset: 4.8cqw;
+  border: 11cqw solid transparent;
+  border-image: var(--sc-border) 165 / 11cqw / 0;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.scContent,
+.scPortrait,
+.scLevel {
+  border: 0.8cqw solid;
+  border-color: #c9c9c9 #3a3a3a #3a3a3a #c9c9c9;
+  box-shadow: inset 0 0 5cqw rgba(0, 0, 0, 0.8);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.scContent {
+  grid-area: 1 / 1 / 2 / 3;
+  background-image: var(--sc-leather);
+  background-size: 200%;
+  background-position: center;
+  text-align: center;
+  padding: 3.2cqw 3.2cqw 1cqw;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.scIconBox {
+  width: 58cqw;
+  height: 37cqw;
+  margin-top: 1cqw;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.scIcon {
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 0.5cqw 1cqw rgba(0, 0, 0, 0.6));
+}
+
+.scName {
+  margin: 1.5cqw 0 2cqw;
+  color: #f4d774;
+  font-size: 6.8cqw;
+  line-height: 1.1;
+}
+
+.scDesc {
+  margin: 0;
+  padding: 0 1cqw;
+  font-size: 3.95cqw;
+  line-height: 1.25;
+  letter-spacing: 0.02em;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.scPortrait {
+  grid-area: 2 / 1 / 3 / 2;
+  background-size: cover;
+  background-position: center top;
+  box-shadow: inset 0 0 8cqw rgba(0, 0, 0, 0.8);
+}
+
+.scLevel {
+  grid-area: 2 / 2 / 3 / 3;
+  background-color: var(--sc-accent);
+  background-image: radial-gradient(120% 120% at 50% 0%, rgba(255, 255, 255, 0.18), transparent 60%);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 4.8cqw;
+}
+
+.scLevelBadge {
+  width: 16.8cqw;
+  height: 16.8cqw;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 30%, #c9c9c9, #3a3a3a);
+  box-shadow:
+    inset 0 0 0 1cqw rgba(0, 0, 0, 0.4),
+    0 0.5cqw 1cqw rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #f4d774;
+  font-weight: bold;
+  font-size: 7cqw;
+}
