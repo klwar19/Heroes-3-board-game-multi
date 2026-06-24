@@ -270,7 +270,7 @@ describe("activation-start abilities", () => {
     expect(next.players.p2.morale).toBe(0);
   });
 
-  it("Wraiths regenerate damage when they activate", () => {
+  it("Wraiths regenerate damage when they activate (and fire the ability cue)", () => {
     const state = createInitialGameState();
     const wraith = state.combat!.units.unit_p1_crusaders;
     wraith.abilities = ["wraith-heal-2"];
@@ -279,6 +279,29 @@ describe("activation-start abilities", () => {
 
     const next = activateOnly(state, "unit_p1_crusaders");
     expect(next.combat!.units.unit_p1_crusaders.damage).toBe(2);
+    // The regeneration now also emits a UNIT_ABILITY_TRIGGERED under the ability
+    // id, so the FX layer can draw the cure shimmer + heal sound (abilityFxPlans)
+    // instead of a silent "+N". Without it the cue would never fire.
+    expect(
+      next.eventLog.some(
+        (event) => event.type === "UNIT_ABILITY_TRIGGERED" && event.abilityId === "wraith-heal-2"
+      )
+    ).toBe(true);
+  });
+
+  it("an undamaged Wraith does NOT fire the regeneration cue (nothing to heal)", () => {
+    const state = createInitialGameState();
+    const wraith = state.combat!.units.unit_p1_crusaders;
+    wraith.abilities = ["wraith-heal-2"];
+    wraith.maxHealth = 6;
+    wraith.damage = 0;
+
+    const next = activateOnly(state, "unit_p1_crusaders");
+    expect(
+      next.eventLog.some(
+        (event) => event.type === "UNIT_ABILITY_TRIGGERED" && event.abilityId === "wraith-heal-2"
+      )
+    ).toBe(false);
   });
 
   it("Wraith Pack drains a random card from the enemy hand on activation", () => {
