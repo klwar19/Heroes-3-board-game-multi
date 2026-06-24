@@ -1156,8 +1156,8 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     type: "ground",
     // engine: Few (Mountain Ram) has no wired ability; Pack (Argali) carries the
     // magic-resistance translation only (reduce-spell-damage-1).
-    few: { attack: 2, defense: 1, health: 3, initiative: 4, cost: { gold: 2 }, abilities: [], cardImage: "/assets/units-bulwark-bronze-mountain_rams-few.webp" },
-    pack: { attack: 2, defense: 1, health: 4, initiative: 5, cost: { gold: 4 }, abilities: ["reduce-spell-damage-1"], abilityText: "[unit_passive] Reduce any [damage] from [spell] by 1 (Argali).", cardImage: "/assets/units-bulwark-bronze-mountain_rams-pack.webp" },
+    few: { attack: 2, defense: 1, health: 3, initiative: 6, cost: { gold: 2 }, abilities: [], cardImage: "/assets/units-bulwark-bronze-mountain_rams-few.webp" },
+    pack: { attack: 2, defense: 1, health: 4, initiative: 8, cost: { gold: 4 }, abilities: ["reduce-spell-damage-1"], abilityText: "[unit_passive] Reduce any [damage] from [spell] by 1 (Argali).", cardImage: "/assets/units-bulwark-bronze-mountain_rams-pack.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Mountain_Ram",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Bulwark Expansion)",
@@ -1191,7 +1191,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     type: "ground",
     // engine: Few (Yeti) has no wired ability; Pack (Yeti Runemaster) keeps Recovery.
     few: { attack: 3, defense: 2, health: 4, initiative: 5, cost: { gold: 6 }, abilities: [], cardImage: "/assets/units-bulwark-silver-yetis-few.webp" },
-    pack: { attack: 3, defense: 2, health: 5, initiative: 6, cost: { gold: 10 }, abilities: ["bulwark-yeti-recover"], abilityText: "[unit_passive] At the start of its activation, this unit recovers from all negative effects.", cardImage: "/assets/units-bulwark-silver-yetis-pack.webp" },
+    pack: { attack: 3, defense: 2, health: 5, initiative: 7, cost: { gold: 10 }, abilities: ["bulwark-yeti-recover"], abilityText: "[unit_passive] At the start of its activation, this unit recovers from all negative effects.", cardImage: "/assets/units-bulwark-silver-yetis-pack.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Yeti",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Bulwark Expansion)",
