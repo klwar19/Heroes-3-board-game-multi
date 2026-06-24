@@ -131,13 +131,37 @@ level-matching one for each card. A clean, neutral choice:
 (Any `hero_specialties-<hero>-{1,4,6}.webp` trio works — they share one frame
 format; the numeral and contents are all that change between I/IV/VI.)
 
-## Before you start (same as the unit runbook)
+## Before you start (browser + Gemini, exactly like the unit runbook)
 
-- `/mcp` shows `playwright · connected`, or use the API CLI
-  `scripts/edit-card-image.mjs` (see `scripts/README-card-image-editing.md`).
-- Run from the repo root. Create the output folder `out/bulwark-specialties/`.
-- Open gemini.google.com once and let the user sign in (the `gemini-profile`
-  remembers it).
+This is a **browser** job — a specialty card composes **three** uploaded images
+(reference card + hero portrait + specialty picture), which the single-image API
+script (`edit-card-image.mjs`) cannot do. Drive Gemini over the browser with the
+Playwright MCP, the same way the unit cards were made.
+
+- `/mcp` must show `playwright · connected`.
+- Open gemini.google.com once and sign in with the Gemini Pro account (the
+  persistent browser profile remembers it afterward).
+- Run from the repo root. Create the output folders `out/bulwark-tile/` and
+  `out/bulwark-specialties/`.
+
+## The loop — one image at a time, in the browser
+
+Do everything yourself — **no sub-agents, no web fetching**; every file
+referenced here is already local in this repo. For EACH card (and the tile):
+
+1. Start a **fresh** Gemini chat (cleaner than reusing one). Enable the **Image**
+   tool (`+` → "Image — create & edit", Nano Banana) so Gemini outputs an image.
+2. Upload the source files **in the exact order the prompt lists them**: the tile
+   = 1 image (`sx1.webp`); a specialty card = 3 images (reference card → hero
+   portrait → specialty picture); Kriv's emblem first = the 3 rune icons.
+3. Send the matching prompt below, with `{HERO}` / `{LEVEL}` / `{SPECIALTY_NAME}`
+   filled in.
+4. When the image appears, extract it full-res and **verify every field** (frame,
+   title, level numeral, the hero likeness, the specialty picture). If anything
+   is wrong, reply with a targeted fix (e.g. *"the numeral must read VI, not IV;
+   change only that"*) and loop until exact. After ~3 bad tries, keep the best
+   and note the card for a later pass so the batch status stays honest.
+5. Save the approved PNG to the output path the section specifies, then move on.
 
 ## The 18 Bulwark specialty cards (verified from `src/data/cards/adventure.ts`)
 
