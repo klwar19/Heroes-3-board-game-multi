@@ -267,7 +267,12 @@ describe("Bulwark units — roster & ability wiring", () => {
     // The Steel Elf (Pack) ignores enemy Retaliation; both sides keep no-melee-penalty.
     expect(coreUnitDefinitions["bulwark.snow_elves"].few?.abilities).toEqual(["ignore-combat-penalties"]);
     expect(coreUnitDefinitions["bulwark.snow_elves"].pack?.abilities).toEqual(["ignore-combat-penalties", "ignores-retaliation"]);
-    expect(coreUnitDefinitions["bulwark.jotunns"].few?.abilities).toContain("teleport-move");
+    // Recovery is the Yeti Runemaster (Pack) only; the Yeti (Few) is a no-op now.
+    expect(coreUnitDefinitions["bulwark.yetis"].few?.abilities).toEqual([]);
+    expect(coreUnitDefinitions["bulwark.yetis"].pack?.abilities).toEqual(["bulwark-yeti-recover"]);
+    // Teleport is the Jotunn Warlord (Pack) only; the Jotunn (Few) is a no-op now.
+    expect(coreUnitDefinitions["bulwark.jotunns"].few?.abilities).toEqual([]);
+    expect(coreUnitDefinitions["bulwark.jotunns"].pack?.abilities).toEqual(["teleport-move"]);
   });
 
   it("carries the revised printed stats across every affected unit", () => {
@@ -282,15 +287,28 @@ describe("Bulwark units — roster & ability wiring", () => {
     const yetis = coreUnitDefinitions["bulwark.yetis"];
     expect({ attack: yetis.few?.attack, health: yetis.few?.health }).toEqual({ attack: 3, health: 4 });
     expect({ attack: yetis.pack?.attack, defense: yetis.pack?.defense, health: yetis.pack?.health }).toEqual({
-      attack: 4,
+      attack: 3, // Yeti Runemaster attack lowered to 3
       defense: 2,
       health: 5
     });
+    const shamans = coreUnitDefinitions["bulwark.shamans"];
+    expect(shamans.few?.defense).toBe(0); // Shaman defense lowered to 0
+    // Great Shaman (Pack): attack lowered to 3, health raised to 6.
+    expect({ attack: shamans.pack?.attack, health: shamans.pack?.health }).toEqual({ attack: 3, health: 6 });
     const mammoths = coreUnitDefinitions["bulwark.mammoths"];
     expect(mammoths.few?.defense).toBe(2);
     expect(mammoths.pack?.defense).toBe(2);
     expect(mammoths.few?.health).toBe(7);
-    expect(mammoths.pack?.health).toBe(7);
+    // War Mammoth (Pack): attack lowered to 5, health raised to 8.
+    expect({ attack: mammoths.pack?.attack, health: mammoths.pack?.health }).toEqual({ attack: 5, health: 8 });
+    const jotunns = coreUnitDefinitions["bulwark.jotunns"];
+    // Jotunn (Few): attack lowered to 5, no ability. Jotunn Warlord (Pack): 6 atk / 9 hp.
+    expect({ attack: jotunns.few?.attack, health: jotunns.few?.health }).toEqual({ attack: 5, health: 8 });
+    expect({ attack: jotunns.pack?.attack, defense: jotunns.pack?.defense, health: jotunns.pack?.health }).toEqual({
+      attack: 6,
+      defense: 3,
+      health: 9
+    });
   });
 
   it("Kobold gold income is a Resource-round map gain of 1 gold", () => {

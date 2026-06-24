@@ -72,6 +72,9 @@ HEROES = {
     "creyle": ["Hero_Creyle_large.png", "Hero_Creyle.png", "Hero_Creyle_small.png", "Creyle.png"],
     "glacius": ["Hero_Glacius_large.png", "Hero_Glacius.png", "Hero_Glacius_small.png", "Glacius.png"],
     "kriv": ["Hero_Kriv_large.png", "Hero_Kriv.png", "Hero_Kriv_small.png", "Kriv.png"],
+    # Batch 2 Bulwark heroes (Eikthurn = Yetis Chieftain, Oidana = the diplomat).
+    "eikthurn": ["Hero_Eikthurn_large.png", "Hero_Eikthurn.png", "Hero_Eikthurn_small.png", "Eikthurn.png"],
+    "oidana": ["Hero_Oidana_large.png", "Hero_Oidana.png", "Hero_Oidana_small.png", "Oidana.png"],
 }
 
 # ---- town buildings: local file -> File candidates ---------------------------

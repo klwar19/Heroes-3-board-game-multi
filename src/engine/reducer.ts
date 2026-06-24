@@ -181,7 +181,7 @@ import {
   unitImmuneToParalysis
 } from "./active-effects";
 import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
-import { gainRunes, gainRunesForAttack, gainRunesForDefend } from "./runes";
+import { gainRunes, gainRunesForAttack, gainRunesForDefend, grantStartingRunes } from "./runes";
 import { drawCardsForPlayer, isSharedDeckId, shuffleCards } from "./decks";
 import {
   cancelSpellAllowsSchoolAndLevel,
@@ -10670,6 +10670,14 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   // is a no-op for a non-Bulwark caster, so the option is harmless if mis-played.
   if (effect.type === "GAIN_RUNES") {
     gainRunes(state, action.playerId, effect.amount);
+  }
+
+  // Kriv (Bulwark)'s rune-empowerment specialty (map play): become Rune-Empowered
+  // so the player's Hero starts EACH combat with extra Runes until the next
+  // Resource round (the same flag the City Hall combat-focus feeds, read by
+  // seedRunesForCombat). grantStartingRunes is a no-op for a non-Bulwark caster.
+  if (effect.type === "GAIN_STARTING_RUNES") {
+    grantStartingRunes(state, action.playerId, effect.amount);
   }
 
   // Solmyr's Chain Lightning (I/VI): the selected unit takes the leftmost bolt,

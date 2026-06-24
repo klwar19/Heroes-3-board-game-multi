@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { applyAction, createInitialGameState, getLegalActions } from "./index";
+import { applyAction, createAdventureGameState, createInitialGameState, getLegalActions } from "./index";
+import { getActiveAttackBonus } from "./active-effects";
+import { gainRunes, getRuneSummary, grantStartingRunes, seedRunesForCombat } from "./runes";
 import { coreHeroDefinitions } from "@/data/factions/core";
 import { adventureCards } from "@/data/cards/adventure";
 import { cardLibrary } from "@/data/cards/library";
@@ -81,6 +83,111 @@ describe("Bulwark hero — Kriv's rune-synergy specialty", () => {
     expect(findPlay(state, "specialty.kriv.1", 0)).toBeFalsy();
     // And the rune count never moves for a non-Bulwark player.
     expect(state.combat!.runes?.p1).toBeUndefined();
+  });
+});
+
+describe("Bulwark hero — Kriv's Rune-Empowered head-start (starting Runes)", () => {
+  /** Adventure-map sandbox with p1 = `faction`, holding `hand`, on its own turn. */
+  function krivMap(seed: string, faction: FactionId, hand: string[]): GameState {
+    const state = createAdventureGameState({
+      seed,
+      rollFirstPlayer: false,
+      players: [
+        { id: "p1", name: "Kriv", factionId: "bulwark", heroDefId: "kriv" },
+        { id: "p2", name: "Sandro", factionId: "necropolis", heroDefId: "sandro" }
+      ]
+    });
+    for (const pl of Object.values(state.players)) {
+      pl.canMulligan = false;
+      pl.needsHandRefresh = false;
+    }
+    state.activePlayerId = "p1";
+    state.players.p1.factionId = faction; // control flips this to a non-Bulwark faction
+    state.players.p1.hand = hand;
+    return state;
+  }
+
+  /** The PLAY_CARD legal action for `cardId`'s GAIN_STARTING_RUNES option (by its real index). */
+  function findEmpowerPlay(state: GameState, cardId: string) {
+    const effect = adventureCards[cardId].effect as { options: { effect: { type: string } }[] };
+    const optionIndex = effect.options.findIndex((option) => option.effect.type === "GAIN_STARTING_RUNES");
+    return getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "PLAY_CARD" &&
+        legal.action.cardId === cardId &&
+        legal.action.optionIndex === optionIndex
+    );
+  }
+
+  it("kriv.1 and kriv.4 carry a scaling starting-Rune empowerment (1 / 2), map-only; kriv.6 has none", () => {
+    for (const [id, amount] of [
+      ["specialty.kriv.1", 1],
+      ["specialty.kriv.4", 2]
+    ] as const) {
+      const effect = adventureCards[id].effect as {
+        options: { mapOnly?: boolean; effect: { type: string; amount?: number } }[];
+      };
+      const option = effect.options.find((entry) => entry.effect.type === "GAIN_STARTING_RUNES");
+      expect(option, id).toBeTruthy();
+      expect(option!.effect.amount).toBe(amount);
+      expect(option!.mapOnly).toBe(true); // it sets up FUTURE combats, so it's a map play
+    }
+    // kriv.6 is a pure combat/reaction card (phaseLimit excludes the map window).
+    const six = adventureCards["specialty.kriv.6"].effect as { options: { effect: { type: string } }[] };
+    expect(six.options.some((entry) => entry.effect.type === "GAIN_STARTING_RUNES")).toBe(false);
+  });
+
+  it("a Bulwark Kriv becomes Rune-Empowered on the map: kriv.4 banks +2, and a second empowerment stacks", () => {
+    let state = krivMap("kriv-empower", "bulwark", ["specialty.kriv.4"]);
+    const play4 = findEmpowerPlay(state, "specialty.kriv.4");
+    expect(play4, "a Bulwark Kriv should be offered the +2 starting-Rune empowerment on the map").toBeTruthy();
+    state = applyOk(state, play4!.action);
+    expect(state.players.p1.runeEmpoweredNextCombats).toBe(2);
+
+    // A second empowerment (kriv.1, +1) STACKS onto the flag → 3.
+    state.players.p1.hand = ["specialty.kriv.1"];
+    const play1 = findEmpowerPlay(state, "specialty.kriv.1");
+    expect(play1, "kriv.1 should also offer a +1 starting-Rune empowerment").toBeTruthy();
+    state = applyOk(state, play1!.action);
+    expect(state.players.p1.runeEmpoweredNextCombats).toBe(3);
+  });
+
+  it("offers the empowerment ONLY to a Bulwark caster (control: a non-Bulwark holder)", () => {
+    const state = krivMap("kriv-empower-control", "castle", ["specialty.kriv.4"]);
+    expect(findEmpowerPlay(state, "specialty.kriv.4")).toBeFalsy();
+    expect(state.players.p1.runeEmpoweredNextCombats ?? 0).toBe(0);
+  });
+
+  it("the head-start opens the next combat charged: the flag seeds Runes and powers the Level 1 buff", () => {
+    // End-to-end on the OUTCOME: feed the flag the specialty grants to the REAL
+    // seedRunesForCombat. The army opens with those Runes (not 0), and earning the
+    // rest turns on the army-wide +1 Attack — fails if the flag is ignored at seed
+    // time or the runes are decorative.
+    const combat = createInitialGameState("kriv-empower-seed");
+    combat.players.p1.factionId = "bulwark";
+    combat.towns.town_p1.factionId = "bulwark";
+    combat.players.p1.runeEmpoweredNextCombats = 2; // what kriv.4's empowerment grants
+    combat.combat!.attackerPlayerId = "p1";
+    combat.combat!.defenderPlayerId = "p2";
+    seedRunesForCombat(combat);
+    expect(getRuneSummary(combat, "p1").count).toBe(2); // opens at 2, not 0
+
+    gainRunes(combat, "p1", 2); // +2 earned → 4 = Level 1 threshold
+    expect(getRuneSummary(combat, "p1").level).toBe(1);
+    expect(
+      getActiveAttackBonus(combat, {
+        attacker: combat.combat!.units.unit_p1_marksmen,
+        defender: combat.combat!.units.unit_p2_skeletons,
+        attackKind: "ranged"
+      })
+    ).toBe(1);
+  });
+
+  it("grantStartingRunes is a no-op for a non-Bulwark player", () => {
+    const combat = createInitialGameState("kriv-empower-noop");
+    combat.players.p1.factionId = "castle";
+    expect(grantStartingRunes(combat, "p1", 2)).toBe(0);
+    expect(combat.players.p1.runeEmpoweredNextCombats ?? 0).toBe(0);
   });
 });
 

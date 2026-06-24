@@ -56,6 +56,7 @@ export const implementedCardEffectTypes = [
   "AREA_DAMAGE_PICK_ADJACENT",
   "RESHUFFLE_DISCARD_THEN_DRAW",
   "GAIN_RUNES",
+  "GAIN_STARTING_RUNES",
   "GAIN_WAR_MACHINE",
   "CHAIN_LIGHTNING",
   "PLACE_PARALYSIS",
@@ -717,6 +718,10 @@ export function describeCardEffect(card: CardDefinition): string {
 
   if (card.effect.type === "GAIN_RUNES") {
     return `gain ${card.effect.amount} Rune(s)`;
+  }
+
+  if (card.effect.type === "GAIN_STARTING_RUNES") {
+    return `become Rune-Empowered: start each combat with ${card.effect.amount} extra Rune(s), until your next Resource round`;
   }
 
   if (card.effect.type === "GAIN_WAR_MACHINE") {
