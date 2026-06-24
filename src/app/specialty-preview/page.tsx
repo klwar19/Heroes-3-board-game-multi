@@ -1,4 +1,5 @@
-import { SpecialtyCard, canRenderSpecialtyCard } from "@/components/specialty-card";
+import { SpecialtyCard } from "@/components/specialty-card";
+import { canRenderSpecialtyCard } from "@/components/specialty-card-data";
 
 // Dev preview: every art-less Bulwark / Conflux hero specialty, drawn live by the
 // native SpecialtyCard (ported from the HoMM3 Hero Creator, MIT). Open

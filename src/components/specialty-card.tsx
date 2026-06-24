@@ -7,100 +7,23 @@ import type { CSSProperties } from "react";
 import { assetUrl } from "@/lib/asset-url";
 import { cardLibrary } from "@/data/cards/library";
 import { coreHeroDefinitions } from "@/data/factions/core";
+import {
+  FACTION_ACCENT,
+  LEVEL_STYLE,
+  SPECIALTY_ICON_BY_HERO,
+  parseSpecialtyCardId,
+  specialtyEffectText
+} from "./specialty-card-data";
 
 // ---------------------------------------------------------------------------
-// Native hero-specialty card renderer.
-//
-// The FRAME, title, level badge and effect TEXT are drawn here (a port of the
-// HoMM3 Hero Creator's HeroCard — github.com/k-adam/Homm3_hero_creator, MIT
-// © 2025 Adam Kecskes; see public/credits/). Only the central specialty PICTURE
-// comes from an image, displayed transparently (object-fit: contain) over the
-// leather panel:
-//   - spell specialists → transparent symbols from the Homm3BG asset set
-//     (CC BY-NC-SA 4.0 — see public/credits/Homm3BG_LICENSE.txt);
-//   - the rune specialist → our own emblem;
-//   - the Bulwark unit specialists + Diplomacy → a transparent symbol the owner
-//     supplies (Diplomacy provided; the three unit symbols are generated with
-//     Gemini per scripts/bulwark-specialty-cards-runbook.md). Until a symbol
-//     file exists the slot gracefully shows no icon (the frame + text still draw).
-//
-// Only art-less heroes need this; everyone else keeps their scanned card image.
+// Native hero-specialty card renderer (the FRAME, title, level badge and effect
+// TEXT). A port of the HoMM3 Hero Creator's HeroCard (github.com/k-adam/
+// Homm3_hero_creator, MIT © 2025 Adam Kecskes; see public/credits/). Only the
+// central specialty PICTURE is an image, shown transparently (object-fit:
+// contain) over the leather panel; a missing symbol just shows no icon (frame +
+// text still draw). Pure helpers/data live in ./specialty-card-data so server
+// components can use them. Only art-less heroes need this.
 // ---------------------------------------------------------------------------
-
-/** The transparent specialty picture for each art-less hero. */
-const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
-  // Bulwark unit specialists — Gemini-generated transparent symbols (runbook).
-  dhuin: "/assets/specialty-card/icon-dhuin.webp", // Snow Elves
-  creyle: "/assets/specialty-card/icon-creyle.webp", // Mammoths
-  eikthurn: "/assets/specialty-card/icon-eikthurn.webp", // Yetis
-  // Diplomacy — owner-supplied dove emblem.
-  oidana: "/assets/specialty-card/icon-diplomacy.webp",
-  // Spell specialists — Homm3BG transparent symbols (CC BY-NC-SA).
-  glacius: "/assets/specialty-card/icon-frost_ring.webp",
-  ciele: "/assets/specialty-card/icon-magic_arrow.webp",
-  luna: "/assets/specialty-card/icon-firewall.webp",
-  // Rune specialist — our own emblem.
-  kriv: "/assets/runes-emblem.webp"
-};
-
-/** Border texture + Roman numeral per specialty level, mirroring the source CSS. */
-const LEVEL_STYLE: Record<1 | 4 | 6, { border: string; numeral: string }> = {
-  1: { border: "border-1", numeral: "I" },
-  4: { border: "border-4", numeral: "IV" },
-  6: { border: "border-6", numeral: "VI" }
-};
-
-/** The level-panel accent (the Hero Creator tints it by town colour). */
-const FACTION_ACCENT: Record<string, string> = {
-  bulwark: "#1f3a5f",
-  conflux: "#2b6c6c"
-};
-
-/** Parse `specialty.<slug>.<level>` → its hero slug and I/IV/VI level. */
-export function parseSpecialtyCardId(cardId: string): { slug: string; level: 1 | 4 | 6 } | null {
-  const match = /^specialty\.(.+)\.(1|4|6)$/u.exec(cardId);
-  if (!match) {
-    return null;
-  }
-  return { slug: match[1], level: Number(match[2]) as 1 | 4 | 6 };
-}
-
-/** True when we can draw this specialty natively (known hero + a mapped picture). */
-export function canRenderSpecialtyCard(cardId: string | undefined): boolean {
-  if (!cardId) {
-    return false;
-  }
-  const parsed = parseSpecialtyCardId(cardId);
-  return Boolean(
-    parsed && SPECIALTY_ICON_BY_HERO[parsed.slug] && coreHeroDefinitions[parsed.slug] && cardLibrary[cardId]
-  );
-}
-
-/**
- * The card's rules description. Prefers the prose tag (Glacius/Kriv/Oidana carry
- * one); otherwise builds it from the CHOOSE_ONE option labels — the unit-
- * specialist helpers (Dhuin/Creyle/Eikthurn) keep their wording there, so without
- * this branch those cards print blank.
- */
-export function specialtyEffectText(cardId: string): string {
-  const card = cardLibrary[cardId];
-  if (!card) {
-    return "";
-  }
-  const prose = (card.tags ?? []).filter((tag) => /\s/.test(tag)).sort((a, b) => b.length - a.length)[0];
-  if (prose) {
-    return prose;
-  }
-  const effect: unknown = card.effect;
-  if (effect && typeof effect === "object" && "type" in effect && (effect as { type: unknown }).type === "CHOOSE_ONE") {
-    const options = (effect as { options?: Array<{ label?: string }> }).options ?? [];
-    return options
-      .map((option) => option.label)
-      .filter((label): label is string => Boolean(label))
-      .join("   —  OR  —   ");
-  }
-  return "";
-}
 
 /**
  * One native specialty card (I / IV / VI). Self-scaling: it is its own size

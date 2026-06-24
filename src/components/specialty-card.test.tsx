@@ -2,7 +2,8 @@
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { SpecialtyCard, canRenderSpecialtyCard, parseSpecialtyCardId, specialtyEffectText } from "./specialty-card";
+import { SpecialtyCard } from "./specialty-card";
+import { canRenderSpecialtyCard, parseSpecialtyCardId, specialtyEffectText } from "./specialty-card-data";
 
 afterEach(cleanup);
 
