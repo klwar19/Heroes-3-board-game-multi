@@ -70,7 +70,7 @@ describe("Enchanters activation (heal-a-friendly or +1 Attack)", () => {
     return state;
   }
 
-  it("opens a heal-or-buff choice when a wounded friendly exists; healing removes damage", () => {
+  it("forces a heal (mandatory, no skip-to-buff) when a wounded friendly exists", () => {
     let state = enchanterSandbox();
     state = makeNextActive(state, "unit_p1_griffins", "unit_p1_marksmen");
 
@@ -82,7 +82,9 @@ describe("Enchanters activation (heal-a-friendly or +1 Attack)", () => {
     expect(choice.kind).toBe("enchanter-activation");
     expect(choice.playerId).toBe("p1");
     expect(choice.candidateUnitIds).toEqual(["unit_p1_crusaders"]);
-    expect(choice.optional).toBe(true);
+    // Wiki: the heal can NOT be skipped in favor of +1 Attack — the choice is
+    // mandatory (pick which ally), never optional.
+    expect(choice.optional).toBe(false);
 
     // Heal the wounded crusaders (up to 2 damage).
     state = applyOk(state, {
@@ -98,7 +100,7 @@ describe("Enchanters activation (heal-a-friendly or +1 Attack)", () => {
     expect(state.activeEffects.some((effect) => effect.modifiers.some((modifier) => modifier.type === "ATTACK_BONUS"))).toBe(false);
   });
 
-  it("the skip option grants +1 Attack to the Enchanters instead of healing", () => {
+  it("offers NO skip-to-buff option while a wounded friendly exists (heal mandatory)", () => {
     let state = enchanterSandbox();
     state = makeNextActive(state, "unit_p1_griffins", "unit_p1_marksmen");
     const choice = state.pendingChoice;
@@ -106,21 +108,23 @@ describe("Enchanters activation (heal-a-friendly or +1 Attack)", () => {
       throw new Error("expected the enchanter choice");
     }
 
+    // The wiki forbids skipping the heal for +1 Attack: no "skip" action exists,
+    // and the only legal target is the wounded ally.
     const skip = getLegalActions(state, "p1").find(
       (legal) => legal.action.type === "CHOOSE_ABILITY_TARGET" && legal.action.targetUnitId === "skip"
     );
-    expect(skip?.label).toContain("+1 Attack");
+    expect(skip).toBeUndefined();
 
-    state = applyOk(state, skip!.action);
-    expect(state.combat!.units.unit_p1_crusaders.damage).toBe(2); // not healed
-    const buff = state.activeEffects.find(
-      (effect) =>
-        effect.target?.type === "unit" &&
-        effect.target.unitId === "unit_p1_marksmen" &&
-        effect.modifiers.some((modifier) => modifier.type === "ATTACK_BONUS")
-    );
-    expect(buff).toBeDefined();
-    expect(state.combat!.activeUnitId).toBe("unit_p1_marksmen");
+    state = applyOk(state, {
+      type: "CHOOSE_ABILITY_TARGET",
+      playerId: "p1",
+      choiceId: choice.id,
+      targetUnitId: "unit_p1_crusaders"
+    });
+    expect(state.combat!.units.unit_p1_crusaders.damage).toBe(0); // healed, not buffed
+    expect(
+      state.activeEffects.some((effect) => effect.modifiers.some((modifier) => modifier.type === "ATTACK_BONUS"))
+    ).toBe(false);
   });
 
   it("auto-buys +1 Attack with no prompt when no friendly is wounded", () => {
@@ -363,8 +367,11 @@ function neutralFightWithGuard(reshape: (guard: CombatUnitState, state: GameStat
   return state;
 }
 
-describe("neutral Enchanters always take +1 Attack", () => {
-  it("buffs itself and never heals a wounded ally", () => {
+describe("neutral Enchanters heal a wounded ally when possible", () => {
+  // Wiki Note: "If possible, the healing effect has to be chosen. The healing
+  // effect can not be skipped in favor of +1 Attack." Applies to neutral guards
+  // too — they heal their most-wounded ally rather than self-buffing.
+  it("heals its most-wounded ally (3 → 1) and takes NO Attack buff", () => {
     let state = neutralFightWithGuard((guard) => {
       guard.name = "Enchanters";
       guard.cardName = "Enchanters";
@@ -375,7 +382,7 @@ describe("neutral Enchanters always take +1 Attack", () => {
       guard.position = 1;
     });
 
-    // Inject a wounded friendly neutral so healing would be possible.
+    // Inject a wounded friendly neutral so healing is possible.
     const guard = Object.values(state.combat!.units).find((unit) => unit.controllerId === NEUTRAL_PLAYER_ID)!;
     const ally: CombatUnitState = {
       ...JSON.parse(JSON.stringify(guard)),
@@ -395,10 +402,30 @@ describe("neutral Enchanters always take +1 Attack", () => {
 
     state = defendThrough(state);
 
-    // The Enchanter took the Attack buff (event fired) and the ally is unhealed.
+    // The heal fired (3 → 1, up to 2 removed) and NO Attack buff was taken.
+    expect(state.eventLog.some((event) => event.type === "DAMAGE_HEALED")).toBe(true);
+    expect(state.combat?.units.neutral_ally?.damage).toBe(1);
+    expect(
+      state.activeEffects.some((effect) => effect.modifiers.some((modifier) => modifier.type === "ATTACK_BONUS"))
+    ).toBe(false);
+  });
+
+  it("buffs itself only when there is no ally to heal (control)", () => {
+    // No wounded ally injected — the only meaningful action is the self buff.
+    let state = neutralFightWithGuard((guard) => {
+      guard.name = "Enchanters";
+      guard.cardName = "Enchanters";
+      guard.type = "ranged";
+      guard.abilities = ["enchanter-heal-or-buff"];
+      guard.attack = 1;
+      guard.initiative = 1;
+      guard.position = 1;
+    });
+    script(state, [0, 0, 0, 0, 0, 0]);
+    state = defendThrough(state);
+
     expect(abilityEvents(state, "enchanter-heal-or-buff").length).toBeGreaterThanOrEqual(1);
     expect(state.eventLog.some((event) => event.type === "DAMAGE_HEALED")).toBe(false);
-    expect(state.combat?.units.neutral_ally?.damage).toBe(3);
   });
 });
 

@@ -93,7 +93,11 @@ describe("faction rosters carry the newly implemented ability ids", () => {
     { unitId: "rampart.unicorns", side: "pack", abilityId: "unicorn-spell-ward-aura" },
     { unitId: "dungeon.minotaurs", side: "few", abilityId: "minotaur-draw-on-miss" },
     { unitId: "dungeon.minotaurs", side: "pack", abilityId: "minotaur-draw-on-miss" },
-    { unitId: "tower.magi", side: "pack", abilityId: "magi-power-boost" }
+    { unitId: "tower.magi", side: "pack", abilityId: "magi-power-boost" },
+    // Vampires Pack: wiki "Ignore the Retaliation Attack. Then remove up to 2
+    // damage from this unit." — the self-heal half (previously only on the
+    // neutral guard) is now wired on the faction Pack too.
+    { unitId: "necropolis.vampires", side: "pack", abilityId: "vampire-heal-on-attack" }
   ];
 
   for (const { unitId, side, abilityId } of expected) {
@@ -104,13 +108,21 @@ describe("faction rosters carry the newly implemented ability ids", () => {
     });
   }
 
+  it("Vampires Few does NOT self-heal — only the Pack gained the heal (divergence control)", () => {
+    const def = coreUnitDefinitions["necropolis.vampires"];
+    expect(def.few?.abilities ?? []).not.toContain("vampire-heal-on-attack");
+    expect(def.few?.abilities ?? []).toEqual(["ignores-retaliation"]);
+    expect(def.pack?.abilities ?? []).toEqual(["ignores-retaliation", "vampire-heal-on-attack"]);
+  });
+
   it("each new ability id is registered and implemented", () => {
     const ids = [
       "efreet-magic-arrow-immunity",
       "reduce-spell-damage-1",
       "unicorn-spell-ward-aura",
       "minotaur-draw-on-miss",
-      "magi-power-boost"
+      "magi-power-boost",
+      "vampire-heal-on-attack"
     ];
     for (const id of ids) {
       const ability = unitAbilities[id];
