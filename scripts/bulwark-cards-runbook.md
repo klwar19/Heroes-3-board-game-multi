@@ -62,12 +62,17 @@ tells Gemini to copy it.
 >
 > Produce ONE finished card, portrait orientation, as **high-resolution, crisp and
 > print-quality** as you can:
-> - Re-paint the creature from Image 2 INTO the central art window in the **same
->   rich, painterly, semi-realistic fantasy oil-painting style as the reference
->   card's own artwork** — cohesive lighting, soft detailed brushwork, dramatic but
->   not cartoonish. It must look hand-painted to belong to the same set, not pasted
->   in. Fill the whole art window behind the frame; enhance and sharpen the art so
->   it looks more professional than the source.
+> - **Redraw the creature from Image 2 as a brand-new, higher-quality
+>   illustration — do NOT copy it pixel-for-pixel and do NOT paste it in.** Keep
+>   the SAME subject, species, pose, composition, color palette and overall
+>   mood/atmosphere, but repaint it from scratch with sharper detail, richer and
+>   more dramatic lighting, cleaner anatomy, and a more polished, professional
+>   finish; remove any blur or low-resolution artifacts. Render it as a **detailed,
+>   semi-realistic digital fantasy illustration matching the EXACT art style of the
+>   reference card's own artwork (Image 1)** — the clean Heroes of Might & Magic
+>   character-art look. NOT an oil painting, NOT visible brush texture, NOT
+>   cartoon. Treat Image 2 as a rough concept to elevate, not to reproduce. Fill
+>   the whole art window behind the frame.
 > - Title in the banner: **{TITLE}**
 > - The four numbers beside the icons, top to bottom: **{ATK}, {DEF}, {HP}, {INIT}**
 > - Star top-right: same as the reference.
@@ -92,11 +97,16 @@ tells Gemini to copy it.
 >
 > Produce ONE finished PACK card, portrait orientation, **high-resolution, crisp,
 > print-quality**:
-> - Re-paint the creature from Image 2 INTO the central art window in the **same
->   painterly, semi-realistic fantasy oil-painting style as the reference card's
->   artwork** — cohesive lighting, detailed brushwork, looks hand-painted to match
->   the set, not pasted. Fill the window; enhance and sharpen for a more
->   professional finish.
+> - **Redraw the creature from Image 2 as a brand-new, higher-quality
+>   illustration — do NOT copy it pixel-for-pixel and do NOT paste it in.** Keep
+>   the SAME subject, species, pose, composition, color palette and overall
+>   mood/atmosphere, but repaint it from scratch with sharper detail, richer
+>   lighting, cleaner anatomy and a more polished, professional finish; remove blur
+>   and low-resolution artifacts. Render it as a **detailed, semi-realistic digital
+>   fantasy illustration matching the EXACT art style of the reference card's own
+>   artwork (Image 1)** — the clean Heroes of Might & Magic character-art look. NOT
+>   an oil painting, NOT visible brush texture, NOT cartoon. Treat Image 2 as a
+>   rough concept to elevate, not to reproduce. Fill the window.
 > - Title in the banner: **{TITLE}**
 > - The four numbers beside the icons, top to bottom: **{ATK}, {DEF}, {HP}, {INIT}**
 > - Keep the **`# PACK`** banner exactly like the reference.
