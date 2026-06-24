@@ -26,28 +26,41 @@ them.
 
 - **Base / template:** `public/assets/board/tiles/sx1.webp` (the Tower snow
   starting tile, `#S1`).
+- **Town reference:** the Bulwark Castle render. The browser uploads **files, not
+  URLs**, so download it to a local file first:
+
+  ```powershell
+  New-Item -ItemType Directory -Force -Path out\refs | Out-Null
+  curl.exe -L "https://static.wikia.nocookie.net/heroes-of-might-and-magic/images/b/b2/Bulwark_Castle_render.png/revision/latest?cb=20250129141039" -o out\refs\bulwark-town-render.png
+  ```
+
+  (Dropping the `/scale-to-width-down/250` segment from the URL fetches the
+  full-resolution original instead of the 250px thumbnail.)
 - **Output:** `public/assets/board/tiles/s10.webp`.
 
-### Tile prompt (single-image EDIT of `sx1.webp`)
+### Tile prompt (TWO-image EDIT: the tile + the town render)
 
-> This image is a finished hexagonal **map tile** from the **Heroes of Might &
-> Magic III board game** — the Tower faction's snowy starting tile. EDIT it into
-> the **Bulwark** faction's starting tile. This is a precise local edit, NOT a
-> regeneration.
+Upload, in order: **Image 1** = `public/assets/board/tiles/sx1.webp` (the Tower
+tile), **Image 2** = `out/refs/bulwark-town-render.png` (the Bulwark Castle
+render).
+
+> **Image 1** is a finished hexagonal **map tile** from the **Heroes of Might &
+> Magic III board game** — the Tower faction's snowy starting tile. **Image 2** is
+> a render of the **Bulwark** town. EDIT Image 1 into the Bulwark starting tile.
+> This is a precise local edit of Image 1, NOT a regeneration.
 >
-> Keep EVERYTHING except the central town building **100% identical and
+> Keep EVERYTHING in Image 1 except the central town building **100% identical and
 > pixel-aligned**: the snowy mountain terrain, every field symbol and its exact
 > position (the blocked rocky field, the two empty fields, the treasure chest, the
 > resource symbol, the mine), the hex-flower shape, the cream/yellow outer border
 > lines, and the overall lighting and palette. Do NOT move, restyle, recolor or
 > redraw any of them.
 >
-> Change ONLY the central town: replace the Tower wizards' town with a **Bulwark
-> frozen-Norse mountain town** — timber longhouses with steep snow-laden roofs,
-> rune-carved standing stones, an icy stone palisade/wall, hearth-smoke and
-> banners, nestled into the snow and rock. Match the EXACT art style, scale,
-> perspective and lighting of the town it replaces so it sits naturally in the
-> same footprint. Render crisp and print-quality at the original resolution and
+> Change ONLY the central town: replace the Tower wizards' town with the **Bulwark
+> town shown in Image 2** — keep its architecture, colours and identity, but
+> repaint it to sit naturally inside Image 1: match the tile's perspective, scale,
+> lighting and snowy setting, and fit it to the SAME footprint the Tower town
+> occupied. Render crisp and print-quality at Image 1's original resolution and
 > crop.
 
 ### Finalize + wire the tile
