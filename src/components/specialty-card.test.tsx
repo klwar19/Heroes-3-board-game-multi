@@ -62,6 +62,14 @@ describe("hero-board / zoom wiring", () => {
     // icon — not the generic Necromancy skill emblem it used to borrow.
     expect(specialtyIconSrc("specialty.septienna.6")).toContain("icon-death_ripple.webp");
     expect(specialtyIconSrc("specialty.septienna.6")).not.toContain("abilities-necromancy");
+    // Astra's specialty IS the Cure SPELL — it shows the Cure spell icon, not the
+    // First Aid Tent war-machine emblem it used to (wrongly) borrow.
+    expect(specialtyIconSrc("specialty.astra.1")).toContain("icon-cure.webp");
+    expect(specialtyIconSrc("specialty.astra.6")).not.toContain("abilities-first_aid");
+    // Jeremy's specialty IS the Cannon war machine — it shows the actual Cannon,
+    // not the generic Artillery skill card it used to borrow.
+    expect(specialtyIconSrc("specialty.jeremy.1")).toContain("icon-cannon.webp");
+    expect(specialtyIconSrc("specialty.jeremy.4")).not.toContain("abilities-artillery");
     expect(specialtyIconSrc("specialty.catherine.1")).toBeUndefined(); // a baked-art hero
     expect(specialtyIconSrc("spell.teleport")).toBeUndefined();
     expect(specialtyIconSrc(undefined)).toBeUndefined();
@@ -121,6 +129,20 @@ describe("SpecialtyCard", () => {
       "abilities-necromancy"
     );
     expect(container.querySelector(".scDesc")?.textContent ?? "").toContain("suffers");
+  });
+
+  it("draws Astra's Cure with the Cure SPELL icon (not the First Aid Tent emblem)", () => {
+    const { container } = render(<SpecialtyCard cardId="specialty.astra.1" />);
+    const src = (container.querySelector(".scIcon") as HTMLImageElement | null)?.getAttribute("src");
+    expect(src).toContain("icon-cure.webp");
+    expect(src).not.toContain("abilities-first_aid");
+  });
+
+  it("draws Jeremy's Cannon with the Cannon icon (not the generic Artillery card)", () => {
+    const { container } = render(<SpecialtyCard cardId="specialty.jeremy.1" />);
+    const src = (container.querySelector(".scIcon") as HTMLImageElement | null)?.getAttribute("src");
+    expect(src).toContain("icon-cannon.webp");
+    expect(src).not.toContain("abilities-artillery");
   });
 
   it("draws Oidana's reworked Diplomacy VI text (the neutral-army Attack aura, not 'draw 3')", () => {
