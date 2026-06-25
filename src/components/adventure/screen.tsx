@@ -4005,6 +4005,7 @@ export const ADVENTURE_FEED_CUES: Partial<Record<GameEventType, { icon: string; 
   PRODUCTION_CHANGED: { icon: "🏭", cue: "income" },
   STRUCTURE_BUILT: { icon: "🔨", cue: "build" },
   ASTROLOGERS_DRAWN: { icon: "🔭", cue: "astrologers" },
+  ASTROLOGERS_HAND_RESHUFFLED: { icon: "🃏", cue: "astrologers" },
   NEUTRAL_DRAW_SWAPPED: { icon: "🔄", cue: "swap" },
   GAME_OPTIONS_CHANGED: { icon: "⚙️", cue: "options" },
   GAME_WON: { icon: "👑", cue: "victory" },

@@ -3675,6 +3675,19 @@ export type GameEvent =
     }
   | {
       id: string;
+      type: "ASTROLOGERS_HAND_RESHUFFLED";
+      playerId: PlayerId;
+      cardId: string;
+      name: string;
+      /** discard-all = Big Cleanup; reshuffle-spells = Annoying Lizard. */
+      mode: "discard-all" | "reshuffle-spells";
+      discarded: number;
+      drawn: number;
+      /** The round it fired, so a re-drawn proclamation never shows a stale notice. */
+      round: number;
+    }
+  | {
+      id: string;
       type: "ARMY_UNIT_FLIPPED";
       playerId: PlayerId;
       unitDefId: string;
