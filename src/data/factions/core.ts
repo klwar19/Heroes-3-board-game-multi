@@ -2354,8 +2354,9 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
   // Dhuin/Creyle use (ADD_COMBAT_STAT / ADD_UNIT_MAX_HEALTH / CREATE_INITIATIVE_BUFF,
   // doubled for the signature unit). Oidana (Elder, Magic): the diplomat — her
   // starting ability is Diplomacy (DIPLOMACY_RECRUIT / skip-combat), and each
-  // specialty is a scaling card draw (DRAW_CARDS 1/2/3) OR the same map Diplomacy
-  // recruit (draw 1 Neutral Unit card per Dwelling, recruit one).
+  // specialty is a CHOOSE_ONE: a scaling card draw (DRAW_CARDS 1/2/2) OR a
+  // Diplomacy-mastery side — I recruits from 1 drawn Neutral, IV recruits from 2
+  // for 4 gold less, VI auras all her neutral units with +1 Attack for the battle.
   eikthurn: {
     id: "eikthurn",
     name: "Eikthurn",

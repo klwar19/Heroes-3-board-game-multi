@@ -3183,21 +3183,27 @@ export const adventureCards: CardLibrary = {
   "specialty.eikthurn.6": withoutArt(unitInitiativeSpecialty("eikthurn", "Yetis", 6, 1, "Yetis")),
 
   // Oidana (Elder): the diplomat. Her starting ability is Diplomacy; each specialty
-  // is a CHOOSE_ONE of a scaling card draw (DRAW_CARDS 1/2/3 — a trigger-free
-  // instant) OR the same map Diplomacy recruit (DIPLOMACY_RECRUIT: draw 1 Neutral
-  // Unit card per Dwelling, recruit one by paying its cost). Both engine-wired.
+  // is a CHOOSE_ONE. The card-draw side (DRAW_CARDS, a trigger-free instant) scales
+  // 1 / 2 / 2. The OTHER side scales with her Diplomacy mastery:
+  //   I  — Map: draw 1 Neutral Unit card (DIPLOMACY_RECRUIT maxDraws 1), recruit one.
+  //   IV — Map: draw up to 2 Neutral Unit cards (maxDraws 2), recruit one for 4 gold
+  //        less (goldReduction 4 — applied to the affordability check, label AND spend).
+  //   VI — Combat (ongoing): +1 Attack to every NEUTRAL (Diplomacy-recruited) unit she
+  //        controls, for the whole battle (CREATE_VARIANT_ATTACK_BUFF variant "neutral").
+  // All three sides are engine-wired (openDiplomacyRecruit / reduceGoldCost / the
+  // player-scoped variant-gated active effect) and covered in bulwark-heroes.test.ts.
   "specialty.oidana.1": {
     id: "specialty.oidana.1",
     name: "Diplomacy I",
     kind: "hero-specialty",
     timing: "instant",
-    tags: ["hero-specialty", "instant", "oidana", "diplomacy", "Instant: draw 1 card. — OR — Map: draw 1 Neutral Unit card per Dwelling, then recruit one (pay its cost)."],
+    tags: ["hero-specialty", "instant", "oidana", "diplomacy", "Instant: draw 1 card. — OR — Map: draw 1 Neutral Unit card, then recruit one (pay its cost)."],
     target: { type: "none" },
     effect: {
       type: "CHOOSE_ONE",
       options: [
         { label: "Draw 1 card", effect: { type: "DRAW_CARDS", amount: 1 } },
-        { label: "Diplomacy: draw 1 Neutral Unit card per Dwelling, then recruit one (pay its cost)", mapOnly: true, effect: { type: "DIPLOMACY_RECRUIT" } }
+        { label: "Diplomacy: draw 1 Neutral Unit card, then recruit one (pay its cost)", mapOnly: true, effect: { type: "DIPLOMACY_RECRUIT", maxDraws: 1 } }
       ]
     },
     implementationStatus: "implemented",
@@ -3208,13 +3214,13 @@ export const adventureCards: CardLibrary = {
     name: "Diplomacy IV",
     kind: "hero-specialty",
     timing: "instant",
-    tags: ["hero-specialty", "instant", "oidana", "diplomacy", "Instant: draw 2 cards. — OR — Map: draw 1 Neutral Unit card per Dwelling, then recruit one (pay its cost)."],
+    tags: ["hero-specialty", "instant", "oidana", "diplomacy", "Instant: draw 2 cards. — OR — Map: draw up to 2 Neutral Unit cards, then recruit one (pay its cost, −4 gold)."],
     target: { type: "none" },
     effect: {
       type: "CHOOSE_ONE",
       options: [
         { label: "Draw 2 cards", effect: { type: "DRAW_CARDS", amount: 2 } },
-        { label: "Diplomacy: draw 1 Neutral Unit card per Dwelling, then recruit one (pay its cost)", mapOnly: true, effect: { type: "DIPLOMACY_RECRUIT" } }
+        { label: "Diplomacy: draw up to 2 Neutral Unit cards, then recruit one (4 gold off)", mapOnly: true, effect: { type: "DIPLOMACY_RECRUIT", maxDraws: 2, goldReduction: 4 } }
       ]
     },
     implementationStatus: "implemented",
@@ -3225,13 +3231,17 @@ export const adventureCards: CardLibrary = {
     name: "Diplomacy VI",
     kind: "hero-specialty",
     timing: "instant",
-    tags: ["hero-specialty", "instant", "oidana", "diplomacy", "Instant: draw 3 cards. — OR — Map: draw 1 Neutral Unit card per Dwelling, then recruit one (pay its cost)."],
+    tags: ["hero-specialty", "instant", "oidana", "diplomacy", "Instant: draw 2 cards. — OR — Combat (ongoing): +1 Attack to every neutral unit you control, all rounds."],
     target: { type: "none" },
     effect: {
       type: "CHOOSE_ONE",
       options: [
-        { label: "Draw 3 cards", effect: { type: "DRAW_CARDS", amount: 3 } },
-        { label: "Diplomacy: draw 1 Neutral Unit card per Dwelling, then recruit one (pay its cost)", mapOnly: true, effect: { type: "DIPLOMACY_RECRUIT" } }
+        { label: "Draw 2 cards", effect: { type: "DRAW_CARDS", amount: 2 } },
+        {
+          label: "Ongoing: +1 Attack to all your neutral units (whole battle)",
+          combatOnly: true,
+          effect: { type: "CREATE_VARIANT_ATTACK_BUFF", name: "Diplomatic Rally", amount: 1, variant: "neutral" }
+        }
       ]
     },
     implementationStatus: "implemented",

@@ -224,6 +224,12 @@ export function effectAppliesToUnit(effect: ActiveEffectState, unit: CombatUnitS
     return false;
   }
 
+  // Army-variant gate (Oidana VI's "all your neutral units" rally): regardless
+  // of scope, the effect only touches units of the named variant.
+  if (effect.appliesOnlyToVariant && unit.variant !== effect.appliesOnlyToVariant) {
+    return false;
+  }
+
   if (effect.scope === "global") {
     return true;
   }

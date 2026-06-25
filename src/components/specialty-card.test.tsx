@@ -58,6 +58,10 @@ describe("hero-board / zoom wiring", () => {
   it("specialtyIconSrc gives the symbol for art-less specialties, undefined otherwise", () => {
     expect(specialtyIconSrc("specialty.dhuin.4")).toContain("units-bulwark-snow_elves-portrait.webp");
     expect(specialtyIconSrc("specialty.kriv.1")).toContain("runes-emblem.webp");
+    // Septienna's specialty IS Death Ripple, so it shows the Death Ripple SPELL
+    // icon — not the generic Necromancy skill emblem it used to borrow.
+    expect(specialtyIconSrc("specialty.septienna.6")).toContain("icon-death_ripple.webp");
+    expect(specialtyIconSrc("specialty.septienna.6")).not.toContain("abilities-necromancy");
     expect(specialtyIconSrc("specialty.catherine.1")).toBeUndefined(); // a baked-art hero
     expect(specialtyIconSrc("spell.teleport")).toBeUndefined();
     expect(specialtyIconSrc(undefined)).toBeUndefined();
