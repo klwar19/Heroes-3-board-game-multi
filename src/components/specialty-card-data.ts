@@ -47,6 +47,15 @@ export function parseSpecialtyCardId(cardId: string): { slug: string; level: 1 |
   return { slug: match[1], level: Number(match[2]) as 1 | 4 | 6 };
 }
 
+/** The specialty picture path for an art-less specialty (or undefined). */
+export function specialtyIconSrc(cardId: string | undefined): string | undefined {
+  if (!cardId) {
+    return undefined;
+  }
+  const parsed = parseSpecialtyCardId(cardId);
+  return parsed ? SPECIALTY_ICON_BY_HERO[parsed.slug] : undefined;
+}
+
 /** True when we can draw this specialty natively (known hero + a mapped picture). */
 export function canRenderSpecialtyCard(cardId: string | undefined): boolean {
   if (!cardId) {

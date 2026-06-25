@@ -8,11 +8,15 @@ import { X, ZoomIn } from "lucide-react";
 import { cardLibrary } from "@/data/cards/library";
 import { describeCardEffect, getUnitAbilityDefinitions, type CombatUnitState } from "@/engine";
 import { getCardMetaLabels, titleCase } from "./utils";
+import { SpecialtyCard } from "@/components/specialty-card";
+import { canRenderSpecialtyCard } from "@/components/specialty-card-data";
 
 /** Anything the table can blow up to readable size: a card id or a unit card. */
 export type ZoomContent = {
   title: string;
   image?: string;
+  /** Art-less specialty: render the native SpecialtyCard instead of an image. */
+  specialtyCardId?: string;
   subtitle?: string;
   lines: string[];
 };
@@ -49,6 +53,7 @@ export function cardZoomContent(cardId: string): ZoomContent {
   return {
     title: card.name,
     image: card.assets?.cardImage,
+    specialtyCardId: !card.assets?.cardImage && canRenderSpecialtyCard(cardId) ? cardId : undefined,
     subtitle: getCardMetaLabels(card).join(" · "),
     lines
   };
@@ -114,7 +119,11 @@ export function CardZoomProvider({ children }: { children: ReactNode }) {
       {content ? (
         <div aria-label={`${content.title} enlarged`} className="zoomBackdrop" onClick={close} role="dialog">
           <div className="zoomCardStage">
-            {content.image && failedImageSrc !== content.image ? (
+            {content.specialtyCardId ? (
+              <div className="zoomNativeCard">
+                <SpecialtyCard cardId={content.specialtyCardId} />
+              </div>
+            ) : content.image && failedImageSrc !== content.image ? (
               <img
                 alt={content.title}
                 className="zoomCardImage"

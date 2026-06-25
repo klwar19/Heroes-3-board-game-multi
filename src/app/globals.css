@@ -3622,6 +3622,17 @@ button.hbBanner {
   transform: translate(-31%, -9.5%);
 }
 
+/* Art-less specialty thumbnail: the specialty symbol, contained in the slot
+   (full native card opens on zoom). Overrides the .hbArt img crop above. */
+.hbArt .hbSpecIcon {
+  position: absolute;
+  inset: 8%;
+  width: 84%;
+  height: 84%;
+  object-fit: contain;
+  transform: none;
+}
+
 .hbArtEmpty {
   background:
     radial-gradient(80% 80% at 50% 40%, rgba(255, 222, 160, 0.12), transparent 70%),
@@ -4531,6 +4542,14 @@ button.hbSlot:disabled { cursor: default; }
   border-radius: 12px;
   background: var(--ink);
   box-shadow: 0 8px 26px rgba(0, 0, 0, 0.55);
+}
+
+/* Art-less specialty zoom: the live SpecialtyCard fills the same footprint as a
+   scanned card image. Its scWrap sets the portrait aspect. */
+.zoomNativeCard {
+  width: min(340px, 44vw);
+  align-self: flex-start;
+  filter: drop-shadow(0 8px 26px rgba(0, 0, 0, 0.55));
 }
 
 .zoomCardImage.cardFaceFallback {

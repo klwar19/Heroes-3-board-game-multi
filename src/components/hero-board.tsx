@@ -19,6 +19,7 @@ import {
   type PlayerId
 } from "@/engine";
 import { useCardZoom } from "@/components/table/zoom";
+import { specialtyIconSrc } from "@/components/specialty-card-data";
 
 const ROMAN = ["", "Ⅰ", "Ⅱ", "Ⅲ", "Ⅳ", "Ⅴ", "Ⅵ", "Ⅶ"];
 /** Specialty cards sit at Ⅰ (starting deck), Ⅳ and Ⅵ — the laurelled numerals. */
@@ -136,6 +137,17 @@ function CardArt({ cardId, kind }: { cardId?: string; kind: "ability" | "special
   // src so a different card in the same slot still renders.
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
   if (!image || failedSrc === image) {
+    // Art-less specialties (Bulwark/Conflux) have no scanned card; show the
+    // specialty symbol so the slot isn't blank — the full native card opens on
+    // zoom (see CardZoomProvider).
+    const nativeIcon = kind === "specialty" ? specialtyIconSrc(cardId) : undefined;
+    if (nativeIcon) {
+      return (
+        <div className={`hbArt hbArt-${kind}`}>
+          <img alt="" className="hbSpecIcon" src={assetUrl(nativeIcon)} />
+        </div>
+      );
+    }
     return <div className={`hbArt hbArt-${kind} hbArtEmpty`} />;
   }
 
