@@ -54,11 +54,13 @@ export function SpecialtyCard({ cardId, className }: { cardId: string; className
     <div className={`scWrap${className ? ` ${className}` : ""}`} data-level={parsed.level} style={style}>
       <div className="sc">
         <div className="scContent">
-          {iconSrc && !iconFailed ? (
-            <div className="scIconBox">
+          {/* The icon box always holds its space, so the title + text sit BELOW
+              the picture even before a unit's symbol has been generated. */}
+          <div className="scIconBox">
+            {iconSrc && !iconFailed ? (
               <img alt="" className="scIcon" onError={() => setIconFailed(true)} src={assetUrl(iconSrc)} />
-            </div>
-          ) : null}
+            ) : null}
+          </div>
           <h3 className="scName">{card.name}</h3>
           <p className="scDesc">{specialtyEffectText(cardId)}</p>
         </div>

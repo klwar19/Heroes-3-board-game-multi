@@ -246,17 +246,22 @@ describe("Bulwark heroes — roster & specialty wiring", () => {
     });
   });
 
-  it("Glacius is the Frost Ring caster — the ring spares the centre", () => {
-    for (const [id, amount] of [
+  it("Glacius is the Frost Ring caster — the ring spares the centre, and each tier costs 1 discard", () => {
+    for (const [id, damage] of [
       ["specialty.glacius.1", 1],
       ["specialty.glacius.6", 2]
     ] as const) {
-      const effect = adventureCards[id].effect as { options: { effect: unknown }[] };
-      expect(effect.options[0].effect).toMatchObject({
+      const option = (
+        adventureCards[id].effect as { options: { effect: unknown; cost?: { discardCards?: number } }[] }
+      ).options[0];
+      expect(option.effect).toMatchObject({
         type: "AREA_DAMAGE_PICK_ADJACENT",
-        amount,
+        amount: damage,
         includeCenter: false
       });
+      // Both the I-tier and VI-tier rings cost a SINGLE discard (VI used to cost
+      // two — house-rule change).
+      expect(option.cost?.discardCards).toBe(1);
     }
   });
 

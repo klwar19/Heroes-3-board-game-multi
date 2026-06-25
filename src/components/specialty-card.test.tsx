@@ -31,12 +31,18 @@ describe("specialtyEffectText", () => {
     expect(specialtyEffectText("specialty.kriv.6")).toContain("4 Runes");
   });
 
-  it("derives text from CHOOSE_ONE option labels when there is no prose tag", () => {
-    // Regression: the unit-specialist helper carries NO prose tag, so this card
-    // printed blank before. It must now read its effect from the option labels.
-    const text = specialtyEffectText("specialty.dhuin.1");
-    expect(text.length).toBeGreaterThan(0);
-    expect(text).toContain("Snow Elves"); // "+1 attack (x2 for Snow Elves)"
+  it("every unit-specialist level (I / IV / VI) has a description naming the doubled unit", () => {
+    // Regression: the unit-specialist helpers (might / health / initiative) used
+    // to carry no prose, so IV and VI printed blank. All three must now read.
+    for (const id of ["specialty.dhuin.1", "specialty.dhuin.4", "specialty.dhuin.6"]) {
+      const text = specialtyEffectText(id);
+      expect(text.length, id).toBeGreaterThan(0);
+      expect(text, id).toContain("Snow Elves");
+    }
+  });
+
+  it("returns empty (no throw) for an unknown id", () => {
+    expect(specialtyEffectText("__none__")).toBe("");
   });
 });
 
@@ -60,6 +66,9 @@ describe("SpecialtyCard", () => {
     const { container, getByText } = render(<SpecialtyCard cardId="specialty.dhuin.1" />);
     expect(getByText("Snow Elves I")).toBeTruthy();
     expect(container.querySelector(".scLevelBadge")?.textContent).toBe("I");
+    // The icon box is always present (it reserves the picture's space so the
+    // title + text sit below it even before the unit symbol is generated).
+    expect(container.querySelector(".scIconBox")).toBeTruthy();
     // The unit symbol is its own transparent picture (Gemini-supplied), not the card.
     expect((container.querySelector(".scIcon") as HTMLImageElement | null)?.getAttribute("src")).toContain(
       "icon-dhuin.webp"
