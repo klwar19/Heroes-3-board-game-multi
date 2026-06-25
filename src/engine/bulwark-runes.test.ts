@@ -206,7 +206,7 @@ describe("Bulwark Runes — RUNE_LEVEL_REACHED cue (drives the rune sound)", () 
   });
 });
 
-describe("Bulwark Runes — gained by combat actions (Gamefound Update #3)", () => {
+describe("Bulwark Runes — gained by combat actions (house-rule rates)", () => {
   it("an attack banks +1 Rune", () => {
     let state = rangedBulwarkState();
     state = settle(applyOk(state, RANGED_ATTACK));
@@ -214,7 +214,7 @@ describe("Bulwark Runes — gained by combat actions (Gamefound Update #3)", () 
     expect(RUNE_GAIN_ATTACK).toBe(1);
   });
 
-  it("the Defend action banks +2 Runes — enough to cross into Level 1 with two prior Runes", () => {
+  it("the Defend action banks +2 Runes, enough to cross into Level 1 with two prior Runes", () => {
     const state = bulwarkState();
     const unit = state.combat!.units.unit_p1_marksmen;
     state.activePlayerId = "p1";
@@ -224,7 +224,7 @@ describe("Bulwark Runes — gained by combat actions (Gamefound Update #3)", () 
     const after = applyOk(state, { type: "DEFEND_UNIT", playerId: "p1", unitId: unit.id });
     expect(after.combat!.runes?.p1?.count).toBe(2 + RUNE_GAIN_DEFEND); // 4
     expect(RUNE_GAIN_DEFEND).toBe(2);
-    // 2 + 2 = 4 Runes = Level 1 → the army-wide +1 Attack is live.
+    // 2 + 2 = 4 Runes = Level 1: the army-wide +1 Attack is live.
     expect(getActiveAttackBonus(after, {
       attacker: after.combat!.units.unit_p1_marksmen,
       defender: after.combat!.units.unit_p2_skeletons,
@@ -294,7 +294,7 @@ describe("Bulwark Runes — gained by combat actions (Gamefound Update #3)", () 
       defenderId: defender.id
     }));
 
-    // p2 retaliated once → +1 Rune; p1 (not Bulwark) banks nothing.
+    // p2 retaliated once: +1 Rune; p1 (not Bulwark) banks nothing.
     expect(after.combat!.runes?.p2?.count).toBe(RUNE_GAIN_RETALIATION);
     expect(after.combat!.runes?.p1).toBeUndefined();
     expect(RUNE_GAIN_RETALIATION).toBe(1);
@@ -457,6 +457,24 @@ describe("Bulwark Runes — starting pool (earned in battle; City Hall flag head
       expect(getActiveDefenseBonus(state, unit), built.join("+")).toBe(0);
       expect(effectiveInitiative(unit, state.activeEffects), built.join("+")).toBe(unit.initiative);
     }
+  });
+
+  it("uses the strongest rune building across all controlled towns", () => {
+    const state = bulwarkState();
+    state.combat!.attackerPlayerId = "p1";
+    state.combat!.defenderPlayerId = "p2";
+    // p1's original town has no rune building, but a captured/controlled
+    // Bulwark town does. The cap lookup must not stop at the first owned town.
+    state.towns.town_p1.buildings = [];
+    state.towns.town_p2.controllerId = "p1";
+    state.towns.town_p2.factionId = "bulwark";
+    state.towns.town_p2.buildings = ["bulwark.sieidi", "bulwark.altar"];
+
+    gainRunes(state, "p1", RUNE_LEVEL_THRESHOLDS[2]);
+
+    expect(effectiveRuneLevel(state, "p1")).toBe(3);
+    const unit = state.combat!.units.unit_p1_marksmen;
+    expect(effectiveInitiative(unit, state.activeEffects)).toBe(unit.initiative + 3);
   });
 });
 
