@@ -23,20 +23,18 @@ export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   dhuin: "/assets/units-bulwark-snow_elves-portrait.webp", // Snow Elves
   creyle: "/assets/units-bulwark-mammoths-portrait.webp", // Mammoths
   eikthurn: "/assets/units-bulwark-yetis-portrait.webp", // Yetis
-  // Other unit specialists — the creature's transparent battle sprite from
-  // heroes.thelazy.net (scripts/fetch-specialty-creature-icons.py).
-  ingham: "/assets/specialty-card/creature-zealot.webp", // Zealots (Castle)
-  // Marksmen/Sorceresses/Harpies/Dragons use the unit's own in-game PORTRAIT
-  // (scripts/fetch-specialty-unit-portraits.py) rather than the battle sprite.
+  // Every unit specialist uses the unit's own in-game PORTRAIT (not the full
+  // battle sprite) — scripts/fetch-specialty-unit-portraits.py.
+  ingham: "/assets/units-zealot-portrait.webp", // Zealots (Castle)
   valeska: "/assets/units-marksman-portrait.webp", // Marksmen (Castle)
   casmetra: "/assets/units-sorceress-portrait.webp", // Sorceresses (Cove)
-  cassiopeia: "/assets/specialty-card/creature-oceanid.webp", // Oceanids (Cove)
+  cassiopeia: "/assets/units-oceanid-portrait.webp", // Oceanids (Cove)
   lorelei: "/assets/units-harpy-portrait.webp", // Harpies (Dungeon)
   tarnum_dungeon: "/assets/units-black_dragon-portrait.webp", // Dragons (Dungeon)
-  tarnum_fortress: "/assets/specialty-card/creature-basilisk.webp", // Basilisks (Fortress)
-  tarnum_rampart: "/assets/specialty-card/creature-sharpshooter.webp", // Sharpshooters (Rampart)
-  ivor: "/assets/specialty-card/creature-grand_elf.webp", // Elves (Rampart)
-  tarnum_conflux: "/assets/specialty-card/creature-enchanter.webp", // Enchanters
+  tarnum_fortress: "/assets/units-basilisk-portrait.webp", // Basilisks (Fortress)
+  tarnum_rampart: "/assets/units-sharpshooter-portrait.webp", // Sharpshooters (Rampart)
+  ivor: "/assets/units-grand_elf-portrait.webp", // Elves (Rampart)
+  tarnum_conflux: "/assets/units-enchanter-portrait.webp", // Enchanters
   // Conflux Planeswalker unit specialists — the creature's own wiki portrait
   // (scripts/fetch-conflux-elemental-portraits.py). Their cards used to reference
   // baked scans (hero_specialties-<slug>-*.webp) that were never shipped — broken

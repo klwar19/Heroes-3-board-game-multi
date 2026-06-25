@@ -1,15 +1,21 @@
 #!/usr/bin/env python3
 """
-Download the unit PORTRAITS used as the central specialty symbols for four unit
+Download the unit PORTRAITS used as the central specialty symbols for the unit
 specialists whose cards previously showed the creature's transparent battle
-SPRITE (specialty-card/creature-*.webp). Per request we switch them to the unit's
-own in-game portrait, matching Moandor (Liches) and the Conflux/Bulwark
-specialists:
+SPRITE (specialty-card/creature-*.webp). Per request EVERY unit specialist shows
+the unit's own in-game portrait (not the full battle image), matching Moandor
+(Liches) and the Conflux/Bulwark specialists:
 
   valeska        -> Marksman      (units-marksman-portrait.webp)        # Castle
   casmetra       -> Sorceress     (units-sorceress-portrait.webp)       # Cove
   tarnum_dungeon -> Black Dragon  (units-black_dragon-portrait.webp)    # Dungeon
   lorelei        -> Harpy         (units-harpy-portrait.webp)           # Dungeon
+  ingham         -> Zealot        (units-zealot-portrait.webp)          # Castle
+  cassiopeia     -> Oceanid       (units-oceanid-portrait.webp)         # Cove
+  tarnum_fortress-> Basilisk      (units-basilisk-portrait.webp)        # Fortress
+  tarnum_rampart -> Sharpshooter  (units-sharpshooter-portrait.webp)    # Rampart
+  ivor           -> Grand Elf     (units-grand_elf-portrait.webp)       # Rampart
+  tarnum_conflux -> Enchanter     (units-enchanter-portrait.webp)       # Conflux
 
 Source: heroes.thelazy.net — the in-game 58x64 creature portraits, upscaled 3x to
 174x192 (LANCZOS) to match the other creature-portrait specialty symbols. Each
@@ -35,6 +41,12 @@ JOBS = [
     ("Sorceress_portrait.png", "units-sorceress-portrait.webp"),
     ("Black_Dragon_portrait.png", "units-black_dragon-portrait.webp"),
     ("Harpy_portrait.png", "units-harpy-portrait.webp"),
+    ("Zealot_portrait.png", "units-zealot-portrait.webp"),
+    ("Oceanid_portrait.png", "units-oceanid-portrait.webp"),
+    ("Basilisk_portrait.png", "units-basilisk-portrait.webp"),
+    ("Sharpshooter_portrait.png", "units-sharpshooter-portrait.webp"),
+    ("Grand_Elf_portrait.png", "units-grand_elf-portrait.webp"),
+    ("Enchanter_portrait.png", "units-enchanter-portrait.webp"),
 ]
 
 
