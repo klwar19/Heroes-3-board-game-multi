@@ -69,9 +69,9 @@ describe("SpecialtyCard", () => {
     // The icon box is always present (it reserves the picture's space so the
     // title + text sit below it even before the unit symbol is generated).
     expect(container.querySelector(".scIconBox")).toBeTruthy();
-    // The unit symbol is its own transparent picture (Gemini-supplied), not the card.
+    // The unit symbol is the unit's own wiki creature portrait, not the card.
     expect((container.querySelector(".scIcon") as HTMLImageElement | null)?.getAttribute("src")).toContain(
-      "icon-dhuin.webp"
+      "units-bulwark-snow_elves-portrait.webp"
     );
     expect((container.querySelector(".scDesc")?.textContent ?? "").length).toBeGreaterThan(0);
   });
