@@ -136,7 +136,11 @@ export function applyUnitCurrentSide(unit: CombatUnitState, ruleset: GameRuleset
 
   const side = applyUnitSideRules(ruleset, unit.unitDefId as string, unit.variant, printed);
   unit.cardName = printedCardName(unit.variant, def.name);
-  unit.attack = side.attack;
+  // House rule (BINH) — Gelu IV: re-apply the permanent +Attack onto the printed
+  // side so a Gelu-recruited Sharpshooters keeps its buff across any recompute
+  // (e.g. a Pack→Few flip). A specialty cover (top branch) or a bank card (above)
+  // replaces stats wholesale and intentionally drops the bonus while covered.
+  unit.attack = side.attack + (unit.permanentAttackBonus ?? 0);
   unit.defense = side.defense;
   unit.maxHealth = side.health;
   unit.initiative = side.initiative;

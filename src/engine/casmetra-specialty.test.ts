@@ -60,9 +60,13 @@ describe("Casmetra — the doubling rule (I/IV double for Sorceresses, VI's +2 d
   });
 
   it("IV doubles its +initiative for Sorceresses", () => {
-    expect(adventureCards["specialty.casmetra.4"].effect).toMatchObject({
+    // House rule (BINH): IV is now a CHOOSE_ONE — option A is the initiative buff
+    // (which also grants +1 Combat movement), option B draws a card.
+    const four = adventureCards["specialty.casmetra.4"].effect as { options: { effect: unknown }[] };
+    expect(four.options[0].effect).toMatchObject({
       type: "CREATE_INITIATIVE_BUFF",
-      doubleForUnitName: "Sorceresses"
+      doubleForUnitName: "Sorceresses",
+      movementBonus: 1
     });
   });
 
