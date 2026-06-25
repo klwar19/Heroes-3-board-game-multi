@@ -193,14 +193,16 @@ describe("Conflux content", () => {
     // Sprites: only the Pack ignores retaliation.
     expect(coreUnitDefinitions["conflux.sprites"].few?.abilities).toEqual([]);
     expect(coreUnitDefinitions["conflux.sprites"].pack?.abilities).toEqual(["ignores-retaliation"]);
-    // Phoenix Few = rebirth + fire immunity; Pack = line attack + fire immunity.
+    // Phoenix Few = rebirth + fire immunity; Pack = line attack + fire immunity
+    // + rebirth (HOUSE RULE: BOTH sides carry Rebirth).
     expect(coreUnitDefinitions["conflux.phoenixes"].few?.abilities).toEqual([
       "phoenix-rebirth",
       "phoenix-fire-immunity"
     ]);
     expect(coreUnitDefinitions["conflux.phoenixes"].pack?.abilities).toEqual([
       "dragon-line-attack-2",
-      "phoenix-fire-immunity"
+      "phoenix-fire-immunity",
+      "phoenix-rebirth"
     ]);
     // The four new elemental spell-power abilities resolve to an implemented effect.
     for (const id of [

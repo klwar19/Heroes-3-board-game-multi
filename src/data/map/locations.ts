@@ -707,3 +707,20 @@ export const TRADE_RATES: { sell: Partial<Record<"gold" | "buildingMaterials" | 
   { sell: { buildingMaterials: 1 }, buy: { gold: 1 }, label: "1 building materials for 1 gold" },
   { sell: { buildingMaterials: 3 }, buy: { valuables: 1 }, label: "3 building materials for 1 valuables" }
 ];
+
+/**
+ * The gold a single unit of `resource` fetches at the Trading Post — the market
+ * sell rate for "1 <resource> → N gold". Single source of truth for any system
+ * that converts a non-gold resource into gold value (e.g. the Freelancer's
+ * Guild paying a unit's gold cost with materials/valuables at market rates).
+ * Returns 1 (a 1:1 fallback) if the market has no such direct rate.
+ */
+export function marketGoldValueOf(resource: "buildingMaterials" | "valuables"): number {
+  for (const rate of TRADE_RATES) {
+    const sellKeys = Object.keys(rate.sell);
+    if (sellKeys.length === 1 && rate.sell[resource] === 1 && typeof rate.buy.gold === "number") {
+      return rate.buy.gold;
+    }
+  }
+  return 1;
+}

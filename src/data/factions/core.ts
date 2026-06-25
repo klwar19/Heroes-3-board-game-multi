@@ -571,9 +571,11 @@ export const coreBuildingDefinitions: Record<string, TownBuildingDefinition> = {
     name: "Freelancer's Guild",
     faction: "stronghold",
     cost: { gold: 2, buildingMaterials: 2, valuables: 1 },
-    // "Each time you win against Neutral Units, gain 1 gold. When Reinforcing
-    // or Recruiting you can use building materials and valuables like gold."
-    effect: { type: "FREELANCERS_GUILD", winGold: 1 },
+    // HOUSE RULE: "Each time you win against Neutral Units, gain 2 gold (was 1).
+    // When Reinforcing or Recruiting you can pay the gold cost with building
+    // materials and valuables at market rates (1 material = 1 gold, 1 valuables
+    // = 3 gold)."
+    effect: { type: "FREELANCERS_GUILD", winGold: 2 },
     implementationStatus: "implemented",
     source: townSource("stronghold")
   },
