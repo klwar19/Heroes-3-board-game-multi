@@ -8,21 +8,55 @@ import { coreHeroDefinitions } from "@/data/factions/core";
 // client references and cannot be invoked from the server.
 // ---------------------------------------------------------------------------
 
-/** The transparent specialty picture for each art-less hero. */
+/**
+ * The central specialty symbol for each art-less hero. This is OPTIONAL — a
+ * hero missing here still renders the native card (frame + portrait + name +
+ * effect), just with an empty icon slot — but every art-less hero we ship is
+ * given a faithful symbol below: a creature's own transparent portrait for the
+ * unit specialists (matching the printed card, like the Bulwark heroes), and
+ * the matching secondary-skill / war-machine icon for the rest.
+ */
 export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
-  // Bulwark unit specialists — the unit's own wiki creature portrait
-  // (heroes.thelazy.net, downloaded to units-bulwark-<slug>-portrait.webp).
+  // --- Unit specialists: the creature the specialty names ------------------
+  // Bulwark — the unit's own wiki creature portrait (heroes.thelazy.net,
+  // downloaded to units-bulwark-<slug>-portrait.webp).
   dhuin: "/assets/units-bulwark-snow_elves-portrait.webp", // Snow Elves
   creyle: "/assets/units-bulwark-mammoths-portrait.webp", // Mammoths
   eikthurn: "/assets/units-bulwark-yetis-portrait.webp", // Yetis
-  // Diplomacy — owner-supplied dove emblem.
-  oidana: "/assets/specialty-card/icon-diplomacy.webp",
-  // Spell specialists — Homm3BG transparent symbols (CC BY-NC-SA).
-  glacius: "/assets/specialty-card/icon-frost_ring.webp",
+  // Other unit specialists — the creature's transparent battle sprite from
+  // heroes.thelazy.net (scripts/fetch-specialty-creature-icons.py).
+  ingham: "/assets/specialty-card/creature-zealot.webp", // Zealots (Castle)
+  valeska: "/assets/specialty-card/creature-marksman.webp", // Marksmen (Castle)
+  casmetra: "/assets/specialty-card/creature-sorceress.webp", // Sorceresses (Cove)
+  cassiopeia: "/assets/specialty-card/creature-oceanid.webp", // Oceanids (Cove)
+  lorelei: "/assets/specialty-card/creature-harpy.webp", // Harpies (Dungeon)
+  tarnum_dungeon: "/assets/specialty-card/creature-black_dragon.webp", // Dragons (Dungeon)
+  tarnum_fortress: "/assets/specialty-card/creature-basilisk.webp", // Basilisks (Fortress)
+  tarnum_rampart: "/assets/specialty-card/creature-sharpshooter.webp", // Sharpshooters (Rampart)
+  ivor: "/assets/specialty-card/creature-grand_elf.webp", // Elves (Rampart)
+  tarnum_conflux: "/assets/specialty-card/creature-enchanter.webp", // Enchanters
+  // --- Spell / emblem specialists -----------------------------------------
+  oidana: "/assets/specialty-card/icon-diplomacy.webp", // Diplomacy dove
+  glacius: "/assets/specialty-card/icon-frost_ring.webp", // Homm3BG symbols
   ciele: "/assets/specialty-card/icon-magic_arrow.webp",
   luna: "/assets/specialty-card/icon-firewall.webp",
-  // Rune specialist — our own emblem.
-  kriv: "/assets/runes-emblem.webp"
+  kriv: "/assets/runes-emblem.webp", // Rune specialist — our own emblem
+  // --- Skill / war-machine / spell-themed specialists: the matching printed
+  // secondary-skill icon (public/assets/abilities-<skill>.webp) -------------
+  tarnum_castle: "/assets/abilities-artillery.webp", // Ballista
+  gerwulf: "/assets/abilities-artillery.webp", // Ballista
+  torosar: "/assets/abilities-artillery.webp", // Ballista
+  jeremy: "/assets/abilities-artillery.webp", // Cannon
+  astra: "/assets/abilities-first_aid.webp", // Cure (heal/cleanse)
+  miriam: "/assets/abilities-scouting.webp", // Scouting
+  sephinroth: "/assets/abilities-estates.webp", // Valuables (resources)
+  octavia: "/assets/abilities-estates.webp", // Gold (resources)
+  melodia: "/assets/abilities-luck.webp", // Fortune (luck/morale)
+  merist: "/assets/abilities-armorer.webp", // Stone Skin (defense)
+  zilare: "/assets/abilities-air_magic.webp", // Forgetfulness (Air spell)
+  ash: "/assets/abilities-offense.webp", // Bloodlust (+attack)
+  septienna: "/assets/abilities-necromancy.webp", // Death Ripple
+  cyra: "/assets/abilities-air_magic.webp" // Haste (Air spell, speed)
 };
 
 /** Border texture + Roman numeral per specialty level, mirroring the source CSS. */
@@ -56,15 +90,25 @@ export function specialtyIconSrc(cardId: string | undefined): string | undefined
   return parsed ? SPECIALTY_ICON_BY_HERO[parsed.slug] : undefined;
 }
 
-/** True when we can draw this specialty natively (known hero + a mapped picture). */
+/**
+ * True when we should draw this specialty with the native renderer instead of a
+ * scanned image: it is a real specialty for a known hero AND the card has no
+ * printed `cardImage` (the fan wiki has no scan for it). The central specialty
+ * symbol (SPECIALTY_ICON_BY_HERO) is OPTIONAL — a missing one just leaves the
+ * icon slot empty while the frame, portrait, name and effect text still draw, so
+ * every art-less hero gets a real card rather than a blank placeholder. A
+ * baked-art specialty (e.g. Sandro, Catherine) keeps its scan and returns false.
+ */
 export function canRenderSpecialtyCard(cardId: string | undefined): boolean {
   if (!cardId) {
     return false;
   }
   const parsed = parseSpecialtyCardId(cardId);
-  return Boolean(
-    parsed && SPECIALTY_ICON_BY_HERO[parsed.slug] && coreHeroDefinitions[parsed.slug] && cardLibrary[cardId]
-  );
+  if (!parsed) {
+    return false;
+  }
+  const card = cardLibrary[cardId];
+  return Boolean(parsed && coreHeroDefinitions[parsed.slug] && card && !card.assets?.cardImage);
 }
 
 /**

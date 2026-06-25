@@ -1,23 +1,22 @@
 import { SpecialtyCard } from "@/components/specialty-card";
-import { canRenderSpecialtyCard } from "@/components/specialty-card-data";
+import { canRenderSpecialtyCard, parseSpecialtyCardId } from "@/components/specialty-card-data";
+import { cardLibrary } from "@/data/cards/library";
 
-// Dev preview: every art-less Bulwark / Conflux hero specialty, drawn live by the
+// Dev preview: EVERY art-less hero specialty (no printed scan), drawn live by the
 // native SpecialtyCard (ported from the HoMM3 Hero Creator, MIT). Open
 // /specialty-preview with `npm run dev` to see and tune the cards — they render
-// from game data, no Gemini and no screenshots.
-
-const HEROES = ["dhuin", "creyle", "eikthurn", "glacius", "oidana", "kriv", "luna", "ciele"];
-const LEVELS = [1, 4, 6] as const;
+// from game data, no Gemini and no screenshots. The list is derived from the
+// card library, so newly-added art-less heroes appear automatically.
 
 export default function SpecialtyPreviewPage() {
-  const cardIds = HEROES.flatMap((slug) => LEVELS.map((level) => `specialty.${slug}.${level}`)).filter(
-    canRenderSpecialtyCard
-  );
+  const cardIds = Object.keys(cardLibrary)
+    .filter((id) => parseSpecialtyCardId(id) && canRenderSpecialtyCard(id))
+    .sort();
 
   return (
     <main style={{ minHeight: "100vh", padding: "24px", background: "#262019", color: "#e8ddc6" }}>
       <h1 style={{ fontFamily: '"Times New Roman", serif', color: "#f4d774", margin: 0 }}>
-        Bulwark / Conflux specialty cards — native render
+        Art-less hero specialty cards — native render ({cardIds.length})
       </h1>
       <p style={{ maxWidth: "70ch", opacity: 0.85 }}>
         Drawn live by <code>SpecialtyCard</code> from game data — no Gemini, no screenshots. Ported from the{" "}
