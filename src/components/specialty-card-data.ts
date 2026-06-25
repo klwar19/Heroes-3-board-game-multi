@@ -10,10 +10,11 @@ import { coreHeroDefinitions } from "@/data/factions/core";
 
 /** The transparent specialty picture for each art-less hero. */
 export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
-  // Bulwark unit specialists — Gemini-generated transparent symbols (runbook).
-  dhuin: "/assets/specialty-card/icon-dhuin.webp", // Snow Elves
-  creyle: "/assets/specialty-card/icon-creyle.webp", // Mammoths
-  eikthurn: "/assets/specialty-card/icon-eikthurn.webp", // Yetis
+  // Bulwark unit specialists — the unit's own wiki creature portrait
+  // (heroes.thelazy.net, downloaded to units-bulwark-<slug>-portrait.webp).
+  dhuin: "/assets/units-bulwark-snow_elves-portrait.webp", // Snow Elves
+  creyle: "/assets/units-bulwark-mammoths-portrait.webp", // Mammoths
+  eikthurn: "/assets/units-bulwark-yetis-portrait.webp", // Yetis
   // Diplomacy — owner-supplied dove emblem.
   oidana: "/assets/specialty-card/icon-diplomacy.webp",
   // Spell specialists — Homm3BG transparent symbols (CC BY-NC-SA).
