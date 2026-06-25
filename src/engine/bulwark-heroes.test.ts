@@ -524,4 +524,30 @@ describe("Bulwark heroes — PvP / multiplayer", () => {
     expect(after.players.p2.hand).toHaveLength(p2HandBefore);
     expect(after.players.p2.deck).toHaveLength(p2DeckBefore);
   });
+
+  it("VI's neutral-army aura is owner-scoped: it never buffs the OPPONENT's neutral units", () => {
+    // A PvP fight where BOTH heroes field a Diplomacy-recruited (neutral) unit.
+    const state = createInitialGameState("oidana-pvp-aura");
+    state.players.p1.factionId = "bulwark";
+    state.players.p2.factionId = "bulwark";
+    state.combat!.units.unit_p1_marksmen.variant = "neutral"; // p1's neutral
+    state.combat!.units.unit_p2_skeletons.variant = "neutral"; // p2's neutral
+    state.players.p1.hand = ["specialty.oidana.6"];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_marksmen";
+
+    const attackBonus = (s: GameState, unitId: UnitId): number =>
+      getActiveAttackBonus(s, {
+        attacker: s.combat!.units[unitId],
+        defender: s.combat!.units.unit_p1_griffins,
+        attackKind: "melee"
+      });
+
+    const play = findPlay(state, "specialty.oidana.6", 1); // the ongoing aura
+    expect(play, "VI's aura should be playable in a PvP combat").toBeTruthy();
+    const after = applyOk(state, play!.action);
+
+    expect(attackBonus(after, "unit_p1_marksmen"), "caster's neutral gains +1").toBe(1);
+    expect(attackBonus(after, "unit_p2_skeletons"), "opponent's neutral is NOT buffed").toBe(0);
+  });
 });

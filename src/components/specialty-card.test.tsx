@@ -109,4 +109,27 @@ describe("SpecialtyCard", () => {
     const { container } = render(<SpecialtyCard cardId="spell.teleport" />);
     expect(container.querySelector(".scWrap")).toBeNull();
   });
+
+  it("draws Septienna's Death Ripple VI with the Death Ripple SPELL icon + its effect text", () => {
+    const { container, getByText } = render(<SpecialtyCard cardId="specialty.septienna.6" />);
+    expect(getByText("Death Ripple VI")).toBeTruthy();
+    expect((container.querySelector(".scIcon") as HTMLImageElement | null)?.getAttribute("src")).toContain(
+      "icon-death_ripple.webp"
+    );
+    // ...and NOT the old Necromancy skill emblem it used to borrow.
+    expect((container.querySelector(".scIcon") as HTMLImageElement | null)?.getAttribute("src")).not.toContain(
+      "abilities-necromancy"
+    );
+    expect(container.querySelector(".scDesc")?.textContent ?? "").toContain("suffers");
+  });
+
+  it("draws Oidana's reworked Diplomacy VI text (the neutral-army Attack aura, not 'draw 3')", () => {
+    const { container, getByText } = render(<SpecialtyCard cardId="specialty.oidana.6" />);
+    expect(getByText("Diplomacy VI")).toBeTruthy();
+    const desc = container.querySelector(".scDesc")?.textContent ?? "";
+    expect(desc).toContain("draw 2 cards");
+    expect(desc).toContain("+1 Attack to every neutral unit you control");
+    expect(desc).not.toContain("draw 3");
+    expect(desc).not.toContain("per Dwelling");
+  });
 });
