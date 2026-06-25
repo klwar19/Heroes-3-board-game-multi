@@ -1,13 +1,15 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { BattlefieldBoard, COMBAT_BOARD_ART_VARIANTS, battlefieldCellPlacement, pickCombatBoardArt } from "./board";
+import { BattlefieldBoard, COMBAT_BOARD_ART_VARIANTS, InspectPanel, battlefieldCellPlacement, pickCombatBoardArt } from "./board";
 import { CardZoomProvider } from "./zoom";
 import {
   applyCombatBoardArtObstacles,
   assignCombatBoardArt,
   createInitialGameState,
   eligibleCombatBoardArtIds,
+  gainRunes,
+  RUNE_LEVEL_THRESHOLDS,
   isCreatureBankCombat,
   SHIP_BATTLE_OBSTACLES,
   weightedCombatBoardArtIds,
@@ -680,5 +682,61 @@ describe("BattlefieldBoard — move route planner (Fire Wall on the field)", () 
       </CardZoomProvider>
     );
     expect(byText(/plan route/i), "no planner without a Fire Wall").toBeUndefined();
+  });
+});
+
+describe("InspectPanel — Attack/Defense reflect lasting buffs immediately (Bulwark Runes)", () => {
+  function renderInspect(state: GameState, unitId: string) {
+    return render(
+      <CardZoomProvider>
+        <InspectPanel state={state} unitId={unitId} />
+      </CardZoomProvider>
+    );
+  }
+
+  it("shows the printed base Attack/Defense when the unit has no active buff", () => {
+    const state = createInitialGameState("inspect-base");
+    const unit = state.combat!.units.unit_p1_marksmen;
+    const { container } = renderInspect(state, unit.id);
+    const stats = container.querySelector(".inspectStats")!;
+    // The Attack cell shows the raw printed value with no "(base …)" annotation.
+    expect(stats.textContent).toContain(`⚔ ${unit.attack}`);
+    expect(stats.textContent).not.toMatch(/base/);
+    expect(container.querySelector(".inspectStats .statUp")).toBeNull();
+  });
+
+  it("folds the Bulwark Rune army-wide +1 Attack / +1 Defense into the displayed stats the instant the level turns on", () => {
+    const state = createInitialGameState("inspect-rune");
+    state.players.p1.factionId = "bulwark";
+    state.towns.town_p1.factionId = "bulwark";
+    state.towns.town_p1.buildings.push("bulwark.sieidi"); // cap 2 so Defense can turn on
+    const unit = state.combat!.units.unit_p1_marksmen;
+    const baseAttack = unit.attack;
+    const baseDefense = unit.defense;
+
+    // Earn straight to Rune Level 2: +1 Attack (L1) and +1 Defense (L2) go live.
+    gainRunes(state, "p1", RUNE_LEVEL_THRESHOLDS[1]); // 7 → Level 2
+
+    const { container } = renderInspect(state, unit.id);
+    const stats = container.querySelector(".inspectStats")!;
+    // Effective Attack is base+1 with the base noted — not the unchanged printed value.
+    expect(stats.textContent).toContain(`⚔ ${baseAttack + 1} (base ${baseAttack})`);
+    expect(stats.textContent).toContain(`${baseDefense + 1} (base ${baseDefense})`);
+    // Both raised stats carry the green "up" cue.
+    expect(container.querySelectorAll(".inspectStats .statUp").length).toBe(2);
+  });
+
+  it("does NOT buff an ENEMY unit's stats — the Rune effect is scoped to its owner", () => {
+    const state = createInitialGameState("inspect-rune-scope");
+    state.players.p1.factionId = "bulwark";
+    state.towns.town_p1.factionId = "bulwark";
+    gainRunes(state, "p1", RUNE_LEVEL_THRESHOLDS[0]); // p1 reaches Level 1
+
+    // p2's unit must read its printed base — no leak across the player scope.
+    const enemy = state.combat!.units.unit_p2_skeletons;
+    const { container } = renderInspect(state, enemy.id);
+    const stats = container.querySelector(".inspectStats")!;
+    expect(stats.textContent).toContain(`⚔ ${enemy.attack}`);
+    expect(stats.textContent).not.toMatch(/base/);
   });
 });

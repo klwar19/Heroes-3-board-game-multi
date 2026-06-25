@@ -14,8 +14,10 @@ import {
   BATTLEFIELD_ROWS,
   effectiveInitiative,
   getActivationOrder,
+  getActiveDefenseBonus,
   getBattlefieldLabel,
   getBattlefieldTerrain,
+  getDisplayAttackBonus,
   getUnitAbilityDefinitions,
   getUnitMoveRange,
   getUnitTokens,
@@ -1346,6 +1348,13 @@ export function InspectPanel({ state, unitId }: { state: GameState; unitId: stri
   // (with the base noted) so the inspector matches the initiative rail.
   const init = effectiveInitiative(unit, state.activeEffects);
   const initDelta = init - unit.initiative;
+  // Effective Attack/Defense fold in the army-wide Bulwark Rune buffs (and Bless /
+  // Bloodlust / Offense and the like) the same way, so a unit visibly reflects a
+  // buff the instant it turns on instead of reading its printed base.
+  const attackBonus = getDisplayAttackBonus(state, unit);
+  const attack = unit.attack + attackBonus;
+  const defenseBonus = getActiveDefenseBonus(state, unit);
+  const defense = unit.defense + defenseBonus;
 
   return (
     <section className="inspectPanel" aria-label={`${unit.name} card`}>
@@ -1377,9 +1386,14 @@ export function InspectPanel({ state, unitId }: { state: GameState; unitId: stri
           {initDelta !== 0 ? ` (base ${unit.initiative})` : ""}
         </span>
         <div className="inspectStats">
-          <span title="Attack">⚔ {unit.attack}</span>
-          <span title={unit.defenseToken ? "Defense (defending: rolls +1 for +1 Defense when struck)" : "Defense"}>
-            <Shield aria-hidden="true" size={12} /> {unit.defense}
+          <span title={attackBonus !== 0 ? `Attack ${attack} (base ${unit.attack}, ${attackBonus > 0 ? "+" : ""}${attackBonus} from effects)` : "Attack"}>
+            ⚔ <span className={attackBonus > 0 ? "statUp" : attackBonus < 0 ? "statDown" : undefined}>{attack}</span>
+            {attackBonus !== 0 ? ` (base ${unit.attack})` : ""}
+          </span>
+          <span title={`${unit.defenseToken ? "Defense (defending: rolls +1 for +1 Defense when struck)" : "Defense"}${defenseBonus !== 0 ? ` — base ${unit.defense}, ${defenseBonus > 0 ? "+" : ""}${defenseBonus} from effects` : ""}`}>
+            <Shield aria-hidden="true" size={12} />{" "}
+            <span className={defenseBonus > 0 ? "statUp" : defenseBonus < 0 ? "statDown" : undefined}>{defense}</span>
+            {defenseBonus !== 0 ? ` (base ${unit.defense})` : ""}
             {unit.defenseToken ? " (defending)" : ""}
           </span>
           <span title="Health">
