@@ -103,6 +103,9 @@ describe("hero-board / zoom wiring", () => {
     expect(specialtyIconSrc("specialty.zilare.6")).not.toContain("abilities-air_magic");
     // Miriam shows the large Expert Scouting emblem, not the small generic one.
     expect(specialtyIconSrc("specialty.miriam.4")).toContain("icon-scouting-expert.webp");
+    // Sephinroth shows the Valuables resource icon, not the generic Estates emblem.
+    expect(specialtyIconSrc("specialty.sephinroth.1")).toContain("icon-valuables.webp");
+    expect(specialtyIconSrc("specialty.sephinroth.6")).not.toContain("abilities-estates");
     expect(specialtyIconSrc("specialty.catherine.1")).toBeUndefined(); // a baked-art hero
     expect(specialtyIconSrc("spell.teleport")).toBeUndefined();
     expect(specialtyIconSrc(undefined)).toBeUndefined();

@@ -80,7 +80,11 @@ export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   // heroes.thelazy.net (scripts/fetch-forgetfulness-scouting-icons.py), not the
   // small generic Scouting emblem.
   miriam: "/assets/specialty-card/icon-scouting-expert.webp", // Scouting
-  sephinroth: "/assets/abilities-estates.webp", // Valuables (resources)
+  // Sephinroth's specialty IS Valuables — the game's own Valuables resource icon
+  // (RESOURCE_ICONS.valuables), the red crystals cut out of the shared leather
+  // tile to a transparent background (scripts/make-sephinroth-valuables-icon.py),
+  // not the generic Estates skill emblem.
+  sephinroth: "/assets/specialty-card/icon-valuables.webp", // Valuables (resource icon)
   // Octavia's specialty IS Gold — the game's own gold-coins icon, cut out of the
   // shared leather resource tile to a transparent background
   // (scripts/make-octavia-gold-icon.py), not the generic Estates skill emblem.
