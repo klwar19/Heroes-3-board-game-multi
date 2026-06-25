@@ -191,6 +191,10 @@ export const permanentCards: CardLibrary = {
     warMachineCosts: { factory: { gold: 10 }, tradingPost: { gold: 14 } },
     effect: { type: "ENTER_PLAY" },
     assets: {
+      // Placeholder: the fan wiki has no Cannon card scan, so reuse the cannon
+      // specialty symbol (the HotA Cannon's transparent sprite) until a real
+      // card scan exists. See scripts/fetch-cannon-cure-specialty-icons.py.
+      cardImage: "/assets/specialty-card/icon-cannon.webp",
       imageAlt: "Cannon war machine card"
     },
     implementationStatus: "implemented",

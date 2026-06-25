@@ -23,12 +23,12 @@ describe("ability & war-machine card art is committed", () => {
       }
       const image = card.assets?.cardImage;
       if (!image) {
-        // Catapult and Cannon ship with no card art (the fan wiki has no scan
-        // for them — it falls back to the deck back). They carry no cardImage,
-        // so there is nothing to verify on disk.
+        // Catapult ships with no card art (the fan wiki has no scan for it — it
+        // falls back to the deck back), so there is nothing to verify on disk.
+        // (Cannon now carries a placeholder cardImage and IS verified below.)
         continue;
       }
-      expect(image, `${card.id} cardImage path`).toMatch(/^\/assets\/[a-z0-9_-]+\.webp$/);
+      expect(image, `${card.id} cardImage path`).toMatch(/^\/assets\/[a-z0-9_/-]+\.webp$/);
       expect(existsSync(assetPath(image)), `${card.id} art file missing at ${image}`).toBe(true);
       checked.push(card.id);
     }
@@ -38,6 +38,7 @@ describe("ability & war-machine card art is committed", () => {
     expect(checked).toContain("ability.ballistics");
     expect(checked).toContain("ability.pathfinding");
     expect(checked).toContain("war_machine.first_aid_tent");
+    expect(checked).toContain("war_machine.cannon");
     expect(checked.length).toBeGreaterThan(20);
   });
 });
