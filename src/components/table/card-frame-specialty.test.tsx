@@ -1,0 +1,45 @@
+// @vitest-environment jsdom
+import { cleanup, render } from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
+
+import { CardFrame } from "./seats";
+import { cardLibrary } from "@/data/cards/library";
+
+afterEach(cleanup);
+
+// Regression: art-less hero specialties (Bulwark/Conflux/Cove and every other
+// hero with no printed scan) used to render in the ZOOM view only — in the hand
+// fan / trays / piles CardFrame fell straight through to the plain text
+// fallback, so the card "only showed when zoomed". CardFrame must now draw the
+// native SpecialtyCard in-slot for those, exactly like zoom.tsx.
+describe("CardFrame — art-less specialties render the native card in the tray", () => {
+  it("draws the native SpecialtyCard (not the text fallback) for a Bulwark specialty", () => {
+    const { container } = render(<CardFrame cardId="specialty.kriv.6" className="fanCardImage" />);
+    // The native card frame is present...
+    expect(container.querySelector(".scWrap")).toBeTruthy();
+    // ...and its title/effect read, proving it is the real card, not a stub.
+    expect(container.textContent ?? "").toContain("Runes VI");
+    // It must NOT be the plain dashed text fallback that caused the bug.
+    expect(container.querySelector(".cardFaceFallback")).toBeNull();
+  });
+
+  it("draws the native card (with its symbol) for an art-less hero whose scan is absent (Torosar)", () => {
+    // Torosar has no printed scan, but is given the artillery symbol (Ballista).
+    expect(cardLibrary["specialty.torosar.6"]?.assets?.cardImage).toBeUndefined();
+    const { container } = render(<CardFrame cardId="specialty.torosar.6" className="fanCardImage" />);
+    expect(container.querySelector(".scWrap")).toBeTruthy();
+    expect(container.querySelector(".cardFaceFallback")).toBeNull();
+    expect(container.querySelector(".scIconBox")).toBeTruthy();
+    expect((container.querySelector(".scIcon") as HTMLImageElement | null)?.getAttribute("src")).toContain(
+      "abilities-artillery.webp"
+    );
+  });
+
+  it("still renders the scanned <img> for a baked-art specialty (Sandro)", () => {
+    const src = cardLibrary["specialty.sandro.1"]?.assets?.cardImage;
+    expect(src).toBeTruthy();
+    const { container } = render(<CardFrame cardId="specialty.sandro.1" className="fanCardImage" />);
+    expect(container.querySelector("img")).toBeTruthy();
+    expect(container.querySelector(".scWrap")).toBeNull();
+  });
+});

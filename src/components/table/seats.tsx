@@ -33,6 +33,8 @@ import {
   type CardBoardAction
 } from "./utils";
 import { useCardZoom, ZoomButton } from "./zoom";
+import { SpecialtyCard } from "@/components/specialty-card";
+import { canRenderSpecialtyCard } from "@/components/specialty-card-data";
 
 export function CardFrame({
   cardId,
@@ -52,6 +54,17 @@ export function CardFrame({
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
 
   if (!src || failedSrc === src) {
+    // Art-less hero specialties (Bulwark/Conflux/Cove and every other hero with
+    // no printed scan) render the native specialty card here too — same as the
+    // zoom view — so they show in the hand fan, trays and piles, not just on
+    // zoom. The icon slot may be empty; the frame, name and effect still draw.
+    if (cardId && canRenderSpecialtyCard(cardId)) {
+      return (
+        <div className={`${className} specialtyCardFrame`} title={title ?? alt}>
+          <SpecialtyCard cardId={cardId} />
+        </div>
+      );
+    }
     return (
       <div className={`${className} cardFaceFallback`} title={title ?? alt}>
         {card?.name ?? cardId ?? "?"}
