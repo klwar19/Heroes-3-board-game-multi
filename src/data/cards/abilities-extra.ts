@@ -299,7 +299,9 @@ export const extraAbilityCards: CardLibrary = {
       "Basic: +1 defense — a reaction to an attack on your unit OR to an enemy damaging Spell on your unit, where the same +1 defense also reduces the Spell's damage (lasts the Combat). Expert: +2 defense."
     ],
     effect: { type: "INTERFERE_SPELL", amount: 1, expertAmount: 2 },
-    assets: abilityAssets("interference", "Interference", true),
+    // Real printed-card scan (user-provided) at /assets/abilities-interference.webp,
+    // so noScan stays off (default false) and the baked art is used.
+    assets: abilityAssets("interference", "Interference"),
     implementationStatus: "implemented",
     source: abilitySource("interference")
   },

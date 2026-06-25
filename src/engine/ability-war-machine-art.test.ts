@@ -41,4 +41,11 @@ describe("ability & war-machine card art is committed", () => {
     expect(checked).toContain("war_machine.cannon");
     expect(checked.length).toBeGreaterThan(20);
   });
+
+  it("Interference uses its real printed-card scan, not the deck-back fallback", () => {
+    const image = cardLibrary["ability.interference"]?.assets?.cardImage;
+    expect(image).toBe("/assets/abilities-interference.webp");
+    expect(image).not.toContain("player-deck-back");
+    expect(existsSync(assetPath(image!))).toBe(true);
+  });
 });
