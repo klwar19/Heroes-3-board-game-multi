@@ -31,7 +31,12 @@ function mightSpecialtyOne(heroSlug: string, heroName: string, doubledUnit: stri
     kind: "hero-specialty",
     timing: "instant",
     phaseLimit: ["reaction", "combat"],
-    tags: ["hero-specialty", "instant", heroSlug],
+    tags: [
+      "hero-specialty",
+      "instant",
+      heroSlug,
+      `Instant: +1 Attack when this unit attacks, or +1 Defense when it is attacked — doubled (+2) for ${doubledUnit}.`
+    ],
     effect: {
       type: "CHOOSE_ONE",
       options: [
@@ -181,7 +186,13 @@ function unitHealthSpecialty(
     kind: "hero-specialty",
     timing: "combat",
     phaseLimit: ["combat"],
-    tags: ["hero-specialty", "combat", heroSlug, "health"],
+    tags: [
+      "hero-specialty",
+      "combat",
+      heroSlug,
+      "health",
+      `Combat: give a friendly unit +${amount} maximum Health this combat — doubled (+${amount * 2}) for ${doubledUnit}.`
+    ],
     target: { type: "friendly-unit" },
     effect: {
       type: "ADD_UNIT_MAX_HEALTH",
@@ -210,7 +221,13 @@ function unitInitiativeSpecialty(
     kind: "hero-specialty",
     timing: "combat",
     phaseLimit: ["combat"],
-    tags: ["hero-specialty", "combat", heroSlug, "initiative"],
+    tags: [
+      "hero-specialty",
+      "combat",
+      heroSlug,
+      "initiative",
+      `Combat: give a friendly unit +${amount} Initiative this combat — doubled (+${amount * 2}) for ${doubledUnit}.`
+    ],
     target: { type: "friendly-unit" },
     effect: {
       type: "CREATE_INITIATIVE_BUFF",
@@ -3053,16 +3070,16 @@ export const adventureCards: CardLibrary = {
       "combat",
       "glacius",
       "frost-ring",
-      "Instant (any time, incl. an enemy unit's turn start or end of its move): discard 2 cards, then target a space; every unit adjacent to it (not the space itself, friend or foe) takes 2 damage."
+      "Instant (any time, incl. an enemy unit's turn start or end of its move): discard 1 card, then target a space; every unit adjacent to it (not the space itself, friend or foe) takes 2 damage."
     ],
     target: { type: "any-space" },
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "Discard 2 cards: 2 damage to every unit adjacent to a space",
+          label: "Discard 1 card: 2 damage to every unit adjacent to a space",
           combatAnytime: true,
-          cost: { discardCards: 2 },
+          cost: { discardCards: 1 },
           effect: { type: "AREA_DAMAGE_PICK_ADJACENT", amount: 2, includeCenter: false, adjacentPicks: 4 }
         }
       ]
