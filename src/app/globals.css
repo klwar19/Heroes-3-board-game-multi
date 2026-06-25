@@ -8994,18 +8994,23 @@ img.cardBack {
 }
 
 /* When an art-less specialty is shown inside a card slot (hand fan, tray, pile,
-   draw/search cue), the slot's sizing class wraps the native card. Drop the
-   img-style padding and let the card fill the slot's 5/7 box. */
+   draw/search cue, permanents row), the slot's sizing class wraps the native
+   card. Drop the img-style padding and size the card from its OWN 625/879 ratio
+   rather than the slot's box: a slot that fixes only the width (e.g.
+   .permanentCardImage has no aspect-ratio/height) used to collapse the card to
+   its text height — now the frame's height tracks the card's intrinsic ratio in
+   every slot, matching a scanned card of the same width. */
 .specialtyCardFrame {
   padding: 0;
   overflow: hidden;
   display: block;
+  aspect-ratio: auto;
 }
 
 .specialtyCardFrame > .scWrap {
+  /* Keep .scWrap's intrinsic 625/879 aspect-ratio (do NOT pin height to 100% of
+     the slot) so the height is always definite, even when the slot gives none. */
   width: 100%;
-  height: 100%;
-  aspect-ratio: auto;
 }
 
 .sc {

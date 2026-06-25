@@ -44,14 +44,21 @@ export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   // heroes.thelazy.net (scripts/fetch-death-ripple-icon.py), not the generic
   // Necromancy skill emblem it used to (wrongly) borrow.
   septienna: "/assets/specialty-card/icon-death_ripple.webp", // Death Ripple spell icon
+  // Jeremy's specialty IS the Cannon war machine, so he shows the actual HotA
+  // Cannon (its own transparent battle sprite from heroes.thelazy.net,
+  // scripts/fetch-cannon-cure-specialty-icons.py) rather than the generic
+  // Artillery skill card he used to borrow.
+  jeremy: "/assets/specialty-card/icon-cannon.webp", // Cannon
+  // Astra's specialty IS the Cure spell, so she shows the Cure SPELL icon (from
+  // heroes.thelazy.net, same script) — not the First Aid Tent war-machine emblem
+  // (abilities-first_aid.webp) she used to (wrongly) borrow.
+  astra: "/assets/specialty-card/icon-cure.webp", // Cure spell icon
   kriv: "/assets/runes-emblem.webp", // Rune specialist — our own emblem
   // --- Skill / war-machine / spell-themed specialists: the matching printed
   // secondary-skill icon (public/assets/abilities-<skill>.webp) -------------
   tarnum_castle: "/assets/abilities-artillery.webp", // Ballista
   gerwulf: "/assets/abilities-artillery.webp", // Ballista
   torosar: "/assets/abilities-artillery.webp", // Ballista
-  jeremy: "/assets/abilities-artillery.webp", // Cannon
-  astra: "/assets/abilities-first_aid.webp", // Cure (heal/cleanse)
   miriam: "/assets/abilities-scouting.webp", // Scouting
   sephinroth: "/assets/abilities-estates.webp", // Valuables (resources)
   octavia: "/assets/abilities-estates.webp", // Gold (resources)
