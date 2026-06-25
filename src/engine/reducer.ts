@@ -3044,6 +3044,52 @@ function finishResolvedAttack(
   const cancelLethal = stackItem.modifiers.cancelLethal;
   const lethalCancel =
     cancelLethal && cancelLethal.unitId === details.defender.id ? { grade: cancelLethal.grade } : undefined;
+
+  // Bulwark "Runes" (Gamefound Update #3): a Bulwark unit's resolved Attack earns
+  // its controller +1 Rune, a Retaliation Attack +1 (RUNE_GAIN_*). Credited HERE,
+  // BEFORE the blow's damage is computed, so a strike that CROSSES a Rune
+  // threshold already carries its new Level's army-wide +Attack on THIS very blow
+  // — the user-reported fix ("rune has effect the moment it reaches the
+  // threshold"). The crossing buff is a player-scoped ATTACK_BONUS active effect,
+  // so we fold its delta into details.attackBonus by re-reading getActiveAttackBonus
+  // around the credit (the delta is 0 for a non-crossing strike, +Attack for a
+  // crossing one). A blow Alamar's Resurrection is about to lethally cancel still
+  // grants NOTHING (the rulebook fizzle): we mirror the cancel test in
+  // applyAttackDamageFromCandidate and skip the credit when it holds, so the
+  // earned-by-acting loop and a cancelled strike stay exactly as before.
+  const willBeLethallyCancelled =
+    lethalCancel !== undefined &&
+    (() => {
+      const preview = getAttackDamagePreview(
+        details.attacker,
+        details.defender,
+        resolvedCandidate.roll,
+        details.attackBonus,
+        details.defenseBonus,
+        defendBonus,
+        details.dieMultiplier,
+        details.abilityAttack?.baseAttack,
+        details.damageReduction,
+        details.ignoreDefense,
+        dieCancelled
+      );
+      return (
+        preview.damage > 0 &&
+        details.defender.damage + preview.damage >= details.defender.maxHealth &&
+        gradeRankOfUnit(details.defender) <= gradeRank(lethalCancel.grade)
+      );
+    })();
+  if (!willBeLethallyCancelled) {
+    const runeContext = {
+      attacker: details.attacker,
+      defender: details.defender,
+      attackKind: details.attackKind
+    };
+    const attackBonusBeforeRune = getActiveAttackBonus(state, runeContext);
+    gainRunesForAttack(state, details.attacker, details.isRetaliation);
+    details.attackBonus += getActiveAttackBonus(state, runeContext) - attackBonusBeforeRune;
+  }
+
   const attackResult = applyAttackDamageFromCandidate(
     state,
     details.attacker,
@@ -3090,11 +3136,9 @@ function finishResolvedAttack(
   // Great Shamans' Freezing Shot: their attack also slows the target next round.
   applyOnAttackInitiativeDebuff(state, details.attacker, details.defender, details.isRetaliation);
   applyOnAttackPoisonCubes(state, details.attacker, details.defender, details.isRetaliation);
-  // Bulwark "Runes" (Gamefound Update #3): a Bulwark unit's resolved attack earns
-  // its controller +1 Rune; a Retaliation Attack also +1 (RUNE_GAIN_*). Placed
-  // after the cancelled-attack early return above, so a fizzled strike grants
-  // nothing.
-  gainRunesForAttack(state, details.attacker, details.isRetaliation);
+  // (Bulwark "Runes" are credited above, BEFORE the blow's damage, so a strike
+  // that crosses a Rune threshold buffs THIS very hit — see gainRunesForAttack
+  // before applyAttackDamageFromCandidate.)
   // Creature Bank Crypt/Shipwreck Wraiths: after their own attack, the enemy
   // discards a card. Medusa Stores Medusas (while Stacked): the target is
   // Paralyzed by their own attack.
