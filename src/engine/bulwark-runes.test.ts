@@ -299,6 +299,85 @@ describe("Bulwark Runes — gained by combat actions (Gamefound Update #3)", () 
     expect(after.combat!.runes?.p1).toBeUndefined();
     expect(RUNE_GAIN_RETALIATION).toBe(1);
   });
+
+  it("the strike that CROSSES a threshold carries its new Level's +1 Attack on THAT very blow", () => {
+    // The user-reported bug: "rune doesn't have effect the moment it reaches the
+    // threshold (defend, then reach threshold, but retaliate and still no +1
+    // attack)". A strike that earns the Rune crossing into Level 1 must already
+    // deal the army-wide +1 Attack on the SAME blow — not only on the next one.
+    // Asserts the OBSERVABLE damage (not just the Rune count), with a one-short
+    // CONTROL that does NOT cross (so it deals exactly the base attack).
+    function retaliationDamageWithBankedRunes(banked: number): number {
+      const state = createInitialGameState();
+      state.players.p2.factionId = "bulwark";
+      state.towns.town_p2.factionId = "bulwark";
+      const attacker = state.combat!.units.unit_p1_marksmen;
+      attacker.abilities = [];
+      attacker.attack = 1;
+      attacker.position = 1;
+      attacker.defense = 0; // so the retaliation damage is purely the attacker's value
+      attacker.maxHealth = 50;
+      attacker.damage = 0;
+      const defender = state.combat!.units.unit_p2_skeletons;
+      defender.abilities = [];
+      defender.attack = 5; // base retaliation attack
+      defender.position = 2; // adjacent → melee, retaliation provoked
+      defender.defense = 0;
+      defender.maxHealth = 20;
+      defender.damage = 0;
+      state.players.p1.hand = [];
+      state.players.p2.hand = [];
+      state.combat!.dice.scriptedRolls = [0, 0, 0, 0]; // every die 0 → isolates the buff
+      state.combat!.dice.rollCount = 0;
+      state.activePlayerId = "p1";
+      state.combat!.activeUnitId = attacker.id;
+      // Bank p2 (Bulwark) to `banked` Runes before the fight's retaliation.
+      state.combat!.runes = { p2: { count: banked, appliedLevel: runeLevelForCount(banked) } };
+
+      const after = settle(applyOk(state, {
+        type: "ATTACK_UNIT",
+        playerId: "p1",
+        attackerId: attacker.id,
+        defenderId: defender.id
+      }));
+      const retaliation = after.eventLog.find(
+        (event) => event.type === "ATTACK_ROLLED" && (event as { isRetaliation?: boolean }).isRetaliation
+      ) as { damage: number } | undefined;
+      expect(retaliation, "p2 should have retaliated").toBeTruthy();
+      return retaliation!.damage;
+    }
+
+    // 3 banked + the retaliation's +1 = 4 = Level 1 threshold: the crossing blow
+    // deals base 5 + the army-wide +1 = 6.
+    expect(retaliationDamageWithBankedRunes(3)).toBe(6);
+    // CONTROL: 0 banked + 1 = 1 Rune, nowhere near the 4 threshold, so the blow
+    // is the unbuffed base 5. (Fails to diverge if the fix mis-applies the buff.)
+    expect(retaliationDamageWithBankedRunes(0)).toBe(5);
+  });
+
+  it("an ATTACK that crosses a threshold carries its new Level's +1 Attack on THAT very strike", () => {
+    // The same fix from the attacker's side: a ranged shot that banks the Rune
+    // crossing into Level 1 deals the +1 on the SAME shot. Observable damage,
+    // with a one-short CONTROL that stays unbuffed.
+    function shotDamageWithBankedRunes(banked: number): number {
+      const state = rangedBulwarkState();
+      state.combat!.attackerPlayerId = "p1";
+      state.combat!.defenderPlayerId = "p2";
+      state.combat!.runes = { p1: { count: banked, appliedLevel: runeLevelForCount(banked) } };
+      const after = settle(applyOk(state, RANGED_ATTACK));
+      const shot = after.eventLog.find(
+        (event) => event.type === "ATTACK_ROLLED" && !(event as { isRetaliation?: boolean }).isRetaliation
+      ) as { damage: number } | undefined;
+      expect(shot, "the Marksmen should have fired").toBeTruthy();
+      return shot!.damage;
+    }
+
+    // Marksmen base attack is 3, defender defense 0, die 0. 3 banked + this
+    // shot's +1 = 4 = Level 1, so the crossing shot deals 3 + 1 = 4.
+    expect(shotDamageWithBankedRunes(3)).toBe(4);
+    // CONTROL: 0 banked → 1 Rune, no crossing, the unbuffed base 3.
+    expect(shotDamageWithBankedRunes(0)).toBe(3);
+  });
 });
 
 describe("Bulwark Runes — starting pool (earned in battle; City Hall flag head-start)", () => {
