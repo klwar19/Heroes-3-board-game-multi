@@ -2005,6 +2005,15 @@ export type EffectDefinition =
       unique?: boolean;
       /** Tarnum (Conflux) IV: gold paid to acquire the unit (no unit traded in). */
       goldCost?: number;
+      /**
+       * House rule (BINH) — Gelu IV: a permanent Attack bonus baked onto the
+       * acquired unit card. The Sharpshooters Gelu recruits this way carry +1
+       * Attack in EVERY combat, start to end (stored on the army card as
+       * `permanentAttackBonus` and re-applied each time it enters combat). A
+       * `UNIT_RECRUITED` event with `attackBuff` set drives the "this is a BUFF"
+       * notice.
+       */
+      grantAttackBonus?: number;
     }
   | {
       /**
@@ -3954,6 +3963,12 @@ export type GameEvent =
       unitDefId: string;
       kind: "recruit" | "reinforce";
       cost: ResourceCost;
+      /**
+       * House rule (BINH) — Gelu IV: when set, this recruit carries a permanent
+       * +Attack BUFF (the value is the bonus). Drives the "this is a BUFF" notice
+       * the player sees when a Gelu-recruited Sharpshooters joins the army.
+       */
+      attackBuff?: number;
     }
   | {
       id: string;
@@ -4454,6 +4469,14 @@ export type ArmyUnitState = {
    * combats until that covering card is defeated.
    */
   transforms?: UnitTransformState[];
+  /**
+   * House rule (BINH) — Gelu IV: a permanent Attack bonus baked onto THIS
+   * specific army card. The Sharpshooters Gelu recruits via his IV specialty
+   * carry +1 Attack in every combat (start to end). It is re-applied each time
+   * the card enters combat (see makeCombatUnitFromArmy / applyUnitCurrentSide),
+   * so it never wears off. Absent on every normally-recruited card.
+   */
+  permanentAttackBonus?: number;
 };
 
 export type TownTokenState = {
@@ -4877,6 +4900,14 @@ export type CombatUnitState = {
   unitDefId?: string;
   /** Adventure mode: army card instance this unit maps back to. */
   armyUnitId?: string;
+  /**
+   * House rule (BINH) — Gelu IV: a permanent Attack bonus mirrored from the army
+   * card (`ArmyUnitState.permanentAttackBonus`). It is folded into the unit's
+   * Attack every time the printed side is (re)computed (applyUnitCurrentSide),
+   * so a Gelu-recruited Sharpshooters keeps its +1 Attack all combat, even after
+   * a flip. Not doubled and not removable — it is part of the card's stats.
+   */
+  permanentAttackBonus?: number;
   /**
    * Fixed creature-bank guard (Dragon Utopia's dragons, the Cyclops
    * Stockpile's 2 golden Cyclopes): minted for this fight only, so it must

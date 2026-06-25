@@ -11146,13 +11146,19 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       } else {
         deck.discardPile.splice(inDiscard, 1);
       }
-      addArmyUnit(player, effect.toUnitDefId, "neutral");
+      const acquired = addArmyUnit(player, effect.toUnitDefId, "neutral");
+      if (effect.grantAttackBonus) {
+        // House rule (BINH) — Gelu IV: bake the permanent +Attack onto THIS card so
+        // every combat it joins starts (and stays) buffed.
+        acquired.permanentAttackBonus = effect.grantAttackBonus;
+      }
       appendEvent(state, {
         type: "UNIT_RECRUITED",
         playerId: action.playerId,
         unitDefId: effect.toUnitDefId,
         kind: "recruit",
-        cost: effect.goldCost ? { gold: effect.goldCost } : {}
+        cost: effect.goldCost ? { gold: effect.goldCost } : {},
+        ...(effect.grantAttackBonus ? { attackBuff: effect.grantAttackBonus } : {})
       });
     }
   }

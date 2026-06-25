@@ -4737,7 +4737,13 @@ export function makeCombatUnitFromNeutral(
 }
 
 export function makeCombatUnitFromArmy(
-  armyUnit: { id: string; unitDefId: string; side: "few" | "pack" | "neutral"; transforms?: UnitTransformState[] },
+  armyUnit: {
+    id: string;
+    unitDefId: string;
+    side: "few" | "pack" | "neutral";
+    transforms?: UnitTransformState[];
+    permanentAttackBonus?: number;
+  },
   controllerId: PlayerId,
   unitId: UnitId,
   position: number,
@@ -4750,6 +4756,9 @@ export function makeCombatUnitFromArmy(
   }
 
   const side = applyUnitSideRules(ruleset, armyUnit.unitDefId, armyUnit.side, printed);
+  // House rule (BINH) — Gelu IV: a permanent +Attack baked onto this army card is
+  // folded into the unit's printed Attack every combat (start to end).
+  const permanentAttackBonus = armyUnit.permanentAttackBonus ?? 0;
 
   const unit: CombatUnitState = {
     id: unitId,
@@ -4759,7 +4768,7 @@ export function makeCombatUnitFromArmy(
     variant: armyUnit.side,
     grade: def.tier,
     type: side.type ?? def.type,
-    attack: side.attack,
+    attack: side.attack + permanentAttackBonus,
     defense: side.defense,
     maxHealth: side.health,
     damage: 0,
@@ -4772,6 +4781,7 @@ export function makeCombatUnitFromArmy(
     abilities: side.abilities,
     unitDefId: armyUnit.unitDefId,
     armyUnitId: armyUnit.id,
+    ...(permanentAttackBonus ? { permanentAttackBonus } : {}),
     assets: {
       cardImage: side.cardImage,
       imageAlt: `${def.name} unit card`,

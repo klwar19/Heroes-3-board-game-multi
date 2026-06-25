@@ -226,17 +226,37 @@ function unitInitiativeSpecialty(
       "combat",
       heroSlug,
       "initiative",
-      `Combat: give a friendly unit +${amount} Initiative this combat — doubled (+${amount * 2}) for ${doubledUnit}.`
+      // House rule (BINH): every "initiative only" specialty now ALSO grants +1
+      // Combat movement range with the buff, and offers an alternative of drawing
+      // a card instead. The Initiative number is still doubled for the signature
+      // unit; the +1 movement is a flat bonus (never doubled).
+      `Combat: give a friendly unit +${amount} Initiative AND +1 Combat movement range this combat — Initiative doubled (+${amount * 2}) for ${doubledUnit}. — OR — Draw 1 card.`
     ],
+    // Option A targets a friendly unit (it inherits this card-level target);
+    // option B (draw a card) needs no target.
     target: { type: "friendly-unit" },
     effect: {
-      type: "CREATE_INITIATIVE_BUFF",
-      name: `${specialtyName} Specialty`,
-      amount,
-      duration: { type: "combat" },
-      polarity: "positive",
-      removable: false,
-      doubleForUnitName: doubledUnit
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: `+${amount} Initiative & +1 movement (Initiative x2 for ${doubledUnit})`,
+          effect: {
+            type: "CREATE_INITIATIVE_BUFF",
+            name: `${specialtyName} Specialty`,
+            amount,
+            duration: { type: "combat" },
+            polarity: "positive",
+            removable: false,
+            doubleForUnitName: doubledUnit,
+            // House rule (BINH): the buff also raises Combat movement by 1.
+            movementBonus: 1
+          }
+        },
+        {
+          label: "Draw 1 card",
+          effect: { type: "DRAW_CARDS", amount: 1 }
+        }
+      ]
     },
     assets: {
       cardImage: specialtyCardImage(heroSlug, level),
@@ -1564,6 +1584,8 @@ export const adventureCards: CardLibrary = {
   // Gelu IV: trade a Pack of Elves for the unique Sharpshooters Neutral card,
   // or just draw a card. The Sharpshooters card leaves the silver Neutral deck
   // and joins your unit deck; only one Sharpshooters may be controlled at once.
+  // House rule (BINH): a Sharpshooters recruited THIS way is permanently BUFFED —
+  // it carries +1 Attack in every combat, start to end (grantAttackBonus: 1).
   "specialty.gelu.4": {
     id: "specialty.gelu.4",
     name: "Sharpshooters IV",
@@ -1574,14 +1596,16 @@ export const adventureCards: CardLibrary = {
       "map",
       "gelu",
       "sharpshooters",
-      "If you have a Pack of Elves Unit card, discard it, then search the Neutral Unit silver deck for the Sharpshooters card and add it to your Unit deck (only 1 Sharpshooters at a time). — OR — Draw a card."
+      // House rule (BINH): the recruited Sharpshooters is BUFFED with a permanent
+      // +1 Attack in all combats — stated up front so the player knows it is a buff.
+      "If you have a Pack of Elves Unit card, discard it, then search the Neutral Unit silver deck for the Sharpshooters card and add it to your Unit deck (only 1 Sharpshooters at a time). BUFF: that Sharpshooters permanently gains +1 Attack in every combat, from beginning to end. — OR — Draw a card."
     ],
     target: { type: "none" },
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "Discard a Pack of Elves → take the Sharpshooters",
+          label: "Discard a Pack of Elves → take the BUFFED Sharpshooters (+1 Attack, always)",
           mapOnly: true,
           effect: {
             type: "CONVERT_ARMY_UNIT",
@@ -1589,7 +1613,9 @@ export const adventureCards: CardLibrary = {
             fromSide: "pack",
             toUnitDefId: "neutral.sharpshooters",
             toTier: "silver",
-            unique: true
+            unique: true,
+            // House rule (BINH): the recruited Sharpshooters always fights at +1 Attack.
+            grantAttackBonus: 1
           }
         },
         {
@@ -2188,8 +2214,9 @@ export const adventureCards: CardLibrary = {
   "specialty.josephine.4": towerAttackOrDefenseSpecialty("josephine", "Golems", 4, "a Golems unit"),
   "specialty.josephine.6": towerStatBoostSpecialty("josephine", "Golems", 6, "attack", 2, "a Golems unit"),
   // Dracon (Wizard): the Enchanters specialist. I = +1 A/D doubled for Magi
-  // and Enchanters; IV = trade a Pack of Magi for the unique Enchanters card
-  // (or draw); VI = +2 initiative for the combat, doubled for Magi/Enchanters.
+  // and Enchanters; IV = trade a Pack of Magi for the unique Enchanters card,
+  // OR draw, OR (house rule) trade a Few of Magi + 6 gold for it; VI = +2
+  // initiative for the combat, doubled for Magi/Enchanters.
   "specialty.dracon.1": mightSpecialtyOne("dracon", "Enchanters", "Magi and Enchanters"),
   "specialty.dracon.4": {
     id: "specialty.dracon.4",
@@ -2201,7 +2228,9 @@ export const adventureCards: CardLibrary = {
       "map",
       "dracon",
       "enchanters",
-      "If you have a Pack of Magi Unit card, discard it, then search the Neutral Unit golden deck for the Enchanters card and add it to your Unit deck (only 1 Enchanters at a time). — OR — Draw a card."
+      // House rule (BINH): besides trading a Pack of Magi, Dracon may also upgrade
+      // the cheaper Few of Magi into the Enchanters by paying 6 extra gold.
+      "If you have a Pack of Magi Unit card, discard it, then search the Neutral Unit golden deck for the Enchanters card and add it to your Unit deck (only 1 Enchanters at a time). — OR — Draw a card. — OR — Discard a Few of Magi AND pay 6 gold to take the Enchanters the same way."
     ],
     target: { type: "none" },
     effect: {
@@ -2222,6 +2251,23 @@ export const adventureCards: CardLibrary = {
         {
           label: "Draw a card",
           effect: { type: "DRAW_CARDS", amount: 1 }
+        },
+        {
+          // House rule (BINH): recruit the Enchanters from the cheaper Few of Magi
+          // for 6 extra gold (the Pack option above is free). Engine: the shared
+          // CONVERT_ARMY_UNIT resolver removes the Few specifically and charges the
+          // goldCost; gating requires owning a Few of Magi AND >= 6 gold.
+          label: "Discard a Few of Magi + 6 gold → take the Enchanters",
+          mapOnly: true,
+          effect: {
+            type: "CONVERT_ARMY_UNIT",
+            fromUnitDefId: "tower.magi",
+            fromSide: "few",
+            toUnitDefId: "neutral.enchanters",
+            toTier: "gold",
+            unique: true,
+            goldCost: 6
+          }
         }
       ]
     },
@@ -2247,18 +2293,33 @@ export const adventureCards: CardLibrary = {
       "combat",
       "cyra",
       "haste",
-      "For this Combat, your selected unit's Initiative is increased by 3."
+      // House rule (BINH): Haste also gives +1 Combat movement, and may instead
+      // be spent to draw a card.
+      "For this Combat, your selected unit's Initiative is increased by 3 AND its Combat movement range by 1. — OR — Draw 1 card."
     ],
+    // Option A targets the friendly unit (inherited); option B (draw) needs none.
     target: { type: "friendly-unit" },
     effect: {
-      type: "CREATE_INITIATIVE_BUFF",
-      name: "Haste",
-      amount: 3,
-      duration: { type: "combat" },
-      polarity: "positive",
-      removable: false,
-      // House rule (BINH): Cyra's Haste also gives +1 Combat movement (3 → 4).
-      movementBonus: 1
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "+3 Initiative & +1 movement",
+          effect: {
+            type: "CREATE_INITIATIVE_BUFF",
+            name: "Haste",
+            amount: 3,
+            duration: { type: "combat" },
+            polarity: "positive",
+            removable: false,
+            // House rule (BINH): Cyra's Haste also gives +1 Combat movement (3 → 4).
+            movementBonus: 1
+          }
+        },
+        {
+          label: "Draw 1 card",
+          effect: { type: "DRAW_CARDS", amount: 1 }
+        }
+      ]
     },
     implementationStatus: "implemented",
     source: heroSource("cyra")

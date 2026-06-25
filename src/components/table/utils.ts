@@ -452,7 +452,7 @@ export function formatEvent(event: GameEvent, state: GameState): string {
     case "DIPLOMACY_COMBAT_SKIPPED":
       return `${playerName(state, event.playerId)} uses Diplomacy to skip the level ${event.difficulty} Neutral Units and claim the field (no experience).`;
     case "UNIT_RECRUITED":
-      return `${playerName(state, event.playerId)} ${event.kind === "recruit" ? "recruits" : "reinforces"} ${event.unitDefId.split(".")[1] ?? event.unitDefId} for ${formatCost(event.cost)}.`;
+      return `${playerName(state, event.playerId)} ${event.kind === "recruit" ? "recruits" : "reinforces"} ${event.unitDefId.split(".")[1] ?? event.unitDefId} for ${formatCost(event.cost)}.${event.attackBuff ? ` BUFF: +${event.attackBuff} Attack in every combat.` : ""}`;
     case "SPELLS_PURCHASED":
       return `${playerName(state, event.playerId)} buys spells for ${formatCost(event.cost)}.`;
     case "TRADE_EXECUTED":
