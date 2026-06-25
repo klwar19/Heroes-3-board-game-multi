@@ -393,6 +393,29 @@ export function getActiveDefenseBonus(state: GameState, unit: CombatUnitState): 
   }, 0);
 }
 
+/**
+ * The flat, unconditional Attack buff on a unit for DISPLAY (the unit inspector
+ * / card chip): the sum of every plain ATTACK_BONUS an applicable active effect
+ * grants it — the Bulwark Rune army-wide +Attack, Bless, Bloodlust, Offense, and
+ * the like. Deliberately excludes the situational ranged/defender-conditional
+ * bonuses (they depend on a specific target) and Attack tokens (surfaced as their
+ * own chip), exactly as effectiveInitiative folds in only the lasting shifts.
+ */
+export function getDisplayAttackBonus(state: GameState, unit: CombatUnitState): number {
+  return state.activeEffects.reduce((total, effect) => {
+    if (!effectAppliesToUnit(effect, unit)) {
+      return total;
+    }
+    return (
+      total +
+      effect.modifiers.reduce(
+        (sum, modifier) => (modifier.type === "ATTACK_BONUS" ? sum + modifier.amount : sum),
+        0
+      )
+    );
+  }, 0);
+}
+
 /** Ingham's Zealots VI: does this unit have a lasting "ignores Defense" effect? */
 export function hasActiveIgnoresDefense(state: GameState, unit: CombatUnitState): boolean {
   return state.activeEffects.some(

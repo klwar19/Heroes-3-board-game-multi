@@ -32,6 +32,7 @@ export {
   effectiveInitiative,
   getActiveAttackBonus,
   getActiveDefenseBonus,
+  getDisplayAttackBonus,
   getAttackRerollEffects,
   makeActiveEffect,
   playerSpellCastsIgnoreLimit,
@@ -39,6 +40,7 @@ export {
   unitIsBerserk
 } from "./active-effects";
 export {
+  gainRunes,
   getRuneSummary,
   getRuneTrack,
   isBulwarkPlayer,

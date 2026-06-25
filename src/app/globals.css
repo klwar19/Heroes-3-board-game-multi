@@ -1278,6 +1278,18 @@ button.battleCell {
   font-weight: 800;
 }
 
+/* Attack/Defense raised (green) or lowered (red) by a lasting effect — e.g. the
+   Bulwark Rune army-wide buffs — so the inspector matches the initiative cue. */
+.inspectStats .statUp {
+  color: var(--green-text, #7fd58a);
+  font-weight: 800;
+}
+
+.inspectStats .statDown {
+  color: #e08a7f;
+  font-weight: 800;
+}
+
 .inspectStats {
   display: flex;
   flex-wrap: wrap;
