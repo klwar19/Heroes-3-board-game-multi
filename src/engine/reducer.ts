@@ -10273,6 +10273,28 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     finishCombatIfNeeded(state);
   }
 
+  // Oidana VI (ongoing): "+1 Attack to all your neutral (Diplomacy-recruited)
+  // units, all rounds." A player-scoped, combat-long ATTACK_BONUS gated to the
+  // "neutral" army variant via effectAppliesToUnit, so getActiveAttackBonus picks
+  // it up for every neutral unit the caster controls for the whole battle (and
+  // nothing else — faction units and enemy guards are untouched).
+  if (effect.type === "CREATE_VARIANT_ATTACK_BUFF" && state.combat) {
+    createActiveEffect(
+      state,
+      {
+        name: effect.name,
+        scope: "player",
+        duration: { type: "combat" },
+        polarity: "positive",
+        removable: false,
+        appliesOnlyToVariant: effect.variant,
+        modifiers: [{ type: "ATTACK_BONUS", amount: effect.amount }]
+      },
+      { type: "card", cardId: card.id, controllerId: action.playerId },
+      action.playerId
+    );
+  }
+
   // Tarnum (Castle)'s Ballista VI: "Choose N enemy units. Each suffers `amount`
   // damage." Gather the caster's living enemy units and hit N of them; the
   // shared area-pick choice lets the caster pick which when more than N are
@@ -10579,7 +10601,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   }
 
   if (effect.type === "DIPLOMACY_RECRUIT") {
-    openDiplomacyRecruit(state, action.playerId);
+    openDiplomacyRecruit(state, action.playerId, effect.maxDraws, effect.goldReduction);
   }
 
   // Pandora's Gift: Income — roll 1 Resource die, raise that resource's income.

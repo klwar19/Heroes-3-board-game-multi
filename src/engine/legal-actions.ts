@@ -2107,6 +2107,9 @@ function isOptionEffectPlayable(
     // Septienna's Death Ripple: a targetless combat activation that sweeps every
     // enemy unit of a grade.
     case "DAMAGE_ENEMY_UNITS_BY_GRADE":
+    // Oidana VI: a targetless combat activation that auras every neutral unit
+    // the caster controls with +1 Attack for the whole battle.
+    case "CREATE_VARIANT_ATTACK_BUFF":
     // Tarnum (Castle)'s Ballista VI / Gerwulf's Ballista IV: pick N enemy units
     // to damage (a targetless combat activation; the pick choice handles the rest).
     case "DAMAGE_CHOSEN_ENEMIES":

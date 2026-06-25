@@ -4708,6 +4708,16 @@ button.hbSlot:disabled { cursor: default; }
   color: var(--text);
 }
 
+.astrologersProclaimBody p.astrologersProclaimForced {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #f6c560;
+  background: rgba(246, 197, 96, 0.1);
+  border: 1px solid rgba(246, 197, 96, 0.35);
+  border-radius: 6px;
+  padding: 7px 9px;
+}
+
 .astrologersProclaimBody .commandButton {
   align-self: stretch;
   margin-top: 4px;

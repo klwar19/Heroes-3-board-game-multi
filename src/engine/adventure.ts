@@ -5815,12 +5815,12 @@ function resolveAstrologersCard(state: GameState, card: AstrologersCardDefinitio
       break;
     case "RESHUFFLE_ARTIFACTS_SPELLS":
       for (const playerId of playerIds) {
-        reshuffleArtifactsAndSpells(state, playerId);
+        reshuffleArtifactsAndSpells(state, playerId, card);
       }
       break;
     case "DISCARD_REDRAW_ALL":
       for (const playerId of playerIds) {
-        discardHandAndRedraw(state, playerId);
+        discardHandAndRedraw(state, playerId, card);
       }
       break;
     case "PLAGUE_FLIP_ALL":
@@ -5861,7 +5861,7 @@ function resolveAstrologersCard(state: GameState, card: AstrologersCardDefinitio
 }
 
 /** Annoying Lizard: spells and artifacts shuffle back, redraw as many. */
-function reshuffleArtifactsAndSpells(state: GameState, playerId: PlayerId): void {
+function reshuffleArtifactsAndSpells(state: GameState, playerId: PlayerId, card: AstrologersCardDefinition): void {
   const player = state.players[playerId];
   if (!player) {
     return;
@@ -5885,11 +5885,24 @@ function reshuffleArtifactsAndSpells(state: GameState, playerId: PlayerId): void
     [...player.deck, ...moved],
     `${state.seed}#annoying-lizard#${playerId}#${eventSeedNumber(state)}`
   );
-  drawCardsForPlayer(state, playerId, moved.length);
+  const drawn = drawCardsForPlayer(state, playerId, moved.length);
+  // Forced effects mutate the hand BETWEEN turns; without a logged event the
+  // player cannot tell the reshuffle happened (it looks like the optional
+  // start-of-turn draw), so the proclamation reads as skippable. Record it.
+  appendEvent(state, {
+    type: "ASTROLOGERS_HAND_RESHUFFLED",
+    playerId,
+    cardId: card.id,
+    name: card.name,
+    mode: "reshuffle-spells",
+    discarded: moved.length,
+    drawn,
+    round: state.round
+  });
 }
 
 /** Big Cleanup: discard the whole hand to the discard pile, redraw as many. */
-function discardHandAndRedraw(state: GameState, playerId: PlayerId): void {
+function discardHandAndRedraw(state: GameState, playerId: PlayerId, card: AstrologersCardDefinition): void {
   const player = state.players[playerId];
   if (!player || player.hand.length === 0) {
     return;
@@ -5898,7 +5911,19 @@ function discardHandAndRedraw(state: GameState, playerId: PlayerId): void {
   const count = player.hand.length;
   player.discard.push(...player.hand);
   player.hand = [];
-  drawCardsForPlayer(state, playerId, count);
+  const drawn = drawCardsForPlayer(state, playerId, count);
+  // Logged so the forced discard is visible to the player (see the note in
+  // reshuffleArtifactsAndSpells) — it is mandatory and cannot be skipped.
+  appendEvent(state, {
+    type: "ASTROLOGERS_HAND_RESHUFFLED",
+    playerId,
+    cardId: card.id,
+    name: card.name,
+    mode: "discard-all",
+    discarded: count,
+    drawn,
+    round: state.round
+  });
 }
 
 function queuePlagueFlip(state: GameState, playerId: PlayerId): void {
