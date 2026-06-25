@@ -117,6 +117,7 @@ import {
   planActivationSpellPreamble,
   planApproachAttackPreDelays,
   planApproachMoveDelays,
+  planHarpyReturnHolds,
   planReturnMoveDelays
 } from "@/components/table/fx-sequence";
 import {
@@ -1012,6 +1013,23 @@ export default function Home() {
         const card = activeCardId ? astrologersCardDefinitions[activeCardId] : undefined;
         if (activeCardId && card && seenAstrologerRoundRef.current !== round) {
           seenAstrologerRoundRef.current = round;
+          // Big Cleanup / Annoying Lizard force a hand change BETWEEN turns: surface
+          // the viewer's own result on the card so the mandatory discard reads as
+          // done-and-unskippable, not as the optional start-of-turn draw. The most
+          // recent matching event is this round's resolution.
+          let reshuffle: { discarded: number; drawn: number } | undefined;
+          for (let i = nextState.eventLog.length - 1; i >= 0; i -= 1) {
+            const logEvent = nextState.eventLog[i];
+            if (
+              logEvent.type === "ASTROLOGERS_HAND_RESHUFFLED" &&
+              logEvent.round === round &&
+              logEvent.cardId === activeCardId &&
+              logEvent.playerId === viewerRef.current
+            ) {
+              reshuffle = { discarded: logEvent.discarded, drawn: logEvent.drawn };
+              break;
+            }
+          }
           setAstrologerCue({
             id: `astro-${round}-${activeCardId}`,
             cardId: activeCardId,
@@ -1020,7 +1038,8 @@ export default function Home() {
             image: card.image,
             expansion: card.expansion,
             ongoing: card.ongoing,
-            round
+            round,
+            ...(reshuffle ? { reshuffle } : {})
           });
         }
       }
@@ -1054,6 +1073,20 @@ export default function Home() {
       const { approach: approachMoves, afterAttack: returnMoves } = partitionCombatMoves(
         nextState.eventLog,
         freshCombatMoves
+      );
+      // A Harpy that struck and flies home this snapshot has its real card
+      // already committed back on its origin, but its fly-back is held until the
+      // enemy's Retaliation Attack has played (see the return-move block below).
+      // Until then it should read as still standing on the cell it struck from,
+      // so the Retaliation strike lands THERE and the card never teleports home
+      // early and then glides home a second time. planHarpyReturnHolds picks the
+      // held units (Harpy returns that do not roll their own attack this
+      // snapshot) and maps each to that strike cell.
+      const rollingAttackerIds = new Set(fresh.map((roll) => roll.attackerId));
+      const harpyHoldCellByUnit = planHarpyReturnHolds(
+        returnMoves,
+        rollingAttackerIds,
+        (unitId) => nextState.combat?.units[unitId]?.abilities?.includes("harpy-return") ?? false
       );
       // An attacker that slid into range this snapshot holds its first die until
       // its glide finishes (so the cube is never thrown over a still-moving
@@ -1424,8 +1457,17 @@ export default function Home() {
 
           const attacker = nextState.combat?.units[roll.attackerId];
           const defender = nextState.combat?.units[roll.defenderId];
+          // A Harpy being retaliated against this snapshot is shown parked on
+          // the cell it struck from (its real card is committed home but held);
+          // aim the strike there so the Retaliation Attack visibly lands on it,
+          // not on the now-empty origin it is about to fly back to.
+          const defenderHoldCell = harpyHoldCellByUnit.get(roll.defenderId);
           const defenderCell =
-            defender && defender.position >= 0 ? `cell:${defender.position}` : undefined;
+            defenderHoldCell !== undefined
+              ? `cell:${defenderHoldCell}`
+              : defender && defender.position >= 0
+                ? `cell:${defender.position}`
+                : undefined;
           if (defender && defender.position >= 0) {
             // Show the struck unit's pre-hit health (the blow's damage backed out)
             // until impact, so a killing blow keeps it on the board until then.
@@ -1486,6 +1528,13 @@ export default function Home() {
         returnMoves.forEach((event, index) => {
           const unit = nextState.combat?.units[event.unitId];
           const moveDelay = returnMoveDelays[index];
+          const isHarpyReturn = unit?.abilities?.includes("harpy-return") ?? false;
+          // A held Harpy fly-back parks on its strike cell from the instant the
+          // snapshot lands (delay 0) and waits out the Retaliation Attack before
+          // gliding home, so the card never teleports to its origin early and
+          // then glides home a SECOND time. Other after-attack steps (a shooter
+          // repositioning) just glide at their cue time as before.
+          const held = harpyHoldCellByUnit.has(event.unitId);
           cues.push({
             kind: "move",
             id: `${event.id}-move`,
@@ -1494,9 +1543,15 @@ export default function Home() {
             to: `unit:${event.unitId}`,
             cardImage: unit?.assets?.cardImage,
             flip: false,
-            delayMs: moveDelay
+            delayMs: held ? 0 : moveDelay,
+            ...(held ? { holdMs: moveDelay } : {})
           });
-          playUnitSound(unitVoice(event.unitId), "move", moveDelay);
+          // The Harpy already voiced a footstep on its fly-IN; the fly-back is
+          // the same round trip home, so it does not speak a second time. Other
+          // after-attack steps keep their move sound.
+          if (!isHarpyReturn) {
+            playUnitSound(unitVoice(event.unitId), "move", moveDelay);
+          }
           combatPresentationEnd = Math.max(combatPresentationEnd, moveDelay + COMBAT_MOVE_MS);
         });
 

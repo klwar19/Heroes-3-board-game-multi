@@ -2707,7 +2707,7 @@
   },
   "units/harpy-move": {
     "src": "/sounds/units/harpy-move.mp3",
-    "repeat": 2
+    "repeat": 1
   },
   "units/hell-hound-attack": {
     "src": "/sounds/units/hell-hound-attack.mp3"

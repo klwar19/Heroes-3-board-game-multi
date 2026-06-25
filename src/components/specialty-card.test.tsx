@@ -58,6 +58,10 @@ describe("hero-board / zoom wiring", () => {
   it("specialtyIconSrc gives the symbol for art-less specialties, undefined otherwise", () => {
     expect(specialtyIconSrc("specialty.dhuin.4")).toContain("units-bulwark-snow_elves-portrait.webp");
     expect(specialtyIconSrc("specialty.kriv.1")).toContain("runes-emblem.webp");
+    // Septienna's specialty IS Death Ripple, so it shows the Death Ripple SPELL
+    // icon — not the generic Necromancy skill emblem it used to borrow.
+    expect(specialtyIconSrc("specialty.septienna.6")).toContain("icon-death_ripple.webp");
+    expect(specialtyIconSrc("specialty.septienna.6")).not.toContain("abilities-necromancy");
     expect(specialtyIconSrc("specialty.catherine.1")).toBeUndefined(); // a baked-art hero
     expect(specialtyIconSrc("spell.teleport")).toBeUndefined();
     expect(specialtyIconSrc(undefined)).toBeUndefined();
@@ -104,5 +108,28 @@ describe("SpecialtyCard", () => {
   it("renders nothing for a card it cannot express (no broken output)", () => {
     const { container } = render(<SpecialtyCard cardId="spell.teleport" />);
     expect(container.querySelector(".scWrap")).toBeNull();
+  });
+
+  it("draws Septienna's Death Ripple VI with the Death Ripple SPELL icon + its effect text", () => {
+    const { container, getByText } = render(<SpecialtyCard cardId="specialty.septienna.6" />);
+    expect(getByText("Death Ripple VI")).toBeTruthy();
+    expect((container.querySelector(".scIcon") as HTMLImageElement | null)?.getAttribute("src")).toContain(
+      "icon-death_ripple.webp"
+    );
+    // ...and NOT the old Necromancy skill emblem it used to borrow.
+    expect((container.querySelector(".scIcon") as HTMLImageElement | null)?.getAttribute("src")).not.toContain(
+      "abilities-necromancy"
+    );
+    expect(container.querySelector(".scDesc")?.textContent ?? "").toContain("suffers");
+  });
+
+  it("draws Oidana's reworked Diplomacy VI text (the neutral-army Attack aura, not 'draw 3')", () => {
+    const { container, getByText } = render(<SpecialtyCard cardId="specialty.oidana.6" />);
+    expect(getByText("Diplomacy VI")).toBeTruthy();
+    const desc = container.querySelector(".scDesc")?.textContent ?? "";
+    expect(desc).toContain("draw 2 cards");
+    expect(desc).toContain("+1 Attack to every neutral unit you control");
+    expect(desc).not.toContain("draw 3");
+    expect(desc).not.toContain("per Dwelling");
   });
 });

@@ -311,7 +311,11 @@ const MOVE_PLAY_ONCE = new Set([
   // identical); flip both so the same sound is never doubled, whichever voice
   // ever plays it.
   "units/beholder-move",
-  "units/sea-serpent-move" // Haspids speak with the Sea Serpent voice
+  "units/sea-serpent-move", // Haspids speak with the Sea Serpent voice
+  // The Harpy's move is a single self-contained wing-flap whoosh that already
+  // reads as the whole flight; playing it twice is a jarring echo (the clip
+  // sounds repeated), so it flaps exactly once.
+  "units/harpy-move"
 ]);
 
 // Manifest annotations. "repeat: 2" on every -move sound implements the rule

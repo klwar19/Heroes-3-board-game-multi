@@ -633,6 +633,13 @@ export type ActiveEffectDefinition = {
   duration: EffectDurationDefinition;
   polarity?: "positive" | "negative" | "neutral";
   removable?: boolean;
+  /**
+   * Optional army-variant gate (Oidana VI's "all your neutral units" rally):
+   * when set, the effect only touches combat units of this variant. Combined
+   * with `scope: "player"` it means "this player's neutral-recruited units" —
+   * checked in effectAppliesToUnit, so every stat getter honours it for free.
+   */
+  appliesOnlyToVariant?: CombatUnitState["variant"];
 };
 
 export type EffectDefinition =
@@ -1774,6 +1781,19 @@ export type EffectDefinition =
       doubleForUnitName?: string;
     }
   | {
+      /**
+       * Oidana VI (ongoing): a targetless combat play that gives every unit of
+       * the named army `variant` the caster controls a flat `amount` Attack
+       * bonus for the whole combat ("+1 Attack to all your neutral units, all
+       * rounds"). Creates a player-scoped, combat-duration ATTACK_BONUS active
+       * effect gated to that variant — see the reducer + effectAppliesToUnit.
+       */
+      type: "CREATE_VARIANT_ATTACK_BUFF";
+      name: string;
+      amount: number;
+      variant: CombatUnitState["variant"];
+    }
+  | {
       type: "CREATE_DEFENSE_BUFF";
       name: string;
       amount?: number;
@@ -2019,6 +2039,17 @@ export type EffectDefinition =
        * Resolved in openDiplomacyRecruit.
        */
       type: "DIPLOMACY_RECRUIT";
+      /**
+       * Oidana's specialty caps the draw at a fixed number of Neutral Unit cards
+       * (1 at level I, 2 at level IV) instead of Cyra's uncapped "one per
+       * Dwelling". Undefined = uncapped (Cyra's behaviour).
+       */
+      maxDraws?: number;
+      /**
+       * Oidana IV: reduce the GOLD portion of the chosen unit's Recruitment cost
+       * by this much (floored at 0). Undefined/0 = pay full price.
+       */
+      goldReduction?: number;
     }
   | {
       /**
@@ -3640,6 +3671,19 @@ export type GameEvent =
       cardId: string;
       name: string;
       text: string;
+      round: number;
+    }
+  | {
+      id: string;
+      type: "ASTROLOGERS_HAND_RESHUFFLED";
+      playerId: PlayerId;
+      cardId: string;
+      name: string;
+      /** discard-all = Big Cleanup; reshuffle-spells = Annoying Lizard. */
+      mode: "discard-all" | "reshuffle-spells";
+      discarded: number;
+      drawn: number;
+      /** The round it fired, so a re-drawn proclamation never shows a stale notice. */
       round: number;
     }
   | {
@@ -6434,6 +6478,8 @@ export type PendingChoice =
       diplomacyRecruit?: {
         draws: { unitDefId: string; tier: "bronze" | "silver" | "gold" | "azure" }[];
         recruitable: { unitDefId: string; tier: "bronze" | "silver" | "gold" | "azure" }[];
+        /** Oidana IV's gold discount, applied to the recruited unit's cost. */
+        goldReduction?: number;
       };
       /**
        * learning-level-up: the Learning play modes offered, index-aligned with

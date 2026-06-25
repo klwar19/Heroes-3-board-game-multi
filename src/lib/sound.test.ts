@@ -110,15 +110,16 @@ describe("playLibrarySound", () => {
 
 describe("creature movement sound repeats", () => {
   // Most creatures loop a short footstep/flap clip for a full move (repeat:2 =
-  // play twice). Four creatures instead have a long, self-contained move clip
-  // (a 1.4-2.8s whoosh / slither / drone) that must play exactly ONCE so it does
-  // not echo. Driving it through playUnitSound proves the whole chain — unit id
+  // play twice). A handful instead have a self-contained move clip (a whoosh /
+  // slither / drone / wing-flap) that must play exactly ONCE so it does not
+  // echo. Driving it through playUnitSound proves the whole chain — unit id
   // -> voice -> move clip -> repeat count — yields a single play.
   it.each([
     ["conflux.energy_elementals", "energy-elemental"],
     ["conflux.magic_elementals", "magic-elemental"],
     ["dungeon.evil_eyes", "evil-eye"],
-    ["cove.haspids", "sea-serpent"] // Haspids speak with the Sea Serpent voice
+    ["cove.haspids", "sea-serpent"], // Haspids speak with the Sea Serpent voice
+    ["dungeon.harpies", "harpy"] // the Harpy's wing-flap whoosh is self-contained
   ])("plays %s's move clip exactly once (no loop)", (unitDefId, voice) => {
     playUnitSound(unitDefId, "move");
     expect(FakeAudio.instances).toHaveLength(1);

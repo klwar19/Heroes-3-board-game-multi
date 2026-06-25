@@ -59,6 +59,17 @@ export type FxCue =
       /** The card reads upside-down on the board (p1 / flipped view). */
       flip?: boolean;
       delayMs?: number;
+      /**
+       * A "held" glide (a Harpy's Strike-and-Return fly-back): the unit's real
+       * card has already been committed to its destination, but the move must
+       * wait out an intervening beat — the enemy's Retaliation Attack — before
+       * it plays. We park a stand-in ghost on the `from` cell the instant the
+       * cue mounts (hiding the real card so it never teleports to the
+       * destination early), hold it there for `holdMs`, THEN glide it home. The
+       * cue's own `delayMs` stays 0 so the park begins the moment the snapshot
+       * lands.
+       */
+      holdMs?: number;
     }
   | { kind: "sprite"; id: string; fxKey: string; at: string; delayMs?: number; sound?: string }
   | {
@@ -424,6 +435,15 @@ async function runMove(stage: HTMLElement, cue: Extract<FxCue, { kind: "move" }>
   }
 
   try {
+    // A held fly-back (Harpy Strike-and-Return): the ghost is already parked on
+    // the strike cell with the real card hidden, so the unit reads as standing
+    // there — being struck by the enemy's Retaliation Attack — until the hold
+    // elapses, then it glides home. Without this the real card would sit on its
+    // origin for the whole retaliation and the fly-back would play as a second,
+    // late glide on top of that teleport.
+    if (cue.holdMs && cue.holdMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, cue.holdMs));
+    }
     await Promise.all(
       trail.map(({ node, index }) =>
         animate(node, keyframes, {

@@ -483,6 +483,10 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       return `${playerName(state, event.playerId)} sets ${event.tileDefId} to ${event.rotation * 60}°.`;
     case "ASTROLOGERS_DRAWN":
       return `Astrologers proclaim: ${event.name} — ${event.text}`;
+    case "ASTROLOGERS_HAND_RESHUFFLED":
+      return event.mode === "discard-all"
+        ? `${event.name}: ${playerName(state, event.playerId)} must discard their whole hand (${event.discarded}) and draw ${event.drawn} new card${event.drawn === 1 ? "" : "s"}.`
+        : `${event.name}: ${playerName(state, event.playerId)} must shuffle ${event.discarded} Spell/Artifact card${event.discarded === 1 ? "" : "s"} back and draw ${event.drawn} new.`;
     case "ARMY_UNIT_FLIPPED":
       return `${playerName(state, event.playerId)}'s ${event.unitDefId.split(".")[1] ?? event.unitDefId} pack flips to Few (${event.reason}).`;
     case "SPELL_RETURNED_TO_HAND":
