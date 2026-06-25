@@ -51,6 +51,20 @@ describe("hero specialty card coverage", () => {
     expect(missingFile, `specialty symbols whose file is missing: ${missingFile.join(", ")}`).toEqual([]);
   });
 
+  it("every specialty scan (assets.cardImage) points at a file that exists on disk", () => {
+    // A `cardImage` ref to a missing file renders a broken <img>, yet still counts
+    // as a "scan" above — that is how Moandor's never-shipped scans slipped through
+    // until his cards were made art-less. Guard the whole set against that here.
+    const missing: string[] = [];
+    for (const id of specialtyCardIds()) {
+      const cardImage = (cardLibrary[id] as { assets?: { cardImage?: string } }).assets?.cardImage;
+      if (cardImage && !existsSync(assetPath(cardImage))) {
+        missing.push(`${id} -> ${cardImage}`);
+      }
+    }
+    expect(missing, `specialty scans whose file is missing: ${missing.join(", ")}`).toEqual([]);
+  });
+
   it("every mapped specialty symbol points at a real, known hero and an existing file", () => {
     for (const [slug, icon] of Object.entries(SPECIALTY_ICON_BY_HERO)) {
       expect(coreHeroDefinitions[slug], `unknown hero slug in icon map: ${slug}`).toBeTruthy();
