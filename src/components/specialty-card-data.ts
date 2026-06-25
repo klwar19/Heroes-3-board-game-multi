@@ -40,6 +40,10 @@ export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   glacius: "/assets/specialty-card/icon-frost_ring.webp", // Homm3BG symbols
   ciele: "/assets/specialty-card/icon-magic_arrow.webp",
   luna: "/assets/specialty-card/icon-firewall.webp",
+  // Septienna's specialty IS the Death Ripple spell — the actual spell icon from
+  // heroes.thelazy.net (scripts/fetch-death-ripple-icon.py), not the generic
+  // Necromancy skill emblem it used to (wrongly) borrow.
+  septienna: "/assets/specialty-card/icon-death_ripple.webp", // Death Ripple spell icon
   kriv: "/assets/runes-emblem.webp", // Rune specialist — our own emblem
   // --- Skill / war-machine / spell-themed specialists: the matching printed
   // secondary-skill icon (public/assets/abilities-<skill>.webp) -------------
@@ -55,7 +59,6 @@ export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   merist: "/assets/abilities-armorer.webp", // Stone Skin (defense)
   zilare: "/assets/abilities-air_magic.webp", // Forgetfulness (Air spell)
   ash: "/assets/abilities-offense.webp", // Bloodlust (+attack)
-  septienna: "/assets/abilities-necromancy.webp", // Death Ripple
   cyra: "/assets/abilities-air_magic.webp" // Haste (Air spell, speed)
 };
 

@@ -1,12 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { applyAction, createAdventureGameState, createInitialGameState, getLegalActions } from "./index";
-import { getActiveAttackBonus } from "./active-effects";
+import {
+  expireEffectsForCombatEnd,
+  expireEffectsForCombatRoundEnd,
+  getActiveAttackBonus
+} from "./active-effects";
+import { getTownOfPlayer, NEUTRAL_DECK_IDS } from "./adventure";
 import { gainRunes, getRuneSummary, grantStartingRunes, seedRunesForCombat } from "./runes";
 import { coreHeroDefinitions } from "@/data/factions/core";
+import { coreUnitDefinitions } from "@/data/factions/units";
 import { adventureCards } from "@/data/cards/adventure";
 import { cardLibrary } from "@/data/cards/library";
 import type { FactionId } from "@/data/factions/types";
-import type { ActiveEffectModifier, GameAction, GameState, UnitId } from "./state";
+import type { ActiveEffectModifier, CardOptionDefinition, GameAction, GameState, UnitId } from "./state";
 
 /**
  * Bulwark heroes. The genuinely NEW engine code is Kriv's GAIN_RUNES specialty
@@ -324,25 +330,156 @@ describe("Bulwark hero — Eikthurn's Yetis specialty (Yetis doubled)", () => {
   });
 });
 
+/** The CHOOSE_ONE option of `cardId` whose effect is `effectType`. */
+function optionWith(cardId: string, effectType: string): CardOptionDefinition {
+  const effect = adventureCards[cardId].effect;
+  if (effect.type !== "CHOOSE_ONE") {
+    throw new Error(`${cardId} is not a CHOOSE_ONE`);
+  }
+  const option = effect.options.find((opt) => opt.effect.type === effectType);
+  if (!option) {
+    throw new Error(`${cardId} has no ${effectType} option`);
+  }
+  return option;
+}
+
+/**
+ * A map turn with p1 (Castle) active, fully resourced, holding `cardId`, and
+ * controlling exactly the given Dwelling tiers — so the Neutral draw count is
+ * the number of Dwellings, capped by Oidana's specialty.
+ */
+function oidanaMap(seed: string, cardId: string, dwellings: ("bronze" | "silver" | "gold")[]): GameState {
+  const state = createAdventureGameState({ seed, difficulty: "normal", rollFirstPlayer: false });
+  for (const player of Object.values(state.players)) {
+    player.canMulligan = false;
+    player.needsHandRefresh = false;
+  }
+  state.activePlayerId = "p1";
+  const p1 = state.players.p1;
+  p1.morale = 0;
+  p1.resources.gold = 50;
+  p1.resources.buildingMaterials = 50;
+  p1.resources.valuables = 50;
+  p1.hand = [cardId];
+  getTownOfPlayer(state, "p1")!.buildings = dwellings.map((tier) => `castle.dwelling_${tier}`);
+  return state;
+}
+
+/** How many Neutral Unit cards a recruit play drew (its DIPLOMACY_NEUTRALS_DRAWN event). */
+function neutralsDrawn(state: GameState): number {
+  const drawn = state.eventLog.find((event) => event.type === "DIPLOMACY_NEUTRALS_DRAWN");
+  return drawn?.type === "DIPLOMACY_NEUTRALS_DRAWN" ? drawn.unitDefIds.length : 0;
+}
+
 describe("Bulwark hero — Oidana the diplomat (Diplomacy + card draw)", () => {
-  it("each level offers a scaling card draw (1 / 2 / 3) AND the map Diplomacy recruit", () => {
+  it("draws scale 1 / 2 / 2; I & IV are capped Diplomacy recruits, VI is the neutral-army Attack aura", () => {
     for (const [id, amount] of [
       ["specialty.oidana.1", 1],
       ["specialty.oidana.4", 2],
-      ["specialty.oidana.6", 3]
+      ["specialty.oidana.6", 2]
     ] as const) {
-      const effect = adventureCards[id].effect as {
-        type: string;
-        options: { mapOnly?: boolean; effect: { type: string; amount?: number } }[];
-      };
-      expect(effect.type).toBe("CHOOSE_ONE");
-      const draw = effect.options.find((option) => option.effect.type === "DRAW_CARDS");
-      const diplomacy = effect.options.find((option) => option.effect.type === "DIPLOMACY_RECRUIT");
-      expect(draw, `${id} draw option`).toBeTruthy();
-      expect(draw!.effect.amount).toBe(amount);
-      expect(diplomacy, `${id} diplomacy option`).toBeTruthy();
-      expect(diplomacy!.mapOnly).toBe(true); // recruiting is a map play
+      const draw = optionWith(id, "DRAW_CARDS");
+      expect(draw.effect.type === "DRAW_CARDS" && draw.effect.amount, `${id} draw amount`).toBe(amount);
     }
+
+    // I: recruit from 1 drawn Neutral (maxDraws 1, full price).
+    const i = optionWith("specialty.oidana.1", "DIPLOMACY_RECRUIT");
+    expect(i.mapOnly).toBe(true);
+    expect(i.effect.type === "DIPLOMACY_RECRUIT" && i.effect.maxDraws).toBe(1);
+    expect(i.effect.type === "DIPLOMACY_RECRUIT" && (i.effect.goldReduction ?? 0)).toBe(0);
+
+    // IV: recruit from up to 2 drawn Neutrals, 4 gold off.
+    const iv = optionWith("specialty.oidana.4", "DIPLOMACY_RECRUIT");
+    expect(iv.mapOnly).toBe(true);
+    expect(iv.effect.type === "DIPLOMACY_RECRUIT" && iv.effect.maxDraws).toBe(2);
+    expect(iv.effect.type === "DIPLOMACY_RECRUIT" && iv.effect.goldReduction).toBe(4);
+
+    // VI: ongoing combat aura on the caster's neutral units — and NO recruit side.
+    const vi = optionWith("specialty.oidana.6", "CREATE_VARIANT_ATTACK_BUFF");
+    expect(vi.combatOnly).toBe(true);
+    expect(vi.effect.type === "CREATE_VARIANT_ATTACK_BUFF" && vi.effect.variant).toBe("neutral");
+    expect(vi.effect.type === "CREATE_VARIANT_ATTACK_BUFF" && vi.effect.amount).toBe(1);
+    const vi6 = adventureCards["specialty.oidana.6"].effect;
+    expect(vi6.type === "CHOOSE_ONE" && vi6.options.some((o) => o.effect.type === "DIPLOMACY_RECRUIT")).toBe(false);
+  });
+
+  it("the recruit side caps the Neutral draw at maxDraws (I=1, IV=2) however many Dwellings she owns", () => {
+    // Three Dwelling tiers: Cyra's UNCAPPED Diplomacy draws one per Dwelling (3);
+    // Oidana's caps that draw. (The cap is the only difference, so this CONTROL
+    // is what proves maxDraws actually does the limiting.)
+    const drawsFor = (cardId: string, optionIndex: number): number => {
+      const state = oidanaMap(`cap-${cardId}`, cardId, ["bronze", "silver", "gold"]);
+      const play = findPlay(state, cardId, optionIndex);
+      expect(play, `${cardId} recruit option offered`).toBeTruthy();
+      return neutralsDrawn(applyOk(state, play!.action));
+    };
+    expect(drawsFor("ability.diplomacy", 0), "uncapped control draws 3").toBe(3);
+    expect(drawsFor("specialty.oidana.1", 1), "I caps at 1").toBe(1);
+    expect(drawsFor("specialty.oidana.4", 1), "IV caps at 2").toBe(2);
+  });
+
+  it("Oidana IV recruits for 4 gold less than the printed cost; I (and Cyra) pay full price", () => {
+    const recruitGoldPaid = (cardId: string, optionIndex: number): number => {
+      const state = oidanaMap(`gold-${cardId}`, cardId, ["bronze"]);
+      // Stack a known gold-costed Neutral on top so the draw is deterministic.
+      state.decks[NEUTRAL_DECK_IDS.bronze]!.drawPile = ["neutral.cerberi"]; // cost { gold: 10 }
+      state.decks[NEUTRAL_DECK_IDS.bronze]!.discardPile = [];
+      expect(coreUnitDefinitions["neutral.cerberi"]?.neutral?.cost?.gold).toBe(10); // guard the fixture
+      const goldBefore = state.players.p1.resources.gold;
+      const play = findPlay(state, cardId, optionIndex);
+      expect(play, `${cardId} recruit option offered`).toBeTruthy();
+      let after = applyOk(state, play!.action);
+      expect(
+        after.pendingChoice?.type === "OPTION_CHOICE" && after.pendingChoice.context === "diplomacy-recruit"
+      ).toBe(true);
+      after = applyOk(after, {
+        type: "CHOOSE_OPTION",
+        playerId: "p1",
+        choiceId: (after.pendingChoice as { id: string }).id,
+        optionIndex: 0 // recruit the (only) drawn Cerberi
+      });
+      expect(after.players.p1.army.at(-1)!.unitDefId).toBe("neutral.cerberi");
+      expect(after.players.p1.army.at(-1)!.side).toBe("neutral");
+      return goldBefore - after.players.p1.resources.gold;
+    };
+    expect(recruitGoldPaid("specialty.oidana.4", 1), "IV: 10 − 4 discount").toBe(6);
+    expect(recruitGoldPaid("specialty.oidana.1", 1), "I: full 10").toBe(10);
+    expect(recruitGoldPaid("ability.diplomacy", 0), "Cyra: full 10").toBe(10);
+  });
+
+  it("VI's ongoing aura gives +1 Attack to the caster's NEUTRAL units only, for the whole battle", () => {
+    const state = createInitialGameState("oidana-aura");
+    // p1 fields one neutral-recruited unit and one faction unit, told apart purely
+    // by `variant` — exactly how addArmyUnit(..., "neutral") tags a Diplomacy recruit.
+    state.combat!.units.unit_p1_marksmen.variant = "neutral";
+    state.combat!.units.unit_p1_griffins.variant = "pack";
+    state.players.p1.hand = ["specialty.oidana.6"];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_griffins";
+
+    const attackBonus = (s: GameState, unitId: UnitId): number =>
+      getActiveAttackBonus(s, {
+        attacker: s.combat!.units[unitId],
+        defender: s.combat!.units.unit_p2_skeletons,
+        attackKind: "melee"
+      });
+
+    expect(attackBonus(state, "unit_p1_marksmen"), "no aura before the play").toBe(0);
+
+    const play = findPlay(state, "specialty.oidana.6", 1); // option 1 = the ongoing aura
+    expect(play, "VI's ongoing aura should be playable in combat").toBeTruthy();
+    const after = applyOk(state, play!.action);
+
+    expect(attackBonus(after, "unit_p1_marksmen"), "neutral unit gains +1").toBe(1);
+    expect(attackBonus(after, "unit_p1_griffins"), "faction unit untouched (variant gate)").toBe(0);
+    expect(attackBonus(after, "unit_p2_skeletons"), "enemy untouched").toBe(0);
+
+    // "All rounds": survives end-of-combat-round expiry, clears only at battle end.
+    expireEffectsForCombatRoundEnd(after, after.combat!.round);
+    expireEffectsForCombatRoundEnd(after, after.combat!.round + 1);
+    expect(attackBonus(after, "unit_p1_marksmen"), "aura persists across rounds").toBe(1);
+    expireEffectsForCombatEnd(after);
+    expect(attackBonus(after, "unit_p1_marksmen"), "aura ends with the battle").toBe(0);
   });
 
   it("the card-draw option actually moves cards from deck to hand (IV draws 2)", () => {
@@ -379,11 +516,11 @@ describe("Bulwark heroes — PvP / multiplayer", () => {
     const p2DeckBefore = state.players.p2.deck.length;
     state.activePlayerId = "p1";
     state.combat!.activeUnitId = "unit_p1_marksmen";
-    const play = findPlay(state, "specialty.oidana.6", 0); // option 0 = Draw 3 cards
+    const play = findPlay(state, "specialty.oidana.6", 0); // option 0 = Draw 2 cards
     expect(play, "Oidana VI's draw option should be playable").toBeTruthy();
     const after = applyOk(state, play!.action);
-    // p1 drew 3 (the played specialty left hand); p2 is completely untouched.
-    expect(after.players.p1.hand).toHaveLength(3);
+    // p1 drew 2 (the played specialty left hand); p2 is completely untouched.
+    expect(after.players.p1.hand).toHaveLength(2);
     expect(after.players.p2.hand).toHaveLength(p2HandBefore);
     expect(after.players.p2.deck).toHaveLength(p2DeckBefore);
   });

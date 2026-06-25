@@ -2571,15 +2571,38 @@ function recruitCostLabel(cost: ResourceCost): string {
 }
 
 /**
+ * Oidana IV's Diplomacy discount: knock `goldReduction` off the GOLD portion of
+ * a recruit cost (floored at 0), leaving every other resource untouched. Used
+ * consistently for the affordability filter, the option label AND the actual
+ * spend so the discount a player is shown is exactly the discount they pay.
+ */
+function reduceGoldCost(cost: ResourceCost, goldReduction?: number): ResourceCost {
+  if (!goldReduction || (cost.gold ?? 0) <= 0) {
+    return cost;
+  }
+  return { ...cost, gold: Math.max(0, (cost.gold ?? 0) - goldReduction) };
+}
+
+/**
  * Cyra's Diplomacy (Map): draw one Neutral Unit card per Dwelling the player
  * controls, then open a recruit choice over the affordable draws. Called from
  * playCard once the Diplomacy card has been discarded. The drawn cards leave
  * their tier decks now; the recruited one joins the army and the rest return to
  * their tier's discard pile when the choice resolves.
  */
-export function openDiplomacyRecruit(state: GameState, playerId: PlayerId): void {
+export function openDiplomacyRecruit(
+  state: GameState,
+  playerId: PlayerId,
+  maxDraws?: number,
+  goldReduction?: number
+): void {
   const draws: { unitDefId: string; tier: "bronze" | "silver" | "gold" | "azure" }[] = [];
   for (const tier of playerDwellingTiers(state, playerId)) {
+    // Oidana caps the draw at a fixed number of cards (1 at I, 2 at IV); Cyra's
+    // base ability leaves maxDraws undefined and draws one per Dwelling.
+    if (maxDraws !== undefined && draws.length >= maxDraws) {
+      break;
+    }
     const unitDefId = drawFromNeutralDeck(state, tier);
     if (unitDefId) {
       draws.push({ unitDefId, tier });
@@ -2598,7 +2621,7 @@ export function openDiplomacyRecruit(state: GameState, playerId: PlayerId): void
 
   const recruitable = draws.filter((draw) => {
     const neutral = coreUnitDefinitions[draw.unitDefId]?.neutral;
-    return Boolean(neutral) && hasRecruitResources(state, playerId, neutral?.cost ?? {});
+    return Boolean(neutral) && hasRecruitResources(state, playerId, reduceGoldCost(neutral?.cost ?? {}, goldReduction));
   });
 
   // Nothing affordable to recruit: the drawn cards simply return to their decks.
@@ -2620,13 +2643,13 @@ export function openDiplomacyRecruit(state: GameState, playerId: PlayerId): void
       ...recruitable.map((draw) => {
         const def = coreUnitDefinitions[draw.unitDefId];
         return {
-          label: `Recruit ${def?.name ?? draw.unitDefId} (${recruitCostLabel(def?.neutral?.cost ?? {})})`
+          label: `Recruit ${def?.name ?? draw.unitDefId} (${recruitCostLabel(reduceGoldCost(def?.neutral?.cost ?? {}, goldReduction))})`
         };
       }),
       { label: "Recruit none" }
     ],
     context: "diplomacy-recruit",
-    diplomacyRecruit: { draws, recruitable },
+    diplomacyRecruit: { draws, recruitable, goldReduction },
     returnPhase: state.phase
   };
   state.phase = "choice";
@@ -2658,7 +2681,9 @@ export function resolveDiplomacyRecruitChoice(state: GameState, playerId: Player
 
   if (pick && player) {
     const def = coreUnitDefinitions[pick.unitDefId];
-    const cost = def?.neutral?.cost ?? {};
+    // Apply Oidana IV's gold discount (if any) to the same cost the player was
+    // shown — the affordability check, the label and this spend all agree.
+    const cost = reduceGoldCost(def?.neutral?.cost ?? {}, recruit.goldReduction);
     if (def?.neutral && hasRecruitResources(state, playerId, cost)) {
       spendRecruitResources(state, playerId, cost, `recruited ${def.name} with Diplomacy`);
       addArmyUnit(player, pick.unitDefId, "neutral");
