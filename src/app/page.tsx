@@ -1802,7 +1802,7 @@ export default function Home() {
               // card. A Spell discarded for its "+1 Power" side toward another
               // cast is not itself resolving, so it is skipped (it still gets
               // the card-flight foley).
-              const isPowerBoost = event.optionLabel?.startsWith("+1 Power") ?? false;
+              const isPowerBoost = /^\+\d+ Power/u.test(event.optionLabel ?? "");
               const playedPlan = isPowerBoost ? undefined : spellFxPlans[event.cardId];
               if (playedPlan) {
                 const at = start + FLIGHT_MS;
@@ -1813,6 +1813,18 @@ export default function Home() {
                     id: `${event.id}-played-fx`,
                     fxKey: affectKey,
                     at: "center",
+                    sound: playedPlan.sound,
+                    delayMs: at
+                  });
+                } else if (playedPlan.tint) {
+                  // Bloodlust-style specialty: no sprite and no board unit to tint
+                  // on a card play, so flash its red battle-rage wash at centre
+                  // stage with the cast roar.
+                  cues.push({
+                    kind: "glow",
+                    id: `${event.id}-played-tint`,
+                    at: "center",
+                    tint: playedPlan.tint,
                     sound: playedPlan.sound,
                     delayMs: at
                   });

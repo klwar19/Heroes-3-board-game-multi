@@ -384,7 +384,19 @@ describe("area spells & specialties carry their correct SFX + animation", () => 
     ["specialty.deemer.6", "meteor-shower", "spells/meteor-shower"],
     ["specialty.xyron.1", "inferno", "spells/inferno"],
     ["specialty.xyron.4", "inferno", "spells/inferno"],
-    ["specialty.xyron.6", "inferno", "spells/inferno"]
+    ["specialty.xyron.6", "inferno", "spells/inferno"],
+    // Septienna's Death Ripple sweep, Melodia's Fortune luck wash and Glacius's
+    // Frost Ring (I/VI area damage) — each emits CARD_PLAYED (reducer.ts main play
+    // AND reaction-play paths), so its centre-stage sprite + cast sound actually
+    // fire. The cue dies if the plan, its sheet or its sound is dropped.
+    ["specialty.septienna.1", "death-ripple", "spells/death-ripple"],
+    ["specialty.septienna.4", "death-ripple", "spells/death-ripple"],
+    ["specialty.septienna.6", "death-ripple", "spells/death-ripple"],
+    ["specialty.melodia.1", "fortune", "spells/fortune"],
+    ["specialty.melodia.4", "fortune", "spells/fortune"],
+    ["specialty.melodia.6", "fortune", "spells/fortune"],
+    ["specialty.glacius.1", "frost-ring", "spells/frost-ring"],
+    ["specialty.glacius.6", "frost-ring", "spells/frost-ring"]
   ];
 
   it.each(SPECIALTY_FX)("wires %s with its sprite + cast sound", (id, sprite, sound) => {
@@ -396,6 +408,29 @@ describe("area spells & specialties carry their correct SFX + animation", () => 
     expect(soundDurationMs(plan.sound)).toBeGreaterThan(0);
     expect(spellPresentationMs(plan)).toBeGreaterThan(0);
   });
+
+  // Glacius IV casts no ring (a card-economy instant) — it must stay FX-less so a
+  // frost-ring sprite never flashes for it. Guards against an over-eager copy.
+  it("does NOT give Glacius IV a frost-ring FX (it casts no ring)", () => {
+    expect(spellFxPlans["specialty.glacius.4"]).toBeUndefined();
+  });
+
+  // Ash's Bloodlust has no sprite in the original game — the engine tinted the
+  // unit red. Its specialty (I/IV/VI) carries the red battle-rage TINT + the
+  // bloodlust cast roar; the CARD_PLAYED handler flashes it at centre stage.
+  it.each(["specialty.ash.1", "specialty.ash.4", "specialty.ash.6"])(
+    "wires %s with the bloodlust tint + cast sound (no sprite, like the spell)",
+    (id) => {
+      const plan = spellFxPlans[id];
+      expect(plan, `${id} needs an FX plan`).toBeTruthy();
+      expect(plan.tint).toBe("bloodlust");
+      expect(plan.affect).toBeUndefined();
+      expect(plan.sound).toBe("spells/bloodlust");
+      expect(soundDurationMs(plan.sound)).toBeGreaterThan(0);
+      // A real, non-zero presentation gate so the tint wash holds (TINT_HOLD_MS).
+      expect(spellPresentationMs(plan)).toBeGreaterThan(0);
+    }
+  );
 });
 
 describe("more spells wired with SFX + animation (no silent resolves)", () => {

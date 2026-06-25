@@ -6188,6 +6188,26 @@ button.hbSlot:disabled { cursor: default; }
   animation: fxBloodlustPulse 1.6s ease-in-out both;
 }
 
+/* Bloodlust played as a card (no board unit to tint): a soft red battle-rage
+   wash flashed at centre stage by the FX layer's `glow` cue. */
+.fxGlow {
+  position: absolute;
+  z-index: 2;
+  border-radius: 50%;
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+
+.fxGlow-bloodlust {
+  background: radial-gradient(
+    circle,
+    rgb(228 46 32 / 62%) 0%,
+    rgb(184 22 18 / 34%) 45%,
+    transparent 72%
+  );
+  filter: drop-shadow(0 0 26px rgb(220 40 30 / 45%));
+}
+
 /* ---- Combat strike effects ------------------------------------------------
    The attacker's card lunges and the struck card recoils via the FX layer
    (real board cards, animated in JS). These screen-space overlays sell the
