@@ -83,13 +83,29 @@ describe("hero-board / zoom wiring", () => {
     // must resolve instead of leaving a broken <img>.
     expect(specialtyIconSrc("specialty.moandor.1")).toContain("units-lich-portrait.webp");
     expect(specialtyIconSrc("specialty.moandor.6")).toContain("units-lich-portrait.webp");
-    // Marksmen/Sorceresses/Harpies/Dragons specialists show the unit PORTRAIT, not
-    // the battle sprite (specialty-card/creature-*.webp) they used to.
+    // EVERY unit specialist shows the unit's own PORTRAIT, not the battle sprite
+    // (specialty-card/creature-*.webp) some of them used to.
     expect(specialtyIconSrc("specialty.valeska.1")).toContain("units-marksman-portrait.webp");
     expect(specialtyIconSrc("specialty.casmetra.4")).toContain("units-sorceress-portrait.webp");
     expect(specialtyIconSrc("specialty.lorelei.6")).toContain("units-harpy-portrait.webp");
     expect(specialtyIconSrc("specialty.lorelei.6")).not.toContain("creature-harpy");
     expect(specialtyIconSrc("specialty.tarnum_dungeon.1")).toContain("units-black_dragon-portrait.webp");
+    expect(specialtyIconSrc("specialty.ingham.1")).toContain("units-zealot-portrait.webp");
+    expect(specialtyIconSrc("specialty.cassiopeia.4")).toContain("units-oceanid-portrait.webp");
+    expect(specialtyIconSrc("specialty.tarnum_fortress.6")).toContain("units-basilisk-portrait.webp");
+    expect(specialtyIconSrc("specialty.tarnum_rampart.1")).toContain("units-sharpshooter-portrait.webp");
+    expect(specialtyIconSrc("specialty.ivor.4")).toContain("units-grand_elf-portrait.webp");
+    expect(specialtyIconSrc("specialty.tarnum_conflux.6")).toContain("units-enchanter-portrait.webp");
+    // None of the unit specialists may fall back to a full battle sprite.
+    for (const slug of [
+      "valeska", "casmetra", "lorelei", "tarnum_dungeon", "ingham", "cassiopeia",
+      "tarnum_fortress", "tarnum_rampart", "ivor", "tarnum_conflux",
+      "dhuin", "creyle", "eikthurn", "erdamon", "monere", "pasis", "moandor",
+    ]) {
+      const src = specialtyIconSrc(`specialty.${slug}.1`);
+      expect(src, `${slug} should use a portrait, not a battle sprite`).toContain("-portrait.webp");
+      expect(src, `${slug} should not use a creature-* battle sprite`).not.toContain("creature-");
+    }
     // Melodia's specialty IS Fortune — the Fortune SPELL icon, not the Luck emblem.
     expect(specialtyIconSrc("specialty.melodia.1")).toContain("icon-fortune.webp");
     expect(specialtyIconSrc("specialty.melodia.4")).not.toContain("abilities-luck");
