@@ -83,6 +83,16 @@ describe("hero-board / zoom wiring", () => {
     // must resolve instead of leaving a broken <img>.
     expect(specialtyIconSrc("specialty.moandor.1")).toContain("units-lich-portrait.webp");
     expect(specialtyIconSrc("specialty.moandor.6")).toContain("units-lich-portrait.webp");
+    // Marksmen/Sorceresses/Harpies/Dragons specialists show the unit PORTRAIT, not
+    // the battle sprite (specialty-card/creature-*.webp) they used to.
+    expect(specialtyIconSrc("specialty.valeska.1")).toContain("units-marksman-portrait.webp");
+    expect(specialtyIconSrc("specialty.casmetra.4")).toContain("units-sorceress-portrait.webp");
+    expect(specialtyIconSrc("specialty.lorelei.6")).toContain("units-harpy-portrait.webp");
+    expect(specialtyIconSrc("specialty.lorelei.6")).not.toContain("creature-harpy");
+    expect(specialtyIconSrc("specialty.tarnum_dungeon.1")).toContain("units-black_dragon-portrait.webp");
+    // Melodia's specialty IS Fortune — the Fortune SPELL icon, not the Luck emblem.
+    expect(specialtyIconSrc("specialty.melodia.1")).toContain("icon-fortune.webp");
+    expect(specialtyIconSrc("specialty.melodia.4")).not.toContain("abilities-luck");
     expect(specialtyIconSrc("specialty.catherine.1")).toBeUndefined(); // a baked-art hero
     expect(specialtyIconSrc("spell.teleport")).toBeUndefined();
     expect(specialtyIconSrc(undefined)).toBeUndefined();

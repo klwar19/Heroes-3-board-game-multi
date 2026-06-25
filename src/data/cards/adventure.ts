@@ -464,7 +464,15 @@ function towerHealthSpecialty(
     kind: "hero-specialty",
     timing: "combat",
     phaseLimit: ["combat"],
-    tags: ["hero-specialty", "combat", heroSlug, "health"],
+    // The trailing prose tag is the text the native specialty card renders, with a
+    // clear timing word ("Ongoing (this Combat)") so the card states what it is.
+    tags: [
+      "hero-specialty",
+      "combat",
+      heroSlug,
+      "health",
+      `Ongoing (this Combat): give a friendly unit +${amount} maximum Health — doubled (+${amount * 2}) for ${doubledUnit}.`
+    ],
     target: { type: "friendly-unit" },
     effect: { type: "ADD_UNIT_MAX_HEALTH", amount, doubleForUnitName: doubledUnit },
     assets: {
@@ -529,7 +537,15 @@ function towerStatBoostSpecialty(
     kind: "hero-specialty",
     timing: "instant",
     phaseLimit: ["reaction", "combat"],
-    tags: ["hero-specialty", "instant", heroSlug],
+    // Trailing prose tag = the native card's rendered text, with a clear timing word.
+    tags: [
+      "hero-specialty",
+      "instant",
+      heroSlug,
+      `Instant: +${amount} ${stat === "attack" ? "attack" : "defence"} on a single ${
+        stat === "attack" ? "attack" : "defence"
+      } — doubled (+${amount * 2}) for ${doubledUnit}.`
+    ],
     trigger: { event: "UNIT_ATTACK_DECLARED", controller: stat === "attack" ? "self" : "opponent" },
     effect: { type: "ADD_COMBAT_STAT", stat, amount, doubleForUnitName: doubledUnit },
     assets: {
@@ -808,7 +824,13 @@ function attackInstantSpecialty(
     kind: "hero-specialty",
     timing: "instant",
     phaseLimit: ["reaction", "combat"],
-    tags: ["hero-specialty", "instant", heroSlug],
+    // Trailing prose tag = the native card's rendered text, with a clear timing word.
+    tags: [
+      "hero-specialty",
+      "instant",
+      heroSlug,
+      `Instant: +${amount} attack on your unit's next attack — doubled (+${amount * 2}) for ${doubledUnit}.`
+    ],
     trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
     effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount, doubleForUnitName: doubledUnit },
     assets: {

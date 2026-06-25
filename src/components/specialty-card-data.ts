@@ -26,11 +26,13 @@ export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   // Other unit specialists — the creature's transparent battle sprite from
   // heroes.thelazy.net (scripts/fetch-specialty-creature-icons.py).
   ingham: "/assets/specialty-card/creature-zealot.webp", // Zealots (Castle)
-  valeska: "/assets/specialty-card/creature-marksman.webp", // Marksmen (Castle)
-  casmetra: "/assets/specialty-card/creature-sorceress.webp", // Sorceresses (Cove)
+  // Marksmen/Sorceresses/Harpies/Dragons use the unit's own in-game PORTRAIT
+  // (scripts/fetch-specialty-unit-portraits.py) rather than the battle sprite.
+  valeska: "/assets/units-marksman-portrait.webp", // Marksmen (Castle)
+  casmetra: "/assets/units-sorceress-portrait.webp", // Sorceresses (Cove)
   cassiopeia: "/assets/specialty-card/creature-oceanid.webp", // Oceanids (Cove)
-  lorelei: "/assets/specialty-card/creature-harpy.webp", // Harpies (Dungeon)
-  tarnum_dungeon: "/assets/specialty-card/creature-black_dragon.webp", // Dragons (Dungeon)
+  lorelei: "/assets/units-harpy-portrait.webp", // Harpies (Dungeon)
+  tarnum_dungeon: "/assets/units-black_dragon-portrait.webp", // Dragons (Dungeon)
   tarnum_fortress: "/assets/specialty-card/creature-basilisk.webp", // Basilisks (Fortress)
   tarnum_rampart: "/assets/specialty-card/creature-sharpshooter.webp", // Sharpshooters (Rampart)
   ivor: "/assets/specialty-card/creature-grand_elf.webp", // Elves (Rampart)
@@ -77,7 +79,9 @@ export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   // shared leather resource tile to a transparent background
   // (scripts/make-octavia-gold-icon.py), not the generic Estates skill emblem.
   octavia: "/assets/specialty-card/icon-gold.webp", // Gold (gold-coins icon)
-  melodia: "/assets/abilities-luck.webp", // Fortune (luck/morale)
+  // Melodia's specialty IS Fortune — the actual Fortune SPELL icon
+  // (scripts/fetch-fortune-icon.py), not the generic Luck skill emblem.
+  melodia: "/assets/specialty-card/icon-fortune.webp", // Fortune spell icon
   merist: "/assets/abilities-armorer.webp", // Stone Skin (defense)
   zilare: "/assets/abilities-air_magic.webp", // Forgetfulness (Air spell)
   // Ash's specialty IS the Bloodlust spell, so he shows the Bloodlust SPELL icon
