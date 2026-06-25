@@ -202,6 +202,41 @@ export function planApproachMoveDelays(
   });
 }
 
+/**
+ * Decide which after-attack fly-back moves must be HELD on their strike cell
+ * until the rest of the snapshot has played, rather than gliding home at their
+ * cue time.
+ *
+ * A neutral Harpy's "Strike and Return" resolves move → attack → (enemy
+ * Retaliation Attack) → fly-back. When the Retaliation lands in the SAME
+ * snapshot as the fly-back, the engine has already moved the Harpy's card home,
+ * so the board renders it on its origin while the fly-back still waits out the
+ * retaliation. Without a hold the player sees the card teleport home, the
+ * retaliation strike the empty origin, then the card glide home a SECOND time —
+ * the "buggy" double fly-back. Holding parks a stand-in on the strike cell
+ * (`from`) so the unit reads as standing there through the retaliation, then
+ * glides home exactly once.
+ *
+ * A move is held only when it is a Harpy return AND its unit does NOT roll its
+ * own attack this snapshot: a single-snapshot move → attack → return keeps the
+ * card live for its OWN lunge (its fly-back already trails its own strike with
+ * no separate teleport to hide), so it is never held. Returns a map of held
+ * unit id → the strike cell it parks on (and flies back from).
+ */
+export function planHarpyReturnHolds<M extends { unitId: string; from: number }>(
+  returnMoves: readonly M[],
+  rollingAttackerIds: ReadonlySet<string>,
+  isHarpyReturn: (unitId: string) => boolean
+): Map<string, number> {
+  const holds = new Map<string, number>();
+  for (const move of returnMoves) {
+    if (isHarpyReturn(move.unitId) && !rollingAttackerIds.has(move.unitId)) {
+      holds.set(move.unitId, move.from);
+    }
+  }
+  return holds;
+}
+
 export function planReturnMoveDelays(
   returnMoves: readonly { unitId: string }[],
   strikeEndByAttacker: ReadonlyMap<string, number>,
