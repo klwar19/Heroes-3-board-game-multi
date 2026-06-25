@@ -368,6 +368,52 @@ describe("Phoenix Rebirth", () => {
     });
     expect(removedUnitIds(next)).toContain("unit_p2_skeletons");
   });
+
+  // HOUSE RULE: the Pack side also carries Rebirth, and it fires BEFORE the
+  // Pack→Few flip — so a Pack Phoenix clings to life at its Pack side instead
+  // of being knocked down to Few.
+  function lethalAttackOnPackPhoenix(prepare: (phoenix: CombatUnitState) => void): GameState {
+    const state = createInitialGameState();
+    const attacker = state.combat!.units.unit_p1_marksmen;
+    attacker.abilities = [];
+    attacker.attack = 10;
+    attacker.position = 1;
+    const phoenix = state.combat!.units.unit_p2_skeletons;
+    phoenix.unitDefId = "conflux.phoenixes"; // a real def so a Few side exists to flip to
+    phoenix.variant = "pack";
+    phoenix.abilities = ["phoenix-rebirth"];
+    phoenix.position = 13; // non-adjacent → clean ranged kill
+    phoenix.defense = 0;
+    phoenix.maxHealth = 8; // Pack health
+    phoenix.damage = 0;
+    prepare(phoenix);
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    script(state, [1]); // +1 → 11 damage, lethal
+    setActive(state, "p1", "unit_p1_marksmen");
+    return settle(
+      applyOk(state, { type: "ATTACK_UNIT", playerId: "p1", attackerId: "unit_p1_marksmen", defenderId: "unit_p2_skeletons" })
+    );
+  }
+
+  it("a Pack Phoenix is reborn at its Pack side, not flipped down to Few", () => {
+    const next = lethalAttackOnPackPhoenix(() => {});
+    const phoenix = next.combat!.units.unit_p2_skeletons;
+    expect(phoenix.variant).toBe("pack"); // stayed Pack — Rebirth pre-empted the flip
+    expect(phoenix.damage).toBe(7); // maxHealth(8) − 1
+    expect(phoenix.usedRebirthThisCombat).toBe(true);
+    expect(removedUnitIds(next)).not.toContain("unit_p2_skeletons");
+    expect(abilityEventIds(next)).toContain("phoenix-rebirth");
+  });
+
+  it("CONTROL: with Rebirth already spent, the same blow flips the Pack down to Few", () => {
+    const next = lethalAttackOnPackPhoenix((phoenix) => {
+      phoenix.usedRebirthThisCombat = true;
+    });
+    const phoenix = next.combat!.units.unit_p2_skeletons;
+    expect(phoenix.variant).toBe("few"); // no Rebirth left → the Pack→Few flip runs
+    expect(removedUnitIds(next)).not.toContain("unit_p2_skeletons");
+  });
 });
 
 // ---------------------------------------------------------------------------

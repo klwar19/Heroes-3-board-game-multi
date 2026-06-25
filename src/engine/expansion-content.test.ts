@@ -141,9 +141,10 @@ describe("Stronghold content", () => {
       buildingMaterials: 2,
       valuables: 1
     });
+    // HOUSE RULE: the neutral-win bounty is buffed from 1 to 2 gold.
     expect(coreBuildingDefinitions["stronghold.freelancers_guild"].effect).toMatchObject({
       type: "FREELANCERS_GUILD",
-      winGold: 1
+      winGold: 2
     });
     expect(coreBuildingDefinitions["stronghold.hall_of_valhalla"].effect).toMatchObject({
       type: "HALL_OF_VALHALLA",

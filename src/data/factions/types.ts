@@ -220,8 +220,9 @@ export type TownBuildingEffect =
   | {
       /**
        * Freelancer's Guild: winning against Neutral Units pays `winGold`
-       * gold, and Recruiting/Reinforcing may pay gold with building
-       * materials and valuables at 1:1.
+       * gold, and Recruiting/Reinforcing may pay the gold cost with building
+       * materials and valuables at MARKET rates (1 material = 1 gold,
+       * 1 valuables = 3 gold).
        */
       type: "FREELANCERS_GUILD";
       winGold: number;

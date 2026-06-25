@@ -71,6 +71,28 @@ export function markUnitRemovedIfNeeded(state: GameState, unit: CombatUnitState)
     return;
   }
 
+  // Phoenixes: "Once per Combat, when this unit's HP drops to 0, set it to 1
+  // instead." Rebirth clings to life at the unit's CURRENT side — a Pack
+  // Phoenix survives the killing blow WITHOUT flipping down to its Few side
+  // (the HOUSE RULE that both sides carry Rebirth). It is taken before the
+  // Pack→Few flip below. Bank defenders are excluded here so their Stack Token
+  // absorbs the blow first (handled lower down); a tokenless bank card with
+  // Rebirth still saves itself via the later check.
+  if (!unit.bankUnit) {
+    const selfRebirth = getSelfRebirthAbility(unit);
+    if (selfRebirth && !unit.usedRebirthThisCombat) {
+      unit.usedRebirthThisCombat = true;
+      unit.damage = Math.max(0, unit.maxHealth - 1);
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: unit.id,
+        abilityId: selfRebirth.abilityId,
+        message: `${unit.cardName} is reborn and clings to life at 1 Health.`
+      });
+      return;
+    }
+  }
+
   if (unit.variant === "pack" && unit.unitDefId) {
     const fewSide = getUnitSide(unit.unitDefId, "few");
     if (fewSide) {
@@ -124,11 +146,12 @@ export function markUnitRemovedIfNeeded(state: GameState, unit: CombatUnitState)
     }
   }
 
-  // Phoenixes: "Once per Combat, when this unit's HP drops to 0, set it to 1
-  // instead." The last-ditch self-save, taken automatically once any Pack→Few
-  // flip is exhausted — the unit survives the killing blow at 1 Health. Works
-  // against every damage source (attacks, ability damage, spells, war machines)
-  // because they all funnel through here.
+  // Rebirth fallback for Creature Bank cards (e.g. Crypt Skeletons): a bank
+  // defender is skipped by the pre-flip check above so its Stack Token absorbs
+  // the first lethal blow; once tokenless it still clings to life here at 1
+  // Health. Works against every damage source because they all funnel through
+  // this chokepoint. Non-bank units have already resolved Rebirth above, so the
+  // shared `usedRebirthThisCombat` flag keeps this from firing a second time.
   const rebirth = getSelfRebirthAbility(unit);
   if (rebirth && !unit.usedRebirthThisCombat) {
     unit.usedRebirthThisCombat = true;

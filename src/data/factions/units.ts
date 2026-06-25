@@ -991,7 +991,10 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     tier: "gold",
     type: "flying",
     few: { attack: 6, defense: 2, health: 7, initiative: 12, cost: { gold: 21, valuables: 1 }, abilities: ["phoenix-rebirth", "phoenix-fire-immunity"], abilityText: "[unit_passive] Once per Combat, when this unit's [health_points] drops to 0, set it to 1 instead. Immune to Fire Magic spells.", cardImage: "/assets/units-conflux-golden-phoenixes-few.webp" },
-    pack: { attack: 7, defense: 2, health: 8, initiative: 18, cost: { gold: 29, valuables: 2 }, abilities: ["dragon-line-attack-2", "phoenix-fire-immunity"], abilityText: "[unit_attack] Attack 2 spaces in a line. The first attack resolves normally, and the second has 2 [attack]. [unit_passive] Immune to Fire Magic spells.", cardImage: "/assets/units-conflux-golden-phoenixes-pack.webp" },
+    // HOUSE RULE: the Pack side also carries Rebirth, so BOTH sides cling to
+    // life at 1 Health once per combat (engine: `phoenix-rebirth`, fired before
+    // the Pack→Few flip so a Pack Phoenix survives at its Pack side).
+    pack: { attack: 7, defense: 2, health: 8, initiative: 18, cost: { gold: 29, valuables: 2 }, abilities: ["dragon-line-attack-2", "phoenix-fire-immunity", "phoenix-rebirth"], abilityText: "[unit_attack] Attack 2 spaces in a line. The first attack resolves normally, and the second has 2 [attack]. [unit_passive] Immune to Fire Magic spells. [unit_passive] Once per Combat, when this unit's [health_points] drops to 0, set it to 1 instead.", cardImage: "/assets/units-conflux-golden-phoenixes-pack.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/phoenixes/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Conflux Expansion)",

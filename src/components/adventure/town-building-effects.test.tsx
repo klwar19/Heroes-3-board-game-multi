@@ -66,7 +66,8 @@ describe("TownPanel — in-place special-building effect / use buttons", () => {
     render(<TownPanel legalActions={getLegalActions(state, "p1")} onAction={vi.fn()} state={state} viewerPlayerId="p1" />);
 
     const panel = openPanel("Freelancer's Guild");
-    expect(panel.textContent).toMatch(/win against Neutral Units, gain 1 gold/i);
+    expect(panel.textContent).toMatch(/win against Neutral Units, gain 2 gold/i);
+    expect(panel.textContent).toMatch(/market rates/i);
     expect(panel.textContent).toMatch(/always on/i);
   });
 

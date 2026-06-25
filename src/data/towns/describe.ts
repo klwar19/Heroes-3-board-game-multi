@@ -57,7 +57,7 @@ export function describeBuildingEffect(building: TownBuildingDefinition): string
     case "HALL_OF_VALHALLA":
       return `Once per round during a combat, one of your units gains +${effect.amount} attack on a single attack (chosen while the attack is waiting to resolve).`;
     case "FREELANCERS_GUILD":
-      return `Always on: each time you win against Neutral Units, gain ${effect.winGold} gold. When recruiting or reinforcing you may also pay the gold cost with building materials and valuables.`;
+      return `Always on: each time you win against Neutral Units, gain ${effect.winGold} gold. When recruiting or reinforcing you may also pay the gold cost with building materials and valuables at market rates (1 building material = 1 gold, 1 valuables = 3 gold).`;
     case "ARTIFACT_SMITH":
       return `Once during your turn, choose one: pay ${effect.searchCost} gold to Search (2) the Artifact deck, OR remove an Artifact card from your hand to gain ${effect.sellGold} gold. Counts as an artifact source (hero level 4+ may search Major, 6+ Relic artifacts in BINH mode).`;
     case "ROUND_START_FREE_SPRITE":

@@ -19,7 +19,7 @@ import {
   STACK_TOKENS_BY_DIFFICULTY,
   type CreatureBankId
 } from "@/data/map/creature-banks";
-import { locationDefinitions, TRADE_RATES } from "@/data/map/locations";
+import { locationDefinitions, marketGoldValueOf, TRADE_RATES } from "@/data/map/locations";
 import { allTileDefinitions } from "@/data/map/tiles";
 import type { LocationInteraction, TileDefinition } from "@/data/map/types";
 import {
@@ -6168,43 +6168,65 @@ function queueTurnStartAstrologersChoices(state: GameState, playerId: PlayerId):
 }
 
 /**
- * Freelancer's Guild: "When Reinforcing or Recruiting you can use building
- * materials and valuables like gold." Returns how much of a gold shortfall
- * the player may cover with spare materials/valuables (0 without the guild).
+ * Freelancer's Guild: "When Reinforcing or Recruiting you can pay the gold cost
+ * with building materials and valuables at MARKET RATES." Returns how many spare
+ * materials/valuables to spend toward a gold shortfall and the gold value those
+ * cover — each material is worth `marketGoldValueOf("buildingMaterials")` gold
+ * (1) and each valuables `marketGoldValueOf("valuables")` gold (3), exactly the
+ * Trading Post sell rates. Materials (which divide the gold 1:1) settle the exact
+ * remainder; a final valuables lot can overshoot the last 1–2 gold the way a
+ * market trade buys in whole lots. Without the guild, nothing is substituted.
  */
 function freelancerGoldSubstitution(state: GameState, playerId: PlayerId, cost: ResourceCost): {
   fromMaterials: number;
   fromValuables: number;
+  goldCovered: number;
 } {
+  const none = { fromMaterials: 0, fromValuables: 0, goldCovered: 0 };
   const player = state.players[playerId];
   const town = getTownOfPlayer(state, playerId);
   const hasGuild = Boolean(
     town?.buildings.some((buildingId) => coreBuildingDefinitions[buildingId]?.effect?.type === "FREELANCERS_GUILD")
   );
   if (!player || !hasGuild) {
-    return { fromMaterials: 0, fromValuables: 0 };
+    return none;
   }
 
   const shortfall = Math.max(0, (cost.gold ?? 0) - player.resources.gold);
   if (shortfall === 0) {
-    return { fromMaterials: 0, fromValuables: 0 };
+    return none;
   }
 
+  const materialValue = marketGoldValueOf("buildingMaterials");
+  const valuableValue = marketGoldValueOf("valuables");
   const spareMaterials = Math.max(0, player.resources.buildingMaterials - (cost.buildingMaterials ?? 0));
-  const fromMaterials = Math.min(shortfall, spareMaterials);
   const spareValuables = Math.max(0, player.resources.valuables - (cost.valuables ?? 0));
-  const fromValuables = Math.min(shortfall - fromMaterials, spareValuables);
-  return { fromMaterials, fromValuables };
+
+  // Use whole valuables lots that fit without overshooting, then settle the
+  // remainder with materials. If materials run short, spend one extra valuables
+  // lot (an over-payment, as a market trade in whole lots would be).
+  let remaining = shortfall;
+  let fromValuables = Math.min(spareValuables, Math.floor(remaining / valuableValue));
+  remaining -= fromValuables * valuableValue;
+  const fromMaterials = Math.min(spareMaterials, Math.ceil(remaining / materialValue));
+  remaining -= fromMaterials * materialValue;
+  if (remaining > 0 && fromValuables < spareValuables) {
+    fromValuables += 1;
+    remaining -= valuableValue;
+  }
+
+  const goldCovered = fromMaterials * materialValue + fromValuables * valuableValue;
+  return { fromMaterials, fromValuables, goldCovered };
 }
 
-/** A recruit/reinforce cost with the guild's gold substitution folded in. */
+/** A recruit/reinforce cost with the guild's market-rate gold substitution folded in. */
 function recruitCostWithSubstitution(state: GameState, playerId: PlayerId, cost: ResourceCost): ResourceCost {
   const substitution = freelancerGoldSubstitution(state, playerId, cost);
   if (substitution.fromMaterials === 0 && substitution.fromValuables === 0) {
     return cost;
   }
   return {
-    gold: Math.max(0, (cost.gold ?? 0) - substitution.fromMaterials - substitution.fromValuables),
+    gold: Math.max(0, (cost.gold ?? 0) - substitution.goldCovered),
     buildingMaterials: (cost.buildingMaterials ?? 0) + substitution.fromMaterials,
     valuables: (cost.valuables ?? 0) + substitution.fromValuables
   };
