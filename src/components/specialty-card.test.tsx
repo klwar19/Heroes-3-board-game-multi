@@ -70,6 +70,19 @@ describe("hero-board / zoom wiring", () => {
     // not the generic Artillery skill card it used to borrow.
     expect(specialtyIconSrc("specialty.jeremy.1")).toContain("icon-cannon.webp");
     expect(specialtyIconSrc("specialty.jeremy.4")).not.toContain("abilities-artillery");
+    // Ash's specialty IS Bloodlust — it shows the Bloodlust SPELL icon, not the
+    // generic Offense skill emblem it used to borrow.
+    expect(specialtyIconSrc("specialty.ash.1")).toContain("icon-bloodlust.webp");
+    expect(specialtyIconSrc("specialty.ash.6")).not.toContain("abilities-offense");
+    // Octavia's specialty IS Gold — it shows the gold-coins icon, not the generic
+    // Estates skill emblem it used to borrow.
+    expect(specialtyIconSrc("specialty.octavia.1")).toContain("icon-gold.webp");
+    expect(specialtyIconSrc("specialty.octavia.4")).not.toContain("abilities-estates");
+    // Moandor's specialty IS the Liches — it shows the Power Lich portrait. His
+    // cards are art-less now (the moandor scans were never shipped), so the symbol
+    // must resolve instead of leaving a broken <img>.
+    expect(specialtyIconSrc("specialty.moandor.1")).toContain("units-lich-portrait.webp");
+    expect(specialtyIconSrc("specialty.moandor.6")).toContain("units-lich-portrait.webp");
     expect(specialtyIconSrc("specialty.catherine.1")).toBeUndefined(); // a baked-art hero
     expect(specialtyIconSrc("spell.teleport")).toBeUndefined();
     expect(specialtyIconSrc(undefined)).toBeUndefined();

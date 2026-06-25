@@ -1526,8 +1526,11 @@ export const adventureCards: CardLibrary = {
   // Moandor (Necropolis Death Knight): the Liches specialist. I/IV are the
   // shared might/health specialties doubled for Liches; VI is his signature —
   // make the Liches deal elemental damage, OR a flat +2 attack.
-  "specialty.moandor.1": mightSpecialtyOne("moandor", "Liches", "Liches"),
-  "specialty.moandor.4": unitHealthSpecialty("moandor", "Liches", 4, 1, "Liches"),
+  // Art-less: the moandor specialty scans (hero_specialties-moandor-*.webp) were
+  // never shipped, so the native renderer draws these with the Power Lich portrait
+  // symbol (SPECIALTY_ICON_BY_HERO.moandor) instead of a broken <img> link.
+  "specialty.moandor.1": withoutArt(mightSpecialtyOne("moandor", "Liches", "Liches")),
+  "specialty.moandor.4": withoutArt(unitHealthSpecialty("moandor", "Liches", 4, 1, "Liches")),
   // Moandor VI is a CHOICE (— OR —), re-confirmed against the owner's physical
   // card 2026-06: the fan wiki renders the two clauses with no "OR" (looking like
   // a combined AND), but the printed card is choose-one. Do not "fix" it to AND.
@@ -1571,10 +1574,7 @@ export const adventureCards: CardLibrary = {
         }
       ]
     },
-    assets: {
-      cardImage: "/assets/hero_specialties-moandor-6.webp",
-      imageAlt: "Liches level VI specialty card"
-    },
+    // Art-less (see specialty.moandor.1/4): no shipped scan — rendered natively.
     implementationStatus: "implemented",
     source: heroSource("moandor")
   },
@@ -2519,8 +2519,10 @@ export const adventureCards: CardLibrary = {
   // the Magma Elementals unit"). I = instant +1 attack OR +1 defence (doubled
   // for Magma Elementals); IV = +1 initiative for the combat (doubled for Magma
   // Elementals); VI = instant +2 attack OR ongoing +3 initiative (no doubling).
-  "specialty.erdamon.1": towerAttackOrDefenseSpecialty("erdamon", "Magma Elementals", 1, "Magma Elementals"),
-  "specialty.erdamon.4": unitInitiativeSpecialty("erdamon", "Magma Elementals", 4, 1, "Magma Elementals"),
+  // Art-less (the Conflux specialty scans were never shipped) — the native
+  // renderer draws these with the Magma Elemental portrait (SPECIALTY_ICON_BY_HERO).
+  "specialty.erdamon.1": withoutArt(towerAttackOrDefenseSpecialty("erdamon", "Magma Elementals", 1, "Magma Elementals")),
+  "specialty.erdamon.4": withoutArt(unitInitiativeSpecialty("erdamon", "Magma Elementals", 4, 1, "Magma Elementals")),
   "specialty.erdamon.6": {
     id: "specialty.erdamon.6",
     name: "Magma Elementals VI",
@@ -2559,15 +2561,16 @@ export const adventureCards: CardLibrary = {
         }
       ]
     },
-    assets: { cardImage: specialtyCardImage("erdamon", 6), imageAlt: "Magma Elementals level VI specialty card" },
+    // Art-less (no shipped scan) — rendered natively, like .1/.4 above.
     implementationStatus: "implemented",
     source: heroSource("erdamon")
   },
   // Monere (Magic Elementals): I = +1 attack/defence; IV = +1 initiative for
   // the combat — both doubled for the Magic Elementals unit; VI = +2 attack OR
   // +2 power (both one-shot instants, no doubling).
-  "specialty.monere.1": towerAttackOrDefenseSpecialty("monere", "Magic Elementals", 1, "Magic Elementals"),
-  "specialty.monere.4": unitInitiativeSpecialty("monere", "Magic Elementals", 4, 1, "Magic Elementals"),
+  // Art-less (no shipped scan) — native renderer + Magic Elemental portrait.
+  "specialty.monere.1": withoutArt(towerAttackOrDefenseSpecialty("monere", "Magic Elementals", 1, "Magic Elementals")),
+  "specialty.monere.4": withoutArt(unitInitiativeSpecialty("monere", "Magic Elementals", 4, 1, "Magic Elementals")),
   "specialty.monere.6": {
     id: "specialty.monere.6",
     name: "Magic Elementals VI",
@@ -2595,16 +2598,17 @@ export const adventureCards: CardLibrary = {
         }
       ]
     },
-    assets: { cardImage: specialtyCardImage("monere", 6), imageAlt: "Magic Elementals level VI specialty card" },
+    // Art-less (no shipped scan) — rendered natively, like .1/.4 above.
     implementationStatus: "implemented",
     source: heroSource("monere")
   },
   // Pasis (Elementals generalist): every bonus doubles for any "… Elementals"
   // unit (the "an Elementals unit" family descriptor). I = +1 initiative for
   // the combat; IV = +1 attack/defence; VI = +1 HP for the combat.
-  "specialty.pasis.1": unitInitiativeSpecialty("pasis", "Elementals", 1, 1, "an Elementals unit"),
-  "specialty.pasis.4": towerAttackOrDefenseSpecialty("pasis", "Elementals", 4, "an Elementals unit"),
-  "specialty.pasis.6": towerHealthSpecialty("pasis", "Elementals", 6, 1, "an Elementals unit"),
+  // Art-less (no shipped scan) — native renderer + Energy Elemental portrait.
+  "specialty.pasis.1": withoutArt(unitInitiativeSpecialty("pasis", "Elementals", 1, 1, "an Elementals unit")),
+  "specialty.pasis.4": withoutArt(towerAttackOrDefenseSpecialty("pasis", "Elementals", 4, "an Elementals unit")),
+  "specialty.pasis.6": withoutArt(towerHealthSpecialty("pasis", "Elementals", 6, 1, "an Elementals unit")),
 
   // ---- Conflux Elementalist (Luna — the Fire Wall specialist) -------------
   // I/VI place a Fire Wall token (this card or a token) on an empty space for
@@ -2630,7 +2634,7 @@ export const adventureCards: CardLibrary = {
     ],
     target: { type: "empty-space" },
     effect: { type: "PLACE_FIRE_WALL_FIXED", damage: 1 },
-    assets: { cardImage: specialtyCardImage("luna", 1), imageAlt: "Fire Wall level I specialty card" },
+    // Art-less (no shipped scan) — rendered natively with the Fire Wall symbol.
     implementationStatus: "implemented",
     source: heroSource("luna")
   },
@@ -2662,7 +2666,7 @@ export const adventureCards: CardLibrary = {
         }
       ]
     },
-    assets: { cardImage: specialtyCardImage("luna", 4), imageAlt: "Fire Wall level IV specialty card" },
+    // Art-less (no shipped scan) — rendered natively with the Fire Wall symbol.
     implementationStatus: "implemented",
     source: heroSource("luna")
   },
@@ -2681,7 +2685,7 @@ export const adventureCards: CardLibrary = {
     ],
     target: { type: "empty-space" },
     effect: { type: "PLACE_FIRE_WALL_FIXED", damage: 3 },
-    assets: { cardImage: specialtyCardImage("luna", 6), imageAlt: "Fire Wall level VI specialty card" },
+    // Art-less (no shipped scan) — rendered natively with the Fire Wall symbol.
     implementationStatus: "implemented",
     source: heroSource("luna")
   },

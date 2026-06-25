@@ -35,6 +35,18 @@ export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   tarnum_rampart: "/assets/specialty-card/creature-sharpshooter.webp", // Sharpshooters (Rampart)
   ivor: "/assets/specialty-card/creature-grand_elf.webp", // Elves (Rampart)
   tarnum_conflux: "/assets/specialty-card/creature-enchanter.webp", // Enchanters
+  // Conflux Planeswalker unit specialists — the creature's own wiki portrait
+  // (scripts/fetch-conflux-elemental-portraits.py). Their cards used to reference
+  // baked scans (hero_specialties-<slug>-*.webp) that were never shipped — broken
+  // <img> links; they are art-less now.
+  erdamon: "/assets/units-magma_elemental-portrait.webp", // Magma Elementals
+  monere: "/assets/units-magic_elemental-portrait.webp", // Magic Elementals
+  pasis: "/assets/units-energy_elemental-portrait.webp", // Elementals (Energy)
+  // Moandor's specialty IS the Liches — the unit's own Power Lich wiki portrait
+  // (scripts/fetch-lich-portrait.py), matching the Bulwark unit specialists. His
+  // three cards used to reference baked scans (hero_specialties-moandor-*.webp)
+  // that were never shipped — broken <img> links; they are art-less now.
+  moandor: "/assets/units-lich-portrait.webp", // Liches (Power Lich portrait)
   // --- Spell / emblem specialists -----------------------------------------
   oidana: "/assets/specialty-card/icon-diplomacy.webp", // Diplomacy dove
   glacius: "/assets/specialty-card/icon-frost_ring.webp", // Homm3BG symbols
@@ -61,11 +73,17 @@ export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   torosar: "/assets/abilities-artillery.webp", // Ballista
   miriam: "/assets/abilities-scouting.webp", // Scouting
   sephinroth: "/assets/abilities-estates.webp", // Valuables (resources)
-  octavia: "/assets/abilities-estates.webp", // Gold (resources)
+  // Octavia's specialty IS Gold — the game's own gold-coins icon, cut out of the
+  // shared leather resource tile to a transparent background
+  // (scripts/make-octavia-gold-icon.py), not the generic Estates skill emblem.
+  octavia: "/assets/specialty-card/icon-gold.webp", // Gold (gold-coins icon)
   melodia: "/assets/abilities-luck.webp", // Fortune (luck/morale)
   merist: "/assets/abilities-armorer.webp", // Stone Skin (defense)
   zilare: "/assets/abilities-air_magic.webp", // Forgetfulness (Air spell)
-  ash: "/assets/abilities-offense.webp", // Bloodlust (+attack)
+  // Ash's specialty IS the Bloodlust spell, so he shows the Bloodlust SPELL icon
+  // (heroes.thelazy.net, scripts/fetch-bloodlust-icon.py) — not the generic
+  // Offense secondary-skill emblem (abilities-offense.webp) he used to borrow.
+  ash: "/assets/specialty-card/icon-bloodlust.webp", // Bloodlust spell icon
   cyra: "/assets/abilities-air_magic.webp" // Haste (Air spell, speed)
 };
 
