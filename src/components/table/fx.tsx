@@ -73,6 +73,19 @@ export type FxCue =
     }
   | { kind: "sprite"; id: string; fxKey: string; at: string; delayMs?: number; sound?: string }
   | {
+      /**
+       * A sprite-less colored wash (Bloodlust's red battle-rage) flashed over an
+       * anchor — used when a tint plan resolves through a card play and there is
+       * no board unit to tint (the unit-card tint path lives in page.tsx).
+       */
+      kind: "glow";
+      id: string;
+      at: string;
+      tint: "bloodlust";
+      delayMs?: number;
+      sound?: string;
+    }
+  | {
       kind: "projectile";
       id: string;
       fxKey: string;
@@ -131,6 +144,9 @@ export const DRAW_STAGGER_MS = 120;
 
 /** A combat unit's card glides between battle cells over this long. */
 export const COMBAT_MOVE_MS = 640;
+
+/** A sprite-less tint wash (Bloodlust on a card play) holds this long. */
+const GLOW_MS = 900;
 
 /**
  * Attack choreography. From the attack being declared to the blow landing is
@@ -891,6 +907,45 @@ async function runPulse(stage: HTMLElement, cue: Extract<FxCue, { kind: "pulse" 
   }
 }
 
+/**
+ * A sprite-less colored wash flashed over an anchor (Bloodlust's red battle-rage
+ * on a card play, where there is no board unit to tint). Mirrors the unit-card
+ * bloodlust pulse's hold so it reads for the same beat. A missing anchor consumes
+ * the cue silently.
+ */
+async function runGlow(stage: HTMLElement, cue: Extract<FxCue, { kind: "glow" }>): Promise<void> {
+  const rect = resolveAnchorRect(cue.at);
+  if (!rect) {
+    return;
+  }
+  const center = centerOf(rect);
+  const size = Math.max(rect.width, rect.height) * 2.6;
+  const glow = document.createElement("div");
+  glow.className = `fxGlow fxGlow-${cue.tint}`;
+  glow.style.left = `${center.x}px`;
+  glow.style.top = `${center.y}px`;
+  glow.style.width = `${size}px`;
+  glow.style.height = `${size}px`;
+  stage.appendChild(glow);
+  if (cue.sound) {
+    playLibrarySound(cue.sound);
+  }
+  try {
+    await animate(
+      glow,
+      [
+        { transform: "translate(-50%, -50%) scale(0.6)", opacity: 0, offset: 0 },
+        { transform: "translate(-50%, -50%) scale(1)", opacity: 1, offset: 0.28 },
+        { transform: "translate(-50%, -50%) scale(1.08)", opacity: 0.9, offset: 0.7 },
+        { transform: "translate(-50%, -50%) scale(1.12)", opacity: 0, offset: 1 }
+      ],
+      { duration: GLOW_MS, easing: "ease-in-out" }
+    );
+  } finally {
+    glow.remove();
+  }
+}
+
 export function FxStage({ cues, onDone }: { cues: FxCue[]; onDone: (id: string) => void }) {
   const stageRef = useRef<HTMLDivElement | null>(null);
   const startedRef = useRef<Set<string>>(new Set());
@@ -925,6 +980,8 @@ export function FxStage({ cues, onDone }: { cues: FxCue[]; onDone: (id: string) 
             return runFloater(stage, cue);
           case "pulse":
             return runPulse(stage, cue);
+          case "glow":
+            return runGlow(stage, cue);
           case "lunge":
             return runLunge(cue);
           case "shake":

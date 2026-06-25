@@ -204,7 +204,28 @@ export const spellFxPlans: Record<string, SpellFxPlan> = {
   "specialty.xyron.4": { affect: [{ key: "inferno" }], sound: "spells/inferno" },
   "specialty.xyron.6": { affect: [{ key: "inferno" }], sound: "spells/inferno" },
   "specialty.deemer.1": { affect: [{ key: "meteor-shower" }], sound: "spells/meteor-shower" },
-  "specialty.deemer.6": { affect: [{ key: "meteor-shower" }], sound: "spells/meteor-shower" }
+  "specialty.deemer.6": { affect: [{ key: "meteor-shower" }], sound: "spells/meteor-shower" },
+  // Septienna's Death Ripple sweep (every level's damage side), Melodia's Fortune
+  // luck wash and Glacius's Frost Ring (I/VI area damage) all resolve through a
+  // card PLAY with no single board target, so their sprite bursts at centre stage
+  // with the cast sound — exactly like Xyron/Deemer. Glacius IV is a card-economy
+  // instant that casts no ring, so it gets no FX. The "+N Power" side of these
+  // CHOOSE_ONE cards plays no board effect, so the CARD_PLAYED handler skips its
+  // sprite (it guards every "+N Power" optionLabel).
+  "specialty.septienna.1": { affect: [{ key: "death-ripple" }], sound: "spells/death-ripple" },
+  "specialty.septienna.4": { affect: [{ key: "death-ripple" }], sound: "spells/death-ripple" },
+  "specialty.septienna.6": { affect: [{ key: "death-ripple" }], sound: "spells/death-ripple" },
+  "specialty.melodia.1": { affect: [{ key: "fortune" }], sound: "spells/fortune" },
+  "specialty.melodia.4": { affect: [{ key: "fortune" }], sound: "spells/fortune" },
+  "specialty.melodia.6": { affect: [{ key: "fortune" }], sound: "spells/fortune" },
+  "specialty.glacius.1": { affect: [{ key: "frost-ring" }], sound: "spells/frost-ring" },
+  "specialty.glacius.6": { affect: [{ key: "frost-ring" }], sound: "spells/frost-ring" },
+  // Ash's Bloodlust has no sprite in the original game (the engine tinted the unit
+  // red). On a card play there is no board unit to tint, so the CARD_PLAYED handler
+  // flashes the red battle-rage wash at centre stage with the bloodlust cast roar.
+  "specialty.ash.1": { tint: "bloodlust", sound: "spells/bloodlust" },
+  "specialty.ash.4": { tint: "bloodlust", sound: "spells/bloodlust" },
+  "specialty.ash.6": { tint: "bloodlust", sound: "spells/bloodlust" }
 };
 
 /** Played at center stage when a spell is countered. */
