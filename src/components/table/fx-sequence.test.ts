@@ -6,6 +6,7 @@ import {
   planActivationSpellPreamble,
   planApproachAttackPreDelays,
   planApproachMoveDelays,
+  planHarpyReturnHolds,
   planReturnMoveDelays
 } from "./fx-sequence";
 
@@ -235,6 +236,51 @@ describe("planActivationSpellPreamble (Faerie Dragon cast-before-move ordering)"
   it("falls back to the caster as the target when no target is named", () => {
     const log = [ability("b", "faerie-dragon-spell", "dragon")];
     expect(planActivationSpellPreamble(log, LEADING, timing).casts[0].targetUnitId).toBe("dragon");
+  });
+});
+
+describe("planHarpyReturnHolds (Harpy fly-back held through the Retaliation Attack)", () => {
+  const harpies = (id: string) => id === "harpy";
+
+  it("holds a Harpy fly-back that does NOT roll its own attack this snapshot", () => {
+    // The retaliation snapshot: the Harpy's fly-back (from cell 9) shares the
+    // frame with the defender's retaliation roll, never its own. It must be held
+    // on cell 9 so the card does not teleport home and then glide home again.
+    const holds = planHarpyReturnHolds(
+      [{ unitId: "harpy", from: 9 }],
+      new Set(["defender"]), // only the retaliator rolls this snapshot
+      harpies
+    );
+    expect(holds.get("harpy")).toBe(9);
+    expect(holds.size).toBe(1);
+  });
+
+  it("does NOT hold a Harpy that rolls its own attack this snapshot (single-snapshot move→attack→return)", () => {
+    // When move, attack and return all land together the card stays live for the
+    // Harpy's own lunge — its fly-back already trails its own strike, so there is
+    // no early teleport to hide and nothing to hold.
+    const holds = planHarpyReturnHolds([{ unitId: "harpy", from: 9 }], new Set(["harpy"]), harpies);
+    expect(holds.has("harpy")).toBe(false);
+  });
+
+  it("does NOT hold a non-Harpy after-attack step (a shooter repositioning)", () => {
+    // A ranged unit's step after firing is an after-attack move too, but it is a
+    // forward reposition with no teleport to hide — never held, keeps its sound.
+    const holds = planHarpyReturnHolds([{ unitId: "marksmen", from: 9 }], new Set(["defender"]), harpies);
+    expect(holds.has("marksmen")).toBe(false);
+  });
+
+  it("holds each of several batched Harpy fly-backs on its own strike cell", () => {
+    const holds = planHarpyReturnHolds(
+      [
+        { unitId: "harpy", from: 9 },
+        { unitId: "harpy2", from: 14 }
+      ],
+      new Set(["defender", "defender2"]),
+      (id) => id === "harpy" || id === "harpy2"
+    );
+    expect(holds.get("harpy")).toBe(9);
+    expect(holds.get("harpy2")).toBe(14);
   });
 });
 
