@@ -76,7 +76,10 @@ export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   tarnum_castle: "/assets/specialty-card/icon-ballista.webp", // Ballista
   gerwulf: "/assets/specialty-card/icon-ballista.webp", // Ballista
   torosar: "/assets/specialty-card/icon-ballista.webp", // Ballista
-  miriam: "/assets/abilities-scouting.webp", // Scouting
+  // Miriam's specialty IS Scouting — the large Expert Scouting skill emblem from
+  // heroes.thelazy.net (scripts/fetch-forgetfulness-scouting-icons.py), not the
+  // small generic Scouting emblem.
+  miriam: "/assets/specialty-card/icon-scouting-expert.webp", // Scouting
   sephinroth: "/assets/abilities-estates.webp", // Valuables (resources)
   // Octavia's specialty IS Gold — the game's own gold-coins icon, cut out of the
   // shared leather resource tile to a transparent background
@@ -86,7 +89,9 @@ export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   // (scripts/fetch-fortune-icon.py), not the generic Luck skill emblem.
   melodia: "/assets/specialty-card/icon-fortune.webp", // Fortune spell icon
   merist: "/assets/abilities-armorer.webp", // Stone Skin (defense)
-  zilare: "/assets/abilities-air_magic.webp", // Forgetfulness (Air spell)
+  // Zilare's specialty IS Forgetfulness — the actual Forgetfulness SPELL icon
+  // (scripts/fetch-forgetfulness-scouting-icons.py), not the generic Air-Magic emblem.
+  zilare: "/assets/specialty-card/icon-forgetfulness.webp", // Forgetfulness spell icon
   // Ash's specialty IS the Bloodlust spell, so he shows the Bloodlust SPELL icon
   // (heroes.thelazy.net, scripts/fetch-bloodlust-icon.py) — not the generic
   // Offense secondary-skill emblem (abilities-offense.webp) he used to borrow.

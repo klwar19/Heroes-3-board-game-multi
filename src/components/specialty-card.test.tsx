@@ -98,6 +98,11 @@ describe("hero-board / zoom wiring", () => {
     expect(specialtyIconSrc("specialty.gerwulf.4")).toContain("icon-ballista.webp");
     expect(specialtyIconSrc("specialty.tarnum_castle.6")).toContain("icon-ballista.webp");
     expect(specialtyIconSrc("specialty.torosar.1")).not.toContain("abilities-artillery");
+    // Zilare shows the Forgetfulness spell icon, not the generic Air-Magic emblem.
+    expect(specialtyIconSrc("specialty.zilare.1")).toContain("icon-forgetfulness.webp");
+    expect(specialtyIconSrc("specialty.zilare.6")).not.toContain("abilities-air_magic");
+    // Miriam shows the large Expert Scouting emblem, not the small generic one.
+    expect(specialtyIconSrc("specialty.miriam.4")).toContain("icon-scouting-expert.webp");
     expect(specialtyIconSrc("specialty.catherine.1")).toBeUndefined(); // a baked-art hero
     expect(specialtyIconSrc("spell.teleport")).toBeUndefined();
     expect(specialtyIconSrc(undefined)).toBeUndefined();
