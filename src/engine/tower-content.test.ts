@@ -10,7 +10,7 @@ import {
   makeCombatUnitFromArmy,
   NEUTRAL_DECK_IDS
 } from "./index";
-import { startAdventureRound } from "./adventure";
+import { gainExperience, getMainHero, levelOfExperience, startAdventureRound } from "./adventure";
 import { pumpAdventureQueues } from "./adventure-reducer";
 import type { GameAction, GameState } from "./state";
 
@@ -18,6 +18,37 @@ function applyOk(state: GameState, action: GameAction): GameState {
   const result = applyAction(state, action);
   expect(result.errors, result.errors.map((error) => error.message).join("; ")).toEqual([]);
   return result.state;
+}
+
+/** A fresh adventure state with Dracon active, holding his level-IV specialty. */
+function draconIvState(seed: string): GameState {
+  const state = createAdventureGameState({
+    seed,
+    rollFirstPlayer: false,
+    players: [
+      { id: "p1", name: "Dracon", factionId: "tower", heroDefId: "dracon" },
+      { id: "p2", name: "Catherine", factionId: "castle", heroDefId: "catherine" }
+    ]
+  });
+  for (const pl of Object.values(state.players)) {
+    pl.canMulligan = false;
+    pl.needsHandRefresh = false;
+  }
+  state.activePlayerId = "p1";
+  state.pendingChoice = null;
+  state.reactionWindow = null;
+  state.players.p1.hand = ["specialty.dracon.4"];
+  return state;
+}
+
+/** A Dracon-IV PLAY_CARD legal action for a specific CHOOSE_ONE option. */
+function findDraconOption(state: GameState, optionIndex: number) {
+  return getLegalActions(state, "p1").find(
+    (legal) =>
+      legal.action.type === "PLAY_CARD" &&
+      legal.action.cardId === "specialty.dracon.4" &&
+      legal.action.optionIndex === optionIndex
+  );
 }
 
 describe("Tower content", () => {
@@ -224,5 +255,86 @@ describe("Tower content", () => {
     expect(next.players.p1.army.some((unit) => unit.unitDefId === "tower.magi")).toBe(false);
     expect(next.players.p1.army.some((unit) => unit.unitDefId === "neutral.enchanters")).toBe(true);
     expect(next.decks[NEUTRAL_DECK_IDS.gold].drawPile).not.toContain("neutral.enchanters");
+  });
+
+  // House rule (BINH): Dracon IV may ALSO upgrade the cheaper Few of Magi into the
+  // unique Enchanters by paying 6 extra gold (the Pack option above is free).
+  it("lets Dracon trade a Few of Magi + 6 gold for the unique Enchanters (house rule, option 2)", () => {
+    const state = draconIvState("dracon-iv-few");
+    state.players.p1.army = [{ id: "army_magi_few", unitDefId: "tower.magi", side: "few" }];
+    state.players.p1.resources.gold = 6;
+    expect(state.decks[NEUTRAL_DECK_IDS.gold].drawPile).toContain("neutral.enchanters");
+
+    const convert = findDraconOption(state, 2);
+    expect(convert, "the Few-of-Magi + 6 gold trade should be offered").toBeTruthy();
+    const next = applyOk(state, convert!.action);
+
+    expect(next.players.p1.army.some((unit) => unit.unitDefId === "tower.magi"), "the Few was discarded").toBe(
+      false
+    );
+    expect(next.players.p1.army.some((unit) => unit.unitDefId === "neutral.enchanters")).toBe(true);
+    expect(next.players.p1.resources.gold, "exactly 6 gold spent (6 → 0)").toBe(0);
+    expect(next.decks[NEUTRAL_DECK_IDS.gold].drawPile).not.toContain("neutral.enchanters");
+  });
+
+  it("gates the Few trade on 6 gold: not offered at 5 (the draw option still is)", () => {
+    const state = draconIvState("dracon-iv-few-poor");
+    state.players.p1.army = [{ id: "army_magi_few", unitDefId: "tower.magi", side: "few" }];
+    state.players.p1.resources.gold = 5;
+
+    expect(findDraconOption(state, 2), "the Few trade needs 6 gold, not 5").toBeFalsy();
+    expect(findDraconOption(state, 1), "the draw option is always available").toBeTruthy();
+    // Control: the Pack trade (option 0) is also absent — the army holds only a Few,
+    // proving fromSide is matched (a Few does not satisfy the Pack option).
+    expect(findDraconOption(state, 0), "no Pack of Magi → the Pack trade is not offered").toBeFalsy();
+  });
+
+  it("CONTROL: the Few trade discards the FEW specifically, leaving a Pack of Magi untouched", () => {
+    const state = draconIvState("dracon-iv-few-vs-pack");
+    state.players.p1.army = [
+      { id: "army_magi_few", unitDefId: "tower.magi", side: "few" },
+      { id: "army_magi_pack", unitDefId: "tower.magi", side: "pack" }
+    ];
+    state.players.p1.resources.gold = 10;
+
+    const convert = findDraconOption(state, 2);
+    expect(convert, "the Few trade is offered with both sides present").toBeTruthy();
+    const next = applyOk(state, convert!.action);
+
+    expect(
+      next.players.p1.army.some((unit) => unit.unitDefId === "tower.magi" && unit.side === "few"),
+      "the Few was discarded"
+    ).toBe(false);
+    expect(
+      next.players.p1.army.some((unit) => unit.unitDefId === "tower.magi" && unit.side === "pack"),
+      "the Pack of Magi is left untouched"
+    ).toBe(true);
+    expect(next.players.p1.army.some((unit) => unit.unitDefId === "neutral.enchanters")).toBe(true);
+    expect(next.players.p1.resources.gold, "6 gold spent (10 → 4)").toBe(4);
+  });
+
+  // House rule (BINH) UI driver: reaching level IV pops a notice in the client.
+  // This pins down the exact engine SIGNAL the popup keys on — a HERO_LEVEL_UP
+  // event with level 4 for Dracon — alongside his Enchanters IV landing in hand.
+  it("fires a HERO_LEVEL_UP(level 4) event for Dracon when he reaches level IV (popup trigger)", () => {
+    const state = draconIvState("dracon-iv-levelup");
+    expect(state.players.p1.heroDefId, "p1 is Dracon").toBe("dracon");
+    state.players.p1.hand = []; // start empty so the granted specialty is visible
+    const hero = getMainHero(state, "p1")!;
+    expect(hero, "Dracon's main hero exists").toBeTruthy();
+    // Sit one step below level IV, then cross into it.
+    hero.experience = 5;
+    hero.level = levelOfExperience(5);
+    expect(hero.level, "level 3 before the gain").toBe(3);
+
+    gainExperience(state, "p1", 1); // exp 5 → 6 ⇒ level 3 → 4
+    pumpAdventureQueues(state);
+
+    expect(getMainHero(state, "p1")!.level, "Dracon reaches level IV").toBe(4);
+    const levelUps = state.eventLog.filter(
+      (event) => event.type === "HERO_LEVEL_UP" && event.playerId === "p1" && event.level === 4
+    );
+    expect(levelUps.length, "exactly one level-IV HERO_LEVEL_UP fired (drives the popup)").toBe(1);
+    expect(state.players.p1.hand, "Enchanters IV landed in hand").toContain("specialty.dracon.4");
   });
 });

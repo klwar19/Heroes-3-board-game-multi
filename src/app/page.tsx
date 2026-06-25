@@ -639,6 +639,11 @@ export default function Home() {
   const seenTileIdsRef = useRef<Set<string>>(new Set());
   const seenFeedIdsRef = useRef<Set<string>>(new Set());
   const seenFxIdsRef = useRef<Set<string>>(new Set());
+  // House rule (BINH) notices, popped once per event and pre-seeded on reconnect:
+  //  - Dracon reaching level IV (his new Few-of-Magi recruit option).
+  //  - A Gelu-recruited Sharpshooters joining the army with its +1 Attack BUFF.
+  const seenLevelNoticeIdsRef = useRef<Set<string>>(new Set());
+  const seenBuffRecruitIdsRef = useRef<Set<string>>(new Set());
   // Unit id -> definition id, kept across snapshots: the death that ends a
   // combat arrives in the snapshot where the combat is already gone.
   const unitDefIdsRef = useRef<Map<string, string>>(new Map());
@@ -802,6 +807,13 @@ export default function Home() {
       seenVisitIdsRef.current = new Set(visitEvents.map((event) => event.id));
       seenFeedIdsRef.current = new Set(feedEvents.map((event) => event.id));
       seenFxIdsRef.current = new Set(fxEvents.map((event) => event.id));
+      // A mid-game join must not re-pop a past Dracon level-up or buffed recruit.
+      seenLevelNoticeIdsRef.current = new Set(
+        nextState.eventLog.filter((event) => event.type === "HERO_LEVEL_UP").map((event) => event.id)
+      );
+      seenBuffRecruitIdsRef.current = new Set(
+        nextState.eventLog.filter((event) => event.type === "UNIT_RECRUITED").map((event) => event.id)
+      );
       seenFirstRollIdsRef.current = new Set(
         nextState.eventLog.filter((event) => event.type === "FIRST_PLAYER_ROLLED").map((event) => event.id)
       );
@@ -953,6 +965,66 @@ export default function Home() {
         });
         setMapNotice((current) => {
           const queue = [...current.queue, ...cues];
+          return current.current ? { ...current, queue } : { current: queue[0], queue: queue.slice(1) };
+        });
+      }
+
+      // House rule (BINH) notices, queued onto the same map-notice overlay.
+      //  - Dracon reaching level IV: announce his new "Few of Magi + 6 gold →
+      //    Enchanters" recruit option (fires once, even off a combat-XP level-up).
+      const levelNotices = nextState.eventLog.filter(
+        (event): event is Extract<GameEvent, { type: "HERO_LEVEL_UP" }> =>
+          event.type === "HERO_LEVEL_UP" &&
+          event.level === 4 &&
+          nextState.players[event.playerId]?.heroDefId === "dracon"
+      );
+      const freshLevelNotices = levelNotices.filter((event) => !seenLevelNoticeIdsRef.current.has(event.id));
+      for (const event of levelNotices) {
+        seenLevelNoticeIdsRef.current.add(event.id);
+      }
+      //  - A Gelu-recruited Sharpshooters: announce that the new unit is BUFFED
+      //    with a permanent +1 Attack in every combat.
+      const buffRecruits = nextState.eventLog.filter(
+        (event): event is Extract<GameEvent, { type: "UNIT_RECRUITED" }> =>
+          event.type === "UNIT_RECRUITED" && Boolean(event.attackBuff)
+      );
+      const freshBuffRecruits = buffRecruits.filter((event) => !seenBuffRecruitIdsRef.current.has(event.id));
+      for (const event of buffRecruits) {
+        seenBuffRecruitIdsRef.current.add(event.id);
+      }
+      const houseRuleCues: MapNoticeCue[] = [
+        ...freshLevelNotices.map(
+          (event) =>
+            ({
+              id: `level-notice-${event.id}`,
+              icon: "⭐",
+              title: "Dracon reaches Level IV",
+              subtitle: `${nextState.players[event.playerId]?.name ?? event.playerId} — new recruit option`,
+              lines: [
+                "Enchanters IV now also lets you recruit the Enchanters",
+                "from a Few of Magi by paying 6 extra gold."
+              ]
+            }) satisfies MapNoticeCue
+        ),
+        ...freshBuffRecruits.map(
+          (event) =>
+            ({
+              id: `buff-recruit-${event.id}`,
+              icon: "💪",
+              title: "BUFF — Sharpshooters",
+              subtitle: `${nextState.players[event.playerId]?.name ?? event.playerId} recruits a buffed unit`,
+              lines: [
+                `This ${event.unitDefId.split(".")[1] ?? event.unitDefId} permanently gains +${
+                  event.attackBuff ?? 1
+                } Attack`,
+                "in every combat, from beginning to end."
+              ]
+            }) satisfies MapNoticeCue
+        )
+      ];
+      if (houseRuleCues.length > 0) {
+        setMapNotice((current) => {
+          const queue = [...current.queue, ...houseRuleCues];
           return current.current ? { ...current, queue } : { current: queue[0], queue: queue.slice(1) };
         });
       }

@@ -353,11 +353,19 @@ describe("Erdamon specialty (Magma Elementals specialist)", () => {
       }
     }
 
+    // House rule (BINH): IV is now a CHOOSE_ONE — option A is the initiative buff
+    // (which also grants +1 Combat movement), option B draws a card.
     const four = cardLibrary["specialty.erdamon.4"];
-    expect(four?.effect.type).toBe("CREATE_INITIATIVE_BUFF");
-    if (four?.effect.type === "CREATE_INITIATIVE_BUFF") {
-      expect(four.effect.amount).toBe(1);
-      expect(four.effect.doubleForUnitName).toBe("Magma Elementals");
+    expect(four?.effect.type).toBe("CHOOSE_ONE");
+    if (four?.effect.type === "CHOOSE_ONE") {
+      const buff = four.effect.options[0].effect;
+      expect(buff.type).toBe("CREATE_INITIATIVE_BUFF");
+      if (buff.type === "CREATE_INITIATIVE_BUFF") {
+        expect(buff.amount).toBe(1);
+        expect(buff.doubleForUnitName).toBe("Magma Elementals");
+        expect(buff.movementBonus).toBe(1);
+      }
+      expect(four.effect.options[1].effect).toMatchObject({ type: "DRAW_CARDS", amount: 1 });
     }
 
     const six = cardLibrary["specialty.erdamon.6"];

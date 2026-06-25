@@ -234,9 +234,13 @@ describe("Bulwark heroes — roster & specialty wiring", () => {
   it("Dhuin doubles Snow Elves; Creyle doubles Mammoths", () => {
     const dhuin1 = adventureCards["specialty.dhuin.1"].effect as { options: { effect: unknown }[] };
     expect(dhuin1.options[0].effect).toMatchObject({ type: "ADD_COMBAT_STAT", doubleForUnitName: "Snow Elves" });
-    expect(adventureCards["specialty.dhuin.6"].effect).toMatchObject({
+    // House rule (BINH): the initiative specialty is now a CHOOSE_ONE — option A
+    // is the (now movement-granting) initiative buff, option B draws a card.
+    const dhuin6 = adventureCards["specialty.dhuin.6"].effect as { options: { effect: unknown }[] };
+    expect(dhuin6.options[0].effect).toMatchObject({
       type: "CREATE_INITIATIVE_BUFF",
-      doubleForUnitName: "Snow Elves"
+      doubleForUnitName: "Snow Elves",
+      movementBonus: 1
     });
     const creyle1 = adventureCards["specialty.creyle.1"].effect as { options: { effect: unknown }[] };
     expect(creyle1.options[0].effect).toMatchObject({ type: "ADD_COMBAT_STAT", doubleForUnitName: "Mammoths" });
@@ -317,9 +321,11 @@ describe("Bulwark hero — Eikthurn's Yetis specialty (Yetis doubled)", () => {
       type: "ADD_UNIT_MAX_HEALTH",
       doubleForUnitName: "Yetis"
     });
-    expect(adventureCards["specialty.eikthurn.6"].effect).toMatchObject({
+    const eikthurn6 = adventureCards["specialty.eikthurn.6"].effect as { options: { effect: unknown }[] };
+    expect(eikthurn6.options[0].effect).toMatchObject({
       type: "CREATE_INITIATIVE_BUFF",
-      doubleForUnitName: "Yetis"
+      doubleForUnitName: "Yetis",
+      movementBonus: 1
     });
   });
 });
