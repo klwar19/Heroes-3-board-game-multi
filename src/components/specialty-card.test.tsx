@@ -3,7 +3,8 @@ import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { SpecialtyCard } from "./specialty-card";
-import { canRenderSpecialtyCard, parseSpecialtyCardId, specialtyEffectText } from "./specialty-card-data";
+import { canRenderSpecialtyCard, parseSpecialtyCardId, specialtyEffectText, specialtyIconSrc } from "./specialty-card-data";
+import { cardZoomContent } from "./table/zoom";
 
 afterEach(cleanup);
 
@@ -43,6 +44,23 @@ describe("specialtyEffectText", () => {
 
   it("returns empty (no throw) for an unknown id", () => {
     expect(specialtyEffectText("__none__")).toBe("");
+  });
+});
+
+describe("hero-board / zoom wiring", () => {
+  it("specialtyIconSrc gives the symbol for art-less specialties, undefined otherwise", () => {
+    expect(specialtyIconSrc("specialty.dhuin.4")).toContain("units-bulwark-snow_elves-portrait.webp");
+    expect(specialtyIconSrc("specialty.kriv.1")).toContain("runes-emblem.webp");
+    expect(specialtyIconSrc("specialty.catherine.1")).toBeUndefined(); // a baked-art hero
+    expect(specialtyIconSrc("spell.teleport")).toBeUndefined();
+    expect(specialtyIconSrc(undefined)).toBeUndefined();
+  });
+
+  it("cardZoomContent flags an art-less specialty to render the native card on zoom", () => {
+    expect(cardZoomContent("specialty.kriv.6").specialtyCardId).toBe("specialty.kriv.6");
+    // A baked-art specialty keeps its image and does NOT use the native card.
+    expect(cardZoomContent("specialty.catherine.1").specialtyCardId).toBeUndefined();
+    expect(cardZoomContent("specialty.catherine.1").image).toBeTruthy();
   });
 });
 
