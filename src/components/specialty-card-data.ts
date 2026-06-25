@@ -90,7 +90,10 @@ export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   // Melodia's specialty IS Fortune — the actual Fortune SPELL icon
   // (scripts/fetch-fortune-icon.py), not the generic Luck skill emblem.
   melodia: "/assets/specialty-card/icon-fortune.webp", // Fortune spell icon
-  merist: "/assets/abilities-armorer.webp", // Stone Skin (defense)
+  // Merist's specialty IS the Stone Skin spell — the actual spell icon from
+  // heroes.thelazy.net (scripts/fetch-stoneskin-haste-icons.py), not the generic
+  // Armorer skill emblem.
+  merist: "/assets/specialty-card/icon-stone_skin.webp", // Stone Skin spell icon
   // Zilare's specialty IS Forgetfulness — the actual Forgetfulness SPELL icon
   // (scripts/fetch-forgetfulness-scouting-icons.py), not the generic Air-Magic emblem.
   zilare: "/assets/specialty-card/icon-forgetfulness.webp", // Forgetfulness spell icon
@@ -98,7 +101,10 @@ export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   // (heroes.thelazy.net, scripts/fetch-bloodlust-icon.py) — not the generic
   // Offense secondary-skill emblem (abilities-offense.webp) he used to borrow.
   ash: "/assets/specialty-card/icon-bloodlust.webp", // Bloodlust spell icon
-  cyra: "/assets/abilities-air_magic.webp" // Haste (Air spell, speed)
+  // Cyra's specialty IS the Haste spell — the actual spell icon from
+  // heroes.thelazy.net (scripts/fetch-stoneskin-haste-icons.py), not the generic
+  // Air-Magic skill emblem.
+  cyra: "/assets/specialty-card/icon-haste.webp" // Haste spell icon
 };
 
 /** Border texture + Roman numeral per specialty level, mirroring the source CSS. */

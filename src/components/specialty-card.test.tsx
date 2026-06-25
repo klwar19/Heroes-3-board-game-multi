@@ -122,6 +122,22 @@ describe("hero-board / zoom wiring", () => {
     // Sephinroth shows the Valuables resource icon, not the generic Estates emblem.
     expect(specialtyIconSrc("specialty.sephinroth.1")).toContain("icon-valuables.webp");
     expect(specialtyIconSrc("specialty.sephinroth.6")).not.toContain("abilities-estates");
+    // Merist (Stone Skin) and Cyra (Haste) show their actual SPELL icons, not the
+    // generic Armorer / Air-Magic emblems they used to borrow.
+    expect(specialtyIconSrc("specialty.merist.1")).toContain("icon-stone_skin.webp");
+    expect(specialtyIconSrc("specialty.merist.6")).not.toContain("abilities-armorer");
+    expect(specialtyIconSrc("specialty.cyra.1")).toContain("icon-haste.webp");
+    expect(specialtyIconSrc("specialty.cyra.6")).not.toContain("abilities-air_magic");
+    // Invariant: no native (art-less) spell specialist falls back to a generic
+    // secondary-skill emblem — each must point at a real spell icon.
+    for (const slug of [
+      "ash", "astra", "ciele", "cyra", "glacius", "luna", "melodia", "merist",
+      "zilare", "septienna",
+    ]) {
+      const src = specialtyIconSrc(`specialty.${slug}.1`);
+      expect(src, `${slug} should use a spell icon`).toContain("/assets/specialty-card/icon-");
+      expect(src, `${slug} must not use a generic abilities-* emblem`).not.toContain("/assets/abilities-");
+    }
     expect(specialtyIconSrc("specialty.catherine.1")).toBeUndefined(); // a baked-art hero
     expect(specialtyIconSrc("spell.teleport")).toBeUndefined();
     expect(specialtyIconSrc(undefined)).toBeUndefined();
