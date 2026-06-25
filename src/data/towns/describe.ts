@@ -67,7 +67,11 @@ export function describeBuildingEffect(building: TownBuildingDefinition): string
     case "THIEVES_GUILD":
       return "Once during your turn, choose any one deck in the game (a shared deck, or any player's Might & Magic deck — your own or an opponent's), look at its top 2 cards, then put one of them on that deck's discard pile and the other back on top.";
     case "RUNE_ALTAR":
-      return `Bulwark Runes: your Hero starts every combat with ${effect.startingRunes} Rune${effect.startingRunes === 1 ? "" : "s"}, and you may reach up to Rune Level ${effect.levelCap} (Level 1 = +1 Attack, Level 2 = +1 Defense, Level 3 = +3 Initiative to all your units). Earn more Runes in battle: Attack +1, Retaliate +2, Defend +3.`;
+      return `Bulwark Runes: raises your maximum Rune Level to ${effect.levelCap}${
+        effect.startingRunes > 0
+          ? ` and starts each combat with ${effect.startingRunes} Rune${effect.startingRunes === 1 ? "" : "s"}`
+          : ""
+      }. Level 1 = +1 Attack, Level 2 = +1 Defense, Level 3 = +3 Initiative to all your units. Current house rule for earning Runes in battle: Attack +1, Retaliate +1, Defend +2.`;
     case "NOT_IMPLEMENTED":
       return effect.note;
     default:

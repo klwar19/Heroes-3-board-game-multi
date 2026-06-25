@@ -135,6 +135,31 @@ describe("TownPanel — in-place special-building effect / use buttons", () => {
     expect(panel.textContent).toMatch(/Resource round/i);
   });
 
+  it("describes Bulwark rune buildings as cap raisers with the house-rule rune gain rates", () => {
+    const { state } = townWith("bulwark", ["bulwark.sieidi", "bulwark.altar"]);
+    render(<TownPanel legalActions={getLegalActions(state, "p1")} onAction={vi.fn()} state={state} viewerPlayerId="p1" />);
+
+    const sieidi = openPanel("Sieidi of the Runes");
+    expect(sieidi.textContent).toMatch(/maximum Rune Level to 2/i);
+    expect(sieidi.textContent).toMatch(/Current house rule/i);
+    expect(sieidi.textContent).toMatch(/Attack \+1, Retaliate \+1, Defend \+2/i);
+    expect(sieidi.textContent).not.toMatch(/starts every combat with 0 Runes/i);
+
+    const altar = openPanel("Altar of the Runes");
+    expect(altar.textContent).toMatch(/maximum Rune Level to 3/i);
+    expect(altar.textContent).toMatch(/\+3 Initiative/i);
+  });
+
+  it("shows Bulwark City Hall's Rune-Empowered Resource-round option in town UI", () => {
+    const { state } = townWith("bulwark", ["bulwark.city_hall"]);
+    render(<TownPanel legalActions={getLegalActions(state, "p1")} onAction={vi.fn()} state={state} viewerPlayerId="p1" />);
+
+    const panel = openPanel("City Hall");
+    expect(panel.textContent).toMatch(/Rune-Empowered/i);
+    expect(panel.textContent).toMatch(/\+3 starting Runes/i);
+    expect(panel.textContent).toMatch(/until next Resource round/i);
+  });
+
   it("explains the Cove Thieves' Guild and dispatches a chosen deck peek", () => {
     const { state } = townWith("cove", ["cove.thieves_guild"]);
     const onAction = vi.fn();

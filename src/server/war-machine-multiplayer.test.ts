@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import GameRoomServer, { type RoomSnapshot } from "../../party/index";
 import { getRoomSnapshot, restoreRoom, submitRoomAction, subscribeToRoom } from "./game-room-store";
 import { createInitialGameState } from "@/engine";
+import { RUNE_GAIN_DEFEND } from "@/engine/runes";
 import { WAR_MACHINE_CARD_IDS } from "@/data/cards/permanents";
 import type { GameState } from "@/engine";
 
@@ -245,6 +246,54 @@ describe("In-process room store — war machine fire notifies every subscriber",
     for (const updates of [client1, client2]) {
       expect(updates.length).toBeGreaterThan(0);
       expect(updates.at(-1)!.combat!.units.unit_p2_dread_knights.damage).toBe(1);
+    }
+
+    unsub1();
+    unsub2();
+  });
+
+  it("seat-gates a hosted Bulwark Defend action and broadcasts the earned Runes", () => {
+    const roomId = `store-bulwark-runes-${Math.random().toString(36).slice(2)}`;
+    getRoomSnapshot(roomId);
+
+    const seed = pvpCombatState(roomId);
+    seed.players.p1.factionId = "bulwark";
+    seed.towns.town_p1.factionId = "bulwark";
+    seed.activePlayerId = "p1";
+    seed.combat!.activeUnitId = "unit_p1_marksmen";
+    restoreRoom(roomId, seed);
+
+    submitRoomAction(roomId, { type: "JOIN_ROOM", clientId: "c1", name: "P1" });
+    submitRoomAction(roomId, { type: "JOIN_ROOM", clientId: "c2", name: "P2" });
+    submitRoomAction(roomId, { type: "SET_ROOM_HOSTED", clientId: "c1", hosted: true });
+    submitRoomAction(roomId, { type: "ASSIGN_SEAT", clientId: "c1", targetClientId: "c1", seat: "p1" });
+    submitRoomAction(roomId, { type: "ASSIGN_SEAT", clientId: "c1", targetClientId: "c2", seat: "p2" });
+
+    const client1: GameState[] = [];
+    const client2: GameState[] = [];
+    const unsub1 = subscribeToRoom(roomId, (snapshot) => client1.push(snapshot.state));
+    const unsub2 = subscribeToRoom(roomId, (snapshot) => client2.push(snapshot.state));
+
+    const blocked = submitRoomAction(
+      roomId,
+      { type: "DEFEND_UNIT", playerId: "p1", unitId: "unit_p1_marksmen" },
+      "c2"
+    );
+    expect(blocked.result.errors.map((error) => error.message).join("; ")).toContain("Seats are locked");
+    expect(client1).toHaveLength(0);
+    expect(client2).toHaveLength(0);
+
+    const allowed = submitRoomAction(
+      roomId,
+      { type: "DEFEND_UNIT", playerId: "p1", unitId: "unit_p1_marksmen" },
+      "c1"
+    );
+    expect(allowed.result.errors).toEqual([]);
+    expect(allowed.snapshot.state.combat!.runes?.p1?.count).toBe(RUNE_GAIN_DEFEND);
+
+    for (const updates of [client1, client2]) {
+      expect(updates.length).toBeGreaterThan(0);
+      expect(updates.at(-1)!.combat!.runes?.p1?.count).toBe(RUNE_GAIN_DEFEND);
     }
 
     unsub1();

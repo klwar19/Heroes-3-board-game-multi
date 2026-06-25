@@ -4,11 +4,11 @@ import { appendEvent } from "./events";
 import type { ActiveEffectModifier, CombatUnitState, GameState, PlayerId } from "./state";
 
 /**
- * Bulwark "Runes" — the faction's unique combat mechanic, transcribed from
- * Gamefound Update #3 ("Faction Focus: Bulwark") and cross-checked against the
- * PC "Runes" secondary skill (heroes.thelazy.net/Bulwark).
+ * Bulwark "Runes" — the faction's unique combat mechanic, based on Gamefound
+ * Update #3 ("Faction Focus: Bulwark") with the repo's current house-rule
+ * action gains.
  *
- * What the dev note fixes (verbatim mechanic):
+ * Current house rule:
  *  - During a battle, whenever a Bulwark player's unit ACTS it earns that player
  *    Runes: Attack -> +1, Retaliate -> +1, Defend -> +2.
  *  - The accumulated Rune total pushes the player up Rune LEVELS, each granting a
@@ -36,6 +36,9 @@ import type { ActiveEffectModifier, CombatUnitState, GameState, PlayerId } from 
  *    The Sieidi/Altar buildings carry startingRunes: 0 (max-level raisers, not
  *    pre-chargers); the City Hall flag is the head-start path (see core.ts
  *    RUNE_ALTAR buildings + the bulwark.city_hall option).
+ *  - action-gain values are intentionally house-ruled for now. If the official
+ *    +1/+2/+3 rate is adopted later, update these constants, tests and UI text
+ *    together.
  *
  * Implementation note: the army-wide buff reuses the engine's existing
  * player-scoped active-effect machinery (exactly how Necklace of Swiftness /
@@ -56,7 +59,7 @@ export const RUNE_LEVEL_THRESHOLDS = [4, 7, 10] as const;
 /** No point banking past Level 3 — Runes cap at the top threshold. */
 export const RUNE_MAX = RUNE_LEVEL_THRESHOLDS[RUNE_LEVEL_THRESHOLDS.length - 1];
 
-/** Runes a Bulwark unit's action earns its controller (Gamefound Update #3). */
+/** House-rule Runes a Bulwark unit's action earns its controller. */
 export const RUNE_GAIN_ATTACK = 1;
 export const RUNE_GAIN_RETALIATION = 1;
 export const RUNE_GAIN_DEFEND = 2;
@@ -107,21 +110,25 @@ export function isBulwarkPlayer(state: GameState, playerId: PlayerId | undefined
  * board's rune buildings are cap-raisers, not pre-chargers, so startingRunes is
  * 0 — the player must EARN the climb to the unlocked level by acting in battle.
  * Without any rune building a Bulwark player is capped at Level 1 (the base
- * faction mechanic), so the cap floor is 1. The Altar supersedes the Sieidi
- * (same tile), so the strongest rune building present wins.
+ * faction mechanic), so the cap floor is 1. The strongest controlled rune
+ * building wins, even if the player controls several towns.
  */
 export function runeBuildingInfo(
   state: GameState,
   playerId: PlayerId
 ): { startingRunes: number; levelCap: number } {
-  const town = Object.values(state.towns).find((candidate) => candidate.controllerId === playerId) ?? null;
   let startingRunes = 0;
   let levelCap = 1;
-  for (const buildingId of town?.buildings ?? []) {
-    const effect = coreBuildingDefinitions[buildingId]?.effect;
-    if (effect?.type === "RUNE_ALTAR") {
-      startingRunes = Math.max(startingRunes, effect.startingRunes);
-      levelCap = Math.max(levelCap, effect.levelCap);
+  for (const town of Object.values(state.towns)) {
+    if (town.controllerId !== playerId) {
+      continue;
+    }
+    for (const buildingId of town.buildings ?? []) {
+      const effect = coreBuildingDefinitions[buildingId]?.effect;
+      if (effect?.type === "RUNE_ALTAR") {
+        startingRunes = Math.max(startingRunes, effect.startingRunes);
+        levelCap = Math.max(levelCap, effect.levelCap);
+      }
     }
   }
   return { startingRunes, levelCap };
