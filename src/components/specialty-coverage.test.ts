@@ -4,7 +4,12 @@ import { describe, expect, it } from "vitest";
 
 import { cardLibrary } from "@/data/cards/library";
 import { coreHeroDefinitions } from "@/data/factions/core";
-import { SPECIALTY_ICON_BY_HERO, canRenderSpecialtyCard, parseSpecialtyCardId } from "./specialty-card-data";
+import {
+  SPECIALTY_ICON_BY_HERO,
+  canRenderSpecialtyCard,
+  parseSpecialtyCardId,
+  specialtyEffectText
+} from "./specialty-card-data";
 
 const PUBLIC = join(process.cwd(), "public");
 const assetPath = (url: string) => join(PUBLIC, url.replace(/^\//u, ""));
@@ -49,6 +54,23 @@ describe("hero specialty card coverage", () => {
     }
     expect(missingIcon, `art-less heroes with no specialty symbol: ${missingIcon.join(", ")}`).toEqual([]);
     expect(missingFile, `specialty symbols whose file is missing: ${missingFile.join(", ")}`).toEqual([]);
+  });
+
+  it("every natively-rendered specialty has non-empty effect text (no blank card body)", () => {
+    // A native specialty card shows name + EFFECT TEXT + portrait. If a hero's
+    // helper carries neither a prose tag nor CHOOSE_ONE labels, specialtyEffectText
+    // returns "" and the card body is blank — the bug behind the Harpies card. This
+    // guards every art-less specialty against that at once.
+    const blank: string[] = [];
+    for (const id of specialtyCardIds()) {
+      if (!canRenderSpecialtyCard(id)) {
+        continue;
+      }
+      if (!specialtyEffectText(id).trim()) {
+        blank.push(id);
+      }
+    }
+    expect(blank, `natively-rendered specialties with blank effect text: ${blank.join(", ")}`).toEqual([]);
   });
 
   it("every specialty scan (assets.cardImage) points at a file that exists on disk", () => {
