@@ -70,9 +70,12 @@ export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   kriv: "/assets/runes-emblem.webp", // Rune specialist — our own emblem
   // --- Skill / war-machine / spell-themed specialists: the matching printed
   // secondary-skill icon (public/assets/abilities-<skill>.webp) -------------
-  tarnum_castle: "/assets/abilities-artillery.webp", // Ballista
-  gerwulf: "/assets/abilities-artillery.webp", // Ballista
-  torosar: "/assets/abilities-artillery.webp", // Ballista
+  // Ballista specialists show the actual Ballista war-machine battle sprite
+  // (scripts/fetch-ballista-icon.py), like Jeremy's Cannon — not the generic
+  // Artillery secondary-skill emblem they used to borrow.
+  tarnum_castle: "/assets/specialty-card/icon-ballista.webp", // Ballista
+  gerwulf: "/assets/specialty-card/icon-ballista.webp", // Ballista
+  torosar: "/assets/specialty-card/icon-ballista.webp", // Ballista
   miriam: "/assets/abilities-scouting.webp", // Scouting
   sephinroth: "/assets/abilities-estates.webp", // Valuables (resources)
   // Octavia's specialty IS Gold — the game's own gold-coins icon, cut out of the

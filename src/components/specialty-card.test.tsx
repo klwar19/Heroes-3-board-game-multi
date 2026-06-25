@@ -93,6 +93,11 @@ describe("hero-board / zoom wiring", () => {
     // Melodia's specialty IS Fortune — the Fortune SPELL icon, not the Luck emblem.
     expect(specialtyIconSrc("specialty.melodia.1")).toContain("icon-fortune.webp");
     expect(specialtyIconSrc("specialty.melodia.4")).not.toContain("abilities-luck");
+    // Ballista specialists show the Ballista war machine, not the Artillery emblem.
+    expect(specialtyIconSrc("specialty.torosar.1")).toContain("icon-ballista.webp");
+    expect(specialtyIconSrc("specialty.gerwulf.4")).toContain("icon-ballista.webp");
+    expect(specialtyIconSrc("specialty.tarnum_castle.6")).toContain("icon-ballista.webp");
+    expect(specialtyIconSrc("specialty.torosar.1")).not.toContain("abilities-artillery");
     expect(specialtyIconSrc("specialty.catherine.1")).toBeUndefined(); // a baked-art hero
     expect(specialtyIconSrc("spell.teleport")).toBeUndefined();
     expect(specialtyIconSrc(undefined)).toBeUndefined();
