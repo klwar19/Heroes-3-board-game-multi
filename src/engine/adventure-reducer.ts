@@ -92,8 +92,8 @@ import {
   type NeutralDraw
 } from "./adventure";
 import { ATTACK_DIE_FACES } from "./battlefield";
-import { pvpEscapeWindowOpen } from "./combat-units";
-import { makeActiveEffect, playerCannotSurrenderCombat } from "./active-effects";
+import { appendExpiredEffectEvents, pvpEscapeWindowOpen } from "./combat-units";
+import { expireEffectsForCombatEnd, makeActiveEffect, playerCannotSurrenderCombat } from "./active-effects";
 import { assignCombatBoardArt } from "./combat-board-art";
 import { cardCanBoostPower } from "./effects";
 import { createSeededRandom } from "./random";
@@ -4516,6 +4516,14 @@ export function finalizeAdventureCombat(state: GameState): void {
 
   const context = combat.context;
   const outcome = combat.outcome;
+
+  // Combat is over: discard every combat-scoped active effect now. A fought-out
+  // win already expired them when the last unit fell (finishCombatIfNeeded), but
+  // a Retreat / Surrender / Give-up ends the battle by setting `outcome` WITHOUT
+  // that path — so without this, player-scoped combat buffs (Bulwark Runes) would
+  // leak in `state.activeEffects` and the NEXT combat would stack on top of them.
+  // Idempotent: a no-op when nothing combat-scoped remains.
+  appendExpiredEffectEvents(state, expireEffectsForCombatEnd(state), "combat-ended");
 
   // No casualties are applied to a player-vs-player fight when either the
   // lobby's "Keep troops" mode is on, or this was a Surrender (house rule: a

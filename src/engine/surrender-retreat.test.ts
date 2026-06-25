@@ -7,6 +7,8 @@ import {
   getMainHero
 } from "./index";
 import { finalizeAdventureCombat } from "./adventure-reducer";
+import { gainRunes, seedRunesForCombat } from "./runes";
+import { getActiveAttackBonus } from "./active-effects";
 import { ATTACK_DIE_FACES } from "./battlefield";
 import type { CombatState, CombatUnitState, GameState, MapFieldState, PlayerId } from "./state";
 
@@ -263,6 +265,54 @@ describe("Retreat / fought-out loss (house rule): a real defeat", () => {
     expect(getMainHero(state, winnerId)!.experience).toBeGreaterThan(winnerXpBefore);
     expect(state.players[winnerId].necromancyWindow).toBe(true);
   });
+});
+
+describe("Combat-scoped effects do not leak past a Retreat/Surrender (Bulwark Runes)", () => {
+  // A fought-out win expires combat effects when the last unit falls
+  // (finishCombatIfNeeded); a Retreat/Surrender/Give-up ends the battle by
+  // setting `outcome` without that path. finalizeAdventureCombat must expire
+  // them too, or a player-scoped Bulwark Rune buff would survive into the NEXT
+  // combat and the seed would stack a second copy — the reported "+1 twice".
+  function makeBulwarkGame(): GameState {
+    return createAdventureGameState({
+      seed: "rune-leak",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      victoryMode: "conquest",
+      pvpTroopLoss: "none", // keep both armies so the only thing under test is the effect
+      players: [
+        { id: "p1", name: "Kriv", factionId: "bulwark", heroDefId: "kriv" },
+        { id: "p2", name: "Alamar", factionId: "dungeon", heroDefId: "alamar" }
+      ]
+    });
+  }
+
+  for (const reason of ["retreat", "surrender"] as const) {
+    it(`a ${reason} clears the Bulwark player's army-wide Rune buff (no leak into the next combat)`, () => {
+      const state = makeBulwarkGame();
+      stageFinishedPvpFight(state, reason);
+      // p2 holds the 10-gold surrender toll so the staged outcome is legal to settle.
+      state.players.p2.resources.gold = 10;
+
+      // p1 (Bulwark) earned a Rune Level this fight: a live, player-scoped +1 Attack.
+      seedRunesForCombat(state);
+      gainRunes(state, "p1", 4); // 0 → 4 = Level 1
+      const ctx = {
+        attacker: state.combat!.units.a1,
+        defender: state.combat!.units.b2,
+        attackKind: "ranged" as const
+      };
+      expect(getActiveAttackBonus(state, ctx)).toBe(1);
+      expect(state.activeEffects.some((effect) => effect.name === "Rune Power")).toBe(true);
+
+      finalizeAdventureCombat(state);
+
+      // Combat is over and torn down: the Rune buff must be gone, not lingering
+      // in state.activeEffects to double up in the next battle's seed.
+      expect(state.combat).toBeNull();
+      expect(state.activeEffects.some((effect) => effect.name === "Rune Power")).toBe(false);
+    });
+  }
 });
 
 describe("Surrender gating: a before-battle (prep) decision needing the 10-gold toll", () => {
