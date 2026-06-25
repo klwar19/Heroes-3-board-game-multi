@@ -1632,6 +1632,13 @@ export type AstrologersProclamationCue = {
   /** Lasts until the next Astrologers round (vs. resolved immediately). */
   ongoing: boolean;
   round: number;
+  /**
+   * For the forced-hand proclamations (Big Cleanup, Annoying Lizard), the
+   * result already applied to THIS viewer's hand. Shown so the player knows the
+   * mandatory discard has happened (and was not the optional start-of-turn
+   * draw) — i.e. that it could not be skipped.
+   */
+  reshuffle?: { discarded: number; drawn: number };
 };
 
 /**
@@ -1698,6 +1705,13 @@ export function AstrologersProclamationOverlay({
             {cue.expansion} · {cue.ongoing ? "active until the next Astrologers round" : "resolved now"}
           </span>
           <p>{cue.text}</p>
+          {cue.reshuffle ? (
+            <p className="astrologersProclaimForced">
+              ✔ Forced &amp; already applied — your hand ({cue.reshuffle.discarded}) was discarded and{" "}
+              {cue.reshuffle.drawn} new card{cue.reshuffle.drawn === 1 ? "" : "s"} drawn. It could not be skipped.
+              The “draw new” below is your separate, normal start-of-turn draw.
+            </p>
+          ) : null}
           <button className="commandButton primary" onClick={onDone} type="button">
             Understood
           </button>

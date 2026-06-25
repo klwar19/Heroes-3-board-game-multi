@@ -1012,6 +1012,23 @@ export default function Home() {
         const card = activeCardId ? astrologersCardDefinitions[activeCardId] : undefined;
         if (activeCardId && card && seenAstrologerRoundRef.current !== round) {
           seenAstrologerRoundRef.current = round;
+          // Big Cleanup / Annoying Lizard force a hand change BETWEEN turns: surface
+          // the viewer's own result on the card so the mandatory discard reads as
+          // done-and-unskippable, not as the optional start-of-turn draw. The most
+          // recent matching event is this round's resolution.
+          let reshuffle: { discarded: number; drawn: number } | undefined;
+          for (let i = nextState.eventLog.length - 1; i >= 0; i -= 1) {
+            const logEvent = nextState.eventLog[i];
+            if (
+              logEvent.type === "ASTROLOGERS_HAND_RESHUFFLED" &&
+              logEvent.round === round &&
+              logEvent.cardId === activeCardId &&
+              logEvent.playerId === viewerRef.current
+            ) {
+              reshuffle = { discarded: logEvent.discarded, drawn: logEvent.drawn };
+              break;
+            }
+          }
           setAstrologerCue({
             id: `astro-${round}-${activeCardId}`,
             cardId: activeCardId,
@@ -1020,7 +1037,8 @@ export default function Home() {
             image: card.image,
             expansion: card.expansion,
             ongoing: card.ongoing,
-            round
+            round,
+            ...(reshuffle ? { reshuffle } : {})
           });
         }
       }
