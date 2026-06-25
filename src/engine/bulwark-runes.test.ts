@@ -411,6 +411,34 @@ describe("Bulwark Runes — starting pool (earned in battle; City Hall flag head
     expect(effectiveRuneLevel(flagged, "p1")).toBe(1);
   });
 
+  it("re-seeding is IDEMPOTENT — a leaked Rune buff is never stacked into a second +Attack", () => {
+    // The user-reported double-buff: a Level-2 unit reading base + 1 + 1 Attack.
+    // Root cause — a Rune buff that survived from a prior combat (a Retreat /
+    // Surrender ends combat WITHOUT expiring combat-scoped effects, see the
+    // finalizeAdventureCombat test) was found in state.activeEffects when the
+    // NEXT combat seeded, and the seed stacked a fresh copy on top. seeding must
+    // rebuild EXACTLY one set of buffs, so the army-wide +Attack stays +1.
+    const state = bulwarkState();
+    state.towns.town_p1.buildings.push("bulwark.sieidi"); // cap 2
+    state.combat!.attackerPlayerId = "p1";
+    state.combat!.defenderPlayerId = "p2";
+    state.players.p1.runeEmpoweredNextCombats = RUNE_LEVEL_THRESHOLDS[1]; // 7 → seeds straight to Level 2
+
+    seedRunesForCombat(state);
+    const unit = state.combat!.units.unit_p1_marksmen;
+    const ctx = { attacker: unit, defender: state.combat!.units.unit_p2_skeletons, attackKind: "ranged" as const };
+    expect(getActiveAttackBonus(state, ctx)).toBe(1);
+    expect(getActiveDefenseBonus(state, unit)).toBe(1);
+
+    // Seed AGAIN with the Level-1/2 buffs already live (the leak scenario): the
+    // bonuses must NOT double to +2 — exactly one Rune Power / Rune Ward remains.
+    seedRunesForCombat(state);
+    expect(getActiveAttackBonus(state, ctx)).toBe(1); // not 2 — the reported bug
+    expect(getActiveDefenseBonus(state, unit)).toBe(1); // not 2
+    expect(state.activeEffects.filter((effect) => effect.name === "Rune Power")).toHaveLength(1);
+    expect(state.activeEffects.filter((effect) => effect.name === "Rune Ward")).toHaveLength(1);
+  });
+
   it("the Sieidi/Altar buildings RAISE THE MAX LEVEL but do NOT pre-charge Runes (anti-decorative)", () => {
     // The original design seeded base 4 + Altar baseline 6 = 10 → started at the
     // Level 3 cap, making the earn-by-acting loop, Kriv and the City Hall option

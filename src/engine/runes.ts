@@ -78,6 +78,25 @@ const RUNE_LEVEL_EFFECTS: { name: string; modifier: ActiveEffectModifier }[] = [
   { name: "Rune Swiftness", modifier: { type: "INITIATIVE_BONUS", amount: RUNE_LEVEL_BONUS.initiative } }
 ];
 
+/** The names of every army-wide Rune buff — the set this module owns and clears. */
+const RUNE_EFFECT_NAMES = new Set(RUNE_LEVEL_EFFECTS.map((spec) => spec.name));
+
+/**
+ * Strips a player's army-wide Rune buffs out of `state.activeEffects`. Used to
+ * make seeding idempotent: a Rune buff that leaked from a PRIOR combat (a
+ * Retreat/Surrender/Give-up ends combat without expiring combat-scoped effects)
+ * is cleared before the new battle re-seeds, so a second copy is never stacked
+ * on top — the "+1 Attack applied twice" double-buff. Identified by the buff
+ * NAME + the player scope + owner, exactly how the engine and tests recognise
+ * them; the freshly-seeded set is rebuilt immediately after by syncRuneEffects.
+ */
+function clearRuneEffects(state: GameState, playerId: PlayerId): void {
+  state.activeEffects = state.activeEffects.filter(
+    (effect) =>
+      !(effect.scope === "player" && effect.controllerId === playerId && RUNE_EFFECT_NAMES.has(effect.name))
+  );
+}
+
 export function isBulwarkPlayer(state: GameState, playerId: PlayerId | undefined): boolean {
   return Boolean(playerId) && state.players[playerId as PlayerId]?.factionId === "bulwark";
 }
@@ -197,6 +216,11 @@ export function seedRunesForCombat(state: GameState): void {
     if (!isBulwarkPlayer(state, playerId)) {
       continue;
     }
+    // Idempotent seed: drop any Rune buff still hanging around from a prior
+    // battle (or a double-entered setup) so we rebuild the army-wide buffs from
+    // scratch instead of stacking a second +Attack/+Defense on top. Without this
+    // a leaked Level-1 buff makes a Level-2 unit read base+1+1 Attack.
+    clearRuneEffects(state, playerId);
     const { startingRunes } = runeBuildingInfo(state, playerId);
     const flagBonus = state.players[playerId]?.runeEmpoweredNextCombats ?? 0;
     const count = Math.min(RUNE_MAX, RUNE_STARTING_BASE + startingRunes + flagBonus);
