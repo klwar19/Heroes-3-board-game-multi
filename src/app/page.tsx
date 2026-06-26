@@ -3292,13 +3292,9 @@ export default function Home() {
               {isSeated ? (
                 <>
                   <HeroBoard playerId={viewerPlayerId} state={state} />
-                  <PermanentSlot
-                    legalActions={legalActions}
-                    onAction={submitAction}
-                    playerId={viewerPlayerId}
-                    state={state}
-                    viewerPlayerId={viewerPlayerId}
-                  />
+                  {/* The seated viewer's own permanent(s) now live in the card
+                      tray under the map (next to the deck/discard) so the
+                      permanent effect reads clearly while on the map. */}
                   <TownPanel
                     legalActions={legalActions}
                     onAction={submitAction}
@@ -3321,11 +3317,23 @@ export default function Home() {
 
           {isSeated ? (
             <div className={`adventureHand ${selecting ? "refreshing" : ""}`} aria-label="Your hand">
-              <AdventureOwnDeck
-                onShowPile={(title, cardIds, kind) => setPile({ title, cardIds, kind })}
-                view={playerView}
-                viewerPlayerId={viewerPlayerId}
-              />
+              <div className="ownDeckColumn">
+                <AdventureOwnDeck
+                  onShowPile={(title, cardIds, kind) => setPile({ title, cardIds, kind })}
+                  view={playerView}
+                  viewerPlayerId={viewerPlayerId}
+                />
+                {/* Permanent(s) in play — shown here in the card tray so the
+                    effect is clearly readable while on the map. */}
+                <PermanentSlot
+                  legalActions={legalActions}
+                  onAction={submitAction}
+                  playerId={viewerPlayerId}
+                  state={state}
+                  viewerPlayerId={viewerPlayerId}
+                />
+              </div>
+              <div className="handArea">
               {spellBookOn ? (
                 <div className={`spellBookPanel ${spellBookCards.length === 0 ? "empty" : ""}`}>
                   <button
@@ -3670,6 +3678,7 @@ export default function Home() {
                     </div>
                   );
                 })}
+              </div>
               </div>
             </div>
           ) : null}
