@@ -780,22 +780,26 @@ describe("BattlefieldBoard — siege fortification art", () => {
     );
   }
 
-  it("draws each Wall column as masonry art (not bare emoji)", () => {
+  it("draws each Wall column with the printed Wall card scan (not bare emoji)", () => {
     renderSiege(siegeState());
     for (const wall of [8, 10, 11]) {
       const cell = document.querySelector(`[data-fx-cell="${wall}"] .fortMark.wall`);
       expect(cell, `Wall art should render on cell ${wall}`).toBeTruthy();
-      expect(cell!.querySelector("svg.fortArt"), `Wall ${wall} should draw the SVG masonry`).toBeTruthy();
+      const img = cell!.querySelector<HTMLImageElement>("img.fortCardImg");
+      expect(img, `Wall ${wall} should draw the printed card`).toBeTruthy();
+      expect(img!.getAttribute("src")).toContain("structures-wall.webp");
       expect(cell!.textContent).toContain("Wall");
       expect(cell!.textContent ?? "").not.toContain("🧱");
     }
   });
 
-  it("draws the Gate column as a portcullis (SVG, not emoji)", () => {
+  it("draws the Gate column with the printed Gate card scan (not emoji)", () => {
     renderSiege(siegeState("board-siege-gate"));
     const gate = document.querySelector('[data-fx-cell="9"] .fortMark.gate');
     expect(gate, "Gate art should render on cell 9").toBeTruthy();
-    expect(gate!.querySelector("svg.fortArt"), "the Gate should draw the portcullis SVG").toBeTruthy();
+    const img = gate!.querySelector<HTMLImageElement>("img.fortCardImg");
+    expect(img, "the Gate should draw the printed card").toBeTruthy();
+    expect(img!.getAttribute("src")).toContain("structures-gate.webp");
     expect(gate!.textContent).toContain("Gate");
     expect(gate!.textContent ?? "").not.toContain("🚪");
   });
@@ -810,5 +814,34 @@ describe("BattlefieldBoard — siege fortification art", () => {
     // The live health line still rides alongside the static card (♥ current/max).
     expect(tower!.textContent ?? "").toContain("♥");
     expect(tower!.textContent ?? "").not.toContain("🏹");
+  });
+
+  // "Proper remove when destroyed": the board reads the live siege state, so a
+  // felled Wall/Gate stops rendering its card and a collapsed Tower's card is
+  // gone — the cell reverts to plain terrain, ready to be walked through.
+  it("removes the Wall/Gate card art the moment the fortification is destroyed", () => {
+    const state = siegeState("board-siege-destroyed");
+    // Knock down Wall 8 and the Gate (9); Walls 10 and 11 still stand.
+    state.combat!.siege = { townPlayerId: "p2", walls: [10, 11], gatePosition: null, arrowTowerUnitId: "siege_tower" };
+    renderSiege(state);
+
+    // The destroyed cells carry no fortification mark at all.
+    expect(document.querySelector('[data-fx-cell="8"] .fortMark')).toBeNull();
+    expect(document.querySelector('[data-fx-cell="9"] .fortMark')).toBeNull();
+    expect(document.querySelector('[data-fx-cell="8"].fortification')).toBeNull();
+    expect(document.querySelector('[data-fx-cell="9"].fortification')).toBeNull();
+    // The surviving Walls still render their card.
+    expect(
+      document.querySelector('[data-fx-cell="10"] .fortMark.wall img.fortCardImg'),
+      "a standing Wall keeps its card"
+    ).toBeTruthy();
+  });
+
+  it("removes the Arrow Tower card once the tower has collapsed", () => {
+    const state = siegeState("board-siege-tower-gone");
+    // Full breach: no walls, no gate, tower removed (arrowTowerUnitId cleared).
+    state.combat!.siege = { townPlayerId: "p2", walls: [], gatePosition: null, arrowTowerUnitId: null };
+    renderSiege(state);
+    expect(document.querySelector(".arrowTower"), "the collapsed tower's card is gone").toBeNull();
   });
 })

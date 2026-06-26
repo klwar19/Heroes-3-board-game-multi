@@ -405,49 +405,13 @@ function BattlefieldTokenMark({
 }
 
 /**
- * Siege fortification art. The board game ships printed Wall / Gate / Arrow
- * Tower cards; this is the made-up stand-in until those scans are added —
- * crisp inline SVG (crenellated stonework, a portcullis, a battlemented tower)
- * so the fortification line reads as masonry, not a row of emoji. Purely
- * decorative: the `<small>` label and the cell `title` carry the meaning.
+ * Arrow Tower fallback art. The real printed Arrow Tower scan
+ * (structures-arrow_tower.webp) is the tower's `cardImage`; this hand-drawn
+ * SVG (a battlemented tower with an arrow slit) only shows if that asset is
+ * missing. The Wall and Gate cells render their own printed-card scans
+ * (structures-wall / structures-gate .webp) directly. Purely decorative: the
+ * `<small>` label and the cell `title` carry the meaning.
  */
-function WallArt() {
-  return (
-    <svg className="fortArt" viewBox="0 0 40 34" aria-hidden="true" focusable="false" preserveAspectRatio="xMidYMid meet">
-      <path d="M2 11 V4 h6 v7 h6 V4 h6 v7 h6 V4 h6 v7 Z" fill="#7e6a46" stroke="#2f2516" strokeWidth="1.2" />
-      <rect x="2" y="11" width="36" height="21" fill="#6c5a3c" stroke="#2f2516" strokeWidth="1.2" />
-      <g stroke="#4a3c26" strokeWidth="1.2" strokeLinecap="round">
-        <line x1="2" y1="18" x2="38" y2="18" />
-        <line x1="2" y1="25" x2="38" y2="25" />
-        <line x1="14" y1="11" x2="14" y2="18" />
-        <line x1="26" y1="11" x2="26" y2="18" />
-        <line x1="8" y1="18" x2="8" y2="25" />
-        <line x1="20" y1="18" x2="20" y2="25" />
-        <line x1="32" y1="18" x2="32" y2="25" />
-        <line x1="14" y1="25" x2="14" y2="32" />
-        <line x1="26" y1="25" x2="26" y2="32" />
-      </g>
-    </svg>
-  );
-}
-
-function GateArt() {
-  return (
-    <svg className="fortArt" viewBox="0 0 40 34" aria-hidden="true" focusable="false" preserveAspectRatio="xMidYMid meet">
-      <path d="M2 11 V4 h6 v7 h6 V4 h6 v7 h6 V4 h6 v7 Z" fill="#7e6a46" stroke="#2f2516" strokeWidth="1.2" />
-      <rect x="2" y="11" width="36" height="21" fill="#6c5a3c" stroke="#2f2516" strokeWidth="1.2" />
-      <path d="M12 32 V21 a8 8 0 0 1 16 0 V32 Z" fill="#241a0f" stroke="#2f2516" strokeWidth="1.2" />
-      <g stroke="#e0bd6a" strokeWidth="1.5" strokeLinecap="round">
-        <line x1="16" y1="15" x2="16" y2="32" />
-        <line x1="20" y1="13" x2="20" y2="32" />
-        <line x1="24" y1="15" x2="24" y2="32" />
-        <line x1="13" y1="21" x2="27" y2="21" />
-        <line x1="12" y1="27" x2="28" y2="27" />
-      </g>
-    </svg>
-  );
-}
-
 function ArrowTowerArt() {
   return (
     <svg className="arrowTowerArt" viewBox="0 0 34 46" aria-hidden="true" focusable="false" preserveAspectRatio="xMidYMid meet">
@@ -1019,7 +983,13 @@ export function BattlefieldBoard({
               : "Wall — a combat obstacle. Adjacent ground/flying units may tear it down as their attack; defenders in its column take 1 less ranged damage.";
             const content = (
               <span className={`fortMark ${isGate ? "gate" : "wall"}`}>
-                {isGate ? <GateArt /> : <WallArt />}
+                <img
+                  alt={isGate ? "Gate card" : "Wall card"}
+                  className="fortCardImg"
+                  loading="eager"
+                  referrerPolicy="no-referrer"
+                  src={assetUrl(isGate ? "/assets/structures-gate.webp" : "/assets/structures-wall.webp")}
+                />
                 <small>{isGate ? "Gate" : "Wall"}</small>
               </span>
             );
