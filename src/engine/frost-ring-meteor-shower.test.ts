@@ -236,24 +236,14 @@ describe("Deemer's Meteor Shower", () => {
     expect(damage(result, "unit_p1_griffins")).toBe(0); // out of range
   });
 
-  it("I scales by the chosen Power tier (pay 2 → 2 damage)", () => {
+  it("I scales with the Power brought: discard 2 power-source cards → 2 damage", () => {
     const state = meteorState(["specialty.deemer.1", "stat.power", "stat.power"]);
-    // Option 1 = "Deal 2 (pay 2 Power)".
-    const offered = getLegalActions(state, "p1").some(
-      (legal) =>
-        legal.action.type === "PLAY_CARD" &&
-        legal.action.cardId === "specialty.deemer.1" &&
-        legal.action.optionIndex === 1 &&
-        legal.action.target?.type === "unit" &&
-        legal.action.target.unitId === "unit_p2_skeletons"
-    );
-    expect(offered, "the pay-2 tier should be affordable with two Power cards").toBe(true);
     const result = applyOk(state, {
       type: "PLAY_CARD",
       playerId: "p1",
       cardId: "specialty.deemer.1",
       mode: "basic",
-      optionIndex: 1,
+      optionIndex: 0,
       target: { type: "unit", unitId: "unit_p2_skeletons" },
       costCardIds: ["stat.power", "stat.power"]
     });
@@ -261,15 +251,96 @@ describe("Deemer's Meteor Shower", () => {
     expect(damage(result, "unit_p2_vampires")).toBe(2);
   });
 
-  it("I's pay-2 tier is NOT offered without two Power-source cards to discard", () => {
-    const state = meteorState(["specialty.deemer.1"]);
-    const offered = getLegalActions(state, "p1").some(
-      (legal) =>
-        legal.action.type === "PLAY_CARD" &&
-        legal.action.cardId === "specialty.deemer.1" &&
-        legal.action.optionIndex === 1
+  it("I reaches max damage (Power 4 → 3) by discarding 4 power-source cards", () => {
+    const state = meteorState([
+      "specialty.deemer.1",
+      "stat.power",
+      "stat.power",
+      "stat.power",
+      "stat.power"
+    ]);
+    const result = applyOk(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "specialty.deemer.1",
+      mode: "basic",
+      optionIndex: 0,
+      target: { type: "unit", unitId: "unit_p2_skeletons" },
+      costCardIds: ["stat.power", "stat.power", "stat.power", "stat.power"]
+    });
+    expect(damage(result, "unit_p2_skeletons")).toBe(3);
+    expect(damage(result, "unit_p2_vampires")).toBe(3);
+  });
+
+  // The core bug this fix closes: a power source counts its printed Power VALUE,
+  // not as one "card". A single +2 source brings Power 2 → 2 damage, where the
+  // old count-based tier wrongly needed two separate discards. (Mutation guard:
+  // if the engine reverts to counting cards, ONE card reads as Power 1 → 1.)
+  it("I counts a power source's VALUE, not the card count (one +2 source → 2 damage)", () => {
+    const state = meteorState(["specialty.deemer.1", "stat.power.empowered"]);
+    const result = applyOk(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "specialty.deemer.1",
+      mode: "basic",
+      optionIndex: 0,
+      target: { type: "unit", unitId: "unit_p2_skeletons" },
+      costCardIds: ["stat.power.empowered"]
+    });
+    expect(damage(result, "unit_p2_skeletons")).toBe(2);
+    expect(damage(result, "unit_p2_vampires")).toBe(2);
+  });
+
+  // "Scales directly with spell power, similar to standard spells" (wiki): a
+  // standing +1 spell Power (Pandora's Bargain: Power) lifts the result so ONE
+  // discarded power source reaches Power 2 → 2 damage. This is the reported
+  // "can't be buffed by spell power" — it fails if the specialty ignores standing
+  // spell power.
+  it("I is buffed by standing spell power (Pandora's +1 → one discard deals 2)", () => {
+    const buffed = meteorState(["specialty.deemer.1", "stat.power"]);
+    buffed.players.p1.permanents = ["pandora.power_or_morale"];
+    const result = applyOk(buffed, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "specialty.deemer.1",
+      mode: "basic",
+      optionIndex: 0,
+      target: { type: "unit", unitId: "unit_p2_skeletons" },
+      costCardIds: ["stat.power"]
+    });
+    expect(damage(result, "unit_p2_skeletons")).toBe(2);
+    expect(damage(result, "unit_p2_vampires")).toBe(2);
+
+    // CONTROL: without the standing buff, the same single discard is only Power 1.
+    const plain = meteorState(["specialty.deemer.1", "stat.power"]);
+    const control = applyOk(plain, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "specialty.deemer.1",
+      mode: "basic",
+      optionIndex: 0,
+      target: { type: "unit", unitId: "unit_p2_skeletons" },
+      costCardIds: ["stat.power"]
+    });
+    expect(damage(control, "unit_p2_skeletons")).toBe(1);
+  });
+
+  // A single clean activation, NOT a 3-tier menu: only optionIndex 0 is offered
+  // (the reported "click has 2 options, weird").
+  it("I offers a single activation option (no tier menu)", () => {
+    const state = meteorState(["specialty.deemer.1", "stat.power", "stat.power", "stat.power", "stat.power"]);
+    const optionIndexes = new Set(
+      getLegalActions(state, "p1")
+        .filter(
+          (legal) =>
+            legal.action.type === "PLAY_CARD" &&
+            legal.action.cardId === "specialty.deemer.1" &&
+            legal.action.target?.type === "unit" &&
+            legal.action.target.unitId === "unit_p2_skeletons"
+        )
+        .map((legal) => (legal.action.type === "PLAY_CARD" ? legal.action.optionIndex : undefined))
     );
-    expect(offered).toBe(false);
+    expect(optionIndexes).toEqual(new Set([0]));
   });
 
   it("VI hits the target and TWO adjacent units (auto when exactly two are adjacent)", () => {
@@ -377,6 +448,57 @@ describe("Deemer's Meteor Shower", () => {
         legal.action.optionIndex === 1
     );
     expect(offered, "Meteor Shower IV's +1 Power should boost a spell you cast").toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Adelaide's Frost Ring SPECIALTY — fixed damage, NOT power-scaled
+// ---------------------------------------------------------------------------
+
+describe("Adelaide's Frost Ring specialty is fixed damage (not buffed by spell power)", () => {
+  // Two cards named "Frost Ring" diverge by design: the SPELL (spell.frost_ring)
+  // and Deemer's Meteor Shower scale with the Power brought (the book/Power
+  // table), but Adelaide's Frost Ring SPECIALTY prints "Discard 1 card … suffer 1
+  // damage" — a FLAT discard of ANY card for a FIXED amount, no book/Power table.
+  // This guards that the engine's power computation short-circuits on a fixed
+  // `amount` and never lets a standing buff inflate the specialty's damage.
+  function meteorState(hand: string[]): GameState {
+    const state = createInitialGameState("adelaide-frost-seed");
+    state.players.p1.hand = [...hand];
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    state.combat!.units.unit_p1_griffins.activatedThisRound = false;
+    for (const [id, position] of [
+      ["unit_p1_griffins", 0],
+      ["unit_p2_skeletons", 9],
+      ["unit_p2_vampires", 10]
+    ] as const) {
+      const unit = state.combat!.units[id];
+      unit.position = position;
+      unit.damage = 0;
+      unit.maxHealth = 20;
+      unit.abilities = [];
+    }
+    return state;
+  }
+
+  it("deals its fixed 1 damage even with a standing +1 spell power (Pandora's)", () => {
+    const state = meteorState(["specialty.adelaide.1", "stat.attack"]);
+    state.players.p1.permanents = ["pandora.power_or_morale"]; // +1 standing Power
+    const result = applyOk(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "specialty.adelaide.1",
+      mode: "basic",
+      optionIndex: 0,
+      target: { type: "space", position: 9 }, // rings 9; vampires(10) is adjacent
+      costCardIds: ["stat.attack"] // any card pays the discard-1 cost
+    });
+    // Adjacent unit takes the FIXED 1 — the +1 standing buff does NOT raise it to 2.
+    expect(damage(result, "unit_p2_vampires")).toBe(1);
+    // Frost Ring rings the centre and spares it.
+    expect(damage(result, "unit_p2_skeletons")).toBe(0);
   });
 });
 

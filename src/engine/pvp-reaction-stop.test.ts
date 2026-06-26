@@ -231,28 +231,28 @@ describe("Adelaide / Deemer instants — full resolution inside the off-turn PvP
     return defendAndPump(staged);
   }
 
-  it("Deemer VI: pays the Power-source cost off-turn and deals the chosen tier's damage", () => {
+  it("Deemer VI: pays the Power-source cost off-turn and deals the power-scaled damage", () => {
     const state = stageAround("offturn-deemer-power", ["specialty.deemer.6", "stat.power", "stat.power"], (s) => {
       s.combat!.units.unit_p2_vampires.position = 10; // one unit adjacent to centre 9
     });
     expect(state.combat!.pendingNeutralStep?.kind).toBe("pre-activation");
-    // Option 1 = "Deal 2 (pay 2 Power)" is offered in the window (affordable).
+    // The single power-scaled Meteor Shower activation is offered in the window.
     const offered = getLegalActions(state, "p1").some(
       (l) =>
-        l.action.type === "PLAY_CARD" && l.action.cardId === "specialty.deemer.6" && l.action.optionIndex === 1
+        l.action.type === "PLAY_CARD" && l.action.cardId === "specialty.deemer.6" && l.action.optionIndex === 0
     );
-    expect(offered, "the pay-2 tier is offered off-turn").toBe(true);
+    expect(offered, "Meteor Shower is offered off-turn").toBe(true);
 
     const resolved = applyOk(state, {
       type: "PLAY_CARD",
       playerId: "p1",
       cardId: "specialty.deemer.6",
       mode: "basic",
-      optionIndex: 1,
+      optionIndex: 0,
       target: { type: "unit", unitId: ENEMY_P2 },
       costCardIds: ["stat.power", "stat.power"]
     });
-    expect(resolved.combat!.units[ENEMY_P2].damage, "centre took the tier's 2 damage").toBe(2);
+    expect(resolved.combat!.units[ENEMY_P2].damage, "centre took 2 (Power 2 brought)").toBe(2);
     expect(resolved.combat!.units.unit_p2_vampires.damage, "adjacent took it too").toBe(2);
     // Cost actually paid from p1's hand.
     expect(resolved.players.p1.hand).not.toContain("stat.power");
@@ -275,7 +275,7 @@ describe("Adelaide / Deemer instants — full resolution inside the off-turn PvP
       playerId: "p1",
       cardId: "specialty.deemer.6",
       mode: "basic",
-      optionIndex: 1,
+      optionIndex: 0,
       target: { type: "unit", unitId: ENEMY_P2 },
       costCardIds: ["ability.sorcery", "ability.sorcery"]
     });

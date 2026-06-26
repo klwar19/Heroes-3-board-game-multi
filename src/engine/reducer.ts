@@ -982,6 +982,30 @@ function getAmountByPower(amountByPower: Record<number, number> | undefined, fal
   return matchingPower === undefined ? fallback : (amountByPower[matchingPower] ?? fallback);
 }
 
+/**
+ * The spell Power a hero-specialty PLAY_CARD brings to a power-scaled effect
+ * (Deemer's Meteor Shower) — the player's standing spell Power PLUS the full
+ * printed Power VALUE of each power-source card discarded as the play's cost (a
+ * +2 source counts as 2, not as a single card). Mirrors how a Spell's
+ * `amountByPower` reads getCurrentSpellPower, so a Specialty "scales directly
+ * with spell power, similar to standard spells" (wiki) rather than counting raw
+ * discards.
+ */
+function playCardSpellPower(
+  state: GameState,
+  playerId: PlayerId,
+  card: CardDefinition,
+  costCardIds: CardId[] | undefined,
+  cards: CardLibrary
+): number {
+  const schools = card.spellSchools ?? [];
+  const fromCards = (costCardIds ?? []).reduce(
+    (sum, id) => sum + spellPowerValueOfCard(cards[id], schools),
+    0
+  );
+  return standingSpellPower(state, playerId, card) + fromCards;
+}
+
 /** Whether a stack item is a pending attack (its Power pool is split per side). */
 function isAttackStackItem(stackItem: ResolutionStackItem | undefined): boolean {
   return stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT";
@@ -10819,11 +10843,21 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   }
 
   // Deemer's Meteor Shower I (target + 1 adjacent) and VI (target + 2 adjacent):
-  // deal the chosen tier's damage to the target unit and that many units adjacent
-  // to it (friend or foe; the caster picks when more are adjacent). The damage is
-  // fixed by the chosen CHOOSE_ONE option (its power-source discard buys the tier).
+  // deal damage to the target unit and that many units adjacent to it (friend or
+  // foe; the caster picks when more are adjacent). Deemer's damage is power-scaled
+  // (`amountByPower`, Power 0-1 → 1, 2-3 → 2, 4+ → 3): the Power brought is the
+  // caster's standing spell Power plus the printed Power VALUE of the power-source
+  // cards discarded to play it, so it scales like the Frost Ring Spell and is
+  // buffable by spell power. Adelaide's Frost Ring specialty keeps a fixed
+  // `amount` and ignores the Power computation (short-circuited below).
   if (effect.type === "AREA_DAMAGE_PICK_ADJACENT" && state.combat && action.target && !negatedByDwarf) {
-    const amount = effect.amount ?? getAmountByPower(effect.amountByPower ?? {}, 1, card.power ?? 0);
+    const amount =
+      effect.amount ??
+      getAmountByPower(
+        effect.amountByPower ?? {},
+        1,
+        playCardSpellPower(state, action.playerId, card, action.costCardIds, cards)
+      );
     const center =
       action.target.type === "space"
         ? action.target.position

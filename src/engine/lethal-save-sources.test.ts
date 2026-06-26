@@ -35,6 +35,7 @@ function lethalSetup(opts: {
   attackerAbilities?: string[];
   defenderGrade?: "bronze" | "silver" | "gold" | "azure";
   p1Hand?: string[];
+  p1Permanents?: string[];
   archangelSaver?: boolean;
   archangelAlreadyUsed?: boolean;
   spellsAlreadyCast?: number;
@@ -44,6 +45,11 @@ function lethalSetup(opts: {
   const state = createInitialGameState("lethal-save-seed");
   state.players.p1.hand = opts.p1Hand ?? [];
   state.players.p2.hand = [];
+  // Permanents must be in play BEFORE the attack resolves so the standing spell
+  // Power they grant is folded into the save window's precomputed legal reactions.
+  if (opts.p1Permanents) {
+    state.players.p1.permanents = opts.p1Permanents;
+  }
   if (opts.spellsAlreadyCast !== undefined) {
     state.players.p1.combatStats.spellsCastThisRound = opts.spellsAlreadyCast;
   }
@@ -223,6 +229,58 @@ describe("Multiple save sources are all offered (the player chooses)", () => {
     expect(hasSpecialty).toBe(true);
     expect(hasSpell).toBe(true);
     expect(hasArchangel).toBe(true);
+  });
+});
+
+describe("Resurrection specialty: the Power cost is value-based and buffed by spell power", () => {
+  // The save's book/Power cost (silver = Power 2 at level I) is met by the VALUE
+  // the player brings — standing spell Power plus each power source's printed
+  // Power — not a raw card COUNT. "It can be improved by spell power, just like a
+  // regular spell" (wiki). Each test below fails if the cost reverts to a fixed
+  // discardCards count.
+  function silverSave(state: GameState) {
+    return p1SaveActions(state).find(
+      (legal) =>
+        legal.action.type === "PLAY_REACTION" &&
+        legal.action.cardId === "specialty.alamar.1" &&
+        legal.action.optionIndex === 1
+    );
+  }
+
+  it("pays the Power-2 silver save with a SINGLE +2 source (value, not card count)", () => {
+    const declared = lethalSetup({
+      defenderGrade: "silver",
+      p1Hand: ["specialty.alamar.1", "stat.power.empowered"]
+    });
+    const save = silverSave(declared);
+    expect(save, "one +2 source brings Power 2 and affords the silver save").toBeTruthy();
+    const action = save!.action as Extract<GameAction, { type: "PLAY_REACTION" }>;
+    const saved = applyOk(declared, { ...action, costCardIds: ["stat.power.empowered"] });
+    expect(hasAbilityEvent(saved, "resurrection")).toBe(true);
+    expect(griffins(saved).damage).toBe(griffins(saved).maxHealth - 1); // fully saved
+    expect(saved.players.p1.discard).toContain("stat.power.empowered");
+  });
+
+  it("standing spell power (Pandora's +1) lets ONE stat.power pay the silver save", () => {
+    const declared = lethalSetup({
+      defenderGrade: "silver",
+      p1Hand: ["specialty.alamar.1", "stat.power"],
+      p1Permanents: ["pandora.power_or_morale"] // +1 standing Power, in play before the attack
+    });
+    const save = silverSave(declared);
+    expect(save, "with +1 standing, one stat.power (value 1) reaches Power 2").toBeTruthy();
+    const action = save!.action as Extract<GameAction, { type: "PLAY_REACTION" }>;
+    const saved = applyOk(declared, { ...action, costCardIds: ["stat.power"] });
+    expect(hasAbilityEvent(saved, "resurrection")).toBe(true);
+    expect(griffins(saved).damage).toBe(griffins(saved).maxHealth - 1);
+  });
+
+  it("CONTROL: ONE stat.power alone (Power 1) cannot afford the Power-2 silver save", () => {
+    const declared = lethalSetup({
+      defenderGrade: "silver",
+      p1Hand: ["specialty.alamar.1", "stat.power"]
+    });
+    expect(silverSave(declared), "Power 1 < the silver cost of 2 → not offered").toBeFalsy();
   });
 });
 
