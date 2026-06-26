@@ -113,6 +113,7 @@ export function makeArrowTowerUnit(unitId: UnitId, controllerId: PlayerId): Comb
     defenseToken: false,
     abilities: ["siege-arrow-tower"],
     assets: {
+      cardImage: "/assets/structures-arrow_tower.webp",
       imageAlt: "Arrow Tower siege card"
     }
   };

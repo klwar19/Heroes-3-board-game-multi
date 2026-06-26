@@ -493,8 +493,18 @@ function ArrowTowerCard({
   return (
     <div className={`arrowTower ${isActive ? "active" : ""}`} aria-label="Arrow Tower">
       <button className="arrowTowerBody" onClick={() => onInspect(tower.id)} title="Arrow Tower — shoots without positioning penalties; only ranged attacks and card effects can hit it; collapses when all Walls and the Gate fall." type="button">
-        <span aria-hidden="true" className="arrowTowerIcon"><ArrowTowerArt /></span>
-        <strong>Arrow Tower</strong>
+        {tower.assets?.cardImage ? (
+          <img
+            alt={tower.assets.imageAlt ?? "Arrow Tower card"}
+            className="arrowTowerCardImg"
+            loading="eager"
+            referrerPolicy="no-referrer"
+            src={assetUrl(tower.assets.cardImage)}
+          />
+        ) : (
+          <span aria-hidden="true" className="arrowTowerIcon"><ArrowTowerArt /></span>
+        )}
+        {/* The static card prints the base stats; this line carries the LIVE health. */}
         <small>
           ⚔ {tower.attack} · <Shield aria-hidden="true" size={10} /> {tower.defense} · ♥ {health}/{tower.maxHealth} · init {tower.initiative}
         </small>

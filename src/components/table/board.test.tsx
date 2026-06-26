@@ -800,12 +800,15 @@ describe("BattlefieldBoard — siege fortification art", () => {
     expect(gate!.textContent ?? "").not.toContain("🚪");
   });
 
-  it("draws the Arrow Tower card with its battlemented-tower art", () => {
+  it("draws the Arrow Tower card with the real printed-card scan", () => {
     renderSiege(siegeState("board-siege-tower"));
     const tower = document.querySelector(".arrowTower");
     expect(tower, "the Arrow Tower card should render beside the board").toBeTruthy();
-    expect(tower!.querySelector("svg.arrowTowerArt"), "the tower should draw its SVG art").toBeTruthy();
-    expect(tower!.textContent).toContain("Arrow Tower");
+    const cardImg = tower!.querySelector<HTMLImageElement>("img.arrowTowerCardImg");
+    expect(cardImg, "the tower should render its printed card art").toBeTruthy();
+    expect(cardImg!.getAttribute("src")).toContain("structures-arrow_tower.webp");
+    // The live health line still rides alongside the static card (♥ current/max).
+    expect(tower!.textContent ?? "").toContain("♥");
     expect(tower!.textContent ?? "").not.toContain("🏹");
   });
 })
