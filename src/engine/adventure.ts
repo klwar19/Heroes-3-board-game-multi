@@ -6727,12 +6727,13 @@ export function reinforceArmyUnit(
 }
 
 /**
- * Neutral Skeletons: "After defeating Skeletons, if you control a Necropolis
- * Hero, Reinforce 1 of your bronze units for free." Queues a post-combat
- * choice over the player's Few bronze units (a free Few→Pack flip), skippable.
- * No-op when the player has no eligible bronze Few unit.
+ * Offer a free Few→Pack reinforcement of one BRONZE unit, letting the player
+ * PICK which eligible unit (a CHOOSE_ONE over their Few bronze units, plus a
+ * Skip). Shared by the neutral-Skeletons reward and the Necropolis City Hall
+ * income option. Nothing is queued when the player owns no eligible bronze Few,
+ * so the offer never opens an empty/no-op choice.
  */
-export function queueSkeletonReinforce(state: GameState, playerId: PlayerId): void {
+export function queueFreeBronzeReinforce(state: GameState, playerId: PlayerId, prompt: string): void {
   const player = state.players[playerId];
   const adventure = state.adventure;
   if (!player || !adventure) {
@@ -6763,10 +6764,39 @@ export function queueSkeletonReinforce(state: GameState, playerId: PlayerId): vo
     steps: [
       {
         type: "CHOOSE_ONE",
-        prompt: "Skeletons defeated: reinforce a bronze unit for free.",
+        prompt,
         options
       }
     ]
+  });
+}
+
+/**
+ * Neutral Skeletons: "After defeating Skeletons, if you control a Necropolis
+ * Hero, Reinforce 1 of your bronze units for free." A skippable post-combat
+ * pick over the player's Few bronze units (a free Few→Pack flip).
+ */
+export function queueSkeletonReinforce(state: GameState, playerId: PlayerId): void {
+  queueFreeBronzeReinforce(state, playerId, "Skeletons defeated: reinforce a bronze unit for free.");
+}
+
+/**
+ * Whether the player owns at least one Few bronze unit that can still be
+ * reinforced to its Pack — i.e. the free-bronze-reinforce picker would offer a
+ * real choice. Used to hide the Necropolis City Hall reinforce option when it
+ * would do nothing (so the choice is never a dead/decorative entry).
+ */
+export function hasFreeBronzeReinforceTarget(state: GameState, playerId: PlayerId): boolean {
+  const player = state.players[playerId];
+  if (!player) {
+    return false;
+  }
+  return player.army.some((unit) => {
+    if (unit.side !== "few") {
+      return false;
+    }
+    const def = coreUnitDefinitions[unit.unitDefId];
+    return Boolean(def && def.tier === "bronze" && getUnitSide(unit.unitDefId, "pack"));
   });
 }
 

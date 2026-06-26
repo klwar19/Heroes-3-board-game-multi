@@ -1,9 +1,16 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { HandFan, RuneTrack } from "./seats";
+import { HandFan, PermanentSlot, RuneTrack } from "./seats";
 import { CardZoomProvider } from "./zoom";
-import { createInitialGameState, getLegalActions, getPlayerView, type GameState } from "@/engine";
+import { cardLibrary } from "@/data/cards/library";
+import {
+  createInitialGameState,
+  describePermanentEffect,
+  getLegalActions,
+  getPlayerView,
+  type GameState
+} from "@/engine";
 
 afterEach(cleanup);
 
@@ -104,6 +111,47 @@ describe("RuneTrack — Bulwark combat HUD", () => {
     const state = createInitialGameState("rune-track-none");
     state.players.p1.factionId = "castle";
     const { container } = render(<RuneTrack state={state} playerId="p1" />);
+    expect(container.firstChild).toBeNull();
+  });
+});
+
+describe("PermanentSlot — the permanent effect is shown clearly (map card tray)", () => {
+  it("renders the permanent's name AND its full effect text (not just the card image)", () => {
+    const state = createInitialGameState("permanent-effect-shown");
+    // A permanent income artifact in play (Eversmoking Ring of Sulfur).
+    state.players.p1.permanents = ["artifact.eversmoking_ring_of_sulfur"];
+    const card = cardLibrary["artifact.eversmoking_ring_of_sulfur"]!;
+    const effectText = describePermanentEffect(card);
+
+    const { container } = render(
+      <CardZoomProvider>
+        <PermanentSlot
+          state={state}
+          playerId="p1"
+          viewerPlayerId="p1"
+          legalActions={getLegalActions(state, "p1")}
+          onAction={() => {}}
+        />
+      </CardZoomProvider>
+    );
+
+    // The name is shown…
+    expect(screen.getByText(card.name)).toBeTruthy();
+    // …and so is the spelled-out effect (this is the "shown clearly" guarantee:
+    // remove the <small>{describePermanentEffect}</small> line and this fails).
+    expect(effectText.length).toBeGreaterThan(0);
+    expect(container.textContent).toContain(effectText);
+  });
+
+  it("renders nothing when the player has no permanent in play", () => {
+    const state = createInitialGameState("permanent-effect-none");
+    state.players.p1.permanents = [];
+    state.players.p1.permanent = undefined;
+    const { container } = render(
+      <CardZoomProvider>
+        <PermanentSlot state={state} playerId="p1" viewerPlayerId="p1" />
+      </CardZoomProvider>
+    );
     expect(container.firstChild).toBeNull();
   });
 });

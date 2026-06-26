@@ -4111,13 +4111,57 @@ button.hbSlot:disabled { cursor: default; }
 
 /* Adventure hand strip */
 .adventureHand {
+  /* The player's card tray, parked under the map: the deck + discard pile (and
+     any permanent in play) sit on the LEFT, the hand fans out to their RIGHT. */
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 14px;
   background: rgba(33, 25, 15, 0.92);
   border: 1px solid rgba(170, 130, 70, 0.3);
   border-radius: 10px;
-  padding: 8px 10px;
+  padding: 10px 12px;
+}
+
+/* Left column of the tray: the draw deck + discard pile, with the player's
+   permanent(s) shown directly beneath so the effect reads clearly on the map. */
+.ownDeckColumn {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+/* Right side of the tray: hand controls (draw/mulligan, Spell Book, cost
+   picker) stacked above the enlarged hand of cards. */
+.handArea {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Permanent shown inside the deck column: keep it within the column's width
+   (stack multiple permanents) and make its effect text plainly legible. */
+.ownDeckColumn .permanentRow {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.ownDeckColumn .permanentSlot {
+  max-width: 220px;
+}
+
+.ownDeckColumn .permanentMeta small {
+  opacity: 0.95;
+}
+
+@media (max-width: 900px) {
+  /* Narrow screens: fall back to stacking the deck/discard above the hand. */
+  .adventureHand {
+    flex-direction: column;
+  }
 }
 
 .refreshBar {
@@ -4147,7 +4191,8 @@ button.hbSlot:disabled { cursor: default; }
 }
 
 .adventureHandCard .handCardImage {
-  width: 92px;
+  /* Enlarged tray cards — easier to read the hand at a glance under the map. */
+  width: 124px;
   border-radius: 8px;
   display: block;
 }

@@ -59,6 +59,7 @@ import {
   getTileFootprintSpaceIds,
   getTownOfPlayer,
   getUnitSide,
+  hasFreeBronzeReinforceTarget,
   hasRecruitResources,
   hasResources,
   heroAtSpace,
@@ -75,6 +76,7 @@ import {
   playerDwellingTiers,
   processPendingVisit,
   queueExplorersEmpower,
+  queueFreeBronzeReinforce,
   queueSkeletonReinforce,
   reinforceArmyUnit,
   reinforceCostFor,
@@ -6255,23 +6257,12 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
       drawCardsForPlayer(state, action.playerId, option.drawCards);
     }
     if (option.reinforceBronzeFree) {
-      const player = state.players[action.playerId];
-      const target = player?.army.find((unit) => {
-        if (unit.side !== "few") {
-          return false;
-        }
-        return coreUnitTierLookup[unit.unitDefId] === "bronze" && Boolean(getUnitSide(unit.unitDefId, "pack"));
-      });
-      if (target) {
-        target.side = "pack";
-        appendEvent(state, {
-          type: "UNIT_RECRUITED",
-          playerId: action.playerId,
-          unitDefId: target.unitDefId,
-          kind: "reinforce",
-          cost: {}
-        });
-      }
+      // Necropolis City Hall: let the player PICK which bronze unit to reinforce
+      // for free, rather than silently upgrading the first one in the army. The
+      // picker is queued as a reward and resolves once this choice closes (the
+      // action dispatcher pumps the reward queue, exactly as for the Trading
+      // Post / Spell-deck-search options above).
+      queueFreeBronzeReinforce(state, action.playerId, "City Hall: reinforce one bronze unit for free");
     }
     if (option.tradingPost) {
       // Fortress City Hall: open a Trading Post to exchange resources, exactly
@@ -7208,12 +7199,19 @@ export function pumpAdventureQueues(state: GameState): void {
         continue;
       }
 
-      // Cove City Hall: the "remove an Artifact for 1 experience" option is only
-      // offered when the player actually holds an Artifact card to pay it.
+      // Some City Hall options are only meaningful in context, so we hide them
+      // when they could do nothing:
+      //  - Cove "remove an Artifact for 1 experience": only when the player
+      //    actually holds an Artifact card to pay it.
+      //  - Necropolis "reinforce 1 bronze unit for free": only when the player
+      //    owns a Few bronze unit that can still be reinforced.
       const player = state.players[reward.playerId];
       const holdsArtifact = (player?.hand ?? []).some((cardId) => cardLibrary[cardId]?.kind === "artifact");
+      const canReinforceBronze = hasFreeBronzeReinforceTarget(state, reward.playerId);
       const options = choiceEffect.options.filter(
-        (option) => !option.removeArtifactFromHand || holdsArtifact
+        (option) =>
+          (!option.removeArtifactFromHand || holdsArtifact) &&
+          (!option.reinforceBronzeFree || canReinforceBronze)
       );
 
       adventure.rewardQueue.shift();
