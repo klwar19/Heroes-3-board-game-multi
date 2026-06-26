@@ -117,7 +117,6 @@ import {
   getPermanentCardIds,
   getPermanentSchoolBonus,
   isLowestInitiativeEnemy,
-  permanentSpellPowerBonus,
   playerCanUseFirstAidVolley,
   putPermanentIntoPlay,
   resolveWarMachineTarget,
@@ -172,7 +171,6 @@ import {
   hasActiveIgnoresDefense,
   hasActiveRetaliationDisadvantage,
   getSchoolPowerBonus,
-  getSchoolPowerMultiplier,
   makeActiveEffect,
   releaseEndedOngoingCards,
   spellNullifiedByRestriction,
@@ -215,6 +213,7 @@ import {
   payablePowerCardIds,
   playerHasAttackInstantOfSchool,
   reflectableAttackInstantForPlayer,
+  resolvedSpellPowerForStackItem,
   rerollSourceAvailableFor,
   spellAbilitiesSuppressed,
   spellRedirectTargets,
@@ -241,7 +240,6 @@ import {
   getDeckDiscardTakeSpell,
   getEnchanterActivationAbility,
   getEnemyDiscardAbility,
-  getEnemySpellPowerReduction,
   getFlatAttackBonus,
   getOnAttackEnemyDiscard,
   getOnAttackParalysis,
@@ -2004,7 +2002,17 @@ function getAttackDamagePreview(
   // Elemental damage ignores Defense outright; otherwise sum printed Defense,
   // the Defend roll's bonus (0 or +1, rolled per attack by the caller), played
   // Defense buffs and any die-face Defense bonus.
-  const defenseValue = ignoreDefense ? 0 : defender.defense + defendBonus + defenseBonus + dieDefenseBonus;
+  //
+  // Curse / Weakness-style debuffs print "(to a minimum of 0)": a negative
+  // `defenseBonus` (e.g. a Power-2 Curse of -3) may lower a unit's Defense to 0
+  // but never below. Floor the printed-Defense-plus-buffs subtotal at 0 — exactly
+  // like the ability-reduction clamp at `currentDefenseValue` above and the
+  // Corrosion-token sibling (`-Math.min(unit.defense, reduction)`) — so a strike
+  // can never land for MORE than the attacker's full Attack. The Defend roll and
+  // any die-face Defense bonus are separate shields added on top of the floor.
+  const defenseValue = ignoreDefense
+    ? 0
+    : Math.max(0, defender.defense + defenseBonus) + defendBonus + dieDefenseBonus;
   // Siege wall cover: "reduce the attack's damage by 1" comes off the damage,
   // not the defense.
   const rawDamage = Math.max(0, Math.max(0, attackValue - defenseValue) - damageReduction);
@@ -6280,24 +6288,6 @@ function resumeAttackWindowAfterRedirect(
  * off the Spells the caster casts. Summed across all opposing auras; the caller
  * floors the resulting Power at 0.
  */
-function enemySpellPowerReduction(state: GameState, casterPlayerId: PlayerId): number {
-  const combat = state.combat;
-  if (!combat) {
-    return 0;
-  }
-  // Orb of Vulnerability switches off the Pegasi's enemy-spell Power drain.
-  if (spellAbilitiesSuppressed(state)) {
-    return 0;
-  }
-  let total = 0;
-  for (const unit of Object.values(combat.units)) {
-    if (unit.controllerId !== casterPlayerId && isUnitAlive(unit)) {
-      total += getEnemySpellPowerReduction(unit);
-    }
-  }
-  return total;
-}
-
 /**
  * Recursively harvest every Power breakpoint a card's effect scales on — the
  * numeric keys of every `*ByPower` table (amountByPower, gradeByPower,
@@ -6343,58 +6333,15 @@ function spellMaxPowerBreakpoint(card: CardDefinition | undefined): number {
   return breakpoints.length > 0 ? Math.max(...breakpoints) : 2;
 }
 
-/**
- * Astrologers school-power proclamations (Blue Sky: Air+Water; Scorched Ground:
- * Earth+Fire): +1 Power to every matching spell while the card is active, for
- * every player. Mirrors the existing school-bonus convention (getSchoolPowerBonus)
- * where a school-agnostic "any" spell (e.g. Magic Arrow) qualifies for any
- * school bonus, so the two stay consistent. Returns 0 when no such card is up.
- */
-function astrologersSchoolPowerBonus(state: GameState, spellCard: CardDefinition | undefined): number {
-  const active = getActiveAstrologersCard(state);
-  if (active?.effect.type !== "SCHOOL_SPELL_POWER_BONUS") {
-    return 0;
-  }
-  const schools = spellCard?.spellSchools ?? [];
-  const matches = schools.includes("any") || active.effect.schools.some((school) => schools.includes(school));
-  return matches ? active.effect.amount : 0;
-}
-
 function getCurrentSpellPower(state: GameState, stackItem: ResolutionStackItem, cards: CardLibrary): number {
-  // (School of Magic permanents add schoolPowerBonus below, beside the
-  // once-per-cast Power-card bonus.)
-  if (stackItem.action.type !== "CAST_SPELL") {
-    return 0;
-  }
-
-  // Spell Scroll casts are locked to the lowest power level and cannot be
-  // buffed by any source.
-  if (stackItem.modifiers.scrollLocked) {
-    return 0;
-  }
-
-  const card = cards[stackItem.action.cardId];
-  const base =
-    (card?.power ?? 0) +
-    stackItem.modifiers.spellPowerBonus +
-    (stackItem.modifiers.schoolPowerBonus ?? 0) +
-    (stackItem.modifiers.townCubePowerBonus ?? 0) +
-    // Adrienne's Fire Magic: +1/+2 Power to every Fire-school spell she casts.
-    getSchoolPowerBonus(state, stackItem.action.playerId, card) +
-    // Astrologers — Blue Sky / Scorched Ground: +1 Power to every spell of the
-    // proclaimed schools while the card is face up (applies to all players).
-    astrologersSchoolPowerBonus(state, card) +
-    // Pandora's Bargain: Power — a flat +Power on every spell while in play.
-    permanentSpellPowerBonus(state, stackItem.action.playerId);
-
-  // Elemental Orbs (option A): the matching in-play orb doubles the whole Power
-  // brought to a spell of its School ("double the power used for this spell")
-  // before the enemy reduction is taken off.
-  const doubled = base * getSchoolPowerMultiplier(state, stackItem.action.playerId, card);
-
-  // Rampart Pegasi: an enemy Pegasi pack reduces the Power of every Spell this
-  // caster resolves (to a minimum of 0).
-  return Math.max(0, doubled - enemySpellPowerReduction(state, stackItem.action.playerId));
+  // The cast Power formula lives in ONE place — resolvedSpellPowerForStackItem
+  // (legal-actions.ts) — so the live UI readout and the Resistance offer gate,
+  // which share that helper, can never disagree with the Power the spell
+  // actually resolves at. It applies the printed power, every Power source
+  // (Power cards, School of Magic, town cube, Adrienne, Astrologers, Pandora),
+  // the Elemental Orb doubling and the enemy Pegasi reduction, floored at 0, and
+  // returns 0 for a non-cast stack item or a Power-locked Spell Scroll cast.
+  return resolvedSpellPowerForStackItem(state, stackItem, cards);
 }
 
 function shouldRetaliate(

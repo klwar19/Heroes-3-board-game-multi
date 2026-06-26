@@ -41,6 +41,8 @@ import {
 import {
   effectAppliesToUnit,
   effectiveInitiative,
+  getSchoolPowerBonus,
+  getSchoolPowerMultiplier,
   getSpellCastRestriction,
   playerCannotSurrenderCombat,
   playerHasSpellTimingFreedom,
@@ -125,6 +127,7 @@ import { NEUTRAL_PLAYER_ID } from "./state";
 import {
   getActivationSpellPowerBoost,
   getDiscardToIgnoreAttackDieAbility,
+  getEnemySpellPowerReduction,
   getLethalSaveUnitAbility,
   getUnitAbilityDefinitions,
   hasBindAdjacentEnemies,
@@ -4991,23 +4994,80 @@ function getPendingStackItem(state: GameState, triggerEvent: GameEvent) {
 }
 
 /**
- * Power added to a stack item SINCE it was created — Power statistics, the
- * "+1 Power" Spell discard, the School of Magic bonus and a spent Brimstone
- * town cube — excluding the spell's printed base power. Scroll casts are locked
- * to 0, so nothing counts (mirrors getCurrentSpellPower in the reducer). This is
- * the single source of truth shared by the Resistance offer gate and the UI
- * power readout, so both always agree with the power the spell finally resolves
- * at.
+ * The Power a spell will RESOLVE at — the single source of truth shared by the
+ * cast pipeline (reducer's getCurrentSpellPower delegates here) and the live UI
+ * power readout / Resistance offer gate, so the defender always SEES and is
+ * GATED BY the exact Power the spell finally resolves at. Mirrors the cast
+ * formula verbatim:
+ *   (printed power + Power statistics/"+1 Power" Spell discards + School-of-Magic
+ *    bonus + Brimstone town cube + Adrienne's Fire Magic + Astrologers' school
+ *    proclamation + Pandora's flat bonus)
+ *   × the matching Elemental-Orb multiplier − the enemy Pegasi reduction,
+ *   floored at 0.
+ * A Spell Scroll cast is locked to Power 0 and ignores every source.
+ *
+ * Previously the readout/gate counted only the stack-item modifier terms and
+ * silently dropped the Orb doubling, the school/flat bonuses and the Pegasi
+ * reduction — so a Lightning Bolt doubled by an Air Orb showed (and let the
+ * defender Resist) "Power 1" while it actually resolved at Power 2. Unifying
+ * with the cast removes that divergence.
  */
-function fueledPowerOnStackItem(stackItem: ResolutionStackItem | undefined): number {
-  if (!stackItem || stackItem.modifiers.scrollLocked) {
+export function resolvedSpellPowerForStackItem(
+  state: GameState,
+  stackItem: ResolutionStackItem | undefined,
+  cards: CardLibrary = cardLibrary
+): number {
+  if (!stackItem || stackItem.action.type !== "CAST_SPELL" || stackItem.modifiers.scrollLocked) {
     return 0;
   }
-  return (
+  const card = cards[stackItem.action.cardId];
+  const playerId = stackItem.action.playerId;
+  const base =
+    (card?.power ?? 0) +
     stackItem.modifiers.spellPowerBonus +
     (stackItem.modifiers.schoolPowerBonus ?? 0) +
-    (stackItem.modifiers.townCubePowerBonus ?? 0)
-  );
+    (stackItem.modifiers.townCubePowerBonus ?? 0) +
+    getSchoolPowerBonus(state, playerId, card) +
+    astrologersSchoolPowerBonusFor(state, card) +
+    permanentSpellPowerBonus(state, playerId);
+  const doubled = base * getSchoolPowerMultiplier(state, playerId, card);
+  return Math.max(0, doubled - enemySpellPowerReductionFor(state, playerId));
+}
+
+/**
+ * Astrologers Blue Sky (Air+Water) / Scorched Ground (Earth+Fire): +Power to
+ * every matching-school spell while the card is up, for every player. A
+ * school-agnostic "any" spell (Magic Arrow) qualifies for either proclamation,
+ * mirroring getSchoolPowerBonus. Replicated here (the reducer keeps its own copy
+ * private) so the readout and the cast stay byte-for-byte equal.
+ */
+function astrologersSchoolPowerBonusFor(state: GameState, spellCard: CardDefinition | undefined): number {
+  const active = getActiveAstrologersCard(state);
+  if (active?.effect.type !== "SCHOOL_SPELL_POWER_BONUS") {
+    return 0;
+  }
+  const schools = spellCard?.spellSchools ?? [];
+  const matches = schools.includes("any") || active.effect.schools.some((school) => schools.includes(school));
+  return matches ? active.effect.amount : 0;
+}
+
+/**
+ * Rampart/neutral Pegasi drain the Power of every spell their enemy resolves (to
+ * a minimum of 0); Orb of Vulnerability suppresses the drain. Mirrors the
+ * reducer's enemySpellPowerReduction so the readout/gate match the cast.
+ */
+function enemySpellPowerReductionFor(state: GameState, casterPlayerId: PlayerId): number {
+  const combat = state.combat;
+  if (!combat || spellAbilitiesSuppressed(state)) {
+    return 0;
+  }
+  let total = 0;
+  for (const unit of Object.values(combat.units)) {
+    if (unit.controllerId !== casterPlayerId && isUnitAlive(unit)) {
+      total += getEnemySpellPowerReduction(unit);
+    }
+  }
+  return total;
 }
 
 /** Whether a spell of `school` (or "any") has already been played into this attack. */
@@ -5026,11 +5086,7 @@ function attackStackHasSpellOfSchool(stackItem: ResolutionStackItem | undefined,
 }
 
 function getPendingSpellPower(state: GameState, triggerEvent: Extract<GameEvent, { type: "SPELL_CAST_STARTED" }>): number {
-  const stackItem = getPendingStackItem(state, triggerEvent);
-  if (stackItem?.modifiers.scrollLocked) {
-    return 0;
-  }
-  return triggerEvent.power + fueledPowerOnStackItem(stackItem);
+  return resolvedSpellPowerForStackItem(state, getPendingStackItem(state, triggerEvent));
 }
 
 /**
@@ -5074,13 +5130,16 @@ export function getPendingReactionPower(
 
   if (stackItem.action.type === "CAST_SPELL") {
     const basePower = stackItem.modifiers.scrollLocked ? 0 : cards[stackItem.action.cardId]?.power ?? 0;
-    const fueledPower = fueledPowerOnStackItem(stackItem);
+    // The resolved Power (with Orb doubling / school + flat bonuses / Pegasi
+    // reduction) drives the displayed total and the damage preview; the fuelled
+    // portion is the remainder so the "base + fuelled" line still sums to it.
+    const totalPower = resolvedSpellPowerForStackItem(state, stackItem, cards);
     return {
       kind: "spell",
       spellCardId: stackItem.action.cardId,
       basePower,
-      fueledPower,
-      totalPower: basePower + fueledPower
+      fueledPower: totalPower - basePower,
+      totalPower
     };
   }
 
