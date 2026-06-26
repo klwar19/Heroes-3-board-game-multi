@@ -1058,6 +1058,12 @@ export function BattlefieldBoard({
                 <img
                   alt={unit.assets?.imageAlt ?? unit.cardName}
                   className="boardCardImage"
+                  // Suppress the browser's native image drag: a placed unit is
+                  // repositioned with a custom pointer-drag (beginUnitPointerDrag),
+                  // and a competing native <img> drag swallows the pointer events
+                  // so the drop never lands. (The deploy-panel portrait does the
+                  // same — see PlacementPanel.)
+                  draggable={false}
                   loading="eager"
                   referrerPolicy="no-referrer"
                   src={assetUrl(unit.assets.cardImage)}
@@ -1268,10 +1274,15 @@ export function BattlefieldBoard({
                 className={`${className}${placedUnitDraggable ? " unitDraggable" : ""}`}
                 data-fx-cell={index}
                 data-fx-unit={unit.id}
+                // During deployment your own placed units are also drop targets:
+                // dropping another of your units onto one switches their
+                // positions (the engine performs the swap). Enemy-held cells are
+                // never drop targets.
+                data-drop-cell={placedUnitDraggable ? "true" : undefined}
                 key={index}
                 onClick={() => onInspect(unit.id)}
                 onMouseEnter={() => onInspect(unit.id)}
-                title={`Inspect ${unit.name}`}
+                title={placedUnitDraggable ? `Drag to move — or drop another unit here to switch (${unit.name})` : `Inspect ${unit.name}`}
                 type="button"
                 {...dragProps}
                 style={cellStyle}
