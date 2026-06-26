@@ -63,7 +63,11 @@ export function eligibleCombatBoardArtIds(state: GameState, combat: CombatState 
   if (siege) {
     ids.push("castle-siege");
   } else if (isSeaCombat(state, combat)) {
-    ids.push("ship-battle");
+    // A fight on the open sea is ALWAYS a naval battle on the ship board — it is
+    // the SOLE eligible battlefield (mirrors the bank/siege forced boards
+    // above). The land battlefields (classic/frozen/hell-necro/jungle) make no
+    // sense on the water, so they are dropped entirely rather than weighted.
+    return ["ship-battle"];
   }
 
   return ids;
@@ -118,6 +122,15 @@ export function pickCombatBoardArtId(state: GameState, combat: CombatState | nul
   // A Creature Bank fight always shows the dungeon board (see isCreatureBankCombat).
   if (isCreatureBankCombat(combat)) {
     return CREATURE_BANK_BOARD_ART_ID;
+  }
+
+  // A fight on the open sea ALWAYS shows the ship-battle board — never a random
+  // land battlefield. Like a siege or a bank, the terrain dictates the board:
+  // you are fighting on the water, so the naval map is forced (not just weighted
+  // into a pool the random pick could still skip). Checked after siege/bank so a
+  // (land) siege keeps the castle board.
+  if (isSeaCombat(state, combat)) {
+    return "ship-battle";
   }
 
   return createSeededRandom(`${state.seed}:${combat.id}:combat-board-art`).pick(weightedCombatBoardArtIds(state, combat));

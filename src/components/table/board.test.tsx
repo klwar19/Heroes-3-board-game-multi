@@ -186,6 +186,35 @@ describe("combat board art variants", () => {
     }
   });
 
+  it("always fights a sea combat on the ship board (never a random land battlefield)", () => {
+    // A fight on a water hex is naval — the ship board is FORCED, exactly like a
+    // siege or a bank, not merely weighted into the open-field pool. The eligible
+    // set is the ship board alone, and whatever the combat id / seed the pick is
+    // always the ship board.
+    const sea = waterCombatState("board-art-sea-forced");
+    expect(eligibleCombatBoardArtIds(sea, sea.combat)).toEqual(["ship-battle"]);
+    for (let index = 0; index < 16; index += 1) {
+      sea.combat!.id = `combat_${index}`;
+      sea.combat!.boardArtId = undefined;
+      expect(pickCombatBoardArt(sea).id).toBe("ship-battle");
+    }
+
+    // CONTROL: an identical fight on a LAND hex is NOT forced to the ship board —
+    // it varies across combat ids (the seeded land-battlefield pool), proving the
+    // force is gated on the water terrain and not applied everywhere.
+    const land = waterCombatState("board-art-sea-control");
+    land.adventure!.fields.sea_1.terrain = undefined;
+    const landPicks = new Set(
+      Array.from({ length: 16 }, (_, index) => {
+        land.combat!.id = `combat_${index}`;
+        land.combat!.boardArtId = undefined;
+        return pickCombatBoardArt(land).id;
+      })
+    );
+    expect(landPicks.has("ship-battle")).toBe(false);
+    expect(landPicks.size).toBeGreaterThan(1);
+  });
+
   it("weights snow for Tower and grim battlefields for Inferno or Necropolis", () => {
     const tower = createInitialGameState("board-art-tower");
     tower.players.p1.factionId = "tower";
