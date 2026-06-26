@@ -361,6 +361,7 @@ export {
   getDemolishAbility,
   intactFortificationPositions,
   isArrowTowerUnit,
+  makeArrowTowerUnit,
   parseFortificationTargetId,
   SIEGE_ROW_POSITIONS
 } from "./siege";
