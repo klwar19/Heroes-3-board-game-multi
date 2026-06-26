@@ -201,6 +201,45 @@ describe("revealSharedDeckSearch — redraws past cards the hero may not take", 
   });
 });
 
+describe("revealSharedDeckSearch — reshuffles a depleted deck instead of softlocking", () => {
+  it("draw pile empty (cards in discard): reshuffles, reveals, and the player can keep one", () => {
+    const state = createAdventureGameState({ seed: "reshuffle-search", difficulty: "easy", rollFirstPlayer: false });
+    const deck = state.decks.abilities!;
+    // The normal state after enough Searches: the draw pile is empty, every card
+    // sits in the discard (the rest of each Search is discarded there).
+    deck.discardPile = [...deck.discardPile, ...deck.drawPile];
+    deck.drawPile = [];
+    const stash = deck.discardPile.length;
+    expect(stash).toBeGreaterThan(0);
+
+    revealSharedDeckSearch(state, "p1", "abilities", 2);
+
+    // It reshuffled the discard into the draw pile and revealed real cards…
+    expect(state.pendingChoice?.type).toBe("DECK_SEARCH");
+    const revealed = state.pendingChoice?.type === "DECK_SEARCH" ? state.pendingChoice.revealedCardIds.length : 0;
+    expect(revealed).toBeGreaterThan(0);
+    expect(deck.discardPile.length).toBeLessThan(stash);
+    // …so the player has cards to keep — not a softlocked, empty modal.
+    const picks = getLegalActions(state, "p1").filter((entry) => entry.action.type === "RESOLVE_DECK_SEARCH");
+    expect(picks.length).toBe(revealed);
+  });
+
+  it("no takeable card anywhere: opens no dead choice and hands the turn back (no softlock)", () => {
+    const state = createAdventureGameState({ seed: "reshuffle-none", difficulty: "easy", rollFirstPlayer: false });
+    const deck = state.decks.abilities!;
+    const owned = deck.drawPile[0] ?? deck.discardPile[0]!;
+    state.players.p1.hand = [owned]; // the hero already owns the only card the deck holds
+    deck.drawPile = [];
+    deck.discardPile = [owned];
+
+    revealSharedDeckSearch(state, "p1", "abilities", 2);
+
+    expect(state.pendingChoice).toBeNull();
+    expect(state.phase).toBe("player-turn");
+    expect(getLegalActions(state, "p1").length).toBeGreaterThan(0);
+  });
+});
+
 describe("openSharedDeckSearch — the take-the-top-discard branch", () => {
   function freshState(seed: string) {
     const state = createInitialGameState(seed);
