@@ -3332,9 +3332,9 @@ export default function Home() {
                   state={state}
                   viewerPlayerId={viewerPlayerId}
                 />
-              </div>
-              <div className="handArea">
-              {spellBookOn ? (
+                {/* Spell Book lives in this left column to free space for the
+                    enlarged hand sitting under the map. */}
+                {spellBookOn ? (
                 <div className={`spellBookPanel ${spellBookCards.length === 0 ? "empty" : ""}`}>
                   <button
                     aria-expanded={spellBookOpen}
@@ -3396,7 +3396,9 @@ export default function Home() {
                     </div>
                   ) : null}
                 </div>
-              ) : null}
+                ) : null}
+              </div>
+              <div className="handArea">
               <div className="handTopBar">
                 <small>
                   Hand {handCards.length}/{handLimit}

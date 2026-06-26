@@ -4111,38 +4111,58 @@ button.hbSlot:disabled { cursor: default; }
 
 /* Adventure hand strip */
 .adventureHand {
-  /* The player's card tray, parked under the map: the deck + discard pile (and
-     any permanent in play) sit on the LEFT, the hand fans out to their RIGHT. */
-  display: flex;
-  flex-direction: row;
-  align-items: flex-start;
-  gap: 14px;
-  background: rgba(33, 25, 15, 0.92);
-  border: 1px solid rgba(170, 130, 70, 0.3);
-  border-radius: 10px;
-  padding: 10px 12px;
+  /* The player's card tray, aligned with the map row above. Columns match
+     .adventureMidRow (left rail / map / right rail) so the support column
+     (Spell Book + deck/discard + permanent) lands under the left rail and the
+     hand of cards lands directly beneath the center map column. */
+  display: grid;
+  grid-template-columns: 170px 1fr 300px;
+  gap: 10px;
+  align-items: start;
 }
 
-/* Left column of the tray: the draw deck + discard pile, with the player's
-   permanent(s) shown directly beneath so the effect reads clearly on the map. */
+/* Left support column (under the left rail): Spell Book, deck/discard and the
+   player's permanent(s), each stacked. Carries its own panel chrome. */
 .ownDeckColumn {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  flex: 0 0 auto;
+  min-width: 0;
+  background: rgba(33, 25, 15, 0.92);
+  border: 1px solid rgba(170, 130, 70, 0.3);
+  border-radius: 10px;
+  padding: 8px 10px;
 }
 
-/* Right side of the tray: hand controls (draw/mulligan, Spell Book, cost
-   picker) stacked above the enlarged hand of cards. */
+/* Keep the deck + discard side by side, but sized to fit the narrow column. */
+.ownDeckColumn .ownDeckPile {
+  gap: 8px;
+  padding: 6px 8px;
+  align-self: stretch;
+  justify-content: center;
+}
+
+.ownDeckColumn .ownDeckBack,
+.ownDeckColumn .ownDiscardSpot {
+  width: 60px;
+  height: 84px;
+}
+
+/* The hand is anchored directly beneath the center map column (its left edge
+   lines up with the map), extending right so the enlarged cards have room. */
 .handArea {
+  grid-column: 2 / -1;
   display: flex;
   flex-direction: column;
   gap: 6px;
-  flex: 1 1 auto;
   min-width: 0;
+  background: rgba(33, 25, 15, 0.92);
+  border: 1px solid rgba(170, 130, 70, 0.3);
+  border-radius: 10px;
+  padding: 8px 10px;
 }
 
-/* Permanent shown inside the deck column: keep it within the column's width
+/* Permanent shown inside the support column: keep it within the column's width
    (stack multiple permanents) and make its effect text plainly legible. */
 .ownDeckColumn .permanentRow {
   flex-direction: column;
@@ -4150,17 +4170,32 @@ button.hbSlot:disabled { cursor: default; }
 }
 
 .ownDeckColumn .permanentSlot {
-  max-width: 220px;
+  max-width: 100%;
+}
+
+.ownDeckColumn .permanentCardImage {
+  width: 56px;
 }
 
 .ownDeckColumn .permanentMeta small {
   opacity: 0.95;
 }
 
-@media (max-width: 900px) {
-  /* Narrow screens: fall back to stacking the deck/discard above the hand. */
+@media (max-width: 1100px) {
+  /* Track .adventureMidRow's narrower columns so the rows stay aligned. */
   .adventureHand {
-    flex-direction: column;
+    grid-template-columns: 150px 1fr 240px;
+  }
+}
+
+@media (max-width: 900px) {
+  /* Narrow screens: stack the support column above the full-width hand. */
+  .adventureHand {
+    grid-template-columns: 1fr;
+  }
+
+  .handArea {
+    grid-column: 1 / -1;
   }
 }
 
@@ -4192,7 +4227,7 @@ button.hbSlot:disabled { cursor: default; }
 
 .adventureHandCard .handCardImage {
   /* Enlarged tray cards — easier to read the hand at a glance under the map. */
-  width: 124px;
+  width: 150px;
   border-radius: 8px;
   display: block;
 }
