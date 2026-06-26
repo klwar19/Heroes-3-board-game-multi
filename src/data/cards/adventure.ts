@@ -342,9 +342,11 @@ function dessaSpecialtySix(): CardLibrary[string] {
  * A lethal-save specialty (Alamar's Resurrection, Jeddite's Mysterious Warlock):
  * a reaction in the engine's lethal-save window that cancels a normal attack
  * which would destroy one of your units (never spells or specialty damage). One
- * option per grade; its Power requirement is paid by discarding that many
- * "power-source" cards (a Power statistic or any Spell). A cost of 0 needs no
- * discard.
+ * option per grade; its book/Power requirement is value-based (`powerCost`), so
+ * the wiki's "can be improved by spell power, just like a regular spell" holds:
+ * it is met by the player's standing spell Power PLUS the printed Power VALUE of
+ * the power-source cards discarded (a +2 source counts as 2, not as one card),
+ * never a raw discard COUNT. A cost of 0 needs no payment.
  */
 function lethalSaveSpecialty(
   heroSlug: string,
@@ -365,7 +367,7 @@ function lethalSaveSpecialty(
       "reaction",
       heroSlug,
       tagGroup,
-      `Cancel an enemy attack that would reduce one of your units to 0 HP (attacks only, not spells or specialties). Discard Power (a Power statistic or a Spell): ${costs.bronze} for a bronze unit, ${costs.silver} for silver, ${costs.gold} for gold.`
+      `Cancel an enemy attack that would reduce one of your units to 0 HP (attacks only, not spells or specialties). Pay spell Power (your standing Power, a Power statistic, or a Spell): ${costs.bronze} for a bronze unit, ${costs.silver} for silver, ${costs.gold} for gold.`
     ],
     effect: {
       type: "CHOOSE_ONE",
@@ -375,10 +377,10 @@ function lethalSaveSpecialty(
       options: grades.map((grade) => ({
         label:
           costs[grade] > 0
-            ? `Save a ${grade} unit (discard ${costs[grade]} Power/Spell)`
+            ? `Save a ${grade} unit (pay ${costs[grade]} Power)`
             : `Save a ${grade} unit`,
         ...(costs[grade] > 0
-          ? { cost: { discardCards: costs[grade], costCardFilter: "power-source" as const } }
+          ? { cost: { powerCost: costs[grade], costCardFilter: "power-source" as const } }
           : {}),
         effect: { type: "CANCEL_LETHAL_ATTACK" as const, grade }
       }))
@@ -395,30 +397,20 @@ function lethalSaveSpecialty(
 /**
  * Deemer's Meteor Shower I (target + 1 adjacent) and VI (target + 2 adjacent):
  * "Select a unit and N unit(s) adjacent to it. Deal X to all selected units,
- * friend or foe." The three Power tiers (0/2/4 → 1/2/3 damage) are the
- * board-game's standard cost-gated options: deal 1 for free, or pay 2 / 4
- * power-source cards for 2 / 3 — the same idiom as Resurrection/Frenzy. The
- * engine hits the centre unit and that many adjacent units, letting the caster
- * pick which when more are adjacent (AREA_DAMAGE_PICK_ADJACENT).
+ * friend or foe." Per the verbatim card and the wiki the damage "scales directly
+ * with spell power, similar to standard spells" — the book/Power table reads
+ * Power 0-1 → 1, Power 2-3 → 2, Power 4+ → 3, exactly like the Frost Ring Spell.
+ * So it is a SINGLE power-scaled activation (`amountByPower`), NOT a menu of fixed
+ * damage tiers: the Power brought is the caster's standing spell Power plus the
+ * printed Power of the power-source cards discarded to play it (a +2 source
+ * counts as 2), resolved in `playCardSpellPower`. The earlier 3-tier CHOOSE_ONE
+ * (deal 1/2/3 for an exact discard COUNT of 0/2/4 cards) was wrong on both axes:
+ * it presented a confusing tier menu and ignored spell-power buffs / card Power
+ * values. The engine hits the centre unit and that many adjacent units, letting
+ * the caster pick which when more are adjacent (AREA_DAMAGE_PICK_ADJACENT).
  */
 function meteorShowerSpecialty(level: 1 | 6, adjacentPicks: number): CardLibrary[string] {
   const adjacentText = adjacentPicks === 1 ? "1 unit adjacent to it" : `${adjacentPicks} units adjacent to it`;
-  const tier = (amount: 1 | 2 | 3, payPower: 0 | 2 | 4) => ({
-    label:
-      payPower === 0
-        ? `Deal ${amount} damage to the unit and ${adjacentText}`
-        : `Deal ${amount} damage (pay ${payPower} Power)`,
-    // Instant: playable at any time during Combat — on your turn and off-turn
-    // when an enemy unit's activation starts or when it finishes its move.
-    combatAnytime: true,
-    ...(payPower > 0 ? { cost: { discardCards: payPower, costCardFilter: "power-source" as const } } : {}),
-    effect: {
-      type: "AREA_DAMAGE_PICK_ADJACENT" as const,
-      amount,
-      includeCenter: true,
-      adjacentPicks
-    }
-  });
   return {
     id: `specialty.deemer.${level}`,
     name: `Meteor Shower ${level === 1 ? "I" : "VI"}`,
@@ -430,12 +422,29 @@ function meteorShowerSpecialty(level: 1 | 6, adjacentPicks: number): CardLibrary
       "combat",
       "deemer",
       "meteor-shower",
-      `Instant (any time, incl. an enemy unit's turn start or end of its move): Select a unit and ${adjacentText}. Deal to all selected units (friend or foe): Power 0: 1 damage; Power 2: 2 damage; Power 4: 3 damage.`
+      `Instant (any time, incl. an enemy unit's turn start or end of its move): Select a unit and ${adjacentText}. Deal to all selected units (friend or foe), scaling with the spell Power you bring: Power 0-1: 1 damage; Power 2-3: 2 damage; Power 4+: 3 damage.`
     ],
     target: { type: "any-unit" },
+    // ONE power-scaled activation, not a tier menu. The optional power-source
+    // discard (up to 4 — the breakpoint for max damage) plus standing spell Power
+    // set the damage via `amountByPower`, mirroring the Frost Ring Spell. Playable
+    // any time during Combat (combatAnytime): on your turn and off-turn when an
+    // enemy unit's activation starts or when it finishes its move.
     effect: {
       type: "CHOOSE_ONE",
-      options: [tier(1, 0), tier(2, 2), tier(3, 4)]
+      options: [
+        {
+          label: "Select a unit and its neighbours — deal 1-3 (scales with the Power you bring)",
+          combatAnytime: true,
+          cost: { discardCardsUpTo: 4, costCardFilter: "power-source" as const },
+          effect: {
+            type: "AREA_DAMAGE_PICK_ADJACENT" as const,
+            amountByPower: { 0: 1, 2: 2, 4: 3 },
+            includeCenter: true,
+            adjacentPicks
+          }
+        }
+      ]
     },
     assets: {
       cardImage: specialtyCardImage("deemer", level),

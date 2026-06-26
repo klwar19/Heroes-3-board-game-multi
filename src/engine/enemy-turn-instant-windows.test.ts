@@ -129,9 +129,9 @@ describe("instant-specialty card flags", () => {
     // Adelaide I / VI: the single Frost Ring side is an instant.
     expect(optionFlags("specialty.adelaide.1")).toEqual([true]);
     expect(optionFlags("specialty.adelaide.6")).toEqual([true]);
-    // Deemer I / VI: all three Power tiers are instants.
-    expect(optionFlags("specialty.deemer.1")).toEqual([true, true, true]);
-    expect(optionFlags("specialty.deemer.6")).toEqual([true, true, true]);
+    // Deemer I / VI: the single power-scaled Meteor Shower activation is an instant.
+    expect(optionFlags("specialty.deemer.1")).toEqual([true]);
+    expect(optionFlags("specialty.deemer.6")).toEqual([true]);
   });
 });
 

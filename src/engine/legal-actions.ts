@@ -187,17 +187,28 @@ export function getCardPlayVariants(card: CardDefinition): CardPlayVariant[] {
  */
 export function standingSpellPower(state: GameState, playerId: PlayerId, card: CardDefinition): number {
   const player = state.players[playerId];
-  if (!player || card.kind !== "spell") {
+  // Hero specialties that pay or scale by Power (Deemer's Meteor Shower, the
+  // Alamar/Jeddite lethal-saves) read the SAME standing spell Power as a Spell —
+  // per the wiki their effect "scales directly with spell power, similar to
+  // standard spells" / "can be improved by spell power, just like a regular
+  // spell". Only the once-per-spell-cast riders below (Astrologers' first spell,
+  // the active unit's first-spell boost) stay gated to actual Spell casts: a
+  // Specialty is not a Spell cast and never increments the spell counters, so
+  // counting them here would let the same first-spell bonus be banked twice (once
+  // on the Specialty, again on the real first spell). The persistent boosts
+  // (School-of-Magic permanent — null for a school-less Specialty — and Pandora's
+  // flat Power) apply to both.
+  if (!player || (card.kind !== "spell" && card.kind !== "hero-specialty")) {
     return 0;
   }
   let bonus = 0;
-  if ((player.combatStats.spellsCastThisTurn ?? 0) === 0) {
+  if (card.kind === "spell" && (player.combatStats.spellsCastThisTurn ?? 0) === 0) {
     const astrologers = getActiveAstrologersCard(state);
     if (astrologers?.effect.type === "FIRST_SPELL_POWER_BONUS") {
       bonus += astrologers.effect.amount;
     }
   }
-  if ((player.combatStats.spellsCastThisRound ?? 0) === 0) {
+  if (card.kind === "spell" && (player.combatStats.spellsCastThisRound ?? 0) === 0) {
     const combat = state.combat;
     const activeUnit = combat?.activeUnitId ? combat.units[combat.activeUnitId] : undefined;
     if (activeUnit && activeUnit.controllerId === playerId) {
