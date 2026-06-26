@@ -768,13 +768,32 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
       }
     }
 
+    // Center (VI–VII) tiles forced by the win condition (Grail Hunt → a Grail,
+    // Dragon Hunt/Conqueror → a Dragon Utopia) apply to face-down Center slots
+    // here too, exactly like the scenario layout — otherwise a designed map could
+    // never guarantee the objective tile its victory mode needs.
+    const faceDownCenterSlots = customMap.filter(
+      (plan) => plan.faceDown && plan.group === "center"
+    ).length;
+    const forcedCenters = forcedObjectiveCenterTiles(centerPool, faceDownCenterSlots, victoryMode);
+    let forcedCenterIndex = 0;
+
     for (const plan of customMap) {
       if (plan.group === "starting") {
         continue;
       }
       const center = { row: plan.row, col: plan.col };
       if (plan.faceDown) {
-        const tileDefId = plan.group === "sea" ? popSeaTile(plan.seaBand) : pools[plan.group]?.pop();
+        let tileDefId: string | undefined;
+        if (plan.group === "sea") {
+          tileDefId = popSeaTile(plan.seaBand);
+        } else if (plan.group === "center") {
+          // The win-condition objective fills the first face-down Center slot;
+          // any further Center slots stay a random draw.
+          tileDefId = forcedCenters[forcedCenterIndex++] ?? centerPool.pop();
+        } else {
+          tileDefId = pools[plan.group]?.pop();
+        }
         if (tileDefId) {
           // "Down means random", but the designer's chosen orientation still
           // rides along — the random tile is revealed at the slot's rotation.

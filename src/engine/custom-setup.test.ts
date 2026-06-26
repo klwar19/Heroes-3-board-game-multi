@@ -3,6 +3,7 @@ import { processPendingVisit } from "./adventure";
 import { createAdventureGameState, validateCustomMapPlan } from "./adventure-setup";
 import { getScenario } from "./adventure-setup";
 import { getPlayerView } from "./player-view";
+import { allTileDefinitions } from "@/data/map/tiles";
 
 describe("custom starting army", () => {
   it("gives each player their own faction's unit of every picked level", () => {
@@ -114,6 +115,27 @@ describe("map designer", () => {
     expect(faceDown!.backLabel).toBe("Ⅳ–Ⅴ");
     // Random pool draw, never the hand-picked face-up tile.
     expect(faceDown!.tileDefId).not.toBe("F1");
+  });
+
+  it("forces the win-condition objective onto a face-down Center tile, not a random draw", () => {
+    // A designed map's face-down Center slot must guarantee the victory mode's
+    // objective tile, exactly like the scenario layout does.
+    const centerFields = (victoryMode: "grail" | "dragon-hunt") => {
+      const state = createAdventureGameState({
+        seed: "designed-objective",
+        victoryMode,
+        customMap: [{ row: 9, col: 4, group: "center", faceDown: true }]
+      });
+      const centerTile = Object.values(state.adventure!.tiles).find((tile) => tile.group === "center");
+      expect(centerTile).toBeDefined();
+      return allTileDefinitions[centerTile!.tileDefId]?.fields ?? [];
+    };
+
+    expect(centerFields("grail").some((field) => field.location === "grail")).toBe(true);
+    expect(centerFields("dragon-hunt").some((field) => field.location === "dragon_utopia")).toBe(true);
+    // CONTROL: the seed is identical, so without the win-condition forcing both
+    // modes would pop the SAME random Center tile — and one tile cannot be both
+    // a Grail and a Dragon Utopia, so dropping the fix fails one assertion above.
   });
 
   it("accepts free-form tiles that leave gaps or float disconnected from the board", () => {
