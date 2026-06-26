@@ -37,6 +37,16 @@ A passing data check is not coverage. These five habits catch the bugs an
    token always *lowers* effective defense, never raises it") — it guards every
    producer at once.
 
+**Auditing content?** Use the `/audit-content` command (`.claude/commands/`),
+which operationalises these five habits across *every* category (units, spells,
+specialties, artifacts, abilities, buildings, banks, map tiles) — not just the one
+you came in for. It exists because a prior audit reported green while Deemer's
+Meteor Shower / Resurrection were broken: they were wired and had tests, but the
+tests asserted the printed tier numbers instead of whether the damage/cost moved
+with spell power, and no test compared the specialty to its scaling twin (the
+Frost Ring spell). An "is it wired? is there a test?" pass is **not** an audit;
+audit the behaviour and mutation-check every "verified" claim.
+
 ## 2. Every card/unit definition must state exactly what the engine implements
 
 A human must be able to read a definition and know precisely what runs.
