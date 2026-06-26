@@ -4580,6 +4580,18 @@ button.hbSlot:disabled { cursor: default; }
   gap: 8px;
 }
 
+/* In-context "buy / build before the battle" actions, surfaced inside the prep
+   prompt so the attacked player can shop without hunting for the town panel. */
+.prepTownActions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px dashed rgba(214, 178, 94, 0.45);
+  border-radius: 8px;
+  background: rgba(20, 14, 9, 0.35);
+}
+
 .preBattlePanel .combatReadyButton {
   font-size: 13px;
   padding: 9px 14px;
