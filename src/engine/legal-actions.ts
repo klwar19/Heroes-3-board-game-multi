@@ -188,16 +188,21 @@ export function getCardPlayVariants(card: CardDefinition): CardPlayVariant[] {
 export function standingSpellPower(state: GameState, playerId: PlayerId, card: CardDefinition): number {
   const player = state.players[playerId];
   // Hero specialties that pay or scale by Power (Deemer's Meteor Shower, the
-  // Alamar/Jeddite lethal-saves) read the SAME standing spell Power as a Spell —
-  // per the wiki their effect "scales directly with spell power, similar to
-  // standard spells" / "can be improved by spell power, just like a regular
-  // spell". Only the once-per-spell-cast riders below (Astrologers' first spell,
-  // the active unit's first-spell boost) stay gated to actual Spell casts: a
-  // Specialty is not a Spell cast and never increments the spell counters, so
-  // counting them here would let the same first-spell bonus be banked twice (once
-  // on the Specialty, again on the real first spell). The persistent boosts
-  // (School-of-Magic permanent — null for a school-less Specialty — and Pandora's
-  // flat Power) apply to both.
+  // Alamar/Jeddite lethal-saves) draw standing spell Power too — per the wiki
+  // their effect "scales directly with spell power, similar to standard spells" /
+  // "can be improved by spell power, just like a regular spell". But a Specialty
+  // belongs to NO school of magic, so the ONLY standing source it can pick up is
+  // the flat, school-agnostic Pandora-style bonus (permanentSpellPowerBonus,
+  // below). Everything school-scoped is excluded for a Specialty:
+  //   - School-of-Magic permanent — getPermanentSchoolBonus returns null for any
+  //     non-Spell card, so it adds nothing here;
+  //   - the Magi pack's first-cast boost and Astrologers' first-spell bonus — both
+  //     gated to `card.kind === "spell"` below (also avoids double-dipping a
+  //     once-per-spell-cast bonus, since a Specialty never increments the spell
+  //     counters);
+  //   - the Elemental Orbs' school multiplier and the Tomes' SET_SPELL_POWER_MAX
+  //     never reach this function at all — they live only in the CAST_SPELL power
+  //     pipeline (getCurrentSpellPower / the cast boost window).
   if (!player || (card.kind !== "spell" && card.kind !== "hero-specialty")) {
     return 0;
   }
