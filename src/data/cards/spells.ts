@@ -336,6 +336,18 @@ export const spellCards: CardLibrary = {
           }
         },
         {
+          // NOT-IMPLEMENTED (engine bug): this trigger-free "+initiative" arm is
+          // currently UNREACHABLE. A CHOOSE_ONE Spell option with no trigger has
+          // no offer path — the on-turn cast loop skips CHOOSE_ONE Spells,
+          // addPlayableCardActions skips Spells, and variantMatchesTrigger only
+          // slots a trigger-free variant into a reaction window when its effect is
+          // DRAW_CARDS. So no player is ever offered this option in any phase.
+          // Wiring it needs BOTH a trigger-free CHOOSE_ONE-Spell-option offer path
+          // AND resolution dispatch to the chosen option's CREATE_INITIATIVE_BUFF
+          // (the effect switch currently keys off card.effect.type === CHOOSE_ONE).
+          // The dead arm is pinned by prayer-spell.test.ts ("…never offers it");
+          // that guard flips red once a real fix lands. The +attack/+defense arms
+          // (options 0/1) ARE engine-wired and tested.
           label: "+X initiative",
           effect: {
             type: "CREATE_INITIATIVE_BUFF",
