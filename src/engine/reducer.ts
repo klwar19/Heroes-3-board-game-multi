@@ -5644,6 +5644,55 @@ function advanceActiveUnit(state: GameState): void {
 }
 
 /**
+ * "Steal the turn": a just-applied Initiative buff (Prayer's +initiative arm,
+ * cast off-turn as an instant before the enemy unit moves) can vault a friendly
+ * unit ahead of the enemy unit that was about to act. If the pending active unit
+ * belongs to the OTHER player and has not yet begun its activation, and some
+ * still-to-act unit now strictly out-paces it on effective Initiative, re-derive
+ * the activation slot from the normal order (advanceActiveUnit) — the faster unit
+ * takes the turn now and the pre-empted unit simply resumes in Initiative order
+ * later, exactly like Bowstring of the Unicorn's Mane's out-of-order activation.
+ *
+ * Scoped to an enemy's fresh, not-yet-started activation: it never interrupts the
+ * caster's own active unit (an on-turn buff just sets up later ordering), and a
+ * unit already mid-move/attack keeps its turn. A tie does NOT steal — the buff
+ * must make the unit STRICTLY faster, matching "make your unit faster to cut in".
+ */
+function maybeStealActivationAfterInitiativeShift(state: GameState, casterId: PlayerId): void {
+  const combat = state.combat;
+  if (!combat || combat.outcome || combat.setup) {
+    return;
+  }
+  const active = combat.activeUnitId ? combat.units[combat.activeUnitId] : undefined;
+  if (
+    !active ||
+    !isUnitAlive(active) ||
+    active.controllerId === casterId ||
+    active.activatedThisRound ||
+    active.movedThisActivation ||
+    active.attackedThisActivation ||
+    (active.attacksThisActivation ?? 0) > 0
+  ) {
+    return;
+  }
+  const activeInitiative = effectiveInitiative(active, state.activeEffects);
+  const fasterFreshUnitExists = Object.values(combat.units).some(
+    (unit) =>
+      unit.id !== active.id &&
+      isUnitAlive(unit) &&
+      !unit.activatedThisRound &&
+      effectiveInitiative(unit, state.activeEffects) > activeInitiative
+  );
+  if (!fasterFreshUnitExists) {
+    return;
+  }
+  // The about-to-act unit is still flagged not-activated, so advanceActiveUnit
+  // re-picks the genuine fastest eligible unit (now the buffed one) and leaves
+  // the pre-empted unit to come up again later in the round.
+  advanceActiveUnit(state);
+}
+
+/**
  * Opens the "which of your tied units goes first" choice. Index-aligned with
  * `candidates`; resolveActivationOrderChoice makes the picked unit active.
  */
@@ -6681,6 +6730,9 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
     // Snapshot for the ongoing rule: effects created below mark this card as
     // staying in play until they end.
     const effectCountBeforeCast = state.activeEffects.length;
+    // Set when this cast lands a unit-targeted Initiative buff: after it fully
+    // resolves, a faster friendly unit may "steal" a fresh enemy activation.
+    let appliedCombatInitiativeBuff = false;
 
     // Rampart Dwarves "Magic Resistance": a spell aimed at a Dwarf rolls a die
     // to shrug it off. On the matching face the spell still resolves (and is
@@ -6881,6 +6933,46 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
         stackItem.action.playerId,
         stackItem.action.target
       );
+      appliedCombatInitiativeBuff = true;
+    }
+
+    // CHOOSE_ONE spell cast directly to one of its trigger-free arms (Prayer's
+    // +initiative side): the branches above key off card.effect.type, which is
+    // CHOOSE_ONE, so resolve the chosen option's effect here. Only the
+    // CREATE_INITIATIVE_BUFF arm is offered for a direct cast (see
+    // addChooseOneSpellInstantCasts), so it is the only one resolved here — a
+    // whole-Combat Initiative buff on the friendly unit, power-scaled exactly
+    // like the +attack/+defense arms. Those arms carry triggers and resolve in
+    // their reaction window, never reaching this spell-cast resolution.
+    if (card?.effect.type === "CHOOSE_ONE" && state.combat && stackItem.action.target.type === "unit") {
+      const chosen = getEffectiveCardEffect(card, stackItem.action.optionIndex);
+      if (chosen?.type === "CREATE_INITIATIVE_BUFF") {
+        const power = getCurrentSpellPower(state, stackItem, cards);
+        const targetUnit = state.combat.units[stackItem.action.target.unitId];
+        const amount = doubleAmountForUnitName(
+          getAmountByPower(chosen.amountByPower, chosen.amount ?? 0, power),
+          targetUnit,
+          chosen.doubleForUnitName
+        );
+        createActiveEffect(
+          state,
+          {
+            name: chosen.name,
+            scope: "unit",
+            duration: chosen.duration,
+            polarity: chosen.polarity ?? (amount >= 0 ? "positive" : "negative"),
+            removable: chosen.removable ?? true,
+            modifiers: [
+              { type: "INITIATIVE_BONUS", amount },
+              ...(chosen.movementBonus ? [{ type: "MOVEMENT_BONUS" as const, amount: chosen.movementBonus }] : [])
+            ]
+          },
+          { type: "card", cardId: card.id, controllerId: stackItem.action.playerId },
+          stackItem.action.playerId,
+          stackItem.action.target
+        );
+        appliedCombatInitiativeBuff = true;
+      }
     }
 
     if (card?.effect.type === "CREATE_SPELL_IMMUNITY" && state.combat && stackItem.action.target.type === "unit") {
@@ -7345,6 +7437,14 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
 
     if (finishCombatIfNeeded(state)) {
       return;
+    }
+
+    // "Steal the turn": an off-turn Initiative buff (Prayer's +initiative arm)
+    // that out-paces the fresh enemy unit about to act hands the activation to
+    // the now-faster friendly unit. No-op for an on-turn cast or any cast that
+    // did not raise a unit's Initiative.
+    if (appliedCombatInitiativeBuff) {
+      maybeStealActivationAfterInitiativeShift(state, stackItem.action.playerId);
     }
 
     // Fireball's second-target choice stays open after the cast resolves.
