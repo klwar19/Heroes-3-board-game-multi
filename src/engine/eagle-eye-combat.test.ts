@@ -1,0 +1,162 @@
+import { describe, expect, it } from "vitest";
+import { applyAction, createInitialGameState, getLegalActions } from "./index";
+import type { GameAction, GameState } from "./state";
+
+/**
+ * Eagle Eye in combat (CLAUDE.md rule #1 — engine-enforced + mutation-checked).
+ *
+ * Eagle Eye digs the shared Spell deck for the first Basic (basic play) or
+ * Expert (expert play, crown) spell, opens a take-or-discard choice, and
+ * reshuffles the rest. It NEVER touches a battlefield unit. Two things this
+ * pins down, each with a control that fails if the wiring is removed:
+ *
+ *  1. Played in combat it is self-targeted — it offers a `{type:"none"}` play
+ *     and demands NO enemy-unit pick. (Before the fix it fell through to the
+ *     default "enemy-unit" target: the "weird UI" that made you click a unit,
+ *     and made Eagle Eye un-playable when no enemy unit was targetable.)
+ *  2. The player PICKS Basic or Expert: basic is always offered; the Expert
+ *     side (an Expert spell) is offered when a crown is available and spends it.
+ *  3. The dug spell is DETERMINISTIC, not random: the FIRST matching spell from
+ *     the top of the deck, skipping non-matching cards, with the rest reshuffled.
+ */
+
+const EAGLE = "ability.eagle_eye";
+
+function applyOk(state: GameState, action: GameAction): GameState {
+  const result = applyAction(state, action);
+  expect(result.errors, result.errors.map((error) => error.message).join("; ")).toEqual([]);
+  return result.state;
+}
+
+/** Every PLAY_CARD legal action for Eagle Eye offered to `playerId` right now. */
+function eaglePlays(state: GameState, playerId: "p1" | "p2") {
+  return getLegalActions(state, playerId)
+    .map((legal) => legal.action)
+    .filter(
+      (action): action is Extract<GameAction, { type: "PLAY_CARD" }> =>
+        action.type === "PLAY_CARD" && action.cardId === EAGLE
+    );
+}
+
+/** A fresh combat sandbox (BINH split decks) with Eagle Eye in p1's hand. */
+function combatWithEagle(seed: string, expertUses = 0): GameState {
+  const state = createInitialGameState(seed);
+  state.activePlayerId = "p1";
+  state.players.p1.hand = [EAGLE];
+  state.players.p1.limits.expertUses = expertUses;
+  state.players.p1.combatStats.expertUsesSpentThisRound = 0;
+  return state;
+}
+
+describe("Eagle Eye in combat: self-targeted, pick Basic or Expert", () => {
+  it("offers a no-target play and never demands an enemy-unit pick", () => {
+    const state = combatWithEagle("eagle-no-unit");
+    // The default sandbox has live enemy units (p2 Skeletons/Vampires/Dread
+    // Knights), so a stray "enemy-unit" target would have plenty to latch onto.
+    const enemyUnits = Object.values(state.combat!.units).filter((unit) => unit.controllerId === "p2");
+    expect(enemyUnits.length).toBeGreaterThan(0);
+
+    const plays = eaglePlays(state, "p1");
+    expect(plays.length).toBeGreaterThan(0);
+    // Self-targeted: at least one no-target play…
+    expect(plays.some((play) => play.target?.type === "none")).toBe(true);
+    // …and CONTROL: not a single play hangs on an enemy-unit target. (Remove
+    // EAGLE_EYE_DIG from selfTargetedEffect and every play here becomes a
+    // per-enemy-unit pick, failing both lines.)
+    expect(plays.some((play) => play.target?.type === "unit")).toBe(false);
+  });
+
+  it("offers only Basic without a crown, and adds the Expert pick with one", () => {
+    const noCrown = eaglePlays(combatWithEagle("eagle-basic-only", 0), "p1");
+    expect(noCrown.map((play) => play.mode ?? "basic")).toEqual(["basic"]);
+
+    const withCrown = eaglePlays(combatWithEagle("eagle-pick-expert", 1), "p1");
+    const modes = withCrown.map((play) => play.mode ?? "basic").sort();
+    // CONTROL: the Expert dig only appears in combat because EAGLE_EYE_DIG is in
+    // getPlayableModesForCard's crown-gated branch. Both stay no-target.
+    expect(modes).toEqual(["basic", "expert"]);
+    expect(withCrown.every((play) => play.target?.type === "none")).toBe(true);
+  });
+});
+
+describe("Eagle Eye dig is deterministic (the first matching spell, not random)", () => {
+  it("basic play takes the TOP-MOST Basic spell, skipping an Expert, then reshuffles the rest", () => {
+    const state = combatWithEagle("eagle-basic-dig");
+    // Draw pile top is the LAST element. Top→bottom: Implosion (expert),
+    // Haste (basic), Bless (basic). The basic dig must skip Implosion and take
+    // the FIRST basic from the top — Haste — never the deeper Bless, never the
+    // Expert.
+    state.decks.spells.drawPile = ["spell.bless", "spell.haste", "spell.implosion"];
+    state.decks.spells.discardPile = [];
+
+    const basic = eaglePlays(state, "p1").find((play) => (play.mode ?? "basic") === "basic");
+    expect(basic).toBeTruthy();
+    const dug = applyOk(state, basic!);
+
+    const choice = dug.pendingChoice;
+    expect(choice?.type === "OPTION_CHOICE" && choice.context).toBe("eagle-eye");
+    expect((choice as { eagleEye?: { cardId: string } }).eagleEye?.cardId).toBe("spell.haste");
+    // Played mid-combat, the take/discard choice returns to combat, not the map.
+    expect((choice as { returnPhase?: string }).returnPhase).toBe("combat");
+
+    // Take it into hand.
+    const taken = applyOk(dug, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: (choice as { id: string }).id,
+      optionIndex: 0
+    });
+    expect(taken.players.p1.hand).toContain("spell.haste");
+    expect(taken.decks.spells.drawPile).not.toContain("spell.haste");
+    // The skipped cards were reshuffled back into the deck, not consumed.
+    expect(taken.decks.spells.drawPile).toContain("spell.bless");
+    expect(taken.decks.spells.drawPile).toContain("spell.implosion");
+    expect(taken.phase).toBe("combat");
+  });
+
+  it("discarding the find sends it to the deck's discard pile, not the hand", () => {
+    const state = combatWithEagle("eagle-basic-discard");
+    state.decks.spells.drawPile = ["spell.haste"];
+    state.decks.spells.discardPile = [];
+
+    const basic = eaglePlays(state, "p1").find((play) => (play.mode ?? "basic") === "basic");
+    const dug = applyOk(state, basic!);
+    const choice = dug.pendingChoice as { id: string };
+    const done = applyOk(dug, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: choice.id, optionIndex: 1 });
+
+    expect(done.players.p1.hand).not.toContain("spell.haste");
+    expect(done.decks.spells.discardPile).toContain("spell.haste");
+  });
+
+  it("expert play reads the Expert spell pool, surfaces an Expert spell, and spends a crown", () => {
+    const state = combatWithEagle("eagle-expert-dig", 1);
+    // BINH split decks: an Expert dig reads the Expert pool. Stock it with a
+    // single Expert spell and leave a Basic on the basic pile as a control that
+    // the Expert dig does NOT read the wrong deck.
+    state.decks["spells-expert"]!.drawPile = ["spell.implosion"];
+    state.decks["spells-expert"]!.discardPile = [];
+    state.decks.spells.drawPile = ["spell.haste"];
+
+    const expert = eaglePlays(state, "p1").find((play) => play.mode === "expert");
+    expect(expert, "an Expert Eagle Eye play should be offered with a crown").toBeTruthy();
+    const dug = applyOk(state, expert!);
+
+    const choice = dug.pendingChoice;
+    expect((choice as { eagleEye?: { cardId: string; deckId: string } }).eagleEye).toMatchObject({
+      cardId: "spell.implosion",
+      deckId: "spells-expert"
+    });
+    // The crown was spent — the Expert side is genuinely gated, not free.
+    expect(dug.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
+
+    const taken = applyOk(dug, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: (choice as { id: string }).id,
+      optionIndex: 0
+    });
+    expect(taken.players.p1.hand).toContain("spell.implosion");
+    // The basic pile was untouched.
+    expect(taken.decks.spells.drawPile).toContain("spell.haste");
+  });
+});
