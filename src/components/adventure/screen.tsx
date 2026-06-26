@@ -3065,6 +3065,18 @@ export function PreBattlePanel({
   const escapeActions = legalActions.filter(
     (legal) => legal.action.type === "RETREAT_FROM_COMBAT" || legal.action.type === "SURRENDER_COMBAT"
   );
+  // The town actions this player may still spend before the fight (build a
+  // structure, recruit/reinforce a unit, buy spells). They already work from the
+  // town panel on the right, but surfacing them HERE — inside the prep prompt the
+  // attacked player is looking at — makes "buy/build before the battle" a single
+  // obvious click instead of a hunt across the board. Same engine action either
+  // way; this is just a second, in-context entry point.
+  const townActions = legalActions.filter(
+    (legal) =>
+      legal.action.type === "BUILD_STRUCTURE" ||
+      legal.action.type === "POPULATION_ACTION" ||
+      legal.action.type === "SPELL_BOOK_ACTION"
+  );
 
   const readyChip = (id: PlayerId, name: string, role: string) => (
     <span className={`prepReadyChip ${hasAccepted(id) ? "ready" : "waiting"}`} key={id}>
@@ -3089,10 +3101,27 @@ export function PreBattlePanel({
       {viewerPreparing ? (
         <>
           <small className="prepNote">
-            Prepare on the map before the fight: spend any town actions you have left this round (build, recruit, buy
-            spells) at your town panel on the right. Units you recruit now join your army in time to be deployed. When you
-            are ready, accept the battle — deployment begins once both sides accept.
+            Prepare before the fight: spend any town actions you have left this round (build, recruit, buy spells) — right
+            here below, or at your town panel on the right. Units you recruit now join your army in time to be deployed.
+            When you are ready, accept the battle — deployment begins once both sides accept.
           </small>
+          {townActions.length > 0 ? (
+            <div className="prepTownActions" aria-label="Spend a town action before the battle">
+              <small className="prepNote">Buy / build now:</small>
+              <div className="prepButtons">
+                {townActions.map((legal) => (
+                  <button
+                    className="commandButton"
+                    key={actionKey(legal.action)}
+                    onClick={() => onAction(legal.action)}
+                    type="button"
+                  >
+                    {legal.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
           <div className="prepButtons">
             {accept ? (
               <button
