@@ -6984,6 +6984,24 @@ export function revealSharedDeckSearch(
   // copies for the other players and the revealed batch alone is what was drawn.
   const skippedCardIds: string[] = [];
   while (revealedCardIds.length < count) {
+    if (deck.drawPile.length === 0) {
+      // The draw pile ran out mid-Search: reshuffle the discard pile back into it
+      // (the standard board-game "deck runs out → reshuffle the discard" rule,
+      // exactly as drawCardsForPlayer does for a hand). Without this, a Search on
+      // a deck whose cards had all been pushed to its discard — the normal state
+      // after enough Searches, since the rest of every Search goes to discard —
+      // revealed 0 cards, and the DECK_SEARCH choice then had no card to keep and
+      // no way to exit (a softlock). Cards already set aside as un-takeable
+      // (skippedCardIds) are NOT reshuffled here, so this loop always terminates.
+      if (deck.discardPile.length === 0) {
+        break; // genuinely nothing left anywhere in this deck
+      }
+      deck.drawPile = shuffleCards(
+        deck.discardPile,
+        `${state.seed}#search-reshuffle#${deckId}#${eventSeedNumber(state)}`
+      );
+      deck.discardPile = [];
+    }
     const cardId = deck.drawPile.pop();
     if (!cardId) {
       break;
@@ -6998,6 +7016,24 @@ export function revealSharedDeckSearch(
     // Bottom of the draw pile (front of the array, since the top is the last
     // element) — never re-reached within this reveal, so there is no loop.
     deck.drawPile.unshift(...skippedCardIds);
+  }
+
+  // With the reshuffle above a Search reveals 0 cards only when the deck holds no
+  // card this hero can take at all (it already owns every remaining card). Don't
+  // open a keep-one choice with nothing to keep — that would softlock; record the
+  // empty Search and return to the prior phase instead.
+  if (revealedCardIds.length === 0) {
+    appendEvent(state, {
+      type: "DECK_SEARCH_STARTED",
+      playerId,
+      deckId,
+      choiceId: `choice_${nextEventNumber(state)}`,
+      revealedCount: 0
+    });
+    state.pendingChoice = null;
+    state.phase = state.combat ? "combat" : "player-turn";
+    state.priorityPlayerId = null;
+    return;
   }
 
   // Basic X Magic's "draw instead of Searching" is offered up front (see
