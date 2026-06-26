@@ -1140,7 +1140,14 @@ function getTargetsForCard(
     card?.effect.type === "REMOVE_OBSTACLE" ||
     // Quicksand / Land Mine pick no unit either — the cast opens a face-down
     // token placement picker (every token is placed there, including the first).
-    card?.effect.type === "PLACE_HIDDEN_TOKENS";
+    card?.effect.type === "PLACE_HIDDEN_TOKENS" ||
+    // Eagle Eye digs the shared Spell deck for a Basic/Expert spell — it never
+    // touches a battlefield unit. Without this it defaults to "enemy-unit" and
+    // (wrongly) demands an enemy-unit pick when played in combat — and becomes
+    // un-playable when no enemy unit is targetable. The dig opens a take/discard
+    // choice instead. (optionNeedsUnitTarget already excludes it on the option
+    // path used by the Tome relics.)
+    card?.effect.type === "EAGLE_EYE_DIG";
   const cardTarget = overrideTarget ?? card?.target;
   const targetType =
     cardTarget?.type ??
@@ -1358,6 +1365,13 @@ function getPlayableModesForCard(state: GameState, playerId: PlayerId, card: Car
       ("expertAmount" in card.effect && card.effect.expertAmount !== undefined)) &&
     expertCrownFree
   ) {
+    modes.push("expert");
+  }
+
+  // Eagle Eye's Expert side digs for an Expert spell instead of a Basic one (an
+  // Expert use / crown). Offer it in combat too so the player picks Basic or
+  // Expert just like on the map play (effectSupportsExpertOption) — never a unit.
+  if (card.effect.type === "EAGLE_EYE_DIG" && expertCrownFree) {
     modes.push("expert");
   }
 
