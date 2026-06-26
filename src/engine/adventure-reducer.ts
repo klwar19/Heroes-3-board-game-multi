@@ -29,6 +29,7 @@ import {
   fieldCreatureBankId,
   grantCreatureBankReward,
   isCreatureBankId,
+  isSeaField,
   placeCreatureBank,
   eliminatePlayer,
   finalizeStartOfTurnHand,
@@ -704,6 +705,25 @@ function performHeroStep(state: GameState, hero: HeroState, to: MapSpaceId, pass
  */
 function haltAfterSeaStep(state: GameState, hero: HeroState, from: MapSpaceId, to: MapSpaceId): void {
   if (seaStepHalts(state, from, to, getHeroMovementCapabilities(state, hero))) {
+    hero.movementHaltedThisTurn = true;
+  }
+}
+
+/**
+ * A battle fought on the open sea ends the victorious hero's movement for the
+ * turn — the same coastline rule that {@link seaStepHalts} enforces for wading,
+ * now applied to fighting at sea. A hero who already crossed the coastline to
+ * reach the fight is halted by the step itself; this also catches the case where
+ * the hero began the turn at sea and sailed (sea→sea, no halt) into a guarded sea
+ * hex, so it cannot simply keep sailing after winning. Scoped to the sea: a land
+ * battle leaves the hero free to keep moving with any points it has left.
+ *
+ * Only the surviving hero that remains standing on the (sea) combat field is
+ * passed in — a defeated/retreating hero is relocated with its movement already
+ * spent (`moveDefeatedHeroHome`), so it is never reached here.
+ */
+function haltHeroAfterSeaCombat(state: GameState, hero: HeroState | undefined, fieldId: MapSpaceId): void {
+  if (hero && isSeaField(state, fieldId)) {
     hero.movementHaltedThisTurn = true;
   }
 }
@@ -4736,6 +4756,10 @@ export function finalizeAdventureCombat(state: GameState): void {
     state.priorityPlayerId = null;
 
     if (hero && playerId && outcome.winnerPlayerId === playerId && field) {
+      // Fighting on the open sea ends the hero's movement for the turn (see
+      // haltHeroAfterSeaCombat): a hero that sailed into a guarded sea hex cannot
+      // sail on after winning.
+      haltHeroAfterSeaCombat(state, hero, context.fieldId);
       if (context.bankId) {
         // Creature Bank win: claim the bank reward, scaled by X = the number of
         // Stacked defenders (rulebook p.66-67). Banks sit outside the BINH
@@ -4843,6 +4867,9 @@ export function finalizeAdventureCombat(state: GameState): void {
   state.priorityPlayerId = null;
 
   if (winnerHero && winnerHero.id === context.attackerHeroId) {
+    // The attacker took the contested field by winning; if that field is on the
+    // open sea, the battle ends their movement for the turn (see neutral case).
+    haltHeroAfterSeaCombat(state, winnerHero, context.fieldId);
     // Same now-or-never Necromancy gate as a neutral win (see above): defer the
     // attacker's field visit behind the decision when they can play it now.
     const winnerPid = winnerHero.controllerId;
