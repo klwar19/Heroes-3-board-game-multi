@@ -5562,11 +5562,25 @@ export type VisitStep =
     }
   | {
       /**
-       * McGiver grant leaf: move the chosen war machine from the shared supply to
-       * the player's hand at no cost (they play it as a permanent later).
+       * Astrologers (Wandering Merchant): open a self-rebuilding menu to buy one
+       * War Machine from the shared supply "as if at a Trading Post", `discountGold`
+       * gold cheaper. Only machines the player can still afford at the discounted
+       * price are offered; rebuilt from the live supply each time; a Skip exit makes
+       * the buy optional.
+       */
+      type: "WAR_MACHINE_DISCOUNT_OFFER";
+      discountGold: number;
+    }
+  | {
+      /**
+       * War-machine grant/buy leaf: move the chosen machine from the shared supply
+       * to the player's hand (they play it as a permanent later). With no `cost` it
+       * is a free grant (McGiver); with a `cost` it is a paid, discounted purchase
+       * (Wandering Merchant) and the gold is spent here.
        */
       type: "GRANT_WAR_MACHINE";
       cardId: CardId;
+      cost?: ResourceCost;
     }
   | {
       /**

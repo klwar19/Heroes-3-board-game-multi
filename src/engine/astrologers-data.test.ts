@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  ART_LESS_PROCLAMATIONS,
   ASTROLOGERS_EXPANSIONS,
   ASTROLOGERS_NOT_IMPLEMENTED,
   astrologersCardDefinitions,
@@ -45,7 +46,8 @@ const WIRED_EFFECT_TYPES = {
   WAR_MACHINE_BUFF: true,
   EMPOWER_PER_DISCARD: true,
   RECRUIT_NEUTRAL_DRAW: true,
-  RECRUIT_FACTION_FREE: true
+  RECRUIT_FACTION_FREE: true,
+  WAR_MACHINE_DISCOUNT_OFFER: true
 } satisfies Record<AstrologersEffect["type"], true>;
 
 const ASSETS_DIR = join(process.cwd(), "public", "assets");
@@ -55,11 +57,24 @@ describe("astrologers deck data integrity", () => {
     expect(new Set(astrologersDeckCardIds)).toEqual(new Set(Object.keys(astrologersCardDefinitions)));
   });
 
-  it("ships a real local card scan for every proclamation", () => {
+  it("ships a real local card scan for every proclamation (or declares it art-less)", () => {
     for (const [id, card] of Object.entries(astrologersCardDefinitions)) {
+      if (ART_LESS_PROCLAMATIONS.has(id)) {
+        // A card the fan wiki publishes with no front scan: it must carry an empty
+        // image (so the UI uses its honest text card-face) — never a faked scan.
+        expect(card.image, `${id} should be art-less (empty image)`).toBe("");
+        continue;
+      }
       expect(card.image, `${id} image path`).toMatch(/^\/assets\/astrologers_proclaim-[a-z0-9_]+\.webp$/);
       const onDisk = join(ASSETS_DIR, card.image.replace("/assets/", ""));
       expect(existsSync(onDisk), `${id} scan missing at ${card.image}`).toBe(true);
+    }
+  });
+
+  it("only declares dealt cards as art-less (no stray ids in the registry)", () => {
+    const dealt = new Set(astrologersDeckCardIds);
+    for (const id of ART_LESS_PROCLAMATIONS) {
+      expect(dealt.has(id), `${id} is declared art-less but is not in the deck`).toBe(true);
     }
   });
 
