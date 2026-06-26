@@ -8329,6 +8329,14 @@ img.cardBack {
   filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.55));
 }
 
+.arrowTowerCardImg {
+  width: 100%;
+  height: auto;
+  border-radius: 7px;
+  display: block;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.55);
+}
+
 .arrowTowerBody small {
   display: inline-flex;
   align-items: center;
