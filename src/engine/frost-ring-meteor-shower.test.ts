@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { applyAction, createInitialGameState, getLegalActions } from "./index";
+import { makeActiveEffect } from "./active-effects";
 import { coreFactionDefinitions, coreHeroDefinitions } from "@/data/factions/core";
 import { adventureCards } from "@/data/cards/adventure";
 import { spellCards } from "@/data/cards/spells";
@@ -323,6 +324,103 @@ describe("Deemer's Meteor Shower", () => {
       costCardIds: ["stat.power"]
     });
     expect(damage(control, "unit_p2_skeletons")).toBe(1);
+  });
+
+  // INVARIANT: a Specialty belongs to no school of magic, so ONLY the flat
+  // Pandora-style spell-power bonus reaches it. A school-scoped School-of-Magic
+  // permanent (+1 to that school's spells) must NOT. Same shape as the Pandora's
+  // test above (1 stat.power discarded) — but here the result stays at Power 1 →
+  // 1 damage instead of reaching 2, because the school bonus is excluded.
+  it("I is NOT buffed by a school-scoped School-of-Magic permanent (a Specialty has no school)", () => {
+    const state = meteorState(["specialty.deemer.1", "stat.power"]);
+    state.players.p1.permanents = ["ability.water_magic"]; // +1 to WATER spells only
+    const result = applyOk(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "specialty.deemer.1",
+      mode: "basic",
+      optionIndex: 0,
+      target: { type: "unit", unitId: "unit_p2_skeletons" },
+      costCardIds: ["stat.power"]
+    });
+    expect(damage(result, "unit_p2_skeletons")).toBe(1);
+    expect(damage(result, "unit_p2_vampires")).toBe(1);
+  });
+
+  // A school-RESTRICTED additive power source ("+N Power for a <school> spell" —
+  // e.g. Basic Water Magic, or an Orb's remove-this-card-for-+5 side) brings 0
+  // Power to a school-less Specialty: a +3 WATER source contributes nothing, so
+  // this deals LESS than the generic +2 source above (which reached 2). (The Orbs'
+  // ONGOING side only DOUBLES a matching-school spell and never touches a
+  // Specialty — see the Orb test below.)
+  it("I ignores a school-restricted power source's Power (a +3 water source contributes 0)", () => {
+    const state = meteorState(["specialty.deemer.1", "ability.basic_water_magic"]);
+    const result = applyOk(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "specialty.deemer.1",
+      mode: "basic",
+      optionIndex: 0,
+      target: { type: "unit", unitId: "unit_p2_skeletons" },
+      costCardIds: ["ability.basic_water_magic"]
+    });
+    expect(damage(result, "unit_p2_skeletons")).toBe(1);
+    expect(damage(result, "unit_p2_vampires")).toBe(1);
+  });
+
+  // The Magi pack's "+1 Power to the first spell you cast this round"
+  // (magi-power-boost, school-less) is a SPELL-cast rider on the active unit — it
+  // must NOT fuel a Specialty (gated to `card.kind === "spell"`). With it on the
+  // active unit, Deemer + 1 stat.power stays Power 1 → 1 damage (not 2). Sharp
+  // guard: removing the spell gate makes this deal 2.
+  it("I is NOT buffed by the Magi pack's first-cast spell-power boost", () => {
+    const state = meteorState(["specialty.deemer.1", "stat.power"]);
+    state.combat!.units.unit_p1_griffins.abilities = ["magi-power-boost"]; // the active unit
+    const result = applyOk(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "specialty.deemer.1",
+      mode: "basic",
+      optionIndex: 0,
+      target: { type: "unit", unitId: "unit_p2_skeletons" },
+      costCardIds: ["stat.power"]
+    });
+    expect(damage(result, "unit_p2_skeletons")).toBe(1);
+    expect(damage(result, "unit_p2_vampires")).toBe(1);
+  });
+
+  // The Orbs (Orb of Driving Rain, Orb of the Firmament, …) only DOUBLE a
+  // matching-school spell's Power (SPELL_POWER_DOUBLE, applied solely in the
+  // CAST_SPELL pipeline). A Specialty has no school AND the doubler never reaches
+  // playCardSpellPower, so an active water Orb neither doubles NOR zeroes Deemer's
+  // Power — 2 power-source discards still deal exactly 2.
+  it("I is unaffected by an Orb's school power-DOUBLING (Specialty keeps normal, un-doubled Power)", () => {
+    const state = meteorState(["specialty.deemer.1", "stat.power", "stat.power"]);
+    // The Orb of Driving Rain's ongoing side: double the Power of WATER spells.
+    state.activeEffects.push(
+      makeActiveEffect(
+        state,
+        {
+          name: "Orb of Driving Rain",
+          scope: "player",
+          duration: { type: "combat" },
+          modifiers: [{ type: "SPELL_POWER_DOUBLE", school: "water" }]
+        },
+        { type: "card", cardId: "artifact.orb_of_driving_rain", controllerId: "p1" },
+        "p1"
+      )
+    );
+    const result = applyOk(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "specialty.deemer.1",
+      mode: "basic",
+      optionIndex: 0,
+      target: { type: "unit", unitId: "unit_p2_skeletons" },
+      costCardIds: ["stat.power", "stat.power"]
+    });
+    expect(damage(result, "unit_p2_skeletons")).toBe(2);
+    expect(damage(result, "unit_p2_vampires")).toBe(2);
   });
 
   // A single clean activation, NOT a 3-tier menu: only optionIndex 0 is offered
