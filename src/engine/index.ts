@@ -108,6 +108,7 @@ export {
 export { markUnitRemovedIfNeeded } from "./combat-units";
 export { makeCombatUnitFromArmy } from "./adventure";
 export { createInitialGameState } from "./setup";
+export { freshEntropy, freshSeed } from "./seed";
 export {
   createAdventureGameState,
   createAdventureLobbyState,
