@@ -80,7 +80,12 @@ export type AstrologersEffect =
   // not a gold-tier counterpart, and no Dwelling unlocks azure. engine: "Azure
   // units cannot be recruited" holds by construction — no Dwelling unlocks the
   // Azure tier, so an Azure unit's tier is never among the player's.
-  | { type: "RECRUIT_FACTION_FREE" };
+  | { type: "RECRUIT_FACTION_FREE" }
+  // Wandering Merchant: at the round it is drawn each player may, once, buy one
+  // War Machine from the shared supply "as if they visited a Trading Post" but
+  // `discountGold` cheaper. Resolved at draw — one paid, discounted offer per
+  // player through the war-machine purchase path (see queueWarMachineDiscountOffer).
+  | { type: "WAR_MACHINE_DISCOUNT_OFFER"; discountGold: number };
 
 /** Boxed sets / expansions a proclamation can ship in (provenance, shown in the UI). */
 export const ASTROLOGERS_EXPANSIONS = [
@@ -88,7 +93,8 @@ export const ASTROLOGERS_EXPANSIONS = [
   "Tower Expansion",
   "Fortress Expansion",
   "Inferno Expansion",
-  "Rampart Expansion"
+  "Rampart Expansion",
+  "Stretch Goals"
 ] as const;
 
 export type AstrologersExpansion = (typeof ASTROLOGERS_EXPANSIONS)[number];
@@ -102,10 +108,26 @@ export type AstrologersCardDefinition = {
   effect: AstrologersEffect;
   /** Boxed set / expansion this card belongs to. */
   expansion: AstrologersExpansion;
-  /** Local card scan (always present). */
+  /**
+   * Local card scan. Empty string ONLY for a card the fan wiki publishes with no
+   * front scan (back side only) — those must be declared in
+   * `ART_LESS_PROCLAMATIONS` and render through the app's honest text card-face
+   * fallback, never a faked/placeholder scan (CLAUDE.md). Every other card
+   * carries a real, locally-shipped scan.
+   */
   image: string;
   source: { product: string; credit: string; url: string };
 };
+
+/**
+ * Proclamations the fan wiki ships with NO front scan (only a card back), so they
+ * are rendered through the app's styled text card-face fallback instead of a real
+ * image. Declared here as a conscious, reviewable exception to the "every card has
+ * a real scan" invariant — adding a card with `image: ""` that is NOT in this set
+ * fails `astrologers-data.test.ts`. The effect is still fully engine-wired + tested;
+ * only the artwork is unavailable upstream.
+ */
+export const ART_LESS_PROCLAMATIONS: ReadonlySet<string> = new Set<string>(["astrologers.wandering_merchant"]);
 
 function source(slug: string, expansion: AstrologersExpansion) {
   const product =
@@ -419,6 +441,20 @@ export const astrologersCardDefinitions: Record<string, AstrologersCardDefinitio
     image: image("unexpected_reinforcements"),
     source: source("unexpected_reinforcements", "Tower Expansion")
   },
+  "astrologers.wandering_merchant": {
+    id: "astrologers.wandering_merchant",
+    name: "Wandering Merchant",
+    text: "Once during this round, each player can buy a War Machine as if they visited a Trading Post, but with a discount of 3 gold.",
+    // One-time: the discounted buy is offered only the round the card is drawn —
+    // it does not persist to the following Resource round (unlike McGiver).
+    ongoing: false,
+    effect: { type: "WAR_MACHINE_DISCOUNT_OFFER", discountGold: 3 },
+    expansion: "Stretch Goals",
+    // The fan wiki has no front scan for this Stretch-Goals card — see
+    // ART_LESS_PROCLAMATIONS; it renders through the styled text card-face.
+    image: "",
+    source: source("wandering_merchant", "Stretch Goals")
+  },
   "astrologers.white_raven": {
     id: "astrologers.white_raven",
     name: "White Raven",
@@ -461,11 +497,14 @@ export const ASTROLOGERS_NOT_IMPLEMENTED: { name: string; expansion: string; nee
   { name: "Offense", expansion: "Stronghold", needs: "Defense cards acting as Attack" },
   { name: "Pirates", expansion: "Cove", needs: "post-combat-win Resource die reward" },
   { name: "Plastic Tray", expansion: "Stronghold", needs: "defense-roll units skipping attack dice" },
-  { name: "Restart", expansion: "Stretch Goals", needs: "forced hand reduction with player discard choice" },
+  // Restart reduces the hand LIMIT by 2 to a minimum of 4. This build's base hand
+  // limit is already 4 (adventure-setup.ts), so the card would be inert unless a
+  // permanent first raised the limit above 4 — i.e. effectively decorative here.
+  // Left out rather than shipped as a near-no-op (CLAUDE.md #1).
+  { name: "Restart", expansion: "Stretch Goals", needs: "a base hand limit above 4 for the -2 (min 4) reduction to ever bite" },
   { name: "Rulebook", expansion: "Stretch Goals", needs: "neutral-combat difficulty reduction" },
   { name: "Sanctuary", expansion: "Stretch Goals", needs: "a PvP-attack ban for the round (does not exist)" },
   { name: "Spells", expansion: "Conflux", needs: "widened spell-deck search" },
-  { name: "Wandering Merchant", expansion: "Stretch Goals", needs: "discounted war-machine purchase" },
   { name: "Whirlpool", expansion: "Cove", needs: "free whirlpool travel with exit choice" },
   { name: "Wind", expansion: "Cove", needs: "continued movement after entering a sea field" }
 ];

@@ -1697,7 +1697,15 @@ export function AstrologersProclamationOverlay({
             onError={() => setImageFailed(true)}
           />
         ) : (
-          <div className="astrologersProclaimArt cardFaceFallback">{cue.name}</div>
+          // Art-less proclamation (no upstream scan): render a branded card face
+          // rather than a bare name, so it reads as an intentional card.
+          <div className="astrologersProclaimArt astrologersProclaimArtFallback">
+            <span className="astrologersProclaimFallbackIcon" aria-hidden="true">
+              🔭
+            </span>
+            <strong>{cue.name}</strong>
+            <span className="astrologersProclaimFallbackSet">{cue.expansion}</span>
+          </div>
         )}
         <div className="astrologersProclaimBody">
           <strong>{cue.name}</strong>

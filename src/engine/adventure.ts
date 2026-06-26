@@ -3127,13 +3127,59 @@ export function processPendingVisit(state: GameState): void {
         });
         break;
       }
+      case "WAR_MACHINE_DISCOUNT_OFFER": {
+        // Wandering Merchant: rebuild the buy menu from the LIVE supply each time
+        // (a later player never sees a machine an earlier one bought). Price each
+        // machine at the Trading-Post rate minus the discount (floored at 0) and
+        // only offer ones the player can still afford. Optional Skip exit; no-ops
+        // on an empty supply or when nothing is affordable.
+        const player = state.players[visit.playerId];
+        const supply = adventure.warMachineSupply ?? [];
+        if (!player || supply.length === 0) {
+          break;
+        }
+        const options: { label: string; steps: VisitStep[] }[] = [];
+        for (const cardId of supply) {
+          const card = cardLibrary[cardId];
+          const base = card?.warMachineCosts?.tradingPost;
+          if (!card || !base) {
+            continue;
+          }
+          const discounted: ResourceCost = { ...base, gold: Math.max(0, (base.gold ?? 0) - step.discountGold) };
+          if (!hasResources(player, discounted)) {
+            continue;
+          }
+          options.push({
+            label: `Buy ${card.name} (${discounted.gold ?? 0} gold)`,
+            steps: [{ type: "GRANT_WAR_MACHINE", cardId, cost: discounted }]
+          });
+        }
+        if (options.length === 0) {
+          break;
+        }
+        options.push({ label: "Skip", steps: [] });
+        visit.steps.unshift({
+          type: "CHOOSE_ONE",
+          prompt: `Wandering Merchant: buy one War Machine at ${step.discountGold} gold off`,
+          options
+        });
+        break;
+      }
       case "GRANT_WAR_MACHINE": {
-        // McGiver leaf: move the chosen machine from the shared supply to hand at
-        // no cost (the player plays it as a permanent later, like any purchase).
+        // War-machine leaf: move the chosen machine from the shared supply to hand
+        // (the player plays it as a permanent later, like any purchase). A free
+        // grant (McGiver) carries no cost; a Wandering Merchant buy carries the
+        // discounted Trading-Post cost, spent here.
         const player = state.players[visit.playerId];
         const supply = adventure.warMachineSupply ?? [];
         if (!player || !supply.includes(step.cardId)) {
           break;
+        }
+        if (step.cost) {
+          if (!hasResources(player, step.cost)) {
+            break;
+          }
+          spendResources(state, visit.playerId, step.cost, `bought the ${cardLibrary[step.cardId]?.name ?? step.cardId}`);
         }
         adventure.warMachineSupply = supply.filter((cardId) => cardId !== step.cardId);
         player.hand.push(step.cardId);
@@ -3141,8 +3187,8 @@ export function processPendingVisit(state: GameState): void {
           type: "WAR_MACHINE_BOUGHT",
           playerId: visit.playerId,
           cardId: step.cardId,
-          cost: {},
-          at: "factory"
+          cost: step.cost ?? {},
+          at: step.cost ? "trading-post" : "factory"
         });
         break;
       }
@@ -5867,7 +5913,31 @@ function resolveAstrologersCard(state: GameState, card: AstrologersCardDefinitio
         queueFactionRecruitOffer(state, playerId);
       }
       break;
+    case "WAR_MACHINE_DISCOUNT_OFFER": {
+      // Wandering Merchant: "once during this round, each player can buy a War
+      // Machine as if at a Trading Post" — a single discounted buy offer queued
+      // per player now (the round it is drawn); not re-offered next round.
+      const discountGold = card.effect.discountGold;
+      for (const playerId of playerIds) {
+        queueWarMachineDiscountOffer(state, playerId, discountGold);
+      }
+      break;
+    }
   }
+}
+
+/** Wandering Merchant: queue one discounted war-machine buy offer for a player. */
+function queueWarMachineDiscountOffer(state: GameState, playerId: PlayerId, discountGold: number): void {
+  const adventure = state.adventure;
+  // Nothing to buy from: skip queuing entirely (the offer self-guards too).
+  if (!adventure || (adventure.warMachineSupply?.length ?? 0) === 0) {
+    return;
+  }
+  adventure.rewardQueue.push({
+    playerId,
+    kind: "visit-steps",
+    steps: [{ type: "WAR_MACHINE_DISCOUNT_OFFER", discountGold }]
+  });
 }
 
 /** Annoying Lizard: spells and artifacts shuffle back, redraw as many. */
