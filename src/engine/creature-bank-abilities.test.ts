@@ -10,6 +10,7 @@ import {
   hasSpellCastLock
 } from "./unit-abilities";
 import { hasToken } from "./tokens";
+import { markUnitRemovedIfNeeded } from "./combat-units";
 import { unitAbilities } from "@/data/units/abilities";
 import type { CombatUnitState, GameAction, GameEvent, GameState, StackTokenStat } from "./state";
 
@@ -339,6 +340,63 @@ describe("Crypt / Shipwreck Wraiths: enemy discard on attack", () => {
     );
     expect(next.players.p2.hand).toEqual([]);
     expect(abilityEventIds(next)).toContain("bank-wraith-attack-discard");
+  });
+});
+
+// ===========================================================================
+// Crypt Skeletons — Rebirth: once per combat, a killing blow leaves it at 1 HP.
+// The bank card runs the SEPARATE fallback path in markUnitRemovedIfNeeded
+// (bank units skip the pre-flip rebirth so a Stack Token can absorb first), so
+// this exercises that path end-to-end through a real attack — not just the data.
+// ===========================================================================
+
+describe("Crypt Skeletons: Rebirth (once per combat)", () => {
+  function lethalHitOnBankSkeleton(): GameState {
+    const state = createInitialGameState("bank-skeleton-rebirth");
+    const attacker = state.combat!.units.unit_p1_griffins;
+    attacker.abilities = [];
+    attacker.attack = 10;
+    attacker.position = 1;
+    const skeleton = state.combat!.units.unit_p2_skeletons;
+    // Mint it as the Crypt bank card: bank unit, neutral variant (not Pack — so
+    // it never flips down), Rebirth, 2 Health, no Stack Token.
+    skeleton.abilities = ["phoenix-rebirth"];
+    skeleton.bankUnit = true;
+    skeleton.variant = "neutral";
+    skeleton.stackToken = null;
+    skeleton.defense = 0;
+    skeleton.attack = 0;
+    skeleton.maxHealth = 2;
+    skeleton.damage = 0;
+    skeleton.position = 2; // adjacent to 1
+    skeleton.usedRebirthThisCombat = false;
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    script(state, [0, 0, 0, 0]);
+    return settle(
+      applyOk(state, { type: "ATTACK_UNIT", playerId: "p1", attackerId: "unit_p1_griffins", defenderId: "unit_p2_skeletons" })
+    );
+  }
+
+  it("survives a killing blow at 1 Health and fires the Rebirth ability", () => {
+    const next = lethalHitOnBankSkeleton();
+    const skeleton = next.combat!.units.unit_p2_skeletons;
+    // Clung to life: alive, at exactly 1 Health (maxHealth 2, damage 1).
+    expect(skeleton.damage).toBeLessThan(skeleton.maxHealth);
+    expect(skeleton.maxHealth - skeleton.damage).toBe(1);
+    expect(skeleton.usedRebirthThisCombat).toBe(true);
+    expect(abilityEventIds(next)).toContain("phoenix-rebirth");
+  });
+
+  it("a second killing blow this combat removes it (Rebirth is once per combat)", () => {
+    const next = lethalHitOnBankSkeleton();
+    const skeleton = next.combat!.units.unit_p2_skeletons;
+    skeleton.damage = skeleton.maxHealth + 5; // lethal again, same combat
+    markUnitRemovedIfNeeded(next, skeleton);
+    expect(skeleton.damage).toBeGreaterThanOrEqual(skeleton.maxHealth);
+    expect(next.eventLog.some((e) => e.type === "UNIT_REMOVED" && e.unitId === "unit_p2_skeletons")).toBe(true);
   });
 });
 
