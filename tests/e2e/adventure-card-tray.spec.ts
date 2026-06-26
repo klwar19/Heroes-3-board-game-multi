@@ -4,30 +4,43 @@ import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 
 // ---------------------------------------------------------------------------
-// EFFECT test (real browser layout) for the map card tray. The player's hand
-// must sit UNDER the map, to the RIGHT of the deck + discard pile, and the hand
-// cards must be enlarged. The permanent in play is shown in the same left
-// column (under the deck/discard) so its effect reads clearly on the map.
+// EFFECT test (real browser layout) for the map card tray. Requirements:
+//  - the hand of cards sits directly BENEATH the center map column (its left
+//    edge lines up with the map column above it),
+//  - the support column (Spell Book + deck/discard + permanent) sits under the
+//    left rail, to the LEFT of the hand,
+//  - the hand cards are enlarged,
+//  - the permanent shows its effect text.
 //
-// We inject the real globals.css and the exact tray markup page.tsx renders,
-// then measure box geometry. Self-contained (uses setContent, not the dev
-// server). Revert the `.adventureHand { flex-direction: row }` change and the
-// side-by-side assertion fails; shrink `.handCardImage` back to 92px and the
-// enlarge assertion fails.
+// We inject the real globals.css and mock BOTH the map row (.adventureMidRow)
+// and the tray (.adventureHand) inside the real .tableRoot grid, then measure
+// box geometry to prove the two rows line up. Self-contained (uses setContent,
+// not the dev server). Revert .adventureHand to a flex row / full width and the
+// "aligned under the map column" assertion fails; shrink .handCardImage back
+// and the enlarge assertion fails.
 // ---------------------------------------------------------------------------
 
-const css = readFileSync(
-  join(process.cwd(), "src", "app", "globals.css"),
-  "utf8",
-);
+const css = readFileSync(join(process.cwd(), "src", "app", "globals.css"), "utf8");
 
-// The 1x1 transparent GIF lets the <img> take its CSS width with a definite box.
-const PIXEL =
-  "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+// The 1x1 transparent GIF lets an <img> take its CSS width with a definite box.
+const PIXEL = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
 
-const tray = `
+const page_html = `
+<main class="tableRoot adventureRoot">
+  <div class="adventureMidRow">
+    <div class="leftRail"><div style="height:160px"></div></div>
+    <div class="mapColumn"><div class="hexMapWrap"></div></div>
+    <div class="rightRail adventureRail"><div style="height:160px"></div></div>
+  </div>
   <div class="adventureHand" aria-label="Your hand">
     <div class="ownDeckColumn">
+      <div class="spellBookPanel">
+        <button class="spellBookToggle">
+          <img class="spellBookIcon" src="${PIXEL}" alt="" />
+          <span class="spellBookCount">2</span>
+          <small>Spell Book</small>
+        </button>
+      </div>
       <div class="ownDeckPile">
         <div class="ownDeckSpot">
           <img class="ownDeckBack" src="${PIXEL}" alt="" />
@@ -53,74 +66,60 @@ const tray = `
     <div class="handArea">
       <div class="handTopBar"><small>Hand 3/5</small></div>
       <div class="adventureHandCards">
-        ${[0, 1, 2]
+        ${[0, 1, 2, 3]
           .map(
             () => `
         <div class="adventureHandSlot">
           <button class="adventureHandCard"><img class="handCardImage" src="${PIXEL}" alt="" /></button>
-        </div>`,
+        </div>`
           )
           .join("")}
       </div>
     </div>
-  </div>`;
+  </div>
+</main>`;
 
-test("the hand tray sits to the RIGHT of the deck/discard, with enlarged cards", async ({
-  page,
+test("the hand tray sits beneath the center map column, Spell Book to the left, enlarged cards", async ({
+  page
 }) => {
-  await page.setViewportSize({ width: 1280, height: 800 });
-  await page.setContent(
-    `<!doctype html><html><head><style>${css}</style></head><body>
-       <div style="padding:20px">${tray}</div>
-     </body></html>`,
-  );
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.setContent(`<!doctype html><html><head><style>${css}</style></head><body>${page_html}</body></html>`);
 
-  const deckCol = (await page.locator(".ownDeckColumn").boundingBox())!;
+  const mapColumn = (await page.locator(".mapColumn").boundingBox())!;
+  const leftRail = (await page.locator(".leftRail").boundingBox())!;
+  const ownDeckColumn = (await page.locator(".ownDeckColumn").boundingBox())!;
   const handArea = (await page.locator(".handArea").boundingBox())!;
   const deckPile = (await page.locator(".ownDeckPile").boundingBox())!;
-  const handCards = (await page.locator(".adventureHandCards").boundingBox())!;
-  expect(deckCol, "deck column must render").not.toBeNull();
-  expect(handArea, "hand area must render").not.toBeNull();
+  const spellBook = (await page.locator(".spellBookToggle").boundingBox())!;
 
-  // 1. Side by side, not stacked: the hand area starts to the RIGHT of the deck
-  //    column (its left edge is past the deck column's right edge) and the two
-  //    overlap vertically (they share the same horizontal band).
-  expect(
-    handArea.x,
-    "hand area should begin to the right of the deck column",
-  ).toBeGreaterThanOrEqual(deckCol.x + deckCol.width - 2);
-  const verticalOverlap =
-    Math.min(deckCol.y + deckCol.height, handArea.y + handArea.height) -
-    Math.max(deckCol.y, handArea.y);
-  expect(
-    verticalOverlap,
-    "deck column and hand area should share a row (overlap vertically)",
-  ).toBeGreaterThan(20);
+  // 1. The hand is anchored BENEATH the center map column: its left edge lines
+  //    up with the map column above it (the tray grid tracks the map row's
+  //    columns), and it sits below that row.
+  expect(Math.abs(handArea.x - mapColumn.x), "hand left edge lines up under the map column").toBeLessThanOrEqual(2);
+  expect(handArea.y, "hand area should sit below the map row").toBeGreaterThan(mapColumn.y);
 
-  // 2. The hand cards are to the right of the deck + discard pile specifically.
-  expect(
-    handCards.x,
-    "the hand cards should sit right of the deck/discard pile",
-  ).toBeGreaterThan(deckPile.x + deckPile.width - 2);
-
-  // 3. Enlarged cards: each hand card image is wider than the old 92px tray card.
-  const cardWidth = (await page
-    .locator(".adventureHandCard .handCardImage")
-    .first()
-    .boundingBox())!.width;
-  expect(
-    cardWidth,
-    "hand cards should be enlarged beyond the old 92px",
-  ).toBeGreaterThan(110);
-
-  // 4. The permanent (with its effect text) sits in the left column, BELOW the
-  //    deck/discard pile — clearly visible alongside the player's cards.
-  const permanent = (await page.locator(".permanentSlot").boundingBox())!;
-  expect(
-    permanent.y,
-    "the permanent should sit below the deck/discard pile",
-  ).toBeGreaterThan(deckPile.y);
-  expect(await page.locator(".permanentMeta small").textContent()).toContain(
-    "valuables",
+  // 2. The support column sits under the left rail, to the LEFT of the hand.
+  expect(Math.abs(ownDeckColumn.x - leftRail.x), "support column should line up under the left rail").toBeLessThanOrEqual(
+    2
   );
+  expect(ownDeckColumn.x + ownDeckColumn.width, "support column ends left of the hand").toBeLessThanOrEqual(
+    handArea.x + 2
+  );
+
+  // 3. The Spell Book moved to the left support column (not in the hand area).
+  expect(spellBook.x, "Spell Book should be in the left column, left of the hand").toBeLessThan(handArea.x);
+  expect(
+    spellBook.x >= ownDeckColumn.x - 2 && spellBook.x + spellBook.width <= ownDeckColumn.x + ownDeckColumn.width + 2,
+    "Spell Book should sit inside the support column"
+  ).toBe(true);
+
+  // 4. The deck/discard pile fits within the support column (left of the hand).
+  expect(deckPile.x + deckPile.width, "deck/discard pile fits in the support column").toBeLessThanOrEqual(handArea.x + 2);
+
+  // 5. Enlarged cards: each hand card image is clearly larger than the old tray.
+  const cardWidth = (await page.locator(".adventureHandCard .handCardImage").first().boundingBox())!.width;
+  expect(cardWidth, "hand cards should be enlarged (>140px)").toBeGreaterThan(140);
+
+  // 6. The permanent (with its effect text) is shown in the support column.
+  expect(await page.locator(".permanentMeta small").textContent()).toContain("valuables");
 });
