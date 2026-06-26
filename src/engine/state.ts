@@ -2411,6 +2411,14 @@ export type GameAction =
       cardId: CardId;
       target: TargetRef;
       /**
+       * CHOOSE_ONE spell cast directly: which arm is being cast. Used by the
+       * trigger-free, directly-castable arms (Prayer's +initiative side) — the
+       * caster picks the option up front and the spell-cast resolution resolves
+       * that option's effect. The triggered arms (Prayer's +attack/+defense)
+       * carry their own trigger and are played as reactions, not via CAST_SPELL.
+       */
+      optionIndex?: number;
+      /**
        * Spell Scroll cast: the spell comes from this scroll (not the hand),
        * resolves at power 0, cannot be boosted by any Power source, and is
        * removed from the game once it resolves.

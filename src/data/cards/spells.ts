@@ -336,19 +336,20 @@ export const spellCards: CardLibrary = {
           }
         },
         {
-          // NOT-IMPLEMENTED (engine bug): this trigger-free "+initiative" arm is
-          // currently UNREACHABLE. A CHOOSE_ONE Spell option with no trigger has
-          // no offer path — the on-turn cast loop skips CHOOSE_ONE Spells,
-          // addPlayableCardActions skips Spells, and variantMatchesTrigger only
-          // slots a trigger-free variant into a reaction window when its effect is
-          // DRAW_CARDS. So no player is ever offered this option in any phase.
-          // Wiring it needs BOTH a trigger-free CHOOSE_ONE-Spell-option offer path
-          // AND resolution dispatch to the chosen option's CREATE_INITIATIVE_BUFF
-          // (the effect switch currently keys off card.effect.type === CHOOSE_ONE).
-          // The dead arm is pinned by prayer-spell.test.ts ("…never offers it");
-          // that guard flips red once a real fix lands. The +attack/+defense arms
-          // (options 0/1) ARE engine-wired and tested.
+          // engine: the trigger-free "+initiative" arm. Unlike the +attack/
+          // +defense arms (one-attack reaction riders), this is a whole-Combat
+          // ongoing Initiative buff on a friendly unit (the same CREATE_INITIATIVE_
+          // BUFF shape as Haste / Ring of the Wayfarer), so it carries its own
+          // friendly-unit target rather than borrowing a reaction window's. It is
+          // cast as a real Spell — offered on your own turn AND off-turn as an
+          // instant before an enemy unit starts moving (addChooseOneSpellInstant-
+          // Casts → CAST_SPELL with optionIndex) — and resolved in the spell-cast
+          // dispatch (resolveTopStack), power-scaled like the other two arms. An
+          // off-turn cast that lifts your unit's Initiative past the enemy unit
+          // about to act lets it steal the activation (maybeStealActivationAfter-
+          // InitiativeShift). Covered by prayer-spell.test.ts.
           label: "+X initiative",
+          target: { type: "friendly-unit" },
           effect: {
             type: "CREATE_INITIATIVE_BUFF",
             name: "Prayer",

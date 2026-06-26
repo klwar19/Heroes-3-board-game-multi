@@ -1632,8 +1632,11 @@ function addSpellActions(
       continue;
     }
 
-    // Attack-window instants and "OR" spells route through the card plays.
-    if (card.trigger || card.effect.type === "CHOOSE_ONE" || card.timing === "map") {
+    // Attack-window instants (triggered spells) and Map spells route elsewhere.
+    // A CHOOSE_ONE spell is NOT skipped wholesale: its trigger-free, directly-
+    // castable arms are offered below as a real Spell cast (see the CHOOSE_ONE
+    // branch); its triggered arms still wait for their reaction window.
+    if (card.trigger || card.timing === "map") {
       continue;
     }
 
@@ -1649,6 +1652,22 @@ function addSpellActions(
 
     // Neutral Pegasi toll: cannot cast without a separate Power card to pay.
     if (powerTaxed && !handCanPayPowerTax(player.hand, cards, cardId, Boolean(fromScroll))) {
+      continue;
+    }
+
+    // A CHOOSE_ONE spell's trigger-free, directly-castable arm (Prayer's
+    // +initiative side) is offered here as a real Spell cast, so it flows through
+    // the normal pipeline (SPELL_CAST_STARTED window for Resist/Power, power
+    // scaling, the one-Spell-per-round limit) and resolves the chosen option in
+    // resolveTopStack. Its +attack/+defense arms carry triggers and were skipped
+    // above, so they stay on the reaction-window path and are never offered here.
+    if (card.effect.type === "CHOOSE_ONE") {
+      addChooseOneSpellInstantCasts(actions, state, playerId, card, cardId, cards, {
+        fromScroll,
+        fromSpellDeck,
+        fromSpellBook,
+        tarnumReturn
+      });
       continue;
     }
 
@@ -1759,6 +1778,77 @@ function addSpellActions(
           }
         });
       }
+    }
+  }
+}
+
+/**
+ * Trigger-free CHOOSE_ONE Spell arms the spell-cast pipeline can resolve directly
+ * (i.e. arms that resolveTopStack's CHOOSE_ONE-spell branch knows how to apply).
+ * Today only Prayer's +initiative arm — a trigger-free CREATE_INITIATIVE_BUFF.
+ * Any other trigger-free option type has no spell-cast resolution path yet, so it
+ * stays skipped (never silently offered, then fizzling).
+ */
+function optionCastableAsCombatSpell(effect: ConcreteEffect): boolean {
+  return effect.type === "CREATE_INITIATIVE_BUFF";
+}
+
+/**
+ * Offers the trigger-free, directly-castable arms of a CHOOSE_ONE Spell as real
+ * Spell casts (CAST_SPELL carrying an optionIndex + the option's own target).
+ * This is the on-turn / off-turn cast path for Prayer's +initiative arm — the
+ * arm that was previously unreachable. The triggered arms (+attack/+defense) are
+ * deliberately NOT offered here: they wait for their UNIT_ATTACK_DECLARED
+ * reaction window, exactly as before.
+ */
+function addChooseOneSpellInstantCasts(
+  actions: LegalAction[],
+  state: GameState,
+  playerId: PlayerId,
+  card: CardDefinition,
+  cardId: string,
+  cards: CardLibrary,
+  source: {
+    fromScroll?: string;
+    fromSpellDeck?: string;
+    fromSpellBook?: boolean;
+    tarnumReturn?: "deck-top" | "discard";
+  }
+): void {
+  if (card.effect.type !== "CHOOSE_ONE") {
+    return;
+  }
+  for (const [optionIndex, option] of card.effect.options.entries()) {
+    // Triggered arms route through reaction windows; map-only arms never apply in
+    // combat; everything the spell-cast dispatch can't resolve is left alone.
+    if (option.trigger || option.mapOnly || !optionCastableAsCombatSpell(option.effect)) {
+      continue;
+    }
+    for (const target of getTargetsForCard(state, playerId, cardId, cards, option.target)) {
+      actions.push({
+        label: source.fromScroll
+          ? `Cast ${card.name} — ${option.label} (Scroll)`
+          : source.fromSpellDeck
+            ? `Cast ${card.name} — ${option.label} (Helm of the Alabaster Unicorn)`
+            : source.fromSpellBook
+              ? `Cast ${card.name} — ${option.label} (Spell Book)`
+              : source.tarnumReturn
+                ? `Cast ${card.name} — ${option.label} (free; ${
+                    source.tarnumReturn === "deck-top" ? "to Spell deck top" : "to Spell discard"
+                  })`
+                : `Cast ${card.name} — ${option.label}`,
+        action: {
+          type: "CAST_SPELL",
+          playerId,
+          cardId,
+          target,
+          optionIndex,
+          ...(source.fromScroll ? { fromScroll: source.fromScroll } : {}),
+          ...(source.fromSpellDeck ? { fromSpellDeck: source.fromSpellDeck } : {}),
+          ...(source.fromSpellBook ? { fromSpellBook: true } : {}),
+          ...(source.tarnumReturn ? { tarnumReturn: source.tarnumReturn } : {})
+        }
+      });
     }
   }
 }

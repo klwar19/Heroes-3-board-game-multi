@@ -1,31 +1,29 @@
 import { describe, expect, it } from "vitest";
 import { applyAction, createInitialGameState, getLegalActions } from "./index";
 import { cardLibrary } from "@/data/cards/library";
+import { effectiveInitiative } from "./active-effects";
 import type { GameAction, GameEvent, GameState } from "./state";
 
 /**
- * Regression coverage for spell.prayer (CLAUDE.md rule #1). Prayer was WIRED BUT
- * UNTESTED. It is a CHOOSE_ONE spell with three arms (src/data/cards/spells.ts):
- *   option 0 — +X attack (trigger: self attack-declared),
- *   option 1 — +X defense (trigger: opponent attack-declared),
- *   option 2 — CREATE_INITIATIVE_BUFF (no trigger).
- * Each option scales amountByPower {0:1, 2:2, 4:3}.
+ * Regression coverage for spell.prayer (CLAUDE.md rule #1). Prayer is a CHOOSE_ONE
+ * spell with three arms (src/data/cards/spells.ts):
+ *   option 0 — +X attack (trigger: self attack-declared, one-attack reaction),
+ *   option 1 — +X defense (trigger: opponent attack-declared, one-attack reaction),
+ *   option 2 — +X initiative (no trigger, a WHOLE-COMBAT ongoing buff).
+ * Each arm scales amountByPower {0:1, 2:2, 4:3}.
  *
- * These tests assert the OBSERVABLE combat outcome of the two arms that the engine
- * actually offers and resolves:
+ * These tests assert the OBSERVABLE combat outcome of every arm against a control:
  *   - option 0: the attacker deals MORE damage,
  *   - option 1: the defender takes LESS damage,
- * each against a control with no Prayer.
+ *   - option 2: the chosen unit's effective Initiative RISES for the combat,
+ *     scaling with Power; and an off-turn cast that out-paces the enemy unit
+ *     about to act STEALS its activation (with a control that does not).
  *
- * Option 2 (initiative) is NOT covered by a passing test because it is a CONFIRMED
- * ENGINE BUG: a trigger-free CHOOSE_ONE spell option has no offer path. The cast
- * loop in legal-actions.ts skips CHOOSE_ONE spells ("route through the card
- * plays"); addPlayableCardActions skips spells entirely; and variantMatchesTrigger
- * only slots a trigger-free variant into a reaction window when its effect is
- * DRAW_CARDS. So Prayer's initiative arm is never offered to any player in any
- * phase (verified by exhaustively scanning getLegalActions / getOffTurnCombat-
- * Reactions). The assertion below is a DATA guard documenting that the arm exists
- * and remains dead; it is not proof the effect works. See the agent report.
+ * Option 2 was previously a dead arm — a trigger-free CHOOSE_ONE spell option had
+ * no offer path. It is now cast as a real Spell (CAST_SPELL with an optionIndex)
+ * on your own turn OR off-turn as an instant before an enemy unit moves; see
+ * addChooseOneSpellInstantCasts (offer), resolveTopStack's CHOOSE_ONE-spell branch
+ * (resolution, power-scaled) and maybeStealActivationAfterInitiativeShift (steal).
  *
  * Sandbox: p1 griffins/crusaders, p2 skeletons. Board 4x5.
  */
@@ -143,40 +141,168 @@ describe("Prayer — option 1 (+defense, defender)", () => {
   });
 });
 
-describe("Prayer — option 2 (+initiative) is a wired-but-unreachable arm (BUG)", () => {
-  it("the initiative arm exists in the card data but the engine never offers it", () => {
-    // Data guard: option 2 IS the CREATE_INITIATIVE_BUFF arm in the card.
+/** A fresh combat (no attack declared) with one unit active and not yet acted. */
+function freshCombat(seed: string, activeUnitId: string, activePlayer: "p1" | "p2"): GameState {
+  const state = createInitialGameState(seed);
+  const combat = state.combat!;
+  for (const unit of Object.values(combat.units)) {
+    unit.activatedThisRound = false;
+    unit.movedThisActivation = false;
+    unit.attackedThisActivation = false;
+    unit.attacksThisActivation = 0;
+    unit.abilities = [];
+  }
+  combat.activeUnitId = activeUnitId;
+  state.activePlayerId = activePlayer;
+  state.phase = "combat";
+  return state;
+}
+
+/** The CAST_SPELL action that casts Prayer's +initiative arm on the named unit. */
+function prayerInitCast(
+  state: GameState,
+  playerId: "p1" | "p2",
+  targetUnitId: string
+): Extract<GameAction, { type: "CAST_SPELL" }> | undefined {
+  const legal = getLegalActions(state, playerId).find(
+    (entry) =>
+      entry.action.type === "CAST_SPELL" &&
+      entry.action.cardId === "spell.prayer" &&
+      entry.action.optionIndex === 2 &&
+      entry.action.target.type === "unit" &&
+      entry.action.target.unitId === targetUnitId
+  );
+  return legal?.action.type === "CAST_SPELL" ? legal.action : undefined;
+}
+
+/** Plays Power statistics into the open cast window until `amount` Power is paid. */
+function payPower(state: GameState, playerId: "p1" | "p2", amount: number): GameState {
+  let current = state;
+  let safety = 10;
+  while (safety-- > 0) {
+    if ((current.stack[0]?.modifiers.spellPowerBonus ?? 0) >= amount) {
+      break;
+    }
+    const power = getLegalActions(current, playerId).find(
+      (legal) =>
+        legal.action.type === "PLAY_REACTION" && legal.action.cardId === "stat.power" && !legal.action.asPowerBoost
+    );
+    if (!power) {
+      break;
+    }
+    current = applyOk(current, power.action);
+  }
+  return current;
+}
+
+/**
+ * An off-turn steal scene: p2's skeletons is the fresh unit about to act, p1 is
+ * off-turn with Prayer in hand. Every other unit has already acted, so only
+ * griffins (p1) and skeletons (p2) contend for the activation slot.
+ */
+function stealScene(seed: string, griffinsInitiative: number, skeletonsInitiative: number): GameState {
+  const state = createInitialGameState(seed);
+  const combat = state.combat!;
+  for (const unit of Object.values(combat.units)) {
+    unit.activatedThisRound = unit.id !== "unit_p1_griffins" && unit.id !== "unit_p2_skeletons";
+    unit.movedThisActivation = false;
+    unit.attackedThisActivation = false;
+    unit.attacksThisActivation = 0;
+    unit.abilities = [];
+  }
+  combat.units.unit_p1_griffins.initiative = griffinsInitiative;
+  combat.units.unit_p2_skeletons.initiative = skeletonsInitiative;
+  combat.activeUnitId = "unit_p2_skeletons";
+  state.activePlayerId = "p2";
+  state.phase = "combat";
+  state.players.p1.hand = ["spell.prayer"];
+  state.players.p2.hand = [];
+  return state;
+}
+
+describe("Prayer — option 2 (+initiative) is a whole-Combat buff cast as a Spell", () => {
+  it("data: the initiative arm is a trigger-free, friendly-unit, whole-combat CREATE_INITIATIVE_BUFF", () => {
     const prayer = cardLibrary["spell.prayer"];
     expect(prayer.effect.type).toBe("CHOOSE_ONE");
     if (prayer.effect.type === "CHOOSE_ONE") {
-      expect(prayer.effect.options[2]?.effect.type).toBe("CREATE_INITIATIVE_BUFF");
-      // …and it carries no trigger, which is exactly why it is unreachable.
-      expect(prayer.effect.options[2]?.trigger).toBeUndefined();
-    }
-
-    // Behaviour guard: no player, in any combat phase, is ever offered Prayer
-    // option 2. (If a future fix wires it, this test fails and should be replaced
-    // by a real initiative/move-range assertion.)
-    const offered: string[] = [];
-    for (const activeUnit of ["unit_p1_griffins", "unit_p2_skeletons"]) {
-      for (const activePlayer of ["p1", "p2"] as const) {
-        const state = createInitialGameState(`prayer2-scan-${activeUnit}-${activePlayer}`);
-        state.players.p1.hand = ["spell.prayer"];
-        state.players.p2.hand = ["spell.prayer"];
-        state.activePlayerId = activePlayer;
-        state.combat!.activeUnitId = activeUnit;
-        state.combat!.units[activeUnit].activatedThisRound = false;
-        state.combat!.units[activeUnit].attackedThisActivation = false;
-        for (const viewer of ["p1", "p2"] as const) {
-          for (const legal of getLegalActions(state, viewer)) {
-            const action = legal.action as { cardId?: string; optionIndex?: number };
-            if (action.cardId === "spell.prayer" && action.optionIndex === 2) {
-              offered.push(`${viewer}/${activeUnit}/${activePlayer}`);
-            }
-          }
-        }
+      const arm = prayer.effect.options[2];
+      expect(arm?.effect.type).toBe("CREATE_INITIATIVE_BUFF");
+      // No trigger (it is not a reaction rider) and its own friendly-unit target.
+      expect(arm?.trigger).toBeUndefined();
+      expect(arm?.target).toEqual({ type: "friendly-unit" });
+      if (arm?.effect.type === "CREATE_INITIATIVE_BUFF") {
+        // Lasts the whole combat — unlike the one-attack +attack/+defense arms.
+        expect(arm.effect.duration).toEqual({ type: "combat" });
       }
     }
-    expect(offered, "Prayer's initiative arm is currently dead — see agent report").toEqual([]);
+  });
+
+  it("is offered as a Spell cast on your own turn AND off-turn — but never the triggered arms", () => {
+    // On-turn: p1's griffins is active.
+    const onTurn = freshCombat("prayer2-offer-on", "unit_p1_griffins", "p1");
+    onTurn.players.p1.hand = ["spell.prayer"];
+    const onTurnCasts = getLegalActions(onTurn, "p1").filter(
+      (legal) => legal.action.type === "CAST_SPELL" && legal.action.cardId === "spell.prayer"
+    );
+    expect(onTurnCasts.length, "Prayer +initiative should be a direct cast on your turn").toBeGreaterThan(0);
+    // Only the +initiative arm is a direct cast; +attack (0) / +defense (1) are not.
+    expect(
+      onTurnCasts.every((legal) => legal.action.type === "CAST_SPELL" && legal.action.optionIndex === 2),
+      "the +attack/+defense arms must NOT be offered as a direct cast"
+    ).toBe(true);
+
+    // Off-turn: p2's skeletons is active; p1 may cast before it moves.
+    const offTurn = freshCombat("prayer2-offer-off", "unit_p2_skeletons", "p2");
+    offTurn.players.p1.hand = ["spell.prayer"];
+    const offTurnCast = getLegalActions(offTurn, "p1").some(
+      (legal) =>
+        legal.action.type === "CAST_SPELL" && legal.action.cardId === "spell.prayer" && legal.action.optionIndex === 2
+    );
+    expect(offTurnCast, "Prayer +initiative is castable off-turn before the enemy unit acts").toBe(true);
+  });
+
+  it("raises the chosen friendly unit's effective Initiative for the rest of the combat (Power 0 → +1)", () => {
+    const state = freshCombat("prayer2-buff", "unit_p1_griffins", "p1");
+    state.players.p1.hand = ["spell.prayer"];
+    const base = effectiveInitiative(state.combat!.units.unit_p1_griffins, state.activeEffects);
+    const cast = prayerInitCast(state, "p1", "unit_p1_griffins");
+    expect(cast, "Prayer +initiative should be castable on a friendly unit").toBeTruthy();
+    const resolved = passAllReactions(applyOk(state, cast!));
+    expect(effectiveInitiative(resolved.combat!.units.unit_p1_griffins, resolved.activeEffects)).toBe(base + 1);
+  });
+
+  it("scales with Power paid into the cast (Power 2 → +2 initiative)", () => {
+    const state = freshCombat("prayer2-power", "unit_p1_griffins", "p1");
+    state.players.p1.hand = ["spell.prayer", "stat.power", "stat.power"];
+    const base = effectiveInitiative(state.combat!.units.unit_p1_griffins, state.activeEffects);
+    let current = applyOk(state, prayerInitCast(state, "p1", "unit_p1_griffins")!);
+    current = payPower(current, "p1", 2);
+    expect(current.stack[0]?.modifiers.spellPowerBonus, "two Power paid into the cast").toBe(2);
+    const resolved = passAllReactions(current);
+    // amountByPower[2] = +2 — proves it scales, not a fixed printed number.
+    expect(effectiveInitiative(resolved.combat!.units.unit_p1_griffins, resolved.activeEffects)).toBe(base + 2);
+  });
+});
+
+describe("Prayer — option 2 steals the enemy's turn when it out-paces them", () => {
+  it("an off-turn +initiative cast that out-paces the about-to-act enemy unit takes its activation", () => {
+    const scene = stealScene("prayer2-steal", 5, 5); // griffins 5, skeletons 5 (active)
+    const cast = prayerInitCast(scene, "p1", "unit_p1_griffins");
+    expect(cast, "Prayer +initiative should be castable off-turn").toBeTruthy();
+    const resolved = applyOk(scene, cast!); // no reactions available → resolves at once
+    // +1 lifts griffins to 6 > skeletons' 5: griffins steals the activation.
+    expect(resolved.combat!.activeUnitId).toBe("unit_p1_griffins");
+    // The pre-empted enemy unit has not acted — it resumes later this round.
+    expect(resolved.combat!.units.unit_p2_skeletons.activatedThisRound).toBe(false);
+  });
+
+  it("control: a +1 buff that does NOT out-pace the enemy unit leaves its turn untouched", () => {
+    const scene = stealScene("prayer2-no-steal", 3, 5); // griffins 3 → 4, still slower than skeletons' 5
+    const resolved = applyOk(scene, prayerInitCast(scene, "p1", "unit_p1_griffins")!);
+    expect(resolved.combat!.activeUnitId, "the enemy keeps its activation when not out-paced").toBe(
+      "unit_p2_skeletons"
+    );
+    // The buff still landed (griffins is faster than before) — it just didn't cut in.
+    expect(effectiveInitiative(resolved.combat!.units.unit_p1_griffins, resolved.activeEffects)).toBe(4);
   });
 });
