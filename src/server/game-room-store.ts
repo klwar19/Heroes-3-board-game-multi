@@ -8,6 +8,7 @@ import {
   createInitialGameState,
   ENGINE_SIGNATURE,
   ensureUniqueArmyUnitIds,
+  freshEntropy,
   MAX_ROOM_NAME_LENGTH,
   type AdventurePlayerConfig,
   type EngineResult,
@@ -169,7 +170,10 @@ function makeRoom(roomId: string, options: RoomCreateOptions = {}): GameRoomReco
   // Add a fresh nonce so each created/reset room rolls a new deterministic die
   // sequence instead of replaying the same rolls every game. The seed is stored
   // in the state, so the server stays authoritative and every client agrees.
-  const nonce = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  // Use crypto entropy (freshEntropy), not Date.now()+Math.random(): on a
+  // frozen-clock / per-isolate-seeded edge runtime the latter collapses so every
+  // freshly spun server hands out the SAME map and Creature Bank order.
+  const nonce = freshEntropy();
   const seed = `room-${roomId}-${nonce}`;
   const mode = options.mode ?? "adventure";
 

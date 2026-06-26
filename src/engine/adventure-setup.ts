@@ -36,6 +36,7 @@ import {
 import { pumpAdventureQueues } from "./adventure-reducer";
 import { drawCardsForPlayer, shuffleCards } from "./decks";
 import { createSeededRandom } from "./random";
+import { freshSeed } from "./seed";
 import { appendEvent } from "./events";
 import { VICTORY_MODE_LABELS } from "./ruleset";
 import { hexEquals, tileCentersOverlap, type HexCoord } from "./hex";
@@ -529,7 +530,9 @@ function forcedObjectiveCenterTiles(pool: string[], slots: number, mode: Victory
 }
 
 export function createAdventureGameState(options: AdventureSetupOptions = {}): GameState {
-  const seed = options.seed ?? "homm3bg-adventure-seed";
+  // A missing seed must NOT collapse to a constant — that is what made every
+  // fresh game open on the same map and Creature Bank order. Mint fresh entropy.
+  const seed = options.seed ?? freshSeed("homm3bg-adventure");
   const scenario = getScenario(options.scenarioId);
   const setupOptions: GameSetupOptions = {
     ...defaultGameSetupOptions(scenario),
@@ -989,7 +992,10 @@ function resizeLobbySeats(state: GameState, scenario: ScenarioDefinition, target
 
 /** Opens a new room in the map-setup phase: seats wait for faction picks. */
 export function createAdventureLobbyState(options: AdventureSetupOptions = {}): GameState {
-  const seed = options.seed ?? `homm3bg-${Date.now().toString(36)}`;
+  // Crypto entropy, not just Date.now() — two lobbies minted in the same
+  // millisecond (or on a frozen-clock edge isolate) would otherwise share a seed
+  // and, once started, build the identical map and bank order.
+  const seed = options.seed ?? freshSeed("homm3bg-lobby");
   const scenario = getScenario(options.scenarioId);
   const setupOptions = defaultGameSetupOptions(scenario);
   const seatCount = clampSeatCount(scenario, options.playerCount ?? setupOptions.playerCount);

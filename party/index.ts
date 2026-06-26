@@ -5,6 +5,7 @@ import {
   createAdventureLobbyState,
   createInitialGameState,
   ENGINE_SIGNATURE,
+  freshEntropy,
   type AdventurePlayerConfig,
   type GameAction,
   type GameDifficulty,
@@ -82,7 +83,11 @@ export default class GameRoomServer implements Party.Server {
   }
 
   private makeState(options: RoomResetOptions = {}): GameState {
-    const nonce = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    // Crypto entropy (freshEntropy), not Date.now()+Math.random(): PartyKit runs
+    // each room as a Cloudflare Durable Object where the clock can be frozen and
+    // Math.random() seeded per isolate, which made every fresh room (new game in
+    // a new window) open on the identical map and Creature Bank order.
+    const nonce = freshEntropy();
     const seed = `room-${this.room.id}-${nonce}`;
     const mode = options.mode ?? "adventure";
 
