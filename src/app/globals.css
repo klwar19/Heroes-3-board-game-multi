@@ -8256,11 +8256,18 @@ img.cardBack {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
+  gap: 1px;
   width: 100%;
   height: 100%;
   font-size: 1.5rem;
   text-shadow: 0 2px 6px rgba(0, 0, 0, 0.7);
+}
+
+.fortArt {
+  width: 72%;
+  max-width: 38px;
+  height: auto;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));
 }
 
 .fortMark small {
@@ -8314,6 +8321,12 @@ img.cardBack {
 
 .arrowTowerIcon {
   font-size: 1.4rem;
+}
+
+.arrowTowerArt {
+  width: 40px;
+  height: auto;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.55));
 }
 
 .arrowTowerBody small {

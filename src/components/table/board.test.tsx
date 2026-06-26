@@ -11,6 +11,7 @@ import {
   gainRunes,
   RUNE_LEVEL_THRESHOLDS,
   isCreatureBankCombat,
+  makeArrowTowerUnit,
   SHIP_BATTLE_OBSTACLES,
   weightedCombatBoardArtIds,
   type GameAction,
@@ -740,3 +741,71 @@ describe("InspectPanel — Attack/Defense reflect lasting buffs immediately (Bul
     expect(stats.textContent).not.toMatch(/base/);
   });
 });
+
+describe("BattlefieldBoard — siege fortification art", () => {
+  function siegeState(seed = "board-siege-art"): GameState {
+    const state = createInitialGameState(seed);
+    const combat = state.combat!;
+    const tower = makeArrowTowerUnit("siege_tower", "p2");
+    combat.units[tower.id] = tower;
+    // Gate in column B (9), Walls in the other three middle-row columns.
+    combat.siege = {
+      townPlayerId: "p2",
+      walls: [8, 10, 11],
+      gatePosition: 9,
+      arrowTowerUnitId: tower.id
+    };
+    // Keep real units off the fortification row so the cells render the masonry.
+    combat.units.unit_p1_marksmen.position = 0;
+    combat.units.unit_p1_griffins.position = 1;
+    combat.units.unit_p1_crusaders.position = 2;
+    combat.units.unit_p2_skeletons.position = 16;
+    combat.units.unit_p2_vampires.position = 17;
+    combat.units.unit_p2_dread_knights.position = 18;
+    return state;
+  }
+
+  function renderSiege(state: GameState) {
+    render(
+      <CardZoomProvider>
+        <BattlefieldBoard
+          state={state}
+          viewerPlayerId="p1"
+          legalActions={[]}
+          selectedCardAction={null}
+          onAction={vi.fn()}
+          onInspect={() => {}}
+        />
+      </CardZoomProvider>
+    );
+  }
+
+  it("draws each Wall column as masonry art (not bare emoji)", () => {
+    renderSiege(siegeState());
+    for (const wall of [8, 10, 11]) {
+      const cell = document.querySelector(`[data-fx-cell="${wall}"] .fortMark.wall`);
+      expect(cell, `Wall art should render on cell ${wall}`).toBeTruthy();
+      expect(cell!.querySelector("svg.fortArt"), `Wall ${wall} should draw the SVG masonry`).toBeTruthy();
+      expect(cell!.textContent).toContain("Wall");
+      expect(cell!.textContent ?? "").not.toContain("🧱");
+    }
+  });
+
+  it("draws the Gate column as a portcullis (SVG, not emoji)", () => {
+    renderSiege(siegeState("board-siege-gate"));
+    const gate = document.querySelector('[data-fx-cell="9"] .fortMark.gate');
+    expect(gate, "Gate art should render on cell 9").toBeTruthy();
+    expect(gate!.querySelector("svg.fortArt"), "the Gate should draw the portcullis SVG").toBeTruthy();
+    expect(gate!.textContent).toContain("Gate");
+    expect(gate!.textContent ?? "").not.toContain("🚪");
+  });
+
+  it("draws the Arrow Tower card with its battlemented-tower art", () => {
+    renderSiege(siegeState("board-siege-tower"));
+    const tower = document.querySelector(".arrowTower");
+    expect(tower, "the Arrow Tower card should render beside the board").toBeTruthy();
+    expect(tower!.querySelector("svg.arrowTowerArt"), "the tower should draw its SVG art").toBeTruthy();
+    expect(tower!.textContent).toContain("Arrow Tower");
+    expect(tower!.textContent ?? "").not.toContain("🏹");
+  });
+})
