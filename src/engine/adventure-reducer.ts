@@ -3847,23 +3847,45 @@ export function placeCombatUnit(state: GameState, action: Extract<GameAction, { 
     throw new Error("Units must start on your back or front line.");
   }
 
-  if (Object.values(combat.units).some((unit) => unit.position === action.position)) {
-    throw new Error("That space is already taken.");
-  }
-
   const placed = setup.placedUnitIds[action.playerId] ?? [];
   const armyUnit = player.army.find((unit) => unit.id === action.armyUnitId);
   if (!armyUnit) {
     throw new Error("That unit cannot be placed.");
   }
 
-  // An already-placed unit moves to the new space instead (drag around your
-  // own deployment area freely until everything is locked in).
+  const occupant = Object.values(combat.units).find((unit) => unit.position === action.position);
+
+  // An already-placed unit is being dragged around the deployment area: move it
+  // to an empty space, or SWAP it with one of YOUR OWN units already standing
+  // there (so you can freely rearrange / switch positions until you lock in).
   if (placed.includes(armyUnit.id)) {
     const existing = Object.values(combat.units).find((unit) => unit.armyUnitId === armyUnit.id);
     if (!existing) {
       throw new Error("That unit is not on the board.");
     }
+    if (occupant && occupant.id !== existing.id) {
+      // Only your own units may trade places; an enemy-held cell stays blocked.
+      if (occupant.controllerId !== action.playerId) {
+        throw new Error("That space is already taken.");
+      }
+      const from = existing.position;
+      existing.position = action.position;
+      occupant.position = from;
+      appendEvent(state, {
+        type: "COMBAT_UNIT_PLACED",
+        playerId: action.playerId,
+        unitId: existing.id,
+        position: existing.position
+      });
+      appendEvent(state, {
+        type: "COMBAT_UNIT_PLACED",
+        playerId: action.playerId,
+        unitId: occupant.id,
+        position: occupant.position
+      });
+      return;
+    }
+    // Move to the target cell (dropping back on its own square is a no-op).
     existing.position = action.position;
     appendEvent(state, {
       type: "COMBAT_UNIT_PLACED",
@@ -3872,6 +3894,12 @@ export function placeCombatUnit(state: GameState, action: Extract<GameAction, { 
       position: action.position
     });
     return;
+  }
+
+  // A brand-new placement (a unit not yet on the board) may not land on a taken
+  // cell — there is nothing to swap with.
+  if (occupant) {
+    throw new Error("That space is already taken.");
   }
 
   if (placed.length >= setup.unitLimit) {
