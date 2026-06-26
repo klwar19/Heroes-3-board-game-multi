@@ -71,26 +71,53 @@ export function markUnitRemovedIfNeeded(state: GameState, unit: CombatUnitState)
     return;
   }
 
-  // Phoenixes: "Once per Combat, when this unit's HP drops to 0, set it to 1
-  // instead." Rebirth clings to life at the unit's CURRENT side — a Pack
-  // Phoenix survives the killing blow WITHOUT flipping down to its Few side
-  // (the HOUSE RULE that both sides carry Rebirth). It is taken before the
-  // Pack→Few flip below. Bank defenders are excluded here so their Stack Token
-  // absorbs the blow first (handled lower down); a tokenless bank card with
-  // Rebirth still saves itself via the later check.
-  if (!unit.bankUnit) {
-    const selfRebirth = getSelfRebirthAbility(unit);
-    if (selfRebirth && !unit.usedRebirthThisCombat) {
-      unit.usedRebirthThisCombat = true;
-      unit.damage = Math.max(0, unit.maxHealth - 1);
-      appendEvent(state, {
-        type: "UNIT_ABILITY_TRIGGERED",
-        unitId: unit.id,
-        abilityId: selfRebirth.abilityId,
-        message: `${unit.cardName} is reborn and clings to life at 1 Health.`
-      });
+  // Creature Bank Stacked defenders: a Stack Token absorbs one lethal blow
+  // FIRST — before Rebirth or any Pack→Few flip. "When it takes damage equal to
+  // or greater than its Health, instead of removing the unit, discard the Stack
+  // Token from it and deal any leftover damage, deducting it from the new
+  // Health." (rulebook p.67). The token is discarded (reverting its stat bonus
+  // via applyUnitCurrentSide) and the excess carries to the now-lower Health.
+  if (unit.bankUnit && unit.stackToken) {
+    const excess = unit.damage - unit.maxHealth;
+    unit.stackToken = null;
+    unit.damage = 0;
+    applyUnitCurrentSide(unit, getRuleset(state));
+    unit.damage = Math.min(unit.maxHealth, Math.max(0, excess));
+
+    appendEvent(state, {
+      type: "STACK_TOKEN_DISCARDED",
+      unitId: unit.id,
+      playerId: unit.controllerId,
+      unitName: unit.name,
+      excessDamage: Math.max(0, excess)
+    });
+
+    if (unit.damage < unit.maxHealth) {
       return;
     }
+  }
+
+  // Rebirth: "Once per Combat, when this unit's HP drops to 0, set it to 1
+  // instead." It clings to life at the unit's CURRENT side — a Pack unit (a
+  // Phoenix, or a Stacked-then-tokenless bank card) survives the killing blow
+  // WITHOUT flipping down to its Few side (the HOUSE RULE that EVERY side carries
+  // Rebirth). This single check covers every unit, bank or not: it runs AFTER the
+  // Stack Token absorb above (a Stacked bank defender spends its token first,
+  // then still Rebirths once) and BEFORE the Pack→Few flip below (so a dying Pack
+  // unit stays Pack at 1 Health, never Few). The Pack→Few flip is therefore only
+  // reached when no Rebirth is available. Works against every damage source
+  // because they all funnel through this chokepoint.
+  const rebirth = getSelfRebirthAbility(unit);
+  if (rebirth && !unit.usedRebirthThisCombat) {
+    unit.usedRebirthThisCombat = true;
+    unit.damage = Math.max(0, unit.maxHealth - 1);
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: unit.id,
+      abilityId: rebirth.abilityId,
+      message: `${unit.cardName} is reborn and clings to life at 1 Health.`
+    });
+    return;
   }
 
   if (unit.variant === "pack" && unit.unitDefId) {
@@ -117,52 +144,6 @@ export function markUnitRemovedIfNeeded(state: GameState, unit: CombatUnitState)
         return;
       }
     }
-  }
-
-  // Creature Bank Stacked defenders: a Stack Token absorbs one lethal blow.
-  // "When it takes damage equal to or greater than its Health, instead of
-  // removing the unit, discard the Stack Token from it and deal any leftover
-  // damage, deducting it from the new Health." (rulebook p.67). The token is
-  // discarded (reverting its stat bonus via applyUnitCurrentSide) and the
-  // excess carries to the now-lower Health — the same shape as the Pack→Few
-  // flip above. A bank defender without a token is defeated normally.
-  if (unit.bankUnit && unit.stackToken) {
-    const excess = unit.damage - unit.maxHealth;
-    unit.stackToken = null;
-    unit.damage = 0;
-    applyUnitCurrentSide(unit, getRuleset(state));
-    unit.damage = Math.min(unit.maxHealth, Math.max(0, excess));
-
-    appendEvent(state, {
-      type: "STACK_TOKEN_DISCARDED",
-      unitId: unit.id,
-      playerId: unit.controllerId,
-      unitName: unit.name,
-      excessDamage: Math.max(0, excess)
-    });
-
-    if (unit.damage < unit.maxHealth) {
-      return;
-    }
-  }
-
-  // Rebirth fallback for Creature Bank cards (e.g. Crypt Skeletons): a bank
-  // defender is skipped by the pre-flip check above so its Stack Token absorbs
-  // the first lethal blow; once tokenless it still clings to life here at 1
-  // Health. Works against every damage source because they all funnel through
-  // this chokepoint. Non-bank units have already resolved Rebirth above, so the
-  // shared `usedRebirthThisCombat` flag keeps this from firing a second time.
-  const rebirth = getSelfRebirthAbility(unit);
-  if (rebirth && !unit.usedRebirthThisCombat) {
-    unit.usedRebirthThisCombat = true;
-    unit.damage = Math.max(0, unit.maxHealth - 1);
-    appendEvent(state, {
-      type: "UNIT_ABILITY_TRIGGERED",
-      unitId: unit.id,
-      abilityId: rebirth.abilityId,
-      message: `${unit.cardName} is reborn and clings to life at 1 Health.`
-    });
-    return;
   }
 
   appendEvent(state, {

@@ -401,6 +401,56 @@ describe("Crypt Skeletons: Rebirth (once per combat)", () => {
 });
 
 // ===========================================================================
+// Rebirth keeps a dying unit on its CURRENT side — a Pack unit stays Pack at
+// 1 HP and never flips to Few (the house rule that every side carries Rebirth).
+// This is the ordering fix: Rebirth resolves before the Pack→Few flip for EVERY
+// unit, bank or not, and after the Stack Token absorb for bank defenders.
+// ===========================================================================
+
+describe("Rebirth keeps the unit on its current side (Pack stays Pack)", () => {
+  function killRebirthUnit(opts: { variant: "few" | "pack" | "neutral"; bankUnit?: boolean }): CombatUnitState {
+    const state = createInitialGameState("rebirth-side");
+    const unit = state.combat!.units.unit_p2_skeletons; // necropolis.skeletons HAS a Few side to flip to
+    unit.abilities = ["phoenix-rebirth"];
+    unit.variant = opts.variant;
+    unit.bankUnit = opts.bankUnit;
+    unit.stackToken = null;
+    unit.usedRebirthThisCombat = false;
+    unit.maxHealth = 8;
+    unit.damage = 99; // lethal
+    markUnitRemovedIfNeeded(state, unit);
+    return unit;
+  }
+
+  it("a non-bank Pack unit with Rebirth stays Pack at 1 HP (does not flip to Few)", () => {
+    const unit = killRebirthUnit({ variant: "pack" });
+    expect(unit.variant).toBe("pack");
+    expect(unit.usedRebirthThisCombat).toBe(true);
+    expect(unit.maxHealth - unit.damage).toBe(1);
+  });
+
+  it("a bank Pack unit with Rebirth stays Pack at 1 HP (does not flip to Few)", () => {
+    const unit = killRebirthUnit({ variant: "pack", bankUnit: true });
+    expect(unit.variant).toBe("pack");
+    expect(unit.usedRebirthThisCombat).toBe(true);
+    expect(unit.maxHealth - unit.damage).toBe(1);
+  });
+
+  it("a Pack unit WITHOUT Rebirth still flips Pack→Few (the flip is intact)", () => {
+    const state = createInitialGameState("rebirth-side-control");
+    const unit = state.combat!.units.unit_p2_skeletons;
+    unit.abilities = []; // no Rebirth
+    unit.variant = "pack";
+    unit.bankUnit = undefined as never;
+    unit.usedRebirthThisCombat = false;
+    unit.maxHealth = 8;
+    unit.damage = 99;
+    markUnitRemovedIfNeeded(state, unit);
+    expect(unit.variant).toBe("few"); // control: the Pack→Few flip is untouched
+  });
+});
+
+// ===========================================================================
 // Dragon Utopia Faerie Dragons — while Stacked, the enemy cannot cast spells.
 // ===========================================================================
 
