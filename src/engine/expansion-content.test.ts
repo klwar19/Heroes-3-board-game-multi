@@ -61,6 +61,36 @@ describe("expansion tile data", () => {
     }
   });
 
+  it("labels every tile's back numeral to bracket its field guards (no flipped/mismatched tiers)", () => {
+    // INVARIANT over ALL tiles, every group: the printed back band a tile shows
+    // (Ⅰ / Ⅱ–Ⅲ / Ⅳ–Ⅴ / Ⅵ–Ⅶ) must contain every guarded field on it. A tile
+    // guarded Ⅳ/Ⅴ can never read Ⅴ–Ⅵ, a Ⅵ/Ⅶ tile can never read Ⅳ–Ⅴ, etc. This
+    // is the guard that catches a flipped-scan / transcription tier error for any
+    // tile — far, near, center, sea or underground — not just the one audited.
+    const BAND_RANGE: Record<string, [number, number]> = {
+      "Ⅰ": [1, 1],
+      "Ⅱ–Ⅲ": [2, 3],
+      "Ⅳ–Ⅴ": [4, 5],
+      "Ⅵ–Ⅶ": [6, 7]
+    };
+    const adventure = createAdventureGameState({ seed: "tier-invariant", rollFirstPlayer: false }).adventure!;
+    let index = 0;
+    for (const def of Object.values(allTileDefinitions)) {
+      // Spread the probes far apart (9 rows each) so their footprints never overlap.
+      const tile = instantiateTile(adventure, def.id, { row: 400 + index * 9, col: 400 }, 0, true);
+      index += 1;
+      const range = BAND_RANGE[tile.backLabel ?? ""];
+      expect(range, `${def.id} shows an unexpected back band "${tile.backLabel}"`).toBeDefined();
+      for (const guard of def.fields.map((field) => field.difficulty ?? 0).filter((value) => value > 0)) {
+        expect(
+          guard >= range![0] && guard <= range![1],
+          `${def.id} (group ${def.group}) has a field guarded ${guard} but its back band ` +
+            `"${tile.backLabel}" only covers ${range![0]}–${range![1]} — the printed tier is wrong`
+        ).toBe(true);
+      }
+    }
+  });
+
   it("keeps the boxed sets and expansions disjoint and complete", () => {
     const coreIds = new Set(Object.keys(coreTileDefinitions));
     for (const id of Object.keys(expansionTileDefinitions)) {

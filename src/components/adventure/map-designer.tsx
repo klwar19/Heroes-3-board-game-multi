@@ -26,7 +26,7 @@ type DesignGroup = CustomMapTilePlan["group"];
 /** Sea tiles ship two guard bands behind one wave back; the designer offers each. */
 type SeaBand = NonNullable<CustomMapTilePlan["seaBand"]>;
 
-/** Underground tiles likewise span two guard bands (Ⅴ–Ⅵ and a Ⅵ–Ⅶ boss tier). */
+/** Underground tiles likewise span two guard bands (Ⅳ–Ⅴ and a Ⅵ–Ⅶ boss tier). */
 type SubBand = NonNullable<CustomMapTilePlan["subBand"]>;
 
 /** Short printed label per group (the Roman numeral on the tile back). */
@@ -43,7 +43,7 @@ export const TILE_GROUP_LABELS: Record<DesignGroup, string> = {
 const SEA_BAND_NUMERAL: Record<SeaBand, string> = { "iv-v": "Ⅳ–Ⅴ", "vi-vii": "Ⅵ–Ⅶ" };
 
 /** The printed numerals for an underground tile's guard band. */
-const SUB_BAND_NUMERAL: Record<SubBand, string> = { "v-vi": "Ⅴ–Ⅵ", "vi-vii": "Ⅵ–Ⅶ" };
+const SUB_BAND_NUMERAL: Record<SubBand, string> = { "iv-v": "Ⅳ–Ⅴ", "vi-vii": "Ⅵ–Ⅶ" };
 
 /** Label for a placed/dragged plan — sea/underground read their band, every other group its numeral. */
 function planGroupLabel(plan: { group: DesignGroup; seaBand?: SeaBand; subBand?: SubBand }): string {
@@ -51,7 +51,7 @@ function planGroupLabel(plan: { group: DesignGroup; seaBand?: SeaBand; subBand?:
     return `Sea ${SEA_BAND_NUMERAL[plan.seaBand ?? "iv-v"]}`;
   }
   if (plan.group === "subterranean") {
-    return `Underground ${SUB_BAND_NUMERAL[plan.subBand ?? "v-vi"]}`;
+    return `Underground ${SUB_BAND_NUMERAL[plan.subBand ?? "iv-v"]}`;
   }
   return TILE_GROUP_LABELS[plan.group];
 }
@@ -73,7 +73,7 @@ const PALETTE: { key: string; group: DesignGroup; seaBand?: SeaBand; subBand?: S
   { key: "center", group: "center", label: "Center", numeral: "Ⅵ–Ⅶ", hint: "Strong central tile. Placed face-down (random from the Center pool)." },
   { key: "sea-iv-v", group: "sea", seaBand: "iv-v", label: "Sea Ⅳ–Ⅴ", numeral: "🌊", hint: "Weaker sea tile (Ⅳ–Ⅴ guard band). Placed face-down — draws a random Ⅳ–Ⅴ tile from the wave pool." },
   { key: "sea-vi-vii", group: "sea", seaBand: "vi-vii", label: "Sea Ⅵ–Ⅶ", numeral: "🌊", hint: "Stronger sea tile (Ⅵ–Ⅶ guard band). Placed face-down — draws a random Ⅵ–Ⅶ tile from the wave pool." },
-  { key: "sub-v-vi", group: "subterranean", subBand: "v-vi", label: "Underground Ⅴ–Ⅵ", numeral: "⛰", hint: "Regular underground tile (Ⅴ–Ⅵ guard band). Placed face-down — draws a random Ⅴ–Ⅵ tile from the underground pool." },
+  { key: "sub-iv-v", group: "subterranean", subBand: "iv-v", label: "Underground Ⅳ–Ⅴ", numeral: "⛰", hint: "Regular underground tile (Ⅳ–Ⅴ guard band). Placed face-down — draws a random Ⅳ–Ⅴ tile from the underground pool." },
   { key: "sub-vi-vii", group: "subterranean", subBand: "vi-vii", label: "Underground Ⅵ–Ⅶ", numeral: "⛰", hint: "Boss underground tile (Ⅵ–Ⅶ guard band — Cyclops Stockpile or Random Town). Placed face-down — draws a random Ⅵ–Ⅶ tile from the underground pool." }
 ];
 
@@ -361,7 +361,7 @@ export function MapDesigner({
         // Sea slots only reveal tiles from their own guard band (Ⅳ–Ⅴ vs Ⅵ–Ⅶ);
         // legacy slots without a band still see every sea tile.
         .filter((tile) => selected.group !== "sea" || !selected.seaBand || seaTileBand(tile) === selected.seaBand)
-        // Underground slots likewise reveal only their own band (Ⅴ–Ⅵ vs the
+        // Underground slots likewise reveal only their own band (Ⅳ–Ⅴ vs the
         // Ⅵ–Ⅶ boss tier); legacy bandless slots still see every underground tile.
         .filter(
           (tile) =>

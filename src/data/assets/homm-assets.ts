@@ -193,7 +193,7 @@ export function moraleIcon(morale: number): string {
  * Face-down map tile backs by tile group: the four rulebook backs (starry
  * night with the printed roman numerals) extracted from the official
  * rulebook PDF, plus sea (golden waves, Ⅳ–Ⅴ) and subterranean (cavern
- * teeth, Ⅴ–Ⅵ) backs drawn in the same style after the expansion photos.
+ * teeth, Ⅳ–Ⅴ) backs drawn in the same style after the expansion photos.
  */
 export const TILE_BACK_IMAGES: Record<string, string> = {
   starting: "/assets/board/backs/back-starting.webp",
