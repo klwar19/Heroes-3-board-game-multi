@@ -5828,6 +5828,13 @@ export type VisitStep =
       armyUnitId: string;
       /** Necromancy: "half the gold cost (rounded down)" instead of up. */
       roundDown?: boolean;
+      /**
+       * Necromancy ability / specialty: the played card is discarded from hand
+       * ONLY when this reinforce actually upgrades a unit. A no-eligible-target
+       * play or a declined reinforce leaves the card in hand (house rule: you
+       * lose Necromancy only when it upgrades something).
+       */
+      consumeCardId?: CardId;
     }
   | {
       /** Cove Pub: reinforce one unit with a flat gold discount (min 0). */
@@ -6277,6 +6284,15 @@ export type CustomMapTilePlan = {
    * matching band. Undefined (older saved maps) means "any sea tile".
    */
   seaBand?: "iv-v" | "vi-vii";
+  /**
+   * Subterranean tiles only: which guard band this slot belongs to. Like the
+   * sea pool, the underground pool mixes a regular Ⅳ–Ⅴ tier (U1–U6, #N4–#N7)
+   * with a Ⅵ–Ⅶ boss tier (U7 / #C2 Cyclops Stockpile, #C3 Random Town), so the
+   * designer offers them as two palette entries — a face-down underground slot
+   * then draws only from the matching band. Undefined (older saved maps) means
+   * "any subterranean tile".
+   */
+  subBand?: "iv-v" | "vi-vii";
 };
 
 /**

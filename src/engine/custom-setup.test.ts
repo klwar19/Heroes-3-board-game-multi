@@ -117,6 +117,34 @@ describe("map designer", () => {
     expect(faceDown!.tileDefId).not.toBe("F1");
   });
 
+  it("draws a face-down underground slot only from its own guard band (Ⅳ–Ⅴ vs the Ⅵ–Ⅶ boss tier)", () => {
+    // The designer offers Underground Ⅳ–Ⅴ and Underground Ⅵ–Ⅶ as two palette
+    // entries (mirroring the two sea bands). A face-down underground slot must
+    // draw only from the band its plan carries — the Ⅵ–Ⅶ band is exactly the
+    // three VII-centre boss tiles (U7 / #C2 Cyclops Stockpile, #C3 Random Town).
+    const bossIds = new Set(["U7", "#C2", "#C3"]);
+    const drawUnderground = (subBand: "iv-v" | "vi-vii") => {
+      const state = createAdventureGameState({
+        seed: `designed-underground-${subBand}`,
+        customMap: [{ row: 9, col: 4, group: "subterranean", faceDown: true, subBand }]
+      });
+      const tile = Object.values(state.adventure!.tiles).find((candidate) => candidate.group === "subterranean");
+      expect(tile, "an underground tile was placed").toBeDefined();
+      return tile!;
+    };
+
+    const boss = drawUnderground("vi-vii");
+    expect(bossIds.has(boss.tileDefId!)).toBe(true);
+    expect(boss.backLabel).toBe("Ⅵ–Ⅶ");
+
+    // Control: the regular band never draws one of the three boss tiles, and a
+    // Ⅳ–Ⅴ draw reports the regular back numeral — so the band genuinely gates
+    // the pool, not just the label.
+    const regular = drawUnderground("iv-v");
+    expect(bossIds.has(regular.tileDefId!)).toBe(false);
+    expect(regular.backLabel).toBe("Ⅳ–Ⅴ");
+  });
+
   it("forces the win-condition objective onto a face-down Center tile, not a random draw", () => {
     // A designed map's face-down Center slot must guarantee the victory mode's
     // objective tile, exactly like the scenario layout does.

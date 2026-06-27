@@ -160,9 +160,11 @@ export const TILE_BACK_LABELS: Record<string, string> = {
   far: "Ⅱ–Ⅲ",
   near: "Ⅳ–Ⅴ",
   center: "Ⅵ–Ⅶ",
-  // Expansion backs, numbered as printed (sea waves IV–V, underworld V–VI).
+  // Expansion backs: both the sea waves and the underworld pool ship a Ⅳ–Ⅴ
+  // tier and a Ⅵ–Ⅶ boss tier; the per-tile band is read from the field guards
+  // (see seaTileBand / subterraneanTileBand). This default is the Ⅳ–Ⅴ tier.
   sea: "Ⅳ–Ⅴ",
-  subterranean: "Ⅴ–Ⅵ"
+  subterranean: "Ⅳ–Ⅴ"
 };
 
 export function getAstrologersState(state: GameState): AstrologersState | null {
@@ -266,6 +268,22 @@ export function seaTileBand(def: TileDefinition): "iv-v" | "vi-vii" {
 }
 
 /**
+ * Which guard band a Subterranean tile belongs to. Exactly like the Cove sea
+ * pool, the underground pool mixes a regular Ⅳ–Ⅴ tier (U1–U6, #N4–#N7 — every
+ * guarded field on them is Ⅳ or Ⅴ) with a Ⅵ–Ⅶ boss tier — the three
+ * underground tiles whose centre is a VII guardian: U7 and #C2 (Cyclops
+ * Stockpile) and #C3 (Random Town, guarded Ⅵ/Ⅶ). The band is read from the
+ * tile's strongest guarded field, the same rule {@link seaTileBand} uses, so the
+ * map designer can offer the two underground levels separately and draw the
+ * matching face-down pool, and a revealed boss tile reports the Ⅵ–Ⅶ back
+ * numeral.
+ */
+export function subterraneanTileBand(def: TileDefinition): "iv-v" | "vi-vii" {
+  const maxDifficulty = def.fields.reduce((max, field) => Math.max(max, field.difficulty ?? 0), 0);
+  return maxDifficulty >= 6 ? "vi-vii" : "iv-v";
+}
+
+/**
  * The Roman-numeral band printed on a tile's back. Every group is uniform
  * except the Cove sea pool (see {@link seaTileBand}). Getting this right keeps
  * the revealed numerals honest and lets the BINH deck-unlock rules (which key
@@ -274,6 +292,9 @@ export function seaTileBand(def: TileDefinition): "iv-v" | "vi-vii" {
 function tileBandLabel(group: string | undefined, def: TileDefinition | undefined): string | undefined {
   if (group === "sea" && def) {
     return seaTileBand(def) === "vi-vii" ? "Ⅵ–Ⅶ" : "Ⅳ–Ⅴ";
+  }
+  if (group === "subterranean" && def) {
+    return subterraneanTileBand(def) === "vi-vii" ? "Ⅵ–Ⅶ" : "Ⅳ–Ⅴ";
   }
   return group ? TILE_BACK_LABELS[group] : undefined;
 }
@@ -2693,9 +2714,31 @@ export function processPendingVisit(state: GameState): void {
         }
         break;
       }
-      case "REINFORCE_HALF_GOLD":
-        reinforceArmyUnit(state, visit.playerId, step.armyUnitId, false, true, step.roundDown ?? false);
+      case "REINFORCE_HALF_GOLD": {
+        const upgraded = reinforceArmyUnit(state, visit.playerId, step.armyUnitId, false, true, step.roundDown ?? false);
+        // Necromancy is spent ONLY on a successful upgrade. The card was held in
+        // hand through the play (the discard was deferred); discard it now that a
+        // unit was actually reinforced. A failed/declined reinforce leaves it.
+        // The CARD_PLAYED event is emitted here, at the real hand→discard move,
+        // so the flight animation and log line fire exactly once and only when
+        // the card is actually consumed.
+        if (upgraded && step.consumeCardId) {
+          const reinforcer = state.players[visit.playerId];
+          const handIndex = reinforcer?.hand.indexOf(step.consumeCardId) ?? -1;
+          if (reinforcer && handIndex !== -1) {
+            reinforcer.hand.splice(handIndex, 1);
+            reinforcer.discard.push(step.consumeCardId);
+            appendEvent(state, {
+              type: "CARD_PLAYED",
+              playerId: visit.playerId,
+              cardId: step.consumeCardId,
+              timing: cardLibrary[step.consumeCardId]?.timing ?? "instant",
+              mode: "basic"
+            });
+          }
+        }
         break;
+      }
       case "REINFORCE_FLAT_GOLD":
         // Cove Pub: flat gold discount on one reinforcement (no halving).
         reinforceArmyUnit(state, visit.playerId, step.armyUnitId, false, false, false, false, step.discount);
@@ -6695,17 +6738,17 @@ export function reinforceArmyUnit(
   free = false,
   /** Cove Pub: a flat gold discount on this reinforcement (min 0, non-stacking). */
   flatGoldDiscount = 0
-): void {
+): boolean {
   const player = state.players[playerId];
   const armyUnit = player?.army.find((candidate) => candidate.id === armyUnitId);
   if (!player || !armyUnit || armyUnit.side !== "few") {
-    return;
+    return false;
   }
 
   const purchase: RecruitPurchaseRef = { kind: "reinforce", unitDefId: armyUnit.unitDefId, armyUnitId };
   const finalCost = free ? {} : (reinforceCostFor(state, playerId, armyUnitId, halfCost, halfGoldOnly, roundDown, flatGoldDiscount) ?? {});
   if (!hasRecruitResources(state, playerId, finalCost)) {
-    return;
+    return false;
   }
 
   spendRecruitResources(
@@ -6724,6 +6767,7 @@ export function reinforceArmyUnit(
     kind: "reinforce",
     cost: finalCost
   });
+  return true;
 }
 
 /**
@@ -6806,7 +6850,17 @@ export function hasFreeBronzeReinforceTarget(state: GameState, playerId: PlayerI
  * player's Few units of the allowed tiers — no Citadel, Dwelling or
  * Population token needed.
  */
-export function queueNecromancyReinforce(state: GameState, playerId: PlayerId, mode: "basic" | "expert"): void {
+export function queueNecromancyReinforce(
+  state: GameState,
+  playerId: PlayerId,
+  mode: "basic" | "expert",
+  /**
+   * The Necromancy card to discard — but only if the player actually reinforces.
+   * Attached to each real reinforce option (never to "Skip" or the
+   * no-eligible-target prompt), so the card is kept unless it upgrades a unit.
+   */
+  consumeCardId?: CardId
+): void {
   const player = state.players[playerId];
   const adventure = state.adventure;
   if (!player || !adventure) {
@@ -6841,18 +6895,20 @@ export function queueNecromancyReinforce(state: GameState, playerId: PlayerId, m
         .join(" + ") || "free";
     options.push({
       label: `Reinforce ${def.name} (${costLabel})`,
-      steps: [{ type: "REINFORCE_HALF_GOLD", armyUnitId: unit.id, roundDown: true }]
+      steps: [{ type: "REINFORCE_HALF_GOLD", armyUnitId: unit.id, roundDown: true, consumeCardId }]
     });
   }
 
   if (options.length === 0) {
+    // No eligible target: the card is kept (its option carries no consumeCardId),
+    // so a player who plays Necromancy with nothing to reinforce loses nothing.
     adventure.rewardQueue.push({
       playerId,
       kind: "visit-steps",
       steps: [
         {
           type: "CHOOSE_ONE",
-          prompt: "Necromancy: no Few bronze/silver unit you can afford to reinforce.",
+          prompt: "Necromancy: no unit you can afford to reinforce — the card is kept.",
           options: [{ label: "OK", steps: [] }]
         }
       ]
@@ -6860,7 +6916,8 @@ export function queueNecromancyReinforce(state: GameState, playerId: PlayerId, m
     return;
   }
 
-  options.push({ label: "Skip", steps: [] });
+  // "Skip" keeps the card too — only an actual reinforce above consumes it.
+  options.push({ label: "Skip (keep the card)", steps: [] });
   adventure.rewardQueue.push({
     playerId,
     kind: "visit-steps",
