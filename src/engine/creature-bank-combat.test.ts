@@ -154,6 +154,10 @@ describe("Creature Bank placement on tile discovery", () => {
     }
     state.heroes.hero_p1.spaceId = "h:7:2";
     state.heroes.hero_p1.movementPoints = 3;
+    // The supply tile's identity is rolled at the flip; force F1 — a Settlement
+    // (no Mine) tile that auto-finalizes on the 1st opening AND carries a Blocked
+    // Field (which is what the Creature Bank offer needs).
+    state.adventure!.farTileScriptedDraws = ["F1"];
     state = apply(state, { type: "PLACE_TILE", playerId: "p1", heroId: "hero_p1", supplyIndex: 0, centerRow: 6, centerCol: 4 });
     const rotation = getLegalActions(state, "p1").find((entry) => entry.action.type === "SET_TILE_ROTATION");
     return apply(state, rotation!.action);

@@ -6,7 +6,6 @@ import {
   canHeroReachPlacedTile,
   createAdventureGameState,
   createAdventureLobbyState,
-  draftFarTiles,
   getLegalActions,
   getPlayerView,
   getScenario,
@@ -262,31 +261,23 @@ describe("adventure setup", () => {
     expect(centerSeaC.backLabel).toBe("Ⅵ–Ⅶ");
   });
 
-  it("drafts two far tiles per player, redrawing until one has a settlement", () => {
+  it("gives each player a face-down Ⅱ–Ⅲ supply of UNOPENED markers, drawn at the flip", () => {
+    // The supply no longer pre-decides tiles: each player holds opaque UNOPENED
+    // markers, and a truly-random tile is drawn from the shared far pool only when
+    // they actually open one (see far-tile-flip.test.ts for that mechanic and the
+    // settlement guarantee). The pool is parked on the adventure for those draws.
     const state = makeGame();
-    const hasSettlement = (tileDefId: string) =>
-      Boolean(coreTileDefinitions[tileDefId]?.fields.some((field) => field.location === "settlement"));
-
     for (const playerId of ["p1", "p2"]) {
       const supply = state.adventure?.playerFarTiles[playerId] ?? [];
       expect(supply).toHaveLength(2);
-      expect(supply.some(hasSettlement)).toBe(true);
+      expect(supply.every((marker) => marker === "?")).toBe(true);
+      expect(state.adventure?.farTilesOpenedByPlayer?.[playerId]).toBe(0);
     }
-
-    // The draft helper itself: a pool whose top tiles lack settlements keeps
-    // redrawing the second tile until a settlement appears.
-    const noSettlement = Object.values(coreTileDefinitions)
-      .filter((tile) => tile.group === "far" && !tile.fields.some((field) => field.location === "settlement"))
-      .map((tile) => tile.id);
-    const withSettlement = Object.values(coreTileDefinitions)
-      .filter((tile) => tile.group === "far" && tile.fields.some((field) => field.location === "settlement"))
-      .map((tile) => tile.id);
-    expect(withSettlement.length).toBeGreaterThan(0);
-
-    const pool = [...withSettlement.slice(0, 1), ...noSettlement.slice(0, 3)]; // settlement at the bottom
-    const drafted = draftFarTiles(pool, getScenario("skirmish"));
-    expect(drafted).toHaveLength(2);
-    expect(drafted.some(hasSettlement)).toBe(true);
+    expect((state.adventure?.farTilePool ?? []).length).toBeGreaterThan(0);
+    // Every pooled tile is a real Far (Ⅱ–Ⅲ) definition.
+    for (const tileDefId of state.adventure?.farTilePool ?? []) {
+      expect(coreTileDefinitions[tileDefId]?.group).toBe("far");
+    }
   });
 
   it("gives every player no Ⅱ–Ⅲ supply when Far-tile opening is off, but two when on", () => {
@@ -825,7 +816,11 @@ describe("tile discovery and placement", () => {
     // both an allowed and a rejected rotation to exercise.
     state.heroes.hero_p1.spaceId = "h:9:1";
     state.heroes.hero_p1.movementPoints = 3;
-    const tileDefId = state.adventure!.playerFarTiles.p1[0];
+    // The supply tile's identity is rolled at the flip, so force F1 — a Settlement
+    // (no Mine) tile that auto-finalizes on the 1st opening (no reroll) and whose
+    // border lines give a mix of crossable and sealed rotations at this slot.
+    state.adventure!.farTileScriptedDraws = ["F1"];
+    const tileDefId = "F1";
     const center = { row: 10, col: 0 };
 
     const next = apply(state, {
@@ -884,8 +879,9 @@ describe("tile discovery and placement", () => {
   it("reports a hero cannot cross to a disconnected area", () => {
     const state = makeGame();
     state.heroes.hero_p1.spaceId = "h:7:2";
-    const tileDefId = state.adventure!.playerFarTiles.p1[0];
-    // A center far off in empty space shares no crossable edge with the hero.
+    // A real Ⅱ–Ⅲ tile def (the supply slots are now opaque UNOPENED markers): a
+    // center far off in empty space shares no crossable edge with the hero.
+    const tileDefId = "F1";
     expect(canHeroReachPlacedTile(state, state.heroes.hero_p1, tileDefId, { row: 50, col: 50 }, 0)).toBe(false);
   });
 });

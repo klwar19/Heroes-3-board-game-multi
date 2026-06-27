@@ -130,7 +130,7 @@ import {
   spendFirstAidExpert,
   startWarMachineRound
 } from "./permanents";
-import { createSeededRandom } from "./random";
+import { createSeededRandom, setActiveEntropy } from "./random";
 import {
   abilityExpertIsCrownFree,
   activeSchoolFetches,
@@ -338,6 +338,14 @@ type ReducerOptions = {
    * `roomActionGuard`. Omitted by engine tests and the open-table path.
    */
   actorClientId?: string;
+  /**
+   * Fresh per-action crypto entropy minted by the authoritative server
+   * (party/index.ts and submitRoomAction). While an action runs this salts every
+   * seeded RNG draw (see random.ts), so live play is genuinely unpredictable and
+   * non-reproducible from the game seed. Omitted by the engine test suite, which
+   * keeps the seeded behaviour deterministic.
+   */
+  entropy?: string;
 };
 
 type ConcreteEffect = Exclude<EffectDefinition, { type: "CHOOSE_ONE" }>;
@@ -789,8 +797,10 @@ function rollAttackDie(combat: CombatState): number {
   const faces = dice.faces.length > 0 ? dice.faces : ATTACK_DIE_FACES;
   // Derive each roll from the combat seed and the roll index so the sequence is
   // deterministic for every client (server-authoritative) yet unpredictable to
-  // players, who cannot peek at future rolls.
-  const random = createSeededRandom(`${dice.seed}#${rollIndex}`);
+  // players, who cannot peek at future rolls. `salt: false` keeps roll index i a
+  // stable function of `dice.seed` regardless of which action consumes it — the
+  // per-game true randomness is baked into `dice.seed` once, at combat creation.
+  const random = createSeededRandom(`${dice.seed}#${rollIndex}`, { salt: false });
   return faces[random.nextInt(0, faces.length - 1)] ?? 0;
 }
 
@@ -14349,8 +14359,14 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
   const nextState = cloneState(base);
   const startEventNumber = eventSeedNumber(nextState);
 
+  // True randomness: park the server's fresh per-action entropy so every seeded
+  // RNG draw this action makes is salted with it (no-op when omitted, keeping the
+  // test suite deterministic — see random.ts). Restored in `finally` so it never
+  // leaks into the next action or into setup-time RNG.
+  const previousEntropy = setActiveEntropy(options.entropy);
   try {
-    switch (action.type) {
+    try {
+      switch (action.type) {
       case "CAST_SPELL":
         // Mandatory start-of-turn draw: a Map Spell cast is blocked until the
         // draw is taken (no-op in combat / off-turn). Checked before resolving so
@@ -14728,7 +14744,10 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
   // — whatever this action did) finally reach their discard pile or hand.
   releaseEndedOngoingCards(nextState);
 
-  return ok(nextState, startEventNumber);
+    return ok(nextState, startEventNumber);
+  } finally {
+    setActiveEntropy(previousEntropy);
+  }
 }
 
 export function findEvent<T extends GameEvent["type"]>(

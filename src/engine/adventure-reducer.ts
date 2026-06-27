@@ -99,7 +99,7 @@ import { appendExpiredEffectEvents, pvpEscapeWindowOpen } from "./combat-units";
 import { expireEffectsForCombatEnd, makeActiveEffect, playerCannotSurrenderCombat } from "./active-effects";
 import { assignCombatBoardArt } from "./combat-board-art";
 import { cardCanBoostPower } from "./effects";
-import { createSeededRandom } from "./random";
+import { bakeEntropy, createSeededRandom } from "./random";
 import {
   destroyFortification,
   intactFortificationPositions,
@@ -169,7 +169,7 @@ import type {
   ThievesGuildTarget,
   VisitStep
 } from "./state";
-import { NEUTRAL_PLAYER_ID } from "./state";
+import { NEUTRAL_PLAYER_ID, UNOPENED_FAR_TILE } from "./state";
 
 
 /** First built town building of this player carrying the given effect type. */
@@ -1550,6 +1550,299 @@ export function canHeroDiscoverAdjacentTile(state: GameState, hero: HeroState, t
   return !isOuterEdgeSealed(adventure, field);
 }
 
+// ---------------------------------------------------------------------------
+// Ⅱ–Ⅲ (Far) tile flip: a truly-random draw at placement, with the house-rule
+// keep / reroll / pick decisions (settlement guarantee on the 2nd opening; a
+// one-time reroll for a material Mine on any opening).
+// ---------------------------------------------------------------------------
+
+/** A Ⅱ–Ⅲ tile definition that carries a Settlement field. */
+export function tileDefHasSettlement(tileDefId: string): boolean {
+  return Boolean(allTileDefinitions[tileDefId]?.fields.some((field) => field.location === "settlement"));
+}
+
+/**
+ * A Ⅱ–Ⅲ tile definition that carries a material (resource) Mine field — a Mine
+ * produces gold / building materials / valuables, so any `location: "mine"`
+ * counts. Drives the one-time "reroll if you get a Mine tile" option.
+ */
+export function tileDefHasMaterialMine(tileDefId: string): boolean {
+  return Boolean(allTileDefinitions[tileDefId]?.fields.some((field) => field.location === "mine"));
+}
+
+/** Whether any tile still in the undrawn Ⅱ–Ⅲ pool carries a Settlement. */
+function farTilePoolHasSettlement(state: GameState): boolean {
+  return (state.adventure?.farTilePool ?? []).some(tileDefHasSettlement);
+}
+
+/**
+ * Draws a tile from the player's Ⅱ–Ⅲ pool. In live play the seed is salted with
+ * the action's fresh entropy (true random — unpredictable, non-reproducible);
+ * in tests it is deterministic, and `farTileScriptedDraws` forces an exact
+ * sequence (mirrors combat dice `scriptedRolls`). Returns undefined if the pool
+ * is empty.
+ */
+function drawFarTileFromPool(state: GameState): string | undefined {
+  const adventure = requireAdventure(state);
+  const pool = adventure.farTilePool ?? (adventure.farTilePool = []);
+  const scripted = adventure.farTileScriptedDraws;
+  if (scripted && scripted.length > 0) {
+    const id = scripted.shift() as string;
+    const index = pool.indexOf(id);
+    if (index !== -1) {
+      pool.splice(index, 1);
+    }
+    return id;
+  }
+  if (pool.length === 0) {
+    return undefined;
+  }
+  const random = createSeededRandom(`${state.seed}#far-tile-open#${eventSeedNumber(state)}#${pool.length}`);
+  const [id] = pool.splice(random.nextInt(0, pool.length - 1), 1);
+  return id;
+}
+
+/** Returns a rerolled-away (or unpicked) tile to the Ⅱ–Ⅲ pool. */
+function returnFarTileToPool(state: GameState, tileDefId: string): void {
+  const adventure = requireAdventure(state);
+  (adventure.farTilePool ?? (adventure.farTilePool = [])).push(tileDefId);
+}
+
+/** Opens the keep/reroll/pick OPTION_CHOICE for the current flip candidate. */
+function openFarTileFlipChoice(
+  state: GameState,
+  flip: NonNullable<NonNullable<GameState["adventure"]>["pendingFarTileFlip"]>,
+  prompt: string,
+  optionLabels: string[]
+): void {
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId: flip.playerId,
+    prompt,
+    options: optionLabels.map((label) => ({ label })),
+    context: "far-tile-flip",
+    returnPhase: flip.returnPhase
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = flip.playerId;
+}
+
+function describeFarTile(tileDefId: string): string {
+  const tags: string[] = [];
+  if (tileDefHasSettlement(tileDefId)) {
+    tags.push("Settlement");
+  }
+  if (tileDefHasMaterialMine(tileDefId)) {
+    tags.push("Mine");
+  }
+  return tags.length > 0 ? `tile ${tileDefId} (${tags.join(", ")})` : `tile ${tileDefId}`;
+}
+
+/**
+ * Either opens the next keep/reroll/pick choice for the current candidate or, if
+ * no reroll applies, places it. Settlement guarantee fires only on the 2nd
+ * opening (and only while the pool still holds a Settlement); the one-time Mine
+ * reroll on any opening.
+ */
+function presentFarTileOffersOrFinalize(state: GameState): void {
+  const flip = requireAdventure(state).pendingFarTileFlip;
+  if (!flip) {
+    return;
+  }
+  const candidate = flip.candidate;
+  const settlementEligible =
+    flip.openingIndex === 2 && !tileDefHasSettlement(candidate) && farTilePoolHasSettlement(state);
+  const mineEligible = !flip.mineRerollUsed && tileDefHasMaterialMine(candidate);
+
+  if (settlementEligible) {
+    flip.offerMode = "settlement";
+    openFarTileFlipChoice(
+      state,
+      flip,
+      `Your 2nd Ⅱ–Ⅲ tile — ${describeFarTile(candidate)} — has no Settlement. Keep it, or reroll until a Settlement appears?`,
+      ["Keep this Ⅱ–Ⅲ tile", "Reroll for a Settlement"]
+    );
+    return;
+  }
+
+  if (mineEligible) {
+    flip.offerMode = "mine";
+    openFarTileFlipChoice(
+      state,
+      flip,
+      `This Ⅱ–Ⅲ tile — ${describeFarTile(candidate)} — has a resource Mine. Keep it, or reroll once?`,
+      ["Keep this Ⅱ–Ⅲ tile", "Reroll once (resource Mine)"]
+    );
+    return;
+  }
+
+  finalizeFarTileFlip(state, candidate);
+}
+
+/**
+ * Places the chosen Ⅱ–Ⅲ tile: any other tile still held aside returns to the
+ * pool, the opened-counter ticks, the supply marker is already gone, and the
+ * tile is laid face up to await its rotation. The Observatory path also consumes
+ * its visit step and resumes the visit.
+ */
+function finalizeFarTileFlip(state: GameState, chosenTileDefId: string): void {
+  const adventure = requireAdventure(state);
+  const flip = adventure.pendingFarTileFlip;
+  if (!flip) {
+    return;
+  }
+
+  // Return whichever held tile was not chosen (candidate vs. the last
+  // non-settlement tile) to the pool so it can come up again later.
+  for (const held of [flip.candidate, flip.lastNonSettlement]) {
+    if (held && held !== chosenTileDefId) {
+      returnFarTileToPool(state, held);
+    }
+  }
+
+  adventure.farTilesOpenedByPlayer = adventure.farTilesOpenedByPlayer ?? {};
+  adventure.farTilesOpenedByPlayer[flip.playerId] = (adventure.farTilesOpenedByPlayer[flip.playerId] ?? 0) + 1;
+
+  const center = { row: flip.centerRow, col: flip.centerCol };
+  const via = flip.via;
+  const heroId = flip.heroId;
+  const observatoryFieldId = flip.observatoryFieldId;
+  const returnPhase = flip.returnPhase;
+  const playerId = flip.playerId;
+
+  adventure.pendingFarTileFlip = null;
+  state.pendingChoice = null;
+  state.phase = returnPhase;
+  state.priorityPlayerId = null;
+
+  const tile = instantiateTile(adventure, chosenTileDefId, center, 0, false, { materialize: false });
+
+  if (via === "observatory") {
+    // The Observatory placement resolves the open DISCOVER_ADJACENT_TILE step,
+    // then resumes any remaining visit steps. The tile is rotated freely (no
+    // opening hero recorded), exactly like the old direct-placement path.
+    const visit = adventure.pendingVisit;
+    if (visit && visit.fieldId === observatoryFieldId) {
+      visit.steps.shift();
+    }
+    beginTileRotation(state, playerId, tile, "place");
+    processPendingVisit(state);
+    return;
+  }
+
+  beginTileRotation(state, playerId, tile, "place", heroId);
+}
+
+/**
+ * Starts a Ⅱ–Ⅲ flip: consumes one face-down supply marker, draws a truly-random
+ * tile and reveals it, then either opens a keep/reroll/pick choice or — when no
+ * reroll applies — lays the tile straight down. (A throw rolls the whole action
+ * back, so the marker/MP are only spent on success.)
+ */
+function beginFarTileFlip(
+  state: GameState,
+  ctx: {
+    playerId: PlayerId;
+    heroId?: HeroId;
+    supplyIndex: number;
+    centerRow: number;
+    centerCol: number;
+    via: "place" | "observatory";
+    observatoryFieldId?: MapSpaceId;
+  }
+): void {
+  const adventure = requireAdventure(state);
+  const supply = adventure.playerFarTiles[ctx.playerId] ?? [];
+  if (supply[ctx.supplyIndex] !== UNOPENED_FAR_TILE) {
+    throw new Error("That Ⅱ–Ⅲ tile is not in your supply.");
+  }
+  const candidate = drawFarTileFromPool(state);
+  if (!candidate) {
+    throw new Error("There are no Ⅱ–Ⅲ tiles left to open.");
+  }
+  supply.splice(ctx.supplyIndex, 1);
+
+  adventure.pendingFarTileFlip = {
+    playerId: ctx.playerId,
+    ...(ctx.heroId ? { heroId: ctx.heroId } : {}),
+    centerRow: ctx.centerRow,
+    centerCol: ctx.centerCol,
+    via: ctx.via,
+    ...(ctx.observatoryFieldId ? { observatoryFieldId: ctx.observatoryFieldId } : {}),
+    returnPhase: state.phase,
+    openingIndex: (adventure.farTilesOpenedByPlayer?.[ctx.playerId] ?? 0) + 1,
+    candidate,
+    lastNonSettlement: null,
+    mineRerollUsed: false,
+    offerMode: "settlement"
+  };
+
+  presentFarTileOffersOrFinalize(state);
+}
+
+/** Resolves a keep / reroll / pick decision on the Ⅱ–Ⅲ flip in progress. */
+export function resolveFarTileFlip(state: GameState, optionIndex: number): void {
+  const adventure = requireAdventure(state);
+  const flip = adventure.pendingFarTileFlip;
+  if (!flip) {
+    throw new Error("There is no Ⅱ–Ⅲ tile flip to resolve.");
+  }
+
+  if (flip.offerMode === "pick") {
+    // [0] place the Settlement tile (the current candidate); [1] place the last
+    // tile seen before the reroll. The unchosen one returns to the pool.
+    finalizeFarTileFlip(state, optionIndex === 1 ? (flip.lastNonSettlement ?? flip.candidate) : flip.candidate);
+    return;
+  }
+
+  if (optionIndex === 0) {
+    // Keep the current candidate. (finalize returns any held tile to the pool.)
+    finalizeFarTileFlip(state, flip.candidate);
+    return;
+  }
+
+  if (flip.offerMode === "settlement") {
+    // Reroll for a Settlement: hold the current (non-settlement) tile as the
+    // "last before reroll", returning any older held tile to the pool, then draw.
+    if (flip.lastNonSettlement) {
+      returnFarTileToPool(state, flip.lastNonSettlement);
+    }
+    flip.lastNonSettlement = flip.candidate;
+    const next = drawFarTileFromPool(state);
+    if (!next) {
+      // Pool ran dry — keep the tile we were holding.
+      const held = flip.lastNonSettlement;
+      flip.candidate = held;
+      flip.lastNonSettlement = null;
+      finalizeFarTileFlip(state, held);
+      return;
+    }
+    flip.candidate = next;
+    if (tileDefHasSettlement(next)) {
+      flip.offerMode = "pick";
+      openFarTileFlipChoice(
+        state,
+        flip,
+        `Found a Settlement — ${describeFarTile(next)}. Place it, or keep the previous tile — ${describeFarTile(flip.lastNonSettlement)}?`,
+        [`Place the Settlement (${describeFarTile(next)})`, `Place the previous tile (${describeFarTile(flip.lastNonSettlement)})`]
+      );
+      return;
+    }
+    presentFarTileOffersOrFinalize(state);
+    return;
+  }
+
+  // offerMode === "mine": reroll once. The mined tile returns to the pool; the
+  // fresh draw goes through the normal offer/finalize path (a 2nd-opening draw
+  // with no Settlement re-engages the settlement guarantee).
+  flip.mineRerollUsed = true;
+  returnFarTileToPool(state, flip.candidate);
+  const next = drawFarTileFromPool(state);
+  flip.candidate = next ?? flip.candidate;
+  presentFarTileOffersOrFinalize(state);
+}
+
 export function placeTile(state: GameState, action: Extract<GameAction, { type: "PLACE_TILE" }>): void {
   const adventure = requireAdventure(state);
   assertActiveTurn(state, action.playerId);
@@ -1562,9 +1855,11 @@ export function placeTile(state: GameState, action: Extract<GameAction, { type: 
   }
 
   const supply = adventure.playerFarTiles[action.playerId] ?? [];
-  const tileDefId = supply[action.supplyIndex];
-  if (!tileDefId) {
-    throw new Error("That Far tile is not in your supply.");
+  if (supply[action.supplyIndex] !== UNOPENED_FAR_TILE) {
+    throw new Error("That Ⅱ–Ⅲ tile is not in your supply.");
+  }
+  if ((adventure.farTilePool?.length ?? 0) === 0) {
+    throw new Error("There are no Ⅱ–Ⅲ tiles left to open.");
   }
 
   const center = { row: action.centerRow, col: action.centerCol };
@@ -1574,23 +1869,24 @@ export function placeTile(state: GameState, action: Extract<GameAction, { type: 
     );
   }
 
-  // The hero has to be able to cross onto the new tile through some rotation —
-  // otherwise its border lines would seal it off and the placement is wasted.
-  if (![0, 1, 2, 3, 4, 5].some((rotation) => canHeroReachPlacedTile(state, hero, tileDefId, center, rotation))) {
-    throw new Error("Your hero can't cross onto that tile from here — its border lines seal it off. Pick another spot.");
-  }
-
-  // A tile may only be added on the hero's own layer: a Surface hero cannot lay
-  // down a Subterranean tile or vice versa (same divide as discovery).
-  const placedLayer = tileLayer({ group: allTileDefinitions[tileDefId]?.group } as MapTileState);
+  // A Ⅱ–Ⅲ tile is always a Surface tile, so a Subterranean hero may not lay one
+  // down (the same divide as discovery). The tile's identity is unknown until the
+  // flip, so the "your hero can cross onto it" guarantee is enforced later, at
+  // the rotation step (setTileRotation), against the actual drawn tile.
+  const placedLayer = tileLayer({ group: "far" } as MapTileState);
   if (hero.spaceId && placedLayer !== fieldLayer(state, hero.spaceId)) {
     throw new Error("You can't place a tile across the Surface/Subterranean divide.");
   }
 
-  supply.splice(action.supplyIndex, 1);
   hero.movementPoints -= 1;
-  const tile = instantiateTile(adventure, tileDefId, center, 0, false, { materialize: false });
-  beginTileRotation(state, action.playerId, tile, "place", hero.id);
+  beginFarTileFlip(state, {
+    playerId: action.playerId,
+    heroId: hero.id,
+    supplyIndex: action.supplyIndex,
+    centerRow: center.row,
+    centerCol: center.col,
+    via: "place"
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -2184,28 +2480,34 @@ export function placeObservatoryTile(
   }
 
   const supply = adventure.playerFarTiles[action.playerId] ?? [];
-  const tileDefId = supply[action.supplyIndex];
-  if (!tileDefId) {
-    throw new Error("That Far tile is not in your supply.");
+  if (supply[action.supplyIndex] !== UNOPENED_FAR_TILE) {
+    throw new Error("That Ⅱ–Ⅲ tile is not in your supply.");
+  }
+  if ((adventure.farTilePool?.length ?? 0) === 0) {
+    throw new Error("There are no Ⅱ–Ⅲ tiles left to open.");
   }
 
   const center: HexCoord = { row: action.centerRow, col: action.centerCol };
-  const placeable = observatoryPlacementCenters(state, hero, observatoryTile, tileDefId);
+  const placeable = observatoryPlacementCenters(state, hero, observatoryTile, supply[action.supplyIndex]);
   if (!placeable.some((candidate) => hexEquals(candidate, center))) {
     throw new Error(
       "The Observatory can only place a Far tile at an empty slot adjacent to it that nests against two tiles."
     );
   }
 
-  // Free observatory discovery — no movement point is spent. The supply tile
-  // leaves the player's hand and lands face up, awaiting its rotation choice.
-  // No opening hero is recorded: the tile is rotated freely under the standard
-  // placement rules, not constrained to a doorway the visiting hero can cross.
-  supply.splice(action.supplyIndex, 1);
-  visit.steps.shift();
-  const tile = instantiateTile(adventure, tileDefId, center, 0, false, { materialize: false });
-  beginTileRotation(state, action.playerId, tile, "place");
-  processPendingVisit(state);
+  // Free observatory discovery — no movement point is spent. The flip draws a
+  // truly-random Ⅱ–Ⅲ tile (with the same keep/reroll/pick choices as a normal
+  // opening); the visit step is consumed and resumed once the tile is finally
+  // placed (see finalizeFarTileFlip). The tile is rotated freely, not constrained
+  // to a doorway the visiting hero can cross.
+  beginFarTileFlip(state, {
+    playerId: action.playerId,
+    supplyIndex: action.supplyIndex,
+    centerRow: center.row,
+    centerCol: center.col,
+    via: "observatory",
+    observatoryFieldId: visit.fieldId
+  });
 }
 
 /**
@@ -2269,13 +2571,15 @@ export function observatoryPlacementCenters(
   tileDefId: string
 ): HexCoord[] {
   const adventure = state.adventure;
-  const def = allTileDefinitions[tileDefId];
-  if (!adventure || !def || !hero.spaceId) {
+  if (!adventure || !hero.spaceId) {
     return [];
   }
+  // An UNOPENED supply tile has no known def (its identity is rolled at the flip),
+  // so fall back to the Far group — every supply tile is a Surface Ⅱ–Ⅲ tile.
+  const placedGroup = allTileDefinitions[tileDefId]?.group ?? "far";
   const heroLayer = fieldLayer(state, hero.spaceId);
   // A Far tile may only land on the hero's own layer (no cross-divide placing).
-  if (tileLayer({ group: def.group } as MapTileState) !== heroLayer) {
+  if (tileLayer({ group: placedGroup } as MapTileState) !== heroLayer) {
     return [];
   }
 
@@ -2409,7 +2713,10 @@ function makeCombatShell(state: GameState, attackerPlayerId: PlayerId, defenderP
     outcome: null,
     dice: {
       faces: [...ATTACK_DIE_FACES],
-      seed: `${state.seed}-combat-${eventSeedNumber(state)}`,
+      // Bake the action's fresh entropy into the combat seed once, so the whole
+      // dice sequence is non-reproducible game-to-game (true random in play) while
+      // each later roll stays a stable function of this seed (see rollAttackDie).
+      seed: bakeEntropy(`${state.seed}-combat-${eventSeedNumber(state)}`),
       rollCount: 0
     },
     units: {}
@@ -5828,6 +6135,13 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     state.pendingChoice = null;
     state.phase = choice.returnPhase;
     state.priorityPlayerId = null;
+    return;
+  }
+
+  if (choice.context === "far-tile-flip") {
+    // resolveFarTileFlip drives the keep/reroll/pick state machine — it either
+    // re-opens the next choice or finalizes (placing the tile, restoring phase).
+    resolveFarTileFlip(state, action.optionIndex);
     return;
   }
 

@@ -284,11 +284,13 @@ export default class GameRoomServer implements Party.Server {
 
     if (message.type === "action") {
       const current = this.ensureSnapshot();
-      const result = applyAction(
-        current.state,
-        message.action,
-        message.actorClientId ? { actorClientId: message.actorClientId } : {}
-      );
+      const result = applyAction(current.state, message.action, {
+        // Fresh crypto entropy per action makes every die roll, shuffle and Ⅱ–Ⅲ
+        // tile flip genuinely unpredictable and non-reproducible (true random),
+        // not derivable from the game seed (see random.ts).
+        entropy: freshEntropy(),
+        ...(message.actorClientId ? { actorClientId: message.actorClientId } : {})
+      });
 
       if (result.errors.length === 0) {
         this.snapshot = {
@@ -378,11 +380,10 @@ export default class GameRoomServer implements Party.Server {
 
       if (body && "action" in body && body.action) {
         const current = this.ensureSnapshot();
-        const result = applyAction(
-          current.state,
-          body.action,
-          "actorClientId" in body && body.actorClientId ? { actorClientId: body.actorClientId } : {}
-        );
+        const result = applyAction(current.state, body.action, {
+          entropy: freshEntropy(),
+          ...("actorClientId" in body && body.actorClientId ? { actorClientId: body.actorClientId } : {})
+        });
         if (result.errors.length === 0) {
           this.snapshot = {
             roomId: this.room.id,
