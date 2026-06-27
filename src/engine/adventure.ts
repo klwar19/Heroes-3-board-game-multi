@@ -266,6 +266,20 @@ export function seaTileBand(def: TileDefinition): "iv-v" | "vi-vii" {
 }
 
 /**
+ * Which guard band a Subterranean tile belongs to. Like the Cove sea pool, the
+ * underground pool mixes a regular Ⅴ–Ⅵ tier (U1–U6, #N4–#N7) with a Ⅵ–Ⅶ boss
+ * tier — the three underground tiles whose centre is a VII guardian: U7 and #C2
+ * (Cyclops Stockpile) and #C3 (Random Town). The band is read from the tile's
+ * strongest guarded field, the same rule {@link seaTileBand} uses, so the map
+ * designer can offer the two underground levels separately and draw the matching
+ * face-down pool, and a revealed boss tile reports the Ⅵ–Ⅶ back numeral.
+ */
+export function subterraneanTileBand(def: TileDefinition): "v-vi" | "vi-vii" {
+  const maxDifficulty = def.fields.reduce((max, field) => Math.max(max, field.difficulty ?? 0), 0);
+  return maxDifficulty >= 6 ? "vi-vii" : "v-vi";
+}
+
+/**
  * The Roman-numeral band printed on a tile's back. Every group is uniform
  * except the Cove sea pool (see {@link seaTileBand}). Getting this right keeps
  * the revealed numerals honest and lets the BINH deck-unlock rules (which key
@@ -274,6 +288,9 @@ export function seaTileBand(def: TileDefinition): "iv-v" | "vi-vii" {
 function tileBandLabel(group: string | undefined, def: TileDefinition | undefined): string | undefined {
   if (group === "sea" && def) {
     return seaTileBand(def) === "vi-vii" ? "Ⅵ–Ⅶ" : "Ⅳ–Ⅴ";
+  }
+  if (group === "subterranean" && def) {
+    return subterraneanTileBand(def) === "vi-vii" ? "Ⅵ–Ⅶ" : "Ⅴ–Ⅵ";
   }
   return group ? TILE_BACK_LABELS[group] : undefined;
 }

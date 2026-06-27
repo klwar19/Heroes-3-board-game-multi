@@ -1030,8 +1030,11 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
     outerImpassable: [false, false, false, false, false, true],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Stronghold Expansion)",
-      credit: "Fields from the fan wiki; art not in the asset set yet - outer borders unverified beyond blocked fields. Verify against physical tiles before final release.",
+      credit: "Fields from the fan wiki; tile art cropped from the community subterranean map scans and rescaled to the 1024x985 tile frame; outer borders derived from blocked fields. Verify against physical tiles before final release.",
       url: "https://en.homm3bg.wiki/tiles/u1/"
+    },
+    assets: {
+      tileImage: "/assets/board/tiles/u1.webp"
     }
   },
   U2: {
@@ -1075,8 +1078,11 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
     outerImpassable: [false, false, false, false, true, false],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Stronghold Expansion)",
-      credit: "Fields from the fan wiki; art not in the asset set yet - outer borders unverified beyond blocked fields. Verify against physical tiles before final release.",
+      credit: "Fields from the fan wiki; tile art cropped from the community subterranean map scans and rescaled to the 1024x985 tile frame; outer borders derived from blocked fields. Verify against physical tiles before final release.",
       url: "https://en.homm3bg.wiki/tiles/u3/"
+    },
+    assets: {
+      tileImage: "/assets/board/tiles/u3.webp"
     }
   },
   U4: {
@@ -1168,8 +1174,11 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
     outerImpassable: [false, false, false, false, false, false],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Stronghold Expansion)",
-      credit: "Fields from the fan wiki; art not in the asset set yet - outer borders unverified beyond blocked fields. Verify against physical tiles before final release.",
+      credit: "Fields from the fan wiki; tile art cropped from the community subterranean map scans and rescaled to the 1024x985 tile frame; outer borders derived from blocked fields. Verify against physical tiles before final release.",
       url: "https://en.homm3bg.wiki/tiles/u7/"
+    },
+    assets: {
+      tileImage: "/assets/board/tiles/u7.webp"
     }
   },
   "#C2": {
@@ -1189,8 +1198,11 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
     outerImpassable: [false, true, false, false, false, false],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Regular Stretch Goals)",
-      credit: "Fields from the fan wiki; art not in the asset set yet - outer borders unverified beyond blocked fields. Verify against physical tiles before final release.",
+      credit: "Fields from the fan wiki; tile art cropped from the community subterranean map scans and rescaled to the 1024x985 tile frame; outer borders derived from blocked fields. Verify against physical tiles before final release.",
       url: "https://en.homm3bg.wiki/tiles/cx2/"
+    },
+    assets: {
+      tileImage: "/assets/board/tiles/cx2.webp"
     }
   },
   "#C3": {
@@ -1210,8 +1222,11 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
     outerImpassable: [false, false, false, true, false, false],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Regular Stretch Goals)",
-      credit: "Fields from the fan wiki; art not in the asset set yet - outer borders unverified beyond blocked fields. Verify against physical tiles before final release.",
+      credit: "Fields from the fan wiki; tile art cropped from the community subterranean map scans and rescaled to the 1024x985 tile frame; outer borders derived from blocked fields. Verify against physical tiles before final release.",
       url: "https://en.homm3bg.wiki/tiles/cx3/"
+    },
+    assets: {
+      tileImage: "/assets/board/tiles/cx3.webp"
     }
   },
   "#N4": {
@@ -1231,8 +1246,11 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
     outerImpassable: [false, false, false, false, true, false],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Regular Stretch Goals)",
-      credit: "Fields from the fan wiki; art not in the asset set yet - outer borders unverified beyond blocked fields. Verify against physical tiles before final release.",
+      credit: "Fields from the fan wiki; tile art cropped from the community subterranean map scans and rescaled to the 1024x985 tile frame; outer borders derived from blocked fields. Verify against physical tiles before final release.",
       url: "https://en.homm3bg.wiki/tiles/nx4/"
+    },
+    assets: {
+      tileImage: "/assets/board/tiles/nx4.webp"
     }
   },
   "#N5": {
@@ -1252,8 +1270,11 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
     outerImpassable: [true, false, false, false, false, false],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Regular Stretch Goals)",
-      credit: "Fields from the fan wiki; art not in the asset set yet - outer borders unverified beyond blocked fields. Verify against physical tiles before final release.",
+      credit: "Fields from the fan wiki; tile art cropped from the community subterranean map scans and rescaled to the 1024x985 tile frame; outer borders derived from blocked fields. Verify against physical tiles before final release.",
       url: "https://en.homm3bg.wiki/tiles/nx5/"
+    },
+    assets: {
+      tileImage: "/assets/board/tiles/nx5.webp"
     }
   },
   "#N6": {
@@ -1273,8 +1294,11 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
     outerImpassable: [false, false, false, false, false, true],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Regular Stretch Goals)",
-      credit: "Fields from the fan wiki; art not in the asset set yet - outer borders unverified beyond blocked fields. Verify against physical tiles before final release.",
+      credit: "Fields from the fan wiki; tile art cropped from the community subterranean map scans and rescaled to the 1024x985 tile frame; outer borders derived from blocked fields. Verify against physical tiles before final release.",
       url: "https://en.homm3bg.wiki/tiles/nx6/"
+    },
+    assets: {
+      tileImage: "/assets/board/tiles/nx6.webp"
     }
   },
   "#N7": {
@@ -1294,8 +1318,11 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
     outerImpassable: [false, false, true, false, false, false],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Regular Stretch Goals)",
-      credit: "Fields from the fan wiki; art not in the asset set yet - outer borders unverified beyond blocked fields. Verify against physical tiles before final release.",
+      credit: "Fields from the fan wiki; tile art cropped from the community subterranean map scans and rescaled to the 1024x985 tile frame; outer borders derived from blocked fields. Verify against physical tiles before final release.",
       url: "https://en.homm3bg.wiki/tiles/nx7/"
+    },
+    assets: {
+      tileImage: "/assets/board/tiles/nx7.webp"
     }
   },
   W1: {

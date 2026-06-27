@@ -182,6 +182,7 @@ export {
   queueLegionDiscountChoice,
   seaStepHalts,
   seaTileBand,
+  subterraneanTileBand,
   tileLayer
 } from "./adventure";
 export type { HeroMovementCapabilities, HeroPathTarget, HeroStepKind, MapLayer, RecruitPurchaseRef } from "./adventure";
