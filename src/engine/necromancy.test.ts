@@ -196,7 +196,7 @@ describe("Necromancy ability — after-combat window", () => {
     expect(plays).toHaveLength(0);
   });
 
-  it("playing Necromancy queues a half-gold (rounded down) reinforce choice and closes the window", () => {
+  it("playing Necromancy queues a half-gold (rounded down) reinforce choice and closes the window — but does NOT discard the card yet", () => {
     const state = startSandroGame();
     state.players.p1.hand = ["ability.necromancy"];
     state.players.p1.necromancyWindow = true;
@@ -216,11 +216,116 @@ describe("Necromancy ability — after-combat window", () => {
     const next = apply(state, play!.action);
     expect(next.players.p1.necromancyWindow).toBe(false);
     expect(next.adventure?.pendingNecromancy ?? null).toBeNull();
-    expect(next.players.p1.discard).toContain("ability.necromancy");
+    // The card is consumed ONLY on a successful upgrade — until the reinforce is
+    // resolved it stays in hand, never the discard.
+    expect(next.players.p1.discard).not.toContain("ability.necromancy");
+    expect(next.players.p1.hand).toContain("ability.necromancy");
     // A reinforce prompt is now waiting for the player.
     const hasReinforcePrompt =
       Boolean(next.adventure?.pendingVisit) || (next.adventure?.rewardQueue.length ?? 0) > 0;
     expect(hasReinforcePrompt).toBe(true);
+  });
+
+  // ---------------------------------------------------------------------------
+  // The reported bug: Necromancy was discarded the instant it was played, so a
+  // play with no eligible target — or a declined reinforce — LOST the card for
+  // nothing. House rule (owner): you lose Necromancy ONLY when it actually
+  // upgrades a unit; skipping or reinforcing nothing keeps the card in hand.
+  // Each case below fails if the deferred-discard logic is removed.
+  // ---------------------------------------------------------------------------
+  function reinforceActions(state: GameState) {
+    return getLegalActions(state, "p1").filter(
+      (legal) => legal.action.type === "RESOLVE_VISIT_STEP"
+    );
+  }
+
+  it("discards Necromancy ONLY after a successful reinforce (card leaves hand on the upgrade, not the play)", () => {
+    const state = startSandroGame();
+    state.players.p1.hand = ["ability.necromancy"];
+    state.players.p1.necromancyWindow = true;
+    state.adventure!.pendingNecromancy = { playerId: "p1" };
+    state.players.p1.army = [{ id: "army_skel", unitDefId: "necropolis.skeletons", side: "few" }];
+    state.players.p1.resources.gold = 20;
+
+    const play = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "ability.necromancy"
+    );
+    let next = apply(state, play!.action);
+    // Still in hand right after the play (the reinforce is pending).
+    expect(next.players.p1.hand).toContain("ability.necromancy");
+    // The hand→discard flight (CARD_PLAYED) must NOT fire yet — the card hasn't moved.
+    const playedBefore = next.eventLog.filter(
+      (event) => event.type === "CARD_PLAYED" && event.cardId === "ability.necromancy"
+    );
+    expect(playedBefore).toHaveLength(0);
+
+    const reinforce = getLegalActions(next, "p1").find((legal) => /Skeletons/.test(legal.label));
+    expect(reinforce, "the affordable Skeleton reinforce should be offered").toBeTruthy();
+    next = apply(next, reinforce!.action);
+
+    // The unit upgraded Few → Pack, and NOW the card is spent.
+    expect(next.players.p1.army.find((u) => u.id === "army_skel")?.side).toBe("pack");
+    expect(next.players.p1.discard).toContain("ability.necromancy");
+    expect(next.players.p1.hand).not.toContain("ability.necromancy");
+    // CARD_PLAYED fires exactly once, now, at the real hand→discard move.
+    const playedAfter = next.eventLog.filter(
+      (event) => event.type === "CARD_PLAYED" && event.cardId === "ability.necromancy"
+    );
+    expect(playedAfter).toHaveLength(1);
+  });
+
+  it("keeps Necromancy when the player plays it but chooses Skip in the reinforce prompt", () => {
+    const state = startSandroGame();
+    state.players.p1.hand = ["ability.necromancy"];
+    state.players.p1.necromancyWindow = true;
+    state.adventure!.pendingNecromancy = { playerId: "p1" };
+    state.players.p1.army = [{ id: "army_skel", unitDefId: "necropolis.skeletons", side: "few" }];
+    state.players.p1.resources.gold = 20;
+
+    const play = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "ability.necromancy"
+    );
+    let next = apply(state, play!.action);
+
+    const skip = reinforceActions(next).find((legal) => /Skip/.test(legal.label));
+    expect(skip, "the reinforce prompt should offer a Skip").toBeTruthy();
+    next = apply(next, skip!.action);
+
+    // Nothing upgraded; the card survives in hand for a later combat.
+    expect(next.players.p1.army.find((u) => u.id === "army_skel")?.side).toBe("few");
+    expect(next.players.p1.hand).toContain("ability.necromancy");
+    expect(next.players.p1.discard).not.toContain("ability.necromancy");
+    // No hand→discard flight is ever emitted for a card that was never consumed.
+    const played = next.eventLog.filter(
+      (event) => event.type === "CARD_PLAYED" && event.cardId === "ability.necromancy"
+    );
+    expect(played).toHaveLength(0);
+  });
+
+  it("keeps Necromancy when it is played with NO eligible/affordable target", () => {
+    const state = startSandroGame();
+    state.players.p1.hand = ["ability.necromancy"];
+    state.players.p1.necromancyWindow = true;
+    state.adventure!.pendingNecromancy = { playerId: "p1" };
+    // A Few skeleton exists, but 0 gold means no reinforce is affordable.
+    state.players.p1.army = [{ id: "army_skel", unitDefId: "necropolis.skeletons", side: "few" }];
+    state.players.p1.resources.gold = 0;
+
+    const play = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "ability.necromancy"
+    );
+    let next = apply(state, play!.action);
+
+    // No reinforce option — only an acknowledgement prompt — and the card is kept.
+    const reinforce = reinforceActions(next).filter((legal) => /Reinforce/.test(legal.label));
+    expect(reinforce).toHaveLength(0);
+    const ack = reinforceActions(next).find((legal) => /OK/.test(legal.label));
+    if (ack) {
+      next = apply(next, ack.action);
+    }
+    expect(next.players.p1.army.find((u) => u.id === "army_skel")?.side).toBe("few");
+    expect(next.players.p1.hand).toContain("ability.necromancy");
+    expect(next.players.p1.discard).not.toContain("ability.necromancy");
   });
 });
 
@@ -329,6 +434,9 @@ describe("Necromancy ability — now-or-never timing (BINH house rule)", () => {
     expect(next.adventure?.fields[fieldId].blackCube).toBe(true);
     expect(next.adventure?.pendingNecromancy ?? null).toBeNull();
     expect(next.players.p1.necromancyWindow).toBe(false);
+    // Skipping never costs the card — it stays in hand for a later combat.
+    expect(next.players.p1.hand).toContain("ability.necromancy");
+    expect(next.players.p1.discard).not.toContain("ability.necromancy");
     // It never reopens on its own — Necromancy is no longer offered.
     expect(
       getLegalActions(next, "p1").some(

@@ -720,4 +720,31 @@ describe("Vidomina's Necromancy specialty", () => {
     );
     expect(offered).toBe(false);
   });
+
+  // Sibling cross-check (CLAUDE.md #3): the specialty shares the Necromancy
+  // ability's deferred-discard path, so the same "kept unless it upgrades a unit"
+  // rule must hold for the specialty card too.
+  it("I keeps the specialty card on a declined reinforce, and spends it only on a successful upgrade", () => {
+    // Declined: play, then Skip the reinforce → the specialty survives in hand.
+    const declined = playReinforce(1);
+    expect(declined.players.p1.hand).toContain("specialty.vidomina.1");
+    const skip = getLegalActions(declined, "p1").find(
+      (legal) => legal.action.type === "RESOLVE_VISIT_STEP" && /Skip/.test(legal.label)
+    );
+    expect(skip, "the reinforce prompt should offer a Skip").toBeTruthy();
+    const afterSkip = applyOk(declined, skip!.action);
+    expect(afterSkip.players.p1.hand).toContain("specialty.vidomina.1");
+    expect(afterSkip.players.p1.discard).not.toContain("specialty.vidomina.1");
+
+    // Upgraded: play, then reinforce a Skeleton → the specialty is consumed.
+    const upgrading = playReinforce(1);
+    const reinforce = getLegalActions(upgrading, "p1").find(
+      (legal) => legal.action.type === "RESOLVE_VISIT_STEP" && /Skeletons/.test(legal.label)
+    );
+    expect(reinforce, "an affordable reinforce should be offered").toBeTruthy();
+    const afterReinforce = applyOk(upgrading, reinforce!.action);
+    expect(afterReinforce.players.p1.army.find((u) => u.id === "a_skel")?.side).toBe("pack");
+    expect(afterReinforce.players.p1.discard).toContain("specialty.vidomina.1");
+    expect(afterReinforce.players.p1.hand).not.toContain("specialty.vidomina.1");
+  });
 });
