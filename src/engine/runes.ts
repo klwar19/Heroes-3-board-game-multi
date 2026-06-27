@@ -14,8 +14,8 @@ import type { ActiveEffectModifier, CombatUnitState, GameState, PlayerId } from 
  *  - The accumulated Rune total pushes the player up Rune LEVELS, each granting a
  *    CUMULATIVE army-wide passive buff to ALL of that player's units:
  *      Level 1                -> +1 Attack
- *      Level 2 (needs Sieidi) -> +1 Defense  (on top of L1)
- *      Level 3 (needs Altar)  -> +3 Initiative (on top of L1+L2)
+ *      Level 2 (needs Sieidi) -> +3 Initiative (on top of L1)
+ *      Level 3 (needs Altar)  -> +1 Defense  (on top of L1+L2)
  *  - Runes RESET every battle (collected again from scratch). Every Bulwark army
  *    BEGINS each battle with RUNE_STARTING_BASE Runes (0) and GRADUALLY earns
  *    more by acting; the army gets a level's buff the moment its Rune total
@@ -74,11 +74,16 @@ export const RUNE_STARTING_BASE = 0;
 /** The cumulative army-wide bonus added at each Rune Level (Gamefound Update #3). */
 export const RUNE_LEVEL_BONUS = { attack: 1, defense: 1, initiative: 3 } as const;
 
-/** The player-scoped buff added when each successive Rune Level is first reached. */
+/**
+ * The player-scoped buff added when each successive Rune Level is first reached.
+ * Order is load-bearing: index 0 = Level 1, index 1 = Level 2, index 2 = Level 3.
+ * Per the house-rule swap the Initiative bonus sits on Level 2 (the cheaper Sieidi
+ * threshold, 7 Runes) and the Defense bonus on Level 3 (the Altar threshold, 10).
+ */
 const RUNE_LEVEL_EFFECTS: { name: string; modifier: ActiveEffectModifier }[] = [
   { name: "Rune Power", modifier: { type: "ATTACK_BONUS", amount: RUNE_LEVEL_BONUS.attack } },
-  { name: "Rune Ward", modifier: { type: "DEFENSE_BONUS", amount: RUNE_LEVEL_BONUS.defense } },
-  { name: "Rune Swiftness", modifier: { type: "INITIATIVE_BONUS", amount: RUNE_LEVEL_BONUS.initiative } }
+  { name: "Rune Swiftness", modifier: { type: "INITIATIVE_BONUS", amount: RUNE_LEVEL_BONUS.initiative } },
+  { name: "Rune Ward", modifier: { type: "DEFENSE_BONUS", amount: RUNE_LEVEL_BONUS.defense } }
 ];
 
 /** The names of every army-wide Rune buff — the set this module owns and clears. */
@@ -298,11 +303,15 @@ export function getRuneSummary(
   return { count, level, levelCap, nextThreshold };
 }
 
-/** The per-level cumulative buff label shown on the Rune track (kept in sync with RUNE_LEVEL_BONUS). */
+/**
+ * The per-level cumulative buff label shown on the Rune track (kept in sync with
+ * RUNE_LEVEL_BONUS and, crucially, with the RUNE_LEVEL_EFFECTS order above:
+ * Level 2 = Initiative, Level 3 = Defense after the house-rule swap).
+ */
 export const RUNE_LEVEL_LABELS = [
   `+${RUNE_LEVEL_BONUS.attack} Attack`,
-  `+${RUNE_LEVEL_BONUS.defense} Defense`,
-  `+${RUNE_LEVEL_BONUS.initiative} Initiative`
+  `+${RUNE_LEVEL_BONUS.initiative} Initiative`,
+  `+${RUNE_LEVEL_BONUS.defense} Defense`
 ] as const;
 
 /**

@@ -36,7 +36,7 @@ describe("canRenderSpecialtyCard", () => {
 
 describe("specialtyEffectText", () => {
   it("uses the prose tag when present (Kriv carries one)", () => {
-    expect(specialtyEffectText("specialty.kriv.6")).toContain("4 Runes");
+    expect(specialtyEffectText("specialty.kriv.6")).toContain("3 Runes");
   });
 
   it("every unit-specialist level (I / IV / VI) has a description naming the doubled unit", () => {
@@ -164,7 +164,7 @@ describe("SpecialtyCard", () => {
     const wrap = container.querySelector(".scWrap");
     expect(wrap?.getAttribute("data-level")).toBe("6");
     expect(wrap?.getAttribute("style")).toContain("border-6.webp");
-    expect(container.querySelector(".scDesc")?.textContent ?? "").toContain("4 Runes");
+    expect(container.querySelector(".scDesc")?.textContent ?? "").toContain("3 Runes");
   });
 
   it("a unit specialist (Dhuin → Snow Elves I) shows its symbol slot + non-empty text", () => {

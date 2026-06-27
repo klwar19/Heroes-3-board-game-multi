@@ -1297,10 +1297,16 @@ export type EffectDefinition =
   | {
       /**
        * Kriv (Bulwark)'s rune-synergy specialty: the Bulwark player immediately
-       * banks `amount` Runes (a combat play). No-op for a non-Bulwark caster.
+       * banks `amount` Runes. No-op for a non-Bulwark caster. Playable as a normal
+       * combat instant AND — via its option's `trigger` (UNIT_ATTACK_DECLARED /
+       * "opponent") — as a REACTION to an enemy attack, so a crossed Rune-Level
+       * threshold's army-wide buff turns on BEFORE that attack resolves.
+       * `drawCards`, when set, also draws that many cards in the same play (the
+       * "gain a Rune AND draw" levels I/IV).
        */
       type: "GAIN_RUNES";
       amount: number;
+      drawCards?: number;
     }
   | {
       /**

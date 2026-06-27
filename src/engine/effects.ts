@@ -718,7 +718,8 @@ export function describeCardEffect(card: CardDefinition): string {
   }
 
   if (card.effect.type === "GAIN_RUNES") {
-    return `gain ${card.effect.amount} Rune(s)`;
+    const draw = card.effect.drawCards ? ` and draw ${card.effect.drawCards} card(s)` : "";
+    return `gain ${card.effect.amount} Rune(s)${draw}`;
   }
 
   if (card.effect.type === "GAIN_STARTING_RUNES") {

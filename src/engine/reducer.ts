@@ -9054,6 +9054,20 @@ function applyReactionPlayCore(
     stackItem?.modifiers.playedCardIds.push(play.cardId);
   }
 
+  // Kriv (Bulwark)'s rune-synergy specialty played as a REACTION to an enemy
+  // attack: bank the Runes (and draw the bundled card on I/IV) right here, while
+  // the attack is still paused on the stack. gainRunes → syncRuneEffects applies
+  // any newly-crossed Rune Level's army-wide buff IMMEDIATELY, so a +Defense (or
+  // +Attack for the coming retaliation) is live before this very attack resolves —
+  // the "receive the buff earlier" play. No-op for a non-Bulwark reactor.
+  if (effect.type === "GAIN_RUNES") {
+    gainRunes(state, playerId, effect.amount);
+    if (effect.drawCards) {
+      drawCardsForPlayer(state, playerId, effect.drawCards);
+    }
+    stackItem?.modifiers.playedCardIds.push(play.cardId);
+  }
+
   if (effect.type === "RECALL_SPELL" && stackItem?.action.type === "CAST_SPELL") {
     const caster = state.players[playerId];
 
@@ -10964,10 +10978,14 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     }
   }
 
-  // Kriv (Bulwark)'s rune-synergy specialty: bank Runes immediately. gainRunes
-  // is a no-op for a non-Bulwark caster, so the option is harmless if mis-played.
+  // Kriv (Bulwark)'s rune-synergy specialty: bank Runes immediately, and (levels
+  // I/IV) draw the bundled card(s). gainRunes is a no-op for a non-Bulwark caster,
+  // so the option is harmless if mis-played; the draw still happens for anyone.
   if (effect.type === "GAIN_RUNES") {
     gainRunes(state, action.playerId, effect.amount);
+    if (effect.drawCards) {
+      drawCardsForPlayer(state, action.playerId, effect.drawCards);
+    }
   }
 
   // Kriv (Bulwark)'s rune-empowerment specialty (map play): become Rune-Empowered

@@ -6359,7 +6359,10 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     }
     // Bulwark City Hall combat focus (Gamefound Update #3): forgo the gold to be
     // Rune-Empowered until the next Resource round — every combat then starts
-    // with this many extra Runes. Cleared in the Resource-round loop (adventure.ts).
+    // with this many extra Runes. This SETS the flag (replace), it never ADDS to
+    // it: the +2 must NOT stack into +4/+6 round after round. The Resource-round
+    // loop (adventure.ts) clears the flag to 0 before re-offering this choice, so
+    // picking the combat focus again only ever re-applies the flat +2.
     if (option.runesNextCombats) {
       const player = state.players[action.playerId];
       if (player) {

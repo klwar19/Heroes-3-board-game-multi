@@ -156,7 +156,7 @@ describe("TownPanel — in-place special-building effect / use buttons", () => {
 
     const panel = openPanel("City Hall");
     expect(panel.textContent).toMatch(/Rune-Empowered/i);
-    expect(panel.textContent).toMatch(/\+3 starting Runes/i);
+    expect(panel.textContent).toMatch(/\+2 starting Runes/i);
     expect(panel.textContent).toMatch(/until next Resource round/i);
   });
 

@@ -5449,6 +5449,14 @@ export function isEffectLegalForTrigger(
       return false;
     }
 
+    // Kriv (Bulwark): bank Runes in reaction to an enemy's attack so a crossed
+    // Rune-Level threshold's army-wide buff turns on BEFORE the attack resolves.
+    // Only a Bulwark reactor benefits (gainRunes is a no-op otherwise); the card's
+    // "opponent" trigger already keeps this off the attacker's own tray.
+    if (effect.type === "GAIN_RUNES") {
+      return state.players[playerId]?.factionId === "bulwark";
+    }
+
     // Centaur's Axe: only the attacker (the side whose unit is making this
     // attack and rolling its Attack die) may triple the outcome. It is the
     // attacker's own die — the defender can never reach across to triple the

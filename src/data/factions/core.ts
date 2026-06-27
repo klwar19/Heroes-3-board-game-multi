@@ -1053,7 +1053,7 @@ export const coreBuildingDefinitions: Record<string, TownBuildingDefinition> = {
       type: "RESOURCE_ROUND_CHOICE",
       options: [
         { label: "Gain 4 gold", gold: 4 },
-        { label: "Rune-Empowered: +3 starting Runes each combat (until next Resource round)", runesNextCombats: 3 }
+        { label: "Rune-Empowered: +2 starting Runes each combat (until next Resource round)", runesNextCombats: 2 }
       ]
     },
     implementationStatus: "implemented",
