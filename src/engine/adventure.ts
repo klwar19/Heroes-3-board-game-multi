@@ -2698,12 +2698,22 @@ export function processPendingVisit(state: GameState): void {
         // Necromancy is spent ONLY on a successful upgrade. The card was held in
         // hand through the play (the discard was deferred); discard it now that a
         // unit was actually reinforced. A failed/declined reinforce leaves it.
+        // The CARD_PLAYED event is emitted here, at the real hand→discard move,
+        // so the flight animation and log line fire exactly once and only when
+        // the card is actually consumed.
         if (upgraded && step.consumeCardId) {
           const reinforcer = state.players[visit.playerId];
           const handIndex = reinforcer?.hand.indexOf(step.consumeCardId) ?? -1;
           if (reinforcer && handIndex !== -1) {
             reinforcer.hand.splice(handIndex, 1);
             reinforcer.discard.push(step.consumeCardId);
+            appendEvent(state, {
+              type: "CARD_PLAYED",
+              playerId: visit.playerId,
+              cardId: step.consumeCardId,
+              timing: cardLibrary[step.consumeCardId]?.timing ?? "instant",
+              mode: "basic"
+            });
           }
         }
         break;
