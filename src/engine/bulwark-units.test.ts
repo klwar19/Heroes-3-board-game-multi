@@ -248,7 +248,7 @@ describe("Bulwark units — Teleport (Jotunn Warlord)", () => {
     return applyOk(state, { type: "DEFEND_UNIT", playerId: "p1", unitId: "unit_p1_griffins" });
   }
 
-  it("offers an OPTIONAL start-of-activation choice to teleport ANY unit (friend, foe, or itself)", () => {
+  it("offers an OPTIONAL start-of-activation choice to teleport one of YOUR OWN units (a friendly unit or itself, never an enemy)", () => {
     const opened = activateJotunn(["bulwark-jotunn-teleport"]);
     expect(opened.combat!.activeUnitId).toBe("unit_p1_marksmen"); // the Jotunn really activated
     const choice = opened.pendingChoice;
@@ -256,44 +256,45 @@ describe("Bulwark units — Teleport (Jotunn Warlord)", () => {
     if (choice?.type !== "ABILITY_TARGET_CHOICE") return;
     expect(choice.kind).toBe("jotunn-teleport");
     expect(choice.optional).toBe(true); // "can choose to do or not"
-    // "any unit": the Jotunn itself, a friendly unit AND an enemy are all candidates.
+    // OWN units only: the Jotunn itself and a friendly unit are candidates...
     expect(choice.candidateUnitIds).toContain("unit_p1_marksmen");
     expect(choice.candidateUnitIds).toContain("unit_p1_crusaders");
-    expect(choice.candidateUnitIds).toContain("unit_p2_skeletons");
+    // ...but an ENEMY unit is NEVER a candidate (the whole point of this fix).
+    expect(choice.candidateUnitIds).not.toContain("unit_p2_skeletons");
   });
 
-  it("teleports the chosen ENEMY to the chosen empty space — and the Jotunn can still act", () => {
+  it("teleports the chosen FRIENDLY unit to the chosen empty space — and the Jotunn can still act", () => {
     let state = activateJotunn(["bulwark-jotunn-teleport"]);
     const pick = state.pendingChoice!;
-    const enemyFrom = state.combat!.units.unit_p2_skeletons.position;
-    const enemyDamageBefore = state.combat!.units.unit_p2_skeletons.damage;
-    // Step A — click an enemy unit (proves "any unit" includes foes).
+    const allyFrom = state.combat!.units.unit_p1_crusaders.position;
+    const allyDamageBefore = state.combat!.units.unit_p1_crusaders.damage;
+    // Step A — click a friendly unit (own-side relocation).
     state = applyOk(state, {
       type: "CHOOSE_ABILITY_TARGET",
       playerId: "p1",
       choiceId: pick.id,
-      targetUnitId: "unit_p2_skeletons"
+      targetUnitId: "unit_p1_crusaders"
     });
     // Step B — the very same empty-space picker the Teleport Spell opens.
     const dest = state.pendingChoice;
     if (dest?.type !== "OPTION_CHOICE" || dest.context !== "combat-teleport" || !dest.teleport) {
       throw new Error("the empty-space picker did not open");
     }
-    expect(dest.teleport.unitId).toBe("unit_p2_skeletons");
+    expect(dest.teleport.unitId).toBe("unit_p1_crusaders");
     const destinationCell = dest.teleport.positions[0];
-    expect(destinationCell).not.toBe(enemyFrom); // an empty cell, never the occupied origin
+    expect(destinationCell).not.toBe(allyFrom); // an empty cell, never the occupied origin
     state = applyOk(state, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: dest.id, optionIndex: 0 });
-    // OBSERVABLE OUTCOME: the enemy actually moved to the chosen empty cell, with
-    // no damage — a pure relocation, exactly like the Teleport Spell.
-    const enemy = state.combat!.units.unit_p2_skeletons;
-    expect(enemy.position).toBe(destinationCell);
-    expect(enemy.position).not.toBe(enemyFrom);
-    expect(enemy.damage).toBe(enemyDamageBefore);
+    // OBSERVABLE OUTCOME: the friendly unit actually moved to the chosen empty
+    // cell, with no damage — a pure relocation, exactly like the Teleport Spell.
+    const ally = state.combat!.units.unit_p1_crusaders;
+    expect(ally.position).toBe(destinationCell);
+    expect(ally.position).not.toBe(allyFrom);
+    expect(ally.damage).toBe(allyDamageBefore);
     // The card-glide animation (UNIT_MOVED) and the teleport SFX cue
     // (UNIT_ABILITY_TRIGGERED carrying the Teleport sound) both fired.
     expect(
       state.eventLog.some(
-        (event) => event.type === "UNIT_MOVED" && event.unitId === "unit_p2_skeletons" && event.to === destinationCell
+        (event) => event.type === "UNIT_MOVED" && event.unitId === "unit_p1_crusaders" && event.to === destinationCell
       )
     ).toBe(true);
     expect(
@@ -334,6 +335,30 @@ describe("Bulwark units — Teleport (Jotunn Warlord)", () => {
     const jotunn = state.combat!.units.unit_p1_marksmen;
     expect(jotunn.activationAbilityDone).toBe(true);
     expect(jotunn.movedThisActivation).toBe(false);
+  });
+
+  it("NEVER teleports an enemy: a forged action naming an enemy unit is rejected and moves nobody", () => {
+    const state = activateJotunn(["bulwark-jotunn-teleport"]);
+    const pick = state.pendingChoice!;
+    const enemyFrom = state.combat!.units.unit_p2_skeletons.position;
+    // Forge a target the offer never listed — an enemy unit. The engine refuses
+    // it at target validation (it is not among the candidate own-units), so the
+    // action errors and nothing changes: the enemy stays put and no Teleport
+    // cue fires. This is the core of the fix.
+    const result = applyAction(state, {
+      type: "CHOOSE_ABILITY_TARGET",
+      playerId: "p1",
+      choiceId: pick.id,
+      targetUnitId: "unit_p2_skeletons"
+    });
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.errors.map((error) => error.message).join(" ")).toMatch(/not a legal target/i);
+    expect(result.state.combat!.units.unit_p2_skeletons.position).toBe(enemyFrom); // never moved
+    expect(
+      result.state.eventLog.some(
+        (event) => event.type === "UNIT_ABILITY_TRIGGERED" && event.abilityId === "bulwark-jotunn-teleport"
+      )
+    ).toBe(false);
   });
 
   it("CONTROL: a unit WITHOUT the ability gets no start-of-activation teleport choice", () => {
