@@ -3027,6 +3027,40 @@ export type GameAction =
     }
   | {
       /**
+       * Map-setup lobby (Draft tab): switch the draft mode. "ban" enables the
+       * ban-pick pool; "open" clears every ban and returns to free picking. Any
+       * seated player may toggle it.
+       */
+      type: "SET_DRAFT_MODE";
+      playerId: PlayerId;
+      mode: "open" | "ban";
+    }
+  | {
+      /**
+       * Map-setup lobby (Draft tab): toggle a hero in or out of the ban list.
+       * Only valid while the draft mode is "ban"; a banned hero cannot be chosen
+       * by any seat, by hand or at random. A hero already taken by a seat cannot
+       * be banned.
+       */
+      type: "TOGGLE_HERO_BAN";
+      playerId: PlayerId;
+      heroDefId: string;
+    }
+  | {
+      /**
+       * Map-setup lobby (Draft tab): randomly assign this seat a town and hero.
+       * `scope: "faction"` rolls a random untaken faction (with a selectable,
+       * non-banned hero) and a random hero of it; `scope: "hero"` re-rolls only
+       * the hero within the seat's already-chosen faction. The roll uses the
+       * game's seeded RNG (advanced by the event counter) so repeated rolls
+       * differ and every client lands on the same pick.
+       */
+      type: "RANDOM_ASSIGN_SEAT";
+      playerId: PlayerId;
+      scope: "faction" | "hero";
+    }
+  | {
+      /**
        * Register (or refresh) this client in the room as an observer. Carries a
        * stable per-browser `clientId` and a display `name`. Idempotent: a
        * re-join updates the name and keeps the existing seat/host. Membership
@@ -6164,6 +6198,19 @@ export type CustomMapTilePlan = {
   seaBand?: "iv-v" | "vi-vii";
 };
 
+/**
+ * Lobby draft controls (the "Draft & Random" tab). `mode` toggles ban-pick on:
+ * while it is "ban", every hero in `bannedHeroDefIds` is removed from the pool —
+ * nobody (random or manual) may take it. "open" is the default free-pick mode
+ * and carries no bans. Random town/hero assignment works in either mode and
+ * always honours the bans.
+ */
+export type GameSetupDraft = {
+  mode: "open" | "ban";
+  /** Hero def ids banned out of the pool while `mode === "ban"`. */
+  bannedHeroDefIds: string[];
+};
+
 /** Pre-game lobby: players pick factions and heroes before the map builds. */
 export type GameSetupState = {
   scenarioId: string;
@@ -6174,6 +6221,11 @@ export type GameSetupState = {
     factionId: FactionId | null;
     heroDefId: string | null;
   }[];
+  /**
+   * Draft controls (ban-pick + random assignment). Optional so lobby snapshots
+   * saved before this feature still load; treated as `{ mode: "open", bans: [] }`.
+   */
+  draft?: GameSetupDraft;
 };
 
 export type TownState = {
