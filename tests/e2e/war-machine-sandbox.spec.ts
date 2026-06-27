@@ -49,11 +49,14 @@ test("combat sandbox: the First Aid Tent can be played into play (its heal effec
   await openCombatSandbox(page);
   await addCard(page, "first aid tent", /first aid tent/i);
 
-  // Open the hand card's play menu and put the Tent into play.
+  // Open the hand card's play menu and put the Tent into play. Playing is a
+  // two-step Confirm now (an accidental click is always cancellable), so "Use"
+  // stages the play and "Confirm" commits it.
   await page.locator('.handFan .fanCard[title^="First Aid Tent"]').click();
   const popover = page.getByRole("menu", { name: /First Aid Tent/i });
   await expect(popover).toBeVisible();
   await popover.getByRole("button", { name: /^Use$/ }).click();
+  await popover.getByRole("button", { name: /^Confirm$/ }).click();
 
   // It is now an active table effect (the heal is live for the round). With no
   // wounded unit there is no heal button yet — that appears once a unit is hurt.

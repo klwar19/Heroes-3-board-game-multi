@@ -5051,9 +5051,21 @@ function variantMatchesTrigger(
   playerId: PlayerId
 ): boolean {
   if (!variant.trigger) {
-    // Trigger-free instants (card draws) may be slotted into any open timing
-    // window, mirroring how instants work at the table.
-    return variant.effect.type === "DRAW_CARDS";
+    // A trigger-free "Draw a card" instant (the Breastplate of Petrified Wood's
+    // "Draw 1 card" arm, Offense/Armorer I's draw option, …) is NOT a response to
+    // any trigger — drawing a card has nothing to do with the spell/attack/
+    // activation that opened the window. It used to be offered in EVERY reaction
+    // window, which FORCED a reaction window to open (and dragged its holder into
+    // it) the instant ANY spell was cast / attack declared / unit activated — so
+    // merely *holding* such a card meant "suddenly you must use it / pass" on
+    // every opponent's action. That is the forced-use bug.
+    //
+    // These draws stay fully playable on the holder's OWN initiative — on their
+    // turn and off-turn via addPlayableCardActions — they just never force or
+    // join a reaction window. (A real triggered reaction, e.g. the breastplate's
+    // "+1 Power" on your own cast or Armorer's "+defense, then draw" on an
+    // incoming attack, still works: those carry a `trigger` and fall through.)
+    return false;
   }
 
   if (variant.trigger.event !== triggerEvent.type) {

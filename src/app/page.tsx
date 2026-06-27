@@ -571,6 +571,18 @@ export default function Home() {
   const [openHandIndex, setOpenHandIndex] = useState<number | null>(null);
   /** Spell Book (house rule): whether the map Spell Book window is open. */
   const [spellBookOpen, setSpellBookOpen] = useState(false);
+  /**
+   * Adventure hand: an immediate (no-target, no-cost) play staged for an explicit
+   * Confirm, so an accidental click is always cancellable. Nothing is sent to the
+   * engine until Confirm, so this is multiplayer-safe (the action only leaves this
+   * client on Confirm). Card plays that need a board target or a discard cost have
+   * their own cancellable steps (target picking / the cost picker) and never arm
+   * this one.
+   */
+  const [armedHandPlay, setArmedHandPlay] = useState<{
+    action: Extract<GameAction, { type: "PLAY_CARD" }>;
+    label: string;
+  } | null>(null);
   /** A chosen play waiting for its discard-cost payment (cost card picks). */
   const [pendingCostPlay, setPendingCostPlay] = useState<{
     action: Extract<GameAction, { type: "PLAY_CARD" }>;
@@ -3235,8 +3247,11 @@ export default function Home() {
         setOpenHandIndex(null);
         return;
       }
+      // Stage the play for an explicit Confirm instead of firing immediately, so
+      // an accidental click is always cancellable. Nothing reaches the engine
+      // until the player confirms.
       setOpenHandIndex(null);
-      void submitAction(legal.action);
+      setArmedHandPlay({ action: legal.action, label: legal.label });
     };
 
     const confirmCostPlay = () => {
@@ -3553,6 +3568,31 @@ export default function Home() {
                   </button>
                 </div>
               ) : null}
+              {armedHandPlay ? (
+                <div className="handButtons playConfirm" aria-label="Confirm card play">
+                  <span>
+                    Play {cardName(armedHandPlay.action.cardId)}
+                    {armedHandPlay.label && armedHandPlay.label !== cardName(armedHandPlay.action.cardId)
+                      ? ` — ${armedHandPlay.label}`
+                      : ""}
+                    ?
+                  </span>
+                  <button
+                    className="commandButton primary"
+                    onClick={() => {
+                      const { action } = armedHandPlay;
+                      setArmedHandPlay(null);
+                      void submitAction(action);
+                    }}
+                    type="button"
+                  >
+                    Confirm
+                  </button>
+                  <button className="commandButton ghost" onClick={() => setArmedHandPlay(null)} type="button">
+                    Cancel
+                  </button>
+                </div>
+              ) : null}
               <div className="adventureHandCards" data-fx-anchor={`hand:${viewerPlayerId}`}>
                 {handCards.length === 0 ? <small className="emptyHand">No cards in hand.</small> : null}
                 {handCards.map((cardId, index) => {
@@ -3620,8 +3660,10 @@ export default function Home() {
                             return;
                           }
                           // Otherwise: open the play menu for this card (plays
-                          // and/or the Spell Book stash).
+                          // and/or the Spell Book stash). Drop any staged play so
+                          // a stale confirm bar never lingers from another card.
                           if (actionable) {
+                            setArmedHandPlay(null);
                             setOpenHandIndex((current) => (current === index ? null : index));
                           }
                         }}
