@@ -3498,11 +3498,13 @@ function applyOnAttackEnemyDiscard(state: GameState, attacker: CombatUnitState, 
 }
 
 /**
- * Creature Bank Medusa Stores Medusas (while Stacked): "If this unit is Stacked,
- * the target gains Paralysis." Fires after the Medusas' own attack (never a
- * Retaliation Attack) on a target still alive and not immune to Paralysis. The
- * Stacked gate lives in the ability chokepoint, so this only triggers while the
- * card keeps its Stack Token.
+ * Creature Bank Medusa Stores Medusas (while Stacked): the Petrifying Gaze only
+ * turns a foe to stone at melee range — "paralyze ONLY when attacking adjacent".
+ * Fires after the Medusas' own attack (never a Retaliation Attack) on a target
+ * that is adjacent, still alive and not immune to Paralysis. A ranged shot at a
+ * distant target deals its damage but does NOT paralyze. The Stacked gate lives
+ * in the ability chokepoint, so this only triggers while the card keeps its
+ * Stack Token; the adjacency gate here keeps a distance shot from petrifying.
  */
 function applyOnAttackParalysis(
   state: GameState,
@@ -3515,6 +3517,13 @@ function applyOnAttackParalysis(
   }
   const ability = getOnAttackParalysis(attacker);
   if (!ability) {
+    return;
+  }
+  // "Only paralyze when attacking adjacent": a ranged Medusa shooting a foe it
+  // is not next to inflicts no Paralysis (getAttackKind treats a ranged unit
+  // attacking a non-adjacent target as a "ranged" shot — every other attack is
+  // adjacent/melee).
+  if (!isAdjacent(attacker.position, defender.position)) {
     return;
   }
   if (unitImmuneToParalysis(state, defender)) {

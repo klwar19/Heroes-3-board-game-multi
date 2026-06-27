@@ -22,6 +22,7 @@ import {
   type LegalAction,
   type PlayerId
 } from "@/engine";
+import { applyPermanentCombatEffects } from "@/engine/permanents";
 
 afterEach(() => {
   cleanup();
@@ -800,6 +801,87 @@ describe("ReactionTray — Archangels' free lethal save is reachable in the UI",
     const applied = applyAction(state, onAction.mock.calls[0][0] as GameAction);
     expect(applied.errors).toEqual([]);
     expect(applied.state.combat!.units.unit_p1_crusaders.usedLethalSaveThisCombat).toBe(true);
+  });
+});
+
+describe("ReactionTray — First Aid Tent heal is reachable as an instant reaction", () => {
+  /**
+   * p2's Skeletons attack p1's wounded Crusaders. p1 fields a First Aid Tent, so
+   * the engine opens the attack window offering p1 the Tent's heal as an instant
+   * (USE_ACTIVE_EFFECT) — mended BEFORE the hit lands. The tray used to render no
+   * tile for it (only PLAY_REACTION cards), so the prompt read "Keep normal
+   * attack" and the Tent looked like it could not react — the user's bug report.
+   */
+  function tentAttackWindow(): GameState {
+    const state = createInitialGameState("tray-first-aid-seed");
+    state.players.p1.hand = []; // no First Aid CARD — isolate the TENT's own heal
+    state.players.p2.hand = [];
+    state.players.p1.permanents = ["war_machine.first_aid_tent"];
+    applyPermanentCombatEffects(state);
+
+    const wounded = state.combat!.units.unit_p1_crusaders;
+    wounded.maxHealth = 6;
+    wounded.damage = 2;
+    wounded.position = 14;
+    const attacker = state.combat!.units.unit_p2_skeletons;
+    attacker.position = 13; // adjacent to 14
+    attacker.activatedThisRound = false;
+    attacker.attackedThisActivation = false;
+    state.activePlayerId = "p2";
+    state.combat!.activeUnitId = "unit_p2_skeletons";
+
+    const result = applyAction(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p2",
+      attackerId: "unit_p2_skeletons",
+      defenderId: "unit_p1_crusaders"
+    });
+    expect(result.errors).toEqual([]);
+    return result.state;
+  }
+
+  it("renders a tile that fires the Tent heal (USE_ACTIVE_EFFECT) in the attack window", () => {
+    const state = tentAttackWindow();
+    // Sanity: the attack paused with p1 on priority and the heal on offer.
+    expect(state.reactionWindow?.triggerEvent.type).toBe("UNIT_ATTACK_DECLARED");
+    expect(state.reactionWindow?.priorityPlayerId).toBe("p1");
+    expect(
+      getLegalActions(state, "p1").some((legal) => legal.action.type === "USE_ACTIVE_EFFECT")
+    ).toBe(true);
+
+    const onAction = vi.fn();
+    render(
+      <CardZoomProvider>
+        <ReactionTray
+          legalActions={getLegalActions(state, "p1")}
+          onAction={onAction}
+          state={state}
+          view={getPlayerView(state, "p1")}
+          viewerPlayerId="p1"
+        />
+      </CardZoomProvider>
+    );
+
+    const healButton = screen.getByRole("button", { name: /First Aid Tent heal/i });
+    act(() => fireEvent.click(healButton));
+    expect(onAction).toHaveBeenCalledTimes(1);
+    expect(onAction.mock.calls[0][0]).toMatchObject({
+      type: "USE_ACTIVE_EFFECT",
+      playerId: "p1",
+      target: { type: "unit", unitId: "unit_p1_crusaders" }
+    });
+
+    // The fired heal resolves cleanly: a DAMAGE_HEALED on the Crusaders is logged
+    // (the wound is mended before the incoming hit is then calculated).
+    const applied = applyAction(state, onAction.mock.calls[0][0] as GameAction);
+    expect(applied.errors).toEqual([]);
+    const healed = applied.state.eventLog.some(
+      (event) =>
+        event.type === "DAMAGE_HEALED" &&
+        event.target.type === "unit" &&
+        event.target.unitId === "unit_p1_crusaders"
+    );
+    expect(healed, "the Tent heal mended the Crusaders before the hit").toBe(true);
   });
 });
 
