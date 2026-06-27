@@ -17,8 +17,8 @@ export type UnitAbilityEffectDefinition =
   | {
       /**
        * Jotunn Warlord (Bulwark, house rule): at the START of its activation the
-       * controller may teleport ANY one unit on the battlefield — friend or foe,
-       * the Jotunn itself included — to any empty space, exactly like the
+       * controller may teleport one of its OWN units — a friendly unit or the
+       * Jotunn itself, NEVER an enemy — to any empty space, exactly like the
        * Teleport Spell (same relocation, sound and card-glide). It is OPTIONAL
        * (a "Don't teleport" skip) and does NOT consume the activation: the Jotunn
        * still moves and attacks normally afterwards. Resolved interactively in
@@ -987,7 +987,7 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "bulwark-jotunn-teleport": {
     id: "bulwark-jotunn-teleport",
     name: "Teleport",
-    text: "[activation] At the start of its activation this unit may teleport any one unit on the battlefield (friend or foe, itself included) to an empty space — optional, and it still acts as normal afterwards.",
+    text: "[activation] At the start of its activation this unit may teleport one of your units (a friendly unit or itself, never an enemy) to an empty space — optional, and it still acts as normal afterwards.",
     effect: { type: "TELEPORT_ANY_AT_ACTIVATION" },
     implementationStatus: "implemented"
   },
