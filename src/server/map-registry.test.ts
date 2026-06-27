@@ -77,6 +77,30 @@ describe("sanitizeSharedMap", () => {
     expect(record!.tiles[0]).toMatchObject({ row: 1, col: 1, group: "far" });
   });
 
+  it("preserves a tile's guard band — sea AND underground — through sanitization", () => {
+    // Regression: sanitizeTile rebuilds each plan from an allow-list of fields,
+    // so a newly added band field must be carried explicitly or a saved
+    // "Underground Ⅵ–Ⅶ" / "Sea Ⅵ–Ⅶ" slot silently loses its band on reload and
+    // reverts to drawing any tile from the pool.
+    const record = sanitizeSharedMap(
+      {
+        id: "m",
+        tiles: [
+          { row: 1, col: 1, group: "sea", faceDown: true, seaBand: "vi-vii" },
+          { row: 2, col: 2, group: "subterranean", faceDown: true, subBand: "vi-vii" },
+          { row: 3, col: 3, group: "subterranean", faceDown: true, subBand: "iv-v" },
+          { row: 4, col: 4, group: "subterranean", faceDown: true, subBand: "bogus" } // invalid → dropped
+        ]
+      },
+      1
+    );
+    expect(record!.tiles[0]).toMatchObject({ group: "sea", seaBand: "vi-vii" });
+    expect(record!.tiles[1]).toMatchObject({ group: "subterranean", subBand: "vi-vii" });
+    expect(record!.tiles[2]).toMatchObject({ group: "subterranean", subBand: "iv-v" });
+    // A malformed band is stripped, not stored.
+    expect(record!.tiles[3]).not.toHaveProperty("subBand");
+  });
+
   it("falls back to the default scenario when the id is unknown", () => {
     const record = sanitizeSharedMap({ id: "m", scenarioId: "ghost", tiles: [] }, 1);
     expect(record!.scenarioId).toBe("skirmish");
