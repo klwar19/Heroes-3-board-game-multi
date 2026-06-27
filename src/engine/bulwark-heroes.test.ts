@@ -12,7 +12,7 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 import { adventureCards } from "@/data/cards/adventure";
 import { cardLibrary } from "@/data/cards/library";
 import type { FactionId } from "@/data/factions/types";
-import type { ActiveEffectModifier, CardOptionDefinition, GameAction, GameState, UnitId } from "./state";
+import type { ActiveEffectModifier, CardOptionDefinition, GameAction, GameState, PlayerId, UnitId } from "./state";
 
 /**
  * Bulwark heroes. The genuinely NEW engine code is Kriv's GAIN_RUNES specialty
@@ -26,6 +26,42 @@ function applyOk(state: GameState, action: GameAction): GameState {
   const result = applyAction(state, action);
   expect(result.errors, result.errors.map((error) => error.message).join("; ")).toEqual([]);
   return result.state;
+}
+
+/** Pass priority (declining any reroll) until `playerId` holds it or the window closes. */
+function passUntil(state: GameState, playerId: PlayerId): GameState {
+  let current = state;
+  let safety = 60;
+  while (current.reactionWindow && current.reactionWindow.priorityPlayerId !== playerId && safety > 0) {
+    safety -= 1;
+    current = applyOk(current, { type: "PASS_REACTION", playerId: current.reactionWindow.priorityPlayerId });
+  }
+  return current;
+}
+
+/** Pass reactions / decline rerolls until the attack settles. */
+function settleReactions(state: GameState): GameState {
+  let current = state;
+  let safety = 60;
+  while (current.reactionWindow || current.pendingChoice?.type === "ATTACK_DIE_REROLL") {
+    if (safety-- <= 0) {
+      break;
+    }
+    if (current.reactionWindow) {
+      current = applyOk(current, { type: "PASS_REACTION", playerId: current.reactionWindow.priorityPlayerId });
+      continue;
+    }
+    const choice = current.pendingChoice;
+    if (choice?.type === "ATTACK_DIE_REROLL") {
+      current = applyOk(current, {
+        type: "CHOOSE_PENDING_ROLL",
+        playerId: choice.playerId,
+        choiceId: choice.id,
+        candidateIndex: choice.candidates.length - 1
+      });
+    }
+  }
+  return current;
 }
 
 function findPlay(state: GameState, cardId: string, optionIndex: number) {
@@ -76,12 +112,15 @@ function krivCombat(seed: string, faction: FactionId): GameState {
 }
 
 describe("Bulwark hero — Kriv's rune-synergy specialty", () => {
-  it("banks 2 Runes for a Bulwark caster played in combat", () => {
+  it("kriv.1 banks 1 Rune AND draws 1 card for a Bulwark caster (the bundled level-I play)", () => {
     const state = krivCombat("kriv-banks", "bulwark");
+    state.players.p1.deck = ["spell.magic_arrow", "spell.magic_arrow"];
+    const deckBefore = state.players.p1.deck.length;
     const play = findPlay(state, "specialty.kriv.1", 0);
-    expect(play, "the Gain-2-Runes option should be offered to a Bulwark caster in combat").toBeTruthy();
+    expect(play, "the gain-Rune-and-draw option should be offered to a Bulwark caster in combat").toBeTruthy();
     const after = applyOk(state, play!.action);
-    expect(after.combat!.runes?.p1?.count).toBe(2);
+    expect(after.combat!.runes?.p1?.count).toBe(1); // gained the Rune…
+    expect(after.players.p1.deck.length).toBe(deckBefore - 1); // …AND drew the bundled card
   });
 
   it("offers the rune option ONLY to a Bulwark caster (control: castle)", () => {
@@ -89,6 +128,123 @@ describe("Bulwark hero — Kriv's rune-synergy specialty", () => {
     expect(findPlay(state, "specialty.kriv.1", 0)).toBeFalsy();
     // And the rune count never moves for a non-Bulwark player.
     expect(state.combat!.runes?.p1).toBeUndefined();
+  });
+
+  it("kriv.6's draw-2 fallback moves 2 cards (deck → hand) in combat", () => {
+    const state = createInitialGameState("kriv6-draw");
+    state.players.p1.factionId = "bulwark";
+    state.players.p1.hand = ["specialty.kriv.6"];
+    state.players.p1.deck = ["spell.magic_arrow", "spell.magic_arrow", "spell.magic_arrow"];
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_marksmen";
+    const deckBefore = state.players.p1.deck.length;
+    const effect = adventureCards["specialty.kriv.6"].effect as { options: { effect: { type: string } }[] };
+    const drawIndex = effect.options.findIndex((option) => option.effect.type === "DRAW_CARDS");
+    const play = findPlay(state, "specialty.kriv.6", drawIndex);
+    expect(play, "kriv.6 draw-2 option should be playable as a combat instant").toBeTruthy();
+    const after = applyOk(state, play!.action);
+    expect(after.players.p1.deck.length).toBe(deckBefore - 2);
+    expect(after.players.p1.hand.length).toBe(2);
+  });
+});
+
+describe("Bulwark hero — Kriv reacts to an enemy attack (receives the buff earlier)", () => {
+  /** The PLAY_REACTION legal action for Kriv `cardId` in the open reaction window. */
+  function findReaction(state: GameState, cardId: string) {
+    return getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === cardId
+    );
+  }
+
+  /**
+   * p1 (Bulwark, Altar built) defends an enemy melee strike while sitting one Rune
+   * short of the Level-3 Defense threshold (10). When `react` is true, p1 answers
+   * the declared attack with Kriv I — banking the 10th Rune mid-window so the
+   * army-wide +1 Defense turns on BEFORE the strike resolves. Returns the damage
+   * the defender takes (the observable: 6 − 2 = 4 without the buff, 6 − 3 = 3 with).
+   */
+  function defenderDamage(react: boolean): number {
+    const state = createInitialGameState(`kriv-react-${react}`);
+    state.players.p1.factionId = "bulwark";
+    state.towns.town_p1.factionId = "bulwark";
+    state.towns.town_p1.buildings.push("bulwark.sieidi", "bulwark.altar"); // cap 3 → Level 3 reachable
+    state.players.p1.hand = ["specialty.kriv.1"];
+    state.players.p1.deck = ["spell.magic_arrow", "spell.magic_arrow"]; // for the bundled draw
+    state.players.p2.hand = [];
+
+    const attacker = state.combat!.units.unit_p2_skeletons;
+    const defender = state.combat!.units.unit_p1_crusaders;
+    attacker.abilities = [];
+    defender.abilities = [];
+    attacker.attack = 6;
+    attacker.position = 9;
+    defender.position = 13; // adjacent → a melee strike
+    defender.defense = 2;
+    attacker.maxHealth = 40;
+    defender.maxHealth = 40;
+    defender.damage = 0;
+    attacker.activatedThisRound = false;
+    state.combat!.dice.scriptedRolls = [0, 0, 0, 0, 0, 0];
+    state.combat!.dice.rollCount = 0;
+
+    // Earn p1 up to 9 Runes (Level 2 with the Altar: +1 Attack, +3 Initiative — no
+    // Defense yet). The reaction banks the 10th, crossing into Level 3 (+1 Defense).
+    gainRunes(state, "p1", 9);
+    expect(getRuneSummary(state, "p1")).toMatchObject({ count: 9, level: 2 });
+
+    state.activePlayerId = "p2";
+    state.combat!.activeUnitId = "unit_p2_skeletons";
+    const declared = applyOk(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p2",
+      attackerId: "unit_p2_skeletons",
+      defenderId: "unit_p1_crusaders"
+    });
+
+    let current = passUntil(declared, "p1");
+    if (react) {
+      const play = findReaction(current, "specialty.kriv.1");
+      expect(play, "Kriv I should be offered as a reaction to the enemy attack").toBeTruthy();
+      current = applyOk(current, play!.action);
+      // The buff is live the instant the reaction resolves — before the strike does.
+      expect(getRuneSummary(current, "p1")).toMatchObject({ count: 10, level: 3 });
+    }
+    current = settleReactions(current);
+    return current.combat!.units.unit_p1_crusaders.damage;
+  }
+
+  it("the threshold Rune banked in reaction softens the very attack that triggered it (4 → 3)", () => {
+    expect(defenderDamage(false), "control: no reaction → 9 Runes → full 6 − 2 = 4").toBe(4);
+    expect(defenderDamage(true), "react → 10 Runes → Level 3 +1 Defense → 6 − 3 = 3").toBe(3);
+  });
+
+  it("the rune-gain reaction is offered ONLY to a Bulwark reactor (control: castle defender)", () => {
+    const state = createInitialGameState("kriv-react-control");
+    state.players.p1.factionId = "castle"; // not Bulwark → no rune benefit, no offer
+    state.players.p1.hand = ["specialty.kriv.1"];
+    state.players.p2.hand = [];
+    const attacker = state.combat!.units.unit_p2_skeletons;
+    const defender = state.combat!.units.unit_p1_crusaders;
+    attacker.abilities = [];
+    defender.abilities = [];
+    attacker.position = 9;
+    defender.position = 13; // adjacent → a melee strike
+    attacker.maxHealth = 40;
+    defender.maxHealth = 40;
+    attacker.activatedThisRound = false;
+    state.combat!.dice.scriptedRolls = [0, 0, 0, 0, 0, 0];
+    state.combat!.dice.rollCount = 0;
+    state.activePlayerId = "p2";
+    state.combat!.activeUnitId = "unit_p2_skeletons";
+    const declared = applyOk(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p2",
+      attackerId: "unit_p2_skeletons",
+      defenderId: "unit_p1_crusaders"
+    });
+    const onP1 = passUntil(declared, "p1");
+    expect(findReaction(onP1, "specialty.kriv.1"), "a non-Bulwark holder is never offered the rune reaction").toBeFalsy();
   });
 });
 
@@ -125,37 +281,34 @@ describe("Bulwark hero — Kriv's Rune-Empowered head-start (starting Runes)", (
     );
   }
 
-  it("kriv.1 and kriv.4 carry a scaling starting-Rune empowerment (1 / 2), map-only; kriv.6 has none", () => {
-    for (const [id, amount] of [
-      ["specialty.kriv.1", 1],
-      ["specialty.kriv.4", 2]
-    ] as const) {
-      const effect = adventureCards[id].effect as {
-        options: { mapOnly?: boolean; effect: { type: string; amount?: number } }[];
-      };
-      const option = effect.options.find((entry) => entry.effect.type === "GAIN_STARTING_RUNES");
-      expect(option, id).toBeTruthy();
-      expect(option!.effect.amount).toBe(amount);
-      expect(option!.mapOnly).toBe(true); // it sets up FUTURE combats, so it's a map play
+  it("only kriv.4 carries a starting-Rune empowerment (+1), map-only; kriv.1 and kriv.6 have none", () => {
+    const effect = adventureCards["specialty.kriv.4"].effect as {
+      options: { mapOnly?: boolean; effect: { type: string; amount?: number } }[];
+    };
+    const option = effect.options.find((entry) => entry.effect.type === "GAIN_STARTING_RUNES");
+    expect(option, "kriv.4").toBeTruthy();
+    expect(option!.effect.amount).toBe(1);
+    expect(option!.mapOnly).toBe(true); // it sets up FUTURE combats, so it's a map play
+
+    // After the nerf the other two levels are gain-Rune / card-draw only — no
+    // starting-Rune empowerment on kriv.1 or kriv.6.
+    for (const id of ["specialty.kriv.1", "specialty.kriv.6"] as const) {
+      const opts = adventureCards[id].effect as { options: { effect: { type: string } }[] };
+      expect(opts.options.some((entry) => entry.effect.type === "GAIN_STARTING_RUNES"), id).toBe(false);
     }
-    // kriv.6 is a pure combat/reaction card (phaseLimit excludes the map window).
-    const six = adventureCards["specialty.kriv.6"].effect as { options: { effect: { type: string } }[] };
-    expect(six.options.some((entry) => entry.effect.type === "GAIN_STARTING_RUNES")).toBe(false);
   });
 
-  it("a Bulwark Kriv becomes Rune-Empowered on the map: kriv.4 banks +2, and a second empowerment stacks", () => {
+  it("a Bulwark Kriv becomes Rune-Empowered on the map: kriv.4 banks +1 (and further grants stack)", () => {
     let state = krivMap("kriv-empower", "bulwark", ["specialty.kriv.4"]);
     const play4 = findEmpowerPlay(state, "specialty.kriv.4");
-    expect(play4, "a Bulwark Kriv should be offered the +2 starting-Rune empowerment on the map").toBeTruthy();
+    expect(play4, "a Bulwark Kriv should be offered the +1 starting-Rune empowerment on the map").toBeTruthy();
     state = applyOk(state, play4!.action);
-    expect(state.players.p1.runeEmpoweredNextCombats).toBe(2);
+    expect(state.players.p1.runeEmpoweredNextCombats).toBe(1);
 
-    // A second empowerment (kriv.1, +1) STACKS onto the flag → 3.
-    state.players.p1.hand = ["specialty.kriv.1"];
-    const play1 = findEmpowerPlay(state, "specialty.kriv.1");
-    expect(play1, "kriv.1 should also offer a +1 starting-Rune empowerment").toBeTruthy();
-    state = applyOk(state, play1!.action);
-    expect(state.players.p1.runeEmpoweredNextCombats).toBe(3);
+    // The empowerment flag is additive across separate grants (a later play, or a
+    // City Hall combat-focus on top): a second +1 climbs to 2 (capped at RUNE_MAX).
+    grantStartingRunes(state, "p1", 1);
+    expect(state.players.p1.runeEmpoweredNextCombats).toBe(2);
   });
 
   it("offers the empowerment ONLY to a Bulwark caster (control: a non-Bulwark holder)", () => {
@@ -172,13 +325,13 @@ describe("Bulwark hero — Kriv's Rune-Empowered head-start (starting Runes)", (
     const combat = createInitialGameState("kriv-empower-seed");
     combat.players.p1.factionId = "bulwark";
     combat.towns.town_p1.factionId = "bulwark";
-    combat.players.p1.runeEmpoweredNextCombats = 2; // what kriv.4's empowerment grants
+    combat.players.p1.runeEmpoweredNextCombats = 1; // what kriv.4's empowerment grants
     combat.combat!.attackerPlayerId = "p1";
     combat.combat!.defenderPlayerId = "p2";
     seedRunesForCombat(combat);
-    expect(getRuneSummary(combat, "p1").count).toBe(2); // opens at 2, not 0
+    expect(getRuneSummary(combat, "p1").count).toBe(1); // opens at 1, not 0
 
-    gainRunes(combat, "p1", 2); // +2 earned → 4 = Level 1 threshold
+    gainRunes(combat, "p1", 3); // +3 earned → 4 = Level 1 threshold
     expect(getRuneSummary(combat, "p1").level).toBe(1);
     expect(
       getActiveAttackBonus(combat, {
@@ -275,16 +428,31 @@ describe("Bulwark heroes — roster & specialty wiring", () => {
     }
   });
 
-  it("each of Kriv's three specialties carries a scaling GAIN_RUNES option", () => {
-    for (const [id, amount] of [
-      ["specialty.kriv.1", 2],
-      ["specialty.kriv.4", 3],
-      ["specialty.kriv.6", 4]
+  it("each of Kriv's three specialties carries a scaling GAIN_RUNES option (nerfed 1 / 2 / 3)", () => {
+    for (const [id, amount, bundledDraw] of [
+      ["specialty.kriv.1", 1, 1],
+      ["specialty.kriv.4", 2, 1],
+      ["specialty.kriv.6", 3, 0]
     ] as const) {
-      const effect = adventureCards[id].effect as { options: { effect: { type: string; amount?: number } }[] };
-      const runeOption = effect.options.find((option) => option.effect.type === "GAIN_RUNES");
-      expect(runeOption, id).toBeTruthy();
-      expect(runeOption!.effect.amount).toBe(amount);
+      const effect = adventureCards[id].effect as {
+        options: {
+          trigger?: { event: string; controller: string };
+          effect: { type: string; amount?: number; drawCards?: number };
+        }[];
+      };
+      const runeOptions = effect.options.filter((option) => option.effect.type === "GAIN_RUNES");
+      // Every level has BOTH a normal-play and an enemy-attack-reaction rune-gain,
+      // at the nerfed amount; levels I/IV also bundle the card draw.
+      expect(runeOptions.length, `${id} rune options`).toBe(2);
+      for (const runeOption of runeOptions) {
+        expect(runeOption.effect.amount, id).toBe(amount);
+        expect(runeOption.effect.drawCards ?? 0, `${id} bundled draw`).toBe(bundledDraw);
+      }
+      // "all rune buff instant should be able to react to enemy attack": exactly one
+      // of the two carries the UNIT_ATTACK_DECLARED / "opponent" reaction trigger.
+      const reaction = runeOptions.find((option) => option.trigger);
+      expect(reaction, `${id} should have a rune-gain reaction option`).toBeTruthy();
+      expect(reaction!.trigger).toMatchObject({ event: "UNIT_ATTACK_DECLARED", controller: "opponent" });
     }
   });
 });

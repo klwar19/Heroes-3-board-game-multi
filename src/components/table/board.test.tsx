@@ -739,20 +739,24 @@ describe("InspectPanel — Attack/Defense reflect lasting buffs immediately (Bul
     const state = createInitialGameState("inspect-rune");
     state.players.p1.factionId = "bulwark";
     state.towns.town_p1.factionId = "bulwark";
-    state.towns.town_p1.buildings.push("bulwark.sieidi"); // cap 2 so Defense can turn on
+    // After the house-rule swap Defense is the Level 3 bonus (Altar), Initiative is
+    // Level 2 (Sieidi) — so build both and climb to the top to light up Defense.
+    state.towns.town_p1.buildings.push("bulwark.sieidi", "bulwark.altar"); // cap 3
     const unit = state.combat!.units.unit_p1_marksmen;
     const baseAttack = unit.attack;
     const baseDefense = unit.defense;
 
-    // Earn straight to Rune Level 2: +1 Attack (L1) and +1 Defense (L2) go live.
-    gainRunes(state, "p1", RUNE_LEVEL_THRESHOLDS[1]); // 7 → Level 2
+    // Earn straight to Rune Level 3: +1 Attack (L1), +3 Initiative (L2) and +1
+    // Defense (L3) all go live.
+    gainRunes(state, "p1", RUNE_LEVEL_THRESHOLDS[2]); // 10 → Level 3
 
     const { container } = renderInspect(state, unit.id);
     const stats = container.querySelector(".inspectStats")!;
     // Effective Attack is base+1 with the base noted — not the unchanged printed value.
     expect(stats.textContent).toContain(`⚔ ${baseAttack + 1} (base ${baseAttack})`);
     expect(stats.textContent).toContain(`${baseDefense + 1} (base ${baseDefense})`);
-    // Both raised stats carry the green "up" cue.
+    // Both raised Attack/Defense cells carry the green "up" cue (Initiative shows
+    // its own cue outside the .inspectStats block).
     expect(container.querySelectorAll(".inspectStats .statUp").length).toBe(2);
   });
 

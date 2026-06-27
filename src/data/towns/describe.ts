@@ -71,7 +71,7 @@ export function describeBuildingEffect(building: TownBuildingDefinition): string
         effect.startingRunes > 0
           ? ` and starts each combat with ${effect.startingRunes} Rune${effect.startingRunes === 1 ? "" : "s"}`
           : ""
-      }. Level 1 = +1 Attack, Level 2 = +1 Defense, Level 3 = +3 Initiative to all your units. Current house rule for earning Runes in battle: Attack +1, Retaliate +1, Defend +2.`;
+      }. Level 1 = +1 Attack, Level 2 = +3 Initiative, Level 3 = +1 Defense to all your units. Current house rule for earning Runes in battle: Attack +1, Retaliate +1, Defend +2.`;
     case "NOT_IMPLEMENTED":
       return effect.note;
     default:
