@@ -3209,29 +3209,34 @@ function addUnitAbilityActions(actions: LegalAction[], state: GameState, playerI
       }
     }
 
-    // Token "other actions": Ogres' Attack token, Few Sorceresses' Weakness.
+    // Token "other actions": Ogres' Attack ("Bloodlust") token, Few Sorceresses'
+    // Weakness token. A single "use" command opens a board target picker (the
+    // ABILITY_TARGET_CHOICE the player resolves by clicking a glowing unit) —
+    // offered only when at least one legal recipient exists, so a side with no
+    // eligible target never advertises a dead button.
     if (ability.effect?.type === "PLACE_TOKEN_ACTION") {
       const effect = ability.effect;
-      for (const target of Object.values(combat.units)) {
+      const hasCandidate = Object.values(combat.units).some((target) => {
         const sideOk =
           effect.targets === "any" ||
           (effect.targets === "friendly" && target.controllerId === activeUnit.controllerId) ||
           (effect.targets === "enemy" && target.controllerId !== activeUnit.controllerId);
-        if (!sideOk || !isUnitAlive(target) || isArrowTowerUnit(target)) {
-          continue;
-        }
-        if (effect.targetTypes && !effect.targetTypes.includes(target.type)) {
-          continue;
-        }
-
+        return (
+          sideOk &&
+          isUnitAlive(target) &&
+          !isArrowTowerUnit(target) &&
+          (!effect.targetTypes || effect.targetTypes.includes(target.type))
+        );
+      });
+      if (hasCandidate) {
         actions.push({
-          label: `${activeUnit.name}: ${ability.name} (${effect.amount >= 0 ? "+" : ""}${effect.amount}) on ${target.cardName}`,
+          label: `${activeUnit.name}: ${ability.name} (${effect.amount >= 0 ? "+" : ""}${effect.amount})`,
           action: {
             type: "USE_UNIT_ABILITY",
             playerId,
             unitId: activeUnit.id,
             abilityId: ability.id,
-            target: { type: "unit", unitId: target.id }
+            target: { type: "none" }
           }
         });
       }
@@ -3788,6 +3793,8 @@ export function getLegalActions(
             ? `${choice.abilityName}: heal`
             : choice.kind === "jotunn-teleport"
               ? `${choice.abilityName}: teleport`
+              : choice.kind === "place-token"
+                ? `${choice.abilityName}: place on`
               : choice.kind === "spell-redirect"
               ? `${choice.abilityName}: redirect to`
               : choice.kind === "flat-damage" ||

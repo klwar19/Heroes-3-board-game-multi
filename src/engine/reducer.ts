@@ -148,6 +148,7 @@ import {
   destroyFortification,
   getDemolishAbility,
   intactFortificationPositions,
+  isArrowTowerUnit,
   removeArrowTower,
   siegeRangedDamageReduction
 } from "./siege";
@@ -11577,49 +11578,81 @@ function applyUnitAbilityAction(
 ): void {
   const combat = state.combat;
   const unit = combat?.units[action.unitId];
-  const target = action.target.type === "unit" ? combat?.units[action.target.unitId] : undefined;
   const ability = unit ? getUnitAbilityDefinitions(unit).find((candidate) => candidate.id === action.abilityId) : undefined;
 
   if (
     !combat ||
     !unit ||
-    !target ||
     unit.controllerId !== action.playerId ||
     unit.activatedThisRound ||
     unit.movedThisActivation ||
     combat.activeUnitId !== unit.id ||
-    ability?.implementationStatus !== "implemented" ||
-    !isUnitAlive(target)
+    ability?.implementationStatus !== "implemented"
   ) {
     throw new Error("That unit ability cannot be used now.");
   }
 
-  // Token "other action" (Ogres' Attack token, Few Sorceresses' Weakness):
-  // used instead of attacking, places the token and ends the activation.
+  // Token "other action" (Ogres' Attack/"Bloodlust" token, Few Sorceresses'
+  // Weakness token): used instead of attacking. The player picks the recipient
+  // by clicking a unit on the board, so this opens an ABILITY_TARGET_CHOICE over
+  // every legal target — the activation only ends once a target is chosen (the
+  // token lands in chooseAbilityTarget). Cancelling the pick leaves the unit
+  // free to act normally.
   if (ability.effect?.type === "PLACE_TOKEN_ACTION") {
     const effect = ability.effect;
-    const sideOk =
-      effect.targets === "any" ||
-      (effect.targets === "friendly" && target.controllerId === unit.controllerId) ||
-      (effect.targets === "enemy" && target.controllerId !== unit.controllerId);
-    if (!sideOk || (effect.targetTypes && !effect.targetTypes.includes(target.type))) {
-      throw new Error("That unit cannot receive this token.");
+    const candidateUnitIds = Object.values(combat.units)
+      .filter((candidate) => {
+        const sideOk =
+          effect.targets === "any" ||
+          (effect.targets === "friendly" && candidate.controllerId === unit.controllerId) ||
+          (effect.targets === "enemy" && candidate.controllerId !== unit.controllerId);
+        return (
+          sideOk &&
+          isUnitAlive(candidate) &&
+          !isArrowTowerUnit(candidate) &&
+          (!effect.targetTypes || effect.targetTypes.includes(candidate.type))
+        );
+      })
+      .map((candidate) => candidate.id);
+    if (candidateUnitIds.length === 0) {
+      throw new Error("That unit ability cannot be used now.");
     }
 
-    placeCombatToken(state, target, effect.token, effect.amount, ability.name, effect.rounds);
-    appendEvent(state, {
-      type: "UNIT_ABILITY_TRIGGERED",
-      unitId: unit.id,
+    const sideWord = effect.targets === "enemy" ? "enemy " : effect.targets === "friendly" ? "friendly " : "";
+    const choiceId = `choice_${nextEventNumber(state)}`;
+    state.pendingChoice = {
+      id: choiceId,
+      type: "ABILITY_TARGET_CHOICE",
+      playerId: unit.controllerId,
+      kind: "place-token",
       abilityId: ability.id,
-      targetUnitId: target.id,
-      message: `${unit.cardName} places a ${ability.name} on ${target.cardName}.`
+      abilityName: ability.name,
+      prompt: `${unit.cardName}: place a ${ability.name} (${effect.amount >= 0 ? "+" : ""}${effect.amount}) on a chosen ${sideWord}unit.`,
+      sourceUnitId: unit.id,
+      anchorUnitId: null,
+      candidateUnitIds,
+      amount: effect.amount,
+      tokenKind: effect.token,
+      tokenRounds: effect.rounds,
+      optional: true,
+      skipLabel: "Cancel"
+    };
+    state.phase = "choice";
+    state.priorityPlayerId = unit.controllerId;
+    appendEvent(state, {
+      type: "PENDING_CHOICE_CREATED",
+      choiceId,
+      choiceType: "ABILITY_TARGET_CHOICE",
+      playerId: unit.controllerId,
+      sourceEffectIds: [],
+      message: `${unit.cardName} chooses where to place a ${ability.name}.`
     });
-
-    unit.activatedThisRound = true;
-    advanceActiveUnit(state);
-    state.phase = "combat";
-    state.priorityPlayerId = null;
     return;
+  }
+
+  const target = action.target.type === "unit" ? combat.units[action.target.unitId] : undefined;
+  if (!target || !isUnitAlive(target)) {
+    throw new Error("That unit ability cannot be used now.");
   }
 
   if (ability.effect?.type !== "ACTIVATION_ATTACK_BUFF") {
@@ -12683,6 +12716,32 @@ function chooseAbilityTarget(
       }
     }
     finishCombatIfNeeded(state);
+    return;
+  }
+
+  // Ogres' Attack ("Bloodlust") token / Sorceresses' Weakness token: drop the
+  // chosen combat token on the picked unit, then the placing unit's activation
+  // ends (this "other action" replaces its attack). Cancelling (the optional
+  // skip) places nothing and leaves the unit free to act — so the activation is
+  // only consumed when a real target is chosen.
+  if (choice.kind === "place-token") {
+    const placer = choice.sourceUnitId ? combat.units[choice.sourceUnitId] : undefined;
+    if (isSkip || !placer || !choice.tokenKind) {
+      return;
+    }
+    const target = combat.units[action.targetUnitId];
+    if (target && isUnitAlive(target)) {
+      placeCombatToken(state, target, choice.tokenKind, choice.amount ?? 0, choice.abilityName, choice.tokenRounds);
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: placer.id,
+        abilityId: choice.abilityId ?? "",
+        targetUnitId: target.id,
+        message: `${placer.cardName} places a ${choice.abilityName} on ${target.cardName}.`
+      });
+      placer.activatedThisRound = true;
+      advanceActiveUnit(state);
+    }
     return;
   }
 

@@ -593,8 +593,12 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "stronghold",
     tier: "silver",
     type: "ground",
-    few: { attack: 3, defense: 2, health: 4, initiative: 4, cost: { gold: 6 }, abilities: ["ogres-attack-token-few"], abilityText: "[unit_other] Place a +1 [attack] token on a chosen [unit_ground] or [unit_flying] unit for 2 Combat rounds.", cardImage: "/assets/units-stronghold-silver-ogres-few.webp" },
-    pack: { attack: 3, defense: 2, health: 6, initiative: 5, cost: { gold: 8 }, abilities: ["ogres-attack-token-pack"], abilityText: "[unit_other] Place a +2 [attack] token on a chosen [unit_ground] or [unit_flying] unit for 2 Combat rounds.", cardImage: "/assets/units-stronghold-silver-ogres-pack.webp" },
+    // engine: the Attack ("Bloodlust") token is a pure BUFF, so the engine only
+    // lets the Ogres drop it on a FRIENDLY ground/flying unit (targets:
+    // "friendly" in ogres-attack-token-few/pack) — the mirror of the Sorceresses'
+    // enemy-only Weakness token.
+    few: { attack: 3, defense: 2, health: 4, initiative: 4, cost: { gold: 6 }, abilities: ["ogres-attack-token-few"], abilityText: "[unit_other] Place a +1 [attack] token on a chosen friendly [unit_ground] or [unit_flying] unit for 2 Combat rounds.", cardImage: "/assets/units-stronghold-silver-ogres-few.webp" },
+    pack: { attack: 3, defense: 2, health: 6, initiative: 5, cost: { gold: 8 }, abilities: ["ogres-attack-token-pack"], abilityText: "[unit_other] Place a +2 [attack] token on a chosen friendly [unit_ground] or [unit_flying] unit for 2 Combat rounds.", cardImage: "/assets/units-stronghold-silver-ogres-pack.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/ogres/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Stronghold Expansion)",
@@ -1084,7 +1088,10 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "cove",
     tier: "silver",
     type: "ranged",
-    few: { attack: 3, defense: 1, health: 5, initiative: 6, cost: { gold: 8 }, abilities: ["sorceress-weakness-few"], abilityText: "[unit_other] Place a \"-2\" Weakness token on any one unit for 2 Combat rounds.", cardImage: "/assets/units-cove-silver-sorceresses-few.webp" },
+    // engine: sorceress-weakness-few restricts the Weakness token to an ENEMY
+    // unit (house rule — a debuff is never placed on your own side). The wiki
+    // card prints "on any one unit"; the engine narrows it to enemies.
+    few: { attack: 3, defense: 1, health: 5, initiative: 6, cost: { gold: 8 }, abilities: ["sorceress-weakness-few"], abilityText: "[unit_other] Place a \"-2\" Weakness token on a chosen enemy unit for 2 Combat rounds.", cardImage: "/assets/units-cove-silver-sorceresses-few.webp" },
     pack: { attack: 4, defense: 1, health: 6, initiative: 7, cost: { gold: 13 }, abilities: ["sorceress-weakness-on-attack"], abilityText: "[unit_attack] After the attack, place a \"-1\" Weakness token on the target for 2 Combat rounds.", cardImage: "/assets/units-cove-silver-sorceresses-pack.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/sorceresses/",
     source: {
@@ -2006,7 +2013,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "silver",
     type: "ground",
-    neutral: { attack: 3, defense: 2, health: 4, initiative: 4, cost: { gold: 10 }, abilities: ["ogres-attack-token-pack"], abilityText: "[unit_other] Place a +2 [attack] token on a chosen [unit_ground] or [unit_flying] unit for 2 Combat rounds.", cardImage: "/assets/units-stronghold-silver-ogres-few.webp" },
+    neutral: { attack: 3, defense: 2, health: 4, initiative: 4, cost: { gold: 10 }, abilities: ["ogres-attack-token-pack"], abilityText: "[unit_other] Place a +2 [attack] token on a chosen friendly [unit_ground] or [unit_flying] unit for 2 Combat rounds.", cardImage: "/assets/units-stronghold-silver-ogres-few.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/ogres/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Stronghold Expansion)",

@@ -1101,12 +1101,17 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "sorceress-weakness-few": {
     id: "sorceress-weakness-few",
     name: "Weakness Token",
-    text: "Other action: place a '−2' Weakness token on any one unit for 2 combat rounds. (A unit holds at most one Weakness token.)",
+    // engine: the Weakness token is a pure DEBUFF, so the engine only lets the
+    // Sorceresses drop it on an ENEMY unit (targets: "enemy"). The verbatim wiki
+    // card reads "on any one unit"; restricting it to enemies is a deliberate
+    // house rule (a Weakness token on your own unit is never useful) and matches
+    // the Ogres' mirror ability, which only buffs allies.
+    text: "Other action: place a '−2' Weakness token on a chosen enemy unit for 2 combat rounds. (A unit holds at most one Weakness token.)",
     effect: {
       type: "PLACE_TOKEN_ACTION",
       token: "weakness",
       amount: -2,
-      targets: "any",
+      targets: "enemy",
       rounds: 2
     },
     implementationStatus: "implemented"

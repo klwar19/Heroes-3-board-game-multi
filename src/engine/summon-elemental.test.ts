@@ -6,6 +6,7 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 import { unitSoundKey } from "@/data/unit-sounds";
 import {
   applyAction,
+  BATTLEFIELD_CELL_COUNT,
   createInitialGameState,
   getLegalActions,
   makeActiveEffect,
@@ -304,6 +305,56 @@ describe("Summon Elemental spell", () => {
     const { state, position } = castSummon("spell.summon_earth_elemental", 2);
     const summoned = unitAt(state, position);
     expect(summoned && unitDealsElementalDamage(state, summoned)).toBe(true);
+  });
+
+  it("offers EVERY empty space as a legal target — pick any space, only empty ones", () => {
+    const state = createInitialGameState("summon-space-pick");
+    state.players.p1.hand = ["spell.summon_air_elemental"];
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    state.combat!.units.unit_p1_griffins.activatedThisRound = false;
+
+    const offered = new Set<number>();
+    for (const legal of getLegalActions(state, "p1")) {
+      if (
+        legal.action.type === "CAST_SPELL" &&
+        legal.action.cardId === "spell.summon_air_elemental" &&
+        legal.action.target.type === "space"
+      ) {
+        offered.add(legal.action.target.position);
+      }
+    }
+
+    // Build the set of genuinely empty cells the way the engine does: every space
+    // that holds no living unit and no obstacle. (The sim has no tokens/siege.)
+    const combat = state.combat!;
+    const blocked = new Set<number>();
+    for (const unit of Object.values(combat.units)) {
+      if (unit.damage < unit.maxHealth) {
+        blocked.add(unit.position);
+      }
+    }
+    for (const position of combat.obstacles ?? []) {
+      blocked.add(position);
+    }
+    const expectedEmpty: number[] = [];
+    for (let position = 0; position < BATTLEFIELD_CELL_COUNT; position += 1) {
+      if (!blocked.has(position)) {
+        expectedEmpty.push(position);
+      }
+    }
+
+    const sortNum = (a: number, b: number) => a - b;
+    // The offer is EXACTLY the empty cells — every one of them ("any space"),
+    // and nothing that is occupied or an obstacle.
+    expect([...offered].sort(sortNum)).toEqual(expectedEmpty.sort(sortNum));
+    expect(offered.size).toBeGreaterThan(1); // genuinely "any" space, not one fixed cell
+    expect(offered.has(combat.units.unit_p1_griffins.position)).toBe(false); // occupied
+    expect(offered.has(combat.units.unit_p2_skeletons.position)).toBe(false); // occupied
+    for (const obstacle of combat.obstacles ?? []) {
+      expect(offered.has(obstacle), `obstacle ${obstacle} must not be offered`).toBe(false);
+    }
   });
 });
 

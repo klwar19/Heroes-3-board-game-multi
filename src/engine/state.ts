@@ -6744,7 +6744,11 @@ export type PendingChoice =
        * to another enemy adjacent to Cerberi), Liches' Death Cloud (a full
        * second attack at base attack 2 against a unit adjacent to the
        * original target), a rulebook AI tie ("the player chooses which
-       * unit is attacked"), or a war machine round-start shot.
+       * unit is attacked"), or a war machine round-start shot. Also the
+       * "place-token" pick: the Ogres' Attack ("Bloodlust") token and the
+       * Sorceresses' Weakness token are placed on a unit the player clicks on
+       * the board (resolved into placeCombatToken), instead of a wall of
+       * one-button-per-target command buttons.
        */
       id: string;
       type: "ABILITY_TARGET_CHOICE";
@@ -6762,6 +6766,7 @@ export type PendingChoice =
         | "faerie-damage"
         | "jotunn-teleport"
         | "chain-lightning"
+        | "place-token"
         | "sacrifice-transfer";
       abilityId: string | null;
       abilityName: string;
@@ -6773,6 +6778,12 @@ export type PendingChoice =
       candidateUnitIds: UnitId[];
       /** Flat damage dealt on resolution (flat-damage / faerie-damage kind). */
       amount?: number;
+      /**
+       * "place-token" pick: the combat token to drop on the chosen unit and how
+       * long it lasts. `amount` carries the signed delta (+2 attack, −2 weakness).
+       */
+      tokenKind?: CombatTokenKind;
+      tokenRounds?: number;
       /** Replacement base attack of the follow-up attack (second-attack kind). */
       baseAttack?: number;
       /** Fireball's second space may be empty: the choice can be skipped. */

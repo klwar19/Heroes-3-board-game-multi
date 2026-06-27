@@ -2993,14 +2993,26 @@ export default function Home() {
     );
   }
 
-  const selectedCardTargetCount = selectedCardAction
-    ? legalActions.filter(
-        (legal) =>
-          (legal.action.type === "CAST_SPELL" || legal.action.type === "PLAY_CARD") &&
-          legal.action.cardId === selectedCardAction.cardId &&
-          legal.action.target?.type === "unit"
-      ).length
-    : 0;
+  // The board targets a selected card can land on. SPACE casts (Summon Elemental
+  // onto an empty space, Inferno/Frost Ring area centres, Force Field, …) count
+  // too — they glow on the board exactly like unit targets, so the banner must
+  // not claim "no legal board target" just because the card aims at a space.
+  const selectedCardTargetTypes: ("unit" | "space")[] = [];
+  if (selectedCardAction) {
+    for (const legal of legalActions) {
+      const candidate = legal.action;
+      if (
+        (candidate.type === "CAST_SPELL" || candidate.type === "PLAY_CARD") &&
+        candidate.cardId === selectedCardAction.cardId &&
+        (candidate.target?.type === "unit" || candidate.target?.type === "space")
+      ) {
+        selectedCardTargetTypes.push(candidate.target.type);
+      }
+    }
+  }
+  const selectedCardTargetCount = selectedCardTargetTypes.length;
+  const selectedCardHasUnitTarget = selectedCardTargetTypes.includes("unit");
+  const selectedCardHasSpaceTarget = selectedCardTargetTypes.includes("space");
 
   const trayActive = Boolean(state.reactionWindow && state.reactionWindow.priorityPlayerId === viewerPlayerId);
   const seatIds = state.turnOrder.filter((playerId) => playerId !== NEUTRAL_PLAYER_ID);
@@ -3909,7 +3921,15 @@ export default function Home() {
         <div className="targetBanner" aria-label="Selected card target">
           <Crosshair aria-hidden="true" size={15} />
           <strong>{cardName(selectedCardAction.cardId)}</strong>
-          <span>{selectedCardTargetCount > 0 ? "Click a glowing unit on the board" : "No legal board target"}</span>
+          <span>
+            {selectedCardTargetCount === 0
+              ? "No legal board target"
+              : selectedCardHasUnitTarget && selectedCardHasSpaceTarget
+                ? "Click a glowing unit or space on the board"
+                : selectedCardHasSpaceTarget
+                  ? "Click a glowing space on the board"
+                  : "Click a glowing unit on the board"}
+          </span>
           <button onClick={() => setSelectedCardAction(null)} type="button">
             Cancel
           </button>

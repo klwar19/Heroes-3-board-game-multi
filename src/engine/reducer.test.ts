@@ -1612,20 +1612,42 @@ describe("rules engine prototype", () => {
     };
     setActiveUnit(state, "p1", "unit_p1_ogres");
 
+    // The token "other action" is offered as a SINGLE open-the-picker command
+    // (no specific target) — not one button per candidate unit. The player then
+    // clicks a unit on the board, which the engine models as an
+    // ABILITY_TARGET_CHOICE the controller resolves with CHOOSE_ABILITY_TARGET.
     const legalAbility = getLegalActions(state, "p1").find(
-      (legal) => legal.action.type === "USE_UNIT_ABILITY" && legal.action.target.type === "unit"
+      (legal) =>
+        legal.action.type === "USE_UNIT_ABILITY" &&
+        legal.action.abilityId === "ogres-attack-token-pack"
     );
     expect(legalAbility?.action).toMatchObject({
       type: "USE_UNIT_ABILITY",
-      unitId: "unit_p1_ogres"
-    });
-
-    const used = applyOk(state, {
-      type: "USE_UNIT_ABILITY",
-      playerId: "p1",
       unitId: "unit_p1_ogres",
-      abilityId: "ogres-attack-token-pack",
-      target: { type: "unit", unitId: "unit_p1_griffins" }
+      target: { type: "none" }
+    });
+    // There is exactly one such command — never a wall of one-per-target buttons.
+    expect(
+      getLegalActions(state, "p1").filter(
+        (legal) =>
+          legal.action.type === "USE_UNIT_ABILITY" &&
+          legal.action.abilityId === "ogres-attack-token-pack"
+      )
+    ).toHaveLength(1);
+
+    const picking = applyOk(state, legalAbility!.action);
+    // Opening the picker does NOT yet end the activation or place a token.
+    expect(picking.pendingChoice?.type).toBe("ABILITY_TARGET_CHOICE");
+    expect(picking.pendingChoice?.type === "ABILITY_TARGET_CHOICE" && picking.pendingChoice.kind).toBe("place-token");
+    expect(picking.combat?.units.unit_p1_ogres.activatedThisRound).toBe(false);
+    expect(picking.combat?.units.unit_p1_griffins.tokens ?? []).toHaveLength(0);
+
+    const choiceId = picking.pendingChoice?.type === "ABILITY_TARGET_CHOICE" ? picking.pendingChoice.id : "";
+    const used = applyOk(picking, {
+      type: "CHOOSE_ABILITY_TARGET",
+      playerId: "p1",
+      choiceId,
+      targetUnitId: "unit_p1_griffins"
     });
 
     // The token action replaces the attack and ends the activation.
@@ -1642,12 +1664,18 @@ describe("rules engine prototype", () => {
     used.combat!.units.unit_p1_ogres_few = fewOgres;
     used.combat!.activeUnitId = "unit_p1_ogres_few";
     used.activePlayerId = "p1";
-    const restacked = applyOk(used, {
-      type: "USE_UNIT_ABILITY",
+    const openFew = getLegalActions(used, "p1").find(
+      (legal) =>
+        legal.action.type === "USE_UNIT_ABILITY" &&
+        legal.action.abilityId === "ogres-attack-token-few"
+    );
+    const pickingFew = applyOk(used, openFew!.action);
+    const fewChoiceId = pickingFew.pendingChoice?.type === "ABILITY_TARGET_CHOICE" ? pickingFew.pendingChoice.id : "";
+    const restacked = applyOk(pickingFew, {
+      type: "CHOOSE_ABILITY_TARGET",
       playerId: "p1",
-      unitId: "unit_p1_ogres_few",
-      abilityId: "ogres-attack-token-few",
-      target: { type: "unit", unitId: "unit_p1_griffins" }
+      choiceId: fewChoiceId,
+      targetUnitId: "unit_p1_griffins"
     });
     const tokensAfter = restacked.combat?.units.unit_p1_griffins.tokens ?? [];
     expect(tokensAfter).toHaveLength(1);
