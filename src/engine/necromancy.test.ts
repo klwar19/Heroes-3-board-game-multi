@@ -253,6 +253,11 @@ describe("Necromancy ability — after-combat window", () => {
     let next = apply(state, play!.action);
     // Still in hand right after the play (the reinforce is pending).
     expect(next.players.p1.hand).toContain("ability.necromancy");
+    // The hand→discard flight (CARD_PLAYED) must NOT fire yet — the card hasn't moved.
+    const playedBefore = next.eventLog.filter(
+      (event) => event.type === "CARD_PLAYED" && event.cardId === "ability.necromancy"
+    );
+    expect(playedBefore).toHaveLength(0);
 
     const reinforce = getLegalActions(next, "p1").find((legal) => /Skeletons/.test(legal.label));
     expect(reinforce, "the affordable Skeleton reinforce should be offered").toBeTruthy();
@@ -262,6 +267,11 @@ describe("Necromancy ability — after-combat window", () => {
     expect(next.players.p1.army.find((u) => u.id === "army_skel")?.side).toBe("pack");
     expect(next.players.p1.discard).toContain("ability.necromancy");
     expect(next.players.p1.hand).not.toContain("ability.necromancy");
+    // CARD_PLAYED fires exactly once, now, at the real hand→discard move.
+    const playedAfter = next.eventLog.filter(
+      (event) => event.type === "CARD_PLAYED" && event.cardId === "ability.necromancy"
+    );
+    expect(playedAfter).toHaveLength(1);
   });
 
   it("keeps Necromancy when the player plays it but chooses Skip in the reinforce prompt", () => {
@@ -285,6 +295,11 @@ describe("Necromancy ability — after-combat window", () => {
     expect(next.players.p1.army.find((u) => u.id === "army_skel")?.side).toBe("few");
     expect(next.players.p1.hand).toContain("ability.necromancy");
     expect(next.players.p1.discard).not.toContain("ability.necromancy");
+    // No hand→discard flight is ever emitted for a card that was never consumed.
+    const played = next.eventLog.filter(
+      (event) => event.type === "CARD_PLAYED" && event.cardId === "ability.necromancy"
+    );
+    expect(played).toHaveLength(0);
   });
 
   it("keeps Necromancy when it is played with NO eligible/affordable target", () => {

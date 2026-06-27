@@ -10056,15 +10056,22 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       ? card.effect.options[action.optionIndex]?.label
       : undefined;
 
-  appendEvent(state, {
-    type: "CARD_PLAYED",
-    playerId: action.playerId,
-    cardId: action.cardId,
-    timing: card.timing,
-    mode,
-    effectAmount: getEffectAmount(effect, mode) || undefined,
-    optionLabel
-  });
+  // Necromancy's CARD_PLAYED (which drives the hand→discard flight animation and
+  // the "plays …" log line) is deferred along with the discard: it fires from the
+  // reinforce resolver only when the card actually moves to the discard pile, so
+  // a kept card (skip / no target / declined reinforce) never animates a phantom
+  // flight or logs a play it didn't make.
+  if (!deferNecromancyDiscard) {
+    appendEvent(state, {
+      type: "CARD_PLAYED",
+      playerId: action.playerId,
+      cardId: action.cardId,
+      timing: card.timing,
+      mode,
+      effectAmount: getEffectAmount(effect, mode) || undefined,
+      optionLabel
+    });
+  }
 
   // Ongoing rule snapshot: lasting effects created below keep the card in
   // play until they end ("remove" plays went to `removed` and stay there).
