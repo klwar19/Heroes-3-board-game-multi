@@ -2336,6 +2336,31 @@ export function PromptTray({
       </div>
     );
   }
+  // Ogres' Attack ("Bloodlust") token / Sorceresses' Weakness token — the same
+  // two-click board flow as teleport: the board already highlights the eligible
+  // units (abilityTarget) and submits the pick on click, so the tray only shows
+  // the instruction and a single Cancel, never a wall of one-button-per-target.
+  if (
+    choice?.type === "ABILITY_TARGET_CHOICE" &&
+    choice.kind === "place-token" &&
+    choice.playerId === viewerPlayerId
+  ) {
+    const cancel = abilityTargetActions.find(
+      (legal) => legal.action.type === "CHOOSE_ABILITY_TARGET" && legal.action.targetUnitId === "skip"
+    );
+    return (
+      <div className="promptTray" role="dialog" aria-label={choice.prompt}>
+        <strong>{choice.prompt} Click a glowing unit on the battlefield.</strong>
+        <div className="promptOptions">
+          {cancel ? (
+            <button className="commandButton" onClick={() => onAction(cancel.action)} type="button">
+              {cancel.label}
+            </button>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
   if (
     choice?.type === "OPTION_CHOICE" &&
     choice.context === "combat-teleport" &&

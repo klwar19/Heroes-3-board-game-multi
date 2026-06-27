@@ -20,7 +20,7 @@ sides pretending to do something they print.
 | | Pack | 3/0/5/8 · 6g | `ignores-retaliation` + `ignore-combat-penalties` |
 | **Ayssids** (silver, flying) | Few | 3/1/5/9 · 6g | — |
 | | Pack | 3/1/6/11 · 10g | `ayssid-pounce` — on a kill, attack another adjacent unit after retaliation |
-| **Sorceresses** (silver, ranged) | Few | 3/1/5/6 · 8g | `sorceress-weakness-few` — place a **−2** Weakness token on any unit (2 rounds) |
+| **Sorceresses** (silver, ranged) | Few | 3/1/5/6 · 8g | `sorceress-weakness-few` — "other action": place a **−2** Weakness token on a chosen **enemy** unit (2 rounds), picked by clicking it on the board (house rule: enemy-only, a debuff never lands on your own side) |
 | | Pack | 4/1/6/7 · 13g | `sorceress-weakness-on-attack` — after the attack, **−1** Weakness token on the target (2 rounds) |
 | **Nix** (gold, ground) | Few | 5/2/7/6 · 12g | — |
 | | Pack | 6/2/8/7 · 20g+1v | `nix-damage-cap` — cannot take more than **4** damage from a single attack |
