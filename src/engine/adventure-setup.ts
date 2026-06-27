@@ -29,6 +29,7 @@ import {
   NEUTRAL_DECK_IDS,
   recomputeSubterraneanGates,
   seaTileBand,
+  subterraneanTileBand,
   startAdventureRound,
   startPlayerTurn,
   victoryModeCountsHeroDefeats
@@ -501,6 +502,23 @@ function popSeaBandTile(pool: string[], band: "iv-v" | "vi-vii"): string | undef
   return undefined;
 }
 
+/**
+ * Pops the topmost Subterranean tile of a given guard band (Ⅴ–Ⅵ or Ⅵ–Ⅶ) from
+ * the single shared, shuffled underground pool — the underground twin of
+ * {@link popSeaBandTile}. The boss band (Ⅵ–Ⅶ) is the three tiles whose centre
+ * is a VII guardian (U7 / #C2 Cyclops Stockpile, #C3 Random Town); everything
+ * else is the regular Ⅴ–Ⅵ band (see {@link subterraneanTileBand}).
+ */
+function popSubBandTile(pool: string[], band: "v-vi" | "vi-vii"): string | undefined {
+  for (let index = pool.length - 1; index >= 0; index -= 1) {
+    const def = allTileDefinitions[pool[index]];
+    if (def && subterraneanTileBand(def) === band) {
+      return pool.splice(index, 1)[0];
+    }
+  }
+  return undefined;
+}
+
 /** Removes and returns a Center tile from the pool that carries `location`. */
 function takeCenterTileWith(pool: string[], location: string): string | undefined {
   const index = pool.findIndex((tileDefId) =>
@@ -756,6 +774,12 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     const popSeaTile = (band?: "iv-v" | "vi-vii"): string | undefined =>
       band ? popSeaBandTile(seaPool, band) : seaPool.pop();
 
+    // A face-down underground slot likewise draws only from its own guard band
+    // (Ⅴ–Ⅵ or Ⅵ–Ⅶ) out of the one shuffled subterranean pool. An undefined
+    // band (older saved maps) takes any underground tile, as before.
+    const popSubTile = (band?: "v-vi" | "vi-vii"): string | undefined =>
+      band ? popSubBandTile(subterraneanPool, band) : subterraneanPool.pop();
+
     // Designed face-up tiles never also hide in a face-down pool draw.
     for (const plan of customMap) {
       if (!plan.faceDown && plan.tileDefId) {
@@ -787,6 +811,8 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
         let tileDefId: string | undefined;
         if (plan.group === "sea") {
           tileDefId = popSeaTile(plan.seaBand);
+        } else if (plan.group === "subterranean") {
+          tileDefId = popSubTile(plan.subBand);
         } else if (plan.group === "center") {
           // The win-condition objective fills the first face-down Center slot;
           // any further Center slots stay a random draw.

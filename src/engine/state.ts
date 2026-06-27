@@ -6162,6 +6162,15 @@ export type CustomMapTilePlan = {
    * matching band. Undefined (older saved maps) means "any sea tile".
    */
   seaBand?: "iv-v" | "vi-vii";
+  /**
+   * Subterranean tiles only: which guard band this slot belongs to. The
+   * underground pool mixes a regular Ⅴ–Ⅵ tier (U1–U6, #N4–#N7) with a Ⅵ–Ⅶ
+   * boss tier (U7 / #C2 Cyclops Stockpile, #C3 Random Town), so the designer
+   * offers them as two palette entries — a face-down underground slot then
+   * draws only from the matching band. Undefined (older saved maps) means
+   * "any subterranean tile".
+   */
+  subBand?: "v-vi" | "vi-vii";
 };
 
 /** Pre-game lobby: players pick factions and heroes before the map builds. */

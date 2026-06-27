@@ -104,9 +104,11 @@ describe("expansion tile data", () => {
     for (const tile of Object.values(coreTileDefinitions)) {
       expect(tile.assets?.tileImage).toBe(`/assets/board/tiles/${tile.id.toLowerCase()}.webp`);
     }
-    // 98 boxed/expansion tiles + the Bulwark S10 starting tile (now art-backed).
+    // Every tile is now art-backed — the 9 subterranean hold-outs (U1/U3/U7,
+    // #N4-#N7, #C2/#C3) were cropped from the community subterranean map scans.
     const withArt = Object.values(allTileDefinitions).filter((tile) => tile.assets?.tileImage);
-    expect(withArt).toHaveLength(99);
+    expect(withArt).toHaveLength(Object.keys(allTileDefinitions).length);
+    expect(withArt).toHaveLength(108);
   });
 });
 
