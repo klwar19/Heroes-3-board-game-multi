@@ -206,7 +206,12 @@ export function farTilePlacementCenters(
       if (!nextToHero) {
         continue;
       }
+      // An UNOPENED supply tile has no known def (its identity is rolled at the
+      // flip), so the "your hero can cross onto it" check can only run once the
+      // real tile is drawn — it is enforced then, at the rotation step. For a
+      // known tile we still pre-filter spots the hero could never cross onto.
       if (
+        allTileDefinitions[tileDefId] &&
         ![0, 1, 2, 3, 4, 5].some((rotation) => canHeroReachPlacedTile(state, hero, tileDefId, candidate, rotation))
       ) {
         continue;
@@ -3746,8 +3751,45 @@ function GameOptionsPanel({
             </div>
             <small className="optionHint">
               {farTileOpeningOn
-                ? "Each player drafts two face-down Ⅱ–Ⅲ Far tiles they may place onto the map for 1 movement point."
+                ? "Each player gets a face-down Ⅱ–Ⅲ Far-tile supply they may place onto the map for 1 movement point. The tile is rolled at random when placed."
                 : "No Ⅱ–Ⅲ supply — players cannot open Far tiles (use this when the map already includes its Ⅱ–Ⅲ tiles)."}
+            </small>
+          </div>
+        );
+      })()}
+
+      {(() => {
+        const farTileOpeningOn = options.farTileOpening ?? true;
+        if (!farTileOpeningOn) {
+          return null;
+        }
+        const scenarioDefault = scenarioDefinitions[options.scenarioId]?.farTiles.perPlayer ?? 2;
+        const current = options.farTilesPerPlayer ?? scenarioDefault;
+        // 0..MAX_FAR_TILES_PER_PLAYER (the engine clamps to this range).
+        const counts = [0, 1, 2, 3, 4, 5, 6];
+        return (
+          <div className="optionRow">
+            <small title="How many NEW Ⅱ–Ⅲ tiles each player may add to the map (their supply size)">
+              New Ⅱ–Ⅲ tiles / player
+            </small>
+            <div className="optionButtons">
+              {counts.map((count) => (
+                <button
+                  aria-pressed={current === count}
+                  className={current === count ? "selected" : ""}
+                  key={count}
+                  onClick={() => send({ farTilesPerPlayer: count })}
+                  title={`Each player may add ${count} new Ⅱ–Ⅲ tile${count === 1 ? "" : "s"}`}
+                  type="button"
+                >
+                  {count}
+                </button>
+              ))}
+            </div>
+            <small className="optionHint">
+              Each player may add this many new Ⅱ–Ⅲ tiles (default {scenarioDefault}). Set 0 when a designed map already
+              places its own Ⅱ–Ⅲ tiles. The 2nd tile a player opens is guaranteed a Settlement (keep / reroll until one
+              appears, then pick); any tile showing a resource Mine may be rerolled once.
             </small>
           </div>
         );

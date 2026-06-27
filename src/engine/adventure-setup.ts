@@ -59,7 +59,7 @@ import type {
   UnitLevel,
   VictoryMode
 } from "./state";
-import { NEUTRAL_PLAYER_ID } from "./state";
+import { MAX_FAR_TILES_PER_PLAYER, NEUTRAL_PLAYER_ID, UNOPENED_FAR_TILE } from "./state";
 
 export type AdventurePlayerConfig = {
   id: string;
@@ -81,6 +81,8 @@ export type AdventureSetupOptions = {
   spellBook?: boolean;
   /** Whether players may open their own Ⅱ–Ⅲ Far tiles (default on). Off gives no Far-tile supply. */
   farTileOpening?: boolean;
+  /** How many NEW Ⅱ–Ⅲ tiles each player may add to the map (default: the scenario's perPlayer, 2). */
+  farTilesPerPlayer?: number;
   difficulty?: GameDifficulty;
   scenarioId?: string;
   players?: AdventurePlayerConfig[];
@@ -145,6 +147,7 @@ export function defaultGameSetupOptions(scenario: ScenarioDefinition): GameSetup
     pvpTroopLoss: "normal",
     spellBook: true,
     farTileOpening: true,
+    farTilesPerPlayer: scenario.farTiles.perPlayer,
     difficulty: "impossible",
     startingResources: { ...scenario.startingResources },
     startingProduction: { ...scenario.startingProduction },
@@ -359,45 +362,10 @@ function makeNeutralSeatPlayer(): PlayerState {
   };
 }
 
-function tileHasSettlement(tileDefId: string): boolean {
-  return Boolean(allTileDefinitions[tileDefId]?.fields.some((field) => field.location === "settlement"));
-}
-
-/**
- * Drafts a player's Far (II–III) tile supply. Mission Book draft rule: when
- * the scenario guarantees a settlement and none of the drawn tiles has one,
- * the last tile is redrawn (non-settlement tiles cycle to the bottom of the
- * pool) until a settlement shows up.
- */
-export function draftFarTiles(pool: string[], scenario: ScenarioDefinition): string[] {
-  const drawn: string[] = [];
-  for (let count = 0; count < scenario.farTiles.perPlayer && pool.length > 0; count += 1) {
-    drawn.push(pool.pop() as string);
-  }
-
-  if (!scenario.farTiles.guaranteeSettlement || drawn.length === 0) {
-    return drawn;
-  }
-
-  if (drawn.some(tileHasSettlement) || !pool.some(tileHasSettlement)) {
-    return drawn;
-  }
-
-  let safety = pool.length * 2;
-  while (safety > 0 && !tileHasSettlement(drawn[drawn.length - 1])) {
-    safety -= 1;
-    const rejected = drawn.pop() as string;
-    pool.unshift(rejected);
-    const next = pool.pop();
-    if (!next) {
-      drawn.push(rejected);
-      break;
-    }
-    drawn.push(next);
-  }
-
-  return drawn;
-}
+// The old setup-time `draftFarTiles` (which pre-decided each player's supply and
+// auto-rerolled for the settlement guarantee) is gone: the supply is now opaque
+// UNOPENED markers and the settlement guarantee runs interactively when a player
+// flips their 2nd tile (see the Ⅱ–Ⅲ flip flow in adventure-reducer.ts).
 
 /**
  * Validates a designed map against a scenario. The map designer is free-form:
@@ -550,6 +518,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     ...(options.creatureBanks !== undefined ? { creatureBanks: options.creatureBanks } : {}),
     ...(options.spellBook !== undefined ? { spellBook: options.spellBook } : {}),
     ...(options.farTileOpening !== undefined ? { farTileOpening: options.farTileOpening } : {}),
+    ...(options.farTilesPerPlayer !== undefined ? { farTilesPerPlayer: options.farTilesPerPlayer } : {}),
     ...(options.customMap !== undefined ? { customMap: options.customMap } : {})
   };
   const difficulty = setupOptions.difficulty;
@@ -562,6 +531,15 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   // Far-tile opening default ON: each player drafts a Ⅱ–Ⅲ Far-tile supply they
   // may place. Off gives no supply (the map already provides its Ⅱ–Ⅲ tiles).
   const farTileOpeningOn = setupOptions.farTileOpening ?? true;
+  // How many NEW Ⅱ–Ⅲ tiles each player may add to the map (their supply size),
+  // overriding the scenario default. Clamped to a sane 0..MAX range.
+  const farTilesPerPlayer = Math.max(
+    0,
+    Math.min(
+      MAX_FAR_TILES_PER_PLAYER,
+      Math.floor(setupOptions.farTilesPerPlayer ?? scenario.farTiles.perPlayer)
+    )
+  );
   // Opening home-tile free-rotation (BINH house rule): each player is forced to
   // rotate their own faction Ⅰ tile at the start of their first turn before
   // moving. Part of the opening ceremony, so it defaults to the same gate as the
@@ -582,6 +560,11 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     tiles: {},
     fields: {},
     playerFarTiles: {},
+    // The undrawn Ⅱ–Ⅲ pool and per-player opened counters are populated below,
+    // once the scenario's own face-down Far tiles have been dealt from the pool.
+    farTilePool: [],
+    farTilesOpenedByPlayer: {},
+    pendingFarTileFlip: null,
     // Setup: the war machine cards sit face up in a shared supply pile.
     warMachineSupply: [...WAR_MACHINE_CARD_IDS],
     // Pandora's Box fields may draw from this deck instead of rolling dice.
@@ -854,11 +837,20 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   // discovered during play).
   recomputeSubterraneanGates(adventure);
 
-  // Far (II–III) tile supplies, with the settlement draft guarantee. When
-  // Far-tile opening is off, every player's supply stays empty so there is
-  // nothing to place (the map already provides its Ⅱ–Ⅲ tiles).
+  // Far (II–III) tile supplies. The tiles are NOT decided here: each player gets
+  // `farTilesPerPlayer` face-down UNOPENED markers, and a truly-random tile is
+  // drawn from the remaining far pool only when the player actually opens one
+  // (the "flip"). Off, or a count of 0, gives an empty supply. The pool of tiles
+  // left after the scenario's own face-down Far tiles is parked on the adventure
+  // for those in-play draws (and the reroll returns).
+  adventure.farTilePool = [...farPool];
+  const openedCounters = (adventure.farTilesOpenedByPlayer ??= {});
   for (const config of playerConfigs) {
-    adventure.playerFarTiles[config.id] = farTileOpeningOn ? draftFarTiles(farPool, scenario) : [];
+    adventure.playerFarTiles[config.id] =
+      farTileOpeningOn && farTilesPerPlayer > 0
+        ? new Array<string>(farTilesPerPlayer).fill(UNOPENED_FAR_TILE)
+        : [];
+    openedCounters[config.id] = 0;
   }
 
   // Roll for the starting player FIRST — before a single card is dealt — so
@@ -1147,6 +1139,15 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
   if (next.farTileOpening !== undefined) {
     lobby.options.farTileOpening = Boolean(next.farTileOpening);
     changes.push(`Ⅱ–Ⅲ tile opening ${next.farTileOpening ? "on" : "off"}`);
+  }
+
+  if (next.farTilesPerPlayer !== undefined) {
+    if (!Number.isFinite(next.farTilesPerPlayer)) {
+      throw new Error("Ⅱ–Ⅲ tiles per player must be a number.");
+    }
+    const count = Math.max(0, Math.min(MAX_FAR_TILES_PER_PLAYER, Math.floor(next.farTilesPerPlayer)));
+    lobby.options.farTilesPerPlayer = count;
+    changes.push(`new Ⅱ–Ⅲ tiles per player ${count}`);
   }
 
   if (next.scenarioId !== undefined) {
@@ -1528,6 +1529,7 @@ export function startAdventureFromLobby(state: GameState, action: Extract<GameAc
     pvpTroopLoss: lobby.options.pvpTroopLoss,
     spellBook: lobby.options.spellBook,
     farTileOpening: lobby.options.farTileOpening,
+    farTilesPerPlayer: lobby.options.farTilesPerPlayer,
     difficulty: lobby.options.difficulty,
     startingResources: lobby.options.startingResources,
     startingProduction: lobby.options.startingProduction,

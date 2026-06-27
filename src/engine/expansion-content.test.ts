@@ -509,11 +509,14 @@ describe("rulebook conformance fixes", () => {
       throw new Error("no second anchor tile for the placement slot");
     }
     instantiateTile(adventure, "N1", second, 0, true);
-    adventure.playerFarTiles.p1 = ["F4"];
+    // One opaque UNOPENED supply marker; force the flip to draw F1 (a Settlement,
+    // no-Mine tile) so it auto-finalizes with no keep/reroll choice.
+    adventure.playerFarTiles.p1 = ["?"];
+    adventure.farTileScriptedDraws = ["F1"];
     // Stand on the flower's CENTRE field: placement needs no border access either.
     openObservatoryVisit(state, hexSpaceId(O));
 
-    const centers = observatoryPlacementCenters(state, state.heroes.hero_p1, obsTile, "F4");
+    const centers = observatoryPlacementCenters(state, state.heroes.hero_p1, obsTile, adventure.playerFarTiles.p1[0]);
     expect(centers.some((center) => hexEquals(center, target))).toBe(true);
 
     const place = getLegalActions(state, "p1").find((legal) => legal.label.startsWith("Place a Far"));

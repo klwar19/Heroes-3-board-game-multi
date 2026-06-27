@@ -6001,14 +6001,87 @@ export type PendingGarrisonState = {
   fieldId: MapSpaceId;
 };
 
+/** Opaque marker for an unopened Ⅱ–Ⅲ supply tile (its identity is rolled at flip). */
+export const UNOPENED_FAR_TILE = "?";
+
+/** Upper bound for the per-player Ⅱ–Ⅲ supply size the lobby may set. */
+export const MAX_FAR_TILES_PER_PLAYER = 6;
+
+/**
+ * A Ⅱ–Ⅲ (Far) supply tile being flipped onto the map. The drawn `candidate` is
+ * revealed and the player may keep it, reroll it, or pick between two tiles
+ * before it is finally placed (and its rotation chosen). House rules:
+ *  - the player's 2nd opening, if its tile has no Settlement (and one is still
+ *    in the pool), may be rerolled until a Settlement appears, then the player
+ *    picks the Settlement tile OR the last tile seen before that reroll;
+ *  - any opening whose tile shows a material (resource) Mine may be rerolled
+ *    once.
+ */
+export type PendingFarTileFlip = {
+  playerId: PlayerId;
+  /** The placing hero (for PLACE_TILE; the rotation must keep a doorway it can cross). */
+  heroId?: HeroId;
+  /** Where the chosen tile's flower will be centred. */
+  centerRow: number;
+  centerCol: number;
+  /** How this flip was triggered: a normal border placement, or a Redwood Observatory drop. */
+  via: "place" | "observatory";
+  /** Observatory: the field whose visit step is consumed once the tile is placed. */
+  observatoryFieldId?: MapSpaceId;
+  /** Phase to restore once the flip resolves (preserved across rerolls). */
+  returnPhase: GamePhase;
+  /** 1-based index of this opening for the player (the 2nd is settlement-guaranteed). */
+  openingIndex: number;
+  /** The tile currently revealed and under decision. */
+  candidate: string;
+  /** The most recent NON-settlement tile held aside during a settlement reroll, offered against the Settlement at the final pick. */
+  lastNonSettlement: string | null;
+  /** Whether the one-time material-mine reroll has been spent this opening. */
+  mineRerollUsed: boolean;
+  /**
+   * Which decision the pending OPTION_CHOICE represents, so resolution knows how
+   * to read the chosen index:
+   *  - "settlement": [Keep, Reroll for a Settlement]
+   *  - "mine":       [Keep, Reroll once (material mine)]
+   *  - "pick":       [Place the Settlement tile, Place the previous tile]
+   */
+  offerMode: "settlement" | "mine" | "pick";
+};
+
 export type AdventureState = {
   difficulty: GameDifficulty;
   /** Scenario this map was built from (data/map/scenarios). */
   scenarioId?: string;
   tiles: Record<string, MapTileState>;
   fields: Record<MapSpaceId, MapFieldState>;
-  /** Face-down Far tiles each player may place for 1 MP. */
+  /**
+   * Each player's face-down Ⅱ–Ⅲ (Far) tile supply, as opaque UNOPENED markers
+   * (one {@link UNOPENED_FAR_TILE} per unplaced tile). The tiles are NOT decided
+   * here — a truly random tile is drawn from {@link farTilePool} only when the
+   * player actually places one (the "flip"), so the supply is just a count. The
+   * player-view masks every entry to "hidden" anyway.
+   */
   playerFarTiles: Record<PlayerId, string[]>;
+  /**
+   * The undrawn Ⅱ–Ⅲ tile pool players' openings draw from (the far tiles left
+   * after the scenario's own face-down Far tiles were placed). A flip pops a
+   * truly-random tile from here; a rerolled-away tile returns to it. Redacted in
+   * the player-view (upcoming tiles are secret). Absent on pre-feature saves.
+   */
+  farTilePool?: string[];
+  /**
+   * How many Ⅱ–Ⅲ tiles each player has already opened (placed). Drives the
+   * "the 2nd tile each player opens is the settlement-guaranteed one" rule.
+   */
+  farTilesOpenedByPlayer?: Record<PlayerId, number>;
+  /** A Ⅱ–Ⅲ tile flip in progress (keep / reroll / pick decision pending). */
+  pendingFarTileFlip?: PendingFarTileFlip | null;
+  /**
+   * Test-only override: forces the next flip draws to these tile def ids in
+   * order (mirrors combat dice `scriptedRolls`). Each entry is pulled from the
+   * pool when drawn. Never set in production (real play draws truly at random).
+   */
+  farTileScriptedDraws?: string[];
   /** Start-of-game first-player roll, shown to every seat. */
   firstPlayerRoll?: FirstPlayerRollState | null;
   /** Garrison decision pending while an undefended town is attacked. */
@@ -6127,6 +6200,14 @@ export type GameSetupOptions = {
    * Ⅱ–Ⅲ tiles, so there is nothing left for players to open.
    */
   farTileOpening?: boolean;
+  /**
+   * How many NEW Ⅱ–Ⅲ tiles each player may add to the map (their personal
+   * face-down supply size). Defaults to the scenario's `farTiles.perPlayer` (2).
+   * Set to 0 when a designed map already places its own Ⅱ–Ⅲ tiles and you want
+   * players to add none; raise it for a more expansive map. Only takes effect
+   * while `farTileOpening` is ON. Clamped to {@link MAX_FAR_TILES_PER_PLAYER}.
+   */
+  farTilesPerPlayer?: number;
   difficulty: GameDifficulty;
   startingResources: { gold: number; buildingMaterials: number; valuables: number };
   startingProduction: { gold: number; buildingMaterials: number; valuables: number };
@@ -6388,7 +6469,8 @@ export type PendingChoice =
         | "visions-deck"
         | "visions-scry"
         | "pandora-upkeep"
-        | "place-creature-bank";
+        | "place-creature-bank"
+        | "far-tile-flip";
       /**
        * city-hall: the income options for the City Hall (Resource-round) choice
        * under resolution, index-aligned with `options`. Stored here in game

@@ -113,7 +113,6 @@ export {
   createAdventureGameState,
   createAdventureLobbyState,
   defaultGameSetupOptions,
-  draftFarTiles,
   getScenario,
   scenarioStartingUnitLevels,
   TIER_LEVELS,

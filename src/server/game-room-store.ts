@@ -322,7 +322,14 @@ export function submitRoomAction(
   actorClientId?: string
 ): { snapshot: GameRoomSnapshot; result: EngineResult } {
   const current = getRoomRecord(roomId);
-  const result = applyAction(current.state, action, actorClientId ? { actorClientId } : {});
+  // Fresh crypto entropy per action: every die roll, shuffle and Ⅱ–Ⅲ tile flip is
+  // genuinely unpredictable and non-reproducible from the game seed (true random
+  // in play). A no-op for the deterministic engine test suite, which calls
+  // applyAction directly without it (see random.ts).
+  const result = applyAction(current.state, action, {
+    entropy: freshEntropy(),
+    ...(actorClientId ? { actorClientId } : {})
+  });
 
   if (result.errors.length > 0) {
     roomStore.set(roomId, current);

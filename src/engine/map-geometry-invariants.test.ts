@@ -232,7 +232,9 @@ describe("LOCKED: Far (Ⅱ–Ⅲ) placement needs a reachable (open-border) slot
     const state = createAdventureGameState({ seed: "test-seed", difficulty: "normal", rollFirstPlayer: false });
   for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     state.heroes.hero_p1.spaceId = "h:7:2";
-    const tileDefId = state.adventure!.playerFarTiles.p1[0];
+    // The supply holds opaque UNOPENED markers now, so reach is checked against a
+    // concrete Ⅱ–Ⅲ def (F1); every Far tile is reachable at this open slot.
+    const tileDefId = "F1";
     const reachable = [0, 1, 2, 3, 4, 5].some((rotation) =>
       canHeroReachPlacedTile(state, state.heroes.hero_p1, tileDefId, { row: 6, col: 4 }, rotation)
     );
@@ -243,7 +245,9 @@ describe("LOCKED: Far (Ⅱ–Ⅲ) placement needs a reachable (open-border) slot
     const state = createAdventureGameState({ seed: "test-seed", difficulty: "normal", rollFirstPlayer: false });
   for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     state.heroes.hero_p1.spaceId = "h:8:3";
-    const tileDefId = state.adventure!.playerFarTiles.p1[0];
+    // Any concrete Ⅱ–Ⅲ def is unreachable here — the sealed (8,3) arc blocks the
+    // crossing regardless of which tile lands (the supply markers are opaque now).
+    const tileDefId = "F1";
     // (9,4) is the slot the sealed (8,3) arc faces; the hero cannot step across.
     const reachable = [0, 1, 2, 3, 4, 5].some((rotation) =>
       canHeroReachPlacedTile(state, state.heroes.hero_p1, tileDefId, { row: 9, col: 4 }, rotation)
