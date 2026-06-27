@@ -11,6 +11,36 @@ function spellSource(slug: string) {
   };
 }
 
+/**
+ * Spells the fan wiki (en.homm3bg.wiki, this project's art source) has NO card
+ * scan for: its own spell page shows the generic deck-back placeholder
+ * (assets/player-deck-back.webp) instead of artwork, so there is nothing to
+ * download and no authentic scan to commit. These route to the same deck-back
+ * here — exactly as the wiki renders them — rather than naming a
+ * /assets/spells-<slug>.webp file that does not exist (which would 404 on every
+ * render and fall back through an <img> onError). This is the spell counterpart
+ * of SCANLESS_ARTIFACTS in ./artifacts. When a real scan is added to the wiki,
+ * download it (scripts/fetch-missing-spell-card-art.py) and remove the slug
+ * here. Enforced in src/data/cards/spell-card-art.test.ts.
+ */
+export const SCANLESS_SPELLS: ReadonlySet<string> = new Set<string>([
+  "summon_air_elemental",
+  "summon_earth_elemental",
+  "summon_fire_elemental",
+  "summon_water_elemental",
+  "magic_mirror",
+  "water_walk",
+  "air_shield",
+  "protection_from_air",
+  "protection_from_earth",
+  "protection_from_fire",
+  "protection_from_water",
+  "sacrifice"
+]);
+
+/** Deck-back placeholder shared by every scanless card. */
+const DECK_BACK_IMAGE = "/assets/player-deck-back.webp";
+
 export const spellCards: CardLibrary = {
   "spell.haste": {
     id: "spell.haste",
@@ -443,7 +473,8 @@ export const spellCards: CardLibrary = {
     target: { type: "empty-space" },
     effect: { type: "SUMMON_ELEMENTAL", unitDefId: "neutral.air_elementals" },
     assets: {
-      cardImage: "/assets/spells-summon_air_elemental.webp",
+      // No wiki scan for this spell — see SCANLESS_SPELLS above.
+      cardImage: DECK_BACK_IMAGE,
       imageAlt: "Summon Air Elemental card"
     },
     implementationStatus: "implemented",
@@ -467,7 +498,8 @@ export const spellCards: CardLibrary = {
     target: { type: "empty-space" },
     effect: { type: "SUMMON_ELEMENTAL", unitDefId: "neutral.earth_elementals" },
     assets: {
-      cardImage: "/assets/spells-summon_earth_elemental.webp",
+      // No wiki scan for this spell — see SCANLESS_SPELLS above.
+      cardImage: DECK_BACK_IMAGE,
       imageAlt: "Summon Earth Elemental card"
     },
     implementationStatus: "implemented",
@@ -491,7 +523,8 @@ export const spellCards: CardLibrary = {
     target: { type: "empty-space" },
     effect: { type: "SUMMON_ELEMENTAL", unitDefId: "neutral.fire_elementals" },
     assets: {
-      cardImage: "/assets/spells-summon_fire_elemental.webp",
+      // No wiki scan for this spell — see SCANLESS_SPELLS above.
+      cardImage: DECK_BACK_IMAGE,
       imageAlt: "Summon Fire Elemental card"
     },
     implementationStatus: "implemented",
@@ -515,7 +548,8 @@ export const spellCards: CardLibrary = {
     target: { type: "empty-space" },
     effect: { type: "SUMMON_ELEMENTAL", unitDefId: "neutral.water_elementals" },
     assets: {
-      cardImage: "/assets/spells-summon_water_elemental.webp",
+      // No wiki scan for this spell — see SCANLESS_SPELLS above.
+      cardImage: DECK_BACK_IMAGE,
       imageAlt: "Summon Water Elemental card"
     },
     implementationStatus: "implemented",
@@ -662,7 +696,8 @@ export const spellCards: CardLibrary = {
       ]
     },
     assets: {
-      cardImage: "/assets/spells-magic_mirror.webp",
+      // No wiki scan for this spell — see SCANLESS_SPELLS above.
+      cardImage: DECK_BACK_IMAGE,
       imageAlt: "Magic Mirror card"
     },
     implementationStatus: "implemented",
@@ -1062,7 +1097,8 @@ export const spellCards: CardLibrary = {
       ]
     },
     assets: {
-      cardImage: "/assets/spells-water_walk.webp",
+      // No wiki scan for this spell — see SCANLESS_SPELLS above.
+      cardImage: DECK_BACK_IMAGE,
       imageAlt: "Water Walk card"
     },
     implementationStatus: "implemented",
@@ -1506,7 +1542,8 @@ export const spellCards: CardLibrary = {
       vsAttackerType: "ranged"
     },
     assets: {
-      cardImage: "/assets/spells-air_shield.webp",
+      // No wiki scan for this spell — see SCANLESS_SPELLS above.
+      cardImage: DECK_BACK_IMAGE,
       imageAlt: "Air Shield card"
     },
     implementationStatus: "implemented",
@@ -1545,7 +1582,8 @@ export const spellCards: CardLibrary = {
       expertIgnoresMaxSpellLevel: true
     },
     assets: {
-      cardImage: "/assets/spells-protection_from_air.webp",
+      // No wiki scan for this spell — see SCANLESS_SPELLS above.
+      cardImage: DECK_BACK_IMAGE,
       imageAlt: "Protection from Air card"
     },
     implementationStatus: "implemented",
@@ -1574,7 +1612,8 @@ export const spellCards: CardLibrary = {
       expertIgnoresMaxSpellLevel: true
     },
     assets: {
-      cardImage: "/assets/spells-protection_from_earth.webp",
+      // No wiki scan for this spell — see SCANLESS_SPELLS above.
+      cardImage: DECK_BACK_IMAGE,
       imageAlt: "Protection from Earth card"
     },
     implementationStatus: "implemented",
@@ -1603,7 +1642,8 @@ export const spellCards: CardLibrary = {
       expertIgnoresMaxSpellLevel: true
     },
     assets: {
-      cardImage: "/assets/spells-protection_from_fire.webp",
+      // No wiki scan for this spell — see SCANLESS_SPELLS above.
+      cardImage: DECK_BACK_IMAGE,
       imageAlt: "Protection from Fire card"
     },
     implementationStatus: "implemented",
@@ -1632,7 +1672,8 @@ export const spellCards: CardLibrary = {
       expertIgnoresMaxSpellLevel: true
     },
     assets: {
-      cardImage: "/assets/spells-protection_from_water.webp",
+      // No wiki scan for this spell — see SCANLESS_SPELLS above.
+      cardImage: DECK_BACK_IMAGE,
       imageAlt: "Protection from Water card"
     },
     implementationStatus: "implemented",
@@ -1702,7 +1743,8 @@ export const spellCards: CardLibrary = {
       gradeByPower: { 0: "bronze", 2: "silver", 4: "gold" }
     },
     assets: {
-      cardImage: "/assets/spells-sacrifice.webp",
+      // No wiki scan for this spell — see SCANLESS_SPELLS above.
+      cardImage: DECK_BACK_IMAGE,
       imageAlt: "Sacrifice card"
     },
     implementationStatus: "implemented",
