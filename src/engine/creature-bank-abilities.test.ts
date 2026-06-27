@@ -274,36 +274,56 @@ describe("Medusa Stores Medusas: paralyze on attack (while Stacked)", () => {
     });
   });
 
-  function attackAndCheck(stacked: boolean): GameState {
+  function attackAndCheck(opts: { stacked: boolean; adjacent: boolean }): GameState {
     const state = createInitialGameState("bank-medusa-paralyze");
     const attacker = state.combat!.units.unit_p1_griffins;
     attacker.abilities = ["bank-medusa-paralyze-stacked"];
-    attacker.stackToken = stacked ? "attack" : null;
-    attacker.attack = 1;
+    attacker.stackToken = opts.stacked ? "attack" : null;
+    attacker.attack = 8; // high enough that even a long-range shot clearly lands
+    attacker.type = "ranged"; // a Medusa is a ranged unit (can shoot OR melee)
     attacker.position = 1;
+    // Clear the lane so a far shot has a clean line and no cell clash.
+    for (const unit of Object.values(state.combat!.units)) {
+      if (unit.id !== attacker.id && unit.id !== "unit_p2_skeletons") {
+        unit.position = -1;
+      }
+    }
     const defender = state.combat!.units.unit_p2_skeletons;
     defender.abilities = [];
-    defender.position = 2; // adjacent to 1
+    // Adjacent (melee, position 2) petrifies; a distant shot (position 9, a
+    // straight ranged hit two rows down) must NOT.
+    defender.position = opts.adjacent ? 2 : 9;
+    defender.defense = 0;
     defender.maxHealth = 30;
     defender.damage = 0;
     state.players.p1.hand = [];
     state.players.p2.hand = [];
     state.activePlayerId = "p1";
     state.combat!.activeUnitId = "unit_p1_griffins";
-    script(state, [0, 0, 0, 0]);
+    script(state, [0, 0, 0, 0, 0, 0]);
     return settle(
       applyOk(state, { type: "ATTACK_UNIT", playerId: "p1", attackerId: "unit_p1_griffins", defenderId: "unit_p2_skeletons" })
     );
   }
 
-  it("a Stacked Medusa paralyzes the target it attacks", () => {
-    const next = attackAndCheck(true);
+  it("a Stacked Medusa paralyzes an ADJACENT target it attacks (melee)", () => {
+    const next = attackAndCheck({ stacked: true, adjacent: true });
     expect(hasToken(next.combat!.units.unit_p2_skeletons, "paralysis")).toBe(true);
     expect(abilityEventIds(next)).toContain("bank-medusa-paralyze-stacked");
   });
 
-  it("an un-Stacked Medusa does NOT paralyze", () => {
-    const next = attackAndCheck(false);
+  it("a Stacked Medusa's RANGED shot at a distant target deals damage but does NOT paralyze", () => {
+    const next = attackAndCheck({ stacked: true, adjacent: false });
+    const target = next.combat!.units.unit_p2_skeletons;
+    // The shot landed (the attack resolved)…
+    expect(target.damage).toBeGreaterThan(0);
+    // …but a down-range shot petrifies nobody (the adjacency gate).
+    expect(hasToken(target, "paralysis")).toBe(false);
+    expect(abilityEventIds(next)).not.toContain("bank-medusa-paralyze-stacked");
+  });
+
+  it("an un-Stacked Medusa does NOT paralyze even attacking adjacent", () => {
+    const next = attackAndCheck({ stacked: false, adjacent: true });
     expect(hasToken(next.combat!.units.unit_p2_skeletons, "paralysis")).toBe(false);
     expect(abilityEventIds(next)).not.toContain("bank-medusa-paralyze-stacked");
   });
