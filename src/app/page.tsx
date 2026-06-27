@@ -178,6 +178,18 @@ const FX_EVENT_TYPES = new Set<GameEvent["type"]>([
 ]);
 
 /**
+ * Safety net for the freshly-drawn-card "incoming" hide (visibility:hidden):
+ * however a draw flight is presented, the hidden tail MUST clear within this
+ * window. The longest legitimate draw flight is ~FLIGHT_MS + 5×DRAW_STAGGER_MS
+ * (≈1.3s for a full 6-card hand), so this generous backstop never pre-empts a
+ * real flight — it only catches the case where a per-snapshot reveal timer is
+ * dropped (a snapshot race, a reconnect mid-flight, an interrupted ceremony),
+ * which would otherwise leave the whole hand invisible across turns with no
+ * game event to explain it.
+ */
+const HIDDEN_HAND_REVEAL_BACKSTOP_MS = 4000;
+
+/**
  * "[activation]" abilities that resolve as a damage SPELL the unit casts BEFORE
  * it then moves/attacks in the same neutral pump — today only the Faerie
  * Dragon's Ice Bolt. Because the whole activation lands in one snapshot, the
@@ -2506,6 +2518,25 @@ export default function Home() {
       showFeedItems(pending.items, pending.sounds);
     }
   }, [mapDice, showFeedItems]);
+
+  // Backstop the freshly-drawn-card hide. Freshly drawn cards are held
+  // `visibility:hidden` (the "incoming" class) until their draw flight lands,
+  // which is normally cleared by a per-snapshot reveal timer or the first-roll
+  // dismiss. If any of those reset paths is ever dropped — a snapshot race, a
+  // reconnect mid-flight, an interrupted draw — the hidden tail would stick and
+  // the hand would look empty (0 cards) across turns even though the engine
+  // still holds every card (hence "no event"). This guarantees a stuck hidden
+  // tail always clears shortly after the longest possible flight. It is gated on
+  // `!firstRoll` so it never reveals the opening hand early while the
+  // first-player ceremony is still showing (that hand is hidden on purpose until
+  // the player dismisses the roll).
+  useEffect(() => {
+    if (hiddenHandTail <= 0 || firstRoll) {
+      return;
+    }
+    const timer = window.setTimeout(() => setHiddenHandTail(0), HIDDEN_HAND_REVEAL_BACKSTOP_MS);
+    return () => window.clearTimeout(timer);
+  }, [hiddenHandTail, firstRoll]);
 
   const handleFxDone = useCallback((id: string) => {
     setFxCues((current) => current.filter((cue) => cue.id !== id));

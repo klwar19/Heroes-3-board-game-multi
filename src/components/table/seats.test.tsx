@@ -65,6 +65,63 @@ describe("HandFan — Schools of Magic offer the expert as a cast-time choice", 
   });
 });
 
+describe("HandFan — freshly-drawn cards are HIDDEN, never removed (the disappearing-hand guard)", () => {
+  // The bug: a freshly-drawn hand could end a turn looking EMPTY (0 cards, no
+  // game event) because the whole hand was held `visibility:hidden` ("incoming")
+  // waiting for a draw flight whose reveal never fired. This pins the underlying
+  // contract the page-level backstop relies on: the hidden tail is a pure CSS
+  // hide — every card stays mounted in the DOM — so clearing the hidden count
+  // ALWAYS brings real cards back; a stuck hide can only ever blank the display,
+  // it can never lose a card.
+  function threeCardHandState(): GameState {
+    const state = createInitialGameState("hand-hidden-tail");
+    state.players.p1.hand = ["spell.magic_arrow", "spell.magic_arrow", "spell.magic_arrow"];
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    return state;
+  }
+
+  function renderHand(hiddenTailCount: number) {
+    const state = threeCardHandState();
+    return render(
+      <CardZoomProvider>
+        <HandFan
+          view={getPlayerView(state, "p1")}
+          state={state}
+          viewerPlayerId="p1"
+          legalActions={getLegalActions(state, "p1")}
+          selectedCardAction={null}
+          trayActive={false}
+          hiddenTailCount={hiddenTailCount}
+          onSelectCardAction={() => {}}
+          onAction={() => {}}
+        />
+      </CardZoomProvider>
+    );
+  }
+
+  it("hides the WHOLE hand visually when the hidden tail covers it, yet renders every card", () => {
+    const { container } = renderHand(3); // the worst case: the entire fresh hand
+    const slots = container.querySelectorAll(".fanSlot");
+    expect(slots).toHaveLength(3); // all three cards are STILL mounted — none lost
+    // …and all three are merely hidden (the CSS `incoming` blanket), so the moment
+    // the count is cleared they re-appear. A removed card could never come back.
+    expect(container.querySelectorAll(".fanSlot.incoming")).toHaveLength(3);
+  });
+
+  it("hides ONLY the freshly drawn tail, leaving older cards visible", () => {
+    const { container } = renderHand(1); // one card just drew; the other two are old
+    expect(container.querySelectorAll(".fanSlot")).toHaveLength(3);
+    expect(container.querySelectorAll(".fanSlot.incoming")).toHaveLength(1);
+  });
+
+  it("CONTROL: with no hidden tail, nothing is hidden", () => {
+    const { container } = renderHand(0);
+    expect(container.querySelectorAll(".fanSlot")).toHaveLength(3);
+    expect(container.querySelectorAll(".fanSlot.incoming")).toHaveLength(0);
+  });
+});
+
 describe("RuneTrack — Bulwark combat HUD", () => {
   function bulwarkCombat(buildings: string[], count: number): GameState {
     const state = createInitialGameState("rune-track-ui");
