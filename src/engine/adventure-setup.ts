@@ -503,13 +503,13 @@ function popSeaBandTile(pool: string[], band: "iv-v" | "vi-vii"): string | undef
 }
 
 /**
- * Pops the topmost Subterranean tile of a given guard band (Ⅴ–Ⅵ or Ⅵ–Ⅶ) from
+ * Pops the topmost Subterranean tile of a given guard band (Ⅳ–Ⅴ or Ⅵ–Ⅶ) from
  * the single shared, shuffled underground pool — the underground twin of
  * {@link popSeaBandTile}. The boss band (Ⅵ–Ⅶ) is the three tiles whose centre
  * is a VII guardian (U7 / #C2 Cyclops Stockpile, #C3 Random Town); everything
- * else is the regular Ⅴ–Ⅵ band (see {@link subterraneanTileBand}).
+ * else is the regular Ⅳ–Ⅴ band (see {@link subterraneanTileBand}).
  */
-function popSubBandTile(pool: string[], band: "v-vi" | "vi-vii"): string | undefined {
+function popSubBandTile(pool: string[], band: "iv-v" | "vi-vii"): string | undefined {
   for (let index = pool.length - 1; index >= 0; index -= 1) {
     const def = allTileDefinitions[pool[index]];
     if (def && subterraneanTileBand(def) === band) {
@@ -775,9 +775,9 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
       band ? popSeaBandTile(seaPool, band) : seaPool.pop();
 
     // A face-down underground slot likewise draws only from its own guard band
-    // (Ⅴ–Ⅵ or Ⅵ–Ⅶ) out of the one shuffled subterranean pool. An undefined
+    // (Ⅳ–Ⅴ or Ⅵ–Ⅶ) out of the one shuffled subterranean pool. An undefined
     // band (older saved maps) takes any underground tile, as before.
-    const popSubTile = (band?: "v-vi" | "vi-vii"): string | undefined =>
+    const popSubTile = (band?: "iv-v" | "vi-vii"): string | undefined =>
       band ? popSubBandTile(subterraneanPool, band) : subterraneanPool.pop();
 
     // Designed face-up tiles never also hide in a face-down pool draw.

@@ -269,19 +269,21 @@ describe("adventure setup", () => {
     expect(centerSeaC.backLabel).toBe("Ⅵ–Ⅶ");
   });
 
-  it("labels underground tiles by their Ⅴ–Ⅵ / Ⅵ–Ⅶ guard band (boss tier = U7/#C2/#C3)", () => {
-    // The underground pool ships a regular Ⅴ–Ⅵ tier and a Ⅵ–Ⅶ boss tier (the
-    // three tiles centred on a VII guardian) behind one underground back. The
-    // band follows each tile's strongest guarded field, exactly like the sea
-    // pool — so a revealed boss tile reports Ⅵ–Ⅶ and feeds the Center-tier deck
-    // rules (heroTileGroup / anyNearOrCenterTileRevealed) instead of masquerading
-    // as a regular underground tile.
+  it("labels underground tiles by their Ⅳ–Ⅴ / Ⅵ–Ⅶ guard band (boss tier = U7/#C2/#C3)", () => {
+    // The underground pool ships a regular Ⅳ–Ⅴ tier (its fields are guarded Ⅳ/Ⅴ)
+    // and a Ⅵ–Ⅶ boss tier (the three tiles centred on a VII guardian) behind one
+    // underground back — exactly the Ⅳ–Ⅴ / Ⅵ–Ⅶ split the sea pool uses. The band
+    // follows each tile's strongest guarded field, so a revealed boss tile reports
+    // Ⅵ–Ⅶ and feeds the Center-tier deck rules (heroTileGroup /
+    // anyNearOrCenterTileRevealed) instead of masquerading as a regular tile.
     const adventure = makeGame().adventure!;
     const regular = instantiateTile(adventure, "U1", { row: -8, col: -8 }, 0, true);
     const bossU = instantiateTile(adventure, "U7", { row: -8, col: -9 }, 0, true);
     const bossC2 = instantiateTile(adventure, "#C2", { row: -8, col: -10 }, 0, true);
     const bossC3 = instantiateTile(adventure, "#C3", { row: -8, col: -11 }, 0, true);
-    expect(regular.backLabel).toBe("Ⅴ–Ⅵ");
+    // Regular underground reports Ⅳ–Ⅴ (NOT Ⅴ–Ⅵ): no underground tile is guarded Ⅵ
+    // unless it is one of the three Ⅵ–Ⅶ boss tiles.
+    expect(regular.backLabel).toBe("Ⅳ–Ⅴ");
     expect(bossU.backLabel).toBe("Ⅵ–Ⅶ");
     expect(bossC2.backLabel).toBe("Ⅵ–Ⅶ");
     expect(bossC3.backLabel).toBe("Ⅵ–Ⅶ");
@@ -291,7 +293,7 @@ describe("adventure setup", () => {
     const sub = Object.values(allTileDefinitions).filter((tile) => tile.group === "subterranean");
     const boss = sub.filter((tile) => subterraneanTileBand(tile) === "vi-vii").map((tile) => tile.id).sort();
     expect(boss).toEqual(["#C2", "#C3", "U7"]);
-    expect(sub.filter((tile) => subterraneanTileBand(tile) === "v-vi")).toHaveLength(sub.length - 3);
+    expect(sub.filter((tile) => subterraneanTileBand(tile) === "iv-v")).toHaveLength(sub.length - 3);
   });
 
   it("drafts two far tiles per player, redrawing until one has a settlement", () => {

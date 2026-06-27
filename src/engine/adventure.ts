@@ -160,9 +160,11 @@ export const TILE_BACK_LABELS: Record<string, string> = {
   far: "Ⅱ–Ⅲ",
   near: "Ⅳ–Ⅴ",
   center: "Ⅵ–Ⅶ",
-  // Expansion backs, numbered as printed (sea waves IV–V, underworld V–VI).
+  // Expansion backs: both the sea waves and the underworld pool ship a Ⅳ–Ⅴ
+  // tier and a Ⅵ–Ⅶ boss tier; the per-tile band is read from the field guards
+  // (see seaTileBand / subterraneanTileBand). This default is the Ⅳ–Ⅴ tier.
   sea: "Ⅳ–Ⅴ",
-  subterranean: "Ⅴ–Ⅵ"
+  subterranean: "Ⅳ–Ⅴ"
 };
 
 export function getAstrologersState(state: GameState): AstrologersState | null {
@@ -266,17 +268,19 @@ export function seaTileBand(def: TileDefinition): "iv-v" | "vi-vii" {
 }
 
 /**
- * Which guard band a Subterranean tile belongs to. Like the Cove sea pool, the
- * underground pool mixes a regular Ⅴ–Ⅵ tier (U1–U6, #N4–#N7) with a Ⅵ–Ⅶ boss
- * tier — the three underground tiles whose centre is a VII guardian: U7 and #C2
- * (Cyclops Stockpile) and #C3 (Random Town). The band is read from the tile's
- * strongest guarded field, the same rule {@link seaTileBand} uses, so the map
- * designer can offer the two underground levels separately and draw the matching
- * face-down pool, and a revealed boss tile reports the Ⅵ–Ⅶ back numeral.
+ * Which guard band a Subterranean tile belongs to. Exactly like the Cove sea
+ * pool, the underground pool mixes a regular Ⅳ–Ⅴ tier (U1–U6, #N4–#N7 — every
+ * guarded field on them is Ⅳ or Ⅴ) with a Ⅵ–Ⅶ boss tier — the three
+ * underground tiles whose centre is a VII guardian: U7 and #C2 (Cyclops
+ * Stockpile) and #C3 (Random Town, guarded Ⅵ/Ⅶ). The band is read from the
+ * tile's strongest guarded field, the same rule {@link seaTileBand} uses, so the
+ * map designer can offer the two underground levels separately and draw the
+ * matching face-down pool, and a revealed boss tile reports the Ⅵ–Ⅶ back
+ * numeral.
  */
-export function subterraneanTileBand(def: TileDefinition): "v-vi" | "vi-vii" {
+export function subterraneanTileBand(def: TileDefinition): "iv-v" | "vi-vii" {
   const maxDifficulty = def.fields.reduce((max, field) => Math.max(max, field.difficulty ?? 0), 0);
-  return maxDifficulty >= 6 ? "vi-vii" : "v-vi";
+  return maxDifficulty >= 6 ? "vi-vii" : "iv-v";
 }
 
 /**
@@ -290,7 +294,7 @@ function tileBandLabel(group: string | undefined, def: TileDefinition | undefine
     return seaTileBand(def) === "vi-vii" ? "Ⅵ–Ⅶ" : "Ⅳ–Ⅴ";
   }
   if (group === "subterranean" && def) {
-    return subterraneanTileBand(def) === "vi-vii" ? "Ⅵ–Ⅶ" : "Ⅴ–Ⅵ";
+    return subterraneanTileBand(def) === "vi-vii" ? "Ⅵ–Ⅶ" : "Ⅳ–Ⅴ";
   }
   return group ? TILE_BACK_LABELS[group] : undefined;
 }
