@@ -325,6 +325,11 @@ export function HandFan({
 }) {
   const [openIndex, setOpenIndex] = useState<number | null>(null);
   const [shelfOpen, setShelfOpen] = useState<"book" | "scroll" | null>(null);
+  // A staged immediate play (no board target): clicking the play arms it here
+  // first, so an accidental click is ALWAYS cancellable — the card is only
+  // actually played when the player presses Confirm. Nothing is sent to the
+  // engine until then, so this holds for multiplayer too.
+  const [armed, setArmed] = useState<{ handIndex: number; action: CardBoardAction; label: string } | null>(null);
   const { zoomCard } = useCardZoom();
   const player = view.players[viewerPlayerId];
   if (!player) {
@@ -501,74 +506,108 @@ export function HandFan({
             {open ? (
               <div className="cardPopover" role="menu" aria-label={`${cardName(entry.cardId)} actions`}>
                 <strong>{cardName(entry.cardId)}</strong>
-                {card ? <small>{describeCardEffect(card)}</small> : null}
-                {card ? (
-                  <div className="popMeta">
-                    {getCardMetaLabels(card).map((label) => (
-                      <span key={label}>{label}</span>
-                    ))}
-                  </div>
-                ) : null}
-                <button
-                  onClick={() => {
-                    zoomCard(entry.cardId);
-                    setOpenIndex(null);
-                  }}
-                  type="button"
-                >
-                  Read card (large)
-                </button>
-                {entry.boardSelections.map((action) => (
-                  <button
-                    key={cardSelectionKey(action)}
-                    onClick={() => {
-                      onSelectCardAction(sameCardSelection(selectedCardAction, action) ? null : action);
-                      setOpenIndex(null);
-                    }}
-                    type="button"
-                  >
-                    {sameCardSelection(selectedCardAction, action)
-                      ? "Cancel targeting"
-                      : `Pick target${"mode" in action && action.mode === "expert" ? " (expert)" : ""}${
-                          action.type === "CAST_SPELL" && action.useSchoolExpert ? " + School of Magic (+3)" : ""
-                        }`}
-                  </button>
-                ))}
-                {entry.immediateActions.map((legal) => {
-                  const action = legal.action as CardBoardAction;
-                  const label =
-                    action.type === "CAST_SPELL" && action.useSchoolExpert
-                      ? "Cast + School of Magic (+3)"
-                      : action.type === "PLAY_CARD" && action.optionIndex !== undefined && card?.effect.type === "CHOOSE_ONE"
-                        ? card.effect.options[action.optionIndex]?.label
-                        : action.type === "PLAY_CARD" && action.mode === "expert"
-                          ? "Use expert"
-                          : action.target?.type === "unit"
-                            ? `Use on ${targetName(state, action.target)}`
-                            : "Use";
-                  return (
+                {armed && armed.handIndex === entry.handIndex ? (
+                  // Confirm step: the play is staged, not yet sent. Cancel backs
+                  // out with no effect; Confirm is the only thing that plays it.
+                  <div className="cardPlayConfirm" aria-label="Confirm card play">
+                    <small>Play this card?</small>
+                    <strong className="confirmLabel">{armed.label}</strong>
                     <button
-                      key={actionKey(action)}
+                      className="confirmPlay"
                       onClick={() => {
-                        onAction(action);
+                        onAction(armed.action);
+                        setArmed(null);
                         setOpenIndex(null);
                       }}
                       type="button"
                     >
-                      {label}
+                      Confirm
                     </button>
-                  );
-                })}
-                {!playable ? <small className="noTiming">{timingHint(entry.cardId)}</small> : null}
-                <button className="ghost" onClick={() => setOpenIndex(null)} type="button">
-                  Close
-                </button>
+                    <button className="ghost" onClick={() => setArmed(null)} type="button">
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    {card ? <small>{describeCardEffect(card)}</small> : null}
+                    {card ? (
+                      <div className="popMeta">
+                        {getCardMetaLabels(card).map((label) => (
+                          <span key={label}>{label}</span>
+                        ))}
+                      </div>
+                    ) : null}
+                    <button
+                      onClick={() => {
+                        zoomCard(entry.cardId);
+                        setOpenIndex(null);
+                      }}
+                      type="button"
+                    >
+                      Read card (large)
+                    </button>
+                    {entry.boardSelections.map((action) => (
+                      <button
+                        key={cardSelectionKey(action)}
+                        onClick={() => {
+                          onSelectCardAction(sameCardSelection(selectedCardAction, action) ? null : action);
+                          setOpenIndex(null);
+                        }}
+                        type="button"
+                      >
+                        {sameCardSelection(selectedCardAction, action)
+                          ? "Cancel targeting"
+                          : `Pick target${"mode" in action && action.mode === "expert" ? " (expert)" : ""}${
+                              action.type === "CAST_SPELL" && action.useSchoolExpert ? " + School of Magic (+3)" : ""
+                            }`}
+                      </button>
+                    ))}
+                    {entry.immediateActions.map((legal) => {
+                      const action = legal.action as CardBoardAction;
+                      const label =
+                        action.type === "CAST_SPELL" && action.useSchoolExpert
+                          ? "Cast + School of Magic (+3)"
+                          : action.type === "PLAY_CARD" && action.optionIndex !== undefined && card?.effect.type === "CHOOSE_ONE"
+                            ? card.effect.options[action.optionIndex]?.label
+                            : action.type === "PLAY_CARD" && action.mode === "expert"
+                              ? "Use expert"
+                              : action.target?.type === "unit"
+                                ? `Use on ${targetName(state, action.target)}`
+                                : "Use";
+                      return (
+                        <button
+                          key={actionKey(action)}
+                          // Arm a Confirm step instead of playing immediately, so an
+                          // accidental click can always be cancelled.
+                          onClick={() => setArmed({ handIndex: entry.handIndex, action, label: label ?? "Use" })}
+                          type="button"
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                    {!playable ? <small className="noTiming">{timingHint(entry.cardId)}</small> : null}
+                    <button
+                      className="ghost"
+                      onClick={() => {
+                        setArmed(null);
+                        setOpenIndex(null);
+                      }}
+                      type="button"
+                    >
+                      Close
+                    </button>
+                  </>
+                )}
               </div>
             ) : null}
             <button
               aria-pressed={open}
               className={`fanCard ${playable ? "playable" : ""} ${selected ? "selected" : ""}`}
-              onClick={() => setOpenIndex(open ? null : entry.handIndex)}
+              onClick={() => {
+                setArmed(null);
+                setOpenIndex(open ? null : entry.handIndex);
+              }}
               title={card ? `${card.name} — ${describeCardEffect(card)}` : entry.cardId}
               type="button"
             >

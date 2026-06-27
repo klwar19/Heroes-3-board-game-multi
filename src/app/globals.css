@@ -1966,6 +1966,27 @@ button.battleCell {
   font-style: italic;
 }
 
+/* Confirm step for an immediate (no-target) play: an accidental click never
+   commits — the player must press Confirm, and Cancel always backs out. */
+.cardPopover .cardPlayConfirm {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cardPopover .cardPlayConfirm small {
+  color: var(--muted);
+}
+
+.cardPopover .cardPlayConfirm .confirmLabel {
+  font-size: 13px;
+}
+
+/* The adventure-hand confirm bar reuses the cost-picker row styling. */
+.handButtons.playConfirm span {
+  font-weight: 700;
+}
+
 /* ---------- reaction tray ---------- */
 
 .reactionStrip {
