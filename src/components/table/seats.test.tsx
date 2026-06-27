@@ -289,3 +289,69 @@ describe("HandFan — Spell Book window (house rule)", () => {
     expect(menu.textContent).toMatch(/No Spells here/i);
   });
 });
+
+describe("HandFan — every immediate card play is cancellable (no accidental commit)", () => {
+  /** Combat where p1 holds the Breastplate, whose "Draw 1 card" is a no-target play. */
+  function breastplateState(): GameState {
+    const state = createInitialGameState("hand-confirm-cancel");
+    state.players.p1.hand = ["artifact.breastplate_of_petrified_wood"];
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    return state;
+  }
+
+  function renderHand(state: GameState, onAction: (action: unknown) => void) {
+    render(
+      <CardZoomProvider>
+        <HandFan
+          view={getPlayerView(state, "p1")}
+          state={state}
+          viewerPlayerId="p1"
+          legalActions={getLegalActions(state, "p1")}
+          selectedCardAction={null}
+          trayActive={false}
+          onSelectCardAction={() => {}}
+          onAction={onAction}
+        />
+      </CardZoomProvider>
+    );
+  }
+
+  it("clicking an immediate play does NOT send it — it arms a Confirm/Cancel step first", () => {
+    const onAction = vi.fn();
+    renderHand(breastplateState(), onAction);
+
+    // Open the card and click its immediate "Draw 1 card" play.
+    fireEvent.click(screen.getByRole("button", { name: /Breastplate of Petrified Wood artifact card/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Draw 1 card$/i }));
+
+    // Nothing has been sent to the engine yet (the accident is recoverable).
+    expect(onAction).not.toHaveBeenCalled();
+    // A Confirm and a Cancel are now offered.
+    expect(screen.getByRole("button", { name: /^Confirm$/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^Cancel$/i })).toBeTruthy();
+  });
+
+  it("Cancel backs out with NO action sent; Confirm is the only thing that plays it", () => {
+    const onAction = vi.fn();
+    renderHand(breastplateState(), onAction);
+
+    fireEvent.click(screen.getByRole("button", { name: /Breastplate of Petrified Wood artifact card/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Draw 1 card$/i }));
+    // Cancel: still nothing sent.
+    fireEvent.click(screen.getByRole("button", { name: /^Cancel$/i }));
+    expect(onAction).not.toHaveBeenCalled();
+
+    // Re-arm and Confirm: now (and only now) the play is dispatched, exactly once.
+    fireEvent.click(screen.getByRole("button", { name: /^Draw 1 card$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Confirm$/i }));
+    expect(onAction).toHaveBeenCalledTimes(1);
+    expect(onAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "PLAY_CARD",
+        cardId: "artifact.breastplate_of_petrified_wood",
+        optionIndex: 0
+      })
+    );
+  });
+});

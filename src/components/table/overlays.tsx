@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { Check, CircleOff, Crown, Dices, Hourglass, Layers, Sunrise, Swords, Undo2, Zap } from "lucide-react";
+import { Check, CircleOff, Crown, Dices, Hourglass, Layers, Plus, Sunrise, Swords, Undo2, Zap } from "lucide-react";
 import { assetUrl } from "@/lib/asset-url";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cardLibrary } from "@/data/cards/library";
@@ -223,6 +223,16 @@ export function ReactionTray({
   // only ever choose "Let it die".
   const resurrectionActions = legalActions.filter(
     (legal) => legal.action.type === "USE_UNIT_RESURRECTION"
+  );
+
+  // First Aid Tent heal as an instant reaction — "usable at any time, like an
+  // instant", so the moment one of your units is attacked you may mend a wound
+  // BEFORE the hit lands (which can let the unit survive a killing blow). The
+  // engine offers it as a USE_ACTIVE_EFFECT in the attack window; without this
+  // tile the reaction prompt only showed "Keep normal attack", so the Tent
+  // looked like it could not react at all.
+  const firstAidReactions = legalActions.filter(
+    (legal) => legal.action.type === "USE_ACTIVE_EFFECT"
   );
 
   if (!window) {
@@ -510,9 +520,22 @@ export function ReactionTray({
         buildingBoosts.length === 0 &&
         scrollReactions.length === 0 &&
         spellBookReactions.length === 0 &&
-        resurrectionActions.length === 0 ? (
+        resurrectionActions.length === 0 &&
+        firstAidReactions.length === 0 ? (
           <div className="trayEmpty">No playable instants — pass to continue.</div>
         ) : null}
+        {firstAidReactions.map((legal) => (
+          <div className="trayTile permanentTile" key={JSON.stringify(legal.action)}>
+            <div className="trayTileBody">
+              <strong>
+                <Plus aria-hidden="true" size={15} /> First Aid
+              </strong>
+              <button className="trayInstant" onClick={() => onAction(legal.action)} type="button">
+                {legal.label}
+              </button>
+            </div>
+          </div>
+        ))}
         {resurrectionActions.map((legal) => (
           <div className="trayTile permanentTile" key={JSON.stringify(legal.action)}>
             <div className="trayTileBody">

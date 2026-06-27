@@ -148,20 +148,18 @@ describe("neutral combat — pre-activation reaction pause (Intelligence / insta
   });
 
   it("never pulls a bystander (non-participant) into the fight's reaction windows", () => {
-    // Regression: a trigger-free "Draw 1 card" instant (Offense I's second
-    // option) slots into ANY open timing window. The reaction-window builder
-    // used to scan every player, so an onlooker holding such a card was invited
-    // to react — and "asked to do something" — on every attack of someone
-    // else's Neutral fight. Only the two combatants may ever react.
+    // Only the two combatants may ever react. Armorer ("+defense, then draw"
+    // on an incoming attack) is a REAL defender reaction, so it opens the window
+    // for the attacked participant; the onlooker holding the same card must be
+    // excluded by the combat-participant gate.
     let state = neutralFightWithGuard(rangedGuard);
-    // p1 (the attacker) AND p2 (an onlooker NOT in this fight) both hold
-    // Offense I (Tarnum, Stronghold). Giving it to p1 guarantees the window
-    // opens; p2 must be excluded from it.
-    state.players.p1.hand = ["specialty.tarnum_stronghold.1"];
-    state.players.p2.hand = ["specialty.tarnum_stronghold.1"];
+    // p1 (the participant being shot) holds Armorer AND Offense I; p2 (an
+    // onlooker NOT in this fight) holds Armorer too.
+    state.players.p1.hand = ["ability.armorer", "specialty.tarnum_stronghold.1"];
+    state.players.p2.hand = ["ability.armorer"];
 
     // Let the guard take its turn; its shot at p1's unit opens an attack
-    // reaction window.
+    // reaction window (the Armorer +defense reaction is the real trigger).
     state = defendActivePlayerUnit(state);
     state = apply(state, { type: "CONTINUE_NEUTRAL_STEP", playerId: "p1" });
 
@@ -170,8 +168,39 @@ describe("neutral combat — pre-activation reaction pause (Intelligence / insta
     // The participant is invited; the bystander never is.
     expect(window!.allowedPlayerIds).toContain("p1");
     expect(window!.allowedPlayerIds).not.toContain("p2");
-    // p2 is offered nothing in p1's fight — not even the trigger-free draw.
+    // p2 is offered nothing in p1's fight.
     expect(getLegalActions(state, "p2")).toHaveLength(0);
+    // p1 is offered the Armorer defense — but NOT Offense I's trigger-free
+    // "Draw 1 card": a card-draw is never a reaction to an enemy's attack.
+    const p1Offers = getLegalActions(state, "p1").filter((legal) => legal.action.type === "PLAY_REACTION");
+    expect(p1Offers.some((legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "ability.armorer")).toBe(true);
+    expect(
+      p1Offers.some(
+        (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "specialty.tarnum_stronghold.1"
+      )
+    ).toBe(false);
+  });
+
+  it("a trigger-free 'Draw a card' instant never forces a reaction window open", () => {
+    // The forced-use bug: merely HOLDING a card whose only matching option is a
+    // trigger-free "Draw 1 card" (Offense I, the Breastplate of Petrified Wood)
+    // used to drag its holder into a reaction window — "suddenly you must use it
+    // / pass" — on every enemy attack or spell. A card-draw is not a reaction, so
+    // the enemy guard's shot must resolve with NO window forced on the holder.
+    let state = neutralFightWithGuard(rangedGuard);
+    state.players.p1.hand = ["specialty.tarnum_stronghold.1"]; // Offense I: only a trigger-free draw applies here
+
+    state = defendActivePlayerUnit(state);
+    state = apply(state, { type: "CONTINUE_NEUTRAL_STEP", playerId: "p1" });
+
+    // No reaction window was forced open by the held draw…
+    expect(state.reactionWindow).toBeNull();
+    // …and the guard's attack actually happened (the fight was not blocked).
+    expect(
+      state.eventLog.some((event) => event.type === "UNIT_ATTACK_DECLARED" && event.attackerId === guardId(state))
+    ).toBe(true);
+    // The draw stays in hand — it was never consumed or forced.
+    expect(state.players.p1.hand).toContain("specialty.tarnum_stronghold.1");
   });
 
   it("still pauses before every guard with nothing to react with, offering only the resume", () => {
