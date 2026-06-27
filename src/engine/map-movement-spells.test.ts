@@ -317,7 +317,9 @@ describe("sea hex identification (per-hex, not per-tile)", () => {
     const ids = getTileFootprintSpaceIds(tile); // W2: [empty, mystical_garden, mine, buoy, sea_chest, shrine, survivor]
     expect(isSeaField(state, ids[0])).toBe(true); // empty field -> open sea
     expect(isSeaField(state, ids[3])).toBe(true); // buoy -> sea feature
+    expect(isSeaField(state, ids[5])).toBe(true); // shrine stands in the water here
     expect(isSeaField(state, ids[2])).toBe(false); // mine -> island (land)
+    expect(isSeaField(state, ids[1])).toBe(false); // mystical garden -> island (land)
   });
 
   it("a fabricated sea hex and a land hex coexist on the same tile", () => {
