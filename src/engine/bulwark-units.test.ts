@@ -248,7 +248,7 @@ describe("Bulwark units — Teleport (Jotunn Warlord)", () => {
     return applyOk(state, { type: "DEFEND_UNIT", playerId: "p1", unitId: "unit_p1_griffins" });
   }
 
-  it("offers an OPTIONAL start-of-activation choice to teleport one of YOUR OWN units (a friendly unit or itself, never an enemy)", () => {
+  it("offers an OPTIONAL start-of-activation choice to teleport one of your OTHER own units (never itself, never an enemy)", () => {
     const opened = activateJotunn(["bulwark-jotunn-teleport"]);
     expect(opened.combat!.activeUnitId).toBe("unit_p1_marksmen"); // the Jotunn really activated
     const choice = opened.pendingChoice;
@@ -256,10 +256,11 @@ describe("Bulwark units — Teleport (Jotunn Warlord)", () => {
     if (choice?.type !== "ABILITY_TARGET_CHOICE") return;
     expect(choice.kind).toBe("jotunn-teleport");
     expect(choice.optional).toBe(true); // "can choose to do or not"
-    // OWN units only: the Jotunn itself and a friendly unit are candidates...
-    expect(choice.candidateUnitIds).toContain("unit_p1_marksmen");
+    // Another friendly unit IS a candidate...
     expect(choice.candidateUnitIds).toContain("unit_p1_crusaders");
-    // ...but an ENEMY unit is NEVER a candidate (the whole point of this fix).
+    // ...but the Warlord ITSELF is NOT (it cannot teleport itself)...
+    expect(choice.candidateUnitIds).not.toContain("unit_p1_marksmen");
+    // ...and an ENEMY unit is NEVER a candidate.
     expect(choice.candidateUnitIds).not.toContain("unit_p2_skeletons");
   });
 
@@ -359,6 +360,23 @@ describe("Bulwark units — Teleport (Jotunn Warlord)", () => {
         (event) => event.type === "UNIT_ABILITY_TRIGGERED" && event.abilityId === "bulwark-jotunn-teleport"
       )
     ).toBe(false);
+  });
+
+  it("NEVER teleports ITSELF: a forged action naming the Warlord is rejected and moves nobody", () => {
+    const state = activateJotunn(["bulwark-jotunn-teleport"]);
+    const pick = state.pendingChoice!;
+    const selfFrom = state.combat!.units.unit_p1_marksmen.position;
+    // Forge a self-target the offer never listed. The Warlord cannot teleport
+    // itself, so the action errors at target validation and nothing moves.
+    const result = applyAction(state, {
+      type: "CHOOSE_ABILITY_TARGET",
+      playerId: "p1",
+      choiceId: pick.id,
+      targetUnitId: "unit_p1_marksmen"
+    });
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.errors.map((error) => error.message).join(" ")).toMatch(/not a legal target/i);
+    expect(result.state.combat!.units.unit_p1_marksmen.position).toBe(selfFrom); // never moved
   });
 
   it("CONTROL: a unit WITHOUT the ability gets no start-of-activation teleport choice", () => {

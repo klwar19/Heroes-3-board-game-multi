@@ -20,6 +20,7 @@ import {
   runeLevelForCount,
   seedRunesForCombat
 } from "./runes";
+import { coreBuildingDefinitions } from "@/data/factions/core";
 import type { GameAction, GameState } from "./state";
 
 function applyOk(state: GameState, action: GameAction): GameState {
@@ -205,6 +206,44 @@ describe("Bulwark Runes — RUNE_LEVEL_REACHED cue (drives the rune sound)", () 
       .filter((event) => event.type === "RUNE_LEVEL_REACHED")
       .map((event) => (event as { level: number }).level);
     expect(levels).toEqual([1, 2, 3]); // one cue per level reached at seed time
+  });
+});
+
+describe("Bulwark City Hall — the Rune-Empowered nerf reaches REAL combat (opens with +2, not +3)", () => {
+  // The owner reported combats "still open with 3 Runes". This pins the
+  // observable opening count end-to-end: the City Hall's combat-focus option
+  // value IS the flat number a fight opens with. If the data ever regressed to
+  // 3 — or the seed stopped reading the flag — these fail.
+  it("the City Hall combat-focus option is wired to +2 starting Runes", () => {
+    const cityHall = coreBuildingDefinitions["bulwark.city_hall"];
+    expect(cityHall?.effect?.type).toBe("RESOURCE_ROUND_CHOICE");
+    const runeOption =
+      cityHall?.effect?.type === "RESOURCE_ROUND_CHOICE"
+        ? cityHall.effect.options.find((option) => option.runesNextCombats !== undefined)
+        : undefined;
+    expect(runeOption?.runesNextCombats).toBe(2); // the nerf (was 3)
+  });
+
+  it("a combat for a Rune-Empowered Bulwark army OPENS with exactly the City Hall value (2), not 3", () => {
+    const cityHall = coreBuildingDefinitions["bulwark.city_hall"];
+    const flagFromCityHall =
+      cityHall?.effect?.type === "RESOURCE_ROUND_CHOICE"
+        ? cityHall.effect.options.find((option) => option.runesNextCombats !== undefined)?.runesNextCombats ?? 0
+        : 0;
+
+    const state = bulwarkState(); // p1 Bulwark, no rune building (cap 1)
+    state.combat!.attackerPlayerId = "p1";
+    state.combat!.defenderPlayerId = "p2";
+    // Exactly what the City Hall handler does when the combat-focus option is taken.
+    state.players.p1.runeEmpoweredNextCombats = flagFromCityHall;
+    seedRunesForCombat(state);
+
+    // OBSERVABLE OUTCOME: the fight opens with 2 Runes — the nerfed value — and
+    // never the old 3. (2 is below the Level-1 threshold of 4, so it is a
+    // head-start toward earning the first buff, not an immediate buff.)
+    expect(state.combat!.runes?.p1?.count).toBe(2);
+    expect(state.combat!.runes?.p1?.count).not.toBe(3);
+    expect(state.combat!.runes?.p1?.count).toBe(flagFromCityHall);
   });
 });
 

@@ -6017,12 +6017,12 @@ function maybeOpenPlayerActivationChoice(state: GameState): void {
   }
 
   // Jotunn Warlord (Bulwark, house rule): at the start of its activation the
-  // controller may teleport one of its OWN units — a friendly unit or the Jotunn
-  // itself, never an enemy — to an empty space, optionally, then act as normal.
-  // Offer the "pick a unit" choice (chooseAbilityTarget resolves it into the
-  // empty-space picker via openTeleportChoice). With no empty space to land on,
-  // or no friendly unit to move, there is nothing to do, so the ability is
-  // simply marked done.
+  // controller may teleport one of its OTHER OWN units — a friendly unit, never
+  // itself and never an enemy — to an empty space, optionally, then act as
+  // normal. Offer the "pick a unit" choice (chooseAbilityTarget resolves it into
+  // the empty-space picker via openTeleportChoice). With no empty space to land
+  // on, or no other friendly unit to move, there is nothing to do, so the
+  // ability is simply marked done.
   const teleportAbility = getUnitAbilityDefinitions(unit).find(
     (def) => def.effect?.type === "TELEPORT_ANY_AT_ACTIVATION"
   );
@@ -6035,7 +6035,8 @@ function maybeOpenPlayerActivationChoice(state: GameState): void {
       }
     }
     const candidates = Object.values(combat.units).filter(
-      (candidate) => isUnitAlive(candidate) && candidate.controllerId === unit.controllerId
+      (candidate) =>
+        isUnitAlive(candidate) && candidate.controllerId === unit.controllerId && candidate.id !== unit.id
     );
     if (!hasEmptySpace || candidates.length === 0) {
       unit.activationAbilityDone = true;
@@ -6049,7 +6050,7 @@ function maybeOpenPlayerActivationChoice(state: GameState): void {
       kind: "jotunn-teleport",
       abilityId: teleportAbility.id,
       abilityName: teleportAbility.name,
-      prompt: `${unit.cardName}: ${teleportAbility.name} — choose one of your units to teleport, or skip.`,
+      prompt: `${unit.cardName}: ${teleportAbility.name} — choose one of your other units to teleport, or skip.`,
       sourceUnitId: unit.id,
       anchorUnitId: null,
       candidateUnitIds: candidates.map((candidate) => candidate.id),
@@ -12652,22 +12653,22 @@ function chooseAbilityTarget(
     return;
   }
 
-  // Jotunn Warlord (Bulwark, house rule): the chosen FRIENDLY unit (the Jotunn
-  // included) is teleported to an empty space — picking a unit opens the very
-  // same empty-space picker the Teleport Spell uses (openTeleportChoice), while
-  // "Don't teleport" (skip) just ends the ability. Either way the Warlord stays
-  // active and acts normally, so the ability is marked done now (before the
-  // follow-up picker opens) and never re-prompts this activation. The
-  // own-side check is a resolution backstop: only a unit on the Warlord's own
-  // side may be relocated — an enemy can never be teleported, even if a forged
-  // action names one.
+  // Jotunn Warlord (Bulwark, house rule): the chosen FRIENDLY unit (never the
+  // Warlord itself) is teleported to an empty space — picking a unit opens the
+  // very same empty-space picker the Teleport Spell uses (openTeleportChoice),
+  // while "Don't teleport" (skip) just ends the ability. Either way the Warlord
+  // stays active and acts normally, so the ability is marked done now (before the
+  // follow-up picker opens) and never re-prompts this activation. The own-side,
+  // not-self check is a resolution backstop: only another unit on the Warlord's
+  // own side may be relocated — an enemy (or the Warlord itself) can never be
+  // teleported, even if a forged action names one.
   if (choice.kind === "jotunn-teleport") {
     source.activationAbilityDone = true;
     if (isSkip) {
       return;
     }
     const target = combat.units[action.targetUnitId];
-    if (target && isUnitAlive(target) && target.controllerId === source.controllerId) {
+    if (target && isUnitAlive(target) && target.controllerId === source.controllerId && target.id !== source.id) {
       const opened = openTeleportChoice(state, source.controllerId, target, choice.abilityId ?? undefined);
       if (opened) {
         state.phase = "choice";
