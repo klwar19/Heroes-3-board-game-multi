@@ -519,10 +519,12 @@ export function HexMapBoard({
     // --- Face-down tiles: the printed starry backs (roman numerals) -------
     if (tile.faceDown) {
       const discover = discoverByTile.get(tile.id);
-      // Sea tiles ship both Ⅳ–Ⅴ and Ⅵ–Ⅶ behind one wave back, so the
-      // face-down hint shows the whole Ⅳ–Ⅶ range — the exact band stays
-      // secret until the tile is revealed.
-      const backLabelDisplay = tile.group === "sea" ? "Ⅳ–Ⅶ" : tile.backLabel ?? "";
+      // Sea tiles ship both Ⅳ–Ⅴ and Ⅵ–Ⅶ behind one wave back, and the
+      // underground pool likewise ships its Ⅳ–Ⅴ and Ⅵ–Ⅶ bands behind one
+      // underground back — so the face-down hint shows the whole Ⅳ–Ⅶ range and
+      // the exact band stays secret until the tile is revealed.
+      const backLabelDisplay =
+        tile.group === "sea" || tile.group === "subterranean" ? "Ⅳ–Ⅶ" : tile.backLabel ?? "";
       const footprint = tileFootprint(center, 0);
       const centerPixel = hexToPixel(center, HEX_SIZE);
       const backWidth = 3 * HEX_WIDTH;
