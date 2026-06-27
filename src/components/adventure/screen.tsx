@@ -2301,6 +2301,52 @@ export function PromptTray({
       )
     : [];
 
+  // Teleport — the Jotunn Warlord ability AND the Teleport Spell — is a simple
+  // two-click board flow: click a unit to move, then click an empty slot. The
+  // board already highlights the candidate units (abilityTarget) and the empty
+  // destination cells (cardTarget) and submits the pick on click, so the tray
+  // only shows the instruction (a wall of one-button-per-unit / per-cell options
+  // is the "convoluted" UI we are replacing). The optional Jotunn pick keeps its
+  // single Skip button.
+  if (
+    choice?.type === "ABILITY_TARGET_CHOICE" &&
+    choice.kind === "jotunn-teleport" &&
+    choice.playerId === viewerPlayerId
+  ) {
+    const skip = abilityTargetActions.find(
+      (legal) => legal.action.type === "CHOOSE_ABILITY_TARGET" && legal.action.targetUnitId === "skip"
+    );
+    return (
+      <div className="promptTray" role="dialog" aria-label="Teleport a unit">
+        <strong>Teleport — click one of your units on the battlefield to move it.</strong>
+        <div className="promptOptions">
+          {skip ? (
+            <button className="commandButton" onClick={() => onAction(skip.action)} type="button">
+              {skip.label}
+            </button>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
+  if (
+    choice?.type === "OPTION_CHOICE" &&
+    choice.context === "combat-teleport" &&
+    choice.playerId === viewerPlayerId
+  ) {
+    const movingId = choice.teleport?.unitId;
+    const movingName = movingId ? state.combat?.units[movingId]?.name : undefined;
+    return (
+      <div className="promptTray" role="dialog" aria-label="Teleport destination">
+        <strong>
+          {movingName
+            ? `Teleport — click an empty slot on the battlefield to place ${movingName}.`
+            : "Teleport — click an empty slot on the battlefield."}
+        </strong>
+      </div>
+    );
+  }
+
   let title: string | null = null;
   let body: LegalAction[] = [];
 
