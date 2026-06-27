@@ -812,8 +812,10 @@ export type UnitAbilityEffectDefinition =
       /**
        * Creature Bank Medusa Stores Medusas: "If this unit is Stacked, the
        * target gains Paralysis." After this unit's own attack (never a
-       * Retaliation Attack) the still-living target gains a Paralysis token.
-       * Paired with `requiresStacked` so it only fires while the card is Stacked.
+       * Retaliation Attack) an ADJACENT, still-living target gains a Paralysis
+       * token — a ranged shot at a distant foe does NOT paralyze (the adjacency
+       * gate lives in applyOnAttackParalysis). Paired with `requiresStacked` so
+       * it only fires while the card is Stacked.
        */
       type: "PARALYZE_TARGET_ON_ATTACK";
     }
@@ -1277,7 +1279,9 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "bank-medusa-paralyze-stacked": {
     id: "bank-medusa-paralyze-stacked",
     name: "Petrifying Gaze",
-    text: "If this unit is Stacked, after its attack the target gains Paralysis (it skips its next activation; any damage clears it).",
+    // engine: only an ADJACENT (melee) attack petrifies — a ranged shot at a
+    // distant foe deals damage but never Paralyzes (gated in applyOnAttackParalysis).
+    text: "While Stacked, this unit's attack on an adjacent unit also Paralyzes the target (it skips its next activation; any damage clears it). A ranged shot at a distant unit does not Paralyze.",
     effect: { type: "PARALYZE_TARGET_ON_ATTACK" },
     requiresStacked: true,
     implementationStatus: "implemented"
