@@ -5828,6 +5828,13 @@ export type VisitStep =
       armyUnitId: string;
       /** Necromancy: "half the gold cost (rounded down)" instead of up. */
       roundDown?: boolean;
+      /**
+       * Necromancy ability / specialty: the played card is discarded from hand
+       * ONLY when this reinforce actually upgrades a unit. A no-eligible-target
+       * play or a declined reinforce leaves the card in hand (house rule: you
+       * lose Necromancy only when it upgrades something).
+       */
+      consumeCardId?: CardId;
     }
   | {
       /** Cove Pub: reinforce one unit with a flat gold discount (min 0). */

@@ -2693,9 +2693,21 @@ export function processPendingVisit(state: GameState): void {
         }
         break;
       }
-      case "REINFORCE_HALF_GOLD":
-        reinforceArmyUnit(state, visit.playerId, step.armyUnitId, false, true, step.roundDown ?? false);
+      case "REINFORCE_HALF_GOLD": {
+        const upgraded = reinforceArmyUnit(state, visit.playerId, step.armyUnitId, false, true, step.roundDown ?? false);
+        // Necromancy is spent ONLY on a successful upgrade. The card was held in
+        // hand through the play (the discard was deferred); discard it now that a
+        // unit was actually reinforced. A failed/declined reinforce leaves it.
+        if (upgraded && step.consumeCardId) {
+          const reinforcer = state.players[visit.playerId];
+          const handIndex = reinforcer?.hand.indexOf(step.consumeCardId) ?? -1;
+          if (reinforcer && handIndex !== -1) {
+            reinforcer.hand.splice(handIndex, 1);
+            reinforcer.discard.push(step.consumeCardId);
+          }
+        }
         break;
+      }
       case "REINFORCE_FLAT_GOLD":
         // Cove Pub: flat gold discount on one reinforcement (no halving).
         reinforceArmyUnit(state, visit.playerId, step.armyUnitId, false, false, false, false, step.discount);
@@ -6695,17 +6707,17 @@ export function reinforceArmyUnit(
   free = false,
   /** Cove Pub: a flat gold discount on this reinforcement (min 0, non-stacking). */
   flatGoldDiscount = 0
-): void {
+): boolean {
   const player = state.players[playerId];
   const armyUnit = player?.army.find((candidate) => candidate.id === armyUnitId);
   if (!player || !armyUnit || armyUnit.side !== "few") {
-    return;
+    return false;
   }
 
   const purchase: RecruitPurchaseRef = { kind: "reinforce", unitDefId: armyUnit.unitDefId, armyUnitId };
   const finalCost = free ? {} : (reinforceCostFor(state, playerId, armyUnitId, halfCost, halfGoldOnly, roundDown, flatGoldDiscount) ?? {});
   if (!hasRecruitResources(state, playerId, finalCost)) {
-    return;
+    return false;
   }
 
   spendRecruitResources(
@@ -6724,6 +6736,7 @@ export function reinforceArmyUnit(
     kind: "reinforce",
     cost: finalCost
   });
+  return true;
 }
 
 /**
@@ -6806,7 +6819,17 @@ export function hasFreeBronzeReinforceTarget(state: GameState, playerId: PlayerI
  * player's Few units of the allowed tiers — no Citadel, Dwelling or
  * Population token needed.
  */
-export function queueNecromancyReinforce(state: GameState, playerId: PlayerId, mode: "basic" | "expert"): void {
+export function queueNecromancyReinforce(
+  state: GameState,
+  playerId: PlayerId,
+  mode: "basic" | "expert",
+  /**
+   * The Necromancy card to discard — but only if the player actually reinforces.
+   * Attached to each real reinforce option (never to "Skip" or the
+   * no-eligible-target prompt), so the card is kept unless it upgrades a unit.
+   */
+  consumeCardId?: CardId
+): void {
   const player = state.players[playerId];
   const adventure = state.adventure;
   if (!player || !adventure) {
@@ -6841,18 +6864,20 @@ export function queueNecromancyReinforce(state: GameState, playerId: PlayerId, m
         .join(" + ") || "free";
     options.push({
       label: `Reinforce ${def.name} (${costLabel})`,
-      steps: [{ type: "REINFORCE_HALF_GOLD", armyUnitId: unit.id, roundDown: true }]
+      steps: [{ type: "REINFORCE_HALF_GOLD", armyUnitId: unit.id, roundDown: true, consumeCardId }]
     });
   }
 
   if (options.length === 0) {
+    // No eligible target: the card is kept (its option carries no consumeCardId),
+    // so a player who plays Necromancy with nothing to reinforce loses nothing.
     adventure.rewardQueue.push({
       playerId,
       kind: "visit-steps",
       steps: [
         {
           type: "CHOOSE_ONE",
-          prompt: "Necromancy: no Few bronze/silver unit you can afford to reinforce.",
+          prompt: "Necromancy: no unit you can afford to reinforce — the card is kept.",
           options: [{ label: "OK", steps: [] }]
         }
       ]
@@ -6860,7 +6885,8 @@ export function queueNecromancyReinforce(state: GameState, playerId: PlayerId, m
     return;
   }
 
-  options.push({ label: "Skip", steps: [] });
+  // "Skip" keeps the card too — only an actual reinforce above consumes it.
+  options.push({ label: "Skip (keep the card)", steps: [] });
   adventure.rewardQueue.push({
     playerId,
     kind: "visit-steps",
