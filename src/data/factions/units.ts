@@ -2289,12 +2289,10 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
       url: "https://en.homm3bg.wiki/units/dragon_flies/"
     }
   },
-  // Card art note: the printed Conflux card sheet (gamefound reveal) has art for
-  // Sprites + Storm/Ice/Energy/Magma/Magic Elementals + Phoenixes only. The four
-  // base-school neutral Elementals (Air/Earth/Water/Fire) have NO dedicated scan,
-  // so their `neutral` cardImage reuses the closest school-sibling Conflux card as
-  // a visual PLACEHOLDER: Air→Storm, Water→Ice, Fire→Energy, Earth→Magma. This is
-  // art only — stats/abilities follow the wiki and are unaffected.
+  // The wiki publishes blank frames for the four summonable base-school
+  // Elementals. Their card faces below are locally composed from one shared art
+  // panel per creature (Few/Pack/Neutral) plus the printed tier/variant frame;
+  // scripts/build-elemental-cards.mjs is the reproducible source of truth.
   "neutral.air_elementals": {
     id: "neutral.air_elementals",
     name: "Air Elementals",
@@ -2302,9 +2300,9 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     tier: "bronze",
     type: "ground",
     // Few/Pack are the summonable Conflux sides (Summon Air Elemental).
-    few: { attack: 2, defense: 0, health: 4, initiative: 8, cost: { gold: 6 }, abilities: ["elemental-damage", "air-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrow and Air Magic spells. This unit deals elemental damage." },
-    pack: { attack: 3, defense: 0, health: 4, initiative: 8, cost: { gold: 9 }, abilities: ["elemental-damage", "air-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrow and Air Magic spells. This unit deals elemental damage." },
-    neutral: { attack: 2, defense: 0, health: 3, initiative: 7, cost: { gold: 7 }, abilities: ["elemental-damage", "air-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrow and Air Magic spells. This unit deals elemental damage.", cardImage: "/assets/units-conflux-bronze-storm_elementals-few.webp" },
+    few: { attack: 2, defense: 0, health: 4, initiative: 8, cost: {}, abilities: ["elemental-damage", "air-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrow and Air Magic spells. This unit deals elemental damage.", cardImage: "/assets/units-conflux-bronze-air_elementals-few.webp" },
+    pack: { attack: 3, defense: 0, health: 4, initiative: 8, cost: {}, abilities: ["elemental-damage", "air-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrow and Air Magic spells. This unit deals elemental damage.", cardImage: "/assets/units-conflux-bronze-air_elementals-pack.webp" },
+    neutral: { attack: 2, defense: 0, health: 3, initiative: 7, cost: { gold: 7 }, abilities: ["elemental-damage", "air-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrow and Air Magic spells. This unit deals elemental damage.", cardImage: "/assets/units-neutral-bronze-air_elementals.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/air_elementals/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game",
@@ -2321,11 +2319,11 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     // Summon spell forms (Few/Pack via Summon Earth Elemental) AND a single
     // Neutral guard card. The fan wiki lists a gold-tier Neutral Earth Elemental
     // (3/2/5/4, 16 gold) whose stats differ from the summon Few/Pack — so the
-    // guard joins the gold neutral deck (see neutralUnitIdsByTier). No elemental
-    // has a printed card scan on the wiki, so the guard uses the blank frame.
-    few: { attack: 2, defense: 2, health: 2, initiative: 5, cost: { gold: 6 }, abilities: ["elemental-damage", "earth-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrow and Earth Magic spells. This unit deals elemental damage." },
-    pack: { attack: 3, defense: 2, health: 2, initiative: 5, cost: { gold: 9 }, abilities: ["elemental-damage", "earth-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrow and Earth Magic spells. This unit deals elemental damage." },
-    neutral: { attack: 3, defense: 2, health: 5, initiative: 4, cost: { gold: 16 }, abilities: ["elemental-damage", "earth-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrow and Earth Magic spells. This unit deals elemental damage.", cardImage: "/assets/units-conflux-silver-magma_elementals-few.webp" },
+    // guard joins the gold neutral deck (see neutralUnitIdsByTier). Its custom
+    // golden face reuses the exact art panel from the bronze summon cards.
+    few: { attack: 2, defense: 2, health: 2, initiative: 5, cost: {}, abilities: ["elemental-damage", "earth-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrow and Earth Magic spells. This unit deals elemental damage.", cardImage: "/assets/units-conflux-bronze-earth_elementals-few.webp" },
+    pack: { attack: 3, defense: 2, health: 2, initiative: 5, cost: {}, abilities: ["elemental-damage", "earth-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrow and Earth Magic spells. This unit deals elemental damage.", cardImage: "/assets/units-conflux-bronze-earth_elementals-pack.webp" },
+    neutral: { attack: 3, defense: 2, health: 5, initiative: 4, cost: { gold: 16 }, abilities: ["elemental-damage", "earth-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrow and Earth Magic spells. This unit deals elemental damage.", cardImage: "/assets/units-neutral-golden-earth_elementals.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/earth_elementals/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game",
@@ -2342,11 +2340,11 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     // Summon spell forms (Few/Pack via Summon Water Elemental) AND a single
     // Neutral guard card. The fan wiki lists a silver-tier Neutral Water
     // Elemental (2/1/4/5, 10 gold) whose stats differ from the summon Few/Pack —
-    // so the guard joins the silver neutral deck (see neutralUnitIdsByTier). No
-    // elemental has a printed card scan on the wiki, so the guard uses the blank frame.
-    few: { attack: 2, defense: 0, health: 5, initiative: 6, cost: { gold: 6 }, abilities: ["elemental-damage", "water-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrow and Water Magic spells. This unit deals elemental damage." },
-    pack: { attack: 3, defense: 0, health: 5, initiative: 6, cost: { gold: 10 }, abilities: ["elemental-damage", "water-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrow and Water Magic spells. This unit deals elemental damage." },
-    neutral: { attack: 2, defense: 1, health: 4, initiative: 5, cost: { gold: 10 }, abilities: ["elemental-damage", "water-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrow and Water Magic spells. This unit deals elemental damage.", cardImage: "/assets/units-conflux-bronze-ice_elementals-few.webp" },
+    // so the guard joins the silver neutral deck (see neutralUnitIdsByTier). Its
+    // custom silver face reuses the exact art panel from the bronze summon cards.
+    few: { attack: 2, defense: 0, health: 5, initiative: 6, cost: {}, abilities: ["elemental-damage", "water-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrow and Water Magic spells. This unit deals elemental damage.", cardImage: "/assets/units-conflux-bronze-water_elementals-few.webp" },
+    pack: { attack: 3, defense: 0, health: 5, initiative: 6, cost: {}, abilities: ["elemental-damage", "water-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrow and Water Magic spells. This unit deals elemental damage.", cardImage: "/assets/units-conflux-bronze-water_elementals-pack.webp" },
+    neutral: { attack: 2, defense: 1, health: 4, initiative: 5, cost: { gold: 10 }, abilities: ["elemental-damage", "water-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrow and Water Magic spells. This unit deals elemental damage.", cardImage: "/assets/units-neutral-silver-water_elementals.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/water_elementals/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game",
@@ -2459,9 +2457,9 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     tier: "silver",
     type: "ground",
     // Few/Pack are the summonable Conflux sides (Summon Fire Elemental).
-    few: { attack: 2, defense: 1, health: 4, initiative: 5, cost: { gold: 12 }, abilities: ["elemental-damage", "fire-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrow and Fire Magic spells. This unit deals elemental damage." },
-    pack: { attack: 3, defense: 1, health: 4, initiative: 5, cost: { gold: 16 }, abilities: ["elemental-damage", "fire-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrow and Fire Magic spells. This unit deals elemental damage." },
-    neutral: { attack: 3, defense: 1, health: 3, initiative: 6, cost: { gold: 13 }, abilities: ["elemental-damage", "fire-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrow and Fire Magic spells. This unit deals elemental damage.", cardImage: "/assets/units-conflux-silver-energy_elementals-few.webp" },
+    few: { attack: 2, defense: 1, health: 4, initiative: 5, cost: {}, abilities: ["elemental-damage", "fire-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrow and Fire Magic spells. This unit deals elemental damage.", cardImage: "/assets/units-conflux-bronze-fire_elementals-few.webp" },
+    pack: { attack: 3, defense: 1, health: 4, initiative: 5, cost: {}, abilities: ["elemental-damage", "fire-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrow and Fire Magic spells. This unit deals elemental damage.", cardImage: "/assets/units-conflux-bronze-fire_elementals-pack.webp" },
+    neutral: { attack: 3, defense: 1, health: 3, initiative: 6, cost: { gold: 13 }, abilities: ["elemental-damage", "fire-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrow and Fire Magic spells. This unit deals elemental damage.", cardImage: "/assets/units-neutral-silver-fire_elementals.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/fire_elementals/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game",
