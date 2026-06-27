@@ -26,12 +26,17 @@ export type TileFieldDefinition = {
   /** Faction styling for towns and settlements. */
   faction?: string;
   /**
-   * Per-hex terrain override. Sea tiles mix water and land hexes (open ocean
-   * plus island structures), so a hex's terrain is not always the tile's: an
-   * island field on a water tile is `"land"`, and (rarely) a water field on a
-   * land tile is `"water"`. When omitted the hex inherits the tile terrain
-   * (water tile -> water hex, anything else -> land hex). Read by `isSeaField`
-   * to gate sea movement.
+   * Per-hex terrain. A sea tile is NOT uniformly water — it mixes open ocean
+   * with land islands (mines, towns, shrines, learning stones, witch huts,
+   * gardens, warriors' tombs, trees of knowledge …) painted on the tile art —
+   * so a hex's terrain is not the tile's. EVERY island hex on a water tile
+   * therefore declares `terrain: "land"`, and (rarely) a water hex on a land
+   * tile declares `terrain: "water"`. When omitted the hex inherits the tile
+   * terrain (water tile -> water hex, anything else -> land hex). Read by
+   * `isSeaField` to gate sea movement (coastline halt) and to pick the naval
+   * battle board, so it must match the printed art, NOT the location name (the
+   * same location — e.g. an `empty_field` or `pandoras_box` — is open water on
+   * one sea tile and a dry island on another).
    */
   terrain?: "land" | "water";
 };
