@@ -1330,14 +1330,16 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
     group: "sea",
     content: "cove_expansion",
     terrain: "water",
+    // Per-hex terrain (W1 art): the learning stone (E), the blocked field (SW)
+    // and the mine (NW) sit on green/palm islands; the rest is open sea.
     fields: [
       { location: "shrine_of_magic_incantation" },
       { location: "sea_barrel" },
-      { location: "learning_stone", difficulty: 4 },
+      { location: "learning_stone", difficulty: 4, terrain: "land" },
       { location: "shipwreck_survivor" },
-      { location: "blocked_field" },
+      { location: "blocked_field", terrain: "land" },
       { location: "empty_field" },
-      { location: "mine", difficulty: 5, resource: "gold", amount: 5 },
+      { location: "mine", difficulty: 5, resource: "gold", amount: 5, terrain: "land" },
     ],
     outerImpassable: [false, false, false, true, false, false],
     source: {
@@ -1354,10 +1356,13 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
     group: "sea",
     content: "cove_expansion",
     terrain: "water",
+    // Per-hex terrain (W2 art): the mystical garden (NE) and the mine (E) are
+    // green islands; the empty centre, buoy, sea chest, shrine and survivor are
+    // all open sea.
     fields: [
       { location: "empty_field" },
-      { location: "mystical_garden" },
-      { location: "mine", difficulty: 5, resource: "valuables", amount: 1 },
+      { location: "mystical_garden", terrain: "land" },
+      { location: "mine", difficulty: 5, resource: "valuables", amount: 1, terrain: "land" },
       { location: "buoy" },
       { location: "sea_chest", difficulty: 4 },
       { location: "shrine_of_magic_incantation" },
@@ -1378,11 +1383,14 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
     group: "sea",
     content: "cove_expansion",
     terrain: "water",
+    // Per-hex terrain (W3 art): the tree of knowledge (centre) and the mine (SE)
+    // form one green island; the shipwreck, empty rocks, flotsam, shrine and
+    // jetsam are open sea.
     fields: [
-      { location: "tree_of_knowledge" },
+      { location: "tree_of_knowledge", terrain: "land" },
       { location: "shipwreck", difficulty: 4 },
       { location: "empty_field" },
-      { location: "mine", difficulty: 5, resource: "buildingMaterials", amount: 2 },
+      { location: "mine", difficulty: 5, resource: "buildingMaterials", amount: 2, terrain: "land" },
       { location: "flotsam" },
       { location: "shrine_of_magic_incantation" },
       { location: "jetsam" },
@@ -1402,12 +1410,15 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
     group: "sea",
     content: "cove_expansion",
     terrain: "water",
+    // Per-hex terrain (W4 art): the blocked field (NE) and the learning stone
+    // (SW) are green/palm islands; the sea chest, mermaid, sea barrel, the
+    // floating Pandora's Box and the empty rocks are all open sea.
     fields: [
       { location: "sea_chest" },
-      { location: "blocked_field" },
+      { location: "blocked_field", terrain: "land" },
       { location: "mermaid" },
       { location: "sea_barrel" },
-      { location: "learning_stone", difficulty: 4 },
+      { location: "learning_stone", difficulty: 4, terrain: "land" },
       { location: "pandoras_box", difficulty: 5 },
       { location: "empty_field" },
     ],
@@ -1426,8 +1437,11 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
     group: "sea",
     content: "cove_expansion",
     terrain: "water",
+    // Per-hex terrain (W5 art): only the witch hut (centre) is a green island;
+    // every ring hex — empty rocks, buoy, jetsam, shrine, derelict ship and
+    // barrel — is open sea.
     fields: [
-      { location: "witch_hut" },
+      { location: "witch_hut", terrain: "land" },
       { location: "empty_field" },
       { location: "buoy" },
       { location: "jetsam", difficulty: 5 },
@@ -1450,13 +1464,16 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
     group: "sea",
     content: "cove_expansion",
     terrain: "water",
+    // Per-hex terrain (W6 art): only the warriors' tomb (W) is a green/palm
+    // island; the mermaid, jetsam, floating Pandora's Box, derelict ship, empty
+    // rocks and shrine are all open sea.
     fields: [
       { location: "mermaid" },
       { location: "jetsam", difficulty: 5 },
       { location: "pandoras_box", difficulty: 5 },
       { location: "derelict_ship", difficulty: 4 },
       { location: "empty_field" },
-      { location: "warriors_tomb" },
+      { location: "warriors_tomb", terrain: "land" },
       { location: "shrine_of_magic_gesture" },
     ],
     outerImpassable: [false, false, false, false, false, false],
@@ -1474,6 +1491,9 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
     group: "sea",
     content: "cove_expansion",
     terrain: "water",
+    // Per-hex terrain (W7 art): a deep-sea tile — every hex is open ocean,
+    // including the blocked field (SW), which is a bare rocky outcrop rising
+    // from the water, NOT a green island. No `terrain: "land"` here.
     fields: [
       { location: "temple_of_the_sea", difficulty: 7 },
       { location: "shrine_of_magic_gesture" },
@@ -1498,8 +1518,11 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
     group: "sea",
     content: "regular_stretch_goals",
     terrain: "water",
+    // Per-hex terrain (#C4 art): only the random town (centre) is a castle
+    // island; the floating Pandora's Box, buoy, jetsam, mermaid, derelict ship
+    // and barrel are all open sea.
     fields: [
-      { location: "random_town", difficulty: 7 },
+      { location: "random_town", difficulty: 7, terrain: "land" },
       { location: "pandoras_box", difficulty: 6 },
       { location: "buoy" },
       { location: "jetsam" },
@@ -1522,12 +1545,15 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
     group: "sea",
     content: "regular_stretch_goals",
     terrain: "water",
+    // Per-hex terrain (#C5 art): the warriors' tomb (NE) and the tree of
+    // knowledge (SW) are green/palm islands; the sea-god temple, the floating
+    // Pandora's Box, the derelict ship, the barrel and the survivor are sea.
     fields: [
       { location: "temple_of_the_sea", difficulty: 7 },
-      { location: "warriors_tomb", difficulty: 6 },
+      { location: "warriors_tomb", difficulty: 6, terrain: "land" },
       { location: "pandoras_box", difficulty: 6 },
       { location: "derelict_ship", difficulty: 6 },
-      { location: "tree_of_knowledge" },
+      { location: "tree_of_knowledge", terrain: "land" },
       { location: "sea_barrel" },
       { location: "shipwreck_survivor" },
     ],
@@ -1546,13 +1572,17 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
     group: "sea",
     content: "regular_stretch_goals",
     terrain: "water",
+    // Per-hex terrain (#N8 art): the mine (NE), the shrine of magic (SW, a
+    // domed rotunda on green land here — unlike the Cove shrines that stand in
+    // open water) and the learning stone (W) are islands; the barrel, flotsam,
+    // survivor and empty rocks are sea.
     fields: [
       { location: "sea_barrel" },
-      { location: "mine", difficulty: 5, resource: "gold", amount: 5 },
+      { location: "mine", difficulty: 5, resource: "gold", amount: 5, terrain: "land" },
       { location: "flotsam" },
       { location: "shipwreck_survivor", difficulty: 4 },
-      { location: "shrine_of_magic_incantation" },
-      { location: "learning_stone" },
+      { location: "shrine_of_magic_incantation", terrain: "land" },
+      { location: "learning_stone", terrain: "land" },
       { location: "empty_field" },
     ],
     outerImpassable: [false, false, false, false, false, false],
@@ -1570,13 +1600,16 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
     group: "sea",
     content: "regular_stretch_goals",
     terrain: "water",
+    // Per-hex terrain (#N9 art): the mystical garden (E) and the mine (W) are
+    // green/palm islands; the empty rocks, barrel, buoy, sea chest and survivor
+    // are open sea.
     fields: [
       { location: "empty_field" },
       { location: "sea_barrel" },
-      { location: "mystical_garden" },
+      { location: "mystical_garden", terrain: "land" },
       { location: "buoy" },
       { location: "sea_chest", difficulty: 4 },
-      { location: "mine", difficulty: 5, resource: "valuables", amount: 1 },
+      { location: "mine", difficulty: 5, resource: "valuables", amount: 1, terrain: "land" },
       { location: "shipwreck_survivor" },
     ],
     outerImpassable: [false, false, false, false, false, false],
@@ -1594,14 +1627,17 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
     group: "sea",
     content: "regular_stretch_goals",
     terrain: "water",
+    // Per-hex terrain (#N10 art): the tree of knowledge (centre) and the mine
+    // (NW) form one green island; the shipwreck, empty rocks, sea chest, buoy
+    // and mermaid are open sea.
     fields: [
-      { location: "tree_of_knowledge" },
+      { location: "tree_of_knowledge", terrain: "land" },
       { location: "shipwreck", difficulty: 4 },
       { location: "empty_field" },
       { location: "sea_chest" },
       { location: "buoy" },
       { location: "mermaid" },
-      { location: "mine", difficulty: 5, resource: "buildingMaterials", amount: 2 },
+      { location: "mine", difficulty: 5, resource: "buildingMaterials", amount: 2, terrain: "land" },
     ],
     outerImpassable: [false, false, false, false, false, false],
     source: {
@@ -1618,14 +1654,17 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
     group: "sea",
     content: "regular_stretch_goals",
     terrain: "water",
+    // Per-hex terrain (#N11 art): the learning stone (SE) is a green island and
+    // the resource symbol (NW) is a campfire on a grassy shore; the sea chest,
+    // empty rocks, barrel, the floating Pandora's Box and flotsam are sea.
     fields: [
       { location: "sea_chest", difficulty: 4 },
       { location: "empty_field" },
       { location: "sea_barrel" },
-      { location: "learning_stone" },
+      { location: "learning_stone", terrain: "land" },
       { location: "pandoras_box", difficulty: 5 },
       { location: "flotsam" },
-      { location: "resource_symbol" },
+      { location: "resource_symbol", terrain: "land" },
     ],
     outerImpassable: [false, false, false, false, false, false],
     source: {

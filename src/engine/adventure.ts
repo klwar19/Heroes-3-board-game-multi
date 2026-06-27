@@ -331,15 +331,6 @@ export function instantiateTile(
 }
 
 /**
- * Locations that are always dry land, so on a sea tile they form an island hex
- * rather than open ocean. A tile field may still override its terrain
- * explicitly; this only decides the default for water-tile hexes. (Verify the
- * exact per-hex water/land split against the printed tile art before release —
- * a few generic buildings on a sea tile could sit on islands too.)
- */
-const SEA_TILE_LAND_LOCATIONS = new Set<string>(["town", "random_town", "settlement", "mine", "stables"]);
-
-/**
  * Creates the 7 field states for a revealed tile. With `onlyRing`, slot 0 (the
  * centre) is left untouched — used when RE-materializing a tile whose rotation
  * changed after its centre was already placed (the opening home-tile rotation:
@@ -383,12 +374,19 @@ export function materializeTileFields(
     if (fieldDef.faction) {
       field.faction = fieldDef.faction;
     }
-    // Resolve per-hex terrain. An explicit field override wins; otherwise a hex
-    // on a water tile is open sea — except the structures that can only sit on
-    // dry ground (a town/mine/settlement/stable is an island, i.e. land).
+    // Resolve per-hex terrain. A sea tile is NOT uniformly water: it mixes open
+    // ocean with land islands (mines, towns, shrines, learning stones, witch
+    // huts, gardens, tombs, trees of knowledge …) drawn directly on the tile
+    // art, so terrain is decided PER HEX, never per tile. The field's explicit
+    // `terrain` is the single source of truth — every island hex on a sea tile
+    // carries `terrain: "land"` and the rare water hex on a land tile carries
+    // `terrain: "water"`. Only a field that omits it inherits the tile's overall
+    // terrain (water tile -> water hex, anything else -> land hex). Reading the
+    // hex art instead of guessing from the location name is what stops a heroine
+    // from "wading" onto a dry island or fighting a naval battle on solid ground.
     const isWater = fieldDef.terrain
       ? fieldDef.terrain === "water"
-      : def.terrain === "water" && !SEA_TILE_LAND_LOCATIONS.has(fieldDef.location);
+      : def.terrain === "water";
     if (isWater) {
       field.terrain = "water";
     }
