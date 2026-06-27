@@ -5,7 +5,7 @@
 import Link from "next/link";
 import { assetUrl } from "@/lib/asset-url";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { Check, ChevronsUp, Crown, Hammer, Image as ImageIcon, Lock, Minus, Plus, RotateCcw, RotateCw, Star, Swords, Unlock, X } from "lucide-react";
+import { Ban, BookOpen, Check, ChevronsUp, Crown, Dices, Hammer, Image as ImageIcon, Info, Lock, Minus, Plus, RotateCcw, RotateCw, Shield, Sparkles, Star, Swords, Unlock, X } from "lucide-react";
 import { cardLibrary } from "@/data/cards/library";
 import { buildingTimingLabel, describeBuildingEffect } from "@/data/towns/describe";
 import { coreBuildingDefinitions, coreFactionDefinitions, coreHeroDefinitions } from "@/data/factions/core";
@@ -3917,7 +3917,108 @@ function GameOptionsPanel({
   );
 }
 
-export function SetupLobbyScreen({
+/** Best human rules text for a card id: its printed prose tag, else the auto effect. */
+function cardRulesText(cardId: string | undefined): string {
+  if (!cardId) {
+    return "";
+  }
+  const card = cardLibrary[cardId];
+  if (!card) {
+    return "";
+  }
+  // Several abilities/specialties carry their printed wording as a multi-word tag
+  // (Wisdom, the unit-specialist helpers); prefer it, exactly like the native
+  // specialty card does, and otherwise fall back to the generated effect text.
+  const prose = (card.tags ?? []).filter((tag) => /\s/.test(tag)).sort((a, b) => b.length - a.length)[0];
+  return prose ?? describeCardEffect(card);
+}
+
+const SPECIALTY_LEVEL_NUMERAL: Record<1 | 4 | 6, string> = { 1: "I", 4: "IV", 6: "VI" };
+
+/**
+ * Read-only card for one hero: starting statistics, the starting ability and all
+ * three specialty levels (I / IV / VI), each with the same rules text the table
+ * shows when the card is zoomed. Shown beside the faction grid when a hero is
+ * clicked or its info button is pressed.
+ */
+function HeroSetupDetail({ heroDefId }: { heroDefId: string }) {
+  const hero = coreHeroDefinitions[heroDefId];
+  if (!hero) {
+    return null;
+  }
+  const faction = coreFactionDefinitions[hero.faction];
+  const ability = cardLibrary[hero.startingAbilityCardId];
+  const stats: { key: keyof typeof hero.startingStats; label: string; icon: ReactNode }[] = [
+    { key: "attack", label: "Attack", icon: <Swords aria-hidden="true" size={14} /> },
+    { key: "defense", label: "Defense", icon: <Shield aria-hidden="true" size={14} /> },
+    { key: "power", label: "Power", icon: <Sparkles aria-hidden="true" size={14} /> },
+    { key: "knowledge", label: "Knowledge", icon: <BookOpen aria-hidden="true" size={14} /> }
+  ];
+
+  return (
+    <div className="heroDetail" aria-label={`${hero.name} details`}>
+      <div className="heroDetailHead">
+        <HeroPortrait name={hero.name} portrait={hero.portrait} size={54} />
+        <div className="heroDetailTitle">
+          <strong style={{ color: faction?.color }}>{hero.name}</strong>
+          <small>
+            {hero.class} · {hero.type} · {faction?.name ?? titleCase(hero.faction)}
+          </small>
+        </div>
+      </div>
+
+      <div className="heroDetailStats" aria-label="Starting statistics">
+        {stats.map((stat) => (
+          <div
+            aria-label={`${stat.label} ${hero.startingStats[stat.key]}`}
+            className="heroStat"
+            key={stat.key}
+            role="group"
+          >
+            <span className="heroStatIcon">{stat.icon}</span>
+            <span className="heroStatValue">{hero.startingStats[stat.key]}</span>
+            <span className="heroStatLabel">{stat.label}</span>
+          </div>
+        ))}
+      </div>
+
+      <div className="heroDetailSection">
+        <h4>Starting ability</h4>
+        {ability ? (
+          <div className="heroDetailEntry">
+            <strong>{ability.name}</strong>
+            <span>{cardRulesText(hero.startingAbilityCardId)}</span>
+          </div>
+        ) : (
+          <span className="heroDetailEmpty">—</span>
+        )}
+      </div>
+
+      <div className="heroDetailSection">
+        <h4>Specialties</h4>
+        {([1, 4, 6] as const).map((level) => {
+          const cardId = hero.specialtyCardIds[level];
+          const card = cardLibrary[cardId];
+          return (
+            <div className="heroDetailEntry" key={level}>
+              <span className="heroSpecLevel">{SPECIALTY_LEVEL_NUMERAL[level]}</span>
+              <strong>{card?.name ?? cardId}</strong>
+              <span>{cardRulesText(cardId)}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Draft tab: roll a random town and hero, or turn on ban-pick to remove heroes
+ * from everyone's pool before picking. Every control dispatches the matching
+ * engine action (RANDOM_ASSIGN_SEAT / SET_DRAFT_MODE / TOGGLE_HERO_BAN), so the
+ * result is shared and enforced for every seat.
+ */
+function DraftPanel({
   state,
   viewerPlayerId,
   onAction
@@ -3930,13 +4031,142 @@ export function SetupLobbyScreen({
   if (!lobby) {
     return null;
   }
+  const seat = lobby.seats.find((candidate) => candidate.playerId === viewerPlayerId);
+  const draft = lobby.draft ?? { mode: "open" as const, bannedHeroDefIds: [] };
+  const banned = new Set(draft.bannedHeroDefIds);
+  const chosenHeroes = new Set(lobby.seats.map((candidate) => candidate.heroDefId).filter(Boolean));
+
+  return (
+    <div className="draftPanel" aria-label="Draft and random">
+      <p className="draftIntro">
+        Roll a random town and hero, or turn on ban-pick to take heroes out of everyone’s pool before picking.
+      </p>
+
+      <div className="draftRandom" aria-label="Random assignment">
+        <button
+          className="draftRollBtn"
+          onClick={() => onAction({ type: "RANDOM_ASSIGN_SEAT", playerId: viewerPlayerId, scope: "faction" })}
+          type="button"
+        >
+          <Dices aria-hidden="true" size={16} />
+          <span>Random town &amp; hero</span>
+        </button>
+        <button
+          className="draftRollBtn"
+          disabled={!seat?.factionId}
+          onClick={() => onAction({ type: "RANDOM_ASSIGN_SEAT", playerId: viewerPlayerId, scope: "hero" })}
+          title={seat?.factionId ? "Re-roll a random hero of your town" : "Pick or roll a town first"}
+          type="button"
+        >
+          <Dices aria-hidden="true" size={16} />
+          <span>Random hero</span>
+        </button>
+      </div>
+
+      <div className="draftModeRow">
+        <small title="Ban-pick removes heroes from the pool so nobody — random or manual — can take them">
+          Hero pool
+        </small>
+        <div className="optionButtons">
+          {(["open", "ban"] as const).map((mode) => (
+            <button
+              aria-pressed={draft.mode === mode}
+              className={draft.mode === mode ? "selected" : ""}
+              key={mode}
+              onClick={() => onAction({ type: "SET_DRAFT_MODE", playerId: viewerPlayerId, mode })}
+              type="button"
+            >
+              {mode === "ban" ? "Ban-pick" : "Free pick"}
+            </button>
+          ))}
+        </div>
+        <small className="optionHint">
+          {draft.mode === "ban"
+            ? `Ban-pick is on${banned.size > 0 ? ` — ${banned.size} hero${banned.size === 1 ? "" : "es"} banned` : ""}. Banned heroes can't be chosen by anyone.`
+            : "Free pick — every hero is available."}
+        </small>
+      </div>
+
+      {draft.mode === "ban" ? (
+        <div className="draftBans" aria-label="Ban heroes">
+          {Object.values(coreFactionDefinitions).map((faction) => (
+            <div className="draftBanFaction" key={faction.id}>
+              <strong style={{ color: faction.color }}>{faction.name}</strong>
+              <div className="draftBanHeroes">
+                {faction.heroes.map((heroDefId) => {
+                  const hero = coreHeroDefinitions[heroDefId];
+                  const isBanned = banned.has(heroDefId);
+                  const lockedByPick = chosenHeroes.has(heroDefId) && !isBanned;
+                  return (
+                    <button
+                      aria-pressed={isBanned}
+                      className={`draftBanHero${isBanned ? " banned" : ""}`}
+                      disabled={lockedByPick}
+                      key={heroDefId}
+                      onClick={() => onAction({ type: "TOGGLE_HERO_BAN", playerId: viewerPlayerId, heroDefId })}
+                      title={
+                        lockedByPick
+                          ? "Already chosen by a seat — cannot ban"
+                          : isBanned
+                            ? "Banned — click to allow again"
+                            : "Click to ban"
+                      }
+                      type="button"
+                    >
+                      {isBanned ? <Ban aria-hidden="true" size={12} /> : null}
+                      <span>{hero?.name ?? heroDefId}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+type SetupTab = "heroes" | "draft" | "options";
+
+export function SetupLobbyScreen({
+  state,
+  viewerPlayerId,
+  onAction
+}: {
+  state: GameState;
+  viewerPlayerId: PlayerId;
+  onAction: (action: GameAction) => void;
+}) {
+  const lobby = state.setupLobby;
+  const [tab, setTab] = useState<SetupTab>("heroes");
+  const [focusedHeroId, setFocusedHeroId] = useState<string | null>(null);
+  if (!lobby) {
+    return null;
+  }
 
   const mySeat = lobby.seats.find((seat) => seat.playerId === viewerPlayerId);
   const allChosen = lobby.seats.every((seat) => seat.factionId && seat.heroDefId);
   const takenByOthers = new Set(
     lobby.seats.filter((seat) => seat.playerId !== viewerPlayerId).map((seat) => seat.factionId)
   );
+  const draft = lobby.draft ?? { mode: "open" as const, bannedHeroDefIds: [] };
+  const bannedHeroes = new Set(draft.mode === "ban" ? draft.bannedHeroDefIds : []);
   const scenarioName = scenarioDefinitions[lobby.options.scenarioId]?.name ?? lobby.scenarioId;
+  // The detail panel follows the last hero clicked/inspected; until then it shows
+  // the seat's own current pick (if any).
+  const shownHeroId = focusedHeroId ?? mySeat?.heroDefId ?? null;
+
+  const inspect = (heroDefId: string) => {
+    setFocusedHeroId(heroDefId);
+    setTab("heroes");
+  };
+
+  const tabs: { id: SetupTab; label: string }[] = [
+    { id: "heroes", label: "Heroes & specialties" },
+    { id: "draft", label: "Draft & random" },
+    { id: "options", label: "Game options" }
+  ];
 
   return (
     <section className="setupLobby" aria-label="Map setup">
@@ -3969,53 +4199,106 @@ export function SetupLobbyScreen({
         })}
       </div>
 
-      {mySeat ? <GameOptionsPanel onAction={onAction} state={state} viewerPlayerId={viewerPlayerId} /> : null}
-
       {mySeat ? (
-        <div className="factionGrid" aria-label="Pick a faction and hero">
-          {Object.values(coreFactionDefinitions).map((faction) => {
-            const taken = takenByOthers.has(faction.id);
-            return (
-              <div className={`factionCard ${taken ? "taken" : ""}`} key={faction.id} style={{ borderColor: faction.color }}>
-                <strong style={{ color: faction.color }}>{faction.name}</strong>
-                {faction.ignoresMorale ? <small>ignores morale</small> : null}
-                <div className="factionHeroes">
-                  {faction.heroes.map((heroDefId) => {
-                    const hero = coreHeroDefinitions[heroDefId];
-                    const selected = mySeat.factionId === faction.id && mySeat.heroDefId === heroDefId;
-                    return (
-                      <button
-                        className={`lobbyHero ${selected ? "selected" : ""}`}
-                        disabled={taken}
-                        key={heroDefId}
-                        onClick={() =>
-                          onAction({
-                            type: "CHOOSE_FACTION",
-                            playerId: viewerPlayerId,
-                            factionId: faction.id,
-                            heroDefId
-                          })
-                        }
-                        type="button"
-                      >
-                        <HeroPortrait
-                          name={hero?.name ?? heroDefId}
-                          portrait={hero?.portrait}
-                          size={34}
-                          style={{ gridRow: "span 2" }}
-                        />
-                        <span>{hero?.name ?? heroDefId}</span>
-                        <small>
-                          {hero?.class} · {hero?.type}
-                        </small>
-                      </button>
-                    );
-                  })}
-                </div>
+        <>
+          <div className="setupTabs" role="tablist" aria-label="Setup sections">
+            {tabs.map((entry) => (
+              <button
+                aria-selected={tab === entry.id}
+                className={`setupTab ${tab === entry.id ? "active" : ""}`}
+                key={entry.id}
+                onClick={() => setTab(entry.id)}
+                role="tab"
+                type="button"
+              >
+                {entry.label}
+              </button>
+            ))}
+          </div>
+
+          {tab === "options" ? (
+            <GameOptionsPanel onAction={onAction} state={state} viewerPlayerId={viewerPlayerId} />
+          ) : null}
+
+          {tab === "draft" ? <DraftPanel onAction={onAction} state={state} viewerPlayerId={viewerPlayerId} /> : null}
+
+          {tab === "heroes" ? (
+            <div className="heroesTab">
+              {shownHeroId ? (
+                <HeroSetupDetail heroDefId={shownHeroId} />
+              ) : (
+                <p className="heroDetailPlaceholder">
+                  Click a hero to see their statistics, starting ability and all three specialty levels.
+                </p>
+              )}
+
+              <div className="factionGrid" aria-label="Pick a faction and hero">
+                {Object.values(coreFactionDefinitions).map((faction) => {
+                  const taken = takenByOthers.has(faction.id);
+                  return (
+                    <div
+                      className={`factionCard ${taken ? "taken" : ""}`}
+                      key={faction.id}
+                      style={{ borderColor: faction.color }}
+                    >
+                      <strong style={{ color: faction.color }}>{faction.name}</strong>
+                      {faction.ignoresMorale ? <small>ignores morale</small> : null}
+                      <div className="factionHeroes">
+                        {faction.heroes.map((heroDefId) => {
+                          const hero = coreHeroDefinitions[heroDefId];
+                          const selected = mySeat.factionId === faction.id && mySeat.heroDefId === heroDefId;
+                          const isBanned = bannedHeroes.has(heroDefId);
+                          return (
+                            <div className="lobbyHeroRow" key={heroDefId}>
+                              <button
+                                className={`lobbyHero ${selected ? "selected" : ""}${isBanned ? " banned" : ""}`}
+                                disabled={taken || isBanned}
+                                onClick={() => {
+                                  setFocusedHeroId(heroDefId);
+                                  onAction({
+                                    type: "CHOOSE_FACTION",
+                                    playerId: viewerPlayerId,
+                                    factionId: faction.id,
+                                    heroDefId
+                                  });
+                                }}
+                                title={isBanned ? "Banned out of this draft" : undefined}
+                                type="button"
+                              >
+                                <HeroPortrait
+                                  name={hero?.name ?? heroDefId}
+                                  portrait={hero?.portrait}
+                                  size={34}
+                                  style={{ gridRow: "span 2" }}
+                                />
+                                <span>
+                                  {hero?.name ?? heroDefId}
+                                  {isBanned ? " · banned" : ""}
+                                </span>
+                                <small>
+                                  {hero?.class} · {hero?.type}
+                                </small>
+                              </button>
+                              <button
+                                aria-label="Show hero details"
+                                className={`lobbyHeroInfo ${shownHeroId === heroDefId ? "active" : ""}`}
+                                onClick={() => inspect(heroDefId)}
+                                title={`${hero?.name ?? heroDefId}: specialty, ability & stats`}
+                                type="button"
+                              >
+                                <Info aria-hidden="true" size={14} />
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-            );
-          })}
-        </div>
+            </div>
+          ) : null}
+        </>
       ) : (
         <p className="observerNote">Observer: waiting for the players to finish map setup.</p>
       )}

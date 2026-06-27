@@ -37,7 +37,7 @@ import { pumpAdventureQueues } from "./adventure-reducer";
 import { drawCardsForPlayer, shuffleCards } from "./decks";
 import { createSeededRandom } from "./random";
 import { freshSeed } from "./seed";
-import { appendEvent } from "./events";
+import { appendEvent, eventSeedNumber } from "./events";
 import { VICTORY_MODE_LABELS } from "./ruleset";
 import { hexEquals, tileCentersOverlap, type HexCoord } from "./hex";
 import type {
@@ -49,7 +49,9 @@ import type {
   GameAction,
   GameDifficulty,
   GameRuleset,
+  GameSetupDraft,
   GameSetupOptions,
+  GameSetupState,
   GameState,
   PlayerId,
   PlayerState,
@@ -1044,7 +1046,12 @@ export function createAdventureLobbyState(options: AdventureSetupOptions = {}): 
     players,
     map: { spaces: {} },
     adventure: null,
-    setupLobby: { scenarioId: scenario.id, options: setupOptions, seats },
+    setupLobby: {
+      scenarioId: scenario.id,
+      options: setupOptions,
+      seats,
+      draft: { mode: "open", bannedHeroDefIds: [] }
+    },
     towns: {},
     heroes: {},
     combat: null,
@@ -1311,6 +1318,10 @@ export function chooseFaction(state: GameState, action: Extract<GameAction, { ty
     throw new Error("Another player already picked that faction.");
   }
 
+  if (lobbyDraft(lobby).mode === "ban" && lobbyDraft(lobby).bannedHeroDefIds.includes(action.heroDefId)) {
+    throw new Error("That hero is banned out of this draft.");
+  }
+
   seat.factionId = action.factionId;
   seat.heroDefId = action.heroDefId;
   const hero = coreHeroDefinitions[action.heroDefId];
@@ -1324,6 +1335,173 @@ export function chooseFaction(state: GameState, action: Extract<GameAction, { ty
     playerId: action.playerId,
     factionId: action.factionId,
     heroDefId: action.heroDefId
+  });
+}
+
+/**
+ * Normalised draft block for a lobby. Lobby snapshots saved before the Draft tab
+ * shipped have no `draft`, so callers that only read default to open/no-bans.
+ */
+function lobbyDraft(lobby: GameSetupState): GameSetupDraft {
+  return lobby.draft ?? { mode: "open", bannedHeroDefIds: [] };
+}
+
+/** Ensures the lobby has a mutable draft block and returns it. */
+function ensureLobbyDraft(lobby: GameSetupState): GameSetupDraft {
+  if (!lobby.draft) {
+    lobby.draft = { mode: "open", bannedHeroDefIds: [] };
+  }
+  return lobby.draft;
+}
+
+/** Map-setup lobby (Draft tab): switch between free pick and ban-pick. */
+export function setDraftMode(state: GameState, action: Extract<GameAction, { type: "SET_DRAFT_MODE" }>): void {
+  const lobby = state.setupLobby;
+  if (!lobby || state.phase !== "setup") {
+    throw new Error("The draft mode can only change during map setup.");
+  }
+  if (!lobby.seats.some((seat) => seat.playerId === action.playerId)) {
+    throw new Error("Only seated players may change the draft mode.");
+  }
+  if (action.mode !== "open" && action.mode !== "ban") {
+    throw new Error("Unknown draft mode.");
+  }
+
+  const draft = ensureLobbyDraft(lobby);
+  if (draft.mode === action.mode) {
+    return;
+  }
+  draft.mode = action.mode;
+  // Leaving ban-pick clears every ban so the next "open" game starts clean and a
+  // stale ban can never silently steer a later random roll.
+  if (action.mode === "open") {
+    draft.bannedHeroDefIds = [];
+  }
+
+  appendEvent(state, {
+    type: "GAME_OPTIONS_CHANGED",
+    playerId: action.playerId,
+    message: `${state.players[action.playerId]?.name ?? action.playerId} ${
+      action.mode === "ban" ? "opened ban-pick drafting" : "returned to free hero picking"
+    }.`
+  });
+}
+
+/** Map-setup lobby (Draft tab): ban or un-ban one hero from the draft pool. */
+export function toggleHeroBan(state: GameState, action: Extract<GameAction, { type: "TOGGLE_HERO_BAN" }>): void {
+  const lobby = state.setupLobby;
+  if (!lobby || state.phase !== "setup") {
+    throw new Error("Heroes can only be banned during map setup.");
+  }
+  if (!lobby.seats.some((seat) => seat.playerId === action.playerId)) {
+    throw new Error("Only seated players may ban heroes.");
+  }
+
+  const draft = ensureLobbyDraft(lobby);
+  if (draft.mode !== "ban") {
+    throw new Error("Turn on ban-pick before banning heroes.");
+  }
+
+  const hero = coreHeroDefinitions[action.heroDefId];
+  if (!hero) {
+    throw new Error("Unknown hero.");
+  }
+
+  const alreadyBanned = draft.bannedHeroDefIds.includes(action.heroDefId);
+  if (!alreadyBanned && lobby.seats.some((seat) => seat.heroDefId === action.heroDefId)) {
+    throw new Error("That hero is already chosen by a seat and cannot be banned.");
+  }
+
+  draft.bannedHeroDefIds = alreadyBanned
+    ? draft.bannedHeroDefIds.filter((id) => id !== action.heroDefId)
+    : [...draft.bannedHeroDefIds, action.heroDefId];
+
+  appendEvent(state, {
+    type: "GAME_OPTIONS_CHANGED",
+    playerId: action.playerId,
+    message: `${state.players[action.playerId]?.name ?? action.playerId} ${
+      alreadyBanned ? "un-bans" : "bans"
+    } ${hero.name}.`
+  });
+}
+
+/**
+ * Map-setup lobby (Draft tab): randomly assign this seat a town and/or hero. The
+ * pool excludes factions another seat already holds and heroes banned out of the
+ * draft, so a random roll always lands on a legal pick.
+ */
+export function randomAssignSeat(state: GameState, action: Extract<GameAction, { type: "RANDOM_ASSIGN_SEAT" }>): void {
+  const lobby = state.setupLobby;
+  if (!lobby || state.phase !== "setup") {
+    throw new Error("Seats can only be rolled during map setup.");
+  }
+
+  const seat = lobby.seats.find((candidate) => candidate.playerId === action.playerId);
+  if (!seat) {
+    throw new Error("That seat does not exist in this scenario.");
+  }
+  if (action.scope !== "faction" && action.scope !== "hero") {
+    throw new Error("Unknown random scope.");
+  }
+
+  const draft = lobbyDraft(lobby);
+  const bans = new Set(draft.mode === "ban" ? draft.bannedHeroDefIds : []);
+  const takenFactions = new Set(
+    lobby.seats
+      .filter((candidate) => candidate.playerId !== action.playerId)
+      .map((candidate) => candidate.factionId)
+      .filter((id): id is FactionId => Boolean(id))
+  );
+
+  const selectableHeroes = (factionId: FactionId): string[] => {
+    const faction = coreFactionDefinitions[factionId];
+    return faction ? faction.heroes.filter((heroDefId) => !bans.has(heroDefId)) : [];
+  };
+
+  // Seed with the event counter so two consecutive rolls differ and every client
+  // computing the same action lands on the same pick.
+  const random = createSeededRandom(`${state.seed}#random-seat#${action.playerId}#${eventSeedNumber(state)}`);
+
+  let factionId: FactionId;
+  if (action.scope === "hero") {
+    if (!seat.factionId) {
+      throw new Error("Roll a town first, or pick one, before rolling a hero.");
+    }
+    factionId = seat.factionId;
+  } else {
+    const candidateFactions = (Object.values(coreFactionDefinitions) as { id: FactionId }[])
+      .map((faction) => faction.id)
+      .filter((id) => !takenFactions.has(id) && selectableHeroes(id).length > 0);
+    if (candidateFactions.length === 0) {
+      throw new Error("No town is available to roll.");
+    }
+    factionId = random.pick(candidateFactions);
+  }
+
+  const heroPool = selectableHeroes(factionId);
+  if (heroPool.length === 0) {
+    throw new Error("No hero is available to roll for that town.");
+  }
+  // Re-rolling a hero avoids the current one when another is available, so the
+  // roll visibly changes the pick.
+  const choices =
+    action.scope === "hero" && heroPool.length > 1 ? heroPool.filter((id) => id !== seat.heroDefId) : heroPool;
+  const heroDefId = random.pick(choices.length > 0 ? choices : heroPool);
+
+  seat.factionId = factionId;
+  seat.heroDefId = heroDefId;
+  const faction = coreFactionDefinitions[factionId];
+  const hero = coreHeroDefinitions[heroDefId];
+  const player = state.players[action.playerId];
+  if (player && hero && faction) {
+    player.name = `${hero.name} of ${faction.name}`;
+  }
+
+  appendEvent(state, {
+    type: "FACTION_CHOSEN",
+    playerId: action.playerId,
+    factionId,
+    heroDefId
   });
 }
 

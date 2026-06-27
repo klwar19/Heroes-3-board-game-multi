@@ -79,7 +79,14 @@ import {
   unplaceCombatUnit,
   endTurnAdventure
 } from "./adventure-reducer";
-import { chooseFaction, setGameOptions, startAdventureFromLobby } from "./adventure-setup";
+import {
+  chooseFaction,
+  randomAssignSeat,
+  setDraftMode,
+  setGameOptions,
+  startAdventureFromLobby,
+  toggleHeroBan
+} from "./adventure-setup";
 import {
   assignSeat,
   joinRoom,
@@ -14270,6 +14277,9 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "CHOOSE_FACTION",
   "SET_GAME_OPTIONS",
   "START_ADVENTURE",
+  "SET_DRAFT_MODE",
+  "TOGGLE_HERO_BAN",
+  "RANDOM_ASSIGN_SEAT",
   "BUY_WAR_MACHINE",
   "USE_SCHOOL_FETCH_EXPERT",
   "USE_TOWN_BUILDING",
@@ -14469,6 +14479,15 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "START_ADVENTURE":
         startAdventureFromLobby(nextState, action);
+        break;
+      case "SET_DRAFT_MODE":
+        setDraftMode(nextState, action);
+        break;
+      case "TOGGLE_HERO_BAN":
+        toggleHeroBan(nextState, action);
+        break;
+      case "RANDOM_ASSIGN_SEAT":
+        randomAssignSeat(nextState, action);
         break;
       case "JOIN_ROOM":
         joinRoom(nextState, action);
