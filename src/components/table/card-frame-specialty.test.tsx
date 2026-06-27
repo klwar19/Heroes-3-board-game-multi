@@ -24,15 +24,17 @@ describe("CardFrame — art-less specialties render the native card in the tray"
   });
 
   it("draws the native card (with its symbol) for an art-less hero whose scan is absent (Torosar)", () => {
-    // Torosar has no printed scan, but is given the artillery symbol (Ballista).
+    // Torosar has no printed scan, but is given the Ballista war-machine icon
+    // (Ballista specialist) — the same dedicated icon specialty-card.test.tsx
+    // pins, NOT the generic Artillery emblem.
     expect(cardLibrary["specialty.torosar.6"]?.assets?.cardImage).toBeUndefined();
     const { container } = render(<CardFrame cardId="specialty.torosar.6" className="fanCardImage" />);
     expect(container.querySelector(".scWrap")).toBeTruthy();
     expect(container.querySelector(".cardFaceFallback")).toBeNull();
     expect(container.querySelector(".scIconBox")).toBeTruthy();
-    expect((container.querySelector(".scIcon") as HTMLImageElement | null)?.getAttribute("src")).toContain(
-      "abilities-artillery.webp"
-    );
+    const iconSrc = (container.querySelector(".scIcon") as HTMLImageElement | null)?.getAttribute("src") ?? "";
+    expect(iconSrc).toContain("icon-ballista.webp");
+    expect(iconSrc).not.toContain("abilities-artillery");
   });
 
   it("still renders the scanned <img> for a baked-art specialty (Sandro)", () => {

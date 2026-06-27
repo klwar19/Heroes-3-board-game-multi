@@ -1243,11 +1243,11 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     // engine: only the Pack (Jotunn Warlord) carries the Teleport ability
     // (bulwark-jotunn-teleport); the Few (Jotunn) has no wired ability. House
     // rule (per the owner): at the START of its activation the Warlord may
-    // teleport one of its OWN units — a friendly unit or itself, NEVER an enemy —
-    // to an empty space like the Teleport Spell, optionally, and still act
-    // normally afterwards. The printed enemy-flying-slow rider is NOT wired.
+    // teleport one of its OTHER OWN units — a friendly unit, NEVER itself and
+    // NEVER an enemy — to an empty space like the Teleport Spell, optionally, and
+    // still act normally afterwards. The printed enemy-flying-slow rider is NOT wired.
     few: { attack: 5, defense: 3, health: 8, initiative: 6, cost: { gold: 18, valuables: 1 }, abilities: [], cardImage: "/assets/units-bulwark-golden-jotunns-few.webp" },
-    pack: { attack: 6, defense: 3, health: 9, initiative: 8, cost: { gold: 32, valuables: 2 }, abilities: ["bulwark-jotunn-teleport"], abilityText: "[activation] At the start of its activation, this unit may teleport one of your units to an empty space, then act as normal (Teleport).", cardImage: "/assets/units-bulwark-golden-jotunns-pack.webp" },
+    pack: { attack: 6, defense: 3, health: 9, initiative: 8, cost: { gold: 32, valuables: 2 }, abilities: ["bulwark-jotunn-teleport"], abilityText: "[activation] At the start of its activation, this unit may teleport one of your other units to an empty space, then act as normal (Teleport).", cardImage: "/assets/units-bulwark-golden-jotunns-pack.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Jotunn",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Bulwark Expansion)",
