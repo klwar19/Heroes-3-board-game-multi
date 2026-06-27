@@ -3,7 +3,8 @@
   "name": "heroes3bg-rooms",
   "main": "party/index.ts",
   "parties": {
-    "lobby": "party/lobby.ts"
+    "lobby": "party/lobby.ts",
+    "maps": "party/maps.ts"
   },
   "compatibilityDate": "2025-06-01"
 }

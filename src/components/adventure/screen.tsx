@@ -71,7 +71,7 @@ import { CARD_BACK_IMAGES, getDeckBack } from "@/data/decks";
 import { actionKey, cardName, formatCost, titleCase } from "@/components/table/utils";
 import { beginUnitPointerDrag } from "@/components/table/pointer-drag";
 import { useCardZoom } from "@/components/table/zoom";
-import { listSavedMaps, type SavedMapRecord } from "@/lib/saved-maps";
+import { fetchSharedMaps, type SharedMapRecord } from "@/lib/shared-maps";
 
 const HEX_SIZE = 34;
 const HEX_WIDTH = Math.sqrt(3) * HEX_SIZE;
@@ -3492,18 +3492,29 @@ function SavedMapPicker({
   onClear
 }: {
   options: GameSetupOptions;
-  onPick: (record: SavedMapRecord) => void;
+  onPick: (record: SharedMapRecord) => void;
   onClear: () => void;
 }) {
-  const [savedMaps, setSavedMaps] = useState<SavedMapRecord[]>([]);
+  const [savedMaps, setSavedMaps] = useState<SharedMapRecord[]>([]);
 
-  // localStorage is browser-only; refresh when the tab regains focus so a
-  // map saved in the designer tab shows up here right away.
+  // The library lives on the SHARED server now, so every player in the lobby
+  // sees the same maps. Re-fetch when the tab regains focus so a map saved (by
+  // anyone) in the designer shows up here right away.
   useEffect(() => {
-    const refresh = () => setSavedMaps(listSavedMaps());
+    let cancelled = false;
+    const refresh = () => {
+      void fetchSharedMaps().then((maps) => {
+        if (!cancelled) {
+          setSavedMaps(maps);
+        }
+      });
+    };
     refresh();
     window.addEventListener("focus", refresh);
-    return () => window.removeEventListener("focus", refresh);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", refresh);
+    };
   }, []);
 
   return (
@@ -3554,7 +3565,8 @@ function SavedMapPicker({
         <Link href="/designer" target="_blank">
           <Hammer aria-hidden="true" size={11} /> Open the map designer
         </Link>{" "}
-        to create and save maps (saved in your browser), then pick one here.
+        to create, edit and save maps (shared with everyone), then pick one here. Picking a map opens the seat count it
+        was designed for.
       </small>
     </>
   );
@@ -3801,8 +3813,13 @@ function GameOptionsPanel({
         <SavedMapPicker
           onClear={() => send({ customMap: null, customMapName: null })}
           onPick={(record) =>
+            // A saved map carries the seat count it was designed for; switch the
+            // scenario first (so playerCount clamps to the new scenario), open
+            // that many seats, then apply the map. SET_GAME_OPTIONS processes
+            // scenarioId → playerCount → customMap in that order.
             send({
               ...(record.scenarioId !== options.scenarioId ? { scenarioId: record.scenarioId } : {}),
+              playerCount: record.players,
               customMap: record.tiles,
               customMapName: record.name
             })
