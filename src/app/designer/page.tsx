@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowLeft, FilePlus2, Save, Trash2 } from "lucide-react";
 import { MapDesigner } from "@/components/adventure/map-designer";
 import {
@@ -9,36 +9,49 @@ import {
   validateCustomMapPlan,
   type CustomMapTilePlan
 } from "@/engine";
+import { clampMapPlayers, MAX_MAP_PLAYERS, MIN_MAP_PLAYERS, newSharedMapId } from "@/server/map-registry";
 import {
-  deleteSavedMap,
-  listSavedMaps,
-  newSavedMapId,
-  saveMapRecord,
-  type SavedMapRecord
-} from "@/lib/saved-maps";
+  deleteSharedMap,
+  fetchSharedMaps,
+  saveSharedMap,
+  type SharedMapRecord
+} from "@/lib/shared-maps";
+import { getClientId, getDisplayName } from "@/lib/identity";
 
 /**
  * Standalone map designer: build a map around the scenario's fixed starting
- * tiles — choose any tile, flip it face up or down, rotate it — and save the
- * design in this browser. Saved maps are picked during map setup instead of
- * being designed there.
+ * tiles — choose any tile, flip it face up or down, rotate it, set how many
+ * players it opens for — and save the design to the SHARED server library. Saved
+ * maps are visible to every player: anyone can open, edit, play, or delete them
+ * (from here or the map-setup lobby).
  */
 export default function MapDesignerPage() {
-  const [saved, setSaved] = useState<SavedMapRecord[]>([]);
+  const [saved, setSaved] = useState<SharedMapRecord[]>([]);
   const [scenarioId, setScenarioId] = useState("skirmish");
   const [tiles, setTiles] = useState<CustomMapTilePlan[]>([]);
   const [name, setName] = useState("My map");
+  const [players, setPlayers] = useState(2);
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [savedFlash, setSavedFlash] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  // localStorage exists only in the browser; refresh on focus so designs
-  // saved in another tab show up here.
+  // The library lives on the server now (shared by everyone), so re-fetch on
+  // mount and whenever the tab regains focus — a map saved in another tab or by
+  // another player then shows up here. setState rides in the .then() callback
+  // (not synchronously in the effect) so it's a normal external subscription.
+  const refresh = useCallback(() => {
+    void fetchSharedMaps().then((maps) => {
+      setSaved(maps);
+      setLoading(false);
+    });
+  }, []);
+
   useEffect(() => {
-    const refresh = () => setSaved(listSavedMaps());
     refresh();
     window.addEventListener("focus", refresh);
     return () => window.removeEventListener("focus", refresh);
-  }, []);
+  }, [refresh]);
 
   const scenario = scenarioDefinitions[scenarioId];
   const problems = useMemo(
@@ -46,31 +59,74 @@ export default function MapDesignerPage() {
     [tiles, scenario]
   );
 
+  // Seat counts this scenario can open (skirmish 2–4, the symmetric duels 2).
+  const playerCounts = useMemo(() => {
+    if (!scenario) {
+      return [MIN_MAP_PLAYERS];
+    }
+    const min = Math.max(MIN_MAP_PLAYERS, scenario.minPlayers);
+    const max = Math.min(scenario.maxPlayers, scenario.layout.starts.length, MAX_MAP_PLAYERS);
+    const counts: number[] = [];
+    for (let count = min; count <= max; count += 1) {
+      counts.push(count);
+    }
+    return counts;
+  }, [scenario]);
+
+  // A new scenario may allow fewer seats — keep `players` inside its range.
+  const changeScenario = (next: string) => {
+    setScenarioId(next);
+    setPlayers((current) => clampMapPlayers(next, current));
+  };
+
   const startNew = () => {
     setCurrentId(null);
     setTiles([]);
     setName("My map");
+    setPlayers(clampMapPlayers(scenarioId, players));
+    setSaveError(null);
   };
 
-  const loadRecord = (record: SavedMapRecord) => {
+  const loadRecord = (record: SharedMapRecord) => {
     setCurrentId(record.id);
     setScenarioId(scenarioDefinitions[record.scenarioId] ? record.scenarioId : "skirmish");
     setTiles(record.tiles);
     setName(record.name);
+    setPlayers(clampMapPlayers(record.scenarioId, record.players));
+    setSaveError(null);
   };
 
-  const save = (asNew: boolean) => {
-    const id = asNew || !currentId ? newSavedMapId() : currentId;
+  const save = async (asNew: boolean) => {
+    const id = asNew || !currentId ? newSharedMapId() : currentId;
     const trimmed = name.trim() || "Unnamed map";
     setName(trimmed);
-    setCurrentId(id);
-    setSaved(saveMapRecord({ id, name: trimmed, scenarioId, tiles }));
+    setSaveError(null);
+    const outcome = await saveSharedMap({
+      id,
+      name: trimmed,
+      scenarioId,
+      players: clampMapPlayers(scenarioId, players),
+      tiles,
+      createdByClientId: getClientId(),
+      createdByName: getDisplayName() || null
+    });
+    if (!outcome.ok) {
+      setSaveError(outcome.error);
+      return;
+    }
+    setCurrentId(outcome.map.id);
+    setSaved(outcome.maps);
     setSavedFlash(true);
     window.setTimeout(() => setSavedFlash(false), 1600);
   };
 
-  const remove = (id: string) => {
-    setSaved(deleteSavedMap(id));
+  const remove = async (id: string) => {
+    const next = await deleteSharedMap(id);
+    if (next) {
+      setSaved(next);
+    } else {
+      void refresh();
+    }
     if (currentId === id) {
       startNew();
     }
@@ -85,9 +141,10 @@ export default function MapDesignerPage() {
         <h1>Map designer</h1>
         <p>
           Build a map around the starting tiles, dropping tiles wherever you like — they can interlock, leave gaps,
-          touch at a corner or sit apart on their own. Flip a tile face up (choose the exact tile and rotation) or face
-          down (random from its pool), then save the design. Saved maps live in this browser and are picked in the
-          map-setup lobby under “Map design”.
+          touch at a corner or sit apart on their own. Pick how many players it opens for (2–4), flip a tile face up
+          (choose the exact tile and rotation) or face down (random from its pool), then save the design. Saved maps are
+          shared with everyone — anyone can open, edit, play, or delete them, here or in the map-setup lobby under “Map
+          design”.
         </p>
       </header>
 
@@ -107,7 +164,7 @@ export default function MapDesignerPage() {
               <small>Scenario (starting tiles)</small>
               <select
                 aria-label="Scenario"
-                onChange={(event) => setScenarioId(event.target.value)}
+                onChange={(event) => changeScenario(event.target.value)}
                 value={scenarioId}
               >
                 {Object.values(scenarioDefinitions).map((candidate) => (
@@ -117,11 +174,25 @@ export default function MapDesignerPage() {
                 ))}
               </select>
             </label>
-            <button className="commandButton primary" onClick={() => save(false)} type="button">
+            <label>
+              <small>Players</small>
+              <select
+                aria-label="Players"
+                onChange={(event) => setPlayers(Number(event.target.value))}
+                value={players}
+              >
+                {playerCounts.map((count) => (
+                  <option key={count} value={count}>
+                    {count} players
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button className="commandButton primary" onClick={() => void save(false)} type="button">
               <Save aria-hidden="true" size={13} /> {savedFlash ? "Saved!" : currentId ? "Save" : "Save map"}
             </button>
             {currentId ? (
-              <button className="commandButton" onClick={() => save(true)} title="Keep the loaded map and save this design as a copy" type="button">
+              <button className="commandButton" onClick={() => void save(true)} title="Keep the loaded map and save this design as a copy" type="button">
                 Save as copy
               </button>
             ) : null}
@@ -129,6 +200,12 @@ export default function MapDesignerPage() {
               <FilePlus2 aria-hidden="true" size={13} /> New map
             </button>
           </div>
+
+          {saveError ? (
+            <div className="designerProblems" aria-label="Save error" role="alert">
+              <strong>Couldn’t save: {saveError}</strong>
+            </div>
+          ) : null}
 
           {problems.length > 0 ? (
             <div className="designerProblems" aria-label="Design problems">
@@ -143,29 +220,33 @@ export default function MapDesignerPage() {
 
           <MapDesigner customMap={tiles} onChange={setTiles} scenarioId={scenarioId} />
           <small className="optionHint">
-            {tiles.length} tile{tiles.length === 1 ? "" : "s"} placed · face-down tiles draw randomly from their
-            Far/Near/Center pool when the adventure starts.
+            {tiles.length} tile{tiles.length === 1 ? "" : "s"} placed · opens {players} seat{players === 1 ? "" : "s"} ·
+            face-down tiles draw randomly from their Far/Near/Center pool when the adventure starts.
           </small>
         </section>
 
         <aside className="designerSaved" aria-label="Saved maps">
-          <h2>Saved maps</h2>
-          {saved.length === 0 ? <small>Nothing saved yet — design a map and press Save.</small> : null}
+          <h2>Shared maps</h2>
+          {loading ? <small>Loading the shared library…</small> : null}
+          {!loading && saved.length === 0 ? (
+            <small>Nothing saved yet — design a map and press Save. Everyone shares this library.</small>
+          ) : null}
           <ul>
             {saved.map((record) => (
               <li className={record.id === currentId ? "current" : ""} key={record.id}>
                 <button className="savedMapLoad" onClick={() => loadRecord(record)} title="Open this map in the designer" type="button">
                   <strong>{record.name}</strong>
                   <small>
-                    {scenarioDefinitions[record.scenarioId]?.name ?? record.scenarioId} · {record.tiles.length} tile
-                    {record.tiles.length === 1 ? "" : "s"}
+                    {scenarioDefinitions[record.scenarioId]?.name ?? record.scenarioId} · {record.players}P ·{" "}
+                    {record.tiles.length} tile{record.tiles.length === 1 ? "" : "s"}
+                    {record.createdByName ? ` · by ${record.createdByName}` : ""}
                   </small>
                 </button>
                 <button
                   aria-label={`Delete ${record.name}`}
                   className="savedMapDelete"
-                  onClick={() => remove(record.id)}
-                  title="Delete this saved map"
+                  onClick={() => void remove(record.id)}
+                  title="Delete this saved map for everyone"
                   type="button"
                 >
                   <Trash2 aria-hidden="true" size={13} />

@@ -5975,6 +5975,350 @@ button.hbSlot:disabled { cursor: default; }
   background: linear-gradient(180deg, rgba(82, 61, 29, 0.88), rgba(54, 40, 19, 0.92));
 }
 
+/* Map-setup tabs (Heroes & specialties / Draft & random / Game options). */
+.setupTabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  border-bottom: 1px solid rgba(170, 130, 70, 0.3);
+  padding-bottom: 8px;
+}
+
+.setupTab {
+  padding: 7px 14px;
+  border-radius: 9px 9px 0 0;
+  border: 1px solid rgba(150, 116, 60, 0.45);
+  border-bottom: none;
+  background: linear-gradient(180deg, rgba(48, 35, 18, 0.7), rgba(28, 21, 11, 0.8));
+  color: #d8c39a;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.setupTab:hover {
+  color: #ffe9bd;
+  border-color: rgba(214, 178, 94, 0.7);
+}
+
+.setupTab.active {
+  background: linear-gradient(180deg, #e8c576, #c2933f);
+  color: #2a1c08;
+  border-color: #ffd76a;
+  text-shadow: 0 1px 0 rgba(255, 244, 214, 0.4);
+}
+
+/* Heroes tab: detail panel above the faction grid. */
+.heroesTab {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.heroDetailPlaceholder {
+  margin: 0;
+  padding: 14px 16px;
+  border: 1px dashed rgba(170, 130, 70, 0.4);
+  border-radius: 12px;
+  color: #b89f78;
+  background: rgba(24, 18, 10, 0.55);
+}
+
+.heroDetail {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid rgba(220, 175, 95, 0.45);
+  border-radius: 12px;
+  background: rgba(33, 25, 15, 0.92);
+  color: #ecd9b0;
+  animation: heroDetailIn 0.18s ease;
+}
+
+@keyframes heroDetailIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.heroDetailHead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.heroDetailTitle {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.heroDetailTitle strong {
+  font-size: 17px;
+}
+
+.heroDetailTitle small {
+  color: #b89f78;
+}
+
+.heroDetailStats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.heroStat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 4px;
+  border: 1px solid rgba(170, 130, 70, 0.35);
+  border-radius: 9px;
+  background: rgba(24, 18, 10, 0.7);
+}
+
+.heroStatIcon {
+  display: inline-grid;
+  place-items: center;
+  color: #ffd76a;
+}
+
+.heroStatValue {
+  font-size: 18px;
+  font-weight: 800;
+  color: #ffe9bd;
+  line-height: 1;
+}
+
+.heroStatLabel {
+  font-size: 11px;
+  color: #b89f78;
+}
+
+.heroDetailSection {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.heroDetailSection h4 {
+  margin: 0;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #ffd76a;
+}
+
+.heroDetailEntry {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: baseline;
+  column-gap: 8px;
+  row-gap: 2px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(24, 18, 10, 0.6);
+  border: 1px solid rgba(170, 130, 70, 0.25);
+}
+
+.heroDetailEntry strong {
+  color: #ffe9bd;
+}
+
+.heroDetailEntry > span:last-child {
+  grid-column: 1 / -1;
+  color: #cbb88f;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.heroSpecLevel {
+  display: inline-grid;
+  place-items: center;
+  min-width: 26px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: linear-gradient(180deg, #e8c576, #c2933f);
+  color: #2a1c08;
+  font-weight: 800;
+  font-size: 12px;
+  align-self: center;
+}
+
+.heroDetailEmpty {
+  color: #b89f78;
+}
+
+/* Hero row: pick button + small info button. */
+.lobbyHeroRow {
+  display: flex;
+  gap: 4px;
+  align-items: stretch;
+}
+
+.lobbyHeroRow .lobbyHero {
+  flex: 1;
+  min-width: 0;
+}
+
+.lobbyHeroInfo {
+  flex: 0 0 auto;
+  width: 30px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 8px;
+  border: 1px solid rgba(170, 130, 70, 0.3);
+  background: rgba(33, 25, 15, 0.7);
+  color: #d8c39a;
+  cursor: pointer;
+}
+
+.lobbyHeroInfo:hover {
+  border-color: rgba(214, 178, 94, 0.8);
+  color: #ffe9bd;
+}
+
+.lobbyHeroInfo.active {
+  border-color: #ffd76a;
+  color: #ffd76a;
+  background: rgba(82, 61, 29, 0.6);
+}
+
+.lobbyHero.banned {
+  opacity: 0.4;
+}
+
+.lobbyHero.banned span {
+  text-decoration: line-through;
+}
+
+/* Draft & random tab. */
+.draftPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid rgba(220, 175, 95, 0.4);
+  border-radius: 12px;
+  background: rgba(33, 25, 15, 0.92);
+  color: #ecd9b0;
+}
+
+.draftIntro {
+  margin: 0;
+  color: #b89f78;
+  max-width: 70ch;
+}
+
+.draftRandom {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.draftRollBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: 10px;
+  border: 1px solid #7a5a23;
+  background: linear-gradient(180deg, #f1d68b 0%, #cda049 46%, #9c7327 100%);
+  color: #2a1c08;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow:
+    0 2px 0 #5d4317,
+    inset 0 1px 0 rgba(255, 246, 218, 0.6);
+}
+
+.draftRollBtn:hover:not(:disabled) {
+  filter: brightness(1.06);
+}
+
+.draftRollBtn:disabled {
+  background: linear-gradient(180deg, #6b6052, #4f4636);
+  color: #2b2519;
+  border-color: #3c352a;
+  box-shadow: none;
+  cursor: default;
+  opacity: 0.85;
+}
+
+.draftModeRow {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.draftModeRow > small:first-child {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #c9b07c;
+}
+
+.draftBans {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px;
+}
+
+.draftBanFaction {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid rgba(170, 130, 70, 0.3);
+  border-radius: 10px;
+  background: rgba(24, 18, 10, 0.6);
+}
+
+.draftBanHeroes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.draftBanHero {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(170, 130, 70, 0.4);
+  background: rgba(48, 35, 18, 0.72);
+  color: #e8d9b8;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.draftBanHero:hover:not(:disabled) {
+  border-color: rgba(214, 178, 94, 0.8);
+}
+
+.draftBanHero.banned {
+  background: linear-gradient(180deg, rgba(150, 52, 44, 0.85), rgba(110, 36, 30, 0.9));
+  border-color: #c0584a;
+  color: #ffd9d2;
+  text-decoration: line-through;
+}
+
+.draftBanHero:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 /* Map-setup game options (scenario, difficulty, resources, income, units). */
 .gameOptions {
   display: flex;

@@ -79,7 +79,14 @@ import {
   unplaceCombatUnit,
   endTurnAdventure
 } from "./adventure-reducer";
-import { chooseFaction, setGameOptions, startAdventureFromLobby } from "./adventure-setup";
+import {
+  chooseFaction,
+  randomAssignSeat,
+  setDraftMode,
+  setGameOptions,
+  startAdventureFromLobby,
+  toggleHeroBan
+} from "./adventure-setup";
 import {
   assignSeat,
   joinRoom,
@@ -10006,21 +10013,33 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     noteSpellCast(state, playerForLimit);
   }
 
-  const moveError = action.fromSpellBook
-    ? // Spell Book (house rule): a Map Spell played from the Book cycles Book →
-      // discard pile (or → removed for a removeSelf option), never touching hand.
-      moveSpellFromSpellBookToDiscard(
-        state,
-        action.playerId,
-        action.cardId,
-        option?.cost?.removeSelf ? "removed" : "discard"
-      )
-    : moveCardFromHandToDiscard(
-        state,
-        action.playerId,
-        action.cardId,
-        option?.cost?.removeSelf ? "removed" : "discard"
-      );
+  // Necromancy (the ability + Vidomina's level I/VI specialty) is NOT discarded
+  // up front. It is consumed only if the queued reinforce actually upgrades a
+  // unit — the REINFORCE_HALF_GOLD step carries the cardId and discards it on a
+  // successful upgrade (queueNecromancyReinforce). A play that finds no eligible
+  // target, or where the player declines/skips the reinforce, keeps the card in
+  // hand: you lose Necromancy only when it upgrades something.
+  const deferNecromancyDiscard = effect.type === "NECROMANCY_REINFORCE";
+  if (deferNecromancyDiscard && !state.players[action.playerId]?.hand.includes(action.cardId)) {
+    throw new Error(`${card.name} is not in your hand.`);
+  }
+  const moveError = deferNecromancyDiscard
+    ? null
+    : action.fromSpellBook
+      ? // Spell Book (house rule): a Map Spell played from the Book cycles Book →
+        // discard pile (or → removed for a removeSelf option), never touching hand.
+        moveSpellFromSpellBookToDiscard(
+          state,
+          action.playerId,
+          action.cardId,
+          option?.cost?.removeSelf ? "removed" : "discard"
+        )
+      : moveCardFromHandToDiscard(
+          state,
+          action.playerId,
+          action.cardId,
+          option?.cost?.removeSelf ? "removed" : "discard"
+        );
   if (moveError) {
     throw new Error(moveError.message);
   }
@@ -10037,15 +10056,22 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       ? card.effect.options[action.optionIndex]?.label
       : undefined;
 
-  appendEvent(state, {
-    type: "CARD_PLAYED",
-    playerId: action.playerId,
-    cardId: action.cardId,
-    timing: card.timing,
-    mode,
-    effectAmount: getEffectAmount(effect, mode) || undefined,
-    optionLabel
-  });
+  // Necromancy's CARD_PLAYED (which drives the hand→discard flight animation and
+  // the "plays …" log line) is deferred along with the discard: it fires from the
+  // reinforce resolver only when the card actually moves to the discard pile, so
+  // a kept card (skip / no target / declined reinforce) never animates a phantom
+  // flight or logs a play it didn't make.
+  if (!deferNecromancyDiscard) {
+    appendEvent(state, {
+      type: "CARD_PLAYED",
+      playerId: action.playerId,
+      cardId: action.cardId,
+      timing: card.timing,
+      mode,
+      effectAmount: getEffectAmount(effect, mode) || undefined,
+      optionLabel
+    });
+  }
 
   // Ongoing rule snapshot: lasting effects created below keep the card in
   // play until they end ("remove" plays went to `removed` and stay there).
@@ -10542,7 +10568,9 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     // window. Once that is queued, release the deferred field visit so it
     // resolves only after the reinforce is paid for.
     state.players[action.playerId].necromancyWindow = false;
-    queueNecromancyReinforce(state, action.playerId, effect.forceMode ?? mode);
+    // Pass the played card so the reinforce can consume it ONLY on a successful
+    // upgrade; a no-target / declined reinforce keeps it in hand.
+    queueNecromancyReinforce(state, action.playerId, effect.forceMode ?? mode, action.cardId);
     const pending = state.adventure?.pendingNecromancy;
     if (pending && pending.playerId === action.playerId) {
       if (pending.heroId && pending.fieldId) {
@@ -14270,6 +14298,9 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "CHOOSE_FACTION",
   "SET_GAME_OPTIONS",
   "START_ADVENTURE",
+  "SET_DRAFT_MODE",
+  "TOGGLE_HERO_BAN",
+  "RANDOM_ASSIGN_SEAT",
   "BUY_WAR_MACHINE",
   "USE_SCHOOL_FETCH_EXPERT",
   "USE_TOWN_BUILDING",
@@ -14469,6 +14500,15 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "START_ADVENTURE":
         startAdventureFromLobby(nextState, action);
+        break;
+      case "SET_DRAFT_MODE":
+        setDraftMode(nextState, action);
+        break;
+      case "TOGGLE_HERO_BAN":
+        toggleHeroBan(nextState, action);
+        break;
+      case "RANDOM_ASSIGN_SEAT":
+        randomAssignSeat(nextState, action);
         break;
       case "JOIN_ROOM":
         joinRoom(nextState, action);
