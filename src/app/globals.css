@@ -5872,6 +5872,70 @@ button.hbSlot:disabled { cursor: default; }
   max-width: 70ch;
 }
 
+/* Red take-back warning broadcast to every player when a seat resets a roll,
+   town or pick during setup. Loud on purpose so the table notices the do-over. */
+.setupCheatWarning {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 2px solid var(--red);
+  border-radius: 10px;
+  background: rgb(77 37 35 / 96%);
+  color: #ffe1d8;
+  box-shadow: 0 8px 26px rgb(0 0 0 / 45%);
+  animation: setupCheatPulse 1.1s ease-out 3;
+}
+
+.setupCheatIcon {
+  font-size: 20px;
+  line-height: 1.2;
+}
+
+.setupCheatText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.setupCheatText strong {
+  color: #ffd2c6;
+  font-size: 13.5px;
+  letter-spacing: 0.01em;
+}
+
+.setupCheatDismiss {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid rgb(255 209 198 / 45%);
+  border-radius: 6px;
+  background: transparent;
+  color: #ffd2c6;
+  cursor: pointer;
+}
+
+.setupCheatDismiss:hover {
+  background: rgb(255 209 198 / 14%);
+}
+
+@keyframes setupCheatPulse {
+  0% {
+    box-shadow: 0 0 0 0 rgb(166 83 72 / 70%);
+  }
+  70% {
+    box-shadow: 0 0 0 12px rgb(166 83 72 / 0%);
+  }
+  100% {
+    box-shadow: 0 8px 26px rgb(0 0 0 / 45%);
+  }
+}
+
 .lobbySeats {
   display: flex;
   gap: 10px;
@@ -7363,6 +7427,43 @@ button.hbSlot:disabled { cursor: default; }
   color: #e7c878;
   font-size: 10.5px;
   line-height: 1.4;
+}
+
+/* ---- Unified Map picker (scenario sheets + designed maps) ---------------- */
+.mapPicker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mapPickerGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mapPickerGroupLabel {
+  color: #c9b489;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* A designed map carries its author tag so it reads as a person's custom work. */
+.optionButtons button.designedMap {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+}
+
+.mapAuthor {
+  color: #9bd1ff;
+  font-size: 10px;
+  font-style: italic;
+}
+
+.optionButtons button.designedMap.selected .mapAuthor {
+  color: #1c2a12;
 }
 
 /* ---- Adventure hand: play menu and cost payment -------------------------- */

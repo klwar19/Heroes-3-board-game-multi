@@ -158,6 +158,58 @@ describe("SetupLobbyScreen — TYPE 1 draft", () => {
   });
 });
 
+describe("SetupLobbyScreen — setup take-back warning (all players, red popup)", () => {
+  it("shows a red 'cheating' alert to OTHER players when a seat resets; absent before any reset", () => {
+    // p1 makes a normal pick — no warning yet, even to the other player.
+    const clean = build("ui-cheat", [
+      { type: "CHOOSE_FACTION", playerId: "p1", factionId: "castle", heroDefId: "catherine" }
+    ]);
+    const { unmount } = render(<SetupLobbyScreen onAction={vi.fn()} state={clean} viewerPlayerId="p2" />);
+    expect(screen.queryByRole("alert")).toBeNull();
+    unmount();
+
+    // p1 takes it back — every viewer (here the OTHER seat, p2) sees the red alert.
+    const afterReset = applyAction(clean, { type: "RESET_SEAT_DRAFT", playerId: "p1" }).state;
+    render(<SetupLobbyScreen onAction={vi.fn()} state={afterReset} viewerPlayerId="p2" />);
+    const alert = screen.getByRole("alert");
+    expect(within(alert).getByText(/cheating/i)).toBeTruthy();
+    expect(alert.textContent).toMatch(/reset their hero pick/i);
+  });
+
+  it("is dismissible by the viewer", () => {
+    const afterReset = build("ui-cheat-dismiss", [
+      { type: "CHOOSE_FACTION", playerId: "p1", factionId: "castle", heroDefId: "catherine" },
+      { type: "RESET_SEAT_DRAFT", playerId: "p1" }
+    ]);
+    render(<SetupLobbyScreen onAction={vi.fn()} state={afterReset} viewerPlayerId="p1" />);
+    expect(screen.getByRole("alert")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss warning" }));
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+});
+
+describe("SetupLobbyScreen — merged Map picker", () => {
+  it("lists scenario sheets and designed maps in one picker; picking a sheet drops any custom map", () => {
+    const state = createAdventureLobbyState({ seed: "ui-map" });
+    const onAction = vi.fn();
+    render(<SetupLobbyScreen onAction={onAction} state={state} viewerPlayerId="p1" />);
+    fireEvent.click(screen.getByRole("tab", { name: "Game options" }));
+
+    // One unified control, clearly split into built-in sheets and custom-made maps.
+    expect(screen.getByText(/Scenario sheets/i)).toBeTruthy();
+    expect(screen.getByText(/custom-made by a person/i)).toBeTruthy();
+
+    // Picking a built-in scenario sheet clears any designed map in the same action,
+    // so the two can never disagree.
+    fireEvent.click(screen.getByRole("button", { name: "Twin Kingdoms (2P Land)" }));
+    expect(onAction).toHaveBeenCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { scenarioId: "land-2p", customMap: null, customMapName: null }
+    });
+  });
+});
+
 describe("SetupLobbyScreen — TYPE 3 random with choice", () => {
   it("rolls two towns, and after locking one rolls two heroes", () => {
     const townState = build("ui-rc", [{ type: "SET_DRAFT_FORMAT", playerId: "p1", format: "random-choice" }]);
