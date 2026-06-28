@@ -9,11 +9,14 @@ import {
   createInitialGameState,
   eligibleCombatBoardArtIds,
   gainRunes,
+  getLegalActions,
+  makeActiveEffect,
   RUNE_LEVEL_THRESHOLDS,
   isCreatureBankCombat,
   makeArrowTowerUnit,
   SHIP_BATTLE_OBSTACLES,
   weightedCombatBoardArtIds,
+  type ActiveEffectModifier,
   type GameAction,
   type GameState,
   type LegalAction
@@ -876,5 +879,96 @@ describe("BattlefieldBoard — siege fortification art", () => {
     state.combat!.siege = { townPlayerId: "p2", walls: [], gatePosition: null, arrowTowerUnitId: null };
     renderSiege(state);
     expect(document.querySelector(".arrowTower"), "the collapsed tower's card is gone").toBeNull();
+  });
+})
+
+// ===========================================================================
+// Berserk on the BOARD (end to end: engine -> getLegalActions -> board render).
+// The reported bug was "the berserked unit can still move freely". The board
+// builds its move targets ONLY from the legal-action set, so with the REAL
+// restricted actions a berserked unit offers its forced attacks and NO free
+// move cell — proven here through the same getLegalActions the app calls.
+// ===========================================================================
+
+describe("BattlefieldBoard — a berserked unit cannot move freely", () => {
+  function pushBerserk(state: GameState, unitId: string): void {
+    const modifier: ActiveEffectModifier = { type: "BERSERK_FORCED_ATTACK" };
+    state.activeEffects.push(
+      makeActiveEffect(
+        state,
+        {
+          name: "Berserk",
+          scope: "unit",
+          duration: { type: "next-activation" },
+          polarity: "negative",
+          removable: true,
+          modifiers: [modifier]
+        },
+        { type: "system" },
+        state.combat!.units[unitId].controllerId,
+        { type: "unit", unitId }
+      )
+    );
+  }
+
+  it("offers only the forced attacks, never a free-move cell, with the real legal actions", () => {
+    const state = createInitialGameState("board-berserk");
+    state.combat!.obstacles = [];
+    const units = state.combat!.units;
+    const magma = units.unit_p2_skeletons; // the berserked unit (Magma Elemental)
+    magma.unitDefId = "conflux.magma_elementals";
+    magma.grade = "silver";
+    magma.variant = "few";
+    magma.abilities = [];
+    magma.type = "ground";
+    magma.position = 9;
+    units.unit_p1_griffins.position = 5; // enemy, adjacent (above)
+    units.unit_p2_vampires.position = 8; // ally, adjacent (left)
+    units.unit_p1_marksmen.position = 0;
+    units.unit_p1_crusaders.position = 3;
+    units.unit_p2_dread_knights.position = 19;
+    for (const id of Object.keys(units)) {
+      if (id !== magma.id) units[id].abilities = [];
+      units[id].maxHealth = 40;
+      units[id].damage = 0;
+      units[id].activatedThisRound = false;
+      units[id].type = "ground";
+    }
+    state.activePlayerId = "p2";
+    state.combat!.activeUnitId = magma.id;
+    pushBerserk(state, magma.id);
+
+    // The REAL legal actions the app would compute for the berserked unit's owner.
+    const legalActions = getLegalActions(state, "p2");
+    const onAction = vi.fn();
+    render(
+      <CardZoomProvider>
+        <BattlefieldBoard
+          state={state}
+          viewerPlayerId="p2"
+          legalActions={legalActions}
+          selectedCardAction={null}
+          onAction={onAction}
+          onInspect={() => {}}
+        />
+      </CardZoomProvider>
+    );
+
+    // The two adjacent units are forced-attack targets (enemy AND ally).
+    expect(document.querySelector('button[data-fx-cell="5"]')?.getAttribute("aria-label")).toMatch(/Attack/i);
+    expect(document.querySelector('button[data-fx-cell="8"]')?.getAttribute("aria-label")).toMatch(/Attack/i);
+
+    // A far EMPTY cell is an inert field (a <div>, not a "Move to" button): the
+    // board never advertises a free move while the unit is berserked.
+    for (const freeCell of [13, 12, 11, 6]) {
+      const cell = document.querySelector(`[data-fx-cell="${freeCell}"]`);
+      const label = cell?.getAttribute("aria-label") ?? "";
+      expect(label, `cell ${freeCell} must not be a move target`).not.toMatch(/Move to/i);
+      if (cell && cell.tagName === "BUTTON") {
+        fireEvent.click(cell);
+      }
+    }
+    // No MOVE_UNIT was ever dispatched — the unit truly cannot move freely.
+    expect(onAction.mock.calls.some(([action]) => (action as GameAction).type === "MOVE_UNIT")).toBe(false);
   });
 })
