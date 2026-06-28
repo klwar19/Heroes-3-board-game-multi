@@ -14,6 +14,7 @@ import {
   getEffectiveCardEffect,
   getPendingReactionPower,
   getSpellDamageAmount,
+  RESOURCE_DIE_FACES,
   spellPowerValueOfCard,
   standingSpellPower,
   SURRENDER_GOLD_COST,
@@ -1245,15 +1246,14 @@ const MAP_CUBE_FINAL = [
   "rotateX(82deg) rotateY(0deg)"
 ];
 
-/** The printed Resource die: 2/4 materials, 1/2 valuables, 3/6 gold. */
-const RESOURCE_DIE_LAYOUT: { resource: "buildingMaterials" | "valuables" | "gold"; amount: number }[] = [
-  { resource: "buildingMaterials", amount: 2 },
-  { resource: "buildingMaterials", amount: 4 },
-  { resource: "valuables", amount: 1 },
-  { resource: "valuables", amount: 2 },
-  { resource: "gold", amount: 3 },
-  { resource: "gold", amount: 6 }
-];
+/**
+ * The Resource die faces rendered on the cube — derived from the engine's
+ * RESOURCE_DIE_FACES so the visual always matches the actual die (incl. the
+ * house rule that reduced the "2 valuables" face to 1, giving 2/4 materials,
+ * 1/1 valuables, 3/6 gold).
+ */
+const RESOURCE_DIE_LAYOUT: { resource: "buildingMaterials" | "valuables" | "gold"; amount: number }[] =
+  RESOURCE_DIE_FACES.map((face) => ({ resource: face.resource, amount: face.amount }));
 
 const RESOURCE_FACE_ICONS: Record<string, string> = {
   gold: "/assets/icons/gold_leather.gif",

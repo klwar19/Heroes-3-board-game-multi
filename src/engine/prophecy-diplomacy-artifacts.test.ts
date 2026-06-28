@@ -355,9 +355,14 @@ describe("Cards of Prophecy — set a Resource/Treasure die", () => {
   it("sets the Resource die to a chosen face (6 gold), ignoring the roll, and is spent", () => {
     const state = playSetThenVisit("set-resource", "resource_symbol");
     const step = visitChoice(state);
-    // Every Resource-die face is offered as a "set" option.
+    // Every DISTINCT Resource-die face is offered as a "set" option. Per the house
+    // rule the die has no "2 valuables" face anymore (it was reduced to 1), so only
+    // "1 valuables" is offered — and it appears exactly once (the two 1-valuable
+    // faces are deduped).
     expect(step.options.some((option) => /set the Resource die to 6 gold/i.test(option.label))).toBe(true);
-    expect(step.options.some((option) => /set the Resource die to 2 valuables/i.test(option.label))).toBe(true);
+    expect(step.options.some((option) => /set the Resource die to 1 valuables/i.test(option.label))).toBe(true);
+    expect(step.options.some((option) => /set the Resource die to 2 valuables/i.test(option.label))).toBe(false);
+    expect(step.options.filter((option) => /set the Resource die to 1 valuables/i.test(option.label))).toHaveLength(1);
     expect(step.options.some((option) => /set the Resource die to 4 materials/i.test(option.label))).toBe(true);
 
     const goldBefore = state.players.p1.resources.gold;

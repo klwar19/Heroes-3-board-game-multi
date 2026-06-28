@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { GameState, MapFieldState, PlayerId, VisitStep } from "./state";
-import { addArmyUnit, beginFieldVisit, getMainHero } from "./adventure";
+import { addArmyUnit, beginFieldVisit, getMainHero, RESOURCE_DIE_FACES } from "./adventure";
 import { resolveVisitStep } from "./adventure-reducer";
 import { getLegalActions } from "./legal-actions";
 import { createAdventureGameState } from "./index";
@@ -128,17 +128,27 @@ describe("Cyclops Stockpile rolls 4 Resource dice (not Treasure dice)", () => {
 // ---------------------------------------------------------------------------
 // "OR" choices resolve EXACTLY ONE branch (mutual exclusivity)
 // ---------------------------------------------------------------------------
+describe("Resource die house rule", () => {
+  it("never grants more than 1 valuable (the 2-valuables face was reduced to 1)", () => {
+    const valuableFaces = RESOURCE_DIE_FACES.filter((face) => face.resource === "valuables");
+    // There are still two valuables faces, but neither yields more than 1.
+    expect(valuableFaces.length).toBeGreaterThan(0);
+    expect(Math.max(...valuableFaces.map((face) => face.amount))).toBe(1);
+    expect(RESOURCE_DIE_FACES.some((face) => face.resource === "valuables" && face.amount >= 2)).toBe(false);
+  });
+});
+
 describe('Map "OR" choices resolve exactly one branch', () => {
-  it("Mystical Garden: taking gold grants +2 gold and NOT the valuables branch", () => {
+  it("Mystical Garden: taking gold grants +3 gold (house rule) and NOT the valuables branch", () => {
     const state = makeGame();
     const player = state.players.p1;
     const gold = player.resources.gold;
     const valuables = player.resources.valuables;
     visit(state, "p1", injectField(state, "mystical_garden"));
 
-    choose(state, "p1", (label) => label.includes("2 gold"));
+    choose(state, "p1", (label) => label.includes("3 gold"));
 
-    expect(player.resources.gold).toBe(gold + 2);
+    expect(player.resources.gold).toBe(gold + 3);
     expect(player.resources.valuables).toBe(valuables); // the other branch did not run
   });
 

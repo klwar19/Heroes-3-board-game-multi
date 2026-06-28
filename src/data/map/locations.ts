@@ -121,7 +121,8 @@ export const locationDefinitions: Record<string, LocationDefinition> = {
     interaction: {
       type: "CHOOSE_ONE",
       options: [
-        { label: "Gain 2 gold", interaction: { type: "GAIN_RESOURCES", gold: 2 } },
+        // HOUSE RULE: the gold branch grants 3 gold (was 2).
+        { label: "Gain 3 gold", interaction: { type: "GAIN_RESOURCES", gold: 3 } },
         { label: "Gain 1 valuables", interaction: { type: "GAIN_RESOURCES", valuables: 1 } }
       ]
     },
