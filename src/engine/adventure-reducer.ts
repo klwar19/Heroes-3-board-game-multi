@@ -1557,9 +1557,11 @@ export function canHeroDiscoverAdjacentTile(state: GameState, hero: HeroState, t
 // material Mine on any opening). Both rules apply identically whether the tile
 // is OPENED from the player's supply (a truly-random draw — `via: "place"` /
 // `"observatory"`) or DISCOVERED already face-down on the map (`via: "reveal"`):
-// see beginFarTileFlip vs. beginFarTileReveal. Each player's openings are
-// counted together (farTilesOpenedByPlayer), so the "2nd Ⅱ–Ⅲ tile" is the
-// second one opened EITHER way.
+// see beginFarTileFlip vs. beginFarTileReveal. The opening tally is PER PLAYER
+// (farTilesOpenedByPlayer is keyed by playerId, never a single global count):
+// each player's own supply + on-map openings share one tally, so the
+// "2nd Ⅱ–Ⅲ tile" is the second THAT player opens EITHER way — wholly
+// independent of how many tiles any other player has opened.
 // ---------------------------------------------------------------------------
 
 /** A Ⅱ–Ⅲ tile definition that carries a Settlement field. */
