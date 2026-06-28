@@ -24,16 +24,7 @@ function spellSource(slug: string) {
  * downloaded with scripts/fetch-missing-spell-card-art.py. Enforced in
  * src/data/cards/spell-card-art.test.ts.
  */
-export const SCANLESS_SPELLS: ReadonlySet<string> = new Set<string>([
-  "magic_mirror",
-  "water_walk",
-  "air_shield",
-  "protection_from_air",
-  "protection_from_earth",
-  "protection_from_fire",
-  "protection_from_water",
-  "sacrifice"
-]);
+export const SCANLESS_SPELLS: ReadonlySet<string> = new Set<string>(["sacrifice"]);
 
 /** Deck-back placeholder shared by every scanless card. */
 const DECK_BACK_IMAGE = "/assets/player-deck-back.webp";
@@ -693,8 +684,9 @@ export const spellCards: CardLibrary = {
       ]
     },
     assets: {
-      // No wiki scan for this spell — see SCANLESS_SPELLS above.
-      cardImage: DECK_BACK_IMAGE,
+      // Original card face (scripts/build-missing-spell-cards.mjs) — the wiki
+      // shows only the deck back for this spell.
+      cardImage: "/assets/spells-magic_mirror.webp",
       imageAlt: "Magic Mirror card"
     },
     implementationStatus: "implemented",
@@ -768,7 +760,7 @@ export const spellCards: CardLibrary = {
       gradeByPower: { 1: "bronze", 3: "silver", 5: "gold" }
     },
     assets: {
-      cardImage: "/assets/spells-clone.svg",
+      cardImage: "/assets/spells-clone.webp",
       imageAlt: "Clone card"
     },
     implementationStatus: "implemented",
@@ -1094,8 +1086,9 @@ export const spellCards: CardLibrary = {
       ]
     },
     assets: {
-      // No wiki scan for this spell — see SCANLESS_SPELLS above.
-      cardImage: DECK_BACK_IMAGE,
+      // Original card face (scripts/build-missing-spell-cards.mjs) — the wiki
+      // shows only the deck back for this spell.
+      cardImage: "/assets/spells-water_walk.webp",
       imageAlt: "Water Walk card"
     },
     implementationStatus: "implemented",
@@ -1539,8 +1532,9 @@ export const spellCards: CardLibrary = {
       vsAttackerType: "ranged"
     },
     assets: {
-      // No wiki scan for this spell — see SCANLESS_SPELLS above.
-      cardImage: DECK_BACK_IMAGE,
+      // Original card face (scripts/build-missing-spell-cards.mjs) — the wiki
+      // shows only the deck back for this spell.
+      cardImage: "/assets/spells-air_shield.webp",
       imageAlt: "Air Shield card"
     },
     implementationStatus: "implemented",
@@ -1579,8 +1573,9 @@ export const spellCards: CardLibrary = {
       expertIgnoresMaxSpellLevel: true
     },
     assets: {
-      // No wiki scan for this spell — see SCANLESS_SPELLS above.
-      cardImage: DECK_BACK_IMAGE,
+      // Original card face (scripts/build-missing-spell-cards.mjs) — the wiki
+      // shows only the deck back for this spell.
+      cardImage: "/assets/spells-protection_from_air.webp",
       imageAlt: "Protection from Air card"
     },
     implementationStatus: "implemented",
@@ -1609,8 +1604,9 @@ export const spellCards: CardLibrary = {
       expertIgnoresMaxSpellLevel: true
     },
     assets: {
-      // No wiki scan for this spell — see SCANLESS_SPELLS above.
-      cardImage: DECK_BACK_IMAGE,
+      // Original card face (scripts/build-missing-spell-cards.mjs) — the wiki
+      // shows only the deck back for this spell.
+      cardImage: "/assets/spells-protection_from_earth.webp",
       imageAlt: "Protection from Earth card"
     },
     implementationStatus: "implemented",
@@ -1639,8 +1635,9 @@ export const spellCards: CardLibrary = {
       expertIgnoresMaxSpellLevel: true
     },
     assets: {
-      // No wiki scan for this spell — see SCANLESS_SPELLS above.
-      cardImage: DECK_BACK_IMAGE,
+      // Original card face (scripts/build-missing-spell-cards.mjs) — the wiki
+      // shows only the deck back for this spell.
+      cardImage: "/assets/spells-protection_from_fire.webp",
       imageAlt: "Protection from Fire card"
     },
     implementationStatus: "implemented",
@@ -1669,8 +1666,9 @@ export const spellCards: CardLibrary = {
       expertIgnoresMaxSpellLevel: true
     },
     assets: {
-      // No wiki scan for this spell — see SCANLESS_SPELLS above.
-      cardImage: DECK_BACK_IMAGE,
+      // Original card face (scripts/build-missing-spell-cards.mjs) — the wiki
+      // shows only the deck back for this spell.
+      cardImage: "/assets/spells-protection_from_water.webp",
       imageAlt: "Protection from Water card"
     },
     implementationStatus: "implemented",

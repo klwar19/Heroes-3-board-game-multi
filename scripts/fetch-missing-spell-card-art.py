@@ -20,9 +20,9 @@ Confirmed available on the wiki (real 743x1040 RGBA card scans):
       as a house-rule Major, so we save the same scan under the major name.
 
 NOT on the wiki (it shows the deck-back placeholder for these, so they cannot be
-downloaded and are NOT designed here — see SCANLESS_SPELLS in
-src/data/cards/spells.ts which routes them to the deck back, exactly as the wiki
-does):
+downloaded). The requested spells now have approved original replacements built
+by scripts/build-missing-spell-cards.mjs; only Sacrifice remains routed through
+SCANLESS_SPELLS:
   spells-{summon_air,summon_earth,summon_fire,summon_water}_elemental.webp,
   spells-magic_mirror.webp, spells-water_walk.webp, spells-air_shield.webp,
   spells-protection_from_{air,earth,fire,water}.webp, spells-sacrifice.webp
