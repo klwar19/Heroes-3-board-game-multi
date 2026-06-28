@@ -3602,6 +3602,21 @@ function drawTopOfSharedDeck(state: GameState, deckId: string): string | null {
 }
 
 /**
+ * Injected by the reducer (which owns the Ⅱ–Ⅲ keep/reroll/pick flip and
+ * beginTileRotation — neither importable here without a cycle) so that a
+ * Ⅱ–Ⅲ surface tile discovered ACROSS a Subterranean Gate runs the same
+ * settlement/material-mine flip as every other on-map discovery. Until it is
+ * registered (or for non-Far tiles), the gate falls back to a plain inline
+ * reveal. See {@link resolveSubterraneanGate} and the reducer's revealOnMapTile.
+ */
+let onMapTileRevealHook: ((state: GameState, playerId: PlayerId, tile: MapTileState) => void) | null = null;
+export function setOnMapTileRevealHook(
+  hook: ((state: GameState, playerId: PlayerId, tile: MapTileState) => void) | null
+): void {
+  onMapTileRevealHook = hook;
+}
+
+/**
  * Subterranean Gate (Stronghold expansion): "When a Hero enters a Field with a
  * Subterranean Gate, discover the Map Tile on the other side for free (if it is
  * still not discovered). Otherwise treat a Subterranean Gate Token as an empty
@@ -3625,6 +3640,19 @@ function resolveSubterraneanGate(state: GameState, visit: PendingVisit): void {
   const farTile = adventure.tiles[field.gateToTileId];
   if (!farTile || !farTile.faceDown) {
     // Other side already discovered: the gate is just an empty field.
+    return;
+  }
+
+  // A face-down Ⅱ–Ⅲ surface tile flipped across the Gate obeys the same
+  // settlement / material-mine keep/reroll/pick rules as any other on-map
+  // discovery. The flip lives in the reducer, so it is reached via the injected
+  // hook; it may open an OPTION_CHOICE, so the (now-complete, single-step) gate
+  // visit is cleared first — the gate step has already been shifted off — to
+  // avoid leaving an empty pending visit behind it. Anything richer than a bare
+  // gate visit, or a non-Far tile, falls back to the plain inline reveal below.
+  if (onMapTileRevealHook && farTile.group === "far" && visit.steps.length === 0) {
+    adventure.pendingVisit = null;
+    onMapTileRevealHook(state, visit.playerId, farTile);
     return;
   }
 

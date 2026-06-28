@@ -84,6 +84,7 @@ import {
   resolveMagicUniversityDig,
   restoreStartingArmyIfEmpty,
   SCHOLAR_STAT_CARDS,
+  setOnMapTileRevealHook,
   spendRecruitResources,
   spendResources,
   startAdventureRound,
@@ -1293,7 +1294,7 @@ export function revealTileForHero(
     );
   }
 
-  beginTileRotation(state, playerId, tile, "reveal");
+  revealOnMapTile(state, playerId, tile);
 }
 
 /**
@@ -1551,9 +1552,14 @@ export function canHeroDiscoverAdjacentTile(state: GameState, hero: HeroState, t
 }
 
 // ---------------------------------------------------------------------------
-// Ⅱ–Ⅲ (Far) tile flip: a truly-random draw at placement, with the house-rule
-// keep / reroll / pick decisions (settlement guarantee on the 2nd opening; a
-// one-time reroll for a material Mine on any opening).
+// Ⅱ–Ⅲ (Far) tile flip: the house-rule keep / reroll / pick decisions
+// (settlement guarantee on the player's 2nd opening; a one-time reroll for a
+// material Mine on any opening). Both rules apply identically whether the tile
+// is OPENED from the player's supply (a truly-random draw — `via: "place"` /
+// `"observatory"`) or DISCOVERED already face-down on the map (`via: "reveal"`):
+// see beginFarTileFlip vs. beginFarTileReveal. Each player's openings are
+// counted together (farTilesOpenedByPlayer), so the "2nd Ⅱ–Ⅲ tile" is the
+// second one opened EITHER way.
 // ---------------------------------------------------------------------------
 
 /** A Ⅱ–Ⅲ tile definition that carries a Settlement field. */
@@ -1651,9 +1657,13 @@ function presentFarTileOffersOrFinalize(state: GameState): void {
     return;
   }
   const candidate = flip.candidate;
+  // A reroll can only be offered while the pool still holds something to draw —
+  // a Settlement specifically for the 2nd-opening guarantee, or any tile for the
+  // one-time material-Mine reroll.
+  const poolHasDraw = (state.adventure?.farTilePool?.length ?? 0) > 0;
   const settlementEligible =
     flip.openingIndex === 2 && !tileDefHasSettlement(candidate) && farTilePoolHasSettlement(state);
-  const mineEligible = !flip.mineRerollUsed && tileDefHasMaterialMine(candidate);
+  const mineEligible = !flip.mineRerollUsed && tileDefHasMaterialMine(candidate) && poolHasDraw;
 
   if (settlementEligible) {
     flip.offerMode = "settlement";
@@ -1708,6 +1718,7 @@ function finalizeFarTileFlip(state: GameState, chosenTileDefId: string): void {
   const via = flip.via;
   const heroId = flip.heroId;
   const observatoryFieldId = flip.observatoryFieldId;
+  const tileInstanceId = flip.tileInstanceId;
   const returnPhase = flip.returnPhase;
   const playerId = flip.playerId;
 
@@ -1715,6 +1726,20 @@ function finalizeFarTileFlip(state: GameState, chosenTileDefId: string): void {
   state.pendingChoice = null;
   state.phase = returnPhase;
   state.priorityPlayerId = null;
+
+  if (via === "reveal") {
+    // Discovery path: the tile already sits on the map (flipped face up when the
+    // reveal began). Retarget that SAME instance to the chosen def — every reroll
+    // candidate is itself a Far tile, so its group/back-label are unchanged — and
+    // hand over its rotation exactly like an ordinary discovery. No opening hero
+    // is recorded (free rotation), matching the plain on-foot reveal.
+    const tile = tileInstanceId ? adventure.tiles[tileInstanceId] : undefined;
+    if (tile) {
+      tile.tileDefId = chosenTileDefId;
+      beginTileRotation(state, playerId, tile, "reveal");
+    }
+    return;
+  }
 
   const tile = instantiateTile(adventure, chosenTileDefId, center, 0, false, { materialize: false });
 
@@ -1780,6 +1805,63 @@ function beginFarTileFlip(
 
   presentFarTileOffersOrFinalize(state);
 }
+
+/**
+ * Starts a Ⅱ–Ⅲ REVEAL flip for a face-down tile ALREADY on the map (an ordinary
+ * discovery, a Redwood Observatory, or a Speculum). The tile's own printed def is
+ * the first candidate — no pool draw and no supply marker is spent — and the same
+ * house-rule keep/reroll/pick decisions apply as when opening one from supply
+ * (the player's 2nd Ⅱ–Ⅲ opening guarantees a Settlement; any opening with a
+ * material Mine may be rerolled once). A reroll retargets this same on-map slot
+ * to a fresh draw, the rerolled-away def returning to the pool.
+ *
+ * The tile is flipped face up immediately (you must see a tile to decide on it)
+ * but kept `awaitingRotation` so it is not yet materialized — no fields, skipped
+ * by gate carving — until the decision finalizes and its rotation is locked. With
+ * no reroll due, this collapses to exactly the old direct reveal: the tile flips
+ * and its rotation choice opens.
+ */
+function beginFarTileReveal(state: GameState, playerId: PlayerId, tile: MapTileState): void {
+  const adventure = requireAdventure(state);
+
+  tile.faceDown = false;
+  tile.awaitingRotation = true;
+
+  adventure.pendingFarTileFlip = {
+    playerId,
+    centerRow: tile.centerRow,
+    centerCol: tile.centerCol,
+    via: "reveal",
+    tileInstanceId: tile.id,
+    returnPhase: state.phase,
+    openingIndex: (adventure.farTilesOpenedByPlayer?.[playerId] ?? 0) + 1,
+    candidate: tile.tileDefId,
+    lastNonSettlement: null,
+    mineRerollUsed: false,
+    offerMode: "settlement"
+  };
+
+  presentFarTileOffersOrFinalize(state);
+}
+
+/**
+ * Reveals a face-down tile already on the map. A Ⅱ–Ⅲ (Far) tile runs the
+ * house-rule keep/reroll/pick flip (settlement guarantee + material-mine reroll,
+ * exactly like opening one from your supply); every other group flips straight to
+ * its rotation choice. The movement point (if any) is already spent by the
+ * caller, and no opening hero is recorded — a discovered tile rotates freely.
+ */
+function revealOnMapTile(state: GameState, playerId: PlayerId, tile: MapTileState): void {
+  if (tile.group === "far") {
+    beginFarTileReveal(state, playerId, tile);
+    return;
+  }
+  beginTileRotation(state, playerId, tile, "reveal");
+}
+
+// Let the Subterranean Gate reveal (which lives in adventure.ts, on the far side
+// of the import cycle) run a Ⅱ–Ⅲ surface tile through the same flip.
+setOnMapTileRevealHook(revealOnMapTile);
 
 /** Resolves a keep / reroll / pick decision on the Ⅱ–Ⅲ flip in progress. */
 export function resolveFarTileFlip(state: GameState, optionIndex: number): void {
@@ -2446,7 +2528,11 @@ function resolveObservatoryDiscover(
   // No opening hero is recorded: the Observatory reveals a tile adjacent to its
   // own flower, so the player rotates it freely under the standard placement
   // rules — the visiting hero need not be at the border or able to step onto it.
-  beginTileRotation(state, action.playerId, target, "reveal");
+  // A Ⅱ–Ⅲ target runs the same settlement/material-mine keep/reroll/pick flip as
+  // any other on-map discovery (revealOnMapTile); the pending visit is already
+  // shifted/cleared by the caller, so the flip's "reveal" finalize never touches
+  // it.
+  revealOnMapTile(state, action.playerId, target);
 }
 
 /**

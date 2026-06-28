@@ -522,6 +522,58 @@ describe("rulebook conformance fixes", () => {
     expect(labels.some((label) => label.startsWith("Discover the face-down tile"))).toBe(true);
   });
 
+  it("runs the settlement guarantee when the Observatory reveals a Ⅱ–Ⅲ tile (player's 2nd opening)", () => {
+    const { state, adventure, O, rings } = setupObservatory();
+    const open = rings.find((ring) => !ring.sealed && ring.neighborCenter);
+    if (!open?.neighborCenter) {
+      throw new Error("no open ring neighbour");
+    }
+    // A face-down Ⅱ–Ⅲ Mine tile (F4: no Settlement) sits next to the observatory,
+    // and this is the player's 2nd Ⅱ–Ⅲ opening — so the same settlement guarantee
+    // as an on-foot discovery must fire, even though the reveal runs inside the
+    // Observatory's DISCOVER_ADJACENT_TILE visit step.
+    const faceDown = instantiateTile(adventure, "F4", open.neighborCenter, 0, true);
+    adventure.farTilesOpenedByPlayer = { p1: 1 };
+    adventure.farTilePool = ["F1"]; // a Settlement is available to reroll into
+    adventure.farTileScriptedDraws = ["F1"];
+    openObservatoryVisit(state, hexSpaceId(O));
+
+    const reveal = getLegalActions(state, "p1").find((legal) =>
+      legal.label.startsWith("Discover the face-down tile")
+    );
+    expect(reveal, "the Observatory should offer the Ⅱ–Ⅲ neighbour").toBeTruthy();
+    const offered = apply(state, reveal!.action);
+
+    // The keep/reroll choice is open and the Observatory visit was consumed — the
+    // flip's reveal finalize never has to touch it.
+    const flip = offered.adventure!.pendingFarTileFlip!;
+    expect(flip.via).toBe("reveal");
+    expect(flip.tileInstanceId).toBe(faceDown.id);
+    expect(flip.offerMode).toBe("settlement");
+    expect(offered.adventure!.pendingVisit).toBeNull();
+    expect(offered.pendingChoice?.type).toBe("OPTION_CHOICE");
+
+    // Reroll until the Settlement, then pick it: it lands on the SAME slot, free
+    // to rotate, and the rerolled-away Mine tile returns to the pool.
+    const rerolled = apply(offered, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: offered.pendingChoice!.id,
+      optionIndex: 1
+    });
+    const placed = apply(rerolled, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: rerolled.pendingChoice!.id,
+      optionIndex: 0
+    });
+    expect(placed.adventure!.tiles[faceDown.id].tileDefId).toBe("F1");
+    expect(placed.adventure!.pendingTileChoice?.kind).toBe("reveal");
+    expect(placed.adventure!.pendingTileChoice?.heroId).toBeUndefined();
+    expect(placed.adventure!.farTilePool).toContain("F4");
+    expect(placed.adventure!.farTilesOpenedByPlayer!.p1).toBe(2);
+  });
+
   it("drops a Far (Ⅱ–Ⅲ) supply tile into an empty adjacent slot for free", () => {
     const { state, adventure, obsTile, O, rings } = setupObservatory();
     const open = rings.find((ring) => !ring.sealed && ring.neighborCenter);
