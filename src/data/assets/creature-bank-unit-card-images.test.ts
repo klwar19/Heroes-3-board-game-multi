@@ -37,13 +37,26 @@ describe("Creature Bank unit card faces", () => {
       expect(side.cost, unitDefId).toEqual({});
       expect(side.cardImage, unitDefId).toBe(`/assets/${output}`);
       expect(existsSync(asset(output)), output).toBe(true);
-      expect(statSync(asset(output)).size, output).toBeGreaterThan(100_000);
+      const size = statSync(asset(output)).size;
+      // Real card art (not a tiny placeholder), but compressed: lossy WebP keeps
+      // every bank face in the same size band as the rest of /public/assets. A
+      // regression back to lossless encoding would blow past this ceiling
+      // (lossless rebuilds these at 600KB–1.1MB), so the upper bound is what
+      // actually enforces the compression this audit applied.
+      expect(size, output).toBeGreaterThan(100_000);
+      expect(size, output).toBeLessThan(450_000);
       return side.cardImage;
     });
     expect(new Set(images).size).toBe(images.length);
   });
 
-  it("preserves the source illustration pixels exactly", async () => {
+  it("keeps the real source illustration (lossy re-encode stays within a tiny delta)", async () => {
+    // The faces are now lossy WebP (quality 94), so the illustration is no longer
+    // byte-identical to the source scan — but it must still BE that scan, only
+    // recompressed. We assert the mean absolute per-channel difference over the
+    // illustration window is tiny. Observed deltas are < 1.5; a wrong or garbled
+    // illustration would diverge by tens to hundreds, so this both permits the
+    // compression and still fails if the art is swapped, blanked, or corrupted.
     for (const [unitDefId, [source, output]] of Object.entries(EXPECTED)) {
       const metadata = await sharp(asset(source)).metadata();
       const width = metadata.width!;
@@ -58,7 +71,11 @@ describe("Creature Bank unit card faces", () => {
         sharp(asset(source)).extract(region).raw().toBuffer(),
         sharp(asset(output)).extract(region).raw().toBuffer()
       ]);
-      expect(after.equals(before), `${unitDefId} illustration`).toBe(true);
+      expect(after.length, `${unitDefId} buffer length`).toBe(before.length);
+      let total = 0;
+      for (let i = 0; i < before.length; i += 1) total += Math.abs(before[i] - after[i]);
+      const meanAbsDiff = total / before.length;
+      expect(meanAbsDiff, `${unitDefId} illustration delta`).toBeLessThan(4);
     }
   });
 });

@@ -6,8 +6,10 @@
  * Each card starts from that creature's real Few/Neutral scan. The title,
  * frame, unit-type mark, and illustration are therefore the real matching
  * design. Only the four printed values, the cost strip, and the rules panel
- * are replaced. The output is lossless WebP so the untouched illustration
- * pixels remain identical to the source scan.
+ * are replaced. The output is lossy WebP at quality 94 (the same setting every
+ * other card-face build script in this repo uses), keeping the file size in
+ * line with the rest of /public/assets while leaving the untouched
+ * illustration visually identical to the source scan.
  *
  * Sources:
  *   https://en.homm3bg.wiki/units/
@@ -22,7 +24,7 @@ import sharp from "sharp";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const ASSETS = path.join(ROOT, "public", "assets");
-const GLYPHS = path.join(ASSETS, "card-glyphs");
+const GLYPHS = path.join(ROOT, "scripts", "card-glyphs");
 const OUT = path.join(ROOT, "out");
 
 const VIEW_WIDTH = 743;
@@ -237,7 +239,7 @@ async function buildCard(card) {
 
   await sharp(sourcePath)
     .composite([{ input: Buffer.from(svg) }])
-    .webp({ lossless: true, effort: 6 })
+    .webp({ quality: 94, effort: 6 })
     .toFile(destination);
   return destination;
 }
