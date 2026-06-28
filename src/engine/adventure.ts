@@ -137,7 +137,9 @@ export const RESOURCE_DIE_FACES: { resource: ResourceKind; amount: number }[] = 
   { resource: "buildingMaterials", amount: 2 },
   { resource: "buildingMaterials", amount: 4 },
   { resource: "valuables", amount: 1 },
-  { resource: "valuables", amount: 2 },
+  // HOUSE RULE: the "2 valuables" face is reduced to 1 valuable, so no Resource
+  // die roll ever grants more than 1 valuable (both valuables faces give 1).
+  { resource: "valuables", amount: 1 },
   { resource: "gold", amount: 3 },
   { resource: "gold", amount: 6 }
 ];
@@ -1224,6 +1226,11 @@ export function gainExperience(state: GameState, playerId: PlayerId, amount: num
   hero.experience = Math.min(MAX_EXPERIENCE, hero.experience + amount);
   hero.level = levelOfExperience(hero.experience);
 
+  // Remember where this gain's rewards START in the queue, so the Learning offer
+  // can be inserted AHEAD of the level-up's own rewards (e.g. an Ability-deck
+  // Search) rather than buried behind them — see the Learning block below.
+  const rewardQueueStart = state.adventure?.rewardQueue.length ?? 0;
+
   appendEvent(state, {
     type: "EXPERIENCE_GAINED",
     playerId,
@@ -1288,7 +1295,15 @@ export function gainExperience(state: GameState, playerId: PlayerId, amount: num
     state.adventure &&
     player.hand.includes("ability.learning")
   ) {
-    state.adventure.rewardQueue.push({ playerId, kind: "learning-level-up" });
+    // The card reads "Play when the Hero is ABOUT TO level up" — so the offer must
+    // come BEFORE the level-up's own rewards. Crossing into an Ability-search level
+    // (2/3/5/7) queues a Search of the Ability deck during the loop above; pushing
+    // Learning to the back would bury it behind that Search (the player would have
+    // to finish an unrelated Search before being asked about Learning, and a
+    // visit that crosses such a level looked like it offered no Learning at all).
+    // Splice it in just ahead of this gain's rewards (but after anything already
+    // queued) so it is the first thing surfaced.
+    state.adventure.rewardQueue.splice(rewardQueueStart, 0, { playerId, kind: "learning-level-up" });
   }
 }
 
@@ -4061,7 +4076,19 @@ function consumeDieSet(state: GameState, effectId: string): void {
  * that face's resources — overriding whatever was rolled.
  */
 function setResourceDieOptions(setEffect: ActiveEffectState): { label: string; steps: VisitStep[] }[] {
-  return RESOURCE_DIE_FACES.map((face) => ({
+  // Offer one option per DISTINCT face. The house-rule die has two "1 valuable"
+  // faces, so dedupe (like the Treasure-die "set" options) to avoid two identical
+  // picks.
+  const seen = new Set<string>();
+  const distinctFaces = RESOURCE_DIE_FACES.filter((face) => {
+    const key = `${face.resource}:${face.amount}`;
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+  return distinctFaces.map((face) => ({
     label: `${setEffect.name}: set the Resource die to ${resourceDieLabel(face)}`,
     steps: [
       { type: "CONSUME_DIE_SET", effectId: setEffect.id } as VisitStep,

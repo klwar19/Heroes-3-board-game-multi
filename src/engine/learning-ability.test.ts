@@ -231,6 +231,48 @@ describe("Learning offer surfaces from real map-object visits", () => {
     }
   });
 
+  // Regression: crossing into an ABILITY-SEARCH level (2/3/5/7) queues a Search of
+  // the Ability deck for that level. Learning ("about to level up") must be offered
+  // FIRST — not buried behind that unrelated Search. The earlier coverage only
+  // crossed into level 4 (a specialty level, no competing Search), so it never
+  // caught this and a Learning Stone into an ability level looked like it offered
+  // no Learning at all. exp 7 (lvl 4) -> 8 (lvl 5) is an ability-search crossing.
+  it("offers Learning FIRST (before the Ability-deck Search) on an ability-search level-up", () => {
+    let state = readyHeroWithLearning(makeGame(), 7); // exp 7 (lvl 4)
+    state.adventure!.fields["h:7:2"].location = "learning_stone";
+    const heroId = getMainHero(state, "p1")!.id;
+
+    state = apply(state, { type: "MOVE_HERO", playerId: "p1", heroId, to: "h:7:2" });
+
+    expect(getMainHero(state, "p1")!.experience).toBe(8); // +1
+    expect(getMainHero(state, "p1")!.level).toBe(5); // an ability-search level
+    // The Learning offer is what surfaces — NOT the level-5 Ability Search.
+    expect(state.pendingChoice?.type).toBe("OPTION_CHOICE");
+    if (state.pendingChoice?.type === "OPTION_CHOICE") {
+      expect(state.pendingChoice.context).toBe("learning-level-up");
+    }
+    // The level-5 Ability Search is still queued, to resolve AFTER the Learning
+    // decision (it is not lost, just correctly ordered behind the offer).
+    expect(state.adventure!.rewardQueue.some((reward) => reward.kind === "shared-deck-search")).toBe(true);
+  });
+
+  it("declining Learning then resolves the level-up's own Ability-deck Search", () => {
+    let state = readyHeroWithLearning(makeGame(), 7); // exp 7 (lvl 4) -> 8 (lvl 5)
+    state.adventure!.fields["h:7:2"].location = "learning_stone";
+    const heroId = getMainHero(state, "p1")!.id;
+    state = apply(state, { type: "MOVE_HERO", playerId: "p1", heroId, to: "h:7:2" });
+
+    const choice = state.pendingChoice!;
+    if (choice.type !== "OPTION_CHOICE") {
+      throw new Error("expected the Learning offer");
+    }
+    const declineIndex = choice.options.length - 1;
+    state = apply(state, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: choice.id, optionIndex: declineIndex });
+
+    // After declining Learning, the level-5 Ability Search opens.
+    expect(state.pendingChoice?.type).toBe("DECK_SEARCH");
+  });
+
   it("offers Learning after paying to use a Tree of Knowledge (+2 XP)", () => {
     let state = readyHeroWithLearning(makeGame(), 5); // exp 5 (lvl 3)
     state.players.p1.resources.valuables = 5; // afford the 3-valuables cost
