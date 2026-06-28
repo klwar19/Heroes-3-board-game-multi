@@ -3519,18 +3519,22 @@ function StartingUnitsPicker({
 }
 
 /**
- * Saved-map picker: maps are designed and saved in the standalone map
- * designer (/designer); the lobby only picks one. The chosen design's tiles
- * sync to every seat through the action stream.
+ * Unified Map picker. "Starting map" (a built-in scenario sheet) and "Map
+ * design" (a designed map saved in the /designer) used to be two separate
+ * controls, which let a stale designed map stay attached after the scenario was
+ * switched underneath it. They are ONE category — the map you play on — so this
+ * single picker lists both, clearly split into the built-in scenario sheets and
+ * the designed maps a PERSON made (each tagged with its author). The two groups
+ * are mutually exclusive: picking a scenario clears any designed map (and the
+ * engine drops a stale one on a bare scenario switch — see setGameOptions), and
+ * picking a designed map switches to the scenario it was built on.
  */
-function SavedMapPicker({
+function MapPicker({
   options,
-  onPick,
-  onClear
+  send
 }: {
   options: GameSetupOptions;
-  onPick: (record: SharedMapRecord) => void;
-  onClear: () => void;
+  send: (next: Partial<GameSetupOptions>) => void;
 }) {
   const [savedMaps, setSavedMaps] = useState<SharedMapRecord[]>([]);
 
@@ -3554,58 +3558,103 @@ function SavedMapPicker({
     };
   }, []);
 
+  // A built-in scenario sheet is in play whenever no designed map is loaded.
+  const usingScenarioSheet = !options.customMap;
+
   return (
-    <>
-      <div className="optionButtons">
-        <button
-          aria-pressed={!options.customMap}
-          className={!options.customMap ? "selected" : ""}
-          onClick={onClear}
-          title="Use the scenario sheet's face-down Near and Center layout"
-          type="button"
-        >
-          Scenario layout
-        </button>
-        {savedMaps.map((record) => {
-          const scenario = scenarioDefinitions[record.scenarioId];
-          const problems = scenario ? validateCustomMapPlan(record.tiles, scenario).problems : ["Unknown scenario."];
-          const selected =
-            Boolean(options.customMap) &&
-            options.customMapName === record.name &&
-            options.customMap?.length === record.tiles.length;
-          return (
-            <button
-              aria-pressed={selected}
-              className={selected ? "selected" : ""}
-              disabled={problems.length > 0}
-              key={record.id}
-              onClick={() => onPick(record)}
-              title={
-                problems.length > 0
-                  ? `Needs fixing in the designer: ${problems[0]}`
-                  : `${record.tiles.length} tiles on ${scenario?.name ?? record.scenarioId}`
-              }
-              type="button"
-            >
-              🗺 {record.name}
-            </button>
-          );
-        })}
+    <div className="mapPicker">
+      <div className="mapPickerGroup">
+        <small className="mapPickerGroupLabel">Scenario sheets · built-in</small>
+        <div className="optionButtons">
+          {Object.values(scenarioDefinitions).map((scenario) => {
+            const selected = usingScenarioSheet && options.scenarioId === scenario.id;
+            return (
+              <button
+                aria-pressed={selected}
+                className={selected ? "selected" : ""}
+                key={scenario.id}
+                // Picking a scenario sheet uses its own face-down layout and
+                // drops any designed map (sent together so the engine never
+                // leaves a stale map attached to a different scenario).
+                onClick={() => send({ scenarioId: scenario.id, customMap: null, customMapName: null })}
+                title={scenario.description}
+                type="button"
+              >
+                {scenario.name}
+              </button>
+            );
+          })}
+        </div>
       </div>
+
+      <div className="mapPickerGroup">
+        <small className="mapPickerGroupLabel">Designed maps · custom-made by a person</small>
+        <div className="optionButtons">
+          {savedMaps.length === 0 ? (
+            <small className="optionHint">None yet — create one in the map designer below.</small>
+          ) : (
+            savedMaps.map((record) => {
+              const scenario = scenarioDefinitions[record.scenarioId];
+              const problems = scenario
+                ? validateCustomMapPlan(record.tiles, scenario).problems
+                : ["Unknown scenario."];
+              const selected =
+                Boolean(options.customMap) &&
+                options.customMapName === record.name &&
+                options.customMap?.length === record.tiles.length;
+              const author = record.createdByName?.trim() || null;
+              return (
+                <button
+                  aria-pressed={selected}
+                  className={`designedMap ${selected ? "selected" : ""}`}
+                  disabled={problems.length > 0}
+                  key={record.id}
+                  // A saved map carries the seat count it was designed for; switch
+                  // the scenario first (so playerCount clamps to the new scenario),
+                  // open that many seats, then apply the map. SET_GAME_OPTIONS
+                  // processes scenarioId → playerCount → customMap in that order,
+                  // and keeps the map because customMap is sent in the same action.
+                  onClick={() =>
+                    send({
+                      ...(record.scenarioId !== options.scenarioId ? { scenarioId: record.scenarioId } : {}),
+                      playerCount: record.players,
+                      customMap: record.tiles,
+                      customMapName: record.name
+                    })
+                  }
+                  title={
+                    problems.length > 0
+                      ? `Needs fixing in the designer: ${problems[0]}`
+                      : `${record.tiles.length} tiles on ${scenario?.name ?? record.scenarioId}${
+                          author ? ` · made by ${author}` : ""
+                        }`
+                  }
+                  type="button"
+                >
+                  🗺 {record.name}
+                  <small className="mapAuthor"> {author ? `by ${author}` : "by a player"}</small>
+                </button>
+              );
+            })
+          )}
+        </div>
+      </div>
+
       {options.customMap ? (
         <small className="optionHint">
-          Designed map {options.customMapName ? `“${options.customMapName}” ` : ""}with {options.customMap.length}{" "}
-          tile{options.customMap.length === 1 ? "" : "s"} — face-down tiles still draw randomly from their pool.
+          Playing the designed map {options.customMapName ? `“${options.customMapName}” ` : ""}with{" "}
+          {options.customMap.length} tile{options.customMap.length === 1 ? "" : "s"} — face-down tiles still draw
+          randomly from their pool.
         </small>
       ) : null}
       <small className="optionHint designerLink">
         <Link href="/designer" target="_blank">
           <Hammer aria-hidden="true" size={11} /> Open the map designer
         </Link>{" "}
-        to create, edit and save maps (shared with everyone), then pick one here. Picking a map opens the seat count it
-        was designed for.
+        to create, edit and save your own maps (shared with everyone), then pick one above. Picking a designed map opens
+        the seat count it was designed for.
       </small>
-    </>
+    </div>
   );
 }
 
@@ -3863,43 +3912,10 @@ function GameOptionsPanel({
       })()}
 
       <div className="optionRow">
-        <small>Starting map</small>
-        <div className="optionButtons">
-          {Object.values(scenarioDefinitions).map((scenario) => (
-            <button
-              aria-pressed={options.scenarioId === scenario.id}
-              className={options.scenarioId === scenario.id ? "selected" : ""}
-              key={scenario.id}
-              onClick={() => send({ scenarioId: scenario.id })}
-              title={scenario.description}
-              type="button"
-            >
-              {scenario.name}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="optionRow">
-        <small title="Play on a map created and saved in the map designer instead of the scenario sheet's layout">
-          Map design
+        <small title="The map you play on — a built-in scenario sheet or a designed map a player saved in the map designer">
+          Map
         </small>
-        <SavedMapPicker
-          onClear={() => send({ customMap: null, customMapName: null })}
-          onPick={(record) =>
-            // A saved map carries the seat count it was designed for; switch the
-            // scenario first (so playerCount clamps to the new scenario), open
-            // that many seats, then apply the map. SET_GAME_OPTIONS processes
-            // scenarioId → playerCount → customMap in that order.
-            send({
-              ...(record.scenarioId !== options.scenarioId ? { scenarioId: record.scenarioId } : {}),
-              playerCount: record.players,
-              customMap: record.tiles,
-              customMapName: record.name
-            })
-          }
-          options={options}
-        />
+        <MapPicker options={options} send={send} />
       </div>
 
       <div className="optionRow">
@@ -4755,6 +4771,64 @@ function DraftFlowPanel({ state, viewerPlayerId, onAction, onInspect }: DraftFlo
 
 type SetupTab = "heroes" | "options";
 
+/**
+ * Red "take-back" warning, shown to EVERY player (seated or observing) the
+ * moment any seat clears a roll, resets a town, or resets a pick during setup —
+ * in all four formats. The reset broadcasts a SETUP_SEAT_RESET event into the
+ * shared log, so each client renders the same banner from synced state; it names
+ * the offender and calls the take-back what it is (cheating). Dismissible, and it
+ * re-appears for the next reset (a newer event id clears the dismissal).
+ */
+function SetupCheatWarning({ state, viewerPlayerId }: { state: GameState; viewerPlayerId: PlayerId }) {
+  const latest = useMemo(() => {
+    for (let index = state.eventLog.length - 1; index >= 0; index -= 1) {
+      const event = state.eventLog[index];
+      if (event.type === "SETUP_SEAT_RESET") {
+        return event;
+      }
+    }
+    return null;
+  }, [state.eventLog]);
+
+  const [dismissedId, setDismissedId] = useState<string | null>(null);
+  if (!latest || latest.id === dismissedId) {
+    return null;
+  }
+
+  const actorIsViewer = latest.playerId === viewerPlayerId;
+  const actor = actorIsViewer ? "You" : state.players[latest.playerId]?.name ?? latest.playerId;
+  const possessive = actorIsViewer ? "your" : "their";
+  const did =
+    latest.scope === "pick"
+      ? `reset ${possessive} hero pick`
+      : latest.scope === "town"
+        ? `reset ${possessive} rolled town`
+        : "cleared the roll";
+
+  return (
+    <div className="setupCheatWarning" role="alert" aria-live="assertive">
+      <span className="setupCheatIcon" aria-hidden="true">
+        ⚠
+      </span>
+      <span className="setupCheatText">
+        <strong>Setup take-back — that’s cheating!</strong>
+        <span>
+          {actor} {did} after seeing the result. Re-rolling or re-picking once a roll is shown is a do-over the whole
+          table can see.
+        </span>
+      </span>
+      <button
+        aria-label="Dismiss warning"
+        className="setupCheatDismiss"
+        onClick={() => setDismissedId(latest.id)}
+        type="button"
+      >
+        <X size={14} />
+      </button>
+    </div>
+  );
+}
+
 export function SetupLobbyScreen({
   state,
   viewerPlayerId,
@@ -4791,6 +4865,8 @@ export function SetupLobbyScreen({
           table also sets the game options on the second tab.
         </p>
       </header>
+
+      <SetupCheatWarning state={state} viewerPlayerId={viewerPlayerId} />
 
       <div className="lobbySeats">
         {lobby.seats.map((seat) => {
@@ -4910,6 +4986,7 @@ export const ADVENTURE_FEED_CUES: Partial<Record<GameEventType, { icon: string; 
   ASTROLOGERS_HAND_RESHUFFLED: { icon: "🃏", cue: "astrologers" },
   NEUTRAL_DRAW_SWAPPED: { icon: "🔄", cue: "swap" },
   GAME_OPTIONS_CHANGED: { icon: "⚙️", cue: "options" },
+  SETUP_SEAT_RESET: { icon: "⚠️", cue: "warning" },
   GAME_WON: { icon: "👑", cue: "victory" },
   PLAYER_ELIMINATED: { icon: "💀", cue: "defeat" },
   PLAYER_ELIMINATION_CLOCK: { icon: "⏳", cue: "warning" },
