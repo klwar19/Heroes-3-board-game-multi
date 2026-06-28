@@ -6080,14 +6080,22 @@ export const UNOPENED_FAR_TILE = "?";
 export const MAX_FAR_TILES_PER_PLAYER = 6;
 
 /**
- * A Ⅱ–Ⅲ (Far) supply tile being flipped onto the map. The drawn `candidate` is
- * revealed and the player may keep it, reroll it, or pick between two tiles
- * before it is finally placed (and its rotation chosen). House rules:
+ * A Ⅱ–Ⅲ (Far) tile being flipped, with the same house-rule keep / reroll / pick
+ * decisions whether the tile is OPENED from a player's supply (`via: "place"` /
+ * `"observatory"`) or DISCOVERED already face-down on the map (`via: "reveal"` —
+ * an ordinary discovery, a Redwood Observatory, or a Speculum). The `candidate`
+ * is the tile currently revealed and under decision; the player may keep it,
+ * reroll it, or pick between two tiles before it is finally placed/revealed (and
+ * its rotation chosen). House rules (identical on both paths):
  *  - the player's 2nd opening, if its tile has no Settlement (and one is still
  *    in the pool), may be rerolled until a Settlement appears, then the player
  *    picks the Settlement tile OR the last tile seen before that reroll;
  *  - any opening whose tile shows a material (resource) Mine may be rerolled
  *    once.
+ * A reveal opens the SAME on-map slot ({@link tileInstanceId}): its own printed
+ * def is the first candidate (no pool draw, no supply marker spent), and a
+ * reroll retargets that one instance to a fresh draw while the rerolled-away def
+ * returns to the pool.
  */
 export type PendingFarTileFlip = {
   playerId: PlayerId;
@@ -6096,8 +6104,15 @@ export type PendingFarTileFlip = {
   /** Where the chosen tile's flower will be centred. */
   centerRow: number;
   centerCol: number;
-  /** How this flip was triggered: a normal border placement, or a Redwood Observatory drop. */
-  via: "place" | "observatory";
+  /**
+   * How this flip was triggered:
+   *  - "place"       — a normal border placement from the supply;
+   *  - "observatory" — a Redwood Observatory drop from the supply;
+   *  - "reveal"      — discovering a face-down Ⅱ–Ⅲ tile already on the map.
+   */
+  via: "place" | "observatory" | "reveal";
+  /** Reveal path: the on-map tile instance being decided (retargeted on a reroll). */
+  tileInstanceId?: string;
   /** Observatory: the field whose visit step is consumed once the tile is placed. */
   observatoryFieldId?: MapSpaceId;
   /** Phase to restore once the flip resolves (preserved across rerolls). */

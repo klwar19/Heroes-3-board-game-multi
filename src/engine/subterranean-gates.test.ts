@@ -533,6 +533,63 @@ describe("subterranean gate: reverse direction (Subterranean tile up, Surface ti
     const entranceAfter = after!.adventure!.fields[entrance.spaceId];
     expect(gateFieldsLinked(gate, entranceAfter)).toBe(true);
   });
+
+  it("runs the material-mine reroll when the Gate reveals a Ⅱ–Ⅲ Mine tile (no dangling visit)", () => {
+    const state = makeGame();
+    // A face-down Ⅱ–Ⅲ MINE tile (F4) waits on the far side of the gate.
+    const undergroundCenter = { row: 24, col: 12 };
+    const surfaceCenter = tileLatticeNeighbors(undergroundCenter)[0];
+    const underground = instantiateTile(adv(state), "U1", undergroundCenter, 0, false);
+    const surface = instantiateTile(adv(state), "F4", surfaceCenter, 0, true);
+    setAllEmpty(state, underground);
+    recomputeSubterraneanGates(adv(state));
+    adv(state).farTilePool = ["F1"]; // a no-mine Settlement is available to reroll into
+    adv(state).farTileScriptedDraws = ["F1"];
+
+    const entrance = gateHalfTo(state, surface.id)!;
+    const hero = state.heroes.hero_p1;
+    hero.spaceId = entrance.spaceId;
+    beginFieldVisit(state, hero.id, entrance.spaceId, false);
+
+    // The Ⅱ–Ⅲ tile flips up and the one-time material-mine reroll is offered —
+    // exactly like an on-foot discovery — and the completed gate visit is gone
+    // (no empty pending visit lingering behind the choice).
+    const flip = adv(state).pendingFarTileFlip!;
+    expect(flip.via).toBe("reveal");
+    expect(flip.offerMode).toBe("mine");
+    expect(flip.candidate).toBe("F4");
+    expect(state.pendingChoice?.type).toBe("OPTION_CHOICE");
+    expect(adv(state).pendingVisit).toBeNull();
+
+    // Reroll once → F1 (no Mine) lands on the SAME slot; the mined def returns to
+    // the pool, and the gate carving flow then proceeds as usual.
+    const rerolled = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: state.pendingChoice!.id,
+      optionIndex: 1
+    });
+    expect(rerolled.adventure!.tiles[surface.id].tileDefId).toBe("F1");
+    expect(rerolled.adventure!.farTilePool).toContain("F4");
+    expect(rerolled.adventure!.pendingTileChoice?.tileInstanceId).toBe(surface.id);
+
+    // The freshly chosen tile rotates and the gate completes, as in the plain reveal.
+    let after: GameState | null = null;
+    for (const rotation of [0, 1, 2, 3, 4, 5]) {
+      const result = applyAction(rerolled, {
+        type: "SET_TILE_ROTATION",
+        playerId: "p1",
+        tileInstanceId: surface.id,
+        rotation
+      });
+      if (result.errors.length === 0) {
+        after = result.state;
+        break;
+      }
+    }
+    expect(after, "a legal rotation must complete the gate").not.toBeNull();
+    expect(gateHalfTo(after!, underground.id)).toBeDefined();
+  });
 });
 
 describe("subterranean gate: a covered Field becomes unusable — it is the gate now", () => {
