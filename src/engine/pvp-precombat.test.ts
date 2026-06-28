@@ -255,4 +255,56 @@ describe("PvP pre-battle preparation window (both sides)", () => {
     });
     expect(rejected.errors.length).toBeGreaterThan(0);
   });
+
+  // -------------------------------------------------------------------------
+  // Hand cards in prep: a held card (the Legion of Skeletons / Sandro's Cloak,
+  // an artifact, an ability …) may be PLAYED to prepare for the fight, exactly
+  // as on a map turn — so it is never wasted just because the enemy attacked
+  // mid-turn. Only map-MOVEMENT Spells (Town Portal) are withheld.
+  // -------------------------------------------------------------------------
+
+  it("lets a participant PLAY a hand card (the Legion of Skeletons) to prepare for the battle", () => {
+    const state = attack("prep-play-card", (s) => {
+      s.players.p2.hand = ["specialty.sandro.6"]; // Cloak of the Undead King VI → Legion of Skeletons
+    });
+    // The defender (Necropolis, with Skeletons in the army) is offered the play.
+    const legionPlay = getLegalActions(state, "p2").find(
+      (l) => l.action.type === "PLAY_CARD" && l.action.cardId === "specialty.sandro.6"
+    );
+    expect(legionPlay, "the Legion of Skeletons should be playable in the prep window").toBeTruthy();
+
+    // Playing it rides the transform onto the Skeletons army card for the battle.
+    const after = applyOk(state, legionPlay!.action);
+    const skeletons = after.players.p2.army.find((u) => u.unitDefId === "necropolis.skeletons");
+    expect(skeletons?.transforms?.some((t) => t.name === "Legion of Skeletons")).toBe(true);
+    // Preparing is not accepting — the window stays open.
+    expect(after.combat?.prep?.accepted).toEqual([]);
+  });
+
+  it("withholds a map-movement Spell (Town Portal) in prep, but still offers real prep cards", () => {
+    const state = attack("prep-no-town-portal", (s) => {
+      s.players.p2.hand = ["spell.town_portal", "specialty.sandro.6"];
+    });
+    const offered = getLegalActions(state, "p2").map((l) => l.action);
+    // Town Portal would teleport the hero out of the pending fight — never offered.
+    expect(offered.some((a) => a.type === "CAST_SPELL" && a.cardId === "spell.town_portal")).toBe(false);
+    expect(offered.some((a) => "cardId" in a && a.cardId === "spell.town_portal")).toBe(false);
+    // The Legion (a genuine prep play) still is.
+    expect(offered.some((a) => a.type === "PLAY_CARD" && a.cardId === "specialty.sandro.6")).toBe(true);
+  });
+
+  it("lets the ATTACKER prepare with hand cards too — not just the defender", () => {
+    const state = attack("prep-attacker-card", (s) => {
+      s.players.p1.hand = ["specialty.sandro.6"];
+      // Give the attacker a Skeletons unit to ride the Legion onto.
+      s.players.p1.army = [...s.players.p1.army, { id: "p1_skel", unitDefId: "necropolis.skeletons", side: "few" }];
+    });
+    const legionPlay = getLegalActions(state, "p1").find(
+      (l) => l.action.type === "PLAY_CARD" && l.action.cardId === "specialty.sandro.6"
+    );
+    expect(legionPlay, "the attacker should also play prep cards in the window").toBeTruthy();
+    const after = applyOk(state, legionPlay!.action);
+    const skeletons = after.players.p1.army.find((u) => u.id === "p1_skel");
+    expect(skeletons?.transforms?.some((t) => t.name === "Legion of Skeletons")).toBe(true);
+  });
 });

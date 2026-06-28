@@ -30,7 +30,7 @@ import {
 } from "./active-effects";
 import { drawCardsForPlayer, shuffleCards } from "./decks";
 import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
-import { applyUnitSideRules, canAcquireSharedDeckCard, getRuleset } from "./ruleset";
+import { applyUnitSideRules, canAcquireSharedDeckCard, getRuleset, NECROMANCY_ABILITY_ID } from "./ruleset";
 import {
   hexDistance,
   hexNeighbors,
@@ -5709,14 +5709,27 @@ function queueTurnStartBuildingChoices(state: GameState, playerId: PlayerId): vo
         const hasSpecialtyInDiscard = player.discard.some(
           (cardId) => cardLibrary[cardId]?.kind === "hero-specialty"
         );
-        const options: { label: string; steps: VisitStep[] }[] = [
-          { label: "Search the Ability deck for a Necromancy card", steps: [{ type: "NECROMANCY_FETCH" }] }
-        ];
+        // A hero never keeps a duplicate Ability: once this player already owns
+        // the Necromancy card (hand/deck/discard/ongoing), the "Search the Ability
+        // deck for a Necromancy card" option must NOT be offered — they may only
+        // take a Specialty back (or Skip). canAcquireSharedDeckCard returns false
+        // when the card is already held (and for a non-Necropolis hero, who can
+        // never take it at all).
+        const canFetchNecromancy = canAcquireSharedDeckCard(state, playerId, "abilities", NECROMANCY_ABILITY_ID);
+        const options: { label: string; steps: VisitStep[] }[] = [];
+        if (canFetchNecromancy) {
+          options.push({ label: "Search the Ability deck for a Necromancy card", steps: [{ type: "NECROMANCY_FETCH" }] });
+        }
         if (hasSpecialtyInDiscard) {
           options.push({
             label: "Take 1 Specialty card from your discard pile",
             steps: [{ type: "DISCARD_PICK", count: 1, filter: "specialty" }]
           });
+        }
+        // Nothing useful to offer (already own Necromancy AND no Specialty to
+        // recall): don't queue a pointless Skip-only prompt.
+        if (options.length === 0) {
+          break;
         }
         options.push({ label: "Skip", steps: [] });
         adventure.rewardQueue.push({

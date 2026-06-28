@@ -7674,6 +7674,35 @@ function castSpell(state: GameState, action: Extract<GameAction, { type: "CAST_S
     }
   }
 
+  // Ciele IV (Conflux): a free over-limit cast pulled from the caster's OWN
+  // discard. Validate the forgery surface (this cast bypasses the Spell limit, so
+  // an unchecked client could otherwise free-cast any spell): the enabling
+  // specialty must be in hand and authorise this exact spell id, and the spell
+  // itself must actually be sitting in the caster's discard pile.
+  if (action.fromOwnDiscard) {
+    const caster = state.players[action.playerId];
+    const enablerId = action.fromSpellDeck;
+    const enabler = enablerId ? cards[enablerId] : undefined;
+    const castOption =
+      enabler?.effect.type === "CHOOSE_ONE"
+        ? enabler.effect.options.find((option) => option.effect.type === "CAST_FROM_SPELL_DISCARD")
+        : undefined;
+    const authorisedSpellId =
+      castOption?.effect.type === "CAST_FROM_SPELL_DISCARD" && castOption.effect.ownDiscard === true
+        ? castOption.effect.spellId
+        : undefined;
+    if (
+      !caster ||
+      !enablerId ||
+      !caster.hand.includes(enablerId) ||
+      authorisedSpellId === undefined ||
+      authorisedSpellId !== action.cardId ||
+      !caster.discard.includes(action.cardId)
+    ) {
+      throw new Error("That Spell cannot be cast from your discard pile.");
+    }
+  }
+
   // Creature Bank Dragon Utopia Faerie Dragons (while Stacked): a living enemy
   // Faerie Dragons forbids any Spell cast. Backstop at resolution so a forced
   // cast (one the legal-action filter never offered) still fails.
@@ -9593,7 +9622,10 @@ function playTransformCard(
     player.hand.splice(index, 1);
   };
 
-  if (state.combat) {
+  // A live (deployed) combat places the Cloak on a combat UNIT. The PvP prep
+  // window is the exception: units are not on the board yet, so a prep play rides
+  // the Cloak onto the ARMY CARD (the map path below) and it deploys covered.
+  if (state.combat && !state.combat.prep) {
     const target = action.target?.type === "unit" ? action.target : undefined;
     const unit = target ? state.combat.units[target.unitId] : undefined;
     if (!unit || unit.controllerId !== action.playerId) {

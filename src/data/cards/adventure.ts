@@ -2752,9 +2752,12 @@ export const adventureCards: CardLibrary = {
       type: "CHOOSE_ONE",
       options: [
         {
+          // Per the wiki this is an <instant> with no map/combat restriction, so
+          // it is playable BOTH on the map and mid-Combat (allowInCombat opens the
+          // discard pick immediately in a live fight instead of parking it on the
+          // map reward queue). It always reads the player's OWN discard pile.
           label: "Take a Magic Arrow from your discard pile",
-          mapOnly: true,
-          effect: { type: "TAKE_FROM_DISCARD", count: 1, filter: "magic-arrow" }
+          effect: { type: "TAKE_FROM_DISCARD", count: 1, filter: "magic-arrow", allowInCombat: true }
         },
         {
           label: "+1 Power",
@@ -2782,9 +2785,14 @@ export const adventureCards: CardLibrary = {
       type: "CHOOSE_ONE",
       options: [
         {
+          // The wiki reads "Take a Magic Arrow spell from YOUR discard pile and
+          // cast it." Magic Arrow is a STARTING_ONLY spell, so it never enters the
+          // shared Spell deck — a cast copy always lands in the player's OWN
+          // discard pile. `ownDiscard` points the cast-from-discard pipeline there
+          // instead of the shared Spell-deck discard (the Helm's source).
           label: "Cast a Magic Arrow from your discard pile (free)",
           combatOnly: true,
-          effect: { type: "CAST_FROM_SPELL_DISCARD", spellId: "spell.magic_arrow" }
+          effect: { type: "CAST_FROM_SPELL_DISCARD", spellId: "spell.magic_arrow", ownDiscard: true }
         },
         {
           label: "+1 Power",

@@ -1167,6 +1167,13 @@ export type EffectDefinition =
       type: "CAST_FROM_SPELL_DISCARD";
       /** Ciele IV: only a Spell with this id may be cast (e.g. spell.magic_arrow). */
       spellId?: string;
+      /**
+       * Ciele IV: source the spell from the caster's OWN discard pile
+       * (PlayerState.discard) rather than the shared Spell-deck discard. Magic
+       * Arrow is STARTING_ONLY, so a cast copy only ever lands in the player's own
+       * discard — never in the shared Spell deck.
+       */
+      ownDiscard?: boolean;
     }
   | {
       /**
@@ -2437,6 +2444,14 @@ export type GameAction =
        * Helm card named here is removed from the game once the cast resolves.
        */
       fromSpellDeck?: CardId;
+      /**
+       * Ciele IV (Conflux): paired with `fromSpellDeck` (the enabling hero
+       * specialty), this marks the free cast as sourced from the caster's OWN
+       * discard pile rather than the shared Spell-deck discard. The Magic Arrow
+       * stays in the player's discard across the cast (like a Helm cast leaves its
+       * spell in the shared discard), and the specialty cycles to discard.
+       */
+      fromOwnDiscard?: boolean;
       /**
        * Spell Book (house rule): the Spell is cast from the player's Spell Book
        * (PlayerState.spellBook), not the hand. It casts at the caster's normal

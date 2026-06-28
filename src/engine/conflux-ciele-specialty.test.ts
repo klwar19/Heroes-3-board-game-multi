@@ -8,15 +8,22 @@ import type { GameAction, GameState } from "./state";
  * Engine coverage for Ciele — the Conflux Magic Arrow Elementalist. Every level
  * is driven through the real engine and each test fails if the wiring is removed.
  *
- *   I  — map: take a Magic Arrow from your discard pile to hand (TAKE_FROM_DISCARD,
- *        filtered to Magic Arrow). — OR — +1 Power reaction.
- *   IV — combat: cast a Magic Arrow from the Spell-deck discard pile for FREE
- *        (reuses the Helm of the Alabaster Unicorn CAST_FROM_SPELL_DISCARD path,
- *        `spellId`-filtered to Magic Arrow; consumes the specialty to the discard,
- *        not removed; full Power scaling; does not count toward the Spell limit).
- *        — OR — +1 Power reaction.
+ *   I  — INSTANT (map AND combat): take a Magic Arrow from YOUR discard pile to
+ *        hand (TAKE_FROM_DISCARD, filtered to Magic Arrow, allowInCombat). — OR —
+ *        +1 Power reaction.
+ *   IV — combat: cast a Magic Arrow from YOUR OWN discard pile for FREE (the
+ *        CAST_FROM_SPELL_DISCARD pipeline with `ownDiscard`, `spellId`-filtered to
+ *        Magic Arrow; the arrow stays in your discard, the specialty cycles to the
+ *        discard — not removed; full Power scaling; does not count toward the Spell
+ *        limit). — OR — +1 Power reaction.
  *   VI — combat: a chosen enemy suffers 2 damage (DAMAGE_CHOSEN_ENEMIES). — OR —
  *        +2 Power reaction.
+ *
+ * Magic Arrow is a STARTING_ONLY spell: a cast copy lands in the PLAYER's OWN
+ * discard pile, never the shared Spell-deck discard. The regression that prompted
+ * this rewrite: Ciele I was map-only and Ciele IV read the shared Spell-deck
+ * discard, so in real play neither could ever find the player's Magic Arrow. The
+ * CONTROL tests below seed the WRONG pile and assert the cast is NOT offered.
  */
 
 const CIELE_1 = "specialty.ciele.1";
@@ -39,12 +46,19 @@ function passAllReactions(state: GameState): GameState {
   return current;
 }
 
-/** A combat state where p1's Griffins are the fresh active unit (cast gate open). */
-function cieleCombat(seed: string, hand: string[], discardPile: string[]): GameState {
+/**
+ * A combat state where p1's Griffins are the fresh active unit (cast gate open).
+ * `ownDiscard` seeds the PLAYER's own discard pile (where a cast Magic Arrow
+ * actually lands — the pile Ciele reads).
+ */
+function cieleCombat(seed: string, hand: string[], ownDiscard: string[]): GameState {
   const state = createInitialGameState(seed);
   state.players.p1.hand = hand;
+  state.players.p1.discard = ownDiscard;
   state.players.p2.hand = [];
-  state.decks.spells.discardPile = discardPile;
+  // The shared Spell-deck discard is deliberately EMPTY: Ciele must never source
+  // from it. Tests that probe the old (wrong) pile set it explicitly.
+  state.decks.spells.discardPile = [];
   const target = state.combat!.units.unit_p2_skeletons;
   target.maxHealth = 20;
   target.damage = 0;
@@ -62,6 +76,7 @@ function cieleArrowCast(state: GameState) {
     (legal) =>
       legal.action.type === "CAST_SPELL" &&
       legal.action.fromSpellDeck === CIELE_4 &&
+      (legal.action as { fromOwnDiscard?: boolean }).fromOwnDiscard === true &&
       legal.action.cardId === MAGIC_ARROW &&
       legal.action.target.type === "unit" &&
       legal.action.target.unitId === "unit_p2_skeletons"
@@ -82,17 +97,19 @@ describe("Ciele — registration", () => {
   });
 });
 
-describe("Ciele IV — cast a Magic Arrow from the discard pile for free", () => {
-  it("casts the Magic Arrow at the caster's Power, leaves it in the shared discard, and cycles the specialty to the discard (not removed)", () => {
+describe("Ciele IV — cast a Magic Arrow from YOUR OWN discard pile for free", () => {
+  it("casts the Magic Arrow at the caster's Power, leaves it in YOUR discard, and cycles the specialty to the discard (not removed)", () => {
     const state = cieleCombat("ciele-iv", [CIELE_4], [MAGIC_ARROW]);
     const cast = cieleArrowCast(state);
-    expect(cast, "Ciele IV should offer casting the discard Magic Arrow").toBeTruthy();
+    expect(cast, "Ciele IV should offer casting the own-discard Magic Arrow").toBeTruthy();
 
     const after = passAllReactions(applyOk(state, cast!.action));
     // Power 0 → Magic Arrow deals 1.
     expect(after.combat!.units.unit_p2_skeletons.damage).toBe(1);
-    // The spell is the shared deck's card — it stays in the Spell-deck discard.
-    expect(after.decks.spells.discardPile).toContain(MAGIC_ARROW);
+    // "Take ... and cast it": after a cast the spell returns to your discard, so it
+    // stays in the PLAYER's own discard (never the shared Spell-deck discard).
+    expect(after.players.p1.discard).toContain(MAGIC_ARROW);
+    expect(after.decks.spells.discardPile).not.toContain(MAGIC_ARROW);
     expect(after.players.p1.hand).not.toContain(MAGIC_ARROW);
     // The specialty is a hero card, so it cycles to the player's discard (redrawable),
     // NOT removed from the game like the Helm artifact.
@@ -101,6 +118,17 @@ describe("Ciele IV — cast a Magic Arrow from the discard pile for free", () =>
     expect(after.players.p1.hand).not.toContain(CIELE_4);
     // Free bonus cast — it does not consume the one-Spell-per-round limit.
     expect(after.players.p1.combatStats.spellsCastThisRound).toBe(0);
+  });
+
+  it("CONTROL: a Magic Arrow in the SHARED Spell-deck discard is NOT castable (Ciele reads your own pile only)", () => {
+    const state = cieleCombat("ciele-iv-wrong-pile", [CIELE_4], []);
+    // Put the arrow in the WRONG pile — the shared Spell-deck discard — and leave
+    // the player's own discard empty. The old (buggy) wiring would offer this.
+    state.decks.spells.discardPile = [MAGIC_ARROW];
+    const cast = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "CAST_SPELL" && legal.action.fromSpellDeck === CIELE_4
+    );
+    expect(cast, "the shared-deck arrow must NOT be castable by Ciele").toBeFalsy();
   });
 
   it("is a free cast — still offered and castable after the Spell limit is used up", () => {
@@ -113,9 +141,9 @@ describe("Ciele IV — cast a Magic Arrow from the discard pile for free", () =>
     expect(after.players.p1.combatStats.spellsCastThisRound).toBe(1);
   });
 
-  it("finds the Magic Arrow anywhere in the discard — not just the top (proves the spellId filter)", () => {
-    // Haste is on top, a Magic Arrow is buried beneath it. The Helm would cast the
-    // top (Haste); Ciele casts the filtered Magic Arrow.
+  it("finds the Magic Arrow anywhere in your discard — not just the top (proves the spellId filter)", () => {
+    // Haste is on top, a Magic Arrow is buried beneath it. Ciele casts the filtered
+    // Magic Arrow, never the discard top.
     const state = cieleCombat("ciele-iv-buried", [CIELE_4], [MAGIC_ARROW, "spell.haste"]);
     const arrow = cieleArrowCast(state);
     expect(arrow, "Ciele casts the buried Magic Arrow, not the discard top").toBeTruthy();
@@ -125,7 +153,7 @@ describe("Ciele IV — cast a Magic Arrow from the discard pile for free", () =>
     expect(castHaste, "Ciele must NOT be able to cast a non-Magic-Arrow spell").toBeFalsy();
   });
 
-  it("is not offered when the discard pile holds no Magic Arrow", () => {
+  it("is not offered when your discard pile holds no Magic Arrow", () => {
     const state = cieleCombat("ciele-iv-none", [CIELE_4], ["spell.haste", "spell.bless"]);
     const cast = getLegalActions(state, "p1").find(
       (legal) => legal.action.type === "CAST_SPELL" && legal.action.fromSpellDeck === CIELE_4
@@ -184,7 +212,7 @@ describe("Ciele VI — a chosen enemy suffers 2 damage", () => {
   });
 });
 
-describe("Ciele I — recall a Magic Arrow from the discard pile (map)", () => {
+describe("Ciele I — recall a Magic Arrow from YOUR discard pile (instant: map AND combat)", () => {
   function mapState(seed: string, discard: string[]): GameState {
     const state = createAdventureGameState({ seed, difficulty: "normal", rollFirstPlayer: false });
     for (const pl of Object.values(state.players)) {
@@ -197,7 +225,7 @@ describe("Ciele I — recall a Magic Arrow from the discard pile (map)", () => {
     return state;
   }
 
-  it("offers the recall and puts a Magic Arrow into hand, cycling the specialty to the discard", () => {
+  it("offers the recall on the MAP and puts a Magic Arrow into hand, cycling the specialty to the discard", () => {
     const state = mapState("ciele-i", [MAGIC_ARROW, "spell.haste", "stat.attack"]);
     const play = getLegalActions(state, "p1").find(
       (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === CIELE_1 && legal.action.optionIndex === 0
@@ -213,6 +241,23 @@ describe("Ciele I — recall a Magic Arrow from the discard pile (map)", () => {
     });
     expect(took.players.p1.hand).toContain(MAGIC_ARROW);
     expect(took.players.p1.discard).toContain(CIELE_1);
+  });
+
+  it("also recalls a Magic Arrow in COMBAT (it is an instant — the pick opens mid-fight)", () => {
+    const state = cieleCombat("ciele-i-combat", [CIELE_1], [MAGIC_ARROW]);
+    const play = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === CIELE_1 && legal.action.optionIndex === 0
+    );
+    expect(play, "the Magic Arrow recall should be offered in combat too").toBeTruthy();
+    const opened = applyOk(state, play!.action);
+    expect(opened.pendingChoice, "the discard pick opens immediately in combat (allowInCombat)").toBeTruthy();
+    const took = applyOk(opened, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: opened.pendingChoice!.id,
+      optionIndex: 0
+    } as GameAction);
+    expect(took.players.p1.hand).toContain(MAGIC_ARROW);
   });
 
   it("is NOT offered when the discard pile holds a Spell but no Magic Arrow (proves the filter)", () => {

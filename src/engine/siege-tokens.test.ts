@@ -624,6 +624,55 @@ describe("turn-start town buildings", () => {
     }
   });
 
+  it("does NOT offer a duplicate Necromancy fetch once the hero already owns Necromancy", () => {
+    let state = createAdventureGameState({ seed: "necromancy-dup", rollFirstPlayer: false });
+    for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
+    state.towns.town_p2.buildings.push("necropolis.necromancy_amplifier");
+    // p2 (Sandro of Necropolis) ALREADY owns the Necromancy ability...
+    state.players.p2.deck.push("ability.necromancy");
+    // ...and has a Specialty card in the discard pile to recall instead.
+    state.players.p2.discard.push("specialty.sandro.1");
+
+    state = applyOk(state, { type: "END_TURN", playerId: "p1" });
+
+    const step = state.adventure?.pendingVisit?.steps[0];
+    expect(step?.type).toBe("CHOOSE_ONE");
+    if (step?.type === "CHOOSE_ONE") {
+      const labels = step.options.map((option) => option.label);
+      // The duplicate-fetch option is gone; only the Specialty recall (+ Skip) remain.
+      expect(labels.some((label) => label.includes("Search the Ability deck"))).toBe(false);
+      expect(labels.some((label) => label.includes("Specialty"))).toBe(true);
+
+      // Resolve the (now first) option — the Specialty recall — and prove no second
+      // Necromancy was acquired: exactly one copy across every zone.
+      state = applyOk(state, { type: "RESOLVE_VISIT_STEP", playerId: "p2", optionIndex: 0 });
+      const p2 = state.players.p2;
+      const necromancyCopies = [...p2.hand, ...p2.deck, ...p2.discard, ...p2.removed].filter(
+        (id) => id === "ability.necromancy"
+      ).length;
+      expect(necromancyCopies).toBe(1);
+    }
+  });
+
+  it("CONTROL: a hero who does NOT yet own Necromancy is still offered the fetch", () => {
+    let state = createAdventureGameState({ seed: "necromancy-control", rollFirstPlayer: false });
+    for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
+    state.towns.town_p2.buildings.push("necropolis.necromancy_amplifier");
+    // Ensure p2 holds NO Necromancy card anywhere.
+    state.players.p2.deck = state.players.p2.deck.filter((id) => id !== "ability.necromancy");
+    state.players.p2.hand = state.players.p2.hand.filter((id) => id !== "ability.necromancy");
+    state.players.p2.discard = state.players.p2.discard.filter((id) => id !== "ability.necromancy");
+
+    state = applyOk(state, { type: "END_TURN", playerId: "p1" });
+
+    const step = state.adventure?.pendingVisit?.steps[0];
+    expect(step?.type).toBe("CHOOSE_ONE");
+    if (step?.type === "CHOOSE_ONE") {
+      const labels = step.options.map((option) => option.label);
+      expect(labels.some((label) => label.includes("Search the Ability deck"))).toBe(true);
+    }
+  });
+
   it("runs the Mana Vortex discard-shuffle-search at turn start", () => {
     let state = createAdventureGameState({ seed: "vortex-seed", rollFirstPlayer: false });
   for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }

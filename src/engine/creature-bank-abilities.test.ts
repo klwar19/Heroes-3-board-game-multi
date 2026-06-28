@@ -421,10 +421,11 @@ describe("Crypt Skeletons: Rebirth (once per combat)", () => {
 });
 
 // ===========================================================================
-// Rebirth keeps a dying unit on its CURRENT side — a Pack unit stays Pack at
-// 1 HP and never flips to Few (the house rule that every side carries Rebirth).
-// This is the ordering fix: Rebirth resolves before the Pack→Few flip for EVERY
-// unit, bank or not, and after the Stack Token absorb for bank defenders.
+// Rebirth keeps a dying unit on its CURRENT side AND its Stack Token — a Pack
+// unit stays Pack at 1 HP (never flips to Few) and a Stacked bank card stays
+// Stacked at 1 HP (never discards its token), "going down only on the NEXT
+// lethal hit". Ordering: Rebirth resolves FIRST — before the Stack Token absorb
+// AND before the Pack→Few flip — for EVERY unit, bank or not.
 // ===========================================================================
 
 describe("Rebirth keeps the unit on its current side (Pack stays Pack)", () => {
@@ -467,6 +468,65 @@ describe("Rebirth keeps the unit on its current side (Pack stays Pack)", () => {
     unit.damage = 99;
     markUnitRemovedIfNeeded(state, unit);
     expect(unit.variant).toBe("few"); // control: the Pack→Few flip is untouched
+  });
+});
+
+// ===========================================================================
+// A Stacked Crypt Skeleton (the "Pack" of a bank card) Rebirths FIRST and KEEPS
+// its Stack Token, going down (discarding the token) only on the NEXT lethal
+// hit — the reported "skeleton bank only works for few, not the pack (dies into
+// few)" fix. Driven through the real bank build so the token + Rebirth come from
+// the engine, not hand-set fields.
+// ===========================================================================
+
+describe("Stacked Crypt Skeleton: Rebirth keeps the Pack (Stack Token), goes down next hit", () => {
+  function stackedBankSkeleton(): { state: GameState; skeleton: CombatUnitState } {
+    const state = createInitialGameState("stacked-skeleton-rebirth");
+    const skeleton = state.combat!.units.unit_p2_skeletons;
+    // Mint it as the Crypt bank card carrying a Stack Token (the "Pack").
+    skeleton.unitDefId = "neutral.skeletons";
+    skeleton.bankUnit = true;
+    skeleton.variant = "neutral";
+    skeleton.abilities = ["phoenix-rebirth"];
+    skeleton.usedRebirthThisCombat = false;
+    skeleton.stackToken = "health"; // Stacked
+    skeleton.maxHealth = 3; // 2 base + 1 health token
+    skeleton.damage = 0;
+    return { state, skeleton };
+  }
+
+  it("hit 1 → Rebirth fires, the Stack Token is KEPT (stays Stacked at 1 Health)", () => {
+    const { state, skeleton } = stackedBankSkeleton();
+    skeleton.damage = skeleton.maxHealth; // lethal
+    markUnitRemovedIfNeeded(state, skeleton);
+    expect(skeleton.usedRebirthThisCombat).toBe(true);
+    expect(skeleton.stackToken).toBe("health"); // the Pack is preserved — NOT discarded
+    expect(skeleton.maxHealth - skeleton.damage).toBe(1); // clings to life at 1 Health
+    expect(abilityEventIds(state)).toContain("phoenix-rebirth");
+    // It did NOT spend the token this hit.
+    expect(state.eventLog.some((e) => e.type === "STACK_TOKEN_DISCARDED")).toBe(false);
+  });
+
+  it("hit 2 → Rebirth is spent, NOW the Stack Token absorbs (drops to the un-stacked card)", () => {
+    const { state, skeleton } = stackedBankSkeleton();
+    skeleton.damage = skeleton.maxHealth;
+    markUnitRemovedIfNeeded(state, skeleton); // hit 1: rebirth, keeps token
+    skeleton.damage = skeleton.maxHealth; // hit 2: lethal again
+    markUnitRemovedIfNeeded(state, skeleton);
+    expect(skeleton.stackToken).toBeNull(); // token now discarded
+    expect(skeleton.maxHealth).toBe(2); // reverted to the bare bank card
+    expect(skeleton.damage).toBeLessThan(skeleton.maxHealth); // still alive (the un-stacked "few")
+    expect(state.eventLog.some((e) => e.type === "STACK_TOKEN_DISCARDED")).toBe(true);
+    expect(state.eventLog.some((e) => e.type === "UNIT_REMOVED" && e.unitId === "unit_p2_skeletons")).toBe(false);
+  });
+
+  it("hit 3 → finally removed (Rebirth spent, token spent)", () => {
+    const { state, skeleton } = stackedBankSkeleton();
+    for (let i = 0; i < 3; i += 1) {
+      skeleton.damage = skeleton.maxHealth;
+      markUnitRemovedIfNeeded(state, skeleton);
+    }
+    expect(state.eventLog.some((e) => e.type === "UNIT_REMOVED" && e.unitId === "unit_p2_skeletons")).toBe(true);
   });
 });
 

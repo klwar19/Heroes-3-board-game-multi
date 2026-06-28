@@ -146,11 +146,18 @@ Conflux — now fully engine-wired (no display-only unit clauses left):
   IV is the spell-economy choice (map discard recall OR a +2-Power spell-cast
   reaction). All I/IV/VI implemented + tested (`conflux-content.test.ts`). Conflux
   PC portraits (incl. Luna and Tarnum) are now downloaded to `/public/assets`.
-- **Ciele** (Magic Arrow Elementalist) is now shipped — I recalls a Magic Arrow
-  from the discard, IV casts one from the Spell-deck discard for FREE over the
-  limit (the `CAST_FROM_SPELL_DISCARD` pipeline, `spellId`-filtered), VI deals 2
-  damage; each with a +Power reaction alternative. See
-  `conflux-ciele-specialty.test.ts`.
+- **Ciele** (Magic Arrow Elementalist) is now shipped — Magic Arrow is a
+  STARTING_ONLY spell, so a cast copy lands in the player's OWN discard pile, NOT
+  the shared Spell deck; both I and IV read that own discard (the earlier
+  shared-Spell-deck wiring meant neither could ever find the arrow in real play).
+  I is an `<instant>` recall of a Magic Arrow from your discard to hand, playable
+  on the map AND in combat (`TAKE_FROM_DISCARD` filtered to Magic Arrow,
+  `allowInCombat`). IV casts a Magic Arrow from your OWN discard for FREE over the
+  limit (the `CAST_FROM_SPELL_DISCARD` pipeline with `ownDiscard`, `spellId`-
+  filtered — the arrow stays in your discard, the specialty cycles to discard).
+  VI deals 2 damage; each with a +Power reaction alternative. The tests seed the
+  PLAYER's own discard and keep a CONTROL proving a Magic Arrow in the shared
+  Spell-deck discard is NOT castable. See `conflux-ciele-specialty.test.ts`.
 - **Tarnum (Conflux)** (Enchanters Elementalist) is now shipped — all I/IV/VI
   engine-wired and covered by `conflux-tarnum-specialty.test.ts` (each level fails
   if its wiring is removed):
