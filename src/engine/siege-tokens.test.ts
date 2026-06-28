@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { applyAction, createAdventureGameState, createAdventureLobbyState, getLegalActions, hexNeighbors, hexSpaceId, parseHexSpaceId } from "./index";
 import { createInitialGameState } from "./setup";
+import { processPendingVisit } from "./adventure";
 import { placeCombatToken } from "./tokens";
 import type { CombatUnitState, GameAction, GameState } from "./state";
 
@@ -652,6 +653,31 @@ describe("turn-start town buildings", () => {
       ).length;
       expect(necromancyCopies).toBe(1);
     }
+  });
+
+  it("resolution-level guard: a forced NECROMANCY_FETCH never hands a second copy to an owner", () => {
+    // Defense in depth: even if the fetch STEP runs while the hero already owns
+    // Necromancy (e.g. acquired between the turn-start offer and resolution), the
+    // resolver must redraw past it — no duplicate Ability, ever.
+    const state = createAdventureGameState({ seed: "necromancy-resolve", rollFirstPlayer: false });
+    for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
+    const heroId = Object.values(state.heroes).find((hero) => hero.controllerId === "p2")!.id;
+    const fieldId = state.heroes[heroId].spaceId ?? "";
+    state.players.p2.hand = [];
+    state.players.p2.deck = ["ability.necromancy"]; // already owns it
+    state.players.p2.discard = [];
+    // The shared deck holds the OTHER copy on top — the resolver must NOT take it.
+    state.decks.abilities.drawPile.push("ability.necromancy");
+
+    state.adventure!.pendingVisit = { heroId, playerId: "p2", fieldId, steps: [{ type: "NECROMANCY_FETCH" }] };
+    processPendingVisit(state);
+
+    const p2 = state.players.p2;
+    const copies = [...p2.hand, ...p2.deck, ...p2.discard].filter((id) => id === "ability.necromancy").length;
+    expect(copies).toBe(1);
+    expect(p2.hand).not.toContain("ability.necromancy");
+    // The untouched second copy was reshuffled back into the deck, not consumed.
+    expect(state.decks.abilities.drawPile).toContain("ability.necromancy");
   });
 
   it("CONTROL: a hero who does NOT yet own Necromancy is still offered the fetch", () => {
