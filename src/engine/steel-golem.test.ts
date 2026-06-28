@@ -66,8 +66,8 @@ describe("Steel Golem — data wiring", () => {
     expect(neutralUnitIdsByTier.bronze).not.toContain("neutral.steel_golems");
   });
 
-  it("ships no card art yet (board falls back to the named frame)", () => {
-    expect(def.neutral?.cardImage).toBeUndefined();
+  it("ships the dedicated silver Neutral card face", () => {
+    expect(def.neutral?.cardImage).toBe("/assets/units-neutral-silver-steel_golems.webp");
   });
 
   it("wires an implemented spell-or-Specialty reduction ability", () => {

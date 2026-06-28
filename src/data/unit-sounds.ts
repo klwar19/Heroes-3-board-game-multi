@@ -81,6 +81,9 @@ const creatureVoices: Record<string, string> = {
   azure_dragons: "azure-dragon",
   crystal_dragons: "crystal-dragon",
   faerie_dragons: "faerie-dragon",
+  leprechaun: "leprechaun",
+  satyrs: "satyr",
+  fangarm: "fangarm",
   // Tower / Fortress / Conflux creatures that only appear as neutral guards.
   // Voices follow the original game's sound sets (docs/h3-sound-reference.csv):
   // Dragon Flies are the upgraded Serpent Fly, so they use the fire-dragon-fly set.

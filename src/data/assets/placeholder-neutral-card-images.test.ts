@@ -3,13 +3,17 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { coreUnitDefinitions } from "@/data/factions/units";
 
-// The 21 single-sided Neutral guards whose wiki faces are blank. Each one now
+// The 25 single-sided Neutral guards whose wiki faces are blank. Each one now
 // ships a dedicated `units-neutral-<tier>-<slug>.webp` composed by
 // scripts/build-placeholder-neutral-cards.mjs from the exact faction creature
 // illustration inside the matching Neutral tier frame — NOT the faction Few/Pack
 // art. Mapping is asserted explicitly so a wrong tier/slug (e.g. a gold unit
 // pointed at a bronze frame) fails here.
 const EXPECTED = {
+  "neutral.leprechaun": "/assets/units-neutral-bronze-leprechaun.webp",
+  "neutral.satyrs": "/assets/units-neutral-silver-satyrs.webp",
+  "neutral.steel_golems": "/assets/units-neutral-silver-steel_golems.webp",
+  "neutral.fangarm": "/assets/units-neutral-silver-fangarm.webp",
   "neutral.oceanids": "/assets/units-neutral-bronze-oceanids.webp",
   "neutral.seamen": "/assets/units-neutral-bronze-seamen.webp",
   "neutral.sea_dogs": "/assets/units-neutral-bronze-sea_dogs.webp",
@@ -33,6 +37,25 @@ const EXPECTED = {
   "neutral.phoenixes": "/assets/units-neutral-azure-phoenixes.webp"
 } as const;
 
+const NEW_NEUTRAL_RULES = {
+  "neutral.leprechaun": {
+    tier: "bronze", type: "ground", stats: [2, 0, 3, 5], gold: 4,
+    abilityText: "[unit_attack] Roll 2 Attack dice and resolve the higher one."
+  },
+  "neutral.satyrs": {
+    tier: "silver", type: "ground", stats: [3, 0, 5, 7], gold: 10,
+    abilityText: "[map_effect] Once per turn. Roll an Attack die. On a \"+1\", gain [morale_positive]."
+  },
+  "neutral.steel_golems": {
+    tier: "silver", type: "ground", stats: [3, 2, 3, 5], gold: 12,
+    abilityText: "[unit_passive] Reduce [damage] taken by this unit from [spell] or Specialty by 2 — to a minimum of 0."
+  },
+  "neutral.fangarm": {
+    tier: "silver", type: "flying", stats: [3, 1, 5, 8], gold: 11,
+    abilityText: "[unit_passive] Ignore all [spell] and Specialty effects other than [damage]."
+  }
+} as const;
+
 function onDisk(assetPath: string): string {
   return fileURLToPath(new URL(`../../../public${assetPath}`, import.meta.url));
 }
@@ -47,7 +70,19 @@ function isWebp(file: string): boolean {
   return head.subarray(0, 4).toString("ascii") === "RIFF" && head.subarray(8, 12).toString("ascii") === "WEBP";
 }
 
-describe("Cove, Stronghold, and Conflux neutral card faces", () => {
+describe("blank-wiki neutral card faces", () => {
+  it("transcribes the four new cards' tiers, types, stats, costs, and symbolic rules text", () => {
+    for (const [id, expected] of Object.entries(NEW_NEUTRAL_RULES)) {
+      const def = coreUnitDefinitions[id];
+      const side = def?.neutral;
+      expect(def?.tier, id).toBe(expected.tier);
+      expect(def?.type, id).toBe(expected.type);
+      expect(side && [side.attack, side.defense, side.health, side.initiative], id).toEqual(expected.stats);
+      expect(side?.cost.gold, id).toBe(expected.gold);
+      expect(side?.abilityText, id).toBe(expected.abilityText);
+    }
+  });
+
   it("assigns each guard its dedicated Neutral-tier face, not a faction Few/Pack crop", () => {
     for (const [id, expectedPath] of Object.entries(EXPECTED)) {
       const def = coreUnitDefinitions[id];
@@ -82,6 +117,8 @@ describe("Cove, Stronghold, and Conflux neutral card faces", () => {
       "damage",
       "defense",
       "health_points",
+      "map_effect",
+      "morale_positive",
       "spell",
       "unit_attack",
       "unit_flying",
@@ -92,5 +129,11 @@ describe("Cove, Stronghold, and Conflux neutral card faces", () => {
     ]) {
       expect(existsSync(repoFile(`scripts/card-glyphs/${glyph}.svg`)), glyph).toBe(true);
     }
+    for (const source of ["leprechaun.png", "satyrs.png", "steel_golems.png", "fangarm.png"]) {
+      const file = repoFile(`scripts/neutral-unit-art/${source}`);
+      expect(existsSync(file), source).toBe(true);
+      expect(statSync(file).size, source).toBeGreaterThan(1_000_000);
+    }
+    expect(builder).toContain("unitTypeMark(card)");
   });
 });

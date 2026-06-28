@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 
 /**
- * Rebuild the 21 single-sided Neutral guard cards whose wiki images are blank.
+ * Rebuild the 25 single-sided Neutral guard cards whose wiki images are blank.
  *
- * The creature illustration is cropped from that unit's official Few/Pack card,
- * so Few, Pack, and Neutral retain one visual identity. The Neutral face uses an
- * official Neutral card of the matching tier as its frame and the glyphs from
+ * Most creature illustrations are cropped from that unit's official Few/Pack
+ * card, so Few, Pack, and Neutral retain one visual identity. Leprechaun,
+ * Satyrs, Steel Golems, and Fangarm have no faction card: their HD art sources
+ * in scripts/neutral-unit-art were generated from the PC-game renders/sprites.
+ * Every Neutral face uses an official matching-tier frame and the glyphs from
  * the wiki legend for every symbolic rules reference.
  *
  * Sources:
@@ -22,6 +24,7 @@ import sharp from "sharp";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const ASSETS = path.join(ROOT, "public", "assets");
 const GLYPHS = path.join(ROOT, "scripts", "card-glyphs");
+const GENERATED_ART = path.join(ROOT, "scripts", "neutral-unit-art");
 const OUT = path.join(ROOT, "out");
 
 // WebP encode settings. quality 80 / effort 6 keeps the legend glyphs and the
@@ -53,6 +56,30 @@ const SOURCE_CROPS = {
 const g = (name) => ({ glyph: name });
 
 const CARDS = [
+  {
+    slug: "leprechaun", name: "Leprechaun", tier: "bronze", type: "unit_ground",
+    art: "leprechaun.png", artPosition: "center", stats: [2, 0, 3, 5], cost: 4,
+    fontSize: 21,
+    lines: [[g("unit_attack"), " Roll 2 Attack dice and resolve the higher one."]]
+  },
+  {
+    slug: "satyrs", name: "Satyrs", tier: "silver", type: "unit_ground",
+    art: "satyrs.png", artPosition: "top", stats: [3, 0, 5, 7], cost: 10,
+    fontSize: 20,
+    lines: [[g("map_effect"), " Once per turn. Roll an Attack die. On a \"+1\","], ["gain ", g("morale_positive"), "."]]
+  },
+  {
+    slug: "steel_golems", name: "Steel Golems", tier: "silver", type: "unit_ground",
+    art: "steel_golems.png", artPosition: "center", stats: [3, 2, 3, 5], cost: 12,
+    fontSize: 19,
+    lines: [[g("unit_passive"), " Reduce ", g("damage"), " taken by this unit from ", g("spell"), " or"], ["Specialty by 2 — to a minimum of 0."]]
+  },
+  {
+    slug: "fangarm", name: "Fangarm", tier: "silver", type: "unit_flying",
+    art: "fangarm.png", artPosition: "top", stats: [3, 1, 5, 8], cost: 11,
+    fontSize: 20,
+    lines: [[g("unit_passive"), " Ignore all ", g("spell"), " and Specialty effects other"], ["than ", g("damage"), "."]]
+  },
   {
     slug: "oceanids", name: "Oceanids", family: "cove", tier: "bronze",
     source: "units-cove-bronze-oceanids-few.webp", stats: [2, 0, 3, 6], cost: 3,
@@ -229,12 +256,16 @@ function titleText(name) {
     fill="#f6e7a6" stroke="#170f09" stroke-width="3" paint-order="stroke">${escapeXml(name)}</text>`;
 }
 
-function statText(stats) {
-  const ys = [286, 441, 596, 750];
+function statText(stats, paintPatches = true) {
+  // Legacy faction-art cards retain their established patch coordinates;
+  // generated-art cards use the exact baselines on the inpainted Neutral frame.
+  const ys = paintPatches ? [286, 441, 596, 750] : [286, 456, 611, 795];
   const patchBoxes = [[249, 72], [404, 76], [558, 80], [712, 94]];
-  const patches = patchBoxes.map(([top, height]) =>
-    `<rect x="86" y="${top}" width="66" height="${height}" rx="5" fill="#372317" fill-opacity="0.99"/>`
-  ).join("");
+  const patches = paintPatches
+    ? patchBoxes.map(([top, height]) =>
+        `<rect x="86" y="${top}" width="66" height="${height}" rx="5" fill="#372317" fill-opacity="0.99"/>`
+      ).join("")
+    : "";
   const labels = stats.map((value, index) => {
     const size = String(value).length > 1 ? 29 : 34;
     return `<text x="119" y="${ys[index]}" text-anchor="middle" dominant-baseline="middle"
@@ -244,8 +275,8 @@ function statText(stats) {
   return patches + labels;
 }
 
-function neutralCost(cost) {
-  return `<rect x="474" y="766" width="158" height="50" rx="4" fill="#50472d" fill-opacity="0.99"/>
+function neutralCost(cost, paintPatch = true) {
+  return `${paintPatch ? '<rect x="474" y="766" width="158" height="50" rx="4" fill="#50472d" fill-opacity="0.99"/>' : ""}
     <text x="563" y="793" text-anchor="middle" dominant-baseline="middle"
       font-family="Georgia, 'Times New Roman', serif" font-size="33" font-weight="700"
       fill="#fff2c4" stroke="#160e08" stroke-width="3" paint-order="stroke">${cost}</text>`;
@@ -304,6 +335,12 @@ async function cleanTitlePatch(tier) {
 }
 
 async function sharedArt(card) {
+  if (card.art) {
+    return sharp(path.join(GENERATED_ART, card.art))
+      .resize(ART_WIDTH, ART_HEIGHT, { fit: "cover", position: card.artPosition ?? "center" })
+      .png()
+      .toBuffer();
+  }
   const crop = SOURCE_CROPS[card.family];
   return sharp(path.join(ASSETS, card.source))
     .extract(crop)
@@ -312,18 +349,109 @@ async function sharedArt(card) {
     .toBuffer();
 }
 
+const cleanFrameCache = new Map();
+
+async function cleanNeutralFrame(tier) {
+  if (cleanFrameCache.has(tier)) return cleanFrameCache.get(tier);
+
+  const promise = (async () => {
+    const { data, info } = await sharp(path.join(ASSETS, NEUTRAL_TEMPLATES[tier]))
+      .resize(CARD_WIDTH, CARD_HEIGHT, { fit: "fill" })
+      .ensureAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    const original = Buffer.from(data);
+    const mask = new Uint8Array(info.width * info.height);
+    const numberAreas = [
+      { left: 94, top: 260, width: 51, height: 54 },
+      { left: 94, top: 427, width: 51, height: 60 },
+      { left: 94, top: 582, width: 51, height: 64 },
+      { left: 94, top: 768, width: 51, height: 58 }
+    ];
+
+    // The printed numerals are pale cream. Select their bright cores inside the
+    // four value-only regions, then dilate to include antialiasing and outlines.
+    for (const area of numberAreas) {
+      for (let y = area.top; y < area.top + area.height; y += 1) {
+        for (let x = area.left; x < area.left + area.width; x += 1) {
+          const offset = (y * info.width + x) * info.channels;
+          const [r, green, b] = [original[offset], original[offset + 1], original[offset + 2]];
+          if (r > 140 && green > 115 && b > 70) mask[y * info.width + x] = 1;
+        }
+      }
+    }
+    for (let pass = 0; pass < 5; pass += 1) {
+      const grown = mask.slice();
+      for (const area of numberAreas) {
+        for (let y = area.top; y < area.top + area.height; y += 1) {
+          for (let x = area.left; x < area.left + area.width; x += 1) {
+            if (!mask[y * info.width + x]) continue;
+            for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+              const nx = x + dx;
+              const ny = y + dy;
+              if (nx >= area.left && nx < area.left + area.width && ny >= area.top && ny < area.top + area.height) {
+                grown[ny * info.width + nx] = 1;
+              }
+            }
+          }
+        }
+      }
+      mask.set(grown);
+    }
+
+    // Fill each removed numeral pixel by interpolating the nearest untouched
+    // texture on that same scanline. This changes the glyph itself only: there
+    // is no rectangular paint layer and no contact with a stat symbol.
+    for (const area of numberAreas) {
+      for (let y = area.top; y < area.top + area.height; y += 1) {
+        for (let x = area.left; x < area.left + area.width; x += 1) {
+          if (!mask[y * info.width + x]) continue;
+          let left = x - 1;
+          let right = x + 1;
+          while (left >= area.left && mask[y * info.width + left]) left -= 1;
+          while (right < area.left + area.width && mask[y * info.width + right]) right += 1;
+          const target = (y * info.width + x) * info.channels;
+          for (let channel = 0; channel < 3; channel += 1) {
+            if (left >= area.left && right < area.left + area.width) {
+              const a = original[(y * info.width + left) * info.channels + channel];
+              const b = original[(y * info.width + right) * info.channels + channel];
+              const t = (x - left) / (right - left);
+              data[target + channel] = Math.round(a + (b - a) * t);
+            } else {
+              const sampleX = left >= area.left ? left : right;
+              data[target + channel] = original[(y * info.width + sampleX) * info.channels + channel];
+            }
+          }
+        }
+      }
+    }
+
+    return sharp(data, { raw: info }).png().toBuffer();
+  })();
+  cleanFrameCache.set(tier, promise);
+  return promise;
+}
+
+async function unitTypeMark(card) {
+  if (!card.type) return "";
+  const href = await glyphDataUri(card.type);
+  return `<image href="${href}" x="184" y="174" width="48" height="48" preserveAspectRatio="xMidYMid meet"/>`;
+}
+
 async function buildCard(card) {
   const titlePatch = await cleanTitlePatch(card.tier);
   const art = await sharedArt(card);
+  const cleanFrame = card.art ? await cleanNeutralFrame(card.tier) : null;
   const overlay = svgBuffer(
     titleText(card.name) +
-    statText(card.stats) +
+    statText(card.stats, !cleanFrame) +
     neutralCost(card.cost) +
+    await unitTypeMark(card) +
     await abilityPanel(card)
   );
   const destination = path.join(ASSETS, `units-neutral-${card.tier}-${card.slug}.webp`);
 
-  await sharp(path.join(ASSETS, NEUTRAL_TEMPLATES[card.tier]))
+  await sharp(cleanFrame ?? path.join(ASSETS, NEUTRAL_TEMPLATES[card.tier]))
     .resize(CARD_WIDTH, CARD_HEIGHT, { fit: "fill" })
     .composite([
       { input: titlePatch, left: 49, top: 40 },
@@ -338,8 +466,18 @@ async function buildCard(card) {
 await mkdir(ASSETS, { recursive: true });
 await mkdir(OUT, { recursive: true });
 
+const requestedSlugs = new Set(process.argv.slice(2));
+const cardsToBuild = requestedSlugs.size > 0
+  ? CARDS.filter((card) => requestedSlugs.has(card.slug))
+  : CARDS;
+if (requestedSlugs.size > 0 && cardsToBuild.length !== requestedSlugs.size) {
+  const known = new Set(cardsToBuild.map((card) => card.slug));
+  const unknown = [...requestedSlugs].filter((slug) => !known.has(slug));
+  throw new Error(`Unknown card slug(s): ${unknown.join(", ")}`);
+}
+
 const outputs = [];
-for (const card of CARDS) outputs.push(await buildCard(card));
+for (const card of cardsToBuild) outputs.push(await buildCard(card));
 
 const previewWidth = 248;
 const previewHeight = 347;

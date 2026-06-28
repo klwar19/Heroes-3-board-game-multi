@@ -162,16 +162,10 @@ describe("Neutral Halfling — twin Attack dice", () => {
 });
 
 describe("Neutral roster card art", () => {
-  // Steel Golems have no converted card art yet — the board falls back to the
-  // named card frame, so they are exempt from the "every neutral ships its
-  // scan" guarantee until art is added.
-  const PENDING_ART = new Set(["neutral.steel_golems"]);
-  const neutralUnits = Object.values(coreUnitDefinitions).filter(
-    (def) => def.neutral && !PENDING_ART.has(def.id)
-  );
+  const neutralUnits = Object.values(coreUnitDefinitions).filter((def) => def.neutral);
   const assetPath = (src: string) => fileURLToPath(new URL(`../../public${src}`, import.meta.url));
 
-  it("wires a card image for every neutral unit (except art still pending)", () => {
+  it("wires a card image for every neutral unit", () => {
     const missing = neutralUnits.filter((def) => !def.neutral?.cardImage).map((def) => def.id);
     expect(missing).toEqual([]);
   });
