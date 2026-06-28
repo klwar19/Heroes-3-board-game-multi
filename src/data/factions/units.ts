@@ -2292,7 +2292,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "silver",
     type: "ground",
-    neutral: { attack: 3, defense: 0, health: 5, initiative: 7, cost: { gold: 10 }, abilities: [], abilityText: "[map_effect] Once per turn. Roll an Attack die. On a \"+1\", gain [morale_positive].", cardImage: "/assets/units-neutral-silver-satyrs.webp" },
+    neutral: { attack: 3, defense: 0, health: 5, initiative: 7, cost: { gold: 10 }, abilities: ["satyr-map-morale-roll"], abilityText: "[map_effect] Once per turn. Roll an Attack die. On a \"+1\", gain [morale_positive].", cardImage: "/assets/units-neutral-silver-satyrs.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/satyrs/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Regular Stretch Goals 2024)",
@@ -2306,7 +2306,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "silver",
     type: "flying",
-    neutral: { attack: 3, defense: 1, health: 5, initiative: 8, cost: { gold: 11 }, abilities: [], abilityText: "[unit_passive] Ignore all [spell] and Specialty effects other than [damage].", cardImage: "/assets/units-neutral-silver-fangarm.webp" },
+    neutral: { attack: 3, defense: 1, health: 5, initiative: 8, cost: { gold: 11 }, abilities: ["fangarm-nondamage-immunity"], abilityText: "[unit_passive] Ignore all [spell] and Specialty effects other than [damage].", cardImage: "/assets/units-neutral-silver-fangarm.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/fangarm/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Regular Stretch Goals 2024)",

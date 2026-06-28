@@ -5706,9 +5706,10 @@ export function startPlayerTurn(state: GameState, playerId: PlayerId): void {
   // once every earlier phase has resolved (see "start-turn-hand").
   player.canMulligan = false;
   player.needsHandRefresh = false;
-  // Army map abilities reset for the new turn (Nomads' step, Rogues' scout).
+  // Army map abilities reset for the new turn (Nomads' step, Rogues' scout, Satyrs' roll).
   player.nomadStepDoneThisTurn = false;
   player.rogueScoutUsedThisTurn = false;
+  player.satyrMoraleRollUsedThisTurn = false;
   // Pandora's Bargain: Power upkeep is owed again each of the player's turns.
   player.pandoraUpkeepResolvedThisTurn = false;
   // Legion artifacts: banked discount vouchers are current-turn — they expire now

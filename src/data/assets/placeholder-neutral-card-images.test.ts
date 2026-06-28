@@ -46,7 +46,7 @@ const NEW_NEUTRAL_RULES = {
   },
   "neutral.satyrs": {
     tier: "silver", type: "ground", stats: [3, 0, 5, 7], gold: 10,
-    abilities: [] as string[],
+    abilities: ["satyr-map-morale-roll"],
     abilityText: "[map_effect] Once per turn. Roll an Attack die. On a \"+1\", gain [morale_positive]."
   },
   "neutral.steel_golems": {
@@ -56,7 +56,7 @@ const NEW_NEUTRAL_RULES = {
   },
   "neutral.fangarm": {
     tier: "silver", type: "flying", stats: [3, 1, 5, 8], gold: 11,
-    abilities: [] as string[],
+    abilities: ["fangarm-nondamage-immunity"],
     abilityText: "[unit_passive] Ignore all [spell] and Specialty effects other than [damage]."
   }
 };
@@ -89,12 +89,11 @@ describe("blank-wiki neutral card faces", () => {
     }
   });
 
-  it("declares Satyrs and Fangarm display-only — their abilityText is not engine-wired (CLAUDE.md §2)", () => {
-    // These two new units have abilities:[] but non-trivial abilityText.
-    // They must appear in DISPLAY_ONLY_NEUTRAL_ABILITIES so the stub is a
-    // conscious, reviewable entry rather than silent decorative text.
-    expect("neutral.satyrs" in DISPLAY_ONLY_NEUTRAL_ABILITIES, "neutral.satyrs must be in DISPLAY_ONLY_NEUTRAL_ABILITIES").toBe(true);
-    expect("neutral.fangarm" in DISPLAY_ONLY_NEUTRAL_ABILITIES, "neutral.fangarm must be in DISPLAY_ONLY_NEUTRAL_ABILITIES").toBe(true);
+  it("does NOT list Satyrs or Fangarm as display-only — their abilities are now engine-wired (CLAUDE.md §2)", () => {
+    // Both units now have implemented ability tags; they must NOT appear in the
+    // display-only registry (that would be a false stub declaration).
+    expect("neutral.satyrs" in DISPLAY_ONLY_NEUTRAL_ABILITIES, "neutral.satyrs must NOT be display-only").toBe(false);
+    expect("neutral.fangarm" in DISPLAY_ONLY_NEUTRAL_ABILITIES, "neutral.fangarm must NOT be display-only").toBe(false);
   });
 
   it("assigns each guard its dedicated Neutral-tier face, not a faction Few/Pack crop", () => {

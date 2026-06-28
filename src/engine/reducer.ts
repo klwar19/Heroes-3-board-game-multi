@@ -68,6 +68,7 @@ import {
   surrenderFromCombat,
   revisitField,
   roguesScoutDeck,
+  satyrMoraleRoll,
   thievesGuildAction,
   setTileRotation,
   skipNecromancy,
@@ -14441,6 +14442,7 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "POPULATION_ACTION",
   "SPELL_BOOK_ACTION",
   "ROGUES_SCOUT_DECK",
+  "SATYR_MORALE_ROLL",
   "THIEVES_GUILD_ACTION",
   "BLACKSMITH_ACTION",
   "SPEND_MORALE",
@@ -14777,6 +14779,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "ROGUES_SCOUT_DECK":
         roguesScoutDeck(nextState, action);
+        break;
+      case "SATYR_MORALE_ROLL":
+        satyrMoraleRoll(nextState, action);
         break;
       case "THIEVES_GUILD_ACTION":
         thievesGuildAction(nextState, action);
