@@ -2,6 +2,7 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { coreUnitDefinitions } from "@/data/factions/units";
+import { DISPLAY_ONLY_NEUTRAL_ABILITIES } from "@/data/units/abilities";
 
 // The 25 single-sided Neutral guards whose wiki faces are blank. Each one now
 // ships a dedicated `units-neutral-<tier>-<slug>.webp` composed by
@@ -40,21 +41,25 @@ const EXPECTED = {
 const NEW_NEUTRAL_RULES = {
   "neutral.leprechaun": {
     tier: "bronze", type: "ground", stats: [2, 0, 3, 5], gold: 4,
+    abilities: ["attack-roll-advantage"],
     abilityText: "[unit_attack] Roll 2 Attack dice and resolve the higher one."
   },
   "neutral.satyrs": {
     tier: "silver", type: "ground", stats: [3, 0, 5, 7], gold: 10,
+    abilities: [] as string[],
     abilityText: "[map_effect] Once per turn. Roll an Attack die. On a \"+1\", gain [morale_positive]."
   },
   "neutral.steel_golems": {
     tier: "silver", type: "ground", stats: [3, 2, 3, 5], gold: 12,
+    abilities: ["reduce-spell-and-specialty-damage-2"],
     abilityText: "[unit_passive] Reduce [damage] taken by this unit from [spell] or Specialty by 2 — to a minimum of 0."
   },
   "neutral.fangarm": {
     tier: "silver", type: "flying", stats: [3, 1, 5, 8], gold: 11,
+    abilities: [] as string[],
     abilityText: "[unit_passive] Ignore all [spell] and Specialty effects other than [damage]."
   }
-} as const;
+};
 
 function onDisk(assetPath: string): string {
   return fileURLToPath(new URL(`../../../public${assetPath}`, import.meta.url));
@@ -71,7 +76,7 @@ function isWebp(file: string): boolean {
 }
 
 describe("blank-wiki neutral card faces", () => {
-  it("transcribes the four new cards' tiers, types, stats, costs, and symbolic rules text", () => {
+  it("transcribes the four new cards' tiers, types, stats, costs, abilities, and symbolic rules text", () => {
     for (const [id, expected] of Object.entries(NEW_NEUTRAL_RULES)) {
       const def = coreUnitDefinitions[id];
       const side = def?.neutral;
@@ -79,8 +84,17 @@ describe("blank-wiki neutral card faces", () => {
       expect(def?.type, id).toBe(expected.type);
       expect(side && [side.attack, side.defense, side.health, side.initiative], id).toEqual(expected.stats);
       expect(side?.cost.gold, id).toBe(expected.gold);
+      expect(side?.abilities, id).toEqual(expected.abilities);
       expect(side?.abilityText, id).toBe(expected.abilityText);
     }
+  });
+
+  it("declares Satyrs and Fangarm display-only — their abilityText is not engine-wired (CLAUDE.md §2)", () => {
+    // These two new units have abilities:[] but non-trivial abilityText.
+    // They must appear in DISPLAY_ONLY_NEUTRAL_ABILITIES so the stub is a
+    // conscious, reviewable entry rather than silent decorative text.
+    expect("neutral.satyrs" in DISPLAY_ONLY_NEUTRAL_ABILITIES, "neutral.satyrs must be in DISPLAY_ONLY_NEUTRAL_ABILITIES").toBe(true);
+    expect("neutral.fangarm" in DISPLAY_ONLY_NEUTRAL_ABILITIES, "neutral.fangarm must be in DISPLAY_ONLY_NEUTRAL_ABILITIES").toBe(true);
   });
 
   it("assigns each guard its dedicated Neutral-tier face, not a faction Few/Pack crop", () => {
