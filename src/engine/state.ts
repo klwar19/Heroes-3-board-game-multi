@@ -5843,6 +5843,17 @@ export type VisitStep =
       movementBonus?: number;
     }
   | {
+      /**
+       * Place a just-gained Secondary Hero on a chosen Field. Used as the leaf of
+       * the placement CHOOSE_ONE (Prison / Tavern / town hire), so the player can
+       * send the new hero to the Field it was gained on, their Town, or any
+       * Settlement they control. `heroDefId` carries the hired portrait.
+       */
+      type: "CREATE_SECONDARY_HERO";
+      fieldId: MapSpaceId;
+      heroDefId?: string;
+    }
+  | {
       /** Scholar basic / Rib Cage / Crown of Dragontooth: discard-pile pick. */
       type: "TAKE_DISCARD_CARD";
       cardId: CardId;
