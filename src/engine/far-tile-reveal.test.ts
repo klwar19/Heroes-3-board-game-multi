@@ -184,6 +184,30 @@ describe("Ⅱ–Ⅲ tile discovery — keep/reroll/pick on a tile already on the
       const next = apply(state, discoverAction(tile.id));
       expect(next.adventure!.pendingFarTileFlip?.offerMode).not.toBe("settlement");
     });
+
+    it("counts the guarantee PER PLAYER — another player's openings don't make this one the 2nd", () => {
+      // p1 has opened ZERO Ⅱ–Ⅲ tiles; p2 has opened five. If the tally were
+      // global, p1's discovery here would count as the "6th" (≥2nd) and wrongly
+      // trigger the settlement guarantee. Keyed per player, it is p1's 1st —
+      // so NO settlement choice opens.
+      const state = landGame();
+      const tile = armDiscoverableFarTile(state, MINE_NO_SETTLEMENT);
+      state.adventure!.farTilesOpenedByPlayer = { p1: 0, p2: 5 };
+      state.adventure!.farTilePool = [SETTLEMENT_NO_MINE]; // a Settlement IS available — only the per-player count gates it
+      const next = apply(state, discoverAction(tile.id));
+      expect(next.adventure!.pendingFarTileFlip?.openingIndex).toBe(1);
+      expect(next.adventure!.pendingFarTileFlip?.offerMode).not.toBe("settlement");
+
+      // Control: with p1's OWN count at 1, the very same discovery IS the 2nd and
+      // the guarantee fires — proving it is p1's tally, not anyone else's.
+      const control = landGame();
+      const controlTile = armDiscoverableFarTile(control, MINE_NO_SETTLEMENT);
+      control.adventure!.farTilesOpenedByPlayer = { p1: 1, p2: 0 };
+      control.adventure!.farTilePool = [SETTLEMENT_NO_MINE];
+      const fired = apply(control, discoverAction(controlTile.id));
+      expect(fired.adventure!.pendingFarTileFlip?.openingIndex).toBe(2);
+      expect(fired.adventure!.pendingFarTileFlip?.offerMode).toBe("settlement");
+    });
   });
 
   describe("material-mine reroll on an on-map tile (every opening, once)", () => {
