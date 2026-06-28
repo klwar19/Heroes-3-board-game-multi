@@ -259,3 +259,15 @@ export const scenarioDefinitions: Record<string, ScenarioDefinition> = {
 };
 
 export const DEFAULT_SCENARIO_ID = "skirmish";
+
+/**
+ * Map-setup default pre-built buildings (ids WITHOUT a faction prefix — they are
+ * prefixed per seat at game start). A fresh setup lobby opens with the three
+ * universal core town cards already standing — Citadel, Mage Guild and Bronze
+ * Dwelling — so every faction starts the adventure with the standard opening
+ * buildings instead of a bare town. Any seat may toggle each one off in the
+ * "Pre-built buildings" picker before the adventure starts (see
+ * createAdventureLobbyState). Every faction board carries all three (verified in
+ * map-setup-defaults.test.ts), so none is silently dropped.
+ */
+export const DEFAULT_SETUP_STARTING_BUILDINGS = ["citadel", "mage_guild", "dwelling_bronze"];

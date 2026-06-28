@@ -28,7 +28,13 @@ import { coreUnitDefinitions } from "@/data/factions/units";
  * factions, units — are detected automatically by the fingerprint below and
  * do NOT need a bump.
  */
-export const ENGINE_PROTOCOL_VERSION = 12;
+// v13: map-setup changes the room server must understand — RESET_SEAT_DRAFT now
+// emits the SETUP_SEAT_RESET event (the take-back warning), SET_GAME_OPTIONS drops
+// a stale designed map on a scenario switch, and a fresh lobby defaults to the
+// Citadel/Mage Guild/Bronze Dwelling pre-built buildings. A stale server would
+// silently misbehave (no warning, no map-clear, empty default buildings), so the
+// signature must change to surface the "redeploy PartyKit" banner instead.
+export const ENGINE_PROTOCOL_VERSION = 13;
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8
  * runtime the two halves run on (Vercel Node and Cloudflare Workers). */
