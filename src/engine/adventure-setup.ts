@@ -20,7 +20,12 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 import { allTileDefinitions, ALL_TILE_CONTENT, DEFAULT_TILE_CONTENT, tilePoolIds } from "@/data/map/tiles";
 import { CREATURE_BANK_IDS, CREATURE_BANKS } from "@/data/map/creature-banks";
 import type { TileContent } from "@/data/map/types";
-import { DEFAULT_SCENARIO_ID, scenarioDefinitions, type ScenarioDefinition } from "@/data/map/scenarios";
+import {
+  DEFAULT_SCENARIO_ID,
+  DEFAULT_SETUP_STARTING_BUILDINGS,
+  scenarioDefinitions,
+  type ScenarioDefinition
+} from "@/data/map/scenarios";
 import {
   addArmyUnit,
   ASTROLOGERS_DECK_ID,
@@ -1038,6 +1043,14 @@ export function createAdventureLobbyState(options: AdventureSetupOptions = {}): 
   const seed = options.seed ?? freshSeed("homm3bg-lobby");
   const scenario = getScenario(options.scenarioId);
   const setupOptions = defaultGameSetupOptions(scenario);
+  // Map-setup default: a fresh lobby opens with the three universal core town
+  // cards (Citadel, Mage Guild, Bronze Dwelling) already pre-built, so every
+  // faction starts the adventure with the standard opening buildings. Any seat
+  // may toggle each off in the "Pre-built buildings" picker before starting.
+  // A scenario that authors its own startingBuildings keeps them verbatim.
+  if (scenario.startingBuildings.length === 0) {
+    setupOptions.startingBuildings = [...DEFAULT_SETUP_STARTING_BUILDINGS];
+  }
   const seatCount = clampSeatCount(scenario, options.playerCount ?? setupOptions.playerCount);
   setupOptions.playerCount = seatCount;
 
@@ -1181,9 +1194,21 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
     if (!scenarioDefinitions[next.scenarioId]) {
       throw new Error("Unknown scenario.");
     }
+    const scenarioChanged = lobby.options.scenarioId !== next.scenarioId;
     lobby.scenarioId = next.scenarioId;
     lobby.options.scenarioId = next.scenarioId;
     changes.push(`scenario ${scenarioDefinitions[next.scenarioId].name}`);
+    // The unified Map picker sends a designed map together with its scenarioId,
+    // so a BARE scenario switch (no customMap in the same action) means the
+    // player picked a built-in scenario sheet — drop any designed map still
+    // loaded. A designed map is validated against the scenario it was built on
+    // (seat anchors, tile overlap); leaving a stale one attached to a different
+    // scenario is the "strange interaction" the merge removes.
+    if (scenarioChanged && next.customMap === undefined && lobby.options.customMap) {
+      lobby.options.customMap = null;
+      lobby.options.customMapName = null;
+      changes.push("map back to the scenario layout");
+    }
     // A new scenario may allow fewer seats — trim the lobby to fit.
     const before = lobby.seats.length;
     const trimmed = resizeLobbySeats(state, scenarioDefinitions[next.scenarioId], before);
@@ -1805,6 +1830,13 @@ export function resetSeatDraft(state: GameState, action: Extract<GameAction, { t
     throw new Error("The ban phase has started — change the setup format to restart the draft.");
   }
 
+  // Classify the take-back BEFORE clearing, so the table sees exactly what was
+  // thrown away: a locked hero pick, a rolled-and-locked town, or a pending roll.
+  const rolls = draft.seatRolls?.[action.playerId];
+  const hadRoll = Boolean(rolls?.townOptions?.length || rolls?.heroOptions?.length);
+  const scope: "pick" | "town" | "roll" =
+    seat.factionId && seat.heroDefId ? "pick" : seat.factionId ? "town" : hadRoll ? "roll" : "pick";
+
   seat.factionId = null;
   seat.heroDefId = null;
   clearSeatRolls(draft, action.playerId);
@@ -1813,10 +1845,17 @@ export function resetSeatDraft(state: GameState, action: Extract<GameAction, { t
     player.name = seat.name;
   }
 
+  const verb =
+    scope === "pick"
+      ? "took back their locked hero pick"
+      : scope === "town"
+        ? "took back their rolled town"
+        : "cleared their roll";
   appendEvent(state, {
-    type: "GAME_OPTIONS_CHANGED",
+    type: "SETUP_SEAT_RESET",
     playerId: action.playerId,
-    message: `${seatedPlayerName(state, action.playerId)} reset their pick.`
+    scope,
+    message: `${seatedPlayerName(state, action.playerId)} ${verb} — a setup take-back.`
   });
 }
 

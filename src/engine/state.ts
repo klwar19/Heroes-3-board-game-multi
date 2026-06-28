@@ -3986,6 +3986,20 @@ export type GameEvent =
     }
   | {
       id: string;
+      type: "SETUP_SEAT_RESET";
+      playerId: PlayerId;
+      /**
+       * Which committed setup choice the seat threw away: a locked hero "pick",
+       * a rolled-and-locked "town", or a pending "roll". Broadcast loudly to the
+       * whole table because re-doing a roll or pick after seeing the result is a
+       * setup take-back (a do-over) — the lobby surfaces it as a red warning so
+       * every player notices, in all four setup formats.
+       */
+      scope: "pick" | "town" | "roll";
+      message: string;
+    }
+  | {
+      id: string;
       type: "PLAYER_COMBAT_STARTED";
       attackerPlayerId: PlayerId;
       defenderPlayerId: PlayerId;

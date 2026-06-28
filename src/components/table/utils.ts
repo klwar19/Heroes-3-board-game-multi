@@ -427,6 +427,8 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       }.`;
     case "GAME_OPTIONS_CHANGED":
       return event.message;
+    case "SETUP_SEAT_RESET":
+      return event.message;
     case "PLAYER_COMBAT_STARTED":
       return `${playerName(state, event.attackerPlayerId)} attacks ${playerName(state, event.defenderPlayerId)}!`;
     case "QUICK_COMBAT_WON":
