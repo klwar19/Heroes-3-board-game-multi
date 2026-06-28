@@ -22,6 +22,8 @@ import {
   consumeRecruitVoucherFor,
   controlsTownOrSettlement,
   createSecondaryHero,
+  secondaryHeroPlacementFields,
+  secondaryHeroPlacementStep,
   declareAdventureWinner,
   drawFromNeutralDeck,
   drawGuardArmy,
@@ -57,6 +59,7 @@ import {
   type RecruitPurchaseRef,
   getHeroMovementCapabilities,
   getMainHero,
+  neutralBattleLevel,
   getTileFootprintSpaceIds,
   getTownOfPlayer,
   getUnitSide,
@@ -2139,14 +2142,16 @@ export function resolveVisitStep(state: GameState, action: Extract<GameAction, {
         throw new Error("The Tavern costs 7 gold.");
       }
       spendResources(state, action.playerId, cost, "Tavern");
-      createSecondaryHero(state, action.playerId, visit.fieldId);
       // optionIndex selects which enemy discards (index into the enemy list);
-      // with a single opponent it is just 0.
+      // with a single opponent it is just 0. The enemy discard resolves now; the
+      // hero's placement (this Field, the Town, or a Settlement) is then offered
+      // as a choice when more than one Field is legal.
       const enemies = humanPlayerIds(state).filter((id) => id !== action.playerId);
       const targetId = enemies[action.optionIndex ?? 0];
       if (targetId) {
         discardRandomHandCard(state, targetId);
       }
+      visit.steps.unshift(secondaryHeroPlacementStep(state, action.playerId, visit.fieldId));
       break;
     }
     case "DISCOVER_ADJACENT_TILE": {
@@ -2825,6 +2830,10 @@ export function startNeutralEncounter(state: GameState, hero: HeroState, field: 
   requireAdventure(state);
   const playerId = hero.controllerId;
   const difficulty = field.difficulty ?? 1;
+  // A Secondary Hero earns no Experience but fights Neutral Units AS the Main
+  // Hero's level (neutralBattleLevel), so it skips / Quick-Combat-wins the same
+  // low-level guards instead of being forced to fight at level 1.
+  const level = neutralBattleLevel(state, hero);
 
   // Creature Banks have no Field Difficulty, so they skip Quick Combat and the
   // Diplomacy shortcut entirely (rulebook p.66): you always fight the bank.
@@ -2834,7 +2843,7 @@ export function startNeutralEncounter(state: GameState, hero: HeroState, field: 
   }
 
   // Quick Combat: a hero whose level beats the field difficulty wins outright.
-  if (hero.level > difficulty) {
+  if (level > difficulty) {
     appendEvent(state, {
       type: "QUICK_COMBAT_WON",
       playerId,
@@ -2861,7 +2870,7 @@ export function startNeutralEncounter(state: GameState, hero: HeroState, field: 
   // Difficulty equals their level may skip the fight, claim the field and gain
   // no Experience. Offer the choice while the player holds the card; declining
   // falls through to the normal Combat Setup.
-  if (hero.level === difficulty && state.players[playerId]?.hand.includes("ability.diplomacy")) {
+  if (level === difficulty && state.players[playerId]?.hand.includes("ability.diplomacy")) {
     openDiplomacySkipChoice(state, hero, field, difficulty);
     return;
   }
@@ -5410,21 +5419,6 @@ export function buildStructureAdventure(
   }
 }
 
-/** Where a hired Secondary Hero appears: the main town, else a settlement. */
-function secondaryHeroSpawnFieldId(state: GameState, playerId: PlayerId): string | null {
-  const town = getTownOfPlayer(state, playerId);
-  // "Flagging an enemy Town prevents their Secondary Heroes from spawning
-  // there" (rulebook p.76): only spawn at your Town while you still hold it.
-  const townField = town?.fieldId ? state.adventure?.fields[town.fieldId] : null;
-  if (town?.fieldId && (!townField || townField.flagOwnerId == null || townField.flagOwnerId === playerId)) {
-    return town.fieldId;
-  }
-  const settlement = Object.values(state.adventure?.fields ?? {}).find(
-    (field) => field.location === "settlement" && field.flagOwnerId === playerId
-  );
-  return settlement?.spaceId ?? null;
-}
-
 /**
  * Buy a Secondary Hero for 10 gold at your town (or a controlled settlement).
  * It wears the portrait of one of your faction's other heroes; like every
@@ -5448,8 +5442,11 @@ export function hireSecondaryHero(
   if (!hasResources(player, cost)) {
     throw new Error("Hiring a Secondary Hero costs 10 gold.");
   }
-  const spaceId = secondaryHeroSpawnFieldId(state, action.playerId);
-  if (!spaceId) {
+  // A hired hero may appear at the Town or any controlled Settlement; offer the
+  // choice when more than one is legal (it falls back to a direct placement when
+  // only one Field qualifies).
+  const placements = secondaryHeroPlacementFields(state, action.playerId);
+  if (placements.length === 0) {
     throw new Error("You need a town or settlement to hire a Secondary Hero.");
   }
   const faction = player.factionId ? coreFactionDefinitions[player.factionId] : undefined;
@@ -5461,7 +5458,16 @@ export function hireSecondaryHero(
   }
 
   spendResources(state, action.playerId, cost, "hired a Secondary Hero");
-  createSecondaryHero(state, action.playerId, spaceId, action.heroDefId);
+  if (placements.length === 1) {
+    createSecondaryHero(state, action.playerId, placements[0].fieldId, action.heroDefId);
+    return;
+  }
+  state.adventure?.rewardQueue.push({
+    playerId: action.playerId,
+    kind: "visit-steps",
+    steps: [secondaryHeroPlacementStep(state, action.playerId, undefined, action.heroDefId)]
+  });
+  pumpAdventureQueues(state);
 }
 
 export function populationAction(state: GameState, action: Extract<GameAction, { type: "POPULATION_ACTION" }>): void {

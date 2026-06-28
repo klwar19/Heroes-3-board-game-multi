@@ -1217,6 +1217,10 @@ export function createSecondaryHero(
     controllerId: playerId,
     kind: "secondary",
     ...(heroDefId ? { heroDefId } : {}),
+    // A Secondary Hero NEVER gains Experience of its own (level/experience stay
+    // here forever). For fighting Neutral Units it is instead *treated as* the
+    // Main Hero's level — see `neutralBattleLevel` — so it can skip / Quick-
+    // Combat-win the same low-level guards, without ever earning XP.
     level: 1,
     experience: 0,
     movementPoints: SECONDARY_HERO_MOVEMENT,
@@ -1331,6 +1335,104 @@ export function gainExperience(state: GameState, playerId: PlayerId, amount: num
     // queued) so it is the first thing surfaced.
     state.adventure.rewardQueue.splice(rewardQueueStart, 0, { playerId, kind: "learning-level-up" });
   }
+}
+
+/**
+ * The Hero level used to resolve a Neutral encounter — Quick Combat (win and
+ * walk past a guard whose Field Difficulty is below your level) and the
+ * Diplomacy skip (Field Difficulty equal to your level).
+ *
+ * A Secondary Hero NEVER gains Experience of its own (no object, item, location
+ * or combat ever advances it — those are all gated to the Main Hero). But for
+ * fighting Neutral Units it is *treated as the same level as the player's Main
+ * Hero*, so it skips / Quick-Combat-wins the same low-level guards the Main Hero
+ * would instead of being stuck at level 1. This is read ONLY here, at the
+ * Neutral encounter; it grants the Secondary Hero no Experience, cards or other
+ * level-up benefits. A Main Hero (or a Secondary with no Main Hero left) uses
+ * its own level.
+ */
+export function neutralBattleLevel(state: GameState, hero: HeroState): number {
+  if (hero.kind === "secondary") {
+    const main = getMainHero(state, hero.controllerId);
+    if (main) {
+      return Math.max(hero.level, main.level);
+    }
+  }
+  return hero.level;
+}
+
+/**
+ * The Fields a newly gained Secondary Hero may be placed on: the spot it was
+ * gained at (a Prison/Tavern Field — `originFieldId`, when given), the player's
+ * own Town (while they still hold it), and every Settlement they control.
+ * De-duplicated by Field (origin may coincide with the Town/a Settlement),
+ * keeping the first label. Order: origin, Town, then Settlements.
+ */
+export function secondaryHeroPlacementFields(
+  state: GameState,
+  playerId: PlayerId,
+  originFieldId?: MapSpaceId
+): { fieldId: MapSpaceId; label: string }[] {
+  const adventure = state.adventure;
+  const out: { fieldId: MapSpaceId; label: string }[] = [];
+  const seen = new Set<MapSpaceId>();
+  const add = (fieldId: MapSpaceId | null | undefined, label: string): void => {
+    if (!fieldId || seen.has(fieldId) || !adventure?.fields[fieldId]) {
+      return;
+    }
+    seen.add(fieldId);
+    out.push({ fieldId, label });
+  };
+
+  if (originFieldId) {
+    add(originFieldId, `Here — ${fieldName(state, originFieldId)}`);
+  }
+
+  // "Flagging an enemy Town prevents their Secondary Heroes from spawning there"
+  // (rulebook p.76): only offer your Town while you still hold it.
+  const town = getTownOfPlayer(state, playerId);
+  const townField = town?.fieldId ? adventure?.fields[town.fieldId] : null;
+  if (town?.fieldId && (!townField || townField.flagOwnerId == null || townField.flagOwnerId === playerId)) {
+    add(town.fieldId, `Your Town — ${fieldName(state, town.fieldId)}`);
+  }
+
+  for (const field of Object.values(adventure?.fields ?? {})) {
+    if (field.location === "settlement" && field.flagOwnerId === playerId) {
+      add(field.spaceId, `Settlement — ${fieldName(state, field.spaceId)}`);
+    }
+  }
+
+  return out;
+}
+
+/**
+ * The visit-step that places a just-gained Secondary Hero. With more than one
+ * legal Field the player gets a CHOOSE_ONE ("place your Secondary Hero…");
+ * otherwise the hero is placed straight away (a lone CREATE_SECONDARY_HERO
+ * leaf). `fallbackFieldId` is the Field used when the player controls no
+ * Town/Settlement (a Prison/Tavern: the Field itself). `heroDefId` rides the
+ * hired portrait through the choice.
+ */
+export function secondaryHeroPlacementStep(
+  state: GameState,
+  playerId: PlayerId,
+  fallbackFieldId: MapSpaceId | undefined,
+  heroDefId?: string
+): VisitStep {
+  const fields = secondaryHeroPlacementFields(state, playerId, fallbackFieldId);
+  const leaf = (fieldId: MapSpaceId): VisitStep => ({
+    type: "CREATE_SECONDARY_HERO",
+    fieldId,
+    ...(heroDefId ? { heroDefId } : {})
+  });
+  if (fields.length <= 1) {
+    return leaf((fields[0]?.fieldId ?? fallbackFieldId) as MapSpaceId);
+  }
+  return {
+    type: "CHOOSE_ONE",
+    prompt: "Place your Secondary Hero…",
+    options: fields.map((field) => ({ label: field.label, steps: [leaf(field.fieldId)] }))
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -2417,11 +2519,14 @@ export function processPendingVisit(state: GameState): void {
         break;
       case "PRISON":
         // "Gain a Secondary Hero. Place their model on this Field. If you
-        // already have a Secondary Hero, gain 3 gold instead."
+        // already have a Secondary Hero, gain 3 gold instead." House rule: the
+        // player may instead place the new hero at their Town or a controlled
+        // Settlement — offered as a placement CHOOSE_ONE when more than one Field
+        // is legal (otherwise it lands on the Prison Field, as before).
         if (getSecondaryHero(state, visit.playerId)) {
           gainResources(state, visit.playerId, { gold: 3 }, `visited ${fieldName(state, visit.fieldId)}`);
         } else {
-          createSecondaryHero(state, visit.playerId, visit.fieldId);
+          visit.steps.unshift(secondaryHeroPlacementStep(state, visit.playerId, visit.fieldId));
         }
         break;
       case "GAIN_EXPERIENCE":
@@ -2612,6 +2717,15 @@ export function processPendingVisit(state: GameState): void {
             adventure.lastVisitedField[movedHero.id] = step.spaceId;
             beginFieldVisit(state, movedHero.id, step.spaceId, false);
           }
+        }
+        break;
+      }
+      case "CREATE_SECONDARY_HERO": {
+        // The placement choice resolved: drop the Secondary Hero on the chosen
+        // Field. Guard against a duplicate (one already arrived since the offer
+        // opened); the gold/visit cost was paid before the choice.
+        if (step.fieldId && adventure.fields[step.fieldId] && !getSecondaryHero(state, visit.playerId)) {
+          createSecondaryHero(state, visit.playerId, step.fieldId, step.heroDefId);
         }
         break;
       }
