@@ -3653,16 +3653,6 @@ export default function Home() {
                             });
                             return;
                           }
-                          // During the start-of-turn draw window, clicking a
-                          // card that has no play marks it for the discard pile —
-                          // the confirm button then discards them all and draws
-                          // back up to the hand limit in one go. A stashable Spell
-                          // is actionable, so it opens its menu instead.
-                          if (!selecting && canDraw && plays.length === 0 && !stashAction) {
-                            setHandMode("mulligan");
-                            setHandDiscards([index]);
-                            return;
-                          }
                           if (selecting) {
                             setHandDiscards((current) =>
                               current.includes(index)
@@ -3671,10 +3661,19 @@ export default function Home() {
                             );
                             return;
                           }
-                          // Otherwise: open the play menu for this card (plays
-                          // and/or the Spell Book stash). Drop any staged play so
-                          // a stale confirm bar never lingers from another card.
-                          if (actionable) {
+                          // Otherwise — INCLUDING the mandatory start-of-turn draw
+                          // window — a click OPENS the card's menu (read it, play
+                          // it, stash it, or EXPLICITLY mark it for discard). A
+                          // click never auto-selects a card for discard nor
+                          // auto-plays it, so an accidental click is always
+                          // recoverable. (The old behaviour auto-marked any card
+                          // for discard on a single click during the draw window —
+                          // and since the engine withholds every play until the
+                          // draw is taken, that fired for EVERY card, so the game
+                          // appeared to "select cards for you" with no way out.)
+                          // Drop any staged play so a stale confirm bar never
+                          // lingers from another card.
+                          if (actionable || canDraw) {
                             setArmedHandPlay(null);
                             setOpenHandIndex((current) => (current === index ? null : index));
                           }
@@ -3691,24 +3690,43 @@ export default function Home() {
                                 : stashAction
                                   ? `Move ${cardName(cardId)} to your Spell Book`
                                   : canDraw
-                                    ? `Click to mark ${cardName(cardId)} to discard, then draw`
+                                    ? `Open ${cardName(cardId)} — read it, or mark it for discard`
                                     : cardName(cardId)
                         }
                         type="button"
                       >
                         <CardFrame cardId={cardId} className="handCardImage" />
                       </button>
-                      {openHandIndex === index && !selecting && !isPayingSource && actionable ? (
+                      {openHandIndex === index && !selecting && !isPayingSource && (actionable || canDraw) ? (
                         <div className="handPlayMenu" role="menu" aria-label={`${cardName(cardId)} plays`}>
                           <strong>{cardName(cardId)}</strong>
                           {rulesetCardNote(getRuleset(state), cardId) ? (
                             <small className="rulesetNote">{rulesetCardNote(getRuleset(state), cardId)}</small>
+                          ) : null}
+                          {canDraw && plays.length === 0 ? (
+                            <small className="rulesetNote">
+                              Take your start-of-turn draw first to play cards — or mark this one for discard below.
+                            </small>
                           ) : null}
                           {plays.map((legal) => (
                             <button key={actionKey(legal.action)} onClick={() => startPlay(legal)} type="button">
                               {legal.label}
                             </button>
                           ))}
+                          {canDraw ? (
+                            <button
+                              className="discardThenDraw"
+                              onClick={() => {
+                                setHandMode("mulligan");
+                                setHandDiscards((current) => (current.includes(index) ? current : [...current, index]));
+                                setOpenHandIndex(null);
+                              }}
+                              title="Mark this card for the start-of-turn discard, then draw back up to your hand limit"
+                              type="button"
+                            >
+                              Discard this card, then draw
+                            </button>
+                          ) : null}
                           {stashAction ? (
                             <button
                               className="spellBookStash"
