@@ -56,9 +56,22 @@ describe("spell card art is committed", () => {
       "spell.summon_air_elemental",
       "spell.summon_earth_elemental",
       "spell.summon_fire_elemental",
-      "spell.summon_water_elemental"
+      "spell.summon_water_elemental",
+      // Original card faces built by scripts/build-missing-spell-cards.mjs for
+      // the spells the wiki shows only the deck back for.
+      "spell.magic_mirror",
+      "spell.quicksand",
+      "spell.land_mine",
+      "spell.force_field",
+      "spell.air_shield",
+      "spell.clone",
+      "spell.protection_from_air",
+      "spell.protection_from_earth",
+      "spell.protection_from_fire",
+      "spell.protection_from_water",
+      "spell.water_walk"
     ]) {
-      expect(realScans, `${id} must use its real scan`).toContain(id);
+      expect(realScans, `${id} must use its real card face`).toContain(id);
     }
     expect(realScans.length).toBeGreaterThan(30);
   });
@@ -69,9 +82,24 @@ describe("spell card art is committed", () => {
       expect(card, `spell.${slug} exists`).toBeTruthy();
       expect(card!.assets?.cardImage, `spell.${slug} routes to the deck back`).toBe(DECK_BACK);
     }
-    // Sanity: a couple of the known-scanless spells are declared.
-    expect(SCANLESS_SPELLS.has("magic_mirror")).toBe(true);
-    expect(SCANLESS_SPELLS.has("summon_air_elemental")).toBe(false);
+    // Sacrifice is the only remaining deck-back placeholder.
+    expect(SCANLESS_SPELLS.has("sacrifice")).toBe(true);
+    // The generated original faces are no longer scanless.
+    for (const slug of [
+      "magic_mirror",
+      "water_walk",
+      "air_shield",
+      "protection_from_air",
+      "protection_from_earth",
+      "protection_from_fire",
+      "protection_from_water",
+      "summon_air_elemental"
+    ]) {
+      expect(SCANLESS_SPELLS.has(slug), `${slug} is no longer scanless`).toBe(false);
+    }
+    expect(cardLibrary["spell.magic_mirror"]?.assets?.cardImage).toBe(
+      "/assets/spells-magic_mirror.webp"
+    );
     expect(cardLibrary["spell.summon_air_elemental"]?.assets?.cardImage).toBe(
       "/assets/spells-summon_air_elemental.webp"
     );
