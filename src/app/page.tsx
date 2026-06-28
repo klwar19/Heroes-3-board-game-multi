@@ -55,6 +55,7 @@ import {
   type AstrologersProclamationCue
 } from "@/components/table/overlays";
 import { CardZoomProvider, useCardZoom, ZoomButton } from "@/components/table/zoom";
+import { healFreezeDisplayDamage } from "@/components/table/heal-display";
 import { TableErrorBoundary } from "@/components/error-boundary";
 import {
   ADVENTURE_FEED_CUES,
@@ -2115,10 +2116,25 @@ export default function Home() {
                 if (inCombat) {
                   const unit = nextState.combat?.units[targetId];
                   if (unit && unit.position >= 0) {
-                    // Hold the more-wounded pre-heal health until the shimmer ends.
-                    freezeDamage.set(targetId, Math.min(unit.maxHealth, unit.damage + event.amount));
                     const revealAt = at + DAMAGE_REVEAL_DELAY_MS;
-                    spellRevealAt.set(targetId, Math.max(spellRevealAt.get(targetId) ?? 0, revealAt));
+                    // Hold the more-wounded pre-heal health until the shimmer ends —
+                    // but NEVER let a unit that survives read as dead. A First Aid
+                    // heal used as an instant the moment a unit is attacked lands
+                    // BEFORE the incoming hit, so unit.damage here already includes
+                    // that hit; unit.damage + heal then over-counts to maxHealth and
+                    // the surviving unit vanishes, then reappears when the strike's
+                    // own reveal fires. healFreezeDisplayDamage keeps the attack's
+                    // pre-hit freeze (returns undefined) or caps below max.
+                    const frozen = healFreezeDisplayDamage({
+                      finalDamage: unit.damage,
+                      maxHealth: unit.maxHealth,
+                      healAmount: event.amount,
+                      alreadyFrozen: freezeDamage.has(targetId)
+                    });
+                    if (frozen !== undefined) {
+                      freezeDamage.set(targetId, frozen);
+                      spellRevealAt.set(targetId, Math.max(spellRevealAt.get(targetId) ?? 0, revealAt));
+                    }
                     combatFxActive = true;
                     combatPresentationEnd = Math.max(combatPresentationEnd, revealAt + 800);
                   }
