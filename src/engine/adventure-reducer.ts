@@ -6138,6 +6138,46 @@ export function roguesScoutDeck(state: GameState, action: Extract<GameAction, { 
 }
 
 /**
+ * Satyrs (army map ability): "Once per turn. Roll an Attack die. On a '+1',
+ * gain [morale_positive]." Rolls the die server-side from the game seed
+ * and appends an ADVENTURE_DICE_ROLLED event, then updates morale on a "+1".
+ * Marks the per-turn use regardless of the outcome.
+ */
+export function satyrMoraleRoll(state: GameState, action: Extract<GameAction, { type: "SATYR_MORALE_ROLL" }>): void {
+  assertActiveTurn(state, action.playerId);
+  assertNoPendingInput(state);
+
+  const player = state.players[action.playerId];
+  if (!player) {
+    throw new Error("Unknown player.");
+  }
+  if (!armyHasMapEffect(state, action.playerId, "MAP_TURN_MORALE_ROLL")) {
+    throw new Error("No Satyrs in your army to roll with.");
+  }
+  if (player.satyrMoraleRollUsedThisTurn) {
+    throw new Error("The Satyrs already rolled their morale die this turn.");
+  }
+
+  player.satyrMoraleRollUsedThisTurn = true;
+
+  const faces = [-1, -1, 0, 0, 1, 1] as const;
+  const random = createSeededRandom(`${state.seed}#adventure#satyr-morale-roll#${eventSeedNumber(state)}`);
+  const roll = faces[random.nextInt(0, faces.length - 1)] ?? 0;
+
+  appendEvent(state, {
+    type: "ADVENTURE_DICE_ROLLED",
+    playerId: action.playerId,
+    dice: "attack",
+    results: [`Satyrs: ${roll > 0 ? "+" : ""}${roll}`],
+    attackRolls: [roll]
+  });
+
+  if (roll > 0) {
+    changeMorale(state, action.playerId, 1);
+  }
+}
+
+/**
  * Resolves a Thieves' Guild target to the draw pile + discard pile it manipulates
  * (a shared deck, or a player's personal Might & Magic deck). Returns null when
  * the deck/player does not exist.

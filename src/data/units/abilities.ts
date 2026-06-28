@@ -838,6 +838,17 @@ export type UnitAbilityEffectDefinition =
        * only while the Faerie Dragons keep their Stack Token.
        */
       type: "SPELL_CAST_LOCK";
+    }
+  | {
+      /**
+       * Fangarm: "[unit_passive] Ignore all [spell] and Specialty effects other
+       * than [damage]." A unit with this ability:
+       *   • is skipped by effectAppliesToUnit for any ongoing effect whose source
+       *     is a spell OR hero-specialty card (blocks Bless, Slow, Berserk, …),
+       *   • is immune to Paralysis placement from spells (Blind).
+       * Damage from spells and specialties still resolves normally.
+       */
+      type: "IGNORE_SPELL_AND_SPECIALTY_NONDAMAGE";
     };
 
 /**
@@ -873,6 +884,15 @@ export type UnitMapAbilityEffect =
       type: "MAP_REINFORCE_DISCOUNT";
       location: string;
       amount: number;
+    }
+  | {
+      /**
+       * Satyrs: "Once per turn. Roll an Attack die. On a '+1', gain
+       * [morale_positive]." The die is rolled server-side from the game seed
+       * and the result appended as an ADVENTURE_DICE_ROLLED event before morale
+       * is updated. Gated by `player.satyrMoraleRollUsedThisTurn`.
+       */
+      type: "MAP_TURN_MORALE_ROLL";
     };
 
 export type UnitAbilityDefinition = {
@@ -1803,6 +1823,25 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     effect: { type: "IGNORE_ONGOING_EFFECTS" },
     implementationStatus: "implemented"
   },
+  // Neutral Satyrs (silver): once per turn on the adventure map, roll 1 Attack
+  // die; on "+1" gain positive morale. Gated by satyrMoraleRollUsedThisTurn.
+  "satyr-map-morale-roll": {
+    id: "satyr-map-morale-roll",
+    name: "Forest Blessing",
+    text: "[map_effect] Once per turn. Roll an Attack die. On a \"+1\", gain [morale_positive].",
+    mapEffect: { type: "MAP_TURN_MORALE_ROLL" },
+    implementationStatus: "implemented"
+  },
+  // Neutral Fangarm (silver, flying): passively ignores all ongoing effects from
+  // spell OR hero-specialty cards, and is immune to Blind/Paralysis from spells.
+  // Damage from spells and specialties still applies normally.
+  "fangarm-nondamage-immunity": {
+    id: "fangarm-nondamage-immunity",
+    name: "Spell Ward",
+    text: "[unit_passive] Ignore all [spell] and Specialty effects other than [damage].",
+    effect: { type: "IGNORE_SPELL_AND_SPECIALTY_NONDAMAGE" },
+    implementationStatus: "implemented"
+  },
   // Tower Genies: dig Spells out of your own deck. Few = other action (discard
   // exactly 3); Pack = after its attack (discard up to 3).
   "genie-spell-draw-few": {
@@ -1982,11 +2021,7 @@ export const DISPLAY_ONLY_BANK_ABILITIES: Record<string, string> = {
  * test in placeholder-neutral-card-images.test.ts.
  */
 export const DISPLAY_ONLY_NEUTRAL_ABILITIES: Record<string, string> = {
-  // Satyrs map-roll morale gain: once per turn, roll an Attack die; on "+1" gain
-  // a morale token. No engine hook for map-phase die-rolls on neutral units yet.
-  "neutral.satyrs": "engine: none — map-phase morale roll not implemented",
-  // Fangarm spell/specialty ward: ignore all spell and specialty effects except
-  // damage. The non-damage immunity pathway (e.g. Blind, Berserk, Slow) is not
-  // wired; only raw damage from spells/specialties already bypasses many effects.
-  "neutral.fangarm": "engine: none — non-damage spell/specialty immunity not implemented",
+  // Empty: both neutral stubs (Satyrs, Fangarm) are now engine-wired.
+  // Keep this registry as the explicit home for any FUTURE display-only neutral
+  // clause: a stub must be a conscious entry here, never undeclared text.
 };

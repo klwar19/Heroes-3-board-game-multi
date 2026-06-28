@@ -4,6 +4,7 @@ import { appendEvent, nextEventNumber } from "./events";
 import {
   hasIgnoreOngoingEffects,
   hasIgnoreOngoingSpellEffects,
+  hasIgnoreSpellAndSpecialtyNonDamage,
   hasIgnoreParalysis,
   hasUnitAbilityEffect
 } from "./unit-abilities";
@@ -213,6 +214,15 @@ function effectIsFromSpell(effect: ActiveEffectState): boolean {
   return effect.source.type === "card" && cardLibrary[effect.source.cardId]?.kind === "spell";
 }
 
+/**
+ * Whether an ongoing effect was created by a Hero Specialty card. The Fangarm
+ * ignores non-damage effects from both spells AND specialties; this predicate
+ * identifies the specialty side of that combined gate.
+ */
+function effectIsFromSpecialty(effect: ActiveEffectState): boolean {
+  return effect.source.type === "card" && cardLibrary[effect.source.cardId]?.kind === "hero-specialty";
+}
+
 export function effectAppliesToUnit(effect: ActiveEffectState, unit: CombatUnitState): boolean {
   // Tower Titans ignore every ongoing effect on themselves (friendly or
   // hostile); Tower Gargoyles ignore the ones a Spell created. Checked first so
@@ -221,6 +231,11 @@ export function effectAppliesToUnit(effect: ActiveEffectState, unit: CombatUnitS
     return false;
   }
   if (hasIgnoreOngoingSpellEffects(unit) && effectIsFromSpell(effect)) {
+    return false;
+  }
+  // Fangarm: ignores all ongoing effects from spells AND specialties (but still
+  // takes damage from them — damage is applied separately, not via activeEffects).
+  if (hasIgnoreSpellAndSpecialtyNonDamage(unit) && (effectIsFromSpell(effect) || effectIsFromSpecialty(effect))) {
     return false;
   }
 
@@ -304,6 +319,11 @@ export function unitDealsElementalDamage(state: GameState, unit: CombatUnitState
  */
 export function unitImmuneToParalysis(state: GameState, unit: CombatUnitState): boolean {
   if (hasIgnoreParalysis(unit)) {
+    return true;
+  }
+  // Fangarm: "Ignore all spell and Specialty effects other than damage" — Blind
+  // (PLACE_PARALYSIS) is a non-damage spell effect, so the token placement is skipped.
+  if (hasIgnoreSpellAndSpecialtyNonDamage(unit)) {
     return true;
   }
 

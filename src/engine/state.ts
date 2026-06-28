@@ -2904,6 +2904,15 @@ export type GameAction =
     }
   | {
       /**
+       * Satyrs (army map ability): once during your turn, roll an Attack die.
+       * On "+1" gain positive morale. The die is rolled from the game seed and
+       * logged as an ADVENTURE_DICE_ROLLED event before morale is updated.
+       */
+      type: "SATYR_MORALE_ROLL";
+      playerId: PlayerId;
+    }
+  | {
+      /**
        * Thieves' Guild (Cove building): once during your turn, choose one deck
        * (a shared deck or any player's Might & Magic deck) and look at its top 2
        * cards. Reveals them privately, then a "discard which one" choice opens
@@ -4794,6 +4803,8 @@ export type PlayerState = {
   recruitDiscounts?: RecruitDiscountVoucher[];
   /** Rogues (army map ability): the once-per-turn deck peek was used this turn. */
   rogueScoutUsedThisTurn?: boolean;
+  /** Satyrs (army map ability): the once-per-turn attack-die morale roll was used this turn. */
+  satyrMoraleRollUsedThisTurn?: boolean;
   limits: {
     hand: number;
     expertUses: number;

@@ -968,6 +968,11 @@ export function hasIgnoreOngoingEffects(unit: CombatUnitState): boolean {
   return hasUnitAbilityEffect(unit, "IGNORE_ONGOING_EFFECTS");
 }
 
+/** Fangarm: ignores all ongoing effects from spells AND specialties, and is immune to Blind/Paralysis from spells. */
+export function hasIgnoreSpellAndSpecialtyNonDamage(unit: CombatUnitState): boolean {
+  return hasUnitAbilityEffect(unit, "IGNORE_SPELL_AND_SPECIALTY_NONDAMAGE");
+}
+
 /** Tower Genies: the "discard from your deck, take a Spell" ability for the given trigger. */
 export function getDeckDiscardTakeSpell(
   unit: CombatUnitState,

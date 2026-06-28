@@ -3619,6 +3619,29 @@ function addRoguesScoutActions(actions: LegalAction[], state: GameState, playerI
   }
 }
 
+/**
+ * Satyrs (army map ability): once during your turn, roll an Attack die;
+ * on "+1" gain positive morale. Offered only while it's your uninterrupted
+ * turn and the roll has not been used yet this turn.
+ */
+function addSatyrMoraleRollActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
+  if (state.combat || state.reactionWindow || state.pendingChoice || state.stack.length > 0) {
+    return;
+  }
+  if (state.activePlayerId !== playerId) {
+    return;
+  }
+  const player = state.players[playerId];
+  if (!player || player.satyrMoraleRollUsedThisTurn || !armyHasMapEffect(state, playerId, "MAP_TURN_MORALE_ROLL")) {
+    return;
+  }
+
+  actions.push({
+    label: "Satyrs: roll an Attack die — on '+1' gain positive morale",
+    action: { type: "SATYR_MORALE_ROLL", playerId }
+  });
+}
+
 function addHeroMoveActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
   if (state.combat || (state.phase !== "map" && state.phase !== "player-turn")) {
     return;
@@ -4010,6 +4033,7 @@ export function getLegalActions(
     addHeroMoveActions(actions, state, playerId);
     addDeckSearchActions(actions, state, playerId);
     addRoguesScoutActions(actions, state, playerId);
+    addSatyrMoraleRollActions(actions, state, playerId);
     actions.push({
       label: "End turn",
       action: { type: "END_TURN", playerId }
@@ -6951,6 +6975,8 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
       }
     }
   }
+
+  addSatyrMoraleRollActions(actions, state, playerId);
 
   actions.push({
     label: "End turn",
