@@ -14,6 +14,12 @@ import {
   spellDeckLegacy
 } from "@/data/cards/spells";
 import { abilityDeckBinh, abilityDeckLegacy, abilityDeckUnique } from "@/data/cards/abilities-extra";
+import {
+  artifactDeckBinhMajor,
+  artifactDeckBinhMinor,
+  artifactDeckBinhRelic,
+  artifactDeckLegacy
+} from "@/data/cards/artifacts";
 
 /**
  * House rules for pulling cards out of the shared Ability / Spell decks:
@@ -57,6 +63,20 @@ describe("shared deck composition — two of each card", () => {
     expectExactlyTwoOfEach(spellDeckLegacy, [...spellDeckBinhBasicUnique, ...spellDeckBinhExpertUnique]);
   });
 
+  it("holds at most ONE copy of each artifact — artifacts are globally unique", () => {
+    // Unlike Spells/Abilities (two copies each), every artifact exists exactly
+    // once in the whole game, so no deck may stock a duplicate.
+    for (const deck of [artifactDeckLegacy, artifactDeckBinhMinor, artifactDeckBinhMajor, artifactDeckBinhRelic]) {
+      for (const [id, count] of countById(deck)) {
+        expect(count, `${id} should appear at most once`).toBe(1);
+      }
+    }
+    // The BINH Minor/Major/Relic decks are disjoint, so the BINH set as a whole
+    // also holds one of each (no artifact is reachable from two decks at once).
+    const binhAll = [...artifactDeckBinhMinor, ...artifactDeckBinhMajor, ...artifactDeckBinhRelic];
+    expect(new Set(binhAll).size).toBe(binhAll.length);
+  });
+
   it("never shuffles a starting-only spell (Magic Arrow) into any shared deck", () => {
     for (const startingOnly of STARTING_ONLY_SPELLS) {
       expect(spellDeckLegacy).not.toContain(startingOnly);
@@ -86,6 +106,26 @@ describe("canAcquireSharedDeckCard — the acquisition gate", () => {
 
     expect(canAcquireSharedDeckCard(state, "p1", "abilities", "ability.necromancy")).toBe(false);
     expect(canAcquireSharedDeckCard(state, "p2", "abilities", "ability.necromancy")).toBe(true);
+  });
+
+  it("treats artifacts as globally unique — rejects one ANY player owns (spells stay per-player)", () => {
+    const state = createInitialGameState("acq-artifact-global");
+    for (const id of ["p1", "p2"] as const) {
+      state.players[id].hand = [];
+      state.players[id].deck = [];
+      state.players[id].discard = [];
+    }
+    // p2 owns the artifact; p1 may NOT take a second copy (none exists).
+    state.players.p2.hand = ["artifact.angel_wings"];
+    expect(canAcquireSharedDeckCard(state, "p1", "artifacts", "artifact.angel_wings")).toBe(false);
+    // An artifact NO player owns is freely acquirable.
+    expect(canAcquireSharedDeckCard(state, "p1", "artifacts", "artifact.boots_of_speed")).toBe(true);
+
+    // CONTROL: a SPELL owned by another player is STILL acquirable by p1 — the
+    // per-player rule (two copies in the deck, one per player) is unchanged. This
+    // is exactly what diverges between the two card kinds.
+    state.players.p2.hand = ["spell.haste"];
+    expect(canAcquireSharedDeckCard(state, "p1", "spells", "spell.haste")).toBe(true);
   });
 
   it("never lets any hero draw a starting-only spell", () => {
@@ -198,6 +238,30 @@ describe("revealSharedDeckSearch — redraws past cards the hero may not take", 
     }
     expect(state.decks.spells.discardPile).toEqual([]);
     expect(state.decks.spells.drawPile).toEqual(["spell.haste"]);
+  });
+
+  it("skips an artifact ANOTHER player owns (artifacts are globally unique)", () => {
+    const state = freshState("reveal-artifact-global");
+    // p2 owns Angel Wings — globally unique, so p1's Search must redraw past it
+    // even though p1 owns none of it. (The deck normally never holds a copy a
+    // player owns; seeding it here proves the gate, not just the deck's makeup.)
+    state.players.p2.hand = ["artifact.angel_wings"];
+    state.players.p2.deck = [];
+    state.players.p2.discard = [];
+    const deck = state.decks["artifacts-minor"];
+    deck.drawPile = ["artifact.boots_of_speed", "artifact.angel_wings"];
+    deck.discardPile = [];
+
+    revealSharedDeckSearch(state, "p1", "artifacts-minor", 1);
+
+    const choice = state.pendingChoice;
+    expect(choice?.type).toBe("DECK_SEARCH");
+    if (choice?.type === "DECK_SEARCH") {
+      expect(choice.revealedCardIds).toEqual(["artifact.boots_of_speed"]);
+    }
+    // The off-limits artifact is tucked back under the deck, never handed over.
+    expect(deck.discardPile).toEqual([]);
+    expect(deck.drawPile).toEqual(["artifact.angel_wings"]);
   });
 });
 
