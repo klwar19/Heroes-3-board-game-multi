@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { Check, CircleOff, Crown, Dices, Hourglass, Layers, Plus, Sunrise, Swords, Undo2, Zap } from "lucide-react";
+import { Check, CircleOff, Crown, Dices, Hourglass, Layers, Plus, Sparkles, Sunrise, Swords, Undo2, Zap } from "lucide-react";
 import { assetUrl } from "@/lib/asset-url";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cardLibrary } from "@/data/cards/library";
@@ -25,7 +25,7 @@ import {
   type PlayerVisibleState,
   type ReactionPlay
 } from "@/engine";
-import { cardName, costCardEligible, formatDieFace, formatEvent, unitName } from "./utils";
+import { cardIsEmpoweredFor, cardName, costCardEligible, formatDieFace, formatEvent, unitName } from "./utils";
 import { CardBack, CardFrame } from "./seats";
 import { AnkhIcon, CrossedShovelsIcon, StarBannerIcon } from "./dice-icons";
 import { useCardZoom, ZoomButton } from "./zoom";
@@ -582,12 +582,23 @@ export function ReactionTray({
         ))}
         {tiles.map((tile) => {
           const selection = selections.find((candidate) => candidate.handIndex === tile.handIndex);
+          const empowered = cardIsEmpoweredFor(
+            tile.cardId,
+            view.players[viewerPlayerId]?.empoweredAbilities
+          );
           return (
             <div className={`trayTile ${selection ? "selected" : ""}`} key={`${tile.cardId}-${tile.handIndex}`}>
-              <CardFrame cardId={tile.cardId} className="trayCardImage" />
+              <CardFrame cardId={tile.cardId} className="trayCardImage" empowered={empowered} />
               <ZoomButton label={`Read ${cardName(tile.cardId)}`} onZoom={() => zoomCard(tile.cardId)} />
               <div className="trayTileBody">
-                <strong>{cardName(tile.cardId)}</strong>
+                <strong>
+                  {cardName(tile.cardId)}
+                  {empowered ? (
+                    <span className="empoweredBadge">
+                      <Sparkles aria-hidden="true" size={9} /> Empowered
+                    </span>
+                  ) : null}
+                </strong>
                 {tile.groups.map((group) => {
                   const groupSelected = Boolean(
                     selection &&

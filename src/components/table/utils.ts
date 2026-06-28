@@ -143,6 +143,43 @@ export function cardName(cardId: string): string {
   return cardLibrary[cardId]?.name ?? cardId;
 }
 
+/**
+ * An Empowered Statistic card (Inferno expansion / Star Axis) — the upgraded
+ * variant of a printed statistic (Empowered Attack/Defense/Power/Knowledge).
+ * Its empowered status is INTRINSIC to the card, so it is detectable from the
+ * card alone (the `"empowered"` tag) and can be highlighted in every render
+ * surface without any player context.
+ *
+ * Empowered ABILITIES are NOT detectable this way: the very same ability card
+ * is "empowered" only for the player who earned it (the Dragon Fly Hive /
+ * Griffin Conservatory bank bonus, tracked in `player.empoweredAbilities`).
+ * Callers that know the owner pass that flag in separately — see
+ * `cardIsEmpoweredFor`.
+ */
+export function isEmpoweredStatisticCard(cardId: string | undefined): boolean {
+  if (!cardId) {
+    return false;
+  }
+  const card = cardLibrary[cardId];
+  return card?.kind === "statistic" && (card.tags?.includes("empowered") ?? false);
+}
+
+/**
+ * Whether `cardId` should be shown as Empowered for the given owner: an
+ * Empowered Statistic (intrinsic) OR an ability the owner has had Empowered.
+ * `empoweredAbilities` only ever holds ability card ids, so a plain membership
+ * test is enough — see `abilityExpertIsCrownFree` in the engine ruleset.
+ */
+export function cardIsEmpoweredFor(
+  cardId: string | undefined,
+  empoweredAbilities: readonly string[] | undefined
+): boolean {
+  if (!cardId) {
+    return false;
+  }
+  return isEmpoweredStatisticCard(cardId) || Boolean(empoweredAbilities?.includes(cardId));
+}
+
 export function playerName(state: GameState, playerId: string): string {
   return state.players[playerId]?.name ?? playerId;
 }

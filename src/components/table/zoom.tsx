@@ -4,10 +4,10 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { assetUrl } from "@/lib/asset-url";
-import { X, ZoomIn } from "lucide-react";
+import { Sparkles, X, ZoomIn } from "lucide-react";
 import { cardLibrary } from "@/data/cards/library";
 import { describeCardEffect, getUnitAbilityDefinitions, type CombatUnitState } from "@/engine";
-import { getCardMetaLabels, titleCase } from "./utils";
+import { getCardMetaLabels, isEmpoweredStatisticCard, titleCase } from "./utils";
 import { SpecialtyCard } from "@/components/specialty-card";
 import { canRenderSpecialtyCard } from "@/components/specialty-card-data";
 
@@ -19,6 +19,8 @@ export type ZoomContent = {
   specialtyCardId?: string;
   subtitle?: string;
   lines: string[];
+  /** Empowered card (Empowered Statistic / an Empowered ability) — show the cue. */
+  empowered?: boolean;
 };
 
 type CardZoomContextValue = {
@@ -55,7 +57,8 @@ export function cardZoomContent(cardId: string): ZoomContent {
     image: card.assets?.cardImage,
     specialtyCardId: !card.assets?.cardImage && canRenderSpecialtyCard(cardId) ? cardId : undefined,
     subtitle: getCardMetaLabels(card).join(" · "),
-    lines
+    lines,
+    empowered: isEmpoweredStatisticCard(cardId)
   };
 }
 
@@ -125,18 +128,25 @@ export function CardZoomProvider({ children }: { children: ReactNode }) {
               </div>
             ) : content.image && failedImageSrc !== content.image ? (
               <img
-                alt={content.title}
-                className="zoomCardImage"
+                alt={content.empowered ? `${content.title} (empowered)` : content.title}
+                className={`zoomCardImage${content.empowered ? " empoweredCard" : ""}`}
                 loading="eager"
                 onError={() => setFailedImageSrc(content.image ?? null)}
                 referrerPolicy="no-referrer"
                 src={assetUrl(content.image)}
               />
             ) : (
-              <div className="zoomCardImage cardFaceFallback">{content.title}</div>
+              <div className={`zoomCardImage cardFaceFallback${content.empowered ? " empoweredCard" : ""}`}>
+                {content.title}
+              </div>
             )}
             <div className="zoomCardBody">
               <strong>{content.title}</strong>
+              {content.empowered ? (
+                <span className="empoweredBadge zoomEmpoweredBadge">
+                  <Sparkles aria-hidden="true" size={11} /> Empowered
+                </span>
+              ) : null}
               {content.subtitle ? <span className="zoomMeta">{content.subtitle}</span> : null}
               {content.lines.map((line) => (
                 <p key={line}>{line}</p>
