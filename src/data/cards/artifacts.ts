@@ -28,66 +28,12 @@ export const REROLL_REACTION_ARTIFACT_IDS = [
   "artifact.ambassadors_sash"
 ] as const;
 
-const SCANLESS_ARTIFACTS = new Set([
-  "necklace_of_dragonteeth",
-  "pendant_of_courage",
-  "quiet_eye_of_the_dragon",
-  "skull_helmet",
-  "celestial_necklace_of_bliss",
-  "lions_shield_of_courage",
-  "sandals_of_the_saint",
-  // Eversmoking Ring of Sulfur has no card scan on the wiki either (the wiki
-  // itself shows the deck back for it), so it falls back to the deck back here.
-  "eversmoking_ring_of_sulfur",
-  // The four elemental Orbs and the Pendant of Second Sight have no wiki scan
-  // bundled yet — show the deck back rather than a broken image.
-  "orb_of_driving_rain",
-  "orb_of_silt",
-  "orb_of_tempestuous_fire",
-  "orb_of_the_firmament",
-  "pendant_of_second_sight",
-  // Pendant of Negativity (Air-Magic counter) and Orb of Inhibition (combat
-  // lockdown relic) have no card scan committed to public/assets yet, so they
-  // fall back to the deck back until their scans land.
-  "pendant_of_negativity",
-  "orb_of_inhibition",
-  // Newly added Cove/sea artifact whose card scan is not yet committed to
-  // public/assets — it falls back to the deck back until the scan lands.
-  // (Ring of the Wayfarer's scan is committed, so it is not listed here.)
-  "crown_of_the_five_seas",
-  // The Cove sea artifacts below have no card scan on the wiki either (it shows
-  // the deck back for them), so they fall back to the deck back here too.
-  "trident_of_dominion",
-  "shield_of_naval_glory",
-  "royal_armor_of_nix",
-  // Diplomat's Ring: the wiki shows the deck back for this card too (no scan),
-  // so it falls back to the deck back here. Its companion Ambassador's Sash
-  // does have a scan.
-  "diplomats_ring",
-  // Newly added expansion minors with no card scan committed to public/assets
-  // yet — they fall back to the deck back until their scans land. (Helm of the
-  // Alabaster Unicorn's scan is committed, so it is not listed here.)
-  "bowstring_of_the_unicorns_mane",
-  // Crest of Valor (Fortress) has its wiki card scan committed; Necklace of
-  // Swiftness (Stretch Goals 2024) has no scan yet, so only it falls back to the
-  // deck back until its scan lands.
-  "necklace_of_swiftness",
-  // Plate of the Dying Light has no card scan on the wiki yet, so it falls back
-  // to the deck back until the scan lands. (Recanter's Cloak and Boots of
-  // Polarity have their wiki scans committed, so they are not listed here.)
-  "plate_of_the_dying_light",
-  // New-mechanic batch (wiki import): their card scans are not committed to
-  // public/assets yet, so they fall back to the deck back until the scans land.
-  // (Spirit of Oppression's scan is committed, so it is not listed here.)
-  "thunder_helmet",
-  "shamans_puppet",
-  // The four Conflux Tome relics have no card scan on the wiki yet, so they fall
-  // back to the deck back until their scans land.
-  "tome_of_air",
-  "tome_of_earth",
-  "tome_of_fire",
-  "tome_of_water"
-]);
+/**
+ * Artifact cards whose wiki page has no usable face scan and which do not yet
+ * have an approved original replacement in this repository. Keep this list in
+ * sync with `artifact-card-art.test.ts` whenever new art is added.
+ */
+export const SCANLESS_ARTIFACTS: ReadonlySet<string> = new Set<string>();
 
 function artifactAssets(tier: "minor" | "major" | "relic", slug: string, name: string) {
   return {
