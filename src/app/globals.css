@@ -1898,6 +1898,67 @@ button.battleCell {
   outline-offset: -1px;
 }
 
+/* ---------------------------------------------------------------------------
+   Empowered cards — Empowered Statistics (intrinsic to the card) and abilities
+   the player has had Empowered (per-owner, from player.empoweredAbilities). A
+   violet ring + glow plus an "Empowered" pill set them apart from a normal
+   statistic/ability AND from the gold "playable" glow. The ring uses
+   outline + filter (not box-shadow) so it layers ON TOP of each surface's own
+   box-shadow instead of replacing it via the cascade.
+--------------------------------------------------------------------------- */
+.empoweredCard {
+  outline: 2px solid #c79bff;
+  outline-offset: -2px;
+  border-radius: 7px;
+  filter: drop-shadow(0 0 5px rgb(168 85 247 / 85%));
+}
+
+.empoweredBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #8b5cf6, #5b21b6);
+  color: #f5ecff;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.4;
+  text-transform: uppercase;
+  white-space: nowrap;
+  border: 1px solid rgb(245 236 255 / 60%);
+  box-shadow: 0 1px 4px rgb(0 0 0 / 50%);
+}
+
+/* Inline pill beside a name (combat tray). */
+.trayTileBody .empoweredBadge {
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+/* Inline pill in the zoom body (slightly larger to match the read view). */
+.zoomEmpoweredBadge {
+  align-self: start;
+  margin: 2px 0;
+  font-size: 10px;
+}
+
+/* Overlay pill pinned to the top of the card art (hand fan, pile thumbnails). */
+.empoweredBadgeOverlay {
+  position: absolute;
+  top: 3px;
+  left: 50%;
+  z-index: 6;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+/* The pile thumbnail button anchors its overlay badge. */
+.pileCardButton {
+  position: relative;
+}
+
 .fanSlot.open {
   z-index: 40;
 }

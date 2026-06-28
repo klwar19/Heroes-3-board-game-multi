@@ -73,7 +73,7 @@ import {
   TILE_BACK_IMAGES
 } from "@/data/assets/homm-assets";
 import { CARD_BACK_IMAGES, getDeckBack } from "@/data/decks";
-import { actionKey, cardName, formatCost, titleCase } from "@/components/table/utils";
+import { actionKey, cardName, formatCost, isEmpoweredStatisticCard, titleCase } from "@/components/table/utils";
 import { beginUnitPointerDrag } from "@/components/table/pointer-drag";
 import { useCardZoom } from "@/components/table/zoom";
 import { fetchSharedMaps, type SharedMapRecord } from "@/lib/shared-maps";
@@ -3070,6 +3070,10 @@ function PileModalCards({ cardIds, kind }: { cardIds: string[]; kind: "cards" | 
         const unit = kind === "units" ? coreUnitDefinitions[cardId] : undefined;
         const astro = kind === "astrologers" ? astrologersCardDefinitions[cardId] : undefined;
         const image = card?.assets?.cardImage ?? unit?.neutral?.cardImage ?? astro?.image;
+        // Empowered Statistics are intrinsic, so a pile browse can flag them
+        // from the card alone; Empowered abilities are per-owner and shown where
+        // the owner is known (hand fan, trays, discard tops).
+        const empowered = kind === "cards" && isEmpoweredStatisticCard(cardId);
         const zoom = () =>
           card
             ? zoomCard(cardId)
@@ -3086,10 +3090,23 @@ function PileModalCards({ cardIds, kind }: { cardIds: string[]; kind: "cards" | 
           <li key={`${cardId}-${index}`}>
             <button className="pileCardButton" onClick={zoom} title="Read card" type="button">
               {image ? (
-                <img alt={card?.name ?? unit?.name ?? cardId} loading="lazy" referrerPolicy="no-referrer" src={assetUrl(image)} />
+                <img
+                  alt={card?.name ?? unit?.name ?? cardId}
+                  className={empowered ? "empoweredCard" : undefined}
+                  loading="lazy"
+                  referrerPolicy="no-referrer"
+                  src={assetUrl(image)}
+                />
               ) : (
-                <div className="pileFallback">{astro?.name ?? card?.name ?? unit?.name ?? cardName(cardId)}</div>
+                <div className={`pileFallback${empowered ? " empoweredCard" : ""}`}>
+                  {astro?.name ?? card?.name ?? unit?.name ?? cardName(cardId)}
+                </div>
               )}
+              {empowered ? (
+                <span className="empoweredBadge empoweredBadgeOverlay">
+                  <Sparkles aria-hidden="true" size={9} /> Empowered
+                </span>
+              ) : null}
               <small>
                 {index === 0 ? "top · " : ""}
                 {astro?.name ?? card?.name ?? unit?.name ?? cardId}

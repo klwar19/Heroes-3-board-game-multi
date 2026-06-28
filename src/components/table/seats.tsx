@@ -24,10 +24,12 @@ import {
 } from "@/engine";
 import {
   actionKey,
+  cardIsEmpoweredFor,
   cardName,
   cardSelectionKey,
   getCardMetaLabels,
   isBoardTargetCardAction,
+  isEmpoweredStatisticCard,
   sameCardSelection,
   targetName,
   type CardBoardAction
@@ -39,15 +41,27 @@ import { canRenderSpecialtyCard } from "@/components/specialty-card-data";
 export function CardFrame({
   cardId,
   className,
-  title
+  title,
+  empowered
 }: {
   cardId?: string;
   className: string;
   title?: string;
+  /**
+   * Force the Empowered highlight (gold ring + glow) for an ability the owner
+   * has had Empowered — that status is per-player, so the caller passes it in.
+   * Empowered STATISTICS are detected intrinsically (the `"empowered"` tag), so
+   * they highlight here even when this prop is omitted.
+   */
+  empowered?: boolean;
 }) {
   const card = cardId ? cardLibrary[cardId] : undefined;
   const src = card?.assets?.cardImage;
   const alt = card?.assets?.imageAlt ?? card?.name ?? cardId ?? "card";
+  const showEmpowered = Boolean(empowered) || isEmpoweredStatisticCard(cardId);
+  // The empowered ring is layered onto whichever element renders, so the cue is
+  // identical across the hand fan, trays, piles and discard tops.
+  const frameClass = showEmpowered ? `${className} empoweredCard` : className;
   // Some cards have no scan yet (e.g. Moandor's specialties are not on the fan
   // wiki); show the named text frame rather than a broken image. Keyed by src
   // so a different card reusing this frame still renders its art.
@@ -60,13 +74,13 @@ export function CardFrame({
     // zoom. The icon slot may be empty; the frame, name and effect still draw.
     if (cardId && canRenderSpecialtyCard(cardId)) {
       return (
-        <div className={`${className} specialtyCardFrame`} title={title ?? alt}>
+        <div className={`${frameClass} specialtyCardFrame`} title={title ?? alt}>
           <SpecialtyCard cardId={cardId} />
         </div>
       );
     }
     return (
-      <div className={`${className} cardFaceFallback`} title={title ?? alt}>
+      <div className={`${frameClass} cardFaceFallback`} title={title ?? alt}>
         {card?.name ?? cardId ?? "?"}
       </div>
     );
@@ -74,8 +88,9 @@ export function CardFrame({
 
   return (
     <img
-      alt={alt}
-      className={className}
+      alt={showEmpowered ? `${alt} (empowered)` : alt}
+      className={frameClass}
+      data-empowered={showEmpowered ? "true" : undefined}
       loading="eager"
       onError={() => setFailedSrc(src)}
       referrerPolicy="no-referrer"
@@ -500,6 +515,7 @@ export function HandFan({
         const selected = entry.boardSelections.some((action) => sameCardSelection(selectedCardAction, action));
         const open = openIndex === entry.handIndex;
         const incoming = entryIndex >= hiddenFromIndex;
+        const empowered = cardIsEmpoweredFor(entry.cardId, player.empoweredAbilities);
 
         return (
           <div className={`fanSlot ${open ? "open" : ""} ${incoming ? "incoming" : ""}`} key={`${entry.cardId}-${entry.handIndex}`}>
@@ -608,11 +624,20 @@ export function HandFan({
                 setArmed(null);
                 setOpenIndex(open ? null : entry.handIndex);
               }}
-              title={card ? `${card.name} — ${describeCardEffect(card)}` : entry.cardId}
+              title={
+                card
+                  ? `${empowered ? "Empowered — " : ""}${card.name} — ${describeCardEffect(card)}`
+                  : entry.cardId
+              }
               type="button"
             >
-              <CardFrame cardId={entry.cardId} className="fanCardImage" />
+              <CardFrame cardId={entry.cardId} className="fanCardImage" empowered={empowered} />
               {playable ? <span className="playGlow" aria-hidden="true" /> : null}
+              {empowered ? (
+                <span className="empoweredBadge empoweredBadgeOverlay">
+                  <Sparkles aria-hidden="true" size={9} /> Empowered
+                </span>
+              ) : null}
             </button>
             <ZoomButton label={`Read ${cardName(entry.cardId)}`} onZoom={() => zoomCard(entry.cardId)} />
           </div>
@@ -756,7 +781,11 @@ export function OpponentBar({
               </div>
               <div className="pileSpot" title={`${player.name} discard pile`} data-fx-anchor={`discard:${playerId}`}>
                 {player.discard.length > 0 ? (
-                  <CardFrame cardId={player.discard.at(-1)} className="pileCard faceUp" />
+                  <CardFrame
+                    cardId={player.discard.at(-1)}
+                    className="pileCard faceUp"
+                    empowered={cardIsEmpoweredFor(player.discard.at(-1), player.empoweredAbilities)}
+                  />
                 ) : (
                   <div className="pileCard emptyPile" />
                 )}
@@ -802,7 +831,11 @@ export function PlayerDock({
       </div>
       <div className="pileSpot tall" title="Your discard pile" data-fx-anchor={`discard:${viewerPlayerId}`}>
         {player.discard.length > 0 ? (
-          <CardFrame cardId={player.discard.at(-1)} className="pileCard faceUp" />
+          <CardFrame
+            cardId={player.discard.at(-1)}
+            className="pileCard faceUp"
+            empowered={cardIsEmpoweredFor(player.discard.at(-1), player.empoweredAbilities)}
+          />
         ) : (
           <div className="pileCard emptyPile" />
         )}
