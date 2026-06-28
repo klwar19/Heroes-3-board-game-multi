@@ -1274,18 +1274,22 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
   // poison cube (wyvern-poison-cube-few), not the Pack's 2. The others reuse the
   // already-implemented faction tags (immune-all-spells, ignore-combat-penalties,
   // ayssid-pounce, sorceress-weakness-on-attack). The Seamen guard has NO ability.
-  // Card art is the faction Few-side crop (no separate Neutral art exists).
+  // The wiki publishes blank Neutral faces for these units, so each dedicated
+  // card is composed by scripts/build-placeholder-neutral-cards.mjs from the
+  // exact shared faction illustration, the matching Neutral tier frame, and the
+  // official legend glyphs (compressed WebP). The rendered rules text mirrors the
+  // abilityText below verbatim.
   "neutral.oceanids": {
     id: "neutral.oceanids",
     name: "Oceanids",
     faction: "neutral",
     tier: "bronze",
     type: "flying",
-    neutral: { attack: 2, defense: 0, health: 3, initiative: 6, cost: { gold: 3 }, abilities: ["immune-all-spells"], abilityText: "[unit_passive] Ignore all effects and [damage] from [spell].", cardImage: "/assets/units-cove-bronze-oceanids-few.webp" },
+    neutral: { attack: 2, defense: 0, health: 3, initiative: 6, cost: { gold: 3 }, abilities: ["immune-all-spells"], abilityText: "[unit_passive] Ignore all effects and [damage] from [spell].", cardImage: "/assets/units-neutral-bronze-oceanids.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/oceanids/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Cove Expansion)",
-      credit: "Neutral-column stats and ability text from the fan wiki Cove unit page; card art cropped from the official Gamefound Cove reveal (Few-side placeholder). Verify against official cards before final release.",
+      credit: "Neutral-column stats and ability text from the fan wiki Cove unit page; the dedicated single-sided Neutral face is composed (scripts/build-placeholder-neutral-cards.mjs) from the official shared Cove illustration inside the matching Neutral tier frame.",
       url: "https://en.homm3bg.wiki/units/oceanids/"
     }
   },
@@ -1296,11 +1300,11 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     tier: "bronze",
     type: "ground",
     // engine: no ability (the wiki Neutral column prints a dash).
-    neutral: { attack: 2, defense: 1, health: 3, initiative: 5, cost: { gold: 5 }, abilities: [], cardImage: "/assets/units-cove-bronze-seamen-few.webp" },
+    neutral: { attack: 2, defense: 1, health: 3, initiative: 5, cost: { gold: 5 }, abilities: [], cardImage: "/assets/units-neutral-bronze-seamen.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/seamen/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Cove Expansion)",
-      credit: "Neutral-column stats from the fan wiki Cove unit page (no ability); card art cropped from the official Gamefound Cove reveal (Few-side placeholder). Verify against official cards before final release.",
+      credit: "Neutral-column stats from the fan wiki Cove unit page (no ability); the dedicated single-sided Neutral face is composed (scripts/build-placeholder-neutral-cards.mjs) from the official shared Cove illustration inside the matching Neutral tier frame.",
       url: "https://en.homm3bg.wiki/units/seamen/"
     }
   },
@@ -1310,11 +1314,11 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "bronze",
     type: "ranged",
-    neutral: { attack: 2, defense: 0, health: 4, initiative: 6, cost: { gold: 7 }, abilities: ["ignore-combat-penalties"], abilityText: "[unit_passive] Ignore the combat penalty against adjacent units.", cardImage: "/assets/units-cove-bronze-sea_dogs-few.webp" },
+    neutral: { attack: 2, defense: 0, health: 4, initiative: 6, cost: { gold: 7 }, abilities: ["ignore-combat-penalties"], abilityText: "[unit_passive] Ignore the combat penalty against adjacent units.", cardImage: "/assets/units-neutral-bronze-sea_dogs.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/sea_dogs/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Cove Expansion)",
-      credit: "Neutral-column stats and ability text from the fan wiki Cove unit page; card art cropped from the official Gamefound Cove reveal (Few-side placeholder). Verify against official cards before final release.",
+      credit: "Neutral-column stats and ability text from the fan wiki Cove unit page; the dedicated single-sided Neutral face is composed (scripts/build-placeholder-neutral-cards.mjs) from the official shared Cove illustration inside the matching Neutral tier frame.",
       url: "https://en.homm3bg.wiki/units/sea_dogs/"
     }
   },
@@ -1324,11 +1328,11 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "silver",
     type: "flying",
-    neutral: { attack: 3, defense: 1, health: 5, initiative: 9, cost: { gold: 9 }, abilities: ["ayssid-pounce"], abilityText: "[unit_attack] If the target is reduced to 0 [health_points], after resolving the [unit_retaliation] (if applicable), the Ayssids can attack another adjacent unit.", cardImage: "/assets/units-cove-silver-ayssids-few.webp" },
+    neutral: { attack: 3, defense: 1, health: 5, initiative: 9, cost: { gold: 9 }, abilities: ["ayssid-pounce"], abilityText: "[unit_attack] If the target is reduced to 0 [health_points], after resolving the [unit_retaliation] (if applicable), the Ayssids can attack another adjacent unit.", cardImage: "/assets/units-neutral-silver-ayssids.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/ayssids/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Cove Expansion)",
-      credit: "Neutral-column stats and ability text from the fan wiki Cove unit page; card art cropped from the official Gamefound Cove reveal (Few-side placeholder). Verify against official cards before final release.",
+      credit: "Neutral-column stats and ability text from the fan wiki Cove unit page; the dedicated single-sided Neutral face is composed (scripts/build-placeholder-neutral-cards.mjs) from the official shared Cove illustration inside the matching Neutral tier frame.",
       url: "https://en.homm3bg.wiki/units/ayssids/"
     }
   },
@@ -1338,11 +1342,11 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "silver",
     type: "ranged",
-    neutral: { attack: 3, defense: 1, health: 5, initiative: 6, cost: { gold: 13 }, abilities: ["sorceress-weakness-on-attack"], abilityText: "[unit_attack] After the attack, place a \"-1\" Weakness token on the target for 2 Combat rounds.", cardImage: "/assets/units-cove-silver-sorceresses-few.webp" },
+    neutral: { attack: 3, defense: 1, health: 5, initiative: 6, cost: { gold: 13 }, abilities: ["sorceress-weakness-on-attack"], abilityText: "[unit_attack] After the attack, place a \"-1\" Weakness token on the target for 2 Combat rounds.", cardImage: "/assets/units-neutral-silver-sorceresses.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/sorceresses/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Cove Expansion)",
-      credit: "Neutral-column stats and ability text from the fan wiki Cove unit page; card art cropped from the official Gamefound Cove reveal (Few-side placeholder). Verify against official cards before final release.",
+      credit: "Neutral-column stats and ability text from the fan wiki Cove unit page; the dedicated single-sided Neutral face is composed (scripts/build-placeholder-neutral-cards.mjs) from the official shared Cove illustration inside the matching Neutral tier frame.",
       url: "https://en.homm3bg.wiki/units/sorceresses/"
     }
   },
@@ -1353,11 +1357,11 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     tier: "gold",
     type: "ground",
     // engine: nix-damage-cap-neutral caps a single attack at 5 (the Pack's is 4).
-    neutral: { attack: 5, defense: 1, health: 7, initiative: 6, cost: { gold: 20 }, abilities: ["nix-damage-cap-neutral"], abilityText: "[unit_passive] This unit cannot take more than 5 [damage] from a single attack.", cardImage: "/assets/units-cove-golden-nix-few.webp" },
+    neutral: { attack: 5, defense: 1, health: 7, initiative: 6, cost: { gold: 20 }, abilities: ["nix-damage-cap-neutral"], abilityText: "[unit_passive] This unit cannot take more than 5 [damage] from a single attack.", cardImage: "/assets/units-neutral-golden-nix.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/nix/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Cove Expansion)",
-      credit: "Neutral-column stats and ability text from the fan wiki Cove unit page; card art cropped from the official Gamefound Cove reveal (Few-side placeholder). Verify against official cards before final release.",
+      credit: "Neutral-column stats and ability text from the fan wiki Cove unit page; the dedicated single-sided Neutral face is composed (scripts/build-placeholder-neutral-cards.mjs) from the official shared Cove illustration inside the matching Neutral tier frame.",
       url: "https://en.homm3bg.wiki/units/nix/"
     }
   },
@@ -1368,11 +1372,11 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     tier: "gold",
     type: "ground",
     // engine: wyvern-poison-cube-few plants 1 cube (the Pack's wyvern-poison-cube-pack plants 2).
-    neutral: { attack: 5, defense: 2, health: 6, initiative: 9, cost: { gold: 25 }, abilities: ["wyvern-poison-cube-few"], abilityText: "[unit_attack] Place 1 faction cube on the target. At the beginning of its every activation, remove it to inflict 1 [damage].", cardImage: "/assets/units-cove-golden-haspids-few.webp" },
+    neutral: { attack: 5, defense: 2, health: 6, initiative: 9, cost: { gold: 25 }, abilities: ["wyvern-poison-cube-few"], abilityText: "[unit_attack] Place 1 faction cube on the target. At the beginning of its every activation, remove it to inflict 1 [damage].", cardImage: "/assets/units-neutral-golden-haspids.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/haspids/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Cove Expansion)",
-      credit: "Neutral-column stats and ability text from the fan wiki Cove unit page; card art cropped from the official Gamefound Cove reveal (Few-side placeholder). Verify against official cards before final release.",
+      credit: "Neutral-column stats and ability text from the fan wiki Cove unit page; the dedicated single-sided Neutral face is composed (scripts/build-placeholder-neutral-cards.mjs) from the official shared Cove illustration inside the matching Neutral tier frame.",
       url: "https://en.homm3bg.wiki/units/haspids/"
     }
   },
@@ -1958,20 +1962,21 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
       url: "https://en.homm3bg.wiki/units/efreet/"
     }
   },
-  // Stronghold neutral guards (Goblins … Behemoths): the board game has no
-  // dedicated single-sided Neutral art for these creatures yet, so each reuses
-  // its Stronghold faction FEW-side card as placeholder art (the neutral twin is
-  // the same creature — same voice in unit-sounds.ts, same engine ability path).
-  // Swap to real `units-neutral-*` scans when they land. The faction Few faces
-  // all exist on disk; printed-unit-abilities.test.ts guards that every neutral
-  // cardImage resolves to a real file.
+  // Stronghold neutral guards (Goblins … Behemoths). The wiki publishes blank
+  // Neutral images, so each dedicated single-sided face below is composed by
+  // scripts/build-placeholder-neutral-cards.mjs from the exact Stronghold faction
+  // illustration inside the matching Neutral tier frame (compressed WebP); the
+  // rendered rules text mirrors the abilityText verbatim. The neutral twin is the
+  // same creature — same voice in unit-sounds.ts, same engine ability path.
+  // printed-unit-abilities.test.ts guards that every neutral cardImage resolves
+  // to a real file.
   "neutral.goblins": {
     id: "neutral.goblins",
     name: "Goblins",
     faction: "neutral",
     tier: "bronze",
     type: "ground",
-    neutral: { attack: 1, defense: 0, health: 4, initiative: 6, cost: { gold: 4 }, abilities: [], cardImage: "/assets/units-stronghold-bronze-goblins-few.webp" },
+    neutral: { attack: 1, defense: 0, health: 4, initiative: 6, cost: { gold: 4 }, abilities: [], cardImage: "/assets/units-neutral-bronze-goblins.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/goblins/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Stronghold Expansion)",
@@ -1985,7 +1990,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "bronze",
     type: "ground",
-    neutral: { attack: 2, defense: 0, health: 3, initiative: 7, cost: { gold: 6 }, abilities: ["wolf-raiders-strike-twice"], abilityText: "[unit_attack] Attack this target again. The second attack happens after the target retaliates (if possible).", cardImage: "/assets/units-stronghold-bronze-wolf_raiders-few.webp" },
+    neutral: { attack: 2, defense: 0, health: 3, initiative: 7, cost: { gold: 6 }, abilities: ["wolf-raiders-strike-twice"], abilityText: "[unit_attack] Attack this target again. The second attack happens after the target retaliates (if possible).", cardImage: "/assets/units-neutral-bronze-wolf_raiders.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/wolf_raiders/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Stronghold Expansion)",
@@ -1999,7 +2004,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "bronze",
     type: "ranged",
-    neutral: { attack: 2, defense: 1, health: 4, initiative: 4, cost: { gold: 7 }, abilities: [], cardImage: "/assets/units-stronghold-bronze-orcs-few.webp" },
+    neutral: { attack: 2, defense: 1, health: 4, initiative: 4, cost: { gold: 7 }, abilities: [], cardImage: "/assets/units-neutral-bronze-orcs.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/orcs/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Stronghold Expansion)",
@@ -2013,7 +2018,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "silver",
     type: "ground",
-    neutral: { attack: 3, defense: 2, health: 4, initiative: 4, cost: { gold: 10 }, abilities: ["ogres-attack-token-pack"], abilityText: "[unit_other] Place a +2 [attack] token on a chosen friendly [unit_ground] or [unit_flying] unit for 2 Combat rounds.", cardImage: "/assets/units-stronghold-silver-ogres-few.webp" },
+    neutral: { attack: 3, defense: 2, health: 4, initiative: 4, cost: { gold: 10 }, abilities: ["ogres-attack-token-pack"], abilityText: "[unit_other] Place a +2 [attack] token on a chosen friendly [unit_ground] or [unit_flying] unit for 2 Combat rounds.", cardImage: "/assets/units-neutral-silver-ogres.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/ogres/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Stronghold Expansion)",
@@ -2027,7 +2032,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "silver",
     type: "flying",
-    neutral: { attack: 3, defense: 0, health: 6, initiative: 9, cost: { gold: 13 }, abilities: ["thunderbirds-lightning"], abilityText: "[unit_passive] Right after this unit's attack and before any Retaliation, roll 1 Attack die, on a \"0\" or \"+1\", deal 1 [damage] to the target.", cardImage: "/assets/units-stronghold-silver-thunderbirds-few.webp" },
+    neutral: { attack: 3, defense: 0, health: 6, initiative: 9, cost: { gold: 13 }, abilities: ["thunderbirds-lightning"], abilityText: "[unit_passive] Right after this unit's attack and before any Retaliation, roll 1 Attack die, on a \"0\" or \"+1\", deal 1 [damage] to the target.", cardImage: "/assets/units-neutral-silver-thunderbirds.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/thunderbirds/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Stronghold Expansion)",
@@ -2041,7 +2046,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "gold",
     type: "ranged",
-    neutral: { attack: 5, defense: 1, health: 6, initiative: 8, cost: { gold: 19 }, abilities: ["cyclops-demolish-full"], abilityText: "[unit_other] This unit can destroy a Wall, the Gate, or the Arrow Tower.", cardImage: "/assets/units-stronghold-golden-cyclopes-few.webp" },
+    neutral: { attack: 5, defense: 1, health: 6, initiative: 8, cost: { gold: 19 }, abilities: ["cyclops-demolish-full"], abilityText: "[unit_other] This unit can destroy a Wall, the Gate, or the Arrow Tower.", cardImage: "/assets/units-neutral-golden-cyclopes.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/cyclopes/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Stronghold Expansion)",
@@ -2055,7 +2060,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "gold",
     type: "ground",
-    neutral: { attack: 5, defense: 1, health: 8, initiative: 9, cost: { gold: 26 }, abilities: ["behemoth-defense-crush-pack", "behemoth-corrosion"], abilityText: "[unit_attack] Decrease the target's [defense] by 2 (to a minimum of 0). After the attack, place 1 Corrosion token on the target.", cardImage: "/assets/units-stronghold-golden-behemoths-few.webp" },
+    neutral: { attack: 5, defense: 1, health: 8, initiative: 9, cost: { gold: 26 }, abilities: ["behemoth-defense-crush-pack", "behemoth-corrosion"], abilityText: "[unit_attack] Decrease the target's [defense] by 2 (to a minimum of 0). After the attack, place 1 Corrosion token on the target.", cardImage: "/assets/units-neutral-golden-behemoths.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/behemoths/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Stronghold Expansion)",
@@ -2274,7 +2279,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "bronze",
     type: "flying",
-    neutral: { attack: 2, defense: 0, health: 2, initiative: 7, cost: { gold: 2 }, abilities: ["ignores-retaliation"], abilityText: "[unit_attack] Ignore the Retaliation Attack.", cardImage: "/assets/units-conflux-bronze-sprites-few.webp" },
+    neutral: { attack: 2, defense: 0, health: 2, initiative: 7, cost: { gold: 2 }, abilities: ["ignores-retaliation"], abilityText: "[unit_attack] Ignore the Retaliation Attack.", cardImage: "/assets/units-neutral-bronze-sprites.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/sprites/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game",
@@ -2365,7 +2370,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "bronze",
     type: "ranged",
-    neutral: { attack: 2, defense: 1, health: 3, initiative: 5, cost: { gold: 7 }, abilities: ["elemental-damage", "water-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrow and Water Magic spells. This unit deals elemental damage.", cardImage: "/assets/units-conflux-bronze-ice_elementals-few.webp" },
+    neutral: { attack: 2, defense: 1, health: 3, initiative: 5, cost: { gold: 7 }, abilities: ["elemental-damage", "water-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrow and Water Magic spells. This unit deals elemental damage.", cardImage: "/assets/units-neutral-bronze-ice_elementals.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/ice_elementals/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game",
@@ -2379,7 +2384,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "bronze",
     type: "ranged",
-    neutral: { attack: 2, defense: 0, health: 3, initiative: 7, cost: { gold: 5 }, abilities: ["elemental-damage", "air-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrow and Air Magic spells. This unit deals elemental damage.", cardImage: "/assets/units-conflux-bronze-storm_elementals-few.webp" },
+    neutral: { attack: 2, defense: 0, health: 3, initiative: 7, cost: { gold: 5 }, abilities: ["elemental-damage", "air-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrow and Air Magic spells. This unit deals elemental damage.", cardImage: "/assets/units-neutral-bronze-storm_elementals.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/storm_elementals/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game",
@@ -2449,7 +2454,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "silver",
     type: "flying",
-    neutral: { attack: 3, defense: 1, health: 4, initiative: 5, cost: { gold: 11 }, abilities: ["elemental-damage", "fire-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrow and Fire Magic spells. This unit deals elemental damage.", cardImage: "/assets/units-conflux-silver-energy_elementals-few.webp" },
+    neutral: { attack: 3, defense: 1, health: 4, initiative: 5, cost: { gold: 11 }, abilities: ["elemental-damage", "fire-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrow and Fire Magic spells. This unit deals elemental damage.", cardImage: "/assets/units-neutral-silver-energy_elementals.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/energy_elementals/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game",
@@ -2480,7 +2485,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "silver",
     type: "ground",
-    neutral: { attack: 3, defense: 2, health: 4, initiative: 4, cost: { gold: 14 }, abilities: ["elemental-damage", "earth-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrow and Earth Magic spells. This unit deals elemental damage.", cardImage: "/assets/units-conflux-silver-magma_elementals-few.webp" },
+    neutral: { attack: 3, defense: 2, health: 4, initiative: 4, cost: { gold: 14 }, abilities: ["elemental-damage", "earth-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrow and Earth Magic spells. This unit deals elemental damage.", cardImage: "/assets/units-neutral-silver-magma_elementals.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/magma_elementals/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game",
@@ -2529,7 +2534,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "gold",
     type: "ground",
-    neutral: { attack: 3, defense: 1, health: 7, initiative: 7, cost: { gold: 19 }, abilities: ["elemental-damage", "magic-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrow. This unit deals elemental damage.", cardImage: "/assets/units-conflux-golden-magic_elementals-few.webp" },
+    neutral: { attack: 3, defense: 1, health: 7, initiative: 7, cost: { gold: 19 }, abilities: ["elemental-damage", "magic-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrow. This unit deals elemental damage.", cardImage: "/assets/units-neutral-golden-magic_elementals.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/magic_elementals/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game",
@@ -2571,7 +2576,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "azure",
     type: "flying",
-    neutral: { attack: 6, defense: 2, health: 7, initiative: 12, cost: { gold: 32 }, abilities: ["phoenix-rebirth", "phoenix-fire-immunity"], abilityText: "[unit_passive] Once per Combat, when this unit's [health_points] drops to 0, set it to 1 instead. [unit_passive] Immune to Fire Magic [spell] .", cardImage: "/assets/units-conflux-golden-phoenixes-few.webp" },
+    neutral: { attack: 6, defense: 2, health: 7, initiative: 12, cost: { gold: 32 }, abilities: ["phoenix-rebirth", "phoenix-fire-immunity"], abilityText: "[unit_passive] Once per Combat, when this unit's [health_points] drops to 0, set it to 1 instead. [unit_passive] Immune to Fire Magic [spell] .", cardImage: "/assets/units-neutral-azure-phoenixes.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/phoenixes/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game",
