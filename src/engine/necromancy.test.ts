@@ -665,3 +665,143 @@ describe("Legion voucher × Necromancy reinforce (real end-to-end, non-stacking)
     expect(state.players.p1.recruitDiscounts ?? []).toHaveLength(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// The reported bug: "done fighting a creature bank, no choice to upgrade after
+// battle." A Creature Bank win is a non-Quick Combat win, so a Necropolis hero
+// holding Necromancy must still get the now-or-never after-combat window — but
+// the bank branch of finalizeAdventureCombat only granted the (immediate) bank
+// reward and never opened `pendingNecromancy`, so the prompt never appeared.
+// Banks sit OUTSIDE the field-reward deferral (their reward lands at once), so
+// the window here withholds nothing — it just lets the player play or skip
+// Necromancy. Each assertion below fails if the bank-window wiring is removed.
+// ---------------------------------------------------------------------------
+describe("Necromancy ability — after a Creature Bank win (reported bug)", () => {
+  function startGame(seed: string): GameState {
+    const g = createAdventureGameState({
+      seed,
+      ruleset: "binh",
+      difficulty: "normal",
+      players: [
+        { id: "p1", name: "Sandro", factionId: "necropolis", heroDefId: "sandro" },
+        { id: "p2", name: "Catherine", factionId: "castle", heroDefId: "catherine" }
+      ],
+      rollFirstPlayer: false
+    });
+    for (const pl of Object.values(g.players)) {
+      pl.canMulligan = false;
+      pl.needsHandRefresh = false;
+    }
+    return g;
+  }
+
+  /**
+   * Stages a just-won Crypt creature-bank fight for `playerId` standing on the
+   * bank field. Crypt pays a flat gold reward (no choice prompt), so after
+   * finalize the only thing left waiting is the Necromancy window itself.
+   */
+  function stageBankWin(state: GameState, playerId: "p1" | "p2"): { fieldId: string; heroId: string } {
+    const hero = getMainHero(state, playerId)!;
+    const fieldId = "bank,1";
+    state.adventure!.fields[fieldId] = {
+      spaceId: fieldId,
+      tileInstanceId: "test-tile",
+      slot: 0,
+      location: "creature_bank",
+      bankId: "crypt",
+      difficulty: 1,
+      blackCube: false,
+      flagOwnerId: null,
+      everFlagged: false,
+      settlementResource: null
+    } as MapFieldState;
+    hero.spaceId = fieldId;
+    state.activePlayerId = playerId;
+    state.combat = {
+      context: {
+        kind: "neutral",
+        heroId: hero.id,
+        fieldId,
+        difficulty: 1,
+        hasAzure: false,
+        bankId: "crypt",
+        bankStackCount: 0
+      },
+      outcome: { winnerPlayerId: playerId, defeatedPlayerId: "neutral", reason: "all-enemy-units-defeated" },
+      units: {}
+    } as unknown as CombatState;
+    return { fieldId, heroId: hero.id };
+  }
+
+  it("opens the Necromancy window after a bank win (the reward still lands immediately)", () => {
+    const state = startGame("bank-necro-open");
+    state.players.p1.hand = ["ability.necromancy"];
+    state.players.p1.army = [{ id: "army_skel", unitDefId: "necropolis.skeletons", side: "few" }];
+    state.players.p1.resources.gold = 0;
+    const { fieldId } = stageBankWin(state, "p1");
+
+    finalizeAdventureCombat(state);
+
+    // The bank reward is NOT withheld — Crypt's 6 gold lands at once and the
+    // field is cubed (banks sit outside the field-reward deferral).
+    expect(state.players.p1.resources.gold).toBe(6);
+    expect(state.adventure?.fields[fieldId].blackCube).toBe(true);
+
+    // ...and the now-or-never Necromancy window is open for the bank winner.
+    expect(state.adventure?.pendingNecromancy?.playerId).toBe("p1");
+    const legal = getLegalActions(state, "p1");
+    expect(
+      legal.some((l) => l.action.type === "PLAY_CARD" && l.action.cardId === "ability.necromancy")
+    ).toBe(true);
+    expect(legal.some((l) => l.action.type === "SKIP_NECROMANCY")).toBe(true);
+    // Nothing else is legal until the window is resolved (now-or-never).
+    expect(legal.some((l) => l.action.type === "MOVE_HERO" || l.action.type === "END_TURN")).toBe(false);
+  });
+
+  it("lets the bank winner actually reinforce — Few → Pack — and spends the card", () => {
+    const state = startGame("bank-necro-reinforce");
+    state.players.p1.hand = ["ability.necromancy"];
+    state.players.p1.army = [{ id: "army_skel", unitDefId: "necropolis.skeletons", side: "few" }];
+    state.players.p1.resources.gold = 20;
+    stageBankWin(state, "p1");
+    finalizeAdventureCombat(state);
+
+    const play = getLegalActions(state, "p1").find(
+      (l) => l.action.type === "PLAY_CARD" && l.action.cardId === "ability.necromancy"
+    );
+    expect(play, "Necromancy should be playable in the open bank window").toBeTruthy();
+    let next = apply(state, play!.action);
+
+    const reinforce = getLegalActions(next, "p1").find(
+      (l) => l.action.type === "RESOLVE_VISIT_STEP" && /Skeletons/.test(l.label)
+    );
+    expect(reinforce, "the bank window must offer a real Skeleton reinforce").toBeTruthy();
+    next = apply(next, reinforce!.action);
+
+    // The observable outcome: the unit upgraded and the card is now spent.
+    expect(next.players.p1.army.find((u) => u.id === "army_skel")?.side).toBe("pack");
+    expect(next.players.p1.discard).toContain("ability.necromancy");
+    expect(next.players.p1.hand).not.toContain("ability.necromancy");
+    expect(next.adventure?.pendingNecromancy ?? null).toBeNull();
+  });
+
+  it("CONTROL: a non-Necropolis bank winner gets the reward but no Necromancy window", () => {
+    const state = startGame("bank-necro-control");
+    // Even handed the card, a Castle hero can never play it — and a bank win
+    // must NOT open the now-or-never gate for them (it would freeze their turn).
+    state.players.p2.hand = ["ability.necromancy"];
+    const goldBefore = state.players.p2.resources.gold;
+    const { fieldId } = stageBankWin(state, "p2");
+
+    finalizeAdventureCombat(state);
+
+    expect(state.players.p2.resources.gold).toBe(goldBefore + 6); // bank reward still paid
+    expect(state.adventure?.fields[fieldId].blackCube).toBe(true);
+    expect(state.adventure?.pendingNecromancy ?? null).toBeNull();
+    expect(
+      getLegalActions(state, "p2").some(
+        (l) => l.action.type === "PLAY_CARD" && l.action.cardId === "ability.necromancy"
+      )
+    ).toBe(false);
+  });
+});
