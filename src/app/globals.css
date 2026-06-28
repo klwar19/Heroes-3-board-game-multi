@@ -5194,6 +5194,29 @@ button.hbSlot:disabled { cursor: default; }
   box-shadow: 0 0 6px rgb(247 206 102 / 45%);
 }
 
+/* Berserk: a red chip flagging that this unit is forced to attack the nearest
+   unit (friend or foe) on its next activation. Berserk is an active effect, not
+   a token, so it needs its own badge — without it the player cannot tell the
+   spell landed. */
+.berserkBadge {
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 7;
+  padding: 1px 7px;
+  background: rgb(120 16 16 / 94%);
+  border: 1px solid rgb(247 120 102 / 85%);
+  border-radius: 999px;
+  color: #ffd9d0;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  box-shadow: 0 0 6px rgb(247 102 102 / 55%);
+}
+
 /* ---- Draw-card cinematic -------------------------------------------------- */
 .drawOverlay {
   position: fixed;
