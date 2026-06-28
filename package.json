@@ -34,6 +34,7 @@
     "jsdom": "27.3.0",
     "partykit": "^0.0.115",
     "prettier": "3.7.4",
+    "sharp": "^0.34.5",
     "typescript": "5.9.3",
     "vitest": "4.1.8"
   }

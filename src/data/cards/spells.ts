@@ -13,21 +13,18 @@ function spellSource(slug: string) {
 
 /**
  * Spells the fan wiki (en.homm3bg.wiki, this project's art source) has NO card
- * scan for: its own spell page shows the generic deck-back placeholder
+ * card face for: its own spell page shows the generic deck-back placeholder
  * (assets/player-deck-back.webp) instead of artwork, so there is nothing to
  * download and no authentic scan to commit. These route to the same deck-back
  * here — exactly as the wiki renders them — rather than naming a
  * /assets/spells-<slug>.webp file that does not exist (which would 404 on every
  * render and fall back through an <img> onError). This is the spell counterpart
- * of SCANLESS_ARTIFACTS in ./artifacts. When a real scan is added to the wiki,
- * download it (scripts/fetch-missing-spell-card-art.py) and remove the slug
- * here. Enforced in src/data/cards/spell-card-art.test.ts.
+ * of SCANLESS_ARTIFACTS in ./artifacts. When an authentic scan or an approved
+ * original replacement is added, remove the slug here. Authentic scans can be
+ * downloaded with scripts/fetch-missing-spell-card-art.py. Enforced in
+ * src/data/cards/spell-card-art.test.ts.
  */
 export const SCANLESS_SPELLS: ReadonlySet<string> = new Set<string>([
-  "summon_air_elemental",
-  "summon_earth_elemental",
-  "summon_fire_elemental",
-  "summon_water_elemental",
   "magic_mirror",
   "water_walk",
   "air_shield",
@@ -467,14 +464,14 @@ export const spellCards: CardLibrary = {
       "spell",
       "expert",
       "air",
-      "Activation: On a chosen empty space — Power 0: no effect; Power 2: Summon a Few of Air Elementals; Power 4: Summon a Pack of Air Elementals."
+      "Activation: On a chosen empty space. Power 0: No effect; Power 2: Summon a Few Air Elementals; Power 4: Summon a Pack of Air Elementals."
     ],
     power: 0,
     target: { type: "empty-space" },
     effect: { type: "SUMMON_ELEMENTAL", unitDefId: "neutral.air_elementals" },
     assets: {
-      // No wiki scan for this spell — see SCANLESS_SPELLS above.
-      cardImage: DECK_BACK_IMAGE,
+      // Original card face built from the Expert Air frame and new elemental art.
+      cardImage: "/assets/spells-summon_air_elemental.webp",
       imageAlt: "Summon Air Elemental card"
     },
     implementationStatus: "implemented",
@@ -492,14 +489,14 @@ export const spellCards: CardLibrary = {
       "spell",
       "expert",
       "earth",
-      "Activation: On a chosen empty space — Power 0: no effect; Power 2: Summon a Few of Earth Elementals; Power 4: Summon a Pack of Earth Elementals."
+      "Activation: On a chosen empty space. Power 0: No effect; Power 2: Summon a Few Earth Elementals; Power 4: Summon a Pack of Earth Elementals."
     ],
     power: 0,
     target: { type: "empty-space" },
     effect: { type: "SUMMON_ELEMENTAL", unitDefId: "neutral.earth_elementals" },
     assets: {
-      // No wiki scan for this spell — see SCANLESS_SPELLS above.
-      cardImage: DECK_BACK_IMAGE,
+      // Original card face built from the Expert Earth frame and new elemental art.
+      cardImage: "/assets/spells-summon_earth_elemental.webp",
       imageAlt: "Summon Earth Elemental card"
     },
     implementationStatus: "implemented",
@@ -517,14 +514,14 @@ export const spellCards: CardLibrary = {
       "spell",
       "expert",
       "fire",
-      "Activation: On a chosen empty space — Power 0: no effect; Power 2: Summon a Few of Fire Elementals; Power 4: Summon a Pack of Fire Elementals."
+      "Activation: On a chosen empty space. Power 0: No effect; Power 2: Summon a Few Fire Elementals; Power 4: Summon a Pack of Fire Elementals."
     ],
     power: 0,
     target: { type: "empty-space" },
     effect: { type: "SUMMON_ELEMENTAL", unitDefId: "neutral.fire_elementals" },
     assets: {
-      // No wiki scan for this spell — see SCANLESS_SPELLS above.
-      cardImage: DECK_BACK_IMAGE,
+      // Original card face built from the Expert Fire frame and new elemental art.
+      cardImage: "/assets/spells-summon_fire_elemental.webp",
       imageAlt: "Summon Fire Elemental card"
     },
     implementationStatus: "implemented",
@@ -542,14 +539,14 @@ export const spellCards: CardLibrary = {
       "spell",
       "expert",
       "water",
-      "Activation: On a chosen empty space — Power 0: no effect; Power 2: Summon a Few of Water Elementals; Power 4: Summon a Pack of Water Elementals."
+      "Activation: On a chosen empty space. Power 0: No effect; Power 2: Summon a Few Water Elementals; Power 4: Summon a Pack of Water Elementals."
     ],
     power: 0,
     target: { type: "empty-space" },
     effect: { type: "SUMMON_ELEMENTAL", unitDefId: "neutral.water_elementals" },
     assets: {
-      // No wiki scan for this spell — see SCANLESS_SPELLS above.
-      cardImage: DECK_BACK_IMAGE,
+      // Original card face built from the Expert Water frame and new elemental art.
+      cardImage: "/assets/spells-summon_water_elemental.webp",
       imageAlt: "Summon Water Elemental card"
     },
     implementationStatus: "implemented",
