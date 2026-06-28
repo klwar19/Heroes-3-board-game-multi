@@ -2264,13 +2264,54 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "silver",
     type: "ground",
-    // No card art converted yet: the board falls back to the named card frame.
-    neutral: { attack: 3, defense: 2, health: 3, initiative: 5, cost: { gold: 12 }, abilities: ["reduce-spell-and-specialty-damage-2"], abilityText: "[unit_passive] Reduce any [damage] this unit takes from spells or Specialty by 2 — to a minimum of 0." },
+    neutral: { attack: 3, defense: 2, health: 3, initiative: 5, cost: { gold: 12 }, abilities: ["reduce-spell-and-specialty-damage-2"], abilityText: "[unit_passive] Reduce [damage] taken by this unit from [spell] or Specialty by 2 — to a minimum of 0.", cardImage: "/assets/units-neutral-silver-steel_golems.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/steel_golems/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Regular Stretch Goals 2024)",
       credit: "Neutral unit. Stats and ability from the fan wiki unit page. Verify against official cards before final release.",
       url: "https://en.homm3bg.wiki/units/steel_golems/"
+    }
+  },
+  "neutral.leprechaun": {
+    id: "neutral.leprechaun",
+    name: "Leprechaun",
+    faction: "neutral",
+    tier: "bronze",
+    type: "ground",
+    neutral: { attack: 2, defense: 0, health: 3, initiative: 5, cost: { gold: 4 }, abilities: ["attack-roll-advantage"], abilityText: "[unit_attack] Roll 2 Attack dice and resolve the higher one.", cardImage: "/assets/units-neutral-bronze-leprechaun.webp" },
+    wikiUrl: "https://en.homm3bg.wiki/units/leprechaun/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Regular Stretch Goals 2024)",
+      credit: "Neutral unit. Stats and ability transcribed from the fan wiki; new card illustration references the Horn of the Abyss PC-game render.",
+      url: "https://en.homm3bg.wiki/units/leprechaun/"
+    }
+  },
+  "neutral.satyrs": {
+    id: "neutral.satyrs",
+    name: "Satyrs",
+    faction: "neutral",
+    tier: "silver",
+    type: "ground",
+    neutral: { attack: 3, defense: 0, health: 5, initiative: 7, cost: { gold: 10 }, abilities: [], abilityText: "[map_effect] Once per turn. Roll an Attack die. On a \"+1\", gain [morale_positive].", cardImage: "/assets/units-neutral-silver-satyrs.webp" },
+    wikiUrl: "https://en.homm3bg.wiki/units/satyrs/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Regular Stretch Goals 2024)",
+      credit: "Neutral unit. Stats and ability transcribed from the fan wiki; new card illustration references the Horn of the Abyss PC-game render.",
+      url: "https://en.homm3bg.wiki/units/satyrs/"
+    }
+  },
+  "neutral.fangarm": {
+    id: "neutral.fangarm",
+    name: "Fangarm",
+    faction: "neutral",
+    tier: "silver",
+    type: "flying",
+    neutral: { attack: 3, defense: 1, health: 5, initiative: 8, cost: { gold: 11 }, abilities: [], abilityText: "[unit_passive] Ignore all [spell] and Specialty effects other than [damage].", cardImage: "/assets/units-neutral-silver-fangarm.webp" },
+    wikiUrl: "https://en.homm3bg.wiki/units/fangarm/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Regular Stretch Goals 2024)",
+      credit: "Neutral unit. Stats and ability transcribed from the fan wiki; new card illustration references the Horn of the Abyss PC-game sprite and portrait.",
+      url: "https://en.homm3bg.wiki/units/fangarm/"
     }
   },
   "neutral.sprites": {
