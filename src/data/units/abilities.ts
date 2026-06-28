@@ -1972,3 +1972,21 @@ export const DISPLAY_ONLY_BANK_ABILITIES: Record<string, string> = {
   // Keep this registry as the explicit home for any FUTURE display-only bank
   // clause: a stub must be a conscious entry here, never undeclared text.
 };
+
+/**
+ * Neutral-deck unit cards (single-sided, faction === "neutral") whose printed
+ * `abilityText` describes an effect the engine does NOT execute. Mirrors the
+ * pattern of DISPLAY_ONLY_BANK_ABILITIES for the neutral-guard domain.
+ * A unit is listed here when abilities: [] but abilityText describes an effect.
+ * Adding new decorative text without an entry here will fail the enforcement
+ * test in placeholder-neutral-card-images.test.ts.
+ */
+export const DISPLAY_ONLY_NEUTRAL_ABILITIES: Record<string, string> = {
+  // Satyrs map-roll morale gain: once per turn, roll an Attack die; on "+1" gain
+  // a morale token. No engine hook for map-phase die-rolls on neutral units yet.
+  "neutral.satyrs": "engine: none — map-phase morale roll not implemented",
+  // Fangarm spell/specialty ward: ignore all spell and specialty effects except
+  // damage. The non-damage immunity pathway (e.g. Blind, Berserk, Slow) is not
+  // wired; only raw damage from spells/specialties already bypasses many effects.
+  "neutral.fangarm": "engine: none — non-damage spell/specialty immunity not implemented",
+};
