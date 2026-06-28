@@ -1564,6 +1564,13 @@ export function setDraftFormat(state: GameState, action: Extract<GameAction, { t
   }
 
   const draft = ensureLobbyDraft(lobby);
+  // No-op when the format is unchanged, so an accidental click on the already-
+  // selected format can never wipe a table's picks mid-draft. To deliberately
+  // restart, switch to another format and back (or use the per-seat reset).
+  if (draft.format === action.format) {
+    return;
+  }
+
   draft.format = action.format;
   draft.bannedHeroDefIds = [];
   draft.banPicksMade = 0;

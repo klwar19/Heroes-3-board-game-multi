@@ -66,6 +66,20 @@ describe("setup format selector", () => {
     const state = createAdventureLobbyState({ seed: "fmt-bad" });
     reject(state, { type: "SET_DRAFT_FORMAT", playerId: "p1", format: "nonsense" as never });
   });
+
+  it("re-selecting the SAME format is a no-op — an accidental click never wipes picks", () => {
+    let state = createAdventureLobbyState({ seed: "fmt-noop" });
+    state = apply(state, { type: "SET_DRAFT_FORMAT", playerId: "p1", format: "draft" });
+    state = apply(state, { type: "CHOOSE_TOWN", playerId: "p1", factionId: "castle" });
+
+    // Clicking "draft" again must NOT clear p1's locked town.
+    state = apply(state, { type: "SET_DRAFT_FORMAT", playerId: "p1", format: "draft" });
+    expect(seatOf(state, "p1")?.factionId).toBe("castle");
+
+    // (Mutation control) switching to a different format DOES restart.
+    state = apply(state, { type: "SET_DRAFT_FORMAT", playerId: "p2", format: "open" });
+    expect(seatOf(state, "p1")?.factionId).toBeNull();
+  });
 });
 
 describe("TYPE 4 — free pick (open)", () => {
