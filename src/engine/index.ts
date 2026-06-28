@@ -110,9 +110,12 @@ export { makeCombatUnitFromArmy } from "./adventure";
 export { createInitialGameState } from "./setup";
 export { freshEntropy, freshSeed } from "./seed";
 export {
+  bannableHeroesForSeat,
   createAdventureGameState,
   createAdventureLobbyState,
   defaultGameSetupOptions,
+  DRAFT_FORMAT_LABELS,
+  getDraftPhase,
   getScenario,
   scenarioStartingUnitLevels,
   TIER_LEVELS,
@@ -120,7 +123,7 @@ export {
   UNIT_LEVELS,
   validateCustomMapPlan
 } from "./adventure-setup";
-export type { AdventurePlayerConfig, AdventureSetupOptions } from "./adventure-setup";
+export type { AdventurePlayerConfig, AdventureSetupOptions, DraftPhaseInfo } from "./adventure-setup";
 export { getTileBorderSegments, hasInternalBorder } from "@/data/map/borders";
 export type { TileBorderSegment } from "@/data/map/borders";
 export { astrologersCardDefinitions, astrologersDeckCardIds } from "@/data/cards/astrologers";
@@ -296,6 +299,7 @@ export type {
   CustomStartingUnit,
   DamageKind,
   DeckState,
+  DraftFormat,
   EffectDefinition,
   EngineResult,
   EffectDurationDefinition,
