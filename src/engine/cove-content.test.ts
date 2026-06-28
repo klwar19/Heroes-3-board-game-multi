@@ -171,8 +171,10 @@ describe("Cove neutral guard units", () => {
         expect(ability.implementationStatus, abilityId).toBe("implemented");
         expect(ability.effect?.type, abilityId).toBeTruthy();
       }
-      // The guard uses the faction Few-side art as its placeholder (no separate art).
-      expect(def.neutral?.cardImage).toBe(coreUnitDefinitions[spec.counterpartOf].few?.cardImage);
+      // The guard now ships its own dedicated Neutral-tier face (composited from
+      // the counterpart's exact creature illustration), NOT the faction Few crop.
+      expect(def.neutral?.cardImage).toMatch(/^\/assets\/units-neutral-(bronze|silver|golden)-[a-z_]+\.webp$/);
+      expect(def.neutral?.cardImage).not.toBe(coreUnitDefinitions[spec.counterpartOf].few?.cardImage);
     }
   });
 
