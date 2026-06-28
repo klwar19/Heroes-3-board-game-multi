@@ -80,12 +80,16 @@ import {
   endTurnAdventure
 } from "./adventure-reducer";
 import {
+  banHero,
   chooseFaction,
+  chooseTown,
   randomAssignSeat,
-  setDraftMode,
+  resetSeatDraft,
+  rollHeroOptions,
+  rollTownOptions,
+  setDraftFormat,
   setGameOptions,
-  startAdventureFromLobby,
-  toggleHeroBan
+  startAdventureFromLobby
 } from "./adventure-setup";
 import {
   assignSeat,
@@ -14376,8 +14380,12 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "CHOOSE_FACTION",
   "SET_GAME_OPTIONS",
   "START_ADVENTURE",
-  "SET_DRAFT_MODE",
-  "TOGGLE_HERO_BAN",
+  "SET_DRAFT_FORMAT",
+  "ROLL_TOWN_OPTIONS",
+  "CHOOSE_TOWN",
+  "ROLL_HERO_OPTIONS",
+  "BAN_HERO",
+  "RESET_SEAT_DRAFT",
   "RANDOM_ASSIGN_SEAT",
   "BUY_WAR_MACHINE",
   "USE_SCHOOL_FETCH_EXPERT",
@@ -14585,11 +14593,23 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
       case "START_ADVENTURE":
         startAdventureFromLobby(nextState, action);
         break;
-      case "SET_DRAFT_MODE":
-        setDraftMode(nextState, action);
+      case "SET_DRAFT_FORMAT":
+        setDraftFormat(nextState, action);
         break;
-      case "TOGGLE_HERO_BAN":
-        toggleHeroBan(nextState, action);
+      case "ROLL_TOWN_OPTIONS":
+        rollTownOptions(nextState, action);
+        break;
+      case "CHOOSE_TOWN":
+        chooseTown(nextState, action);
+        break;
+      case "ROLL_HERO_OPTIONS":
+        rollHeroOptions(nextState, action);
+        break;
+      case "BAN_HERO":
+        banHero(nextState, action);
+        break;
+      case "RESET_SEAT_DRAFT":
+        resetSeatDraft(nextState, action);
         break;
       case "RANDOM_ASSIGN_SEAT":
         randomAssignSeat(nextState, action);

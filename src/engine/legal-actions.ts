@@ -75,6 +75,7 @@ import {
 import { getDemolishAbility, isArrowTowerUnit, parseFortificationTargetId, siegeBlockedPositions } from "./siege";
 import { pvpEscapeWindowOpen } from "./combat-units";
 import { canPlaceTransformOn } from "./unit-transforms";
+import { bannableHeroesForSeat, DRAFT_FORMAT_LABELS, getDraftPhase } from "./adventure-setup";
 import { SHARED_DECK_IDS } from "./decks";
 import {
   abilityExpertIsCrownFree,
@@ -6481,71 +6482,115 @@ function getSetupLobbyLegalActions(state: GameState, playerId: PlayerId): LegalA
     return actions;
   }
 
+  const draft = lobby.draft ?? { format: "open" as const, bannedHeroDefIds: [] };
+  const phase = getDraftPhase(lobby);
+  const banned = new Set(draft.bannedHeroDefIds ?? []);
   const takenFactions = new Set(
-    lobby.seats.filter((candidate) => candidate.playerId !== playerId).map((candidate) => candidate.factionId)
+    lobby.seats
+      .filter((candidate) => candidate.playerId !== playerId)
+      .map((candidate) => candidate.factionId)
+      .filter((id): id is FactionId => Boolean(id))
   );
-  const draft = lobby.draft ?? { mode: "open" as const, bannedHeroDefIds: [] };
-  const banned = new Set(draft.mode === "ban" ? draft.bannedHeroDefIds : []);
+  const untakenFactions = (Object.values(coreFactionDefinitions) as { id: FactionId }[])
+    .map((faction) => faction.id)
+    .filter((id) => !takenFactions.has(id));
 
-  for (const faction of Object.values(coreFactionDefinitions)) {
-    if (takenFactions.has(faction.id)) {
-      continue;
-    }
-
-    for (const heroDefId of faction.heroes) {
-      if (banned.has(heroDefId)) {
-        continue;
-      }
-      if (seat.factionId === faction.id && seat.heroDefId === heroDefId) {
-        continue;
-      }
-      actions.push({
-        label: `Play ${faction.name} — ${heroDefId}`,
-        action: { type: "CHOOSE_FACTION", playerId, factionId: faction.id, heroDefId }
-      });
-    }
+  // The setup format selector — any seated player may (re)start any format.
+  for (const format of ["open", "draft", "random", "random-choice"] as const) {
+    actions.push({
+      label: `Setup format: ${DRAFT_FORMAT_LABELS[format]}`,
+      action: { type: "SET_DRAFT_FORMAT", playerId, format }
+    });
   }
 
-  // Draft tab: switch the mode, ban/un-ban heroes (ban mode only), and roll a
-  // random town/hero. Mirrors the engine handlers' own validation.
-  actions.push({
-    label: draft.mode === "ban" ? "Return to free hero picking" : "Open ban-pick drafting",
-    action: { type: "SET_DRAFT_MODE", playerId, mode: draft.mode === "ban" ? "open" : "ban" }
-  });
-
-  if (draft.mode === "ban") {
-    for (const faction of Object.values(coreFactionDefinitions)) {
+  if (phase.format === "open") {
+    // TYPE 4 — free pick: any untaken town + any of its heroes.
+    for (const factionId of untakenFactions) {
+      const faction = coreFactionDefinitions[factionId];
       for (const heroDefId of faction.heroes) {
-        const isBanned = banned.has(heroDefId);
-        if (!isBanned && lobby.seats.some((candidate) => candidate.heroDefId === heroDefId)) {
+        if (seat.factionId === factionId && seat.heroDefId === heroDefId) {
           continue;
         }
         actions.push({
-          label: `${isBanned ? "Un-ban" : "Ban"} ${heroDefId}`,
-          action: { type: "TOGGLE_HERO_BAN", playerId, heroDefId }
+          label: `Play ${faction.name} — ${heroDefId}`,
+          action: { type: "CHOOSE_FACTION", playerId, factionId, heroDefId }
+        });
+      }
+    }
+  } else if (phase.format === "random") {
+    // TYPE 2 — full random town + hero.
+    if (untakenFactions.length > 0) {
+      actions.push({
+        label: "Roll a random town and hero",
+        action: { type: "RANDOM_ASSIGN_SEAT", playerId, scope: "faction" }
+      });
+    }
+    if (seat.factionId) {
+      actions.push({
+        label: "Roll a random hero",
+        action: { type: "RANDOM_ASSIGN_SEAT", playerId, scope: "hero" }
+      });
+    }
+  } else if (phase.format === "draft") {
+    // TYPE 1 — town two-choice, then ban phase, then pick.
+    if (!seat.factionId) {
+      if (untakenFactions.length > 0) {
+        actions.push({ label: "Roll two town options", action: { type: "ROLL_TOWN_OPTIONS", playerId } });
+      }
+      const rolled = draft.seatRolls?.[playerId]?.townOptions ?? [];
+      const townChoices = (rolled.length > 0 ? rolled : untakenFactions).filter((id) => !takenFactions.has(id));
+      for (const factionId of townChoices) {
+        actions.push({
+          label: `Lock the ${coreFactionDefinitions[factionId]?.name ?? factionId} town`,
+          action: { type: "CHOOSE_TOWN", playerId, factionId }
+        });
+      }
+    } else if (phase.banPhaseActive && phase.currentBannerPlayerId === playerId) {
+      for (const heroDefId of bannableHeroesForSeat(lobby, playerId)) {
+        actions.push({ label: `Ban ${heroDefId}`, action: { type: "BAN_HERO", playerId, heroDefId } });
+      }
+    } else if (phase.pickPhaseOpen) {
+      const faction = coreFactionDefinitions[seat.factionId];
+      for (const heroDefId of faction?.heroes ?? []) {
+        if (banned.has(heroDefId) || seat.heroDefId === heroDefId) {
+          continue;
+        }
+        actions.push({
+          label: `Play ${faction.name} — ${heroDefId}`,
+          action: { type: "CHOOSE_FACTION", playerId, factionId: seat.factionId, heroDefId }
+        });
+      }
+    }
+  } else if (phase.format === "random-choice") {
+    // TYPE 3 — town two-choice, then hero two-choice.
+    if (!seat.factionId) {
+      if (untakenFactions.length > 0) {
+        actions.push({ label: "Roll two town options", action: { type: "ROLL_TOWN_OPTIONS", playerId } });
+      }
+      for (const factionId of (draft.seatRolls?.[playerId]?.townOptions ?? []).filter((id) => !takenFactions.has(id))) {
+        actions.push({
+          label: `Lock the ${coreFactionDefinitions[factionId]?.name ?? factionId} town`,
+          action: { type: "CHOOSE_TOWN", playerId, factionId }
+        });
+      }
+    } else if (!seat.heroDefId) {
+      actions.push({ label: "Roll two hero options", action: { type: "ROLL_HERO_OPTIONS", playerId } });
+      const faction = coreFactionDefinitions[seat.factionId];
+      for (const heroDefId of draft.seatRolls?.[playerId]?.heroOptions ?? []) {
+        actions.push({
+          label: `Play ${faction?.name ?? seat.factionId} — ${heroDefId}`,
+          action: { type: "CHOOSE_FACTION", playerId, factionId: seat.factionId, heroDefId }
         });
       }
     }
   }
 
-  const selectableHeroFor = (factionId: FactionId): boolean => {
-    const faction = coreFactionDefinitions[factionId];
-    return Boolean(faction && faction.heroes.some((heroDefId) => !banned.has(heroDefId)));
-  };
-  const hasRollableFaction = (Object.values(coreFactionDefinitions) as { id: FactionId }[]).some(
-    (faction) => !takenFactions.has(faction.id) && selectableHeroFor(faction.id)
-  );
-  if (hasRollableFaction) {
-    actions.push({
-      label: "Roll a random town and hero",
-      action: { type: "RANDOM_ASSIGN_SEAT", playerId, scope: "faction" }
-    });
-  }
-  if (seat.factionId && selectableHeroFor(seat.factionId)) {
-    actions.push({
-      label: "Roll a random hero",
-      action: { type: "RANDOM_ASSIGN_SEAT", playerId, scope: "hero" }
-    });
+  // Per-seat reset, when there is something to clear and the format allows it
+  // (blocked in "draft" once the ban phase has begun).
+  const hasPendingRoll = Boolean(draft.seatRolls?.[playerId]);
+  const resetBlocked = phase.format === "draft" && phase.townLockedAll;
+  if ((seat.factionId || seat.heroDefId || hasPendingRoll) && !resetBlocked) {
+    actions.push({ label: "Reset this seat's pick", action: { type: "RESET_SEAT_DRAFT", playerId } });
   }
 
   if (lobby.seats.every((candidate) => candidate.factionId && candidate.heroDefId)) {

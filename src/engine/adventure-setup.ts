@@ -36,7 +36,7 @@ import {
 } from "./adventure";
 import { pumpAdventureQueues } from "./adventure-reducer";
 import { drawCardsForPlayer, shuffleCards } from "./decks";
-import { createSeededRandom } from "./random";
+import { createSeededRandom, type SeededRandom } from "./random";
 import { freshSeed } from "./seed";
 import { appendEvent, eventSeedNumber } from "./events";
 import { VICTORY_MODE_LABELS } from "./ruleset";
@@ -46,6 +46,7 @@ import type {
   CustomMapTilePlan,
   CustomStartingUnit,
   DeckState,
+  DraftFormat,
   FactionId,
   GameAction,
   GameDifficulty,
@@ -1068,7 +1069,7 @@ export function createAdventureLobbyState(options: AdventureSetupOptions = {}): 
       scenarioId: scenario.id,
       options: setupOptions,
       seats,
-      draft: { mode: "open", bannedHeroDefIds: [] }
+      draft: { format: "open", bannedHeroDefIds: [], banPicksMade: 0, seatRolls: {} }
     },
     towns: {},
     heroes: {},
@@ -1318,6 +1319,16 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
   });
 }
 
+/**
+ * Commit a seat's faction + main hero — the final "pick a hero" step of every
+ * format. The per-format gate enforces the flow:
+ *  - "open" (TYPE 4): any untaken town + any of its heroes.
+ *  - "draft" (TYPE 1): only in the pick phase, only the seat's own locked town,
+ *    and never a banned hero.
+ *  - "random-choice" (TYPE 3): only the seat's locked town and only a hero from
+ *    its two rolled options.
+ *  - "random" (TYPE 2): manual picks are refused — roll the dice instead.
+ */
 export function chooseFaction(state: GameState, action: Extract<GameAction, { type: "CHOOSE_FACTION" }>): void {
   const lobby = state.setupLobby;
   if (!lobby || state.phase !== "setup") {
@@ -1345,12 +1356,41 @@ export function chooseFaction(state: GameState, action: Extract<GameAction, { ty
     throw new Error("Another player already picked that faction.");
   }
 
-  if (lobbyDraft(lobby).mode === "ban" && lobbyDraft(lobby).bannedHeroDefIds.includes(action.heroDefId)) {
-    throw new Error("That hero is banned out of this draft.");
+  const draft = lobbyDraft(lobby);
+  if (draft.format === "random") {
+    throw new Error("This seat is on Full random — roll a random town and hero instead.");
+  }
+  if (draft.format === "draft") {
+    const phase = getDraftPhase(lobby);
+    if (!phase.pickPhaseOpen) {
+      throw new Error(
+        phase.townLockedAll
+          ? "Finish the ban phase before picking heroes."
+          : "Every seat must lock a town before heroes can be picked."
+      );
+    }
+    if (seat.factionId !== action.factionId) {
+      throw new Error("Pick a hero from your own locked town.");
+    }
+    if (draft.bannedHeroDefIds.includes(action.heroDefId)) {
+      throw new Error("That hero is banned out of this draft.");
+    }
+  } else if (draft.format === "random-choice") {
+    if (seat.factionId !== action.factionId) {
+      throw new Error("Pick a hero from your own locked town.");
+    }
+    const options = draft.seatRolls?.[action.playerId]?.heroOptions ?? [];
+    if (options.length === 0) {
+      throw new Error("Roll your two hero options first.");
+    }
+    if (!options.includes(action.heroDefId)) {
+      throw new Error("Choose one of your two rolled heroes.");
+    }
   }
 
   seat.factionId = action.factionId;
   seat.heroDefId = action.heroDefId;
+  clearSeatRolls(draft, action.playerId);
   const hero = coreHeroDefinitions[action.heroDefId];
   const player = state.players[action.playerId];
   if (player && hero) {
@@ -1365,57 +1405,339 @@ export function chooseFaction(state: GameState, action: Extract<GameAction, { ty
   });
 }
 
+/** Human labels for the four setup formats (shared by the engine log and UI). */
+export const DRAFT_FORMAT_LABELS: Record<DraftFormat, string> = {
+  open: "Free pick",
+  draft: "Draft (ban-pick)",
+  random: "Full random",
+  "random-choice": "Random with choice"
+};
+
+const VALID_DRAFT_FORMATS: DraftFormat[] = ["open", "draft", "random", "random-choice"];
+
 /**
- * Normalised draft block for a lobby. Lobby snapshots saved before the Draft tab
- * shipped have no `draft`, so callers that only read default to open/no-bans.
+ * Normalised draft block for a lobby. Snapshots saved before this feature have no
+ * `draft` (or carry the old `{ mode }` shape), so reads default to free pick.
  */
 function lobbyDraft(lobby: GameSetupState): GameSetupDraft {
-  return lobby.draft ?? { mode: "open", bannedHeroDefIds: [] };
+  const draft = lobby.draft;
+  return {
+    format: draft?.format ?? "open",
+    bannedHeroDefIds: draft?.bannedHeroDefIds ?? [],
+    banPicksMade: draft?.banPicksMade ?? 0,
+    seatRolls: draft?.seatRolls ?? {}
+  };
 }
 
-/** Ensures the lobby has a mutable draft block and returns it. */
-function ensureLobbyDraft(lobby: GameSetupState): GameSetupDraft {
-  if (!lobby.draft) {
-    lobby.draft = { mode: "open", bannedHeroDefIds: [] };
+/** Ensures the lobby has a fully-populated, mutable draft block and returns it. */
+function ensureLobbyDraft(lobby: GameSetupState): Required<GameSetupDraft> {
+  const draft = (lobby.draft ??= { format: "open", bannedHeroDefIds: [], banPicksMade: 0, seatRolls: {} });
+  draft.format ??= "open";
+  draft.bannedHeroDefIds ??= [];
+  draft.banPicksMade ??= 0;
+  draft.seatRolls ??= {};
+  return draft as Required<GameSetupDraft>;
+}
+
+/** Clears a seat's pending two-way town/hero roll options. */
+function clearSeatRolls(draft: GameSetupDraft, playerId: PlayerId): void {
+  if (draft.seatRolls?.[playerId]) {
+    delete draft.seatRolls[playerId];
   }
-  return lobby.draft;
 }
 
-/** Map-setup lobby (Draft tab): switch between free pick and ban-pick. */
-export function setDraftMode(state: GameState, action: Extract<GameAction, { type: "SET_DRAFT_MODE" }>): void {
+/** Picks up to `count` distinct items from `items` using the seeded RNG. */
+function pickDistinct<T>(random: SeededRandom, items: readonly T[], count: number): T[] {
+  const pool = [...items];
+  const picked: T[] = [];
+  const take = Math.min(count, pool.length);
+  for (let index = 0; index < take; index += 1) {
+    picked.push(pool.splice(random.nextInt(0, pool.length - 1), 1)[0]);
+  }
+  return picked;
+}
+
+export type DraftPhaseInfo = {
+  format: DraftFormat;
+  seatCount: number;
+  /** Every seat has locked a town (the gate into the "draft" ban phase). */
+  townLockedAll: boolean;
+  /** Bans each seat gets in the "draft" format: 2 in a 2-player game, else 1. */
+  banBudgetPerSeat: number;
+  /** Total bans the "draft" phase runs (`banBudgetPerSeat * seatCount`). */
+  totalBans: number;
+  banPicksMade: number;
+  /** "draft": all towns locked and bans still remaining. */
+  banPhaseActive: boolean;
+  /** "draft": every ban committed — heroes may now be picked. */
+  pickPhaseOpen: boolean;
+  /** Whose ban turn it is right now (round-robin by seat order), else null. */
+  currentBannerPlayerId: PlayerId | null;
+};
+
+/**
+ * Single source of truth for where a "draft"-format lobby is in its flow, reused
+ * by the engine handlers, the legal-action list and the setup UI so they never
+ * disagree. Town locking is per-seat and parallel; once ALL towns are locked the
+ * ban phase opens and goes around the table in seat order (each seat bans
+ * `banBudgetPerSeat` heroes); once every ban is in, the pick phase opens.
+ */
+export function getDraftPhase(lobby: GameSetupState): DraftPhaseInfo {
+  const draft = lobbyDraft(lobby);
+  const seatOrder = lobby.seats.map((seat) => seat.playerId);
+  const seatCount = seatOrder.length;
+  const townLockedAll = seatCount > 0 && lobby.seats.every((seat) => Boolean(seat.factionId));
+  const banBudgetPerSeat = draft.format === "draft" ? (seatCount === 2 ? 2 : 1) : 0;
+  const totalBans = banBudgetPerSeat * seatCount;
+  const banPicksMade = draft.banPicksMade ?? 0;
+  const banPhaseActive = draft.format === "draft" && townLockedAll && banPicksMade < totalBans;
+  const pickPhaseOpen = draft.format === "draft" && townLockedAll && banPicksMade >= totalBans;
+  const currentBannerPlayerId =
+    banPhaseActive && seatCount > 0 ? (seatOrder[banPicksMade % seatCount] ?? null) : null;
+  return {
+    format: draft.format,
+    seatCount,
+    townLockedAll,
+    banBudgetPerSeat,
+    totalBans,
+    banPicksMade,
+    banPhaseActive,
+    pickPhaseOpen,
+    currentBannerPlayerId
+  };
+}
+
+/**
+ * The heroes `playerId` may ban in the "draft" ban phase: every hero belonging
+ * to ANOTHER seat's locked town, minus those already banned. A player can never
+ * ban their own town's heroes (you weaken opponents, not yourself).
+ */
+export function bannableHeroesForSeat(lobby: GameSetupState, playerId: PlayerId): string[] {
+  const draft = lobbyDraft(lobby);
+  const banned = new Set(draft.bannedHeroDefIds);
+  const heroes: string[] = [];
+  for (const seat of lobby.seats) {
+    if (seat.playerId === playerId || !seat.factionId) {
+      continue;
+    }
+    const faction = coreFactionDefinitions[seat.factionId];
+    if (!faction) {
+      continue;
+    }
+    for (const heroDefId of faction.heroes) {
+      if (!banned.has(heroDefId)) {
+        heroes.push(heroDefId);
+      }
+    }
+  }
+  return heroes;
+}
+
+function factionName(factionId: FactionId): string {
+  return coreFactionDefinitions[factionId]?.name ?? factionId;
+}
+
+function heroName(heroDefId: string): string {
+  return coreHeroDefinitions[heroDefId]?.name ?? heroDefId;
+}
+
+function seatedPlayerName(state: GameState, playerId: PlayerId): string {
+  return state.players[playerId]?.name ?? playerId;
+}
+
+/**
+ * Map-setup lobby (Draft tab): choose the setup format. Always restarts the
+ * draft — it clears every seat's town/hero pick, the bans and the pending rolls
+ * — so the chosen flow begins from a clean slate (and re-selecting the current
+ * format is a deliberate "restart this draft").
+ */
+export function setDraftFormat(state: GameState, action: Extract<GameAction, { type: "SET_DRAFT_FORMAT" }>): void {
   const lobby = state.setupLobby;
   if (!lobby || state.phase !== "setup") {
-    throw new Error("The draft mode can only change during map setup.");
+    throw new Error("The setup format can only change during map setup.");
   }
   if (!lobby.seats.some((seat) => seat.playerId === action.playerId)) {
-    throw new Error("Only seated players may change the draft mode.");
+    throw new Error("Only seated players may change the setup format.");
   }
-  if (action.mode !== "open" && action.mode !== "ban") {
-    throw new Error("Unknown draft mode.");
+  if (!VALID_DRAFT_FORMATS.includes(action.format)) {
+    throw new Error("Unknown setup format.");
   }
 
   const draft = ensureLobbyDraft(lobby);
-  if (draft.mode === action.mode) {
-    return;
-  }
-  draft.mode = action.mode;
-  // Leaving ban-pick clears every ban so the next "open" game starts clean and a
-  // stale ban can never silently steer a later random roll.
-  if (action.mode === "open") {
-    draft.bannedHeroDefIds = [];
+  draft.format = action.format;
+  draft.bannedHeroDefIds = [];
+  draft.banPicksMade = 0;
+  draft.seatRolls = {};
+  // Restart every seat: a different format means a different flow, so stale picks
+  // would be illegal under the new rules.
+  for (const seat of lobby.seats) {
+    seat.factionId = null;
+    seat.heroDefId = null;
+    const player = state.players[seat.playerId];
+    if (player) {
+      player.name = seat.name;
+    }
   }
 
   appendEvent(state, {
     type: "GAME_OPTIONS_CHANGED",
     playerId: action.playerId,
-    message: `${state.players[action.playerId]?.name ?? action.playerId} ${
-      action.mode === "ban" ? "opened ban-pick drafting" : "returned to free hero picking"
-    }.`
+    message: `${seatedPlayerName(state, action.playerId)} set the setup format to ${DRAFT_FORMAT_LABELS[action.format]}.`
   });
 }
 
-/** Map-setup lobby (Draft tab): ban or un-ban one hero from the draft pool. */
-export function toggleHeroBan(state: GameState, action: Extract<GameAction, { type: "TOGGLE_HERO_BAN" }>): void {
+/**
+ * Map-setup lobby: roll two random untaken towns for this seat to choose between
+ * (the "draft" / "random-choice" town step). A re-roll before locking just
+ * overwrites the pending pair.
+ */
+export function rollTownOptions(state: GameState, action: Extract<GameAction, { type: "ROLL_TOWN_OPTIONS" }>): void {
+  const lobby = state.setupLobby;
+  if (!lobby || state.phase !== "setup") {
+    throw new Error("Towns can only be rolled during map setup.");
+  }
+  const seat = lobby.seats.find((candidate) => candidate.playerId === action.playerId);
+  if (!seat) {
+    throw new Error("That seat does not exist in this scenario.");
+  }
+  const draft = ensureLobbyDraft(lobby);
+  if (draft.format !== "draft" && draft.format !== "random-choice") {
+    throw new Error("Town options are only rolled in the Draft and Random-with-choice formats.");
+  }
+  if (seat.factionId) {
+    throw new Error("Reset this seat before rolling a new town.");
+  }
+
+  const taken = new Set(
+    lobby.seats
+      .filter((candidate) => candidate.playerId !== action.playerId)
+      .map((candidate) => candidate.factionId)
+      .filter((id): id is FactionId => Boolean(id))
+  );
+  const candidates = (Object.values(coreFactionDefinitions) as { id: FactionId }[])
+    .map((faction) => faction.id)
+    .filter((id) => !taken.has(id));
+  if (candidates.length === 0) {
+    throw new Error("No town is available to roll.");
+  }
+
+  const random = createSeededRandom(`${state.seed}#town-options#${action.playerId}#${eventSeedNumber(state)}`);
+  const options = pickDistinct(random, candidates, 2);
+  draft.seatRolls[action.playerId] = { townOptions: options };
+
+  appendEvent(state, {
+    type: "GAME_OPTIONS_CHANGED",
+    playerId: action.playerId,
+    message: `${seatedPlayerName(state, action.playerId)} rolled town options: ${options.map(factionName).join(" or ")}.`
+  });
+}
+
+/**
+ * Map-setup lobby: lock this seat to a town (faction) without a hero yet. In
+ * "random-choice" the town must be one of the two rolled options; in "draft" the
+ * player may either pick a rolled option or — when no roll is pending — select
+ * any untaken town directly.
+ */
+export function chooseTown(state: GameState, action: Extract<GameAction, { type: "CHOOSE_TOWN" }>): void {
+  const lobby = state.setupLobby;
+  if (!lobby || state.phase !== "setup") {
+    throw new Error("Towns can only be chosen during map setup.");
+  }
+  const seat = lobby.seats.find((candidate) => candidate.playerId === action.playerId);
+  if (!seat) {
+    throw new Error("That seat does not exist in this scenario.");
+  }
+  const draft = ensureLobbyDraft(lobby);
+  if (draft.format !== "draft" && draft.format !== "random-choice") {
+    throw new Error("Towns are locked separately only in the Draft and Random-with-choice formats.");
+  }
+  if (seat.factionId) {
+    throw new Error("This seat already locked a town — reset it first.");
+  }
+  const faction = coreFactionDefinitions[action.factionId];
+  if (!faction) {
+    throw new Error("Unknown faction.");
+  }
+  const taken = lobby.seats.some(
+    (candidate) => candidate.playerId !== action.playerId && candidate.factionId === action.factionId
+  );
+  if (taken) {
+    throw new Error("Another player already picked that town.");
+  }
+
+  const options = draft.seatRolls?.[action.playerId]?.townOptions ?? [];
+  if (draft.format === "random-choice") {
+    if (options.length === 0) {
+      throw new Error("Roll your two town options first.");
+    }
+    if (!options.includes(action.factionId)) {
+      throw new Error("Choose one of your two rolled towns.");
+    }
+  } else if (options.length > 0 && !options.includes(action.factionId)) {
+    throw new Error("Choose one of your two rolled towns, or reset to select a town freely.");
+  }
+
+  seat.factionId = action.factionId;
+  seat.heroDefId = null;
+  clearSeatRolls(draft, action.playerId);
+  const player = state.players[action.playerId];
+  if (player) {
+    player.name = faction.name;
+  }
+
+  appendEvent(state, {
+    type: "GAME_OPTIONS_CHANGED",
+    playerId: action.playerId,
+    message: `${seatedPlayerName(state, action.playerId)} locked the ${faction.name} town.`
+  });
+}
+
+/**
+ * Map-setup lobby ("random-choice"): roll two random heroes of this seat's
+ * already-locked town to choose between.
+ */
+export function rollHeroOptions(state: GameState, action: Extract<GameAction, { type: "ROLL_HERO_OPTIONS" }>): void {
+  const lobby = state.setupLobby;
+  if (!lobby || state.phase !== "setup") {
+    throw new Error("Heroes can only be rolled during map setup.");
+  }
+  const seat = lobby.seats.find((candidate) => candidate.playerId === action.playerId);
+  if (!seat) {
+    throw new Error("That seat does not exist in this scenario.");
+  }
+  const draft = ensureLobbyDraft(lobby);
+  if (draft.format !== "random-choice") {
+    throw new Error("Hero options are only rolled in the Random-with-choice format.");
+  }
+  if (!seat.factionId) {
+    throw new Error("Lock a town first, then roll your hero options.");
+  }
+  if (seat.heroDefId) {
+    throw new Error("Reset this seat before rolling a new hero.");
+  }
+  const faction = coreFactionDefinitions[seat.factionId];
+  const pool = faction?.heroes ?? [];
+  if (pool.length === 0) {
+    throw new Error("No hero is available to roll for that town.");
+  }
+
+  const random = createSeededRandom(`${state.seed}#hero-options#${action.playerId}#${eventSeedNumber(state)}`);
+  const options = pickDistinct(random, pool, 2);
+  draft.seatRolls[action.playerId] = { ...draft.seatRolls[action.playerId], heroOptions: options };
+
+  appendEvent(state, {
+    type: "GAME_OPTIONS_CHANGED",
+    playerId: action.playerId,
+    message: `${seatedPlayerName(state, action.playerId)} rolled hero options: ${options.map(heroName).join(" or ")}.`
+  });
+}
+
+/**
+ * Map-setup lobby ("draft" ban phase): ban one hero of another seat's locked
+ * town. Bans go around the table in seat order; only the seat whose turn it is
+ * may ban, and only an opponent's not-yet-banned hero.
+ */
+export function banHero(state: GameState, action: Extract<GameAction, { type: "BAN_HERO" }>): void {
   const lobby = state.setupLobby;
   if (!lobby || state.phase !== "setup") {
     throw new Error("Heroes can only be banned during map setup.");
@@ -1423,39 +1745,78 @@ export function toggleHeroBan(state: GameState, action: Extract<GameAction, { ty
   if (!lobby.seats.some((seat) => seat.playerId === action.playerId)) {
     throw new Error("Only seated players may ban heroes.");
   }
-
   const draft = ensureLobbyDraft(lobby);
-  if (draft.mode !== "ban") {
-    throw new Error("Turn on ban-pick before banning heroes.");
+  if (draft.format !== "draft") {
+    throw new Error("Heroes are only banned in the Draft format.");
   }
-
+  const phase = getDraftPhase(lobby);
+  if (!phase.banPhaseActive) {
+    throw new Error(
+      phase.townLockedAll ? "The ban phase is over." : "Every seat must lock a town before banning."
+    );
+  }
+  if (phase.currentBannerPlayerId !== action.playerId) {
+    throw new Error("It is not your turn to ban.");
+  }
   const hero = coreHeroDefinitions[action.heroDefId];
   if (!hero) {
     throw new Error("Unknown hero.");
   }
-
-  const alreadyBanned = draft.bannedHeroDefIds.includes(action.heroDefId);
-  if (!alreadyBanned && lobby.seats.some((seat) => seat.heroDefId === action.heroDefId)) {
-    throw new Error("That hero is already chosen by a seat and cannot be banned.");
+  if (draft.bannedHeroDefIds.includes(action.heroDefId)) {
+    throw new Error("That hero is already banned.");
+  }
+  if (!bannableHeroesForSeat(lobby, action.playerId).includes(action.heroDefId)) {
+    throw new Error("You can only ban a hero from another player's town.");
   }
 
-  draft.bannedHeroDefIds = alreadyBanned
-    ? draft.bannedHeroDefIds.filter((id) => id !== action.heroDefId)
-    : [...draft.bannedHeroDefIds, action.heroDefId];
+  draft.bannedHeroDefIds = [...draft.bannedHeroDefIds, action.heroDefId];
+  draft.banPicksMade = (draft.banPicksMade ?? 0) + 1;
 
   appendEvent(state, {
     type: "GAME_OPTIONS_CHANGED",
     playerId: action.playerId,
-    message: `${state.players[action.playerId]?.name ?? action.playerId} ${
-      alreadyBanned ? "un-bans" : "bans"
-    } ${hero.name}.`
+    message: `${seatedPlayerName(state, action.playerId)} bans ${hero.name}.`
   });
 }
 
 /**
- * Map-setup lobby (Draft tab): randomly assign this seat a town and/or hero. The
- * pool excludes factions another seat already holds and heroes banned out of the
- * draft, so a random roll always lands on a legal pick.
+ * Map-setup lobby: clear this seat's town/hero pick and any pending rolls. In the
+ * "draft" format this is blocked once every town is locked (the ban phase has
+ * started) — an undone town would corrupt the bans, so restart via the format.
+ */
+export function resetSeatDraft(state: GameState, action: Extract<GameAction, { type: "RESET_SEAT_DRAFT" }>): void {
+  const lobby = state.setupLobby;
+  if (!lobby || state.phase !== "setup") {
+    throw new Error("Seats can only be reset during map setup.");
+  }
+  const seat = lobby.seats.find((candidate) => candidate.playerId === action.playerId);
+  if (!seat) {
+    throw new Error("That seat does not exist in this scenario.");
+  }
+  const draft = ensureLobbyDraft(lobby);
+  if (draft.format === "draft" && getDraftPhase(lobby).townLockedAll) {
+    throw new Error("The ban phase has started — change the setup format to restart the draft.");
+  }
+
+  seat.factionId = null;
+  seat.heroDefId = null;
+  clearSeatRolls(draft, action.playerId);
+  const player = state.players[action.playerId];
+  if (player) {
+    player.name = seat.name;
+  }
+
+  appendEvent(state, {
+    type: "GAME_OPTIONS_CHANGED",
+    playerId: action.playerId,
+    message: `${seatedPlayerName(state, action.playerId)} reset their pick.`
+  });
+}
+
+/**
+ * Map-setup lobby ("random" format): randomly assign this seat a town and/or
+ * hero. The pool excludes factions another seat already holds, so a random roll
+ * always lands on a legal pick.
  */
 export function randomAssignSeat(state: GameState, action: Extract<GameAction, { type: "RANDOM_ASSIGN_SEAT" }>): void {
   const lobby = state.setupLobby;
@@ -1472,7 +1833,9 @@ export function randomAssignSeat(state: GameState, action: Extract<GameAction, {
   }
 
   const draft = lobbyDraft(lobby);
-  const bans = new Set(draft.mode === "ban" ? draft.bannedHeroDefIds : []);
+  if (draft.format !== "random") {
+    throw new Error("Full random rolls are only for the Full random format.");
+  }
   const takenFactions = new Set(
     lobby.seats
       .filter((candidate) => candidate.playerId !== action.playerId)
@@ -1482,7 +1845,7 @@ export function randomAssignSeat(state: GameState, action: Extract<GameAction, {
 
   const selectableHeroes = (factionId: FactionId): string[] => {
     const faction = coreFactionDefinitions[factionId];
-    return faction ? faction.heroes.filter((heroDefId) => !bans.has(heroDefId)) : [];
+    return faction ? [...faction.heroes] : [];
   };
 
   // Seed with the event counter so two consecutive rolls differ and every client

@@ -3027,33 +3027,69 @@ export type GameAction =
     }
   | {
       /**
-       * Map-setup lobby (Draft tab): switch the draft mode. "ban" enables the
-       * ban-pick pool; "open" clears every ban and returns to free picking. Any
-       * seated player may toggle it.
+       * Map-setup lobby (Draft tab): choose the setup format (one of the four
+       * "Draft & random" types). Switching the format resets every seat's pick
+       * and the whole draft state so the new flow starts clean. Any seated player
+       * may set it.
        */
-      type: "SET_DRAFT_MODE";
+      type: "SET_DRAFT_FORMAT";
       playerId: PlayerId;
-      mode: "open" | "ban";
+      format: DraftFormat;
     }
   | {
       /**
-       * Map-setup lobby (Draft tab): toggle a hero in or out of the ban list.
-       * Only valid while the draft mode is "ban"; a banned hero cannot be chosen
-       * by any seat, by hand or at random. A hero already taken by a seat cannot
-       * be banned.
+       * Map-setup lobby: roll two random untaken town options for this seat to
+       * choose between ("draft" / "random-choice" formats). Seeded by the event
+       * counter, so a re-roll differs and every client lands on the same pair.
        */
-      type: "TOGGLE_HERO_BAN";
+      type: "ROLL_TOWN_OPTIONS";
+      playerId: PlayerId;
+    }
+  | {
+      /**
+       * Map-setup lobby: lock this seat to a town (faction) without a hero yet
+       * ("draft" / "random-choice"). In "random-choice" the town must be one of
+       * the seat's two rolled options; in "draft" you may instead select any
+       * untaken town directly when no roll is pending.
+       */
+      type: "CHOOSE_TOWN";
+      playerId: PlayerId;
+      factionId: FactionId;
+    }
+  | {
+      /**
+       * Map-setup lobby: roll two random hero options of this seat's already-
+       * locked town ("random-choice"). Seeded by the event counter.
+       */
+      type: "ROLL_HERO_OPTIONS";
+      playerId: PlayerId;
+    }
+  | {
+      /**
+       * Map-setup lobby ("draft" ban phase): ban one hero belonging to ANOTHER
+       * seat's locked town. Bans go around the table in seat order — only the
+       * seat whose ban turn it is may act, and a banned hero can never be picked.
+       */
+      type: "BAN_HERO";
       playerId: PlayerId;
       heroDefId: string;
     }
   | {
       /**
-       * Map-setup lobby (Draft tab): randomly assign this seat a town and hero.
-       * `scope: "faction"` rolls a random untaken faction (with a selectable,
-       * non-banned hero) and a random hero of it; `scope: "hero"` re-rolls only
-       * the hero within the seat's already-chosen faction. The roll uses the
-       * game's seeded RNG (advanced by the event counter) so repeated rolls
-       * differ and every client lands on the same pick.
+       * Map-setup lobby: clear this seat's town/hero pick and any pending rolls
+       * (the per-player reset). Blocked in the "draft" format once every town is
+       * locked (the ban phase has begun) — switch the format to restart instead.
+       */
+      type: "RESET_SEAT_DRAFT";
+      playerId: PlayerId;
+    }
+  | {
+      /**
+       * Map-setup lobby ("random" format): randomly assign this seat a town and
+       * hero. `scope: "faction"` rolls a random untaken faction and a random hero
+       * of it; `scope: "hero"` re-rolls only the hero within the seat's faction.
+       * The roll uses the game's seeded RNG (advanced by the event counter) so
+       * repeated rolls differ and every client lands on the same pick.
        */
       type: "RANDOM_ASSIGN_SEAT";
       playerId: PlayerId;
@@ -6296,16 +6332,40 @@ export type CustomMapTilePlan = {
 };
 
 /**
- * Lobby draft controls (the "Draft & Random" tab). `mode` toggles ban-pick on:
- * while it is "ban", every hero in `bannedHeroDefIds` is removed from the pool —
- * nobody (random or manual) may take it. "open" is the default free-pick mode
- * and carries no bans. Random town/hero assignment works in either mode and
- * always honours the bans.
+ * The four pre-game setup formats (the "Draft & random" selector):
+ *  - "open"          TYPE 4 — free pick: any untaken town + any of its heroes.
+ *  - "draft"         TYPE 1 — pick a town from a rolled pair (or select one
+ *                    directly), then a turn-order ban phase on opponents' heroes,
+ *                    then each seat picks its own (non-banned) hero.
+ *  - "random"        TYPE 2 — town AND hero rolled at random for every seat.
+ *  - "random-choice" TYPE 3 — pick a town from a rolled pair, then pick a hero
+ *                    from a rolled pair of that town's heroes.
+ */
+export type DraftFormat = "open" | "draft" | "random" | "random-choice";
+
+/**
+ * Lobby draft controls (the "Draft & random" tab). `format` selects the flow;
+ * the rest is that flow's live state. In the "draft" format every id in
+ * `bannedHeroDefIds` is removed from the pool — nobody, manual or random, may
+ * take it — and `banPicksMade` tracks the round-robin ban turn. `seatRolls`
+ * holds each seat's pending two-way town/hero choices for the formats that roll.
  */
 export type GameSetupDraft = {
-  mode: "open" | "ban";
-  /** Hero def ids banned out of the pool while `mode === "ban"`. */
+  format: DraftFormat;
+  /** Hero def ids banned out of the pool (the "draft" format). Unpickable by anyone. */
   bannedHeroDefIds: string[];
+  /**
+   * "draft" ban phase progress: how many bans have been committed. Bans go around
+   * the table in seat (turn) order; each seat bans 2 heroes in a 2-player game,
+   * otherwise 1. The phase ends once this reaches `banBudgetPerSeat * seats`.
+   */
+  banPicksMade?: number;
+  /**
+   * Per-seat pending roll choices: the two rolled town options ("draft" /
+   * "random-choice") and the two rolled hero options ("random-choice") the seat
+   * must pick from. Cleared once the seat locks that step.
+   */
+  seatRolls?: Record<PlayerId, { townOptions?: FactionId[]; heroOptions?: string[] }>;
 };
 
 /** Pre-game lobby: players pick factions and heroes before the map builds. */
