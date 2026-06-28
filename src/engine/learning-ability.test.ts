@@ -294,6 +294,32 @@ describe("Learning offer surfaces from real map-object visits", () => {
     }
   });
 
+  // Same regression as the Learning Stone, via the OTHER experience Field. Tree
+  // of Knowledge grants +2 XP through the shared gainExperience path, so it had —
+  // and is fixed by — the same ordering. exp 7 (lvl 4) -> 9 (lvl 5) crosses into an
+  // ability-search level; Learning must still be offered FIRST, not behind the
+  // level-5 Ability Search.
+  it("offers Learning FIRST on a Tree of Knowledge level-up into an ability-search level", () => {
+    let state = readyHeroWithLearning(makeGame(), 7); // exp 7 (lvl 4)
+    state.players.p1.resources.valuables = 5; // afford the 3-valuables cost
+    state.adventure!.fields["h:7:2"].location = "tree_of_knowledge";
+    const heroId = getMainHero(state, "p1")!.id;
+
+    state = apply(state, { type: "MOVE_HERO", playerId: "p1", heroId, to: "h:7:2" });
+    expect(state.adventure?.pendingVisit?.steps[0].type).toBe("PAY_TO");
+    state = apply(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 0 }); // pay, +2 XP
+
+    expect(getMainHero(state, "p1")!.experience).toBe(9); // 7 + 2
+    expect(getMainHero(state, "p1")!.level).toBe(5); // an ability-search level
+    // The Learning offer surfaces — NOT the level-5 Ability Search.
+    expect(state.pendingChoice?.type).toBe("OPTION_CHOICE");
+    if (state.pendingChoice?.type === "OPTION_CHOICE") {
+      expect(state.pendingChoice.context).toBe("learning-level-up");
+    }
+    // The level-5 Ability Search is queued behind the offer (not lost).
+    expect(state.adventure!.rewardQueue.some((reward) => reward.kind === "shared-deck-search")).toBe(true);
+  });
+
   it("does NOT offer Learning at a Tree of Knowledge when the player declines to pay", () => {
     let state = readyHeroWithLearning(makeGame(), 5);
     state.players.p1.resources.valuables = 5;
