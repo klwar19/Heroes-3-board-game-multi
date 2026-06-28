@@ -722,9 +722,13 @@ function haltAfterSeaStep(state: GameState, hero: HeroState, from: MapSpaceId, t
  * Only the surviving hero that remains standing on the (sea) combat field is
  * passed in — a defeated/retreating hero is relocated with its movement already
  * spent (`moveDefeatedHeroHome`), so it is never reached here.
+ *
+ * Water Walk (the Spell or expert Pathfinding) removes this halt exactly as it
+ * removes the wading halt: the sea is normal terrain, so the hero keeps sailing
+ * after the fight with any movement points it has left.
  */
 function haltHeroAfterSeaCombat(state: GameState, hero: HeroState | undefined, fieldId: MapSpaceId): void {
-  if (hero && isSeaField(state, fieldId)) {
+  if (hero && isSeaField(state, fieldId) && !getHeroMovementCapabilities(state, hero).waterWalk) {
     hero.movementHaltedThisTurn = true;
   }
 }
@@ -1570,12 +1574,17 @@ export function tileDefHasSettlement(tileDefId: string): boolean {
 }
 
 /**
- * A Ⅱ–Ⅲ tile definition that carries a material (resource) Mine field — a Mine
- * produces gold / building materials / valuables, so any `location: "mine"`
- * counts. Drives the one-time "reroll if you get a Mine tile" option.
+ * A Ⅱ–Ⅲ tile definition that carries an ORE Mine — a `location: "mine"` field
+ * whose resource is `buildingMaterials` (ore). Gold Mines and Valuables Mines do
+ * NOT count: the one-time "reroll if you get a Mine tile" guarantee applies only
+ * to ore Mines, never a gold or valuables Mine.
  */
-export function tileDefHasMaterialMine(tileDefId: string): boolean {
-  return Boolean(allTileDefinitions[tileDefId]?.fields.some((field) => field.location === "mine"));
+export function tileDefHasOreMine(tileDefId: string): boolean {
+  return Boolean(
+    allTileDefinitions[tileDefId]?.fields.some(
+      (field) => field.location === "mine" && field.resource === "buildingMaterials"
+    )
+  );
 }
 
 /** Whether any tile still in the undrawn Ⅱ–Ⅲ pool carries a Settlement. */
@@ -1641,8 +1650,8 @@ function describeFarTile(tileDefId: string): string {
   if (tileDefHasSettlement(tileDefId)) {
     tags.push("Settlement");
   }
-  if (tileDefHasMaterialMine(tileDefId)) {
-    tags.push("Mine");
+  if (tileDefHasOreMine(tileDefId)) {
+    tags.push("Ore Mine");
   }
   return tags.length > 0 ? `tile ${tileDefId} (${tags.join(", ")})` : `tile ${tileDefId}`;
 }
@@ -1650,8 +1659,8 @@ function describeFarTile(tileDefId: string): string {
 /**
  * Either opens the next keep/reroll/pick choice for the current candidate or, if
  * no reroll applies, places it. Settlement guarantee fires only on the 2nd
- * opening (and only while the pool still holds a Settlement); the one-time Mine
- * reroll on any opening.
+ * opening (and only while the pool still holds a Settlement); the one-time ORE
+ * Mine reroll on any opening (gold and valuables Mines never trigger it).
  */
 function presentFarTileOffersOrFinalize(state: GameState): void {
   const flip = requireAdventure(state).pendingFarTileFlip;
@@ -1665,7 +1674,8 @@ function presentFarTileOffersOrFinalize(state: GameState): void {
   const poolHasDraw = (state.adventure?.farTilePool?.length ?? 0) > 0;
   const settlementEligible =
     flip.openingIndex === 2 && !tileDefHasSettlement(candidate) && farTilePoolHasSettlement(state);
-  const mineEligible = !flip.mineRerollUsed && tileDefHasMaterialMine(candidate) && poolHasDraw;
+  // Only an ORE Mine triggers the reroll — never a gold or valuables Mine.
+  const mineEligible = !flip.mineRerollUsed && tileDefHasOreMine(candidate) && poolHasDraw;
 
   if (settlementEligible) {
     flip.offerMode = "settlement";
@@ -1683,8 +1693,8 @@ function presentFarTileOffersOrFinalize(state: GameState): void {
     openFarTileFlipChoice(
       state,
       flip,
-      `This Ⅱ–Ⅲ tile — ${describeFarTile(candidate)} — has a resource Mine. Keep it, or reroll once?`,
-      ["Keep this Ⅱ–Ⅲ tile", "Reroll once (resource Mine)"]
+      `This Ⅱ–Ⅲ tile — ${describeFarTile(candidate)} — has an Ore Mine. Keep it, or reroll once?`,
+      ["Keep this Ⅱ–Ⅲ tile", "Reroll once (Ore Mine)"]
     );
     return;
   }

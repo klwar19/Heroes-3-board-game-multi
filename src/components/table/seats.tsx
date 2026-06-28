@@ -139,6 +139,14 @@ export function PermanentSlot({
           (legal) => legal.action.type === "DISCARD_PERMANENT" && legal.action.cardId === cardId
         )
       : undefined;
+  // Income permanents (Eversmoking Ring, Inexhaustible Cart) can be cracked open
+  // for their one-off instant gain while sitting in the permanent slot.
+  const crackActionFor = (cardId: string) =>
+    ownView
+      ? legalActions?.find(
+          (legal) => legal.action.type === "CRACK_PERMANENT" && legal.action.cardId === cardId
+        )
+      : undefined;
 
   return (
     <div
@@ -148,6 +156,7 @@ export function PermanentSlot({
       {cardIds.map((cardId, index) => {
         const card = cardLibrary[cardId];
         const discard = discardActionFor(cardId);
+        const crack = crackActionFor(cardId);
 
         return (
           <div className={`permanentSlot ${compact ? "compact" : ""}`} key={`${cardId}-${index}`}>
@@ -165,6 +174,16 @@ export function PermanentSlot({
               </span>
               {!compact ? <strong>{card?.name ?? cardId}</strong> : null}
               {!compact && card ? <small>{describePermanentEffect(card)}</small> : null}
+              {crack ? (
+                <button
+                  className="commandButton"
+                  onClick={() => onAction?.(crack.action)}
+                  title="Crack this card open: remove it from the game for its one-off instant gain"
+                  type="button"
+                >
+                  {crack.label.replace(/^Crack .*? open: /, "Crack open: ")}
+                </button>
+              ) : null}
               {discard ? (
                 <button
                   className="commandButton ghost"

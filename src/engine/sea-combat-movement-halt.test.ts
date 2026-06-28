@@ -127,6 +127,31 @@ describe("fighting on the open sea ends the hero's movement", () => {
     expect(after.movementHaltedThisTurn).toBeFalsy();
     expect(getReachableHeroPaths(state, after).size).toBeGreaterThan(0);
   });
+
+  it("a Water Walking hero is NOT halted by a sea battle (the sea is normal terrain)", () => {
+    const state = seaMap();
+    const seaField = fieldWithNeighbour(state, true);
+    const hero = parkHero(state, seaField);
+
+    // Water Walk active for p1 (the Spell / expert Pathfinding grant).
+    state.activeEffects.push({
+      id: "ww-test",
+      source: { type: "card", cardId: "spell.water_walk", controllerId: "p1" },
+      controllerId: "p1",
+      startedRound: state.round,
+      duration: { type: "current-turn" },
+      polarity: "positive",
+      modifiers: [{ type: "HERO_WATER_WALK" }]
+    } as unknown as GameState["activeEffects"][number]);
+
+    stageWin(state, hero, seaField);
+    finalizeAdventureCombat(state);
+
+    const after = state.heroes[hero.id];
+    // Water Walk removes the sea-battle halt exactly as it removes the wading halt.
+    expect(after.movementHaltedThisTurn).toBeFalsy();
+    expect(getReachableHeroPaths(state, after).size).toBeGreaterThan(0);
+  });
 });
 
 /** Stage a finished PvP fight on `fieldId`, attacker p1 the winner. */

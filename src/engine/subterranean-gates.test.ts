@@ -534,13 +534,13 @@ describe("subterranean gate: reverse direction (Subterranean tile up, Surface ti
     expect(gateFieldsLinked(gate, entranceAfter)).toBe(true);
   });
 
-  it("runs the material-mine reroll when the Gate reveals a Ⅱ–Ⅲ Mine tile (no dangling visit)", () => {
+  it("runs the ore-mine reroll when the Gate reveals a Ⅱ–Ⅲ ore-Mine tile (no dangling visit)", () => {
     const state = makeGame();
-    // A face-down Ⅱ–Ⅲ MINE tile (F4) waits on the far side of the gate.
+    // A face-down Ⅱ–Ⅲ ORE-MINE tile (#F4) waits on the far side of the gate.
     const undergroundCenter = { row: 24, col: 12 };
     const surfaceCenter = tileLatticeNeighbors(undergroundCenter)[0];
     const underground = instantiateTile(adv(state), "U1", undergroundCenter, 0, false);
-    const surface = instantiateTile(adv(state), "F4", surfaceCenter, 0, true);
+    const surface = instantiateTile(adv(state), "#F4", surfaceCenter, 0, true);
     setAllEmpty(state, underground);
     recomputeSubterraneanGates(adv(state));
     adv(state).farTilePool = ["F1"]; // a no-mine Settlement is available to reroll into
@@ -557,7 +557,7 @@ describe("subterranean gate: reverse direction (Subterranean tile up, Surface ti
     const flip = adv(state).pendingFarTileFlip!;
     expect(flip.via).toBe("reveal");
     expect(flip.offerMode).toBe("mine");
-    expect(flip.candidate).toBe("F4");
+    expect(flip.candidate).toBe("#F4");
     expect(state.pendingChoice?.type).toBe("OPTION_CHOICE");
     expect(adv(state).pendingVisit).toBeNull();
 
@@ -570,7 +570,7 @@ describe("subterranean gate: reverse direction (Subterranean tile up, Surface ti
       optionIndex: 1
     });
     expect(rerolled.adventure!.tiles[surface.id].tileDefId).toBe("F1");
-    expect(rerolled.adventure!.farTilePool).toContain("F4");
+    expect(rerolled.adventure!.farTilePool).toContain("#F4");
     expect(rerolled.adventure!.pendingTileChoice?.tileInstanceId).toBe(surface.id);
 
     // The freshly chosen tile rotates and the gate completes, as in the plain reveal.

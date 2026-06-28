@@ -68,6 +68,7 @@ import {
   firstAidVolleyHeals,
   getPermanentCardIds,
   getPermanentSchoolBonus,
+  permanentCrackOpenGain,
   permanentSpellPowerBonus,
   playerCanUseFirstAidVolley,
   warMachinesForSale
@@ -3015,10 +3016,27 @@ function addPermanentDiscardActions(actions: LegalAction[], state: GameState, pl
   }
 
   for (const cardId of getPermanentCardIds(state, playerId)) {
+    const name = cardLibrary[cardId]?.name ?? cardId;
     actions.push({
-      label: `Discard ${cardLibrary[cardId]?.name ?? cardId} from play`,
+      label: `Discard ${name} from play`,
       action: { type: "DISCARD_PERMANENT", playerId, cardId }
     });
+
+    // Income permanents (Eversmoking Ring of Sulfur, Inexhaustible Cart of Ore)
+    // can be cracked open for their one-off instant gain even after the income
+    // side was chosen and the card is sitting in the permanent slot.
+    const crackGain = permanentCrackOpenGain(cardId);
+    if (crackGain) {
+      const parts = [
+        crackGain.gold ? `${crackGain.gold} gold` : null,
+        crackGain.buildingMaterials ? `${crackGain.buildingMaterials} building materials` : null,
+        crackGain.valuables ? `${crackGain.valuables} valuables` : null
+      ].filter((part): part is string => part !== null);
+      actions.push({
+        label: `Crack ${name} open: gain ${parts.join(", ")}`,
+        action: { type: "CRACK_PERMANENT", playerId, cardId }
+      });
+    }
   }
 }
 

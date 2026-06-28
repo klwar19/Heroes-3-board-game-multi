@@ -1,6 +1,6 @@
 import { cardLibrary } from "@/data/cards/library";
 import { countExtraBallistas, effectiveInitiative, hasBallistaChooseTarget, makeActiveEffect } from "./active-effects";
-import { getActiveAstrologersCard, hasResources, processPendingVisit, spendResources } from "./adventure";
+import { gainResources, getActiveAstrologersCard, hasResources, processPendingVisit, spendResources } from "./adventure";
 import { isAdjacent } from "./battlefield";
 import { finishCombatIfNeeded, markUnitRemovedIfNeeded } from "./combat-units";
 import { destroyFortification, fortificationTargets, parseFortificationTargetId } from "./siege";
@@ -338,6 +338,77 @@ export function discardPermanentVoluntarily(
     playerId: action.playerId,
     cardId: discarded,
     reason: "voluntary"
+  });
+
+  enforcePermanentLimit(state, action.playerId);
+}
+
+/**
+ * The "crack open" instant of an income permanent (Eversmoking Ring of Sulfur,
+ * Inexhaustible Cart of Ore): the card's CHOOSE_ONE option that REMOVES the card
+ * from the game (`cost.removeSelf`) for a one-off resource gain. Returns that
+ * option's gain, or null for a permanent with no such side (war machines,
+ * Schools of Magic, Pandora's permanents). This is the side a player normally
+ * picks at play time INSTEAD of entering play; exposing it here lets it be used
+ * later, once the income side is already in the permanent slot.
+ */
+export function permanentCrackOpenGain(
+  cardId: CardId
+): { gold?: number; buildingMaterials?: number; valuables?: number } | null {
+  const card = cardLibrary[cardId];
+  if (card?.effect.type !== "CHOOSE_ONE") {
+    return null;
+  }
+  for (const option of card.effect.options) {
+    if (option.cost?.removeSelf && option.effect.type === "GAIN_RESOURCES" && !option.effect.goldCost) {
+      return option.effect.gain;
+    }
+  }
+  return null;
+}
+
+/**
+ * Crack an in-play income permanent open for its instant gain: remove the card
+ * from the game (the "Remove this card" cost) and grant the one-off resources.
+ * This is the fix for "can't use its instant effect when it's in the permanent
+ * slot" — the instant side was previously reachable only from hand, so once the
+ * income side had been chosen the burst gain was lost forever.
+ */
+export function crackPermanentForInstant(
+  state: GameState,
+  action: Extract<GameAction, { type: "CRACK_PERMANENT" }>
+): void {
+  const player = state.players[action.playerId];
+  const inPlay = getPermanentCardIds(state, action.playerId);
+  if (!player || !inPlay.includes(action.cardId)) {
+    throw new Error("That permanent is not in play.");
+  }
+
+  const gain = permanentCrackOpenGain(action.cardId);
+  if (!gain) {
+    throw new Error("That permanent has no instant effect to use.");
+  }
+
+  const card = cardLibrary[action.cardId];
+  if (card) {
+    removePermanentCombatEffects(state, action.playerId, card);
+  }
+  setPermanentCardIds(
+    state,
+    action.playerId,
+    inPlay.filter((candidate) => candidate !== action.cardId)
+  );
+  // "Remove this card": it leaves the GAME (removed pile), not the discard, so
+  // it can neither be re-drawn nor return to play — matching the from-hand side.
+  player.removed.push(action.cardId);
+
+  gainResources(state, action.playerId, gain, `cracked open ${card?.name ?? action.cardId}`);
+
+  appendEvent(state, {
+    type: "PERMANENT_DISCARDED",
+    playerId: action.playerId,
+    cardId: action.cardId,
+    reason: "cracked"
   });
 
   enforcePermanentLimit(state, action.playerId);

@@ -477,7 +477,20 @@ export const astrologersCardDefinitions: Record<string, AstrologersCardDefinitio
   }
 };
 
-export const astrologersDeckCardIds: string[] = Object.keys(astrologersCardDefinitions);
+/**
+ * Proclamations that are fully wired but TEMPORARILY held out of the live deck
+ * by request ("disable it for now"). They keep their definition, art and engine
+ * effect, so re-enabling one is just deleting it from this set — unlike
+ * ASTROLOGERS_NOT_IMPLEMENTED, whose entries have no working effect at all.
+ *
+ * - Friendly Beaver — "remove all Black Cubes from the map" wipes every player's
+ *   explored-field progress at once; pulled from the deck for now.
+ */
+export const DISABLED_ASTROLOGERS_CARDS = new Set<string>(["astrologers.friendly_beaver"]);
+
+export const astrologersDeckCardIds: string[] = Object.keys(astrologersCardDefinitions).filter(
+  (id) => !DISABLED_ASTROLOGERS_CARDS.has(id)
+);
 
 /**
  * Expansion proclamations that exist on the wiki but are deliberately NOT in the
