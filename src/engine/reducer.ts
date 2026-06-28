@@ -312,6 +312,7 @@ import type {
   CardPlayCost,
   CardPlayMode,
   CombatState,
+  DeckId,
   CombatUnitState,
   EffectDefinition,
   EngineResult,
@@ -9896,7 +9897,28 @@ const ARTIFACT_DECK_LABELS: Record<string, string> = {
 /** Tazar's War Hero VI: move the top card of an Artifact deck into a hand. */
 export function drawTopArtifact(state: GameState, playerId: PlayerId, deckId: string): void {
   const deck = state.decks[deckId];
-  const drawn = deck?.drawPile.pop();
+  if (!deck) {
+    return;
+  }
+  // Artifacts are globally unique. The deck normally holds one of each, but
+  // redraw past any artifact already owned by ANY player (defence in depth, and
+  // it keeps the rule explicit here too), tucking the skipped cards back under.
+  const skipped: CardId[] = [];
+  let drawn: CardId | null = null;
+  while (deck.drawPile.length > 0) {
+    const cardId = deck.drawPile.pop();
+    if (!cardId) {
+      break;
+    }
+    if (canAcquireSharedDeckCard(state, playerId, deckId as DeckId, cardId)) {
+      drawn = cardId;
+      break;
+    }
+    skipped.push(cardId);
+  }
+  if (skipped.length > 0) {
+    deck.drawPile.unshift(...skipped);
+  }
   if (!drawn) {
     return;
   }
@@ -11452,8 +11474,14 @@ function resolveEagleEyeDig(
   const remaining = [...deck.drawPile];
   let foundCardId: string | null = null;
   for (let index = remaining.length - 1; index >= 0; index -= 1) {
-    if (matches(cards[remaining[index]])) {
-      foundCardId = remaining[index];
+    const candidateId = remaining[index];
+    // House rule: a hero never keeps two copies of the same Spell. Dig PAST any
+    // matching spell this hero may not take — one it already owns, or a
+    // starting-only spell — exactly as a shared-deck Search redraws past it.
+    // Without this, Eagle Eye / a Tome could hand a player a second copy of a
+    // spell already in their hand/deck/discard.
+    if (matches(cards[candidateId]) && canAcquireSharedDeckCard(state, playerId, deckId, candidateId)) {
+      foundCardId = candidateId;
       remaining.splice(index, 1);
       break;
     }

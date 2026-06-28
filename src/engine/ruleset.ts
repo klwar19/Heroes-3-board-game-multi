@@ -251,6 +251,21 @@ function playerHeldCardIds(state: GameState, playerId: PlayerId): Set<CardId> {
   return held;
 }
 
+/** Artifact card ids are the globally-unique cards (one of each in the game). */
+function isArtifactCard(cardId: CardId): boolean {
+  return cardId.startsWith("artifact.");
+}
+
+/**
+ * Whether ANY player currently holds `cardId` across every zone they could draw
+ * it back from (hand/deck/discard/in-play/scroll). Artifacts are globally unique
+ * — only one of each exists in the whole game — so an artifact held by any seat
+ * may never be acquired by another.
+ */
+function anyPlayerHoldsCard(state: GameState, cardId: CardId): boolean {
+  return Object.keys(state.players).some((playerId) => playerHeldCardIds(state, playerId).has(cardId));
+}
+
 /**
  * Whether `cardId` revealed from shared deck `deckId` is a legal pull for this
  * hero right now. The deck search must redraw past any card this returns false
@@ -272,6 +287,13 @@ export function canAcquireSharedDeckCard(
 
   if (cardId === NECROMANCY_ABILITY_ID && state.players[playerId]?.factionId !== NECROPOLIS_FACTION_ID) {
     return false;
+  }
+
+  // Artifacts are globally unique: exactly one of each exists, shared across all
+  // players, so no seat may take one any player already holds. Spells/Abilities
+  // keep the per-player rule (the deck holds two copies, one per player).
+  if (isArtifactCard(cardId)) {
+    return !anyPlayerHoldsCard(state, cardId);
   }
 
   return !playerHeldCardIds(state, playerId).has(cardId);
