@@ -11452,8 +11452,14 @@ function resolveEagleEyeDig(
   const remaining = [...deck.drawPile];
   let foundCardId: string | null = null;
   for (let index = remaining.length - 1; index >= 0; index -= 1) {
-    if (matches(cards[remaining[index]])) {
-      foundCardId = remaining[index];
+    const candidateId = remaining[index];
+    // House rule: a hero never keeps two copies of the same Spell. Dig PAST any
+    // matching spell this hero may not take — one it already owns, or a
+    // starting-only spell — exactly as a shared-deck Search redraws past it.
+    // Without this, Eagle Eye / a Tome could hand a player a second copy of a
+    // spell already in their hand/deck/discard.
+    if (matches(cards[candidateId]) && canAcquireSharedDeckCard(state, playerId, deckId, candidateId)) {
+      foundCardId = candidateId;
       remaining.splice(index, 1);
       break;
     }

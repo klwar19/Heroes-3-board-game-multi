@@ -160,3 +160,50 @@ describe("Eagle Eye dig is deterministic (the first matching spell, not random)"
     expect(taken.decks.spells.drawPile).toContain("spell.haste");
   });
 });
+
+describe("Eagle Eye never hands the hero a duplicate Spell it already owns", () => {
+  // House rule (CLAUDE.md): a hero never keeps two copies of the same Spell.
+  // The shared-deck Search redraws past an owned card; Eagle Eye's dig must do
+  // the same. Before the fix the dig surfaced the first Basic spell by level
+  // ALONE, so a hero already holding it could Take a second copy.
+  it("digs PAST a Basic spell already in the hero's zones and surfaces the next acquirable one", () => {
+    const state = combatWithEagle("eagle-dedup");
+    state.players.p1.deck = ["spell.haste"]; // p1 already owns Haste
+    // Top→bottom of the draw pile (top = last element): Haste (owned), then
+    // Bless. The dig must skip the owned Haste and surface Bless instead.
+    state.decks.spells.drawPile = ["spell.bless", "spell.haste"];
+    state.decks.spells.discardPile = [];
+
+    const basic = eaglePlays(state, "p1").find((play) => (play.mode ?? "basic") === "basic");
+    expect(basic).toBeTruthy();
+    const dug = applyOk(state, basic!);
+
+    const choice = dug.pendingChoice;
+    expect(choice?.type === "OPTION_CHOICE" && choice.context).toBe("eagle-eye");
+    expect((choice as { eagleEye?: { cardId: string } }).eagleEye?.cardId).toBe("spell.bless");
+
+    const taken = applyOk(dug, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: (choice as { id: string }).id,
+      optionIndex: 0
+    });
+    // The hero gained Bless and still holds exactly ONE Haste — never two.
+    expect(taken.players.p1.hand).toContain("spell.bless");
+    const allZones = [...taken.players.p1.hand, ...taken.players.p1.deck, ...taken.players.p1.discard];
+    expect(allZones.filter((id) => id === "spell.haste")).toHaveLength(1);
+    expect(allZones.filter((id) => id === "spell.bless")).toHaveLength(1);
+  });
+
+  it("CONTROL: with the same deck but NOT owning Haste, the dig surfaces Haste (the dedup is what diverges)", () => {
+    const state = combatWithEagle("eagle-dedup-control");
+    state.players.p1.deck = []; // owns no spell
+    state.decks.spells.drawPile = ["spell.bless", "spell.haste"];
+    state.decks.spells.discardPile = [];
+
+    const basic = eaglePlays(state, "p1").find((play) => (play.mode ?? "basic") === "basic");
+    const dug = applyOk(state, basic!);
+    const choice = dug.pendingChoice;
+    expect((choice as { eagleEye?: { cardId: string } }).eagleEye?.cardId).toBe("spell.haste");
+  });
+});

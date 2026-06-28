@@ -3552,7 +3552,12 @@ export function processPendingVisit(state: GameState): void {
       case "DRAW_SCROLL_SPELL": {
         const player = state.players[visit.playerId];
         const scroll = player?.scrolls?.find((candidate) => candidate.id === step.scrollId);
-        const drawn = drawTopOfSharedDeck(state, step.deckId);
+        // A scroll's spells count as owned (see playerHeldCardIds), so the draw
+        // must respect the no-duplicate rule: skip any spell this hero already
+        // holds — including one drawn into THIS scroll a moment ago (the first
+        // spell is pushed before the second is drawn) — so one scroll never ends
+        // up holding two of the same spell, and never a spell already in hand.
+        const drawn = drawTopOfSharedDeck(state, step.deckId, visit.playerId);
         if (scroll && drawn) {
           scroll.spellCardIds.push(drawn);
         }
@@ -3585,20 +3590,44 @@ function spellDeckCandidates(state: GameState): string[] {
   });
 }
 
-/** Draws the top card of a shared deck, reshuffling its discard if it ran dry. */
-function drawTopOfSharedDeck(state: GameState, deckId: string): string | null {
+/**
+ * Draws the top card of a shared deck, reshuffling its discard if it ran dry.
+ * When `playerId` is given, redraws past any card that player may not acquire
+ * (a duplicate they already own, a starting-only spell) — the skipped cards are
+ * tucked back under the deck, never consumed, so the other copies survive for
+ * everyone else. Returns null when nothing acquirable is left.
+ */
+function drawTopOfSharedDeck(state: GameState, deckId: string, playerId?: PlayerId): string | null {
   const deck = state.decks[deckId];
   if (!deck) {
     return null;
   }
-  if (deck.drawPile.length === 0 && deck.discardPile.length > 0) {
-    deck.drawPile = shuffleCards(
-      deck.discardPile,
-      `${state.seed}#scroll-reshuffle#${deckId}#${eventSeedNumber(state)}`
-    );
-    deck.discardPile = [];
+  const skipped: string[] = [];
+  let taken: string | null = null;
+  while (true) {
+    if (deck.drawPile.length === 0 && deck.discardPile.length > 0) {
+      deck.drawPile = shuffleCards(
+        deck.discardPile,
+        `${state.seed}#scroll-reshuffle#${deckId}#${eventSeedNumber(state)}`
+      );
+      deck.discardPile = [];
+    }
+    const card = deck.drawPile.pop();
+    if (!card) {
+      break;
+    }
+    if (!playerId || canAcquireSharedDeckCard(state, playerId, deckId, card)) {
+      taken = card;
+      break;
+    }
+    skipped.push(card);
   }
-  return deck.drawPile.pop() ?? null;
+  if (skipped.length > 0) {
+    // Tuck the un-takeable cards under the deck (front = bottom). They are never
+    // re-reached within this single draw, so the loop always terminates.
+    deck.drawPile.unshift(...skipped);
+  }
+  return taken;
 }
 
 /**
@@ -6985,7 +7014,12 @@ function resolveNecromancyFetch(state: GameState, playerId: PlayerId): void {
   let found: string | null = null;
   while (deck.drawPile.length > 0) {
     const cardId = deck.drawPile.pop() as string;
-    if (cardLibrary[cardId]?.name === "Necromancy") {
+    // House rule: a hero never keeps two copies of the same Ability. The
+    // turn-start option is already withheld once the hero owns Necromancy, but
+    // re-validate here so a card acquired between offer and resolution (another
+    // player taking the other copy is harmless; the hero gaining it themselves
+    // is not) can never become a duplicate — skip it just like a deck Search.
+    if (cardLibrary[cardId]?.name === "Necromancy" && canAcquireSharedDeckCard(state, playerId, "abilities", cardId)) {
       found = cardId;
       break;
     }

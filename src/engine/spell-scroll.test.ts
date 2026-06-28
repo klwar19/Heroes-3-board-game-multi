@@ -79,6 +79,61 @@ describe("Spell Scroll — acquisition", () => {
   });
 });
 
+describe("Spell Scroll — never holds a duplicate spell (no-duplicate rule)", () => {
+  /** A visit drawing `remaining` scroll spells from the Basic deck only. */
+  function scrollDraw(seed: string, drawPile: string[], owned: string[] = []) {
+    const state = createAdventureGameState({ seed, difficulty: "normal", ruleset: "binh", rollFirstPlayer: false });
+    const heroId = "hero_p1";
+    const fieldId = state.heroes[heroId].spaceId ?? "";
+    // Only the Basic Spell deck holds cards, so each draw auto-resolves with no
+    // "which deck?" choice — making the two draws deterministic.
+    state.decks.spells.drawPile = [...drawPile];
+    state.decks.spells.discardPile = [];
+    state.decks["spells-expert"].drawPile = [];
+    state.decks["spells-expert"].discardPile = [];
+    state.players.p1.hand = [];
+    state.players.p1.deck = [...owned];
+    state.players.p1.discard = [];
+    state.players.p1.scrolls = [];
+    state.adventure!.pendingVisit = { heroId, playerId: "p1", fieldId, steps: [{ type: "SPELL_SCROLL", remaining: 2 }] };
+    processPendingVisit(state);
+    return state;
+  }
+
+  it("draws two DIFFERENT spells even when the deck top is two copies of the same spell", () => {
+    // Top→bottom (top = last): Haste, Haste, Bless. The first draw takes Haste;
+    // the second must SKIP the second Haste (now owned via the scroll) and take
+    // Bless instead — never two Hastes in one scroll.
+    const state = scrollDraw("scroll-dedup-twins", ["spell.bless", "spell.haste", "spell.haste"]);
+    const ids = state.players.p1.scrolls![0].spellCardIds;
+    expect(ids).toHaveLength(2);
+    expect(new Set(ids).size).toBe(2); // no duplicate within the scroll
+    expect(ids).toContain("spell.haste");
+    expect(ids).toContain("spell.bless");
+  });
+
+  it("does not draw a spell the hero already owns in another zone", () => {
+    // p1 already owns Haste (in deck). Deck top is Haste then Bless: the draw
+    // skips the owned Haste and the scroll gets Bless only (the second draw finds
+    // nothing acquirable left). The hero never holds two Hastes.
+    const state = scrollDraw("scroll-dedup-owned", ["spell.bless", "spell.haste"], ["spell.haste"]);
+    const ids = state.players.p1.scrolls?.[0]?.spellCardIds ?? [];
+    expect(ids).not.toContain("spell.haste");
+    expect(ids).toContain("spell.bless");
+    const everywhere = [...state.players.p1.deck, ...ids];
+    expect(everywhere.filter((id) => id === "spell.haste")).toHaveLength(1);
+  });
+
+  it("CONTROL: with no prior copy, the deck top IS taken (the dedup is what diverges)", () => {
+    const state = scrollDraw("scroll-dedup-control", ["spell.bless", "spell.haste"]);
+    const ids = state.players.p1.scrolls![0].spellCardIds;
+    // Both distinct cards are taken — proving the skip in the prior tests is the
+    // no-duplicate rule biting, not the deck simply running dry.
+    expect(ids).toContain("spell.haste");
+    expect(ids).toContain("spell.bless");
+  });
+});
+
 const TARGET = "unit_p2_vampires";
 
 /** The scroll cast aimed at a specific enemy unit. */
