@@ -4322,7 +4322,7 @@ function SetupFormatSelector({
             className={format === entry ? "selected" : ""}
             key={entry}
             onClick={() => onAction({ type: "SET_DRAFT_FORMAT", playerId: viewerPlayerId, format: entry })}
-            title={`${DRAFT_FORMAT_BLURB[entry]} (re-selecting restarts the draft)`}
+            title={DRAFT_FORMAT_BLURB[entry]}
             type="button"
           >
             {DRAFT_FORMAT_LABELS[entry]}
