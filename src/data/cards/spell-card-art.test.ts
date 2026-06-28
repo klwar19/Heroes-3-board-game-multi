@@ -52,7 +52,11 @@ describe("spell card art is committed", () => {
       "spell.disrupting_ray",
       "spell.view_air",
       "spell.view_earth",
-      "spell.remove_obstacle"
+      "spell.remove_obstacle",
+      "spell.summon_air_elemental",
+      "spell.summon_earth_elemental",
+      "spell.summon_fire_elemental",
+      "spell.summon_water_elemental"
     ]) {
       expect(realScans, `${id} must use its real scan`).toContain(id);
     }
@@ -67,7 +71,10 @@ describe("spell card art is committed", () => {
     }
     // Sanity: a couple of the known-scanless spells are declared.
     expect(SCANLESS_SPELLS.has("magic_mirror")).toBe(true);
-    expect(SCANLESS_SPELLS.has("summon_air_elemental")).toBe(true);
+    expect(SCANLESS_SPELLS.has("summon_air_elemental")).toBe(false);
+    expect(cardLibrary["spell.summon_air_elemental"]?.assets?.cardImage).toBe(
+      "/assets/spells-summon_air_elemental.webp"
+    );
     // Sanity: a spell WITH a real scan is not mislabelled scanless.
     expect(SCANLESS_SPELLS.has("disrupting_ray")).toBe(false);
   });
