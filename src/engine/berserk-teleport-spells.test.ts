@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   applyAction,
+  createAdventureGameState,
   createInitialGameState,
   getLegalActions,
   makeActiveEffect,
@@ -441,6 +442,87 @@ describe("Berserk vs the neutral AI", () => {
 
     const intent = planNeutralActivation(state, state.combat!, guard);
     expect(intent.kind).toBe("move");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Berserk in a real PvP combat (adventure mode, player context). The reported
+// "I can just move freely" was scoped to PvP multiplayer — this drives the
+// SAME getAdventureLegalActions path the PvP app uses and proves the berserked
+// unit is forced there too (no free move; the reducer rejects one).
+// ---------------------------------------------------------------------------
+
+describe("Berserk in a PvP (adventure-mode) combat", () => {
+  function pushBerserk(state: GameState, unitId: UnitId): void {
+    const modifier: ActiveEffectModifier = { type: "BERSERK_FORCED_ATTACK" };
+    state.activeEffects.push(
+      makeActiveEffect(
+        state,
+        {
+          name: "Berserk",
+          scope: "unit",
+          duration: { type: "next-activation" },
+          polarity: "negative",
+          removable: true,
+          modifiers: [modifier]
+        },
+        { type: "system" },
+        state.combat!.units[unitId].controllerId,
+        { type: "unit", unitId }
+      )
+    );
+  }
+
+  it("forces a berserked Magma Elemental in a player-vs-player combat — no free move", () => {
+    const state = createAdventureGameState({ seed: "pvp-berserk", difficulty: "normal", rollFirstPlayer: false });
+    // Graft a live fight onto the adventure (mode stays "adventure"); mark it PvP.
+    state.combat = createInitialGameState("pvp-berserk").combat;
+    state.combat!.context = {
+      kind: "player",
+      attackerHeroId: "hero_p1",
+      defenderHeroId: "hero_p2",
+      fieldId: "0,0"
+    };
+    state.combat!.setup = null;
+    state.combat!.round = 1;
+    state.phase = "combat";
+    state.combat!.obstacles = [];
+
+    const units = state.combat!.units;
+    const magma = units.unit_p2_skeletons;
+    magma.unitDefId = "conflux.magma_elementals";
+    magma.grade = "silver";
+    magma.variant = "few";
+    magma.abilities = [];
+    magma.type = "ground";
+    magma.position = 9;
+    units.unit_p1_griffins.position = 5; // enemy, adjacent
+    units.unit_p2_vampires.position = 8; // ally, adjacent
+    for (const id of Object.keys(units)) {
+      if (id !== magma.id) units[id].abilities = [];
+      units[id].maxHealth = 40;
+      units[id].damage = 0;
+      units[id].activatedThisRound = false;
+    }
+    state.activePlayerId = "p2";
+    state.combat!.activeUnitId = magma.id;
+    pushBerserk(state, magma.id);
+    expect(unitIsBerserk(state.activeEffects, magma)).toBe(true);
+
+    // The PvP legal-action path forces the magma onto its two adjacent units
+    // (enemy AND ally) and offers no free move / defend.
+    const legal = getLegalActions(state, "p2");
+    const moves = legal.filter((l) => l.action.type === "MOVE_UNIT" && l.action.unitId === magma.id);
+    const attacks = legal
+      .filter((l) => l.action.type === "ATTACK_UNIT" && l.action.attackerId === magma.id)
+      .map((l) => (l.action.type === "ATTACK_UNIT" ? l.action.defenderId : ""));
+    expect(moves).toHaveLength(0);
+    expect(attacks).toContain("unit_p1_griffins");
+    expect(attacks).toContain("unit_p2_vampires");
+
+    // And the reducer REJECTS a free move forged straight through applyAction.
+    const freeMove = applyAction(state, { type: "MOVE_UNIT", playerId: "p2", unitId: magma.id, destination: 0 });
+    expect(freeMove.errors.length).toBeGreaterThan(0);
   });
 });
 
