@@ -29,6 +29,7 @@ import {
   pickCombatBoardArtId,
   placementCellsFor,
   playerSpellCastsIgnoreLimit,
+  unitIsBerserk,
   type BattlefieldTokenState,
   type CombatBoardArtId,
   type CombatTokenState,
@@ -1048,6 +1049,9 @@ export function BattlefieldBoard({
           // blue (a ghostly "clone" tint) with a Clone badge, so it reads at a
           // glance as a magical copy rather than the real stack.
           const isClone = Boolean(unit?.cloneOfUnitId);
+          // Berserk is an active effect, not a token — surface it as a badge so the
+          // player can see a unit is forced to attack the nearest on its next turn.
+          const isBerserked = Boolean(unit && unitIsBerserk(state.activeEffects, unit));
           const content = unit ? (
             <article
               className={`boardCard ${unit.controllerId} ${isFlipping ? "flipping" : ""} ${tint ? `fxTint-${tint}` : ""} ${
@@ -1081,6 +1085,14 @@ export function BattlefieldBoard({
               <TokenChips unit={unit} />
               {tokenMark}
               {isActive ? <span className="activeRing" aria-hidden="true" /> : null}
+              {isBerserked ? (
+                <span
+                  className="berserkBadge"
+                  title="Berserk — on this unit's next activation it MUST attack the nearest unit (friend or foe), or move toward it and attack. No free move, defend or other target."
+                >
+                  Berserk
+                </span>
+              ) : null}
               {isFlipping ? <span className="flipBadge">Flipped to Few</span> : null}
               {isClone ? (
                 <span className="cloneBadge" title="Clone Token — a 1-Health copy; destroyed by any damage, by being attacked, or if its original leaves.">

@@ -954,6 +954,12 @@ describe("BattlefieldBoard — a berserked unit cannot move freely", () => {
       </CardZoomProvider>
     );
 
+    // The berserked unit carries a visible "Berserk" badge so the player can SEE
+    // the spell landed (it is an active effect, not a token).
+    const magmaCell = document.querySelector('[data-fx-cell="9"]');
+    expect(magmaCell?.querySelector(".berserkBadge"), "the berserked unit shows a Berserk badge").toBeTruthy();
+    expect(magmaCell?.querySelector(".berserkBadge")?.textContent).toMatch(/Berserk/i);
+
     // The two adjacent units are forced-attack targets (enemy AND ally).
     expect(document.querySelector('button[data-fx-cell="5"]')?.getAttribute("aria-label")).toMatch(/Attack/i);
     expect(document.querySelector('button[data-fx-cell="8"]')?.getAttribute("aria-label")).toMatch(/Attack/i);
