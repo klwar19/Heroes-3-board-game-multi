@@ -1588,6 +1588,7 @@ function addSpellActions(
     cardId: string;
     fromScroll?: string;
     fromSpellDeck?: string;
+    fromOwnDiscard?: boolean;
     fromSpellBook?: boolean;
     tarnumReturn?: "deck-top" | "discard";
   }[] = spellLimitReached
@@ -1633,16 +1634,20 @@ function addSpellActions(
         : undefined;
     const spellIdFilter =
       castOption?.effect.type === "CAST_FROM_SPELL_DISCARD" ? castOption.effect.spellId : undefined;
-    const discardPile = state.decks.spells?.discardPile ?? [];
+    // Ciele IV (Conflux): `ownDiscard` reads the caster's OWN discard pile (where
+    // a cast Magic Arrow actually lands), not the shared Spell-deck discard the
+    // Helm draws from. Search it for the filtered spell id.
+    const fromOwnDiscard = castOption?.effect.type === "CAST_FROM_SPELL_DISCARD" && castOption.effect.ownDiscard === true;
+    const sourcePile = fromOwnDiscard ? player.discard : state.decks.spells?.discardPile ?? [];
     const sourceSpell = spellIdFilter
-      ? [...discardPile].reverse().find((id) => id === spellIdFilter)
-      : discardPile.at(-1);
+      ? [...sourcePile].reverse().find((id) => id === spellIdFilter)
+      : sourcePile.at(-1);
     if (sourceSpell) {
-      castCandidates.push({ cardId: sourceSpell, fromSpellDeck: enablerId });
+      castCandidates.push({ cardId: sourceSpell, fromSpellDeck: enablerId, ...(fromOwnDiscard ? { fromOwnDiscard: true } : {}) });
     }
   }
 
-  for (const { cardId, fromScroll, fromSpellDeck, fromSpellBook, tarnumReturn } of castCandidates) {
+  for (const { cardId, fromScroll, fromSpellDeck, fromOwnDiscard, fromSpellBook, tarnumReturn } of castCandidates) {
     const card = cards[cardId];
     if (!card || card.kind !== "spell" || card.implementationStatus !== "implemented") {
       continue;
@@ -1681,6 +1686,7 @@ function addSpellActions(
       addChooseOneSpellInstantCasts(actions, state, playerId, card, cardId, cards, {
         fromScroll,
         fromSpellDeck,
+        fromOwnDiscard,
         fromSpellBook,
         tarnumReturn
       });
@@ -1760,13 +1766,15 @@ function addSpellActions(
       actions.push({
         label: fromScroll
           ? `Cast ${card.name} (Scroll)`
-          : fromSpellDeck
-            ? `Cast ${card.name} (Helm of the Alabaster Unicorn)`
-            : fromSpellBook
-              ? `Cast ${card.name} (Spell Book)`
-              : tarnumReturn
-                ? `Cast ${card.name} (free; ${tarnumReturn === "deck-top" ? "to Spell deck top" : "to Spell discard"})`
-                : `Cast ${card.name}`,
+          : fromOwnDiscard
+            ? `Cast ${card.name} from your discard pile (free)`
+            : fromSpellDeck
+              ? `Cast ${card.name} (Helm of the Alabaster Unicorn)`
+              : fromSpellBook
+                ? `Cast ${card.name} (Spell Book)`
+                : tarnumReturn
+                  ? `Cast ${card.name} (free; ${tarnumReturn === "deck-top" ? "to Spell deck top" : "to Spell discard"})`
+                  : `Cast ${card.name}`,
         action: {
           type: "CAST_SPELL",
           playerId,
@@ -1774,6 +1782,7 @@ function addSpellActions(
           target,
           ...(fromScroll ? { fromScroll } : {}),
           ...(fromSpellDeck ? { fromSpellDeck } : {}),
+          ...(fromOwnDiscard ? { fromOwnDiscard: true } : {}),
           ...(fromSpellBook ? { fromSpellBook: true } : {}),
           ...(tarnumReturn ? { tarnumReturn } : {})
         }
@@ -1827,6 +1836,7 @@ function addChooseOneSpellInstantCasts(
   source: {
     fromScroll?: string;
     fromSpellDeck?: string;
+    fromOwnDiscard?: boolean;
     fromSpellBook?: boolean;
     tarnumReturn?: "deck-top" | "discard";
   }
@@ -1861,6 +1871,7 @@ function addChooseOneSpellInstantCasts(
           optionIndex,
           ...(source.fromScroll ? { fromScroll: source.fromScroll } : {}),
           ...(source.fromSpellDeck ? { fromSpellDeck: source.fromSpellDeck } : {}),
+          ...(source.fromOwnDiscard ? { fromOwnDiscard: true } : {}),
           ...(source.fromSpellBook ? { fromSpellBook: true } : {}),
           ...(source.tarnumReturn ? { tarnumReturn: source.tarnumReturn } : {})
         }
@@ -2769,10 +2780,21 @@ function addTurnCardActions(
   actions: LegalAction[],
   state: GameState,
   playerId: PlayerId,
-  cards: CardLibrary
+  cards: CardLibrary,
+  // "combat-prep": the PvP pre-battle window. Both participants may play the same
+  // hand cards they could on a map turn (artifacts/permanents like the Legion, an
+  // Ability, Sandro's Cloak, an instant) to prepare for the fight — so a held card
+  // is never wasted just because an enemy attacked mid-turn. The caller guarantees
+  // the player is a participant still in prep; the live combat / active-player
+  // gates below are relaxed for it, and map-MOVEMENT Spells (Town Portal) are
+  // dropped since teleporting the hero out would break the pending battle.
+  context: "map" | "combat-prep" = "map"
 ): void {
   const player = state.players[playerId];
-  if (!player || state.combat || state.activePlayerId !== playerId || state.pendingChoice || state.reactionWindow) {
+  if (!player || state.pendingChoice || state.reactionWindow) {
+    return;
+  }
+  if (context === "map" && (state.combat || state.activePlayerId !== playerId)) {
     return;
   }
 
@@ -2790,6 +2812,13 @@ function addTurnCardActions(
   for (const { cardId, fromSpellBook } of turnCardSources) {
     const card = cards[cardId];
     if (!card || card.implementationStatus !== "implemented") {
+      continue;
+    }
+
+    // PvP prep: a map-movement Spell (Town Portal et al.) would relocate the hero
+    // out of the pending fight, so it is never offered in the prep window. Every
+    // other card a map turn allows (permanents, instants, Sandro's Cloak …) is.
+    if (context === "combat-prep" && card.kind === "spell" && card.timing === "map") {
       continue;
     }
 
@@ -6632,6 +6661,11 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
   if (state.combat?.prep) {
     if (inCombatPrep(state, playerId)) {
       addTownActions(actions, state, playerId);
+      // Prepare for the fight with hand cards too — exactly the map-turn plays
+      // (put the Legion artifact into play, place Sandro's Cloak, etc.), so a held
+      // card is never wasted just because an enemy attacked mid-turn.
+      addTurnCardActions(actions, state, playerId, cards, "combat-prep");
+      addPermanentDiscardActions(actions, state, playerId);
       addPvpEscapeActions(actions, state, playerId);
       actions.push({
         label: "Accept the battle (ready up — deployment begins when both sides accept)",

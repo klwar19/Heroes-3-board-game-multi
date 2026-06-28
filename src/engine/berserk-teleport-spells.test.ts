@@ -246,6 +246,49 @@ describe("Berserk spell", () => {
     const dispelled = castAt(cast, "spell.dispel", "unit_p2_skeletons", 0);
     expect(unitIsBerserk(dispelled.activeEffects, dispelled.combat!.units.unit_p2_skeletons)).toBe(false);
   });
+
+  // Reported scenario: "cast on a Magma Elemental, both enemy and ally one space
+  // away, but it can still move freely — nothing forced." A Magma Elemental is
+  // immune ONLY to Magic Arrow + Earth Magic (per the wiki); Berserk is Fire, so
+  // it is NOT immune and MUST be forced. This drives the full real cast (paying
+  // Power for the silver unit through the reaction window), then the forced menu,
+  // then proves the engine REJECTS a free move at the reducer.
+  it("forces a berserked Magma Elemental with an adjacent enemy AND ally — no free move", () => {
+    const state = berserkScene("berserk-magma");
+    const magma = state.combat!.units.unit_p2_skeletons;
+    magma.unitDefId = "conflux.magma_elementals";
+    magma.grade = "silver";
+    magma.abilities = ["elemental-damage", "earth-elemental-immunity"]; // immune to Earth/Magic Arrow, NOT Fire
+    magma.position = 9;
+    state.combat!.units.unit_p2_vampires.position = 8; // ally, adjacent
+    state.combat!.units.unit_p1_griffins.position = 5; // enemy, adjacent
+
+    // Pay Power 2 so the silver grade is reached.
+    const cast = castAt(state, "spell.berserk", "unit_p2_skeletons", 2);
+    expect(unitIsBerserk(cast.activeEffects, cast.combat!.units.unit_p2_skeletons)).toBe(true);
+
+    // Its forced menu offers ONLY the two adjacent units (enemy and ally) — no
+    // free move, defend, or hold while a target stands.
+    const active = activate(cast, "unit_p2_skeletons");
+    const attacks = unitActions(active, "unit_p2_skeletons", "ATTACK_UNIT")
+      .map((legal) => (legal.action.type === "ATTACK_UNIT" ? legal.action.defenderId : null))
+      .filter(Boolean);
+    expect(attacks).toContain("unit_p2_vampires");
+    expect(attacks).toContain("unit_p1_griffins");
+    expect(unitActions(active, "unit_p2_skeletons", "MOVE_UNIT")).toHaveLength(0);
+    expect(unitActions(active, "unit_p2_skeletons", "DEFEND_UNIT")).toHaveLength(0);
+    expect(unitActions(active, "unit_p2_skeletons", "END_ACTIVATION")).toHaveLength(0);
+
+    // And the engine REJECTS a free move issued straight to the reducer (the
+    // board can't smuggle a drag-move past the constraint).
+    const freeMove = applyAction(active, {
+      type: "MOVE_UNIT",
+      playerId: "p2",
+      unitId: "unit_p2_skeletons",
+      destination: 0
+    });
+    expect(freeMove.errors.length).toBeGreaterThan(0);
+  });
 });
 
 // ---------------------------------------------------------------------------
