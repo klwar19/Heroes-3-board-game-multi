@@ -5158,8 +5158,20 @@ export function finalizeAdventureCombat(state: GameState): void {
       if (context.bankId) {
         // Creature Bank win: claim the bank reward, scaled by X = the number of
         // Stacked defenders (rulebook p.66-67). Banks sit outside the BINH
-        // Necromancy-timing deferral — their reward is granted immediately.
+        // Necromancy-timing deferral — their reward is granted immediately
+        // (there is no held-back field reward to price the reinforce against).
         grantCreatureBankReward(state, hero.id, context.fieldId, context.bankStackCount ?? 0);
+        // ...but a bank fight is still a non-Quick Combat win, so a Necropolis
+        // hero who holds Necromancy still gets the now-or-never after-combat
+        // window (the bug: there was no upgrade prompt at all after a bank). No
+        // fieldId is deferred here — the bank reward already resolved above, so
+        // the window carries nothing to withhold; it just lets the player play
+        // or skip Necromancy before doing anything else. Any reward prompt the
+        // bank queued (`pendingVisit`) resolves first; the Necromancy gate in
+        // legal-actions sits behind it.
+        if (playerCanPlayNecromancy(state, playerId)) {
+          adventure.pendingNecromancy = { playerId, heroId: hero.id };
+        }
       } else if (playerCanPlayNecromancy(state, playerId)) {
         // BINH house rule: Necromancy is a now-or-never decision made BEFORE the
         // field reward. If the winner can play it this instant, defer the field
