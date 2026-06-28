@@ -331,6 +331,7 @@ describe("Creature Bank defenders", () => {
       expect(unit.controllerId).toBe("neutrals");
       expect(unit.bankUnit).toBe(true);
       expect(unit.unitDefId).toBe("neutral.nagas");
+      expect(unit.assets?.cardImage).toBe(bankSide.cardImage);
       // An un-stacked Naga uses the bank card stats verbatim (4/1/5/6).
       if (!unit.stackToken) {
         expect([unit.attack, unit.defense, unit.maxHealth, unit.initiative]).toEqual([

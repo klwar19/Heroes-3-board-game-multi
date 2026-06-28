@@ -55,10 +55,11 @@ export const CREATURE_BANK_UNIT_SIDES: Record<string, UnitSideDefinition> = {
     initiative: 5,
     type: "ground",
     cost: {},
+    cardImage: "/assets/units-creature-bank-familiars.webp",
     // engine: while Stacked, reduce every enemy spell's Power by 1 (min 0).
     abilities: ["bank-familiar-power-drain"],
     abilityText:
-      "[unit_passive] As long as this unit is Stacked, whenever the enemy casts a spell, reduce their [power] by 1 (to a minimum of 0)."
+      "[unit_passive] As long as this unit is Stacked, whenever the enemy casts a [spell], reduce their [power] by 1 (to a minimum of 0)."
   },
   // --- Crypt --------------------------------------------------------------
   "neutral.skeletons": {
@@ -68,6 +69,7 @@ export const CREATURE_BANK_UNIT_SIDES: Record<string, UnitSideDefinition> = {
     initiative: 4,
     type: "ground",
     cost: {},
+    cardImage: "/assets/units-creature-bank-skeletons.webp",
     abilities: ["phoenix-rebirth"],
     abilityText: "[unit_passive] Once per Combat, when this unit's [health_points] drops to 0, set it to 1 instead."
   },
@@ -78,6 +80,7 @@ export const CREATURE_BANK_UNIT_SIDES: Record<string, UnitSideDefinition> = {
     initiative: 3,
     type: "ground",
     cost: {},
+    cardImage: "/assets/units-creature-bank-zombies.webp",
     abilities: ["zombie-resilience-weak"],
     abilityText: '[unit_passive] If the attacker resolves a "+1" on the Attack die against this unit, gain +1 [defense].'
   },
@@ -88,6 +91,7 @@ export const CREATURE_BANK_UNIT_SIDES: Record<string, UnitSideDefinition> = {
     initiative: 5,
     type: "flying",
     cost: {},
+    cardImage: "/assets/units-creature-bank-wraiths.webp",
     // engine: on this unit's own attack, the enemy discards 1 random card.
     abilities: ["bank-wraith-attack-discard"],
     abilityText: "[unit_passive] Whenever this unit attacks, the enemy must discard 1 card from hand (if possible)."
@@ -99,6 +103,7 @@ export const CREATURE_BANK_UNIT_SIDES: Record<string, UnitSideDefinition> = {
     initiative: 6,
     type: "flying",
     cost: {},
+    cardImage: "/assets/units-creature-bank-vampires.webp",
     abilities: ["bank-vampire-life-drain"],
     abilityText: "[unit_attack] After the attack, remove all [damage] from this unit."
   },
@@ -110,9 +115,10 @@ export const CREATURE_BANK_UNIT_SIDES: Record<string, UnitSideDefinition> = {
     initiative: 3,
     type: "ground",
     cost: {},
+    cardImage: "/assets/units-creature-bank-dwarves.webp",
     // engine: while Stacked, this unit rolls the Defend die when attacked.
     abilities: ["bank-stacked-defense-token"],
-    abilityText: "[unit_passive] As long as this unit is Stacked, it is treated as if it had a Defense token on it."
+    abilityText: "[unit_passive] As long as this unit is Stacked, it is treated as if it had a [defense] token on it."
   },
   // --- Medusa Stores ------------------------------------------------------
   "neutral.medusas": {
@@ -122,6 +128,7 @@ export const CREATURE_BANK_UNIT_SIDES: Record<string, UnitSideDefinition> = {
     initiative: 6,
     type: "ranged",
     cost: {},
+    cardImage: "/assets/units-creature-bank-medusas.webp",
     // engine: ignore-retaliation always; while Stacked, an ADJACENT (melee)
     // attack also Paralyzes — a ranged shot at a distant foe never does (the
     // adjacency gate is in applyOnAttackParalysis). The "If Stacked" half is the
@@ -139,6 +146,7 @@ export const CREATURE_BANK_UNIT_SIDES: Record<string, UnitSideDefinition> = {
     initiative: 8,
     type: "flying",
     cost: {},
+    cardImage: "/assets/units-creature-bank-dragon_flies.webp",
     abilities: ["dragon-fly-retaliation-penalty-2"],
     abilityText: "[unit_attack] Retaliation Attacks against this unit suffer -2 [attack]."
   },
@@ -154,6 +162,7 @@ export const CREATURE_BANK_UNIT_SIDES: Record<string, UnitSideDefinition> = {
     initiative: 6,
     type: "ground",
     cost: {},
+    cardImage: "/assets/units-creature-bank-water_elementals.webp",
     abilities: ["magic-elemental-immunity"],
     abilityText: "[unit_passive] Immune to Magic Arrow."
   },
@@ -165,8 +174,9 @@ export const CREATURE_BANK_UNIT_SIDES: Record<string, UnitSideDefinition> = {
     initiative: 4,
     type: "ground",
     cost: {},
+    cardImage: "/assets/units-creature-bank-gold_golems.webp",
     abilities: ["reduce-spell-damage-2"],
-    abilityText: "[unit_passive] This unit reduces any [damage] it takes from spells by 2 (to a minimum of 0)."
+    abilityText: "[unit_passive] This unit reduces any [damage] it takes from [spell] by 2 (to a minimum of 0)."
   },
   "neutral.diamond_golems": {
     attack: 3,
@@ -175,8 +185,9 @@ export const CREATURE_BANK_UNIT_SIDES: Record<string, UnitSideDefinition> = {
     initiative: 5,
     type: "ground",
     cost: {},
+    cardImage: "/assets/units-creature-bank-diamond_golems.webp",
     abilities: ["reduce-spell-damage-3"],
-    abilityText: "[unit_passive] This unit reduces any [damage] it takes from spells by 3 (to a minimum of 0)."
+    abilityText: "[unit_passive] This unit reduces any [damage] it takes from [spell] by 3 (to a minimum of 0)."
   },
   // --- Griffin Conservatory ----------------------------------------------
   "neutral.griffins": {
@@ -186,6 +197,7 @@ export const CREATURE_BANK_UNIT_SIDES: Record<string, UnitSideDefinition> = {
     initiative: 8,
     type: "flying",
     cost: {},
+    cardImage: "/assets/units-creature-bank-griffins.webp",
     abilities: ["unlimited-retaliation"],
     abilityText: "[unit_passive] This unit can perform an unlimited number of Retaliation Attacks."
   },
@@ -197,6 +209,7 @@ export const CREATURE_BANK_UNIT_SIDES: Record<string, UnitSideDefinition> = {
     initiative: 6,
     type: "ground",
     cost: {},
+    cardImage: "/assets/units-creature-bank-nagas.webp",
     abilities: ["ignores-retaliation"],
     abilityText: "[unit_attack] Ignore Retaliation Attacks."
   },
@@ -208,6 +221,7 @@ export const CREATURE_BANK_UNIT_SIDES: Record<string, UnitSideDefinition> = {
     initiative: 8,
     type: "ranged",
     cost: {},
+    cardImage: "/assets/units-creature-bank-cyclopes.webp",
     // The Cyclops Stockpile card prints no ability (wiki shows "-").
     abilities: []
   },
@@ -219,9 +233,10 @@ export const CREATURE_BANK_UNIT_SIDES: Record<string, UnitSideDefinition> = {
     initiative: 9,
     type: "flying",
     cost: {},
+    cardImage: "/assets/units-creature-bank-black_dragons.webp",
     // engine: while Stacked, +3 Attack on every attack and Retaliation Attack.
     abilities: ["bank-black-dragon-stacked-attack"],
-    abilityText: "[unit_passive] As long as this unit is Stacked, its [attack] gains +3."
+    abilityText: "[unit_passive] As long as this unit is Stacked, it gains +3 [attack]."
   },
   "neutral.gold_dragons": {
     attack: 5,
@@ -230,6 +245,7 @@ export const CREATURE_BANK_UNIT_SIDES: Record<string, UnitSideDefinition> = {
     initiative: 10,
     type: "flying",
     cost: {},
+    cardImage: "/assets/units-creature-bank-gold_dragons.webp",
     abilities: ["dragon-line-attack-3"],
     abilityText:
       "[unit_attack] Attack 2 spaces in a line. The first attack resolves normally, and the second has 3 [attack]."
@@ -241,9 +257,10 @@ export const CREATURE_BANK_UNIT_SIDES: Record<string, UnitSideDefinition> = {
     initiative: 15,
     type: "flying",
     cost: {},
+    cardImage: "/assets/units-creature-bank-faerie_dragons.webp",
     // engine: while Stacked, the enemy player cannot cast any spell.
     abilities: ["bank-faerie-dragon-spell-lock"],
-    abilityText: "[unit_passive] As long as this unit is Stacked, the enemy cannot cast spells."
+    abilityText: "[unit_passive] As long as this unit is Stacked, the enemy cannot cast [spell]."
   },
   "neutral.crystal_dragons": {
     attack: 6,
@@ -252,9 +269,10 @@ export const CREATURE_BANK_UNIT_SIDES: Record<string, UnitSideDefinition> = {
     initiative: 16,
     type: "ground",
     cost: {},
+    cardImage: "/assets/units-creature-bank-crystal_dragons.webp",
     // engine: while Stacked, this unit rolls the Defend die when attacked.
     abilities: ["bank-stacked-defense-token"],
-    abilityText: "[unit_passive] As long as this unit is Stacked, it is treated as if it had a Defense token on it."
+    abilityText: "[unit_passive] As long as this unit is Stacked, it is treated as if it had a [defense] token on it."
   }
 };
 
