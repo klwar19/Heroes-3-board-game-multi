@@ -15,11 +15,16 @@ import { type GameAction, type GameState, type MapTileState } from "./state";
 // far-tile-flip.test.ts; this file covers the on-map discovery path. Every test
 // asserts the OBSERVED board outcome and fails if the wiring is removed.
 //
-// Fixture tile facts (core game, verified against tile-defs):
-//   F1 — Settlement, no Mine
-//   F4 — Mine, no Settlement
+// Fixture tile facts (verified against tile-defs):
+//   F1  — Settlement, no Mine
+//   F4  — GOLD Mine, no Settlement      (a no-Settlement tile; gold → no ore reroll)
+//   F7  — VALUABLES Mine, no Settlement (no ore reroll)
+//   #F4 — ORE Mine, no Settlement       (triggers the one-time ore-mine reroll)
 const SETTLEMENT_NO_MINE = "F1";
 const MINE_NO_SETTLEMENT = "F4";
+const ORE_MINE_NO_SETTLEMENT = "#F4";
+const GOLD_MINE_NO_SETTLEMENT = "F4";
+const VALUABLES_MINE_NO_SETTLEMENT = "F7";
 
 function apply(state: GameState, action: GameAction): GameState {
   const result = applyAction(state, action);
@@ -178,10 +183,11 @@ describe("Ⅱ–Ⅲ tile discovery — keep/reroll/pick on a tile already on the
 
     it("does NOT fire the settlement guarantee on the 1st on-map opening", () => {
       const state = landGame();
-      const tile = armDiscoverableFarTile(state, MINE_NO_SETTLEMENT);
+      const tile = armDiscoverableFarTile(state, ORE_MINE_NO_SETTLEMENT);
       state.adventure!.farTilePool = [SETTLEMENT_NO_MINE];
-      // Opening 1 (counter 0): a Mine tile shows the MINE choice, never the settlement one.
+      // Opening 1 (counter 0): an ore-Mine tile shows the MINE choice, never the settlement one.
       const next = apply(state, discoverAction(tile.id));
+      expect(next.adventure!.pendingFarTileFlip?.offerMode).toBe("mine");
       expect(next.adventure!.pendingFarTileFlip?.offerMode).not.toBe("settlement");
     });
 
@@ -191,7 +197,8 @@ describe("Ⅱ–Ⅲ tile discovery — keep/reroll/pick on a tile already on the
       // trigger the settlement guarantee. Keyed per player, it is p1's 1st —
       // so NO settlement choice opens.
       const state = landGame();
-      const tile = armDiscoverableFarTile(state, MINE_NO_SETTLEMENT);
+      // An ore-Mine tile so a flip object exists on opening 1 to inspect openingIndex.
+      const tile = armDiscoverableFarTile(state, ORE_MINE_NO_SETTLEMENT);
       state.adventure!.farTilesOpenedByPlayer = { p1: 0, p2: 5 };
       state.adventure!.farTilePool = [SETTLEMENT_NO_MINE]; // a Settlement IS available — only the per-player count gates it
       const next = apply(state, discoverAction(tile.id));
@@ -210,10 +217,10 @@ describe("Ⅱ–Ⅲ tile discovery — keep/reroll/pick on a tile already on the
     });
   });
 
-  describe("material-mine reroll on an on-map tile (every opening, once)", () => {
-    it("offers a one-time reroll for a Mine tile; the reroll replaces it on the SAME slot", () => {
+  describe("ore-mine reroll on an on-map tile (every opening, once) — ONLY ore Mines", () => {
+    it("offers a one-time reroll for an ORE Mine tile; the reroll replaces it on the SAME slot", () => {
       const state = landGame();
-      const tile = armDiscoverableFarTile(state, MINE_NO_SETTLEMENT);
+      const tile = armDiscoverableFarTile(state, ORE_MINE_NO_SETTLEMENT);
       state.adventure!.farTilePool = [SETTLEMENT_NO_MINE];
       state.adventure!.farTileScriptedDraws = [SETTLEMENT_NO_MINE];
 
@@ -221,33 +228,53 @@ describe("Ⅱ–Ⅲ tile discovery — keep/reroll/pick on a tile already on the
       const flip = offered.adventure!.pendingFarTileFlip!;
       expect(flip.via).toBe("reveal");
       expect(flip.offerMode).toBe("mine");
-      expect(flip.candidate).toBe(MINE_NO_SETTLEMENT);
+      expect(flip.candidate).toBe(ORE_MINE_NO_SETTLEMENT);
 
-      const rerolled = choose(offered, 1); // Reroll once (material mine)
-      // The fresh (no-mine) tile auto-finalizes onto the same slot; the mined def returns to the pool.
+      const rerolled = choose(offered, 1); // Reroll once (ore mine)
+      // The fresh (no-ore-mine) tile auto-finalizes onto the same slot; the ore def returns to the pool.
       expect(rerolled.adventure!.pendingFarTileFlip).toBeNull();
       expect(rerolled.adventure!.tiles[tile.id].tileDefId).toBe(SETTLEMENT_NO_MINE);
-      expect(rerolled.adventure!.farTilePool).toContain(MINE_NO_SETTLEMENT);
-      // Effect: the Mine that was on this tile is gone from the board after the reroll.
+      expect(rerolled.adventure!.farTilePool).toContain(ORE_MINE_NO_SETTLEMENT);
+      // Effect: the ore Mine that was on this tile is gone from the board after the reroll.
       expect(rotateAndHasLocation(rerolled, tile.id, "mine")).toBe(false);
     });
 
-    it("KEEP lands the Mine tile (control: a Mine reaches the board)", () => {
+    it("KEEP lands the ore Mine tile (control: an ore Mine reaches the board)", () => {
       const state = landGame();
-      const tile = armDiscoverableFarTile(state, MINE_NO_SETTLEMENT);
+      const tile = armDiscoverableFarTile(state, ORE_MINE_NO_SETTLEMENT);
       state.adventure!.farTilePool = [SETTLEMENT_NO_MINE];
 
-      const kept = choose(apply(state, discoverAction(tile.id)), 0); // Keep the Mine tile
-      expect(kept.adventure!.tiles[tile.id].tileDefId).toBe(MINE_NO_SETTLEMENT);
+      const kept = choose(apply(state, discoverAction(tile.id)), 0); // Keep the ore Mine tile
+      expect(kept.adventure!.tiles[tile.id].tileDefId).toBe(ORE_MINE_NO_SETTLEMENT);
       expect(rotateAndHasLocation(kept, tile.id, "mine")).toBe(true);
+    });
+
+    it("does NOT offer a reroll for a GOLD Mine — it reveals straight to its rotation", () => {
+      const state = landGame();
+      const tile = armDiscoverableFarTile(state, GOLD_MINE_NO_SETTLEMENT);
+      state.adventure!.farTilePool = [SETTLEMENT_NO_MINE]; // a draw IS available; only the ore gate withholds it
+      const next = apply(state, discoverAction(tile.id));
+      expect(next.adventure!.pendingFarTileFlip).toBeNull();
+      expect(next.pendingChoice ?? null).toBeNull();
+      expect(next.adventure!.pendingTileChoice?.kind).toBe("reveal");
+      expect(next.adventure!.tiles[tile.id].tileDefId).toBe(GOLD_MINE_NO_SETTLEMENT);
+    });
+
+    it("does NOT offer a reroll for a VALUABLES Mine either", () => {
+      const state = landGame();
+      const tile = armDiscoverableFarTile(state, VALUABLES_MINE_NO_SETTLEMENT);
+      state.adventure!.farTilePool = [SETTLEMENT_NO_MINE];
+      const next = apply(state, discoverAction(tile.id));
+      expect(next.adventure!.pendingFarTileFlip).toBeNull();
+      expect(next.adventure!.tiles[tile.id].tileDefId).toBe(VALUABLES_MINE_NO_SETTLEMENT);
     });
 
     it("does NOT offer a Mine reroll when the pool is empty (no tile left to draw)", () => {
       const state = landGame();
-      const tile = armDiscoverableFarTile(state, MINE_NO_SETTLEMENT);
+      const tile = armDiscoverableFarTile(state, ORE_MINE_NO_SETTLEMENT);
       state.adventure!.farTilePool = [];
       const next = apply(state, discoverAction(tile.id));
-      // No reroll possible → the Mine tile reveals straight to its rotation.
+      // No reroll possible → the ore Mine tile reveals straight to its rotation.
       expect(next.adventure!.pendingFarTileFlip).toBeNull();
       expect(next.pendingChoice ?? null).toBeNull();
       expect(next.adventure!.pendingTileChoice?.kind).toBe("reveal");

@@ -14,6 +14,7 @@ import {
   hasDuplicateArmyUnitIds,
   healLegacyPlayerFields,
   isSeaField,
+  liftSeaHaltForWaterWalk,
   makeCombatUnitFromArmy,
   NEUTRAL_DECK_IDS,
   openNeutralRecruitOffer,
@@ -121,6 +122,7 @@ import {
   applyWarMachineDamage,
   buyWarMachine,
   countBallistas,
+  crackPermanentForInstant,
   discardPermanentFromPlay,
   discardPermanentVoluntarily,
   discardSchoolPermanentForExpert,
@@ -908,6 +910,9 @@ function createActiveEffectFromCard(
     playerId,
     target
   );
+  // Expert Pathfinding's effect grants Water Walk: if its controller already
+  // waded onto the sea this turn (and was halted), that halt no longer applies.
+  liftSeaHaltForWaterWalk(state, playerId);
 }
 
 /** Ranks unit grades for tier-gated effects (Anti-Magic, Counterstrike…). */
@@ -10774,6 +10779,10 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
         { type: "card", cardId: card.id, controllerId: action.playerId },
         action.playerId
       );
+      // Cast AFTER wading onto the sea (the natural click-to-move order): the
+      // coastline halt set by that step no longer applies now Water Walk is up,
+      // so the hero may keep sailing with the movement points it kept.
+      liftSeaHaltForWaterWalk(state, action.playerId);
     }
     // Shield of Naval Glory (Sea side): the +1 movement comes with a card draw.
     if (effect.drawCards) {
@@ -14713,6 +14722,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "DISCARD_PERMANENT":
         discardPermanentVoluntarily(nextState, action);
+        break;
+      case "CRACK_PERMANENT":
+        crackPermanentForInstant(nextState, action);
         break;
       case "ACKNOWLEDGE_COMBAT_END":
         acknowledgeCombatEnd(nextState, action);

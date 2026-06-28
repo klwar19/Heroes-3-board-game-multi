@@ -8,11 +8,16 @@ import { MAX_FAR_TILES_PER_PLAYER, type GameAction, type GameState } from "./sta
 // the OBSERVED outcome (which tile lands, whether a Settlement/Mine is on the
 // board) and would fail if the wiring were removed.
 //
-// Fixture tile facts (core game, verified against tile-defs):
-//   F1  — Settlement, no Mine  → auto-finalizes on a 1st opening
-//   F4  — Mine, no Settlement  → triggers the mine reroll / fails the settlement check
+// Fixture tile facts (verified against tile-defs):
+//   F1   — Settlement, no Mine          → auto-finalizes on a 1st opening
+//   F4   — GOLD Mine, no Settlement      → fails the settlement check; NO ore reroll
+//   F7   — VALUABLES Mine, no Settlement → NO ore reroll
+//   #F4  — ORE Mine, no Settlement       → triggers the one-time ore-mine reroll
 const SETTLEMENT_NO_MINE = "F1";
-const MINE_NO_SETTLEMENT = "F4";
+const MINE_NO_SETTLEMENT = "F4"; // a no-Settlement tile (its Mine is GOLD, so no ore reroll)
+const ORE_MINE_NO_SETTLEMENT = "#F4";
+const GOLD_MINE_NO_SETTLEMENT = "F4";
+const VALUABLES_MINE_NO_SETTLEMENT = "F7";
 
 const PLACE: Extract<GameAction, { type: "PLACE_TILE" }> = {
   type: "PLACE_TILE",
@@ -228,37 +233,62 @@ describe("Ⅱ–Ⅲ tile flip — true random + keep/reroll/pick", () => {
     });
   });
 
-  describe("material-mine reroll (every opening, once)", () => {
-    it("offers a one-time reroll when the tile has a Mine, and the reroll replaces it", () => {
+  describe("ore-mine reroll (every opening, once) — ONLY ore Mines, never gold/valuables", () => {
+    it("offers a one-time reroll when the tile has an ORE Mine, and the reroll replaces it", () => {
       const state = setup();
-      // Opening 1, scripted: a Mine tile, then a no-Mine tile on the reroll.
-      state.adventure!.farTileScriptedDraws = [MINE_NO_SETTLEMENT, SETTLEMENT_NO_MINE];
+      // Opening 1, scripted: an ORE Mine tile, then a no-Mine tile on the reroll.
+      state.adventure!.farTileScriptedDraws = [ORE_MINE_NO_SETTLEMENT, SETTLEMENT_NO_MINE];
       const offered = apply(state, PLACE);
       const flip = offered.adventure!.pendingFarTileFlip!;
       expect(flip.offerMode).toBe("mine");
-      expect(flip.candidate).toBe(MINE_NO_SETTLEMENT);
+      expect(flip.candidate).toBe(ORE_MINE_NO_SETTLEMENT);
 
-      const rerolled = choose(offered, 1); // Reroll once (material mine)
-      // The fresh tile (no mine) auto-finalizes; the mined tile returns to the pool.
+      const rerolled = choose(offered, 1); // Reroll once (ore mine)
+      // The fresh tile (no ore mine) auto-finalizes; the ore tile returns to the pool.
       expect(rerolled.adventure!.pendingFarTileFlip).toBeNull();
       expect(rerolled.adventure!.tiles[rerolled.adventure!.pendingTileChoice!.tileInstanceId].tileDefId).toBe(
         SETTLEMENT_NO_MINE
       );
-      expect(rerolled.adventure!.farTilePool).toContain(MINE_NO_SETTLEMENT);
+      expect(rerolled.adventure!.farTilePool).toContain(ORE_MINE_NO_SETTLEMENT);
     });
 
-    it("KEEP lands the Mine tile (control: a Mine reaches the board)", () => {
+    it("KEEP lands the ore Mine tile (control: an ore Mine reaches the board)", () => {
       const state = setup();
-      state.adventure!.farTileScriptedDraws = [MINE_NO_SETTLEMENT];
+      state.adventure!.farTileScriptedDraws = [ORE_MINE_NO_SETTLEMENT];
       const offered = apply(state, PLACE);
-      const kept = choose(offered, 0); // Keep the Mine tile
+      expect(offered.adventure!.pendingFarTileFlip!.offerMode).toBe("mine");
+      const kept = choose(offered, 0); // Keep the ore Mine tile
       const placedId = kept.adventure!.pendingTileChoice!.tileInstanceId;
       const rotations = getLegalActions(kept, "p1").filter((legal) => legal.action.type === "SET_TILE_ROTATION");
       const placed = apply(kept, rotations[0].action);
-      const hasMine = Object.values(placed.adventure!.fields).some(
-        (field) => field.tileInstanceId === placedId && field.location === "mine"
+      const hasOreMine = Object.values(placed.adventure!.fields).some(
+        (field) =>
+          field.tileInstanceId === placedId && field.location === "mine" && field.resource === "buildingMaterials"
       );
-      expect(hasMine).toBe(true);
+      expect(hasOreMine).toBe(true);
+    });
+
+    it("does NOT reroll on a GOLD Mine (it places straight away, like a no-Mine tile)", () => {
+      const state = setup();
+      state.adventure!.farTileScriptedDraws = [GOLD_MINE_NO_SETTLEMENT];
+      const next = apply(state, PLACE); // opening 1
+      // No reroll offered: the gold-mine tile finalizes straight onto the board.
+      expect(next.adventure!.pendingFarTileFlip).toBeNull();
+      expect(next.pendingChoice).toBeNull();
+      expect(next.adventure!.tiles[next.adventure!.pendingTileChoice!.tileInstanceId].tileDefId).toBe(
+        GOLD_MINE_NO_SETTLEMENT
+      );
+    });
+
+    it("does NOT reroll on a VALUABLES Mine either", () => {
+      const state = setup();
+      state.adventure!.farTileScriptedDraws = [VALUABLES_MINE_NO_SETTLEMENT];
+      const next = apply(state, PLACE); // opening 1
+      expect(next.adventure!.pendingFarTileFlip).toBeNull();
+      expect(next.pendingChoice).toBeNull();
+      expect(next.adventure!.tiles[next.adventure!.pendingTileChoice!.tileInstanceId].tileDefId).toBe(
+        VALUABLES_MINE_NO_SETTLEMENT
+      );
     });
   });
 });

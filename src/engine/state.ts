@@ -2777,6 +2777,19 @@ export type GameAction =
       playerId: PlayerId;
       cardId: CardId;
     }
+  | {
+      /**
+       * Income permanents (Eversmoking Ring of Sulfur, Inexhaustible Cart of
+       * Ore): "crack open" the in-play card for its one-off instant gain (the
+       * card's CHOOSE_ONE "Remove this card: gain …" side), removing it from the
+       * game instead of leaving it in play. Lets the instant side be used AFTER
+       * the income side was already chosen and the card sits in the permanent
+       * slot.
+       */
+      type: "CRACK_PERMANENT";
+      playerId: PlayerId;
+      cardId: CardId;
+    }
   | { type: "PLACE_COMBAT_UNIT"; playerId: PlayerId; armyUnitId: string; position: number }
   | { type: "UNPLACE_COMBAT_UNIT"; playerId: PlayerId; armyUnitId: string }
   | { type: "FINISH_COMBAT_PLACEMENT"; playerId: PlayerId }
@@ -4117,7 +4130,8 @@ export type GameEvent =
       type: "PERMANENT_DISCARDED";
       playerId: PlayerId;
       cardId: CardId;
-      reason: "voluntary" | "limit" | "expert" | "replaced";
+      /** "cracked": removed from the game for its instant gain (income rings/carts). */
+      reason: "voluntary" | "limit" | "expert" | "replaced" | "cracked";
     }
   | {
       /** Pandora's Box: the visiting hero drew a Pandora deck card. */

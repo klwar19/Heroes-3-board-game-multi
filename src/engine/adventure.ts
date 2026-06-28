@@ -486,6 +486,32 @@ export function getHeroMovementCapabilities(state: GameState, hero: HeroState): 
 }
 
 /**
+ * Lift a hero's sea-halt the instant its controller gains Water Walk this turn
+ * (the Water Walk Spell or expert Pathfinding). `movementHaltedThisTurn` is set
+ * ONLY by a sea step (wading the coastline) or a battle fought at sea — both the
+ * very "coastline rule" Water Walk negates — so once a halted hero has Water
+ * Walk that halt no longer applies and the hero may keep sailing with the
+ * movement points it kept. Without this, a player who walks onto the sea FIRST
+ * (the natural click-to-move) and only then plays Water Walk / expert
+ * Pathfinding stays frozen for the rest of the turn even though the engine would
+ * never have halted the crossing had the buff been active — the long-reported
+ * "can't keep moving after stepping onto the sea once" bug. A no-op for any hero
+ * that is not halted or has not gained Water Walk, so it is safe to call after
+ * any effect that might grant it.
+ */
+export function liftSeaHaltForWaterWalk(state: GameState, playerId: PlayerId): void {
+  for (const hero of Object.values(state.heroes)) {
+    if (
+      hero.controllerId === playerId &&
+      hero.movementHaltedThisTurn &&
+      getHeroMovementCapabilities(state, hero).waterWalk
+    ) {
+      hero.movementHaltedThisTurn = false;
+    }
+  }
+}
+
+/**
  * Whether a specific hex is open sea (water terrain). This is per-hex, not
  * per-tile: a sea tile mixes water hexes (ocean and sea features) with land
  * hexes (island structures), so the field's resolved `terrain` is consulted,

@@ -5,6 +5,7 @@ import {
   ART_LESS_PROCLAMATIONS,
   ASTROLOGERS_EXPANSIONS,
   ASTROLOGERS_NOT_IMPLEMENTED,
+  DISABLED_ASTROLOGERS_CARDS,
   astrologersCardDefinitions,
   astrologersDeckCardIds,
   type AstrologersEffect
@@ -53,8 +54,23 @@ const WIRED_EFFECT_TYPES = {
 const ASSETS_DIR = join(process.cwd(), "public", "assets");
 
 describe("astrologers deck data integrity", () => {
-  it("deals exactly the defined cards (deck ids match the definitions)", () => {
-    expect(new Set(astrologersDeckCardIds)).toEqual(new Set(Object.keys(astrologersCardDefinitions)));
+  it("deals exactly the defined cards minus the temporarily disabled ones", () => {
+    expect(new Set([...astrologersDeckCardIds, ...DISABLED_ASTROLOGERS_CARDS])).toEqual(
+      new Set(Object.keys(astrologersCardDefinitions))
+    );
+  });
+
+  it("never deals a disabled proclamation, but keeps its definition for re-enabling", () => {
+    const dealt = new Set(astrologersDeckCardIds);
+    for (const id of DISABLED_ASTROLOGERS_CARDS) {
+      expect(dealt.has(id), `${id} is disabled and must NOT be in the live deck`).toBe(false);
+      expect(astrologersCardDefinitions[id], `${id} keeps its definition`).toBeDefined();
+    }
+  });
+
+  it("disables Friendly Beaver for now", () => {
+    expect(DISABLED_ASTROLOGERS_CARDS.has("astrologers.friendly_beaver")).toBe(true);
+    expect(astrologersDeckCardIds).not.toContain("astrologers.friendly_beaver");
   });
 
   it("ships a real local card scan for every proclamation (or declares it art-less)", () => {

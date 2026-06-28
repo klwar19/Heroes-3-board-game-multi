@@ -227,6 +227,74 @@ describe("income permanents share the single permanent slot", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Cracking an income permanent open WHILE IT IS IN THE PERMANENT SLOT. The
+// instant "Remove this card: gain …" side used to be reachable only from hand,
+// so once a player chose the income side the burst gain was lost forever. Now an
+// in-play income permanent can be cracked open for that one-off gain.
+// ---------------------------------------------------------------------------
+
+function findCrack(
+  state: GameState,
+  playerId: PlayerId,
+  cardId: string
+): Extract<GameAction, { type: "CRACK_PERMANENT" }> | undefined {
+  for (const entry of getLegalActions(state, playerId)) {
+    if (entry.action.type === "CRACK_PERMANENT" && entry.action.cardId === cardId) {
+      return entry.action;
+    }
+  }
+  return undefined;
+}
+
+describe("cracking an in-play income permanent open", () => {
+  it("Eversmoking Ring in the permanent slot can be cracked for 2 valuables (removed from the game)", () => {
+    const state = mapState("evers-crack-in-play");
+    state.players.p1.permanents = ["artifact.eversmoking_ring_of_sulfur"];
+    const before = state.players.p1.resources.valuables;
+
+    const crack = findCrack(state, "p1", "artifact.eversmoking_ring_of_sulfur");
+    expect(crack, "an in-play income permanent must offer a crack-open action").toBeTruthy();
+
+    const result = applyOk(state, crack!);
+    expect(result.players.p1.resources.valuables).toBe(before + 2);
+    // Removed from the game, and no longer occupying the permanent slot.
+    expect(result.players.p1.removed).toContain("artifact.eversmoking_ring_of_sulfur");
+    expect(result.players.p1.permanents ?? []).not.toContain("artifact.eversmoking_ring_of_sulfur");
+    expect(result.players.p1.discard).not.toContain("artifact.eversmoking_ring_of_sulfur");
+    // With the ring gone, the next Resources round pays nothing for it.
+    const afterValuables = result.players.p1.resources.valuables;
+    result.round = 3;
+    startAdventureRound(result);
+    expect(result.players.p1.resources.valuables).toBe(afterValuables);
+  });
+
+  it("Inexhaustible Cart in the permanent slot can be cracked for 3 building materials", () => {
+    const state = mapState("cart-crack-in-play");
+    state.players.p1.permanents = ["artifact.inexhaustible_cart_of_ore"];
+    const before = state.players.p1.resources.buildingMaterials;
+
+    const crack = findCrack(state, "p1", "artifact.inexhaustible_cart_of_ore");
+    expect(crack).toBeTruthy();
+
+    const result = applyOk(state, crack!);
+    expect(result.players.p1.resources.buildingMaterials).toBe(before + 3);
+    expect(result.players.p1.removed).toContain("artifact.inexhaustible_cart_of_ore");
+    expect(result.players.p1.permanents ?? []).not.toContain("artifact.inexhaustible_cart_of_ore");
+  });
+
+  it("CONTROL — a non-income permanent (war machine) offers NO crack-open action", () => {
+    const state = mapState("war-machine-no-crack");
+    state.players.p1.permanents = ["war_machine.first_aid_tent"];
+    expect(findCrack(state, "p1", "war_machine.first_aid_tent")).toBeFalsy();
+    // …but it can still be discarded from play the usual way.
+    const discard = getLegalActions(state, "p1").find(
+      (entry) => entry.action.type === "DISCARD_PERMANENT" && entry.action.cardId === "war_machine.first_aid_tent"
+    );
+    expect(discard).toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Endless Purse of Gold (Major): gain 3 gold, or remove the card AND discard 2
 // other cards from hand to gain 8 gold.
 // ---------------------------------------------------------------------------
