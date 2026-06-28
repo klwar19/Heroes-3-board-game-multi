@@ -173,6 +173,7 @@ export const permanentCards: CardLibrary = {
     warMachineCosts: { factory: { gold: 8 }, tradingPost: { gold: 12 } },
     effect: { type: "ENTER_PLAY" },
     assets: {
+      cardImage: "/assets/war_machines-catapult.webp",
       imageAlt: "Catapult war machine card"
     },
     implementationStatus: "implemented",
@@ -191,10 +192,12 @@ export const permanentCards: CardLibrary = {
     warMachineCosts: { factory: { gold: 10 }, tradingPost: { gold: 14 } },
     effect: { type: "ENTER_PLAY" },
     assets: {
-      // Placeholder: the fan wiki has no Cannon card scan, so reuse the cannon
-      // specialty symbol (the HotA Cannon's transparent sprite) until a real
-      // card scan exists. See scripts/fetch-cannon-cure-specialty-icons.py.
-      cardImage: "/assets/specialty-card/icon-cannon.webp",
+      // Original card face: the fan wiki has no Cannon scan, so the illustration
+      // is generated and composited onto the First Aid Tent frame. The baked
+      // rules text ("spend 1 expert use to deal 2 damage to 1 enemy unit") is the
+      // engine's expert-shot round-start effect above. See
+      // scripts/build-war-machine-cards.mjs.
+      cardImage: "/assets/war_machines-cannon.webp",
       imageAlt: "Cannon war machine card"
     },
     implementationStatus: "implemented",

@@ -23,9 +23,9 @@ describe("ability & war-machine card art is committed", () => {
       }
       const image = card.assets?.cardImage;
       if (!image) {
-        // Catapult ships with no card art (the fan wiki has no scan for it — it
-        // falls back to the deck back), so there is nothing to verify on disk.
-        // (Cannon now carries a placeholder cardImage and IS verified below.)
+        // A few ability cards genuinely have no committed scan and fall back to
+        // the deck back. Every war machine now ships a real face and is checked
+        // explicitly below.
         continue;
       }
       expect(image, `${card.id} cardImage path`).toMatch(/^\/assets\/[a-z0-9_/-]+\.webp$/);
@@ -38,8 +38,20 @@ describe("ability & war-machine card art is committed", () => {
     expect(checked).toContain("ability.ballistics");
     expect(checked).toContain("ability.pathfinding");
     expect(checked).toContain("war_machine.first_aid_tent");
+    expect(checked).toContain("war_machine.catapult");
     expect(checked).toContain("war_machine.cannon");
     expect(checked.length).toBeGreaterThan(20);
+  });
+
+  it("replaces both wiki-placeholder war machines with their own committed faces", () => {
+    expect(cardLibrary["war_machine.catapult"]?.assets?.cardImage).toBe(
+      "/assets/war_machines-catapult.webp"
+    );
+    expect(cardLibrary["war_machine.cannon"]?.assets?.cardImage).toBe(
+      "/assets/war_machines-cannon.webp"
+    );
+    // Cannon no longer borrows the specialty-icon sprite as a stand-in.
+    expect(cardLibrary["war_machine.cannon"]?.assets?.cardImage).not.toContain("specialty-card");
   });
 
   it("Interference uses its real printed-card scan, not the deck-back fallback", () => {
