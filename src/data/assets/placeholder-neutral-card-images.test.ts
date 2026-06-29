@@ -148,5 +148,7 @@ describe("blank-wiki neutral card faces", () => {
       expect(statSync(file).size, source).toBeGreaterThan(1_000_000);
     }
     expect(builder).toContain("unitTypeMark(card)");
+    expect(builder).toContain("const cleanFrame = await cleanNeutralFrame(card.tier)");
+    expect(builder).not.toContain('<rect x="86"');
   });
 });
