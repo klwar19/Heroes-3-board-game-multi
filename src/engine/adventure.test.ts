@@ -11,6 +11,7 @@ import {
 import {
   applyAction,
   canHeroReachPlacedTile,
+  canHeroReachPlacementCenter,
   createAdventureGameState,
   createAdventureLobbyState,
   getLegalActions,
@@ -917,6 +918,71 @@ describe("tile discovery and placement", () => {
     // center far off in empty space shares no crossable edge with the hero.
     const tileDefId = "F1";
     expect(canHeroReachPlacedTile(state, state.heroes.hero_p1, tileDefId, { row: 50, col: 50 }, 0)).toBe(false);
+  });
+
+  it("rejects far-tile placement at a position sealed off from the hero by a yellow border (regression)", () => {
+    const state = refreshP1(makeGame());
+    // h:8:3 is S3 slot 2 — its outer arc toward the hub at (9,4) is a printed
+    // yellow border. No rotation of any tile placed at (9,4) is reachable from
+    // here: the BFS can traverse within S3 to its two open slots (7,2) and (8,1)
+    // but neither borders any hub footprint cell.
+    state.heroes.hero_p1.spaceId = "h:8:3";
+    state.heroes.hero_p1.movementPoints = 5;
+
+    // Remove the face-down center tile at (9,4) so the slot is free to use.
+    // Face-down tiles carry no materialized fields, so no fields need deleting.
+    const hubEntry = Object.entries(state.adventure!.tiles).find(
+      ([, t]) => t.centerRow === 9 && t.centerCol === 4
+    )!;
+    delete state.adventure!.tiles[hubEntry[0]];
+
+    // canHeroReachPlacementCenter must return false for (9,4) from (8,3) — sealed.
+    expect(canHeroReachPlacementCenter(state, state.heroes.hero_p1, { row: 9, col: 4 })).toBe(false);
+    // Control: from h:10:6 (S1 slot 5, outer arc OPEN, directly borders the hub
+    // footprint at (10,5)) the function must return true.
+    const heroControl = { ...state.heroes.hero_p1, spaceId: "h:10:6" as const };
+    expect(canHeroReachPlacementCenter(state, heroControl, { row: 9, col: 4 })).toBe(true);
+
+    // PRIMARY FIX: PLACE_TILE at (9,4) is rejected without spending MP.
+    const mpBefore = state.heroes.hero_p1.movementPoints;
+    const placeResult = applyAction(state, {
+      type: "PLACE_TILE",
+      playerId: "p1",
+      heroId: "hero_p1",
+      supplyIndex: 0,
+      centerRow: 9,
+      centerCol: 4
+    });
+    expect(placeResult.errors).toHaveLength(1);
+    expect(placeResult.errors[0].message).toContain("yellow border");
+    expect(placeResult.state.heroes.hero_p1.movementPoints).toBe(mpBefore);
+
+    // SECONDARY FIX: even if a tile arrives at (9,4) via another path, every
+    // SET_TILE_ROTATION must be rejected when the hero cannot reach any rotation.
+    // Confirm no rotation of F1 at (9,4) is reachable from h:8:3.
+    const reachable = [0, 1, 2, 3, 4, 5].map((r) =>
+      canHeroReachPlacedTile(state, state.heroes.hero_p1, "F1", { row: 9, col: 4 }, r)
+    );
+    expect(reachable.every((v) => !v)).toBe(true);
+
+    // Manually plant an F1 tile at (9,4) in pendingTileChoice state.
+    const tile = instantiateTile(state.adventure!, "F1", { row: 9, col: 4 }, 0, false, { materialize: false });
+    tile.awaitingRotation = true;
+    state.adventure!.pendingTileChoice = {
+      tileInstanceId: tile.id,
+      playerId: "p1",
+      kind: "place",
+      heroId: "hero_p1"
+    };
+    for (let rotation = 0; rotation < 6; rotation++) {
+      const rotResult = applyAction(state, {
+        type: "SET_TILE_ROTATION",
+        playerId: "p1",
+        tileInstanceId: tile.id,
+        rotation
+      });
+      expect(rotResult.errors, `rotation ${rotation} should be rejected`).toHaveLength(1);
+    }
   });
 });
 

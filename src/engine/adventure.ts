@@ -1053,6 +1053,71 @@ export function canHeroReachPlacedTile(
   return false;
 }
 
+/**
+ * Whether the hero can reach any cell of the candidate tile center's footprint
+ * through the EXISTING map's crossable edges, without knowing which tile def
+ * will be drawn. Treats the candidate footprint as fully open (no sealed arcs
+ * on the new tile). Returns false only when every path from the hero to the
+ * footprint crosses a sealed outer arc on the existing-map side.
+ *
+ * Called before the tile def is drawn (PLACE_TILE handler and the UI
+ * placement-centre filter) so a sealed yellow arc cannot be circumvented.
+ */
+export function canHeroReachPlacementCenter(
+  state: GameState,
+  hero: HeroState,
+  center: HexCoord
+): boolean {
+  const adventure = state.adventure;
+  if (!adventure || !hero.spaceId || !adventure.fields[hero.spaceId]) {
+    return false;
+  }
+  const footprintCells = new Set<MapSpaceId>(tileFootprint(center, 0).map(hexSpaceId));
+  const visited = new Set<MapSpaceId>([hero.spaceId]);
+  const queue: MapSpaceId[] = [hero.spaceId];
+  while (queue.length > 0) {
+    const currentId = queue.shift() as MapSpaceId;
+    const currentField = adventure.fields[currentId];
+    if (!currentField) {
+      continue;
+    }
+    for (const neighborId of getAdjacentSpaceIds(currentId)) {
+      if (footprintCells.has(neighborId)) {
+        // Crossing into the new tile: only the existing side's outer arc matters
+        // (the new tile's arc is unknown; any rotation of it may open it later).
+        if (!isOuterEdgeSealed(adventure, currentField)) {
+          return true;
+        }
+        continue;
+      }
+      if (visited.has(neighborId)) {
+        continue;
+      }
+      const neighborField = adventure.fields[neighborId];
+      if (!neighborField) {
+        continue;
+      }
+      if (locationDefinitions[neighborField.location]?.category === "blocked") {
+        continue;
+      }
+      if (currentField.tileInstanceId !== neighborField.tileInstanceId) {
+        if (isOuterEdgeSealed(adventure, currentField) || isOuterEdgeSealed(adventure, neighborField)) {
+          continue;
+        }
+      } else {
+        const tile = adventure.tiles[currentField.tileInstanceId];
+        const def = tile ? allTileDefinitions[tile.tileDefId] : undefined;
+        if (def && hasInternalBorder(def, currentField.slot, neighborField.slot)) {
+          continue;
+        }
+      }
+      visited.add(neighborId);
+      queue.push(neighborId);
+    }
+  }
+  return false;
+}
+
 // ---------------------------------------------------------------------------
 // Resources, morale, experience
 // ---------------------------------------------------------------------------
