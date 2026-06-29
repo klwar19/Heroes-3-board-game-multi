@@ -302,7 +302,6 @@ export default class GameRoomServer implements Party.Server {
         };
         await this.persist();
         this.broadcastSnapshot();
-        await this.reportToLobby();
       }
 
       const reply: ServerMessage = {
@@ -312,6 +311,14 @@ export default class GameRoomServer implements Party.Server {
         snapshot: this.signed(this.snapshot ?? current)
       };
       sender.send(JSON.stringify(reply));
+      // Do not hold the initiating browser's action-result behind a lobby
+      // registry round trip. The snapshot is already persisted + broadcast;
+      // replying now lets local UI state (including discard selections) settle
+      // immediately. Keep awaiting the best-effort directory report afterward
+      // so the Durable Object remains alive until it finishes.
+      if (result.errors.length === 0) {
+        await this.reportToLobby();
+      }
     }
   }
 

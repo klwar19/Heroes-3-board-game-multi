@@ -28,13 +28,14 @@ import { coreUnitDefinitions } from "@/data/factions/units";
  * factions, units — are detected automatically by the fingerprint below and
  * do NOT need a bump.
  */
-// v13: map-setup changes the room server must understand — RESET_SEAT_DRAFT now
-// emits the SETUP_SEAT_RESET event (the take-back warning), SET_GAME_OPTIONS drops
-// a stale designed map on a scenario switch, and a fresh lobby defaults to the
-// Citadel/Mage Guild/Bronze Dwelling pre-built buildings. A stale server would
-// silently misbehave (no warning, no map-clear, empty default buildings), so the
-// signature must change to surface the "redeploy PartyKit" banner instead.
-export const ENGINE_PROTOCOL_VERSION = 13;
+// v14: authoritative combat semantics changed so Rebirth resolves BEFORE a
+// Creature Bank Stack Token or Pack→Few layer is lost. The earlier v13 worker
+// consumed the Stack Token first, so a 5-damage hit left a Crypt Skeleton
+// un-Stacked at 1 HP even when the frontend contained the fix. This is a pure
+// reducer change (the catalogs below do not detect it), therefore the explicit
+// protocol bump is required to make every stale room/server show the version-
+// skew warning and to invalidate cached v13 room snapshots.
+export const ENGINE_PROTOCOL_VERSION = 14;
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8
  * runtime the two halves run on (Vercel Node and Cloudflare Workers). */
