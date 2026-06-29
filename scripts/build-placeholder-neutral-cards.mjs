@@ -256,23 +256,19 @@ function titleText(name) {
     fill="#f6e7a6" stroke="#170f09" stroke-width="3" paint-order="stroke">${escapeXml(name)}</text>`;
 }
 
-function statText(stats, paintPatches = true) {
-  // Legacy faction-art cards retain their established patch coordinates;
-  // generated-art cards use the exact baselines on the inpainted Neutral frame.
-  const ys = paintPatches ? [286, 441, 596, 750] : [286, 456, 611, 795];
-  const patchBoxes = [[249, 72], [404, 76], [558, 80], [712, 94]];
-  const patches = paintPatches
-    ? patchBoxes.map(([top, height]) =>
-        `<rect x="86" y="${top}" width="66" height="${height}" rx="5" fill="#372317" fill-opacity="0.99"/>`
-      ).join("")
-    : "";
+function statText(stats) {
+  // Values sit below the four printed symbols. The old faction-art path hid
+  // each template numeral behind a tall opaque rectangle; those rectangles
+  // also covered the lower half of the stat symbols. Every card now starts
+  // from cleanNeutralFrame(), which removes only the old numeral pixels.
+  const ys = [286, 456, 611, 795];
   const labels = stats.map((value, index) => {
     const size = String(value).length > 1 ? 29 : 34;
     return `<text x="119" y="${ys[index]}" text-anchor="middle" dominant-baseline="middle"
       font-family="Georgia, 'Times New Roman', serif" font-size="${size}" font-weight="700"
       fill="#fff4c8" stroke="#140c07" stroke-width="3" paint-order="stroke">${value}</text>`;
   }).join("");
-  return patches + labels;
+  return labels;
 }
 
 function neutralCost(cost, paintPatch = true) {
@@ -441,17 +437,17 @@ async function unitTypeMark(card) {
 async function buildCard(card) {
   const titlePatch = await cleanTitlePatch(card.tier);
   const art = await sharedArt(card);
-  const cleanFrame = card.art ? await cleanNeutralFrame(card.tier) : null;
+  const cleanFrame = await cleanNeutralFrame(card.tier);
   const overlay = svgBuffer(
     titleText(card.name) +
-    statText(card.stats, !cleanFrame) +
+    statText(card.stats) +
     neutralCost(card.cost) +
     await unitTypeMark(card) +
     await abilityPanel(card)
   );
   const destination = path.join(ASSETS, `units-neutral-${card.tier}-${card.slug}.webp`);
 
-  await sharp(cleanFrame ?? path.join(ASSETS, NEUTRAL_TEMPLATES[card.tier]))
+  await sharp(cleanFrame)
     .resize(CARD_WIDTH, CARD_HEIGHT, { fit: "fill" })
     .composite([
       { input: titlePatch, left: 49, top: 40 },
