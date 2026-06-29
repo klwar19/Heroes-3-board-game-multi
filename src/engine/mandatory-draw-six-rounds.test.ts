@@ -149,6 +149,50 @@ describe("Mandatory start-of-turn draw — six rounds, two players", () => {
     expect(drawn.players[active]?.canMulligan).toBe(false);
     expect(typesOf(drawn, active).has("MOVE_HERO")).toBe(true);
   });
+
+  it("turn 1: discarding exactly one card draws exactly one replacement and never loses it", () => {
+    let state = createAdventureGameState({ seed: "turn1-discard-one", difficulty: "normal" });
+    const active = state.activePlayerId;
+    const pendingTile = state.adventure!.pendingTileChoice;
+    expect(pendingTile?.kind).toBe("starting");
+    state = apply(state, {
+      type: "SET_TILE_ROTATION",
+      playerId: active,
+      tileInstanceId: pendingTile!.tileInstanceId,
+      rotation: 0
+    });
+
+    // Make the one-for-one exchange unambiguous: four distinct cards in hand,
+    // one known replacement on top, and an empty discard pile.
+    const player = state.players[active]!;
+    player.hand = ["stat.attack", "stat.defense", "stat.power", "stat.knowledge"];
+    player.deck = ["ability.luck"];
+    player.discard = [];
+
+    const beforeEvents = state.eventLog.length;
+    state = apply(state, { type: "REFRESH_HAND", playerId: active, discardCardIds: ["stat.attack"] });
+
+    expect(state.players[active]!.hand).toEqual([
+      "stat.defense",
+      "stat.power",
+      "stat.knowledge",
+      "ability.luck"
+    ]);
+    expect(state.players[active]!.hand).toHaveLength(4);
+    expect(state.players[active]!.deck).toEqual([]);
+    expect(state.players[active]!.discard).toEqual(["stat.attack"]);
+    expect(state.players[active]!.canMulligan).toBe(false);
+    expect(state.eventLog.slice(beforeEvents).map((event) => event.type)).toEqual([
+      "CARDS_DRAWN",
+      "HAND_REFRESHED"
+    ]);
+    expect(
+      state.eventLog.slice(beforeEvents).find((event) => event.type === "CARDS_DRAWN")
+    ).toMatchObject({ playerId: active, count: 1, requested: 1 });
+    expect(
+      state.eventLog.slice(beforeEvents).find((event) => event.type === "HAND_REFRESHED")
+    ).toMatchObject({ playerId: active, discarded: 1, drawn: 1 });
+  });
 });
 
 describe("Buying troops is NOT gated by the draw (so 'stop and buy troops' works)", () => {

@@ -58,6 +58,31 @@ async function sitActiveSeat(page: Page): Promise<void> {
   }
 }
 
+/** Sit at the active seat but stop at the mandatory turn-1 hand step. */
+async function sitActiveSeatBeforeDraw(page: Page): Promise<void> {
+  for (const title of [/Sit as Catherine/, /Sit as Sandro/]) {
+    await page.getByTitle(title).click({ timeout: 8000 }).catch(() => {});
+    await page.waitForTimeout(500);
+    await clearMapNotices(page);
+
+    // BINH forces one free home-tile rotation before the opening hand step.
+    const rotate = page.locator(".rotateFloat");
+    if (await rotate.isVisible().catch(() => false)) {
+      const confirm = rotate.getByRole("button", { name: /Confirm/ });
+      for (let turn = 0; turn < 6 && !(await confirm.isEnabled().catch(() => false)); turn += 1) {
+        await rotate.getByTitle("Rotate clockwise").click();
+      }
+      await confirm.click();
+      await expect(rotate).toBeHidden({ timeout: 15000 });
+    }
+
+    if (await page.getByRole("button", { name: "Discard and draw new" }).isVisible().catch(() => false)) {
+      return;
+    }
+  }
+  throw new Error("No seat reached the turn-1 hand step.");
+}
+
 async function startTwoPlayerAdventure(page: Page, roomId: string): Promise<void> {
   await page.goto(`/?room=${roomId}`);
   await expect(page.getByRole("heading", { name: /Map setup/i })).toBeVisible({ timeout: 20000 });
@@ -102,6 +127,34 @@ test("the hero walks by clicking the map with the confirm card on the hex", asyn
 
   // Far tile tray shows the two face-down backs available to the active seat.
   await expect(page.locator(".farTileBack")).toHaveCount(2);
+});
+
+test("turn 1 discard-one redraw keeps the replacement card visible and in hand", async ({ page }) => {
+  await startTwoPlayerAdventure(page, `e2e-redraw-${Date.now().toString(36)}`);
+  await dismissFirstRoll(page);
+  await sitActiveSeatBeforeDraw(page);
+
+  const hand = page.locator(".adventureHand");
+  const cards = hand.locator(".adventureHandCard");
+  await expect(cards).toHaveCount(4);
+
+  await page.getByRole("button", { name: "Discard and draw new" }).click();
+  await cards.first().click();
+  await expect(hand.locator(".adventureHandCard.discarding")).toHaveCount(1);
+  await page.getByRole("button", { name: "Discard 1 & draw" }).click();
+
+  // The picker clears synchronously, before the server snapshot can replace the
+  // selected slot with the new card. The replacement must never inherit the old
+  // red/dim "discarding" state.
+  await expect(hand.locator(".adventureHandCard.discarding")).toHaveCount(0);
+  await expect(cards).toHaveCount(4);
+  await expect(hand).toContainText("Hand 4/4");
+
+  // Wait through the full draw-flight/backstop window and prove the replacement
+  // is still mounted and visible, with exactly the selected card in discard.
+  await expect(hand.locator(".adventureHandSlot.incoming")).toHaveCount(0, { timeout: 8000 });
+  await expect(cards).toHaveCount(4);
+  await expect(hand.locator(".ownDiscardSpot .ownDeckCount")).toHaveText("1");
 });
 
 test("discovering a face-down tile opens the rotation card on the tile", async ({ page }) => {

@@ -3219,6 +3219,18 @@ export default function Home() {
 
     const confirmHandAction = () => {
       const discardCardIds = handDiscards.map((index) => handCards[index]);
+      // Clear the picker BEFORE the request leaves the browser. PartyKit first
+      // broadcasts the authoritative post-draw snapshot and then sends the
+      // request's action-result. If the old slot indexes stay selected during
+      // that gap, the replacement card occupying one of those slots is rendered
+      // as though it too were being discarded — the reported "drew one, then
+      // lost the new card" bug. The engine never removed it, but the stale local
+      // selection made the new card look lost. Clearing optimistically is safe:
+      // an error leaves the start-of-turn gate armed, so the player can reopen
+      // the picker and retry without any card-state mutation.
+      setHandMode(null);
+      setHandDiscards([]);
+      setOpenHandIndex(null);
       if (handMode === "morale-redraw") {
         void submitAction({ type: "SPEND_MORALE", playerId: viewerPlayerId, benefit: "redraw", discardCardIds });
         return;

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { applyAction, createInitialGameState, getLegalActions } from "./index";
+import { makeCombatUnitFromNeutral } from "./adventure";
 import {
   getEnemySpellPowerReduction,
   getFlatAttackBonus,
@@ -365,9 +366,7 @@ describe("Crypt / Shipwreck Wraiths: enemy discard on attack", () => {
 
 // ===========================================================================
 // Crypt Skeletons — Rebirth: once per combat, a killing blow leaves it at 1 HP.
-// The bank card runs the SEPARATE fallback path in markUnitRemovedIfNeeded
-// (bank units skip the pre-flip rebirth so a Stack Token can absorb first), so
-// this exercises that path end-to-end through a real attack — not just the data.
+// Rebirth resolves before either a Stack Token or a Pack side is lost.
 // ===========================================================================
 
 describe("Crypt Skeletons: Rebirth (once per combat)", () => {
@@ -505,6 +504,54 @@ describe("Stacked Crypt Skeleton: Rebirth keeps the Pack (Stack Token), goes dow
     expect(abilityEventIds(state)).toContain("phoenix-rebirth");
     // It did NOT spend the token this hit.
     expect(state.eventLog.some((e) => e.type === "STACK_TOKEN_DISCARDED")).toBe(false);
+  });
+
+  it("a real 5-damage attack leaves the actual bank Skeleton Stacked at 1 HP", () => {
+    const state = createInitialGameState("stacked-skeleton-five-damage");
+    const attacker = state.combat!.units.unit_p1_marksmen;
+    attacker.abilities = [];
+    attacker.attack = 5;
+    attacker.position = 1;
+
+    // Construct from the real Creature Bank side so Rebirth comes from the
+    // Crypt Skeleton data, then add the health Stack Token exactly as setup does.
+    const skeleton = makeCombatUnitFromNeutral(
+      { unitDefId: "neutral.skeletons", tier: "bronze", bankUnit: true },
+      "unit_p2_skeletons",
+      13,
+      "binh"
+    )!;
+    skeleton.controllerId = "p2";
+    skeleton.stackToken = "health";
+    skeleton.maxHealth = 3; // printed 2 HP + the health Stack Token
+    state.combat!.units.unit_p2_skeletons = skeleton;
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = attacker.id;
+    script(state, [0]); // Attack 5 + die 0 - Defense 0 = exactly 5 damage
+
+    const next = settle(
+      applyOk(state, {
+        type: "ATTACK_UNIT",
+        playerId: "p1",
+        attackerId: attacker.id,
+        defenderId: skeleton.id
+      })
+    );
+    const after = next.combat!.units.unit_p2_skeletons;
+    const assigned = [...next.eventLog].reverse().find(
+      (event): event is Extract<GameEvent, { type: "DAMAGE_ASSIGNED" }> =>
+        event.type === "DAMAGE_ASSIGNED" && event.target.type === "unit" && event.target.unitId === after.id
+    );
+
+    expect(assigned?.amount).toBe(5);
+    expect(after.usedRebirthThisCombat).toBe(true);
+    expect(after.stackToken).toBe("health");
+    expect(after.maxHealth - after.damage).toBe(1);
+    expect(abilityEventIds(next)).toContain("phoenix-rebirth");
+    expect(next.eventLog.some((event) => event.type === "STACK_TOKEN_DISCARDED" && event.unitId === after.id)).toBe(false);
+    expect(next.eventLog.some((event) => event.type === "UNIT_FLIPPED" && event.unitId === after.id)).toBe(false);
   });
 
   it("hit 2 → Rebirth is spent, NOW the Stack Token absorbs (drops to the un-stacked card)", () => {
