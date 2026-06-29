@@ -13,6 +13,7 @@ import {
   buildCreatureBankCombatUnits,
   canCrossEdge,
   canHeroReachPlacedTile,
+  canHeroReachPlacementCenter,
   canPlaceTileAt,
   creatureBankTierForGroup,
   applyBestRecruitDiscount,
@@ -1424,7 +1425,7 @@ export function setTileRotation(state: GameState, action: Extract<GameAction, { 
     const anyReachable = [0, 1, 2, 3, 4, 5].some((candidate) =>
       canHeroReachPlacedTile(state, placingHero, tile.tileDefId, center, candidate)
     );
-    if (anyReachable && !canHeroReachPlacedTile(state, placingHero, tile.tileDefId, center, rotation)) {
+    if (!anyReachable || !canHeroReachPlacedTile(state, placingHero, tile.tileDefId, center, rotation)) {
       throw new Error("Rotate the tile so your hero can cross onto it (a border line is sealing it off).");
     }
   }
@@ -1963,6 +1964,11 @@ export function placeTile(state: GameState, action: Extract<GameAction, { type: 
   if (!canPlaceTileAt(state, hero, center, 0)) {
     throw new Error(
       "New tiles must touch at least two existing tiles, sit next to your hero, and must not overlap."
+    );
+  }
+  if (!canHeroReachPlacementCenter(state, hero, center)) {
+    throw new Error(
+      "A yellow border seals your hero from that tile slot — move to an open tile edge before placing here."
     );
   }
 

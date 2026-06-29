@@ -25,6 +25,7 @@ import {
   applyUnitSideRules,
   bannableHeroesForSeat,
   canHeroReachPlacedTile,
+  canHeroReachPlacementCenter,
   deckDisplayName,
   describeCardEffect,
   DRAFT_FORMAT_LABELS,
@@ -211,14 +212,16 @@ export function farTilePlacementCenters(
       if (!nextToHero) {
         continue;
       }
-      // An UNOPENED supply tile has no known def (its identity is rolled at the
-      // flip), so the "your hero can cross onto it" check can only run once the
-      // real tile is drawn — it is enforced then, at the rotation step. For a
-      // known tile we still pre-filter spots the hero could never cross onto.
-      if (
-        allTileDefinitions[tileDefId] &&
-        ![0, 1, 2, 3, 4, 5].some((rotation) => canHeroReachPlacedTile(state, hero, tileDefId, candidate, rotation))
-      ) {
+      // Pre-filter spots the hero can never cross onto regardless of rotation.
+      // For a KNOWN tile def we run the full rotation-aware check; for an
+      // UNOPENED supply tile (def unknown until the flip) we check only that
+      // the hero's reachable region touches any footprint cell through an
+      // unsealed outer arc — the same gate the PLACE_TILE handler enforces.
+      if (allTileDefinitions[tileDefId]) {
+        if (![0, 1, 2, 3, 4, 5].some((rotation) => canHeroReachPlacedTile(state, hero, tileDefId, candidate, rotation))) {
+          continue;
+        }
+      } else if (!canHeroReachPlacementCenter(state, hero, candidate)) {
         continue;
       }
       centers.push(candidate);

@@ -152,6 +152,7 @@ export {
   TREASURE_DIE_FACES,
   canCrossEdge,
   canHeroReachPlacedTile,
+  canHeroReachPlacementCenter,
   classifyHeroStep,
   effectiveHandLimit,
   ensureUniqueArmyUnitIds,
