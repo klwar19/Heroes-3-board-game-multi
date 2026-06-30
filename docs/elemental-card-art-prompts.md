@@ -46,3 +46,8 @@ and rules banner:
 ```powershell
 node scripts/build-elemental-cards.mjs
 ```
+
+The compositor also uses the official `unit_ground` and `unit_passive` legend
+glyphs. Neutral stat values sit on the real lower number baselines of the taller
+Neutral frame; their masks no longer overlap the Attack, Defense, Health, or
+Initiative symbols above them.

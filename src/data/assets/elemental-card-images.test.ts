@@ -1,4 +1,4 @@
-import { existsSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { coreUnitDefinitions } from "@/data/factions/units";
@@ -87,6 +87,24 @@ describe("summoned Elemental card faces", () => {
         expect(existsSync(file), `${asset} must exist`).toBe(true);
         expect(statSync(file).size, `${asset} must contain real art`).toBeGreaterThan(100_000);
       }
+    }
+  });
+
+  it("keeps the corrected stat layout and official legend glyphs reproducible", () => {
+    const compositor = fileURLToPath(
+      new URL("../../../scripts/build-elemental-cards.mjs", import.meta.url)
+    );
+    const source = readFileSync(compositor, "utf8");
+    // Neutral numbers must stay on the lower baselines of their taller cells;
+    // the old 286/441/596/750 sequence climbed into the icon above.
+    expect(source).toContain('[282, 455, 625, 790]');
+    expect(source).not.toContain('[286, 441, 596, 750]');
+    for (const glyph of ["unit_ground", "unit_passive"] as const) {
+      expect(
+        existsSync(fileURLToPath(new URL(`../../../scripts/card-glyphs/${glyph}.svg`, import.meta.url))),
+        `${glyph} legend glyph`
+      ).toBe(true);
+      expect(source).toContain(`glyphDataUri("${glyph}")`);
     }
   });
 });

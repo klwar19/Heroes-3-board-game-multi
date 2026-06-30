@@ -11,11 +11,9 @@ function abilitySource(slug: string) {
   };
 }
 
-function abilityAssets(slug: string, name: string, noScan = false) {
+function abilityAssets(slug: string, name: string) {
   return {
-    cardImage: noScan
-      ? "/assets/player-deck-back.webp"
-      : `/assets/abilities-${slug}.webp`,
+    cardImage: `/assets/abilities-${slug}.webp`,
     imageAlt: `${name} ability card`
   };
 }
@@ -23,6 +21,9 @@ function abilityAssets(slug: string, name: string, noScan = false) {
 /** Conflux "Basic X Magic": permanent school fetch OR expert +3 school power. */
 function basicSchoolMagic(school: Exclude<SpellSchool, "any">): CardLibrary[string] {
   const schoolName = school.charAt(0).toUpperCase() + school.slice(1);
+  // "an Air"/"an Earth" but "a Fire"/"a Water": pick the article from the
+  // school's leading vowel sound, not a single hard-coded special case.
+  const article = /^[aeiou]/i.test(school) ? "an" : "a";
   return {
     id: `ability.basic_${school}_magic`,
     name: `Basic ${schoolName} Magic`,
@@ -32,7 +33,7 @@ function basicSchoolMagic(school: Exclude<SpellSchool, "any">): CardLibrary[stri
     tags: [
       "ability",
       "magic-school",
-      `Permanent: Instead of Searching the Spell deck, find the first ${schoolName} Magic spell in it and take it into your hand. Then, reshuffle the deck. Expert: +3 Power for a ${schoolName} Magic spell.`
+      `Permanent: Instead of Searching the Spell deck, find the first ${schoolName} Magic spell in it and take it into your hand. Then, reshuffle the deck. Expert: +3 Power for ${article} ${schoolName} Magic spell.`
     ],
     effect: {
       type: "CHOOSE_ONE",
@@ -52,14 +53,14 @@ function basicSchoolMagic(school: Exclude<SpellSchool, "any">): CardLibrary[stri
           }
         },
         {
-          label: `+3 Power for a ${schoolName} Magic spell`,
+          label: `+3 Power for ${article} ${schoolName} Magic spell`,
           expertOnly: true,
           trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
           effect: { type: "ADD_SPELL_POWER", amount: 3, schoolOnly: school }
         }
       ]
     },
-    assets: abilityAssets(`basic_${school}_magic`, `Basic ${schoolName} Magic`, true),
+    assets: abilityAssets(`basic_${school}_magic`, `Basic ${schoolName} Magic`),
     implementationStatus: "implemented",
     source: abilitySource(`basic_${school}_magic`)
   };
