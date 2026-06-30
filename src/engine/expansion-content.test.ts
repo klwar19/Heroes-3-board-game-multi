@@ -190,7 +190,7 @@ describe("Stronghold content", () => {
       expect(hero.portrait, `${heroId} portrait`).toBe(`/assets/hero_boardart-${heroId}.webp`);
       expect(hero.boardScan, `${heroId} board`).toContain("/assets/heroes-stronghold-");
       expect(cardLibrary[hero.startingAbilityCardId], `${heroId} ability`).toBeDefined();
-      for (const specialtyId of Object.values(hero.specialtyCardIds)) {
+      for (const specialtyId of Object.values(hero.specialtyCardIds!)) {
         expect(cardLibrary[specialtyId], `${heroId} specialty ${specialtyId}`).toBeDefined();
         expect(cardLibrary[specialtyId].assets?.cardImage, `${specialtyId} art`).toContain("/assets/hero_specialties-");
       }
@@ -933,11 +933,11 @@ describe("Zydar (Inferno hero)", () => {
     expect(coreFactionDefinitions.inferno.heroes).toContain("zydar");
     // Starting ability and every specialty card must resolve in the library.
     expect(cardLibrary[zydar.startingAbilityCardId]).toBeTruthy();
-    for (const cardId of Object.values(zydar.specialtyCardIds)) {
+    for (const cardId of Object.values(zydar.specialtyCardIds!)) {
       expect(cardLibrary[cardId], `${cardId} exists`).toBeTruthy();
     }
     // Level I is implemented (no dead starting card) — a self-spell-cast choice.
-    const levelOne = cardLibrary[zydar.specialtyCardIds[1]];
+    const levelOne = cardLibrary[zydar.specialtyCardIds![1]];
     expect(levelOne.implementationStatus).toBe("implemented");
     expect(levelOne.effect.type).toBe("CHOOSE_ONE");
   });

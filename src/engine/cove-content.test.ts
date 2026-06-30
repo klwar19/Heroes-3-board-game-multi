@@ -233,7 +233,7 @@ describe("Cove heroes", () => {
       expect(hero.portrait).toBe(`/assets/hero_portraits-${heroId}.webp`);
       expect(hero.boardScan).toBeUndefined();
       expect(existsSync(fileURLToPath(new URL(`../../public${hero.portrait}`, import.meta.url))), `${heroId} portrait file`).toBe(true);
-      for (const specialtyId of Object.values(hero.specialtyCardIds)) {
+      for (const specialtyId of Object.values(hero.specialtyCardIds!)) {
         const card = cardLibrary[specialtyId];
         expect(card, specialtyId).toBeDefined();
         expect(card.kind).toBe("hero-specialty");

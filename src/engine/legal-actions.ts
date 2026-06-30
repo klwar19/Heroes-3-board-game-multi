@@ -1,5 +1,10 @@
 import { cardLibrary } from "@/data/cards/library";
-import { coreBuildingDefinitions, coreFactionDefinitions, coreHeroDefinitions } from "@/data/factions/core";
+import {
+  coreBuildingDefinitions,
+  coreFactionDefinitions,
+  coreHeroDefinitions,
+  isPlayableFaction
+} from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { isMarketLocation, locationDefinitions, TRADE_RATES } from "@/data/map/locations";
 import { sampleBuildings } from "@/data/towns/buildings";
@@ -6564,7 +6569,7 @@ function getSetupLobbyLegalActions(state: GameState, playerId: PlayerId): LegalA
   );
   const untakenFactions = (Object.values(coreFactionDefinitions) as { id: FactionId }[])
     .map((faction) => faction.id)
-    .filter((id) => !takenFactions.has(id));
+    .filter((id) => !takenFactions.has(id) && isPlayableFaction(id));
 
   // The setup format selector — any seated player may (re)start any format.
   for (const format of ["open", "draft", "random", "random-choice"] as const) {

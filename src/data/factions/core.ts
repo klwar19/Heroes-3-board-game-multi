@@ -1,5 +1,5 @@
 import { TOWN_BUILDING_IMAGES } from "@/data/assets/homm-assets";
-import type { FactionDefinition, HeroDefinition, TownBuildingDefinition } from "./types";
+import type { FactionDefinition, FactionId, HeroDefinition, TownBuildingDefinition } from "./types";
 import { coreUnitDefinitions } from "./units";
 
 const wikiCredit =
@@ -16,7 +16,8 @@ const townProducts: Record<string, string> = {
   tower: "Heroes of Might and Magic III: The Board Game (Tower Expansion)",
   conflux: "Heroes of Might and Magic III: The Board Game (Conflux Expansion)",
   cove: "Heroes of Might and Magic III: The Board Game (Cove Expansion)",
-  bulwark: "Heroes of Might and Magic III: The Board Game (Bulwark Expansion)"
+  bulwark: "Heroes of Might and Magic III: The Board Game (Bulwark Expansion)",
+  factory: "Heroes of Might and Magic III: The Board Game (Factory Expansion)"
 };
 
 function townSource(faction: string) {
@@ -104,6 +105,22 @@ function confluxHeroSource(slug: string) {
     credit:
       "Hero class, statistics, starting ability and the I/IV/VI specialty rules transcribed from the fan wiki Conflux hero page. The printed board is not on the wiki yet (placeholder art), so the portrait is the classic PC hero portrait from heroes.thelazy.net (upscaled, hosted locally). Verify against official components before final release.",
     url: `https://en.homm3bg.wiki/heroes/${slug}/`
+  };
+}
+
+/**
+ * Source for Factory heroes: the board game Factory expansion does not yet have
+ * an official fan-wiki page with hero boards, so these are PC-game data (stats,
+ * class, starting ability) from heroes.thelazy.net, with the PC portrait
+ * upscaled and hosted locally. Specialty cards are NOT yet wired (no board game
+ * cards exist); `specialtyCardIds` is absent. Verify everything before release.
+ */
+function factoryHeroSource(slug: string) {
+  return {
+    product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
+    credit:
+      `Hero class and specialty from heroes.thelazy.net/index.php/${slug} (HotA PC game). Stats approximate the Mercenary/Artificer board-game class template; portrait is the classic PC portrait (upscaled, hosted locally). NO specialty cards exist yet — all I/IV/VI are stubs. Verify against official components before final release.`,
+    url: `https://heroes.thelazy.net/index.php/${slug}`
   };
 }
 
@@ -1133,6 +1150,114 @@ export const coreBuildingDefinitions: Record<string, TownBuildingDefinition> = {
     effect: { type: "RUNE_ALTAR", startingRunes: 0, levelCap: 3 },
     implementationStatus: "implemented",
     source: townSource("bulwark")
+  },
+
+  // ---- Factory (expansion) -----------------------------------------------
+  // Factory is a HotA PC-game-only town not yet released as an official board
+  // game expansion. All buildings below are stubs — costs are approximate and
+  // effects are NOT_IMPLEMENTED. Art is from heroes.thelazy.net via
+  // scripts/fetch-factory-art.py and auto-wired through TOWN_BUILDING_IMAGES.
+  "factory.city_hall": {
+    id: "factory.city_hall",
+    name: "City Hall",
+    faction: "factory",
+    cost: { gold: 10, buildingMaterials: 4 },
+    effect: { type: "NOT_IMPLEMENTED", note: "Factory City Hall income not yet determined from board game cards." },
+    implementationStatus: "not-implemented",
+    source: townSource("factory")
+  },
+  "factory.citadel": {
+    id: "factory.citadel",
+    name: "Citadel",
+    faction: "factory",
+    cost: { gold: 8, buildingMaterials: 5, valuables: 1 },
+    effect: { type: "NOT_IMPLEMENTED", note: "Unlock reinforce — pending board game card text." },
+    implementationStatus: "not-implemented",
+    source: townSource("factory")
+  },
+  "factory.mage_guild": {
+    id: "factory.mage_guild",
+    name: "Mage Guild",
+    faction: "factory",
+    cost: { gold: 4, buildingMaterials: 2, valuables: 1 },
+    effect: { type: "NOT_IMPLEMENTED", note: "Mage Guild — pending board game card text." },
+    spellBookCost: 5,
+    implementationStatus: "not-implemented",
+    source: townSource("factory")
+  },
+  "factory.dwelling_bronze": {
+    id: "factory.dwelling_bronze",
+    name: "Halfling Adobe",
+    faction: "factory",
+    cost: { gold: 5, buildingMaterials: 3, valuables: 1 },
+    effect: { type: "NOT_IMPLEMENTED", note: "Unlocks bronze (Halflings, Mechanics, Armadillos) — pending board game card text." },
+    implementationStatus: "not-implemented",
+    source: townSource("factory")
+  },
+  "factory.dwelling_silver": {
+    id: "factory.dwelling_silver",
+    name: "Ranch",
+    faction: "factory",
+    cost: { gold: 8, buildingMaterials: 6, valuables: 3 },
+    prerequisites: ["factory.dwelling_bronze"],
+    effect: { type: "NOT_IMPLEMENTED", note: "Unlocks silver (Automatons, Sandworms) — pending board game card text." },
+    implementationStatus: "not-implemented",
+    source: townSource("factory")
+  },
+  "factory.dwelling_gold": {
+    id: "factory.dwelling_gold",
+    name: "Gantry",
+    faction: "factory",
+    cost: { gold: 10, buildingMaterials: 9, valuables: 4 },
+    prerequisites: ["factory.dwelling_silver"],
+    effect: { type: "NOT_IMPLEMENTED", note: "Unlocks gold (Gunslingers, Couatls, Dreadnoughts) — pending board game card text." },
+    implementationStatus: "not-implemented",
+    source: townSource("factory")
+  },
+  "factory.bank": {
+    id: "factory.bank",
+    name: "Bank",
+    faction: "factory",
+    cost: { gold: 8, buildingMaterials: 5 },
+    effect: { type: "NOT_IMPLEMENTED", note: "Factory Bank — pending board game card text." },
+    implementationStatus: "not-implemented",
+    source: townSource("factory")
+  },
+  "factory.mana_generator": {
+    id: "factory.mana_generator",
+    name: "Mana Generator",
+    faction: "factory",
+    cost: { gold: 6, buildingMaterials: 4, valuables: 1 },
+    effect: { type: "NOT_IMPLEMENTED", note: "Mana Generator — pending board game card text." },
+    implementationStatus: "not-implemented",
+    source: townSource("factory")
+  },
+  "factory.artifact_merchants": {
+    id: "factory.artifact_merchants",
+    name: "Artifact Merchants",
+    faction: "factory",
+    cost: { gold: 8, buildingMaterials: 6, valuables: 1 },
+    effect: { type: "NOT_IMPLEMENTED", note: "Artifact Merchants — pending board game card text." },
+    implementationStatus: "not-implemented",
+    source: townSource("factory")
+  },
+  "factory.pen": {
+    id: "factory.pen",
+    name: "Pen",
+    faction: "factory",
+    cost: { gold: 6, buildingMaterials: 5 },
+    effect: { type: "NOT_IMPLEMENTED", note: "Factory Pen — pending board game card text." },
+    implementationStatus: "not-implemented",
+    source: townSource("factory")
+  },
+  "factory.lightning_rod": {
+    id: "factory.lightning_rod",
+    name: "Lightning Rod",
+    faction: "factory",
+    cost: { gold: 6, buildingMaterials: 4, valuables: 1 },
+    effect: { type: "NOT_IMPLEMENTED", note: "Lightning Rod — pending board game card text." },
+    implementationStatus: "not-implemented",
+    source: townSource("factory")
   }
 };
 
@@ -2382,7 +2507,248 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     specialtyCardIds: { 1: "specialty.oidana.1", 4: "specialty.oidana.4", 6: "specialty.oidana.6" },
     portrait: "/assets/hero_portraits-oidana.webp",
     source: heroSource("oidana")
+  },
+
+  // ---- Factory (expansion) heroes ----------------------------------------
+  // STUBS — no board game specialty cards exist yet; `specialtyCardIds` is
+  // absent for all Factory heroes. Stats follow the PC game's Mercenary (might
+  // A3/D1/P1/K1) and Artificer (magic A0/D1/P2/K2) class templates. Starting
+  // abilities are PC-game approximations; verify against official board game
+  // cards before release. Portraits from heroes.thelazy.net via
+  // scripts/fetch-factory-art.py.
+
+  // Mercenary heroes (might class):
+  henrietta: {
+    id: "henrietta",
+    name: "Henrietta",
+    faction: "factory",
+    class: "Mercenary",
+    type: "might",
+    startingStats: { attack: 3, defense: 1, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.leadership",
+    // NOT IMPLEMENTED: Halflings unit specialty (I/IV/VI). No board game cards.
+    portrait: "/assets/hero_portraits-henrietta.webp",
+    source: factoryHeroSource("Henrietta")
+  },
+  sam: {
+    id: "sam",
+    name: "Sam",
+    faction: "factory",
+    class: "Mercenary",
+    type: "might",
+    startingStats: { attack: 3, defense: 1, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.armorer",
+    // NOT IMPLEMENTED: Mechanics unit specialty. No board game cards.
+    portrait: "/assets/hero_portraits-sam.webp",
+    source: factoryHeroSource("Sam")
+  },
+  tancred: {
+    id: "tancred",
+    name: "Tancred",
+    faction: "factory",
+    class: "Mercenary",
+    type: "might",
+    startingStats: { attack: 3, defense: 1, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.archery",
+    // NOT IMPLEMENTED: Gunslingers unit specialty. No board game cards.
+    portrait: "/assets/hero_portraits-tancred.webp",
+    source: factoryHeroSource("Tancred")
+  },
+  melchior: {
+    id: "melchior",
+    name: "Melchior",
+    faction: "factory",
+    class: "Mercenary",
+    type: "might",
+    startingStats: { attack: 2, defense: 2, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.diplomacy",
+    // NOT IMPLEMENTED: Diplomacy specialty. No board game cards.
+    portrait: "/assets/hero_portraits-melchior.webp",
+    source: factoryHeroSource("Melchior")
+  },
+  floribert: {
+    id: "floribert",
+    name: "Floribert",
+    faction: "factory",
+    class: "Mercenary",
+    type: "might",
+    startingStats: { attack: 2, defense: 1, power: 2, knowledge: 1 },
+    startingAbilityCardId: "ability.first_aid",
+    // NOT IMPLEMENTED: First Aid specialty. No board game cards.
+    portrait: "/assets/hero_portraits-floribert.webp",
+    source: factoryHeroSource("Floribert")
+  },
+  wynona: {
+    id: "wynona",
+    name: "Wynona",
+    faction: "factory",
+    class: "Mercenary",
+    type: "might",
+    startingStats: { attack: 3, defense: 1, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.scouting",
+    // NOT IMPLEMENTED: Scouting specialty. No board game cards.
+    portrait: "/assets/hero_portraits-wynona.webp",
+    source: factoryHeroSource("Wynona")
+  },
+  dury: {
+    id: "dury",
+    name: "Dury",
+    faction: "factory",
+    class: "Mercenary",
+    type: "might",
+    startingStats: { attack: 2, defense: 2, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.armorer",
+    // NOT IMPLEMENTED: Armorer specialty. No board game cards.
+    portrait: "/assets/hero_portraits-dury.webp",
+    source: factoryHeroSource("Dury")
+  },
+  morton: {
+    id: "morton",
+    name: "Morton",
+    faction: "factory",
+    class: "Mercenary",
+    type: "might",
+    startingStats: { attack: 3, defense: 1, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.artillery",
+    // NOT IMPLEMENTED: Ballista specialty. No board game cards.
+    portrait: "/assets/hero_portraits-morton.webp",
+    source: factoryHeroSource("Morton")
+  },
+  tavin: {
+    id: "tavin",
+    name: "Tavin",
+    faction: "factory",
+    class: "Mercenary",
+    type: "might",
+    startingStats: { attack: 3, defense: 1, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.offense",
+    // NOT IMPLEMENTED: Offense specialty. No board game cards.
+    portrait: "/assets/hero_portraits-tavin.webp",
+    source: factoryHeroSource("Tavin")
+  },
+  murdoch: {
+    id: "murdoch",
+    name: "Murdoch",
+    faction: "factory",
+    class: "Mercenary",
+    type: "might",
+    startingStats: { attack: 3, defense: 1, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.archery",
+    // NOT IMPLEMENTED: Archery specialty. No board game cards.
+    portrait: "/assets/hero_portraits-murdoch.webp",
+    source: factoryHeroSource("Murdoch")
+  },
+
+  // Artificer heroes (magic class):
+  celestine: {
+    id: "celestine",
+    name: "Celestine",
+    faction: "factory",
+    class: "Artificer",
+    type: "magic",
+    startingStats: { attack: 0, defense: 1, power: 2, knowledge: 2 },
+    startingAbilityCardId: "ability.wisdom",
+    // NOT IMPLEMENTED: Armadillos unit specialty. No board game cards.
+    portrait: "/assets/hero_portraits-celestine.webp",
+    source: factoryHeroSource("Celestine")
+  },
+  todd: {
+    id: "todd",
+    name: "Todd",
+    faction: "factory",
+    class: "Artificer",
+    type: "magic",
+    startingStats: { attack: 0, defense: 1, power: 2, knowledge: 2 },
+    startingAbilityCardId: "ability.intelligence",
+    // NOT IMPLEMENTED: Automatons unit specialty. No board game cards.
+    portrait: "/assets/hero_portraits-todd.webp",
+    source: factoryHeroSource("Todd")
+  },
+  agar: {
+    id: "agar",
+    name: "Agar",
+    faction: "factory",
+    class: "Artificer",
+    type: "magic",
+    startingStats: { attack: 0, defense: 0, power: 2, knowledge: 3 },
+    startingAbilityCardId: "ability.sorcery",
+    // NOT IMPLEMENTED: Sandworms unit specialty. No board game cards.
+    portrait: "/assets/hero_portraits-agar.webp",
+    source: factoryHeroSource("Agar")
+  },
+  bertram: {
+    id: "bertram",
+    name: "Bertram",
+    faction: "factory",
+    class: "Artificer",
+    type: "magic",
+    startingStats: { attack: 0, defense: 1, power: 2, knowledge: 2 },
+    startingAbilityCardId: "ability.estates",
+    // NOT IMPLEMENTED: Gold/resource specialty. No board game cards.
+    portrait: "/assets/hero_portraits-bertram.webp",
+    source: factoryHeroSource("Bertram")
+  },
+  wrathmont: {
+    id: "wrathmont",
+    name: "Wrathmont",
+    faction: "factory",
+    class: "Artificer",
+    type: "magic",
+    startingStats: { attack: 0, defense: 0, power: 3, knowledge: 2 },
+    startingAbilityCardId: "ability.sorcery",
+    // NOT IMPLEMENTED: Frenzy spell specialty. No board game cards.
+    portrait: "/assets/hero_portraits-wrathmont.webp",
+    source: factoryHeroSource("Wrathmont")
+  },
+  ziph: {
+    id: "ziph",
+    name: "Ziph",
+    faction: "factory",
+    class: "Artificer",
+    type: "magic",
+    startingStats: { attack: 0, defense: 0, power: 3, knowledge: 2 },
+    startingAbilityCardId: "ability.basic_fire_magic",
+    // NOT IMPLEMENTED: Lightning Bolt spell specialty. No board game cards.
+    portrait: "/assets/hero_portraits-ziph.webp",
+    source: factoryHeroSource("Ziph")
+  },
+  victoria: {
+    id: "victoria",
+    name: "Victoria",
+    faction: "factory",
+    class: "Artificer",
+    type: "magic",
+    startingStats: { attack: 0, defense: 1, power: 2, knowledge: 2 },
+    startingAbilityCardId: "ability.tactics",
+    // NOT IMPLEMENTED: Land Mine specialty. No board game cards.
+    portrait: "/assets/hero_portraits-victoria.webp",
+    source: factoryHeroSource("Victoria")
+  },
+  eanswythe: {
+    id: "eanswythe",
+    name: "Eanswythe",
+    faction: "factory",
+    class: "Artificer",
+    type: "magic",
+    startingStats: { attack: 0, defense: 1, power: 2, knowledge: 2 },
+    startingAbilityCardId: "ability.water_magic",
+    // NOT IMPLEMENTED: Weakness spell specialty. No board game cards.
+    portrait: "/assets/hero_portraits-eanswythe.webp",
+    source: factoryHeroSource("Eanswythe")
+  },
+  frederick: {
+    id: "frederick",
+    name: "Frederick",
+    faction: "factory",
+    class: "Artificer",
+    type: "magic",
+    startingStats: { attack: 0, defense: 1, power: 2, knowledge: 2 },
+    startingAbilityCardId: "ability.eagle_eye",
+    // NOT IMPLEMENTED: Automatons unit specialty (second Automatons hero). No board game cards.
+    portrait: "/assets/hero_portraits-frederick.webp",
+    source: factoryHeroSource("Frederick")
   }
+
   // Four more wiki heroes complete the remaining rosters; their PC portraits are
   // already fetched and committed (scripts/fetch-extra-heroes-art-batch5.py:
   // octavia, melodia, tarnum_ranger, tarnum_beastmaster), but they are NOT yet
@@ -2543,6 +2909,36 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
       credit: "Fan faction (heroes.thelazy.net/Bulwark); rescaled to the board game, placeholder art. Verify before final release.",
       url: "https://heroes.thelazy.net/index.php/Bulwark"
     }
+  },
+  factory: {
+    id: "factory",
+    name: "Factory",
+    // Warm industrial bronze — steampunk HotA aesthetic.
+    color: "#c17820",
+    // NOT yet playable: registered only for its art/data. No board-game starting
+    // tile exists (S11 is a dangling placeholder), units carry no engine
+    // abilities, buildings are not-implemented, and heroes have no specialty
+    // cards. `playable: false` keeps every seat from rolling/selecting it — that
+    // would crash on the missing tile and ship a hollow town. Flip this to true
+    // (and add a real tile + cards) once the faction is actually implemented.
+    playable: false,
+    startingTileId: "S11",
+    heroes: [
+      // Mercenary (might): 10 heroes
+      "henrietta", "sam", "tancred", "melchior", "floribert",
+      "wynona", "dury", "morton", "tavin", "murdoch",
+      // Artificer (magic): 9 heroes
+      "celestine", "todd", "agar", "bertram", "wrathmont",
+      "ziph", "victoria", "eanswythe", "frederick"
+    ],
+    buildings: buildingsOfFaction("factory"),
+    units: unitsOfFaction("factory"),
+    townImage: "/assets/towns-factory-empty.webp",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
+      credit: "HotA PC-game faction (heroes.thelazy.net/Factory); rescaled to the board game, placeholder art. No official board game cards exist yet — all mechanics are stubs. Verify before release.",
+      url: "https://heroes.thelazy.net/index.php/Factory"
+    }
   }
 };
 
@@ -2620,3 +3016,14 @@ export const neutralUnitIdsByFaction: Record<string, string[]> = Object.fromEntr
 export const startingTileByFaction: Record<string, string> = Object.fromEntries(
   Object.values(coreFactionDefinitions).map((faction) => [faction.id, faction.startingTileId])
 );
+
+/**
+ * A faction a seat may actually draft, roll and play. Every setup/draft picker
+ * and the Random Town defender pool route through this so a non-playable,
+ * art-only faction (Factory) can never enter a real game and crash on its
+ * missing starting tile. A faction is playable unless its definition explicitly
+ * sets `playable: false`.
+ */
+export function isPlayableFaction(id: string): boolean {
+  return coreFactionDefinitions[id as FactionId]?.playable !== false;
+}
