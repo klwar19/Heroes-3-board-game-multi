@@ -2526,7 +2526,8 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     type: "might",
     startingStats: { attack: 3, defense: 1, power: 1, knowledge: 1 },
     startingAbilityCardId: "ability.leadership",
-    // NOT IMPLEMENTED: Halflings unit specialty (I/IV/VI). No board game cards.
+    // Halflings unit specialist (I/IV/VI) — engine-wired, face-less cards.
+    specialtyCardIds: { 1: "specialty.henrietta.1", 4: "specialty.henrietta.4", 6: "specialty.henrietta.6" },
     portrait: "/assets/hero_portraits-henrietta.webp",
     source: factoryHeroSource("Henrietta")
   },
@@ -2744,7 +2745,10 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     type: "magic",
     startingStats: { attack: 0, defense: 1, power: 2, knowledge: 2 },
     startingAbilityCardId: "ability.eagle_eye",
-    // NOT IMPLEMENTED: Automatons unit specialty (second Automatons hero). No board game cards.
+    // Automatons unit specialist (I/IV/VI) — engine-wired, face-less cards. His
+    // inherent trait also adds +1 to every Automaton's Detonate this combat
+    // (seedFactoryHeroEffects → automatonDetonationBonus).
+    specialtyCardIds: { 1: "specialty.frederick.1", 4: "specialty.frederick.4", 6: "specialty.frederick.6" },
     portrait: "/assets/hero_portraits-frederick.webp",
     source: factoryHeroSource("Frederick")
   }

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { createInitialGameState } from "./index";
 import { markUnitRemovedIfNeeded } from "./combat-units";
+import { seedFactoryHeroEffects } from "./adventure-reducer";
 import { getOnRemovalDetonation } from "./unit-abilities";
 import type { CombatUnitState, GameState } from "./state";
 
@@ -113,6 +114,29 @@ describe("Factory Automaton — Detonate on removal", () => {
     markUnitRemovedIfNeeded(state, automaton);
 
     expect(enemyAdj1.damage, "base 2 + Frederick's +1").toBe(3);
+  });
+
+  it("seedFactoryHeroEffects grants the +1 to a Frederick player and resets everyone else", () => {
+    const { state } = detonationBoard("auto-seed");
+    state.players.p1.heroDefId = "frederick";
+    state.players.p2.heroDefId = "sandro";
+    state.players.p2.automatonDetonationBonus = 1; // stale value from a prior combat
+
+    seedFactoryHeroEffects(state);
+
+    expect(state.players.p1.automatonDetonationBonus, "Frederick enhances his Automatons").toBe(1);
+    expect(state.players.p2.automatonDetonationBonus, "a non-Frederick hero gets reset").toBe(0);
+  });
+
+  it("end-to-end: under Frederick the detonation actually hits for 3, not 2", () => {
+    const { state, automaton, enemyAdj1 } = detonationBoard("auto-frederick-e2e");
+    state.players.p1.heroDefId = "frederick";
+    seedFactoryHeroEffects(state); // sets p1.automatonDetonationBonus = 1
+
+    automaton.damage = automaton.maxHealth;
+    markUnitRemovedIfNeeded(state, automaton);
+
+    expect(enemyAdj1.damage, "Frederick's seeded bonus drives the bigger blast").toBe(3);
   });
 
   it("chains: a blast that removes an adjacent Automaton detonates that one too", () => {
