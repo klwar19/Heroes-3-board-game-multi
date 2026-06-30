@@ -803,6 +803,31 @@ describe("Skull Helmet", () => {
     const play2 = findPlay(noMorale, "artifact.skull_helmet", 1);
     expect(applyOk(noMorale, play2!.action).players.p2.morale).toBe(0);
   });
+
+  it("option 0 (take a card from discard) is usable IN COMBAT, not just on the map", () => {
+    // Reported bug: in battle the player could not use Skull Helmet's "take 1
+    // non-Artifact card from your discard" side. An instant artifact is a
+    // click-to-use combat play, so option 0 must be offered + resolve mid-Combat.
+    const state = createInitialGameState("skull-take-combat");
+    state.players.p1.hand = ["artifact.skull_helmet"];
+    state.players.p2.hand = [];
+    state.players.p1.discard = ["stat.attack"]; // a non-artifact card to recover
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_marksmen";
+
+    const play = findPlay(state, "artifact.skull_helmet", 0);
+    expect(play, "option 0 must be offered mid-Combat (instant artifact)").toBeTruthy();
+
+    const opened = applyOk(state, play!.action);
+    expect((opened.pendingChoice as { context?: string } | null)?.context).toBe("discard-pick");
+    const took = applyOk(opened, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: opened.pendingChoice!.id,
+      optionIndex: 0
+    });
+    expect(took.players.p1.hand).toContain("stat.attack");
+  });
 });
 
 describe("Hourglass of the Evil Hour", () => {

@@ -573,6 +573,24 @@ export function spellBookPowerAvailable(player: PlayerState): boolean {
 }
 
 /**
+ * Whether a TAKE_FROM_DISCARD option may be played mid-Combat (opening the
+ * discard-pick immediately) rather than staying a map-only play. True when the
+ * option explicitly opts in via `allowInCombat` (Scholar's basic side, Ciele's
+ * Magic-Arrow recall), OR — HOUSE RULE — whenever the card is an INSTANT
+ * artifact. An instant artifact is a click-to-use card, NOT reaction-only: its
+ * "take a card from your discard pile" side (Skull Helmet, Helm of the Alabaster
+ * Unicorn, Crown of the Five Seas, …) is usable in battle too, not just on the
+ * map. Shared by the offering (legal-actions) and the resolution (reducer) so
+ * the two never drift.
+ */
+export function discardPickAllowedInCombat(
+  card: { kind?: string; timing?: string } | undefined,
+  effect: { allowInCombat?: boolean }
+): boolean {
+  return Boolean(effect.allowInCombat) || (card?.kind === "artifact" && card?.timing === "instant");
+}
+
+/**
  * Whether playing `cardId` on its Expert side is free of a crown for this
  * player — true only for an ability the player has had Empowered (the Dragon
  * Fly Hive / Griffin Conservatory Creature Bank bonus). The `empoweredAbilities`

@@ -158,6 +158,38 @@ describe("Helm of the Alabaster Unicorn — return a Spell (option A)", () => {
     expect(took.players.p1.discard).toContain(HELM);
     expect(took.players.p1.removed).not.toContain(HELM);
   });
+
+  it("is usable IN COMBAT too — an instant artifact is click-to-use, not map-only", () => {
+    // Reported bug: clicking the Helm in battle offered NEITHER option (option A
+    // was map-only, option B needs a Spell-deck-discard top). An instant artifact
+    // is a click-to-use combat play, so its "return a Spell from your discard"
+    // side must be offered and resolve mid-Combat.
+    const state = createInitialGameState("helm-return-combat");
+    state.players.p1.hand = [HELM];
+    state.players.p2.hand = [];
+    state.players.p1.discard = ["spell.haste"];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    state.combat!.units.unit_p1_griffins.activatedThisRound = false;
+
+    const play = findPlay(state, "p1", HELM, 0);
+    expect(play, "option A must be offered mid-Combat (instant artifact)").toBeTruthy();
+
+    const opened = applyOk(state, play!);
+    // The discard-pick opens IMMEDIATELY in combat (not parked on the map queue).
+    expect(opened.pendingChoice?.type).toBe("OPTION_CHOICE");
+    expect((opened.pendingChoice as { context?: string }).context).toBe("discard-pick");
+
+    const took = applyOk(opened, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: opened.pendingChoice!.id,
+      optionIndex: 0
+    });
+    // Observable outcome: the Spell is back in hand mid-battle; the Helm cycled out.
+    expect(took.players.p1.hand).toContain("spell.haste");
+    expect(took.players.p1.hand).not.toContain(HELM);
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -172,20 +172,31 @@ describe("Scholar basic — usable during Combat", () => {
     expect(afterPick.phase).toBe("combat");
   });
 
-  it("is NOT silently lost — without the combat path the card would be unreachable", () => {
-    // A sibling TAKE_FROM_DISCARD card WITHOUT allowInCombat is still map-only:
-    // it is never offered in combat (the control proving allowInCombat is the
-    // switch that lifts the gate).
-    const state = createInitialGameState("scholar-combat-control");
-    state.players.p1.hand = ["artifact.crown_of_dragontooth"]; // option 0 = TAKE_FROM_DISCARD, no allowInCombat
-    state.players.p1.discard = ["spell.magic_arrow", "spell.bloodlust"];
-    const offered = getLegalActions(state, "p1").some(
-      (legal) =>
-        legal.action.type === "PLAY_CARD" &&
-        legal.action.cardId === "artifact.crown_of_dragontooth" &&
-        legal.action.optionIndex === 0
-    );
-    expect(offered).toBe(false);
+  it("an INSTANT artifact's take-a-card side is also offered in combat (house rule), still gated by a takeable card", () => {
+    // House rule: an instant artifact is click-to-use in combat, so its
+    // TAKE_FROM_DISCARD side is offered mid-battle even WITHOUT `allowInCombat`
+    // (the Scholar ABILITY above still needs allowInCombat — abilities are not
+    // instant artifacts). It stays gated by the precondition: nothing takeable,
+    // nothing offered.
+    const offers = (state: GameState) =>
+      getLegalActions(state, "p1").some(
+        (legal) =>
+          legal.action.type === "PLAY_CARD" &&
+          legal.action.cardId === "artifact.crown_of_dragontooth" &&
+          legal.action.optionIndex === 0
+      );
+
+    const withSpell = createInitialGameState("scholar-combat-artifact");
+    withSpell.players.p1.hand = ["artifact.crown_of_dragontooth"]; // instant artifact; option 0 = TAKE_FROM_DISCARD (spell)
+    withSpell.players.p1.discard = ["spell.magic_arrow", "spell.bloodlust"];
+    expect(offers(withSpell), "an instant artifact's take-from-discard is offered in combat").toBe(true);
+
+    // Divergence control: an empty discard has nothing to recover, so the option
+    // is not offered even in combat — the precondition still gates it.
+    const empty = createInitialGameState("scholar-combat-artifact-empty");
+    empty.players.p1.hand = ["artifact.crown_of_dragontooth"];
+    empty.players.p1.discard = [];
+    expect(offers(empty), "with nothing takeable the option stays hidden").toBe(false);
   });
 });
 
