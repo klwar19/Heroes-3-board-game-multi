@@ -5195,7 +5195,8 @@ button.hbSlot:disabled { cursor: default; }
 }
 
 /* Route planner: a banner, the offered/chosen cells, and the step-number badge. */
-.routePlanBanner {
+.routePlanBanner,
+.tacticsExpertBanner {
   display: flex;
   align-items: center;
   gap: 10px;

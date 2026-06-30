@@ -610,6 +610,10 @@ export function BattlefieldBoard({
   //  - hoverDestination: the candidate cell under the cursor, for the ghost+arrow.
   //  - flashCells: cells to flash briefly the moment a reposition is confirmed.
   const [swapSelection, setSwapSelection] = useState<string | null>(null);
+  // Expert Tactics is opt-in: the player arms it from a single board control,
+  // then switches two units by clicking — it never floods the command menu with
+  // one verbose button per pair.
+  const [expertSwapArmed, setExpertSwapArmed] = useState(false);
   const [hoverDestination, setHoverDestination] = useState<number | null>(null);
   const [flashCells, setFlashCells] = useState<readonly number[]>([]);
   // Route-planner state: when the player chooses to hand-pick a move route
@@ -767,18 +771,36 @@ export function BattlefieldBoard({
   const placing = Boolean(setup && !combat?.prep && setup.pendingPlayerIds[0] === viewerPlayerId);
   const ownRows = placing ? new Set(placementCellsFor(state, viewerPlayerId)) : new Set<number>();
 
-  // Tactics start-of-combat swap: a click-to-select board interaction. Only the
-  // dedicated setup window is handled on the board (it has no other actions, so
-  // it can never clash with normal play); the rare expert mid-combat swap keeps
-  // its command buttons. The pairwise swap buttons are suppressed in CommandDock
-  // during this window so the board is the single, clear control.
+  // Tactics swap: a click-to-select board interaction for BOTH the start-of-combat
+  // setup window (Basic) and the mid-combat expert swap (Expert). Basic is always
+  // board-driven (the window has no other actions). Expert is opt-in: the player
+  // arms it from a single board control (so it never floods the menu with one
+  // verbose button per pair), then switches two units by clicking. Either way the
+  // pairwise SWAP_COMBAT_UNITS buttons are dropped from CommandDock — the board is
+  // the single, clear control.
   const tacticsSetup = Boolean(combat) && tacticsSetupActiveFor(state, viewerPlayerId);
-  const swapActions = tacticsSetup ? getTacticsSwapActions(legalActions) : [];
+  const expertSwapOffers = !tacticsSetup ? getTacticsSwapActions(legalActions) : [];
+  const expertSwapAvailable = expertSwapOffers.length > 0;
+  const swapActions = tacticsSetup
+    ? getTacticsSwapActions(legalActions)
+    : expertSwapArmed
+      ? expertSwapOffers
+      : [];
   const swapSelectable = swapSelectableUnitIds(swapActions);
   const activeSwapSelection = swapSelection && swapSelectable.has(swapSelection) ? swapSelection : null;
   const swapPartners = activeSwapSelection
     ? swapPartnerActions(swapActions, activeSwapSelection)
     : new Map<string, GameAction>();
+
+  // Auto-disarm expert Tactics once it is no longer offered — most importantly
+  // the instant the swap is made (the expert use is spent), but also if the
+  // active unit moves/attacks first. Keeps the armed banner from lingering.
+  useEffect(() => {
+    if (expertSwapArmed && !expertSwapAvailable) {
+      setExpertSwapArmed(false);
+      setSwapSelection(null);
+    }
+  }, [expertSwapArmed, expertSwapAvailable]);
 
   // The unit being repositioned and the cells it may go to, for the ghost+arrow
   // overlay. Either an open one-space move (combat-step choice) or a Tactics swap
@@ -867,6 +889,34 @@ export function BattlefieldBoard({
           >
             Stop placing tokens
           </button>
+        </div>
+      ) : null}
+      {expertSwapAvailable ? (
+        <div className="tacticsExpertBanner" role="group" aria-label="Expert Tactics">
+          {expertSwapArmed ? (
+            <>
+              <span>Tactics (expert): click one of your units, then another, to switch them.</span>
+              <button
+                className="commandButton"
+                onClick={() => {
+                  setExpertSwapArmed(false);
+                  setSwapSelection(null);
+                }}
+                type="button"
+              >
+                Cancel
+              </button>
+            </>
+          ) : (
+            <button
+              className="commandButton"
+              onClick={() => setExpertSwapArmed(true)}
+              type="button"
+              title="Switch the positions of two of your units (spends one expert use)."
+            >
+              Tactics (expert): switch two units
+            </button>
+          )}
         </div>
       ) : null}
       {routePlanningAvailable ? (
@@ -1803,11 +1853,11 @@ export function CommandDock({
   onAction: (action: GameAction) => void;
   onReset: () => void;
 }) {
-  // During the start-of-combat Tactics window the swap is driven on the board
-  // (click a unit, then an ally) — drop the pairwise swap buttons so the board
-  // is the single, clear control. "Keep positions" (FINISH_TACTICS) stays. The
-  // rare expert mid-combat swap is not a setup window, so it keeps its buttons.
-  const inTacticsSetup = tacticsSetupActiveFor(state, viewerPlayerId);
+  // Tactics swaps are ALWAYS driven on the board (click a unit, then another) —
+  // Basic in the start-of-combat window, Expert via the board's opt-in control.
+  // So the pairwise SWAP_COMBAT_UNITS buttons never appear in the command menu
+  // (they used to flood it with one verbose button per pair). "Keep positions"
+  // (FINISH_TACTICS) stays as the Basic-window decline.
   // PvP pre-battle preparation runs on the adventure map (PreBattlePanel), which
   // owns every prep control (build / recruit / buy spells / Accept / Retreat),
   // so the battlefield dock stays out of its way while the window is open.
@@ -1816,8 +1866,7 @@ export function CommandDock({
     ? []
     : legalActions.filter(
         (legal) =>
-          COMMAND_ACTION_TYPES.has(legal.action.type) &&
-          !(inTacticsSetup && legal.action.type === "SWAP_COMBAT_UNITS")
+          COMMAND_ACTION_TYPES.has(legal.action.type) && legal.action.type !== "SWAP_COMBAT_UNITS"
       );
   // First Aid Tent heal, surfaced right by the commands (not only in the
   // under-board effects rail). One button per wounded friendly unit; also
