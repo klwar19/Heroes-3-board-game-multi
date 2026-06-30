@@ -1529,9 +1529,16 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
     // Per-hex terrain (W6 art): only the warriors' tomb (W) is a green/palm
     // island; the mermaid, jetsam, floating Pandora's Box, derelict ship, empty
     // rocks and shrine are all open sea.
+    // Guards (W6 art): ONLY two hexes carry a Difficulty numeral — Pandora's Box
+    // (E) = Ⅴ and the Derelict Ship (SE) = Ⅳ. The jetsam (NE) shows a bare "?"
+    // reward chest with NO numeral, exactly like the unguarded jetsam on W3/#C4
+    // and the unguarded sea_chest on W4/#N10 — it is a peaceful open-sea pickup,
+    // NOT a fight. It previously carried a bogus `difficulty: 5`, which forced a
+    // level-Ⅴ battle on an open-sea hex and then stranded the winner via the
+    // sea-combat movement halt. Regression-guarded in sea-tile-guards.test.ts.
     fields: [
       { location: "mermaid" },
-      { location: "jetsam", difficulty: 5 },
+      { location: "jetsam" },
       { location: "pandoras_box", difficulty: 5 },
       { location: "derelict_ship", difficulty: 4 },
       { location: "empty_field" },
