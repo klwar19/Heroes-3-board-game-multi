@@ -65,6 +65,70 @@ describe("HandFan — Schools of Magic offer the expert as a cast-time choice", 
   });
 });
 
+describe("HandFan — a single-target Spell arms targeting on click (clear click-to-target, no text popover)", () => {
+  function lightningState(): GameState {
+    const state = createInitialGameState("hand-single-target");
+    state.players.p1.hand = ["spell.lightning_bolt"]; // one target mode, no School permanent
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_marksmen";
+    return state;
+  }
+
+  it("clicking Lightning Bolt selects its cast straight away instead of opening a text popover", () => {
+    const state = lightningState();
+    const onSelectCardAction = vi.fn();
+    render(
+      <CardZoomProvider>
+        <HandFan
+          view={getPlayerView(state, "p1")}
+          state={state}
+          viewerPlayerId="p1"
+          legalActions={getLegalActions(state, "p1")}
+          selectedCardAction={null}
+          trayActive={false}
+          onSelectCardAction={onSelectCardAction}
+          onAction={() => {}}
+        />
+      </CardZoomProvider>
+    );
+
+    // One click arms board targeting — the player then clicks the enemy hex.
+    fireEvent.click(screen.getByRole("button", { name: /Lightning Bolt card/i }));
+    expect(onSelectCardAction).toHaveBeenCalledTimes(1);
+    expect(onSelectCardAction).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "CAST_SPELL", cardId: "spell.lightning_bolt" })
+    );
+    // The "convoluted" popover (effect text, Read card, Pick target, Close) is
+    // bypassed: no menu, no "Pick target" text button.
+    expect(screen.queryByRole("menu", { name: /Lightning Bolt actions/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Pick target/i })).toBeNull();
+  });
+
+  it("CONTROL: a multi-mode Spell (Magic Arrow + School of Magic) still opens the popover to choose", () => {
+    const state = castState(); // Magic Arrow + Earth Magic ⇒ plain + '+ School' casts
+    const onSelectCardAction = vi.fn();
+    render(
+      <CardZoomProvider>
+        <HandFan
+          view={getPlayerView(state, "p1")}
+          state={state}
+          viewerPlayerId="p1"
+          legalActions={getLegalActions(state, "p1")}
+          selectedCardAction={null}
+          trayActive={false}
+          onSelectCardAction={onSelectCardAction}
+          onAction={() => {}}
+        />
+      </CardZoomProvider>
+    );
+    // Two target modes ⇒ a choice exists ⇒ clicking opens the popover (no direct arm).
+    fireEvent.click(screen.getByRole("button", { name: /Magic Arrow card/i }));
+    expect(onSelectCardAction).not.toHaveBeenCalled();
+    expect(screen.getAllByRole("button", { name: /^Pick target/i }).length).toBeGreaterThanOrEqual(2);
+  });
+});
+
 describe("HandFan — freshly-drawn cards are HIDDEN, never removed (the disappearing-hand guard)", () => {
   // The bug: a freshly-drawn hand could end a turn looking EMPTY (0 cards, no
   // game event) because the whole hand was held `visibility:hidden` ("incoming")

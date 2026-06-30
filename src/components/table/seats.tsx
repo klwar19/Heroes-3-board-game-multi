@@ -637,10 +637,22 @@ export function HandFan({
               </div>
             ) : null}
             <button
-              aria-pressed={open}
+              aria-pressed={open || selected}
               className={`fanCard ${playable ? "playable" : ""} ${selected ? "selected" : ""}`}
               onClick={() => {
                 setArmed(null);
+                // Clear click-to-target: a card whose only play is a single
+                // board target (Lightning Bolt and every other targeted Spell)
+                // arms targeting straight away — pick the card, then click the
+                // enemy on the board — instead of opening a text popover. Cards
+                // with a choice (basic/expert mode, two CHOOSE_ONE options, an
+                // immediate "Use") still open the popover so the player can pick.
+                if (playable && entry.boardSelections.length === 1 && entry.immediateActions.length === 0) {
+                  const action = entry.boardSelections[0];
+                  onSelectCardAction(sameCardSelection(selectedCardAction, action) ? null : action);
+                  setOpenIndex(null);
+                  return;
+                }
                 setOpenIndex(open ? null : entry.handIndex);
               }}
               title={
