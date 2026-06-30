@@ -947,6 +947,36 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
       tileImage: "/assets/board/tiles/n22.webp"
     }
   },
+  N23: {
+    id: "N23",
+    group: "near",
+    content: "regular_stretch_goals",
+    terrain: "rough",
+    // A Factory near tile carrying the new "shovel" Excavation field (artifact_dig
+    // — dig the top Artifact, keep or discard). Layout and outer borders mirror
+    // the rough near tile N13, which is the placeholder art base; the centre
+    // empty field is re-themed as the Excavation site (the painted glyph is a
+    // placeholder until dedicated Factory tile art is drawn).
+    fields: [
+      { location: "tree_of_knowledge" },
+      { location: "mine", difficulty: 5, resource: "gold", amount: 5 },
+      { location: "artifact_dig" },
+      { location: "blocked_field" },
+      { location: "treasure_symbol", difficulty: 4 },
+      { location: "shrine_of_magic_gesture" },
+      { location: "spell_scroll" },
+    ],
+    outerImpassable: [false, false, true, false, false, false],
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
+      credit:
+        "Factory near tile introducing the Excavation (shovel) field. Rough terrain and layout mirror N13, the placeholder art base. Verify against physical tiles before final release.",
+      url: "https://heroes.thelazy.net/index.php/Factory"
+    },
+    assets: {
+      tileImage: "/assets/board/tiles/n23.webp"
+    }
+  },
   "#N1": {
     id: "#N1",
     group: "near",

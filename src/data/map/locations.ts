@@ -592,6 +592,16 @@ export const locationDefinitions: Record<string, LocationDefinition> = {
     implementationStatus: "implemented",
     source: source("black_market")
   },
+  artifact_dig: {
+    id: "artifact_dig",
+    name: "Excavation",
+    category: "visitable",
+    // The Factory "shovel" field: dig up the top Artifact card, then keep it or
+    // discard it.
+    interaction: { type: "DIG_ARTIFACT" },
+    implementationStatus: "implemented",
+    source: source("artifact_dig")
+  },
   tavern: {
     id: "tavern",
     name: "Tavern",

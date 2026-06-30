@@ -506,6 +506,8 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       }.`;
     case "PANDORA_CARD_DRAWN":
       return `${playerName(state, event.playerId)} opens Pandora's Box and draws ${cardName(event.cardId)}.`;
+    case "ARTIFACT_DUG":
+      return `${playerName(state, event.playerId)} digs up ${cardName(event.cardId)} and ${event.kept ? "keeps it" : "discards it"}.`;
     case "WAR_MACHINE_TRIGGERED":
       return event.message;
     case "GAME_WON":
