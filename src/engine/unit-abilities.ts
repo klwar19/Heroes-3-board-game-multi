@@ -800,6 +800,29 @@ export function getSelfRebirthAbility(
   return null;
 }
 
+/**
+ * Factory Automaton: the on-removal detonation ("deal N damage to each adjacent
+ * unit"). Returns the base damage and ability identity, or null for any unit
+ * without the trait. The controller's Frederick bonus is added by the caller.
+ */
+export function getOnRemovalDetonation(
+  unit: CombatUnitState
+): { abilityId: string; abilityName: string; amount: number } | null {
+  for (const ability of getAbilitiesWithEffect(unit, "ON_REMOVAL_DAMAGE_ADJACENT")) {
+    if (ability.effect?.type === "ON_REMOVAL_DAMAGE_ADJACENT") {
+      return { abilityId: ability.id, abilityName: ability.name, amount: ability.effect.amount };
+    }
+  }
+  return null;
+}
+
+/** Living units orthogonally adjacent to `unit`'s board position (friend and foe). */
+export function getUnitsAdjacentTo(combat: CombatState, unit: CombatUnitState): CombatUnitState[] {
+  return Object.values(combat.units).filter(
+    (other) => other.id !== unit.id && isAlive(other) && isAdjacent(other.position, unit.position)
+  );
+}
+
 /** Neutral Halberdiers: this unit grants adjacent allies a virtual Defense token. */
 export function hasDefenseTokenAura(unit: CombatUnitState): boolean {
   return hasUnitAbilityEffect(unit, "DEFENSE_TOKEN_AURA");
