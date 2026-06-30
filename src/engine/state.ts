@@ -71,7 +71,8 @@ export type FactionId =
   | "tower"
   | "conflux"
   | "cove"
-  | "bulwark";
+  | "bulwark"
+  | "factory";
 
 export type TargetRef =
   | { type: "unit"; unitId: UnitId }

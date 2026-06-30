@@ -1263,6 +1263,141 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     }
   },
 
+  // ---- Factory (expansion) units ----------------------------------------
+  // STUBS — no official board game cards exist yet. Stats are approximations
+  // from the HotA PC game rescaled to the board game range; ALL abilities are
+  // `abilities: []` (display-only per CLAUDE.md rule #2). Card images are the
+  // PC creature portraits composed onto a canvas by scripts/fetch-factory-art.py.
+  // Tier mapping: bronze Tier1-3, silver Tier4-5, gold Tier6-8.
+  "factory.halflings": {
+    id: "factory.halflings",
+    name: "Halflings",
+    faction: "factory",
+    tier: "bronze",
+    type: "ranged",
+    // engine: abilities: [] — no mechanics wired. Display-only.
+    few: { attack: 1, defense: 0, health: 2, initiative: 6, cost: { gold: 2 }, abilities: [], abilityText: "[unit_attack] Roll 2 Attack dice and resolve the higher one. Ignore combat penalties.", cardImage: "/assets/units-factory-bronze-halflings-few.webp" },
+    pack: { attack: 2, defense: 0, health: 3, initiative: 7, cost: { gold: 4 }, abilities: [], abilityText: "[unit_attack] Roll 2 Attack dice and resolve the higher one. Ignore combat penalties. [unit_passive] +1 Initiative (Halfling Grenadier).", cardImage: "/assets/units-factory-bronze-halflings-pack.webp" },
+    wikiUrl: "https://heroes.thelazy.net/index.php/Halfling_(Factory)",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
+      credit: "HotA PC-game unit (heroes.thelazy.net). Stats approximate from PC values; no board game cards exist yet. abilities: [] — display-only stub.",
+      url: "https://heroes.thelazy.net/index.php/Halfling_(Factory)"
+    }
+  },
+  "factory.mechanics": {
+    id: "factory.mechanics",
+    name: "Mechanics",
+    faction: "factory",
+    tier: "bronze",
+    type: "ground",
+    // engine: abilities: [] — no mechanics wired. Display-only.
+    few: { attack: 2, defense: 2, health: 4, initiative: 5, cost: { gold: 4 }, abilities: [], abilityText: "[unit_passive] Repair: at the start of activation, repair 1 HP to an adjacent Automaton (Mechanic).", cardImage: "/assets/units-factory-bronze-mechanics-few.webp" },
+    pack: { attack: 3, defense: 2, health: 5, initiative: 5, cost: { gold: 7 }, abilities: [], abilityText: "[unit_passive] Repair: at the start of activation, repair 2 HP to an adjacent Automaton (Engineer).", cardImage: "/assets/units-factory-bronze-mechanics-pack.webp" },
+    wikiUrl: "https://heroes.thelazy.net/index.php/Mechanic",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
+      credit: "HotA PC-game unit (heroes.thelazy.net). Stats approximate from PC values; no board game cards exist yet. abilities: [] — display-only stub.",
+      url: "https://heroes.thelazy.net/index.php/Mechanic"
+    }
+  },
+  "factory.armadillos": {
+    id: "factory.armadillos",
+    name: "Armadillos",
+    faction: "factory",
+    tier: "bronze",
+    type: "ground",
+    // engine: abilities: [] — no mechanics wired. Display-only.
+    few: { attack: 3, defense: 3, health: 5, initiative: 5, cost: { gold: 5 }, abilities: [], abilityText: "[unit_passive] Curled: when defending, +2 Defense (Armadillo).", cardImage: "/assets/units-factory-bronze-armadillos-few.webp" },
+    pack: { attack: 4, defense: 4, health: 7, initiative: 7, cost: { gold: 9 }, abilities: [], abilityText: "[unit_passive] Curled: when defending, +2 Defense. [unit_attack] Knockback: push the target 1 space back (Bellwether Armadillo).", cardImage: "/assets/units-factory-bronze-armadillos-pack.webp" },
+    wikiUrl: "https://heroes.thelazy.net/index.php/Armadillo",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
+      credit: "HotA PC-game unit (heroes.thelazy.net). Stats approximate from PC values; no board game cards exist yet. abilities: [] — display-only stub.",
+      url: "https://heroes.thelazy.net/index.php/Armadillo"
+    }
+  },
+  "factory.automatons": {
+    id: "factory.automatons",
+    name: "Automatons",
+    faction: "factory",
+    tier: "silver",
+    type: "ground",
+    // engine: abilities: [] — no mechanics wired. Display-only.
+    few: { attack: 5, defense: 5, health: 6, initiative: 4, cost: { gold: 9 }, abilities: [], abilityText: "[unit_passive] No morale effects (Automaton).", cardImage: "/assets/units-factory-silver-automatons-few.webp" },
+    pack: { attack: 5, defense: 5, health: 8, initiative: 4, cost: { gold: 15 }, abilities: [], abilityText: "[unit_passive] No morale effects. Repaired by Mechanics (Sentinel Automaton).", cardImage: "/assets/units-factory-silver-automatons-pack.webp" },
+    wikiUrl: "https://heroes.thelazy.net/index.php/Automaton",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
+      credit: "HotA PC-game unit (heroes.thelazy.net). Stats approximate from PC values; no board game cards exist yet. abilities: [] — display-only stub.",
+      url: "https://heroes.thelazy.net/index.php/Automaton"
+    }
+  },
+  "factory.sandworms": {
+    id: "factory.sandworms",
+    name: "Sandworms",
+    faction: "factory",
+    tier: "silver",
+    type: "ground",
+    // engine: abilities: [] — no mechanics wired. Display-only.
+    few: { attack: 7, defense: 1, health: 8, initiative: 5, cost: { gold: 11 }, abilities: [], abilityText: "[unit_attack] Attack all adjacent enemy units (Sandworm).", cardImage: "/assets/units-factory-silver-sandworms-few.webp" },
+    pack: { attack: 7, defense: 2, health: 11, initiative: 5, cost: { gold: 18 }, abilities: [], abilityText: "[unit_attack] Attack all adjacent enemy units. +1 Defense (Olgoi-Khorkhoi).", cardImage: "/assets/units-factory-silver-sandworms-pack.webp" },
+    wikiUrl: "https://heroes.thelazy.net/index.php/Sandworm",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
+      credit: "HotA PC-game unit (heroes.thelazy.net). Stats approximate from PC values; no board game cards exist yet. abilities: [] — display-only stub.",
+      url: "https://heroes.thelazy.net/index.php/Sandworm"
+    }
+  },
+  "factory.gunslingers": {
+    id: "factory.gunslingers",
+    name: "Gunslingers",
+    faction: "factory",
+    tier: "gold",
+    type: "ranged",
+    // engine: abilities: [] — no mechanics wired. Display-only.
+    few: { attack: 6, defense: 4, health: 7, initiative: 7, cost: { gold: 14 }, abilities: [], abilityText: "[unit_attack] Shoot twice (Gunslinger).", cardImage: "/assets/units-factory-golden-gunslingers-few.webp" },
+    pack: { attack: 7, defense: 4, health: 8, initiative: 8, cost: { gold: 22 }, abilities: [], abilityText: "[unit_attack] Shoot twice. +1 Initiative (Bounty Hunter).", cardImage: "/assets/units-factory-golden-gunslingers-pack.webp" },
+    wikiUrl: "https://heroes.thelazy.net/index.php/Gunslinger",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
+      credit: "HotA PC-game unit (heroes.thelazy.net). Stats approximate from PC values; no board game cards exist yet. abilities: [] — display-only stub.",
+      url: "https://heroes.thelazy.net/index.php/Gunslinger"
+    }
+  },
+  "factory.couatls": {
+    id: "factory.couatls",
+    name: "Couatls",
+    faction: "factory",
+    tier: "gold",
+    type: "flying",
+    // engine: abilities: [] — no mechanics wired. Display-only.
+    few: { attack: 7, defense: 6, health: 8, initiative: 11, cost: { gold: 17, valuables: 1 }, abilities: [], abilityText: "[unit_passive] Flying (Couatl).", cardImage: "/assets/units-factory-golden-couatls-few.webp" },
+    pack: { attack: 8, defense: 7, health: 10, initiative: 12, cost: { gold: 26, valuables: 2 }, abilities: [], abilityText: "[unit_passive] Flying. [unit_attack] Petrifying Attack: paralyze the target for 1 round (Crimson Couatl).", cardImage: "/assets/units-factory-golden-couatls-pack.webp" },
+    wikiUrl: "https://heroes.thelazy.net/index.php/Couatl",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
+      credit: "HotA PC-game unit (heroes.thelazy.net). Stats approximate from PC values; no board game cards exist yet. abilities: [] — display-only stub.",
+      url: "https://heroes.thelazy.net/index.php/Couatl"
+    }
+  },
+  "factory.dreadnoughts": {
+    id: "factory.dreadnoughts",
+    name: "Dreadnoughts",
+    faction: "factory",
+    tier: "gold",
+    type: "ground",
+    // engine: abilities: [] — no mechanics wired. Display-only.
+    few: { attack: 8, defense: 8, health: 12, initiative: 4, cost: { gold: 24, buildingMaterials: 2 }, abilities: [], abilityText: "[unit_attack] Attack all adjacent enemy units (Dreadnought).", cardImage: "/assets/units-factory-golden-dreadnoughts-few.webp" },
+    pack: { attack: 9, defense: 9, health: 14, initiative: 5, cost: { gold: 36, buildingMaterials: 3 }, abilities: [], abilityText: "[unit_attack] Attack all adjacent enemy units. +1 Attack/Defense (Juggernaut).", cardImage: "/assets/units-factory-golden-dreadnoughts-pack.webp" },
+    wikiUrl: "https://heroes.thelazy.net/index.php/Dreadnought_(Factory)",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
+      credit: "HotA PC-game unit (heroes.thelazy.net). Stats approximate from PC values; no board game cards exist yet. abilities: [] — display-only stub.",
+      url: "https://heroes.thelazy.net/index.php/Dreadnought_(Factory)"
+    }
+  },
+
   // ---- Cove neutral guards (expansion) ----------------------------------
   // The single-sided Neutral Unit card the wiki prints for each Cove creature
   // (https://en.homm3bg.wiki/units/<slug>/, "Neutral" column). Auto-joins its

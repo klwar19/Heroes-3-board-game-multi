@@ -382,7 +382,7 @@ describe("Bulwark heroes — roster & specialty wiring", () => {
       // cardLibrary is the runtime registry the engine/UI use; it includes the
       // extra ability cards (e.g. ability.diplomacy) that adventureCards omits.
       expect(cardLibrary[hero.startingAbilityCardId]?.kind, `${id} ability`).toBe("ability");
-      for (const specialtyId of Object.values(hero.specialtyCardIds)) {
+      for (const specialtyId of Object.values(hero.specialtyCardIds!)) {
         const card = adventureCards[specialtyId];
         expect(card, specialtyId).toBeTruthy();
         expect(card.implementationStatus, specialtyId).toBe("implemented");

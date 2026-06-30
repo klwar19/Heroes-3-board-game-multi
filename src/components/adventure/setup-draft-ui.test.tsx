@@ -47,7 +47,7 @@ describe("SetupLobbyScreen — hero info popup", () => {
     }
     expect(within(detail).getByText(cardLibrary[hero.startingAbilityCardId].name)).toBeTruthy();
     for (const level of [1, 4, 6] as const) {
-      expect(within(detail).getByText(cardLibrary[hero.specialtyCardIds[level]].name), `specialty ${level}`).toBeTruthy();
+      expect(within(detail).getByText(cardLibrary[hero.specialtyCardIds![level]].name), `specialty ${level}`).toBeTruthy();
     }
 
     // Closing the popup hides it again.
