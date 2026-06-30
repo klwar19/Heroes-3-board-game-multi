@@ -96,8 +96,8 @@ describe("expansion tile data", () => {
     for (const id of Object.keys(expansionTileDefinitions)) {
       expect(coreIds.has(id), `${id} duplicated`).toBe(false);
     }
-    // 41 boxed tiles + 66 wiki expansion tiles + the Bulwark S10 and Factory S11
-    // starting tiles + the Factory N23 near tile (the Excavation/shovel field).
+    // 41 boxed tiles + 66 wiki expansion tiles + the Bulwark S10 and Factory &S1
+    // starting tiles + the Factory &N1 near tile (the Excavation/shovel field).
     expect(Object.keys(allTileDefinitions)).toHaveLength(110);
   });
 

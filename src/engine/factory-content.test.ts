@@ -107,19 +107,19 @@ describe("Factory faction — art wired, not playable", () => {
     }
   });
 
-  // ---- A real, playable faction (S11 starting tile) -------------------------
+  // ---- A real, playable faction (&S1 starting tile) -------------------------
 
-  it("is playable and registered with its S11 starting tile", () => {
+  it("is playable and registered with its &S1 starting tile", () => {
     expect(isPlayableFaction("factory")).toBe(true);
     expect(coreFactionDefinitions.factory.playable).not.toBe(false);
-    expect(coreFactionDefinitions.factory.startingTileId).toBe("S11");
-    expect(startingTileByFaction.factory).toBe("S11");
-    // The S11 tile exists, is a starting tile, and carries the Factory town.
-    const tile = allTileDefinitions.S11;
-    expect(tile, "S11 tile is defined").toBeDefined();
+    expect(coreFactionDefinitions.factory.startingTileId).toBe("&S1");
+    expect(startingTileByFaction.factory).toBe("&S1");
+    // The &S1 tile exists, is a starting tile, and carries the Factory town.
+    const tile = allTileDefinitions["&S1"];
+    expect(tile, "&S1 tile is defined").toBeDefined();
     expect(tile.group).toBe("starting");
     expect(tile.fields[0]).toMatchObject({ location: "town", faction: "factory" });
-    expect(tile.assets?.tileImage).toBe("/assets/board/tiles/s11.webp");
+    expect(tile.assets?.tileImage).toBe("/assets/board/tiles/sf1.webp");
   });
 
   it("is in the Random Town defender pool alongside the other factions", () => {
@@ -138,7 +138,7 @@ describe("Factory faction — art wired, not playable", () => {
     expect(ok.setupLobby?.seats.find((s) => s.playerId === "p1")?.factionId).toBe("factory");
   });
 
-  it("can start an adventure as Factory — the S11 town and hero deck resolve", () => {
+  it("can start an adventure as Factory — the &S1 town and hero deck resolve", () => {
     const state = createAdventureGameState({
       seed: "factory-playable",
       rollFirstPlayer: false,

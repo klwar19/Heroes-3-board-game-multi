@@ -10,7 +10,7 @@ import type { GameState } from "./state";
  * The Factory "shovel" — the Excavation (artifact_dig) field: dig up the top
  * Artifact card, then KEEP it (into hand) or DISCARD it (to that deck's discard
  * pile). Wired as the DIG_ARTIFACT location interaction → visit steps, used by
- * the Factory near tile N23. Each behaviour below fails if the wiring is removed.
+ * the Factory near tile &N1. Each behaviour below fails if the wiring is removed.
  */
 
 function factoryGame(seed: string): GameState {
@@ -42,10 +42,10 @@ function openDig(state: GameState): void {
 }
 
 describe("Factory Excavation (shovel) — dig an artifact, keep or discard", () => {
-  it("the N23 tile carries the Excavation field and the location is implemented", () => {
-    const tile = allTileDefinitions.N23;
-    expect(tile, "N23 is defined").toBeDefined();
-    expect(tile.fields.some((f) => f.location === "artifact_dig"), "N23 has the shovel field").toBe(true);
+  it("the &N1 tile carries the Excavation field and the location is implemented", () => {
+    const tile = allTileDefinitions["&N1"];
+    expect(tile, "&N1 is defined").toBeDefined();
+    expect(tile.fields.some((f) => f.location === "artifact_dig"), "&N1 has the shovel field").toBe(true);
     const loc = locationDefinitions.artifact_dig;
     expect(loc?.interaction).toEqual({ type: "DIG_ARTIFACT" });
     expect(loc?.implementationStatus).toBe("implemented");

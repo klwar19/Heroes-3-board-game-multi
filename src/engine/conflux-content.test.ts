@@ -105,7 +105,7 @@ describe("Conflux content", () => {
     expect(new Set(PLAYABLE_FACTIONS)).toEqual(new Set(playableFactionsWithUnits));
     expect(PLAYABLE_FACTIONS).toContain("conflux");
     expect(PLAYABLE_FACTIONS).toContain("cove");
-    // Factory is now a real playable faction (S11 starting tile), so it IS in
+    // Factory is now a real playable faction (&S1 starting tile), so it IS in
     // the pool alongside the others.
     expect(PLAYABLE_FACTIONS).toContain("factory");
   });
