@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { createAdventureGameState, createAdventureLobbyState } from "@/engine";
+import { applyAction, createAdventureGameState, createAdventureLobbyState, getLegalActions } from "@/engine";
 import {
   closeRoom,
   createRoom,
@@ -113,6 +113,152 @@ describe("room membership through the store", () => {
     const allowed = submitRoomAction(roomId, { type: "END_TURN", playerId: "p1" }, "c1");
     expect(allowed.result.errors).toHaveLength(0);
     expect(allowed.snapshot.state.activePlayerId).toBe("p2");
+  });
+
+  it("keeps player 2's settlement reroll and tile rotation with player 2 when player 2 is host", () => {
+    const roomId = uniqueRoom("p2-host-far-tile");
+    let seeded = createAdventureGameState({ seed: "p2-host-far", difficulty: "normal", rollFirstPlayer: false });
+    for (const player of Object.values(seeded.players)) {
+      player.canMulligan = false;
+      player.needsHandRefresh = false;
+    }
+    seeded.activePlayerId = "p2";
+    seeded.heroes.hero_p2.spaceId = "h:7:2";
+    seeded.heroes.hero_p2.movementPoints = 5;
+    seeded.adventure!.farTilesOpenedByPlayer!.p2 = 1;
+    seeded.adventure!.farTileScriptedDraws = ["F4", "F1"];
+
+    const placed = applyAction(seeded, {
+      type: "PLACE_TILE",
+      playerId: "p2",
+      heroId: "hero_p2",
+      supplyIndex: 0,
+      centerRow: 6,
+      centerCol: 4
+    });
+    expect(placed.errors).toHaveLength(0);
+    seeded = placed.state;
+    expect(seeded.pendingChoice).toMatchObject({ playerId: "p2", context: "far-tile-flip" });
+    restoreRoom(roomId, seeded);
+
+    // Joining player 2 first makes them the host — the reported failure mode.
+    submitRoomAction(roomId, { type: "JOIN_ROOM", clientId: "c2", name: "P2 Host" });
+    submitRoomAction(roomId, { type: "JOIN_ROOM", clientId: "c1", name: "P1 Guest" });
+    submitRoomAction(roomId, { type: "SET_ROOM_HOSTED", clientId: "c2", hosted: true });
+    submitRoomAction(roomId, { type: "ASSIGN_SEAT", clientId: "c2", targetClientId: "c1", seat: "p1" });
+    submitRoomAction(roomId, { type: "ASSIGN_SEAT", clientId: "c2", targetClientId: "c2", seat: "p2" });
+
+    let choice = getRoomSnapshot(roomId).state.pendingChoice!;
+    expect(
+      submitRoomAction(
+        roomId,
+        { type: "CHOOSE_OPTION", playerId: "p2", choiceId: choice.id, optionIndex: 1 },
+        "c1"
+      ).result.errors.length
+    ).toBeGreaterThan(0);
+
+    let accepted = submitRoomAction(
+      roomId,
+      { type: "CHOOSE_OPTION", playerId: "p2", choiceId: choice.id, optionIndex: 1 },
+      "c2"
+    );
+    expect(accepted.result.errors).toHaveLength(0);
+    expect(accepted.snapshot.state.pendingChoice).toMatchObject({ playerId: "p2", context: "far-tile-flip" });
+
+    choice = accepted.snapshot.state.pendingChoice!;
+    accepted = submitRoomAction(
+      roomId,
+      { type: "CHOOSE_OPTION", playerId: "p2", choiceId: choice.id, optionIndex: 0 },
+      "c2"
+    );
+    expect(accepted.result.errors).toHaveLength(0);
+    expect(accepted.snapshot.state.adventure!.pendingTileChoice?.playerId).toBe("p2");
+
+    const rotation = getLegalActions(accepted.snapshot.state, "p2").find(
+      (legal) => legal.action.type === "SET_TILE_ROTATION"
+    );
+    expect(rotation).toBeTruthy();
+    expect(submitRoomAction(roomId, rotation!.action, "c1").result.errors.length).toBeGreaterThan(0);
+    expect(submitRoomAction(roomId, rotation!.action, "c2").result.errors).toHaveLength(0);
+  });
+
+  it("does not let a player-2 host answer player 1's City Hall choice", () => {
+    const roomId = uniqueRoom("p2-host-city-hall");
+    const seeded = createAdventureGameState({ seed: "city-hall-owner", difficulty: "normal", rollFirstPlayer: false });
+    seeded.phase = "choice";
+    seeded.priorityPlayerId = "p1";
+    seeded.pendingChoice = {
+      id: "choice_city_hall_owner",
+      type: "OPTION_CHOICE",
+      playerId: "p1",
+      prompt: "Choose your City Hall income",
+      options: [{ label: "Gain 2 gold" }],
+      context: "city-hall",
+      cityHall: { options: [{ label: "Gain 2 gold", gold: 2 }] },
+      returnPhase: "player-turn"
+    };
+    const goldBefore = seeded.players.p1.resources.gold;
+    restoreRoom(roomId, seeded);
+
+    submitRoomAction(roomId, { type: "JOIN_ROOM", clientId: "c2", name: "P2 Host" });
+    submitRoomAction(roomId, { type: "JOIN_ROOM", clientId: "c1", name: "P1 Guest" });
+    submitRoomAction(roomId, { type: "SET_ROOM_HOSTED", clientId: "c2", hosted: true });
+    submitRoomAction(roomId, { type: "ASSIGN_SEAT", clientId: "c2", targetClientId: "c1", seat: "p1" });
+    submitRoomAction(roomId, { type: "ASSIGN_SEAT", clientId: "c2", targetClientId: "c2", seat: "p2" });
+
+    const choiceAction = {
+      type: "CHOOSE_OPTION" as const,
+      playerId: "p1",
+      choiceId: "choice_city_hall_owner",
+      optionIndex: 0
+    };
+    expect(submitRoomAction(roomId, choiceAction, "c2").result.errors.length).toBeGreaterThan(0);
+    const allowed = submitRoomAction(roomId, choiceAction, "c1");
+    expect(allowed.result.errors).toHaveLength(0);
+    expect(allowed.snapshot.state.players.p1.resources.gold).toBe(goldBefore + 2);
+    expect(allowed.snapshot.state.players.p2.resources.gold).toBe(seeded.players.p2.resources.gold);
+  });
+
+  it("keeps a map event/visit selection with its owning player", () => {
+    const roomId = uniqueRoom("event-choice-owner");
+    const seeded = createAdventureGameState({ seed: "event-choice-owner", difficulty: "normal", rollFirstPlayer: false });
+    const fieldId = seeded.heroes.hero_p1.spaceId!;
+    seeded.phase = "player-turn";
+    seeded.activePlayerId = "p1";
+    seeded.adventure!.pendingVisit = {
+      heroId: "hero_p1",
+      playerId: "p1",
+      fieldId,
+      steps: [
+        {
+          type: "CHOOSE_ONE",
+          prompt: "Choose this event's reward",
+          options: [
+            { label: "Gain 1 gold", steps: [{ type: "GAIN_RESOURCES", gold: 1 }] },
+            { label: "Gain 1 movement", steps: [{ type: "GAIN_MOVEMENT", amount: 1 }] }
+          ]
+        }
+      ]
+    };
+    const goldBefore = seeded.players.p1.resources.gold;
+    restoreRoom(roomId, seeded);
+
+    submitRoomAction(roomId, { type: "JOIN_ROOM", clientId: "c2", name: "P2 Host" });
+    submitRoomAction(roomId, { type: "JOIN_ROOM", clientId: "c1", name: "P1 Guest" });
+    submitRoomAction(roomId, { type: "SET_ROOM_HOSTED", clientId: "c2", hosted: true });
+    submitRoomAction(roomId, { type: "ASSIGN_SEAT", clientId: "c2", targetClientId: "c1", seat: "p1" });
+    submitRoomAction(roomId, { type: "ASSIGN_SEAT", clientId: "c2", targetClientId: "c2", seat: "p2" });
+
+    const eventAction = getLegalActions(getRoomSnapshot(roomId).state, "p1").find(
+      (legal) => legal.action.type === "RESOLVE_VISIT_STEP" && legal.action.optionIndex === 0
+    )?.action;
+    expect(eventAction).toBeTruthy();
+    expect(submitRoomAction(roomId, eventAction!, "c2").result.errors.length).toBeGreaterThan(0);
+
+    const allowed = submitRoomAction(roomId, eventAction!, "c1");
+    expect(allowed.result.errors).toHaveLength(0);
+    expect(allowed.snapshot.state.players.p1.resources.gold).toBe(goldBefore + 1);
+    expect(allowed.snapshot.state.adventure!.pendingVisit).toBeNull();
   });
 });
 

@@ -45,11 +45,12 @@ describe("Shackles of War — start-of-combat decision prompt", () => {
     expect(onAction.mock.calls[0][0]).toMatchObject({ type: "CHOOSE_OPTION", playerId: "p1", optionIndex: 0 });
   });
 
-  it("renders nothing for the defender while the attacker is deciding", () => {
+  it("shows the defender who owns the decision without exposing action buttons", () => {
     const state = shacklesDecisionState("shackles-ui-defender");
     const { container } = render(
       <PromptTray legalActions={getLegalActions(state, "p2")} onAction={vi.fn()} state={state} viewerPlayerId="p2" />
     );
-    expect(container.innerHTML).toBe("");
+    expect(container.textContent).toMatch(/is deciding/i);
+    expect(screen.queryByRole("button")).toBeNull();
   });
 });
