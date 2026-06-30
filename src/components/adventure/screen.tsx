@@ -37,7 +37,9 @@ import {
   hexDistance,
   hexToPixel,
   inCombatPrep,
+  observatoryRevealTargets,
   parseHexSpaceId,
+  reservedTownIdsForOtherSeats,
   applyRecruitGoldDiscount,
   legionVoucherDiscount,
   scenarioDefinitions,
@@ -412,6 +414,72 @@ export function HexMapBoard({
     return targets;
   }, [rawAdventure?.pendingVisit, viewerPlayerId, legalActions, readOnly]);
 
+  // Map-targeted spell choices belong on the map. Dimension Door and View
+  // Earth used to expose only opaque location-code buttons; index-align their
+  // legal actions with the destination fields so the glowing hex is clickable.
+  const pendingMapChoiceTargets = useMemo(() => {
+    const targets = new Map<MapSpaceId, GameAction>();
+    const choice = state.pendingChoice;
+    if (readOnly || choice?.type !== "OPTION_CHOICE" || choice.playerId !== viewerPlayerId) {
+      return targets;
+    }
+    const spaceIds =
+      choice.context === "dimension-door"
+        ? choice.dimensionDoor?.destinations
+        : choice.context === "view-earth"
+          ? choice.viewEarth?.mineSpaceIds
+          : undefined;
+    if (!spaceIds) {
+      return targets;
+    }
+    const actionByOption = new Map<number, GameAction>();
+    for (const legal of legalActions) {
+      if (legal.action.type === "CHOOSE_OPTION" && legal.action.choiceId === choice.id) {
+        actionByOption.set(legal.action.optionIndex, legal.action);
+      }
+    }
+    spaceIds.forEach((spaceId, optionIndex) => {
+      const action = actionByOption.get(optionIndex);
+      if (action) {
+        targets.set(spaceId, action);
+      }
+    });
+    return targets;
+  }, [state.pendingChoice, viewerPlayerId, legalActions, readOnly]);
+
+  // Redwood Observatory decisions are spatial too: an adjacent face-down tile
+  // can be clicked to reveal it, and an empty candidate centre can be clicked to
+  // place a new Far tile. Candidate ordering is shared with the engine helper.
+  const observatoryTargets = useMemo(() => {
+    const revealByTile = new Map<string, GameAction>();
+    const placements: { row: number; col: number; action: GameAction }[] = [];
+    const visit = rawAdventure?.pendingVisit;
+    const step = visit?.steps[0];
+    if (readOnly || !visit || visit.playerId !== viewerPlayerId || step?.type !== "DISCOVER_ADJACENT_TILE") {
+      return { revealByTile, placements };
+    }
+    const field = rawAdventure.fields[visit.fieldId];
+    const tile = field ? rawAdventure.tiles[field.tileInstanceId] : undefined;
+    const hero = state.heroes[visit.heroId];
+    const actionByOption = new Map<number, GameAction>();
+    for (const legal of legalActions) {
+      if (legal.action.type === "RESOLVE_VISIT_STEP" && legal.action.optionIndex !== undefined) {
+        actionByOption.set(legal.action.optionIndex, legal.action);
+      } else if (legal.action.type === "PLACE_OBSERVATORY_TILE") {
+        placements.push({ row: legal.action.centerRow, col: legal.action.centerCol, action: legal.action });
+      }
+    }
+    if (tile && hero) {
+      observatoryRevealTargets(state, hero, tile).forEach((candidate, optionIndex) => {
+        const action = actionByOption.get(optionIndex);
+        if (action) {
+          revealByTile.set(candidate.id, action);
+        }
+      });
+    }
+    return { revealByTile, placements };
+  }, [rawAdventure, state, viewerPlayerId, legalActions, readOnly]);
+
   const legalRotations = useMemo(() => {
     const rotations = new Set<number>();
     for (const legal of legalActions) {
@@ -526,7 +594,9 @@ export function HexMapBoard({
 
     // --- Face-down tiles: the printed starry backs (roman numerals) -------
     if (tile.faceDown) {
-      const discover = discoverByTile.get(tile.id);
+      const normalDiscover = discoverByTile.get(tile.id);
+      const observatoryDiscover = observatoryTargets.revealByTile.get(tile.id);
+      const discover = normalDiscover ?? observatoryDiscover;
       // Sea tiles ship both Ⅳ–Ⅴ and Ⅵ–Ⅶ behind one wave back, and the
       // underground pool likewise ships its Ⅳ–Ⅴ and Ⅵ–Ⅶ bands behind one
       // underground back — so the face-down hint shows the whole Ⅳ–Ⅶ range and
@@ -572,7 +642,9 @@ export function HexMapBoard({
             >
               <title>
                 {discover
-                  ? `Spend 1 movement point to discover this ${backLabelDisplay} tile`
+                  ? normalDiscover
+                    ? `Spend 1 movement point to discover this ${backLabelDisplay} tile`
+                    : `Reveal this adjacent ${backLabelDisplay} tile with the Observatory`
                   : `Face-down tile ${backLabelDisplay}`}
               </title>
             </polygon>
@@ -587,7 +659,7 @@ export function HexMapBoard({
               x={x}
               y={y + HEX_SIZE * 0.78}
             >
-              🐎 1 movement point: discover
+              {normalDiscover ? "🐎 1 movement point: discover" : "Observatory: reveal this tile"}
             </text>
           );
         }
@@ -693,6 +765,7 @@ export function HexMapBoard({
       const target = reachable.get(spaceId);
       const remindMove = drawReminderTargets.get(spaceId);
       const endTurnMove = endTurnMoveTargets.get(spaceId);
+      const mapChoice = pendingMapChoiceTargets.get(spaceId);
       const guarded = Boolean(field.difficulty) && !field.blackCube && !field.everFlagged;
       const glyph = LOCATION_GLYPHS[field.location] ?? "";
       const isSelected = selectedTarget?.spaceId === spaceId;
@@ -705,6 +778,7 @@ export function HexMapBoard({
             target ? "moveTarget" : "",
             remindMove ? "moveTargetLocked" : "",
             endTurnMove ? "endTurnMoveTarget" : "",
+            mapChoice ? "mapChoiceTarget" : "",
             isSelected ? "selectedTarget" : "",
             artShown ? "withArt" : ""
           ].join(" ")}
@@ -714,7 +788,13 @@ export function HexMapBoard({
           onClick={
             readOnly
               ? undefined
-              : endTurnMove
+              : mapChoice
+                ? () => {
+                    if (!suppressClickRef.current) {
+                      onAction(mapChoice);
+                    }
+                  }
+                : endTurnMove
                 ? () => {
                     if (suppressClickRef.current) {
                       return;
@@ -747,7 +827,11 @@ export function HexMapBoard({
             }${field.difficulty && guarded ? ` (guard ${ROMAN[field.difficulty]})` : ""}${
               field.flagOwnerId ? ` — flagged by ${state.players[field.flagOwnerId]?.name}` : ""
             }${target ? ` — ${target.cost} movement point${target.cost === 1 ? "" : "s"}` : ""}${
-              endTurnMove ? " — click to move your hero here" : ""
+              mapChoice
+                ? " — click to choose this location"
+                : endTurnMove
+                  ? " — click to move your hero here"
+                  : ""
             }`}
           </title>
         </polygon>
@@ -1030,6 +1114,29 @@ export function HexMapBoard({
         />
       );
     }
+  }
+
+  for (const placementTarget of observatoryTargets.placements) {
+    const { x, y } = hexToPixel({ row: placementTarget.row, col: placementTarget.col }, HEX_SIZE);
+    track(x, y);
+    overlays.push(
+      <g
+        aria-label="Place a Far tile here"
+        className="observatoryPlacementTarget"
+        key={`observatory-place-${placementTarget.row}-${placementTarget.col}`}
+        onClick={() => {
+          if (!suppressClickRef.current) {
+            onAction(placementTarget.action);
+          }
+        }}
+        role="button"
+      >
+        <circle cx={x} cy={y} r={HEX_SIZE * 1.2} />
+        <text textAnchor="middle" x={x} y={y + 5}>
+          Place tile
+        </text>
+      </g>
+    );
   }
 
   if (!Number.isFinite(minX)) {
@@ -4431,12 +4538,7 @@ function DraftTownPhase({ state, viewerPlayerId, onAction }: Omit<DraftFlowProps
     return null;
   }
   const lockedCount = lobby.seats.filter((candidate) => candidate.factionId).length;
-  const takenByOthers = new Set(
-    lobby.seats
-      .filter((candidate) => candidate.playerId !== viewerPlayerId)
-      .map((candidate) => candidate.factionId)
-      .filter((id): id is FactionId => Boolean(id))
-  );
+  const takenByOthers = reservedTownIdsForOtherSeats(lobby, viewerPlayerId);
   const untaken = (Object.values(coreFactionDefinitions) as { id: FactionId }[])
     .map((faction) => faction.id)
     .filter((id) => !takenByOthers.has(id));
@@ -4829,13 +4931,13 @@ function SetupCheatWarning({ state, viewerPlayerId }: { state: GameState; viewer
   return (
     <div className="setupCheatWarning" role="alert" aria-live="assertive">
       <span className="setupCheatIcon" aria-hidden="true">
-        ⚠
+        ☠
       </span>
       <span className="setupCheatText">
-        <strong>Setup take-back — that’s cheating!</strong>
+        <strong>Setup take-back — the table remembers.</strong>
         <span>
-          {actor} {did} after seeing the result. Re-rolling or re-picking once a roll is shown is a do-over the whole
-          table can see.
+          {actor} {did} after seeing the result. Re-rolling or re-picking a revealed result is cheating, and the whole
+          table saw it.
         </span>
       </span>
       <button

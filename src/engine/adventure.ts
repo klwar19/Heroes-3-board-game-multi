@@ -30,7 +30,13 @@ import {
 } from "./active-effects";
 import { drawCardsForPlayer, shuffleCards } from "./decks";
 import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
-import { applyUnitSideRules, canAcquireSharedDeckCard, getRuleset, NECROMANCY_ABILITY_ID } from "./ruleset";
+import {
+  applyUnitSideRules,
+  canAcquireSharedDeckCard,
+  expertUsesAvailable,
+  getRuleset,
+  NECROMANCY_ABILITY_ID
+} from "./ruleset";
 import {
   hexDistance,
   hexNeighbors,
@@ -2686,6 +2692,45 @@ export function processPendingVisit(state: GameState): void {
             optionLabel: step.optionLabel
           });
         }
+        break;
+      }
+      case "KNOWLEDGE_RECALL_MAP_SPELL": {
+        const player = state.players[visit.playerId];
+        const knowledge = cardLibrary[step.knowledgeCardId];
+        const effect = knowledge?.effect.type === "RECALL_SPELL" ? knowledge.effect : null;
+        const knowledgeIndex = player?.hand.indexOf(step.knowledgeCardId) ?? -1;
+        const spellIndex = player?.discard.lastIndexOf(step.spellCardId) ?? -1;
+        const ongoing = player?.ongoingCards?.find((entry) => entry.cardId === step.spellCardId);
+
+        // A serialized/stale prompt is harmless: only pay Knowledge when the
+        // card, crown and spell destination are all still present.
+        if (!player || !effect || knowledgeIndex === -1 || expertUsesAvailable(player) <= 0 || (spellIndex === -1 && !ongoing)) {
+          break;
+        }
+
+        player.hand.splice(knowledgeIndex, 1);
+        player.discard.push(step.knowledgeCardId);
+        player.combatStats.expertUsesSpentThisRound += 1;
+        player.combatStats.spellLimitBonusThisRound += effect.expertSpellLimitBonus ?? 0;
+
+        if (ongoing) {
+          // Fly / Water Walk and any future lasting map spell cannot be cast a
+          // second time while active. Knowledge marks the held card to come
+          // back as soon as its effect naturally ends.
+          ongoing.returnTo = "hand";
+        } else {
+          player.discard.splice(spellIndex, 1);
+          player.hand.push(step.spellCardId);
+        }
+
+        appendEvent(state, {
+          type: "CARD_PLAYED",
+          playerId: visit.playerId,
+          cardId: step.knowledgeCardId,
+          timing: knowledge.timing,
+          mode: "expert",
+          optionLabel: `Recall ${cardLibrary[step.spellCardId]?.name ?? step.spellCardId}`
+        });
         break;
       }
       case "FLIP_PACK_TO_FEW": {
