@@ -1590,6 +1590,8 @@ function interactionToSteps(interaction: LocationInteraction, extraLocationDice 
       return [{ type: "PRISON" }];
     case "SPELL_SCROLL":
       return [{ type: "SPELL_SCROLL", remaining: 2 }];
+    case "DIG_ARTIFACT":
+      return [{ type: "DIG_ARTIFACT" }];
   }
 }
 
@@ -2836,6 +2838,49 @@ export function processPendingVisit(state: GameState): void {
         state.decks[NEUTRAL_DECK_IDS[(def?.tier ?? "bronze") as "bronze" | "silver" | "gold" | "azure"]]?.discardPile.push(
           step.unitDefId
         );
+        break;
+      }
+      case "DIG_ARTIFACT": {
+        // The Factory "shovel": draw the top Artifact card the visitor can take
+        // (across the split minor/major/relic decks in BINH mode, else the single
+        // "artifacts" deck), then let them keep it or discard it.
+        const deckIds = state.decks["artifacts"]
+          ? ["artifacts"]
+          : ["artifacts-minor", "artifacts-major", "artifacts-relic"];
+        let dug: string | null = null;
+        let dugDeckId = deckIds[0];
+        for (const deckId of deckIds) {
+          dug = drawTopOfSharedDeck(state, deckId, visit.playerId);
+          if (dug) {
+            dugDeckId = deckId;
+            break;
+          }
+        }
+        if (!dug) {
+          break;
+        }
+        const name = cardLibrary[dug]?.name ?? dug;
+        visit.steps.unshift({
+          type: "CHOOSE_ONE",
+          prompt: `You dug up ${name} — keep it or discard it?`,
+          options: [
+            { label: `Keep ${name}`, steps: [{ type: "DIG_ARTIFACT_KEEP", cardId: dug }] },
+            { label: "Discard it", steps: [{ type: "DIG_ARTIFACT_DISCARD", cardId: dug, deckId: dugDeckId }] }
+          ]
+        });
+        break;
+      }
+      case "DIG_ARTIFACT_KEEP": {
+        const player = state.players[visit.playerId];
+        if (player) {
+          player.hand.push(step.cardId);
+          appendEvent(state, { type: "ARTIFACT_DUG", playerId: visit.playerId, cardId: step.cardId, kept: true });
+        }
+        break;
+      }
+      case "DIG_ARTIFACT_DISCARD": {
+        state.decks[step.deckId]?.discardPile.push(step.cardId);
+        appendEvent(state, { type: "ARTIFACT_DUG", playerId: visit.playerId, cardId: step.cardId, kept: false });
         break;
       }
       case "NEUTRAL_RECRUIT_RESOLVE": {

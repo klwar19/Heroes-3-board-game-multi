@@ -4151,6 +4151,14 @@ export type GameEvent =
       cardId: CardId;
     }
   | {
+      /** Factory shovel dig: the visiting hero dug an Artifact and kept or discarded it. */
+      id: string;
+      type: "ARTIFACT_DUG";
+      playerId: PlayerId;
+      cardId: CardId;
+      kept: boolean;
+    }
+  | {
       /** A war machine fired (round-start trigger or its expert discard). */
       id: string;
       type: "WAR_MACHINE_TRIGGERED";
@@ -5925,6 +5933,21 @@ export type VisitStep =
       /** Portal of Summoning: the drawn card goes to its tier discard pile. */
       type: "PORTAL_DECLINE";
       unitDefId: string;
+    }
+  | {
+      /** Factory shovel dig: draw the top Artifact card, then offer keep/discard. */
+      type: "DIG_ARTIFACT";
+    }
+  | {
+      /** Factory shovel dig: keep the dug Artifact card into hand. */
+      type: "DIG_ARTIFACT_KEEP";
+      cardId: CardId;
+    }
+  | {
+      /** Factory shovel dig: send the dug Artifact card to its deck's discard. */
+      type: "DIG_ARTIFACT_DISCARD";
+      cardId: CardId;
+      deckId: string;
     }
   | {
       /**
