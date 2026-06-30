@@ -143,6 +143,19 @@ export type UnitAbilityEffectDefinition =
     }
   | {
       /**
+       * Factory Automaton (board game, Gamefound Faction Focus): "<Passive> When
+       * this unit would be removed from Combat, deal `amount` damage to each
+       * adjacent unit." Hits EVERY adjacent unit — friend AND foe — the instant
+       * the Automaton leaves the board (lethal damage, a flip is not a removal).
+       * Resolved at the removal chokepoint (markUnitRemovedIfNeeded), so a chain
+       * of adjacent Automatons detonates in sequence. The controller's Frederick
+       * specialty adds to `amount` via PlayerState.automatonDetonationBonus.
+       */
+      type: "ON_REMOVAL_DAMAGE_ADJACENT";
+      amount: number;
+    }
+  | {
+      /**
        * Liches (pack/neutral): "Choose a unit adjacent to the target and
        * attack it. For the purpose of this attack, your attack is 2." A full
        * separate attack — instant windows open for both sides, the attack
@@ -961,6 +974,25 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     name: "No Retaliation",
     text: "Attacks by this unit never provoke a Retaliation Attack.",
     effect: { type: "IGNORE_RETALIATION" },
+    implementationStatus: "implemented"
+  },
+  // Factory Automaton (board game): detonates when it leaves the board, dealing
+  // 2 damage to every adjacent unit — friend and foe. The Few and Pack carry the
+  // same id; Frederick's specialty raises the amount via the controller bonus.
+  "automaton-detonate": {
+    id: "automaton-detonate",
+    name: "Detonate",
+    text: "[unit_passive] When this unit would be removed from Combat, deal 2 damage to each adjacent unit (friend and foe).",
+    effect: { type: "ON_REMOVAL_DAMAGE_ADJACENT", amount: 2 },
+    implementationStatus: "implemented"
+  },
+  // Factory Armadillo (board game): "Curled" — +2 Defense while it is defending
+  // (holds a Defense token). Reuses the Mammoth Thick-Hide DEFEND_BONUS path.
+  "armadillo-curl": {
+    id: "armadillo-curl",
+    name: "Curled",
+    text: "[unit_passive] While defending, this unit has +2 Defense.",
+    effect: { type: "DEFEND_BONUS", amount: 2 },
     implementationStatus: "implemented"
   },
   "teleport-move": {

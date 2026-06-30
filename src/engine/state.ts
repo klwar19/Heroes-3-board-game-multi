@@ -4693,6 +4693,13 @@ export type PlayerState = {
    */
   empoweredAbilities?: CardId[];
   /**
+   * Factory — Frederick's specialty ("further enhances the Automaton's
+   * explosion"): the extra damage each of this player's Automatons adds to its
+   * on-removal detonation, on top of the printed base. 0/undefined for everyone
+   * else. Read at the removal chokepoint when an Automaton detonates.
+   */
+  automatonDetonationBonus?: number;
+  /**
    * Deprecated single-permanent slot from older snapshots; live states use
    * `permanents`. Read through getPermanentCardIds, never directly.
    */
@@ -4984,6 +4991,12 @@ export type CombatUnitState = {
   usedLethalSaveThisCombat?: boolean;
   /** Phoenixes: set once this unit has spent its once-per-combat Rebirth self-save. */
   usedRebirthThisCombat?: boolean;
+  /**
+   * Factory Automaton: set the moment this unit's on-removal detonation has
+   * fired, so the explosion resolves exactly once even though the removal
+   * chokepoint can be re-entered for the same unit.
+   */
+  detonatedThisCombat?: boolean;
   /**
    * Cove Haspids (Few): set the moment this unit's Pack side is defeated and it
    * flips down to its Few side during a combat. The Few side's "Vengeance"

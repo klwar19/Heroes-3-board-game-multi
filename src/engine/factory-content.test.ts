@@ -11,6 +11,7 @@ import {
   startingTileByFaction
 } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
+import { unitAbilities } from "@/data/units/abilities";
 import { PLAYABLE_FACTIONS } from "./adventure";
 import { applyAction, createAdventureGameState, createAdventureLobbyState } from "./index";
 import type { GameAction, GameState } from "./state";
@@ -157,13 +158,31 @@ describe("Factory faction — art wired, not playable", () => {
     ).toThrow(/Unknown map tile/u);
   });
 
-  // ---- Honest stub markers (CLAUDE.md rule #1/#2) ---------------------------
+  // ---- Real abilities vs honest display-only stubs (CLAUDE.md rule #1/#2) ----
 
-  it("every unit is a pure stub: abilities: [] on BOTH sides", () => {
-    for (const id of FACTORY_UNITS) {
+  it("the engine-wired units carry registered, implemented ability ids on both sides", () => {
+    const wired: Record<string, string[]> = {
+      "factory.halflings": ["attack-roll-advantage", "ignore-all-combat-penalties"],
+      "factory.armadillos": ["armadillo-curl"],
+      "factory.automatons": ["automaton-detonate"],
+      "factory.gunslingers": ["double-attack"],
+      "factory.dreadnoughts": ["ignores-retaliation"]
+    };
+    for (const [id, abilities] of Object.entries(wired)) {
       const unit = coreUnitDefinitions[id];
-      expect(unit.few?.abilities, `${id} few abilities`).toEqual([]);
-      expect(unit.pack?.abilities, `${id} pack abilities`).toEqual([]);
+      expect(unit.few?.abilities, `${id} few`).toEqual(abilities);
+      expect(unit.pack?.abilities, `${id} pack`).toEqual(abilities);
+      for (const abilityId of abilities) {
+        expect(unitAbilities[abilityId]?.implementationStatus, `${abilityId} implemented`).toBe("implemented");
+      }
+    }
+  });
+
+  it("the not-yet-wired units stay HONEST display-only stubs (abilities: [])", () => {
+    for (const id of ["factory.mechanics", "factory.sandworms", "factory.couatls"]) {
+      const unit = coreUnitDefinitions[id];
+      expect(unit.few?.abilities, `${id} few`).toEqual([]);
+      expect(unit.pack?.abilities, `${id} pack`).toEqual([]);
     }
   });
 
