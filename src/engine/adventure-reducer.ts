@@ -16,7 +16,7 @@ import {
   canHeroReachPlacementCenter,
   canPlaceTileAt,
   creatureBankTierForGroup,
-  applyBestRecruitDiscount,
+  applyRecruitGoldDiscount,
   changeMorale,
   classifyHeroStep,
   commitPopulationOnMove,
@@ -5532,10 +5532,10 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
           `${coreUnitDefinitions[purchase.unitDefId]?.name ?? "That unit"} is already in your army — each unit card exists once. Reinforce it to a pack instead.`
         );
       }
-      // The single best (non-stacking) gold discount reserved for THIS unit —
-      // a Legion voucher, a recruit-cost building / event, never their sum.
+      // The total gold discount reserved for THIS unit (a Legion voucher stacks
+      // with any building/location recruit-cost source).
       const ref: RecruitPurchaseRef = { kind: "recruit", unitDefId: purchase.unitDefId };
-      const finalCost = applyBestRecruitDiscount(state, action.playerId, ref, side.cost);
+      const finalCost = applyRecruitGoldDiscount(state, action.playerId, ref, side.cost);
       addCost(finalCost);
       priced.push({ ref, finalCost });
       armyCopy.push({ id: `pending_${armyCopy.length}`, unitDefId: purchase.unitDefId, side: "few" });
@@ -5555,9 +5555,9 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
       if (!packSide) {
         throw new Error("That unit has no pack side.");
       }
-      // The single best (non-stacking) gold discount for THIS reinforce: the
-      // larger of the Champions' Stables discount and any Legion voucher reserved
-      // for this unit — never the two added together.
+      // The total gold discount for THIS reinforce: a Legion voucher reserved for
+      // this unit STACKS with the Champions' Stables discount (two Legion pieces
+      // still take the larger).
       // `target` was matched against purchase.armyUnitId above, so target.id is
       // the validated (defined) army unit id.
       const ref: RecruitPurchaseRef = {
@@ -5565,7 +5565,7 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
         unitDefId: purchase.unitDefId,
         armyUnitId: target.id
       };
-      const finalCost = applyBestRecruitDiscount(state, action.playerId, ref, packSide.cost);
+      const finalCost = applyRecruitGoldDiscount(state, action.playerId, ref, packSide.cost);
       addCost(finalCost);
       priced.push({ ref, finalCost });
       target.side = "pack";

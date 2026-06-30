@@ -5,7 +5,7 @@ import { isMarketLocation, locationDefinitions, TRADE_RATES } from "@/data/map/l
 import { sampleBuildings } from "@/data/towns/buildings";
 import {
   adventurePvpTroopLoss,
-  applyBestRecruitDiscount,
+  applyRecruitGoldDiscount,
   armyHasMapEffect,
   canHeroReachPlacedTile,
   capturableEnemyMinesWithin,
@@ -6176,8 +6176,8 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
       // recruited again — only its Few card may be reinforced to the Pack.
       const owned = player.army.some((armyUnit) => armyUnit.unitDefId === unitDefId);
       // A Legion voucher reserved for this unit may make it affordable — fold in
-      // the single best (non-stacking) gold discount when offering the action.
-      const recruitCost = applyBestRecruitDiscount(state, playerId, { kind: "recruit", unitDefId }, fewSide.cost);
+      // the total gold discount when offering the action.
+      const recruitCost = applyRecruitGoldDiscount(state, playerId, { kind: "recruit", unitDefId }, fewSide.cost);
       if (!owned && hasRecruitResources(state, playerId, recruitCost)) {
         actions.push({
           label: `Recruit few ${unit.name}`,
@@ -6192,12 +6192,12 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
       if (canReinforce) {
         const target = player.army.find((armyUnit) => armyUnit.unitDefId === unitDefId && armyUnit.side === "few");
         const packSide = unit.pack;
-        // Reinforcement discounts do NOT stack: the gold paid drops by the single
-        // largest of the Champions' Stables discount and a Legion voucher reserved
-        // for this unit (applyBestRecruitDiscount), never their sum.
+        // The gold paid drops by the TOTAL discount: a Legion voucher reserved for
+        // this unit STACKS with the Champions' Stables discount
+        // (applyRecruitGoldDiscount). Two Legion pieces still take the larger.
         const reinforceCost =
           packSide && target
-            ? applyBestRecruitDiscount(
+            ? applyRecruitGoldDiscount(
                 state,
                 playerId,
                 { kind: "reinforce", unitDefId, armyUnitId: target.id },

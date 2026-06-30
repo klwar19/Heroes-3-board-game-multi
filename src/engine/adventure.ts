@@ -5795,8 +5795,8 @@ function queueFlatGoldReinforce(
       continue;
     }
 
-    // Price exactly as the reinforcement will be charged (the flat discount is
-    // non-stacking with any Legion voucher / Stables discount on this unit).
+    // Price exactly as the reinforcement will be charged (the Pub flat discount
+    // STACKS with any Legion voucher / Stables discount reserved for this unit).
     const cost = reinforceCostFor(state, playerId, unit.id, false, false, false, discount);
     if (!cost || !hasRecruitResources(state, playerId, cost)) {
       continue;
@@ -6761,11 +6761,13 @@ export function legionVoucherDiscount(state: GameState, playerId: PlayerId, purc
 }
 
 /**
- * The largest NON-Legion gold discount on this unit's recruit/reinforce, each
- * computed from the unit's ORIGINAL printed cost. Today this is the Champions'
- * "Stable Master" reinforcement discount; future recruit-cost buildings (the
- * Cove Pub) and discount events hook in here via `Math.max`. Recruit and
- * reinforce stay separate so a reinforce-only source never bleeds onto a recruit.
+ * The largest "building / location" (NON-Legion) gold discount on this unit's
+ * recruit/reinforce, computed from the unit's ORIGINAL printed cost. Today this
+ * is the Champions' "Stable Master" reinforcement discount; the Cove Pub
+ * building's flat reinforcement discount is passed separately into
+ * `reinforceCostFor` (it is an Astrologers'-round offer, not a town-purchase
+ * source). Recruit and reinforce stay separate so a reinforce-only source never
+ * bleeds onto a recruit.
  */
 export function externalRecruitGoldDiscount(state: GameState, playerId: PlayerId, purchase: RecruitPurchaseRef): number {
   if (purchase.kind === "reinforce") {
@@ -6777,32 +6779,36 @@ export function externalRecruitGoldDiscount(state: GameState, playerId: PlayerId
 }
 
 /**
- * The single best (largest) gold discount on a recruit/reinforce from ALL
- * sources. Discounts NEVER stack: the cost path applies this one maximum, so a
- * Legion voucher and another source on the same unit pick the bigger, never the
- * sum. Pure read.
+ * The TOTAL gold discount on a recruit/reinforce. HOUSE RULE: a Legion artifact
+ * voucher STACKS with the building/location discount (the Champions' Stables and
+ * the Cove Pub) — the two are ADDED. So a Champion on a Stables field (−6) plus a
+ * 4-gold Legion voucher reserved for it is −10, not −6.
+ *
+ * What still does NOT stack: two Legion pieces aimed at the SAME unit (the larger
+ * single voucher is taken, inside `legionVoucherDiscount`) and the building/
+ * location sources among themselves (the larger is taken, inside
+ * `externalRecruitGoldDiscount`). The Necromancy/Isra HALF-cost is handled
+ * separately in `reinforceCostFor` and still competes (bigger wins), never stacks.
+ * Pure read.
  */
-export function bestRecruitGoldDiscount(state: GameState, playerId: PlayerId, purchase: RecruitPurchaseRef): number {
-  return Math.max(
-    legionVoucherDiscount(state, playerId, purchase),
-    externalRecruitGoldDiscount(state, playerId, purchase)
-  );
+export function totalRecruitGoldDiscount(state: GameState, playerId: PlayerId, purchase: RecruitPurchaseRef): number {
+  return legionVoucherDiscount(state, playerId, purchase) + externalRecruitGoldDiscount(state, playerId, purchase);
 }
 
 /**
- * Applies the single best (non-stacking) gold discount to a base recruit/
- * reinforce cost: the gold component drops by the discount to a minimum of 0;
- * other resources are untouched (the sources only ever knock off gold).
- * Read-only — returns the same cost when nothing applies and never spends a
- * voucher, so it is safe for affordability checks and the UI.
+ * Applies the total (Legion-stacks-with-building/location) gold discount to a
+ * base recruit/reinforce cost: the gold component drops by the discount to a
+ * minimum of 0; other resources are untouched (the sources only ever knock off
+ * gold). Read-only — returns the same cost when nothing applies and never spends
+ * a voucher, so it is safe for affordability checks and the UI.
  */
-export function applyBestRecruitDiscount(
+export function applyRecruitGoldDiscount(
   state: GameState,
   playerId: PlayerId,
   purchase: RecruitPurchaseRef,
   cost: ResourceCost
 ): ResourceCost {
-  const discount = bestRecruitGoldDiscount(state, playerId, purchase);
+  const discount = totalRecruitGoldDiscount(state, playerId, purchase);
   const gold = cost.gold ?? 0;
   if (discount <= 0 || gold <= 0) {
     return cost;
@@ -6826,15 +6832,18 @@ export function consumeRecruitVoucherFor(state: GameState, playerId: PlayerId, p
 
 /**
  * One selectable target for a Legion discount side: a unit the player can
- * recruit or reinforce at their town right now. `existingDiscount` is the gold
- * any OTHER source already knocks off that unit (another Legion piece, the
- * Champions' Stables…), used to warn the player that the new piece will not
- * stack — only the bigger of the two ever applies.
+ * recruit or reinforce at their town right now. The two existing-discount fields
+ * drive the prompt label:
+ *  - `existingLegion` — a Legion voucher ALREADY reserved for this unit. The new
+ *    piece does NOT stack with it (the larger single voucher is taken).
+ *  - `existingExternal` — the building/location discount on this unit (Champions'
+ *    Stables / Cove Pub). The new Legion piece STACKS on top of this.
  */
 type LegionDiscountTarget = {
   purchase: RecruitPurchaseRef;
   unitName: string;
-  existingDiscount: number;
+  existingLegion: number;
+  existingExternal: number;
 };
 
 /**
@@ -6873,7 +6882,8 @@ export function legionDiscountTargets(state: GameState, playerId: PlayerId): Leg
     targets.push({
       purchase,
       unitName: unit.name,
-      existingDiscount: bestRecruitGoldDiscount(state, playerId, purchase)
+      existingLegion: legionVoucherDiscount(state, playerId, purchase),
+      existingExternal: externalRecruitGoldDiscount(state, playerId, purchase)
     });
   }
 
@@ -6894,23 +6904,39 @@ export function legionDiscountTargets(state: GameState, playerId: PlayerId): Leg
     targets.push({
       purchase,
       unitName: unit.name,
-      existingDiscount: bestRecruitGoldDiscount(state, playerId, purchase)
+      existingLegion: legionVoucherDiscount(state, playerId, purchase),
+      existingExternal: externalRecruitGoldDiscount(state, playerId, purchase)
     });
   }
 
   return targets;
 }
 
-/** A Legion target's prompt label, warning when the unit is already discounted. */
+/**
+ * A Legion target's prompt label. The new piece STACKS with the building/
+ * location discount (Champions' Stables / Cove Pub) but does NOT stack with
+ * another Legion voucher already on the unit (the larger of the two is taken).
+ */
 function legionTargetLabel(target: LegionDiscountTarget, amount: number): string {
   const verb = target.purchase.kind === "recruit" ? "Recruit" : "Reinforce";
-  if (target.existingDiscount <= 0) {
+  if (target.existingLegion <= 0 && target.existingExternal <= 0) {
     return `${verb} ${target.unitName} — reduce cost by ${amount} gold`;
   }
-  const kept = Math.max(target.existingDiscount, amount);
-  return amount > target.existingDiscount
-    ? `${verb} ${target.unitName} — already −${target.existingDiscount} gold; does not stack, raises to −${kept}`
-    : `${verb} ${target.unitName} — already −${target.existingDiscount} gold; does not stack, keeps −${kept}`;
+  // Legion-vs-Legion: keep the larger single voucher; then stack the external.
+  const legionPart = Math.max(target.existingLegion, amount);
+  const total = legionPart + target.existingExternal;
+  const notes: string[] = [];
+  if (target.existingExternal > 0) {
+    notes.push(`stacks with the −${target.existingExternal} gold building/location discount`);
+  }
+  if (target.existingLegion > 0) {
+    notes.push(
+      amount > target.existingLegion
+        ? `replaces the −${target.existingLegion} gold Legion voucher (Legion does not stack with Legion)`
+        : `keeps the larger −${target.existingLegion} gold Legion voucher (Legion does not stack with Legion)`
+    );
+  }
+  return `${verb} ${target.unitName} — total −${total} gold; ${notes.join("; ")}`;
 }
 
 /**
@@ -6993,9 +7019,11 @@ export function reinforceCostFor(
   halfGoldOnly: boolean,
   roundDown: boolean,
   /**
-   * Cove Pub: a flat gold discount applied to THIS reinforcement (min 0). It is
-   * non-stacking with the other flat sources — the single largest wins — exactly
-   * like a Legion voucher or the Champions' Stables discount.
+   * Cove Pub: a flat gold discount applied to THIS reinforcement (min 0). HOUSE
+   * RULE: it STACKS with a Legion voucher and the Champions' Stables discount —
+   * the Pub discount is ADDED on top of `totalRecruitGoldDiscount`. It still
+   * competes with (never stacks with) the Necromancy/Isra HALF — the bigger of
+   * the combined flat discount vs. the half wins.
    */
   flatGoldDiscount = 0
 ): ResourceCost | null {
@@ -7009,7 +7037,9 @@ export function reinforceCostFor(
   const halfApplies = halfCost || halfGoldOnly;
   const originalGold = packSide.cost.gold ?? 0;
   const halfGold = half(originalGold);
-  const flatDiscount = Math.max(flatGoldDiscount, bestRecruitGoldDiscount(state, playerId, purchase));
+  // The Cove Pub flat discount STACKS with the Legion voucher + Champions' Stables
+  // (which already stack with each other inside totalRecruitGoldDiscount).
+  const flatDiscount = flatGoldDiscount + totalRecruitGoldDiscount(state, playerId, purchase);
   const flatGold = Math.max(0, originalGold - flatDiscount);
   // The flat source wins only when it actually beats the half on gold; a tie (or
   // no flat discount) keeps the half so its non-gold halving (Isra) still stands.
@@ -7037,7 +7067,7 @@ export function reinforceArmyUnit(
   roundDown = false,
   /** Neutral Skeletons reward: a free Few→Pack flip (no resources spent). */
   free = false,
-  /** Cove Pub: a flat gold discount on this reinforcement (min 0, non-stacking). */
+  /** Cove Pub: a flat gold discount on this reinforcement (min 0, stacks with Legion/Stables). */
   flatGoldDiscount = 0
 ): boolean {
   const player = state.players[playerId];

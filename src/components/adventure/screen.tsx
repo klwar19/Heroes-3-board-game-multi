@@ -38,7 +38,7 @@ import {
   hexToPixel,
   inCombatPrep,
   parseHexSpaceId,
-  applyBestRecruitDiscount,
+  applyRecruitGoldDiscount,
   legionVoucherDiscount,
   scenarioDefinitions,
   tileCentersAdjacent,
@@ -1783,14 +1783,15 @@ export function TownPanel({
       }
     }
   };
-  // Each unit's cost carries the single best (non-stacking) gold discount the
-  // engine will charge for it — a Legion voucher reserved for that unit, the
-  // Champions' Stables discount, etc. — never a pooled or stacked total, so the
-  // shown total and the affordability gate match the engine exactly.
+  // Each unit's cost carries the TOTAL gold discount the engine will charge for
+  // it: a Legion voucher reserved for that unit STACKS with the building/location
+  // discount (Champions' Stables, Cove Pub). Two Legion pieces on the same unit
+  // still take the larger. The shown total and the affordability gate use this
+  // same applyRecruitGoldDiscount, so they match the engine exactly.
   for (const unitDefId of recruitIds) {
     const few = coreUnitDefinitions[unitDefId]?.few;
     if (few) {
-      addCost(applyBestRecruitDiscount(state, viewerPlayerId, { kind: "recruit", unitDefId }, few.cost));
+      addCost(applyRecruitGoldDiscount(state, viewerPlayerId, { kind: "recruit", unitDefId }, few.cost));
     }
   }
   for (const armyUnitId of reinforceIds) {
@@ -1798,7 +1799,7 @@ export function TownPanel({
     const pack = armyUnit ? coreUnitDefinitions[armyUnit.unitDefId]?.pack : undefined;
     if (armyUnit && pack) {
       addCost(
-        applyBestRecruitDiscount(
+        applyRecruitGoldDiscount(
           state,
           viewerPlayerId,
           { kind: "reinforce", unitDefId: armyUnit.unitDefId, armyUnitId },
@@ -2157,7 +2158,7 @@ export function TownPanel({
               const checked = reinforceIds.includes(owned.id);
               const upgradable = canReinforce && Boolean(def?.pack);
               const reinforceRef = { kind: "reinforce" as const, unitDefId: owned.unitDefId, armyUnitId: owned.id };
-              const reinforceCost = applyBestRecruitDiscount(state, viewerPlayerId, reinforceRef, def?.pack?.cost ?? {});
+              const reinforceCost = applyRecruitGoldDiscount(state, viewerPlayerId, reinforceRef, def?.pack?.cost ?? {});
               const reinforceLegion = legionVoucherDiscount(state, viewerPlayerId, reinforceRef);
               return (
                 <label
@@ -2194,7 +2195,7 @@ export function TownPanel({
             }
             const checked = recruitIds.includes(unitDefId);
             const recruitRef = { kind: "recruit" as const, unitDefId };
-            const recruitCost = applyBestRecruitDiscount(state, viewerPlayerId, recruitRef, unit.few.cost);
+            const recruitCost = applyRecruitGoldDiscount(state, viewerPlayerId, recruitRef, unit.few.cost);
             const recruitLegion = legionVoucherDiscount(state, viewerPlayerId, recruitRef);
             return (
               <label className="recruitRow" key={unitDefId}>

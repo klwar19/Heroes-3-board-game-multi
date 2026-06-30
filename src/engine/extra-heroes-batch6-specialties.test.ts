@@ -399,7 +399,7 @@ describe("Tarnum (Fortress)'s Basilisks specialty", () => {
   function basiliskAttack(
     seed: string,
     cardId: string | null,
-    opts: { attackerName?: string; attackerAbilities?: string[]; scriptedFace?: number } = {}
+    opts: { attackerName?: string; attackerAbilities?: string[]; scriptedFace?: number; optionIndex?: number } = {}
   ) {
     const state = createInitialGameState(seed);
     state.players.p1.hand = cardId ? [cardId] : [];
@@ -431,7 +431,10 @@ describe("Tarnum (Fortress)'s Basilisks specialty", () => {
       return passAllReactions(declared);
     }
     const reaction = (declared.reactionWindow?.legalReactions.p1 ?? []).find(
-      (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === cardId
+      (legal) =>
+        legal.action.type === "PLAY_REACTION" &&
+        legal.action.cardId === cardId &&
+        (opts.optionIndex === undefined || legal.action.optionIndex === opts.optionIndex)
     );
     expect(reaction, `${cardId} should be offered on the declared attack`).toBeTruthy();
     return passAllReactions(applyOk(declared, reaction!.action));
@@ -466,35 +469,76 @@ describe("Tarnum (Fortress)'s Basilisks specialty", () => {
     expect(after.combat!.units.unit_p1_griffins.maxHealth, "+2 HP for a Basilisks unit").toBe(beforeMax + 2);
   });
 
-  it("VI forces the Basilisk Paralysis regardless of the roll AND adds +2 attack", () => {
+  it("VI is a CHOOSE_ONE: both the force-ability and the +2-attack options are offered on the declared attack", () => {
+    const state = createInitialGameState("tf-6-or-offers");
+    state.players.p1.hand = ["specialty.tarnum_fortress.6"];
+    state.players.p2.hand = [];
+    const attacker = state.combat!.units.unit_p1_griffins;
+    attacker.name = "Basilisks";
+    attacker.abilities = ["fortress-basilisk-paralysis"];
+    attacker.position = 9;
+    const defender = state.combat!.units.unit_p2_skeletons;
+    defender.position = 13;
+    defender.maxHealth = 40;
+    defender.damage = 0;
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    const declared = applyOk(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_griffins",
+      defenderId: "unit_p2_skeletons"
+    });
+    const offers = (declared.reactionWindow?.legalReactions.p1 ?? []).filter(
+      (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "specialty.tarnum_fortress.6"
+    );
+    expect(
+      offers.map((o) => (o.action.type === "PLAY_REACTION" ? o.action.optionIndex : undefined)).sort(),
+      "both option 0 (force ability) and option 1 (+2 attack) are offered"
+    ).toEqual([0, 1]);
+  });
+
+  it("VI option A forces the Basilisk Paralysis regardless of the roll, with NO attack bonus", () => {
     // Control: a Basilisk attack with the die scripted to "0" (not "-1") does NOT
     // paralyse on its own.
     const control = basiliskAttack("tf-6-control", null, { scriptedFace: 0 });
     expect(hasParalysis(control, "unit_p2_skeletons"), "no paralysis on a '0' roll").toBe(false);
 
-    // With Tarnum (Fortress) VI played into the same attack, the Stone Gaze fires
-    // regardless of the rolled face, and the attack gains +2 attack.
-    const forced = basiliskAttack("tf-6-forced", "specialty.tarnum_fortress.6", { scriptedFace: 0 });
-    expect(hasParalysis(forced, "unit_p2_skeletons"), "Basilisks VI forces the Paralysis on a '0'").toBe(true);
+    // Option A: the Stone Gaze fires regardless of the rolled face, but the attack
+    // gains NO attack bonus (this option is force-only, +0 attack).
+    const forced = basiliskAttack("tf-6-forced", "specialty.tarnum_fortress.6", { scriptedFace: 0, optionIndex: 0 });
+    expect(hasParalysis(forced, "unit_p2_skeletons"), "option A forces the Paralysis on a '0'").toBe(true);
     expect(
       lastAttackRolled(forced, (e) => e.attackerId === "unit_p1_griffins" && !e.isRetaliation)?.attackBonus,
-      "+2 attack"
+      "option A grants no attack bonus"
+    ).toBe(0);
+  });
+
+  it("VI option B adds +2 attack and does NOT force the ability (the OR is exclusive)", () => {
+    // Option B on a Basilisk attack scripted to "0": +2 attack, and because this
+    // option does NOT force ability rolls, the Paralysis still does not fire on "0".
+    const buffed = basiliskAttack("tf-6-plus2", "specialty.tarnum_fortress.6", { scriptedFace: 0, optionIndex: 1 });
+    expect(hasParalysis(buffed, "unit_p2_skeletons"), "option B does NOT force the Paralysis on a '0'").toBe(false);
+    expect(
+      lastAttackRolled(buffed, (e) => e.attackerId === "unit_p1_griffins" && !e.isRetaliation)?.attackBonus,
+      "option B grants +2 attack"
     ).toBe(2);
   });
 
-  it("VI's force does nothing extra for a unit with no die-gated ability (just +2 attack)", () => {
-    // A plain Griffins (no Stone Gaze) gets only the +2 attack — the force flag has
-    // no ability to trigger, so no paralysis appears.
+  it("VI option A on a unit with no die-gated ability does nothing observable (no paralysis, +0 attack)", () => {
+    // A plain Griffins (no Stone Gaze) under option A: the force flag has no ability
+    // to trigger, and option A grants no attack bonus.
     const forced = basiliskAttack("tf-6-noability", "specialty.tarnum_fortress.6", {
       attackerName: "Griffins",
       attackerAbilities: [],
-      scriptedFace: 0
+      scriptedFace: 0,
+      optionIndex: 0
     });
     expect(hasParalysis(forced, "unit_p2_skeletons"), "nothing to force without a die-gated ability").toBe(false);
     expect(
       lastAttackRolled(forced, (e) => e.attackerId === "unit_p1_griffins" && !e.isRetaliation)?.attackBonus,
-      "+2 attack still applies"
-    ).toBe(2);
+      "option A still grants no attack bonus"
+    ).toBe(0);
   });
 });
 
