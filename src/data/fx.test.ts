@@ -176,8 +176,6 @@ describe("previously-silent monster abilities now carry a cue", () => {
   // so an abilityFxPlans entry actually fires — NOT a decorative no-op. The cue
   // dies if the plan is removed.
   it.each([
-    ["vampire-heal-on-attack", "cure", "effects/drain-life"],
-    ["bank-vampire-life-drain", "cure", "effects/drain-life"],
     ["fortress-gorgon-death-stare", "death-stare", "spells/death-stare"],
     ["dragon-fly-dispel", "dispel", "spells/dispel"],
     ["wraith-heal-1", "cure", "spells/cure"],
@@ -192,6 +190,19 @@ describe("previously-silent monster abilities now carry a cue", () => {
     expect(soundDurationMs(plan.sound)).toBeGreaterThan(0);
     expect(spellPresentationMs(plan)).toBeGreaterThan(0);
   });
+
+  it.each(["vampire-heal-on-attack", "bank-vampire-life-drain"])(
+    "%s uses the supplied Vampire Life Drain frames, never the Cure animation",
+    (abilityId) => {
+      const plan = abilityFxPlans[abilityId];
+      expect(plan.affect?.[0]?.key).toBe("vampire-life-drain");
+      expect(plan.affect?.some((entry) => entry.key === "cure") ?? false).toBe(false);
+      expect(spriteDurationMs(plan.affect?.[0]?.key)).toBeGreaterThan(0);
+      expect(plan.sound).toBe("effects/drain-life");
+      expect(soundDurationMs(plan.sound)).toBeGreaterThan(0);
+      expect(spellPresentationMs(plan)).toBeGreaterThan(0);
+    }
+  );
 
   it("the Fortress Gorgon Death Stare matches its neutral sibling (parity)", () => {
     expect(abilityFxPlans["fortress-gorgon-death-stare"]).toEqual(abilityFxPlans["gorgon-death-stare"]);

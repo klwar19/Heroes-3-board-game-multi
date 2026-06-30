@@ -129,6 +129,31 @@ describe("TYPE 1 — draft: town two-choice", () => {
     expect(roll()).toEqual(roll());
   });
 
+  it("reserves every pending rolled town so two players can never receive or directly take the same town", () => {
+    let state = createAdventureLobbyState({ seed: "draft-town-reservations" });
+    state = apply(state, { type: "SET_DRAFT_FORMAT", playerId: "p1", format: "draft" });
+    state = apply(state, { type: "ROLL_TOWN_OPTIONS", playerId: "p1" });
+    const p1Options = lobby(state).draft?.seatRolls?.p1?.townOptions ?? [];
+
+    state = apply(state, { type: "ROLL_TOWN_OPTIONS", playerId: "p2" });
+    const p2Options = lobby(state).draft?.seatRolls?.p2?.townOptions ?? [];
+    expect(p1Options).toHaveLength(2);
+    expect(p2Options).toHaveLength(2);
+    expect(p2Options.filter((town) => p1Options.includes(town))).toEqual([]);
+
+    // A direct pick cannot steal a town already printed in another player's
+    // pending pair. This is the defensive engine gate behind the filtered UI.
+    expect(
+      reject(state, { type: "CHOOSE_TOWN", playerId: "p2", factionId: p1Options[0] })
+    ).toMatch(/already picked or rolled/i);
+
+    // Re-rolling releases only p1's old pair; it must still avoid p2's live pair.
+    state = apply(state, { type: "ROLL_TOWN_OPTIONS", playerId: "p1" });
+    const rerolled = lobby(state).draft?.seatRolls?.p1?.townOptions ?? [];
+    expect(rerolled.filter((town) => p2Options.includes(town))).toEqual([]);
+    expect(state.eventLog.some((event) => event.type === "SETUP_SEAT_RESET" && event.playerId === "p1")).toBe(true);
+  });
+
   it("allows a direct town select when no roll is pending, and a per-seat reset during the town phase", () => {
     let state = createAdventureLobbyState({ seed: "draft-direct" });
     state = apply(state, { type: "SET_DRAFT_FORMAT", playerId: "p1", format: "draft" });

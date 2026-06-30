@@ -327,10 +327,10 @@ export const abilityFxPlans: Record<string, SpellFxPlan> = {
   // Vampires' Life Drain: after the bite, the unit heals (vampire-heal-on-attack
   // few/pack, and the Crypt-bank "remove all damage" bank-vampire-life-drain).
   // Both fire a UNIT_ABILITY_TRIGGERED under their own id (heal.abilityId) — they
-  // previously animated only as a silent "+N" floater. The green mend shimmer +
-  // the drain-life cry sell the heal.
-  "vampire-heal-on-attack": { affect: [{ key: "cure" }], sound: "effects/drain-life" },
-  "bank-vampire-life-drain": { affect: [{ key: "cure" }], sound: "effects/drain-life" },
+  // This is NOT Cure: it is the exact user-supplied Vampire heal .def, converted
+  // losslessly into the same sprite-sheet pipeline as the original H3 effects.
+  "vampire-heal-on-attack": { affect: [{ key: "vampire-life-drain" }], sound: "effects/drain-life" },
+  "bank-vampire-life-drain": { affect: [{ key: "vampire-life-drain" }], sound: "effects/drain-life" },
   // Dragon Flies' Dispel: stripping the enemy's own buffs off the target fires a
   // UNIT_ABILITY_TRIGGERED("dragon-fly-dispel"); reuse the same dispel shimmer +
   // sound the spell-counter cue uses (cancelFx) so the cleanse is seen and heard.

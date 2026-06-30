@@ -588,6 +588,71 @@ describe("Dimension Door spell", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Expert Knowledge on the map: the map play path bypasses the combat stack,
+// so it needs its own explicit take-back decision after the Spell resolves.
+// ---------------------------------------------------------------------------
+
+describe("Expert Knowledge after a map Spell", () => {
+  function openKnowledgeAfterDimensionDoor(): GameState {
+    let state = withHand(makeGame(), ["spell.dimension_door", "stat.knowledge"]);
+    state.players.p1.limits.expertUses = 1;
+    dimensionDoorSetup(state);
+    state = playDimensionDoor(state, 0);
+
+    // Resolve Dimension Door's own destination decision first. Knowledge is
+    // queued behind it, never allowed to replace or corrupt the spell's choice.
+    const destinations = dimensionDoorDestinations(state);
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: state.pendingChoice!.id,
+      optionIndex: destinations.length
+    });
+    expect(state.adventure?.pendingVisit?.steps[0]).toMatchObject({ type: "CHOOSE_ONE" });
+    return state;
+  }
+
+  it("offers a real choice and spends Knowledge + one crown only when taking the map Spell back", () => {
+    let state = openKnowledgeAfterDimensionDoor();
+    const prompt = state.adventure!.pendingVisit!.steps[0];
+    expect(prompt.type === "CHOOSE_ONE" ? prompt.prompt : "").toMatch(/Expert Knowledge/i);
+
+    state = applyOk(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 0 });
+    expect(state.players.p1.hand).toContain("spell.dimension_door");
+    expect(state.players.p1.hand).not.toContain("stat.knowledge");
+    expect(state.players.p1.discard).toContain("stat.knowledge");
+    expect(state.players.p1.discard).not.toContain("spell.dimension_door");
+    expect(state.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
+    expect(state.players.p1.combatStats.spellLimitBonusThisRound).toBe(1);
+  });
+
+  it("declining keeps Knowledge and its crown, leaving the map Spell spent", () => {
+    let state = openKnowledgeAfterDimensionDoor();
+    state = applyOk(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 1 });
+
+    expect(state.players.p1.hand).toContain("stat.knowledge");
+    expect(state.players.p1.hand).not.toContain("spell.dimension_door");
+    expect(state.players.p1.discard).toContain("spell.dimension_door");
+    expect(state.players.p1.combatStats.expertUsesSpentThisRound).toBe(0);
+  });
+
+  it("marks a lasting map Spell to return after its effect ends instead of duplicating an active card", () => {
+    let state = withHand(makeGame(), ["spell.fly", "stat.knowledge"]);
+    state.players.p1.limits.expertUses = 1;
+    const fly = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "spell.fly" && legal.action.optionIndex === 0
+    );
+    expect(fly).toBeTruthy();
+    state = applyOk(state, fly!.action);
+
+    expect(state.players.p1.ongoingCards?.find((entry) => entry.cardId === "spell.fly")?.returnTo).toBe("discard");
+    state = applyOk(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 0 });
+    expect(state.players.p1.hand).not.toContain("spell.fly");
+    expect(state.players.p1.ongoingCards?.find((entry) => entry.cardId === "spell.fly")?.returnTo).toBe("hand");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Town Portal spell (map): teleport to a controlled town/settlement, with a
 // Power-scaled movement bonus on arrival and the "occupied town" restriction.
 // ---------------------------------------------------------------------------
@@ -607,6 +672,16 @@ describe("Town Portal spell", () => {
     return step.options;
   }
 
+  function townPortalDestinationIndex(state: GameState, spaceId: string): number {
+    const step = state.adventure?.pendingVisit?.steps[0];
+    if (!step || step.type !== "CHOOSE_ONE") {
+      throw new Error("no Town Portal destination choice open");
+    }
+    return step.options.findIndex((option) =>
+      option.steps.some((inner) => inner.type === "TELEPORT_HERO" && inner.spaceId === spaceId)
+    );
+  }
+
   it("Power 0 teleports to a controlled settlement with no movement bonus", () => {
     let state = withHand(makeGame(), ["spell.town_portal"]);
     const hero = heroP1(state);
@@ -623,7 +698,7 @@ describe("Town Portal spell", () => {
       target: { type: "none" }
     });
 
-    const destIndex = townPortalOptions(state).findIndex((option) => option.label.includes(dest));
+    const destIndex = townPortalDestinationIndex(state, dest);
     expect(destIndex).toBeGreaterThanOrEqual(0);
     state = applyOk(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: destIndex });
 
@@ -648,7 +723,7 @@ describe("Town Portal spell", () => {
       costCardIds: ["spell.haste", "spell.slow"]
     });
 
-    const destIndex = townPortalOptions(state).findIndex((option) => option.label.includes(dest));
+    const destIndex = townPortalDestinationIndex(state, dest);
     state = applyOk(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: destIndex });
 
     expect(heroP1(state).spaceId).toBe(dest);
@@ -680,9 +755,8 @@ describe("Town Portal spell", () => {
       target: { type: "none" }
     });
 
-    const labels = townPortalOptions(state).map((option) => option.label);
-    expect(labels.some((label) => label.includes(free))).toBe(true); // free settlement offered
-    expect(labels.some((label) => label.includes(occupied))).toBe(false); // occupied one withheld
+    expect(townPortalDestinationIndex(state, free)).toBeGreaterThanOrEqual(0); // free settlement offered
+    expect(townPortalDestinationIndex(state, occupied)).toBe(-1); // occupied one withheld
   });
 
   it("offers the hero-occupied destination when the Power bonus lets the hero move out", () => {
@@ -709,8 +783,8 @@ describe("Town Portal spell", () => {
       costCardIds: ["spell.haste", "spell.slow"]
     });
 
-    const labels = townPortalOptions(state).map((option) => option.label);
-    expect(labels.some((label) => label.includes(occupied))).toBe(true);
+    expect(townPortalDestinationIndex(state, occupied)).toBeGreaterThanOrEqual(0);
+    expect(townPortalOptions(state).some((option) => /h:-?\d+:-?\d+/.test(option.label))).toBe(false);
   });
 });
 
