@@ -1,5 +1,10 @@
 import { cardLibrary } from "@/data/cards/library";
-import { coreBuildingDefinitions, coreFactionDefinitions, coreHeroDefinitions } from "@/data/factions/core";
+import {
+  coreBuildingDefinitions,
+  coreFactionDefinitions,
+  coreHeroDefinitions,
+  factoryGoldUnitConflict
+} from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { type CreatureBankId } from "@/data/map/creature-banks";
 import { isMarketLocation, locationDefinitions, TRADE_RATES } from "@/data/map/locations";
@@ -5524,6 +5529,14 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
       if (armyCopy.some((unit) => unit.unitDefId === purchase.unitDefId)) {
         throw new Error(
           `${coreUnitDefinitions[purchase.unitDefId]?.name ?? "That unit"} is already in your army — each unit card exists once. Reinforce it to a pack instead.`
+        );
+      }
+      // Factory: Couatls and Juggernauts are mutually exclusive — you cannot have
+      // both in your army (the choice between the two Gold units). armyCopy folds
+      // in earlier purchases in this same action, so you cannot buy both at once.
+      if (factoryGoldUnitConflict(armyCopy, purchase.unitDefId)) {
+        throw new Error(
+          "Factory: choose Couatls or Juggernauts — you cannot have both in your army."
         );
       }
       // The single best (non-stacking) gold discount reserved for THIS unit —
