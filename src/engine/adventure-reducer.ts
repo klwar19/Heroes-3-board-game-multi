@@ -4465,6 +4465,25 @@ function beginPlayerCombatRounds(state: GameState): void {
 }
 
 /**
+/**
+ * Factory — Frederick's specialty ("further enhances the Automaton's
+ * explosion"). Each combat, a player whose Hero is Frederick gets a +1 to every
+ * Automaton's on-removal Detonate (read at the removal chokepoint); everyone
+ * else is reset to none, so the bonus never leaks between combats or heroes.
+ */
+export const FREDERICK_AUTOMATON_DETONATION_BONUS = 1;
+
+export function seedFactoryHeroEffects(state: GameState): void {
+  for (const player of Object.values(state.players)) {
+    if (player.heroDefId === "frederick") {
+      player.automatonDetonationBonus = FREDERICK_AUTOMATON_DETONATION_BONUS;
+    } else if (player.automatonDetonationBonus) {
+      player.automatonDetonationBonus = 0;
+    }
+  }
+}
+
+/**
  * Common tail of combat setup (player and neutral alike): round 1 opens,
  * in-play permanents join and round-start war machines fire. Runs after the
  * start-of-combat Tactics windows, if any, have all resolved.
@@ -4490,6 +4509,9 @@ function finalizeCombatStart(state: GameState): void {
   // Rune pool from their Sieidi/Altar baseline + City Hall flag, applying any
   // Rune Level the starting pool already qualifies for.
   seedRunesForCombat(state);
+  // Factory — Frederick "further enhances the Automaton's explosion": seed each
+  // player's Automaton-detonation bonus for this combat from their hero.
+  seedFactoryHeroEffects(state);
   // In-play permanents join the fight and round-start war machines fire.
   applyPermanentCombatEffects(state);
   applyCombatStartUnitAbilities(state);

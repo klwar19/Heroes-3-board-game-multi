@@ -13,6 +13,7 @@ import {
 } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { unitAbilities } from "@/data/units/abilities";
+import { adventureCards } from "@/data/cards/adventure";
 import { allTileDefinitions } from "@/data/map/tiles";
 import { PLAYABLE_FACTIONS } from "./adventure";
 import { applyAction, createAdventureGameState, createAdventureLobbyState } from "./index";
@@ -193,8 +194,24 @@ describe("Factory faction — art wired, not playable", () => {
     }
   });
 
-  it("no hero carries a specialty card (all are stubs)", () => {
-    for (const id of FACTORY_HEROES) {
+  it("Henrietta and Frederick ship real specialties (I/IV/VI) that resolve in the library", () => {
+    for (const id of ["henrietta", "frederick"]) {
+      const ids = coreHeroDefinitions[id].specialtyCardIds;
+      expect(ids, `${id} specialtyCardIds`).toBeDefined();
+      for (const level of [1, 4, 6] as const) {
+        const cardId = ids![level];
+        expect(cardId, `${id} level ${level}`).toBe(`specialty.${id}.${level}`);
+        const card = adventureCards[cardId];
+        expect(card, `${cardId} exists`).toBeTruthy();
+        expect(card.implementationStatus, `${cardId} implemented`).toBe("implemented");
+        // Face-less specialties must render natively (no missing art file).
+        expect(card.assets?.cardImage, `${cardId} has no missing art`).toBeUndefined();
+      }
+    }
+  });
+
+  it("the other Factory heroes are still specialty-less stubs", () => {
+    for (const id of FACTORY_HEROES.filter((h) => h !== "henrietta" && h !== "frederick")) {
       expect(coreHeroDefinitions[id].specialtyCardIds, `${id} specialty`).toBeUndefined();
     }
   });
