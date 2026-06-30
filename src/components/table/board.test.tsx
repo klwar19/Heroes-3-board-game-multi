@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { BattlefieldBoard, COMBAT_BOARD_ART_VARIANTS, InspectPanel, battlefieldCellPlacement, pickCombatBoardArt } from "./board";
+import { BattlefieldBoard, COMBAT_BOARD_ART_VARIANTS, CommandDock, InspectPanel, battlefieldCellPlacement, pickCombatBoardArt } from "./board";
 import { CardZoomProvider } from "./zoom";
 import {
   applyCombatBoardArtObstacles,
@@ -371,6 +371,66 @@ describe("BattlefieldBoard — horizontal cell placement", () => {
  * resolved the space-target action for empty cells (`!unit`), so a stack of
  * units standing on the chosen centre could never be clicked.
  */
+describe("BattlefieldBoard — Expert Tactics is one board control, not a menu of pairwise buttons", () => {
+  // Expert Tactics surfaces in the engine as several SWAP_COMBAT_UNITS legal
+  // actions (one per pair) OUTSIDE the start-of-combat setup window. The UI must
+  // collapse them into a single opt-in board control and keep the verbose
+  // pairwise buttons OUT of the command menu. (The engine offering itself is
+  // covered by tactics-diplomacy.test.ts; here we pin the presentation.)
+  function expertSwapLegalActions(): LegalAction[] {
+    const pair = (a: string, b: string, label: string): LegalAction => ({
+      label,
+      action: { type: "SWAP_COMBAT_UNITS", playerId: "p1", unitIdA: a, unitIdB: b }
+    });
+    return [
+      pair("unit_p1_marksmen", "unit_p1_griffins", "Tactics (expert): switch Marksmen (A2) and Griffins (B2)"),
+      pair("unit_p1_marksmen", "unit_p1_crusaders", "Tactics (expert): switch Marksmen (A2) and Crusaders (C2)"),
+      pair("unit_p1_griffins", "unit_p1_crusaders", "Tactics (expert): switch Griffins (B2) and Crusaders (C2)")
+    ];
+  }
+
+  it("collapses the expert swaps into one board control and clicking it arms board-click", () => {
+    const state = createInitialGameState("expert-tactics-ui"); // no pendingTacticsSwaps ⇒ not the setup window
+    const { container: board } = render(
+      <CardZoomProvider>
+        <BattlefieldBoard
+          legalActions={expertSwapLegalActions()}
+          onAction={vi.fn()}
+          onInspect={() => {}}
+          selectedCardAction={null}
+          state={state}
+          viewerPlayerId="p1"
+        />
+      </CardZoomProvider>
+    );
+    // One clear opt-in control on the board (not three pairwise buttons)…
+    const banner = board.querySelector('[aria-label="Expert Tactics"]');
+    expect(banner, "the expert-Tactics board control should appear").toBeTruthy();
+    const toggle = banner!.querySelector("button");
+    expect(toggle?.textContent).toMatch(/switch two units/i);
+    // …and arming it switches to the board-click instruction (no pairwise text).
+    fireEvent.click(toggle!);
+    expect(board.querySelector('[aria-label="Expert Tactics"]')?.textContent).toMatch(/click one of your units/i);
+  });
+
+  it("keeps the verbose pairwise swap buttons OUT of the command dock", () => {
+    const state = createInitialGameState("expert-tactics-dock");
+    const { container: dock } = render(
+      <CardZoomProvider>
+        <CommandDock
+          legalActions={expertSwapLegalActions()}
+          onAction={vi.fn()}
+          onReset={() => {}}
+          state={state}
+          viewerPlayerId="p1"
+        />
+      </CardZoomProvider>
+    );
+    const pairwise = [...dock.querySelectorAll("button")].filter((b) => /switch .+ and .+/i.test(b.textContent ?? ""));
+    expect(pairwise, "no pairwise Tactics buttons should clutter the command menu").toHaveLength(0);
+  });
+});
+
 describe("BattlefieldBoard — area spells target occupied spaces", () => {
   function renderBoardWithInfernoSelected() {
     const state = createInitialGameState("board-occupied-space");
