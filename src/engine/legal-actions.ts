@@ -83,6 +83,7 @@ import {
   activeSchoolFetches,
   canPlayExpertMode,
   deckDisplayName,
+  discardPickAllowedInCombat,
   expertUsesAvailable,
   getRuleset,
   spellBookPowerAvailable,
@@ -2130,10 +2131,13 @@ function isOptionEffectPlayable(
       // always a valid choice in either context.
       return true;
     case "TAKE_FROM_DISCARD": {
-      // Map play (needs an adventure), except Scholar's basic side
-      // (allowInCombat) which may also be played mid-Combat — every other
-      // TAKE_FROM_DISCARD card stays map-only.
-      if (context === "map" ? !state.adventure : !(effect.allowInCombat && state.combat)) {
+      // Map play (needs an adventure). Mid-Combat it is offered when the option
+      // opts in (Scholar / Ciele via `allowInCombat`) OR — house rule — the card
+      // is an INSTANT artifact: an instant artifact's "take a card from your
+      // discard" side is a click-to-use combat play too (Skull Helmet, Helm of
+      // the Alabaster Unicorn, …), not a map-only one. See discardPickAllowedInCombat.
+      const playedCard = excludeCardId ? cardLibrary[excludeCardId] : undefined;
+      if (context === "map" ? !state.adventure : !(discardPickAllowedInCombat(playedCard, effect) && state.combat)) {
         return false;
       }
       const player = state.players[playerId];

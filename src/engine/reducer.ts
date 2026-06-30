@@ -143,6 +143,7 @@ import {
   abilityExpertIsCrownFree,
   activeSchoolFetches,
   canAcquireSharedDeckCard,
+  discardPickAllowedInCombat,
   estatesGold,
   getRuleset,
   spellBookPowerAvailable,
@@ -10835,11 +10836,12 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       shuffleRestIntoDeck: effect.shuffleRestIntoDeck
     };
     // The adventure reward queue is parked while a live (non-prep) combat runs —
-    // a queued discard-pick would not surface until the fight ended. Scholar's
-    // basic side is usable mid-Combat (allowInCombat), so open the pick straight
-    // away there; on the map (or a prep window, where the queue still pumps) it
+    // a queued discard-pick would not surface until the fight ended. A mid-Combat
+    // discard-pick (Scholar/Ciele via allowInCombat, or any INSTANT artifact's
+    // take-a-card side — see discardPickAllowedInCombat) opens the pick straight
+    // away here; on the map (or a prep window, where the queue still pumps) it
     // keeps queuing as a reward.
-    if (effect.allowInCombat && state.combat && !state.combat.prep) {
+    if (discardPickAllowedInCombat(card, effect) && state.combat && !state.combat.prep) {
       openDiscardPickChoice(state, action.playerId, pick);
     } else {
       state.adventure?.rewardQueue.unshift({
