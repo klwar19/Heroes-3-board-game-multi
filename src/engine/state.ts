@@ -5759,6 +5759,16 @@ export type VisitStep =
     }
   | { type: "DISCOVER_ADJACENT_TILE" }
   | {
+      /**
+       * Optional Expert Knowledge reaction after a Spell resolves on the map.
+       * The spell may already be in the discard pile, or held in play by an
+       * ongoing effect; the latter is marked to return to hand when it expires.
+       */
+      type: "KNOWLEDGE_RECALL_MAP_SPELL";
+      spellCardId: CardId;
+      knowledgeCardId: CardId;
+    }
+  | {
       /** Sea Chest / Jetsam: roll one Attack die, resolve the matching branch. */
       type: "ATTACK_DIE_TABLE";
       plus: VisitStep[];

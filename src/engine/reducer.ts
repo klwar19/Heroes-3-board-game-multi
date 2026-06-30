@@ -138,6 +138,7 @@ import {
   startWarMachineRound
 } from "./permanents";
 import { createSeededRandom, setActiveEntropy } from "./random";
+import { hexDistance, parseHexSpaceId } from "./hex";
 import {
   abilityExpertIsCrownFree,
   activeSchoolFetches,
@@ -11395,6 +11396,50 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     holdOngoingCardIfEffectCreated(state, action.playerId, action.cardId, effectCountBeforePlay, "discard");
   }
 
+  // Map Spells do not use the combat spell stack, so their SPELL_CAST_STARTED
+  // reaction never existed. Offer the same Expert Knowledge recall explicitly
+  // after map resolution. It is queued behind any immediate spell destination
+  // choice (Dimension Door / View Earth), then becomes a real choose/decline
+  // prompt; declining preserves both the card and the crown.
+  if (card.kind === "spell" && !state.combat && playedToDiscard && state.adventure) {
+    const player = state.players[action.playerId];
+    const knowledgeCardId = player?.hand.find((cardId) => {
+      const held = cards[cardId];
+      return held?.effect.type === "RECALL_SPELL" && Boolean(held.effect.expertSpellLimitBonus);
+    });
+    const spellIsRecallable =
+      Boolean(player?.discard.includes(action.cardId)) ||
+      Boolean(player?.ongoingCards?.some((entry) => entry.cardId === action.cardId));
+    if (player && knowledgeCardId && spellIsRecallable && hasExpertUseAvailable(state, action.playerId)) {
+      // Append after rewards the Spell itself just queued (notably Town
+      // Portal's destination), so "take it back" is always asked after the
+      // map effect has finished rather than before its target is chosen.
+      state.adventure.rewardQueue.push({
+        playerId: action.playerId,
+        kind: "visit-steps",
+        steps: [
+          {
+            type: "CHOOSE_ONE",
+            prompt: `Expert Knowledge: take ${card.name} back?`,
+            options: [
+              {
+                label: `Use 1 crown and return ${card.name} to your hand`,
+                steps: [
+                  {
+                    type: "KNOWLEDGE_RECALL_MAP_SPELL",
+                    spellCardId: action.cardId,
+                    knowledgeCardId
+                  }
+                ]
+              },
+              { label: `Keep Knowledge; leave ${card.name} spent`, steps: [] }
+            ]
+          }
+        ]
+      });
+    }
+  }
+
   // A play that opened a choice (Chain Lightning's allocation, Solmyr IV's deck
   // dig) owns the phase/priority it just set — don't stomp it back to combat.
   if (state.pendingChoice) {
@@ -11537,6 +11582,12 @@ function queueTownPortalChoice(state: GameState, playerId: PlayerId, movementBon
   const destinationAllowed = (spaceId: string) => !fieldHasOtherHero(spaceId) || projectedMovement > 0;
 
   const destinations: { label: string; spaceId: string }[] = [];
+  const origin = hero.spaceId ? parseHexSpaceId(hero.spaceId) : null;
+  const distanceSuffix = (spaceId: string): string => {
+    const coord = parseHexSpaceId(spaceId);
+    const distance = origin && coord ? hexDistance(origin, coord) : null;
+    return distance ? ` (${distance} field${distance === 1 ? "" : "s"} away)` : "";
+  };
   for (const town of Object.values(state.towns)) {
     if (
       town.controllerId === playerId &&
@@ -11544,7 +11595,10 @@ function queueTownPortalChoice(state: GameState, playerId: PlayerId, movementBon
       town.fieldId !== hero.spaceId &&
       destinationAllowed(town.fieldId)
     ) {
-      destinations.push({ label: `Town (${town.factionId ?? town.id})`, spaceId: town.fieldId });
+      destinations.push({
+        label: `Town (${town.factionId ?? town.id})${distanceSuffix(town.fieldId)}`,
+        spaceId: town.fieldId
+      });
     }
   }
   for (const field of Object.values(adventure.fields)) {
@@ -11554,7 +11608,7 @@ function queueTownPortalChoice(state: GameState, playerId: PlayerId, movementBon
       field.spaceId !== hero.spaceId &&
       destinationAllowed(field.spaceId)
     ) {
-      destinations.push({ label: `Settlement at ${field.spaceId}`, spaceId: field.spaceId });
+      destinations.push({ label: `Settlement${distanceSuffix(field.spaceId)}`, spaceId: field.spaceId });
     }
   }
 

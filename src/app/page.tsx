@@ -178,6 +178,9 @@ const FX_EVENT_TYPES = new Set<GameEvent["type"]>([
   "RUNE_LEVEL_REACHED"
 ]);
 
+/** Heals that need the unmistakable green-cross pulse in addition to a sprite. */
+const FIRST_AID_GRAPHIC_CARD_IDS = new Set(["war_machine.first_aid_tent", "ability.first_aid"]);
+
 /**
  * Safety net for the freshly-drawn-card "incoming" hide (visibility:hidden):
  * however a draw flight is presented, the hidden tail MUST clear within this
@@ -2097,10 +2100,24 @@ export default function Home() {
                 // spell flow, so it carries its own shimmer + chime here. Spell
                 // heals (Cure) already animated through their cast above, so the
                 // registry deliberately omits them — no double cue.
+                const healStartsAt = timeline;
                 const healPlan =
                   event.source.type === "card" ? healFxPlans[event.source.cardId] : undefined;
                 if (healPlan) {
                   queueBoardFx(healPlan, `${event.id}-heal`, `unit:${targetId}`, targetId);
+                }
+                // The First Aid Tent may fire inside an attack reaction window,
+                // where the board is visually busy. Give it a guaranteed,
+                // sprite-independent cross pulse on the healed card so the
+                // instant never reads as a bare health-number change.
+                if (event.source.type === "card" && FIRST_AID_GRAPHIC_CARD_IDS.has(event.source.cardId)) {
+                  cues.push({
+                    kind: "pulse",
+                    id: `${event.id}-first-aid-cross`,
+                    at: `unit:${targetId}`,
+                    text: "✚",
+                    delayMs: healStartsAt
+                  });
                 }
                 // The "+N" and the bar climbing back up wait for the heal effect
                 // (its own here, or the Cure cast just queued) to finish.

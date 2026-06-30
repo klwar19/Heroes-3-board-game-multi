@@ -331,6 +331,37 @@ describe("BattlefieldBoard — horizontal cell placement", () => {
       expect(cell!.style.gridRow, `cell ${position} row`).toBe(String(gridRow));
     }
   });
+
+  it("prints A-D and 1-5 on both outer edges, mirrored to the same cells as the viewer", () => {
+    const state = createInitialGameState("coordinate-guide");
+    const { container } = render(
+      <CardZoomProvider>
+        <BattlefieldBoard
+          legalActions={getLegalActions(state, "p1")}
+          onAction={vi.fn()}
+          onInspect={() => {}}
+          selectedCardAction={null}
+          state={state}
+          viewerPlayerId="p1"
+        />
+      </CardZoomProvider>
+    );
+
+    expect(container.querySelector('[aria-label="Battlefield coordinate guide"]')).toBeTruthy();
+    for (const side of ["left", "right"]) {
+      const letters = [...container.querySelectorAll(`[data-coordinate-axis="letter-${side}"]`)].map(
+        (node) => node.textContent
+      );
+      expect(letters).toEqual(["A", "B", "C", "D"]);
+    }
+    for (const edge of ["top", "bottom"]) {
+      const numbers = [...container.querySelectorAll<HTMLElement>(`[data-coordinate-axis="number-${edge}"]`)];
+      expect(numbers.map((node) => node.textContent)).toEqual(["1", "2", "3", "4", "5"]);
+      numbers.forEach((node, engineRow) => {
+        expect(node.style.gridColumn).toBe(String(battlefieldCellPlacement(engineRow * 4, true).gridColumn));
+      });
+    }
+  });
 });
 
 /**

@@ -966,13 +966,22 @@ export function openDimensionDoorChoice(state: GameState, playerId: PlayerId, ra
     return;
   }
 
+  const origin = parseHexSpaceId(hero.spaceId);
+  const destinationLabel = (spaceId: MapSpaceId): string => {
+    const field = adventure.fields[spaceId];
+    const locationName = locationDefinitions[field?.location ?? ""]?.name ?? "open field";
+    const coord = parseHexSpaceId(spaceId);
+    const distance = origin && coord ? hexDistance(origin, coord) : null;
+    return `Teleport to ${locationName}${distance ? ` (${distance} field${distance === 1 ? "" : "s"} away)` : ""}`;
+  };
+
   state.pendingChoice = {
     id: `choice_${nextEventNumber(state)}`,
     type: "OPTION_CHOICE",
     playerId,
     prompt: `Dimension Door: move your hero up to ${range} field${range === 1 ? "" : "s"} to…`,
     options: [
-      ...destinations.map((spaceId) => ({ label: `Teleport to ${spaceId}` })),
+      ...destinations.map((spaceId) => ({ label: destinationLabel(spaceId) })),
       { label: "Cancel (stay)" }
     ],
     context: "dimension-door",
@@ -1034,6 +1043,7 @@ export function openViewEarthChoice(state: GameState, playerId: PlayerId, range:
   if (mineSpaceIds.length === 0) {
     return;
   }
+  const origin = parseHexSpaceId(hero.spaceId);
 
   state.pendingChoice = {
     id: `choice_${nextEventNumber(state)}`,
@@ -1042,7 +1052,13 @@ export function openViewEarthChoice(state: GameState, playerId: PlayerId, range:
     prompt: `View Earth: capture an enemy Mine within ${range} field${range === 1 ? "" : "s"}…`,
     options: [
       ...mineSpaceIds.map((spaceId) => ({
-        label: `Capture the ${resourceMineLabel(adventure.fields[spaceId]?.resource)} Mine at ${spaceId}`
+        label: (() => {
+          const coord = parseHexSpaceId(spaceId);
+          const distance = origin && coord ? hexDistance(origin, coord) : null;
+          return `Capture the ${resourceMineLabel(adventure.fields[spaceId]?.resource)} Mine${
+            distance ? ` (${distance} field${distance === 1 ? "" : "s"} away)` : ""
+          }`;
+        })()
       })),
       { label: "Cancel (no capture)" }
     ],

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { healFxPlans } from "@/data/fx";
 import { applyAction, createInitialGameState, getLegalActions } from "./index";
 import { applyPermanentCombatEffects } from "./permanents";
 import type { GameAction, GameState } from "./state";
@@ -90,6 +91,15 @@ describe("First Aid Tent — instant heal when attacked (before damage calculati
     const heal = getLegalActions(declared, "p1").find((legal) => legal.action.type === "USE_ACTIVE_EFFECT");
     expect(heal).toBeTruthy();
     const healed = applyOk(declared, heal!.action);
+
+    const visualEvent = healed.eventLog.find(
+      (event) =>
+        event.type === "DAMAGE_HEALED" &&
+        event.source.type === "card" &&
+        event.source.cardId === "war_machine.first_aid_tent"
+    );
+    expect(visualEvent, "the instant heal must carry the Tent card source used by the FX layer").toBeTruthy();
+    expect(healFxPlans["war_machine.first_aid_tent"]?.affect?.length).toBeGreaterThan(0);
 
     // The wound was mended first (2 -> 1); the attack then lands its 4. The unit
     // ends at 5/6 damage — alive — instead of dying to 6/6.

@@ -5,7 +5,7 @@ import { SetupLobbyScreen } from "./screen";
 import { applyAction, createAdventureLobbyState } from "@/engine";
 import type { GameAction, GameState } from "@/engine";
 import { cardLibrary } from "@/data/cards/library";
-import { coreHeroDefinitions } from "@/data/factions/core";
+import { coreFactionDefinitions, coreHeroDefinitions } from "@/data/factions/core";
 
 afterEach(cleanup);
 
@@ -114,6 +114,20 @@ describe("SetupLobbyScreen — TYPE 1 draft", () => {
     expect(onAction).toHaveBeenCalledWith({ type: "CHOOSE_TOWN", playerId: "p1", factionId: "castle" });
   });
 
+  it("hides another player's pending rolled towns from the direct-pick grid", () => {
+    const state = build("ui-draft-reserved-towns", [
+      { type: "SET_DRAFT_FORMAT", playerId: "p1", format: "draft" },
+      { type: "ROLL_TOWN_OPTIONS", playerId: "p1" }
+    ]);
+    const reserved = state.setupLobby?.draft?.seatRolls?.p1?.townOptions ?? [];
+    render(<SetupLobbyScreen onAction={vi.fn()} state={state} viewerPlayerId="p2" />);
+
+    expect(reserved).toHaveLength(2);
+    for (const factionId of reserved) {
+      expect(screen.queryByRole("button", { name: new RegExp(coreFactionDefinitions[factionId].name, "i") })).toBeNull();
+    }
+  });
+
   it("the ban phase offers ONLY the opponent's heroes to the current banner, and clicking one bans it", () => {
     const state = build("ui-draft-ban", [
       { type: "SET_DRAFT_FORMAT", playerId: "p1", format: "draft" },
@@ -173,7 +187,21 @@ describe("SetupLobbyScreen — setup take-back warning (all players, red popup)"
     render(<SetupLobbyScreen onAction={vi.fn()} state={afterReset} viewerPlayerId="p2" />);
     const alert = screen.getByRole("alert");
     expect(within(alert).getByText(/cheating/i)).toBeTruthy();
+    expect(alert.querySelector(".setupCheatIcon")?.textContent).toContain("☠");
     expect(alert.textContent).toMatch(/reset their hero pick/i);
+  });
+
+  it("shows the skull warning when a player uses the Re-roll button directly", () => {
+    const rerolled = build("ui-cheat-reroll", [
+      { type: "SET_DRAFT_FORMAT", playerId: "p1", format: "draft" },
+      { type: "ROLL_TOWN_OPTIONS", playerId: "p1" },
+      { type: "ROLL_TOWN_OPTIONS", playerId: "p1" }
+    ]);
+    render(<SetupLobbyScreen onAction={vi.fn()} state={rerolled} viewerPlayerId="p2" />);
+
+    const alert = screen.getByRole("alert");
+    expect(alert.querySelector(".setupCheatIcon")?.textContent).toContain("☠");
+    expect(alert.textContent).toMatch(/re-rolling or re-picking/i);
   });
 
   it("is dismissible by the viewer", () => {

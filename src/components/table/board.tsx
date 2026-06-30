@@ -914,6 +914,66 @@ export function BattlefieldBoard({
             referrerPolicy="no-referrer"
             src={assetUrl(boardArt.terrain)}
           />
+          <div aria-label="Battlefield coordinate guide" className="battlefieldCoordinates">
+            {Array.from({ length: BATTLEFIELD_ROWS }, (_, engineRow) => {
+              const gridColumn = battlefieldCellPlacement(engineRow * BATTLEFIELD_COLUMNS, flipped).gridColumn;
+              const label = String(engineRow + 1);
+              return (
+                <span
+                  className="battlefieldCoordinate number top"
+                  data-coordinate-axis="number-top"
+                  data-coordinate-value={label}
+                  key={`number-top-${label}`}
+                  style={{ gridColumn, gridRow: 1 }}
+                >
+                  {label}
+                </span>
+              );
+            })}
+            {Array.from({ length: BATTLEFIELD_ROWS }, (_, engineRow) => {
+              const gridColumn = battlefieldCellPlacement(engineRow * BATTLEFIELD_COLUMNS, flipped).gridColumn;
+              const label = String(engineRow + 1);
+              return (
+                <span
+                  className="battlefieldCoordinate number bottom"
+                  data-coordinate-axis="number-bottom"
+                  data-coordinate-value={label}
+                  key={`number-bottom-${label}`}
+                  style={{ gridColumn, gridRow: BATTLEFIELD_COLUMNS }}
+                >
+                  {label}
+                </span>
+              );
+            })}
+            {Array.from({ length: BATTLEFIELD_COLUMNS }, (_, engineColumn) => {
+              const label = String.fromCharCode(65 + engineColumn);
+              return (
+                <span
+                  className="battlefieldCoordinate letter left"
+                  data-coordinate-axis="letter-left"
+                  data-coordinate-value={label}
+                  key={`letter-left-${label}`}
+                  style={{ gridColumn: 1, gridRow: engineColumn + 1 }}
+                >
+                  {label}
+                </span>
+              );
+            })}
+            {Array.from({ length: BATTLEFIELD_COLUMNS }, (_, engineColumn) => {
+              const label = String.fromCharCode(65 + engineColumn);
+              return (
+                <span
+                  className="battlefieldCoordinate letter right"
+                  data-coordinate-axis="letter-right"
+                  data-coordinate-value={label}
+                  key={`letter-right-${label}`}
+                  style={{ gridColumn: BATTLEFIELD_ROWS, gridRow: engineColumn + 1 }}
+                >
+                  {label}
+                </span>
+              );
+            })}
+          </div>
         {Array.from({ length: BATTLEFIELD_CELL_COUNT }, (_, index) => {
           const unit = unitsByPosition.get(index);
           const terrain = getBattlefieldTerrain(index);
