@@ -98,18 +98,16 @@ describe("Conflux content", () => {
   it("is a first-class playable faction — eligible as a Random Town defender", () => {
     // The Random Town defender pool must cover every faction with a unit roster
     // that is ALSO playable; Conflux and Cove were silently missing from the old
-    // hand-maintained list. Factory has a unit roster but is flagged
-    // `playable: false` (art/data stub, no starting tile), so it is the one
-    // documented exception — excluded here AND from every setup picker.
+    // hand-maintained list.
     const playableFactionsWithUnits = Object.values(coreFactionDefinitions)
       .filter((faction) => faction.units.length > 0 && faction.playable !== false)
       .map((faction) => faction.id);
     expect(new Set(PLAYABLE_FACTIONS)).toEqual(new Set(playableFactionsWithUnits));
     expect(PLAYABLE_FACTIONS).toContain("conflux");
     expect(PLAYABLE_FACTIONS).toContain("cove");
-    // Factory has units but is non-playable, so it must NOT be a Random Town
-    // defender (it would crash on its missing starting tile).
-    expect(PLAYABLE_FACTIONS).not.toContain("factory");
+    // Factory is now a real playable faction (S11 starting tile), so it IS in
+    // the pool alongside the others.
+    expect(PLAYABLE_FACTIONS).toContain("factory");
   });
 
   it("City Hall income is 4 gold OR Search(3) the Spell deck (wiki-verified)", () => {

@@ -2915,13 +2915,11 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     name: "Factory",
     // Warm industrial bronze — steampunk HotA aesthetic.
     color: "#c17820",
-    // NOT yet playable: registered only for its art/data. No board-game starting
-    // tile exists (S11 is a dangling placeholder), units carry no engine
-    // abilities, buildings are not-implemented, and heroes have no specialty
-    // cards. `playable: false` keeps every seat from rolling/selecting it — that
-    // would crash on the missing tile and ship a hollow town. Flip this to true
-    // (and add a real tile + cards) once the faction is actually implemented.
-    playable: false,
+    // PLAYABLE: S11 is a real starting tile (src/data/map/expansion-tiles.ts),
+    // the units carry their real board-game abilities (the Automaton Detonate
+    // mechanic and friends), and Henrietta/Frederick ship engine-wired
+    // specialties. Buildings and the remaining unit abilities are still being
+    // filled in — see the per-item notes — but the faction starts and plays.
     startingTileId: "S11",
     heroes: [
       // Mercenary (might): 10 heroes
@@ -3026,4 +3024,27 @@ export const startingTileByFaction: Record<string, string> = Object.fromEntries(
  */
 export function isPlayableFaction(id: string): boolean {
   return coreFactionDefinitions[id as FactionId]?.playable !== false;
+}
+
+/**
+ * Factory's signature recruitment restriction (Gamefound "Faction Focus:
+ * Factory"): the faction has THREE Gold units, but Couatls and Juggernauts
+ * (Dreadnoughts) are mutually exclusive — "during recruitment, the player must
+ * choose between one of two: Couatls or Juggernauts. You cannot have both of
+ * them in your army at the same time." Recruiting one is blocked while the other
+ * is already owned.
+ */
+export const FACTORY_EXCLUSIVE_GOLD_UNITS = ["factory.couatls", "factory.dreadnoughts"] as const;
+
+/** True if recruiting `unitDefId` would break Factory's Couatl/Juggernaut choice. */
+export function factoryGoldUnitConflict(
+  army: ReadonlyArray<{ unitDefId?: string }>,
+  unitDefId: string
+): boolean {
+  const index = (FACTORY_EXCLUSIVE_GOLD_UNITS as readonly string[]).indexOf(unitDefId);
+  if (index < 0) {
+    return false;
+  }
+  const other = FACTORY_EXCLUSIVE_GOLD_UNITS[index === 0 ? 1 : 0];
+  return army.some((unit) => unit.unitDefId === other);
 }

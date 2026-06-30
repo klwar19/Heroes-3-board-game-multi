@@ -149,6 +149,36 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
       tileImage: "/assets/board/tiles/s10.webp"
     }
   },
+  S11: {
+    id: "S11",
+    group: "starting",
+    content: "regular_stretch_goals",
+    terrain: "rough",
+    // The Factory starting tile. Its industrial/wasteland theme sits on ROUGH
+    // terrain, so the hex layout and outer borders mirror the Stronghold starting
+    // tile (S7), which is the art base: scripts composite the Factory town
+    // panorama over S7's central town hex (placeholder art, like Bulwark's S10),
+    // and the six ring fields keep S7's real glyphs so the engine fields line up.
+    fields: [
+      { location: "town", faction: "factory" },
+      { location: "mine", difficulty: 1, resource: "buildingMaterials", amount: 2 },
+      { location: "blocked_field" },
+      { location: "empty_field" },
+      { location: "treasure_symbol", difficulty: 1 },
+      { location: "empty_field" },
+      { location: "resource_symbol" },
+    ],
+    outerImpassable: [false, true, false, true, true, true],
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
+      credit:
+        "Factory starting tile; rough terrain and hex layout mirror the Stronghold starting tile (S7), which is the art base (Factory town composited over the centre). Placeholder art pending; verify against physical tiles before final release.",
+      url: "https://heroes.thelazy.net/index.php/Factory"
+    },
+    assets: {
+      tileImage: "/assets/board/tiles/s11.webp"
+    }
+  },
   F19: {
     id: "F19",
     group: "far",

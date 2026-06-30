@@ -96,8 +96,9 @@ describe("expansion tile data", () => {
     for (const id of Object.keys(expansionTileDefinitions)) {
       expect(coreIds.has(id), `${id} duplicated`).toBe(false);
     }
-    // 41 boxed tiles + 66 wiki expansion tiles + the Bulwark S10 starting tile.
-    expect(Object.keys(allTileDefinitions)).toHaveLength(108);
+    // 41 boxed tiles + 66 wiki expansion tiles + the Bulwark S10 and Factory S11
+    // starting tiles.
+    expect(Object.keys(allTileDefinitions)).toHaveLength(109);
   });
 
   it("keeps the default pools exactly as before the expansion data landed", () => {
@@ -138,7 +139,7 @@ describe("expansion tile data", () => {
     // #N4-#N7, #C2/#C3) were cropped from the community subterranean map scans.
     const withArt = Object.values(allTileDefinitions).filter((tile) => tile.assets?.tileImage);
     expect(withArt).toHaveLength(Object.keys(allTileDefinitions).length);
-    expect(withArt).toHaveLength(108);
+    expect(withArt).toHaveLength(109);
   });
 });
 

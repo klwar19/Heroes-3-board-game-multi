@@ -7,11 +7,13 @@ import {
   coreBuildingDefinitions,
   coreFactionDefinitions,
   coreHeroDefinitions,
+  factoryGoldUnitConflict,
   isPlayableFaction,
   startingTileByFaction
 } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { unitAbilities } from "@/data/units/abilities";
+import { allTileDefinitions } from "@/data/map/tiles";
 import { PLAYABLE_FACTIONS } from "./adventure";
 import { applyAction, createAdventureGameState, createAdventureLobbyState } from "./index";
 import type { GameAction, GameState } from "./state";
@@ -104,58 +106,63 @@ describe("Factory faction — art wired, not playable", () => {
     }
   });
 
-  // ---- The non-playable gate (mutation-controlled against castle) -----------
+  // ---- A real, playable faction (S11 starting tile) -------------------------
 
-  it("is flagged non-playable, unlike a real faction", () => {
-    expect(coreFactionDefinitions.factory.playable).toBe(false);
-    expect(isPlayableFaction("factory")).toBe(false);
-    // CONTROL: a real faction is playable.
-    expect(isPlayableFaction("castle")).toBe(true);
-    expect(coreFactionDefinitions.castle.playable).not.toBe(false);
+  it("is playable and registered with its S11 starting tile", () => {
+    expect(isPlayableFaction("factory")).toBe(true);
+    expect(coreFactionDefinitions.factory.playable).not.toBe(false);
+    expect(coreFactionDefinitions.factory.startingTileId).toBe("S11");
+    expect(startingTileByFaction.factory).toBe("S11");
+    // The S11 tile exists, is a starting tile, and carries the Factory town.
+    const tile = allTileDefinitions.S11;
+    expect(tile, "S11 tile is defined").toBeDefined();
+    expect(tile.group).toBe("starting");
+    expect(tile.fields[0]).toMatchObject({ location: "town", faction: "factory" });
+    expect(tile.assets?.tileImage).toBe("/assets/board/tiles/s11.webp");
   });
 
-  it("is excluded from the Random Town defender pool, despite having a unit roster", () => {
-    // Factory HAS units (so the old units.length>0 rule would have included it)
-    // — the playable flag is the only thing keeping it out.
-    expect(coreFactionDefinitions.factory.units.length).toBeGreaterThan(0);
-    expect(PLAYABLE_FACTIONS).not.toContain("factory");
-    // CONTROL: castle has units and IS in the pool.
+  it("is in the Random Town defender pool alongside the other factions", () => {
+    expect(PLAYABLE_FACTIONS).toContain("factory");
     expect(PLAYABLE_FACTIONS).toContain("castle");
   });
 
-  it("cannot be picked in the setup lobby — CHOOSE_FACTION is rejected", () => {
+  it("can be picked in the setup lobby — CHOOSE_FACTION is accepted", () => {
     const state = createAdventureLobbyState({ seed: "factory-pick" });
-    const result = applyAction(state, {
+    const ok = apply(state, {
       type: "CHOOSE_FACTION",
       playerId: "p1",
       factionId: "factory",
       heroDefId: "henrietta"
     });
-    expect(result.errors.length, "picking Factory must be rejected").toBeGreaterThan(0);
-    // CONTROL: the same flow accepts a real faction.
-    const ok = apply(state, {
-      type: "CHOOSE_FACTION",
-      playerId: "p1",
-      factionId: "castle",
-      heroDefId: "catherine"
-    });
-    expect(ok.setupLobby?.seats.find((s) => s.playerId === "p1")?.factionId).toBe("castle");
+    expect(ok.setupLobby?.seats.find((s) => s.playerId === "p1")?.factionId).toBe("factory");
   });
 
-  it("crashes loudly (not cryptically) if forced into a game — no real game can reach this", () => {
-    // The direct programmatic constructor bypasses the lobby gate; the missing
-    // starting tile guard makes a forced Factory setup fail with a CLEAR error
-    // rather than a confusing downstream crash.
-    expect(() =>
-      createAdventureGameState({
-        seed: "factory-forced",
-        rollFirstPlayer: false,
-        players: [
-          { id: "p1", name: "H", factionId: "factory", heroDefId: "henrietta" },
-          { id: "p2", name: "S", factionId: "necropolis", heroDefId: "sandro" }
-        ]
-      })
-    ).toThrow(/Unknown map tile/u);
+  it("can start an adventure as Factory — the S11 town and hero deck resolve", () => {
+    const state = createAdventureGameState({
+      seed: "factory-playable",
+      rollFirstPlayer: false,
+      players: [
+        { id: "p1", name: "Henrietta", factionId: "factory", heroDefId: "henrietta" },
+        { id: "p2", name: "Sandro", factionId: "necropolis", heroDefId: "sandro" }
+      ]
+    });
+    expect(state.players.p1.factionId).toBe("factory");
+    expect(state.players.p1.deck.length, "the Factory hero builds a starting deck").toBeGreaterThan(0);
+    const town = Object.values(state.towns).find((candidate) => candidate.controllerId === "p1");
+    expect(town?.factionId, "the Factory town is placed").toBe("factory");
+  });
+
+  it("Couatls and Juggernauts are mutually exclusive in the army (the Gold choice)", () => {
+    // Owning Couatls blocks recruiting the Dreadnought (Juggernaut) and vice
+    // versa — the signature Factory recruitment rule.
+    expect(factoryGoldUnitConflict([{ unitDefId: "factory.couatls" }], "factory.dreadnoughts")).toBe(true);
+    expect(factoryGoldUnitConflict([{ unitDefId: "factory.dreadnoughts" }], "factory.couatls")).toBe(true);
+    // CONTROLS: no conflict against an empty army, against unrelated units, or
+    // when recruiting the same Gold unit a player already owns (that is the
+    // ordinary "already owned" rule, not the exclusivity rule).
+    expect(factoryGoldUnitConflict([], "factory.couatls")).toBe(false);
+    expect(factoryGoldUnitConflict([{ unitDefId: "factory.gunslingers" }], "factory.couatls")).toBe(false);
+    expect(factoryGoldUnitConflict([{ unitDefId: "factory.couatls" }], "factory.gunslingers")).toBe(false);
   });
 
   // ---- Real abilities vs honest display-only stubs (CLAUDE.md rule #1/#2) ----

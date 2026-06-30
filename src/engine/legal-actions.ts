@@ -3,6 +3,7 @@ import {
   coreBuildingDefinitions,
   coreFactionDefinitions,
   coreHeroDefinitions,
+  factoryGoldUnitConflict,
   isPlayableFaction
 } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
@@ -6180,10 +6181,13 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
       // Each unit card exists once: a type already in the army cannot be
       // recruited again — only its Few card may be reinforced to the Pack.
       const owned = player.army.some((armyUnit) => armyUnit.unitDefId === unitDefId);
+      // Factory: Couatls and Juggernauts are mutually exclusive — owning one
+      // hides the other from the recruit offer.
+      const goldChoiceBlocked = factoryGoldUnitConflict(player.army, unitDefId);
       // A Legion voucher reserved for this unit may make it affordable — fold in
       // the single best (non-stacking) gold discount when offering the action.
       const recruitCost = applyBestRecruitDiscount(state, playerId, { kind: "recruit", unitDefId }, fewSide.cost);
-      if (!owned && hasRecruitResources(state, playerId, recruitCost)) {
+      if (!owned && !goldChoiceBlocked && hasRecruitResources(state, playerId, recruitCost)) {
         actions.push({
           label: `Recruit few ${unit.name}`,
           action: {
