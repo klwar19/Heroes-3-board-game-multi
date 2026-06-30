@@ -164,6 +164,35 @@ export function tileCentersAdjacent(left: HexCoord, right: HexCoord): boolean {
 }
 
 /**
+ * True when two tiles physically TOUCH — at least one hex of `left`'s footprint
+ * shares an edge with a hex of `right`'s footprint. This is a WEAKER relation
+ * than {@link tileCentersAdjacent}: the 6 interlocking sublattice neighbours all
+ * touch, but so do 12 further distance-3 positions that share an edge yet leave a
+ * field-sized hole elsewhere (so they are not "gapless" neighbours).
+ *
+ * A Subterranean Gate only needs ONE edge-adjacent hex pair to bridge a Surface
+ * and a Subterranean tile, so gate placement keys off this touch relation, not
+ * the stricter interlocking one — otherwise a hand-placed cavern that visibly
+ * abuts a Surface tile (but lands on one of those 12 non-interlocking offsets)
+ * would never receive a gate and stay forever unreachable.
+ */
+export function tileFootprintsTouch(left: HexCoord, right: HexCoord): boolean {
+  // Far-apart centres can't touch; cheap reject before the footprint scan.
+  if (hexDistance(left, right) > 5) {
+    return false;
+  }
+  const rightHexes = new Set(tileFootprint(right, 0).map(hexSpaceId));
+  for (const cell of tileFootprint(left, 0)) {
+    for (const neighbor of hexNeighbors(cell)) {
+      if (rightHexes.has(hexSpaceId(neighbor))) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
  * The tile's sublattice class (0-6). Every tile center of one connected,
  * gapless map shares a single color; mixing colors would leave field-sized
  * holes. Useful for validating that a layout actually tiles.

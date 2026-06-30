@@ -176,7 +176,9 @@ export {
   isTileSlotOuterSealed,
   isSeaField,
   levelOfExperience,
+  planSubterraneanGates,
   recomputeSubterraneanGates,
+  unreachableUndergroundCenters,
   applyRecruitGoldDiscount,
   totalRecruitGoldDiscount,
   legionVoucherDiscount,
@@ -189,7 +191,7 @@ export {
   subterraneanTileBand,
   tileLayer
 } from "./adventure";
-export type { HeroMovementCapabilities, HeroPathTarget, HeroStepKind, MapLayer, RecruitPurchaseRef } from "./adventure";
+export type { HeroMovementCapabilities, HeroPathTarget, HeroStepKind, MapLayer, PlannedSubterraneanGate, RecruitPurchaseRef, TilePlacementLike } from "./adventure";
 export {
   ATTACKER_BACKLINE,
   ATTACKER_FRONTLINE,
@@ -221,6 +223,7 @@ export {
   tileCentersAdjacent,
   tileCentersOverlap,
   tileFootprint,
+  tileFootprintsTouch,
   tileLatticeColor,
   tileLatticeNeighbors
 } from "./hex";

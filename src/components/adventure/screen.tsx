@@ -35,6 +35,7 @@ import {
   getRuleset,
   getTileBorderSegments,
   hexDistance,
+  hexSpaceId,
   hexToPixel,
   inCombatPrep,
   observatoryRevealTargets,
@@ -287,6 +288,27 @@ export function HexMapBoard({
     () => () => {
       if (drawReminderTimer.current) {
         window.clearTimeout(drawReminderTimer.current);
+      }
+    },
+    []
+  );
+
+  // Tapping a face-down Subterranean tile you can't discover (because you stand on
+  // the Surface, or vice versa) explains WHY and HOW — find a Subterranean Gate
+  // and step onto it — instead of silently doing nothing.
+  const [gateHintAt, setGateHintAt] = useState<MapSpaceId | null>(null);
+  const gateHintTimer = useRef<number | null>(null);
+  const remindGateAccess = (spaceId: MapSpaceId) => {
+    setGateHintAt(spaceId);
+    if (gateHintTimer.current) {
+      window.clearTimeout(gateHintTimer.current);
+    }
+    gateHintTimer.current = window.setTimeout(() => setGateHintAt(null), 4200);
+  };
+  useEffect(
+    () => () => {
+      if (gateHintTimer.current) {
+        window.clearTimeout(gateHintTimer.current);
       }
     },
     []
@@ -621,13 +643,18 @@ export function HexMapBoard({
           y={centerPixel.y - backHeight / 2}
         />
       );
+      // A still-hidden Subterranean tile can never be discovered from the Surface
+      // (or vice versa) — only a hero entering a Subterranean Gate opens it. When
+      // it isn't otherwise discoverable, a tap explains that instead of doing
+      // nothing, so players aren't left clicking a dead tile.
+      const cavernNeedsGate = tile.group === "subterranean" && !discover && !readOnly;
       for (const [slot, coord] of footprint.entries()) {
         const { x, y } = hexToPixel(coord, HEX_SIZE);
         track(x, y);
         cells.push(
           <g key={`${tile.id}-${slot}`}>
             <polygon
-              className={`hexFaceDown ${discover && !readOnly ? "discoverable" : ""}`}
+              className={`hexFaceDown ${discover && !readOnly ? "discoverable" : ""} ${cavernNeedsGate ? "needsGate" : ""}`}
               data-tile-id={tile.id}
               onClick={
                 discover && !readOnly
@@ -636,7 +663,13 @@ export function HexMapBoard({
                         onAction(discover);
                       }
                     }
-                  : undefined
+                  : cavernNeedsGate
+                    ? () => {
+                        if (!suppressClickRef.current) {
+                          remindGateAccess(hexSpaceId(coord));
+                        }
+                      }
+                    : undefined
               }
               points={hexCorners(x, y, HEX_SIZE - 1.2)}
             >
@@ -645,7 +678,9 @@ export function HexMapBoard({
                   ? normalDiscover
                     ? `Spend 1 movement point to discover this ${backLabelDisplay} tile`
                     : `Reveal this adjacent ${backLabelDisplay} tile with the Observatory`
-                  : `Face-down tile ${backLabelDisplay}`}
+                  : cavernNeedsGate
+                    ? `Underground tile (${backLabelDisplay}) — you can't discover it from the Surface. Enter a Subterranean Gate to open it.`
+                    : `Face-down tile ${backLabelDisplay}`}
               </title>
             </polygon>
           </g>
@@ -660,6 +695,13 @@ export function HexMapBoard({
               y={y + HEX_SIZE * 0.78}
             >
               {normalDiscover ? "🐎 1 movement point: discover" : "Observatory: reveal this tile"}
+            </text>
+          );
+        }
+        if (slot === 0 && cavernNeedsGate) {
+          overlays.push(
+            <text className="hexCavernHint" key={`${tile.id}-cavern-hint`} textAnchor="middle" x={x} y={y + HEX_SIZE * 0.78}>
+              ⛰ via Subterranean Gate
             </text>
           );
         }
@@ -826,6 +868,12 @@ export function HexMapBoard({
                 : (location?.name ?? field.location)
             }${field.difficulty && guarded ? ` (guard ${ROMAN[field.difficulty]})` : ""}${
               field.flagOwnerId ? ` — flagged by ${state.players[field.flagOwnerId]?.name}` : ""
+            }${
+              field.location === "subterranean_gate"
+                ? tile.group === "subterranean"
+                  ? " — step on to ascend to the Surface (the only crossing; reveals the Surface tile beyond for free)"
+                  : " — step on to descend into the Underground (the only crossing; reveals the cavern beyond for free)"
+                : ""
             }${target ? ` — ${target.cost} movement point${target.cost === 1 ? "" : "s"}` : ""}${
               mapChoice
                 ? " — click to choose this location"
@@ -836,6 +884,17 @@ export function HexMapBoard({
           </title>
         </polygon>
       );
+
+      // A reachable Subterranean Gate is the ONLY way across the layer divide, so
+      // mark it with a "descend/ascend" cue — otherwise players don't realise the
+      // cave-mouth hex is a doorway they can step onto to open the tile beyond.
+      if (field.location === "subterranean_gate" && (target || remindMove)) {
+        overlays.push(
+          <text className="hexGateCue" key={`${spaceId}-gate-cue`} textAnchor="middle" x={x} y={y + HEX_SIZE * 0.92}>
+            {tile.group === "subterranean" ? "↥ ascend" : "↧ descend"}
+          </text>
+        );
+      }
 
       // Location Token art (the Subterranean Gate) sits on top of the tile scan
       // on the field it sacrificed, shown in both art and icon modes. The two
@@ -1253,6 +1312,33 @@ export function HexMapBoard({
             <div className={`mapFloatOuter ${above ? "above" : "below"}`}>
               <div className="mapFloatCard drawReminderFloat" role="status">
                 <span className="mapFloatLabel">⚠ Take your start-of-turn draw first</span>
+              </div>
+            </div>
+          </foreignObject>
+        </g>
+      );
+    }
+  }
+
+  // Tapping a hidden Underground tile from the Surface explains the divide: the
+  // only crossing is a Subterranean Gate, entered on foot.
+  if (gateHintAt) {
+    const coord = parseHexSpaceId(gateHintAt);
+    if (coord) {
+      const { x, y } = hexToPixel(coord, HEX_SIZE);
+      const cardW = 268;
+      const cardH = 78;
+      const gap = HEX_SIZE * 0.62;
+      const above = screenRoomAbove(y) >= cardH + gap;
+      floatingControls.push(
+        <g key="gate-hint-float" transform={`translate(${x} ${y}) scale(${1 / camera.scale})`}>
+          <foreignObject className="mapFloatFO" height={cardH} width={cardW} x={-cardW / 2} y={above ? -cardH - gap : gap}>
+            <div className={`mapFloatOuter ${above ? "above" : "below"}`}>
+              <div className="mapFloatCard gateHintFloat" role="status">
+                <span className="mapFloatLabel">
+                  ⛰ You can&apos;t discover an Underground tile from the Surface. Reach a Subterranean Gate (the cave-mouth
+                  hex on a revealed tile) and step onto it — the tile beyond opens for free.
+                </span>
               </div>
             </div>
           </foreignObject>
