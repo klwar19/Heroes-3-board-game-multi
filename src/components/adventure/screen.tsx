@@ -5,7 +5,7 @@
 import Link from "next/link";
 import { assetUrl } from "@/lib/asset-url";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { Ban, BookOpen, Check, ChevronsUp, Crown, Dices, Hammer, Image as ImageIcon, Info, Lock, Minus, Plus, RotateCcw, RotateCw, Shield, Sparkles, Star, Swords, Unlock, X } from "lucide-react";
+import { Ban, BookOpen, Check, ChevronsUp, Crown, Dices, Hammer, Hourglass, Image as ImageIcon, Info, Lock, Minus, Plus, RotateCcw, RotateCw, Shield, Sparkles, Star, Swords, Unlock, X } from "lucide-react";
 import { cardLibrary } from "@/data/cards/library";
 import { buildingTimingLabel, describeBuildingEffect } from "@/data/towns/describe";
 import { coreBuildingDefinitions, coreFactionDefinitions, coreHeroDefinitions } from "@/data/factions/core";
@@ -2490,6 +2490,19 @@ export function PromptTray({
             ? `Teleport — click an empty slot on the battlefield to place ${movingName}.`
             : "Teleport — click an empty slot on the battlefield."}
         </strong>
+      </div>
+    );
+  }
+
+  // Never leave the non-owning seat with a blank table during a multiplayer
+  // decision. The server still owns enforcement; this makes the assignment
+  // visible so a host in another seat cannot mistake the prompt for theirs.
+  // Learning has its own waiting strip in LearningOfferModal.
+  if (choice && choice.playerId !== viewerPlayerId && !(choice.type === "OPTION_CHOICE" && choice.context === "learning-level-up")) {
+    return (
+      <div className="reactionStrip waiting" role="status">
+        <Hourglass aria-hidden="true" size={15} />
+        <span>{state.players[choice.playerId]?.name ?? choice.playerId} is deciding…</span>
       </div>
     );
   }
