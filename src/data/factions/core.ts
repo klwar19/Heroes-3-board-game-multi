@@ -2919,12 +2919,13 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     name: "Factory",
     // Warm industrial bronze — steampunk HotA aesthetic.
     color: "#c17820",
-    // PLAYABLE: S11 is a real starting tile (src/data/map/expansion-tiles.ts),
-    // the units carry their real board-game abilities (the Automaton Detonate
-    // mechanic and friends), and Henrietta/Frederick ship engine-wired
-    // specialties. Buildings and the remaining unit abilities are still being
-    // filled in — see the per-item notes — but the faction starts and plays.
-    startingTileId: "S11",
+    // PLAYABLE: "&S1" is the Factory starting tile (src/data/map/expansion-tiles.ts;
+    // the "&" prefix is the Factory tile set's marker, printed on the tile). The
+    // units carry their real board-game abilities (the Automaton Detonate mechanic
+    // and friends), and Henrietta/Frederick ship engine-wired specialties.
+    // Buildings and the remaining unit abilities are still being filled in — see
+    // the per-item notes — but the faction starts and plays.
+    startingTileId: "&S1",
     heroes: [
       // Mercenary (might): 10 heroes
       "henrietta", "sam", "tancred", "melchior", "floribert",
