@@ -60,4 +60,34 @@ describe("ability & war-machine card art is committed", () => {
     expect(image).not.toContain("player-deck-back");
     expect(existsSync(assetPath(image!))).toBe(true);
   });
+
+  it("gives every Basic school-magic ability its own composed face", () => {
+    // "an" before a vowel-sound school (Air, Earth), "a" otherwise (Fire, Water).
+    const article = { air: "an", earth: "an", fire: "a", water: "a" } as const;
+    for (const school of ["air", "earth", "fire", "water"] as const) {
+      const card = cardLibrary[`ability.basic_${school}_magic`];
+      const image = card?.assets?.cardImage;
+      expect(image).toBe(`/assets/abilities-basic_${school}_magic.webp`);
+      expect(image).not.toContain("player-deck-back");
+      expect(existsSync(assetPath(image!)), `${school} face`).toBe(true);
+      expect(
+        existsSync(assetPath(`/assets/abilities-basic_${school}_magic-art.webp`)),
+        `${school} generated art source`
+      ).toBe(true);
+      const schoolName = school.charAt(0).toUpperCase() + school.slice(1);
+      const tags = card?.tags.join(" ") ?? "";
+      // Article must agree with the school's leading sound: "an Air"/"an Earth",
+      // "a Fire"/"a Water" — and never the wrong one ("a Air"/"a Earth").
+      expect(tags).toContain(`${article[school]} ${schoolName} Magic`);
+      const wrong = article[school] === "an" ? "a" : "an";
+      expect(tags).not.toContain(`${wrong} ${schoolName} Magic`);
+    }
+    expect(existsSync(fileURLToPath(new URL("../../scripts/build-basic-magic-ability-cards.mjs", import.meta.url)))).toBe(true);
+    for (const glyph of ["permanent", "instant", "spell", "power"] as const) {
+      expect(
+        existsSync(fileURLToPath(new URL(`../../scripts/card-glyphs/${glyph}.svg`, import.meta.url))),
+        `${glyph} legend glyph`
+      ).toBe(true);
+    }
+  });
 });
