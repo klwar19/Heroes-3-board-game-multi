@@ -2257,6 +2257,26 @@
       "C16SPE0"
     ]
   },
+  "vampire-life-drain": {
+    "src": "/assets/fx/vampire-life-drain.webp",
+    "label": "Vampire Life Drain",
+    "group": "ability",
+    "role": "affect",
+    "frames": 20,
+    "cols": 20,
+    "rows": 1,
+    "frameWidth": 90,
+    "frameHeight": 91,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "user-supplied vampire heal animation",
+    "trim": {
+      "x": 2,
+      "y": 1,
+      "canvasWidth": 95,
+      "canvasHeight": 93
+    }
+  },
   "weakness": {
     "src": "/assets/fx/weakness.webp",
     "label": "Weakness / Acid Breath debuff",

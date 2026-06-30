@@ -117,6 +117,7 @@ export {
   DRAFT_FORMAT_LABELS,
   getDraftPhase,
   getScenario,
+  reservedTownIdsForOtherSeats,
   scenarioStartingUnitLevels,
   TIER_LEVELS,
   tierOfLevel,

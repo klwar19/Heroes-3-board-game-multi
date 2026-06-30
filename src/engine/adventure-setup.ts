@@ -75,6 +75,42 @@ export type AdventurePlayerConfig = {
   heroDefId?: string;
 };
 
+/**
+ * Towns another seat has either locked or is currently considering in a rolled
+ * pair. Pending rolls reserve their towns just like locked picks: without that
+ * reservation two players could be shown the same town and whichever clicked
+ * first would invalidate the other player's already-visible choice.
+ */
+export function reservedTownIdsForOtherSeats(lobby: GameSetupState, playerId: PlayerId): Set<FactionId> {
+  const reserved = new Set<FactionId>();
+  for (const seat of lobby.seats) {
+    if (seat.playerId === playerId) {
+      continue;
+    }
+    if (seat.factionId) {
+      reserved.add(seat.factionId);
+    }
+    for (const factionId of lobby.draft?.seatRolls?.[seat.playerId]?.townOptions ?? []) {
+      reserved.add(factionId);
+    }
+  }
+  return reserved;
+}
+
+function appendSetupTakeBackWarning(
+  state: GameState,
+  playerId: PlayerId,
+  scope: "pick" | "town" | "roll",
+  verb: string
+): void {
+  appendEvent(state, {
+    type: "SETUP_SEAT_RESET",
+    playerId,
+    scope,
+    message: `${seatedPlayerName(state, playerId)} ${verb} — a setup take-back.`
+  });
+}
+
 export type AdventureSetupOptions = {
   seed?: string;
   ruleset?: GameRuleset;
@@ -1640,12 +1676,8 @@ export function rollTownOptions(state: GameState, action: Extract<GameAction, { 
     throw new Error("Reset this seat before rolling a new town.");
   }
 
-  const taken = new Set(
-    lobby.seats
-      .filter((candidate) => candidate.playerId !== action.playerId)
-      .map((candidate) => candidate.factionId)
-      .filter((id): id is FactionId => Boolean(id))
-  );
+  const replacingShownRoll = Boolean(draft.seatRolls?.[action.playerId]?.townOptions?.length);
+  const taken = reservedTownIdsForOtherSeats(lobby, action.playerId);
   const candidates = (Object.values(coreFactionDefinitions) as { id: FactionId }[])
     .map((faction) => faction.id)
     .filter((id) => !taken.has(id));
@@ -1656,6 +1688,10 @@ export function rollTownOptions(state: GameState, action: Extract<GameAction, { 
   const random = createSeededRandom(`${state.seed}#town-options#${action.playerId}#${eventSeedNumber(state)}`);
   const options = pickDistinct(random, candidates, 2);
   draft.seatRolls[action.playerId] = { townOptions: options };
+
+  if (replacingShownRoll) {
+    appendSetupTakeBackWarning(state, action.playerId, "roll", "re-rolled their towns after seeing them");
+  }
 
   appendEvent(state, {
     type: "GAME_OPTIONS_CHANGED",
@@ -1690,11 +1726,9 @@ export function chooseTown(state: GameState, action: Extract<GameAction, { type:
   if (!faction) {
     throw new Error("Unknown faction.");
   }
-  const taken = lobby.seats.some(
-    (candidate) => candidate.playerId !== action.playerId && candidate.factionId === action.factionId
-  );
+  const taken = reservedTownIdsForOtherSeats(lobby, action.playerId).has(action.factionId);
   if (taken) {
-    throw new Error("Another player already picked that town.");
+    throw new Error("Another player already picked or rolled that town.");
   }
 
   const options = draft.seatRolls?.[action.playerId]?.townOptions ?? [];
@@ -1753,9 +1787,14 @@ export function rollHeroOptions(state: GameState, action: Extract<GameAction, { 
     throw new Error("No hero is available to roll for that town.");
   }
 
+  const replacingShownRoll = Boolean(draft.seatRolls?.[action.playerId]?.heroOptions?.length);
   const random = createSeededRandom(`${state.seed}#hero-options#${action.playerId}#${eventSeedNumber(state)}`);
   const options = pickDistinct(random, pool, 2);
   draft.seatRolls[action.playerId] = { ...draft.seatRolls[action.playerId], heroOptions: options };
+
+  if (replacingShownRoll) {
+    appendSetupTakeBackWarning(state, action.playerId, "roll", "re-rolled their heroes after seeing them");
+  }
 
   appendEvent(state, {
     type: "GAME_OPTIONS_CHANGED",
@@ -1851,12 +1890,7 @@ export function resetSeatDraft(state: GameState, action: Extract<GameAction, { t
       : scope === "town"
         ? "took back their rolled town"
         : "cleared their roll";
-  appendEvent(state, {
-    type: "SETUP_SEAT_RESET",
-    playerId: action.playerId,
-    scope,
-    message: `${seatedPlayerName(state, action.playerId)} ${verb} — a setup take-back.`
-  });
+  appendSetupTakeBackWarning(state, action.playerId, scope, verb);
 }
 
 /**

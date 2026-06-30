@@ -287,6 +287,8 @@ describe("View Earth captures an enemy Mine", () => {
     expect(choice.context).toBe("view-earth");
     const mineIds = choice.viewEarth?.mineSpaceIds ?? [];
     expect(mineIds).toEqual([mineSpace]);
+    expect(choice.options[0]?.label).toMatch(/Building Materials Mine \(1 field away\)/i);
+    expect(choice.options[0]?.label).not.toMatch(/h:-?\d+:-?\d+/);
 
     state = choose(state, mineIds.indexOf(mineSpace));
 

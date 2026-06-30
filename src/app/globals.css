@@ -890,6 +890,65 @@ button {
   transition: transform 400ms ease;
 }
 
+/* Printed coordinate guide for rules and Creature Bank instructions that name
+   cells as A1–D5. Numbers follow the horizontally mirrored 1–5 lanes; letters
+   remain upright down both side edges. Labels sit just inside the board rim so
+   they stay legible without covering the unit cards. */
+.battlefieldCoordinates {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-rows: repeat(4, minmax(0, 1fr));
+  pointer-events: none;
+}
+
+.battlefieldCoordinate {
+  display: grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border: 1px solid rgb(255 228 158 / 68%);
+  border-radius: 4px;
+  background: rgb(18 13 8 / 78%);
+  color: #ffe6aa;
+  font-size: clamp(9px, 1.1vw, 13px);
+  font-weight: 900;
+  line-height: 1;
+  text-shadow: 0 1px 2px #000;
+  box-shadow: 0 1px 5px rgb(0 0 0 / 55%);
+}
+
+.battlefieldCoordinate.top {
+  align-self: start;
+  justify-self: center;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+.battlefieldCoordinate.bottom {
+  align-self: end;
+  justify-self: center;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.battlefieldCoordinate.left {
+  align-self: center;
+  justify-self: start;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+.battlefieldCoordinate.right {
+  align-self: center;
+  justify-self: end;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
 /* Seat-relative view: a horizontal mirror swaps the two armies left↔right
    (done per-cell in board.tsx, so cards stay upright). Mirror only the art
    layers so dirt/grass follow the swapped sides. */
@@ -3261,6 +3320,62 @@ button.battleCell {
 
 .hexCell.endTurnMoveTarget:hover {
   filter: brightness(1.6) drop-shadow(0 0 7px rgba(87, 224, 255, 1));
+}
+
+/* Dimension Door / View Earth: locations named by a map choice are direct
+   board controls. Violet distinguishes a spell destination from ordinary
+   movement and stays visible over both the scanned tile art and icon mode. */
+.hexCell.mapChoiceTarget {
+  cursor: pointer;
+  stroke: #d99cff;
+  stroke-width: 3.4;
+  fill-opacity: 0.46;
+  filter: brightness(1.38) drop-shadow(0 0 6px rgb(217 156 255 / 95%));
+  animation: mapChoicePulse 1.05s ease-in-out infinite;
+}
+
+.hexCell.mapChoiceTarget:hover {
+  stroke: #fff0ff;
+  filter: brightness(1.7) drop-shadow(0 0 10px rgb(217 156 255 / 100%));
+}
+
+@keyframes mapChoicePulse {
+  0%,
+  100% {
+    stroke-opacity: 0.68;
+  }
+  50% {
+    stroke-opacity: 1;
+  }
+}
+
+/* Redwood Observatory's open-map Far-tile slots do not have fields yet, so a
+   large dashed target is drawn at the future tile centre itself. */
+.observatoryPlacementTarget {
+  cursor: pointer;
+  pointer-events: all;
+}
+
+.observatoryPlacementTarget circle {
+  fill: rgb(29 15 43 / 68%);
+  stroke: #d99cff;
+  stroke-width: 3;
+  stroke-dasharray: 7 5;
+  filter: drop-shadow(0 0 8px rgb(217 156 255 / 90%));
+}
+
+.observatoryPlacementTarget text {
+  fill: #fff0ff;
+  font-size: 11px;
+  font-weight: 800;
+  paint-order: stroke;
+  stroke: rgb(20 9 27 / 90%);
+  stroke-width: 3px;
+}
+
+.observatoryPlacementTarget:hover circle {
+  fill: rgb(116 53 145 / 58%);
+  stroke: #fff0ff;
 }
 
 @keyframes endTurnMovePulse {
@@ -5936,21 +6051,52 @@ button.hbSlot:disabled { cursor: default; }
 /* Red take-back warning broadcast to every player when a seat resets a roll,
    town or pick during setup. Loud on purpose so the table notices the do-over. */
 .setupCheatWarning {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
   display: flex;
   align-items: flex-start;
   gap: 10px;
   padding: 12px 14px;
-  border: 2px solid var(--red);
+  border: 2px solid #8f1422;
   border-radius: 10px;
-  background: rgb(77 37 35 / 96%);
-  color: #ffe1d8;
-  box-shadow: 0 8px 26px rgb(0 0 0 / 45%);
+  background:
+    radial-gradient(circle at 8% 50%, rgb(150 16 35 / 42%), transparent 28%),
+    linear-gradient(112deg, rgb(13 7 10 / 98%), rgb(70 10 22 / 97%) 58%, rgb(15 7 10 / 98%));
+  color: #f5d8d4;
+  box-shadow:
+    inset 0 0 28px rgb(0 0 0 / 75%),
+    inset 0 0 0 1px rgb(255 111 124 / 18%),
+    0 9px 30px rgb(0 0 0 / 64%);
   animation: setupCheatPulse 1.1s ease-out 3;
 }
 
+.setupCheatWarning::after {
+  content: "☠";
+  position: absolute;
+  z-index: -1;
+  right: 38px;
+  top: 50%;
+  color: rgb(255 218 209 / 7%);
+  font-size: 78px;
+  line-height: 1;
+  transform: translateY(-50%) rotate(9deg);
+  pointer-events: none;
+}
+
 .setupCheatIcon {
-  font-size: 20px;
-  line-height: 1.2;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgb(230 82 99 / 55%);
+  border-radius: 50%;
+  background: rgb(0 0 0 / 48%);
+  color: #f3d7ce;
+  font-size: 28px;
+  line-height: 1;
+  text-shadow: 0 0 9px rgb(235 28 58 / 90%);
+  box-shadow: 0 0 16px rgb(132 8 29 / 76%);
 }
 
 .setupCheatText {
@@ -5963,9 +6109,10 @@ button.hbSlot:disabled { cursor: default; }
 }
 
 .setupCheatText strong {
-  color: #ffd2c6;
+  color: #ffb4b8;
   font-size: 13.5px;
-  letter-spacing: 0.01em;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
 }
 
 .setupCheatDismiss {
@@ -5993,7 +6140,9 @@ button.hbSlot:disabled { cursor: default; }
     box-shadow: 0 0 0 12px rgb(166 83 72 / 0%);
   }
   100% {
-    box-shadow: 0 8px 26px rgb(0 0 0 / 45%);
+    box-shadow:
+      inset 0 0 28px rgb(0 0 0 / 75%),
+      0 9px 30px rgb(0 0 0 / 64%);
   }
 }
 

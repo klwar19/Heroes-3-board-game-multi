@@ -8,6 +8,7 @@ import {
   applyAction,
   BATTLEFIELD_CELL_COUNT,
   createInitialGameState,
+  getActivationOrder,
   getLegalActions,
   makeActiveEffect,
   NEUTRAL_PLAYER_ID,
@@ -289,6 +290,40 @@ describe("Summon Elemental spell", () => {
     expect(summoned?.activatedThisRound).toBe(false);
     // …and persists in the army afterwards, like the Pit Lords' Demons.
     expect(state.players.p1.army.some((entry) => entry.unitDefId === "neutral.fire_elementals")).toBe(true);
+  });
+
+  it("enters the current round at its printed speed and receives a normal activation after faster units", () => {
+    const { state, position } = castSummon("spell.summon_air_elemental", 2);
+    const summoned = unitAt(state, position)!;
+    const faster = state.combat!.units.unit_p2_vampires;
+    const slower = state.combat!.units.unit_p2_skeletons;
+
+    // Isolate the remaining lane: the caster is currently acting, then a faster
+    // unit, the summon, and a slower unit remain. This catches both regressions:
+    // marking a fresh summon pre-activated drops it entirely, while appending it
+    // blindly at the end ignores its speed.
+    for (const unit of Object.values(state.combat!.units)) {
+      unit.activatedThisRound = true;
+    }
+    const caster = state.combat!.units.unit_p1_griffins;
+    caster.activatedThisRound = false;
+    summoned.activatedThisRound = false;
+    faster.activatedThisRound = false;
+    slower.activatedThisRound = false;
+    faster.initiative = summoned.initiative + 1;
+    slower.initiative = summoned.initiative - 1;
+    state.combat!.activeUnitId = caster.id;
+    state.activePlayerId = "p1";
+
+    const remainingOrder = getActivationOrder(state.combat!, state.activeEffects).map((unit) => unit.id);
+    expect(remainingOrder.indexOf(faster.id)).toBeLessThan(remainingOrder.indexOf(summoned.id));
+    expect(remainingOrder.indexOf(summoned.id)).toBeLessThan(remainingOrder.indexOf(slower.id));
+
+    const afterCaster = applyOk(state, { type: "DEFEND_UNIT", playerId: "p1", unitId: caster.id });
+    expect(afterCaster.combat!.activeUnitId).toBe(faster.id);
+    const afterFaster = applyOk(afterCaster, { type: "DEFEND_UNIT", playerId: "p2", unitId: faster.id });
+    expect(afterFaster.combat!.activeUnitId).toBe(summoned.id);
+    expect(getLegalActions(afterFaster, "p1").some((legal) => legal.action.type === "DEFEND_UNIT")).toBe(true);
   });
 
   it("Power 0 summons nothing (no effect)", () => {
