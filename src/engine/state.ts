@@ -4827,11 +4827,14 @@ export type PlayerState = {
     anySpellCastThisRound?: boolean;
     /**
      * Spell Book (house rule): true once this player has spent ONE Book Spell as
-     * a +1 Power source this turn. Like a crown (expertUsesSpentThisRound) this is
-     * a per-game-round budget — it survives across combat rounds and the map→combat
-     * boundary, and refreshRoundTokens clears it at the start of the player's turn.
-     * Power boosts from the HAND (and every other source) are unaffected; only the
-     * Book is capped at one Power discard per turn. Absent = none spent yet.
+     * a +1 Power source in the CURRENT combat round. The Book Power discard is
+     * capped at one per COMBAT round (NOT one per whole battle): advanceCombatRound
+     * clears it each combat round, so a player who used it in round 1 may use it
+     * again in round 2, 3, …; a second use inside the same round is rejected.
+     * refreshRoundTokens also clears it at the start of the player's map turn for
+     * the map→combat boundary. Power boosts from the HAND (and every other source)
+     * are unaffected; only the Book is capped. Absent = none spent this round.
+     * (Field name kept for back-compat; the budget is per-combat-round, not per-turn.)
      */
     spellBookPowerUsedThisTurn?: boolean;
     /**

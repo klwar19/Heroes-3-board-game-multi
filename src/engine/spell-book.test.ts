@@ -209,6 +209,50 @@ describe("Spell Book — Power boost (one per turn)", () => {
     refreshRoundTokens(state);
     expect(state.players.p1.combatStats.spellBookPowerUsedThisTurn).toBe(false);
   });
+
+  it("the Book Power budget refreshes EACH combat round — usable again in round 2, still one per round", () => {
+    const state = combat("book-boost-per-round");
+    state.players.p1.hand = ["spell.implosion"];
+    state.players.p1.spellBook = ["spell.haste", "spell.curse"]; // two Book Power sources
+
+    // Round 1: spend the one Book boost (haste) — Implosion 0 -> 2 damage.
+    const opened1 = castImplosion(state);
+    const boost1 = legal(opened1, "p1").find(
+      (l) => l.action.type === "PLAY_REACTION" && l.action.fromSpellBook === true && l.action.cardId === "spell.haste"
+    );
+    expect(boost1, "round-1 Book boost should be offered").toBeTruthy();
+    const afterRound1 = passAll(applyOk(opened1, boost1!.action));
+    expect(afterRound1.players.p1.combatStats.spellBookPowerUsedThisTurn).toBe(true);
+    expect(afterRound1.combat!.units[SKELETONS].damage).toBe(2);
+
+    // Advance to combat round 2 (the per-COMBAT-round refresh — NOT a map turn).
+    afterRound1.combat!.activeUnitId = null;
+    afterRound1.activePlayerId = "p1";
+    const round2 = applyOk(afterRound1, { type: "END_COMBAT_ROUND", playerId: "p1" });
+    expect(round2.combat!.round).toBe(2);
+    // The Book Power budget refreshed for the new combat round (the fix): the
+    // player is NOT stuck on round 1.
+    expect(round2.players.p1.combatStats.spellBookPowerUsedThisTurn).toBe(false);
+
+    // Round 2: cast Implosion again and boost again with the second Book Spell.
+    round2.players.p1.hand = ["spell.implosion"];
+    round2.combat!.activeUnitId = "unit_p1_marksmen";
+    round2.combat!.units.unit_p1_marksmen.activatedThisRound = false;
+    const opened2 = castImplosion(round2);
+    const boost2 = legal(opened2, "p1").find(
+      (l) => l.action.type === "PLAY_REACTION" && l.action.fromSpellBook === true && l.action.cardId === "spell.curse"
+    );
+    expect(boost2, "round-2 Book boost should be offered AGAIN").toBeTruthy();
+    const afterRound2 = passAll(applyOk(opened2, boost2!.action));
+    // Observable: the round-2 cast also got +1 Power (skeletons 2 -> 4).
+    expect(afterRound2.combat!.units[SKELETONS].damage).toBe(4);
+
+    // …but still ONE per combat round: no further Book boost offered this round.
+    const thirdOffered = legal(afterRound2, "p1").some(
+      (l) => l.action.type === "PLAY_REACTION" && l.action.asPowerBoost === true && l.action.fromSpellBook === true
+    );
+    expect(thirdOffered, "the Book Power budget is one per combat round").toBe(false);
+  });
 });
 
 // ---------------------------------------------------------------------------
