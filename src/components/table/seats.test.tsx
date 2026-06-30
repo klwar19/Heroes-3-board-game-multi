@@ -186,6 +186,53 @@ describe("HandFan — freshly-drawn cards are HIDDEN, never removed (the disappe
   });
 });
 
+describe("HandFan — an instant artifact's 'take a card from discard' is usable in COMBAT", () => {
+  // The reported bug: clicking Skull Helmet (or the Helm of the Alabaster
+  // Unicorn) in battle offered no usable option. Its "take a card from your
+  // discard" side is a click-to-use combat play now, so the button must render
+  // in the hand popover and dispatch the play.
+  function skullCombat(): GameState {
+    const state = createInitialGameState("skull-helmet-combat-ui");
+    state.players.p1.hand = ["artifact.skull_helmet"];
+    state.players.p1.discard = ["stat.attack"]; // a non-artifact card to recover
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_marksmen";
+    return state;
+  }
+
+  it("shows the 'Take 1 non-Artifact card…' button in combat and dispatches it on confirm", () => {
+    const state = skullCombat();
+    const onAction = vi.fn();
+    render(
+      <CardZoomProvider>
+        <HandFan
+          view={getPlayerView(state, "p1")}
+          state={state}
+          viewerPlayerId="p1"
+          legalActions={getLegalActions(state, "p1")}
+          selectedCardAction={null}
+          trayActive={false}
+          onSelectCardAction={() => {}}
+          onAction={onAction}
+        />
+      </CardZoomProvider>
+    );
+
+    // Open the Skull Helmet card; its discard-pick option is offered IN COMBAT.
+    fireEvent.click(screen.getByRole("button", { name: /Skull Helmet artifact card/i }));
+    const takeButton = screen.getByRole("button", { name: /Take 1 non-Artifact card/i });
+    expect(takeButton).toBeTruthy();
+
+    // Clicking arms a Confirm (no accidental commit); Confirm dispatches option 0.
+    fireEvent.click(takeButton);
+    fireEvent.click(screen.getByRole("button", { name: /^Confirm$/i }));
+    expect(onAction).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "PLAY_CARD", cardId: "artifact.skull_helmet", optionIndex: 0 })
+    );
+  });
+});
+
 describe("RuneTrack — Bulwark combat HUD", () => {
   function bulwarkCombat(buildings: string[], count: number): GameState {
     const state = createInitialGameState("rune-track-ui");
