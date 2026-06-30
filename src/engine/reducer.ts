@@ -13592,6 +13592,12 @@ function advanceCombatRound(state: GameState, byPlayerId: PlayerId): void {
     player.combatStats.spellsCastThisRound = 0;
     player.combatStats.spellLimitBonusThisRound = 0;
     player.combatStats.anySpellCastThisRound = false;
+    // Spell Book (house rule): the +1-Power Book discard is capped at ONE per
+    // COMBAT round (not one per whole battle). Refresh it here so a player who
+    // spent it in round 1 may use it again in round 2, 3, … — while a second use
+    // inside the SAME round stays blocked (the boolean is re-set on use). It is
+    // also reset per map turn in refreshRoundTokens for the map→combat boundary.
+    player.combatStats.spellBookPowerUsedThisTurn = false;
     // Tarnum (Conflux) VI: "immediately cast" — the over-limit Search privilege
     // does not survive into the next combat round (an uncast Searched spell just
     // stays in hand as a normal card).
