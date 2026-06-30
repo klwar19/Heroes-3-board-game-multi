@@ -45,6 +45,7 @@ import {
   tileCentersAdjacent,
   tileCentersOverlap,
   tileFootprint,
+  tileFootprintsTouch,
   type HexCoord
 } from "./hex";
 import { createSeededRandom } from "./random";
@@ -4190,30 +4191,208 @@ function ensureSubterraneanGate(adventure: AdventureState, surface: MapTileState
 }
 
 /**
- * Places/links every Subterranean Gate Token implied by the current layout:
- * one for each pair of gapless-adjacent tiles that straddle the
- * Surface↔Subterranean divide. Safe to call after any tile is materialized and
- * after setup; it only ever adds the halves a discovery now permits.
+ * Places/links every Subterranean Gate Token implied by the current layout: one
+ * for each pair of TOUCHING tiles that straddle the Surface↔Subterranean divide.
+ * Safe to call after any tile is materialized and after setup; it only ever adds
+ * the halves a discovery now permits.
+ *
+ * "Touching" ({@link tileFootprintsTouch}), not the stricter gapless interlock
+ * ({@link tileCentersAdjacent}): a Gate needs only a single edge-adjacent hex
+ * pair to bridge the two layers, so any hand-placed cavern that visibly abuts a
+ * Surface tile gets its gate — even on the 12 offsets that share an edge but
+ * leave a hole elsewhere. Pairs are tried interlocking-first so that when a
+ * Surface tile abuts several caverns (one-gate-per-tile), the gapless neighbour
+ * wins the single gate over a merely-touching one.
  */
 export function recomputeSubterraneanGates(adventure: AdventureState): void {
   const tiles = Object.values(adventure.tiles);
-  for (const surface of tiles) {
-    if (tileLayer(surface) !== "surface") {
-      continue;
-    }
-    for (const subterranean of tiles) {
-      if (
-        tileLayer(subterranean) !== "subterranean" ||
-        !tileCentersAdjacent(
-          { row: surface.centerRow, col: surface.centerCol },
-          { row: subterranean.centerRow, col: subterranean.centerCol }
-        )
-      ) {
+  const surfaces = tiles.filter((tile) => tileLayer(tile) === "surface");
+  const caverns = tiles.filter((tile) => tileLayer(tile) === "subterranean");
+  const pairs: { surface: MapTileState; subterranean: MapTileState; interlocking: boolean }[] = [];
+  for (const surface of surfaces) {
+    const surfaceCenter = { row: surface.centerRow, col: surface.centerCol };
+    for (const subterranean of caverns) {
+      const cavernCenter = { row: subterranean.centerRow, col: subterranean.centerCol };
+      if (!tileFootprintsTouch(surfaceCenter, cavernCenter)) {
         continue;
       }
-      ensureSubterraneanGate(adventure, surface, subterranean);
+      pairs.push({ surface, subterranean, interlocking: tileCentersAdjacent(surfaceCenter, cavernCenter) });
     }
   }
+  // One-gate-per-tile resolves in this order, so offer the gapless interlocking
+  // pairs first (a merely-touching pair only claims a tile no interlocking
+  // neighbour wanted), then break ties by tile centre. This is the SAME order as
+  // planSubterraneanGates, so the designer's gate preview matches what carves
+  // here exactly — even when a tile abuts several caverns.
+  pairs.sort(
+    (left, right) =>
+      Number(right.interlocking) - Number(left.interlocking) ||
+      left.surface.centerRow - right.surface.centerRow ||
+      left.surface.centerCol - right.surface.centerCol ||
+      left.subterranean.centerRow - right.subterranean.centerRow ||
+      left.subterranean.centerCol - right.subterranean.centerCol
+  );
+  for (const pair of pairs) {
+    ensureSubterraneanGate(adventure, pair.surface, pair.subterranean);
+  }
+}
+
+/** A tile placement reduced to what gate planning needs: a centre and a layer. */
+export type TilePlacementLike = { row: number; col: number; group: string };
+
+/** One Subterranean Gate a layout implies: which two tiles, and the two hexes. */
+export type PlannedSubterraneanGate = {
+  surfaceCenter: HexCoord;
+  cavernCenter: HexCoord;
+  /** The sacrificed hex on the Surface tile (the gate half). */
+  gateHex: HexCoord;
+  /** The sacrificed hex on the Subterranean tile (the entrance half), edge-adjacent to `gateHex`. */
+  entranceHex: HexCoord;
+};
+
+const isCavernPlacement = (tile: TilePlacementLike): boolean => tile.group === "subterranean";
+
+/**
+ * The Surface ring hex nearest `towardCenter` that physically touches
+ * `otherFootprintIds` — the same "1 slot closest to the [other] tile" choice the
+ * engine carves (minus the field-coverage filter, since a design preview has no
+ * materialized fields yet). Ties break on hex id, matching `pickNearestHex`.
+ */
+function pickTouchingRingHex(
+  center: HexCoord,
+  towardCenter: HexCoord,
+  predicate: (hex: HexCoord) => boolean
+): HexCoord | null {
+  let best: HexCoord | null = null;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (const hex of tileFootprint(center, 0).slice(1)) {
+    if (!predicate(hex)) {
+      continue;
+    }
+    const distance = hexDistance(hex, towardCenter);
+    if (distance < bestDistance || (distance === bestDistance && (best === null || hexSpaceId(hex) < hexSpaceId(best)))) {
+      best = hex;
+      bestDistance = distance;
+    }
+  }
+  return best;
+}
+
+/** The gate + entrance hexes for a touching Surface/Subterranean pair, or null. */
+function planGateHexes(surfaceCenter: HexCoord, cavernCenter: HexCoord): { gateHex: HexCoord; entranceHex: HexCoord } | null {
+  const cavernHexes = new Set(tileFootprint(cavernCenter, 0).map(hexSpaceId));
+  const gateHex = pickTouchingRingHex(surfaceCenter, cavernCenter, (hex) =>
+    hexNeighbors(hex).some((neighbor) => cavernHexes.has(hexSpaceId(neighbor)))
+  );
+  if (!gateHex) {
+    return null;
+  }
+  const entranceHex = pickTouchingRingHex(cavernCenter, gateHex, (hex) => hexDistance(hex, gateHex) === 1);
+  if (!entranceHex) {
+    return null;
+  }
+  return { gateHex, entranceHex };
+}
+
+/**
+ * Pure preview of the Subterranean Gates a tile layout produces — the same touch
+ * rule, interlocking-first ordering and one-gate-per-tile assignment as
+ * {@link recomputeSubterraneanGates}, but driven off bare placements (a centre +
+ * a layer) so the map designer can draw the gates and warn about unreachable
+ * caverns before any AdventureState exists. A Surface tile and a Subterranean
+ * tile each host at most one gate; gapless interlocking pairs are matched first.
+ */
+export function planSubterraneanGates(tiles: ReadonlyArray<TilePlacementLike>): PlannedSubterraneanGate[] {
+  const surfaces = tiles.filter((tile) => !isCavernPlacement(tile));
+  const caverns = tiles.filter(isCavernPlacement);
+  const pairs: { surface: TilePlacementLike; cavern: TilePlacementLike; interlocking: boolean }[] = [];
+  for (const surface of surfaces) {
+    for (const cavern of caverns) {
+      if (!tileFootprintsTouch(surface, cavern)) {
+        continue;
+      }
+      pairs.push({ surface, cavern, interlocking: tileCentersAdjacent(surface, cavern) });
+    }
+  }
+  pairs.sort(
+    (left, right) =>
+      Number(right.interlocking) - Number(left.interlocking) ||
+      left.surface.row - right.surface.row ||
+      left.surface.col - right.surface.col ||
+      left.cavern.row - right.cavern.row ||
+      left.cavern.col - right.cavern.col
+  );
+
+  const key = (tile: TilePlacementLike): string => `${tile.row}:${tile.col}`;
+  const usedSurface = new Set<string>();
+  const usedCavern = new Set<string>();
+  const gates: PlannedSubterraneanGate[] = [];
+  for (const pair of pairs) {
+    if (usedSurface.has(key(pair.surface)) || usedCavern.has(key(pair.cavern))) {
+      continue;
+    }
+    const hexes = planGateHexes(pair.surface, pair.cavern);
+    if (!hexes) {
+      continue;
+    }
+    usedSurface.add(key(pair.surface));
+    usedCavern.add(key(pair.cavern));
+    gates.push({
+      surfaceCenter: { row: pair.surface.row, col: pair.surface.col },
+      cavernCenter: { row: pair.cavern.row, col: pair.cavern.col },
+      ...hexes
+    });
+  }
+  return gates;
+}
+
+/**
+ * The Subterranean tiles a layout leaves UNREACHABLE: a cavern is reachable only
+ * if some cavern in its touch-connected group abuts a Surface tile (where a gate
+ * can carve). A cavern that touches no Surface tile — directly or through a chain
+ * of touching caverns — can never be entered, so the designer flags it. (Pure
+ * touch graph; it does not model the rare one-gate-per-tile starvation.)
+ */
+export function unreachableUndergroundCenters(tiles: ReadonlyArray<TilePlacementLike>): HexCoord[] {
+  const caverns = tiles.filter(isCavernPlacement);
+  const surfaces = tiles.filter((tile) => !isCavernPlacement(tile));
+  if (caverns.length === 0) {
+    return [];
+  }
+  // Union-find over caverns linked by touch; a group is reachable if any member
+  // abuts a Surface tile.
+  const parent = caverns.map((_, index) => index);
+  const find = (index: number): number => {
+    let root = index;
+    while (parent[root] !== root) {
+      root = parent[root];
+    }
+    while (parent[index] !== root) {
+      const next = parent[index];
+      parent[index] = root;
+      index = next;
+    }
+    return root;
+  };
+  const union = (a: number, b: number): void => {
+    parent[find(a)] = find(b);
+  };
+  for (let i = 0; i < caverns.length; i += 1) {
+    for (let j = i + 1; j < caverns.length; j += 1) {
+      if (tileFootprintsTouch(caverns[i], caverns[j])) {
+        union(i, j);
+      }
+    }
+  }
+  const reachableRoots = new Set<number>();
+  for (let i = 0; i < caverns.length; i += 1) {
+    if (surfaces.some((surface) => tileFootprintsTouch(surface, caverns[i]))) {
+      reachableRoots.add(find(i));
+    }
+  }
+  return caverns
+    .filter((_, index) => !reachableRoots.has(find(index)))
+    .map((cavern) => ({ row: cavern.row, col: cavern.col }));
 }
 
 /**

@@ -3436,6 +3436,20 @@ button.battleCell {
   animation: drawReminderFade 2.6s ease-in-out forwards;
 }
 
+/* The "you need a Subterranean Gate" hint anchored at a tapped hidden cavern. */
+.mapFloatCard.gateHintFloat {
+  border-color: rgba(176, 142, 214, 0.9);
+  background: rgba(30, 18, 44, 0.98);
+  color: #e2d2f6;
+  animation: drawReminderFade 4.2s ease-in-out forwards;
+  text-align: left;
+  line-height: 1.35;
+}
+
+.mapFloatCard.gateHintFloat .mapFloatLabel {
+  white-space: normal;
+}
+
 @keyframes drawReminderFade {
   0% {
     opacity: 0;
@@ -3468,6 +3482,18 @@ button.battleCell {
   stroke: #ffd76a;
 }
 
+/* A hidden Underground tile you can't discover from the Surface — tappable to
+   explain the Subterranean Gate, tinted violet to read as "another layer". */
+.hexFaceDown.needsGate {
+  cursor: help;
+  stroke: rgba(176, 142, 214, 0.5);
+}
+
+.hexFaceDown.needsGate:hover {
+  fill: rgba(122, 90, 158, 0.18);
+  stroke: rgba(176, 142, 214, 0.85);
+}
+
 .tileBackArt {
   pointer-events: none;
 }
@@ -3477,6 +3503,28 @@ button.battleCell {
   font-size: 11px;
   pointer-events: none;
   font-weight: 600;
+}
+
+/* "via Subterranean Gate" label on a hidden cavern; "↧ descend / ↥ ascend" cue
+   on a reachable gate hex. */
+.hexCavernHint {
+  fill: #d7c2f0;
+  font-size: 8.5px;
+  font-weight: 600;
+  paint-order: stroke;
+  stroke: rgba(28, 16, 40, 0.85);
+  stroke-width: 2.4px;
+  pointer-events: none;
+}
+
+.hexGateCue {
+  fill: #ffe9bd;
+  font-size: 9px;
+  font-weight: 700;
+  paint-order: stroke;
+  stroke: rgba(28, 16, 40, 0.9);
+  stroke-width: 2.6px;
+  pointer-events: none;
 }
 
 .hexGlyph {
@@ -9448,6 +9496,47 @@ img.cardBack {
 .designerFlowerOutline.selected {
   stroke-width: 3.4;
   filter: drop-shadow(0 0 6px rgba(255, 215, 102, 0.6));
+}
+
+/* A cavern the layout leaves with no Subterranean Gate: ringed red so the
+   designer sees it can never be reached. */
+.designerFlowerOutline.cavernUnreachable {
+  stroke: #e0564a;
+  stroke-width: 3;
+  stroke-dasharray: 5 4;
+  filter: drop-shadow(0 0 5px rgba(224, 86, 74, 0.65));
+}
+
+.designerCavernWarning {
+  fill: #ffd2cc;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  paint-order: stroke;
+  stroke: rgba(60, 8, 4, 0.85);
+  stroke-width: 2.6px;
+  pointer-events: none;
+}
+
+/* The link line between a Subterranean Gate's two halves (surface + entrance). */
+.designerGateLink {
+  stroke: #ffd766;
+  stroke-width: 2;
+  stroke-dasharray: 3 3;
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+/* Banner shown under the board when caverns are left unreachable. */
+.designerCavernAlert {
+  margin-top: 8px;
+  padding: 8px 12px;
+  border: 1px solid rgba(224, 86, 74, 0.7);
+  border-radius: 8px;
+  background: rgba(120, 26, 20, 0.28);
+  color: #ffd2cc;
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .designerStartLabel {
