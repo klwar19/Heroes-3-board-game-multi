@@ -4791,14 +4791,15 @@ export type PlayerState = {
   /**
    * Legion artifacts (Legs/Loins/Torso/Arms/Head of Legion): per-unit discount
    * vouchers. Playing a Legion discount side opens a prompt to pick the single
-   * unit it applies to, banking one voucher reserved for that exact target. The
-   * recruit/reinforce cost path applies the single LARGEST applicable gold
-   * discount and never stacks vouchers — neither with each other on the same unit
-   * nor with any other source (Champions' Stables, a recruit-cost building, a
-   * discount event). A voucher is consumed when its unit is recruited/reinforced;
-   * each Legion piece may bank at most one voucher per turn (the SAME piece cannot
-   * stack with itself), and all unused vouchers expire at the start of the owner's
-   * next turn. See `bestRecruitGoldDiscount`/`consumeRecruitVoucherFor`.
+   * unit it applies to, banking one voucher reserved for that exact target. HOUSE
+   * RULE: a Legion voucher STACKS with the building/location discount (Champions'
+   * Stables, Cove Pub) — the two are ADDED on the same unit. It does NOT stack
+   * with another Legion voucher on the same unit (the larger single voucher is
+   * taken), and it competes with (never stacks with) the Necromancy/Isra HALF.
+   * A voucher is consumed when its unit is recruited/reinforced; each Legion piece
+   * may bank at most one voucher per turn (the SAME piece cannot stack with
+   * itself), and all unused vouchers expire at the start of the owner's next turn.
+   * See `totalRecruitGoldDiscount`/`consumeRecruitVoucherFor`.
    */
   recruitDiscounts?: RecruitDiscountVoucher[];
   /** Rogues (army map ability): the once-per-turn deck peek was used this turn. */
