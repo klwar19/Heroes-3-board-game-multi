@@ -177,15 +177,34 @@ describe("Factory faction — art wired, not playable", () => {
 
   it("the engine-wired unit abilities are registered, implemented ids on the right sides", () => {
     const u = coreUnitDefinitions;
-    // Halflings roll-two-take-higher on BOTH faction sides.
+    // Halflings roll-two-take-higher on BOTH faction sides; the Pack ALSO drops a
+    // Corrosion token on a "+1" roll (halfling-precise-shot).
     expect(u["factory.halflings"].few?.abilities, "halflings few").toEqual(["attack-roll-advantage"]);
-    expect(u["factory.halflings"].pack?.abilities, "halflings pack").toEqual(["attack-roll-advantage"]);
+    expect(u["factory.halflings"].pack?.abilities, "halflings pack").toEqual(["attack-roll-advantage", "halfling-precise-shot"]);
+    // Mechanics: the "Attack 2 spaces in a line" reach on all three sides (Few/
+    // Neutral at attack 1, Pack at attack 2), plus the Field Repair on the two
+    // faction sides (Few remove-1, Pack remove-2-or-+1-Attack). The Neutral guard
+    // prints only the reach.
+    expect(u["factory.mechanics"].few?.abilities, "mechanics few").toEqual(["mechanics-repair-1", "mechanics-line-attack-1"]);
+    expect(u["factory.mechanics"].pack?.abilities, "mechanics pack").toEqual(["mechanics-repair-2", "mechanics-line-attack-2"]);
+    expect(u["factory.mechanics"].neutral?.abilities, "mechanics neutral").toEqual(["mechanics-line-attack-1"]);
     // Automatons: the Pack "Ignore Retaliation" and the single-cost NEUTRAL guard's
     // 1-damage on-death Detonate are wired. (The faction Few's cube-scaled Detonate
     // is not yet wired — display-only, pinned by the next test.)
     expect(u["factory.automatons"].pack?.abilities, "automatons pack").toEqual(["ignores-retaliation"]);
     expect(u["factory.automatons"].neutral?.abilities, "automatons neutral").toEqual(["automaton-detonate-1"]);
-    for (const abilityId of ["attack-roll-advantage", "ignores-retaliation", "automaton-detonate-1"]) {
+    // Sandworms NEUTRAL guard strikes an adjacent target a second time.
+    expect(u["factory.sandworms"].neutral?.abilities, "sandworms neutral").toEqual(["sandworm-strike-again"]);
+    // Armadillos PACK amplifies any Initiative increase by +1 (Few/Neutral bare).
+    expect(u["factory.armadillos"].pack?.abilities, "armadillos pack").toEqual(["armadillo-initiative-amplify"]);
+    // Bounty Hunters Mark on both faction sides (Few +1, Pack +2 vs Marked).
+    expect(u["factory.gunslingers"].few?.abilities, "bounty hunters few").toEqual(["bounty-hunter-mark-1"]);
+    expect(u["factory.gunslingers"].pack?.abilities, "bounty hunters pack").toEqual(["bounty-hunter-mark-2"]);
+    for (const abilityId of [
+      "attack-roll-advantage", "halfling-precise-shot", "mechanics-line-attack-1", "mechanics-line-attack-2",
+      "mechanics-repair-1", "mechanics-repair-2", "ignores-retaliation", "automaton-detonate-1",
+      "sandworm-strike-again", "armadillo-initiative-amplify", "bounty-hunter-mark-1", "bounty-hunter-mark-2"
+    ]) {
       expect(unitAbilities[abilityId]?.implementationStatus, `${abilityId} implemented`).toBe("implemented");
     }
     // The fabricated abilities the placeholder carried are GONE from every side.
@@ -203,11 +222,16 @@ describe("Factory faction — art wired, not playable", () => {
     // Each printed-but-unwired side must carry [] (real card text in abilityText,
     // engine effect not claimed). Wiring these is the remaining Factory work.
     const displayOnly: [string, ("few" | "pack" | "neutral")[]][] = [
-      ["factory.mechanics", ["few", "pack", "neutral"]],
-      ["factory.armadillos", ["few", "pack", "neutral"]],
+      // Armadillos Few/Neutral genuinely have NO printed ability ([] forever);
+      // the Pack's initiative-amplify is now wired (asserted above).
+      ["factory.armadillos", ["few", "neutral"]],
       ["factory.automatons", ["few"]],
-      ["factory.sandworms", ["few", "pack", "neutral"]],
-      ["factory.gunslingers", ["few", "pack", "neutral"]],
+      // Sandworms Neutral is now wired; Few has no ability, the Pack's cube extra
+      // attack is not yet wired.
+      ["factory.sandworms", ["few", "pack"]],
+      // Bounty Hunters Few/Pack now wired (Mark); the Neutral guard's pre-emptive
+      // retaliation is the not-yet-wired one.
+      ["factory.gunslingers", ["neutral"]],
       ["factory.couatls", ["few", "pack", "neutral"]],
       ["factory.dreadnoughts", ["few", "pack", "neutral"]]
     ];
