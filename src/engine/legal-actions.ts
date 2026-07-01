@@ -136,11 +136,13 @@ import type {
 import { NEUTRAL_PLAYER_ID } from "./state";
 import {
   getActivationSpellPowerBoost,
+  getAstrologersRoundFrenzy,
   getDiscardToIgnoreAttackDieAbility,
   getEnemySpellPowerReduction,
   getLethalSaveUnitAbility,
   getUnitAbilityDefinitions,
   hasBindAdjacentEnemies,
+  hasInnateMagicMirror,
   hasSpellCastLock,
   hasSpellCastPowerTax,
   hasUnitAbilityEffect,
@@ -3515,6 +3517,50 @@ function addUnitActions(actions: LegalAction[], state: GameState, playerId: Play
     return;
   }
 
+  // WOG Werewolf: on an Astrologers round it must attack whenever a direct or
+  // move-and-attack line exists. Only when no attack is reachable does it fall
+  // through to the ordinary move/defend menu.
+  if (
+    state.round % 2 === 0 &&
+    getAstrologersRoundFrenzy(activeUnit) > 0 &&
+    !activeUnit.attackedThisActivation
+  ) {
+    const forced: LegalAction[] = [];
+    const enemies = Object.values(combat.units).filter(
+      (unit) => unit.controllerId !== activeUnit.controllerId && isUnitAlive(unit)
+    );
+    for (const defender of enemies) {
+      if (canUnitAttack(combat, activeUnit, defender, state.activeEffects)) {
+        forced.push({
+          label: `${activeUnit.name} attack ${defender.name}`,
+          action: { type: "ATTACK_UNIT", playerId, attackerId: activeUnit.id, defenderId: defender.id }
+        });
+      }
+    }
+    if (forced.length === 0) {
+      for (const destination of getLegalMoveDestinations(combat, activeUnit, state)) {
+        for (const defender of enemies) {
+          if (canUnitMoveAndAttack(combat, activeUnit, destination, defender, state)) {
+            forced.push({
+              label: `${activeUnit.name} move to ${getBattlefieldLabel(destination)} and attack ${defender.name}`,
+              action: {
+                type: "MOVE_AND_ATTACK_UNIT",
+                playerId,
+                attackerId: activeUnit.id,
+                destination,
+                defenderId: defender.id
+              }
+            });
+          }
+        }
+      }
+    }
+    if (forced.length > 0) {
+      actions.push(...forced);
+      return;
+    }
+  }
+
   const alreadyAttacked = Boolean(activeUnit.attackedThisActivation);
 
   if (!alreadyAttacked) {
@@ -4456,6 +4502,54 @@ function getMagicMirrorReactions(
   return offers;
 }
 
+/** WOG War Zealot: Magic Mirror is a unit ability, so it costs no card or Spell use. */
+function getInnateMagicMirrorReactions(
+  state: GameState,
+  playerId: PlayerId,
+  triggerEvent: Extract<GameEvent, { type: "SPELL_CAST_STARTED" | "UNIT_ATTACK_DECLARED" | "UNIT_ACTIVATION_STARTED" }>,
+  cards: CardLibrary
+): LegalAction[] {
+  const combat = state.combat;
+  if (!combat) {
+    return [];
+  }
+
+  let affectedUnitId: UnitId | null = null;
+  if (triggerEvent.type === "SPELL_CAST_STARTED" && triggerEvent.playerId !== playerId) {
+    const primary = pendingSpellTargetForPlayer(state, triggerEvent, playerId);
+    if (primary && hasInnateMagicMirror(primary)) {
+      affectedUnitId = primary.id;
+    } else {
+      const stackItem = getPendingStackItem(state, triggerEvent);
+      if (stackItem?.action.type === "CAST_SPELL") {
+        affectedUnitId =
+          spellPotentialBlastUnitIds(state, stackItem, cards).find((unitId) => {
+            const unit = combat.units[unitId];
+            return unit?.controllerId === playerId && hasInnateMagicMirror(unit);
+          }) ?? null;
+      }
+    }
+  } else if (triggerEvent.type === "UNIT_ATTACK_DECLARED") {
+    const stackItem = state.stack.at(-1);
+    const instant = stackItem ? reflectableAttackInstantForPlayer(state, stackItem, playerId, cards) : null;
+    const affected = instant ? combat.units[instant.affectedUnitId] : undefined;
+    if (affected && hasInnateMagicMirror(affected)) {
+      affectedUnitId = affected.id;
+    }
+  }
+
+  if (!affectedUnitId || spellRedirectTargets(state, affectedUnitId, "azure").length === 0) {
+    return [];
+  }
+  const unit = combat.units[affectedUnitId];
+  return unit
+    ? [{
+        label: `${unit.cardName}: Magic Mirror`,
+        action: { type: "USE_UNIT_MAGIC_MIRROR", playerId, unitId: unit.id }
+      }]
+    : [];
+}
+
 /** Whether either shared Spell deck still holds a card for Tarnum VI to Search. */
 function tarnumSearchableDeckExists(state: GameState): boolean {
   return [SPELL_DECK_BASIC, SPELL_DECK_EXPERT].some((deckId) => (state.decks[deckId]?.drawPile.length ?? 0) > 0);
@@ -4513,9 +4607,13 @@ export function getLegalReactionsForTrigger(
     if (state.combat && !isCombatParticipant(state, player.id)) {
       continue;
     }
+    const innateMirrorReactions = getInnateMagicMirrorReactions(state, player.id, triggerEvent, cards);
     // Garrison defense: "You cannot use your Deck during this Combat, as
     // your Main Hero is not present" — no card plays for that defender.
     if (isHandLockedInCombat(state, player.id)) {
+      if (innateMirrorReactions.length > 0) {
+        result[player.id] = innateMirrorReactions;
+      }
       continue;
     }
     const expertUsesLeft =
@@ -4528,7 +4626,7 @@ export function getLegalReactionsForTrigger(
     // (limit-counting, own-discard) reaction path skips them here.
     const tarnumFlagged = new Set(player.combatStats.tarnumOverlimitCards ?? []);
 
-    const reactions: LegalAction[] = [];
+    const reactions: LegalAction[] = [...innateMirrorReactions];
     // Power has no effect of its own during an attack: it may only be paid
     // alongside an instant spell in the same declaration. Power offers are
     // collected apart and only added when such a spell is available.

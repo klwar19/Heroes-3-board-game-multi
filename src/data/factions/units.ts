@@ -1,4 +1,5 @@
 import type { UnitDefinition } from "./types";
+import { wogUnitDefinitions } from "@/data/wog";
 
 /**
  * Core-box unit roster: the three core factions plus the four neutral tiers.
@@ -8,6 +9,7 @@ import type { UnitDefinition } from "./types";
  * and for the content tracker until each ability is implemented.
  */
 export const coreUnitDefinitions: Record<string, UnitDefinition> = {
+  ...wogUnitDefinitions,
   "castle.halberdiers": {
     id: "castle.halberdiers",
     name: "Halberdiers",

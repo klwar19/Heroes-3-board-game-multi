@@ -145,7 +145,23 @@ const creatureVoices: Record<string, string> = {
   sandworms: "hydra",
   gunslingers: "sharpshooter",
   couatls: "wyvern",
-  dreadnoughts: "behemoth"
+  dreadnoughts: "behemoth",
+  // Wake of Gods adaptation: requested H3 voice reuse.
+  ghost: "wraith",
+  air_messenger: "stone-golem",
+  earth_messenger: "stone-golem",
+  fire_messenger: "stone-golem",
+  water_messenger: "stone-golem",
+  war_zealot: "zealot",
+  arctic_sharpshooter: "sharpshooter",
+  lava_sharpshooter: "sharpshooter",
+  sylvan_centaur: "centaur",
+  werewolf: "demon",
+  nightmare: "war-unicorn",
+  hell_steed: "war-unicorn",
+  gorynych: "hydra",
+  santa_gremlin: "gremlin",
+  dracolich: "ghost-dragon"
 };
 
 /**
@@ -170,7 +186,12 @@ const actionCandidates: Record<UnitSoundAction, string[]> = {
  * so the Inferno and any neutral twin share it.
  */
 const moveSoundOverrides: Record<string, string> = {
-  arch_devils: "units/arch-devil-teleport"
+  arch_devils: "units/arch-devil-teleport",
+  gorynych: "units/black-dragon-move"
+};
+
+const actionSoundOverrides: Partial<Record<string, Partial<Record<UnitSoundAction, string>>>> = {
+  dracolich: { shoot: "units/lich-shoot" }
 };
 
 /**
@@ -183,6 +204,11 @@ export function unitSoundKey(unitDefId: string, action: UnitSoundAction): string
   const voice = creatureVoices[bareName];
   if (!voice) {
     return undefined;
+  }
+
+  const actionOverride = actionSoundOverrides[bareName]?.[action];
+  if (actionOverride && soundLibrary[actionOverride]) {
+    return actionOverride;
   }
 
   if (action === "move") {
@@ -211,7 +237,9 @@ export function unitSoundKey(unitDefId: string, action: UnitSoundAction): string
  * and neutral twins are the same creature); undefined for ordinary creatures.
  */
 const attackFlourishes: Record<string, string> = {
-  magic_elementals: "spells/magic-arrow"
+  magic_elementals: "spells/magic-arrow",
+  hell_steed: "spells/magic-arrow",
+  santa_gremlin: "spells/ice-bolt"
 };
 
 /**

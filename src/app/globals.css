@@ -7009,6 +7009,265 @@ button.hbSlot:disabled { cursor: default; }
   color: #ffe9b0;
 }
 
+/* Wake of Gods is a BINH-only submodule. The crest is the on/off switch; its
+   compact options window stays inside setup instead of becoming another tab. */
+.wogOptionRow {
+  padding: 9px;
+  border: 1px solid rgba(117, 75, 146, 0.45);
+  border-radius: 10px;
+  background:
+    radial-gradient(circle at 12% 20%, rgba(139, 73, 174, 0.2), transparent 38%),
+    rgba(17, 11, 22, 0.72);
+}
+
+.wogOptionRow.enabled {
+  border-color: rgba(207, 138, 255, 0.74);
+  box-shadow: inset 0 0 24px rgba(122, 48, 166, 0.16);
+}
+
+.wogOptionControls {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.wogCrestButton {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: 0 0 74px;
+  width: 74px;
+  height: 64px;
+  padding: 6px;
+  overflow: hidden;
+  border: 1px solid rgba(177, 115, 210, 0.62);
+  border-radius: 50% 50% 42% 42%;
+  background: linear-gradient(145deg, #20102a, #4f1b61 56%, #160b1c);
+  color: #e6c7f4;
+  cursor: pointer;
+  box-shadow: inset 0 0 0 2px rgba(240, 197, 255, 0.08), 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.wogCrestButton:hover,
+.wogCrestButton.selected {
+  border-color: #efb7ff;
+  filter: brightness(1.1);
+  box-shadow: inset 0 0 15px rgba(218, 136, 255, 0.2), 0 0 15px rgba(164, 76, 205, 0.25);
+}
+
+.wogCrestButton strong {
+  z-index: 1;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 17px;
+  letter-spacing: 0.09em;
+  color: #ffe7a1;
+  text-shadow: 0 2px 2px #000;
+}
+
+.wogCrestButton > span:last-child {
+  z-index: 1;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+}
+
+.wogCrestWings {
+  position: absolute;
+  inset: 5px;
+  display: grid;
+  place-items: center;
+  color: rgba(235, 189, 255, 0.2);
+  font-size: 48px;
+  transform: rotate(45deg);
+}
+
+.wogOptionSummary {
+  display: grid;
+  grid-template-columns: minmax(130px, 1fr) auto;
+  align-items: center;
+  gap: 2px 10px;
+  width: min(100%, 430px);
+}
+
+.wogOptionSummary > strong {
+  color: #f2dcff;
+  font-size: 12px;
+}
+
+.wogOptionSummary > small {
+  color: #bca7c7;
+  font-size: 10px;
+}
+
+.wogConfigureButton {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  padding: 6px 10px;
+  border: 1px solid rgba(193, 130, 225, 0.62);
+  border-radius: 7px;
+  background: rgba(78, 31, 96, 0.72);
+  color: #f2dcff;
+  cursor: pointer;
+}
+
+.wogConfigureButton:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+.wogWindowBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 130;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(7, 4, 9, 0.64);
+  backdrop-filter: blur(2px);
+}
+
+.wogOptionsWindow {
+  width: min(520px, 94vw);
+  max-height: min(680px, 90vh);
+  overflow: auto;
+  padding: 14px;
+  border: 1px solid rgba(224, 163, 255, 0.72);
+  border-radius: 13px;
+  background:
+    radial-gradient(circle at 20% 0%, rgba(108, 48, 137, 0.38), transparent 40%),
+    linear-gradient(155deg, #211327, #120c16 68%);
+  color: #ecddf2;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.68), inset 0 0 0 1px rgba(255, 227, 172, 0.08);
+}
+
+.wogOptionsWindow header,
+.wogOptionsWindow footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.wogOptionsWindow header h4 {
+  margin: 1px 0 0;
+  color: #ffe7a1;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 20px;
+}
+
+.wogWindowEyebrow {
+  color: #bd93d0;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.wogOptionsWindow header > button,
+.wogOptionsWindow footer > button {
+  display: inline-grid;
+  place-items: center;
+  min-width: 34px;
+  min-height: 30px;
+  border: 1px solid rgba(193, 130, 225, 0.48);
+  border-radius: 7px;
+  background: rgba(49, 24, 58, 0.8);
+  color: #f1dff7;
+  cursor: pointer;
+}
+
+.wogOptionsWindow footer {
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+.wogOptionsWindow footer > button {
+  min-width: 80px;
+  border-color: #d9a2ef;
+  color: #ffe7a1;
+}
+
+.wogModuleList {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.wogModuleToggle {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  align-items: start;
+  gap: 9px;
+  padding: 10px;
+  border: 1px solid rgba(154, 104, 174, 0.45);
+  border-radius: 9px;
+  background: rgba(24, 14, 29, 0.8);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.wogModuleToggle.selected {
+  border-color: rgba(225, 168, 248, 0.8);
+  background: rgba(74, 32, 88, 0.66);
+}
+
+.wogModuleCheck {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 1px solid rgba(224, 163, 255, 0.62);
+  border-radius: 5px;
+  color: #ffe7a1;
+}
+
+.wogModuleToggle > span:last-child {
+  display: grid;
+  gap: 3px;
+}
+
+.wogModuleToggle strong {
+  color: #f3e4f8;
+  font-size: 12px;
+}
+
+.wogModuleToggle small {
+  color: #bca9c4;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.wogRosterPreview {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid rgba(155, 112, 172, 0.32);
+  border-radius: 9px;
+  background: rgba(10, 7, 12, 0.52);
+}
+
+.wogRosterPreview > strong {
+  color: #d8b8e5;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.wogRosterPreview > span {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #d7c6dd;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.wogRosterPreview .tierDot {
+  flex: 0 0 auto;
+}
+
 .optionSteppers {
   display: flex;
   flex-wrap: wrap;

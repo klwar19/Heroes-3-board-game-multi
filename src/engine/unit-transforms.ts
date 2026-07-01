@@ -142,7 +142,7 @@ export function applyUnitCurrentSide(unit: CombatUnitState, ruleset: GameRuleset
   // replaces stats wholesale and intentionally drops the bonus while covered.
   unit.attack = side.attack + (unit.permanentAttackBonus ?? 0);
   unit.defense = side.defense;
-  unit.maxHealth = side.health;
+  unit.maxHealth = side.health + (unit.permanentHealthBonus ?? 0);
   unit.initiative = side.initiative;
   unit.abilities = side.abilities;
   if (unit.assets && side.cardImage) {

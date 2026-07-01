@@ -95,6 +95,28 @@ export type UnitAbilityEffectDefinition =
       amount: number;
     }
   | {
+      /** Innate Fire Shield: an adjacent attacker takes flat damage after striking this unit. */
+      type: "FIRE_SHIELD_DAMAGE";
+      amount: number;
+    }
+  | { type: "REDUCE_SPELL_SCHOOL_DAMAGE"; school: Exclude<SpellSchool, "any">; amount: number }
+  | { type: "MINIMUM_ATTACK_DIE"; minimum: number }
+  | { type: "INNATE_MAGIC_MIRROR" }
+  | { type: "ASTROLOGERS_ROUND_FRENZY"; attackBonus: number }
+  | {
+      type: "ON_KILL_HEAL_AND_PERMANENT_HEALTH";
+      amount: number;
+      maxBonus: number;
+      requiresNonUndead?: boolean;
+    }
+  | { type: "ON_KILL_SUMMON_WEAK_COPY"; statPenalty: number; oncePerCombat: boolean }
+  | { type: "ON_ATTACK_PLACE_FIRE_WALL"; damage: number }
+  | { type: "REDUCE_ATTACK_DAMAGE_ON_DEFENSE_DIE"; onRoll: number; amount: number }
+  | { type: "UNDEAD" }
+  | { type: "ADD_NEUTRAL_GUARD"; unitDefId: string }
+  | { type: "EXTRA_RESOURCE_DIE_ON_NEUTRAL_DEFEAT"; count: number }
+  | { type: "NOT_RECRUITABLE" }
+  | {
       /**
        * Great Shamans' Freezing Shot: after this unit's attack, the target's
        * Initiative drops by `amount` (negative) through its next combat round.
@@ -2022,6 +2044,148 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     name: "Killer Instinct",
     text: "[unit_attack] If the target is reduced to 0 Health, after resolving the Retaliation Attack (if applicable), attack another unit adjacent to this unit.",
     effect: { type: "SECOND_ATTACK_ONE_ADJACENT_TO_SELF", requiresTargetRemoved: true },
+    implementationStatus: "implemented"
+  },
+
+  // Wake of Gods neutral-creature adaptation.
+  "wog-fire-shield-1": {
+    id: "wog-fire-shield-1",
+    name: "Fire Shield",
+    text: "[unit_passive] An adjacent attacker takes 1 damage after attacking this unit.",
+    effect: { type: "FIRE_SHIELD_DAMAGE", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "wog-gorynych-sweep": {
+    id: "wog-gorynych-sweep",
+    name: "Many-Headed Sweep",
+    text: "[unit_attack] After the attack, attack every other adjacent enemy with 4 Attack. These attacks do not provoke Retaliation.",
+    effect: { type: "SECOND_ATTACK_ALL_ADJACENT_TO_SELF", baseAttack: 4 },
+    implementationStatus: "implemented"
+  },
+  "wog-ghost-soul-harvest": {
+    id: "wog-ghost-soul-harvest",
+    name: "Soul Harvest",
+    text: "[unit_attack] After defeating a non-Undead unit, heal all damage and permanently gain +1 Health (maximum +2 per game).",
+    effect: { type: "ON_KILL_HEAL_AND_PERMANENT_HEALTH", amount: 1, maxBonus: 2, requiresNonUndead: true },
+    implementationStatus: "implemented"
+  },
+  "wog-air-protection": {
+    id: "wog-air-protection",
+    name: "Protection from Air",
+    text: "[unit_passive] Reduce damage from Air Magic spells by 2.",
+    effect: { type: "REDUCE_SPELL_SCHOOL_DAMAGE", school: "air", amount: 2 },
+    implementationStatus: "implemented"
+  },
+  "wog-earth-protection": {
+    id: "wog-earth-protection",
+    name: "Protection from Earth",
+    text: "[unit_passive] Reduce damage from Earth Magic spells by 2.",
+    effect: { type: "REDUCE_SPELL_SCHOOL_DAMAGE", school: "earth", amount: 2 },
+    implementationStatus: "implemented"
+  },
+  "wog-fire-protection": {
+    id: "wog-fire-protection",
+    name: "Protection from Fire",
+    text: "[unit_passive] Reduce damage from Fire Magic spells by 2.",
+    effect: { type: "REDUCE_SPELL_SCHOOL_DAMAGE", school: "fire", amount: 2 },
+    implementationStatus: "implemented"
+  },
+  "wog-water-protection": {
+    id: "wog-water-protection",
+    name: "Protection from Water",
+    text: "[unit_passive] Reduce damage from Water Magic spells by 2.",
+    effect: { type: "REDUCE_SPELL_SCHOOL_DAMAGE", school: "water", amount: 2 },
+    implementationStatus: "implemented"
+  },
+  "wog-war-zealot-mirror": {
+    id: "wog-war-zealot-mirror",
+    name: "Magic Mirror",
+    text: "[unit_passive] This unit has Magic Mirror at all times.",
+    effect: { type: "INNATE_MAGIC_MIRROR" },
+    implementationStatus: "implemented"
+  },
+  "wog-no-negative-attack-roll": {
+    id: "wog-no-negative-attack-roll",
+    name: "Sure Shot",
+    text: "[unit_attack] Treat a -1 Attack die result as 0.",
+    effect: { type: "MINIMUM_ATTACK_DIE", minimum: 0 },
+    implementationStatus: "implemented"
+  },
+  "wog-werewolf-moon-frenzy": {
+    id: "wog-werewolf-moon-frenzy",
+    name: "Astrologers' Frenzy",
+    text: "[unit_passive] During Astrologers' rounds, +1 Attack and this unit must attack if possible.",
+    effect: { type: "ASTROLOGERS_ROUND_FRENZY", attackBonus: 1 },
+    implementationStatus: "implemented"
+  },
+  "wog-werewolf-pack-call": {
+    id: "wog-werewolf-pack-call",
+    name: "Pack Call",
+    text: "[unit_attack] Once per Combat after a kill, summon a temporary weak Werewolf with -1 to every statistic.",
+    effect: { type: "ON_KILL_SUMMON_WEAK_COPY", statPenalty: 1, oncePerCombat: true },
+    implementationStatus: "implemented"
+  },
+  "wog-magic-arrow-attack": {
+    id: "wog-magic-arrow-attack",
+    name: "Magic Arrow Attack",
+    text: "[unit_attack] This unit attacks with Magic Arrow.",
+    effect: { type: "DEALS_ELEMENTAL_DAMAGE" },
+    implementationStatus: "implemented"
+  },
+  "wog-hell-steed-fire-wall": {
+    id: "wog-hell-steed-fire-wall",
+    name: "Blazing Wake",
+    text: "[unit_attack] Place Fire Wall on the target's space.",
+    effect: { type: "ON_ATTACK_PLACE_FIRE_WALL", damage: 1 },
+    implementationStatus: "implemented"
+  },
+  "wog-santa-ice-bolt": {
+    id: "wog-santa-ice-bolt",
+    name: "Ice Bolt Attack",
+    text: "[unit_attack] This unit's ranged attack uses Ice Bolt.",
+    effect: { type: "DEALS_ELEMENTAL_DAMAGE" },
+    implementationStatus: "implemented"
+  },
+  "wog-santa-guard": {
+    id: "wog-santa-guard",
+    name: "Gremlin Guard",
+    text: "[unit_passive] Add a neutral Gremlin guard before Combat.",
+    effect: { type: "ADD_NEUTRAL_GUARD", unitDefId: "neutral.gremlins" },
+    implementationStatus: "implemented"
+  },
+  "wog-santa-gift": {
+    id: "wog-santa-gift",
+    name: "Santa's Gift",
+    text: "[map_effect] Defeating this unit in a neutral Combat grants one extra Resource die.",
+    effect: { type: "EXTRA_RESOURCE_DIE_ON_NEUTRAL_DEFEAT", count: 1 },
+    implementationStatus: "implemented"
+  },
+  "wog-undead": {
+    id: "wog-undead",
+    name: "Undead",
+    text: "[unit_passive] This unit is Undead.",
+    effect: { type: "UNDEAD" },
+    implementationStatus: "implemented"
+  },
+  "wog-dracolich-armor": {
+    id: "wog-dracolich-armor",
+    name: "Necrotic Armor",
+    text: "[unit_passive] When attacked, roll an Attack die; on -1, reduce damage taken by 2.",
+    effect: { type: "REDUCE_ATTACK_DAMAGE_ON_DEFENSE_DIE", onRoll: -1, amount: 2 },
+    implementationStatus: "implemented"
+  },
+  "wog-dracolich-death-cloud": {
+    id: "wog-dracolich-death-cloud",
+    name: "Necrotic Death Cloud",
+    text: "[unit_attack] Choose a unit adjacent to the target and attack it with 4 Attack.",
+    effect: { type: "SECOND_ATTACK_ADJACENT_TO_TARGET", baseAttack: 4 },
+    implementationStatus: "implemented"
+  },
+  "wog-unrecruitable": {
+    id: "wog-unrecruitable",
+    name: "Unrecruitable",
+    text: "[map_effect] This unit cannot normally be recruited.",
+    effect: { type: "NOT_RECRUITABLE" },
     implementationStatus: "implemented"
   }
 };
