@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { applyAction, createAdventureGameState, seatOfClient, type GameAction, type GameState } from "./index";
+import {
+  applyAction,
+  createAdventureGameState,
+  dropDisconnectedMember,
+  seatOfClient,
+  type GameAction,
+  type GameState
+} from "./index";
 
 // ---------------------------------------------------------------------------
 // Room membership / host / seats / observers.
@@ -201,6 +208,71 @@ describe("seat-ownership on game actions (hosted)", () => {
     const state = seatedGame();
     // An observer may still leave even though they hold no seat.
     expectOk(state, { type: "LEAVE_ROOM", clientId: "c3" }, "c3");
+  });
+});
+
+describe("presence cleanup on disconnect (dropDisconnectedMember)", () => {
+  it("reaps an open-table observer so a rejoin isn't counted twice", () => {
+    let state = makeGame();
+    state = expectOk(state, { type: "JOIN_ROOM", clientId: "c1", name: "Alice" });
+    state = expectOk(state, { type: "JOIN_ROOM", clientId: "c2", name: "Bob" });
+    expect(state.room?.members).toHaveLength(2);
+
+    // c2's tab closes → their stale membership is removed, not left as a ghost.
+    expect(dropDisconnectedMember(state, "c2")).toBe(true);
+    expect(state.room?.members.map((member) => member.clientId)).toEqual(["c1"]);
+
+    // Idempotent: a second teardown signal for the same client changes nothing.
+    expect(dropDisconnectedMember(state, "c2")).toBe(false);
+    // A non-member / empty client id is a no-op too.
+    expect(dropDisconnectedMember(state, "stranger")).toBe(false);
+    expect(dropDisconnectedMember(state, "")).toBe(false);
+  });
+
+  it("NEVER reaps a seated player — a blip can't unseat them or move their turn", () => {
+    let state = hostedRoomWithThree();
+    state = expectOk(state, { type: "ASSIGN_SEAT", clientId: "c1", targetClientId: "c1", seat: "p1" });
+    state = expectOk(state, { type: "ASSIGN_SEAT", clientId: "c1", targetClientId: "c2", seat: "p2" });
+
+    // c2 holds seat p2 in a hosted game: a dropped socket must keep the seat, or
+    // their turn/choice authority would silently transfer on a reconnect.
+    expect(dropDisconnectedMember(state, "c2")).toBe(false);
+    expect(seatOfClient(state, "c2")).toBe("p2");
+    expect(state.room?.members.some((member) => member.clientId === "c2")).toBe(true);
+
+    // The seat lock still binds p2 to c2 alone after the (no-op) drop: nobody
+    // else may act for p2, and c2 may not act for p1. (It is p1's turn, so this
+    // asserts the lock, not the turn order.)
+    expect(
+      applyAction(state, { type: "END_TURN", playerId: "p2" }, { actorClientId: "c1" }).errors[0]?.message ?? ""
+    ).toContain("Seats are locked");
+    expect(
+      applyAction(state, { type: "END_TURN", playerId: "p1" }, { actorClientId: "c2" }).errors[0]?.message ?? ""
+    ).toContain("Seats are locked");
+    // c1 (seat p1) still owns the active turn.
+    expect(
+      applyAction(state, { type: "END_TURN", playerId: "p1" }, { actorClientId: "c1" }).errors
+    ).toHaveLength(0);
+  });
+
+  it("NEVER reaps the host, even when the host is only observing", () => {
+    // c1 hosts but seats c2/c3, staying an observer themselves.
+    let state = hostedRoomWithThree();
+    state = expectOk(state, { type: "ASSIGN_SEAT", clientId: "c1", targetClientId: "c2", seat: "p1" });
+    expect(seatOfClient(state, "c1")).toBe("observer");
+
+    expect(dropDisconnectedMember(state, "c1")).toBe(false);
+    expect(state.room?.hostClientId).toBe("c1");
+    expect(state.room?.members.some((member) => member.clientId === "c1")).toBe(true);
+  });
+
+  it("reaps a hosted-room spectator (an unseated non-host observer)", () => {
+    const state = hostedRoomWithThree(); // c1 host, c2/c3 unseated observers
+    expect(dropDisconnectedMember(state, "c3")).toBe(true);
+    expect(state.room?.members.some((member) => member.clientId === "c3")).toBe(false);
+    // The host and the room mode are untouched.
+    expect(state.room?.hosted).toBe(true);
+    expect(state.room?.hostClientId).toBe("c1");
   });
 });
 
