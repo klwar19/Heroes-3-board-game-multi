@@ -6,7 +6,7 @@ import {
   factoryGoldUnitConflict
 } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
-import { isNormallyRecruitableNeutralUnit } from "@/data/wog";
+import { unitAbilities } from "@/data/units/abilities";
 import { type CreatureBankId } from "@/data/map/creature-banks";
 import { isMarketLocation, locationDefinitions, TRADE_RATES } from "@/data/map/locations";
 import { allTileDefinitions } from "@/data/map/tiles";
@@ -3086,7 +3086,6 @@ export function openDiplomacyRecruit(
   const recruitable = draws.filter((draw) => {
     const neutral = coreUnitDefinitions[draw.unitDefId]?.neutral;
     return Boolean(neutral) &&
-      isNormallyRecruitableNeutralUnit(draw.unitDefId) &&
       hasRecruitResources(state, playerId, reduceGoldCost(neutral?.cost ?? {}, goldReduction));
   });
 
@@ -3150,7 +3149,7 @@ export function resolveDiplomacyRecruitChoice(state: GameState, playerId: Player
     // Apply Oidana IV's gold discount (if any) to the same cost the player was
     // shown — the affordability check, the label and this spend all agree.
     const cost = reduceGoldCost(def?.neutral?.cost ?? {}, recruit.goldReduction);
-    if (def?.neutral && isNormallyRecruitableNeutralUnit(pick.unitDefId) && hasRecruitResources(state, playerId, cost)) {
+    if (def?.neutral && hasRecruitResources(state, playerId, cost)) {
       spendRecruitResources(state, playerId, cost, `recruited ${def.name} with Diplomacy`);
       addArmyUnit(player, pick.unitDefId, "neutral");
       appendEvent(state, {
@@ -3766,7 +3765,20 @@ export function resolveVisionsScryChoice(state: GameState, playerId: PlayerId, o
  * frontline, left to right from the attacking player's perspective in
  * descending initiative (higher tier first on ties).
  */
-function revealNeutralArmy(state: GameState, draws: NeutralDraw[]): void {
+/**
+ * The engine effects carried by a neutral unit definition's printed abilities.
+ * Lets map-level neutral effects (e.g. WOG Santa Gremlin's Gremlin guard and its
+ * post-defeat Resource die) be driven by the declared ability, not a hard-coded
+ * unit id — so the `abilities` array stays the single source of truth.
+ */
+function neutralUnitAbilityEffects(unitDefId: string | undefined) {
+  const abilityIds = unitDefId ? coreUnitDefinitions[unitDefId]?.neutral?.abilities ?? [] : [];
+  return abilityIds
+    .map((abilityId) => unitAbilities[abilityId]?.effect)
+    .filter((effect): effect is NonNullable<typeof effect> => Boolean(effect));
+}
+
+export function revealNeutralArmy(state: GameState, draws: NeutralDraw[]): void {
   const combat = state.combat;
   if (!combat || combat.context.kind !== "neutral") {
     return;
@@ -3784,19 +3796,24 @@ function revealNeutralArmy(state: GameState, draws: NeutralDraw[]): void {
     );
     return unit ? [unit] : [];
   });
-  const santaGuards = draws.flatMap((draw, index) => {
-    if (draw.unitDefId !== "wog.santa_gremlin") {
-      return [];
-    }
-    const guard = makeCombatUnitFromNeutral(
-      { unitDefId: "neutral.gremlins", tier: "bronze", bankGuard: true },
-      `santa_guard_${index + 1}`,
-      0,
-      getRuleset(state)
-    );
-    return guard ? [guard] : [];
-  });
-  const neutralUnits = [...drawnUnits, ...santaGuards];
+  // Some neutral cards summon an extra guard before Combat (WOG Santa Gremlin's
+  // Gremlin). Driven by the printed ADD_NEUTRAL_GUARD ability, not a unit id.
+  const extraGuards = draws.flatMap((draw, index) =>
+    neutralUnitAbilityEffects(draw.unitDefId).flatMap((effect, effectIndex) => {
+      if (effect.type !== "ADD_NEUTRAL_GUARD") {
+        return [];
+      }
+      const guardTier = coreUnitDefinitions[effect.unitDefId]?.tier ?? "bronze";
+      const guard = makeCombatUnitFromNeutral(
+        { unitDefId: effect.unitDefId, tier: guardTier, bankGuard: true },
+        `neutral_guard_${index + 1}_${effectIndex + 1}`,
+        0,
+        getRuleset(state)
+      );
+      return guard ? [guard] : [];
+    })
+  );
+  const neutralUnits = [...drawnUnits, ...extraGuards];
 
   if (neutralUnits.length === 0) {
     // The tier decks ran dry: the guards never show up and the field falls.
@@ -5196,14 +5213,23 @@ export function finalizeAdventureCombat(state: GameState): void {
         const winner = state.players[playerId];
         if (winner) {
           winner.necromancyWindow = true;
-          const santaGiftDice = Object.values(combat.units).filter(
-            (unit) =>
-              unit.controllerId === NEUTRAL_PLAYER_ID &&
-              unit.unitDefId === "wog.santa_gremlin" &&
-              unit.damage >= unit.maxHealth
-          ).length;
-          if (santaGiftDice > 0) {
-            winner.pendingWogResourceDice = (winner.pendingWogResourceDice ?? 0) + santaGiftDice;
+          // Defeated neutral cards may owe the winner extra Resource dice (WOG
+          // Santa Gremlin). Driven by the printed EXTRA_RESOURCE_DIE_ON_NEUTRAL_DEFEAT
+          // ability, not a unit id, and scaled by the number defeated.
+          const bonusResourceDice = Object.values(combat.units)
+            .filter((unit) => unit.controllerId === NEUTRAL_PLAYER_ID && unit.damage >= unit.maxHealth)
+            .reduce(
+              (total, unit) =>
+                total +
+                neutralUnitAbilityEffects(unit.unitDefId).reduce(
+                  (dice, effect) =>
+                    dice + (effect.type === "EXTRA_RESOURCE_DIE_ON_NEUTRAL_DEFEAT" ? effect.count : 0),
+                  0
+                ),
+              0
+            );
+          if (bonusResourceDice > 0) {
+            winner.pendingWogResourceDice = (winner.pendingWogResourceDice ?? 0) + bonusResourceDice;
           }
         }
 

@@ -5,9 +5,8 @@ import type { UnitDefinition } from "@/data/factions/types";
  * decks unless the lobby enables WOG -> New neutral creatures under BINH.
  */
 export const WOG_UNIT_IDS_BY_TIER = {
-  bronze: ["wog.santa_gremlin"],
+  bronze: ["wog.santa_gremlin", "wog.ghost"],
   silver: [
-    "wog.ghost",
     "wog.air_messenger",
     "wog.earth_messenger",
     "wog.fire_messenger",
@@ -26,11 +25,6 @@ export type WogUnitId = (typeof WOG_UNIT_IDS_BY_TIER)[keyof typeof WOG_UNIT_IDS_
 
 export const WOG_UNIT_IDS = Object.values(WOG_UNIT_IDS_BY_TIER).flat() as WogUnitId[];
 
-/** Hook for neutral recruit flows; every creature in the current WOG roster is recruitable. */
-export function isNormallyRecruitableNeutralUnit(unitDefId: string): boolean {
-  return unitDefId.length > 0;
-}
-
 const source = {
   product: "Heroes III: In the Wake of Gods (fan-mod board-game adaptation)",
   credit:
@@ -43,7 +37,7 @@ export const wogUnitDefinitions: Record<WogUnitId, UnitDefinition> = {
     id: "wog.ghost",
     name: "Ghost",
     faction: "neutral",
-    tier: "silver",
+    tier: "bronze",
     type: "ground",
     neutral: {
       attack: 3,
@@ -54,7 +48,7 @@ export const wogUnitDefinitions: Record<WogUnitId, UnitDefinition> = {
       abilities: ["wog-ghost-soul-harvest"],
       abilityText:
         "[unit_attack] After defeating a non-Undead unit, remove all [damage] from Ghost and permanently gain +1 [health_points] (maximum +2 per game).",
-      cardImage: "/assets/units-neutral-silver-wog_ghost.webp"
+      cardImage: "/assets/units-neutral-bronze-wog_ghost.webp"
     },
     wikiUrl: "https://heroes.thelazy.net/index.php/In_the_Wake_of_Gods/Ghost",
     source
@@ -324,6 +318,7 @@ export const wogUnitDefinitions: Record<WogUnitId, UnitDefinition> = {
       cost: { gold: 45, valuables: 2 },
       abilities: [
         "wog-undead",
+        "ignore-combat-penalties",
         "titan-ignore-ongoing",
         "reduce-spell-damage-2",
         "teleport-move",
@@ -331,7 +326,7 @@ export const wogUnitDefinitions: Record<WogUnitId, UnitDefinition> = {
         "wog-dracolich-death-cloud"
       ],
       abilityText:
-        "[unit_passive] Undead. Ignore [ongoing] effects and reduce [damage] from [spell] by 2. [movement] Move to any empty Battlefield space. When attacked, roll 1 Attack die; on \"-1\", reduce [damage] taken by 2. [unit_attack] Attack a unit adjacent to the target with 4 Attack.",
+        "[unit_passive] Undead. Ignore the combat penalty against adjacent units. Ignore [ongoing] effects and reduce [damage] from [spell] by 2. [movement] Move to any empty Battlefield space. When attacked, roll 1 Attack die; on \"-1\", reduce [damage] taken by 2. [unit_attack] Attack a unit adjacent to the target with 4 Attack.",
       cardImage: "/assets/units-neutral-azure-wog_dracolich.webp"
     },
     wikiUrl: "https://heroes.thelazy.net/index.php/In_the_Wake_of_Gods/Dracolich",

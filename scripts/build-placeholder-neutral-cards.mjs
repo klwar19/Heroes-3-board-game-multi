@@ -238,7 +238,7 @@ const CARDS = [
   // WoG creature reference, then composited here under the exact board-game
   // frame and legend glyphs. No text/symbols are baked into the artwork.
   {
-    slug: "wog_ghost", name: "Ghost", tier: "silver", type: "unit_ground",
+    slug: "wog_ghost", name: "Ghost", tier: "bronze", type: "unit_ground",
     art: "wog_ghost.png", stats: [3, 0, 4, 7], cost: 6, fontSize: 16,
     lines: [
       [g("unit_attack"), " Defeat a non-Undead unit: remove all ", g("damage"), "."],
@@ -324,9 +324,10 @@ const CARDS = [
   },
   {
     slug: "wog_dracolich", name: "Dracolich", tier: "azure", type: "unit_ranged",
-    art: "wog_dracolich.png", stats: [7, 2, 10, 16], cost: { gold: 45, valuables: 2 }, fontSize: 12,
+    art: "wog_dracolich.png", stats: [7, 2, 10, 16], cost: { gold: 45, valuables: 2 }, fontSize: 11,
     lines: [
-      [g("unit_passive"), " Undead. Ignore ", g("ongoing"), "; reduce ", g("spell"), " ", g("damage"), " by 2."],
+      [g("unit_passive"), " Undead. Ignore the penalty vs. adjacent units."],
+      ["Ignore ", g("ongoing"), " effects; reduce ", g("spell"), " ", g("damage"), " by 2."],
       [g("movement"), " Move to any empty Battlefield space."],
       ["When attacked, roll 1 Attack die: on \"-1\", reduce ", g("damage"), " by 2."],
       [g("unit_attack"), " Attack a unit adjacent to the target with 4 ", g("attack"), "."]

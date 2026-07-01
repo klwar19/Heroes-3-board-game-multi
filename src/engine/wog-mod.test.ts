@@ -1,7 +1,10 @@
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { unitAbilities } from "@/data/units/abilities";
-import { isNormallyRecruitableNeutralUnit, WOG_UNIT_IDS, WOG_UNIT_IDS_BY_TIER } from "@/data/wog";
+import { WOG_UNIT_IDS, WOG_UNIT_IDS_BY_TIER } from "@/data/wog";
 import { unitSoundKey } from "@/data/unit-sounds";
 import { applyAction } from "./reducer";
 import { createAdventureGameState, createAdventureLobbyState } from "./adventure-setup";
@@ -76,12 +79,52 @@ describe("WOG neutral roster data", () => {
     }
   });
 
-  it("wires every printed WOG ability to an implemented engine effect", () => {
+  it("ships every WOG card face as a real, compressed WebP on disk (frame matches tier)", () => {
+    const publicDir = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "public");
+    const frameOf: Record<string, string> = { bronze: "bronze", silver: "silver", gold: "golden", azure: "azure" };
+    for (const unitId of WOG_UNIT_IDS) {
+      const def = coreUnitDefinitions[unitId];
+      const cardImage = def.neutral?.cardImage;
+      expect(cardImage, unitId).toBeTruthy();
+      // The file the card points at must actually exist (a wrong tier/path — e.g.
+      // Ghost left pointing at its old silver frame — fails here, not silently).
+      expect(cardImage, `${unitId} frame must match tier ${def.tier}`).toContain(`units-neutral-${frameOf[def.tier]}-`);
+      const file = join(publicDir, cardImage!);
+      expect(existsSync(file), `${unitId} -> ${cardImage} must exist`).toBe(true);
+      const head = readFileSync(file).subarray(0, 12);
+      expect(
+        head.subarray(0, 4).toString("ascii") === "RIFF" && head.subarray(8, 12).toString("ascii") === "WEBP",
+        `${unitId} must be a valid WebP`
+      ).toBe(true);
+      const size = statSync(file).size;
+      expect(size, `${unitId} must contain a rendered card`).toBeGreaterThan(40_000);
+      expect(size, `${unitId} must stay compressed`).toBeLessThan(220_000);
+    }
+  });
+
+  it("wires every printed WOG ability to an engine effect the engine actually consumes", () => {
+    // The ability DEFINITIONS live in src/data; their CONSUMPTION must live in
+    // the engine. Concatenate every engine source (this test's own directory) so
+    // a decorative effect — declared "implemented" but read by no engine code —
+    // fails here instead of shipping as an inert card line. (This is what let the
+    // former Santa-Gremlin guard/gift effects pass while doing nothing.)
+    const engineDir = dirname(fileURLToPath(import.meta.url));
+    const engineSource = readdirSync(engineDir)
+      .filter((file) => file.endsWith(".ts") && !file.endsWith(".test.ts"))
+      .map((file) => readFileSync(join(engineDir, file), "utf8"))
+      .join("\n");
+
     for (const unitId of WOG_UNIT_IDS) {
       for (const abilityId of coreUnitDefinitions[unitId].neutral?.abilities ?? []) {
-        expect(unitAbilities[abilityId], `${unitId}: ${abilityId}`).toBeTruthy();
-        expect(unitAbilities[abilityId].implementationStatus, `${unitId}: ${abilityId}`).toBe("implemented");
-        expect(unitAbilities[abilityId].effect, `${unitId}: ${abilityId}`).toBeTruthy();
+        const ability = unitAbilities[abilityId];
+        expect(ability, `${unitId}: ${abilityId}`).toBeTruthy();
+        expect(ability.implementationStatus, `${unitId}: ${abilityId}`).toBe("implemented");
+        const effectType = ability.effect?.type;
+        expect(effectType, `${unitId}: ${abilityId} declares an effect`).toBeTruthy();
+        expect(
+          engineSource.includes(`"${effectType}"`),
+          `${unitId}: ${abilityId} effect ${effectType} must be consumed by engine code, not decorative`
+        ).toBe(true);
       }
     }
   });
@@ -118,11 +161,28 @@ describe("WOG neutral roster data", () => {
     expect(unitSoundKey("wog.dracolich", "shoot")).toBe("units/lich-shoot");
   });
 
-  it("allows Dracolich to be encountered and recruited at the Azure Dragon cost", () => {
+  it("keeps Dracolich and Santa Gremlin recruitable (no unrecruitable tag)", () => {
+    // Both carry a normal Neutral cost and sit in a recruitable Neutral deck, so
+    // the ordinary recruit flow can pay for them. The `wog-unrecruitable` /
+    // NOT_RECRUITABLE tag was removed, so no ability gates them out.
     expect(WOG_UNIT_IDS_BY_TIER.azure).toContain("wog.dracolich");
-    expect(isNormallyRecruitableNeutralUnit("wog.dracolich")).toBe(true);
-    expect(isNormallyRecruitableNeutralUnit("wog.gorynych")).toBe(true);
     expect(coreUnitDefinitions["wog.dracolich"].neutral?.cost).toEqual({ gold: 45, valuables: 2 });
+    expect(coreUnitDefinitions["wog.santa_gremlin"].neutral?.cost).toEqual({ gold: 5 });
+    for (const unitId of WOG_UNIT_IDS) {
+      expect(coreUnitDefinitions[unitId].neutral?.abilities ?? [], unitId).not.toContain("wog-unrecruitable");
+    }
+    expect(unitAbilities["wog-unrecruitable"]).toBeUndefined();
+  });
+
+  it("ships Ghost as a bronze guard", () => {
+    expect(WOG_UNIT_IDS_BY_TIER.bronze).toContain("wog.ghost");
+    expect(WOG_UNIT_IDS_BY_TIER.silver).not.toContain("wog.ghost");
+    expect(coreUnitDefinitions["wog.ghost"].tier).toBe("bronze");
+    expect(coreUnitDefinitions["wog.ghost"].neutral?.cardImage).toBe("/assets/units-neutral-bronze-wog_ghost.webp");
+  });
+
+  it("gives Dracolich the no-melee-penalty ability", () => {
+    expect(coreUnitDefinitions["wog.dracolich"].neutral?.abilities).toContain("ignore-combat-penalties");
   });
 
   it("places Gorynych in the gold WOG deck, not the Azure deck", () => {
