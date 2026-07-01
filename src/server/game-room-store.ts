@@ -510,11 +510,12 @@ export function createRoom(options: RoomCreateOptions & { roomId?: string } = {}
 export type CloseRoomResult = { closed: boolean; reason?: string };
 
 /**
- * Deletes a room for everyone. In a hosted room only the host may close it; in
- * an open table any current member may (and, when the room has no members at
- * all, anyone — there is no one to protect). Connected clients receive one
- * final `closed` snapshot so they drop back to the lobby. Idempotent: closing a
- * room that is already gone succeeds.
+ * Deletes a room for everyone. A HOSTED room can only be closed by its host; an
+ * OPEN table has no host/ownership to protect and so can be closed by anyone (a
+ * per-session clientId means the creator no longer "owns" it after a browser
+ * restart — see viewerCanClose). Connected clients receive one final `closed`
+ * snapshot so they drop back to the lobby. Idempotent: closing a room that is
+ * already gone succeeds.
  */
 export function closeRoom(roomId: string, actorClientId?: string): CloseRoomResult {
   const record = roomStore.get(roomId) ?? loadPersistedRoom(roomId);
@@ -523,14 +524,12 @@ export function closeRoom(roomId: string, actorClientId?: string): CloseRoomResu
   }
 
   const room = record.state.room ?? null;
-  const members = room?.members ?? [];
   if (room?.hosted) {
     if (!actorClientId || room.hostClientId !== actorClientId) {
       return { closed: false, reason: "Only the host can close this room." };
     }
-  } else if (members.length > 0 && actorClientId && !members.some((m) => m.clientId === actorClientId)) {
-    return { closed: false, reason: "Join the room before closing it." };
   }
+  // Open table: no ownership to protect — anyone may close it.
 
   roomStore.delete(roomId);
   deletePersistedRoom(roomId);

@@ -107,17 +107,24 @@ export function deriveLobbyRecord(input: DeriveLobbyRecordInput): LobbyRoomRecor
 
 /**
  * Whether `viewerClientId` may close this room. Mirrors the room engine's close
- * rule: a hosted room only its host; an open table any current member (or
- * anyone when it is empty — there is no one to protect).
+ * rule:
+ *  - a HOSTED room is protected: only its host may close it;
+ *  - an OPEN table has no host and stores no seats to protect (seats there are a
+ *    local, per-client choice), so there is no ownership to guard — ANYONE may
+ *    close it.
+ *
+ * Open tables are closeable by anyone on purpose: a player's `clientId` is
+ * per-session (it resets when the browser/tab is closed), so a fresh session no
+ * longer "owns" the open rooms it created earlier. Gating close on membership
+ * then stranded those rooms as undeletable clutter. Anyone can already join an
+ * open table and act as any seat, so letting anyone close one grants no new
+ * power. Protect a room from being closed by others by Hosting it.
  */
 export function viewerCanClose(record: LobbyRoomRecord, viewerClientId?: string): boolean {
   if (record.hosted) {
     return Boolean(viewerClientId) && record.hostClientId === viewerClientId;
   }
-  return (
-    record.memberClientIds.length === 0 ||
-    Boolean(viewerClientId && record.memberClientIds.includes(viewerClientId))
-  );
+  return true;
 }
 
 /** True when nobody is a member AND the room has been idle past the TTL. */

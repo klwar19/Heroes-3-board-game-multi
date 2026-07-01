@@ -130,7 +130,7 @@ describe("RoomPanel — naming, closing and browsing", () => {
     fireEvent.click(within(nameInput.closest(".roomTitleRow") as HTMLElement).getByRole("button", { name: /Save/i }));
     expect(onAction).toHaveBeenCalledWith({ type: "SET_ROOM_NAME", clientId: "c1", name: "My Table" });
 
-    // Any member may close an open table.
+    // Anyone may close an open table (here, a member does).
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     fireEvent.click(screen.getByRole("button", { name: /Close room/i }));
     expect(onCloseRoom).toHaveBeenCalledTimes(1);

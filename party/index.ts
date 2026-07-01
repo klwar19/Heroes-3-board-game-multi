@@ -218,19 +218,19 @@ export default class GameRoomServer implements Party.Server {
   }
 
   /**
-   * Mirrors the store's closeRoom rule: a hosted room can only be closed by its
-   * host; an open table by any current member (or anyone when it is empty).
+   * Mirrors the store's closeRoom rule: a HOSTED room can only be closed by its
+   * host; an OPEN table has no ownership to protect (a per-session clientId means
+   * the creator no longer "owns" it after a browser restart), so anyone may
+   * close it.
    */
   private authorizeClose(actorClientId: string | undefined): CloseRoomResult {
     const room = this.snapshot?.state.room ?? null;
-    const members = room?.members ?? [];
     if (room?.hosted) {
       if (!actorClientId || room.hostClientId !== actorClientId) {
         return { closed: false, reason: "Only the host can close this room." };
       }
-    } else if (members.length > 0 && actorClientId && !members.some((m) => m.clientId === actorClientId)) {
-      return { closed: false, reason: "Join the room before closing it." };
     }
+    // Open table: no ownership to protect — anyone may close it.
     return { closed: true };
   }
 

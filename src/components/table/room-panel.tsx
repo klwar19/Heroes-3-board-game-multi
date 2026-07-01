@@ -51,8 +51,9 @@ export function RoomPanel({
   const [roomNameDraft, setRoomNameDraft] = useState(room?.name ?? "");
   const canRename = Boolean(me) && (!hosted || isHost);
   const currentRoomName = roomDisplayName(state, roomId);
-  // Closing mirrors the engine rule: host on a hosted room, any member on open.
-  const canClose = Boolean(me) && (hosted ? isHost : true);
+  // Closing mirrors the engine rule: the host on a hosted room; anyone on an
+  // open table (open tables have no ownership to protect — see viewerCanClose).
+  const canClose = hosted ? isHost : true;
 
   const seatIds = state.turnOrder.filter((id) => id !== NEUTRAL_PLAYER_ID);
   const seatLabel = (seat: RoomSeat) => (seat === "observer" ? "Observer" : state.players[seat]?.name ?? seat);

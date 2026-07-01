@@ -89,12 +89,16 @@ describe("viewerCanClose", () => {
     expect(viewerCanClose(hosted, undefined)).toBe(false);
   });
 
-  it("lets any member (or anyone, when empty) close an OPEN table", () => {
+  it("lets ANYONE close an OPEN table (no host/ownership to protect)", () => {
+    // A per-session clientId means the creator no longer "owns" an open room
+    // after a browser restart, so open tables are closeable by anyone — members,
+    // strangers and anonymous viewers alike — which is what keeps them from
+    // becoming undeletable clutter. The HOSTED test above is the control that
+    // proves this branch is open-table-only, not a blanket "always true".
     const populated = record({ roomId: "o", hosted: false, memberClientIds: ["a", "b"], memberCount: 2 });
     expect(viewerCanClose(populated, "a")).toBe(true);
-    // Control: a non-member cannot close a populated open table.
-    expect(viewerCanClose(populated, "stranger")).toBe(false);
-    expect(viewerCanClose(populated, undefined)).toBe(false);
+    expect(viewerCanClose(populated, "stranger")).toBe(true);
+    expect(viewerCanClose(populated, undefined)).toBe(true);
 
     const empty = record({ roomId: "e", hosted: false, memberClientIds: [], memberCount: 0 });
     expect(viewerCanClose(empty, "anyone")).toBe(true);
