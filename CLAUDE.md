@@ -198,7 +198,14 @@ Factory (expansion) — unit Few/Pack card art is now the REAL board-game scans
 `factory-unit-abilities.test.ts` / `factory-combat.test.ts` fails if removed;
 `factory-content.test.ts` pins which sides carry which id):
 - Halflings — Few/Pack `attack-roll-advantage`; Pack also `halfling-precise-shot`
-  (a "+1" roll drops a Corrosion token, -1 Defense).
+  (a "+1" roll drops a Corrosion token, -1 Defense). The "resolve the higher"
+  advantage OVERRIDES the ranged Combat penalty (adjacent / backline-to-backline):
+  the Factory Halfling has no "Ignore combat penalties" waiver (unlike the neutral
+  core Halfling), so under a penalty it still rolls two dice and keeps the HIGHER,
+  not the penalty's lower — the `ATTACK_ROLL_ADVANTAGE` branch resolves before the
+  penalty in `getAttackRollMode`. Enforced (with plain-ranged-unit CONTROLs) in
+  `factory-unit-abilities.test.ts` ("advantage overrides the ranged Combat
+  penalty"). The Shaman's Puppet forced-disadvantage still beats advantage.
 - Mechanics — all sides `mechanics-line-attack-1/2` ("Attack 2 spaces in a line",
   SECOND_ATTACK_BEHIND_TARGET); Few/Pack also `mechanics-repair-1/2` (repair an
   adjacent mechanical unit — Automatons/Dreadnoughts — the Pack falling back to

@@ -905,33 +905,46 @@ export function getAttackRollMode(
   const ignoresMeleePenalty =
     ignoresAllPenalties || hasUnitAbilityEffect(attacker, "IGNORE_RANGED_MELEE_PENALTY");
 
-  if (attacker.type === "ranged" && getAttackKind(attacker, defender) === "melee" && !ignoresMeleePenalty) {
-    return "disadvantage";
-  }
-
-  if (
-    getAttackKind(attacker, defender) === "ranged" &&
+  // The ranged Combat penalty ("throw two Attack dice and apply the smaller
+  // result", rulebook p.28): a ranged unit either attacking an adjacent enemy or
+  // shooting from its own Backline into the enemy's Backline. Computed here but
+  // NOT returned immediately — the "resolve the higher" advantage below overrides
+  // it (see the ATTACK_ROLL_ADVANTAGE block).
+  const attackKind = getAttackKind(attacker, defender);
+  const hasMeleePenalty = attacker.type === "ranged" && attackKind === "melee" && !ignoresMeleePenalty;
+  const hasLongRangePenalty =
+    attackKind === "ranged" &&
     !ignoresAllPenalties &&
     isBackRow(attacker.position) &&
     isBackRow(defender.position) &&
-    isOppositeBackRow(attacker.position, defender.position)
-  ) {
-    return "disadvantage";
-  }
+    isOppositeBackRow(attacker.position, defender.position);
+  const hasCombatPenalty = hasMeleePenalty || hasLongRangePenalty;
 
   // Shaman's Puppet (option A): the puppeted unit rolls two Attack dice and
   // resolves the LOWER result for every attack this activation. Checked before
-  // the Crusaders' advantage so the debuff wins when both are present (the
-  // puppet forces the worse roll). Needs `state` to read the active effect.
+  // BOTH the ranged penalty and the "resolve the higher" advantage so the debuff
+  // always wins — it is designed to force the worst roll (and the reducer re-
+  // asserts it after the Precision/Golden Bow waiver). Needs `state` to read the
+  // active effect.
   if (state && unitAttackRollDisadvantaged(state, attacker)) {
     return "disadvantage";
   }
 
-  // Neutral Crusaders: "roll 2 Attack dice and resolve the higher outcome".
-  // Unlike a reroll this is automatic — both dice roll at once and the better
-  // one counts, no player decision involved.
+  // "[unit_attack] Roll 2 Attack dice and resolve the higher one" (Factory
+  // Halflings Few/Pack, the neutral Crusaders/Leprechaun/Halfling). Per the
+  // board-game ruling this specific card ability OVERRIDES the general ranged
+  // Combat penalty: a Halfling forced to shoot an adjacent enemy (or backline-to-
+  // backline) still rolls two dice and keeps the HIGHER, rather than the penalty's
+  // "keep the lower". So advantage is resolved BEFORE the penalty below. (The
+  // neutral core Halfling additionally prints "Ignore combat penalties" — a
+  // separate waiver that drops the penalty outright; the Factory Halfling has only
+  // this override, so it still rolls two dice, just keeping the better face.)
   if (hasUnitAbilityEffect(attacker, "ATTACK_ROLL_ADVANTAGE")) {
     return "advantage";
+  }
+
+  if (hasCombatPenalty) {
+    return "disadvantage";
   }
 
   return "normal";

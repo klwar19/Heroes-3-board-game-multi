@@ -264,6 +264,112 @@ describe("Factory Halflings — Precise Shot (-1 Defense on a +1 roll)", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Halflings — "resolve the higher" OVERRIDES the ranged Combat penalty
+//
+// A ranged unit attacking an adjacent enemy (or shooting backline-to-backline)
+// normally suffers the Combat penalty: roll two dice and keep the LOWER
+// (disadvantage). The Factory Halfling's printed "[unit_attack] Roll 2 Attack
+// dice and resolve the higher one" overrides that penalty (unlike the neutral
+// core Halfling, it has no "Ignore combat penalties" waiver — it just keeps the
+// better face). The two dice are scripted to DIFFER ([+1, -1]) so the roll mode
+// is visible in the damage dealt: advantage keeps +1 → 4 damage, disadvantage
+// keeps -1 → 2 damage. Each test carries a CONTROL: a plain ranged unit in the
+// same square still suffers the penalty (keeps -1), so the divergence is caused
+// by the advantage ability, not by the penalty being dropped.
+// ---------------------------------------------------------------------------
+
+/**
+ * A ranged Halfling (p1) attacks a Skeletons target under a ranged Combat
+ * penalty. Both units are fattened so the target survives to show the damage and
+ * the Halfling survives any melee retaliation. `[1, -1]` is consumed by the two
+ * Attack dice; any later scripted 0s cover a melee retaliation roll.
+ */
+function halflingPenaltyAttack(
+  abilities: string[],
+  attackerPos: number,
+  defenderPos: number,
+  rolls: number[]
+): GameState {
+  const state = createInitialGameState("factory-halfling-penalty");
+  Object.assign(state.combat!.units.unit_p1_marksmen, {
+    name: "Halflings",
+    cardName: "Halflings",
+    type: "ranged",
+    variant: "few",
+    attack: 3,
+    defense: 0,
+    maxHealth: 30,
+    damage: 0,
+    position: attackerPos,
+    abilities
+  });
+  Object.assign(state.combat!.units.unit_p2_skeletons, {
+    attack: 1,
+    defense: 0,
+    defenseToken: false,
+    maxHealth: 30,
+    damage: 0,
+    abilities: [],
+    position: defenderPos
+  });
+  // Park the other enemies far from the shooter so only the Skeletons are in reach.
+  state.combat!.units.unit_p2_vampires.position = 15;
+  state.combat!.units.unit_p2_dread_knights.position = 16;
+  state.players.p1.hand = [];
+  state.players.p2.hand = [];
+  script(state, rolls);
+  setActive(state, "p1", "unit_p1_marksmen");
+  return settle(
+    applyOk(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_marksmen",
+      defenderId: "unit_p2_skeletons"
+    })
+  );
+}
+
+describe("Factory Halflings — advantage overrides the ranged Combat penalty", () => {
+  // Shooter at pos 9, target adjacent at pos 13 → the ranged melee penalty.
+  it("adjacent (melee-penalty) shot still resolves the HIGHER of two dice", () => {
+    const state = halflingPenaltyAttack(["attack-roll-advantage"], 9, 13, [1, -1, 0, 0]);
+    const roll = attackRolls(state, "unit_p1_marksmen")[0];
+    expect(roll?.rollMode, "advantage beats the melee penalty").toBe("advantage");
+    expect(roll?.rolls, "two dice were rolled").toHaveLength(2);
+    expect(roll?.roll, "the higher (+1) face is kept").toBe(1);
+    // Observable outcome: attack 3 + resolved +1 − defense 0 = 4 damage.
+    expect(state.combat!.units.unit_p2_skeletons.damage).toBe(4);
+  });
+
+  it("CONTROL: a plain ranged unit adjacent still suffers the penalty (keeps the LOWER)", () => {
+    const state = halflingPenaltyAttack([], 9, 13, [1, -1, 0, 0]);
+    const roll = attackRolls(state, "unit_p1_marksmen")[0];
+    expect(roll?.rollMode, "no advantage ⇒ the melee penalty applies").toBe("disadvantage");
+    expect(roll?.roll, "the lower (−1) face is kept").toBe(-1);
+    // attack 3 + resolved −1 − defense 0 = 2 damage.
+    expect(state.combat!.units.unit_p2_skeletons.damage).toBe(2);
+  });
+
+  // Shooter on its own Backline (pos 1) into the enemy Backline (pos 17), non-
+  // adjacent → the long-range penalty (and no retaliation).
+  it("backline-to-backline (long-range-penalty) shot still resolves the HIGHER", () => {
+    const state = halflingPenaltyAttack(["attack-roll-advantage"], 1, 17, [1, -1]);
+    const roll = attackRolls(state, "unit_p1_marksmen")[0];
+    expect(roll?.rollMode, "advantage beats the long-range penalty").toBe("advantage");
+    expect(roll?.roll).toBe(1);
+    expect(state.combat!.units.unit_p2_skeletons.damage).toBe(4);
+  });
+
+  it("CONTROL: a plain ranged unit backline-to-backline keeps the LOWER", () => {
+    const state = halflingPenaltyAttack([], 1, 17, [1, -1]);
+    const roll = attackRolls(state, "unit_p1_marksmen")[0];
+    expect(roll?.rollMode).toBe("disadvantage");
+    expect(roll?.roll).toBe(-1);
+    expect(state.combat!.units.unit_p2_skeletons.damage).toBe(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Sandworms (Neutral) — "attack an adjacent target again" (SECOND_ATTACK_SAME_TARGET_AFTER_RETALIATION)
 // ---------------------------------------------------------------------------
 
