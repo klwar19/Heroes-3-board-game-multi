@@ -1264,34 +1264,42 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
   },
 
   // ---- Factory (expansion) units ----------------------------------------
-  // Board-game roster + abilities transcribed from the Gamefound "Faction Focus:
-  // Factory" dev update (the official board-game source). Board tiers: Bronze =
-  // Grenadiers (Halflings), Engineers (Mechanics), Armadillos; Silver =
-  // Automatons, Sandworms; Gold = Bounty Hunters (Gunslingers), Couatls,
-  // Juggernauts (Dreadnoughts). Card images are the PC creature portraits
-  // composed onto a canvas by scripts/fetch-factory-art.py.
+  // Stats, costs and ability text transcribed from the PHYSICAL Factory board-
+  // game cards (component scans, 2024 stretch-goal set). Every unit has a FEW and
+  // a PACK faction side (the two-sided recruit card). Where a single-cost card was
+  // scanned it is recorded as the NEUTRAL side — the neutral-monster stat block a
+  // creature uses when it guards a field (distinct stats/ability from Few/Pack).
   //
-  // ENGINE-WIRED abilities (a test fails if removed — factory-content.test.ts /
-  // factory-combat.test.ts): Halflings (twin-dice + ignore combat penalties),
-  // Armadillos (Curled +2 Defense), Automatons (on-removal Detonate, the
-  // signature mechanic), Gunslingers (double shot), Juggernauts (no-retaliation).
-  // STILL DISPLAY-ONLY (abilities: [], abilityText only — NOT yet wired, called
-  // out per side): Mechanics' Repair, Sandworm's burrow, Couatl's first-round
-  // immunity, and the Juggernaut's splash-to-adjacent-of-target half.
+  // ENGINE-WIRED (a test fails if removed — factory-content.test.ts /
+  // factory-combat.test.ts): Halflings twin-dice (attack-roll-advantage, both
+  // faction sides); the Automaton Pack's no-retaliation (ignores-retaliation);
+  // the neutral Automaton's on-death 1-damage Detonate (automaton-detonate-1,
+  // reusing the wired ON_REMOVAL_DAMAGE_ADJACENT effect).
+  //
+  // NOT-YET-WIRED — HONEST display-only (abilities: [], real card text only, each
+  // called out per side; each to be wired next with its own mutation test):
+  // Mechanics' reach line-attack + Repair, Armadillos' initiative-amplify, the
+  // faction Automaton's cube-scaled Detonate, Sandworms' extra-attack, Bounty
+  // Hunters' Mark, Couatls' invulnerability, Dreadnoughts' splash-allocation.
+  // The prior definitions here were PC-derived guesses ("no board game cards
+  // exist yet") whose abilities were FABRICATED (Halfling ignore-penalties,
+  // Armadillo Curl +2 Defense, Gunslinger double-shot, Dreadnought no-retaliation)
+  // — all removed: the physical cards carry none of them.
   "factory.halflings": {
     id: "factory.halflings",
     name: "Halflings",
     faction: "factory",
     tier: "bronze",
     type: "ranged",
-    // engine: attack-roll-advantage (twin dice) + ignore-all-combat-penalties —
-    // both wired, matching the neutral Halflings twin.
-    few: { attack: 1, defense: 0, health: 2, initiative: 6, cost: { gold: 2 }, abilities: ["attack-roll-advantage", "ignore-all-combat-penalties"], abilityText: "[unit_attack] Roll 2 Attack dice and resolve the higher one. Ignore combat penalties.", cardImage: "/assets/units-factory-bronze-halflings-few.webp" },
-    pack: { attack: 2, defense: 0, health: 3, initiative: 7, cost: { gold: 4 }, abilities: ["attack-roll-advantage", "ignore-all-combat-penalties"], abilityText: "[unit_attack] Roll 2 Attack dice and resolve the higher one. Ignore combat penalties (Halfling Grenadier).", cardImage: "/assets/units-factory-bronze-halflings-pack.webp" },
+    // engine: attack-roll-advantage (roll 2 Attack dice, resolve the higher) on
+    // BOTH faction sides. The Pack's "-1 Defense to the target on a +1 Attack
+    // roll" rider is NOT yet wired — display-only, called out in abilityText.
+    few: { attack: 2, defense: 0, health: 2, initiative: 4, cost: { gold: 3 }, abilities: ["attack-roll-advantage"], abilityText: "[unit_attack] Roll 2 Attack dice and resolve the higher one.", cardImage: "/assets/units-factory-bronze-halflings-few.webp" },
+    pack: { attack: 2, defense: 0, health: 2, initiative: 6, cost: { gold: 4 }, abilities: ["attack-roll-advantage"], abilityText: "[unit_attack] Roll 2 Attack dice and resolve the higher one. If you resolve a +1 on the Attack Die, the attacked unit suffers -1 [defense] (to a minimum of 0) — the -1 Defense rider is display-only.", cardImage: "/assets/units-factory-bronze-halflings-pack.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Halfling_(Factory)",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
-      credit: "HotA PC-game unit (heroes.thelazy.net). Stats approximate from PC values; no board game cards exist yet. abilities: [] — display-only stub.",
+      credit: "Stats/cost/ability from the physical Factory unit card (Few/Pack scan). attack-roll-advantage wired both sides; Pack -1 Defense rider display-only.",
       url: "https://heroes.thelazy.net/index.php/Halfling_(Factory)"
     }
   },
@@ -1301,13 +1309,16 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "factory",
     tier: "bronze",
     type: "ground",
-    // engine: abilities: [] — the Repair heal is NOT yet wired (display-only).
-    few: { attack: 2, defense: 2, health: 4, initiative: 5, cost: { gold: 4 }, abilities: [], abilityText: "[unit_passive] Repair: at the start of activation, repair 1 HP to an adjacent Automaton — display-only (Mechanic).", cardImage: "/assets/units-factory-bronze-mechanics-few.webp" },
-    pack: { attack: 3, defense: 2, health: 5, initiative: 5, cost: { gold: 7 }, abilities: [], abilityText: "[unit_passive] Repair: at the start of activation, repair 2 HP to an adjacent Automaton — display-only (Engineer).", cardImage: "/assets/units-factory-bronze-mechanics-pack.webp" },
+    // engine: abilities: [] on all sides — the reach "line attack" and the Pack's
+    // Repair (remove damage from an adjacent mechanical unit OR +1 Attack) are
+    // NOT yet wired (display-only, transcribed verbatim below).
+    few: { attack: 2, defense: 0, health: 3, initiative: 6, cost: { gold: 4 }, abilities: [], abilityText: "[activation] Attack 2 spaces in a line. The first attack resolves normally, and the second has 1 [attack] — display-only.", cardImage: "/assets/units-factory-bronze-mechanics-few.webp" },
+    pack: { attack: 2, defense: 1, health: 4, initiative: 7, cost: { gold: 6 }, abilities: [], abilityText: "[activation] Remove up to 2 [damage] from an adjacent [mechanical] unit, or gain +1 [attack]. Attack 2 spaces in a line; the first attack resolves normally, the second has 2 [attack] — display-only.", cardImage: "/assets/units-factory-bronze-mechanics-pack.webp" },
+    neutral: { attack: 2, defense: 0, health: 4, initiative: 6, cost: { gold: 5 }, abilities: [], abilityText: "[activation] Attack 2 spaces in a line. The first attack resolves normally, and the second has 1 [attack] — display-only.", cardImage: "/assets/units-factory-bronze-mechanics-neutral.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Mechanic",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
-      credit: "HotA PC-game unit (heroes.thelazy.net). Stats approximate from PC values; no board game cards exist yet. abilities: [] — display-only stub.",
+      credit: "Stats/cost/ability from the physical Factory unit card (Few/Pack + single-cost Neutral scan). Reach line-attack and Repair NOT yet wired — display-only.",
       url: "https://heroes.thelazy.net/index.php/Mechanic"
     }
   },
@@ -1317,14 +1328,17 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "factory",
     tier: "bronze",
     type: "ground",
-    // engine: armadillo-curl (DEFEND_BONUS +2) is wired on BOTH sides. The Pack's
-    // "Knockback" (push the target back) is display-only — abilityText only.
-    few: { attack: 3, defense: 3, health: 5, initiative: 5, cost: { gold: 5 }, abilities: ["armadillo-curl"], abilityText: "[unit_passive] Curled: when defending, +2 Defense (Armadillo).", cardImage: "/assets/units-factory-bronze-armadillos-few.webp" },
-    pack: { attack: 4, defense: 4, health: 7, initiative: 7, cost: { gold: 9 }, abilities: ["armadillo-curl"], abilityText: "[unit_passive] Curled: when defending, +2 Defense. [unit_attack] Knockback: push the target 1 space back — display-only (Bellwether Armadillo).", cardImage: "/assets/units-factory-bronze-armadillos-pack.webp" },
+    // engine: abilities: [] — the Few and Neutral have NO printed ability; the
+    // Pack's "when this unit's Initiative is increased by an effect, increase it
+    // by an additional 1" is NOT yet wired (display-only). The prior armadillo-curl
+    // (+2 Defense) was a fabrication — no such text on the physical card.
+    few: { attack: 2, defense: 1, health: 4, initiative: 4, cost: { gold: 5 }, abilities: [], cardImage: "/assets/units-factory-bronze-armadillos-few.webp" },
+    pack: { attack: 3, defense: 1, health: 4, initiative: 6, cost: { gold: 7 }, abilities: [], abilityText: "[unit_passive] Whenever this unit's [initiative] is increased by an effect, increase it by an additional 1 — display-only.", cardImage: "/assets/units-factory-bronze-armadillos-pack.webp" },
+    neutral: { attack: 2, defense: 1, health: 4, initiative: 6, cost: { gold: 5 }, abilities: [], cardImage: "/assets/units-factory-bronze-armadillos-neutral.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Armadillo",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
-      credit: "HotA PC-game unit (heroes.thelazy.net). Stats approximate from PC values; no board game cards exist yet. abilities: [] — display-only stub.",
+      credit: "Stats/cost from the physical Factory unit card (Few/Pack + single-cost Neutral scan). Few/Neutral have no ability; Pack initiative-amplify NOT yet wired — display-only.",
       url: "https://heroes.thelazy.net/index.php/Armadillo"
     }
   },
@@ -1334,15 +1348,18 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "factory",
     tier: "silver",
     type: "ground",
-    // engine: automaton-detonate (ON_REMOVAL_DAMAGE_ADJACENT 2) is wired on BOTH
-    // sides — the signature Factory mechanic. Above-average Initiative per the
-    // Gamefound card. (The Pack's "Repaired by Mechanics" is display-only.)
-    few: { attack: 5, defense: 5, health: 6, initiative: 6, cost: { gold: 9 }, abilities: ["automaton-detonate"], abilityText: "[unit_passive] Detonate: when this unit would be removed from Combat, deal 2 damage to each adjacent unit — friend and foe (Automaton).", cardImage: "/assets/units-factory-silver-automatons-few.webp" },
-    pack: { attack: 5, defense: 5, health: 8, initiative: 6, cost: { gold: 15 }, abilities: ["automaton-detonate"], abilityText: "[unit_passive] Detonate: when this unit would be removed from Combat, deal 2 damage to each adjacent unit — friend and foe. Repaired by Mechanics — display-only (Sentinel Automaton).", cardImage: "/assets/units-factory-silver-automatons-pack.webp" },
+    // engine: the Pack's "Ignore Retaliation Attacks" is wired (ignores-retaliation).
+    // The NEUTRAL guard's "when defeated, deal 1 damage to all adjacent units" is
+    // wired via automaton-detonate-1 (ON_REMOVAL_DAMAGE_ADJACENT amount 1). The
+    // FEW's cube-scaled Detonate (place up to 2 faction cubes; on defeat deal that
+    // many to all adjacent) is NOT yet wired — display-only.
+    few: { attack: 3, defense: 1, health: 4, initiative: 8, cost: { gold: 6 }, abilities: [], abilityText: "[activation] You may place a faction cube on this unit (up to 2). [unit_passive] When defeated, remove them to inflict that much [damage] to all adjacent units — display-only.", cardImage: "/assets/units-factory-silver-automatons-few.webp" },
+    pack: { attack: 4, defense: 1, health: 4, initiative: 9, cost: { gold: 12 }, abilities: ["ignores-retaliation"], abilityText: "[unit_attack] Ignore Retaliation Attacks.", cardImage: "/assets/units-factory-silver-automatons-pack.webp" },
+    neutral: { attack: 3, defense: 1, health: 4, initiative: 9, cost: { gold: 10 }, abilities: ["automaton-detonate-1"], abilityText: "[unit_passive] When this unit is defeated, deal 1 [damage] to all adjacent units.", cardImage: "/assets/units-factory-silver-automatons-neutral.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Automaton",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
-      credit: "HotA PC-game unit (heroes.thelazy.net). Stats approximate from PC values; no board game cards exist yet. abilities: [] — display-only stub.",
+      credit: "Stats/cost/ability from the physical Factory unit card (Few/Pack + single-cost Neutral scan). Pack ignores-retaliation and Neutral automaton-detonate-1 wired; Few cube-scaled Detonate NOT yet wired — display-only.",
       url: "https://heroes.thelazy.net/index.php/Automaton"
     }
   },
@@ -1352,32 +1369,40 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "factory",
     tier: "silver",
     type: "ground",
-    // engine: abilities: [] — the board-game Sandworm ability was not given in the
-    // Gamefound update, so it stays display-only rather than fabricated. A burrowing
-    // melee bruiser; stats only.
-    few: { attack: 7, defense: 1, health: 8, initiative: 5, cost: { gold: 11 }, abilities: [], abilityText: "[unit_passive] Burrowing melee bruiser — board ability TBD, display-only (Sandworm).", cardImage: "/assets/units-factory-silver-sandworms-few.webp" },
-    pack: { attack: 7, defense: 2, health: 11, initiative: 5, cost: { gold: 18 }, abilities: [], abilityText: "[unit_passive] Burrowing melee bruiser — board ability TBD, display-only (Olgoi-Khorkhoi).", cardImage: "/assets/units-factory-silver-sandworms-pack.webp" },
+    // engine: abilities: [] — the Few has NO printed ability. The Pack's "gain a
+    // faction cube whenever it defeats an enemy; spend a cube to attack again" and
+    // the Neutral's "if the target is an adjacent unit, attack it again" are NOT
+    // yet wired — display-only.
+    few: { attack: 4, defense: 1, health: 5, initiative: 8, cost: { gold: 8 }, abilities: [], cardImage: "/assets/units-factory-silver-sandworms-few.webp" },
+    pack: { attack: 4, defense: 1, health: 5, initiative: 10, cost: { gold: 14 }, abilities: [], abilityText: "[unit_passive] Place a faction cube on this unit whenever it defeats an enemy unit. [activation] You may remove a faction cube from this unit in order to attack again — display-only.", cardImage: "/assets/units-factory-silver-sandworms-pack.webp" },
+    neutral: { attack: 3, defense: 1, health: 4, initiative: 8, cost: { gold: 15 }, abilities: [], abilityText: "[unit_attack] If the target is an adjacent unit, attack this target again — display-only.", cardImage: "/assets/units-factory-silver-sandworms-neutral.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Sandworm",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
-      credit: "HotA PC-game unit (heroes.thelazy.net). Stats approximate from PC values; no board game cards exist yet. abilities: [] — display-only stub.",
+      credit: "Stats/cost/ability from the physical Factory unit card (Few/Pack + single-cost Neutral scan). Few has no ability; Pack cube-fuelled extra attack and Neutral extra-attack NOT yet wired — display-only.",
       url: "https://heroes.thelazy.net/index.php/Sandworm"
     }
   },
   "factory.gunslingers": {
+    // id kept as factory.gunslingers for stable references (unit-sounds, the Gold
+    // exclusivity rule, tests); the physical card NAME is "Bounty Hunters" on both
+    // faction sides and on the Neutral guard.
     id: "factory.gunslingers",
-    name: "Gunslingers",
+    name: "Bounty Hunters",
     faction: "factory",
     tier: "gold",
     type: "ranged",
-    // engine: double-attack (DOUBLE_ATTACK) wired both sides — "Shoot twice" at a
-    // non-adjacent target, mirroring the board game's double-shot ranged units.
-    few: { attack: 6, defense: 4, health: 7, initiative: 7, cost: { gold: 14 }, abilities: ["double-attack"], abilityText: "[unit_attack] Shoot twice: against a non-adjacent target, attack it a second time (Gunslinger).", cardImage: "/assets/units-factory-golden-gunslingers-few.webp" },
-    pack: { attack: 7, defense: 4, health: 8, initiative: 8, cost: { gold: 22 }, abilities: ["double-attack"], abilityText: "[unit_attack] Shoot twice: against a non-adjacent target, attack it a second time (Bounty Hunter).", cardImage: "/assets/units-factory-golden-gunslingers-pack.webp" },
+    // engine: abilities: [] — the "Mark" mechanic (at Combat start place a Mark
+    // token on an enemy; +Attack vs Marked units) and the Neutral's pre-emptive /
+    // ranged retaliation are NOT yet wired (display-only). The prior double-shot was
+    // a fabrication — the physical card carries the Mark ability instead.
+    few: { attack: 5, defense: 1, health: 5, initiative: 7, cost: { gold: 13 }, abilities: [], abilityText: "[unit_passive] At the start of Combat, place a Mark token on an enemy unit. Bounty Hunters gain +1 [attack] against Marked units — display-only.", cardImage: "/assets/units-factory-golden-gunslingers-few.webp" },
+    pack: { attack: 5, defense: 1, health: 6, initiative: 8, cost: { gold: 18, valuables: 1 }, abilities: [], abilityText: "[unit_passive] At the start of Combat, place a Mark token on an enemy unit. Bounty Hunters gain +2 [attack] against Marked units — display-only.", cardImage: "/assets/units-factory-golden-gunslingers-pack.webp" },
+    neutral: { attack: 5, defense: 1, health: 6, initiative: 8, cost: { gold: 17 }, abilities: [], abilityText: "[unit_passive] Retaliate before an opponent's attack. This unit also retaliates against non-adjacent units — display-only.", cardImage: "/assets/units-factory-golden-gunslingers-neutral.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Gunslinger",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
-      credit: "HotA PC-game unit (heroes.thelazy.net). Stats approximate from PC values; no board game cards exist yet. abilities: [] — display-only stub.",
+      credit: "Stats/cost/ability from the physical Factory unit card (Few/Pack titled \"Bounty Hunters\" + single-cost Neutral scan). Mark and retaliation NOT yet wired — display-only; prior double-shot removed as fabricated.",
       url: "https://heroes.thelazy.net/index.php/Gunslinger"
     }
   },
@@ -1387,14 +1412,16 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "factory",
     tier: "gold",
     type: "flying",
-    // engine: Flying is the unit `type`. The first-round immunity to attacks AND
-    // spells (Gamefound) is NOT yet wired — display-only, called out here.
-    few: { attack: 7, defense: 6, health: 8, initiative: 11, cost: { gold: 17, valuables: 1 }, abilities: [], abilityText: "[unit_passive] Flying. First-round immunity to attacks and spells — display-only (Couatl).", cardImage: "/assets/units-factory-golden-couatls-few.webp" },
-    pack: { attack: 8, defense: 7, health: 10, initiative: 12, cost: { gold: 26, valuables: 2 }, abilities: [], abilityText: "[unit_passive] Flying. First-round immunity to attacks and spells — display-only (Crimson Couatl).", cardImage: "/assets/units-factory-golden-couatls-pack.webp" },
+    // engine: Flying is the unit `type`. The activated invulnerability (once per
+    // Combat, until its next activation the unit ignores ALL damage and spell
+    // effects) is NOT yet wired — display-only. The Neutral guard has no ability.
+    few: { attack: 5, defense: 2, health: 7, initiative: 11, cost: { gold: 18, valuables: 1 }, abilities: [], abilityText: "[activation] Once per Combat. Until its next activation, this unit ignores all [damage] and [spell] effects — display-only.", cardImage: "/assets/units-factory-golden-couatls-few.webp" },
+    pack: { attack: 6, defense: 3, health: 8, initiative: 13, cost: { gold: 32, valuables: 2 }, abilities: [], abilityText: "[activation] Once per Combat. Until its next activation, this unit ignores all [damage] and [spell] effects. This special ability does not replace any regular actions — display-only.", cardImage: "/assets/units-factory-golden-couatls-pack.webp" },
+    neutral: { attack: 5, defense: 2, health: 8, initiative: 13, cost: { gold: 18, valuables: 1 }, abilities: [], cardImage: "/assets/units-factory-golden-couatls-neutral.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Couatl",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
-      credit: "HotA PC-game unit (heroes.thelazy.net). Stats approximate from PC values; no board game cards exist yet. abilities: [] — display-only stub.",
+      credit: "Stats/cost/ability from the physical Factory unit card (Few/Pack + single-cost Neutral scan). Activated invulnerability NOT yet wired — display-only; Neutral has no ability.",
       url: "https://heroes.thelazy.net/index.php/Couatl"
     }
   },
@@ -1404,15 +1431,18 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "factory",
     tier: "gold",
     type: "ground",
-    // engine: ignores-retaliation (IGNORE_RETALIATION) is wired on BOTH sides — the
-    // Juggernaut's "attack without retaliation" half. The splash ("also deal damage
-    // to all units adjacent to the target") is NOT yet wired — display-only.
-    few: { attack: 8, defense: 8, health: 12, initiative: 4, cost: { gold: 24, buildingMaterials: 2 }, abilities: ["ignores-retaliation"], abilityText: "[unit_attack] Attack without provoking Retaliation. Also deal damage to all units adjacent to the target — splash is display-only (Dreadnought).", cardImage: "/assets/units-factory-golden-dreadnoughts-few.webp" },
-    pack: { attack: 9, defense: 9, health: 14, initiative: 5, cost: { gold: 36, buildingMaterials: 3 }, abilities: ["ignores-retaliation"], abilityText: "[unit_attack] Attack without provoking Retaliation. Also deal damage to all units adjacent to the target — splash is display-only (Juggernaut).", cardImage: "/assets/units-factory-golden-dreadnoughts-pack.webp" },
+    // engine: abilities: [] — the Dreadnought's real attack is a splash ALLOCATION
+    // (instead of attacking, select up to N adjacent units and allocate the printed
+    // damage) — NOT yet wired, display-only. The prior ignores-retaliation was a
+    // fabrication (no such text on the physical card). The single-cost NEUTRAL guard
+    // is an azure-tier version.
+    few: { attack: 5, defense: 3, health: 9, initiative: 6, cost: { gold: 22, valuables: 1 }, abilities: [], abilityText: "[activation] Instead of attacking, select up to 2 units adjacent to this one. Allocate 1/1 [damage], starting with the first selected unit — display-only.", cardImage: "/assets/units-factory-golden-dreadnoughts-few.webp" },
+    pack: { attack: 5, defense: 3, health: 10, initiative: 7, cost: { gold: 32, valuables: 2 }, abilities: [], abilityText: "[activation] Instead of attacking, select up to 3 units adjacent to this one. Allocate 2/1/1 [damage], starting with the first selected unit — display-only.", cardImage: "/assets/units-factory-golden-dreadnoughts-pack.webp" },
+    neutral: { attack: 6, defense: 3, health: 10, initiative: 6, cost: { gold: 32, valuables: 2 }, abilities: [], abilityText: "[activation] Instead of attacking, select up to 3 units adjacent to this one. Allocate 2/1/1 [damage], starting with the first selected unit — display-only (azure-tier Neutral).", cardImage: "/assets/units-factory-golden-dreadnoughts-neutral.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Dreadnought_(Factory)",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
-      credit: "HotA PC-game unit (heroes.thelazy.net). Stats approximate from PC values; no board game cards exist yet. abilities: [] — display-only stub.",
+      credit: "Stats/cost/ability from the physical Factory unit card (Few/Pack + single-cost azure Neutral scan). Splash-allocation attack NOT yet wired — display-only; prior ignores-retaliation removed as fabricated.",
       url: "https://heroes.thelazy.net/index.php/Dreadnought_(Factory)"
     }
   },

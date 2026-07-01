@@ -986,6 +986,16 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     effect: { type: "ON_REMOVAL_DAMAGE_ADJACENT", amount: 2 },
     implementationStatus: "implemented"
   },
+  // Factory Automaton — NEUTRAL guard version (single-cost card): the weaker
+  // 1-damage Detonate. Reuses the same wired ON_REMOVAL_DAMAGE_ADJACENT effect,
+  // so it fizzles/scales exactly like the faction Detonate but at amount 1.
+  "automaton-detonate-1": {
+    id: "automaton-detonate-1",
+    name: "Detonate",
+    text: "[unit_passive] When this unit is defeated, deal 1 damage to each adjacent unit.",
+    effect: { type: "ON_REMOVAL_DAMAGE_ADJACENT", amount: 1 },
+    implementationStatus: "implemented"
+  },
   // Factory Armadillo (board game): "Curled" — +2 Defense while it is defending
   // (holds a Defense token). Reuses the Mammoth Thick-Hide DEFEND_BONUS path.
   "armadillo-curl": {
