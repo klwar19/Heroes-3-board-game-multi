@@ -125,6 +125,16 @@ export type UnitAbilityEffectDefinition =
     }
   | {
       /**
+       * Factory Armadillos (Pack): "Whenever this unit's Initiative is increased
+       * by an effect, increase it by an additional 1." Read in effectiveInitiative:
+       * when the NET Initiative bonus this unit gets from active effects is
+       * positive, one extra +1 is added on top. A net-zero or negative shift
+       * (e.g. Slow) is never amplified — only genuine increases are.
+       */
+      type: "AMPLIFY_INITIATIVE_INCREASE";
+    }
+  | {
+      /**
        * Yetis ("recover from negative effects"): at the start of its activation
        * the unit shakes off every negative ongoing effect on it and its
        * Weakness/Corrosion tokens. Resolved in clearOwnDebuffsAtActivation.
@@ -455,7 +465,22 @@ export type UnitAbilityEffectDefinition =
        */
       type: "ON_ACTIVATION_HEAL_FRIENDLY_OR_BUFF_SELF";
       healAmount: number;
+      /**
+       * The self Attack buff taken only when there is nothing to heal. Factory
+       * Mechanics FEW set this to 0 (their card has no "+Attack" alternative) —
+       * with no valid repair target the Few activation simply does nothing.
+       */
       attackBonus: number;
+      /**
+       * Factory Mechanics: the repair target must be ADJACENT to this unit
+       * (Enchanters heal at any range, so they leave this unset).
+       */
+      adjacentOnly?: boolean;
+      /**
+       * Factory Mechanics: the repair target must be a "mechanical" unit
+       * (Automatons / Dreadnoughts). Enchanters heal any friendly, so unset.
+       */
+      targetTrait?: "mechanical";
     }
   | {
       /**
@@ -508,6 +533,17 @@ export type UnitAbilityEffectDefinition =
       type: "ATTACK_BONUS_VS_UNIT_NAME";
       unitName: string;
       amount: number;
+    }
+  | {
+      /**
+       * Factory Bounty Hunters: "At the start of Combat, place a Mark token on an
+       * enemy unit. Bounty Hunters gain +N Attack against Marked units." Two hooks
+       * off one ability: at combat start it Marks an enemy (applyCombatStartUnit-
+       * Abilities), and on every attack a Bounty Hunter makes against a Marked unit
+       * it adds `attackBonus` to its Attack. Few +1, Pack +2.
+       */
+      type: "MARK_AND_HUNT";
+      attackBonus: number;
     }
   | {
       /**
@@ -1019,11 +1055,125 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   },
   // Factory Armadillo (board game): "Curled" — +2 Defense while it is defending
   // (holds a Defense token). Reuses the Mammoth Thick-Hide DEFEND_BONUS path.
+  // NOTE: the physical Armadillo card carries NO Curl text — this entry is a
+  // leftover from the fabricated PC-guess placeholder and is on NO shipping unit
+  // (factory-content.test asserts no side carries it). Kept only so the removal
+  // stays a conscious, reviewable decision.
   "armadillo-curl": {
     id: "armadillo-curl",
     name: "Curled",
     text: "[unit_passive] While defending, this unit has +2 Defense.",
     effect: { type: "DEFEND_BONUS", amount: 2 },
+    implementationStatus: "implemented"
+  },
+  // ---- Factory (board game) unit abilities read straight off the card scans ---
+  // Factory Mechanics: "[activation] Remove up to N [damage] from an adjacent
+  // [mechanical] unit" (the Few also, the Pack "…, or gain +1 [attack]"). Reuses
+  // the Enchanters' heal-or-buff activation, gated to ADJACENT + mechanical
+  // targets (Automatons / Dreadnoughts). The Few has NO self-buff alternative
+  // (attackBonus 0) — with nothing to repair its repair simply does nothing; the
+  // Pack falls back to +1 Attack. Neither ends the activation, so the Mechanic
+  // still moves and makes its line attack afterwards.
+  "mechanics-repair-1": {
+    id: "mechanics-repair-1",
+    name: "Field Repair",
+    text: "[activation] Remove up to 1 damage from an adjacent mechanical unit (Automatons or Dreadnoughts). Does not end the activation.",
+    effect: {
+      type: "ON_ACTIVATION_HEAL_FRIENDLY_OR_BUFF_SELF",
+      healAmount: 1,
+      attackBonus: 0,
+      adjacentOnly: true,
+      targetTrait: "mechanical"
+    },
+    implementationStatus: "implemented"
+  },
+  "mechanics-repair-2": {
+    id: "mechanics-repair-2",
+    name: "Field Repair",
+    text: "[activation] Remove up to 2 damage from an adjacent mechanical unit (Automatons or Dreadnoughts), or gain +1 Attack for the round if none can be repaired. Does not end the activation.",
+    effect: {
+      type: "ON_ACTIVATION_HEAL_FRIENDLY_OR_BUFF_SELF",
+      healAmount: 2,
+      attackBonus: 1,
+      adjacentOnly: true,
+      targetTrait: "mechanical"
+    },
+    implementationStatus: "implemented"
+  },
+  // Factory Mechanics: "[activation] Attack 2 spaces in a line. The first attack
+  // resolves normally, and the second has N [attack]." Mechanically identical to
+  // the Gold Dragons' line attack (SECOND_ATTACK_BEHIND_TARGET): after the melee
+  // attack a full separate attack at the printed replacement value strikes the
+  // unit directly behind the target (friend or foe; never adjacent → never
+  // retaliates, never chains). Few/Neutral hit at attack 1, the Pack at attack 2.
+  "mechanics-line-attack-1": {
+    id: "mechanics-line-attack-1",
+    name: "Piston Reach",
+    text: "[activation] Attack 2 spaces in a line: after the attack, a full separate attack at attack 1 strikes the unit directly behind the target (friend or foe). That unit is not adjacent, so it never retaliates.",
+    effect: { type: "SECOND_ATTACK_BEHIND_TARGET", baseAttack: 1 },
+    implementationStatus: "implemented"
+  },
+  "mechanics-line-attack-2": {
+    id: "mechanics-line-attack-2",
+    name: "Piston Reach",
+    text: "[activation] Attack 2 spaces in a line: after the attack, a full separate attack at attack 2 strikes the unit directly behind the target (friend or foe). That unit is not adjacent, so it never retaliates.",
+    effect: { type: "SECOND_ATTACK_BEHIND_TARGET", baseAttack: 2 },
+    implementationStatus: "implemented"
+  },
+  // Factory Halflings (Pack): "Roll 2 Attack dice and resolve the higher one. If
+  // you resolve a +1 on the Attack Die, the attacked unit suffers -1 [defense]
+  // (to a minimum of 0)." The roll-two-take-higher half is attack-roll-advantage;
+  // this companion places a Corrosion token on the target when the resolved die
+  // is "+1". A Corrosion token only ever LOWERS Defense (min 0) — the same wired
+  // ON_ATTACK_DIE_TOKEN the Rust Dragons use, but on the "+1" face for -1 Defense.
+  "halfling-precise-shot": {
+    id: "halfling-precise-shot",
+    name: "Precise Shot",
+    text: 'On a "+1" on the Attack die, place a Corrosion token on the target: -1 Defense (to a minimum of 0) for the rest of the combat.',
+    effect: { type: "ON_ATTACK_DIE_TOKEN", onRoll: 1, token: "corrosion", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  // Factory Bounty Hunters (Few/Pack): "At the start of Combat, place a Mark
+  // token on an enemy unit. Bounty Hunters gain +N [attack] against Marked units."
+  // The Mark is auto-placed on the strongest enemy at combat start; any Bounty
+  // Hunter attacking a Marked unit adds its bonus (Few +1, Pack +2).
+  "bounty-hunter-mark-1": {
+    id: "bounty-hunter-mark-1",
+    name: "Mark",
+    text: "[unit_passive] At the start of Combat, place a Mark token on an enemy unit. This unit gains +1 Attack against Marked units.",
+    effect: { type: "MARK_AND_HUNT", attackBonus: 1 },
+    implementationStatus: "implemented"
+  },
+  "bounty-hunter-mark-2": {
+    id: "bounty-hunter-mark-2",
+    name: "Mark",
+    text: "[unit_passive] At the start of Combat, place a Mark token on an enemy unit. This unit gains +2 Attack against Marked units.",
+    effect: { type: "MARK_AND_HUNT", attackBonus: 2 },
+    implementationStatus: "implemented"
+  },
+  // Factory Armadillos (Pack): "Whenever this unit's [initiative] is increased by
+  // an effect, increase it by an additional 1." A positive Initiative shift from
+  // any active effect (Haste, a hero specialty, Necklace of Swiftness…) is
+  // amplified by +1 in effectiveInitiative. The Few and Neutral guard have no
+  // ability, so this rides the Pack alone.
+  "armadillo-initiative-amplify": {
+    id: "armadillo-initiative-amplify",
+    name: "Gathering Momentum",
+    text: "[unit_passive] Whenever this unit's Initiative is increased by an effect, increase it by an additional 1.",
+    effect: { type: "AMPLIFY_INITIATIVE_INCREASE" },
+    implementationStatus: "implemented"
+  },
+  // Factory Sandworms (Neutral guard): "If a target is an adjacent unit, attack
+  // this target again." A ground (melee) Sandworm only ever attacks adjacent
+  // targets, so this is a same-target second strike — the wired
+  // SECOND_ATTACK_SAME_TARGET_AFTER_RETALIATION (Wolf Raiders): after the target
+  // retaliates (if it still can) the Sandworm strikes it once more, and that
+  // follow-up never provokes another retaliation.
+  "sandworm-strike-again": {
+    id: "sandworm-strike-again",
+    name: "Relentless Burrow",
+    text: "After the adjacent target retaliates, if possible, attack that target again. The second attack does not provoke another retaliation.",
+    effect: { type: "SECOND_ATTACK_SAME_TARGET_AFTER_RETALIATION" },
     implementationStatus: "implemented"
   },
   "teleport-move": {

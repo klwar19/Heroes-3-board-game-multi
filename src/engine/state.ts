@@ -5035,6 +5035,13 @@ export type CombatUnitState = {
    */
   detonatedThisCombat?: boolean;
   /**
+   * Factory Bounty Hunters' Mark: set on an enemy unit at the start of Combat.
+   * A Bounty Hunter attacking a Marked unit gains its printed Attack bonus (Few
+   * +1, Pack +2). Modeled as a per-unit flag (the board-game Mark token); the
+   * target is auto-selected at combat start (see applyCombatStartUnitAbilities).
+   */
+  marked?: boolean;
+  /**
    * Cove Haspids (Few): set the moment this unit's Pack side is defeated and it
    * flips down to its Few side during a combat. The Few side's "Vengeance"
    * ability grants +2 Attack only while this is set, so a Few recruited fresh
