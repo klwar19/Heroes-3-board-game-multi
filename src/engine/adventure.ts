@@ -2408,6 +2408,22 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
   }
 
   const playerId = hero.controllerId;
+  const player = state.players[playerId];
+  const pendingWogDice = player?.pendingWogResourceDice ?? 0;
+  if (pendingWogDice > 0) {
+    player!.pendingWogResourceDice = 0;
+    adventure.pendingVisit = {
+      heroId,
+      playerId,
+      fieldId,
+      steps: [
+        ...Array.from({ length: pendingWogDice }, () => ({ type: "ROLL_RESOURCE_DICE", count: 1 } as const)),
+        { type: "RESUME_FIELD_VISIT", heroId, fieldId, revisit }
+      ]
+    };
+    processPendingVisit(state);
+    return;
+  }
   const location = locationDefinitionsSafe(field.location);
 
   appendEvent(state, {
@@ -2641,6 +2657,9 @@ export function processPendingVisit(state: GameState): void {
         break;
       case "ROLL_RESOURCE_DICE":
         rollResourceDice(state, visit, step.count);
+        break;
+      case "RESUME_FIELD_VISIT":
+        beginFieldVisit(state, step.heroId, step.fieldId, step.revisit);
         break;
       case "ROLL_TREASURE_DICE":
         rollTreasureDice(state, visit, step.count);
@@ -5591,6 +5610,7 @@ export function makeCombatUnitFromArmy(
     side: "few" | "pack" | "neutral";
     transforms?: UnitTransformState[];
     permanentAttackBonus?: number;
+    permanentHealthBonus?: number;
   },
   controllerId: PlayerId,
   unitId: UnitId,
@@ -5607,6 +5627,7 @@ export function makeCombatUnitFromArmy(
   // House rule (BINH) — Gelu IV: a permanent +Attack baked onto this army card is
   // folded into the unit's printed Attack every combat (start to end).
   const permanentAttackBonus = armyUnit.permanentAttackBonus ?? 0;
+  const permanentHealthBonus = armyUnit.permanentHealthBonus ?? 0;
 
   const unit: CombatUnitState = {
     id: unitId,
@@ -5618,7 +5639,7 @@ export function makeCombatUnitFromArmy(
     type: side.type ?? def.type,
     attack: side.attack + permanentAttackBonus,
     defense: side.defense,
-    maxHealth: side.health,
+    maxHealth: side.health + permanentHealthBonus,
     damage: 0,
     initiative: side.initiative,
     position,
@@ -5630,6 +5651,7 @@ export function makeCombatUnitFromArmy(
     unitDefId: armyUnit.unitDefId,
     armyUnitId: armyUnit.id,
     ...(permanentAttackBonus ? { permanentAttackBonus } : {}),
+    ...(permanentHealthBonus ? { permanentHealthBonus } : {}),
     assets: {
       cardImage: side.cardImage,
       imageAlt: `${def.name} unit card`,

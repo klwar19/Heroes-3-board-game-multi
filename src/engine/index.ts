@@ -272,7 +272,7 @@ export {
 export { describePermanentEffect } from "./effects";
 export { WAR_MACHINE_CARD_IDS } from "@/data/cards/permanents";
 export type { BattlefieldCoordinates, BattlefieldTerrain } from "./battlefield";
-export { NEUTRAL_PLAYER_ID } from "./state";
+export { DEFAULT_WOG_OPTIONS, NEUTRAL_PLAYER_ID } from "./state";
 export type {
   ActiveEffectDefinition,
   ActiveEffectModifier,
@@ -364,7 +364,8 @@ export type {
   CombatTokenKind,
   CombatTokenState,
   FirstPlayerRollState,
-  SiegeState
+  SiegeState,
+  WogModOptions
 } from "./state";
 
 export { getUnitTokens, tokenAttackBonus, tokenDefenseDelta } from "./tokens";

@@ -136,7 +136,7 @@ import {
 } from "@/data/map-sounds";
 import { COMBAT_EVENT_SOUNDS } from "@/data/combat-event-sounds";
 import { allTileDefinitions } from "@/data/map/tiles";
-import { playLibrarySound, playUnitSound } from "@/lib/sound";
+import { playLibrarySound, playSpellBookOpen, playUnitSound } from "@/lib/sound";
 import { unitAttackFlourish } from "@/data/unit-sounds";
 import { useBackgroundMusic, type MusicScene } from "@/lib/music";
 import { MusicToggle } from "@/components/music-toggle";
@@ -3544,7 +3544,14 @@ export default function Home() {
                   <button
                     aria-expanded={spellBookOpen}
                     className={`spellBookToggle ${spellBookOpen ? "open" : ""}`}
-                    onClick={() => setSpellBookOpen((value) => !value)}
+                    onClick={() => {
+                      const opening = !spellBookOpen;
+                      setSpellBookOpen(opening);
+                      // Play the page-flip cue only when the Book is opened.
+                      if (opening) {
+                        playSpellBookOpen();
+                      }
+                    }}
                     title={
                       spellBookCards.length === 0
                         ? "Your Spell Book is empty — stash a hand Spell with its 📖 button to store it here"
@@ -3575,7 +3582,10 @@ export default function Home() {
                         const casts = bookPlayActionsByCard.get(spellId) ?? [];
                         return (
                           <div className="spellBookSpell" key={`${spellId}-${bookIndex}`}>
-                            <span className="spellBookSpellName">{cardName(spellId)}</span>
+                            <div className="spellBookSpellHead">
+                              <CardFrame cardId={spellId} className="spellBookSpellIcon" />
+                              <span className="spellBookSpellName">{cardName(spellId)}</span>
+                            </div>
                             <div className="spellBookSpellActions">
                               {casts.map((legal) => (
                                 <button

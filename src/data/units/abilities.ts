@@ -95,12 +95,43 @@ export type UnitAbilityEffectDefinition =
       amount: number;
     }
   | {
+      /** Innate Fire Shield: an adjacent attacker takes flat damage after striking this unit. */
+      type: "FIRE_SHIELD_DAMAGE";
+      amount: number;
+    }
+  | { type: "REDUCE_SPELL_SCHOOL_DAMAGE"; school: Exclude<SpellSchool, "any">; amount: number }
+  | { type: "MINIMUM_ATTACK_DIE"; minimum: number }
+  | { type: "INNATE_MAGIC_MIRROR" }
+  | { type: "ASTROLOGERS_ROUND_FRENZY"; attackBonus: number }
+  | {
+      type: "ON_KILL_HEAL_AND_PERMANENT_HEALTH";
+      amount: number;
+      maxBonus: number;
+      requiresNonUndead?: boolean;
+    }
+  | { type: "ON_KILL_SUMMON_WEAK_COPY"; statPenalty: number; oncePerCombat: boolean }
+  | { type: "ON_ATTACK_PLACE_FIRE_WALL"; damage: number }
+  | { type: "REDUCE_ATTACK_DAMAGE_ON_DEFENSE_DIE"; onRoll: number; amount: number }
+  | { type: "UNDEAD" }
+  | { type: "ADD_NEUTRAL_GUARD"; unitDefId: string }
+  | { type: "EXTRA_RESOURCE_DIE_ON_NEUTRAL_DEFEAT"; count: number }
+  | {
       /**
        * Great Shamans' Freezing Shot: after this unit's attack, the target's
        * Initiative drops by `amount` (negative) through its next combat round.
        */
       type: "ON_ATTACK_INITIATIVE_DEBUFF";
       amount: number;
+    }
+  | {
+      /**
+       * Factory Armadillos (Pack): "Whenever this unit's Initiative is increased
+       * by an effect, increase it by an additional 1." Read in effectiveInitiative:
+       * when the NET Initiative bonus this unit gets from active effects is
+       * positive, one extra +1 is added on top. A net-zero or negative shift
+       * (e.g. Slow) is never amplified — only genuine increases are.
+       */
+      type: "AMPLIFY_INITIATIVE_INCREASE";
     }
   | {
       /**
@@ -434,7 +465,22 @@ export type UnitAbilityEffectDefinition =
        */
       type: "ON_ACTIVATION_HEAL_FRIENDLY_OR_BUFF_SELF";
       healAmount: number;
+      /**
+       * The self Attack buff taken only when there is nothing to heal. Factory
+       * Mechanics FEW set this to 0 (their card has no "+Attack" alternative) —
+       * with no valid repair target the Few activation simply does nothing.
+       */
       attackBonus: number;
+      /**
+       * Factory Mechanics: the repair target must be ADJACENT to this unit
+       * (Enchanters heal at any range, so they leave this unset).
+       */
+      adjacentOnly?: boolean;
+      /**
+       * Factory Mechanics: the repair target must be a "mechanical" unit
+       * (Automatons / Dreadnoughts). Enchanters heal any friendly, so unset.
+       */
+      targetTrait?: "mechanical";
     }
   | {
       /**
@@ -487,6 +533,17 @@ export type UnitAbilityEffectDefinition =
       type: "ATTACK_BONUS_VS_UNIT_NAME";
       unitName: string;
       amount: number;
+    }
+  | {
+      /**
+       * Factory Bounty Hunters: "At the start of Combat, place a Mark token on an
+       * enemy unit. Bounty Hunters gain +N Attack against Marked units." Two hooks
+       * off one ability: at combat start it Marks an enemy (applyCombatStartUnit-
+       * Abilities), and on every attack a Bounty Hunter makes against a Marked unit
+       * it adds `attackBonus` to its Attack. Few +1, Pack +2.
+       */
+      type: "MARK_AND_HUNT";
+      attackBonus: number;
     }
   | {
       /**
@@ -998,11 +1055,125 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   },
   // Factory Armadillo (board game): "Curled" — +2 Defense while it is defending
   // (holds a Defense token). Reuses the Mammoth Thick-Hide DEFEND_BONUS path.
+  // NOTE: the physical Armadillo card carries NO Curl text — this entry is a
+  // leftover from the fabricated PC-guess placeholder and is on NO shipping unit
+  // (factory-content.test asserts no side carries it). Kept only so the removal
+  // stays a conscious, reviewable decision.
   "armadillo-curl": {
     id: "armadillo-curl",
     name: "Curled",
     text: "[unit_passive] While defending, this unit has +2 Defense.",
     effect: { type: "DEFEND_BONUS", amount: 2 },
+    implementationStatus: "implemented"
+  },
+  // ---- Factory (board game) unit abilities read straight off the card scans ---
+  // Factory Mechanics: "[activation] Remove up to N [damage] from an adjacent
+  // [mechanical] unit" (the Few also, the Pack "…, or gain +1 [attack]"). Reuses
+  // the Enchanters' heal-or-buff activation, gated to ADJACENT + mechanical
+  // targets (Automatons / Dreadnoughts). The Few has NO self-buff alternative
+  // (attackBonus 0) — with nothing to repair its repair simply does nothing; the
+  // Pack falls back to +1 Attack. Neither ends the activation, so the Mechanic
+  // still moves and makes its line attack afterwards.
+  "mechanics-repair-1": {
+    id: "mechanics-repair-1",
+    name: "Field Repair",
+    text: "[activation] Remove up to 1 damage from an adjacent mechanical unit (Automatons or Dreadnoughts). Does not end the activation.",
+    effect: {
+      type: "ON_ACTIVATION_HEAL_FRIENDLY_OR_BUFF_SELF",
+      healAmount: 1,
+      attackBonus: 0,
+      adjacentOnly: true,
+      targetTrait: "mechanical"
+    },
+    implementationStatus: "implemented"
+  },
+  "mechanics-repair-2": {
+    id: "mechanics-repair-2",
+    name: "Field Repair",
+    text: "[activation] Remove up to 2 damage from an adjacent mechanical unit (Automatons or Dreadnoughts), or gain +1 Attack for the round if none can be repaired. Does not end the activation.",
+    effect: {
+      type: "ON_ACTIVATION_HEAL_FRIENDLY_OR_BUFF_SELF",
+      healAmount: 2,
+      attackBonus: 1,
+      adjacentOnly: true,
+      targetTrait: "mechanical"
+    },
+    implementationStatus: "implemented"
+  },
+  // Factory Mechanics: "[activation] Attack 2 spaces in a line. The first attack
+  // resolves normally, and the second has N [attack]." Mechanically identical to
+  // the Gold Dragons' line attack (SECOND_ATTACK_BEHIND_TARGET): after the melee
+  // attack a full separate attack at the printed replacement value strikes the
+  // unit directly behind the target (friend or foe; never adjacent → never
+  // retaliates, never chains). Few/Neutral hit at attack 1, the Pack at attack 2.
+  "mechanics-line-attack-1": {
+    id: "mechanics-line-attack-1",
+    name: "Piston Reach",
+    text: "[activation] Attack 2 spaces in a line: after the attack, a full separate attack at attack 1 strikes the unit directly behind the target (friend or foe). That unit is not adjacent, so it never retaliates.",
+    effect: { type: "SECOND_ATTACK_BEHIND_TARGET", baseAttack: 1 },
+    implementationStatus: "implemented"
+  },
+  "mechanics-line-attack-2": {
+    id: "mechanics-line-attack-2",
+    name: "Piston Reach",
+    text: "[activation] Attack 2 spaces in a line: after the attack, a full separate attack at attack 2 strikes the unit directly behind the target (friend or foe). That unit is not adjacent, so it never retaliates.",
+    effect: { type: "SECOND_ATTACK_BEHIND_TARGET", baseAttack: 2 },
+    implementationStatus: "implemented"
+  },
+  // Factory Halflings (Pack): "Roll 2 Attack dice and resolve the higher one. If
+  // you resolve a +1 on the Attack Die, the attacked unit suffers -1 [defense]
+  // (to a minimum of 0)." The roll-two-take-higher half is attack-roll-advantage;
+  // this companion places a Corrosion token on the target when the resolved die
+  // is "+1". A Corrosion token only ever LOWERS Defense (min 0) — the same wired
+  // ON_ATTACK_DIE_TOKEN the Rust Dragons use, but on the "+1" face for -1 Defense.
+  "halfling-precise-shot": {
+    id: "halfling-precise-shot",
+    name: "Precise Shot",
+    text: 'On a "+1" on the Attack die, place a Corrosion token on the target: -1 Defense (to a minimum of 0) for the rest of the combat.',
+    effect: { type: "ON_ATTACK_DIE_TOKEN", onRoll: 1, token: "corrosion", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  // Factory Bounty Hunters (Few/Pack): "At the start of Combat, place a Mark
+  // token on an enemy unit. Bounty Hunters gain +N [attack] against Marked units."
+  // The Mark is auto-placed on the strongest enemy at combat start; any Bounty
+  // Hunter attacking a Marked unit adds its bonus (Few +1, Pack +2).
+  "bounty-hunter-mark-1": {
+    id: "bounty-hunter-mark-1",
+    name: "Mark",
+    text: "[unit_passive] At the start of Combat, place a Mark token on an enemy unit. This unit gains +1 Attack against Marked units.",
+    effect: { type: "MARK_AND_HUNT", attackBonus: 1 },
+    implementationStatus: "implemented"
+  },
+  "bounty-hunter-mark-2": {
+    id: "bounty-hunter-mark-2",
+    name: "Mark",
+    text: "[unit_passive] At the start of Combat, place a Mark token on an enemy unit. This unit gains +2 Attack against Marked units.",
+    effect: { type: "MARK_AND_HUNT", attackBonus: 2 },
+    implementationStatus: "implemented"
+  },
+  // Factory Armadillos (Pack): "Whenever this unit's [initiative] is increased by
+  // an effect, increase it by an additional 1." A positive Initiative shift from
+  // any active effect (Haste, a hero specialty, Necklace of Swiftness…) is
+  // amplified by +1 in effectiveInitiative. The Few and Neutral guard have no
+  // ability, so this rides the Pack alone.
+  "armadillo-initiative-amplify": {
+    id: "armadillo-initiative-amplify",
+    name: "Gathering Momentum",
+    text: "[unit_passive] Whenever this unit's Initiative is increased by an effect, increase it by an additional 1.",
+    effect: { type: "AMPLIFY_INITIATIVE_INCREASE" },
+    implementationStatus: "implemented"
+  },
+  // Factory Sandworms (Neutral guard): "If a target is an adjacent unit, attack
+  // this target again." A ground (melee) Sandworm only ever attacks adjacent
+  // targets, so this is a same-target second strike — the wired
+  // SECOND_ATTACK_SAME_TARGET_AFTER_RETALIATION (Wolf Raiders): after the target
+  // retaliates (if it still can) the Sandworm strikes it once more, and that
+  // follow-up never provokes another retaliation.
+  "sandworm-strike-again": {
+    id: "sandworm-strike-again",
+    name: "Relentless Burrow",
+    text: "After the adjacent target retaliates, if possible, attack that target again. The second attack does not provoke another retaliation.",
+    effect: { type: "SECOND_ATTACK_SAME_TARGET_AFTER_RETALIATION" },
     implementationStatus: "implemented"
   },
   "teleport-move": {
@@ -2022,6 +2193,141 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     name: "Killer Instinct",
     text: "[unit_attack] If the target is reduced to 0 Health, after resolving the Retaliation Attack (if applicable), attack another unit adjacent to this unit.",
     effect: { type: "SECOND_ATTACK_ONE_ADJACENT_TO_SELF", requiresTargetRemoved: true },
+    implementationStatus: "implemented"
+  },
+
+  // Wake of Gods neutral-creature adaptation.
+  "wog-fire-shield-1": {
+    id: "wog-fire-shield-1",
+    name: "Fire Shield",
+    text: "[unit_passive] An adjacent attacker takes 1 damage after attacking this unit.",
+    effect: { type: "FIRE_SHIELD_DAMAGE", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "wog-gorynych-sweep": {
+    id: "wog-gorynych-sweep",
+    name: "Many-Headed Sweep",
+    text: "[unit_attack] After the attack, attack every other adjacent enemy with 4 Attack. These attacks do not provoke Retaliation.",
+    effect: { type: "SECOND_ATTACK_ALL_ADJACENT_TO_SELF", baseAttack: 4 },
+    implementationStatus: "implemented"
+  },
+  "wog-ghost-soul-harvest": {
+    id: "wog-ghost-soul-harvest",
+    name: "Soul Harvest",
+    text: "[unit_attack] After defeating a non-Undead unit, heal all damage and permanently gain +1 Health (maximum +2 per game).",
+    effect: { type: "ON_KILL_HEAL_AND_PERMANENT_HEALTH", amount: 1, maxBonus: 2, requiresNonUndead: true },
+    implementationStatus: "implemented"
+  },
+  "wog-air-protection": {
+    id: "wog-air-protection",
+    name: "Protection from Air",
+    text: "[unit_passive] Reduce damage from Air Magic spells by 2.",
+    effect: { type: "REDUCE_SPELL_SCHOOL_DAMAGE", school: "air", amount: 2 },
+    implementationStatus: "implemented"
+  },
+  "wog-earth-protection": {
+    id: "wog-earth-protection",
+    name: "Protection from Earth",
+    text: "[unit_passive] Reduce damage from Earth Magic spells by 2.",
+    effect: { type: "REDUCE_SPELL_SCHOOL_DAMAGE", school: "earth", amount: 2 },
+    implementationStatus: "implemented"
+  },
+  "wog-fire-protection": {
+    id: "wog-fire-protection",
+    name: "Protection from Fire",
+    text: "[unit_passive] Reduce damage from Fire Magic spells by 2.",
+    effect: { type: "REDUCE_SPELL_SCHOOL_DAMAGE", school: "fire", amount: 2 },
+    implementationStatus: "implemented"
+  },
+  "wog-water-protection": {
+    id: "wog-water-protection",
+    name: "Protection from Water",
+    text: "[unit_passive] Reduce damage from Water Magic spells by 2.",
+    effect: { type: "REDUCE_SPELL_SCHOOL_DAMAGE", school: "water", amount: 2 },
+    implementationStatus: "implemented"
+  },
+  "wog-war-zealot-mirror": {
+    id: "wog-war-zealot-mirror",
+    name: "Magic Mirror",
+    text: "[unit_passive] This unit has Magic Mirror at all times.",
+    effect: { type: "INNATE_MAGIC_MIRROR" },
+    implementationStatus: "implemented"
+  },
+  "wog-no-negative-attack-roll": {
+    id: "wog-no-negative-attack-roll",
+    name: "Sure Shot",
+    text: "[unit_attack] Treat a -1 Attack die result as 0.",
+    effect: { type: "MINIMUM_ATTACK_DIE", minimum: 0 },
+    implementationStatus: "implemented"
+  },
+  "wog-werewolf-moon-frenzy": {
+    id: "wog-werewolf-moon-frenzy",
+    name: "Astrologers' Frenzy",
+    text: "[unit_passive] During Astrologers' rounds, +1 Attack and this unit must attack if possible.",
+    effect: { type: "ASTROLOGERS_ROUND_FRENZY", attackBonus: 1 },
+    implementationStatus: "implemented"
+  },
+  "wog-werewolf-pack-call": {
+    id: "wog-werewolf-pack-call",
+    name: "Pack Call",
+    text: "[unit_attack] Once per Combat after a kill, summon a temporary weak Werewolf with -1 to every statistic.",
+    effect: { type: "ON_KILL_SUMMON_WEAK_COPY", statPenalty: 1, oncePerCombat: true },
+    implementationStatus: "implemented"
+  },
+  "wog-magic-arrow-attack": {
+    id: "wog-magic-arrow-attack",
+    name: "Magic Arrow Attack",
+    text: "[unit_attack] This unit attacks with Magic Arrow.",
+    effect: { type: "DEALS_ELEMENTAL_DAMAGE" },
+    implementationStatus: "implemented"
+  },
+  "wog-hell-steed-fire-wall": {
+    id: "wog-hell-steed-fire-wall",
+    name: "Blazing Wake",
+    text: "[unit_attack] Place Fire Wall on the target's space.",
+    effect: { type: "ON_ATTACK_PLACE_FIRE_WALL", damage: 1 },
+    implementationStatus: "implemented"
+  },
+  "wog-santa-ice-bolt": {
+    id: "wog-santa-ice-bolt",
+    name: "Ice Bolt Attack",
+    text: "[unit_attack] This unit's ranged attack uses Ice Bolt.",
+    effect: { type: "DEALS_ELEMENTAL_DAMAGE" },
+    implementationStatus: "implemented"
+  },
+  "wog-santa-guard": {
+    id: "wog-santa-guard",
+    name: "Gremlin Guard",
+    text: "[unit_passive] Add a neutral Gremlin guard before Combat.",
+    effect: { type: "ADD_NEUTRAL_GUARD", unitDefId: "neutral.gremlins" },
+    implementationStatus: "implemented"
+  },
+  "wog-santa-gift": {
+    id: "wog-santa-gift",
+    name: "Santa's Gift",
+    text: "[map_effect] Defeating this unit in a neutral Combat grants one extra Resource die.",
+    effect: { type: "EXTRA_RESOURCE_DIE_ON_NEUTRAL_DEFEAT", count: 1 },
+    implementationStatus: "implemented"
+  },
+  "wog-undead": {
+    id: "wog-undead",
+    name: "Undead",
+    text: "[unit_passive] This unit is Undead.",
+    effect: { type: "UNDEAD" },
+    implementationStatus: "implemented"
+  },
+  "wog-dracolich-armor": {
+    id: "wog-dracolich-armor",
+    name: "Necrotic Armor",
+    text: "[unit_passive] When attacked, roll an Attack die; on -1, reduce damage taken by 2.",
+    effect: { type: "REDUCE_ATTACK_DAMAGE_ON_DEFENSE_DIE", onRoll: -1, amount: 2 },
+    implementationStatus: "implemented"
+  },
+  "wog-dracolich-death-cloud": {
+    id: "wog-dracolich-death-cloud",
+    name: "Necrotic Death Cloud",
+    text: "[unit_attack] Choose a unit adjacent to the target and attack it with 4 Attack.",
+    effect: { type: "SECOND_ATTACK_ADJACENT_TO_TARGET", baseAttack: 4 },
     implementationStatus: "implemented"
   }
 };

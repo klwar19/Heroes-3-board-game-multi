@@ -5,6 +5,7 @@
 import Link from "next/link";
 import { assetUrl } from "@/lib/asset-url";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { Ban, BookOpen, Check, ChevronsUp, Crown, Dices, Hammer, Hourglass, Image as ImageIcon, Info, Lock, Minus, Plus, RotateCcw, RotateCw, Shield, Sparkles, Star, Swords, Unlock, X } from "lucide-react";
 import { cardLibrary } from "@/data/cards/library";
 import { buildingTimingLabel, describeBuildingEffect } from "@/data/towns/describe";
@@ -21,6 +22,7 @@ import { CREATURE_BANKS, type CreatureBankId } from "@/data/map/creature-banks";
 import { allTileDefinitions } from "@/data/map/tiles";
 import {
   NEUTRAL_DECK_IDS,
+  DEFAULT_WOG_OPTIONS,
   PVP_TROOP_LOSS_DESCRIPTIONS,
   PVP_TROOP_LOSS_LABELS,
   RULESET_DESCRIPTIONS,
@@ -3930,12 +3932,14 @@ function GameOptionsPanel({
   viewerPlayerId: PlayerId;
   onAction: (action: GameAction) => void;
 }) {
+  const [wogOptionsOpen, setWogOptionsOpen] = useState(false);
   const lobby = state.setupLobby;
   if (!lobby) {
     return null;
   }
 
   const options = lobby.options;
+  const wog = { ...DEFAULT_WOG_OPTIONS, ...options.wog };
   const viewerFactionId = lobby.seats.find((seat) => seat.playerId === viewerPlayerId)?.factionId ?? null;
   const send = (next: Partial<GameSetupOptions>) =>
     onAction({ type: "SET_GAME_OPTIONS", playerId: viewerPlayerId, options: next });
@@ -3962,6 +3966,99 @@ function GameOptionsPanel({
         </div>
         <small className="optionHint">{RULESET_DESCRIPTIONS[options.ruleset]}</small>
       </div>
+
+      {options.ruleset === "binh" ? (
+        <div className={`optionRow wogOptionRow ${wog.enabled ? "enabled" : ""}`}>
+          <small title="Optional Wake of Gods modules for BINH games">WOG mod</small>
+          <div className="wogOptionControls">
+            <button
+              aria-label={`${wog.enabled ? "Disable" : "Enable"} Wake of Gods mod`}
+              aria-pressed={wog.enabled}
+              className={`wogCrestButton ${wog.enabled ? "selected" : ""}`}
+              onClick={() => send({ wog: { ...wog, enabled: !wog.enabled } })}
+              title="Click the WOG crest to enable or disable the mod"
+              type="button"
+            >
+              <span aria-hidden="true" className="wogCrestWings">◆</span>
+              <strong>WOG</strong>
+              <span>{wog.enabled ? "ON" : "OFF"}</span>
+            </button>
+            <div className="wogOptionSummary">
+              <strong>Wake of Gods</strong>
+              <small>{wog.enabled ? "Enabled for this BINH game" : "Click the crest to enable"}</small>
+              <button
+                className="wogConfigureButton"
+                disabled={!wog.enabled}
+                onClick={() => setWogOptionsOpen(true)}
+                type="button"
+              >
+                Mod options
+              </button>
+            </div>
+          </div>
+          <small className="optionHint">
+            Optional WOG modules are isolated from Legacy mode. New neutral creatures join their matching Neutral decks.
+          </small>
+        </div>
+      ) : null}
+
+      {options.ruleset === "binh" && wog.enabled && wogOptionsOpen && typeof document !== "undefined"
+        ? createPortal((
+          <div className="wogWindowBackdrop" onMouseDown={() => setWogOptionsOpen(false)}>
+          <section
+            aria-label="Wake of Gods mod options"
+            aria-modal="true"
+            className="wogOptionsWindow"
+            onMouseDown={(event) => event.stopPropagation()}
+            role="dialog"
+          >
+            <header>
+              <div>
+                <span className="wogWindowEyebrow">BINH optional module</span>
+                <h4>Wake of Gods</h4>
+              </div>
+              <button aria-label="Close WOG options" onClick={() => setWogOptionsOpen(false)} type="button">
+                <X size={16} />
+              </button>
+            </header>
+            <div className="wogModuleList">
+              {([
+                ["newCreatures", "New neutral creatures", "Adds the 15-card WOG roster to the Bronze, Silver, Gold and Azure Neutral decks."],
+                ["commanders", "Commanders", "Saves the Commander module choice; Commander gameplay is the next content slice."],
+                ["newObjects", "New adventure objects", "Saves the object module choice; WOG map objects will be added as their data and art arrive."]
+              ] as const).map(([key, label, description]) => {
+                const active = wog[key];
+                return (
+                  <button
+                    aria-pressed={active}
+                    className={`wogModuleToggle ${active ? "selected" : ""}`}
+                    key={key}
+                    onClick={() => send({ wog: { ...wog, [key]: !active } })}
+                    type="button"
+                  >
+                    <span className="wogModuleCheck">{active ? <Check size={15} /> : null}</span>
+                    <span>
+                      <strong>{label}</strong>
+                      <small>{description}</small>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="wogRosterPreview" aria-label="WOG neutral creature roster">
+              <strong>Neutral roster</strong>
+              <span><i className="tierDot bronze" /> Santa Gremlin</span>
+              <span><i className="tierDot silver" /> Ghost · Messengers · War Zealot · Sharpshooters · Sylvan Centaur · Werewolf</span>
+              <span><i className="tierDot gold" /> Nightmare · Hell Steed · Gorynych</span>
+              <span><i className="tierDot azure" /> Dracolich</span>
+            </div>
+            <footer>
+              <button className="selected" onClick={() => setWogOptionsOpen(false)} type="button">Done</button>
+            </footer>
+          </section>
+          </div>
+        ), document.body)
+        : null}
 
       {(() => {
         const victoryMode = options.victoryMode ?? "conquest";

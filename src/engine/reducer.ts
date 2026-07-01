@@ -244,6 +244,7 @@ import {
   getAttackBonusIfFlipped,
   getAttackBonusOnAttackDie,
   getAttackBonusVsDefenderName,
+  getAttackBonusVsMarked,
   getAttackDefenseReductionAbility,
   getDamageCapPerAttack,
   getOnKillResourceGain,
@@ -252,12 +253,19 @@ import {
   getDeathStareFollowUps,
   getDefenseBonusOnAttackDie,
   getDefenseBonusWhenRetaliated,
+  getDefenseDieDamageReduction,
   getDoubleAttackAbility,
   getCardNegateOnDie,
   getDeckDiscardTakeSpell,
   getEnchanterActivationAbility,
   getEnemyDiscardAbility,
   getFlatAttackBonus,
+  getAstrologersRoundFrenzy,
+  getMinimumAttackDie,
+  getOnAttackFireWallDamage,
+  getOnKillHealthHarvest,
+  getOnKillWeakCopy,
+  isMechanicalUnit,
   getOnAttackEnemyDiscard,
   getOnAttackParalysis,
   hasSelfDefenseToken,
@@ -283,11 +291,13 @@ import {
   getSelfAdjacentSecondAttackAbility,
   getSpecialtyDamageReduction,
   getSpellDamageReduction,
+  getSpellSchoolDamageReduction,
   getSpellDamageReductionAura,
   getTriggeredAttackDieBonusAbilities,
   getUnitAbilityDefinitions,
   getUnitAttackRerollSources,
   hasBindAdjacentEnemies,
+  hasInnateMagicMirror,
   getDefendBonus,
   getSelfAttackerTypeDefenseBonus,
   hasDefenseTokenAura,
@@ -297,6 +307,7 @@ import {
   hasSpellCastHandTax,
   hasSpellCastPowerTax,
   hasUnitAbilityEffect,
+  isUndeadUnit,
   unitImmuneToSpellSchools
 } from "./unit-abilities";
 import type {
@@ -1634,8 +1645,16 @@ function totalSpellDamageReduction(state: GameState, target: CombatUnitState): n
   return total;
 }
 
-function reducedSpellDamage(state: GameState, target: CombatUnitState, amount: number): number {
-  return Math.max(0, amount - totalSpellDamageReduction(state, target));
+function reducedSpellDamage(
+  state: GameState,
+  target: CombatUnitState,
+  amount: number,
+  schools: readonly SpellSchool[] = []
+): number {
+  return Math.max(
+    0,
+    amount - totalSpellDamageReduction(state, target) - getSpellSchoolDamageReduction(target, schools)
+  );
 }
 
 /**
@@ -1764,9 +1783,10 @@ function reducedCardDamage(
     card?.kind === "hero-specialty"
       ? getSpecialtyDamageReduction(unit)
       : card?.kind === "spell"
-        ? // Spell-kind: include the Rampart Unicorns' adjacency aura, not just
-          // the unit's own "reduce Spell damage" passive.
-          totalSpellDamageReduction(state, unit)
+        ? // Spell-kind: include the Rampart Unicorns' adjacency aura and any
+          // WOG Messenger protection matching this spell's school.
+          totalSpellDamageReduction(state, unit) +
+          getSpellSchoolDamageReduction(unit, card.spellSchools ?? [])
         : 0;
   return Math.max(0, amount - reduction);
 }
@@ -2087,7 +2107,7 @@ function applyAttackDamageFromCandidate(
     return { damage: 0, roll: 0, cancelled: false };
   }
 
-  const { attackValue, defenseValue, damage, dieAttackBonus, dieDefenseBonus } = getAttackDamagePreview(
+  const preview = getAttackDamagePreview(
     attacker,
     defender,
     candidate.roll,
@@ -2100,6 +2120,23 @@ function applyAttackDamageFromCandidate(
     ignoreDefense,
     dieCancelled
   );
+  const { attackValue, defenseValue, dieAttackBonus, dieDefenseBonus } = preview;
+  let damage = preview.damage;
+  const defensiveRoll = getDefenseDieDamageReduction(defender);
+  if (defensiveRoll && damage > 0) {
+    const roll = rollAttackDie(state.combat);
+    if (roll === defensiveRoll.onRoll) {
+      const reduced = Math.min(damage, defensiveRoll.amount);
+      damage -= reduced;
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: defender.id,
+        abilityId: defensiveRoll.abilityId,
+        targetUnitId: defender.id,
+        message: `${defender.cardName} rolls ${roll} and reduces the attack's damage by ${reduced}.`
+      });
+    }
+  }
   // Reported bonuses fold in the die-face-conditioned deltas so the event's
   // numbers reconcile with the resolved attack/defense values.
   const reportedAttackBonus = attackBonus + dieAttackBonus;
@@ -2248,7 +2285,87 @@ function applyAttackDamageFromCandidate(
       });
     }
   }
+  if (defenderWasAlive && !isUnitAlive(defender)) {
+    applyWogOnKillEffects(state, attacker, defender);
+  }
   return { damage, roll: candidate.roll, cancelled: false };
+}
+
+/** WOG kill-triggered passives shared by normal attacks and retaliations. */
+function applyWogOnKillEffects(
+  state: GameState,
+  attacker: CombatUnitState,
+  defender: CombatUnitState
+): void {
+  if (!state.combat || isUnitAlive(defender) || !isUnitAlive(attacker)) {
+    return;
+  }
+
+  const harvest = getOnKillHealthHarvest(attacker);
+  if (harvest && (!harvest.requiresNonUndead || !isUndeadUnit(defender))) {
+    const healed = attacker.damage;
+    attacker.damage = 0;
+    const currentBonus = attacker.permanentHealthBonus ?? 0;
+    const gained = Math.min(harvest.amount, Math.max(0, harvest.maxBonus - currentBonus));
+    if (gained > 0) {
+      attacker.permanentHealthBonus = currentBonus + gained;
+      attacker.maxHealth += gained;
+      const armyUnit = state.players[attacker.controllerId]?.army.find(
+        (candidate) => candidate.id === attacker.armyUnitId
+      );
+      if (armyUnit) {
+        armyUnit.permanentHealthBonus = attacker.permanentHealthBonus;
+      }
+    }
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: attacker.id,
+      abilityId: harvest.abilityId,
+      targetUnitId: defender.id,
+      message: `${attacker.cardName} harvests ${defender.cardName}'s soul, heals all damage${gained > 0 ? ` and gains +${gained} Health` : ""}.`
+    });
+    if (healed > 0) {
+      appendEvent(state, {
+        type: "DAMAGE_HEALED",
+        source: { type: "unit", unitId: attacker.id, controllerId: attacker.controllerId },
+        target: { type: "unit", unitId: attacker.id },
+        amount: healed
+      });
+    }
+  }
+
+  const weakCopy = getOnKillWeakCopy(attacker);
+  if (!weakCopy || (weakCopy.oncePerCombat && attacker.weakCopySummonedThisCombat) || !attacker.unitDefId) {
+    return;
+  }
+  const summoned = makeCombatUnitFromArmy(
+    { id: `wog_weak_${nextEventNumber(state)}`, unitDefId: attacker.unitDefId, side: attacker.variant },
+    attacker.controllerId,
+    `unit_${attacker.controllerId}_wog_weak_${nextEventNumber(state)}`,
+    defender.position,
+    getRuleset(state)
+  );
+  if (!summoned) {
+    return;
+  }
+  summoned.attack = Math.max(0, summoned.attack - weakCopy.statPenalty);
+  summoned.defense = Math.max(0, summoned.defense - weakCopy.statPenalty);
+  summoned.maxHealth = Math.max(1, summoned.maxHealth - weakCopy.statPenalty);
+  summoned.initiative = Math.max(0, summoned.initiative - weakCopy.statPenalty);
+  summoned.abilities = [];
+  summoned.cardName = `Weak ${attacker.name}`;
+  summoned.summoned = true;
+  summoned.temporary = true;
+  delete summoned.armyUnitId;
+  state.combat.units[summoned.id] = summoned;
+  attacker.weakCopySummonedThisCombat = true;
+  appendEvent(state, {
+    type: "UNIT_ABILITY_TRIGGERED",
+    unitId: attacker.id,
+    abilityId: weakCopy.abilityId,
+    targetUnitId: summoned.id,
+    message: `${attacker.cardName} summons a temporary Weak ${attacker.name}.`
+  });
 }
 
 function applyPostAttackAbilityDamage(
@@ -2452,6 +2569,10 @@ function getAttackStackDetails(
   // Black Dragons): extra Attack when this unit attacks the named creature.
   const hatredAttackBonus = getAttackBonusVsDefenderName(attacker, defender.name);
 
+  // Factory Bounty Hunters: +1/+2 Attack when striking a Marked enemy. An innate
+  // ability bonus, added unclamped like Hatred (elemental clamps don't apply).
+  const markAttackBonus = getAttackBonusVsMarked(attacker, defender);
+
   // Cove Haspids (Few) "Vengeance": +2 Attack once this unit has been flipped
   // down from its Pack side this combat. An innate ability bonus, so (like
   // Hatred) it is added unclamped even for elemental attackers.
@@ -2461,6 +2582,7 @@ function getAttackStackDetails(
   // flat innate bonus (added unclamped, like Hatred/Vengeance); the Stacked gate
   // is enforced upstream, so it is 0 the moment the Stack Token is discarded.
   const stackedAttackBonus = getFlatAttackBonus(attacker);
+  const astrologersRoundAttackBonus = state.round % 2 === 0 ? getAstrologersRoundFrenzy(attacker) : 0;
 
   // Retaliation-only modifiers keyed off the retaliation's defender — i.e. the
   // original attacker being struck back: Dread Knights gain Defense, Dragon
@@ -2492,8 +2614,10 @@ function getAttackStackDetails(
       effectiveTokenAttack +
       attackDieResultBonus +
       hatredAttackBonus +
+      markAttackBonus +
       flippedAttackBonus +
-      stackedAttackBonus -
+      stackedAttackBonus +
+      astrologersRoundAttackBonus -
       retaliationAttackPenalty,
     defenseBonus: defenseBonusBeforeAbility - defenseReductionAmount + retaliationDefenseBonus,
     dieMultiplier: stackItem.modifiers.attackDieMultiplier ?? 1,
@@ -3056,9 +3180,26 @@ function finishResolvedAttack(
   // counts as 0 (so it adds nothing to the attack) and the lethal-save preview,
   // the resolved hit and the die-triggered abilities below all read it the same.
   const dieCancelled = Boolean(stackItem.modifiers.attackDieCancelled);
-  const resolvedCandidate: AttackRollCandidate = dieCancelled
+  const uncappedCandidate: AttackRollCandidate = dieCancelled
     ? { rolls: candidate.rolls, roll: 0 }
     : candidate;
+  const minimumAttackDie = getMinimumAttackDie(details.attacker);
+  const resolvedCandidate: AttackRollCandidate =
+    minimumAttackDie !== null && uncappedCandidate.roll < minimumAttackDie
+      ? {
+          ...uncappedCandidate,
+          rolls: uncappedCandidate.rolls.map((roll) => Math.max(minimumAttackDie, roll)),
+          roll: minimumAttackDie
+        }
+      : uncappedCandidate;
+  if (!dieCancelled && resolvedCandidate.roll !== candidate.roll) {
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: details.attacker.id,
+      abilityId: "wog-no-negative-attack-roll",
+      message: `${details.attacker.cardName} treats its ${candidate.roll} Attack die as ${resolvedCandidate.roll}.`
+    });
+  }
 
   // Alamar's Resurrection: before a killing normal attack lands, pause once and
   // ask the defender's controller whether to cancel it (only if they can). The
@@ -3231,6 +3372,7 @@ function finishResolvedAttack(
       attackResult.damage
     );
   }
+  applyOnAttackFireWall(state, details.attacker, details.defender, details.isRetaliation);
   applyFireShieldDamage(state, details.attacker, details.defender, details.attackKind);
   // Vampires: drain life back to themselves after their own attack.
   applyOnAttackSelfHeal(state, details.attacker, details.isRetaliation);
@@ -3639,6 +3781,11 @@ function applyFireShieldDamage(
   }
 
   let total = 0;
+  for (const ability of getUnitAbilityDefinitions(defender)) {
+    if (ability.effect?.type === "FIRE_SHIELD_DAMAGE") {
+      total += ability.effect.amount;
+    }
+  }
   for (const effect of state.activeEffects) {
     if (effect.target?.type !== "unit" || effect.target.unitId !== defender.id) {
       continue;
@@ -3677,6 +3824,42 @@ function applyFireShieldDamage(
     damageKind: "effect"
   });
   markUnitRemovedIfNeeded(state, attacker);
+}
+
+/** WOG Hell Steed: its own attack leaves a 1-damage Fire Wall on the target space. */
+function applyOnAttackFireWall(
+  state: GameState,
+  attacker: CombatUnitState,
+  defender: CombatUnitState,
+  isRetaliation: boolean
+): void {
+  const damage = getOnAttackFireWallDamage(attacker);
+  const combat = state.combat;
+  if (isRetaliation || !combat || damage <= 0) {
+    return;
+  }
+  const duplicate = (combat.battlefieldTokens ?? []).some(
+    (token) =>
+      token.kind === "fire_wall" &&
+      token.position === defender.position &&
+      token.controllerId === attacker.controllerId
+  );
+  if (duplicate) {
+    return;
+  }
+  addBattlefieldToken(state, {
+    kind: "fire_wall",
+    position: defender.position,
+    controllerId: attacker.controllerId,
+    damage
+  });
+  appendEvent(state, {
+    type: "UNIT_ABILITY_TRIGGERED",
+    unitId: attacker.id,
+    abilityId: "wog-hell-steed-fire-wall",
+    targetUnitId: defender.id,
+    message: `${attacker.cardName} leaves a Fire Wall at ${getBattlefieldLabel(defender.position)}.`
+  });
 }
 
 /**
@@ -5880,13 +6063,21 @@ function continueNeutralStep(
 }
 
 /** Living friendly units the Enchanters could heal (other friendlies only). */
-function enchanterHealCandidates(combat: CombatState, unit: CombatUnitState): CombatUnitState[] {
+function enchanterHealCandidates(
+  combat: CombatState,
+  unit: CombatUnitState,
+  ability?: { adjacentOnly?: boolean; targetTrait?: "mechanical" }
+): CombatUnitState[] {
   return Object.values(combat.units).filter(
     (candidate) =>
       candidate.id !== unit.id &&
       candidate.controllerId === unit.controllerId &&
       isUnitAlive(candidate) &&
-      candidate.damage > 0
+      candidate.damage > 0 &&
+      // Factory Mechanics: only ADJACENT + mechanical units can be repaired.
+      // Enchanters leave both filters unset, so any wounded ally qualifies.
+      (!ability?.adjacentOnly || isAdjacent(unit.position, candidate.position)) &&
+      (ability?.targetTrait !== "mechanical" || isMechanicalUnit(candidate))
   );
 }
 
@@ -5896,6 +6087,11 @@ function applyEnchanterBuffSelf(
   unit: CombatUnitState,
   ability: { abilityId: string; abilityName: string; attackBonus: number }
 ): void {
+  // Factory Mechanics FEW have no "+Attack" fallback (attackBonus 0): with no
+  // adjacent mechanical unit to repair, the activation ability simply does nothing.
+  if (ability.attackBonus <= 0) {
+    return;
+  }
   createActiveEffect(
     state,
     {
@@ -6000,7 +6196,7 @@ function applyNeutralActivationAbility(state: GameState, unit: CombatUnitState):
     // effect can not be skipped in favor of +1 Attack." A neutral Enchanter
     // therefore heals its most-wounded OTHER ally when one exists, and only
     // buffs its own Attack when there is nothing to heal.
-    const candidates = enchanterHealCandidates(combat, unit);
+    const candidates = enchanterHealCandidates(combat, unit, enchant);
     if (candidates.length > 0) {
       const target = candidates.reduce((best, candidate) =>
         candidate.damage > best.damage ? candidate : best
@@ -6116,7 +6312,7 @@ function maybeOpenPlayerActivationChoice(state: GameState): void {
 
   const enchant = getEnchanterActivationAbility(unit);
   if (enchant) {
-    const candidates = enchanterHealCandidates(combat, unit);
+    const candidates = enchanterHealCandidates(combat, unit, enchant);
     if (candidates.length === 0) {
       // Nothing to heal: the only meaningful outcome is the self Attack buff.
       applyEnchanterBuffSelf(state, unit, enchant);
@@ -6136,7 +6332,12 @@ function maybeOpenPlayerActivationChoice(state: GameState): void {
       // wounded other ally exists the heal is MANDATORY — the player only picks
       // WHICH ally (no skip-to-buff). The +Attack fallback fires only on the
       // candidates.length === 0 branch above.
-      prompt: `${unit.cardName}: ${enchant.abilityName} — heal a friendly unit (up to ${enchant.healAmount} damage).`,
+      // Factory Mechanics repair an adjacent MECHANICAL unit; Enchanters heal any
+      // friendly. The noun and the "or gain +N Attack" tail vary accordingly.
+      prompt:
+        enchant.targetTrait === "mechanical"
+          ? `${unit.cardName}: ${enchant.abilityName} — repair an adjacent mechanical unit (up to ${enchant.healAmount} damage).`
+          : `${unit.cardName}: ${enchant.abilityName} — heal a friendly unit (up to ${enchant.healAmount} damage).`,
       sourceUnitId: unit.id,
       anchorUnitId: null,
       candidateUnitIds: candidates.map((candidate) => candidate.id),
@@ -6144,13 +6345,17 @@ function maybeOpenPlayerActivationChoice(state: GameState): void {
     };
     state.phase = "choice";
     state.priorityPlayerId = unit.controllerId;
+    const targetNoun = enchant.targetTrait === "mechanical" ? "repair an adjacent mechanical unit" : "heal a friendly unit";
     appendEvent(state, {
       type: "PENDING_CHOICE_CREATED",
       choiceId,
       choiceType: "ABILITY_TARGET_CHOICE",
       playerId: unit.controllerId,
       sourceEffectIds: [],
-      message: `${unit.cardName} chooses: heal a friendly unit or gain +${enchant.attackBonus} Attack.`
+      message:
+        enchant.attackBonus > 0
+          ? `${unit.cardName} chooses: ${targetNoun} or gain +${enchant.attackBonus} Attack.`
+          : `${unit.cardName}: ${targetNoun}.`
     });
     return;
   }
@@ -6853,7 +7058,7 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
         const amount = unitIgnoresCardDamage(state, target, card)
           ? 0
           : card.effect.damageKind === "spell"
-            ? reducedSpellDamage(state, target, rawAmount)
+            ? reducedSpellDamage(state, target, rawAmount, card.spellSchools ?? [])
             : rawAmount;
         target.damage += amount;
         noteUnitDamagedForTokens(state, target, amount);
@@ -9530,6 +9735,86 @@ function applyUnitResurrection(
   });
 
   advanceReactionWindowAfterPlay(state, action.playerId, cards);
+}
+
+/** WOG War Zealot's always-on Magic Mirror, resolved without spending a card. */
+function applyUnitMagicMirror(
+  state: GameState,
+  action: Extract<GameAction, { type: "USE_UNIT_MAGIC_MIRROR" }>,
+  cards: CardLibrary
+): void {
+  const window = state.reactionWindow;
+  const combat = state.combat;
+  const unit = combat?.units[action.unitId];
+  const stackItem = state.stack.at(-1);
+  if (!window || window.priorityPlayerId !== action.playerId || !combat || !unit || !stackItem) {
+    throw new Error("No innate Magic Mirror window is open for you.");
+  }
+  if (unit.controllerId !== action.playerId || !isUnitAlive(unit) || !hasInnateMagicMirror(unit)) {
+    throw new Error("That unit cannot use Magic Mirror.");
+  }
+
+  let candidates = spellRedirectTargets(state, unit.id, "azure");
+  if (candidates.length === 0) {
+    throw new Error("There is no legal new target for Magic Mirror.");
+  }
+
+  const choiceId = `choice_${nextEventNumber(state)}`;
+  const baseChoice = {
+    id: choiceId,
+    type: "ABILITY_TARGET_CHOICE" as const,
+    playerId: action.playerId,
+    kind: "spell-redirect" as const,
+    abilityId: "wog-war-zealot-mirror",
+    abilityName: "Magic Mirror",
+    prompt: "Magic Mirror: choose a new target.",
+    sourceUnitId: unit.id,
+    anchorUnitId: unit.id,
+    candidateUnitIds: candidates.map((candidate) => candidate.id),
+    optional: false
+  };
+
+  if (stackItem.action.type === "CAST_SPELL") {
+    const fromTarget = stackItem.action.target;
+    state.pendingChoice = {
+      ...baseChoice,
+      anchorUnitId: fromTarget.type === "unit" ? fromTarget.unitId : null
+    };
+  } else if (stackItem.action.type === "ATTACK_UNIT" || stackItem.action.type === "MOVE_AND_ATTACK_UNIT") {
+    const found = reflectableAttackInstantForPlayer(state, stackItem, action.playerId, cards);
+    if (!found || found.affectedUnitId !== unit.id) {
+      throw new Error("There is no enemy Spell on that unit to reflect.");
+    }
+    candidates = spellRedirectTargets(state, found.affectedUnitId, "azure");
+    const amount = attackInstantSignedAmount(stackItem, found.cardId, cards);
+    reverseCancelledInstantSpell(stackItem, found.cardId, cards);
+    stackItem.modifiers.cancellableSpellInstants?.splice(found.index, 1);
+    state.pendingChoice = {
+      ...baseChoice,
+      candidateUnitIds: candidates.map((candidate) => candidate.id),
+      redirectInstant: { stat: found.stat, amount, sourceCardId: found.cardId }
+    };
+  } else {
+    throw new Error("Magic Mirror cannot reflect this effect.");
+  }
+
+  appendEvent(state, {
+    type: "UNIT_ABILITY_TRIGGERED",
+    unitId: unit.id,
+    abilityId: "wog-war-zealot-mirror",
+    message: `${unit.cardName} reflects the spell with Magic Mirror.`
+  });
+  appendEvent(state, {
+    type: "PENDING_CHOICE_CREATED",
+    choiceId,
+    choiceType: "ABILITY_TARGET_CHOICE",
+    playerId: action.playerId,
+    sourceEffectIds: [],
+    message: `${unit.cardName}: choose where to redirect the spell.`
+  });
+  closeReactionWindow(state, "reaction-played");
+  state.phase = "choice";
+  state.priorityPlayerId = action.playerId;
 }
 
 /**
@@ -14685,6 +14970,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "USE_UNIT_RESURRECTION":
         applyUnitResurrection(nextState, action, cards);
+        break;
+      case "USE_UNIT_MAGIC_MIRROR":
+        applyUnitMagicMirror(nextState, action, cards);
         break;
       case "USE_UNIT_DIE_IGNORE":
         applyUnitDieIgnore(nextState, action, cards);
