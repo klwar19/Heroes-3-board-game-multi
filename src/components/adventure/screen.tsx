@@ -457,7 +457,9 @@ export function HexMapBoard({
         ? choice.dimensionDoor?.destinations
         : choice.context === "view-earth"
           ? choice.viewEarth?.mineSpaceIds
-          : undefined;
+          : choice.context === "subterranean-gate-placement"
+            ? choice.subterraneanGate?.candidates.map((candidate) => candidate.hex)
+            : undefined;
     if (!spaceIds) {
       return targets;
     }
@@ -467,7 +469,16 @@ export function HexMapBoard({
         actionByOption.set(legal.action.optionIndex, legal.action);
       }
     }
+    // A hex that stands for more than one option (one field that could serve two
+    // different partners — a cavern touching two Surface tiles) is ambiguous to
+    // click, so leave it to the prompt buttons; a stray tap must never pick the
+    // wrong partner. Distinct hexes stay directly clickable.
+    const optionsPerHex = new Map<MapSpaceId, number>();
+    spaceIds.forEach((spaceId) => optionsPerHex.set(spaceId, (optionsPerHex.get(spaceId) ?? 0) + 1));
     spaceIds.forEach((spaceId, optionIndex) => {
+      if ((optionsPerHex.get(spaceId) ?? 0) > 1) {
+        return;
+      }
       const action = actionByOption.get(optionIndex);
       if (action) {
         targets.set(spaceId, action);
@@ -475,6 +486,28 @@ export function HexMapBoard({
     });
     return targets;
   }, [state.pendingChoice, viewerPlayerId, legalActions, readOnly]);
+
+  // During the Subterranean Gate pick-on-reveal choice, tag every candidate hex
+  // so the map can spell out — right on the flower — which field would become the
+  // Gate (down, on a Surface tile) or the Path up (a Subterranean tile's entrance
+  // to the Surface). The choice is otherwise legible only from the prompt text.
+  const gatePlacementChoice = useMemo(() => {
+    const choice = state.pendingChoice;
+    if (
+      readOnly ||
+      choice?.type !== "OPTION_CHOICE" ||
+      choice.playerId !== viewerPlayerId ||
+      choice.context !== "subterranean-gate-placement" ||
+      !choice.subterraneanGate
+    ) {
+      return null;
+    }
+    const { candidates } = choice.subterraneanGate;
+    // Every candidate of one choice carves the same half type — it depends only on
+    // which layer was just revealed — so a single role labels the whole set.
+    const role = candidates[0]?.role ?? "gate";
+    return { role, hexes: new Set<MapSpaceId>(candidates.map((candidate) => candidate.hex)) };
+  }, [state.pendingChoice, viewerPlayerId, readOnly]);
 
   // Redwood Observatory decisions are spatial too: an adjacent face-down tile
   // can be clicked to reveal it, and an empty candidate centre can be clicked to
@@ -899,6 +932,24 @@ export function HexMapBoard({
         overlays.push(
           <text className="hexGateCue" key={`${spaceId}-gate-cue`} textAnchor="middle" x={x} y={y + HEX_SIZE * 0.92}>
             {tile.group === "subterranean" ? "↥ ascend" : "↧ descend"}
+          </text>
+        );
+      }
+
+      // Pick-on-reveal Subterranean Gate placement: label each candidate field on
+      // the map so the player sees exactly which hex becomes the Gate (Surface) or
+      // the Path up (Underground) before committing — the field also glows and is
+      // clickable via pendingMapChoiceTargets above.
+      if (gatePlacementChoice?.hexes.has(spaceId)) {
+        overlays.push(
+          <text
+            className="hexGateChoiceCue"
+            key={`${spaceId}-gate-choice-cue`}
+            textAnchor="middle"
+            x={x}
+            y={y + HEX_SIZE * 0.92}
+          >
+            {gatePlacementChoice.role === "gate" ? "🕳 gate here" : "🕳 path up here"}
           </text>
         );
       }
@@ -2564,6 +2615,66 @@ export function PromptTray({
           {cancel ? (
             <button className="commandButton" onClick={() => onAction(cancel.action)} type="button">
               {cancel.label}
+            </button>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
+  // Factory Couatls' invulnerability ("Ethereal Coil") and the Automaton's
+  // cube-place ("Overcharge") are a simple yes/no at the unit's OWN activation —
+  // the only "target" is the unit itself, so render clean Activate/Skip buttons
+  // instead of the "click a glowing unit" hunt (which would ask you to click your
+  // own unit). The Couatl Few's activation ends the turn; the Pack's is free.
+  if (
+    choice?.type === "ABILITY_TARGET_CHOICE" &&
+    (choice.kind === "couatl-invulnerability" || choice.kind === "automaton-cube") &&
+    choice.playerId === viewerPlayerId
+  ) {
+    const activate = abilityTargetActions.find(
+      (legal) => legal.action.type === "CHOOSE_ABILITY_TARGET" && legal.action.targetUnitId === choice.sourceUnitId
+    );
+    const skip = abilityTargetActions.find(
+      (legal) => legal.action.type === "CHOOSE_ABILITY_TARGET" && legal.action.targetUnitId === "skip"
+    );
+    const activateLabel =
+      choice.kind === "couatl-invulnerability" ? `Activate ${choice.abilityName}` : "Place a faction cube";
+    return (
+      <div className="promptTray" role="dialog" aria-label={choice.prompt}>
+        <strong>{choice.prompt}</strong>
+        <div className="promptOptions">
+          {activate ? (
+            <button className="commandButton" onClick={() => onAction(activate.action)} type="button">
+              {activateLabel}
+            </button>
+          ) : null}
+          {skip ? (
+            <button className="commandButton" onClick={() => onAction(skip.action)} type="button">
+              {skip.label}
+            </button>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
+  // Factory Dreadnoughts' splash allocation: a per-pick board flow (click a
+  // glowing adjacent unit to take the next damage value), with a Stop button to
+  // end early — the same two-click pattern as the token place / teleport picks.
+  if (
+    choice?.type === "ABILITY_TARGET_CHOICE" &&
+    choice.kind === "dreadnought-splash" &&
+    choice.playerId === viewerPlayerId
+  ) {
+    const stop = abilityTargetActions.find(
+      (legal) => legal.action.type === "CHOOSE_ABILITY_TARGET" && legal.action.targetUnitId === "skip"
+    );
+    return (
+      <div className="promptTray" role="dialog" aria-label={choice.prompt}>
+        <strong>{choice.prompt} Click a glowing adjacent unit.</strong>
+        <div className="promptOptions">
+          {stop ? (
+            <button className="commandButton" onClick={() => onAction(stop.action)} type="button">
+              {stop.label}
             </button>
           ) : null}
         </div>

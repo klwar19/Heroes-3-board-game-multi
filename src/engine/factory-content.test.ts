@@ -12,6 +12,7 @@ import {
   startingTileByFaction
 } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
+import { specialtyIconSrc } from "@/components/specialty-card-data";
 import { unitAbilities } from "@/data/units/abilities";
 import { adventureCards } from "@/data/cards/adventure";
 import { allTileDefinitions } from "@/data/map/tiles";
@@ -102,6 +103,19 @@ describe("Factory faction — art wired, not playable", () => {
       expect(hero?.faction, id).toBe("factory");
       expect(hero.portrait, `${id} portrait path`).toBeTruthy();
       expect(assetExists(hero.portrait!), `${id} portrait missing: ${hero.portrait}`).toBe(true);
+    }
+  });
+
+  it("every Factory unit-specialist shows the unit's clean PORTRAIT (on disk), not the card art", () => {
+    // The specialty picture is the unit's own creature portrait
+    // (units-factory-<unit>-portrait.webp), matching every other unit specialist —
+    // NOT the full unit card (…-few.webp), which rendered as a shrunk, framed card.
+    for (const id of FACTORY_HEROES) {
+      const icon = specialtyIconSrc(`specialty.${id}.1`);
+      expect(icon, `${id} specialty icon`).toBeTruthy();
+      expect(icon!, `${id} uses a -portrait crop`).toMatch(/units-factory-[a-z_]+-portrait\.webp$/u);
+      expect(icon!, `${id} does not borrow the full unit card`).not.toMatch(/-(few|pack|neutral)\.webp$/u);
+      expect(assetExists(icon!), `${id} specialty portrait missing on disk: ${icon}`).toBe(true);
     }
   });
 
@@ -218,27 +232,49 @@ describe("Factory faction — art wired, not playable", () => {
     }
   });
 
-  it("the not-yet-wired sides stay HONEST display-only stubs (abilities: [])", () => {
-    // Each printed-but-unwired side must carry [] (real card text in abilityText,
-    // engine effect not claimed). Wiring these is the remaining Factory work.
-    const displayOnly: [string, ("few" | "pack" | "neutral")[]][] = [
-      // Armadillos Few/Neutral genuinely have NO printed ability ([] forever);
-      // the Pack's initiative-amplify is now wired (asserted above).
+  it("the only bare sides are the ones with NO printed ability (abilities: [])", () => {
+    // Every printed Factory ability is now engine-wired. The sides that still
+    // carry [] do so because their physical card prints no ability at all — NOT
+    // because an ability is stubbed. (All the former stubs — Automaton Few cube
+    // Detonate, Sandworm Pack cube attack, Bounty Hunter Neutral Preemptive Shot,
+    // Couatl Few/Pack invulnerability, Dreadnought splash — are wired below.)
+    const genuinelyBare: [string, ("few" | "pack" | "neutral")[]][] = [
       ["factory.armadillos", ["few", "neutral"]],
-      ["factory.automatons", ["few"]],
-      // Sandworms Neutral is now wired; Few has no ability, the Pack's cube extra
-      // attack is not yet wired.
-      ["factory.sandworms", ["few", "pack"]],
-      // Bounty Hunters Few/Pack now wired (Mark); the Neutral guard's pre-emptive
-      // retaliation is the not-yet-wired one.
-      ["factory.gunslingers", ["neutral"]],
-      ["factory.couatls", ["few", "pack", "neutral"]],
-      ["factory.dreadnoughts", ["few", "pack", "neutral"]]
+      ["factory.sandworms", ["few"]],
+      ["factory.couatls", ["neutral"]]
     ];
-    for (const [id, sides] of displayOnly) {
+    for (const [id, sides] of genuinelyBare) {
       for (const side of sides) {
         expect(coreUnitDefinitions[id][side]?.abilities, `${id} ${side}`).toEqual([]);
       }
+    }
+  });
+
+  it("every former Factory display-only stub is now an implemented, engine-wired ability", () => {
+    const u = coreUnitDefinitions;
+    // The exact ids that replaced each stub, pinned to their side.
+    expect(u["factory.automatons"].few?.abilities, "automaton few cube Detonate").toEqual([
+      "automaton-place-cube",
+      "automaton-detonate-cubes"
+    ]);
+    expect(u["factory.sandworms"].pack?.abilities, "sandworm pack cube attack").toEqual([
+      "sandworm-cube-gain",
+      "sandworm-cube-attack"
+    ]);
+    expect(u["factory.gunslingers"].neutral?.abilities, "bounty hunter neutral preemptive").toEqual([
+      "bounty-hunter-preemptive"
+    ]);
+    expect(u["factory.couatls"].few?.abilities, "couatl few invuln").toEqual(["couatl-invulnerability-few"]);
+    expect(u["factory.couatls"].pack?.abilities, "couatl pack invuln").toEqual(["couatl-invulnerability-pack"]);
+    expect(u["factory.dreadnoughts"].few?.abilities, "dreadnought few splash").toEqual(["dreadnought-splash-1"]);
+    expect(u["factory.dreadnoughts"].pack?.abilities, "dreadnought pack splash").toEqual(["dreadnought-splash-2"]);
+    expect(u["factory.dreadnoughts"].neutral?.abilities, "dreadnought neutral splash").toEqual(["dreadnought-splash-2"]);
+    for (const abilityId of [
+      "automaton-place-cube", "automaton-detonate-cubes", "sandworm-cube-gain", "sandworm-cube-attack",
+      "bounty-hunter-preemptive", "couatl-invulnerability-few", "couatl-invulnerability-pack",
+      "dreadnought-splash-1", "dreadnought-splash-2"
+    ]) {
+      expect(unitAbilities[abilityId]?.implementationStatus, `${abilityId} implemented`).toBe("implemented");
     }
   });
 
@@ -288,10 +324,11 @@ describe("Factory faction — art wired, not playable", () => {
     expect(coreFactionDefinitions.factory.heroes).toHaveLength(6);
   });
 
-  it("ships the 7 board-game buildings, each wired to its archetype effect", () => {
+  it("ships the 8 board-game buildings, each wired to its archetype effect", () => {
     const b = coreBuildingDefinitions;
     const factoryBuildings = coreFactionDefinitions.factory.buildings.filter((id) => id.startsWith("factory."));
     expect([...factoryBuildings].sort()).toEqual([
+      "factory.artifact_merchants",
       "factory.bank",
       "factory.citadel",
       "factory.city_hall",
@@ -304,18 +341,29 @@ describe("Factory faction — art wired, not playable", () => {
       expect(b[id]?.implementationStatus, `${id} implemented`).toBe("implemented");
       expect(b[id]?.effect?.type, `${id} has a real effect`).not.toBe("NOT_IMPLEMENTED");
     }
-    // Printed cost + shared archetype effect for each building.
+    // City Hall is the "classic" gold-or-Armadillo variant (the +1 Movement guess
+    // is gone); the reinforce-a-bronze option is what recruits/upgrades Armadillos.
     expect(b["factory.city_hall"]).toMatchObject({ cost: { gold: 13, buildingMaterials: 5 }, effect: { type: "RESOURCE_ROUND_CHOICE" } });
+    const cityHallEffect = b["factory.city_hall"].effect;
+    expect(cityHallEffect?.type === "RESOURCE_ROUND_CHOICE" && cityHallEffect.options.some((o) => o.gold)).toBe(true);
+    expect(cityHallEffect?.type === "RESOURCE_ROUND_CHOICE" && cityHallEffect.options.some((o) => o.reinforceBronzeFree)).toBe(true);
+    expect(cityHallEffect?.type === "RESOURCE_ROUND_CHOICE" && cityHallEffect.options.some((o) => o.movement)).toBe(false);
     expect(b["factory.citadel"]).toMatchObject({ cost: { gold: 8, buildingMaterials: 5, valuables: 1 }, effect: { type: "UNLOCK_REINFORCE" } });
     // The spell building keeps id mage_guild (default-setup slot) but is the
     // printed "Mana Generator" card.
     expect(b["factory.mage_guild"]).toMatchObject({ name: "Mana Generator", cost: { gold: 7, buildingMaterials: 2, valuables: 1 }, effect: { type: "MAGE_GUILD" } });
-    expect(b["factory.bank"]).toMatchObject({ cost: { gold: 4, buildingMaterials: 3 }, effect: { type: "ARTIFACT_SMITH" } });
+    // The two special buildings per the article: the Bank is a GOLD engine (a
+    // per-Resource-round gold income), the Artifact Merchants is the buy/sell
+    // Blacksmith archetype. (The earlier data put ARTIFACT_SMITH on the Bank.)
+    expect(b["factory.bank"]).toMatchObject({ name: "Bank", effect: { type: "RESOURCE_ROUND_CHOICE" } });
+    const bankEffect = b["factory.bank"].effect;
+    expect(bankEffect?.type === "RESOURCE_ROUND_CHOICE" && bankEffect.options.every((o) => o.gold)).toBe(true);
+    expect(b["factory.artifact_merchants"]).toMatchObject({ name: "Artifact Merchants", effect: { type: "ARTIFACT_SMITH" } });
     expect(b["factory.dwelling_bronze"]).toMatchObject({ name: "Remote Settlement", cost: { gold: 5, buildingMaterials: 3, valuables: 1 }, effect: { type: "UNLOCK_RECRUIT_TIER", tier: "bronze" } });
     expect(b["factory.dwelling_silver"]).toMatchObject({ name: "Industrialized Catacombs", effect: { type: "UNLOCK_RECRUIT_TIER", tier: "silver" }, prerequisites: ["factory.dwelling_bronze"] });
     expect(b["factory.dwelling_gold"]).toMatchObject({ name: "Gantry under Serpent Hill", effect: { type: "UNLOCK_RECRUIT_TIER", tier: "gold" }, prerequisites: ["factory.dwelling_silver"] });
-    // The fabricated stub buildings with no real card are removed.
-    for (const id of ["factory.mana_generator", "factory.artifact_merchants", "factory.pen", "factory.lightning_rod"]) {
+    // The PC-only fabricated stub buildings with no board-game card stay removed.
+    for (const id of ["factory.mana_generator", "factory.pen", "factory.lightning_rod"]) {
       expect(b[id], `${id} removed`).toBeUndefined();
     }
   });
