@@ -67,6 +67,8 @@ import type {
   MapSpaceId,
   MapTileState,
   PendingVisit,
+  SubterraneanGateChoiceCandidate,
+  SubterraneanGatePlan,
   PlayerId,
   PlayerState,
   RecruitDiscountVoucher,
@@ -4082,7 +4084,8 @@ function chooseAnchorGateHex(
   adventure: AdventureState,
   tile: MapTileState,
   towardCenter: HexCoord,
-  otherTile: MapTileState
+  otherTile: MapTileState,
+  preferredHex?: MapSpaceId
 ): MapSpaceId | null {
   const otherHexes = new Set(tileHexes(otherTile).map(hexSpaceId));
   const candidates = tileRingSpaceIds(tile).filter((spaceId) => {
@@ -4092,7 +4095,24 @@ function chooseAnchorGateHex(
     const coord = parseHexSpaceId(spaceId);
     return coord !== null && hexNeighbors(coord).some((neighbor) => otherHexes.has(hexSpaceId(neighbor)));
   });
+  // The player's pick-on-reveal choice wins when it is a legal candidate; else
+  // fall back to the nearest hex (the deterministic default).
+  if (preferredHex && candidates.includes(preferredHex)) {
+    return preferredHex;
+  }
   return pickNearestHex(candidates, towardCenter);
+}
+
+/** The Surface ring hexes that touch `otherTile` and can host an anchor gate. */
+function anchorGateHexCandidates(adventure: AdventureState, tile: MapTileState, otherTile: MapTileState): MapSpaceId[] {
+  const otherHexes = new Set(tileHexes(otherTile).map(hexSpaceId));
+  return tileRingSpaceIds(tile).filter((spaceId) => {
+    if (!gateMayCoverField(adventure.fields[spaceId])) {
+      return false;
+    }
+    const coord = parseHexSpaceId(spaceId);
+    return coord !== null && hexNeighbors(coord).some((neighbor) => otherHexes.has(hexSpaceId(neighbor)));
+  });
 }
 
 /**
@@ -4104,20 +4124,30 @@ function chooseAnchorGateHex(
 function chooseAdjacentGateHex(
   adventure: AdventureState,
   tile: MapTileState,
-  gateSpaceId: MapSpaceId
+  gateSpaceId: MapSpaceId,
+  preferredHex?: MapSpaceId
 ): MapSpaceId | null {
+  const candidates = adjacentGateHexCandidates(adventure, tile, gateSpaceId);
+  if (preferredHex && candidates.includes(preferredHex)) {
+    return preferredHex;
+  }
+  const gateCoord = parseHexSpaceId(gateSpaceId);
+  return gateCoord ? pickNearestHex(candidates, gateCoord) : null;
+}
+
+/** The ring hexes on `tile` edge-adjacent to `gateSpaceId` that can host a half. */
+function adjacentGateHexCandidates(adventure: AdventureState, tile: MapTileState, gateSpaceId: MapSpaceId): MapSpaceId[] {
   const gateCoord = parseHexSpaceId(gateSpaceId);
   if (!gateCoord) {
-    return null;
+    return [];
   }
-  const candidates = tileRingSpaceIds(tile).filter((spaceId) => {
+  return tileRingSpaceIds(tile).filter((spaceId) => {
     if (!gateMayCoverField(adventure.fields[spaceId])) {
       return false;
     }
     const coord = parseHexSpaceId(spaceId);
     return coord !== null && hexDistance(coord, gateCoord) === 1;
   });
-  return pickNearestHex(candidates, gateCoord);
 }
 
 /** Closest space id to `target` (Manhattan hex distance), ties broken by id. */
@@ -4209,7 +4239,12 @@ function tileHasGateTowardOther(adventure: AdventureState, tile: MapTileState, a
  *
  * Idempotent: re-running never moves or duplicates an existing half.
  */
-function ensureSubterraneanGate(adventure: AdventureState, surface: MapTileState, subterranean: MapTileState): void {
+function ensureSubterraneanGate(
+  adventure: AdventureState,
+  surface: MapTileState,
+  subterranean: MapTileState,
+  plan?: SubterraneanGatePlan
+): void {
   let surfaceHalf = findGateHalf(adventure, surface, subterranean.id);
   let undergroundHalf = findGateHalf(adventure, subterranean, surface.id);
   const surfaceUp = tileMaterialized(adventure, surface);
@@ -4229,11 +4264,12 @@ function ensureSubterraneanGate(adventure: AdventureState, surface: MapTileState
   }
 
   // Carve the surface gate: adjacent to the underground half if it is already
-  // placed, otherwise the slot closest to the underground tile's centre.
+  // placed, otherwise the slot closest to the underground tile's centre. A plan's
+  // `gateHex` (pick-on-reveal) overrides the default when it is a legal candidate.
   if (!surfaceHalf && surfaceUp) {
     const spaceId = undergroundHalf
-      ? chooseAdjacentGateHex(adventure, surface, undergroundHalf.spaceId)
-      : chooseAnchorGateHex(adventure, surface, { row: subterranean.centerRow, col: subterranean.centerCol }, subterranean);
+      ? chooseAdjacentGateHex(adventure, surface, undergroundHalf.spaceId, plan?.gateHex)
+      : chooseAnchorGateHex(adventure, surface, { row: subterranean.centerRow, col: subterranean.centerCol }, subterranean, plan?.gateHex);
     if (spaceId) {
       surfaceHalf = carveGateField(adventure, spaceId, subterranean.id);
     }
@@ -4241,10 +4277,11 @@ function ensureSubterraneanGate(adventure: AdventureState, surface: MapTileState
 
   // Carve the underground entrance: adjacent to the surface gate if it exists,
   // otherwise (bootstrapping from below) the slot closest to the surface tile.
+  // A plan's `entranceHex` (the player's "path up" pick) overrides the default.
   if (!undergroundHalf && undergroundUp) {
     const spaceId = surfaceHalf
-      ? chooseAdjacentGateHex(adventure, subterranean, surfaceHalf.spaceId)
-      : chooseAnchorGateHex(adventure, subterranean, { row: surface.centerRow, col: surface.centerCol }, surface);
+      ? chooseAdjacentGateHex(adventure, subterranean, surfaceHalf.spaceId, plan?.entranceHex)
+      : chooseAnchorGateHex(adventure, subterranean, { row: surface.centerRow, col: surface.centerCol }, surface, plan?.entranceHex);
     if (spaceId) {
       undergroundHalf = carveGateField(adventure, spaceId, surface.id);
     }
@@ -4276,13 +4313,39 @@ function ensureSubterraneanGate(adventure: AdventureState, surface: MapTileState
  * wins the single gate over a merely-touching one.
  */
 export function recomputeSubterraneanGates(adventure: AdventureState): void {
+  const plans = adventure.gatePlans ?? [];
+  // A tile named in a plan is COMMITTED to its plan partner: it can gate with
+  // that partner alone, so the auto pass never pairs it with anyone else.
+  const committedPartner = new Map<string, string>();
+  for (const plan of plans) {
+    committedPartner.set(plan.surfaceTileId, plan.undergroundTileId);
+    committedPartner.set(plan.undergroundTileId, plan.surfaceTileId);
+  }
+
+  // 1) Carve the player-chosen (planned) pairs first, at their chosen hexes, so a
+  //    committed pairing always wins the one-gate-per-tile race.
+  for (const plan of plans) {
+    const surface = adventure.tiles[plan.surfaceTileId];
+    const subterranean = adventure.tiles[plan.undergroundTileId];
+    if (surface && subterranean) {
+      ensureSubterraneanGate(adventure, surface, subterranean, plan);
+    }
+  }
+
+  // 2) Auto pass for every uncommitted touching pair.
   const tiles = Object.values(adventure.tiles);
   const surfaces = tiles.filter((tile) => tileLayer(tile) === "surface");
   const caverns = tiles.filter((tile) => tileLayer(tile) === "subterranean");
   const pairs: { surface: MapTileState; subterranean: MapTileState; interlocking: boolean }[] = [];
   for (const surface of surfaces) {
+    if (committedPartner.has(surface.id)) {
+      continue;
+    }
     const surfaceCenter = { row: surface.centerRow, col: surface.centerCol };
     for (const subterranean of caverns) {
+      if (committedPartner.has(subterranean.id)) {
+        continue;
+      }
       const cavernCenter = { row: subterranean.centerRow, col: subterranean.centerCol };
       if (!tileFootprintsTouch(surfaceCenter, cavernCenter)) {
         continue;
@@ -4306,6 +4369,131 @@ export function recomputeSubterraneanGates(adventure: AdventureState): void {
   for (const pair of pairs) {
     ensureSubterraneanGate(adventure, pair.surface, pair.subterranean);
   }
+
+  // 3) Clean up orphaned halves: an UNLINKED gate half whose partner tile has
+  //    since committed (by a plan) to a DIFFERENT tile leads nowhere — the player
+  //    picked another connection. Revert it to plain land so no dead gate lingers.
+  removeOrphanGateHalves(adventure, committedPartner);
+}
+
+/**
+ * Reverts any UNLINKED Subterranean Gate half that points at a tile now committed
+ * (by a plan) to a different partner. Linked halves (a completed crossing) are
+ * never touched. Used after the plan/auto passes so a player who re-routes a
+ * cavern's connection to another Surface tile leaves no orphan gate behind.
+ */
+function removeOrphanGateHalves(adventure: AdventureState, committedPartner: Map<string, string>): void {
+  for (const field of Object.values(adventure.fields)) {
+    if (field.location !== "subterranean_gate" || field.gateLinkSpaceId || !field.gateToTileId) {
+      continue;
+    }
+    const partnerCommittedTo = committedPartner.get(field.gateToTileId);
+    if (partnerCommittedTo && partnerCommittedTo !== field.tileInstanceId) {
+      field.location = "empty_field";
+      delete field.gateToTileId;
+      delete field.gateLinkSpaceId;
+    }
+  }
+}
+
+/** Whether `tile` already hosts a Subterranean Gate half (toward any partner). */
+function tileHasAnyGateHalf(adventure: AdventureState, tile: MapTileState): boolean {
+  return tileRingSpaceIds(tile).some((spaceId) => adventure.fields[spaceId]?.location === "subterranean_gate");
+}
+
+/**
+ * The pick-on-reveal placement OPTIONS a freshly-revealed tile creates: every
+ * legal hex its single Subterranean Gate half could sacrifice, across every
+ * eligible partner on the other layer. Each candidate carves ONE half on
+ * `revealedTile` — the Surface "gate" or the cavern "entrance" — and names the
+ * pair it completes:
+ *
+ *  - Anchor: the partner has no half yet (it is still face-down, or open but
+ *    ungated) → the half may sit on ANY of `revealedTile`'s hexes that touch the
+ *    partner.
+ *  - Completing: the partner already has its half (auto-carved at setup, or chosen
+ *    earlier) → the half must sit edge-adjacent to it, so the two link.
+ *
+ * A tile already carrying a half returns nothing (one gate per tile). A tile /
+ * partner committed by a plan is restricted to that pairing. The reducer offers a
+ * choice when ≥2 candidates exist (which hex; which of two Surface tiles a cavern
+ * joins), else auto-carves the lone candidate. This is a read-only preview — it
+ * carves nothing.
+ */
+export function planGateChoiceForReveal(
+  adventure: AdventureState,
+  revealedTile: MapTileState
+): SubterraneanGateChoiceCandidate[] {
+  // One gate per tile: a tile that already hosts a half offers no further choice.
+  if (tileHasAnyGateHalf(adventure, revealedTile)) {
+    return [];
+  }
+  // tileLayer buckets every tile as "surface" or "subterranean" (sea tiles ride
+  // the surface layer), matching how recomputeSubterraneanGates pairs them, so a
+  // choice is only ever offered for what the carve would actually produce.
+  const revealedLayer = tileLayer(revealedTile);
+  const committedPartner = new Map<string, string>();
+  for (const plan of adventure.gatePlans ?? []) {
+    committedPartner.set(plan.surfaceTileId, plan.undergroundTileId);
+    committedPartner.set(plan.undergroundTileId, plan.surfaceTileId);
+  }
+  const revealedCommittedTo = committedPartner.get(revealedTile.id);
+
+  const revealedCenter = { row: revealedTile.centerRow, col: revealedTile.centerCol };
+  const candidates: SubterraneanGateChoiceCandidate[] = [];
+  for (const other of Object.values(adventure.tiles)) {
+    if (tileLayer(other) === revealedLayer) {
+      continue; // the gate bridges the Surface↔Subterranean divide only
+    }
+    if (!tileFootprintsTouch(revealedCenter, { row: other.centerRow, col: other.centerCol })) {
+      continue;
+    }
+    // Respect existing commitments: a committed tile only pairs with its partner.
+    if (revealedCommittedTo && revealedCommittedTo !== other.id) {
+      continue;
+    }
+    const otherCommittedTo = committedPartner.get(other.id);
+    if (otherCommittedTo && otherCommittedTo !== revealedTile.id) {
+      continue;
+    }
+    // The partner's own half toward us, if it already exists (auto or chosen).
+    const otherHalf = findGateHalf(adventure, other, revealedTile.id);
+    const hexes = otherHalf
+      ? adjacentGateHexCandidates(adventure, revealedTile, otherHalf.spaceId)
+      : anchorGateHexCandidates(adventure, revealedTile, other);
+    const surfaceTileId = revealedLayer === "surface" ? revealedTile.id : other.id;
+    const undergroundTileId = revealedLayer === "surface" ? other.id : revealedTile.id;
+    const role: "gate" | "entrance" = revealedLayer === "surface" ? "gate" : "entrance";
+    for (const hex of hexes) {
+      candidates.push({ surfaceTileId, undergroundTileId, hex, role });
+    }
+  }
+  return candidates;
+}
+
+/**
+ * Records a player's pick-on-reveal Subterranean Gate choice: it fills the
+ * chosen hex into the (Surface tile ↔ cavern) plan — creating the plan if this is
+ * the first half chosen for the pair. A later {@link recomputeSubterraneanGates}
+ * then carves the player's hex and pairing. Returns the mutated adventure's plan
+ * list for convenience.
+ */
+export function upsertGatePlan(adventure: AdventureState, candidate: SubterraneanGateChoiceCandidate): SubterraneanGatePlan[] {
+  const plans = (adventure.gatePlans ??= []);
+  let plan = plans.find(
+    (existing) =>
+      existing.surfaceTileId === candidate.surfaceTileId && existing.undergroundTileId === candidate.undergroundTileId
+  );
+  if (!plan) {
+    plan = { surfaceTileId: candidate.surfaceTileId, undergroundTileId: candidate.undergroundTileId };
+    plans.push(plan);
+  }
+  if (candidate.role === "gate") {
+    plan.gateHex = candidate.hex;
+  } else {
+    plan.entranceHex = candidate.hex;
+  }
+  return plans;
 }
 
 /** A tile placement reduced to what gate planning needs: a centre and a layer. */
@@ -5135,14 +5323,20 @@ export function isCreatureBankId(bankId: string | undefined): bankId is Creature
 
 /**
  * The Creature Bank token pile a freshly discovered tile may draw from: Far Map
- * Tiles (II-III) → "far", Near (IV-V) → "near". Every other tile group
- * (starting, center, sea, subterranean) returns null — banks are placed ONLY on
- * Far/Near tiles (rulebook p.66). So a sea tile never offers a bank, even though
- * some sea tiles (e.g. the Cove tile W1) DO carry a Blocked Field / impassable
- * terrain. This is the gate, not the presence of a Blocked Field.
+ * Tiles (II-III) → "far", Near (IV-V) → "near". Subterranean tiles (caverns) also
+ * offer a bank, drawing from the NEAR pile (BINH house rule: a cavern is a "deep"
+ * tile, so it is treated like a Near IV-V discovery). A cavern's bank lands on its
+ * Blocked Field EXCEPT when that field was sacrificed to a Subterranean Gate — the
+ * gate carves before the bank is offered, so a Blocked Field that became the gate
+ * hex simply is not there to bank on.
+ *
+ * The remaining groups (starting, center, sea) return null — no bank. So a sea
+ * tile never offers a bank, even though some sea tiles (e.g. the Cove tile W1) DO
+ * carry a Blocked Field / impassable terrain. This is the gate, not the presence
+ * of a Blocked Field.
  */
 export function creatureBankTierForGroup(group: string | undefined): "far" | "near" | null {
-  return group === "far" ? "far" : group === "near" ? "near" : null;
+  return group === "far" ? "far" : group === "near" ? "near" : group === "subterranean" ? "near" : null;
 }
 
 /** The Creature Bank a field hosts, if any. */

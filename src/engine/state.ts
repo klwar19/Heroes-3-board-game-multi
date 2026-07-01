@@ -3989,6 +3989,22 @@ export type GameEvent =
       bankId: string;
     }
   | {
+      /**
+       * A Subterranean Gate half was carved on a Tile, sacrificing whatever field
+       * sat there. `sacrificed` is the Location the hex used to be (so the UI can
+       * warn "your Gold Mine became a gate"); `chosen` marks a player pick-on-
+       * reveal placement vs. an automatic nearest-hex carve.
+       */
+      id: string;
+      type: "SUBTERRANEAN_GATE_PLACED";
+      playerId: PlayerId;
+      fieldId: MapSpaceId;
+      tileInstanceId: string;
+      gateToTileId: string;
+      sacrificed: string;
+      chosen: boolean;
+    }
+  | {
       /** A Creature Bank Combat began (no Field Difficulty). */
       id: string;
       type: "CREATURE_BANK_COMBAT_STARTED";
@@ -5589,6 +5605,33 @@ export type MapFieldState = {
   gateLinkSpaceId?: MapSpaceId;
 };
 
+/**
+ * A player-committed Subterranean Gate placement (pick-on-reveal). It pins the
+ * pairing (one Surface tile ↔ one cavern) and the hex each half sacrifices.
+ * Either hex may be absent until the tile that hosts it has been revealed and
+ * rotated: the Surface `gateHex` is chosen when the Surface tile is revealed, the
+ * cavern `entranceHex` ("path up") when the cavern is revealed.
+ */
+export type SubterraneanGatePlan = {
+  surfaceTileId: string;
+  undergroundTileId: string;
+  gateHex?: MapSpaceId;
+  entranceHex?: MapSpaceId;
+};
+
+/**
+ * One option offered to the revealing player: carve THIS tile's Gate half at
+ * `hex`, pairing it with the tile identified by `surfaceTileId`/`undergroundTileId`.
+ * `role` says which half `hex` becomes — the Surface "gate" or the cavern
+ * "entrance" — so resolution knows which slot of the plan to fill.
+ */
+export type SubterraneanGateChoiceCandidate = {
+  surfaceTileId: string;
+  undergroundTileId: string;
+  hex: MapSpaceId;
+  role: "gate" | "entrance";
+};
+
 export type PendingVisit = {
   heroId: HeroId;
   playerId: PlayerId;
@@ -6348,6 +6391,24 @@ export type AdventureState = {
    */
   creatureBankTokensFar?: string[];
   creatureBankTokensNear?: string[];
+  /**
+   * Pick-on-reveal Subterranean Gate placement (default ON). When a revealed
+   * tile can host a Gate half in more than one spot — which touching hex becomes
+   * the gate, later which underground hex becomes the path up, and which Surface
+   * tile a cavern connects to when it touches two — the revealing player is asked
+   * (an OPTION_CHOICE) instead of the engine auto-picking the nearest hex. Off
+   * restores the deterministic nearest-hex carve (used by the mutation control
+   * and by fully-automatic setup/symmetric placement).
+   */
+  chooseGatePlacement?: boolean;
+  /**
+   * Committed Subterranean Gate placements chosen by players (pick-on-reveal).
+   * A plan pins a Surface↔cavern pair and the hex each half sacrifices, so
+   * {@link recomputeSubterraneanGates} carves the PLAYER's hexes (and pairing)
+   * instead of the nearest-hex default, and one-gate-per-tile seals the losing
+   * neighbours. Absent/empty on fully-automatic maps.
+   */
+  gatePlans?: SubterraneanGatePlan[];
   /** Field visit currently being resolved (choices pending). */
   pendingVisit: PendingVisit | null;
   /**
@@ -6751,6 +6812,7 @@ export type PendingChoice =
         | "visions-scry"
         | "pandora-upkeep"
         | "place-creature-bank"
+        | "subterranean-gate-placement"
         | "far-tile-flip";
       /**
        * city-hall: the income options for the City Hall (Resource-round) choice
@@ -7000,6 +7062,19 @@ export type PendingChoice =
        * Bank drawn from the `tier` pile. Option 0 places it, option 1 declines.
        */
       creatureBank?: { fieldId: MapSpaceId; tier: "far" | "near" };
+      /**
+       * subterranean-gate-placement: the revealing player picks which touching
+       * hex becomes the Subterranean Gate half on the just-revealed tile (and,
+       * when a cavern touches two Surface tiles, WHICH one it connects to). Each
+       * option in `options` is index-aligned with `candidates`. `deferBank` marks
+       * whether a Creature Bank offer for `tileInstanceId` was postponed behind
+       * this choice (so it runs once the gate is carved — "not at the gate hex").
+       */
+      subterraneanGate?: {
+        tileInstanceId: string;
+        candidates: SubterraneanGateChoiceCandidate[];
+        deferBank: boolean;
+      };
       returnPhase: GamePhase;
     }
   | {

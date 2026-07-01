@@ -125,6 +125,13 @@ export type AdventureSetupOptions = {
   pvpTroopLoss?: PvpTroopLoss;
   /** Naval Battles Creature Banks (default on): offer bank placement on Far/Near tile discovery. */
   creatureBanks?: boolean;
+  /**
+   * Pick-on-reveal Subterranean Gate placement (default on): when a revealed tile
+   * could host its Gate half in more than one spot, ask the revealing player which
+   * hex (and which Surface tile a cavern joins) instead of auto-picking the
+   * nearest. Off restores the deterministic nearest-hex carve.
+   */
+  chooseSubterraneanGate?: boolean;
   /** Spell Book house rule (default on): a personal Spell Book each player may stash, cast and boost from. */
   spellBook?: boolean;
   /** Whether players may open their own Ⅱ–Ⅲ Far tiles (default on). Off gives no Far-tile supply. */
@@ -601,6 +608,8 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   const creatureBanksOn = setupOptions.creatureBanks ?? true;
   // Spell Book house rule default ON: each player keeps a personal Spell Book.
   const spellBookOn = setupOptions.spellBook ?? true;
+  // Pick-on-reveal Subterranean Gate placement default ON.
+  const chooseGatePlacementOn = options.chooseSubterraneanGate ?? true;
   // Far-tile opening default ON: each player drafts a Ⅱ–Ⅲ Far-tile supply they
   // may place. Off gives no supply (the map already provides its Ⅱ–Ⅲ tiles).
   const farTileOpeningOn = setupOptions.farTileOpening ?? true;
@@ -665,6 +674,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     victoryMode,
     pvpTroopLoss,
     spellBook: spellBookOn,
+    chooseGatePlacement: chooseGatePlacementOn,
     ...(victoryMode === "grail" ? { grail: { status: "uncollected" as const } } : {}),
     // Grail Hunt and Dragon Hunt both track the "defeat every enemy hero" path.
     ...(victoryModeCountsHeroDefeats(victoryMode) ? { heroDefeats: {} } : {}),
