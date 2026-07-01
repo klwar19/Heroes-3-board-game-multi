@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { useState } from "react";
 import { cleanup, fireEvent, render, within } from "@testing-library/react";
-import { HexMapBoard } from "./screen";
+import { HexMapBoard, PromptTray } from "./screen";
 import { instantiateTile } from "@/engine/adventure";
 import { SUBTERRANEAN_GATE_TOKEN_IMAGES } from "@/data/assets/homm-assets";
 import {
@@ -61,7 +61,7 @@ function gateHalfTo(state: GameState, towardTileId: string): MapFieldState | und
  * to spend. This is the live board state a client would receive.
  */
 function gateBoardState(): { state: GameState; surface: MapTileState; underground: MapTileState } {
-  let state = createAdventureGameState({ seed: "subt-gate-ui", difficulty: "normal", rollFirstPlayer: false });
+  let state = createAdventureGameState({ seed: "subt-gate-ui", difficulty: "normal", rollFirstPlayer: false, chooseSubterraneanGate: false });
   state.activePlayerId = "p1";
   if (state.players.p1.needsHandRefresh || state.players.p1.canMulligan) {
     const result = applyAction(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
@@ -217,7 +217,7 @@ describe("Subterranean Gate — a covered Field is unusable (visual + click)", (
   }
 
   it("draws the gate token over a covered Mine (not the Mine) and lets the hero walk through with no Mine effect", () => {
-    let state = createAdventureGameState({ seed: "subt-gate-mine-ui", difficulty: "normal", rollFirstPlayer: false });
+    let state = createAdventureGameState({ seed: "subt-gate-mine-ui", difficulty: "normal", rollFirstPlayer: false, chooseSubterraneanGate: false });
     state.activePlayerId = "p1";
     if (state.players.p1.needsHandRefresh || state.players.p1.canMulligan) {
       const refreshed = applyAction(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
@@ -314,5 +314,89 @@ describe("Subterranean Gate — UI affordances so players understand the crossin
     const hintCard = container.querySelector(".gateHintFloat");
     expect(hintCard, "tap explains the Subterranean Gate divide").toBeTruthy();
     expect(hintCard!.textContent).toMatch(/Subterranean Gate/i);
+  });
+});
+
+describe("Subterranean Gate — pick-on-reveal placement renders as a real choice", () => {
+  /** A live state whose cavern reveal opened the path-up placement choice for p1. */
+  function pathUpChoiceState(): { state: GameState; surface: MapTileState } {
+    let state = createAdventureGameState({
+      seed: "subt-gate-choice-ui",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      chooseSubterraneanGate: true
+    });
+    state.activePlayerId = "p1";
+    if (state.players.p1.needsHandRefresh || state.players.p1.canMulligan) {
+      state = applyAction(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] }).state;
+    }
+    const surfaceCenter = { row: 24, col: 12 };
+    const surface = instantiateTile(adv(state), "F3", surfaceCenter, 0, false);
+    const cavern = instantiateTile(adv(state), "U1", tileLatticeNeighbors(surfaceCenter)[0], 0, true);
+    setAllEmpty(state, surface);
+    recomputeSubterraneanGates(adv(state)); // auto surface gate toward the face-down cavern
+    // Reveal the cavern through the real reducer so the path-up choice opens.
+    adv(state).tiles[cavern.id].faceDown = false;
+    adv(state).tiles[cavern.id].awaitingRotation = true;
+    adv(state).pendingTileChoice = { tileInstanceId: cavern.id, playerId: "p1", kind: "reveal" };
+    for (const rotation of [0, 1, 2, 3, 4, 5]) {
+      const result = applyAction(state, { type: "SET_TILE_ROTATION", playerId: "p1", tileInstanceId: cavern.id, rotation });
+      if (result.errors.length === 0) {
+        return { state: result.state, surface };
+      }
+    }
+    throw new Error("cavern did not reveal");
+  }
+
+  /** Renders the real PromptTray (the production surface for OPTION_CHOICE) and
+   *  routes every click through the engine, exactly like the app screen does. */
+  function renderLivePrompt(initial: GameState): { container: HTMLElement; latest: () => GameState } {
+    let live = initial;
+    function Harness(): React.JSX.Element {
+      const [state, setState] = useState(initial);
+      live = state;
+      return (
+        <PromptTray
+          legalActions={getLegalActions(state, "p1")}
+          onAction={(action: GameAction) => {
+            const result = applyAction(state, action);
+            expect(result.errors, result.errors.map((error) => error.message).join("; ")).toHaveLength(0);
+            setState(result.state);
+          }}
+          state={state}
+          viewerPlayerId="p1"
+        />
+      );
+    }
+    const { container } = render(<Harness />);
+    return { container, latest: () => live };
+  }
+
+  it("shows the placement options as buttons and a click carves + links the crossing", () => {
+    const { state, surface } = pathUpChoiceState();
+    expect(state.pendingChoice?.type === "OPTION_CHOICE" && state.pendingChoice.context === "subterranean-gate-placement").toBe(
+      true
+    );
+    const { container, latest } = renderLivePrompt(state);
+
+    // The choice surfaces as a dialog with a button per candidate hex.
+    const dialog = container.querySelector('[role="dialog"]');
+    expect(dialog, "the gate placement choice renders").toBeTruthy();
+    expect(dialog!.getAttribute("aria-label")).toMatch(/path up|gate/i);
+    const options = [...container.querySelectorAll(".promptOptions .commandButton")];
+    expect(options.length, "one button per candidate placement").toBeGreaterThanOrEqual(2);
+
+    // Clicking a placement routes CHOOSE_OPTION through the engine and completes
+    // the crossing: the entrance is carved and linked to the surface gate.
+    fireEvent.click(options[0] as unknown as HTMLElement);
+    const resolvedChoice = latest().pendingChoice;
+    expect(
+      resolvedChoice?.type === "OPTION_CHOICE" && resolvedChoice.context === "subterranean-gate-placement"
+    ).toBe(false);
+    const entrance = Object.values(latest().adventure!.fields).find(
+      (field) => field.location === "subterranean_gate" && field.gateToTileId === surface.id
+    );
+    expect(entrance, "the entrance half is carved").toBeDefined();
+    expect(entrance!.gateLinkSpaceId, "the crossing is linked").toBeTruthy();
   });
 });

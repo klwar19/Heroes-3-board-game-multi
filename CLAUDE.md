@@ -273,11 +273,18 @@ is NOT done:
   discovering player a Creature Bank token from the matching shuffled pile
   (`creatureBankTokensFar`/`Near`); accepting carves the Blocked Field into a
   bank (`placeCreatureBank`). The offer is gated on the tile GROUP
-  (`creatureBankTierForGroup`), so sea/center/subterranean/starting tiles never
-  trigger it — including sea tiles that DO carry a Blocked Field / impassable
-  terrain (e.g. the Cove tile W1). A bank is reachable only from within its own
-  Tile — you can walk in to fight, but it is never a route across a Tile edge to
-  the outside (enforced in `canCrossEdge`, even for Pathfinding).
+  (`creatureBankTierForGroup`): Far→Far pile, Near→Near pile, and — BINH house
+  rule — a **Subterranean cavern also offers a bank, drawing from the NEAR pile**.
+  Sea/center/starting tiles never trigger it — including sea tiles that DO carry a
+  Blocked Field / impassable terrain (e.g. the Cove tile W1). A cavern's bank
+  lands on its Blocked Field EXCEPT when that field was sacrificed to a
+  Subterranean Gate: the gate carves before the bank is offered, so a Blocked
+  Field that became the gate hex is gone and no bank is offered there ("not at the
+  gate hex"). Engine-enforced in `subterranean-gate-choice.test.ts` (a cavern gets
+  a Near bank; the path-up-on-the-Blocked-Field control gets none). A bank is
+  reachable only from within its own Tile — you can walk in to fight, but it is
+  never a route across a Tile edge to the outside (enforced in `canCrossEdge`,
+  even for Pathfinding).
 - Bank-card abilities that map to a wired engine effect: Skeletons (rebirth),
   Zombies (resilience), Vampires (life drain), Medusas + Nagas (ignore
   retaliation), Dragon Flies (-2 retaliation attack), Water Elementals (Magic

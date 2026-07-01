@@ -903,8 +903,8 @@ export function HexMapBoard({
 
       // Location Token art (the Subterranean Gate) sits on top of the tile scan
       // on the field it sacrificed, shown in both art and icon modes. The two
-      // halves are distinct: the surface gate on a Surface tile, the cave-mouth
-      // entrance on a Subterranean tile.
+      // halves are distinct: the skull cave-mouth GATE on a Surface tile, the
+      // lighter passage ENTRANCE on a Subterranean tile.
       const tokenImage =
         field.location === "subterranean_gate"
           ? subterraneanGateTokenImage(tile.group === "subterranean" ? "subterranean" : "surface")

@@ -178,6 +178,8 @@ export {
   isSeaField,
   levelOfExperience,
   planSubterraneanGates,
+  planGateChoiceForReveal,
+  upsertGatePlan,
   recomputeSubterraneanGates,
   unreachableUndergroundCenters,
   applyRecruitGoldDiscount,
