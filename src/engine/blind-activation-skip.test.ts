@@ -127,7 +127,7 @@ describe("Paralysis token skips the next activation", () => {
         legal.action.target.unitId === TARGET
     );
     expect(cast, "Blind should be a legal cast on the bronze enemy unit").toBeTruthy();
-    let casted = passAllReactions(applyOk(state, cast!.action));
+    const casted = passAllReactions(applyOk(state, cast!.action));
     expect(
       casted.combat!.units[TARGET].tokens?.some((token) => token.kind === "paralysis"),
       "Blind placed the paralysis token"

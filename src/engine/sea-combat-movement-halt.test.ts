@@ -21,7 +21,6 @@ import {
   getMainHero,
   getReachableHeroPaths,
   getAdjacentSpaceIds,
-  getTileFootprintSpaceIds,
   isSeaField,
   materializeTileFields
 } from "./adventure";
