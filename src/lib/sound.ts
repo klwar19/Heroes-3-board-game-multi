@@ -225,6 +225,17 @@ export function playCardSwish(delayMs = 0): void {
   }
 }
 
+/**
+ * Opening the Spell Book shelf: a page-flip riffle. The converted H3 library has
+ * no dedicated spell-book cue, so this layers the two recorded paper "deal"
+ * clips (the same parchment foley the deck uses) into a quick two-page turn —
+ * a real sound, not silence — played when the Book icon is opened.
+ */
+export function playSpellBookOpen(): void {
+  playLibrarySound("cards/card-deal-1", 0.5);
+  window.setTimeout(() => playLibrarySound("cards/card-deal-2", 0.42), 90);
+}
+
 /** Card settling on the table / into the hand. */
 export function playCardPlace(delayMs = 0): void {
   if (delayMs > 0) {

@@ -92,6 +92,7 @@ import {
   discardPickAllowedInCombat,
   expertUsesAvailable,
   getRuleset,
+  spellBookCastAvailable,
   spellBookPowerAvailable,
   spellBookRuleEnabled,
   spellCanEnterSpellBook,
@@ -880,14 +881,24 @@ function hasRangedPenaltyWaiver(state: GameState | undefined, unit: CombatUnitSt
 export function getAttackRollMode(
   attacker: CombatUnitState,
   defender: CombatUnitState,
-  state?: GameState
+  state?: GameState,
+  isRetaliation = false
 ): AttackRollMode {
   // A full waiver (Ammo Cart, or the "ignore the combat penalties" units —
   // Magi / Sharpshooters / Halflings) drops both the adjacent-attack and the
   // long-range penalty. The "ignore the combat penalty against adjacent units"
   // units (Evil Eyes / Medusas / Zealots / Titans) drop only the adjacent one.
-  const ignoresAllPenalties =
-    hasUnitAbilityEffect(attacker, "IGNORE_RANGED_PENALTIES") || hasRangedPenaltyWaiver(state, attacker);
+  //
+  // The unit-ability full waiver is printed "[unit_attack] Ignore the combat
+  // penalties" (Sharpshooters, Magi, Halflings all carry it under that icon), so
+  // it fires ONLY on the unit's own attack — never on a Retaliation Attack. The
+  // Ammo Cart's player-scoped waiver is a standing effect, not attack-gated, so
+  // it still applies on a retaliation. The "[unit_passive] … against adjacent
+  // units" melee waiver (Evil Eyes / Medusas / Zealots / Titans) is passive too,
+  // so it also stays on when retaliating.
+  const abilityIgnoresAllPenalties =
+    !isRetaliation && hasUnitAbilityEffect(attacker, "IGNORE_RANGED_PENALTIES");
+  const ignoresAllPenalties = abilityIgnoresAllPenalties || hasRangedPenaltyWaiver(state, attacker);
   const ignoresMeleePenalty =
     ignoresAllPenalties || hasUnitAbilityEffect(attacker, "IGNORE_RANGED_MELEE_PENALTY");
 
@@ -1603,15 +1614,22 @@ function addSpellActions(
     ? []
     : [
         ...[...new Set(player.hand)].filter((cardId) => !tarnumFlagged.has(cardId)).map((cardId) => ({ cardId })),
-        // Spell Book (house rule): Book Spells cast like hand Spells — full
-        // Power, same one-Spell-per-round limit, same timing/targeting gates.
-        ...(spellBookRuleEnabled(state)
-          ? [...new Set(player.spellBook)].map((cardId) => ({ cardId, fromSpellBook: true }))
-          : []),
         ...(player.scrolls ?? []).flatMap((scroll) =>
           [...new Set(scroll.spellCardIds)].map((cardId) => ({ cardId, fromScroll: scroll.id }))
         )
       ];
+
+  // Spell Book (house rule): a Book Spell cast is a SEPARATE bonus cast — one per
+  // combat round, on its own budget (spellBookCastUsedThisRound), NOT the hand
+  // Scroll one-Spell-per-round limit. So it is offered even once that limit is
+  // reached, and it does not consume it (a player may cast a hand Spell AND a
+  // Book Spell in the same round). It otherwise casts at full Power under the same
+  // timing/targeting rules as a hand cast (the loop below).
+  if (spellBookRuleEnabled(state) && spellBookCastAvailable(player)) {
+    for (const cardId of new Set(player.spellBook)) {
+      castCandidates.push({ cardId, fromSpellBook: true });
+    }
+  }
 
   // Tarnum over-limit casts: each flagged hand spell, offered with both
   // placements ("on the top of the Spell deck or on its discard pile").
@@ -4549,9 +4567,17 @@ export function getLegalReactionsForTrigger(
         continue;
       }
 
-      // Spell instants respect the one-Spell-per-combat-round limit.
-      if (card.kind === "spell" && spellLimitLeft <= 0) {
-        continue;
+      // Spell instants respect the one-Spell-per-combat-round limit — EXCEPT a
+      // Book instant, which draws on the Book's own separate once-per-round CAST
+      // budget (so a player may play a hand Spell AND a Book Spell in the round).
+      if (card.kind === "spell") {
+        if (fromSpellBook) {
+          if (!spellBookCastAvailable(player)) {
+            continue;
+          }
+        } else if (spellLimitLeft <= 0) {
+          continue;
+        }
       }
 
       // Recanter's Cloak (option B) locks every Hero out of casting any Spell.
