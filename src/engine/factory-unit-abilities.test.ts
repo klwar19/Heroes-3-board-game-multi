@@ -60,6 +60,20 @@ function setActive(state: GameState, playerId: PlayerId, unitId: string): void {
   state.combat!.activeUnitId = unitId;
 }
 
+/**
+ * Mark every unit but `nextId` as already-activated, set `starterId` active and
+ * Defend it, so `nextId` comes up next — driving the "[activation]" choice opener
+ * through a real activation transition (mirrors binh-activation-abilities.test.ts).
+ */
+function makeNextActive(state: GameState, starterId: string, nextId: string): GameState {
+  const combat = state.combat!;
+  for (const unit of Object.values(combat.units)) {
+    unit.activatedThisRound = unit.id !== starterId && unit.id !== nextId;
+  }
+  setActive(state, combat.units[starterId].controllerId, starterId);
+  return applyOk(state, { type: "DEFEND_UNIT", playerId: combat.units[starterId].controllerId, unitId: starterId });
+}
+
 function script(state: GameState, rolls: number[]): void {
   state.combat!.dice.scriptedRolls = rolls;
   state.combat!.dice.rollCount = 0;
@@ -374,5 +388,125 @@ describe("Factory Armadillos (Pack) — Gathering Momentum (amplify Initiative i
     pushInitiativeEffect(state, armadillo.id, -2);
     // Only genuine increases get the +1; a decrease stays -2 (6 - 2 = 4), not -1.
     expect(effectiveInitiative(armadillo, state.activeEffects)).toBe(6 - 2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Mechanics — "Field Repair" (heal an adjacent mechanical unit; Pack falls back to +Attack)
+// ---------------------------------------------------------------------------
+
+/**
+ * Stage the p1 Marksmen as a Mechanic that will activate next, with a friendly
+ * unit standing adjacent (pos 5 ↔ pos 6). The caller sets the Mechanic's
+ * abilities, and the neighbour's unitDefId (mechanical or not), damage and
+ * position, then reads the outcome after the activation transition.
+ */
+function mechanicRepairSandbox(options: {
+  mechanicAbilities: string[];
+  neighbourDefId: string;
+  neighbourDamage: number;
+  neighbourPosition?: number;
+}): GameState {
+  const state = createInitialGameState("factory-repair");
+  const combat = state.combat!;
+  Object.assign(combat.units.unit_p1_marksmen, {
+    name: "Mechanics",
+    cardName: "Mechanics",
+    type: "ground",
+    attack: 2,
+    damage: 0,
+    position: 5,
+    abilities: options.mechanicAbilities
+  });
+  Object.assign(combat.units.unit_p1_crusaders, {
+    unitDefId: options.neighbourDefId,
+    damage: options.neighbourDamage,
+    maxHealth: 10,
+    position: options.neighbourPosition ?? 6 // adjacent to pos 5 by default
+  });
+  state.players.p1.hand = [];
+  state.players.p2.hand = [];
+  return makeNextActive(state, "unit_p1_griffins", "unit_p1_marksmen");
+}
+
+function selfAttackBuff(state: GameState, unitId: string): boolean {
+  return state.activeEffects.some(
+    (effect) =>
+      effect.target?.type === "unit" &&
+      effect.target.unitId === unitId &&
+      effect.modifiers.some((modifier) => modifier.type === "ATTACK_BONUS")
+  );
+}
+
+describe("Factory Mechanics — Field Repair", () => {
+  it("Few repairs up to 1 damage off an adjacent mechanical unit (Automaton)", () => {
+    const state = mechanicRepairSandbox({
+      mechanicAbilities: ["mechanics-repair-1", "mechanics-line-attack-1"],
+      neighbourDefId: "factory.automatons",
+      neighbourDamage: 3
+    });
+    const choice = state.pendingChoice;
+    expect(choice?.type, "the repair choice opens for the adjacent Automaton").toBe("ABILITY_TARGET_CHOICE");
+    if (choice?.type !== "ABILITY_TARGET_CHOICE") return;
+    expect(choice.kind).toBe("enchanter-activation");
+    expect(choice.candidateUnitIds).toEqual(["unit_p1_crusaders"]);
+    const resolved = applyOk(state, {
+      type: "CHOOSE_ABILITY_TARGET",
+      playerId: "p1",
+      choiceId: choice.id,
+      targetUnitId: "unit_p1_crusaders"
+    });
+    expect(resolved.combat!.units.unit_p1_crusaders.damage, "1 damage repaired (3 → 2)").toBe(2);
+  });
+
+  it("Pack repairs up to 2 damage off an adjacent mechanical unit (Dreadnought)", () => {
+    const state = mechanicRepairSandbox({
+      mechanicAbilities: ["mechanics-repair-2", "mechanics-line-attack-2"],
+      neighbourDefId: "factory.dreadnoughts",
+      neighbourDamage: 3
+    });
+    const choice = state.pendingChoice;
+    expect(choice?.type).toBe("ABILITY_TARGET_CHOICE");
+    if (choice?.type !== "ABILITY_TARGET_CHOICE") return;
+    const resolved = applyOk(state, {
+      type: "CHOOSE_ABILITY_TARGET",
+      playerId: "p1",
+      choiceId: choice.id,
+      targetUnitId: "unit_p1_crusaders"
+    });
+    expect(resolved.combat!.units.unit_p1_crusaders.damage, "2 damage repaired (3 → 1)").toBe(1);
+  });
+
+  it("CONTROL: a NON-mechanical adjacent ally is not a repair target — the Few does nothing", () => {
+    const state = mechanicRepairSandbox({
+      mechanicAbilities: ["mechanics-repair-1", "mechanics-line-attack-1"],
+      neighbourDefId: "castle.griffins", // living, not mechanical
+      neighbourDamage: 3
+    });
+    // No candidate ⇒ no choice; the Few has no +Attack fallback, so nothing happens.
+    expect(state.pendingChoice, "no repair choice for a non-mechanical ally").toBeNull();
+    expect(state.combat!.units.unit_p1_crusaders.damage, "the living ally is NOT repaired").toBe(3);
+    expect(selfAttackBuff(state, "unit_p1_marksmen"), "the Few gains no Attack buff").toBe(false);
+  });
+
+  it("CONTROL: a mechanical ally that is NOT adjacent cannot be repaired", () => {
+    const state = mechanicRepairSandbox({
+      mechanicAbilities: ["mechanics-repair-1", "mechanics-line-attack-1"],
+      neighbourDefId: "factory.automatons",
+      neighbourDamage: 3,
+      neighbourPosition: 15 // far from the Mechanic at pos 5
+    });
+    expect(state.pendingChoice, "a distant Automaton is out of repair range").toBeNull();
+    expect(state.combat!.units.unit_p1_crusaders.damage).toBe(3);
+  });
+
+  it("Pack with no mechanical unit to repair takes the +1 Attack fallback instead", () => {
+    const state = mechanicRepairSandbox({
+      mechanicAbilities: ["mechanics-repair-2", "mechanics-line-attack-2"],
+      neighbourDefId: "castle.griffins", // nothing mechanical to repair
+      neighbourDamage: 3
+    });
+    expect(state.pendingChoice, "no repair target ⇒ auto-resolve to the buff").toBeNull();
+    expect(selfAttackBuff(state, "unit_p1_marksmen"), "the Pack gains its +1 Attack").toBe(true);
   });
 });

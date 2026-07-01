@@ -258,6 +258,7 @@ import {
   getEnchanterActivationAbility,
   getEnemyDiscardAbility,
   getFlatAttackBonus,
+  isMechanicalUnit,
   getOnAttackEnemyDiscard,
   getOnAttackParalysis,
   hasSelfDefenseToken,
@@ -5876,13 +5877,21 @@ function continueNeutralStep(
 }
 
 /** Living friendly units the Enchanters could heal (other friendlies only). */
-function enchanterHealCandidates(combat: CombatState, unit: CombatUnitState): CombatUnitState[] {
+function enchanterHealCandidates(
+  combat: CombatState,
+  unit: CombatUnitState,
+  ability?: { adjacentOnly?: boolean; targetTrait?: "mechanical" }
+): CombatUnitState[] {
   return Object.values(combat.units).filter(
     (candidate) =>
       candidate.id !== unit.id &&
       candidate.controllerId === unit.controllerId &&
       isUnitAlive(candidate) &&
-      candidate.damage > 0
+      candidate.damage > 0 &&
+      // Factory Mechanics: only ADJACENT + mechanical units can be repaired.
+      // Enchanters leave both filters unset, so any wounded ally qualifies.
+      (!ability?.adjacentOnly || isAdjacent(unit.position, candidate.position)) &&
+      (ability?.targetTrait !== "mechanical" || isMechanicalUnit(candidate))
   );
 }
 
@@ -5892,6 +5901,11 @@ function applyEnchanterBuffSelf(
   unit: CombatUnitState,
   ability: { abilityId: string; abilityName: string; attackBonus: number }
 ): void {
+  // Factory Mechanics FEW have no "+Attack" fallback (attackBonus 0): with no
+  // adjacent mechanical unit to repair, the activation ability simply does nothing.
+  if (ability.attackBonus <= 0) {
+    return;
+  }
   createActiveEffect(
     state,
     {
@@ -5996,7 +6010,7 @@ function applyNeutralActivationAbility(state: GameState, unit: CombatUnitState):
     // effect can not be skipped in favor of +1 Attack." A neutral Enchanter
     // therefore heals its most-wounded OTHER ally when one exists, and only
     // buffs its own Attack when there is nothing to heal.
-    const candidates = enchanterHealCandidates(combat, unit);
+    const candidates = enchanterHealCandidates(combat, unit, enchant);
     if (candidates.length > 0) {
       const target = candidates.reduce((best, candidate) =>
         candidate.damage > best.damage ? candidate : best
@@ -6112,7 +6126,7 @@ function maybeOpenPlayerActivationChoice(state: GameState): void {
 
   const enchant = getEnchanterActivationAbility(unit);
   if (enchant) {
-    const candidates = enchanterHealCandidates(combat, unit);
+    const candidates = enchanterHealCandidates(combat, unit, enchant);
     if (candidates.length === 0) {
       // Nothing to heal: the only meaningful outcome is the self Attack buff.
       applyEnchanterBuffSelf(state, unit, enchant);
@@ -6132,7 +6146,12 @@ function maybeOpenPlayerActivationChoice(state: GameState): void {
       // wounded other ally exists the heal is MANDATORY — the player only picks
       // WHICH ally (no skip-to-buff). The +Attack fallback fires only on the
       // candidates.length === 0 branch above.
-      prompt: `${unit.cardName}: ${enchant.abilityName} — heal a friendly unit (up to ${enchant.healAmount} damage).`,
+      // Factory Mechanics repair an adjacent MECHANICAL unit; Enchanters heal any
+      // friendly. The noun and the "or gain +N Attack" tail vary accordingly.
+      prompt:
+        enchant.targetTrait === "mechanical"
+          ? `${unit.cardName}: ${enchant.abilityName} — repair an adjacent mechanical unit (up to ${enchant.healAmount} damage).`
+          : `${unit.cardName}: ${enchant.abilityName} — heal a friendly unit (up to ${enchant.healAmount} damage).`,
       sourceUnitId: unit.id,
       anchorUnitId: null,
       candidateUnitIds: candidates.map((candidate) => candidate.id),
@@ -6140,13 +6159,17 @@ function maybeOpenPlayerActivationChoice(state: GameState): void {
     };
     state.phase = "choice";
     state.priorityPlayerId = unit.controllerId;
+    const targetNoun = enchant.targetTrait === "mechanical" ? "repair an adjacent mechanical unit" : "heal a friendly unit";
     appendEvent(state, {
       type: "PENDING_CHOICE_CREATED",
       choiceId,
       choiceType: "ABILITY_TARGET_CHOICE",
       playerId: unit.controllerId,
       sourceEffectIds: [],
-      message: `${unit.cardName} chooses: heal a friendly unit or gain +${enchant.attackBonus} Attack.`
+      message:
+        enchant.attackBonus > 0
+          ? `${unit.cardName} chooses: ${targetNoun} or gain +${enchant.attackBonus} Attack.`
+          : `${unit.cardName}: ${targetNoun}.`
     });
     return;
   }

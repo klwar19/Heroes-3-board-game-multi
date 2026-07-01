@@ -1310,14 +1310,16 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "factory",
     tier: "bronze",
     type: "ground",
-    // engine: mechanics-line-attack-1/2 wires the "Attack 2 spaces in a line"
-    // reach on ALL sides (SECOND_ATTACK_BEHIND_TARGET; Few/Neutral hit the unit
-    // behind the target at attack 1, the Pack at attack 2). The Repair rider —
-    // Few "remove up to 1 damage from an adjacent mechanical unit", Pack "remove
-    // up to 2 OR gain +1 Attack" — is NOT yet wired (display-only). The Neutral
-    // guard has no Repair on its card, only the reach.
-    few: { attack: 2, defense: 0, health: 3, initiative: 6, cost: { gold: 4 }, abilities: ["mechanics-line-attack-1"], abilityText: "[activation] Remove up to 1 [damage] from an adjacent [mechanical] unit. Attack 2 spaces in a line. The first attack resolves normally, and the second has 1 [attack] — the Repair (remove 1 damage) is display-only.", cardImage: "/assets/units-factory-bronze-mechanics-few.webp" },
-    pack: { attack: 2, defense: 1, health: 4, initiative: 7, cost: { gold: 6 }, abilities: ["mechanics-line-attack-2"], abilityText: "[activation] Remove up to 2 [damage] from an adjacent [mechanical] unit, or gain +1 [attack]. Attack 2 spaces in a line. The first attack resolves normally, and the second has 2 [attack] — the Repair / +1 Attack rider is display-only.", cardImage: "/assets/units-factory-bronze-mechanics-pack.webp" },
+    // engine: BOTH riders on each faction side are wired. mechanics-line-attack-1/2
+    // is the "Attack 2 spaces in a line" reach (SECOND_ATTACK_BEHIND_TARGET; Few/
+    // Neutral hit the unit behind the target at attack 1, the Pack at attack 2).
+    // mechanics-repair-1/2 is the "[activation] remove damage from an adjacent
+    // mechanical unit" (Few up to 1, no fallback; Pack up to 2 OR +1 Attack when
+    // there is nothing to repair) — the Enchanter heal-or-buff path gated to
+    // ADJACENT + mechanical (Automatons / Dreadnoughts). The Neutral guard's card
+    // prints only the reach (no Repair).
+    few: { attack: 2, defense: 0, health: 3, initiative: 6, cost: { gold: 4 }, abilities: ["mechanics-repair-1", "mechanics-line-attack-1"], abilityText: "[activation] Remove up to 1 [damage] from an adjacent [mechanical] unit. Attack 2 spaces in a line. The first attack resolves normally, and the second has 1 [attack].", cardImage: "/assets/units-factory-bronze-mechanics-few.webp" },
+    pack: { attack: 2, defense: 1, health: 4, initiative: 7, cost: { gold: 6 }, abilities: ["mechanics-repair-2", "mechanics-line-attack-2"], abilityText: "[activation] Remove up to 2 [damage] from an adjacent [mechanical] unit, or gain +1 [attack]. Attack 2 spaces in a line. The first attack resolves normally, and the second has 2 [attack].", cardImage: "/assets/units-factory-bronze-mechanics-pack.webp" },
     neutral: { attack: 2, defense: 0, health: 4, initiative: 6, cost: { gold: 5 }, abilities: ["mechanics-line-attack-1"], abilityText: "[activation] Attack 2 spaces in a line. The first attack resolves normally, and the second has 1 [attack].", cardImage: "/assets/units-factory-bronze-mechanics-neutral.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Mechanic",
     source: {
