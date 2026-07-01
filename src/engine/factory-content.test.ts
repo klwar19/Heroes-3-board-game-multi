@@ -47,12 +47,19 @@ const FACTORY_UNITS = [
   "factory.dreadnoughts"
 ];
 
-const FACTORY_HEROES = [
-  "henrietta", "sam", "tancred", "melchior", "floribert",
-  "wynona", "dury", "morton", "tavin", "murdoch",
-  "celestine", "todd", "agar", "bertram", "wrathmont",
-  "ziph", "victoria", "eanswythe", "frederick"
-];
+// The six kept Factory heroes — each an engine-wired unit specialist. The other
+// 13 placeholder heroes were removed.
+const FACTORY_HEROES = ["henrietta", "sam", "tancred", "celestine", "agar", "frederick"];
+
+// Which Factory unit each kept hero's I/IV/VI specialty buffs.
+const FACTORY_HERO_SPECIALTY_UNIT: Record<string, string> = {
+  henrietta: "Halflings",
+  sam: "Mechanics",
+  tancred: "Bounty Hunters",
+  celestine: "Armadillos",
+  agar: "Sandworms",
+  frederick: "Automatons"
+};
 
 function apply(state: GameState, action: GameAction): GameState {
   const result = applyAction(state, action);
@@ -61,7 +68,7 @@ function apply(state: GameState, action: GameAction): GameState {
 }
 
 describe("Factory faction — art wired, not playable", () => {
-  it("registers the faction with all 8 units and all 19 heroes", () => {
+  it("registers the faction with all 8 units and the 6 kept heroes", () => {
     const faction = coreFactionDefinitions.factory;
     expect(faction, "factory faction should be registered").toBeDefined();
     expect(faction.id).toBe("factory");
@@ -225,8 +232,8 @@ describe("Factory faction — art wired, not playable", () => {
     }
   });
 
-  it("Henrietta and Frederick ship real specialties (I/IV/VI) that resolve in the library", () => {
-    for (const id of ["henrietta", "frederick"]) {
+  it("every kept Factory hero ships a real I/IV/VI unit specialty that resolves in the library", () => {
+    for (const id of FACTORY_HEROES) {
       const ids = coreHeroDefinitions[id].specialtyCardIds;
       expect(ids, `${id} specialtyCardIds`).toBeDefined();
       for (const level of [1, 4, 6] as const) {
@@ -237,14 +244,24 @@ describe("Factory faction — art wired, not playable", () => {
         expect(card.implementationStatus, `${cardId} implemented`).toBe("implemented");
         // Face-less specialties must render natively (no missing art file).
         expect(card.assets?.cardImage, `${cardId} has no missing art`).toBeUndefined();
+        // The I-level card is the unit-specialist card for this hero's unit.
+        if (level === 1) {
+          expect(card.name, `${id} specialty unit`).toContain(FACTORY_HERO_SPECIALTY_UNIT[id]);
+        }
       }
     }
   });
 
-  it("the other Factory heroes are still specialty-less stubs", () => {
-    for (const id of FACTORY_HEROES.filter((h) => h !== "henrietta" && h !== "frederick")) {
-      expect(coreHeroDefinitions[id].specialtyCardIds, `${id} specialty`).toBeUndefined();
+  it("the 13 placeholder heroes are gone from the faction and the hero library", () => {
+    const removed = [
+      "melchior", "floribert", "wynona", "dury", "morton", "tavin", "murdoch",
+      "todd", "bertram", "wrathmont", "ziph", "victoria", "eanswythe"
+    ];
+    for (const id of removed) {
+      expect(coreHeroDefinitions[id], `${id} removed from library`).toBeUndefined();
+      expect(coreFactionDefinitions.factory.heroes, `${id} not in roster`).not.toContain(id);
     }
+    expect(coreFactionDefinitions.factory.heroes).toHaveLength(6);
   });
 
   it("ships the 7 board-game buildings, each wired to its archetype effect", () => {

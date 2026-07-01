@@ -1376,6 +1376,22 @@ export const adventureCards: CardLibrary = {
   "specialty.frederick.1": withoutArt(mightSpecialtyOne("frederick", "Automatons", "Automatons")),
   "specialty.frederick.4": withoutArt(unitHealthSpecialty("frederick", "Automatons", 4, 1, "Automatons")),
   "specialty.frederick.6": withoutArt(unitInitiativeSpecialty("frederick", "Automatons", 6, 1, "Automatons")),
+  // The four other kept Factory heroes are unit specialists too (same wired
+  // pattern: I = +1 attack/defence, IV = +1 HP, VI = +1 initiative, doubled on
+  // the specialty unit). Sam -> Mechanics, Tancred -> Bounty Hunters,
+  // Celestine -> Armadillos, Agar -> Sandworms.
+  "specialty.sam.1": withoutArt(mightSpecialtyOne("sam", "Mechanics", "Mechanics")),
+  "specialty.sam.4": withoutArt(unitHealthSpecialty("sam", "Mechanics", 4, 1, "Mechanics")),
+  "specialty.sam.6": withoutArt(unitInitiativeSpecialty("sam", "Mechanics", 6, 1, "Mechanics")),
+  "specialty.tancred.1": withoutArt(mightSpecialtyOne("tancred", "Bounty Hunters", "Bounty Hunters")),
+  "specialty.tancred.4": withoutArt(unitHealthSpecialty("tancred", "Bounty Hunters", 4, 1, "Bounty Hunters")),
+  "specialty.tancred.6": withoutArt(unitInitiativeSpecialty("tancred", "Bounty Hunters", 6, 1, "Bounty Hunters")),
+  "specialty.celestine.1": withoutArt(mightSpecialtyOne("celestine", "Armadillos", "Armadillos")),
+  "specialty.celestine.4": withoutArt(unitHealthSpecialty("celestine", "Armadillos", 4, 1, "Armadillos")),
+  "specialty.celestine.6": withoutArt(unitInitiativeSpecialty("celestine", "Armadillos", 6, 1, "Armadillos")),
+  "specialty.agar.1": withoutArt(mightSpecialtyOne("agar", "Sandworms", "Sandworms")),
+  "specialty.agar.4": withoutArt(unitHealthSpecialty("agar", "Sandworms", 4, 1, "Sandworms")),
+  "specialty.agar.6": withoutArt(unitInitiativeSpecialty("agar", "Sandworms", 6, 1, "Sandworms")),
   "specialty.rion.1": {
     id: "specialty.rion.1",
     name: "Battlefield Medic I",
