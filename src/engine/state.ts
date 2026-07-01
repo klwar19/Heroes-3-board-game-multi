@@ -71,7 +71,8 @@ export type FactionId =
   | "tower"
   | "conflux"
   | "cove"
-  | "bulwark";
+  | "bulwark"
+  | "factory";
 
 export type TargetRef =
   | { type: "unit"; unitId: UnitId }
@@ -4150,6 +4151,14 @@ export type GameEvent =
       cardId: CardId;
     }
   | {
+      /** Factory shovel dig: the visiting hero dug an Artifact and kept or discarded it. */
+      id: string;
+      type: "ARTIFACT_DUG";
+      playerId: PlayerId;
+      cardId: CardId;
+      kept: boolean;
+    }
+  | {
       /** A war machine fired (round-start trigger or its expert discard). */
       id: string;
       type: "WAR_MACHINE_TRIGGERED";
@@ -4692,6 +4701,13 @@ export type PlayerState = {
    */
   empoweredAbilities?: CardId[];
   /**
+   * Factory — Frederick's specialty ("further enhances the Automaton's
+   * explosion"): the extra damage each of this player's Automatons adds to its
+   * on-removal detonation, on top of the printed base. 0/undefined for everyone
+   * else. Read at the removal chokepoint when an Automaton detonates.
+   */
+  automatonDetonationBonus?: number;
+  /**
    * Deprecated single-permanent slot from older snapshots; live states use
    * `permanents`. Read through getPermanentCardIds, never directly.
    */
@@ -4791,14 +4807,15 @@ export type PlayerState = {
   /**
    * Legion artifacts (Legs/Loins/Torso/Arms/Head of Legion): per-unit discount
    * vouchers. Playing a Legion discount side opens a prompt to pick the single
-   * unit it applies to, banking one voucher reserved for that exact target. The
-   * recruit/reinforce cost path applies the single LARGEST applicable gold
-   * discount and never stacks vouchers — neither with each other on the same unit
-   * nor with any other source (Champions' Stables, a recruit-cost building, a
-   * discount event). A voucher is consumed when its unit is recruited/reinforced;
-   * each Legion piece may bank at most one voucher per turn (the SAME piece cannot
-   * stack with itself), and all unused vouchers expire at the start of the owner's
-   * next turn. See `bestRecruitGoldDiscount`/`consumeRecruitVoucherFor`.
+   * unit it applies to, banking one voucher reserved for that exact target. HOUSE
+   * RULE: a Legion voucher STACKS with the building/location discount (Champions'
+   * Stables, Cove Pub) — the two are ADDED on the same unit. It does NOT stack
+   * with another Legion voucher on the same unit (the larger single voucher is
+   * taken), and it competes with (never stacks with) the Necromancy/Isra HALF.
+   * A voucher is consumed when its unit is recruited/reinforced; each Legion piece
+   * may bank at most one voucher per turn (the SAME piece cannot stack with
+   * itself), and all unused vouchers expire at the start of the owner's next turn.
+   * See `totalRecruitGoldDiscount`/`consumeRecruitVoucherFor`.
    */
   recruitDiscounts?: RecruitDiscountVoucher[];
   /** Rogues (army map ability): the once-per-turn deck peek was used this turn. */
@@ -4986,6 +5003,12 @@ export type CombatUnitState = {
   usedLethalSaveThisCombat?: boolean;
   /** Phoenixes: set once this unit has spent its once-per-combat Rebirth self-save. */
   usedRebirthThisCombat?: boolean;
+  /**
+   * Factory Automaton: set the moment this unit's on-removal detonation has
+   * fired, so the explosion resolves exactly once even though the removal
+   * chokepoint can be re-entered for the same unit.
+   */
+  detonatedThisCombat?: boolean;
   /**
    * Cove Haspids (Few): set the moment this unit's Pack side is defeated and it
    * flips down to its Few side during a combat. The Few side's "Vengeance"
@@ -5924,6 +5947,21 @@ export type VisitStep =
       /** Portal of Summoning: the drawn card goes to its tier discard pile. */
       type: "PORTAL_DECLINE";
       unitDefId: string;
+    }
+  | {
+      /** Factory shovel dig: draw the top Artifact card, then offer keep/discard. */
+      type: "DIG_ARTIFACT";
+    }
+  | {
+      /** Factory shovel dig: keep the dug Artifact card into hand. */
+      type: "DIG_ARTIFACT_KEEP";
+      cardId: CardId;
+    }
+  | {
+      /** Factory shovel dig: send the dug Artifact card to its deck's discard. */
+      type: "DIG_ARTIFACT_DISCARD";
+      cardId: CardId;
+      deckId: string;
     }
   | {
       /**

@@ -271,3 +271,48 @@ describe("Subterranean Gate — a covered Field is unusable (visual + click)", (
     expect(latest().adventure!.tiles[underground.id].faceDown).toBe(false);
   });
 });
+
+describe("Subterranean Gate — UI affordances so players understand the crossing", () => {
+  it("marks a reachable gate hex with a '↧ descend' cue", () => {
+    const { state, underground } = gateBoardState();
+    const gateSpaceId = gateHalfTo(state, underground.id)!.spaceId;
+    const { container } = renderLiveBoard(state);
+
+    // The gate is a reachable move target (hero stands on the Surface tile).
+    expect(hex(container, gateSpaceId).classList.contains("moveTarget")).toBe(true);
+    // …and it carries the descend cue, so the cave-mouth reads as a doorway.
+    const cues = [...container.querySelectorAll(".hexGateCue")].map((node) => node.textContent);
+    expect(cues.some((text) => text?.includes("descend"))).toBe(true);
+  });
+
+  it("a hidden cavern tile shows the 'via Subterranean Gate' hint and explains the divide on click", () => {
+    const { state, surface, underground } = gateBoardState();
+    // Stand the hero on a Surface hex NOT on the gate, so the cavern stays a
+    // plain hidden tile the player cannot discover across the divide.
+    const undergroundHexes = new Set(getTileFootprintSpaceIds(underground));
+    const gateSpaceId = gateHalfTo(state, underground.id)!.spaceId;
+    const touchingSurface = getTileFootprintSpaceIds(surface).find(
+      (spaceId) =>
+        spaceId !== gateSpaceId &&
+        hexNeighbors(parseHexSpaceId(spaceId)!).some((n) => undergroundHexes.has(hexSpaceId(n)))
+    )!;
+    state.heroes.hero_p1.spaceId = touchingSurface;
+
+    const { container } = renderLiveBoard(state);
+
+    // The cavern flower is tagged needsGate (not discoverable) and carries the
+    // standing "via Subterranean Gate" hint label.
+    const cavernCells = [...container.querySelectorAll(`[data-tile-id="${underground.id}"]`)];
+    expect(cavernCells.length).toBeGreaterThan(0);
+    expect(cavernCells.every((cell) => cell.classList.contains("needsGate"))).toBe(true);
+    const hints = [...container.querySelectorAll(".hexCavernHint")].map((node) => node.textContent);
+    expect(hints.some((text) => text?.includes("Subterranean Gate"))).toBe(true);
+
+    // Clicking the hidden cavern explains WHY/HOW instead of doing nothing.
+    expect(container.querySelector(".gateHintFloat")).toBeNull();
+    fireEvent.click(cavernCells[0] as unknown as HTMLElement);
+    const hintCard = container.querySelector(".gateHintFloat");
+    expect(hintCard, "tap explains the Subterranean Gate divide").toBeTruthy();
+    expect(hintCard!.textContent).toMatch(/Subterranean Gate/i);
+  });
+});

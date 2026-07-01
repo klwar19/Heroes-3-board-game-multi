@@ -973,6 +973,94 @@ describe("BattlefieldBoard — siege fortification art", () => {
   });
 })
 
+describe("BattlefieldBoard - tied activation-order choice", () => {
+  it("highlights every candidate and lets the player choose it on the board", () => {
+    const state = createInitialGameState("board-activation-order-pick");
+    const first = state.combat!.units.unit_p2_skeletons;
+    const second = state.combat!.units.unit_p2_vampires;
+    state.phase = "choice";
+    state.priorityPlayerId = "p1";
+    state.combat!.activeUnitId = null;
+    state.pendingChoice = {
+      id: "choice_activation_order",
+      type: "OPTION_CHOICE",
+      playerId: "p1",
+      prompt: "Several Neutral units share the same speed - choose which one activates first.",
+      options: [
+        { label: `Activate ${first.cardName}` },
+        { label: `Activate ${second.cardName}` }
+      ],
+      context: "combat-activation-order",
+      activationOrder: { unitIds: [first.id, second.id], side: first.controllerId },
+      returnPhase: "combat"
+    };
+    const choiceId = state.pendingChoice.id;
+    const legalActions: LegalAction[] = state.pendingChoice.options.map((option, optionIndex) => ({
+      label: option.label,
+      action: { type: "CHOOSE_OPTION", playerId: "p1", choiceId, optionIndex }
+    }));
+    const onAction = vi.fn();
+
+    render(
+      <CardZoomProvider>
+        <BattlefieldBoard
+          state={state}
+          viewerPlayerId="p1"
+          legalActions={legalActions}
+          selectedCardAction={null}
+          onAction={onAction}
+          onInspect={() => {}}
+        />
+      </CardZoomProvider>
+    );
+
+    const firstCell = document.querySelector<HTMLButtonElement>(`[data-fx-unit="${first.id}"]`);
+    const secondCell = document.querySelector<HTMLButtonElement>(`[data-fx-unit="${second.id}"]`);
+    expect(firstCell?.classList.contains("activationOrderTarget")).toBe(true);
+    expect(secondCell?.classList.contains("activationOrderTarget")).toBe(true);
+    expect(firstCell?.getAttribute("aria-label")).toBe(`Choose ${first.name} to activate first`);
+
+    fireEvent.click(secondCell!);
+    expect(onAction).toHaveBeenCalledWith({
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId,
+      optionIndex: 1
+    });
+  });
+
+  it("does not mark tied units when the viewer has no legal choice", () => {
+    const state = createInitialGameState("board-activation-order-waiting");
+    const unit = state.combat!.units.unit_p2_skeletons;
+    state.phase = "choice";
+    state.pendingChoice = {
+      id: "choice_other_player",
+      type: "OPTION_CHOICE",
+      playerId: "p2",
+      prompt: "Choose which activates first.",
+      options: [{ label: `Activate ${unit.cardName}` }],
+      context: "combat-activation-order",
+      activationOrder: { unitIds: [unit.id], side: unit.controllerId },
+      returnPhase: "combat"
+    };
+
+    render(
+      <CardZoomProvider>
+        <BattlefieldBoard
+          state={state}
+          viewerPlayerId="p1"
+          legalActions={[]}
+          selectedCardAction={null}
+          onAction={vi.fn()}
+          onInspect={() => {}}
+        />
+      </CardZoomProvider>
+    );
+
+    expect(document.querySelectorAll(".activationOrderTarget")).toHaveLength(0);
+  });
+});
+
 // ===========================================================================
 // Berserk on the BOARD (end to end: engine -> getLegalActions -> board render).
 // The reported bug was "the berserked unit can still move freely". The board

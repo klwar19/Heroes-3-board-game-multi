@@ -4,9 +4,9 @@ import { artifactDeckBinhMajor, artifactDeckBinhMinor, artifactDeckLegacy } from
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { applyAction, createAdventureGameState, getLegalActions } from "./index";
 import {
-  applyBestRecruitDiscount,
+  applyRecruitGoldDiscount,
   beginFieldVisit,
-  bestRecruitGoldDiscount,
+  totalRecruitGoldDiscount,
   getMainHero,
   legionVoucherDiscount,
   queueNecromancyReinforce,
@@ -25,12 +25,14 @@ import type { GameAction, GameState, MapFieldState, PlayerId, RecruitDiscountVou
 // a one-shot voucher reserved for that exact unit. The card is discarded at
 // once — it is NOT ongoing and does NOT linger in play.
 //
-// The cardinal rule these tests pin: discounts NEVER stack. For any single unit
-// the cost path applies the SINGLE LARGEST applicable gold discount — never the
-// sum — whether the rival is another Legion piece on the same unit, the
-// Champions' Stables discount, or the Necromancy half-cost (still figured from
-// the ORIGINAL price). A voucher is consumed when its unit is bought and expires
-// at the owner's next turn.
+// The stacking rules these tests pin (HOUSE RULE): a Legion voucher STACKS with
+// the building/location discount — the Champions' Stables and the Cove Pub — so
+// those are ADDED on the same unit (a Champion on a Stables field at −6 plus a
+// 4-gold Legion voucher is −10). What still does NOT stack: two Legion pieces on
+// the SAME unit (the larger single voucher is taken) and the Necromancy half-cost
+// (it competes with the combined flat discount — the bigger wins — and is always
+// figured from the ORIGINAL price). A voucher is consumed when its unit is bought
+// and expires at the owner's next turn.
 // ---------------------------------------------------------------------------
 
 const LEGION_DISCOUNTS: { cardId: string; tier: "minor" | "major"; amount: number; name: string }[] = [
@@ -243,24 +245,26 @@ describe("Playing a Legion discount side opens a unit-selection window (no immed
     const state = setupRecruitTown();
     bankVoucher(state, "p1", "artifact.torso_of_legion", 6, { kind: "recruit", unitDefId: "castle.marksmen" });
 
-    expect(bestRecruitGoldDiscount(state, "p1", { kind: "recruit", unitDefId: "castle.marksmen" })).toBe(6);
+    expect(totalRecruitGoldDiscount(state, "p1", { kind: "recruit", unitDefId: "castle.marksmen" })).toBe(6);
     // Griffins were never selected, so their cost is untouched.
-    expect(bestRecruitGoldDiscount(state, "p1", { kind: "recruit", unitDefId: "castle.griffins" })).toBe(0);
-    expect(applyBestRecruitDiscount(state, "p1", { kind: "recruit", unitDefId: "castle.griffins" }, { gold: 4 })).toEqual({
+    expect(totalRecruitGoldDiscount(state, "p1", { kind: "recruit", unitDefId: "castle.griffins" })).toBe(0);
+    expect(applyRecruitGoldDiscount(state, "p1", { kind: "recruit", unitDefId: "castle.griffins" }, { gold: 4 })).toEqual({
       gold: 4
     });
   });
 });
 
-describe("Discounts never stack — the cost path takes the single largest", () => {
+describe("Legion does not stack with itself; Necromancy half competes, not stacks", () => {
   it("two Legion pieces aimed at the SAME unit take the bigger, not the sum", () => {
     const state = setupRecruitTown();
     bankVoucher(state, "p1", "artifact.legs_of_legion", 4, { kind: "recruit", unitDefId: "castle.griffins" });
     bankVoucher(state, "p1", "artifact.head_of_legion", 6, { kind: "recruit", unitDefId: "castle.griffins" });
 
-    // Legs (4) + Head (6) on the same Griffins → 6, never 10.
+    // Legs (4) + Head (6) on the same Griffins → 6, never 10 (Legion never stacks
+    // with Legion). With no building/location source, the total equals that 6.
     expect(legionVoucherDiscount(state, "p1", { kind: "recruit", unitDefId: "castle.griffins" })).toBe(6);
-    expect(applyBestRecruitDiscount(state, "p1", { kind: "recruit", unitDefId: "castle.griffins" }, { gold: 4 })).toEqual({
+    expect(totalRecruitGoldDiscount(state, "p1", { kind: "recruit", unitDefId: "castle.griffins" })).toBe(6);
+    expect(applyRecruitGoldDiscount(state, "p1", { kind: "recruit", unitDefId: "castle.griffins" }, { gold: 4 })).toEqual({
       gold: 0
     });
   });
@@ -274,7 +278,7 @@ describe("Discounts never stack — the cost path takes the single largest", () 
     expect(legionVoucherDiscount(state, "p1", { kind: "recruit", unitDefId: "castle.griffins" })).toBe(6);
   });
 
-  it("Legion does not stack with the Champions' Stables discount — only the bigger applies", () => {
+  it("Legion STACKS with the Champions' Stables discount — the two are added", () => {
     const state = setupRecruitTown();
     const hero = state.heroes.hero_p1;
     const spaceId = hero.spaceId!;
@@ -285,16 +289,25 @@ describe("Discounts never stack — the cost path takes the single largest", () 
     // Champions on a Stables field already knock 6 gold off the reinforcement.
     expect(reinforceGoldDiscount(state, "p1", "castle.champions")).toBe(6);
 
-    // A 4-gold Legion voucher reserved for the same Champion does NOT add to it.
+    // A 4-gold Legion voucher reserved for the same Champion ADDS to the Stables 6.
     bankVoucher(state, "p1", "artifact.legs_of_legion", 4, { kind: "reinforce", armyUnitId: "champ_few" });
-    expect(bestRecruitGoldDiscount(state, "p1", ref)).toBe(6); // max(4, 6), never 10
+    expect(totalRecruitGoldDiscount(state, "p1", ref)).toBe(10); // 6 Stables + 4 Legion
     const packCost = coreUnitDefinitions["castle.champions"].pack!.cost;
-    expect(applyBestRecruitDiscount(state, "p1", ref, packCost).gold).toBe(Math.max(0, (packCost.gold ?? 0) - 6));
+    expect(applyRecruitGoldDiscount(state, "p1", ref, packCost).gold).toBe(Math.max(0, (packCost.gold ?? 0) - 10));
 
-    // Even a 6-gold Legion voucher only ties — the result stays at a single −6.
+    // A 6-gold Legion voucher stacks to 12; the other resources stay untouched.
     state.players.p1.recruitDiscounts = [];
     bankVoucher(state, "p1", "artifact.head_of_legion", 6, { kind: "reinforce", armyUnitId: "champ_few" });
-    expect(bestRecruitGoldDiscount(state, "p1", ref)).toBe(6); // max(6, 6), never 12
+    expect(totalRecruitGoldDiscount(state, "p1", ref)).toBe(12); // 6 Stables + 6 Legion
+    expect(applyRecruitGoldDiscount(state, "p1", ref, packCost)).toMatchObject({
+      gold: Math.max(0, (packCost.gold ?? 0) - 12)
+    });
+
+    // Two Legion pieces on the same Champion still don't stack with EACH OTHER:
+    // the larger (6) is taken, then added to the Stables 6 → 12, not 6+4+6.
+    bankVoucher(state, "p1", "artifact.legs_of_legion", 4, { kind: "reinforce", armyUnitId: "champ_few" });
+    expect(legionVoucherDiscount(state, "p1", ref)).toBe(6); // larger of the two Legion vouchers
+    expect(totalRecruitGoldDiscount(state, "p1", ref)).toBe(12); // 6 Stables + 6 Legion (NOT 16)
   });
 
   it("Necromancy's half is figured from the ORIGINAL price; the bigger of half vs Legion wins, and the voucher is spent", () => {
@@ -373,8 +386,8 @@ describe("The voucher is read and consumed by the recruit/reinforce cost path", 
   it("does not let a voucher leak to another player", () => {
     const state = setupRecruitTown();
     bankVoucher(state, "p1", "artifact.loins_of_legion", 5, { kind: "recruit", unitDefId: "castle.marksmen" });
-    expect(bestRecruitGoldDiscount(state, "p1", { kind: "recruit", unitDefId: "castle.marksmen" })).toBe(5);
-    expect(bestRecruitGoldDiscount(state, "p2", { kind: "recruit", unitDefId: "castle.marksmen" })).toBe(0);
+    expect(totalRecruitGoldDiscount(state, "p1", { kind: "recruit", unitDefId: "castle.marksmen" })).toBe(5);
+    expect(totalRecruitGoldDiscount(state, "p2", { kind: "recruit", unitDefId: "castle.marksmen" })).toBe(0);
   });
 });
 
@@ -443,12 +456,12 @@ describe("Same-piece guard, the no-target gate, and end-of-turn expiry", () => {
   it("expires the banked vouchers at the start of the player's next turn", () => {
     const state = setupRecruitTown();
     bankVoucher(state, "p1", "artifact.torso_of_legion", 6, { kind: "recruit", unitDefId: "castle.marksmen" });
-    expect(bestRecruitGoldDiscount(state, "p1", { kind: "recruit", unitDefId: "castle.marksmen" })).toBe(6);
+    expect(totalRecruitGoldDiscount(state, "p1", { kind: "recruit", unitDefId: "castle.marksmen" })).toBe(6);
 
     // The voucher is a current-turn voucher: the owner's next turn clears it.
     startPlayerTurn(state, "p1");
     expect(state.players.p1.recruitDiscounts).toEqual([]);
-    expect(bestRecruitGoldDiscount(state, "p1", { kind: "recruit", unitDefId: "castle.marksmen" })).toBe(0);
+    expect(totalRecruitGoldDiscount(state, "p1", { kind: "recruit", unitDefId: "castle.marksmen" })).toBe(0);
   });
 });
 
@@ -465,10 +478,10 @@ describe("The banked voucher affects what is offered", () => {
     expect(recruitActionFor(state, "castle.marksmen")).toBeTruthy();
   });
 
-  it("the selection prompt warns when the chosen unit is already discounted (no stacking)", () => {
-    // A Champion Few standing on a Stables field is already −6. Playing a Legion
-    // piece must surface a warning on that unit's option and not stack — and the
-    // reinforce target shows up with NO Citadel.
+  it("the selection prompt shows the stacked total when the chosen unit already has a building/location discount", () => {
+    // A Champion Few standing on a Stables field is already −6. Playing a 4-gold
+    // Legion piece STACKS to −10 — the option must surface that stacked total —
+    // and the reinforce target shows up with NO Citadel.
     const state = setupRecruitTown();
     expect(townHasBuildingEffect(state, "p1", "UNLOCK_REINFORCE")).toBe(false);
     const hero = state.heroes.hero_p1;
@@ -481,8 +494,8 @@ describe("The banked voucher affects what is offered", () => {
       (entry) => entry.action.type === "RESOLVE_VISIT_STEP" && entry.label.includes("Champions")
     );
     expect(championOption, "the Champions reinforce should be offered as a Legion target").toBeTruthy();
-    expect(championOption!.label).toContain("already −6");
-    expect(championOption!.label).toContain("does not stack");
+    expect(championOption!.label).toContain("total −10");
+    expect(championOption!.label).toContain("stacks with the −6");
   });
 
   it("the Necromancy prompt prices a reinforce with the voucher — non-stacking, half still from the original gold", () => {
@@ -511,8 +524,8 @@ describe("The banked voucher affects what is offered", () => {
   });
 });
 
-describe("Real Population-action pipeline (applyAction only): Champions' Stables × Legion never stack", () => {
-  it("plays the Legion piece, picks the Champion, then the town reinforce charges the single largest discount", () => {
+describe("Real Population-action pipeline (applyAction only): Champions' Stables × Legion STACK", () => {
+  it("plays the Legion piece, picks the Champion, then the town reinforce charges the stacked discount", () => {
     // Castle town able to reinforce a gold-tier Champion (Bronze+Gold Dwellings,
     // Citadel), hero on a Stables field (Champions' Stable Master = −6 gold).
     let state = withCitadel(setupRecruitTown());
@@ -534,14 +547,14 @@ describe("Real Population-action pipeline (applyAction only): Champions' Stables
     ]);
 
     // Reinforce through the real Population action. Champion Pack = 20 gold + 1
-    // valuables; the discount is max(Stables 6, Legion 4) = 6, never 10. So gold
-    // paid = 14 (30 → 16), valuables 1 (2 → 1) — NOT 10 (the stacked −10).
+    // valuables; the discount STACKS: Stables 6 + Legion 4 = 10. So gold paid =
+    // 10 (30 → 20), valuables 1 (2 → 1) — the stacked −10, not the old −6 (→ 16).
     state = apply(state, {
       type: "POPULATION_ACTION",
       playerId: "p1",
       purchases: [{ kind: "reinforce", unitDefId: "castle.champions", armyUnitId: "champ_few" }]
     });
-    expect(state.players.p1.resources.gold).toBe(16);
+    expect(state.players.p1.resources.gold).toBe(20);
     expect(state.players.p1.resources.valuables).toBe(1);
     expect(state.players.p1.army.find((unit) => unit.id === "champ_few")?.side).toBe("pack");
     expect(state.players.p1.recruitDiscounts ?? []).toHaveLength(0);
@@ -555,8 +568,8 @@ describe("Real Population-action pipeline (applyAction only): Champions' Stables
 
     // p1's reinforce is discounted; p2 (a different seat) sees no discount on the
     // same kind of purchase.
-    expect(bestRecruitGoldDiscount(state, "p1", { kind: "reinforce", unitDefId: "castle.griffins", armyUnitId: "p1_griffins" })).toBe(6);
-    expect(bestRecruitGoldDiscount(state, "p2", { kind: "recruit", unitDefId: "castle.griffins" })).toBe(0);
+    expect(totalRecruitGoldDiscount(state, "p1", { kind: "reinforce", unitDefId: "castle.griffins", armyUnitId: "p1_griffins" })).toBe(6);
+    expect(totalRecruitGoldDiscount(state, "p2", { kind: "recruit", unitDefId: "castle.griffins" })).toBe(0);
     expect(state.players.p2.recruitDiscounts ?? []).toHaveLength(0);
   });
 

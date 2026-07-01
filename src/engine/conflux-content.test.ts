@@ -71,7 +71,7 @@ describe("Conflux content", () => {
       expect(hero.faction).toBe("conflux");
       expect(hero.portrait, `${heroId} portrait`).toBeTruthy();
       expect(cardLibrary[hero.startingAbilityCardId], `${heroId} ability`).toBeDefined();
-      for (const specialtyId of Object.values(hero.specialtyCardIds)) {
+      for (const specialtyId of Object.values(hero.specialtyCardIds!)) {
         const specialty = cardLibrary[specialtyId];
         expect(specialty, `${heroId} specialty ${specialtyId}`).toBeDefined();
         // Every shipped Conflux specialty must actually be implemented.
@@ -96,14 +96,18 @@ describe("Conflux content", () => {
   });
 
   it("is a first-class playable faction — eligible as a Random Town defender", () => {
-    // The Random Town defender pool must cover every faction with a unit roster;
-    // Conflux and Cove were silently missing from the old hand-maintained list.
-    const factionsWithUnits = Object.values(coreFactionDefinitions)
-      .filter((faction) => faction.units.length > 0)
+    // The Random Town defender pool must cover every faction with a unit roster
+    // that is ALSO playable; Conflux and Cove were silently missing from the old
+    // hand-maintained list.
+    const playableFactionsWithUnits = Object.values(coreFactionDefinitions)
+      .filter((faction) => faction.units.length > 0 && faction.playable !== false)
       .map((faction) => faction.id);
-    expect(new Set(PLAYABLE_FACTIONS)).toEqual(new Set(factionsWithUnits));
+    expect(new Set(PLAYABLE_FACTIONS)).toEqual(new Set(playableFactionsWithUnits));
     expect(PLAYABLE_FACTIONS).toContain("conflux");
     expect(PLAYABLE_FACTIONS).toContain("cove");
+    // Factory is now a real playable faction (&S1 starting tile), so it IS in
+    // the pool alongside the others.
+    expect(PLAYABLE_FACTIONS).toContain("factory");
   });
 
   it("City Hall income is 4 gold OR Search(3) the Spell deck (wiki-verified)", () => {

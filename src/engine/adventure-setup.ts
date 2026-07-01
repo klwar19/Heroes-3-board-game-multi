@@ -13,6 +13,7 @@ import {
   coreBuildingDefinitions,
   coreFactionDefinitions,
   coreHeroDefinitions,
+  isPlayableFaction,
   neutralUnitIdsByTier,
   startingTileByFaction
 } from "@/data/factions/core";
@@ -293,7 +294,10 @@ function makeStartingDeck(heroDefId: string): string[] {
   }
 
   deck.push(hero.startingAbilityCardId);
-  deck.push(hero.specialtyCardIds[1]);
+  // Stub/art-only heroes (non-playable factions) carry no specialty cards.
+  if (hero.specialtyCardIds?.[1]) {
+    deck.push(hero.specialtyCardIds[1]);
+  }
   return deck;
 }
 
@@ -1405,6 +1409,9 @@ export function chooseFaction(state: GameState, action: Extract<GameAction, { ty
   if (!faction) {
     throw new Error("Unknown faction.");
   }
+  if (!isPlayableFaction(action.factionId)) {
+    throw new Error("That faction is not playable yet.");
+  }
 
   if (!faction.heroes.includes(action.heroDefId)) {
     throw new Error("That hero does not lead this faction.");
@@ -1680,7 +1687,7 @@ export function rollTownOptions(state: GameState, action: Extract<GameAction, { 
   const taken = reservedTownIdsForOtherSeats(lobby, action.playerId);
   const candidates = (Object.values(coreFactionDefinitions) as { id: FactionId }[])
     .map((faction) => faction.id)
-    .filter((id) => !taken.has(id));
+    .filter((id) => !taken.has(id) && isPlayableFaction(id));
   if (candidates.length === 0) {
     throw new Error("No town is available to roll.");
   }
@@ -1725,6 +1732,9 @@ export function chooseTown(state: GameState, action: Extract<GameAction, { type:
   const faction = coreFactionDefinitions[action.factionId];
   if (!faction) {
     throw new Error("Unknown faction.");
+  }
+  if (!isPlayableFaction(action.factionId)) {
+    throw new Error("That faction is not playable yet.");
   }
   const taken = reservedTownIdsForOtherSeats(lobby, action.playerId).has(action.factionId);
   if (taken) {
@@ -1941,7 +1951,7 @@ export function randomAssignSeat(state: GameState, action: Extract<GameAction, {
   } else {
     const candidateFactions = (Object.values(coreFactionDefinitions) as { id: FactionId }[])
       .map((faction) => faction.id)
-      .filter((id) => !takenFactions.has(id) && selectableHeroes(id).length > 0);
+      .filter((id) => !takenFactions.has(id) && isPlayableFaction(id) && selectableHeroes(id).length > 0);
     if (candidateFactions.length === 0) {
       throw new Error("No town is available to roll.");
     }
