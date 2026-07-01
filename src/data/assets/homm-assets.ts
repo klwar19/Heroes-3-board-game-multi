@@ -148,6 +148,28 @@ export const TOWN_BUILDING_IMAGES: Record<string, Record<string, string>> = {
     dwelling_gold: "/assets/town/bulwark_dwelling_gold.webp",
     sieidi: "/assets/town/bulwark_sieidi.webp",
     altar: "/assets/town/bulwark_altar.webp"
+  },
+  factory: {
+    // Factory (HotA expansion) town-screen renders, fetched from
+    // heroes.thelazy.net by scripts/fetch-factory-art.py. Board dwellings map
+    // bronze/silver/gold to the Halfling Adobe / Ranch / Gantry PC dwellings;
+    // unique buildings: Bank, Mana Generator, Artifact Merchants, Pen,
+    // Lightning Rod.
+    city_hall: "/assets/town/factory_city_hall.webp",
+    citadel: "/assets/town/factory_citadel.webp",
+    mage_guild: "/assets/town/factory_mage_guild.webp",
+    blacksmith: "/assets/town/factory_blacksmith.webp",
+    dwelling_bronze: "/assets/town/factory_dwelling_bronze.webp",
+    dwelling_silver: "/assets/town/factory_dwelling_silver.webp",
+    dwelling_gold: "/assets/town/factory_dwelling_gold.webp",
+    bank: "/assets/town/factory_bank.webp",
+    mana_generator: "/assets/town/factory_mana_generator.webp",
+    artifact_merchants: "/assets/town/factory_artifact_merchants.webp",
+    pen: "/assets/town/factory_pen.webp",
+    lightning_rod: "/assets/town/factory_lightning_rod.webp",
+    tavern: "/assets/town/factory_tavern.webp",
+    marketplace: "/assets/town/factory_marketplace.webp",
+    resource_silo: "/assets/town/factory_resource_silo.webp"
   }
 };
 

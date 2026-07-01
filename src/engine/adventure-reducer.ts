@@ -1,5 +1,10 @@
 import { cardLibrary } from "@/data/cards/library";
-import { coreBuildingDefinitions, coreFactionDefinitions, coreHeroDefinitions } from "@/data/factions/core";
+import {
+  coreBuildingDefinitions,
+  coreFactionDefinitions,
+  coreHeroDefinitions,
+  factoryGoldUnitConflict
+} from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { type CreatureBankId } from "@/data/map/creature-banks";
 import { isMarketLocation, locationDefinitions, TRADE_RATES } from "@/data/map/locations";
@@ -4482,6 +4487,25 @@ function beginPlayerCombatRounds(state: GameState): void {
 }
 
 /**
+/**
+ * Factory — Frederick's specialty ("further enhances the Automaton's
+ * explosion"). Each combat, a player whose Hero is Frederick gets a +1 to every
+ * Automaton's on-removal Detonate (read at the removal chokepoint); everyone
+ * else is reset to none, so the bonus never leaks between combats or heroes.
+ */
+export const FREDERICK_AUTOMATON_DETONATION_BONUS = 1;
+
+export function seedFactoryHeroEffects(state: GameState): void {
+  for (const player of Object.values(state.players)) {
+    if (player.heroDefId === "frederick") {
+      player.automatonDetonationBonus = FREDERICK_AUTOMATON_DETONATION_BONUS;
+    } else if (player.automatonDetonationBonus) {
+      player.automatonDetonationBonus = 0;
+    }
+  }
+}
+
+/**
  * Common tail of combat setup (player and neutral alike): round 1 opens,
  * in-play permanents join and round-start war machines fire. Runs after the
  * start-of-combat Tactics windows, if any, have all resolved.
@@ -4507,6 +4531,9 @@ function finalizeCombatStart(state: GameState): void {
   // Rune pool from their Sieidi/Altar baseline + City Hall flag, applying any
   // Rune Level the starting pool already qualifies for.
   seedRunesForCombat(state);
+  // Factory — Frederick "further enhances the Automaton's explosion": seed each
+  // player's Automaton-detonation bonus for this combat from their hero.
+  seedFactoryHeroEffects(state);
   // In-play permanents join the fight and round-start war machines fire.
   applyPermanentCombatEffects(state);
   applyCombatStartUnitAbilities(state);
@@ -5546,6 +5573,14 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
       if (armyCopy.some((unit) => unit.unitDefId === purchase.unitDefId)) {
         throw new Error(
           `${coreUnitDefinitions[purchase.unitDefId]?.name ?? "That unit"} is already in your army — each unit card exists once. Reinforce it to a pack instead.`
+        );
+      }
+      // Factory: Couatls and Juggernauts are mutually exclusive — you cannot have
+      // both in your army (the choice between the two Gold units). armyCopy folds
+      // in earlier purchases in this same action, so you cannot buy both at once.
+      if (factoryGoldUnitConflict(armyCopy, purchase.unitDefId)) {
+        throw new Error(
+          "Factory: choose Couatls or Juggernauts — you cannot have both in your army."
         );
       }
       // The total gold discount reserved for THIS unit (a Legion voucher stacks

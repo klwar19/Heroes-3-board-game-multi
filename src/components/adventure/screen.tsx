@@ -8,7 +8,12 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNod
 import { Ban, BookOpen, Check, ChevronsUp, Crown, Dices, Hammer, Image as ImageIcon, Info, Lock, Minus, Plus, RotateCcw, RotateCw, Shield, Sparkles, Star, Swords, Unlock, X } from "lucide-react";
 import { cardLibrary } from "@/data/cards/library";
 import { buildingTimingLabel, describeBuildingEffect } from "@/data/towns/describe";
-import { coreBuildingDefinitions, coreFactionDefinitions, coreHeroDefinitions } from "@/data/factions/core";
+import {
+  coreBuildingDefinitions,
+  coreFactionDefinitions,
+  coreHeroDefinitions,
+  isPlayableFaction
+} from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import type { TownBuildingDefinition } from "@/data/factions/types";
 import { locationDefinitions } from "@/data/map/locations";
@@ -4318,12 +4323,12 @@ function HeroSetupDetail({ heroDefId }: { heroDefId: string }) {
       <div className="heroDetailSection">
         <h4>Specialties</h4>
         {([1, 4, 6] as const).map((level) => {
-          const cardId = hero.specialtyCardIds[level];
-          const card = cardLibrary[cardId];
+          const cardId = hero.specialtyCardIds?.[level];
+          const card = cardId ? cardLibrary[cardId] : undefined;
           return (
             <div className="heroDetailEntry" key={level}>
               <span className="heroSpecLevel">{SPECIALTY_LEVEL_NUMERAL[level]}</span>
-              <strong>{card?.name ?? cardId}</strong>
+              <strong>{card?.name ?? cardId ?? "—"}</strong>
               <span>{cardRulesText(cardId)}</span>
             </div>
           );
@@ -4627,7 +4632,7 @@ function DraftTownPhase({ state, viewerPlayerId, onAction }: Omit<DraftFlowProps
   const takenByOthers = reservedTownIdsForOtherSeats(lobby, viewerPlayerId);
   const untaken = (Object.values(coreFactionDefinitions) as { id: FactionId }[])
     .map((faction) => faction.id)
-    .filter((id) => !takenByOthers.has(id));
+    .filter((id) => !takenByOthers.has(id) && isPlayableFaction(id));
   const options = lobby.draft?.seatRolls?.[viewerPlayerId]?.townOptions ?? [];
   const lockedFaction = seat.factionId ? coreFactionDefinitions[seat.factionId] : null;
 
@@ -4943,7 +4948,7 @@ function DraftFlowPanel({ state, viewerPlayerId, onAction, onInspect }: DraftFlo
   } else if (draft.format === "open") {
     flow = (
       <FactionPickGrid
-        factionIds={Object.keys(coreFactionDefinitions) as FactionId[]}
+        factionIds={(Object.keys(coreFactionDefinitions) as FactionId[]).filter(isPlayableFaction)}
         heroStateFor={(factionId, heroDefId) => ({
           selected: seat.factionId === factionId && seat.heroDefId === heroDefId,
           banned: false,

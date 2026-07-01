@@ -11,7 +11,8 @@ export type FactionId =
   | "tower"
   | "conflux"
   | "cove"
-  | "bulwark";
+  | "bulwark"
+  | "factory";
 export type UnitTier = "bronze" | "silver" | "gold" | "azure";
 
 export type UnitSideDefinition = {
@@ -68,8 +69,12 @@ export type HeroDefinition = {
   startingStats: { attack: number; defense: number; power: number; knowledge: number };
   /** Card id of the printed starting ability. */
   startingAbilityCardId: string;
-  /** Specialty card ids gained at levels I, IV and VI. */
-  specialtyCardIds: { 1: string; 4: string; 6: string };
+  /**
+   * Specialty card ids gained at levels I, IV and VI. The whole object is
+   * absent for stub/placeholder heroes (art-only factions); an implemented hero
+   * always carries all three.
+   */
+  specialtyCardIds?: { 1: string; 4: string; 6: string };
   /** Classic PC portrait (heroes.thelazy.net), hosted locally. */
   portrait?: string;
   /** Scan of the printed hero board (fan wiki), hosted locally. */
@@ -325,6 +330,14 @@ export type FactionDefinition = {
   /** Player flag/cube color used on the map and hero pawns. */
   color: string;
   startingTileId: string;
+  /**
+   * Whether a seat may draft/roll and play this faction. Absent = playable.
+   * Set `false` for a faction that is registered only for its art/data and is
+   * not yet a complete, selectable town (no starting map tile, stub units /
+   * buildings / heroes). Such a faction must never enter a real game — it would
+   * crash on its missing tile and ship hollow mechanics.
+   */
+  playable?: boolean;
   heroes: string[];
   buildings: string[];
   /** Unit definition ids recruitable by this faction. */

@@ -89,7 +89,7 @@ describe("new heroes are registered in their factions with art and implemented s
       expect(hero.portrait, `${heroId} portrait`).toContain(`/assets/hero_boardart-${heroId}.webp`);
       expect(hero.boardScan, `${heroId} board scan`).toContain(`/assets/heroes-${factionId}-`);
       for (const level of [1, 4, 6] as const) {
-        const cardId = hero.specialtyCardIds[level];
+        const cardId = hero.specialtyCardIds![level];
         const card = adventureCards[cardId];
         expect(card, `${cardId} should exist`).toBeTruthy();
         expect(card.implementationStatus, `${cardId} implemented`).toBe("implemented");

@@ -5,6 +5,7 @@ import {
   coreBuildingDefinitions,
   coreFactionDefinitions,
   coreHeroDefinitions,
+  isPlayableFaction,
   neutralUnitIdsByFaction
 } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
@@ -319,7 +320,13 @@ export function instantiateTile(
   tileCounter = Object.keys(adventure.tiles).length + 1;
   const id = `tile_${tileCounter}_${tileDefId}`;
   const def = allTileDefinitions[tileDefId];
-  const group = def?.group;
+  if (!def) {
+    // A dangling tile id (e.g. a non-playable faction's placeholder starting
+    // tile) would otherwise silently produce an empty, fieldless tile and crash
+    // far downstream. Fail loudly and clearly at the source instead.
+    throw new Error(`Unknown map tile "${tileDefId}" — no definition exists.`);
+  }
+  const group = def.group;
   const tile: MapTileState = {
     id,
     tileDefId,
@@ -1369,7 +1376,7 @@ export function gainExperience(state: GameState, playerId: PlayerId, amount: num
 
     if (SPECIALTY_LEVELS.includes(level as 4 | 6) && player.heroDefId) {
       const heroDef = coreHeroDefinitions[player.heroDefId];
-      const specialtyCardId = heroDef?.specialtyCardIds[level as 4 | 6];
+      const specialtyCardId = heroDef?.specialtyCardIds?.[level as 4 | 6];
       if (specialtyCardId) {
         player.hand.push(specialtyCardId);
         effects.push(`gained specialty ${specialtyCardId}`);
@@ -1655,6 +1662,8 @@ function interactionToSteps(interaction: LocationInteraction, extraLocationDice 
       return [{ type: "PRISON" }];
     case "SPELL_SCROLL":
       return [{ type: "SPELL_SCROLL", remaining: 2 }];
+    case "DIG_ARTIFACT":
+      return [{ type: "DIG_ARTIFACT" }];
   }
 }
 
@@ -2940,6 +2949,49 @@ export function processPendingVisit(state: GameState): void {
         state.decks[NEUTRAL_DECK_IDS[(def?.tier ?? "bronze") as "bronze" | "silver" | "gold" | "azure"]]?.discardPile.push(
           step.unitDefId
         );
+        break;
+      }
+      case "DIG_ARTIFACT": {
+        // The Factory "shovel": draw the top Artifact card the visitor can take
+        // (across the split minor/major/relic decks in BINH mode, else the single
+        // "artifacts" deck), then let them keep it or discard it.
+        const deckIds = state.decks["artifacts"]
+          ? ["artifacts"]
+          : ["artifacts-minor", "artifacts-major", "artifacts-relic"];
+        let dug: string | null = null;
+        let dugDeckId = deckIds[0];
+        for (const deckId of deckIds) {
+          dug = drawTopOfSharedDeck(state, deckId, visit.playerId);
+          if (dug) {
+            dugDeckId = deckId;
+            break;
+          }
+        }
+        if (!dug) {
+          break;
+        }
+        const name = cardLibrary[dug]?.name ?? dug;
+        visit.steps.unshift({
+          type: "CHOOSE_ONE",
+          prompt: `You dug up ${name} — keep it or discard it?`,
+          options: [
+            { label: `Keep ${name}`, steps: [{ type: "DIG_ARTIFACT_KEEP", cardId: dug }] },
+            { label: "Discard it", steps: [{ type: "DIG_ARTIFACT_DISCARD", cardId: dug, deckId: dugDeckId }] }
+          ]
+        });
+        break;
+      }
+      case "DIG_ARTIFACT_KEEP": {
+        const player = state.players[visit.playerId];
+        if (player) {
+          player.hand.push(step.cardId);
+          appendEvent(state, { type: "ARTIFACT_DUG", playerId: visit.playerId, cardId: step.cardId, kept: true });
+        }
+        break;
+      }
+      case "DIG_ARTIFACT_DISCARD": {
+        state.decks[step.deckId]?.discardPile.push(step.cardId);
+        appendEvent(state, { type: "ARTIFACT_DUG", playerId: visit.playerId, cardId: step.cardId, kept: false });
         break;
       }
       case "NEUTRAL_RECRUIT_RESOLVE": {
@@ -5221,12 +5273,14 @@ export function grantCreatureBankReward(
   processPendingVisit(state);
 }
 
-// Every faction with a unit roster is a first-class playable faction and thus a
-// valid Random Town defender — derived from the faction definitions so newer
-// expansions (Conflux, Cove, …) are included automatically rather than being
-// silently dropped by a stale hand-maintained list.
+// Every faction with a unit roster AND not flagged non-playable is a first-class
+// playable faction and thus a valid Random Town defender — derived from the
+// faction definitions so newer expansions (Conflux, Cove, …) are included
+// automatically rather than being silently dropped by a stale hand-maintained
+// list. Art-only stub factions (Factory: no starting tile, stub units) are
+// excluded via `isPlayableFaction` so the defender pool never draws them.
 export const PLAYABLE_FACTIONS: string[] = Object.values(coreFactionDefinitions)
-  .filter((faction) => faction.units.length > 0)
+  .filter((faction) => faction.units.length > 0 && isPlayableFaction(faction.id))
   .map((faction) => faction.id);
 
 /**

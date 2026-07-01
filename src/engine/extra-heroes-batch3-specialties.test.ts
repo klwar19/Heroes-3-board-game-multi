@@ -134,8 +134,8 @@ describe("batch-3 heroes are registered with art and implemented specialties", (
       expect(hero.boardScan, `${heroId} has no board scan`).toBeUndefined();
       expect(existsSync(assetPath(hero.portrait!)), `${heroId} portrait file on disk`).toBe(true);
       for (const level of [1, 4, 6] as const) {
-        const card = adventureCards[hero.specialtyCardIds[level]];
-        expect(card, `${hero.specialtyCardIds[level]} should exist`).toBeTruthy();
+        const card = adventureCards[hero.specialtyCardIds![level]];
+        expect(card, `${hero.specialtyCardIds![level]} should exist`).toBeTruthy();
         expect(card.implementationStatus, `${card.id} implemented`).toBe("implemented");
         expect(card.tags, `${card.id} not flagged needs-implementation`).not.toContain("needs-implementation");
         // No printed specialty face exists for these heroes, so (like Cyra/Torosar)
@@ -154,7 +154,7 @@ describe("batch-3 heroes are registered with art and implemented specialties", (
     expect(existsSync(assetPath(hero.boardScan!)), "board scan file").toBe(true);
     expect(existsSync(assetPath(hero.portrait!)), "portrait file").toBe(true);
     for (const level of [1, 4, 6] as const) {
-      const card = adventureCards[hero.specialtyCardIds[level]];
+      const card = adventureCards[hero.specialtyCardIds![level]];
       expect(card.implementationStatus).toBe("implemented");
       expect(card.assets?.cardImage).toBe(`/assets/hero_specialties-lord_haart_necropolis-${level}.webp`);
       expect(existsSync(assetPath(card.assets!.cardImage!)), `${card.id} face on disk`).toBe(true);

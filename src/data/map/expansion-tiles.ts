@@ -149,6 +149,38 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
       tileImage: "/assets/board/tiles/s10.webp"
     }
   },
+  "&S1": {
+    id: "&S1",
+    group: "starting",
+    content: "regular_stretch_goals",
+    terrain: "rough",
+    // The Factory starting tile — labelled "&S1" on the tile (the "&" prefix is the
+    // Factory set's marker, like "#" is another set's). Its industrial/wasteland
+    // theme sits on ROUGH terrain, so the hex layout and outer borders mirror the
+    // Stronghold starting tile (S7), which is the art base: scripts composite the
+    // Factory town panorama over S7's central town hex and re-label it "&S1"
+    // (placeholder art, like Bulwark's S10), keeping S7's ring glyphs so the engine
+    // fields line up. Drop in the real &S1 scan to replace it.
+    fields: [
+      { location: "town", faction: "factory" },
+      { location: "mine", difficulty: 1, resource: "buildingMaterials", amount: 2 },
+      { location: "blocked_field" },
+      { location: "empty_field" },
+      { location: "treasure_symbol", difficulty: 1 },
+      { location: "empty_field" },
+      { location: "resource_symbol" },
+    ],
+    outerImpassable: [false, true, false, true, true, true],
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
+      credit:
+        "Factory starting tile (labelled &S1); rough terrain and hex layout mirror the Stronghold starting tile (S7), the placeholder art base (Factory town composited over the centre, re-labelled &S1). Verify against physical tiles before final release.",
+      url: "https://heroes.thelazy.net/index.php/Factory"
+    },
+    assets: {
+      tileImage: "/assets/board/tiles/sf1.webp"
+    }
+  },
   F19: {
     id: "F19",
     group: "far",
@@ -915,6 +947,36 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
     },
     assets: {
       tileImage: "/assets/board/tiles/n22.webp"
+    }
+  },
+  "&N1": {
+    id: "&N1",
+    group: "near",
+    content: "regular_stretch_goals",
+    terrain: "rough",
+    // A Factory near tile — labelled "&N1" on the tile — carrying the new "shovel"
+    // Excavation field (artifact_dig: dig the top Artifact, keep or discard).
+    // Layout and outer borders mirror the rough near tile N13, the placeholder art
+    // base (re-labelled &N1); the centre empty field is the Excavation site. Drop
+    // in the real &N1 scan to replace it.
+    fields: [
+      { location: "tree_of_knowledge" },
+      { location: "mine", difficulty: 5, resource: "gold", amount: 5 },
+      { location: "artifact_dig" },
+      { location: "blocked_field" },
+      { location: "treasure_symbol", difficulty: 4 },
+      { location: "shrine_of_magic_gesture" },
+      { location: "spell_scroll" },
+    ],
+    outerImpassable: [false, false, true, false, false, false],
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
+      credit:
+        "Factory near tile (labelled &N1) introducing the Excavation (shovel) field. Rough terrain and layout mirror N13, the placeholder art base (re-labelled &N1). Verify against physical tiles before final release.",
+      url: "https://heroes.thelazy.net/index.php/Factory"
+    },
+    assets: {
+      tileImage: "/assets/board/tiles/nf1.webp"
     }
   },
   "#N1": {

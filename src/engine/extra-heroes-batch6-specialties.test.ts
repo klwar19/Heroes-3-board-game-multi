@@ -175,8 +175,8 @@ describe("batch-6 heroes are registered with PC-portrait art and implemented spe
       expect(hero.boardScan, `${heroId} has no board scan`).toBeUndefined();
       expect(existsSync(assetPath(hero.portrait!)), `${heroId} portrait file on disk`).toBe(true);
       for (const level of [1, 4, 6] as const) {
-        const card = adventureCards[hero.specialtyCardIds[level]];
-        expect(card, `${hero.specialtyCardIds[level]} should exist`).toBeTruthy();
+        const card = adventureCards[hero.specialtyCardIds![level]];
+        expect(card, `${hero.specialtyCardIds![level]} should exist`).toBeTruthy();
         expect(card.implementationStatus, `${card.id} implemented`).toBe("implemented");
         expect(card.tags, `${card.id} not flagged needs-implementation`).not.toContain("needs-implementation");
         expect(card.assets?.cardImage, `${card.id} omits a missing image`).toBeUndefined();

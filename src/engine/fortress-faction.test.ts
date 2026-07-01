@@ -101,7 +101,7 @@ describe("Fortress faction wiring", () => {
       expect(hero.faction).toBe("fortress");
       expect(cardLibrary[hero.startingAbilityCardId]).toBeDefined();
       for (const level of [1, 4, 6] as const) {
-        const specialty = adventureCards[hero.specialtyCardIds[level]];
+        const specialty = adventureCards[hero.specialtyCardIds![level]];
         expect(specialty, `${heroId} level ${level} specialty`).toBeDefined();
         expect(specialty.implementationStatus).toBe("implemented");
       }
@@ -141,7 +141,7 @@ describe("Fortress card art", () => {
         broken.push(`${heroId} board scan ${hero.boardScan}`);
       }
       for (const level of [1, 4, 6] as const) {
-        const src = adventureCards[hero.specialtyCardIds[level]].assets?.cardImage;
+        const src = adventureCards[hero.specialtyCardIds![level]].assets?.cardImage;
         if (isBoardArtHero) {
           if (!src || !existsSync(assetPath(src))) {
             broken.push(`${heroId} specialty ${level} ${src ?? "(none)"}`);
