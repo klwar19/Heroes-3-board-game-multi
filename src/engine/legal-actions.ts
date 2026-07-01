@@ -140,6 +140,7 @@ import {
   getDiscardToIgnoreAttackDieAbility,
   getEnemySpellPowerReduction,
   getLethalSaveUnitAbility,
+  getSpendCubeAttackAgain,
   getUnitAbilityDefinitions,
   hasBindAdjacentEnemies,
   hasInnateMagicMirror,
@@ -3225,6 +3226,32 @@ function addUnitAbilityActions(actions: LegalAction[], state: GameState, playerI
       }
     }
 
+    // Factory Dreadnoughts (Juggernaut): "[activation] Instead of attacking,
+    // select up to N units adjacent to this one." Offered as an "other action"
+    // (in place of attacking) whenever at least one unit stands adjacent; the
+    // per-pick allocation opens in applyUnitAbilityAction.
+    if (ability.effect?.type === "SPLASH_ALLOCATION_ATTACK" && !activeUnit.attackedThisActivation) {
+      const hasAdjacent = Object.values(combat.units).some(
+        (candidate) =>
+          candidate.id !== activeUnit.id &&
+          isUnitAlive(candidate) &&
+          !isArrowTowerUnit(candidate) &&
+          isAdjacent(candidate.position, activeUnit.position)
+      );
+      if (hasAdjacent) {
+        actions.push({
+          label: `${activeUnit.name} use ${ability.name} (allocate splash to adjacent units instead of attacking)`,
+          action: {
+            type: "USE_UNIT_ABILITY",
+            playerId,
+            unitId: activeUnit.id,
+            abilityId: ability.id,
+            target: { type: "none" }
+          }
+        });
+      }
+    }
+
     // Pit Lords' "Summon Demons" other action: only after a friendly unit has
     // been removed this combat, and once per combat per Pit Lords unit. Used
     // instead of moving or attacking (the caller already gated on those).
@@ -3563,6 +3590,13 @@ function addUnitActions(actions: LegalAction[], state: GameState, playerId: Play
 
   const alreadyAttacked = Boolean(activeUnit.attackedThisActivation);
 
+  // Factory Sandworms (Pack): after attacking, while a faction cube remains the
+  // controller may spend one to "attack again" — so extra attacks stay on offer
+  // beyond the normal once-per-activation attack (each declared attack spends a
+  // cube in declareAttack).
+  const cubeAttackAvailable =
+    alreadyAttacked && Boolean(getSpendCubeAttackAgain(activeUnit)) && (activeUnit.factionCubes ?? 0) >= 1;
+
   if (!alreadyAttacked) {
     addUnitAbilityActions(actions, state, playerId, activeUnit);
     addFortificationActions(actions, state, playerId, activeUnit);
@@ -3582,15 +3616,18 @@ function addUnitActions(actions: LegalAction[], state: GameState, playerId: Play
 
   // Ranged units shoot first and may step afterwards; everyone else may move
   // first and then attack an adjacent enemy. canUnitAttack enforces that a
-  // ranged unit that already moved gave up its attack.
-  if (!alreadyAttacked) {
+  // ranged unit that already moved gave up its attack. A Sandworm with a cube
+  // may attack again even after its first strike (cubeAttackAvailable).
+  if (!alreadyAttacked || cubeAttackAvailable) {
     for (const defender of Object.values(combat.units)) {
       if (!canUnitAttack(combat, activeUnit, defender, state.activeEffects)) {
         continue;
       }
 
       actions.push({
-        label: `${activeUnit.name} attack ${defender.name}`,
+        label: cubeAttackAvailable
+          ? `${activeUnit.name} attack ${defender.name} again (spend a faction cube)`
+          : `${activeUnit.name} attack ${defender.name}`,
         action: {
           type: "ATTACK_UNIT",
           playerId,

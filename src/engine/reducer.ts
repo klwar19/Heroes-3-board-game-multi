@@ -260,6 +260,14 @@ import {
   getEnchanterActivationAbility,
   getEnemyDiscardAbility,
   getFlatAttackBonus,
+  getInvulnerabilityActivation,
+  isUnitDamageImmune,
+  getSplashAllocationAttack,
+  getPlaceFactionCubeActivation,
+  getGainFactionCubeOnKill,
+  getSpendCubeAttackAgain,
+  getPreemptiveRetaliation,
+  getUnitsAdjacentTo,
   getAstrologersRoundFrenzy,
   getMinimumAttackDie,
   getOnAttackFireWallDamage,
@@ -2137,6 +2145,20 @@ function applyAttackDamageFromCandidate(
       });
     }
   }
+  // Factory Couatls' activated invulnerability: while it "ignores all damage",
+  // the blow still lands (die rolls, event fires, the Couatl may still
+  // retaliate) but for 0 damage — nothing is added and it is never removed.
+  if (isUnitDamageImmune(defender) && damage > 0) {
+    damage = 0;
+    const ward = getInvulnerabilityActivation(defender);
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: defender.id,
+      abilityId: ward?.abilityId ?? "couatl-invulnerability",
+      targetUnitId: defender.id,
+      message: `${defender.cardName} is invulnerable and shrugs off the attack.`
+    });
+  }
   // Reported bonuses fold in the die-face-conditioned deltas so the event's
   // numbers reconcile with the resolved attack/defense values.
   const reportedAttackBonus = attackBonus + dieAttackBonus;
@@ -2288,6 +2310,22 @@ function applyAttackDamageFromCandidate(
   if (defenderWasAlive && !isUnitAlive(defender)) {
     applyWogOnKillEffects(state, attacker, defender);
   }
+  // Factory Sandworms (Pack): "Place a faction cube on this unit whenever it
+  // defeats an enemy unit." A real removal (not a Pack→Few flip) banks a cube;
+  // it may later be spent to attack again (SPEND_FACTION_CUBE_ATTACK_AGAIN).
+  if (defenderWasAlive && !isUnitAlive(defender)) {
+    const cubeGain = getGainFactionCubeOnKill(attacker);
+    if (cubeGain) {
+      attacker.factionCubes = (attacker.factionCubes ?? 0) + 1;
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: attacker.id,
+        abilityId: cubeGain.abilityId,
+        targetUnitId: defender.id,
+        message: `${attacker.cardName} devours ${defender.cardName} and banks a faction cube (${attacker.factionCubes}).`
+      });
+    }
+  }
   return { damage, roll: candidate.roll, cancelled: false };
 }
 
@@ -2392,6 +2430,10 @@ function applyPostAttackAbilityDamage(
   for (const effect of damageEffects) {
     const target = combat.units[effect.targetUnitId];
     if (!target || !isUnitAlive(target)) {
+      continue;
+    }
+    // Factory Couatls' invulnerability ignores this post-attack ability damage.
+    if (isUnitDamageImmune(target)) {
       continue;
     }
 
@@ -2879,6 +2921,22 @@ function concludeAttackerActivation(state: GameState, attacker: CombatUnitState)
     return;
   }
 
+  // Factory Sandworms (Pack): "[activation] You may remove a faction cube from
+  // this unit in order to attack again." After its attack, while it still carries
+  // a cube, keep it active so the player may spend one for another attack (or hold
+  // to end the turn). It banks fresh cubes on kills, so it can chain.
+  const canCubeAttackAgain =
+    Boolean(combat) &&
+    isUnitAlive(attacker) &&
+    !attacker.activatedThisRound &&
+    Boolean(getSpendCubeAttackAgain(attacker)) &&
+    (attacker.factionCubes ?? 0) >= 1;
+  if (canCubeAttackAgain) {
+    state.phase = "combat";
+    state.priorityPlayerId = null;
+    return;
+  }
+
   attacker.activatedThisRound = true;
   // Activation-bound effects on the attacker end with its activation (Berserk's
   // "in its activation" forced attack, any "this Activation" buff).
@@ -3046,7 +3104,9 @@ function maybeDeclareDoubleAttack(
       attackerId: attacker.id,
       defenderId: defender.id
     },
-    cards
+    cards,
+    false,
+    true
   );
   return true;
 }
@@ -3399,6 +3459,40 @@ function finishResolvedAttack(
   }
 
   if (details.isRetaliation) {
+    // Factory Bounty Hunters' Preemptive Shot: this counter fired BEFORE the
+    // original attack, which is still parked on the stack beneath it. Resume that
+    // attack now — unless the counter felled the attacker, in which case its blow
+    // is cancelled. The defender's retaliation is already spent
+    // (retaliatedThisRound was set above), so it will not retaliate a second time.
+    if (stackItem.modifiers.isPreemptiveRetaliation) {
+      const parked = state.stack.at(-1);
+      const parkedAttackerId =
+        parked && (parked.action.type === "ATTACK_UNIT" || parked.action.type === "MOVE_AND_ATTACK_UNIT")
+          ? parked.action.attackerId
+          : undefined;
+      const parkedAttacker = parkedAttackerId ? state.combat?.units[parkedAttackerId] : undefined;
+      if (parked && parkedAttacker && isUnitAlive(parkedAttacker)) {
+        // Attacker survived the pre-emptive strike: land its parked blow now.
+        resolveTopStack(state, cards);
+        return;
+      }
+      // Pre-emptive strike cancelled the attack (attacker removed): drop it.
+      if (parked) {
+        parked.status = "resolved";
+        state.stack.pop();
+      }
+      if (state.combat && state.combat.attackSequence?.attackerId === parkedAttackerId) {
+        state.combat.attackSequence = null;
+      }
+      if (parkedAttacker) {
+        concludeAttackerActivation(state, parkedAttacker);
+      } else {
+        state.phase = "combat";
+        state.priorityPlayerId = null;
+      }
+      return;
+    }
+
     // The retaliation has resolved; hand the activation back to the original
     // attacker, who may still owe a post-attack step (ranged units).
     if (declareAfterRetaliationAbilityAttack(state, cards)) {
@@ -3717,6 +3811,11 @@ function applyPoisonCubesAtActivation(state: GameState, unit: CombatUnitState): 
   if (cubes <= 0 || !isUnitAlive(unit)) {
     return false;
   }
+  // An invulnerable unit "ignores all damage": the poison tick is skipped and
+  // the cube is kept for a later activation.
+  if (isUnitDamageImmune(unit)) {
+    return false;
+  }
 
   unit.poisonCubes = cubes - 1;
   const assigned = Math.min(1, Math.max(0, unit.maxHealth - unit.damage));
@@ -3777,6 +3876,11 @@ function applyFireShieldDamage(
   attackKind: "melee" | "ranged"
 ): void {
   if (attackKind !== "melee" || !state.combat || !isUnitAlive(attacker)) {
+    return;
+  }
+  // An invulnerable Factory Couatl that strikes a Fire-Shielded unit takes no
+  // recoil — it "ignores all damage".
+  if (isUnitDamageImmune(attacker)) {
     return;
   }
 
@@ -4274,6 +4378,12 @@ function applyFlatAbilityDamage(
     return;
   }
 
+  // Factory Couatls' invulnerability "ignores all damage": flat ability damage
+  // (Magog/Cerberi splash, the Dreadnought's allocation) never touches it.
+  if (isUnitDamageImmune(target)) {
+    return;
+  }
+
   appendEvent(state, {
     type: "UNIT_ABILITY_TRIGGERED",
     unitId: source.id,
@@ -4292,6 +4402,49 @@ function applyFlatAbilityDamage(
     damageKind: "effect"
   });
   markUnitRemovedIfNeeded(state, target);
+}
+
+/**
+ * Factory Dreadnoughts' splash allocation: open (or re-open) the per-pick target
+ * choice. The leftmost remaining value is dealt to the next chosen adjacent unit
+ * (chooseAbilityTarget → "dreadnought-splash"), then this re-opens with the tail
+ * of the values until they (or the adjacent candidates) run out.
+ */
+function openDreadnoughtSplashChoice(
+  state: GameState,
+  source: CombatUnitState,
+  abilityId: string,
+  abilityName: string,
+  candidateUnitIds: UnitId[],
+  remainingValues: number[]
+): void {
+  const choiceId = `choice_${nextEventNumber(state)}`;
+  const nextValue = remainingValues[0] ?? 0;
+  state.pendingChoice = {
+    id: choiceId,
+    type: "ABILITY_TARGET_CHOICE",
+    playerId: source.controllerId,
+    kind: "dreadnought-splash",
+    abilityId,
+    abilityName,
+    prompt: `${source.cardName}: ${abilityName} — deal ${nextValue} damage to an adjacent unit (${remainingValues.length} value${remainingValues.length === 1 ? "" : "s"} left).`,
+    sourceUnitId: source.id,
+    anchorUnitId: null,
+    candidateUnitIds,
+    chainRemainingDamages: remainingValues,
+    optional: true,
+    skipLabel: "Stop"
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = source.controllerId;
+  appendEvent(state, {
+    type: "PENDING_CHOICE_CREATED",
+    choiceId,
+    choiceType: "ABILITY_TARGET_CHOICE",
+    playerId: source.controllerId,
+    sourceEffectIds: [],
+    message: `${source.cardName} allocates ${nextValue} splash damage.`
+  });
 }
 
 /** The living unit one space beyond the target, in line away from the attacker. */
@@ -5770,6 +5923,19 @@ function applyActivationStartAbilities(state: GameState, unit: CombatUnitState):
     return;
   }
 
+  // Factory Couatls: the activated invulnerability lasts "until its next
+  // activation" — so it ends the instant this unit begins that next activation.
+  if (unit.invulnerableUntilActivation) {
+    unit.invulnerableUntilActivation = false;
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: unit.id,
+      abilityId: getInvulnerabilityActivation(unit)?.abilityId ?? "couatl-invulnerability",
+      targetUnitId: unit.id,
+      message: `${unit.cardName}'s invulnerability fades as it activates.`
+    });
+  }
+
   const enemyId =
     unit.controllerId === combat.attackerPlayerId ? combat.defenderPlayerId : combat.attackerPlayerId;
 
@@ -6157,6 +6323,19 @@ function applyActivationDamageSpell(
   // bolt (only reduced if it also reduces spell damage), unlike a real cast,
   // which excludes immune units at targeting. This split is intentional; do not
   // add a unitImmuneToSpellSchools gate here without a confirmed ruling.
+  // A Factory Couatl with its invulnerability up "ignores all damage" — that
+  // DAMAGE ward (distinct from spell-school immunity above) does turn the bolt
+  // aside.
+  if (isUnitDamageImmune(target)) {
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: target.id,
+      abilityId: getInvulnerabilityActivation(target)?.abilityId ?? "couatl-invulnerability",
+      targetUnitId: target.id,
+      message: `${target.cardName} is invulnerable and ignores ${ability.abilityName}.`
+    });
+    return;
+  }
   const dealt = reducedSpellDamage(state, target, ability.amount);
   appendEvent(state, {
     type: "UNIT_ABILITY_TRIGGERED",
@@ -6396,6 +6575,75 @@ function maybeOpenPlayerActivationChoice(state: GameState): void {
       playerId: unit.controllerId,
       sourceEffectIds: [],
       message: `${unit.cardName} chooses a target for ${faerie.abilityName}.`
+    });
+    return;
+  }
+
+  // Factory Couatls: "[activation] Once per Combat. Until its next activation,
+  // this unit ignores all damage and spell effects." Offered as an optional
+  // yes/no at the start of the activation. The Few's activation of it ends the
+  // turn; the Pack's is free (resolved in chooseAbilityTarget).
+  const couatlWard = getInvulnerabilityActivation(unit);
+  if (couatlWard && !unit.usedInvulnerabilityThisCombat) {
+    const choiceId = `choice_${nextEventNumber(state)}`;
+    state.pendingChoice = {
+      id: choiceId,
+      type: "ABILITY_TARGET_CHOICE",
+      playerId: unit.controllerId,
+      kind: "couatl-invulnerability",
+      abilityId: couatlWard.abilityId,
+      abilityName: couatlWard.abilityName,
+      prompt: couatlWard.endsActivation
+        ? `${unit.cardName}: ${couatlWard.abilityName} — become invulnerable until your next activation (this is your action for the turn), or skip.`
+        : `${unit.cardName}: ${couatlWard.abilityName} — become invulnerable until your next activation (free; you may still move and attack), or skip.`,
+      sourceUnitId: unit.id,
+      anchorUnitId: null,
+      candidateUnitIds: [unit.id],
+      optional: true,
+      skipLabel: "Don't activate"
+    };
+    state.phase = "choice";
+    state.priorityPlayerId = unit.controllerId;
+    appendEvent(state, {
+      type: "PENDING_CHOICE_CREATED",
+      choiceId,
+      choiceType: "ABILITY_TARGET_CHOICE",
+      playerId: unit.controllerId,
+      sourceEffectIds: [],
+      message: `${unit.cardName} may become invulnerable this round.`
+    });
+    return;
+  }
+
+  // Factory Automaton (Few): "[activation] You may place a faction cube on this
+  // unit (up to N)." An optional, free (does not end the turn) cube deposit; the
+  // banked cubes drive its cube-scaled Detonate on removal.
+  const cubeAbility = getPlaceFactionCubeActivation(unit);
+  if (cubeAbility && (unit.factionCubes ?? 0) < cubeAbility.maxCubes) {
+    const choiceId = `choice_${nextEventNumber(state)}`;
+    state.pendingChoice = {
+      id: choiceId,
+      type: "ABILITY_TARGET_CHOICE",
+      playerId: unit.controllerId,
+      kind: "automaton-cube",
+      abilityId: cubeAbility.abilityId,
+      abilityName: cubeAbility.abilityName,
+      prompt: `${unit.cardName}: ${cubeAbility.abilityName} — place a faction cube on this unit (now ${unit.factionCubes ?? 0}/${cubeAbility.maxCubes}), or skip.`,
+      sourceUnitId: unit.id,
+      anchorUnitId: null,
+      candidateUnitIds: [unit.id],
+      optional: true,
+      skipLabel: "Don't place a cube"
+    };
+    state.phase = "choice";
+    state.priorityPlayerId = unit.controllerId;
+    appendEvent(state, {
+      type: "PENDING_CHOICE_CREATED",
+      choiceId,
+      choiceType: "ABILITY_TARGET_CHOICE",
+      playerId: unit.controllerId,
+      sourceEffectIds: [],
+      message: `${unit.cardName} may bank a faction cube.`
     });
     return;
   }
@@ -6665,6 +6913,30 @@ function shouldRetaliate(
 }
 
 /**
+ * Factory Bounty Hunters (Neutral) "Preemptive Shot": whether this attack
+ * triggers the defender's pre-emptive Retaliation Attack — fired BEFORE the
+ * attacker's blow. Unlike a normal retaliation it needs NO adjacency and no
+ * melee attack (it "also retaliates against non-adjacent units"), so any attack
+ * on the Bounty Hunter provokes it. Still once per round (the pre-emptive strike
+ * spends the retaliation) and still cancelled by the attacker's own
+ * ignore-retaliation.
+ */
+function qualifiesForPreemptiveRetaliation(
+  attacker: CombatUnitState,
+  defender: CombatUnitState,
+  ignoreRetaliationOverride: boolean
+): boolean {
+  return (
+    Boolean(getPreemptiveRetaliation(defender)) &&
+    isUnitAlive(attacker) &&
+    isUnitAlive(defender) &&
+    !ignoreRetaliationOverride &&
+    !hasUnitAbilityEffect(attacker, "IGNORE_RETALIATION") &&
+    (!defender.retaliatedThisRound || hasUnitAbilityEffect(defender, "ALLOW_UNLIMITED_RETALIATION"))
+  );
+}
+
+/**
  * Open the reaction windows for a freshly declared attack (or retaliation).
  * Misfortune is "played immediately when the enemy unit is attacking, before
  * other cards", so a dedicated pre-buff window offering ONLY the defender's
@@ -6695,7 +6967,10 @@ function openRetaliationWindow(
   state: GameState,
   attacker: CombatUnitState,
   defender: CombatUnitState,
-  cards: CardLibrary
+  cards: CardLibrary,
+  /** Factory Bounty Hunters' Preemptive Shot: this retaliation fires BEFORE the
+   *  attacker's blow, so its resolution resumes the parked original attack. */
+  preemptive = false
 ): void {
   if (!state.combat) {
     return;
@@ -6714,6 +6989,9 @@ function openRetaliationWindow(
     defenderId: attacker.id
   };
   const stackItem = makeStackItem(state, retaliationAction);
+  if (preemptive) {
+    stackItem.modifiers.isPreemptiveRetaliation = true;
+  }
   // A Magic-Mirror-bounced Curse/Weakness from the original attack applies to its
   // retaliation too (e.g. the bounced Curse lowers the now-defending attacker's
   // Defense as your unit strikes back). One-shot, gone when this stack item pops.
@@ -6796,6 +7074,37 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
   const combat = state.combat;
   const details = getAttackStackDetails(state, stackItem);
   if (!combat || !details) {
+    return;
+  }
+
+  // Factory Bounty Hunters' Preemptive Shot: before this attack's blow lands,
+  // spin off the defender's Retaliation Attack (once, and only for a fresh
+  // player/AI attack — never a retaliation or a printed follow-up). This attack
+  // parks on the stack; its resolution resumes after the pre-emptive strike
+  // (finishResolvedAttack's isPreemptiveRetaliation branch), which may also
+  // cancel it if the counter fells the attacker.
+  if (
+    !details.isRetaliation &&
+    !details.abilityAttack &&
+    !stackItem.modifiers.preemptiveRetaliationTriggered &&
+    qualifiesForPreemptiveRetaliation(
+      details.attacker,
+      details.defender,
+      Boolean(stackItem.modifiers.ignoresRetaliationThisAttack)
+    )
+  ) {
+    stackItem.modifiers.preemptiveRetaliationTriggered = true;
+    const preempt = getPreemptiveRetaliation(details.defender);
+    if (preempt) {
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: details.defender.id,
+        abilityId: preempt.abilityId,
+        targetUnitId: details.defender.id,
+        message: `${details.defender.cardName} fires a Preemptive Shot at ${details.attacker.cardName}.`
+      });
+    }
+    openRetaliationWindow(state, details.attacker, details.defender, cards, true);
     return;
   }
 
@@ -12083,6 +12392,31 @@ function applyUnitAbilityAction(
     return;
   }
 
+  // Factory Dreadnoughts (Juggernaut): "[activation] Instead of attacking, select
+  // up to N units adjacent to this one. Allocate the printed damage, starting
+  // with the first selected." Offered as an "other action" in place of attacking;
+  // opens the sequential allocation picker over every adjacent unit (friend and
+  // foe — the card places no side restriction). A pure flat allocation, so it
+  // never provokes a Retaliation Attack.
+  if (ability.effect?.type === "SPLASH_ALLOCATION_ATTACK") {
+    if (unit.attackedThisActivation) {
+      throw new Error("That unit ability cannot be used now.");
+    }
+    const adjacent = getUnitsAdjacentTo(combat, unit).filter((candidate) => !isArrowTowerUnit(candidate));
+    if (adjacent.length === 0) {
+      throw new Error("That unit ability cannot be used now.");
+    }
+    openDreadnoughtSplashChoice(
+      state,
+      unit,
+      ability.id,
+      ability.name,
+      adjacent.map((candidate) => candidate.id),
+      ability.effect.damageValues
+    );
+    return;
+  }
+
   const target = action.target.type === "unit" ? combat.units[action.target.unitId] : undefined;
   if (!target || !isUnitAlive(target)) {
     throw new Error("That unit ability cannot be used now.");
@@ -13236,6 +13570,90 @@ function chooseAbilityTarget(
     return;
   }
 
+  // Factory Couatls' invulnerability: the decision is made for this activation
+  // either way (activationAbilityDone). On "activate" the ward goes up (once per
+  // combat); the Few version then ends the turn, the Pack version is free so the
+  // unit still moves and attacks.
+  if (choice.kind === "couatl-invulnerability") {
+    source.activationAbilityDone = true;
+    const ward = getInvulnerabilityActivation(source);
+    if (!isSkip && ward && !source.usedInvulnerabilityThisCombat) {
+      source.invulnerableUntilActivation = true;
+      source.usedInvulnerabilityThisCombat = true;
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: source.id,
+        abilityId: ward.abilityId,
+        targetUnitId: source.id,
+        message: `${source.cardName} coils into invulnerability — it ignores all damage and spell effects until its next activation.`
+      });
+      if (ward.endsActivation) {
+        source.activatedThisRound = true;
+        advanceActiveUnit(state);
+      }
+    }
+    return;
+  }
+
+  // Factory Automaton (Few): bank one faction cube (free — the unit still acts).
+  if (choice.kind === "automaton-cube") {
+    source.activationAbilityDone = true;
+    const cubeAbility = getPlaceFactionCubeActivation(source);
+    if (!isSkip && cubeAbility && (source.factionCubes ?? 0) < cubeAbility.maxCubes) {
+      source.factionCubes = (source.factionCubes ?? 0) + 1;
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: source.id,
+        abilityId: cubeAbility.abilityId,
+        targetUnitId: source.id,
+        message: `${source.cardName} banks a faction cube (${source.factionCubes}/${cubeAbility.maxCubes}) — its Detonate will hit that much harder.`
+      });
+    }
+    return;
+  }
+
+  // Factory Dreadnoughts' splash allocation: the k-th pick suffers the next
+  // (leftmost) printed damage value; then the choice re-opens for the next pick
+  // until the values or adjacent candidates run out. It "replaces attacking", so
+  // once at least one hit lands the activation ends. A cancel BEFORE any hit
+  // leaves the unit free to act (like the token-place cancel).
+  if (choice.kind === "dreadnought-splash") {
+    const remaining = choice.chainRemainingDamages ?? [];
+    const ability = getSplashAllocationAttack(source);
+    const fullCount = ability?.damageValues.length ?? remaining.length;
+    const committed = remaining.length < fullCount; // at least one hit already landed
+
+    if (isSkip) {
+      if (committed) {
+        source.activatedThisRound = true;
+        advanceActiveUnit(state);
+      }
+      // else: cancelled before any damage — the Dreadnought is free to act.
+      return;
+    }
+
+    const target = combat.units[action.targetUnitId];
+    if (target && isUnitAlive(target) && remaining.length > 0) {
+      applyFlatAbilityDamage(state, source, target.id, choice.abilityId ?? "", choice.abilityName, remaining[0]);
+    }
+    if (finishCombatIfNeeded(state)) {
+      return;
+    }
+
+    const restValues = remaining.slice(1);
+    const restCandidates = choice.candidateUnitIds.filter(
+      (id) => id !== action.targetUnitId && isUnitAlive(combat.units[id])
+    );
+    if (restValues.length > 0 && restCandidates.length > 0) {
+      openDreadnoughtSplashChoice(state, source, choice.abilityId ?? "", choice.abilityName, restCandidates, restValues);
+      return;
+    }
+    // All values spent (or no more adjacent units): the splash ends the turn.
+    source.activatedThisRound = true;
+    advanceActiveUnit(state);
+    return;
+  }
+
   if (choice.kind === "flat-damage") {
     applyFlatAbilityDamage(
       state,
@@ -13381,7 +13799,11 @@ function declareAttack(
   state: GameState,
   action: Extract<GameAction, { type: "ATTACK_UNIT" | "MOVE_AND_ATTACK_UNIT" }>,
   cards: CardLibrary,
-  isRetaliation = false
+  isRetaliation = false,
+  /** Marksmen/Elves' ranged double-shot re-enters here after the first attack;
+   *  it is an internal follow-up, not a fresh player attack, so it bypasses the
+   *  "already attacked" / faction-cube gate below. */
+  isInternalFollowUp = false
 ): void {
   const combat = state.combat;
   if (!combat) {
@@ -13404,6 +13826,25 @@ function declareAttack(
     }
   } else if (!canUnitAttack(combat, attacker, defender, state.activeEffects)) {
     throw new Error("That unit cannot attack the selected target.");
+  }
+
+  // Factory Sandworms (Pack): a repeat player attack (not a Retaliation or a
+  // printed follow-up) is the "[activation] remove a faction cube to attack
+  // again". It costs a cube; a Sandworm that already attacked with no cube left
+  // may not attack again. (Other units never reach here twice — after their
+  // attack the activation concludes and legal-actions stops offering it.)
+  if (!isRetaliation && !abilityAttack && !isInternalFollowUp && attacker.attackedThisActivation) {
+    const cubeAttack = getSpendCubeAttackAgain(attacker);
+    if (!cubeAttack || (attacker.factionCubes ?? 0) < 1) {
+      throw new Error("That unit cannot attack right now.");
+    }
+    attacker.factionCubes = (attacker.factionCubes ?? 0) - 1;
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: attacker.id,
+      abilityId: cubeAttack.abilityId,
+      message: `${attacker.cardName} spends a faction cube to attack again (${attacker.factionCubes} left).`
+    });
   }
 
   const stackItem = makeStackItem(state, action);
@@ -13581,6 +14022,11 @@ function dealBattlefieldTokenDamage(
   amount: number
 ): void {
   if (amount <= 0) {
+    return;
+  }
+  // A Factory Couatl with its invulnerability up ignores battlefield-token
+  // damage (Fire Wall / Land Mine) like any other damage.
+  if (isUnitDamageImmune(unit)) {
     return;
   }
   appendEvent(state, {

@@ -545,3 +545,45 @@ describe("Stronghold creature abilities carry their SFX + animation", () => {
     expect(spellPresentationMs(plan)).toBeGreaterThan(0);
   });
 });
+
+describe("Factory expansion gold/cube abilities carry their SFX + animation", () => {
+  // Each id is emitted by the engine as a UNIT_ABILITY_TRIGGERED under that exact
+  // id (the couatl ward/fade/block, the Dreadnought per-target splash, the
+  // Automaton place-cube + Detonate, the Sandworm Devour + Feeding Frenzy, and the
+  // Bounty Hunter Preemptive Shot), so an abilityFxPlans entry actually fires — the
+  // matching engine effects are proven in factory-gold-abilities.test.ts. The cue
+  // dies if the plan, its sprite or its sound is dropped.
+  const FACTORY_ABILITY_FX: [string, string, string][] = [
+    ["couatl-invulnerability-few", "shield", "spells/shield"],
+    ["couatl-invulnerability-pack", "shield", "spells/shield"],
+    ["couatl-invulnerability", "shield", "spells/shield"],
+    ["dreadnought-splash-1", "death-ripple", "units/dreadnought-shoot"],
+    ["dreadnought-splash-2", "death-ripple", "units/dreadnought-shoot"],
+    ["automaton-detonate-cubes", "fireball", "units/automaton-special"],
+    ["automaton-detonate", "fireball", "units/automaton-special"],
+    ["automaton-detonate-1", "fireball", "units/automaton-special"],
+    ["sandworm-cube-gain", "vampire-life-drain", "units/sandworm-special"],
+    ["sandworm-cube-attack", "frenzy", "spells/frenzy"],
+    ["bounty-hunter-preemptive", "counterstrike", "units/gunslinger-special"]
+  ];
+
+  it.each(FACTORY_ABILITY_FX)("wires %s with its sprite + sound", (abilityId, sprite, sound) => {
+    const plan = abilityFxPlans[abilityId];
+    expect(plan, `${abilityId} needs an ability FX plan`).toBeTruthy();
+    expect(plan.affect?.[0]?.key).toBe(sprite);
+    expect(spriteDurationMs(plan.affect?.[0]?.key)).toBeGreaterThan(0);
+    expect(plan.sound).toBe(sound);
+    expect(soundDurationMs(plan.sound)).toBeGreaterThan(0);
+    expect(spellPresentationMs(plan)).toBeGreaterThan(0);
+  });
+
+  it("gives the Automaton's cube-place a real sound-only cue (a mechanical whir, no sprite)", () => {
+    const plan = abilityFxPlans["automaton-place-cube"];
+    expect(plan, "automaton-place-cube needs an ability FX plan").toBeTruthy();
+    expect(plan.sound).toBe("units/automaton-move");
+    expect(soundDurationMs(plan.sound)).toBeGreaterThan(0);
+    expect(plan.affect).toBeUndefined();
+    expect(plan.hit).toBeUndefined();
+    expect(spellPresentationMs(plan)).toBeGreaterThan(0);
+  });
+});
