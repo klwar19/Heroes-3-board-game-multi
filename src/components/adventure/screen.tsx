@@ -457,7 +457,9 @@ export function HexMapBoard({
         ? choice.dimensionDoor?.destinations
         : choice.context === "view-earth"
           ? choice.viewEarth?.mineSpaceIds
-          : undefined;
+          : choice.context === "subterranean-gate-placement"
+            ? choice.subterraneanGate?.candidates.map((candidate) => candidate.hex)
+            : undefined;
     if (!spaceIds) {
       return targets;
     }
@@ -467,7 +469,16 @@ export function HexMapBoard({
         actionByOption.set(legal.action.optionIndex, legal.action);
       }
     }
+    // A hex that stands for more than one option (one field that could serve two
+    // different partners — a cavern touching two Surface tiles) is ambiguous to
+    // click, so leave it to the prompt buttons; a stray tap must never pick the
+    // wrong partner. Distinct hexes stay directly clickable.
+    const optionsPerHex = new Map<MapSpaceId, number>();
+    spaceIds.forEach((spaceId) => optionsPerHex.set(spaceId, (optionsPerHex.get(spaceId) ?? 0) + 1));
     spaceIds.forEach((spaceId, optionIndex) => {
+      if ((optionsPerHex.get(spaceId) ?? 0) > 1) {
+        return;
+      }
       const action = actionByOption.get(optionIndex);
       if (action) {
         targets.set(spaceId, action);
@@ -475,6 +486,28 @@ export function HexMapBoard({
     });
     return targets;
   }, [state.pendingChoice, viewerPlayerId, legalActions, readOnly]);
+
+  // During the Subterranean Gate pick-on-reveal choice, tag every candidate hex
+  // so the map can spell out — right on the flower — which field would become the
+  // Gate (down, on a Surface tile) or the Path up (a Subterranean tile's entrance
+  // to the Surface). The choice is otherwise legible only from the prompt text.
+  const gatePlacementChoice = useMemo(() => {
+    const choice = state.pendingChoice;
+    if (
+      readOnly ||
+      choice?.type !== "OPTION_CHOICE" ||
+      choice.playerId !== viewerPlayerId ||
+      choice.context !== "subterranean-gate-placement" ||
+      !choice.subterraneanGate
+    ) {
+      return null;
+    }
+    const { candidates } = choice.subterraneanGate;
+    // Every candidate of one choice carves the same half type — it depends only on
+    // which layer was just revealed — so a single role labels the whole set.
+    const role = candidates[0]?.role ?? "gate";
+    return { role, hexes: new Set<MapSpaceId>(candidates.map((candidate) => candidate.hex)) };
+  }, [state.pendingChoice, viewerPlayerId, readOnly]);
 
   // Redwood Observatory decisions are spatial too: an adjacent face-down tile
   // can be clicked to reveal it, and an empty candidate centre can be clicked to
@@ -903,10 +936,28 @@ export function HexMapBoard({
         );
       }
 
+      // Pick-on-reveal Subterranean Gate placement: label each candidate field on
+      // the map so the player sees exactly which hex becomes the Gate (Surface) or
+      // the Path up (Underground) before committing — the field also glows and is
+      // clickable via pendingMapChoiceTargets above.
+      if (gatePlacementChoice?.hexes.has(spaceId)) {
+        overlays.push(
+          <text
+            className="hexGateChoiceCue"
+            key={`${spaceId}-gate-choice-cue`}
+            textAnchor="middle"
+            x={x}
+            y={y + HEX_SIZE * 0.92}
+          >
+            {gatePlacementChoice.role === "gate" ? "🕳 gate here" : "🕳 path up here"}
+          </text>
+        );
+      }
+
       // Location Token art (the Subterranean Gate) sits on top of the tile scan
       // on the field it sacrificed, shown in both art and icon modes. The two
-      // halves are distinct: the surface gate on a Surface tile, the cave-mouth
-      // entrance on a Subterranean tile.
+      // halves are distinct: the skull cave-mouth GATE on a Surface tile, the
+      // lighter passage ENTRANCE on a Subterranean tile.
       const tokenImage =
         field.location === "subterranean_gate"
           ? subterraneanGateTokenImage(tile.group === "subterranean" ? "subterranean" : "surface")

@@ -213,12 +213,14 @@ describe("Creature Bank placement on tile discovery", () => {
     expect(state.pendingChoice).toBeNull();
   });
 
-  it("only treats Far/Near tiles as bank tiers (the gate is the tile group)", () => {
+  it("treats Far/Near/Subterranean tiles as bank tiers (the gate is the tile group)", () => {
     expect(creatureBankTierForGroup("far")).toBe("far");
     expect(creatureBankTierForGroup("near")).toBe("near");
+    // BINH house rule: a cavern is a "deep" tile and draws from the Near pile.
+    expect(creatureBankTierForGroup("subterranean")).toBe("near");
+    // Sea/center/starting never bank, even a sea tile with a Blocked Field.
     expect(creatureBankTierForGroup("sea")).toBeNull();
     expect(creatureBankTierForGroup("center")).toBeNull();
-    expect(creatureBankTierForGroup("subterranean")).toBeNull();
     expect(creatureBankTierForGroup("starting")).toBeNull();
     expect(creatureBankTierForGroup(undefined)).toBeNull();
   });

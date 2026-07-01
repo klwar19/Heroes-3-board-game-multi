@@ -43,7 +43,16 @@ import type { AdventureState, MapFieldState, MapTileState } from "./state";
 // ---------------------------------------------------------------------------
 
 function makeGame(): GameState {
-  return createAdventureGameState({ seed: "subt-gates", difficulty: "normal", rollFirstPlayer: false });
+  // These tests pin the DETERMINISTIC nearest-hex carve (the pick-on-reveal
+  // choice OFF) — they exercise the crossing/linking mechanics and double as the
+  // mutation control for `subterranean-gate-choice.test.ts`, which drives the
+  // default (choice ON) flow where the revealing player picks the hex.
+  return createAdventureGameState({
+    seed: "subt-gates",
+    difficulty: "normal",
+    rollFirstPlayer: false,
+    chooseSubterraneanGate: false
+  });
 }
 
 function applyOk(state: GameState, action: GameAction): GameState {

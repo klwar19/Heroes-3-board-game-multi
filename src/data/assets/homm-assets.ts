@@ -227,14 +227,18 @@ export const TILE_BACK_IMAGES: Record<string, string> = {
 };
 
 /**
- * Subterranean Gate Token art, cropped from the rulebook's page-35
- * "Subterranean Gate Tokens" illustration, which shows the two connecting
- * halves of one Token. They are drawn on top of the tile scan, on the field
- * each half sacrifices:
- * - `surface`: the surface gate — the dirt approach/path hex (placed first,
- *   when the Surface tile is discovered).
- * - `subterranean`: the underground entrance — the cave-mouth-with-skull hex
- *   (added when a hero opens the gate and the Subterranean tile is revealed).
+ * Subterranean Gate Token art, cropped from the two-hex "Subterranean Gate
+ * Tokens" illustration (`scripts/crop-subterranean-gate-art.py`). They are drawn
+ * on top of the tile scan, on the field each half sacrifices:
+ * - `surface`: the surface GATE — the skull cave-mouth you descend into (placed
+ *   first, when the Surface tile is discovered). This is the dramatic, readable
+ *   half, so it sits on the Surface where the gate is visible on open terrain.
+ * - `subterranean`: the underground ENTRANCE / path up — the lighter passage
+ *   half (added when a hero opens the gate and the Subterranean tile is revealed).
+ *
+ * The source hexes are FLAT-top (points left/right); the board renders POINTY-top
+ * hexes (see `hexCornerPoints` in `screen.tsx`), so the crop re-masks each upright
+ * half into a pointy-top hexagon with transparent corners — no rectangular bleed.
  */
 export const SUBTERRANEAN_GATE_TOKEN_IMAGES = {
   surface: "/assets/board/tokens/subterranean-gate-surface.webp",
