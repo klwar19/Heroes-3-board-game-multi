@@ -16,6 +16,7 @@ export {
 export { applyAction, findEvent, unitMatchesSpecialtyName } from "./reducer";
 export {
   defaultRoomName,
+  dropDisconnectedMember,
   isRoomMembershipAction,
   MAX_ROOM_NAME_LENGTH,
   roomDisplayName,

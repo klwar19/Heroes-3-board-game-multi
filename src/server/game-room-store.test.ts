@@ -7,6 +7,7 @@ import {
   closeRoom,
   createRoom,
   getRoomSnapshot,
+  handleRoomDisconnect,
   listRooms,
   resetRoom,
   restoreRoom,
@@ -349,6 +350,68 @@ describe("closing a room (closeRoom)", () => {
   it("is idempotent when the room is already gone", () => {
     const roomId = uniqueRoom("closegone");
     expect(closeRoom(roomId).closed).toBe(true);
+  });
+});
+
+describe("presence cleanup on disconnect (handleRoomDisconnect)", () => {
+  it("keeps one computer from being counted as many after rejoining", () => {
+    const roomId = uniqueRoom("ghosts");
+    createRoom({ roomId, name: "Rejoin" });
+
+    // Same computer joins, leaves (tab close → stream drop), then rejoins under a
+    // NEW per-tab client id — the exact "keep joining back and forth" loop.
+    submitRoomAction(roomId, { type: "JOIN_ROOM", clientId: "tab-1", name: "Solo" });
+    expect(entryFor(roomId)?.memberCount).toBe(1);
+
+    handleRoomDisconnect(roomId, "tab-1"); // the stream for tab-1 dropped
+    expect(entryFor(roomId)?.memberCount).toBe(0);
+
+    submitRoomAction(roomId, { type: "JOIN_ROOM", clientId: "tab-2", name: "Solo" });
+    handleRoomDisconnect(roomId, "tab-2");
+    submitRoomAction(roomId, { type: "JOIN_ROOM", clientId: "tab-3", name: "Solo" });
+
+    // Without the reap this would read 3; the ghosts are gone, so it is 1.
+    const entry = entryFor(roomId);
+    expect(entry?.memberCount).toBe(1);
+    expect(entry?.memberCount).not.toBe(3);
+
+    // An emptied, abandoned room is closeable again by anyone browsing the lobby.
+    handleRoomDisconnect(roomId, "tab-3");
+    expect(entryFor(roomId)?.memberCount).toBe(0);
+    expect(entryFor(roomId, "any-browser")?.canClose).toBe(true);
+  });
+
+  it("broadcasts the corrected snapshot to the other clients in the room", () => {
+    const roomId = uniqueRoom("disc-broadcast");
+    createRoom({ roomId });
+    submitRoomAction(roomId, { type: "JOIN_ROOM", clientId: "a", name: "A" });
+    const before = submitRoomAction(roomId, { type: "JOIN_ROOM", clientId: "b", name: "B" }).snapshot;
+
+    handleRoomDisconnect(roomId, "b");
+    const after = getRoomSnapshot(roomId);
+    expect(after.version).toBeGreaterThan(before.version); // a new frame was produced
+    expect(after.state.room?.members.map((member) => member.clientId)).toEqual(["a"]);
+  });
+
+  it("never reaps a seated player on a hosted-game disconnect (no lost turns)", () => {
+    const roomId = uniqueRoom("disc-seated");
+    restoreRoom(roomId, createAdventureGameState({ seed: "disc-seat", difficulty: "normal", rollFirstPlayer: false }));
+    submitRoomAction(roomId, { type: "JOIN_ROOM", clientId: "host", name: "Host" });
+    submitRoomAction(roomId, { type: "JOIN_ROOM", clientId: "p2", name: "Two" });
+    submitRoomAction(roomId, { type: "SET_ROOM_HOSTED", clientId: "host", hosted: true });
+    submitRoomAction(roomId, { type: "ASSIGN_SEAT", clientId: "host", targetClientId: "host", seat: "p1" });
+    submitRoomAction(roomId, { type: "ASSIGN_SEAT", clientId: "host", targetClientId: "p2", seat: "p2" });
+
+    // p2's socket blips: their seat (and its action authority) must survive.
+    handleRoomDisconnect(roomId, "p2");
+    const snapshot = getRoomSnapshot(roomId);
+    expect(snapshot.state.room?.members.find((member) => member.clientId === "p2")?.seat).toBe("p2");
+    // The seat lock still binds p2's seat to client "p2" alone — nobody else can
+    // act for it, and p2 cannot act for p1.
+    expect(submitRoomAction(roomId, { type: "END_TURN", playerId: "p2" }, "host").result.errors.length).toBeGreaterThan(0);
+    expect(submitRoomAction(roomId, { type: "END_TURN", playerId: "p1" }, "p2").result.errors.length).toBeGreaterThan(0);
+    // ...and the seated owner still acts for their own seat.
+    expect(submitRoomAction(roomId, { type: "END_TURN", playerId: "p1" }, "host").result.errors).toHaveLength(0);
   });
 });
 

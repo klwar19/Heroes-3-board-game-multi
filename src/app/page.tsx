@@ -2960,6 +2960,13 @@ export default function Home() {
     if (nextRoomId === roomId) {
       return;
     }
+    // Entering (or RE-entering) a room is fresh presence: clear the one-shot JOIN
+    // guard so membership is re-registered. The server reaps an unseated member
+    // the moment their previous connection dropped (the fix for one computer
+    // being counted as many), so without this a player who returns to a room they
+    // just left would stay a non-member. This runs only on an explicit room
+    // entry, never on a snapshot, so a host's KICK still doesn't auto-rejoin.
+    joinedRoomRef.current = null;
     window.history.replaceState(null, "", `?room=${encodeURIComponent(nextRoomId)}`);
     setErrors([]);
     setSelectedCardAction(null);

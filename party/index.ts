@@ -4,6 +4,7 @@ import {
   createAdventureGameState,
   createAdventureLobbyState,
   createInitialGameState,
+  dropDisconnectedMember,
   ENGINE_SIGNATURE,
   freshEntropy,
   type AdventurePlayerConfig,
@@ -248,6 +249,55 @@ export default class GameRoomServer implements Party.Server {
     // A connection means the room exists — surface it in the lobby. The
     // JOIN_ROOM that follows re-reports reliably (awaited) once it has a member.
     void this.reportToLobby();
+  }
+
+  /** The stable per-tab client id the browser put on the socket URL, if any. */
+  private clientIdOf(connection: Party.Connection): string | undefined {
+    // `connection.uri` is the URL that opened the socket (it survives
+    // hibernation, unlike a per-instance map), and carries the `?clientId=` the
+    // client attaches in src/lib/realtime.ts. Read defensively so a narrower
+    // Party.Connection type never breaks the typecheck.
+    const uri = (connection as unknown as { uri?: string }).uri;
+    if (!uri) {
+      return undefined;
+    }
+    try {
+      return new URL(uri).searchParams.get("clientId") ?? undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * A socket dropped (tab closed, navigated back to the lobby, or the network
+   * died). Reap that client's ephemeral membership — an unseated spectator or an
+   * open-table member — so one computer isn't counted as many after it joins,
+   * leaves and rejoins. A SEATED player in a hosted game (and the host) is never
+   * reaped, so a transient reconnect never unseats them or hands their turn /
+   * choices to anyone else. Only re-broadcasts when the member list changed.
+   */
+  private async handleDisconnect(connection: Party.Connection): Promise<void> {
+    if (!this.snapshot) {
+      return;
+    }
+    const clientId = this.clientIdOf(connection);
+    if (!clientId || !dropDisconnectedMember(this.snapshot.state, clientId)) {
+      return;
+    }
+    this.snapshot = {
+      ...this.snapshot,
+      version: this.snapshot.version + 1,
+      updatedAt: new Date().toISOString()
+    };
+    await this.persist();
+    this.broadcastSnapshot();
+    await this.reportToLobby();
+  }
+
+  async onClose(connection: Party.Connection): Promise<void> {
+    // Fires for every closure (a clean close and after an error alike), so it is
+    // the single place to reap a dropped client's ephemeral membership.
+    await this.handleDisconnect(connection);
   }
 
   async onMessage(raw: string | ArrayBuffer | ArrayBufferView, sender: Party.Connection): Promise<void> {

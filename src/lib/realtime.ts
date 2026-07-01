@@ -129,7 +129,15 @@ function connectPartyRoom(
   handlers: RoomConnectionHandlers,
   actorClientId?: string
 ): RoomConnection {
-  const socket = new PartySocket({ host, room: roomId });
+  // Carry the stable per-tab client id on the socket URL so the room server can
+  // read it in `onClose` and reap this client's ephemeral membership when the
+  // connection drops (a tab close / navigate away), instead of leaving a ghost
+  // member that inflates the room's head count on every rejoin.
+  const socket = new PartySocket({
+    host,
+    room: roomId,
+    ...(actorClientId ? { query: { clientId: actorClientId } } : {})
+  });
   const pending = new Map<
     string,
     (reply: Extract<PartyServerMessage, { type: "action-result" }>) => void
@@ -261,7 +269,14 @@ function connectApiRoom(
   handlers: RoomConnectionHandlers,
   actorClientId?: string
 ): RoomConnection {
-  const source = new EventSource(`/api/rooms/${encodeURIComponent(roomId)}/stream`);
+  // The stable per-tab client id rides on the stream URL so the server can reap
+  // this client's ephemeral membership when the stream drops (tab close /
+  // navigate away) — the fix for one computer being counted as many after
+  // repeated join/leave. Seated players in a hosted game are never reaped.
+  const streamUrl = `/api/rooms/${encodeURIComponent(roomId)}/stream${
+    actorClientId ? `?clientId=${encodeURIComponent(actorClientId)}` : ""
+  }`;
+  const source = new EventSource(streamUrl);
   // The server pings every 20s with a real data event. A stream that stayed
   // silent for much longer is half-dead (idle proxies, sleeping laptops) even
   // when the browser never fired onerror — fall back to polling until the

@@ -6,6 +6,7 @@ import {
   createAdventureGameState,
   createAdventureLobbyState,
   createInitialGameState,
+  dropDisconnectedMember,
   ENGINE_SIGNATURE,
   ensureUniqueArmyUnitIds,
   freshEntropy,
@@ -357,6 +358,33 @@ export function submitRoomAction(
     snapshot,
     result
   };
+}
+
+/**
+ * Presence cleanup invoked when a client's live SSE stream drops (its tab
+ * closed, it navigated back to the lobby, or the socket died). Removes only an
+ * ephemeral member (see `dropDisconnectedMember` — never a seated player or the
+ * host), then bumps the version and re-broadcasts so every other client, and
+ * the lobby directory, sees the corrected member count. A no-op when nothing
+ * changed, so a stream that carried no clientId (or a member already gone) costs
+ * nothing.
+ */
+export function handleRoomDisconnect(roomId: string, clientId: string | undefined): void {
+  if (!clientId) {
+    return;
+  }
+  const record = roomStore.get(roomId) ?? loadPersistedRoom(roomId);
+  if (!record) {
+    return;
+  }
+  if (!dropDisconnectedMember(record.state, clientId)) {
+    return;
+  }
+  record.version += 1;
+  record.updatedAt = new Date().toISOString();
+  roomStore.set(roomId, record);
+  persistRoom(record);
+  notifyRoomListeners(roomId, withBootId(cloneSerializable(record)));
 }
 
 // ---------------------------------------------------------------------------

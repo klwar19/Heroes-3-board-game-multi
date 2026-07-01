@@ -179,6 +179,50 @@ export function leaveRoom(state: GameState, action: Extract<GameAction, { type: 
   }
 }
 
+/**
+ * Presence cleanup for a client whose LIVE connection dropped — a tab close, a
+ * navigate back to the lobby, or a socket loss. Both transports call this from
+ * their connection-close hook (the SSE stream `abort`/`cancel` on the built-in
+ * backend, `onClose` on the PartyKit edge). It is NOT a player action and is
+ * never seat-gated.
+ *
+ * It removes ONLY an "ephemeral" member: one that is not the host and holds no
+ * real seat (`seat === "observer"`). That deliberately protects the two roles
+ * whose loss on a transient disconnect would be a real regression:
+ *   - a SEATED player in a hosted game keeps their seat (and its action
+ *     authority) across a reconnect, so a network blip can never unseat them or
+ *     hand their turn/choices to someone else; and
+ *   - the host role is never dropped on a blip.
+ *
+ * Open-table members are always observers (open tables never store a seat on a
+ * member — the seat there is a local, per-client choice), so they ARE reaped.
+ * That is what stops ONE computer from being counted as many people after it
+ * joins, leaves and rejoins: each real disconnect now removes the stale member
+ * instead of leaving a ghost behind forever.
+ *
+ * Returns true only when it actually removed someone, so the caller re-broadcasts
+ * (and re-reports the room to the lobby) exactly when the member list changed.
+ */
+export function dropDisconnectedMember(state: GameState, clientId: string): boolean {
+  const room = state.room;
+  if (!room || !clientId) {
+    return false;
+  }
+  const index = room.members.findIndex((member) => member.clientId === clientId);
+  if (index < 0) {
+    return false;
+  }
+  const member = room.members[index];
+  // Keep the host and any seated player; only reap spectators / open-table
+  // members, whose loss changes nothing but a cosmetic head count.
+  if (member.isHost || member.seat !== "observer") {
+    return false;
+  }
+  room.members.splice(index, 1);
+  appendEvent(state, { type: "ROOM_MEMBER_LEFT", clientId });
+  return true;
+}
+
 export function setRoomHosted(
   state: GameState,
   action: Extract<GameAction, { type: "SET_ROOM_HOSTED" }>
