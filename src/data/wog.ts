@@ -63,7 +63,7 @@ export const wogUnitDefinitions: Record<WogUnitId, UnitDefinition> = {
       attack: 3,
       defense: 1,
       health: 5,
-      initiative: 10,
+      initiative: 9,
       cost: { gold: 8 },
       abilities: ["wog-air-protection"],
       abilityText: "[unit_passive] Reduce [damage] from Air Magic [spell] by 2 (to a minimum of 0).",
