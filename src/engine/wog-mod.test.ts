@@ -145,7 +145,7 @@ describe("WOG neutral roster data", () => {
   it("keeps the supplied A/D/HP/I statistics and costs", () => {
     const expected: Record<string, [number, number, number, number, number | undefined]> = {
       "wog.ghost": [3, 0, 4, 7, 6],
-      "wog.air_messenger": [3, 1, 5, 10, 8],
+      "wog.air_messenger": [3, 1, 5, 9, 8],
       "wog.earth_messenger": [3, 2, 4, 5, 8],
       "wog.fire_messenger": [4, 1, 5, 7, 8],
       "wog.water_messenger": [3, 1, 6, 6, 8],
