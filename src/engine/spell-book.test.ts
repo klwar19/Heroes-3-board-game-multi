@@ -83,15 +83,18 @@ describe("Spell Book — casting in combat", () => {
     const resolved = passAll(applyOk(state, cast!.action));
     // Lightning Bolt at power 0 deals 2 damage.
     expect(resolved.combat!.units[SKELETONS].damage).toBe(2);
-    // The cast counted toward the per-combat-round limit…
-    expect(resolved.players.p1.combatStats.spellsCastThisRound).toBe(1);
+    // A Book cast draws on the Book's OWN once-per-round budget, so it does NOT
+    // count toward the hand/Scroll one-Spell-per-round limit…
+    expect(resolved.players.p1.combatStats.spellsCastThisRound).toBe(0);
+    // …it spends the Book cast budget instead…
+    expect(resolved.players.p1.combatStats.spellBookCastUsedThisRound).toBe(true);
     // …and the Spell left the Book for the discard pile.
     expect(resolved.players.p1.spellBook).not.toContain("spell.lightning_bolt");
     expect(resolved.players.p1.discard).toContain("spell.lightning_bolt");
   });
 
-  it("a Book cast respects the one-Spell-per-combat-round limit", () => {
-    const state = combat("book-limit");
+  it("a Book cast is SEPARATE from the hand limit: castable even after the hand Spell is spent", () => {
+    const state = combat("book-separate");
     state.players.p1.hand = ["spell.magic_arrow"];
     state.players.p1.spellBook = ["spell.implosion"];
 
@@ -102,11 +105,81 @@ describe("Spell Book — casting in combat", () => {
     const afterFirst = passAll(applyOk(state, handCast!.action));
     expect(afterFirst.players.p1.combatStats.spellsCastThisRound).toBe(1);
 
-    // The Book Implosion is no longer offered — the limit is reached.
+    // The Book Implosion is STILL offered — the Book cast is an additional bonus
+    // cast on its own budget, not blocked by the spent hand limit (the fix).
     const bookCast = legal(afterFirst, "p1").find(
+      (l) =>
+        l.action.type === "CAST_SPELL" &&
+        l.action.cardId === "spell.implosion" &&
+        l.action.fromSpellBook === true &&
+        l.action.target?.type === "unit" &&
+        l.action.target.unitId === SKELETONS
+    );
+    expect(bookCast, "the Book cast is offered ALONGSIDE a spent hand Spell").toBeTruthy();
+
+    const afterBook = passAll(applyOk(afterFirst, bookCast!.action));
+    // Both casts happened this round: the hand Spell (counted) and the Book Spell
+    // (its own budget, not counted toward the hand limit).
+    expect(afterBook.players.p1.combatStats.spellsCastThisRound).toBe(1);
+    expect(afterBook.players.p1.combatStats.spellBookCastUsedThisRound).toBe(true);
+    expect(afterBook.players.p1.discard).toContain("spell.implosion");
+  });
+
+  it("only ONE Book cast per combat round; a 2nd Book cast is not offered and is rejected", () => {
+    const state = combat("book-cast-cap");
+    state.players.p1.spellBook = ["spell.implosion", "spell.lightning_bolt"];
+
+    // Spend the one Book cast on Implosion.
+    const first = legal(state, "p1").find(
+      (l) =>
+        l.action.type === "CAST_SPELL" && l.action.cardId === "spell.implosion" && l.action.fromSpellBook === true
+    );
+    const afterFirst = passAll(applyOk(state, first!.action));
+    expect(afterFirst.players.p1.combatStats.spellBookCastUsedThisRound).toBe(true);
+
+    // No second Book cast is offered this round…
+    const secondOffered = legal(afterFirst, "p1").some(
       (l) => l.action.type === "CAST_SPELL" && l.action.fromSpellBook === true
     );
-    expect(bookCast, "no Book cast once the round's Spell limit is spent").toBeUndefined();
+    expect(secondOffered, "the Book cast budget is one per combat round").toBe(false);
+
+    // …and forcing one is rejected by the reducer (the Book Spell stays put).
+    const forced = applyAction(afterFirst, {
+      type: "CAST_SPELL",
+      playerId: "p1",
+      cardId: "spell.lightning_bolt",
+      fromSpellBook: true,
+      target: { type: "unit", unitId: SKELETONS }
+    });
+    expect(forced.errors.length, "a second Book cast must be rejected").toBeGreaterThan(0);
+    expect(forced.state.players.p1.spellBook).toContain("spell.lightning_bolt");
+  });
+
+  it("the Book cast budget refreshes each combat round (usable again in round 2)", () => {
+    const state = combat("book-cast-per-round");
+    state.players.p1.spellBook = ["spell.implosion", "spell.lightning_bolt"];
+
+    const first = legal(state, "p1").find(
+      (l) =>
+        l.action.type === "CAST_SPELL" && l.action.cardId === "spell.implosion" && l.action.fromSpellBook === true
+    );
+    const afterR1 = passAll(applyOk(state, first!.action));
+    expect(afterR1.players.p1.combatStats.spellBookCastUsedThisRound).toBe(true);
+
+    // Advance to combat round 2.
+    afterR1.combat!.activeUnitId = null;
+    afterR1.activePlayerId = "p1";
+    const round2 = applyOk(afterR1, { type: "END_COMBAT_ROUND", playerId: "p1" });
+    expect(round2.combat!.round).toBe(2);
+    // The Book cast budget refreshed — a Book Spell is castable again.
+    expect(round2.players.p1.combatStats.spellBookCastUsedThisRound).toBe(false);
+    round2.combat!.activeUnitId = "unit_p1_marksmen";
+    round2.combat!.units.unit_p1_marksmen.activatedThisRound = false;
+    const round2Cast = legal(round2, "p1").find(
+      (l) =>
+        l.action.type === "CAST_SPELL" && l.action.cardId === "spell.lightning_bolt" && l.action.fromSpellBook === true
+    );
+    expect(round2Cast, "round-2 Book cast should be offered again").toBeTruthy();
   });
 });
 
@@ -252,6 +325,61 @@ describe("Spell Book — Power boost (one per turn)", () => {
       (l) => l.action.type === "PLAY_REACTION" && l.action.asPowerBoost === true && l.action.fromSpellBook === true
     );
     expect(thirdOffered, "the Book Power budget is one per combat round").toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Cast AND Power-boost from the Book in the same round (independent budgets)
+// ---------------------------------------------------------------------------
+
+describe("Spell Book — a Book cast and a Book Power boost are independent per round", () => {
+  it("casts one Book Spell AND spends another Book Spell for +1 Power in the same round", () => {
+    const state = combat("book-cast-and-boost");
+    state.players.p1.hand = ["spell.implosion"]; // the round's hand Spell (to be boosted)
+    state.players.p1.spellBook = ["spell.lightning_bolt", "spell.haste"]; // one to cast, one to boost
+
+    // 1) Cast Lightning Bolt from the Book — spends the Book CAST budget only.
+    const bookCast = legal(state, "p1").find(
+      (l) =>
+        l.action.type === "CAST_SPELL" &&
+        l.action.cardId === "spell.lightning_bolt" &&
+        l.action.fromSpellBook === true &&
+        l.action.target?.type === "unit" &&
+        l.action.target.unitId === SKELETONS
+    );
+    const afterCast = passAll(applyOk(state, bookCast!.action));
+    expect(afterCast.combat!.units[SKELETONS].damage).toBe(2); // bolt at power 0
+    expect(afterCast.players.p1.combatStats.spellBookCastUsedThisRound).toBe(true);
+    // The Book POWER budget is untouched by the Book cast — the two are separate.
+    expect(afterCast.players.p1.combatStats.spellBookPowerUsedThisTurn).toBeFalsy();
+    // The hand Spell limit is also untouched (the Book cast did not consume it).
+    expect(afterCast.players.p1.combatStats.spellsCastThisRound).toBe(0);
+
+    // 2) Cast the hand Implosion and boost it with a Book Spell (+1 Power).
+    const handCast = legal(afterCast, "p1").find(
+      (l) =>
+        l.action.type === "CAST_SPELL" &&
+        l.action.cardId === "spell.implosion" &&
+        !l.action.fromSpellBook &&
+        l.action.target?.type === "unit" &&
+        l.action.target.unitId === SKELETONS
+    );
+    const opened = applyOk(afterCast, handCast!.action);
+    const boost = legal(opened, "p1").find(
+      (l) =>
+        l.action.type === "PLAY_REACTION" &&
+        l.action.asPowerBoost === true &&
+        l.action.fromSpellBook === true &&
+        l.action.cardId === "spell.haste"
+    );
+    expect(boost, "the Book Power boost is STILL available after a Book cast this round").toBeTruthy();
+    const done = passAll(applyOk(opened, boost!.action));
+    // Implosion at power 1 deals 2 more (skeletons 2 -> 4): the boost applied.
+    expect(done.combat!.units[SKELETONS].damage).toBe(4);
+    expect(done.players.p1.combatStats.spellBookPowerUsedThisTurn).toBe(true);
+    // All three budgets were spent independently this round.
+    expect(done.players.p1.combatStats.spellBookCastUsedThisRound).toBe(true);
+    expect(done.players.p1.combatStats.spellsCastThisRound).toBe(1);
   });
 });
 

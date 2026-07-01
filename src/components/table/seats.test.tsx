@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { HandFan, PermanentSlot, RuneTrack } from "./seats";
 import { CardZoomProvider } from "./zoom";
+import * as sound from "@/lib/sound";
 import { cardLibrary } from "@/data/cards/library";
 import {
   createInitialGameState,
@@ -366,6 +367,75 @@ describe("HandFan — Spell Book window (house rule)", () => {
     expect(onAction).toHaveBeenCalledWith(
       expect.objectContaining({ type: "CAST_SPELL", cardId: "spell.lightning_bolt", fromSpellBook: true })
     );
+  });
+
+  it("lists each stored Spell WITH its card icon (art shown, not just the name)", () => {
+    const state = createInitialGameState("book-window-icon");
+    state.players.p1.hand = [];
+    state.players.p1.spellBook = ["spell.lightning_bolt"];
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_marksmen";
+
+    const { container } = render(
+      <CardZoomProvider>
+        <HandFan
+          view={getPlayerView(state, "p1")}
+          state={state}
+          viewerPlayerId="p1"
+          legalActions={getLegalActions(state, "p1")}
+          selectedCardAction={null}
+          trayActive={false}
+          onSelectCardAction={() => {}}
+          onAction={() => {}}
+        />
+      </CardZoomProvider>
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Spell Book/i }));
+
+    // The stored Spell shows a card-art thumbnail (the requested icon), one per
+    // Spell — remove the <CardFrame> from the popover row and this fails.
+    const icons = container.querySelectorAll(".shelfSpellIcon");
+    expect(icons).toHaveLength(1);
+    // Lightning Bolt has a real scan, so the icon renders as an <img> of its art.
+    const img = icons[0] as HTMLImageElement;
+    expect(img.tagName).toBe("IMG");
+    expect(img.getAttribute("src")).toBeTruthy();
+  });
+
+  it("plays the Spell Book open cue when opened — and NOT when closed", () => {
+    const spy = vi.spyOn(sound, "playSpellBookOpen").mockImplementation(() => {});
+    const state = createInitialGameState("book-window-sound");
+    state.players.p1.hand = [];
+    state.players.p1.spellBook = ["spell.lightning_bolt"];
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_marksmen";
+
+    render(
+      <CardZoomProvider>
+        <HandFan
+          view={getPlayerView(state, "p1")}
+          state={state}
+          viewerPlayerId="p1"
+          legalActions={getLegalActions(state, "p1")}
+          selectedCardAction={null}
+          trayActive={false}
+          onSelectCardAction={() => {}}
+          onAction={() => {}}
+        />
+      </CardZoomProvider>
+    );
+
+    const icon = screen.getByRole("button", { name: /Spell Book/i });
+    // Opening the Book fires the page-flip cue exactly once…
+    fireEvent.click(icon);
+    expect(spy).toHaveBeenCalledTimes(1);
+    // …and closing it again is silent (no second cue).
+    fireEvent.click(icon);
+    expect(spy).toHaveBeenCalledTimes(1);
+    spy.mockRestore();
   });
 
   it("shows the Spell Book icon from the start even when empty, and says so when opened", () => {

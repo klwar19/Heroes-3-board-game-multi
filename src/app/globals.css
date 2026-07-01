@@ -1880,15 +1880,47 @@ button.battleCell {
   padding-bottom: 0;
 }
 
-.shelfSpellName {
+/* The spell row header: its card icon + name, one click to zoom the card. */
+.shelfSpellHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   background: none;
   border: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+}
+
+/* Card art thumbnail shown beside each stored Spell in the Book/Scroll popover. */
+.shelfSpellIcon {
+  width: 34px;
+  height: 46px;
+  flex: 0 0 auto;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid rgb(212 175 108 / 55%);
+  background: rgb(0 0 0 / 25%);
+}
+
+/* Text fallback frames (art-less specialties) reuse the same footprint. */
+.shelfSpellIcon.cardFaceFallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  font-size: 8px;
+  line-height: 1.1;
+  text-align: center;
+  color: #f4e6c8;
+  overflow: hidden;
+}
+
+.shelfSpellName {
   color: #f4e6c8;
   font-size: 12px;
   font-weight: 700;
-  cursor: pointer;
-  padding: 0;
-  text-align: left;
   text-decoration: underline dotted;
 }
 

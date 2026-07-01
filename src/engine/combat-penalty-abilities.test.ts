@@ -44,6 +44,12 @@ function longRangeMode(state: GameState): ReturnType<typeof getAttackRollMode> {
   return getAttackRollMode(combat.units.unit_p1_marksmen, combat.units.unit_p2_dread_knights, state);
 }
 
+/** The same adjacent shot, but resolved as this unit's Retaliation Attack. */
+function adjacentRetaliationMode(state: GameState): ReturnType<typeof getAttackRollMode> {
+  const combat = state.combat!;
+  return getAttackRollMode(combat.units.unit_p1_marksmen, combat.units.unit_p2_skeletons, state, true);
+}
+
 describe("ranged combat-penalty waivers", () => {
   it("baseline: a ranged unit with no waiver suffers both the adjacent and the long-range penalty", () => {
     const state = combatWith([]);
@@ -63,5 +69,27 @@ describe("ranged combat-penalty waivers", () => {
     const state = combatWith(["ignore-all-combat-penalties"]);
     expect(adjacentMode(state)).toBe("normal");
     expect(longRangeMode(state)).toBe("normal");
+  });
+
+  // The Sharpshooter / Magi / Halfling waiver is printed "[unit_attack] Ignore the
+  // combat penalties" — it fires only when this unit ATTACKS, never on its
+  // Retaliation Attack. A retaliating Sharpshooter that must hit its adjacent
+  // attacker therefore rolls at the melee penalty like any other ranged unit.
+  it("the [unit_attack] full waiver applies on the unit's own attack but NOT on a retaliation", () => {
+    const state = combatWith(["ignore-all-combat-penalties"]);
+    // Its own attack: unpenalised (the control).
+    expect(adjacentMode(state)).toBe("normal");
+    // Retaliating against the adjacent attacker: the melee penalty is back.
+    expect(adjacentRetaliationMode(state)).toBe("disadvantage");
+  });
+
+  // The "[unit_passive] … against adjacent units" melee waiver (Evil Eyes /
+  // Medusas / Zealots / Titans) is passive, not attack-gated, so it keeps
+  // waiving the adjacent penalty even on a Retaliation Attack — the CONTROL that
+  // proves only the [unit_attack] waiver is scoped to attacks.
+  it("the [unit_passive] adjacent waiver still applies on a retaliation", () => {
+    const state = combatWith(["ignore-combat-penalties"]);
+    expect(adjacentMode(state)).toBe("normal");
+    expect(adjacentRetaliationMode(state)).toBe("normal");
   });
 });

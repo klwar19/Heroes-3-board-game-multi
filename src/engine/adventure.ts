@@ -5702,6 +5702,9 @@ export function refreshRoundTokens(state: GameState): void {
     // Spell Book (house rule): the once-per-turn Power discard refreshes with the
     // crowns — a per-game-round budget, cleared at the start of the player's turn.
     player.combatStats.spellBookPowerUsedThisTurn = false;
+    // The Book's separate once-per-combat-round CAST budget clears here too for
+    // the map→combat boundary (so it always starts a fresh combat unspent).
+    player.combatStats.spellBookCastUsedThisRound = false;
   }
 
   for (const hero of Object.values(state.heroes)) {

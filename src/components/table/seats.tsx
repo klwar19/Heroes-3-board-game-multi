@@ -4,6 +4,7 @@
 
 import { Anchor, Crown, Hourglass, Layers, Search, Sparkles } from "lucide-react";
 import { assetUrl } from "@/lib/asset-url";
+import { playSpellBookOpen } from "@/lib/sound";
 import { useState } from "react";
 import { cardLibrary } from "@/data/cards/library";
 import { getDeckBack } from "@/data/decks";
@@ -292,12 +293,13 @@ function SpellShelfPopover({
         return (
           <div className="shelfSpell" key={spellId}>
             <button
-              className="shelfSpellName"
+              className="shelfSpellHead"
               onClick={() => zoomCard(spellId)}
               title={card ? describeCardEffect(card) : spellId}
               type="button"
             >
-              {card?.name ?? spellId}
+              <CardFrame cardId={spellId} className="shelfSpellIcon" />
+              <span className="shelfSpellName">{card?.name ?? spellId}</span>
             </button>
             {castable ? (
               <div className="shelfSpellCasts">
@@ -471,7 +473,14 @@ export function HandFan({
               <button
                 aria-expanded={shelfOpen === "book"}
                 className={`shelfIcon ${shelfOpen === "book" ? "open" : ""} ${spellBook.length === 0 ? "empty" : ""}`}
-                onClick={() => setShelfOpen(shelfOpen === "book" ? null : "book")}
+                onClick={() => {
+                  const opening = shelfOpen !== "book";
+                  setShelfOpen(opening ? "book" : null);
+                  // Play the page-flip cue only when the Book is being opened.
+                  if (opening) {
+                    playSpellBookOpen();
+                  }
+                }}
                 title={
                   spellBook.length === 0
                     ? "Spell Book — empty (stash Spells on your map turn to store them here)"

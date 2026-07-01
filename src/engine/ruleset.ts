@@ -573,6 +573,16 @@ export function spellBookPowerAvailable(player: PlayerState): boolean {
 }
 
 /**
+ * Whether this player may still CAST a Spell Book Spell this combat round. The
+ * Book grants ONE cast per combat round, on its own budget — separate from and
+ * additional to the normal one-Spell-per-round hand/Scroll limit. So a Book cast
+ * is offered even once that limit is reached, and does not consume it.
+ */
+export function spellBookCastAvailable(player: PlayerState): boolean {
+  return !player.combatStats.spellBookCastUsedThisRound;
+}
+
+/**
  * Whether a TAKE_FROM_DISCARD option may be played mid-Combat (opening the
  * discard-pick immediately) rather than staying a map-only play. True when the
  * option explicitly opts in via `allowInCombat` (Scholar's basic side, Ciele's
