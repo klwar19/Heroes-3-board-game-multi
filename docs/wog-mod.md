@@ -25,10 +25,11 @@ The roster, supplied A/D/HP/I values, tiers, gold costs and adaptations live in
 - Nightmare's Death Stare;
 - Lava Sharpshooter and Hell Steed's 1-damage Fire Shield;
 - Gorynych's gold-tier 5/2/7/8, 25-gold profile and no-retaliation Attack-4 adjacent sweep;
-- Dracolich's Devil-style move-to-any-empty-space, ongoing-effect immunity,
-  -2 Spell damage, and recruitable 45-gold + 2-valuables Azure profile;
+- Dracolich's Devil-style move-to-any-empty-space, no-melee-penalty (ignore the
+  combat penalty vs. adjacent units), ongoing-effect immunity, -2 Spell damage,
+  and recruitable 45-gold + 2-valuables Azure profile (Attack 7 / Defense 2);
 
-- Ghost's persistent +Health Soul Harvest and full heal;
+- Ghost's persistent +Health Soul Harvest and full heal (a bronze-tier guard);
 - school-specific Messenger damage protection;
 - War Zealot's free innate Magic Mirror;
 - Sylvan Centaur's minimum-0 Attack die;

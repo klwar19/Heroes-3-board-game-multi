@@ -115,7 +115,6 @@ export type UnitAbilityEffectDefinition =
   | { type: "UNDEAD" }
   | { type: "ADD_NEUTRAL_GUARD"; unitDefId: string }
   | { type: "EXTRA_RESOURCE_DIE_ON_NEUTRAL_DEFEAT"; count: number }
-  | { type: "NOT_RECRUITABLE" }
   | {
       /**
        * Great Shamans' Freezing Shot: after this unit's attack, the target's
@@ -2179,13 +2178,6 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     name: "Necrotic Death Cloud",
     text: "[unit_attack] Choose a unit adjacent to the target and attack it with 4 Attack.",
     effect: { type: "SECOND_ATTACK_ADJACENT_TO_TARGET", baseAttack: 4 },
-    implementationStatus: "implemented"
-  },
-  "wog-unrecruitable": {
-    id: "wog-unrecruitable",
-    name: "Unrecruitable",
-    text: "[map_effect] This unit cannot normally be recruited.",
-    effect: { type: "NOT_RECRUITABLE" },
     implementationStatus: "implemented"
   }
 };

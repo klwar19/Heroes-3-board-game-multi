@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { coreUnitDefinitions } from "@/data/factions/units";
-import { applyAction, createInitialGameState, getLegalActions } from "./index";
+import { applyAction, createAdventureGameState, createInitialGameState, getLegalActions } from "./index";
+import { getMainHero, type NeutralDraw } from "./adventure";
+import { finalizeAdventureCombat, revealNeutralArmy, startNeutralEncounter } from "./adventure-reducer";
 import { getDefenseDieDamageReduction } from "./unit-abilities";
+import { NEUTRAL_PLAYER_ID } from "./state";
 import type { CombatUnitState, GameAction, GameEvent, GameState, PlayerId } from "./state";
 
 function applyOk(state: GameState, action: GameAction): GameState {
@@ -281,5 +284,143 @@ describe("WOG abilities in two-player combat", () => {
     if (pendingChoice?.type !== "ABILITY_TARGET_CHOICE") throw new Error("Expected Magic Mirror target choice");
     expect(pendingChoice.kind).toBe("spell-redirect");
     expect(state.players.p2.hand).not.toContain("spell.magic_mirror");
+  });
+
+  it("Lava Sharpshooter's Fire Shield burns an adjacent melee attacker for 1", () => {
+    let state = createInitialGameState("wog-lava-fire-shield");
+    const attacker = state.combat!.units.unit_p1_marksmen;
+    const lava = installWogUnit(state, "unit_p2_skeletons", "wog.lava_sharpshooter");
+    // A weak, retaliation-ignoring ground attacker so the ONLY damage it takes
+    // back is the Fire Shield burn (not a Retaliation Attack).
+    attacker.type = "ground";
+    attacker.attack = 1;
+    attacker.abilities = ["ignores-retaliation"];
+    attacker.damage = 0;
+    attacker.position = 8;
+    lava.position = 9;
+    lava.maxHealth = 20;
+    lava.damage = 0;
+    state.combat!.dice.scriptedRolls = Array.from({ length: 10 }, () => 0);
+    state.combat!.dice.rollCount = 0;
+    activate(state, "p1", attacker.id);
+
+    state = applyOk(state, { type: "ATTACK_UNIT", playerId: "p1", attackerId: attacker.id, defenderId: lava.id });
+    state = passReactions(state);
+
+    expect(
+      state.eventLog.some(
+        (event) =>
+          event.type === "UNIT_ABILITY_TRIGGERED" &&
+          event.abilityId === "fire-shield" &&
+          event.targetUnitId === attacker.id
+      )
+    ).toBe(true);
+    expect(state.combat!.units[attacker.id].damage).toBe(1);
+  });
+
+  it("Gorynych ignores retaliation and sweeps every other adjacent enemy at Attack 4", () => {
+    let state = createInitialGameState("wog-gorynych-sweep");
+    const gorynych = installWogUnit(state, "unit_p1_marksmen", "wog.gorynych");
+    const primary = state.combat!.units.unit_p2_skeletons;
+    const sweepA = state.combat!.units.unit_p2_vampires;
+    const sweepB = state.combat!.units.unit_p2_dread_knights;
+    // 4-wide board: cell 5 is adjacent to 1, 4, 6 and 9.
+    gorynych.position = 5;
+    primary.position = 4;
+    sweepA.position = 6;
+    sweepB.position = 1;
+    for (const enemy of [primary, sweepA, sweepB]) {
+      enemy.defense = 0;
+      enemy.maxHealth = 20;
+      enemy.damage = 0;
+    }
+    state.combat!.dice.scriptedRolls = Array.from({ length: 20 }, () => 0);
+    state.combat!.dice.rollCount = 0;
+    activate(state, "p1", gorynych.id);
+
+    state = passReactions(
+      applyOk(state, { type: "ATTACK_UNIT", playerId: "p1", attackerId: gorynych.id, defenderId: primary.id })
+    );
+
+    // The two OTHER adjacent enemies each take the fixed Attack-4 sweep (die 0, defense 0).
+    expect(state.combat!.units[sweepA.id].damage).toBe(4);
+    expect(state.combat!.units[sweepB.id].damage).toBe(4);
+    expect(
+      state.eventLog.some((event) => event.type === "UNIT_ATTACK_DECLARED" && event.abilityAttack?.baseAttack === 4)
+    ).toBe(true);
+  });
+});
+
+describe("WOG neutral map abilities", () => {
+  function neutralCombat(seed: string): GameState {
+    const state = createAdventureGameState({ seed, rollFirstPlayer: false });
+    const hero = getMainHero(state, "p1")!;
+    hero.level = 1;
+    hero.spaceId = "wog-field";
+    // Difficulty strictly above the hero's level: no Quick Combat, no Diplomacy
+    // (which needs difficulty == level), so we get a real neutral Combat shell.
+    state.adventure!.fields["wog-field"] = {
+      spaceId: "wog-field",
+      tileInstanceId: "t",
+      slot: 0,
+      location: "mine",
+      difficulty: 2,
+      blackCube: false,
+      flagOwnerId: null,
+      everFlagged: false,
+      settlementResource: null
+    };
+    startNeutralEncounter(state, hero, state.adventure!.fields["wog-field"]);
+    return state;
+  }
+
+  function seedNeutralArmy(state: GameState, draws: NeutralDraw[]): void {
+    const combat = state.combat!;
+    expect(combat.context.kind).toBe("neutral");
+    combat.units = {};
+    combat.pendingNeutralDraws = null;
+    state.pendingChoice = null;
+    revealNeutralArmy(state, draws);
+  }
+
+  it("Santa Gremlin adds a neutral Gremlin guard before Combat (ADD_NEUTRAL_GUARD)", () => {
+    const state = neutralCombat("wog-santa-guard");
+    seedNeutralArmy(state, [{ unitDefId: "wog.santa_gremlin", tier: "bronze" }]);
+    const defIds = Object.values(state.combat!.units).map((unit) => unit.unitDefId);
+    expect(defIds).toContain("wog.santa_gremlin");
+    expect(defIds).toContain("neutral.gremlins");
+
+    // CONTROL: a neutral without the ability summons no extra guard.
+    const control = neutralCombat("wog-santa-guard-control");
+    seedNeutralArmy(control, [{ unitDefId: "wog.ghost", tier: "bronze" }]);
+    expect(Object.values(control.combat!.units).map((unit) => unit.unitDefId)).not.toContain("neutral.gremlins");
+  });
+
+  // Win a neutral fight whose (already-defeated) army is `draws`, and return how
+  // many extra Resource dice the win owed the attacker. The field is removed
+  // right before finalize so the immediate field visit — which would spend the
+  // owed dice on the spot — is skipped, leaving the produced count observable.
+  function owedResourceDiceAfterWin(seed: string, draws: NeutralDraw[]): number {
+    const state = neutralCombat(seed);
+    seedNeutralArmy(state, draws);
+    for (const unit of Object.values(state.combat!.units)) {
+      if (unit.controllerId === NEUTRAL_PLAYER_ID) {
+        unit.damage = unit.maxHealth;
+      }
+    }
+    state.combat!.outcome = {
+      winnerPlayerId: "p1",
+      defeatedPlayerId: NEUTRAL_PLAYER_ID,
+      reason: "all-enemy-units-defeated"
+    };
+    delete state.adventure!.fields["wog-field"];
+    finalizeAdventureCombat(state);
+    return state.players.p1.pendingWogResourceDice ?? 0;
+  }
+
+  it("defeating Santa Gremlin owes the winner an extra Resource die (EXTRA_RESOURCE_DIE_ON_NEUTRAL_DEFEAT)", () => {
+    expect(owedResourceDiceAfterWin("wog-santa-gift", [{ unitDefId: "wog.santa_gremlin", tier: "bronze" }])).toBe(1);
+    // CONTROL: winning the same neutral fight without a Santa owes no bonus dice.
+    expect(owedResourceDiceAfterWin("wog-santa-gift-control", [{ unitDefId: "wog.ghost", tier: "bronze" }])).toBe(0);
   });
 });
