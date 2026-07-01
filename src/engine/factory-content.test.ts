@@ -247,11 +247,71 @@ describe("Factory faction — art wired, not playable", () => {
     }
   });
 
-  it("every building is implementationStatus: not-implemented", () => {
-    const factoryBuildings = coreFactionDefinitions.factory.buildings.filter((b) => b.startsWith("factory."));
-    expect(factoryBuildings.length).toBeGreaterThan(0);
+  it("ships the 7 board-game buildings, each wired to its archetype effect", () => {
+    const b = coreBuildingDefinitions;
+    const factoryBuildings = coreFactionDefinitions.factory.buildings.filter((id) => id.startsWith("factory."));
+    expect([...factoryBuildings].sort()).toEqual([
+      "factory.bank",
+      "factory.citadel",
+      "factory.city_hall",
+      "factory.dwelling_bronze",
+      "factory.dwelling_gold",
+      "factory.dwelling_silver",
+      "factory.mage_guild"
+    ]);
     for (const id of factoryBuildings) {
-      expect(coreBuildingDefinitions[id]?.implementationStatus, `${id} status`).toBe("not-implemented");
+      expect(b[id]?.implementationStatus, `${id} implemented`).toBe("implemented");
+      expect(b[id]?.effect?.type, `${id} has a real effect`).not.toBe("NOT_IMPLEMENTED");
     }
+    // Printed cost + shared archetype effect for each building.
+    expect(b["factory.city_hall"]).toMatchObject({ cost: { gold: 13, buildingMaterials: 5 }, effect: { type: "RESOURCE_ROUND_CHOICE" } });
+    expect(b["factory.citadel"]).toMatchObject({ cost: { gold: 8, buildingMaterials: 5, valuables: 1 }, effect: { type: "UNLOCK_REINFORCE" } });
+    // The spell building keeps id mage_guild (default-setup slot) but is the
+    // printed "Mana Generator" card.
+    expect(b["factory.mage_guild"]).toMatchObject({ name: "Mana Generator", cost: { gold: 7, buildingMaterials: 2, valuables: 1 }, effect: { type: "MAGE_GUILD" } });
+    expect(b["factory.bank"]).toMatchObject({ cost: { gold: 4, buildingMaterials: 3 }, effect: { type: "ARTIFACT_SMITH" } });
+    expect(b["factory.dwelling_bronze"]).toMatchObject({ name: "Remote Settlement", cost: { gold: 5, buildingMaterials: 3, valuables: 1 }, effect: { type: "UNLOCK_RECRUIT_TIER", tier: "bronze" } });
+    expect(b["factory.dwelling_silver"]).toMatchObject({ name: "Industrialized Catacombs", effect: { type: "UNLOCK_RECRUIT_TIER", tier: "silver" }, prerequisites: ["factory.dwelling_bronze"] });
+    expect(b["factory.dwelling_gold"]).toMatchObject({ name: "Gantry under Serpent Hill", effect: { type: "UNLOCK_RECRUIT_TIER", tier: "gold" }, prerequisites: ["factory.dwelling_silver"] });
+    // The fabricated stub buildings with no real card are removed.
+    for (const id of ["factory.mana_generator", "factory.artifact_merchants", "factory.pen", "factory.lightning_rod"]) {
+      expect(b[id], `${id} removed`).toBeUndefined();
+    }
+  });
+
+  it("builds Factory dwellings and enforces the tier order in a real game", () => {
+    // Effect-level guard (not just data): the engine actually builds Remote
+    // Settlement (bronze) and Industrialized Catacombs (silver), and refuses the
+    // silver dwelling until the bronze stands — the UNLOCK_RECRUIT_TIER chain.
+    let state = createAdventureGameState({
+      seed: "factory-build",
+      rollFirstPlayer: false,
+      players: [
+        { id: "p1", name: "Henrietta", factionId: "factory", heroDefId: "henrietta" },
+        { id: "p2", name: "Sandro", factionId: "necropolis", heroDefId: "sandro" }
+      ]
+    });
+    if (state.players.p1.needsHandRefresh || state.players.p1.canMulligan) {
+      state = apply(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+    }
+    const townId = Object.entries(state.towns).find(([, t]) => t.controllerId === "p1")![0];
+    const ready = (s: GameState) => {
+      s.players.p1.townTokens.build = true;
+      s.players.p1.resources = { gold: 100, buildingMaterials: 100, valuables: 100 };
+    };
+
+    ready(state);
+    // Silver (Industrialized Catacombs) refuses to build before Bronze.
+    expect(
+      applyAction(state, { type: "BUILD_STRUCTURE", playerId: "p1", townId, buildingId: "factory.dwelling_silver" }).errors.length,
+      "silver dwelling rejected before bronze"
+    ).toBeGreaterThan(0);
+
+    // Bronze (Remote Settlement) builds; then Silver builds on top of it.
+    state = apply(state, { type: "BUILD_STRUCTURE", playerId: "p1", townId, buildingId: "factory.dwelling_bronze" });
+    expect(state.towns[townId].buildings, "bronze dwelling stands").toContain("factory.dwelling_bronze");
+    ready(state);
+    state = apply(state, { type: "BUILD_STRUCTURE", playerId: "p1", townId, buildingId: "factory.dwelling_silver" });
+    expect(state.towns[townId].buildings, "silver dwelling stands after bronze").toContain("factory.dwelling_silver");
   });
 });

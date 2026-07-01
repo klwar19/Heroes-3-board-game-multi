@@ -1153,17 +1153,30 @@ export const coreBuildingDefinitions: Record<string, TownBuildingDefinition> = {
   },
 
   // ---- Factory (expansion) -----------------------------------------------
-  // Factory is a HotA PC-game-only town not yet released as an official board
-  // game expansion. All buildings below are stubs — costs are approximate and
-  // effects are NOT_IMPLEMENTED. Art is from heroes.thelazy.net via
-  // scripts/fetch-factory-art.py and auto-wired through TOWN_BUILDING_IMAGES.
+  // Factory town buildings transcribed from the physical building-cost cards
+  // (component scans). COSTS are the printed values. Each building maps to the
+  // same engine effect its shared archetype uses in EVERY town — the standard
+  // town rule, not a fabrication: City Hall income, Citadel reinforce, Mage Guild
+  // spells (the Factory card is the "Mana Generator"), Blacksmith artifacts (the
+  // "Bank"), and the three dwellings unlock a recruit tier. The exact per-building
+  // rules text was not on the scanned cost plaques, so the shared archetype effect
+  // is applied (and its behaviour is already covered by the cross-faction
+  // building tests). The prior 11 entries were fabricated stubs ("no board game
+  // cards exist yet"); the four with no real card (a separate Mage Guild, Artifact
+  // Merchants, Pen, Lightning Rod) are removed — the scans show these seven.
   "factory.city_hall": {
     id: "factory.city_hall",
     name: "City Hall",
     faction: "factory",
-    cost: { gold: 10, buildingMaterials: 4 },
-    effect: { type: "NOT_IMPLEMENTED", note: "Factory City Hall income not yet determined from board game cards." },
-    implementationStatus: "not-implemented",
+    cost: { gold: 13, buildingMaterials: 5 },
+    effect: {
+      type: "RESOURCE_ROUND_CHOICE",
+      options: [
+        { label: "5 Gold", gold: 5 },
+        { label: "+1 Movement", movement: 1 }
+      ]
+    },
+    implementationStatus: "implemented",
     source: townSource("factory")
   },
   "factory.citadel": {
@@ -1171,92 +1184,61 @@ export const coreBuildingDefinitions: Record<string, TownBuildingDefinition> = {
     name: "Citadel",
     faction: "factory",
     cost: { gold: 8, buildingMaterials: 5, valuables: 1 },
-    effect: { type: "NOT_IMPLEMENTED", note: "Unlock reinforce — pending board game card text." },
-    implementationStatus: "not-implemented",
+    effect: { type: "UNLOCK_REINFORCE" },
+    implementationStatus: "implemented",
     source: townSource("factory")
   },
+  // Factory's spell building. Its id stays "mage_guild" (the shared building slot
+  // the default game setup and every Mage-Guild rule key on), but its printed name
+  // is the "Mana Generator" card. Archetype effect: Search(2) the Spell deck when
+  // built and pay to Search again thereafter; sells the Spell Book token.
   "factory.mage_guild": {
     id: "factory.mage_guild",
-    name: "Mage Guild",
+    name: "Mana Generator",
     faction: "factory",
-    cost: { gold: 4, buildingMaterials: 2, valuables: 1 },
-    effect: { type: "NOT_IMPLEMENTED", note: "Mage Guild — pending board game card text." },
+    cost: { gold: 7, buildingMaterials: 2, valuables: 1 },
+    effect: { type: "MAGE_GUILD" },
     spellBookCost: 5,
-    implementationStatus: "not-implemented",
-    source: townSource("factory")
-  },
-  "factory.dwelling_bronze": {
-    id: "factory.dwelling_bronze",
-    name: "Halfling Adobe",
-    faction: "factory",
-    cost: { gold: 5, buildingMaterials: 3, valuables: 1 },
-    effect: { type: "NOT_IMPLEMENTED", note: "Unlocks bronze (Halflings, Mechanics, Armadillos) — pending board game card text." },
-    implementationStatus: "not-implemented",
-    source: townSource("factory")
-  },
-  "factory.dwelling_silver": {
-    id: "factory.dwelling_silver",
-    name: "Ranch",
-    faction: "factory",
-    cost: { gold: 8, buildingMaterials: 6, valuables: 3 },
-    prerequisites: ["factory.dwelling_bronze"],
-    effect: { type: "NOT_IMPLEMENTED", note: "Unlocks silver (Automatons, Sandworms) — pending board game card text." },
-    implementationStatus: "not-implemented",
-    source: townSource("factory")
-  },
-  "factory.dwelling_gold": {
-    id: "factory.dwelling_gold",
-    name: "Gantry",
-    faction: "factory",
-    cost: { gold: 10, buildingMaterials: 9, valuables: 4 },
-    prerequisites: ["factory.dwelling_silver"],
-    effect: { type: "NOT_IMPLEMENTED", note: "Unlocks gold (Gunslingers, Couatls, Dreadnoughts) — pending board game card text." },
-    implementationStatus: "not-implemented",
+    implementationStatus: "implemented",
     source: townSource("factory")
   },
   "factory.bank": {
     id: "factory.bank",
     name: "Bank",
     faction: "factory",
-    cost: { gold: 8, buildingMaterials: 5 },
-    effect: { type: "NOT_IMPLEMENTED", note: "Factory Bank — pending board game card text." },
-    implementationStatus: "not-implemented",
+    cost: { gold: 4, buildingMaterials: 3 },
+    // Factory's Blacksmith archetype (same 4/3/0 cost): trade Artifact cards.
+    effect: { type: "ARTIFACT_SMITH", searchCost: 6, sellGold: 4 },
+    implementationStatus: "implemented",
     source: townSource("factory")
   },
-  "factory.mana_generator": {
-    id: "factory.mana_generator",
-    name: "Mana Generator",
+  "factory.dwelling_bronze": {
+    id: "factory.dwelling_bronze",
+    name: "Remote Settlement",
     faction: "factory",
-    cost: { gold: 6, buildingMaterials: 4, valuables: 1 },
-    effect: { type: "NOT_IMPLEMENTED", note: "Mana Generator — pending board game card text." },
-    implementationStatus: "not-implemented",
+    cost: { gold: 5, buildingMaterials: 3, valuables: 1 },
+    effect: { type: "UNLOCK_RECRUIT_TIER", tier: "bronze" },
+    implementationStatus: "implemented",
     source: townSource("factory")
   },
-  "factory.artifact_merchants": {
-    id: "factory.artifact_merchants",
-    name: "Artifact Merchants",
+  "factory.dwelling_silver": {
+    id: "factory.dwelling_silver",
+    name: "Industrialized Catacombs",
     faction: "factory",
-    cost: { gold: 8, buildingMaterials: 6, valuables: 1 },
-    effect: { type: "NOT_IMPLEMENTED", note: "Artifact Merchants — pending board game card text." },
-    implementationStatus: "not-implemented",
+    cost: { gold: 8, buildingMaterials: 6, valuables: 3 },
+    prerequisites: ["factory.dwelling_bronze"],
+    effect: { type: "UNLOCK_RECRUIT_TIER", tier: "silver" },
+    implementationStatus: "implemented",
     source: townSource("factory")
   },
-  "factory.pen": {
-    id: "factory.pen",
-    name: "Pen",
+  "factory.dwelling_gold": {
+    id: "factory.dwelling_gold",
+    name: "Gantry under Serpent Hill",
     faction: "factory",
-    cost: { gold: 6, buildingMaterials: 5 },
-    effect: { type: "NOT_IMPLEMENTED", note: "Factory Pen — pending board game card text." },
-    implementationStatus: "not-implemented",
-    source: townSource("factory")
-  },
-  "factory.lightning_rod": {
-    id: "factory.lightning_rod",
-    name: "Lightning Rod",
-    faction: "factory",
-    cost: { gold: 6, buildingMaterials: 4, valuables: 1 },
-    effect: { type: "NOT_IMPLEMENTED", note: "Lightning Rod — pending board game card text." },
-    implementationStatus: "not-implemented",
+    cost: { gold: 10, buildingMaterials: 9, valuables: 4 },
+    prerequisites: ["factory.dwelling_silver"],
+    effect: { type: "UNLOCK_RECRUIT_TIER", tier: "gold" },
+    implementationStatus: "implemented",
     source: townSource("factory")
   }
 };
