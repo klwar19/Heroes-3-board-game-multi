@@ -2400,14 +2400,6 @@ export type ReactionPlay = {
   costCardIds?: CardId[];
   /** Play this Spell card for its alternative "+1 Power" bottom effect. */
   asPowerBoost?: boolean;
-  /**
-   * Spell Book (house rule): this reaction is played from the player's Spell
-   * Book zone, not the hand. A Book instant cast draws on the Book's own separate
-   * once-per-combat-round CAST budget (a Book Power boost on its own POWER budget),
-   * so it is not blocked by — and does not consume — the hand one-Spell-per-round
-   * limit.
-   */
-  fromSpellBook?: boolean;
 };
 
 export type DeckSearchPick = {
@@ -4862,18 +4854,6 @@ export type PlayerState = {
      * (Field name kept for back-compat; the budget is per-combat-round, not per-turn.)
      */
     spellBookPowerUsedThisTurn?: boolean;
-    /**
-     * Spell Book (house rule): true once this player has CAST one Book Spell in
-     * the current combat round. The Book grants ONE spell cast per combat round
-     * that is SEPARATE from — and additional to — the normal one-Spell-per-round
-     * hand/Scroll limit: a Book cast is not blocked by that limit and does not
-     * count toward it, so in a single round a player may cast their hand Spell,
-     * cast one Book Spell, AND spend one Book Spell for +1 Power (the three
-     * budgets are independent). Capped at one Book CAST per combat round: cleared
-     * by advanceCombatRound each combat round and by refreshRoundTokens at the
-     * player's map turn. Absent = no Book cast spent this round.
-     */
-    spellBookCastUsedThisRound?: boolean;
     /**
      * Tarnum (Conflux) VI: the spell cards just Searched into hand that may be
      * cast OVER the one-Spell-per-combat-round limit (a free bonus cast), each

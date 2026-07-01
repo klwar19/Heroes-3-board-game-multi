@@ -146,7 +146,6 @@ import {
   discardPickAllowedInCombat,
   estatesGold,
   getRuleset,
-  spellBookCastAvailable,
   spellBookPowerAvailable,
   spellBookRuleEnabled,
   spellCanEnterSpellBook,
@@ -501,7 +500,6 @@ function assertBatchReactionLegal(
 
   let expertUsesNeeded = 0;
   let spellPlays = 0;
-  let bookSpellPlays = 0;
   let powerOnlyPlays = 0;
 
   for (const play of action.plays) {
@@ -511,8 +509,7 @@ function assertBatchReactionLegal(
       cardId: play.cardId,
       mode: play.mode ?? "basic",
       ...(play.optionIndex !== undefined ? { optionIndex: play.optionIndex } : {}),
-      ...(play.asPowerBoost ? { asPowerBoost: true } : {}),
-      ...(play.fromSpellBook ? { fromSpellBook: true } : {})
+      ...(play.asPowerBoost ? { asPowerBoost: true } : {})
     };
 
     if (!legalActions.some((legal) => actionsMatch(legal.action, singleAction))) {
@@ -547,13 +544,7 @@ function assertBatchReactionLegal(
     }
 
     if (card?.kind === "spell") {
-      // A Spell Book instant spends the Book's own once-per-round CAST budget, not
-      // the hand/Scroll one-Spell-per-round limit — count it apart.
-      if (play.fromSpellBook) {
-        bookSpellPlays += 1;
-      } else {
-        spellPlays += 1;
-      }
+      spellPlays += 1;
     }
     if (effect.type === "ADD_SPELL_POWER") {
       powerOnlyPlays += 1;
@@ -567,12 +558,11 @@ function assertBatchReactionLegal(
   }
 
   // Power "dissipates" when no spell consumes it: inside an attack window,
-  // Power plays must accompany a spell instant in the same declaration. A Book
-  // instant consumes Power just like a hand spell, so it satisfies this too.
+  // Power plays must accompany a spell instant in the same declaration.
   if (
     state.reactionWindow.triggerEvent.type === "UNIT_ATTACK_DECLARED" &&
     powerOnlyPlays > 0 &&
-    spellPlays + bookSpellPlays === 0
+    spellPlays === 0
   ) {
     return {
       code: "ACTION_NOT_LEGAL",
@@ -580,8 +570,8 @@ function assertBatchReactionLegal(
     };
   }
 
-  // One Spell card per combat round (Knowledge/Necklace raise the limit). Book
-  // instants are exempt — they draw on the Book's own separate budget below.
+  // One Spell card per combat round (Knowledge/Necklace raise the limit). Hand
+  // and Book casts share this single limit.
   if (player && spellPlays > 0) {
     const remaining = spellLimitFor(state, player) - player.combatStats.spellsCastThisRound;
     if (spellPlays > remaining) {
@@ -590,15 +580,6 @@ function assertBatchReactionLegal(
         message: "Spell limit reached for this combat round."
       };
     }
-  }
-
-  // Spell Book (house rule): at most ONE Book Spell cast per combat round, on the
-  // Book's own budget (separate from and additional to the hand/Scroll limit).
-  if (player && bookSpellPlays > 0 && (!spellBookCastAvailable(player) || bookSpellPlays > 1)) {
-    return {
-      code: "ACTION_NOT_LEGAL",
-      message: "You have already cast a Spell from your Spell Book this combat round."
-    };
   }
 
   const expertUsesLeft = player
@@ -5251,15 +5232,9 @@ function refundInsufficientCloneCast(
   }
 
   // The refunded cast no longer counts as a Spell this round/turn, so it neither
-  // burns the one-Spell limit nor the "first spell" Power bonuses. A Book cast
-  // never bumped spellsCastThisRound (it drew on the Book's own budget), so undo
-  // THAT budget instead of the shared per-round counter.
+  // burns the one-Spell limit nor the "first spell" Power bonuses.
   if (player) {
-    if (stackItem.action.type === "CAST_SPELL" && stackItem.action.fromSpellBook) {
-      player.combatStats.spellBookCastUsedThisRound = false;
-    } else {
-      player.combatStats.spellsCastThisRound = Math.max(0, player.combatStats.spellsCastThisRound - 1);
-    }
+    player.combatStats.spellsCastThisRound = Math.max(0, player.combatStats.spellsCastThisRound - 1);
     player.combatStats.spellsCastThisTurn = Math.max(0, (player.combatStats.spellsCastThisTurn ?? 0) - 1);
   }
 
@@ -7715,16 +7690,6 @@ function castSpell(state: GameState, action: Extract<GameAction, { type: "CAST_S
     }
   }
 
-  // Spell Book (house rule): a Book cast is a SEPARATE bonus cast on the Book's
-  // own once-per-combat-round budget — not the hand/Scroll limit. Backstop a
-  // forged over-budget Book cast so only one Book Spell is cast per combat round.
-  if (action.fromSpellBook) {
-    const bookCaster = state.players[action.playerId];
-    if (bookCaster && !spellBookCastAvailable(bookCaster)) {
-      throw new Error("You have already cast a Spell from your Spell Book this combat round.");
-    }
-  }
-
   // Ciele IV (Conflux): a free over-limit cast pulled from the caster's OWN
   // discard. Validate the forgery surface (this cast bypasses the Spell limit, so
   // an unchecked client could otherwise free-cast any spell): the enabling
@@ -7908,14 +7873,11 @@ function performSpellCast(state: GameState, action: Extract<GameAction, { type: 
   // Tower Magi Pack Power bonus lands on whichever spell is cast first — never on
   // both a free Helm cast and a later normal cast.
   const isFirstSpellThisRound = !caster.combatStats.anySpellCastThisRound;
-  // Neither a Helm of the Alabaster Unicorn cast, a Tarnum (Conflux) VI over-limit
-  // cast, nor a Spell Book cast counts toward the hand/Scroll one-Spell-per-round
-  // limit (noteSpellCast still closes the first-spell-this-round gate for them). A
-  // Book cast instead spends the Book's own separate once-per-combat-round budget.
-  noteSpellCast(state, caster, !action.fromSpellDeck && !action.tarnumReturn && !action.fromSpellBook);
-  if (action.fromSpellBook) {
-    caster.combatStats.spellBookCastUsedThisRound = true;
-  }
+  // Neither a Helm of the Alabaster Unicorn cast nor a Tarnum (Conflux) VI
+  // over-limit cast counts toward the spell limit (noteSpellCast still closes
+  // the first-spell-this-round gate for them). A Book cast DOES count — it casts
+  // like a hand Spell and shares the one-Spell-per-round limit.
+  noteSpellCast(state, caster, !action.fromSpellDeck && !action.tarnumReturn);
 
   const stackItem = makeStackItem(state, action);
 
@@ -8499,17 +8461,10 @@ function applyReactionPlayCore(
   }
 
   if (card.kind === "spell" && state.combat && player) {
-    // A Tarnum VI over-limit reaction and a Spell Book instant are both free of
-    // the hand/Scroll one-Spell-per-round limit (noteSpellCast still closes the
-    // first-spell-this-round gate for them). A Book instant is one of the Book's
-    // own once-per-combat-round CAST budget, so it is backstopped and spent here.
-    if (play.fromSpellBook) {
-      if (!spellBookCastAvailable(player)) {
-        throw new Error("You have already cast a Spell from your Spell Book this combat round.");
-      }
-      player.combatStats.spellBookCastUsedThisRound = true;
-    }
-    noteSpellCast(state, player, !play.tarnumReturn && !play.fromSpellBook);
+    // A Tarnum VI over-limit reaction is free: it does not bump the per-round
+    // limit (noteSpellCast still closes the first-spell-this-round gate for it).
+    // A Book instant DOES count — it casts like a hand Spell and shares the limit.
+    noteSpellCast(state, player, !play.tarnumReturn);
   }
 
   const optionLabel =
@@ -13657,9 +13612,6 @@ function advanceCombatRound(state: GameState, byPlayerId: PlayerId): void {
     // inside the SAME round stays blocked (the boolean is re-set on use). It is
     // also reset per map turn in refreshRoundTokens for the map→combat boundary.
     player.combatStats.spellBookPowerUsedThisTurn = false;
-    // The Book's separate once-per-combat-round CAST budget refreshes each combat
-    // round the same way, so a Book Spell may be cast again in round 2, 3, ….
-    player.combatStats.spellBookCastUsedThisRound = false;
     // Tarnum (Conflux) VI: "immediately cast" — the over-limit Search privilege
     // does not survive into the next combat round (an uncast Searched spell just
     // stays in hand as a normal card).

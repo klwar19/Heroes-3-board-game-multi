@@ -92,7 +92,6 @@ import {
   discardPickAllowedInCombat,
   expertUsesAvailable,
   getRuleset,
-  spellBookCastAvailable,
   spellBookPowerAvailable,
   spellBookRuleEnabled,
   spellCanEnterSpellBook,
@@ -1614,22 +1613,17 @@ function addSpellActions(
     ? []
     : [
         ...[...new Set(player.hand)].filter((cardId) => !tarnumFlagged.has(cardId)).map((cardId) => ({ cardId })),
+        // Spell Book (house rule): a Book Spell casts like a hand Spell and SHARES
+        // the same one-Spell-per-round cast limit — full Power, same timing/
+        // targeting gates. (The Book's separate once-per-round budget is only its
+        // +1-Power discard, spellBookPowerUsedThisTurn — see the reaction path.)
+        ...(spellBookRuleEnabled(state)
+          ? [...new Set(player.spellBook)].map((cardId) => ({ cardId, fromSpellBook: true }))
+          : []),
         ...(player.scrolls ?? []).flatMap((scroll) =>
           [...new Set(scroll.spellCardIds)].map((cardId) => ({ cardId, fromScroll: scroll.id }))
         )
       ];
-
-  // Spell Book (house rule): a Book Spell cast is a SEPARATE bonus cast — one per
-  // combat round, on its own budget (spellBookCastUsedThisRound), NOT the hand
-  // Scroll one-Spell-per-round limit. So it is offered even once that limit is
-  // reached, and it does not consume it (a player may cast a hand Spell AND a
-  // Book Spell in the same round). It otherwise casts at full Power under the same
-  // timing/targeting rules as a hand cast (the loop below).
-  if (spellBookRuleEnabled(state) && spellBookCastAvailable(player)) {
-    for (const cardId of new Set(player.spellBook)) {
-      castCandidates.push({ cardId, fromSpellBook: true });
-    }
-  }
 
   // Tarnum over-limit casts: each flagged hand spell, offered with both
   // placements ("on the top of the Spell deck or on its discard pile").
@@ -4567,17 +4561,9 @@ export function getLegalReactionsForTrigger(
         continue;
       }
 
-      // Spell instants respect the one-Spell-per-combat-round limit — EXCEPT a
-      // Book instant, which draws on the Book's own separate once-per-round CAST
-      // budget (so a player may play a hand Spell AND a Book Spell in the round).
-      if (card.kind === "spell") {
-        if (fromSpellBook) {
-          if (!spellBookCastAvailable(player)) {
-            continue;
-          }
-        } else if (spellLimitLeft <= 0) {
-          continue;
-        }
+      // Spell instants (hand or Book) respect the one-Spell-per-combat-round limit.
+      if (card.kind === "spell" && spellLimitLeft <= 0) {
+        continue;
       }
 
       // Recanter's Cloak (option B) locks every Hero out of casting any Spell.
