@@ -998,11 +998,62 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   },
   // Factory Armadillo (board game): "Curled" — +2 Defense while it is defending
   // (holds a Defense token). Reuses the Mammoth Thick-Hide DEFEND_BONUS path.
+  // NOTE: the physical Armadillo card carries NO Curl text — this entry is a
+  // leftover from the fabricated PC-guess placeholder and is on NO shipping unit
+  // (factory-content.test asserts no side carries it). Kept only so the removal
+  // stays a conscious, reviewable decision.
   "armadillo-curl": {
     id: "armadillo-curl",
     name: "Curled",
     text: "[unit_passive] While defending, this unit has +2 Defense.",
     effect: { type: "DEFEND_BONUS", amount: 2 },
+    implementationStatus: "implemented"
+  },
+  // ---- Factory (board game) unit abilities read straight off the card scans ---
+  // Factory Mechanics: "[activation] Attack 2 spaces in a line. The first attack
+  // resolves normally, and the second has N [attack]." Mechanically identical to
+  // the Gold Dragons' line attack (SECOND_ATTACK_BEHIND_TARGET): after the melee
+  // attack a full separate attack at the printed replacement value strikes the
+  // unit directly behind the target (friend or foe; never adjacent → never
+  // retaliates, never chains). Few/Neutral hit at attack 1, the Pack at attack 2.
+  "mechanics-line-attack-1": {
+    id: "mechanics-line-attack-1",
+    name: "Piston Reach",
+    text: "[activation] Attack 2 spaces in a line: after the attack, a full separate attack at attack 1 strikes the unit directly behind the target (friend or foe). That unit is not adjacent, so it never retaliates.",
+    effect: { type: "SECOND_ATTACK_BEHIND_TARGET", baseAttack: 1 },
+    implementationStatus: "implemented"
+  },
+  "mechanics-line-attack-2": {
+    id: "mechanics-line-attack-2",
+    name: "Piston Reach",
+    text: "[activation] Attack 2 spaces in a line: after the attack, a full separate attack at attack 2 strikes the unit directly behind the target (friend or foe). That unit is not adjacent, so it never retaliates.",
+    effect: { type: "SECOND_ATTACK_BEHIND_TARGET", baseAttack: 2 },
+    implementationStatus: "implemented"
+  },
+  // Factory Halflings (Pack): "Roll 2 Attack dice and resolve the higher one. If
+  // you resolve a +1 on the Attack Die, the attacked unit suffers -1 [defense]
+  // (to a minimum of 0)." The roll-two-take-higher half is attack-roll-advantage;
+  // this companion places a Corrosion token on the target when the resolved die
+  // is "+1". A Corrosion token only ever LOWERS Defense (min 0) — the same wired
+  // ON_ATTACK_DIE_TOKEN the Rust Dragons use, but on the "+1" face for -1 Defense.
+  "halfling-precise-shot": {
+    id: "halfling-precise-shot",
+    name: "Precise Shot",
+    text: 'On a "+1" on the Attack die, place a Corrosion token on the target: -1 Defense (to a minimum of 0) for the rest of the combat.',
+    effect: { type: "ON_ATTACK_DIE_TOKEN", onRoll: 1, token: "corrosion", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  // Factory Sandworms (Neutral guard): "If a target is an adjacent unit, attack
+  // this target again." A ground (melee) Sandworm only ever attacks adjacent
+  // targets, so this is a same-target second strike — the wired
+  // SECOND_ATTACK_SAME_TARGET_AFTER_RETALIATION (Wolf Raiders): after the target
+  // retaliates (if it still can) the Sandworm strikes it once more, and that
+  // follow-up never provokes another retaliation.
+  "sandworm-strike-again": {
+    id: "sandworm-strike-again",
+    name: "Relentless Burrow",
+    text: "After the adjacent target retaliates, if possible, attack that target again. The second attack does not provoke another retaliation.",
+    effect: { type: "SECOND_ATTACK_SAME_TARGET_AFTER_RETALIATION" },
     implementationStatus: "implemented"
   },
   "teleport-move": {
