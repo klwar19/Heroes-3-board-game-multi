@@ -161,6 +161,10 @@ export const wogUnitDefinitions: Record<WogUnitId, UnitDefinition> = {
       health: 5,
       initiative: 8,
       cost: { gold: 15 },
+      // engine: `ignore-all-combat-penalties` waives the range/adjacent penalties
+      // on this unit's OWN attack only (never its Retaliation Attack) — the same
+      // [unit_attack] scope as the base Sharpshooters/Magi/Halflings that share the
+      // ability; the "+1 Defense vs ranged" (bulwark-air-shield) is the passive.
       abilities: ["ignore-all-combat-penalties", "bulwark-air-shield"],
       abilityText: "[unit_passive] Ignore combat penalties. +1 [defense] against attacks from ranged units.",
       cardImage: "/assets/units-neutral-silver-wog_arctic_sharpshooter.webp"
@@ -180,6 +184,10 @@ export const wogUnitDefinitions: Record<WogUnitId, UnitDefinition> = {
       health: 6,
       initiative: 9,
       cost: { gold: 15 },
+      // engine: `ignore-all-combat-penalties` waives the range/adjacent penalties
+      // on this unit's OWN attack only (never its Retaliation Attack) — the same
+      // [unit_attack] scope as the base Sharpshooters/Magi/Halflings that share the
+      // ability; the "1 damage to an adjacent attacker" (wog-fire-shield-1) is the passive.
       abilities: ["ignore-all-combat-penalties", "wog-fire-shield-1"],
       abilityText: "[unit_passive] Ignore combat penalties. An adjacent attacker takes 1 [damage] after attacking this unit.",
       cardImage: "/assets/units-neutral-silver-wog_lava_sharpshooter.webp"
