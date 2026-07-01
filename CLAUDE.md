@@ -192,6 +192,41 @@ Conflux — now fully engine-wired (no display-only unit clauses left):
     on-turn vs off-turn split, the reaction-window cast with a graded CONTROL that
     the flag is what lifts the limit, AND the in-window search-and-cast flow).
 
+Factory (expansion) — unit Few/Pack card art is now the REAL board-game scans
+(was fake PC-portrait placeholders); the abilities are being wired off those scans
+(read the card, not a wiki). WIRED + engine-enforced (a test in
+`factory-unit-abilities.test.ts` / `factory-combat.test.ts` fails if removed;
+`factory-content.test.ts` pins which sides carry which id):
+- Halflings — Few/Pack `attack-roll-advantage`; Pack also `halfling-precise-shot`
+  (a "+1" roll drops a Corrosion token, -1 Defense).
+- Mechanics — all sides `mechanics-line-attack-1/2` ("Attack 2 spaces in a line",
+  SECOND_ATTACK_BEHIND_TARGET); Few/Pack also `mechanics-repair-1/2` (repair an
+  adjacent mechanical unit — Automatons/Dreadnoughts — the Pack falling back to
+  +1 Attack). The Neutral guard has only the reach.
+- Armadillos — Pack `armadillo-initiative-amplify` (AMPLIFY_INITIATIVE_INCREASE:
+  any positive Initiative increase gets +1 more). Few/Neutral have no printed
+  ability (genuinely `[]`, not a stub).
+- Automatons — Pack `ignores-retaliation`; Neutral `automaton-detonate-1`.
+- Sandworms — Neutral `sandworm-strike-again` (attack an adjacent target again).
+- Bounty Hunters — Few/Pack `bounty-hunter-mark-1/2` (Mark the strongest enemy at
+  combat start; +1/+2 Attack vs Marked units). Mark target selection is
+  auto-resolved (deterministic), not a player prompt.
+
+STILL display-only / NOT wired (honest `abilities: []`, pinned by the
+"not-yet-wired sides stay display-only" test in `factory-content.test.ts`); each
+needs a new interactive/timing subsystem:
+- Automaton Few — cube-scaled Detonate (needs the faction-cube subsystem).
+- Sandworm Pack — cube-fuelled extra attack (faction cubes).
+- Bounty Hunter Neutral — pre-emptive + ranged retaliation.
+- Couatl Few/Pack — activated "ignore all damage & spell effects until next
+  activation" (Couatl Neutral has no ability).
+- Dreadnought Few/Pack/Neutral — "instead of attacking, allocate N/M/… splash
+  damage to up to K adjacent units".
+Factory buildings use the real thelazy.net PC building art and are wired to their
+shared archetype effects (`factory-content.test.ts` "ships the 7 board-game
+buildings…"); the PC-only special buildings (Mana Generator spell-points, Grail
+Lightning Rod, Pen horde) are NOT modeled as distinct effects.
+
 This section is maintained by hand — the rule #3 enforcement test still does
 **not** exist, so re-verify any "stub" claim against `src/data/factions/units.ts`
 and the tests before trusting it. The Creature Bank system tracks its own

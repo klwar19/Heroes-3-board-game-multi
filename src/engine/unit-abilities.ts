@@ -289,6 +289,14 @@ export function hasIgnoreParalysis(unit: CombatUnitState): boolean {
   return hasUnitAbilityEffect(unit, "IGNORE_PARALYSIS");
 }
 
+/**
+ * Factory Armadillos (Pack): a positive Initiative increase this unit receives
+ * from active effects is amplified by one more point (read in effectiveInitiative).
+ */
+export function hasAmplifyInitiativeIncrease(unit: CombatUnitState): boolean {
+  return hasUnitAbilityEffect(unit, "AMPLIFY_INITIATIVE_INCREASE");
+}
+
 /** Archangels: the once-per-combat "cancel a killing blow on another unit" ability. */
 export function getLethalSaveUnitAbility(
   unit: CombatUnitState
@@ -299,6 +307,36 @@ export function getLethalSaveUnitAbility(
     }
   }
   return null;
+}
+
+/**
+ * Factory Bounty Hunters: the "Mark an enemy at combat start" ability, if this
+ * unit carries it (the caller places the Mark token; `attackBonus` is the bonus
+ * the unit later gets against Marked units).
+ */
+export function getCombatStartMark(
+  unit: CombatUnitState
+): { abilityId: string; abilityName: string; attackBonus: number } | null {
+  for (const ability of getAbilitiesWithEffect(unit, "MARK_AND_HUNT")) {
+    if (ability.effect?.type === "MARK_AND_HUNT") {
+      return { abilityId: ability.id, abilityName: ability.name, attackBonus: ability.effect.attackBonus };
+    }
+  }
+  return null;
+}
+
+/**
+ * Factory Bounty Hunters: the extra Attack this unit gets for striking a Marked
+ * unit. 0 unless the defender carries a Mark AND this attacker has the ability.
+ */
+export function getAttackBonusVsMarked(attacker: CombatUnitState, defender: CombatUnitState): number {
+  if (!defender.marked) {
+    return 0;
+  }
+  return getAbilitiesWithEffect(attacker, "MARK_AND_HUNT").reduce(
+    (total, ability) => total + (ability.effect?.type === "MARK_AND_HUNT" ? ability.effect.attackBonus : 0),
+    0
+  );
 }
 
 /**
@@ -604,10 +642,27 @@ export function getActivationSpellPowerBoost(unit: CombatUnitState, spellSchools
   }, 0);
 }
 
-/** Enchanters: the activation heal-a-friendly-or-buff-self choice ability. */
-export function getEnchanterActivationAbility(
-  unit: CombatUnitState
-): { abilityId: string; abilityName: string; healAmount: number; attackBonus: number } | null {
+/**
+ * "Mechanical" units — Factory Automatons and Dreadnoughts (the constructs that
+ * carry the gear trait). Mechanics' Field Repair only ever targets these.
+ */
+export function isMechanicalUnit(unit: CombatUnitState): boolean {
+  return unit.unitDefId === "factory.automatons" || unit.unitDefId === "factory.dreadnoughts";
+}
+
+/**
+ * Enchanters / Factory Mechanics: the activation heal-a-friendly-or-buff-self
+ * choice ability. `adjacentOnly` + `targetTrait` restrict the repair target
+ * (Mechanics repair only ADJACENT mechanical units); Enchanters leave them unset.
+ */
+export function getEnchanterActivationAbility(unit: CombatUnitState): {
+  abilityId: string;
+  abilityName: string;
+  healAmount: number;
+  attackBonus: number;
+  adjacentOnly: boolean;
+  targetTrait?: "mechanical";
+} | null {
   for (const ability of getUnitAbilityDefinitions(unit)) {
     if (
       ability.implementationStatus === "implemented" &&
@@ -617,7 +672,9 @@ export function getEnchanterActivationAbility(
         abilityId: ability.id,
         abilityName: ability.name,
         healAmount: ability.effect.healAmount,
-        attackBonus: ability.effect.attackBonus
+        attackBonus: ability.effect.attackBonus,
+        adjacentOnly: Boolean(ability.effect.adjacentOnly),
+        targetTrait: ability.effect.targetTrait
       };
     }
   }
@@ -698,6 +755,94 @@ export function getSpellDamageReduction(unit: CombatUnitState): number {
       (total, ability) => total + (ability.effect?.type === "REDUCE_SPELL_AND_SPECIALTY_DAMAGE" ? ability.effect.amount : 0),
       0
     );
+}
+
+/** WOG Messengers: reduction applies only to damage from their named school. */
+export function getSpellSchoolDamageReduction(unit: CombatUnitState, schools: readonly string[]): number {
+  return getAbilitiesWithEffect(unit, "REDUCE_SPELL_SCHOOL_DAMAGE").reduce(
+    (total, ability) =>
+      total +
+      (ability.effect?.type === "REDUCE_SPELL_SCHOOL_DAMAGE" &&
+      (schools.includes(ability.effect.school) || schools.includes("any"))
+        ? ability.effect.amount
+        : 0),
+    0
+  );
+}
+
+/** WOG Sylvan Centaur: clamp the resolved Attack die to this floor. */
+export function getMinimumAttackDie(unit: CombatUnitState): number | null {
+  const floors = getAbilitiesWithEffect(unit, "MINIMUM_ATTACK_DIE").flatMap((ability) =>
+    ability.effect?.type === "MINIMUM_ATTACK_DIE" ? [ability.effect.minimum] : []
+  );
+  return floors.length > 0 ? Math.max(...floors) : null;
+}
+
+/** WOG Werewolf: +Attack and forced strike during even Astrologers rounds. */
+export function getAstrologersRoundFrenzy(unit: CombatUnitState): number {
+  return getAbilitiesWithEffect(unit, "ASTROLOGERS_ROUND_FRENZY").reduce(
+    (total, ability) =>
+      total + (ability.effect?.type === "ASTROLOGERS_ROUND_FRENZY" ? ability.effect.attackBonus : 0),
+    0
+  );
+}
+
+export function hasInnateMagicMirror(unit: CombatUnitState): boolean {
+  return hasUnitAbilityEffect(unit, "INNATE_MAGIC_MIRROR");
+}
+
+export function isUndeadUnit(unit: CombatUnitState): boolean {
+  return hasUnitAbilityEffect(unit, "UNDEAD") || unit.unitDefId?.startsWith("necropolis.") === true;
+}
+
+export function getOnKillHealthHarvest(
+  unit: CombatUnitState
+): { abilityId: string; amount: number; maxBonus: number; requiresNonUndead: boolean } | null {
+  for (const ability of getAbilitiesWithEffect(unit, "ON_KILL_HEAL_AND_PERMANENT_HEALTH")) {
+    if (ability.effect?.type === "ON_KILL_HEAL_AND_PERMANENT_HEALTH") {
+      return {
+        abilityId: ability.id,
+        amount: ability.effect.amount,
+        maxBonus: ability.effect.maxBonus,
+        requiresNonUndead: ability.effect.requiresNonUndead === true
+      };
+    }
+  }
+  return null;
+}
+
+export function getOnKillWeakCopy(
+  unit: CombatUnitState
+): { abilityId: string; statPenalty: number; oncePerCombat: boolean } | null {
+  for (const ability of getAbilitiesWithEffect(unit, "ON_KILL_SUMMON_WEAK_COPY")) {
+    if (ability.effect?.type === "ON_KILL_SUMMON_WEAK_COPY") {
+      return {
+        abilityId: ability.id,
+        statPenalty: ability.effect.statPenalty,
+        oncePerCombat: ability.effect.oncePerCombat
+      };
+    }
+  }
+  return null;
+}
+
+export function getOnAttackFireWallDamage(unit: CombatUnitState): number {
+  return getAbilitiesWithEffect(unit, "ON_ATTACK_PLACE_FIRE_WALL").reduce(
+    (best, ability) =>
+      Math.max(best, ability.effect?.type === "ON_ATTACK_PLACE_FIRE_WALL" ? ability.effect.damage : 0),
+    0
+  );
+}
+
+export function getDefenseDieDamageReduction(
+  unit: CombatUnitState
+): { abilityId: string; onRoll: number; amount: number } | null {
+  for (const ability of getAbilitiesWithEffect(unit, "REDUCE_ATTACK_DAMAGE_ON_DEFENSE_DIE")) {
+    if (ability.effect?.type === "REDUCE_ATTACK_DAMAGE_ON_DEFENSE_DIE") {
+      return { abilityId: ability.id, onRoll: ability.effect.onRoll, amount: ability.effect.amount };
+    }
+  }
+  return null;
 }
 
 /**

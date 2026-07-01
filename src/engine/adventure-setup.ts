@@ -18,6 +18,7 @@ import {
   startingTileByFaction
 } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
+import { WOG_UNIT_IDS_BY_TIER } from "@/data/wog";
 import { allTileDefinitions, ALL_TILE_CONTENT, DEFAULT_TILE_CONTENT, tilePoolIds } from "@/data/map/tiles";
 import { CREATURE_BANK_IDS, CREATURE_BANKS } from "@/data/map/creature-banks";
 import type { TileContent } from "@/data/map/types";
@@ -65,9 +66,10 @@ import type {
   PlayerState,
   PvpTroopLoss,
   UnitLevel,
-  VictoryMode
+  VictoryMode,
+  WogModOptions
 } from "./state";
-import { MAX_FAR_TILES_PER_PLAYER, NEUTRAL_PLAYER_ID, UNOPENED_FAR_TILE } from "./state";
+import { DEFAULT_WOG_OPTIONS, MAX_FAR_TILES_PER_PLAYER, NEUTRAL_PLAYER_ID, UNOPENED_FAR_TILE } from "./state";
 
 export type AdventurePlayerConfig = {
   id: string;
@@ -115,6 +117,8 @@ function appendSetupTakeBackWarning(
 export type AdventureSetupOptions = {
   seed?: string;
   ruleset?: GameRuleset;
+  /** Wake of Gods modules; honored only when the BINH ruleset is active. */
+  wog?: Partial<WogModOptions>;
   /** Win condition: "conquest", "grail", "dragon-hunt" or "dragon-conqueror". */
   victoryMode?: VictoryMode;
   /** PvP Combat casualties: "normal" (lose dead units) or "none" (keep troops). */
@@ -194,6 +198,7 @@ export function defaultGameSetupOptions(scenario: ScenarioDefinition): GameSetup
     scenarioId: scenario.id,
     playerCount: scenario.minPlayers,
     ruleset: "binh",
+    wog: { ...DEFAULT_WOG_OPTIONS },
     victoryMode: "conquest",
     pvpTroopLoss: "normal",
     spellBook: true,
@@ -220,13 +225,16 @@ export function getScenario(scenarioId?: string): ScenarioDefinition {
   return scenarioDefinitions[scenarioId ?? DEFAULT_SCENARIO_ID] ?? scenarioDefinitions[DEFAULT_SCENARIO_ID];
 }
 
-function makeNeutralDecks(seed: string): Record<string, DeckState> {
+function makeNeutralDecks(seed: string, wog: WogModOptions): Record<string, DeckState> {
   const decks: Record<string, DeckState> = {};
   for (const tier of ["bronze", "silver", "gold", "azure"] as const) {
     const deckId = NEUTRAL_DECK_IDS[tier];
+    const unitIds = wog.enabled && wog.newCreatures
+      ? [...neutralUnitIdsByTier[tier], ...WOG_UNIT_IDS_BY_TIER[tier]]
+      : neutralUnitIdsByTier[tier];
     decks[deckId] = {
       id: deckId,
-      drawPile: shuffleCards(neutralUnitIdsByTier[tier], `${seed}#neutral#${tier}`),
+      drawPile: shuffleCards(unitIds, `${seed}#neutral#${tier}`),
       discardPile: []
     };
   }
@@ -578,6 +586,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   const setupOptions: GameSetupOptions = {
     ...defaultGameSetupOptions(scenario),
     ...(options.ruleset ? { ruleset: options.ruleset } : {}),
+    ...(options.wog ? { wog: { ...DEFAULT_WOG_OPTIONS, ...options.wog } } : {}),
     ...(options.victoryMode ? { victoryMode: options.victoryMode } : {}),
     ...(options.pvpTroopLoss ? { pvpTroopLoss: options.pvpTroopLoss } : {}),
     ...(options.difficulty ? { difficulty: options.difficulty } : {}),
@@ -620,6 +629,9 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   // (rollFirstPlayer:false) skip it unless they ask for it explicitly.
   const rotateStartTilesOn = options.rotateStartTiles ?? options.rollFirstPlayer !== false;
   const ruleset: GameRuleset = setupOptions.ruleset;
+  const wog: WogModOptions = ruleset === "binh"
+    ? { ...DEFAULT_WOG_OPTIONS, ...setupOptions.wog }
+    : { ...DEFAULT_WOG_OPTIONS, ...setupOptions.wog, enabled: false };
   const victoryMode: VictoryMode = setupOptions.victoryMode ?? "conquest";
   const pvpTroopLoss: PvpTroopLoss = setupOptions.pvpTroopLoss ?? "normal";
   const playerConfigs = (options.players?.length ? options.players : DEFAULT_PLAYERS).slice(
@@ -693,6 +705,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     seed,
     mode: "adventure",
     ruleset,
+    wog,
     round: 1,
     phase: "player-turn",
     activePlayerId: playerConfigs[0].id,
@@ -710,7 +723,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     combat: null,
     decks: {
       ...makeSharedDecks(seed, ruleset),
-      ...makeNeutralDecks(seed),
+      ...makeNeutralDecks(seed, wog),
       [ASTROLOGERS_DECK_ID]: makeAstrologersDeck(seed)
     },
     stack: [],
@@ -1093,6 +1106,16 @@ export function createAdventureLobbyState(options: AdventureSetupOptions = {}): 
   const seed = options.seed ?? freshSeed("homm3bg-lobby");
   const scenario = getScenario(options.scenarioId);
   const setupOptions = defaultGameSetupOptions(scenario);
+  if (options.ruleset) {
+    setupOptions.ruleset = options.ruleset;
+  }
+  if (options.wog) {
+    setupOptions.wog = {
+      ...DEFAULT_WOG_OPTIONS,
+      ...options.wog,
+      ...(setupOptions.ruleset === "legacy" ? { enabled: false } : {})
+    };
+  }
   // Map-setup default: a fresh lobby opens with the three universal core town
   // cards (Citadel, Mage Guild, Bronze Dwelling) already pre-built, so every
   // faction starts the adventure with the standard opening buildings. Any seat
@@ -1120,6 +1143,7 @@ export function createAdventureLobbyState(options: AdventureSetupOptions = {}): 
     seed,
     mode: "adventure",
     ruleset: setupOptions.ruleset,
+    wog: setupOptions.wog,
     round: 0,
     phase: "setup",
     activePlayerId: seats[0].playerId,
@@ -1201,7 +1225,28 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
     }
     lobby.options.ruleset = next.ruleset;
     state.ruleset = next.ruleset;
+    if (next.ruleset === "legacy") {
+      lobby.options.wog = { ...DEFAULT_WOG_OPTIONS, ...lobby.options.wog, enabled: false };
+      state.wog = lobby.options.wog;
+    }
     changes.push(`game mode ${next.ruleset === "binh" ? "House rules BINH" : "Legacy (rulebook)"}`);
+  }
+
+  if (next.wog !== undefined) {
+    const wog: WogModOptions = {
+      ...DEFAULT_WOG_OPTIONS,
+      ...lobby.options.wog,
+      enabled: Boolean(next.wog.enabled),
+      commanders: Boolean(next.wog.commanders),
+      newObjects: Boolean(next.wog.newObjects),
+      newCreatures: Boolean(next.wog.newCreatures)
+    };
+    if (lobby.options.ruleset !== "binh") {
+      wog.enabled = false;
+    }
+    lobby.options.wog = wog;
+    state.wog = wog;
+    changes.push(`WOG ${wog.enabled ? "on" : "off"}`);
   }
 
   if (next.victoryMode !== undefined) {
@@ -2014,6 +2059,7 @@ export function startAdventureFromLobby(state: GameState, action: Extract<GameAc
     seed: state.seed,
     scenarioId: lobby.options.scenarioId,
     ruleset: lobby.options.ruleset,
+    wog: lobby.options.wog,
     victoryMode: lobby.options.victoryMode,
     pvpTroopLoss: lobby.options.pvpTroopLoss,
     spellBook: lobby.options.spellBook,

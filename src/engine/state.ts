@@ -34,6 +34,21 @@ export type GameDifficulty = "easy" | "normal" | "hard" | "impossible";
  *    Pack of Cerberi attacking every adjacent enemy with full attacks.
  */
 export type GameRuleset = "legacy" | "binh";
+
+/** Optional Wake of Gods modules. WOG is valid only while BINH is selected. */
+export type WogModOptions = {
+  enabled: boolean;
+  commanders: boolean;
+  newObjects: boolean;
+  newCreatures: boolean;
+};
+
+export const DEFAULT_WOG_OPTIONS: WogModOptions = {
+  enabled: false,
+  commanders: false,
+  newObjects: false,
+  newCreatures: true
+};
 /**
  * How the scenario is won:
  *  - "conquest": flag an enemy faction Town (the classic skirmish goal).
@@ -2626,6 +2641,12 @@ export type GameAction =
       savingUnitId: UnitId;
     }
   | {
+      /** WOG War Zealot: free innate Magic Mirror, without a card or spell-limit cost. */
+      type: "USE_UNIT_MAGIC_MIRROR";
+      playerId: PlayerId;
+      unitId: UnitId;
+    }
+  | {
       /**
        * Post-roll die-cancel window: a defending unit ignores the attacker's
        * settled Attack die by paying its own ability cost — Castle Halberdiers
@@ -4638,6 +4659,8 @@ export type ArmyUnitState = {
    * so it never wears off. Absent on every normally-recruited card.
    */
   permanentAttackBonus?: number;
+  /** WOG Ghost: permanent Health gained from Soul Harvest, capped at +2. */
+  permanentHealthBonus?: number;
 };
 
 export type TownTokenState = {
@@ -4738,6 +4761,8 @@ export type PlayerState = {
   permanents?: CardId[];
   /** Unit deck: the army that fights the player's combats. */
   army: ArmyUnitState[];
+  /** WOG Santa Gremlin: Resource dice owed before the next conquered field visit. */
+  pendingWogResourceDice?: number;
   /** Scenario starting units, restored when the unit deck empties. */
   startingArmy: { unitDefId: string; side: "few" | "pack" }[];
   resources: {
@@ -5026,6 +5051,13 @@ export type CombatUnitState = {
    */
   detonatedThisCombat?: boolean;
   /**
+   * Factory Bounty Hunters' Mark: set on an enemy unit at the start of Combat.
+   * A Bounty Hunter attacking a Marked unit gains its printed Attack bonus (Few
+   * +1, Pack +2). Modeled as a per-unit flag (the board-game Mark token); the
+   * target is auto-selected at combat start (see applyCombatStartUnitAbilities).
+   */
+  marked?: boolean;
+  /**
    * Cove Haspids (Few): set the moment this unit's Pack side is defeated and it
    * flips down to its Few side during a combat. The Few side's "Vengeance"
    * ability grants +2 Attack only while this is set, so a Few recruited fresh
@@ -5038,6 +5070,8 @@ export type CombatUnitState = {
    * out twice in the same fight.
    */
   gainedKillGoldThisCombat?: boolean;
+  /** WOG Werewolf: its once-per-combat weak-copy summon has fired. */
+  weakCopySummonedThisCombat?: boolean;
   retaliatedThisRound: boolean;
   defenseToken: boolean;
   /**
@@ -5088,6 +5122,8 @@ export type CombatUnitState = {
    * a flip. Not doubled and not removable — it is part of the card's stats.
    */
   permanentAttackBonus?: number;
+  /** WOG Ghost: persistent Soul Harvest Health mirrored from its army card. */
+  permanentHealthBonus?: number;
   /**
    * Fixed creature-bank guard (Dragon Utopia's dragons, the Cyclops
    * Stockpile's 2 golden Cyclopes): minted for this fight only, so it must
@@ -5631,6 +5667,7 @@ export type VisitStep =
   | { type: "GAIN_MOVEMENT"; amount: number }
   | { type: "GAIN_MORALE"; amount: number }
   | { type: "ROLL_RESOURCE_DICE"; count: number }
+  | { type: "RESUME_FIELD_VISIT"; heroId: HeroId; fieldId: MapSpaceId; revisit: boolean }
   | { type: "ROLL_TREASURE_DICE"; count: number }
   | {
       /** Marks one Luck reroll (per dice kind) as spent before re-rolling. */
@@ -6412,6 +6449,8 @@ export type GameSetupOptions = {
   playerCount?: number;
   /** Rules variant: "legacy" (rulebook) or "binh" (house rules). */
   ruleset: GameRuleset;
+  /** Wake of Gods modules. Enabled only in BINH mode; absent means fully off. */
+  wog?: WogModOptions;
   /** Win condition: "conquest" (flag enemy town), "grail", "dragon-hunt" or "dragon-conqueror". */
   victoryMode?: VictoryMode;
   /** PvP Combat casualties: "normal" (lose dead units) or "none" (keep troops). */
@@ -7125,6 +7164,8 @@ export type GameState = {
   mode: GameMode;
   /** Rules variant; absent on snapshots saved before modes existed (= legacy). */
   ruleset?: GameRuleset;
+  /** Wake of Gods module selection; absent on older snapshots and Legacy games (= off). */
+  wog?: WogModOptions;
   round: number;
   phase: GamePhase;
   activePlayerId: PlayerId;
