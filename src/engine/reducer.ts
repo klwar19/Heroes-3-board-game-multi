@@ -787,7 +787,16 @@ function reactionPlayerOrder(
   legalReactions: Record<PlayerId, LegalAction[]>,
   triggerEvent?: GameEvent
 ): PlayerId[] {
-  const eligible = state.turnOrder.filter((playerId) => (legalReactions[playerId] ?? []).length > 0);
+  // The neutral side is not in turnOrder, but a NEUTRAL unit's innate reaction
+  // (the War Zealot's always-on Magic Mirror) must still be offered so the AI can
+  // reflect — otherwise a spell cast at a neutral War Zealot resolves against it
+  // untouched. Append it only when it actually holds a reaction (the neutral has
+  // no hand, so this is empty in every other fight), and let the pump auto-use it.
+  const order =
+    (legalReactions[NEUTRAL_PLAYER_ID] ?? []).length > 0 && !state.turnOrder.includes(NEUTRAL_PLAYER_ID)
+      ? [...state.turnOrder, NEUTRAL_PLAYER_ID]
+      : state.turnOrder;
+  const eligible = order.filter((playerId) => (legalReactions[playerId] ?? []).length > 0);
 
   // The initiator of a cast or attack acts FIRST so they can finish empowering
   // (paying Power into a spell / attack) before the opponent decides Resistance
@@ -13408,6 +13417,30 @@ function autoResolveNeutralAbilityChoice(state: GameState, cards: CardLibrary): 
   return true;
 }
 
+/**
+ * The AI side has no hand, so the only combat reaction a NEUTRAL unit is ever
+ * offered is a guaranteed innate one — today, the War Zealot's always-on Magic
+ * Mirror. When the reaction window hands the neutral priority, auto-USE that
+ * mirror (the redirect target is then picked by autoResolveNeutralAbilityChoice);
+ * if for any reason no innate reaction is offered, auto-pass so the window closes
+ * instead of stalling the pump. Returns true when it acted on the neutral's turn.
+ */
+function autoResolveNeutralReaction(state: GameState, cards: CardLibrary): boolean {
+  const window = state.reactionWindow;
+  if (!window || window.priorityPlayerId !== NEUTRAL_PLAYER_ID) {
+    return false;
+  }
+  const mirror = (window.legalReactions[NEUTRAL_PLAYER_ID] ?? []).find(
+    (entry) => entry.action.type === "USE_UNIT_MAGIC_MIRROR"
+  );
+  if (mirror && mirror.action.type === "USE_UNIT_MAGIC_MIRROR") {
+    applyUnitMagicMirror(state, mirror.action, cards);
+  } else {
+    passReaction(state, { type: "PASS_REACTION", playerId: NEUTRAL_PLAYER_ID }, cards);
+  }
+  return true;
+}
+
 function declareAttack(
   state: GameState,
   action: Extract<GameAction, { type: "ATTACK_UNIT" | "MOVE_AND_ATTACK_UNIT" }>,
@@ -14683,6 +14716,17 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
       } else {
         break;
       }
+    }
+
+    // A neutral unit's innate combat reaction (War Zealot Magic Mirror): the AI
+    // has no UI to click it, so auto-resolve the window when it holds priority —
+    // the reflect (or a pass) then happens on its own instead of the spell simply
+    // resolving against the neutral untouched.
+    if (
+      state.reactionWindow?.priorityPlayerId === NEUTRAL_PLAYER_ID &&
+      autoResolveNeutralReaction(state, cards)
+    ) {
+      continue;
     }
 
     // Neutral Liches/Magogs/Cerberi resolve their own ability targets.

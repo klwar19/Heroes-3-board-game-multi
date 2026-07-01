@@ -458,3 +458,76 @@ describe("player-vs-player — pre-activation pause only with Intelligence", () 
     expect(active?.controllerId).toBe("p1");
   });
 });
+
+describe("neutral combat — War Zealot innate Magic Mirror (AI auto-reflects)", () => {
+  function castMagicArrowAt(state: GameState, targetUnitId: string): GameState {
+    const cast = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "CAST_SPELL" &&
+        legal.action.cardId === "spell.magic_arrow" &&
+        legal.action.target?.type === "unit" &&
+        legal.action.target.unitId === targetUnitId
+    );
+    expect(cast, "Magic Arrow should be castable at the guard").toBeTruthy();
+    let next = apply(state, cast!.action);
+    // The caster (p1) leads the reaction window; pass so the neutral gets priority
+    // and the pump auto-reflects. (If p1 has nothing to react with, the window
+    // opens straight on the neutral and the reflect already happened.)
+    let safety = 8;
+    while (next.reactionWindow?.priorityPlayerId === "p1" && safety > 0) {
+      safety -= 1;
+      next = apply(next, { type: "PASS_REACTION", playerId: "p1" });
+    }
+    return next;
+  }
+
+  it("reflects a player's Magic Arrow off a neutral War Zealot instead of it taking damage", () => {
+    let state = neutralFightWithGuard((guard) => {
+      guard.type = "ranged";
+      guard.unitDefId = "wog.war_zealot";
+      guard.name = "War Zealot";
+      guard.cardName = "War Zealot";
+      guard.abilities = ["ignore-combat-penalties", "wog-war-zealot-mirror"];
+      guard.grade = "silver";
+      guard.position = 1;
+      guard.initiative = 1;
+      guard.maxHealth = 20;
+      guard.damage = 0;
+    });
+    state.players.p1.hand = ["spell.magic_arrow"];
+    const guard = guardId(state);
+
+    state = castMagicArrowAt(state, guard);
+
+    // The War Zealot took NO damage — it reflected — and the reflect fired.
+    expect(state.combat!.units[guard].damage).toBe(0);
+    expect(
+      state.eventLog.some(
+        (event) => event.type === "UNIT_ABILITY_TRIGGERED" && event.abilityId === "wog-war-zealot-mirror"
+      )
+    ).toBe(true);
+    // The redirected Magic Arrow landed on one of p1's own units instead.
+    expect(
+      Object.values(state.combat!.units).some((unit) => unit.controllerId === "p1" && unit.damage > 0)
+    ).toBe(true);
+  });
+
+  it("CONTROL: a plain neutral guard (no Magic Mirror) simply takes the Magic Arrow", () => {
+    let state = neutralFightWithGuard((guard) => {
+      rangedGuard(guard);
+      guard.maxHealth = 20;
+      guard.damage = 0;
+    });
+    state.players.p1.hand = ["spell.magic_arrow"];
+    const guard = guardId(state);
+
+    state = castMagicArrowAt(state, guard);
+
+    expect(state.combat!.units[guard].damage).toBeGreaterThan(0);
+    expect(
+      state.eventLog.some(
+        (event) => event.type === "UNIT_ABILITY_TRIGGERED" && event.abilityId === "wog-war-zealot-mirror"
+      )
+    ).toBe(false);
+  });
+});

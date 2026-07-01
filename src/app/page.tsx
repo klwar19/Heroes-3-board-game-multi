@@ -114,6 +114,7 @@ import {
   healFxPlans,
   spellFxPlans,
   spellPresentationMs,
+  unitShotFxPlan,
   warMachineFxPlans,
   type SpellFxPlan
 } from "@/data/fx";
@@ -1613,7 +1614,12 @@ export default function Home() {
           // zap over its voice so its blow reads as raw magic, not a plain thwack.
           const attackerVoice = unitVoice(roll.attackerId);
           playUnitSound(attackerVoice, ranged ? "shoot" : "attack", strikeAt);
-          const attackFlourish = unitAttackFlourish(attackerVoice);
+          // A unit whose ranged SHOT is a spell bolt (the Santa Gremlin's Ice
+          // Bolt) flies the real projectile + burst + spell sound below; its
+          // spell sound then carries the shot, so the extra flourish is skipped
+          // (playing it too would double the ice-bolt cue).
+          const shotPlan = ranged ? unitShotFxPlan(attackerVoice) : undefined;
+          const attackFlourish = shotPlan?.projectile ? undefined : unitAttackFlourish(attackerVoice);
           if (attackFlourish) {
             window.setTimeout(() => playLibrarySound(attackFlourish, 0.4), strikeAt);
           }
@@ -1631,13 +1637,29 @@ export default function Home() {
           if (ranged) {
             const attackerCell =
               attacker.position >= 0 ? `cell:${attacker.position}` : `unit:${roll.attackerId}`;
-            cues.push({
-              kind: "bolt",
-              id: `${roll.id}-bolt`,
-              from: attackerCell,
-              to: defenderCell,
-              delayMs: strikeAt + RANGED_RELEASE_MS
-            });
+            if (shotPlan?.projectile) {
+              // The Ice Bolt projectile flies from the shooter to the target and
+              // bursts on impact, with the Ice Bolt spell's launch + hit sounds.
+              cues.push({
+                kind: "projectile",
+                id: `${roll.id}-bolt`,
+                fxKey: shotPlan.projectile,
+                from: attackerCell,
+                to: defenderCell,
+                hitFxKey: shotPlan.hit,
+                sound: shotPlan.sound,
+                hitSound: shotPlan.hitSound,
+                delayMs: strikeAt + RANGED_RELEASE_MS
+              });
+            } else {
+              cues.push({
+                kind: "bolt",
+                id: `${roll.id}-bolt`,
+                from: attackerCell,
+                to: defenderCell,
+                delayMs: strikeAt + RANGED_RELEASE_MS
+              });
+            }
           } else {
             cues.push({ kind: "slash", id: `${roll.id}-slash`, at: defenderCell, delayMs: impactAt });
           }
