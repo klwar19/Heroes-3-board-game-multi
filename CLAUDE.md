@@ -67,13 +67,26 @@ A human must be able to read a definition and know precisely what runs.
   (e.g. `DISPLAY_ONLY_ABILITIES`) so a stub is a conscious, reviewable entry — not
   something a reader has to reverse-engineer.
 
-## 3. Required enforcement (NOT yet in the repo — add it before relying on this)
+## 3. Required enforcement (now in the repo)
 
-A test must assert: every unit `abilityText` that describes an effect is either
-backed by an implemented `abilities` tag or listed in `DISPLAY_ONLY_ABILITIES`.
-New decorative text then fails CI until it is consciously declared. **This test
-does not exist yet** — until it does, rules #1–#2 are guidance, not enforcement.
-Do not describe them as enforced.
+`src/data/factions/ability-text-enforcement.test.ts` asserts, for EVERY unit
+side in `coreUnitDefinitions` (few/pack/neutral, all factions + neutral decks):
+- every `abilities` tag resolves to a `unitAbilities` entry with
+  `implementationStatus: "implemented"`;
+- a side with effect-describing `abilityText` and empty `abilities` must be
+  declared in `DISPLAY_ONLY_ABILITIES` (a conscious stub, engine does NOT run
+  it) or in `ENGINE_RULE_WIRED_ABILITY_TEXT` (implemented as a dedicated engine
+  rule keyed off the unit — e.g. the neutral Skeletons' Necropolis reinforce —
+  with the wiring and covering test named in the value);
+- registry hygiene: no entries for nonexistent sides, no display-only entry for
+  a side without text, no engine-rule entry whose side gained wired tags, no
+  side in both registries.
+
+New decorative unit text now fails CI until consciously declared. The Creature
+Bank side-space has the same invariant in `src/data/map/creature-banks.test.ts`.
+**Limit (rule #1a still applies):** this proves text is declared and tagged,
+not that a wired ability BEHAVES correctly — behaviour stays pinned by the
+per-mechanic tests, and an audit still means mutation-checking those.
 
 ## 4. How to report work (no dressing up)
 
@@ -219,25 +232,36 @@ Factory (expansion) — unit Few/Pack card art is now the REAL board-game scans
   combat start; +1/+2 Attack vs Marked units). Mark target selection is
   auto-resolved (deterministic), not a player prompt.
 
-STILL display-only / NOT wired (honest `abilities: []`, pinned by the
-"not-yet-wired sides stay display-only" test in `factory-content.test.ts`); each
-needs a new interactive/timing subsystem:
-- Automaton Few — cube-scaled Detonate (needs the faction-cube subsystem).
-- Sandworm Pack — cube-fuelled extra attack (faction cubes).
-- Bounty Hunter Neutral — pre-emptive + ranged retaliation.
-- Couatl Few/Pack — activated "ignore all damage & spell effects until next
-  activation" (Couatl Neutral has no ability).
-- Dreadnought Few/Pack/Neutral — "instead of attacking, allocate N/M/… splash
-  damage to up to K adjacent units".
+The former "STILL display-only" Factory hold-outs have since ALL been wired
+(pinned in `factory-content.test.ts` "every former Factory display-only stub is
+now an implemented, engine-wired ability", behaviour + CONTROLs in
+`factory-gold-abilities.test.ts`):
+- Automaton Few — cube-scaled Detonate → `automaton-place-cube` +
+  `automaton-detonate-cubes` (faction-cube subsystem).
+- Sandworm Pack — cube-fuelled extra attack → `sandworm-cube-gain` +
+  `sandworm-cube-attack`.
+- Bounty Hunter Neutral — pre-emptive + ranged retaliation →
+  `bounty-hunter-preemptive` (`PREEMPTIVE_RETALIATION`).
+- Couatl Few/Pack — activated invulnerability until next activation →
+  `couatl-invulnerability-few` (ends the turn) / `-pack` (free); Couatl Neutral
+  genuinely has no printed ability.
+- Dreadnought Few/Pack/Neutral — splash allocation instead of attacking →
+  `dreadnought-splash-1` (1/1, up to 2 units) / `dreadnought-splash-2` (2/1/1,
+  up to 3).
+No Factory unit side is display-only anymore.
 Factory buildings use the real thelazy.net PC building art and are wired to their
 shared archetype effects (`factory-content.test.ts` "ships the 7 board-game
 buildings…"); the PC-only special buildings (Mana Generator spell-points, Grail
 Lightning Rod, Pen horde) are NOT modeled as distinct effects.
 
-This section is maintained by hand — the rule #3 enforcement test still does
-**not** exist, so re-verify any "stub" claim against `src/data/factions/units.ts`
-and the tests before trusting it. The Creature Bank system tracks its own
-display-only items in the section below.
+This section is maintained by hand, but the rule #3 enforcement test now
+exists (`src/data/factions/ability-text-enforcement.test.ts`): the machine
+truth is `DISPLAY_ONLY_ABILITIES` (currently EMPTY — no unit side is
+display-only) plus `ENGINE_RULE_WIRED_ABILITY_TEXT` (currently exactly
+`neutral.skeletons#neutral`, whose Necropolis-reinforce text runs as a
+dedicated rule, not an ability tag). Re-verify any prose claim here against
+those registries and `src/data/factions/units.ts` before trusting it. The
+Creature Bank system tracks its own display-only items in the section below.
 
 ## Creature Banks (Naval Battles optional rule) — what runs vs. what is deferred
 

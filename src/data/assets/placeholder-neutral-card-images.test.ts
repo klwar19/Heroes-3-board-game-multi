@@ -2,7 +2,7 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { coreUnitDefinitions } from "@/data/factions/units";
-import { DISPLAY_ONLY_NEUTRAL_ABILITIES } from "@/data/units/abilities";
+import { DISPLAY_ONLY_ABILITIES } from "@/data/units/abilities";
 
 // The 25 single-sided Neutral guards whose wiki faces are blank. Each one now
 // ships a dedicated `units-neutral-<tier>-<slug>.webp` composed by
@@ -92,8 +92,8 @@ describe("blank-wiki neutral card faces", () => {
   it("does NOT list Satyrs or Fangarm as display-only — their abilities are now engine-wired (CLAUDE.md §2)", () => {
     // Both units now have implemented ability tags; they must NOT appear in the
     // display-only registry (that would be a false stub declaration).
-    expect("neutral.satyrs" in DISPLAY_ONLY_NEUTRAL_ABILITIES, "neutral.satyrs must NOT be display-only").toBe(false);
-    expect("neutral.fangarm" in DISPLAY_ONLY_NEUTRAL_ABILITIES, "neutral.fangarm must NOT be display-only").toBe(false);
+    expect("neutral.satyrs#neutral" in DISPLAY_ONLY_ABILITIES, "neutral.satyrs must NOT be display-only").toBe(false);
+    expect("neutral.fangarm#neutral" in DISPLAY_ONLY_ABILITIES, "neutral.fangarm must NOT be display-only").toBe(false);
   });
 
   it("assigns each guard its dedicated Neutral-tier face, not a faction Few/Pack crop", () => {
