@@ -949,34 +949,191 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
       tileImage: "/assets/board/tiles/n22.webp"
     }
   },
+  // --- Factory "&" tile set (near/far/center) -----------------------------
+  // Fields transcribed from the physical Factory tile SCANS (the "&"-prefixed
+  // desert tiles). These tiles are NOT on the fan wiki, so the field TYPES are
+  // assigned from the printed art: the anchor "&"-label hex = blocked_field, a
+  // cart of resources = mine (colour picks gold / buildingMaterials / valuables,
+  // "loop N" = amount, the adjacent Roman numeral = guard difficulty), a shovel =
+  // artifact_dig (the Factory Excavation), an obelisk = obelisk, a gazebo "pay
+  // 3 gold -> Spell" = shrine_of_magic, a "+3 gold" derrick = water_wheel, a "?"
+  // reward token = treasure_symbol, and the &C1 centre airship+steamer = the
+  // War Machine Factory field. tileImage is the real scan, flower-masked to alpha.
+  // Guard difficulties come straight from the Roman numerals; the ring rotation /
+  // outerImpassable are a best-fit from the art (see per-tile note).
   "&N1": {
     id: "&N1",
     group: "near",
     content: "regular_stretch_goals",
     terrain: "rough",
-    // A Factory near tile — labelled "&N1" on the tile — carrying the new "shovel"
-    // Excavation field (artifact_dig: dig the top Artifact, keep or discard).
-    // Layout and outer borders mirror the rough near tile N13, the placeholder art
-    // base (re-labelled &N1); the centre empty field is the Excavation site. Drop
-    // in the real &N1 scan to replace it.
+    // &N1 scan: centre turquoise Obelisk; ring = Excavation (shovel), a "+3 gold"
+    // derrick (water_wheel), a IV gazebo "pay 3 gold -> Spell" (shrine), the
+    // &N1 tar-pit anchor (blocked), a "?" cabin (treasure), a V manor mine
+    // "loop 1 valuables". Guards IV-V.
     fields: [
-      { location: "tree_of_knowledge" },
-      { location: "mine", difficulty: 5, resource: "gold", amount: 5 },
+      { location: "obelisk" },
       { location: "artifact_dig" },
+      { location: "water_wheel" },
+      { location: "shrine_of_magic_gesture", difficulty: 4 },
       { location: "blocked_field" },
-      { location: "treasure_symbol", difficulty: 4 },
-      { location: "shrine_of_magic_gesture" },
-      { location: "spell_scroll" },
+      { location: "treasure_symbol" },
+      { location: "mine", difficulty: 5, resource: "valuables", amount: 1 },
     ],
-    outerImpassable: [false, false, true, false, false, false],
+    outerImpassable: [false, false, false, true, false, false],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
       credit:
-        "Factory near tile (labelled &N1) introducing the Excavation (shovel) field. Rough terrain and layout mirror N13, the placeholder art base (re-labelled &N1). Verify against physical tiles before final release.",
+        "Factory near tile &N1 — fields transcribed from the physical tile scan (not on the wiki; field types assigned from the printed art). tileImage is the real scan, flower-masked to alpha.",
       url: "https://heroes.thelazy.net/index.php/Factory"
     },
     assets: {
       tileImage: "/assets/board/tiles/nf1.webp"
+    }
+  },
+  "&N2": {
+    id: "&N2",
+    group: "near",
+    content: "regular_stretch_goals",
+    terrain: "rough",
+    // &N2 scan: centre Tree-spirit (tree_of_knowledge); ring = a waterfall face
+    // (magic_spring), a "?" treehouse (treasure), a V mine "loop 5 gold", a IV
+    // alchemist tower "?" (mystical_garden), the &N2 chasm anchor (blocked), open
+    // ground. Guards IV-V.
+    fields: [
+      { location: "tree_of_knowledge" },
+      { location: "magic_spring" },
+      { location: "treasure_symbol" },
+      { location: "mine", difficulty: 5, resource: "gold", amount: 5 },
+      { location: "mystical_garden", difficulty: 4 },
+      { location: "blocked_field" },
+      { location: "empty_field" },
+    ],
+    outerImpassable: [false, false, false, false, true, false],
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
+      credit:
+        "Factory near tile &N2 — fields transcribed from the physical tile scan (not on the wiki; field types assigned from the printed art). tileImage is the real scan, flower-masked to alpha.",
+      url: "https://heroes.thelazy.net/index.php/Factory"
+    },
+    assets: {
+      tileImage: "/assets/board/tiles/nf2.webp"
+    }
+  },
+  "&F1": {
+    id: "&F1",
+    group: "far",
+    content: "regular_stretch_goals",
+    terrain: "rough",
+    // &F1 scan: the &F1 rock+tar anchor sits centre (blocked); ring = an Obelisk
+    // (with the star banner), a Teepee+horse (stables), a III cathedral "?"
+    // (temple), a "+3 gold" derrick (water_wheel), a II stilt-hut "?" (treasure),
+    // open ground. Guards II-III.
+    fields: [
+      { location: "blocked_field" },
+      { location: "obelisk" },
+      { location: "stables" },
+      { location: "temple", difficulty: 3 },
+      { location: "water_wheel" },
+      { location: "treasure_symbol", difficulty: 2 },
+      { location: "empty_field" },
+    ],
+    outerImpassable: [false, false, false, false, false, false],
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
+      credit:
+        "Factory far tile &F1 — fields transcribed from the physical tile scan (not on the wiki; field types assigned from the printed art). tileImage is the real scan, flower-masked to alpha.",
+      url: "https://heroes.thelazy.net/index.php/Factory"
+    },
+    assets: {
+      tileImage: "/assets/board/tiles/ff1.webp"
+    }
+  },
+  "&F2": {
+    id: "&F2",
+    group: "far",
+    content: "regular_stretch_goals",
+    terrain: "rough",
+    // &F2 scan: centre Prospector by the river "+1 valuables" (resource_symbol);
+    // ring = a III mine "loop 5 gold", a "?" treehouse (treasure), a "?" cabin
+    // (treasure), a II skeleton (grave), the &F2 river+scrub anchor (blocked),
+    // open ground. Guards II-III.
+    fields: [
+      { location: "resource_symbol" },
+      { location: "mine", difficulty: 3, resource: "gold", amount: 5 },
+      { location: "treasure_symbol" },
+      { location: "treasure_symbol" },
+      { location: "grave", difficulty: 2 },
+      { location: "blocked_field" },
+      { location: "empty_field" },
+    ],
+    outerImpassable: [false, false, false, false, true, false],
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
+      credit:
+        "Factory far tile &F2 — fields transcribed from the physical tile scan (not on the wiki; field types assigned from the printed art). tileImage is the real scan, flower-masked to alpha.",
+      url: "https://heroes.thelazy.net/index.php/Factory"
+    },
+    assets: {
+      tileImage: "/assets/board/tiles/ff2.webp"
+    }
+  },
+  "&F3": {
+    id: "&F3",
+    group: "far",
+    content: "regular_stretch_goals",
+    terrain: "rough",
+    // &F3 scan: centre white Church (temple); ring = the &F3 canyon+river anchor
+    // (blocked), a sand-pit shovel (Excavation / artifact_dig), a III gem-pond mine
+    // "loop 1 valuables", a II red chest "2 chest -> 1" (treasure), a "?" well
+    // (magic_spring), open ground. Guards II-III.
+    fields: [
+      { location: "temple" },
+      { location: "blocked_field" },
+      { location: "artifact_dig" },
+      { location: "mine", difficulty: 3, resource: "valuables", amount: 1 },
+      { location: "treasure_symbol", difficulty: 2 },
+      { location: "magic_spring" },
+      { location: "empty_field" },
+    ],
+    outerImpassable: [false, true, false, false, false, false],
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
+      credit:
+        "Factory far tile &F3 — fields transcribed from the physical tile scan (not on the wiki; field types assigned from the printed art). tileImage is the real scan, flower-masked to alpha.",
+      url: "https://heroes.thelazy.net/index.php/Factory"
+    },
+    assets: {
+      tileImage: "/assets/board/tiles/ff3.webp"
+    }
+  },
+  "&C1": {
+    id: "&C1",
+    group: "center",
+    content: "regular_stretch_goals",
+    terrain: "rough",
+    // &C1 scan (a CENTER tile, guards VI-VII): centre airship + paddle-steamer =
+    // the Factory War Machine Factory (buy a war machine cheaply), guarded VII;
+    // ring = a VI Tree-spirit (tree_of_knowledge), a temple, a "?" waterfall
+    // (magic_spring), a Prospector "+1 valuables" (resource_symbol), a VI gazebo
+    // "-> Spell" (shrine), the &C1 crag anchor (blocked).
+    fields: [
+      { location: "war_machine_factory", difficulty: 7 },
+      { location: "tree_of_knowledge", difficulty: 6 },
+      { location: "temple" },
+      { location: "magic_spring" },
+      { location: "resource_symbol" },
+      { location: "shrine_of_magic_incantation", difficulty: 6 },
+      { location: "blocked_field" },
+    ],
+    outerImpassable: [false, false, false, false, false, true],
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
+      credit:
+        "Factory center tile &C1 — fields transcribed from the physical tile scan (not on the wiki; field types assigned from the printed art). tileImage is the real scan, flower-masked to alpha.",
+      url: "https://heroes.thelazy.net/index.php/Factory"
+    },
+    assets: {
+      tileImage: "/assets/board/tiles/cf1.webp"
     }
   },
   "#N1": {

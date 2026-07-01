@@ -314,4 +314,34 @@ describe("Factory faction — art wired, not playable", () => {
     state = apply(state, { type: "BUILD_STRUCTURE", playerId: "p1", townId, buildingId: "factory.dwelling_silver" });
     expect(state.towns[townId].buildings, "silver dwelling stands after bronze").toContain("factory.dwelling_silver");
   });
+
+  it("ships the full Factory '&' tile set (start + 2 near + 3 far + 1 center)", () => {
+    const t = allTileDefinitions;
+    const expected: Record<string, "starting" | "near" | "far" | "center"> = {
+      "&S1": "starting",
+      "&N1": "near",
+      "&N2": "near",
+      "&F1": "far",
+      "&F2": "far",
+      "&F3": "far",
+      "&C1": "center"
+    };
+    for (const [id, group] of Object.entries(expected)) {
+      expect(t[id], `${id} defined`).toBeDefined();
+      expect(t[id].group, `${id} group`).toBe(group);
+      expect(t[id].content, `${id} content`).toBe("regular_stretch_goals");
+      expect(t[id].fields, `${id} has 7 fields`).toHaveLength(7);
+      expect(t[id].assets?.tileImage, `${id} art`).toMatch(/^\/assets\/board\/tiles\/[a-z0-9]+\.webp$/);
+    }
+    // &S1 centre carries the Factory town; &C1 centre is the War Machine Factory.
+    expect(t["&S1"].fields[0]).toMatchObject({ location: "town", faction: "factory" });
+    expect(t["&C1"].fields[0]).toMatchObject({ location: "war_machine_factory" });
+    // Every resource-bearing Factory tile has a mine with a real resource + amount.
+    for (const id of ["&N1", "&N2", "&F2", "&F3"]) {
+      const mine = t[id].fields.find((f) => f.location === "mine");
+      expect(mine, `${id} mine`).toBeDefined();
+      expect(mine!.resource, `${id} mine resource`).toBeTruthy();
+      expect(mine!.amount ?? 0, `${id} mine amount`).toBeGreaterThan(0);
+    }
+  });
 });
