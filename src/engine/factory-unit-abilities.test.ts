@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { applyAction, createInitialGameState, tokenDefenseDelta } from "./index";
+import { effectiveInitiative, makeActiveEffect } from "./active-effects";
 import type { GameAction, GameEvent, GameState, PlayerId } from "./state";
 
 /**
@@ -319,5 +320,59 @@ describe("Factory Sandworms (Neutral) — strike an adjacent target twice", () =
     ).toBe(false);
     expect(attackRolls(state, "unit_p1_griffins").length).toBe(1);
     expect(state.combat!.units.unit_p2_vampires.damage, "a single hit").toBe(3);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Armadillos (Pack) — amplify any Initiative increase by +1 (AMPLIFY_INITIATIVE_INCREASE)
+// ---------------------------------------------------------------------------
+
+/** Push a unit-scoped Initiative shift (Haste/Slow style) onto the state. */
+function pushInitiativeEffect(state: GameState, unitId: string, amount: number): void {
+  state.activeEffects.push(
+    makeActiveEffect(
+      state,
+      {
+        name: amount >= 0 ? "Haste" : "Slow",
+        scope: "unit",
+        duration: { type: "combat" },
+        polarity: amount >= 0 ? "positive" : "negative",
+        modifiers: [{ type: "INITIATIVE_BONUS", amount }]
+      },
+      { type: "system" },
+      "p1",
+      { type: "unit", unitId }
+    )
+  );
+}
+
+describe("Factory Armadillos (Pack) — Gathering Momentum (amplify Initiative increases)", () => {
+  it("a +2 Initiative effect becomes +3 on an Armadillo with the ability", () => {
+    const state = createInitialGameState("factory-armadillo");
+    const armadillo = state.combat!.units.unit_p1_griffins;
+    Object.assign(armadillo, { type: "ground", initiative: 6, abilities: ["armadillo-initiative-amplify"] });
+    const base = armadillo.initiative;
+
+    expect(effectiveInitiative(armadillo, state.activeEffects), "no effect ⇒ no amplification").toBe(base);
+
+    pushInitiativeEffect(state, armadillo.id, 2);
+    expect(effectiveInitiative(armadillo, state.activeEffects), "+2 amplified to +3").toBe(base + 3);
+  });
+
+  it("CONTROL: the same +2 effect on a unit WITHOUT the ability is only +2", () => {
+    const state = createInitialGameState("factory-armadillo-ctrl");
+    const plain = state.combat!.units.unit_p1_griffins;
+    Object.assign(plain, { type: "ground", initiative: 6, abilities: [] });
+    pushInitiativeEffect(state, plain.id, 2);
+    expect(effectiveInitiative(plain, state.activeEffects)).toBe(6 + 2);
+  });
+
+  it("CONTROL: a Slow (net-negative shift) is NOT amplified", () => {
+    const state = createInitialGameState("factory-armadillo-slow");
+    const armadillo = state.combat!.units.unit_p1_griffins;
+    Object.assign(armadillo, { type: "ground", initiative: 6, abilities: ["armadillo-initiative-amplify"] });
+    pushInitiativeEffect(state, armadillo.id, -2);
+    // Only genuine increases get the +1; a decrease stays -2 (6 - 2 = 4), not -1.
+    expect(effectiveInitiative(armadillo, state.activeEffects)).toBe(6 - 2);
   });
 });

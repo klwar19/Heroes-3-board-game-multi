@@ -2,6 +2,7 @@ import { cardLibrary } from "@/data/cards/library";
 import { isAdjacent } from "./battlefield";
 import { appendEvent, nextEventNumber } from "./events";
 import {
+  hasAmplifyInitiativeIncrease,
   hasIgnoreOngoingEffects,
   hasIgnoreOngoingSpellEffects,
   hasIgnoreSpellAndSpecialtyNonDamage,
@@ -491,7 +492,12 @@ export function effectiveInitiative(unit: CombatUnitState, activeEffects: Active
     );
   }, 0);
 
-  return unit.initiative + bonus;
+  // Factory Armadillos (Pack) "Gathering Momentum": any genuine increase to this
+  // unit's Initiative from an effect is amplified by one more point. Only a net
+  // POSITIVE shift is amplified — a Slow (net-negative) is left untouched.
+  const amplified = bonus > 0 && hasAmplifyInitiativeIncrease(unit) ? bonus + 1 : bonus;
+
+  return unit.initiative + amplified;
 }
 
 /**
