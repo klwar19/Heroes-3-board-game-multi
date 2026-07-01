@@ -94,7 +94,7 @@ hero. Most already ship; only the three Bulwark **unit** symbols remain.
 | Kriv (`kriv`) | Runes | `runes-emblem.webp` | owner-supplied emblem — shipped |
 | **Dhuin** (`dhuin`) | Snow Elves | `units-bulwark-snow_elves-portrait.webp` | wiki creature portrait — shipped |
 | **Creyle** (`creyle`) | Mammoths | `units-bulwark-mammoths-portrait.webp` | wiki creature portrait — shipped |
-| **Eikthurn** (`eikthurn`) | Yetis | `units-bulwark-yetis-portrait.webp` | wiki creature portrait — shipped |
+| **Eikthurn** (`eikthurn`) | Mountain Rams | `units-bulwark-mountain_rams-portrait.webp` | wiki creature portrait — shipped |
 
 `SpecialtyCard` points at every path above, and a **missing file simply shows no
 icon** (the frame + text still draw). The Homm3BG symbols are CC BY-NC-SA —

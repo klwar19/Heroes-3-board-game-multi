@@ -33,7 +33,9 @@ const INITIATIVE_SPECIALTY_IDS = [
   "specialty.clancy.4",
   "specialty.dhuin.6",
   "specialty.creyle.6",
-  "specialty.eikthurn.6",
+  // Eikthurn VI is NOT in this sweep: his level-6 trades the generic "draw a card"
+  // alternative for a flat +2 Attack (initiative-buff OR +2 attack), so it is not
+  // the buff-or-draw shape this file asserts. It is covered in bulwark-heroes.test.ts.
   "specialty.tarnum_rampart.4",
   "specialty.cassiopeia.4",
   "specialty.casmetra.4",

@@ -22,7 +22,7 @@ export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   // downloaded to units-bulwark-<slug>-portrait.webp).
   dhuin: "/assets/units-bulwark-snow_elves-portrait.webp", // Snow Elves
   creyle: "/assets/units-bulwark-mammoths-portrait.webp", // Mammoths
-  eikthurn: "/assets/units-bulwark-yetis-portrait.webp", // Yetis
+  eikthurn: "/assets/units-bulwark-mountain_rams-portrait.webp", // Mountain Rams (bronze lv2)
   // Every unit specialist uses the unit's own in-game PORTRAIT (not the full
   // battle sprite) — scripts/fetch-specialty-unit-portraits.py.
   ingham: "/assets/units-zealot-portrait.webp", // Zealots (Castle)

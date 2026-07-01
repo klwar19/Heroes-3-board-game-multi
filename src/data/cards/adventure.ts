@@ -2662,10 +2662,11 @@ export const adventureCards: CardLibrary = {
   // the Combat, biting any unit that stops on it and any ground/ranged unit
   // passing through for a FIXED 1 (I) / 3 (VI) damage — the SAME engine token as
   // the Fire Wall spell (`PLACE_FIRE_WALL_FIXED`). IV is the spell-economy "OR":
-  // take a card from your discard pile (modelled as a map play, exactly like
-  // Adelaide IV — the engine's TAKE_FROM_DISCARD resolves through the map reward
-  // queue) — OR — +2 Power on a Spell you are casting (a SPELL_CAST_STARTED
-  // reaction, like Monere VI).
+  // take a card from your discard pile (works on the map AND in Combat via
+  // `allowInCombat`, exactly like Adelaide/Glacius IV — the engine opens the
+  // discard-pick straight away in a live fight, otherwise it resolves through the
+  // map reward queue) — OR — +2 Power on a Spell you are casting (a
+  // SPELL_CAST_STARTED reaction, like Monere VI).
   "specialty.luna.1": {
     id: "specialty.luna.1",
     name: "Fire Wall I",
@@ -2695,7 +2696,7 @@ export const adventureCards: CardLibrary = {
       "instant",
       "luna",
       "fire-wall",
-      "Instant: Take one card from your discard pile into your hand. — OR — Instant: +2 Power."
+      "Instant (map or Combat): Take one card from your discard pile into your hand. — OR — Instant: +2 Power."
     ],
     target: { type: "none" },
     effect: {
@@ -2703,8 +2704,7 @@ export const adventureCards: CardLibrary = {
       options: [
         {
           label: "Take a card from your discard pile",
-          mapOnly: true,
-          effect: { type: "TAKE_FROM_DISCARD", count: 1 }
+          effect: { type: "TAKE_FROM_DISCARD", count: 1, allowInCombat: true }
         },
         {
           label: "+2 Power",
@@ -3015,21 +3015,21 @@ export const adventureCards: CardLibrary = {
       "combat",
       "adelaide",
       "frost-ring",
-      "Instant (any time, incl. an enemy unit's turn start or end of its move): discard 1 card, then target a space on the Combat board: every unit adjacent to that space (not the space itself, friend or foe) takes 1 damage."
+      "Instant (any time, incl. an enemy unit's turn start or end of its move): discard 1 card, then target a space on the Combat board and choose up to 2 units adjacent to it (not the space itself, friend or foe) to take 1 damage."
     ],
     target: { type: "any-space" },
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "Discard 1 card: 1 damage to every unit adjacent to a space",
+          label: "Discard 1 card: 1 damage to up to 2 units adjacent to a space",
           combatAnytime: true,
           cost: { discardCards: 1 },
           effect: {
             type: "AREA_DAMAGE_PICK_ADJACENT",
             amount: 1,
             includeCenter: false,
-            adjacentPicks: 4
+            adjacentPicks: 2
           }
         }
       ]
@@ -3050,7 +3050,7 @@ export const adventureCards: CardLibrary = {
       "hero-specialty",
       "adelaide",
       "frost-ring",
-      "Select 1 Spell or Specialty card from your discard pile and put it back in your hand."
+      "Instant (map or Combat): select 1 Spell or Specialty card from your discard pile and put it back in your hand."
     ],
     target: { type: "none" },
     effect: {
@@ -3058,8 +3058,7 @@ export const adventureCards: CardLibrary = {
       options: [
         {
           label: "Take a Spell or Specialty card from your discard pile",
-          mapOnly: true,
-          effect: { type: "TAKE_FROM_DISCARD", count: 1, filter: "spell-or-specialty" }
+          effect: { type: "TAKE_FROM_DISCARD", count: 1, filter: "spell-or-specialty", allowInCombat: true }
         }
       ]
     },
@@ -3081,21 +3080,21 @@ export const adventureCards: CardLibrary = {
       "combat",
       "adelaide",
       "frost-ring",
-      "Instant (any time, incl. an enemy unit's turn start or end of its move): discard 2 cards, then target a space on the Combat board: every unit adjacent to that space (not the space itself, friend or foe) takes 2 damage."
+      "Instant (any time, incl. an enemy unit's turn start or end of its move): discard 2 cards, then target a space on the Combat board and choose up to 2 units adjacent to it (not the space itself, friend or foe) to take 2 damage."
     ],
     target: { type: "any-space" },
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "Discard 2 cards: 2 damage to every unit adjacent to a space",
+          label: "Discard 2 cards: 2 damage to up to 2 units adjacent to a space",
           combatAnytime: true,
           cost: { discardCards: 2 },
           effect: {
             type: "AREA_DAMAGE_PICK_ADJACENT",
             amount: 2,
             includeCenter: false,
-            adjacentPicks: 4
+            adjacentPicks: 2
           }
         }
       ]
@@ -3119,8 +3118,11 @@ export const adventureCards: CardLibrary = {
   "specialty.creyle.6": withoutArt(unitInitiativeSpecialty("creyle", "Mammoths", 6, 1, "Mammoths")),
 
   // Glacius (Elder): the Frost Ring Elementalist — Adelaide's Frost-Ring
-  // machinery (AREA_DAMAGE_PICK_ADJACENT, includeCenter:false). IV is a
-  // spell-economy choice (recall a Spell/Specialty OR +2 Power on the next cast).
+  // machinery (AREA_DAMAGE_PICK_ADJACENT, includeCenter:false). Like the Frost
+  // Ring Spell, the ring hits UP TO 2 adjacent units (the caster picks when more
+  // are adjacent); the discard is paid FIRST, before the space is targeted. IV is
+  // a spell-economy choice (recall a Spell/Specialty OR +2 Power on the next cast);
+  // its recall works in Combat as well as on the map (allowInCombat).
   "specialty.glacius.1": {
     id: "specialty.glacius.1",
     name: "Frost Ring I",
@@ -3132,17 +3134,17 @@ export const adventureCards: CardLibrary = {
       "combat",
       "glacius",
       "frost-ring",
-      "Instant (any time, incl. an enemy unit's turn start or end of its move): discard 1 card, then target a space; every unit adjacent to it (not the space itself, friend or foe) takes 1 damage."
+      "Instant (any time, incl. an enemy unit's turn start or end of its move): discard 1 card, then target a space and choose up to 2 units adjacent to it (not the space itself, friend or foe) to take 1 damage."
     ],
     target: { type: "any-space" },
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "Discard 1 card: 1 damage to every unit adjacent to a space",
+          label: "Discard 1 card: 1 damage to up to 2 units adjacent to a space",
           combatAnytime: true,
           cost: { discardCards: 1 },
-          effect: { type: "AREA_DAMAGE_PICK_ADJACENT", amount: 1, includeCenter: false, adjacentPicks: 4 }
+          effect: { type: "AREA_DAMAGE_PICK_ADJACENT", amount: 1, includeCenter: false, adjacentPicks: 2 }
         }
       ]
     },
@@ -3158,7 +3160,7 @@ export const adventureCards: CardLibrary = {
       "hero-specialty",
       "glacius",
       "frost-ring",
-      "Instant: take a Spell or Specialty card from your discard pile. — OR — Instant: +2 Power on your next spell this Combat."
+      "Instant (map or Combat): take a Spell or Specialty card from your discard pile. — OR — Instant: +2 Power on your next spell this Combat."
     ],
     target: { type: "none" },
     effect: {
@@ -3166,8 +3168,7 @@ export const adventureCards: CardLibrary = {
       options: [
         {
           label: "Take a Spell or Specialty card from your discard pile",
-          mapOnly: true,
-          effect: { type: "TAKE_FROM_DISCARD", count: 1, filter: "spell-or-specialty" }
+          effect: { type: "TAKE_FROM_DISCARD", count: 1, filter: "spell-or-specialty", allowInCombat: true }
         },
         {
           label: "+2 Power",
@@ -3190,17 +3191,17 @@ export const adventureCards: CardLibrary = {
       "combat",
       "glacius",
       "frost-ring",
-      "Instant (any time, incl. an enemy unit's turn start or end of its move): discard 1 card, then target a space; every unit adjacent to it (not the space itself, friend or foe) takes 2 damage."
+      "Instant (any time, incl. an enemy unit's turn start or end of its move): discard 1 card, then target a space and choose up to 2 units adjacent to it (not the space itself, friend or foe) to take 2 damage."
     ],
     target: { type: "any-space" },
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "Discard 1 card: 2 damage to every unit adjacent to a space",
+          label: "Discard 1 card: 2 damage to up to 2 units adjacent to a space",
           combatAnytime: true,
           cost: { discardCards: 1 },
-          effect: { type: "AREA_DAMAGE_PICK_ADJACENT", amount: 2, includeCenter: false, adjacentPicks: 4 }
+          effect: { type: "AREA_DAMAGE_PICK_ADJACENT", amount: 2, includeCenter: false, adjacentPicks: 2 }
         }
       ]
     },
@@ -3308,12 +3309,62 @@ export const adventureCards: CardLibrary = {
     source: heroSource("kriv")
   },
 
-  // Eikthurn (Chieftain): Yetis specialist — the standard might unit-buff trio
-  // (Catherine/Dhuin pattern): I is the +1 attack/defense rider doubled for Yetis,
-  // IV adds +1 max HP (×2 Yetis), VI a +1 initiative buff (×2 Yetis).
-  "specialty.eikthurn.1": withoutArt(mightSpecialtyOne("eikthurn", "Yetis", "Yetis")),
-  "specialty.eikthurn.4": withoutArt(unitHealthSpecialty("eikthurn", "Yetis", 4, 1, "Yetis")),
-  "specialty.eikthurn.6": withoutArt(unitInitiativeSpecialty("eikthurn", "Yetis", 6, 1, "Yetis")),
+  // Eikthurn (Chieftain): Mountain Rams specialist (the bronze level-2 unit) — the
+  // standard might unit-buff trio (Catherine/Dhuin pattern): I is the +1
+  // attack/defense rider doubled for Mountain Rams, IV adds +1 max HP (×2 Mountain
+  // Rams). VI departs from the shared helper: instead of the generic "initiative
+  // buff OR draw a card" it is "initiative buff (Initiative ×2 for Mountain Rams,
+  // +1 movement) OR a flat, one-shot +2 Attack on your unit's next attack" — the
+  // same instant +2-attack reaction Casmetra VI uses (never doubled).
+  "specialty.eikthurn.1": withoutArt(mightSpecialtyOne("eikthurn", "Mountain Rams", "Mountain Rams")),
+  "specialty.eikthurn.4": withoutArt(unitHealthSpecialty("eikthurn", "Mountain Rams", 4, 1, "Mountain Rams")),
+  "specialty.eikthurn.6": withoutArt({
+    id: "specialty.eikthurn.6",
+    name: "Mountain Rams VI",
+    kind: "hero-specialty",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    tags: [
+      "hero-specialty",
+      "instant",
+      "eikthurn",
+      // Option A is the house-rule initiative buff (doubled for Mountain Rams, +1
+      // Combat movement); option B is a flat, one-shot +2 Attack on the caster's
+      // next attack (an attack reaction, never doubled).
+      "Combat: give a friendly unit +1 Initiative AND +1 Combat movement range this combat — Initiative doubled (+2) for Mountain Rams. — OR — Instant: your selected unit gains +2 Attack on its next attack."
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "+1 Initiative & +1 movement (Initiative x2 for Mountain Rams)",
+          combatOnly: true,
+          target: { type: "friendly-unit" },
+          effect: {
+            type: "CREATE_INITIATIVE_BUFF",
+            name: "Mountain Rams Specialty",
+            amount: 1,
+            duration: { type: "combat" },
+            polarity: "positive",
+            removable: false,
+            doubleForUnitName: "Mountain Rams",
+            // House rule (BINH): the buff also raises Combat movement by 1.
+            movementBonus: 1
+          }
+        },
+        {
+          // Instant, one-shot +2 Attack on the caster's next attack (an attack
+          // reaction, like Casmetra VI). Flat — no Mountain Rams doubling.
+          label: "+2 attack",
+          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 2 }
+        }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: heroSource("eikthurn")
+  }),
 
   // Oidana (Elder): the diplomat. Her starting ability is Diplomacy; each specialty
   // is a CHOOSE_ONE. The card-draw side (DRAW_CARDS, a trigger-free instant) scales
