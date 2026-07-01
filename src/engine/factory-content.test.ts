@@ -181,10 +181,12 @@ describe("Factory faction — art wired, not playable", () => {
     // Corrosion token on a "+1" roll (halfling-precise-shot).
     expect(u["factory.halflings"].few?.abilities, "halflings few").toEqual(["attack-roll-advantage"]);
     expect(u["factory.halflings"].pack?.abilities, "halflings pack").toEqual(["attack-roll-advantage", "halfling-precise-shot"]);
-    // Mechanics "Attack 2 spaces in a line" reach on all three sides (Few/Neutral
-    // at attack 1, Pack at attack 2).
-    expect(u["factory.mechanics"].few?.abilities, "mechanics few").toEqual(["mechanics-line-attack-1"]);
-    expect(u["factory.mechanics"].pack?.abilities, "mechanics pack").toEqual(["mechanics-line-attack-2"]);
+    // Mechanics: the "Attack 2 spaces in a line" reach on all three sides (Few/
+    // Neutral at attack 1, Pack at attack 2), plus the Field Repair on the two
+    // faction sides (Few remove-1, Pack remove-2-or-+1-Attack). The Neutral guard
+    // prints only the reach.
+    expect(u["factory.mechanics"].few?.abilities, "mechanics few").toEqual(["mechanics-repair-1", "mechanics-line-attack-1"]);
+    expect(u["factory.mechanics"].pack?.abilities, "mechanics pack").toEqual(["mechanics-repair-2", "mechanics-line-attack-2"]);
     expect(u["factory.mechanics"].neutral?.abilities, "mechanics neutral").toEqual(["mechanics-line-attack-1"]);
     // Automatons: the Pack "Ignore Retaliation" and the single-cost NEUTRAL guard's
     // 1-damage on-death Detonate are wired. (The faction Few's cube-scaled Detonate
@@ -197,7 +199,8 @@ describe("Factory faction — art wired, not playable", () => {
     expect(u["factory.armadillos"].pack?.abilities, "armadillos pack").toEqual(["armadillo-initiative-amplify"]);
     for (const abilityId of [
       "attack-roll-advantage", "halfling-precise-shot", "mechanics-line-attack-1", "mechanics-line-attack-2",
-      "ignores-retaliation", "automaton-detonate-1", "sandworm-strike-again", "armadillo-initiative-amplify"
+      "mechanics-repair-1", "mechanics-repair-2", "ignores-retaliation", "automaton-detonate-1",
+      "sandworm-strike-again", "armadillo-initiative-amplify"
     ]) {
       expect(unitAbilities[abilityId]?.implementationStatus, `${abilityId} implemented`).toBe("implemented");
     }

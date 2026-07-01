@@ -444,7 +444,22 @@ export type UnitAbilityEffectDefinition =
        */
       type: "ON_ACTIVATION_HEAL_FRIENDLY_OR_BUFF_SELF";
       healAmount: number;
+      /**
+       * The self Attack buff taken only when there is nothing to heal. Factory
+       * Mechanics FEW set this to 0 (their card has no "+Attack" alternative) —
+       * with no valid repair target the Few activation simply does nothing.
+       */
       attackBonus: number;
+      /**
+       * Factory Mechanics: the repair target must be ADJACENT to this unit
+       * (Enchanters heal at any range, so they leave this unset).
+       */
+      adjacentOnly?: boolean;
+      /**
+       * Factory Mechanics: the repair target must be a "mechanical" unit
+       * (Automatons / Dreadnoughts). Enchanters heal any friendly, so unset.
+       */
+      targetTrait?: "mechanical";
     }
   | {
       /**
@@ -1020,6 +1035,39 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     implementationStatus: "implemented"
   },
   // ---- Factory (board game) unit abilities read straight off the card scans ---
+  // Factory Mechanics: "[activation] Remove up to N [damage] from an adjacent
+  // [mechanical] unit" (the Few also, the Pack "…, or gain +1 [attack]"). Reuses
+  // the Enchanters' heal-or-buff activation, gated to ADJACENT + mechanical
+  // targets (Automatons / Dreadnoughts). The Few has NO self-buff alternative
+  // (attackBonus 0) — with nothing to repair its repair simply does nothing; the
+  // Pack falls back to +1 Attack. Neither ends the activation, so the Mechanic
+  // still moves and makes its line attack afterwards.
+  "mechanics-repair-1": {
+    id: "mechanics-repair-1",
+    name: "Field Repair",
+    text: "[activation] Remove up to 1 damage from an adjacent mechanical unit (Automatons or Dreadnoughts). Does not end the activation.",
+    effect: {
+      type: "ON_ACTIVATION_HEAL_FRIENDLY_OR_BUFF_SELF",
+      healAmount: 1,
+      attackBonus: 0,
+      adjacentOnly: true,
+      targetTrait: "mechanical"
+    },
+    implementationStatus: "implemented"
+  },
+  "mechanics-repair-2": {
+    id: "mechanics-repair-2",
+    name: "Field Repair",
+    text: "[activation] Remove up to 2 damage from an adjacent mechanical unit (Automatons or Dreadnoughts), or gain +1 Attack for the round if none can be repaired. Does not end the activation.",
+    effect: {
+      type: "ON_ACTIVATION_HEAL_FRIENDLY_OR_BUFF_SELF",
+      healAmount: 2,
+      attackBonus: 1,
+      adjacentOnly: true,
+      targetTrait: "mechanical"
+    },
+    implementationStatus: "implemented"
+  },
   // Factory Mechanics: "[activation] Attack 2 spaces in a line. The first attack
   // resolves normally, and the second has N [attack]." Mechanically identical to
   // the Gold Dragons' line attack (SECOND_ATTACK_BEHIND_TARGET): after the melee

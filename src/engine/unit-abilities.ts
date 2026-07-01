@@ -612,10 +612,27 @@ export function getActivationSpellPowerBoost(unit: CombatUnitState, spellSchools
   }, 0);
 }
 
-/** Enchanters: the activation heal-a-friendly-or-buff-self choice ability. */
-export function getEnchanterActivationAbility(
-  unit: CombatUnitState
-): { abilityId: string; abilityName: string; healAmount: number; attackBonus: number } | null {
+/**
+ * "Mechanical" units — Factory Automatons and Dreadnoughts (the constructs that
+ * carry the gear trait). Mechanics' Field Repair only ever targets these.
+ */
+export function isMechanicalUnit(unit: CombatUnitState): boolean {
+  return unit.unitDefId === "factory.automatons" || unit.unitDefId === "factory.dreadnoughts";
+}
+
+/**
+ * Enchanters / Factory Mechanics: the activation heal-a-friendly-or-buff-self
+ * choice ability. `adjacentOnly` + `targetTrait` restrict the repair target
+ * (Mechanics repair only ADJACENT mechanical units); Enchanters leave them unset.
+ */
+export function getEnchanterActivationAbility(unit: CombatUnitState): {
+  abilityId: string;
+  abilityName: string;
+  healAmount: number;
+  attackBonus: number;
+  adjacentOnly: boolean;
+  targetTrait?: "mechanical";
+} | null {
   for (const ability of getUnitAbilityDefinitions(unit)) {
     if (
       ability.implementationStatus === "implemented" &&
@@ -625,7 +642,9 @@ export function getEnchanterActivationAbility(
         abilityId: ability.id,
         abilityName: ability.name,
         healAmount: ability.effect.healAmount,
-        attackBonus: ability.effect.attackBonus
+        attackBonus: ability.effect.attackBonus,
+        adjacentOnly: Boolean(ability.effect.adjacentOnly),
+        targetTrait: ability.effect.targetTrait
       };
     }
   }
