@@ -42,6 +42,10 @@ export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   erdamon: "/assets/units-magma_elemental-portrait.webp", // Magma Elementals
   monere: "/assets/units-magic_elemental-portrait.webp", // Magic Elementals
   pasis: "/assets/units-energy_elemental-portrait.webp", // Elementals (Energy)
+  // Factory unit specialists — the unit's own Factory card art (no dedicated
+  // portrait crop yet). Henrietta = Halflings, Frederick = Automatons.
+  henrietta: "/assets/units-factory-bronze-halflings-few.webp", // Halflings
+  frederick: "/assets/units-factory-silver-automatons-few.webp", // Automatons
   // Moandor's specialty IS the Liches — the unit's own Power Lich wiki portrait
   // (scripts/fetch-lich-portrait.py), matching the Bulwark unit specialists. His
   // three cards used to reference baked scans (hero_specialties-moandor-*.webp)

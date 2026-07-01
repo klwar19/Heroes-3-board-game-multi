@@ -243,6 +243,15 @@ export type LocationInteraction =
        */
       type: "SPELL_SCROLL";
     }
+  | {
+      /**
+       * Factory "shovel" dig (Factory expansion tiles): draw the top Artifact
+       * card and reveal it, then CHOOSE to keep it (into hand) or discard it.
+       * The draw skips cards the visitor cannot acquire, like any shared-deck
+       * draw, and the discarded card goes to the Artifact discard pile.
+       */
+      type: "DIG_ARTIFACT";
+    }
   | { type: "NOT_IMPLEMENTED"; note: string };
 
 export type LocationDefinition = {

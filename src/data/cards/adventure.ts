@@ -1360,6 +1360,22 @@ export const adventureCards: CardLibrary = {
   "specialty.mutare.1": mightSpecialtyOne("mutare", "Dragons", "a Dragons unit"),
   "specialty.mutare.4": unitHealthSpecialty("mutare", "Dragons", 4, 1, "a Dragons unit"),
   "specialty.mutare.6": unitInitiativeSpecialty("mutare", "Dragons", 6, 1, "a Dragons unit"),
+  // Factory heroes (Gamefound "Faction Focus: Factory"). Face-less (no printed
+  // board-game specialty art yet) — withoutArt renders them natively.
+  // Henrietta (Mercenary): the Halflings specialist — "building your own armies
+  // of Halflings and Grenadiers, and buffing them all". I = +1 attack/defence;
+  // IV = +1 HP; VI = +1 initiative — doubled when the bonus lands on a Halflings.
+  "specialty.henrietta.1": withoutArt(mightSpecialtyOne("henrietta", "Halflings", "Halflings")),
+  "specialty.henrietta.4": withoutArt(unitHealthSpecialty("henrietta", "Halflings", 4, 1, "Halflings")),
+  "specialty.henrietta.6": withoutArt(unitInitiativeSpecialty("henrietta", "Halflings", 6, 1, "Halflings")),
+  // Frederick (Artificer): the Automatons specialist. His INHERENT trait also
+  // enhances every Automaton's Detonate by +1 (seedFactoryHeroEffects →
+  // PlayerState.automatonDetonationBonus); these three cards buff Automatons the
+  // way any unit-specialist does. (His "near-free Automaton re-recruit" is not
+  // yet wired — noted, not claimed.)
+  "specialty.frederick.1": withoutArt(mightSpecialtyOne("frederick", "Automatons", "Automatons")),
+  "specialty.frederick.4": withoutArt(unitHealthSpecialty("frederick", "Automatons", 4, 1, "Automatons")),
+  "specialty.frederick.6": withoutArt(unitInitiativeSpecialty("frederick", "Automatons", 6, 1, "Automatons")),
   "specialty.rion.1": {
     id: "specialty.rion.1",
     name: "Battlefield Medic I",

@@ -117,7 +117,7 @@ describe("batch-2 heroes are registered in their factions with art and implement
       expect(existsSync(assetPath(hero.portrait!)), `${heroId} portrait file`).toBe(true);
       expect(existsSync(assetPath(hero.boardScan!)), `${heroId} board scan file`).toBe(true);
       for (const level of [1, 4, 6] as const) {
-        const cardId = hero.specialtyCardIds[level];
+        const cardId = hero.specialtyCardIds![level];
         const card = adventureCards[cardId];
         expect(card, `${cardId} should exist`).toBeTruthy();
         expect(card.implementationStatus, `${cardId} implemented`).toBe("implemented");

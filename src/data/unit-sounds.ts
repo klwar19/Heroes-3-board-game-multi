@@ -136,7 +136,16 @@ const creatureVoices: Record<string, string> = {
   yetis: "ogre",
   shamans: "mage",
   mammoths: "behemoth",
-  jotunns: "titan"
+  jotunns: "titan",
+  // Factory (HotA fan faction): reuse base-game voice sets until dedicated
+  // audio is converted. halflings already maps above (neutral creature).
+  mechanics: "gremlin",
+  armadillos: "basilisk",
+  automatons: "iron-golem",
+  sandworms: "hydra",
+  gunslingers: "sharpshooter",
+  couatls: "wyvern",
+  dreadnoughts: "behemoth"
 };
 
 /**

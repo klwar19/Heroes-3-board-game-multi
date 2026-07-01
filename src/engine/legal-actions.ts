@@ -1,5 +1,11 @@
 import { cardLibrary } from "@/data/cards/library";
-import { coreBuildingDefinitions, coreFactionDefinitions, coreHeroDefinitions } from "@/data/factions/core";
+import {
+  coreBuildingDefinitions,
+  coreFactionDefinitions,
+  coreHeroDefinitions,
+  factoryGoldUnitConflict,
+  isPlayableFaction
+} from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { isMarketLocation, locationDefinitions, TRADE_RATES } from "@/data/map/locations";
 import { sampleBuildings } from "@/data/towns/buildings";
@@ -6175,10 +6181,13 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
       // Each unit card exists once: a type already in the army cannot be
       // recruited again — only its Few card may be reinforced to the Pack.
       const owned = player.army.some((armyUnit) => armyUnit.unitDefId === unitDefId);
+      // Factory: Couatls and Juggernauts are mutually exclusive — owning one
+      // hides the other from the recruit offer.
+      const goldChoiceBlocked = factoryGoldUnitConflict(player.army, unitDefId);
       // A Legion voucher reserved for this unit may make it affordable — fold in
       // the total gold discount when offering the action.
       const recruitCost = applyRecruitGoldDiscount(state, playerId, { kind: "recruit", unitDefId }, fewSide.cost);
-      if (!owned && hasRecruitResources(state, playerId, recruitCost)) {
+      if (!owned && !goldChoiceBlocked && hasRecruitResources(state, playerId, recruitCost)) {
         actions.push({
           label: `Recruit few ${unit.name}`,
           action: {
@@ -6564,7 +6573,7 @@ function getSetupLobbyLegalActions(state: GameState, playerId: PlayerId): LegalA
   );
   const untakenFactions = (Object.values(coreFactionDefinitions) as { id: FactionId }[])
     .map((faction) => faction.id)
-    .filter((id) => !takenFactions.has(id));
+    .filter((id) => !takenFactions.has(id) && isPlayableFaction(id));
 
   // The setup format selector — any seated player may (re)start any format.
   for (const format of ["open", "draft", "random", "random-choice"] as const) {
