@@ -184,6 +184,14 @@ export type UnitAbilityEffectDefinition =
        */
       type: "ON_REMOVAL_DAMAGE_ADJACENT";
       amount: number;
+      /**
+       * Factory Automaton (Few) cube-scaled Detonate: "remove them [the faction
+       * cubes on this unit] to inflict that much damage." When set, the blast is
+       * the number of faction cubes riding the unit at removal (0–2) instead of
+       * the fixed `amount` — so it fizzles with no cubes and grows as the player
+       * banks them. The controller's Frederick bonus is still added on top.
+       */
+      perCube?: boolean;
     }
   | {
       /**
@@ -919,6 +927,75 @@ export type UnitAbilityEffectDefinition =
        * Damage from spells and specialties still resolves normally.
        */
       type: "IGNORE_SPELL_AND_SPECIALTY_NONDAMAGE";
+    }
+  | {
+      /**
+       * Factory Couatls: "[activation] Once per Combat. Until its next
+       * activation, this unit ignores all [damage] and [spell] effects." At the
+       * start of its activation the controller may switch on `invulnerable-
+       * UntilActivation` (once per combat). The Few's activation of it ENDS the
+       * turn (`endsActivation`); the Pack's card adds "does not replace any
+       * regular actions", so it is free and the unit still moves and attacks.
+       */
+      type: "ON_ACTIVATION_INVULNERABILITY";
+      /** Few: using it is the whole turn. Pack: false — it does not replace the action. */
+      endsActivation: boolean;
+    }
+  | {
+      /**
+       * Factory Dreadnoughts (Juggernaut): "[activation] Instead of attacking,
+       * select up to N units adjacent to this one. Allocate `damageValues`
+       * [damage], starting with the first selected unit." A pure flat-damage
+       * allocation offered as an alternative to attacking (so it never provokes a
+       * retaliation): the player picks up to `damageValues.length` adjacent units
+       * in order, and the k-th pick suffers `damageValues[k]`. Few: [1,1] (up to
+       * 2 units); Pack/Neutral: [2,1,1] (up to 3 units).
+       */
+      type: "SPLASH_ALLOCATION_ATTACK";
+      damageValues: number[];
+    }
+  | {
+      /**
+       * Factory Automaton (Few): "[activation] You may place a faction cube on
+       * this unit (up to `maxCubes`)." At the start of its activation the
+       * controller may add one faction cube (optional, does not end the turn),
+       * capped at `maxCubes`. On removal the Automaton's cube-scaled Detonate
+       * (ON_REMOVAL_DAMAGE_ADJACENT `perCube`) deals that many damage to each
+       * neighbour.
+       */
+      type: "ON_ACTIVATION_PLACE_FACTION_CUBE";
+      maxCubes: number;
+    }
+  | {
+      /**
+       * Factory Sandworms (Pack): "[unit_passive] Place a faction cube on this
+       * unit whenever it defeats an enemy unit." Every time one of this unit's
+       * attacks removes an enemy from the board it banks a faction cube (paired
+       * with SPEND_FACTION_CUBE_ATTACK_AGAIN, which spends them).
+       */
+      type: "ON_KILL_GAIN_FACTION_CUBE";
+    }
+  | {
+      /**
+       * Factory Sandworms (Pack): "[activation] You may remove a faction cube
+       * from this unit in order to attack again." After it has attacked, while it
+       * still carries a faction cube the controller may spend one to make another
+       * full attack (a fresh target choice); it can chain as long as cubes remain
+       * (Olgoi-Khorkhoi "devouring corpses" for extra attacks).
+       */
+      type: "SPEND_FACTION_CUBE_ATTACK_AGAIN";
+    }
+  | {
+      /**
+       * Factory Bounty Hunters (Neutral guard) "Preemptive Shot": "[unit_passive]
+       * Retaliate before an opponent's attack. This unit also retaliates against
+       * non-adjacent units." When this unit is attacked it makes its Retaliation
+       * Attack FIRST — before the attacker's blow lands, so a lethal counter can
+       * cancel the incoming attack — and it retaliates against ranged
+       * (non-adjacent) attackers too, not only adjacent ones. Still only once per
+       * round (the pre-emptive strike spends its retaliation).
+       */
+      type: "PREEMPTIVE_RETALIATION";
     };
 
 /**
@@ -1174,6 +1251,84 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     name: "Relentless Burrow",
     text: "After the adjacent target retaliates, if possible, attack that target again. The second attack does not provoke another retaliation.",
     effect: { type: "SECOND_ATTACK_SAME_TARGET_AFTER_RETALIATION" },
+    implementationStatus: "implemented"
+  },
+  // Factory Automaton (Few): the cube subsystem. "[activation] You may place a
+  // faction cube on this unit (up to 2)" banks cubes; on removal the Detonate
+  // deals that many damage to each neighbour (perCube, so 0 cubes = no blast).
+  "automaton-place-cube": {
+    id: "automaton-place-cube",
+    name: "Overcharge",
+    text: "[activation] You may place a faction cube on this unit (up to 2). Does not end the activation.",
+    effect: { type: "ON_ACTIVATION_PLACE_FACTION_CUBE", maxCubes: 2 },
+    implementationStatus: "implemented"
+  },
+  "automaton-detonate-cubes": {
+    id: "automaton-detonate-cubes",
+    name: "Detonate",
+    text: "[unit_passive] When this unit is defeated, remove its faction cubes to inflict that many damage to each adjacent unit (friend and foe).",
+    effect: { type: "ON_REMOVAL_DAMAGE_ADJACENT", amount: 0, perCube: true },
+    implementationStatus: "implemented"
+  },
+  // Factory Sandworms (Pack): the cube subsystem's other half. Banks a cube on
+  // every kill and spends one to attack again (chains while cubes remain).
+  "sandworm-cube-gain": {
+    id: "sandworm-cube-gain",
+    name: "Devour",
+    text: "[unit_passive] Place a faction cube on this unit whenever it defeats an enemy unit.",
+    effect: { type: "ON_KILL_GAIN_FACTION_CUBE" },
+    implementationStatus: "implemented"
+  },
+  "sandworm-cube-attack": {
+    id: "sandworm-cube-attack",
+    name: "Feeding Frenzy",
+    text: "[activation] You may remove a faction cube from this unit in order to attack again.",
+    effect: { type: "SPEND_FACTION_CUBE_ATTACK_AGAIN" },
+    implementationStatus: "implemented"
+  },
+  // Factory Couatls (Few/Pack): the activated invulnerability. The Few version
+  // ends the turn when used; the Pack version is free ("does not replace any
+  // regular actions"). Both grant "ignore all damage & spell effects until this
+  // unit's next activation", once per combat.
+  "couatl-invulnerability-few": {
+    id: "couatl-invulnerability-few",
+    name: "Ethereal Coil",
+    text: "[activation] Once per Combat. Until its next activation, this unit ignores all damage and spell effects. Using it is this unit's action for the turn.",
+    effect: { type: "ON_ACTIVATION_INVULNERABILITY", endsActivation: true },
+    implementationStatus: "implemented"
+  },
+  "couatl-invulnerability-pack": {
+    id: "couatl-invulnerability-pack",
+    name: "Ethereal Coil",
+    text: "[activation] Once per Combat. Until its next activation, this unit ignores all damage and spell effects. Does not replace any regular actions.",
+    effect: { type: "ON_ACTIVATION_INVULNERABILITY", endsActivation: false },
+    implementationStatus: "implemented"
+  },
+  // Factory Dreadnoughts (Juggernaut): "[activation] Instead of attacking, select
+  // up to N units adjacent to this one. Allocate the printed damage, starting
+  // with the first selected unit." Few hits up to 2 for 1/1; Pack/Neutral up to
+  // 3 for 2/1/1. A flat allocation (no attack roll, no retaliation).
+  "dreadnought-splash-1": {
+    id: "dreadnought-splash-1",
+    name: "Concussive Slam",
+    text: "[activation] Instead of attacking, select up to 2 units adjacent to this one. Allocate 1/1 damage, starting with the first selected unit.",
+    effect: { type: "SPLASH_ALLOCATION_ATTACK", damageValues: [1, 1] },
+    implementationStatus: "implemented"
+  },
+  "dreadnought-splash-2": {
+    id: "dreadnought-splash-2",
+    name: "Concussive Slam",
+    text: "[activation] Instead of attacking, select up to 3 units adjacent to this one. Allocate 2/1/1 damage, starting with the first selected unit.",
+    effect: { type: "SPLASH_ALLOCATION_ATTACK", damageValues: [2, 1, 1] },
+    implementationStatus: "implemented"
+  },
+  // Factory Bounty Hunters (Neutral guard): "Preemptive Shot" — retaliate before
+  // the attacker's blow lands, and against non-adjacent (ranged) attackers too.
+  "bounty-hunter-preemptive": {
+    id: "bounty-hunter-preemptive",
+    name: "Preemptive Shot",
+    text: "[unit_passive] Retaliate before an opponent's attack. This unit also retaliates against non-adjacent units.",
+    effect: { type: "PREEMPTIVE_RETALIATION" },
     implementationStatus: "implemented"
   },
   "teleport-move": {

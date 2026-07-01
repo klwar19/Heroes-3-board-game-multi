@@ -97,6 +97,12 @@ export function unitImmuneToSpellSchools(
   unit: CombatUnitState,
   spellSchools: readonly SpellSchool[] | undefined
 ): boolean {
+  // Factory Couatls' activated invulnerability: while set the unit "ignores all
+  // spell effects", so it is immune to every Spell (of any school, and the
+  // school-less ones), exactly like a full immune-all-spells passive.
+  if (unit.invulnerableUntilActivation) {
+    return true;
+  }
   if (!spellSchools || spellSchools.length === 0) {
     return false;
   }
@@ -955,7 +961,106 @@ export function getOnRemovalDetonation(
 ): { abilityId: string; abilityName: string; amount: number } | null {
   for (const ability of getAbilitiesWithEffect(unit, "ON_REMOVAL_DAMAGE_ADJACENT")) {
     if (ability.effect?.type === "ON_REMOVAL_DAMAGE_ADJACENT") {
-      return { abilityId: ability.id, abilityName: ability.name, amount: ability.effect.amount };
+      // Factory Automaton (Few): the cube-scaled Detonate deals as much as the
+      // number of faction cubes riding the unit — so it fizzles with none and
+      // scales up to 2. Every other Detonate uses its fixed printed amount.
+      const amount = ability.effect.perCube ? unit.factionCubes ?? 0 : ability.effect.amount;
+      return { abilityId: ability.id, abilityName: ability.name, amount };
+    }
+  }
+  return null;
+}
+
+/**
+ * Factory Couatls: the activated invulnerability ability, if this unit carries
+ * it. `endsActivation` is true for the Few (using it is the whole turn) and
+ * false for the Pack ("does not replace any regular actions").
+ */
+export function getInvulnerabilityActivation(
+  unit: CombatUnitState
+): { abilityId: string; abilityName: string; endsActivation: boolean } | null {
+  for (const ability of getAbilitiesWithEffect(unit, "ON_ACTIVATION_INVULNERABILITY")) {
+    if (ability.effect?.type === "ON_ACTIVATION_INVULNERABILITY") {
+      return { abilityId: ability.id, abilityName: ability.name, endsActivation: ability.effect.endsActivation };
+    }
+  }
+  return null;
+}
+
+/**
+ * Whether this unit currently "ignores all damage" — the Factory Couatls'
+ * activated invulnerability. Every incoming-damage chokepoint checks this and
+ * skips the unit while it is set (until its next activation).
+ */
+export function isUnitDamageImmune(unit: CombatUnitState): boolean {
+  return Boolean(unit.invulnerableUntilActivation);
+}
+
+/**
+ * Factory Dreadnoughts: the "instead of attacking, allocate splash" activation,
+ * if this unit carries it. `damageValues` is the ordered allocation (Few [1,1],
+ * Pack/Neutral [2,1,1]); the k-th selected adjacent unit takes `damageValues[k]`.
+ */
+export function getSplashAllocationAttack(
+  unit: CombatUnitState
+): { abilityId: string; abilityName: string; damageValues: number[] } | null {
+  for (const ability of getAbilitiesWithEffect(unit, "SPLASH_ALLOCATION_ATTACK")) {
+    if (ability.effect?.type === "SPLASH_ALLOCATION_ATTACK") {
+      return { abilityId: ability.id, abilityName: ability.name, damageValues: ability.effect.damageValues };
+    }
+  }
+  return null;
+}
+
+/**
+ * Factory Automaton (Few): the "place a faction cube (up to N)" activation, if
+ * this unit carries it.
+ */
+export function getPlaceFactionCubeActivation(
+  unit: CombatUnitState
+): { abilityId: string; abilityName: string; maxCubes: number } | null {
+  for (const ability of getAbilitiesWithEffect(unit, "ON_ACTIVATION_PLACE_FACTION_CUBE")) {
+    if (ability.effect?.type === "ON_ACTIVATION_PLACE_FACTION_CUBE") {
+      return { abilityId: ability.id, abilityName: ability.name, maxCubes: ability.effect.maxCubes };
+    }
+  }
+  return null;
+}
+
+/** Factory Sandworms (Pack): banks a faction cube whenever it defeats an enemy. */
+export function getGainFactionCubeOnKill(
+  unit: CombatUnitState
+): { abilityId: string; abilityName: string } | null {
+  for (const ability of getAbilitiesWithEffect(unit, "ON_KILL_GAIN_FACTION_CUBE")) {
+    if (ability.effect?.type === "ON_KILL_GAIN_FACTION_CUBE") {
+      return { abilityId: ability.id, abilityName: ability.name };
+    }
+  }
+  return null;
+}
+
+/** Factory Sandworms (Pack): may spend a faction cube to make another attack. */
+export function getSpendCubeAttackAgain(
+  unit: CombatUnitState
+): { abilityId: string; abilityName: string } | null {
+  for (const ability of getAbilitiesWithEffect(unit, "SPEND_FACTION_CUBE_ATTACK_AGAIN")) {
+    if (ability.effect?.type === "SPEND_FACTION_CUBE_ATTACK_AGAIN") {
+      return { abilityId: ability.id, abilityName: ability.name };
+    }
+  }
+  return null;
+}
+
+/**
+ * Factory Bounty Hunters (Neutral): the "Preemptive Shot" retaliation — retaliate
+ * before the attacker's blow lands, and against non-adjacent attackers too.
+ */
+export function getPreemptiveRetaliation(
+  unit: CombatUnitState
+): { abilityId: string; abilityName: string } | null {
+  for (const ability of getAbilitiesWithEffect(unit, "PREEMPTIVE_RETALIATION")) {
+    if (ability.effect?.type === "PREEMPTIVE_RETALIATION") {
+      return { abilityId: ability.id, abilityName: ability.name };
     }
   }
   return null;
