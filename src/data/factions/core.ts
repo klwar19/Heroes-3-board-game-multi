@@ -2523,7 +2523,8 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     type: "might",
     startingStats: { attack: 3, defense: 1, power: 1, knowledge: 1 },
     startingAbilityCardId: "ability.armorer",
-    // NOT IMPLEMENTED: Mechanics unit specialty. No board game cards.
+    // Mechanics unit specialist (I/IV/VI) — engine-wired, face-less cards.
+    specialtyCardIds: { 1: "specialty.sam.1", 4: "specialty.sam.4", 6: "specialty.sam.6" },
     portrait: "/assets/hero_portraits-sam.webp",
     source: factoryHeroSource("Sam")
   },
@@ -2535,95 +2536,11 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     type: "might",
     startingStats: { attack: 3, defense: 1, power: 1, knowledge: 1 },
     startingAbilityCardId: "ability.archery",
-    // NOT IMPLEMENTED: Gunslingers unit specialty. No board game cards.
+    // Bounty Hunters (Gunslingers) unit specialist (I/IV/VI) — engine-wired.
+    specialtyCardIds: { 1: "specialty.tancred.1", 4: "specialty.tancred.4", 6: "specialty.tancred.6" },
     portrait: "/assets/hero_portraits-tancred.webp",
     source: factoryHeroSource("Tancred")
   },
-  melchior: {
-    id: "melchior",
-    name: "Melchior",
-    faction: "factory",
-    class: "Mercenary",
-    type: "might",
-    startingStats: { attack: 2, defense: 2, power: 1, knowledge: 1 },
-    startingAbilityCardId: "ability.diplomacy",
-    // NOT IMPLEMENTED: Diplomacy specialty. No board game cards.
-    portrait: "/assets/hero_portraits-melchior.webp",
-    source: factoryHeroSource("Melchior")
-  },
-  floribert: {
-    id: "floribert",
-    name: "Floribert",
-    faction: "factory",
-    class: "Mercenary",
-    type: "might",
-    startingStats: { attack: 2, defense: 1, power: 2, knowledge: 1 },
-    startingAbilityCardId: "ability.first_aid",
-    // NOT IMPLEMENTED: First Aid specialty. No board game cards.
-    portrait: "/assets/hero_portraits-floribert.webp",
-    source: factoryHeroSource("Floribert")
-  },
-  wynona: {
-    id: "wynona",
-    name: "Wynona",
-    faction: "factory",
-    class: "Mercenary",
-    type: "might",
-    startingStats: { attack: 3, defense: 1, power: 1, knowledge: 1 },
-    startingAbilityCardId: "ability.scouting",
-    // NOT IMPLEMENTED: Scouting specialty. No board game cards.
-    portrait: "/assets/hero_portraits-wynona.webp",
-    source: factoryHeroSource("Wynona")
-  },
-  dury: {
-    id: "dury",
-    name: "Dury",
-    faction: "factory",
-    class: "Mercenary",
-    type: "might",
-    startingStats: { attack: 2, defense: 2, power: 1, knowledge: 1 },
-    startingAbilityCardId: "ability.armorer",
-    // NOT IMPLEMENTED: Armorer specialty. No board game cards.
-    portrait: "/assets/hero_portraits-dury.webp",
-    source: factoryHeroSource("Dury")
-  },
-  morton: {
-    id: "morton",
-    name: "Morton",
-    faction: "factory",
-    class: "Mercenary",
-    type: "might",
-    startingStats: { attack: 3, defense: 1, power: 1, knowledge: 1 },
-    startingAbilityCardId: "ability.artillery",
-    // NOT IMPLEMENTED: Ballista specialty. No board game cards.
-    portrait: "/assets/hero_portraits-morton.webp",
-    source: factoryHeroSource("Morton")
-  },
-  tavin: {
-    id: "tavin",
-    name: "Tavin",
-    faction: "factory",
-    class: "Mercenary",
-    type: "might",
-    startingStats: { attack: 3, defense: 1, power: 1, knowledge: 1 },
-    startingAbilityCardId: "ability.offense",
-    // NOT IMPLEMENTED: Offense specialty. No board game cards.
-    portrait: "/assets/hero_portraits-tavin.webp",
-    source: factoryHeroSource("Tavin")
-  },
-  murdoch: {
-    id: "murdoch",
-    name: "Murdoch",
-    faction: "factory",
-    class: "Mercenary",
-    type: "might",
-    startingStats: { attack: 3, defense: 1, power: 1, knowledge: 1 },
-    startingAbilityCardId: "ability.archery",
-    // NOT IMPLEMENTED: Archery specialty. No board game cards.
-    portrait: "/assets/hero_portraits-murdoch.webp",
-    source: factoryHeroSource("Murdoch")
-  },
-
   // Artificer heroes (magic class):
   celestine: {
     id: "celestine",
@@ -2633,21 +2550,10 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     type: "magic",
     startingStats: { attack: 0, defense: 1, power: 2, knowledge: 2 },
     startingAbilityCardId: "ability.wisdom",
-    // NOT IMPLEMENTED: Armadillos unit specialty. No board game cards.
+    // Armadillos unit specialist (I/IV/VI) — engine-wired, face-less cards.
+    specialtyCardIds: { 1: "specialty.celestine.1", 4: "specialty.celestine.4", 6: "specialty.celestine.6" },
     portrait: "/assets/hero_portraits-celestine.webp",
     source: factoryHeroSource("Celestine")
-  },
-  todd: {
-    id: "todd",
-    name: "Todd",
-    faction: "factory",
-    class: "Artificer",
-    type: "magic",
-    startingStats: { attack: 0, defense: 1, power: 2, knowledge: 2 },
-    startingAbilityCardId: "ability.intelligence",
-    // NOT IMPLEMENTED: Automatons unit specialty. No board game cards.
-    portrait: "/assets/hero_portraits-todd.webp",
-    source: factoryHeroSource("Todd")
   },
   agar: {
     id: "agar",
@@ -2657,69 +2563,10 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     type: "magic",
     startingStats: { attack: 0, defense: 0, power: 2, knowledge: 3 },
     startingAbilityCardId: "ability.sorcery",
-    // NOT IMPLEMENTED: Sandworms unit specialty. No board game cards.
+    // Sandworms unit specialist (I/IV/VI) — engine-wired, face-less cards.
+    specialtyCardIds: { 1: "specialty.agar.1", 4: "specialty.agar.4", 6: "specialty.agar.6" },
     portrait: "/assets/hero_portraits-agar.webp",
     source: factoryHeroSource("Agar")
-  },
-  bertram: {
-    id: "bertram",
-    name: "Bertram",
-    faction: "factory",
-    class: "Artificer",
-    type: "magic",
-    startingStats: { attack: 0, defense: 1, power: 2, knowledge: 2 },
-    startingAbilityCardId: "ability.estates",
-    // NOT IMPLEMENTED: Gold/resource specialty. No board game cards.
-    portrait: "/assets/hero_portraits-bertram.webp",
-    source: factoryHeroSource("Bertram")
-  },
-  wrathmont: {
-    id: "wrathmont",
-    name: "Wrathmont",
-    faction: "factory",
-    class: "Artificer",
-    type: "magic",
-    startingStats: { attack: 0, defense: 0, power: 3, knowledge: 2 },
-    startingAbilityCardId: "ability.sorcery",
-    // NOT IMPLEMENTED: Frenzy spell specialty. No board game cards.
-    portrait: "/assets/hero_portraits-wrathmont.webp",
-    source: factoryHeroSource("Wrathmont")
-  },
-  ziph: {
-    id: "ziph",
-    name: "Ziph",
-    faction: "factory",
-    class: "Artificer",
-    type: "magic",
-    startingStats: { attack: 0, defense: 0, power: 3, knowledge: 2 },
-    startingAbilityCardId: "ability.basic_fire_magic",
-    // NOT IMPLEMENTED: Lightning Bolt spell specialty. No board game cards.
-    portrait: "/assets/hero_portraits-ziph.webp",
-    source: factoryHeroSource("Ziph")
-  },
-  victoria: {
-    id: "victoria",
-    name: "Victoria",
-    faction: "factory",
-    class: "Artificer",
-    type: "magic",
-    startingStats: { attack: 0, defense: 1, power: 2, knowledge: 2 },
-    startingAbilityCardId: "ability.tactics",
-    // NOT IMPLEMENTED: Land Mine specialty. No board game cards.
-    portrait: "/assets/hero_portraits-victoria.webp",
-    source: factoryHeroSource("Victoria")
-  },
-  eanswythe: {
-    id: "eanswythe",
-    name: "Eanswythe",
-    faction: "factory",
-    class: "Artificer",
-    type: "magic",
-    startingStats: { attack: 0, defense: 1, power: 2, knowledge: 2 },
-    startingAbilityCardId: "ability.water_magic",
-    // NOT IMPLEMENTED: Weakness spell specialty. No board game cards.
-    portrait: "/assets/hero_portraits-eanswythe.webp",
-    source: factoryHeroSource("Eanswythe")
   },
   frederick: {
     id: "frederick",
@@ -2911,12 +2758,12 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     // the per-item notes — but the faction starts and plays.
     startingTileId: "&S1",
     heroes: [
-      // Mercenary (might): 10 heroes
-      "henrietta", "sam", "tancred", "melchior", "floribert",
-      "wynona", "dury", "morton", "tavin", "murdoch",
-      // Artificer (magic): 9 heroes
-      "celestine", "todd", "agar", "bertram", "wrathmont",
-      "ziph", "victoria", "eanswythe", "frederick"
+      // Six unit specialists kept (the placeholder heroes were removed): each has
+      // an engine-wired I/IV/VI specialty that buffs a Factory unit.
+      // Mercenary (might): Halflings / Mechanics / Bounty Hunters.
+      "henrietta", "sam", "tancred",
+      // Artificer (magic): Armadillos / Sandworms / Automatons.
+      "celestine", "agar", "frederick"
     ],
     buildings: buildingsOfFaction("factory"),
     units: unitsOfFaction("factory"),
