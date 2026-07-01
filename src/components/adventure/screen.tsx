@@ -2570,6 +2570,66 @@ export function PromptTray({
       </div>
     );
   }
+  // Factory Couatls' invulnerability ("Ethereal Coil") and the Automaton's
+  // cube-place ("Overcharge") are a simple yes/no at the unit's OWN activation —
+  // the only "target" is the unit itself, so render clean Activate/Skip buttons
+  // instead of the "click a glowing unit" hunt (which would ask you to click your
+  // own unit). The Couatl Few's activation ends the turn; the Pack's is free.
+  if (
+    choice?.type === "ABILITY_TARGET_CHOICE" &&
+    (choice.kind === "couatl-invulnerability" || choice.kind === "automaton-cube") &&
+    choice.playerId === viewerPlayerId
+  ) {
+    const activate = abilityTargetActions.find(
+      (legal) => legal.action.type === "CHOOSE_ABILITY_TARGET" && legal.action.targetUnitId === choice.sourceUnitId
+    );
+    const skip = abilityTargetActions.find(
+      (legal) => legal.action.type === "CHOOSE_ABILITY_TARGET" && legal.action.targetUnitId === "skip"
+    );
+    const activateLabel =
+      choice.kind === "couatl-invulnerability" ? `Activate ${choice.abilityName}` : "Place a faction cube";
+    return (
+      <div className="promptTray" role="dialog" aria-label={choice.prompt}>
+        <strong>{choice.prompt}</strong>
+        <div className="promptOptions">
+          {activate ? (
+            <button className="commandButton" onClick={() => onAction(activate.action)} type="button">
+              {activateLabel}
+            </button>
+          ) : null}
+          {skip ? (
+            <button className="commandButton" onClick={() => onAction(skip.action)} type="button">
+              {skip.label}
+            </button>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
+  // Factory Dreadnoughts' splash allocation: a per-pick board flow (click a
+  // glowing adjacent unit to take the next damage value), with a Stop button to
+  // end early — the same two-click pattern as the token place / teleport picks.
+  if (
+    choice?.type === "ABILITY_TARGET_CHOICE" &&
+    choice.kind === "dreadnought-splash" &&
+    choice.playerId === viewerPlayerId
+  ) {
+    const stop = abilityTargetActions.find(
+      (legal) => legal.action.type === "CHOOSE_ABILITY_TARGET" && legal.action.targetUnitId === "skip"
+    );
+    return (
+      <div className="promptTray" role="dialog" aria-label={choice.prompt}>
+        <strong>{choice.prompt} Click a glowing adjacent unit.</strong>
+        <div className="promptOptions">
+          {stop ? (
+            <button className="commandButton" onClick={() => onAction(stop.action)} type="button">
+              {stop.label}
+            </button>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
   if (
     choice?.type === "OPTION_CHOICE" &&
     choice.context === "combat-teleport" &&
