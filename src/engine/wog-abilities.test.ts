@@ -365,6 +365,11 @@ describe("WOG abilities in two-player combat", () => {
     expect(state.eventLog.some(
       (event) => event.type === "UNIT_ATTACK_DECLARED" && event.abilityAttack?.baseAttack === 4
     )).toBe(true);
+    // The spread fires the ability event the table draws the Lich death-cloud FX
+    // off (abilityFxPlans["wog-dracolich-death-cloud"]).
+    expect(state.eventLog.some(
+      (event) => event.type === "UNIT_ABILITY_TRIGGERED" && event.abilityId === "wog-dracolich-death-cloud"
+    )).toBe(true);
     state = passReactions(state);
 
     const rolls = state.eventLog.filter(

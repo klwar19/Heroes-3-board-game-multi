@@ -129,6 +129,19 @@ describe("WOG neutral roster data", () => {
     }
   });
 
+  it("only the Santa Gremlin deals elemental damage among the WOG neutrals (everything else is normal)", () => {
+    // The Hell Steed used to carry an elemental "Magic Arrow" attack; that was
+    // wrong. Among the whole WOG neutral roster, ONLY the Santa Gremlin's Ice Bolt
+    // (wog-santa-ice-bolt) deals elemental damage — every other unit rolls a
+    // normal, Defense-reduced attack. This fails if any other unit regains it.
+    const elemental = WOG_UNIT_IDS.filter((unitId) =>
+      (coreUnitDefinitions[unitId].neutral?.abilities ?? []).some(
+        (abilityId) => unitAbilities[abilityId]?.effect?.type === "DEALS_ELEMENTAL_DAMAGE"
+      )
+    );
+    expect(elemental).toEqual(["wog.santa_gremlin"]);
+  });
+
   it("keeps the supplied A/D/HP/I statistics and costs", () => {
     const expected: Record<string, [number, number, number, number, number | undefined]> = {
       "wog.ghost": [3, 0, 4, 7, 6],

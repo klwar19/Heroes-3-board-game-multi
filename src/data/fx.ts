@@ -255,6 +255,12 @@ export const abilityFxPlans: Record<string, SpellFxPlan> = {
   "wog-dracolich-armor": { affect: [{ key: "anti-magic" }] },
   "magog-fireball-splash": { hit: "fireball", hitSound: "spells/fireball-hit" },
   "lich-death-cloud": { hit: "death-cloud", hitSound: "spells/death-cloud" },
+  // WOG Dracolich's spread attack (Necrotic Death Cloud) is the Lich's Death
+  // Cloud by another name — a full second attack on a unit adjacent to the
+  // target. It emits UNIT_ABILITY_TRIGGERED("wog-dracolich-death-cloud") just
+  // like the Lich fires "lich-death-cloud", so it gets the SAME death-cloud burst
+  // + sound (parity with the Lich; without this its spread landed silently).
+  "wog-dracolich-death-cloud": { hit: "death-cloud", hitSound: "spells/death-cloud" },
   // Faerie Dragons' activation damage-spell flies as an Ice Bolt from the
   // dragon to the chosen unit, then explodes on the hit.
   "faerie-dragon-spell": {
@@ -364,6 +370,33 @@ export const abilityFxPlans: Record<string, SpellFxPlan> = {
   fear: { affect: [{ key: "fear" }], sound: "effects/fear" },
   "acid-breath": { hit: "acid-breath", hitSound: "effects/acid-breath" }
 };
+
+/**
+ * Units whose ordinary ranged SHOT is a spell bolt rather than a plain arrow:
+ * the table flies this projectile + hit sprite (with the spell's sound) instead
+ * of the generic "bolt" cue. Keyed by the unit's bare name (the id without its
+ * faction prefix), like the creature voices in unit-sounds.ts. The Santa Gremlin
+ * "attacks with Ice Bolt" (its wog-santa-ice-bolt elemental attack), so its shot
+ * IS the Ice Bolt — the same projectile/burst/sound the Ice Bolt spell and the
+ * Faerie Dragon fire.
+ */
+export const unitShotFxPlans: Record<string, SpellFxPlan> = {
+  santa_gremlin: {
+    projectile: "ice-bolt-projectile-0",
+    hit: "ice-bolt-hit",
+    sound: "spells/ice-bolt",
+    hitSound: "spells/ice-bolt-hit"
+  }
+};
+
+/** The shot FX plan for a unit's ranged attack, or undefined for a plain arrow. */
+export function unitShotFxPlan(unitDefId: string | undefined): SpellFxPlan | undefined {
+  if (!unitDefId) {
+    return undefined;
+  }
+  const bareName = unitDefId.split(".")[1] ?? unitDefId;
+  return unitShotFxPlans[bareName];
+}
 
 /**
  * Heals that are NOT cast as spells and so have no SPELL_CAST_RESOLVED to carry

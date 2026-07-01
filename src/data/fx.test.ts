@@ -10,6 +10,7 @@ import {
   spellFxPlans,
   spellPresentationMs,
   spriteDurationMs,
+  unitShotFxPlan,
   warMachineFxPlans,
   type SpellFxPlan
 } from "./fx";
@@ -240,6 +241,45 @@ describe("WOG neutral ability cues (mirror reflect, armor block, death-stare pro
     // keeps the death-stare animation/sound to actual procs (the Nightmare's stare).
     expect(abilityFxPlans["gorgon-death-stare-roll"]).toBeUndefined();
     expect(abilityFxPlans["fortress-gorgon-death-stare-roll"]).toBeUndefined();
+  });
+
+  it("wires the Dracolich's spread attack with the Lich Death Cloud burst (parity)", () => {
+    // declareAbilityAttack fires UNIT_ABILITY_TRIGGERED("wog-dracolich-death-cloud")
+    // before the spread strike, exactly like the Lich fires "lich-death-cloud", so
+    // the table bursts the same death cloud + sound over the adjacent target.
+    const plan = abilityFxPlans["wog-dracolich-death-cloud"];
+    expect(plan, "wog-dracolich-death-cloud needs an ability FX plan").toBeTruthy();
+    expect(plan.hit).toBe("death-cloud");
+    expect(spriteDurationMs(plan.hit)).toBeGreaterThan(0);
+    expect(plan.hitSound).toBe("spells/death-cloud");
+    expect(soundDurationMs(plan.hitSound)).toBeGreaterThan(0);
+    expect(spellPresentationMs(plan)).toBeGreaterThan(0);
+    // Same burst as the base Lich's Death Cloud.
+    expect(plan).toEqual(abilityFxPlans["lich-death-cloud"]);
+  });
+});
+
+describe("unit ranged shots that ARE spell bolts", () => {
+  it("flies the Santa Gremlin's Ice Bolt shot (projectile + burst + spell sounds)", () => {
+    // The Santa Gremlin "attacks with Ice Bolt", so page.tsx flies the real ice-bolt
+    // projectile + hit (with the Ice Bolt spell's launch/impact sounds) for its shot
+    // instead of the generic arrow bolt. The cue dies if this plan is dropped.
+    const plan = unitShotFxPlan("wog.santa_gremlin");
+    expect(plan, "Santa Gremlin needs a shot FX plan").toBeTruthy();
+    expect(plan!.projectile).toBe("ice-bolt-projectile-0");
+    expect(spriteDurationMs(plan!.projectile)).toBeGreaterThan(0);
+    expect(plan!.hit).toBe("ice-bolt-hit");
+    expect(spriteDurationMs(plan!.hit)).toBeGreaterThan(0);
+    expect(plan!.sound).toBe("spells/ice-bolt");
+    expect(soundDurationMs(plan!.sound)).toBeGreaterThan(0);
+    expect(plan!.hitSound).toBe("spells/ice-bolt-hit");
+    expect(soundDurationMs(plan!.hitSound)).toBeGreaterThan(0);
+    expect(spellPresentationMs(plan)).toBeGreaterThan(0);
+  });
+
+  it("gives an ordinary shooter no shot plan (it keeps the plain arrow bolt)", () => {
+    expect(unitShotFxPlan("castle.marksmen")).toBeUndefined();
+    expect(unitShotFxPlan(undefined)).toBeUndefined();
   });
 });
 
