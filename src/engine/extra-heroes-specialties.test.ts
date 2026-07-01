@@ -329,6 +329,51 @@ describe("Adelaide's Frost Ring specialty", () => {
     expect(findPlay(state, "specialty.adelaide.1", 0)).toBeFalsy();
   });
 
+  it("I hits at most 2 adjacent units — with 3 in the ring, the caster PICKS which two", () => {
+    const state = ringState("adelaide-i-picks", "specialty.adelaide.1");
+    // ringState already puts griffins(5) and skeletons(13) in the ring; add a
+    // THIRD adjacent unit (vampires, moved from 0 to 8) so a pick is forced.
+    state.combat!.units.unit_p2_vampires.position = 8;
+    const blast = applyOk(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "specialty.adelaide.1",
+      mode: "basic",
+      optionIndex: 0,
+      target: { type: "space", position: 9 },
+      costCardIds: ["stat.attack"]
+    });
+    const choice = blast.pendingChoice;
+    expect(choice?.type, "3 adjacent → an area-pick choice (was: all 3 hit at once)").toBe("ABILITY_TARGET_CHOICE");
+    if (choice?.type !== "ABILITY_TARGET_CHOICE") {
+      return;
+    }
+    expect(choice.picksRemaining).toBe(2);
+    expect(new Set(choice.candidateUnitIds)).toEqual(
+      new Set(["unit_p1_griffins", "unit_p2_skeletons", "unit_p2_vampires"])
+    );
+    // Pick the two enemies; the friendly griffins is spared.
+    let picked = applyOk(blast, {
+      type: "CHOOSE_ABILITY_TARGET",
+      playerId: "p1",
+      choiceId: choice.id,
+      targetUnitId: "unit_p2_skeletons"
+    });
+    const second = picked.pendingChoice;
+    if (second?.type !== "ABILITY_TARGET_CHOICE") {
+      throw new Error("second pick expected");
+    }
+    picked = applyOk(picked, {
+      type: "CHOOSE_ABILITY_TARGET",
+      playerId: "p1",
+      choiceId: second.id,
+      targetUnitId: "unit_p2_vampires"
+    });
+    expect(picked.combat!.units.unit_p2_skeletons.damage).toBe(1);
+    expect(picked.combat!.units.unit_p2_vampires.damage).toBe(1);
+    expect(picked.combat!.units.unit_p1_griffins.damage, "the un-picked third adjacent unit is spared").toBe(0);
+  });
+
   it("VI rings a space for 2 damage to adjacent units for a 2-card discard", () => {
     const state = ringState("adelaide-vi", "specialty.adelaide.6");
     const blast = applyOk(state, {
@@ -383,5 +428,36 @@ describe("Adelaide's Frost Ring specialty", () => {
     });
     expect(state.players.p1.hand).toContain("spell.magic_arrow");
     expect(state.players.p1.discard).not.toContain("spell.magic_arrow");
+  });
+
+  it("IV also returns a Spell/Specialty from the discard DURING combat (allowInCombat, was map-only)", () => {
+    // The recall used to be map-only, so it was un-usable in the fight where a
+    // recalled Frost Ring / spell matters most. It now opens the discard-pick
+    // straight away mid-combat. Fails if `allowInCombat` is removed.
+    const state = createInitialGameState("adelaide-iv-combat");
+    state.players.p1.hand = ["specialty.adelaide.4"];
+    state.players.p1.discard = ["spell.magic_arrow", "stat.attack"];
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_griffins";
+
+    const play = findPlay(state, "specialty.adelaide.4", 0);
+    expect(play, "Adelaide IV's discard recall should be OFFERED in combat").toBeTruthy();
+    const opened = applyOk(state, play!.action);
+
+    const choice = opened.pendingChoice;
+    expect(choice?.type === "OPTION_CHOICE" && choice.context, "the discard-pick opens mid-combat").toBe(
+      "discard-pick"
+    );
+    const labels = choice?.type === "OPTION_CHOICE" ? choice.options.map((option) => option.label) : [];
+    expect(labels.some((label) => label.includes("Attack")), "the Statistic is not an eligible recall").toBe(false);
+    const taken = applyOk(opened, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: (choice as { id: string }).id,
+      optionIndex: labels.findIndex((label) => label.includes("Magic Arrow"))
+    });
+    expect(taken.players.p1.hand).toContain("spell.magic_arrow");
+    expect(taken.players.p1.discard).not.toContain("spell.magic_arrow");
   });
 });

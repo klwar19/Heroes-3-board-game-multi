@@ -90,6 +90,11 @@ import {
   type CardBoardAction
 } from "@/components/table/utils";
 import {
+  armedPaymentFor,
+  boardCardDiscardCost,
+  type ArmedCardPayment
+} from "@/components/table/discard-first";
+import {
   ATTACK_ANIM_MS,
   ATTACK_IMPACT_MS,
   COMBAT_MOVE_MS,
@@ -220,13 +225,22 @@ function CostPlayBar({
   onConfirm,
   onCancel
 }: {
-  pending: { action: { cardId: string }; exact?: number; upTo?: number; filter?: "spell" | "power-source"; picks: number[] };
+  pending: {
+    action: { cardId: string };
+    exact?: number;
+    upTo?: number;
+    filter?: "spell" | "power-source";
+    picks: number[];
+    /** "Discard first" arming: confirming aims the card rather than playing it now. */
+    armSelection?: unknown;
+  };
   hand: string[];
   onPick: (index: number) => void;
   onConfirm: (hand: string[]) => void;
   onCancel: () => void;
 }) {
   const playedIndex = hand.indexOf(pending.action.cardId);
+  const arming = Boolean(pending.armSelection);
   const ready =
     pending.exact !== undefined ? pending.picks.length === pending.exact : pending.picks.length <= (pending.upTo ?? 0);
   return (
@@ -261,7 +275,7 @@ function CostPlayBar({
         );
       })}
       <button disabled={!ready} onClick={() => onConfirm(hand)} type="button">
-        Pay &amp; play
+        {arming ? "Discard, then aim" : "Pay & play"}
       </button>
       <button onClick={onCancel} type="button">
         Cancel
@@ -594,7 +608,21 @@ export default function Home() {
     upTo?: number;
     filter?: "spell" | "power-source";
     picks: number[];
+    /**
+     * "Discard first to use": when set, confirming the picker does NOT submit the
+     * play — it banks the payment (see `armedCardPayment`) and arms this selection
+     * for board targeting. The play only reaches the engine once a target is
+     * clicked. Absent for the ordinary "target first, then pay" path.
+     */
+    armSelection?: CardBoardAction;
   } | null>(null);
+  /**
+   * "Discard first to use" (house rule): the discard a board-target card
+   * (Frost Ring / Xyron's Inferno specialties) paid at SELECTION time, remembered
+   * until its target is clicked and then re-attached to the play. Cleared when the
+   * selection is cancelled or the play resolves.
+   */
+  const [armedCardPayment, setArmedCardPayment] = useState<ArmedCardPayment | null>(null);
   /**
    * A hero move (MOVE_HERO / MOVE_HERO_PATH) held at the pre-battle gate: it
    * walks into a Combat while the player can still buy troops, so we confirm
@@ -2630,6 +2658,10 @@ export default function Home() {
   }, [roomId, ingestSnapshot, clientId]);
 
   const submitAction = async (action: GameAction) => {
+    // The action actually sent to the engine — a costed board-target play that
+    // was armed "discard first" gets its banked payment attached here.
+    let outgoing = action;
+
     // A play with a printed discard cost (Xyron's Inferno, "discard N: …"
     // options) opens the cost picker first when the cost has not been paid yet.
     // The reaction tray pays its own costs, so it always passes costCardIds.
@@ -2641,14 +2673,23 @@ export default function Home() {
           : undefined;
       const cost = option?.cost;
       if (cost && (cost.discardCards !== undefined || cost.discardCardsUpTo !== undefined)) {
-        setPendingCostPlay({
-          action,
-          exact: cost.discardCards,
-          upTo: cost.discardCardsUpTo,
-          filter: cost.costCardFilter,
-          picks: []
-        });
-        return;
+        // "Discard first": a board-target play banks its discard when the card is
+        // selected, so the payment is ready by the time the target is clicked —
+        // attach it and play. Only fall back to the picker when the play was NOT
+        // pre-armed (a no-target costed play submitted straight from the hand).
+        const banked = armedPaymentFor(armedCardPayment, action);
+        if (banked) {
+          outgoing = { ...action, costCardIds: banked };
+        } else {
+          setPendingCostPlay({
+            action,
+            exact: cost.discardCards,
+            upTo: cost.discardCardsUpTo,
+            filter: cost.costCardFilter,
+            picks: []
+          });
+          return;
+        }
       }
     }
 
@@ -2674,7 +2715,7 @@ export default function Home() {
 
     setSyncStatus("submitting");
     try {
-      const payload = await connection.submitAction(action);
+      const payload = await connection.submitAction(outgoing);
       // A successful action can still carry a player-facing notice: e.g. a Clone
       // cast that could not reach the chosen unit's grade is refunded (card +
       // Power returned) rather than wasted, and says so. Surface those alongside
@@ -2691,6 +2732,7 @@ export default function Home() {
 
       if (payload.result.errors.length === 0) {
         setSelectedCardAction(null);
+        setArmedCardPayment(null);
         setHandMode(null);
         setHandDiscards([]);
         setTilePlacement(null);
@@ -2802,14 +2844,57 @@ export default function Home() {
     });
   };
 
-  /** Pay the picked cards and submit the play that was waiting on its cost. */
+  /**
+   * Confirm the discard picker. For an ordinary "target first" play this pays the
+   * picked cards and submits. For a "discard first" arming (`armSelection` set) it
+   * instead BANKS the payment and arms the selection for board targeting — the
+   * play is sent later, once the target is clicked (submitAction re-attaches it).
+   */
   const confirmPendingCostPlay = (hand: string[]) => {
-    setPendingCostPlay((current) => {
-      if (current) {
-        void submitAction({ ...current.action, costCardIds: current.picks.map((index) => hand[index]) });
-      }
-      return null;
-    });
+    if (!pendingCostPlay) {
+      return;
+    }
+    const costCardIds = pendingCostPlay.picks.map((index) => hand[index]);
+    const armSelection = pendingCostPlay.armSelection;
+    if (armSelection) {
+      setArmedCardPayment({
+        cardId: armSelection.cardId,
+        optionIndex: armSelection.type === "PLAY_CARD" ? armSelection.optionIndex : undefined,
+        costCardIds
+      });
+      setSelectedCardAction(armSelection);
+    } else {
+      void submitAction({ ...pendingCostPlay.action, costCardIds });
+    }
+    setPendingCostPlay(null);
+  };
+
+  /**
+   * Select a board-target card for aiming. "Discard first to use": if the card
+   * carries a printed discard cost, open the discard picker BEFORE targeting (an
+   * `armSelection`); confirming it banks the payment and then arms targeting.
+   * Cards with no such cost select straight away, and clearing the selection also
+   * drops any banked payment.
+   */
+  const selectBoardCardAction = (action: CardBoardAction | null) => {
+    if (!action) {
+      setSelectedCardAction(null);
+      setArmedCardPayment(null);
+      return;
+    }
+    const cost = boardCardDiscardCost(action, cardLibrary);
+    if (cost && action.type === "PLAY_CARD") {
+      setPendingCostPlay({
+        action,
+        armSelection: action,
+        exact: cost.discardCards,
+        upTo: cost.discardCardsUpTo,
+        filter: cost.costCardFilter,
+        picks: []
+      });
+      return;
+    }
+    setSelectedCardAction(action);
   };
 
   const resetRoom = async (mode: "adventure" | "combat-sandbox") => {
@@ -3315,10 +3400,20 @@ export default function Home() {
       if (!pendingCostPlay) {
         return;
       }
-      void submitAction({
-        ...pendingCostPlay.action,
-        costCardIds: pendingCostPlay.picks.map((index) => handCards[index])
-      });
+      const costCardIds = pendingCostPlay.picks.map((index) => handCards[index]);
+      const armSelection = pendingCostPlay.armSelection;
+      if (armSelection) {
+        // "Discard first": bank the payment and arm targeting (never submit here).
+        setArmedCardPayment({
+          cardId: armSelection.cardId,
+          optionIndex: armSelection.type === "PLAY_CARD" ? armSelection.optionIndex : undefined,
+          costCardIds
+        });
+        setSelectedCardAction(armSelection);
+        setPendingCostPlay(null);
+        return;
+      }
+      void submitAction({ ...pendingCostPlay.action, costCardIds });
       setPendingCostPlay(null);
     };
 
@@ -3968,7 +4063,7 @@ export default function Home() {
                   hiddenTailCount={hiddenHandTail}
                   legalActions={legalActions}
                   onAction={submitAction}
-                  onSelectCardAction={setSelectedCardAction}
+                  onSelectCardAction={selectBoardCardAction}
                   selectedCardAction={selectedCardAction}
                   state={state}
                   trayActive={trayActive}
@@ -4035,7 +4130,13 @@ export default function Home() {
                   ? "Click a glowing space on the board"
                   : "Click a glowing unit on the board"}
           </span>
-          <button onClick={() => setSelectedCardAction(null)} type="button">
+          <button
+            onClick={() => {
+              setSelectedCardAction(null);
+              setArmedCardPayment(null);
+            }}
+            type="button"
+          >
             Cancel
           </button>
         </div>

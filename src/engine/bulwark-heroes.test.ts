@@ -369,7 +369,7 @@ describe("Bulwark heroes — roster & specialty wiring", () => {
     expect(coreHeroDefinitions.glacius.class).toBe("Elder");
     expect(coreHeroDefinitions.glacius.type).toBe("magic");
     expect(coreHeroDefinitions.kriv.class).toBe("Elder");
-    // batch 2: Eikthurn (Chieftain/Might, Yetis) and Oidana (Elder/Magic, Diplomacy).
+    // batch 2: Eikthurn (Chieftain/Might, Mountain Rams) and Oidana (Elder/Magic, Diplomacy).
     expect(coreHeroDefinitions.eikthurn.class).toBe("Chieftain");
     expect(coreHeroDefinitions.eikthurn.type).toBe("might");
     expect(coreHeroDefinitions.oidana.class).toBe("Elder");
@@ -387,6 +387,21 @@ describe("Bulwark heroes — roster & specialty wiring", () => {
         expect(card, specialtyId).toBeTruthy();
         expect(card.implementationStatus, specialtyId).toBe("implemented");
       }
+    }
+  });
+
+  it("each Chieftain's starting ability is its intended secondary skill", () => {
+    // The three might Chieftains: Dhuin = Archery, Creyle = Armorer,
+    // Eikthurn = Logistics — each a real, implemented ability card.
+    const expected: Record<string, string> = {
+      dhuin: "ability.archery",
+      creyle: "ability.armorer",
+      eikthurn: "ability.logistics"
+    };
+    for (const [id, abilityId] of Object.entries(expected)) {
+      expect(coreHeroDefinitions[id].startingAbilityCardId, id).toBe(abilityId);
+      expect(cardLibrary[abilityId]?.kind, abilityId).toBe("ability");
+      expect(cardLibrary[abilityId]?.implementationStatus, abilityId).toBe("implemented");
     }
   });
 
@@ -409,18 +424,23 @@ describe("Bulwark heroes — roster & specialty wiring", () => {
     });
   });
 
-  it("Glacius is the Frost Ring caster — the ring spares the centre, and each tier costs 1 discard", () => {
+  it("Glacius is the Frost Ring caster — spares the centre, hits UP TO 2 adjacent, costs 1 discard", () => {
     for (const [id, damage] of [
       ["specialty.glacius.1", 1],
       ["specialty.glacius.6", 2]
     ] as const) {
       const option = (
-        adventureCards[id].effect as { options: { effect: unknown; cost?: { discardCards?: number } }[] }
+        adventureCards[id].effect as {
+          options: { effect: { adjacentPicks?: number }; cost?: { discardCards?: number } }[];
+        }
       ).options[0];
       expect(option.effect).toMatchObject({
         type: "AREA_DAMAGE_PICK_ADJACENT",
         amount: damage,
-        includeCenter: false
+        includeCenter: false,
+        // Matches the Frost Ring SPELL: the ring hits at most 2 adjacent units (the
+        // caster picks when more are adjacent). Was 4 (= "every adjacent unit").
+        adjacentPicks: 2
       });
       // Both the I-tier and VI-tier rings cost a SINGLE discard (VI used to cost
       // two — house-rule change).
@@ -457,19 +477,163 @@ describe("Bulwark heroes — roster & specialty wiring", () => {
   });
 });
 
-describe("Bulwark hero — Eikthurn's Yetis specialty (Yetis doubled)", () => {
-  it("IV adds +1 max HP, doubled (+2) on a Yetis unit", () => {
-    const state = createInitialGameState("eik-iv-yeti");
+describe("Bulwark hero — Glacius's Frost Ring (space + choose up to 2 adjacent, discard first)", () => {
+  it("hits at most 2 adjacent units — with 3 in the ring, the caster PICKS which two", () => {
+    const state = createInitialGameState("glacius-picks-2");
+    state.players.p1.hand = ["specialty.glacius.1", "stat.attack"];
+    state.players.p2.hand = [];
+    // Centre space 9 (row 2, col 1): orthogonal neighbours are 5, 13, 8, 10.
+    // Put THREE units in the ring so a pick is forced, plus one far away.
+    for (const id of ["unit_p1_griffins", "unit_p2_skeletons", "unit_p2_vampires", "unit_p1_crusaders"] as const) {
+      state.combat!.units[id].maxHealth = 20;
+      state.combat!.units[id].damage = 0;
+    }
+    state.combat!.units.unit_p1_griffins.position = 5; // in the ring
+    state.combat!.units.unit_p2_skeletons.position = 13; // in the ring
+    state.combat!.units.unit_p2_vampires.position = 8; // in the ring
+    state.combat!.units.unit_p1_crusaders.position = 0; // out of the ring
+
+    // Discard is paid as part of the play (the card + costCardIds); the option
+    // then rings the chosen space.
+    const blast = applyOk(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "specialty.glacius.1",
+      mode: "basic",
+      optionIndex: 0,
+      target: { type: "space", position: 9 },
+      costCardIds: ["stat.attack"]
+    });
+    expect(blast.players.p1.discard, "the discard cost is paid").toContain("stat.attack");
+
+    const choice = blast.pendingChoice;
+    expect(choice?.type, "3 adjacent → an area-pick choice opens (was: all 3 hit at once)").toBe(
+      "ABILITY_TARGET_CHOICE"
+    );
+    if (choice?.type !== "ABILITY_TARGET_CHOICE") {
+      return;
+    }
+    expect(choice.picksRemaining, "at most two are hit").toBe(2);
+    expect(new Set(choice.candidateUnitIds)).toEqual(
+      new Set(["unit_p1_griffins", "unit_p2_skeletons", "unit_p2_vampires"])
+    );
+
+    // Pick the two enemies; the third adjacent unit (griffins) is spared.
+    let picked = applyOk(blast, {
+      type: "CHOOSE_ABILITY_TARGET",
+      playerId: "p1",
+      choiceId: choice.id,
+      targetUnitId: "unit_p2_skeletons"
+    });
+    const second = picked.pendingChoice;
+    expect(second?.type).toBe("ABILITY_TARGET_CHOICE");
+    if (second?.type !== "ABILITY_TARGET_CHOICE") {
+      return;
+    }
+    expect(second.picksRemaining).toBe(1);
+    picked = applyOk(picked, {
+      type: "CHOOSE_ABILITY_TARGET",
+      playerId: "p1",
+      choiceId: second.id,
+      targetUnitId: "unit_p2_vampires"
+    });
+
+    expect(picked.combat!.units.unit_p2_skeletons.damage).toBe(1);
+    expect(picked.combat!.units.unit_p2_vampires.damage).toBe(1);
+    expect(picked.combat!.units.unit_p1_griffins.damage, "the un-picked third adjacent unit is spared").toBe(0);
+    expect(picked.combat!.units.unit_p1_crusaders.damage, "the centre-out unit is untouched").toBe(0);
+  });
+
+  it("IV recalls a Spell/Specialty from the discard pile DURING combat (allowInCombat, was map-only)", () => {
+    const state = createInitialGameState("glacius-iv-combat");
+    state.players.p1.hand = ["specialty.glacius.4"];
+    state.players.p2.hand = [];
+    // A Spell and a Statistic in discard: only the Spell is an eligible recall.
+    state.players.p1.discard = ["spell.magic_arrow", "stat.attack"];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_griffins";
+
+    const play = findPlay(state, "specialty.glacius.4", 0);
+    expect(play, "Glacius IV's discard recall should be OFFERED in combat").toBeTruthy();
+    let after = applyOk(state, play!.action);
+
+    const choice = after.pendingChoice;
+    expect(choice?.type === "OPTION_CHOICE" && choice.context, "the discard-pick opens mid-combat").toBe(
+      "discard-pick"
+    );
+    const labels = choice?.type === "OPTION_CHOICE" ? choice.options.map((option) => option.label) : [];
+    expect(labels.some((label) => label.includes("Magic Arrow"))).toBe(true);
+    expect(labels.some((label) => label.includes("Attack")), "the Statistic is not an eligible recall").toBe(false);
+
+    after = applyOk(after, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: (choice as { id: string }).id,
+      optionIndex: labels.findIndex((label) => label.includes("Magic Arrow"))
+    });
+    expect(after.players.p1.hand).toContain("spell.magic_arrow");
+    expect(after.players.p1.discard).not.toContain("spell.magic_arrow");
+  });
+});
+
+/** The attack bonus recorded on the resolved attack made BY `attackerId`. */
+function attackBonusBy(state: GameState, attackerId: UnitId): number | null {
+  // Filter by attacker so a follow-up retaliation's ATTACK_ROLLED (bonus 0) is
+  // never mistaken for the caster's own buffed strike.
+  const rolled = [...state.eventLog]
+    .reverse()
+    .find((event) => event.type === "ATTACK_ROLLED" && event.attackerId === attackerId);
+  return rolled && rolled.type === "ATTACK_ROLLED" ? rolled.attackBonus : null;
+}
+
+/**
+ * p1's `unit_p1_griffins` (renamed to `attackerName`) strikes an adjacent enemy;
+ * p1 answers its OWN attack with `cardId` (an attack-declared reaction). Returns
+ * the attack bonus that lands on the strike (0 if the reaction is not offered).
+ */
+function selfAttackReactionBonus(seed: string, cardId: string, attackerName: string): number {
+  const state = createInitialGameState(seed);
+  state.players.p1.hand = [cardId];
+  state.players.p2.hand = [];
+  const attacker = state.combat!.units.unit_p1_griffins;
+  attacker.name = attackerName;
+  attacker.position = 9;
+  // A tanky target that survives the hit, so the reaction bonus is a clean read.
+  const target = state.combat!.units.unit_p2_skeletons;
+  target.position = 13; // adjacent → a melee strike
+  target.maxHealth = 40;
+  target.damage = 0;
+  const declared = applyOk(state, {
+    type: "ATTACK_UNIT",
+    playerId: "p1",
+    attackerId: "unit_p1_griffins",
+    defenderId: "unit_p2_skeletons"
+  });
+  const reaction = declared.reactionWindow?.legalReactions.p1?.find(
+    (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === cardId
+  );
+  expect(reaction, `${cardId} should be offered as a reaction to the caster's own attack`).toBeTruthy();
+  return attackBonusBy(settleReactions(applyOk(declared, reaction!.action)), "unit_p1_griffins") ?? 0;
+}
+
+describe("Bulwark hero — Eikthurn's Mountain Rams specialty (the bronze lv2 unit, doubled)", () => {
+  it("I's +1 Attack rider is doubled to +2 for a Mountain Rams attacker (control: +1 for any other)", () => {
+    expect(selfAttackReactionBonus("eik-i-ram", "specialty.eikthurn.1", "Mountain Rams"), "doubled").toBe(2);
+    expect(selfAttackReactionBonus("eik-i-other", "specialty.eikthurn.1", "Griffins"), "flat +1 control").toBe(1);
+  });
+
+  it("IV adds +1 max HP, doubled (+2) on a Mountain Rams unit", () => {
+    const state = createInitialGameState("eik-iv-ram");
     state.players.p1.hand = ["specialty.eikthurn.4"];
-    const yeti = state.combat!.units.unit_p1_crusaders;
-    yeti.name = "Yetis";
-    const before = yeti.maxHealth;
+    const ram = state.combat!.units.unit_p1_crusaders;
+    ram.name = "Mountain Rams";
+    const before = ram.maxHealth;
     const play = findUnitPlay(state, "specialty.eikthurn.4", "unit_p1_crusaders");
     expect(play, "Eikthurn IV should target a friendly unit").toBeTruthy();
     expect(applyOk(state, play!.action).combat!.units.unit_p1_crusaders.maxHealth).toBe(before + 2);
   });
 
-  it("IV adds only +1 max HP on a non-Yetis unit (control)", () => {
+  it("IV adds only +1 max HP on a non-Mountain-Rams unit (control)", () => {
     const state = createInitialGameState("eik-iv-other");
     state.players.p1.hand = ["specialty.eikthurn.4"];
     const before = state.combat!.units.unit_p1_griffins.maxHealth;
@@ -478,29 +642,44 @@ describe("Bulwark hero — Eikthurn's Yetis specialty (Yetis doubled)", () => {
     expect(applyOk(state, play!.action).combat!.units.unit_p1_griffins.maxHealth).toBe(before + 1);
   });
 
-  it("VI's initiative buff is doubled (+2) on a Yetis unit", () => {
+  it("VI option A: the initiative buff is doubled (+2) on a Mountain Rams unit", () => {
     const state = createInitialGameState("eik-vi");
     state.players.p1.hand = ["specialty.eikthurn.6"];
-    state.combat!.units.unit_p1_crusaders.name = "Yetis";
+    state.combat!.units.unit_p1_crusaders.name = "Mountain Rams";
     const play = findUnitPlay(state, "specialty.eikthurn.6", "unit_p1_crusaders");
-    expect(play, "Eikthurn VI should be playable on a friendly unit").toBeTruthy();
+    expect(play, "Eikthurn VI option A should be playable on a friendly unit").toBeTruthy();
     const next = applyOk(state, play!.action);
     expect(modifierTotalOn(next, "unit_p1_crusaders", "INITIATIVE_BONUS")).toBe(2);
   });
 
-  it("wires all three levels to the Yetis signature unit", () => {
+  it("VI option B: a flat +2 Attack on the caster's next attack — even a Mountain Rams attacker (never doubled)", () => {
+    // A Mountain Rams attacker still gets only +2 (flat), proving the +2 attack
+    // side carries no doubleForUnitName. If it did, this would be +4.
+    expect(selfAttackReactionBonus("eik-vi-attack", "specialty.eikthurn.6", "Mountain Rams"), "flat +2").toBe(2);
+  });
+
+  it("wires all three levels to the Mountain Rams signature unit; VI trades the draw for a flat +2 Attack", () => {
     const one = adventureCards["specialty.eikthurn.1"].effect as { options: { effect: unknown }[] };
-    expect(one.options[0].effect).toMatchObject({ type: "ADD_COMBAT_STAT", doubleForUnitName: "Yetis" });
+    expect(one.options[0].effect).toMatchObject({ type: "ADD_COMBAT_STAT", doubleForUnitName: "Mountain Rams" });
     expect(adventureCards["specialty.eikthurn.4"].effect).toMatchObject({
       type: "ADD_UNIT_MAX_HEALTH",
-      doubleForUnitName: "Yetis"
+      doubleForUnitName: "Mountain Rams"
     });
-    const eikthurn6 = adventureCards["specialty.eikthurn.6"].effect as { options: { effect: unknown }[] };
+    const eikthurn6 = adventureCards["specialty.eikthurn.6"].effect as {
+      options: { effect: { type: string; stat?: string; amount?: number; doubleForUnitName?: string } }[];
+    };
     expect(eikthurn6.options[0].effect).toMatchObject({
       type: "CREATE_INITIATIVE_BUFF",
-      doubleForUnitName: "Yetis",
+      doubleForUnitName: "Mountain Rams",
       movementBonus: 1
     });
+    // Option B is a FLAT +2 attack (no draw-a-card, no Mountain Rams doubling).
+    expect(eikthurn6.options[1].effect).toMatchObject({ type: "ADD_COMBAT_STAT", stat: "attack", amount: 2 });
+    expect(eikthurn6.options[1].effect.doubleForUnitName, "the +2 attack is flat, never doubled").toBeUndefined();
+    expect(
+      eikthurn6.options.some((option) => option.effect.type === "DRAW_CARDS"),
+      "VI no longer offers the generic draw-a-card alternative"
+    ).toBe(false);
   });
 });
 

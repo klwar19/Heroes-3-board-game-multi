@@ -2435,7 +2435,7 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     class: "Chieftain",
     type: "might",
     startingStats: { attack: 2, defense: 2, power: 1, knowledge: 1 },
-    startingAbilityCardId: "ability.leadership",
+    startingAbilityCardId: "ability.archery",
     specialtyCardIds: { 1: "specialty.dhuin.1", 4: "specialty.dhuin.4", 6: "specialty.dhuin.6" },
     portrait: "/assets/hero_portraits-dhuin.webp",
     source: heroSource("dhuin")
@@ -2447,7 +2447,7 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     class: "Chieftain",
     type: "might",
     startingStats: { attack: 1, defense: 3, power: 1, knowledge: 1 },
-    startingAbilityCardId: "ability.tactics",
+    startingAbilityCardId: "ability.armorer",
     specialtyCardIds: { 1: "specialty.creyle.1", 4: "specialty.creyle.4", 6: "specialty.creyle.6" },
     portrait: "/assets/hero_portraits-creyle.webp",
     source: heroSource("creyle")
@@ -2477,9 +2477,11 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     source: heroSource("kriv")
   },
   // ---- Bulwark heroes, batch 2 (expansion; fan faction, placeholder portraits) --
-  // Eikthurn (Chieftain, Might): the Yetis unit-specialist — the SAME might trio
-  // Dhuin/Creyle use (ADD_COMBAT_STAT / ADD_UNIT_MAX_HEALTH / CREATE_INITIATIVE_BUFF,
-  // doubled for the signature unit). Oidana (Elder, Magic): the diplomat — her
+  // Eikthurn (Chieftain, Might): the Mountain Rams unit-specialist (the bronze
+  // level-2 unit) — the SAME might trio Dhuin/Creyle use (ADD_COMBAT_STAT /
+  // ADD_UNIT_MAX_HEALTH / CREATE_INITIATIVE_BUFF, doubled for the signature unit),
+  // except his VI trades the "draw a card" alternative for a flat +2 Attack. His
+  // starting ability is Logistics. Oidana (Elder, Magic): the diplomat — her
   // starting ability is Diplomacy (DIPLOMACY_RECRUIT / skip-combat), and each
   // specialty is a CHOOSE_ONE: a scaling card draw (DRAW_CARDS 1/2/2) OR a
   // Diplomacy-mastery side — I recruits from 1 drawn Neutral, IV recruits from 2
@@ -2491,7 +2493,7 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     class: "Chieftain",
     type: "might",
     startingStats: { attack: 2, defense: 2, power: 1, knowledge: 1 },
-    startingAbilityCardId: "ability.tactics",
+    startingAbilityCardId: "ability.logistics",
     specialtyCardIds: { 1: "specialty.eikthurn.1", 4: "specialty.eikthurn.4", 6: "specialty.eikthurn.6" },
     portrait: "/assets/hero_portraits-eikthurn.webp",
     source: heroSource("eikthurn")

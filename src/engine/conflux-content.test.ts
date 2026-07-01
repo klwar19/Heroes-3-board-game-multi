@@ -818,6 +818,31 @@ describe("Conflux Luna (Fire Wall specialist)", () => {
     expect(state.players.p1.discard).not.toContain("spell.lightning_bolt");
   });
 
+  it("IV returns a card from the discard pile to hand DURING combat too (allowInCombat)", () => {
+    // The recall used to be map-only; the discard-pick now opens straight away in
+    // a live fight. Fails if `allowInCombat` is dropped (the option would not even
+    // be offered in combat).
+    const state = lunaCombat("luna-iv-combat", "specialty.luna.4");
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    state.players.p1.discard = ["spell.lightning_bolt", "stat.attack"];
+    const play = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "specialty.luna.4"
+    );
+    expect(play, "Luna IV's discard recall should be offered in combat").toBeTruthy();
+    let next = applyOk(state, play!.action);
+    const choice = pendingChoiceOf(next);
+    expect(choice?.type === "OPTION_CHOICE" && choice.context, "the discard-pick opens mid-combat").toBe("discard-pick");
+    const labels = choice?.type === "OPTION_CHOICE" ? choice.options.map((option) => option.label) : [];
+    next = applyOk(next, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: (choice as { id: string }).id,
+      optionIndex: labels.findIndex((label) => label.includes("Lightning Bolt"))
+    });
+    expect(next.players.p1.hand).toContain("spell.lightning_bolt");
+    expect(next.players.p1.discard).not.toContain("spell.lightning_bolt");
+  });
+
   it("IV's other option is a +2-Power spell-cast reaction", () => {
     const four = cardLibrary["specialty.luna.4"];
     expect(four?.effect.type).toBe("CHOOSE_ONE");
