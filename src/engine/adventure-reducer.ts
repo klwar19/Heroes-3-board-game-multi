@@ -43,6 +43,8 @@ import {
   finalizeStartOfTurnHand,
   fieldLayer,
   recomputeSubterraneanGates,
+  planGateChoiceForReveal,
+  upsertGatePlan,
   tileLayer,
   ELIMINATION_GRACE_TURNS,
   refreshEliminationClock,
@@ -173,6 +175,7 @@ import type {
   MapTileState,
   PlayerId,
   PlayerState,
+  SubterraneanGateChoiceCandidate,
   ResourceCost,
   ResourceKind,
   SpellSchool,
@@ -1466,12 +1469,6 @@ export function setTileRotation(state: GameState, action: Extract<GameAction, { 
       player.startTileRotated = true;
     }
   }
-  // With this tile's fields now on the board, carve any Subterranean Gate it
-  // shares with an adjacent tile on the other layer (the surface gate, and the
-  // entrance once the underground tile is revealed). Runs after rotation is
-  // locked, so the entrance is the nearest hex of the tile "when open".
-  recomputeSubterraneanGates(adventure);
-
   appendEvent(state, {
     type: "TILE_ROTATION_SET",
     playerId: action.playerId,
@@ -1480,21 +1477,120 @@ export function setTileRotation(state: GameState, action: Extract<GameAction, { 
     rotation
   });
 
-  // Naval Battles optional rule: a freshly discovered Far/Near tile with a
-  // Blocked Field lets the discovering player place a Creature Bank token there.
-  // The home (Ⅰ) tile never offers a bank (it is not a Far/Near discovery).
+  // Rotate first, THEN pick: with this tile's fields on the board, decide the
+  // Subterranean Gate it shares with a tile on the other layer. When the
+  // placement is ambiguous — which touching hex becomes the gate, later which
+  // underground hex is the path up, and which of two Surface tiles a cavern joins
+  // — the revealing player CHOOSES (pick-on-reveal). The home (Ⅰ) tile, setup,
+  // and single-candidate cases carve automatically at the nearest hex.
+  const gateCandidates =
+    !isStartTile && adventure.chooseGatePlacement ? planGateChoiceForReveal(adventure, tile) : [];
+  if (gateCandidates.length >= 2) {
+    // Open the placement choice; the gate is carved on resolution and the
+    // Creature Bank offer waits behind it, so a Blocked Field that becomes the
+    // gate hex yields no bank ("not at the gate hex").
+    openSubterraneanGatePlacementChoice(state, tile, action.playerId, gateCandidates);
+    return;
+  }
+
+  // Automatic carve (0 or 1 candidate, or the choice is off): sacrifice the
+  // nearest hex and warn what it cost, then offer the Creature Bank.
+  carveGatesWithWarning(state, action.playerId, false);
+
+  // Naval Battles optional rule: a freshly discovered Far/Near tile — or a
+  // Subterranean cavern (house rule) — with a Blocked Field lets the discovering
+  // player place a Creature Bank token there. The home (Ⅰ) tile never offers one.
   if (!isStartTile) {
     offerCreatureBankPlacement(state, tile, action.playerId);
   }
 }
 
 /**
+ * Carves every Subterranean Gate the current layout implies (via
+ * {@link recomputeSubterraneanGates}, which honours player {@link SubterraneanGatePlan}s)
+ * and emits a `SUBTERRANEAN_GATE_PLACED` warning for each hex it newly sacrifices,
+ * naming what was lost so the UI can flag "your Gold Mine became a gate".
+ */
+function carveGatesWithWarning(state: GameState, playerId: PlayerId, chosen: boolean): void {
+  const adventure = requireAdventure(state);
+  const before = new Map<MapSpaceId, string>();
+  for (const field of Object.values(adventure.fields)) {
+    before.set(field.spaceId, field.location);
+  }
+  recomputeSubterraneanGates(adventure);
+  for (const field of Object.values(adventure.fields)) {
+    if (field.location === "subterranean_gate" && before.get(field.spaceId) !== "subterranean_gate") {
+      appendEvent(state, {
+        type: "SUBTERRANEAN_GATE_PLACED",
+        playerId,
+        fieldId: field.spaceId,
+        tileInstanceId: field.tileInstanceId,
+        gateToTileId: field.gateToTileId ?? "",
+        sacrificed: before.get(field.spaceId) ?? "empty_field",
+        chosen
+      });
+    }
+  }
+}
+
+/** Human label for one pick-on-reveal Subterranean Gate placement option. */
+function gateCandidateLabel(state: GameState, tile: MapTileState, candidate: SubterraneanGateChoiceCandidate): string {
+  const adventure = requireAdventure(state);
+  const field = adventure.fields[candidate.hex];
+  const partnerTileId = candidate.role === "gate" ? candidate.undergroundTileId : candidate.surfaceTileId;
+  const partner = adventure.tiles[partnerTileId];
+  const coord = parseHexSpaceId(candidate.hex);
+  const where = coord ? `hex ${coord.row},${coord.col}` : candidate.hex;
+  const kind = candidate.role === "gate" ? "Gate" : "Path up";
+  const partnerKind = candidate.role === "gate" ? "cavern" : "Surface tile";
+  const partnerWhere = partner ? ` at ${partner.centerRow},${partner.centerCol}` : "";
+  const sacrificed =
+    field && field.location !== "empty_field"
+      ? ` — replaces ${locationDefinitions[field.location]?.name ?? field.location}`
+      : "";
+  return `${kind} on ${where}${sacrificed} → ${partnerKind}${partnerWhere}`;
+}
+
+/**
+ * Opens the pick-on-reveal Subterranean Gate placement choice for the revealing
+ * player: one option per candidate hex/partner. Resolving it records the plan,
+ * carves the chosen gate, then offers the deferred Creature Bank.
+ */
+function openSubterraneanGatePlacementChoice(
+  state: GameState,
+  tile: MapTileState,
+  playerId: PlayerId,
+  candidates: SubterraneanGateChoiceCandidate[]
+): void {
+  const revealedIsCavern = tileLayer(tile) === "subterranean";
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId,
+    prompt: revealedIsCavern
+      ? "Subterranean Gate — choose which hex becomes the path up to the Surface (it sacrifices that field)."
+      : "Subterranean Gate — choose which hex becomes the gate down to the cavern (it sacrifices that field).",
+    options: candidates.map((candidate) => ({ label: gateCandidateLabel(state, tile, candidate) })),
+    context: "subterranean-gate-placement",
+    subterraneanGate: { tileInstanceId: tile.id, candidates, deferBank: true },
+    returnPhase: state.phase
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = playerId;
+}
+
+/**
  * Offers the discovering player the choice to place a Creature Bank token on a
- * just-revealed Far (II-III) or Near (IV-V) tile's Blocked Field (rulebook
- * p.66). Banks are placed only on Far/Near tiles, so sea, center, subterranean
- * and starting tiles never trigger this — even a sea tile that carries a
- * Blocked Field / impassable terrain (the gate is the tile group, not the
- * Blocked Field). No-op when the rule is off (no piles) or the pile is empty.
+ * just-revealed tile's Blocked Field (rulebook p.66): a Far (II-III) tile draws
+ * from the Far pile, a Near (IV-V) tile AND a Subterranean cavern both draw from
+ * the Near pile (the cavern being a BINH house-rule addition). Sea, center and
+ * starting tiles never trigger this — even a sea tile that carries a Blocked
+ * Field / impassable terrain (the gate is the tile group, not the Blocked Field).
+ *
+ * Called AFTER the Subterranean Gate is carved, so if the tile's Blocked Field
+ * was sacrificed to the gate it is no longer a Blocked Field and no bank is
+ * offered there ("not at the gate hex"). No-op when the rule is off (no piles) or
+ * the pile is empty.
  */
 function offerCreatureBankPlacement(state: GameState, tile: MapTileState, playerId: PlayerId): void {
   const adventure = state.adventure;
@@ -1521,9 +1617,11 @@ function offerCreatureBankPlacement(state: GameState, tile: MapTileState, player
     type: "OPTION_CHOICE",
     playerId,
     prompt:
-      tier === "far"
-        ? "This Far tile has a Blocked Field — place a Creature Bank token here?"
-        : "This Near tile has a Blocked Field — place a Creature Bank token here?",
+      tile.group === "subterranean"
+        ? "This cavern has a Blocked Field — place a Creature Bank token here?"
+        : tier === "far"
+          ? "This Far tile has a Blocked Field — place a Creature Bank token here?"
+          : "This Near tile has a Blocked Field — place a Creature Bank token here?",
     options: [{ label: "Place a Creature Bank" }, { label: "Leave it blocked" }],
     context: "place-creature-bank",
     creatureBank: { fieldId: blockedSpaceId, tier },
@@ -6348,6 +6446,29 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     state.pendingChoice = null;
     state.phase = choice.returnPhase;
     state.priorityPlayerId = null;
+    return;
+  }
+
+  if (choice.context === "subterranean-gate-placement") {
+    const data = choice.subterraneanGate;
+    const adventure = state.adventure;
+    const candidate = data?.candidates[action.optionIndex];
+    // Record the player's pick, then carve the gate at their chosen hex/pairing
+    // (recompute honours the plan and warns what each sacrifice cost).
+    if (data && adventure && candidate) {
+      upsertGatePlan(adventure, candidate);
+      carveGatesWithWarning(state, action.playerId, true);
+    }
+    state.pendingChoice = null;
+    state.phase = choice.returnPhase;
+    state.priorityPlayerId = null;
+    // Gate carved first, so a Blocked Field that became the gate hex is gone and
+    // no bank is offered there — otherwise the freshly revealed tile may still
+    // bank on a Blocked Field the gate spared.
+    const tile = data ? adventure?.tiles[data.tileInstanceId] : undefined;
+    if (data?.deferBank && tile) {
+      offerCreatureBankPlacement(state, tile, action.playerId);
+    }
     return;
   }
 

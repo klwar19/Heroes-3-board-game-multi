@@ -450,6 +450,10 @@ export function formatEvent(event: GameEvent, state: GameState): string {
         .join(", ")}.`;
     case "CREATURE_BANK_PLACED":
       return `A ${CREATURE_BANKS[event.bankId as keyof typeof CREATURE_BANKS]?.name ?? "Creature Bank"} token is placed.`;
+    case "SUBTERRANEAN_GATE_PLACED":
+      return `${playerName(state, event.playerId)} ${event.chosen ? "places" : "opens"} a Subterranean Gate${
+        event.sacrificed && event.sacrificed !== "empty_field" ? `, sacrificing ${titleCase(event.sacrificed)}` : ""
+      }.`;
     case "CREATURE_BANK_COMBAT_STARTED":
       return `${playerName(state, event.playerId)} raids the ${
         CREATURE_BANKS[event.bankId as keyof typeof CREATURE_BANKS]?.name ?? "Creature Bank"
