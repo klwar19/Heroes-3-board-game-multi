@@ -8213,6 +8213,37 @@ button.hbSlot:disabled { cursor: default; }
   padding-bottom: 0;
 }
 
+/* The spell row header: card art icon + name, in the map Spell Book window. */
+.spellBookSpellHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Card art thumbnail shown beside each stored Spell in the map Spell Book. */
+.spellBookSpellIcon {
+  width: 34px;
+  height: 46px;
+  flex: 0 0 auto;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid rgb(212 175 108 / 55%);
+  background: rgb(0 0 0 / 25%);
+}
+
+/* Text fallback frames (art-less specialties) reuse the same footprint. */
+.spellBookSpellIcon.cardFaceFallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  font-size: 8px;
+  line-height: 1.1;
+  text-align: center;
+  color: #f4e6c8;
+  overflow: hidden;
+}
+
 .spellBookSpellName {
   color: #f4e6c8;
   font-size: 12px;
