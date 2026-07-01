@@ -515,6 +515,17 @@ export type UnitAbilityEffectDefinition =
     }
   | {
       /**
+       * Factory Bounty Hunters: "At the start of Combat, place a Mark token on an
+       * enemy unit. Bounty Hunters gain +N Attack against Marked units." Two hooks
+       * off one ability: at combat start it Marks an enemy (applyCombatStartUnit-
+       * Abilities), and on every attack a Bounty Hunter makes against a Marked unit
+       * it adds `attackBonus` to its Attack. Few +1, Pack +2.
+       */
+      type: "MARK_AND_HUNT";
+      attackBonus: number;
+    }
+  | {
+      /**
        * Zombies / Manticores: "If the attacker resolves a <face> on the Attack
        * die, gain +N Defense." A defender-side bonus applied for the incoming
        * attack only, when that attack's resolved die is within [minRoll,
@@ -1099,6 +1110,24 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     name: "Precise Shot",
     text: 'On a "+1" on the Attack die, place a Corrosion token on the target: -1 Defense (to a minimum of 0) for the rest of the combat.',
     effect: { type: "ON_ATTACK_DIE_TOKEN", onRoll: 1, token: "corrosion", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  // Factory Bounty Hunters (Few/Pack): "At the start of Combat, place a Mark
+  // token on an enemy unit. Bounty Hunters gain +N [attack] against Marked units."
+  // The Mark is auto-placed on the strongest enemy at combat start; any Bounty
+  // Hunter attacking a Marked unit adds its bonus (Few +1, Pack +2).
+  "bounty-hunter-mark-1": {
+    id: "bounty-hunter-mark-1",
+    name: "Mark",
+    text: "[unit_passive] At the start of Combat, place a Mark token on an enemy unit. This unit gains +1 Attack against Marked units.",
+    effect: { type: "MARK_AND_HUNT", attackBonus: 1 },
+    implementationStatus: "implemented"
+  },
+  "bounty-hunter-mark-2": {
+    id: "bounty-hunter-mark-2",
+    name: "Mark",
+    text: "[unit_passive] At the start of Combat, place a Mark token on an enemy unit. This unit gains +2 Attack against Marked units.",
+    effect: { type: "MARK_AND_HUNT", attackBonus: 2 },
     implementationStatus: "implemented"
   },
   // Factory Armadillos (Pack): "Whenever this unit's [initiative] is increased by

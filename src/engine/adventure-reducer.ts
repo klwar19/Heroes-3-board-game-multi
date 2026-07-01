@@ -118,7 +118,7 @@ import {
   SIEGE_ROW_POSITIONS
 } from "./siege";
 import { drawCardsForPlayer, shuffleCards } from "./decks";
-import { getCombatStartDraws } from "./unit-abilities";
+import { getCombatStartDraws, getCombatStartMark } from "./unit-abilities";
 import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
 import {
   applyPermanentCombatEffects,
@@ -4718,7 +4718,7 @@ export function finishTactics(state: GameState, action: Extract<GameAction, { ty
  * qualifying unit on the board makes its controller draw from their own deck
  * once the first combat round opens.
  */
-function applyCombatStartUnitAbilities(state: GameState): void {
+export function applyCombatStartUnitAbilities(state: GameState): void {
   const combat = state.combat;
   if (!combat) {
     return;
@@ -4736,6 +4736,41 @@ function applyCombatStartUnitAbilities(state: GameState): void {
         });
       }
     }
+  }
+
+  // Factory Bounty Hunters: "At the start of Combat, place a Mark token on an
+  // enemy unit." The Mark unlocks the Bounty Hunters' +Attack against it. The
+  // rulebook lets the controller pick the target; the engine resolves that
+  // deterministically here — the strongest living enemy (highest maxHealth, ties
+  // broken by lowest position) not already Marked by another Bounty Hunter stack.
+  for (const unit of Object.values(combat.units)) {
+    const mark = getCombatStartMark(unit);
+    if (!mark) {
+      continue;
+    }
+    const enemies = Object.values(combat.units).filter(
+      (candidate) =>
+        candidate.controllerId !== unit.controllerId &&
+        candidate.damage < candidate.maxHealth &&
+        !candidate.marked
+    );
+    if (enemies.length === 0) {
+      continue;
+    }
+    const target = enemies.reduce((best, candidate) =>
+      candidate.maxHealth > best.maxHealth ||
+      (candidate.maxHealth === best.maxHealth && candidate.position < best.position)
+        ? candidate
+        : best
+    );
+    target.marked = true;
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: unit.id,
+      abilityId: mark.abilityId,
+      targetUnitId: target.id,
+      message: `${unit.name}: ${mark.abilityName} — Marks ${target.name}.`
+    });
   }
 }
 

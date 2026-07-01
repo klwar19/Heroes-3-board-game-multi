@@ -310,6 +310,36 @@ export function getLethalSaveUnitAbility(
 }
 
 /**
+ * Factory Bounty Hunters: the "Mark an enemy at combat start" ability, if this
+ * unit carries it (the caller places the Mark token; `attackBonus` is the bonus
+ * the unit later gets against Marked units).
+ */
+export function getCombatStartMark(
+  unit: CombatUnitState
+): { abilityId: string; abilityName: string; attackBonus: number } | null {
+  for (const ability of getAbilitiesWithEffect(unit, "MARK_AND_HUNT")) {
+    if (ability.effect?.type === "MARK_AND_HUNT") {
+      return { abilityId: ability.id, abilityName: ability.name, attackBonus: ability.effect.attackBonus };
+    }
+  }
+  return null;
+}
+
+/**
+ * Factory Bounty Hunters: the extra Attack this unit gets for striking a Marked
+ * unit. 0 unless the defender carries a Mark AND this attacker has the ability.
+ */
+export function getAttackBonusVsMarked(attacker: CombatUnitState, defender: CombatUnitState): number {
+  if (!defender.marked) {
+    return 0;
+  }
+  return getAbilitiesWithEffect(attacker, "MARK_AND_HUNT").reduce(
+    (total, ability) => total + (ability.effect?.type === "MARK_AND_HUNT" ? ability.effect.attackBonus : 0),
+    0
+  );
+}
+
+/**
  * "Hatred" Attack bonus: extra Attack this unit gains when its target's
  * creature name matches a printed grudge (Archangels ↔ Arch Devils, Genies →
  * Efreet, Titans → Black Dragons).
