@@ -193,9 +193,11 @@ describe("Factory faction — art wired, not playable", () => {
     expect(u["factory.automatons"].neutral?.abilities, "automatons neutral").toEqual(["automaton-detonate-1"]);
     // Sandworms NEUTRAL guard strikes an adjacent target a second time.
     expect(u["factory.sandworms"].neutral?.abilities, "sandworms neutral").toEqual(["sandworm-strike-again"]);
+    // Armadillos PACK amplifies any Initiative increase by +1 (Few/Neutral bare).
+    expect(u["factory.armadillos"].pack?.abilities, "armadillos pack").toEqual(["armadillo-initiative-amplify"]);
     for (const abilityId of [
       "attack-roll-advantage", "halfling-precise-shot", "mechanics-line-attack-1", "mechanics-line-attack-2",
-      "ignores-retaliation", "automaton-detonate-1", "sandworm-strike-again"
+      "ignores-retaliation", "automaton-detonate-1", "sandworm-strike-again", "armadillo-initiative-amplify"
     ]) {
       expect(unitAbilities[abilityId]?.implementationStatus, `${abilityId} implemented`).toBe("implemented");
     }
@@ -215,8 +217,8 @@ describe("Factory faction — art wired, not playable", () => {
     // engine effect not claimed). Wiring these is the remaining Factory work.
     const displayOnly: [string, ("few" | "pack" | "neutral")[]][] = [
       // Armadillos Few/Neutral genuinely have NO printed ability ([] forever);
-      // the Pack's initiative-amplify is the not-yet-wired one.
-      ["factory.armadillos", ["few", "pack", "neutral"]],
+      // the Pack's initiative-amplify is now wired (asserted above).
+      ["factory.armadillos", ["few", "neutral"]],
       ["factory.automatons", ["few"]],
       // Sandworms Neutral is now wired; Few has no ability, the Pack's cube extra
       // attack is not yet wired.

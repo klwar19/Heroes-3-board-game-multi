@@ -289,6 +289,14 @@ export function hasIgnoreParalysis(unit: CombatUnitState): boolean {
   return hasUnitAbilityEffect(unit, "IGNORE_PARALYSIS");
 }
 
+/**
+ * Factory Armadillos (Pack): a positive Initiative increase this unit receives
+ * from active effects is amplified by one more point (read in effectiveInitiative).
+ */
+export function hasAmplifyInitiativeIncrease(unit: CombatUnitState): boolean {
+  return hasUnitAbilityEffect(unit, "AMPLIFY_INITIATIVE_INCREASE");
+}
+
 /** Archangels: the once-per-combat "cancel a killing blow on another unit" ability. */
 export function getLethalSaveUnitAbility(
   unit: CombatUnitState

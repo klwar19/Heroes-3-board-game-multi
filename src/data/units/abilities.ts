@@ -104,6 +104,16 @@ export type UnitAbilityEffectDefinition =
     }
   | {
       /**
+       * Factory Armadillos (Pack): "Whenever this unit's Initiative is increased
+       * by an effect, increase it by an additional 1." Read in effectiveInitiative:
+       * when the NET Initiative bonus this unit gets from active effects is
+       * positive, one extra +1 is added on top. A net-zero or negative shift
+       * (e.g. Slow) is never amplified — only genuine increases are.
+       */
+      type: "AMPLIFY_INITIATIVE_INCREASE";
+    }
+  | {
+      /**
        * Yetis ("recover from negative effects"): at the start of its activation
        * the unit shakes off every negative ongoing effect on it and its
        * Weakness/Corrosion tokens. Resolved in clearOwnDebuffsAtActivation.
@@ -1041,6 +1051,18 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     name: "Precise Shot",
     text: 'On a "+1" on the Attack die, place a Corrosion token on the target: -1 Defense (to a minimum of 0) for the rest of the combat.',
     effect: { type: "ON_ATTACK_DIE_TOKEN", onRoll: 1, token: "corrosion", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  // Factory Armadillos (Pack): "Whenever this unit's [initiative] is increased by
+  // an effect, increase it by an additional 1." A positive Initiative shift from
+  // any active effect (Haste, a hero specialty, Necklace of Swiftness…) is
+  // amplified by +1 in effectiveInitiative. The Few and Neutral guard have no
+  // ability, so this rides the Pack alone.
+  "armadillo-initiative-amplify": {
+    id: "armadillo-initiative-amplify",
+    name: "Gathering Momentum",
+    text: "[unit_passive] Whenever this unit's Initiative is increased by an effect, increase it by an additional 1.",
+    effect: { type: "AMPLIFY_INITIATIVE_INCREASE" },
     implementationStatus: "implemented"
   },
   // Factory Sandworms (Neutral guard): "If a target is an adjacent unit, attack

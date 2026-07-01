@@ -1332,12 +1332,12 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "factory",
     tier: "bronze",
     type: "ground",
-    // engine: abilities: [] — the Few and Neutral have NO printed ability; the
-    // Pack's "when this unit's Initiative is increased by an effect, increase it
-    // by an additional 1" is NOT yet wired (display-only). The prior armadillo-curl
-    // (+2 Defense) was a fabrication — no such text on the physical card.
+    // engine: the Few and Neutral have NO printed ability. The Pack's "when this
+    // unit's Initiative is increased by an effect, increase it by an additional 1"
+    // is wired (armadillo-initiative-amplify → AMPLIFY_INITIATIVE_INCREASE). The
+    // prior armadillo-curl (+2 Defense) was a fabrication — no such text on the card.
     few: { attack: 2, defense: 1, health: 4, initiative: 4, cost: { gold: 5 }, abilities: [], cardImage: "/assets/units-factory-bronze-armadillos-few.webp" },
-    pack: { attack: 3, defense: 1, health: 4, initiative: 6, cost: { gold: 7 }, abilities: [], abilityText: "[unit_passive] Whenever this unit's [initiative] is increased by an effect, increase it by an additional 1 — display-only.", cardImage: "/assets/units-factory-bronze-armadillos-pack.webp" },
+    pack: { attack: 3, defense: 1, health: 4, initiative: 6, cost: { gold: 7 }, abilities: ["armadillo-initiative-amplify"], abilityText: "[unit_passive] Whenever this unit's [initiative] is increased by an effect, increase it by an additional 1.", cardImage: "/assets/units-factory-bronze-armadillos-pack.webp" },
     neutral: { attack: 2, defense: 1, health: 4, initiative: 6, cost: { gold: 5 }, abilities: [], cardImage: "/assets/units-factory-bronze-armadillos-neutral.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Armadillo",
     source: {
