@@ -3,7 +3,7 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 import { applyAction, createAdventureGameState, createInitialGameState, getLegalActions } from "./index";
 import { getMainHero, type NeutralDraw } from "./adventure";
 import { finalizeAdventureCombat, revealNeutralArmy, startNeutralEncounter } from "./adventure-reducer";
-import { getDefenseDieDamageReduction } from "./unit-abilities";
+import { getDefenseDieDamageReduction, getSpellSchoolDamageReduction } from "./unit-abilities";
 import { unitDealsElementalDamage } from "./active-effects";
 import { NEUTRAL_PLAYER_ID } from "./state";
 import type { CombatUnitState, GameAction, GameEvent, GameState, PlayerId } from "./state";
@@ -85,6 +85,56 @@ describe("WOG abilities in two-player combat", () => {
     earthState = passReactions(applyOk(earthState, earthCast!.action));
     const earthDamage = earthState.combat!.units[earth.id].damage;
     expect(earthDamage - airDamage).toBe(2);
+  });
+
+  it("every Messenger also reduces Magic Arrow damage (a school-'any' spell) by 2", () => {
+    // Each Messenger reduces its own school by 2 AND Magic Arrow (school "any") by
+    // 2, but not an unrelated specific school. This is the reduction the engine
+    // subtracts from a Spell hit (reducedSpellDamage), so it is the real value.
+    for (const [id, school, other] of [
+      ["wog.air_messenger", "air", "earth"],
+      ["wog.earth_messenger", "earth", "air"],
+      ["wog.fire_messenger", "fire", "water"],
+      ["wog.water_messenger", "water", "fire"]
+    ] as const) {
+      const state = createInitialGameState(`msgr-arrow-${id}`);
+      const unit = installWogUnit(state, "unit_p2_skeletons", id);
+      expect(getSpellSchoolDamageReduction(unit, ["any"]), `${id} vs Magic Arrow`).toBe(2);
+      expect(getSpellSchoolDamageReduction(unit, [school]), `${id} vs its own school`).toBe(2);
+      expect(getSpellSchoolDamageReduction(unit, [other]), `${id} vs an unrelated school`).toBe(0);
+    }
+
+    // End-to-end: a power-2 Magic Arrow (3 damage) deals only 1 to an Air
+    // Messenger (−2), but the full 3 to a plain unit.
+    function magicArrowDamage(unitDefId: string | null): number {
+      const state = createInitialGameState(`msgr-arrow-e2e-${unitDefId ?? "plain"}`);
+      const target = unitDefId
+        ? installWogUnit(state, "unit_p2_skeletons", unitDefId)
+        : state.combat!.units.unit_p2_skeletons;
+      target.maxHealth = 20;
+      target.damage = 0;
+      state.players.p1.hand = ["spell.magic_arrow", "stat.power", "stat.power", "stat.power", "stat.power"];
+      state.players.p1.permanents = [];
+      state.players.p2.hand = [];
+      state.activePlayerId = "p1";
+      state.combat!.activeUnitId = "unit_p1_marksmen";
+      state.combat!.units.unit_p1_marksmen.activatedThisRound = false;
+      const cast = getLegalActions(state, "p1").find(
+        (entry) =>
+          entry.action.type === "CAST_SPELL" &&
+          entry.action.cardId === "spell.magic_arrow" &&
+          entry.action.target?.type === "unit" &&
+          entry.action.target.unitId === target.id
+      );
+      expect(cast, "Magic Arrow should be castable at the target").toBeTruthy();
+      const casted = applyOk(state, cast!.action);
+      if (casted.stack[0]) {
+        casted.stack[0].modifiers.spellPowerBonus = 2; // power 2 → 3 damage
+      }
+      return passReactions(casted).combat!.units[target.id].damage;
+    }
+    expect(magicArrowDamage(null)).toBe(3);
+    expect(magicArrowDamage("wog.air_messenger")).toBe(1);
   });
 
   it("Sylvan Centaur treats a -1 Attack die as 0", () => {
