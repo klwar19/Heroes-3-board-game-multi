@@ -265,9 +265,17 @@ export const wogUnitDefinitions: Record<WogUnitId, UnitDefinition> = {
       health: 8,
       initiative: 9,
       cost: { gold: 22 },
-      abilities: ["efreet-fire-immunity", "wog-magic-arrow-attack", "wog-fire-shield-1", "wog-hell-steed-fire-wall"],
+      // engine: a NORMAL melee attacker — it rolls its Attack die and its blow is
+      // reduced by the target's Defense (it does NOT "use Magic Arrow" / deal
+      // un-rollable elemental damage; that earlier `wog-magic-arrow-attack` wiring
+      // was wrong and has been removed). `efreet-fire-immunity` = immune to Magic
+      // Arrow + Fire Magic; `wog-fire-shield-1` burns an attacker for 1 ONLY when
+      // this unit is attacked (never on its own Retaliation Attack — see
+      // applyFireShieldDamage); `wog-hell-steed-fire-wall` drops a 1-damage Fire
+      // Wall on the target's space after its own attack.
+      abilities: ["efreet-fire-immunity", "wog-fire-shield-1", "wog-hell-steed-fire-wall"],
       abilityText:
-        "[unit_passive] Immune to Magic Arrow and Fire Magic [spell]. An adjacent attacker takes 1 [damage]. [unit_attack] Use Magic Arrow; place Fire Wall on the target's space.",
+        "[unit_passive] Immune to Magic Arrow and Fire Magic [spell]. An adjacent attacker that attacks this unit takes 1 [damage]. [unit_attack] Place a Fire Wall on the target's space.",
       cardImage: "/assets/units-neutral-golden-wog_hell_steed.webp"
     },
     wikiUrl: "https://heroes.thelazy.net/index.php/In_the_Wake_of_Gods/Hell_Steed",

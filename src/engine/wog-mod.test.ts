@@ -155,9 +155,22 @@ describe("WOG neutral roster data", () => {
 
   it("maps requested creature voices and special movement/shooting clips", () => {
     expect(unitSoundKey("wog.ghost", "attack")).toBe("units/wraith-attack");
-    expect(unitSoundKey("wog.air_messenger", "move")).toBe("units/stone-golem-move");
     expect(unitSoundKey("wog.sylvan_centaur", "shoot")).toBe("units/centaur-shoot");
     expect(unitSoundKey("wog.gorynych", "move")).toBe("units/black-dragon-move");
+    // All four Messengers (Air/Earth/Fire/Water) share the Stone Golem's voice set.
+    for (const messenger of [
+      "wog.air_messenger",
+      "wog.earth_messenger",
+      "wog.fire_messenger",
+      "wog.water_messenger"
+    ]) {
+      expect(unitSoundKey(messenger, "attack"), messenger).toBe("units/stone-golem-attack");
+      expect(unitSoundKey(messenger, "move"), messenger).toBe("units/stone-golem-move");
+    }
+    // The Dracolich speaks with the Ghost Dragon voice for every action EXCEPT its
+    // shot, which is the Lich's projectile clip.
+    expect(unitSoundKey("wog.dracolich", "attack")).toBe("units/ghost-dragon-attack");
+    expect(unitSoundKey("wog.dracolich", "death")).toBe("units/ghost-dragon-death");
     expect(unitSoundKey("wog.dracolich", "shoot")).toBe("units/lich-shoot");
   });
 

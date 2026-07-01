@@ -2223,6 +2223,29 @@ export default function Home() {
                 combatPresentationEnd = Math.max(combatPresentationEnd, burnAt + DAMAGE_REVEAL_DELAY_MS + 1200);
                 break;
               }
+              if (event.abilityId === "wog-dracolich-armor") {
+                // The Dracolich's "-1" armor die soaked the blow: a spell-resistance
+                // shimmer over it + its own DEFEND cry, pinned to the strike it
+                // blocked (the Dracolich is that attack's DEFENDER, so its strike
+                // beat is impactByTarget). Anchored on event.unitId, never queued on
+                // the main timeline — where it would flash before the sword lands
+                // (the armor event is logged just BEFORE the attack's roll).
+                const strikeBeat = impactByTarget.get(event.unitId);
+                const start = (strikeBeat ?? timeline) + DAMAGE_REVEAL_DELAY_MS;
+                plan.affect?.forEach((entry, index) => {
+                  cues.push({
+                    kind: "sprite",
+                    id: `${event.id}-armor-${index}`,
+                    fxKey: entry.key,
+                    at: `unit:${event.unitId}`,
+                    delayMs: start + (entry.delayMs ?? 0)
+                  });
+                });
+                playUnitSound(unitVoice(event.unitId), "defend", start);
+                combatFxActive = true;
+                combatPresentationEnd = Math.max(combatPresentationEnd, start + spellPresentationMs(plan) + 400);
+                break;
+              }
               // A bolt only flies when there's a separate target to fly to;
               // a self-anchored ability drops its projectile and just bursts in
               // place. Either way queueBoardFx advances the timeline by the
@@ -2274,16 +2297,28 @@ export default function Home() {
               break;
             }
             case "BATTLEFIELD_TOKEN_PLACED": {
-              // A spell laid a token on a board space. Force Field / Fire Wall
-              // flare into place with their cast cue; the face-down traps drop
-              // quietly — their bite waits until a unit springs them.
-              const at = timeline;
+              // A token laid on a board space. Force Field / Fire Wall flare into
+              // place with their cast cue; the face-down traps drop quietly —
+              // their bite waits until a unit springs them. A token placed by an
+              // ATTACK (the Hell Steed's Fire Wall) must flare AFTER the strike
+              // that placed it, so hold it until the latest strike impact this
+              // batch; a spell-CAST token (no strikes) still drops on the cast
+              // beat (timeline), since strikeImpactEnd is 0 with no attack rolls.
+              const strikeImpactEnd =
+                impactByTarget.size > 0
+                  ? Math.max(...impactByTarget.values()) + DAMAGE_REVEAL_DELAY_MS
+                  : 0;
+              const at = Math.max(timeline, strikeImpactEnd);
               if (event.kind === "force_field") {
                 cues.push({ kind: "sprite", id: `${event.id}-place`, fxKey: "force-field", at: `cell:${event.position}`, sound: "spells/force-field", delayMs: at });
-                timeline += 520;
+                timeline = at + 520;
               } else if (event.kind === "fire_wall") {
                 cues.push({ kind: "sprite", id: `${event.id}-place`, fxKey: "fire-wall-e", at: `cell:${event.position}`, sound: "spells/fire-wall", delayMs: at });
-                timeline += 520;
+                timeline = at + 520;
+                if (inCombat) {
+                  combatFxActive = true;
+                  combatPresentationEnd = Math.max(combatPresentationEnd, timeline + 400);
+                }
               } else {
                 const soundKey = event.kind === "land_mine" ? "spells/land-mine" : "spells/quicksand";
                 window.setTimeout(() => playLibrarySound(soundKey), at);

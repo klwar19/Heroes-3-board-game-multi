@@ -240,6 +240,19 @@ export const abilityFxPlans: Record<string, SpellFxPlan> = {
   // that plays when the shield is first placed. Shared by the Fire Shield spell
   // and Rashka's Demoniac specialty (both raise the same FIRE_SHIELD effect).
   "fire-shield": { affect: [{ key: "fire-shield" }], sound: "effects/fire-shield-hit" },
+  // WOG War Zealot's innate Magic Mirror: applyUnitMagicMirror fires a
+  // UNIT_ABILITY_TRIGGERED("wog-war-zealot-mirror") the instant it reflects, so
+  // the mirror glass flares over the Zealot with the same sprite + cue the Magic
+  // Mirror spell plays — the free innate reflect is now seen AND heard, exactly
+  // like the card. (The card-based Magic Mirror fires its own CARD_PLAYED cue, so
+  // this never double-plays with it.)
+  "wog-war-zealot-mirror": { affect: [{ key: "magic-mirror" }], sound: "spells/magic-mirror" },
+  // WOG Dracolich's Necrotic Armor: when its "-1" armor die soaks an incoming
+  // blow, the engine fires UNIT_ABILITY_TRIGGERED("wog-dracolich-armor"). The
+  // spell-resistance (anti-magic) shimmer wards over the Dracolich; page.tsx pins
+  // it to the blow it blocked and layers the unit's own DEFEND cry under it (its
+  // per-unit voice, which a fixed library `sound` here could not express).
+  "wog-dracolich-armor": { affect: [{ key: "anti-magic" }] },
   "magog-fireball-splash": { hit: "fireball", hitSound: "spells/fireball-hit" },
   "lich-death-cloud": { hit: "death-cloud", hitSound: "spells/death-cloud" },
   // Faerie Dragons' activation damage-spell flies as an Ice Bolt from the

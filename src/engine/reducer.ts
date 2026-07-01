@@ -3373,7 +3373,7 @@ function finishResolvedAttack(
     );
   }
   applyOnAttackFireWall(state, details.attacker, details.defender, details.isRetaliation);
-  applyFireShieldDamage(state, details.attacker, details.defender, details.attackKind);
+  applyFireShieldDamage(state, details.attacker, details.defender, details.attackKind, details.isRetaliation);
   // Vampires: drain life back to themselves after their own attack.
   applyOnAttackSelfHeal(state, details.attacker, details.isRetaliation);
 
@@ -3769,14 +3769,22 @@ function applyDendroidBindFx(
 /**
  * Fire Shield: when an adjacent (melee) attack resolves against a shielded
  * unit, the attacker takes the shield's damage before anything else follows.
+ *
+ * The burn (and the "fire-shield" ability event that animates it) fires ONLY
+ * when the shielded unit is genuinely ATTACKED — never as a byproduct of its own
+ * Retaliation Attack. So an enemy that strikes a Lava Sharpshooter / Hell Steed
+ * burns; but if the shielded unit attacks first and the enemy strikes back, the
+ * enemy's retaliation does NOT trip the shield. (`isRetaliation` is the CURRENT
+ * blow: true means the shielded `defender` is only being retaliated against.)
  */
 function applyFireShieldDamage(
   state: GameState,
   attacker: CombatUnitState,
   defender: CombatUnitState,
-  attackKind: "melee" | "ranged"
+  attackKind: "melee" | "ranged",
+  isRetaliation: boolean
 ): void {
-  if (attackKind !== "melee" || !state.combat || !isUnitAlive(attacker)) {
+  if (isRetaliation || attackKind !== "melee" || !state.combat || !isUnitAlive(attacker)) {
     return;
   }
 
@@ -4003,12 +4011,17 @@ function applyDeathStareFollowUps(
     const rolls = Array.from({ length: Math.max(1, followUp.diceCount) }, () => rollAttackDie(combat));
     // Tarnum (Fortress) Basilisks VI forces the Death Stare regardless of the dice.
     const petrifies = forceRoll || rolls.every((roll) => roll === followUp.onRoll);
-    // One ability event per stare (drives the FX/sound once): its message
-    // carries the outcome so the log reads correctly and tests can assert it.
+    // One ability event per stare; its message carries the outcome so the log
+    // reads correctly and tests can assert it. The FX/sound must play only when
+    // the stare actually PROCS, so only the landed petrification carries the
+    // mapped ability id (which abilityFxPlans keys the death-stare cue off). A
+    // failed roll fires an ANNOUNCE-only id (`…-roll`, deliberately unmapped) so
+    // the die read-out still logs without flashing the death stare — the same
+    // announce-vs-proc split the extra-die paralysis variants use.
     appendEvent(state, {
       type: "UNIT_ABILITY_TRIGGERED",
       unitId: attacker.id,
-      abilityId: followUp.abilityId,
+      abilityId: petrifies ? followUp.abilityId : `${followUp.abilityId}-roll`,
       targetUnitId: defender.id,
       message: petrifies
         ? `${attacker.name}'s ${followUp.abilityName} (rolled ${rolls.join(", ")}) reduces ${defender.cardName} to 0 Health.`
@@ -5717,6 +5730,24 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
   // beginning of the unit's activation. A lethal cube ends the activation right
   // away (and may end the combat) — advance to the next unit.
   if (applyPoisonCubesAtActivation(state, activeUnit)) {
+    if (finishCombatIfNeeded(state)) {
+      return;
+    }
+    activeUnit.activatedThisRound = true;
+    appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, activeUnit.id), "activation-ended");
+    appendEvent(state, {
+      type: "UNIT_ACTIVATION_ENDED",
+      playerId: activeUnit.controllerId,
+      unitId: activeUnit.id
+    });
+    advanceActiveUnit(state);
+    return;
+  }
+
+  // A Fire Wall the unit is standing on burns it as its turn opens (the Hell
+  // Steed's Fire Wall lands on the target's own space and only bites here). A
+  // lethal burn ends the activation at once and may end the combat.
+  if (applyFireWallAtActivation(state, activeUnit)) {
     if (finishCombatIfNeeded(state)) {
       return;
     }
@@ -13604,6 +13635,32 @@ function dealBattlefieldTokenDamage(
     damageKind: "effect"
   });
   markUnitRemovedIfNeeded(state, unit);
+}
+
+/**
+ * A unit that BEGINS its activation standing on a Fire Wall is burned by it: the
+ * wall "takes effect at that unit's turn" (a Hell Steed drops its Fire Wall on
+ * the target's occupied space, and the target only feels it when its own turn
+ * comes round). Standing on a Fire Wall burns ANY unit, flyers included — exactly
+ * like stopping on one in walkMoveThroughTokens; only a flyer PASSING OVER a wall
+ * (mid-move) is spared. Returns true when the burn removed the unit (its
+ * activation is then skipped by the caller).
+ */
+function applyFireWallAtActivation(state: GameState, unit: CombatUnitState): boolean {
+  const combat = state.combat;
+  if (!combat || !isUnitAlive(unit)) {
+    return false;
+  }
+  for (const token of tokensAtPosition(combat, unit.position)) {
+    if (token.kind !== "fire_wall") {
+      continue;
+    }
+    dealBattlefieldTokenDamage(state, token, unit, token.damage ?? 0);
+    if (!isUnitAlive(unit)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**

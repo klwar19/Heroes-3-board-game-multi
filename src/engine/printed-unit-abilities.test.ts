@@ -139,6 +139,12 @@ function removedUnitIds(state: GameState): string[] {
     .map((event) => event.unitId);
 }
 
+function abilityEventIds(state: GameState): string[] {
+  return state.eventLog
+    .filter((event): event is Extract<GameEvent, { type: "UNIT_ABILITY_TRIGGERED" }> => event.type === "UNIT_ABILITY_TRIGGERED")
+    .map((event) => event.abilityId);
+}
+
 describe("Neutral Halfling — twin Attack dice", () => {
   it("carries both the advantage-roll and ignore-penalty abilities", () => {
     const abilities = coreUnitDefinitions["neutral.halflings"].neutral?.abilities ?? [];
@@ -463,6 +469,32 @@ describe("Gorgon death stare", () => {
     expect(abilityMessages(next).some((message) => message.includes("to 0 Health"))).toBe(false);
     expect(removedUnitIds(next)).not.toContain("unit_p2_skeletons");
     expect(defenderDamage(next)).toBe(4);
+  });
+
+  it("only fires the death-stare FX id on a PROC, not on a failed stare (Nightmare 'when proc')", () => {
+    // The table keys the death-stare animation + sound off abilityFxPlans, which
+    // maps ONLY the base id (the proc). A failed stare fires a distinct announce
+    // id ("…-roll", deliberately unmapped) so the die still reads out in the log
+    // but no death stare flashes — the user's "play death stare when proc".
+    const proc = rangedDuel({
+      attackerAbilities: ["gorgon-death-stare"],
+      defenderMaxHealth: 8,
+      defenderVariant: "few",
+      rolls: [1, -1, -1]
+    });
+    expect(abilityEventIds(proc)).toContain("gorgon-death-stare");
+    expect(abilityEventIds(proc)).not.toContain("gorgon-death-stare-roll");
+
+    const miss = rangedDuel({
+      attackerAbilities: ["gorgon-death-stare"],
+      defenderMaxHealth: 8,
+      defenderVariant: "few",
+      rolls: [1, -1, 1]
+    });
+    // The announce still logs the roll...
+    expect(abilityEventIds(miss)).toContain("gorgon-death-stare-roll");
+    // ...but the FX-driving id is absent, so no stare animation/sound plays.
+    expect(abilityEventIds(miss)).not.toContain("gorgon-death-stare");
   });
 });
 
