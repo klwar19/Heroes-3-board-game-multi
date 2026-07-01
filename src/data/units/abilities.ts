@@ -2512,15 +2512,40 @@ export const DISPLAY_ONLY_BANK_ABILITIES: Record<string, string> = {
 };
 
 /**
- * Neutral-deck unit cards (single-sided, faction === "neutral") whose printed
- * `abilityText` describes an effect the engine does NOT execute. Mirrors the
- * pattern of DISPLAY_ONLY_BANK_ABILITIES for the neutral-guard domain.
- * A unit is listed here when abilities: [] but abilityText describes an effect.
- * Adding new decorative text without an entry here will fail the enforcement
- * test in placeholder-neutral-card-images.test.ts.
+ * The general display-only registry required by CLAUDE.md rule #2/#3: any unit
+ * side (few / pack / neutral, across every faction and the neutral decks) whose
+ * printed `abilityText` describes an effect the engine does NOT (fully)
+ * execute. The key is `"<unitDefId>#<side>"`; the value states exactly what
+ * runs (and what does not) so a stub is a conscious, reviewable declaration.
+ *
+ * A side belongs here when EITHER nothing is wired at all (abilities: [] with
+ * effect-describing abilityText) OR a clause of its text goes beyond what its
+ * wired abilities do ("partial"). Enforced by
+ * src/data/factions/ability-text-enforcement.test.ts: a side with
+ * effect-describing text, no wired ability and no entry here (or in
+ * ENGINE_RULE_WIRED_ABILITY_TEXT below) fails CI.
+ *
+ * (This registry replaces the former DISPLAY_ONLY_NEUTRAL_ABILITIES, which
+ * covered only single-sided neutral cards and was empty.)
  */
-export const DISPLAY_ONLY_NEUTRAL_ABILITIES: Record<string, string> = {
-  // Empty: both neutral stubs (Satyrs, Fangarm) are now engine-wired.
-  // Keep this registry as the explicit home for any FUTURE display-only neutral
+export const DISPLAY_ONLY_ABILITIES: Record<string, string> = {
+  // Empty: every unit side's printed ability is currently either wired via its
+  // `abilities` tags or declared in ENGINE_RULE_WIRED_ABILITY_TEXT below.
+  // Keep this registry as the explicit home for any FUTURE display-only
   // clause: a stub must be a conscious entry here, never undeclared text.
+};
+
+/**
+ * Unit sides whose printed `abilityText` IS engine-enforced, but through a
+ * dedicated game rule keyed off the unit definition rather than an `abilities`
+ * tag. NOT stubs — each value must name where the rule runs and the test that
+ * fails if it is removed. Anything listed here with a wired `abilities` array
+ * or without effect-describing text is stale and fails the enforcement test.
+ */
+export const ENGINE_RULE_WIRED_ABILITY_TEXT: Record<string, string> = {
+  "neutral.skeletons#neutral":
+    "Necropolis-only free bronze reinforce after defeating the Skeleton guard — runs via " +
+    "combat.skeletonGuardDefeated + openSkeletonReinforceChoice/queueSkeletonReinforce " +
+    "(adventure-reducer.ts), including the killed-last fallback at combat end; tested in " +
+    "neutral-abilities-batch2.test.ts (mid-combat pop-up) and necromancy.test.ts (ordering)."
 };
