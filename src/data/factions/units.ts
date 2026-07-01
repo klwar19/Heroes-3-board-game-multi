@@ -1294,7 +1294,12 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     tier: "bronze",
     type: "ranged",
     // engine: attack-roll-advantage (roll 2 Attack dice, resolve the higher) on
-    // BOTH faction sides. The Pack ALSO carries halfling-precise-shot: on a "+1"
+    // BOTH faction sides. This "resolve the higher" ability OVERRIDES the ranged
+    // Combat penalty (getAttackRollMode): unlike the neutral core Halfling — whose
+    // card also prints "Ignore combat penalties" — the Factory Halfling has no
+    // penalty waiver, so when it is forced to shoot an adjacent enemy (or
+    // backline-to-backline) it still rolls two dice and keeps the HIGHER instead of
+    // the penalty's lower. The Pack ALSO carries halfling-precise-shot: on a "+1"
     // resolved Attack die it drops a Corrosion token on the target (-1 Defense,
     // min 0) — both halves are now wired.
     few: { attack: 2, defense: 0, health: 2, initiative: 4, cost: { gold: 3 }, abilities: ["attack-roll-advantage"], abilityText: "[unit_attack] Roll 2 Attack dice and resolve the higher one.", cardImage: "/assets/units-factory-bronze-halflings-few.webp" },
@@ -1302,7 +1307,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     wikiUrl: "https://heroes.thelazy.net/index.php/Halfling_(Factory)",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
-      credit: "Stats/cost/ability from the physical Factory unit card (Few/Pack scan). attack-roll-advantage wired both sides; Pack -1 Defense rider display-only.",
+      credit: "Stats/cost/ability from the physical Factory unit card (Few/Pack scan). attack-roll-advantage wired both sides (overrides the ranged Combat penalty); Pack -1 Defense rider (halfling-precise-shot) wired.",
       url: "https://heroes.thelazy.net/index.php/Halfling_(Factory)"
     }
   },
