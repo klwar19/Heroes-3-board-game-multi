@@ -6,6 +6,7 @@ import {
   factoryGoldUnitConflict
 } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
+import { isNormallyRecruitableNeutralUnit } from "@/data/wog";
 import { type CreatureBankId } from "@/data/map/creature-banks";
 import { isMarketLocation, locationDefinitions, TRADE_RATES } from "@/data/map/locations";
 import { allTileDefinitions } from "@/data/map/tiles";
@@ -3084,7 +3085,9 @@ export function openDiplomacyRecruit(
 
   const recruitable = draws.filter((draw) => {
     const neutral = coreUnitDefinitions[draw.unitDefId]?.neutral;
-    return Boolean(neutral) && hasRecruitResources(state, playerId, reduceGoldCost(neutral?.cost ?? {}, goldReduction));
+    return Boolean(neutral) &&
+      isNormallyRecruitableNeutralUnit(draw.unitDefId) &&
+      hasRecruitResources(state, playerId, reduceGoldCost(neutral?.cost ?? {}, goldReduction));
   });
 
   // Nothing affordable to recruit: the drawn cards simply return to their decks.
@@ -3147,7 +3150,7 @@ export function resolveDiplomacyRecruitChoice(state: GameState, playerId: Player
     // Apply Oidana IV's gold discount (if any) to the same cost the player was
     // shown — the affordability check, the label and this spend all agree.
     const cost = reduceGoldCost(def?.neutral?.cost ?? {}, recruit.goldReduction);
-    if (def?.neutral && hasRecruitResources(state, playerId, cost)) {
+    if (def?.neutral && isNormallyRecruitableNeutralUnit(pick.unitDefId) && hasRecruitResources(state, playerId, cost)) {
       spendRecruitResources(state, playerId, cost, `recruited ${def.name} with Diplomacy`);
       addArmyUnit(player, pick.unitDefId, "neutral");
       appendEvent(state, {
@@ -3772,7 +3775,7 @@ function revealNeutralArmy(state: GameState, draws: NeutralDraw[]): void {
   combat.pendingNeutralDraws = null;
   combat.context.hasAzure = draws.some((draw) => draw.tier === "azure");
 
-  const neutralUnits = draws.flatMap((draw, index) => {
+  const drawnUnits = draws.flatMap((draw, index) => {
     const unit = makeCombatUnitFromNeutral(
       draw,
       `neutral_${index + 1}_${draw.unitDefId.split(".")[1]}`,
@@ -3781,6 +3784,19 @@ function revealNeutralArmy(state: GameState, draws: NeutralDraw[]): void {
     );
     return unit ? [unit] : [];
   });
+  const santaGuards = draws.flatMap((draw, index) => {
+    if (draw.unitDefId !== "wog.santa_gremlin") {
+      return [];
+    }
+    const guard = makeCombatUnitFromNeutral(
+      { unitDefId: "neutral.gremlins", tier: "bronze", bankGuard: true },
+      `santa_guard_${index + 1}`,
+      0,
+      getRuleset(state)
+    );
+    return guard ? [guard] : [];
+  });
+  const neutralUnits = [...drawnUnits, ...santaGuards];
 
   if (neutralUnits.length === 0) {
     // The tier decks ran dry: the guards never show up and the field falls.
@@ -5180,6 +5196,15 @@ export function finalizeAdventureCombat(state: GameState): void {
         const winner = state.players[playerId];
         if (winner) {
           winner.necromancyWindow = true;
+          const santaGiftDice = Object.values(combat.units).filter(
+            (unit) =>
+              unit.controllerId === NEUTRAL_PLAYER_ID &&
+              unit.unitDefId === "wog.santa_gremlin" &&
+              unit.damage >= unit.maxHealth
+          ).length;
+          if (santaGiftDice > 0) {
+            winner.pendingWogResourceDice = (winner.pendingWogResourceDice ?? 0) + santaGiftDice;
+          }
         }
 
         // Neutral Skeletons: "After defeating Skeletons, if you control a

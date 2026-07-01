@@ -9,6 +9,7 @@ import {
   neutralUnitIdsByFaction
 } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
+import { isNormallyRecruitableNeutralUnit } from "@/data/wog";
 import { unitAbilities, type UnitMapAbilityEffect } from "@/data/units/abilities";
 import type { UnitDefinition, UnitSideDefinition } from "@/data/factions/types";
 import { hasInternalBorder } from "@/data/map/borders";
@@ -2406,6 +2407,22 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
   }
 
   const playerId = hero.controllerId;
+  const player = state.players[playerId];
+  const pendingWogDice = player?.pendingWogResourceDice ?? 0;
+  if (pendingWogDice > 0) {
+    player!.pendingWogResourceDice = 0;
+    adventure.pendingVisit = {
+      heroId,
+      playerId,
+      fieldId,
+      steps: [
+        ...Array.from({ length: pendingWogDice }, () => ({ type: "ROLL_RESOURCE_DICE", count: 1 } as const)),
+        { type: "RESUME_FIELD_VISIT", heroId, fieldId, revisit }
+      ]
+    };
+    processPendingVisit(state);
+    return;
+  }
   const location = locationDefinitionsSafe(field.location);
 
   appendEvent(state, {
@@ -2639,6 +2656,9 @@ export function processPendingVisit(state: GameState): void {
         break;
       case "ROLL_RESOURCE_DICE":
         rollResourceDice(state, visit, step.count);
+        break;
+      case "RESUME_FIELD_VISIT":
+        beginFieldVisit(state, step.heroId, step.fieldId, step.revisit);
         break;
       case "ROLL_TREASURE_DICE":
         rollTreasureDice(state, visit, step.count);
@@ -2909,7 +2929,7 @@ export function processPendingVisit(state: GameState): void {
             .filter(([, amount]) => amount)
             .map(([resource, amount]) => `${amount} ${resource}`)
             .join(" + ") || "free";
-        const affordable = hasRecruitResources(state, visit.playerId, cost);
+        const affordable = isNormallyRecruitableNeutralUnit(drawn) && hasRecruitResources(state, visit.playerId, cost);
         visit.steps.unshift({
           type: "CHOOSE_ONE",
           prompt: `Portal of Summoning: drew ${def?.name ?? drawn} (${costLabel})`,
@@ -2926,7 +2946,7 @@ export function processPendingVisit(state: GameState): void {
         const player = state.players[visit.playerId];
         const def = coreUnitDefinitions[step.unitDefId];
         const cost = def?.neutral?.cost ?? {};
-        if (!player || !def?.neutral || !hasRecruitResources(state, visit.playerId, cost)) {
+        if (!player || !def?.neutral || !isNormallyRecruitableNeutralUnit(step.unitDefId) || !hasRecruitResources(state, visit.playerId, cost)) {
           // Cannot pay after all: the card goes to its tier discard pile.
           state.decks[NEUTRAL_DECK_IDS[(def?.tier ?? "bronze") as "bronze" | "silver" | "gold" | "azure"]]?.discardPile.push(
             step.unitDefId
@@ -3002,7 +3022,7 @@ export function processPendingVisit(state: GameState): void {
         if (player && step.recruit) {
           const def = coreUnitDefinitions[step.recruit];
           const half = halfRecruitCostRoundedUp(def?.neutral?.cost ?? {});
-          if (def?.neutral && hasRecruitResources(state, visit.playerId, half)) {
+          if (def?.neutral && isNormallyRecruitableNeutralUnit(step.recruit) && hasRecruitResources(state, visit.playerId, half)) {
             spendRecruitResources(state, visit.playerId, half, `recruited ${def.name} from Pandora's Gift: Recruits`);
             addArmyUnit(player, step.recruit, "neutral");
             appendEvent(state, {
@@ -3582,6 +3602,7 @@ export function processPendingVisit(state: GameState): void {
           break;
         }
         const recruitable = drawn.filter((draw) =>
+          isNormallyRecruitableNeutralUnit(draw.unitDefId) &&
           hasRecruitResources(state, visit.playerId, coreUnitDefinitions[draw.unitDefId]?.neutral?.cost ?? {})
         );
         if (recruitable.length === 0) {
@@ -3621,7 +3642,7 @@ export function processPendingVisit(state: GameState): void {
         if (step.recruit) {
           const def = coreUnitDefinitions[step.recruit.unitDefId];
           const cost = def?.neutral?.cost ?? {};
-          if (def?.neutral && hasRecruitResources(state, visit.playerId, cost)) {
+          if (def?.neutral && isNormallyRecruitableNeutralUnit(step.recruit.unitDefId) && hasRecruitResources(state, visit.playerId, cost)) {
             spendRecruitResources(state, visit.playerId, cost, `recruited ${def.name}`);
             addArmyUnit(player, step.recruit.unitDefId, "neutral");
             appendEvent(state, {
@@ -4973,6 +4994,9 @@ export function openNeutralRecruitOffer(
         return false;
       }
       seen.add(unitDefId);
+      if (!isNormallyRecruitableNeutralUnit(unitDefId)) {
+        return false;
+      }
       const cost = coreUnitDefinitions[unitDefId]?.neutral?.cost ?? {};
       return hasRecruitResources(state, playerId, halfRecruitCostRoundedUp(cost));
     })
@@ -5397,6 +5421,7 @@ export function makeCombatUnitFromArmy(
     side: "few" | "pack" | "neutral";
     transforms?: UnitTransformState[];
     permanentAttackBonus?: number;
+    permanentHealthBonus?: number;
   },
   controllerId: PlayerId,
   unitId: UnitId,
@@ -5413,6 +5438,7 @@ export function makeCombatUnitFromArmy(
   // House rule (BINH) — Gelu IV: a permanent +Attack baked onto this army card is
   // folded into the unit's printed Attack every combat (start to end).
   const permanentAttackBonus = armyUnit.permanentAttackBonus ?? 0;
+  const permanentHealthBonus = armyUnit.permanentHealthBonus ?? 0;
 
   const unit: CombatUnitState = {
     id: unitId,
@@ -5424,7 +5450,7 @@ export function makeCombatUnitFromArmy(
     type: side.type ?? def.type,
     attack: side.attack + permanentAttackBonus,
     defense: side.defense,
-    maxHealth: side.health,
+    maxHealth: side.health + permanentHealthBonus,
     damage: 0,
     initiative: side.initiative,
     position,
@@ -5436,6 +5462,7 @@ export function makeCombatUnitFromArmy(
     unitDefId: armyUnit.unitDefId,
     armyUnitId: armyUnit.id,
     ...(permanentAttackBonus ? { permanentAttackBonus } : {}),
+    ...(permanentHealthBonus ? { permanentHealthBonus } : {}),
     assets: {
       cardImage: side.cardImage,
       imageAlt: `${def.name} unit card`,

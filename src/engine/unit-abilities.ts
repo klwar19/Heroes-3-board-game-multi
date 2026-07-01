@@ -700,6 +700,94 @@ export function getSpellDamageReduction(unit: CombatUnitState): number {
     );
 }
 
+/** WOG Messengers: reduction applies only to damage from their named school. */
+export function getSpellSchoolDamageReduction(unit: CombatUnitState, schools: readonly string[]): number {
+  return getAbilitiesWithEffect(unit, "REDUCE_SPELL_SCHOOL_DAMAGE").reduce(
+    (total, ability) =>
+      total +
+      (ability.effect?.type === "REDUCE_SPELL_SCHOOL_DAMAGE" &&
+      (schools.includes(ability.effect.school) || schools.includes("any"))
+        ? ability.effect.amount
+        : 0),
+    0
+  );
+}
+
+/** WOG Sylvan Centaur: clamp the resolved Attack die to this floor. */
+export function getMinimumAttackDie(unit: CombatUnitState): number | null {
+  const floors = getAbilitiesWithEffect(unit, "MINIMUM_ATTACK_DIE").flatMap((ability) =>
+    ability.effect?.type === "MINIMUM_ATTACK_DIE" ? [ability.effect.minimum] : []
+  );
+  return floors.length > 0 ? Math.max(...floors) : null;
+}
+
+/** WOG Werewolf: +Attack and forced strike during even Astrologers rounds. */
+export function getAstrologersRoundFrenzy(unit: CombatUnitState): number {
+  return getAbilitiesWithEffect(unit, "ASTROLOGERS_ROUND_FRENZY").reduce(
+    (total, ability) =>
+      total + (ability.effect?.type === "ASTROLOGERS_ROUND_FRENZY" ? ability.effect.attackBonus : 0),
+    0
+  );
+}
+
+export function hasInnateMagicMirror(unit: CombatUnitState): boolean {
+  return hasUnitAbilityEffect(unit, "INNATE_MAGIC_MIRROR");
+}
+
+export function isUndeadUnit(unit: CombatUnitState): boolean {
+  return hasUnitAbilityEffect(unit, "UNDEAD") || unit.unitDefId?.startsWith("necropolis.") === true;
+}
+
+export function getOnKillHealthHarvest(
+  unit: CombatUnitState
+): { abilityId: string; amount: number; maxBonus: number; requiresNonUndead: boolean } | null {
+  for (const ability of getAbilitiesWithEffect(unit, "ON_KILL_HEAL_AND_PERMANENT_HEALTH")) {
+    if (ability.effect?.type === "ON_KILL_HEAL_AND_PERMANENT_HEALTH") {
+      return {
+        abilityId: ability.id,
+        amount: ability.effect.amount,
+        maxBonus: ability.effect.maxBonus,
+        requiresNonUndead: ability.effect.requiresNonUndead === true
+      };
+    }
+  }
+  return null;
+}
+
+export function getOnKillWeakCopy(
+  unit: CombatUnitState
+): { abilityId: string; statPenalty: number; oncePerCombat: boolean } | null {
+  for (const ability of getAbilitiesWithEffect(unit, "ON_KILL_SUMMON_WEAK_COPY")) {
+    if (ability.effect?.type === "ON_KILL_SUMMON_WEAK_COPY") {
+      return {
+        abilityId: ability.id,
+        statPenalty: ability.effect.statPenalty,
+        oncePerCombat: ability.effect.oncePerCombat
+      };
+    }
+  }
+  return null;
+}
+
+export function getOnAttackFireWallDamage(unit: CombatUnitState): number {
+  return getAbilitiesWithEffect(unit, "ON_ATTACK_PLACE_FIRE_WALL").reduce(
+    (best, ability) =>
+      Math.max(best, ability.effect?.type === "ON_ATTACK_PLACE_FIRE_WALL" ? ability.effect.damage : 0),
+    0
+  );
+}
+
+export function getDefenseDieDamageReduction(
+  unit: CombatUnitState
+): { abilityId: string; onRoll: number; amount: number } | null {
+  for (const ability of getAbilitiesWithEffect(unit, "REDUCE_ATTACK_DAMAGE_ON_DEFENSE_DIE")) {
+    if (ability.effect?.type === "REDUCE_ATTACK_DAMAGE_ON_DEFENSE_DIE") {
+      return { abilityId: ability.id, onRoll: ability.effect.onRoll, amount: ability.effect.amount };
+    }
+  }
+  return null;
+}
+
 /**
  * Mammoths' Thick Hide: extra Defense the unit gets while it is defending (it
  * holds a Defense token). Added on top of the Defend die in resolveDefendBonus.

@@ -231,6 +231,106 @@ const CARDS = [
       ["drops to 0, set it to 1 instead."],
       [g("unit_passive"), " Immune to Fire Magic ", g("spell"), "."]
     ]
+  },
+
+  // ---- Wake of Gods optional neutral roster -----------------------------
+  // Art is generated as a clean HD illustration window from each canonical
+  // WoG creature reference, then composited here under the exact board-game
+  // frame and legend glyphs. No text/symbols are baked into the artwork.
+  {
+    slug: "wog_ghost", name: "Ghost", tier: "silver", type: "unit_ground",
+    art: "wog_ghost.png", stats: [3, 0, 4, 7], cost: 6, fontSize: 16,
+    lines: [
+      [g("unit_attack"), " Defeat a non-Undead unit: remove all ", g("damage"), "."],
+      ["Permanently gain +1 ", g("health_points"), " (maximum +2 per game)."]
+    ]
+  },
+  {
+    slug: "wog_air_messenger", name: "Air Messenger", tier: "silver", type: "unit_ground",
+    art: "wog_air_messenger.png", stats: [3, 1, 5, 10], cost: 8, fontSize: 18,
+    lines: [[g("unit_passive"), " Reduce ", g("damage"), " from Air Magic ", g("spell"), " by 2."], ["(to a minimum of 0)"]]
+  },
+  {
+    slug: "wog_earth_messenger", name: "Earth Messenger", tier: "silver", type: "unit_ground",
+    art: "wog_earth_messenger.png", stats: [3, 2, 4, 5], cost: 8, fontSize: 18,
+    lines: [[g("unit_passive"), " Reduce ", g("damage"), " from Earth Magic ", g("spell"), " by 2."], ["(to a minimum of 0)"]]
+  },
+  {
+    slug: "wog_fire_messenger", name: "Fire Messenger", tier: "silver", type: "unit_ground",
+    art: "wog_fire_messenger.png", stats: [4, 1, 5, 7], cost: 8, fontSize: 18,
+    lines: [[g("unit_passive"), " Reduce ", g("damage"), " from Fire Magic ", g("spell"), " by 2."], ["(to a minimum of 0)"]]
+  },
+  {
+    slug: "wog_water_messenger", name: "Water Messenger", tier: "silver", type: "unit_ground",
+    art: "wog_water_messenger.png", stats: [3, 1, 6, 6], cost: 8, fontSize: 18,
+    lines: [[g("unit_passive"), " Reduce ", g("damage"), " from Water Magic ", g("spell"), " by 2."], ["(to a minimum of 0)"]]
+  },
+  {
+    slug: "wog_war_zealot", name: "War Zealot", tier: "silver", type: "unit_ranged",
+    art: "wog_war_zealot.png", stats: [4, 1, 4, 6], cost: 13, fontSize: 17,
+    lines: [[g("unit_passive"), " Ignore the penalty against adjacent units."], ["This unit always has Magic Mirror."]]
+  },
+  {
+    slug: "wog_arctic_sharpshooter", name: "Arctic Sharpshooter", tier: "silver", type: "unit_ranged",
+    art: "wog_arctic_sharpshooter.png", stats: [4, 1, 5, 8], cost: 15, fontSize: 17,
+    lines: [[g("unit_passive"), " Ignore combat penalties. +1 ", g("defense")], ["against attacks from ranged units."]]
+  },
+  {
+    slug: "wog_lava_sharpshooter", name: "Lava Sharpshooter", tier: "silver", type: "unit_ranged",
+    art: "wog_lava_sharpshooter.png", stats: [4, 0, 6, 9], cost: 15, fontSize: 17,
+    lines: [[g("unit_passive"), " Ignore combat penalties."], ["An adjacent attacker takes 1 ", g("damage"), "."]]
+  },
+  {
+    slug: "wog_sylvan_centaur", name: "Sylvan Centaur", tier: "silver", type: "unit_ranged",
+    art: "wog_sylvan_centaur.png", stats: [3, 0, 4, 8], cost: 12, fontSize: 17,
+    lines: [[g("unit_attack"), " Attack a non-adjacent target twice."], ["Treat a \"-1\" Attack die result as \"0\"."]]
+  },
+  {
+    slug: "wog_werewolf", name: "Werewolf", tier: "silver", type: "unit_ground",
+    art: "wog_werewolf.png", stats: [3, 1, 5, 7], cost: 15, fontSize: 14,
+    lines: [
+      [g("unit_passive"), " Astrologers' rounds: +1 ", g("attack"), "; must attack."],
+      [g("unit_attack"), " Once per Combat after a kill, summon a"],
+      ["temporary Werewolf with -1 to every statistic."]
+    ]
+  },
+  {
+    slug: "wog_nightmare", name: "Nightmare", tier: "golden", type: "unit_ground",
+    art: "wog_nightmare.png", stats: [5, 2, 7, 11], cost: 25, fontSize: 15,
+    lines: [[g("unit_attack"), " Death Stare: after attacking, roll 2 Attack dice."], ["Two \"-1\" results reduce the target's ", g("health_points"), " to 0."]]
+  },
+  {
+    slug: "wog_hell_steed", name: "Hell Steed", tier: "golden", type: "unit_ground",
+    art: "wog_hell_steed.png", stats: [5, 1, 8, 9], cost: 22, fontSize: 14,
+    lines: [
+      [g("unit_passive"), " Immune to Magic Arrow and Fire Magic ", g("spell"), "."],
+      ["Adjacent attackers take 1 ", g("damage"), "."],
+      [g("unit_attack"), " Use Magic Arrow; place Fire Wall at the target."]
+    ]
+  },
+  {
+    slug: "wog_gorynych", name: "Gorynych", tier: "golden", type: "unit_flying",
+    art: "wog_gorynych.png", stats: [5, 2, 7, 8], cost: 25, fontSize: 16,
+    lines: [[g("unit_attack"), " Ignore the ", g("unit_retaliation"), ". Then attack every other"], ["adjacent enemy with 4 ", g("attack"), "."]]
+  },
+  {
+    slug: "wog_santa_gremlin", name: "Santa Gremlin", tier: "bronze", type: "unit_ranged",
+    art: "wog_santa_gremlin.png", stats: [2, 0, 4, 5], cost: 5, fontSize: 14,
+    lines: [
+      [g("unit_attack"), " Ranged attack uses Ice Bolt."],
+      [g("unit_passive"), " Add a neutral Gremlin guard before Combat."],
+      [g("map_effect"), " Defeat: roll 1 extra Resource die."]
+    ]
+  },
+  {
+    slug: "wog_dracolich", name: "Dracolich", tier: "azure", type: "unit_ranged",
+    art: "wog_dracolich.png", stats: [7, 2, 10, 16], cost: { gold: 45, valuables: 2 }, fontSize: 12,
+    lines: [
+      [g("unit_passive"), " Undead. Ignore ", g("ongoing"), "; reduce ", g("spell"), " ", g("damage"), " by 2."],
+      [g("movement"), " Move to any empty Battlefield space."],
+      ["When attacked, roll 1 Attack die: on \"-1\", reduce ", g("damage"), " by 2."],
+      [g("unit_attack"), " Attack a unit adjacent to the target with 4 ", g("attack"), "."]
+    ]
   }
 ];
 
@@ -272,6 +372,15 @@ function statText(stats) {
 }
 
 function neutralCost(cost, paintPatch = true) {
+  if (typeof cost === "object") {
+    return `${paintPatch ? '<rect x="474" y="766" width="190" height="50" rx="4" fill="#50472d" fill-opacity="0.99"/>' : ""}
+      <text x="518" y="793" text-anchor="middle" dominant-baseline="middle"
+        font-family="Georgia, 'Times New Roman', serif" font-size="31" font-weight="700"
+        fill="#fff2c4" stroke="#160e08" stroke-width="3" paint-order="stroke">${cost.gold}</text>
+      <text x="621" y="793" text-anchor="middle" dominant-baseline="middle"
+        font-family="Georgia, 'Times New Roman', serif" font-size="31" font-weight="700"
+        fill="#fff2c4" stroke="#160e08" stroke-width="3" paint-order="stroke">${cost.valuables}</text>`;
+  }
   return `${paintPatch ? '<rect x="474" y="766" width="158" height="50" rx="4" fill="#50472d" fill-opacity="0.99"/>' : ""}
     <text x="563" y="793" text-anchor="middle" dominant-baseline="middle"
       font-family="Georgia, 'Times New Roman', serif" font-size="33" font-weight="700"
@@ -438,6 +547,12 @@ async function buildCard(card) {
   const titlePatch = await cleanTitlePatch(card.tier);
   const art = await sharedArt(card);
   const cleanFrame = await cleanNeutralFrame(card.tier);
+  const valuablesCostIcon = typeof card.cost === "object"
+    ? await sharp(path.join(ASSETS, "specialty-card", "icon-valuables.webp"))
+      .resize(40, 40, { fit: "contain" })
+      .png()
+      .toBuffer()
+    : null;
   const overlay = svgBuffer(
     titleText(card.name) +
     statText(card.stats) +
@@ -452,7 +567,8 @@ async function buildCard(card) {
     .composite([
       { input: titlePatch, left: 49, top: 40 },
       { input: art, left: ART_LEFT, top: ART_TOP },
-      { input: overlay }
+      { input: overlay },
+      ...(valuablesCostIcon ? [{ input: valuablesCostIcon, left: 551, top: 772 }] : [])
     ])
     .webp(WEBP)
     .toFile(destination);
