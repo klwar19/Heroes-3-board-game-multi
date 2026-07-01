@@ -811,13 +811,14 @@ export function BattlefieldBoard({
 
   // Auto-disarm expert Tactics once it is no longer offered — most importantly
   // the instant the swap is made (the expert use is spent), but also if the
-  // active unit moves/attacks first. Keeps the armed banner from lingering.
-  useEffect(() => {
-    if (expertSwapArmed && !expertSwapAvailable) {
-      setExpertSwapArmed(false);
-      setSwapSelection(null);
-    }
-  }, [expertSwapArmed, expertSwapAvailable]);
+  // active unit moves/attacks first. The armed banner and the swap offers are
+  // both gated on availability above, so this only resets the stored flags —
+  // done during render (the documented adjust-state-on-change pattern), not in
+  // an effect, so the disarm commits in the same render the offer vanishes.
+  if (expertSwapArmed && !expertSwapAvailable) {
+    setExpertSwapArmed(false);
+    setSwapSelection(null);
+  }
 
   // The unit being repositioned and the cells it may go to, for the ghost+arrow
   // overlay. Either an open one-space move (combat-step choice) or a Tactics swap
