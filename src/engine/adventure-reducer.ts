@@ -150,6 +150,7 @@ import {
   wisdomSearchCount
 } from "./ruleset";
 import {
+  HEX_DIRECTIONS,
   hexDistance,
   hexEquals,
   hexNeighbor,
@@ -1534,22 +1535,45 @@ function carveGatesWithWarning(state: GameState, playerId: PlayerId, chosen: boo
   }
 }
 
-/** Human label for one pick-on-reveal Subterranean Gate placement option. */
+/**
+ * Compass name (NE/E/SE/SW/W/NW) of `hex` as it sits — after rotation — on the
+ * ring of `tile`, so a placement option can name WHERE on the flower the half
+ * lands ("on the NE edge") instead of raw grid coordinates. Every gate candidate
+ * is a ring field (a half must touch the partner tile), so this always resolves;
+ * "" is only the impossible non-ring fallback.
+ */
+function ringEdgeDirection(tile: MapTileState, hex: MapSpaceId): string {
+  const coord = parseHexSpaceId(hex);
+  if (!coord) {
+    return "";
+  }
+  const center: HexCoord = { row: tile.centerRow, col: tile.centerCol };
+  for (let direction = 0; direction < 6; direction += 1) {
+    if (hexEquals(hexNeighbor(center, direction), coord)) {
+      return HEX_DIRECTIONS[direction];
+    }
+  }
+  return "";
+}
+
+/**
+ * Human label for one pick-on-reveal Subterranean Gate placement option. Names
+ * the half ("Gate" down / "Path up") and which map edge of the just-revealed tile
+ * it lands on, plus what field it sacrifices — no raw grid coordinates, because
+ * the board now glows the candidate hex itself (see the `gatePlacementChoice`
+ * overlay in screen.tsx). Uniqueness across options is finalised by the caller.
+ */
 function gateCandidateLabel(state: GameState, tile: MapTileState, candidate: SubterraneanGateChoiceCandidate): string {
   const adventure = requireAdventure(state);
   const field = adventure.fields[candidate.hex];
-  const partnerTileId = candidate.role === "gate" ? candidate.undergroundTileId : candidate.surfaceTileId;
-  const partner = adventure.tiles[partnerTileId];
-  const coord = parseHexSpaceId(candidate.hex);
-  const where = coord ? `hex ${coord.row},${coord.col}` : candidate.hex;
   const kind = candidate.role === "gate" ? "Gate" : "Path up";
-  const partnerKind = candidate.role === "gate" ? "cavern" : "Surface tile";
-  const partnerWhere = partner ? ` at ${partner.centerRow},${partner.centerCol}` : "";
+  const edge = ringEdgeDirection(tile, candidate.hex);
+  const where = edge ? ` on the ${edge} edge` : "";
   const sacrificed =
     field && field.location !== "empty_field"
-      ? ` — replaces ${locationDefinitions[field.location]?.name ?? field.location}`
+      ? ` — sacrifices the ${locationDefinitions[field.location]?.name ?? field.location}`
       : "";
-  return `${kind} on ${where}${sacrificed} → ${partnerKind}${partnerWhere}`;
+  return `${kind}${where}${sacrificed}`;
 }
 
 /**
@@ -1564,14 +1588,32 @@ function openSubterraneanGatePlacementChoice(
   candidates: SubterraneanGateChoiceCandidate[]
 ): void {
   const revealedIsCavern = tileLayer(tile) === "subterranean";
+  // Two options only ever share a label when they place the SAME hex toward two
+  // different partners (a cavern touching two Surface tiles); that hex is left to
+  // the buttons on the map (it is ambiguous to click), so number the collision so
+  // the two buttons stay distinguishable. Distinct hexes get distinct edges.
+  const rawLabels = candidates.map((candidate) => gateCandidateLabel(state, tile, candidate));
+  const labelTotals = new Map<string, number>();
+  for (const label of rawLabels) {
+    labelTotals.set(label, (labelTotals.get(label) ?? 0) + 1);
+  }
+  const labelSeen = new Map<string, number>();
+  const options = rawLabels.map((label) => {
+    if ((labelTotals.get(label) ?? 0) <= 1) {
+      return { label };
+    }
+    const ordinal = (labelSeen.get(label) ?? 0) + 1;
+    labelSeen.set(label, ordinal);
+    return { label: `${label} (${ordinal})` };
+  });
   state.pendingChoice = {
     id: `choice_${nextEventNumber(state)}`,
     type: "OPTION_CHOICE",
     playerId,
     prompt: revealedIsCavern
-      ? "Subterranean Gate — choose which hex becomes the path up to the Surface (it sacrifices that field)."
-      : "Subterranean Gate — choose which hex becomes the gate down to the cavern (it sacrifices that field).",
-    options: candidates.map((candidate) => ({ label: gateCandidateLabel(state, tile, candidate) })),
+      ? "Subterranean Gate — choose which glowing hex becomes the path up to the Surface (it sacrifices that field)."
+      : "Subterranean Gate — choose which glowing hex becomes the gate down to the cavern (it sacrifices that field).",
+    options,
     context: "subterranean-gate-placement",
     subterraneanGate: { tileInstanceId: tile.id, candidates, deferBank: true },
     returnPhase: state.phase

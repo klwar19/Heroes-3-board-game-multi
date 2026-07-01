@@ -3559,6 +3559,18 @@ button.battleCell {
   pointer-events: none;
 }
 
+/* "gate here / path up here" label on each candidate hex while the pick-on-reveal
+   Subterranean Gate placement choice is open. */
+.hexGateChoiceCue {
+  fill: #9be7ff;
+  font-size: 8.5px;
+  font-weight: 800;
+  paint-order: stroke;
+  stroke: rgba(10, 24, 40, 0.92);
+  stroke-width: 2.6px;
+  pointer-events: none;
+}
+
 .hexGlyph {
   font-size: 17px;
   pointer-events: none;
