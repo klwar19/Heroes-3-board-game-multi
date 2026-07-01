@@ -122,5 +122,8 @@ describe("unit combat voices", () => {
     // Ordinary melee creatures carry no flourish, and unknown ids are silent.
     expect(unitAttackFlourish("stronghold.behemoths")).toBeUndefined();
     expect(unitAttackFlourish(undefined)).toBeUndefined();
+    // The Hell Steed is a NORMAL melee attacker now (no Magic Arrow), so its blow
+    // no longer layers a magic-arrow zap over its voice.
+    expect(unitAttackFlourish("wog.hell_steed")).toBeUndefined();
   });
 });

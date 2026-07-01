@@ -4,6 +4,7 @@ import { applyAction, createAdventureGameState, createInitialGameState, getLegal
 import { getMainHero, type NeutralDraw } from "./adventure";
 import { finalizeAdventureCombat, revealNeutralArmy, startNeutralEncounter } from "./adventure-reducer";
 import { getDefenseDieDamageReduction } from "./unit-abilities";
+import { unitDealsElementalDamage } from "./active-effects";
 import { NEUTRAL_PLAYER_ID } from "./state";
 import type { CombatUnitState, GameAction, GameEvent, GameState, PlayerId } from "./state";
 
@@ -160,24 +161,141 @@ describe("WOG abilities in two-player combat", () => {
     expect(weak!.temporary).toBe(true);
   });
 
-  it("Hell Steed deals elemental damage and leaves Fire Wall on its target space", () => {
+  it("Hell Steed deals NORMAL melee damage (not elemental) and leaves a 1-damage Fire Wall", () => {
     let state = createInitialGameState("wog-hell-steed-pvp");
     const steed = installWogUnit(state, "unit_p1_marksmen", "wog.hell_steed");
     const target = state.combat!.units.unit_p2_skeletons;
     steed.position = 8;
     target.position = 9;
     target.maxHealth = 20;
-    target.defense = 9;
+    target.defense = 3;
+    target.defenseToken = false;
+    // Isolate the blow: no Retaliation Attack (whose Fire Shield burn would add to
+    // the target's damage) so what we measure is purely the Steed's own strike.
+    target.retaliatedThisRound = true;
+    // A NORMAL attacker: its blow is reduced by Defense and it rolls its Attack
+    // die (no elemental "Magic Arrow"). Attack 5 − Defense 3, die 0 → 2. An
+    // elemental attack would IGNORE Defense and the die for a flat 5 — the control.
+    expect(unitDealsElementalDamage(state, steed)).toBe(false);
+    state.combat!.dice.scriptedRolls = Array.from({ length: 10 }, () => 0);
+    state.combat!.dice.rollCount = 0;
     activate(state, "p1", steed.id);
 
     state = applyOk(state, { type: "ATTACK_UNIT", playerId: "p1", attackerId: steed.id, defenderId: target.id });
     state = passReactions(state);
 
     expect(target.position).toBe(9);
-    expect(state.combat!.units[target.id].damage).toBeGreaterThanOrEqual(5);
+    // Exactly attack − defense (2), NOT the un-reduced elemental 5.
+    expect(state.combat!.units[target.id].damage).toBe(2);
     expect(state.combat!.battlefieldTokens).toEqual(
       expect.arrayContaining([expect.objectContaining({ kind: "fire_wall", position: 9, damage: 1 })])
     );
+  });
+
+  it("Fire Shield burns only when the shielded unit is ATTACKED, never on its own Retaliation", () => {
+    // Scenario A: a Hell Steed ATTACKS an enemy, which strikes back. The enemy's
+    // Retaliation Attack must NOT trip the Steed's Fire Shield — you burn
+    // attackers, not retaliators.
+    let atk = createInitialGameState("wog-fire-shield-retaliation");
+    const steed = installWogUnit(atk, "unit_p1_marksmen", "wog.hell_steed");
+    const enemy = atk.combat!.units.unit_p2_skeletons;
+    steed.type = "ground";
+    steed.position = 8;
+    enemy.type = "ground";
+    enemy.position = 9;
+    enemy.attack = 2;
+    enemy.defense = 0;
+    enemy.maxHealth = 20;
+    enemy.damage = 0;
+    enemy.abilities = [];
+    enemy.retaliatedThisRound = false;
+    atk.combat!.dice.scriptedRolls = Array.from({ length: 12 }, () => 0);
+    atk.combat!.dice.rollCount = 0;
+    activate(atk, "p1", steed.id);
+    atk = passReactions(applyOk(atk, { type: "ATTACK_UNIT", playerId: "p1", attackerId: steed.id, defenderId: enemy.id }));
+
+    // The enemy really did retaliate (so "no Fire Shield" is meaningful)...
+    expect(
+      atk.eventLog.some(
+        (event) => event.type === "ATTACK_ROLLED" && event.attackerId === enemy.id && event.isRetaliation === true
+      )
+    ).toBe(true);
+    // ...but no Fire Shield burn ever landed on it.
+    expect(
+      atk.eventLog.some(
+        (event) => event.type === "UNIT_ABILITY_TRIGGERED" && event.abilityId === "fire-shield" && event.targetUnitId === enemy.id
+      )
+    ).toBe(false);
+
+    // CONTROL: when that enemy instead ATTACKS the Steed (a primary attack), the
+    // Fire Shield DOES burn it — for exactly 1.
+    let def = createInitialGameState("wog-fire-shield-attacked");
+    const steed2 = installWogUnit(def, "unit_p2_skeletons", "wog.hell_steed");
+    const enemy2 = def.combat!.units.unit_p1_marksmen;
+    enemy2.type = "ground";
+    enemy2.attack = 2;
+    enemy2.abilities = ["ignores-retaliation"]; // isolate: no retaliation from the Steed
+    enemy2.position = 8;
+    enemy2.damage = 0;
+    steed2.position = 9;
+    steed2.defense = 0;
+    steed2.maxHealth = 20;
+    steed2.damage = 0;
+    def.combat!.dice.scriptedRolls = Array.from({ length: 12 }, () => 0);
+    def.combat!.dice.rollCount = 0;
+    activate(def, "p1", enemy2.id);
+    def = passReactions(applyOk(def, { type: "ATTACK_UNIT", playerId: "p1", attackerId: enemy2.id, defenderId: steed2.id }));
+    expect(
+      def.eventLog.some(
+        (event) => event.type === "UNIT_ABILITY_TRIGGERED" && event.abilityId === "fire-shield" && event.targetUnitId === enemy2.id
+      )
+    ).toBe(true);
+    // The burn dealt to the attacker is exactly 1 (the attack's own damage lands
+    // on the Steed, not on the attacker).
+    expect(def.combat!.units[enemy2.id].damage).toBe(1);
+  });
+
+  it("Fire Wall burns a unit standing on it at the start of its activation", () => {
+    // A Hell Steed drops its Fire Wall on the target's OWN space; the target only
+    // feels it when its turn comes round (it never moved onto the wall). Drive a
+    // real activation start by ending the prior unit's turn so the victim activates.
+    let state = createInitialGameState("wog-fire-wall-activation");
+    const combat = state.combat!;
+    const victim = combat.units.unit_p2_skeletons;
+    const prior = combat.units.unit_p1_marksmen;
+    victim.type = "ground";
+    victim.position = 9;
+    victim.maxHealth = 20;
+    victim.damage = 0;
+    // Everyone has acted except the prior unit (about to end) and the victim (next).
+    for (const unit of Object.values(combat.units)) {
+      unit.activatedThisRound = unit.id !== prior.id && unit.id !== victim.id;
+    }
+    combat.battlefieldTokens = [
+      { id: "bftoken_fw", kind: "fire_wall", position: 9, controllerId: "p1", damage: 1 }
+    ];
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    activate(state, "p1", prior.id);
+
+    // The prior unit Defends (ending its turn); the victim then activates, standing
+    // on the wall.
+    state = passReactions(applyOk(state, { type: "DEFEND_UNIT", playerId: "p1", unitId: prior.id }));
+
+    // The victim, standing on the wall as its turn opened, took the wall's 1 damage.
+    expect(state.combat!.activeUnitId).toBe(victim.id);
+    expect(state.combat!.units[victim.id].damage).toBe(1);
+    expect(
+      state.eventLog.some(
+        (event) =>
+          event.type === "BATTLEFIELD_TOKEN_TRIGGERED" &&
+          event.kind === "fire_wall" &&
+          event.unitId === victim.id &&
+          event.outcome === "damage"
+      )
+    ).toBe(true);
+    // The wall is a lasting obstacle — it is NOT consumed by the burn.
+    expect((state.combat!.battlefieldTokens ?? []).filter((token) => token.kind === "fire_wall")).toHaveLength(1);
   });
 
   it("Dracolich rolls its armor die and reduces an incoming attack by 2 on -1", () => {
@@ -284,6 +402,13 @@ describe("WOG abilities in two-player combat", () => {
     if (pendingChoice?.type !== "ABILITY_TARGET_CHOICE") throw new Error("Expected Magic Mirror target choice");
     expect(pendingChoice.kind).toBe("spell-redirect");
     expect(state.players.p2.hand).not.toContain("spell.magic_mirror");
+    // Reflecting fires the ability event the table keys the Magic Mirror FX +
+    // sound off (abilityFxPlans["wog-war-zealot-mirror"]).
+    expect(
+      state.eventLog.some(
+        (event) => event.type === "UNIT_ABILITY_TRIGGERED" && event.abilityId === "wog-war-zealot-mirror"
+      )
+    ).toBe(true);
   });
 
   it("Lava Sharpshooter's Fire Shield burns an adjacent melee attacker for 1", () => {

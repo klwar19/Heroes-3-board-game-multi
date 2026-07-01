@@ -2274,13 +2274,9 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     effect: { type: "ON_KILL_SUMMON_WEAK_COPY", statPenalty: 1, oncePerCombat: true },
     implementationStatus: "implemented"
   },
-  "wog-magic-arrow-attack": {
-    id: "wog-magic-arrow-attack",
-    name: "Magic Arrow Attack",
-    text: "[unit_attack] This unit attacks with Magic Arrow.",
-    effect: { type: "DEALS_ELEMENTAL_DAMAGE" },
-    implementationStatus: "implemented"
-  },
+  // (The former `wog-magic-arrow-attack` DEALS_ELEMENTAL_DAMAGE ability was removed:
+  // the Hell Steed is a normal melee attacker that rolls its Attack die and is
+  // reduced by Defense, so it must NOT carry the un-rollable elemental attack.)
   "wog-hell-steed-fire-wall": {
     id: "wog-hell-steed-fire-wall",
     name: "Blazing Wake",

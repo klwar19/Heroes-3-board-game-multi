@@ -209,6 +209,40 @@ describe("previously-silent monster abilities now carry a cue", () => {
   });
 });
 
+describe("WOG neutral ability cues (mirror reflect, armor block, death-stare proc split)", () => {
+  it("wires the War Zealot's innate Magic Mirror reflect with the mirror sprite + sound", () => {
+    // applyUnitMagicMirror fires UNIT_ABILITY_TRIGGERED("wog-war-zealot-mirror") on
+    // the reflect, so the table answers with the same glass + cue the Magic Mirror
+    // spell plays. The cue dies if this plan is dropped.
+    const plan = abilityFxPlans["wog-war-zealot-mirror"];
+    expect(plan, "wog-war-zealot-mirror needs an ability FX plan").toBeTruthy();
+    expect(plan.affect?.[0]?.key).toBe("magic-mirror");
+    expect(spriteDurationMs(plan.affect?.[0]?.key)).toBeGreaterThan(0);
+    expect(plan.sound).toBe("spells/magic-mirror");
+    expect(soundDurationMs(plan.sound)).toBeGreaterThan(0);
+    expect(spellPresentationMs(plan)).toBeGreaterThan(0);
+  });
+
+  it("wires the Dracolich's Necrotic Armor block with the resistance (anti-magic) shimmer", () => {
+    // The "-1" armor block fires UNIT_ABILITY_TRIGGERED("wog-dracolich-armor"); the
+    // plan carries the spell-resistance shimmer, and page.tsx layers the unit's own
+    // DEFEND cry under it (a per-unit voice a fixed library sound cannot express),
+    // so the plan deliberately has no `sound`.
+    const plan = abilityFxPlans["wog-dracolich-armor"];
+    expect(plan, "wog-dracolich-armor needs an ability FX plan").toBeTruthy();
+    expect(plan.affect?.[0]?.key).toBe("anti-magic");
+    expect(spriteDurationMs(plan.affect?.[0]?.key)).toBeGreaterThan(0);
+    expect(spellPresentationMs(plan)).toBeGreaterThan(0);
+  });
+
+  it("does NOT key the death-stare announce ids (a failed stare must not flash)", () => {
+    // The engine emits "<id>-roll" on a FAILED stare; leaving it unmapped is what
+    // keeps the death-stare animation/sound to actual procs (the Nightmare's stare).
+    expect(abilityFxPlans["gorgon-death-stare-roll"]).toBeUndefined();
+    expect(abilityFxPlans["fortress-gorgon-death-stare-roll"]).toBeUndefined();
+  });
+});
+
 describe("Faerie Dragon Ice Bolt animates as a flying cast (presented before the move)", () => {
   it("flies an Ice Bolt projectile from the dragon to the target, then bursts", () => {
     // The FX builder presents this cast as a PROJECTILE preamble before the

@@ -238,7 +238,8 @@ export function unitSoundKey(unitDefId: string, action: UnitSoundAction): string
  */
 const attackFlourishes: Record<string, string> = {
   magic_elementals: "spells/magic-arrow",
-  hell_steed: "spells/magic-arrow",
+  // The Hell Steed is a NORMAL melee attacker (no Magic Arrow), so its blow no
+  // longer layers a magic-arrow zap — it just plays its war-unicorn strike voice.
   santa_gremlin: "spells/ice-bolt"
 };
 
