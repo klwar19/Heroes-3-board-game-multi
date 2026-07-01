@@ -399,4 +399,121 @@ describe("Subterranean Gate — pick-on-reveal placement renders as a real choic
     expect(entrance, "the entrance half is carved").toBeDefined();
     expect(entrance!.gateLinkSpaceId, "the crossing is linked").toBeTruthy();
   });
+
+  /** The candidate hexes + option labels of the open gate-placement choice. */
+  function gateChoice(state: GameState): { hexes: string[]; labels: string[] } {
+    const choice = state.pendingChoice;
+    if (choice?.type !== "OPTION_CHOICE" || choice.context !== "subterranean-gate-placement" || !choice.subterraneanGate) {
+      throw new Error("no gate-placement choice open");
+    }
+    return {
+      hexes: choice.subterraneanGate.candidates.map((candidate) => candidate.hex),
+      labels: choice.options.map((option) => option.label)
+    };
+  }
+
+  it("glows every candidate 'path up' hex ON THE MAP and a map click carves + links it", () => {
+    const { state } = pathUpChoiceState();
+    const { hexes, labels } = gateChoice(state);
+    expect(hexes.length, "≥2 candidate entrance hexes").toBeGreaterThanOrEqual(2);
+    const { container, latest } = renderLiveBoard(state);
+
+    // Each candidate field glows as a clickable map choice target…
+    for (const spaceId of hexes) {
+      expect(hex(container, spaceId).classList.contains("mapChoiceTarget"), `${spaceId} glows on the map`).toBe(true);
+    }
+    // …and carries the on-map "path up here" cue, one per candidate.
+    const cues = [...container.querySelectorAll(".hexGateChoiceCue")].map((node) => node.textContent);
+    expect(cues.length).toBe(hexes.length);
+    expect(cues.every((text) => text?.includes("path up here"))).toBe(true);
+
+    // The prompt labels read in plain language (compass edge + what is sacrificed)
+    // — never the old raw "hex r,c" grid coordinates the player complained about.
+    expect(labels.every((label) => /Path up on the (NE|E|SE|SW|W|NW) edge/.test(label))).toBe(true);
+    expect(labels.some((label) => /hex\s*-?\d+\s*,\s*-?\d+/.test(label))).toBe(false);
+
+    // Clicking the glowing hex ITSELF (not a button) resolves the choice and
+    // carves the Path up on exactly that field, linked to the surface gate.
+    fireEvent.click(hex(container, hexes[0]));
+    const resolved = latest().pendingChoice;
+    expect(resolved?.type === "OPTION_CHOICE" && resolved.context === "subterranean-gate-placement").toBe(false);
+    const chosen = latest().adventure!.fields[hexes[0]];
+    expect(chosen?.location, "the clicked hex became the entrance").toBe("subterranean_gate");
+    expect(chosen?.gateLinkSpaceId, "the crossing is linked").toBeTruthy();
+  });
+
+  /** A live state whose Surface-tile reveal opened the GATE-hex placement choice
+   *  (the surface tile is revealed next to a still-face-down cavern). */
+  function gateHexChoiceState(): { state: GameState; cavern: MapTileState } {
+    let state = createAdventureGameState({
+      seed: "subt-gate-surface-choice-ui",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      chooseSubterraneanGate: true
+    });
+    state.activePlayerId = "p1";
+    if (state.players.p1.needsHandRefresh || state.players.p1.canMulligan) {
+      state = applyAction(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] }).state;
+    }
+    const cavernCenter = { row: 24, col: 12 };
+    const cavern = instantiateTile(adv(state), "U1", cavernCenter, 0, true); // face-down cavern (no half yet)
+    const surface = instantiateTile(adv(state), "F3", tileLatticeNeighbors(cavernCenter)[0], 0, true);
+    // Reveal the SURFACE tile through the real reducer so the gate-hex choice opens.
+    adv(state).tiles[surface.id].faceDown = false;
+    adv(state).tiles[surface.id].awaitingRotation = true;
+    adv(state).pendingTileChoice = { tileInstanceId: surface.id, playerId: "p1", kind: "reveal" };
+    for (const rotation of [0, 1, 2, 3, 4, 5]) {
+      const result = applyAction(state, { type: "SET_TILE_ROTATION", playerId: "p1", tileInstanceId: surface.id, rotation });
+      if (result.errors.length === 0) {
+        return { state: result.state, cavern };
+      }
+    }
+    throw new Error("surface tile did not reveal");
+  }
+
+  it("glows every candidate 'gate' hex ON THE MAP so the player sees which Surface hex becomes the gate", () => {
+    const { state, cavern } = gateHexChoiceState();
+    const { hexes, labels } = gateChoice(state);
+    expect(hexes.length, "≥2 candidate gate hexes").toBeGreaterThanOrEqual(2);
+    const { container, latest } = renderLiveBoard(state);
+
+    for (const spaceId of hexes) {
+      expect(hex(container, spaceId).classList.contains("mapChoiceTarget"), `${spaceId} glows on the map`).toBe(true);
+    }
+    const cues = [...container.querySelectorAll(".hexGateChoiceCue")].map((node) => node.textContent);
+    expect(cues.length).toBe(hexes.length);
+    expect(cues.every((text) => text?.includes("gate here"))).toBe(true);
+
+    expect(labels.every((label) => /Gate on the (NE|E|SE|SW|W|NW) edge/.test(label))).toBe(true);
+    expect(labels.some((label) => /hex\s*-?\d+\s*,\s*-?\d+/.test(label))).toBe(false);
+
+    // Clicking a glowing Surface hex carves the gate there, pointing at the cavern.
+    fireEvent.click(hex(container, hexes[0]));
+    const chosen = latest().adventure!.fields[hexes[0]];
+    expect(chosen?.location, "the clicked hex became the gate").toBe("subterranean_gate");
+    expect(chosen?.gateToTileId, "the gate points at the cavern").toBe(cavern.id);
+  });
+
+  it("MULTIPLAYER: another player's board shows NO gate-choice glow, cue, or click while it is p1's choice", () => {
+    const { state } = pathUpChoiceState();
+    const { hexes } = gateChoice(state);
+    // The choice belongs to p1; render the board exactly as p2's client would.
+    const { container } = render(
+      <HexMapBoard
+        legalActions={getLegalActions(state, "p2")}
+        moveCue={null}
+        onAction={() => {}}
+        placement={null}
+        state={state}
+        view={getPlayerView(state, "p2")}
+        viewerPlayerId="p2"
+      />
+    );
+    // No candidate hex glows, and no on-map "path up here" cue is drawn — the
+    // placement is private to the deciding player (same gating as Dimension Door).
+    for (const spaceId of hexes) {
+      expect(hex(container, spaceId).classList.contains("mapChoiceTarget"), `${spaceId} must not glow for p2`).toBe(false);
+    }
+    expect(container.querySelectorAll(".hexGateChoiceCue").length, "no cue for the non-deciding player").toBe(0);
+  });
 });

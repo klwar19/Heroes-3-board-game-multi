@@ -140,6 +140,8 @@ import {
   getDiscardToIgnoreAttackDieAbility,
   getEnemySpellPowerReduction,
   getLethalSaveUnitAbility,
+  getSpendCubeAttackAgain,
+  getSplashAllocationAttack,
   getUnitAbilityDefinitions,
   hasBindAdjacentEnemies,
   hasInnateMagicMirror,
@@ -3563,6 +3565,13 @@ function addUnitActions(actions: LegalAction[], state: GameState, playerId: Play
 
   const alreadyAttacked = Boolean(activeUnit.attackedThisActivation);
 
+  // Factory Sandworms (Pack): after attacking, while a faction cube remains the
+  // controller may spend one to "attack again" — so extra attacks stay on offer
+  // beyond the normal once-per-activation attack (each declared attack spends a
+  // cube in declareAttack).
+  const cubeAttackAvailable =
+    alreadyAttacked && Boolean(getSpendCubeAttackAgain(activeUnit)) && (activeUnit.factionCubes ?? 0) >= 1;
+
   if (!alreadyAttacked) {
     addUnitAbilityActions(actions, state, playerId, activeUnit);
     addFortificationActions(actions, state, playerId, activeUnit);
@@ -3582,20 +3591,53 @@ function addUnitActions(actions: LegalAction[], state: GameState, playerId: Play
 
   // Ranged units shoot first and may step afterwards; everyone else may move
   // first and then attack an adjacent enemy. canUnitAttack enforces that a
-  // ranged unit that already moved gave up its attack.
-  if (!alreadyAttacked) {
+  // ranged unit that already moved gave up its attack. A Sandworm with a cube
+  // may attack again even after its first strike (cubeAttackAvailable).
+  if (!alreadyAttacked || cubeAttackAvailable) {
     for (const defender of Object.values(combat.units)) {
       if (!canUnitAttack(combat, activeUnit, defender, state.activeEffects)) {
         continue;
       }
 
       actions.push({
-        label: `${activeUnit.name} attack ${defender.name}`,
+        label: cubeAttackAvailable
+          ? `${activeUnit.name} attack ${defender.name} again (spend a faction cube)`
+          : `${activeUnit.name} attack ${defender.name}`,
         action: {
           type: "ATTACK_UNIT",
           playerId,
           attackerId: activeUnit.id,
           defenderId: defender.id
+        }
+      });
+    }
+  }
+
+  // Factory Dreadnoughts (Juggernaut): "[activation] Instead of attacking, select
+  // up to N units adjacent to this one." Offered as an attack ALTERNATIVE — like a
+  // normal attack it is available after an optional move (never once it has
+  // attacked), so a slow Juggernaut can advance into a cluster and then splash.
+  // Choosing it opens the per-pick allocation in applyUnitAbilityAction.
+  if (!alreadyAttacked) {
+    const splash = getSplashAllocationAttack(activeUnit);
+    if (
+      splash &&
+      Object.values(combat.units).some(
+        (candidate) =>
+          candidate.id !== activeUnit.id &&
+          isUnitAlive(candidate) &&
+          !isArrowTowerUnit(candidate) &&
+          isAdjacent(candidate.position, activeUnit.position)
+      )
+    ) {
+      actions.push({
+        label: `${activeUnit.name} use ${splash.abilityName} (allocate splash to adjacent units instead of attacking)`,
+        action: {
+          type: "USE_UNIT_ABILITY",
+          playerId,
+          unitId: activeUnit.id,
+          abilityId: splash.abilityId,
+          target: { type: "none" }
         }
       });
     }
@@ -3936,6 +3978,12 @@ export function getLegalActions(
                 ? `${choice.abilityName}: place on`
               : choice.kind === "spell-redirect"
               ? `${choice.abilityName}: redirect to`
+              : choice.kind === "dreadnought-splash"
+                ? `${choice.abilityName}: deal ${choice.chainRemainingDamages?.[0] ?? 0} to`
+              : choice.kind === "couatl-invulnerability"
+                ? "Become invulnerable —"
+              : choice.kind === "automaton-cube"
+                ? "Place a faction cube on"
               : choice.kind === "flat-damage" ||
                   choice.kind === "spell-splash" ||
                   choice.kind === "ballistics-splash" ||

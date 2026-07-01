@@ -4494,6 +4494,20 @@ export type ResolutionStackItem = {
      * token and the Minotaur draw. Set from ADD_COMBAT_STAT.forceAbilityRolls.
      */
     forceAbilityRollsThisAttack?: boolean;
+    /**
+     * Factory Bounty Hunters (Neutral guard) "Preemptive Shot": set on an
+     * incoming attack once its pre-emptive Retaliation Attack has been spun off,
+     * so resolveAttackStackItem opens it exactly once (before the attacker's blow
+     * lands) and then resumes the paused attack.
+     */
+    preemptiveRetaliationTriggered?: boolean;
+    /**
+     * The retaliation stack item this flag rides is a Bounty Hunter's pre-emptive
+     * Retaliation Attack: it resolves BEFORE the original attack (which is parked
+     * on the stack beneath it) and, once done, resumes that parked attack instead
+     * of concluding the retaliating unit's turn.
+     */
+    isPreemptiveRetaliation?: boolean;
     playedCardIds: CardId[];
   };
 };
@@ -5051,6 +5065,19 @@ export type CombatUnitState = {
    */
   detonatedThisCombat?: boolean;
   /**
+   * Factory Couatls' activated invulnerability: while set, this unit "ignores
+   * all damage and spell effects" — every incoming-damage chokepoint skips it
+   * and it is treated as immune to every Spell. Turned on at the unit's own
+   * activation ("[activation] Once per Combat. Until its next activation …")
+   * and cleared the next time the unit activates (applyActivationStartAbilities).
+   */
+  invulnerableUntilActivation?: boolean;
+  /**
+   * Factory Couatls: set once this unit has spent its once-per-combat
+   * invulnerability activation, so it can never turn it on a second time.
+   */
+  usedInvulnerabilityThisCombat?: boolean;
+  /**
    * Factory Bounty Hunters' Mark: set on an enemy unit at the start of Combat.
    * A Bounty Hunter attacking a Marked unit gains its printed Attack bonus (Few
    * +1, Pack +2). Modeled as a per-unit flag (the board-game Mark token); the
@@ -5096,6 +5123,14 @@ export type CombatUnitState = {
    * none remain. Repeated Wyvern hits stack more cubes here.
    */
   poisonCubes?: number;
+  /**
+   * Factory faction cubes riding this unit (the "faction cube" subsystem). Two
+   * units spend them: an Automaton (Few) may place up to 2 at activation and
+   * detonates for that many on removal; a Sandworm (Pack) gains one each time it
+   * defeats an enemy and may remove one to attack again. Combat-scoped — reset
+   * when the unit is (re)built for a fight.
+   */
+  factionCubes?: number;
   abilities: string[];
   /**
    * Disrupting Ray: derived flag recomputed after every action from the unit's
@@ -7072,7 +7107,17 @@ export type PendingChoice =
         | "jotunn-teleport"
         | "chain-lightning"
         | "place-token"
-        | "sacrifice-transfer";
+        | "sacrifice-transfer"
+        // Factory Couatls: an optional yes/no at activation — pick the Couatl
+        // itself to switch on its invulnerability, or skip.
+        | "couatl-invulnerability"
+        // Factory Automaton (Few): an optional yes/no — pick the Automaton to
+        // bank one more faction cube, or skip.
+        | "automaton-cube"
+        // Factory Dreadnoughts: "instead of attacking", allocate the printed
+        // damage across up to N adjacent units, one pick at a time (the k-th
+        // pick takes chainRemainingDamages[0]).
+        | "dreadnought-splash";
       abilityId: string | null;
       abilityName: string;
       prompt: string;

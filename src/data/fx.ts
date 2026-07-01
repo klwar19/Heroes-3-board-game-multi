@@ -361,6 +361,38 @@ export const abilityFxPlans: Record<string, SpellFxPlan> = {
   "wraith-heal-1": { affect: [{ key: "cure" }], sound: "spells/cure" },
   "wraith-heal-2": { affect: [{ key: "cure" }], sound: "spells/cure" },
   "troll-heal-3": { affect: [{ key: "cure" }], sound: "spells/cure" },
+  // --- Factory (expansion) gold / cube abilities -----------------------------
+  // Couatls' activated invulnerability ("Ethereal Coil"): a protective barrier
+  // shimmers over the unit — when it goes up (on the couatl, endsActivation), when
+  // it shrugs off an attack (the ward.abilityId event in applyAttackDamageFrom-
+  // Candidate) and as it fades. The Shield spell's barrier + chime read as
+  // "ignore all damage & spell effects".
+  "couatl-invulnerability-few": { affect: [{ key: "shield" }], sound: "spells/shield" },
+  "couatl-invulnerability-pack": { affect: [{ key: "shield" }], sound: "spells/shield" },
+  "couatl-invulnerability": { affect: [{ key: "shield" }], sound: "spells/shield" },
+  // Dreadnoughts' (Juggernaut) splash allocation ("Concussive Slam"): a shockwave
+  // ripples over each struck adjacent unit as the Juggernaut's cannon reports. The
+  // event fires per target (targetUnitId), so each pick gets its own burst — the
+  // same per-target pattern as the Magog fireball splash.
+  "dreadnought-splash-1": { affect: [{ key: "death-ripple" }], sound: "units/dreadnought-shoot" },
+  "dreadnought-splash-2": { affect: [{ key: "death-ripple" }], sound: "units/dreadnought-shoot" },
+  // Automaton (Few) faction cube: a mechanical whir as a cube is armed onto the
+  // unit ("Overcharge"), then the DETONATE explosion — a fireball burst + the
+  // Automaton's signature blast. The fixed-amount Detonates (the boxed
+  // automaton-detonate and the neutral automaton-detonate-1) share the same blast.
+  "automaton-place-cube": { sound: "units/automaton-move" },
+  "automaton-detonate-cubes": { affect: [{ key: "fireball" }], sound: "units/automaton-special" },
+  "automaton-detonate": { affect: [{ key: "fireball" }], sound: "units/automaton-special" },
+  "automaton-detonate-1": { affect: [{ key: "fireball" }], sound: "units/automaton-special" },
+  // Sandworm (Pack) faction cube: it "Devours" the unit it removed (a life-drain
+  // over the corpse, banking a cube on the kill) and, when it spends a cube to
+  // strike again, a "Feeding Frenzy" washes over it.
+  "sandworm-cube-gain": { affect: [{ key: "vampire-life-drain" }], sound: "units/sandworm-special" },
+  "sandworm-cube-attack": { affect: [{ key: "frenzy" }], sound: "spells/frenzy" },
+  // Bounty Hunters (Neutral) "Preemptive Shot": a Counterstrike-style readiness
+  // shimmer over the guard as it fires back FIRST (the retaliation attack itself
+  // is the shot animation/sound; this cues the special pre-emptive timing).
+  "bounty-hunter-preemptive": { affect: [{ key: "counterstrike" }], sound: "units/gunslinger-special" },
   // Future abilities (cards not implemented yet, assets ready):
   poison: { affect: [{ key: "poison" }], sound: "spells/poison" },
   paralyze: { affect: [{ key: "paralyze" }], sound: "spells/paralyze" },

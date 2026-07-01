@@ -1153,17 +1153,22 @@ export const coreBuildingDefinitions: Record<string, TownBuildingDefinition> = {
   },
 
   // ---- Factory (expansion) -----------------------------------------------
-  // Factory town buildings transcribed from the physical building-cost cards
-  // (component scans). COSTS are the printed values. Each building maps to the
-  // same engine effect its shared archetype uses in EVERY town — the standard
-  // town rule, not a fabrication: City Hall income, Citadel reinforce, Mage Guild
-  // spells (the Factory card is the "Mana Generator"), Blacksmith artifacts (the
-  // "Bank"), and the three dwellings unlock a recruit tier. The exact per-building
-  // rules text was not on the scanned cost plaques, so the shared archetype effect
-  // is applied (and its behaviour is already covered by the cross-faction
-  // building tests). The prior 11 entries were fabricated stubs ("no board game
-  // cards exist yet"); the four with no real card (a separate Mage Guild, Artifact
-  // Merchants, Pen, Lightning Rod) are removed — the scans show these seven.
+  // Factory town buildings, wired to the effects the Gamefound Faction Focus:
+  // Factory update describes. Each maps to its shared archetype effect: City Hall
+  // income (the "classic" gold-or-Armadillo variant), Citadel reinforce, Mage
+  // Guild spells (the Factory card is the "Mana Generator"), the three dwellings
+  // unlock a recruit tier, and the faction's TWO signature special buildings — the
+  // Bank (extra gold income) and the Artifact Merchants (buy/sell artifacts, the
+  // Blacksmith/Artifact archetype). An earlier transcription conflated the two
+  // (it put the artifact trading on the "Bank" and dropped the Artifact Merchants
+  // card); the article makes them distinct, so both are shipped here — eight
+  // Factory buildings in all.
+  // Factory City Hall — the "classic" variant from the Gamefound Faction Focus:
+  // "provides gold OR allows you to recruit/upgrade the Armadillo unit." Modeled
+  // as the shared gold-or-free-bronze-reinforce City Hall (the Armadillo is the
+  // Factory's emblematic bronze); the +1 Movement option the PC-guess placeholder
+  // carried was not on the card. (Archon are playtesting a second, cheaper
+  // Armadillo-focused variant; the classic is wired here.)
   "factory.city_hall": {
     id: "factory.city_hall",
     name: "City Hall",
@@ -1173,7 +1178,7 @@ export const coreBuildingDefinitions: Record<string, TownBuildingDefinition> = {
       type: "RESOURCE_ROUND_CHOICE",
       options: [
         { label: "5 Gold", gold: 5 },
-        { label: "+1 Movement", movement: 1 }
+        { label: "Reinforce 1 bronze unit (Armadillos) for free", reinforceBronzeFree: true }
       ]
     },
     implementationStatus: "implemented",
@@ -1202,12 +1207,34 @@ export const coreBuildingDefinitions: Record<string, TownBuildingDefinition> = {
     implementationStatus: "implemented",
     source: townSource("factory")
   },
+  // Factory's SPECIAL building #1, the Bank (Gamefound Faction Focus): "allows the
+  // player to gain a bit more gold during the game" — the extra late-game income
+  // that tips a long scenario. Modeled as a per-Resource-round gold engine (the
+  // shared RESOURCE_ROUND_CHOICE income, single gold option). The earlier wiring
+  // put the Blacksmith/Artifact archetype on the Bank; per the article that is the
+  // SEPARATE Artifact Merchants building (below), so the Bank is now pure gold.
   "factory.bank": {
     id: "factory.bank",
     name: "Bank",
     faction: "factory",
+    cost: { gold: 3, buildingMaterials: 2 },
+    effect: {
+      type: "RESOURCE_ROUND_CHOICE",
+      options: [{ label: "Gain 4 gold", gold: 4 }]
+    },
+    implementationStatus: "implemented",
+    source: townSource("factory")
+  },
+  // Factory's SPECIAL building #2, the Artifact Merchants (Gamefound Faction
+  // Focus): "a building that allows you to buy and sell artifacts during the
+  // game." The Blacksmith/Artifact archetype (ARTIFACT_SMITH: pay to Search the
+  // Artifact deck, or sell an Artifact card from hand for gold) — exactly what the
+  // Bank used to carry before the article split them apart.
+  "factory.artifact_merchants": {
+    id: "factory.artifact_merchants",
+    name: "Artifact Merchants",
+    faction: "factory",
     cost: { gold: 4, buildingMaterials: 3 },
-    // Factory's Blacksmith archetype (same 4/3/0 cost): trade Artifact cards.
     effect: { type: "ARTIFACT_SMITH", searchCost: 6, sellGold: 4 },
     implementationStatus: "implemented",
     source: townSource("factory")

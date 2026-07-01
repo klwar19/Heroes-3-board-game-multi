@@ -3,7 +3,7 @@ import { getUnitSide } from "./adventure";
 import { appendEvent } from "./events";
 import { getRuleset } from "./ruleset";
 import { isArrowTowerUnit } from "./siege";
-import { getOnRemovalDetonation, getSelfRebirthAbility, getUnitsAdjacentTo } from "./unit-abilities";
+import { getOnRemovalDetonation, getSelfRebirthAbility, getUnitsAdjacentTo, isUnitDamageImmune } from "./unit-abilities";
 import { applyUnitCurrentSide, topTransform } from "./unit-transforms";
 import { NEUTRAL_PLAYER_ID } from "./state";
 import type { ActiveEffectState, CombatState, CombatUnitState, GameState, PlayerId, UnitId } from "./state";
@@ -225,6 +225,10 @@ function applyOnRemovalDetonation(state: GameState, unit: CombatUnitState): void
     // A chained blast may already have removed this neighbour — never re-hit a
     // unit that has left the board.
     if (neighbour.damage >= neighbour.maxHealth) {
+      continue;
+    }
+    // A Factory Couatl with its invulnerability up ignores the blast entirely.
+    if (isUnitDamageImmune(neighbour)) {
       continue;
     }
     neighbour.damage += amount;
