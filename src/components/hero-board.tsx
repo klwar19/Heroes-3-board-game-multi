@@ -189,7 +189,7 @@ export function HeroBoard({ state, playerId }: { state: GameState; playerId: Pla
   const ability = cardLibrary[heroDef.startingAbilityCardId];
   const gainedSpecialtyLevels = SPECIALTY_TRACK_LEVELS.filter((level) => hero.level >= level);
   const currentSpecialtyLevel = gainedSpecialtyLevels.at(-1) ?? 1;
-  const currentSpecialtyId = heroDef.specialtyCardIds[currentSpecialtyLevel as 1 | 4 | 6];
+  const currentSpecialtyId = heroDef.specialtyCardIds?.[currentSpecialtyLevel as 1 | 4 | 6];
   const handLimit = effectiveHandLimit(state, playerId);
 
   const stats = [
@@ -286,7 +286,7 @@ export function HeroBoard({ state, playerId }: { state: GameState; playerId: Pla
           {[1, 2, 3, 4, 5, 6, 7].map((level) => {
             const reached = hero.level >= level;
             const specialty = SPECIALTY_TRACK_LEVELS.includes(level);
-            const specialtyCardId = specialty ? heroDef.specialtyCardIds[level as 1 | 4 | 6] : undefined;
+            const specialtyCardId = specialty ? heroDef.specialtyCardIds?.[level as 1 | 4 | 6] : undefined;
             const handGain = HAND_LIMIT_BY_LEVEL[level] !== HAND_LIMIT_BY_LEVEL[level - 1] || level === 1;
             const crowns = EXPERT_USES_BY_LEVEL[level] - (EXPERT_USES_BY_LEVEL[level - 1] ?? 0) > 0 ? EXPERT_USES_BY_LEVEL[level] : 0;
 

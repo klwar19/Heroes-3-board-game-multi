@@ -21,10 +21,13 @@ import {
   hexNeighbors,
   hexSpaceId,
   parseHexSpaceId,
+  tileCentersAdjacent,
   tileFootprint,
+  tileFootprintsTouch,
   tileLatticeNeighbors,
   type GameAction,
-  type GameState
+  type GameState,
+  type HexCoord
 } from "./index";
 import { openDimensionDoorChoice } from "./adventure-reducer";
 import type { AdventureState, MapFieldState, MapTileState } from "./state";
@@ -762,5 +765,72 @@ describe("one gate per tile", () => {
     expect(gatesOn(state, cavern).length, "cavern hosts exactly one entrance").toBe(1);
     const gatedSurfaces = [surfaceA, surfaceB].filter((s) => gatesOn(state, s).length > 0);
     expect(gatedSurfaces.length, "only one surface tile receives a gate").toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Gates form on the TOUCH relation, not the stricter gapless interlock. A
+// hand-placed (map designer) cavern that merely shares an edge with a Surface
+// tile — one of the 12 distance-3 offsets that touch but leave a hole — used to
+// receive NO gate and stay forever unreachable, which is exactly the "I placed
+// it next to a Surface tile but can't get in" bug. It must now get a gate.
+// ---------------------------------------------------------------------------
+describe("subterranean gate from a touching (non-interlocking) placement", () => {
+  /** A position whose footprint TOUCHES `anchor` but is NOT an interlocking neighbour. */
+  function touchingNonInterlocking(anchor: HexCoord, avoid: HexCoord[]): HexCoord {
+    for (let dRow = -4; dRow <= 4; dRow += 1) {
+      for (let dCol = -4; dCol <= 4; dCol += 1) {
+        const cand = { row: anchor.row + dRow, col: anchor.col + dCol };
+        if (avoid.some((other) => Math.abs(other.row - cand.row) < 3 && Math.abs(other.col - cand.col) < 3)) {
+          continue;
+        }
+        if (tileFootprintsTouch(anchor, cand) && !tileCentersAdjacent(anchor, cand)) {
+          return cand;
+        }
+      }
+    }
+    throw new Error("no touching-non-interlocking position found");
+  }
+
+  it("carves and links a gate, and a hero crosses it, even off the gapless sublattice", () => {
+    const state = makeGame();
+    const surfaceCenter = { row: 24, col: 12 };
+    const cavernCenter = touchingNonInterlocking(surfaceCenter, []);
+    // Precondition: the two tiles touch but are NOT interlocking neighbours.
+    expect(tileFootprintsTouch(surfaceCenter, cavernCenter)).toBe(true);
+    expect(tileCentersAdjacent(surfaceCenter, cavernCenter)).toBe(false);
+
+    const surface = instantiateTile(adv(state), "F1", surfaceCenter, 0, false);
+    const underground = instantiateTile(adv(state), "U1", cavernCenter, 0, false);
+    setAllEmpty(state, surface);
+    setAllEmpty(state, underground);
+
+    recomputeSubterraneanGates(adv(state));
+
+    const gate = gateHalfTo(state, underground.id);
+    const entrance = gateHalfTo(state, surface.id);
+    expect(gate, "a gate forms for a merely-touching cavern").toBeDefined();
+    expect(entrance, "the entrance half forms too").toBeDefined();
+    // Both halves sit on their own tiles, edge-to-edge, and are linked as one Field.
+    expect(getTileFootprintSpaceIds(surface)).toContain(gate!.spaceId);
+    expect(getTileFootprintSpaceIds(underground)).toContain(entrance!.spaceId);
+    expect(hexDistance(parseHexSpaceId(gate!.spaceId)!, parseHexSpaceId(entrance!.spaceId)!)).toBe(1);
+    expect(gateFieldsLinked(gate, entrance)).toBe(true);
+
+    // The crossing works both ways and is the ONLY way across the divide.
+    expect(canCrossEdge(state, gate!.spaceId, entrance!.spaceId)).toBe(true);
+    expect(canCrossEdge(state, entrance!.spaceId, gate!.spaceId)).toBe(true);
+
+    // A hero on the Surface tile reaches the underground only through the gate.
+    const hero = state.heroes.hero_p1;
+    hero.spaceId = hexSpaceId(surfaceCenter);
+    hero.movementPoints = 10;
+    hero.movementHaltedThisTurn = false;
+    const reachable = getReachableHeroPaths(state, hero);
+    const undergroundReached = [...reachable.keys()].filter((spaceId) => fieldLayer(state, spaceId) === "subterranean");
+    expect(undergroundReached.length).toBeGreaterThan(0);
+    for (const spaceId of undergroundReached) {
+      expect(reachable.get(spaceId)!.path).toContain(gate!.spaceId);
+    }
   });
 });

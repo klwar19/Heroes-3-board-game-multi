@@ -13,7 +13,7 @@
  */
 
 import { existsSync } from "node:fs";
-import { mkdir } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
@@ -21,6 +21,7 @@ import sharp from "sharp";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const ASSETS = path.join(ROOT, "public", "assets");
 const GENERATED_SOURCES = path.join(ROOT, "out", "elemental-card-sources");
+const GLYPHS = path.join(ROOT, "scripts", "card-glyphs");
 
 const CARD_WIDTH = 743;
 const CARD_HEIGHT = 1038;
@@ -99,30 +100,37 @@ function titleText(name) {
     fill="#f6e7a6" stroke="#170f09" stroke-width="3" paint-order="stroke">${escapeXml(name)}</text>`;
 }
 
-function groundIcon() {
-  // A compact gold boot/step mark, used in the same top-left position as the
-  // official unit-type glyphs. It remains deliberately simple at card size.
-  return `<g transform="translate(185 178)" fill="#f5e77e" stroke="#4c3a14" stroke-width="2">
-    <path d="M8 8h17v15l13 8c6 4 8 9 6 15H7c-5 0-7-4-5-9l6-11z"/>
-    <path d="M4 47h42v7H4z"/>
-  </g>`;
+async function glyphDataUri(name) {
+  const source = (await readFile(path.join(GLYPHS, `${name}.svg`), "utf8"))
+    .replaceAll("currentColor", "#f0d56b");
+  return `data:image/svg+xml;base64,${Buffer.from(source).toString("base64")}`;
+}
+
+function groundIcon(href) {
+  // Use the exact unit-ground symbol from the wiki legend. The type is already
+  // stated by the glyph, so there is deliberately no redundant "Ground" text.
+  return `<image href="${href}" x="183" y="176" width="45" height="45" preserveAspectRatio="xMidYMid meet"/>`;
 }
 
 function statText(stats, variant) {
-  const ys = variant === "neutral" ? [286, 441, 596, 750] : [273, 422, 570, 719];
-  const neutralPatchBoxes = [
-    [249, 72],
-    [404, 76],
-    [558, 80],
-    [712, 94]
-  ];
-  const patches = ys
-    .map((y, index) => {
-      const [top, height] =
-        variant === "neutral" ? neutralPatchBoxes[index] : [y - 27, 48];
-      return `<rect x="86" y="${top}" width="66" height="${height}" rx="5" fill="#372317" fill-opacity="0.99"/>`;
-    })
-    .join("");
+  // Neutral cards use taller stat cells than the faction frame. Their number
+  // baselines are not evenly spaced: keep each value in the printed lower
+  // pocket, below (never on top of) the legend symbol above it.
+  const ys = variant === "neutral" ? [282, 455, 625, 790] : [273, 422, 570, 719];
+  // Blank Few/Pack frames have no old figures to hide, so their values sit on
+  // the untouched printed leather. Neutral templates do contain old figures;
+  // mask only the compact number baseline well below each icon. The previous
+  // 72-94px masks climbed into the shield/heart/initiative art and visibly cut
+  // off the bottom of those symbols.
+  const patches =
+    variant === "neutral"
+      ? ys
+          .map(
+            (y) =>
+              `<rect x="92" y="${y - 26}" width="55" height="52" rx="5" fill="#372317" fill-opacity="0.99"/>`
+          )
+          .join("")
+      : "";
   const labels = stats
     .map(
       (value, index) =>
@@ -134,7 +142,7 @@ function statText(stats, variant) {
   return patches + labels;
 }
 
-function abilityPanel(school, variant) {
+function abilityPanel(school, variant, passiveGlyphHref) {
   const top = variant === "neutral" ? 820 : 858;
   const height = variant === "neutral" ? 157 : 120;
   const lines = [
@@ -145,7 +153,7 @@ function abilityPanel(school, variant) {
   const firstY = variant === "neutral" ? 866 : 882;
   return `
     <rect x="69" y="${top}" width="641" height="${height}" fill="#282019" fill-opacity="0.98" stroke="#8d683c" stroke-width="3"/>
-    <path d="M91 ${firstY - 8}h17l-5-6 5-6h-17l-7 12z" fill="#f0d56b" stroke="#3c2c13" stroke-width="2"/>
+    <image href="${passiveGlyphHref}" x="82" y="${firstY - 21}" width="34" height="34" preserveAspectRatio="xMidYMid meet"/>
     ${lines
       .map(
         (line, index) =>
@@ -197,7 +205,7 @@ async function ensureSharedArt(element) {
 
   await sharp(source)
     .resize(ART_WIDTH, ART_HEIGHT, { fit: "cover", position: "centre" })
-    .webp({ quality: 94, effort: 6 })
+    .webp({ quality: 90, effort: 6 })
     .toFile(destination);
   return destination;
 }
@@ -211,7 +219,7 @@ async function cleanTitlePatch(tier) {
     .toBuffer();
 }
 
-async function buildSummonCard(element, variant, art) {
+async function buildSummonCard(element, variant, art, glyphs) {
   const blank = path.join(ASSETS, "units-blank-bronze.webp");
   const stats = variant === "few" ? element.few : element.pack;
   const overlays = [
@@ -219,10 +227,10 @@ async function buildSummonCard(element, variant, art) {
     {
       input: svgBuffer(
         titleText(element.name) +
-          groundIcon() +
+          groundIcon(glyphs.unitGround) +
           statText(stats, variant) +
           (variant === "few" ? fewCostPanel() : packPanel()) +
-          abilityPanel(element.school, variant)
+          abilityPanel(element.school, variant, glyphs.unitPassive)
       )
     }
   ];
@@ -234,12 +242,15 @@ async function buildSummonCard(element, variant, art) {
   await sharp(blank)
     .resize(CARD_WIDTH, CARD_HEIGHT, { fit: "fill" })
     .composite(overlays)
-    .webp({ quality: 94, effort: 6 })
+    // Few/Pack frames are mostly flat leather + a small art panel, so they
+    // compress smaller than the full-art Neutral card at the same quality.
+    // Keep them above the 100 KB "real art" floor the card test enforces.
+    .webp({ quality: 86, effort: 6 })
     .toFile(destination);
   return destination;
 }
 
-async function buildNeutralCard(element, art) {
+async function buildNeutralCard(element, art, glyphs) {
   const template = path.join(ASSETS, NEUTRAL_TEMPLATES[element.neutralTier]);
   const titlePatch = await cleanTitlePatch(element.neutralTier);
   const destination = path.join(
@@ -255,14 +266,16 @@ async function buildNeutralCard(element, art) {
       {
         input: svgBuffer(
           titleText(element.name) +
-            groundIcon() +
-            statText(element.neutral, "neutral") +
-            neutralCost(element.neutralCost) +
-            abilityPanel(element.school, "neutral")
+          groundIcon(glyphs.unitGround) +
+          statText(element.neutral, "neutral") +
+          neutralCost(element.neutralCost) +
+          abilityPanel(element.school, "neutral", glyphs.unitPassive)
         )
       }
     ])
-    .webp({ quality: 94, effort: 6 })
+    // Full-art Neutral guard card: quality 80 matches every other neutral card
+    // (~120-140 KB) instead of the bloated 250-280 KB the q94 build produced.
+    .webp({ quality: 80, effort: 6 })
     .toFile(destination);
   return destination;
 }
@@ -270,12 +283,16 @@ async function buildNeutralCard(element, art) {
 await mkdir(ASSETS, { recursive: true });
 
 const outputs = [];
+const glyphs = {
+  unitGround: await glyphDataUri("unit_ground"),
+  unitPassive: await glyphDataUri("unit_passive")
+};
 for (const elemental of ELEMENTALS) {
   const sharedArtPath = await ensureSharedArt(elemental);
   const sharedArt = await sharp(sharedArtPath).png().toBuffer();
-  outputs.push(await buildSummonCard(elemental, "few", sharedArt));
-  outputs.push(await buildSummonCard(elemental, "pack", sharedArt));
-  outputs.push(await buildNeutralCard(elemental, sharedArt));
+  outputs.push(await buildSummonCard(elemental, "few", sharedArt, glyphs));
+  outputs.push(await buildSummonCard(elemental, "pack", sharedArt, glyphs));
+  outputs.push(await buildNeutralCard(elemental, sharedArt, glyphs));
 }
 
 const previewWidth = 372;

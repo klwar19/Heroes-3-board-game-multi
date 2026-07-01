@@ -96,8 +96,9 @@ describe("expansion tile data", () => {
     for (const id of Object.keys(expansionTileDefinitions)) {
       expect(coreIds.has(id), `${id} duplicated`).toBe(false);
     }
-    // 41 boxed tiles + 66 wiki expansion tiles + the Bulwark S10 starting tile.
-    expect(Object.keys(allTileDefinitions)).toHaveLength(108);
+    // 41 boxed tiles + 66 wiki expansion tiles + the Bulwark S10 and Factory &S1
+    // starting tiles + the Factory &N1 near tile (the Excavation/shovel field).
+    expect(Object.keys(allTileDefinitions)).toHaveLength(110);
   });
 
   it("keeps the default pools exactly as before the expansion data landed", () => {
@@ -138,7 +139,7 @@ describe("expansion tile data", () => {
     // #N4-#N7, #C2/#C3) were cropped from the community subterranean map scans.
     const withArt = Object.values(allTileDefinitions).filter((tile) => tile.assets?.tileImage);
     expect(withArt).toHaveLength(Object.keys(allTileDefinitions).length);
-    expect(withArt).toHaveLength(108);
+    expect(withArt).toHaveLength(110);
   });
 });
 
@@ -190,7 +191,7 @@ describe("Stronghold content", () => {
       expect(hero.portrait, `${heroId} portrait`).toBe(`/assets/hero_boardart-${heroId}.webp`);
       expect(hero.boardScan, `${heroId} board`).toContain("/assets/heroes-stronghold-");
       expect(cardLibrary[hero.startingAbilityCardId], `${heroId} ability`).toBeDefined();
-      for (const specialtyId of Object.values(hero.specialtyCardIds)) {
+      for (const specialtyId of Object.values(hero.specialtyCardIds!)) {
         expect(cardLibrary[specialtyId], `${heroId} specialty ${specialtyId}`).toBeDefined();
         expect(cardLibrary[specialtyId].assets?.cardImage, `${specialtyId} art`).toContain("/assets/hero_specialties-");
       }
@@ -933,11 +934,11 @@ describe("Zydar (Inferno hero)", () => {
     expect(coreFactionDefinitions.inferno.heroes).toContain("zydar");
     // Starting ability and every specialty card must resolve in the library.
     expect(cardLibrary[zydar.startingAbilityCardId]).toBeTruthy();
-    for (const cardId of Object.values(zydar.specialtyCardIds)) {
+    for (const cardId of Object.values(zydar.specialtyCardIds!)) {
       expect(cardLibrary[cardId], `${cardId} exists`).toBeTruthy();
     }
     // Level I is implemented (no dead starting card) — a self-spell-cast choice.
-    const levelOne = cardLibrary[zydar.specialtyCardIds[1]];
+    const levelOne = cardLibrary[zydar.specialtyCardIds![1]];
     expect(levelOne.implementationStatus).toBe("implemented");
     expect(levelOne.effect.type).toBe("CHOOSE_ONE");
   });

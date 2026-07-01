@@ -4,17 +4,19 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { assetUrl } from "@/lib/asset-url";
 import { Eye, Minus, Plus, RotateCcw, RotateCw, Shuffle, Trash2 } from "lucide-react";
 import { allTileDefinitions } from "@/data/map/tiles";
-import { TILE_BACK_IMAGES } from "@/data/assets/homm-assets";
+import { TILE_BACK_IMAGES, subterraneanGateTokenImage } from "@/data/assets/homm-assets";
 import {
   hexNeighbors,
   hexToPixel,
   pixelToHex,
+  planSubterraneanGates,
   scenarioDefinitions,
   seaTileBand,
   subterraneanTileBand,
   tileCentersOverlap,
   tileFootprint,
   tileLatticeNeighbors,
+  unreachableUndergroundCenters,
   type CustomMapTilePlan,
   type HexCoord
 } from "@/engine";
@@ -212,6 +214,26 @@ export function MapDesigner({
     [drag, candidatesFor]
   );
 
+  // Every tile the gate planner sees: the placed plans plus the scenario's
+  // default seats (Surface tiles) when the designer hasn't placed its own Town
+  // tiles — a cavern may descend from a seat, so the seats must count as surface.
+  const gatePlacements = useMemo(
+    () => [
+      ...(hasDesignerStarts ? [] : starts.map((seat) => ({ row: seat.row, col: seat.col, group: "starting" as const }))),
+      ...customMap.map((plan) => ({ row: plan.row, col: plan.col, group: plan.group }))
+    ],
+    [customMap, hasDesignerStarts, starts]
+  );
+
+  // The Subterranean Gates this layout will carve (same touch rule + one-gate-
+  // per-tile as the engine) and the caverns it leaves with no way in.
+  const plannedGates = useMemo(() => planSubterraneanGates(gatePlacements), [gatePlacements]);
+  const unreachableCaverns = useMemo(() => unreachableUndergroundCenters(gatePlacements), [gatePlacements]);
+  const unreachableKeys = useMemo(
+    () => new Set(unreachableCaverns.map((center) => `${center.row}:${center.col}`)),
+    [unreachableCaverns]
+  );
+
   // Map a screen point into the board's drawing space (accounts for viewBox,
   // pan and zoom through the rendered group's live transform matrix).
   const clientToLocal = useCallback((clientX: number, clientY: number): { x: number; y: number } | null => {
@@ -387,6 +409,8 @@ export function MapDesigner({
   const cellLayer: React.ReactNode[] = [];
   const outlineLayer: React.ReactNode[] = [];
   const labelLayer: React.ReactNode[] = [];
+  // Subterranean Gate tokens + the "no way in" warnings, drawn above the tiles.
+  const gateLayer: React.ReactNode[] = [];
 
   const renderFlowerCells = (
     center: HexCoord,
@@ -531,6 +555,84 @@ export function MapDesigner({
     }
   }
 
+  // Subterranean Gate tokens: one half on the Surface tile (the gate) and one on
+  // the cavern (the entrance), exactly where the engine will carve them, joined
+  // by a link line — so the designer can SEE the only Surface↔Underground
+  // crossing each cavern gets. (The gate hex is hidden until the Surface tile is
+  // revealed in play, but the designer shows the whole connection up front.)
+  for (const [index, gate] of plannedGates.entries()) {
+    const gatePixel = hexToPixel(gate.gateHex, size);
+    const entrancePixel = hexToPixel(gate.entranceHex, size);
+    const tokenWidth = hexWidth;
+    const tokenHeight = 2 * size;
+    gateLayer.push(
+      <line
+        className="designerGateLink"
+        key={`gate-link-${index}`}
+        x1={gatePixel.x}
+        x2={entrancePixel.x}
+        y1={gatePixel.y}
+        y2={entrancePixel.y}
+      />
+    );
+    gateLayer.push(
+      <image
+        height={tokenHeight}
+        href={assetUrl(subterraneanGateTokenImage("surface"))}
+        key={`gate-surface-${index}`}
+        preserveAspectRatio="none"
+        width={tokenWidth}
+        x={gatePixel.x - tokenWidth / 2}
+        y={gatePixel.y - size}
+      >
+        <title>Subterranean Gate — heroes descend here from the Surface tile.</title>
+      </image>
+    );
+    gateLayer.push(
+      <image
+        height={tokenHeight}
+        href={assetUrl(subterraneanGateTokenImage("subterranean"))}
+        key={`gate-entrance-${index}`}
+        preserveAspectRatio="none"
+        width={tokenWidth}
+        x={entrancePixel.x - tokenWidth / 2}
+        y={entrancePixel.y - size}
+      >
+        <title>Subterranean Gate entrance — the cavern side of the crossing.</title>
+      </image>
+    );
+  }
+
+  // A cavern with no gate at all can never be entered: ring it in red and stamp a
+  // warning so the designer knows to nudge it against a Surface (or chained
+  // cavern) tile until a gate appears.
+  for (const plan of customMap) {
+    if (plan.group !== "subterranean" || !unreachableKeys.has(`${plan.row}:${plan.col}`)) {
+      continue;
+    }
+    const center = { row: plan.row, col: plan.col };
+    const centerPixel = hexToPixel(center, size);
+    gateLayer.push(
+      <path
+        className="designerFlowerOutline cavernUnreachable"
+        d={flowerOutline(center, size)}
+        key={`cavern-warn-${plan.row}-${plan.col}`}
+      />
+    );
+    gateLayer.push(
+      <text
+        className="designerCavernWarning"
+        key={`cavern-warn-label-${plan.row}-${plan.col}`}
+        textAnchor="middle"
+        x={centerPixel.x}
+        y={centerPixel.y - size * 1.1}
+      >
+        <title>This cavern has no Subterranean Gate — heroes cannot reach it. Place it touching a Surface tile (or a cavern that has a gate).</title>
+        ⚠ no gate — unreachable
+      </text>
+    );
+  }
+
   // While dragging: faint guides at the gapless interlock slots, plus a solid
   // preview at the hex the tile will actually land on — anywhere, hole or not.
   if (drag) {
@@ -672,6 +774,7 @@ export function MapDesigner({
             {cellLayer}
             {outlineLayer}
             {labelLayer}
+            {gateLayer}
           </g>
         </svg>
 
@@ -776,11 +879,22 @@ export function MapDesigner({
         ) : null}
       </div>
 
+      {unreachableCaverns.length > 0 ? (
+        <div className="designerCavernAlert" role="alert">
+          ⚠ {unreachableCaverns.length} Underground tile{unreachableCaverns.length > 1 ? "s have" : " has"} no Subterranean
+          Gate — heroes can never reach {unreachableCaverns.length > 1 ? "them" : "it"}. Move each red-ringed cavern so it
+          touches a Surface tile (or a cavern that already has a gate); a gold gate token appears as soon as it connects.
+        </div>
+      ) : null}
+
       <small className="optionHint">
         Drag a tile from the palette and drop it anywhere — tiles can interlock, leave gaps, touch at just a corner or
         float on their own (room for teleport gates later); green guides mark where a tile nests with no hole. Drag a
-        placed tile to move it; click it to reveal a specific tile, flip it back to random, rotate it or remove it. The
-        Town (Ⅰ) tiles become the player seats; drag the empty background to pan and scroll to zoom.
+        placed tile to move it; click it to reveal a specific tile, flip it back to random, rotate it or remove it.
+        <strong> Underground (⛰) tiles</strong> live on the subterranean layer: drop one touching a Surface tile and a
+        <strong> Subterranean Gate</strong> token appears on the shared edge — that gate is the ONLY way heroes cross
+        between the Surface and the Underground (they can&apos;t even discover an Underground tile from the Surface
+        without one). The Town (Ⅰ) tiles become the player seats; drag the empty background to pan and scroll to zoom.
       </small>
 
       {/* Floating drag ghost follows the pointer. */}

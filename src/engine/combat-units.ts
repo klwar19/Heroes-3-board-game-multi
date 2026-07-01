@@ -3,7 +3,7 @@ import { getUnitSide } from "./adventure";
 import { appendEvent } from "./events";
 import { getRuleset } from "./ruleset";
 import { isArrowTowerUnit } from "./siege";
-import { getSelfRebirthAbility } from "./unit-abilities";
+import { getOnRemovalDetonation, getSelfRebirthAbility, getUnitsAdjacentTo } from "./unit-abilities";
 import { applyUnitCurrentSide, topTransform } from "./unit-transforms";
 import { NEUTRAL_PLAYER_ID } from "./state";
 import type { ActiveEffectState, CombatState, CombatUnitState, GameState, PlayerId, UnitId } from "./state";
@@ -183,6 +183,59 @@ export function markUnitRemovedIfNeeded(state: GameState, unit: CombatUnitState)
   // A shot-down Arrow Tower also leaves the siege bookkeeping.
   if (state.combat?.siege?.arrowTowerUnitId === unit.id) {
     state.combat.siege.arrowTowerUnitId = null;
+  }
+
+  // Factory Automaton: now that the unit has truly left the board (not flipped,
+  // not reborn), detonate — dealing its blast to every adjacent unit. A blast
+  // that removes another adjacent Automaton recurses back through this function,
+  // chain-detonating down a line.
+  applyOnRemovalDetonation(state, unit);
+}
+
+/**
+ * Factory Automaton detonation: when an Automaton is removed it deals its blast
+ * damage to every adjacent unit — friend AND foe — exactly once (the
+ * `detonatedThisCombat` flag survives the chokepoint being re-entered). A blast
+ * that removes another adjacent Automaton recurses through markUnitRemovedIfNeeded,
+ * so a row of Automatons chain-detonates. The controller's Frederick specialty
+ * adds PlayerState.automatonDetonationBonus to the printed amount. No retaliation,
+ * no attack roll — flat "effect" damage, like a Magog splash.
+ */
+function applyOnRemovalDetonation(state: GameState, unit: CombatUnitState): void {
+  if (unit.detonatedThisCombat || !state.combat) {
+    return;
+  }
+  const detonation = getOnRemovalDetonation(unit);
+  if (!detonation) {
+    return;
+  }
+  unit.detonatedThisCombat = true;
+  const bonus = Math.max(0, state.players[unit.controllerId]?.automatonDetonationBonus ?? 0);
+  const amount = detonation.amount + bonus;
+  if (amount <= 0) {
+    return;
+  }
+  appendEvent(state, {
+    type: "UNIT_ABILITY_TRIGGERED",
+    unitId: unit.id,
+    abilityId: detonation.abilityId,
+    message: `${unit.cardName} detonates for ${amount} damage to each adjacent unit.`
+  });
+  for (const neighbour of getUnitsAdjacentTo(state.combat, unit)) {
+    // A chained blast may already have removed this neighbour — never re-hit a
+    // unit that has left the board.
+    if (neighbour.damage >= neighbour.maxHealth) {
+      continue;
+    }
+    neighbour.damage += amount;
+    appendEvent(state, {
+      type: "DAMAGE_ASSIGNED",
+      source: { type: "unit", unitId: unit.id, controllerId: unit.controllerId },
+      target: { type: "unit", unitId: neighbour.id },
+      amount,
+      damageKind: "effect"
+    });
+    markUnitRemovedIfNeeded(state, neighbour);
   }
 }
 

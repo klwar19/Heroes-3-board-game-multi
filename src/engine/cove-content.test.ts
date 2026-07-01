@@ -233,7 +233,7 @@ describe("Cove heroes", () => {
       expect(hero.portrait).toBe(`/assets/hero_portraits-${heroId}.webp`);
       expect(hero.boardScan).toBeUndefined();
       expect(existsSync(fileURLToPath(new URL(`../../public${hero.portrait}`, import.meta.url))), `${heroId} portrait file`).toBe(true);
-      for (const specialtyId of Object.values(hero.specialtyCardIds)) {
+      for (const specialtyId of Object.values(hero.specialtyCardIds!)) {
         const card = cardLibrary[specialtyId];
         expect(card, specialtyId).toBeDefined();
         expect(card.kind).toBe("hero-specialty");
@@ -351,6 +351,29 @@ describe("Cove Pub — Astrologers'-round reinforce discount", () => {
     const after = applyOk(state, reinforce!.action);
     expect(after.players.p1.army.find((unit) => unit.id === "army_sd")?.side).toBe("pack");
     expect(after.players.p1.resources.gold).toBe(7); // 10 − (6 − 3)
+  });
+
+  it("STACKS the Pub discount with a Legion voucher reserved for the same unit", () => {
+    // Sea Dogs pack costs 6 gold. The Pub −3 and a 2-gold Legion voucher reserved
+    // for the same army unit STACK → −5, so the reinforce charges 1 gold — not the
+    // Pub-only 3, nor the Legion-only 4. (The Pub offer is queued at round start;
+    // the player banks the Legion piece during the turn, so the charge — read at
+    // resolution by reinforceCostFor — is what stacks the two.)
+    const state = pubRound("pub-legion-stack", [{ id: "army_sd", unitDefId: "cove.sea_dogs", side: "few" }], 10);
+    // Bank a Legion voucher for the Sea Dogs (mid-turn, after round start so it is
+    // not expired). reinforceCostFor reads it when the reinforce actually resolves.
+    state.players.p1.recruitDiscounts = [
+      { cardId: "artifact.legs_of_legion", amount: 2, target: { kind: "reinforce", armyUnitId: "army_sd" } }
+    ];
+
+    pumpAdventureQueues(state);
+    const reinforce = reinforceAction(state, "Sea Dogs");
+    expect(reinforce, "the Pub should offer the Sea Dogs reinforce").toBeTruthy();
+    const after = applyOk(state, reinforce!.action);
+    expect(after.players.p1.army.find((unit) => unit.id === "army_sd")?.side).toBe("pack");
+    expect(after.players.p1.resources.gold).toBe(9); // 10 − 1 (stacked −5), NOT 7 (Pub only) or 8 (Legion only)
+    // The Legion voucher was consumed by the reinforce.
+    expect(after.players.p1.recruitDiscounts ?? []).toHaveLength(0);
   });
 
   it("never drops gold below 0 (Oceanids pack costs 3 → free)", () => {

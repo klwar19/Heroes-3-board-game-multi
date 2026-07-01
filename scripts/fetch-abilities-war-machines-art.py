@@ -12,8 +12,11 @@ committed ability/war-machine assets are byte-identical to the wiki source (no
 crop/re-encode), so a plain copy keeps them in sync.
 
 Only the cards that actually HAVE a scan on the wiki are listed:
-  - The four "Basic <School> Magic" abilities and Interference render the deck
-    back (`/assets/player-deck-back.webp`), so they have no scan to fetch.
+  - The four "Basic <School> Magic" pages render the deck back, so they have no
+    scan to fetch. This project builds their original faces with
+    scripts/build-basic-magic-ability-cards.mjs instead.
+  - Interference was supplied separately and is already committed; it is not a
+    fetch target in this script.
   - Catapult and Cannon have no card art on the wiki at all (their pages fall
     back to the deck back), so they are intentionally omitted.
 

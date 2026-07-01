@@ -641,6 +641,11 @@ export function BattlefieldBoard({
   const cardActionsByTarget = new Map<string, GameAction>();
   const spaceCardActionsByPosition = new Map<number, GameAction>();
   const abilityTargetActions = new Map<string, GameAction>();
+  // A tied Initiative slot is a spatial choice too. Keep the text buttons in
+  // PromptTray for accessibility, but also bind each offered stack to its
+  // CHOOSE_OPTION action so the units being considered glow and can be picked
+  // directly on the battlefield.
+  const activationOrderActionsByUnit = new Map<string, GameAction>();
   // First Aid Tent: clicking a wounded friendly unit mends it (the basic, free
   // heal). Populated from the USE_ACTIVE_EFFECT heal offers — on your turn AND
   // inside the attack reaction window, so you can heal the instant you're hit.
@@ -736,6 +741,18 @@ export function BattlefieldBoard({
       const fort = parseFortificationTargetId(legal.action.targetUnitId);
       if (fort) {
         fortAbilityTargetByPosition.set(fort.position, legal);
+      }
+    }
+    if (
+      legal.action.type === "CHOOSE_OPTION" &&
+      state.pendingChoice?.type === "OPTION_CHOICE" &&
+      state.pendingChoice.context === "combat-activation-order" &&
+      state.pendingChoice.activationOrder &&
+      legal.action.choiceId === state.pendingChoice.id
+    ) {
+      const unitId = state.pendingChoice.activationOrder.unitIds[legal.action.optionIndex];
+      if (unitId) {
+        activationOrderActionsByUnit.set(unitId, legal.action);
       }
     }
     if (legal.action.type === "USE_ACTIVE_EFFECT" && legal.action.target.type === "unit") {
@@ -1042,6 +1059,7 @@ export function BattlefieldBoard({
           const placeTokenAction = !unit ? placeTokenActionsByPosition.get(index) : undefined;
           const battlefieldToken = battlefieldTokensByPosition.get(index);
           const abilityAction = unit ? abilityTargetActions.get(unit.id) : undefined;
+          const activationOrderAction = unit ? activationOrderActionsByUnit.get(unit.id) : undefined;
           // First Aid Tent heal: only a click-to-heal when nothing else is being
           // targeted (a selected spell/ability keeps priority over the mend).
           const healAction = unit && !selectedCardAction ? healActionsByTarget.get(unit.id) : undefined;
@@ -1064,7 +1082,7 @@ export function BattlefieldBoard({
             isObstacle ? "obstacle" : ""
           } ${moveAction && !selectedCardAction && !planning ? "moveTarget" : ""} ${
             attackAction && !selectedCardAction ? "attackTarget" : ""
-          } ${cardAction || spaceCardAction || teleportAction || placeTokenAction ? "cardTarget" : ""} ${abilityAction ? "abilityTarget" : ""} ${healAction ? "healTarget" : ""} ${dropTarget ? "dropTarget" : ""} ${
+          } ${cardAction || spaceCardAction || teleportAction || placeTokenAction ? "cardTarget" : ""} ${abilityAction ? "abilityTarget" : ""} ${activationOrderAction ? "activationOrderTarget" : ""} ${healAction ? "healTarget" : ""} ${dropTarget ? "dropTarget" : ""} ${
             isSwapSource ? "swapSource" : ""
           } ${isSwapTarget ? "swapTarget" : ""} ${isSwapSelected ? "swapSelected" : ""} ${
             isRepositionSource ? "repositionSource" : ""
@@ -1338,6 +1356,7 @@ export function BattlefieldBoard({
           }
 
           const interactiveAction =
+            activationOrderAction ??
             abilityAction ??
             cardAction ??
             spaceCardAction ??
@@ -1345,8 +1364,10 @@ export function BattlefieldBoard({
             placeTokenAction ??
             (unit ? (attackAction ?? healAction) : planning ? undefined : moveAction);
 
-          if (interactiveAction && (!selectedCardAction || cardAction || spaceCardAction || teleportAction || placeTokenAction)) {
-            const label = abilityAction
+          if (interactiveAction && (!selectedCardAction || activationOrderAction || cardAction || spaceCardAction || teleportAction || placeTokenAction)) {
+            const label = activationOrderAction
+              ? `Choose ${unit?.name} to activate first`
+              : abilityAction
               ? `Ability target: ${unit?.name}`
               : cardAction
                 ? `Target ${unit?.name}`

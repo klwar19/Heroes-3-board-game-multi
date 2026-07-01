@@ -41,7 +41,7 @@ function renderTown(state: GameState) {
   render(<TownPanel legalActions={getLegalActions(state, "p1")} onAction={vi.fn()} state={state} viewerPlayerId="p1" />);
 }
 
-describe("TownPanel — Legion voucher shows the discounted, non-stacking price", () => {
+describe("TownPanel — Legion voucher shows the discounted price", () => {
   it("shows a recruit's discounted gold and a Legion hint for the unit the voucher is reserved for", () => {
     const state = castleTownState(["castle.dwelling_bronze"]);
     state.players.p1.army = state.players.p1.army.filter((unit) => unit.unitDefId !== "castle.marksmen");
@@ -78,7 +78,8 @@ describe("TownPanel — Legion voucher shows the discounted, non-stacking price"
 describe("PromptTray — the Legion 'pick a unit' window renders the real options", () => {
   function playLegsAndGetPromptState(): GameState {
     const state = castleTownState(["castle.dwelling_bronze", "castle.citadel"]);
-    // A Champion Few on a Stables field is already −6: the prompt must warn it.
+    // A Champion Few on a Stables field is already −6: a Head of Legion (−6) STACKS
+    // with it to −12, and the prompt must surface that stacked total.
     if (state.heroes.hero_p1.spaceId) {
       state.adventure!.fields[state.heroes.hero_p1.spaceId].location = "stables";
     }
@@ -97,7 +98,7 @@ describe("PromptTray — the Legion 'pick a unit' window renders the real option
     return result.state;
   }
 
-  it("renders one button per recruit/reinforce target, warning the already-discounted Champion", () => {
+  it("renders one button per recruit/reinforce target, showing the Champion's stacked total", () => {
     const state = playLegsAndGetPromptState();
     const onAction = vi.fn<(action: GameAction) => void>();
     render(<PromptTray legalActions={getLegalActions(state, "p1")} onAction={onAction} state={state} viewerPlayerId="p1" />);
@@ -106,8 +107,8 @@ describe("PromptTray — the Legion 'pick a unit' window renders the real option
     const marksmen = screen.getByRole("button", { name: /Recruit Marksmen .* reduce cost by 6 gold/i });
     expect(marksmen).toBeTruthy();
 
-    // …and the Champion (already −6 from Stables) is warned as non-stacking.
-    const champion = screen.getByRole("button", { name: /Reinforce Champions .* already .*6 gold.*does not stack/i });
+    // …and the Champion (already −6 from Stables) STACKS the Head of Legion's −6 to −12.
+    const champion = screen.getByRole("button", { name: /Reinforce Champions .* total .*12 gold.*stacks with the .*6/i });
     expect(champion).toBeTruthy();
 
     // Clicking a target dispatches its RESOLVE_VISIT_STEP (the engine banks the voucher).

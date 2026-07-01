@@ -1360,6 +1360,22 @@ export const adventureCards: CardLibrary = {
   "specialty.mutare.1": mightSpecialtyOne("mutare", "Dragons", "a Dragons unit"),
   "specialty.mutare.4": unitHealthSpecialty("mutare", "Dragons", 4, 1, "a Dragons unit"),
   "specialty.mutare.6": unitInitiativeSpecialty("mutare", "Dragons", 6, 1, "a Dragons unit"),
+  // Factory heroes (Gamefound "Faction Focus: Factory"). Face-less (no printed
+  // board-game specialty art yet) — withoutArt renders them natively.
+  // Henrietta (Mercenary): the Halflings specialist — "building your own armies
+  // of Halflings and Grenadiers, and buffing them all". I = +1 attack/defence;
+  // IV = +1 HP; VI = +1 initiative — doubled when the bonus lands on a Halflings.
+  "specialty.henrietta.1": withoutArt(mightSpecialtyOne("henrietta", "Halflings", "Halflings")),
+  "specialty.henrietta.4": withoutArt(unitHealthSpecialty("henrietta", "Halflings", 4, 1, "Halflings")),
+  "specialty.henrietta.6": withoutArt(unitInitiativeSpecialty("henrietta", "Halflings", 6, 1, "Halflings")),
+  // Frederick (Artificer): the Automatons specialist. His INHERENT trait also
+  // enhances every Automaton's Detonate by +1 (seedFactoryHeroEffects →
+  // PlayerState.automatonDetonationBonus); these three cards buff Automatons the
+  // way any unit-specialist does. (His "near-free Automaton re-recruit" is not
+  // yet wired — noted, not claimed.)
+  "specialty.frederick.1": withoutArt(mightSpecialtyOne("frederick", "Automatons", "Automatons")),
+  "specialty.frederick.4": withoutArt(unitHealthSpecialty("frederick", "Automatons", 4, 1, "Automatons")),
+  "specialty.frederick.6": withoutArt(unitInitiativeSpecialty("frederick", "Automatons", 6, 1, "Automatons")),
   "specialty.rion.1": {
     id: "specialty.rion.1",
     name: "Battlefield Medic I",
@@ -4384,9 +4400,12 @@ export const adventureCards: CardLibrary = {
 
   // Tarnum (Fortress, Beastmaster, A0 D4 P1 K1, Armorer): the Basilisks specialist
   // — I/IV are the standard creature buffs (doubled for Basilisks), identical to
-  // Bron's. VI is a single combined instant (NO "OR"): the buffed attack gains +2
-  // attack AND fires the unit's die-gated after-attack ability regardless of the
-  // roll (forceAbilityRolls → forceAbilityRollsThisAttack).
+  // Bron's. VI is a CHOOSE_ONE (the wiki card prints two separate <instant>
+  // abilities = pick ONE, never both):
+  //   A — the buffed attack fires the unit's die-gated after-attack ability
+  //       regardless of the roll (forceAbilityRolls → forceAbilityRollsThisAttack),
+  //       with NO attack bonus (amount 0).
+  //   B — the buffed attack gains +2 attack (and does NOT force any ability roll).
   "specialty.tarnum_fortress.1": withoutArt(mightSpecialtyOne("tarnum_fortress", "Basilisks", "Basilisks")),
   "specialty.tarnum_fortress.4": withoutArt(unitHealthSpecialty("tarnum_fortress", "Basilisks", 4, 1, "Basilisks")),
   "specialty.tarnum_fortress.6": withoutArt({
@@ -4400,17 +4419,31 @@ export const adventureCards: CardLibrary = {
       "instant",
       "tarnum_fortress",
       "basilisks",
-      "Your selected unit uses its special ability regardless of the required roll's result, and gains +2 attack.",
-      // engine: on this attack the unit gains +2 attack AND every die-GATED
-      // after-attack ability fires regardless of the roll — the Basilisk/Azure
-      // Paralysis, Gorgon Death Stare, Wyvern/Thunderbird flat-damage Sting, Rust
-      // Dragon Acid token and Minotaur draw (forceAbilityRolls). The passive
-      // attack/defense-on-die riders (Dread Knight Death Blow, Zombie/Manticore
-      // Resilience) are attack-maths modifiers, NOT triggered abilities, so they
-      // are not affected.
+      "Your selected unit uses its special ability regardless of the required roll's result. — OR — Your selected unit gains +2 attack.",
+      // engine: option A fires every die-GATED after-attack ability regardless of
+      // the roll — the Basilisk/Azure Paralysis, Gorgon Death Stare, Wyvern/
+      // Thunderbird flat-damage Sting, Rust Dragon Acid token and Minotaur draw
+      // (forceAbilityRolls) — with no attack bonus. The passive attack/defense-on-
+      // die riders (Dread Knight Death Blow, Zombie/Manticore Resilience) are
+      // attack-maths modifiers, NOT triggered abilities, so they are not affected.
+      // Option B is a flat +2 attack on the declared attack.
     ],
-    trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
-    effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 2, forceAbilityRolls: true },
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Use special ability regardless of the roll",
+          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 0, forceAbilityRolls: true }
+        },
+        {
+          label: "+2 attack",
+          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 2 }
+        }
+      ]
+    },
     implementationStatus: "implemented",
     source: heroSource("tarnum_fortress")
   }),

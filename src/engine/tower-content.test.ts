@@ -99,7 +99,7 @@ describe("Tower content", () => {
       expect(hero.faction).toBe("tower");
       expect(hero.portrait, `${heroId} portrait`).toBeTruthy();
       expect(cardLibrary[hero.startingAbilityCardId], `${heroId} ability`).toBeDefined();
-      for (const specialtyId of Object.values(hero.specialtyCardIds)) {
+      for (const specialtyId of Object.values(hero.specialtyCardIds ?? {})) {
         expect(cardLibrary[specialtyId], `${heroId} specialty ${specialtyId}`).toBeDefined();
       }
     }
