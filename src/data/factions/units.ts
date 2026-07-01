@@ -1292,10 +1292,11 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     tier: "bronze",
     type: "ranged",
     // engine: attack-roll-advantage (roll 2 Attack dice, resolve the higher) on
-    // BOTH faction sides. The Pack's "-1 Defense to the target on a +1 Attack
-    // roll" rider is NOT yet wired — display-only, called out in abilityText.
+    // BOTH faction sides. The Pack ALSO carries halfling-precise-shot: on a "+1"
+    // resolved Attack die it drops a Corrosion token on the target (-1 Defense,
+    // min 0) — both halves are now wired.
     few: { attack: 2, defense: 0, health: 2, initiative: 4, cost: { gold: 3 }, abilities: ["attack-roll-advantage"], abilityText: "[unit_attack] Roll 2 Attack dice and resolve the higher one.", cardImage: "/assets/units-factory-bronze-halflings-few.webp" },
-    pack: { attack: 2, defense: 0, health: 2, initiative: 6, cost: { gold: 4 }, abilities: ["attack-roll-advantage"], abilityText: "[unit_attack] Roll 2 Attack dice and resolve the higher one. If you resolve a +1 on the Attack Die, the attacked unit suffers -1 [defense] (to a minimum of 0) — the -1 Defense rider is display-only.", cardImage: "/assets/units-factory-bronze-halflings-pack.webp" },
+    pack: { attack: 2, defense: 0, health: 2, initiative: 6, cost: { gold: 4 }, abilities: ["attack-roll-advantage", "halfling-precise-shot"], abilityText: "[unit_attack] Roll 2 Attack dice and resolve the higher one. If you resolve a +1 on the Attack Die, the attacked unit suffers -1 [defense] (to a minimum of 0).", cardImage: "/assets/units-factory-bronze-halflings-pack.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Halfling_(Factory)",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
@@ -1309,12 +1310,15 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "factory",
     tier: "bronze",
     type: "ground",
-    // engine: abilities: [] on all sides — the reach "line attack" and the Pack's
-    // Repair (remove damage from an adjacent mechanical unit OR +1 Attack) are
-    // NOT yet wired (display-only, transcribed verbatim below).
-    few: { attack: 2, defense: 0, health: 3, initiative: 6, cost: { gold: 4 }, abilities: [], abilityText: "[activation] Attack 2 spaces in a line. The first attack resolves normally, and the second has 1 [attack] — display-only.", cardImage: "/assets/units-factory-bronze-mechanics-few.webp" },
-    pack: { attack: 2, defense: 1, health: 4, initiative: 7, cost: { gold: 6 }, abilities: [], abilityText: "[activation] Remove up to 2 [damage] from an adjacent [mechanical] unit, or gain +1 [attack]. Attack 2 spaces in a line; the first attack resolves normally, the second has 2 [attack] — display-only.", cardImage: "/assets/units-factory-bronze-mechanics-pack.webp" },
-    neutral: { attack: 2, defense: 0, health: 4, initiative: 6, cost: { gold: 5 }, abilities: [], abilityText: "[activation] Attack 2 spaces in a line. The first attack resolves normally, and the second has 1 [attack] — display-only.", cardImage: "/assets/units-factory-bronze-mechanics-neutral.webp" },
+    // engine: mechanics-line-attack-1/2 wires the "Attack 2 spaces in a line"
+    // reach on ALL sides (SECOND_ATTACK_BEHIND_TARGET; Few/Neutral hit the unit
+    // behind the target at attack 1, the Pack at attack 2). The Repair rider —
+    // Few "remove up to 1 damage from an adjacent mechanical unit", Pack "remove
+    // up to 2 OR gain +1 Attack" — is NOT yet wired (display-only). The Neutral
+    // guard has no Repair on its card, only the reach.
+    few: { attack: 2, defense: 0, health: 3, initiative: 6, cost: { gold: 4 }, abilities: ["mechanics-line-attack-1"], abilityText: "[activation] Remove up to 1 [damage] from an adjacent [mechanical] unit. Attack 2 spaces in a line. The first attack resolves normally, and the second has 1 [attack] — the Repair (remove 1 damage) is display-only.", cardImage: "/assets/units-factory-bronze-mechanics-few.webp" },
+    pack: { attack: 2, defense: 1, health: 4, initiative: 7, cost: { gold: 6 }, abilities: ["mechanics-line-attack-2"], abilityText: "[activation] Remove up to 2 [damage] from an adjacent [mechanical] unit, or gain +1 [attack]. Attack 2 spaces in a line. The first attack resolves normally, and the second has 2 [attack] — the Repair / +1 Attack rider is display-only.", cardImage: "/assets/units-factory-bronze-mechanics-pack.webp" },
+    neutral: { attack: 2, defense: 0, health: 4, initiative: 6, cost: { gold: 5 }, abilities: ["mechanics-line-attack-1"], abilityText: "[activation] Attack 2 spaces in a line. The first attack resolves normally, and the second has 1 [attack].", cardImage: "/assets/units-factory-bronze-mechanics-neutral.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Mechanic",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
@@ -1369,13 +1373,16 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "factory",
     tier: "silver",
     type: "ground",
-    // engine: abilities: [] — the Few has NO printed ability. The Pack's "gain a
-    // faction cube whenever it defeats an enemy; spend a cube to attack again" and
-    // the Neutral's "if the target is an adjacent unit, attack it again" are NOT
-    // yet wired — display-only.
+    // engine: the Few has NO printed ability. The Neutral guard's "if the target
+    // is an adjacent unit, attack it again" is wired (sandworm-strike-again, the
+    // SECOND_ATTACK_SAME_TARGET_AFTER_RETALIATION path — a melee Sandworm always
+    // attacks adjacent, so it strikes the same target once more after retaliation).
+    // The Pack's cube-fuelled extra attack ("gain a faction cube whenever it
+    // defeats an enemy; spend a cube to attack again") is NOT yet wired —
+    // display-only (the faction-cube subsystem is not built yet).
     few: { attack: 4, defense: 1, health: 5, initiative: 8, cost: { gold: 8 }, abilities: [], cardImage: "/assets/units-factory-silver-sandworms-few.webp" },
     pack: { attack: 4, defense: 1, health: 5, initiative: 10, cost: { gold: 14 }, abilities: [], abilityText: "[unit_passive] Place a faction cube on this unit whenever it defeats an enemy unit. [activation] You may remove a faction cube from this unit in order to attack again — display-only.", cardImage: "/assets/units-factory-silver-sandworms-pack.webp" },
-    neutral: { attack: 3, defense: 1, health: 4, initiative: 8, cost: { gold: 15 }, abilities: [], abilityText: "[unit_attack] If the target is an adjacent unit, attack this target again — display-only.", cardImage: "/assets/units-factory-silver-sandworms-neutral.webp" },
+    neutral: { attack: 3, defense: 1, health: 4, initiative: 8, cost: { gold: 15 }, abilities: ["sandworm-strike-again"], abilityText: "[unit_attack] If the target is an adjacent unit, attack this target again.", cardImage: "/assets/units-factory-silver-sandworms-neutral.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Sandworm",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
