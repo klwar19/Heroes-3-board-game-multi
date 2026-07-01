@@ -168,29 +168,60 @@ describe("Factory faction — art wired, not playable", () => {
 
   // ---- Real abilities vs honest display-only stubs (CLAUDE.md rule #1/#2) ----
 
-  it("the engine-wired units carry registered, implemented ability ids on both sides", () => {
-    const wired: Record<string, string[]> = {
-      "factory.halflings": ["attack-roll-advantage", "ignore-all-combat-penalties"],
-      "factory.armadillos": ["armadillo-curl"],
-      "factory.automatons": ["automaton-detonate"],
-      "factory.gunslingers": ["double-attack"],
-      "factory.dreadnoughts": ["ignores-retaliation"]
-    };
-    for (const [id, abilities] of Object.entries(wired)) {
-      const unit = coreUnitDefinitions[id];
-      expect(unit.few?.abilities, `${id} few`).toEqual(abilities);
-      expect(unit.pack?.abilities, `${id} pack`).toEqual(abilities);
-      for (const abilityId of abilities) {
-        expect(unitAbilities[abilityId]?.implementationStatus, `${abilityId} implemented`).toBe("implemented");
+  it("the engine-wired unit abilities are registered, implemented ids on the right sides", () => {
+    const u = coreUnitDefinitions;
+    // Halflings roll-two-take-higher on BOTH faction sides.
+    expect(u["factory.halflings"].few?.abilities, "halflings few").toEqual(["attack-roll-advantage"]);
+    expect(u["factory.halflings"].pack?.abilities, "halflings pack").toEqual(["attack-roll-advantage"]);
+    // Automatons: the Pack "Ignore Retaliation" and the single-cost NEUTRAL guard's
+    // 1-damage on-death Detonate are wired. (The faction Few's cube-scaled Detonate
+    // is not yet wired — display-only, pinned by the next test.)
+    expect(u["factory.automatons"].pack?.abilities, "automatons pack").toEqual(["ignores-retaliation"]);
+    expect(u["factory.automatons"].neutral?.abilities, "automatons neutral").toEqual(["automaton-detonate-1"]);
+    for (const abilityId of ["attack-roll-advantage", "ignores-retaliation", "automaton-detonate-1"]) {
+      expect(unitAbilities[abilityId]?.implementationStatus, `${abilityId} implemented`).toBe("implemented");
+    }
+    // The fabricated abilities the placeholder carried are GONE from every side.
+    for (const id of FACTORY_UNITS) {
+      for (const side of ["few", "pack", "neutral"] as const) {
+        const abilities = coreUnitDefinitions[id][side]?.abilities ?? [];
+        expect(abilities, `${id} ${side} has no fabricated ability`).not.toContain("armadillo-curl");
+        expect(abilities, `${id} ${side} has no fabricated ability`).not.toContain("double-attack");
+        expect(abilities, `${id} ${side} has no fabricated ability`).not.toContain("ignore-all-combat-penalties");
       }
     }
   });
 
-  it("the not-yet-wired units stay HONEST display-only stubs (abilities: [])", () => {
-    for (const id of ["factory.mechanics", "factory.sandworms", "factory.couatls"]) {
-      const unit = coreUnitDefinitions[id];
-      expect(unit.few?.abilities, `${id} few`).toEqual([]);
-      expect(unit.pack?.abilities, `${id} pack`).toEqual([]);
+  it("the not-yet-wired sides stay HONEST display-only stubs (abilities: [])", () => {
+    // Each printed-but-unwired side must carry [] (real card text in abilityText,
+    // engine effect not claimed). Wiring these is the remaining Factory work.
+    const displayOnly: [string, ("few" | "pack" | "neutral")[]][] = [
+      ["factory.mechanics", ["few", "pack", "neutral"]],
+      ["factory.armadillos", ["few", "pack", "neutral"]],
+      ["factory.automatons", ["few"]],
+      ["factory.sandworms", ["few", "pack", "neutral"]],
+      ["factory.gunslingers", ["few", "pack", "neutral"]],
+      ["factory.couatls", ["few", "pack", "neutral"]],
+      ["factory.dreadnoughts", ["few", "pack", "neutral"]]
+    ];
+    for (const [id, sides] of displayOnly) {
+      for (const side of sides) {
+        expect(coreUnitDefinitions[id][side]?.abilities, `${id} ${side}`).toEqual([]);
+      }
+    }
+  });
+
+  it("carries the physical-card stats/costs and single-cost Neutral sides (the redo)", () => {
+    // Regression guard against the PC-guess placeholders: a few exact card values.
+    expect(coreUnitDefinitions["factory.halflings"].few).toMatchObject({ attack: 2, defense: 0, health: 2, initiative: 4, cost: { gold: 3 } });
+    expect(coreUnitDefinitions["factory.automatons"].few).toMatchObject({ attack: 3, defense: 1, health: 4, initiative: 8, cost: { gold: 6 } });
+    expect(coreUnitDefinitions["factory.dreadnoughts"].pack).toMatchObject({ attack: 5, defense: 3, health: 10, initiative: 7, cost: { gold: 32, valuables: 2 } });
+    expect(coreUnitDefinitions["factory.couatls"].few).toMatchObject({ cost: { gold: 18, valuables: 1 } });
+    // The gold ranged unit's printed name is Bounty Hunters (id kept as gunslingers).
+    expect(coreUnitDefinitions["factory.gunslingers"].name).toBe("Bounty Hunters");
+    // Every scanned unit gained its single-sided Neutral guard stat block.
+    for (const id of ["factory.mechanics", "factory.automatons", "factory.armadillos", "factory.sandworms", "factory.gunslingers", "factory.couatls", "factory.dreadnoughts"]) {
+      expect(coreUnitDefinitions[id].neutral, `${id} neutral side`).toBeDefined();
     }
   });
 
