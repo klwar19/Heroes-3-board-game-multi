@@ -337,12 +337,22 @@ describe("closing a room (closeRoom)", () => {
     expect(entryFor(roomId)).toBeNull(); // gone from the directory
   });
 
-  it("lets any member close an open table but not an outsider", () => {
+  it("lets ANYONE close an open table (a fresh session no longer owns it)", () => {
     const roomId = uniqueRoom("closeopen");
     createRoom({ roomId });
     submitRoomAction(roomId, { type: "JOIN_ROOM", clientId: "c1", name: "A" });
 
-    expect(closeRoom(roomId, "outsider").closed).toBe(false);
+    // An outsider (e.g. the SAME person on a new browser session with a fresh
+    // clientId) can close an open table — the fix for undeletable rooms. The
+    // hosted test above is the control that a hosted room still refuses them.
+    expect(closeRoom(roomId, "outsider").closed).toBe(true);
+    expect(entryFor(roomId)).toBeNull();
+  });
+
+  it("lets a member close their own open table too", () => {
+    const roomId = uniqueRoom("closeopen-self");
+    createRoom({ roomId });
+    submitRoomAction(roomId, { type: "JOIN_ROOM", clientId: "c1", name: "A" });
     expect(closeRoom(roomId, "c1").closed).toBe(true);
     expect(entryFor(roomId)).toBeNull();
   });
