@@ -493,4 +493,27 @@ describe("Subterranean Gate — pick-on-reveal placement renders as a real choic
     expect(chosen?.location, "the clicked hex became the gate").toBe("subterranean_gate");
     expect(chosen?.gateToTileId, "the gate points at the cavern").toBe(cavern.id);
   });
+
+  it("MULTIPLAYER: another player's board shows NO gate-choice glow, cue, or click while it is p1's choice", () => {
+    const { state } = pathUpChoiceState();
+    const { hexes } = gateChoice(state);
+    // The choice belongs to p1; render the board exactly as p2's client would.
+    const { container } = render(
+      <HexMapBoard
+        legalActions={getLegalActions(state, "p2")}
+        moveCue={null}
+        onAction={() => {}}
+        placement={null}
+        state={state}
+        view={getPlayerView(state, "p2")}
+        viewerPlayerId="p2"
+      />
+    );
+    // No candidate hex glows, and no on-map "path up here" cue is drawn — the
+    // placement is private to the deciding player (same gating as Dimension Door).
+    for (const spaceId of hexes) {
+      expect(hex(container, spaceId).classList.contains("mapChoiceTarget"), `${spaceId} must not glow for p2`).toBe(false);
+    }
+    expect(container.querySelectorAll(".hexGateChoiceCue").length, "no cue for the non-deciding player").toBe(0);
+  });
 });
