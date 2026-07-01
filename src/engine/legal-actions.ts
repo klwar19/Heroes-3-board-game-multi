@@ -141,6 +141,7 @@ import {
   getEnemySpellPowerReduction,
   getLethalSaveUnitAbility,
   getSpendCubeAttackAgain,
+  getSplashAllocationAttack,
   getUnitAbilityDefinitions,
   hasBindAdjacentEnemies,
   hasInnateMagicMirror,
@@ -3226,32 +3227,6 @@ function addUnitAbilityActions(actions: LegalAction[], state: GameState, playerI
       }
     }
 
-    // Factory Dreadnoughts (Juggernaut): "[activation] Instead of attacking,
-    // select up to N units adjacent to this one." Offered as an "other action"
-    // (in place of attacking) whenever at least one unit stands adjacent; the
-    // per-pick allocation opens in applyUnitAbilityAction.
-    if (ability.effect?.type === "SPLASH_ALLOCATION_ATTACK" && !activeUnit.attackedThisActivation) {
-      const hasAdjacent = Object.values(combat.units).some(
-        (candidate) =>
-          candidate.id !== activeUnit.id &&
-          isUnitAlive(candidate) &&
-          !isArrowTowerUnit(candidate) &&
-          isAdjacent(candidate.position, activeUnit.position)
-      );
-      if (hasAdjacent) {
-        actions.push({
-          label: `${activeUnit.name} use ${ability.name} (allocate splash to adjacent units instead of attacking)`,
-          action: {
-            type: "USE_UNIT_ABILITY",
-            playerId,
-            unitId: activeUnit.id,
-            abilityId: ability.id,
-            target: { type: "none" }
-          }
-        });
-      }
-    }
-
     // Pit Lords' "Summon Demons" other action: only after a friendly unit has
     // been removed this combat, and once per combat per Pit Lords unit. Used
     // instead of moving or attacking (the caller already gated on those).
@@ -3638,6 +3613,36 @@ function addUnitActions(actions: LegalAction[], state: GameState, playerId: Play
     }
   }
 
+  // Factory Dreadnoughts (Juggernaut): "[activation] Instead of attacking, select
+  // up to N units adjacent to this one." Offered as an attack ALTERNATIVE — like a
+  // normal attack it is available after an optional move (never once it has
+  // attacked), so a slow Juggernaut can advance into a cluster and then splash.
+  // Choosing it opens the per-pick allocation in applyUnitAbilityAction.
+  if (!alreadyAttacked) {
+    const splash = getSplashAllocationAttack(activeUnit);
+    if (
+      splash &&
+      Object.values(combat.units).some(
+        (candidate) =>
+          candidate.id !== activeUnit.id &&
+          isUnitAlive(candidate) &&
+          !isArrowTowerUnit(candidate) &&
+          isAdjacent(candidate.position, activeUnit.position)
+      )
+    ) {
+      actions.push({
+        label: `${activeUnit.name} use ${splash.abilityName} (allocate splash to adjacent units instead of attacking)`,
+        action: {
+          type: "USE_UNIT_ABILITY",
+          playerId,
+          unitId: activeUnit.id,
+          abilityId: splash.abilityId,
+          target: { type: "none" }
+        }
+      });
+    }
+  }
+
   if (!alreadyAttacked && !isArrowTowerUnit(activeUnit)) {
     // Defend replaces the attack, so a unit that already moved may still
     // defend. The Arrow Tower never defends — it only shoots or holds.
@@ -3973,6 +3978,12 @@ export function getLegalActions(
                 ? `${choice.abilityName}: place on`
               : choice.kind === "spell-redirect"
               ? `${choice.abilityName}: redirect to`
+              : choice.kind === "dreadnought-splash"
+                ? `${choice.abilityName}: deal ${choice.chainRemainingDamages?.[0] ?? 0} to`
+              : choice.kind === "couatl-invulnerability"
+                ? "Become invulnerable —"
+              : choice.kind === "automaton-cube"
+                ? "Place a faction cube on"
               : choice.kind === "flat-damage" ||
                   choice.kind === "spell-splash" ||
                   choice.kind === "ballistics-splash" ||

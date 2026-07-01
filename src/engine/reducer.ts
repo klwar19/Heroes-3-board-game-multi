@@ -12322,12 +12322,17 @@ function applyUnitAbilityAction(
   const unit = combat?.units[action.unitId];
   const ability = unit ? getUnitAbilityDefinitions(unit).find((candidate) => candidate.id === action.abilityId) : undefined;
 
+  // The Dreadnought splash is an attack ALTERNATIVE, so — unlike the pre-move
+  // "other actions" (token place, Summon Demons) — it stays available after an
+  // optional move (just never once the unit has attacked).
+  const isSplashAllocation = ability?.effect?.type === "SPLASH_ALLOCATION_ATTACK";
+
   if (
     !combat ||
     !unit ||
     unit.controllerId !== action.playerId ||
     unit.activatedThisRound ||
-    unit.movedThisActivation ||
+    (unit.movedThisActivation && !isSplashAllocation) ||
     combat.activeUnitId !== unit.id ||
     ability?.implementationStatus !== "implemented"
   ) {
