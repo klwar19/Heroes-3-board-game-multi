@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { applyAction, createInitialGameState, tokenDefenseDelta } from "./index";
 import { effectiveInitiative, makeActiveEffect } from "./active-effects";
+import { applyCombatStartUnitAbilities } from "./adventure-reducer";
 import type { GameAction, GameEvent, GameState, PlayerId } from "./state";
 
 /**
@@ -508,5 +509,89 @@ describe("Factory Mechanics — Field Repair", () => {
     });
     expect(state.pendingChoice, "no repair target ⇒ auto-resolve to the buff").toBeNull();
     expect(selfAttackBuff(state, "unit_p1_marksmen"), "the Pack gains its +1 Attack").toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Bounty Hunters — "Mark" (combat-start Mark + Attack bonus vs Marked units)
+// ---------------------------------------------------------------------------
+
+/** A ranged Bounty Hunter (attack 5) shoots a non-adjacent Skeleton; the caller
+ *  chooses whether the target already carries a Mark and which abilities fire. */
+function bountyHunterShot(attackerAbilities: string[], marked: boolean): GameState {
+  const state = createInitialGameState("factory-bounty");
+  Object.assign(state.combat!.units.unit_p1_marksmen, {
+    name: "Bounty Hunters",
+    cardName: "Bounty Hunters",
+    type: "ranged",
+    attack: 5,
+    position: 1,
+    abilities: attackerAbilities
+  });
+  Object.assign(state.combat!.units.unit_p2_skeletons, {
+    defense: 0,
+    defenseToken: false,
+    maxHealth: 30,
+    damage: 0,
+    marked,
+    abilities: [],
+    position: 13 // non-adjacent → ranged, no retaliation
+  });
+  state.players.p1.hand = [];
+  state.players.p2.hand = [];
+  script(state, [0, 0, 0, 0]);
+  setActive(state, "p1", "unit_p1_marksmen");
+  return settle(
+    applyOk(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_marksmen",
+      defenderId: "unit_p2_skeletons"
+    })
+  );
+}
+
+describe("Factory Bounty Hunters — Mark", () => {
+  it("at combat start Marks the strongest enemy (highest maxHealth), not the weaker one", () => {
+    const state = createInitialGameState("factory-mark-start");
+    Object.assign(state.combat!.units.unit_p1_marksmen, {
+      name: "Bounty Hunters",
+      abilities: ["bounty-hunter-mark-1"]
+    });
+    Object.assign(state.combat!.units.unit_p2_skeletons, { maxHealth: 10, damage: 0, marked: false, position: 13 });
+    Object.assign(state.combat!.units.unit_p2_vampires, { maxHealth: 20, damage: 0, marked: false, position: 14 });
+
+    applyCombatStartUnitAbilities(state);
+
+    expect(state.combat!.units.unit_p2_vampires.marked, "the tougher enemy is Marked").toBe(true);
+    expect(state.combat!.units.unit_p2_skeletons.marked, "the weaker enemy is not").toBeFalsy();
+    expect(
+      state.eventLog.some((e) => e.type === "UNIT_ABILITY_TRIGGERED" && e.abilityId === "bounty-hunter-mark-1"),
+      "a Mark event fires"
+    ).toBe(true);
+  });
+
+  it("CONTROL: a player with no Bounty Hunters Marks nobody at combat start", () => {
+    const state = createInitialGameState("factory-mark-none");
+    state.combat!.units.unit_p1_marksmen.abilities = [];
+    applyCombatStartUnitAbilities(state);
+    expect(Object.values(state.combat!.units).some((u) => u.marked)).toBe(false);
+  });
+
+  it("a Few Bounty Hunter deals +1 into a Marked unit (6 vs 5)", () => {
+    const marked = bountyHunterShot(["bounty-hunter-mark-1"], true);
+    const unmarked = bountyHunterShot(["bounty-hunter-mark-1"], false);
+    expect(marked.combat!.units.unit_p2_skeletons.damage).toBe(6);
+    expect(unmarked.combat!.units.unit_p2_skeletons.damage).toBe(5);
+  });
+
+  it("a Pack Bounty Hunter deals +2 into a Marked unit (7)", () => {
+    const marked = bountyHunterShot(["bounty-hunter-mark-2"], true);
+    expect(marked.combat!.units.unit_p2_skeletons.damage).toBe(7);
+  });
+
+  it("CONTROL: an attacker WITHOUT the Mark ability gets no bonus vs a Marked unit", () => {
+    const state = bountyHunterShot([], true);
+    expect(state.combat!.units.unit_p2_skeletons.damage, "the Mark helps only Bounty Hunters").toBe(5);
   });
 });

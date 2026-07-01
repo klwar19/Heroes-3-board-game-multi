@@ -197,10 +197,13 @@ describe("Factory faction — art wired, not playable", () => {
     expect(u["factory.sandworms"].neutral?.abilities, "sandworms neutral").toEqual(["sandworm-strike-again"]);
     // Armadillos PACK amplifies any Initiative increase by +1 (Few/Neutral bare).
     expect(u["factory.armadillos"].pack?.abilities, "armadillos pack").toEqual(["armadillo-initiative-amplify"]);
+    // Bounty Hunters Mark on both faction sides (Few +1, Pack +2 vs Marked).
+    expect(u["factory.gunslingers"].few?.abilities, "bounty hunters few").toEqual(["bounty-hunter-mark-1"]);
+    expect(u["factory.gunslingers"].pack?.abilities, "bounty hunters pack").toEqual(["bounty-hunter-mark-2"]);
     for (const abilityId of [
       "attack-roll-advantage", "halfling-precise-shot", "mechanics-line-attack-1", "mechanics-line-attack-2",
       "mechanics-repair-1", "mechanics-repair-2", "ignores-retaliation", "automaton-detonate-1",
-      "sandworm-strike-again", "armadillo-initiative-amplify"
+      "sandworm-strike-again", "armadillo-initiative-amplify", "bounty-hunter-mark-1", "bounty-hunter-mark-2"
     ]) {
       expect(unitAbilities[abilityId]?.implementationStatus, `${abilityId} implemented`).toBe("implemented");
     }
@@ -226,7 +229,9 @@ describe("Factory faction — art wired, not playable", () => {
       // Sandworms Neutral is now wired; Few has no ability, the Pack's cube extra
       // attack is not yet wired.
       ["factory.sandworms", ["few", "pack"]],
-      ["factory.gunslingers", ["few", "pack", "neutral"]],
+      // Bounty Hunters Few/Pack now wired (Mark); the Neutral guard's pre-emptive
+      // retaliation is the not-yet-wired one.
+      ["factory.gunslingers", ["neutral"]],
       ["factory.couatls", ["few", "pack", "neutral"]],
       ["factory.dreadnoughts", ["few", "pack", "neutral"]]
     ];

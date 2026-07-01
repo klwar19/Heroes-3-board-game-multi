@@ -1401,12 +1401,14 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "factory",
     tier: "gold",
     type: "ranged",
-    // engine: abilities: [] — the "Mark" mechanic (at Combat start place a Mark
-    // token on an enemy; +Attack vs Marked units) and the Neutral's pre-emptive /
-    // ranged retaliation are NOT yet wired (display-only). The prior double-shot was
-    // a fabrication — the physical card carries the Mark ability instead.
-    few: { attack: 5, defense: 1, health: 5, initiative: 7, cost: { gold: 13 }, abilities: [], abilityText: "[unit_passive] At the start of Combat, place a Mark token on an enemy unit. Bounty Hunters gain +1 [attack] against Marked units — display-only.", cardImage: "/assets/units-factory-golden-gunslingers-few.webp" },
-    pack: { attack: 5, defense: 1, health: 6, initiative: 8, cost: { gold: 18, valuables: 1 }, abilities: [], abilityText: "[unit_passive] At the start of Combat, place a Mark token on an enemy unit. Bounty Hunters gain +2 [attack] against Marked units — display-only.", cardImage: "/assets/units-factory-golden-gunslingers-pack.webp" },
+    // engine: the "Mark" mechanic is wired on BOTH faction sides (bounty-hunter-
+    // mark-1/2 → MARK_AND_HUNT): at Combat start the strongest enemy is Marked, and
+    // a Bounty Hunter attacking a Marked unit gains +1 (Few) / +2 (Pack) Attack.
+    // The single-cost NEUTRAL guard's DIFFERENT ability — pre-emptive + ranged
+    // retaliation — is NOT yet wired (display-only). The prior double-shot was a
+    // fabrication — the physical card carries the Mark ability instead.
+    few: { attack: 5, defense: 1, health: 5, initiative: 7, cost: { gold: 13 }, abilities: ["bounty-hunter-mark-1"], abilityText: "[unit_passive] At the start of Combat, place a Mark token on an enemy unit. Bounty Hunters gain +1 [attack] against Marked units.", cardImage: "/assets/units-factory-golden-gunslingers-few.webp" },
+    pack: { attack: 5, defense: 1, health: 6, initiative: 8, cost: { gold: 18, valuables: 1 }, abilities: ["bounty-hunter-mark-2"], abilityText: "[unit_passive] At the start of Combat, place a Mark token on an enemy unit. Bounty Hunters gain +2 [attack] against Marked units.", cardImage: "/assets/units-factory-golden-gunslingers-pack.webp" },
     neutral: { attack: 5, defense: 1, health: 6, initiative: 8, cost: { gold: 17 }, abilities: [], abilityText: "[unit_passive] Retaliate before an opponent's attack. This unit also retaliates against non-adjacent units — display-only.", cardImage: "/assets/units-factory-golden-gunslingers-neutral.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Gunslinger",
     source: {

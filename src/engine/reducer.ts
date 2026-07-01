@@ -244,6 +244,7 @@ import {
   getAttackBonusIfFlipped,
   getAttackBonusOnAttackDie,
   getAttackBonusVsDefenderName,
+  getAttackBonusVsMarked,
   getAttackDefenseReductionAbility,
   getDamageCapPerAttack,
   getOnKillResourceGain,
@@ -2449,6 +2450,10 @@ function getAttackStackDetails(
   // Black Dragons): extra Attack when this unit attacks the named creature.
   const hatredAttackBonus = getAttackBonusVsDefenderName(attacker, defender.name);
 
+  // Factory Bounty Hunters: +1/+2 Attack when striking a Marked enemy. An innate
+  // ability bonus, added unclamped like Hatred (elemental clamps don't apply).
+  const markAttackBonus = getAttackBonusVsMarked(attacker, defender);
+
   // Cove Haspids (Few) "Vengeance": +2 Attack once this unit has been flipped
   // down from its Pack side this combat. An innate ability bonus, so (like
   // Hatred) it is added unclamped even for elemental attackers.
@@ -2489,6 +2494,7 @@ function getAttackStackDetails(
       effectiveTokenAttack +
       attackDieResultBonus +
       hatredAttackBonus +
+      markAttackBonus +
       flippedAttackBonus +
       stackedAttackBonus -
       retaliationAttackPenalty,
