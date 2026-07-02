@@ -10,7 +10,14 @@ export default defineConfig({
   reporter: "list",
   use: {
     baseURL,
-    trace: "on-first-retry"
+    trace: "on-first-retry",
+    // Sandboxed CI images often pre-install one Chromium and block downloads
+    // (PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1). Point PW_CHROMIUM_PATH at that
+    // binary (e.g. /opt/pw-browsers/chromium) to run the suite there; with the
+    // variable unset nothing changes — Playwright uses its own install.
+    ...(process.env.PW_CHROMIUM_PATH
+      ? { launchOptions: { executablePath: process.env.PW_CHROMIUM_PATH } }
+      : {})
   },
   projects: [
     {
