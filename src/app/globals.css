@@ -1781,22 +1781,44 @@ button.battleCell {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 4px;
-  border: 1px solid rgba(210, 180, 120, 0.5);
-  border-radius: 8px;
-  background: linear-gradient(180deg, rgba(94, 70, 32, 0.55), rgba(60, 44, 20, 0.55));
+  padding: 7px;
+  border: 1.5px solid rgba(213, 168, 79, 0.7);
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(94, 70, 32, 0.6), rgba(60, 44, 20, 0.6));
   cursor: pointer;
+  /* A persistent soft glow so the Book always reads as a live control, plus a
+     gentle pulse while it holds castable Spells. */
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5), 0 0 10px rgba(213, 168, 79, 0.28);
+  transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+}
+
+.shelfIcon:not(.empty) {
+  animation: shelfPulse 2.4s ease-in-out infinite;
+}
+
+@keyframes shelfPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5), 0 0 10px rgba(213, 168, 79, 0.28);
+  }
+
+  50% {
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5), 0 0 16px rgba(240, 196, 106, 0.6);
+  }
 }
 
 .shelfIcon.open,
-.shelfIcon:hover {
+.shelfIcon:hover,
+.shelfIcon:focus-visible {
   border-color: var(--gold);
-  box-shadow: 0 0 0 1px rgba(213, 168, 79, 0.45);
+  transform: translateY(-1px) scale(1.05);
+  box-shadow: 0 0 0 1px rgba(213, 168, 79, 0.6), 0 6px 16px rgba(0, 0, 0, 0.5), 0 0 18px rgba(240, 196, 106, 0.6);
+  outline: none;
 }
 
 /* An empty Spell Book is shown from the start, but dimmed until it holds Spells. */
 .shelfIcon.empty {
-  opacity: 0.65;
+  opacity: 0.72;
 }
 
 .shelfIcon.empty .shelfCount {
@@ -1805,18 +1827,19 @@ button.battleCell {
 }
 
 .shelfGlyph {
-  width: 34px;
-  height: 26px;
+  width: 52px;
+  height: 40px;
   object-fit: contain;
   image-rendering: pixelated;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));
 }
 
 .shelfGlyphEmoji {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 22px;
-  line-height: 26px;
+  font-size: 34px;
+  line-height: 40px;
 }
 
 .shelfCount {
@@ -5047,6 +5070,20 @@ button.hbSlot:disabled { cursor: default; }
   overflow-y: auto;
 }
 
+/* Event-draw variant of the proclamation card: a warm parchment accent so an
+   Event reads distinctly from the (gold) Astrologers proclamation. */
+.eventDrawnCard {
+  border-color: #c8923c;
+  box-shadow:
+    0 26px 70px rgba(0, 0, 0, 0.7),
+    0 0 0 1px rgba(200, 146, 60, 0.5),
+    0 0 26px rgba(200, 146, 60, 0.28);
+}
+
+.eventDrawnCard .astrologersProclaimHead strong {
+  color: #eec37a;
+}
+
 .astrologersProclaimHead {
   display: flex;
   align-items: center;
@@ -8134,31 +8171,44 @@ button.hbSlot:disabled { cursor: default; }
   display: inline-flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
-  padding: 6px 8px;
-  border: 1px solid rgba(210, 180, 120, 0.5);
-  border-radius: 9px;
-  background: linear-gradient(180deg, rgba(94, 70, 32, 0.55), rgba(60, 44, 20, 0.55));
-  color: #e8d9b8;
+  gap: 3px;
+  padding: 9px 12px;
+  border: 1.5px solid rgba(213, 168, 79, 0.7);
+  border-radius: 11px;
+  background: linear-gradient(180deg, rgba(94, 70, 32, 0.6), rgba(60, 44, 20, 0.6));
+  color: #f0dcb8;
   cursor: pointer;
+  /* Always-on soft glow + a gentle pulse while it holds Spells, so the Book
+     obviously reads as an interactive control on the map. */
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45), 0 0 10px rgba(213, 168, 79, 0.28);
+  transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+}
+
+.spellBookPanel:not(.empty) .spellBookToggle {
+  animation: shelfPulse 2.4s ease-in-out infinite;
 }
 
 .spellBookToggle.open,
-.spellBookToggle:hover {
+.spellBookToggle:hover,
+.spellBookToggle:focus-visible {
   border-color: var(--gold);
-  box-shadow: 0 0 0 1px rgba(213, 168, 79, 0.45);
+  transform: translateY(-1px) scale(1.04);
+  box-shadow: 0 0 0 1px rgba(213, 168, 79, 0.6), 0 6px 16px rgba(0, 0, 0, 0.5), 0 0 18px rgba(240, 196, 106, 0.6);
+  outline: none;
 }
 
 .spellBookToggle small {
-  font-size: 10px;
-  color: #cdb99a;
+  font-size: 11px;
+  font-weight: 600;
+  color: #e6cf9f;
 }
 
 .spellBookIcon {
-  width: 40px;
-  height: 30px;
+  width: 60px;
+  height: 46px;
   object-fit: contain;
   image-rendering: pixelated;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));
 }
 
 .spellBookCount {
@@ -10669,53 +10719,129 @@ img.cardBack {
 }
 
 /* ---------------------------------------------------------------------------
- * Top bar: hero board dock, move/morale chips, Town button
+ * Town + hero dock: two big, obviously-clickable boards just above the map
  * ------------------------------------------------------------------------- */
 
-/* The hero board docks in the top bar: a compact chip per seat; clicking one
-   drops the full printed board open over the map (no layout shift). */
-.advHudCell.heroDockCell {
+.townHeroDock {
   position: relative;
-  flex-direction: row;
-  align-items: center;
-  gap: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 10px;
 }
 
-button.heroChip {
-  display: inline-flex;
+.dockTile {
+  flex: 1 1 240px;
+  min-width: 210px;
+  max-width: 440px;
+  display: flex;
   align-items: center;
-  gap: 7px;
-  padding: 3px 9px 3px 4px;
-  border: 1px solid rgba(170, 130, 70, 0.45);
-  border-radius: 999px;
-  background: linear-gradient(180deg, rgba(63, 46, 26, 0.85), rgba(38, 27, 15, 0.9));
+  gap: 12px;
+  padding: 10px 14px 10px 10px;
+  border: 1px solid rgba(170, 130, 70, 0.5);
+  border-left: 4px solid var(--dock-faction, #b08d2f);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(46, 34, 19, 0.92), rgba(28, 20, 12, 0.95));
   color: inherit;
   cursor: pointer;
-  transition: border-color 120ms ease, background 120ms ease;
+  text-align: left;
+  transition: border-color 120ms ease, background 120ms ease, transform 120ms ease, box-shadow 120ms ease;
 }
 
-button.heroChip:hover,
-button.heroChip.open {
+.dockTile:hover,
+.dockTile:focus-visible,
+.dockTile.open {
   border-color: var(--gold);
-  background: linear-gradient(180deg, rgba(84, 61, 33, 0.9), rgba(47, 33, 18, 0.95));
+  background: linear-gradient(180deg, rgba(70, 51, 27, 0.95), rgba(40, 28, 15, 0.98));
+  transform: translateY(-1px);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(240, 196, 106, 0.25);
+  outline: none;
 }
 
-.heroChipText {
+.dockTownIcon {
+  /* Transparent isometric capitol sprite (thelazy Adventure_Map_*_capitol) —
+     show it whole, lifted off the tile with a drop shadow. */
+  object-fit: contain;
+  filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.65));
+  flex: 0 0 auto;
+}
+
+.dockTownIconFallback {
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.4);
+  flex: 0 0 auto;
+}
+
+.dockTileText {
   display: flex;
   flex-direction: column;
-  gap: 0;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.dockTileText strong {
+  font-size: 15px;
+  color: #f2e3b8;
   line-height: 1.15;
-  text-align: left;
 }
 
-.heroChipText strong {
-  font-size: 12.5px;
-  color: #f0dcb8;
+.dockTileText small {
+  font-size: 11px;
+  color: #cbb289;
 }
 
-.heroChipText small {
+.dockTileText .dockSubtle {
+  color: #a88f68;
   font-size: 10px;
-  color: #c9b088;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.dockTokens {
+  display: inline-flex;
+  gap: 6px;
+  margin-top: 2px;
+  font-size: 13px;
+}
+
+.dockTokens .off {
+  opacity: 0.28;
+  filter: grayscale(1);
+}
+
+.dockOpenHint {
+  align-self: center;
+  margin-left: auto;
+  padding: 4px 10px;
+  border: 1px solid rgba(240, 196, 106, 0.5);
+  border-radius: 999px;
+  color: #f0c46a;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.heroDropClose {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid rgba(170, 130, 70, 0.5);
+  border-radius: 7px;
+  background: rgba(20, 14, 8, 0.92);
+  color: #d9c9a6;
+  cursor: pointer;
+}
+
+.heroDropClose:hover {
+  border-color: var(--gold);
+  color: var(--gold);
 }
 
 .heroDropBackdrop {
@@ -10823,6 +10949,14 @@ button.heroChip.open {
   border-bottom: 1px solid rgba(170, 130, 70, 0.4);
   background: linear-gradient(180deg, rgba(43, 31, 18, 0.98), rgba(28, 20, 12, 0.98));
   border-radius: 12px 12px 0 0;
+}
+
+.townWindowIcon {
+  width: 46px;
+  height: 46px;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.6));
+  flex: 0 0 auto;
 }
 
 .townWindowHeader > strong {
@@ -10938,6 +11072,33 @@ button.heroChip.open {
   box-shadow:
     inset 0 0 0 1px rgb(0 0 0 / 55%),
     inset 0 0 0.6cqw rgb(0 0 0 / 45%);
+  /* A freshly-built bar flows/rises in — the fill mounts when the building goes
+     up, so this plays once as it appears (and as a nice reveal when the town
+     window is opened). */
+  animation: tbBuildIn 0.6s cubic-bezier(0.2, 0.85, 0.25, 1) both;
+  transform-origin: 50% 100%;
+}
+
+@keyframes tbBuildIn {
+  0% {
+    opacity: 0;
+    transform: translateY(9%) scale(0.93);
+  }
+
+  60% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tbFill {
+    animation: none;
+  }
 }
 
 .tbFill.partial > img {
@@ -11114,6 +11275,19 @@ button.heroChip.open {
   height: 55%;
 }
 
+/* Authentic token icon (cropped from the real board) shown in a designed-board
+   well; drop-shadow lifts it off the dark well plate. */
+.tbTokenImg {
+  width: 72%;
+  height: 72%;
+  object-fit: contain;
+  filter: drop-shadow(0 0.15cqw 0.4cqw rgb(0 0 0 / 70%));
+}
+
+.tbToken.spent .tbTokenImg {
+  filter: grayscale(0.7) brightness(0.7);
+}
+
 .tbToken.ready {
   border-color: rgba(240, 196, 106, 0.85);
   box-shadow:
@@ -11188,9 +11362,8 @@ button.heroChip.open {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  /* Dimmed and desaturated: built bars overlay their slice at full strength,
-     so construction visibly lights the town up bar by bar. */
-  filter: brightness(0.5) saturate(0.55);
+  /* The empty town background shows clear (no dim/blur); built bars overlay the
+     aligned BUILT slice on top, so the town gains its buildings in place. */
 }
 
 .tbDesignedTitle {
@@ -11291,6 +11464,12 @@ button.heroChip.open {
   object-fit: cover;
 }
 
+/* A two-in-one (shared) bar blurs its revealed built slice so it reads as the
+   shared tile — the empty background elsewhere stays crisp. */
+.tbDesignedTile.compact .tbPanoramaSlice {
+  filter: blur(0.5cqw);
+}
+
 .tbTileArt {
   position: absolute;
   inset: 0;
@@ -11318,6 +11497,46 @@ button.heroChip.open {
 
 .tbDesignedTile + .tbDesignedTile {
   border-top: 1px solid rgb(0 0 0 / 70%);
+}
+
+/* The unbuilt half of a shared bar: a dimmed, clearly-empty socket sitting
+   beside its built neighbour, so a two-in-one tile's state is unambiguous. */
+.tbDesignedTile.unbuilt {
+  gap: 0.5cqw;
+  background:
+    repeating-linear-gradient(
+      135deg,
+      rgb(0 0 0 / 34%) 0,
+      rgb(0 0 0 / 34%) 0.7cqw,
+      rgb(0 0 0 / 12%) 0.7cqw,
+      rgb(0 0 0 / 12%) 1.4cqw
+    ),
+    linear-gradient(160deg, #1a140b, #0f0b06);
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 65%);
+}
+
+.tbDesignedTile.unbuilt.buildable {
+  box-shadow: inset 0 0 0 0.18cqw rgba(240, 196, 106, 0.7);
+}
+
+.tbUnbuiltPlaque {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5cqw;
+  padding: 0.35cqw 0.8cqw;
+  border: 1px dashed rgba(214, 178, 94, 0.6);
+  border-radius: 999px;
+  background: rgb(14 10 5 / 70%);
+  color: #d6b25e;
+  font-size: clamp(7px, 1cqw, 12px);
+  line-height: 1.2;
+  text-align: center;
+}
+
+.tbDesignedTile.unbuilt.buildable .tbUnbuiltPlaque {
+  border-style: solid;
+  border-color: rgba(240, 196, 106, 0.85);
+  color: #f0c46a;
 }
 
 .tbDesignedTile .tbTilePlaque {
@@ -11420,13 +11639,46 @@ button.heroChip.open {
   font-size: clamp(7px, 1cqw, 12px);
 }
 
-/* --- the action panel dock below the board ------------------------------------ */
+/* --- the action panel, rendered as a centred modal dialog over the board ----- */
+
+/* Above the town window (z 70) but below app-level game modals (z 90), so a
+   nested Search/choice a panel action spawns still lands on top. */
+.tbPanelBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 85;
+  display: grid;
+  place-items: center;
+  padding: 4vh 3vw;
+  background: rgb(8 8 7 / 58%);
+  backdrop-filter: blur(2px);
+}
+
+.tbPanelModal {
+  display: flex;
+  width: min(560px, 94vw);
+  max-height: 90vh;
+}
 
 .tbPanel {
   border: 1px solid rgba(170, 130, 70, 0.5);
   border-radius: 10px;
-  background: rgb(26 20 12 / 96%);
-  box-shadow: 0 12px 30px rgb(0 0 0 / 45%);
+  background: rgb(26 20 12 / 98%);
+  box-shadow: 0 24px 60px rgb(0 0 0 / 60%);
+}
+
+/* As a modal it owns the height: header fixed, body scrolls within the card. */
+.tbPanelModal .tbPanel {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-height: 90vh;
+}
+
+.tbPanelModal .tbPanelBody {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
 }
 
 .tbPanel > header {
@@ -11508,6 +11760,13 @@ button.heroChip.open {
   background: rgb(26 34 20 / 45%);
 }
 
+.tbBuildInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
 .tbBuildRow .tbBuildName {
   display: inline-flex;
   align-items: center;
@@ -11520,18 +11779,88 @@ button.heroChip.open {
   color: #8fc47e;
 }
 
-.tbBuildRow > small {
-  grid-column: 1;
-  color: #cbb289;
+.tbBuildDone {
+  color: #8fc47e;
   font-size: 11px;
 }
 
-.tbBuildRow .commandButton {
-  grid-row: span 2;
+/* Build option: cost per resource vs. what you actually have, colour-coded so
+   affordability is legible at a glance. */
+.tbBuildCostGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tbCostFree {
+  color: #9cc88a;
+  font-size: 11px;
+}
+
+.tbCostChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px 2px 5px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 11px;
+  line-height: 1.1;
+}
+
+.tbCostChip img {
+  width: 14px;
+  height: 14px;
+  object-fit: contain;
+}
+
+.tbCostChip b {
+  color: #f2e3b8;
+}
+
+.tbCostChip small {
+  color: #b7a483;
+  font-size: 9.5px;
+}
+
+.tbCostChip.ok {
+  background: rgb(30 46 26 / 70%);
+  border-color: rgba(120, 180, 100, 0.5);
+}
+
+.tbCostChip.short {
+  background: rgb(58 26 22 / 70%);
+  border-color: rgba(214, 92, 74, 0.7);
+}
+
+.tbCostChip.short small {
+  color: #e69a86;
+}
+
+.tbBuildPrereq {
+  font-size: 10.5px;
+}
+
+.tbBuildPrereq.met {
+  color: #9cc88a;
+}
+
+.tbBuildPrereq.missing {
+  color: #e69a86;
+}
+
+.tbBuildRow .tbBuildGo {
+  grid-column: 2;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
 }
 
 .tbBuildBlocked {
-  grid-row: span 2;
+  grid-column: 2;
+  align-self: center;
+  max-width: 120px;
   color: #b98f6a;
   font-size: 10.5px;
   font-style: italic;

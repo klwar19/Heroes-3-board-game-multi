@@ -3,13 +3,14 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
-import { BookOpen, Check, Hammer, Info, Users, X } from "lucide-react";
+import { Check, Hammer, Info, X } from "lucide-react";
 
 import { coreBuildingDefinitions, coreFactionDefinitions } from "@/data/factions/core";
 import { buildingTimingLabel, describeBuildingEffect } from "@/data/towns/describe";
 import {
   townBoardSpecs,
   townBoardTileArt,
+  townIconUrl,
   type TownBoardSpec,
   type TownTrackResource
 } from "@/data/towns/boards";
@@ -23,6 +24,7 @@ import {
   type PlayerId
 } from "@/engine";
 import { assetUrl } from "@/lib/asset-url";
+import { playLibrarySound, playSpellBookOpen } from "@/lib/sound";
 import { formatCost } from "@/components/table/utils";
 import {
   BuildingDetailPanel,
@@ -48,6 +50,14 @@ const RESOURCE_LABELS: Record<TownTrackResource, string> = {
   gold: "Gold",
   buildingMaterials: "Building materials (ore)",
   valuables: "Valuables (crystal)"
+};
+
+/** Authentic build / population / spell-book token icons, cropped from the real
+ *  printed board scan (used on designed boards, which have no printed tokens). */
+const TOKEN_IMAGES: Record<"build" | "population" | "spellBook", string> = {
+  build: "/assets/token-build.webp",
+  population: "/assets/token-population.webp",
+  spellBook: "/assets/token-spellbook.webp"
 };
 
 type OpenPanel =
@@ -158,24 +168,34 @@ function DesignedTile({
   factionColor: string;
   compact: boolean;
 }) {
+  // Two ways a built building lights up over the clear empty background:
+  //  - boards with a full built-town image (factory, conflux, cove, bulwark)
+  //    reveal THIS bar's aligned slice of it, so the town builds in place; a
+  //    shared (two-in-one) bar blurs its slice to read as the shared tile.
+  //  - boards without one (stronghold: only a board scan) show the real
+  //    per-building tile art instead.
+  const revealSlice = spec.fullImage;
+  const showBuildingTile = !revealSlice;
   return (
     <div className={`tbDesignedTile ${compact ? "compact" : ""}`} style={{ "--tb-faction": factionColor } as CSSProperties}>
-      {spec.panoramaImage ? (
-        // The bar's slice of the panorama: an image sized to the whole window
-        // (7 bars wide) shifted left by the bar index — the same cover crop as
-        // the dimmed backdrop, shown at full brightness.
+      {revealSlice ? (
+        // The bar's slice of the built town: an image sized to the whole window
+        // (7 bars wide) shifted left by the bar index — cropped and shown at
+        // full brightness over the clear empty background.
         <img
           alt=""
           aria-hidden="true"
           className="tbPanoramaSlice"
           draggable={false}
-          src={assetUrl(spec.panoramaImage)}
+          src={assetUrl(revealSlice)}
           style={{ width: "700%", left: `${-barIndex * 100}%` }}
         />
       ) : null}
-      {building.assets?.image ? <LoadedImg className="tbTilePcArt" src={building.assets.image} /> : null}
-      {/* Custom tile art renders above the PC fallback and covers it fully. */}
-      <LoadedImg className="tbTileArt" src={townBoardTileArt(building.id)} />
+      {showBuildingTile && building.assets?.image ? (
+        <LoadedImg className="tbTilePcArt" src={building.assets.image} />
+      ) : null}
+      {/* Real per-building tile art (used where there is no built-town image). */}
+      {showBuildingTile ? <LoadedImg className="tbTileArt" src={townBoardTileArt(building.id)} /> : null}
       <span className="tbTilePlaque">
         <Check aria-hidden="true" size={compact ? 10 : 12} />
         {building.name}
@@ -191,6 +211,35 @@ function DesignedPlate({ building }: { building: TownBuildingDefinition }) {
       <b>{building.name}</b>
       <CostLine cost={building.cost} />
     </span>
+  );
+}
+
+/**
+ * The still-unbuilt half of a SHARED bar whose other building is already up:
+ * a dimmed socket showing the plate + a clear "not built" marker, so a
+ * two-in-one tile reads unambiguously — one half lit with its art, the other
+ * plainly empty (and flagged buildable when it can go up now).
+ */
+function DesignedTileUnbuilt({
+  building,
+  compact,
+  buildable
+}: {
+  building: TownBuildingDefinition;
+  compact: boolean;
+  buildable: boolean;
+}) {
+  return (
+    <div
+      className={`tbDesignedTile unbuilt ${compact ? "compact" : ""} ${buildable ? "buildable" : ""}`}
+      aria-label={`${building.name} — not built`}
+    >
+      <DesignedPlate building={building} />
+      <span className="tbUnbuiltPlaque">
+        <Hammer aria-hidden="true" size={compact ? 10 : 12} />
+        not built{buildable ? " · buildable" : ""}
+      </span>
+    </div>
   );
 }
 
@@ -213,6 +262,25 @@ export function TownBoardView({
     setPanelKey(nextPanelKey);
     setOpenPanel(null);
   }
+
+  // The panel is a real modal dialog, so Escape must dismiss IT first — captured
+  // ahead of the Town window's own Escape-to-close so a build/recruit/spell
+  // dialog closes without also tearing down the whole town window.
+  useEffect(() => {
+    if (!openPanel) {
+      return;
+    }
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.stopImmediatePropagation();
+        event.preventDefault();
+        playLibrarySound("ui/button", 0.3);
+        setOpenPanel(null);
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [openPanel]);
 
   const player = state.players[viewerPlayerId];
   const town = Object.values(state.towns).find((candidate) => candidate.controllerId === viewerPlayerId);
@@ -266,22 +334,45 @@ export function TownBoardView({
     }
   };
 
-  const closePanel = () => setOpenPanel(null);
-  const togglePanel = (panel: OpenPanel) =>
-    setOpenPanel((current) => (JSON.stringify(current) === JSON.stringify(panel) ? null : panel));
+  // Opening/closing a panel plays a matching cue: the Spell Book riffles, the
+  // Population well musters, the rest click; closing gives a soft click so the
+  // modal reads as a real, dismissible window.
+  const closePanel = () => {
+    if (openPanel) {
+      playLibrarySound("ui/button", 0.3);
+    }
+    setOpenPanel(null);
+  };
+  const openPanelSound = (panel: OpenPanel) => {
+    if (panel.kind === "spell") {
+      playSpellBookOpen();
+    } else if (panel.kind === "recruit") {
+      playLibrarySound("adventure/military", 0.4);
+    } else {
+      playLibrarySound("ui/button", 0.45);
+    }
+  };
+  const togglePanel = (panel: OpenPanel) => {
+    const same = openPanel !== null && JSON.stringify(openPanel) === JSON.stringify(panel);
+    if (same) {
+      closePanel();
+      return;
+    }
+    openPanelSound(panel);
+    setOpenPanel(panel);
+  };
+
+  // Constructing a building: the H3 build-town cue, then the finished panel
+  // closes so the newly-lit bar on the board above is what the player sees.
+  const buildStructure = (action: GameAction) => {
+    playLibrarySound("adventure/build-town", 0.6);
+    onAction(action);
+    setOpenPanel(null);
+  };
 
   // ---- panels ---------------------------------------------------------------
 
-  const buildRequirementNote = (building: TownBuildingDefinition): string => {
-    const prerequisites = (building.prerequisites ?? [])
-      .map((prerequisite) => coreBuildingDefinitions[prerequisite]?.name ?? prerequisite)
-      .filter((name) => name.length > 0);
-    const parts = [formatCost(building.cost) || "free"];
-    if (prerequisites.length > 0) {
-      parts.push(`needs ${prerequisites.join(", ")}`);
-    }
-    return parts.join(" · ");
-  };
+  const RESOURCE_ORDER: readonly TownTrackResource[] = ["gold", "buildingMaterials", "valuables"];
 
   const buildingRow = (buildingId: string): ReactNode => {
     const building = coreBuildingDefinitions[buildingId];
@@ -291,25 +382,68 @@ export function TownBoardView({
     const legal = buildActionFor(buildingId);
     const isBuilt = built(buildingId);
     const missingPrereq = (building.prerequisites ?? []).some((prerequisite) => !built(prerequisite));
+    const prereqNames = (building.prerequisites ?? []).map(
+      (prerequisite) => coreBuildingDefinitions[prerequisite]?.name ?? prerequisite
+    );
+    const costEntries = RESOURCE_ORDER.map(
+      (resource) => [resource, building.cost[resource] ?? 0] as const
+    ).filter(([, amount]) => amount > 0);
+    const cannotAfford = costEntries.some(([resource, amount]) => (player.resources[resource] ?? 0) < amount);
     return (
       <div className={`tbBuildRow ${isBuilt ? "built" : ""}`} key={buildingId}>
-        <span className="tbBuildName">
-          {isBuilt ? <Check aria-hidden="true" size={12} /> : <Hammer aria-hidden="true" size={12} />}
-          <b>{building.name}</b>
-        </span>
-        <small>{isBuilt ? "built" : buildRequirementNote(building)}</small>
+        <div className="tbBuildInfo">
+          <span className="tbBuildName">
+            {isBuilt ? <Check aria-hidden="true" size={12} /> : <Hammer aria-hidden="true" size={12} />}
+            <b>{building.name}</b>
+          </span>
+          {isBuilt ? (
+            <small className="tbBuildDone">built</small>
+          ) : (
+            // Cost vs. what you actually have, per resource — green when you can
+            // cover it, red when you are short, so "can I build this?" is legible.
+            <span className="tbBuildCostGrid" aria-label={`cost: ${formatCost(building.cost) || "free"}`}>
+              {costEntries.length === 0 ? (
+                <small className="tbCostFree">free</small>
+              ) : (
+                costEntries.map(([resource, amount]) => {
+                  const have = player.resources[resource] ?? 0;
+                  const enough = have >= amount;
+                  return (
+                    <span
+                      className={`tbCostChip ${enough ? "ok" : "short"}`}
+                      key={resource}
+                      title={`${RESOURCE_LABELS[resource]}: costs ${amount}, you have ${have}`}
+                    >
+                      <img alt="" aria-hidden="true" src={assetUrl(RESOURCE_ICONS[resource])} />
+                      <b>{amount}</b>
+                      <small>have {have}</small>
+                    </span>
+                  );
+                })
+              )}
+            </span>
+          )}
+          {!isBuilt && prereqNames.length > 0 ? (
+            <small className={`tbBuildPrereq ${missingPrereq ? "missing" : "met"}`}>
+              {missingPrereq ? "needs " : "requires "}
+              {prereqNames.join(", ")}
+            </small>
+          ) : null}
+        </div>
         {!isBuilt && legal ? (
-          <button className="commandButton primary" onClick={() => onAction(legal.action)} type="button">
-            Build
+          <button className="commandButton primary tbBuildGo" onClick={() => buildStructure(legal.action)} type="button">
+            <Hammer aria-hidden="true" size={12} /> Build
           </button>
         ) : null}
         {!isBuilt && !legal ? (
           <small className="tbBuildBlocked">
             {!player.townTokens.build
-              ? "build token spent"
+              ? "build token spent this round"
               : missingPrereq
-                ? "prerequisite missing"
-                : "not available now"}
+                ? "build the prerequisite first"
+                : cannotAfford
+                  ? "not enough resources"
+                  : "not available now"}
           </small>
         ) : null}
       </div>
@@ -366,8 +500,9 @@ export function TownBoardView({
       return (
         <PanelShell onClose={closePanel} title="Construction — build a structure">
           <small className="tbPanelHint">
-            The Build token raises one structure per round: pay the cost, prerequisites first. A finished building
-            fills its bar on the board above.
+            The Build token raises one structure per round: pay the cost, prerequisites first. Nothing is spent until
+            you press <b>Build</b> — close this window (Esc) to cancel. A finished building lights up its bar on the
+            board above.
           </small>
           {faction.buildings.map((buildingId) => buildingRow(buildingId))}
         </PanelShell>
@@ -486,15 +621,27 @@ export function TownBoardView({
           return (
             <div className={`tbBar ${partial ? "partial" : ""}`} key={index} style={style}>
               {builtIds.length > 0 ? (
-                spec.fullImage ? (
+                // A real printed board scan crops its one fully-built photo per
+                // bar. Designed boards instead reveal the built-town image a
+                // slice at a time inside each DesignedTile (below), so they stay
+                // in the per-building branch to keep the two-in-one-bar rule.
+                isScan && spec.fullImage ? (
                   <div className={`tbFill ${partial ? "partial" : ""}`}>
                     <FullScanCrop index={index} spec={spec} />
                   </div>
                 ) : (
+                  // Designed board: render EVERY building in the bar as its own
+                  // slot — the built one lit with the built-town slice + its tile
+                  // art, an unbuilt shared-bar neighbour as a plainly-empty "not
+                  // built" socket — so a two-in-one tile's state is never
+                  // ambiguous.
                   <div className={`tbFill designed ${partial ? "partial" : ""}`}>
-                    {builtIds.map((buildingId) => {
+                    {bar.map((buildingId) => {
                       const building = coreBuildingDefinitions[buildingId];
-                      return building ? (
+                      if (!building) {
+                        return null;
+                      }
+                      return built(buildingId) ? (
                         <DesignedTile
                           barIndex={index}
                           building={building}
@@ -503,7 +650,14 @@ export function TownBoardView({
                           key={buildingId}
                           spec={spec}
                         />
-                      ) : null;
+                      ) : (
+                        <DesignedTileUnbuilt
+                          building={building}
+                          buildable={Boolean(buildActionFor(buildingId))}
+                          compact={bar.length > 1}
+                          key={buildingId}
+                        />
+                      );
                     })}
                   </div>
                 )
@@ -516,7 +670,10 @@ export function TownBoardView({
                   })}
                 </div>
               ) : null}
-              {partial ? (
+              {/* Scan boards paint the whole bar from one crop, so the missing
+                  half needs a written note; designed boards already show it as a
+                  distinct empty socket above. */}
+              {partial && spec.fullImage ? (
                 <span className="tbPartialNote" title={`${missingIds.map((id) => coreBuildingDefinitions[id]?.name ?? id).join(", ")} shares this bar and is not built yet`}>
                   <Hammer aria-hidden="true" size={10} />
                   {missingIds.map((id) => coreBuildingDefinitions[id]?.name ?? id).join(", ")} not built
@@ -657,14 +814,6 @@ export function TownBoardView({
             slot.kind === "build" ? { kind: "build" } : slot.kind === "population" ? { kind: "recruit" } : { kind: "spell" };
           const label =
             slot.kind === "build" ? "Construction" : slot.kind === "population" ? "Population" : "Spell Book";
-          const icon =
-            slot.kind === "build" ? (
-              <Hammer aria-hidden="true" />
-            ) : slot.kind === "population" ? (
-              <Users aria-hidden="true" />
-            ) : (
-              <BookOpen aria-hidden="true" />
-            );
           return (
             <button
               aria-label={`${label} — ${tokenState.note}`}
@@ -680,14 +829,27 @@ export function TownBoardView({
               title={tokenState.note}
               type="button"
             >
-              {!isScan ? icon : null}
+              {/* Scan boards already print the tokens; designed boards show the
+                  authentic token icon cropped from the real board. */}
+              {!isScan ? (
+                <img alt="" aria-hidden="true" className="tbTokenImg" draggable={false} src={assetUrl(TOKEN_IMAGES[slot.kind])} />
+              ) : null}
               {tokenState.spent ? <X aria-hidden="true" className="tbTokenSpent" /> : null}
             </button>
           );
         })}
       </div>
 
-      {panelDock}
+      {/* The panel is a real modal dialog centred over the board (not an inline
+          strip below it) so a build/recruit/spell action is impossible to miss.
+          Backdrop click / the ✕ / Esc all close it. */}
+      {panelDock ? (
+        <div className="tbPanelBackdrop" role="presentation" onClick={closePanel}>
+          <div className="tbPanelModal" onClick={(event) => event.stopPropagation()}>
+            {panelDock}
+          </div>
+        </div>
+      ) : null}
 
       <HireHeroesSection legalActions={legalActions} onAction={onAction} />
     </section>
@@ -696,7 +858,7 @@ export function TownBoardView({
 
 function PanelShell({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   return (
-    <div className="tbPanel" role="region" aria-label={title}>
+    <div className="tbPanel" role="dialog" aria-modal="true" aria-label={title}>
       <header>
         <strong>{title}</strong>
         <button aria-label="Close panel" className="tbPanelClose" onClick={onClose} type="button">
@@ -776,6 +938,7 @@ export function TownWindow({
     <div aria-label={`${faction.name} town`} aria-modal="true" className="modalBackdrop townWindowBackdrop" onClick={onClose} role="dialog">
       <div className="townWindow" onClick={(event) => event.stopPropagation()}>
         <header className="townWindowHeader">
+          <LoadedImg className="townWindowIcon" src={townIconUrl(faction.id)} />
           <strong>{faction.name} town</strong>
           <small
             className="townWindowTokens"

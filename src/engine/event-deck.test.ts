@@ -29,7 +29,9 @@ function applyOk(state: GameState, action: GameAction): GameState {
 
 /** Fresh 2-player game with a quiet board: no queued rewards, no mulligans. */
 export function eventsGame(seed = "events", options: { events?: boolean } = {}): GameState {
-  const state = createAdventureGameState({ seed, difficulty: "normal", rollFirstPlayer: false, ...options });
+  // The Event deck is opt-in (default OFF), so the event tests turn it ON
+  // explicitly; a caller can still force it off via `options`.
+  const state = createAdventureGameState({ seed, difficulty: "normal", rollFirstPlayer: false, events: true, ...options });
   for (const player of Object.values(state.players)) {
     player.canMulligan = false;
     player.needsHandRefresh = false;
@@ -85,18 +87,22 @@ describe("Event card data", () => {
 });
 
 describe("Event deck flow", () => {
-  it("a 2-player game gets the shuffled deck by default; events:false or a solo game gets none", () => {
-    const on = createAdventureGameState({ seed: "flow-on", rollFirstPlayer: false });
-    expect(on.decks[EVENTS_DECK_ID]?.drawPile).toHaveLength(20);
-    expect(on.adventure?.events).toBeTruthy();
-
-    const off = createAdventureGameState({ seed: "flow-off", rollFirstPlayer: false, events: false });
+  it("is OPT-IN: OFF by default; events:true adds the shuffled deck; a solo game never gets it", () => {
+    // Default (no events option) is OFF — the deck is an optional Fortress rule.
+    const off = createAdventureGameState({ seed: "flow-off", rollFirstPlayer: false });
     expect(off.decks[EVENTS_DECK_ID]).toBeUndefined();
     expect(off.adventure?.events).toBeUndefined();
 
+    // Explicitly enabling it gives a 2-player game the full shuffled deck.
+    const on = createAdventureGameState({ seed: "flow-on", rollFirstPlayer: false, events: true });
+    expect(on.decks[EVENTS_DECK_ID]?.drawPile).toHaveLength(20);
+    expect(on.adventure?.events).toBeTruthy();
+
+    // Multiplayer only: a solo table skips the deck even when asked for it.
     const solo = createAdventureGameState({
       seed: "flow-solo",
       rollFirstPlayer: false,
+      events: true,
       players: [{ id: "p1", name: "Solo", factionId: "castle", heroDefId: "catherine" }]
     });
     expect(solo.decks[EVENTS_DECK_ID]).toBeUndefined();

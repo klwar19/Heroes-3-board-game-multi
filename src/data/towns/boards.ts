@@ -254,9 +254,11 @@ export const townBoardSpecs: Record<string, TownBoardSpec> = {
   },
   conflux: {
     factionId: "conflux",
-    // towns-conflux-empty.webp is the fully-built PC townscape (older fetch
-    // script naming), not a board scan — it backs the designed board here.
-    panoramaImage: "/assets/towns-conflux-empty.webp",
+    // The published empty town background (thelazy.net "Conflux-in-background"):
+    // no buildings, so the designed board dims it and reveals the BUILT town
+    // (fullImage) one bar-slice at a time as each building goes up.
+    panoramaImage: "/assets/towns-conflux-background.webp",
+    fullImage: "/assets/towns-conflux-empty.webp",
     bars: [
       ["conflux.city_hall"],
       ["conflux.dwelling_bronze"],
@@ -270,7 +272,10 @@ export const townBoardSpecs: Record<string, TownBoardSpec> = {
   },
   cove: {
     factionId: "cove",
-    panoramaImage: "/assets/towns-cove-town.webp",
+    // Published empty town background (thelazy.net "Cove-in-background"); the
+    // built town (fullImage) is revealed a bar-slice at a time as you build.
+    panoramaImage: "/assets/towns-cove-background.webp",
+    fullImage: "/assets/towns-cove-town.webp",
     bars: [
       ["cove.city_hall"],
       ["cove.dwelling_bronze"],
@@ -284,7 +289,10 @@ export const townBoardSpecs: Record<string, TownBoardSpec> = {
   },
   bulwark: {
     factionId: "bulwark",
-    panoramaImage: "/assets/towns-bulwark-empty.webp",
+    // Published empty town background (thelazy.net "Bulwark-in-background"); the
+    // built town (fullImage) is revealed a bar-slice at a time as you build.
+    panoramaImage: "/assets/towns-bulwark-background.webp",
+    fullImage: "/assets/towns-bulwark-empty.webp",
     bars: [
       ["bulwark.city_hall"],
       ["bulwark.dwelling_bronze"],
@@ -298,7 +306,11 @@ export const townBoardSpecs: Record<string, TownBoardSpec> = {
   },
   factory: {
     factionId: "factory",
-    panoramaImage: "/assets/towns-factory-empty.webp",
+    // Published empty town background (thelazy.net "Factory-in-background"); the
+    // built town (fullImage) is revealed a bar-slice at a time as you build, and
+    // the real per-building tiles overlay on top where they exist.
+    panoramaImage: "/assets/towns-factory-background.webp",
+    fullImage: "/assets/towns-factory-empty.webp",
     bars: [
       ["factory.city_hall"],
       ["factory.dwelling_bronze"],
@@ -320,6 +332,16 @@ export const townBoardSpecs: Record<string, TownBoardSpec> = {
  */
 export function townBoardTileArt(buildingId: string): string {
   return `/assets/town-board/${buildingId.replace(".", "-")}.webp`;
+}
+
+/**
+ * The town's Adventure-Map capitol sprite (thelazy.net, `Adventure_Map_<Town>
+ * _capitol`), used at the top of the town window and in the adventure town/hero
+ * dock. Every faction — including Bulwark — has one; the TownIcon component
+ * still falls back to a plaque if a file is ever missing.
+ */
+export function townIconUrl(factionId: string): string {
+  return `/assets/town-icon-${factionId}.webp`;
 }
 
 /** The bar index (0-6) a building occupies on its faction board, or -1. */

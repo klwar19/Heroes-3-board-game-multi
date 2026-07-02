@@ -1763,6 +1763,100 @@ export function AstrologersProclamationOverlay({
   );
 }
 
+export type EventDrawnCue = {
+  /** Unique per draw so the overlay re-mounts for each new Event card. */
+  id: string;
+  cardId: string;
+  name: string;
+  text: string;
+  image: string;
+  expansion: string;
+  round: number;
+  /** Name of the player who drew this Event (resolution starts with them). */
+  drawerName: string;
+  /** True when THIS viewer is the drawer, so the copy addresses them directly. */
+  viewerIsDrawer: boolean;
+};
+
+/**
+ * The just-drawn Event card (Fortress expansion optional rule), popped into
+ * every player's face when it is drawn at the start of a Resource round, so a
+ * new Event is never missed. Mirrors the Astrologers proclamation: dismissed by
+ * click / Enter / Escape, once per draw per client. States WHO drew it and that
+ * it resolves clockwise from the drawer.
+ */
+export function EventDrawnOverlay({
+  cue,
+  onDone
+}: {
+  cue: EventDrawnCue;
+  onDone: () => void;
+}) {
+  const [imageFailed, setImageFailed] = useState(false);
+  const onDoneRef = useRef(onDone);
+
+  useEffect(() => {
+    onDoneRef.current = onDone;
+  }, [onDone]);
+
+  useEffect(() => {
+    playLibrarySound("adventure/new-week", 0.4);
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" || event.key === "Enter") {
+        onDoneRef.current();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  return (
+    <div
+      className="astrologersProclaimBackdrop eventDrawnBackdrop"
+      role="dialog"
+      aria-label={`Event drawn: ${cue.name}`}
+      onClick={onDone}
+    >
+      <div className="astrologersProclaimCard eventDrawnCard" onClick={(event) => event.stopPropagation()}>
+        <header className="astrologersProclaimHead">
+          <span aria-hidden="true">📜</span>
+          <strong>A new Event is drawn…</strong>
+          <span className="astrologersProclaimRound">round {cue.round}</span>
+        </header>
+        {cue.image && !imageFailed ? (
+          <img
+            alt={cue.name}
+            className="astrologersProclaimArt"
+            loading="eager"
+            referrerPolicy="no-referrer"
+            src={assetUrl(cue.image)}
+            onError={() => setImageFailed(true)}
+          />
+        ) : (
+          <div className="astrologersProclaimArt astrologersProclaimArtFallback">
+            <span className="astrologersProclaimFallbackIcon" aria-hidden="true">
+              📜
+            </span>
+            <strong>{cue.name}</strong>
+            <span className="astrologersProclaimFallbackSet">{cue.expansion}</span>
+          </div>
+        )}
+        <div className="astrologersProclaimBody">
+          <strong>{cue.name}</strong>
+          <span className="astrologersProclaimMeta">
+            {cue.expansion} · {cue.viewerIsDrawer ? "you drew it" : `drawn by ${cue.drawerName}`} · resolves
+            clockwise from {cue.viewerIsDrawer ? "you" : cue.drawerName}
+          </span>
+          <p>{cue.text}</p>
+          <button className="commandButton primary" onClick={onDone} type="button">
+            Understood
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /**
  * End-of-combat notice: combat no longer drops back to the map by itself.
  * The battlefield stays up behind this popup until a participant clicks

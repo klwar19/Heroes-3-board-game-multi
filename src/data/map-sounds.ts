@@ -31,6 +31,9 @@ export const MAP_CUE_SOUNDS: Record<string, string | null> = {
   income: null,
   build: "adventure/build-town",
   astrologers: "adventure/new-week",
+  // The big EventDrawnOverlay plays the draw chime; the feed line stays silent
+  // so a drawn Event does not double up its sound.
+  event: null,
   swap: null,
   options: null,
   victory: "adventure/ultimate-artifact"

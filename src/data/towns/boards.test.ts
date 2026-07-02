@@ -29,9 +29,10 @@ describe("town board manifest", () => {
         Boolean(spec.emptyImage || spec.panoramaImage),
         `${spec.factionId} board needs an empty scan or a panorama`
       ).toBe(true);
-      // A fully-built scan only makes sense on top of an empty scan.
+      // A fully-built image only makes sense over an empty base to reveal from:
+      // an empty scan (scan boards) OR the empty panorama (designed boards).
       if (spec.fullImage) {
-        expect(spec.emptyImage).toBeTruthy();
+        expect(Boolean(spec.emptyImage || spec.panoramaImage)).toBe(true);
       }
       const { window, tracks, tokens, definitions, aspect } = spec.geometry;
       expect(aspect[0]).toBeGreaterThan(aspect[1]);

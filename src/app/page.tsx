@@ -4,6 +4,7 @@ import { Crosshair, Eye, Lock, Map as MapIcon, StepForward, Swords } from "lucid
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   astrologersCardDefinitions,
+  eventCardDefinitions,
   effectiveHandLimit,
   effectHasExpertMode,
   ENGINE_SIGNATURE,
@@ -44,6 +45,7 @@ import {
   NeutralStepOverlay,
   NewDayOverlay,
   AstrologersProclamationOverlay,
+  EventDrawnOverlay,
   ReactionTray,
   RerollModal,
   SearchModal,
@@ -54,7 +56,8 @@ import {
   type MapDiceCue,
   type MapNoticeCue,
   type NewDayCue,
-  type AstrologersProclamationCue
+  type AstrologersProclamationCue,
+  type EventDrawnCue
 } from "@/components/table/overlays";
 import { CardZoomProvider, useCardZoom, ZoomButton } from "@/components/table/zoom";
 import { healFreezeDisplayDamage } from "@/components/table/heal-display";
@@ -66,6 +69,7 @@ import {
   AdventureHud,
   AdventureOwnDeck,
   ArmyPanel,
+  TownHeroDock,
   FarTileTray,
   HexMapBoard,
   LearningOfferModal,
@@ -660,6 +664,7 @@ export default function Home() {
     queue: []
   });
   const [astrologerCue, setAstrologerCue] = useState<AstrologersProclamationCue | null>(null);
+  const [eventCue, setEventCue] = useState<EventDrawnCue | null>(null);
   const [drawCue, setDrawCue] = useState<DrawCue | null>(null);
   const [moveCue, setMoveCue] = useState<HeroMoveCue | null>(null);
   const [flippedUnitIds, setFlippedUnitIds] = useState<Set<string>>(new Set());
@@ -695,6 +700,9 @@ export default function Home() {
   // Last round whose Astrologers proclamation this client already popped, so the
   // card resurfaces once per round (not on every action) and never on reconnect.
   const seenAstrologerRoundRef = useRef<number | null>(null);
+  // Event draws (Fortress deck) already popped as the big EventDrawnOverlay —
+  // one pop per draw, never replayed on reconnect.
+  const seenEventDrawIdsRef = useRef<Set<string>>(new Set());
   // Parallel-turn stop warnings already popped (never replayed on reconnect).
   const seenParallelStopIdsRef = useRef<Set<string>>(new Set());
   const seenDrawIdsRef = useRef<Set<string>>(new Set());
@@ -890,6 +898,10 @@ export default function Home() {
       seenTurnIdsRef.current = new Set(turnEvents.map((event) => event.id));
       // ...and without popping the current round's proclamation again on join.
       seenAstrologerRoundRef.current = nextState.round;
+      // ...and without re-popping Event draws from before this connection.
+      seenEventDrawIdsRef.current = new Set(
+        nextState.eventLog.filter((event) => event.type === "EVENT_CARD_DRAWN").map((event) => event.id)
+      );
       // Fresh room connection: drop any presentation state from the last room.
       setFxCues([]);
       setHiddenHandTail(0);
@@ -908,6 +920,7 @@ export default function Home() {
       setMapNotice({ current: null, queue: [] });
       setFirstRoll(null);
       setNewDay({ current: null, queue: [] });
+      setEventCue(null);
       deferredStartDrawRef.current = null;
       pendingDiceFeedRef.current = { items: [], sounds: [] };
     } else {
@@ -1213,6 +1226,36 @@ export default function Home() {
             round,
             ...(reshuffle ? { reshuffle } : {})
           });
+        }
+      }
+
+      // Event draw (Fortress deck): pop the freshly-drawn Event card into every
+      // player's face, once per draw, so a new Event is impossible to miss. The
+      // copy names the drawer and that resolution runs clockwise from them.
+      {
+        const freshEventDraws = nextState.eventLog.filter(
+          (event): event is Extract<GameEvent, { type: "EVENT_CARD_DRAWN" }> =>
+            event.type === "EVENT_CARD_DRAWN" && !seenEventDrawIdsRef.current.has(event.id)
+        );
+        for (const event of freshEventDraws) {
+          seenEventDrawIdsRef.current.add(event.id);
+        }
+        const latest = freshEventDraws[freshEventDraws.length - 1];
+        if (latest) {
+          const card = eventCardDefinitions[latest.cardId];
+          if (card) {
+            setEventCue({
+              id: latest.id,
+              cardId: latest.cardId,
+              name: card.name,
+              text: card.text,
+              image: card.image,
+              expansion: card.expansion,
+              round: latest.round,
+              drawerName: nextState.players[latest.drawerId]?.name ?? latest.drawerId,
+              viewerIsDrawer: latest.drawerId === viewerRef.current
+            });
+          }
         }
       }
 
@@ -3566,10 +3609,8 @@ export default function Home() {
         <main className="tableRoot adventureRoot">
           <div className="tableTopRow">
             <AdventureHud
-              heroSeatIds={isSeated ? [viewerPlayerId] : seatIds}
               legalActions={legalActions}
               onAction={submitAction}
-              onOpenTown={viewerTown ? () => setTownOpen(true) : undefined}
               state={state}
               viewerPlayerId={isSeated ? viewerPlayerId : seatIds[0]}
             />
@@ -3625,6 +3666,14 @@ export default function Home() {
               )}
             </div>
             <div className="mapColumn">
+              {/* The big, obviously-clickable town + hero boards fill the strip
+                  just above the map. */}
+              <TownHeroDock
+                heroSeatIds={isSeated ? [viewerPlayerId] : seatIds}
+                onOpenTown={isSeated && viewerTown ? () => setTownOpen(true) : undefined}
+                state={state}
+                viewerPlayerId={isSeated ? viewerPlayerId : seatIds[0]}
+              />
               <HexMapBoard
                 legalActions={legalActions}
                 moveCue={moveCue}
@@ -4162,6 +4211,9 @@ export default function Home() {
               onDone={() => setAstrologerCue(null)}
             />
           ) : null}
+          {!firstRoll && !newDay.current && !astrologerCue && eventCue ? (
+            <EventDrawnOverlay cue={eventCue} key={eventCue.id} onDone={() => setEventCue(null)} />
+          ) : null}
           <FxStage cues={fxCues} onDone={handleFxDone} />
         </main>
       </CardZoomProvider>
@@ -4443,6 +4495,9 @@ export default function Home() {
           key={astrologerCue.id}
           onDone={() => setAstrologerCue(null)}
         />
+      ) : null}
+      {!firstRoll && !dice.current && !newDay.current && !astrologerCue && eventCue ? (
+        <EventDrawnOverlay cue={eventCue} key={eventCue.id} onDone={() => setEventCue(null)} />
       ) : null}
       <FxStage cues={fxCues} onDone={handleFxDone} />
     </main>
