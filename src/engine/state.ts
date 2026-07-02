@@ -3827,6 +3827,36 @@ export type GameEvent =
     }
   | {
       id: string;
+      type: "EVENT_CARD_DRAWN";
+      cardId: string;
+      name: string;
+      text: string;
+      round: number;
+      drawerId: PlayerId;
+    }
+  | {
+      /** A Shady Auction: a bid was committed. The amount stays hidden. */
+      id: string;
+      type: "EVENT_AUCTION_BID_PLACED";
+      playerId: PlayerId;
+    }
+  | {
+      /** A Shady Auction lot resolved: `winnerId` null on a tie / no bets. */
+      id: string;
+      type: "EVENT_AUCTION_RESOLVED";
+      cardId: CardId;
+      winnerId: PlayerId | null;
+      amount: number;
+    }
+  | {
+      /** Free-form Event-resolution log line (pool moves, matches, passes). */
+      id: string;
+      type: "EVENT_NOTE";
+      playerId?: PlayerId;
+      message: string;
+    }
+  | {
+      id: string;
       type: "ASTROLOGERS_HAND_RESHUFFLED";
       playerId: PlayerId;
       cardId: string;
@@ -5825,6 +5855,12 @@ export type VisitStep =
        */
       type: "TRADING_POST";
       traded?: boolean;
+      /**
+       * Marketplace (Event): "Trade resources using Trading Post rules" — the
+       * resource exchange only; the sell-a-card and war-machine options are
+       * not part of that Event and stay hidden.
+       */
+      tradesOnly?: boolean;
     }
   | {
       /** War Machine Factory: buy one war machine at the lower price. */
@@ -6227,6 +6263,314 @@ export type VisitStep =
       type: "DRAW_SCROLL_SPELL";
       deckId: DeckId;
       scrollId: string;
+    }
+  // --- Event cards (Fortress expansion) — see src/data/cards/events.ts ------
+  | {
+      /**
+       * Per-player entry point of a choice-type Event card: builds that card's
+       * printed menu from the player's LIVE state (hand, resources, army,
+       * heroes) the moment it is this player's turn to resolve the Event.
+       */
+      type: "EVENT_PLAYER_CHOICE";
+      eventCardId: string;
+    }
+  | {
+      /**
+       * Event morale change. Unlike GAIN_MORALE this is NOT a Field's token,
+       * so the Crest of Valor field-shield never intercepts it.
+       */
+      type: "EVENT_CHANGE_MORALE";
+      amount: number;
+    }
+  | {
+      /** Loses the listed resources, each track clamped at 0 (Withered Hermit). */
+      type: "LOSE_RESOURCES";
+      gold?: number;
+      buildingMaterials?: number;
+      valuables?: number;
+      reason: string;
+    }
+  | {
+      /** Spends `amount` movement from the named hero (floored at 0). */
+      type: "SPEND_HERO_MOVEMENT";
+      heroId: HeroId;
+      amount: number;
+    }
+  | {
+      /**
+       * Crypt: roll `count` Treasure dice — ANY "experience" face voids the
+       * whole roll (gain nothing); otherwise choose one face and resolve it.
+       */
+      type: "EVENT_TREASURE_GAMBLE";
+      count: number;
+    }
+  | {
+      /**
+       * Cursed Swamp: discard the army unit with the cheapest printed cost of
+       * its current side (a recruited Neutral card recycles to its tier's
+       * discard pile, like a combat casualty). Deterministic ties: first in
+       * the army list.
+       */
+      type: "EVENT_DISCARD_CHEAPEST_UNIT";
+    }
+  | {
+      /**
+       * Self-rebuilding "Remove any number of matching hand cards" menu
+       * (Cursed Swamp / Market of Time / School / Garden of Revelation).
+       * `single`: one Search of the FIRST deck once `minRemoved` is met
+       * (Cursed Swamp); otherwise floor(removed / per) Searches, each with a
+       * deck choice when `searchDecks` lists more than one family.
+       */
+      type: "EVENT_REMOVE_FOR_SEARCH";
+      filter: "spell" | "spell-or-ability";
+      removed: number;
+      per: number;
+      searchCount: number;
+      searchDecks: ("artifacts" | "spells" | "abilities")[];
+      single?: boolean;
+      minRemoved?: number;
+      /** Cursed Swamp's "Remove one or more": Done only after this many removals. */
+      mustRemove?: number;
+      /** Done was picked: pay out the earned Searches (front of the reward queue). */
+      finished?: boolean;
+      /** Garden of Revelation: after the Searches, discard the hand and redraw to the limit. */
+      thenDiscardAllRedraw?: boolean;
+    }
+  | {
+      /**
+       * Market of Time / School: self-rebuilding "discard as many cards as you
+       * want" menu; the Done exit draws back up to hand limit + `bonus`.
+       */
+      type: "EVENT_DISCARD_ANY_THEN_DRAW";
+      bonus: number;
+    }
+  | {
+      /** Leaf of the above: one hand card to the player's own discard pile. */
+      type: "EVENT_DISCARD_HAND_CARD";
+      cardId: CardId;
+    }
+  | {
+      /** Leaf: draw the player's own deck up to hand limit + `bonus`. */
+      type: "EVENT_DRAW_TO_LIMIT";
+      bonus: number;
+    }
+  | {
+      /**
+       * Event-earned Search: lands at the FRONT of the reward queue so it
+       * resolves within this player's slot of the clockwise Event resolution
+       * (a plain SEARCH_SHARED_DECK step would queue behind the other
+       * players' Event rewards).
+       */
+      type: "EVENT_SEARCH_FRONT";
+      deckId: DeckId;
+      count: number;
+    }
+  | {
+      /** Garden of Revelation: draw `count` cards from the own deck or the top of the own discard pile. */
+      type: "EVENT_DRAW_OWN";
+      from: "deck" | "discard";
+      count: number;
+    }
+  | {
+      /** Garden of Revelation ending: discard the whole hand, draw up to the hand limit. */
+      type: "EVENT_DISCARD_ALL_DRAW_LIMIT";
+    }
+  | {
+      /**
+       * Withered Hermit: roll 3 Resource dice after naming `resource`. Named
+       * resource on no die → choose one die and gain it; otherwise choose one
+       * die and LOSE its resources (clamped at 0).
+       */
+      type: "EVENT_HERMIT_GAMBLE";
+      resource: ResourceKind;
+    }
+  | {
+      /**
+       * Withered Hermit: roll 1 Resource die, then optionally pay the shown
+       * resources to Search (2) the Artifact deck.
+       */
+      type: "EVENT_HERMIT_PAY_SEARCH";
+    }
+  | {
+      /**
+       * Messenger with Supplies: draw the 2 top Artifact cards this player may
+       * take, then offer buy-one (tier price; the other returns to its deck)
+       * or discard-both to roll 2 Resource dice and resolve one.
+       */
+      type: "EVENT_MESSENGER_DRAW";
+    }
+  | {
+      /**
+       * Buy/keep a revealed shared-deck card: pays `cost` (when set), then the
+       * card goes to the hand — or, with `toDeck` (Mage Laboratory), is
+       * shuffled into the player's deck together with their discard pile.
+       */
+      type: "EVENT_TAKE_CARD";
+      cardId: CardId;
+      deckId: DeckId;
+      cost?: ResourceCost;
+      toDeck?: boolean;
+    }
+  | {
+      /** Returns revealed cards to their shared decks (shuffle in / discard pile / deck top / deck bottom). */
+      type: "EVENT_RETURN_CARDS";
+      cards: { cardId: CardId; deckId: DeckId }[];
+      mode: "shuffle" | "discard" | "deck-top" | "deck-bottom";
+    }
+  | {
+      /**
+       * Library of Enlightenment / Mage Laboratory / Shrine of the Magic
+       * Thought: self-rebuilding buy menu over the live Event pool. Prices and
+       * the die alternative are read from the active Event card's effect.
+       */
+      type: "EVENT_SPELL_MARKET";
+    }
+  | {
+      /** Leaf: pay `cost` and take the pool card (to hand, or `toDeck` shuffled into the deck). */
+      type: "EVENT_TAKE_POOL_CARD";
+      cardId: CardId;
+      cost?: ResourceCost;
+      toDeck?: boolean;
+    }
+  | {
+      /** Ends a pool Event: leftover pool cards return per events.poolCleanup. */
+      type: "EVENT_POOL_CLEANUP";
+    }
+  | {
+      /** Magical Forest: menu — contribute a hand card or a drawn deck card face-down. */
+      type: "EVENT_FOREST_CONTRIBUTE";
+    }
+  | {
+      /** Leaf: the named hand card goes face-down into the Event pool. */
+      type: "EVENT_POOL_ADD_FROM_HAND";
+      cardId: CardId;
+    }
+  | {
+      /** Leaf: draw-and-view the top card of the chosen deck family face-down into the pool. */
+      type: "EVENT_POOL_ADD_DRAWN";
+      deck: "spells" | "artifacts" | "abilities";
+    }
+  | {
+      /** Magical Forest phase 2: menu — take one random pool card or gain `gold`. */
+      type: "EVENT_FOREST_TAKE";
+      gold: number;
+    }
+  | {
+      /** Leaf: seeded-random pick of one pool card into the hand. */
+      type: "EVENT_POOL_TAKE_RANDOM";
+    }
+  | {
+      /**
+       * Mischievous Leprechaun: roll 1 Treasure + 1 Resource die and offer to
+       * take (and resolve) ONE pool die matching either roll.
+       */
+      type: "EVENT_LEPRECHAUN_ROLL";
+    }
+  | {
+      /** Leaf: remove the pool die at `index` and resolve its face. */
+      type: "EVENT_TAKE_POOL_DIE";
+      index: number;
+    }
+  | {
+      /** Den of Thieves (drawer only): menu — pick the Neutral Unit deck to raid. */
+      type: "EVENT_DEN_OF_THIEVES";
+    }
+  | {
+      /** Den of Thieves: take the top 2 of the tier deck, then buy/replace choices. */
+      type: "EVENT_DEN_DRAW";
+      tier: "bronze" | "silver" | "gold" | "azure";
+    }
+  | {
+      /** Leaf: pay the printed Neutral cost and add the unit on its Neutral side. */
+      type: "EVENT_NEUTRAL_BUY";
+      unitDefId: string;
+    }
+  | {
+      /** Den of Thieves: menu — put the remaining pool card(s) on the top or bottom of the tier deck. */
+      type: "EVENT_DEN_PLACE";
+      tier: "bronze" | "silver" | "gold" | "azure";
+    }
+  | {
+      /** Leaf: the listed cards leave the pool onto the top or bottom of the tier deck. */
+      type: "EVENT_RETURN_UNITS";
+      unitDefIds: string[];
+      tier: "bronze" | "silver" | "gold" | "azure";
+      position: "top" | "bottom";
+    }
+  | {
+      /**
+       * Prison: draws up to 2 candidates (the passed-on pool card plus fresh
+       * draws from chosen non-Azure decks), then offers buy-one or
+       * discard-one-for-gold; the leftover stays in the pool for the next
+       * player (the trailing pool cleanup discards the final leftover).
+       */
+      type: "EVENT_PRISON_OFFER";
+      discardGold: number;
+    }
+  | {
+      /** Leaf: the named Neutral card leaves the pool to its tier's discard pile for `gold`. */
+      type: "EVENT_NEUTRAL_DISCARD_GOLD";
+      unitDefId: string;
+      gold: number;
+    }
+  | {
+      /** Mercenary Camp phase 1: menu — draw up to 2 cards of ONE Neutral deck into the pool. */
+      type: "EVENT_MERC_DRAW";
+    }
+  | {
+      /** Leaf: draw `count` cards of the tier deck face-up into the Event pool. */
+      type: "EVENT_MERC_TAKE";
+      tier: "bronze" | "silver" | "gold" | "azure";
+      count: number;
+    }
+  | {
+      /** Mercenary Camp phase 2: menu — Recruit one pool unit at its printed cost (EVENT_NEUTRAL_BUY leaf). */
+      type: "EVENT_MERC_RECRUIT";
+    }
+  | {
+      /**
+       * Artifact Merchant: self-rebuilding shop over the live pool (tier
+       * prices) plus the face-up Artifact discard top(s); buying a pool card
+       * loops back so any number can be bought (the printed either/or then
+       * hides the discard option); a Pass exit hands the pool on.
+       */
+      type: "EVENT_ARTIFACT_SHOP";
+      boughtFromPool?: boolean;
+    }
+  | {
+      /** A Shady Auction: reveal the next lot from the Artifact deck. */
+      type: "EVENT_AUCTION_OPEN";
+    }
+  | {
+      /** A Shady Auction: menu of gold bids (0..player's gold) for the open lot. */
+      type: "EVENT_AUCTION_BID";
+    }
+  | {
+      /** Leaf: record this player's hidden bid (masked in other players' views). */
+      type: "EVENT_AUCTION_SET_BID";
+      amount: number;
+    }
+  | {
+      /** A Shady Auction: reveal bids — single highest pays and takes the lot; tie/no bets discard it. */
+      type: "EVENT_AUCTION_RESOLVE";
+    }
+  | {
+      /** Marketplace: menu — propose one 1-for-1 resource exchange. */
+      type: "EVENT_MARKET_DEAL";
+    }
+  | {
+      /** Leaf: open the proposed deal and ask the other players in clockwise order. */
+      type: "EVENT_MARKET_DEAL_OPEN";
+      give: ResourceKind;
+      get: ResourceKind;
+    }
+  | {
+      /** Menu for a non-proposer: accept the open 1-for-1 deal (first accept wins) or decline. */
+      type: "EVENT_MARKET_DEAL_ANSWER";
+    }
+  | {
+      /** Leaf: close the open deal — 1 `give` moves proposer→acceptor, 1 `get` moves back. */
+      type: "EVENT_MARKET_DEAL_ACCEPT";
     };
 
 export type AstrologersState = {
@@ -6238,6 +6582,44 @@ export type AstrologersState = {
   crazyWizardUsedBy: PlayerId[];
   /** Players who already used this turn's free die reroll (Swift Weasel). */
   swiftWeaselUsedBy: PlayerId[];
+};
+
+/** A shared-deck card (or Neutral unit card) sitting in the open Event pool. */
+export type EventPoolEntry = {
+  /** Shared-deck card id, or a Neutral unitDefId for unit pools. */
+  cardId: CardId;
+  /** Deck the card returns to ("" for a card contributed from a hand). */
+  deckId: DeckId;
+  /** Face-down entries (Magical Forest) are masked in other players' views. */
+  faceUp: boolean;
+};
+
+/** One rolled die waiting in the Mischievous Leprechaun pool. */
+export type EventDiePoolEntry =
+  | { kind: "treasure"; face: "experience" | "artifact-search" | "resource-die" | "double-resource-die" }
+  | { kind: "resource"; resource: ResourceKind; amount: number };
+
+/**
+ * Event deck state (Fortress expansion, optional rule, multiplayer only).
+ * Distinct from the Astrologers Proclaim system: an Event is drawn at the
+ * start of every Resource Round (after income), the drawer rotates clockwise
+ * per draw, and effects resolve in clockwise order starting with the drawer.
+ */
+export type EventsState = {
+  /** The most recently drawn Event card, face up until the next draw. */
+  activeCardId: string | null;
+  /** Seat offset into the human turn order of who draws the NEXT Event. */
+  nextDrawerIndex: number;
+  /** Shared card pool of the Event being resolved (markets / pass-arounds). */
+  pool: EventPoolEntry[];
+  /** Where leftover pool cards go when the Event finishes. */
+  poolCleanup: "shuffle-into-deck" | "discard-pile";
+  /** Mischievous Leprechaun: rolled dice still up for grabs. */
+  dicePool: EventDiePoolEntry[];
+  /** A Shady Auction: the open lot + hidden bids (masked in others' views). */
+  auction: { lotCardId: CardId; lotDeckId: DeckId; bids: Record<PlayerId, number> } | null;
+  /** Marketplace: the open 1-for-1 resource deal; the first accept closes it. */
+  deal: { proposerId: PlayerId; give: ResourceKind; get: ResourceKind; done: boolean } | null;
 };
 
 export type PendingTileChoice = {
@@ -6469,6 +6851,8 @@ export type AdventureState = {
   pendingTileChoice?: PendingTileChoice | null;
   /** Astrologers Proclaim deck state (even rounds). */
   astrologers?: AstrologersState;
+  /** Event deck state (Resource rounds; optional rule, multiplayer only). */
+  events?: EventsState;
 };
 
 /**
@@ -6496,6 +6880,13 @@ export type GameSetupOptions = {
    * token there. Off disables the offer and the token piles entirely.
    */
   creatureBanks?: boolean;
+  /**
+   * Event deck optional rule (Fortress expansion, default ON). Multiplayer
+   * only: with 2+ players an Event card is drawn at the start of every
+   * Resource Round after income, the drawer rotating clockwise per draw. Off
+   * (or a solo game) skips the deck entirely.
+   */
+  events?: boolean;
   /**
    * Spell Book house rule (default ON). Gives every player a personal Spell Book
    * zone they may stash hand Spells into to free slots, then cast or boost from.

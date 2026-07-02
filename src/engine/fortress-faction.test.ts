@@ -321,7 +321,7 @@ describe("Dragon Flies dispel", () => {
 
 describe("Fortress City Hall trading option", () => {
   it("opens a Trading Post when the exchange-resources option is chosen", () => {
-    const state = createAdventureGameState({ seed: "cityhall-seed", rollFirstPlayer: false });
+    const state = createAdventureGameState({ seed: "cityhall-seed", rollFirstPlayer: false, events: false });
     state.towns.town_p1.factionId = "fortress";
     state.towns.town_p1.buildings = ["fortress.city_hall"];
     state.adventure!.rewardQueue = [];

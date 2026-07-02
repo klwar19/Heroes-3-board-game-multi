@@ -1,4 +1,5 @@
 import { astrologersDeckCardIds } from "@/data/cards/astrologers";
+import { eventsDeckCardIds } from "@/data/cards/events";
 import { abilityDeckBinh, abilityDeckLegacy } from "@/data/cards/abilities-extra";
 import {
   artifactDeckBinhMajor,
@@ -31,6 +32,7 @@ import {
 import {
   addArmyUnit,
   ASTROLOGERS_DECK_ID,
+  EVENTS_DECK_ID,
   getUnitSide,
   instantiateTile,
   NEUTRAL_DECK_IDS,
@@ -125,6 +127,8 @@ export type AdventureSetupOptions = {
   pvpTroopLoss?: PvpTroopLoss;
   /** Naval Battles Creature Banks (default on): offer bank placement on Far/Near tile discovery. */
   creatureBanks?: boolean;
+  /** Event deck (Fortress expansion, default on; multiplayer only): draw an Event each Resource Round. */
+  events?: boolean;
   /**
    * Pick-on-reveal Subterranean Gate placement (default on): when a revealed tile
    * could host its Gate half in more than one spot, ask the revealing player which
@@ -278,6 +282,15 @@ function makeAstrologersDeck(seed: string): DeckState {
   return {
     id: ASTROLOGERS_DECK_ID,
     drawPile: shuffleCards(astrologersDeckCardIds, `${seed}#astrologers`),
+    discardPile: []
+  };
+}
+
+/** Event deck (Fortress expansion, optional rule): "Shuffle the Event Deck during setup." */
+function makeEventsDeck(seed: string): DeckState {
+  return {
+    id: EVENTS_DECK_ID,
+    drawPile: shuffleCards(eventsDeckCardIds, `${seed}#events`),
     discardPile: []
   };
 }
@@ -596,6 +609,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     ...(options.startingUnits !== undefined ? { startingUnits: options.startingUnits } : {}),
     ...(options.startingBuildings ? { startingBuildings: options.startingBuildings } : {}),
     ...(options.creatureBanks !== undefined ? { creatureBanks: options.creatureBanks } : {}),
+    ...(options.events !== undefined ? { events: options.events } : {}),
     ...(options.spellBook !== undefined ? { spellBook: options.spellBook } : {}),
     ...(options.farTileOpening !== undefined ? { farTileOpening: options.farTileOpening } : {}),
     ...(options.farTilesPerPlayer !== undefined ? { farTilesPerPlayer: options.farTilesPerPlayer } : {}),
@@ -638,6 +652,9 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     0,
     Math.min(scenario.maxPlayers, scenario.layout.starts.length)
   );
+  // Event deck (Fortress expansion) default ON, but "Event cards may be used
+  // in multiplayer games only" — a solo table never gets the deck.
+  const eventsOn = (setupOptions.events ?? true) && playerConfigs.length >= 2;
 
   const adventure: AdventureState = {
     difficulty,
@@ -684,7 +701,21 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
       nextResourceModifiers: { gold: 0, valuables: 0 },
       crazyWizardUsedBy: [],
       swiftWeaselUsedBy: []
-    }
+    },
+    // Event deck state (only meaningful while the "events" deck exists).
+    ...(eventsOn
+      ? {
+          events: {
+            activeCardId: null,
+            nextDrawerIndex: 0,
+            pool: [],
+            poolCleanup: "shuffle-into-deck" as const,
+            dicePool: [],
+            auction: null,
+            deal: null
+          }
+        }
+      : {})
   };
 
   // Tile pools (face-down draws are secret until revealed). Pools only mix
@@ -724,7 +755,10 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     decks: {
       ...makeSharedDecks(seed, ruleset),
       ...makeNeutralDecks(seed, wog),
-      [ASTROLOGERS_DECK_ID]: makeAstrologersDeck(seed)
+      [ASTROLOGERS_DECK_ID]: makeAstrologersDeck(seed),
+      // The Event deck exists only when the optional rule is on AND the table
+      // is multiplayer — its absence is the engine's off switch.
+      ...(eventsOn ? { [EVENTS_DECK_ID]: makeEventsDeck(seed) } : {})
     },
     stack: [],
     reactionWindow: null,
@@ -1269,6 +1303,11 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
   if (next.spellBook !== undefined) {
     lobby.options.spellBook = Boolean(next.spellBook);
     changes.push(`Spell Book ${next.spellBook ? "on" : "off"}`);
+  }
+
+  if (next.events !== undefined) {
+    lobby.options.events = Boolean(next.events);
+    changes.push(`Event deck ${next.events ? "on" : "off"}`);
   }
 
   if (next.farTileOpening !== undefined) {
@@ -2062,6 +2101,7 @@ export function startAdventureFromLobby(state: GameState, action: Extract<GameAc
     wog: lobby.options.wog,
     victoryMode: lobby.options.victoryMode,
     pvpTroopLoss: lobby.options.pvpTroopLoss,
+    events: lobby.options.events,
     spellBook: lobby.options.spellBook,
     farTileOpening: lobby.options.farTileOpening,
     farTilesPerPlayer: lobby.options.farTilesPerPlayer,

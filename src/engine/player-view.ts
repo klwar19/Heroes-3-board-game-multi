@@ -210,7 +210,27 @@ export function getPlayerView(state: GameState, viewerPlayerId: PlayerId): Playe
         // could come up; only its size (the reroll/draw headroom) shows.
         farTilePool: base.adventure.farTilePool?.map(() => "hidden"),
         // The Pandora's Box draw pile stays face down; only its size shows.
-        pandoraDeck: base.adventure.pandoraDeck?.map(() => "hidden")
+        pandoraDeck: base.adventure.pandoraDeck?.map(() => "hidden"),
+        // Event resolution secrets: a face-down pool card (Magical Forest)
+        // shows to nobody — after the shuffle even its contributor cannot tell
+        // which entry is theirs — and an auction bid only to its bidder.
+        events: base.adventure.events
+          ? {
+              ...base.adventure.events,
+              pool: base.adventure.events.pool.map((entry) =>
+                entry.faceUp ? entry : { ...entry, cardId: "hidden", deckId: "" }
+              ),
+              auction: base.adventure.events.auction
+                ? {
+                    ...base.adventure.events.auction,
+                    bids:
+                      viewerPlayerId in base.adventure.events.auction.bids
+                        ? { [viewerPlayerId]: base.adventure.events.auction.bids[viewerPlayerId] }
+                        : {}
+                  }
+                : null
+            }
+          : undefined
       }
     : null;
 

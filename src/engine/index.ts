@@ -130,12 +130,17 @@ export { getTileBorderSegments, hasInternalBorder } from "@/data/map/borders";
 export type { TileBorderSegment } from "@/data/map/borders";
 export { astrologersCardDefinitions, astrologersDeckCardIds } from "@/data/cards/astrologers";
 export type { AstrologersCardDefinition, AstrologersEffect } from "@/data/cards/astrologers";
+export { eventCardDefinitions, eventsDeckCardIds, EVENTS_NOT_IMPLEMENTED } from "@/data/cards/events";
+export type { EventCardDefinition, EventCardEffect } from "@/data/cards/events";
 export { DEFAULT_SCENARIO_ID, scenarioDefinitions } from "@/data/map/scenarios";
 export type { ScenarioDefinition } from "@/data/map/scenarios";
 export {
   ABILITY_SEARCH_LEVELS,
   ASTROLOGERS_DECK_ID,
+  EVENTS_DECK_ID,
+  EVENT_ARTIFACT_PRICES,
   controlsTownOrSettlement,
+  drawEventCard,
   ELIMINATION_GRACE_TURNS,
   eliminatePlayer,
   EXPERT_USES_BY_LEVEL,
@@ -162,6 +167,8 @@ export {
   gainExperience,
   gateFieldsLinked,
   getActiveAstrologersCard,
+  getActiveEventCard,
+  getEventsState,
   getAdjacentSpaceIds,
   healLegacyPlayerFields,
   getHeroMovementCapabilities,

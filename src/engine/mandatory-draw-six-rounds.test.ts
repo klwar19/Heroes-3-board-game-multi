@@ -22,7 +22,7 @@ import {
 // ---------------------------------------------------------------------------
 
 function makeGame(): GameState {
-  const state = createAdventureGameState({ seed: "mandatory-draw-6r", difficulty: "normal", rollFirstPlayer: false });
+  const state = createAdventureGameState({ seed: "mandatory-draw-6r", difficulty: "normal", rollFirstPlayer: false, events: false });
   // Benign Astrologers Proclaims for the even rounds (2, 4, 6) so the round-start
   // phase never leaves a pending choice dangling between turns.
   state.decks.astrologers!.drawPile.push(

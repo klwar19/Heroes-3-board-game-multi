@@ -36,7 +36,7 @@ import {
 function makeGame(): GameState {
   // The lobby defaults to "impossible"; these fixtures pin "normal" so the
   // guard armies stay small and deterministic.
-  return createAdventureGameState({ seed: "test-seed", difficulty: "normal", rollFirstPlayer: false });
+  return createAdventureGameState({ seed: "test-seed", difficulty: "normal", rollFirstPlayer: false, events: false });
 }
 
 function apply(state: GameState, action: GameAction): GameState {

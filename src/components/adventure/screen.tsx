@@ -38,6 +38,7 @@ import {
   DRAFT_FORMAT_LABELS,
   getDraftPhase,
   getActiveAstrologersCard,
+  getActiveEventCard,
   getReachableHeroPaths,
   getRuleset,
   getTileBorderSegments,
@@ -60,6 +61,7 @@ import {
   unitAbilities,
   validateCustomMapPlan,
   astrologersCardDefinitions,
+  eventCardDefinitions,
   type CustomStartingUnit,
   type DraftFormat,
   type FactionId,
@@ -1640,6 +1642,7 @@ export function AdventureHud({
   const roundKind =
     state.round <= 1 ? "first round" : state.round % 2 === 1 ? "resource round" : "astrologers round";
   const astrologersCard = getActiveAstrologersCard(state);
+  const eventCard = getActiveEventCard(state);
 
   const endTurn = legalActions.find((legal) => legal.action.type === "END_TURN");
   const giveUp = legalActions.find((legal) => legal.action.type === "GIVE_UP");
@@ -1700,6 +1703,24 @@ export function AdventureHud({
         >
           <strong>🔭 {astrologersCard.name}</strong>
           <small>astrologers proclaim</small>
+        </button>
+      ) : null}
+      {eventCard ? (
+        <button
+          className="advHudCell astrologers"
+          onClick={() =>
+            zoomContent({
+              title: `Event: ${eventCard.name}`,
+              image: eventCard.image,
+              lines: [eventCard.text],
+              subtitle: "Drawn this Resource round — resolved in clockwise order from the drawer"
+            })
+          }
+          title={eventCard.text}
+          type="button"
+        >
+          <strong>📜 {eventCard.name}</strong>
+          <small>event</small>
         </button>
       ) : null}
       {player && player.id !== "neutrals" ? (
@@ -3198,7 +3219,7 @@ export function AdventureOwnDeck({
 }: {
   view: PlayerVisibleState;
   viewerPlayerId: PlayerId;
-  onShowPile: (title: string, cardIds: string[], kind: "cards" | "units" | "astrologers") => void;
+  onShowPile: (title: string, cardIds: string[], kind: "cards" | "units" | "astrologers" | "events") => void;
 }) {
   const player = view.players[viewerPlayerId];
   if (!player) {
@@ -3239,7 +3260,7 @@ export function AdventureDecksPanel({
 }: {
   view: PlayerVisibleState;
   viewerPlayerId: PlayerId;
-  onShowPile: (title: string, cardIds: string[], kind: "cards" | "units" | "astrologers") => void;
+  onShowPile: (title: string, cardIds: string[], kind: "cards" | "units" | "astrologers" | "events") => void;
   onAction?: (action: GameAction) => void;
   /** Deck ids the active player's Rogues may scout this turn. */
   scoutableDeckIds?: Set<string>;
@@ -3263,6 +3284,7 @@ export function AdventureDecksPanel({
     .map((deckId) => ({ id: deckId, name: deckDisplayName(view, deckId) }));
 
   const astrologers = view.decks.astrologers;
+  const eventsDeck = view.decks.events;
 
   return (
     <section className="advDecks" aria-label="Shared decks and discard piles">
@@ -3323,6 +3345,22 @@ export function AdventureDecksPanel({
           </button>
         </div>
       ) : null}
+      {eventsDeck ? (
+        <div className="advDeckRow">
+          <div className="advDeck" title="Event deck (Fortress expansion, drawn every Resource round)">
+            <img alt="Event deck back" className="cardBack small" src={assetUrl(getDeckBack("events").image)} />
+            <small>Events {eventsDeck.drawCount}</small>
+          </div>
+          <button
+            className="advDiscard"
+            onClick={() => onShowPile("Events — past rounds", eventsDeck.discardPile, "events")}
+            type="button"
+          >
+            <span>{eventsDeck.discardPile.length}</span>
+            <small>Past</small>
+          </button>
+        </div>
+      ) : null}
       <div className="advDeckRow neutral">
         {(["bronze", "silver", "gold", "azure"] as const).map((tier) => {
           const deckId = NEUTRAL_DECK_IDS[tier];
@@ -3369,7 +3407,7 @@ export function PileModal({
 }: {
   title: string;
   cardIds: string[];
-  kind: "cards" | "units" | "astrologers";
+  kind: "cards" | "units" | "astrologers" | "events";
   onClose: () => void;
 }) {
   return (
@@ -3388,7 +3426,7 @@ export function PileModal({
   );
 }
 
-function PileModalCards({ cardIds, kind }: { cardIds: string[]; kind: "cards" | "units" | "astrologers" }) {
+function PileModalCards({ cardIds, kind }: { cardIds: string[]; kind: "cards" | "units" | "astrologers" | "events" }) {
   const { zoomCard, zoomContent } = useCardZoom();
 
   return (
@@ -3397,7 +3435,8 @@ function PileModalCards({ cardIds, kind }: { cardIds: string[]; kind: "cards" | 
         const card = kind === "cards" ? cardLibrary[cardId] : undefined;
         const unit = kind === "units" ? coreUnitDefinitions[cardId] : undefined;
         const astro = kind === "astrologers" ? astrologersCardDefinitions[cardId] : undefined;
-        const image = card?.assets?.cardImage ?? unit?.neutral?.cardImage ?? astro?.image;
+        const eventCard = kind === "events" ? eventCardDefinitions[cardId] : undefined;
+        const image = card?.assets?.cardImage ?? unit?.neutral?.cardImage ?? astro?.image ?? eventCard?.image;
         // Empowered Statistics are intrinsic, so a pile browse can flag them
         // from the card alone; Empowered abilities are per-owner and shown where
         // the owner is known (hand fan, trays, discard tops).
@@ -3406,11 +3445,11 @@ function PileModalCards({ cardIds, kind }: { cardIds: string[]; kind: "cards" | 
           card
             ? zoomCard(cardId)
             : zoomContent({
-                title: astro?.name ?? unit?.name ?? cardId,
+                title: eventCard?.name ?? astro?.name ?? unit?.name ?? cardId,
                 image,
-                subtitle: astro ? "Astrologers Proclaim" : unit ? `${unit.tier} ${unit.type}` : undefined,
+                subtitle: eventCard ? "Event" : astro ? "Astrologers Proclaim" : unit ? `${unit.tier} ${unit.type}` : undefined,
                 lines: [
-                  astro?.text ?? unit?.neutral?.abilityText ?? "",
+                  eventCard?.text ?? astro?.text ?? unit?.neutral?.abilityText ?? "",
                   ...implementedAbilityLines(unit?.neutral?.abilities)
                 ].filter(Boolean)
               });
@@ -4215,6 +4254,36 @@ function GameOptionsPanel({
               ))}
             </div>
             <small className="optionHint">{PVP_TROOP_LOSS_DESCRIPTIONS[pvpTroopLoss]}</small>
+          </div>
+        );
+      })()}
+
+      {(() => {
+        const eventsOn = options.events ?? true;
+        return (
+          <div className="optionRow">
+            <small title="Fortress expansion optional rule: an Event card is drawn at the start of every Resource round (multiplayer only)">
+              Event deck
+            </small>
+            <div className="optionButtons">
+              {([true, false] as const).map((on) => (
+                <button
+                  aria-pressed={eventsOn === on}
+                  className={eventsOn === on ? "selected" : ""}
+                  key={String(on)}
+                  onClick={() => send({ events: on })}
+                  title={on ? "Event deck on (Fortress expansion)" : "Event deck off"}
+                  type="button"
+                >
+                  {on ? "On" : "Off"}
+                </button>
+              ))}
+            </div>
+            <small className="optionHint">
+              {eventsOn
+                ? "Each Resource round (after income) the next Event card is drawn and resolved clockwise from its drawer; the drawing player rotates. Multiplayer only — a solo game skips the deck."
+                : "No Event deck — Resource rounds pay income only."}
+            </small>
           </div>
         );
       })()}

@@ -33,6 +33,7 @@ describe("Necropolis City Hall — free bronze reinforce", () => {
     const state = createAdventureGameState({
       seed,
       rollFirstPlayer: false,
+      events: false,
       players: [
         {
           id: "p1",

@@ -1205,8 +1205,14 @@ export function buyWarMachine(state: GameState, action: Extract<GameAction, { ty
     throw new Error("Buying a war machine needs an open shop visit.");
   }
 
+  // A Marketplace-Event trading step (tradesOnly) is the resource exchange
+  // alone — war machines are not on offer there.
   const pricing =
-    step?.type === "WAR_MACHINE_SHOP" ? "factory" : step?.type === "TRADING_POST" && !step.traded ? "trading-post" : null;
+    step?.type === "WAR_MACHINE_SHOP"
+      ? "factory"
+      : step?.type === "TRADING_POST" && !step.traded && !step.tradesOnly
+        ? "trading-post"
+        : null;
   if (!pricing) {
     throw new Error("This visit cannot buy a war machine any more.");
   }

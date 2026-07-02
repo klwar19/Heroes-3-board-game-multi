@@ -6047,8 +6047,9 @@ function addVisitStepActions(actions: LegalAction[], state: GameState, playerId:
     // The other two printed options ("choose one") stay open only until the
     // first resource trade: sell one card from hand for 1 gold (Specialty,
     // Statistic, starting Ability and Magic Arrow excluded), or buy a war
-    // machine at the higher price.
-    if (!step.traded) {
+    // machine at the higher price. The Marketplace Event's "Trade resources
+    // using Trading Post rules" is the exchange alone — tradesOnly hides both.
+    if (!step.traded && !step.tradesOnly) {
       for (const { index, cardId } of removableHandCards(state, playerId, "sellable")) {
         actions.push({
           label: `Sell ${cards[cardId]?.name ?? cardId} → gain 1 gold`,

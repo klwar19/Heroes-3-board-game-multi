@@ -58,7 +58,7 @@ function chooseVisitOption(state: GameState, playerId: PlayerId, match: RegExp):
 
 describe("Astrologers — McGiver (free War Machine next round)", () => {
   function resourceRoundWithMcGiver(): GameState {
-    const state = createAdventureGameState({ seed: "mcgiver", difficulty: "normal", rollFirstPlayer: false });
+    const state = createAdventureGameState({ seed: "mcgiver", difficulty: "normal", rollFirstPlayer: false, events: false });
     // Round 3 is a Resource round (odd, > 1); the proclamation is still face up.
     state.round = 3;
     state.adventure!.astrologers = {
