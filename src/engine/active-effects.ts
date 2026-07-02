@@ -744,11 +744,15 @@ export function expireEffectsForGameRoundEnd(state: GameState): ActiveEffectStat
 }
 
 export function expireEffectsForCombatEnd(state: GameState): ActiveEffectState[] {
+  // Invariant: NO combat-scoped effect survives the combat it was made in. A
+  // leaked round-stamped effect would otherwise match the same round NUMBER of
+  // the NEXT battle (combat rounds restart at 1 every fight).
   const expired = state.activeEffects.filter(
     (effect) =>
       effect.duration.type === "combat" ||
       effect.duration.type === "current-combat-round" ||
       effect.duration.type === "next-combat-round" ||
+      effect.duration.type === "combat-rounds" ||
       effect.duration.type === "current-activation" ||
       effect.duration.type === "next-activation"
   );
