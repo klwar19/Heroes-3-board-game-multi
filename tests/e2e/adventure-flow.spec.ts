@@ -35,15 +35,35 @@ async function clearMapNotices(page: Page): Promise<void> {
 }
 
 /**
+ * The BINH opening rule: the first turn opens with a forced free rotation of
+ * the player's home (Ⅰ) tile — nothing else is legal until it is confirmed.
+ * Lock the first rotation the Confirm button accepts, if the card is up.
+ */
+async function confirmOpeningRotation(page: Page): Promise<void> {
+  const rotate = page.locator(".rotateFloat");
+  if (!(await rotate.isVisible().catch(() => false))) {
+    return;
+  }
+  const confirm = rotate.getByRole("button", { name: /Confirm/ });
+  for (let turn = 0; turn < 6 && !(await confirm.isEnabled().catch(() => false)); turn += 1) {
+    await rotate.getByTitle("Rotate clockwise").click().catch(() => {});
+  }
+  await confirm.click().catch(() => {});
+  await rotate.waitFor({ state: "hidden", timeout: 15000 }).catch(() => {});
+}
+
+/**
  * Sit at whichever seat actually holds the turn after the random first-player
- * roll. The start-of-turn draw is MANDATORY before moving, so the active seat is
- * the one offered the "Draw new" button; taking it reveals the move targets.
+ * roll. The turn-1 flow is: confirm the forced home-tile rotation, then take
+ * the MANDATORY start-of-turn draw — movement unlocks only after both.
  */
 async function sitActiveSeat(page: Page): Promise<void> {
   for (const title of [/Sit as Catherine/, /Sit as Sandro/]) {
     await page.getByTitle(title).click({ timeout: 8000 }).catch(() => {});
     await page.waitForTimeout(1200);
     await clearMapNotices(page);
+    // The forced home-tile rotation gates the whole turn — resolve it first.
+    await confirmOpeningRotation(page);
     // Take the mandatory start-of-turn draw — only the active seat is offered it,
     // and movement stays locked until it is taken.
     const drawNew = page.getByRole("button", { name: /Draw new/ }).first();
@@ -66,15 +86,7 @@ async function sitActiveSeatBeforeDraw(page: Page): Promise<void> {
     await clearMapNotices(page);
 
     // BINH forces one free home-tile rotation before the opening hand step.
-    const rotate = page.locator(".rotateFloat");
-    if (await rotate.isVisible().catch(() => false)) {
-      const confirm = rotate.getByRole("button", { name: /Confirm/ });
-      for (let turn = 0; turn < 6 && !(await confirm.isEnabled().catch(() => false)); turn += 1) {
-        await rotate.getByTitle("Rotate clockwise").click();
-      }
-      await confirm.click();
-      await expect(rotate).toBeHidden({ timeout: 15000 });
-    }
+    await confirmOpeningRotation(page);
 
     if (await page.getByRole("button", { name: "Discard and draw new" }).isVisible().catch(() => false)) {
       return;
@@ -158,61 +170,76 @@ test("turn 1 discard-one redraw keeps the replacement card visible and in hand",
 });
 
 test("discovering a face-down tile opens the rotation card on the tile", async ({ page }) => {
+  // The walk toward a face-down tile commits several server round-trips (and
+  // turn 1 now opens with the forced home-tile rotation), so the default 30s
+  // budget is too tight on a loaded machine.
+  test.setTimeout(120000);
   await startTwoPlayerAdventure(page, `e2e-rot-${Date.now().toString(36)}`);
   await dismissFirstRoll(page);
   await sitActiveSeat(page);
 
   // Walk towards the nearest face-down tile until one becomes discoverable.
+  // 3 MP per turn may not reach one — play up to three turns (whichever seat
+  // is active walks ITS hero; any seat's discovery serves the assertion).
   const discoverable = page.locator(".hexFaceDown.discoverable").first();
-  for (let step = 0; step < 5; step += 1) {
-    await clearMapNotices(page);
-    if (await discoverable.isVisible().catch(() => false)) {
-      break;
+  for (let cycle = 0; cycle < 3 && !(await discoverable.isVisible().catch(() => false)); cycle += 1) {
+    if (cycle > 0) {
+      // Out of moves: end the active seat's turn and take over whichever seat
+      // is active next (sitActiveSeat resolves its rotation + mandatory draw).
+      await page.getByRole("button", { name: /^End turn$/ }).click({ timeout: 5000 }).catch(() => {});
+      await page.waitForTimeout(800);
+      await sitActiveSeat(page);
     }
-    const faces = page.locator(".hexFaceDown");
-    const faceCenters: { x: number; y: number }[] = [];
-    for (let i = 0; i < (await faces.count()); i += 1) {
-      const box = await faces.nth(i).boundingBox();
-      if (box) {
-        faceCenters.push({ x: box.x + box.width / 2, y: box.y + box.height / 2 });
+    for (let step = 0; step < 5; step += 1) {
+      await clearMapNotices(page);
+      if (await discoverable.isVisible().catch(() => false)) {
+        break;
       }
-    }
-    const targets = page.locator(".hexCell.moveTarget");
-    const targetCount = await targets.count();
-    if (targetCount === 0 || faceCenters.length === 0) {
-      break;
-    }
-    // Step onto the reachable hex nearest any face-down tile, skipping guarded
-    // fields (their <title> says "(guard …)") so we approach the tile without
-    // tripping a neutral combat that would block the discovery.
-    let bestIndex = -1;
-    let bestDistance = Number.POSITIVE_INFINITY;
-    for (let i = 0; i < targetCount; i += 1) {
-      const title = (await targets.nth(i).locator("title").textContent().catch(() => "")) ?? "";
-      if (/guard/i.test(title)) {
-        continue;
+      const faces = page.locator(".hexFaceDown");
+      const faceCenters: { x: number; y: number }[] = [];
+      for (let i = 0; i < (await faces.count()); i += 1) {
+        const box = await faces.nth(i).boundingBox();
+        if (box) {
+          faceCenters.push({ x: box.x + box.width / 2, y: box.y + box.height / 2 });
+        }
       }
-      const box = await targets.nth(i).boundingBox();
-      if (!box) {
-        continue;
+      const targets = page.locator(".hexCell.moveTarget");
+      const targetCount = await targets.count();
+      if (targetCount === 0 || faceCenters.length === 0) {
+        break;
       }
-      const center = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
-      const distance = Math.min(...faceCenters.map((f) => Math.hypot(f.x - center.x, f.y - center.y)));
-      if (distance < bestDistance) {
-        bestDistance = distance;
-        bestIndex = i;
+      // Step onto the reachable hex nearest any face-down tile, skipping guarded
+      // fields (their <title> says "(guard …)") so we approach the tile without
+      // tripping a neutral combat that would block the discovery.
+      let bestIndex = -1;
+      let bestDistance = Number.POSITIVE_INFINITY;
+      for (let i = 0; i < targetCount; i += 1) {
+        const title = (await targets.nth(i).locator("title").textContent().catch(() => "")) ?? "";
+        if (/guard/i.test(title)) {
+          continue;
+        }
+        const box = await targets.nth(i).boundingBox();
+        if (!box) {
+          continue;
+        }
+        const center = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+        const distance = Math.min(...faceCenters.map((f) => Math.hypot(f.x - center.x, f.y - center.y)));
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          bestIndex = i;
+        }
       }
+      if (bestIndex < 0) {
+        break;
+      }
+      await targets.nth(bestIndex).click();
+      const moveThere = page.getByRole("button", { name: /Move there/ });
+      await moveThere.click();
+      // Wait for the move to actually commit (round-tripped through the room
+      // server) instead of a fixed sleep: the planned-route control detaches once
+      // the walk resolves and the board re-renders with the new reachable hexes.
+      await expect(moveThere).toBeHidden({ timeout: 15000 });
     }
-    if (bestIndex < 0) {
-      break;
-    }
-    await targets.nth(bestIndex).click();
-    const moveThere = page.getByRole("button", { name: /Move there/ });
-    await moveThere.click();
-    // Wait for the move to actually commit (round-tripped through the room
-    // server) instead of a fixed sleep: the planned-route control detaches once
-    // the walk resolves and the board re-renders with the new reachable hexes.
-    await expect(moveThere).toBeHidden({ timeout: 15000 });
   }
 
   await clearMapNotices(page);

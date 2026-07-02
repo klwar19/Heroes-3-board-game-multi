@@ -47,6 +47,18 @@ test("the active Astrologers proclamation pops up on the round-2 turn", async ({
       // errors here and let the assertion below be the real check.
       await page.getByTitle(seat).click({ timeout: 4000 }).catch(() => {});
 
+      // Turn 1 opens with the forced free home-tile rotation (BINH rule) —
+      // nothing else is legal for this seat until it is confirmed.
+      const rotate = page.locator(".rotateFloat");
+      if (await rotate.isVisible().catch(() => false)) {
+        const confirm = rotate.getByRole("button", { name: /Confirm/ });
+        for (let turn = 0; turn < 6 && !(await confirm.isEnabled().catch(() => false)); turn += 1) {
+          await rotate.getByTitle("Rotate clockwise").click({ timeout: 4000 }).catch(() => {});
+        }
+        await confirm.click({ timeout: 4000 }).catch(() => {});
+        await rotate.waitFor({ state: "hidden", timeout: 15000 }).catch(() => {});
+      }
+
       // Resolve the start-of-turn hand refresh if this seat is the active one.
       const draw = page.getByRole("button", { name: /Draw new/ });
       if (await draw.isVisible().catch(() => false)) {
