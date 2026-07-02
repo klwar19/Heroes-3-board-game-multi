@@ -66,6 +66,29 @@ describe("room recovery (restoreRoom)", () => {
     expect(result.version).toBe(before.version);
     expect(result.state.phase).toBe("setup");
   });
+
+  it("only a member may restore over a HOSTED lobby (an outsider cannot stomp it)", () => {
+    const roomId = uniqueRoom("restoreauth");
+    getRoomSnapshot(roomId);
+    submitRoomAction(roomId, { type: "JOIN_ROOM", clientId: "c1", name: "Host" });
+    submitRoomAction(roomId, { type: "JOIN_ROOM", clientId: "c2", name: "Guest" });
+    submitRoomAction(roomId, { type: "SET_ROOM_HOSTED", clientId: "c1", hosted: true });
+    const before = getRoomSnapshot(roomId);
+    const fabricated = createAdventureGameState({ seed: "fabricated", difficulty: "normal", rollFirstPlayer: false });
+
+    // An outsider (and an anonymous caller) bounce off — the hosted lobby stays.
+    for (const actor of ["stranger", undefined] as const) {
+      const denied = restoreRoom(roomId, fabricated, actor);
+      expect(denied.version).toBe(before.version);
+      expect(denied.state.phase).toBe("setup");
+    }
+
+    // Any member of the hosted table may push the recovered game (the CONTROL —
+    // recovery can come from whichever participant's tab reconnects first).
+    const restored = restoreRoom(roomId, fabricated, "c2");
+    expect(restored.state.seed).toBe("fabricated");
+    expect(restored.version).toBeGreaterThan(before.version);
+  });
 });
 
 describe("room membership through the store", () => {

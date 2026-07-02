@@ -384,7 +384,7 @@ function connectApiRoom(
       const response = await fetch(`/api/rooms/${encodeURIComponent(roomId)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ restore: true, state })
+        body: JSON.stringify({ restore: true, state, ...(actorClientId ? { actorClientId } : {}) })
       });
       if (!response.ok) {
         throw new Error("Could not restore the room.");

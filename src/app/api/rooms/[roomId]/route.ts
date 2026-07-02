@@ -40,9 +40,16 @@ export async function POST(request: Request, context: RoomContext) {
   }
 
   // Client recovery: re-seed a room the server lost from the caller's cached
-  // game (only applied over a fresh lobby — see restoreRoom).
+  // game (only applied over a fresh lobby, member-only on hosted rooms — see
+  // restoreRoom).
   if (body?.restore && body.state) {
-    return NextResponse.json(restoreRoom(decodeURIComponent(roomId), body.state));
+    return NextResponse.json(
+      restoreRoom(
+        decodeURIComponent(roomId),
+        body.state,
+        typeof body.actorClientId === "string" ? body.actorClientId : undefined
+      )
+    );
   }
 
   return NextResponse.json(getRoomSnapshot(decodeURIComponent(roomId)));

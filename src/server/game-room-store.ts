@@ -304,9 +304,22 @@ export function resetRoom(roomId: string, options: RoomResetOptions = {}, actorC
  * lost room is recreated as — so it can never clobber a game already in
  * progress, and racing restores converge (the first wins; the rest are no-ops
  * that simply return the now-restored room).
+ *
+ * Authority: when the lobby being written over is a HOSTED room, the restore
+ * must come from one of its current members — an outsider cannot stomp a
+ * hosted table's setup with a fabricated "recovered" game. A fresh
+ * post-restart room (no membership yet) stays permissive, which the recovery
+ * race needs (the cached-game push can land before the client's own re-join).
  */
-export function restoreRoom(roomId: string, state: GameState): GameRoomSnapshot {
+export function restoreRoom(roomId: string, state: GameState, actorClientId?: string): GameRoomSnapshot {
   const current = getRoomRecord(roomId);
+  const currentRoom = current.state.room ?? null;
+  if (
+    currentRoom?.hosted &&
+    (!actorClientId || !currentRoom.members.some((member) => member.clientId === actorClientId))
+  ) {
+    return withBootId(cloneSerializable(current));
+  }
   const currentIsFreshLobby = current.state.phase === "setup" && Boolean(current.state.setupLobby);
   const incomingIsRealGame =
     Boolean(state) &&
