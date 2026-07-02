@@ -23,6 +23,17 @@ export {
   seatOfClient
 } from "./room";
 export { ENGINE_PROTOCOL_VERSION, ENGINE_SIGNATURE } from "./version";
+export {
+  hasOpenAdventureTurn,
+  isParallelActor,
+  MAX_PARALLEL_TURN_ROUNDS,
+  normalizeParallelTurnRounds,
+  parallelInteractionBlocker,
+  parallelTurnsActive,
+  parallelWaitMessage,
+  remainingParallelPlayerIds,
+  stopParallelTurns
+} from "./parallel-turns";
 export { drawCardsForPlayer, isSharedDeckId, SHARED_DECK_IDS, shuffleCards } from "./decks";
 export type { SharedDeckId } from "./decks";
 export {

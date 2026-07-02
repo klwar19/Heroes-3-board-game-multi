@@ -33,6 +33,7 @@ import {
 } from "./active-effects";
 import { drawCardsForPlayer, shuffleCards } from "./decks";
 import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
+import { parallelInteractionBlocker, stopParallelTurns } from "./parallel-turns";
 import {
   applyUnitSideRules,
   canAcquireSharedDeckCard,
@@ -880,6 +881,13 @@ export function getReachableHeroPaths(state: GameState, hero: HeroState): Map<Ma
     return results;
   }
 
+  // Parallel turns: while another player's battle/choice is open, only QUIET
+  // destinations are offered — "open" fields that trigger nothing on arrival.
+  // "stop"/"encounter" fields (guards, enemy heroes, unvisited locations, flags
+  // to steal) stay crossable per their kind but are not valid stops until the
+  // table's current interaction resolves. Mirrors getHeroMoveDestinations.
+  const parallelQuietOnly = Boolean(parallelInteractionBlocker(state, hero.controllerId));
+
   const movement = getHeroMovementCapabilities(state, hero);
   const visited = new Set<MapSpaceId>([hero.spaceId]);
   let frontier: { spaceId: MapSpaceId; path: MapSpaceId[] }[] = [{ spaceId: hero.spaceId, path: [] }];
@@ -905,7 +913,9 @@ export function getReachableHeroPaths(state: GameState, hero: HeroState): Map<Ma
         const path = [...node.path, neighbor];
 
         if (kind === "stop") {
-          results.set(neighbor, { spaceId: neighbor, path, cost: path.length });
+          if (!parallelQuietOnly) {
+            results.set(neighbor, { spaceId: neighbor, path, cost: path.length });
+          }
           continue;
         }
 
@@ -920,7 +930,11 @@ export function getReachableHeroPaths(state: GameState, hero: HeroState): Map<Ma
         // crossable: the field is reachable, and the walk may continue past it
         // (an "encounter" passes over the Neutral/enemy field without fighting,
         // resolving Combat only when it is the final step — see moveHeroPath).
-        results.set(neighbor, { spaceId: neighbor, path, cost: path.length });
+        // Quiet-only mode: ending on an "encounter" would start that Combat, so
+        // it stays crossable but is not offered as a stop.
+        if (!parallelQuietOnly || kind === "open") {
+          results.set(neighbor, { spaceId: neighbor, path, cost: path.length });
+        }
         if (!halts) {
           next.push({ spaceId: neighbor, path });
         }
@@ -1678,6 +1692,29 @@ function interactionToSteps(interaction: LocationInteraction, extraLocationDice 
 
 export function flagField(state: GameState, playerId: PlayerId, field: MapFieldState): void {
   const previousOwnerId = field.flagOwnerId;
+
+  // Parallel turns: taking a flag FROM a live player (walking onto their mine
+  // or settlement, a View Earth capture, a town falling undefended…) is a
+  // serious PvP interaction — the mode stops with a table-wide warning. Flags
+  // taken from nobody or from neutral guards are ordinary expansion and do not
+  // stop it, and neither do hand discards (handled nowhere near here). Throws
+  // — rejecting the whole action — if another player's interaction is still
+  // open, so a steal can never resolve behind an ongoing battle.
+  if (
+    previousOwnerId &&
+    previousOwnerId !== playerId &&
+    previousOwnerId !== NEUTRAL_PLAYER_ID &&
+    state.players[previousOwnerId] &&
+    !state.players[previousOwnerId].eliminated
+  ) {
+    stopParallelTurns(
+      state,
+      "pvp-interaction",
+      playerId,
+      `took the ${locationDefinitionName(field.location)} from ${state.players[previousOwnerId]?.name ?? previousOwnerId}`
+    );
+  }
+
   field.flagOwnerId = playerId;
 
   appendEvent(state, {
@@ -1687,6 +1724,11 @@ export function flagField(state: GameState, playerId: PlayerId, field: MapFieldS
     location: field.location,
     previousOwnerId
   });
+}
+
+/** Display name of a map location for log/warning messages. */
+function locationDefinitionName(locationId: string): string {
+  return locationDefinitions[locationId]?.name ?? locationId.replace(/_/g, " ");
 }
 
 export function applyMineFlag(state: GameState, playerId: PlayerId, field: MapFieldState): void {
@@ -6475,8 +6517,32 @@ export function startPlayerTurn(state: GameState, playerId: PlayerId): void {
   // the start-of-turn rewards are queued; the pendingTileChoice gate keeps those
   // (and everything else) on hold until the rotation is locked — the queued hand
   // step then resolves the moment SET_TILE_ROTATION clears the gate.
-  if (player.startTileRotated === false) {
+  // Parallel turns start EVERY player's first turn at once, but the rotation
+  // choice is a singleton: only the first unrotated player opens theirs here;
+  // each SET_TILE_ROTATION then opens the next player's (see setTileRotation →
+  // beginNextPendingStartTileRotation), one at a time in seat order.
+  if (player.startTileRotated === false && !state.adventure?.pendingTileChoice) {
     beginStartTileRotation(state, playerId);
+  }
+}
+
+/**
+ * Parallel turns: opens the NEXT player's forced home-tile rotation (seat
+ * order) once the previous one locked. No-op when every home tile is rotated
+ * or a tile choice is already open.
+ */
+export function beginNextPendingStartTileRotation(state: GameState): void {
+  if (state.adventure?.pendingTileChoice) {
+    return;
+  }
+  for (const playerId of state.turnOrder) {
+    const player = state.players[playerId];
+    if (player && !player.eliminated && player.startTileRotated === false) {
+      beginStartTileRotation(state, playerId);
+      if (state.adventure?.pendingTileChoice) {
+        return;
+      }
+    }
   }
 }
 

@@ -390,6 +390,16 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       return `${playerName(state, event.playerId)} is ready.`;
     case "ORDERED_TURNS_STARTED":
       return `Ordered turns begin with ${playerName(state, event.activePlayerId)}.`;
+    case "PARALLEL_TURNS_STARTED":
+      return `Parallel turns: everyone plays at the same time for the first ${event.rounds} round${event.rounds === 1 ? "" : "s"} (battles and choices still resolve one at a time; a PvP clash ends the mode early).`;
+    case "PARALLEL_TURN_ENDED":
+      return event.waitingForPlayerIds.length > 0
+        ? `${playerName(state, event.playerId)} ends their parallel turn — waiting for ${event.waitingForPlayerIds
+            .map((playerId) => playerName(state, playerId))
+            .join(", ")}.`
+        : `${playerName(state, event.playerId)} ends their parallel turn — the round is complete.`;
+    case "PARALLEL_TURNS_STOPPED":
+      return event.message;
     case "ROOM_MEMBER_JOINED":
       return `${event.name} joined${event.seat === "observer" ? " as an observer" : ` (seat ${playerName(state, event.seat)})`}.`;
     case "ROOM_MEMBER_LEFT":

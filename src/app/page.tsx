@@ -11,7 +11,9 @@ import {
   getLegalActions,
   getPlayerView,
   getRuleset,
+  hasOpenAdventureTurn,
   healLegacyPlayerFields,
+  isParallelActor,
   rulesetCardNote,
   NEUTRAL_PLAYER_ID,
   type GameAction,
@@ -691,6 +693,8 @@ export default function Home() {
   // Last round whose Astrologers proclamation this client already popped, so the
   // card resurfaces once per round (not on every action) and never on reconnect.
   const seenAstrologerRoundRef = useRef<number | null>(null);
+  // Parallel-turn stop warnings already popped (never replayed on reconnect).
+  const seenParallelStopIdsRef = useRef<Set<string>>(new Set());
   const seenDrawIdsRef = useRef<Set<string>>(new Set());
   const seenFlipIdsRef = useRef<Set<string>>(new Set());
   const seenMoveIdsRef = useRef<Set<string>>(new Set());
@@ -875,6 +879,10 @@ export default function Home() {
       seenFirstRollIdsRef.current = new Set(
         nextState.eventLog.filter((event) => event.type === "FIRST_PLAYER_ROLLED").map((event) => event.id)
       );
+      // ...and without re-popping a parallel-turns stop warning from the past.
+      seenParallelStopIdsRef.current = new Set(
+        nextState.eventLog.filter((event) => event.type === "PARALLEL_TURNS_STOPPED").map((event) => event.id)
+      );
       // A fresh connection joins mid-game without replaying every past turn's
       // sunrise: the first snapshot's TURN_STARTED events count as already seen.
       seenTurnIdsRef.current = new Set(turnEvents.map((event) => event.id));
@@ -1050,7 +1058,34 @@ export default function Home() {
       for (const event of buffRecruits) {
         seenBuffRecruitIdsRef.current.add(event.id);
       }
+      // THE parallel-turns warning: parallel play stopped (a PvP battle, a
+      // serious PvP interaction, or the period ran out) — pop it into every
+      // player's face, not just the log.
+      const parallelStops = nextState.eventLog.filter(
+        (event): event is Extract<GameEvent, { type: "PARALLEL_TURNS_STOPPED" }> =>
+          event.type === "PARALLEL_TURNS_STOPPED"
+      );
+      const freshParallelStops = parallelStops.filter((event) => !seenParallelStopIdsRef.current.has(event.id));
+      for (const event of parallelStops) {
+        seenParallelStopIdsRef.current.add(event.id);
+      }
+
       const houseRuleCues: MapNoticeCue[] = [
+        ...freshParallelStops.map(
+          (event) =>
+            ({
+              id: `parallel-stop-${event.id}`,
+              icon: event.reason === "period-ended" ? "⏳" : "⚔️",
+              title: "Parallel turns have stopped",
+              subtitle:
+                event.reason === "pvp-battle"
+                  ? "A player-vs-player battle begins"
+                  : event.reason === "pvp-interaction"
+                    ? "A serious interaction against another player"
+                    : "The agreed period is over",
+              lines: [event.message, "Play continues in normal turn order — one player at a time."]
+            }) satisfies MapNoticeCue
+        ),
         ...freshLevelNotices.map(
           (event) =>
             ({
@@ -1126,9 +1161,14 @@ export default function Home() {
       }
       if (freshTurns.length > 0) {
         const latest = freshTurns[freshTurns.length - 1];
+        // A parallel round starts EVERYONE's turn at once — one sunrise for the
+        // whole table instead of naming the last seat whose turn-start logged.
+        const parallelRound = nextState.turn.mode === "parallel" && freshTurns.length > 1;
         const cue = {
           id: latest.id,
-          playerName: nextState.players[latest.playerId]?.name ?? latest.playerId,
+          playerName: parallelRound
+            ? "All players"
+            : (nextState.players[latest.playerId]?.name ?? latest.playerId),
           round: latest.round
         } satisfies NewDayCue;
         setNewDay((current) => (current.current ? { current: current.current, queue: [cue] } : { current: cue, queue: [] }));
@@ -3390,8 +3430,9 @@ export default function Home() {
     const spellBookOn = isSeated && (state.adventure?.spellBook ?? true);
     const handLimit = viewer ? effectiveHandLimit(state, viewerPlayerId) : 0;
     // Over the hand limit at the start of the turn (only via card effects):
-    // the player MUST discard down to the limit before acting.
-    const forcedDiscard = Boolean(viewer?.needsHandRefresh) && state.activePlayerId === viewerPlayerId;
+    // the player MUST discard down to the limit before acting. Parallel turns:
+    // every open parallel turn counts as "my turn" here.
+    const forcedDiscard = Boolean(viewer?.needsHandRefresh) && hasOpenAdventureTurn(state, viewerPlayerId);
     // The MANDATORY start-of-turn draw is pending this turn (every turn, including
     // the first): one either/or — "draw new" (discard nothing, draw up to the
     // limit) or "discard and draw new". Never both, since the hand is not
@@ -3399,12 +3440,21 @@ export default function Home() {
     // using cards (legal-actions withholds those offers), so the player can never
     // forget it.
     const canDraw =
-      Boolean(viewer?.canMulligan) && state.activePlayerId === viewerPlayerId && !forcedDiscard;
+      Boolean(viewer?.canMulligan) && hasOpenAdventureTurn(state, viewerPlayerId) && !forcedDiscard;
     const hasMorale = (viewer?.morale ?? 0) > 0;
     const moraleOverflow = viewer?.moraleOverflow ?? 0;
     const overLimit = viewer ? handCards.length - handDiscards.length - handLimit : 0;
     const selecting = handMode !== null || forcedDiscard;
-    const mapReadOnly = combatVisible;
+    // Parallel turns: a bystander (open parallel turn, NOT fighting) keeps the
+    // map interactive while someone else's battle runs — they may flip to the
+    // map tab and keep taking their quiet moves. Everyone else gets the classic
+    // read-only map while a combat is open.
+    const parallelMapBystander =
+      combatVisible &&
+      isParallelActor(state, viewerPlayerId) &&
+      state.combat?.attackerPlayerId !== viewerPlayerId &&
+      state.combat?.defenderPlayerId !== viewerPlayerId;
+    const mapReadOnly = combatVisible && !parallelMapBystander;
 
     const confirmHandAction = () => {
       const discardCardIds = handDiscards.map((index) => handCards[index]);

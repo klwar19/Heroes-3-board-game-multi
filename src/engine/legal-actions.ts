@@ -80,6 +80,7 @@ import {
   warMachinesForSale
 } from "./permanents";
 import { getDemolishAbility, isArrowTowerUnit, parseFortificationTargetId, siegeBlockedPositions } from "./siege";
+import { hasOpenAdventureTurn, isParallelActor, parallelInteractionBlocker } from "./parallel-turns";
 import { pvpEscapeWindowOpen } from "./combat-units";
 import { canPlaceTransformOn } from "./unit-transforms";
 import { bannableHeroesForSeat, DRAFT_FORMAT_LABELS, getDraftPhase } from "./adventure-setup";
@@ -2834,7 +2835,12 @@ function addTurnCardActions(
   if (!player || state.pendingChoice || state.reactionWindow) {
     return;
   }
-  if (context === "map" && (state.combat || state.activePlayerId !== playerId)) {
+  if (context === "map" && (state.combat || !hasOpenAdventureTurn(state, playerId))) {
+    return;
+  }
+  // Parallel turns: card plays can open choices/windows of their own, so they
+  // wait while another player's interaction is resolving.
+  if (context === "map" && parallelInteractionBlocker(state, playerId)) {
     return;
   }
 
@@ -2973,7 +2979,7 @@ function addSpellBookStashActions(actions: LegalAction[], state: GameState, play
     return;
   }
   const player = state.players[playerId];
-  if (!player || state.combat || state.activePlayerId !== playerId || state.pendingChoice || state.reactionWindow) {
+  if (!player || state.combat || !hasOpenAdventureTurn(state, playerId) || state.pendingChoice || state.reactionWindow) {
     return;
   }
   // Over the hand limit at the start of the turn, the forced discard
@@ -3692,7 +3698,9 @@ function addDeckSearchActions(actions: LegalAction[], state: GameState, playerId
     return;
   }
 
-  if (state.activePlayerId !== playerId) {
+  // A search opens the deck-search choice — parallel turns take those one at a
+  // time, and only a player whose turn is open may start one.
+  if (!hasOpenAdventureTurn(state, playerId) || parallelInteractionBlocker(state, playerId)) {
     return;
   }
 
@@ -3723,7 +3731,7 @@ function addRoguesScoutActions(actions: LegalAction[], state: GameState, playerI
   if (state.combat || state.reactionWindow || state.pendingChoice || state.stack.length > 0) {
     return;
   }
-  if (state.activePlayerId !== playerId) {
+  if (!hasOpenAdventureTurn(state, playerId) || parallelInteractionBlocker(state, playerId)) {
     return;
   }
   const player = state.players[playerId];
@@ -3751,7 +3759,7 @@ function addSatyrMoraleRollActions(actions: LegalAction[], state: GameState, pla
   if (state.combat || state.reactionWindow || state.pendingChoice || state.stack.length > 0) {
     return;
   }
-  if (state.activePlayerId !== playerId) {
+  if (!hasOpenAdventureTurn(state, playerId) || parallelInteractionBlocker(state, playerId)) {
     return;
   }
   const player = state.players[playerId];
@@ -3883,7 +3891,9 @@ export function getLegalActions(
 
   if (state.pendingChoice) {
     if (state.pendingChoice.playerId !== playerId) {
-      return [];
+      // Parallel turns: bystanders keep their quiet actions while another
+      // player's choice is open ([] outside parallel mode, as before).
+      return getParallelBystanderActions(state, playerId);
     }
 
     if (state.pendingChoice.type === "OPTION_CHOICE") {
@@ -4091,7 +4101,9 @@ export function getLegalActions(
 
   if (state.reactionWindow) {
     if (state.reactionWindow.priorityPlayerId !== playerId) {
-      return [];
+      // Parallel turns: bystanders keep their quiet actions while a window is
+      // open for someone else ([] outside parallel mode, as before).
+      return getParallelBystanderActions(state, playerId);
     }
 
     return [
@@ -6477,8 +6489,9 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
     }
   }
 
-  // "During your turn" buildings, each once per round.
-  if (state.activePlayerId === playerId) {
+  // "During your turn" buildings, each once per round. Their uses open choices
+  // of their own, so parallel turns take them one at a time.
+  if (hasOpenAdventureTurn(state, playerId) && !parallelInteractionBlocker(state, playerId)) {
     for (const buildingId of town.buildings) {
       const building = coreBuildingDefinitions[buildingId];
       if (!building || (player.buildingUsedRound?.[buildingId] ?? 0) === state.round) {
@@ -6859,12 +6872,85 @@ function getSetupLobbyLegalActions(state: GameState, playerId: PlayerId): LegalA
   return actions;
 }
 
+/**
+ * Parallel turns: the quiet-action set for a player whose parallel turn is open
+ * while ANOTHER player's exclusive interaction (battle, choice, visit, tile
+ * rotation…) is resolving. They may keep moving over trigger-free fields, take
+ * their start-of-turn hand steps, and — outside combats — spend their round's
+ * town actions and morale tokens. Everything that could open an interaction of
+ * its own (visits, discoveries, battles, card plays, searches, ending the
+ * turn) waits until the table's current one closes. Returns [] whenever the
+ * player is not an open-turn parallel actor, so every non-parallel code path
+ * behaves exactly as before.
+ */
+function getParallelBystanderActions(state: GameState, playerId: PlayerId): LegalAction[] {
+  const actions: LegalAction[] = [];
+  const adventure = state.adventure;
+  const player = state.players[playerId];
+  if (state.mode !== "adventure" || !adventure || !player || !isParallelActor(state, playerId)) {
+    return actions;
+  }
+
+  // Over the hand limit at the start of the turn: the forced discard-down
+  // comes before anything else, exactly like an ordered turn.
+  if (player.needsHandRefresh) {
+    return [
+      {
+        label: "Discard down to your hand limit, then draw",
+        action: { type: "REFRESH_HAND", playerId, discardCardIds: [] }
+      }
+    ];
+  }
+
+  // Town and morale actions stay open between battles (they only queue/park);
+  // an open combat blocks them for everyone, exactly like ordered play.
+  if (!state.combat) {
+    addTownActions(actions, state, playerId);
+    addMoraleActions(actions, state, playerId);
+  }
+
+  // The mandatory start-of-turn draw may be taken while others resolve their
+  // interactions — but movement stays locked behind it, as on an ordered turn.
+  if (player.canMulligan) {
+    actions.push({
+      label: "Draw new — or discard some and draw up to your hand limit (start of turn)",
+      action: { type: "REFRESH_HAND", playerId, discardCardIds: [] }
+    });
+    return actions;
+  }
+
+  // Quiet movement: getHeroMoveDestinations self-filters to trigger-free
+  // ("open") fields while the table's interaction slot is busy.
+  for (const hero of Object.values(state.heroes)) {
+    if (hero.controllerId !== playerId || !hero.spaceId || hero.movementPoints <= 0) {
+      continue;
+    }
+    for (const destination of getHeroMoveDestinations(state, hero)) {
+      actions.push({
+        label: `Move hero to ${destination}`,
+        action: { type: "MOVE_HERO", playerId, heroId: hero.id, to: destination }
+      });
+    }
+  }
+
+  return actions;
+}
+
 function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: CardLibrary): LegalAction[] {
   const actions: LegalAction[] = [];
   const adventure = state.adventure;
   const player = state.players[playerId];
   if (!adventure || !player) {
     return actions;
+  }
+
+  // Parallel turns: while ANOTHER player's exclusive interaction is open this
+  // player is a bystander with only the quiet-action set, wherever the
+  // interaction machinery currently stands (combat, visit, tile, Necromancy…).
+  // Owners and combat participants have a null blocker and flow through the
+  // normal branches below unchanged.
+  if (parallelInteractionBlocker(state, playerId)) {
+    return getParallelBystanderActions(state, playerId);
   }
 
   // A finished combat waits on the battlefield until a participant closes
@@ -7061,7 +7147,8 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
   addTownActions(actions, state, playerId);
   addMoraleActions(actions, state, playerId);
 
-  if (state.activePlayerId !== playerId) {
+  // Parallel turns: every open parallel turn counts as "your turn" here.
+  if (!hasOpenAdventureTurn(state, playerId)) {
     return actions;
   }
 

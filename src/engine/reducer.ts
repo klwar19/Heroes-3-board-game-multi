@@ -104,6 +104,12 @@ import {
   transferHost
 } from "./room";
 import {
+  hasOpenAdventureTurn,
+  parallelInteractionBlocker,
+  parallelSlotSignature,
+  parallelWaitMessage
+} from "./parallel-turns";
+import {
   ATTACK_DIE_FACES,
   BATTLEFIELD_CELL_COUNT,
   BATTLEFIELD_COLUMNS,
@@ -684,7 +690,8 @@ function moveSpellFromSpellBookToDiscard(
  * combat and on anyone else's turn, where the start-of-turn draw is not in play.
  */
 function assertStartOfTurnDrawTaken(state: GameState, playerId: PlayerId): void {
-  if (state.combat || state.activePlayerId !== playerId) {
+  // Parallel turns: every open parallel turn owes its start-of-turn draw too.
+  if (state.combat || !hasOpenAdventureTurn(state, playerId)) {
     return;
   }
   const player = state.players[playerId];
@@ -15438,6 +15445,21 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
   const nextState = cloneState(base);
   const startEventNumber = eventSeedNumber(nextState);
 
+  // Parallel turns, transactional backstop: when a player acts while ANOTHER
+  // player's exclusive interaction (battle, choice, visit…) is open, their
+  // action must leave that machinery untouched — quiet moves, hand refreshes,
+  // town economy. The slot fingerprint is compared once everything (handler +
+  // automations) has settled; any drift rejects the whole action, so a
+  // mis-classified "quiet" action can only ever fail cleanly, never corrupt
+  // the open interaction. Null for owners/participants and outside parallel
+  // mode, so every other code path pays nothing.
+  const actorPlayerId =
+    "playerId" in action && typeof (action as { playerId?: unknown }).playerId === "string"
+      ? (action as { playerId: PlayerId }).playerId
+      : null;
+  const parallelBystanderBlocker = actorPlayerId ? parallelInteractionBlocker(nextState, actorPlayerId) : null;
+  const parallelSlotBefore = parallelBystanderBlocker ? parallelSlotSignature(nextState) : null;
+
   // True randomness: park the server's fresh per-action entropy so every seeded
   // RNG draw this action makes is salted with it (no-op when omitted, keeping the
   // test suite deterministic — see random.ts). Restored in `finally` so it never
@@ -15843,6 +15865,15 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
   // Ongoing cards whose every effect has ended (expired, consumed, dispelled
   // — whatever this action did) finally reach their discard pile or hand.
   releaseEndedOngoingCards(nextState);
+
+  // Parallel turns: reject a bystander action that touched the exclusive
+  // interaction machinery (see the fingerprint capture above).
+  if (parallelSlotBefore !== null && parallelSlotSignature(nextState) !== parallelSlotBefore) {
+    return fail(base, {
+      code: "ACTION_NOT_LEGAL",
+      message: parallelWaitMessage(base, parallelBystanderBlocker as PlayerId | "table")
+    });
+  }
 
     return ok(nextState, startEventNumber);
   } finally {

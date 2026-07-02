@@ -42,10 +42,16 @@ import {
   getReachableHeroPaths,
   getRuleset,
   getTileBorderSegments,
+  hasOpenAdventureTurn,
   hexDistance,
   hexSpaceId,
   hexToPixel,
   inCombatPrep,
+  isParallelActor,
+  MAX_PARALLEL_TURN_ROUNDS,
+  parallelInteractionBlocker,
+  parallelTurnsActive,
+  remainingParallelPlayerIds,
   observatoryRevealTargets,
   parseHexSpaceId,
   reservedTownIdsForOtherSeats,
@@ -362,26 +368,34 @@ export function HexMapBoard({
     null;
   const hasSecondaryHero = myHeroes.length > 1;
   const myHeroSpaceId = myHero?.spaceId ?? null;
-  const myTurn = isSeated && state.activePlayerId === viewerPlayerId;
+  // Parallel turns: every open parallel turn counts as "my turn" on the map.
+  const myTurn = isSeated && hasOpenAdventureTurn(state, viewerPlayerId);
+  // Parallel turns: another player's battle/choice is open — I may still take
+  // QUIET moves (the engine filters reachable targets to trigger-free fields).
+  const parallelBlocker = isSeated ? parallelInteractionBlocker(state, viewerPlayerId) : null;
 
   const pendingTileChoice = rawAdventure?.pendingTileChoice ?? null;
   const rotatingTile = pendingTileChoice ? rawAdventure?.tiles[pendingTileChoice.tileInstanceId] : null;
   const iAmRotating = Boolean(pendingTileChoice && pendingTileChoice.playerId === viewerPlayerId && !readOnly);
 
   // The mandatory start-of-turn draw (or the forced over-limit discard) is still
-  // unspent on my own quiet map turn — movement is locked until I draw.
+  // unspent on my own quiet map turn — movement is locked until I draw. A
+  // foreign interaction (parallelBlocker) does not park my own draw.
   const drawPending = Boolean(
     myTurn &&
       !readOnly &&
-      !state.combat &&
-      !pendingTileChoice &&
-      !rawAdventure?.pendingVisit &&
+      (parallelBlocker || (!state.combat && !pendingTileChoice && !rawAdventure?.pendingVisit)) &&
       (state.players[viewerPlayerId]?.needsHandRefresh || state.players[viewerPlayerId]?.canMulligan)
   );
 
   // Reachable click-to-move targets, computed from the live rules.
   const reachable = useMemo(() => {
-    if (!myHero || !myTurn || readOnly || pendingTileChoice || state.combat || rawAdventure?.pendingVisit) {
+    if (!myHero || !myTurn || readOnly) {
+      return new Map<MapSpaceId, HeroPathTarget>();
+    }
+    // My own pending input locks movement outright; a FOREIGN interaction in
+    // parallel mode leaves quiet moves open (getReachableHeroPaths filters).
+    if (!parallelBlocker && (pendingTileChoice || state.combat || rawAdventure?.pendingVisit)) {
       return new Map<MapSpaceId, HeroPathTarget>();
     }
     // The mandatory start-of-turn draw (and the forced over-limit discard) must be
@@ -391,7 +405,7 @@ export function HexMapBoard({
       return new Map<MapSpaceId, HeroPathTarget>();
     }
     return getReachableHeroPaths(state, myHero);
-  }, [state, myHero, myTurn, readOnly, pendingTileChoice, rawAdventure?.pendingVisit, viewerPlayerId]);
+  }, [state, myHero, myTurn, readOnly, pendingTileChoice, rawAdventure?.pendingVisit, viewerPlayerId, parallelBlocker]);
 
   // While the draw is unspent, the fields the hero COULD step onto once it draws.
   // These render locked (dimmed) and a tap reminds the player to draw first
@@ -1272,7 +1286,26 @@ export function HexMapBoard({
       return null;
     }
     if (!myTurn) {
+      if (parallelTurnsActive(state) && state.turn.completedPlayerIds.includes(viewerPlayerId)) {
+        const waiting = remainingParallelPlayerIds(state)
+          .map((playerId) => state.players[playerId]?.name ?? playerId)
+          .join(", ");
+        return `You ended your parallel turn — waiting for ${waiting || "the round to wrap"}`;
+      }
       return `${state.players[state.activePlayerId]?.name ?? "Another player"}'s turn — movement unlocks on yours`;
+    }
+    if (state.players[viewerPlayerId]?.needsHandRefresh) {
+      return "Over the hand limit — discard down first (bottom of the screen)";
+    }
+    if (state.players[viewerPlayerId]?.canMulligan) {
+      return "Take your start-of-turn draw first (bottom of the screen)";
+    }
+    // Parallel turns: a FOREIGN battle/choice leaves quiet moves open — say so
+    // instead of claiming the whole map is locked.
+    if (parallelBlocker) {
+      const name =
+        parallelBlocker === "table" ? "another player" : (state.players[parallelBlocker]?.name ?? parallelBlocker);
+      return `${name}'s ${state.combat ? "battle" : "interaction"} is resolving — quiet moves only (fields that trigger nothing)`;
     }
     if (state.combat) {
       return "A combat is open — the map unlocks when it closes";
@@ -1284,12 +1317,6 @@ export function HexMapBoard({
     }
     if (pendingTileChoice && pendingTileChoice.playerId !== viewerPlayerId) {
       return `${state.players[pendingTileChoice.playerId]?.name ?? "A player"} is rotating the new tile`;
-    }
-    if (state.players[viewerPlayerId]?.needsHandRefresh) {
-      return "Over the hand limit — discard down first (bottom of the screen)";
-    }
-    if (state.players[viewerPlayerId]?.canMulligan) {
-      return "Take your start-of-turn draw first (bottom of the screen)";
     }
     return null;
   })();
@@ -1654,12 +1681,38 @@ export function AdventureHud({
     <div className="advHud" aria-label="Adventure status">
       <div className="advHudCell">
         <strong>Round {state.round}</strong>
-        <small>{roundKind}</small>
+        <small>
+          {roundKind}
+          {parallelTurnsActive(state) ? ` · parallel (${state.round}/${state.turn.simultaneousRoundLimit})` : ""}
+        </small>
       </div>
-      <div className="advHudCell">
-        <strong>{activeName}&apos;s turn</strong>
-        <small>{state.phase}</small>
-      </div>
+      {parallelTurnsActive(state) ? (
+        <div
+          className="advHudCell"
+          title="Parallel turns: everyone plays at once. Battles and choices still resolve one at a time; a PvP clash or the period's end returns play to normal turns."
+        >
+          <strong>
+            {isParallelActor(state, viewerPlayerId)
+              ? "🔀 Parallel — your turn is open"
+              : state.turn.completedPlayerIds.includes(viewerPlayerId)
+                ? "🔀 Parallel — you ended your turn"
+                : "🔀 Parallel turns"}
+          </strong>
+          <small>
+            {(() => {
+              const waiting = remainingParallelPlayerIds(state);
+              return waiting.length > 0
+                ? `still playing: ${waiting.map((playerId) => state.players[playerId]?.name ?? playerId).join(", ")}`
+                : "wrapping the round…";
+            })()}
+          </small>
+        </div>
+      ) : (
+        <div className="advHudCell">
+          <strong>{activeName}&apos;s turn</strong>
+          <small>{state.phase}</small>
+        </div>
+      )}
       {firstRoll ? (
         <button
           className="advHudCell firstRoll"
@@ -4289,6 +4342,41 @@ function GameOptionsPanel({
       })()}
 
       {(() => {
+        const parallelRounds = Math.max(0, Math.min(MAX_PARALLEL_TURN_ROUNDS, options.parallelTurns ?? 0));
+        const presets = [0, 1, 2, 3, 4, 6] as const;
+        return (
+          <div className="optionRow">
+            <small title="Optional: everyone plays their turns at the same time for the first rounds (multiplayer only)">
+              Parallel turns
+            </small>
+            <div className="optionButtons">
+              {presets.map((rounds) => (
+                <button
+                  aria-pressed={parallelRounds === rounds}
+                  className={parallelRounds === rounds ? "selected" : ""}
+                  key={rounds}
+                  onClick={() => send({ parallelTurns: rounds })}
+                  title={
+                    rounds === 0
+                      ? "Classic one-at-a-time turns"
+                      : `Everyone plays at once for the first ${rounds} round${rounds === 1 ? "" : "s"}`
+                  }
+                  type="button"
+                >
+                  {rounds === 0 ? "Off" : `${rounds}`}
+                </button>
+              ))}
+            </div>
+            <small className="optionHint">
+              {parallelRounds > 0
+                ? `Everyone plays at the same time for the first ${parallelRounds} round${parallelRounds === 1 ? "" : "s"} — move, build and end your turn independently; battles and choices still resolve one at a time (quiet moves stay open meanwhile), and shared-deck draws go to whoever acts first. The mode STOPS with a warning — and play turns classic — the moment a PvP battle starts or someone steals another player's mine/settlement (e.g. a View Earth capture; hand discards don't count), or when the period ends. Multiplayer only.`
+                : "Classic turns: one player at a time, in seat order."}
+            </small>
+          </div>
+        );
+      })()}
+
+      {(() => {
         const spellBookOn = options.spellBook ?? true;
         return (
           <div className="optionRow">
@@ -5498,7 +5586,10 @@ export const ADVENTURE_FEED_CUES: Partial<Record<GameEventType, { icon: string; 
   TOWN_BUILDING_USED: { icon: "🏛", cue: "build" },
   SIEGE_FORTIFICATIONS_PLACED: { icon: "🏰", cue: "build" },
   FORTIFICATION_DESTROYED: { icon: "💥", cue: "combat-start" },
-  COMBAT_TOKEN_PLACED: { icon: "🔘", cue: "swap" }
+  COMBAT_TOKEN_PLACED: { icon: "🔘", cue: "swap" },
+  PARALLEL_TURNS_STARTED: { icon: "🔀", cue: "options" },
+  PARALLEL_TURN_ENDED: { icon: "🔀", cue: "options" },
+  PARALLEL_TURNS_STOPPED: { icon: "⚠️", cue: "warning" }
 };
 
 type GameEventType = GameState["eventLog"][number]["type"];
