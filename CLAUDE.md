@@ -319,9 +319,11 @@ A separate system from the Astrologers Proclaim deck (do not confuse the two).
 Data in `src/data/cards/events.ts` (all 20 published Fortress Events, real card
 scans fetched by `scripts/fetch-events-art.py`); engine in `src/engine/adventure.ts`
 (`drawEventCard` / `resolveEventCard` / `applyEventVisitStep`); toggle
-`GameSetupOptions.events` (Game options UI, **default ON**, "multiplayer only" —
-a solo table never gets the deck; the deck's absence in `state.decks` IS the off
-switch). Timing per the rulebook p.15-16: drawn at the start of each Resource
+`GameSetupOptions.events` (Game options UI, **default OFF** — an opt-in optional
+rule — and "multiplayer only": even switched On, a solo table never gets the
+deck; the deck's absence in `state.decks` IS the off switch). A drawn Event pops
+the `EventDrawnOverlay` on every client (drawer named, resolves clockwise from
+them) plus a feed line. Timing per the rulebook p.15-16: drawn at the start of each Resource
 Round AFTER income; the drawer rotates clockwise per draw; effects resolve in
 clockwise order starting with the drawer (the FIFO reward queue is the order).
 Tests: `event-deck.test.ts` (flow/toggle/rotation/secrecy), `event-cards.test.ts`

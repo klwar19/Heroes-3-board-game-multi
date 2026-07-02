@@ -3674,25 +3674,29 @@ export default function Home() {
                 state={state}
                 viewerPlayerId={isSeated ? viewerPlayerId : seatIds[0]}
               />
-              <HexMapBoard
-                legalActions={legalActions}
-                moveCue={moveCue}
-                onAction={submitAction}
-                placement={tilePlacement}
-                readOnly={mapReadOnly || !isSeated}
-                state={state}
-                view={playerView}
-                viewerPlayerId={isSeated ? viewerPlayerId : OBSERVER_SEAT}
-              />
-              {isSeated && !mapReadOnly ? (
-                <FarTileTray
-                  onTogglePlacement={setTilePlacement}
+              {/* The Far-tile tray anchors to THIS wrapper, so it overlays the
+                  map's top-left corner — never the dock above it. */}
+              <div className="mapStage">
+                <HexMapBoard
+                  legalActions={legalActions}
+                  moveCue={moveCue}
+                  onAction={submitAction}
                   placement={tilePlacement}
+                  readOnly={mapReadOnly || !isSeated}
                   state={state}
                   view={playerView}
-                  viewerPlayerId={viewerPlayerId}
+                  viewerPlayerId={isSeated ? viewerPlayerId : OBSERVER_SEAT}
                 />
-              ) : null}
+                {isSeated && !mapReadOnly ? (
+                  <FarTileTray
+                    onTogglePlacement={setTilePlacement}
+                    placement={tilePlacement}
+                    state={state}
+                    view={playerView}
+                    viewerPlayerId={viewerPlayerId}
+                  />
+                ) : null}
+              </div>
             </div>
           </div>
 
