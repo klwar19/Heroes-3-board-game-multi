@@ -76,10 +76,33 @@ describe("room membership through the store", () => {
     const hosted = submitRoomAction(roomId, { type: "SET_ROOM_HOSTED", clientId: "c1", hosted: true }).snapshot;
     expect(hosted.state.room?.hosted).toBe(true);
 
-    const reset = resetRoom(roomId, { mode: "adventure" });
+    const reset = resetRoom(roomId, { mode: "adventure" }, "c1").snapshot;
     expect(reset.state.room?.hosted).toBe(true);
     expect(reset.state.room?.hostClientId).toBe("c1");
     expect(reset.state.room?.members.some((member) => member.clientId === "c1")).toBe(true);
+  });
+
+  it("refuses a hosted-room reset from anyone but the host (mirrors closeRoom)", () => {
+    const roomId = uniqueRoom("resetauth");
+    getRoomSnapshot(roomId);
+    submitRoomAction(roomId, { type: "JOIN_ROOM", clientId: "c1", name: "Host" });
+    submitRoomAction(roomId, { type: "JOIN_ROOM", clientId: "c2", name: "Guest" });
+    submitRoomAction(roomId, { type: "SET_ROOM_HOSTED", clientId: "c1", hosted: true });
+    const before = getRoomSnapshot(roomId);
+
+    // A guest, and an anonymous caller, both bounce off — the game is untouched.
+    for (const actor of ["c2", undefined] as const) {
+      const denied = resetRoom(roomId, { mode: "adventure" }, actor);
+      expect(denied.reset).toBe(false);
+      expect(denied.reason).toMatch(/host/i);
+      expect(denied.snapshot.version).toBe(before.version);
+      expect(denied.snapshot.state.seed).toBe(before.state.seed);
+    }
+
+    // The host's own reset goes through (the CONTROL for the guard above).
+    const allowed = resetRoom(roomId, { mode: "adventure" }, "c1");
+    expect(allowed.reset).toBe(true);
+    expect(allowed.snapshot.state.seed).not.toBe(before.state.seed);
   });
 
   it("carries the room name and creation stamp across a game reset", () => {
@@ -89,7 +112,7 @@ describe("room membership through the store", () => {
     const createdAt = created.createdAt;
 
     submitRoomAction(roomId, { type: "JOIN_ROOM", clientId: "c1", name: "Binh" });
-    const reset = resetRoom(roomId, { mode: "adventure" });
+    const reset = resetRoom(roomId, { mode: "adventure" }).snapshot;
     // The name survives (carried via state.room) and the creation stamp is not re-minted.
     expect(reset.state.room?.name).toBe("Friday Night");
     expect(reset.createdAt).toBe(createdAt);

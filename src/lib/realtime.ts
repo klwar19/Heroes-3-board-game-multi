@@ -239,7 +239,9 @@ function connectPartyRoom(
           window.clearTimeout(timeout);
           resolve(snapshot);
         };
-        socket.send(JSON.stringify({ type: "reset", ...options }));
+        socket.send(
+          JSON.stringify({ type: "reset", ...options, ...(actorClientId ? { actorClientId } : {}) })
+        );
       }),
     fetchSnapshot: async () => {
       const response = await fetch(partyHttpUrl(host, roomId), { cache: "no-store" });
@@ -367,10 +369,14 @@ function connectApiRoom(
       const response = await fetch(`/api/rooms/${encodeURIComponent(roomId)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reset: true, ...options })
+        body: JSON.stringify({ reset: true, ...options, ...(actorClientId ? { actorClientId } : {}) })
       });
       if (!response.ok) {
-        throw new Error("Could not reset the room.");
+        // A 403 is the host-authority refusal (hosted rooms reset host-only);
+        // surface its reason instead of the generic network message.
+        const denial = response.status === 403 ? await response.json().catch(() => null) : null;
+        const reason = denial && typeof denial.reason === "string" ? denial.reason : null;
+        throw new Error(reason ?? "Could not reset the room.");
       }
       return (await response.json()) as GameRoomSnapshot;
     },
