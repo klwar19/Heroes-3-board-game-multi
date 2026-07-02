@@ -76,11 +76,11 @@ import {
   PreBattlePanel,
   PromptTray,
   SetupLobbyScreen,
-  TownPanel,
   type AdventureFeedItem,
   type HeroMoveCue,
   type TilePlacementSelection
 } from "@/components/adventure/screen";
+import { TownWindow } from "@/components/adventure/town-board";
 import {
   moveIntoBattleWithTroopsToBuy,
   actionKey,
@@ -639,6 +639,8 @@ export default function Home() {
   const battleTroopConfirmedRef = useRef(false);
   const [tilePlacement, setTilePlacement] = useState<TilePlacementSelection>(null);
   const [combatTab, setCombatTab] = useState<"battle" | "map">("battle");
+  /** The Town window popup (board / buildings views) over the adventure map. */
+  const [townOpen, setTownOpen] = useState(false);
   const [pile, setPile] = useState<{ title: string; cardIds: string[]; kind: "cards" | "units" | "astrologers" | "events" } | null>(null);
   const [dice, setDice] = useState<{ current: DiceCue | null; queue: DiceCue[] }>({
     current: null,
@@ -3554,13 +3556,20 @@ export default function Home() {
       setPendingCostPlay(null);
     };
 
+    // The Town window opens only for a seated viewer who actually owns a town.
+    const viewerTown = isSeated
+      ? Object.values(state.towns).find((candidate) => candidate.controllerId === viewerPlayerId)
+      : undefined;
+
     return (
       <CardZoomProvider>
         <main className="tableRoot adventureRoot">
           <div className="tableTopRow">
             <AdventureHud
+              heroSeatIds={isSeated ? [viewerPlayerId] : seatIds}
               legalActions={legalActions}
               onAction={submitAction}
+              onOpenTown={viewerTown ? () => setTownOpen(true) : undefined}
               state={state}
               viewerPlayerId={isSeated ? viewerPlayerId : seatIds[0]}
             />
@@ -3573,6 +3582,7 @@ export default function Home() {
             <PreBattlePanel
               legalActions={legalActions}
               onAction={submitAction}
+              onOpenTown={viewerTown ? () => setTownOpen(true) : undefined}
               state={state}
               viewerPlayerId={isSeated ? viewerPlayerId : OBSERVER_SEAT}
             />
@@ -3601,6 +3611,18 @@ export default function Home() {
                 view={playerView}
                 viewerPlayerId={isSeated ? viewerPlayerId : seatIds[0]}
               />
+              {/* The unit deck rides the left rail now that the right column is
+                  gone (hero board docks in the top bar, town in its window). */}
+              {isSeated ? (
+                <ArmyPanel playerId={viewerPlayerId} state={state} />
+              ) : (
+                seatIds.map((playerId) => (
+                  <div key={playerId}>
+                    <PermanentSlot playerId={playerId} state={state} />
+                    <ArmyPanel playerId={playerId} state={state} />
+                  </div>
+                ))
+              )}
             </div>
             <div className="mapColumn">
               <HexMapBoard
@@ -3623,32 +3645,18 @@ export default function Home() {
                 />
               ) : null}
             </div>
-            <div className="rightRail adventureRail">
-              {isSeated ? (
-                <>
-                  <HeroBoard playerId={viewerPlayerId} state={state} />
-                  {/* The seated viewer's own permanent(s) now live in the card
-                      tray under the map (next to the deck/discard) so the
-                      permanent effect reads clearly while on the map. */}
-                  <TownPanel
-                    legalActions={legalActions}
-                    onAction={submitAction}
-                    state={state}
-                    viewerPlayerId={viewerPlayerId}
-                  />
-                  <ArmyPanel playerId={viewerPlayerId} state={state} />
-                </>
-              ) : (
-                seatIds.map((playerId) => (
-                  <div key={playerId}>
-                    <HeroBoard playerId={playerId} state={state} />
-                    <PermanentSlot playerId={playerId} state={state} />
-                    <ArmyPanel playerId={playerId} state={state} />
-                  </div>
-                ))
-              )}
-            </div>
           </div>
+
+          {isSeated && viewerTown ? (
+            <TownWindow
+              legalActions={legalActions}
+              onAction={submitAction}
+              onClose={() => setTownOpen(false)}
+              open={townOpen}
+              state={state}
+              viewerPlayerId={viewerPlayerId}
+            />
+          ) : null}
 
           {isSeated ? (
             <div className={`adventureHand ${selecting ? "refreshing" : ""}`} aria-label="Your hand">
