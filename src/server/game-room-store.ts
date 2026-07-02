@@ -264,18 +264,23 @@ export type ResetRoomResult = {
 /**
  * Starts a fresh game in the room. A reset is as destructive as a close (the
  * running game is wiped for every seat), so it carries the SAME authority rule
- * as closeRoom: a HOSTED room can only be reset by its host; an OPEN table has
- * no ownership to protect and anyone may reset it.
+ * as closeRoom — see authorizeHostedWipe: host always; any member once the
+ * host holds no live stream; strangers never. An OPEN table has no ownership
+ * to protect and anyone may reset it.
  */
-export function resetRoom(roomId: string, options: RoomResetOptions = {}, actorClientId?: string): ResetRoomResult {
+export function resetRoom(
+  roomId: string,
+  options: RoomResetOptions = {},
+  actorClientId?: string,
+  adminKey?: string
+): ResetRoomResult {
   const existing = roomStore.get(roomId) ?? loadPersistedRoom(roomId);
   const room = existing?.state.room ?? null;
-  if (room?.hosted && (!actorClientId || room.hostClientId !== actorClientId)) {
-    return {
-      reset: false,
-      reason: "Only the host can reset this room.",
-      snapshot: getRoomSnapshot(roomId)
-    };
+  if (room?.hosted && !adminKeyAuthorizes(adminKey)) {
+    const authority = authorizeHostedWipe(roomId, room, actorClientId, "reset");
+    if (!authority.allowed) {
+      return { reset: false, reason: authority.reason, snapshot: getRoomSnapshot(roomId) };
+    }
   }
   const reset = makeRoom(roomId, options);
   reset.version = (existing?.version ?? 0) + 1;
@@ -392,6 +397,90 @@ export function submitRoomAction(
     snapshot,
     result
   };
+}
+
+// ---------------------------------------------------------------------------
+// Live presence: which clientIds currently hold an open stream per room.
+// Backs the host-while-connected rule for destructive room ops (reset/close):
+// the host's word is law while their tab is live, but a host whose per-tab
+// identity is gone (browser restart) must not strand the table — any member
+// may then wipe/close it. Reference-counted per clientId (multiple streams).
+// ---------------------------------------------------------------------------
+
+const liveRoomClients = new Map<string, Map<string, number>>();
+
+/**
+ * Developer override for destructive room ops: a request carrying the
+ * deployment's HOMM3BG_ADMIN_KEY env var may reset or close ANY table. With no
+ * key configured the override does not exist — an empty or missing env never
+ * matches anything.
+ */
+function adminKeyAuthorizes(adminKey: string | undefined): boolean {
+  const configured = process.env.HOMM3BG_ADMIN_KEY ?? "";
+  return configured.length > 0 && adminKey === configured;
+}
+
+/** Registers a live stream for `clientId` on the room (SSE route connect). */
+export function markRoomClientConnected(roomId: string, clientId: string | undefined): void {
+  if (!clientId) {
+    return;
+  }
+  const clients = liveRoomClients.get(roomId) ?? new Map<string, number>();
+  clients.set(clientId, (clients.get(clientId) ?? 0) + 1);
+  liveRoomClients.set(roomId, clients);
+}
+
+/** Drops one live stream for `clientId` on the room (SSE route teardown). */
+export function markRoomClientDisconnected(roomId: string, clientId: string | undefined): void {
+  if (!clientId) {
+    return;
+  }
+  const clients = liveRoomClients.get(roomId);
+  const count = clients?.get(clientId) ?? 0;
+  if (!clients || count <= 0) {
+    return;
+  }
+  if (count === 1) {
+    clients.delete(clientId);
+    if (clients.size === 0) {
+      liveRoomClients.delete(roomId);
+    }
+  } else {
+    clients.set(clientId, count - 1);
+  }
+}
+
+function isRoomClientConnected(roomId: string, clientId: string | null | undefined): boolean {
+  return Boolean(clientId && (liveRoomClients.get(roomId)?.get(clientId) ?? 0) > 0);
+}
+
+/**
+ * Shared authority for the two destructive room operations (reset and close)
+ * on a HOSTED room; an open table never reaches this. One rule:
+ *  - the host may always do it;
+ *  - any MEMBER may do it while the host holds NO live stream (per-tab client
+ *    ids die with the browser, so a restarted host must not be locked out of
+ *    wiping their own table — and polling-fallback hosts are the accepted
+ *    edge of this rule);
+ *  - a non-member never may.
+ */
+function authorizeHostedWipe(
+  roomId: string,
+  room: { hostClientId: string | null; members: { clientId: string }[] },
+  actorClientId: string | undefined,
+  verb: "reset" | "close"
+): { allowed: boolean; reason?: string } {
+  if (actorClientId && actorClientId === room.hostClientId) {
+    return { allowed: true };
+  }
+  const isMember = Boolean(actorClientId) && room.members.some((member) => member.clientId === actorClientId);
+  if (!isMember) {
+    return { allowed: false, reason: `Only members of this room can ${verb} it.` };
+  }
+  if (isRoomClientConnected(roomId, room.hostClientId)) {
+    return { allowed: false, reason: `Only the host can ${verb} this room while the host is connected.` };
+  }
+  return { allowed: true };
 }
 
 /**
@@ -544,23 +633,26 @@ export function createRoom(options: RoomCreateOptions & { roomId?: string } = {}
 export type CloseRoomResult = { closed: boolean; reason?: string };
 
 /**
- * Deletes a room for everyone. A HOSTED room can only be closed by its host; an
- * OPEN table has no host/ownership to protect and so can be closed by anyone (a
- * per-session clientId means the creator no longer "owns" it after a browser
- * restart — see viewerCanClose). Connected clients receive one final `closed`
- * snapshot so they drop back to the lobby. Idempotent: closing a room that is
- * already gone succeeds.
+ * Deletes a room for everyone. A HOSTED room follows authorizeHostedWipe (the
+ * host always; any member once the host holds no live stream — a restarted
+ * host's per-tab id is gone and must not strand the table; strangers never).
+ * An OPEN table has no host/ownership to protect and so can be closed by
+ * anyone (a per-session clientId means the creator no longer "owns" it after a
+ * browser restart — see viewerCanClose). Connected clients receive one final
+ * `closed` snapshot so they drop back to the lobby. Idempotent: closing a room
+ * that is already gone succeeds.
  */
-export function closeRoom(roomId: string, actorClientId?: string): CloseRoomResult {
+export function closeRoom(roomId: string, actorClientId?: string, adminKey?: string): CloseRoomResult {
   const record = roomStore.get(roomId) ?? loadPersistedRoom(roomId);
   if (!record) {
     return { closed: true };
   }
 
   const room = record.state.room ?? null;
-  if (room?.hosted) {
-    if (!actorClientId || room.hostClientId !== actorClientId) {
-      return { closed: false, reason: "Only the host can close this room." };
+  if (room?.hosted && !adminKeyAuthorizes(adminKey)) {
+    const authority = authorizeHostedWipe(roomId, room, actorClientId, "close");
+    if (!authority.allowed) {
+      return { closed: false, reason: authority.reason };
     }
   }
   // Open table: no ownership to protect — anyone may close it.

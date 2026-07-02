@@ -57,7 +57,7 @@ export type RoomResetOptions = {
 
 type ClientMessage =
   | { type: "action"; requestId?: string; action: GameAction; actorClientId?: string }
-  | ({ type: "reset"; requestId?: string; actorClientId?: string } & RoomResetOptions)
+  | ({ type: "reset"; requestId?: string; actorClientId?: string; adminKey?: string } & RoomResetOptions)
   | { type: "sync" };
 
 type ServerMessage =
@@ -67,7 +67,9 @@ type ServerMessage =
       requestId?: string;
       errors: { code: string; message: string }[];
       snapshot: RoomSnapshot;
-    };
+    }
+  /** Sent only to a sender whose reset was REFUSED (host-authority rule). */
+  | { type: "reset-denied"; reason: string };
 
 const SNAPSHOT_KEY = "snapshot";
 
@@ -218,24 +220,63 @@ export default class GameRoomServer implements Party.Server {
   }
 
   /**
-   * Mirrors the store's closeRoom/resetRoom rule: a HOSTED room can only be
-   * closed OR reset by its host — both wipe the running game for every seat.
-   * An OPEN table has no ownership to protect (a per-session clientId means
-   * the creator no longer "owns" it after a browser restart), so anyone may.
+   * Developer override for destructive room ops: a request carrying the
+   * deployment's HOMM3BG_ADMIN_KEY (PartyKit env var) may reset or close ANY
+   * table. With no key configured the override does not exist — an empty or
+   * missing env never matches anything.
    */
-  private hostAuthorizes(actorClientId: string | undefined): boolean {
-    const room = this.snapshot?.state.room ?? null;
-    if (room?.hosted) {
-      return Boolean(actorClientId) && room.hostClientId === actorClientId;
-    }
-    // Open table: no ownership to protect.
-    return true;
+  private adminAuthorizes(adminKey: string | undefined): boolean {
+    const env = (this.room as unknown as { env?: Record<string, unknown> }).env;
+    const configured = typeof env?.HOMM3BG_ADMIN_KEY === "string" ? env.HOMM3BG_ADMIN_KEY : "";
+    return configured.length > 0 && adminKey === configured;
   }
 
-  private authorizeClose(actorClientId: string | undefined): CloseRoomResult {
-    return this.hostAuthorizes(actorClientId)
-      ? { closed: true }
-      : { closed: false, reason: "Only the host can close this room." };
+  /** Whether the given clientId currently holds a live socket on this room. */
+  private isClientConnected(clientId: string | null): boolean {
+    if (!clientId) {
+      return false;
+    }
+    for (const connection of this.room.getConnections()) {
+      if (this.clientIdOf(connection) === clientId) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Mirrors the store's authorizeHostedWipe for the two destructive room ops
+   * (reset and close) — both wipe the running game for every seat. HOSTED
+   * room: the host always may; any MEMBER may while the host holds no live
+   * socket (per-tab client ids die with the browser, so a restarted host must
+   * not strand the table); a stranger never may. An OPEN table has no
+   * ownership to protect, so anyone may.
+   */
+  private hostAuthorizes(actorClientId: string | undefined, verb: "reset" | "close"): { allowed: boolean; reason?: string } {
+    const room = this.snapshot?.state.room ?? null;
+    if (!room?.hosted) {
+      // Open table: no ownership to protect.
+      return { allowed: true };
+    }
+    if (actorClientId && actorClientId === room.hostClientId) {
+      return { allowed: true };
+    }
+    const isMember = Boolean(actorClientId) && room.members.some((member) => member.clientId === actorClientId);
+    if (!isMember) {
+      return { allowed: false, reason: `Only members of this room can ${verb} it.` };
+    }
+    if (this.isClientConnected(room.hostClientId)) {
+      return { allowed: false, reason: `Only the host can ${verb} this room while the host is connected.` };
+    }
+    return { allowed: true };
+  }
+
+  private authorizeClose(actorClientId: string | undefined, adminKey?: string): CloseRoomResult {
+    if (this.adminAuthorizes(adminKey)) {
+      return { closed: true };
+    }
+    const authority = this.hostAuthorizes(actorClientId, "close");
+    return authority.allowed ? { closed: true } : { closed: false, reason: authority.reason };
   }
 
   private broadcastSnapshot(): void {
@@ -320,14 +361,20 @@ export default class GameRoomServer implements Party.Server {
 
     if (message.type === "reset") {
       const previous = this.ensureSnapshot();
-      // Same authority as close: only the host may wipe a hosted room's game.
-      // The socket's own ?clientId= identity backs up the message field.
-      if (!this.hostAuthorizes(message.actorClientId ?? this.clientIdOf(sender))) {
-        // Refused: the room is untouched. Re-send the current snapshot to the
-        // sender only, so its pending reset promise settles benignly.
-        const reply: ServerMessage = { type: "snapshot", snapshot: this.signed(previous) };
-        sender.send(JSON.stringify(reply));
-        return;
+      // Same authority as close: host while connected, any member once the
+      // host is gone, the developer's admin key always. The socket's own
+      // ?clientId= identity backs up the message field.
+      if (!this.adminAuthorizes(message.adminKey)) {
+        const authority = this.hostAuthorizes(message.actorClientId ?? this.clientIdOf(sender), "reset");
+        if (!authority.allowed) {
+          // Refused: the room is untouched; tell the sender (only) why.
+          const reply: ServerMessage = {
+            type: "reset-denied",
+            reason: authority.reason ?? "Only the host can reset this room."
+          };
+          sender.send(JSON.stringify(reply));
+          return;
+        }
       }
       const state = this.makeState(message);
       // Carry room membership (host, seats, observers) across a game reset.
@@ -406,8 +453,10 @@ export default class GameRoomServer implements Party.Server {
     }
 
     if (request.method === "DELETE") {
-      const body = (await request.json().catch(() => null)) as { actorClientId?: string } | null;
-      const result = this.authorizeClose(body?.actorClientId);
+      const body = (await request.json().catch(() => null)) as
+        | { actorClientId?: string; adminKey?: string }
+        | null;
+      const result = this.authorizeClose(body?.actorClientId, body?.adminKey);
       if (!result.closed) {
         return jsonWithCors(result, 403);
       }
@@ -426,15 +475,22 @@ export default class GameRoomServer implements Party.Server {
 
     if (request.method === "POST") {
       const body = (await request.json().catch(() => null)) as
-        | ({ reset?: boolean; actorClientId?: string } & RoomResetOptions)
+        | ({ reset?: boolean; actorClientId?: string; adminKey?: string } & RoomResetOptions)
         | { action?: GameAction; actorClientId?: string }
         | null;
 
       if (body && "reset" in body && body.reset) {
         const previous = this.ensureSnapshot();
-        // Same authority as DELETE: only the host may wipe a hosted room.
-        if (!this.hostAuthorizes("actorClientId" in body ? body.actorClientId : undefined)) {
-          return jsonWithCors({ reason: "Only the host can reset this room." }, 403);
+        // Same authority as DELETE: host while connected, member once the
+        // host is gone, the developer's admin key always.
+        if (!this.adminAuthorizes(body.adminKey)) {
+          const authority = this.hostAuthorizes(
+            "actorClientId" in body ? body.actorClientId : undefined,
+            "reset"
+          );
+          if (!authority.allowed) {
+            return jsonWithCors({ reason: authority.reason }, 403);
+          }
         }
         const state = this.makeState(body);
         // Carry room membership (host, seats, observers) across a game reset.

@@ -18,12 +18,19 @@ export async function GET(_request: Request, context: RoomContext) {
 export async function POST(request: Request, context: RoomContext) {
   const { roomId } = await context.params;
   const body = (await request.json().catch(() => ({}))) as
-    | ({ reset?: boolean; restore?: boolean; state?: GameState; actorClientId?: string } & RoomResetOptions)
+    | ({
+        reset?: boolean;
+        restore?: boolean;
+        state?: GameState;
+        actorClientId?: string;
+        adminKey?: string;
+      } & RoomResetOptions)
     | null;
 
   if (body?.reset) {
     // resetRoom checks the actor against the host on hosted rooms (same rule
-    // as DELETE/closeRoom) — a guest cannot wipe a hosted table's game.
+    // as DELETE/closeRoom): host while connected, any member once the host is
+    // gone, the developer's HOMM3BG_ADMIN_KEY always.
     const result = resetRoom(
       decodeURIComponent(roomId),
       {
@@ -31,7 +38,8 @@ export async function POST(request: Request, context: RoomContext) {
         difficulty: body.difficulty,
         players: body.players
       },
-      typeof body.actorClientId === "string" ? body.actorClientId : undefined
+      typeof body.actorClientId === "string" ? body.actorClientId : undefined,
+      typeof body.adminKey === "string" ? body.adminKey : undefined
     );
     if (!result.reset) {
       return NextResponse.json({ reason: result.reason }, { status: 403 });
@@ -64,9 +72,12 @@ export async function DELETE(request: Request, context: RoomContext) {
   const { roomId } = await context.params;
   const url = new URL(request.url);
   const fromQuery = url.searchParams.get("actorClientId") ?? undefined;
-  const body = (await request.json().catch(() => null)) as { actorClientId?: string } | null;
+  const body = (await request.json().catch(() => null)) as
+    | { actorClientId?: string; adminKey?: string }
+    | null;
   const actorClientId = typeof body?.actorClientId === "string" ? body.actorClientId : fromQuery;
+  const adminKey = typeof body?.adminKey === "string" ? body.adminKey : undefined;
 
-  const result = closeRoom(decodeURIComponent(roomId), actorClientId);
+  const result = closeRoom(decodeURIComponent(roomId), actorClientId, adminKey);
   return NextResponse.json(result, { status: result.closed ? 200 : 403 });
 }
