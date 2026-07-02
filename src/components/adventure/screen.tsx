@@ -4,11 +4,12 @@
 
 import Link from "next/link";
 import { assetUrl } from "@/lib/asset-url";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Ban, BookOpen, Castle, Check, ChevronsUp, Crown, Dices, Hammer, Hourglass, Image as ImageIcon, Info, Lock, Minus, Plus, RotateCcw, RotateCw, Shield, Sparkles, Swords, Unlock, X } from "lucide-react";
 import { cardLibrary } from "@/data/cards/library";
 import { buildingTimingLabel, describeBuildingEffect } from "@/data/towns/describe";
+import { townIconUrl } from "@/data/towns/boards";
 import {
   coreBuildingDefinitions,
   coreFactionDefinitions,
@@ -1658,23 +1659,15 @@ export function AdventureHud({
   state,
   viewerPlayerId,
   legalActions,
-  onAction,
-  heroSeatIds,
-  onOpenTown
+  onAction
 }: {
   state: GameState;
   viewerPlayerId: PlayerId;
   legalActions: LegalAction[];
   onAction: (action: GameAction) => void;
-  /** Seats whose hero boards dock in the top bar (own seat, or all for observers). */
-  heroSeatIds?: PlayerId[];
-  /** Opens the Town window popup (hidden when the viewer has no town). */
-  onOpenTown?: () => void;
 }) {
   const { zoomContent } = useCardZoom();
   const [confirmGiveUp, setConfirmGiveUp] = useState(false);
-  /** Which seat's full hero board is dropped open from the top bar. */
-  const [openHeroSeat, setOpenHeroSeat] = useState<PlayerId | null>(null);
   const player = state.players[viewerPlayerId];
   const hero = Object.values(state.heroes).find(
     (candidate) => candidate.controllerId === viewerPlayerId && candidate.kind === "main"
@@ -1688,11 +1681,6 @@ export function AdventureHud({
   const endTurn = legalActions.find((legal) => legal.action.type === "END_TURN");
   const giveUp = legalActions.find((legal) => legal.action.type === "GIVE_UP");
   const winner = state.adventure?.winnerPlayerId;
-
-  const heroSeats = (heroSeatIds ?? [viewerPlayerId]).filter((seatId) => {
-    const seat = state.players[seatId];
-    return seat && seat.id !== "neutrals" && seat.heroDefId;
-  });
 
   return (
     <div className="advHud" aria-label="Adventure status">
@@ -1730,49 +1718,8 @@ export function AdventureHud({
           <small>{state.phase}</small>
         </div>
       )}
-      {/* The hero board docks in the top bar: click a chip to drop the full
-          printed board open (observers get one chip per seat). */}
-      {heroSeats.length > 0 ? (
-        <div className="advHudCell heroDockCell" aria-label="Hero boards">
-          {heroSeats.map((seatId) => {
-            const seat = state.players[seatId];
-            const seatHero = Object.values(state.heroes).find(
-              (candidate) => candidate.controllerId === seatId && candidate.kind === "main"
-            );
-            const heroDef = seat?.heroDefId ? coreHeroDefinitions[seat.heroDefId] : undefined;
-            if (!seat || !heroDef) {
-              return null;
-            }
-            const open = openHeroSeat === seatId;
-            return (
-              <button
-                aria-expanded={open}
-                className={`heroChip ${open ? "open" : ""}`}
-                key={seatId}
-                onClick={() => setOpenHeroSeat(open ? null : seatId)}
-                title={`${heroDef.name} — open the hero board`}
-                type="button"
-              >
-                <HeroPortrait name={heroDef.name} portrait={heroDef.portrait} size={26} />
-                <span className="heroChipText">
-                  <strong>{heroDef.name}</strong>
-                  <small>
-                    {heroSeats.length > 1 ? `${seat.name} · ` : ""}level {seatHero?.level ?? 1}
-                  </small>
-                </span>
-              </button>
-            );
-          })}
-          {openHeroSeat ? (
-            <>
-              <div aria-hidden="true" className="heroDropBackdrop" onClick={() => setOpenHeroSeat(null)} />
-              <div className="heroDrop" role="dialog" aria-label="Hero board">
-                <HeroBoard playerId={openHeroSeat} state={state} />
-              </div>
-            </>
-          ) : null}
-        </div>
-      ) : null}
+      {/* The town + hero boards live in the prominent dock above the map now
+          (TownHeroDock), not as cramped chips in this status bar. */}
       {astrologersCard ? (
         <button
           className="advHudCell astrologers"
@@ -1897,16 +1844,6 @@ export function AdventureHud({
         </div>
       ) : null}
       <div className="advHudButtons">
-        {onOpenTown ? (
-          <button
-            className="commandButton townButton"
-            onClick={onOpenTown}
-            title="Open your town: build, recruit and buy spells in the town window"
-            type="button"
-          >
-            <Castle aria-hidden="true" size={13} /> Town
-          </button>
-        ) : null}
         {endTurn ? (
           <button className="commandButton" onClick={() => onAction(endTurn.action)} type="button">
             End turn
@@ -1936,6 +1873,163 @@ export function AdventureHud({
           )
         ) : null}
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Town + hero dock: the two big, obviously-clickable boards sitting just above
+// the map. Replaces the cramped town button / hero chip that used to hide in
+// the status bar — these are the primary way into the town window and the
+// printed hero board.
+// ---------------------------------------------------------------------------
+
+/** The painted town portrait (thelazy.net), with a plaque fallback (Bulwark). */
+function TownIcon({ factionId, size }: { factionId: string; size: number }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return (
+      <span
+        aria-hidden="true"
+        className="dockTownIconFallback"
+        style={{ width: size, height: size, color: playerFactionColor(factionId) }}
+      >
+        <Castle size={Math.round(size * 0.55)} />
+      </span>
+    );
+  }
+  return (
+    <img
+      alt=""
+      aria-hidden="true"
+      className="dockTownIcon"
+      draggable={false}
+      onError={() => setFailed(true)}
+      src={assetUrl(townIconUrl(factionId))}
+      style={{ width: size, height: size }}
+    />
+  );
+}
+
+function playerFactionColor(factionId: string | undefined): string {
+  return (factionId && coreFactionDefinitions[factionId]?.color) || "#b08d2f";
+}
+
+export function TownHeroDock({
+  state,
+  viewerPlayerId,
+  heroSeatIds,
+  onOpenTown
+}: {
+  state: GameState;
+  viewerPlayerId: PlayerId;
+  /** Seats whose hero board this dock exposes (own seat, or all for observers). */
+  heroSeatIds?: PlayerId[];
+  /** Opens the Town window popup (omitted when the viewer has no town). */
+  onOpenTown?: () => void;
+}) {
+  const [openHeroSeat, setOpenHeroSeat] = useState<PlayerId | null>(null);
+  const player = state.players[viewerPlayerId];
+  const faction = player?.factionId ? coreFactionDefinitions[player.factionId] : undefined;
+
+  const heroSeats = (heroSeatIds ?? [viewerPlayerId]).filter((seatId) => {
+    const seat = state.players[seatId];
+    return seat && seat.id !== "neutrals" && seat.heroDefId;
+  });
+
+  if (!onOpenTown && heroSeats.length === 0) {
+    return null;
+  }
+
+  const tokens = player?.townTokens;
+
+  return (
+    <div className="townHeroDock" aria-label="Town and hero">
+      {onOpenTown && faction ? (
+        <button
+          aria-label={`Open your ${faction.name} town`}
+          className="dockTile townDockTile"
+          onClick={onOpenTown}
+          style={{ "--dock-faction": faction.color } as CSSProperties}
+          title="Open your town — build structures, recruit units and buy spells"
+          type="button"
+        >
+          <TownIcon factionId={faction.id} size={64} />
+          <span className="dockTileText">
+            <strong>{faction.name} town</strong>
+            <small>Build · Recruit · Spells</small>
+            {tokens ? (
+              <span className="dockTokens" aria-hidden="true">
+                <span className={tokens.build ? "on" : "off"} title="Build token">
+                  🔨
+                </span>
+                <span className={tokens.population ? "on" : "off"} title="Population token">
+                  👥
+                </span>
+                <span className={tokens.spellBook ? "on" : "off"} title="Spell Book token">
+                  📖
+                </span>
+              </span>
+            ) : null}
+          </span>
+          <span aria-hidden="true" className="dockOpenHint">
+            Open ▸
+          </span>
+        </button>
+      ) : null}
+
+      {heroSeats.map((seatId) => {
+        const seat = state.players[seatId];
+        const seatHero = Object.values(state.heroes).find(
+          (candidate) => candidate.controllerId === seatId && candidate.kind === "main"
+        );
+        const heroDef = seat?.heroDefId ? coreHeroDefinitions[seat.heroDefId] : undefined;
+        if (!seat || !heroDef) {
+          return null;
+        }
+        const open = openHeroSeat === seatId;
+        return (
+          <button
+            aria-expanded={open}
+            aria-label={`Open ${heroDef.name}'s hero board`}
+            className={`dockTile heroDockTile ${open ? "open" : ""}`}
+            key={seatId}
+            onClick={() => setOpenHeroSeat(open ? null : seatId)}
+            style={{ "--dock-faction": playerFactionColor(seat.factionId) } as CSSProperties}
+            title={`${heroDef.name} — open the hero board`}
+            type="button"
+          >
+            <HeroPortrait name={heroDef.name} portrait={heroDef.portrait} size={64} />
+            <span className="dockTileText">
+              <strong>{heroDef.name}</strong>
+              <small>
+                {heroSeats.length > 1 ? `${seat.name} · ` : ""}level {seatHero?.level ?? 1}
+              </small>
+              <small className="dockSubtle">Hero board</small>
+            </span>
+            <span aria-hidden="true" className="dockOpenHint">
+              {open ? "Close ▾" : "Open ▸"}
+            </span>
+          </button>
+        );
+      })}
+
+      {openHeroSeat ? (
+        <>
+          <div aria-hidden="true" className="heroDropBackdrop" onClick={() => setOpenHeroSeat(null)} />
+          <div className="heroDrop" role="dialog" aria-label="Hero board">
+            <button
+              aria-label="Close the hero board"
+              className="heroDropClose"
+              onClick={() => setOpenHeroSeat(null)}
+              type="button"
+            >
+              <X aria-hidden="true" size={16} />
+            </button>
+            <HeroBoard playerId={openHeroSeat} state={state} />
+          </div>
+        </>
+      ) : null}
     </div>
   );
 }
@@ -3917,10 +4011,10 @@ function GameOptionsPanel({
       })()}
 
       {(() => {
-        const eventsOn = options.events ?? true;
+        const eventsOn = options.events ?? false;
         return (
           <div className="optionRow">
-            <small title="Fortress expansion optional rule: an Event card is drawn at the start of every Resource round (multiplayer only)">
+            <small title="Fortress expansion optional rule (OFF by default): an Event card is drawn at the start of every Resource round (multiplayer only)">
               Event deck
             </small>
             <div className="optionButtons">
@@ -3940,7 +4034,7 @@ function GameOptionsPanel({
             <small className="optionHint">
               {eventsOn
                 ? "Each Resource round (after income) the next Event card is drawn and resolved clockwise from its drawer; the drawing player rotates. Multiplayer only — a solo game skips the deck."
-                : "No Event deck — Resource rounds pay income only."}
+                : "Off by default. No Event deck — Resource rounds pay income only. Turn it On to add the Fortress-expansion Events (multiplayer only)."}
             </small>
           </div>
         );
@@ -5181,6 +5275,9 @@ export const ADVENTURE_FEED_CUES: Partial<Record<GameEventType, { icon: string; 
   STRUCTURE_BUILT: { icon: "🔨", cue: "build" },
   ASTROLOGERS_DRAWN: { icon: "🔭", cue: "astrologers" },
   ASTROLOGERS_HAND_RESHUFFLED: { icon: "🃏", cue: "astrologers" },
+  // Event deck (Fortress optional rule): a drawn Event announces itself in the
+  // feed too — the big EventDrawnOverlay owns the sound, so this cue is silent.
+  EVENT_CARD_DRAWN: { icon: "📜", cue: "event" },
   NEUTRAL_DRAW_SWAPPED: { icon: "🔄", cue: "swap" },
   GAME_OPTIONS_CHANGED: { icon: "⚙️", cue: "options" },
   SETUP_SEAT_RESET: { icon: "⚠️", cue: "warning" },

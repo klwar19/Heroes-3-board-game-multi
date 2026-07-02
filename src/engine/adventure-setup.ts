@@ -660,9 +660,10 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     0,
     Math.min(scenario.maxPlayers, scenario.layout.starts.length)
   );
-  // Event deck (Fortress expansion) default ON, but "Event cards may be used
-  // in multiplayer games only" — a solo table never gets the deck.
-  const eventsOn = (setupOptions.events ?? true) && playerConfigs.length >= 2;
+  // Event deck (Fortress expansion) is an OPT-IN optional rule: OFF unless the
+  // table explicitly turns it on, and even then "Event cards may be used in
+  // multiplayer games only" — a solo table never gets the deck.
+  const eventsOn = (setupOptions.events ?? false) && playerConfigs.length >= 2;
   // Parallel turns (optional, multiplayer only): the number of opening rounds
   // everyone plays simultaneously. A solo table always plays ordered.
   const parallelRounds = playerConfigs.length >= 2 ? normalizeParallelTurnRounds(setupOptions.parallelTurns) : 0;

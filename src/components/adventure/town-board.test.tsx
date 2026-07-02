@@ -21,7 +21,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 
 import { TownBoardView, TownWindow } from "./town-board";
-import { AdventureHud, PreBattlePanel } from "./screen";
+import { AdventureHud, PreBattlePanel, TownHeroDock } from "./screen";
 import { CardZoomProvider } from "@/components/table/zoom";
 import { createAdventureGameState, getLegalActions } from "@/engine";
 import { getMainHero } from "@/engine/adventure";
@@ -34,6 +34,22 @@ afterEach(cleanup);
 function freshState(): GameState {
   const state = createAdventureGameState({ seed: "town-board-ui", difficulty: "normal", rollFirstPlayer: false });
   state.players.p1.resources = { ...state.players.p1.resources, gold: 100, buildingMaterials: 50, valuables: 50 };
+  return state;
+}
+
+/** A stronghold town: a designed-tile board (empty scan, no fully-built scan),
+ *  so built bars use the per-building tile art and shared bars split visibly. */
+function strongholdState(): GameState {
+  const state = createAdventureGameState({
+    seed: "town-board-stronghold",
+    difficulty: "normal",
+    rollFirstPlayer: false,
+    players: [
+      { id: "p1", name: "Crag Hack", factionId: "stronghold", heroDefId: "crag_hack" },
+      { id: "p2", name: "Sandro", factionId: "necropolis", heroDefId: "sandro" }
+    ]
+  });
+  state.players.p1.resources = { gold: 200, buildingMaterials: 100, valuables: 100 };
   return state;
 }
 
@@ -284,21 +300,18 @@ describe("PvP prep — the board view stays live and the prep panel opens the to
 });
 
 describe("AdventureHud redesign", () => {
-  it("drops the first-player-roll notice, keeps move/morale as chips, adds Town + hero dock", () => {
+  it("drops the first-player-roll notice and keeps move/morale as chips", () => {
     const state = freshState();
     // Even with a recorded roll the HUD no longer announces the winner.
     state.adventure!.firstPlayerRoll = {
       attempts: [{ rolls: [{ playerId: "p1", name: "P1", value: 3 }] }],
       winnerPlayerId: "p1"
     } as never;
-    const onOpenTown = vi.fn();
     const { container } = render(
       <CardZoomProvider>
         <AdventureHud
-          heroSeatIds={["p1"]}
           legalActions={getLegalActions(state, "p1")}
           onAction={vi.fn()}
-          onOpenTown={onOpenTown}
           state={state}
           viewerPlayerId="p1"
         />
@@ -309,29 +322,96 @@ describe("AdventureHud redesign", () => {
     const cell = container.querySelector(".moveMoraleCell") as HTMLElement;
     expect(cell.textContent).toMatch(/move/i);
     expect(cell.textContent).toMatch(/morale/i);
-    // Town button opens the window.
-    fireEvent.click(screen.getByRole("button", { name: /town/i }));
+    // The town + hero live in the dock above the map now, not the status bar.
+    expect(container.querySelector(".townDockTile")).toBeNull();
+  });
+});
+
+describe("TownHeroDock (above the map)", () => {
+  it("shows a big Town tile that opens the town window", () => {
+    const state = freshState();
+    const onOpenTown = vi.fn();
+    render(
+      <CardZoomProvider>
+        <TownHeroDock heroSeatIds={["p1"]} onOpenTown={onOpenTown} state={state} viewerPlayerId="p1" />
+      </CardZoomProvider>
+    );
+    fireEvent.click(screen.getByRole("button", { name: /open your .*town/i }));
     expect(onOpenTown).toHaveBeenCalled();
   });
 
-  it("the hero chip in the top bar drops the full hero board open", () => {
+  it("shows a big Hero tile that drops the full hero board open, closeable again", () => {
     const state = freshState();
     const { container } = render(
       <CardZoomProvider>
-        <AdventureHud
-          heroSeatIds={["p1"]}
-          legalActions={getLegalActions(state, "p1")}
-          onAction={vi.fn()}
-          state={state}
-          viewerPlayerId="p1"
-        />
+        <TownHeroDock heroSeatIds={["p1"]} onOpenTown={vi.fn()} state={state} viewerPlayerId="p1" />
       </CardZoomProvider>
     );
     expect(container.querySelector(".heroDrop")).toBeNull();
-    fireEvent.click(container.querySelector(".heroChip") as HTMLElement);
+    fireEvent.click(container.querySelector(".heroDockTile") as HTMLElement);
     const drop = container.querySelector(".heroDrop") as HTMLElement;
     expect(drop).toBeTruthy();
     // The full printed hero board (level track) is inside.
     expect(drop.querySelector(".hb")).toBeTruthy();
+    // Clicking the tile again (or its close button) dismisses it.
+    fireEvent.click(container.querySelector(".heroDropClose") as HTMLElement);
+    expect(container.querySelector(".heroDrop")).toBeNull();
+  });
+});
+
+describe("Designed board — tile art, shared-bar clarity, modal panels", () => {
+  it("a built building shows its downloaded tile art (stronghold)", () => {
+    const state = strongholdState();
+    state.towns.town_p1.buildings.push("stronghold.city_hall");
+    const { container } = render(viewFor(state));
+    const art = container.querySelector(".tbTileArt") as HTMLImageElement | null;
+    expect(art).toBeTruthy();
+    expect(art!.getAttribute("src")).toMatch(/stronghold-city_hall\.webp/);
+  });
+
+  it("a half-built SHARED bar shows the built tile AND a clear 'not built' socket for its sibling", () => {
+    const state = strongholdState();
+    // The shared bar is Barracks Tower (dwelling_bronze) + Freelancer's Guild.
+    state.towns.town_p1.buildings.push("stronghold.dwelling_bronze");
+    const { container } = render(viewFor(state));
+    // The built half renders its tile art…
+    expect(container.querySelector(".tbTileArt[src*='stronghold-dwelling_bronze']")).toBeTruthy();
+    // …and the unbuilt half is a distinct, clearly-labelled empty socket.
+    const unbuilt = container.querySelector(".tbDesignedTile.unbuilt") as HTMLElement | null;
+    expect(unbuilt).toBeTruthy();
+    expect(unbuilt!.textContent).toMatch(/not built/i);
+    expect(unbuilt!.textContent).toMatch(/Freelancer/i);
+  });
+
+  it("a token well opens a centred MODAL (not an inline strip), with resource-aware build options", () => {
+    const state = strongholdState();
+    const { container } = render(viewFor(state));
+    // No modal until a well is clicked.
+    expect(container.querySelector(".tbPanelBackdrop")).toBeNull();
+    fireEvent.click(container.querySelector(".tbToken.build") as HTMLElement);
+    // The panel is now inside the modal backdrop, not appended below the board.
+    const modal = container.querySelector(".tbPanelBackdrop .tbPanelModal .tbPanel") as HTMLElement | null;
+    expect(modal).toBeTruthy();
+    // Build options spell out cost vs. what you have (a coloured cost chip).
+    expect(modal!.querySelector(".tbCostChip")).toBeTruthy();
+    // Backdrop click closes it.
+    fireEvent.click(container.querySelector(".tbPanelBackdrop") as HTMLElement);
+    expect(container.querySelector(".tbPanelBackdrop")).toBeNull();
+  });
+
+  it("building a structure dispatches BUILD_STRUCTURE and closes the modal", () => {
+    const state = strongholdState();
+    const onAction = vi.fn();
+    const { container } = render(
+      <TownBoardView legalActions={getLegalActions(state, "p1")} onAction={onAction} state={state} viewerPlayerId="p1" />
+    );
+    fireEvent.click(container.querySelector(".tbToken.build") as HTMLElement);
+    const buildBtn = within(container.querySelector(".tbPanelBackdrop") as HTMLElement).getAllByRole("button", {
+      name: /^build$/i
+    })[0];
+    fireEvent.click(buildBtn);
+    expect(onAction).toHaveBeenCalledWith(expect.objectContaining({ type: "BUILD_STRUCTURE" }));
+    // The modal closes so the newly-lit bar on the board is what shows.
+    expect(container.querySelector(".tbPanelBackdrop")).toBeNull();
   });
 });
