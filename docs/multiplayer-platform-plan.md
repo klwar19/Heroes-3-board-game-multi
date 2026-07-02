@@ -34,6 +34,25 @@
 >   play). The engine enforces the rule *given* the claimed identity — it is not
 >   yet a defence against a client forging another's id. Authentication is the
 >   next milestone (Step 4 below).
+> - **Destructive room ops are host-gated (same claimed-identity model):**
+>   `closeRoom`, `resetRoom` (both backends, socket + HTTP — see
+>   `reset-authority.test.ts`) and, on hosted lobbies, `restoreRoom`
+>   (member-only) all refuse a non-host/non-member actor.
+> - **Known wire-level privacy limit (NOT yet fixed):** every snapshot is
+>   broadcast as the FULL `GameState`; `getPlayerView` redacts hands, deck
+>   order, face-down tiles and private pending choices only at render time in
+>   the browser. Anyone reading the WebSocket/SSE frames (devtools) sees
+>   everything. Fixing it means per-recipient redaction at the transport
+>   (per-connection views keyed by seat) and belongs to the auth milestone —
+>   the redactor itself (`src/engine/player-view.ts`) already exists.
+> - **Smaller accepted gaps (same trust model):** the PartyKit lobby directory
+>   Durable Object accepts unauthenticated POST/DELETE (worst case: a room
+>   vanishes from the browser list, join-by-code still works); an SSE/socket
+>   opened with someone else's clientId reaps that id's ephemeral OBSERVER
+>   membership on disconnect (seated players and hosts are never reaped);
+>   PartyKit snapshots carry no `bootId` (the built-in store's
+>   version-counter-reset escape hatch) — Durable Object storage persists, so
+>   the freeze that bootId guards against needs a storage wipe to occur.
 >
 > **Lobby / room directory (implemented on the built-in backend, tested).**
 > Opening the app with no `?room=` link now shows a **lobby** (`src/components/
