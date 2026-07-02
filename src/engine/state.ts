@@ -3729,6 +3729,33 @@ export type GameEvent =
       activePlayerId: PlayerId;
     }
   | {
+      /** Adventure parallel-turn mode (optional rule) began: the first `rounds` rounds are played simultaneously. */
+      id: string;
+      type: "PARALLEL_TURNS_STARTED";
+      rounds: number;
+    }
+  | {
+      /** A player finished their own parallel turn; the round wraps once every live player has. */
+      id: string;
+      type: "PARALLEL_TURN_ENDED";
+      playerId: PlayerId;
+      /** Live players whose parallel turn is still open after this one ended. */
+      waitingForPlayerIds: PlayerId[];
+    }
+  | {
+      /**
+       * THE parallel-mode warning to the whole table: parallel turns have
+       * stopped (a PvP battle started, a serious PvP interaction resolved, or
+       * the chosen period ran out) and play continues in normal turn order.
+       */
+      id: string;
+      type: "PARALLEL_TURNS_STOPPED";
+      reason: "pvp-battle" | "pvp-interaction" | "period-ended";
+      /** The player whose action ended the mode (absent for "period-ended"). */
+      byPlayerId?: PlayerId;
+      message: string;
+    }
+  | {
       id: string;
       type: "ROOM_MEMBER_JOINED";
       clientId: string;
@@ -4609,10 +4636,37 @@ export type ActiveEffectState = ActiveEffectDefinition & {
 };
 
 export type TurnState = {
-  mode: "simultaneous" | "ordered";
+  /**
+   * How player turns are taken:
+   *  - "ordered": one player at a time in `turnOrder` (the rulebook default).
+   *  - "simultaneous": the combat-sandbox pre-battle town phase (legacy test mode).
+   *  - "parallel": the OPTIONAL adventure parallel-turn mode — every live player's
+   *    turn is open at once for the first `simultaneousRoundLimit` rounds. The
+   *    round wraps when everyone has ended (`completedPlayerIds`). Exclusive
+   *    interactions (a combat, a choice, a visit, a tile rotation…) still resolve
+   *    one at a time; while one is open other players may only take actions that
+   *    cannot touch it (quiet movement, ending nothing). The mode collapses to
+   *    "ordered" — with a table-wide warning — when a PvP battle starts, when a
+   *    serious PvP interaction resolves (stealing a flagged mine/settlement, e.g.
+   *    the View Earth capture), or when the chosen period runs out.
+   */
+  mode: "simultaneous" | "ordered" | "parallel";
+  /** Last round number played simultaneously/parallel (0 = feature off). */
   simultaneousRoundLimit: number;
   completedPlayerIds: PlayerId[];
   observingPlayerId: PlayerId | null;
+  /**
+   * Set once parallel turns stop (never cleared): why and in which round. While
+   * `round === parallelStopped.round`, every live player already ran their
+   * start-of-turn at the round start, so the ordered rotation must not run
+   * `startPlayerTurn` again (it would grant a second start-of-turn draw), and it
+   * skips players whose parallel turn had already ended. Absent on ordinary
+   * ordered games and on snapshots from before the parallel-turn option.
+   */
+  parallelStopped?: {
+    reason: "pvp-battle" | "pvp-interaction" | "period-ended";
+    round: number;
+  } | null;
 };
 
 /**
@@ -6893,6 +6947,18 @@ export type GameSetupOptions = {
    * Off disables the move-to-Book action and the discard→Book pickup entirely.
    */
   spellBook?: boolean;
+  /**
+   * OPTIONAL parallel-turn mode (multiplayer only): the number of opening
+   * rounds every player's turn runs at the same time (0/absent = off — the
+   * normal one-at-a-time rotation). During the period players move, end their
+   * turns and act independently; exclusive interactions (battles, choices, tile
+   * rotations) still resolve one at a time, and shared-deck draws go to whoever
+   * acts first. The mode stops early — with a warning to the whole table — the
+   * moment a PvP battle starts or a serious PvP interaction (stealing another
+   * player's mine/settlement, e.g. a View Earth capture) resolves; it also
+   * stops when the period runs out. Play then continues turn-after-turn.
+   */
+  parallelTurns?: number;
   /**
    * Whether players may open their own Ⅱ–Ⅲ Far tiles (default ON). When ON each
    * player drafts a personal Far-tile supply they can place onto the map. Off

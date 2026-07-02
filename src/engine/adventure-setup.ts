@@ -44,6 +44,7 @@ import {
   victoryModeCountsHeroDefeats
 } from "./adventure";
 import { pumpAdventureQueues } from "./adventure-reducer";
+import { normalizeParallelTurnRounds } from "./parallel-turns";
 import { drawCardsForPlayer, shuffleCards } from "./decks";
 import { createSeededRandom, type SeededRandom } from "./random";
 import { freshSeed } from "./seed";
@@ -138,6 +139,12 @@ export type AdventureSetupOptions = {
   chooseSubterraneanGate?: boolean;
   /** Spell Book house rule (default on): a personal Spell Book each player may stash, cast and boost from. */
   spellBook?: boolean;
+  /**
+   * OPTIONAL parallel-turn mode (multiplayer only): how many opening rounds
+   * every player's turn runs at the same time (0/absent = off). Stops early —
+   * with a table-wide warning — on a PvP battle or a serious PvP interaction.
+   */
+  parallelTurns?: number;
   /** Whether players may open their own Ⅱ–Ⅲ Far tiles (default on). Off gives no Far-tile supply. */
   farTileOpening?: boolean;
   /** How many NEW Ⅱ–Ⅲ tiles each player may add to the map (default: the scenario's perPlayer, 2). */
@@ -610,6 +617,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     ...(options.startingBuildings ? { startingBuildings: options.startingBuildings } : {}),
     ...(options.creatureBanks !== undefined ? { creatureBanks: options.creatureBanks } : {}),
     ...(options.events !== undefined ? { events: options.events } : {}),
+    ...(options.parallelTurns !== undefined ? { parallelTurns: options.parallelTurns } : {}),
     ...(options.spellBook !== undefined ? { spellBook: options.spellBook } : {}),
     ...(options.farTileOpening !== undefined ? { farTileOpening: options.farTileOpening } : {}),
     ...(options.farTilesPerPlayer !== undefined ? { farTilesPerPlayer: options.farTilesPerPlayer } : {}),
@@ -655,6 +663,9 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   // Event deck (Fortress expansion) default ON, but "Event cards may be used
   // in multiplayer games only" — a solo table never gets the deck.
   const eventsOn = (setupOptions.events ?? true) && playerConfigs.length >= 2;
+  // Parallel turns (optional, multiplayer only): the number of opening rounds
+  // everyone plays simultaneously. A solo table always plays ordered.
+  const parallelRounds = playerConfigs.length >= 2 ? normalizeParallelTurnRounds(setupOptions.parallelTurns) : 0;
 
   const adventure: AdventureState = {
     difficulty,
@@ -772,8 +783,8 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     ],
     pendingChoice: null,
     turn: {
-      mode: "ordered",
-      simultaneousRoundLimit: 0,
+      mode: parallelRounds > 0 ? "parallel" : "ordered",
+      simultaneousRoundLimit: parallelRounds,
       completedPlayerIds: [],
       observingPlayerId: playerConfigs[0].id
     }
@@ -997,8 +1008,21 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     drawCardsForPlayer(state, config.id, state.players[config.id].limits.hand);
   }
 
+  if (parallelRounds > 0) {
+    appendEvent(state, { type: "PARALLEL_TURNS_STARTED", rounds: parallelRounds });
+  }
+
   startAdventureRound(state);
-  startPlayerTurn(state, state.activePlayerId);
+  if (parallelRounds > 0) {
+    // Parallel turns: EVERY player's turn starts at once, in seat order — the
+    // shared reward queue then serves round-start effects and the start-of-turn
+    // hand steps clockwise from the first seat.
+    for (const playerId of state.turnOrder) {
+      startPlayerTurn(state, playerId);
+    }
+  } else {
+    startPlayerTurn(state, state.activePlayerId);
+  }
   // Drain the opening round-start / start-of-turn rewards — chiefly the
   // start-of-turn hand snapshot — so the first player's hand step is live the
   // instant the game state is handed back, before any action is dispatched.
@@ -1308,6 +1332,16 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
   if (next.events !== undefined) {
     lobby.options.events = Boolean(next.events);
     changes.push(`Event deck ${next.events ? "on" : "off"}`);
+  }
+
+  if (next.parallelTurns !== undefined) {
+    const rounds = normalizeParallelTurnRounds(next.parallelTurns);
+    lobby.options.parallelTurns = rounds;
+    changes.push(
+      rounds > 0
+        ? `parallel turns for the first ${rounds} round${rounds === 1 ? "" : "s"} (multiplayer only)`
+        : "parallel turns off"
+    );
   }
 
   if (next.farTileOpening !== undefined) {
@@ -2103,6 +2137,7 @@ export function startAdventureFromLobby(state: GameState, action: Extract<GameAc
     pvpTroopLoss: lobby.options.pvpTroopLoss,
     events: lobby.options.events,
     spellBook: lobby.options.spellBook,
+    parallelTurns: lobby.options.parallelTurns,
     farTileOpening: lobby.options.farTileOpening,
     farTilesPerPlayer: lobby.options.farTilesPerPlayer,
     difficulty: lobby.options.difficulty,

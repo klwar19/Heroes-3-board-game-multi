@@ -263,6 +263,56 @@ dedicated rule, not an ability tag). Re-verify any prose claim here against
 those registries and `src/data/factions/units.ts` before trusting it. The
 Creature Bank system tracks its own display-only items in the section below.
 
+## Parallel turns (OPTIONAL house rule, multiplayer only) — what runs vs. limits
+
+Engine in `src/engine/parallel-turns.ts` (predicates, the stop/collapse, the
+transactional bystander guard) wired through `adventure-reducer.ts` (END_TURN /
+movement / rotation chaining), `legal-actions.ts` (open-turn gating + the
+bystander quiet-action set), `reducer.ts` (the applyAction fingerprint backstop)
+and `adventure.ts` (`flagField` steal hook, quiet-filtered reachable paths).
+Lobby option `GameSetupOptions.parallelTurns` (0 = off, 1–12 rounds; Game
+options UI). Behaviour is pinned in `src/engine/parallel-turns.test.ts` — every
+claim below has a test that fails if the wiring is removed, each with an
+ordered-mode or unowned-target CONTROL.
+
+- While `turn.mode === "parallel"` every live player's turn is open at once:
+  move, build, refresh, end turn independently; the round wraps when everyone
+  has ended (`turn.completedPlayerIds`, reused from the sandbox machinery).
+- The exclusive interaction machinery stays a strict SINGLETON (one combat, one
+  pendingChoice/visit/tile rotation/Necromancy window at a time). While one is
+  open for player A, everyone else gets ONLY the quiet set: steps onto "open"
+  (trigger-free) fields, the start-of-turn hand steps, and — outside combats —
+  town/morale actions (which queue/park, never interrupt). Everything else
+  (visits, discoveries, battles, card plays, searches, END_TURN) waits with a
+  "wait until …" rejection. Safety is transactional, not enumerative: a
+  bystander action that touches the interaction fingerprint
+  (`parallelSlotSignature`) is rejected WHOLE in `applyAction`, so a
+  mis-classified action can only fail cleanly, never corrupt an open battle.
+- Shared-deck draws are therefore strictly first-come-first-served (arrival
+  order through the single reducer + the reward-queue FIFO) — no card can be
+  handed out twice; round-start effects (income, Events, Astrologers,
+  start-of-turn hand dividers) resolve clockwise from seat 1 exactly like
+  ordered play. `pumpAdventureQueues`' start-turn-hand divider requeue ignores
+  other dividers (N players queue N dividers — they must not chase each other
+  forever). Round 1's forced home-tile rotations chain one at a time in seat
+  order (`beginNextPendingStartTileRotation`).
+- The mode STOPS — `PARALLEL_TURNS_STOPPED` warning to the whole table, then
+  classic one-at-a-time turns forever — when (a) a PvP battle starts
+  (`startPlayerCombat` / the garrison prompt), (b) a serious PvP interaction
+  resolves: taking a flag FROM a live player (`flagField` chokepoint — covers
+  walking onto an enemy mine/settlement/town AND the View Earth capture; hand
+  discards are deliberately NOT serious), or (c) the chosen period ends. On a
+  PvP stop the aggressor becomes the active player and the battle resolves
+  normally; players who had already ended stay ended (the rotation skips them,
+  wrapping only when nobody live still owes a turn) and nobody's start-of-turn
+  re-runs mid-round (no second mandatory draw).
+- Deliberate LIMITS (documented, not bugs): only ONE battle can run at a time
+  (the physical game has one battle board) — a second fight, and any visit or
+  card play, waits for the open interaction; town actions stay blocked during
+  combats exactly like ordered play. Ordered games (`parallelTurns` 0/absent),
+  solo tables and legacy snapshots are untouched — every parallel predicate
+  no-ops when the mode is off.
+
 ## Event deck (Fortress expansion, OPTIONAL rule) — what runs vs. printed nuances
 
 A separate system from the Astrologers Proclaim deck (do not confuse the two).

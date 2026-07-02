@@ -16,6 +16,7 @@ import {
   adventureVictoryMode,
   armyHasMapEffect,
   beginFieldVisit,
+  beginNextPendingStartTileRotation,
   buildCreatureBankCombatUnits,
   canCrossEdge,
   canHeroReachPlacedTile,
@@ -123,6 +124,18 @@ import {
 import { drawCardsForPlayer, shuffleCards } from "./decks";
 import { getCombatStartDraws, getCombatStartMark } from "./unit-abilities";
 import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
+import {
+  assertParallelInteractionFree,
+  hasOpenAdventureTurn,
+  isParallelActor,
+  parallelInteractionBlocker,
+  parallelSlotSignature,
+  parallelTurnsActive,
+  parallelTurnStartAlreadyRan,
+  parallelWaitMessage,
+  remainingParallelPlayerIds,
+  stopParallelTurns
+} from "./parallel-turns";
 import {
   applyPermanentCombatEffects,
   discardPermanentFromPlay,
@@ -557,8 +570,14 @@ function assertNoPendingInput(state: GameState): void {
 }
 
 function assertActiveTurn(state: GameState, playerId: PlayerId): void {
-  if (state.activePlayerId !== playerId) {
-    throw new Error("It is not that player's turn.");
+  // Parallel turns: every live player whose parallel turn is still open counts
+  // as having "their turn" (they act at the same time as everyone else).
+  if (state.activePlayerId !== playerId && !isParallelActor(state, playerId)) {
+    throw new Error(
+      parallelTurnsActive(state) && state.turn.completedPlayerIds.includes(playerId)
+        ? "You already ended your parallel turn — wait for the other players to finish theirs."
+        : "It is not that player's turn."
+    );
   }
 }
 
@@ -663,6 +682,13 @@ export function getHeroMoveDestinations(state: GameState, hero: HeroState): MapS
     return [];
   }
 
+  // Parallel turns: while another player's battle/choice is open, only QUIET
+  // steps are offered — "open" fields trigger nothing on arrival (empty,
+  // used-up, own-flagged). "stop"/"encounter" fields (guards, enemy heroes,
+  // unvisited locations, flags to steal) would open an interaction of their
+  // own, so they wait until the table's current one resolves.
+  const parallelBlocker = parallelInteractionBlocker(state, hero.controllerId);
+
   const movement = getHeroMovementCapabilities(state, hero);
   return getAdjacentSpaceIds(hero.spaceId).filter((spaceId) => {
     if (!canCrossEdge(state, hero.spaceId as MapSpaceId, spaceId, movement)) {
@@ -676,6 +702,9 @@ export function getHeroMoveDestinations(state: GameState, hero: HeroState): MapS
     // cannot land), and allied heroes / sanctuaries are "pass-only" too — none
     // are valid stops.
     const kind = classifyHeroStep(state, hero, spaceId, movement);
+    if (parallelBlocker) {
+      return kind === "open";
+    }
     return kind === "open" || kind === "stop" || kind === "encounter";
   });
 }
@@ -829,6 +858,18 @@ function openGarrisonPromptIfNeeded(state: GameState, attacker: HeroState, field
   if (!defenderId) {
     return false;
   }
+
+  // Parallel turns: assaulting another player's town/settlement is PvP — the
+  // mode stops (with the table-wide warning) whether the owner garrisons or
+  // lets it fall, before the garrison decision even opens.
+  stopParallelTurns(
+    state,
+    "pvp-battle",
+    attacker.controllerId,
+    `assaulting ${state.players[defenderId]?.name ?? defenderId}'s ${
+      locationDefinitions[field.location]?.category === "town" ? "town" : "settlement"
+    }`
+  );
 
   const defender = state.players[defenderId];
   if (!defender || defender.resources.gold < 8) {
@@ -1120,11 +1161,41 @@ function heroStepNeedsInput(state: GameState): boolean {
   );
 }
 
+/**
+ * Parallel turns: whether `playerId` is moving while another player's exclusive
+ * interaction (battle, choice, visit…) is open. Quiet steps are still allowed
+ * then; the caller re-checks the slot signature after each step as the hard
+ * backstop. Throws when the actor somehow has pending input of their OWN while
+ * a foreign interaction is also open (never expected — defensive).
+ */
+function parallelQuietMoveBlocker(state: GameState, playerId: PlayerId): PlayerId | "table" | null {
+  const blocker = parallelInteractionBlocker(state, playerId);
+  if (!blocker) {
+    return null;
+  }
+  const adventure = state.adventure;
+  if (
+    (state.pendingChoice && state.pendingChoice.playerId === playerId) ||
+    (adventure?.pendingVisit && adventure.pendingVisit.playerId === playerId) ||
+    (adventure?.pendingTileChoice && adventure.pendingTileChoice.playerId === playerId) ||
+    (adventure?.pendingNecromancy && adventure.pendingNecromancy.playerId === playerId)
+  ) {
+    throw new Error("Resolve the pending choice first.");
+  }
+  return blocker;
+}
+
 export function moveHeroAdventure(state: GameState, action: Extract<GameAction, { type: "MOVE_HERO" }>): void {
   requireAdventure(state);
   assertActiveTurn(state, action.playerId);
   assertHandRefreshed(state, action.playerId);
-  assertNoPendingInput(state);
+  // Parallel turns: while another player's battle/choice is open, this hero may
+  // still take a QUIET step (an "open" field that triggers nothing on arrival);
+  // any other move waits for the interaction to resolve.
+  const parallelBlocker = parallelQuietMoveBlocker(state, action.playerId);
+  if (!parallelBlocker) {
+    assertNoPendingInput(state);
+  }
 
   const hero = requireHero(state, action.playerId, action.heroId);
   if (!hero.spaceId) {
@@ -1140,10 +1211,23 @@ export function moveHeroAdventure(state: GameState, action: Extract<GameAction, 
   }
 
   if (!getHeroMoveDestinations(state, hero).includes(action.to)) {
-    throw new Error("Heroes can only move to adjacent, passable fields.");
+    // getHeroMoveDestinations already filters to quiet steps while the table's
+    // interaction slot is busy, so a non-quiet request lands here.
+    throw new Error(
+      parallelBlocker
+        ? parallelWaitMessage(state, parallelBlocker)
+        : "Heroes can only move to adjacent, passable fields."
+    );
   }
 
+  const slotBefore = parallelBlocker ? parallelSlotSignature(state) : null;
   performHeroStep(state, hero, action.to, false);
+  // Transactional backstop: a "quiet" step that still touched the exclusive
+  // interaction machinery rejects the whole action (the reducer works on a
+  // clone, so nothing partial is ever committed).
+  if (slotBefore !== null && parallelSlotSignature(state) !== slotBefore) {
+    throw new Error(parallelWaitMessage(state, parallelBlocker as PlayerId | "table"));
+  }
 }
 
 /**
@@ -1156,7 +1240,12 @@ export function moveHeroPathAdventure(state: GameState, action: Extract<GameActi
   requireAdventure(state);
   assertActiveTurn(state, action.playerId);
   assertHandRefreshed(state, action.playerId);
-  assertNoPendingInput(state);
+  // Parallel turns: while another player's battle/choice is open the walk may
+  // still happen, but ONLY over quiet fields (validated per step below).
+  const parallelBlocker = parallelQuietMoveBlocker(state, action.playerId);
+  if (!parallelBlocker) {
+    assertNoPendingInput(state);
+  }
 
   const hero = requireHero(state, action.playerId, action.heroId);
   if (!hero.spaceId) {
@@ -1196,6 +1285,12 @@ export function moveHeroPathAdventure(state: GameState, action: Extract<GameActi
     if (kind === "stop" && !isLast) {
       throw new Error("A field along the path would stop the hero; walk there first.");
     }
+    // Parallel turns, foreign interaction open: the walk may only END on a
+    // quiet "open" field (a "stop"/"encounter" arrival would start a visit or
+    // a battle of its own — one interaction at a time).
+    if (parallelBlocker && isLast && kind !== "open") {
+      throw new Error(parallelWaitMessage(state, parallelBlocker));
+    }
     // A sea-touching step (without Water Walk) halts the hero, so it can only be
     // the final step of the walk.
     if (seaStepHalts(state, cursor, step, movement) && !isLast) {
@@ -1208,6 +1303,7 @@ export function moveHeroPathAdventure(state: GameState, action: Extract<GameActi
   }
 
 
+  const slotBefore = parallelBlocker ? parallelSlotSignature(state) : null;
   for (const [index, step] of action.path.entries()) {
     if (hero.movementPoints <= 0) {
       break;
@@ -1222,8 +1318,17 @@ export function moveHeroPathAdventure(state: GameState, action: Extract<GameActi
     const passThrough = kind === "pass-only" || (kind === "encounter" && !isLast);
     performHeroStep(state, hero, step, passThrough);
 
-    // Wading into/out of the sea ends the walk even if points remain.
-    if (hero.movementHaltedThisTurn || heroStepNeedsInput(state)) {
+    // Parallel turns, foreign interaction open: a quiet walk must stay quiet.
+    // Any step that touched the exclusive machinery rejects the WHOLE walk
+    // (the reducer runs on a clone, so nothing partial commits).
+    if (slotBefore !== null && parallelSlotSignature(state) !== slotBefore) {
+      throw new Error(parallelWaitMessage(state, parallelBlocker as PlayerId | "table"));
+    }
+
+    // Wading into/out of the sea ends the walk even if points remain. (While a
+    // foreign interaction is open, heroStepNeedsInput is true throughout — the
+    // signature check above already guarantees this walk did not cause it.)
+    if (hero.movementHaltedThisTurn || (slotBefore === null && heroStepNeedsInput(state))) {
       break;
     }
   }
@@ -1233,6 +1338,8 @@ export function revisitField(state: GameState, action: Extract<GameAction, { typ
   const adventure = requireAdventure(state);
   assertActiveTurn(state, action.playerId);
   assertHandRefreshed(state, action.playerId);
+  // Parallel turns: a revisit opens a visit of its own — one at a time.
+  assertParallelInteractionFree(state, action.playerId);
   assertNoPendingInput(state);
 
   const hero = requireHero(state, action.playerId, action.heroId);
@@ -1265,6 +1372,8 @@ export function openMarket(state: GameState, action: Extract<GameAction, { type:
   const adventure = requireAdventure(state);
   assertActiveTurn(state, action.playerId);
   assertHandRefreshed(state, action.playerId);
+  // Parallel turns: the market panel is a visit — one interaction at a time.
+  assertParallelInteractionFree(state, action.playerId);
   assertNoPendingInput(state);
 
   const hero = requireHero(state, action.playerId, action.heroId);
@@ -1284,6 +1393,8 @@ export function discoverTile(state: GameState, action: Extract<GameAction, { typ
   requireAdventure(state);
   assertActiveTurn(state, action.playerId);
   assertHandRefreshed(state, action.playerId);
+  // Parallel turns: a discovery opens the tile-rotation choice — one at a time.
+  assertParallelInteractionFree(state, action.playerId);
   assertNoPendingInput(state);
 
   const hero = requireHero(state, action.playerId, action.heroId);
@@ -1504,6 +1615,13 @@ export function setTileRotation(state: GameState, action: Extract<GameAction, { 
   // player place a Creature Bank token there. The home (Ⅰ) tile never offers one.
   if (!isStartTile) {
     offerCreatureBankPlacement(state, tile, action.playerId);
+  }
+
+  // Parallel turns: the opening round starts EVERY player's turn at once, so
+  // the forced home-tile rotations chain one at a time in seat order — locking
+  // one opens the next player's.
+  if (isStartTile && parallelTurnsActive(state)) {
+    beginNextPendingStartTileRotation(state);
   }
 }
 
@@ -4121,6 +4239,17 @@ export function startPlayerCombat(
     throw new Error("A player combat needs a defending player.");
   }
 
+  // Parallel turns stop the moment a PvP battle begins: the whole table is
+  // warned, the attacker's action continues as their ordered turn, and the
+  // battle resolves under the normal one-at-a-time rules. (Throws — rejecting
+  // the attack — if a third player's interaction is still open.)
+  stopParallelTurns(
+    state,
+    "pvp-battle",
+    attacker.controllerId,
+    `against ${state.players[defenderPlayerId]?.name ?? defenderPlayerId}`
+  );
+
   restoreStartingArmyIfEmpty(state, attacker.controllerId);
   restoreStartingArmyIfEmpty(state, defenderPlayerId);
 
@@ -6099,9 +6228,11 @@ export function activateTownBuilding(state: GameState, action: Extract<GameActio
     throw new Error("Town actions cannot interrupt a combat.");
   }
 
-  if (state.activePlayerId !== action.playerId) {
+  if (!hasOpenAdventureTurn(state, action.playerId)) {
     throw new Error("Use this building during your own turn.");
   }
+  // These buildings open choices/discards of their own — one at a time.
+  assertParallelInteractionFree(state, action.playerId);
 
   if ((player.buildingUsedRound?.[action.buildingId] ?? 0) === state.round) {
     throw new Error(`${building.name} was already used this round.`);
@@ -7326,6 +7457,10 @@ function queuePandoraUpkeep(state: GameState, playerId: PlayerId): boolean {
 
 export function endTurnAdventure(state: GameState, action: Extract<GameAction, { type: "END_TURN" }>): void {
   assertActiveTurn(state, action.playerId);
+  // Parallel turns: ending a turn may open end-of-turn prompts (Pandora upkeep,
+  // Logistics/Nomads) and — on the last player — wraps the round, so it needs
+  // the table's interaction slot free like any other interaction-starter.
+  assertParallelInteractionFree(state, action.playerId);
   assertNoPendingInput(state);
 
   // Pandora's Bargain: Power — pay its end-of-turn upkeep before the turn ends.
@@ -7403,17 +7538,67 @@ function advanceAfterTurn(
   eliminate: { reason: string } | null,
   gaveUp = false
 ): void {
+  // Parallel turns: ending a turn only marks this player done; the round wraps
+  // once EVERY live player has ended.
+  if (parallelTurnsActive(state)) {
+    endParallelTurn(state, endingPlayerId, eliminate, gaveUp);
+    return;
+  }
+
   const order = state.turnOrder;
   const currentIndex = order.indexOf(endingPlayerId);
-  const nextIndex = order.length > 0 ? (currentIndex + 1) % order.length : 0;
-  const wrapsRound = nextIndex === 0;
-  const nextPlayerId = order[nextIndex];
+
+  // After a mid-round stop of parallel turns, players who had already ended
+  // their parallel turn are skipped for the rest of this round, and the round
+  // wraps only once NOBODY live still owes a turn — never on the classic
+  // "passed seat 1" wrap, which would rob the seats before the aggressor of
+  // their open turn. Ordinary ordered games have an empty `completedPlayerIds`
+  // and no stop marker, so they take the classic +1 rotation unchanged.
+  const skipCompleted = state.turn.completedPlayerIds.length > 0 || parallelTurnStartAlreadyRan(state);
+  let wrapsRound: boolean;
+  let nextPlayerId: PlayerId | undefined;
+  if (skipCompleted) {
+    if (!state.turn.completedPlayerIds.includes(endingPlayerId)) {
+      state.turn.completedPlayerIds.push(endingPlayerId);
+    }
+    nextPlayerId = undefined;
+    for (let offset = 1; offset <= order.length; offset += 1) {
+      const candidate = order[(currentIndex + offset) % order.length];
+      if (
+        candidate &&
+        candidate !== NEUTRAL_PLAYER_ID &&
+        candidate !== endingPlayerId &&
+        !state.players[candidate]?.eliminated &&
+        !state.turn.completedPlayerIds.includes(candidate)
+      ) {
+        nextPlayerId = candidate;
+        break;
+      }
+    }
+    wrapsRound = nextPlayerId === undefined;
+    if (wrapsRound) {
+      state.turn.completedPlayerIds = [];
+      nextPlayerId = order.find(
+        (candidate) =>
+          candidate !== NEUTRAL_PLAYER_ID &&
+          (candidate === endingPlayerId ? !eliminate : !state.players[candidate]?.eliminated)
+      );
+    }
+  } else {
+    const nextIndex = order.length > 0 ? (currentIndex + 1) % order.length : 0;
+    wrapsRound = nextIndex === 0;
+    nextPlayerId = order[nextIndex];
+  }
 
   appendEvent(state, {
     type: "TURN_ENDED",
     playerId: endingPlayerId,
     nextPlayerId: nextPlayerId ?? endingPlayerId
   });
+
+  // Whether this round already ran everyone's start-of-turn (a parallel round
+  // start that stopped mid-round) — read BEFORE the round counter moves.
+  const turnStartsAlreadyRan = parallelTurnStartAlreadyRan(state);
 
   if (eliminate) {
     eliminatePlayer(state, endingPlayerId, eliminate.reason, gaveUp);
@@ -7439,7 +7624,102 @@ function advanceAfterTurn(
 
   state.activePlayerId = nextPlayerId;
   state.turn.observingPlayerId = nextPlayerId;
-  startPlayerTurn(state, nextPlayerId);
+  // During the round parallel turns stopped in, everyone's start-of-turn
+  // already ran at the round start — running it again would grant a second
+  // start-of-turn draw and re-queue the turn-start effects. The next player
+  // simply RESUMES their open turn. A round wrap moved the counter on, so the
+  // guard no longer matches and fresh rounds start turns normally.
+  if (wrapsRound || !turnStartsAlreadyRan) {
+    startPlayerTurn(state, nextPlayerId);
+  }
+}
+
+/**
+ * Parallel turns: `endingPlayerId` finished their own turn. Marks them done,
+ * keeps the nominal `activePlayerId` pointed at an OPEN turn (for banners and
+ * ordered-style consumers), and wraps the round once every live player has
+ * ended — running the round start and then EVERY player's start-of-turn (the
+ * next round is parallel again), or stopping the mode first when the chosen
+ * period is over.
+ */
+function endParallelTurn(
+  state: GameState,
+  endingPlayerId: PlayerId,
+  eliminate: { reason: string } | null,
+  gaveUp: boolean
+): void {
+  // Fresh read each time — eliminations, the round start and each player's
+  // turn start can all end the game mid-flow (and a closure sidesteps TS
+  // narrowing `state.phase` across the mutating calls between checks).
+  const gameEnded = () => state.phase === "game-over" || Boolean(state.adventure?.winnerPlayerId);
+
+  const turn = state.turn;
+  if (!turn.completedPlayerIds.includes(endingPlayerId)) {
+    turn.completedPlayerIds.push(endingPlayerId);
+  }
+
+  appendEvent(state, {
+    type: "PARALLEL_TURN_ENDED",
+    playerId: endingPlayerId,
+    waitingForPlayerIds: remainingParallelPlayerIds(state)
+  });
+
+  if (eliminate) {
+    eliminatePlayer(state, endingPlayerId, eliminate.reason, gaveUp);
+    if (gameEnded()) {
+      return;
+    }
+  }
+
+  const remaining = remainingParallelPlayerIds(state);
+  if (remaining.length > 0) {
+    // Not everyone is done: point the nominal active/observing seat at an open
+    // turn so anything reading "whose turn" sees a player who can still act.
+    state.activePlayerId = remaining[0];
+    turn.observingPlayerId = remaining[0];
+    return;
+  }
+
+  // Everyone ended — wrap the round. The period check runs BEFORE the counter
+  // moves so `parallelStopped.round` records the finished round (the mid-round
+  // "start-of-turn already ran" guard must never match a fresh round).
+  turn.completedPlayerIds = [];
+  if (state.round + 1 > turn.simultaneousRoundLimit) {
+    stopParallelTurns(state, "period-ended");
+  }
+  state.round += 1;
+
+  const livePlayers = state.turnOrder.filter(
+    (playerId) => playerId !== NEUTRAL_PLAYER_ID && !state.players[playerId]?.eliminated
+  );
+  const first = livePlayers[0] ?? state.turnOrder[0];
+  if (first) {
+    state.activePlayerId = first;
+    turn.observingPlayerId = first;
+  }
+
+  startAdventureRound(state);
+  if (gameEnded()) {
+    return;
+  }
+
+  if (parallelTurnsActive(state)) {
+    // Still inside the parallel period: EVERY live player's turn starts now, in
+    // seat order — so the shared round-start reward queue (income choices,
+    // event resolutions, the start-of-turn hand steps) resolves clockwise from
+    // the first seat, exactly like the physical table.
+    for (const playerId of livePlayers) {
+      startPlayerTurn(state, playerId);
+      if (gameEnded()) {
+        return;
+      }
+    }
+    return;
+  }
+
+  if (first) {
+    startPlayerTurn(state, first);
+  }
 }
 
 /**
@@ -8123,10 +8403,13 @@ export function pumpAdventureQueues(state: GameState): void {
       // (e.g. Wall of Knowledge / Blood Obelisk turn a CHOOSE_ONE into a fresh
       // discard-pick reward; the City Hall draw is just an option resolution).
       // While anything else is still queued, send the snapshot to the back and
-      // let those resolve first; only take it when it stands alone. The queue is
-      // a finite, non-regenerating set of start-of-turn rewards, so this settles.
+      // let those resolve first; only take it when nothing but dividers remain.
+      // The queue is a finite, non-regenerating set of start-of-turn rewards,
+      // so this settles. A parallel round start queues ONE divider PER PLAYER —
+      // requeueing must therefore ignore the other dividers, or they would
+      // chase each other around the queue forever.
       adventure.rewardQueue.shift();
-      if (adventure.rewardQueue.length > 0) {
+      if (adventure.rewardQueue.some((queued) => queued.kind !== "start-turn-hand")) {
         adventure.rewardQueue.push(reward);
         continue;
       }
