@@ -18,17 +18,25 @@ export async function GET(_request: Request, context: RoomContext) {
 export async function POST(request: Request, context: RoomContext) {
   const { roomId } = await context.params;
   const body = (await request.json().catch(() => ({}))) as
-    | ({ reset?: boolean; restore?: boolean; state?: GameState } & RoomResetOptions)
+    | ({ reset?: boolean; restore?: boolean; state?: GameState; actorClientId?: string } & RoomResetOptions)
     | null;
 
   if (body?.reset) {
-    return NextResponse.json(
-      resetRoom(decodeURIComponent(roomId), {
+    // resetRoom checks the actor against the host on hosted rooms (same rule
+    // as DELETE/closeRoom) — a guest cannot wipe a hosted table's game.
+    const result = resetRoom(
+      decodeURIComponent(roomId),
+      {
         mode: body.mode,
         difficulty: body.difficulty,
         players: body.players
-      })
+      },
+      typeof body.actorClientId === "string" ? body.actorClientId : undefined
     );
+    if (!result.reset) {
+      return NextResponse.json({ reason: result.reason }, { status: 403 });
+    }
+    return NextResponse.json(result.snapshot);
   }
 
   // Client recovery: re-seed a room the server lost from the caller's cached

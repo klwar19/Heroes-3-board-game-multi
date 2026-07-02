@@ -2961,6 +2961,15 @@ export default function Home() {
       return;
     }
 
+    // A reset wipes the running game for every seat, so a HOSTED room accepts
+    // it from the host alone (the server enforces the same rule — this guard
+    // just says so up front instead of letting the click silently bounce).
+    const room = state?.room;
+    if (room?.hosted && room.hostClientId !== clientId) {
+      setErrors(["Only the host can start a new game in this room."]);
+      return;
+    }
+
     // Step 1 — the network reset. This, and only this, decides whether the
     // reset failed: a thrown error here means the server never reset.
     let snapshot: GameRoomSnapshot;

@@ -254,8 +254,29 @@ export function getRoomSnapshot(roomId: string): GameRoomSnapshot {
   return withBootId(cloneSerializable(getRoomRecord(roomId)));
 }
 
-export function resetRoom(roomId: string, options: RoomResetOptions = {}): GameRoomSnapshot {
+export type ResetRoomResult = {
+  reset: boolean;
+  reason?: string;
+  /** The room after the call: the fresh game on success, untouched on refusal. */
+  snapshot: GameRoomSnapshot;
+};
+
+/**
+ * Starts a fresh game in the room. A reset is as destructive as a close (the
+ * running game is wiped for every seat), so it carries the SAME authority rule
+ * as closeRoom: a HOSTED room can only be reset by its host; an OPEN table has
+ * no ownership to protect and anyone may reset it.
+ */
+export function resetRoom(roomId: string, options: RoomResetOptions = {}, actorClientId?: string): ResetRoomResult {
   const existing = roomStore.get(roomId) ?? loadPersistedRoom(roomId);
+  const room = existing?.state.room ?? null;
+  if (room?.hosted && (!actorClientId || room.hostClientId !== actorClientId)) {
+    return {
+      reset: false,
+      reason: "Only the host can reset this room.",
+      snapshot: getRoomSnapshot(roomId)
+    };
+  }
   const reset = makeRoom(roomId, options);
   reset.version = (existing?.version ?? 0) + 1;
   // Carry room membership (host, seats, observers, name) across a game reset so
@@ -273,7 +294,7 @@ export function resetRoom(roomId: string, options: RoomResetOptions = {}): GameR
   persistRoom(reset);
   const snapshot = withBootId(cloneSerializable(reset));
   notifyRoomListeners(roomId, snapshot);
-  return snapshot;
+  return { reset: true, snapshot };
 }
 
 /**

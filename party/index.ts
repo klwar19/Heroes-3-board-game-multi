@@ -57,7 +57,7 @@ export type RoomResetOptions = {
 
 type ClientMessage =
   | { type: "action"; requestId?: string; action: GameAction; actorClientId?: string }
-  | ({ type: "reset"; requestId?: string } & RoomResetOptions)
+  | ({ type: "reset"; requestId?: string; actorClientId?: string } & RoomResetOptions)
   | { type: "sync" };
 
 type ServerMessage =
@@ -218,20 +218,24 @@ export default class GameRoomServer implements Party.Server {
   }
 
   /**
-   * Mirrors the store's closeRoom rule: a HOSTED room can only be closed by its
-   * host; an OPEN table has no ownership to protect (a per-session clientId means
-   * the creator no longer "owns" it after a browser restart), so anyone may
-   * close it.
+   * Mirrors the store's closeRoom/resetRoom rule: a HOSTED room can only be
+   * closed OR reset by its host — both wipe the running game for every seat.
+   * An OPEN table has no ownership to protect (a per-session clientId means
+   * the creator no longer "owns" it after a browser restart), so anyone may.
    */
-  private authorizeClose(actorClientId: string | undefined): CloseRoomResult {
+  private hostAuthorizes(actorClientId: string | undefined): boolean {
     const room = this.snapshot?.state.room ?? null;
     if (room?.hosted) {
-      if (!actorClientId || room.hostClientId !== actorClientId) {
-        return { closed: false, reason: "Only the host can close this room." };
-      }
+      return Boolean(actorClientId) && room.hostClientId === actorClientId;
     }
-    // Open table: no ownership to protect — anyone may close it.
-    return { closed: true };
+    // Open table: no ownership to protect.
+    return true;
+  }
+
+  private authorizeClose(actorClientId: string | undefined): CloseRoomResult {
+    return this.hostAuthorizes(actorClientId)
+      ? { closed: true }
+      : { closed: false, reason: "Only the host can close this room." };
   }
 
   private broadcastSnapshot(): void {
@@ -316,6 +320,15 @@ export default class GameRoomServer implements Party.Server {
 
     if (message.type === "reset") {
       const previous = this.ensureSnapshot();
+      // Same authority as close: only the host may wipe a hosted room's game.
+      // The socket's own ?clientId= identity backs up the message field.
+      if (!this.hostAuthorizes(message.actorClientId ?? this.clientIdOf(sender))) {
+        // Refused: the room is untouched. Re-send the current snapshot to the
+        // sender only, so its pending reset promise settles benignly.
+        const reply: ServerMessage = { type: "snapshot", snapshot: this.signed(previous) };
+        sender.send(JSON.stringify(reply));
+        return;
+      }
       const state = this.makeState(message);
       // Carry room membership (host, seats, observers) across a game reset.
       state.room = previous.state.room ?? null;
@@ -413,12 +426,16 @@ export default class GameRoomServer implements Party.Server {
 
     if (request.method === "POST") {
       const body = (await request.json().catch(() => null)) as
-        | ({ reset?: boolean } & RoomResetOptions)
+        | ({ reset?: boolean; actorClientId?: string } & RoomResetOptions)
         | { action?: GameAction; actorClientId?: string }
         | null;
 
       if (body && "reset" in body && body.reset) {
         const previous = this.ensureSnapshot();
+        // Same authority as DELETE: only the host may wipe a hosted room.
+        if (!this.hostAuthorizes("actorClientId" in body ? body.actorClientId : undefined)) {
+          return jsonWithCors({ reason: "Only the host can reset this room." }, 403);
+        }
         const state = this.makeState(body);
         // Carry room membership (host, seats, observers) across a game reset.
         state.room = previous.state.room ?? null;

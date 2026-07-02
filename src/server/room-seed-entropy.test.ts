@@ -20,8 +20,8 @@ describe("room seeds survive a frozen clock + frozen Math.random", () => {
     vi.spyOn(Date, "now").mockReturnValue(1_700_000_000_000);
     vi.spyOn(Math, "random").mockReturnValue(0.123456);
 
-    const first = resetRoom(roomId);
-    const second = resetRoom(roomId);
+    const first = resetRoom(roomId).snapshot;
+    const second = resetRoom(roomId).snapshot;
 
     // The roomId is identical across both resets, so the ONLY thing that can make
     // the seeds differ is the nonce's entropy source. With the old recipe both
