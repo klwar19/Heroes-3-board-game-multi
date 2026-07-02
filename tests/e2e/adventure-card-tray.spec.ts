@@ -30,7 +30,6 @@ const page_html = `
   <div class="adventureMidRow">
     <div class="leftRail"><div style="height:160px"></div></div>
     <div class="mapColumn"><div class="hexMapWrap"></div></div>
-    <div class="rightRail adventureRail"><div style="height:160px"></div></div>
   </div>
   <div class="adventureHand" aria-label="Your hand">
     <div class="ownDeckColumn">

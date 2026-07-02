@@ -4,9 +4,9 @@
 
 import Link from "next/link";
 import { assetUrl } from "@/lib/asset-url";
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Ban, BookOpen, Check, ChevronsUp, Crown, Dices, Hammer, Hourglass, Image as ImageIcon, Info, Lock, Minus, Plus, RotateCcw, RotateCw, Shield, Sparkles, Star, Swords, Unlock, X } from "lucide-react";
+import { Ban, BookOpen, Castle, Check, ChevronsUp, Crown, Dices, Hammer, Hourglass, Image as ImageIcon, Info, Lock, Minus, Plus, RotateCcw, RotateCw, Shield, Sparkles, Swords, Unlock, X } from "lucide-react";
 import { cardLibrary } from "@/data/cards/library";
 import { buildingTimingLabel, describeBuildingEffect } from "@/data/towns/describe";
 import {
@@ -16,7 +16,6 @@ import {
   isPlayableFaction
 } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
-import type { TownBuildingDefinition } from "@/data/factions/types";
 import { locationDefinitions } from "@/data/map/locations";
 import { CREATURE_BANKS, type CreatureBankId } from "@/data/map/creature-banks";
 import { allTileDefinitions } from "@/data/map/tiles";
@@ -55,8 +54,6 @@ import {
   observatoryRevealTargets,
   parseHexSpaceId,
   reservedTownIdsForOtherSeats,
-  applyRecruitGoldDiscount,
-  legionVoucherDiscount,
   scenarioDefinitions,
   tileCentersAdjacent,
   tileCentersOverlap,
@@ -94,7 +91,16 @@ import {
 import { CARD_BACK_IMAGES, getDeckBack } from "@/data/decks";
 import { actionKey, cardName, formatCost, isEmpoweredStatisticCard, titleCase } from "@/components/table/utils";
 import { beginUnitPointerDrag } from "@/components/table/pointer-drag";
+import { HeroBoard } from "@/components/hero-board";
 import { useCardZoom } from "@/components/table/zoom";
+import {
+  BuildingDetailPanel,
+  HeroPortrait,
+  HireHeroesSection,
+  TownRecruitSection,
+  hasBuildingEffectPanel,
+  activeBuildingActions
+} from "@/components/adventure/town-sections";
 import { fetchSharedMaps, type SharedMapRecord } from "@/lib/shared-maps";
 
 const HEX_SIZE = 34;
@@ -1652,15 +1658,23 @@ export function AdventureHud({
   state,
   viewerPlayerId,
   legalActions,
-  onAction
+  onAction,
+  heroSeatIds,
+  onOpenTown
 }: {
   state: GameState;
   viewerPlayerId: PlayerId;
   legalActions: LegalAction[];
   onAction: (action: GameAction) => void;
+  /** Seats whose hero boards dock in the top bar (own seat, or all for observers). */
+  heroSeatIds?: PlayerId[];
+  /** Opens the Town window popup (hidden when the viewer has no town). */
+  onOpenTown?: () => void;
 }) {
   const { zoomContent } = useCardZoom();
   const [confirmGiveUp, setConfirmGiveUp] = useState(false);
+  /** Which seat's full hero board is dropped open from the top bar. */
+  const [openHeroSeat, setOpenHeroSeat] = useState<PlayerId | null>(null);
   const player = state.players[viewerPlayerId];
   const hero = Object.values(state.heroes).find(
     (candidate) => candidate.controllerId === viewerPlayerId && candidate.kind === "main"
@@ -1675,7 +1689,10 @@ export function AdventureHud({
   const giveUp = legalActions.find((legal) => legal.action.type === "GIVE_UP");
   const winner = state.adventure?.winnerPlayerId;
 
-  const firstRoll = state.adventure?.firstPlayerRoll;
+  const heroSeats = (heroSeatIds ?? [viewerPlayerId]).filter((seatId) => {
+    const seat = state.players[seatId];
+    return seat && seat.id !== "neutrals" && seat.heroDefId;
+  });
 
   return (
     <div className="advHud" aria-label="Adventure status">
@@ -1713,30 +1730,48 @@ export function AdventureHud({
           <small>{state.phase}</small>
         </div>
       )}
-      {firstRoll ? (
-        <button
-          className="advHudCell firstRoll"
-          onClick={() =>
-            zoomContent({
-              title: "First-player roll",
-              subtitle: "Everyone rolled the Attack die — highest starts",
-              lines: [
-                ...firstRoll.attempts.map((attempt, index) => {
-                  const rolls = attempt.rolls
-                    .map((roll) => `${roll.name}: ${roll.value > 0 ? "+" : ""}${roll.value}`)
-                    .join("  ·  ");
-                  return firstRoll.attempts.length > 1 ? `Roll ${index + 1} — ${rolls}` : rolls;
-                }),
-                `${state.players[firstRoll.winnerPlayerId]?.name ?? firstRoll.winnerPlayerId} won the roll and plays first.`
-              ]
-            })
-          }
-          title="Show the start-of-game first-player roll"
-          type="button"
-        >
-          <strong>🎲 {state.players[firstRoll.winnerPlayerId]?.name ?? firstRoll.winnerPlayerId}</strong>
-          <small>won the first-player roll</small>
-        </button>
+      {/* The hero board docks in the top bar: click a chip to drop the full
+          printed board open (observers get one chip per seat). */}
+      {heroSeats.length > 0 ? (
+        <div className="advHudCell heroDockCell" aria-label="Hero boards">
+          {heroSeats.map((seatId) => {
+            const seat = state.players[seatId];
+            const seatHero = Object.values(state.heroes).find(
+              (candidate) => candidate.controllerId === seatId && candidate.kind === "main"
+            );
+            const heroDef = seat?.heroDefId ? coreHeroDefinitions[seat.heroDefId] : undefined;
+            if (!seat || !heroDef) {
+              return null;
+            }
+            const open = openHeroSeat === seatId;
+            return (
+              <button
+                aria-expanded={open}
+                className={`heroChip ${open ? "open" : ""}`}
+                key={seatId}
+                onClick={() => setOpenHeroSeat(open ? null : seatId)}
+                title={`${heroDef.name} — open the hero board`}
+                type="button"
+              >
+                <HeroPortrait name={heroDef.name} portrait={heroDef.portrait} size={26} />
+                <span className="heroChipText">
+                  <strong>{heroDef.name}</strong>
+                  <small>
+                    {heroSeats.length > 1 ? `${seat.name} · ` : ""}level {seatHero?.level ?? 1}
+                  </small>
+                </span>
+              </button>
+            );
+          })}
+          {openHeroSeat ? (
+            <>
+              <div aria-hidden="true" className="heroDropBackdrop" onClick={() => setOpenHeroSeat(null)} />
+              <div className="heroDrop" role="dialog" aria-label="Hero board">
+                <HeroBoard playerId={openHeroSeat} state={state} />
+              </div>
+            </>
+          ) : null}
+        </div>
       ) : null}
       {astrologersCard ? (
         <button
@@ -1799,25 +1834,33 @@ export function AdventureHud({
         </div>
       ) : null}
       {hero ? (
-        <div className="advHudCell">
-          <strong title={`${hero.movementPoints} movement point${hero.movementPoints === 1 ? "" : "s"} left this turn`}>
+        <div className="advHudCell moveMoraleCell" aria-label="Movement and morale">
+          <span
+            className="statChip"
+            title={`${hero.movementPoints} movement point${hero.movementPoints === 1 ? "" : "s"} left this turn`}
+          >
             <span aria-hidden="true" className="movePointIcon">
               🐎
-            </span>{" "}
-            {hero.movementPoints} movement point{hero.movementPoints === 1 ? "" : "s"}
-          </strong>
-          <small>
-            level {hero.level} ·{" "}
+            </span>
+            <b>{hero.movementPoints}</b>
+            <small>move</small>
+          </span>
+          <span
+            className="statChip"
+            title={`Morale ${(player?.morale ?? 0) > 0 ? "+" : ""}${player?.morale ?? 0}`}
+          >
             <img
-              alt={`Morale ${(player?.morale ?? 0) > 0 ? "+" : ""}${player?.morale ?? 0}`}
+              alt=""
               className="moraleIcon"
               referrerPolicy="no-referrer"
               src={assetUrl(moraleIcon(player?.morale ?? 0))}
-              title={`Morale ${(player?.morale ?? 0) > 0 ? "+" : ""}${player?.morale ?? 0}`}
-            />{" "}
-            morale {(player?.morale ?? 0) > 0 ? "+" : ""}
-            {player?.morale ?? 0}
-          </small>
+            />
+            <b>
+              {(player?.morale ?? 0) > 0 ? "+" : ""}
+              {player?.morale ?? 0}
+            </b>
+            <small>morale</small>
+          </span>
         </div>
       ) : null}
       <div className="advHudCell">
@@ -1854,6 +1897,16 @@ export function AdventureHud({
         </div>
       ) : null}
       <div className="advHudButtons">
+        {onOpenTown ? (
+          <button
+            className="commandButton townButton"
+            onClick={onOpenTown}
+            title="Open your town: build, recruit and buy spells in the town window"
+            type="button"
+          >
+            <Castle aria-hidden="true" size={13} /> Town
+          </button>
+        ) : null}
         {endTurn ? (
           <button className="commandButton" onClick={() => onAction(endTurn.action)} type="button">
             End turn
@@ -1977,60 +2030,6 @@ export function ArmyPanel({ state, playerId }: { state: GameState; playerId: Pla
 // activated building actions (Blacksmith, Cover of Darkness, Castle Gate…).
 // ---------------------------------------------------------------------------
 
-/**
- * A hero's board-art portrait, with a graceful fallback. Some heroes ship
- * without a portrait asset (or the file 404s); rather than render a broken
- * image — which made portrait-less heroes like Moandor and Zydar look
- * unselectable — we show a round initial badge. Selection never depends on the
- * portrait: the surrounding button always carries the hero's name and click.
- */
-function HeroPortrait({
-  portrait,
-  name,
-  size,
-  style
-}: {
-  portrait: string | undefined;
-  name: string;
-  size: number;
-  style?: CSSProperties;
-}) {
-  const [failed, setFailed] = useState(false);
-  const initial = name.trim().charAt(0).toUpperCase() || "?";
-  const base: CSSProperties = { width: size, height: size, borderRadius: "50%", flex: "0 0 auto", ...style };
-
-  if (portrait && !failed) {
-    return (
-      <img
-        alt=""
-        onError={() => setFailed(true)}
-        referrerPolicy="no-referrer"
-        src={assetUrl(portrait)}
-        style={{ ...base, objectFit: "cover" }}
-      />
-    );
-  }
-
-  return (
-    <span
-      aria-hidden="true"
-      style={{
-        ...base,
-        display: "inline-grid",
-        placeItems: "center",
-        background: "rgba(170, 130, 70, 0.25)",
-        border: "1px solid rgba(170, 130, 70, 0.5)",
-        color: "#e8d9b8",
-        fontWeight: 700,
-        fontSize: Math.max(10, Math.round(size * 0.5)),
-        lineHeight: 1
-      }}
-    >
-      {initial}
-    </span>
-  );
-}
-
 export function TownPanel({
   state,
   viewerPlayerId,
@@ -2042,28 +2041,21 @@ export function TownPanel({
   legalActions: LegalAction[];
   onAction: (action: GameAction) => void;
 }) {
-  const [recruitIds, setRecruitIds] = useState<string[]>([]);
-  const [reinforceIds, setReinforceIds] = useState<string[]>([]);
-  /** Cover of Darkness: hand-card indices picked for the discard. */
-  const [coverPicks, setCoverPicks] = useState<number[]>([]);
   /** Which built building's effect / use panel is expanded in place. */
   const [openBuildingId, setOpenBuildingId] = useState<string | null>(null);
   /**
-   * Building tooltip. The town panel lives inside the scrolling
-   * `.adventureRail` (overflow-y: auto), which clipped the old in-flow
-   * `.buildingTip`; we render a single fixed-position tip anchored to the
-   * hovered building instead so it always shows in full.
+   * Building tooltip. The town panel lives inside scrolling containers
+   * (overflow-y: auto), which clipped the old in-flow `.buildingTip`; we render
+   * a single fixed-position tip anchored to the hovered building instead so it
+   * always shows in full.
    */
   const [buildingTip, setBuildingTip] = useState<{ buildingId: string; left: number; top: number } | null>(null);
-  // The basket empties when the round advances or the seat changes
+  // The open panel closes when the round advances or the seat changes
   // (state-adjustment-during-render pattern).
-  const [basketKey, setBasketKey] = useState("");
-  const nextBasketKey = `${state.round}|${viewerPlayerId}`;
-  if (basketKey !== nextBasketKey) {
-    setBasketKey(nextBasketKey);
-    setRecruitIds([]);
-    setReinforceIds([]);
-    setCoverPicks([]);
+  const [panelKey, setPanelKey] = useState("");
+  const nextPanelKey = `${state.round}|${viewerPlayerId}`;
+  if (panelKey !== nextPanelKey) {
+    setPanelKey(nextPanelKey);
     setOpenBuildingId(null);
   }
 
@@ -2076,211 +2068,15 @@ export function TownPanel({
   }
 
   const buildActions = legalActions.filter((legal) => legal.action.type === "BUILD_STRUCTURE");
-  const hireActions = legalActions.filter((legal) => legal.action.type === "HIRE_SECONDARY_HERO");
   const anchorBuildingTip = (buildingId: string, element: HTMLElement) => {
     const rect = element.getBoundingClientRect();
     setBuildingTip({ buildingId, left: rect.left + rect.width / 2, top: rect.top - 8 });
   };
   const clearBuildingTip = (buildingId: string) =>
     setBuildingTip((current) => (current?.buildingId === buildingId ? null : current));
-  // Recruiting is blocked mid-combat — except in this player's own pre-battle
-  // preparation window, where spending town actions before the fight is the
-  // whole point (recruits join the army in time to deploy).
-  const canPopulate =
-    player.townTokens.population &&
-    (!state.combat || inCombatPrep(state, viewerPlayerId)) &&
-    legalActions.some((legal) => legal.action.type === "POPULATION_ACTION");
-
-  const unlockedTiers = new Set(
-    town.buildings
-      .map((buildingId) => coreBuildingDefinitions[buildingId]?.effect)
-      .flatMap((effect) => (effect?.type === "UNLOCK_RECRUIT_TIER" ? [effect.tier] : []))
-  );
-  const canReinforce = town.buildings.some(
-    (buildingId) => coreBuildingDefinitions[buildingId]?.effect?.type === "UNLOCK_REINFORCE"
-  );
-
-  const basketCost: Record<string, number> = {};
-  const addCost = (cost: Record<string, number | undefined>) => {
-    for (const [resource, amount] of Object.entries(cost)) {
-      if (amount) {
-        basketCost[resource] = (basketCost[resource] ?? 0) + amount;
-      }
-    }
-  };
-  // Each unit's cost carries the TOTAL gold discount the engine will charge for
-  // it: a Legion voucher reserved for that unit STACKS with the building/location
-  // discount (Champions' Stables, Cove Pub). Two Legion pieces on the same unit
-  // still take the larger. The shown total and the affordability gate use this
-  // same applyRecruitGoldDiscount, so they match the engine exactly.
-  for (const unitDefId of recruitIds) {
-    const few = coreUnitDefinitions[unitDefId]?.few;
-    if (few) {
-      addCost(applyRecruitGoldDiscount(state, viewerPlayerId, { kind: "recruit", unitDefId }, few.cost));
-    }
-  }
-  for (const armyUnitId of reinforceIds) {
-    const armyUnit = player.army.find((candidate) => candidate.id === armyUnitId);
-    const pack = armyUnit ? coreUnitDefinitions[armyUnit.unitDefId]?.pack : undefined;
-    if (armyUnit && pack) {
-      addCost(
-        applyRecruitGoldDiscount(
-          state,
-          viewerPlayerId,
-          { kind: "reinforce", unitDefId: armyUnit.unitDefId, armyUnitId },
-          pack.cost
-        )
-      );
-    }
-  }
-  const basketAffordable =
-    (basketCost.gold ?? 0) <= player.resources.gold &&
-    (basketCost.buildingMaterials ?? 0) <= player.resources.buildingMaterials &&
-    (basketCost.valuables ?? 0) <= player.resources.valuables;
-  const basketSize = recruitIds.length + reinforceIds.length;
-
-  const submitBasket = () => {
-    const purchases: { kind: "recruit" | "reinforce"; unitDefId: string; armyUnitId?: string }[] = [];
-    for (const unitDefId of recruitIds) {
-      purchases.push({ kind: "recruit", unitDefId });
-    }
-    for (const armyUnitId of reinforceIds) {
-      const armyUnit = player.army.find((candidate) => candidate.id === armyUnitId);
-      if (armyUnit) {
-        purchases.push({ kind: "reinforce", unitDefId: armyUnit.unitDefId, armyUnitId });
-      }
-    }
-    onAction({ type: "POPULATION_ACTION", playerId: viewerPlayerId, purchases });
-    setRecruitIds([]);
-    setReinforceIds([]);
-  };
-
-  // Activated building actions (Blacksmith, Spell Book, Magic University, Castle
-  // Gate, Cover of Darkness…) — everything the rules currently allow, as buttons.
-  const buildingUseActions = legalActions.filter(
-    (legal) =>
-      legal.action.type === "SPELL_BOOK_ACTION" ||
-      legal.action.type === "BLACKSMITH_ACTION" ||
-      legal.action.type === "THIEVES_GUILD_ACTION" ||
-      legal.action.type === "MAGIC_UNIVERSITY_ACTION" ||
-      legal.action.type === "USE_TOWN_BUILDING"
-  );
-
-  // City Hall's "— OR —" income is resolved through a round-start OPTION_CHOICE.
-  // Surface it on the City Hall building itself so the player can pick the bonus
-  // in place (the floating prompt offers the same choice as a safety net).
-  const cityHallChoiceActions: LegalAction[] =
-    state.pendingChoice?.type === "OPTION_CHOICE" &&
-    state.pendingChoice.context === "city-hall" &&
-    state.pendingChoice.playerId === viewerPlayerId
-      ? legalActions.filter((legal) => legal.action.type === "CHOOSE_OPTION")
-      : [];
-
-  const submitCoverOfDarkness = (buildingId: string) => {
-    const cardIds = coverPicks.map((index) => player.hand[index]).filter(Boolean);
-    onAction({
-      type: "USE_TOWN_BUILDING",
-      playerId: viewerPlayerId,
-      buildingId,
-      optionIndex: 0,
-      cardIds
-    });
-    setCoverPicks([]);
-    setOpenBuildingId(null);
-  };
-
-  // --- Built special buildings: an "in place" effect / use panel -----------
-  // The active "use" actions belong to one building each: Spell Book → Mage
-  // Guild, Blacksmith → the artifact smith, USE_TOWN_BUILDING → its own id.
-  const activeActionsForBuilding = (buildingId: string): LegalAction[] => {
-    const building = coreBuildingDefinitions[buildingId];
-    if (!building) {
-      return [];
-    }
-    if (building.effect?.type === "RESOURCE_ROUND_CHOICE") {
-      return cityHallChoiceActions;
-    }
-    return buildingUseActions.filter((legal) => {
-      const action = legal.action;
-      if (action.type === "USE_TOWN_BUILDING" || action.type === "THIEVES_GUILD_ACTION") {
-        return action.buildingId === buildingId;
-      }
-      if (action.type === "SPELL_BOOK_ACTION") {
-        return building.effect?.type === "MAGE_GUILD";
-      }
-      if (action.type === "BLACKSMITH_ACTION") {
-        return building.effect?.type === "ARTIFACT_SMITH";
-      }
-      if (action.type === "MAGIC_UNIVERSITY_ACTION") {
-        return building.effect?.type === "MAGIC_UNIVERSITY";
-      }
-      return false;
-    });
-  };
-
-  // Dwellings and the Citadel are structural; every other built building with
-  // an effect earns a button so the player can read or use it in place.
-  const hasEffectPanel = (building: TownBuildingDefinition): boolean => {
-    const type = building.effect?.type;
-    return Boolean(
-      type && type !== "UNLOCK_RECRUIT_TIER" && type !== "UNLOCK_REINFORCE" && type !== "NOT_IMPLEMENTED"
-    );
-  };
-
-  // Live status / where-to-use note shown under the effect text.
-  const buildingPanelNote = (building: TownBuildingDefinition, hasActions: boolean): string | null => {
-    const effect = building.effect;
-    if (!effect) {
-      return null;
-    }
-    const usedThisRound = (player.buildingUsedRound?.[building.id] ?? 0) === state.round;
-    switch (effect.type) {
-      case "RESOURCE_ROUND_CHOICE":
-        return hasActions
-          ? "Choose this round's bonus:"
-          : effect.options.length > 1
-            ? "Pick one of these at the start of each Resource round."
-            : "Collected at the start of each Resource round.";
-      case "COMBAT_CUBES": {
-        const cubes = town.factionCubes?.[building.id] ?? 0;
-        const bonus = effect.spend === "spell-power" ? "+1 Power per cube (max 1 per spell)" : "+1 attack or defense per cube";
-        return `${cubes} of ${effect.max} faction cube${cubes === 1 ? "" : "s"} stored — remove them during any combat for ${bonus}.`;
-      }
-      case "HALL_OF_VALHALLA":
-        return usedThisRound
-          ? "Already used this round — offered again next round."
-          : `Ready — offered in combat when one of your units attacks (+${effect.amount} attack, once per round).`;
-      case "FREELANCERS_GUILD":
-        return "Always on — the bonus applies automatically.";
-      case "MAGIC_UNIVERSITY":
-        // Tracked by its own once-per-round flag, not the generic
-        // buildingUsedRound token — read it directly for the status line.
-        if (hasActions) {
-          return null;
-        }
-        return player.magicUniversityUsedRound === state.round
-          ? "Already used this round — available again next round."
-          : "Pick a School of Magic to dig your deck for that spell.";
-      case "MAGE_GUILD":
-      case "ARTIFACT_SMITH":
-      case "COVER_OF_DARKNESS":
-      case "CASTLE_GATE":
-        if (hasActions) {
-          return null;
-        }
-        return usedThisRound
-          ? "Already used this round."
-          : "Becomes available on your turn (token and resources permitting).";
-      default:
-        // Round / turn-start automatic effects (City Hall, Brotherhood, Mystic
-        // Pond, Saplings, Necromancy Amplifier, Portal, Mana Vortex…).
-        return "Resolves automatically at the listed time — watch for its prompt.";
-    }
-  };
 
   const openBuilding =
     openBuildingId && town.buildings.includes(openBuildingId) ? coreBuildingDefinitions[openBuildingId] : null;
-  const openBuildingActions = openBuilding ? activeActionsForBuilding(openBuilding.id) : [];
 
   return (
     <section className="townPanel" aria-label={`${faction.name} town`}>
@@ -2302,9 +2098,9 @@ export function TownPanel({
             (legal) => legal.action.type === "BUILD_STRUCTURE" && legal.action.buildingId === buildingId
           );
           const cubes = town.factionCubes?.[buildingId] ?? 0;
-          const effectPanel = built && hasEffectPanel(building);
+          const effectPanel = built && hasBuildingEffectPanel(building);
           const open = openBuildingId === buildingId;
-          const actionable = effectPanel && activeActionsForBuilding(buildingId).length > 0;
+          const actionable = effectPanel && activeBuildingActions(state, viewerPlayerId, legalActions, buildingId).length > 0;
           return (
             <div
               className={`townBuilding ${built ? "built" : ""}`}
@@ -2337,10 +2133,7 @@ export function TownPanel({
                 <button
                   aria-expanded={open}
                   className={`commandButton buildingEffectButton ${actionable ? "actionable" : ""}`}
-                  onClick={() => {
-                    setOpenBuildingId(open ? null : buildingId);
-                    setCoverPicks([]);
-                  }}
+                  onClick={() => setOpenBuildingId(open ? null : buildingId)}
                   type="button"
                 >
                   {actionable ? "Use ▾" : "Effect ▾"}
@@ -2383,220 +2176,19 @@ export function TownPanel({
       {/* In-place effect / use panel for the building whose button is open: the
           exact effect, a live status line, and any action it offers right now
           (Spell Book, Blacksmith, Castle Gate, Cover of Darkness's card picker). */}
-      {openBuilding && hasEffectPanel(openBuilding)
-        ? (() => {
-            const note = buildingPanelNote(openBuilding, openBuildingActions.length > 0);
-            const timing = buildingTimingLabel(openBuilding);
-            const isCover = openBuilding.effect?.type === "COVER_OF_DARKNESS";
-            const coverAction = isCover
-              ? openBuildingActions.find((legal) => legal.action.type === "USE_TOWN_BUILDING")
-              : undefined;
-            // Pull the id out where the type is narrowed so the click closure
-            // below keeps it (TS widens action property access inside closures).
-            const coverBuildingId =
-              coverAction?.action.type === "USE_TOWN_BUILDING" ? coverAction.action.buildingId : null;
-            return (
-              <div className="townActions townBuildingDetail" aria-label={`${openBuilding.name} effect`}>
-                <h4>
-                  {openBuilding.name}
-                  {timing ? <small>{timing}</small> : null}
-                </h4>
-                <p className="buildingDetailText">{describeBuildingEffect(openBuilding)}</p>
-                {note ? <small className="buildingDetailStatus">{note}</small> : null}
-                {coverBuildingId ? (
-                  <div className="coverPicker">
-                    <small>Pick 1–2 cards to discard, then draw that many:</small>
-                    <div className="coverPickerCards">
-                      {player.hand.map((cardId, index) => {
-                        const picked = coverPicks.includes(index);
-                        return (
-                          <label key={`${cardId}-${index}`}>
-                            <input
-                              checked={picked}
-                              disabled={!picked && coverPicks.length >= 2}
-                              onChange={() =>
-                                setCoverPicks((current) =>
-                                  picked ? current.filter((value) => value !== index) : [...current, index]
-                                )
-                              }
-                              type="checkbox"
-                            />
-                            {cardLibrary[cardId]?.name ?? cardId}
-                          </label>
-                        );
-                      })}
-                      <button
-                        className="commandButton primary"
-                        disabled={coverPicks.length === 0}
-                        onClick={() => submitCoverOfDarkness(coverBuildingId)}
-                        type="button"
-                      >
-                        Discard {coverPicks.length || ""} and draw
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  openBuildingActions.map((legal) => (
-                    <button
-                      className="commandButton"
-                      key={actionKey(legal.action)}
-                      onClick={() => onAction(legal.action)}
-                      type="button"
-                    >
-                      {legal.label}
-                    </button>
-                  ))
-                )}
-              </div>
-            );
-          })()
-        : null}
-
-      {player.townTokens.population && (!state.combat || inCombatPrep(state, viewerPlayerId)) ? (
-        <div className="townRecruits" aria-label="Population token basket">
-          <h4 title="Each unit card exists once: recruit the Few side, later reinforce it to the Pack side — then it is complete.">
-            Population token — recruit &amp; reinforce
-          </h4>
-          <small className="recruitLegend">
-            Buy a unit&apos;s <b>Few</b> side, or <ChevronsUp aria-hidden="true" size={11} /> <b>reinforce</b> a Few you
-            already own up to its stronger <b>Pack</b> side{canReinforce ? "." : " — needs the Citadel."}
-          </small>
-          {faction.units.map((unitDefId) => {
-            const unit = coreUnitDefinitions[unitDefId];
-            if (!unit?.few || !unlockedTiers.has(unit.tier)) {
-              return null;
-            }
-            const owned = player.army.find((candidate) => candidate.unitDefId === unitDefId);
-            // Pack (or recruited neutral): the card is complete, nothing to buy.
-            if (owned && owned.side !== "few") {
-              return (
-                <div className="recruitRow done" key={unitDefId}>
-                  <Star aria-hidden="true" className={`tierStar ${unit.tier}`} size={12} />
-                  <span className="recruitName">{unit.name}</span>
-                  <small className="recruitState">pack — fully mustered</small>
-                </div>
-              );
-            }
-            // Few in the army: only the pack upgrade is on offer.
-            if (owned) {
-              const def = coreUnitDefinitions[owned.unitDefId];
-              const checked = reinforceIds.includes(owned.id);
-              const upgradable = canReinforce && Boolean(def?.pack);
-              const reinforceRef = { kind: "reinforce" as const, unitDefId: owned.unitDefId, armyUnitId: owned.id };
-              const reinforceCost = applyRecruitGoldDiscount(state, viewerPlayerId, reinforceRef, def?.pack?.cost ?? {});
-              const reinforceLegion = legionVoucherDiscount(state, viewerPlayerId, reinforceRef);
-              return (
-                <label
-                  className={`recruitRow reinforce ${checked ? "checked" : ""} ${upgradable ? "" : "locked"}`}
-                  key={unitDefId}
-                  title={upgradable ? `Reinforce ${unit.name}: Few → Pack` : undefined}
-                >
-                  <Star aria-hidden="true" className={`tierStar ${unit.tier}`} size={12} />
-                  <span className="recruitName">
-                    {unit.name} <span className="fewBadge">Few</span>
-                  </span>
-                  {upgradable ? (
-                    <>
-                      <span className="upgradeTag" title={reinforceLegion > 0 ? `Legion voucher reserved: −${reinforceLegion} gold` : undefined}>
-                        <ChevronsUp aria-hidden="true" size={12} /> Pack {formatCost(reinforceCost)}
-                        {reinforceLegion > 0 ? ` · Legion −${reinforceLegion}` : ""}
-                      </span>
-                      <input
-                        aria-label={`Reinforce ${unit.name} to a pack`}
-                        checked={checked}
-                        onChange={() =>
-                          setReinforceIds((current) =>
-                            checked ? current.filter((id) => id !== owned.id) : [...current, owned.id]
-                          )
-                        }
-                        type="checkbox"
-                      />
-                    </>
-                  ) : (
-                    <small className="recruitState">few in army{canReinforce ? "" : " — build the Citadel to reinforce"}</small>
-                  )}
-                </label>
-              );
-            }
-            const checked = recruitIds.includes(unitDefId);
-            const recruitRef = { kind: "recruit" as const, unitDefId };
-            const recruitCost = applyRecruitGoldDiscount(state, viewerPlayerId, recruitRef, unit.few.cost);
-            const recruitLegion = legionVoucherDiscount(state, viewerPlayerId, recruitRef);
-            return (
-              <label className="recruitRow" key={unitDefId}>
-                <Star aria-hidden="true" className={`tierStar ${unit.tier}`} size={12} />
-                <span className="recruitName">{unit.name}</span>
-                <small title={recruitLegion > 0 ? `Legion voucher reserved: −${recruitLegion} gold` : undefined}>
-                  {formatCost(recruitCost)}
-                  {recruitLegion > 0 ? ` · Legion −${recruitLegion}` : ""}
-                </small>
-                <input
-                  checked={checked}
-                  onChange={() =>
-                    setRecruitIds((current) =>
-                      checked ? current.filter((id) => id !== unitDefId) : [...current, unitDefId]
-                    )
-                  }
-                  type="checkbox"
-                />
-              </label>
-            );
-          })}
-          {basketSize > 0 ? (
-            <div className="basketFooter">
-              <small>
-                Total: {formatCost(basketCost as Record<"gold" | "buildingMaterials" | "valuables", number>)}
-                {basketAffordable ? "" : " — not enough resources"}
-              </small>
-              <button
-                className="commandButton primary"
-                disabled={!basketAffordable || !canPopulate}
-                onClick={submitBasket}
-                type="button"
-              >
-                Buy {basketSize}
-              </button>
-            </div>
-          ) : (
-            <small className="basketHint">
-              Recruit and reinforce as much as you can afford — the window stays open until your hero moves after a
-              purchase.
-            </small>
-          )}
-        </div>
+      {openBuilding && hasBuildingEffectPanel(openBuilding) ? (
+        <BuildingDetailPanel
+          building={openBuilding}
+          legalActions={legalActions}
+          onAction={onAction}
+          state={state}
+          viewerPlayerId={viewerPlayerId}
+        />
       ) : null}
 
-      {hireActions.length > 0 ? (
-        <div className="townActions" aria-label="Hire a Secondary Hero">
-          <h4 title="A Secondary Hero has 2 movement, plays no cards and never gains experience. One per player.">
-            Hire a Secondary Hero — 10 gold
-          </h4>
-          <div className="hireHeroRow">
-            {hireActions.map((legal) => {
-              const action = legal.action;
-              const heroDefId = action.type === "HIRE_SECONDARY_HERO" ? action.heroDefId : "";
-              const heroDef = heroDefId ? coreHeroDefinitions[heroDefId] : undefined;
-              return (
-                <button
-                  className="commandButton"
-                  key={actionKey(action)}
-                  onClick={() => onAction(action)}
-                  title={`Appears at your town as ${heroDef?.name ?? heroDefId} (10 gold)`}
-                  type="button"
-                >
-                  <HeroPortrait
-                    name={heroDef?.name ?? heroDefId}
-                    portrait={heroDef?.portrait}
-                    size={18}
-                    style={{ marginRight: 4, verticalAlign: "middle" }}
-                  />
-                  {heroDef?.name ?? heroDefId}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      ) : null}
+      <TownRecruitSection legalActions={legalActions} onAction={onAction} state={state} viewerPlayerId={viewerPlayerId} />
+
+      <HireHeroesSection legalActions={legalActions} onAction={onAction} />
     </section>
   );
 }
@@ -3556,12 +3148,15 @@ export function PreBattlePanel({
   state,
   viewerPlayerId,
   legalActions,
-  onAction
+  onAction,
+  onOpenTown
 }: {
   state: GameState;
   viewerPlayerId: PlayerId;
   legalActions: LegalAction[];
   onAction: (action: GameAction) => void;
+  /** Opens the Town window so preparation shopping stays one click away. */
+  onOpenTown?: () => void;
 }) {
   const combat = state.combat;
   const prep = combat?.prep;
@@ -3622,13 +3217,23 @@ export function PreBattlePanel({
         <>
           <small className="prepNote">
             Prepare before the fight: spend any town actions you have left this round (build, recruit, buy spells) — right
-            here below, or at your town panel on the right. Units you recruit now join your army in time to be deployed.
-            When you are ready, accept the battle — deployment begins once both sides accept.
+            here below, or in your town window (the Town button). Units you recruit now join your army in time to be
+            deployed. When you are ready, accept the battle — deployment begins once both sides accept.
           </small>
-          {townActions.length > 0 ? (
+          {townActions.length > 0 || onOpenTown ? (
             <div className="prepTownActions" aria-label="Spend a town action before the battle">
               <small className="prepNote">Buy / build now:</small>
               <div className="prepButtons">
+                {onOpenTown ? (
+                  <button
+                    className="commandButton"
+                    onClick={onOpenTown}
+                    title="Open the town window to build, recruit and buy spells before the battle"
+                    type="button"
+                  >
+                    <Castle aria-hidden="true" size={12} /> Open town
+                  </button>
+                ) : null}
                 {townActions.map((legal) => (
                   <button
                     className="commandButton"

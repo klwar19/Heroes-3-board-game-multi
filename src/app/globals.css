@@ -3291,9 +3291,12 @@ button.battleCell {
   font-size: 11px;
 }
 
+/* Two columns now: the right rail is gone (hero board docks in the top bar,
+   the town lives in its popup window), so the map takes the freed width and
+   the unit deck rides the widened left rail. */
 .adventureMidRow {
   display: grid;
-  grid-template-columns: 170px 1fr 300px;
+  grid-template-columns: 210px minmax(0, 1fr);
   gap: 10px;
   flex: 1;
   min-height: 0;
@@ -3663,14 +3666,6 @@ button.battleCell {
 .commandButton.primary {
   background: linear-gradient(180deg, #8c6a2c, #6e5122);
   color: #ffe9bd;
-}
-
-.adventureRail {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  overflow-y: auto;
-  min-height: 0;
 }
 
 /* ---- Hero board (printed-board recreation, scales with its container) ---- */
@@ -4425,11 +4420,11 @@ button.hbSlot:disabled { cursor: default; }
 /* Adventure hand strip */
 .adventureHand {
   /* The player's card tray, aligned with the map row above. Columns match
-     .adventureMidRow (left rail / map / right rail) so the support column
-     (Spell Book + deck/discard + permanent) lands under the left rail and the
-     hand of cards lands directly beneath the center map column. */
+     .adventureMidRow (left rail / map) so the support column (Spell Book +
+     deck/discard + permanent) lands under the left rail and the hand of cards
+     lands directly beneath the map column. */
   display: grid;
-  grid-template-columns: 170px 1fr 300px;
+  grid-template-columns: 210px minmax(0, 1fr);
   gap: 10px;
   align-items: start;
 }
@@ -4497,7 +4492,7 @@ button.hbSlot:disabled { cursor: default; }
 @media (max-width: 1100px) {
   /* Track .adventureMidRow's narrower columns so the rows stay aligned. */
   .adventureHand {
-    grid-template-columns: 150px 1fr 240px;
+    grid-template-columns: 170px minmax(0, 1fr);
   }
 }
 
@@ -4921,7 +4916,13 @@ button.hbSlot:disabled { cursor: default; }
 
 @media (max-width: 1100px) {
   .adventureMidRow {
-    grid-template-columns: 150px 1fr 240px;
+    grid-template-columns: 170px minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 760px) {
+  .adventureMidRow {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -9333,8 +9334,8 @@ img.cardBack {
 }
 
 /* Fixed-position tip anchored to the hovered building (see TownPanel). Fixed
-   positioning escapes the `.adventureRail` overflow clip that hid the old
-   in-flow tooltip. */
+   positioning escapes the scrolling town-window overflow clip that would hide
+   an in-flow tooltip. */
 .buildingTip.floating {
   position: fixed;
   transform: translate(-50%, -100%);
@@ -9532,17 +9533,6 @@ img.cardBack {
   display: flex;
   align-items: center;
   gap: 6px;
-}
-
-/* First-player roll HUD chip */
-
-.advHudCell.firstRoll {
-  cursor: pointer;
-  border-color: rgba(214, 178, 94, 0.5);
-}
-
-.advHudCell.firstRoll:hover {
-  background: rgba(214, 178, 94, 0.12);
 }
 
 /* ---------------------------------------------------------------------------
@@ -10676,4 +10666,917 @@ img.cardBack {
   color: #f4d774;
   font-weight: bold;
   font-size: 7cqw;
+}
+
+/* ---------------------------------------------------------------------------
+ * Top bar: hero board dock, move/morale chips, Town button
+ * ------------------------------------------------------------------------- */
+
+/* The hero board docks in the top bar: a compact chip per seat; clicking one
+   drops the full printed board open over the map (no layout shift). */
+.advHudCell.heroDockCell {
+  position: relative;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+
+button.heroChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 9px 3px 4px;
+  border: 1px solid rgba(170, 130, 70, 0.45);
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(63, 46, 26, 0.85), rgba(38, 27, 15, 0.9));
+  color: inherit;
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+button.heroChip:hover,
+button.heroChip.open {
+  border-color: var(--gold);
+  background: linear-gradient(180deg, rgba(84, 61, 33, 0.9), rgba(47, 33, 18, 0.95));
+}
+
+.heroChipText {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  line-height: 1.15;
+  text-align: left;
+}
+
+.heroChipText strong {
+  font-size: 12.5px;
+  color: #f0dcb8;
+}
+
+.heroChipText small {
+  font-size: 10px;
+  color: #c9b088;
+}
+
+.heroDropBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 79;
+}
+
+.heroDrop {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 0;
+  z-index: 80;
+  width: min(480px, 92vw);
+  filter: drop-shadow(0 18px 42px rgb(0 0 0 / 65%));
+  animation: heroDropIn 140ms ease-out;
+}
+
+@keyframes heroDropIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Movement + morale: same size as before, cleaner read — icon, number, label. */
+.advHudCell.moveMoraleCell {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+
+.statChip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+}
+
+.statChip b {
+  font-size: 15px;
+  color: #f0dcb8;
+  line-height: 1;
+}
+
+.statChip small {
+  font-size: 10px;
+  color: #c9b088;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.statChip .movePointIcon {
+  font-size: 13px;
+}
+
+.statChip .moraleIcon {
+  width: 15px;
+  height: 15px;
+  align-self: center;
+  object-fit: contain;
+}
+
+.advHudButtons .townButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* ---------------------------------------------------------------------------
+ * The Town window (popup over the map): board view + classic buildings view
+ * ------------------------------------------------------------------------- */
+
+.townWindowBackdrop {
+  z-index: 70;
+  overflow-y: auto;
+  padding: 3vh 2vw;
+  align-items: start;
+}
+
+.townWindow {
+  width: min(1180px, 96vw);
+  max-height: 94vh;
+  overflow-y: auto;
+  border: 2px solid var(--gold);
+  border-radius: 14px;
+  background:
+    radial-gradient(120% 90% at 20% 0%, rgba(255, 240, 200, 0.05), transparent 50%),
+    rgb(22 18 12 / 99%);
+  box-shadow: 0 28px 70px rgb(0 0 0 / 70%);
+}
+
+.townWindowHeader {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(170, 130, 70, 0.4);
+  background: linear-gradient(180deg, rgba(43, 31, 18, 0.98), rgba(28, 20, 12, 0.98));
+  border-radius: 12px 12px 0 0;
+}
+
+.townWindowHeader > strong {
+  font-family: var(--font-heading, inherit);
+  font-size: 16px;
+  color: var(--gold);
+}
+
+.townWindowTokens {
+  font-size: 12px;
+  letter-spacing: 0.14em;
+}
+
+.townWindowViews {
+  display: inline-flex;
+  margin-left: auto;
+  border: 1px solid rgba(170, 130, 70, 0.45);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.townWindowViews button {
+  appearance: none;
+  border: none;
+  padding: 5px 12px;
+  background: transparent;
+  color: #cbb289;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.townWindowViews button + button {
+  border-left: 1px solid rgba(170, 130, 70, 0.35);
+}
+
+.townWindowViews button.selected {
+  background: rgba(214, 178, 94, 0.18);
+  color: var(--gold);
+  font-weight: 700;
+}
+
+.townWindowClose {
+  appearance: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid rgba(170, 130, 70, 0.45);
+  border-radius: 8px;
+  background: transparent;
+  color: #d9c9a6;
+  cursor: pointer;
+}
+
+.townWindowClose:hover {
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
+.townWindowBody {
+  padding: 12px 14px 16px;
+}
+
+/* The classic PC-art panel stretches nicely inside the window: the building
+   grid flows into as many ~200px columns as fit instead of the rail's two. */
+.townWindowBody .townPanel {
+  max-width: none;
+}
+
+.townWindowBody .townBuildings {
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 8px;
+}
+
+/* ---------------------------------------------------------------------------
+ * The town BOARD view (physical board with live overlays)
+ * ------------------------------------------------------------------------- */
+
+.tbRoot {
+  container-type: inline-size;
+  display: grid;
+  gap: 10px;
+}
+
+.tbBoard {
+  position: relative;
+  width: 100%;
+  border-radius: 1.2cqw;
+  overflow: hidden;
+  box-shadow: 0 1cqw 3cqw rgb(0 0 0 / 55%);
+  user-select: none;
+}
+
+.tbBoardBase {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+}
+
+/* --- bars ------------------------------------------------------------------ */
+
+.tbBar {
+  position: absolute;
+}
+
+.tbFill {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  /* The physical tile edge: a hair of shadow masks the scan-to-scan drift. */
+  box-shadow:
+    inset 0 0 0 1px rgb(0 0 0 / 55%),
+    inset 0 0 0.6cqw rgb(0 0 0 / 45%);
+}
+
+.tbFill.partial > img {
+  filter: blur(0.35cqw) brightness(0.82) saturate(0.85);
+}
+
+.tbBar.partial::after {
+  content: "";
+  position: absolute;
+  inset: 0.25cqw;
+  border: 0.22cqw dashed rgba(240, 196, 106, 0.85);
+  border-radius: 0.5cqw;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.tbPartialNote {
+  position: absolute;
+  left: 50%;
+  bottom: 5%;
+  transform: translateX(-50%);
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4cqw;
+  max-width: 94%;
+  padding: 0.35cqw 0.7cqw;
+  border: 1px solid rgba(240, 196, 106, 0.75);
+  border-radius: 999px;
+  background: rgb(24 18 8 / 88%);
+  color: #f0c46a;
+  font-size: clamp(8px, 1.15cqw, 13px);
+  line-height: 1.25;
+  text-align: center;
+  pointer-events: none;
+}
+
+.tbBarHit {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  appearance: none;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  border-radius: 0.5cqw;
+}
+
+.tbBarHit:hover,
+.tbBarHit:focus-visible,
+.tbBarHit[aria-expanded="true"] {
+  box-shadow:
+    inset 0 0 0 0.22cqw rgba(240, 196, 106, 0.9),
+    inset 0 0 1.6cqw rgb(240 196 106 / 25%);
+  outline: none;
+}
+
+.tbBuildBadge {
+  position: absolute;
+  top: 2%;
+  right: 6%;
+  display: grid;
+  place-items: center;
+  width: 1.9cqw;
+  height: 1.9cqw;
+  min-width: 14px;
+  min-height: 14px;
+  border-radius: 50%;
+  border: 1px solid rgba(240, 196, 106, 0.9);
+  background: rgb(30 22 10 / 92%);
+  color: #f0c46a;
+  animation: tbPulse 1.8s ease-in-out infinite;
+}
+
+@keyframes tbPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgb(240 196 106 / 45%);
+  }
+
+  50% {
+    box-shadow: 0 0 0 0.55cqw rgb(240 196 106 / 0%);
+  }
+}
+
+/* --- definitions corner ------------------------------------------------------ */
+
+.tbDefsHit {
+  position: absolute;
+  z-index: 3;
+  appearance: none;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  border-radius: 0.6cqw;
+}
+
+.tbDefsHit:hover,
+.tbDefsHit:focus-visible {
+  box-shadow: inset 0 0 0 0.2cqw rgba(240, 196, 106, 0.7);
+  outline: none;
+}
+
+.tbDefsBadge {
+  position: absolute;
+  right: 3%;
+  bottom: 4%;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4cqw;
+  padding: 0.3cqw 0.8cqw;
+  border: 1px solid rgba(214, 178, 94, 0.55);
+  border-radius: 999px;
+  background: rgb(24 18 8 / 82%);
+  color: #d6b25e;
+  font-size: clamp(8px, 1.1cqw, 12px);
+}
+
+/* --- resource tracks & markers ----------------------------------------------- */
+
+.tbMarker {
+  position: absolute;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  width: 2.6cqw;
+  height: 2.6cqw;
+  min-width: 17px;
+  min-height: 17px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  font-size: clamp(8px, 1.2cqw, 13px);
+  font-weight: 800;
+  color: #1b1408;
+  box-shadow:
+    0 0.25cqw 0.7cqw rgb(0 0 0 / 65%),
+    inset 0 -0.25cqw 0.5cqw rgb(0 0 0 / 30%);
+  border: 0.18cqw solid rgb(255 250 235 / 85%);
+  pointer-events: auto;
+  transition: left 400ms ease, top 400ms ease;
+}
+
+.tbMarker.gold {
+  background: radial-gradient(circle at 32% 30%, #ffe9a8, #d9a834 70%);
+}
+
+.tbMarker.buildingMaterials {
+  background: radial-gradient(circle at 32% 30%, #e8e4da, #9b968b 70%);
+}
+
+.tbMarker.valuables {
+  background: radial-gradient(circle at 32% 30%, #ffb3ad, #c04338 70%);
+  color: #fff4ee;
+}
+
+/* --- token wells --------------------------------------------------------------- */
+
+.tbToken {
+  position: absolute;
+  z-index: 4;
+  transform: translate(-50%, -50%);
+  appearance: none;
+  border-radius: 50%;
+  border: 0.22cqw solid rgba(240, 196, 106, 0.0);
+  background: transparent;
+  color: #e8c96a;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+
+.tbToken svg {
+  width: 55%;
+  height: 55%;
+}
+
+.tbToken.ready {
+  border-color: rgba(240, 196, 106, 0.85);
+  box-shadow:
+    0 0 1.4cqw rgb(240 196 106 / 45%),
+    inset 0 0 1cqw rgb(240 196 106 / 25%);
+}
+
+.tbToken.ready:hover,
+.tbToken.ready:focus-visible {
+  box-shadow:
+    0 0 2cqw rgb(240 196 106 / 70%),
+    inset 0 0 1.4cqw rgb(240 196 106 / 40%);
+  outline: none;
+}
+
+/* Spent: the well reads unmistakably red — dimmed, red ring, red cross. */
+.tbToken.spent {
+  border-color: rgba(214, 78, 62, 0.9);
+  background: rgb(120 26 18 / 32%);
+  box-shadow: inset 0 0 1.4cqw rgb(120 20 12 / 55%);
+  color: rgba(233, 200, 160, 0.55);
+  cursor: pointer;
+}
+
+.tbToken .tbTokenSpent {
+  position: absolute;
+  inset: 12%;
+  width: 76%;
+  height: 76%;
+  color: rgba(228, 78, 60, 0.92);
+  filter: drop-shadow(0 0 0.4cqw rgb(0 0 0 / 80%));
+}
+
+.tbToken.designed {
+  background: radial-gradient(circle at 35% 30%, #2c2c2c, #171717 75%);
+  border-color: rgba(240, 196, 106, 0.45);
+}
+
+.tbToken.designed.spent {
+  background: radial-gradient(circle at 35% 30%, #3a1f1a, #201110 75%);
+  border-color: rgba(214, 78, 62, 0.9);
+}
+
+/* --- designed boards (no printed scan) ---------------------------------------- */
+
+.tbDesignedBase {
+  background:
+    radial-gradient(130% 90% at 18% 0%, rgba(255, 240, 200, 0.06), transparent 46%),
+    radial-gradient(120% 100% at 85% 115%, rgb(0 0 0 / 55%), transparent 55%),
+    linear-gradient(160deg, #4a3520, #2a1c0e);
+}
+
+.tbDesignedBase::after {
+  content: "";
+  position: absolute;
+  inset: 0.7cqw;
+  border: 0.28cqw solid rgba(214, 178, 94, 0.5);
+  border-radius: 0.9cqw;
+  box-shadow: inset 0 0 0 0.16cqw rgb(0 0 0 / 70%);
+  pointer-events: none;
+}
+
+.tbDesignedWindow {
+  position: absolute;
+  overflow: hidden;
+  border-radius: 0.5cqw;
+  background: #101010;
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 80%), inset 0 0.5cqw 2cqw rgb(0 0 0 / 70%);
+}
+
+.tbDesignedWindow img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  /* Dimmed and desaturated: built bars overlay their slice at full strength,
+     so construction visibly lights the town up bar by bar. */
+  filter: brightness(0.5) saturate(0.55);
+}
+
+.tbDesignedTitle {
+  position: absolute;
+  right: 2.6%;
+  top: 47.5%;
+  color: rgba(232, 201, 106, 0.8);
+  font-size: 1.4cqw;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
+.tbEmptyBar {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6%;
+  padding-top: 7%;
+  /* The plates hang over the dimmed panorama like the printed board — no
+     full-bar backing, the townscape stays visible beneath. */
+  background: linear-gradient(180deg, rgb(8 8 8 / 55%), rgb(8 8 8 / 0%) 55%);
+  box-shadow: inset 0.12cqw 0 0 rgb(0 0 0 / 45%), inset -0.12cqw 0 0 rgb(0 0 0 / 45%);
+}
+
+.tbPlate {
+  display: flex;
+  flex-direction: column;
+  width: 86%;
+  border: 1px solid rgb(16 40 18 / 90%);
+  border-radius: 0.3cqw;
+  overflow: hidden;
+  box-shadow: 0 0.3cqw 0.8cqw rgb(0 0 0 / 55%);
+}
+
+.tbPlate b {
+  padding: 0.45cqw 0.4cqw;
+  background: linear-gradient(180deg, #2c6b34, #1c4a24);
+  color: #f2e3b8;
+  font-size: clamp(7px, 1.05cqw, 12px);
+  line-height: 1.2;
+  text-align: center;
+}
+
+.tbPlate .tbCost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6cqw;
+  padding: 0.3cqw 0.4cqw;
+  background: linear-gradient(180deg, #4a3018, #33200e);
+  color: #e8d9b8;
+  font-size: clamp(7px, 0.95cqw, 11px);
+  text-align: center;
+}
+
+.tbCost span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15cqw;
+}
+
+.tbCost img {
+  width: 1.15cqw;
+  height: 1.15cqw;
+  min-width: 9px;
+  min-height: 9px;
+  object-fit: contain;
+}
+
+.tbFill.designed {
+  display: flex;
+  flex-direction: column;
+  background: #131311;
+}
+
+.tbDesignedTile {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 5%), rgb(0 0 0 / 25%)),
+    linear-gradient(160deg, color-mix(in srgb, var(--tb-faction, #7a5a2a) 55%, #17120a), #17120a 82%);
+}
+
+/* The bar's slice of the fully-built panorama, full brightness (the backdrop
+   behind is dimmed). Sized to the whole 7-bar window and shifted per bar. */
+.tbPanoramaSlice {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  max-width: none;
+  object-fit: cover;
+}
+
+.tbTileArt {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* PC-game building render floating over the bar (fallback tile art). */
+.tbTilePcArt {
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  transform: translate(-50%, -50%);
+  width: 86%;
+  height: 62%;
+  object-fit: contain;
+  filter: drop-shadow(0 0.5cqw 0.9cqw rgb(0 0 0 / 75%));
+}
+
+.tbDesignedTile.compact .tbTilePcArt {
+  height: 74%;
+  top: 42%;
+}
+
+.tbDesignedTile + .tbDesignedTile {
+  border-top: 1px solid rgb(0 0 0 / 70%);
+}
+
+.tbDesignedTile .tbTilePlaque {
+  position: absolute;
+  left: 50%;
+  bottom: 4%;
+  transform: translateX(-50%);
+  z-index: 2;
+}
+
+.tbTilePlaque {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5cqw;
+  max-width: 92%;
+  padding: 0.4cqw 0.9cqw;
+  border: 1px solid rgba(240, 196, 106, 0.65);
+  border-radius: 999px;
+  background: rgb(20 14 6 / 82%);
+  color: #f0dcb8;
+  font-size: clamp(8px, 1.1cqw, 13px);
+  text-align: center;
+  line-height: 1.25;
+}
+
+.tbDesignedDefs {
+  position: absolute;
+  inset: 4% 3%;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2.5%;
+  align-content: start;
+  text-align: left;
+}
+
+.tbMiniCard {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25cqw;
+  padding: 0.55cqw 0.7cqw;
+  border: 1px solid rgba(170, 130, 70, 0.45);
+  border-radius: 0.45cqw;
+  background: rgb(18 13 7 / 78%);
+  overflow: hidden;
+}
+
+.tbMiniCard b {
+  color: #e8c96a;
+  font-size: clamp(7px, 1cqw, 12px);
+  line-height: 1.2;
+}
+
+.tbMiniCard small {
+  color: #cbb289;
+  font-size: clamp(6px, 0.85cqw, 10px);
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.tbMiniMore {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4cqw;
+  padding: 0.5cqw;
+  border: 1px dashed rgba(214, 178, 94, 0.5);
+  border-radius: 0.45cqw;
+  color: #d6b25e;
+  font-size: clamp(7px, 0.95cqw, 11px);
+}
+
+.tbTrackRow {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.tbTrackIcon {
+  position: absolute;
+  width: 2.6cqw;
+  height: 2.6cqw;
+  transform: translate(-50%, -50%);
+  object-fit: contain;
+}
+
+.tbTrackCell {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  width: 2.9cqw;
+  height: 2.5cqw;
+  transform: translate(-50%, -50%);
+  border-radius: 0.35cqw;
+  background: rgb(14 14 14 / 88%);
+  box-shadow: inset 0 0 0 1px rgb(60 50 30 / 60%);
+  color: #d9c9a6;
+  font-size: clamp(7px, 1cqw, 12px);
+}
+
+/* --- the action panel dock below the board ------------------------------------ */
+
+.tbPanel {
+  border: 1px solid rgba(170, 130, 70, 0.5);
+  border-radius: 10px;
+  background: rgb(26 20 12 / 96%);
+  box-shadow: 0 12px 30px rgb(0 0 0 / 45%);
+}
+
+.tbPanel > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(170, 130, 70, 0.35);
+}
+
+.tbPanel > header strong {
+  color: var(--gold);
+  font-size: 13.5px;
+}
+
+.tbPanelClose {
+  appearance: none;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid rgba(170, 130, 70, 0.45);
+  border-radius: 6px;
+  background: transparent;
+  color: #d9c9a6;
+  cursor: pointer;
+}
+
+.tbPanelClose:hover {
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
+.tbPanelBody {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px 12px;
+  max-height: min(46vh, 420px);
+  overflow-y: auto;
+}
+
+.tbPanelHint {
+  color: #cbb289;
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.tbPanelSection {
+  display: grid;
+  gap: 6px;
+}
+
+.tbPanelSection + .tbPanelSection {
+  border-top: 1px dashed rgba(170, 130, 70, 0.3);
+  padding-top: 8px;
+}
+
+.tbPanelSection .buildingDetailText {
+  margin: 0;
+  color: #d9c9a6;
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.tbBuildRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px 10px;
+  padding: 6px 8px;
+  border: 1px solid rgba(170, 130, 70, 0.3);
+  border-radius: 8px;
+  background: rgb(34 26 16 / 65%);
+}
+
+.tbBuildRow.built {
+  border-color: rgba(110, 170, 100, 0.4);
+  background: rgb(26 34 20 / 45%);
+}
+
+.tbBuildRow .tbBuildName {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #f0dcb8;
+  font-size: 12.5px;
+}
+
+.tbBuildRow.built .tbBuildName svg {
+  color: #8fc47e;
+}
+
+.tbBuildRow > small {
+  grid-column: 1;
+  color: #cbb289;
+  font-size: 11px;
+}
+
+.tbBuildRow .commandButton {
+  grid-row: span 2;
+}
+
+.tbBuildBlocked {
+  grid-row: span 2;
+  color: #b98f6a;
+  font-size: 10.5px;
+  font-style: italic;
+  text-align: right;
+}
+
+.tbDefinitionCard {
+  display: grid;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid rgba(170, 130, 70, 0.35);
+  border-radius: 8px;
+  background: rgb(34 26 16 / 60%);
+}
+
+.tbDefinitionCard h4 {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0;
+  color: #e8c96a;
+  font-size: 12.5px;
+}
+
+.tbDefinitionCard h4 small {
+  color: #cbb289;
+  font-size: 10.5px;
+  font-weight: 400;
+}
+
+.tbDefinitionCard p {
+  margin: 0;
+  color: #d9c9a6;
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+@media (max-width: 900px) {
+  .heroDrop {
+    left: auto;
+    right: 0;
+  }
+
+  .townWindow {
+    width: 98vw;
+  }
 }

@@ -1,0 +1,33 @@
+# Town-board tile art drop folder
+
+The Town window's **board view** (`src/components/adventure/town-board.tsx`,
+manifest `src/data/towns/boards.ts`) renders every faction's physical town
+board. Castle, Rampart, Inferno, Necropolis, Dungeon, Tower and Fortress use
+the real printed scans (`/public/assets/towns-<faction>-{empty,full}.webp`,
+fetched by `scripts/fetch-town-boards.py`) — nothing is needed here for them.
+
+Stronghold (fan empty board, no fully-built scan) and the four DESIGNED boards
+(Conflux, Cove, Bulwark, Factory) draw a styled plaque for each built building
+until you drop per-building tile art into THIS folder. That is the whole
+integration contract — no code changes needed:
+
+- **File name**: `<factionId>-<buildingKey>.webp` — the building id from
+  `src/data/factions/core.ts` with its dot replaced by a dash.
+  Examples: `conflux-city_hall.webp`, `factory-dwelling_bronze.webp`,
+  `stronghold-hall_of_valhalla.webp`, `cove-mage_guild.webp`.
+- **Shape**: a TALL portrait crop (the printed tiles are roughly 2:5, e.g.
+  600×1270 px) showing the building over its townscape. On a shared bar the
+  two buildings split the bar vertically, so those can be ~2:2.5 each; the
+  board letterboxes/covers whatever it gets (`object-fit: cover`).
+- **Generation prompt sketch** (Gemini / any image model): "Heroes of Might
+  and Magic III board game town-board building tile, tall portrait crop,
+  painted style matching the <faction> townscape, showing the <building>,
+  dark parchment palette, no text" — then convert to WEBP (
+  `python3 -c "from PIL import Image; Image.open('x.png').save('y.webp','WEBP',quality=90)"`).
+- Missing/broken files are harmless: the view falls back to the plaque.
+
+To promote a faction from a designed board to real scans later, save the
+scans as `towns-<faction>-empty.webp` / `towns-<faction>-full.webp` under
+`/public/assets` and point that faction's entry in `src/data/towns/boards.ts`
+at them (`emptyImage`/`fullImage`, and transcribe its printed `bars` order).
+The bar/track/token geometry fractions are documented in that file.
