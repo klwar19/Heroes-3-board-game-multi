@@ -15,11 +15,13 @@
  *
  *  - DESIGNED boards (stronghold's fills, conflux, cove, bulwark, factory): no
  *    printed board is published, so the view draws the same die-cut layout in
- *    CSS (bars over a fully-built PC townscape panorama, definition cards in
- *    the bottom-left corner, the resource-gain tracks and the three
- *    build/population/spell token wells bottom-right). Per-building tile art
- *    can be dropped in later (see `townBoardTileArt` and
- *    public/assets/town-board/README.md) without touching any code.
+ *    CSS: bars over the empty PC townscape (built bars reveal the fully-built
+ *    slice and overlay per-building tile art where a file exists — see
+ *    `townBoardTileArt` and public/assets/town-board/README.md), definition
+ *    cards in the bottom-left corner, and the AUTHENTIC printed resource-track
+ *    + token-well panel (`panelImage`, cropped from the Stronghold fan scan by
+ *    scripts/crop-town-tracks-panel.py) pasted bottom-right at the exact
+ *    fractional rectangle it was cut from.
  *
  * The `bars` arrays transcribe the printed boards plate-by-plate (verified
  * against the wiki scans): seven bars for eight buildings, so exactly one bar
@@ -51,6 +53,13 @@ export type TownBoardGeometry = {
     radius: number;
     slots: readonly { kind: "build" | "population" | "spellBook"; x: number; y: number }[];
   };
+  /**
+   * Where the authentic printed tracks/tokens panel (`panelImage`) sits —
+   * designed boards paste the Stronghold-scan crop back at the exact
+   * fractional rectangle it was cut from (scripts/crop-town-tracks-panel.py),
+   * so the tracks/tokens fractions above stay pixel-true to the print.
+   */
+  panel?: { left: number; top: number; right: number; bottom: number };
 };
 
 export type TownBoardSpec = {
@@ -61,6 +70,9 @@ export type TownBoardSpec = {
   fullImage?: string;
   /** Designed boards: fully-built PC townscape drawn behind the bars. */
   panoramaImage?: string;
+  /** Designed boards: the authentic printed tracks/tokens panel (a crop of the
+   *  Stronghold fan scan) pasted at `geometry.panel` instead of CSS cells. */
+  panelImage?: string;
   /** Seven bars, left to right; the one two-entry bar is the shared bar. */
   bars: readonly (readonly string[])[];
   geometry: TownBoardGeometry;
@@ -129,6 +141,20 @@ const STRONGHOLD_GEOMETRY: TownBoardGeometry = {
     ]
   }
 };
+
+/**
+ * DESIGNED boards (conflux, cove, bulwark, factory) borrow the Stronghold fan
+ * layout wholesale and paste the AUTHENTIC printed tracks/tokens panel — a
+ * crop of that very scan (scripts/crop-town-tracks-panel.py) — back at the
+ * exact rectangle it was cut from, so every track/token fraction above stays
+ * pixel-true to the print instead of being redrawn as CSS cells.
+ */
+const DESIGNED_GEOMETRY: TownBoardGeometry = {
+  ...STRONGHOLD_GEOMETRY,
+  panel: { left: 0.545, top: 0.4735, right: 0.9745, bottom: 0.9665 }
+};
+
+const DESIGNED_PANEL_IMAGE = "/assets/town-tracks-panel.webp";
 
 export const townBoardSpecs: Record<string, TownBoardSpec> = {
   castle: {
@@ -259,6 +285,7 @@ export const townBoardSpecs: Record<string, TownBoardSpec> = {
     // (fullImage) one bar-slice at a time as each building goes up.
     panoramaImage: "/assets/towns-conflux-background.webp",
     fullImage: "/assets/towns-conflux-empty.webp",
+    panelImage: DESIGNED_PANEL_IMAGE,
     bars: [
       ["conflux.city_hall"],
       ["conflux.dwelling_bronze"],
@@ -268,7 +295,7 @@ export const townBoardSpecs: Record<string, TownBoardSpec> = {
       ["conflux.dwelling_gold"],
       ["conflux.mage_guild"]
     ],
-    geometry: WIKI_GEOMETRY
+    geometry: DESIGNED_GEOMETRY
   },
   cove: {
     factionId: "cove",
@@ -276,6 +303,7 @@ export const townBoardSpecs: Record<string, TownBoardSpec> = {
     // built town (fullImage) is revealed a bar-slice at a time as you build.
     panoramaImage: "/assets/towns-cove-background.webp",
     fullImage: "/assets/towns-cove-town.webp",
+    panelImage: DESIGNED_PANEL_IMAGE,
     bars: [
       ["cove.city_hall"],
       ["cove.dwelling_bronze"],
@@ -285,7 +313,7 @@ export const townBoardSpecs: Record<string, TownBoardSpec> = {
       ["cove.dwelling_gold"],
       ["cove.mage_guild"]
     ],
-    geometry: WIKI_GEOMETRY
+    geometry: DESIGNED_GEOMETRY
   },
   bulwark: {
     factionId: "bulwark",
@@ -293,6 +321,7 @@ export const townBoardSpecs: Record<string, TownBoardSpec> = {
     // built town (fullImage) is revealed a bar-slice at a time as you build.
     panoramaImage: "/assets/towns-bulwark-background.webp",
     fullImage: "/assets/towns-bulwark-empty.webp",
+    panelImage: DESIGNED_PANEL_IMAGE,
     bars: [
       ["bulwark.city_hall"],
       ["bulwark.dwelling_bronze"],
@@ -302,15 +331,17 @@ export const townBoardSpecs: Record<string, TownBoardSpec> = {
       ["bulwark.dwelling_gold"],
       ["bulwark.mage_guild"]
     ],
-    geometry: WIKI_GEOMETRY
+    geometry: DESIGNED_GEOMETRY
   },
   factory: {
     factionId: "factory",
     // Published empty town background (thelazy.net "Factory-in-background"); the
     // built town (fullImage) is revealed a bar-slice at a time as you build, and
-    // the real per-building tiles overlay on top where they exist.
+    // the real per-building printed tiles (public/assets/town-board/factory-*)
+    // overlay on top — Factory has one for every building.
     panoramaImage: "/assets/towns-factory-background.webp",
     fullImage: "/assets/towns-factory-empty.webp",
+    panelImage: DESIGNED_PANEL_IMAGE,
     bars: [
       ["factory.city_hall"],
       ["factory.dwelling_bronze"],
@@ -320,7 +351,7 @@ export const townBoardSpecs: Record<string, TownBoardSpec> = {
       ["factory.dwelling_gold"],
       ["factory.mage_guild"]
     ],
-    geometry: WIKI_GEOMETRY
+    geometry: DESIGNED_GEOMETRY
   }
 };
 
@@ -328,11 +359,23 @@ export const townBoardSpecs: Record<string, TownBoardSpec> = {
  * Conventional per-building tile art slot for designed boards (and the
  * stronghold scan, which has no fully-built photo): drop a
  * `public/assets/town-board/<faction>-<building>.webp` in and the board picks
- * it up (the view falls back to a styled plaque while the file is missing).
+ * it up (the view falls back to the panorama slice / a styled plaque while
+ * the file is missing).
  */
 export function townBoardTileArt(buildingId: string): string {
   return `/assets/town-board/${buildingId.replace(".", "-")}.webp`;
 }
+
+/**
+ * The authentic build / population / spell-book token icons, cropped from the
+ * printed board scan. Used wherever a token state is shown outside a printed
+ * board: the town-window header and the adventure town dock.
+ */
+export const TOWN_TOKEN_ICONS: Record<"build" | "population" | "spellBook", string> = {
+  build: "/assets/token-build.webp",
+  population: "/assets/token-population.webp",
+  spellBook: "/assets/token-spellbook.webp"
+};
 
 /**
  * The town's Adventure-Map capitol sprite (thelazy.net, `Adventure_Map_<Town>

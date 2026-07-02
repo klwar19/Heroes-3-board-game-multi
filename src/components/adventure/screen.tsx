@@ -9,7 +9,7 @@ import { createPortal } from "react-dom";
 import { Ban, BookOpen, Castle, Check, ChevronsUp, Crown, Dices, Hammer, Hourglass, Image as ImageIcon, Info, Lock, Minus, Plus, RotateCcw, RotateCw, Shield, Sparkles, Swords, Unlock, X } from "lucide-react";
 import { cardLibrary } from "@/data/cards/library";
 import { buildingTimingLabel, describeBuildingEffect } from "@/data/towns/describe";
-import { townIconUrl } from "@/data/towns/boards";
+import { TOWN_TOKEN_ICONS, townIconUrl } from "@/data/towns/boards";
 import {
   coreBuildingDefinitions,
   coreFactionDefinitions,
@@ -1959,16 +1959,21 @@ export function TownHeroDock({
             <strong>{faction.name} town</strong>
             <small>Build · Recruit · Spells</small>
             {tokens ? (
+              // The authentic printed token icons; a spent one dims out.
               <span className="dockTokens" aria-hidden="true">
-                <span className={tokens.build ? "on" : "off"} title="Build token">
-                  🔨
-                </span>
-                <span className={tokens.population ? "on" : "off"} title="Population token">
-                  👥
-                </span>
-                <span className={tokens.spellBook ? "on" : "off"} title="Spell Book token">
-                  📖
-                </span>
+                <img alt="" className={tokens.build ? "on" : "off"} src={assetUrl(TOWN_TOKEN_ICONS.build)} title="Build token" />
+                <img
+                  alt=""
+                  className={tokens.population ? "on" : "off"}
+                  src={assetUrl(TOWN_TOKEN_ICONS.population)}
+                  title="Population token"
+                />
+                <img
+                  alt=""
+                  className={tokens.spellBook ? "on" : "off"}
+                  src={assetUrl(TOWN_TOKEN_ICONS.spellBook)}
+                  title="Spell Book token"
+                />
               </span>
             ) : null}
           </span>

@@ -8,6 +8,7 @@ import { Check, Hammer, Info, X } from "lucide-react";
 import { coreBuildingDefinitions, coreFactionDefinitions } from "@/data/factions/core";
 import { buildingTimingLabel, describeBuildingEffect } from "@/data/towns/describe";
 import {
+  TOWN_TOKEN_ICONS,
   townBoardSpecs,
   townBoardTileArt,
   townIconUrl,
@@ -50,14 +51,6 @@ const RESOURCE_LABELS: Record<TownTrackResource, string> = {
   gold: "Gold",
   buildingMaterials: "Building materials (ore)",
   valuables: "Valuables (crystal)"
-};
-
-/** Authentic build / population / spell-book token icons, cropped from the real
- *  printed board scan (used on designed boards, which have no printed tokens). */
-const TOKEN_IMAGES: Record<"build" | "population" | "spellBook", string> = {
-  build: "/assets/token-build.webp",
-  population: "/assets/token-population.webp",
-  spellBook: "/assets/token-spellbook.webp"
 };
 
 type OpenPanel =
@@ -146,14 +139,17 @@ function LoadedImg({ src, className, style }: { src: string; className: string; 
 }
 
 /**
- * Designed tile fill for one built building. Art fallback chain:
- *  1. dedicated tile art (public/assets/town-board/, see its README — the
- *     drop-in slot for future generated art),
- *  2. the PC-game building render already shipped for the classic town panel
- *     (building.assets.image), floating over the bar,
- *  3. nothing — the plaque alone marks the build.
- * A bright slice of the fully-built townscape panorama backs whichever art
- * wins (the empty window is dimmed, so a built bar visibly lights up).
+ * Designed tile fill for one built building. Art layering (top wins):
+ *  1. dedicated per-building tile art (public/assets/town-board/, see its
+ *     README) — the real printed tile where one exists (all of Factory and
+ *     Stronghold); a missing file simply never mounts,
+ *  2. this bar's aligned slice of the fully-built townscape (factory, conflux,
+ *     cove, bulwark), so the town gains its buildings in place; a shared
+ *     (two-in-one) bar blurs its slice to read as the shared tile,
+ *  3. the PC-game building render shipped for the classic town panel
+ *     (building.assets.image), floating over the bar — only on boards with no
+ *     built-town image to reveal (stronghold),
+ *  4. nothing — the plaque alone marks the build.
  */
 function DesignedTile({
   building,
@@ -168,14 +164,7 @@ function DesignedTile({
   factionColor: string;
   compact: boolean;
 }) {
-  // Two ways a built building lights up over the clear empty background:
-  //  - boards with a full built-town image (factory, conflux, cove, bulwark)
-  //    reveal THIS bar's aligned slice of it, so the town builds in place; a
-  //    shared (two-in-one) bar blurs its slice to read as the shared tile.
-  //  - boards without one (stronghold: only a board scan) show the real
-  //    per-building tile art instead.
   const revealSlice = spec.fullImage;
-  const showBuildingTile = !revealSlice;
   return (
     <div className={`tbDesignedTile ${compact ? "compact" : ""}`} style={{ "--tb-faction": factionColor } as CSSProperties}>
       {revealSlice ? (
@@ -191,11 +180,12 @@ function DesignedTile({
           style={{ width: "700%", left: `${-barIndex * 100}%` }}
         />
       ) : null}
-      {showBuildingTile && building.assets?.image ? (
+      {!revealSlice && building.assets?.image ? (
         <LoadedImg className="tbTilePcArt" src={building.assets.image} />
       ) : null}
-      {/* Real per-building tile art (used where there is no built-town image). */}
-      {showBuildingTile ? <LoadedImg className="tbTileArt" src={townBoardTileArt(building.id)} /> : null}
+      {/* The real printed tile, on top of whatever backdrop the board has —
+          unmounts harmlessly where no file exists (conflux/cove/bulwark). */}
+      <LoadedImg className="tbTileArt" src={townBoardTileArt(building.id)} />
       <span className="tbTilePlaque">
         <Check aria-hidden="true" size={compact ? 10 : 12} />
         {building.name}
@@ -595,7 +585,25 @@ export function TownBoardView({
                 <img alt="" aria-hidden="true" draggable={false} src={assetUrl(spec.panoramaImage)} />
               ) : null}
             </div>
-            <span className="tbDesignedTitle">{faction.name}</span>
+            {/* The authentic printed tracks/tokens panel, pasted back at the
+                exact fractional rectangle it was cropped from. */}
+            {spec.panelImage && geometry.panel ? (
+              <img
+                alt=""
+                aria-hidden="true"
+                className="tbPanelArt"
+                draggable={false}
+                src={assetUrl(spec.panelImage)}
+                style={{
+                  left: pct(geometry.panel.left),
+                  top: pct(geometry.panel.top),
+                  width: pct(geometry.panel.right - geometry.panel.left),
+                  height: pct(geometry.panel.bottom - geometry.panel.top)
+                }}
+              />
+            ) : (
+              <span className="tbDesignedTitle">{faction.name}</span>
+            )}
           </div>
         )}
 
@@ -671,9 +679,10 @@ export function TownBoardView({
                 </div>
               ) : null}
               {/* Scan boards paint the whole bar from one crop, so the missing
-                  half needs a written note; designed boards already show it as a
-                  distinct empty socket above. */}
-              {partial && spec.fullImage ? (
+                  half needs a written note; designed boards (even those with a
+                  built-town reveal image) already show it as a distinct empty
+                  socket above — a note would double-label the bar. */}
+              {partial && isScan && spec.fullImage ? (
                 <span className="tbPartialNote" title={`${missingIds.map((id) => coreBuildingDefinitions[id]?.name ?? id).join(", ")} shares this bar and is not built yet`}>
                   <Hammer aria-hidden="true" size={10} />
                   {missingIds.map((id) => coreBuildingDefinitions[id]?.name ?? id).join(", ")} not built
@@ -774,7 +783,9 @@ export function TownBoardView({
           const y = row.y + (index % 2 === 1 ? geometry.tracks.zigzagDy : 0);
           return (
             <div key={row.resource}>
-              {!isScan ? (
+              {/* CSS track cells only where no print provides them (neither a
+                  board scan nor the authentic pasted panel). */}
+              {!isScan && !spec.panelImage ? (
                 <div className="tbTrackRow" aria-hidden="true">
                   <img
                     alt=""
@@ -817,7 +828,7 @@ export function TownBoardView({
           return (
             <button
               aria-label={`${label} — ${tokenState.note}`}
-              className={`tbToken ${slot.kind} ${tokenState.spent ? "spent" : "ready"} ${!isScan ? "designed" : ""}`}
+              className={`tbToken ${slot.kind} ${tokenState.spent ? "spent" : "ready"} ${!isScan && !spec.panelImage ? "designed" : ""}`}
               key={slot.kind}
               onClick={() => togglePanel(panel)}
               style={{
@@ -829,10 +840,11 @@ export function TownBoardView({
               title={tokenState.note}
               type="button"
             >
-              {/* Scan boards already print the tokens; designed boards show the
-                  authentic token icon cropped from the real board. */}
-              {!isScan ? (
-                <img alt="" aria-hidden="true" className="tbTokenImg" draggable={false} src={assetUrl(TOKEN_IMAGES[slot.kind])} />
+              {/* Scan boards and the pasted panel already print the tokens; a
+                  designed board without either shows the authentic token icon
+                  cropped from the real board. */}
+              {!isScan && !spec.panelImage ? (
+                <img alt="" aria-hidden="true" className="tbTokenImg" draggable={false} src={assetUrl(TOWN_TOKEN_ICONS[slot.kind])} />
               ) : null}
               {tokenState.spent ? <X aria-hidden="true" className="tbTokenSpent" /> : null}
             </button>
@@ -944,8 +956,17 @@ export function TownWindow({
             className="townWindowTokens"
             title="Build / Population / Spell book tokens — each once per round"
           >
-            {player.townTokens.build ? "🔨" : "▫"} {player.townTokens.population ? "👥" : "▫"}{" "}
-            {player.townTokens.spellBook ? "📖" : "▫"}
+            <img alt="Build token" className={player.townTokens.build ? "on" : "off"} src={assetUrl(TOWN_TOKEN_ICONS.build)} />
+            <img
+              alt="Population token"
+              className={player.townTokens.population ? "on" : "off"}
+              src={assetUrl(TOWN_TOKEN_ICONS.population)}
+            />
+            <img
+              alt="Spell Book token"
+              className={player.townTokens.spellBook ? "on" : "off"}
+              src={assetUrl(TOWN_TOKEN_ICONS.spellBook)}
+            />
           </small>
           <div className="townWindowViews" role="tablist" aria-label="Town view">
             <button

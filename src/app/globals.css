@@ -3330,8 +3330,17 @@ button.battleCell {
   flex-direction: column;
   gap: 8px;
   min-height: 0;
-  /* Anchor the Far-tile tray, which overlays the map's top-left corner. */
+}
+
+/* The map plus its floating Far-tile tray. The tray anchors HERE (not on
+   .mapColumn) so it overlays the map's top-left corner — never the town/hero
+   dock sitting above the map in the same column. */
+.mapStage {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .hexMapWrap {
@@ -10802,9 +10811,18 @@ img.cardBack {
 
 .dockTokens {
   display: inline-flex;
+  align-items: center;
   gap: 6px;
   margin-top: 2px;
   font-size: 13px;
+}
+
+/* Authentic printed token icons (cropped from the board scan). */
+.dockTokens img {
+  height: 17px;
+  width: auto;
+  object-fit: contain;
+  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 55%));
 }
 
 .dockTokens .off {
@@ -10966,8 +10984,23 @@ img.cardBack {
 }
 
 .townWindowTokens {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   font-size: 12px;
-  letter-spacing: 0.14em;
+}
+
+/* Authentic printed token icons; a spent token dims out. */
+.townWindowTokens img {
+  height: 16px;
+  width: auto;
+  object-fit: contain;
+  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 55%));
+}
+
+.townWindowTokens img.off {
+  opacity: 0.3;
+  filter: grayscale(1) brightness(0.8);
 }
 
 .townWindowViews {
@@ -11374,6 +11407,16 @@ img.cardBack {
   font-size: 1.4cqw;
   letter-spacing: 0.2em;
   text-transform: uppercase;
+  pointer-events: none;
+}
+
+/* The authentic printed tracks/tokens panel (Stronghold-scan crop) pasted at
+   the exact fractional rectangle it was cut from — the production markers and
+   token buttons land on its printed cells and wells. */
+.tbPanelArt {
+  position: absolute;
+  border-radius: 0.4cqw;
+  box-shadow: 0 0.3cqw 1.2cqw rgb(0 0 0 / 55%);
   pointer-events: none;
 }
 

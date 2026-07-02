@@ -415,3 +415,116 @@ describe("Designed board — tile art, shared-bar clarity, modal panels", () => 
     expect(container.querySelector(".tbPanelBackdrop")).toBeNull();
   });
 });
+
+/** A factory town: a designed board WITH a built-town reveal image AND real
+ *  per-building printed tiles, plus the pasted authentic tracks panel. */
+function factoryState(): GameState {
+  const state = createAdventureGameState({
+    seed: "town-board-factory",
+    difficulty: "normal",
+    rollFirstPlayer: false,
+    players: [
+      { id: "p1", name: "Henrietta", factionId: "factory", heroDefId: "henrietta" },
+      { id: "p2", name: "Sandro", factionId: "necropolis", heroDefId: "sandro" }
+    ]
+  });
+  state.players.p1.resources = { gold: 200, buildingMaterials: 100, valuables: 100 };
+  return state;
+}
+
+describe("Designed board — authentic printed art (reveal slice + tile overlay, tracks panel)", () => {
+  it("factory: a built bar reveals the town slice AND overlays the REAL printed tile on top", () => {
+    const state = factoryState();
+    if (!state.towns.town_p1.buildings.includes("factory.city_hall")) {
+      state.towns.town_p1.buildings.push("factory.city_hall");
+    }
+    const { container } = render(viewFor(state));
+    // The aligned built-town slice lights the bar…
+    expect(container.querySelector(".tbPanoramaSlice")).toBeTruthy();
+    // …and the real printed tile art mounts on top of it (this fails if the
+    // tile overlay is gated back off boards that have a reveal image).
+    expect(container.querySelector(".tbTileArt[src*='factory-city_hall']")).toBeTruthy();
+  });
+
+  it("designed boards paste the authentic printed tracks/tokens panel instead of CSS cells", () => {
+    const state = factoryState();
+    const { container } = render(viewFor(state));
+    // The Stronghold-scan crop is pasted…
+    const panel = container.querySelector(".tbPanelArt") as HTMLImageElement | null;
+    expect(panel).toBeTruthy();
+    expect(panel!.getAttribute("src")).toMatch(/town-tracks-panel\.webp/);
+    // …so the CSS mock cells and the overlay token icons stay unmounted…
+    expect(container.querySelector(".tbTrackCell")).toBeNull();
+    expect(container.querySelector(".tbTokenImg")).toBeNull();
+    // …while the live production markers and working token buttons remain.
+    expect(container.querySelectorAll(".tbMarker")).toHaveLength(3);
+    expect(container.querySelectorAll(".tbToken")).toHaveLength(3);
+  });
+
+  it("scan boards (stronghold) keep their own printed panel: no pasted crop", () => {
+    const state = strongholdState();
+    const { container } = render(viewFor(state));
+    expect(container.querySelector(".tbPanelArt")).toBeNull();
+    expect(container.querySelector(".tbTrackCell")).toBeNull();
+  });
+
+  it("token wells over the printed panel stay transparent (no opaque 'designed' plate)", () => {
+    const state = factoryState();
+    const { container } = render(viewFor(state));
+    expect(container.querySelectorAll(".tbToken")).toHaveLength(3);
+    // The printed panel provides the wells — an opaque CSS plate would hide them.
+    expect(container.querySelector(".tbToken.designed")).toBeNull();
+  });
+
+  it("a half-built shared bar is labelled ONCE on designed boards (socket, no scan-style note)", () => {
+    const state = factoryState();
+    // Bank shares its bar with the Industrialized Catacombs (dwelling_silver).
+    if (!state.towns.town_p1.buildings.includes("factory.bank")) {
+      state.towns.town_p1.buildings.push("factory.bank");
+    }
+    const { container } = render(viewFor(state));
+    // The designed socket names the missing half…
+    expect(container.querySelector(".tbDesignedTile.unbuilt")).toBeTruthy();
+    // …so the scan-board written note must NOT double-label the bar.
+    expect(container.querySelector(".tbPartialNote")).toBeNull();
+  });
+});
+
+describe("Authentic token icons (dock + town window header)", () => {
+  it("the dock shows the printed token icons and dims a spent one", () => {
+    const state = freshState();
+    state.players.p1.townTokens.build = false;
+    const { container } = render(
+      <CardZoomProvider>
+        <TownHeroDock heroSeatIds={["p1"]} onOpenTown={vi.fn()} state={state} viewerPlayerId="p1" />
+      </CardZoomProvider>
+    );
+    const build = container.querySelector(".dockTokens img[src*='token-build']") as HTMLImageElement | null;
+    const population = container.querySelector(".dockTokens img[src*='token-population']") as HTMLImageElement | null;
+    expect(build).toBeTruthy();
+    expect(population).toBeTruthy();
+    expect(build!.className).toBe("off");
+    expect(population!.className).toBe("on");
+  });
+
+  it("the town window header shows the printed token icons (no emoji)", () => {
+    const state = freshState();
+    state.players.p1.townTokens.spellBook = false;
+    const { container } = render(
+      <CardZoomProvider>
+        <TownWindow
+          legalActions={getLegalActions(state, "p1")}
+          onAction={vi.fn()}
+          onClose={vi.fn()}
+          open
+          state={state}
+          viewerPlayerId="p1"
+        />
+      </CardZoomProvider>
+    );
+    const tokens = container.querySelector(".townWindowTokens") as HTMLElement;
+    expect(tokens.querySelector("img[src*='token-build']")).toBeTruthy();
+    expect((tokens.querySelector("img[src*='token-spellbook']") as HTMLImageElement).className).toBe("off");
+    expect(tokens.textContent).not.toMatch(/🔨|👥|📖/u);
+  });
+});

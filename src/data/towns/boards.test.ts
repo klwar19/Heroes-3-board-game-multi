@@ -60,6 +60,38 @@ describe("town board manifest", () => {
     }
   });
 
+  it("designed boards carry the authentic tracks/tokens panel at a rectangle that covers their printed geometry", () => {
+    for (const spec of Object.values(townBoardSpecs)) {
+      if (spec.emptyImage) {
+        // Scan boards print their own panel — no pasted crop.
+        expect(spec.panelImage, `${spec.factionId} is a scan board and needs no panelImage`).toBeUndefined();
+        continue;
+      }
+      const panel = spec.geometry.panel;
+      expect(spec.panelImage, `${spec.factionId} designed board must paste the authentic panel`).toBeTruthy();
+      expect(panel, `${spec.factionId} needs the panel rectangle`).toBeTruthy();
+      expect(panel!.left).toBeLessThan(panel!.right);
+      expect(panel!.top).toBeLessThan(panel!.bottom);
+      expect(panel!.right).toBeLessThanOrEqual(1);
+      expect(panel!.bottom).toBeLessThanOrEqual(1);
+      // The printed cells and wells the markers/buttons land on must all sit
+      // INSIDE the pasted crop, or they would float on bare background.
+      const { tracks, tokens } = spec.geometry;
+      for (const row of tracks.rows) {
+        expect(row.y).toBeGreaterThan(panel!.top);
+        expect(row.y).toBeLessThan(panel!.bottom);
+      }
+      expect(tracks.firstCellX).toBeGreaterThan(panel!.left);
+      expect(tracks.firstCellX + 7 * tracks.cellPitchX).toBeLessThan(panel!.right);
+      for (const slot of tokens.slots) {
+        expect(slot.x).toBeGreaterThan(panel!.left);
+        expect(slot.x).toBeLessThan(panel!.right);
+        expect(slot.y).toBeGreaterThan(panel!.top);
+        expect(slot.y).toBeLessThan(panel!.bottom);
+      }
+    }
+  });
+
   it("the printed tracks step exactly like the engine's resource-gain levels (+5/+2/+1)", () => {
     const steps = (values: readonly number[]) => values.slice(1).map((value, index) => value - values[index]);
     expect(new Set(steps(TOWN_TRACK_VALUES.gold))).toEqual(new Set([5]));
