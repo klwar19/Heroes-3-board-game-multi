@@ -503,7 +503,9 @@ export const ASTROLOGERS_NOT_IMPLEMENTED: { name: string; expansion: string; nee
   { name: "Destruction", expansion: "Stretch Goals", needs: "remove a permanent card in play for gold" },
   { name: "Disruption", expansion: "Stretch Goals", needs: "per-player free single-tile rotation flow" },
   { name: "Elementals", expansion: "Conflux", needs: "face-up Elemental units seeded onto neutral decks" },
-  { name: "Forty Thieves", expansion: "Fortress", needs: "a generic Event-card deck (does not exist)" },
+  // The Event deck itself now exists (src/data/cards/events.ts, optional rule)
+  // — Forty Thieves' "draw and resolve an extra Event" hook is still unwired.
+  { name: "Forty Thieves", expansion: "Fortress", needs: "drawing/resolving an EXTRA Event from the (optional) Event deck mid-round" },
   { name: "Judge Dread", expansion: "Stronghold", needs: "attacker redraws the whole neutral guard" },
   { name: "Mages", expansion: "Conflux", needs: "free Spell Book token use" },
   { name: "Multilingual Bron", expansion: "Stretch Goals", needs: "reroll of unit special-ability rolls" },

@@ -263,6 +263,73 @@ dedicated rule, not an ability tag). Re-verify any prose claim here against
 those registries and `src/data/factions/units.ts` before trusting it. The
 Creature Bank system tracks its own display-only items in the section below.
 
+## Event deck (Fortress expansion, OPTIONAL rule) — what runs vs. printed nuances
+
+A separate system from the Astrologers Proclaim deck (do not confuse the two).
+Data in `src/data/cards/events.ts` (all 20 published Fortress Events, real card
+scans fetched by `scripts/fetch-events-art.py`); engine in `src/engine/adventure.ts`
+(`drawEventCard` / `resolveEventCard` / `applyEventVisitStep`); toggle
+`GameSetupOptions.events` (Game options UI, **default ON**, "multiplayer only" —
+a solo table never gets the deck; the deck's absence in `state.decks` IS the off
+switch). Timing per the rulebook p.15-16: drawn at the start of each Resource
+Round AFTER income; the drawer rotates clockwise per draw; effects resolve in
+clockwise order starting with the drawer (the FIFO reward queue is the order).
+Tests: `event-deck.test.ts` (flow/toggle/rotation/secrecy), `event-cards.test.ts`
+and `event-market-cards.test.ts` (every card's observable effect, each failing if
+its wiring is removed). `EVENTS_NOT_IMPLEMENTED` is empty — no display-only
+Events ship; that registry is the only legal home for a future unwireable one.
+
+Engine readings / deviations a reviewer should know (all deliberate, commented at
+the wiring site):
+- **Den of Thieves** resolves for the DRAWER only — its printed "you" with no
+  pass-around clause, read like Artifact Merchant's "you" (which the rulebook's
+  own example pins to the drawer).
+- **A Shady Auction** bids are sequential-but-hidden rather than physically
+  simultaneous: each seat picks a gold bid in turn; the amount is stored in
+  `adventure.events.auction.bids`, masked in other players' views
+  (`player-view.ts`) and logged without the amount, then revealed all at once at
+  the lot's resolution. Single highest pays and takes; a tie or all-zero round
+  discards the lot.
+- **Search timing**: Searches earned by Cursed Swamp's remove-Spells option, the
+  Market of Time / School / Garden remove loops and the Withered Hermit pay
+  option resolve INSIDE the earning player's slot (front-of-queue rewards —
+  `EVENT_SEARCH_FRONT`). A Search granted by a rolled Treasure-die FACE (Crypt's
+  gamble, Cursed Swamp's roll, a taken Leprechaun die) queues at the END of the
+  round-start queue instead — the engine-wide treasure-face convention the
+  Astrologers dice share.
+- **Crypt's 2-die gamble** ("any experience face — gain nothing") is its own
+  roll: Luck rerolls / Cards-of-Prophecy die-sets do not hook it (they do hook
+  Cursed Swamp's standard 2-Treasure-dice roll).
+- **Magical Forest** contributions are face-down: pool entries are masked for
+  everyone in player views (after the shuffle even the contributor cannot tell
+  which entry is theirs); a drawn-and-viewed contribution is shown privately to
+  the contributor only. Taking from the pool is a seeded-random pick.
+- **Mercenary Camp** "up to 2 from one of the chosen decks" = draw 2 / draw 1 /
+  none, all from ONE Neutral deck (Azure included — no printed exclusion;
+  Prison's "except for Azure" IS enforced). Recruits pay the printed Neutral
+  cost; leftovers recycle to their tier discard piles (engine convention for
+  returned Neutral draws).
+- **Garden of Revelation** "draw 4 from your discard pile" takes the TOP 4; the
+  closing "discard all cards from hand and draw up to your hand limit" runs
+  AFTER the earned Searches, in printed order.
+- **Cursed Swamp** "cheapest unit" = lowest gold-equivalent printed cost of the
+  card's CURRENT side (materials/valuables valued at Trading Post rates); ties
+  break by army order. A discarded Neutral-side card recycles to its tier
+  discard pile like a combat casualty.
+- **Spell/Artifact market draws** ("draw the top Spell/Artifact card") draw
+  across BINH's split decks weighted by remaining size — the odds of one
+  combined physical deck. A low-level hero may therefore buy an Expert spell at
+  the Library/Laboratory/Shrine (an event special-offer; the usual search gates
+  are not applied to buying, only the duplicate/uniqueness gate is).
+- **Marketplace** "Trade resources using Trading Post rules" is the resource
+  exchange ONLY (`TRADING_POST.tradesOnly` hides the sell-a-card / war-machine /
+  scroll options at the menu AND at the action guards). The 1-for-1 deal is one
+  proposal per player's own resolution; the other players answer immediately
+  (the answers cut the reward queue), first accept wins.
+- Leftover revealed cards shuffle back into their decks (rulebook default);
+  Shrine of the Magic Thought's leftovers go to the Spell discard pile and
+  Messenger's declined pair to the Artifact discard pile, as printed.
+
 ## Creature Banks (Naval Battles optional rule) — what runs vs. what is deferred
 
 Added in `src/data/map/creature-banks.ts` (data, tested in

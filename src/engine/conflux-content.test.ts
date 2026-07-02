@@ -122,6 +122,7 @@ describe("Conflux content", () => {
     const state = createAdventureGameState({
       seed: "conflux-cityhall",
       rollFirstPlayer: false,
+      events: false,
       players: [
         { id: "p1", name: "Erdamon", factionId: "conflux", heroDefId: "erdamon" },
         { id: "p2", name: "Catherine", factionId: "castle", heroDefId: "catherine" }

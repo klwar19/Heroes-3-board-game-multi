@@ -28,7 +28,10 @@ export const deckBacks: Record<string, DeckBackStyle> = {
   "artifacts-minor": { label: "Minor Artifacts", styleKey: "artifacts", image: CARD_BACK_IMAGES.mm },
   "artifacts-major": { label: "Major Artifacts", styleKey: "artifacts", image: CARD_BACK_IMAGES.mm },
   "artifacts-relic": { label: "Relic Artifacts", styleKey: "artifacts", image: CARD_BACK_IMAGES.mm },
-  astrologers: { label: "Astrologers Proclaim", styleKey: "player", image: CARD_BACK_IMAGES.astrologers }
+  astrologers: { label: "Astrologers Proclaim", styleKey: "player", image: CARD_BACK_IMAGES.astrologers },
+  // The wiki publishes no Event card-back scan; the shared M&M back stands in
+  // rather than a fabricated one.
+  events: { label: "Events", styleKey: "player", image: CARD_BACK_IMAGES.mm }
 };
 
 export function getDeckBack(deckId?: string): DeckBackStyle {

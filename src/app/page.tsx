@@ -637,7 +637,7 @@ export default function Home() {
   const battleTroopConfirmedRef = useRef(false);
   const [tilePlacement, setTilePlacement] = useState<TilePlacementSelection>(null);
   const [combatTab, setCombatTab] = useState<"battle" | "map">("battle");
-  const [pile, setPile] = useState<{ title: string; cardIds: string[]; kind: "cards" | "units" | "astrologers" } | null>(null);
+  const [pile, setPile] = useState<{ title: string; cardIds: string[]; kind: "cards" | "units" | "astrologers" | "events" } | null>(null);
   const [dice, setDice] = useState<{ current: DiceCue | null; queue: DiceCue[] }>({
     current: null,
     queue: []

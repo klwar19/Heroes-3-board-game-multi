@@ -220,7 +220,7 @@ function playerOwnsAnyCard(state: GameState, playerId: PlayerId, cardIds: string
 
 /** The Necropolis-only Ability and the faction allowed to draw it. */
 export const NECROMANCY_ABILITY_ID = "ability.necromancy";
-const NECROPOLIS_FACTION_ID = "necropolis";
+export const NECROPOLIS_FACTION_ID = "necropolis";
 
 /**
  * Every card the player currently holds, across every zone they could later

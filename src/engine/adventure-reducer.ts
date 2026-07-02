@@ -2235,6 +2235,9 @@ export function resolveVisitStep(state: GameState, action: Extract<GameAction, {
       // option — remove one card from the game to gain 1 gold — and ends the
       // visit. The three options exclude each other within one visit.
       if (!action.decline && action.optionIndex !== undefined) {
+        if (step.tradesOnly) {
+          throw new Error("The Marketplace trades resources only — cards cannot be sold here.");
+        }
         if (step.traded) {
           throw new Error("This visit already traded resources — cards cannot be sold too.");
         }
@@ -2917,6 +2920,9 @@ export function sellScrollSpell(state: GameState, action: Extract<GameAction, { 
   const step = visit?.steps[0];
   if (!visit || visit.playerId !== action.playerId || step?.type !== "TRADING_POST") {
     throw new Error("Selling a scroll spell needs an open Trading Post visit.");
+  }
+  if (step.tradesOnly) {
+    throw new Error("The Marketplace trades resources only — scroll spells cannot be sold here.");
   }
   if (step.traded) {
     throw new Error("This visit already traded resources — scroll spells cannot be sold too.");

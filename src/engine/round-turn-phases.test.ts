@@ -28,7 +28,7 @@ import { startAdventureRound, startPlayerTurn } from "./adventure";
 // ---------------------------------------------------------------------------
 
 function makeGame(): GameState {
-  return createAdventureGameState({ seed: "phase-test", difficulty: "normal", rollFirstPlayer: false });
+  return createAdventureGameState({ seed: "phase-test", difficulty: "normal", rollFirstPlayer: false, events: false });
 }
 
 function apply(state: GameState, action: GameAction): GameState {
@@ -289,6 +289,7 @@ describe("multiplayer (PvP) — round-start City Hall draw forces each seat to d
       seed: "mp-phase",
       difficulty: "normal",
       rollFirstPlayer: false,
+      events: false,
       players: [
         { id: "p1", name: "Crag Hack", factionId: "stronghold", heroDefId: "crag_hack" },
         { id: "p2", name: "Yog", factionId: "stronghold", heroDefId: "yog" }

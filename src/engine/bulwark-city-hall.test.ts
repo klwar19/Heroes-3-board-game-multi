@@ -29,6 +29,7 @@ describe("Bulwark City Hall — Rune-Empowered combat focus (nerfed +2, non-stac
     const state = createAdventureGameState({
       seed,
       rollFirstPlayer: false,
+      events: false,
       players: [
         { id: "p1", name: "Kriv", factionId: "bulwark", heroDefId: "kriv" },
         { id: "p2", name: "Sandro", factionId: "necropolis", heroDefId: "sandro" }

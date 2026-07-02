@@ -1,5 +1,7 @@
 import { astrologersCardDefinitions, type AstrologersCardDefinition } from "@/data/cards/astrologers";
+import { eventCardDefinitions, type EventCardDefinition } from "@/data/cards/events";
 import { REROLL_REACTION_ARTIFACT_IDS } from "@/data/cards/artifacts";
+import { spellDeckBinhExpert } from "@/data/cards/spells";
 import { cardLibrary } from "@/data/cards/library";
 import {
   coreBuildingDefinitions,
@@ -36,7 +38,8 @@ import {
   canAcquireSharedDeckCard,
   expertUsesAvailable,
   getRuleset,
-  NECROMANCY_ABILITY_ID
+  NECROMANCY_ABILITY_ID,
+  NECROPOLIS_FACTION_ID
 } from "./ruleset";
 import {
   hexDistance,
@@ -53,11 +56,15 @@ import { createSeededRandom } from "./random";
 import { applyUnitCurrentSide } from "./unit-transforms";
 import type {
   ActiveEffectState,
+  AdventureReward,
   AdventureState,
   ArtifactTier,
   AstrologersState,
   CardId,
   CombatUnitState,
+  EventDiePoolEntry,
+  EventPoolEntry,
+  EventsState,
   GameDifficulty,
   GameRuleset,
   GameState,
@@ -2814,6 +2821,57 @@ export function processPendingVisit(state: GameState): void {
           deckId: step.deckId,
           count: step.count
         });
+        break;
+      // Event cards (Fortress expansion): every EVENT_* step plus the shared
+      // LOSE_RESOURCES / SPEND_HERO_MOVEMENT leaves resolve in one place.
+      case "EVENT_PLAYER_CHOICE":
+      case "EVENT_CHANGE_MORALE":
+      case "LOSE_RESOURCES":
+      case "SPEND_HERO_MOVEMENT":
+      case "EVENT_TREASURE_GAMBLE":
+      case "EVENT_DISCARD_CHEAPEST_UNIT":
+      case "EVENT_REMOVE_FOR_SEARCH":
+      case "EVENT_DISCARD_ANY_THEN_DRAW":
+      case "EVENT_DISCARD_HAND_CARD":
+      case "EVENT_DRAW_TO_LIMIT":
+      case "EVENT_SEARCH_FRONT":
+      case "EVENT_DRAW_OWN":
+      case "EVENT_DISCARD_ALL_DRAW_LIMIT":
+      case "EVENT_HERMIT_GAMBLE":
+      case "EVENT_HERMIT_PAY_SEARCH":
+      case "EVENT_MESSENGER_DRAW":
+      case "EVENT_TAKE_CARD":
+      case "EVENT_RETURN_CARDS":
+      case "EVENT_SPELL_MARKET":
+      case "EVENT_TAKE_POOL_CARD":
+      case "EVENT_POOL_CLEANUP":
+      case "EVENT_FOREST_CONTRIBUTE":
+      case "EVENT_POOL_ADD_FROM_HAND":
+      case "EVENT_POOL_ADD_DRAWN":
+      case "EVENT_FOREST_TAKE":
+      case "EVENT_POOL_TAKE_RANDOM":
+      case "EVENT_LEPRECHAUN_ROLL":
+      case "EVENT_TAKE_POOL_DIE":
+      case "EVENT_DEN_OF_THIEVES":
+      case "EVENT_DEN_DRAW":
+      case "EVENT_NEUTRAL_BUY":
+      case "EVENT_DEN_PLACE":
+      case "EVENT_RETURN_UNITS":
+      case "EVENT_PRISON_OFFER":
+      case "EVENT_NEUTRAL_DISCARD_GOLD":
+      case "EVENT_MERC_DRAW":
+      case "EVENT_MERC_TAKE":
+      case "EVENT_MERC_RECRUIT":
+      case "EVENT_ARTIFACT_SHOP":
+      case "EVENT_AUCTION_OPEN":
+      case "EVENT_AUCTION_BID":
+      case "EVENT_AUCTION_SET_BID":
+      case "EVENT_AUCTION_RESOLVE":
+      case "EVENT_MARKET_DEAL":
+      case "EVENT_MARKET_DEAL_OPEN":
+      case "EVENT_MARKET_DEAL_ANSWER":
+      case "EVENT_MARKET_DEAL_ACCEPT":
+        applyEventVisitStep(state, visit, step);
         break;
       case "SCHOLAR":
         rollScholar(state, visit);
@@ -6137,6 +6195,11 @@ export function startAdventureRound(state: GameState): void {
   if (astrologers) {
     astrologers.nextResourceModifiers = { gold: 0, valuables: 0 };
   }
+
+  // FORTRESS EXPANSION Events (optional rule, multiplayer only): "Players draw
+  // next Event" — after receiving Resources (rulebook p.15). No-op when the
+  // Event deck is off or fewer than 2 live players remain.
+  drawEventCard(state);
 }
 
 /** Adds one faction cube to a cube building, up to its printed maximum. */
@@ -7947,6 +8010,1728 @@ export function swapNeutralDraw(state: GameState, playerId: PlayerId, draws: Neu
     fromUnitDefId: draw.unitDefId,
     toUnitDefId: replacement
   });
+}
+
+// ===========================================================================
+// Event cards (Fortress expansion, OPTIONAL rule) — a separate system from the
+// Astrologers Proclaim deck. Rulebook (community rewrite, p.15-16): multiplayer
+// only; at the start of every Resource Round, AFTER income, draw and resolve
+// the next Event; the drawer rotates clockwise per draw; effects resolve in
+// clockwise order starting with the drawer; cards revealed while resolving
+// shuffle back into their decks unless the Event says otherwise.
+// ===========================================================================
+
+export const EVENTS_DECK_ID = "events";
+
+/** Printed Event prices for revealed Artifact cards (Merchant / Messenger). */
+export const EVENT_ARTIFACT_PRICES: Record<ArtifactTier, number> = { minor: 3, major: 5, relic: 7 };
+
+const RESOURCE_KIND_LABELS: Record<ResourceKind, string> = {
+  gold: "gold",
+  buildingMaterials: "building materials",
+  valuables: "valuables"
+};
+
+function costLabelOf(cost: ResourceCost): string {
+  return (
+    (Object.entries(cost) as [ResourceKind, number][])
+      .filter(([, amount]) => amount)
+      .map(([resource, amount]) => `${amount} ${RESOURCE_KIND_LABELS[resource]}`)
+      .join(" + ") || "free"
+  );
+}
+
+/**
+ * Events state. Returns null when the optional rule is off — the Event deck is
+ * only ever created at setup (2+ seats AND the toggle on), so its absence IS
+ * the off switch.
+ */
+export function getEventsState(state: GameState): EventsState | null {
+  const adventure = state.adventure;
+  if (!adventure || !state.decks[EVENTS_DECK_ID]) {
+    return null;
+  }
+
+  if (!adventure.events) {
+    adventure.events = {
+      activeCardId: null,
+      nextDrawerIndex: 0,
+      pool: [],
+      poolCleanup: "shuffle-into-deck",
+      dicePool: [],
+      auction: null,
+      deal: null
+    };
+  }
+  return adventure.events;
+}
+
+export function getActiveEventCard(state: GameState): EventCardDefinition | null {
+  const cardId = state.adventure?.events?.activeCardId;
+  return cardId ? (eventCardDefinitions[cardId] ?? null) : null;
+}
+
+/** Human players still in the game, in seating (clockwise) order. */
+function liveEventPlayers(state: GameState): PlayerId[] {
+  return humanPlayerIds(state).filter((id) => !state.players[id]?.eliminated);
+}
+
+function eventNote(state: GameState, message: string, playerId?: PlayerId): void {
+  appendEvent(state, { type: "EVENT_NOTE", ...(playerId ? { playerId } : {}), message });
+}
+
+function eventPlayerName(state: GameState, playerId: PlayerId): string {
+  return state.players[playerId]?.name ?? playerId;
+}
+
+/**
+ * Draws and resolves the next Event card (start of a Resource Round, after
+ * income). The drawer rotates clockwise around the live seats with every draw;
+ * the previous Event goes to the discard pile, and an exhausted draw pile
+ * reshuffles its discards.
+ */
+export function drawEventCard(state: GameState): void {
+  const events = getEventsState(state);
+  const deck = state.decks[EVENTS_DECK_ID];
+  if (!events || !deck) {
+    return;
+  }
+
+  // "Event cards may be used in multiplayer games only" — and once a single
+  // live seat remains there is nobody left to resolve against.
+  const order = liveEventPlayers(state);
+  if (order.length < 2) {
+    return;
+  }
+
+  if (events.activeCardId) {
+    deck.discardPile.push(events.activeCardId);
+    events.activeCardId = null;
+  }
+
+  if (deck.drawPile.length === 0 && deck.discardPile.length > 0) {
+    deck.drawPile = shuffleCards(deck.discardPile, `${state.seed}#events-reshuffle#${eventSeedNumber(state)}`);
+    deck.discardPile = [];
+  }
+  const cardId = deck.drawPile.pop();
+  const card = cardId ? eventCardDefinitions[cardId] : undefined;
+  if (!cardId || !card) {
+    return;
+  }
+
+  const drawerSeat = events.nextDrawerIndex % order.length;
+  events.nextDrawerIndex = (drawerSeat + 1) % order.length;
+  const rotated = [...order.slice(drawerSeat), ...order.slice(0, drawerSeat)];
+
+  events.activeCardId = cardId;
+  appendEvent(state, {
+    type: "EVENT_CARD_DRAWN",
+    cardId,
+    name: card.name,
+    text: card.text,
+    round: state.round,
+    drawerId: rotated[0]
+  });
+
+  resolveEventCard(state, card, rotated);
+}
+
+/**
+ * Queues the drawn Event's resolution as visit-step rewards, one per player in
+ * clockwise order starting with the drawer (the reward queue is FIFO, so queue
+ * order IS resolution order). Shared displays (spell markets, the Merchant's
+ * five artifacts, the Leprechaun's dice) are revealed here, when the card is
+ * read; per-player menus are built later, from each player's live state.
+ */
+function resolveEventCard(state: GameState, card: EventCardDefinition, order: PlayerId[]): void {
+  const adventure = state.adventure;
+  const events = getEventsState(state);
+  if (!adventure || !events) {
+    return;
+  }
+
+  // Fresh shared state for this Event.
+  events.pool = [];
+  events.poolCleanup = "shuffle-into-deck";
+  events.dicePool = [];
+  events.auction = null;
+  events.deal = null;
+
+  const drawerId = order[0];
+  const queue = (playerId: PlayerId, steps: VisitStep[]) =>
+    adventure.rewardQueue.push({ playerId, kind: "visit-steps", steps });
+
+  const effect = card.effect;
+  switch (effect.type) {
+    case "CRYPT":
+    case "CURSED_SWAMP":
+    case "GARDEN_OF_REVELATION":
+    case "DISCARD_DRAW_REMOVE_SEARCH":
+    case "MARKETPLACE":
+    case "STABLES":
+    case "VILLAGERS_PLEA":
+    case "WITHERED_HERMIT":
+      for (const playerId of order) {
+        queue(playerId, [{ type: "EVENT_PLAYER_CHOICE", eventCardId: card.id }]);
+      }
+      break;
+    case "MESSENGER_WITH_SUPPLIES":
+      for (const playerId of order) {
+        queue(playerId, [{ type: "EVENT_MESSENGER_DRAW" }]);
+      }
+      break;
+    case "SPELL_MARKET": {
+      // "For every player in the game, draw two Spell cards ... face-up".
+      for (let i = 0; i < order.length * 2; i += 1) {
+        const drawn = drawEventFamilyCard(state, "spells", undefined, i);
+        if (!drawn) {
+          break;
+        }
+        events.pool.push({ ...drawn, faceUp: true });
+      }
+      events.poolCleanup = effect.leftovers === "discard-pile" ? "discard-pile" : "shuffle-into-deck";
+      if (events.pool.length > 0) {
+        eventNote(
+          state,
+          `${card.name}: on display — ${events.pool.map((entry) => cardLibrary[entry.cardId]?.name ?? entry.cardId).join(", ")}.`
+        );
+      }
+      for (const playerId of order) {
+        queue(playerId, [{ type: "EVENT_SPELL_MARKET" }]);
+      }
+      queue(drawerId, [{ type: "EVENT_POOL_CLEANUP" }]);
+      break;
+    }
+    case "MAGICAL_FOREST":
+      for (const playerId of order) {
+        queue(playerId, [{ type: "EVENT_FOREST_CONTRIBUTE" }]);
+      }
+      for (const playerId of order) {
+        queue(playerId, [{ type: "EVENT_FOREST_TAKE", gold: effect.goldAlternative }]);
+      }
+      queue(drawerId, [{ type: "EVENT_POOL_CLEANUP" }]);
+      break;
+    case "MERCENARY_CAMP":
+      // Unrecruited units recycle to their tier discard piles, like every
+      // other returned Neutral draw in this engine.
+      events.poolCleanup = "discard-pile";
+      for (const playerId of order) {
+        queue(playerId, [{ type: "EVENT_MERC_DRAW" }]);
+      }
+      for (const playerId of order) {
+        queue(playerId, [{ type: "EVENT_MERC_RECRUIT" }]);
+      }
+      queue(drawerId, [{ type: "EVENT_POOL_CLEANUP" }]);
+      break;
+    case "ARTIFACT_MERCHANT": {
+      for (let i = 0; i < effect.draw; i += 1) {
+        const drawn = drawEventFamilyCard(state, "artifacts", undefined, i);
+        if (!drawn) {
+          break;
+        }
+        events.pool.push({ ...drawn, faceUp: true });
+      }
+      if (events.pool.length > 0) {
+        eventNote(
+          state,
+          `${card.name}: for sale — ${events.pool.map((entry) => cardLibrary[entry.cardId]?.name ?? entry.cardId).join(", ")}.`
+        );
+      }
+      for (const playerId of order) {
+        queue(playerId, [{ type: "EVENT_ARTIFACT_SHOP" }]);
+      }
+      queue(drawerId, [{ type: "EVENT_POOL_CLEANUP" }]);
+      break;
+    }
+    case "PRISON":
+      events.poolCleanup = "discard-pile";
+      for (const playerId of order) {
+        queue(playerId, [{ type: "EVENT_PRISON_OFFER", discardGold: effect.discardGold }]);
+      }
+      queue(drawerId, [{ type: "EVENT_POOL_CLEANUP" }]);
+      break;
+    case "DEN_OF_THIEVES":
+      // The printed "you" is the drawer (like Artifact Merchant's) — there is
+      // no pass-around clause, so only the drawer raids the den.
+      queue(drawerId, [{ type: "EVENT_DEN_OF_THIEVES" }]);
+      break;
+    case "MISCHIEVOUS_LEPRECHAUN": {
+      const random = adventureRandom(state, "event-leprechaun-pool");
+      const treasureRolls = Array.from(
+        { length: 2 },
+        () => TREASURE_DIE_FACES[random.nextInt(0, TREASURE_DIE_FACES.length - 1)]
+      );
+      const resourceRolls = Array.from(
+        { length: 2 },
+        () => RESOURCE_DIE_FACES[random.nextInt(0, RESOURCE_DIE_FACES.length - 1)]
+      );
+      events.dicePool = [
+        ...treasureRolls.map((face) => ({ kind: "treasure", face }) as EventDiePoolEntry),
+        ...resourceRolls.map((roll) => ({ kind: "resource", resource: roll.resource, amount: roll.amount }) as EventDiePoolEntry)
+      ];
+      appendEvent(state, {
+        type: "ADVENTURE_DICE_ROLLED",
+        playerId: drawerId,
+        dice: "treasure",
+        results: treasureRolls.map(treasureFaceLabel),
+        treasureRolls: [...treasureRolls]
+      });
+      appendEvent(state, {
+        type: "ADVENTURE_DICE_ROLLED",
+        playerId: drawerId,
+        dice: "resource",
+        results: resourceRolls.map(resourceDieLabel),
+        resourceRolls: resourceRolls.map((roll) => ({ resource: roll.resource, amount: roll.amount }))
+      });
+      for (const playerId of order) {
+        queue(playerId, [{ type: "EVENT_LEPRECHAUN_ROLL" }]);
+      }
+      break;
+    }
+    case "SHADY_AUCTION":
+      for (let lot = 0; lot < effect.lots; lot += 1) {
+        queue(drawerId, [{ type: "EVENT_AUCTION_OPEN" }]);
+        for (const playerId of order) {
+          queue(playerId, [{ type: "EVENT_AUCTION_BID" }]);
+        }
+        queue(drawerId, [{ type: "EVENT_AUCTION_RESOLVE" }]);
+      }
+      break;
+  }
+}
+
+type EventDeckFamily = "spells" | "artifacts" | "abilities";
+
+/** The shared-deck ids a family resolves to in this game (BINH splits / legacy single decks). */
+function eventFamilyDeckIds(state: GameState, family: EventDeckFamily): string[] {
+  const candidates =
+    family === "spells"
+      ? ["spells", "spells-expert"]
+      : family === "abilities"
+        ? ["abilities"]
+        : state.decks["artifacts"]
+          ? ["artifacts"]
+          : ["artifacts-minor", "artifacts-major", "artifacts-relic"];
+  return candidates.filter((deckId) => state.decks[deckId]);
+}
+
+/**
+ * Draws the top card "of the Spell/Artifact/Ability deck" for an Event. The
+ * physical game has ONE deck per family; with BINH's split decks the draw picks
+ * a deck weighted by its remaining cards — the same odds as drawing off one
+ * combined pile. A `playerId` applies the normal acquisition gate (duplicates
+ * are skipped and tucked under, exactly like drawTopOfSharedDeck everywhere
+ * else); the shared market displays pass no player and gate at buy time.
+ */
+function drawEventFamilyCard(
+  state: GameState,
+  family: EventDeckFamily,
+  playerId: PlayerId | undefined,
+  salt: number
+): { cardId: CardId; deckId: string } | null {
+  const piles = eventFamilyDeckIds(state, family)
+    .map((deckId) => {
+      const deck = state.decks[deckId];
+      return { deckId, size: (deck?.drawPile.length ?? 0) + (deck?.discardPile.length ?? 0) };
+    })
+    .filter((pile) => pile.size > 0);
+  if (piles.length === 0) {
+    return null;
+  }
+
+  const total = piles.reduce((sum, pile) => sum + pile.size, 0);
+  const random = adventureRandom(state, `event-draw-${family}-${salt}`);
+  let roll = random.nextInt(1, total);
+  let picked = piles[0];
+  for (const pile of piles) {
+    roll -= pile.size;
+    if (roll <= 0) {
+      picked = pile;
+      break;
+    }
+  }
+
+  for (const pile of [picked, ...piles.filter((candidate) => candidate !== picked)]) {
+    const cardId = drawTopOfSharedDeck(state, pile.deckId, playerId);
+    if (cardId) {
+      return { cardId, deckId: pile.deckId };
+    }
+  }
+  return null;
+}
+
+/** The shared deck a card belongs to (for returning hand-contributed pool cards). */
+function sharedDeckIdForCard(state: GameState, cardId: CardId): string {
+  const card = cardLibrary[cardId];
+  if (card?.kind === "artifact") {
+    return state.decks["artifacts"] ? "artifacts" : `artifacts-${card.artifactTier ?? "minor"}`;
+  }
+  if (card?.kind === "spell") {
+    return state.decks["spells-expert"] && spellDeckBinhExpert.includes(cardId) ? "spells-expert" : "spells";
+  }
+  return "abilities";
+}
+
+/** Cards in `player.hand` matching an Event filter, index-preserving. */
+function eventHandMatches(
+  player: PlayerState,
+  filter: "spell" | "spell-or-ability" | "artifact-or-spell" | "pool-kinds"
+): { cardId: CardId; index: number }[] {
+  return player.hand
+    .map((cardId, index) => ({ cardId, index }))
+    .filter(({ cardId }) => {
+      const kind = cardLibrary[cardId]?.kind;
+      switch (filter) {
+        case "spell":
+          return kind === "spell";
+        case "spell-or-ability":
+          return kind === "spell" || kind === "ability";
+        case "artifact-or-spell":
+          return kind === "artifact" || kind === "spell";
+        case "pool-kinds":
+          return kind === "spell" || kind === "artifact" || kind === "ability";
+      }
+    });
+}
+
+/** Removes one pool entry by card id; returns it or null. */
+function takeEventPoolEntry(state: GameState, cardId: CardId): EventPoolEntry | null {
+  const events = getEventsState(state);
+  const index = events?.pool.findIndex((entry) => entry.cardId === cardId) ?? -1;
+  if (!events || index === -1) {
+    return null;
+  }
+  return events.pool.splice(index, 1)[0];
+}
+
+/** Label of a Leprechaun pool die. */
+function eventDieLabel(die: EventDiePoolEntry): string {
+  return die.kind === "treasure"
+    ? `Treasure: ${treasureFaceLabel(die.face)}`
+    : `Resource: ${resourceDieLabel({ resource: die.resource, amount: die.amount })}`;
+}
+
+/**
+ * Builds the printed per-player menu of a choice-type Event card from the
+ * player's LIVE state (hand, resources, army, heroes) — options a player
+ * cannot take are simply not offered.
+ */
+function buildEventPlayerChoice(state: GameState, visit: PendingVisit, card: EventCardDefinition): void {
+  const player = state.players[visit.playerId];
+  if (!player) {
+    return;
+  }
+
+  const options: { label: string; steps: VisitStep[] }[] = [];
+  const heroesOf = Object.values(state.heroes).filter((hero) => hero.controllerId === visit.playerId);
+  const heroLabel = (hero: HeroState) =>
+    coreHeroDefinitions[hero.heroDefId ?? ""]?.name ?? (hero.kind === "main" ? "Main hero" : "Secondary hero");
+
+  switch (card.effect.type) {
+    case "CRYPT": {
+      options.push({
+        label: "Gain Negative Morale, then roll 2 Treasure dice (any experience face — gain nothing)",
+        steps: [
+          { type: "EVENT_CHANGE_MORALE", amount: -1 },
+          { type: "EVENT_TREASURE_GAMBLE", count: 2 }
+        ]
+      });
+      options.push({ label: "Gain Positive Morale", steps: [{ type: "EVENT_CHANGE_MORALE", amount: 1 }] });
+      if (player.factionId === NECROPOLIS_FACTION_ID) {
+        for (const unit of player.army) {
+          const tier = coreUnitDefinitions[unit.unitDefId]?.tier;
+          if (unit.side !== "few" || !getUnitSide(unit.unitDefId, "pack") || (tier !== "bronze" && tier !== "silver")) {
+            continue;
+          }
+          options.push({
+            label: `Necropolis: reinforce ${coreUnitDefinitions[unit.unitDefId]?.name ?? unit.unitDefId} at half cost`,
+            steps: [{ type: "REINFORCE_ARMY_UNIT", armyUnitId: unit.id, halfCost: true }]
+          });
+        }
+      }
+      break;
+    }
+    case "CURSED_SWAMP": {
+      options.push({
+        label: "Gain Negative Morale, then roll 2 Treasure dice and choose one result",
+        steps: [
+          { type: "EVENT_CHANGE_MORALE", amount: -1 },
+          { type: "ROLL_TREASURE_DICE", count: 2 }
+        ]
+      });
+      if (eventHandMatches(player, "spell").length > 0) {
+        options.push({
+          label: "Remove one or more Spells from your hand (2+ removed: Search (3) the Artifact deck)",
+          steps: [
+            {
+              type: "EVENT_REMOVE_FOR_SEARCH",
+              filter: "spell",
+              removed: 0,
+              per: 2,
+              searchCount: 3,
+              searchDecks: ["artifacts"],
+              single: true,
+              minRemoved: 2,
+              mustRemove: 1
+            }
+          ]
+        });
+      }
+      if (player.army.length > 0) {
+        options.push({ label: "Discard your cheapest unit", steps: [{ type: "EVENT_DISCARD_CHEAPEST_UNIT" }] });
+      }
+      if (player.factionId === NECROPOLIS_FACTION_ID) {
+        for (const unit of player.army) {
+          const tier = coreUnitDefinitions[unit.unitDefId]?.tier;
+          if (unit.side !== "few" || !getUnitSide(unit.unitDefId, "pack") || (tier !== "bronze" && tier !== "silver")) {
+            continue;
+          }
+          options.push({
+            label: `Necropolis: reinforce ${coreUnitDefinitions[unit.unitDefId]?.name ?? unit.unitDefId} for free`,
+            steps: [{ type: "REINFORCE_FREE", armyUnitId: unit.id }]
+          });
+        }
+      }
+      break;
+    }
+    case "GARDEN_OF_REVELATION": {
+      // The Searches AND the closing discard-hand-and-redraw are paid out in
+      // printed order through the front of the reward queue (see
+      // EVENT_REMOVE_FOR_SEARCH's finish).
+      const removeStep: VisitStep = {
+        type: "EVENT_REMOVE_FOR_SEARCH",
+        filter: "spell-or-ability",
+        removed: 0,
+        per: 2,
+        searchCount: 2,
+        searchDecks: ["spells", "abilities"],
+        thenDiscardAllRedraw: true
+      };
+      options.push({
+        label: "Draw 4 cards from your deck, remove Spells/Abilities for Searches, then discard your hand and redraw",
+        steps: [{ type: "EVENT_DRAW_OWN", from: "deck", count: 4 }, removeStep]
+      });
+      if (player.discard.length > 0) {
+        options.push({
+          label: "Draw 4 cards from your discard pile, remove Spells/Abilities for Searches, then discard your hand and redraw",
+          steps: [{ type: "EVENT_DRAW_OWN", from: "discard", count: 4 }, removeStep]
+        });
+      }
+      options.push({ label: "Leave and gain nothing", steps: [] });
+      break;
+    }
+    case "DISCARD_DRAW_REMOVE_SEARCH": {
+      const effect = card.effect;
+      options.push({
+        label: `Discard any number of cards, draw up to your hand limit +${effect.drawBonus}, then remove Ability/Spell cards for Searches`,
+        steps: [
+          { type: "EVENT_DISCARD_ANY_THEN_DRAW", bonus: effect.drawBonus },
+          {
+            type: "EVENT_REMOVE_FOR_SEARCH",
+            filter: "spell-or-ability",
+            removed: 0,
+            per: effect.per,
+            searchCount: effect.searchCount,
+            searchDecks: effect.searchDecks
+          }
+        ]
+      });
+      options.push({ label: "Leave and gain nothing", steps: [] });
+      break;
+    }
+    case "MARKETPLACE": {
+      options.push({ label: "Roll 1 Resource die", steps: [{ type: "ROLL_RESOURCE_DICE", count: 1 }] });
+      options.push({
+        label: "Trade resources (Trading Post rates)",
+        steps: [{ type: "TRADING_POST", tradesOnly: true }]
+      });
+      const owned = (Object.keys(RESOURCE_KIND_LABELS) as ResourceKind[]).filter(
+        (resource) => (player.resources[resource] ?? 0) >= 1
+      );
+      if (owned.length > 0 && liveEventPlayers(state).length > 1) {
+        options.push({ label: "Propose a 1-for-1 resource exchange", steps: [{ type: "EVENT_MARKET_DEAL" }] });
+      }
+      break;
+    }
+    case "STABLES": {
+      const mainHero = getMainHero(state, visit.playerId);
+      if (mainHero) {
+        options.push({ label: "Your Main hero gains +1 movement", steps: [{ type: "GAIN_MOVEMENT", amount: 1 }] });
+      }
+      for (const hero of heroesOf) {
+        if (hero.movementPoints >= 1) {
+          options.push({
+            label: `Pay 1 movement (${heroLabel(hero)}) to roll 1 Resource die`,
+            steps: [
+              { type: "SPEND_HERO_MOVEMENT", heroId: hero.id, amount: 1 },
+              { type: "ROLL_RESOURCE_DICE", count: 1 }
+            ]
+          });
+        }
+      }
+      break;
+    }
+    case "VILLAGERS_PLEA": {
+      for (const { cardId } of eventHandMatches(player, "artifact-or-spell")) {
+        options.push({
+          label: `Remove ${cardLibrary[cardId]?.name ?? cardId} from your hand`,
+          steps: [{ type: "REMOVE_CARD_FROM_PILE", cardId, source: "hand" }]
+        });
+      }
+      if (hasResources(player, { buildingMaterials: 1 })) {
+        options.push({
+          label: "Pay 1 building materials",
+          steps: [{ type: "LOSE_RESOURCES", buildingMaterials: 1, reason: "The Villagers' Plea" }]
+        });
+      }
+      if (hasResources(player, { gold: 5 })) {
+        options.push({
+          label: "Pay 5 gold",
+          steps: [{ type: "LOSE_RESOURCES", gold: 5, reason: "The Villagers' Plea" }]
+        });
+      }
+      for (const hero of heroesOf) {
+        if (hero.movementPoints >= 1) {
+          options.push({
+            label: `Pay 1 movement (${heroLabel(hero)})`,
+            steps: [{ type: "SPEND_HERO_MOVEMENT", heroId: hero.id, amount: 1 }]
+          });
+        }
+      }
+      if (options.length === 0) {
+        eventNote(state, `${eventPlayerName(state, visit.playerId)} has nothing to give the villagers.`, visit.playerId);
+        return;
+      }
+      break;
+    }
+    case "WITHERED_HERMIT": {
+      for (const resource of Object.keys(RESOURCE_KIND_LABELS) as ResourceKind[]) {
+        options.push({
+          label: `Name ${RESOURCE_KIND_LABELS[resource]} — roll 3 Resource dice (right: gain one die; wrong: lose one)`,
+          steps: [{ type: "EVENT_HERMIT_GAMBLE", resource }]
+        });
+      }
+      options.push({
+        label: "Roll 1 Resource die — you may pay the shown resources to Search (2) the Artifact deck",
+        steps: [{ type: "EVENT_HERMIT_PAY_SEARCH" }]
+      });
+      options.push({ label: "Leave and gain nothing", steps: [] });
+      break;
+    }
+    default:
+      return;
+  }
+
+  if (options.length === 0) {
+    return;
+  }
+  visit.steps.unshift({ type: "CHOOSE_ONE", prompt: `${card.name}: choose one option`, options });
+}
+
+/**
+ * Resolves one Event visit step (the grouped case in processPendingVisit).
+ * Menu-builder steps unshift a CHOOSE_ONE/PAY_TO over live state; leaf steps
+ * mutate and validate — a stale leaf (resources spent meanwhile, pool card
+ * gone) quietly no-ops rather than corrupting state.
+ */
+function applyEventVisitStep(state: GameState, visit: PendingVisit, step: VisitStep): void {
+  const player = state.players[visit.playerId];
+  const events = getEventsState(state);
+
+  switch (step.type) {
+    case "EVENT_PLAYER_CHOICE": {
+      const card = eventCardDefinitions[step.eventCardId];
+      if (card) {
+        buildEventPlayerChoice(state, visit, card);
+      }
+      break;
+    }
+    case "EVENT_CHANGE_MORALE":
+      changeMorale(state, visit.playerId, step.amount);
+      break;
+    case "LOSE_RESOURCES": {
+      if (!player) {
+        break;
+      }
+      const losses: ResourceCost = {};
+      for (const resource of Object.keys(RESOURCE_KIND_LABELS) as ResourceKind[]) {
+        const amount = Math.min(step[resource] ?? 0, player.resources[resource] ?? 0);
+        if (amount > 0) {
+          losses[resource] = amount;
+        }
+      }
+      if (Object.keys(losses).length > 0) {
+        spendResources(state, visit.playerId, losses, step.reason);
+      }
+      break;
+    }
+    case "SPEND_HERO_MOVEMENT": {
+      const hero = state.heroes[step.heroId];
+      if (hero && hero.controllerId === visit.playerId) {
+        hero.movementPoints = Math.max(0, hero.movementPoints - step.amount);
+      }
+      break;
+    }
+    case "EVENT_TREASURE_GAMBLE": {
+      // Crypt's gamble is its own roll: Luck rerolls / die-set effects do not
+      // apply here (they hook the standard ROLL_TREASURE_DICE step only).
+      const random = adventureRandom(state, "event-treasure-gamble");
+      const rolls = Array.from(
+        { length: step.count },
+        () => TREASURE_DIE_FACES[random.nextInt(0, TREASURE_DIE_FACES.length - 1)]
+      );
+      appendEvent(state, {
+        type: "ADVENTURE_DICE_ROLLED",
+        playerId: visit.playerId,
+        dice: "treasure",
+        results: rolls.map(treasureFaceLabel),
+        treasureRolls: [...rolls]
+      });
+      if (rolls.includes("experience")) {
+        eventNote(state, `${eventPlayerName(state, visit.playerId)}: an experience face shows — gains nothing.`, visit.playerId);
+        break;
+      }
+      visit.steps.unshift({
+        type: "CHOOSE_ONE",
+        prompt: "Choose one treasure die result",
+        options: rolls.map((face) => ({ label: treasureFaceLabel(face), steps: treasureFaceSteps(face) }))
+      });
+      break;
+    }
+    case "EVENT_DISCARD_CHEAPEST_UNIT": {
+      if (!player || player.army.length === 0) {
+        break;
+      }
+      const goldValue = (unit: (typeof player.army)[number]): number => {
+        const def = coreUnitDefinitions[unit.unitDefId];
+        const cost = (unit.side === "neutral" ? def?.neutral?.cost : getUnitSide(unit.unitDefId, unit.side)?.cost) ?? {};
+        return (Object.entries(cost) as [ResourceKind, number][]).reduce(
+          (sum, [resource, amount]) =>
+            sum + (resource === "gold" ? amount : amount * marketGoldValueOf(resource as "buildingMaterials" | "valuables")),
+          0
+        );
+      };
+      const cheapest = [...player.army].sort((left, right) => goldValue(left) - goldValue(right))[0];
+      player.army = player.army.filter((unit) => unit.id !== cheapest.id);
+      if (cheapest.side === "neutral") {
+        const tier = (coreUnitDefinitions[cheapest.unitDefId]?.tier ?? "bronze") as "bronze" | "silver" | "gold" | "azure";
+        state.decks[NEUTRAL_DECK_IDS[tier]]?.discardPile.push(cheapest.unitDefId);
+      }
+      eventNote(
+        state,
+        `${eventPlayerName(state, visit.playerId)} discards ${coreUnitDefinitions[cheapest.unitDefId]?.name ?? cheapest.unitDefId}.`,
+        visit.playerId
+      );
+      break;
+    }
+    case "EVENT_REMOVE_FOR_SEARCH": {
+      const adventure = state.adventure;
+      if (!player || !adventure) {
+        break;
+      }
+      const earnedSearches = step.single
+        ? step.removed >= (step.minRemoved ?? 0)
+          ? 1
+          : 0
+        : Math.floor(step.removed / step.per);
+      // The earned Searches (and Garden's trailing hand reset) land at the
+      // FRONT of the reward queue so the whole payout resolves within this
+      // player's slot of the clockwise Event resolution, in printed order.
+      const finish = () => {
+        const rewards: AdventureReward[] = [];
+        for (let grant = 0; grant < earnedSearches; grant += 1) {
+          if (step.searchDecks.length > 1) {
+            rewards.push({
+              playerId: visit.playerId,
+              kind: "visit-steps",
+              steps: [
+                {
+                  type: "CHOOSE_ONE",
+                  prompt: `Search (${step.searchCount}) which deck?`,
+                  options: step.searchDecks.map((deckId) => ({
+                    label: `Search (${step.searchCount}) the ${deckId === "spells" ? "Spell" : deckId === "abilities" ? "Ability" : "Artifact"} deck`,
+                    steps: [{ type: "EVENT_SEARCH_FRONT", deckId, count: step.searchCount } as VisitStep]
+                  }))
+                }
+              ]
+            });
+          } else {
+            rewards.push({
+              playerId: visit.playerId,
+              kind: "shared-deck-search",
+              deckId: step.searchDecks[0],
+              count: step.searchCount
+            });
+          }
+        }
+        if (step.thenDiscardAllRedraw) {
+          rewards.push({
+            playerId: visit.playerId,
+            kind: "visit-steps",
+            steps: [{ type: "EVENT_DISCARD_ALL_DRAW_LIMIT" }]
+          });
+        }
+        adventure.rewardQueue.unshift(...rewards);
+      };
+
+      if (step.finished) {
+        finish();
+        break;
+      }
+      const matches = eventHandMatches(player, step.filter);
+      const canBeDone = step.removed >= (step.mustRemove ?? 0);
+      if (matches.length === 0) {
+        if (canBeDone) {
+          finish();
+        }
+        break;
+      }
+      const options: { label: string; steps: VisitStep[] }[] = matches.map(({ cardId }) => ({
+        label: `Remove ${cardLibrary[cardId]?.name ?? cardId}`,
+        steps: [
+          { type: "REMOVE_CARD_FROM_PILE", cardId, source: "hand" } as VisitStep,
+          { ...step, removed: step.removed + 1 } as VisitStep
+        ]
+      }));
+      if (canBeDone) {
+        options.push({
+          label: earnedSearches > 0 ? `Done — ${earnedSearches} Search${earnedSearches > 1 ? "es" : ""} earned` : "Done",
+          steps: [{ ...step, finished: true } as VisitStep]
+        });
+      }
+      visit.steps.unshift({
+        type: "CHOOSE_ONE",
+        prompt: `Remove ${step.filter === "spell" ? "Spell" : "Spell or Ability"} cards from your hand (${step.removed} removed)`,
+        options
+      });
+      break;
+    }
+    case "EVENT_SEARCH_FRONT": {
+      state.adventure?.rewardQueue.unshift({
+        playerId: visit.playerId,
+        kind: "shared-deck-search",
+        deckId: step.deckId,
+        count: step.count
+      });
+      break;
+    }
+    case "EVENT_DISCARD_ANY_THEN_DRAW": {
+      if (!player) {
+        break;
+      }
+      if (player.hand.length === 0) {
+        visit.steps.unshift({ type: "EVENT_DRAW_TO_LIMIT", bonus: step.bonus });
+        break;
+      }
+      const options: { label: string; steps: VisitStep[] }[] = player.hand.map((cardId) => ({
+        label: `Discard ${cardLibrary[cardId]?.name ?? cardId}`,
+        steps: [{ type: "EVENT_DISCARD_HAND_CARD", cardId } as VisitStep, { ...step } as VisitStep]
+      }));
+      options.push({
+        label: `Done — draw up to your hand limit +${step.bonus}`,
+        steps: [{ type: "EVENT_DRAW_TO_LIMIT", bonus: step.bonus }]
+      });
+      visit.steps.unshift({ type: "CHOOSE_ONE", prompt: "Discard as many cards as you want", options });
+      break;
+    }
+    case "EVENT_DISCARD_HAND_CARD": {
+      const index = player?.hand.indexOf(step.cardId) ?? -1;
+      if (player && index !== -1) {
+        player.hand.splice(index, 1);
+        player.discard.push(step.cardId);
+      }
+      break;
+    }
+    case "EVENT_DRAW_TO_LIMIT": {
+      if (!player) {
+        break;
+      }
+      const target = effectiveHandLimit(state, visit.playerId) + step.bonus;
+      drawCardsForPlayer(state, visit.playerId, Math.max(0, target - player.hand.length));
+      break;
+    }
+    case "EVENT_DRAW_OWN": {
+      if (!player) {
+        break;
+      }
+      if (step.from === "deck") {
+        drawCardsForPlayer(state, visit.playerId, step.count);
+        break;
+      }
+      const taken = player.discard.splice(Math.max(0, player.discard.length - step.count));
+      player.hand.push(...taken);
+      eventNote(
+        state,
+        `${eventPlayerName(state, visit.playerId)} takes ${taken.length} card${taken.length === 1 ? "" : "s"} from their discard pile.`,
+        visit.playerId
+      );
+      break;
+    }
+    case "EVENT_DISCARD_ALL_DRAW_LIMIT": {
+      if (!player) {
+        break;
+      }
+      player.discard.push(...player.hand);
+      player.hand = [];
+      drawCardsForPlayer(state, visit.playerId, effectiveHandLimit(state, visit.playerId));
+      break;
+    }
+    case "EVENT_HERMIT_GAMBLE": {
+      const random = adventureRandom(state, "event-hermit-gamble");
+      const rolls = Array.from(
+        { length: 3 },
+        () => RESOURCE_DIE_FACES[random.nextInt(0, RESOURCE_DIE_FACES.length - 1)]
+      );
+      appendEvent(state, {
+        type: "ADVENTURE_DICE_ROLLED",
+        playerId: visit.playerId,
+        dice: "resource",
+        results: rolls.map(resourceDieLabel),
+        resourceRolls: rolls.map((roll) => ({ resource: roll.resource, amount: roll.amount }))
+      });
+      const wrong = rolls.some((roll) => roll.resource === step.resource);
+      visit.steps.unshift({
+        type: "CHOOSE_ONE",
+        prompt: wrong
+          ? `Wrong — ${RESOURCE_KIND_LABELS[step.resource]} shows. Choose one die to LOSE`
+          : `Right — no ${RESOURCE_KIND_LABELS[step.resource]}. Choose one die to gain`,
+        options: rolls.map((roll) => ({
+          label: resourceDieLabel(roll),
+          steps: [
+            wrong
+              ? ({ type: "LOSE_RESOURCES", [roll.resource]: roll.amount, reason: "Withered Hermit" } as VisitStep)
+              : ({ type: "GAIN_RESOURCES", [roll.resource]: roll.amount } as VisitStep)
+          ]
+        }))
+      });
+      break;
+    }
+    case "EVENT_HERMIT_PAY_SEARCH": {
+      const random = adventureRandom(state, "event-hermit-pay");
+      const roll = RESOURCE_DIE_FACES[random.nextInt(0, RESOURCE_DIE_FACES.length - 1)];
+      appendEvent(state, {
+        type: "ADVENTURE_DICE_ROLLED",
+        playerId: visit.playerId,
+        dice: "resource",
+        results: [resourceDieLabel(roll)],
+        resourceRolls: [{ resource: roll.resource, amount: roll.amount }]
+      });
+      visit.steps.unshift({
+        type: "PAY_TO",
+        prompt: `Pay ${roll.amount} ${RESOURCE_KIND_LABELS[roll.resource]} to Search (2) the Artifact deck?`,
+        costOptions: [{ [roll.resource]: roll.amount }],
+        // Front-of-queue so the paid Search opens within this player's slot.
+        steps: [{ type: "EVENT_SEARCH_FRONT", deckId: "artifacts", count: 2 }]
+      });
+      break;
+    }
+    case "EVENT_MESSENGER_DRAW": {
+      if (!player) {
+        break;
+      }
+      const drawn: { cardId: CardId; deckId: string }[] = [];
+      for (let i = 0; i < 2; i += 1) {
+        const draw = drawEventFamilyCard(state, "artifacts", visit.playerId, i);
+        if (draw) {
+          drawn.push(draw);
+        }
+      }
+      if (drawn.length === 0) {
+        eventNote(state, "The Artifact deck is empty — the messenger has nothing to offer.", visit.playerId);
+        break;
+      }
+      const options: { label: string; steps: VisitStep[] }[] = [];
+      for (const draw of drawn) {
+        const tier = cardLibrary[draw.cardId]?.artifactTier ?? "minor";
+        const price = EVENT_ARTIFACT_PRICES[tier];
+        if (!hasResources(player, { gold: price })) {
+          continue;
+        }
+        const others = drawn.filter((candidate) => candidate !== draw);
+        options.push({
+          label: `Buy ${cardLibrary[draw.cardId]?.name ?? draw.cardId} (${price} gold)`,
+          steps: [
+            { type: "EVENT_TAKE_CARD", cardId: draw.cardId, deckId: draw.deckId, cost: { gold: price } } as VisitStep,
+            ...(others.length > 0 ? [{ type: "EVENT_RETURN_CARDS", cards: others, mode: "shuffle" } as VisitStep] : [])
+          ]
+        });
+      }
+      options.push({
+        label: "Put them on the Artifact discard pile — roll 2 Resource dice and resolve one",
+        steps: [
+          { type: "EVENT_RETURN_CARDS", cards: drawn, mode: "discard" } as VisitStep,
+          { type: "ROLL_RESOURCE_DICE", count: 2 } as VisitStep
+        ]
+      });
+      visit.steps.unshift({
+        type: "CHOOSE_ONE",
+        prompt: `Messenger with Supplies: you drew ${drawn.map((draw) => cardLibrary[draw.cardId]?.name ?? draw.cardId).join(" and ")}`,
+        options
+      });
+      break;
+    }
+    case "EVENT_TAKE_CARD": {
+      if (!player || (step.cost && !hasResources(player, step.cost))) {
+        break;
+      }
+      if (step.cost) {
+        spendResources(state, visit.playerId, step.cost, `bought ${cardLibrary[step.cardId]?.name ?? step.cardId}`);
+      }
+      if (step.toDeck) {
+        player.deck = shuffleCards(
+          [...player.deck, ...player.discard, step.cardId],
+          `${state.seed}#event-buy#${visit.playerId}#${eventSeedNumber(state)}`
+        );
+        player.discard = [];
+      } else {
+        player.hand.push(step.cardId);
+      }
+      eventNote(
+        state,
+        `${eventPlayerName(state, visit.playerId)} takes ${cardLibrary[step.cardId]?.name ?? step.cardId}.`,
+        visit.playerId
+      );
+      break;
+    }
+    case "EVENT_RETURN_CARDS": {
+      for (const entry of step.cards) {
+        const deckId = entry.deckId || sharedDeckIdForCard(state, entry.cardId);
+        const deck = state.decks[deckId];
+        if (!deck) {
+          continue;
+        }
+        switch (step.mode) {
+          case "shuffle":
+            deck.drawPile = shuffleCards(
+              [...deck.drawPile, entry.cardId],
+              `${state.seed}#event-return#${deckId}#${eventSeedNumber(state)}`
+            );
+            break;
+          case "discard":
+            deck.discardPile.push(entry.cardId);
+            break;
+          case "deck-top":
+            deck.drawPile.push(entry.cardId);
+            break;
+          case "deck-bottom":
+            deck.drawPile.unshift(entry.cardId);
+            break;
+        }
+      }
+      break;
+    }
+    case "EVENT_SPELL_MARKET": {
+      const card = getActiveEventCard(state);
+      const effect = card?.effect;
+      if (!player || !events || effect?.type !== "SPELL_MARKET") {
+        break;
+      }
+      const options: { label: string; steps: VisitStep[] }[] = [];
+      const offered = new Set<CardId>();
+      for (const entry of events.pool) {
+        if (offered.has(entry.cardId) || !canAcquireSharedDeckCard(state, visit.playerId, entry.deckId, entry.cardId)) {
+          continue;
+        }
+        offered.add(entry.cardId);
+        const name = cardLibrary[entry.cardId]?.name ?? entry.cardId;
+        if (hasResources(player, { gold: effect.gold })) {
+          options.push({
+            label: `Buy ${name} (${effect.gold} gold)`,
+            steps: [
+              { type: "EVENT_TAKE_POOL_CARD", cardId: entry.cardId, cost: { gold: effect.gold }, toDeck: effect.buyToDeck } as VisitStep
+            ]
+          });
+        }
+        if (hasResources(player, { valuables: effect.valuables })) {
+          options.push({
+            label: `Buy ${name} (${effect.valuables} valuables)`,
+            steps: [
+              {
+                type: "EVENT_TAKE_POOL_CARD",
+                cardId: entry.cardId,
+                cost: { valuables: effect.valuables },
+                toDeck: effect.buyToDeck
+              } as VisitStep
+            ]
+          });
+        }
+      }
+      if (effect.dieAlternative) {
+        options.push({ label: "Roll 1 Resource die instead", steps: [{ type: "ROLL_RESOURCE_DICE", count: 1 }] });
+      }
+      if (options.length === 0) {
+        break;
+      }
+      options.push({ label: "Skip", steps: [] });
+      visit.steps.unshift({ type: "CHOOSE_ONE", prompt: `${card?.name}: buy one Spell`, options });
+      break;
+    }
+    case "EVENT_TAKE_POOL_CARD": {
+      if (!player || (step.cost && !hasResources(player, step.cost))) {
+        break;
+      }
+      const entry = takeEventPoolEntry(state, step.cardId);
+      if (!entry) {
+        break;
+      }
+      if (step.cost) {
+        spendResources(state, visit.playerId, step.cost, `bought ${cardLibrary[step.cardId]?.name ?? step.cardId}`);
+      }
+      if (step.toDeck) {
+        // Mage Laboratory: the bought card shuffles straight into the deck.
+        player.deck = shuffleCards(
+          [...player.deck, ...player.discard, step.cardId],
+          `${state.seed}#event-buy#${visit.playerId}#${eventSeedNumber(state)}`
+        );
+        player.discard = [];
+      } else {
+        player.hand.push(step.cardId);
+      }
+      eventNote(
+        state,
+        `${eventPlayerName(state, visit.playerId)} buys ${cardLibrary[step.cardId]?.name ?? step.cardId}.`,
+        visit.playerId
+      );
+      break;
+    }
+    case "EVENT_POOL_CLEANUP": {
+      if (!events) {
+        break;
+      }
+      for (const entry of events.pool) {
+        const deckId = entry.deckId || sharedDeckIdForCard(state, entry.cardId);
+        const deck = state.decks[deckId];
+        if (!deck) {
+          continue;
+        }
+        if (events.poolCleanup === "discard-pile") {
+          deck.discardPile.push(entry.cardId);
+        } else {
+          deck.drawPile = shuffleCards(
+            [...deck.drawPile, entry.cardId],
+            `${state.seed}#event-cleanup#${deckId}#${eventSeedNumber(state)}`
+          );
+        }
+      }
+      events.pool = [];
+      break;
+    }
+    case "EVENT_FOREST_CONTRIBUTE": {
+      if (!player) {
+        break;
+      }
+      const options: { label: string; steps: VisitStep[] }[] = [];
+      for (const { cardId } of eventHandMatches(player, "pool-kinds")) {
+        options.push({
+          label: `Put ${cardLibrary[cardId]?.name ?? cardId} face-down into the pool`,
+          steps: [{ type: "EVENT_POOL_ADD_FROM_HAND", cardId }]
+        });
+      }
+      for (const family of ["spells", "artifacts", "abilities"] as EventDeckFamily[]) {
+        const hasCards = eventFamilyDeckIds(state, family).some((deckId) => {
+          const deck = state.decks[deckId];
+          return (deck?.drawPile.length ?? 0) + (deck?.discardPile.length ?? 0) > 0;
+        });
+        if (hasCards) {
+          const label = family === "spells" ? "Spell" : family === "artifacts" ? "Artifact" : "Ability";
+          options.push({
+            label: `Draw and view the top ${label} card — it goes face-down into the pool`,
+            steps: [{ type: "EVENT_POOL_ADD_DRAWN", deck: family }]
+          });
+        }
+      }
+      if (options.length === 0) {
+        eventNote(state, `${eventPlayerName(state, visit.playerId)} has nothing to add to the pool.`, visit.playerId);
+        break;
+      }
+      visit.steps.unshift({ type: "CHOOSE_ONE", prompt: "Magical Forest: add one card to the pool", options });
+      break;
+    }
+    case "EVENT_POOL_ADD_FROM_HAND": {
+      const index = player?.hand.indexOf(step.cardId) ?? -1;
+      if (!player || !events || index === -1) {
+        break;
+      }
+      player.hand.splice(index, 1);
+      events.pool.push({ cardId: step.cardId, deckId: "", faceUp: false });
+      eventNote(state, `${eventPlayerName(state, visit.playerId)} adds a card from their hand to the pool.`, visit.playerId);
+      break;
+    }
+    case "EVENT_POOL_ADD_DRAWN": {
+      if (!events) {
+        break;
+      }
+      const draw = drawEventFamilyCard(state, step.deck, undefined, eventSeedNumber(state));
+      if (!draw) {
+        eventNote(state, `The ${step.deck} deck is empty — nothing enters the pool.`, visit.playerId);
+        break;
+      }
+      events.pool.push({ ...draw, faceUp: false });
+      eventNote(state, `${eventPlayerName(state, visit.playerId)} draws a card into the pool.`, visit.playerId);
+      // "Draw and VIEW": only the contributor learns what went in. The prompt
+      // is rendered for this player alone (like every other own-only menu).
+      visit.steps.unshift({
+        type: "CHOOSE_ONE",
+        prompt: `You drew ${cardLibrary[draw.cardId]?.name ?? draw.cardId} — it goes face-down into the pool`,
+        options: [{ label: "OK", steps: [] }]
+      });
+      break;
+    }
+    case "EVENT_FOREST_TAKE": {
+      if (!events) {
+        break;
+      }
+      const options: { label: string; steps: VisitStep[] }[] = [];
+      if (events.pool.length > 0) {
+        options.push({ label: "Take a random card from the pool", steps: [{ type: "EVENT_POOL_TAKE_RANDOM" }] });
+      }
+      options.push({ label: `Gain ${step.gold} gold`, steps: [{ type: "GAIN_RESOURCES", gold: step.gold }] });
+      visit.steps.unshift({ type: "CHOOSE_ONE", prompt: "Magical Forest: take from the pool or take gold?", options });
+      break;
+    }
+    case "EVENT_POOL_TAKE_RANDOM": {
+      if (!player || !events || events.pool.length === 0) {
+        break;
+      }
+      const random = adventureRandom(state, "event-forest-take");
+      const entry = events.pool.splice(random.nextInt(0, events.pool.length - 1), 1)[0];
+      player.hand.push(entry.cardId);
+      eventNote(state, `${eventPlayerName(state, visit.playerId)} takes a card from the pool.`, visit.playerId);
+      break;
+    }
+    case "EVENT_LEPRECHAUN_ROLL": {
+      if (!events) {
+        break;
+      }
+      const random = adventureRandom(state, "event-leprechaun-roll");
+      const treasure = TREASURE_DIE_FACES[random.nextInt(0, TREASURE_DIE_FACES.length - 1)];
+      const resource = RESOURCE_DIE_FACES[random.nextInt(0, RESOURCE_DIE_FACES.length - 1)];
+      appendEvent(state, {
+        type: "ADVENTURE_DICE_ROLLED",
+        playerId: visit.playerId,
+        dice: "treasure",
+        results: [treasureFaceLabel(treasure)],
+        treasureRolls: [treasure]
+      });
+      appendEvent(state, {
+        type: "ADVENTURE_DICE_ROLLED",
+        playerId: visit.playerId,
+        dice: "resource",
+        results: [resourceDieLabel(resource)],
+        resourceRolls: [{ resource: resource.resource, amount: resource.amount }]
+      });
+      const matches = events.dicePool
+        .map((die, index) => ({ die, index }))
+        .filter(({ die }) =>
+          die.kind === "treasure"
+            ? die.face === treasure
+            : die.resource === resource.resource && die.amount === resource.amount
+        );
+      if (matches.length === 0) {
+        eventNote(state, `${eventPlayerName(state, visit.playerId)} matches nothing in the pool.`, visit.playerId);
+        break;
+      }
+      visit.steps.unshift({
+        type: "CHOOSE_ONE",
+        prompt: "Mischievous Leprechaun: your roll matches the pool — take a die?",
+        options: [
+          ...matches.map(({ die, index }) => ({
+            label: `Take the ${eventDieLabel(die)} die`,
+            steps: [{ type: "EVENT_TAKE_POOL_DIE", index } as VisitStep]
+          })),
+          { label: "Take nothing", steps: [] }
+        ]
+      });
+      break;
+    }
+    case "EVENT_TAKE_POOL_DIE": {
+      const die = events?.dicePool[step.index];
+      if (!events || !die) {
+        break;
+      }
+      events.dicePool.splice(step.index, 1);
+      if (die.kind === "treasure") {
+        visit.steps.unshift(...treasureFaceSteps(die.face));
+      } else {
+        visit.steps.unshift({ type: "GAIN_RESOURCES", [die.resource]: die.amount } as VisitStep);
+      }
+      break;
+    }
+    case "EVENT_DEN_OF_THIEVES": {
+      const options: { label: string; steps: VisitStep[] }[] = [];
+      for (const tier of ["bronze", "silver", "gold", "azure"] as const) {
+        const deck = state.decks[NEUTRAL_DECK_IDS[tier]];
+        if ((deck?.drawPile.length ?? 0) + (deck?.discardPile.length ?? 0) > 0) {
+          options.push({
+            label: `Take the top 2 cards of the ${tier} Neutral Unit deck`,
+            steps: [{ type: "EVENT_DEN_DRAW", tier }]
+          });
+        }
+      }
+      if (options.length === 0) {
+        eventNote(state, "Every Neutral Unit deck is empty — the den stands abandoned.", visit.playerId);
+        break;
+      }
+      visit.steps.unshift({ type: "CHOOSE_ONE", prompt: "Den of Thieves: raid which Neutral Unit deck?", options });
+      break;
+    }
+    case "EVENT_DEN_DRAW": {
+      if (!player || !events) {
+        break;
+      }
+      const drawn: string[] = [];
+      for (let i = 0; i < 2; i += 1) {
+        const unitDefId = drawFromNeutralDeck(state, step.tier);
+        if (!unitDefId) {
+          break;
+        }
+        drawn.push(unitDefId);
+        events.pool.push({ cardId: unitDefId, deckId: NEUTRAL_DECK_IDS[step.tier], faceUp: true });
+      }
+      if (drawn.length === 0) {
+        break;
+      }
+      const options: { label: string; steps: VisitStep[] }[] = [];
+      const seen = new Set<string>();
+      for (const unitDefId of drawn) {
+        if (seen.has(unitDefId)) {
+          continue;
+        }
+        seen.add(unitDefId);
+        const cost = coreUnitDefinitions[unitDefId]?.neutral?.cost ?? {};
+        if (coreUnitDefinitions[unitDefId]?.neutral && hasRecruitResources(state, visit.playerId, cost)) {
+          options.push({
+            label: `Buy ${coreUnitDefinitions[unitDefId]?.name ?? unitDefId} (${costLabelOf(cost)})`,
+            steps: [
+              { type: "EVENT_NEUTRAL_BUY", unitDefId } as VisitStep,
+              { type: "EVENT_DEN_PLACE", tier: step.tier } as VisitStep
+            ]
+          });
+        }
+      }
+      options.push({ label: "Buy nothing", steps: [{ type: "EVENT_DEN_PLACE", tier: step.tier }] });
+      visit.steps.unshift({
+        type: "CHOOSE_ONE",
+        prompt: `Den of Thieves: drew ${drawn.map((id) => coreUnitDefinitions[id]?.name ?? id).join(" and ")}`,
+        options
+      });
+      break;
+    }
+    case "EVENT_NEUTRAL_BUY": {
+      const def = coreUnitDefinitions[step.unitDefId];
+      const cost = def?.neutral?.cost ?? {};
+      if (!player || !def?.neutral || !hasRecruitResources(state, visit.playerId, cost)) {
+        break;
+      }
+      if (!takeEventPoolEntry(state, step.unitDefId)) {
+        break;
+      }
+      spendRecruitResources(state, visit.playerId, cost, `recruited ${def.name} (Event)`);
+      addArmyUnit(player, step.unitDefId, "neutral");
+      appendEvent(state, {
+        type: "UNIT_RECRUITED",
+        playerId: visit.playerId,
+        unitDefId: step.unitDefId,
+        kind: "recruit",
+        cost
+      });
+      break;
+    }
+    case "EVENT_DEN_PLACE": {
+      const remaining = (events?.pool ?? []).filter((entry) => entry.deckId === NEUTRAL_DECK_IDS[step.tier]);
+      if (remaining.length === 0) {
+        break;
+      }
+      const unitDefIds = remaining.map((entry) => entry.cardId);
+      const names = unitDefIds.map((id) => coreUnitDefinitions[id]?.name ?? id).join(" and ");
+      visit.steps.unshift({
+        type: "CHOOSE_ONE",
+        prompt: `Place ${names} on the top or the bottom of the ${step.tier} Neutral Unit deck?`,
+        options: [
+          { label: "On top", steps: [{ type: "EVENT_RETURN_UNITS", unitDefIds, tier: step.tier, position: "top" }] },
+          { label: "On the bottom", steps: [{ type: "EVENT_RETURN_UNITS", unitDefIds, tier: step.tier, position: "bottom" }] }
+        ]
+      });
+      break;
+    }
+    case "EVENT_RETURN_UNITS": {
+      const deck = state.decks[NEUTRAL_DECK_IDS[step.tier]];
+      if (!deck) {
+        break;
+      }
+      for (const unitDefId of step.unitDefIds) {
+        if (!takeEventPoolEntry(state, unitDefId)) {
+          continue;
+        }
+        if (step.position === "top") {
+          deck.drawPile.push(unitDefId);
+        } else {
+          deck.drawPile.unshift(unitDefId);
+        }
+      }
+      break;
+    }
+    case "EVENT_PRISON_OFFER": {
+      if (!player || !events) {
+        break;
+      }
+      if (events.pool.length < 2) {
+        const tiers = (["bronze", "silver", "gold"] as const).filter((tier) => {
+          const deck = state.decks[NEUTRAL_DECK_IDS[tier]];
+          return (deck?.drawPile.length ?? 0) + (deck?.discardPile.length ?? 0) > 0;
+        });
+        if (tiers.length > 0) {
+          visit.steps.unshift({
+            type: "CHOOSE_ONE",
+            prompt: `Prison: draw a Neutral Unit card (${events.pool.length}/2 in hand; Azure excluded)`,
+            options: tiers.map((tier) => ({
+              label: `Draw from the ${tier} Neutral Unit deck`,
+              steps: [{ type: "EVENT_MERC_TAKE", tier, count: 1 } as VisitStep, { ...step } as VisitStep]
+            }))
+          });
+          break;
+        }
+      }
+      if (events.pool.length === 0) {
+        eventNote(state, "The prison stands empty — no Neutral Unit cards remain.", visit.playerId);
+        break;
+      }
+      const options: { label: string; steps: VisitStep[] }[] = [];
+      const seen = new Set<string>();
+      for (const entry of events.pool) {
+        if (seen.has(entry.cardId)) {
+          continue;
+        }
+        seen.add(entry.cardId);
+        const def = coreUnitDefinitions[entry.cardId];
+        const cost = def?.neutral?.cost ?? {};
+        if (def?.neutral && hasRecruitResources(state, visit.playerId, cost)) {
+          options.push({
+            label: `Buy ${def?.name ?? entry.cardId} (${costLabelOf(cost)})`,
+            steps: [{ type: "EVENT_NEUTRAL_BUY", unitDefId: entry.cardId }]
+          });
+        }
+        options.push({
+          label: `Discard ${def?.name ?? entry.cardId} — gain ${step.discardGold} gold`,
+          steps: [{ type: "EVENT_NEUTRAL_DISCARD_GOLD", unitDefId: entry.cardId, gold: step.discardGold }]
+        });
+      }
+      visit.steps.unshift({
+        type: "CHOOSE_ONE",
+        prompt: "Prison: buy one card, or discard one for gold (the rest passes on)",
+        options
+      });
+      break;
+    }
+    case "EVENT_NEUTRAL_DISCARD_GOLD": {
+      if (!takeEventPoolEntry(state, step.unitDefId)) {
+        break;
+      }
+      const tier = (coreUnitDefinitions[step.unitDefId]?.tier ?? "bronze") as "bronze" | "silver" | "gold" | "azure";
+      state.decks[NEUTRAL_DECK_IDS[tier]]?.discardPile.push(step.unitDefId);
+      gainResources(state, visit.playerId, { gold: step.gold }, "Prison (Event)");
+      break;
+    }
+    case "EVENT_MERC_DRAW": {
+      const options: { label: string; steps: VisitStep[] }[] = [];
+      for (const tier of ["bronze", "silver", "gold", "azure"] as const) {
+        const deck = state.decks[NEUTRAL_DECK_IDS[tier]];
+        const size = (deck?.drawPile.length ?? 0) + (deck?.discardPile.length ?? 0);
+        if (size >= 2) {
+          options.push({
+            label: `Draw 2 from the ${tier} Neutral Unit deck`,
+            steps: [{ type: "EVENT_MERC_TAKE", tier, count: 2 }]
+          });
+        }
+        if (size >= 1) {
+          options.push({
+            label: `Draw 1 from the ${tier} Neutral Unit deck`,
+            steps: [{ type: "EVENT_MERC_TAKE", tier, count: 1 }]
+          });
+        }
+      }
+      if (options.length === 0) {
+        break;
+      }
+      options.push({ label: "Draw nothing", steps: [] });
+      visit.steps.unshift({
+        type: "CHOOSE_ONE",
+        prompt: "Mercenary Camp: draw up to 2 Neutral Unit cards from ONE deck",
+        options
+      });
+      break;
+    }
+    case "EVENT_MERC_TAKE": {
+      if (!events) {
+        break;
+      }
+      const drawn: string[] = [];
+      for (let i = 0; i < step.count; i += 1) {
+        const unitDefId = drawFromNeutralDeck(state, step.tier);
+        if (!unitDefId) {
+          break;
+        }
+        drawn.push(unitDefId);
+        events.pool.push({ cardId: unitDefId, deckId: NEUTRAL_DECK_IDS[step.tier], faceUp: true });
+      }
+      if (drawn.length > 0) {
+        eventNote(
+          state,
+          `${eventPlayerName(state, visit.playerId)} spreads ${drawn.map((id) => coreUnitDefinitions[id]?.name ?? id).join(" and ")} on the table.`,
+          visit.playerId
+        );
+      }
+      break;
+    }
+    case "EVENT_MERC_RECRUIT": {
+      if (!player || !events || events.pool.length === 0) {
+        break;
+      }
+      const options: { label: string; steps: VisitStep[] }[] = [];
+      const seen = new Set<string>();
+      for (const entry of events.pool) {
+        if (seen.has(entry.cardId)) {
+          continue;
+        }
+        seen.add(entry.cardId);
+        const def = coreUnitDefinitions[entry.cardId];
+        const cost = def?.neutral?.cost ?? {};
+        if (def?.neutral && hasRecruitResources(state, visit.playerId, cost)) {
+          options.push({
+            label: `Recruit ${def?.name ?? entry.cardId} (${costLabelOf(cost)})`,
+            steps: [{ type: "EVENT_NEUTRAL_BUY", unitDefId: entry.cardId }]
+          });
+        }
+      }
+      if (options.length === 0) {
+        break;
+      }
+      options.push({ label: "Skip", steps: [] });
+      visit.steps.unshift({ type: "CHOOSE_ONE", prompt: "Mercenary Camp: recruit one unit", options });
+      break;
+    }
+    case "EVENT_ARTIFACT_SHOP": {
+      if (!player || !events || events.pool.length === 0) {
+        break;
+      }
+      const options: { label: string; steps: VisitStep[] }[] = [];
+      const seen = new Set<CardId>();
+      for (const entry of events.pool) {
+        if (seen.has(entry.cardId)) {
+          continue;
+        }
+        seen.add(entry.cardId);
+        const tier = cardLibrary[entry.cardId]?.artifactTier ?? "minor";
+        const price = EVENT_ARTIFACT_PRICES[tier];
+        if (
+          canAcquireSharedDeckCard(state, visit.playerId, entry.deckId, entry.cardId) &&
+          hasResources(player, { gold: price })
+        ) {
+          options.push({
+            label: `Buy ${cardLibrary[entry.cardId]?.name ?? entry.cardId} (${price} gold)`,
+            steps: [
+              { type: "EVENT_TAKE_POOL_CARD", cardId: entry.cardId, cost: { gold: price } } as VisitStep,
+              { type: "EVENT_ARTIFACT_SHOP", boughtFromPool: true } as VisitStep
+            ]
+          });
+        }
+      }
+      // "...either any number of them OR the face-up card from the Artifact
+      // discard pile": the discard top drops out once a pool card was bought,
+      // and buying it ends this player's shopping.
+      if (!step.boughtFromPool) {
+        for (const deckId of eventFamilyDeckIds(state, "artifacts")) {
+          const pile = state.decks[deckId]?.discardPile ?? [];
+          const top = pile.length > 0 ? pile[pile.length - 1] : null;
+          if (!top) {
+            continue;
+          }
+          const price = EVENT_ARTIFACT_PRICES[cardLibrary[top]?.artifactTier ?? "minor"];
+          if (canAcquireSharedDeckCard(state, visit.playerId, deckId, top) && hasResources(player, { gold: price })) {
+            options.push({
+              label: `Buy the discard top ${cardLibrary[top]?.name ?? top} (${price} gold)`,
+              steps: [{ type: "BLACK_MARKET_BUY", cardId: top, deckId, price } as VisitStep]
+            });
+          }
+        }
+      }
+      if (options.length === 0) {
+        break;
+      }
+      options.push({ label: "Pass the cards on", steps: [] });
+      visit.steps.unshift({
+        type: "CHOOSE_ONE",
+        prompt: "Artifact Merchant: buy any number (minor 3 / major 5 / relic 7 gold)",
+        options
+      });
+      break;
+    }
+    case "EVENT_AUCTION_OPEN": {
+      if (!events) {
+        break;
+      }
+      const draw = drawEventFamilyCard(state, "artifacts", undefined, eventSeedNumber(state));
+      if (!draw) {
+        events.auction = null;
+        eventNote(state, "The Artifact deck is empty — no auction lot.");
+        break;
+      }
+      events.auction = { lotCardId: draw.cardId, lotDeckId: draw.deckId, bids: {} };
+      eventNote(state, `A Shady Auction: the lot is ${cardLibrary[draw.cardId]?.name ?? draw.cardId}.`);
+      break;
+    }
+    case "EVENT_AUCTION_BID": {
+      const auction = events?.auction;
+      if (!player || !auction) {
+        break;
+      }
+      const lotName = cardLibrary[auction.lotCardId]?.name ?? auction.lotCardId;
+      const options: { label: string; steps: VisitStep[] }[] = [];
+      for (let amount = 0; amount <= player.resources.gold; amount += 1) {
+        options.push({
+          label: amount === 0 ? "No bid" : `Bid ${amount} gold`,
+          steps: [{ type: "EVENT_AUCTION_SET_BID", amount }]
+        });
+      }
+      visit.steps.unshift({ type: "CHOOSE_ONE", prompt: `A Shady Auction: bid secretly for ${lotName}`, options });
+      break;
+    }
+    case "EVENT_AUCTION_SET_BID": {
+      const auction = events?.auction;
+      if (!auction) {
+        break;
+      }
+      auction.bids[visit.playerId] = step.amount;
+      appendEvent(state, { type: "EVENT_AUCTION_BID_PLACED", playerId: visit.playerId });
+      break;
+    }
+    case "EVENT_AUCTION_RESOLVE": {
+      const auction = events?.auction;
+      if (!events || !auction) {
+        break;
+      }
+      const bids = Object.entries(auction.bids) as [PlayerId, number][];
+      const highest = bids.reduce((max, [, amount]) => Math.max(max, amount), 0);
+      const winners = bids.filter(([, amount]) => amount === highest && highest > 0);
+      const winner = winners.length === 1 ? winners[0] : null;
+      const winningPlayer = winner ? state.players[winner[0]] : null;
+      if (winner && winningPlayer && hasResources(winningPlayer, { gold: winner[1] })) {
+        spendResources(state, winner[0], { gold: winner[1] }, "won the auction");
+        winningPlayer.hand.push(auction.lotCardId);
+        appendEvent(state, {
+          type: "EVENT_AUCTION_RESOLVED",
+          cardId: auction.lotCardId,
+          winnerId: winner[0],
+          amount: winner[1]
+        });
+      } else {
+        state.decks[auction.lotDeckId]?.discardPile.push(auction.lotCardId);
+        appendEvent(state, { type: "EVENT_AUCTION_RESOLVED", cardId: auction.lotCardId, winnerId: null, amount: highest });
+      }
+      events.auction = null;
+      break;
+    }
+    case "EVENT_MARKET_DEAL": {
+      if (!player) {
+        break;
+      }
+      const kinds = Object.keys(RESOURCE_KIND_LABELS) as ResourceKind[];
+      const options: { label: string; steps: VisitStep[] }[] = [];
+      for (const give of kinds) {
+        if ((player.resources[give] ?? 0) < 1) {
+          continue;
+        }
+        for (const get of kinds) {
+          if (get === give) {
+            continue;
+          }
+          options.push({
+            label: `Offer 1 ${RESOURCE_KIND_LABELS[give]} for 1 ${RESOURCE_KIND_LABELS[get]}`,
+            steps: [{ type: "EVENT_MARKET_DEAL_OPEN", give, get }]
+          });
+        }
+      }
+      if (options.length === 0) {
+        break;
+      }
+      options.push({ label: "Cancel", steps: [] });
+      visit.steps.unshift({ type: "CHOOSE_ONE", prompt: "Marketplace: propose a 1-for-1 exchange", options });
+      break;
+    }
+    case "EVENT_MARKET_DEAL_OPEN": {
+      const adventure = state.adventure;
+      if (!events || !adventure) {
+        break;
+      }
+      events.deal = { proposerId: visit.playerId, give: step.give, get: step.get, done: false };
+      // The answers must land BEFORE any later Event rewards, in clockwise
+      // order from the proposer — unshift them at the FRONT of the queue.
+      const order = liveEventPlayers(state);
+      const seat = order.indexOf(visit.playerId);
+      const others = seat === -1 ? order : [...order.slice(seat + 1), ...order.slice(0, seat)];
+      adventure.rewardQueue.unshift(
+        ...others.map((playerId) => ({
+          playerId,
+          kind: "visit-steps" as const,
+          steps: [{ type: "EVENT_MARKET_DEAL_ANSWER" } as VisitStep]
+        }))
+      );
+      eventNote(
+        state,
+        `${eventPlayerName(state, visit.playerId)} offers 1 ${RESOURCE_KIND_LABELS[step.give]} for 1 ${RESOURCE_KIND_LABELS[step.get]}.`,
+        visit.playerId
+      );
+      break;
+    }
+    case "EVENT_MARKET_DEAL_ANSWER": {
+      const deal = events?.deal;
+      const proposer = deal ? state.players[deal.proposerId] : null;
+      if (
+        !player ||
+        !deal ||
+        deal.done ||
+        !proposer ||
+        (proposer.resources[deal.give] ?? 0) < 1 ||
+        (player.resources[deal.get] ?? 0) < 1
+      ) {
+        break;
+      }
+      visit.steps.unshift({
+        type: "CHOOSE_ONE",
+        prompt: `${eventPlayerName(state, deal.proposerId)} offers 1 ${RESOURCE_KIND_LABELS[deal.give]} for 1 ${RESOURCE_KIND_LABELS[deal.get]}`,
+        options: [
+          {
+            label: `Accept — give 1 ${RESOURCE_KIND_LABELS[deal.get]}, receive 1 ${RESOURCE_KIND_LABELS[deal.give]}`,
+            steps: [{ type: "EVENT_MARKET_DEAL_ACCEPT" }]
+          },
+          { label: "Decline", steps: [] }
+        ]
+      });
+      break;
+    }
+    case "EVENT_MARKET_DEAL_ACCEPT": {
+      const deal = events?.deal;
+      const proposer = deal ? state.players[deal.proposerId] : null;
+      if (
+        !player ||
+        !deal ||
+        deal.done ||
+        !proposer ||
+        (proposer.resources[deal.give] ?? 0) < 1 ||
+        (player.resources[deal.get] ?? 0) < 1
+      ) {
+        break;
+      }
+      deal.done = true;
+      spendResources(state, deal.proposerId, { [deal.give]: 1 }, "Marketplace deal");
+      gainResources(state, deal.proposerId, { [deal.get]: 1 }, "Marketplace deal");
+      spendResources(state, visit.playerId, { [deal.get]: 1 }, "Marketplace deal");
+      gainResources(state, visit.playerId, { [deal.give]: 1 }, "Marketplace deal");
+      break;
+    }
+    default:
+      break;
+  }
 }
 
 export { TRADE_RATES };

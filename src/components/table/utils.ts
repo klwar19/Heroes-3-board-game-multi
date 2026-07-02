@@ -528,6 +528,16 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       return `${playerName(state, event.playerId)} sets ${event.tileDefId} to ${event.rotation * 60}°.`;
     case "ASTROLOGERS_DRAWN":
       return `Astrologers proclaim: ${event.name} — ${event.text}`;
+    case "EVENT_CARD_DRAWN":
+      return `Event (drawn by ${playerName(state, event.drawerId)}): ${event.name} — ${event.text}`;
+    case "EVENT_AUCTION_BID_PLACED":
+      return `${playerName(state, event.playerId)} places a secret bid.`;
+    case "EVENT_AUCTION_RESOLVED":
+      return event.winnerId
+        ? `${playerName(state, event.winnerId)} wins ${cardName(event.cardId)} for ${event.amount} gold.`
+        : `Nobody wins ${cardName(event.cardId)} — ${event.amount > 0 ? "the top bids tie" : "no bets"}; the card is discarded.`;
+    case "EVENT_NOTE":
+      return event.message;
     case "ASTROLOGERS_HAND_RESHUFFLED":
       return event.mode === "discard-all"
         ? `${event.name}: ${playerName(state, event.playerId)} must discard their whole hand (${event.discarded}) and draw ${event.drawn} new card${event.drawn === 1 ? "" : "s"}.`

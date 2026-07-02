@@ -29,7 +29,7 @@ function expectRejected(state: GameState, action: GameAction): void {
 /** Two-player adventure game with the Astrologers deck stacked inert so even
  *  rounds resolve without opening a choice. */
 function makeGame(seed = "conquest-seed"): GameState {
-  const state = createAdventureGameState({ seed, difficulty: "normal", rollFirstPlayer: false });
+  const state = createAdventureGameState({ seed, difficulty: "normal", rollFirstPlayer: false, events: false });
   for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
   for (let i = 0; i < 8; i += 1) {
     state.decks.astrologers.drawPile.push("astrologers.dead_silence");
@@ -42,6 +42,7 @@ function makeThreePlayerGame(seed = "conquest-3p"): GameState {
     seed,
     difficulty: "normal",
     rollFirstPlayer: false,
+    events: false,
     players: [
       { id: "p1", name: "Catherine", factionId: "castle", heroDefId: "catherine" },
       { id: "p2", name: "Sandro", factionId: "necropolis", heroDefId: "sandro" },
