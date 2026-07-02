@@ -34,10 +34,19 @@
 >   play). The engine enforces the rule *given* the claimed identity — it is not
 >   yet a defence against a client forging another's id. Authentication is the
 >   next milestone (Step 4 below).
-> - **Destructive room ops are host-gated (same claimed-identity model):**
->   `closeRoom`, `resetRoom` (both backends, socket + HTTP — see
->   `reset-authority.test.ts`) and, on hosted lobbies, `restoreRoom`
->   (member-only) all refuse a non-host/non-member actor.
+> - **Destructive room ops (reset/close) follow one hosted-room rule** (same
+>   claimed-identity model; both backends, socket + HTTP — see
+>   `reset-authority.test.ts` + `game-room-store.test.ts`): the HOST always
+>   may; any MEMBER may once the host holds no live stream/socket (per-tab
+>   client ids die with a browser restart, so a returned host must never be
+>   locked out of wiping their own table — a polling-fallback host reading as
+>   "offline" is the accepted edge); a stranger never may. Hosted lobbies also
+>   accept `restoreRoom` from members only. Open tables stay anyone-may.
+> - **Developer override:** a reset/close carrying the deployment's
+>   `HOMM3BG_ADMIN_KEY` (env var on the Next server / PartyKit room) wipes ANY
+>   table. Set `localStorage["homm3bg.adminKey"]` in your own browser on the
+>   deployed app to use it from the normal UI; with no env key configured the
+>   override does not exist (empty never matches).
 > - **Known wire-level privacy limit (NOT yet fixed):** every snapshot is
 >   broadcast as the FULL `GameState`; `getPlayerView` redacts hands, deck
 >   order, face-down tiles and private pending choices only at render time in

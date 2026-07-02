@@ -9,6 +9,8 @@ import {
   getRoomSnapshot,
   handleRoomDisconnect,
   listRooms,
+  markRoomClientConnected,
+  markRoomClientDisconnected,
   resetRoom,
   restoreRoom,
   STALE_ROOM_TTL_MS,
@@ -105,19 +107,21 @@ describe("room membership through the store", () => {
     expect(reset.state.room?.members.some((member) => member.clientId === "c1")).toBe(true);
   });
 
-  it("refuses a hosted-room reset from anyone but the host (mirrors closeRoom)", () => {
+  it("hosted-room reset: host's word while connected, members once the host is gone, strangers never", () => {
     const roomId = uniqueRoom("resetauth");
     getRoomSnapshot(roomId);
     submitRoomAction(roomId, { type: "JOIN_ROOM", clientId: "c1", name: "Host" });
     submitRoomAction(roomId, { type: "JOIN_ROOM", clientId: "c2", name: "Guest" });
     submitRoomAction(roomId, { type: "SET_ROOM_HOSTED", clientId: "c1", hosted: true });
+    markRoomClientConnected(roomId, "c1"); // the host holds a live stream
     const before = getRoomSnapshot(roomId);
 
-    // A guest, and an anonymous caller, both bounce off — the game is untouched.
-    for (const actor of ["c2", undefined] as const) {
+    // While the host is connected: a member, a stranger and an anonymous
+    // caller all bounce off — the game is untouched.
+    for (const actor of ["c2", "stranger", undefined] as const) {
       const denied = resetRoom(roomId, { mode: "adventure" }, actor);
-      expect(denied.reset).toBe(false);
-      expect(denied.reason).toMatch(/host/i);
+      expect(denied.reset, `${actor} must be denied`).toBe(false);
+      expect(denied.reason).toMatch(/host|member/i);
       expect(denied.snapshot.version).toBe(before.version);
       expect(denied.snapshot.state.seed).toBe(before.state.seed);
     }
@@ -126,6 +130,48 @@ describe("room membership through the store", () => {
     const allowed = resetRoom(roomId, { mode: "adventure" }, "c1");
     expect(allowed.reset).toBe(true);
     expect(allowed.snapshot.state.seed).not.toBe(before.state.seed);
+
+    // Host gone (browser restart lost the per-tab id): a MEMBER may now wipe
+    // the table — the self-service escape — but a stranger still may not.
+    markRoomClientDisconnected(roomId, "c1");
+    const afterHostReset = getRoomSnapshot(roomId);
+    expect(resetRoom(roomId, { mode: "adventure" }, "stranger").reset).toBe(false);
+    const memberReset = resetRoom(roomId, { mode: "adventure" }, "c2");
+    expect(memberReset.reset).toBe(true);
+    expect(memberReset.snapshot.state.seed).not.toBe(afterHostReset.state.seed);
+  });
+
+  it("the developer's HOMM3BG_ADMIN_KEY resets any table; a wrong or unconfigured key never does", () => {
+    const roomId = uniqueRoom("resetadmin");
+    getRoomSnapshot(roomId);
+    submitRoomAction(roomId, { type: "JOIN_ROOM", clientId: "c1", name: "Host" });
+    submitRoomAction(roomId, { type: "SET_ROOM_HOSTED", clientId: "c1", hosted: true });
+    markRoomClientConnected(roomId, "c1");
+    const before = getRoomSnapshot(roomId);
+
+    const previousKey = process.env.HOMM3BG_ADMIN_KEY;
+    try {
+      // No key configured: an adminKey argument matches nothing (even "").
+      delete process.env.HOMM3BG_ADMIN_KEY;
+      expect(resetRoom(roomId, {}, "stranger", "").reset).toBe(false);
+      expect(resetRoom(roomId, {}, "stranger", "anything").reset).toBe(false);
+
+      process.env.HOMM3BG_ADMIN_KEY = "sekret";
+      expect(resetRoom(roomId, {}, "stranger", "wrong").reset).toBe(false);
+      expect(getRoomSnapshot(roomId).state.seed).toBe(before.state.seed);
+
+      // The configured key wipes the table regardless of host connectivity.
+      const wiped = resetRoom(roomId, {}, "stranger", "sekret");
+      expect(wiped.reset).toBe(true);
+      expect(wiped.snapshot.state.seed).not.toBe(before.state.seed);
+    } finally {
+      if (previousKey === undefined) {
+        delete process.env.HOMM3BG_ADMIN_KEY;
+      } else {
+        process.env.HOMM3BG_ADMIN_KEY = previousKey;
+      }
+      markRoomClientDisconnected(roomId, "c1");
+    }
   });
 
   it("carries the room name and creation stamp across a game reset", () => {
@@ -366,21 +412,39 @@ describe("lobby directory (listRooms / createRoom)", () => {
 });
 
 describe("closing a room (closeRoom)", () => {
-  it("lets the host close a hosted room and refuses everyone else", () => {
+  it("hosted-room close: host's word while connected, members once the host is gone, strangers never", () => {
     const roomId = uniqueRoom("close");
     createRoom({ roomId, name: "Closable" });
     submitRoomAction(roomId, { type: "JOIN_ROOM", clientId: "c1", name: "Host" });
     submitRoomAction(roomId, { type: "JOIN_ROOM", clientId: "c2", name: "Guest" });
     submitRoomAction(roomId, { type: "SET_ROOM_HOSTED", clientId: "c1", hosted: true });
+    markRoomClientConnected(roomId, "c1"); // the host holds a live stream
 
-    // A non-host (and a stranger) cannot close it.
+    // While the host is connected: a member and a stranger cannot close it.
     expect(closeRoom(roomId, "c2").closed).toBe(false);
     expect(closeRoom(roomId, "stranger").closed).toBe(false);
     expect(entryFor(roomId)).not.toBeNull(); // still there
 
-    // The host can.
-    expect(closeRoom(roomId, "c1").closed).toBe(true);
+    // Host gone (per-tab id lost to a browser restart): a stranger still
+    // cannot, but a MEMBER can — the room is never stranded undeletable.
+    markRoomClientDisconnected(roomId, "c1");
+    expect(closeRoom(roomId, "stranger").closed).toBe(false);
+    expect(closeRoom(roomId, "c2").closed).toBe(true);
     expect(entryFor(roomId)).toBeNull(); // gone from the directory
+  });
+
+  it("the host can always close their hosted room (the CONTROL)", () => {
+    const roomId = uniqueRoom("closehost");
+    createRoom({ roomId, name: "Closable" });
+    submitRoomAction(roomId, { type: "JOIN_ROOM", clientId: "c1", name: "Host" });
+    submitRoomAction(roomId, { type: "SET_ROOM_HOSTED", clientId: "c1", hosted: true });
+    markRoomClientConnected(roomId, "c1");
+    try {
+      expect(closeRoom(roomId, "c1").closed).toBe(true);
+      expect(entryFor(roomId)).toBeNull();
+    } finally {
+      markRoomClientDisconnected(roomId, "c1");
+    }
   });
 
   it("lets ANYONE close an open table (a fresh session no longer owns it)", () => {

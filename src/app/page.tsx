@@ -145,6 +145,7 @@ import {
   connectRoom,
   createRoomOnServer,
   fetchRoomList,
+  isResetDenied,
   requestCloseRoom,
   type GameRoomSnapshot,
   type RoomConnection,
@@ -2961,12 +2962,19 @@ export default function Home() {
       return;
     }
 
-    // A reset wipes the running game for every seat, so a HOSTED room accepts
-    // it from the host alone (the server enforces the same rule — this guard
-    // just says so up front instead of letting the click silently bounce).
+    // A reset wipes the running game for every seat. Hosted-room rule (the
+    // server enforces it; this guard just fails fast for the clear-cut case):
+    // the host always may; members may once the host is offline (the server
+    // knows connectivity, so members always get to ASK); strangers never —
+    // unless this browser carries the developer's admin key, which the server
+    // verifies against its HOMM3BG_ADMIN_KEY.
     const room = state?.room;
-    if (room?.hosted && room.hostClientId !== clientId) {
-      setErrors(["Only the host can start a new game in this room."]);
+    const isMember = Boolean(room?.members.some((member) => member.clientId === clientId));
+    const hasAdminKey = Boolean(
+      typeof window !== "undefined" && window.localStorage.getItem("homm3bg.adminKey")
+    );
+    if (room?.hosted && !isMember && !hasAdminKey) {
+      setErrors(["Only members of this room can start a new game in it."]);
       return;
     }
 
@@ -2976,6 +2984,12 @@ export default function Home() {
     try {
       snapshot = await connection.resetRoom({ mode });
     } catch (resetError) {
+      // An authority refusal is NOT a network failure: the room was left
+      // untouched on purpose — say why and stop (no resync, no cache clear).
+      if (isResetDenied(resetError)) {
+        setErrors([(resetError as Error).message]);
+        return;
+      }
       // The request may still have landed (a dropped response, an SSE frame
       // that beat the HTTP reply); pull the authoritative snapshot before
       // declaring failure so a flaky network doesn't strand the table.

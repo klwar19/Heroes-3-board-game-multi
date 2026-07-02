@@ -1,11 +1,11 @@
 /**
- * Reset authority over BOTH multiplayer transports: a game reset is as
- * destructive as a room close (the running game is wiped for every seat), so a
- * HOSTED room accepts it from the host alone, while an OPEN table keeps the
- * original anyone-may-reset behaviour. The store half of this rule is tested in
- * game-room-store.test.ts ("refuses a hosted-room reset from anyone but the
- * host"); this file drives the PartyKit edge server (party/index.ts) through
- * its two reset entry points — the socket message and the HTTP POST.
+ * Reset/close authority over the PartyKit edge transport. One rule for the two
+ * destructive room ops on a HOSTED room (mirrors game-room-store, whose half
+ * lives in game-room-store.test.ts): the HOST always may; any MEMBER may once
+ * the host holds no live socket (per-tab client ids die with the browser, so a
+ * restarted host must not strand the table); a STRANGER never may — unless the
+ * request carries the deployment's HOMM3BG_ADMIN_KEY (developer override).
+ * Open tables keep the original anyone-may-reset behaviour.
  */
 import { describe, expect, it } from "vitest";
 import GameRoomServer, { type RoomSnapshot } from "../../party/index";
@@ -38,6 +38,10 @@ function latestVersion(conn: MockConnection): number {
   throw new Error(`${conn.id} received no snapshot`);
 }
 
+function lastMessage(conn: MockConnection): { type: string; reason?: string } {
+  return JSON.parse(conn.received.at(-1)!) as { type: string; reason?: string };
+}
+
 function hostedState(seed: string, hosted: boolean): GameState {
   const state = createInitialGameState(seed);
   state.room = {
@@ -51,7 +55,7 @@ function hostedState(seed: string, hosted: boolean): GameState {
   return state;
 }
 
-function makeEdgeRoom(roomId: string, seedState: GameState) {
+function makeEdgeRoom(roomId: string, seedState: GameState, env?: Record<string, unknown>) {
   const storage = new Map<string, unknown>();
   storage.set("snapshot", {
     roomId,
@@ -63,24 +67,27 @@ function makeEdgeRoom(roomId: string, seedState: GameState) {
   const connections = new Set<MockConnection>();
   const room = {
     id: roomId,
+    ...(env ? { env } : {}),
     storage: {
       get: async (key: string) => storage.get(key),
       put: async (key: string, value: unknown) => {
         storage.set(key, value);
-      }
+      },
+      delete: async (key: string) => storage.delete(key)
     },
     broadcast: (data: string) => {
       for (const connection of connections) {
         connection.send(data);
       }
     },
+    getConnections: () => connections.values(),
     context: { parties: {} }
   };
   return { room: room as unknown as EdgeRoom, connections };
 }
 
-async function bootHostedRoom(roomId: string, hosted = true) {
-  const { room, connections } = makeEdgeRoom(roomId, hostedState(roomId, hosted));
+async function bootHostedRoom(roomId: string, hosted = true, env?: Record<string, unknown>) {
+  const { room, connections } = makeEdgeRoom(roomId, hostedState(roomId, hosted), env);
   const server = new GameRoomServer(room);
   await server.onStart();
   const host = makeConnection("host-conn", "host-1");
@@ -89,23 +96,39 @@ async function bootHostedRoom(roomId: string, hosted = true) {
   connections.add(guest);
   server.onConnect(host as unknown as EdgeConnection);
   server.onConnect(guest as unknown as EdgeConnection);
-  return { server, host, guest };
+  return { server, host, guest, connections };
 }
 
 describe("PartyKit edge server — reset authority", () => {
-  it("refuses a guest's socket reset on a hosted room; the game is untouched", async () => {
+  it("refuses a guest's socket reset while the host is connected; the game is untouched", async () => {
     const { server, host, guest } = await bootHostedRoom("edge-reset-guest");
     await server.onMessage(JSON.stringify({ type: "reset", mode: "adventure" }), guest as unknown as EdgeConnection);
 
-    // The guest got a snapshot back (its pending reset promise settles), but it
-    // is the SAME game — version unchanged — and nothing was broadcast to the host.
+    // The guest got a reset-denied frame with the reason; nothing was broadcast.
+    expect(lastMessage(guest)).toMatchObject({ type: "reset-denied" });
+    expect(lastMessage(guest).reason).toMatch(/host/i);
     expect(latestVersion(guest)).toBe(7);
     expect(latestVersion(host)).toBe(7);
-    const guestFinal = JSON.parse(guest.received.at(-1)!) as { snapshot: RoomSnapshot };
-    expect(guestFinal.snapshot.state.room?.hosted).toBe(true);
   });
 
-  it("a spoof-free guest HTTP reset gets 403; the host's succeeds (the CONTROL)", async () => {
+  it("lets a MEMBER reset once the host's socket is gone; a stranger still cannot", async () => {
+    const { server, host, guest, connections } = await bootHostedRoom("edge-reset-hostgone");
+    connections.delete(host); // the host's browser restarted: socket + per-tab id gone
+
+    const stranger = makeConnection("stranger-conn", "stranger-9");
+    connections.add(stranger);
+    await server.onMessage(JSON.stringify({ type: "reset", mode: "adventure" }), stranger as unknown as EdgeConnection);
+    expect(lastMessage(stranger)).toMatchObject({ type: "reset-denied" });
+    expect(latestVersion(guest)).toBe(7);
+
+    await server.onMessage(JSON.stringify({ type: "reset", mode: "adventure" }), guest as unknown as EdgeConnection);
+    expect(latestVersion(guest)).toBe(8); // the member's wipe landed
+    // Membership (host, seats) still carries across the reset, as before.
+    const final = JSON.parse(guest.received.at(-1)!) as { snapshot: RoomSnapshot };
+    expect(final.snapshot.state.room?.hostClientId).toBe("host-1");
+  });
+
+  it("guest HTTP reset 403s while the host is connected; the host's own succeeds (the CONTROL)", async () => {
     const { server, host } = await bootHostedRoom("edge-reset-http");
 
     const denied = await server.onRequest({
@@ -124,7 +147,7 @@ describe("PartyKit edge server — reset authority", () => {
     expect(latestVersion(host)).toBe(8);
   });
 
-  it("the host's socket reset still works, and an OPEN table lets anyone reset", async () => {
+  it("the host's socket reset works, and an OPEN table lets anyone reset", async () => {
     const hostedRoom = await bootHostedRoom("edge-reset-host");
     await hostedRoom.server.onMessage(
       JSON.stringify({ type: "reset", mode: "adventure" }),
@@ -132,9 +155,6 @@ describe("PartyKit edge server — reset authority", () => {
     );
     expect(latestVersion(hostedRoom.host)).toBe(8);
     expect(latestVersion(hostedRoom.guest)).toBe(8);
-    // Membership (host, seats) carries across the reset, as before.
-    const final = JSON.parse(hostedRoom.host.received.at(-1)!) as { snapshot: RoomSnapshot };
-    expect(final.snapshot.state.room?.hostClientId).toBe("host-1");
 
     const openTable = await bootHostedRoom("edge-reset-open", false);
     await openTable.server.onMessage(
@@ -142,5 +162,50 @@ describe("PartyKit edge server — reset authority", () => {
       openTable.guest as unknown as EdgeConnection
     );
     expect(latestVersion(openTable.guest)).toBe(8);
+  });
+
+  it("the developer's HOMM3BG_ADMIN_KEY wipes any table; wrong or unconfigured keys never do", async () => {
+    // Key configured on the deployment: a stranger with the right key resets
+    // even while the host is connected; the wrong key still 403s.
+    const withKey = await bootHostedRoom("edge-reset-admin", true, { HOMM3BG_ADMIN_KEY: "sekret" });
+    const wrong = await withKey.server.onRequest({
+      method: "POST",
+      json: async () => ({ reset: true, actorClientId: "stranger-9", adminKey: "wrong" })
+    } as unknown as Parameters<GameRoomServer["onRequest"]>[0]);
+    expect(wrong.status).toBe(403);
+    const right = await withKey.server.onRequest({
+      method: "POST",
+      json: async () => ({ reset: true, actorClientId: "stranger-9", adminKey: "sekret" })
+    } as unknown as Parameters<GameRoomServer["onRequest"]>[0]);
+    expect(right.status).toBe(200);
+    expect(latestVersion(withKey.host)).toBe(8);
+
+    // No key configured (and an empty configured key): nothing matches.
+    for (const env of [undefined, { HOMM3BG_ADMIN_KEY: "" }] as const) {
+      const noKey = await bootHostedRoom(`edge-reset-nokey-${env ? "empty" : "unset"}`, true, env);
+      const denied = await noKey.server.onRequest({
+        method: "POST",
+        json: async () => ({ reset: true, actorClientId: "stranger-9", adminKey: "" })
+      } as unknown as Parameters<GameRoomServer["onRequest"]>[0]);
+      expect(denied.status).toBe(403);
+    }
+  });
+
+  it("the admin key also authorizes CLOSE over HTTP DELETE", async () => {
+    const { server, host } = await bootHostedRoom("edge-close-admin", true, { HOMM3BG_ADMIN_KEY: "sekret" });
+    const denied = await server.onRequest({
+      method: "DELETE",
+      json: async () => ({ actorClientId: "stranger-9", adminKey: "wrong" })
+    } as unknown as Parameters<GameRoomServer["onRequest"]>[0]);
+    expect(denied.status).toBe(403);
+
+    const closed = await server.onRequest({
+      method: "DELETE",
+      json: async () => ({ actorClientId: "stranger-9", adminKey: "sekret" })
+    } as unknown as Parameters<GameRoomServer["onRequest"]>[0]);
+    expect(closed.status).toBe(200);
+    // Everyone still connected got the final closed frame.
+    const finalFrame = JSON.parse(host.received.at(-1)!) as { snapshot?: RoomSnapshot };
+    expect(finalFrame.snapshot?.closed).toBe(true);
   });
 });

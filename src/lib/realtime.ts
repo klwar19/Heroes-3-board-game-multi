@@ -102,7 +102,36 @@ type PartyServerMessage =
       requestId?: string;
       errors: { code: string; message: string }[];
       snapshot: GameRoomSnapshot;
-    };
+    }
+  | { type: "reset-denied"; reason: string };
+
+/** Marks an Error as a server-side authority refusal (vs a network failure). */
+export function isResetDenied(error: unknown): boolean {
+  return error instanceof Error && error.name === "ResetDeniedError";
+}
+
+function resetDeniedError(reason: string): Error {
+  const error = new Error(reason);
+  error.name = "ResetDeniedError";
+  return error;
+}
+
+/**
+ * The developer's admin override key, set once per browser via
+ * `localStorage["homm3bg.adminKey"] = "<HOMM3BG_ADMIN_KEY>"` on the deployed
+ * app. Sent with reset/close requests; the server honours it only when it
+ * matches its HOMM3BG_ADMIN_KEY env var. Absent for normal players.
+ */
+function localAdminKey(): string | undefined {
+  try {
+    if (typeof window === "undefined") {
+      return undefined;
+    }
+    return window.localStorage.getItem("homm3bg.adminKey") ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 function partyProtocol(host: string): string {
   return host.startsWith("localhost") || host.startsWith("127.") ? "http" : "https";
@@ -146,8 +175,12 @@ function connectPartyRoom(
   // Reset travels over the socket, not HTTP: the room server is a different
   // origin than the app, so a cross-origin fetch would be blocked by CORS
   // (the WebSocket is not). The next snapshot the server broadcasts is the
-  // reset result, so we resolve the reset promise on it.
-  let resolveReset: ((snapshot: GameRoomSnapshot) => void) | null = null;
+  // reset result, so we resolve the reset promise on it — and a reset-denied
+  // frame (host-authority refusal) rejects it with the server's reason.
+  let pendingReset: {
+    resolve: (snapshot: GameRoomSnapshot) => void;
+    reject: (error: Error) => void;
+  } | null = null;
 
   handlers.onStatus("connecting (edge)");
 
@@ -175,10 +208,19 @@ function connectPartyRoom(
       }
       handlers.onSnapshot(message.snapshot);
       handlers.onStatus(`live (edge) v${message.snapshot.version}`);
-      if (resolveReset) {
-        const settle = resolveReset;
-        resolveReset = null;
-        settle(message.snapshot);
+      if (pendingReset) {
+        const settle = pendingReset;
+        pendingReset = null;
+        settle.resolve(message.snapshot);
+      }
+      return;
+    }
+
+    if (message.type === "reset-denied") {
+      if (pendingReset) {
+        const settle = pendingReset;
+        pendingReset = null;
+        settle.reject(resetDeniedError(message.reason));
       }
       return;
     }
@@ -230,17 +272,29 @@ function connectPartyRoom(
     resetRoom: (options) =>
       new Promise<GameRoomSnapshot>((resolve, reject) => {
         const timeout = window.setTimeout(() => {
-          if (resolveReset) {
-            resolveReset = null;
+          if (pendingReset) {
+            pendingReset = null;
             reject(new Error("Could not reset the room."));
           }
         }, 15000);
-        resolveReset = (snapshot) => {
-          window.clearTimeout(timeout);
-          resolve(snapshot);
+        pendingReset = {
+          resolve: (snapshot) => {
+            window.clearTimeout(timeout);
+            resolve(snapshot);
+          },
+          reject: (error) => {
+            window.clearTimeout(timeout);
+            reject(error);
+          }
         };
+        const adminKey = localAdminKey();
         socket.send(
-          JSON.stringify({ type: "reset", ...options, ...(actorClientId ? { actorClientId } : {}) })
+          JSON.stringify({
+            type: "reset",
+            ...options,
+            ...(actorClientId ? { actorClientId } : {}),
+            ...(adminKey ? { adminKey } : {})
+          })
         );
       }),
     fetchSnapshot: async () => {
@@ -366,17 +420,23 @@ function connectApiRoom(
       return (await response.json()) as { snapshot: GameRoomSnapshot; result: EngineResult };
     },
     resetRoom: async (options) => {
+      const adminKey = localAdminKey();
       const response = await fetch(`/api/rooms/${encodeURIComponent(roomId)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reset: true, ...options, ...(actorClientId ? { actorClientId } : {}) })
+        body: JSON.stringify({
+          reset: true,
+          ...options,
+          ...(actorClientId ? { actorClientId } : {}),
+          ...(adminKey ? { adminKey } : {})
+        })
       });
       if (!response.ok) {
-        // A 403 is the host-authority refusal (hosted rooms reset host-only);
-        // surface its reason instead of the generic network message.
+        // A 403 is the host-authority refusal; surface its reason (as a
+        // ResetDeniedError) instead of the generic network message.
         const denial = response.status === 403 ? await response.json().catch(() => null) : null;
         const reason = denial && typeof denial.reason === "string" ? denial.reason : null;
-        throw new Error(reason ?? "Could not reset the room.");
+        throw reason ? resetDeniedError(reason) : new Error("Could not reset the room.");
       }
       return (await response.json()) as GameRoomSnapshot;
     },
@@ -457,17 +517,19 @@ export async function createRoomOnServer(options: {
 
 /**
  * Closes (deletes) a room. The server validates `actorClientId` against the
- * room's host / membership, so a non-host cannot delete a hosted room.
+ * room's host / membership (host while connected, any member once the host is
+ * gone), and the developer's admin key overrides — see localAdminKey.
  */
 export async function requestCloseRoom(roomId: string, actorClientId?: string): Promise<CloseRoomResult> {
   const host = getPartyKitHost();
   const url = host
     ? partyHttpUrl(host, roomId)
     : `/api/rooms/${encodeURIComponent(roomId)}`;
+  const adminKey = localAdminKey();
   const response = await fetch(url, {
     method: "DELETE",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ actorClientId })
+    body: JSON.stringify({ actorClientId, ...(adminKey ? { adminKey } : {}) })
   });
   const data = (await response.json().catch(() => ({}))) as CloseRoomResult;
   return { closed: response.ok && data.closed !== false, reason: data.reason };

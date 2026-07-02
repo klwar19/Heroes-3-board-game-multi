@@ -1,4 +1,10 @@
-import { getRoomSnapshot, handleRoomDisconnect, subscribeToRoom } from "@/server/game-room-store";
+import {
+  getRoomSnapshot,
+  handleRoomDisconnect,
+  markRoomClientConnected,
+  markRoomClientDisconnected,
+  subscribeToRoom
+} from "@/server/game-room-store";
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +43,9 @@ export async function GET(request: Request, context: RoomContext) {
     if (keepAlive) {
       clearInterval(keepAlive);
     }
+    // Presence first (the host-while-connected rule reads it), then the
+    // ephemeral-membership reap.
+    markRoomClientDisconnected(decodedRoomId, clientId);
     handleRoomDisconnect(decodedRoomId, clientId);
   };
 
@@ -46,6 +55,9 @@ export async function GET(request: Request, context: RoomContext) {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
       };
 
+      // Presence: this clientId now holds a live stream on the room (backs the
+      // host-while-connected authority for reset/close).
+      markRoomClientConnected(decodedRoomId, clientId);
       send(getRoomSnapshot(decodedRoomId));
       unsubscribe = subscribeToRoom(decodedRoomId, send);
 
