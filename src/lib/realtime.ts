@@ -533,13 +533,16 @@ export async function fetchRoomList(clientId?: string): Promise<RoomListResult> 
 
 /**
  * Creates a new room and returns its id. On PartyKit (rooms are created
- * implicitly on first connect) this mints an id locally; the chosen name is
- * applied by the caller via a SET_ROOM_NAME action once connected.
+ * implicitly on first connect) this mints an id locally; the chosen name — and,
+ * for a battle-test room, the `mode` — are applied by the caller once connected
+ * (SET_ROOM_NAME / a reset to the chosen mode). On the built-in backend the room
+ * is created server-side in the chosen `mode` straight away.
  */
 export async function createRoomOnServer(options: {
   name?: string;
   createdByName?: string;
   roomId?: string;
+  mode?: GameMode;
 }): Promise<{ roomId: string }> {
   if (getPartyKitHost()) {
     return { roomId: options.roomId?.trim() || `room-${Math.random().toString(36).slice(2, 8)}` };

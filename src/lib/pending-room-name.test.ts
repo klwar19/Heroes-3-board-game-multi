@@ -2,8 +2,10 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
   savePendingRoomHosted,
+  savePendingRoomMode,
   savePendingRoomName,
   takePendingRoomHosted,
+  takePendingRoomMode,
   takePendingRoomName
 } from "./pending-room-name";
 
@@ -42,5 +44,28 @@ describe("pending room hosted (Closed table) handoff", () => {
     savePendingRoomHosted("room-4");
     expect(takePendingRoomName()).toBeNull();
     expect(takePendingRoomHosted()).toBe("room-4");
+  });
+});
+
+describe("pending room mode (Battle Test) handoff", () => {
+  it("round-trips the chosen mode once, then clears (one-shot)", () => {
+    savePendingRoomMode("room-5", "combat-sandbox");
+    expect(takePendingRoomMode()).toEqual({ roomId: "room-5", mode: "combat-sandbox" });
+    // One-shot: not re-applied on a later read.
+    expect(takePendingRoomMode()).toBeNull();
+  });
+
+  it("is stored in its own slot, independent of name and hosted", () => {
+    savePendingRoomName("room-6", "Arena");
+    savePendingRoomHosted("room-6");
+    savePendingRoomMode("room-6", "combat-sandbox");
+    expect(takePendingRoomMode()).toEqual({ roomId: "room-6", mode: "combat-sandbox" });
+    expect(takePendingRoomName()).toEqual({ roomId: "room-6", name: "Arena" });
+    expect(takePendingRoomHosted()).toBe("room-6");
+  });
+
+  it("rejects a malformed mode value", () => {
+    window.sessionStorage.setItem("homm3bg.pendingRoomMode", JSON.stringify({ roomId: "x", mode: "bogus" }));
+    expect(takePendingRoomMode()).toBeNull();
   });
 });

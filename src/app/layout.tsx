@@ -23,8 +23,6 @@ export default function RootLayout({
             </Link>
             <nav className="navLinks" aria-label="Primary navigation">
               <Link href="/menu">Menu</Link>
-              <Link href="/play">Multiplayer</Link>
-              <Link href="/credits">Credits</Link>
             </nav>
           </header>
           {children}

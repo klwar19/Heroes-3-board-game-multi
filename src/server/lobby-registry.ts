@@ -1,4 +1,4 @@
-import { roomDisplayName, type GameState, type RoomMembershipState } from "@/engine";
+import { roomDisplayName, type GameMode, type GameState, type RoomMembershipState } from "@/engine";
 
 /**
  * Pure, isomorphic lobby-directory logic — the single source of truth for how a
@@ -36,6 +36,8 @@ export const LOBBY_SINGLETON_ID = "directory";
 export type RoomDirectoryEntry = {
   roomId: string;
   name: string;
+  /** Which kind of table this is: an adventure game or a combat "battle test". */
+  mode: GameMode;
   /** Engine phase ("setup", "playing", "combat", …). */
   phase: string;
   /** False while the room is still a fresh setup lobby (nothing started yet). */
@@ -60,6 +62,8 @@ export type RoomDirectoryEntry = {
 export type LobbyRoomRecord = {
   roomId: string;
   name: string;
+  /** Which kind of table this is: an adventure game or a combat "battle test". */
+  mode: GameMode;
   phase: string;
   inProgress: boolean;
   memberCount: number;
@@ -91,6 +95,7 @@ export function deriveLobbyRecord(input: DeriveLobbyRecordInput): LobbyRoomRecor
   return {
     roomId,
     name: roomDisplayName(state, roomId),
+    mode: state.mode,
     phase: state.phase,
     inProgress: !isFreshLobby,
     memberCount: members.length,
@@ -144,6 +149,7 @@ export function toDirectoryEntry(record: LobbyRoomRecord, viewerClientId?: strin
   return {
     roomId: record.roomId,
     name: record.name,
+    mode: record.mode,
     phase: record.phase,
     inProgress: record.inProgress,
     memberCount: record.memberCount,
@@ -168,6 +174,7 @@ export function lobbyRecordSignature(record: LobbyRoomRecord): string {
   return JSON.stringify({
     roomId: record.roomId,
     name: record.name,
+    mode: record.mode,
     phase: record.phase,
     inProgress: record.inProgress,
     memberCount: record.memberCount,

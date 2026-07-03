@@ -1,5 +1,7 @@
 "use client";
 
+import type { GameMode } from "@/engine";
+
 /**
  * One-shot handoff of a freshly created room's chosen name from the room
  * browser (/play) to the game page (/?room=…).
@@ -15,8 +17,11 @@
 
 const KEY = "homm3bg.pendingRoomName";
 const HOSTED_KEY = "homm3bg.pendingRoomHosted";
+/** The game mode to switch a freshly created room into (e.g. a battle test). */
+const MODE_KEY = "homm3bg.pendingRoomMode";
 
 export type PendingRoomName = { roomId: string; name: string };
+export type PendingRoomMode = { roomId: string; mode: GameMode };
 
 export function savePendingRoomName(roomId: string, name: string): void {
   if (typeof window === "undefined" || !name) {
@@ -84,6 +89,50 @@ export function takePendingRoomHosted(): string | null {
       window.sessionStorage.removeItem(HOSTED_KEY);
     }
     return raw && raw.length > 0 ? raw : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * One-shot handoff of a freshly created room's game MODE (the Battle Test flow).
+ * The built-in backend creates the room in the chosen mode server-side, but
+ * PartyKit creates every room as an adventure lobby, so the creator resets it to
+ * the chosen mode once connected (page.tsx). Adventure rooms store nothing —
+ * that is the default — so this only ever carries a battle test.
+ */
+export function savePendingRoomMode(roomId: string, mode: GameMode): void {
+  if (typeof window === "undefined" || !roomId) {
+    return;
+  }
+  try {
+    window.sessionStorage.setItem(MODE_KEY, JSON.stringify({ roomId, mode } satisfies PendingRoomMode));
+  } catch {
+    /* Private mode etc. — the room simply opens as a normal adventure. */
+  }
+}
+
+/** Read AND clear the pending room mode (a one-shot hint, never re-applied). */
+export function takePendingRoomMode(): PendingRoomMode | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  try {
+    const raw = window.sessionStorage.getItem(MODE_KEY);
+    if (!raw) {
+      return null;
+    }
+    window.sessionStorage.removeItem(MODE_KEY);
+    const parsed: unknown = JSON.parse(raw);
+    if (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      typeof (parsed as PendingRoomMode).roomId === "string" &&
+      ((parsed as PendingRoomMode).mode === "adventure" || (parsed as PendingRoomMode).mode === "combat-sandbox")
+    ) {
+      return parsed as PendingRoomMode;
+    }
+    return null;
   } catch {
     return null;
   }

@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { createAdventureGameState, createAdventureLobbyState, type GameState, type RoomMember } from "@/engine";
+import {
+  createAdventureGameState,
+  createAdventureLobbyState,
+  createInitialGameState,
+  type GameState,
+  type RoomMember
+} from "@/engine";
 import {
   deriveLobbyRecord,
   isStaleRecord,
@@ -19,6 +25,7 @@ function member(clientId: string, name: string, seat: RoomMember["seat"] = "obse
 function record(overrides: Partial<LobbyRoomRecord> & { roomId: string }): LobbyRoomRecord {
   return {
     name: `Room ${overrides.roomId}`,
+    mode: "adventure",
     phase: "setup",
     inProgress: false,
     memberCount: 0,
@@ -61,6 +68,17 @@ describe("deriveLobbyRecord", () => {
     expect(derived.memberClientIds).toEqual(["c1", "c2", "c3"]);
     expect(derived.createdByName).toBe("Binh");
     expect(derived.createdAt).toBe(META.createdAt);
+    // An adventure game reports the adventure mode.
+    expect(derived.mode).toBe("adventure");
+  });
+
+  it("carries the room's mode so the lobby can tell adventures from battle tests", () => {
+    const adventure = createAdventureLobbyState({ seed: "mode-adv" });
+    expect(deriveLobbyRecord({ roomId: "a", state: adventure, ...META }).mode).toBe("adventure");
+    // A combat sandbox is a "battle test" table. CONTROL: the same helper reads
+    // it straight from state.mode, so the two diverge.
+    const sandbox = createInitialGameState("mode-battle");
+    expect(deriveLobbyRecord({ roomId: "b", state: sandbox, ...META }).mode).toBe("combat-sandbox");
   });
 
   it("falls back to the id-derived name and marks a fresh setup lobby not-in-progress", () => {
@@ -152,6 +170,11 @@ describe("lobbyRecordSignature", () => {
     // A real change (a new member) DOES change the signature.
     const joined = { ...base, memberCount: 2, memberClientIds: ["c1", "c2"] };
     expect(lobbyRecordSignature(joined)).not.toBe(lobbyRecordSignature(base));
+
+    // The room's mode is directory-relevant (adventure vs battle test), so it
+    // must move the signature too.
+    const battle = { ...base, mode: "combat-sandbox" as const };
+    expect(lobbyRecordSignature(battle)).not.toBe(lobbyRecordSignature(base));
   });
 });
 

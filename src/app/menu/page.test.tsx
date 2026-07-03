@@ -15,13 +15,16 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("/menu (main menu)", () => {
-  it("greys out Single player and links Multiplayer, Hall of Fame and Credits", () => {
+  it("greys out Single player and links Multiplayer, Battle Test, Map Designer, Hall of Fame and Credits", () => {
     render(<MenuPage />);
 
     const single = screen.getByRole("button", { name: /Single player/i });
     expect(single).toHaveProperty("disabled", true);
 
     expect(screen.getByRole("link", { name: /Multiplayer/i }).getAttribute("href")).toBe("/play");
+    // The shared Battle Test arenas and Map Designer are first-class menu destinations.
+    expect(screen.getByRole("link", { name: /Battle Test/i }).getAttribute("href")).toBe("/battle");
+    expect(screen.getByRole("link", { name: /Map Designer/i }).getAttribute("href")).toBe("/designer");
     expect(screen.getByRole("link", { name: /Hall of Fame/i }).getAttribute("href")).toBe("/hall-of-fame");
     expect(screen.getByRole("link", { name: /Credits/i }).getAttribute("href")).toBe("/credits");
   });

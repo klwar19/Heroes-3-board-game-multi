@@ -21,6 +21,7 @@ function entry(overrides: Partial<RoomDirectoryEntry> = {}): RoomDirectoryEntry 
   return {
     roomId: "room-1",
     name: "Friday Night",
+    mode: "adventure",
     phase: "setup",
     inProgress: false,
     memberCount: 1,
@@ -51,7 +52,7 @@ describe("/play (multiplayer room browser)", () => {
     render(<PlayPage />);
 
     expect(screen.getByText("Erathia")).toBeTruthy();
-    expect(screen.getByText(/home server/i)).toBeTruthy();
+    expect(screen.getByText(/Adventure tables/i)).toBeTruthy();
     expect(screen.getByText("Online")).toBeTruthy();
 
     // Directory entries arrive through the reused LobbyScreen.
@@ -76,7 +77,7 @@ describe("/play (multiplayer room browser)", () => {
     fireEvent.change(screen.getByLabelText("New room name"), { target: { value: "My Table" } });
     fireEvent.click(screen.getByRole("button", { name: /Create room/i }));
 
-    expect(createRoomOnServer).toHaveBeenCalledWith({ name: "My Table", createdByName: "Binh" });
+    expect(createRoomOnServer).toHaveBeenCalledWith({ name: "My Table", createdByName: "Binh", mode: "adventure" });
     // The create call resolves asynchronously before navigation.
     await vi.waitFor(() => expect(push).toHaveBeenCalledWith("/?room=new-room-7"));
     // The chosen name crosses the navigation for the game page to apply
