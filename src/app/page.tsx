@@ -160,6 +160,7 @@ import {
 import { clearCachedRoom, loadCachedRoom, saveCachedRoom } from "@/lib/room-cache";
 import { getClientId, getDisplayName, setDisplayName as persistDisplayName } from "@/lib/identity";
 import { RoomPanel } from "@/components/table/room-panel";
+import { TableReactionsLayer } from "@/components/table/table-reactions";
 import { LobbyScreen } from "@/components/lobby";
 
 /** Events that move cards or play battle effects on the table. */
@@ -3433,6 +3434,24 @@ export default function Home() {
       </div>
     ) : null;
 
+  // Table reactions (emotes): the floating "React" bar + drifting bubbles,
+  // mounted on every in-game screen (setup, map, combat). Fixed-position, so it
+  // overlays whatever layout is beneath it; the bar only shows at a real
+  // multiplayer table (see TableReactionsLayer).
+  const reactionsLayer = (
+    <TableReactionsLayer
+      state={state}
+      onSend={(reactionId) =>
+        void submitAction({
+          type: "SEND_TABLE_REACTION",
+          clientId,
+          reactionId,
+          name: displayName.trim() || undefined
+        })
+      }
+    />
+  );
+
   // ---- Map-setup lobby ------------------------------------------------------
   if (adventureMode && inLobby) {
     return (
@@ -3454,6 +3473,7 @@ export default function Home() {
             viewerPlayerId={isSeated ? viewerPlayerId : OBSERVER_SEAT}
           />
           <LogDrawer state={state} />
+          {reactionsLayer}
         </main>
       </CardZoomProvider>
     );
@@ -4218,6 +4238,7 @@ export default function Home() {
             <EventDrawnOverlay cue={eventCue} key={eventCue.id} onDone={() => setEventCue(null)} />
           ) : null}
           <FxStage cues={fxCues} onDone={handleFxDone} />
+          {reactionsLayer}
         </main>
       </CardZoomProvider>
     );
@@ -4503,6 +4524,7 @@ export default function Home() {
         <EventDrawnOverlay cue={eventCue} key={eventCue.id} onDone={() => setEventCue(null)} />
       ) : null}
       <FxStage cues={fxCues} onDone={handleFxDone} />
+      {reactionsLayer}
     </main>
     </CardZoomProvider>
     </TableErrorBoundary>
