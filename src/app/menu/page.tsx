@@ -13,12 +13,20 @@ import { authEnabled } from "@/lib/auth-mode";
 import { getDisplayName } from "@/lib/identity";
 
 /**
- * Main-menu buttons in the "In the Wake of Gods" style: a golden serif label
- * with a thematic secondary-skill emblem, over a gilt leather plaque. Each
- * button's emblem is the logical skill for that destination.
+ * Main-menu buttons in the actual-game style: the secondary-skill emblem itself
+ * IS the button art — a large faint watermark of the emblem fills the gilt
+ * plaque with engraved golden text laid over it, plus a crisp gold medallion of
+ * the same emblem. Each button's emblem is the logical skill for that
+ * destination.
  */
 function MenuNavIcon({ icon }: { icon: string }) {
-  return <img alt="" aria-hidden="true" className="menuNavIcon" draggable={false} src={assetUrl(icon)} />;
+  const src = assetUrl(icon);
+  return (
+    <>
+      <img alt="" aria-hidden="true" className="menuNavWatermark" draggable={false} src={src} />
+      <img alt="" aria-hidden="true" className="menuNavIcon" draggable={false} src={src} />
+    </>
+  );
 }
 
 /**
