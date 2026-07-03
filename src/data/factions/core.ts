@@ -1,4 +1,5 @@
 import { TOWN_BUILDING_IMAGES } from "@/data/assets/homm-assets";
+import { townBoardSpecs } from "@/data/towns/boards";
 import type { FactionDefinition, FactionId, HeroDefinition, TownBuildingDefinition } from "./types";
 import { coreUnitDefinitions } from "./units";
 
@@ -1277,6 +1278,39 @@ for (const building of Object.values(coreBuildingDefinitions)) {
   const image = TOWN_BUILDING_IMAGES[faction]?.[key];
   if (image) {
     building.assets = { ...building.assets, image };
+  }
+}
+
+/**
+ * Shared-tile build order (every town). Each town board has exactly ONE two-in-one
+ * tile — a bar carrying two buildings — where the SECOND slot is the SPECIAL
+ * building and the FIRST slot is its MAIN building (always a core building: a
+ * dwelling, the Mage Guild, or the Citadel). Per the printed board, the special
+ * can only be raised AFTER its main, so we add the main as a prerequisite of the
+ * special (merging with any it already declares — e.g. the Bulwark Altar keeps
+ * its Sieidi requirement and gains the Silver-dwelling one). Derived from the
+ * authored `townBoardSpecs.bars` so it stays in lock-step with the board layout;
+ * enforced by the same `prerequisites` gate every other building uses
+ * (legal-actions.ts `canBuild` + adventure-reducer.ts BUILD_STRUCTURE). Pinned in
+ * src/data/towns/shared-tile-order.test.ts.
+ */
+for (const spec of Object.values(townBoardSpecs)) {
+  for (const bar of spec.bars) {
+    if (bar.length < 2) {
+      continue;
+    }
+    const [mainId, ...specials] = bar;
+    for (const specialId of specials) {
+      const special = coreBuildingDefinitions[specialId];
+      if (!special) {
+        continue;
+      }
+      const prerequisites = special.prerequisites ? [...special.prerequisites] : [];
+      if (!prerequisites.includes(mainId)) {
+        prerequisites.push(mainId);
+      }
+      special.prerequisites = prerequisites;
+    }
   }
 }
 
