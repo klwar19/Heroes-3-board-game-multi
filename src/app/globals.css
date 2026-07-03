@@ -12469,18 +12469,19 @@ img.cardBack {
   gap: 11px;
 }
 
-/* Actual-game-style plaques: the secondary-skill emblem IS the button art — a
-   large faint watermark of it fills a gilt stone plate, engraved golden serif
-   text laid over it, with a crisp gold medallion of the same emblem at left. */
+/* Actual-game-style plaques: ONE large secondary-skill emblem fills the gilt
+   stone plate, and the engraved golden serif text is laid directly ACROSS
+   (over) the emblem — the title reads through the big icon. */
 .menuNavButton {
   position: relative;
   overflow: hidden;
   display: flex;
-  align-items: center;
-  gap: 15px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
   width: 100%;
-  min-height: 66px;
-  padding: 9px 20px 9px 16px;
+  min-height: 84px;
+  padding: 12px 22px;
   border: 1px solid rgb(198 156 74 / 68%);
   border-radius: 12px;
   background:
@@ -12498,21 +12499,29 @@ img.cardBack {
   transition: filter 130ms ease, border-color 130ms ease, transform 130ms ease, box-shadow 130ms ease;
 }
 
-/* The emblem, blown up and faded, painted across the plate: the gold text sits
-   directly on the actual icon. Masked so it fades in behind the label. */
-.menuNavWatermark {
+/* The LARGE emblem, bleeding top & bottom, sitting UNDER the text. */
+.menuNavIcon {
   position: absolute;
-  right: -8px;
+  left: 6px;
   top: 50%;
   height: 152%;
   width: auto;
   transform: translateY(-50%);
-  opacity: 0.17;
-  filter: saturate(0.85) drop-shadow(0 2px 5px rgb(0 0 0 / 60%));
+  object-fit: contain;
+  opacity: 0.95;
+  filter: drop-shadow(0 3px 7px rgb(0 0 0 / 72%));
   pointer-events: none;
   z-index: 0;
-  -webkit-mask-image: linear-gradient(90deg, transparent 6%, #000 52%);
-  mask-image: linear-gradient(90deg, transparent 6%, #000 52%);
+}
+
+/* Legibility scrim so the engraved gold text stays readable over the emblem. */
+.menuNavButton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgb(9 6 3 / 60%) 0%, rgb(9 6 3 / 32%) 48%, rgb(9 6 3 / 24%) 100%);
+  z-index: 1;
+  pointer-events: none;
 }
 
 .menuNavButton:hover:not(:disabled) {
@@ -12526,8 +12535,8 @@ img.cardBack {
     0 9px 22px rgb(0 0 0 / 55%);
 }
 
-.menuNavButton:hover:not(:disabled) .menuNavWatermark {
-  opacity: 0.26;
+.menuNavButton:hover:not(:disabled) .menuNavIcon {
+  opacity: 1;
 }
 
 .menuNavButton:disabled {
@@ -12538,53 +12547,37 @@ img.cardBack {
   opacity: 0.64;
 }
 
-/* The skill emblem as a crisp gilt medallion. */
-.menuNavIcon {
-  position: relative;
-  z-index: 1;
-  flex: 0 0 auto;
-  width: 54px;
-  height: 54px;
-  padding: 5px;
-  object-fit: contain;
-  border-radius: 50%;
-  background: radial-gradient(circle at 50% 38%, rgb(72 57 33 / 92%), rgb(12 9 6 / 96%) 78%);
-  border: 2px solid rgb(210 168 82 / 88%);
-  box-shadow:
-    inset 0 1px 3px rgb(0 0 0 / 65%),
-    0 0 0 1px rgb(0 0 0 / 55%),
-    0 2px 7px rgb(0 0 0 / 55%);
-}
-
+/* Title + subtitle laid over the emblem (nudged in so they cross the big icon). */
 .menuNavText {
   position: relative;
-  z-index: 1;
+  z-index: 2;
   display: flex;
   flex-direction: column;
   gap: 3px;
   min-width: 0;
+  padding-left: 46px;
 }
 
 /* Engraved golden game text — a gold-sheen gradient with a carved dark shadow. */
 .menuNavLabel {
   font-family: Georgia, "Times New Roman", serif;
-  font-size: 19px;
+  font-size: 21px;
   font-weight: 800;
   letter-spacing: 0.05em;
-  background: linear-gradient(180deg, #fff1c3 0%, #f2ce74 44%, #bf8f38 100%);
+  background: linear-gradient(180deg, #fff3ca 0%, #f4d079 44%, #bd8d36 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  filter: drop-shadow(0 1px 1px rgb(0 0 0 / 92%)) drop-shadow(0 0 2px rgb(0 0 0 / 55%));
+  filter: drop-shadow(0 1px 1px rgb(0 0 0 / 96%)) drop-shadow(0 0 3px rgb(0 0 0 / 75%));
 }
 
 .menuNavButton small {
   display: block;
-  color: #cdbfa0;
+  color: #dcceae;
   font-size: 11.5px;
   font-weight: 600;
   letter-spacing: 0;
-  text-shadow: 0 1px 2px rgb(0 0 0 / 85%);
+  text-shadow: 0 1px 3px rgb(0 0 0 / 96%), 0 0 4px rgb(0 0 0 / 80%);
 }
 
 .menuIdentityLine {
