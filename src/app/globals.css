@@ -233,6 +233,53 @@ button {
   font-size: 15px;
 }
 
+/* Person-first seat nameplate (opponent bar + own dock): faction dot, person
+   name, hero · town second line. Shared so every seat reads the same way. */
+.seatWho {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.seatFactionDot {
+  flex: 0 0 auto;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 45%), 0 0 6px rgb(0 0 0 / 35%);
+}
+
+.seatWhoText {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.seatWhoText strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.seatHostCrown {
+  color: var(--gold);
+  flex: 0 0 auto;
+}
+
+.seatPick {
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .seatMetrics {
   display: flex;
   gap: 10px;
@@ -532,6 +579,29 @@ button {
   color: var(--muted);
   font-weight: 600;
   font-style: normal;
+}
+
+/* Person + their hero·town pick, stacked, in a room roster row. */
+.roomMemberWho {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.roomMemberPerson {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.roomMemberPick {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.roomMemberDot {
+  align-self: center;
 }
 
 .hostCrown {
@@ -3256,6 +3326,37 @@ button.battleCell {
   gap: 8px;
 }
 
+/* ------------------------------------------------------------------ */
+/* Map UI redesign — a Warcraft-style command frame                    */
+/*                                                                     */
+/* The adventure root is a single-column grid; `order` lays its rows   */
+/* out as: status ribbon (HUD) → your card bar (hand · deck · book) →  */
+/* the map with its left command rail → the shared-deck shelf. This    */
+/* keeps every panel's DOM (and its test contracts) exactly where it   */
+/* was — only the visual row order changes. Overlays (market, prompts, */
+/* feed, modals) are position:fixed, so they ignore `order`.           */
+/* ------------------------------------------------------------------ */
+.adventureRoot > .tableTopRow {
+  order: 1;
+}
+
+.adventureRoot > .errorBanner,
+.adventureRoot > .preBattlePanel {
+  order: 2;
+}
+
+.adventureRoot > .playerCardBar {
+  order: 3;
+}
+
+.adventureRoot > .adventureMidRow {
+  order: 4;
+}
+
+.adventureRoot > .advDecksBottom {
+  order: 5;
+}
+
 .advHud {
   display: flex;
   flex: 1;
@@ -3319,8 +3420,8 @@ button.battleCell {
    the unit deck rides the widened left rail. */
 .adventureMidRow {
   display: grid;
-  grid-template-columns: 210px minmax(0, 1fr);
-  gap: 10px;
+  grid-template-columns: 244px minmax(0, 1fr);
+  gap: 12px;
   flex: 1;
   min-height: 0;
 }
@@ -4450,92 +4551,116 @@ button.hbSlot:disabled { cursor: default; }
 }
 
 /* Adventure hand strip */
-.adventureHand {
-  /* The player's card tray, aligned with the map row above. Columns match
-     .adventureMidRow (left rail / map) so the support column (Spell Book +
-     deck/discard + permanent) lands under the left rail and the hand of cards
-     lands directly beneath the map column. */
-  display: grid;
-  grid-template-columns: 210px minmax(0, 1fr);
-  gap: 10px;
-  align-items: start;
-}
-
-/* Left support column (under the left rail): Spell Book, deck/discard and the
-   player's permanent(s), each stacked. Carries its own panel chrome. */
-.ownDeckColumn {
+/* ---------- Top command bar: your hand · deck · discard · Spell Book -------- */
+/* The player's personal card zone now rides the TOP of the map screen (moved up
+   from beneath the map). It reads left → right: your deck + discard pile, the
+   Spell Book tome and any permanent(s), then your hand of cards. Its inner DOM
+   is unchanged (AdventureOwnDeck stays a descendant), so every nesting/selector
+   test contract still holds — only the visual placement moved. */
+.playerCardBar {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-width: 0;
-  background: rgba(33, 25, 15, 0.92);
-  border: 1px solid rgba(170, 130, 70, 0.3);
-  border-radius: 10px;
-  padding: 8px 10px;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 12px;
+  padding: 9px 12px;
+  background: linear-gradient(180deg, rgba(46, 34, 19, 0.95), rgba(25, 18, 10, 0.96));
+  border: 1px solid rgba(190, 150, 85, 0.42);
+  border-radius: 13px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 235, 190, 0.07),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.35),
+    0 8px 22px rgba(0, 0, 0, 0.42);
 }
 
-/* Keep the deck + discard side by side, but sized to fit the narrow column. */
-.ownDeckColumn .ownDeckPile {
+/* Discard/draw in progress — a soft gold wash over the whole bar. */
+.playerCardBar.refreshing {
+  border-color: rgba(240, 196, 106, 0.6);
+  box-shadow:
+    inset 0 0 24px rgba(240, 196, 106, 0.15),
+    0 8px 22px rgba(0, 0, 0, 0.42);
+}
+
+/* Left cluster: deck/discard + Spell Book + permanent(s), horizontal, wrapping
+   onto a second line only when the bar is narrow. */
+.playerCardBar .ownDeckColumn {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  align-content: center;
+  gap: 10px;
+  max-width: 360px;
+  min-width: 0;
+  padding: 6px 10px;
+  background: rgba(18, 13, 7, 0.55);
+  border: 1px solid rgba(170, 130, 70, 0.28);
+  border-radius: 10px;
+}
+
+.playerCardBar .ownDeckColumn .ownDeckPile {
   gap: 8px;
-  padding: 6px 8px;
-  align-self: stretch;
+  padding: 0;
+  align-self: center;
   justify-content: center;
 }
 
-.ownDeckColumn .ownDeckBack,
-.ownDeckColumn .ownDiscardSpot {
-  width: 60px;
-  height: 84px;
+.playerCardBar .ownDeckColumn .ownDeckBack,
+.playerCardBar .ownDeckColumn .ownDiscardSpot {
+  width: 56px;
+  height: 80px;
 }
 
-/* The hand is anchored directly beneath the center map column (its left edge
-   lines up with the map), extending right so the enlarged cards have room. */
-.handArea {
-  grid-column: 2 / -1;
+/* Permanent(s) beside the deck: compact thumbs so they never crowd the hand. */
+.playerCardBar .ownDeckColumn .permanentRow {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+
+.playerCardBar .ownDeckColumn .permanentSlot {
+  max-width: 92px;
+}
+
+.playerCardBar .ownDeckColumn .permanentCardImage {
+  width: 48px;
+}
+
+.playerCardBar .ownDeckColumn .permanentMeta small {
+  opacity: 0.95;
+}
+
+/* Right: the hand of cards, filling the rest of the bar. */
+.playerCardBar .handArea {
+  grid-column: auto;
+  flex: 1 1 auto;
   display: flex;
   flex-direction: column;
   gap: 6px;
   min-width: 0;
-  background: rgba(33, 25, 15, 0.92);
-  border: 1px solid rgba(170, 130, 70, 0.3);
-  border-radius: 10px;
-  padding: 8px 10px;
+  padding: 2px 4px 2px 12px;
+  background: transparent;
+  border: none;
+  border-left: 1px solid rgba(170, 130, 70, 0.24);
+  border-radius: 0;
 }
 
-/* Permanent shown inside the support column: keep it within the column's width
-   (stack multiple permanents) and make its effect text plainly legible. */
-.ownDeckColumn .permanentRow {
-  flex-direction: column;
-  align-items: stretch;
-}
-
-.ownDeckColumn .permanentSlot {
-  max-width: 100%;
-}
-
-.ownDeckColumn .permanentCardImage {
-  width: 56px;
-}
-
-.ownDeckColumn .permanentMeta small {
-  opacity: 0.95;
-}
-
-@media (max-width: 1100px) {
-  /* Track .adventureMidRow's narrower columns so the rows stay aligned. */
-  .adventureHand {
-    grid-template-columns: 170px minmax(0, 1fr);
-  }
-}
-
-@media (max-width: 900px) {
-  /* Narrow screens: stack the support column above the full-width hand. */
-  .adventureHand {
-    grid-template-columns: 1fr;
+@media (max-width: 1000px) {
+  /* Narrow: stack the deck/book cluster above the full-width hand. */
+  .playerCardBar {
+    flex-wrap: wrap;
   }
 
-  .handArea {
-    grid-column: 1 / -1;
+  .playerCardBar .ownDeckColumn {
+    max-width: none;
+    flex: 1 1 100%;
+  }
+
+  .playerCardBar .handArea {
+    flex: 1 1 100%;
+    border-left: none;
+    border-top: 1px solid rgba(170, 130, 70, 0.24);
+    padding: 6px 4px 2px;
   }
 }
 
@@ -4566,10 +4691,23 @@ button.hbSlot:disabled { cursor: default; }
 }
 
 .adventureHandCard .handCardImage {
-  /* Enlarged tray cards — easier to read the hand at a glance under the map. */
-  width: 150px;
+  /* Top-bar hand cards: sized so the bar stays roughly one card tall and the
+     map keeps its height. Hover zooms (AdventureHandZoom) for a full read. */
+  width: 108px;
   border-radius: 8px;
   display: block;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.45);
+  transition: transform 110ms ease, box-shadow 110ms ease;
+}
+
+.adventureHandCard.playable .handCardImage {
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(240, 196, 106, 0.45);
+}
+
+.adventureHandCard:hover .handCardImage,
+.adventureHandCard:focus-visible .handCardImage {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(240, 196, 106, 0.6);
 }
 
 .adventureHandCard.discarding {
@@ -5707,6 +5845,25 @@ button.hbSlot:disabled { cursor: default; }
 .tileArt {
   pointer-events: none;
   opacity: 0.96;
+  /* New land fades in as it materializes; the golden burst (runBurst) supplies
+     the punch. Opacity-only so the SVG rotate() transform is untouched. */
+  animation: tileReveal 520ms ease-out both;
+}
+
+@keyframes tileReveal {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 0.96;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tileArt {
+    animation: none;
+  }
 }
 
 /* With real art under it, the hex grid becomes a light interactive lens. */
@@ -7630,6 +7787,72 @@ button.hbSlot:disabled { cursor: default; }
     transparent 72%
   );
   filter: drop-shadow(0 0 26px rgb(220 40 30 / 45%));
+}
+
+/* ---- Construction / tile-reveal burst (runBurst) -------------------------
+   A golden shockwave punctuating a building going up or a tile landing. The
+   ring / flash / spark elements are created and animated in JS (fx.tsx); these
+   rules only paint them. Tone tints the accent (warm gold for a build, a
+   green-gold for new land). */
+.fxBurst {
+  position: absolute;
+  z-index: 4;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  --burst-core: #ffe9a8;
+  --burst-glow: rgb(240 196 106 / 55%);
+  --burst-ring: rgb(255 214 120 / 95%);
+}
+
+.fxBurst.build {
+  --burst-core: #ffe4a0;
+  --burst-glow: rgb(255 176 84 / 55%);
+  --burst-ring: rgb(255 198 110 / 95%);
+}
+
+.fxBurst.tile {
+  --burst-core: #eaf7c4;
+  --burst-glow: rgb(150 215 106 / 48%);
+  --burst-ring: rgb(214 236 150 / 95%);
+}
+
+.fxBurstFlash {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 180px;
+  height: 180px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--burst-core) 0%, var(--burst-glow) 42%, transparent 70%);
+  filter: drop-shadow(0 0 24px var(--burst-glow));
+  will-change: transform, opacity;
+}
+
+.fxBurstRing {
+  position: absolute;
+  left: 0;
+  top: 0;
+  border-radius: 50%;
+  border: 5px solid var(--burst-ring);
+  box-shadow: 0 0 18px var(--burst-glow), inset 0 0 12px var(--burst-glow);
+  will-change: transform, opacity;
+}
+
+.fxBurstRing.echo {
+  border-width: 3px;
+}
+
+.fxBurstSpark {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--burst-core);
+  box-shadow: 0 0 8px var(--burst-glow);
+  will-change: transform, opacity;
 }
 
 /* ---- Combat strike effects ------------------------------------------------
@@ -11375,6 +11598,13 @@ img.cardBack {
   position: absolute;
 }
 
+/* Invisible per-building FX anchor filling its bar (construction burst target). */
+.tbFxAnchor {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
 .tbFill {
   position: absolute;
   inset: 0;
@@ -11445,6 +11675,32 @@ img.cardBack {
   line-height: 1.25;
   text-align: center;
   pointer-events: none;
+}
+
+/* Two-in-one scan bar with one building up: name BOTH halves so the built one
+   is unmistakable (a green ✓ chip) beside the not-built one (amber 🔨 chip). */
+.tbPartialNote.split {
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.3cqw 0.6cqw;
+  border-radius: 0.7cqw;
+}
+
+.tbPartialBuilt,
+.tbPartialMissing {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25cqw;
+  white-space: nowrap;
+}
+
+.tbPartialBuilt {
+  color: #9fe08a;
+  font-weight: 700;
+}
+
+.tbPartialMissing {
+  color: #f0c46a;
 }
 
 .tbBarHit {
@@ -12841,6 +13097,64 @@ img.cardBack {
   color: #e08b8b;
 }
 
+/* Secondary "Continue as guest" choice shown beneath the account card while
+   accounts roll out. Deliberately understated — accounts are the primary path. */
+.guestChoice {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.guestChoiceDivider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.guestChoiceDivider::before,
+.guestChoiceDivider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: rgb(213 168 79 / 24%);
+}
+
+.guestChoiceForm {
+  display: grid;
+  gap: 8px;
+  text-align: center;
+}
+
+.guestChoiceHint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.guestChoiceForm input {
+  width: 100%;
+}
+
+.guestChoiceButton {
+  border: 1px solid rgb(213 168 79 / 45%);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--gold);
+  font-size: 13.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 9px 10px;
+  cursor: pointer;
+}
+
+.guestChoiceButton:hover {
+  background: rgb(213 168 79 / 12%);
+}
+
 .authReadonly {
   display: flex;
   justify-content: space-between;
@@ -13381,5 +13695,456 @@ img.cardBack {
 
   .chatPanel {
     max-height: 42vh;
+  }
+}
+
+/* ==================================================================== */
+/* MAP UI REDESIGN — left command rail, bottom deck shelf, Spell Book    */
+/* (companion to the `.adventureRoot > *` ordering block above)          */
+/* ==================================================================== */
+
+/* ---------- Left command rail: Town · Hero · Unit deck (vertical) ---------- */
+/* z-index sits ABOVE the map's floating Far-tile tray (.farTileTray, z-index 6)
+   so a hero/town/unit fly-out board — and its dimming backdrop — render on top
+   of the tray instead of being blocked by it. */
+.leftRailDock {
+  display: block;
+  position: relative;
+  z-index: 20;
+}
+
+.leftRailDock .townHeroDock {
+  flex-direction: column;
+  flex-wrap: nowrap;
+  gap: 10px;
+  margin-bottom: 0;
+}
+
+/* Each dock board fills the rail width and stacks vertically. */
+.leftRailDock .dockTile {
+  flex: 0 0 auto;
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  min-height: 86px;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+}
+
+.leftRailDock .dockTileText strong {
+  font-size: 15px;
+}
+
+.leftRailDock .dockTileText small {
+  font-size: 11px;
+}
+
+/* The "Open ▸" affordance is redundant in the rail — trim it small. */
+.leftRailDock .dockOpenHint {
+  padding: 2px 7px;
+  font-size: 10px;
+}
+
+/* The town/hero/unit fly-out board opens to the RIGHT of the rail, over the
+   map (a sidebar flyout), instead of dropping below the whole column. */
+.leftRailDock .heroDrop {
+  left: calc(100% + 12px);
+  top: 0;
+  max-height: min(84vh, 760px);
+  overflow-y: auto;
+}
+
+/* ---------- Bottom deck shelf: Spell / Neutral / Artifact / Event ---------- */
+.advDecksBottom {
+  width: 100%;
+}
+
+/* The shared decks + discards lay out as a centered horizontal shelf. Each
+   deck keeps its back + discard side by side (a "deck station"); stations wrap
+   across the shelf. */
+.advDecksBottom .advDecks {
+  position: relative;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 12px 20px;
+  padding: 26px 16px 13px;
+  background: linear-gradient(180deg, rgba(40, 30, 17, 0.95), rgba(21, 15, 8, 0.97));
+  border: 1px solid rgba(190, 150, 85, 0.42);
+  border-radius: 13px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 235, 190, 0.06),
+    0 -4px 18px rgba(0, 0, 0, 0.28);
+}
+
+.advDecksBottom .advDeckRow {
+  flex-direction: row;
+  align-items: flex-end;
+  gap: 7px;
+  padding: 3px 8px 0;
+  border-right: 1px solid rgba(170, 130, 70, 0.16);
+}
+
+.advDecksBottom .advDeckRow:last-child {
+  border-right: none;
+}
+
+/* The four neutral grade decks stay a compact 2×2 block within the shelf. */
+.advDecksBottom .advDeckRow.neutral {
+  display: grid;
+  grid-template-columns: repeat(2, auto);
+  gap: 6px;
+  align-items: start;
+}
+
+/* A quiet caption naming the shelf, tucked into its padded top-left. */
+.advDecksBottom .advDecks::before {
+  content: "Shared decks";
+  position: absolute;
+  top: 8px;
+  left: 16px;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #a88f68;
+  pointer-events: none;
+}
+
+@media (max-width: 900px) {
+  .advDecksBottom .advDecks {
+    gap: 10px 12px;
+  }
+}
+
+/* ---------- Spell Book — the openable two-page tome (house rule) ----------- */
+.spellBookBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  padding: 4vh 3vw;
+  background: radial-gradient(120% 100% at 50% 38%, rgba(12, 8, 3, 0.5), rgba(5, 3, 1, 0.84));
+  backdrop-filter: blur(2px);
+  animation: spellBookFadeIn 160ms ease-out;
+}
+
+.spellBookBook {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 6px 1.06fr;
+  width: min(940px, 95vw);
+  max-height: min(88vh, 690px);
+  color: #efe0bd;
+  background: linear-gradient(180deg, rgba(60, 42, 21, 0.99), rgba(37, 25, 12, 1));
+  border: 2px solid var(--gold);
+  border-radius: 16px;
+  box-shadow:
+    0 30px 80px rgba(0, 0, 0, 0.72),
+    inset 0 0 0 6px rgba(28, 19, 9, 0.92),
+    inset 0 0 0 7px rgba(212, 175, 108, 0.42);
+  padding: 12px;
+  animation: spellBookPop 260ms cubic-bezier(0.2, 0.85, 0.25, 1);
+  transform-origin: 50% 62%;
+}
+
+.spellBookBookClose {
+  position: absolute;
+  top: -14px;
+  right: -14px;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--gold);
+  border-radius: 50%;
+  background: rgba(24, 16, 8, 0.96);
+  color: #e8d3a8;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+.spellBookBookClose:hover,
+.spellBookBookClose:focus-visible {
+  color: var(--gold);
+  transform: scale(1.08);
+  outline: none;
+}
+
+.spellBookPage {
+  position: relative;
+  overflow-y: auto;
+  padding: 20px 22px;
+  color: #3a2c14;
+  background:
+    radial-gradient(90% 60% at 28% 0%, rgba(255, 246, 218, 0.55), transparent 60%),
+    linear-gradient(180deg, #efe4c6, #e2d1a6);
+}
+
+.spellBookPage.left {
+  border-radius: 9px 3px 3px 9px;
+  box-shadow: inset -16px 0 24px -16px rgba(70, 48, 18, 0.6);
+}
+
+.spellBookPage.right {
+  border-radius: 3px 9px 9px 3px;
+  box-shadow: inset 16px 0 24px -16px rgba(70, 48, 18, 0.6);
+  animation: spellBookPageTurn 240ms ease;
+}
+
+.spellBookSpine {
+  background: linear-gradient(90deg, rgba(48, 32, 14, 0.95), rgba(150, 110, 55, 0.85), rgba(48, 32, 14, 0.95));
+  border-radius: 2px;
+}
+
+.spellBookPlateHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #6a3d16;
+  border-bottom: 2px solid rgba(120, 82, 34, 0.35);
+  padding-bottom: 8px;
+  margin-bottom: 10px;
+}
+
+.spellBookPlateHeader strong {
+  font-size: 20px;
+  letter-spacing: 0.02em;
+  font-variant: small-caps;
+}
+
+.spellBookBlurb {
+  font-size: 12px;
+  line-height: 1.45;
+  color: #5a431f;
+  margin: 0 0 12px;
+}
+
+.spellBookEmpty {
+  font-size: 13px;
+  font-style: italic;
+  color: #6a4f24;
+  line-height: 1.5;
+}
+
+.spellBookIndex {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.spellBookIndexItem {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: rgba(120, 82, 34, 0.08);
+  color: #3a2c14;
+  cursor: pointer;
+  text-align: left;
+  transition: background 110ms ease, border-color 110ms ease, transform 110ms ease;
+}
+
+.spellBookIndexItem:hover {
+  background: rgba(120, 82, 34, 0.16);
+  transform: translateX(2px);
+}
+
+.spellBookIndexItem.active {
+  background: rgba(180, 130, 55, 0.24);
+  border-color: rgba(120, 82, 34, 0.55);
+  box-shadow: inset 0 0 0 1px rgba(255, 240, 205, 0.4);
+}
+
+.spellBookIndexDot {
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--spell-accent, #b08d2f);
+  box-shadow: 0 0 0 2px rgba(255, 245, 220, 0.7), 0 0 6px var(--spell-accent, #b08d2f);
+}
+
+.spellBookIndexDot.expert {
+  border-radius: 2px;
+  transform: rotate(45deg);
+}
+
+.spellBookIndexName {
+  flex: 1 1 auto;
+  font-size: 13px;
+  font-weight: 700;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spellBookIndexLevel {
+  flex: 0 0 auto;
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #7a5a28;
+}
+
+/* Right page — the illustrated plate */
+.spellBookArtSlot {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  margin-bottom: 12px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: linear-gradient(160deg, #2a2416, #171208);
+  box-shadow: inset 0 0 0 1px rgba(60, 40, 18, 0.5);
+}
+
+.spellBookArt {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 22%;
+  display: block;
+}
+
+.spellBookArtFallback {
+  display: grid;
+  place-items: center;
+  gap: 6px;
+  width: 100%;
+  height: 100%;
+  color: #d6b25e;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+  padding: 8px;
+}
+
+/* Gilt inner frame around the plate — the "book illustration" border. */
+.spellBookArtFrame {
+  position: absolute;
+  inset: 5px;
+  border: 1px solid rgba(212, 175, 108, 0.7);
+  border-radius: 5px;
+  pointer-events: none;
+  box-shadow: inset 0 0 14px rgba(0, 0, 0, 0.45);
+}
+
+.spellBookSpellTitle {
+  margin: 0 0 8px;
+  font-size: 21px;
+  color: #5a2f10;
+  font-variant: small-caps;
+  letter-spacing: 0.01em;
+}
+
+.spellBookChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.spellBookChip {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(120, 82, 34, 0.5);
+  background: rgba(120, 82, 34, 0.12);
+  color: #5a431f;
+}
+
+.spellBookChip.school {
+  border-color: var(--spell-accent, #b08d2f);
+  background: color-mix(in srgb, var(--spell-accent, #b08d2f) 20%, transparent);
+  color: #3a2c14;
+}
+
+.spellBookChip.level.expert {
+  border-color: #a8791f;
+  background: rgba(220, 170, 60, 0.28);
+}
+
+.spellBookDefinition {
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: #33260f;
+  margin: 0 0 16px;
+  /* a subtle drop-cap-free "illuminated" feel */
+  border-left: 3px solid rgba(150, 105, 45, 0.5);
+  padding-left: 12px;
+}
+
+.spellBookActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.spellBookNote {
+  font-size: 11px;
+  font-style: italic;
+  color: #6a4f24;
+}
+
+.spellBookEmptyPage {
+  display: grid;
+  place-items: center;
+  gap: 10px;
+  height: 100%;
+  color: #8a6a34;
+  text-align: center;
+}
+
+@keyframes spellBookFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes spellBookPop {
+  from { opacity: 0; transform: translateY(14px) scale(0.94) rotateX(8deg); }
+  to { opacity: 1; transform: translateY(0) scale(1) rotateX(0); }
+}
+
+@keyframes spellBookPageTurn {
+  from { opacity: 0.2; transform: perspective(1200px) rotateY(-14deg); transform-origin: left center; }
+  to { opacity: 1; transform: perspective(1200px) rotateY(0); transform-origin: left center; }
+}
+
+@media (max-width: 720px) {
+  /* Narrow: the book stacks to a single page column. */
+  .spellBookBook {
+    grid-template-columns: 1fr;
+    max-height: 90vh;
+  }
+  .spellBookSpine {
+    display: none;
+  }
+  .spellBookPage.left {
+    border-radius: 9px 9px 3px 3px;
+  }
+  .spellBookPage.right {
+    border-radius: 3px 3px 9px 9px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spellBookBackdrop,
+  .spellBookBook,
+  .spellBookPage.right {
+    animation: none;
   }
 }
