@@ -12156,3 +12156,237 @@ img.cardBack {
     width: 98vw;
   }
 }
+
+/* -------------------------------------------------------------------------
+   Table reactions (emotes) — a floating "React" bar + drifting bubbles. A
+   social layer for the multiplayer table; see components/table/table-reactions.
+   ------------------------------------------------------------------------- */
+
+.tableReactionBar {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 55;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.tableReactionBar > * {
+  pointer-events: auto;
+}
+
+.reactionToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 1px solid rgb(213 168 79 / 55%);
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgb(35 38 41 / 96%), rgb(20 22 24 / 96%));
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  box-shadow: 0 6px 16px rgb(0 0 0 / 38%);
+  transition: transform 0.12s ease, border-color 0.12s ease;
+}
+
+.reactionToggle:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: var(--focus);
+}
+
+.reactionToggle:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.tableReactionBar.open .reactionToggle {
+  border-color: var(--focus);
+}
+
+.reactionPalette {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  max-width: 232px;
+  padding: 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgb(30 24 15 / 97%), rgb(18 15 10 / 97%));
+  box-shadow: 0 12px 30px rgb(0 0 0 / 48%);
+  animation: reactionPalettePop 0.14s ease-out;
+}
+
+@keyframes reactionPalettePop {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.reactionOption {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border: 1px solid rgb(213 168 79 / 32%);
+  border-radius: 9px;
+  background: rgb(20 22 24 / 85%);
+  color: var(--gold);
+  cursor: pointer;
+  transition: transform 0.1s ease, border-color 0.1s ease, background 0.1s ease;
+}
+
+.reactionOption:hover:not(:disabled) {
+  transform: translateY(-2px) scale(1.06);
+  border-color: var(--focus);
+  background: rgb(46 39 24 / 92%);
+}
+
+.reactionOption:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.reactionArt {
+  width: 26px;
+  height: 26px;
+  object-fit: cover;
+  border-radius: 5px;
+}
+
+/* --- drifting bubbles ---------------------------------------------------- */
+
+.tableReactionOverlay {
+  position: fixed;
+  right: 16px;
+  bottom: 74px;
+  z-index: 56;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.reactionBubble {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  max-width: 260px;
+  padding: 7px 12px 7px 8px;
+  border: 1px solid rgb(213 168 79 / 55%);
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgb(38 32 20 / 97%), rgb(22 18 11 / 97%));
+  box-shadow: 0 8px 20px rgb(0 0 0 / 45%);
+  animation: reactionBubbleLife 4800ms ease forwards;
+}
+
+@keyframes reactionBubbleLife {
+  0% {
+    opacity: 0;
+    transform: translateY(14px) scale(0.9);
+  }
+  8% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  82% {
+    opacity: 1;
+    transform: translateY(-6px) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-18px) scale(0.97);
+  }
+}
+
+.reactionCrest {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  border: 1px solid rgb(213 168 79 / 45%);
+  border-radius: 50%;
+  background: rgb(15 13 9 / 92%);
+  color: var(--gold);
+  overflow: hidden;
+}
+
+.reactionCrest img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.reactionBubbleBody {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.reactionBubbleName {
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--gold);
+}
+
+.reactionBubblePhrase {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.reactionBubblePhrase .reactionArt {
+  width: 18px;
+  height: 18px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reactionPalette,
+  .reactionBubble {
+    animation-duration: 0.01ms;
+  }
+  .reactionBubble {
+    animation: reactionBubbleFade 4800ms steps(1) forwards;
+  }
+  @keyframes reactionBubbleFade {
+    0%,
+    90% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+    }
+  }
+}
+
+@media (max-width: 640px) {
+  .tableReactionBar {
+    right: 10px;
+    bottom: 10px;
+  }
+  .tableReactionOverlay {
+    right: 10px;
+    bottom: 66px;
+  }
+}

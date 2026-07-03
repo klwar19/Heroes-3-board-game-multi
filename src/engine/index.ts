@@ -22,6 +22,15 @@ export {
   roomDisplayName,
   seatOfClient
 } from "./room";
+export {
+  factionCrestAsset,
+  getTableReaction,
+  isTableReactionAction,
+  MAX_TABLE_REACTIONS,
+  TABLE_REACTION_FLOOD_LIMIT,
+  TABLE_REACTIONS
+} from "./table-reactions";
+export type { TableReactionDef } from "./table-reactions";
 export { ENGINE_PROTOCOL_VERSION, ENGINE_SIGNATURE } from "./version";
 export {
   hasOpenAdventureTurn,
@@ -368,6 +377,7 @@ export type {
   SpellLevel,
   SpellSchool,
   StatisticType,
+  TableReaction,
   TargetRef,
   TownId,
   TownState,

@@ -63,6 +63,26 @@
 >   version-counter-reset escape hatch) — Durable Object storage persists, so
 >   the freeze that bootId guards against needs a storage wipe to occur.
 >
+> **Table reactions / emotes (implemented, engine-enforced + tested).** A small
+> social layer for the multiplayer table: any member (seated player OR observer)
+> sends a quick reaction from a floating "React" bar and it broadcasts to
+> everyone as a drifting bubble + a soft chime. Like membership actions it is
+> keyed by `clientId` (never a seat `playerId`), so `roomActionGuard` and the
+> parallel-turn bystander backstop both skip it — it is never seat-/turn-gated
+> and works in every mode (solo, open, hosted, parallel). The synced ring buffer
+> `state.tableReactions` (public, kept in the player view) carries it; two
+> deterministic guards keep it safe — a hard `MAX_TABLE_REACTIONS` cap on the
+> buffer (bounds the snapshot) and a per-client flood cap
+> (`TABLE_REACTION_FLOOD_LIMIT`, rejects one client monopolising the feed) — plus
+> a client-side cooldown on the bar. The palette mixes in-house heraldic glyphs
+> with authentic Heroes-3 board-game scans (skull / crown / luck / dragon /
+> gold), and each bubble carries the sender's real faction town-crest
+> (`town-icon-<faction>.webp`) when they hold a seat. Engine: `SEND_TABLE_REACTION`
+> + `src/engine/table-reactions.ts` (validated id, membership, flood + bound),
+> tested in `table-reactions.test.ts`; UI in `components/table/table-reactions.tsx`,
+> tested in `table-reactions.test.tsx`; the full two-client round-trip through the
+> room server is exercised by `tests/e2e/table-reactions.spec.ts`.
+>
 > **Lobby / room directory (implemented on the built-in backend, tested).**
 > Opening the app with no `?room=` link now shows a **lobby** (`src/components/
 > lobby.tsx`) — a live list of rooms with names, member/seat counts, host, and
