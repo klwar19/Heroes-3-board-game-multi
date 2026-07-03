@@ -131,6 +131,89 @@ describe("AccountStore — sessions", () => {
     clock.advance(1001);
     expect(store.getSessionProfile(token)).toBeNull();
   });
+
+  it("slides expiry for an ACTIVE session (used past half-life), so activity keeps you signed in", () => {
+    const clock = makeClock();
+    const store = new AccountStore({ now: clock.now, sessionTtlMs: 1000 });
+    const { confirmation } = store.register(VALID);
+    store.confirmEmail(new URL(confirmation.link).searchParams.get("token")!);
+    const { token } = store.login({ identifier: VALID.email, password: VALID.password });
+    // Touch the session past its half-life: expiry renews to now + ttl.
+    clock.advance(600);
+    expect(store.getSessionProfile(token)).not.toBeNull();
+    // 1500ms after login — past the ORIGINAL 1000ms expiry (the control above
+    // proves an untouched session is dead by now) — the slid session lives on.
+    clock.advance(900);
+    expect(store.getSessionProfile(token)).not.toBeNull();
+    // And the slid expiry is still a real one: a long absence ends it.
+    clock.advance(1001);
+    expect(store.getSessionProfile(token)).toBeNull();
+  });
+});
+
+describe("AccountStore — hygiene (the persisted snapshot stays bounded)", () => {
+  it("prunes expired sessions and email tokens out of the snapshot; live rows survive", () => {
+    const clock = makeClock();
+    const store = new AccountStore({ now: clock.now, sessionTtlMs: 1000, tokenTtlMs: 1000 });
+    const { confirmation } = store.register(VALID);
+    store.confirmEmail(new URL(confirmation.link).searchParams.get("token")!);
+    store.login({ identifier: VALID.email, password: VALID.password });
+    // A second account leaves its confirmation token pending.
+    store.register({ nickname: "Gem", email: "gem@erathia.io", password: "unicorns8" });
+
+    // Control: while live, both the session and the pending token persist.
+    const live = store.toJSON();
+    expect(live.sessions).toHaveLength(1);
+    expect(live.tokens).toHaveLength(1);
+
+    // Past both TTLs the abandoned rows are swept — even though neither token
+    // nor session was ever presented again (the old lazy-delete never fired).
+    clock.advance(1001);
+    const pruned = store.toJSON();
+    expect(pruned.sessions).toHaveLength(0);
+    expect(pruned.tokens).toHaveLength(0);
+    // Accounts themselves are of course untouched.
+    expect(pruned.accounts).toHaveLength(2);
+  });
+
+  it("caps the Hall of Fame payload at the requested limit (best players first)", () => {
+    const store = new AccountStore();
+    for (const [nickname, email] of [
+      ["Alpha", "alpha@erathia.io"],
+      ["Bravo", "bravo@erathia.io"],
+      ["Carol", "carol@erathia.io"]
+    ] as const) {
+      const { confirmation } = store.register({ nickname, email, password: "longsword9" });
+      store.confirmEmail(new URL(confirmation.link).searchParams.get("token")!);
+    }
+    const bravo = store.adminListAccounts().find((a) => a.nickname === "Bravo")!;
+    store.recordMatchResult({ matchId: "hof-cap", participants: [{ accountId: bravo.id, result: "win" }] });
+
+    // Unlimited view (the control): all three, Bravo first (highest MMR after a win).
+    expect(store.hallOfFame().map((p) => p.nickname)).toEqual(["Bravo", "Alpha", "Carol"]);
+    // The cap keeps the BEST rows, dropping from the bottom.
+    expect(store.hallOfFame(2).map((p) => p.nickname)).toEqual(["Bravo", "Alpha"]);
+  });
+
+  it("caps the recorded-match idempotency log, evicting the OLDEST matchIds first", () => {
+    const store = new AccountStore({ maxRecordedMatches: 3 });
+    const { confirmation } = store.register(VALID);
+    store.confirmEmail(new URL(confirmation.link).searchParams.get("token")!);
+    const id = store.adminListAccounts()[0].id;
+    const report = (matchId: string) =>
+      store.recordMatchResult({ matchId, participants: [{ accountId: id, result: "win" }] });
+
+    for (const matchId of ["m1", "m2", "m3"]) {
+      expect(report(matchId).applied).toBe(true);
+    }
+    // Still inside the window: a duplicate is the idempotent no-op.
+    expect(report("m1").applied).toBe(false);
+    // A fourth match evicts the oldest id (m1) and keeps the newest three.
+    expect(report("m4").applied).toBe(true);
+    expect(store.toJSON().recordedMatches).toEqual(["m2", "m3", "m4"]);
+    // The recent ids still dedupe.
+    expect(report("m4").applied).toBe(false);
+  });
 });
 
 describe("AccountStore — availability + password reset", () => {

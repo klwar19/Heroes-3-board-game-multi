@@ -145,7 +145,16 @@ export function ChatPanel({
   return (
     <div className={`chatDock ${open ? "open" : ""}`} aria-label="Table chat">
       {open ? (
-        <div className="chatPanel" role="log" aria-live="polite">
+        <div
+          className="chatPanel"
+          role="log"
+          aria-live="polite"
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              setOpen(false);
+            }
+          }}
+        >
           <div className="chatHeader">
             <MessageSquare aria-hidden="true" size={14} />
             <span className="chatHeaderTitle">Table chat</span>

@@ -130,4 +130,42 @@ describe("LobbyScreen", () => {
     expect(screen.queryByLabelText(/delete Someone Else/i)).toBeNull();
     expect(screen.queryByLabelText(/Close Someone Else/i)).toBeNull();
   });
+
+  it("filters a long room list by name or host; a short list shows no filter (control)", () => {
+    // Short list: no filter box.
+    renderLobby({ rooms: [entry({ roomId: "r1", name: "Only Table" })] });
+    expect(screen.queryByLabelText("Filter rooms")).toBeNull();
+    cleanup();
+
+    // Long list (6+): the filter appears and narrows by name / host / creator.
+    const rooms = [
+      entry({ roomId: "r1", name: "Dragon Pass", hostName: "Sandro", createdByName: null }),
+      entry({ roomId: "r2", name: "Griffin Keep", hostName: null, createdByName: "Adela" }),
+      entry({ roomId: "r3", name: "Fortress Run", hostName: null, createdByName: null }),
+      entry({ roomId: "r4", name: "Casual Friday", hostName: null, createdByName: null }),
+      entry({ roomId: "r5", name: "Tower Duel", hostName: null, createdByName: null }),
+      entry({ roomId: "r6", name: "Necro Night", hostName: null, createdByName: null })
+    ];
+    renderLobby({ rooms });
+    const filter = screen.getByLabelText("Filter rooms");
+
+    fireEvent.change(filter, { target: { value: "griffin" } });
+    expect(screen.getByText("Griffin Keep")).toBeTruthy();
+    expect(screen.queryByText("Dragon Pass")).toBeNull();
+    expect(screen.getByText("1 / 6")).toBeTruthy();
+
+    // Host name matches too.
+    fireEvent.change(filter, { target: { value: "sandro" } });
+    expect(screen.getByText("Dragon Pass")).toBeTruthy();
+    expect(screen.queryByText("Griffin Keep")).toBeNull();
+
+    // No match → an honest empty state naming the filter, not a blank list.
+    fireEvent.change(filter, { target: { value: "zzz" } });
+    expect(screen.getByText(/No rooms match/i)).toBeTruthy();
+
+    // Clearing restores everything.
+    fireEvent.change(filter, { target: { value: "" } });
+    expect(screen.getByText("Dragon Pass")).toBeTruthy();
+    expect(screen.getByText("Necro Night")).toBeTruthy();
+  });
 });

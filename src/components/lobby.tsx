@@ -1,8 +1,22 @@
 "use client";
 
 import { useState } from "react";
-import { Crown, Eye, Lock, Plus, RefreshCw, Trash2, Users } from "lucide-react";
+import { Crown, Eye, Lock, Plus, RefreshCw, Search, Trash2, Users } from "lucide-react";
 import type { RoomDirectoryEntry } from "@/lib/realtime";
+
+/** Show the room filter once the list is long enough for scanning to hurt. */
+const ROOM_FILTER_MIN_ROOMS = 6;
+
+/** Case-insensitive match on the room's name, host, or creator. */
+function roomMatchesFilter(room: RoomDirectoryEntry, filter: string): boolean {
+  const needle = filter.trim().toLowerCase();
+  if (!needle) {
+    return true;
+  }
+  return [room.name, room.hostName ?? "", room.createdByName ?? ""].some((field) =>
+    field.toLowerCase().includes(needle)
+  );
+}
 
 /**
  * Lobby / room browser shown when the app is opened without a `?room=` link.
@@ -42,6 +56,10 @@ export function LobbyScreen({
   const [newRoomName, setNewRoomName] = useState("");
   const [createHosted, setCreateHosted] = useState(false);
   const [joinCode, setJoinCode] = useState("");
+  const [roomFilter, setRoomFilter] = useState("");
+
+  const showFilter = rooms.length >= ROOM_FILTER_MIN_ROOMS;
+  const visibleRooms = showFilter ? rooms.filter((room) => roomMatchesFilter(room, roomFilter)) : rooms;
 
   const createRoom = () => {
     onCreate(newRoomName.trim(), createHosted);
@@ -140,6 +158,21 @@ export function LobbyScreen({
 
         {error ? <p className="lobbyError">{error}</p> : null}
 
+        {supported && showFilter ? (
+          <div className="lobbyFilter">
+            <Search aria-hidden="true" size={14} />
+            <input
+              aria-label="Filter rooms"
+              onChange={(event) => setRoomFilter(event.target.value)}
+              placeholder="Filter by room, host, or creator…"
+              value={roomFilter}
+            />
+            <span className="lobbyFilterCount">
+              {visibleRooms.length} / {rooms.length}
+            </span>
+          </div>
+        ) : null}
+
         {!supported ? (
           <p className="lobbyNote">
             Room browsing isn&apos;t available on the edge (PartyKit) backend. Create a room or join by code / shared
@@ -147,9 +180,11 @@ export function LobbyScreen({
           </p>
         ) : rooms.length === 0 ? (
           <p className="lobbyNote">{loading ? "Loading rooms…" : "No rooms yet — create one above to get started."}</p>
+        ) : visibleRooms.length === 0 ? (
+          <p className="lobbyNote">No rooms match &ldquo;{roomFilter.trim()}&rdquo; — clear the filter to see all {rooms.length}.</p>
         ) : (
           <ul className="lobbyRooms" aria-label="Open rooms">
-            {rooms.map((room) => (
+            {visibleRooms.map((room) => (
               <li className="lobbyRoom" key={room.roomId}>
                 <button className="lobbyRoomMain" onClick={() => onJoin(room.roomId)} type="button">
                   <span className="lobbyRoomName">

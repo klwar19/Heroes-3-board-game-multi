@@ -115,8 +115,18 @@ declare global {
   var __homm3bgIpRate: Map<string, { count: number; resetAt: number }> | undefined;
 }
 
-const ipRate = globalThis.__homm3bgIpRate ?? new Map<string, { count: number; resetAt: number }>();
-globalThis.__homm3bgIpRate = ipRate;
+/**
+ * Resolved through globalThis on every call (not captured at import) so a test
+ * or hot-reload that resets `__homm3bgIpRate` actually gets a fresh map.
+ */
+function ipRateMap(): Map<string, { count: number; resetAt: number }> {
+  const map = globalThis.__homm3bgIpRate ?? new Map<string, { count: number; resetAt: number }>();
+  globalThis.__homm3bgIpRate = map;
+  return map;
+}
+
+/** Sweep threshold: past this many tracked IPs, expired windows are evicted. */
+const IP_RATE_SWEEP_SIZE = 1000;
 
 function clientIp(request: Request): string {
   const fwd = request.headers.get("x-forwarded-for");
@@ -128,8 +138,19 @@ function clientIp(request: Request): string {
 
 /** Throws AccountError(RATE_LIMITED) when a caller IP exceeds `limit` per window. */
 export function enforceIpRate(request: Request, bucket: string, limit: number, windowMs: number): void {
+  const ipRate = ipRateMap();
   const key = `${bucket}:${clientIp(request)}`;
   const now = Date.now();
+  // Keep the map bounded: once it grows past the sweep size, drop every window
+  // that has already expired (each IP that probed once would otherwise leave a
+  // row behind forever).
+  if (ipRate.size > IP_RATE_SWEEP_SIZE) {
+    for (const [staleKey, staleWindow] of ipRate) {
+      if (staleWindow.resetAt <= now) {
+        ipRate.delete(staleKey);
+      }
+    }
+  }
   const window = ipRate.get(key);
   if (!window || window.resetAt <= now) {
     ipRate.set(key, { count: 1, resetAt: now + windowMs });

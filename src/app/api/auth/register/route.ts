@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAccountStore } from "@/server/accounts/account-store-instance";
-import { errorResponse, save } from "@/server/accounts/http";
+import { enforceIpRate, errorResponse, save } from "@/server/accounts/http";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +12,10 @@ export const dynamic = "force-dynamic";
  */
 export async function POST(request: Request) {
   try {
+    // Every registration fires a real confirmation email and writes a permanent
+    // account row — never leave it scriptable without a per-IP bound. Generous
+    // enough for a game night behind one NAT (10 sign-ups / 10 min).
+    enforceIpRate(request, "register", 10, 10 * 60_000);
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
     const store = getAccountStore();
     const { profile, confirmation } = store.register({
