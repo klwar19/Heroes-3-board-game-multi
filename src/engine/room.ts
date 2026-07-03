@@ -31,12 +31,23 @@ const ROOM_MEMBERSHIP_ACTION_TYPES = new Set<GameAction["type"]>([
   "ASSIGN_SEAT",
   "KICK_MEMBER",
   "TRANSFER_HOST",
-  "SET_ROOM_NAME"
+  "SET_ROOM_NAME",
+  "SET_ROOM_REQUIRE_AUTH"
 ]);
 
 export function isRoomMembershipAction(action: GameAction): boolean {
   return ROOM_MEMBERSHIP_ACTION_TYPES.has(action.type);
 }
+
+/**
+ * The identity the transport authenticated for the client submitting an action
+ * (Phase 2 — verified-identity seats). `clientId` is the value the client
+ * *claims* (a stable per-tab id); `userId` is the account id the SERVER verified
+ * from the session and is authoritative. Guest play carries only a `clientId`;
+ * everything stays isomorphic and unit-testable without any network — a test
+ * passes `{ clientId }` (guest) or `{ userId }` (signed-in) explicitly.
+ */
+export type VerifiedActor = { clientId?: string; userId?: string };
 
 /** Longest accepted room name; longer input is trimmed to this. */
 export const MAX_ROOM_NAME_LENGTH = 40;
@@ -63,6 +74,11 @@ export function ensureRoom(state: GameState): RoomMembershipState {
 
 function findMember(room: RoomMembershipState, clientId: string): RoomMember | null {
   return room.members.find((member) => member.clientId === clientId) ?? null;
+}
+
+/** The member bound to a VERIFIED account id, or null. One member per userId. */
+function findMemberByUserId(room: RoomMembershipState, userId: string): RoomMember | null {
+  return room.members.find((member) => member.userId === userId) ?? null;
 }
 
 /** The exact registered host (the only client trusted with host powers). */
@@ -103,21 +119,91 @@ export function seatOfClient(state: GameState, clientId: string): RoomSeat | nul
   return state.room ? (findMember(state.room, clientId)?.seat ?? null) : null;
 }
 
+/**
+ * The seat a connection should be shown, resolving VERIFIED identity first
+ * (Phase 2 — per-connection redaction). A signed-in viewer is bound to the
+ * member holding their account id; a guest falls back to the claimed clientId;
+ * anyone without a matching member is a spectator ("observer"). Used by the
+ * transports to redact each frame to the recipient's own seat.
+ */
+export function seatForViewer(state: GameState, actor: VerifiedActor): RoomSeat {
+  const room = state.room;
+  if (!room) {
+    return "observer";
+  }
+  const { clientId, userId } = actor;
+  const member = userId
+    ? findMemberByUserId(room, userId)
+    : clientId
+      ? findMember(room, clientId)
+      : null;
+  return member?.seat ?? "observer";
+}
+
 // ---------------------------------------------------------------------------
 // Handlers
 // ---------------------------------------------------------------------------
 
-export function joinRoom(state: GameState, action: Extract<GameAction, { type: "JOIN_ROOM" }>): void {
+export function joinRoom(
+  state: GameState,
+  action: Extract<GameAction, { type: "JOIN_ROOM" }>,
+  actor: VerifiedActor = {}
+): void {
   if (!action.clientId) {
     throw new Error("A client id is required to join a room.");
   }
   const room = ensureRoom(state);
   const name = action.name?.trim() || "Player";
+  // The account id the SERVER verified (undefined for a guest). Never read from
+  // the action body, which a client could forge.
+  const userId = actor.userId;
+
+  // Verified-account gate (Phase 2): a hosted room the host locked to accounts
+  // refuses guests. Applied to genuinely new joins only — an existing member
+  // (re-connect) is grandfathered so a mid-game toggle can't strand a seat.
+  if (
+    room.hosted &&
+    room.requireAuth &&
+    !userId &&
+    !findMember(room, action.clientId)
+  ) {
+    throw new Error("This room requires a verified account to join.");
+  }
+
+  // One account = one seat: a signed-in player already in the room re-binds to
+  // their existing member (a second tab is the SAME seat holder), so a single
+  // account can never occupy two seats. The latest tab becomes the live client.
+  const existingByUser = userId ? findMemberByUserId(room, userId) : null;
+  if (existingByUser) {
+    const wasHost = room.hosted && room.hostClientId === existingByUser.clientId;
+    existingByUser.name = name;
+    existingByUser.userId = userId;
+    // Move the host pointer to the new tab BEFORE rebinding the clientId, so the
+    // host role follows the account across tabs rather than being lost.
+    if (wasHost) {
+      room.hostClientId = action.clientId;
+    }
+    existingByUser.clientId = action.clientId;
+    existingByUser.isHost = room.hosted && room.hostClientId === action.clientId;
+    appendEvent(state, {
+      type: "ROOM_MEMBER_JOINED",
+      clientId: existingByUser.clientId,
+      name: existingByUser.name,
+      seat: existingByUser.seat,
+      isHost: existingByUser.isHost
+    });
+    return;
+  }
 
   const existing = findMember(room, action.clientId);
   if (existing) {
     // Re-join (reconnect / rename): keep the seat and host, refresh the name.
     existing.name = name;
+    // A guest member that has just signed in is upgraded to a verified member,
+    // so the seat guard now binds it by the authoritative account id.
+    if (userId) {
+      existing.userId = userId;
+    }
     // A returning host reclaims the host flag (sticky by clientId).
     if (room.hosted && room.hostClientId === action.clientId) {
       existing.isHost = true;
@@ -136,7 +222,8 @@ export function joinRoom(state: GameState, action: Extract<GameAction, { type: "
     clientId: action.clientId,
     name,
     seat: "observer",
-    isHost: room.hosted && room.hostClientId === action.clientId
+    isHost: room.hosted && room.hostClientId === action.clientId,
+    ...(userId ? { userId } : {})
   };
   room.members.push(member);
   appendEvent(state, {
@@ -373,6 +460,30 @@ export function setRoomName(state: GameState, action: Extract<GameAction, { type
   appendEvent(state, { type: "ROOM_NAMED", name, byClientId: action.clientId });
 }
 
+export function setRoomRequireAuth(
+  state: GameState,
+  action: Extract<GameAction, { type: "SET_ROOM_REQUIRE_AUTH" }>
+): void {
+  const room = ensureRoom(state);
+  // Only a hosted room has a host to enforce it and seats to protect; on an open
+  // table there is no seat lock, so requiring accounts would be meaningless.
+  if (!room.hosted) {
+    throw new Error("Only a hosted room can require a verified account.");
+  }
+  if (!isEffectiveHost(room, action.clientId)) {
+    throw new Error("Only the host can change the room settings.");
+  }
+  const requireAuth = Boolean(action.requireAuth);
+  // Store the flag only when on, so a room that never used it stays byte-for-byte
+  // as before (and legacy snapshots keep matching).
+  if (requireAuth) {
+    room.requireAuth = true;
+  } else {
+    delete room.requireAuth;
+  }
+  appendEvent(state, { type: "ROOM_REQUIRE_AUTH_CHANGED", requireAuth, byClientId: action.clientId });
+}
+
 // ---------------------------------------------------------------------------
 // Seat-ownership guard for ordinary game actions
 // ---------------------------------------------------------------------------
@@ -383,26 +494,31 @@ export function setRoomName(state: GameState, action: Extract<GameAction, { type
  * error message when the actor may not take the action, or null when it is
  * allowed / not applicable.
  *
- * Skipped entirely when the room is open, when no `actorClientId` is supplied
+ * Skipped entirely when the room is open, when NO identity is supplied
  * (server back-compat / engine tests), and for membership actions (which carry
  * a `clientId`, validate themselves, and are never seat-gated).
  *
- * Trust note: `actorClientId` is the value the transport attached for the
- * sending client; there is no auth binding a socket to a clientId yet (guest
- * play). So this enforces the rule given the claimed identity — it is not a
- * defence against a client that forges another client's id. Authentication is
- * a later milestone (see docs/multiplayer-platform-plan.md).
+ * Trust model (Phase 2 — verified-identity seats):
+ *  - When the transport supplies a VERIFIED `userId` (the client authenticated a
+ *    session the server checked), the actor is bound to the member carrying that
+ *    `userId` and NOTHING else — a forged `actorClientId` is ignored outright,
+ *    so it can no longer grant a seat. This closes the documented trust boundary.
+ *  - A GUEST (no `userId`) is still matched by the claimed `clientId`, exactly as
+ *    before: on an unauthenticated table the engine enforces the rule *given* the
+ *    claimed identity (it is not a defence against one guest forging another's
+ *    id — guest tables remain the casual/testing mode).
  */
 export function roomActionGuard(
   state: GameState,
   action: GameAction,
-  actorClientId: string | undefined
+  actor: VerifiedActor
 ): string | null {
   const room = state.room;
   if (!room || !room.hosted) {
     return null; // open table → no seat enforcement
   }
-  if (!actorClientId) {
+  const { clientId, userId } = actor;
+  if (!clientId && !userId) {
     return null; // identity not supplied
   }
   if (isRoomMembershipAction(action)) {
@@ -412,9 +528,30 @@ export function roomActionGuard(
   if (!playerId) {
     return null; // not a seat-scoped action
   }
-  const member = findMember(room, actorClientId);
+
+  // Verified identity is authoritative: a signed-in actor is bound STRICTLY to
+  // the member holding their account id, so a spoofed clientId is ignored.
+  if (userId) {
+    const member = findMemberByUserId(room, userId);
+    if (!member) {
+      return "Join the room before taking a seat's action.";
+    }
+    if (member.seat !== playerId) {
+      return "Seats are locked: you can only act for your own seat.";
+    }
+    return null;
+  }
+
+  // Guest actor (no verified session): matched by the claimed clientId, as
+  // before. A seat held by a VERIFIED account is unreachable this way even to a
+  // guest who learned its clientId — closing the "forge actorClientId to steal a
+  // seat" hole. Guest-only tables (no member carries a userId) are unaffected.
+  const member = clientId ? findMember(room, clientId) : null;
   if (!member) {
     return "Join the room before taking a seat's action.";
+  }
+  if (member.userId) {
+    return "That seat belongs to a verified account — sign in to act for it.";
   }
   if (member.seat !== playerId) {
     return "Seats are locked: you can only act for your own seat.";

@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Copy, Crown, Eye, List, Lock, LogOut, Trash2, UserCog, UserX, Users } from "lucide-react";
+import { Check, Copy, Crown, Eye, List, Lock, LogOut, ShieldCheck, Trash2, UserCog, UserX, Users } from "lucide-react";
 import { NEUTRAL_PLAYER_ID, roomDisplayName, type GameAction, type GameState, type RoomSeat } from "@/engine";
+import { authEnabled } from "@/lib/auth-mode";
 
 /**
  * Room membership UI: shareable invite link, host controls (assign seats, kick,
@@ -190,6 +191,29 @@ export function RoomPanel({
                   >
                     <Eye aria-hidden="true" size={13} /> Open the table
                   </button>
+                ) : null}
+                {/* Verified-account lock (Phase 2): only meaningful with accounts
+                    on — a guest deployment has no verified identity to require. */}
+                {isHost && authEnabled() ? (
+                  <button
+                    className="commandButton"
+                    onClick={() =>
+                      onAction({ type: "SET_ROOM_REQUIRE_AUTH", clientId, requireAuth: !room?.requireAuth })
+                    }
+                    type="button"
+                    aria-pressed={Boolean(room?.requireAuth)}
+                    title={
+                      room?.requireAuth
+                        ? "Guests are blocked from joining. Click to allow them."
+                        : "Require a signed-in account to join this table."
+                    }
+                  >
+                    <ShieldCheck aria-hidden="true" size={13} />{" "}
+                    {room?.requireAuth ? "Accounts required — allow guests" : "Require verified accounts"}
+                  </button>
+                ) : null}
+                {room?.requireAuth ? (
+                  <span className="roomModeNote">This table is locked to verified accounts.</span>
                 ) : null}
               </>
             )}

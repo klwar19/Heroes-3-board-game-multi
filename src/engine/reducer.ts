@@ -101,6 +101,7 @@ import {
   roomActionGuard,
   setRoomHosted,
   setRoomName,
+  setRoomRequireAuth,
   transferHost
 } from "./room";
 import { sendTableReaction } from "./table-reactions";
@@ -372,10 +373,20 @@ type ReducerOptions = {
   buildings?: BuildingLibrary;
   /**
    * Stable id of the client submitting this action (attached by the transport
-   * layer). Used only to enforce seat ownership in a hosted room — see
-   * `roomActionGuard`. Omitted by engine tests and the open-table path.
+   * layer). The value the client *claims* — used to enforce seat ownership for a
+   * GUEST in a hosted room (see `roomActionGuard`). Omitted by engine tests and
+   * the open-table path.
    */
   actorClientId?: string;
+  /**
+   * The VERIFIED account id of the client submitting this action, resolved by
+   * the SERVER from an authenticated session (Phase 2 — verified-identity
+   * seats). When present it is authoritative: `roomActionGuard` binds the actor
+   * to the member holding this id and ignores a spoofed `actorClientId`, and
+   * `joinRoom` stamps it onto the member. Undefined for guests, keeping the
+   * engine isomorphic and network-free for tests.
+   */
+  actorUserId?: string;
   /**
    * Fresh per-action crypto entropy minted by the authoritative server
    * (party/index.ts and submitRoomAction). While an action runs this salts every
@@ -15393,6 +15404,7 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "KICK_MEMBER",
   "TRANSFER_HOST",
   "SET_ROOM_NAME",
+  "SET_ROOM_REQUIRE_AUTH",
   "SEND_TABLE_REACTION",
   "SEND_CHAT"
 ]);
@@ -15429,8 +15441,12 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
   healLegacyPlayerFields(state);
 
   // Hosted-room seat ownership: a client may only act for its own seat. No-op
-  // on an open table or when the transport supplied no actorClientId.
-  const seatError = roomActionGuard(state, action, options.actorClientId);
+  // on an open table or when the transport supplied no identity. A verified
+  // userId (Phase 2) is authoritative over the claimed clientId.
+  const seatError = roomActionGuard(state, action, {
+    clientId: options.actorClientId,
+    userId: options.actorUserId
+  });
   if (seatError) {
     return fail(state, { code: "ACTION_NOT_LEGAL", message: seatError });
   }
@@ -15626,7 +15642,7 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         randomAssignSeat(nextState, action);
         break;
       case "JOIN_ROOM":
-        joinRoom(nextState, action);
+        joinRoom(nextState, action, { clientId: options.actorClientId, userId: options.actorUserId });
         break;
       case "LEAVE_ROOM":
         leaveRoom(nextState, action);
@@ -15645,6 +15661,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "SET_ROOM_NAME":
         setRoomName(nextState, action);
+        break;
+      case "SET_ROOM_REQUIRE_AUTH":
+        setRoomRequireAuth(nextState, action);
         break;
       case "SEND_TABLE_REACTION":
         sendTableReaction(nextState, action);

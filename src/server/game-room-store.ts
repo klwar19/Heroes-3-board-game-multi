@@ -376,7 +376,14 @@ export function restoreRoom(roomId: string, state: GameState, actorClientId?: st
 export function submitRoomAction(
   roomId: string,
   action: GameAction,
-  actorClientId?: string
+  actorClientId?: string,
+  /**
+   * The account id the API route VERIFIED from the session cookie (Phase 2).
+   * Authoritative over the client-claimed `actorClientId`: the engine's seat
+   * guard binds a signed-in actor to their account and `joinRoom` stamps it onto
+   * the member. Undefined for a guest (no session).
+   */
+  actorUserId?: string
 ): { snapshot: GameRoomSnapshot; result: EngineResult } {
   const current = getRoomRecord(roomId);
   // Fresh crypto entropy per action: every die roll, shuffle and Ⅱ–Ⅲ tile flip is
@@ -385,7 +392,8 @@ export function submitRoomAction(
   // applyAction directly without it (see random.ts).
   const result = applyAction(current.state, action, {
     entropy: freshEntropy(),
-    ...(actorClientId ? { actorClientId } : {})
+    ...(actorClientId ? { actorClientId } : {}),
+    ...(actorUserId ? { actorUserId } : {})
   });
 
   if (result.errors.length > 0) {

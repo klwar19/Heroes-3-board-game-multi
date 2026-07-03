@@ -72,6 +72,25 @@ export async function logout(): Promise<void> {
   }
 }
 
+/**
+ * Fetch a short-lived socket ticket for the cross-origin PartyKit edge (Phase
+ * 2). Same-origin, so the httpOnly session cookie authenticates it; returns
+ * undefined for a guest (401) or on any failure — the caller then connects as a
+ * guest. The built-in backend never needs this (it reads the cookie directly).
+ */
+export async function fetchSocketToken(): Promise<string | undefined> {
+  try {
+    const res = await fetch("/api/auth/socket-token", { cache: "no-store" });
+    if (!res.ok) {
+      return undefined;
+    }
+    const data = (await res.json()) as { token?: unknown };
+    return typeof data.token === "string" ? data.token : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function fetchSession(): Promise<SelfProfile | null> {
   const { profile } = await handle<{ profile: SelfProfile | null }>(await fetch("/api/auth/session"));
   if (profile) {

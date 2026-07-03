@@ -156,7 +156,8 @@ import {
   type RoomConnection
 } from "@/lib/realtime";
 import { clearCachedRoom, loadCachedRoom, saveCachedRoom } from "@/lib/room-cache";
-import { getClientId, getDisplayName, setDisplayName as persistDisplayName } from "@/lib/identity";
+import { getAccountIdentity, getClientId, getDisplayName, setDisplayName as persistDisplayName } from "@/lib/identity";
+import { fetchSocketToken } from "@/lib/auth-client";
 import { takePendingRoomHosted, takePendingRoomName } from "@/lib/pending-room-name";
 import { RoomPanel } from "@/components/table/room-panel";
 import { LoadingScreen } from "@/components/menu/loading-screen";
@@ -2817,7 +2818,13 @@ export default function Home() {
           setRoomId(null);
         }
       },
-      clientId
+      clientId,
+      // Verified-identity seats (Phase 2): on the cross-origin PartyKit edge a
+      // signed-in player attaches a short-lived socket ticket so the server binds
+      // their seat to the verified account. A guest resolves undefined and simply
+      // connects unauthenticated; the built-in backend ignores this (it reads the
+      // same-origin session cookie directly).
+      () => (getAccountIdentity() ? fetchSocketToken() : Promise.resolve(undefined))
     );
     connectionRef.current = connection;
 
