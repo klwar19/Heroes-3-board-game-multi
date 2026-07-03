@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAccountStore } from "@/server/accounts/account-store-instance";
-import { enforceIpRate, errorResponse, save } from "@/server/accounts/http";
+import { enforceIpRate, errorResponse, requestOrigin, save } from "@/server/accounts/http";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +12,7 @@ export async function POST(request: Request) {
   try {
     enforceIpRate(request, "reset", 5, 60_000);
     const body = (await request.json().catch(() => ({}))) as { email?: unknown };
-    getAccountStore().requestPasswordReset(body.email);
+    getAccountStore().requestPasswordReset(body.email, requestOrigin(request) ?? undefined);
     save();
     return NextResponse.json({ ok: true });
   } catch (error) {
