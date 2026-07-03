@@ -12469,57 +12469,58 @@ img.cardBack {
   gap: 11px;
 }
 
-/* Actual-game-style plaques: ONE large secondary-skill emblem fills the gilt
-   stone plate, and the engraved golden serif text is laid directly ACROSS
-   (over) the emblem — the title reads through the big icon. */
+/* Original-PC-menu-style plaques: ONE large secondary-skill emblem is centred
+   on a deep-blue gilt plate and the engraved golden serif title is laid across
+   its MIDDLE — Heroes III's blue-and-gold menu palette. */
 .menuNavButton {
   position: relative;
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  align-items: center;
   justify-content: center;
-  gap: 3px;
+  gap: 2px;
   width: 100%;
-  min-height: 84px;
+  min-height: 92px;
   padding: 12px 22px;
-  border: 1px solid rgb(198 156 74 / 68%);
+  border: 1px solid rgb(196 156 78 / 64%);
   border-radius: 12px;
   background:
-    radial-gradient(130% 150% at 50% -25%, rgb(78 61 35 / 55%), transparent 62%),
-    linear-gradient(180deg, #372a19 0%, #241a10 52%, #16100a 100%);
+    radial-gradient(130% 150% at 50% -28%, rgb(92 132 190 / 42%), transparent 60%),
+    linear-gradient(180deg, #28384f 0%, #172536 52%, #0b1320 100%);
   color: var(--gold);
-  text-align: left;
+  text-align: center;
   text-decoration: none;
   cursor: pointer;
   box-shadow:
-    inset 0 0 0 1px rgb(0 0 0 / 45%),
-    inset 0 1px 0 rgb(255 233 176 / 22%),
-    inset 0 -15px 28px rgb(0 0 0 / 42%),
-    0 7px 18px rgb(0 0 0 / 52%);
+    inset 0 0 0 1px rgb(0 0 0 / 42%),
+    inset 0 1px 0 rgb(192 216 248 / 22%),
+    inset 0 -16px 30px rgb(4 10 20 / 48%),
+    0 7px 18px rgb(0 0 0 / 55%);
   transition: filter 130ms ease, border-color 130ms ease, transform 130ms ease, box-shadow 130ms ease;
 }
 
-/* The LARGE emblem, bleeding top & bottom, sitting UNDER the text. */
+/* The LARGE emblem, centred and bleeding top & bottom, UNDER the title. */
 .menuNavIcon {
   position: absolute;
-  left: 6px;
+  left: 50%;
   top: 50%;
-  height: 152%;
+  height: 178%;
   width: auto;
-  transform: translateY(-50%);
+  transform: translate(-50%, -50%);
   object-fit: contain;
-  opacity: 0.95;
-  filter: drop-shadow(0 3px 7px rgb(0 0 0 / 72%));
+  opacity: 0.9;
+  filter: drop-shadow(0 3px 8px rgb(0 0 0 / 72%));
   pointer-events: none;
   z-index: 0;
 }
 
-/* Legibility scrim so the engraved gold text stays readable over the emblem. */
+/* Blue vignette scrim — darkest through the middle where the title crosses. */
 .menuNavButton::after {
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(90deg, rgb(9 6 3 / 60%) 0%, rgb(9 6 3 / 32%) 48%, rgb(9 6 3 / 24%) 100%);
+  background: radial-gradient(125% 92% at 50% 50%, rgb(6 12 24 / 78%) 0%, rgb(6 12 24 / 52%) 52%, rgb(6 12 24 / 30%) 100%);
   z-index: 1;
   pointer-events: none;
 }
@@ -12527,12 +12528,12 @@ img.cardBack {
 .menuNavButton:hover:not(:disabled) {
   border-color: var(--focus);
   transform: translateY(-1px);
-  filter: brightness(1.08);
+  filter: brightness(1.09);
   box-shadow:
-    inset 0 0 0 1px rgb(0 0 0 / 45%),
-    inset 0 1px 0 rgb(255 233 176 / 28%),
-    0 0 16px rgb(213 168 79 / 34%),
-    0 9px 22px rgb(0 0 0 / 55%);
+    inset 0 0 0 1px rgb(0 0 0 / 42%),
+    inset 0 1px 0 rgb(192 216 248 / 28%),
+    0 0 18px rgb(96 156 226 / 44%),
+    0 9px 22px rgb(0 0 0 / 58%);
 }
 
 .menuNavButton:hover:not(:disabled) .menuNavIcon {
@@ -12543,41 +12544,41 @@ img.cardBack {
   color: var(--muted);
   border-color: var(--line);
   cursor: not-allowed;
-  filter: grayscale(0.72) brightness(0.72);
+  filter: grayscale(0.6) brightness(0.74);
   opacity: 0.64;
 }
 
-/* Title + subtitle laid over the emblem (nudged in so they cross the big icon). */
+/* Title + subtitle centred over the emblem's middle. */
 .menuNavText {
   position: relative;
   z-index: 2;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  align-items: center;
+  gap: 2px;
   min-width: 0;
-  padding-left: 46px;
 }
 
-/* Engraved golden game text — a gold-sheen gradient with a carved dark shadow. */
+/* Engraved golden game title — gold-sheen gradient with a carved dark shadow. */
 .menuNavLabel {
   font-family: Georgia, "Times New Roman", serif;
-  font-size: 21px;
+  font-size: 22px;
   font-weight: 800;
-  letter-spacing: 0.05em;
-  background: linear-gradient(180deg, #fff3ca 0%, #f4d079 44%, #bd8d36 100%);
+  letter-spacing: 0.06em;
+  background: linear-gradient(180deg, #fff4cf 0%, #f4d079 45%, #bd8d36 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  filter: drop-shadow(0 1px 1px rgb(0 0 0 / 96%)) drop-shadow(0 0 3px rgb(0 0 0 / 75%));
+  filter: drop-shadow(0 1px 1px rgb(0 0 0 / 96%)) drop-shadow(0 0 4px rgb(0 0 0 / 82%));
 }
 
 .menuNavButton small {
   display: block;
-  color: #dcceae;
+  color: #cdddf2;
   font-size: 11.5px;
   font-weight: 600;
   letter-spacing: 0;
-  text-shadow: 0 1px 3px rgb(0 0 0 / 96%), 0 0 4px rgb(0 0 0 / 80%);
+  text-shadow: 0 1px 3px rgb(0 0 0 / 96%), 0 0 5px rgb(0 0 0 / 85%);
 }
 
 .menuIdentityLine {
