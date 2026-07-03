@@ -81,7 +81,13 @@ import {
   warMachinesForSale
 } from "./permanents";
 import { getDemolishAbility, isArrowTowerUnit, parseFortificationTargetId, siegeBlockedPositions } from "./siege";
-import { hasOpenAdventureTurn, isParallelActor, parallelInteractionBlocker } from "./parallel-turns";
+import {
+  hasOpenAdventureTurn,
+  isParallelActor,
+  isRoundStartEventBarrierActive,
+  parallelInteractionBlocker,
+  roundStartEventResolver
+} from "./parallel-turns";
 import { pvpEscapeWindowOpen } from "./combat-units";
 import { canPlaceTransformOn } from "./unit-transforms";
 import { bannableHeroesForSeat, DRAFT_FORMAT_LABELS, getDraftPhase } from "./adventure-setup";
@@ -6896,6 +6902,15 @@ function getParallelBystanderActions(state: GameState, playerId: PlayerId): Lega
     return actions;
   }
 
+  // Round-start Event / Astrologers barrier: a frozen bystander has NO quiet
+  // actions — not even a hand refresh, a town action or a move — until the
+  // player whose event choice is open (and the rest of the table) has resolved
+  // it. Reached here via the pendingChoice branch of getLegalActions too, which
+  // is why the gate lives at this common sink as well as in getAdventureLegalActions.
+  if (isRoundStartEventBarrierActive(state) && roundStartEventResolver(state) !== playerId) {
+    return actions;
+  }
+
   // Over the hand limit at the start of the turn: the forced discard-down
   // comes before anything else, exactly like an ordered turn.
   if (player.needsHandRefresh) {
@@ -6947,6 +6962,19 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
   const player = state.players[playerId];
   if (!adventure || !player) {
     return actions;
+  }
+
+  // Round-start Event / Astrologers barrier: while the round's Event is being
+  // resolved clockwise, only the player whose event choice is currently open has
+  // any legal action (they flow through the normal branches below to their
+  // RESOLVE_VISIT_STEP); every other player is frozen with nothing to do until
+  // the whole table finishes. Mirrors the applyAction backstop (ordered AND
+  // parallel play).
+  if (isRoundStartEventBarrierActive(state)) {
+    const resolver = roundStartEventResolver(state);
+    if (resolver && resolver !== playerId) {
+      return actions;
+    }
   }
 
   // Parallel turns: while ANOTHER player's exclusive interaction is open this

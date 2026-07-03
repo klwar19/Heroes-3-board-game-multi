@@ -5862,6 +5862,21 @@ export type AdventureReward =
        */
       playerId: PlayerId;
       kind: "start-turn-hand";
+    }
+  | {
+      /**
+       * Round-start Event / Astrologers barrier sentinel. Queued once, right
+       * after the round's Event (or Astrologers proclamation) has pushed its
+       * per-player resolution rewards, so it is the LAST event-related reward in
+       * the queue — every event follow-up (the earned Searches, the Marketplace
+       * answers) `unshift`es itself AHEAD of it. When the pump reaches it, every
+       * player has finished resolving the Event: it clears
+       * `AdventureState.eventResolution`, lifting the whole-table freeze so the
+       * normal round-start flow (City Halls, turn-start effects, first-turn hand,
+       * turns) may finally proceed. See `beginRoundStartEventBarrier`.
+       */
+      playerId: PlayerId;
+      kind: "round-start-events-resolved";
     };
 
 export type VisitStep =
@@ -6993,6 +7008,20 @@ export type AdventureState = {
   astrologers?: AstrologersState;
   /** Event deck state (Resource rounds; optional rule, multiplayer only). */
   events?: EventsState;
+  /**
+   * Round-start Event / Astrologers barrier (both event types, ordered AND
+   * parallel play). Set at the start of a round whose Event or Astrologers
+   * proclamation queued per-player resolution; while it is set the WHOLE table
+   * is frozen — only the player whose event choice is currently open may act,
+   * every other player waits (no quiet moves, no start-of-turn draw, no town or
+   * morale actions, no ending the turn) until every player has resolved it.
+   * Cleared by the trailing "round-start-events-resolved" reward sentinel once
+   * the last player's resolution has drained, after which the normal round-start
+   * flow (City Halls, turn-start effects, first-turn hand, turns) proceeds.
+   * `round` is the round it was raised in (a stale-guard: it never gates a later
+   * round). Absent/null when no Event is mid-resolution — i.e. almost always.
+   */
+  eventResolution?: { round: number } | null;
 };
 
 /**

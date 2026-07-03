@@ -26,6 +26,34 @@ import type { GameState, PlayerId } from "./state";
 /** Upper bound for the parallel-turn period pickable in the lobby. */
 export const MAX_PARALLEL_TURN_ROUNDS = 12;
 
+/**
+ * Round-start Event / Astrologers barrier (applies in BOTH ordered and parallel
+ * play, despite living in this module). Whether the round's Event or Astrologers
+ * proclamation is still being resolved by the table: while this holds, the ONLY
+ * player who may act is the one whose event choice is currently open — everyone
+ * else waits (no quiet moves, no start-of-turn draw, no town/morale actions, no
+ * ending the turn). Set in `startAdventureRound` (`beginRoundStartEventBarrier`)
+ * and cleared by the trailing sentinel reward in `pumpAdventureQueues`.
+ */
+export function isRoundStartEventBarrierActive(state: GameState): boolean {
+  const barrier = state.adventure?.eventResolution;
+  return state.mode === "adventure" && !!barrier && barrier.round === state.round;
+}
+
+/**
+ * While the round-start event barrier is up, the single player permitted to act
+ * — the owner of the currently-open event choice (a `pendingChoice`, else the
+ * `pendingVisit`). `null` when the barrier is down, or (defensively) up with no
+ * interaction open, in which case the pump is mid-drain and no player action can
+ * interleave anyway.
+ */
+export function roundStartEventResolver(state: GameState): PlayerId | null {
+  if (!isRoundStartEventBarrierActive(state)) {
+    return null;
+  }
+  return state.pendingChoice?.playerId ?? state.adventure?.pendingVisit?.playerId ?? null;
+}
+
 /** Normalizes a lobby `parallelTurns` value to an integer 0..MAX (0 = off). */
 export function normalizeParallelTurnRounds(value: unknown): number {
   const rounds = typeof value === "number" && Number.isFinite(value) ? Math.floor(value) : 0;

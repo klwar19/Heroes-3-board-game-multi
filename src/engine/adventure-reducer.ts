@@ -8392,6 +8392,17 @@ export function pumpAdventureQueues(state: GameState): void {
   while (!state.pendingChoice && adventure.rewardQueue.length > 0) {
     const reward = adventure.rewardQueue[0];
 
+    if (reward.kind === "round-start-events-resolved") {
+      // Round-start Event / Astrologers barrier sentinel: it is the last
+      // event-related reward (every follow-up unshifted ahead of it), so reaching
+      // it means every player has finished resolving the Event. Lift the freeze
+      // and let the normal round-start flow (City Halls, turn-start effects,
+      // first-turn hand, turns) proceed.
+      adventure.rewardQueue.shift();
+      adventure.eventResolution = null;
+      continue;
+    }
+
     if (reward.kind === "visit-steps") {
       adventure.rewardQueue.shift();
       const hero = getMainHero(state, reward.playerId);

@@ -108,9 +108,11 @@ import { sendTableReaction } from "./table-reactions";
 import { sendChat } from "./chat";
 import {
   hasOpenAdventureTurn,
+  isRoundStartEventBarrierActive,
   parallelInteractionBlocker,
   parallelSlotSignature,
-  parallelWaitMessage
+  parallelWaitMessage,
+  roundStartEventResolver
 } from "./parallel-turns";
 import {
   ATTACK_DIE_FACES,
@@ -15479,6 +15481,23 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
       : null;
   const parallelBystanderBlocker = actorPlayerId ? parallelInteractionBlocker(nextState, actorPlayerId) : null;
   const parallelSlotBefore = parallelBystanderBlocker ? parallelSlotSignature(nextState) : null;
+
+  // Round-start Event / Astrologers barrier (ordered AND parallel play): while
+  // the round's Event is being resolved clockwise, the ONLY player who may act
+  // is the one whose event choice is currently open — every other player waits
+  // until the whole table has resolved it (no quiet moves, no start-of-turn
+  // draw, no town/morale actions, no ending the turn). Read from the PRE-handler
+  // clone, so the round-wrap action that first raises the barrier (inside its own
+  // handler) is not itself rejected, and chat (no `playerId`) is exempt.
+  if (actorPlayerId && isRoundStartEventBarrierActive(nextState)) {
+    const resolver = roundStartEventResolver(nextState);
+    if (resolver && resolver !== actorPlayerId) {
+      return fail(base, {
+        code: "ACTION_NOT_LEGAL",
+        message: "The round's Event is still being resolved — wait until every player has resolved it before acting."
+      });
+    }
+  }
 
   // True randomness: park the server's fresh per-action entropy so every seeded
   // RNG draw this action makes is salted with it (no-op when omitted, keeping the
