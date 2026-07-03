@@ -389,6 +389,54 @@ export class AccountStore {
     return this.setRole(id, "admin");
   }
 
+  /**
+   * Idempotently ensure a CONFIRMED admin account exists (env-driven bootstrap;
+   * the credentials come from the deployment environment, never the repo). If an
+   * account already matches the email or nickname it is promoted to a confirmed,
+   * un-banned admin with its password left untouched (the owner's); otherwise a
+   * fresh confirmed admin is created directly (no email round-trip — it is
+   * server-seeded). Safe to call on every boot. Throws AccountError only on a
+   * genuinely invalid nickname/email/password, which the caller catches so the
+   * app still runs without the bootstrap.
+   */
+  ensureAdminAccount(input: { nickname: unknown; email: unknown; password: unknown }): AccountProfile {
+    const email = validateEmail(input.email);
+    const nickname = validateNickname(input.nickname);
+    const nicknameKey = normalizeNicknameKey(nickname);
+
+    const existingId = this.byEmail.get(email) ?? this.byNickname.get(nicknameKey);
+    if (existingId) {
+      const record = this.requireAccount(existingId);
+      record.role = "admin";
+      record.emailConfirmed = true;
+      delete record.bannedAt;
+      delete record.banReason;
+      return toProfile(record);
+    }
+
+    const password = validatePassword(input.password);
+    const id = generateAccountId();
+    const record: AccountRecord = {
+      id,
+      nickname,
+      nicknameKey,
+      email,
+      passwordHash: hashPassword(password),
+      role: "admin",
+      contact: {},
+      mmr: ELO_START,
+      wins: 0,
+      losses: 0,
+      matches: 0,
+      createdAt: new Date(this.now()).toISOString(),
+      emailConfirmed: true
+    };
+    this.accounts.set(id, record);
+    this.byNickname.set(nicknameKey, id);
+    this.byEmail.set(email, id);
+    return toProfile(record);
+  }
+
   banAccount(accountId: string, reason?: string): AccountProfile {
     const record = this.requireAccount(accountId);
     record.bannedAt = new Date(this.now()).toISOString();

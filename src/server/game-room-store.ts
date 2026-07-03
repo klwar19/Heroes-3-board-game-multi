@@ -272,11 +272,17 @@ export function resetRoom(
   roomId: string,
   options: RoomResetOptions = {},
   actorClientId?: string,
-  adminKey?: string
+  adminKey?: string,
+  /**
+   * Server-verified platform admin (resolved from the session cookie in the API
+   * route, so it is NOT client-forgeable). An admin may reset ANY room, exactly
+   * like the developer HOMM3BG_ADMIN_KEY override.
+   */
+  isAdmin = false
 ): ResetRoomResult {
   const existing = roomStore.get(roomId) ?? loadPersistedRoom(roomId);
   const room = existing?.state.room ?? null;
-  if (room?.hosted && !adminKeyAuthorizes(adminKey)) {
+  if (room?.hosted && !adminKeyAuthorizes(adminKey) && !isAdmin) {
     const authority = authorizeHostedWipe(roomId, room, actorClientId, "reset");
     if (!authority.allowed) {
       return { reset: false, reason: authority.reason, snapshot: getRoomSnapshot(roomId) };
@@ -642,14 +648,20 @@ export type CloseRoomResult = { closed: boolean; reason?: string };
  * `closed` snapshot so they drop back to the lobby. Idempotent: closing a room
  * that is already gone succeeds.
  */
-export function closeRoom(roomId: string, actorClientId?: string, adminKey?: string): CloseRoomResult {
+export function closeRoom(
+  roomId: string,
+  actorClientId?: string,
+  adminKey?: string,
+  /** Server-verified platform admin (from the session cookie) — may close ANY room. */
+  isAdmin = false
+): CloseRoomResult {
   const record = roomStore.get(roomId) ?? loadPersistedRoom(roomId);
   if (!record) {
     return { closed: true };
   }
 
   const room = record.state.room ?? null;
-  if (room?.hosted && !adminKeyAuthorizes(adminKey)) {
+  if (room?.hosted && !adminKeyAuthorizes(adminKey) && !isAdmin) {
     const authority = authorizeHostedWipe(roomId, room, actorClientId, "close");
     if (!authority.allowed) {
       return { closed: false, reason: authority.reason };

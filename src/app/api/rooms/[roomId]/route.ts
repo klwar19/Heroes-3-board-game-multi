@@ -1,8 +1,24 @@
 import { NextResponse } from "next/server";
 import type { GameState } from "@/engine";
 import { closeRoom, getRoomSnapshot, resetRoom, restoreRoom, type RoomResetOptions } from "@/server/game-room-store";
+import { sessionProfile } from "@/server/accounts/http";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * Whether this request carries a signed-in PLATFORM ADMIN session. Resolved
+ * server-side from the httpOnly session cookie (unforgeable — a client cannot
+ * claim it), so a real admin may wipe/close ANY room, exactly like the
+ * developer HOMM3BG_ADMIN_KEY env override. Returns false when accounts are off
+ * or the caller is a guest / ordinary player.
+ */
+function requestIsAdmin(request: Request): boolean {
+  try {
+    return sessionProfile(request)?.role === "admin";
+  } catch {
+    return false;
+  }
+}
 
 type RoomContext = {
   params: Promise<{
@@ -39,7 +55,8 @@ export async function POST(request: Request, context: RoomContext) {
         players: body.players
       },
       typeof body.actorClientId === "string" ? body.actorClientId : undefined,
-      typeof body.adminKey === "string" ? body.adminKey : undefined
+      typeof body.adminKey === "string" ? body.adminKey : undefined,
+      requestIsAdmin(request)
     );
     if (!result.reset) {
       return NextResponse.json({ reason: result.reason }, { status: 403 });
@@ -78,6 +95,6 @@ export async function DELETE(request: Request, context: RoomContext) {
   const actorClientId = typeof body?.actorClientId === "string" ? body.actorClientId : fromQuery;
   const adminKey = typeof body?.adminKey === "string" ? body.adminKey : undefined;
 
-  const result = closeRoom(decodeURIComponent(roomId), actorClientId, adminKey);
+  const result = closeRoom(decodeURIComponent(roomId), actorClientId, adminKey, requestIsAdmin(request));
   return NextResponse.json(result, { status: result.closed ? 200 : 403 });
 }

@@ -321,3 +321,56 @@ describe("AccountStore — persistence round-trip", () => {
     expect(restored.checkAvailability({ nickname: VALID.nickname }).nickname?.available).toBe(false);
   });
 });
+
+describe("AccountStore — ensureAdminAccount (env admin bootstrap)", () => {
+  function makeStore() {
+    return new AccountStore({ mailer: new CaptureMailer(), now: makeClock().now });
+  }
+
+  const ADMIN = { nickname: "Overlord", email: "boss@erathia.io", password: "dungeon12" };
+
+  it("creates a CONFIRMED admin that can log in immediately (control: a normal register cannot)", () => {
+    const store = makeStore();
+    const profile = store.ensureAdminAccount(ADMIN);
+    expect(profile.role).toBe("admin");
+    expect(profile.emailConfirmed).toBe(true);
+    // The seeded admin logs in straight away — no email round-trip.
+    expect(store.login({ identifier: ADMIN.nickname, password: ADMIN.password }).token).toBeTruthy();
+
+    // Control: an ordinary registration is NOT confirmed and cannot log in yet.
+    store.register({ nickname: "Peasant", email: "p@erathia.io", password: "villager1" });
+    expect(codeOf(() => store.login({ identifier: "Peasant", password: "villager1" }))).toBe("EMAIL_NOT_CONFIRMED");
+  });
+
+  it("promotes an EXISTING account (by email) to a confirmed admin, keeping its password", () => {
+    const store = makeStore();
+    store.register({ nickname: "Solmyr", email: ADMIN.email, password: "genielamp1" });
+    // Before: a player, unconfirmed.
+    expect(store.checkAvailability({ email: ADMIN.email }).email?.available).toBe(false);
+
+    const profile = store.ensureAdminAccount({ ...ADMIN, nickname: "DifferentNick" });
+    expect(profile.role).toBe("admin");
+    expect(profile.emailConfirmed).toBe(true);
+    // The OWNER's password is untouched (we never overwrite it), and now works.
+    expect(store.login({ identifier: ADMIN.email, password: "genielamp1" }).token).toBeTruthy();
+  });
+
+  it("is idempotent — a second call promotes the same single account, no duplicate", () => {
+    const store = makeStore();
+    const first = store.ensureAdminAccount(ADMIN);
+    const again = store.ensureAdminAccount(ADMIN);
+    expect(again.id).toBe(first.id);
+    expect(store.adminListAccounts().filter((a) => a.role === "admin")).toHaveLength(1);
+  });
+
+  it("un-bans and re-confirms a matched account so a banned admin can return", () => {
+    const store = makeStore();
+    const created = store.ensureAdminAccount(ADMIN);
+    store.banAccount(created.id, "mistake");
+    expect(store.getProfileById(created.id)?.bannedAt).toBeTruthy();
+    // Re-running the bootstrap clears the ban and keeps admin.
+    const restored = store.ensureAdminAccount(ADMIN);
+    expect(restored.bannedAt).toBeUndefined();
+    expect(restored.role).toBe("admin");
+  });
+});

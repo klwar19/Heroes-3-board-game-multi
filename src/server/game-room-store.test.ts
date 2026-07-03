@@ -174,6 +174,33 @@ describe("room membership through the store", () => {
     }
   });
 
+  it("a signed-in platform admin resets/closes ANY hosted table (control: the same stranger without admin is refused)", () => {
+    const roomId = uniqueRoom("adminacct");
+    getRoomSnapshot(roomId);
+    submitRoomAction(roomId, { type: "JOIN_ROOM", clientId: "c1", name: "Host" });
+    submitRoomAction(roomId, { type: "SET_ROOM_HOSTED", clientId: "c1", hosted: true });
+    markRoomClientConnected(roomId, "c1"); // host present, so no member self-service
+    const before = getRoomSnapshot(roomId);
+
+    try {
+      // Control: a stranger who is NOT an admin cannot touch the hosted table.
+      expect(resetRoom(roomId, { mode: "adventure" }, "stranger", undefined, false).reset).toBe(false);
+      expect(closeRoom(roomId, "stranger", undefined, false).closed).toBe(false);
+      expect(getRoomSnapshot(roomId).state.seed).toBe(before.state.seed);
+
+      // The SAME stranger, now a verified admin (isAdmin=true), resets it —
+      // exactly the flag the API route derives from the admin's session cookie.
+      const wiped = resetRoom(roomId, { mode: "adventure" }, "stranger", undefined, true);
+      expect(wiped.reset).toBe(true);
+      expect(wiped.snapshot.state.seed).not.toBe(before.state.seed);
+
+      // And an admin may close (delete) it outright.
+      expect(closeRoom(roomId, "stranger", undefined, true).closed).toBe(true);
+    } finally {
+      markRoomClientDisconnected(roomId, "c1");
+    }
+  });
+
   it("carries the room name and creation stamp across a game reset", () => {
     const roomId = uniqueRoom("namekeep");
     const created = createRoom({ roomId, name: "Friday Night", createdByName: "Binh" });
