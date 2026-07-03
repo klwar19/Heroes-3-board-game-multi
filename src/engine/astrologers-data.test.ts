@@ -52,7 +52,12 @@ const WIRED_EFFECT_TYPES = {
   WAR_MACHINE_DISCOUNT_OFFER: true,
   REMOVE_PERMANENT_FOR_GOLD: true,
   PVP_ATTACK_BAN: true,
-  SPELL_SEARCH_WIDEN: true
+  SPELL_SEARCH_WIDEN: true,
+  COMBAT_WIN_RESOURCE_DIE: true,
+  NEUTRAL_DIFFICULTY_LOWER: true,
+  NEUTRAL_REDRAW_ALL: true,
+  SEA_CONTINUE_AFTER_EMBARK: true,
+  FREE_SPELL_BOOK: true
 } satisfies Record<AstrologersEffect["type"], true>;
 
 const ASSETS_DIR = join(process.cwd(), "public", "assets");

@@ -61,6 +61,7 @@ import {
   applySettlementResource,
   flagField,
   capturableEnemyMinesWithin,
+  freeSpellBookActive,
   gainExperience,
   gainResources,
   gainTownCube,
@@ -4228,6 +4229,63 @@ export function resolveSatyrSwap(state: GameState, playerId: PlayerId, optionInd
   revealNeutralArmy(state, draws);
 }
 
+/**
+ * Judge Dread (Astrologers): offer the attacker a keep / redraw-the-whole-army
+ * choice at guard reveal. Modelled on the Satyr swap, but all-or-nothing.
+ */
+function openJudgeDreadChoice(state: GameState, draws: NeutralDraw[]): void {
+  const combat = state.combat;
+  if (!combat) {
+    return;
+  }
+
+  combat.pendingNeutralDraws = draws;
+  const names = draws.map((draw) => coreUnitDefinitions[draw.unitDefId]?.name ?? draw.unitDefId).join(", ");
+  const choiceId = `choice_${nextEventNumber(state)}`;
+  state.pendingChoice = {
+    id: choiceId,
+    type: "OPTION_CHOICE",
+    playerId: combat.attackerPlayerId,
+    prompt: `Judge Dread: discard the whole drawn guard army (${names}) and draw a fresh one?`,
+    options: [{ label: "Keep the drawn army" }, { label: "Discard all and draw new Neutral Units" }],
+    context: "judge-dread",
+    returnPhase: "combat-setup"
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = combat.attackerPlayerId;
+}
+
+/**
+ * Resolves the Judge Dread offer: option 1 discards every deck-drawn guard to
+ * its tier's Neutral discard pile and draws a fresh guard army (same field
+ * difficulty); option 0 keeps the drawn army. Either way the final army reveals.
+ */
+export function resolveJudgeDread(state: GameState, playerId: PlayerId, optionIndex: number): void {
+  const combat = state.combat;
+  const draws = combat?.pendingNeutralDraws;
+  if (!combat || !draws || combat.context.kind !== "neutral") {
+    throw new Error("There is no drawn neutral army to redraw.");
+  }
+
+  if (optionIndex > 0) {
+    // "Discard all of them": deck-drawn guards go to their tier's Neutral discard
+    // pile (fixed bank guards are minted, so they just vanish); then draw fresh.
+    for (const draw of draws) {
+      if (draw.bankGuard) {
+        continue;
+      }
+      state.decks[NEUTRAL_DECK_IDS[draw.tier]]?.discardPile.push(draw.unitDefId);
+    }
+    const field = state.adventure?.fields[combat.context.fieldId];
+    const fresh = drawGuardArmy(state, field, combat.context.difficulty);
+    // The fresh army is logged by revealNeutralArmy (NEUTRAL_ARMY_REVEALED).
+    revealNeutralArmy(state, fresh);
+    return;
+  }
+
+  revealNeutralArmy(state, draws);
+}
+
 export function startPlayerCombat(
   state: GameState,
   attacker: HeroState,
@@ -4769,9 +4827,16 @@ export function finishCombatPlacement(state: GameState, action: Extract<GameActi
     }
     const guardField = state.adventure?.fields[combat.context.fieldId];
     const draws = drawGuardArmy(state, guardField, combat.context.difficulty);
-    // The Groovy Satyr only swaps deck-drawn guards, never fixed bank guards.
-    const satyrActive = getActiveAstrologersCard(state)?.effect.type === "NEUTRAL_DRAW_SWAP";
-    if (satyrActive && draws.some((draw) => !draw.bankGuard)) {
+    // Only one Astrologers card is face up, so Judge Dread and the Groovy Satyr
+    // are mutually exclusive; both only touch deck-drawn guards, never fixed bank
+    // guards. Judge Dread offers to discard the WHOLE army and draw fresh; the
+    // Satyr swaps a single card.
+    const activeEffect = getActiveAstrologersCard(state)?.effect.type;
+    if (activeEffect === "NEUTRAL_REDRAW_ALL" && draws.some((draw) => !draw.bankGuard)) {
+      openJudgeDreadChoice(state, draws);
+      return;
+    }
+    if (activeEffect === "NEUTRAL_DRAW_SWAP" && draws.some((draw) => !draw.bankGuard)) {
       openSatyrSwapChoice(state, draws);
       return;
     }
@@ -5400,6 +5465,30 @@ export function skipNecromancy(state: GameState, action: Extract<GameAction, { t
  * few during combat), neutrals go to their tier discard piles, experience and
  * level ups resolve, and the winning attacker visits the contested field.
  */
+/**
+ * Pirates (Astrologers): the winner of a Combat other than Quick Combat gains
+ * one Resource die. Queued as a reward so it rolls after the battle closes.
+ * Only a live human winner qualifies; a Quick Combat never reaches finalize, so
+ * the "other than Quick Combat" clause holds by construction.
+ */
+function queuePiratesResourceDie(state: GameState, winnerId: PlayerId): void {
+  if (winnerId === NEUTRAL_PLAYER_ID) {
+    return;
+  }
+  const player = state.players[winnerId];
+  if (!player || player.eliminated) {
+    return;
+  }
+  if (getActiveAstrologersCard(state)?.effect.type !== "COMBAT_WIN_RESOURCE_DIE") {
+    return;
+  }
+  state.adventure?.rewardQueue.push({
+    playerId: winnerId,
+    kind: "visit-steps",
+    steps: [{ type: "ROLL_RESOURCE_DICE", count: 1 }]
+  });
+}
+
 export function finalizeAdventureCombat(state: GameState): void {
   const combat = state.combat;
   const adventure = state.adventure;
@@ -5409,6 +5498,10 @@ export function finalizeAdventureCombat(state: GameState): void {
 
   const context = combat.context;
   const outcome = combat.outcome;
+
+  // Pirates (Astrologers): reward the winner one Resource die (both the neutral
+  // and PvP branches below share this one hook). A no-op unless Pirates is up.
+  queuePiratesResourceDie(state, outcome.winnerPlayerId);
 
   // Combat is over: discard every combat-scoped active effect now. A fought-out
   // win already expired them when the last unit fell (finishCombatIfNeeded), but
@@ -6069,15 +6162,19 @@ export function spellBookAction(state: GameState, action: Extract<GameAction, { 
   const mageGuild = town?.buildings
     .map((buildingId) => coreBuildingDefinitions[buildingId])
     .find((building) => building?.effect?.type === "MAGE_GUILD");
-  if (!mageGuild) {
+  // Mages (Astrologers): the Spell Book token is free this round AND usable even
+  // without a Mage Guild — so the guild requirement (and its "same round built"
+  // restriction, which is about the guild) is waived and the gold cost is 0.
+  const magesFree = freeSpellBookActive(state);
+  if (!mageGuild && !magesFree) {
     throw new Error("Buying spells needs a Mage Guild.");
   }
 
-  if (player.mageGuildBuiltRound === state.round) {
+  if (mageGuild && player.mageGuildBuiltRound === state.round && !magesFree) {
     throw new Error("The Spell Book token cannot be used the round the Mage Guild was built.");
   }
 
-  let goldCost = mageGuild.spellBookCost ?? 5;
+  let goldCost = magesFree ? 0 : (mageGuild?.spellBookCost ?? 5);
   let searchCount = 2;
   const wisdom = action.wisdom;
 
@@ -6759,6 +6856,12 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
   if (choice.context === "satyr-swap") {
     state.pendingChoice = null;
     resolveSatyrSwap(state, action.playerId, action.optionIndex);
+    return;
+  }
+
+  if (choice.context === "judge-dread") {
+    state.pendingChoice = null;
+    resolveJudgeDread(state, action.playerId, action.optionIndex);
     return;
   }
 

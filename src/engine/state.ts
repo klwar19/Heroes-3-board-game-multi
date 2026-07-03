@@ -5429,9 +5429,12 @@ export type CombatState = {
   attackSequence?: AttackSequenceState | null;
   /**
    * Neutral cards drawn after the player finished placement, awaiting the
-   * Groovy Satyr swap choice before the army is revealed and placed.
+   * Groovy Satyr swap or Judge Dread redraw choice before the army is revealed
+   * and placed. `bankGuard` marks a minted (never deck-drawn) fixed guard.
    */
-  pendingNeutralDraws?: { unitDefId: string; tier: "bronze" | "silver" | "gold" | "azure" }[] | null;
+  pendingNeutralDraws?:
+    | { unitDefId: string; tier: "bronze" | "silver" | "gold" | "azure"; bankGuard?: boolean }[]
+    | null;
   /**
    * Set between combat rounds against neutrals: the attacking hero must spend
    * 1 MP to continue for another round or retreat.
@@ -7273,6 +7276,7 @@ export type PendingChoice =
         | "pandora-upkeep"
         | "place-creature-bank"
         | "subterranean-gate-placement"
+        | "judge-dread"
         | "far-tile-flip";
       /**
        * city-hall: the income options for the City Hall (Resource-round) choice

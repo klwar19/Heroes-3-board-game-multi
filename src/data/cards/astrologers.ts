@@ -7,19 +7,20 @@
  * rules cross-checked against the community rulebook rewrite
  * (https://github.com/qwrtln/Homm3BG-build-artifacts, main_en.pdf).
  *
- * Scope: the 19 Core Game proclamations plus the expansion cards whose effects
- * map cleanly onto existing engine systems and are wired + tested here
- * (Society, Big Cleanup, Blue Sky, Scorched Ground, Dancing Imp, Hero,
- * Plane Between Planes, the Rampart war-machine pair Ammo Cart + McGiver, and
- * the Stretch/Conflux trio Destruction, Sanctuary and Spells — the last a
- * PvP-attack ban that is enforced at the combat chokepoint and, by construction,
- * keeps the optional parallel-turns mode running because no PvP ever triggers).
+ * Scope: the Core Game proclamations plus every expansion card whose effect
+ * maps onto an existing engine system and is wired + tested here — including the
+ * Stretch/Conflux/Cove/Stronghold cards Destruction, Sanctuary, Spells, Pirates,
+ * Rulebook, Judge Dread, Wind and Mages (Sanctuary's PvP-attack ban is enforced
+ * at the combat chokepoint and, by construction, keeps the optional
+ * parallel-turns mode running because no PvP ever triggers). Only the cards that
+ * would each need a whole new subsystem remain out — see
+ * ASTROLOGERS_NOT_IMPLEMENTED, whose entries each name the missing subsystem.
  * The `effect` field is the single source of truth for what the engine runs;
  * `text` is the printed card wording. Most cards carry a real card scan in
  * `image`; a few render through the app's text card-face while their scan is
  * unavailable upstream (ART_LESS_PROCLAMATIONS) or not yet fetched
  * (ART_PENDING_PROCLAMATIONS). Expansion proclamations that would still need a
- * new subsystem (defense->attack conversion, an extra-Event draw, ...) remain
+ * new subsystem (defense->attack conversion, in-place tile rotation, ...) remain
  * intentionally NOT included rather than shipped as inert text — see
  * ASTROLOGERS_NOT_IMPLEMENTED below for the honest list.
  */
@@ -108,7 +109,26 @@ export type AstrologersEffect =
   // Search(`count`) instead of the base size — a strictly larger look at the
   // top (they still keep one). Passive: read in openSharedDeckSearch when the
   // searched deck is a Spell deck (either BINH split deck) and this card is up.
-  | { type: "SPELL_SEARCH_WIDEN"; count: number };
+  | { type: "SPELL_SEARCH_WIDEN"; count: number }
+  // Pirates: each time a player WINS a Combat other than Quick Combat, they gain
+  // one Resource die roll. Read at combat finalization (finalizeAdventureCombat)
+  // — Quick Combat never reaches finalize, so it is excluded by construction.
+  | { type: "COMBAT_WIN_RESOURCE_DIE" }
+  // Rulebook: neutral-unit encounters draw their guard army as if the GAME
+  // difficulty were `levels` lower (min Easy) — a weaker guard. Read in
+  // drawNeutralArmy. "Ignore if Easy" holds by construction (Easy cannot drop).
+  | { type: "NEUTRAL_DIFFICULTY_LOWER"; levels: number }
+  // Judge Dread: at the start of Combat with Neutral Units the attacker may
+  // discard the whole drawn guard army and draw a fresh one. An offer opened at
+  // guard reveal (like the Groovy Satyr's single swap, but all-or-nothing).
+  | { type: "NEUTRAL_REDRAW_ALL" }
+  // Wind: a Hero is no longer halted on the step that ENTERS the sea from a land
+  // field (embarking) — it keeps moving. Disembarking (sea→land) still halts.
+  // Read in seaStepHalts; "ignore with no sea tiles" holds (no sea → never fires).
+  | { type: "SEA_CONTINUE_AFTER_EMBARK" }
+  // Mages: using the Spell Book token is FREE this round and allowed even without
+  // a Mage Guild built. Read at the Spell Book gate (legal-actions + spellBookAction).
+  | { type: "FREE_SPELL_BOOK" };
 
 /** Boxed sets / expansions a proclamation can ship in (provenance, shown in the UI). */
 export const ASTROLOGERS_EXPANSIONS = [
@@ -118,6 +138,8 @@ export const ASTROLOGERS_EXPANSIONS = [
   "Inferno Expansion",
   "Rampart Expansion",
   "Conflux Expansion",
+  "Cove Expansion",
+  "Stronghold Expansion",
   "Stretch Goals"
 ] as const;
 
@@ -166,7 +188,12 @@ export const ART_LESS_PROCLAMATIONS: ReadonlySet<string> = new Set<string>(["ast
 export const ART_PENDING_PROCLAMATIONS: ReadonlySet<string> = new Set<string>([
   "astrologers.destruction",
   "astrologers.sanctuary",
-  "astrologers.spells"
+  "astrologers.spells",
+  "astrologers.pirates",
+  "astrologers.rulebook",
+  "astrologers.judge_dread",
+  "astrologers.wind",
+  "astrologers.mages"
 ]);
 
 function source(slug: string, expansion: AstrologersExpansion) {
@@ -396,6 +423,30 @@ export const astrologersCardDefinitions: Record<string, AstrologersCardDefinitio
     image: image("isras_friends"),
     source: source("isras_friends", "Core Game")
   },
+  "astrologers.judge_dread": {
+    id: "astrologers.judge_dread",
+    name: "Judge Dread",
+    text: "Until the next Astrologers' round: at the start of Combat with Neutral Units, the attacker can discard all of them and draw new Neutral Units.",
+    // Passive while face up: read at guard reveal (finalizeCombatSetup). The
+    // attacker gets a keep / redraw-the-whole-army offer.
+    ongoing: true,
+    effect: { type: "NEUTRAL_REDRAW_ALL" },
+    expansion: "Stronghold Expansion",
+    image: "",
+    source: source("judge_dread", "Stronghold Expansion")
+  },
+  "astrologers.mages": {
+    id: "astrologers.mages",
+    name: "Mages",
+    text: "During this round, using the Spell Book token is free. You can use it even if you do not have a Mage Guild built.",
+    // Passive while face up (read at the Spell Book gate): the token costs 0 gold
+    // and the Mage-Guild requirement is waived. Scoped to the drawn (even) round.
+    ongoing: true,
+    effect: { type: "FREE_SPELL_BOOK" },
+    expansion: "Conflux Expansion",
+    image: "",
+    source: source("mages", "Conflux Expansion")
+  },
   "astrologers.magic_tortoise": {
     id: "astrologers.magic_tortoise",
     name: "Magic Tortoise",
@@ -426,6 +477,19 @@ export const astrologersCardDefinitions: Record<string, AstrologersCardDefinitio
     image: image("merry_leprechaun"),
     source: source("merry_leprechaun", "Core Game")
   },
+  "astrologers.pirates": {
+    id: "astrologers.pirates",
+    name: "Pirates",
+    text: "Until the next Astrologers' round: every time you win Combat other than Quick Combat, gain 1 Resource die.",
+    // Passive while face up (read at combat finalization): the winning player
+    // rolls one Resource die. Quick Combat never reaches finalization, so it is
+    // excluded automatically.
+    ongoing: true,
+    effect: { type: "COMBAT_WIN_RESOURCE_DIE" },
+    expansion: "Cove Expansion",
+    image: "",
+    source: source("pirates", "Cove Expansion")
+  },
   "astrologers.plane_between_planes": {
     id: "astrologers.plane_between_planes",
     name: "Plane Between Planes",
@@ -445,6 +509,19 @@ export const astrologersCardDefinitions: Record<string, AstrologersCardDefinitio
     expansion: "Core Game",
     image: image("profuse_growth"),
     source: source("profuse_growth", "Core Game")
+  },
+  "astrologers.rulebook": {
+    id: "astrologers.rulebook",
+    name: "Rulebook",
+    text: "When you trigger Combat with Neutral Units, the enemy's strength corresponds to the game difficulty setting one level lower. (Ignore this card if the difficulty is Easy.)",
+    // Passive while face up (read when drawing a neutral guard army): the army is
+    // drawn as if the GAME difficulty were one level lower. Easy cannot drop, so
+    // "ignore on Easy" holds by construction.
+    ongoing: true,
+    effect: { type: "NEUTRAL_DIFFICULTY_LOWER", levels: 1 },
+    expansion: "Stretch Goals",
+    image: "",
+    source: source("rulebook", "Stretch Goals")
   },
   "astrologers.sanctuary": {
     id: "astrologers.sanctuary",
@@ -538,6 +615,19 @@ export const astrologersCardDefinitions: Record<string, AstrologersCardDefinitio
     image: "",
     source: source("wandering_merchant", "Stretch Goals")
   },
+  "astrologers.wind": {
+    id: "astrologers.wind",
+    name: "Wind",
+    text: "Until the next Astrologers' round: all Heroes can continue their movement after entering a sea field from a land field. (Ignore this card if there are no sea tiles.)",
+    // Passive while face up (read in seaStepHalts): the embark step (land→sea)
+    // no longer halts the hero. Disembarking (sea→land) still halts. With no sea
+    // tiles the step never occurs, so "ignore" holds by construction.
+    ongoing: true,
+    effect: { type: "SEA_CONTINUE_AFTER_EMBARK" },
+    expansion: "Cove Expansion",
+    image: "",
+    source: source("wind", "Cove Expansion")
+  },
   "astrologers.white_raven": {
     id: "astrologers.white_raven",
     name: "White Raven",
@@ -582,24 +672,48 @@ export const astrologersDeckCardIds: string[] = Object.keys(astrologersCardDefin
  * the omission is a conscious, reviewable decision rather than a silent gap.
  */
 export const ASTROLOGERS_NOT_IMPLEMENTED: { name: string; expansion: string; needs: string }[] = [
-  { name: "Crag Hack", expansion: "Stronghold", needs: "first-combat ground-unit attack buff + free Goblin reinforce" },
-  { name: "Disruption", expansion: "Stretch Goals", needs: "per-player free single-tile rotation flow" },
-  { name: "Elementals", expansion: "Conflux", needs: "face-up Elemental units seeded onto neutral decks" },
-  // The Event deck itself now exists (src/data/cards/events.ts, optional rule)
-  // — Forty Thieves' "draw and resolve an extra Event" hook is still unwired.
-  { name: "Forty Thieves", expansion: "Fortress", needs: "drawing/resolving an EXTRA Event from the (optional) Event deck mid-round" },
-  { name: "Judge Dread", expansion: "Stronghold", needs: "attacker redraws the whole neutral guard" },
-  { name: "Mages", expansion: "Conflux", needs: "free Spell Book token use" },
-  { name: "Multilingual Bron", expansion: "Stretch Goals", needs: "reroll of unit special-ability rolls" },
-  { name: "Offense", expansion: "Stronghold", needs: "Defense cards acting as Attack" },
-  { name: "Pirates", expansion: "Cove", needs: "post-combat-win Resource die reward" },
-  { name: "Plastic Tray", expansion: "Stronghold", needs: "defense-roll units skipping attack dice" },
+  // Crag Hack ties a first-combat ground-unit attack buff to the specific hero
+  // Crag Hack's faction (Stronghold), which is not a playable faction in this
+  // build — so its "reinforce Goblins for free" half has no home. Left out until
+  // Stronghold ships.
+  { name: "Crag Hack", expansion: "Stronghold", needs: "the Stronghold faction (Crag Hack's) + its free-Goblin reinforce" },
+  // Forty Thieves inserts the drawer's "pick 1 of 2 Events" choice into the
+  // Event draw, which happens at the START of a Resource round BEFORE turns
+  // begin. The round-advance queues each player's turn-start rewards immediately
+  // after drawEventCard with no pause for a pending choice, so a choice opened
+  // mid-draw would resolve the Event AFTER turn-start rewards — breaking the
+  // "Events resolve before turns" ordering. Needs a round-start restructure that
+  // fully resolves the Event pick before startPlayerTurn. Deferred (CLAUDE.md #1).
+  { name: "Forty Thieves", expansion: "Fortress", needs: "a round-start hook that resolves the drawer's Event pick before turns begin" },
+  // Disruption rotates an ALREADY-EXPLORED map tile in place. The existing
+  // rotation machinery (materializeTileFields) rebuilds a tile's fields from its
+  // definition — resetting flags, Black Cubes and everFlagged — so reusing it
+  // mid-game would WIPE the tile's accumulated state. A correct implementation
+  // needs a rotate-in-place that permutes each ring hex's full MapFieldState
+  // (flag/cube/settlement/bank) around the centre. Deferred rather than ship
+  // state corruption (CLAUDE.md #1: no bug).
+  { name: "Disruption", expansion: "Stretch Goals", needs: "a rotate-in-place tile subsystem that preserves each hex's accumulated state" },
+  // Elementals seeds a face-up Elemental on TOP of each Neutral deck and makes it
+  // "return when defeated" — a per-deck face-up-guard subsystem the neutral decks
+  // do not model. Deferred rather than faked.
+  { name: "Elementals", expansion: "Conflux", needs: "a face-up Elemental guard seeded on each Neutral deck that returns on defeat" },
+  // Multilingual Bron rerolls the die of a unit's special ABILITY (Halfling shot,
+  // Satyr morale, ...). Those ability rolls resolve inline without a reroll hook;
+  // adding one uniformly across every ability roll is a combat-wide subsystem.
+  { name: "Multilingual Bron", expansion: "Stretch Goals", needs: "a uniform reroll hook on every unit special-ability roll" },
+  // Offense swaps Defense→Attack on every card that grants Defense — a
+  // fundamental combat-value reinterpretation across Statistics, abilities and
+  // tokens. Too invasive to wire correctly without a value-source rework.
+  { name: "Offense", expansion: "Stronghold", needs: "a global Defense→Attack reinterpretation of every value source" },
+  // Plastic Tray changes the Defend action itself (roll no Attack dice, get +1
+  // Defense) — a rework of the defend/defense-token combat mechanic.
+  { name: "Plastic Tray", expansion: "Stronghold", needs: "a reworked Defend action (no attack dice, +1 Defense)" },
   // Restart reduces the hand LIMIT by 2 to a minimum of 4. This build's base hand
   // limit is already 4 (adventure-setup.ts), so the card would be inert unless a
   // permanent first raised the limit above 4 — i.e. effectively decorative here.
   // Left out rather than shipped as a near-no-op (CLAUDE.md #1).
   { name: "Restart", expansion: "Stretch Goals", needs: "a base hand limit above 4 for the -2 (min 4) reduction to ever bite" },
-  { name: "Rulebook", expansion: "Stretch Goals", needs: "neutral-combat difficulty reduction" },
-  { name: "Whirlpool", expansion: "Cove", needs: "free whirlpool travel with exit choice" },
-  { name: "Wind", expansion: "Cove", needs: "continued movement after entering a sea field" }
+  // Whirlpool needs the whirlpool map-location travel subsystem (enter one, pick
+  // an exit whirlpool) which does not exist yet.
+  { name: "Whirlpool", expansion: "Cove", needs: "the whirlpool travel subsystem (enter/exit whirlpool locations)" }
 ];
