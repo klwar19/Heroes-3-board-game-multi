@@ -502,6 +502,50 @@ describe("ReactionTray — Power can still be added after Slayer arms the attack
     expect(confirm.disabled, "the defender should be able to fuel their own Weakness with Magic Arrow").toBe(false);
     expect(screen.queryByText(/power only counts with a spell/i)).toBeNull();
   });
+
+  it("plays an EMPOWERED ability's Expert side with 0 crowns (does not count it against the crown budget)", () => {
+    // Empowered abilities (Dragon Fly Hive / Griffin Conservatory bonus) play
+    // their Expert side crown-free. The engine offers Offense-expert at 0 crowns,
+    // but the tray counted it as a crown → Confirm disabled + "no crowns left".
+    const state = createInitialGameState("tray-empowered-expert");
+    state.players.p1.hand = ["ability.offense"];
+    state.players.p2.hand = [];
+    state.players.p1.empoweredAbilities = ["ability.offense"];
+    state.players.p1.limits.expertUses = 0; // NO crowns available
+    state.players.p1.combatStats.expertUsesSpentThisRound = 0;
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    const griffins = state.combat!.units.unit_p1_griffins;
+    griffins.activatedThisRound = false;
+    griffins.abilities = [];
+    griffins.position = 9;
+    state.combat!.units.unit_p2_skeletons.position = 13;
+    state.combat!.units.unit_p2_skeletons.abilities = [];
+
+    const declared = applyAction(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_griffins",
+      defenderId: "unit_p2_skeletons"
+    });
+    expect(declared.errors).toEqual([]);
+    // The engine offers the Expert reaction crown-free.
+    const expertOffered = getLegalActions(declared.state, "p1").some(
+      (legal) =>
+        legal.action.type === "PLAY_REACTION" && legal.action.cardId === "ability.offense" && legal.action.mode === "expert"
+    );
+    expect(expertOffered, "engine offers the empowered Offense expert at 0 crowns").toBe(true);
+
+    render(tray(declared.state));
+
+    // Pick Offense, then toggle its Expert side.
+    act(() => fireEvent.click(screen.getByRole("button", { name: /add to play/i })));
+    act(() => fireEvent.click(screen.getByRole("button", { name: /^Expert$/i })));
+
+    // Confirm is enabled and NO "no crowns" warning — the empowered Expert is free.
+    const confirm = screen.getByRole("button", { name: /play card/i }) as HTMLButtonElement;
+    expect(confirm.disabled, "an empowered Expert reaction is playable with 0 crowns").toBe(false);
+    expect(screen.queryByText(/no crowns left/i)).toBeNull();
+  });
 });
 
 describe("ReactionTray — live Power readout", () => {

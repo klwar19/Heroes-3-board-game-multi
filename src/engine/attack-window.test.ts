@@ -140,6 +140,44 @@ describe("attack-window power pairing", () => {
     expect(result.errors[0]?.message).toContain("Power can only be played into an attack together with a Spell card");
   });
 
+  it("accepts a lone-Power BATCH once an instant empowers the attack (batch matches the single-play path)", () => {
+    // Play Bloodlust on its own, then submit the two Power statistics as ONE
+    // PLAY_REACTIONS batch with no spell in it. The single-play route already
+    // allows this once the attack is empowerable; the batch validator used to
+    // reject it unconditionally, so the UI (which offers it) let the player
+    // Confirm a batch the engine then bounced. Power 2 lifts Bloodlust to +3.
+    const state = declareMeleeAttack(["spell.bloodlust", "stat.power", "stat.power"], []);
+    const afterSpell = applyOk(state, { type: "PLAY_REACTION", playerId: "p1", cardId: "spell.bloodlust", mode: "basic" });
+    expect(afterSpell.reactionWindow?.priorityPlayerId).toBe("p1");
+
+    const batched = applyOk(afterSpell, {
+      type: "PLAY_REACTIONS",
+      playerId: "p1",
+      plays: [
+        { cardId: "stat.power", mode: "basic" },
+        { cardId: "stat.power", mode: "basic" }
+      ]
+    });
+    const rolled = [...batched.eventLog].reverse().find((event) => event.type === "ATTACK_ROLLED");
+    expect(rolled && rolled.type === "ATTACK_ROLLED" ? rolled.attackBonus : null).toBe(3);
+  });
+
+  it("still rejects a lone-Power BATCH when nothing on the attack is empowerable (control)", () => {
+    // The window is open (Bloodlust is a pairable spell), but no instant has been
+    // played, so a power-only batch still dissipates — the batch validator keeps
+    // the same guard as the single-play route.
+    const state = declareMeleeAttack(["spell.bloodlust", "stat.power", "stat.power"], []);
+    const result = applyAction(state, {
+      type: "PLAY_REACTIONS",
+      playerId: "p1",
+      plays: [
+        { cardId: "stat.power", mode: "basic" },
+        { cardId: "stat.power", mode: "basic" }
+      ]
+    });
+    expect(result.errors[0]?.message).toContain("Power can only be played into an attack together with a Spell card");
+  });
+
   it("re-derives the spell bonus from the FINAL Power across several separate empower plays", () => {
     // Bloodlust, then two Power plays one at a time: power 2 lifts it to +3.
     const state = declareMeleeAttack(["spell.bloodlust", "stat.power", "stat.power"], []);
