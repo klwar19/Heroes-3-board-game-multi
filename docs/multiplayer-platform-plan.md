@@ -1,5 +1,58 @@
 # Multiplayer Platform Plan (boardgame.io Path)
 
+> **Status update (social + governance layer — chat, room modes, admin).** Four
+> connected features shipped on top of Platform Phase 0/1 (menu shell + accounts)
+> and the table reactions (emotes). Each claim below has a test that fails if the
+> wiring is removed, each with a mutation control.
+>
+> - **In-room chat (ephemeral, engine-enforced).** `SEND_CHAT` flows through
+>   `applyAction` into the bounded ring buffer `state.room.chat` exactly like room
+>   membership and reactions, so it works identically on both transports with NO
+>   transport change. Keyed by `clientId` (never a seat `playerId`), so it is
+>   never seat-/turn-gated (an observer may chat; a player may chat on anyone's
+>   turn) and safe in every mode incl. parallel turns. Text is control-stripped,
+>   whitespace-collapsed, trimmed and capped; a deterministic per-client flood cap
+>   and the ring-buffer cap keep it bounded and "temporary" (old lines roll off,
+>   nothing stored per account). Public content — rides `getPlayerView` unredacted
+>   to every seat/observer. The signed-in nickname flows in via the room member's
+>   name. Engine `src/engine/chat.ts`; a collapsible seat-coloured dock in
+>   `src/components/table/chat-panel.tsx` on the setup/map/combat screens. Tests:
+>   `chat.test.ts`, `chat-panel.test.tsx`.
+> - **Lobby chat (ephemeral, global).** The lobby-scoped sibling for the /play
+>   room browser (players not in a room yet). It lives OUTSIDE the game snapshot,
+>   so it is an in-memory `LobbyChatBoard` ring buffer (`src/server/lobby-chat.ts`,
+>   pure + injectable clock) behind REST `GET/POST /api/lobby-chat`, polled on the
+>   directory's 5s tick. Ephemeral by design — a server restart clears it (no disk
+>   persistence). **Limit (documented):** the board is a per-process in-memory
+>   singleton, like the built-in room store, so a multi-instance serverless deploy
+>   would not share one feed; fine for a single instance / the built-in backend.
+>   Tests: `lobby-chat.test.ts`, `lobby-chat.test.tsx`, `api/lobby-chat/route.test.ts`.
+> - **Open vs Closed room at creation.** The /play create form offers Open table
+>   (anyone picks any seat — the free flow) or Closed table (the creator becomes
+>   host, seats lock, one player per seat), wired to the existing open-vs-hosted
+>   model via `SET_ROOM_HOSTED` — no new engine concept. The choice rides the
+>   /play→/?room= navigation as a one-shot `savePendingRoomHosted` hint; the game
+>   page hosts the room once the creator is a member (idempotent). The host can
+>   still switch modes in-room. Tests: `lobby.test.tsx`, `pending-room-name.test.ts`.
+> - **Admin account governs rooms AND nicks.** A platform admin (account role
+>   `admin`) may delete/close/reset ANY room, not just their own — closing the
+>   loop with the existing `/admin` player governance (ban/delete/setRole). The
+>   authority is resolved server-side from the httpOnly session cookie in
+>   `/api/rooms/[roomId]` (`sessionProfile().role === "admin"` → `isAdmin` bypass
+>   in `closeRoom`/`resetRoom`), so it is NOT client-forgeable — the developer
+>   `HOMM3BG_ADMIN_KEY` env override still exists alongside it. A ready-to-use
+>   admin is bootstrapped from env (`HOMM3BG_ADMIN_NICKNAME` +
+>   `HOMM3BG_ADMIN_PASSWORD` + `HOMM3BG_ADMIN_EMAIL` → `ensureAdminAccount`, a
+>   confirmed admin created-if-missing / promoted-if-present, password never
+>   overwritten, credentials from env not the repo). The /play room browser shows
+>   an admin a delete control on every room (display-only; the server re-verifies).
+>   **Limit (documented):** on the PartyKit edge the room Durable Object can't read
+>   the app's session cookie, so admin-account room deletion is a built-in-backend
+>   feature there; the env `HOMM3BG_ADMIN_KEY` remains the edge override. Tests:
+>   `account-store.test.ts` (ensureAdminAccount), `game-room-store.test.ts`
+>   (isAdmin bypass), `admin-room-authority.test.ts` (end-to-end through the DELETE
+>   route), `lobby.test.tsx` (the admin delete control).
+
 > **Status update:** the edge backend now exists as a PartyKit scaffold —
 > `party/index.ts` runs one Cloudflare Durable Object per room (the
 > authoritative twin of `src/server/game-room-store.ts`), persists snapshots
