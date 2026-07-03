@@ -73,6 +73,14 @@ export type TownBoardSpec = {
   /** Designed boards: the authentic printed tracks/tokens panel (a crop of the
    *  Stronghold fan scan) pasted at `geometry.panel` instead of CSS cells. */
   panelImage?: string;
+  /**
+   * Real printed BUILDING-TILE art per slot (the physical Factory board): each
+   * building has a full-bleed built-art tile (`townBoardTileArt`) and an unbuilt
+   * name/cost plaque tile (`townBoardUnbuiltTileArt`). When set, the board view
+   * shows those portrait tiles directly (built = art, unbuilt = plaque) instead
+   * of the panorama-reveal + CSS plate — so the slots read like the real board.
+   */
+  realTileArt?: boolean;
   /** Seven bars, left to right; the one two-entry bar is the shared bar. */
   bars: readonly (readonly string[])[];
   geometry: TownBoardGeometry;
@@ -335,12 +343,13 @@ export const townBoardSpecs: Record<string, TownBoardSpec> = {
   },
   factory: {
     factionId: "factory",
-    // Published empty town background (thelazy.net "Factory-in-background"); the
-    // built town (fullImage) is revealed a bar-slice at a time as you build, and
-    // the real per-building printed tiles (public/assets/town-board/factory-*)
-    // overlay on top — Factory has one for every building.
+    // The real printed Factory town board: every slot shows its own portrait
+    // building tile (public/assets/town-board/factory-<building>{,-unbuilt}.webp,
+    // cropped from the physical board scans) — the name/cost plaque while unbuilt,
+    // the built illustration once raised. No panorama-reveal, so nothing muddies
+    // the tiles; the empty desert only shows in the gaps between slots.
+    realTileArt: true,
     panoramaImage: "/assets/towns-factory-background.webp",
-    fullImage: "/assets/towns-factory-empty.webp",
     panelImage: DESIGNED_PANEL_IMAGE,
     bars: [
       ["factory.city_hall"],
@@ -364,6 +373,14 @@ export const townBoardSpecs: Record<string, TownBoardSpec> = {
  */
 export function townBoardTileArt(buildingId: string): string {
   return `/assets/town-board/${buildingId.replace(".", "-")}.webp`;
+}
+
+/**
+ * The UNBUILT printed slot tile (name + cost plaque) for a `realTileArt` board.
+ * File convention `<faction>-<building>-unbuilt.webp` alongside the built art.
+ */
+export function townBoardUnbuiltTileArt(buildingId: string): string {
+  return `/assets/town-board/${buildingId.replace(".", "-")}-unbuilt.webp`;
 }
 
 /**

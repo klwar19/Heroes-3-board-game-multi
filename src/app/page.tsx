@@ -3652,23 +3652,22 @@ export default function Home() {
                 view={playerView}
                 viewerPlayerId={isSeated ? viewerPlayerId : seatIds[0]}
               />
-              {/* The unit deck rides the left rail now that the right column is
-                  gone (hero board docks in the top bar, town in its window). */}
-              {isSeated ? (
-                <ArmyPanel playerId={viewerPlayerId} state={state} />
-              ) : (
-                seatIds.map((playerId) => (
-                  <div key={playerId}>
-                    <PermanentSlot playerId={playerId} state={state} />
-                    <ArmyPanel playerId={playerId} state={state} />
-                  </div>
-                ))
-              )}
+              {/* A seated player's own unit deck rides the top dock now (Town ·
+                  Hero · Unit deck). Observers still see every seat's deck here. */}
+              {isSeated
+                ? null
+                : seatIds.map((playerId) => (
+                    <div key={playerId}>
+                      <PermanentSlot playerId={playerId} state={state} />
+                      <ArmyPanel playerId={playerId} state={state} />
+                    </div>
+                  ))}
             </div>
             <div className="mapColumn">
-              {/* The big, obviously-clickable town + hero boards fill the strip
-                  just above the map. */}
+              {/* The big, obviously-clickable town + hero + unit-deck boards fill
+                  the strip just above the map. */}
               <TownHeroDock
+                armySeatId={isSeated ? viewerPlayerId : undefined}
                 heroSeatIds={isSeated ? [viewerPlayerId] : seatIds}
                 onOpenTown={isSeated && viewerTown ? () => setTownOpen(true) : undefined}
                 state={state}
