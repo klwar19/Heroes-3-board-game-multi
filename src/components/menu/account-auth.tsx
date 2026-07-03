@@ -79,7 +79,7 @@ export function AccountAuth() {
       {mode === "signin" ? (
         <SignInForm onForgot={() => setMode("forgot")} onDone={() => router.push("/menu")} />
       ) : mode === "register" ? (
-        <RegisterForm onRegistered={() => setMode("signin")} />
+        <RegisterForm onRegistered={() => setMode("signin")} onSignedIn={() => router.push("/menu")} />
       ) : (
         <ForgotForm onBack={() => setMode("signin")} />
       )}
@@ -174,7 +174,7 @@ function ResendConfirm({ defaultEmail }: { defaultEmail: string }) {
   );
 }
 
-function RegisterForm({ onRegistered }: { onRegistered: () => void }) {
+function RegisterForm({ onRegistered, onSignedIn }: { onRegistered: () => void; onSignedIn: () => void }) {
   const [nickname, setNickname] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -182,7 +182,7 @@ function RegisterForm({ onRegistered }: { onRegistered: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [availability, setAvailability] = useState<{ nickname?: string; email?: string }>({});
   const [busy, setBusy] = useState(false);
-  const [done, setDone] = useState<{ devLink?: string } | null>(null);
+  const [done, setDone] = useState<{ devLink?: string; ready?: boolean } | null>(null);
 
   const probe = async (field: "nickname" | "email", value: string) => {
     const trimmed = value.trim();
@@ -213,6 +213,20 @@ function RegisterForm({ onRegistered }: { onRegistered: () => void }) {
         password,
         contact: discord.trim() ? { discord: discord.trim() } : undefined
       });
+      if (!result.needsConfirmation) {
+        // This server auto-confirms new accounts (no mail transport configured)
+        // — sign the player straight in rather than pointing at an inbox that
+        // will never receive anything.
+        try {
+          await login({ identifier: nickname.trim(), password });
+          onSignedIn();
+        } catch {
+          // The account exists but the immediate sign-in hiccuped — hand the
+          // player to the sign-in form instead of a dead "check your inbox".
+          setDone({ ready: true });
+        }
+        return;
+      }
       setDone({ devLink: result.devConfirmLink });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed.");
@@ -224,13 +238,19 @@ function RegisterForm({ onRegistered }: { onRegistered: () => void }) {
   if (done) {
     return (
       <div className="authForm">
-        <p className="authInfo">Check your inbox — we sent a confirmation link to {email.trim()}.</p>
-        <p className="authHint">Open the link to activate your account, then sign in.</p>
-        {done.devLink ? (
-          <p className="authHint">
-            Dev mode: <a href={done.devLink}>confirm now</a>
-          </p>
-        ) : null}
+        {done.ready ? (
+          <p className="authInfo">Your account is ready — sign in with your new nickname and password.</p>
+        ) : (
+          <>
+            <p className="authInfo">Check your inbox — we sent a confirmation link to {email.trim()}.</p>
+            <p className="authHint">Open the link to activate your account, then sign in.</p>
+            {done.devLink ? (
+              <p className="authHint">
+                Dev mode: <a href={done.devLink}>confirm now</a>
+              </p>
+            ) : null}
+          </>
+        )}
         <button className="menuNavButton" onClick={onRegistered} type="button">
           Back to sign in
         </button>

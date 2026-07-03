@@ -17,6 +17,7 @@ import {
   type GameState
 } from "@/engine";
 import { deriveLobbyRecord, lobbyRecordSignature, LOBBY_SINGLETON_ID } from "@/server/lobby-registry";
+import { detectFinishedMatch } from "@/server/match-report";
 import { httpTokenVerifier, memoizeVerifier, type TokenVerifier } from "@/server/verified-actor";
 
 /**
@@ -69,6 +70,22 @@ function appUrlOf(room: Party.Room): string | undefined {
   const env = (room as unknown as { env?: Record<string, unknown> }).env;
   const url = typeof env?.HOMM3BG_APP_URL === "string" ? env.HOMM3BG_APP_URL : "";
   return url.length > 0 ? url : undefined;
+}
+
+/**
+ * Where the edge posts finished-match results (Phase 6). The Durable Object has
+ * no database of its own, so it reports to the app's /api/matches/report,
+ * authenticated by the shared HOMM3BG_MATCH_REPORT_KEY (set the SAME value on
+ * the party env AND the app deployment). Null ⇒ reporting is off on the edge.
+ */
+function matchReportConfigOf(room: Party.Room): { appUrl: string; key: string } | null {
+  const appUrl = appUrlOf(room);
+  const env = (room as unknown as { env?: Record<string, unknown> }).env;
+  const key = typeof env?.HOMM3BG_MATCH_REPORT_KEY === "string" ? env.HOMM3BG_MATCH_REPORT_KEY : "";
+  if (!appUrl || key.length === 0) {
+    return null;
+  }
+  return { appUrl: appUrl.replace(/\/+$/, ""), key };
 }
 
 type ServerMessage =
@@ -554,7 +571,40 @@ export default class GameRoomServer implements Party.Server {
       // so the Durable Object remains alive until it finishes.
       if (result.errors.length === 0) {
         await this.reportToLobby();
+        // Ranked-match auto-report (Phase 6): if this action just ended the
+        // game, post the result to the app so seated verified accounts get
+        // their win/loss + Elo. Awaited (not floated) so hibernation cannot
+        // cancel it; failures are logged inside and never break the action.
+        await this.reportFinishedMatchToApp(current.state, result.state);
       }
+    }
+  }
+
+  /** Detect a just-finished ranked game and POST it to the app's report route. */
+  private async reportFinishedMatchToApp(prev: GameState, next: GameState): Promise<void> {
+    const match = detectFinishedMatch(prev, next);
+    if (!match) {
+      return;
+    }
+    const config = matchReportConfigOf(this.room);
+    if (!config) {
+      console.warn(
+        `[match-report] game ${match.matchId} finished but HOMM3BG_APP_URL / HOMM3BG_MATCH_REPORT_KEY ` +
+          "are not configured on the party — the result was NOT recorded."
+      );
+      return;
+    }
+    try {
+      const response = await fetch(`${config.appUrl}/api/matches/report`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-homm3bg-report-key": config.key },
+        body: JSON.stringify(match)
+      });
+      if (!response.ok) {
+        console.error(`[match-report] app rejected match ${match.matchId}: HTTP ${response.status}`);
+      }
+    } catch (error) {
+      console.error(`[match-report] failed to deliver match ${match.matchId}:`, error);
     }
   }
 
@@ -664,6 +714,7 @@ export default class GameRoomServer implements Party.Server {
           await this.persist();
           await this.broadcastSnapshot();
           await this.reportToLobby();
+          await this.reportFinishedMatchToApp(current.state, result.state);
         }
         const redacted = this.redactSnapshotForActor(this.signed(this.snapshot ?? current), {
           clientId: actorClientId,

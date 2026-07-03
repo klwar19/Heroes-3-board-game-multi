@@ -4,7 +4,7 @@
  * store stays the single source of truth.
  */
 import { NextResponse } from "next/server";
-import { getAccountStore, persistAccounts } from "./account-store-instance";
+import { accountsBackendKind, getAccountBackend, getAccountStore, persistAccounts } from "./account-store-instance";
 import { AccountError, type AccountErrorCode, type SelfProfile } from "./types";
 
 export const SESSION_COOKIE = "homm3bg_session";
@@ -95,13 +95,13 @@ export function clearSessionCookie(response: NextResponse): void {
 }
 
 /** Resolve the signed-in profile for a request, or null. */
-export function sessionProfile(request: Request): SelfProfile | null {
-  return getAccountStore().getSessionProfile(readSessionToken(request));
+export async function sessionProfile(request: Request): Promise<SelfProfile | null> {
+  return await getAccountBackend().getSessionProfile(readSessionToken(request));
 }
 
 /** Resolve the signed-in profile or throw FORBIDDEN. */
-export function requireSession(request: Request): SelfProfile {
-  const profile = sessionProfile(request);
+export async function requireSession(request: Request): Promise<SelfProfile> {
+  const profile = await sessionProfile(request);
   if (!profile) {
     throw new AccountError("FORBIDDEN", "You must be signed in.");
   }
@@ -109,17 +109,22 @@ export function requireSession(request: Request): SelfProfile {
 }
 
 /** Resolve an admin profile or throw FORBIDDEN (used by every /api/admin route). */
-export function requireAdmin(request: Request): SelfProfile {
-  const profile = requireSession(request);
+export async function requireAdmin(request: Request): Promise<SelfProfile> {
+  const profile = await requireSession(request);
   if (profile.role !== "admin") {
     throw new AccountError("FORBIDDEN", "Admins only.");
   }
   return profile;
 }
 
-/** Persist after a mutation. Re-exported so routes import one module. */
+/**
+ * Persist after a mutation. Only the BUILT-IN store needs it (snapshot → disk);
+ * the Supabase backend writes each row at the operation itself.
+ */
 export function save(): void {
-  persistAccounts(getAccountStore());
+  if (accountsBackendKind() === "builtin") {
+    persistAccounts(getAccountStore());
+  }
 }
 
 // ---------------------------------------------------------------------------

@@ -38,10 +38,18 @@ export type OutboundMail = {
 
 export interface Mailer {
   sendMail(mail: OutboundMail): Promise<void> | void;
+  /**
+   * True when this transport actually DELIVERS mail to an inbox (SMTP / HTTP
+   * API). Console/Capture are false — they only surface the link locally. The
+   * confirmation policy keys off this: an account backend whose mailer cannot
+   * deliver must not strand new players behind a "check your inbox" wall.
+   */
+  readonly delivers: boolean;
 }
 
 /** In-memory mailer: the store's default. Tests/dev read `outbox`. */
 export class CaptureMailer implements Mailer {
+  readonly delivers = false;
   readonly outbox: OutboundMail[] = [];
   sendMail(mail: OutboundMail): void {
     this.outbox.push(mail);
@@ -63,9 +71,42 @@ export class CaptureMailer implements Mailer {
 
 /** Logs to stdout — for a real dev server where you read the link off the console. */
 export class ConsoleMailer implements Mailer {
+  readonly delivers = false;
   sendMail(mail: OutboundMail): void {
     console.log(`[mail:${mail.kind}] to=${mail.to} link=${mail.link}`);
   }
+}
+
+/**
+ * Whether new registrations should be AUTO-CONFIRMED (no email round-trip)
+ * given the environment and the active mailer.
+ *
+ * The rule that fixes "players register but can never sign in": requiring an
+ * email confirmation only makes sense when the server can actually DELIVER the
+ * confirmation mail. A production deploy with no SMTP/HTTP transport configured
+ * would otherwise log the link to a console nobody reads and lock every new
+ * account out forever.
+ *
+ *  - HOMM3BG_REQUIRE_EMAIL_CONFIRMATION="0" → always auto-confirm (explicit).
+ *  - HOMM3BG_REQUIRE_EMAIL_CONFIRMATION="1" → always require (explicit), even
+ *    without a delivering mailer (an operator who reads server logs).
+ *  - unset → require confirmation when the mailer delivers; in PRODUCTION
+ *    without a delivering mailer, auto-confirm (never strand players). In
+ *    dev/test without one, keep requiring — the link is observable (console /
+ *    capture / the dev confirm link echoed by the register route).
+ */
+export function shouldAutoConfirmAccounts(
+  mailerDelivers: boolean,
+  env: Record<string, string | undefined> = process.env
+): boolean {
+  const explicit = env.HOMM3BG_REQUIRE_EMAIL_CONFIRMATION?.trim();
+  if (explicit === "0") {
+    return true;
+  }
+  if (explicit === "1") {
+    return false;
+  }
+  return !mailerDelivers && env.NODE_ENV === "production";
 }
 
 /**
@@ -119,6 +160,28 @@ export function createMailerFromEnv(env: Record<string, string | undefined> = pr
   }
   // Default: log the link so a dev running `next dev` can follow it.
   return new ConsoleMailer();
+}
+
+/**
+ * The confirmation / reset link for an emailed token. Link origin precedence:
+ * an explicitly configured baseUrl (HOMM3BG_PUBLIC_URL) wins; otherwise the
+ * per-request origin (so a deploy that never set its URL still emits working
+ * links); otherwise the localhost dev default. Shared by BOTH account backends
+ * (built-in file store and Supabase) so the emailed routes can never diverge.
+ */
+export function buildAccountActionLink(
+  purpose: "confirm" | "reset",
+  rawToken: string,
+  baseUrl?: string,
+  origin?: string
+): string {
+  const base =
+    (baseUrl ? baseUrl.replace(/\/+$/, "") : undefined) ??
+    (origin ? origin.replace(/\/+$/, "") : undefined) ??
+    "http://localhost:3000";
+  return purpose === "confirm"
+    ? `${base}/api/auth/confirm?token=${encodeURIComponent(rawToken)}`
+    : `${base}/reset-password?token=${encodeURIComponent(rawToken)}`;
 }
 
 /** Human copy for the two mails, with the link woven into text and html. */

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAccountStore } from "@/server/accounts/account-store-instance";
+import { getAccountBackend } from "@/server/accounts/account-store-instance";
 import { errorResponse, save } from "@/server/accounts/http";
 
 export const dynamic = "force-dynamic";
@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 export async function POST(request: Request) {
   try {
     const body = (await request.json().catch(() => ({}))) as { token?: string; password?: unknown };
-    const { profile } = getAccountStore().resetPassword(body.token ?? "", body.password);
+    const { profile } = await getAccountBackend().resetPassword(body.token ?? "", body.password);
     save();
     return NextResponse.json({ profile });
   } catch (error) {

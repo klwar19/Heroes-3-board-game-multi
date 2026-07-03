@@ -12,6 +12,7 @@
  *    just "a token row was written".
  *  - All security-sensitive maths lives in crypto.ts / elo.ts (their own tests).
  */
+import type { AccountBackend } from "./backend";
 import {
   generateAccountId,
   generateToken,
@@ -21,6 +22,7 @@ import {
 } from "./crypto";
 import { computeRatings, ELO_START, type EloParticipant } from "./elo";
 import {
+  buildAccountActionLink,
   buildConfirmMail,
   buildResetMail,
   CaptureMailer,
@@ -68,6 +70,13 @@ export type AccountStoreOptions = {
    * snapshot instead of growing one row per match forever.
    */
   maxRecordedMatches?: number;
+  /**
+   * When true, new registrations are created ALREADY CONFIRMED and no
+   * confirmation mail is issued — the deployment policy for servers without a
+   * delivering mail transport (see `shouldAutoConfirmAccounts` in mailer.ts).
+   * Default false: the classic register → mail → confirm → sign-in flow.
+   */
+  autoConfirmNewAccounts?: boolean;
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -86,7 +95,7 @@ export type RecordMatchResult = {
   changes: { accountId: string; mmrBefore: number; mmrAfter: number }[];
 };
 
-export class AccountStore {
+export class AccountStore implements AccountBackend {
   private readonly accounts = new Map<string, AccountRecord>();
   private readonly byNickname = new Map<string, string>();
   private readonly byEmail = new Map<string, string>();
@@ -116,6 +125,7 @@ export class AccountStore {
   private readonly adminEmail: string | undefined;
   private readonly resendCooldownMs: number;
   private readonly maxRecordedMatches: number;
+  private readonly autoConfirmNewAccounts: boolean;
 
   constructor(options: AccountStoreOptions = {}) {
     this.now = options.now ?? Date.now;
@@ -127,6 +137,7 @@ export class AccountStore {
     this.adminEmail = options.adminEmail ? normalizeEmail(options.adminEmail) : undefined;
     this.resendCooldownMs = options.resendCooldownMs ?? 60_000;
     this.maxRecordedMatches = options.maxRecordedMatches ?? 10_000;
+    this.autoConfirmNewAccounts = options.autoConfirmNewAccounts ?? false;
   }
 
   /** Exposed only so dev/tests can read the captured outbox when using CaptureMailer. */
@@ -134,14 +145,21 @@ export class AccountStore {
     return this.mailer instanceof CaptureMailer ? this.mailer.outbox : [];
   }
 
+  /** Whether the configured mail transport actually delivers to an inbox. */
+  get mailerDelivers(): boolean {
+    return this.mailer.delivers;
+  }
+
   // -------------------------------------------------------------------------
   // Registration + email confirmation (mail linking)
   // -------------------------------------------------------------------------
 
   /**
-   * Create an account (unconfirmed) and email a confirmation link. Enforces the
-   * two distinct uniqueness errors the owner requires. Does NOT log the user in
-   * — they confirm first (`confirmEmail`).
+   * Create an account and email a confirmation link. Enforces the two distinct
+   * uniqueness errors the owner requires. Does NOT log the user in — they
+   * confirm first (`confirmEmail`). With `autoConfirmNewAccounts` on (a server
+   * with no delivering mail transport), the account is created already
+   * confirmed, no mail is issued, and the player can sign in immediately.
    */
   register(
     input: { nickname: unknown; email: unknown; password: unknown; contact?: unknown },
@@ -149,8 +167,10 @@ export class AccountStore {
     origin?: string
   ): {
     profile: SelfProfile;
-    /** The confirmation mail just sent (link is `.link`). */
-    confirmation: OutboundMail;
+    /** False when the account was auto-confirmed (sign in straight away). */
+    needsConfirmation: boolean;
+    /** The confirmation mail just sent (link is `.link`); null when auto-confirmed. */
+    confirmation: OutboundMail | null;
   } {
     const nickname = validateNickname(input.nickname);
     const email = validateEmail(input.email);
@@ -179,14 +199,17 @@ export class AccountStore {
       losses: 0,
       matches: 0,
       createdAt: new Date(this.now()).toISOString(),
-      emailConfirmed: false
+      emailConfirmed: this.autoConfirmNewAccounts
     };
     this.accounts.set(id, record);
     this.byNickname.set(nicknameKey, id);
     this.byEmail.set(email, id);
 
+    if (this.autoConfirmNewAccounts) {
+      return { profile: toSelfProfile(record), needsConfirmation: false, confirmation: null };
+    }
     const confirmation = this.issueEmail(record, "confirm", origin);
-    return { profile: toSelfProfile(record), confirmation };
+    return { profile: toSelfProfile(record), needsConfirmation: true, confirmation };
   }
 
   /** Confirm an account via its emailed token. Consumes the token. */
@@ -751,14 +774,7 @@ export class AccountStore {
       // Drives the resend cooldown (register's mail counts as the first send).
       this.lastResendAt.set(record.email, nowMs);
     }
-    // Link origin precedence: an explicitly configured baseUrl (HOMM3BG_PUBLIC_URL)
-    // wins; otherwise the per-request origin (so a Vercel/any deploy that never set
-    // its URL still emits working links); otherwise the localhost dev default.
-    const base = this.baseUrl ?? (origin ? origin.replace(/\/+$/, "") : undefined) ?? "http://localhost:3000";
-    const link =
-      purpose === "confirm"
-        ? `${base}/api/auth/confirm?token=${encodeURIComponent(raw)}`
-        : `${base}/reset-password?token=${encodeURIComponent(raw)}`;
+    const link = buildAccountActionLink(purpose, raw, this.baseUrl, origin);
     const mail = purpose === "confirm" ? buildConfirmMail(record.email, link, nowMs) : buildResetMail(record.email, link, nowMs);
     // Fire-and-forget so registration/reset stays synchronous, but a real
     // (async) transport can reject — catch it here so a delivery failure is

@@ -360,6 +360,7 @@ export function dotStuff(message: string): string {
  * and tests await it to assert the exchange against a mock server.
  */
 export class SmtpMailer implements Mailer {
+  readonly delivers = true;
   constructor(private readonly config: SmtpConfig) {}
 
   sendMail(mail: OutboundMail): Promise<void> {

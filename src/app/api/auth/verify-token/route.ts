@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAccountStore } from "@/server/accounts/account-store-instance";
+import { getAccountBackend } from "@/server/accounts/account-store-instance";
 import { enforceIpRate, errorResponse } from "@/server/accounts/http";
 
 export const dynamic = "force-dynamic";
@@ -33,7 +33,7 @@ export async function POST(request: Request) {
 
   // The party sends a short-lived socket TICKET; the same-origin caller may send
   // a raw session token. getVerifiedProfile resolves either.
-  const profile = getAccountStore().getVerifiedProfile(token);
+  const profile = await getAccountBackend().getVerifiedProfile(token);
   if (!profile) {
     // A missing/expired/invalid token is not an error — the caller degrades to
     // guest. Same 200 shape so it cannot distinguish "no token" from "bad token".

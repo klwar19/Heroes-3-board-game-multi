@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAccountStore } from "@/server/accounts/account-store-instance";
+import { getAccountBackend } from "@/server/accounts/account-store-instance";
 import { errorResponse, requireAdmin, save } from "@/server/accounts/http";
 import { AccountError } from "@/server/accounts/types";
 
@@ -8,8 +8,8 @@ export const dynamic = "force-dynamic";
 /** Admin-only roster (includes emails). Non-admins get 403 (control tested). */
 export async function GET(request: Request) {
   try {
-    requireAdmin(request);
-    return NextResponse.json({ players: getAccountStore().adminListAccounts() });
+    await requireAdmin(request);
+    return NextResponse.json({ players: await getAccountBackend().adminListAccounts() });
   } catch (error) {
     return errorResponse(error);
   }
@@ -22,14 +22,14 @@ export async function GET(request: Request) {
  */
 export async function POST(request: Request) {
   try {
-    const admin = requireAdmin(request);
+    const admin = await requireAdmin(request);
     const body = (await request.json().catch(() => ({}))) as {
       action?: string;
       accountId?: string;
       reason?: string;
       role?: string;
     };
-    const store = getAccountStore();
+    const store = getAccountBackend();
     const accountId = typeof body.accountId === "string" ? body.accountId : "";
     if (!accountId) {
       throw new AccountError("NOT_FOUND", "No account specified.");
@@ -41,12 +41,12 @@ export async function POST(request: Request) {
         if (selfTarget) {
           throw new AccountError("FORBIDDEN", "You cannot ban yourself.");
         }
-        const profile = store.banAccount(accountId, body.reason);
+        const profile = await store.banAccount(accountId, body.reason);
         save();
         return NextResponse.json({ profile });
       }
       case "unban": {
-        const profile = store.unbanAccount(accountId);
+        const profile = await store.unbanAccount(accountId);
         save();
         return NextResponse.json({ profile });
       }
@@ -54,7 +54,7 @@ export async function POST(request: Request) {
         if (selfTarget) {
           throw new AccountError("FORBIDDEN", "You cannot delete your own admin account here.");
         }
-        store.deleteAccount(accountId);
+        await store.deleteAccount(accountId);
         save();
         return NextResponse.json({ ok: true });
       }
@@ -65,7 +65,7 @@ export async function POST(request: Request) {
         if (selfTarget && body.role === "player") {
           throw new AccountError("FORBIDDEN", "You cannot remove your own admin role.");
         }
-        const profile = store.setRole(accountId, body.role);
+        const profile = await store.setRole(accountId, body.role);
         save();
         return NextResponse.json({ profile });
       }

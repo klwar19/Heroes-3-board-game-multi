@@ -1,5 +1,59 @@
 # Multiplayer Platform Plan (boardgame.io Path)
 
+> **Status update (Supabase/Postgres identity + live ladder, 2026-07-03).** The
+> plan's §D1 "Supabase adapter later" seam is now filled and Phase 6 auto-
+> reporting is LIVE. Each claim has a test that fails if the wiring is removed:
+>
+> - **Postgres account backend.** `SupabaseAccountStore`
+>   (`src/server/accounts/supabase-store.ts`, over the zero-dependency
+>   PostgREST client `postgrest.ts`; schema in `supabase/schema.sql`) implements
+>   the same `AccountBackend` surface as the built-in store — register /
+>   confirm / login / reset / profiles / roles / bans / hall-of-fame — with
+>   every account, session, PartyKit socket ticket, email token and match a
+>   REAL table row: identity survives restarts and is shared across serverless
+>   instances (the built-in file store's blind spot), uniqueness is enforced by
+>   Postgres unique indexes (registration races cannot double-win), and match
+>   idempotency rides the `match_id` primary key. Selected by env
+>   (`NEXT_PUBLIC_SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` ⇒ Supabase, else
+>   built-in) in `getAccountBackend()`; ALL auth/admin/rooms routes now await
+>   that one interface. Tests: `supabase-store.test.ts` (against a faithful
+>   in-memory PostgREST emulator — unique-violation 409s, DELETE-returning,
+>   ignore-duplicates — incl. the "what one instance writes, another sees"
+>   cross-instance control), `postgrest.test.ts` inside it, plus the whole
+>   existing route suite unchanged on the built-in path. Runbook:
+>   `docs/supabase-setup.md`.
+> - **Mail policy fix (players could register but never sign in).** Transports
+>   now declare `delivers`; `shouldAutoConfirmAccounts` (mailer.ts) auto-
+>   confirms new registrations on a PRODUCTION server with no delivering mail
+>   transport (console mail nobody reads was silently stranding every account
+>   behind "check your inbox"), overridable via
+>   `HOMM3BG_REQUIRE_EMAIL_CONFIRMATION=0/1`. Dev keeps the strict flow and now
+>   echoes the confirm link into the register response for ANY non-delivering
+>   transport (not just capture); the register UI signs the player straight in
+>   when no confirmation is needed. Tests: `mailer-select.test.ts`,
+>   `account-store.test.ts` ("auto-confirm mode", with the default-mode
+>   control).
+> - **Phase 6 is wired: finished games rank automatically.** The pure detector
+>   `detectFinishedMatch` (`src/server/match-report.ts`) fires on the
+>   game-over transition, maps the winner seat to a win and every other seated
+>   VERIFIED account to a loss (guests/observers invisible; an account on two
+>   seats disqualifies itself; <2 distinct accounts ⇒ not ranked), keyed by the
+>   game's unique seed so duplicates no-op on both backends. Built-in backend:
+>   hooked in `submitRoomAction` (the actions route awaits the returned
+>   `pendingMatchReport` so serverless can't freeze the write away). PartyKit
+>   edge: the SAME detector runs in the room party and POSTs to
+>   `/api/matches/report`, gated by the shared `HOMM3BG_MATCH_REPORT_KEY` (unset
+>   ⇒ hard 403, edge ranking off). Hall of Fame + profiles read the live
+>   backend. Tests: `match-report.test.ts` (transition-only control, guest/
+>   solo/self-play exclusions, real Elo movement 1200→1216/1184, duplicate
+>   no-op), `api/matches/report/route.test.ts` (key gate, redelivery no-op).
+> - **Still deliberate limits:** live room snapshots stay in the room store /
+>   Durable Objects (Postgres holds identity + results, not game state); login
+>   attempt rate-limiting on the Supabase backend is per-instance (scrypt is
+>   the real brake) while the resend cooldown IS cross-instance; the detector
+>   ranks only decisive `winnerPlayerId` endings (a no-winner game-over ranks
+>   nobody).
+
 > **Status update (social + governance layer — chat, room modes, admin).** Four
 > connected features shipped on top of Platform Phase 0/1 (menu shell + accounts)
 > and the table reactions (emotes). Each claim below has a test that fails if the
@@ -211,13 +265,12 @@
 >
 > **Still future work:** simultaneous early-day turns in adventure mode (the
 > `TurnState.mode`/`simultaneousRoundLimit` scaffolding exists but is wired only
-> for combat-sandbox today), per-player concurrent map combats (today there is
-> one global combat slot), and automatic match-result reporting feeding MMR /
-> Hall of Fame (Phase 6 — the store's `recordMatchResult` + Elo exist and are
-> tested, but nothing calls them from a finished game yet). Auth/persistent
-> identity and per-connection wire privacy are DONE (Phase 2, see the trust- and
-> privacy-boundary notes above). The notes below about lobbies and the
-> boardgame.io carrier remain as background.
+> for combat-sandbox today) and per-player concurrent map combats (today there
+> is one global combat slot). Automatic match-result reporting feeding MMR /
+> Hall of Fame (Phase 6) is now DONE — see the Supabase/ladder status block at
+> the top. Auth/persistent identity and per-connection wire privacy are DONE
+> (Phase 2, see the trust- and privacy-boundary notes above). The notes below
+> about lobbies and the boardgame.io carrier remain as background.
 
 
 The current prototype already plays like a shared table: a server-authoritative rules engine, REST rooms with **Server-Sent Events push** (polling only as fallback), seat switching, observer seats, and player-view filtering. This document plans the jump to a real multiplayer platform.
