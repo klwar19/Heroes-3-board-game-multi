@@ -738,6 +738,17 @@ export function TownBoardView({
             .join(", ");
           return (
             <div className={`tbBar ${partial ? "partial" : ""}`} key={index} style={style}>
+              {/* Invisible FX anchors — one per building in this bar — so the
+                  construction burst (page.tsx) can land on the bar whichever
+                  board render path drew it (designed / scan / real-tile). */}
+              {bar.map((buildingId) => (
+                <span
+                  aria-hidden="true"
+                  className="tbFxAnchor"
+                  data-fx-anchor={`building:${buildingId}`}
+                  key={`fx-${buildingId}`}
+                />
+              ))}
               {spec.realTileArt ? (
                 // Real printed portrait tiles (Factory): each slot shows its own
                 // tile — the built illustration or the name/cost plaque — the
@@ -798,14 +809,24 @@ export function TownBoardView({
                   })}
                 </div>
               ) : null}
-              {/* Scan boards paint the whole bar from one crop, so the missing
-                  half needs a written note; designed boards (even those with a
-                  built-town reveal image) already show it as a distinct empty
-                  socket above — a note would double-label the bar. */}
+              {/* Scan boards paint the whole bar from ONE fully-built crop, so a
+                  two-in-one bar with just one building up looks like both are
+                  built. Name BOTH halves — which is built (✓) and which is not
+                  (🔨) — so the player can tell them apart. Designed boards show
+                  each half as its own tile/socket, so they need no note. */}
               {partial && isScan && spec.fullImage ? (
-                <span className="tbPartialNote" title={`${missingIds.map((id) => coreBuildingDefinitions[id]?.name ?? id).join(", ")} shares this bar and is not built yet`}>
-                  <Hammer aria-hidden="true" size={10} />
-                  {missingIds.map((id) => coreBuildingDefinitions[id]?.name ?? id).join(", ")} not built
+                <span
+                  className="tbPartialNote split"
+                  title={`Built: ${builtIds.map((id) => coreBuildingDefinitions[id]?.name ?? id).join(", ")} · Not built (shares this bar): ${missingIds.map((id) => coreBuildingDefinitions[id]?.name ?? id).join(", ")}`}
+                >
+                  <span className="tbPartialBuilt">
+                    <Check aria-hidden="true" size={10} />
+                    {builtIds.map((id) => coreBuildingDefinitions[id]?.name ?? id).join(", ")} built
+                  </span>
+                  <span className="tbPartialMissing">
+                    <Hammer aria-hidden="true" size={10} />
+                    {missingIds.map((id) => coreBuildingDefinitions[id]?.name ?? id).join(", ")} not built
+                  </span>
                 </span>
               ) : null}
               <button

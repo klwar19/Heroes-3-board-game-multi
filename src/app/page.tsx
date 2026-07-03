@@ -81,6 +81,7 @@ import {
   PreBattlePanel,
   PromptTray,
   SetupLobbyScreen,
+  SpellBookModal,
   type AdventureFeedItem,
   type HeroMoveCue,
   type TilePlacementSelection
@@ -722,6 +723,9 @@ export default function Home() {
   const seenFlipIdsRef = useRef<Set<string>>(new Set());
   const seenMoveIdsRef = useRef<Set<string>>(new Set());
   const seenTileIdsRef = useRef<Set<string>>(new Set());
+  // Town buildings the viewer has already seen go up — so the construction
+  // burst fires once per genuine build, never on a mid-game join or a re-render.
+  const seenStructureIdsRef = useRef<Set<string>>(new Set());
   const seenFeedIdsRef = useRef<Set<string>>(new Set());
   const seenFxIdsRef = useRef<Set<string>>(new Set());
   // House rule (BINH) notices, popped once per event and pre-seeded on reconnect:
@@ -887,6 +891,9 @@ export default function Home() {
       (event): event is Extract<GameEvent, { type: "TILE_REVEALED" } | { type: "TILE_PLACED" }> =>
         event.type === "TILE_REVEALED" || event.type === "TILE_PLACED"
     );
+    const structureEvents = nextState.eventLog.filter(
+      (event): event is Extract<GameEvent, { type: "STRUCTURE_BUILT" }> => event.type === "STRUCTURE_BUILT"
+    );
     const mapDiceEvents = nextState.eventLog.filter(
       (event): event is Extract<GameEvent, { type: "ADVENTURE_DICE_ROLLED" }> => event.type === "ADVENTURE_DICE_ROLLED"
     );
@@ -917,6 +924,7 @@ export default function Home() {
       seenFlipIdsRef.current = new Set(flips.map((event) => event.id));
       seenMoveIdsRef.current = new Set(moves.map((event) => event.id));
       seenTileIdsRef.current = new Set(tileEvents.map((event) => event.id));
+      seenStructureIdsRef.current = new Set(structureEvents.map((event) => event.id));
       seenMapDiceIdsRef.current = new Set(mapDiceEvents.map((event) => event.id));
       seenVisitIdsRef.current = new Set(visitEvents.map((event) => event.id));
       seenFeedIdsRef.current = new Set(feedEvents.map((event) => event.id));
@@ -1513,7 +1521,7 @@ export default function Home() {
       }
 
       // Tiles announce themselves: discovery sting on reveal, earthy thud
-      // on placement.
+      // on placement — plus a dramatic golden burst over the new land.
       const freshTiles = tileEvents.filter((event) => !seenTileIdsRef.current.has(event.id));
       for (const event of tileEvents) {
         seenTileIdsRef.current.add(event.id);
@@ -1523,6 +1531,28 @@ export default function Home() {
           ? TILE_SOUNDS.revealed
           : TILE_SOUNDS.placed;
         playLibrarySound(key, MAP_CUE_VOLUME);
+      }
+
+      // A town building going up gets its own construction burst. Fires once per
+      // genuine build (seenStructureIdsRef dedupes) and only for the viewer's own
+      // town, where the built bar's `building:<id>` anchor is on screen; a burst
+      // whose anchor is absent is consumed silently by the FX stage.
+      const freshStructures = structureEvents.filter((event) => !seenStructureIdsRef.current.has(event.id));
+      for (const event of structureEvents) {
+        seenStructureIdsRef.current.add(event.id);
+      }
+      const mapBurstCues: FxCue[] = [];
+      for (const event of freshTiles) {
+        mapBurstCues.push({ kind: "burst", id: `burst:${event.id}`, at: `tile:${event.tileInstanceId}`, tone: "tile" });
+      }
+      for (const event of freshStructures) {
+        if (event.playerId !== viewerRef.current) {
+          continue;
+        }
+        mapBurstCues.push({ kind: "burst", id: `burst:${event.id}`, at: `building:${event.buildingId}`, tone: "build" });
+      }
+      if (mapBurstCues.length > 0) {
+        setFxCues((current) => [...current, ...mapBurstCues]);
       }
 
       // Combat table presentation: card flights, spell sprites, projectiles
@@ -3676,21 +3706,19 @@ export default function Home() {
 
           <div className="adventureMidRow">
             <div className="leftRail">
-              <AdventureDecksPanel
-                onAction={submitAction}
-                onShowPile={(title, cardIds, kind) => setPile({ title, cardIds, kind })}
-                scoutableDeckIds={
-                  new Set(
-                    legalActions.flatMap((legal) =>
-                      legal.action.type === "ROGUES_SCOUT_DECK" ? [legal.action.deckId] : []
-                    )
-                  )
-                }
-                view={playerView}
-                viewerPlayerId={isSeated ? viewerPlayerId : seatIds[0]}
-              />
-              {/* A seated player's own unit deck rides the top dock now (Town ·
-                  Hero · Unit deck). Observers still see every seat's deck here. */}
+              {/* Town · Hero · Unit deck now anchor a vertical command column on
+                  the left (Warcraft-style sidebar), freeing the whole center for
+                  the map. Their fly-out boards open to the right, over the map. */}
+              <div className="leftRailDock">
+                <TownHeroDock
+                  armySeatId={isSeated ? viewerPlayerId : undefined}
+                  heroSeatIds={isSeated ? [viewerPlayerId] : seatIds}
+                  onOpenTown={isSeated && viewerTown ? () => setTownOpen(true) : undefined}
+                  state={state}
+                  viewerPlayerId={isSeated ? viewerPlayerId : seatIds[0]}
+                />
+              </div>
+              {/* Observers see every seat's permanent(s) + unit deck listed here. */}
               {isSeated
                 ? null
                 : seatIds.map((playerId) => (
@@ -3701,17 +3729,10 @@ export default function Home() {
                   ))}
             </div>
             <div className="mapColumn">
-              {/* The big, obviously-clickable town + hero + unit-deck boards fill
-                  the strip just above the map. */}
-              <TownHeroDock
-                armySeatId={isSeated ? viewerPlayerId : undefined}
-                heroSeatIds={isSeated ? [viewerPlayerId] : seatIds}
-                onOpenTown={isSeated && viewerTown ? () => setTownOpen(true) : undefined}
-                state={state}
-                viewerPlayerId={isSeated ? viewerPlayerId : seatIds[0]}
-              />
-              {/* The Far-tile tray anchors to THIS wrapper, so it overlays the
-                  map's top-left corner — never the dock above it. */}
+              {/* The map fills the whole center column now — the town/hero/unit
+                  dock moved to the left rail, so nothing crowds the map. The
+                  Far-tile tray anchors to THIS wrapper, overlaying the map's
+                  top-left corner. */}
               <div className="mapStage">
                 <HexMapBoard
                   legalActions={legalActions}
@@ -3736,6 +3757,25 @@ export default function Home() {
             </div>
           </div>
 
+          {/* BOTTOM deck rail: the shared Spell / Neutral / Artifact / Event
+              decks and their discard piles, laid out as a horizontal bar
+              spanning the width under the map (the "library shelf"). */}
+          <div className="advDecksBottom">
+            <AdventureDecksPanel
+              onAction={submitAction}
+              onShowPile={(title, cardIds, kind) => setPile({ title, cardIds, kind })}
+              scoutableDeckIds={
+                new Set(
+                  legalActions.flatMap((legal) =>
+                    legal.action.type === "ROGUES_SCOUT_DECK" ? [legal.action.deckId] : []
+                  )
+                )
+              }
+              view={playerView}
+              viewerPlayerId={isSeated ? viewerPlayerId : seatIds[0]}
+            />
+          </div>
+
           {isSeated && viewerTown ? (
             <TownWindow
               legalActions={legalActions}
@@ -3747,8 +3787,23 @@ export default function Home() {
             />
           ) : null}
 
+          {/* The real, two-page Spell Book overlay (opened by the top-bar tome). */}
+          {isSeated && spellBookOn && spellBookOpen ? (
+            <SpellBookModal
+              cardIds={spellBookCards}
+              castsByCard={bookPlayActionsByCard}
+              onCast={(legal) => {
+                // Book casts come from bookPlayActionsByCard, so every one is a
+                // PLAY_CARD legal — narrow it back for startPlay's staging.
+                startPlay(legal as PlayLegal);
+                setSpellBookOpen(false);
+              }}
+              onClose={() => setSpellBookOpen(false)}
+            />
+          ) : null}
+
           {isSeated ? (
-            <div className={`adventureHand ${selecting ? "refreshing" : ""}`} aria-label="Your hand">
+            <div className={`adventureHand playerCardBar ${selecting ? "refreshing" : ""}`} aria-label="Your hand">
               <div className="ownDeckColumn">
                 <AdventureOwnDeck
                   onShowPile={(title, cardIds, kind) => setPile({ title, cardIds, kind })}
@@ -3764,80 +3819,35 @@ export default function Home() {
                   state={state}
                   viewerPlayerId={viewerPlayerId}
                 />
-                {/* Spell Book lives in this left column to free space for the
-                    enlarged hand sitting under the map. */}
+                {/* Spell Book toggle — a tome that opens the real, two-page Book
+                    overlay (SpellBookModal, rendered at the map root). */}
                 {spellBookOn ? (
-                <div className={`spellBookPanel ${spellBookCards.length === 0 ? "empty" : ""}`}>
-                  <button
-                    aria-expanded={spellBookOpen}
-                    className={`spellBookToggle ${spellBookOpen ? "open" : ""}`}
-                    onClick={() => {
-                      const opening = !spellBookOpen;
-                      setSpellBookOpen(opening);
-                      // Play the page-flip cue only when the Book is opened.
-                      if (opening) {
-                        playSpellBookOpen();
+                  <div className={`spellBookPanel ${spellBookCards.length === 0 ? "empty" : ""}`}>
+                    <button
+                      aria-expanded={spellBookOpen}
+                      aria-haspopup="dialog"
+                      className={`spellBookToggle ${spellBookOpen ? "open" : ""}`}
+                      onClick={() => {
+                        const opening = !spellBookOpen;
+                        setSpellBookOpen(opening);
+                        // Play the page-flip cue only when the Book is opened.
+                        if (opening) {
+                          playSpellBookOpen();
+                        }
+                      }}
+                      title={
+                        spellBookCards.length === 0
+                          ? "Your Spell Book is empty — stash a hand Spell with its 📖 button to store it here"
+                          : "Open your Spell Book — stored Spells you can cast (normal Spell limit applies)"
                       }
-                    }}
-                    title={
-                      spellBookCards.length === 0
-                        ? "Your Spell Book is empty — stash a hand Spell with its 📖 button to store it here"
-                        : "Your Spell Book — stored Spells you can cast (normal Spell limit applies)"
-                    }
-                    type="button"
-                  >
-                    {/* eslint-disable-next-line @next/next/no-img-element -- small pixelated game icon, not a content image */}
-                    <img alt="" aria-hidden="true" className="spellBookIcon" src={assetUrl("/assets/ui/spell-book-button.png")} />
-                    <span className="spellBookCount">{spellBookCards.length}</span>
-                    <small>Spell Book</small>
-                  </button>
-                  {spellBookOpen ? (
-                    <div className="spellBookWindow" role="menu" aria-label="Spell Book">
-                      <strong>Spell Book</strong>
-                      {spellBookCards.length === 0 ? (
-                        <>
-                          <small>Your Spell Book is empty.</small>
-                          <small className="spellBookHint">
-                            Stash a hand Spell here with the 📖 button on its card to free a hand slot (Magic Arrow
-                            cannot be stored).
-                          </small>
-                        </>
-                      ) : (
-                        <small>Cast a stored Spell, or stash a hand Spell here with the 📖 button on its card.</small>
-                      )}
-                      {spellBookCards.map((spellId, bookIndex) => {
-                        const casts = bookPlayActionsByCard.get(spellId) ?? [];
-                        return (
-                          <div className="spellBookSpell" key={`${spellId}-${bookIndex}`}>
-                            <div className="spellBookSpellHead">
-                              <CardFrame cardId={spellId} className="spellBookSpellIcon" />
-                              <span className="spellBookSpellName">{cardName(spellId)}</span>
-                            </div>
-                            <div className="spellBookSpellActions">
-                              {casts.map((legal) => (
-                                <button
-                                  className="commandButton"
-                                  key={actionKey(legal.action)}
-                                  onClick={() => {
-                                    startPlay(legal);
-                                    setSpellBookOpen(false);
-                                  }}
-                                  type="button"
-                                >
-                                  {legal.label}
-                                </button>
-                              ))}
-                              {casts.length === 0 ? (
-                                <small className="spellBookHint">Castable in combat — or as a Map Spell on your turn.</small>
-                              ) : null}
-                              <AdventureHandZoom cardId={spellId} />
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : null}
-                </div>
+                      type="button"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element -- small pixelated game icon, not a content image */}
+                      <img alt="" aria-hidden="true" className="spellBookIcon" src={assetUrl("/assets/ui/spell-book-button.png")} />
+                      <span className="spellBookCount">{spellBookCards.length}</span>
+                      <small>Spell Book</small>
+                    </button>
+                  </div>
                 ) : null}
               </div>
               <div className="handArea">

@@ -134,6 +134,20 @@ export type FxCue =
       from: string;
       to: string;
       delayMs?: number;
+    }
+  | {
+      /**
+       * A dramatic golden burst over an anchor — an expanding shockwave ring, a
+       * radial flash and a spray of sparks. Punctuates a town building going up
+       * (`tone: "build"`) and a new map tile landing (`tone: "tile"`). Anchors
+       * to a `data-fx-anchor` (e.g. `building:<id>` / `tile:<id>`); a missing
+       * anchor consumes the cue silently like every other FX.
+       */
+      kind: "burst";
+      id: string;
+      at: string;
+      tone?: "build" | "tile";
+      delayMs?: number;
     };
 
 /** Flight timing shared with the cue builders in page.tsx. */
@@ -946,6 +960,102 @@ async function runGlow(stage: HTMLElement, cue: Extract<FxCue, { kind: "glow" }>
   }
 }
 
+/**
+ * A dramatic golden burst over an anchor: an expanding shockwave ring (plus a
+ * second, softer echo ring), a radial flash and a ring of sparks flung outward.
+ * Used to punctuate a town building going up and a new map tile landing. Rings
+ * scale via transform (GPU-friendly); a missing anchor consumes the cue.
+ */
+async function runBurst(stage: HTMLElement, cue: Extract<FxCue, { kind: "burst" }>): Promise<void> {
+  const rect = resolveAnchorRect(cue.at);
+  if (!rect) {
+    return;
+  }
+  // Respect reduced motion — skip the burst rather than flash the screen.
+  if (typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) {
+    return;
+  }
+  const center = centerOf(rect);
+  const tone = cue.tone ?? "build";
+  const reach = Math.max(rect.width, rect.height);
+  const ringSize = Math.max(120, reach * 3);
+
+  const burst = document.createElement("div");
+  burst.className = `fxBurst ${tone}`;
+  burst.style.left = `${center.x}px`;
+  burst.style.top = `${center.y}px`;
+
+  const flash = document.createElement("div");
+  flash.className = "fxBurstFlash";
+  const ring = document.createElement("div");
+  ring.className = "fxBurstRing";
+  ring.style.width = `${ringSize}px`;
+  ring.style.height = `${ringSize}px`;
+  const ring2 = document.createElement("div");
+  ring2.className = "fxBurstRing echo";
+  ring2.style.width = `${ringSize * 0.72}px`;
+  ring2.style.height = `${ringSize * 0.72}px`;
+  burst.append(flash, ring, ring2);
+
+  const SPARKS = 10;
+  const sparks: HTMLElement[] = [];
+  for (let index = 0; index < SPARKS; index += 1) {
+    const spark = document.createElement("i");
+    spark.className = "fxBurstSpark";
+    burst.appendChild(spark);
+    sparks.push(spark);
+  }
+
+  stage.appendChild(burst);
+  try {
+    await Promise.all([
+      animate(
+        flash,
+        [
+          { opacity: 0, transform: "translate(-50%, -50%) scale(0.3)" },
+          { opacity: 1, transform: "translate(-50%, -50%) scale(1)", offset: 0.22 },
+          { opacity: 0, transform: "translate(-50%, -50%) scale(1.35)" }
+        ],
+        { duration: 640, easing: "ease-out" }
+      ),
+      animate(
+        ring,
+        [
+          { opacity: 0.95, transform: "translate(-50%, -50%) scale(0.05)" },
+          { opacity: 0, transform: "translate(-50%, -50%) scale(1)" }
+        ],
+        { duration: 780, easing: "cubic-bezier(0.15, 0.7, 0.3, 1)" }
+      ),
+      animate(
+        ring2,
+        [
+          { opacity: 0, transform: "translate(-50%, -50%) scale(0.05)" },
+          { opacity: 0.7, transform: "translate(-50%, -50%) scale(0.2)", offset: 0.2 },
+          { opacity: 0, transform: "translate(-50%, -50%) scale(1)" }
+        ],
+        { duration: 900, easing: "ease-out" }
+      ),
+      ...sparks.map((spark, index) => {
+        const angle = (index / SPARKS) * Math.PI * 2 + (tone === "tile" ? 0.32 : 0);
+        const dist = ringSize * (0.34 + (index % 3) * 0.06);
+        const dx = Math.cos(angle) * dist;
+        const dy = Math.sin(angle) * dist;
+        return animate(
+          spark,
+          [
+            { opacity: 1, transform: "translate(-50%, -50%) translate(0, 0) scale(1)" },
+            { opacity: 1, offset: 0.55 },
+            { opacity: 0, transform: `translate(-50%, -50%) translate(${dx}px, ${dy}px) scale(0.35)` }
+          ],
+          { duration: 700 + (index % 4) * 70, easing: "cubic-bezier(0.2, 0.6, 0.3, 1)" }
+        );
+      })
+    ]);
+  } finally {
+    burst.remove();
+  }
+}
+
 export function FxStage({ cues, onDone }: { cues: FxCue[]; onDone: (id: string) => void }) {
   const stageRef = useRef<HTMLDivElement | null>(null);
   const startedRef = useRef<Set<string>>(new Set());
@@ -990,6 +1100,8 @@ export function FxStage({ cues, onDone }: { cues: FxCue[]; onDone: (id: string) 
             return runSlash(stage, cue);
           case "bolt":
             return runBolt(stage, cue);
+          case "burst":
+            return runBurst(stage, cue);
         }
       };
 

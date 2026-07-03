@@ -244,6 +244,26 @@ test("discovering a face-down tile opens the rotation card on the tile", async (
 
   await clearMapNotices(page);
   await expect(discoverable).toBeVisible();
+
+  // Watch for the dramatic tile-reveal burst (runBurst) the redesign fires on a
+  // TILE_REVEALED / TILE_PLACED event. It is transient, so record via a
+  // MutationObserver flag rather than racing a visibility check.
+  await page.evaluate(() => {
+    (window as unknown as { __burstSeen: boolean }).__burstSeen = false;
+    const seen = () => {
+      (window as unknown as { __burstSeen: boolean }).__burstSeen = true;
+    };
+    new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        for (const node of mutation.addedNodes) {
+          if (node instanceof HTMLElement && (node.classList.contains("fxBurst") || node.querySelector(".fxBurst"))) {
+            seen();
+          }
+        }
+      }
+    }).observe(document.body, { childList: true, subtree: true });
+  });
+
   await discoverable.click();
 
   // The rotation card opens anchored on the tile (foreignObject) with rotate
@@ -260,4 +280,11 @@ test("discovering a face-down tile opens the rotation card on the tile", async (
   await expect(confirm).toBeEnabled();
   await confirm.click();
   await expect(page.locator(".rotateFloat")).toHaveCount(0);
+
+  // The new land announced itself with a golden burst.
+  await expect
+    .poll(async () => (await page.evaluate(() => (window as unknown as { __burstSeen: boolean }).__burstSeen)), {
+      timeout: 5000
+    })
+    .toBe(true);
 });
