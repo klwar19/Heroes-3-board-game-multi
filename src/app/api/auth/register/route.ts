@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAccountStore } from "@/server/accounts/account-store-instance";
-import { enforceIpRate, errorResponse, save } from "@/server/accounts/http";
+import { enforceIpRate, errorResponse, requestOrigin, save } from "@/server/accounts/http";
 
 export const dynamic = "force-dynamic";
 
@@ -18,12 +18,15 @@ export async function POST(request: Request) {
     enforceIpRate(request, "register", 10, 10 * 60_000);
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
     const store = getAccountStore();
-    const { profile, confirmation } = store.register({
-      nickname: body.nickname,
-      email: body.email,
-      password: body.password,
-      contact: body.contact
-    });
+    const { profile, confirmation } = store.register(
+      {
+        nickname: body.nickname,
+        email: body.email,
+        password: body.password,
+        contact: body.contact
+      },
+      requestOrigin(request) ?? undefined
+    );
     save();
     const devLink = process.env.HOMM3BG_MAIL_TRANSPORT === "capture" ? confirmation.link : undefined;
     return NextResponse.json({ profile, needsConfirmation: true, ...(devLink ? { devConfirmLink: devLink } : {}) });

@@ -5,7 +5,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { AccountAuth } from "@/components/menu/account-auth";
 import { MenuShell } from "@/components/menu/menu-shell";
 import { authEnabled } from "@/lib/auth-mode";
-import { clearAccountIdentity, getDisplayName, setDisplayName } from "@/lib/identity";
+import { clearAccountIdentity, getDisplayName, setDisplayName, setGuestMode } from "@/lib/identity";
 
 /**
  * Entry screen.
@@ -54,6 +54,7 @@ function GuestLogin() {
     if (trimmed) {
       setDisplayName(trimmed);
     }
+    setGuestMode();
     router.push("/menu");
   };
 
@@ -96,8 +97,10 @@ function GuestChoice() {
       setDisplayName(trimmed);
     }
     // A deliberate guest entry is not a signed-in session — drop any cached
-    // account so the menu/rooms see a guest, not a stale nickname/role.
+    // account so the menu/rooms see a guest, not a stale nickname/role — and
+    // record the guest choice so the login wall (menu) lets them through.
     clearAccountIdentity();
+    setGuestMode();
     router.push("/menu");
   };
 

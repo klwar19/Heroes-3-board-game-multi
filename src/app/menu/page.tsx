@@ -10,7 +10,7 @@ import { DEFAULT_SERVER } from "@/data/servers";
 import { assetUrl } from "@/lib/asset-url";
 import { fetchSession, logout, type SelfProfile } from "@/lib/auth-client";
 import { authEnabled } from "@/lib/auth-mode";
-import { getDisplayName } from "@/lib/identity";
+import { getDisplayName, isGuestMode } from "@/lib/identity";
 
 /**
  * Main-menu buttons in the actual-game style: the secondary-skill emblem itself
@@ -45,11 +45,16 @@ export default function MenuPage() {
     started.current = true;
     if (authEnabled()) {
       void fetchSession().then((profile) => {
-        if (!profile) {
-          router.replace("/login");
-        } else {
+        if (profile) {
           setAccount(profile);
           setDisplayNameState(profile.nickname);
+        } else if (isGuestMode()) {
+          // Guest-beside-accounts: a player who chose "Continue as guest" is
+          // allowed to play without an account (no bounce back to /login).
+          setDisplayNameState(getDisplayName());
+        } else {
+          // Neither signed in nor a chosen guest → go pick at the entry screen.
+          router.replace("/login");
         }
       });
     } else {
@@ -68,9 +73,16 @@ export default function MenuPage() {
       title="Heroes III — The Board Game"
       footer={
         accounts ? (
-          <span className="menuIdentityLine" suppressHydrationWarning>
-            {account ? `Signed in as ${account.nickname}` : "Not signed in"}
-          </span>
+          account ? (
+            <span className="menuIdentityLine" suppressHydrationWarning>
+              Signed in as {account.nickname}
+            </span>
+          ) : (
+            <span className="menuIdentityLine" suppressHydrationWarning>
+              {displayName ? `Playing as guest: ${displayName} · ` : "Guest · "}
+              <Link href="/login">Sign in or create an account</Link>
+            </span>
+          )
         ) : (
           <span className="menuIdentityLine" suppressHydrationWarning>
             {displayName ? `Playing as ${displayName} · ` : "No player name set · "}

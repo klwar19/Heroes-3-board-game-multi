@@ -38,6 +38,23 @@ export function errorResponse(error: unknown): NextResponse {
   return NextResponse.json({ error: "INTERNAL", message: "Something went wrong." }, { status: 500 });
 }
 
+/**
+ * The public origin the request arrived on ("https://host"), used to build the
+ * confirmation/reset email links when HOMM3BG_PUBLIC_URL is not configured — so a
+ * deployment does not have to know its own URL. Prefers the proxy-set
+ * X-Forwarded-* headers (Vercel and every reverse proxy set them), falling back
+ * to the Host header. Returns null when no host is available.
+ */
+export function requestOrigin(request: Request): string | null {
+  const forwardedHost = request.headers.get("x-forwarded-host");
+  const host = (forwardedHost ?? request.headers.get("host") ?? "").split(",")[0].trim();
+  if (!host) {
+    return null;
+  }
+  const proto = (request.headers.get("x-forwarded-proto") ?? "https").split(",")[0].trim();
+  return `${proto}://${host}`;
+}
+
 /** Parse the session token out of the request's Cookie header (no deps). */
 export function readSessionToken(request: Request): string | null {
   const header = request.headers.get("cookie");

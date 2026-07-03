@@ -104,7 +104,12 @@ export class AccountStore {
 
   private readonly now: () => number;
   private readonly mailer: Mailer;
-  private readonly baseUrl: string;
+  /**
+   * Explicit public origin for email links (from HOMM3BG_PUBLIC_URL). Undefined
+   * when not configured — the per-request origin is then used instead, so a
+   * deployment does not have to know its own URL up front (see issueEmail).
+   */
+  private readonly baseUrl: string | undefined;
   private readonly sessionTtlMs: number;
   private readonly socketTicketTtlMs: number;
   private readonly tokenTtlMs: number;
@@ -115,7 +120,7 @@ export class AccountStore {
   constructor(options: AccountStoreOptions = {}) {
     this.now = options.now ?? Date.now;
     this.mailer = options.mailer ?? new CaptureMailer();
-    this.baseUrl = (options.baseUrl ?? "http://localhost:3000").replace(/\/+$/, "");
+    this.baseUrl = options.baseUrl ? options.baseUrl.replace(/\/+$/, "") : undefined;
     this.sessionTtlMs = options.sessionTtlMs ?? 30 * DAY_MS;
     this.socketTicketTtlMs = options.socketTicketTtlMs ?? 10 * 60_000;
     this.tokenTtlMs = options.tokenTtlMs ?? DAY_MS;
@@ -138,7 +143,11 @@ export class AccountStore {
    * two distinct uniqueness errors the owner requires. Does NOT log the user in
    * — they confirm first (`confirmEmail`).
    */
-  register(input: { nickname: unknown; email: unknown; password: unknown; contact?: unknown }): {
+  register(
+    input: { nickname: unknown; email: unknown; password: unknown; contact?: unknown },
+    /** Request origin (e.g. "https://your-app.vercel.app") for the email link when no baseUrl is configured. */
+    origin?: string
+  ): {
     profile: SelfProfile;
     /** The confirmation mail just sent (link is `.link`). */
     confirmation: OutboundMail;
@@ -176,7 +185,7 @@ export class AccountStore {
     this.byNickname.set(nicknameKey, id);
     this.byEmail.set(email, id);
 
-    const confirmation = this.issueEmail(record, "confirm");
+    const confirmation = this.issueEmail(record, "confirm", origin);
     return { profile: toSelfProfile(record), confirmation };
   }
 
@@ -196,7 +205,7 @@ export class AccountStore {
    * is unknown or already confirmed — so this cannot be used to probe which
    * addresses exist or are confirmed.
    */
-  resendConfirmation(rawEmail: unknown): void {
+  resendConfirmation(rawEmail: unknown, origin?: string): void {
     let email: string;
     try {
       email = validateEmail(rawEmail);
@@ -222,7 +231,7 @@ export class AccountStore {
     }
     // issueEmail stamps lastResendAt (see below), so the cooldown window covers
     // the mail sent at registration too — not just resend-to-resend.
-    this.issueEmail(record, "confirm");
+    this.issueEmail(record, "confirm", origin);
   }
 
   // -------------------------------------------------------------------------
@@ -402,7 +411,7 @@ export class AccountStore {
    * enumeration): a token+mail is issued ONLY if the address exists, but the
    * response is identical either way.
    */
-  requestPasswordReset(rawEmail: unknown): void {
+  requestPasswordReset(rawEmail: unknown, origin?: string): void {
     let email: string;
     try {
       email = validateEmail(rawEmail);
@@ -417,7 +426,7 @@ export class AccountStore {
     if (!record) {
       return;
     }
-    this.issueEmail(record, "reset");
+    this.issueEmail(record, "reset", origin);
   }
 
   /** Set a new password via a reset token; consumes it and revokes all sessions. */
@@ -722,7 +731,7 @@ export class AccountStore {
   // Internals
   // -------------------------------------------------------------------------
 
-  private issueEmail(record: AccountRecord, purpose: "confirm" | "reset"): OutboundMail {
+  private issueEmail(record: AccountRecord, purpose: "confirm" | "reset", origin?: string): OutboundMail {
     const raw = generateToken();
     const nowMs = this.now();
     // A fresh token supersedes any prior one of the same purpose for this account.
@@ -742,10 +751,14 @@ export class AccountStore {
       // Drives the resend cooldown (register's mail counts as the first send).
       this.lastResendAt.set(record.email, nowMs);
     }
+    // Link origin precedence: an explicitly configured baseUrl (HOMM3BG_PUBLIC_URL)
+    // wins; otherwise the per-request origin (so a Vercel/any deploy that never set
+    // its URL still emits working links); otherwise the localhost dev default.
+    const base = this.baseUrl ?? (origin ? origin.replace(/\/+$/, "") : undefined) ?? "http://localhost:3000";
     const link =
       purpose === "confirm"
-        ? `${this.baseUrl}/api/auth/confirm?token=${encodeURIComponent(raw)}`
-        : `${this.baseUrl}/reset-password?token=${encodeURIComponent(raw)}`;
+        ? `${base}/api/auth/confirm?token=${encodeURIComponent(raw)}`
+        : `${base}/reset-password?token=${encodeURIComponent(raw)}`;
     const mail = purpose === "confirm" ? buildConfirmMail(record.email, link, nowMs) : buildResetMail(record.email, link, nowMs);
     // Fire-and-forget so registration/reset stays synchronous, but a real
     // (async) transport can reject — catch it here so a delivery failure is
