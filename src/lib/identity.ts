@@ -18,6 +18,7 @@ const CLIENT_TAB_KEY = "homm3bg.clientTab";
 const LEGACY_CLAIM_KEY = "homm3bg.clientMigrationTab";
 const NAME_KEY = "homm3bg.displayName";
 const ACCOUNT_KEY = "homm3bg.account";
+const GUEST_KEY = "homm3bg.guest";
 const WINDOW_TAB_PREFIX = "homm3bg-tab:";
 
 function randomId(): string {
@@ -132,6 +133,8 @@ export function setAccountIdentity(account: AccountIdentity): void {
     // A logged-in player is seen under their account nickname everywhere the
     // rooms already read the display name.
     window.localStorage.setItem(NAME_KEY, account.nickname);
+    // Signing in exits guest mode (they now have a real account).
+    window.localStorage.removeItem(GUEST_KEY);
   } catch {
     /* best-effort */
   }
@@ -143,6 +146,46 @@ export function clearAccountIdentity(): void {
   }
   try {
     window.localStorage.removeItem(ACCOUNT_KEY);
+  } catch {
+    /* best-effort */
+  }
+}
+
+/**
+ * Guest mode marker. When accounts are ENABLED, the app still lets a player
+ * choose "Continue as guest" — this flag records that deliberate choice so the
+ * pages that otherwise send a signed-out visitor to /login (the menu) let a
+ * chosen guest through. Set when the player picks guest; cleared on sign-in.
+ * (With accounts OFF there is no login wall, so the flag is simply inert.)
+ */
+export function setGuestMode(): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  try {
+    window.localStorage.setItem(GUEST_KEY, "1");
+  } catch {
+    /* best-effort */
+  }
+}
+
+export function isGuestMode(): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  try {
+    return window.localStorage.getItem(GUEST_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function clearGuestMode(): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  try {
+    window.localStorage.removeItem(GUEST_KEY);
   } catch {
     /* best-effort */
   }

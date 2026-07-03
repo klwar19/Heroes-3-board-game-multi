@@ -507,3 +507,45 @@ describe("AccountStore — ensureAdminAccount (env admin bootstrap)", () => {
     expect(restored.role).toBe("admin");
   });
 });
+
+describe("AccountStore — email link origin (no need to preconfigure the URL)", () => {
+  const clock = makeClock();
+
+  it("uses the per-request origin when no baseUrl is configured", () => {
+    const store = new AccountStore({ mailer: new CaptureMailer(), now: clock.now }); // no baseUrl
+    const { confirmation } = store.register(
+      { nickname: "Vercel", email: "v@erathia.io", password: "deploys11" },
+      "https://my-heroes-app.vercel.app"
+    );
+    expect(confirmation.link).toBe(
+      `https://my-heroes-app.vercel.app/api/auth/confirm?${confirmation.link.split("?")[1]}`
+    );
+    expect(confirmation.link).toContain("https://my-heroes-app.vercel.app/api/auth/confirm?token=");
+    expect(confirmation.link).not.toContain("localhost");
+  });
+
+  it("a configured baseUrl wins over the request origin (canonical domain)", () => {
+    const store = new AccountStore({ mailer: new CaptureMailer(), now: clock.now, baseUrl: "https://heroes.example" });
+    const { confirmation } = store.register(
+      { nickname: "Canon", email: "c@erathia.io", password: "canonical1" },
+      "https://preview-123.vercel.app"
+    );
+    expect(confirmation.link).toContain("https://heroes.example/api/auth/confirm?token=");
+    expect(confirmation.link).not.toContain("vercel.app");
+  });
+
+  it("password reset links honour the request origin too", () => {
+    const mailer = new CaptureMailer();
+    const store = new AccountStore({ mailer, now: clock.now }); // no baseUrl
+    store.register({ nickname: "Reset", email: "r@erathia.io", password: "resets-99" }, "https://app.example.net");
+    store.requestPasswordReset("r@erathia.io", "https://app.example.net");
+    const reset = mailer.latestFor("r@erathia.io", "reset")!;
+    expect(reset.link).toContain("https://app.example.net/reset-password?token=");
+  });
+
+  it("falls back to localhost only when neither a baseUrl nor an origin is available", () => {
+    const store = new AccountStore({ mailer: new CaptureMailer(), now: clock.now }); // no baseUrl, no origin
+    const { confirmation } = store.register({ nickname: "Local", email: "l@erathia.io", password: "devmode11" });
+    expect(confirmation.link).toContain("http://localhost:3000/api/auth/confirm?token=");
+  });
+});

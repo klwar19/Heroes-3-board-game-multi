@@ -47,7 +47,9 @@ export function persistAccounts(store: AccountStore): void {
 function build(): AccountStore {
   const store = new AccountStore({
     mailer: createMailerFromEnv(),
-    baseUrl: process.env.HOMM3BG_PUBLIC_URL ?? "http://localhost:3000",
+    // Unset ⇒ the email link falls back to the per-request origin (the deploy
+    // doesn't have to know its own URL); set HOMM3BG_PUBLIC_URL to pin a canonical one.
+    baseUrl: process.env.HOMM3BG_PUBLIC_URL,
     adminEmail: process.env.HOMM3BG_ADMIN_EMAIL
   });
   store.loadJSON(loadSnapshot());
