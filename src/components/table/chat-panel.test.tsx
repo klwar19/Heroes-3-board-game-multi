@@ -39,6 +39,19 @@ describe("ChatPanel", () => {
     expect(screen.getByLabelText(/chat message/i)).toBeTruthy();
   });
 
+  it("closes on Escape from anywhere in the panel (e.g. the composer input)", () => {
+    render(<ChatPanel state={tableWith()} clientId="me" onSend={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: /chat/i }));
+    const input = screen.getByLabelText(/chat message/i);
+    // A non-Escape key leaves it open (the control).
+    fireEvent.keyDown(input, { key: "a" });
+    expect(screen.getByLabelText(/chat message/i)).toBeTruthy();
+    fireEvent.keyDown(input, { key: "Escape" });
+    // Collapsed again: the composer is gone, the FAB is back.
+    expect(screen.queryByLabelText(/chat message/i)).toBeNull();
+    expect(screen.getByRole("button", { name: /chat/i })).toBeTruthy();
+  });
+
   it("shows existing messages with their author names and text", () => {
     const state = tableWith([
       { clientId: "c2", text: "Well met." },

@@ -55,6 +55,12 @@ export type AccountStoreOptions = {
   adminEmail?: string;
   /** Minimum gap between confirmation resends per email (ms). Default 60s. */
   resendCooldownMs?: number;
+  /**
+   * Idempotency window for recordMatchResult: how many recent matchIds are
+   * remembered (oldest evicted first). Default 10 000 — bounds the persisted
+   * snapshot instead of growing one row per match forever.
+   */
+  maxRecordedMatches?: number;
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -90,6 +96,7 @@ export class AccountStore {
   private readonly tokenTtlMs: number;
   private readonly adminEmail: string | undefined;
   private readonly resendCooldownMs: number;
+  private readonly maxRecordedMatches: number;
 
   constructor(options: AccountStoreOptions = {}) {
     this.now = options.now ?? Date.now;
@@ -99,6 +106,7 @@ export class AccountStore {
     this.tokenTtlMs = options.tokenTtlMs ?? DAY_MS;
     this.adminEmail = options.adminEmail ? normalizeEmail(options.adminEmail) : undefined;
     this.resendCooldownMs = options.resendCooldownMs ?? 60_000;
+    this.maxRecordedMatches = options.maxRecordedMatches ?? 10_000;
   }
 
   /** Exposed only so dev/tests can read the captured outbox when using CaptureMailer. */
@@ -280,7 +288,8 @@ export class AccountStore {
     if (!session) {
       return null;
     }
-    if (session.expiresAt <= this.now()) {
+    const nowMs = this.now();
+    if (session.expiresAt <= nowMs) {
       this.sessions.delete(digest);
       return null;
     }
@@ -289,6 +298,12 @@ export class AccountStore {
       // A banned or deleted account's live sessions stop working immediately.
       this.sessions.delete(digest);
       return null;
+    }
+    // Sliding expiry: an ACTIVE player is never logged out mid-campaign. Renew
+    // only once the session is past half its lifetime, so a busy player costs
+    // at most one renewal per ttl/2 rather than a write per request.
+    if (session.expiresAt - nowMs < this.sessionTtlMs / 2) {
+      session.expiresAt = nowMs + this.sessionTtlMs;
     }
     return record;
   }
@@ -472,11 +487,17 @@ export class AccountStore {
   // Hall of Fame + match results (rating groundwork; auto-report is Phase 6)
   // -------------------------------------------------------------------------
 
-  hallOfFame(): AccountProfile[] {
+  /**
+   * The public leaderboard, best first. `limit` bounds the payload so the
+   * endpoint stays a fixed size however many accounts register (the API serves
+   * the top 100).
+   */
+  hallOfFame(limit = 100): AccountProfile[] {
     return [...this.accounts.values()]
       .filter((r) => !r.bannedAt)
       .map(toProfile)
-      .sort((a, b) => b.mmr - a.mmr || b.wins - a.wins || a.nickname.localeCompare(b.nickname));
+      .sort((a, b) => b.mmr - a.mmr || b.wins - a.wins || a.nickname.localeCompare(b.nickname))
+      .slice(0, Math.max(0, limit));
   }
 
   /**
@@ -520,7 +541,57 @@ export class AccountStore {
       changes.push({ accountId: p.accountId, mmrBefore: before, mmrAfter: after });
     }
     this.recordedMatches.add(input.matchId);
+    // Bound the idempotency log: evict the oldest matchIds (Set iteration is
+    // insertion-ordered) once past the cap, so it never grows one row per match
+    // forever. An evicted id could in principle be re-applied, but a duplicate
+    // report arriving thousands of matches later is not a real replay.
+    if (this.recordedMatches.size > this.maxRecordedMatches) {
+      const excess = this.recordedMatches.size - this.maxRecordedMatches;
+      let dropped = 0;
+      for (const matchId of this.recordedMatches) {
+        if (dropped >= excess) {
+          break;
+        }
+        this.recordedMatches.delete(matchId);
+        dropped += 1;
+      }
+    }
     return { matchId: input.matchId, applied: true, changes };
+  }
+
+  // -------------------------------------------------------------------------
+  // Hygiene: keep the store (and therefore the persisted snapshot) bounded
+  // -------------------------------------------------------------------------
+
+  /**
+   * Sweep every expired row: sessions and email tokens past their expiry
+   * (otherwise a visitor who never returns leaves a dead row forever), spent
+   * rate-limit windows, and resend stamps older than the cooldown. Runs inside
+   * toJSON() so each persisted snapshot is already pruned — memory stays
+   * bounded too, because every mutating API route persists.
+   */
+  prune(): void {
+    const nowMs = this.now();
+    for (const [digest, session] of this.sessions) {
+      if (session.expiresAt <= nowMs) {
+        this.sessions.delete(digest);
+      }
+    }
+    for (const [digest, token] of this.tokens) {
+      if (token.expiresAt <= nowMs) {
+        this.tokens.delete(digest);
+      }
+    }
+    for (const [key, window] of this.rateWindows) {
+      if (window.resetAt <= nowMs) {
+        this.rateWindows.delete(key);
+      }
+    }
+    for (const [email, last] of this.lastResendAt) {
+      if (nowMs - last >= this.resendCooldownMs) {
+        this.lastResendAt.delete(email);
+      }
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -528,6 +599,7 @@ export class AccountStore {
   // -------------------------------------------------------------------------
 
   toJSON(): AccountStoreSnapshot {
+    this.prune();
     return {
       version: 1,
       accounts: [...this.accounts.values()],

@@ -6,9 +6,10 @@
  * what CI/tests get. Guest mode is unaffected: this store only matters once the
  * accounts feature flag turns the login wall on.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { writeFileAtomic } from "@/server/atomic-file";
 import { AccountStore, type AccountStoreSnapshot } from "./account-store";
 import { createMailerFromEnv } from "./mailer";
 
@@ -30,13 +31,14 @@ function loadSnapshot(): AccountStoreSnapshot | null {
   }
 }
 
-/** Persist the whole store (called after any mutation via the API layer). */
+/**
+ * Persist the whole store (called after any mutation via the API layer).
+ * Atomic (temp file + rename): the accounts file is the platform's entire
+ * user database, so a crash mid-write must never truncate it.
+ */
 export function persistAccounts(store: AccountStore): void {
   try {
-    if (!existsSync(persistDir)) {
-      mkdirSync(persistDir, { recursive: true });
-    }
-    writeFileSync(persistFile, JSON.stringify(store.toJSON()));
+    writeFileAtomic(persistFile, JSON.stringify(store.toJSON()));
   } catch {
     // Persistence is opportunistic; the in-memory store keeps working.
   }

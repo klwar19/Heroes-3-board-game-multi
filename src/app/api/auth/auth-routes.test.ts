@@ -208,3 +208,54 @@ describe("admin API route — authorization", () => {
     expect(playerBan.status).toBe(403);
   });
 });
+
+describe("auth API routes — per-IP rate limits on register/login", () => {
+  function fromIp(url: string, body: unknown, ip: string): Request {
+    return new Request(url, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-forwarded-for": ip },
+      body: JSON.stringify(body)
+    });
+  }
+
+  it("register: an IP is cut off after 10 attempts; another IP is unaffected", async () => {
+    const register = await import("./register/route");
+    // Weak-password bodies: they count against the IP window (the guard runs
+    // before validation) without paying a scrypt hash each.
+    const body = { nickname: "Spam", email: "spam@erathia.io", password: "x" };
+    for (let i = 0; i < 10; i += 1) {
+      const res = await register.POST(fromIp("http://x/api/auth/register", body, "203.0.113.9"));
+      expect(res.status).toBe(400); // PASSWORD_WEAK — not yet rate-limited
+    }
+    const blocked = await register.POST(fromIp("http://x/api/auth/register", body, "203.0.113.9"));
+    expect(blocked.status).toBe(429);
+    expect((await blocked.json()).error).toBe("RATE_LIMITED");
+    expect(blocked.headers.get("Retry-After")).toBeTruthy();
+
+    // Control: a different IP still reaches validation.
+    const other = await register.POST(fromIp("http://x/api/auth/register", body, "203.0.113.10"));
+    expect(other.status).toBe(400);
+  });
+
+  it("login: rotating identifiers from one IP is cut off after 20 attempts", async () => {
+    const login = await import("./login/route");
+    // Different identifier each time, so only the NEW per-IP bound can trip
+    // (the store's own limit is per identifier).
+    for (let i = 0; i < 20; i += 1) {
+      const res = await login.POST(
+        fromIp("http://x/api/auth/login", { identifier: `ghost-${i}`, password: "wrong-pw1" }, "198.51.100.7")
+      );
+      expect(res.status).toBe(401); // INVALID_CREDENTIALS — not yet rate-limited
+    }
+    const blocked = await login.POST(
+      fromIp("http://x/api/auth/login", { identifier: "ghost-final", password: "wrong-pw1" }, "198.51.100.7")
+    );
+    expect(blocked.status).toBe(429);
+
+    // Control: a different IP still gets the normal credentials error.
+    const other = await login.POST(
+      fromIp("http://x/api/auth/login", { identifier: "ghost-final", password: "wrong-pw1" }, "198.51.100.8")
+    );
+    expect(other.status).toBe(401);
+  });
+});

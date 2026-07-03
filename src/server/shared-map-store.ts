@@ -1,6 +1,7 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { writeFileAtomic } from "@/server/atomic-file";
 import { MapRegistry, sanitizeSharedMap, type SharedMapRecord } from "@/server/map-registry";
 
 /**
@@ -61,10 +62,8 @@ function getRegistry(): MapRegistry {
 
 function persist(registry: MapRegistry): void {
   try {
-    if (!existsSync(persistDir)) {
-      mkdirSync(persistDir, { recursive: true });
-    }
-    writeFileSync(mapsFilePath, JSON.stringify(registry.records()));
+    // Atomic (temp + rename) so a crash mid-write can't truncate the library.
+    writeFileAtomic(mapsFilePath, JSON.stringify(registry.records()));
   } catch {
     // Opportunistic: the in-memory registry keeps working without the file.
   }

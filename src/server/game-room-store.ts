@@ -1,6 +1,7 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { writeFileAtomic } from "@/server/atomic-file";
 import {
   applyAction,
   createAdventureGameState,
@@ -106,10 +107,9 @@ function roomFilePath(roomId: string): string {
 
 function persistRoom(record: GameRoomRecord): void {
   try {
-    if (!existsSync(persistDir)) {
-      mkdirSync(persistDir, { recursive: true });
-    }
-    writeFileSync(roomFilePath(record.roomId), JSON.stringify(record));
+    // Atomic (temp + rename): a crash mid-write must never leave a truncated
+    // room file that silently loses the game on the next restart.
+    writeFileAtomic(roomFilePath(record.roomId), JSON.stringify(record));
   } catch {
     // Persistence is opportunistic; the in-memory store keeps working.
   }
@@ -141,6 +141,13 @@ function withBootId(snapshot: GameRoomSnapshot): GameRoomSnapshot {
   return { ...snapshot, bootId, serverSignature: ENGINE_SIGNATURE };
 }
 
+/**
+ * Fan a snapshot out to every subscriber. Every caller hands in a freshly
+ * cloned snapshot, and all listeners share that ONE object — cloning the whole
+ * game state again per listener made each action broadcast O(state × clients).
+ * The listener contract is therefore read-only: serialize/derive immediately,
+ * never mutate (the SSE route just JSON.stringifies it).
+ */
 function notifyRoomListeners(roomId: string, snapshot: GameRoomSnapshot): void {
   const listeners = roomListeners.get(roomId);
   if (!listeners) {
@@ -149,14 +156,18 @@ function notifyRoomListeners(roomId: string, snapshot: GameRoomSnapshot): void {
 
   for (const listener of listeners) {
     try {
-      listener(cloneSerializable(snapshot));
+      listener(snapshot);
     } catch {
       listeners.delete(listener);
     }
   }
 }
 
-/** Streams live snapshots to one SSE subscriber until unsubscribed. */
+/**
+ * Streams live snapshots to one SSE subscriber until unsubscribed. Snapshots
+ * are shared across subscribers — treat them as immutable (see
+ * notifyRoomListeners).
+ */
 export function subscribeToRoom(roomId: string, listener: RoomListener): () => void {
   const listeners = roomListeners.get(roomId) ?? new Set<RoomListener>();
   listeners.add(listener);
@@ -520,6 +531,17 @@ export function handleRoomDisconnect(roomId: string, clientId: string | undefine
 // Lobby directory: list rooms, create a named room, and close (delete) one.
 // ---------------------------------------------------------------------------
 
+/**
+ * Per-file parse cache for the lobby's disk scan, keyed by mtime + size. The
+ * lobby is polled every few seconds by every browser sitting in the room list;
+ * re-reading and re-parsing EVERY room file (each holding a full game state) on
+ * each poll is O(rooms × file size) for data that almost never changes. A stat
+ * per file is cheap; only new/rewritten files pay the parse. `null` marks a
+ * file that parsed to something that is not a room (e.g. shared-maps.json),
+ * so junk isn't re-parsed forever either.
+ */
+const persistedReadCache = new Map<string, { mtimeMs: number; size: number; record: GameRoomRecord | null }>();
+
 /** Reads every persisted room record off disk (best effort, skips junk files). */
 function readPersistedRecords(): GameRoomRecord[] {
   try {
@@ -527,17 +549,36 @@ function readPersistedRecords(): GameRoomRecord[] {
       return [];
     }
     const records: GameRoomRecord[] = [];
+    const seen = new Set<string>();
     for (const file of readdirSync(persistDir)) {
       if (!file.endsWith(".json")) {
         continue;
       }
+      seen.add(file);
+      const path = join(persistDir, file);
       try {
-        const record = JSON.parse(readFileSync(join(persistDir, file), "utf8")) as GameRoomRecord;
-        if (record?.roomId && record.state) {
+        const { mtimeMs, size } = statSync(path);
+        const cached = persistedReadCache.get(file);
+        if (cached && cached.mtimeMs === mtimeMs && cached.size === size) {
+          if (cached.record) {
+            records.push(cached.record);
+          }
+          continue;
+        }
+        const parsed = JSON.parse(readFileSync(path, "utf8")) as GameRoomRecord;
+        const record = parsed?.roomId && parsed.state ? parsed : null;
+        persistedReadCache.set(file, { mtimeMs, size, record });
+        if (record) {
           records.push(record);
         }
       } catch {
         // Ignore a corrupt/partial file; it just won't list.
+      }
+    }
+    // Files deleted from disk must not linger in the cache.
+    for (const file of persistedReadCache.keys()) {
+      if (!seen.has(file)) {
+        persistedReadCache.delete(file);
       }
     }
     return records;

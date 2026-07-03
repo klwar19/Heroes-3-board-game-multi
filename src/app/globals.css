@@ -10602,9 +10602,24 @@ img.cardBack {
   border-color: var(--focus);
 }
 
+.lobbyFilter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+}
+
+.lobbyFilterCount {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
 .lobbyIdentity input,
 .lobbyCreate input,
-.lobbyJoinCode input {
+.lobbyJoinCode input,
+.lobbyFilter input {
   flex: 1;
   min-width: 0;
   min-height: 34px;

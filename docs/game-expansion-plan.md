@@ -909,3 +909,29 @@ named tests, screenshots/GIFs for UI phases, env/setup changes for the owner.
     `/menu` logout/profile/admin. `scripts/seed-admin.ts` + `.env.example`
     document the owner setup.
   - Full suite green: 3695 vitest tests, typecheck, lint, `next build`.
+- 2026-07-03 — **Foundation hardening pass** (durability + scale groundwork for
+  a growing player base; each item has a failing-if-removed test):
+  - **Atomic persistence** (`src/server/atomic-file.ts`, used by the accounts,
+    room and shared-map stores): snapshots now write temp-file + rename, so a
+    crash mid-write can no longer truncate `accounts.json` (the entire user DB)
+    or a room file. `atomic-file.test.ts`.
+  - **AccountStore hygiene**: expired sessions/tokens + spent rate windows are
+    pruned on every persist (the snapshot no longer grows a dead row per
+    abandoned visitor); the `recordedMatches` idempotency log is FIFO-capped
+    (default 10 000); sessions now really SLIDE (renewed past half-life —
+    the doc had promised it, the code didn't do it); the public Hall of Fame
+    payload is capped at the top 100. `account-store.test.ts` ("hygiene").
+  - **Auth abuse bounds**: `/api/auth/register` (10/10 min/IP — each register
+    fires a real email) and `/api/auth/login` (20/5 min/IP — rotating
+    identifiers burned scrypt CPU) are now IP rate-limited like the other
+    probe routes, and the IP window map sweeps its expired rows. The ipRate
+    map is resolved through `globalThis` per call so test resets really work.
+    `auth-routes.test.ts` ("per-IP rate limits").
+  - **Broadcast/lobby scale**: room snapshot fan-out clones once per action
+    instead of once per LISTENER (was O(state × clients) JSON roundtrips);
+    the lobby's disk scan caches parsed room files by mtime+size instead of
+    re-parsing every room on every 5 s poll. `game-room-store.test.ts`
+    ("lobby disk-scan cache").
+  - **UI**: the room browser gains a filter box (name/host/creator) once the
+    list reaches 6 rooms (`lobby.test.tsx`); the table chat panel closes on
+    Escape (`chat-panel.test.tsx`).

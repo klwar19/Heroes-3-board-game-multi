@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -559,6 +559,40 @@ describe("presence cleanup on disconnect (handleRoomDisconnect)", () => {
     expect(submitRoomAction(roomId, { type: "END_TURN", playerId: "p1" }, "p2").result.errors.length).toBeGreaterThan(0);
     // ...and the seated owner still acts for their own seat.
     expect(submitRoomAction(roomId, { type: "END_TURN", playerId: "p1" }, "host").result.errors).toHaveLength(0);
+  });
+});
+
+describe("lobby disk-scan cache", () => {
+  /** Writes a room file straight to the persist dir, bypassing the store. */
+  function writeDiskRoom(roomId: string, name: string) {
+    if (!existsSync(persistDir)) {
+      mkdirSync(persistDir, { recursive: true });
+    }
+    const state = createAdventureLobbyState({ seed: `cache-${roomId}` });
+    state.room = { hosted: false, hostClientId: null, members: [], name };
+    const record = {
+      roomId,
+      version: 1,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      state
+    };
+    writeFileSync(join(persistDir, `${roomId}.json`), JSON.stringify(record));
+  }
+
+  it("serves rewritten room files fresh (the mtime/size cache never goes stale)", () => {
+    const roomId = uniqueRoom("cachefresh");
+    writeDiskRoom(roomId, "First Name");
+    expect(entryFor(roomId)?.name).toBe("First Name");
+
+    // Rewrite the file on disk (e.g. a newer copy landed after a restart):
+    // the next listing must reflect the new content, not the cached parse.
+    writeDiskRoom(roomId, "Second, Longer Name");
+    expect(entryFor(roomId)?.name).toBe("Second, Longer Name");
+
+    // And a deleted file drops out of the listing entirely.
+    unlinkSync(join(persistDir, `${roomId}.json`));
+    expect(entryFor(roomId)).toBeNull();
   });
 });
 
