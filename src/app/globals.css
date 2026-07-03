@@ -233,6 +233,53 @@ button {
   font-size: 15px;
 }
 
+/* Person-first seat nameplate (opponent bar + own dock): faction dot, person
+   name, hero · town second line. Shared so every seat reads the same way. */
+.seatWho {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.seatFactionDot {
+  flex: 0 0 auto;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 45%), 0 0 6px rgb(0 0 0 / 35%);
+}
+
+.seatWhoText {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.seatWhoText strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.seatHostCrown {
+  color: var(--gold);
+  flex: 0 0 auto;
+}
+
+.seatPick {
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .seatMetrics {
   display: flex;
   gap: 10px;
@@ -532,6 +579,29 @@ button {
   color: var(--muted);
   font-weight: 600;
   font-style: normal;
+}
+
+/* Person + their hero·town pick, stacked, in a room roster row. */
+.roomMemberWho {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.roomMemberPerson {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.roomMemberPick {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.roomMemberDot {
+  align-self: center;
 }
 
 .hostCrown {
@@ -12716,6 +12786,64 @@ img.cardBack {
 
 .authLink.danger {
   color: #e08b8b;
+}
+
+/* Secondary "Continue as guest" choice shown beneath the account card while
+   accounts roll out. Deliberately understated — accounts are the primary path. */
+.guestChoice {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.guestChoiceDivider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.guestChoiceDivider::before,
+.guestChoiceDivider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: rgb(213 168 79 / 24%);
+}
+
+.guestChoiceForm {
+  display: grid;
+  gap: 8px;
+  text-align: center;
+}
+
+.guestChoiceHint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.guestChoiceForm input {
+  width: 100%;
+}
+
+.guestChoiceButton {
+  border: 1px solid rgb(213 168 79 / 45%);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--gold);
+  font-size: 13.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 9px 10px;
+  cursor: pointer;
+}
+
+.guestChoiceButton:hover {
+  background: rgb(213 168 79 / 12%);
 }
 
 .authReadonly {
