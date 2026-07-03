@@ -333,7 +333,16 @@ export function ReactionTray({
       (player.combatStats.expertUseBonusThisRound ?? 0) -
       player.combatStats.expertUsesSpentThisRound
     : 0;
-  const crownsSelected = selections.filter((selection) => selection.mode === "expert").length;
+  // An Empowered ability (Dragon Fly Hive / Griffin Conservatory Creature-Bank
+  // bonus) plays its Expert side crown-free — the engine's abilityExpertIsCrownFree
+  // exempts it from the crown spend and legal-actions offers it at 0 crowns. So it
+  // must NOT count against the crown budget here, or the tray would disable Confirm
+  // (and show "no crowns left") for a play the engine happily accepts.
+  const crownsSelected = selections.filter(
+    (selection) =>
+      selection.mode === "expert" &&
+      !cardIsEmpoweredFor(selection.cardId, view.players[viewerPlayerId]?.empoweredAbilities)
+  ).length;
 
   const toggleSelection = (handIndex: number, cardId: string, group: TrayGroup) => {
     setSelections((current) => {

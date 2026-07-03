@@ -598,16 +598,34 @@ function assertBatchReactionLegal(
   }
 
   // Power "dissipates" when no spell consumes it: inside an attack window,
-  // Power plays must accompany a spell instant in the same declaration.
+  // Power plays must accompany a spell instant in the same declaration — UNLESS
+  // this player already has a power-scaling instant on the pending attack (their
+  // own Bloodlust/Slayer/Weakness played in an earlier window step). Then they
+  // keep empowering it, so a lone Power batch is legal — mirroring the single
+  // PLAY_REACTION path (see applyReactionPlayCore's `empowerable`) so the batch
+  // and single-play routes agree. Without this the UI (whose `powerNeedsSpell`
+  // gate already allows it once empowered) let the player Confirm a batch the
+  // engine then rejected.
   if (
     state.reactionWindow.triggerEvent.type === "UNIT_ATTACK_DECLARED" &&
     powerOnlyPlays > 0 &&
     spellPlays === 0
   ) {
-    return {
-      code: "ACTION_NOT_LEGAL",
-      message: "Power can only be played into an attack together with a Spell card."
-    };
+    const stackItem = state.stack.at(-1);
+    const attackOwner =
+      stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT"
+        ? stackItem.action.playerId
+        : undefined;
+    const empowerable =
+      (stackItem?.modifiers.powerScaledAttackInstants ?? []).some((record) => record.playerId === action.playerId) ||
+      (attackOwner === action.playerId && stackItem?.modifiers.slayerRollsByPower !== undefined) ||
+      stackItem?.modifiers.ignoreDefenseCasterId === action.playerId;
+    if (!empowerable) {
+      return {
+        code: "ACTION_NOT_LEGAL",
+        message: "Power can only be played into an attack together with a Spell card."
+      };
+    }
   }
 
   // One Spell card per combat round (Knowledge/Necklace raise the limit). Hand
