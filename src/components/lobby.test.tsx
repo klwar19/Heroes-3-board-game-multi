@@ -115,4 +115,19 @@ describe("LobbyScreen", () => {
     renderLobby({ loading: true, rooms: [] });
     expect(screen.getByText(/Loading rooms/i)).toBeTruthy();
   });
+
+  it("gives a platform admin a delete control on rooms they could not otherwise close", () => {
+    // A room the viewer does NOT own (canClose:false). As an admin, a delete
+    // control appears anyway (the server re-verifies the admin session).
+    const handlers = renderLobby({ isAdmin: true, rooms: [entry({ roomId: "any", name: "Someone Else", canClose: false })] });
+    const deleteButton = screen.getByLabelText(/Admin: delete Someone Else/i);
+    fireEvent.click(deleteButton);
+    expect(handlers.onClose).toHaveBeenCalledWith("any");
+  });
+
+  it("does NOT show a delete control to a non-admin on a room they cannot close (control)", () => {
+    renderLobby({ isAdmin: false, rooms: [entry({ roomId: "any", name: "Someone Else", canClose: false })] });
+    expect(screen.queryByLabelText(/delete Someone Else/i)).toBeNull();
+    expect(screen.queryByLabelText(/Close Someone Else/i)).toBeNull();
+  });
 });

@@ -54,6 +54,23 @@ function build(): AccountStore {
   if (process.env.HOMM3BG_ADMIN_EMAIL) {
     store.promoteToAdminByEmail(process.env.HOMM3BG_ADMIN_EMAIL);
   }
+  // Full admin bootstrap: with a nickname + email + password configured, ensure
+  // a ready-to-use, confirmed admin account exists (created if missing, promoted
+  // if already registered). Credentials come from the env, never the repo, so
+  // there is no default password to leak. Persist the seed so it survives a
+  // full cold restart even before the admin logs in.
+  const adminNickname = process.env.HOMM3BG_ADMIN_NICKNAME;
+  const adminPassword = process.env.HOMM3BG_ADMIN_PASSWORD;
+  const adminEmail = process.env.HOMM3BG_ADMIN_EMAIL;
+  if (adminNickname && adminPassword && adminEmail) {
+    try {
+      store.ensureAdminAccount({ nickname: adminNickname, email: adminEmail, password: adminPassword });
+      persistAccounts(store);
+    } catch {
+      // Invalid admin env (e.g. a too-short password) — skip the bootstrap; the
+      // app still runs, and the seed-admin script remains available.
+    }
+  }
   return store;
 }
 

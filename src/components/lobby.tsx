@@ -21,7 +21,8 @@ export function LobbyScreen({
   onRefresh,
   onJoin,
   onCreate,
-  onClose
+  onClose,
+  isAdmin = false
 }: {
   rooms: RoomDirectoryEntry[];
   supported: boolean;
@@ -34,6 +35,8 @@ export function LobbyScreen({
   /** Create a room; `hosted` picks Closed (host-controlled seats) vs Open (free seats). */
   onCreate: (name: string, hosted: boolean) => void;
   onClose: (roomId: string) => void;
+  /** A signed-in platform admin: may delete ANY room (the server verifies the session). */
+  isAdmin?: boolean;
 }) {
   const [nameDraft, setNameDraft] = useState(displayName);
   const [newRoomName, setNewRoomName] = useState("");
@@ -178,12 +181,12 @@ export function LobbyScreen({
                   <button className="commandButton" onClick={() => onJoin(room.roomId)} type="button">
                     {room.inProgress ? "Watch / play" : "Join"}
                   </button>
-                  {room.canClose ? (
+                  {room.canClose || isAdmin ? (
                     <button
-                      aria-label={`Close ${room.name}`}
+                      aria-label={`${room.canClose ? "Close" : "Admin: delete"} ${room.name}`}
                       className="iconButton danger"
                       onClick={() => onClose(room.roomId)}
-                      title="Close this room for everyone"
+                      title={room.canClose ? "Close this room for everyone" : "Admin: delete this room"}
                       type="button"
                     >
                       <Trash2 aria-hidden="true" size={14} />

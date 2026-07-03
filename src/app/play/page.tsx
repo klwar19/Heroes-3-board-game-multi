@@ -9,6 +9,7 @@ import { DEFAULT_SERVER } from "@/data/servers";
 import { uiArtSlot } from "@/data/ui-art";
 import { assetUrl } from "@/lib/asset-url";
 import { getClientId, getDisplayName, setDisplayName } from "@/lib/identity";
+import { fetchSession } from "@/lib/auth-client";
 import { savePendingRoomHosted, savePendingRoomName } from "@/lib/pending-room-name";
 import {
   createRoomOnServer,
@@ -34,6 +35,7 @@ export default function PlayPage() {
   const [supported, setSupported] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   // Persisted name is browser-only state: read after mount (same pattern and
   // lint scope as src/app/page.tsx).
@@ -45,6 +47,15 @@ export default function PlayPage() {
     }
   }, []);
   /* eslint-enable react-hooks/set-state-in-effect */
+
+  // Authoritative admin check (the session cookie, not the localStorage cache),
+  // so the "delete any room" control only appears for a real platform admin. The
+  // server re-verifies on every DELETE regardless, so this is display-only.
+  useEffect(() => {
+    fetchSession()
+      .then((profile) => setIsAdmin(profile?.role === "admin"))
+      .catch(() => setIsAdmin(false));
+  }, []);
 
   // Only updates state in async callbacks (never synchronously), so the
   // polling effect below can call it without cascading renders.
@@ -141,6 +152,7 @@ export default function PlayPage() {
         onRename={handleRename}
         rooms={rooms}
         supported={supported}
+        isAdmin={isAdmin}
       />
     </MenuShell>
   );
