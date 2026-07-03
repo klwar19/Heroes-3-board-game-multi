@@ -10,11 +10,16 @@
  * Scope: the 19 Core Game proclamations plus the expansion cards whose effects
  * map cleanly onto existing engine systems and are wired + tested here
  * (Society, Big Cleanup, Blue Sky, Scorched Ground, Dancing Imp, Hero,
- * Plane Between Planes, and the Rampart war-machine pair Ammo Cart + McGiver).
+ * Plane Between Planes, the Rampart war-machine pair Ammo Cart + McGiver, and
+ * the Stretch/Conflux trio Destruction, Sanctuary and Spells — the last a
+ * PvP-attack ban that is enforced at the combat chokepoint and, by construction,
+ * keeps the optional parallel-turns mode running because no PvP ever triggers).
  * The `effect` field is the single source of truth for what the engine runs;
- * `text` is the printed card wording. Every card has a real card scan in
- * `image`. Expansion proclamations that would need new subsystems (PvP-attack
- * bans, a generic Event deck, defense->attack conversion, ...) are
+ * `text` is the printed card wording. Most cards carry a real card scan in
+ * `image`; a few render through the app's text card-face while their scan is
+ * unavailable upstream (ART_LESS_PROCLAMATIONS) or not yet fetched
+ * (ART_PENDING_PROCLAMATIONS). Expansion proclamations that would still need a
+ * new subsystem (defense->attack conversion, an extra-Event draw, ...) remain
  * intentionally NOT included rather than shipped as inert text — see
  * ASTROLOGERS_NOT_IMPLEMENTED below for the honest list.
  */
@@ -85,7 +90,25 @@ export type AstrologersEffect =
   // War Machine from the shared supply "as if they visited a Trading Post" but
   // `discountGold` cheaper. Resolved at draw — one paid, discounted offer per
   // player through the war-machine purchase path (see queueWarMachineDiscountOffer).
-  | { type: "WAR_MACHINE_DISCOUNT_OFFER"; discountGold: number };
+  | { type: "WAR_MACHINE_DISCOUNT_OFFER"; discountGold: number }
+  // Destruction: each player who has a permanent card in play must Remove it
+  // (out of the game — the removed pile, per the rulebook "Remove", NOT the
+  // discard) and take `gold`. Immediate + mandatory, resolved at draw for every
+  // player with a permanent (players with none get nothing). The oldest
+  // permanent leaves when a player holds several (the singular "it").
+  | { type: "REMOVE_PERMANENT_FOR_GOLD"; gold: number }
+  // Sanctuary: during the drawn (even) Astrologers round, Heroes cannot attack
+  // one another — a hard PvP-attack ban enforced at the combat chokepoint
+  // (startPlayerCombat throws before parallel turns are stopped, so under this
+  // card a PvP attack is simply illegal AND parallel mode keeps running). The
+  // ban gates on the round being even, so it lifts on the following Resource
+  // round even though the card stays face up ("during this round").
+  | { type: "PVP_ATTACK_BAN" }
+  // Spells: whenever a player is about to Search the Spell deck they may
+  // Search(`count`) instead of the base size — a strictly larger look at the
+  // top (they still keep one). Passive: read in openSharedDeckSearch when the
+  // searched deck is a Spell deck (either BINH split deck) and this card is up.
+  | { type: "SPELL_SEARCH_WIDEN"; count: number };
 
 /** Boxed sets / expansions a proclamation can ship in (provenance, shown in the UI). */
 export const ASTROLOGERS_EXPANSIONS = [
@@ -94,6 +117,7 @@ export const ASTROLOGERS_EXPANSIONS = [
   "Fortress Expansion",
   "Inferno Expansion",
   "Rampart Expansion",
+  "Conflux Expansion",
   "Stretch Goals"
 ] as const;
 
@@ -128,6 +152,22 @@ export type AstrologersCardDefinition = {
  * only the artwork is unavailable upstream.
  */
 export const ART_LESS_PROCLAMATIONS: ReadonlySet<string> = new Set<string>(["astrologers.wandering_merchant"]);
+
+/**
+ * Proclamations whose card art EXISTS upstream but has not been fetched into
+ * `/public/assets` yet — a conscious "wire the effect now, add the scan later"
+ * decision (the effect is fully engine-wired + tested; only the local image is
+ * pending). Distinct from ART_LESS_PROCLAMATIONS (where the fan wiki genuinely
+ * publishes no front scan). Both render through the app's honest text card-face
+ * fallback until a real scan lands; both are accepted by the `image: ""` data
+ * check. Move a slug OUT of this set once `scripts/fetch-astrologers-art.py`
+ * has downloaded its scan and `image(slug)` points at a real file.
+ */
+export const ART_PENDING_PROCLAMATIONS: ReadonlySet<string> = new Set<string>([
+  "astrologers.destruction",
+  "astrologers.sanctuary",
+  "astrologers.spells"
+]);
 
 function source(slug: string, expansion: AstrologersExpansion) {
   const product =
@@ -236,6 +276,21 @@ export const astrologersCardDefinitions: Record<string, AstrologersCardDefinitio
     expansion: "Core Game",
     image: image("dead_silence"),
     source: source("dead_silence", "Core Game")
+  },
+  "astrologers.destruction": {
+    id: "astrologers.destruction",
+    name: "Destruction",
+    text: "Each player who has a permanent card in play must Remove it and take 5 gold.",
+    // Immediate + mandatory (resolved at draw). "Remove" sends the permanent out
+    // of the GAME (the removed pile), not the discard pile — matching the
+    // rulebook keyword. A player with no permanent in play is untouched and
+    // gains nothing ("who HAS a permanent card in play").
+    ongoing: false,
+    effect: { type: "REMOVE_PERMANENT_FOR_GOLD", gold: 5 },
+    expansion: "Stretch Goals",
+    // Art pending (see ART_PENDING_PROCLAMATIONS) — renders via the text face.
+    image: "",
+    source: source("destruction", "Stretch Goals")
   },
   "astrologers.explorers": {
     id: "astrologers.explorers",
@@ -391,6 +446,21 @@ export const astrologersCardDefinitions: Record<string, AstrologersCardDefinitio
     image: image("profuse_growth"),
     source: source("profuse_growth", "Core Game")
   },
+  "astrologers.sanctuary": {
+    id: "astrologers.sanctuary",
+    name: "Sanctuary",
+    text: "During this round, Heroes cannot attack one another. (Ignore this card when playing a campaign scenario.)",
+    // Passive while face up, read at the PvP-combat chokepoint (startPlayerCombat).
+    // Gated on the round being the even Astrologers round it was drawn, so the
+    // ban lifts on the following Resource round ("during this round"). There is no
+    // campaign-scenario mode in this build, so the parenthetical never applies.
+    ongoing: true,
+    effect: { type: "PVP_ATTACK_BAN" },
+    expansion: "Stretch Goals",
+    // Art pending (see ART_PENDING_PROCLAMATIONS) — renders via the text face.
+    image: "",
+    source: source("sanctuary", "Stretch Goals")
+  },
   "astrologers.scorched_ground": {
     id: "astrologers.scorched_ground",
     name: "Scorched Ground",
@@ -410,6 +480,19 @@ export const astrologersCardDefinitions: Record<string, AstrologersCardDefinitio
     expansion: "Tower Expansion",
     image: image("society"),
     source: source("society", "Tower Expansion")
+  },
+  "astrologers.spells": {
+    id: "astrologers.spells",
+    name: "Spells",
+    text: "When you are about to Search the Spell deck, you can perform Search(4) the Spell deck instead.",
+    // Passive while face up: openSharedDeckSearch widens any Spell-deck Search to
+    // at least 4 (a strictly bigger look — the searcher still keeps one card).
+    ongoing: true,
+    effect: { type: "SPELL_SEARCH_WIDEN", count: 4 },
+    expansion: "Conflux Expansion",
+    // Art pending (see ART_PENDING_PROCLAMATIONS) — renders via the text face.
+    image: "",
+    source: source("spells", "Conflux Expansion")
   },
   "astrologers.swift_weasel": {
     id: "astrologers.swift_weasel",
@@ -500,7 +583,6 @@ export const astrologersDeckCardIds: string[] = Object.keys(astrologersCardDefin
  */
 export const ASTROLOGERS_NOT_IMPLEMENTED: { name: string; expansion: string; needs: string }[] = [
   { name: "Crag Hack", expansion: "Stronghold", needs: "first-combat ground-unit attack buff + free Goblin reinforce" },
-  { name: "Destruction", expansion: "Stretch Goals", needs: "remove a permanent card in play for gold" },
   { name: "Disruption", expansion: "Stretch Goals", needs: "per-player free single-tile rotation flow" },
   { name: "Elementals", expansion: "Conflux", needs: "face-up Elemental units seeded onto neutral decks" },
   // The Event deck itself now exists (src/data/cards/events.ts, optional rule)
@@ -518,8 +600,6 @@ export const ASTROLOGERS_NOT_IMPLEMENTED: { name: string; expansion: string; nee
   // Left out rather than shipped as a near-no-op (CLAUDE.md #1).
   { name: "Restart", expansion: "Stretch Goals", needs: "a base hand limit above 4 for the -2 (min 4) reduction to ever bite" },
   { name: "Rulebook", expansion: "Stretch Goals", needs: "neutral-combat difficulty reduction" },
-  { name: "Sanctuary", expansion: "Stretch Goals", needs: "a PvP-attack ban for the round (does not exist)" },
-  { name: "Spells", expansion: "Conflux", needs: "widened spell-deck search" },
   { name: "Whirlpool", expansion: "Cove", needs: "free whirlpool travel with exit choice" },
   { name: "Wind", expansion: "Cove", needs: "continued movement after entering a sea field" }
 ];

@@ -4234,8 +4234,11 @@ export type GameEvent =
       type: "PERMANENT_DISCARDED";
       playerId: PlayerId;
       cardId: CardId;
-      /** "cracked": removed from the game for its instant gain (income rings/carts). */
-      reason: "voluntary" | "limit" | "expert" | "replaced" | "cracked";
+      /**
+       * "cracked": removed from the game for its instant gain (income rings/carts).
+       * "destruction": removed from the game by the Destruction Astrologers card.
+       */
+      reason: "voluntary" | "limit" | "expert" | "replaced" | "cracked" | "destruction";
     }
   | {
       /** Pandora's Box: the visiting hero drew a Pandora deck card. */

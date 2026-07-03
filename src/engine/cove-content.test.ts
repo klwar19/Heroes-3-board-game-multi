@@ -327,6 +327,10 @@ describe("Cove Pub — Astrologers'-round reinforce discount", () => {
     state.pendingChoice = null;
     if (state.adventure) state.adventure.rewardQueue = [];
     state.round = 2; // even rounds are Astrologers' rounds
+    // Keep the drawn proclamation inert so the ONLY reinforce offer is the Pub's.
+    // (The shuffled deck can otherwise deal a reinforce proclamation — e.g. Isra's
+    // Friends — whose own half-cost offer would compete with the Pub's here.)
+    state.decks.astrologers!.drawPile = ["astrologers.dead_silence"];
     startAdventureRound(state);
     return state;
   }
