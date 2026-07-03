@@ -22,6 +22,10 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const ASSETS = path.join(ROOT, "public", "assets");
 const GENERATED_SOURCES = path.join(ROOT, "out", "elemental-card-sources");
 const GLYPHS = path.join(ROOT, "scripts", "card-glyphs");
+// Committed real board-game card scans (github.com/Heegu-sama/Homm3BG,
+// assets/cards). Elementals with a `realCards` mapping use the REAL printed
+// Few/Pack card here instead of the composited placeholder.
+const REAL_CARDS = path.join(ROOT, "scripts", "elemental-real-cards");
 
 const CARD_WIDTH = 743;
 const CARD_HEIGHT = 1038;
@@ -38,7 +42,10 @@ const ELEMENTALS = [
     few: [2, 0, 4, 8],
     pack: [3, 0, 4, 8],
     neutral: [2, 0, 3, 7],
-    neutralCost: 7
+    neutralCost: 7,
+    // Few/Pack ship the REAL printed board-game card (assets/cards
+    // unit-air-elemental-{few,pack}); only the Neutral guard is composited.
+    realCards: { few: "air_elementals-few.webp", pack: "air_elementals-pack.webp" }
   },
   {
     slug: "earth",
@@ -250,6 +257,25 @@ async function buildSummonCard(element, variant, art, glyphs) {
   return destination;
 }
 
+async function buildRealCard(element, variant) {
+  // Use the committed REAL printed card scan (no compositing) at the app's
+  // canonical unit-card size, so re-running this build keeps the real Air
+  // Elemental Few/Pack cards the user shipped instead of a placeholder.
+  const source = path.join(REAL_CARDS, element.realCards[variant]);
+  if (!existsSync(source)) {
+    throw new Error(`Missing real ${element.slug} ${variant} card scan ${source}`);
+  }
+  const destination = path.join(
+    ASSETS,
+    `units-conflux-bronze-${element.slug}_elementals-${variant}.webp`
+  );
+  await sharp(source)
+    .resize(CARD_WIDTH, CARD_HEIGHT, { fit: "fill" })
+    .webp({ quality: 88, effort: 6 })
+    .toFile(destination);
+  return destination;
+}
+
 async function buildNeutralCard(element, art, glyphs) {
   const template = path.join(ASSETS, NEUTRAL_TEMPLATES[element.neutralTier]);
   const titlePatch = await cleanTitlePatch(element.neutralTier);
@@ -290,8 +316,14 @@ const glyphs = {
 for (const elemental of ELEMENTALS) {
   const sharedArtPath = await ensureSharedArt(elemental);
   const sharedArt = await sharp(sharedArtPath).png().toBuffer();
-  outputs.push(await buildSummonCard(elemental, "few", sharedArt, glyphs));
-  outputs.push(await buildSummonCard(elemental, "pack", sharedArt, glyphs));
+  if (elemental.realCards) {
+    // Real printed card scan for Few/Pack (Air Elementals).
+    outputs.push(await buildRealCard(elemental, "few"));
+    outputs.push(await buildRealCard(elemental, "pack"));
+  } else {
+    outputs.push(await buildSummonCard(elemental, "few", sharedArt, glyphs));
+    outputs.push(await buildSummonCard(elemental, "pack", sharedArt, glyphs));
+  }
   outputs.push(await buildNeutralCard(elemental, sharedArt, glyphs));
 }
 

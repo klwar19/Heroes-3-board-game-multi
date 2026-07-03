@@ -107,4 +107,23 @@ describe("summoned Elemental card faces", () => {
       expect(source).toContain(`glyphDataUri("${glyph}")`);
     }
   });
+
+  it("ships the REAL printed Air Elemental Few/Pack cards (not a composited placeholder)", () => {
+    // The committed source scans (github.com/Heegu-sama/Homm3BG, assets/cards).
+    for (const variant of ["few", "pack"] as const) {
+      const src = fileURLToPath(
+        new URL(`../../../scripts/elemental-real-cards/air_elementals-${variant}.webp`, import.meta.url)
+      );
+      expect(existsSync(src), `real Air ${variant} source scan`).toBe(true);
+      expect(statSync(src).size, `real Air ${variant} scan must be real art`).toBeGreaterThan(100_000);
+    }
+    // The compositor must build Air Few/Pack FROM the real scan — a test fails if
+    // someone reverts Air to the composited placeholder.
+    const compositor = fileURLToPath(new URL("../../../scripts/build-elemental-cards.mjs", import.meta.url));
+    const source = readFileSync(compositor, "utf8");
+    expect(source).toContain("realCards");
+    expect(source).toContain("air_elementals-few.webp");
+    expect(source).toContain("air_elementals-pack.webp");
+    expect(source).toContain("buildRealCard");
+  });
 });

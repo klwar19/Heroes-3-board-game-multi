@@ -174,18 +174,78 @@ export const TOWN_BUILDING_IMAGES: Record<string, Record<string, string>> = {
 };
 
 /**
- * Classic resource-bar icons. The board game's three resources map to:
- * gold → gold pile, building materials → ore, valuables → crystal (per the
- * table owner's mapping of the uploaded reference image).
+ * Resource-bar icons. The board game's three resources now use the REAL
+ * board-game token art (github.com/Heegu-sama/Homm3BG, assets/images →
+ * gold.png / building_materials.png / valuables.png), converted to webp and
+ * hosted locally under /assets/icons: gold → the coin stack, building
+ * materials → the grey stone pile, valuables → the red crystal cluster.
+ * wood/gems/mercury/sulfur (PC-only extras, no board-game token) keep the
+ * classic HoMM3 leather icons.
  */
 export const RESOURCE_ICONS = {
-  gold: "/assets/icons/gold_leather.gif",
-  buildingMaterials: "/assets/icons/ore_leather.gif",
-  valuables: "/assets/icons/crystal_leather.gif",
+  gold: "/assets/icons/resource-gold.webp",
+  buildingMaterials: "/assets/icons/resource-building_materials.webp",
+  valuables: "/assets/icons/resource-valuables.webp",
   wood: "/assets/icons/wood_leather.gif",
   gems: "/assets/icons/gem_leather.gif",
   mercury: "/assets/icons/mercury_leather.gif",
   sulfur: "/assets/icons/sulfur_leather.gif"
+} as const;
+
+/**
+ * Combat-token art (github.com/Heegu-sama/Homm3BG, assets/images), the real
+ * printed tokens: the crossed-swords Attack token (red), the silver-swords
+ * Weakness token (black), the prohibited-shield Corrosion token (green) and the
+ * gorgon-head Paralysis token. `damage`/`defense` are the extra printed tokens,
+ * staged for later use. Keyed to match `CombatTokenKind` in the engine — the
+ * board renders these instead of an emoji glyph, with the engine's live signed
+ * amount overlaid (the printed number varies by denomination). All local webp.
+ */
+export const COMBAT_TOKEN_IMAGES = {
+  attack: "/assets/board/tokens/combat-attack.webp",
+  weakness: "/assets/board/tokens/combat-weakness.webp",
+  corrosion: "/assets/board/tokens/combat-corrosion.webp",
+  paralysis: "/assets/board/tokens/combat-paralysis.webp",
+  damage: "/assets/board/tokens/combat-damage.webp",
+  defense: "/assets/board/tokens/combat-defense.webp"
+} as const;
+
+/**
+ * Board symbol art for the core statistics and counters (attack, defense, HP,
+ * power, knowledge, initiative, experience, population, morale). Real
+ * board-game glyphs (github.com/Heegu-sama/Homm3BG, assets/images), converted
+ * to local webp. Registered here for later use across the hero/unit boards.
+ */
+export const STAT_SYMBOL_ICONS = {
+  attack: "/assets/icons/symbol-attack.webp",
+  defense: "/assets/icons/symbol-defense.webp",
+  hp: "/assets/icons/symbol-hp.webp",
+  power: "/assets/icons/symbol-power.webp",
+  knowledge: "/assets/icons/symbol-knowledge.webp",
+  initiative: "/assets/icons/symbol-initiative.webp",
+  experience: "/assets/icons/symbol-experience.webp",
+  population: "/assets/icons/symbol-population.webp",
+  moralePositive: "/assets/icons/symbol-morale-positive.webp",
+  moraleNegative: "/assets/icons/symbol-morale-negative.webp"
+} as const;
+
+/**
+ * Secondary-skill emblems (github.com/Heegu-sama/Homm3BG, assets/skills) used
+ * as the main-menu button icons — a logical skill per destination (swords for
+ * a solo campaign, the leadership banner for multiplayer, the war machine for
+ * the battle arena, the map for the designer, and so on). Local webp; each key
+ * here is wired to exactly one menu button.
+ */
+export const SKILL_ICONS = {
+  attack: "/assets/skills/attack.webp",
+  leadership: "/assets/skills/leadership.webp",
+  artillery: "/assets/skills/artillery.webp",
+  pathfinding: "/assets/skills/pathfinding.webp",
+  luck: "/assets/skills/luck.webp",
+  wisdom: "/assets/skills/wisdom.webp",
+  intelligence: "/assets/skills/intelligence.webp",
+  interference: "/assets/skills/interference.webp",
+  logistics: "/assets/skills/logistics.webp"
 } as const;
 
 /**

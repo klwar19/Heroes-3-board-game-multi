@@ -16,7 +16,8 @@ export type DeckBackStyle = {
 export const CARD_BACK_IMAGES = {
   mm: "/assets/card_back-mm.webp",
   astrologers: "/assets/card_back-astrologers.webp",
-  neutral: "/assets/card_back-neutral.webp"
+  neutral: "/assets/card_back-neutral.webp",
+  events: "/assets/card_back-events.webp"
 } as const;
 
 export const deckBacks: Record<string, DeckBackStyle> = {
@@ -29,9 +30,9 @@ export const deckBacks: Record<string, DeckBackStyle> = {
   "artifacts-major": { label: "Major Artifacts", styleKey: "artifacts", image: CARD_BACK_IMAGES.mm },
   "artifacts-relic": { label: "Relic Artifacts", styleKey: "artifacts", image: CARD_BACK_IMAGES.mm },
   astrologers: { label: "Astrologers Proclaim", styleKey: "player", image: CARD_BACK_IMAGES.astrologers },
-  // The wiki publishes no Event card-back scan; the shared M&M back stands in
-  // rather than a fabricated one.
-  events: { label: "Events", styleKey: "player", image: CARD_BACK_IMAGES.mm }
+  // The Fortress Event deck now uses its own printed back (event-back scan,
+  // rotated to the portrait card-back slot) instead of the shared M&M stand-in.
+  events: { label: "Events", styleKey: "player", image: CARD_BACK_IMAGES.events }
 };
 
 export function getDeckBack(deckId?: string): DeckBackStyle {

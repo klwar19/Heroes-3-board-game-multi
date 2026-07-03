@@ -8390,11 +8390,13 @@ button.hbSlot:disabled { cursor: default; }
 
 /* ---- Resource and morale icons (heroes.thelazy.net) ---------------------- */
 .resourceIcon {
-  width: 30px;
-  height: 24px;
+  width: 28px;
+  height: 26px;
   object-fit: contain;
-  image-rendering: pixelated;
-  vertical-align: -5px;
+  /* Real board-game resource art is smooth hi-res webp now, not a pixel gif —
+     let it scale smoothly instead of nearest-neighbour. */
+  image-rendering: auto;
+  vertical-align: -6px;
 }
 
 .resourceIcon.small {
@@ -9607,45 +9609,95 @@ img.cardBack {
   z-index: 4;
 }
 
+/* Combat-token chips now show the real printed token disc (COMBAT_TOKEN_IMAGES);
+   the live signed amount is overlaid in a dark-haloed gold badge that masks the
+   art's baked denomination so the number always matches engine state. */
 .tokenChip {
+  position: relative;
   display: inline-flex;
+  width: 22px;
+  height: 22px;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.55));
+}
+
+.tokenChipArt {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 50%;
+}
+
+.tokenChipAmount {
+  position: absolute;
+  left: 50%;
+  bottom: 1px;
+  transform: translateX(-50%);
+  min-width: 12px;
+  padding: 0 2px;
+  border-radius: 6px;
+  background: radial-gradient(ellipse at center, rgba(6, 4, 2, 0.86) 55%, rgba(6, 4, 2, 0) 100%);
+  color: #ffe9a6;
+  font-size: 0.58rem;
+  font-weight: 800;
+  line-height: 1.05;
+  text-align: center;
+  text-shadow: 0 1px 1px #000;
+  pointer-events: none;
+}
+
+/* Poison has no printed disc — keep a compact green pip with the cube count. */
+.tokenChip.poison {
+  width: auto;
+  height: auto;
   align-items: center;
-  gap: 1px;
   padding: 1px 5px;
   border-radius: 999px;
-  font-size: 0.62rem;
-  font-weight: 700;
-  border: 1px solid rgba(0, 0, 0, 0.5);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
-  color: #1d1505;
-}
-
-.tokenChip.attack {
-  background: linear-gradient(180deg, #ffd766, #d99a26);
-}
-
-.tokenChip.weakness {
-  background: linear-gradient(180deg, #b9c7e8, #7d8fc0);
-}
-
-.tokenChip.corrosion {
   background: linear-gradient(180deg, #b7e09a, #6d9b46);
+  border: 1px solid rgba(0, 0, 0, 0.5);
+  filter: none;
 }
 
-.tokenChip.paralysis {
-  background: linear-gradient(180deg, #e8c7f0, #ad7cc2);
+.tokenChip.poison .tokenChipAmount {
+  position: static;
+  transform: none;
+  min-width: 0;
+  padding: 0;
+  background: none;
+  color: #12300a;
+  text-shadow: none;
+  font-size: 0.62rem;
 }
 
 .inspectTokens {
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
+  flex-direction: column;
+  gap: 5px;
   margin-top: 4px;
 }
 
-.inspectTokens .tokenChip {
-  position: static;
-  font-size: 0.64rem;
+.inspectTokenRow {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.inspectTokenRow .tokenChip {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+}
+
+.inspectTokenRow .tokenChip.poison {
+  width: auto;
+  height: auto;
+}
+
+.inspectTokenText {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #e8d9b4;
+  text-transform: capitalize;
 }
 
 /* ---------------------------------------------------------------------------
@@ -12417,41 +12469,72 @@ img.cardBack {
   gap: 10px;
 }
 
+/* "In the Wake of Gods"-style plaques: a thematic secondary-skill emblem beside
+   a golden serif label on a gilt leather panel. */
 .menuNavButton {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 14px;
   width: 100%;
-  padding: 13px 18px;
-  border: 1px solid rgb(213 168 79 / 46%);
-  border-radius: 9px;
-  background: linear-gradient(180deg, #2c2318 0%, #1b150d 100%);
+  padding: 10px 16px;
+  border: 1px solid rgb(213 168 79 / 55%);
+  border-radius: 11px;
+  background: linear-gradient(180deg, rgb(58 46 30 / 96%) 0%, rgb(31 24 15 / 97%) 54%, rgb(20 15 9 / 98%) 100%);
   color: var(--gold);
-  font-size: 15px;
-  font-weight: 800;
-  letter-spacing: 0.03em;
-  text-align: center;
+  text-align: left;
   text-decoration: none;
   cursor: pointer;
   box-shadow:
-    inset 0 1px 0 rgb(243 239 228 / 10%),
-    0 6px 16px rgb(0 0 0 / 45%);
+    inset 0 1px 0 rgb(243 239 228 / 14%),
+    inset 0 0 0 1px rgb(0 0 0 / 34%),
+    0 6px 16px rgb(0 0 0 / 48%);
+  transition: filter 120ms ease, border-color 120ms ease, transform 120ms ease, box-shadow 120ms ease;
 }
 
 .menuNavButton:hover:not(:disabled) {
   border-color: var(--focus);
-  filter: brightness(1.14);
+  filter: brightness(1.12);
+  transform: translateY(-1px);
+  box-shadow:
+    inset 0 1px 0 rgb(243 239 228 / 18%),
+    0 0 14px rgb(213 168 79 / 30%),
+    0 8px 20px rgb(0 0 0 / 52%);
 }
 
 .menuNavButton:disabled {
   color: var(--muted);
   border-color: var(--line);
   cursor: not-allowed;
-  filter: grayscale(0.6);
-  opacity: 0.6;
+  filter: grayscale(0.65) brightness(0.82);
+  opacity: 0.62;
+}
+
+.menuNavIcon {
+  flex: 0 0 auto;
+  width: 46px;
+  height: 46px;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 3px rgb(0 0 0 / 55%));
+}
+
+.menuNavText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.menuNavLabel {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: var(--gold);
+  text-shadow: 0 1px 2px rgb(0 0 0 / 75%);
 }
 
 .menuNavButton small {
   display: block;
-  margin-top: 3px;
   color: var(--muted);
   font-size: 11.5px;
   font-weight: 600;
