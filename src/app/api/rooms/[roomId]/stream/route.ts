@@ -3,8 +3,11 @@ import {
   handleRoomDisconnect,
   markRoomClientConnected,
   markRoomClientDisconnected,
-  subscribeToRoom
+  subscribeToRoom,
+  type GameRoomSnapshot
 } from "@/server/game-room-store";
+import { sessionProfile } from "@/server/accounts/http";
+import { redactSnapshotForViewer } from "@/server/redact-snapshot";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +30,19 @@ export async function GET(request: Request, context: RoomContext) {
   // membership — otherwise one computer that joins, leaves and rejoins piles up
   // ghost members and inflates the room's head count.
   const clientId = new URL(request.url).searchParams.get("clientId") ?? undefined;
+  // Per-connection redaction (Phase 2): resolve this connection's VERIFIED
+  // identity from the session cookie once, then redact every frame to its own
+  // seat so a devtools reader on the socket never sees another seat's hidden
+  // info. Guests fall back to the clientId; open tables are not redacted.
+  const viewerUserId = (() => {
+    try {
+      return sessionProfile(request)?.id;
+    } catch {
+      return undefined;
+    }
+  })();
+  const viewer = { clientId, userId: viewerUserId };
+  const redact = (snapshot: GameRoomSnapshot): GameRoomSnapshot => redactSnapshotForViewer(snapshot, viewer);
   const encoder = new TextEncoder();
 
   let unsubscribe = () => {};
@@ -54,12 +70,15 @@ export async function GET(request: Request, context: RoomContext) {
       const send = (payload: unknown) => {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
       };
+      // Snapshot frames are redacted to this connection's seat; a `closed` frame
+      // and the keep-alive ping are passed through untouched.
+      const sendSnapshot = (snapshot: GameRoomSnapshot) => send(snapshot.closed ? snapshot : redact(snapshot));
 
       // Presence: this clientId now holds a live stream on the room (backs the
       // host-while-connected authority for reset/close).
       markRoomClientConnected(decodedRoomId, clientId);
-      send(getRoomSnapshot(decodedRoomId));
-      unsubscribe = subscribeToRoom(decodedRoomId, send);
+      sendSnapshot(getRoomSnapshot(decodedRoomId));
+      unsubscribe = subscribeToRoom(decodedRoomId, sendSnapshot);
 
       // A real data event (not an SSE comment) so clients can tell a live
       // stream from a half-dead connection: no ping for a while means the

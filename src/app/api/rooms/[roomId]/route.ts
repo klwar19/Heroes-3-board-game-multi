@@ -2,8 +2,18 @@ import { NextResponse } from "next/server";
 import type { GameState } from "@/engine";
 import { closeRoom, getRoomSnapshot, resetRoom, restoreRoom, type RoomResetOptions } from "@/server/game-room-store";
 import { sessionProfile } from "@/server/accounts/http";
+import { redactSnapshotForViewer } from "@/server/redact-snapshot";
 
 export const dynamic = "force-dynamic";
+
+/** The VERIFIED account id for this request (httpOnly cookie), or undefined. */
+function verifiedUserId(request: Request): string | undefined {
+  try {
+    return sessionProfile(request)?.id;
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * Whether this request carries a signed-in PLATFORM ADMIN session. Resolved
@@ -26,9 +36,13 @@ type RoomContext = {
   }>;
 };
 
-export async function GET(_request: Request, context: RoomContext) {
+export async function GET(request: Request, context: RoomContext) {
   const { roomId } = await context.params;
-  return NextResponse.json(getRoomSnapshot(decodeURIComponent(roomId)));
+  const clientId = new URL(request.url).searchParams.get("clientId") ?? undefined;
+  // Redact the snapshot to the requester's own seat (hosted rooms only), so a
+  // poll / initial load leaks no opponent hidden info — same rule as the stream.
+  const snapshot = getRoomSnapshot(decodeURIComponent(roomId));
+  return NextResponse.json(redactSnapshotForViewer(snapshot, { clientId, userId: verifiedUserId(request) }));
 }
 
 export async function POST(request: Request, context: RoomContext) {
@@ -43,6 +57,9 @@ export async function POST(request: Request, context: RoomContext) {
       } & RoomResetOptions)
     | null;
 
+  const actorClientId = typeof body?.actorClientId === "string" ? body.actorClientId : undefined;
+  const viewer = { clientId: actorClientId, userId: verifiedUserId(request) };
+
   if (body?.reset) {
     // resetRoom checks the actor against the host on hosted rooms (same rule
     // as DELETE/closeRoom): host while connected, any member once the host is
@@ -54,14 +71,14 @@ export async function POST(request: Request, context: RoomContext) {
         difficulty: body.difficulty,
         players: body.players
       },
-      typeof body.actorClientId === "string" ? body.actorClientId : undefined,
+      actorClientId,
       typeof body.adminKey === "string" ? body.adminKey : undefined,
       requestIsAdmin(request)
     );
     if (!result.reset) {
       return NextResponse.json({ reason: result.reason }, { status: 403 });
     }
-    return NextResponse.json(result.snapshot);
+    return NextResponse.json(redactSnapshotForViewer(result.snapshot, viewer));
   }
 
   // Client recovery: re-seed a room the server lost from the caller's cached
@@ -69,15 +86,14 @@ export async function POST(request: Request, context: RoomContext) {
   // restoreRoom).
   if (body?.restore && body.state) {
     return NextResponse.json(
-      restoreRoom(
-        decodeURIComponent(roomId),
-        body.state,
-        typeof body.actorClientId === "string" ? body.actorClientId : undefined
+      redactSnapshotForViewer(
+        restoreRoom(decodeURIComponent(roomId), body.state, actorClientId),
+        viewer
       )
     );
   }
 
-  return NextResponse.json(getRoomSnapshot(decodeURIComponent(roomId)));
+  return NextResponse.json(redactSnapshotForViewer(getRoomSnapshot(decodeURIComponent(roomId)), viewer));
 }
 
 /**

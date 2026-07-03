@@ -591,6 +591,41 @@ specific message; guest mode (flag off) byte-for-byte unchanged in CI.
 
 **Goal:** close the two documented trust/privacy gaps (D2); measure snapshots.
 
+> **STATUS: SHIPPED (2026-07-03) — with the same self-hosted divergence as
+> Phase 1.** Both documented gaps are closed and engine-tested (each claim has a
+> test that fails if the wiring is removed, with a forged-id / guest-table /
+> open-table control):
+> - **Verified-identity seats.** `RoomMember.userId` + `RoomMembershipState.
+>   requireAuth` + the `SET_ROOM_REQUIRE_AUTH` action; `roomActionGuard` binds a
+>   signed-in actor by their verified account id (a spoofed `actorClientId` no
+>   longer grants a seat) and refuses a guest acting for a verified seat; one
+>   account = one seat (a second tab rebinds to the same member); `joinRoom`
+>   stamps the id. `ENGINE_PROTOCOL_VERSION` bumped 14 → 15. Tests:
+>   `verified-identity-seats.test.ts`.
+> - **Transport binding.** The built-in backend reads the verified id from the
+>   httpOnly session cookie in `/api/rooms/**` (`verified-seat-authority.test.ts`).
+>   The PartyKit edge — which per §D2 cannot read that cookie cross-origin —
+>   verifies a short-lived **socket ticket** the client mints same-origin
+>   (`/api/auth/socket-token`) via a callback to `/api/auth/verify-token`. The
+>   divergence from the plan: the ticket + callback replace Supabase's client-held
+>   JWT, because the self-hosted session (Phase 1) is httpOnly-cookie-only. The
+>   isomorphic resolver + both routes are tested (`verified-actor.test.ts`,
+>   `account-store.test.ts` ticket cases); the actual Workers socket handshake is
+>   deploy-only-verifiable, like the rest of `party/index.ts`.
+> - **Per-connection redaction.** `redactStateForSeat` (built ON `getPlayerView`,
+>   so the two never drift) redacts each hosted-room frame to the recipient's own
+>   seat on every surface of both backends. It keeps the frame a `GameState` the
+>   existing client renders unchanged — `redact-state.test.ts` proves
+>   `getPlayerView(redacted, seat)` deep-equals `getPlayerView(state, seat)`, and
+>   `room-redaction.test.ts` asserts on the serialized frame. Open tables keep the
+>   shared full-frame fast path.
+> - **Snapshot size guard.** `state-size.test.ts` records a seeded 4-player game
+>   (~27 KiB) against a 100 KiB budget — well under the ~128 KiB DO value cap, so
+>   gzip/chunking is NOT needed yet (the test is the tripwire that says when it is).
+>
+> Env for the edge: set `HOMM3BG_APP_URL` on the PartyKit party (the app origin it
+> calls back for token verification); unset ⇒ the edge stays guest-only, unchanged.
+
 Steps:
 1. Thread `token` through `connectRoom`/`connectPartyRoom`/`connectApiRoom`
    (`src/lib/realtime.ts`) and the lobby/maps fetches.
@@ -935,3 +970,27 @@ named tests, screenshots/GIFs for UI phases, env/setup changes for the owner.
   - **UI**: the room browser gains a filter box (name/host/creator) once the
     list reaches 6 rooms (`lobby.test.tsx`); the table chat panel closes on
     Escape (`chat-panel.test.tsx`).
+- 2026-07-03 — **Phase 2 shipped** (verified-identity seats + per-connection
+  wire redaction) on the self-hosted backend (ticket callback in place of a
+  Supabase JWT; see the Phase 2 status note). Both documented trust/privacy gaps
+  are closed, each pinned by a failing-if-removed test with a forged-id /
+  guest-table / open-table control:
+  - **Engine** (`src/engine/room.ts`, `state.ts`, `reducer.ts`, `player-view.ts`,
+    `version.ts`): `RoomMember.userId`, `RoomMembershipState.requireAuth`, the
+    `SET_ROOM_REQUIRE_AUTH` action, the verified-first `roomActionGuard`, the
+    one-account-one-seat `joinRoom`, `seatForViewer`, and `redactStateForSeat`.
+    Protocol bumped 14 → 15. Tests: `verified-identity-seats.test.ts`,
+    `redact-state.test.ts`, `state-size.test.ts`.
+  - **Built-in backend**: `/api/rooms/**` resolve the verified id from the session
+    cookie and redact every returned snapshot to the requester's seat
+    (`verified-seat-authority.test.ts`, `room-redaction.test.ts`).
+  - **PartyKit edge**: socket-ticket auth (`/api/auth/socket-token` +
+    `/api/auth/verify-token`, the isomorphic `src/server/verified-actor.ts`
+    resolver) and per-connection redacted broadcast; the ticket store cases live
+    in `account-store.test.ts`, the resolver + route chain in
+    `verified-actor.test.ts`. The Workers socket handshake itself is deploy-only,
+    like the rest of `party/index.ts`.
+  - **Client**: `connectRoom` threads a `SocketTokenProvider`; the signed-in
+    player mints a ticket per (re)connect for the cross-origin edge, while the
+    built-in backend rides the same-origin cookie.
+  - Full suite green: 3806 vitest tests, typecheck, lint.

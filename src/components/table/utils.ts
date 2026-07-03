@@ -416,6 +416,10 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       return event.name
         ? `${roomMemberName(state, event.byClientId)} named the room “${event.name}”.`
         : `${roomMemberName(state, event.byClientId)} cleared the room name.`;
+    case "ROOM_REQUIRE_AUTH_CHANGED":
+      return event.requireAuth
+        ? `${roomMemberName(state, event.byClientId)} now requires a verified account to join.`
+        : `${roomMemberName(state, event.byClientId)} allows guests to join again.`;
     case "ROUND_STARTED":
       return `Round ${event.round} begins${event.kind === "resource" ? " (resource round)" : event.kind === "astrologers" ? " (Astrologers' round)" : ""}.`;
     case "TURN_STARTED":

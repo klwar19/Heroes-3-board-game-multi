@@ -19,9 +19,12 @@ export {
   dropDisconnectedMember,
   isRoomMembershipAction,
   MAX_ROOM_NAME_LENGTH,
+  roomActionGuard,
   roomDisplayName,
+  seatForViewer,
   seatOfClient
 } from "./room";
+export type { VerifiedActor } from "./room";
 export {
   factionCrestAsset,
   getTableReaction,
@@ -91,7 +94,7 @@ export {
   isImplementedCardEffect,
   spellPowerValueOfCard
 } from "./effects";
-export { getPlayerView } from "./player-view";
+export { getPlayerView, OBSERVER_VIEWER_SEAT, redactStateForSeat } from "./player-view";
 export { createSeededRandom } from "./random";
 export {
   applyCombatBoardArtObstacles,

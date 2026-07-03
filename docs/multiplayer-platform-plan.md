@@ -82,20 +82,26 @@
 > - **Observers** are unbounded (seat `"observer"`, hands filtered by the
 >   existing `getPlayerView`). The shareable invite link + "New room" / "Host
 >   this room" controls live in `src/components/table/room-panel.tsx`.
-> - **Trust boundary (declared, not hidden):** `actorClientId` is the value the
->   client claims; there is no auth binding a socket to a clientId yet (guest
->   play). The engine enforces the rule *given* the claimed identity — it is not
->   yet a defence against a client forging another's id.
->   **Update (2026-07-03):** real accounts now exist — a self-hosted account
->   backend (`src/server/accounts/*`) with register / email-confirm / login /
->   password-reset / profiles / admin roles, behind the `NEXT_PUBLIC_ACCOUNTS_
->   ENABLED` flag (guest mode stays the default; see `docs/game-expansion-plan.md`
->   Phase 1). What this does NOT yet do is *bind that verified identity to the
->   realtime transport*: the session lives in an httpOnly cookie the API routes
->   check, but the PartyKit/SSE seat guard still keys off the client-claimed
->   `actorClientId`. Threading the verified `userId` onto the socket + moving to
->   per-connection redaction is Phase 2 (Step 4 below) — the trust boundary
->   described here is unchanged until then.
+> - **Trust boundary — CLOSED in Phase 2 (verified-identity seats, 2026-07-03).**
+>   A hosted seat is now bound to a VERIFIED account, not a claimed `clientId`.
+>   The engine's `roomActionGuard` matches a signed-in actor by the server-stamped
+>   `RoomMember.userId` and ignores a spoofed `actorClientId`; a seat held by a
+>   verified account is unreachable to any guest who merely learned its clientId;
+>   one account holds at most one seat (a second tab rebinds to the same member);
+>   and a host may lock a table to accounts (`SET_ROOM_REQUIRE_AUTH`). The verified
+>   id is resolved server-side — the built-in backend reads the httpOnly session
+>   cookie in `/api/rooms/**`, and the PartyKit edge (which can't read that cookie
+>   cross-origin) verifies a short-lived socket ticket via a callback to
+>   `/api/auth/verify-token`. Guest/open tables are byte-for-byte unchanged (no
+>   `userId` ⇒ the old claimed-`clientId` rule, the casual/testing mode). Tests:
+>   `src/engine/verified-identity-seats.test.ts` (guard + one-seat + requireAuth,
+>   each with a forged-id or guest-table control), `src/app/api/rooms/verified-
+>   seat-authority.test.ts` (the built-in route binds the session end-to-end),
+>   `src/server/verified-actor.test.ts` (the edge ticket → verify-token → resolver
+>   chain). **Original account backend** (`src/server/accounts/*`): register /
+>   email-confirm / login / password-reset / profiles / admin roles, behind the
+>   `NEXT_PUBLIC_ACCOUNTS_ENABLED` flag (guest mode stays the default; see
+>   `docs/game-expansion-plan.md` Phase 1).
 > - **Destructive room ops (reset/close) follow one hosted-room rule** (same
 >   claimed-identity model; both backends, socket + HTTP — see
 >   `reset-authority.test.ts` + `game-room-store.test.ts`): the HOST always
@@ -109,13 +115,21 @@
 >   table. Set `localStorage["homm3bg.adminKey"]` in your own browser on the
 >   deployed app to use it from the normal UI; with no env key configured the
 >   override does not exist (empty never matches).
-> - **Known wire-level privacy limit (NOT yet fixed):** every snapshot is
->   broadcast as the FULL `GameState`; `getPlayerView` redacts hands, deck
->   order, face-down tiles and private pending choices only at render time in
->   the browser. Anyone reading the WebSocket/SSE frames (devtools) sees
->   everything. Fixing it means per-recipient redaction at the transport
->   (per-connection views keyed by seat) and belongs to the auth milestone —
->   the redactor itself (`src/engine/player-view.ts`) already exists.
+> - **Wire-level privacy — FIXED in Phase 2 (per-connection redaction).** A
+>   HOSTED room now redacts every snapshot to the recipient's OWN seat before it
+>   leaves the server, so devtools on a second client shows no other seat's hand,
+>   deck order, face-down tiles or private pending choices. It is applied on every
+>   surface of both backends — the built-in SSE stream + action/GET/reset
+>   responses, and the PartyKit per-connection WS broadcast + action-result +
+>   HTTP GET — and gated to hosted rooms (an open table keeps the shared full
+>   frame the client redacts locally, so it stays the O(1) fast path). The
+>   redactor `redactStateForSeat` (`src/engine/player-view.ts`) is built ON
+>   `getPlayerView`, keeping the frame a `GameState` the existing client renders
+>   unchanged — proven by `redact-state.test.ts` (`getPlayerView(redacted, seat)`
+>   deep-equals `getPlayerView(state, seat)`) plus a transport-level assertion on
+>   the serialized frame in `src/app/api/rooms/room-redaction.test.ts`. A snapshot
+>   size-regression guard (`src/engine/state-size.test.ts`) records a seeded
+>   4-player game at ~27 KiB against a 100 KiB budget.
 > - **Smaller accepted gaps (same trust model):** the PartyKit lobby directory
 >   Durable Object accepts unauthenticated POST/DELETE (worst case: a room
 >   vanishes from the browser list, join-by-code still works); an SSE/socket
@@ -164,9 +178,13 @@
 >   (6h), pruned (store + disk) as the directory is listed. REST surface:
 >   `GET/POST /api/rooms`, `DELETE /api/rooms/[roomId]`. All covered by
 >   `game-room-store.test.ts` (directory, create, close authorization, expiry).
-> - **Trust boundary (unchanged):** `actorClientId` for close is client-claimed,
->   exactly like the seat lock — it enforces the rule *given* the identity, not
->   against a forged one. Auth is still the next milestone.
+> - **Trust boundary (room close/reset):** `actorClientId` for the destructive
+>   room ops is still client-claimed — the host-while-connected rule is
+>   deliberately a per-tab presence check (a browser-restart host must not be
+>   locked out of wiping their own table), so it is NOT bound to the verified
+>   account the way SEAT actions now are (Phase 2). A signed-in platform ADMIN
+>   may already close/reset any room via the unforgeable session cookie
+>   (`sessionProfile().role === "admin"`).
 > - **PartyKit (edge backend) — now lists rooms too.** Room naming and host-close
 >   already worked there (the action flows through synced state; the party answers
 >   a `DELETE` and broadcasts `closed`). Room **listing** is now closed: a single
@@ -194,9 +212,12 @@
 > **Still future work:** simultaneous early-day turns in adventure mode (the
 > `TurnState.mode`/`simultaneousRoundLimit` scaffolding exists but is wired only
 > for combat-sandbox today), per-player concurrent map combats (today there is
-> one global combat slot), a PartyKit lobby Durable Object (room listing on the
-> edge backend), and auth/persistent identity. The notes below about lobbies and
-> the boardgame.io carrier remain as background.
+> one global combat slot), and automatic match-result reporting feeding MMR /
+> Hall of Fame (Phase 6 — the store's `recordMatchResult` + Elo exist and are
+> tested, but nothing calls them from a finished game yet). Auth/persistent
+> identity and per-connection wire privacy are DONE (Phase 2, see the trust- and
+> privacy-boundary notes above). The notes below about lobbies and the
+> boardgame.io carrier remain as background.
 
 
 The current prototype already plays like a shared table: a server-authoritative rules engine, REST rooms with **Server-Sent Events push** (polling only as fallback), seat switching, observer seats, and player-view filtering. This document plans the jump to a real multiplayer platform.

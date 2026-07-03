@@ -1,4 +1,5 @@
 import type {
+  CardId,
   DeckId,
   GameState,
   PendingChoice,
@@ -261,4 +262,66 @@ export function getPlayerView(state: GameState, viewerPlayerId: PlayerId): Playe
     reactionWindow: getVisibleReactionWindow(base.reactionWindow, viewerPlayerId),
     pendingChoice: getVisiblePendingChoice(base.pendingChoice, viewerPlayerId)
   };
+}
+
+/** The placeholder that stands in for a hidden card id on the wire. */
+const HIDDEN_CARD_ID: CardId = "hidden";
+
+/** Whom to render for a connection that holds no seat (a spectator). */
+export const OBSERVER_VIEWER_SEAT = "observer" as PlayerId;
+
+function hiddenCards(count: number): CardId[] {
+  return count > 0 ? new Array<CardId>(count).fill(HIDDEN_CARD_ID) : [];
+}
+
+/**
+ * A GameState redacted for one seat, that is STILL a GameState (Phase 2 —
+ * per-connection redaction). Where `getPlayerView` collapses another seat's
+ * hidden cards to a count, this keeps the SHAPE — the count becomes an
+ * equal-length array of "hidden" placeholders — so the frame a transport sends
+ * to seat S carries no other seat's real hand / deck order / face-down tile ids,
+ * yet the existing client (which re-runs `getPlayerView` on whatever it
+ * receives) renders byte-for-byte identically: `getPlayerView` reads only the
+ * array LENGTHS for opponents, which the placeholders preserve.
+ *
+ * Built ON `getPlayerView`, so every masking rule lives in exactly one place and
+ * the two can never drift. Pass `OBSERVER_VIEWER_SEAT` for a spectator socket.
+ */
+export function redactStateForSeat(state: GameState, viewerPlayerId: PlayerId): GameState {
+  const view = getPlayerView(state, viewerPlayerId);
+
+  const players = Object.fromEntries(
+    Object.entries(view.players).map(([playerId, player]) => {
+      // Drop the visible-only count fields; rebuild the hidden arrays from them.
+      const { handCount, deckCount, spellBookCount, ...rest } = player;
+      const isViewer = playerId === viewerPlayerId;
+      return [
+        playerId,
+        {
+          ...rest,
+          // The viewer keeps its own real hand / Spell Book; opponents become
+          // same-length placeholders. Deck ORDER is hidden from everyone,
+          // including the owner (getPlayerView already emptied it for all).
+          hand: isViewer ? [...player.hand] : hiddenCards(handCount),
+          deck: hiddenCards(deckCount),
+          spellBook: isViewer ? [...player.spellBook] : hiddenCards(spellBookCount)
+        }
+      ];
+    })
+  );
+
+  const decks = Object.fromEntries(
+    Object.entries(view.decks).map(([deckId, deck]) => {
+      const { drawCount, ...rest } = deck;
+      return [deckId, { ...rest, drawPile: hiddenCards(drawCount) }];
+    })
+  );
+
+  // Strip the view-only `viewerPlayerId` marker so the result is a clean
+  // GameState; the client stamps its own on render.
+  const { viewerPlayerId: _omit, players: _p, decks: _d, ...base } = view;
+  void _omit;
+  void _p;
+  void _d;
+  return { ...base, players, decks } as GameState;
 }

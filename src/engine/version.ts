@@ -35,7 +35,14 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // reducer change (the catalogs below do not detect it), therefore the explicit
 // protocol bump is required to make every stale room/server show the version-
 // skew warning and to invalidate cached v13 room snapshots.
-export const ENGINE_PROTOCOL_VERSION = 14;
+// v15: verified-identity seats (Phase 2). A new action (SET_ROOM_REQUIRE_AUTH),
+// two new state fields (RoomMember.userId, RoomMembershipState.requireAuth) and a
+// changed reducer contract — the seat-ownership guard now binds a signed-in actor
+// to their verified account id (a spoofed actorClientId no longer grants a seat)
+// and joinRoom stamps that id onto the member. A stale room server would ignore
+// the new action and the verified-identity guard, so the explicit bump surfaces
+// the version-skew banner instead of silently reverting to clientId-only seats.
+export const ENGINE_PROTOCOL_VERSION = 15;
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8
  * runtime the two halves run on (Vercel Node and Cloudflare Workers). */

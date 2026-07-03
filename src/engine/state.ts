@@ -3216,6 +3216,17 @@ export type GameAction =
     }
   | {
       /**
+       * Host-only (hosted rooms): require a VERIFIED account to join this table
+       * (Phase 2). With it on, a guest client (no verified `userId`) is refused
+       * at `JOIN_ROOM`. Keyed by the caller's `clientId`; a no-op on an open
+       * table (there is no host to enforce it and no seats to protect).
+       */
+      type: "SET_ROOM_REQUIRE_AUTH";
+      clientId: string;
+      requireAuth: boolean;
+    }
+  | {
+      /**
        * Send a quick table reaction (emote) to everyone at the table. A purely
        * social broadcast, keyed by the sender's `clientId` (like membership
        * actions) — never a seat `playerId`, so observers may react too and it is
@@ -3831,6 +3842,12 @@ export type GameEvent =
       id: string;
       type: "ROOM_NAMED";
       name: string;
+      byClientId: string;
+    }
+  | {
+      id: string;
+      type: "ROOM_REQUIRE_AUTH_CHANGED";
+      requireAuth: boolean;
       byClientId: string;
     }
   | {
@@ -4723,6 +4740,18 @@ export type RoomMember = {
   name: string;
   seat: RoomSeat;
   isHost: boolean;
+  /**
+   * The VERIFIED account id this member is bound to, stamped by the server from
+   * the session it authenticated — never read from the (forgeable) action body.
+   * Present only for signed-in members; a guest member leaves it undefined.
+   *
+   * When present it is the authoritative identity: the seat-ownership guard
+   * (`roomActionGuard`) matches a member by `userId` first, so forging another
+   * client's `actorClientId` cannot steal a verified seat (Phase 2 —
+   * "verified-identity seats"). One account holds at most one member/seat in a
+   * hosted room; a second tab of the same account rebinds to this member.
+   */
+  userId?: string;
 };
 
 /**
@@ -4763,6 +4792,14 @@ export type RoomMembershipState = {
   chat?: ChatMessage[];
   /** Monotonic chat sequence counter (source of each `ChatMessage.seq`). */
   chatSeq?: number;
+  /**
+   * Hosted-room opt-in (Phase 2): when true, only clients that present a
+   * VERIFIED account session may join — a guest (no `userId`) is refused. Set by
+   * the host via `SET_ROOM_REQUIRE_AUTH`; meaningful only while `hosted` is true
+   * (an open table ignores it). Absent/false on every legacy room and every
+   * guest table, so the default behaviour is unchanged.
+   */
+  requireAuth?: boolean;
 };
 
 /**

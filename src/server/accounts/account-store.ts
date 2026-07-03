@@ -49,6 +49,13 @@ export type AccountStoreOptions = {
   baseUrl?: string;
   /** Session lifetime (ms). Default 30 days. */
   sessionTtlMs?: number;
+  /**
+   * Socket-ticket lifetime (ms). Default 10 minutes — a short-lived, JS-readable
+   * token the client attaches to the cross-origin PartyKit socket (Phase 2), so
+   * the long-lived session stays in the httpOnly cookie. Verified once at connect
+   * and re-minted on every reconnect, so a tight window is enough.
+   */
+  socketTicketTtlMs?: number;
   /** Email token (confirm/reset) lifetime (ms). Default 24h. */
   tokenTtlMs?: number;
   /** Registering with this email (case-insensitive) is auto-promoted to admin. */
@@ -85,6 +92,12 @@ export class AccountStore {
   private readonly byEmail = new Map<string, string>();
   private readonly tokens = new Map<string, EmailToken>();
   private readonly sessions = new Map<string, SessionRecord>();
+  /**
+   * Short-lived socket tickets (Phase 2). Kept OUT of the persisted snapshot
+   * (toJSON): they live only minutes, so a restart just re-mints them — and not
+   * persisting them keeps the snapshot shape byte-for-byte as before.
+   */
+  private readonly socketTickets = new Map<string, SessionRecord>();
   private readonly recordedMatches = new Set<string>();
   private readonly rateWindows = new Map<string, RateWindow>();
   private readonly lastResendAt = new Map<string, number>();
@@ -93,6 +106,7 @@ export class AccountStore {
   private readonly mailer: Mailer;
   private readonly baseUrl: string;
   private readonly sessionTtlMs: number;
+  private readonly socketTicketTtlMs: number;
   private readonly tokenTtlMs: number;
   private readonly adminEmail: string | undefined;
   private readonly resendCooldownMs: number;
@@ -103,6 +117,7 @@ export class AccountStore {
     this.mailer = options.mailer ?? new CaptureMailer();
     this.baseUrl = (options.baseUrl ?? "http://localhost:3000").replace(/\/+$/, "");
     this.sessionTtlMs = options.sessionTtlMs ?? 30 * DAY_MS;
+    this.socketTicketTtlMs = options.socketTicketTtlMs ?? 10 * 60_000;
     this.tokenTtlMs = options.tokenTtlMs ?? DAY_MS;
     this.adminEmail = options.adminEmail ? normalizeEmail(options.adminEmail) : undefined;
     this.resendCooldownMs = options.resendCooldownMs ?? 60_000;
@@ -313,6 +328,69 @@ export class AccountStore {
       return;
     }
     this.sessions.delete(hashToken(rawToken));
+  }
+
+  // -------------------------------------------------------------------------
+  // Socket tickets (Phase 2 — verified identity on the cross-origin edge)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Mint a short-lived socket ticket for the account behind a valid session
+   * token, or null when the session is missing/expired/banned. The client
+   * requests this same-origin (the httpOnly session cookie rides along), then
+   * attaches the ticket — NOT the session — to the cross-origin PartyKit socket,
+   * so the long-lived credential never becomes readable to JS.
+   */
+  mintSocketTicket(rawSessionToken: string | undefined | null): string | null {
+    const record = this.resolveSession(rawSessionToken);
+    if (!record) {
+      return null;
+    }
+    const raw = generateToken();
+    const nowMs = this.now();
+    const digest = hashToken(raw);
+    this.socketTickets.set(digest, {
+      digest,
+      accountId: record.id,
+      createdAt: nowMs,
+      expiresAt: nowMs + this.socketTicketTtlMs
+    });
+    return raw;
+  }
+
+  /**
+   * Resolve a socket ticket to its owner's profile, or null. Does NOT slide any
+   * expiry (unlike a session) — a ticket is deliberately short-lived. Used by the
+   * verify-token endpoint the PartyKit edge calls.
+   */
+  getSocketTicketProfile(rawTicket: string | undefined | null): SelfProfile | null {
+    if (!rawTicket) {
+      return null;
+    }
+    const digest = hashToken(rawTicket);
+    const ticket = this.socketTickets.get(digest);
+    if (!ticket) {
+      return null;
+    }
+    if (ticket.expiresAt <= this.now()) {
+      this.socketTickets.delete(digest);
+      return null;
+    }
+    const record = this.accounts.get(ticket.accountId);
+    if (!record || record.bannedAt) {
+      this.socketTickets.delete(digest);
+      return null;
+    }
+    return toSelfProfile(record);
+  }
+
+  /**
+   * Resolve a token that may be EITHER a socket ticket (PartyKit edge) or a raw
+   * session token (same-origin) to its verified profile — what the verify-token
+   * endpoint answers with.
+   */
+  getVerifiedProfile(rawToken: string | undefined | null): SelfProfile | null {
+    return this.getSocketTicketProfile(rawToken) ?? this.getSessionProfile(rawToken);
   }
 
   // -------------------------------------------------------------------------
@@ -577,6 +655,11 @@ export class AccountStore {
         this.sessions.delete(digest);
       }
     }
+    for (const [digest, ticket] of this.socketTickets) {
+      if (ticket.expiresAt <= nowMs) {
+        this.socketTickets.delete(digest);
+      }
+    }
     for (const [digest, token] of this.tokens) {
       if (token.expiresAt <= nowMs) {
         this.tokens.delete(digest);
@@ -701,6 +784,13 @@ export class AccountStore {
     for (const [digest, session] of this.sessions) {
       if (session.accountId === accountId) {
         this.sessions.delete(digest);
+      }
+    }
+    // A ban / password reset / logout-everywhere must also kill any live socket
+    // ticket, or a signed-out or banned account could still reach the edge.
+    for (const [digest, ticket] of this.socketTickets) {
+      if (ticket.accountId === accountId) {
+        this.socketTickets.delete(digest);
       }
     }
   }

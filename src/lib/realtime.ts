@@ -75,6 +75,15 @@ export function getPartyKitHost(): string | null {
   return host && host.trim().length > 0 ? host.trim() : null;
 }
 
+/**
+ * Provides a short-lived socket ticket for the cross-origin PartyKit edge
+ * (Phase 2). Resolves the current signed-in player's ticket, or undefined for a
+ * guest. Re-invoked on every (re)connect so an expired ticket is always
+ * refreshed. Only the PartyKit transport uses it — the built-in backend rides
+ * the same-origin httpOnly session cookie and needs no ticket.
+ */
+export type SocketTokenProvider = () => Promise<string | undefined>;
+
 export function connectRoom(
   roomId: string,
   handlers: RoomConnectionHandlers,
@@ -83,11 +92,13 @@ export function connectRoom(
    * can enforce seat ownership (see roomActionGuard in the engine). Omitted on
    * an open table — then the server applies no seat enforcement.
    */
-  actorClientId?: string
+  actorClientId?: string,
+  /** See SocketTokenProvider — binds a verified account to the edge socket. */
+  getSocketToken?: SocketTokenProvider
 ): RoomConnection {
   const host = getPartyKitHost();
   return host
-    ? connectPartyRoom(host, roomId, handlers, actorClientId)
+    ? connectPartyRoom(host, roomId, handlers, actorClientId, getSocketToken)
     : connectApiRoom(roomId, handlers, actorClientId);
 }
 
@@ -137,11 +148,14 @@ function partyProtocol(host: string): string {
   return host.startsWith("localhost") || host.startsWith("127.") ? "http" : "https";
 }
 
-function partyHttpUrl(host: string, roomId: string): string {
+function partyHttpUrl(host: string, roomId: string, clientId?: string): string {
   // PartyKit serves the default ("main") party at /parties/main/<room> — the
   // same path PartySocket uses for the WebSocket. (The room server adds CORS
-  // headers so these cross-origin GETs are not blocked by the browser.)
-  return `${partyProtocol(host)}://${host}/parties/main/${encodeURIComponent(roomId)}`;
+  // headers so these cross-origin GETs are not blocked by the browser.) The
+  // clientId lets the edge redact a GET snapshot to this seat (Phase 2),
+  // matching the socket frames.
+  const base = `${partyProtocol(host)}://${host}/parties/main/${encodeURIComponent(roomId)}`;
+  return clientId ? `${base}?clientId=${encodeURIComponent(clientId)}` : base;
 }
 
 /**
@@ -156,16 +170,37 @@ function connectPartyRoom(
   host: string,
   roomId: string,
   handlers: RoomConnectionHandlers,
-  actorClientId?: string
+  actorClientId?: string,
+  getSocketToken?: SocketTokenProvider
 ): RoomConnection {
   // Carry the stable per-tab client id on the socket URL so the room server can
   // read it in `onClose` and reap this client's ephemeral membership when the
   // connection drops (a tab close / navigate away), instead of leaving a ghost
-  // member that inflates the room's head count on every rejoin.
+  // member that inflates the room's head count on every rejoin. The verified
+  // socket ticket (Phase 2) rides alongside it, resolved fresh on every
+  // (re)connect via the async query so an expired ticket is re-minted — the
+  // party overrides the claimed clientId with the account this ticket verifies.
+  const buildQuery = async (): Promise<Record<string, string>> => {
+    const query: Record<string, string> = {};
+    if (actorClientId) {
+      query.clientId = actorClientId;
+    }
+    if (getSocketToken) {
+      try {
+        const token = await getSocketToken();
+        if (token) {
+          query.token = token;
+        }
+      } catch {
+        // A ticket fetch failure degrades to guest — never blocks the connection.
+      }
+    }
+    return query;
+  };
   const socket = new PartySocket({
     host,
     room: roomId,
-    ...(actorClientId ? { query: { clientId: actorClientId } } : {})
+    query: buildQuery
   });
   const pending = new Map<
     string,
@@ -298,7 +333,7 @@ function connectPartyRoom(
         );
       }),
     fetchSnapshot: async () => {
-      const response = await fetch(partyHttpUrl(host, roomId), { cache: "no-store" });
+      const response = await fetch(partyHttpUrl(host, roomId, actorClientId), { cache: "no-store" });
       if (!response.ok) {
         throw new Error("Could not load room.");
       }
@@ -307,7 +342,7 @@ function connectPartyRoom(
     // PartyKit Durable Objects persist their state, so a room is never lost
     // there — restoring is just reading the authoritative copy back.
     restoreRoom: async () => {
-      const response = await fetch(partyHttpUrl(host, roomId), { cache: "no-store" });
+      const response = await fetch(partyHttpUrl(host, roomId, actorClientId), { cache: "no-store" });
       if (!response.ok) {
         throw new Error("Could not load room.");
       }
@@ -341,7 +376,13 @@ function connectApiRoom(
   let streamErrored = false;
 
   const fetchSnapshot = async (): Promise<GameRoomSnapshot> => {
-    const response = await fetch(`/api/rooms/${encodeURIComponent(roomId)}`, { cache: "no-store" });
+    // Carry the clientId so the server redacts the snapshot to this seat (Phase
+    // 2 per-connection redaction) on the initial load and the polling fallback,
+    // matching the stream — a guest seated player still sees their own hand.
+    const url = `/api/rooms/${encodeURIComponent(roomId)}${
+      actorClientId ? `?clientId=${encodeURIComponent(actorClientId)}` : ""
+    }`;
+    const response = await fetch(url, { cache: "no-store" });
     if (!response.ok) {
       throw new Error("Could not load room.");
     }

@@ -7,6 +7,9 @@ import {
   dropDisconnectedMember,
   ENGINE_SIGNATURE,
   freshEntropy,
+  OBSERVER_VIEWER_SEAT,
+  redactStateForSeat,
+  seatForViewer,
   type AdventurePlayerConfig,
   type GameAction,
   type GameDifficulty,
@@ -14,6 +17,7 @@ import {
   type GameState
 } from "@/engine";
 import { deriveLobbyRecord, lobbyRecordSignature, LOBBY_SINGLETON_ID } from "@/server/lobby-registry";
+import { httpTokenVerifier, memoizeVerifier, type TokenVerifier } from "@/server/verified-actor";
 
 /**
  * One PartyKit room per game table — PartyKit runs every room as its own
@@ -60,6 +64,13 @@ type ClientMessage =
   | ({ type: "reset"; requestId?: string; actorClientId?: string; adminKey?: string } & RoomResetOptions)
   | { type: "sync" };
 
+/** The app origin the party calls to verify a socket's session token (Phase 2). */
+function appUrlOf(room: Party.Room): string | undefined {
+  const env = (room as unknown as { env?: Record<string, unknown> }).env;
+  const url = typeof env?.HOMM3BG_APP_URL === "string" ? env.HOMM3BG_APP_URL : "";
+  return url.length > 0 ? url : undefined;
+}
+
 type ServerMessage =
   | { type: "snapshot"; snapshot: RoomSnapshot }
   | {
@@ -79,7 +90,55 @@ export default class GameRoomServer implements Party.Server {
 
   private snapshot: RoomSnapshot | null = null;
 
+  /**
+   * Verified-identity resolver (Phase 2). Built lazily from the HOMM3BG_APP_URL
+   * env: the edge cannot read the app's httpOnly cookie cross-origin, so it
+   * resolves a socket's raw session token by calling back to the app's
+   * /api/auth/verify-token route. Memoized so only the first action per token
+   * pays the round-trip. Null (and every action stays a guest) when no app URL
+   * is configured — the current guest behaviour, unchanged.
+   */
+  private tokenVerifier: TokenVerifier | null | undefined;
+
   constructor(readonly room: Party.Room) {}
+
+  private verifier(): TokenVerifier | null {
+    if (this.tokenVerifier === undefined) {
+      const appUrl = appUrlOf(this.room);
+      this.tokenVerifier = appUrl
+        ? memoizeVerifier(httpTokenVerifier(appUrl, (input, init) => fetch(input, init)))
+        : null;
+    }
+    return this.tokenVerifier;
+  }
+
+  /** The raw session token the client attached to the socket URL, if any. */
+  private tokenOf(connection: Party.Connection): string | undefined {
+    const uri = (connection as unknown as { uri?: string }).uri;
+    if (!uri) {
+      return undefined;
+    }
+    try {
+      return new URL(uri).searchParams.get("token") ?? undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * The VERIFIED account id for a socket, or undefined for a guest. Authoritative
+   * over any client-claimed actorClientId (Phase 2): the engine binds a signed-in
+   * actor to their seat by this id, so a spoofed clientId can no longer act for a
+   * verified seat. A verification failure degrades to guest, never throws.
+   */
+  private async verifiedUserId(connection: Party.Connection): Promise<string | undefined> {
+    const verify = this.verifier();
+    if (!verify) {
+      return undefined;
+    }
+    const identity = await verify(this.tokenOf(connection));
+    return identity?.userId;
+  }
 
   async onStart(): Promise<void> {
     this.snapshot = (await this.room.storage.get<RoomSnapshot>(SNAPSHOT_KEY)) ?? null;
@@ -279,18 +338,74 @@ export default class GameRoomServer implements Party.Server {
     return authority.allowed ? { closed: true } : { closed: false, reason: authority.reason };
   }
 
-  private broadcastSnapshot(): void {
+  /**
+   * A signed snapshot redacted to ONE actor's own seat (Phase 2,
+   * per-connection redaction). On a hosted room a devtools reader on the socket
+   * never sees another seat's hidden info; an open table keeps the full shared
+   * frame (the client redacts locally), so it stays the O(1) fast path.
+   */
+  private redactSnapshotForActor(signed: RoomSnapshot, actor: { clientId?: string; userId?: string }): RoomSnapshot {
+    const room = signed.state.room;
+    if (!room?.hosted) {
+      return signed;
+    }
+    const seat = seatForViewer(signed.state, actor);
+    const viewer = seat === "observer" ? OBSERVER_VIEWER_SEAT : seat;
+    return { ...signed, state: redactStateForSeat(signed.state, viewer) };
+  }
+
+  /** The signed snapshot redacted to one live socket's seat. */
+  private async snapshotForConnection(connection: Party.Connection): Promise<RoomSnapshot> {
+    const userId = await this.verifiedUserId(connection);
+    return this.redactSnapshotForActor(this.signed(this.snapshot!), {
+      clientId: this.clientIdOf(connection),
+      userId
+    });
+  }
+
+  /** The verified account id for an HTTP request's `?token=`, or undefined. */
+  private async verifiedUserIdFromRequest(request: Party.Request): Promise<string | undefined> {
+    const verify = this.verifier();
+    if (!verify) {
+      return undefined;
+    }
+    try {
+      const token = new URL(request.url).searchParams.get("token") ?? undefined;
+      return (await verify(token))?.userId;
+    } catch {
+      return undefined;
+    }
+  }
+
+  private async broadcastSnapshot(): Promise<void> {
     if (!this.snapshot) {
       return;
     }
-
-    const message: ServerMessage = { type: "snapshot", snapshot: this.signed(this.snapshot) };
-    this.room.broadcast(JSON.stringify(message));
+    const room = this.snapshot.state.room;
+    if (!room?.hosted) {
+      // Open table: one shared frame to everyone (the client redacts locally).
+      this.room.broadcast(JSON.stringify({ type: "snapshot", snapshot: this.signed(this.snapshot) }));
+      return;
+    }
+    // Hosted: each socket gets a frame redacted to its own seat.
+    for (const connection of this.room.getConnections()) {
+      const snapshot = await this.snapshotForConnection(connection);
+      connection.send(JSON.stringify({ type: "snapshot", snapshot } satisfies ServerMessage));
+    }
   }
 
   onConnect(connection: Party.Connection): void {
-    const message: ServerMessage = { type: "snapshot", snapshot: this.signed(this.ensureSnapshot()) };
-    connection.send(JSON.stringify(message));
+    this.ensureSnapshot();
+    // Send the initial frame SYNCHRONOUSLY so it always precedes later messages.
+    // The just-attached socket has not verified an identity or run its JOIN yet,
+    // so a HOSTED room's first frame is the zero-trust OBSERVER view (it leaks
+    // nothing); the client's JOIN then triggers a broadcast redacted to its
+    // VERIFIED seat. An open table sends the full shared frame as before.
+    const room = this.snapshot!.state.room;
+    const snapshot = room?.hosted
+      ? { ...this.signed(this.snapshot!), state: redactStateForSeat(this.snapshot!.state, OBSERVER_VIEWER_SEAT) }
+      : this.signed(this.snapshot!);
+    connection.send(JSON.stringify({ type: "snapshot", snapshot } satisfies ServerMessage));
     // A connection means the room exists — surface it in the lobby. The
     // JOIN_ROOM that follows re-reports reliably (awaited) once it has a member.
     void this.reportToLobby();
@@ -335,7 +450,7 @@ export default class GameRoomServer implements Party.Server {
       updatedAt: new Date().toISOString()
     };
     await this.persist();
-    this.broadcastSnapshot();
+    await this.broadcastSnapshot();
     await this.reportToLobby();
   }
 
@@ -354,7 +469,8 @@ export default class GameRoomServer implements Party.Server {
     }
 
     if (message.type === "sync") {
-      const reply: ServerMessage = { type: "snapshot", snapshot: this.signed(this.ensureSnapshot()) };
+      this.ensureSnapshot();
+      const reply: ServerMessage = { type: "snapshot", snapshot: await this.snapshotForConnection(sender) };
       sender.send(JSON.stringify(reply));
       return;
     }
@@ -387,19 +503,24 @@ export default class GameRoomServer implements Party.Server {
         state
       };
       await this.persist();
-      this.broadcastSnapshot();
+      await this.broadcastSnapshot();
       await this.reportToLobby();
       return;
     }
 
     if (message.type === "action") {
       const current = this.ensureSnapshot();
+      // Resolve the sender's VERIFIED account id from the token on its socket
+      // (Phase 2). Authoritative over the claimed actorClientId — a spoofed id
+      // can no longer act for a signed-in player's seat. Undefined for guests.
+      const actorUserId = await this.verifiedUserId(sender);
       const result = applyAction(current.state, message.action, {
         // Fresh crypto entropy per action makes every die roll, shuffle and Ⅱ–Ⅲ
         // tile flip genuinely unpredictable and non-reproducible (true random),
         // not derivable from the game seed (see random.ts).
         entropy: freshEntropy(),
-        ...(message.actorClientId ? { actorClientId: message.actorClientId } : {})
+        ...(message.actorClientId ? { actorClientId: message.actorClientId } : {}),
+        ...(actorUserId ? { actorUserId } : {})
       });
 
       if (result.errors.length === 0) {
@@ -411,14 +532,19 @@ export default class GameRoomServer implements Party.Server {
           state: result.state
         };
         await this.persist();
-        this.broadcastSnapshot();
+        await this.broadcastSnapshot();
       }
 
       const reply: ServerMessage = {
         type: "action-result",
         requestId: message.requestId,
         errors: result.errors.map((error) => ({ code: error.code, message: error.message })),
-        snapshot: this.signed(this.snapshot ?? current)
+        // Redact the reply to the ACTING sender's own seat — the initiator must
+        // not receive opponents' hidden info in the action result either.
+        snapshot: this.redactSnapshotForActor(this.signed(this.snapshot ?? current), {
+          clientId: message.actorClientId ?? this.clientIdOf(sender),
+          userId: actorUserId
+        })
       };
       sender.send(JSON.stringify(reply));
       // Do not hold the initiating browser's action-result behind a lobby
@@ -447,7 +573,13 @@ export default class GameRoomServer implements Party.Server {
     }
 
     if (request.method === "GET") {
-      const snapshot = this.signed(this.ensureSnapshot());
+      this.ensureSnapshot();
+      // Redact the snapshot to the requesting client's seat (Phase 2). The
+      // browser attaches `?clientId=` (+ optional `?token=`) so a cross-origin
+      // poll / initial load leaks no opponent hidden info, mirroring the socket.
+      const clientId = new URL(request.url).searchParams.get("clientId") ?? undefined;
+      const userId = await this.verifiedUserIdFromRequest(request);
+      const snapshot = this.redactSnapshotForActor(this.signed(this.snapshot!), { clientId, userId });
       void this.reportToLobby();
       return jsonWithCors(snapshot);
     }
@@ -503,16 +635,23 @@ export default class GameRoomServer implements Party.Server {
           state
         };
         await this.persist();
-        this.broadcastSnapshot();
+        await this.broadcastSnapshot();
         await this.reportToLobby();
-        return jsonWithCors(this.signed(this.snapshot));
+        return jsonWithCors(
+          this.redactSnapshotForActor(this.signed(this.snapshot), {
+            clientId: "actorClientId" in body ? body.actorClientId : undefined
+          })
+        );
       }
 
       if (body && "action" in body && body.action) {
         const current = this.ensureSnapshot();
+        const actorClientId = "actorClientId" in body ? body.actorClientId : undefined;
+        const actorUserId = await this.verifiedUserIdFromRequest(request);
         const result = applyAction(current.state, body.action, {
           entropy: freshEntropy(),
-          ...("actorClientId" in body && body.actorClientId ? { actorClientId: body.actorClientId } : {})
+          ...(actorClientId ? { actorClientId } : {}),
+          ...(actorUserId ? { actorUserId } : {})
         });
         if (result.errors.length === 0) {
           this.snapshot = {
@@ -523,13 +662,20 @@ export default class GameRoomServer implements Party.Server {
             state: result.state
           };
           await this.persist();
-          this.broadcastSnapshot();
+          await this.broadcastSnapshot();
           await this.reportToLobby();
         }
-        return jsonWithCors({ snapshot: this.signed(this.snapshot ?? current), result });
+        const redacted = this.redactSnapshotForActor(this.signed(this.snapshot ?? current), {
+          clientId: actorClientId,
+          userId: actorUserId
+        });
+        // Redact result.state too (the full GameState) so the HTTP action
+        // response leaks no opponent hidden info, matching the snapshot.
+        return jsonWithCors({ snapshot: redacted, result: { ...result, state: redacted.state } });
       }
 
-      return jsonWithCors(this.signed(this.ensureSnapshot()));
+      this.ensureSnapshot();
+      return jsonWithCors(this.redactSnapshotForActor(this.signed(this.snapshot!), {}));
     }
 
     return new Response("Method not allowed", { status: 405, headers: CORS_HEADERS });

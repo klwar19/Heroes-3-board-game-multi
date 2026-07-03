@@ -151,6 +151,56 @@ describe("AccountStore — sessions", () => {
   });
 });
 
+describe("AccountStore — socket tickets (Phase 2, cross-origin edge auth)", () => {
+  function confirmedSession() {
+    const clock = makeClock();
+    const store = new AccountStore({ now: clock.now, socketTicketTtlMs: 1000 });
+    const { confirmation } = store.register(VALID);
+    store.confirmEmail(tokenFromLink(confirmation));
+    const { token, profile } = store.login({ identifier: VALID.email, password: VALID.password });
+    return { store, clock, sessionToken: token, accountId: profile.id };
+  }
+
+  it("mints a ticket that resolves to the account, then expires on its own TTL", () => {
+    const { store, clock, sessionToken, accountId } = confirmedSession();
+    const ticket = store.mintSocketTicket(sessionToken)!;
+    expect(ticket).toBeTruthy();
+    expect(store.getSocketTicketProfile(ticket)?.id).toBe(accountId);
+    // getVerifiedProfile accepts EITHER a ticket or a raw session token.
+    expect(store.getVerifiedProfile(ticket)?.id).toBe(accountId);
+    expect(store.getVerifiedProfile(sessionToken)?.id).toBe(accountId);
+
+    // The ticket is short-lived: past its TTL it no longer resolves…
+    clock.advance(1001);
+    expect(store.getSocketTicketProfile(ticket)).toBeNull();
+    // …but the underlying session (30-day default here) still does — proving the
+    // ticket has its OWN short lifetime, not the session's.
+    expect(store.getSessionProfile(sessionToken)?.id).toBe(accountId);
+  });
+
+  it("refuses to mint for a missing/invalid session (guest → no ticket)", () => {
+    const { store } = confirmedSession();
+    expect(store.mintSocketTicket("not-a-session")).toBeNull();
+    expect(store.mintSocketTicket(undefined)).toBeNull();
+  });
+
+  it("revokes live tickets when the account is banned (a banned user can't reach the edge)", () => {
+    const { store, sessionToken, accountId } = confirmedSession();
+    const ticket = store.mintSocketTicket(sessionToken)!;
+    expect(store.getSocketTicketProfile(ticket)).not.toBeNull();
+    store.banAccount(accountId, "cheating");
+    expect(store.getSocketTicketProfile(ticket)).toBeNull();
+  });
+
+  it("keeps tickets OUT of the persisted snapshot (they are ephemeral)", () => {
+    const { store, sessionToken } = confirmedSession();
+    store.mintSocketTicket(sessionToken);
+    const snapshot = store.toJSON() as unknown as Record<string, unknown>;
+    // The snapshot shape is unchanged — no socketTickets key leaks into it.
+    expect("socketTickets" in snapshot).toBe(false);
+  });
+});
+
 describe("AccountStore — hygiene (the persisted snapshot stays bounded)", () => {
   it("prunes expired sessions and email tokens out of the snapshot; live rows survive", () => {
     const clock = makeClock();

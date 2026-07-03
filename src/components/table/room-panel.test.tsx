@@ -86,6 +86,27 @@ describe("RoomPanel — hosted (host's view)", () => {
     const aliceRow = screen.getByText("Alice").closest("li") as HTMLElement;
     expect(within(aliceRow).queryByTitle(/Remove Alice/i)).toBeNull();
   });
+
+  it("offers the verified-accounts lock ONLY with accounts enabled (Phase 2)", () => {
+    // Control: with accounts OFF (the default), the guest deployment has no
+    // verified identity to require, so the toggle is never shown.
+    const state = hostedState();
+    const { onAction: offAction } = renderPanel(state, "c1");
+    expect(screen.queryByRole("button", { name: /Require verified accounts/i })).toBeNull();
+    offAction.mockClear();
+    cleanup();
+
+    // With accounts ON, the host sees the lock and it dispatches the action.
+    const prev = process.env.NEXT_PUBLIC_ACCOUNTS_ENABLED;
+    process.env.NEXT_PUBLIC_ACCOUNTS_ENABLED = "1";
+    try {
+      const { onAction } = renderPanel(hostedState(), "c1");
+      fireEvent.click(screen.getByRole("button", { name: /Require verified accounts/i }));
+      expect(onAction).toHaveBeenCalledWith({ type: "SET_ROOM_REQUIRE_AUTH", clientId: "c1", requireAuth: true });
+    } finally {
+      process.env.NEXT_PUBLIC_ACCOUNTS_ENABLED = prev;
+    }
+  });
 });
 
 describe("RoomPanel — hosted (a seated player's view)", () => {
