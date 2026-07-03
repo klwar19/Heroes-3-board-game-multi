@@ -41,6 +41,7 @@ import {
   getActiveEventCard,
   getReachableHeroPaths,
   getRuleset,
+  getSeatIdentity,
   getTileBorderSegments,
   hasOpenAdventureTurn,
   hexDistance,
@@ -54,6 +55,7 @@ import {
   remainingParallelPlayerIds,
   observatoryRevealTargets,
   parseHexSpaceId,
+  seatPickSummary,
   reservedTownIdsForOtherSeats,
   scenarioDefinitions,
   tileCentersAdjacent,
@@ -1672,7 +1674,12 @@ export function AdventureHud({
   const hero = Object.values(state.heroes).find(
     (candidate) => candidate.controllerId === viewerPlayerId && candidate.kind === "main"
   );
-  const activeName = state.players[state.activePlayerId]?.name ?? state.activePlayerId;
+  // Person-first: in a real (roomed) game the active player is the human ("Binh"),
+  // with their hero · town on the sub-line; on a solo/open table the seat label
+  // already reads "Hero of Town", so no redundant pick line is shown.
+  const activeIdentity = getSeatIdentity(state, state.activePlayerId);
+  const activeName = activeIdentity.personName ?? activeIdentity.seatName;
+  const activePick = activeIdentity.personName ? seatPickSummary(activeIdentity) : null;
   const roundKind =
     state.round <= 1 ? "first round" : state.round % 2 === 1 ? "resource round" : "astrologers round";
   const astrologersCard = getActiveAstrologersCard(state);
@@ -1715,7 +1722,7 @@ export function AdventureHud({
       ) : (
         <div className="advHudCell">
           <strong>{activeName}&apos;s turn</strong>
-          <small>{state.phase}</small>
+          <small>{activePick ? `${activePick} · ${state.phase}` : state.phase}</small>
         </div>
       )}
       {/* The town + hero boards live in the prominent dock above the map now

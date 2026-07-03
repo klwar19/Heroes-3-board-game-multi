@@ -747,7 +747,22 @@ export class AccountStore {
         ? `${this.baseUrl}/api/auth/confirm?token=${encodeURIComponent(raw)}`
         : `${this.baseUrl}/reset-password?token=${encodeURIComponent(raw)}`;
     const mail = purpose === "confirm" ? buildConfirmMail(record.email, link, nowMs) : buildResetMail(record.email, link, nowMs);
-    void this.mailer.sendMail(mail);
+    // Fire-and-forget so registration/reset stays synchronous, but a real
+    // (async) transport can reject — catch it here so a delivery failure is
+    // logged, never an unhandled rejection, and never blocks the account write.
+    // The user can always request a fresh link (resend / reset again).
+    try {
+      const pending = this.mailer.sendMail(mail);
+      if (pending && typeof (pending as Promise<void>).then === "function") {
+        (pending as Promise<void>).catch((error) => {
+          console.error(`[mail] failed to send ${purpose} email to ${record.email}:`, error);
+        });
+      }
+    } catch (error) {
+      // A synchronous mailer (Capture/Console) should never throw, but guard so
+      // a misbehaving transport cannot break account creation.
+      console.error(`[mail] failed to send ${purpose} email to ${record.email}:`, error);
+    }
     return mail;
   }
 

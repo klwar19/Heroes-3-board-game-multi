@@ -8,14 +8,20 @@
  * Shipped implementations:
  *  - CaptureMailer — keeps sent messages in memory; the default in dev/CI/tests
  *    so a confirmation link is observable (and so nothing is silently "sent" to
- *    nowhere). Also what the store uses when no SMTP is configured.
- *  - ConsoleMailer — logs to stdout (useful for a real dev server).
+ *    nowhere).
+ *  - ConsoleMailer — logs the link to stdout (useful for a real dev server).
+ *  - SmtpMailer (smtp.ts) — a real, zero-dependency SMTP client. Configured with
+ *    HOMM3BG_SMTP_* it DELIVERS the confirmation/reset mail over the wire.
+ *  - HttpApiMailer (http-mailer.ts) — a real HTTP email-API client (Resend-shaped
+ *    by default) for serverless hosts where outbound SMTP is blocked.
  *
- * SMTP is intentionally NOT implemented here: a real transport needs a network
- * server we cannot exercise in this repo's offline test suite, so shipping it
- * untested would violate CLAUDE.md rule 1. `createMailerFromEnv` documents the
- * exact swap point; wiring nodemailer/Resend there is the production task.
+ * `createMailerFromEnv` picks the transport from the environment (see below).
+ * Both real transports are exercised offline — the SMTP one against an in-process
+ * mock server, the HTTP one against a stubbed fetch — so they meet CLAUDE.md
+ * rule 1 (the code runs and a test fails if the logic is removed).
  */
+import { SmtpMailer, smtpConfigFromEnv } from "./smtp";
+import { HttpApiMailer, httpMailerConfigFromEnv } from "./http-mailer";
 
 export type OutboundMail = {
   to: string;
@@ -63,13 +69,53 @@ export class ConsoleMailer implements Mailer {
 }
 
 /**
- * Build the mailer for the running server from env. Today this returns a
- * ConsoleMailer (real link on the server console) or a CaptureMailer; a future
- * `SMTP_URL`/Resend branch plugs in here with zero changes elsewhere.
+ * Build the mailer for the running server from env.
+ *
+ * `HOMM3BG_MAIL_TRANSPORT` picks the transport explicitly:
+ *  - "capture" — in-memory (dev echo / tests).
+ *  - "console" — log the link to stdout (`next dev`).
+ *  - "smtp"    — real SMTP; needs HOMM3BG_SMTP_HOST (+ port/user/pass/from).
+ *  - "http" / "resend" — real HTTP API; needs HOMM3BG_MAIL_API_KEY (+ from).
+ *
+ * With it UNSET, a real transport is auto-selected when its config is present:
+ * SMTP if HOMM3BG_SMTP_HOST is set, otherwise the HTTP API if a key is set,
+ * otherwise the console mailer (so a bare `next dev` still shows the link). A
+ * transport explicitly requested but left unconfigured falls back to the console
+ * with a warning rather than silently dropping mail.
  */
-export function createMailerFromEnv(): Mailer {
-  if (process.env.HOMM3BG_MAIL_TRANSPORT === "capture") {
+export function createMailerFromEnv(env: Record<string, string | undefined> = process.env): Mailer {
+  const transport = env.HOMM3BG_MAIL_TRANSPORT?.trim().toLowerCase();
+  if (transport === "capture") {
     return new CaptureMailer();
+  }
+  if (transport === "console") {
+    return new ConsoleMailer();
+  }
+  if (transport === "http" || transport === "resend") {
+    const config = httpMailerConfigFromEnv(env);
+    if (config) {
+      return new HttpApiMailer(config);
+    }
+    console.warn("[mail] HTTP transport requested but HOMM3BG_MAIL_API_KEY is missing — falling back to console.");
+    return new ConsoleMailer();
+  }
+  if (transport === "smtp") {
+    const config = smtpConfigFromEnv(env);
+    if (config) {
+      return new SmtpMailer(config);
+    }
+    console.warn("[mail] SMTP transport requested but HOMM3BG_SMTP_HOST is missing — falling back to console.");
+    return new ConsoleMailer();
+  }
+
+  // No explicit choice: use whichever real transport is configured.
+  const smtp = smtpConfigFromEnv(env);
+  if (smtp) {
+    return new SmtpMailer(smtp);
+  }
+  const http = httpMailerConfigFromEnv(env);
+  if (http) {
+    return new HttpApiMailer(http);
   }
   // Default: log the link so a dev running `next dev` can follow it.
   return new ConsoleMailer();

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { HandFan, PermanentSlot, RuneTrack } from "./seats";
+import { HandFan, OpponentBar, PermanentSlot, RuneTrack, SeatNameplate } from "./seats";
 import { CardZoomProvider } from "./zoom";
 import * as sound from "@/lib/sound";
 import { cardLibrary } from "@/data/cards/library";
@@ -534,5 +534,48 @@ describe("HandFan — every immediate card play is cancellable (no accidental co
         optionIndex: 0
       })
     );
+  });
+});
+
+describe("SeatNameplate / OpponentBar — person + hero + town", () => {
+  function seatRoom(state: GameState): GameState {
+    state.room = {
+      hosted: true,
+      hostClientId: "cA",
+      members: [
+        { clientId: "cA", name: "Binh", seat: "p1", isHost: true, userId: "u1" },
+        { clientId: "cB", name: "Alex", seat: "p2", isHost: false }
+      ]
+    };
+    return state;
+  }
+
+  it("shows the seated opponent's person name with their hero · town", () => {
+    const state = seatRoom(createInitialGameState("seat-nameplate"));
+    render(
+      <CardZoomProvider>
+        <OpponentBar view={getPlayerView(state, "p1")} state={state} viewerPlayerId="p1" />
+      </CardZoomProvider>
+    );
+    // Viewer p1 (Binh) sees opponent p2 = Alex playing Sandro of Necropolis.
+    expect(screen.getByText("Alex")).toBeTruthy();
+    expect(screen.getByText("Sandro · Necropolis")).toBeTruthy();
+  });
+
+  it("marks the host with a crown and the person, not the seat label", () => {
+    const state = seatRoom(createInitialGameState("seat-nameplate"));
+    render(<SeatNameplate state={state} playerId="p1" />);
+    expect(screen.getByText("Binh")).toBeTruthy();
+    // The redundant hero·town line only appears alongside a person name.
+    expect(screen.getByText("Catherine · Castle")).toBeTruthy();
+  });
+
+  it("on an open/solo table (no room) falls back to the seat label, no duplicate pick line", () => {
+    const state = createInitialGameState("seat-nameplate");
+    expect(state.room).toBeUndefined();
+    render(<SeatNameplate state={state} playerId="p2" />);
+    // The seat label already encodes hero + town, so it is the whole nameplate.
+    expect(screen.getByText("Sandro (Necropolis)")).toBeTruthy();
+    expect(screen.queryByText("Sandro · Necropolis")).toBeNull();
   });
 });

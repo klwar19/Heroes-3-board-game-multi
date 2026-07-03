@@ -2,7 +2,15 @@
 
 import { useState } from "react";
 import { Check, Copy, Crown, Eye, List, Lock, LogOut, ShieldCheck, Trash2, UserCog, UserX, Users } from "lucide-react";
-import { NEUTRAL_PLAYER_ID, roomDisplayName, type GameAction, type GameState, type RoomSeat } from "@/engine";
+import {
+  getSeatIdentity,
+  NEUTRAL_PLAYER_ID,
+  roomDisplayName,
+  seatPickSummary,
+  type GameAction,
+  type GameState,
+  type RoomSeat
+} from "@/engine";
 import { authEnabled } from "@/lib/auth-mode";
 
 /**
@@ -222,12 +230,27 @@ export function RoomPanel({
           <ul className="roomMembers">
             {members.map((member) => {
               const self = member.clientId === clientId;
+              // What this member is playing (town + hero), when they hold a seat.
+              const seatIdentity = member.seat !== "observer" ? getSeatIdentity(state, member.seat) : null;
+              const pick = seatIdentity ? seatPickSummary(seatIdentity) : null;
               return (
                 <li className="roomMember" key={member.clientId}>
                   <span className="roomMemberName">
                     {member.isHost ? <Crown aria-hidden="true" size={12} className="hostCrown" /> : null}
-                    {member.name}
-                    {self ? <em> (you)</em> : null}
+                    {seatIdentity ? (
+                      <span
+                        className="seatFactionDot roomMemberDot"
+                        style={{ background: seatIdentity.factionColor ?? "#b08d2f" }}
+                        aria-hidden="true"
+                      />
+                    ) : null}
+                    <span className="roomMemberWho">
+                      <span className="roomMemberPerson">
+                        {member.name}
+                        {self ? <em> (you)</em> : null}
+                      </span>
+                      {pick ? <small className="roomMemberPick">{pick}</small> : null}
+                    </span>
                   </span>
 
                   {hosted && isHost ? (
