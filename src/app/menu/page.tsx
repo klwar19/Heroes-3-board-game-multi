@@ -80,6 +80,14 @@ export default function MenuPage() {
           Multiplayer
           <small>{DEFAULT_SERVER.name} server — browse tables or open your own</small>
         </Link>
+        <Link className="menuNavButton" href="/battle">
+          Battle Test
+          <small>Shared arenas — set up and try a fight with other players</small>
+        </Link>
+        <Link className="menuNavButton" href="/designer">
+          Map Designer
+          <small>Build and share custom maps for everyone to play on</small>
+        </Link>
         <Link className="menuNavButton" href="/hall-of-fame">
           Hall of Fame
           <small>{accounts ? "Rankings by MMR" : "Rankings open with player accounts"}</small>

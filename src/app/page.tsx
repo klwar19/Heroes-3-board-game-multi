@@ -19,6 +19,7 @@ import {
   NEUTRAL_PLAYER_ID,
   type GameAction,
   type GameEvent,
+  type GameMode,
   type GameState,
   type LegalAction,
   type PlayerId
@@ -158,7 +159,7 @@ import {
 import { clearCachedRoom, loadCachedRoom, saveCachedRoom } from "@/lib/room-cache";
 import { getAccountIdentity, getClientId, getDisplayName, setDisplayName as persistDisplayName } from "@/lib/identity";
 import { fetchSocketToken } from "@/lib/auth-client";
-import { takePendingRoomHosted, takePendingRoomName } from "@/lib/pending-room-name";
+import { takePendingRoomHosted, takePendingRoomMode, takePendingRoomName } from "@/lib/pending-room-name";
 import { RoomPanel } from "@/components/table/room-panel";
 import { LoadingScreen } from "@/components/menu/loading-screen";
 import { useRouter } from "next/navigation";
@@ -590,6 +591,9 @@ export default function Home() {
   const pendingRoomNameRef = useRef<{ roomId: string; name: string } | null>(null);
   // A Closed table chosen at /play: host this room once connected (creator → host).
   const pendingRoomHostedRef = useRef<string | null>(null);
+  // A Battle Test chosen at /battle: switch this fresh room to combat-sandbox
+  // once connected (PartyKit makes every room an adventure lobby first).
+  const pendingRoomModeRef = useRef<{ roomId: string; mode: GameMode } | null>(null);
   const [syncStatus, setSyncStatus] = useState("connecting");
   /**
    * The room server's engine signature from the latest snapshot. When it
@@ -768,6 +772,11 @@ export default function Home() {
       const pendingHosted = takePendingRoomHosted();
       if (pendingHosted && pendingHosted === initialRoom) {
         pendingRoomHostedRef.current = pendingHosted;
+      }
+      // A Battle Test chosen at create time → switch the room to that mode.
+      const pendingMode = takePendingRoomMode();
+      if (pendingMode && pendingMode.roomId === initialRoom) {
+        pendingRoomModeRef.current = pendingMode;
       }
     }
     const storedName = getDisplayName();
@@ -2978,6 +2987,17 @@ export default function Home() {
           void connection.submitAction({ type: "SET_ROOM_HOSTED", clientId, hosted: true }).catch(() => {});
         }
       }
+      // Battle Test: switch a freshly created room to combat-sandbox. Only ever
+      // converts a brand-new adventure setup lobby — never wipes a game already
+      // under way (the API backend already made it a sandbox, so this no-ops
+      // there). Reset carries the room membership (name/host/seats) across.
+      const pendingMode = pendingRoomModeRef.current;
+      if (pendingMode && pendingMode.roomId === roomId && pendingMode.mode !== "adventure") {
+        pendingRoomModeRef.current = null;
+        if (state.mode !== pendingMode.mode && state.phase === "setup" && Boolean(state.setupLobby)) {
+          void connection.resetRoom({ mode: pendingMode.mode }).catch(() => {});
+        }
+      }
     };
 
     if (joinedRoomRef.current === joinKey) {
@@ -3206,12 +3226,14 @@ export default function Home() {
   };
 
   /**
-   * Leave the current room for the room browser (/play, where the directory
-   * now lives). Navigation unmounts this page, which closes the connection
-   * and drops all in-room state.
+   * Leave the current room for the room browser it belongs to — the Multiplayer
+   * lobby (/play) for an adventure, or the Battle Test lobby (/battle) for a
+   * combat sandbox — so "Browse rooms" always lands on the matching kind of
+   * table. Navigation unmounts this page, which closes the connection and drops
+   * all in-room state.
    */
   const goToLobby = () => {
-    router.push("/play");
+    router.push(state?.mode === "combat-sandbox" ? "/battle" : "/play");
   };
 
   /** Close (delete) the room the player is currently in, then go to the lobby. */
@@ -3369,19 +3391,29 @@ export default function Home() {
         </small>
         <MusicToggle />
       </div>
+      {/* Restart THIS table in its own mode. The combat sandbox and the map
+          designer are their own destinations on the main menu now (Battle Test /
+          Map Designer), so they are not duplicated here. */}
       <div className="menuRow resetRow">
-        <button onClick={() => resetRoom("adventure")} title="Start a new adventure (map setup first)" type="button">
-          New adventure
-        </button>
-        <button onClick={() => resetRoom("combat-sandbox")} title="Open the combat sandbox" type="button">
-          <Swords aria-hidden="true" size={12} />
-        </button>
         <button
-          onClick={() => window.open("/designer", "_blank")}
-          title="Open the map designer: create and save maps to play on"
+          className="commandButton"
+          onClick={() => resetRoom(adventureMode ? "adventure" : "combat-sandbox")}
+          title={
+            adventureMode
+              ? "Restart this table from a fresh map setup"
+              : "Restart this arena with a fresh battle test"
+          }
           type="button"
         >
-          <MapIcon aria-hidden="true" size={12} /> Designer
+          {adventureMode ? (
+            <>
+              <MapIcon aria-hidden="true" size={13} /> New adventure
+            </>
+          ) : (
+            <>
+              <Swords aria-hidden="true" size={13} /> New battle test
+            </>
+          )}
         </button>
       </div>
     </div>

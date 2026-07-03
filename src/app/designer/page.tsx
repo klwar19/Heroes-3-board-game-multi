@@ -135,8 +135,8 @@ export default function MapDesignerPage() {
   return (
     <main className="tableRoot designerRoot">
       <header className="designerHeader">
-        <Link className="commandButton ghost" href="/">
-          <ArrowLeft aria-hidden="true" size={13} /> Back to the table
+        <Link className="commandButton ghost" href="/menu">
+          <ArrowLeft aria-hidden="true" size={13} /> Back to the menu
         </Link>
         <h1>Map designer</h1>
         <p>

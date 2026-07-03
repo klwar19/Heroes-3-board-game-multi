@@ -36,7 +36,10 @@ export function LobbyScreen({
   onJoin,
   onCreate,
   onClose,
-  isAdmin = false
+  isAdmin = false,
+  title = "Multiplayer Lobby",
+  createLabel = "Create room",
+  emptyHint = "No rooms yet — create one above to get started."
 }: {
   rooms: RoomDirectoryEntry[];
   supported: boolean;
@@ -51,6 +54,12 @@ export function LobbyScreen({
   onClose: (roomId: string) => void;
   /** A signed-in platform admin: may delete ANY room (the server verifies the session). */
   isAdmin?: boolean;
+  /** Heading (default the multiplayer lobby; the battle-test arena reuses this). */
+  title?: string;
+  /** Label on the create button ("Create room" / "Create arena"). */
+  createLabel?: string;
+  /** Empty-state hint shown when the directory has no rooms. */
+  emptyHint?: string;
 }) {
   const [nameDraft, setNameDraft] = useState(displayName);
   const [newRoomName, setNewRoomName] = useState("");
@@ -77,7 +86,7 @@ export function LobbyScreen({
       <div className="lobbyCard">
         <header className="lobbyHeader">
           <h1>
-            <Users aria-hidden="true" size={20} /> Multiplayer Lobby
+            <Users aria-hidden="true" size={20} /> {title}
           </h1>
           <button className="commandButton ghost" onClick={onRefresh} title="Refresh the room list" type="button">
             <RefreshCw aria-hidden="true" size={14} /> Refresh
@@ -114,7 +123,7 @@ export function LobbyScreen({
               value={newRoomName}
             />
             <button className="commandButton primary" onClick={createRoom} type="button">
-              <Plus aria-hidden="true" size={14} /> Create room
+              <Plus aria-hidden="true" size={14} /> {createLabel}
             </button>
           </div>
 
@@ -179,7 +188,7 @@ export function LobbyScreen({
             link above — everyone who opens the same link lands in the same room.
           </p>
         ) : rooms.length === 0 ? (
-          <p className="lobbyNote">{loading ? "Loading rooms…" : "No rooms yet — create one above to get started."}</p>
+          <p className="lobbyNote">{loading ? "Loading rooms…" : emptyHint}</p>
         ) : visibleRooms.length === 0 ? (
           <p className="lobbyNote">No rooms match &ldquo;{roomFilter.trim()}&rdquo; — clear the filter to see all {rooms.length}.</p>
         ) : (

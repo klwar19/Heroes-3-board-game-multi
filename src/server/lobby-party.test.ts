@@ -54,6 +54,7 @@ function lobbyRequest(
 function makeRecord(overrides: Partial<LobbyRoomRecord> & { roomId: string }): LobbyRoomRecord {
   return {
     name: `Room ${overrides.roomId}`,
+    mode: "adventure",
     phase: "setup",
     inProgress: false,
     memberCount: 1,

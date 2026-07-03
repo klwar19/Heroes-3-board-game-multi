@@ -10,6 +10,7 @@ function entry(overrides: Partial<RoomDirectoryEntry> = {}): RoomDirectoryEntry 
   return {
     roomId: "room-abc",
     name: "Binh's Game",
+    mode: "adventure",
     phase: "setup",
     inProgress: false,
     memberCount: 1,

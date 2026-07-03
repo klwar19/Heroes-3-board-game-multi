@@ -60,6 +60,18 @@ describe("room recovery (restoreRoom)", () => {
     expect(result.state.seed).toBe(first.seed);
   });
 
+  it("creates a battle-test room in combat-sandbox mode and reports it in the directory", () => {
+    const battleId = uniqueRoom("battle");
+    const created = createRoom({ roomId: battleId, mode: "combat-sandbox", name: "Arena" });
+    expect(created.state.mode).toBe("combat-sandbox");
+    // The lobby directory carries the mode so /battle can list it (and /play can
+    // filter it out). CONTROL: a default room stays an adventure.
+    expect(entryFor(battleId)?.mode).toBe("combat-sandbox");
+    const adventureId = uniqueRoom("adv");
+    createRoom({ roomId: adventureId, name: "Table" });
+    expect(entryFor(adventureId)?.mode).toBe("adventure");
+  });
+
   it("refuses to restore a bare lobby (nothing to recover)", () => {
     const roomId = uniqueRoom("barelobby");
     const before = getRoomSnapshot(roomId);
