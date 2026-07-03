@@ -1,0 +1,72 @@
+-- Heroes 3 Board Game Multi — Supabase / Postgres schema
+-- ---------------------------------------------------------------------------
+-- Run this ONCE in your Supabase project (Dashboard → SQL Editor → New query →
+-- paste → Run). It is idempotent (IF NOT EXISTS everywhere), so re-running is
+-- safe. Full setup runbook: docs/supabase-setup.md.
+--
+-- The app talks to these tables over PostgREST with the SERVICE-ROLE key from
+-- the server only. Row Level Security is ENABLED with NO policies, which means
+-- the public anon key can read/write NOTHING — the service role bypasses RLS.
+-- Never ship the service-role key to a browser.
+
+-- Player accounts. Passwords are scrypt hashes; emails are normalised
+-- (lower-cased) before insert; nickname_key is the case-folded uniqueness key.
+create table if not exists public.homm3bg_accounts (
+  id text primary key,
+  nickname text not null,
+  nickname_key text not null unique,
+  email text not null unique,
+  password_hash text not null,
+  role text not null default 'player' check (role in ('player', 'admin')),
+  contact jsonb not null default '{}'::jsonb,
+  mmr integer not null default 1200,
+  wins integer not null default 0,
+  losses integer not null default 0,
+  matches integer not null default 0,
+  created_at text not null,
+  email_confirmed boolean not null default false,
+  banned_at text,
+  ban_reason text,
+  last_confirm_sent_at bigint
+);
+
+-- Login sessions (kind = 'session', 30-day sliding) and short-lived PartyKit
+-- socket tickets (kind = 'ticket', ~10 min). Only SHA-256 digests are stored —
+-- a database dump cannot be replayed to impersonate anyone.
+create table if not exists public.homm3bg_sessions (
+  digest text primary key,
+  account_id text not null references public.homm3bg_accounts (id) on delete cascade,
+  kind text not null default 'session' check (kind in ('session', 'ticket')),
+  created_at bigint not null,
+  expires_at bigint not null
+);
+create index if not exists homm3bg_sessions_account_idx on public.homm3bg_sessions (account_id);
+create index if not exists homm3bg_sessions_expiry_idx on public.homm3bg_sessions (expires_at);
+
+-- One-time email tokens (confirmation / password reset), digest-only.
+create table if not exists public.homm3bg_email_tokens (
+  digest text primary key,
+  account_id text not null references public.homm3bg_accounts (id) on delete cascade,
+  purpose text not null check (purpose in ('confirm', 'reset')),
+  created_at bigint not null,
+  expires_at bigint not null
+);
+create index if not exists homm3bg_email_tokens_account_idx on public.homm3bg_email_tokens (account_id);
+create index if not exists homm3bg_email_tokens_expiry_idx on public.homm3bg_email_tokens (expires_at);
+
+-- Finished-match history. The primary key IS the idempotency gate: a game
+-- reported twice (both backends, retries, races) applies exactly once.
+-- `participants` is the full summary: [{accountId, nickname, result,
+-- mmrBefore, mmrAfter}, ...].
+create table if not exists public.homm3bg_matches (
+  match_id text primary key,
+  recorded_at text not null,
+  participants jsonb not null default '[]'::jsonb
+);
+
+-- Lock everything down: RLS on, no policies ⇒ anon/authenticated see nothing;
+-- the server's service-role key bypasses RLS by design.
+alter table public.homm3bg_accounts enable row level security;
+alter table public.homm3bg_sessions enable row level security;
+alter table public.homm3bg_email_tokens enable row level security;
+alter table public.homm3bg_matches enable row level security;

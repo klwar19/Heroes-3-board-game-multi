@@ -191,6 +191,23 @@ dev-server on :3000). CI deploys PartyKit on push to the production branch.
 
 ### D1. Accounts & auth = Supabase (Postgres + Auth), feature-flagged
 
+> **SHIPPED (2026-07-03) — with one deliberate deviation from the text below.**
+> Phase 1 built the auth ENGINE in-repo (`src/server/accounts/*`: scrypt,
+> digest-only tokens, sessions, mail transports — all offline-tested), so the
+> Supabase piece that actually shipped is the **Postgres persistence backend**,
+> not the Supabase Auth SDK: `SupabaseAccountStore`
+> (`src/server/accounts/supabase-store.ts`) stores accounts / sessions / socket
+> tickets / email tokens / match results as table rows over PostgREST
+> (zero-dependency client, no `@supabase/supabase-js`), selected by
+> `NEXT_PUBLIC_SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`. Same login wall,
+> same routes, same owner-required duplicate-nick/email UX — but identity now
+> survives restarts and serverless instances. Email stays on the repo's own
+> SMTP/HTTP transports (Resend/Brevo/SMTP env), with the no-mailer production
+> fallback auto-confirming registrations. Schema: `supabase/schema.sql`;
+> runbook: `docs/supabase-setup.md`; tests: `supabase-store.test.ts`.
+> The JWT/JWKS notes in D2 below are therefore moot: verified identity rides
+> the httpOnly session + short-lived socket tickets (Phase 2, shipped).
+
 **Choice:** Supabase — email/password auth with built-in **email confirmation
 links**, password reset, a Postgres database for profiles/matches/ratings, row
 level security, and a generous free tier. It was already the designated

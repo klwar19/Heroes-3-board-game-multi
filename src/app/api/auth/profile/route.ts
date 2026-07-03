@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAccountStore } from "@/server/accounts/account-store-instance";
+import { getAccountBackend } from "@/server/accounts/account-store-instance";
 import { errorResponse, requireSession, save } from "@/server/accounts/http";
 
 export const dynamic = "force-dynamic";
@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 /** The signed-in owner's own profile (includes the private email). */
 export async function GET(request: Request) {
   try {
-    return NextResponse.json({ profile: requireSession(request) });
+    return NextResponse.json({ profile: await requireSession(request) });
   } catch (error) {
     return errorResponse(error);
   }
@@ -16,9 +16,9 @@ export async function GET(request: Request) {
 /** Update the owner's editable contact fields. */
 export async function PATCH(request: Request) {
   try {
-    const me = requireSession(request);
+    const me = await requireSession(request);
     const body = (await request.json().catch(() => ({}))) as { contact?: unknown };
-    const profile = getAccountStore().updateContact(me.id, body.contact);
+    const profile = await getAccountBackend().updateContact(me.id, body.contact);
     save();
     return NextResponse.json({ profile });
   } catch (error) {

@@ -9,8 +9,8 @@ function makeClock(start = 1_700_000_000_000) {
   return { now: () => t, advance: (ms: number) => (t += ms) };
 }
 
-function tokenFromLink(mail: OutboundMail): string {
-  return new URL(mail.link).searchParams.get("token")!;
+function tokenFromLink(mail: OutboundMail | null): string {
+  return new URL(mail!.link).searchParams.get("token")!;
 }
 
 function codeOf(fn: () => unknown): string {
@@ -42,9 +42,9 @@ describe("AccountStore — registration + mail confirmation", () => {
     expect(profile.role).toBe("player");
     // A real mail with a real, followable link was produced — not a silent stub.
     expect(mailer.outbox).toHaveLength(1);
-    expect(confirmation.kind).toBe("confirm");
-    expect(confirmation.link).toContain("https://erathia.example/api/auth/confirm?token=");
-    expect(confirmation.text).toContain(confirmation.link);
+    expect(confirmation!.kind).toBe("confirm");
+    expect(confirmation!.link).toContain("https://erathia.example/api/auth/confirm?token=");
+    expect(confirmation!.text).toContain(confirmation!.link);
   });
 
   it("distinguishes 'nickname taken' from 'email already registered'", () => {
@@ -54,6 +54,21 @@ describe("AccountStore — registration + mail confirmation", () => {
     // Case-insensitive on both keys.
     expect(codeOf(() => store.register({ ...VALID, nickname: "catherine", email: "x@y.io" }))).toBe("NICKNAME_TAKEN");
     expect(codeOf(() => store.register({ ...VALID, nickname: "Gem", email: "CAT@ERATHIA.IO" }))).toBe("EMAIL_TAKEN");
+  });
+
+  it("auto-confirm mode: registration is immediately sign-in-able, no mail is issued", () => {
+    const auto = new AccountStore({ mailer, now: clock.now, autoConfirmNewAccounts: true });
+    const { profile, needsConfirmation, confirmation } = auto.register(VALID);
+    expect(needsConfirmation).toBe(false);
+    expect(confirmation).toBeNull();
+    expect(profile.emailConfirmed).toBe(true);
+    expect(mailer.outbox).toHaveLength(0);
+    // The whole point: the player can sign in straight away — no inbox required.
+    const { token } = auto.login({ identifier: VALID.email, password: VALID.password });
+    expect(auto.getSessionProfile(token)?.nickname).toBe("Catherine");
+    // CONTROL: the default store still gates sign-in on the emailed confirmation.
+    store.register(VALID);
+    expect(codeOf(() => store.login({ identifier: VALID.email, password: VALID.password }))).toBe("EMAIL_NOT_CONFIRMED");
   });
 
   it("blocks sign-in until the email is confirmed, then allows it", () => {
@@ -113,7 +128,7 @@ describe("AccountStore — sessions", () => {
   it("resolves a live session and clears it on logout", () => {
     const store = new AccountStore();
     const { confirmation } = store.register(VALID);
-    store.confirmEmail(new URL(confirmation.link).searchParams.get("token")!);
+    store.confirmEmail(new URL(confirmation!.link).searchParams.get("token")!);
     const { token } = store.login({ identifier: VALID.email, password: VALID.password });
     expect(store.getSessionProfile(token)).not.toBeNull();
     store.logout(token);
@@ -125,7 +140,7 @@ describe("AccountStore — sessions", () => {
     const clock = makeClock();
     const store = new AccountStore({ now: clock.now, sessionTtlMs: 1000 });
     const { confirmation } = store.register(VALID);
-    store.confirmEmail(new URL(confirmation.link).searchParams.get("token")!);
+    store.confirmEmail(new URL(confirmation!.link).searchParams.get("token")!);
     const { token } = store.login({ identifier: VALID.email, password: VALID.password });
     expect(store.getSessionProfile(token)).not.toBeNull();
     clock.advance(1001);
@@ -136,7 +151,7 @@ describe("AccountStore — sessions", () => {
     const clock = makeClock();
     const store = new AccountStore({ now: clock.now, sessionTtlMs: 1000 });
     const { confirmation } = store.register(VALID);
-    store.confirmEmail(new URL(confirmation.link).searchParams.get("token")!);
+    store.confirmEmail(new URL(confirmation!.link).searchParams.get("token")!);
     const { token } = store.login({ identifier: VALID.email, password: VALID.password });
     // Touch the session past its half-life: expiry renews to now + ttl.
     clock.advance(600);
@@ -206,7 +221,7 @@ describe("AccountStore — hygiene (the persisted snapshot stays bounded)", () =
     const clock = makeClock();
     const store = new AccountStore({ now: clock.now, sessionTtlMs: 1000, tokenTtlMs: 1000 });
     const { confirmation } = store.register(VALID);
-    store.confirmEmail(new URL(confirmation.link).searchParams.get("token")!);
+    store.confirmEmail(new URL(confirmation!.link).searchParams.get("token")!);
     store.login({ identifier: VALID.email, password: VALID.password });
     // A second account leaves its confirmation token pending.
     store.register({ nickname: "Gem", email: "gem@erathia.io", password: "unicorns8" });
@@ -234,7 +249,7 @@ describe("AccountStore — hygiene (the persisted snapshot stays bounded)", () =
       ["Carol", "carol@erathia.io"]
     ] as const) {
       const { confirmation } = store.register({ nickname, email, password: "longsword9" });
-      store.confirmEmail(new URL(confirmation.link).searchParams.get("token")!);
+      store.confirmEmail(new URL(confirmation!.link).searchParams.get("token")!);
     }
     const bravo = store.adminListAccounts().find((a) => a.nickname === "Bravo")!;
     store.recordMatchResult({ matchId: "hof-cap", participants: [{ accountId: bravo.id, result: "win" }] });
@@ -248,7 +263,7 @@ describe("AccountStore — hygiene (the persisted snapshot stays bounded)", () =
   it("caps the recorded-match idempotency log, evicting the OLDEST matchIds first", () => {
     const store = new AccountStore({ maxRecordedMatches: 3 });
     const { confirmation } = store.register(VALID);
-    store.confirmEmail(new URL(confirmation.link).searchParams.get("token")!);
+    store.confirmEmail(new URL(confirmation!.link).searchParams.get("token")!);
     const id = store.adminListAccounts()[0].id;
     const report = (matchId: string) =>
       store.recordMatchResult({ matchId, participants: [{ accountId: id, result: "win" }] });
@@ -378,7 +393,7 @@ describe("AccountStore — Hall of Fame + match results", () => {
   function confirmedUser(store: AccountStore, over: Partial<typeof VALID>) {
     const input = { ...VALID, ...over };
     const { profile, confirmation } = store.register(input);
-    store.confirmEmail(new URL(confirmation.link).searchParams.get("token")!);
+    store.confirmEmail(new URL(confirmation!.link).searchParams.get("token")!);
     return profile;
   }
 
@@ -443,7 +458,7 @@ describe("AccountStore — persistence round-trip", () => {
   it("restores accounts so a user can still sign in after reload", () => {
     const source = new AccountStore();
     const { confirmation } = source.register(VALID);
-    source.confirmEmail(new URL(confirmation.link).searchParams.get("token")!);
+    source.confirmEmail(new URL(confirmation!.link).searchParams.get("token")!);
 
     const restored = new AccountStore();
     restored.loadJSON(JSON.parse(JSON.stringify(source.toJSON())));
@@ -517,11 +532,11 @@ describe("AccountStore — email link origin (no need to preconfigure the URL)",
       { nickname: "Vercel", email: "v@erathia.io", password: "deploys11" },
       "https://my-heroes-app.vercel.app"
     );
-    expect(confirmation.link).toBe(
-      `https://my-heroes-app.vercel.app/api/auth/confirm?${confirmation.link.split("?")[1]}`
+    expect(confirmation!.link).toBe(
+      `https://my-heroes-app.vercel.app/api/auth/confirm?${confirmation!.link.split("?")[1]}`
     );
-    expect(confirmation.link).toContain("https://my-heroes-app.vercel.app/api/auth/confirm?token=");
-    expect(confirmation.link).not.toContain("localhost");
+    expect(confirmation!.link).toContain("https://my-heroes-app.vercel.app/api/auth/confirm?token=");
+    expect(confirmation!.link).not.toContain("localhost");
   });
 
   it("a configured baseUrl wins over the request origin (canonical domain)", () => {
@@ -530,8 +545,8 @@ describe("AccountStore — email link origin (no need to preconfigure the URL)",
       { nickname: "Canon", email: "c@erathia.io", password: "canonical1" },
       "https://preview-123.vercel.app"
     );
-    expect(confirmation.link).toContain("https://heroes.example/api/auth/confirm?token=");
-    expect(confirmation.link).not.toContain("vercel.app");
+    expect(confirmation!.link).toContain("https://heroes.example/api/auth/confirm?token=");
+    expect(confirmation!.link).not.toContain("vercel.app");
   });
 
   it("password reset links honour the request origin too", () => {
@@ -546,6 +561,6 @@ describe("AccountStore — email link origin (no need to preconfigure the URL)",
   it("falls back to localhost only when neither a baseUrl nor an origin is available", () => {
     const store = new AccountStore({ mailer: new CaptureMailer(), now: clock.now }); // no baseUrl, no origin
     const { confirmation } = store.register({ nickname: "Local", email: "l@erathia.io", password: "devmode11" });
-    expect(confirmation.link).toContain("http://localhost:3000/api/auth/confirm?token=");
+    expect(confirmation!.link).toContain("http://localhost:3000/api/auth/confirm?token=");
   });
 });

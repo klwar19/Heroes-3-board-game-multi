@@ -32,6 +32,7 @@ export class HttpMailerError extends Error {
 }
 
 export class HttpApiMailer implements Mailer {
+  readonly delivers = true;
   constructor(private readonly config: HttpMailerConfig) {}
 
   sendMail(mail: OutboundMail): Promise<void> {

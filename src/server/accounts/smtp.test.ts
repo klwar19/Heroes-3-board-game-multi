@@ -376,7 +376,7 @@ describe("AccountStore → SmtpMailer (the account flow delivers a real email)",
 
     // The store fires the send in the background; wait for the mock to receive it.
     await waitUntil(() => server.record.message !== undefined);
-    const token = new URL(confirmation.link).searchParams.get("token")!;
+    const token = new URL(confirmation!.link).searchParams.get("token")!;
     expect(token).toBeTruthy();
     expect(server.record.rcptTo).toEqual(["<roland@erathia.io>"]);
     expect(decodeMimeBodies(server.record.message ?? "")).toContain(token);

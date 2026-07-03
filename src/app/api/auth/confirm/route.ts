@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAccountStore } from "@/server/accounts/account-store-instance";
+import { getAccountBackend } from "@/server/accounts/account-store-instance";
 import { errorResponse, save } from "@/server/accounts/http";
 
 export const dynamic = "force-dynamic";
@@ -14,7 +14,7 @@ export async function GET(request: Request) {
   const token = new URL(request.url).searchParams.get("token") ?? "";
   const origin = new URL(request.url).origin;
   try {
-    getAccountStore().confirmEmail(token);
+    await getAccountBackend().confirmEmail(token);
     save();
     return NextResponse.redirect(new URL("/login?confirmed=1", origin));
   } catch (error) {
@@ -27,7 +27,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = (await request.json().catch(() => ({}))) as { token?: string };
-    const { profile } = getAccountStore().confirmEmail(body.token ?? "");
+    const { profile } = await getAccountBackend().confirmEmail(body.token ?? "");
     save();
     return NextResponse.json({ profile });
   } catch (error) {

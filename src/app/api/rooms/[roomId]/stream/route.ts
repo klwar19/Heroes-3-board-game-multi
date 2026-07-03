@@ -34,13 +34,9 @@ export async function GET(request: Request, context: RoomContext) {
   // identity from the session cookie once, then redact every frame to its own
   // seat so a devtools reader on the socket never sees another seat's hidden
   // info. Guests fall back to the clientId; open tables are not redacted.
-  const viewerUserId = (() => {
-    try {
-      return sessionProfile(request)?.id;
-    } catch {
-      return undefined;
-    }
-  })();
+  const viewerUserId = await sessionProfile(request)
+    .then((profile) => profile?.id)
+    .catch(() => undefined);
   const viewer = { clientId, userId: viewerUserId };
   const redact = (snapshot: GameRoomSnapshot): GameRoomSnapshot => redactSnapshotForViewer(snapshot, viewer);
   const encoder = new TextEncoder();

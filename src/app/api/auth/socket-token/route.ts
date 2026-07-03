@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAccountStore } from "@/server/accounts/account-store-instance";
+import { getAccountBackend } from "@/server/accounts/account-store-instance";
 import { readSessionToken } from "@/server/accounts/http";
 
 export const dynamic = "force-dynamic";
@@ -16,11 +16,11 @@ export const dynamic = "force-dynamic";
  * connect without a ticket (guest behaviour, unchanged).
  */
 export async function GET(request: Request) {
-  const ticket = getAccountStore().mintSocketTicket(readSessionToken(request));
+  const ticket = await getAccountBackend().mintSocketTicket(readSessionToken(request));
   if (!ticket) {
     return NextResponse.json({ token: null }, { status: 401 });
   }
-  // Tickets are ephemeral and deliberately NOT persisted, so there is nothing
-  // to write to disk here — the in-memory mint is the whole story.
+  // No save() here: the built-in store deliberately keeps tickets in memory
+  // only (minutes-lived), and the Supabase backend already wrote its row.
   return NextResponse.json({ token: ticket });
 }

@@ -19,6 +19,7 @@ import {
   type GameMode,
   type GameState
 } from "@/engine";
+import { reportFinishedMatch } from "@/server/match-report-trigger";
 import {
   deriveLobbyRecord,
   isStaleRecord,
@@ -384,7 +385,7 @@ export function submitRoomAction(
    * the member. Undefined for a guest (no session).
    */
   actorUserId?: string
-): { snapshot: GameRoomSnapshot; result: EngineResult } {
+): { snapshot: GameRoomSnapshot; result: EngineResult; pendingMatchReport?: Promise<void> } {
   const current = getRoomRecord(roomId);
   // Fresh crypto entropy per action: every die roll, shuffle and Ⅱ–Ⅲ tile flip is
   // genuinely unpredictable and non-reproducible from the game seed (true random
@@ -415,12 +416,20 @@ export function submitRoomAction(
   };
   roomStore.set(roomId, next);
   persistRoom(next);
+  // Auto-report the ranked result the moment this action ends the game (Phase
+  // 6): seated verified accounts get their win/loss + Elo recorded exactly once
+  // per game (matchId = the game's unique seed; duplicate reports no-op). The
+  // pending write is RETURNED so the HTTP route can hold its response open on a
+  // serverless host (a floated promise there may be frozen mid-write); errors
+  // are caught + logged inside, never breaking the winning action.
+  const pendingMatchReport = reportFinishedMatch(current.state, result.state) ?? undefined;
   const snapshot = withBootId(cloneSerializable(next));
   notifyRoomListeners(roomId, snapshot);
 
   return {
     snapshot,
-    result
+    result,
+    ...(pendingMatchReport ? { pendingMatchReport } : {})
   };
 }
 

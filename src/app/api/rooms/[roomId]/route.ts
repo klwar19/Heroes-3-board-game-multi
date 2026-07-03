@@ -7,9 +7,9 @@ import { redactSnapshotForViewer } from "@/server/redact-snapshot";
 export const dynamic = "force-dynamic";
 
 /** The VERIFIED account id for this request (httpOnly cookie), or undefined. */
-function verifiedUserId(request: Request): string | undefined {
+async function verifiedUserId(request: Request): Promise<string | undefined> {
   try {
-    return sessionProfile(request)?.id;
+    return (await sessionProfile(request))?.id;
   } catch {
     return undefined;
   }
@@ -22,9 +22,9 @@ function verifiedUserId(request: Request): string | undefined {
  * developer HOMM3BG_ADMIN_KEY env override. Returns false when accounts are off
  * or the caller is a guest / ordinary player.
  */
-function requestIsAdmin(request: Request): boolean {
+async function requestIsAdmin(request: Request): Promise<boolean> {
   try {
-    return sessionProfile(request)?.role === "admin";
+    return (await sessionProfile(request))?.role === "admin";
   } catch {
     return false;
   }
@@ -42,7 +42,7 @@ export async function GET(request: Request, context: RoomContext) {
   // Redact the snapshot to the requester's own seat (hosted rooms only), so a
   // poll / initial load leaks no opponent hidden info — same rule as the stream.
   const snapshot = getRoomSnapshot(decodeURIComponent(roomId));
-  return NextResponse.json(redactSnapshotForViewer(snapshot, { clientId, userId: verifiedUserId(request) }));
+  return NextResponse.json(redactSnapshotForViewer(snapshot, { clientId, userId: await verifiedUserId(request) }));
 }
 
 export async function POST(request: Request, context: RoomContext) {
@@ -58,7 +58,7 @@ export async function POST(request: Request, context: RoomContext) {
     | null;
 
   const actorClientId = typeof body?.actorClientId === "string" ? body.actorClientId : undefined;
-  const viewer = { clientId: actorClientId, userId: verifiedUserId(request) };
+  const viewer = { clientId: actorClientId, userId: await verifiedUserId(request) };
 
   if (body?.reset) {
     // resetRoom checks the actor against the host on hosted rooms (same rule
@@ -73,7 +73,7 @@ export async function POST(request: Request, context: RoomContext) {
       },
       actorClientId,
       typeof body.adminKey === "string" ? body.adminKey : undefined,
-      requestIsAdmin(request)
+      await requestIsAdmin(request)
     );
     if (!result.reset) {
       return NextResponse.json({ reason: result.reason }, { status: 403 });
@@ -111,6 +111,6 @@ export async function DELETE(request: Request, context: RoomContext) {
   const actorClientId = typeof body?.actorClientId === "string" ? body.actorClientId : fromQuery;
   const adminKey = typeof body?.adminKey === "string" ? body.adminKey : undefined;
 
-  const result = closeRoom(decodeURIComponent(roomId), actorClientId, adminKey, requestIsAdmin(request));
+  const result = closeRoom(decodeURIComponent(roomId), actorClientId, adminKey, await requestIsAdmin(request));
   return NextResponse.json(result, { status: result.closed ? 200 : 403 });
 }
