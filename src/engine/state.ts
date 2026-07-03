@@ -3214,6 +3214,22 @@ export type GameAction =
       clientId: string;
       name: string;
     }
+  | {
+      /**
+       * Send a quick table reaction (emote) to everyone at the table. A purely
+       * social broadcast, keyed by the sender's `clientId` (like membership
+       * actions) — never a seat `playerId`, so observers may react too and it is
+       * never seat- or turn-gated. `reactionId` must be a known palette id (see
+       * TABLE_REACTIONS); an unknown id, a non-member sender (when a room
+       * exists), or a per-client flood is rejected. The synced ring buffer
+       * `state.tableReactions` carries the result to every client.
+       */
+      type: "SEND_TABLE_REACTION";
+      clientId: string;
+      reactionId: string;
+      /** Optional display name fallback when the sender is not a room member. */
+      name?: string;
+    }
   | { type: "END_TURN"; playerId: PlayerId }
   | {
       /**
@@ -7707,6 +7723,37 @@ export type GameState = {
    * "open table" with no seat enforcement (the original free-seat test mode).
    */
   room?: RoomMembershipState | null;
+  /**
+   * Table reactions (emotes): a small, bounded ring buffer of the most recent
+   * social broadcasts, synced to every client. Purely cosmetic — it never
+   * affects a rule — so it is public (kept in the player view unredacted) and
+   * capped at MAX_TABLE_REACTIONS so it can never grow the snapshot. Absent on
+   * legacy snapshots (treated as empty). See src/engine/table-reactions.ts.
+   */
+  tableReactions?: TableReaction[];
+  /** Monotonic reaction id counter; each reaction's `seq` is unique + ordered. */
+  tableReactionSeq?: number;
+};
+
+/**
+ * One table reaction (emote) as stored in the synced ring buffer. Transient,
+ * cosmetic and self-describing so a client can render it (bubble + feed line)
+ * without any extra lookup, and expire it locally after a moment. `seq` orders
+ * them and lets each client show only the ones newer than it has already seen.
+ */
+export type TableReaction = {
+  /** Monotonic, unique across the game (from `tableReactionSeq`). */
+  seq: number;
+  /** The sender's stable per-browser client id (attribution / de-dupe). */
+  clientId: string;
+  /** Display name at send time (a room member's name, else the sent fallback). */
+  name: string;
+  /** A known palette id (validated against TABLE_REACTIONS). */
+  reactionId: string;
+  /** The sender's seat when they hold one, else null (an observer reacting). */
+  seat: RoomSeat | null;
+  /** The sender's chosen faction, for the authentic crest on the bubble. */
+  factionId: FactionId | null;
 };
 
 /** Reserved player id that controls neutral armies during map combats. */

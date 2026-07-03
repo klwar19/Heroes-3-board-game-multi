@@ -236,6 +236,41 @@ export function playSpellBookOpen(): void {
   window.setTimeout(() => playLibrarySound("cards/card-deal-2", 0.42), 90);
 }
 
+/**
+ * A soft two-note chime when a table reaction (emote) arrives — a gentle,
+ * synthesized "pop" so a reaction is felt, not just seen. Self-contained
+ * WebAudio (no asset), degrading to silence before the first gesture / when
+ * muted, exactly like the card foley.
+ */
+export function playTableReaction(): void {
+  if (muted) {
+    return;
+  }
+  const ctx = getContext();
+  if (!ctx || ctx.state !== "running") {
+    return;
+  }
+  const start = ctx.currentTime;
+  // Two short bell-ish notes a fifth apart (a rising "ta-da" nudge).
+  const notes: { freq: number; at: number }[] = [
+    { freq: 660, at: 0 },
+    { freq: 988, at: 0.09 }
+  ];
+  for (const note of notes) {
+    const osc = ctx.createOscillator();
+    osc.type = "triangle";
+    osc.frequency.value = note.freq;
+    const gain = ctx.createGain();
+    const at = start + note.at;
+    gain.gain.setValueAtTime(0.0001, at);
+    gain.gain.exponentialRampToValueAtTime(0.12, at + 0.012);
+    gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.22);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(at);
+    osc.stop(at + 0.24);
+  }
+}
+
 /** Card settling on the table / into the hand. */
 export function playCardPlace(delayMs = 0): void {
   if (delayMs > 0) {
