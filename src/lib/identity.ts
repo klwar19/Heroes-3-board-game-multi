@@ -17,6 +17,7 @@ const CLIENT_ID_KEY = "homm3bg.clientId";
 const CLIENT_TAB_KEY = "homm3bg.clientTab";
 const LEGACY_CLAIM_KEY = "homm3bg.clientMigrationTab";
 const NAME_KEY = "homm3bg.displayName";
+const ACCOUNT_KEY = "homm3bg.account";
 const WINDOW_TAB_PREFIX = "homm3bg-tab:";
 
 function randomId(): string {
@@ -91,4 +92,74 @@ export function setDisplayName(name: string): void {
   } catch {
     /* storage may be unavailable (private mode) — names are best-effort. */
   }
+}
+
+/**
+ * The public part of the signed-in account, cached client-side for instant UI
+ * ("logged in as …", admin-link gating) and for `getIdentity()`. This is NOT
+ * the auth credential — the session lives in an httpOnly cookie the browser
+ * cannot read; this cache only mirrors the non-secret profile the server would
+ * return from /api/auth/session. Wiring the session TOKEN onto the realtime
+ * transport (so seats bind to a verified userId) is Phase 2.
+ */
+export type AccountIdentity = { userId: string; nickname: string; role: "player" | "admin" };
+
+export function getAccountIdentity(): AccountIdentity | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  try {
+    const raw = window.localStorage.getItem(ACCOUNT_KEY);
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw) as Partial<AccountIdentity>;
+    if (typeof parsed.userId === "string" && typeof parsed.nickname === "string") {
+      return { userId: parsed.userId, nickname: parsed.nickname, role: parsed.role === "admin" ? "admin" : "player" };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export function setAccountIdentity(account: AccountIdentity): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  try {
+    window.localStorage.setItem(ACCOUNT_KEY, JSON.stringify(account));
+    // A logged-in player is seen under their account nickname everywhere the
+    // rooms already read the display name.
+    window.localStorage.setItem(NAME_KEY, account.nickname);
+  } catch {
+    /* best-effort */
+  }
+}
+
+export function clearAccountIdentity(): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  try {
+    window.localStorage.removeItem(ACCOUNT_KEY);
+  } catch {
+    /* best-effort */
+  }
+}
+
+/**
+ * The unified identity a table client acts under: always a per-tab clientId and
+ * a display name; plus the verified userId/role when signed in. Guest mode
+ * returns just clientId + displayName (userId undefined), exactly as before.
+ */
+export type Identity = { clientId: string; displayName: string; userId?: string; role?: "player" | "admin" };
+
+export function getIdentity(): Identity {
+  const account = getAccountIdentity();
+  return {
+    clientId: getClientId(),
+    displayName: account?.nickname ?? getDisplayName(),
+    ...(account ? { userId: account.userId, role: account.role } : {})
+  };
 }

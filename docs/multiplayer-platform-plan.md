@@ -32,8 +32,17 @@
 > - **Trust boundary (declared, not hidden):** `actorClientId` is the value the
 >   client claims; there is no auth binding a socket to a clientId yet (guest
 >   play). The engine enforces the rule *given* the claimed identity — it is not
->   yet a defence against a client forging another's id. Authentication is the
->   next milestone (Step 4 below).
+>   yet a defence against a client forging another's id.
+>   **Update (2026-07-03):** real accounts now exist — a self-hosted account
+>   backend (`src/server/accounts/*`) with register / email-confirm / login /
+>   password-reset / profiles / admin roles, behind the `NEXT_PUBLIC_ACCOUNTS_
+>   ENABLED` flag (guest mode stays the default; see `docs/game-expansion-plan.md`
+>   Phase 1). What this does NOT yet do is *bind that verified identity to the
+>   realtime transport*: the session lives in an httpOnly cookie the API routes
+>   check, but the PartyKit/SSE seat guard still keys off the client-claimed
+>   `actorClientId`. Threading the verified `userId` onto the socket + moving to
+>   per-connection redaction is Phase 2 (Step 4 below) — the trust boundary
+>   described here is unchanged until then.
 > - **Destructive room ops (reset/close) follow one hosted-room rule** (same
 >   claimed-identity model; both backends, socket + HTTP — see
 >   `reset-authority.test.ts` + `game-room-store.test.ts`): the HOST always

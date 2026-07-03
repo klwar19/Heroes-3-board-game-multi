@@ -1,6 +1,13 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { getClientId } from "./identity";
+import {
+  clearAccountIdentity,
+  getAccountIdentity,
+  getIdentity,
+  setAccountIdentity,
+  setDisplayName,
+  getClientId
+} from "./identity";
 
 describe("room client identity", () => {
   beforeEach(() => {
@@ -52,5 +59,48 @@ describe("room client identity", () => {
 
     expect(id).not.toBe("legacy-session-id");
     expect(window.sessionStorage.getItem("homm3bg.clientTab")).toBeTruthy();
+  });
+});
+
+describe("account identity cache", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+    window.name = "";
+  });
+
+  it("is null in guest mode and getIdentity() falls back to the display name", () => {
+    setDisplayName("GuestTraveller");
+    expect(getAccountIdentity()).toBeNull();
+    const identity = getIdentity();
+    expect(identity.userId).toBeUndefined();
+    expect(identity.displayName).toBe("GuestTraveller");
+    expect(identity.clientId).toMatch(/^[ct]_/);
+  });
+
+  it("stores the signed-in account and makes the nickname the display name", () => {
+    setAccountIdentity({ userId: "u_1", nickname: "Solmyr", role: "player" });
+    expect(getAccountIdentity()).toEqual({ userId: "u_1", nickname: "Solmyr", role: "player" });
+
+    const identity = getIdentity();
+    expect(identity.userId).toBe("u_1");
+    expect(identity.role).toBe("player");
+    // The account nickname becomes the name the rooms read.
+    expect(identity.displayName).toBe("Solmyr");
+    expect(window.localStorage.getItem("homm3bg.displayName")).toBe("Solmyr");
+  });
+
+  it("clears the account on logout (getIdentity() drops back to guest)", () => {
+    setAccountIdentity({ userId: "u_2", nickname: "Boss", role: "admin" });
+    expect(getIdentity().role).toBe("admin");
+    clearAccountIdentity();
+    expect(getAccountIdentity()).toBeNull();
+    expect(getIdentity().userId).toBeUndefined();
+  });
+
+  it("ignores a corrupt account blob rather than throwing", () => {
+    window.localStorage.setItem("homm3bg.account", "{not json");
+    expect(getAccountIdentity()).toBeNull();
+    expect(getIdentity().userId).toBeUndefined();
   });
 });
