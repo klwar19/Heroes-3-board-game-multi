@@ -295,7 +295,11 @@ ordered-mode or unowned-target CONTROL.
   ordered play. `pumpAdventureQueues`' start-turn-hand divider requeue ignores
   other dividers (N players queue N dividers — they must not chase each other
   forever). Round 1's forced home-tile rotations chain one at a time in seat
-  order (`beginNextPendingStartTileRotation`).
+  order (`beginNextPendingStartTileRotation`). A round that draws an **Event or
+  Astrologers proclamation** raises the round-start EVENT BARRIER
+  (`adventure.eventResolution`): the whole table pauses to resolve the event
+  FIRST — even the quiet set is off, no seat may move/draw/build until every
+  player has resolved it — then normal play resumes (see the Event-deck section).
 - The mode STOPS — `PARALLEL_TURNS_STOPPED` warning to the whole table, then
   classic one-at-a-time turns forever — when (a) a PvP battle starts
   (`startPlayerCombat` / the garrison prompt), (b) a serious PvP interaction
@@ -330,6 +334,28 @@ Tests: `event-deck.test.ts` (flow/toggle/rotation/secrecy), `event-cards.test.ts
 and `event-market-cards.test.ts` (every card's observable effect, each failing if
 its wiring is removed). `EVENTS_NOT_IMPLEMENTED` is empty — no display-only
 Events ship; that registry is the only legal home for a future unwireable one.
+
+**Round-start EVENT BARRIER (both event types, ordered AND parallel play).** When
+a round draws an Event (this deck) or an Astrologers proclamation, the WHOLE table
+pauses to resolve it FIRST — the Fortress Event is drawn at the FRONT of the
+round-start reward queue (before City Hall / resource-die / war-machine offers,
+`startAdventureRound`), and while `adventure.eventResolution` is set the ONLY
+player who may act is the one whose event choice is currently open. Every other
+player is frozen — no quiet move, no start-of-turn draw, no town/morale action, no
+ending the turn — until every player has resolved it (enforced in `applyAction`
+and offered as `[]` in `legal-actions`; the read helper is
+`isRoundStartEventBarrierActive`/`roundStartEventResolver` in `parallel-turns.ts`).
+A trailing `round-start-events-resolved` sentinel reward (always LAST, since event
+follow-ups `unshift` ahead of it) clears the barrier in `pumpAdventureQueues`,
+after which the normal flow (City Halls, turn-start effects, first-turn hand,
+turns) proceeds. Automatic Resource income is still applied inline BEFORE the
+Event (rulebook p.15), so a player has fresh Resources to spend in the event's own
+markets/auctions; only the player-facing steps wait behind the barrier. Instant
+proclamations (Dead Silence, movement/morale buffs) queue nothing and raise no
+barrier. Pinned in `round-start-event-barrier.test.ts` (Event side: freeze,
+event-before-City-Hall ordering, ordered mode, a real Resource-round wrap, and a
+no-barrier CONTROL) and `astrologers-parallel-turns.test.ts` (Astrologers side),
+each with a CONTROL where the same action succeeds once the barrier lifts.
 
 Engine readings / deviations a reviewer should know (all deliberate, commented at
 the wiring site):

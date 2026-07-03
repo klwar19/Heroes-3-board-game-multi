@@ -6098,6 +6098,27 @@ export function commitPopulationOnMove(state: GameState, controllerId: PlayerId)
 }
 
 /**
+ * Raises the round-start Event / Astrologers barrier: the round's Event (or
+ * Astrologers proclamation) has just queued its per-player resolution, so freeze
+ * the WHOLE table until every player has resolved it. `eventResolution` is read
+ * by `isRoundStartEventBarrierActive` — legal-actions offers nothing but the
+ * current resolver's choice, and the applyAction backstop rejects every other
+ * player's action — and a trailing "round-start-events-resolved" sentinel reward
+ * (pushed here, always the LAST event reward because follow-ups `unshift` ahead
+ * of it) lifts the freeze in `pumpAdventureQueues`. Called only when resolution
+ * work was actually queued, so a fully-instant proclamation raises no barrier.
+ */
+function beginRoundStartEventBarrier(state: GameState): void {
+  const adventure = state.adventure;
+  if (!adventure) {
+    return;
+  }
+  adventure.eventResolution = { round: state.round };
+  const sentinelPlayerId = state.turnOrder.find((playerId) => playerId !== NEUTRAL_PLAYER_ID) ?? state.turnOrder[0] ?? "";
+  adventure.rewardQueue.push({ playerId: sentinelPlayerId, kind: "round-start-events-resolved" });
+}
+
+/**
  * Starts an adventure round (rulebook round structure): refresh tokens, MP
  * and expert effects; then even rounds draw an Astrologers Proclaim card and
  * odd rounds after the first pay Resource Round income.
@@ -6120,7 +6141,16 @@ export function startAdventureRound(state: GameState): void {
   appendEvent(state, { type: "ROUND_STARTED", round: state.round, kind });
 
   if (kind === "astrologers") {
+    // Draw + resolve the proclamation FIRST, then raise the whole-table barrier
+    // over whatever per-player resolution it queued (dice, empower, recruit…) —
+    // so every player resolves the Astrologers card before ANY City Hall trigger,
+    // start-of-turn draw or turn is taken. Instant proclamations (Dead Silence,
+    // movement/morale buffs applied inline) queue nothing and raise no barrier.
+    const astroQueueBefore = state.adventure?.rewardQueue.length ?? 0;
     drawAstrologersCard(state);
+    if ((state.adventure?.rewardQueue.length ?? 0) > astroQueueBefore) {
+      beginRoundStartEventBarrier(state);
+    }
 
     // "At the beginning of each Astrologers' round" building triggers.
     for (const playerId of state.turnOrder) {
@@ -6183,6 +6213,21 @@ export function startAdventureRound(state: GameState): void {
 
   if (kind !== "resource") {
     return;
+  }
+
+  // FORTRESS EXPANSION Events (optional rule, multiplayer only) resolve FIRST as
+  // a whole-table barrier — before any City Hall choice, resource die, war-machine
+  // offer, start-of-turn draw or turn. Drawn here (not last) so its per-player
+  // resolution rewards sit at the FRONT of the queue; the barrier then freezes
+  // everyone until the whole table has resolved it. Income is still applied
+  // inline below, so a player has their fresh Resources to spend inside the
+  // event's own markets/auctions (rulebook p.15: income precedes the Event; the
+  // per-player menus are built at resolve time, after this income runs). No-op
+  // when the Event deck is off or fewer than 2 live players remain.
+  const eventQueueBefore = state.adventure?.rewardQueue.length ?? 0;
+  drawEventCard(state);
+  if ((state.adventure?.rewardQueue.length ?? 0) > eventQueueBefore) {
+    beginRoundStartEventBarrier(state);
   }
 
   const astrologers = getAstrologersState(state);
@@ -6292,11 +6337,6 @@ export function startAdventureRound(state: GameState): void {
   if (astrologers) {
     astrologers.nextResourceModifiers = { gold: 0, valuables: 0 };
   }
-
-  // FORTRESS EXPANSION Events (optional rule, multiplayer only): "Players draw
-  // next Event" — after receiving Resources (rulebook p.15). No-op when the
-  // Event deck is off or fewer than 2 live players remain.
-  drawEventCard(state);
 }
 
 /** Adds one faction cube to a cube building, up to its printed maximum. */
