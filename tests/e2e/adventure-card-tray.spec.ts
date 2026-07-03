@@ -4,20 +4,21 @@ import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 
 // ---------------------------------------------------------------------------
-// EFFECT test (real browser layout) for the map card tray. Requirements:
-//  - the hand of cards sits directly BENEATH the center map column (its left
-//    edge lines up with the map column above it),
-//  - the support column (Spell Book + deck/discard + permanent) sits under the
-//    left rail, to the LEFT of the hand,
-//  - the hand cards are enlarged,
-//  - the permanent shows its effect text.
+// EFFECT test (real browser layout) for the map card bar after the redesign.
+// Requirements:
+//  - the player card bar (.playerCardBar) sits at the TOP of the map screen,
+//    ABOVE the map row (.adventureMidRow) — the redesign floats it up with
+//    CSS `order`,
+//  - inside the bar it reads left → right: the deck/discard + Spell Book +
+//    permanent cluster (.ownDeckColumn), then the hand of cards (.handArea),
+//  - the permanent shows its effect text,
+//  - the Spell Book toggle and the deck/discard pile live in the left cluster.
 //
-// We inject the real globals.css and mock BOTH the map row (.adventureMidRow)
-// and the tray (.adventureHand) inside the real .tableRoot grid, then measure
-// box geometry to prove the two rows line up. Self-contained (uses setContent,
-// not the dev server). Revert .adventureHand to a flex row / full width and the
-// "aligned under the map column" assertion fails; shrink .handCardImage back
-// and the enlarge assertion fails.
+// We inject the real globals.css and mock the map row + the card bar inside the
+// real .tableRoot.adventureRoot grid, then measure box geometry. Self-contained
+// (setContent, no dev server). Move .playerCardBar back below the map (drop the
+// `order`) and the "above the map row" assertion fails; make .ownDeckColumn
+// stack over .handArea again and the left-of-hand assertion fails.
 // ---------------------------------------------------------------------------
 
 const css = readFileSync(join(process.cwd(), "src", "app", "globals.css"), "utf8");
@@ -27,19 +28,9 @@ const PIXEL = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAA
 
 const page_html = `
 <main class="tableRoot adventureRoot">
-  <div class="adventureMidRow">
-    <div class="leftRail"><div style="height:160px"></div></div>
-    <div class="mapColumn"><div class="hexMapWrap"></div></div>
-  </div>
-  <div class="adventureHand" aria-label="Your hand">
+  <div class="tableTopRow"><div class="advHud" style="height:56px"></div></div>
+  <div class="adventureHand playerCardBar" aria-label="Your hand">
     <div class="ownDeckColumn">
-      <div class="spellBookPanel">
-        <button class="spellBookToggle">
-          <img class="spellBookIcon" src="${PIXEL}" alt="" />
-          <span class="spellBookCount">2</span>
-          <small>Spell Book</small>
-        </button>
-      </div>
       <div class="ownDeckPile">
         <div class="ownDeckSpot">
           <img class="ownDeckBack" src="${PIXEL}" alt="" />
@@ -61,6 +52,13 @@ const page_html = `
           </div>
         </div>
       </div>
+      <div class="spellBookPanel">
+        <button class="spellBookToggle">
+          <img class="spellBookIcon" src="${PIXEL}" alt="" />
+          <span class="spellBookCount">2</span>
+          <small>Spell Book</small>
+        </button>
+      </div>
     </div>
     <div class="handArea">
       <div class="handTopBar"><small>Hand 3/5</small></div>
@@ -76,49 +74,42 @@ const page_html = `
       </div>
     </div>
   </div>
+  <div class="adventureMidRow">
+    <div class="leftRail"><div style="height:160px"></div></div>
+    <div class="mapColumn"><div class="hexMapWrap"></div></div>
+  </div>
 </main>`;
 
-test("the hand tray sits beneath the center map column, Spell Book to the left, enlarged cards", async ({
-  page
-}) => {
-  await page.setViewportSize({ width: 1280, height: 900 });
+test("the card bar rides the top, deck/book cluster left of the hand, readable cards", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
   await page.setContent(`<!doctype html><html><head><style>${css}</style></head><body>${page_html}</body></html>`);
 
-  const mapColumn = (await page.locator(".mapColumn").boundingBox())!;
-  const leftRail = (await page.locator(".leftRail").boundingBox())!;
+  const midRow = (await page.locator(".adventureMidRow").boundingBox())!;
+  const cardBar = (await page.locator(".playerCardBar").boundingBox())!;
   const ownDeckColumn = (await page.locator(".ownDeckColumn").boundingBox())!;
   const handArea = (await page.locator(".handArea").boundingBox())!;
   const deckPile = (await page.locator(".ownDeckPile").boundingBox())!;
   const spellBook = (await page.locator(".spellBookToggle").boundingBox())!;
 
-  // 1. The hand is anchored BENEATH the center map column: its left edge lines
-  //    up with the map column above it (the tray grid tracks the map row's
-  //    columns), and it sits below that row.
-  expect(Math.abs(handArea.x - mapColumn.x), "hand left edge lines up under the map column").toBeLessThanOrEqual(2);
-  expect(handArea.y, "hand area should sit below the map row").toBeGreaterThan(mapColumn.y);
+  // 1. The card bar is floated to the TOP: it sits entirely ABOVE the map row
+  //    even though it comes after it in the DOM (CSS `order`).
+  expect(cardBar.y + cardBar.height, "the card bar sits above the map row").toBeLessThanOrEqual(midRow.y + 2);
 
-  // 2. The support column sits under the left rail, to the LEFT of the hand.
-  expect(Math.abs(ownDeckColumn.x - leftRail.x), "support column should line up under the left rail").toBeLessThanOrEqual(
-    2
-  );
-  expect(ownDeckColumn.x + ownDeckColumn.width, "support column ends left of the hand").toBeLessThanOrEqual(
+  // 2. Inside the bar: the deck/book cluster is to the LEFT of the hand, on the
+  //    same row (a horizontal command bar, not a stacked column).
+  expect(ownDeckColumn.x + ownDeckColumn.width, "deck/book cluster ends left of the hand").toBeLessThanOrEqual(
     handArea.x + 2
   );
+  expect(Math.abs(ownDeckColumn.y - handArea.y), "cluster and hand share the top of the bar").toBeLessThanOrEqual(24);
 
-  // 3. The Spell Book moved to the left support column (not in the hand area).
-  expect(spellBook.x, "Spell Book should be in the left column, left of the hand").toBeLessThan(handArea.x);
-  expect(
-    spellBook.x >= ownDeckColumn.x - 2 && spellBook.x + spellBook.width <= ownDeckColumn.x + ownDeckColumn.width + 2,
-    "Spell Book should sit inside the support column"
-  ).toBe(true);
+  // 3. The Spell Book toggle and the deck/discard pile live in the left cluster.
+  expect(spellBook.x, "Spell Book is in the left cluster, left of the hand").toBeLessThan(handArea.x);
+  expect(deckPile.x + deckPile.width, "deck/discard pile fits in the left cluster").toBeLessThanOrEqual(handArea.x + 2);
 
-  // 4. The deck/discard pile fits within the support column (left of the hand).
-  expect(deckPile.x + deckPile.width, "deck/discard pile fits in the support column").toBeLessThanOrEqual(handArea.x + 2);
-
-  // 5. Enlarged cards: each hand card image is clearly larger than the old tray.
+  // 4. Hand cards are a readable size in the top bar.
   const cardWidth = (await page.locator(".adventureHandCard .handCardImage").first().boundingBox())!.width;
-  expect(cardWidth, "hand cards should be enlarged (>140px)").toBeGreaterThan(140);
+  expect(cardWidth, "hand cards are a readable size (>=100px)").toBeGreaterThanOrEqual(100);
 
-  // 6. The permanent (with its effect text) is shown in the support column.
+  // 5. The permanent (with its effect text) is shown in the left cluster.
   expect(await page.locator(".permanentMeta small").textContent()).toContain("valuables");
 });
