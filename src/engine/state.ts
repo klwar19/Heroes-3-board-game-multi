@@ -3230,6 +3230,23 @@ export type GameAction =
       /** Optional display name fallback when the sender is not a room member. */
       name?: string;
     }
+  | {
+      /**
+       * Post an ephemeral chat message to the room. Like membership / reactions,
+       * it is keyed by the sender's `clientId` — never a seat `playerId` — so an
+       * observer may chat, a player may chat on anyone's turn, and it is never
+       * seat- or turn-gated (works in solo, open, hosted and parallel modes).
+       * Requires room membership; the text is trimmed, control-stripped and
+       * capped, and a per-client flood is rejected. The bounded ring buffer
+       * `state.room.chat` carries the last messages to every client (the
+       * "temporary" live chat — old lines roll off, nothing is stored per-account).
+       */
+      type: "SEND_CHAT";
+      clientId: string;
+      text: string;
+      /** Optional client wall-clock (ms) for display only; never trusted for logic. */
+      at?: number;
+    }
   | { type: "END_TURN"; playerId: PlayerId }
   | {
       /**
@@ -4736,6 +4753,16 @@ export type RoomMembershipState = {
    * only), and seeded by the explicit "create room" flow.
    */
   name?: string;
+  /**
+   * Ephemeral live chat for this table — a bounded ring buffer (last
+   * MAX_CHAT_MESSAGES lines; older lines roll off). Public room content, so it
+   * flows through `getPlayerView` to every seat/observer. Carried across a game
+   * reset with the rest of the membership record, so a rematch keeps the banter.
+   * Absent until the first message. See `src/engine/chat.ts`.
+   */
+  chat?: ChatMessage[];
+  /** Monotonic chat sequence counter (source of each `ChatMessage.seq`). */
+  chatSeq?: number;
 };
 
 /**
@@ -7754,6 +7781,30 @@ export type TableReaction = {
   seat: RoomSeat | null;
   /** The sender's chosen faction, for the authentic crest on the bubble. */
   factionId: FactionId | null;
+};
+
+/**
+ * One line in the room's ephemeral live chat (`RoomMembershipState.chat`). A
+ * bounded ring buffer holds only the most recent lines, so the snapshot stays
+ * small and history is "temporary" by design — nothing is persisted per player.
+ * The message is public room content (like member names/seats), so it rides
+ * through `getPlayerView` unredacted to every seat and observer.
+ */
+export type ChatMessage = {
+  /** Monotonic, unique within the room (from `RoomMembershipState.chatSeq`). */
+  seq: number;
+  /** The sender's stable per-browser client id (attribution / "you" styling). */
+  clientId: string;
+  /** Display name at send time — a room member's name (the account nickname when signed in). */
+  name: string;
+  /** The sender's seat when they hold one, else "observer" (seat-coloured in the UI). */
+  seat: RoomSeat;
+  /** The message body: trimmed, control-stripped, capped at MAX_CHAT_TEXT_LENGTH. */
+  text: string;
+  /** "chat" for a player line; "system" for an engine notice (joins/leaves). */
+  kind: "chat" | "system";
+  /** Optional client wall-clock (ms) captured at send, for a relative timestamp. Display only. */
+  at?: number;
 };
 
 /** Reserved player id that controls neutral armies during map combats. */

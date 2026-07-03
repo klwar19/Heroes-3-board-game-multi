@@ -162,6 +162,7 @@ import { RoomPanel } from "@/components/table/room-panel";
 import { LoadingScreen } from "@/components/menu/loading-screen";
 import { useRouter } from "next/navigation";
 import { TableReactionsLayer } from "@/components/table/table-reactions";
+import { ChatPanel } from "@/components/table/chat-panel";
 
 /** Events that move cards or play battle effects on the table. */
 const FX_EVENT_TYPES = new Set<GameEvent["type"]>([
@@ -3387,22 +3388,30 @@ export default function Home() {
       </div>
     ) : null;
 
-  // Table reactions (emotes): the floating "React" bar + drifting bubbles,
-  // mounted on every in-game screen (setup, map, combat). Fixed-position, so it
-  // overlays whatever layout is beneath it; the bar only shows at a real
-  // multiplayer table (see TableReactionsLayer).
+  // Table social overlays, mounted on every in-game screen (setup, map, combat).
+  // Fixed-position, so they overlay whatever layout is beneath them and only
+  // surface at a real multiplayer table (each component self-gates on the room):
+  //  - table reactions (emotes): the floating "React" bar + drifting bubbles;
+  //  - table chat: the collapsible, ephemeral live message dock (SEND_CHAT).
   const reactionsLayer = (
-    <TableReactionsLayer
-      state={state}
-      onSend={(reactionId) =>
-        void submitAction({
-          type: "SEND_TABLE_REACTION",
-          clientId,
-          reactionId,
-          name: displayName.trim() || undefined
-        })
-      }
-    />
+    <>
+      <TableReactionsLayer
+        state={state}
+        onSend={(reactionId) =>
+          void submitAction({
+            type: "SEND_TABLE_REACTION",
+            clientId,
+            reactionId,
+            name: displayName.trim() || undefined
+          })
+        }
+      />
+      <ChatPanel
+        state={state}
+        clientId={clientId}
+        onSend={(text) => void submitAction({ type: "SEND_CHAT", clientId, text, at: Date.now() })}
+      />
+    </>
   );
 
   // ---- Map-setup lobby ------------------------------------------------------

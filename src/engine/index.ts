@@ -31,6 +31,15 @@ export {
   TABLE_REACTIONS
 } from "./table-reactions";
 export type { TableReactionDef } from "./table-reactions";
+export {
+  appendSystemChat,
+  CHAT_FLOOD_LIMIT,
+  isChatAction,
+  MAX_CHAT_MESSAGES,
+  MAX_CHAT_TEXT_LENGTH,
+  sanitizeChatText,
+  sendChat
+} from "./chat";
 export { ENGINE_PROTOCOL_VERSION, ENGINE_SIGNATURE } from "./version";
 export {
   hasOpenAdventureTurn,
@@ -364,6 +373,7 @@ export type {
   PendingChoice,
   RecruitDiscountVoucher,
   PermanentEffectDefinition,
+  ChatMessage,
   ReactionPlay,
   ReactionWindow,
   ResolutionStackItem,

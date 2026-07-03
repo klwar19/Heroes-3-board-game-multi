@@ -104,6 +104,7 @@ import {
   transferHost
 } from "./room";
 import { sendTableReaction } from "./table-reactions";
+import { sendChat } from "./chat";
 import {
   hasOpenAdventureTurn,
   parallelInteractionBlocker,
@@ -15392,7 +15393,8 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "KICK_MEMBER",
   "TRANSFER_HOST",
   "SET_ROOM_NAME",
-  "SEND_TABLE_REACTION"
+  "SEND_TABLE_REACTION",
+  "SEND_CHAT"
 ]);
 
 function isHandlerValidated(state: GameState, action: GameAction): boolean {
@@ -15646,6 +15648,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "SEND_TABLE_REACTION":
         sendTableReaction(nextState, action);
+        break;
+      case "SEND_CHAT":
+        sendChat(nextState, action);
         break;
       case "RESOLVE_VISIT_STEP":
         resolveVisitStep(nextState, action);
