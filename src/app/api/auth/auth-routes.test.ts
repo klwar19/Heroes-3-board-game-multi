@@ -116,6 +116,27 @@ describe("auth API routes — register → confirm → login → session", () =>
   });
 });
 
+describe("auth API routes — email link auto-detects the deployment URL", () => {
+  it("builds the confirm link from the request's forwarded host (no HOMM3BG_PUBLIC_URL set)", async () => {
+    const register = await import("./register/route");
+    const req = new Request("http://internal/api/auth/register", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        // What a proxy (Vercel) puts in front of the app:
+        "x-forwarded-host": "heroes-3-board-game-multi.vercel.app",
+        "x-forwarded-proto": "https"
+      },
+      body: JSON.stringify({ nickname: "Depla", email: "depla@erathia.io", password: "deploys11" })
+    });
+    const res = await register.POST(req);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { devConfirmLink?: string };
+    expect(body.devConfirmLink).toContain("https://heroes-3-board-game-multi.vercel.app/api/auth/confirm?token=");
+    expect(body.devConfirmLink).not.toContain("localhost");
+  });
+});
+
 describe("auth API routes — password reset via emailed link", () => {
   it("resets the password and the new one signs in (old one fails)", async () => {
     const register = await import("./register/route");

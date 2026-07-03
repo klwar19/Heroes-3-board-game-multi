@@ -93,6 +93,8 @@ describe("/login (accounts enabled) — guest is a choice beside accounts", () =
     expect(window.localStorage.getItem("homm3bg.displayName")).toBe("Binh");
     // The stale signed-in identity is dropped so the player is a true guest.
     expect(window.localStorage.getItem("homm3bg.account")).toBeNull();
+    // The guest choice is recorded so the menu lets them through (not bounced to /login).
+    expect(window.localStorage.getItem("homm3bg.guest")).toBe("1");
     expect(push).toHaveBeenCalledWith("/menu");
   });
 });
