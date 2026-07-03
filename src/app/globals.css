@@ -10460,6 +10460,48 @@ img.cardBack {
   background: rgb(255 255 255 / 3%);
 }
 
+.lobbyCreateMode {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.lobbyModeOption {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgb(13 15 16 / 45%);
+  color: var(--muted);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.12s ease, background 0.12s ease, color 0.12s ease;
+}
+
+.lobbyModeOption:hover {
+  border-color: var(--line-strong);
+}
+
+.lobbyModeOption.active {
+  border-color: var(--gold);
+  background: rgb(213 168 79 / 12%);
+  color: var(--text);
+}
+
+.lobbyModeName {
+  font-size: 12.5px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+
+.lobbyModeHint {
+  font-size: 11px;
+  color: var(--muted);
+}
+
 .lobbyIdentity input,
 .lobbyCreate input,
 .lobbyJoinCode input {

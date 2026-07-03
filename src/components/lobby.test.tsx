@@ -59,11 +59,25 @@ describe("LobbyScreen", () => {
     expect(handlers.onJoin).toHaveBeenCalledWith("room-1");
   });
 
-  it("creates a room with the typed name", () => {
+  it("creates an OPEN room with the typed name by default", () => {
     const handlers = renderLobby();
     fireEvent.change(screen.getByLabelText("New room name"), { target: { value: "My Table" } });
     fireEvent.click(screen.getByRole("button", { name: /Create room/i }));
-    expect(handlers.onCreate).toHaveBeenCalledWith("My Table");
+    // Open table is the default (hosted = false).
+    expect(handlers.onCreate).toHaveBeenCalledWith("My Table", false);
+  });
+
+  it("creates a CLOSED (hosted) room when Closed table is picked", () => {
+    const handlers = renderLobby();
+    fireEvent.change(screen.getByLabelText("New room name"), { target: { value: "Locked Table" } });
+    fireEvent.click(screen.getByRole("radio", { name: /Closed table/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Create room/i }));
+    expect(handlers.onCreate).toHaveBeenCalledWith("Locked Table", true);
+    // Control: switching back to Open reverts the choice (re-type — create clears the field).
+    fireEvent.change(screen.getByLabelText("New room name"), { target: { value: "Free Table" } });
+    fireEvent.click(screen.getByRole("radio", { name: /Open table/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Create room/i }));
+    expect(handlers.onCreate).toHaveBeenLastCalledWith("Free Table", false);
   });
 
   it("joins by room code", () => {

@@ -14,6 +14,7 @@
  */
 
 const KEY = "homm3bg.pendingRoomName";
+const HOSTED_KEY = "homm3bg.pendingRoomHosted";
 
 export type PendingRoomName = { roomId: string; name: string };
 
@@ -50,6 +51,39 @@ export function takePendingRoomName(): PendingRoomName | null {
       return parsed as PendingRoomName;
     }
     return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * One-shot handoff of a freshly created room's "closed" (hosted) choice, exactly
+ * like the name above. When the creator picked a Closed table in the lobby, the
+ * game page turns hosting on once connected (the creator becomes the host, seats
+ * lock). Empty/open rooms store nothing, so the default stays an open table.
+ */
+export function savePendingRoomHosted(roomId: string): void {
+  if (typeof window === "undefined" || !roomId) {
+    return;
+  }
+  try {
+    window.sessionStorage.setItem(HOSTED_KEY, roomId);
+  } catch {
+    /* Private mode etc. — the room simply opens as an open table. */
+  }
+}
+
+/** Read AND clear the pending "closed" roomId (a one-shot hint, never re-applied). */
+export function takePendingRoomHosted(): string | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  try {
+    const raw = window.sessionStorage.getItem(HOSTED_KEY);
+    if (raw) {
+      window.sessionStorage.removeItem(HOSTED_KEY);
+    }
+    return raw && raw.length > 0 ? raw : null;
   } catch {
     return null;
   }

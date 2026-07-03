@@ -31,15 +31,17 @@ export function LobbyScreen({
   onRename: (name: string) => void;
   onRefresh: () => void;
   onJoin: (roomId: string) => void;
-  onCreate: (name: string) => void;
+  /** Create a room; `hosted` picks Closed (host-controlled seats) vs Open (free seats). */
+  onCreate: (name: string, hosted: boolean) => void;
   onClose: (roomId: string) => void;
 }) {
   const [nameDraft, setNameDraft] = useState(displayName);
   const [newRoomName, setNewRoomName] = useState("");
+  const [createHosted, setCreateHosted] = useState(false);
   const [joinCode, setJoinCode] = useState("");
 
   const createRoom = () => {
-    onCreate(newRoomName.trim());
+    onCreate(newRoomName.trim(), createHosted);
     setNewRoomName("");
   };
   const joinByCode = () => {
@@ -92,6 +94,31 @@ export function LobbyScreen({
             />
             <button className="commandButton primary" onClick={createRoom} type="button">
               <Plus aria-hidden="true" size={14} /> Create room
+            </button>
+          </div>
+
+          <div className="lobbyCreateMode" role="radiogroup" aria-label="Table type">
+            <button
+              aria-checked={!createHosted}
+              className={`lobbyModeOption ${!createHosted ? "active" : ""}`}
+              onClick={() => setCreateHosted(false)}
+              role="radio"
+              type="button"
+            >
+              <Eye aria-hidden="true" size={14} />
+              <span className="lobbyModeName">Open table</span>
+              <span className="lobbyModeHint">Anyone can pick any seat</span>
+            </button>
+            <button
+              aria-checked={createHosted}
+              className={`lobbyModeOption ${createHosted ? "active" : ""}`}
+              onClick={() => setCreateHosted(true)}
+              role="radio"
+              type="button"
+            >
+              <Lock aria-hidden="true" size={14} />
+              <span className="lobbyModeName">Closed table</span>
+              <span className="lobbyModeHint">You host — one player per seat</span>
             </button>
           </div>
           <div className="lobbyJoinCode">

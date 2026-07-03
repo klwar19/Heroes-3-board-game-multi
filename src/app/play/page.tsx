@@ -9,7 +9,7 @@ import { DEFAULT_SERVER } from "@/data/servers";
 import { uiArtSlot } from "@/data/ui-art";
 import { assetUrl } from "@/lib/asset-url";
 import { getClientId, getDisplayName, setDisplayName } from "@/lib/identity";
-import { savePendingRoomName } from "@/lib/pending-room-name";
+import { savePendingRoomHosted, savePendingRoomName } from "@/lib/pending-room-name";
 import {
   createRoomOnServer,
   fetchRoomList,
@@ -73,7 +73,7 @@ export default function PlayPage() {
     [router]
   );
 
-  const handleCreate = (name: string) => {
+  const handleCreate = (name: string, hosted: boolean) => {
     setError(null);
     createRoomOnServer({
       name: name || undefined,
@@ -85,6 +85,11 @@ export default function PlayPage() {
         // on the API backend, which already seeded it server-side).
         if (name) {
           savePendingRoomName(roomId, name);
+        }
+        // A Closed table: carry the choice so the game page hosts the room once
+        // the creator connects (they become host, seats lock). Open is default.
+        if (hosted) {
+          savePendingRoomHosted(roomId);
         }
         goToRoom(roomId);
       })
