@@ -1,6 +1,7 @@
 "use client";
 
 /* eslint-disable @next/next/no-img-element */
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { LobbyScreen } from "@/components/lobby";
@@ -38,6 +39,7 @@ export default function PlayPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [accountName, setAccountName] = useState<string | null>(null);
   const [chatMessages, setChatMessages] = useState<LobbyChatMessage[]>([]);
   const [chatError, setChatError] = useState<string | null>(null);
 
@@ -52,13 +54,19 @@ export default function PlayPage() {
   }, []);
   /* eslint-enable react-hooks/set-state-in-effect */
 
-  // Authoritative admin check (the session cookie, not the localStorage cache),
-  // so the "delete any room" control only appears for a real platform admin. The
-  // server re-verifies on every DELETE regardless, so this is display-only.
+  // Authoritative session check (the cookie, not the localStorage cache): drives
+  // the "signed in as …" chip and the admin-only "delete any room" control. The
+  // server re-verifies every privileged action regardless, so this is display-only.
   useEffect(() => {
     fetchSession()
-      .then((profile) => setIsAdmin(profile?.role === "admin"))
-      .catch(() => setIsAdmin(false));
+      .then((profile) => {
+        setIsAdmin(profile?.role === "admin");
+        setAccountName(profile?.nickname ?? null);
+      })
+      .catch(() => {
+        setIsAdmin(false);
+        setAccountName(null);
+      });
   }, []);
 
   // Only updates state in async callbacks (never synchronously), so the
@@ -159,6 +167,16 @@ export default function PlayPage() {
           <small>{DEFAULT_SERVER.description}</small>
         </span>
         <span className="serverBadgeStatus">{DEFAULT_SERVER.open ? "Online" : "Closed"}</span>
+        <Link className="serverBadgeAccount" href="/menu" title="Back to the main menu">
+          {accountName ? (
+            <>
+              Signed in as <strong>{accountName}</strong>
+              {isAdmin ? <em className="serverBadgeAdmin"> · admin</em> : null}
+            </>
+          ) : (
+            "Guest · Menu"
+          )}
+        </Link>
       </div>
       {/* Remount when the persisted name hydrates/changes so the name field's
           draft (captured at mount) always starts from the real value. */}

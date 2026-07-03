@@ -12496,6 +12496,35 @@ img.cardBack {
   white-space: nowrap;
 }
 
+.serverBadgeAccount {
+  margin-left: 14px;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: border-color 0.12s ease, color 0.12s ease;
+}
+
+.serverBadgeAccount:hover {
+  border-color: var(--gold);
+  color: var(--text);
+}
+
+.serverBadgeAccount strong {
+  color: var(--text);
+  font-weight: 800;
+}
+
+.serverBadgeAdmin {
+  color: var(--gold);
+  font-style: normal;
+  font-weight: 800;
+}
+
 /* Loading screen ------------------------------------------------------------ */
 
 .loadingPanel {
