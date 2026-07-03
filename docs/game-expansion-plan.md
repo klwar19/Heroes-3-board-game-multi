@@ -528,7 +528,29 @@ suite green; no `page.tsx` growth beyond the loading-block swap.
 
 **Goal:** real accounts behind the flag; guest mode untouched.
 
-Steps:
+> **STATUS: SHIPPED (2026-07-03) — with a deliberate backend divergence from
+> §D1.** Register / email-confirm / login / password-reset / profile / admin all
+> run and are engine-tested (see the changelog entry below for the exact test
+> files). The one departure from the plan: instead of Supabase, this shipped a
+> **self-hosted, offline-testable account backend** (`src/server/accounts/*`) —
+> the SAME in-memory + on-disk-persisted store pattern the room layer already
+> uses (`game-room-store.ts`), behind a narrow interface. Why: Supabase glue
+> could only be *mocked* in this repo's offline test suite (no project, no
+> network), and CLAUDE.md rule 1 forbids shipping wired-but-untested code as
+> "done". The store is written so a Supabase/Postgres adapter drops in later
+> exactly like the PartyKit-vs-built-in transport split — the API routes and UI
+> never learn which backend is live. The `NEXT_PUBLIC_SUPABASE_URL` flag still
+> flips accounts on (reserved for that adapter); a new
+> `NEXT_PUBLIC_ACCOUNTS_ENABLED=1` flips on the built-in backend today.
+> **NOT done here (later phases, unchanged):** verified userId on the wire +
+> per-connection redaction (Phase 2), real SMTP transport (the mailer is a
+> pluggable seam; dev logs/captures the link — production SMTP is the documented
+> swap), and automatic match-result reporting feeding MMR (Phase 6 — the store's
+> `recordMatchResult` + Elo exist and are tested, but nothing calls them from a
+> finished game yet, so the Hall of Fame shows the roster at the 1200 start).
+
+Steps (as planned; the Supabase-specific ones were realised via the self-hosted
+store per the status note above):
 1. `npm i @supabase/supabase-js @supabase/ssr`. Client factory
    `src/lib/supabase.ts` (browser + server helpers; returns null when flag
    off). Owner does the §9 project setup checklist first (or you mock in dev).
@@ -855,3 +877,35 @@ named tests, screenshots/GIFs for UI phases, env/setup changes for the owner.
 
 - 2026-07-03 — initial plan authored (grounded against the repo as of this
   date; §1 inventory verified by direct code inspection).
+- 2026-07-03 — **Phase 0 shipped** (menu shell, pre-game routes, art slots,
+  loading screens; guest flow end-to-end, zero env vars).
+- 2026-07-03 — **Phase 1 shipped** (accounts, store, admin, mail linking) on a
+  **self-hosted backend** rather than Supabase (see the Phase 1 status note for
+  the why; guest mode is byte-for-byte unchanged and stays the CI default).
+  What runs and where the failing-if-removed tests live:
+  - `src/server/accounts/` — the store + primitives. `crypto.ts` (scrypt
+    password hash + one-time/session tokens; `crypto.test.ts`), `validation.ts`
+    (nickname/email/password/contact rules; `validation.test.ts`), `elo.ts`
+    (K=32 winner-takes-field ratings; `elo.test.ts`), `mailer.ts` (pluggable
+    transport — capture/console shipped, SMTP is the documented production
+    swap), `account-store.ts` (`account-store.test.ts`: register → confirm →
+    login, distinct nickname-taken vs email-registered errors, login-blocked-
+    until-confirmed, token/session expiry with a fake clock, password reset that
+    revokes old sessions, ban kills live sessions + blocks login, delete frees
+    the nick/email, idempotent `recordMatchResult` moving MMR 1200→1216/1184 and
+    reordering the Hall of Fame, persistence round-trip).
+  - `src/app/api/auth/*` + `src/app/api/admin/players` +
+    `src/app/api/hall-of-fame` — the routes (`auth-routes.test.ts` drives the
+    real handlers: full happy path with a working session cookie, distinct 409s,
+    IP rate-limited availability, reset-via-emailed-link, and admin authorization
+    with the non-admin-denied CONTROL). Verified additionally over real HTTP
+    against `next start`.
+  - `src/lib/auth-client.ts`, `src/lib/identity.ts` (`getIdentity()` +
+    account cache; `identity.test.ts`), `src/lib/auth-mode.ts`
+    (`NEXT_PUBLIC_ACCOUNTS_ENABLED` OR `NEXT_PUBLIC_SUPABASE_URL`).
+  - UI: `/login` Sign-in/Register tabs + confirm + forgot-password
+    (`account-auth.test.tsx`; guest form preserved when the flag is off),
+    `/profile`, `/admin`, `/reset-password`, Hall-of-Fame wired to real data,
+    `/menu` logout/profile/admin. `scripts/seed-admin.ts` + `.env.example`
+    document the owner setup.
+  - Full suite green: 3695 vitest tests, typecheck, lint, `next build`.

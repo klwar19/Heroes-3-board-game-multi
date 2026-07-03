@@ -2,23 +2,32 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
+import { AccountAuth } from "@/components/menu/account-auth";
 import { MenuShell } from "@/components/menu/menu-shell";
 import { authEnabled } from "@/lib/auth-mode";
 import { getDisplayName, setDisplayName } from "@/lib/identity";
 
 /**
- * Entry screen (expansion plan Phase 0). In guest mode (no Supabase env —
- * every deployment today) this is the name screen: it writes the same
- * localStorage display name the rooms already use and forwards to the menu.
- * Real account sign-in/registration replaces the guest form in Phase 1,
- * keyed off authEnabled(); until then the flag-on branch says so honestly
- * instead of rendering a dead login form.
+ * Entry screen. With the accounts flag ON it shows real sign-in / registration
+ * (AccountAuth, Phase 1). With the flag OFF — every deployment today, and all
+ * CI / e2e — it is the guest name screen: it writes the same localStorage
+ * display name the rooms use and forwards to the menu, byte-for-byte as before
+ * accounts existed.
  */
 export default function LoginPage() {
+  if (authEnabled()) {
+    return (
+      <MenuShell backdrop="login-backdrop" title="Welcome to Erathia">
+        <AccountAuth />
+      </MenuShell>
+    );
+  }
+  return <GuestLogin />;
+}
+
+function GuestLogin() {
   const router = useRouter();
   const [name, setName] = useState("");
-  // Prefill from storage after mount (SSR-safe hydration, same pattern as
-  // src/app/page.tsx).
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     const stored = getDisplayName();
@@ -39,12 +48,6 @@ export default function LoginPage() {
 
   return (
     <MenuShell backdrop="login-backdrop" title="Welcome, traveller">
-      {authEnabled() ? (
-        <p className="loadingStatus">
-          Account sign-in is not built yet (it arrives with the accounts phase of the expansion plan) — continue as a
-          guest below.
-        </p>
-      ) : null}
       <form className="menuNav" onSubmit={continueAsGuest}>
         <label className="loadingStatus" htmlFor="guestName">
           Choose the name other players will see

@@ -4,6 +4,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import MenuPage from "./page";
 
 vi.mock("@/lib/music", () => ({ useBackgroundMusic: vi.fn() }));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), prefetch: vi.fn() })
+}));
 
 beforeEach(() => {
   window.localStorage.clear();
