@@ -10,6 +10,8 @@ import { uiArtSlot } from "@/data/ui-art";
 import { assetUrl } from "@/lib/asset-url";
 import { getClientId, getDisplayName, setDisplayName } from "@/lib/identity";
 import { fetchSession } from "@/lib/auth-client";
+import { fetchLobbyChat, postLobbyChat, type LobbyChatMessage } from "@/lib/lobby-chat-client";
+import { LobbyChat } from "@/components/lobby-chat";
 import { savePendingRoomHosted, savePendingRoomName } from "@/lib/pending-room-name";
 import {
   createRoomOnServer,
@@ -36,6 +38,8 @@ export default function PlayPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [chatMessages, setChatMessages] = useState<LobbyChatMessage[]>([]);
+  const [chatError, setChatError] = useState<string | null>(null);
 
   // Persisted name is browser-only state: read after mount (same pattern and
   // lint scope as src/app/page.tsx).
@@ -68,14 +72,32 @@ export default function PlayPage() {
       })
       .catch(() => setError("Could not load the room list."))
       .finally(() => setLoading(false));
+    // The global lobby chat rides the same poll (ephemeral, best-effort).
+    fetchLobbyChat()
+      .then(setChatMessages)
+      .catch(() => {
+        /* transient — the next poll retries */
+      });
   }, [clientId]);
 
-  // Poll the directory every 5s while the browser is open.
+  // Poll the directory (and lobby chat) every 5s while the browser is open.
   useEffect(() => {
     refresh();
     const intervalId = window.setInterval(refresh, 5000);
     return () => window.clearInterval(intervalId);
   }, [refresh]);
+
+  const sendChat = useCallback(
+    (text: string) => {
+      setChatError(null);
+      postLobbyChat({ clientId, name: displayName.trim() || "Player", text })
+        .then((message) => setChatMessages((prev) => [...prev.filter((m) => m.seq !== message.seq), message]))
+        .catch((sendError: unknown) =>
+          setChatError(sendError instanceof Error ? sendError.message : "Could not send the message.")
+        );
+    },
+    [clientId, displayName]
+  );
 
   const goToRoom = useCallback(
     (roomId: string) => {
@@ -154,6 +176,7 @@ export default function PlayPage() {
         supported={supported}
         isAdmin={isAdmin}
       />
+      <LobbyChat clientId={clientId} messages={chatMessages} error={chatError} onSend={sendChat} />
     </MenuShell>
   );
 }
