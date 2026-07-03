@@ -442,6 +442,66 @@ describe("ReactionTray — Power can still be added after Slayer arms the attack
     expect(confirm.disabled).toBe(false);
     expect(screen.queryByText(/power only counts with a spell/i)).toBeNull();
   });
+
+  it("lets the DEFENDER fuel a Spell Book Weakness with a lone +1 Power (hand Magic Arrow)", () => {
+    // Player report: casting Weakness from the Spell Book on an enemy's attack,
+    // you "can't use Magic Arrow at hand to power it up". A Book instant is a
+    // ONE-CLICK play that never joins the tray's `selections`, so afterwards the
+    // only selection is the lone Magic-Arrow "+1 Power" — and the tray's
+    // "empowerable?" check was attacker-only (attackOwner === viewer), so the
+    // DEFENDER's already-played Weakness was ignored and the Power was blocked.
+    const state = createInitialGameState("tray-book-weakness-power");
+    state.players.p1.hand = [];
+    state.players.p2.hand = ["spell.magic_arrow"]; // the outside Power source
+    state.players.p2.spellBook = ["spell.weakness"]; // played from the Book
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    const griffins = state.combat!.units.unit_p1_griffins;
+    griffins.activatedThisRound = false;
+    griffins.abilities = [];
+    griffins.position = 9;
+    state.combat!.units.unit_p2_skeletons.position = 13;
+
+    const declared = applyAction(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_griffins",
+      defenderId: "unit_p2_skeletons"
+    });
+    expect(declared.errors).toEqual([]);
+
+    // The attacker (p1) has nothing to add, so priority passes to the defender p2.
+    let handed = declared.state;
+    let guard = 10;
+    while (handed.reactionWindow?.priorityPlayerId === "p1" && guard-- > 0) {
+      handed = applyAction(handed, { type: "PASS_REACTION", playerId: "p1" }).state;
+    }
+    expect(handed.reactionWindow?.priorityPlayerId).toBe("p2");
+
+    // p2 plays Weakness FROM THE BOOK (a one-click reaction). The window stays
+    // open with p2 on priority — the defender keeps empowering their own instant.
+    const bookWeakness = getLegalActions(handed, "p2").find(
+      (legal) =>
+        legal.action.type === "PLAY_REACTION" &&
+        legal.action.cardId === "spell.weakness" &&
+        legal.action.fromSpellBook === true
+    );
+    expect(bookWeakness, "a Book Weakness should be offered to the attacked player").toBeTruthy();
+    const played = applyAction(handed, bookWeakness!.action);
+    expect(played.errors).toEqual([]);
+    expect(played.state.reactionWindow?.priorityPlayerId).toBe("p2");
+
+    render(trayFor(played.state, "p2"));
+
+    // Pick the lone "Discard Magic Arrow for +1 Power".
+    const pick = screen.getByRole("button", { name: /discard for \+1 power/i });
+    act(() => fireEvent.click(pick));
+
+    // Confirm is enabled — the defender's Weakness IS empowerable, so its owner
+    // may fuel it with a lone Power. Before the fix this stayed disabled.
+    const confirm = screen.getByRole("button", { name: /play card/i }) as HTMLButtonElement;
+    expect(confirm.disabled, "the defender should be able to fuel their own Weakness with Magic Arrow").toBe(false);
+    expect(screen.queryByText(/power only counts with a spell/i)).toBeNull();
+  });
 });
 
 describe("ReactionTray — live Power readout", () => {
