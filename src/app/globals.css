@@ -12156,3 +12156,259 @@ img.cardBack {
     width: 98vw;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Pre-game platform screens (expansion plan Phase 0): MenuShell backdrop +
+   panel chrome shared by /login, /menu, /play, /hall-of-fame, and the
+   LoadingScreen. Backdrop art comes from the ui-art slot registry.
+--------------------------------------------------------------------------- */
+
+.menuShellRoot {
+  position: relative;
+  flex: 1 1 auto;
+  display: flex;
+  overflow: hidden;
+}
+
+.menuShellBackdrop {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: saturate(0.92) brightness(0.82);
+}
+
+.menuShellVignette {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 50% 42%, transparent 30%, rgb(8 7 5 / 62%) 100%),
+    linear-gradient(180deg, rgb(8 7 5 / 55%) 0%, transparent 18%, transparent 82%, rgb(8 7 5 / 65%) 100%);
+}
+
+.menuShellContent {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: clamp(16px, 4vw, 48px);
+  overflow-y: auto;
+}
+
+.menuShellPanel {
+  width: min(430px, 100%);
+  display: grid;
+  gap: 14px;
+  padding: clamp(18px, 3vw, 30px);
+  border: 1px solid rgb(213 168 79 / 42%);
+  border-radius: 14px;
+  background: rgb(13 15 16 / 82%);
+  box-shadow:
+    0 0 0 4px rgb(13 15 16 / 45%),
+    0 22px 54px rgb(0 0 0 / 55%);
+  backdrop-filter: blur(6px);
+}
+
+.menuShellPanel.wide {
+  width: min(880px, 100%);
+}
+
+.menuShellTitle {
+  margin: 0;
+  color: var(--gold);
+  font-size: clamp(20px, 3.4vw, 28px);
+  letter-spacing: 0.04em;
+  text-align: center;
+  text-shadow: 0 2px 8px rgb(0 0 0 / 70%);
+}
+
+.menuShellFooter {
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+  text-shadow: 0 1px 4px rgb(0 0 0 / 80%);
+}
+
+.menuShellFooter a {
+  color: var(--gold);
+}
+
+/* The reused LobbyScreen brings its own <main>-sized layout; inside the shell
+   it must not force another full viewport, and it stretches to the shell's
+   full width (the content column centers children, which would otherwise
+   shrink it to fit). */
+.menuShellRoot .lobbyRoot {
+  min-height: 0;
+  flex: 1;
+  width: 100%;
+  padding: clamp(10px, 2vw, 24px);
+}
+
+.menuShellRoot .lobbyCard {
+  background: rgb(13 15 16 / 84%);
+  backdrop-filter: blur(6px);
+}
+
+/* Main menu button stack ---------------------------------------------------- */
+
+.menuNav {
+  display: grid;
+  gap: 10px;
+}
+
+.menuNavButton {
+  display: block;
+  width: 100%;
+  padding: 13px 18px;
+  border: 1px solid rgb(213 168 79 / 46%);
+  border-radius: 9px;
+  background: linear-gradient(180deg, #2c2318 0%, #1b150d 100%);
+  color: var(--gold);
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+  box-shadow:
+    inset 0 1px 0 rgb(243 239 228 / 10%),
+    0 6px 16px rgb(0 0 0 / 45%);
+}
+
+.menuNavButton:hover:not(:disabled) {
+  border-color: var(--focus);
+  filter: brightness(1.14);
+}
+
+.menuNavButton:disabled {
+  color: var(--muted);
+  border-color: var(--line);
+  cursor: not-allowed;
+  filter: grayscale(0.6);
+  opacity: 0.6;
+}
+
+.menuNavButton small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.menuIdentityLine {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* Server badge (Erathia strip above the room browser) ----------------------- */
+
+.serverBadge {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: min(760px, 100%);
+  margin: clamp(10px, 2vw, 24px) auto 0;
+  padding: 10px 14px;
+  border: 1px solid rgb(213 168 79 / 42%);
+  border-radius: 12px;
+  background: rgb(13 15 16 / 82%);
+  backdrop-filter: blur(6px);
+}
+
+.serverBadgeEmblem {
+  width: 44px;
+  height: 44px;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 4px rgb(0 0 0 / 60%));
+}
+
+.serverBadgeName {
+  color: var(--gold);
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.serverBadgeName small {
+  display: block;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.serverBadgeStatus {
+  margin-left: auto;
+  color: var(--green);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* Loading screen ------------------------------------------------------------ */
+
+.loadingPanel {
+  text-align: center;
+}
+
+.loadingTitle {
+  margin: 0;
+  color: var(--gold);
+  font-size: clamp(17px, 2.6vw, 22px);
+  letter-spacing: 0.03em;
+  text-shadow: 0 2px 8px rgb(0 0 0 / 70%);
+}
+
+.loadingBar {
+  position: relative;
+  height: 16px;
+  border: 1px solid rgb(213 168 79 / 55%);
+  border-radius: 999px;
+  background: rgb(8 7 5 / 80%);
+  overflow: hidden;
+  box-shadow: inset 0 2px 6px rgb(0 0 0 / 70%);
+}
+
+.loadingBarFill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(180deg, #f0c96f 0%, var(--gold) 55%, #a97e33 100%);
+  box-shadow: 0 0 10px rgb(213 168 79 / 55%);
+  transition: width 0.25s ease-out;
+}
+
+.loadingBar.indeterminate .loadingBarFill {
+  width: 38%;
+  animation: loadingBarSlide 1.4s ease-in-out infinite;
+}
+
+@keyframes loadingBarSlide {
+  0% {
+    transform: translateX(-100%);
+  }
+
+  100% {
+    transform: translateX(280%);
+  }
+}
+
+.loadingCount,
+.loadingStatus,
+.loadingTip {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.loadingTip {
+  font-style: italic;
+}
