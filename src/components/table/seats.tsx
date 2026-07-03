@@ -13,8 +13,10 @@ import {
   describePermanentEffect,
   getPermanentCardIds,
   getRuneTrack,
+  getSeatIdentity,
   isBulwarkPlayer,
   playerSpellCastsIgnoreLimit,
+  seatPickSummary,
   spellBookRuleEnabled,
   type GameAction,
   type GameState,
@@ -768,6 +770,33 @@ export function RuneTrack({
   );
 }
 
+/**
+ * Person-first seat nameplate: who is playing this seat (account nickname /
+ * display name), with their hero + town on a second line and a faction-colour
+ * dot. On an open/solo table with no room member the seat label already encodes
+ * "Hero (Town)", so the redundant hero·town line is dropped. Used by both the
+ * opponent bar and the viewer's own dock so every seat is introduced the same way.
+ */
+export function SeatNameplate({ state, playerId }: { state: GameState; playerId: PlayerId }) {
+  const identity = getSeatIdentity(state, playerId);
+  const person = identity.personName;
+  const summary = seatPickSummary(identity);
+  const primary = person ?? identity.seatName;
+  const title = summary ? `${primary} — ${summary}` : primary;
+  return (
+    <span className="seatWho" title={title}>
+      <span className="seatFactionDot" style={{ background: identity.factionColor ?? "#b08d2f" }} aria-hidden="true" />
+      <span className="seatWhoText">
+        <strong>
+          {primary}
+          {identity.role === "host" ? <Crown aria-hidden="true" size={11} className="seatHostCrown" /> : null}
+        </strong>
+        {person && summary ? <small className="seatPick">{summary}</small> : null}
+      </span>
+    </span>
+  );
+}
+
 export function OpponentBar({
   view,
   state,
@@ -793,7 +822,7 @@ export function OpponentBar({
         return (
           <section className="opponentSeat" key={playerId} aria-label={`${player.name} seat`}>
             <div className="seatBadge">
-              <strong>{player.name}</strong>
+              <SeatNameplate state={state} playerId={playerId} />
               <span className="seatMetrics">
                 <span title="Crowns left this combat round">
                   <Crown aria-hidden="true" size={12} /> {crownsLeft}
@@ -883,7 +912,7 @@ export function PlayerDock({
         <small>discard</small>
       </div>
       <div className="dockMetrics">
-        <strong>{player.name}</strong>
+        <SeatNameplate state={state} playerId={viewerPlayerId} />
         <span title="Crowns left this combat round">
           <Crown aria-hidden="true" size={13} /> {crownsLeft} crown{crownsLeft === 1 ? "" : "s"}
         </span>

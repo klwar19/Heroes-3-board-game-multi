@@ -25,6 +25,8 @@ export {
   seatOfClient
 } from "./room";
 export type { VerifiedActor } from "./room";
+export { getSeatIdentity, memberForSeat, seatPersonLabel, seatPickSummary } from "./player-identity";
+export type { SeatIdentity, SeatRole } from "./player-identity";
 export {
   factionCrestAsset,
   getTableReaction,

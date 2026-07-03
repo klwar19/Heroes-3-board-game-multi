@@ -5,28 +5,33 @@ import { useEffect, useState, type FormEvent } from "react";
 import { AccountAuth } from "@/components/menu/account-auth";
 import { MenuShell } from "@/components/menu/menu-shell";
 import { authEnabled } from "@/lib/auth-mode";
-import { getDisplayName, setDisplayName } from "@/lib/identity";
+import { clearAccountIdentity, getDisplayName, setDisplayName } from "@/lib/identity";
 
 /**
- * Entry screen. With the accounts flag ON it shows real sign-in / registration
- * (AccountAuth, Phase 1). With the flag OFF — every deployment today, and all
- * CI / e2e — it is the guest name screen: it writes the same localStorage
- * display name the rooms use and forwards to the menu, byte-for-byte as before
- * accounts existed.
+ * Entry screen.
+ *
+ * With the accounts flag ON it shows real sign-in / registration (AccountAuth,
+ * Phase 1) as the primary path, with a clearly-secondary "Continue as guest"
+ * choice beside it — a temporary bridge while accounts roll out (it is one
+ * self-contained <GuestChoice/> block, easy to remove later).
+ *
+ * With the flag OFF — CI / e2e and any guest-only deployment — it is the guest
+ * name screen, byte-for-byte as before accounts existed.
  */
 export default function LoginPage() {
   if (authEnabled()) {
     return (
       <MenuShell backdrop="login-backdrop" title="Welcome to Erathia">
         <AccountAuth />
+        <GuestChoice />
       </MenuShell>
     );
   }
   return <GuestLogin />;
 }
 
-function GuestLogin() {
-  const router = useRouter();
+/** Read + prefill the stored display name (shared by both guest entry points). */
+function useStoredName(): [string, (value: string) => void] {
   const [name, setName] = useState("");
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
@@ -36,6 +41,12 @@ function GuestLogin() {
     }
   }, []);
   /* eslint-enable react-hooks/set-state-in-effect */
+  return [name, setName];
+}
+
+function GuestLogin() {
+  const router = useRouter();
+  const [name, setName] = useStoredName();
 
   const continueAsGuest = (event: FormEvent) => {
     event.preventDefault();
@@ -66,5 +77,52 @@ function GuestLogin() {
         </button>
       </form>
     </MenuShell>
+  );
+}
+
+/**
+ * The secondary guest option shown beneath the account card when accounts are
+ * on. Continuing as guest clears any cached signed-in identity so the player is
+ * a true guest (clientId + display name only), then forwards to the menu.
+ */
+function GuestChoice() {
+  const router = useRouter();
+  const [name, setName] = useStoredName();
+
+  const continueAsGuest = (event: FormEvent) => {
+    event.preventDefault();
+    const trimmed = name.trim();
+    if (trimmed) {
+      setDisplayName(trimmed);
+    }
+    // A deliberate guest entry is not a signed-in session — drop any cached
+    // account so the menu/rooms see a guest, not a stale nickname/role.
+    clearAccountIdentity();
+    router.push("/menu");
+  };
+
+  return (
+    <div className="guestChoice">
+      <div className="guestChoiceDivider" role="separator" aria-label="or">
+        <span>or</span>
+      </div>
+      <form className="guestChoiceForm" onSubmit={continueAsGuest}>
+        <p className="guestChoiceHint">
+          Just want to jump in? Play as a guest for now — you can create an account any time.
+        </p>
+        <input
+          aria-label="Guest name other players will see"
+          autoComplete="nickname"
+          maxLength={24}
+          onChange={(event) => setName(event.target.value)}
+          placeholder="Guest name (e.g. Catherine)"
+          suppressHydrationWarning
+          value={name}
+        />
+        <button className="guestChoiceButton" type="submit">
+          Continue as guest
+        </button>
+      </form>
+    </div>
   );
 }

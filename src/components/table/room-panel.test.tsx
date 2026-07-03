@@ -139,6 +139,22 @@ describe("RoomPanel actions agree with the engine", () => {
   });
 });
 
+describe("RoomPanel — shows each member's town + hero pick", () => {
+  it("a seated member shows their hero · town beneath their name", () => {
+    const state = hostedState(); // Bob (c2) seated at p1 = Catherine of Castle
+    renderPanel(state, "c2"); // seated player's view: badges, no selects
+    const bobRow = screen.getByText("Bob").closest("li") as HTMLElement;
+    expect(within(bobRow).getByText("Catherine · Castle")).toBeTruthy();
+  });
+
+  it("an observer shows no hero·town pick line", () => {
+    const state = hostedState(); // Cara (c3) is an observer
+    renderPanel(state, "c2");
+    const caraRow = screen.getByText("Cara").closest("li") as HTMLElement;
+    expect(within(caraRow).queryByText(/·/)).toBeNull();
+  });
+});
+
 describe("RoomPanel — naming, closing and browsing", () => {
   it("an open-table member can rename the room and close it", () => {
     let state = createAdventureGameState({ seed: "name-open", difficulty: "normal", rollFirstPlayer: false });
