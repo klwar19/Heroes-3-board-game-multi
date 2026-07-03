@@ -457,19 +457,25 @@ export function ReactionTray({
   const hasSpellPlay = selections.some(
     (selection) => !selection.asPowerBoost && cardLibrary[selection.cardId]?.kind === "spell" && !isPowerSelection(selection)
   );
-  // …but once a power-scaling spell (Bloodlust, Bless, or Slayer) is already on
-  // the pending attack, the caster keeps priority and may keep adding Power to it
-  // on its own — mirrors the engine's hasEmpowerablePlayed. Without this the tray
-  // blocks a lone "+1 Power" the engine would happily accept after Slayer.
+  // …but once a power-scaling spell THIS player already played is on the pending
+  // attack, they keep priority and may keep adding Power to it on its own —
+  // mirrors the engine's hasEmpowerablePlayed. This is NOT attacker-only: the
+  // DEFENDER's power-scaling instant (Weakness/Curse, played on the enemy's
+  // attack — including a one-click Spell Book play that never joins the tray's
+  // `selections`) is just as empowerable. Keying it off `attackOwner ===
+  // viewerPlayerId` wrongly blocked the defender from fuelling their own Weakness
+  // with a lone "+1 Power" (e.g. a hand Magic Arrow) after playing it from the
+  // Book. Match the engine: recognise ANY power-scaling instant recorded under
+  // the viewer's own id, plus the attacker-only Slayer / ignore-defense casters.
   const attackStackItem = isAttackWindow ? state.stack.at(-1) : undefined;
   const attackOwner =
     attackStackItem?.action.type === "ATTACK_UNIT" || attackStackItem?.action.type === "MOVE_AND_ATTACK_UNIT"
       ? attackStackItem.action.playerId
       : undefined;
   const attackAlreadyEmpowerable =
-    attackOwner === viewerPlayerId &&
-    ((attackStackItem?.modifiers.powerScaledAttackInstants?.length ?? 0) > 0 ||
-      attackStackItem?.modifiers.slayerRollsByPower !== undefined);
+    (attackStackItem?.modifiers.powerScaledAttackInstants ?? []).some((record) => record.playerId === viewerPlayerId) ||
+    (attackOwner === viewerPlayerId && attackStackItem?.modifiers.slayerRollsByPower !== undefined) ||
+    attackStackItem?.modifiers.ignoreDefenseCasterId === viewerPlayerId;
   const powerNeedsSpell =
     isAttackWindow && selections.some(isPowerSelection) && !hasSpellPlay && !attackAlreadyEmpowerable;
 
