@@ -10735,21 +10735,24 @@ img.cardBack {
   position: relative;
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 12px;
   margin-bottom: 10px;
 }
 
+/* Town · Hero · Unit deck — three big equal tiles that fill the strip above the
+   map (no wasted gap at the end). */
 .dockTile {
-  flex: 1 1 240px;
-  min-width: 210px;
-  max-width: 440px;
+  flex: 1 1 300px;
+  min-width: 250px;
+  max-width: none;
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 14px 10px 10px;
+  gap: 15px;
+  padding: 14px 18px 14px 14px;
+  min-height: 104px;
   border: 1px solid rgba(170, 130, 70, 0.5);
-  border-left: 4px solid var(--dock-faction, #b08d2f);
-  border-radius: 12px;
+  border-left: 5px solid var(--dock-faction, #b08d2f);
+  border-radius: 14px;
   background: linear-gradient(180deg, rgba(46, 34, 19, 0.92), rgba(28, 20, 12, 0.95));
   color: inherit;
   cursor: pointer;
@@ -10792,13 +10795,13 @@ img.cardBack {
 }
 
 .dockTileText strong {
-  font-size: 15px;
+  font-size: 17px;
   color: #f2e3b8;
   line-height: 1.15;
 }
 
 .dockTileText small {
-  font-size: 11px;
+  font-size: 12px;
   color: #cbb289;
 }
 
@@ -10839,6 +10842,72 @@ img.cardBack {
   color: #f0c46a;
   font-size: 11px;
   white-space: nowrap;
+}
+
+/* Unit-deck dock tile: a fanned stack of the army's card thumbnails as its icon,
+   the same footprint as the town/hero portraits. */
+.dockUnitStack {
+  position: relative;
+  flex: 0 0 auto;
+  width: 82px;
+  height: 82px;
+  display: grid;
+  place-items: center;
+}
+
+.dockUnitThumb {
+  position: absolute;
+  width: 50px;
+  height: 68px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid rgba(20, 14, 8, 0.9);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
+}
+
+/* Fan the three thumbnails out a little so it reads as a deck. */
+.dockUnitStack .dockUnitThumb:nth-child(1) {
+  transform: translateX(-16px) rotate(-8deg);
+}
+
+.dockUnitStack .dockUnitThumb:nth-child(2) {
+  transform: translateY(-2px);
+}
+
+.dockUnitStack .dockUnitThumb:nth-child(3) {
+  transform: translateX(16px) rotate(8deg);
+}
+
+.dockUnitThumb.fallback {
+  display: grid;
+  place-items: center;
+  background: linear-gradient(160deg, #4a3a22, #241a0e);
+  color: #d6b25e;
+}
+
+.dockUnitThumb.fallback.tier-silver {
+  background: linear-gradient(160deg, #5a5f68, #2a2d33);
+}
+
+.dockUnitThumb.fallback.tier-gold {
+  background: linear-gradient(160deg, #7a5f28, #3a2c10);
+}
+
+/* The unit-deck dropdown reuses the hero-board drop, just wider room for the list. */
+.heroDrop.unitDrop {
+  width: min(420px, 92vw);
+  max-height: min(70vh, 640px);
+  overflow-y: auto;
+  background: linear-gradient(180deg, rgba(38, 28, 16, 0.98), rgba(24, 17, 10, 0.99));
+  border: 1px solid rgba(170, 130, 70, 0.5);
+  border-radius: 12px;
+  padding: 6px 10px 12px;
+}
+
+.heroDrop.unitDrop .armyPanel {
+  border: none;
+  background: transparent;
+  padding: 0;
 }
 
 .heroDropClose {
@@ -11483,6 +11552,141 @@ img.cardBack {
   display: flex;
   flex-direction: column;
   background: #131311;
+}
+
+/* --- real printed building tiles (Factory) ---------------------------------
+ * Each slot shows its own portrait tile full-bleed — the built illustration or
+ * the name/cost plaque — so the board reads exactly like the physical one. No
+ * panorama slice underneath, so nothing muddies the art. */
+.tbFill.designed.realTiles {
+  gap: 0.35cqw;
+  padding: 0.35cqw;
+  background:
+    linear-gradient(160deg, #3a2a17, #1c130a);
+  box-shadow: none;
+}
+
+.tbRealTile {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: 0.55cqw;
+  /* The desert board shows in any slot with no printed tile on disk yet (the
+     Artifact Merchants placeholder); a real tile loads on top and covers it. */
+  background:
+    linear-gradient(180deg, rgb(0 0 0 / 12%), rgb(0 0 0 / 45%)),
+    url("/assets/towns-factory-background.webp") center / cover no-repeat;
+  box-shadow:
+    inset 0 0 0 1px rgb(0 0 0 / 60%),
+    0 0.25cqw 0.7cqw rgb(0 0 0 / 45%);
+}
+
+.tbRealTileImg {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+}
+
+/* An unbuilt slot sits a touch dimmer than a raised one; a buildable one lights
+   with the gold ring so "you can raise this now" is unmistakable. */
+.tbRealTile.unbuilt .tbRealTileImg {
+  filter: saturate(0.92) brightness(0.9);
+}
+
+.tbRealTile.unbuilt.buildable {
+  box-shadow:
+    inset 0 0 0 0.2cqw rgba(240, 196, 106, 0.9),
+    0 0 1.4cqw rgb(240 196 106 / 25%);
+}
+
+.tbRealTile.built {
+  box-shadow:
+    inset 0 0 0 1px rgba(240, 196, 106, 0.35),
+    0 0.25cqw 0.7cqw rgb(0 0 0 / 45%);
+}
+
+.tbRealPlate {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5cqw;
+  padding: 0.6cqw;
+  text-align: center;
+}
+
+.tbRealPlate b {
+  padding: 0.4cqw 0.7cqw;
+  border-radius: 0.35cqw;
+  background: linear-gradient(180deg, #2c6b34, #1c4a24);
+  border: 1px solid rgba(240, 224, 180, 0.8);
+  color: #f6eccf;
+  font-size: clamp(8px, 1.15cqw, 14px);
+  line-height: 1.12;
+}
+
+.tbRealPlate .tbCost {
+  padding: 0.25cqw 0.6cqw;
+  border-radius: 0.3cqw;
+  background: linear-gradient(180deg, #4a3018, #33200e);
+  border: 1px solid rgba(0, 0, 0, 0.5);
+  color: #efe0bf;
+}
+
+.tbRealBuilt {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3cqw;
+  color: #bfe6b0;
+  font-size: clamp(7px, 0.95cqw, 11px);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* A small "built" check in the corner of a raised tile, and the "Build" pill on
+   a buildable empty slot. */
+.tbRealBuiltBadge {
+  position: absolute;
+  top: 4%;
+  right: 5%;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 2cqw;
+  height: 2cqw;
+  min-width: 15px;
+  min-height: 15px;
+  border-radius: 50%;
+  border: 1px solid rgba(120, 220, 130, 0.85);
+  background: rgb(18 34 18 / 88%);
+  color: #bfe6b0;
+}
+
+.tbRealBuildBadge {
+  position: absolute;
+  left: 50%;
+  bottom: 5%;
+  transform: translateX(-50%);
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4cqw;
+  padding: 0.3cqw 0.75cqw;
+  border-radius: 999px;
+  border: 1px solid rgba(240, 196, 106, 0.9);
+  background: rgb(30 22 10 / 92%);
+  color: #f0c46a;
+  font-size: clamp(7px, 1cqw, 12px);
+  white-space: nowrap;
+  animation: tbPulse 1.8s ease-in-out infinite;
 }
 
 .tbDesignedTile {

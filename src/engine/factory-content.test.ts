@@ -12,6 +12,7 @@ import {
   startingTileByFaction
 } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
+import { townBoardSpecs, townBoardTileArt, townBoardUnbuiltTileArt } from "@/data/towns/boards";
 import { specialtyIconSrc } from "@/components/specialty-card-data";
 import { unitAbilities } from "@/data/units/abilities";
 import { adventureCards } from "@/data/cards/adventure";
@@ -125,6 +126,20 @@ describe("Factory faction — art wired, not playable", () => {
     expect(Object.keys(images).length).toBeGreaterThan(0);
     for (const [building, url] of Object.entries(images)) {
       expect(assetExists(url), `${building} building image missing: ${url}`).toBe(true);
+    }
+  });
+
+  it("renders the real printed BUILDING TILES (built art + name/cost plaque) — not the panorama reveal", () => {
+    const spec = townBoardSpecs.factory;
+    expect(spec.realTileArt, "factory board uses the real printed tiles").toBe(true);
+    // The muddy fullImage panorama-reveal is gone, so nothing overlays the tiles.
+    expect(spec.fullImage, "no panorama-reveal image").toBeUndefined();
+    // Every building with a real printed scan ships BOTH tile states on disk; the
+    // built art carries NO cost banner, the "-unbuilt" plaque carries the cost.
+    for (const building of ["city_hall", "citadel", "mage_guild", "bank", "dwelling_bronze", "dwelling_silver", "dwelling_gold"]) {
+      const id = `factory.${building}`;
+      expect(assetExists(townBoardTileArt(id)), `${id} built tile on disk`).toBe(true);
+      expect(assetExists(townBoardUnbuiltTileArt(id)), `${id} unbuilt plaque on disk`).toBe(true);
     }
   });
 

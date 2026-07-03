@@ -6,7 +6,7 @@ import Link from "next/link";
 import { assetUrl } from "@/lib/asset-url";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Ban, BookOpen, Castle, Check, ChevronsUp, Crown, Dices, Hammer, Hourglass, Image as ImageIcon, Info, Lock, Minus, Plus, RotateCcw, RotateCw, Shield, Sparkles, Swords, Unlock, X } from "lucide-react";
+import { Ban, BookOpen, Castle, Check, ChevronsUp, Crown, Dices, Hammer, Hourglass, Image as ImageIcon, Info, Layers, Lock, Minus, Plus, RotateCcw, RotateCw, Shield, Sparkles, Swords, Unlock, X } from "lucide-react";
 import { cardLibrary } from "@/data/cards/library";
 import { buildingTimingLabel, describeBuildingEffect } from "@/data/towns/describe";
 import { TOWN_TOKEN_ICONS, townIconUrl } from "@/data/towns/boards";
@@ -1919,7 +1919,8 @@ export function TownHeroDock({
   state,
   viewerPlayerId,
   heroSeatIds,
-  onOpenTown
+  onOpenTown,
+  armySeatId
 }: {
   state: GameState;
   viewerPlayerId: PlayerId;
@@ -1927,8 +1928,11 @@ export function TownHeroDock({
   heroSeatIds?: PlayerId[];
   /** Opens the Town window popup (omitted when the viewer has no town). */
   onOpenTown?: () => void;
+  /** Seat whose Unit deck this dock exposes as its own big tile (seated viewer). */
+  armySeatId?: PlayerId;
 }) {
   const [openHeroSeat, setOpenHeroSeat] = useState<PlayerId | null>(null);
+  const [armyOpen, setArmyOpen] = useState(false);
   const player = state.players[viewerPlayerId];
   const faction = player?.factionId ? coreFactionDefinitions[player.factionId] : undefined;
 
@@ -1937,7 +1941,10 @@ export function TownHeroDock({
     return seat && seat.id !== "neutrals" && seat.heroDefId;
   });
 
-  if (!onOpenTown && heroSeats.length === 0) {
+  const armyPlayer = armySeatId ? state.players[armySeatId] : undefined;
+  const army = armyPlayer?.army ?? [];
+
+  if (!onOpenTown && heroSeats.length === 0 && !armyPlayer) {
     return null;
   }
 
@@ -1954,7 +1961,7 @@ export function TownHeroDock({
           title="Open your town — build structures, recruit units and buy spells"
           type="button"
         >
-          <TownIcon factionId={faction.id} size={64} />
+          <TownIcon factionId={faction.id} size={82} />
           <span className="dockTileText">
             <strong>{faction.name} town</strong>
             <small>Build · Recruit · Spells</small>
@@ -2004,7 +2011,7 @@ export function TownHeroDock({
             title={`${heroDef.name} — open the hero board`}
             type="button"
           >
-            <HeroPortrait name={heroDef.name} portrait={heroDef.portrait} size={64} />
+            <HeroPortrait name={heroDef.name} portrait={heroDef.portrait} size={82} />
             <span className="dockTileText">
               <strong>{heroDef.name}</strong>
               <small>
@@ -2019,6 +2026,45 @@ export function TownHeroDock({
         );
       })}
 
+      {armyPlayer ? (
+        <button
+          aria-expanded={armyOpen}
+          aria-label="Open your unit deck"
+          className={`dockTile unitDockTile ${armyOpen ? "open" : ""}`}
+          onClick={() => setArmyOpen((value) => !value)}
+          style={{ "--dock-faction": playerFactionColor(armyPlayer.factionId) } as CSSProperties}
+          title="Your unit deck — the army your hero carries into battle"
+          type="button"
+        >
+          <span aria-hidden="true" className="dockUnitStack">
+            {army.slice(0, 3).map((unit, index) => {
+              const def = coreUnitDefinitions[unit.unitDefId];
+              const side = unit.side === "few" ? def?.few : def?.pack;
+              return side?.cardImage ? (
+                <img alt="" className="dockUnitThumb" key={unit.id} src={assetUrl(side.cardImage)} style={{ zIndex: 3 - index }} />
+              ) : (
+                <span className={`dockUnitThumb fallback tier-${def?.tier ?? "bronze"}`} key={unit.id} style={{ zIndex: 3 - index }} />
+              );
+            })}
+            {army.length === 0 ? (
+              <span className="dockUnitThumb fallback">
+                <Layers size={22} />
+              </span>
+            ) : null}
+          </span>
+          <span className="dockTileText">
+            <strong>Unit deck</strong>
+            <small>
+              {army.length} unit{army.length === 1 ? "" : "s"}
+            </small>
+            <small className="dockSubtle">Army cards</small>
+          </span>
+          <span aria-hidden="true" className="dockOpenHint">
+            {armyOpen ? "Close ▾" : "Open ▸"}
+          </span>
+        </button>
+      ) : null}
+
       {openHeroSeat ? (
         <>
           <div aria-hidden="true" className="heroDropBackdrop" onClick={() => setOpenHeroSeat(null)} />
@@ -2032,6 +2078,23 @@ export function TownHeroDock({
               <X aria-hidden="true" size={16} />
             </button>
             <HeroBoard playerId={openHeroSeat} state={state} />
+          </div>
+        </>
+      ) : null}
+
+      {armyOpen && armyPlayer ? (
+        <>
+          <div aria-hidden="true" className="heroDropBackdrop" onClick={() => setArmyOpen(false)} />
+          <div className="heroDrop unitDrop" role="dialog" aria-label="Unit deck">
+            <button
+              aria-label="Close the unit deck"
+              className="heroDropClose"
+              onClick={() => setArmyOpen(false)}
+              type="button"
+            >
+              <X aria-hidden="true" size={16} />
+            </button>
+            <ArmyPanel playerId={armyPlayer.id} state={state} />
           </div>
         </>
       ) : null}

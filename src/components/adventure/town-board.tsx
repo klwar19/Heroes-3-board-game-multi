@@ -11,6 +11,7 @@ import {
   TOWN_TOKEN_ICONS,
   townBoardSpecs,
   townBoardTileArt,
+  townBoardUnbuiltTileArt,
   townIconUrl,
   type TownBoardSpec,
   type TownTrackResource
@@ -229,6 +230,115 @@ function DesignedTileUnbuilt({
         <Hammer aria-hidden="true" size={compact ? 10 : 12} />
         not built{buildable ? " · buildable" : ""}
       </span>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Real printed BUILDING-TILE slots (Factory): the physical portrait tiles show
+// directly — the built illustration when raised, the name/cost plaque while
+// unbuilt. A building with no printed tile on disk (e.g. the Artifact Merchants
+// placeholder) falls back to a desert-styled plaque carrying its name + cost, so
+// the slot always reads and a real scan dropped in later upgrades it for free.
+// ---------------------------------------------------------------------------
+
+/**
+ * A printed tile that shows by default and hides itself only on a real 404, so
+ * the name plate BEHIND it becomes the placeholder for any building with no
+ * scan on disk yet. (Unlike LoadedImg's load-gating, this survives an image
+ * served from cache — onLoad may never fire there, but the tile is visible from
+ * the first paint.)
+ */
+function TileImg({ src }: { src: string }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return null;
+  }
+  return (
+    <img
+      alt=""
+      aria-hidden="true"
+      className="tbRealTileImg"
+      draggable={false}
+      onError={() => setFailed(true)}
+      src={assetUrl(src)}
+    />
+  );
+}
+
+function RealBuiltTile({ building, compact }: { building: TownBuildingDefinition; compact: boolean }) {
+  return (
+    <div className={`tbRealTile built ${compact ? "compact" : ""}`}>
+      {/* Name plate sits behind as the placeholder for a building with no printed
+          tile on disk yet; the real tile (when present) loads on top and hides it. */}
+      <span className="tbRealPlate" aria-hidden="true">
+        <b>{building.name}</b>
+        <small className="tbRealBuilt">
+          <Check aria-hidden="true" size={compact ? 9 : 12} /> built
+        </small>
+      </span>
+      <TileImg src={townBoardTileArt(building.id)} />
+      <span className="tbRealBuiltBadge" aria-hidden="true">
+        <Check size={compact ? 9 : 12} />
+      </span>
+    </div>
+  );
+}
+
+function RealUnbuiltTile({
+  building,
+  compact,
+  buildable
+}: {
+  building: TownBuildingDefinition;
+  compact: boolean;
+  buildable: boolean;
+}) {
+  return (
+    <div
+      className={`tbRealTile unbuilt ${compact ? "compact" : ""} ${buildable ? "buildable" : ""}`}
+      aria-label={`${building.name} — not built`}
+    >
+      <span className="tbRealPlate" aria-hidden="true">
+        <b>{building.name}</b>
+        <CostLine cost={building.cost} />
+      </span>
+      <TileImg src={townBoardUnbuiltTileArt(building.id)} />
+      {buildable ? (
+        <span className="tbRealBuildBadge" aria-hidden="true">
+          <Hammer size={compact ? 9 : 12} /> Build
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+/** One realTileArt bar: every slot as its printed portrait tile (built art or
+ *  name/cost plaque). Used for the whole bar whether or not anything is built. */
+function RealTileBar({
+  bar,
+  built,
+  buildableOf,
+  compact
+}: {
+  bar: readonly string[];
+  built: (buildingId: string) => boolean;
+  buildableOf: (buildingId: string) => boolean;
+  compact: boolean;
+}) {
+  return (
+    <div className="tbFill designed realTiles">
+      {bar.map((buildingId) => {
+        const building = coreBuildingDefinitions[buildingId];
+        if (!building) {
+          return null;
+        }
+        return built(buildingId) ? (
+          <RealBuiltTile building={building} compact={compact} key={buildingId} />
+        ) : (
+          <RealUnbuiltTile building={building} buildable={buildableOf(buildingId)} compact={compact} key={buildingId} />
+        );
+      })}
     </div>
   );
 }
@@ -628,7 +738,17 @@ export function TownBoardView({
             .join(", ");
           return (
             <div className={`tbBar ${partial ? "partial" : ""}`} key={index} style={style}>
-              {builtIds.length > 0 ? (
+              {spec.realTileArt ? (
+                // Real printed portrait tiles (Factory): each slot shows its own
+                // tile — the built illustration or the name/cost plaque — the
+                // whole bar, built or not, so it reads exactly like the board.
+                <RealTileBar
+                  bar={bar}
+                  built={built}
+                  buildableOf={(buildingId) => Boolean(buildActionFor(buildingId))}
+                  compact={bar.length > 1}
+                />
+              ) : builtIds.length > 0 ? (
                 // A real printed board scan crops its one fully-built photo per
                 // bar. Designed boards instead reveal the built-town image a
                 // slice at a time inside each DesignedTile (below), so they stay
