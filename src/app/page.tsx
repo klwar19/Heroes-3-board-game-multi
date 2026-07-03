@@ -150,17 +150,17 @@ import { MusicToggle } from "@/components/music-toggle";
 import {
   connectRoom,
   createRoomOnServer,
-  fetchRoomList,
   isResetDenied,
   requestCloseRoom,
   type GameRoomSnapshot,
-  type RoomConnection,
-  type RoomDirectoryEntry
+  type RoomConnection
 } from "@/lib/realtime";
 import { clearCachedRoom, loadCachedRoom, saveCachedRoom } from "@/lib/room-cache";
 import { getClientId, getDisplayName, setDisplayName as persistDisplayName } from "@/lib/identity";
+import { takePendingRoomName } from "@/lib/pending-room-name";
 import { RoomPanel } from "@/components/table/room-panel";
-import { LobbyScreen } from "@/components/lobby";
+import { LoadingScreen } from "@/components/menu/loading-screen";
+import { useRouter } from "next/navigation";
 
 /** Events that move cards or play battle effects on the table. */
 const FX_EVENT_TYPES = new Set<GameEvent["type"]>([
@@ -452,6 +452,13 @@ function getInitialRoomId(): string | null {
   return new URLSearchParams(window.location.search).get("room") || null;
 }
 
+/**
+ * Art preloaded behind the join-room loading bar: the setup-lobby wallpaper
+ * (the very next screen) and the map backdrop. Module-level so the manifest
+ * is referentially stable across renders.
+ */
+const JOIN_ROOM_PRELOAD_SLOTS = ["menu-backdrop", "lobby-backdrop"] as const;
+
 // ---------------------------------------------------------------------------
 // Local recovery cache: the latest in-progress game is mirrored to
 // localStorage so that if the (ephemeral) server recycles and comes back with
@@ -574,12 +581,9 @@ export default function Home() {
   const [roomId, setRoomId] = useState<string | null>(null);
   const [roomInput, setRoomInput] = useState("");
   const [roomVersion, setRoomVersion] = useState(0);
-  // Lobby room directory + a name to apply once a freshly created room connects
-  // (the create flow seeds it server-side too, but PartyKit needs this path).
-  const [lobbyRooms, setLobbyRooms] = useState<RoomDirectoryEntry[]>([]);
-  const [lobbySupported, setLobbySupported] = useState(true);
-  const [lobbyLoading, setLobbyLoading] = useState(true);
-  const [lobbyError, setLobbyError] = useState<string | null>(null);
+  // A name to apply once a freshly created room connects (the create flow on
+  // /play seeds it server-side too, but PartyKit needs this client path; the
+  // value crosses the /play→/?room= navigation via sessionStorage).
   const pendingRoomNameRef = useRef<{ roomId: string; name: string } | null>(null);
   const [syncStatus, setSyncStatus] = useState("connecting");
   /**
@@ -749,6 +753,12 @@ export default function Home() {
     if (initialRoom) {
       setRoomId(initialRoom);
       setRoomInput(initialRoom);
+      // A room created on /play carries its chosen name across the navigation;
+      // pick it up so applyPendingName can set it once connected (PartyKit).
+      const pendingName = takePendingRoomName();
+      if (pendingName && pendingName.roomId === initialRoom) {
+        pendingRoomNameRef.current = pendingName;
+      }
     }
     const storedName = getDisplayName();
     if (storedName) {
@@ -756,6 +766,19 @@ export default function Home() {
     }
   }, []);
   /* eslint-enable react-hooks/set-state-in-effect */
+
+  // The room browser moved to /play and the landing screen to /menu (expansion
+  // plan Phase 0): a bare visit — and any return to "no room", e.g. the host
+  // closing the table — leaves this page for the menu. The URL is consulted
+  // directly because on a shared ?room= link this effect can run BEFORE the
+  // mount effect above has copied the room id into state; a deep link must
+  // never bounce to the menu.
+  const router = useRouter();
+  useEffect(() => {
+    if (roomId === null && !getInitialRoomId()) {
+      router.replace("/menu");
+    }
+  }, [roomId, router]);
 
   // The draw cue needs the live seat without resubscribing the stream.
   const viewerRef = useRef<PlayerId>("p1");
@@ -3157,76 +3180,13 @@ export default function Home() {
       .catch(() => setErrors(["Could not create the room."]));
   };
 
-  /** Leave the current room and return to the lobby room browser. */
+  /**
+   * Leave the current room for the room browser (/play, where the directory
+   * now lives). Navigation unmounts this page, which closes the connection
+   * and drops all in-room state.
+   */
   const goToLobby = () => {
-    setErrors([]);
-    setState(null);
-    setRoomVersion(0);
-    setFeedItems([]);
-    if (typeof window !== "undefined") {
-      window.history.replaceState(null, "", window.location.pathname);
-    }
-    setRoomInput("");
-    setRoomId(null);
-  };
-
-  // ---- Lobby (room browser) -------------------------------------------------
-  // Only updates state in async callbacks (never synchronously) so it is safe
-  // to call from the polling effect below without cascading renders.
-  const refreshLobby = useCallback(() => {
-    fetchRoomList(clientId)
-      .then((result) => {
-        setLobbyRooms(result.rooms);
-        setLobbySupported(result.supported);
-        setLobbyError(null);
-      })
-      .catch(() => setLobbyError("Could not load the room list."))
-      .finally(() => setLobbyLoading(false));
-  }, [clientId]);
-
-  // Poll the directory while in the lobby; stop once a room is entered.
-  useEffect(() => {
-    if (roomId) {
-      return;
-    }
-    refreshLobby();
-    const intervalId = window.setInterval(refreshLobby, 5000);
-    return () => window.clearInterval(intervalId);
-  }, [roomId, refreshLobby]);
-
-  const handleLobbyCreate = (name: string) => {
-    setLobbyError(null);
-    createRoomOnServer({
-      name: name || undefined,
-      createdByName: displayName.trim() || undefined
-    })
-      .then(({ roomId: newRoomId }) => {
-        // PartyKit creates rooms implicitly, so carry the chosen name to apply
-        // via SET_ROOM_NAME once connected (a no-op on the API backend, which
-        // already seeded it server-side).
-        if (name) {
-          pendingRoomNameRef.current = { roomId: newRoomId, name };
-        }
-        switchToRoom(newRoomId);
-      })
-      .catch(() => setLobbyError("Could not create the room."));
-  };
-
-  const handleLobbyClose = (targetRoomId: string) => {
-    if (
-      typeof window !== "undefined" &&
-      !window.confirm("Close this room for everyone? This deletes the game and cannot be undone.")
-    ) {
-      return;
-    }
-    requestCloseRoom(targetRoomId, clientId)
-      .then((result) => {
-        if (!result.closed) {
-          setLobbyError(result.reason ?? "Could not close the room.");
-        }
-        refreshLobby();
-      })
-      .catch(() => setLobbyError("Could not close the room."));
+    router.push("/play");
   };
 
   /** Close (delete) the room the player is currently in, then go to the lobby. */
@@ -3265,33 +3225,26 @@ export default function Home() {
         : "combat";
   useBackgroundMusic(musicScene);
 
-  // No room selected → the multiplayer lobby (room browser). A shared ?room=
-  // link sets roomId, so this only shows on a bare visit or after leaving.
+  // No room selected → this page has nothing to show anymore: the effect
+  // above is already replacing it with /menu (the room browser lives on
+  // /play). This renders during SSR/hydration and for the moment the
+  // redirect takes; a shared ?room= link instead sets roomId right after
+  // mount and never leaves this page.
   if (roomId === null) {
-    return (
-      <LobbyScreen
-        rooms={lobbyRooms}
-        supported={lobbySupported}
-        loading={lobbyLoading}
-        error={lobbyError}
-        displayName={displayName}
-        onRename={onRename}
-        onRefresh={refreshLobby}
-        onJoin={(id) => switchToRoom(id)}
-        onCreate={handleLobbyCreate}
-        onClose={handleLobbyClose}
-      />
-    );
+    return <LoadingScreen title="Opening the main menu…" />;
   }
 
   if (!state || !playerView) {
     return (
-      <main className="tableRoot loadingRoot">
-        {/* The room id comes from the URL, which the server cannot see. */}
-        <p className="observerNote" suppressHydrationWarning>
-          Joining room “{roomId}”… {syncStatus}
-        </p>
-      </main>
+      <LoadingScreen
+        // The room id comes from the URL, which the server cannot see
+        // (LoadingScreen suppresses the hydration warning on the title).
+        title={`Joining room “${roomId}”…`}
+        status={syncStatus}
+        // Real progress: the wallpaper of the setup lobby that renders next
+        // and the adventure-map backdrop behind it.
+        preloadSlots={JOIN_ROOM_PRELOAD_SLOTS}
+      />
     );
   }
 

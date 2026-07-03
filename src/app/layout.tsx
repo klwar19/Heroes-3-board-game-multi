@@ -18,11 +18,12 @@ export default function RootLayout({
       <body>
         <div className="appShell">
           <header className="topBar">
-            <Link className="brand" href="/">
+            <Link className="brand" href="/menu">
               Heroes 3 Board Game Multi
             </Link>
             <nav className="navLinks" aria-label="Primary navigation">
-              <Link href="/">Prototype</Link>
+              <Link href="/menu">Menu</Link>
+              <Link href="/play">Multiplayer</Link>
               <Link href="/credits">Credits</Link>
             </nav>
           </header>
