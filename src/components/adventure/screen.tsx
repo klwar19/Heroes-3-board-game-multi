@@ -661,6 +661,7 @@ export function HexMapBoard({
     artLayer.push(
       <image
         className="tileArt"
+        data-fx-anchor={`tile:${tile.id}`}
         height={height}
         href={assetUrl(image)}
         key={`art-${tile.id}`}
@@ -3210,6 +3211,196 @@ export function AdventureDecksPanel({
         })}
       </div>
     </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Spell Book (house rule): a real, openable book. The toggle button lives in
+// the top card bar; clicking it opens this two-page spread — an index of the
+// stored Spells on the left page and the selected Spell's illustrated plate
+// (art + school/level + rules text + cast actions) on the right.
+// ---------------------------------------------------------------------------
+
+/**
+ * Per-spell book illustration override. EMPTY today: drop a book-style plate
+ * illustration at `/assets/spellbook/<id>.webp` and register it here and the
+ * Book shows it on the right page instead of the small deck scan — a clear,
+ * self-contained home for real (gen) art with no layout change. Falls back to
+ * the card's own `assets.cardImage` when there is no override.
+ */
+const SPELL_BOOK_ART: Record<string, string> = {};
+
+/** School accent colours used for the Book's chips and index dots. */
+const SPELL_SCHOOL_COLORS: Record<string, string> = {
+  air: "#7fd4ff",
+  earth: "#9bd36a",
+  fire: "#ff8a5c",
+  water: "#5ca8ff"
+};
+
+function spellBookArtFor(cardId: string): string | undefined {
+  return SPELL_BOOK_ART[cardId] ?? cardLibrary[cardId]?.assets?.cardImage;
+}
+
+export function SpellBookModal({
+  cardIds,
+  castsByCard,
+  onCast,
+  onClose
+}: {
+  /** The stored Spell ids, in Book order. */
+  cardIds: string[];
+  /** Cast actions available right now for each stored Spell id (from the Book).
+      Read-only so a `Map<string, PlayLegal[]>` widens in cleanly. */
+  castsByCard: ReadonlyMap<string, readonly LegalAction[]>;
+  /** Start a cast (the caller stages/arms it, then may close the Book). */
+  onCast: (legal: LegalAction) => void;
+  onClose: () => void;
+}) {
+  const [selected, setSelected] = useState(0);
+  const [artFailed, setArtFailed] = useState<string | null>(null);
+
+  // Esc closes the Book, matching the game's other modals.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  if (typeof document === "undefined") {
+    return null;
+  }
+
+  // Clamp to the current page count so a spell cast away from the Book never
+  // leaves the plate pointing past the end.
+  const index = Math.min(selected, Math.max(0, cardIds.length - 1));
+  const activeId = cardIds[index];
+  const card = activeId ? cardLibrary[activeId] : undefined;
+  const art = activeId ? spellBookArtFor(activeId) : undefined;
+  const casts = activeId ? castsByCard.get(activeId) ?? [] : [];
+  const schools = card?.spellSchools ?? [];
+  const accent = SPELL_SCHOOL_COLORS[schools[0] ?? ""] ?? "var(--gold)";
+
+  return createPortal(
+    <div className="spellBookBackdrop" role="dialog" aria-modal="true" aria-label="Spell Book" onMouseDown={onClose}>
+      <div
+        className="spellBookBook"
+        onMouseDown={(event) => event.stopPropagation()}
+        style={{ "--spell-accent": accent } as CSSProperties}
+      >
+        <button aria-label="Close the Spell Book" className="spellBookBookClose" onClick={onClose} type="button">
+          <X aria-hidden="true" size={16} />
+        </button>
+
+        {/* LEFT PAGE — the index of stored Spells */}
+        <div className="spellBookPage left">
+          <div className="spellBookPlateHeader">
+            <BookOpen aria-hidden="true" size={18} />
+            <strong>Spell Book</strong>
+          </div>
+          <p className="spellBookBlurb">
+            Spells set aside for later. Cast one on your turn or in combat (the normal Spell limit still applies), or
+            stash more from your hand with a card&apos;s 📖 button.
+          </p>
+          {cardIds.length === 0 ? (
+            <p className="spellBookEmpty">
+              The pages are blank. Stash a hand Spell with its 📖 button to inscribe it here.
+            </p>
+          ) : (
+            <ul className="spellBookIndex">
+              {cardIds.map((id, itemIndex) => {
+                const entry = cardLibrary[id];
+                const school = entry?.spellSchools?.[0];
+                return (
+                  <li key={`${id}-${itemIndex}`}>
+                    <button
+                      className={`spellBookIndexItem ${itemIndex === index ? "active" : ""}`}
+                      onClick={() => setSelected(itemIndex)}
+                      type="button"
+                    >
+                      <span
+                        className={`spellBookIndexDot ${entry?.spellLevel ?? "basic"}`}
+                        style={{ "--spell-accent": SPELL_SCHOOL_COLORS[school ?? ""] ?? "var(--gold)" } as CSSProperties}
+                      />
+                      <span className="spellBookIndexName">{entry?.name ?? id}</span>
+                      <span className="spellBookIndexLevel">{entry?.spellLevel === "expert" ? "Expert" : "Basic"}</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+
+        <div className="spellBookSpine" aria-hidden="true" />
+
+        {/* RIGHT PAGE — the selected Spell's illustrated plate. Keyed by id so
+            switching spells re-triggers the page-turn animation. */}
+        <div className="spellBookPage right" key={activeId ?? "empty"}>
+          {card ? (
+            <>
+              <div className="spellBookArtSlot" data-spell-id={activeId}>
+                {art && artFailed !== art ? (
+                  <img
+                    alt={card.name}
+                    className="spellBookArt"
+                    draggable={false}
+                    onError={() => setArtFailed(art ?? null)}
+                    referrerPolicy="no-referrer"
+                    src={assetUrl(art)}
+                  />
+                ) : (
+                  <div className="spellBookArtFallback">
+                    <Sparkles aria-hidden="true" size={26} />
+                    <span>{card.name}</span>
+                  </div>
+                )}
+                <span aria-hidden="true" className="spellBookArtFrame" />
+              </div>
+              <h3 className="spellBookSpellTitle">{card.name}</h3>
+              <div className="spellBookChips">
+                <span className={`spellBookChip level ${card.spellLevel ?? "basic"}`}>
+                  {card.spellLevel === "expert" ? "Expert" : "Basic"} spell
+                </span>
+                {schools.map((school) => (
+                  <span
+                    className="spellBookChip school"
+                    key={school}
+                    style={{ "--spell-accent": SPELL_SCHOOL_COLORS[school] ?? "var(--gold)" } as CSSProperties}
+                  >
+                    {titleCaseLocation(school)}
+                  </span>
+                ))}
+                {typeof card.power === "number" ? <span className="spellBookChip power">Power {card.power}</span> : null}
+              </div>
+              <p className="spellBookDefinition">{cardRulesText(activeId)}</p>
+              <div className="spellBookActions">
+                {casts.map((legal) => (
+                  <button className="commandButton primary" key={actionKey(legal.action)} onClick={() => onCast(legal)} type="button">
+                    {legal.label}
+                  </button>
+                ))}
+                {casts.length === 0 ? (
+                  <small className="spellBookNote">
+                    Castable in combat — or as a Map Spell on your turn, when the normal Spell limit allows.
+                  </small>
+                ) : null}
+              </div>
+            </>
+          ) : (
+            <div className="spellBookEmptyPage">
+              <BookOpen aria-hidden="true" size={40} />
+              <p>No spell selected.</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body
   );
 }
 

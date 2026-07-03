@@ -24,6 +24,7 @@ import { TownBoardView, TownWindow } from "./town-board";
 import { AdventureHud, PreBattlePanel, TownHeroDock } from "./screen";
 import { CardZoomProvider } from "@/components/table/zoom";
 import { createAdventureGameState, getLegalActions } from "@/engine";
+import { coreBuildingDefinitions } from "@/data/factions/core";
 import { getMainHero } from "@/engine/adventure";
 import { startPlayerCombat } from "@/engine/adventure-reducer";
 import type { GameState } from "@/engine/state";
@@ -75,15 +76,21 @@ describe("TownBoardView — bars", () => {
     expect(container.querySelector(".tbPartialNote")).toBeNull();
   });
 
-  it("a half-built SHARED bar blurs the crop and names the missing sibling", () => {
+  it("a half-built SHARED bar blurs the crop and names BOTH the built and missing siblings", () => {
     const state = freshState();
     // Castle bar 3 holds Towers (dwelling_bronze) + Blacksmith.
     state.towns.town_p1.buildings.push("castle.dwelling_bronze");
     const { container } = render(viewFor(state));
     expect(container.querySelector(".tbFill.partial")).toBeTruthy();
-    const note = container.querySelector(".tbPartialNote");
-    expect(note?.textContent).toMatch(/Blacksmith/);
-    expect(note?.textContent).toMatch(/not built/i);
+    // The BUILT sibling is named with a positive "built" marker — so a scan bar
+    // whose crop shows both buildings is not mistaken for fully built.
+    const built = container.querySelector(".tbPartialBuilt");
+    expect(built?.textContent).toMatch(/built/i);
+    expect(built?.textContent).toContain(coreBuildingDefinitions["castle.dwelling_bronze"].name);
+    // ...and the not-built sibling stays clearly named.
+    const missing = container.querySelector(".tbPartialMissing");
+    expect(missing?.textContent).toMatch(/Blacksmith/);
+    expect(missing?.textContent).toMatch(/not built/i);
   });
 
   it("CONTROL: the shared bar sheds the blur and note once BOTH halves are built", () => {
