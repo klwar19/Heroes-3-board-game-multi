@@ -157,7 +157,7 @@ import {
 } from "@/lib/realtime";
 import { clearCachedRoom, loadCachedRoom, saveCachedRoom } from "@/lib/room-cache";
 import { getClientId, getDisplayName, setDisplayName as persistDisplayName } from "@/lib/identity";
-import { takePendingRoomName } from "@/lib/pending-room-name";
+import { takePendingRoomHosted, takePendingRoomName } from "@/lib/pending-room-name";
 import { RoomPanel } from "@/components/table/room-panel";
 import { LoadingScreen } from "@/components/menu/loading-screen";
 import { useRouter } from "next/navigation";
@@ -587,6 +587,8 @@ export default function Home() {
   // /play seeds it server-side too, but PartyKit needs this client path; the
   // value crosses the /play→/?room= navigation via sessionStorage).
   const pendingRoomNameRef = useRef<{ roomId: string; name: string } | null>(null);
+  // A Closed table chosen at /play: host this room once connected (creator → host).
+  const pendingRoomHostedRef = useRef<string | null>(null);
   const [syncStatus, setSyncStatus] = useState("connecting");
   /**
    * The room server's engine signature from the latest snapshot. When it
@@ -760,6 +762,11 @@ export default function Home() {
       const pendingName = takePendingRoomName();
       if (pendingName && pendingName.roomId === initialRoom) {
         pendingRoomNameRef.current = pendingName;
+      }
+      // A Closed table chosen at create time → host it once we are a member.
+      const pendingHosted = takePendingRoomHosted();
+      if (pendingHosted && pendingHosted === initialRoom) {
+        pendingRoomHostedRef.current = pendingHosted;
       }
     }
     const storedName = getDisplayName();
@@ -2954,6 +2961,15 @@ export default function Home() {
       if (pending && pending.roomId === roomId && pending.name) {
         pendingRoomNameRef.current = null;
         void connection.submitAction({ type: "SET_ROOM_NAME", clientId, name: pending.name }).catch(() => {});
+      }
+      // Closed table: turn hosting on now that we are a member (idempotent — a
+      // no-op if the room is already hosted, e.g. after a reconnect).
+      const hostedRoomId = pendingRoomHostedRef.current;
+      if (hostedRoomId && hostedRoomId === roomId) {
+        pendingRoomHostedRef.current = null;
+        if (!state.room?.hosted) {
+          void connection.submitAction({ type: "SET_ROOM_HOSTED", clientId, hosted: true }).catch(() => {});
+        }
       }
     };
 
