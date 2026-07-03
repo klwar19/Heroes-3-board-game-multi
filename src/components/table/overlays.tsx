@@ -5,6 +5,7 @@
 import { Check, CircleOff, Crown, Dices, Hourglass, Layers, Plus, Sparkles, Sunrise, Swords, Undo2, Zap } from "lucide-react";
 import { assetUrl } from "@/lib/asset-url";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { RESOURCE_ICONS } from "@/data/assets/homm-assets";
 import { cardLibrary } from "@/data/cards/library";
 import { getFxSheet } from "@/data/fx";
 import { playDiceRoll, playLibrarySound } from "@/lib/sound";
@@ -1255,10 +1256,13 @@ const MAP_CUBE_FINAL = [
 const RESOURCE_DIE_LAYOUT: { resource: "buildingMaterials" | "valuables" | "gold"; amount: number }[] =
   RESOURCE_DIE_FACES.map((face) => ({ resource: face.resource, amount: face.amount }));
 
+// The Resource die cube faces use the same real board-game resource art as the
+// resource bar (shared RESOURCE_ICONS registry) — the coin stack, stone pile
+// and red crystal cluster — instead of the old leather .gif icons.
 const RESOURCE_FACE_ICONS: Record<string, string> = {
-  gold: "/assets/icons/gold_leather.gif",
-  buildingMaterials: "/assets/icons/ore_leather.gif",
-  valuables: "/assets/icons/crystal_leather.gif"
+  gold: RESOURCE_ICONS.gold,
+  buildingMaterials: RESOURCE_ICONS.buildingMaterials,
+  valuables: RESOURCE_ICONS.valuables
 };
 
 /** The printed Treasure die: 2× experience, 2× artifact, 1× die, 1× 2 dice. */

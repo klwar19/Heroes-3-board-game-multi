@@ -4,6 +4,7 @@
 
 import { ChevronDown, ChevronUp, Crown, Mountain, Plus, ScrollText, Shield, Sparkles, Swords } from "lucide-react";
 import { assetUrl } from "@/lib/asset-url";
+import { COMBAT_TOKEN_IMAGES } from "@/data/assets/homm-assets";
 import { cardLibrary } from "@/data/cards/library";
 import { getFxSheet } from "@/data/fx";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -171,22 +172,37 @@ export function battlefieldCellPlacement(
   };
 }
 
-const TOKEN_GLYPHS: Record<CombatTokenState["kind"], { symbol: string; describe: (token: CombatTokenState) => string }> = {
+/**
+ * On-card combat-token art: the real printed board-game tokens
+ * (COMBAT_TOKEN_IMAGES — the crossed-swords Attack disc, the silver-swords
+ * Weakness disc, the prohibited-shield Corrosion disc, the gorgon-head
+ * Paralysis disc) drawn as a small disc. The engine's LIVE signed amount is
+ * overlaid because the printed denomination varies (+1/+2, −1/−2, −1), so the
+ * number is authored from state — never trust the baked art number. `describe`
+ * drives the hover tooltip.
+ */
+const TOKEN_VIEW: Record<
+  CombatTokenState["kind"],
+  { image: string; showAmount: boolean; describe: (token: CombatTokenState) => string }
+> = {
   attack: {
-    symbol: "⚔",
-    describe: (token) =>
-      `Attack token: ${token.amount >= 0 ? "+" : ""}${token.amount} attack (${token.sourceName})`
+    image: COMBAT_TOKEN_IMAGES.attack,
+    showAmount: true,
+    describe: (token) => `Attack token: ${token.amount >= 0 ? "+" : ""}${token.amount} attack (${token.sourceName})`
   },
   weakness: {
-    symbol: "⚔",
+    image: COMBAT_TOKEN_IMAGES.weakness,
+    showAmount: true,
     describe: (token) => `Weakness token: ${token.amount} attack (${token.sourceName})`
   },
   corrosion: {
-    symbol: "🛡",
+    image: COMBAT_TOKEN_IMAGES.corrosion,
+    showAmount: true,
     describe: (token) => `Corrosion token: ${token.amount} defense, minimum 0, until the end of combat (${token.sourceName})`
   },
   paralysis: {
-    symbol: "💫",
+    image: COMBAT_TOKEN_IMAGES.paralysis,
+    showAmount: false,
     describe: (token) => `Paralysis: skips its next activation; removed when it takes damage (${token.sourceName})`
   }
 };
@@ -202,20 +218,26 @@ function TokenChips({ unit }: { unit: CombatUnitState }) {
   return (
     <span className="tokenChips" aria-label="Combat tokens">
       {tokens.map((token) => {
-        const glyph = TOKEN_GLYPHS[token.kind];
+        const view = TOKEN_VIEW[token.kind];
         return (
-          <b className={`tokenChip ${token.kind}`} key={token.id} title={glyph.describe(token)}>
-            {token.kind === "paralysis" ? glyph.symbol : `${token.amount > 0 ? "+" : ""}${token.amount}${glyph.symbol}`}
-          </b>
+          <span className={`tokenChip ${token.kind}`} key={token.id} title={view.describe(token)}>
+            <img alt="" aria-hidden="true" className="tokenChipArt" draggable={false} src={assetUrl(view.image)} />
+            {view.showAmount ? (
+              <b className="tokenChipAmount">
+                {token.amount > 0 ? "+" : ""}
+                {token.amount}
+              </b>
+            ) : null}
+          </span>
         );
       })}
       {poisonCubes > 0 ? (
-        <b
+        <span
           className="tokenChip poison"
           title={`Poison: ${poisonCubes} faction cube${poisonCubes === 1 ? "" : "s"} — 1 damage at the start of each of this unit's activations`}
         >
-          {poisonCubes}🟢
-        </b>
+          <b className="tokenChipAmount">{poisonCubes}🟢</b>
+        </span>
       ) : null}
     </span>
   );
@@ -1600,14 +1622,28 @@ export function InspectPanel({ state, unitId }: { state: GameState; unitId: stri
         </div>
         {getUnitTokens(unit).length > 0 ? (
           <div className="inspectTokens">
-            {getUnitTokens(unit).map((token) => (
-              <span className={`tokenChip ${token.kind}`} key={token.id} title={TOKEN_GLYPHS[token.kind].describe(token)}>
-                {token.kind === "paralysis"
-                  ? `${TOKEN_GLYPHS[token.kind].symbol} paralysis`
-                  : `${token.amount > 0 ? "+" : ""}${token.amount}${TOKEN_GLYPHS[token.kind].symbol} ${token.kind}`}
-                {token.expiresAtCombatRoundEnd !== undefined ? ` (until round ${token.expiresAtCombatRoundEnd} ends)` : ""}
-              </span>
-            ))}
+            {getUnitTokens(unit).map((token) => {
+              const view = TOKEN_VIEW[token.kind];
+              const expiry =
+                token.expiresAtCombatRoundEnd !== undefined ? ` · until round ${token.expiresAtCombatRoundEnd} ends` : "";
+              // The disc badge already carries the signed amount, so the row
+              // text names only the kind (+ any expiry) to avoid a doubled number.
+              const label = `${token.kind}${expiry}`;
+              return (
+                <span className="inspectTokenRow" key={token.id} title={view.describe(token)}>
+                  <span className={`tokenChip ${token.kind}`}>
+                    <img alt="" aria-hidden="true" className="tokenChipArt" draggable={false} src={assetUrl(view.image)} />
+                    {view.showAmount ? (
+                      <b className="tokenChipAmount">
+                        {token.amount > 0 ? "+" : ""}
+                        {token.amount}
+                      </b>
+                    ) : null}
+                  </span>
+                  <span className="inspectTokenText">{label}</span>
+                </span>
+              );
+            })}
           </div>
         ) : null}
         {abilities.length > 0 ? (

@@ -1,13 +1,25 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element */
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { MenuShell } from "@/components/menu/menu-shell";
+import { SKILL_ICONS } from "@/data/assets/homm-assets";
 import { DEFAULT_SERVER } from "@/data/servers";
+import { assetUrl } from "@/lib/asset-url";
 import { fetchSession, logout, type SelfProfile } from "@/lib/auth-client";
 import { authEnabled } from "@/lib/auth-mode";
 import { getDisplayName } from "@/lib/identity";
+
+/**
+ * Main-menu buttons in the "In the Wake of Gods" style: a golden serif label
+ * with a thematic secondary-skill emblem, over a gilt leather plaque. Each
+ * button's emblem is the logical skill for that destination.
+ */
+function MenuNavIcon({ icon }: { icon: string }) {
+  return <img alt="" aria-hidden="true" className="menuNavIcon" draggable={false} src={assetUrl(icon)} />;
+}
 
 /**
  * Main menu: the hub between login and the multiplayer lobby. Single player is
@@ -73,39 +85,63 @@ export default function MenuPage() {
           title="Not available yet — games vs AI are outside the multiplayer foundation"
           type="button"
         >
-          Single player
-          <small>Coming later — this fan project is multiplayer first</small>
+          <MenuNavIcon icon={SKILL_ICONS.attack} />
+          <span className="menuNavText">
+            <span className="menuNavLabel">Single player</span>
+            <small>Coming later — this fan project is multiplayer first</small>
+          </span>
         </button>
         <Link className="menuNavButton" href="/play">
-          Multiplayer
-          <small>{DEFAULT_SERVER.name} server — browse tables or open your own</small>
+          <MenuNavIcon icon={SKILL_ICONS.leadership} />
+          <span className="menuNavText">
+            <span className="menuNavLabel">Multiplayer</span>
+            <small>{DEFAULT_SERVER.name} server — browse tables or open your own</small>
+          </span>
         </Link>
         <Link className="menuNavButton" href="/battle">
-          Battle Test
-          <small>Shared arenas — set up and try a fight with other players</small>
+          <MenuNavIcon icon={SKILL_ICONS.artillery} />
+          <span className="menuNavText">
+            <span className="menuNavLabel">Battle Test</span>
+            <small>Shared arenas — set up and try a fight with other players</small>
+          </span>
         </Link>
         <Link className="menuNavButton" href="/designer">
-          Map Designer
-          <small>Build and share custom maps for everyone to play on</small>
+          <MenuNavIcon icon={SKILL_ICONS.pathfinding} />
+          <span className="menuNavText">
+            <span className="menuNavLabel">Map Designer</span>
+            <small>Build and share custom maps for everyone to play on</small>
+          </span>
         </Link>
         <Link className="menuNavButton" href="/hall-of-fame">
-          Hall of Fame
-          <small>{accounts ? "Rankings by MMR" : "Rankings open with player accounts"}</small>
+          <MenuNavIcon icon={SKILL_ICONS.luck} />
+          <span className="menuNavText">
+            <span className="menuNavLabel">Hall of Fame</span>
+            <small>{accounts ? "Rankings by MMR" : "Rankings open with player accounts"}</small>
+          </span>
         </Link>
         <Link className="menuNavButton" href="/credits">
-          Credits
-          <small>Sources and art attribution</small>
+          <MenuNavIcon icon={SKILL_ICONS.wisdom} />
+          <span className="menuNavText">
+            <span className="menuNavLabel">Credits</span>
+            <small>Sources and art attribution</small>
+          </span>
         </Link>
         {accounts && account ? (
           <>
             <Link className="menuNavButton" href="/profile">
-              Profile
-              <small>Contact details other players can reach you at</small>
+              <MenuNavIcon icon={SKILL_ICONS.intelligence} />
+              <span className="menuNavText">
+                <span className="menuNavLabel">Profile</span>
+                <small>Contact details other players can reach you at</small>
+              </span>
             </Link>
             {account.role === "admin" ? (
               <Link className="menuNavButton" href="/admin">
-                Admin
-                <small>Moderate players and rooms</small>
+                <MenuNavIcon icon={SKILL_ICONS.interference} />
+                <span className="menuNavText">
+                  <span className="menuNavLabel">Admin</span>
+                  <small>Moderate players and rooms</small>
+                </span>
               </Link>
             ) : null}
             <button
@@ -116,8 +152,11 @@ export default function MenuPage() {
               }}
               type="button"
             >
-              Logout
-              <small>End this session</small>
+              <MenuNavIcon icon={SKILL_ICONS.logistics} />
+              <span className="menuNavText">
+                <span className="menuNavLabel">Logout</span>
+                <small>End this session</small>
+              </span>
             </button>
           </>
         ) : null}

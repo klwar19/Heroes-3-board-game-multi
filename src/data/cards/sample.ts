@@ -121,6 +121,10 @@ export const sampleCards: CardLibrary = {
   // side worth the regular card's expert value, with no separate expert play.
   // Attack/Defense/Power are a flat +2; Knowledge recalls the spell AND raises
   // the spell limit by 1 without spending a crown.
+  // Card faces: Defense and Knowledge carry their own distinct "Empowered"
+  // scans (statistics-<stat>-empowered.webp); Attack and Power reuse the base
+  // statistic face because the source set ships no separate empowered scan for
+  // them (statistics-art.test.ts pins the distinct pair and the reuse).
   "stat.attack.empowered": {
     id: "stat.attack.empowered",
     name: "Empowered Attack",
@@ -167,7 +171,8 @@ export const sampleCards: CardLibrary = {
       amount: 2
     },
     assets: {
-      cardImage: "/assets/statistics-defense.webp",
+      // Distinct "Empowered" face — the real board-game scan, not the base art.
+      cardImage: "/assets/statistics-defense-empowered.webp",
       imageAlt: "Empowered Defense statistic card"
     },
     implementationStatus: "implemented",
@@ -221,7 +226,8 @@ export const sampleCards: CardLibrary = {
       basicSpellLimitBonus: 1
     },
     assets: {
-      cardImage: "/assets/statistics-knowledge.webp",
+      // Distinct "Empowered" face — the real board-game scan, not the base art.
+      cardImage: "/assets/statistics-knowledge-empowered.webp",
       imageAlt: "Empowered Knowledge statistic card"
     },
     implementationStatus: "implemented",
