@@ -34,6 +34,7 @@ import {
 import { drawCardsForPlayer, shuffleCards } from "./decks";
 import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
 import { parallelInteractionBlocker, stopParallelTurns } from "./parallel-turns";
+import { removePermanentFromPlayToRemoved } from "./permanents";
 import {
   applyUnitSideRules,
   canAcquireSharedDeckCard,
@@ -208,6 +209,17 @@ export function getAstrologersState(state: GameState): AstrologersState | null {
 export function getActiveAstrologersCard(state: GameState): AstrologersCardDefinition | null {
   const cardId = state.adventure?.astrologers?.activeCardId;
   return cardId ? (astrologersCardDefinitions[cardId] ?? null) : null;
+}
+
+/**
+ * Sanctuary (Astrologers): whether Hero-vs-Hero attacks are banned right now.
+ * The card is "during this round", so the ban applies only on the even
+ * Astrologers round it was drawn — it lifts on the following (odd) Resource
+ * round even though the card stays face up until the next Astrologers round.
+ * Read at the PvP-combat chokepoint (startPlayerCombat).
+ */
+export function pvpAttacksBanned(state: GameState): boolean {
+  return getActiveAstrologersCard(state)?.effect.type === "PVP_ATTACK_BAN" && state.round % 2 === 0;
 }
 
 /** Hand limit including temporary Astrologers effects (Profuse Growth). */
@@ -6797,7 +6809,11 @@ function resolveAstrologersCard(state: GameState, card: AstrologersCardDefinitio
     case "WAR_MACHINE_BUFF":
     case "GRANT_WAR_MACHINE_CHOICE":
     case "EMPOWER_PER_DISCARD":
+    case "PVP_ATTACK_BAN":
+    case "SPELL_SEARCH_WIDEN":
       // Passive while the card stays face up (read where the effect applies:
+      // Sanctuary's PvP ban in startPlayerCombat via pvpAttacksBanned; the Spells
+      // Search widening in openSharedDeckSearch;
       // hand-limit in effectiveHandLimit, die rerolls in maybeReroll, the spell
       // bonuses in getCurrentSpellPower, the spell return in maybeReturnSpell;
       // Hero's paid empower is offered at the start of each turn, see
@@ -6824,6 +6840,26 @@ function resolveAstrologersCard(state: GameState, card: AstrologersCardDefinitio
     case "REMOVE_BLACK_CUBES":
       for (const field of Object.values(adventure.fields)) {
         field.blackCube = false;
+      }
+      break;
+    case "REMOVE_PERMANENT_FOR_GOLD":
+      // Destruction: every player holding a permanent must Remove it (out of the
+      // GAME) and take the gold. Immediate + mandatory like the morale cards —
+      // no interaction, so it resolves cleanly at round start in ordered AND
+      // parallel play (all seats handled here before anyone takes a turn). A
+      // player with no permanent is untouched and gains nothing.
+      for (const playerId of playerIds) {
+        const removed = removePermanentFromPlayToRemoved(state, playerId);
+        if (!removed) {
+          continue;
+        }
+        appendEvent(state, { type: "PERMANENT_DISCARDED", playerId, cardId: removed, reason: "destruction" });
+        gainResources(
+          state,
+          playerId,
+          { gold: card.effect.gold },
+          `Destruction removed ${cardLibrary[removed]?.name ?? removed}`
+        );
       }
       break;
     case "NEXT_RESOURCE_ROUND":

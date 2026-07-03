@@ -259,6 +259,42 @@ export function discardPermanentFromPlay(
 }
 
 /**
+ * Astrologers "Destruction": send one in-play permanent OUT OF THE GAME (the
+ * removed pile, per the rulebook keyword "Remove" — NOT the discard pile) and
+ * clean its combat presence up, then re-enforce the permanent limit in case the
+ * removed card was itself raising it (Pandora's Box). Without an explicit id the
+ * oldest permanent leaves (the card's singular "it"). Returns the removed card
+ * id, or null when the player has no permanent in play.
+ */
+export function removePermanentFromPlayToRemoved(
+  state: GameState,
+  playerId: PlayerId,
+  cardId?: CardId
+): CardId | null {
+  const player = state.players[playerId];
+  const inPlay = getPermanentCardIds(state, playerId);
+  const removeId = cardId ?? inPlay[0] ?? null;
+  if (!player || !removeId || !inPlay.includes(removeId)) {
+    return null;
+  }
+
+  const card = cardLibrary[removeId];
+  if (card) {
+    removePermanentCombatEffects(state, playerId, card);
+  }
+  setPermanentCardIds(
+    state,
+    playerId,
+    inPlay.filter((candidate) => candidate !== removeId)
+  );
+  // "Remove" leaves the GAME (removed pile), not the discard — matching the
+  // income-permanent "crack open" side and the rulebook keyword.
+  player.removed.push(removeId);
+  enforcePermanentLimit(state, playerId);
+  return removeId;
+}
+
+/**
  * Discards extra permanents (oldest first) whenever the limit shrinks below
  * what is in play — e.g. when the Pandora's Box "up to 3 permanents" card
  * itself leaves play while it was holding the door open.

@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   ART_LESS_PROCLAMATIONS,
+  ART_PENDING_PROCLAMATIONS,
   ASTROLOGERS_EXPANSIONS,
   ASTROLOGERS_NOT_IMPLEMENTED,
   DISABLED_ASTROLOGERS_CARDS,
@@ -48,7 +49,10 @@ const WIRED_EFFECT_TYPES = {
   EMPOWER_PER_DISCARD: true,
   RECRUIT_NEUTRAL_DRAW: true,
   RECRUIT_FACTION_FREE: true,
-  WAR_MACHINE_DISCOUNT_OFFER: true
+  WAR_MACHINE_DISCOUNT_OFFER: true,
+  REMOVE_PERMANENT_FOR_GOLD: true,
+  PVP_ATTACK_BAN: true,
+  SPELL_SEARCH_WIDEN: true
 } satisfies Record<AstrologersEffect["type"], true>;
 
 const ASSETS_DIR = join(process.cwd(), "public", "assets");
@@ -73,12 +77,14 @@ describe("astrologers deck data integrity", () => {
     expect(astrologersDeckCardIds).not.toContain("astrologers.friendly_beaver");
   });
 
-  it("ships a real local card scan for every proclamation (or declares it art-less)", () => {
+  it("ships a real local card scan for every proclamation (or declares it art-less / art-pending)", () => {
     for (const [id, card] of Object.entries(astrologersCardDefinitions)) {
-      if (ART_LESS_PROCLAMATIONS.has(id)) {
-        // A card the fan wiki publishes with no front scan: it must carry an empty
-        // image (so the UI uses its honest text card-face) — never a faked scan.
-        expect(card.image, `${id} should be art-less (empty image)`).toBe("");
+      if (ART_LESS_PROCLAMATIONS.has(id) || ART_PENDING_PROCLAMATIONS.has(id)) {
+        // A card with no local front scan — either the fan wiki publishes none
+        // (art-less) or the scan is not fetched yet (art-pending): it must carry
+        // an empty image (so the UI uses its honest text card-face), never a
+        // faked scan. The effect is still fully engine-wired + tested.
+        expect(card.image, `${id} should have an empty image`).toBe("");
         continue;
       }
       expect(card.image, `${id} image path`).toMatch(/^\/assets\/astrologers_proclaim-[a-z0-9_]+\.webp$/);
@@ -87,10 +93,14 @@ describe("astrologers deck data integrity", () => {
     }
   });
 
-  it("only declares dealt cards as art-less (no stray ids in the registry)", () => {
+  it("only declares dealt cards as art-less / art-pending, and never both", () => {
     const dealt = new Set(astrologersDeckCardIds);
     for (const id of ART_LESS_PROCLAMATIONS) {
       expect(dealt.has(id), `${id} is declared art-less but is not in the deck`).toBe(true);
+      expect(ART_PENDING_PROCLAMATIONS.has(id), `${id} cannot be both art-less and art-pending`).toBe(false);
+    }
+    for (const id of ART_PENDING_PROCLAMATIONS) {
+      expect(dealt.has(id), `${id} is declared art-pending but is not in the deck`).toBe(true);
     }
   });
 

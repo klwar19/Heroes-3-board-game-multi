@@ -89,6 +89,7 @@ import {
   placeNeutralUnits,
   playerDwellingTiers,
   processPendingVisit,
+  pvpAttacksBanned,
   queueExplorersEmpower,
   queueFreeBronzeReinforce,
   queueSkeletonReinforce,
@@ -4239,6 +4240,17 @@ export function startPlayerCombat(
     throw new Error("A player combat needs a defending player.");
   }
 
+  // Sanctuary (Astrologers): "During this round, Heroes cannot attack one
+  // another." Reject a Hero-vs-Hero attack outright — and do it BEFORE
+  // stopParallelTurns, so a banned attack neither happens NOR collapses an
+  // in-progress parallel round (a whole action that throws rolls back cleanly).
+  // Scoped to `defender` being a real enemy Hero: capturing an undefended enemy
+  // Town/garrison (defender null, garrisonDefenderId set) is not "heroes
+  // attacking one another" and stays legal, matching the printed wording.
+  if (defender && pvpAttacksBanned(state)) {
+    throw new Error("Sanctuary: Heroes cannot attack one another this round.");
+  }
+
   // Parallel turns stop the moment a PvP battle begins: the whole table is
   // warned, the attacker's action continues as their ordered turn, and the
   // battle resolves under the normal one-at-a-time rules. (Throws — rejecting
@@ -7789,6 +7801,17 @@ export function openSharedDeckSearch(
   const deck = state.decks[deckId];
   if (!deck) {
     return;
+  }
+
+  // Spells (Astrologers): while face up, any Search of the Spell deck looks at
+  // Search(count) instead of its base size — a strictly larger peek (the searcher
+  // still keeps only one). Bumping `baseCount` here propagates through every
+  // downstream path: the Scouting re-entry (idempotent max), the up-front
+  // discard/fetch option menu, and the reveal itself. Gated on the searched deck
+  // being a Spell deck (either BINH split deck).
+  const spellWiden = getActiveAstrologersCard(state)?.effect;
+  if (spellWiden?.type === "SPELL_SEARCH_WIDEN" && isSpellDeck(deckId)) {
+    baseCount = Math.max(baseCount, spellWiden.count);
   }
 
   // First, every shared-deck Search asks whether to play a held Scouting card —
