@@ -222,6 +222,16 @@ export function pvpAttacksBanned(state: GameState): boolean {
   return getActiveAstrologersCard(state)?.effect.type === "PVP_ATTACK_BAN" && state.round % 2 === 0;
 }
 
+/**
+ * Mages (Astrologers): whether the Spell Book token is free AND usable without
+ * a Mage Guild right now. Like Sanctuary the card is "during this round", so the
+ * waiver applies only on the even Astrologers round it was drawn. Read at the
+ * Spell Book gate (legal-actions offer + spellBookAction).
+ */
+export function freeSpellBookActive(state: GameState): boolean {
+  return getActiveAstrologersCard(state)?.effect.type === "FREE_SPELL_BOOK" && state.round % 2 === 0;
+}
+
 /** Hand limit including temporary Astrologers effects (Profuse Growth). */
 export function effectiveHandLimit(state: GameState, playerId: PlayerId): number {
   const player = state.players[playerId];
@@ -615,7 +625,21 @@ export function seaStepHalts(
   to: MapSpaceId,
   movement: HeroMovementCapabilities = NO_MOVEMENT_CAPABILITIES
 ): boolean {
-  return !movement.waterWalk && isSeaField(state, from) !== isSeaField(state, to);
+  if (movement.waterWalk) {
+    return false;
+  }
+  const fromSea = isSeaField(state, from);
+  const toSea = isSeaField(state, to);
+  if (fromSea === toSea) {
+    return false; // within the sea or on land: never halts
+  }
+  // Wind (Astrologers): entering the sea FROM a land field (embarking) no longer
+  // halts the hero — it keeps moving. Disembarking (sea→land) still halts. With
+  // no sea tiles this branch is never reached, so "ignore with no sea" holds.
+  if (!fromSea && toSea && getActiveAstrologersCard(state)?.effect.type === "SEA_CONTINUE_AFTER_EMBARK") {
+    return false;
+  }
+  return true;
 }
 
 /**
@@ -5368,6 +5392,25 @@ export function removeFromNeutralDeck(
   return false;
 }
 
+/** Difficulty ladder, easiest first — the axis Rulebook shifts a guard draw along. */
+const GAME_DIFFICULTY_ORDER: GameDifficulty[] = ["easy", "normal", "hard", "impossible"];
+
+/**
+ * Rulebook (Astrologers): the GAME difficulty a neutral guard army is drawn at.
+ * Normally the table's own difficulty; while Rulebook is face up, `levels`
+ * lower (clamped to Easy) — a weaker guard. "Ignore on Easy" holds by
+ * construction: Easy is already the floor, so it cannot drop further.
+ */
+export function neutralArmyDifficulty(state: GameState): GameDifficulty {
+  const base = state.adventure?.difficulty ?? "normal";
+  const effect = getActiveAstrologersCard(state)?.effect;
+  if (effect?.type !== "NEUTRAL_DIFFICULTY_LOWER") {
+    return base;
+  }
+  const index = GAME_DIFFICULTY_ORDER.indexOf(base);
+  return GAME_DIFFICULTY_ORDER[Math.max(0, index - effect.levels)];
+}
+
 /** Draws the neutral army for a guarded field from the four tier decks. */
 export function drawNeutralArmy(state: GameState, difficulty: number): NeutralDraw[] {
   const adventure = state.adventure;
@@ -5375,7 +5418,7 @@ export function drawNeutralArmy(state: GameState, difficulty: number): NeutralDr
     return [];
   }
 
-  const counts = NEUTRAL_ARMY_TABLE[adventure.difficulty][difficulty];
+  const counts = NEUTRAL_ARMY_TABLE[neutralArmyDifficulty(state)][difficulty];
   if (!counts) {
     return [];
   }
@@ -6811,9 +6854,17 @@ function resolveAstrologersCard(state: GameState, card: AstrologersCardDefinitio
     case "EMPOWER_PER_DISCARD":
     case "PVP_ATTACK_BAN":
     case "SPELL_SEARCH_WIDEN":
+    case "COMBAT_WIN_RESOURCE_DIE":
+    case "NEUTRAL_DIFFICULTY_LOWER":
+    case "NEUTRAL_REDRAW_ALL":
+    case "SEA_CONTINUE_AFTER_EMBARK":
+    case "FREE_SPELL_BOOK":
       // Passive while the card stays face up (read where the effect applies:
       // Sanctuary's PvP ban in startPlayerCombat via pvpAttacksBanned; the Spells
-      // Search widening in openSharedDeckSearch;
+      // Search widening in openSharedDeckSearch; Pirates' combat-win die in
+      // finalizeAdventureCombat; Rulebook's difficulty drop in drawNeutralArmy;
+      // Judge Dread's guard redraw at guard reveal; Wind's embark step in
+      // seaStepHalts; Mages' free Spell Book at the Spell Book gate;
       // hand-limit in effectiveHandLimit, die rerolls in maybeReroll, the spell
       // bonuses in getCurrentSpellPower, the spell return in maybeReturnSpell;
       // Hero's paid empower is offered at the start of each turn, see

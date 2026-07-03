@@ -15,6 +15,7 @@ import {
   armyHasMapEffect,
   canHeroReachPlacedTile,
   capturableEnemyMinesWithin,
+  freeSpellBookActive,
   legionDiscountTargets,
   reinforceCostFor,
   getActiveAstrologersCard,
@@ -6415,12 +6416,16 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
     }
   }
 
-  if (player.townTokens.spellBook && townHasBuildingEffect(state, playerId, "MAGE_GUILD")) {
+  // Mages (Astrologers): the Spell Book token is free this round and usable even
+  // without a Mage Guild — so it is offered without one, at 0 gold, ignoring the
+  // "same round the guild was built" restriction (which is about the guild).
+  const magesFree = freeSpellBookActive(state);
+  if (player.townTokens.spellBook && (townHasBuildingEffect(state, playerId, "MAGE_GUILD") || magesFree)) {
     const mageGuild = town.buildings
       .map((buildingId) => coreBuildingDefinitions[buildingId])
       .find((building) => building?.effect?.type === "MAGE_GUILD");
-    const cost = mageGuild?.spellBookCost ?? 5;
-    if (player.mageGuildBuiltRound !== state.round) {
+    const cost = magesFree ? 0 : (mageGuild?.spellBookCost ?? 5);
+    if (magesFree || player.mageGuildBuiltRound !== state.round) {
       if (player.resources.gold >= cost) {
         actions.push({
           label: `Buy spells (${cost} gold, Search 2)`,
