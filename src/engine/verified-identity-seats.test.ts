@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyAction, createAdventureGameState, seatOfClient, type GameAction, type GameState } from "./index";
+import { applyAction, createAdventureGameState, seatForViewer, seatOfClient, type GameAction, type GameState } from "./index";
 
 // ---------------------------------------------------------------------------
 // Verified-identity seats (Phase 2).
@@ -224,6 +224,52 @@ describe("requireAuth: a hosted room the host locked to accounts", () => {
     // The already-present guest can still reconnect (re-join) — grandfathered.
     state = expectOk(state, { type: "JOIN_ROOM", clientId: "cG", name: "Guest" });
     expect(seatOfClient(state, "cG")).toBe("p1");
+  });
+});
+
+describe("a verified session over a guest-joined member (the fallback binding)", () => {
+  /**
+   * Alice's JOIN was processed WITHOUT a verified identity (a transient
+   * verify-token failure on the edge, or a room whose members predate the edge
+   * being able to verify sessions), so her member carries no userId — yet her
+   * later actions DO arrive verified. Without the clientId fallback every one
+   * of them is refused ("Join the room before taking a seat's action") and her
+   * frames are redacted to the observer view: the game looks completely dead
+   * to her. Bob joined verified, as the control.
+   */
+  function guestSeatedGame(): GameState {
+    let state = makeGame();
+    state = expectOk(state, { type: "JOIN_ROOM", clientId: "hClient", name: "Host" });
+    state = expectOk(state, { type: "SET_ROOM_HOSTED", clientId: "hClient", hosted: true });
+    state = expectOk(state, { type: "JOIN_ROOM", clientId: "cA", name: "Alice" }); // verify failed → guest member
+    state = expectOk(state, { type: "JOIN_ROOM", clientId: "cB", name: "Bob" }, { clientId: "cB", userId: "uB" });
+    state = expectOk(state, { type: "ASSIGN_SEAT", clientId: "hClient", targetClientId: "cA", seat: "p1" });
+    state = expectOk(state, { type: "ASSIGN_SEAT", clientId: "hClient", targetClientId: "cB", seat: "p2" });
+    expect(state.activePlayerId).toBe("p1");
+    return state;
+  }
+
+  it("heals the mismatch: the verified actor acts for their guest-joined seat", () => {
+    const state = guestSeatedGame();
+    const next = expectOk(state, { type: "END_TURN", playerId: "p1" }, { clientId: "cA", userId: "uA" });
+    expect(next.activePlayerId).toBe("p2");
+  });
+
+  it("resolves the redaction viewer seat the same way (no observer-view lockout)", () => {
+    const state = guestSeatedGame();
+    expect(seatForViewer(state, { clientId: "cA", userId: "uA" })).toBe("p1");
+    // CONTROL: a verified stranger claiming no member stays a spectator.
+    expect(seatForViewer(state, { clientId: "cX", userId: "uStranger" })).toBe("observer");
+  });
+
+  it("never lets the fallback reach ANOTHER verified account's member", () => {
+    const state = guestSeatedGame();
+    // Mallory (uM, memberless) claims Bob's clientId — Bob's member is bound to
+    // account uB, so the fallback refuses to resolve it.
+    expect(
+      expectRejected(state, { type: "END_TURN", playerId: "p2" }, { clientId: "cB", userId: "uM" })
+    ).toContain("Join the room");
+    expect(seatForViewer(state, { clientId: "cB", userId: "uM" })).toBe("observer");
   });
 });
 

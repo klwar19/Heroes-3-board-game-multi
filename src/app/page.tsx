@@ -581,6 +581,13 @@ export default function Home() {
   const [viewerPlayerId, setViewerPlayerId] = useState<PlayerId>("p1");
   /** Stable per-browser identity for room membership (host/seat enforcement). */
   const clientId = useMemo(() => getClientId(), []);
+  /**
+   * The signed-in account id cached client-side (null for guests / SSR). Used
+   * only to RECOGNISE this player's own room member when its clientId was
+   * re-bound to another tab of the same account — the server independently
+   * verifies the real session; this cache never grants authority by itself.
+   */
+  const accountUserId = useMemo(() => getAccountIdentity()?.userId ?? null, []);
   // Browser-only state (persisted name, URL room) is read AFTER mount (see the
   // effect below), not in the useState initializers: the page is statically
   // prerendered (window/localStorage absent), so seeding from them here would
@@ -3097,24 +3104,44 @@ export default function Home() {
       .catch(() => {});
   }, [state, roomId, displayName, clientId]);
 
+  // The room member this client acts as: matched by this tab's clientId, or —
+  // when signed in — by the verified account id. The engine's one-account-one-
+  // seat rule re-binds a member's clientId to the account's LATEST tab, so an
+  // older tab (or a reconnect that re-verified late) must still recognise its
+  // own seat: the server accepts its actions by userId regardless of clientId.
+  const myMember = (() => {
+    if (!state?.room) {
+      return null;
+    }
+    const byClient = state.room.members.find((member) => member.clientId === clientId);
+    if (byClient) {
+      return byClient;
+    }
+    return accountUserId
+      ? (state.room.members.find((member) => member.userId === accountUserId) ?? null)
+      : null;
+  })();
   // Hosted rooms drive the viewer's seat from their host assignment (seats are
   // locked); open tables keep the manual seat switcher untouched.
   const hostedSeat: PlayerId | typeof OBSERVER_SEAT | null = (() => {
     if (!state?.room?.hosted) {
       return null;
     }
-    const seat = state.room.members.find((member) => member.clientId === clientId)?.seat ?? "observer";
+    const seat = myMember?.seat ?? "observer";
     return seat !== "observer" && state.players[seat] ? seat : OBSERVER_SEAT;
   })();
   // Whether the viewer has actually JOINED the room yet. The seat-claim buttons
-  // dispatch ASSIGN_SEAT keyed by this clientId, which the engine refuses with
-  // "That member is not in the room" unless a matching member exists — so a
-  // non-member (JOIN still in flight on connect, or refused) must never be shown
-  // a Take-seat button that can only fail. Distinct from hostedSeat, which
-  // collapses "no membership" and "observer member" into the same value.
-  const isRoomMember = Boolean(
-    state?.room?.members.some((member) => member.clientId === clientId)
-  );
+  // dispatch ASSIGN_SEAT keyed by the member's clientId, which the engine
+  // refuses with "That member is not in the room" unless a matching member
+  // exists — so a non-member (JOIN still in flight on connect, or refused) must
+  // never be shown a Take-seat button that can only fail. Distinct from
+  // hostedSeat, which collapses "no membership" and "observer member" into the
+  // same value.
+  const isRoomMember = Boolean(myMember);
+  // Membership actions (ASSIGN_SEAT self-serve) validate by the MEMBER's
+  // clientId — use it, so a signed-in player whose member is bound to another
+  // tab's clientId can still take/leave a seat from this one.
+  const memberClientId = myMember?.clientId ?? clientId;
   // Adjust the locked seat during render (React's supported "derive state from
   // props" pattern) rather than in an effect; it converges in one extra render
   // once viewerPlayerId already equals the assignment.
@@ -3326,7 +3353,10 @@ export default function Home() {
     if (!roomId) {
       return;
     }
-    void requestCloseRoom(roomId, clientId).catch(() => {
+    // The socket ticket lets the cross-origin PartyKit edge verify a signed-in
+    // PLATFORM ADMIN closing a room they are not a member of; guests resolve no
+    // ticket and close by host/membership exactly as before.
+    void requestCloseRoom(roomId, clientId, fetchSocketToken).catch(() => {
       /* The host-close broadcast (onClosed) will still bounce connected clients. */
     });
     goToLobby();
@@ -3425,7 +3455,8 @@ export default function Home() {
   // Seats not held by another member — a player may self-serve into any of these
   // even in a hosted/closed room (the host can still move/kick anyone).
   const openHostedSeats = claimableSeatIds.filter(
-    (seatId) => !(state.room?.members ?? []).some((member) => member.clientId !== clientId && member.seat === seatId)
+    (seatId) =>
+      !(state.room?.members ?? []).some((member) => member.clientId !== memberClientId && member.seat === seatId)
   );
 
   const tableMenu = (
@@ -3453,7 +3484,12 @@ export default function Home() {
                     className="seatClaimButton"
                     key={seatId}
                     onClick={() =>
-                      void submitAction({ type: "ASSIGN_SEAT", clientId, targetClientId: clientId, seat: seatId })
+                      void submitAction({
+                        type: "ASSIGN_SEAT",
+                        clientId: memberClientId,
+                        targetClientId: memberClientId,
+                        seat: seatId
+                      })
                     }
                     title={`Take the ${seatDisplayName(seatId)} seat and play`}
                     type="button"
@@ -3471,7 +3507,12 @@ export default function Home() {
               <button
                 className="seatClaimButton ghost"
                 onClick={() =>
-                  void submitAction({ type: "ASSIGN_SEAT", clientId, targetClientId: clientId, seat: "observer" })
+                  void submitAction({
+                    type: "ASSIGN_SEAT",
+                    clientId: memberClientId,
+                    targetClientId: memberClientId,
+                    seat: "observer"
+                  })
                 }
                 title="Leave your seat and watch"
                 type="button"
