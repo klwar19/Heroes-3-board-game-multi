@@ -143,6 +143,14 @@ export {
   wisdomSearchCount
 } from "./ruleset";
 export {
+  HOUSE_RULES,
+  HOUSE_RULE_BY_ID,
+  houseRuleDefaultFor,
+  houseRuleEnabled,
+  resolveHouseRules
+} from "./house-rules";
+export type { HouseRuleCategory, HouseRuleDef } from "./house-rules";
+export {
   applyUnitCurrentSide,
   canPlaceTransformOn,
   insertUnitTransform,
@@ -380,6 +388,7 @@ export type {
   MapState,
   MapTileState,
   GameSetupOptions,
+  HouseRuleId,
   PendingTileChoice,
   PendingVisit,
   PlayerId,

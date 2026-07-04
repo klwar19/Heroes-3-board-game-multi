@@ -222,6 +222,8 @@ describe("SetupLobbyScreen — merged Map picker", () => {
     const onAction = vi.fn();
     render(<SetupLobbyScreen onAction={onAction} state={state} viewerPlayerId="p1" />);
     fireEvent.click(screen.getByRole("tab", { name: "Game options" }));
+    // The Game-options panel is itself tabbed; the Map picker lives on "Map & Setup".
+    fireEvent.click(screen.getByRole("tab", { name: /Map & Setup/ }));
 
     // One unified control, clearly split into built-in sheets and custom-made maps.
     expect(screen.getByText(/Scenario sheets/i)).toBeTruthy();

@@ -1,5 +1,40 @@
+/* Liberation Serif — the same open serif the physical Homm3 board game (Heegu's
+   Homm3BG kit) sets its cards in. Bundled locally (public/fonts) under the SIL
+   Open Font License; see fonts/Liberation-license.txt. Used as the display face
+   for the fan-made menus so the UI reads like an olden-era Heroes screen. */
+@font-face {
+  font-family: "Liberation Serif";
+  src: url("/fonts/LiberationSerif-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Liberation Serif";
+  src: url("/fonts/LiberationSerif-Bold.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Liberation Serif";
+  src: url("/fonts/LiberationSerif-Italic.ttf") format("truetype");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Liberation Serif";
+  src: url("/fonts/LiberationSerif-BoldItalic.ttf") format("truetype");
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+
 :root {
   color-scheme: dark;
+  /* Olden-era Heroes display serif for menus/greeting/headings. */
+  --font-heroic: "Liberation Serif", Georgia, "Times New Roman", serif;
   --bg: #0d0f10;
   --surface: #17191b;
   --surface-2: #202326;
@@ -14342,4 +14377,556 @@ img.cardBack {
 .startReadyCheckWaiting {
   opacity: 0.75;
   font-style: italic;
+}
+
+/* ===========================================================================
+   Game Setup — tabbed, olden-era Heroes styling (fan-made BINH edition)
+   =========================================================================== */
+
+.gameOptions {
+  position: relative;
+  background:
+    radial-gradient(circle at 15% 0%, rgba(255, 214, 120, 0.06), transparent 45%),
+    linear-gradient(180deg, rgba(41, 31, 18, 0.96), rgba(26, 19, 11, 0.97));
+  border: 1px solid rgba(220, 175, 95, 0.42);
+  box-shadow: inset 0 0 0 1px rgba(255, 226, 160, 0.08), inset 0 0 34px rgba(0, 0, 0, 0.5),
+    0 10px 30px rgba(0, 0, 0, 0.45);
+}
+
+.gameOptionsHead {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(220, 175, 95, 0.22);
+}
+
+.gameOptionsEyebrow {
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #c79a52;
+}
+
+.gameOptions h3 {
+  font-family: var(--font-heroic);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #ffe6a6;
+  text-shadow: 0 1px 0 #000, 0 2px 5px rgba(0, 0, 0, 0.6), 0 0 16px rgba(255, 200, 90, 0.2);
+}
+
+/* --- Tab bar --- */
+.optionTabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(12, 8, 4, 0.7), rgba(20, 14, 8, 0.5));
+  border: 1px solid rgba(140, 110, 65, 0.4);
+}
+
+.optionTab {
+  flex: 1 1 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 6px;
+  font-family: var(--font-heroic);
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  color: #c8ac7e;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: color 0.12s ease, background 0.12s ease, box-shadow 0.12s ease;
+}
+
+.optionTab:hover {
+  color: #f0dcae;
+  background: rgba(255, 214, 120, 0.06);
+}
+
+.optionTab.selected {
+  color: #1a1105;
+  background: linear-gradient(180deg, #f6d27a, #d3a247);
+  border-color: #ffe9b0;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 2px 8px rgba(0, 0, 0, 0.4);
+  font-weight: 700;
+}
+
+.optionTab svg {
+  flex: 0 0 auto;
+}
+
+.optionTabPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 4px;
+  animation: optionTabFade 0.16s ease;
+}
+
+@keyframes optionTabFade {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* --- House-rule toggles --- */
+.houseRuleSection {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 11px;
+  border-radius: 11px;
+  border: 1px solid rgba(220, 175, 95, 0.32);
+  background:
+    radial-gradient(circle at 90% 0%, rgba(255, 214, 120, 0.05), transparent 42%),
+    rgba(15, 10, 6, 0.55);
+}
+
+.houseRuleHead {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.houseRuleHead strong {
+  font-family: var(--font-heroic);
+  font-size: 14px;
+  color: #ffd76a;
+  letter-spacing: 0.03em;
+}
+
+.houseRuleHead small {
+  font-size: 10.5px;
+  color: #b39a72;
+}
+
+.houseRuleGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.houseRuleGroupLabel {
+  font-size: 9.5px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: #a8894f;
+  border-bottom: 1px solid rgba(168, 137, 79, 0.2);
+  padding-bottom: 3px;
+}
+
+.houseRuleGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 7px;
+}
+
+.houseRuleToggle {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 9px;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 9px;
+  border: 1px solid rgba(140, 110, 65, 0.45);
+  background: linear-gradient(180deg, rgba(28, 20, 12, 0.85), rgba(17, 12, 7, 0.85));
+  color: #e6d2a6;
+  cursor: pointer;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease, transform 0.06s ease;
+}
+
+.houseRuleToggle:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 214, 120, 0.6);
+}
+
+.houseRuleToggle.on {
+  border-color: rgba(255, 214, 120, 0.7);
+  box-shadow: inset 0 0 0 1px rgba(255, 226, 160, 0.14), inset 0 0 18px rgba(210, 160, 70, 0.12);
+}
+
+.houseRuleToggle.off {
+  opacity: 0.72;
+}
+
+.houseRuleCheck {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  border: 1px solid rgba(140, 110, 65, 0.6);
+  background: rgba(10, 7, 4, 0.7);
+  color: #1a1105;
+}
+
+.houseRuleToggle.on .houseRuleCheck {
+  background: linear-gradient(180deg, #f6d27a, #d3a247);
+  border-color: #ffe9b0;
+}
+
+.houseRuleText {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.houseRuleText strong {
+  font-size: 12px;
+  color: #f4e2b6;
+  font-weight: 600;
+}
+
+.houseRuleText small {
+  font-size: 10px;
+  line-height: 1.3;
+  color: #a89272;
+}
+
+.houseRuleState {
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  padding: 2px 6px;
+  border-radius: 999px;
+}
+
+.houseRuleState.on {
+  color: #1a1105;
+  background: linear-gradient(180deg, #f6d27a, #d3a247);
+}
+
+.houseRuleState.off {
+  color: #8f7a58;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.houseRuleAlwaysOn {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+  padding: 7px 9px;
+  border-radius: 8px;
+  border: 1px dashed rgba(140, 110, 65, 0.4);
+  font-size: 10px;
+  line-height: 1.4;
+  color: #9c8560;
+}
+
+.houseRuleAlwaysOn svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: #c79a52;
+}
+
+/* --- Starting-army quick presets --- */
+.startingUnitPresets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+  padding-bottom: 9px;
+  border-bottom: 1px solid rgba(168, 137, 79, 0.22);
+}
+
+.startingUnitPreset {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 11px;
+  font-family: var(--font-heroic);
+  font-size: 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(140, 110, 65, 0.55);
+  background: rgba(20, 14, 9, 0.8);
+  color: #e8d3a8;
+  cursor: pointer;
+  transition: border-color 0.12s ease, color 0.12s ease, background 0.12s ease;
+}
+
+.startingUnitPreset:hover {
+  border-color: rgba(255, 214, 120, 0.6);
+  color: #ffe9b0;
+}
+
+.startingUnitPreset.selected {
+  color: #1a1105;
+  background: linear-gradient(180deg, #f6d27a, #d3a247);
+  border-color: #ffe9b0;
+  font-weight: 700;
+}
+
+.startingUnitPreset.random {
+  margin-left: auto;
+  border-color: rgba(120, 111, 166, 0.6);
+  color: #cdb6ee;
+  background: linear-gradient(180deg, rgba(48, 32, 66, 0.85), rgba(28, 18, 40, 0.85));
+}
+
+.startingUnitPreset.random:hover {
+  border-color: #cfa5ff;
+  color: #f0e3ff;
+}
+
+/* ===========================================================================
+   Welcome notice — one-time "fan-made by BINH" greeting on the main menu
+   =========================================================================== */
+
+.welcomeBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: radial-gradient(circle at 50% 30%, rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0.82));
+  animation: welcomeFade 0.2s ease;
+}
+
+@keyframes welcomeFade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.welcomeCard {
+  position: relative;
+  display: grid;
+  grid-template-columns: 190px 1fr;
+  max-width: 720px;
+  width: 100%;
+  border-radius: 16px;
+  overflow: hidden;
+  color: #ecd9b0;
+  background:
+    radial-gradient(circle at 12% 6%, rgba(255, 214, 120, 0.08), transparent 42%),
+    linear-gradient(160deg, #2c2013 0%, #1c140b 60%, #120d07 100%);
+  border: 1px solid rgba(220, 175, 95, 0.5);
+  box-shadow: inset 0 0 0 1px rgba(255, 226, 160, 0.1), inset 0 0 60px rgba(0, 0, 0, 0.55),
+    0 24px 60px rgba(0, 0, 0, 0.6);
+  animation: welcomeRise 0.24s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+
+@keyframes welcomeRise {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.welcomeClose {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid rgba(220, 175, 95, 0.4);
+  background: rgba(10, 7, 4, 0.55);
+  color: #e6d2a6;
+  cursor: pointer;
+}
+
+.welcomeClose:hover {
+  border-color: #ffd76a;
+  color: #ffe9b0;
+}
+
+.welcomePortrait {
+  position: relative;
+  overflow: hidden;
+  border-right: 1px solid rgba(220, 175, 95, 0.3);
+}
+
+.welcomePortrait img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 22%;
+  filter: saturate(1.02) contrast(1.02);
+}
+
+.welcomePortrait::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(105deg, transparent 55%, rgba(18, 13, 7, 0.92) 100%),
+    linear-gradient(0deg, rgba(18, 13, 7, 0.55), transparent 40%);
+}
+
+.welcomeBody {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 22px 24px 20px;
+}
+
+.welcomeEyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #d0a862;
+}
+
+.welcomeEyebrow svg {
+  color: #ffd76a;
+}
+
+.welcomeTitle {
+  margin: 0;
+  font-family: var(--font-heroic);
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #ffe6a6;
+  text-shadow: 0 1px 0 #000, 0 3px 8px rgba(0, 0, 0, 0.6), 0 0 22px rgba(255, 200, 90, 0.22);
+}
+
+.welcomeLede {
+  margin: 0;
+  font-family: var(--font-heroic);
+  font-size: 14.5px;
+  line-height: 1.5;
+  color: #e2cfa4;
+}
+
+.welcomeLede strong {
+  color: #ffdd8a;
+}
+
+.welcomeHighlights {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 11px 13px;
+  border-radius: 11px;
+  border: 1px solid rgba(220, 175, 95, 0.28);
+  background: rgba(12, 8, 4, 0.5);
+}
+
+.welcomeHighlightsHead {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #c79a52;
+}
+
+.welcomeHighlights ul {
+  list-style: none;
+  margin: 2px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.welcomeHighlights li {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px;
+  align-items: start;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #cbb488;
+}
+
+.welcomeHighlights li svg {
+  margin-top: 2px;
+  color: #7fb98a;
+}
+
+.welcomeHighlights li strong {
+  color: #f0dcae;
+}
+
+.welcomeHighlights > small {
+  margin-top: 3px;
+  font-size: 10.5px;
+  color: #a08a63;
+}
+
+.welcomeActions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.welcomeDontShow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #a89272;
+  cursor: pointer;
+}
+
+.welcomeDontShow input {
+  accent-color: #d3a247;
+}
+
+.welcomeEnter {
+  padding: 8px 18px;
+  font-family: var(--font-heroic);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #1a1105;
+  border: 1px solid #ffe9b0;
+  border-radius: 9px;
+  background: linear-gradient(180deg, #f6d27a, #d3a247);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 3px 10px rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+}
+
+.welcomeEnter:hover {
+  filter: brightness(1.06);
+}
+
+@media (max-width: 560px) {
+  .welcomeCard {
+    grid-template-columns: 1fr;
+  }
+
+  .welcomePortrait {
+    height: 130px;
+    border-right: none;
+    border-bottom: 1px solid rgba(220, 175, 95, 0.3);
+  }
+
+  .welcomePortrait::after {
+    background: linear-gradient(0deg, rgba(18, 13, 7, 0.92) 4%, transparent 60%);
+  }
 }

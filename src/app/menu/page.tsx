@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { MenuShell } from "@/components/menu/menu-shell";
+import { WelcomeNotice } from "@/components/menu/welcome-notice";
 import { SKILL_ICONS } from "@/data/assets/homm-assets";
 import { DEFAULT_SERVER } from "@/data/servers";
 import { assetUrl } from "@/lib/asset-url";
@@ -69,6 +70,8 @@ export default function MenuPage() {
   const accounts = authEnabled();
 
   return (
+    <>
+    <WelcomeNotice />
     <MenuShell
       title="Heroes III — The Board Game"
       footer={
@@ -175,5 +178,6 @@ export default function MenuPage() {
         ) : null}
       </nav>
     </MenuShell>
+    </>
   );
 }

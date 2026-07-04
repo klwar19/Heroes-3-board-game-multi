@@ -42,6 +42,8 @@ import {
   getReachableHeroPaths,
   getRuleset,
   getSeatIdentity,
+  HOUSE_RULES,
+  resolveHouseRules,
   getTileBorderSegments,
   hasOpenAdventureTurn,
   hexDistance,
@@ -76,6 +78,7 @@ import {
   type GameAction,
   type GameSetupOptions,
   type GameState,
+  type HouseRuleId,
   type HeroPathTarget,
   type HeroState,
   type LegalAction,
@@ -3842,9 +3845,44 @@ const STARTING_BUILDING_CHOICES: { id: string; label: string }[] = [
 ];
 
 /**
+ * The three quick starting-army choices offered alongside the manual picker
+ * (with a Random roll between them): open with two low Packs, one mid Pack, or a
+ * single high-tier Few. Applying a preset replaces the whole army selection.
+ */
+const STARTING_UNIT_PRESETS: {
+  key: string;
+  label: string;
+  hint: string;
+  units: CustomStartingUnit[];
+}[] = [
+  {
+    key: "lv12-pack",
+    label: "Lv 1 & 2 Pack",
+    hint: "Start with a Pack of your level-1 and level-2 units",
+    units: [
+      { level: 1, side: "pack" },
+      { level: 2, side: "pack" }
+    ]
+  },
+  {
+    key: "lv3-pack",
+    label: "Lv 3 Pack",
+    hint: "Start with a Pack of your level-3 unit only",
+    units: [{ level: 3, side: "pack" }]
+  },
+  {
+    key: "lv4-few",
+    label: "Lv 4 Few",
+    hint: "Start with a Few of your level-4 unit only",
+    units: [{ level: 4, side: "few" }]
+  }
+];
+
+/**
  * Starting units, one mode: a few/pack/none pick per unit level 1-7. Every
  * player receives their own faction's unit of each picked level (faction
- * unit lists run level 1 → 7).
+ * unit lists run level 1 → 7). A preset/Random row above offers the three
+ * quick army choices.
  */
 function StartingUnitsPicker({
   startingUnits,
@@ -3872,8 +3910,41 @@ function StartingUnitsPicker({
 
   const faction = viewerFactionId ? coreFactionDefinitions[viewerFactionId] : null;
 
+  const signature = (units: CustomStartingUnit[]) =>
+    units
+      .map((unit) => `${unit.level}${unit.side[0]}`)
+      .sort()
+      .join(",");
+  const currentSignature = signature(startingUnits.filter((unit) => unit.level));
+  const activePreset = STARTING_UNIT_PRESETS.find((preset) => signature(preset.units) === currentSignature);
+
   return (
     <div className="startingUnits" aria-label="Starting units by level">
+      <div className="startingUnitPresets" aria-label="Quick army presets">
+        {STARTING_UNIT_PRESETS.map((preset) => (
+          <button
+            aria-pressed={activePreset?.key === preset.key}
+            className={`startingUnitPreset ${activePreset?.key === preset.key ? "selected" : ""}`}
+            key={preset.key}
+            onClick={() => onChange(preset.units.map((unit) => ({ ...unit })))}
+            title={preset.hint}
+            type="button"
+          >
+            {preset.label}
+          </button>
+        ))}
+        <button
+          className="startingUnitPreset random"
+          onClick={() => {
+            const pick = STARTING_UNIT_PRESETS[Math.floor(Math.random() * STARTING_UNIT_PRESETS.length)];
+            onChange(pick.units.map((unit) => ({ ...unit })));
+          }}
+          title="Roll one of the three starting-army choices at random"
+          type="button"
+        >
+          <Dices size={13} /> Random
+        </button>
+      </div>
       {UNIT_LEVELS.map((level) => {
         const side = sideOfLevel.get(level) ?? null;
         const tier = tierOfLevel(level);
@@ -4089,6 +4160,87 @@ function ResourceStepper({
   );
 }
 
+type OptionsTabId = "rules" | "play" | "map" | "army";
+
+/** The Game-Setup tab bar. Each tab groups a logical slice of the options. */
+const OPTION_TABS: { id: OptionsTabId; label: string; icon: ReactNode }[] = [
+  { id: "rules", label: "Mode & Rules", icon: <Swords size={13} /> },
+  { id: "play", label: "Match", icon: <Crown size={13} /> },
+  { id: "map", label: "Map & Setup", icon: <ImageIcon size={13} /> },
+  { id: "army", label: "Army", icon: <Castle size={13} /> }
+];
+
+const HOUSE_RULE_CATEGORY_LABELS: Record<string, string> = {
+  decks: "Decks",
+  units: "Unit buffs",
+  abilities: "Abilities & heroes"
+};
+
+/**
+ * The individual house-rule toggles, rendered straight from the engine registry
+ * so the menu and the engine never drift. Each button flips exactly one rule
+ * (the reducer merges it); the value shown is the resolved effective boolean.
+ */
+function HouseRulesSection({
+  houseRules,
+  setHouseRule
+}: {
+  houseRules: Record<HouseRuleId, boolean>;
+  setHouseRule: (id: HouseRuleId, value: boolean) => void;
+}) {
+  const categories = ["decks", "units", "abilities"] as const;
+  return (
+    <div className="houseRuleSection" aria-label="House rules">
+      <div className="houseRuleHead">
+        <strong>House rules</strong>
+        <small>Each tweak toggles on its own — defaults follow the mode above (all on in BINH, off in Legacy).</small>
+      </div>
+      {categories.map((category) => {
+        const rules = HOUSE_RULES.filter((rule) => rule.category === category);
+        if (rules.length === 0) {
+          return null;
+        }
+        return (
+          <div className="houseRuleGroup" key={category}>
+            <span className="houseRuleGroupLabel">{HOUSE_RULE_CATEGORY_LABELS[category]}</span>
+            <div className="houseRuleGrid">
+              {rules.map((rule) => {
+                const on = houseRules[rule.id];
+                return (
+                  <button
+                    aria-pressed={on}
+                    className={`houseRuleToggle ${on ? "on" : "off"}`}
+                    key={rule.id}
+                    onClick={() => setHouseRule(rule.id, !on)}
+                    title={rule.description}
+                    type="button"
+                  >
+                    <span aria-hidden="true" className="houseRuleCheck">
+                      {on ? <Check size={13} /> : null}
+                    </span>
+                    <span className="houseRuleText">
+                      <strong>{rule.label}</strong>
+                      <small>{rule.description}</small>
+                    </span>
+                    <span className={`houseRuleState ${on ? "on" : "off"}`}>{on ? "ON" : "OFF"}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+      <p className="houseRuleAlwaysOn">
+        <Info size={11} aria-hidden="true" />
+        <span>
+          Always on (not yet individually toggleable): the buffed Ballistics &amp; Earthquake, Pathfinding, and the
+          initiative-specialty +1 Combat move (Dracon, Gelu VI…).
+        </span>
+      </p>
+    </div>
+  );
+}
+
 /**
  * Adjustable setup: scenario, neutral difficulty (Impossible default),
  * starting resources, base income (10 gold / 0 / 0 default), starting unit
@@ -4105,6 +4257,7 @@ function GameOptionsPanel({
   onAction: (action: GameAction) => void;
 }) {
   const [wogOptionsOpen, setWogOptionsOpen] = useState(false);
+  const [tab, setTab] = useState<OptionsTabId>("rules");
   const lobby = state.setupLobby;
   if (!lobby) {
     return null;
@@ -4115,11 +4268,36 @@ function GameOptionsPanel({
   const viewerFactionId = lobby.seats.find((seat) => seat.playerId === viewerPlayerId)?.factionId ?? null;
   const send = (next: Partial<GameSetupOptions>) =>
     onAction({ type: "SET_GAME_OPTIONS", playerId: viewerPlayerId, options: next });
+  // Effective house-rule booleans (explicit toggle, else the chosen mode's
+  // default). Flipping one sends just that id; the reducer merges it.
+  const houseRules = resolveHouseRules(options);
+  const setHouseRule = (id: HouseRuleId, value: boolean) => send({ houseRules: { [id]: value } });
 
   return (
     <div className="gameOptions" aria-label="Game options">
-      <h3>Game options</h3>
+      <header className="gameOptionsHead">
+        <span className="gameOptionsEyebrow">⚜ Fan-made house-rule edition · BINH</span>
+        <h3>Game Setup</h3>
+      </header>
 
+      <nav className="optionTabs" role="tablist" aria-label="Setup sections">
+        {OPTION_TABS.map((entry) => (
+          <button
+            aria-selected={tab === entry.id}
+            className={`optionTab ${tab === entry.id ? "selected" : ""}`}
+            key={entry.id}
+            onClick={() => setTab(entry.id)}
+            role="tab"
+            type="button"
+          >
+            {entry.icon}
+            <span>{entry.label}</span>
+          </button>
+        ))}
+      </nav>
+
+      {tab === "rules" ? (
+      <div className="optionTabPanel" role="tabpanel" aria-label="Rules">
       <div className="optionRow">
         <small title="Pick the rules variant for this game">Game mode</small>
         <div className="optionButtons">
@@ -4172,6 +4350,40 @@ function GameOptionsPanel({
             Optional WOG modules are isolated from Legacy mode. New neutral creatures join their matching Neutral decks.
           </small>
         </div>
+      ) : null}
+
+      <HouseRulesSection houseRules={houseRules} setHouseRule={setHouseRule} />
+
+      {(() => {
+        const spellBookOn = options.spellBook ?? true;
+        return (
+          <div className="optionRow">
+            <small title="House rule: each player keeps a personal Spell Book to stash, cast and boost Spells from">
+              Spell Book
+            </small>
+            <div className="optionButtons">
+              {([true, false] as const).map((on) => (
+                <button
+                  aria-pressed={spellBookOn === on}
+                  className={spellBookOn === on ? "selected" : ""}
+                  key={String(on)}
+                  onClick={() => send({ spellBook: on })}
+                  title={on ? "Spell Book on (house rule)" : "Spell Book off"}
+                  type="button"
+                >
+                  {on ? "On" : "Off"}
+                </button>
+              ))}
+            </div>
+            <small className="optionHint">
+              {spellBookOn
+                ? "Each player may set Spells aside in a personal Spell Book to free hand slots, then cast or boost from it (one Book Power boost per turn)."
+                : "No Spell Book — Spells live only in hand, deck and discard."}
+            </small>
+          </div>
+        );
+      })()}
+      </div>
       ) : null}
 
       {options.ruleset === "binh" && wog.enabled && wogOptionsOpen && typeof document !== "undefined"
@@ -4231,6 +4443,9 @@ function GameOptionsPanel({
           </div>
         ), document.body)
         : null}
+
+      {tab === "play" ? (
+      <div className="optionTabPanel" role="tabpanel" aria-label="Play">
 
       {(() => {
         const victoryMode = options.victoryMode ?? "conquest";
@@ -4345,21 +4560,27 @@ function GameOptionsPanel({
         );
       })()}
 
+      </div>
+      ) : null}
+
+      {tab === "map" ? (
+      <div className="optionTabPanel" role="tabpanel" aria-label="Map">
+
       {(() => {
-        const spellBookOn = options.spellBook ?? true;
+        const creatureBanksOn = options.creatureBanks ?? true;
         return (
           <div className="optionRow">
-            <small title="House rule: each player keeps a personal Spell Book to stash, cast and boost Spells from">
-              Spell Book
+            <small title="Naval Battles optional rule: discovering a Far/Near tile with a Blocked Field lets you place a Creature Bank there">
+              Creature Banks
             </small>
             <div className="optionButtons">
               {([true, false] as const).map((on) => (
                 <button
-                  aria-pressed={spellBookOn === on}
-                  className={spellBookOn === on ? "selected" : ""}
+                  aria-pressed={creatureBanksOn === on}
+                  className={creatureBanksOn === on ? "selected" : ""}
                   key={String(on)}
-                  onClick={() => send({ spellBook: on })}
-                  title={on ? "Spell Book on (house rule)" : "Spell Book off"}
+                  onClick={() => send({ creatureBanks: on })}
+                  title={on ? "Creature Banks on" : "Creature Banks off"}
                   type="button"
                 >
                   {on ? "On" : "Off"}
@@ -4367,9 +4588,9 @@ function GameOptionsPanel({
               ))}
             </div>
             <small className="optionHint">
-              {spellBookOn
-                ? "Each player may set Spells aside in a personal Spell Book to free hand slots, then cast or boost from it (one Book Power boost per turn)."
-                : "No Spell Book — Spells live only in hand, deck and discard."}
+              {creatureBanksOn
+                ? "Discovering a Far/Near tile with a Blocked Field offers a Creature Bank token — a guarded lair with a scaled reward. Off removes the piles and the offer."
+                : "No Creature Banks — Blocked Fields stay bare."}
             </small>
           </div>
         );
@@ -4502,6 +4723,12 @@ function GameOptionsPanel({
         </div>
       </div>
 
+      </div>
+      ) : null}
+
+      {tab === "army" ? (
+      <div className="optionTabPanel" role="tabpanel" aria-label="Starting army">
+
       <div className="optionRow">
         <small>Starting resources</small>
         <div className="optionSteppers">
@@ -4586,6 +4813,9 @@ function GameOptionsPanel({
           })}
         </div>
       </div>
+
+      </div>
+      ) : null}
     </div>
   );
 }
