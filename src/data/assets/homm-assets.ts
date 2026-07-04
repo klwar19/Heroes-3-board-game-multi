@@ -272,10 +272,13 @@ export function moraleIcon(morale: number): string {
 }
 
 /**
- * Face-down map tile backs by tile group: the four rulebook backs (starry
- * night with the printed roman numerals) extracted from the official
- * rulebook PDF, plus sea (golden waves, Ⅳ–Ⅴ) and subterranean (cavern
- * teeth, Ⅳ–Ⅴ) backs drawn in the same style after the expansion photos.
+ * Face-down map tile backs by tile group: the REAL printed tile back covers
+ * (github.com/Heegu-sama/Homm3BG) — the four land backs from the 2x2
+ * `assets/images/maptiles.png` sheet (starry night with the printed roman
+ * numerals Ⅰ / Ⅱ–Ⅲ / Ⅳ–Ⅴ / Ⅵ–Ⅶ), plus the golden-wave sea back
+ * (`map-tile-sea.png`, Ⅳ–Ⅴ) and the cavern-teeth subterranean back
+ * (`map-tile-sub.png`, Ⅳ–Ⅴ). Each printed seven-hex flower is cropped to its
+ * tight bounding box and installed by scripts/fetch-map-tile-backs.py.
  */
 export const TILE_BACK_IMAGES: Record<string, string> = {
   starting: "/assets/board/backs/back-starting.webp",
@@ -378,3 +381,76 @@ export const HERO_STAT_ICONS = {
   power: "/assets/hero_board-stat-power.webp",
   knowledge: "/assets/hero_board-stat-knowledge.webp"
 } as const;
+
+/**
+ * The four hero-statistic SYMBOLS as their own standalone icons — the real
+ * board-game glyphs (github.com/Heegu-sama/Homm3BG, assets/images/<stat>.png):
+ * crossed swords (attack), the quartered shield (defense), the open spell book
+ * (power) and the stack of tomes (knowledge). Trimmed and centred on a uniform
+ * transparent square by scripts/build-hero-info-icons.py so all four read at
+ * the same weight; used by the hero-selection info board's statistics row.
+ */
+export const HERO_INFO_STAT_ICONS = {
+  attack: "/assets/hero-info/stat-attack.webp",
+  defense: "/assets/hero-info/stat-defense.webp",
+  power: "/assets/hero-info/stat-power.webp",
+  knowledge: "/assets/hero-info/stat-knowledge.webp"
+} as const;
+
+/**
+ * Secondary-skill / ability emblems for the hero-selection info board — the
+ * actual printed ability symbol beside a hero's starting ability. Built by
+ * scripts/build-hero-info-icons.py: 21 are the repo's clean transparent skill
+ * symbols (github.com/Heegu-sama/Homm3BG, assets/skills/<skill>.png); the five
+ * board-game abilities missing a standalone symbol there (Diplomacy, Mysticism,
+ * Scholar, Scouting, Tactics) are recovered from the top art of their own
+ * printed ability card and feathered so the leather margin melts into the chip.
+ * Keyed by the ability's short name (the part after `ability.`).
+ */
+export const ABILITY_SYMBOL_ICONS: Record<string, string> = {
+  air_magic: "/assets/ability-symbols/air_magic.webp",
+  archery: "/assets/ability-symbols/archery.webp",
+  armorer: "/assets/ability-symbols/armorer.webp",
+  artillery: "/assets/ability-symbols/artillery.webp",
+  attack: "/assets/ability-symbols/attack.webp",
+  diplomacy: "/assets/ability-symbols/diplomacy.webp",
+  eagle_eye: "/assets/ability-symbols/eagle_eye.webp",
+  earth_magic: "/assets/ability-symbols/earth_magic.webp",
+  estates: "/assets/ability-symbols/estates.webp",
+  fire_magic: "/assets/ability-symbols/fire_magic.webp",
+  first_aid: "/assets/ability-symbols/first_aid.webp",
+  intelligence: "/assets/ability-symbols/intelligence.webp",
+  interference: "/assets/ability-symbols/interference.webp",
+  leadership: "/assets/ability-symbols/leadership.webp",
+  logistics: "/assets/ability-symbols/logistics.webp",
+  luck: "/assets/ability-symbols/luck.webp",
+  mysticism: "/assets/ability-symbols/mysticism.webp",
+  necromancy: "/assets/ability-symbols/necromancy.webp",
+  pathfinding: "/assets/ability-symbols/pathfinding.webp",
+  resistance: "/assets/ability-symbols/resistance.webp",
+  scholar: "/assets/ability-symbols/scholar.webp",
+  scouting: "/assets/ability-symbols/scouting.webp",
+  sorcery: "/assets/ability-symbols/sorcery.webp",
+  tactics: "/assets/ability-symbols/tactics.webp",
+  water_magic: "/assets/ability-symbols/water_magic.webp",
+  wisdom: "/assets/ability-symbols/wisdom.webp"
+};
+
+/**
+ * The ability-symbol icon for a starting-ability card id (e.g. `ability.offense`),
+ * or undefined when none is registered. `offense` prints the Attack emblem and a
+ * `basic_<school>_magic` ability prints its plain school emblem — matching the
+ * printed cards — everything else maps by its own short name.
+ */
+export function abilitySymbolIcon(cardId: string | undefined): string | undefined {
+  if (!cardId) {
+    return undefined;
+  }
+  let name = cardId.startsWith("ability.") ? cardId.slice("ability.".length) : cardId;
+  if (name === "offense") {
+    name = "attack";
+  } else if (name.startsWith("basic_") && name.endsWith("_magic")) {
+    name = name.slice("basic_".length);
+  }
+  return ABILITY_SYMBOL_ICONS[name];
+}
