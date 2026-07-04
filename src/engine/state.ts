@@ -6765,6 +6765,14 @@ export type EventsState = {
   activeCardId: string | null;
   /** Seat offset into the human turn order of who draws the NEXT Event. */
   nextDrawerIndex: number;
+  /**
+   * Who drew the LAST Event. The next drawer is this seat's clockwise
+   * successor among the live players — tracked by identity (not by index into
+   * the shrinking live-player list) so an elimination never makes the same
+   * player draw twice in a row or skips a seat. Absent in legacy snapshots,
+   * which fall back to `nextDrawerIndex`.
+   */
+  lastDrawerId?: PlayerId | null;
   /** Shared card pool of the Event being resolved (markets / pass-arounds). */
   pool: EventPoolEntry[];
   /** Where leftover pool cards go when the Event finishes. */
