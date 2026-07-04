@@ -6,5 +6,8 @@
     "lobby": "party/lobby.ts",
     "maps": "party/maps.ts"
   },
+  "vars": {
+    "HOMM3BG_APP_URL": "https://heroes-3-board-game-multi.vercel.app"
+  },
   "compatibilityDate": "2025-06-01"
 }
