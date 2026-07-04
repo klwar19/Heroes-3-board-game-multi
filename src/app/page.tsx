@@ -823,33 +823,6 @@ export default function Home() {
     viewerRef.current = viewerPlayerId;
   }, [viewerPlayerId]);
 
-  // Open-table hotseat hand-off. On an OPEN (non-hosted) table any client may view
-  // any seat, so a turn — or a blocking prompt (choice/visit/tile-rotation/reaction
-  // /combat) owned by a seat other than the one on screen — would otherwise be
-  // invisible to whoever must act: they see "player X is deciding" and have to
-  // hunt for the right seat in the switcher. `priorityPlayerId` is set ONLY while
-  // such an interaction is open (null on a normal free turn), so "who must act" is
-  // `priorityPlayerId ?? activePlayerId`. We snap the view to it on each CHANGE of
-  // acting seat, so control passes automatically like handing over the device,
-  // while a manual switch to inspect another seat still sticks until the next
-  // hand-off. Hosted rooms lock the seat (handled below); the lobby and a
-  // deliberate Observer are left alone.
-  const actingSeatRef = useRef<PlayerId | null>(null);
-  useEffect(() => {
-    if (!state || state.setupLobby || state.room?.hosted) {
-      actingSeatRef.current = null;
-      return;
-    }
-    const actingSeat = state.priorityPlayerId ?? state.activePlayerId ?? null;
-    if (!actingSeat || !state.players[actingSeat] || actingSeat === actingSeatRef.current) {
-      return;
-    }
-    actingSeatRef.current = actingSeat;
-    if (viewerRef.current !== OBSERVER_SEAT && viewerRef.current !== actingSeat) {
-      setViewerPlayerId(actingSeat);
-    }
-  }, [state]);
-
   // Map -> battle hand-off: the combat/map toggle is local and sticky, so a
   // fight opened (or finished) while it still pointed at "map" from a previous
   // combat would leave the player stranded on the map — the new battlefield
@@ -3412,15 +3385,65 @@ export default function Home() {
   const roomHosted = Boolean(state.room?.hosted);
   const lockedSeatLabel =
     hostedSeat && hostedSeat !== OBSERVER_SEAT ? state.players[hostedSeat]?.name ?? hostedSeat : "Observer";
+  // Seats a player could occupy: the game's turn order once started, or the
+  // lobby's seats during setup (turn order isn't populated until the map builds).
+  const claimableSeatIds =
+    inLobby && state.setupLobby ? state.setupLobby.seats.map((seat) => seat.playerId) : seatIds;
+  const seatDisplayName = (seatId: PlayerId) =>
+    state.players[seatId]?.name ??
+    state.setupLobby?.seats.find((seat) => seat.playerId === seatId)?.name ??
+    seatId;
+  // Seats not held by another member — a player may self-serve into any of these
+  // even in a hosted/closed room (the host can still move/kick anyone).
+  const openHostedSeats = claimableSeatIds.filter(
+    (seatId) => !(state.room?.members ?? []).some((member) => member.clientId !== clientId && member.seat === seatId)
+  );
 
   const tableMenu = (
     <div className="tableMenu" aria-label="Table controls">
       {roomHosted ? (
-        // Hosted room: seats are locked — the host assigns them in the Room
-        // panel. Players cannot self-switch.
-        <div className="menuRow seatLocked" aria-label="Your seat (locked by host)">
+        // Hosted/closed room: the host controls seats, but a player may still
+        // self-serve into an OPEN seat or step down to observer — so joiners are
+        // never stuck watching. The host keeps the move/kick controls in the Room
+        // panel below.
+        <div className="menuRow seatLocked" aria-label="Your seat">
           <Lock aria-hidden="true" size={13} />
-          <span>You are {hostedSeat === OBSERVER_SEAT ? "an observer" : `at ${lockedSeatLabel}`}</span>
+          {hostedSeat === OBSERVER_SEAT ? (
+            <>
+              <span>You are an observer —</span>
+              {openHostedSeats.length > 0 ? (
+                openHostedSeats.map((seatId) => (
+                  <button
+                    className="seatClaimButton"
+                    key={seatId}
+                    onClick={() =>
+                      void submitAction({ type: "ASSIGN_SEAT", clientId, targetClientId: clientId, seat: seatId })
+                    }
+                    title={`Take the ${seatDisplayName(seatId)} seat and play`}
+                    type="button"
+                  >
+                    Take {seatDisplayName(seatId)}
+                  </button>
+                ))
+              ) : (
+                <span className="seatClaimHint">every seat is taken — ask the host</span>
+              )}
+            </>
+          ) : (
+            <>
+              <span>You are at {lockedSeatLabel}</span>
+              <button
+                className="seatClaimButton ghost"
+                onClick={() =>
+                  void submitAction({ type: "ASSIGN_SEAT", clientId, targetClientId: clientId, seat: "observer" })
+                }
+                title="Leave your seat and watch"
+                type="button"
+              >
+                Leave seat
+              </button>
+            </>
+          )}
         </div>
       ) : (
         // Open table: the original free local seat switcher (handy for testing).
@@ -4257,7 +4280,7 @@ export default function Home() {
               finished tumbling — so the calculation never reads out over a die
               still in the air. */}
           {!dice.current && !mapDice.current ? (
-            <PromptTray legalActions={legalActions} onAction={submitAction} state={state} viewerPlayerId={viewerPlayerId} />
+            <PromptTray legalActions={legalActions} onAction={submitAction} onSwitchSeat={roomHosted ? undefined : (seat) => setViewerPlayerId(seat)} state={state} viewerPlayerId={viewerPlayerId} />
           ) : null}
           <LearningOfferModal legalActions={legalActions} onAction={submitAction} state={state} viewerPlayerId={viewerPlayerId} />
           <SearchModal onAction={submitAction} state={state} view={playerView} viewerPlayerId={viewerPlayerId} />
@@ -4523,7 +4546,7 @@ export default function Home() {
       {/* Same gate on the combat-table layout: a choice prompt waits out any
           attack/map die animation before reading its result. */}
       {!dice.current && !mapDice.current ? (
-        <PromptTray legalActions={legalActions} onAction={submitAction} state={state} viewerPlayerId={viewerPlayerId} />
+        <PromptTray legalActions={legalActions} onAction={submitAction} onSwitchSeat={roomHosted ? undefined : (seat) => setViewerPlayerId(seat)} state={state} viewerPlayerId={viewerPlayerId} />
       ) : null}
       <LearningOfferModal legalActions={legalActions} onAction={submitAction} state={state} viewerPlayerId={viewerPlayerId} />
       {/* Hold the instant window back until the attack-die animation has fully
