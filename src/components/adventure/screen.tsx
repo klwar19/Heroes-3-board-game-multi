@@ -4233,8 +4233,8 @@ function HouseRulesSection({
       <p className="houseRuleAlwaysOn">
         <Info size={11} aria-hidden="true" />
         <span>
-          Always on (not yet individually toggleable): the buffed Ballistics &amp; Earthquake, Pathfinding, and the
-          initiative-specialty +1 Combat move (Dracon, Gelu VI…).
+          Not individually toggleable yet: the buffed Ballistics, Earthquake &amp; Pathfinding (always on), and the
+          initiative-specialty +1 Combat move — Dracon, Gelu VI… (follows the mode: on in BINH).
         </span>
       </p>
     </div>
