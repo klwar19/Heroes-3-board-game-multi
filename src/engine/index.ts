@@ -355,6 +355,7 @@ export type {
   CardDefinition,
   CardId,
   CardOptionDefinition,
+  CardPlayCost,
   CardPlayMode,
   CardLibrary,
   CombatContext,

@@ -20,9 +20,12 @@ import {
   getPendingReactionPower,
   getSpellDamageAmount,
   RESOURCE_DIE_FACES,
+  spellBookPowerAvailable,
+  spellBookRuleEnabled,
   spellPowerValueOfCard,
   standingSpellPower,
   SURRENDER_GOLD_COST,
+  type CardPlayCost,
   type CardPlayMode,
   type GameAction,
   type GameState,
@@ -63,6 +66,12 @@ type TraySelection = {
   costCards?: { exact?: number; upTo?: number; powerCost?: number; filter?: "spell" | "power-source" };
   /** Hand indexes chosen to pay the option's discard cost. */
   costHandIndexes: number[];
+  /**
+   * Spell Book (house rule): a Book Spell chosen to help pay a lethal save's
+   * Power cost — capped at ONE (the once-per-turn Book Power budget). Held by
+   * card id (a Book Spell has no hand index) and added to the play's costCardIds.
+   */
+  costBookCardId?: string;
 };
 
 function selectionPreview(selections: TraySelection[]): string[] {
@@ -145,6 +154,121 @@ function PendingPowerReadout({ state }: { state: GameState }) {
           : " · no Power added yet"}
       </small>
     </span>
+  );
+}
+
+/**
+ * The MANDATORY card cost a reaction option charges (exact discard count or a
+ * Power value), or undefined when it charges none / only an optional "up to"
+ * discard. Used to route a Spell Book reaction that must be paid (a silver/gold
+ * Resurrection cast from the Book) to a picker instead of a bare one-click tile.
+ */
+function reactionMandatoryCost(action: ReactionLegal): CardPlayCost | undefined {
+  if (action.asPowerBoost) {
+    return undefined;
+  }
+  const card = cardLibrary[action.cardId];
+  if (card?.effect.type !== "CHOOSE_ONE" || action.optionIndex === undefined) {
+    return undefined;
+  }
+  const cost = card.effect.options[action.optionIndex]?.cost;
+  return cost && (cost.discardCards !== undefined || cost.powerCost !== undefined) ? cost : undefined;
+}
+
+/**
+ * A Spell Book reaction (house rule) that must be paid — the silver/gold
+ * Resurrection cast straight from the Book. The one-click Book tile cannot
+ * collect a cost, so this renders the card with a hand-payment picker (Power
+ * sources), mirroring the batch tray's own cost logic, and only enables the play
+ * once the exact discard / Power value is met.
+ */
+function SpellBookSaveTile({
+  state,
+  view,
+  viewerPlayerId,
+  action,
+  cost,
+  onAction
+}: {
+  state: GameState;
+  view: PlayerVisibleState;
+  viewerPlayerId: PlayerId;
+  action: ReactionLegal;
+  cost: CardPlayCost;
+  onAction: (action: GameAction) => void;
+}) {
+  const [payIndexes, setPayIndexes] = useState<number[]>([]);
+  const hand = view.players[viewerPlayerId]?.hand ?? [];
+  const playedSchools = cardLibrary[action.cardId]?.spellSchools ?? [];
+  const isPowerCost = cost.powerCost !== undefined;
+  const standing = cardLibrary[action.cardId]
+    ? standingSpellPower(state, viewerPlayerId, cardLibrary[action.cardId])
+    : 0;
+  const chosenValues = payIndexes.map((index) => spellPowerValueOfCard(cardLibrary[hand[index]], playedSchools));
+  const powerTotal = standing + chosenValues.reduce((sum, value) => sum + value, 0);
+
+  const satisfied = isPowerCost
+    ? powerTotal >= (cost.powerCost ?? 0) && !chosenValues.some((value) => powerTotal - value >= (cost.powerCost ?? 0))
+    : payIndexes.length === (cost.discardCards ?? 0);
+
+  const targetReached = isPowerCost ? powerTotal >= (cost.powerCost ?? 0) : payIndexes.length >= (cost.discardCards ?? 0);
+
+  const playedCard = cardLibrary[action.cardId];
+  const optionLabel =
+    playedCard?.effect.type === "CHOOSE_ONE" && action.optionIndex !== undefined
+      ? playedCard.effect.options[action.optionIndex]?.label
+      : undefined;
+
+  const togglePay = (index: number) =>
+    setPayIndexes((current) =>
+      current.includes(index) ? current.filter((value) => value !== index) : [...current, index]
+    );
+
+  return (
+    <div className="trayTile scrollTile" key={JSON.stringify(action)}>
+      <CardFrame cardId={action.cardId} className="trayCardImage" />
+      <div className="trayTileBody">
+        <strong>📖 {cardName(action.cardId)} (Spell Book)</strong>
+        <div className="trayPayment" aria-label="Choose cards to pay the save cost">
+          <small>
+            {isPowerCost
+              ? `Pay ${cost.powerCost} Power${standing > 0 ? ` · ${standing} standing` : ""} — ${powerTotal}/${cost.powerCost} chosen`
+              : `Discard exactly ${cost.discardCards}:`}
+          </small>
+          <div className="trayPaymentChips">
+            {hand.map((payCardId, index) => {
+              const picked = payIndexes.includes(index);
+              const wrongKind = cost.costCardFilter !== undefined && !costCardEligible(payCardId, cost.costCardFilter);
+              const powerValue = isPowerCost ? spellPowerValueOfCard(cardLibrary[payCardId], playedSchools) : 0;
+              if (wrongKind || (isPowerCost && powerValue <= 0)) {
+                return null;
+              }
+              return (
+                <button
+                  aria-pressed={picked}
+                  className={`trayChip ${picked ? "picked" : ""}`}
+                  disabled={!picked && targetReached}
+                  key={`${payCardId}-${index}`}
+                  onClick={() => togglePay(index)}
+                  type="button"
+                >
+                  {cardName(payCardId)}
+                  {isPowerCost ? ` (+${powerValue})` : ""}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <button
+          className="trayInstant"
+          disabled={!satisfied}
+          onClick={() => onAction({ ...action, costCardIds: payIndexes.map((index) => hand[index]) })}
+          type="button"
+        >
+          {optionLabel ?? "Play from Spell Book"}
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -348,6 +472,15 @@ export function ReactionTray({
       !cardIsEmpoweredFor(selection.cardId, view.players[viewerPlayerId]?.empoweredAbilities)
   ).length;
 
+  // Spell Book (house rule): in the lethal-save window the Book's once-per-turn
+  // +1 Power may help pay a save (e.g. a silver save fuelled by a hand Magic
+  // Arrow + a Book Spell). Offered only there, only while the budget is unspent.
+  const isLethalSaveWindow = window.triggerEvent.type === "UNIT_LETHAL_HIT";
+  const bookPowerUsable = Boolean(
+    isLethalSaveWindow && spellBookRuleEnabled(state) && player && spellBookPowerAvailable(player)
+  );
+  const viewerSpellBook = view.players[viewerPlayerId]?.spellBook ?? [];
+
   const toggleSelection = (handIndex: number, cardId: string, group: TrayGroup) => {
     setSelections((current) => {
       const existing = current.find((selection) => selection.handIndex === handIndex);
@@ -411,6 +544,18 @@ export function ReactionTray({
     );
   };
 
+  // Spell Book (house rule): pick / clear the ONE Book Spell that may help pay a
+  // lethal save's Power cost. Picking a different Book Spell replaces the prior one.
+  const toggleBookPayment = (selectionHandIndex: number, bookCardId: string) => {
+    setSelections((current) =>
+      current.map((selection) =>
+        selection.handIndex === selectionHandIndex
+          ? { ...selection, costBookCardId: selection.costBookCardId === bookCardId ? undefined : bookCardId }
+          : selection
+      )
+    );
+  };
+
   // Hand indexes already committed (played or paying) cannot pay twice.
   const committedIndexes = new Set<number>();
   for (const selection of selections) {
@@ -432,8 +577,17 @@ export function ReactionTray({
       (sum, index) => sum + spellPowerValueOfCard(cardLibrary[hand[index]], schools),
       0
     );
-    return { standing, total: standing + fromCards };
+    const fromBook = selection.costBookCardId
+      ? spellPowerValueOfCard(cardLibrary[selection.costBookCardId], schools)
+      : 0;
+    return { standing, total: standing + fromCards + fromBook };
   };
+
+  // Cards committed to paying a selection's cost: its hand chips plus the one
+  // optional Book Spell. Count-mode costs (Resurrection Spell) and Power-value
+  // costs (the specialty) both spend the Book Spell as one card / one Power.
+  const paymentCardCount = (selection: TraySelection) =>
+    selection.costHandIndexes.length + (selection.costBookCardId ? 1 : 0);
 
   const paymentInvalid = selections.some((selection) => {
     const cost = selection.costCards;
@@ -448,11 +602,13 @@ export function ReactionTray({
         return true;
       }
       const schools = cardLibrary[selection.cardId]?.spellSchools ?? [];
-      return selection.costHandIndexes.some(
-        (index) => total - spellPowerValueOfCard(cardLibrary[hand[index]], schools) >= cost.powerCost!
-      );
+      const chosenValues = [
+        ...selection.costHandIndexes.map((index) => spellPowerValueOfCard(cardLibrary[hand[index]], schools)),
+        ...(selection.costBookCardId ? [spellPowerValueOfCard(cardLibrary[selection.costBookCardId], schools)] : [])
+      ];
+      return chosenValues.some((value) => total - value >= cost.powerCost!);
     }
-    return cost.exact !== undefined && selection.costHandIndexes.length !== cost.exact;
+    return cost.exact !== undefined && paymentCardCount(selection) !== cost.exact;
   });
 
   const isAttackWindow = window.triggerEvent.type === "UNIT_ATTACK_DECLARED";
@@ -497,15 +653,19 @@ export function ReactionTray({
       return;
     }
 
-    const toPlay = (selection: TraySelection): ReactionPlay => ({
-      cardId: selection.cardId,
-      mode: selection.mode,
-      ...(selection.optionIndex !== undefined ? { optionIndex: selection.optionIndex } : {}),
-      ...(selection.asPowerBoost ? { asPowerBoost: true } : {}),
-      ...(selection.costHandIndexes.length > 0
-        ? { costCardIds: selection.costHandIndexes.map((index) => hand[index]) }
-        : {})
-    });
+    const toPlay = (selection: TraySelection): ReactionPlay => {
+      const costCardIds = [
+        ...selection.costHandIndexes.map((index) => hand[index]),
+        ...(selection.costBookCardId ? [selection.costBookCardId] : [])
+      ];
+      return {
+        cardId: selection.cardId,
+        mode: selection.mode,
+        ...(selection.optionIndex !== undefined ? { optionIndex: selection.optionIndex } : {}),
+        ...(selection.asPowerBoost ? { asPowerBoost: true } : {}),
+        ...(costCardIds.length > 0 ? { costCardIds } : {})
+      };
+    };
 
     if (selections.length === 1) {
       const [only] = selections;
@@ -590,17 +750,35 @@ export function ReactionTray({
             </div>
           </div>
         ))}
-        {spellBookReactions.map((action) => (
-          <div className="trayTile scrollTile" key={JSON.stringify(action)}>
-            <CardFrame cardId={action.cardId} className="trayCardImage" />
-            <div className="trayTileBody">
-              <strong>📖 {cardName(action.cardId)} (Spell Book)</strong>
-              <button className="trayInstant" onClick={() => onAction(action)} type="button">
-                {action.asPowerBoost ? "Discard for +1 Power" : "Play from Spell Book"}
-              </button>
+        {spellBookReactions.map((action) => {
+          // A Book reaction that MUST be paid (a silver/gold Resurrection cast
+          // from the Book) needs a cost picker; everything else is one-click.
+          const cost = reactionMandatoryCost(action);
+          if (cost) {
+            return (
+              <SpellBookSaveTile
+                action={action}
+                cost={cost}
+                key={JSON.stringify(action)}
+                onAction={onAction}
+                state={state}
+                view={view}
+                viewerPlayerId={viewerPlayerId}
+              />
+            );
+          }
+          return (
+            <div className="trayTile scrollTile" key={JSON.stringify(action)}>
+              <CardFrame cardId={action.cardId} className="trayCardImage" />
+              <div className="trayTileBody">
+                <strong>📖 {cardName(action.cardId)} (Spell Book)</strong>
+                <button className="trayInstant" onClick={() => onAction(action)} type="button">
+                  {action.asPowerBoost ? "Discard for +1 Power" : "Play from Spell Book"}
+                </button>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
         {tiles.map((tile) => {
           const selection = selections.find((candidate) => candidate.handIndex === tile.handIndex);
           const empowered = cardIsEmpoweredFor(
@@ -745,7 +923,7 @@ export function ReactionTray({
                                 !inThisPayment &&
                                 (isPowerCost
                                   ? (powerPaid?.total ?? 0) >= (powerCostValue ?? 0)
-                                  : (selection?.costHandIndexes.length ?? 0) >= paymentTarget);
+                                  : (selection ? paymentCardCount(selection) : 0) >= paymentTarget);
                               return (
                                 <button
                                   aria-pressed={inThisPayment}
@@ -760,6 +938,43 @@ export function ReactionTray({
                                 </button>
                               );
                             })}
+                            {/* Spell Book (house rule): one stashed Book Spell may help
+                                pay a lethal save — the once-per-turn Book Power budget. */}
+                            {bookPowerUsable &&
+                              [...new Set(viewerSpellBook)].map((bookCardId) => {
+                                if (bookCardId === tile.cardId) {
+                                  return null;
+                                }
+                                const picked = selection?.costBookCardId === bookCardId;
+                                const wrongKind =
+                                  selection?.costCards?.filter !== undefined &&
+                                  !costCardEligible(bookCardId, selection.costCards.filter);
+                                const powerValue = isPowerCost
+                                  ? spellPowerValueOfCard(cardLibrary[bookCardId], playedSchools)
+                                  : 0;
+                                if (wrongKind || (isPowerCost && powerValue <= 0)) {
+                                  return null;
+                                }
+                                const full =
+                                  !picked &&
+                                  (isPowerCost
+                                    ? (powerPaid?.total ?? 0) >= (powerCostValue ?? 0)
+                                    : (selection ? paymentCardCount(selection) : 0) >= paymentTarget);
+                                return (
+                                  <button
+                                    aria-pressed={picked}
+                                    className={`trayChip bookChip ${picked ? "picked" : ""}`}
+                                    disabled={full}
+                                    key={`book-${bookCardId}`}
+                                    onClick={() => toggleBookPayment(tile.handIndex, bookCardId)}
+                                    title="Spend a Spell Book Spell for Power (once per turn)"
+                                    type="button"
+                                  >
+                                    📖 {cardName(bookCardId)}
+                                    {isPowerCost ? ` (+${powerValue})` : ""}
+                                  </button>
+                                );
+                              })}
                           </div>
                         </div>
                       ) : null}
