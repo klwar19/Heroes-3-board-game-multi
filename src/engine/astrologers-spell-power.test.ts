@@ -94,4 +94,41 @@ describe("Astrologers — Blue Sky / Scorched Ground school power", () => {
     expect(castDamage("none-arrow", "spell.magic_arrow", "astrologers.dead_silence")).toBe(1);
     expect(castDamage("none-impl", "spell.implosion", "astrologers.dead_silence")).toBe(0);
   });
+
+  /**
+   * The proclamation buffs a matching-school spell played as an INSTANT into an
+   * attack window too — "all Spells … are cast at +1 Power" makes no cast-vs-
+   * instant distinction, and the instant shares the cast pipeline's Power
+   * sources (standingSpellPower). Bloodlust (Fire, {0:+1, 1:+2, 2:+3} attack):
+   * Scorched Ground lifts a lone Bloodlust from +1 to +2 attack on the roll.
+   */
+  function bloodlustAttackBonus(seed: string, proclamation: string | null): number | null {
+    const state = createInitialGameState(seed);
+    state.players.p1.hand = ["spell.bloodlust"];
+    state.combat!.units.unit_p1_griffins.position = 9;
+    state.combat!.units.unit_p2_skeletons.position = 13;
+    setProclamation(state, proclamation);
+
+    const declared = applyOk(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_griffins",
+      defenderId: "unit_p2_skeletons"
+    });
+    const played = passAll(
+      applyOk(declared, { type: "PLAY_REACTION", playerId: "p1", cardId: "spell.bloodlust", mode: "basic" })
+    );
+    // The griffins' own declared attack — never the skeletons' retaliation roll.
+    const rolled = played.eventLog.find(
+      (event) => event.type === "ATTACK_ROLLED" && !event.isRetaliation && event.attackerId === "unit_p1_griffins"
+    );
+    return rolled && rolled.type === "ATTACK_ROLLED" ? rolled.attackBonus : null;
+  }
+
+  it("buffs a matching-school spell INSTANT played into an attack window (Bloodlust +1 → +2)", () => {
+    expect(bloodlustAttackBonus("instant-base", null)).toBe(1);
+    expect(bloodlustAttackBonus("instant-on", "astrologers.scorched_ground")).toBe(2);
+    // CONTROL: the wrong-school proclamation adds nothing to a Fire instant.
+    expect(bloodlustAttackBonus("instant-wrong", "astrologers.blue_sky")).toBe(1);
+  });
 });

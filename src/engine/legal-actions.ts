@@ -254,6 +254,18 @@ export function standingSpellPower(state: GameState, playerId: PlayerId, card: C
   if (school) {
     bonus += school.basicPower;
   }
+  // Astrologers Blue Sky / Scorched Ground: "all Spells from the X Magic
+  // Schools are cast at +1 Power". A matching-school spell played as an
+  // instant/reaction (Bloodlust/Curse into an attack window, Sorrow's Power
+  // cost) is still a spell being cast, so the proclamation counts here exactly
+  // as it does for a normal cast (astrologersSchoolPowerBonusFor inside
+  // resolvedSpellPowerForStackItem). Always-on while the card is face up —
+  // like the School-of-Magic basic bonus above, never gated on the
+  // first-spell counters. `kind === "spell"` keeps it off Specialties, which
+  // belong to no school.
+  if (card.kind === "spell") {
+    bonus += astrologersSchoolPowerBonusFor(state, card);
+  }
   // Pandora's Bargain: Power — a flat +Power on every spell while in play.
   bonus += permanentSpellPowerBonus(state, playerId);
   return bonus;

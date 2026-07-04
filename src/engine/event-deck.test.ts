@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { applyAction, createAdventureGameState, getLegalActions, getPlayerView } from "./index";
 import { eventCardDefinitions, eventsDeckCardIds, EVENTS_NOT_IMPLEMENTED } from "@/data/cards/events";
-import { drawEventCard, EVENTS_DECK_ID, getEventsState, startAdventureRound } from "./adventure";
+import { drawEventCard, eliminatePlayer, EVENTS_DECK_ID, getEventsState, startAdventureRound } from "./adventure";
 import { pumpAdventureQueues } from "./adventure-reducer";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -138,6 +138,48 @@ describe("Event deck flow", () => {
     expect(draws[1]).toMatchObject({ drawerId: "p2", round: 5 });
     // The previous Event went face-down onto the discard pile.
     expect(state.decks[EVENTS_DECK_ID].discardPile).toContain("event.stables");
+  });
+
+  it("keeps the clockwise drawer rotation correct across a player elimination", () => {
+    // 3 seats. The rotation must be tracked by IDENTITY: with a bare index into
+    // the live-player list, eliminating a seat shifts every later index — the
+    // same player draws twice in a row, or a seat is skipped.
+    const state = createAdventureGameState({
+      seed: "flow-eliminate",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      events: true,
+      players: [
+        { id: "p1", name: "Catherine", factionId: "castle", heroDefId: "catherine" },
+        { id: "p2", name: "Sandro", factionId: "necropolis", heroDefId: "sandro" },
+        { id: "p3", name: "Alamar", factionId: "dungeon", heroDefId: "alamar" }
+      ]
+    });
+    const drawnBy = () => state.eventLog.filter((event) => event.type === "EVENT_CARD_DRAWN").map((event) => (event as { drawerId: PlayerId }).drawerId);
+    const quietDraw = () => {
+      state.adventure!.rewardQueue = [];
+      state.adventure!.pendingVisit = null;
+      state.pendingChoice = null;
+      drawEventCard(state);
+    };
+
+    quietDraw(); // p1 draws first…
+    quietDraw(); // …then p2.
+    expect(drawnBy()).toEqual(["p1", "p2"]);
+
+    // p2 (the LAST drawer) is eliminated: the next drawer is p2's clockwise
+    // successor, p3 — never p1 again (a live-list index would wrap 2 % 2 → p1).
+    // Elimination also purges p2's queued rewards (a dead seat must never hold
+    // an open choice — it would freeze the table behind the event barrier).
+    state.adventure!.rewardQueue.push({ playerId: "p2", kind: "visit-steps", steps: [] });
+    eliminatePlayer(state, "p2", "test", false);
+    expect(state.adventure!.rewardQueue.filter((reward) => reward.playerId === "p2")).toEqual([]);
+    quietDraw();
+    expect(drawnBy()).toEqual(["p1", "p2", "p3"]);
+
+    // And from p3 the rotation wraps to p1 among the live seats.
+    quietDraw();
+    expect(drawnBy()).toEqual(["p1", "p2", "p3", "p1"]);
   });
 
   it("resolves effects in clockwise order starting with the drawer", () => {

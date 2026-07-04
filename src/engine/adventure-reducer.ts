@@ -8392,6 +8392,14 @@ export function pumpAdventureQueues(state: GameState): void {
   while (!state.pendingChoice && adventure.rewardQueue.length > 0) {
     const reward = adventure.rewardQueue[0];
 
+    // A reward whose owner has been eliminated since it was queued would open
+    // a choice nobody can answer — drop it. (The barrier sentinel below is
+    // table-wide and pumps regardless of its nominal playerId.)
+    if (reward.kind !== "round-start-events-resolved" && state.players[reward.playerId]?.eliminated) {
+      adventure.rewardQueue.shift();
+      continue;
+    }
+
     if (reward.kind === "round-start-events-resolved") {
       // Round-start Event / Astrologers barrier sentinel: it is the last
       // event-related reward (every follow-up unshifted ahead of it), so reaching

@@ -2124,6 +2124,20 @@ export function eliminatePlayer(
 
   state.turnOrder = state.turnOrder.filter((id) => id !== playerId);
 
+  // Stale per-player interactions must not outlive the seat: a queued reward
+  // (or an open visit) for the eliminated player would open a choice nobody
+  // can answer — freezing the whole table behind the round-start event
+  // barrier. The barrier sentinel carries only a nominal playerId and is
+  // pumped regardless of seat, so it stays.
+  if (state.adventure) {
+    state.adventure.rewardQueue = state.adventure.rewardQueue.filter(
+      (reward) => reward.kind === "round-start-events-resolved" || reward.playerId !== playerId
+    );
+    if (state.adventure.pendingVisit?.playerId === playerId) {
+      state.adventure.pendingVisit = null;
+    }
+  }
+
   appendEvent(state, { type: "PLAYER_ELIMINATED", playerId, reason, gaveUp });
 
   if (state.adventure && !state.adventure.winnerPlayerId) {
@@ -8312,7 +8326,28 @@ export function drawEventCard(state: GameState): void {
     return;
   }
 
-  const drawerSeat = events.nextDrawerIndex % order.length;
+  // The drawer rotates clockwise per draw — by IDENTITY, not by index into the
+  // live-player list: after an elimination a bare index would point at the
+  // wrong seat (the same player drawing twice in a row, or a seat skipped).
+  // The full seat ring is read from `state.players` (insertion = seat order,
+  // eliminated seats included) so the clockwise successor stays correct even
+  // when the previous drawer was just eliminated. Legacy snapshots without
+  // `lastDrawerId` fall back to the stored index once.
+  let drawerSeat = events.nextDrawerIndex % order.length;
+  if (events.lastDrawerId) {
+    const seating = Object.keys(state.players).filter((id) => id !== NEUTRAL_PLAYER_ID);
+    const lastSeat = seating.indexOf(events.lastDrawerId);
+    if (lastSeat !== -1) {
+      for (let offset = 1; offset <= seating.length; offset += 1) {
+        const liveIndex = order.indexOf(seating[(lastSeat + offset) % seating.length]);
+        if (liveIndex !== -1) {
+          drawerSeat = liveIndex;
+          break;
+        }
+      }
+    }
+  }
+  events.lastDrawerId = order[drawerSeat];
   events.nextDrawerIndex = (drawerSeat + 1) % order.length;
   const rotated = [...order.slice(drawerSeat), ...order.slice(0, drawerSeat)];
 
