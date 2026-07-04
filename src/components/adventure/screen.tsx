@@ -52,6 +52,7 @@ import {
   hexToPixel,
   inCombatPrep,
   isParallelActor,
+  isRoundStartEventBarrierActive,
   MAX_PARALLEL_TURN_ROUNDS,
   parallelInteractionBlocker,
   parallelTurnsActive,
@@ -2555,26 +2556,50 @@ export function PromptTray({
     );
   }
 
-  // Never leave the non-owning seat with a blank table during a multiplayer
-  // decision. The server still owns enforcement; this makes the assignment
-  // visible so a host in another seat cannot mistake the prompt for theirs.
+  // Never leave a seat with a blank table while ANOTHER seat's blocking
+  // interaction is open. That covers state.pendingChoice (any kind), the
+  // adventure pendingVisit — which is how round-start Event-deck / Astrologers
+  // steps and every location visit surface — and the pendingTileChoice (tile
+  // rotations, incl. round 1's forced home-tile spins). All of them freeze the
+  // rest of the table, most totally behind the round-start Event barrier, so an
+  // INVISIBLE one reads as "the game is stuck": the strip names the owner, and
+  // on an OPEN table offers the one-click "Play as X" jump so whoever must act
+  // reaches the prompt from any seat. The server still owns enforcement.
   // Learning has its own waiting strip in LearningOfferModal.
-  if (choice && choice.playerId !== viewerPlayerId && !(choice.type === "OPTION_CHOICE" && choice.context === "learning-level-up")) {
-    const ownerName = state.players[choice.playerId]?.name ?? choice.playerId;
-    // Offer the one-click jump for MAP choices only (a creature-bank placement,
-    // a visit option, a tile pick). Never mid-combat — switching seats during a
-    // fight is exactly the disorientation we want to avoid.
+  const tileChoice = state.adventure?.pendingTileChoice;
+  const waitingOn =
+    choice && choice.playerId !== viewerPlayerId
+      ? choice.type === "OPTION_CHOICE" && choice.context === "learning-level-up"
+        ? null
+        : { ownerId: choice.playerId, doing: "is deciding…" }
+      : !choice && visit && visit.playerId !== viewerPlayerId
+        ? {
+            ownerId: visit.playerId,
+            doing: isRoundStartEventBarrierActive(state)
+              ? "is resolving the round's Event…"
+              : "is resolving a visit…"
+          }
+        : !choice && !visit && tileChoice && tileChoice.playerId !== viewerPlayerId
+          ? { ownerId: tileChoice.playerId, doing: "is rotating a new tile…" }
+          : null;
+  if (waitingOn) {
+    const ownerName = state.players[waitingOn.ownerId]?.name ?? waitingOn.ownerId;
+    // Offer the one-click jump for MAP interactions only (a creature-bank
+    // placement, an Event/visit option, a tile pick). Never mid-combat —
+    // switching seats during a fight is exactly the disorientation we avoid.
     const canJumpToOwner =
       Boolean(onSwitchSeat) &&
       !state.combat &&
-      choice.playerId !== NEUTRAL_PLAYER_ID &&
-      Boolean(state.players[choice.playerId]);
+      waitingOn.ownerId !== NEUTRAL_PLAYER_ID &&
+      Boolean(state.players[waitingOn.ownerId]);
     return (
       <div className="reactionStrip waiting" role="status">
         <Hourglass aria-hidden="true" size={15} />
-        <span>{ownerName} is deciding…</span>
+        <span>
+          {ownerName} {waitingOn.doing}
+        </span>
         {canJumpToOwner ? (
-          <button className="promptSwitchSeat" onClick={() => onSwitchSeat?.(choice.playerId)} type="button">
+          <button className="promptSwitchSeat" onClick={() => onSwitchSeat?.(waitingOn.ownerId)} type="button">
             Play as {ownerName}
           </button>
         ) : null}

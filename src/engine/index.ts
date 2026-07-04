@@ -58,12 +58,14 @@ export { ENGINE_PROTOCOL_VERSION, ENGINE_SIGNATURE } from "./version";
 export {
   hasOpenAdventureTurn,
   isParallelActor,
+  isRoundStartEventBarrierActive,
   MAX_PARALLEL_TURN_ROUNDS,
   normalizeParallelTurnRounds,
   parallelInteractionBlocker,
   parallelTurnsActive,
   parallelWaitMessage,
   remainingParallelPlayerIds,
+  roundStartEventResolver,
   stopParallelTurns
 } from "./parallel-turns";
 export { drawCardsForPlayer, isSharedDeckId, SHARED_DECK_IDS, shuffleCards } from "./decks";

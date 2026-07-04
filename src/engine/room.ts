@@ -82,6 +82,27 @@ function findMemberByUserId(room: RoomMembershipState, userId: string): RoomMemb
   return room.members.find((member) => member.userId === userId) ?? null;
 }
 
+/**
+ * Fallback resolution for a VERIFIED actor whose account id matches no member:
+ * the GUEST member holding their claimed clientId, if any. This heals the
+ * "joined as a guest, acts as a verified account" mismatch — the JOIN was
+ * processed before the session could be verified (a transient verify-token
+ * failure on the edge, or a room whose members predate the edge being able to
+ * verify sessions at all) — which otherwise refuses EVERY action ("Join the
+ * room before taking a seat's action") and every redacted frame (the player
+ * sees the observer view of their own game). It never resolves a member bound
+ * to a DIFFERENT verified account, so one account can still never act or see
+ * for another; and matching a guest member by claimed clientId grants nothing a
+ * plain guest connection could not already claim.
+ */
+function fallbackGuestMember(room: RoomMembershipState, clientId: string | undefined): RoomMember | null {
+  if (!clientId) {
+    return null;
+  }
+  const member = findMember(room, clientId);
+  return member && !member.userId ? member : null;
+}
+
 /** The exact registered host (the only client trusted with host powers). */
 function isEffectiveHost(room: RoomMembershipState, clientId: string): boolean {
   return room.hosted && room.hostClientId === clientId;
@@ -134,7 +155,7 @@ export function seatForViewer(state: GameState, actor: VerifiedActor): RoomSeat 
   }
   const { clientId, userId } = actor;
   const member = userId
-    ? findMemberByUserId(room, userId)
+    ? (findMemberByUserId(room, userId) ?? fallbackGuestMember(room, clientId))
     : clientId
       ? findMember(room, clientId)
       : null;
@@ -567,10 +588,14 @@ export function roomActionGuard(
     return null; // not a seat-scoped action
   }
 
-  // Verified identity is authoritative: a signed-in actor is bound STRICTLY to
-  // the member holding their account id, so a spoofed clientId is ignored.
+  // Verified identity is authoritative: a signed-in actor is bound to the
+  // member holding their account id, so a spoofed clientId cannot reach another
+  // VERIFIED account's seat. When no member carries the account id, fall back
+  // to the GUEST member holding the claimed clientId (see fallbackGuestMember):
+  // a join processed before the session could be verified must not lock the
+  // player out of their own seat for the rest of the game.
   if (userId) {
-    const member = findMemberByUserId(room, userId);
+    const member = findMemberByUserId(room, userId) ?? fallbackGuestMember(room, clientId);
     if (!member) {
       return "Join the room before taking a seat's action.";
     }

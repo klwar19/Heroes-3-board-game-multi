@@ -11,7 +11,7 @@ import { DEFAULT_SERVER } from "@/data/servers";
 import { uiArtSlot } from "@/data/ui-art";
 import type { GameMode } from "@/engine";
 import { assetUrl } from "@/lib/asset-url";
-import { fetchSession } from "@/lib/auth-client";
+import { fetchSession, fetchSocketToken } from "@/lib/auth-client";
 import { getClientId, getDisplayName, setDisplayName } from "@/lib/identity";
 import { fetchLobbyChat, postLobbyChat, type LobbyChatMessage } from "@/lib/lobby-chat-client";
 import {
@@ -161,7 +161,11 @@ export function RoomBrowser({ mode, labels }: { mode: GameMode; labels: RoomBrow
     if (!window.confirm("Close this room for everyone? This deletes the game and cannot be undone.")) {
       return;
     }
-    requestCloseRoom(roomId, clientId)
+    // Attach the signed-in session's socket ticket so the cross-origin PartyKit
+    // edge can verify a PLATFORM ADMIN's close of any room (the lobby shows
+    // admins a Delete button on every table; the httpOnly cookie cannot cross
+    // origins). Guests resolve no ticket and close by membership, as before.
+    requestCloseRoom(roomId, clientId, fetchSocketToken)
       .then((result) => {
         if (!result.closed) {
           setError(result.reason ?? "Could not close the room.");
