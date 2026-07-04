@@ -81,6 +81,21 @@ export type TownBoardSpec = {
    * of the panorama-reveal + CSS plate — so the slots read like the real board.
    */
   realTileArt?: boolean;
+  /**
+   * The SHARED (two-in-one) bar ships a dedicated printed DOUBLE-SIDED tile
+   * instead of splitting into two half-slots: one printed face for "exactly one
+   * of the pair built", one for "both built". The physical Stronghold board
+   * flips this tile when the second building goes up, so the view shows the
+   * matching face CRISP (never blurred) and — while only one is up — labels
+   * which building is built and which is not. Applies to the unique length-2
+   * bar (there is exactly one per board, enforced in boards.test.ts).
+   */
+  combinedTile?: {
+    /** Printed face shown when exactly ONE of the pair is built. */
+    oneBuiltImage: string;
+    /** Printed face shown when BOTH of the pair are built. */
+    bothBuiltImage: string;
+  };
   /** Seven bars, left to right; the one two-entry bar is the shared bar. */
   bars: readonly (readonly string[])[];
   geometry: TownBoardGeometry;
@@ -273,8 +288,17 @@ export const townBoardSpecs: Record<string, TownBoardSpec> = {
   stronghold: {
     factionId: "stronghold",
     // Fan-made empty board in the official layout; no fully-built scan
-    // exists, so built bars use the designed tile fill.
+    // exists, so built bars overlay the real printed board-game tile art
+    // (public/assets/town-board/stronghold-*.webp) on the empty scan.
     emptyImage: "/assets/towns-stronghold-board.webp",
+    // The Barracks Tower + Freelancer's Guild bar is a single printed
+    // double-sided tile: `-shared-one` (Barracks Tower up, Freelancer's Guild
+    // still a name/cost plate) while only one is built, `-shared-both` once the
+    // pair is complete. Shown whole and crisp (no blur), unlike a split bar.
+    combinedTile: {
+      oneBuiltImage: "/assets/town-board/stronghold-shared-one.webp",
+      bothBuiltImage: "/assets/town-board/stronghold-shared-both.webp"
+    },
     bars: [
       ["stronghold.city_hall"],
       ["stronghold.dwelling_silver"],

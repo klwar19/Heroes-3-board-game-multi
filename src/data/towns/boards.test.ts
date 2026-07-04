@@ -1,7 +1,17 @@
+import { existsSync, statSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { coreFactionDefinitions } from "@/data/factions/core";
 import { TOWN_TRACK_VALUES, townBoardBarIndex, townBoardSpecs, townBoardTileArt } from "./boards";
+
+/** Resolve an /assets path to its file on disk and assert it carries real art. */
+function assertRealArt(assetPath: string, minBytes = 3000) {
+  expect(assetPath.startsWith("/assets/"), `${assetPath} must be a local /assets path`).toBe(true);
+  const file = fileURLToPath(new URL(`../../../public${assetPath}`, import.meta.url));
+  expect(existsSync(file), `${assetPath} must exist on disk`).toBe(true);
+  expect(statSync(file).size, `${assetPath} must contain real art`).toBeGreaterThan(minBytes);
+}
 
 describe("town board manifest", () => {
   it("ships a board spec for every faction", () => {
@@ -105,5 +115,48 @@ describe("town board manifest", () => {
     expect(townBoardBarIndex(spec, "inferno.brimstone_stormclouds")).toBe(2);
     expect(townBoardBarIndex(spec, "castle.city_hall")).toBe(-1);
     expect(townBoardTileArt("conflux.city_hall")).toBe("/assets/town-board/conflux-city_hall.webp");
+  });
+
+  describe("stronghold — real printed board-game tiles (no placeholders)", () => {
+    const spec = townBoardSpecs.stronghold;
+
+    it("ships a real printed built-art tile on disk for every single-building bar", () => {
+      // The six one-building bars (City Hall, Fort under the Nest, Hall of
+      // Valhalla, Citadel, Mage Guild, Mountain Caves) each overlay their own
+      // printed tile — Citadel & Mage Guild were the last placeholders and are
+      // now the real board scans too.
+      const singles = spec.bars.filter((bar) => bar.length === 1).flat();
+      expect(singles).toHaveLength(6);
+      for (const buildingId of singles) {
+        assertRealArt(townBoardTileArt(buildingId));
+      }
+    });
+
+    it("draws the shared bar as a printed double-sided tile (one-built / both-built), both faces on disk", () => {
+      // Exactly one two-building bar, and it is the Barracks Tower + Freelancer's
+      // Guild pair the combined tile is authored for.
+      const shared = spec.bars.filter((bar) => bar.length === 2);
+      expect(shared).toHaveLength(1);
+      expect([...shared[0]].sort()).toEqual(
+        ["stronghold.dwelling_bronze", "stronghold.freelancers_guild"].sort()
+      );
+      // The combined-tile faces are wired and present as real art.
+      expect(spec.combinedTile).toBeTruthy();
+      expect(spec.combinedTile!.oneBuiltImage).toBe("/assets/town-board/stronghold-shared-one.webp");
+      expect(spec.combinedTile!.bothBuiltImage).toBe("/assets/town-board/stronghold-shared-both.webp");
+      assertRealArt(spec.combinedTile!.oneBuiltImage);
+      assertRealArt(spec.combinedTile!.bothBuiltImage);
+      // The two faces are genuinely different art (one shows a name/cost plate).
+      expect(spec.combinedTile!.oneBuiltImage).not.toBe(spec.combinedTile!.bothBuiltImage);
+    });
+
+    it("is the only board that uses a combined shared tile (others still split)", () => {
+      for (const [factionId, other] of Object.entries(townBoardSpecs)) {
+        if (factionId === "stronghold") {
+          continue;
+        }
+        expect(other.combinedTile, `${factionId} should not carry a combinedTile`).toBeUndefined();
+      }
+    });
   });
 });

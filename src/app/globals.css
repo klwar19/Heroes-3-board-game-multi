@@ -11646,6 +11646,17 @@ img.cardBack {
   filter: blur(0.35cqw) brightness(0.82) saturate(0.85);
 }
 
+/* The printed double-sided SHARED tile (Stronghold): one face fills the whole
+   bar, shown CRISP — no blur, no split — since it IS the finished printed tile,
+   whether one of the pair or both are built. */
+.tbFill.combined .tbCombinedImg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .tbBar.partial::after {
   content: "";
   position: absolute;

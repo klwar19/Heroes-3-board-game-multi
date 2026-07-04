@@ -38,8 +38,9 @@ function freshState(): GameState {
   return state;
 }
 
-/** A stronghold town: a designed-tile board (empty scan, no fully-built scan),
- *  so built bars use the per-building tile art and shared bars split visibly. */
+/** A stronghold town: an empty scan with the real printed board-game tile art
+ *  overlaid on built bars, and the shared bar drawn as a single printed
+ *  double-sided tile (one-built / both-built face), not two half-slots. */
 function strongholdState(): GameState {
   const state = createAdventureGameState({
     seed: "town-board-stronghold",
@@ -376,18 +377,37 @@ describe("Designed board — tile art, shared-bar clarity, modal panels", () => 
     expect(art!.getAttribute("src")).toMatch(/stronghold-city_hall\.webp/);
   });
 
-  it("a half-built SHARED bar shows the built tile AND a clear 'not built' socket for its sibling", () => {
+  it("the SHARED bar (one built) shows the printed ONE-BUILT face — crisp, not split, not blurred — and names built vs not-built", () => {
     const state = strongholdState();
-    // The shared bar is Barracks Tower (dwelling_bronze) + Freelancer's Guild.
+    // The shared bar is Barracks Tower (dwelling_bronze) + Freelancer's Guild:
+    // a single printed double-sided tile, not two half-slots.
     state.towns.town_p1.buildings.push("stronghold.dwelling_bronze");
     const { container } = render(viewFor(state));
-    // The built half renders its tile art…
-    expect(container.querySelector(".tbTileArt[src*='stronghold-dwelling_bronze']")).toBeTruthy();
-    // …and the unbuilt half is a distinct, clearly-labelled empty socket.
-    const unbuilt = container.querySelector(".tbDesignedTile.unbuilt") as HTMLElement | null;
-    expect(unbuilt).toBeTruthy();
-    expect(unbuilt!.textContent).toMatch(/not built/i);
-    expect(unbuilt!.textContent).toMatch(/Freelancer/i);
+    // The whole bar is the printed ONE-BUILT face…
+    const combined = container.querySelector(".tbFill.combined .tbCombinedImg") as HTMLImageElement | null;
+    expect(combined).toBeTruthy();
+    expect(combined!.getAttribute("src")).toMatch(/stronghold-shared-one\.webp/);
+    // …NOT the old two-half split (a DesignedTile / unbuilt socket)…
+    expect(container.querySelector(".tbDesignedTile")).toBeNull();
+    // …and NOT blurred: the shared bar/fill never carries the `partial` blur/outline.
+    expect(container.querySelector(".tbFill.combined.partial")).toBeNull();
+    expect(container.querySelector(".tbBar.partial")).toBeNull();
+    // The label still names which building is up (✓) and which is not (🔨).
+    const note = container.querySelector(".tbFill.combined .tbPartialNote") as HTMLElement | null;
+    expect(note).toBeTruthy();
+    expect(note!.textContent).toMatch(/Barracks Tower built/i);
+    expect(note!.textContent).toMatch(/Freelancer.*not built/i);
+  });
+
+  it("the SHARED bar (both built) flips to the printed BOTH-BUILT face with no missing-half label", () => {
+    const state = strongholdState();
+    state.towns.town_p1.buildings.push("stronghold.dwelling_bronze", "stronghold.freelancers_guild");
+    const { container } = render(viewFor(state));
+    const combined = container.querySelector(".tbFill.combined .tbCombinedImg") as HTMLImageElement | null;
+    expect(combined).toBeTruthy();
+    expect(combined!.getAttribute("src")).toMatch(/stronghold-shared-both\.webp/);
+    // Both up → the shared tile is complete, so there is no "not built" note.
+    expect(container.querySelector(".tbFill.combined .tbPartialNote")).toBeNull();
   });
 
   it("a token well opens a centred MODAL (not an inline strip), with resource-aware build options", () => {
