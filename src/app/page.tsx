@@ -161,7 +161,12 @@ import {
 import { clearCachedRoom, loadCachedRoom, saveCachedRoom } from "@/lib/room-cache";
 import { getAccountIdentity, getClientId, getDisplayName, setDisplayName as persistDisplayName } from "@/lib/identity";
 import { fetchSocketToken } from "@/lib/auth-client";
-import { takePendingRoomHosted, takePendingRoomMode, takePendingRoomName } from "@/lib/pending-room-name";
+import {
+  takePendingRoomHosted,
+  takePendingRoomMode,
+  takePendingRoomName,
+  takePendingRoomRanked
+} from "@/lib/pending-room-name";
 import { RoomPanel } from "@/components/table/room-panel";
 import { LoadingScreen } from "@/components/menu/loading-screen";
 import { useRouter } from "next/navigation";
@@ -596,6 +601,9 @@ export default function Home() {
   // A Battle Test chosen at /battle: switch this fresh room to combat-sandbox
   // once connected (PartyKit makes every room an adventure lobby first).
   const pendingRoomModeRef = useRef<{ roomId: string; mode: GameMode } | null>(null);
+  // Ranked/Normal chosen at /play: apply the match type once connected (PartyKit
+  // seeds nothing at creation, so the first client sets it).
+  const pendingRoomRankedRef = useRef<{ roomId: string; ranked: boolean } | null>(null);
   const [syncStatus, setSyncStatus] = useState("connecting");
   /**
    * The room server's engine signature from the latest snapshot. When it
@@ -782,6 +790,11 @@ export default function Home() {
       const pendingMode = takePendingRoomMode();
       if (pendingMode && pendingMode.roomId === initialRoom) {
         pendingRoomModeRef.current = pendingMode;
+      }
+      // Ranked/Normal chosen at create time → apply once we are a member.
+      const pendingRanked = takePendingRoomRanked();
+      if (pendingRanked && pendingRanked.roomId === initialRoom) {
+        pendingRoomRankedRef.current = pendingRanked;
       }
     }
     const storedName = getDisplayName();
@@ -3016,6 +3029,18 @@ export default function Home() {
         pendingRoomHostedRef.current = null;
         if (!state.room?.hosted) {
           void connection.submitAction({ type: "SET_ROOM_HOSTED", clientId, hosted: true }).catch(() => {});
+        }
+      }
+      // Ranked/Normal: apply the chosen match type once we are a member (only
+      // while still a setup lobby, matching the engine's lock; a no-op if the
+      // room already carries the choice, e.g. the API backend seeded it).
+      const pendingRanked = pendingRoomRankedRef.current;
+      if (pendingRanked && pendingRanked.roomId === roomId) {
+        pendingRoomRankedRef.current = null;
+        if (state.room?.ranked !== pendingRanked.ranked && state.phase === "setup" && Boolean(state.setupLobby)) {
+          void connection
+            .submitAction({ type: "SET_ROOM_RANKED", clientId, ranked: pendingRanked.ranked })
+            .catch(() => {});
         }
       }
       // Battle Test: switch a freshly created room to combat-sandbox. Only ever

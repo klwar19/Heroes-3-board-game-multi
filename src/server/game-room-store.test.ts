@@ -423,6 +423,24 @@ describe("lobby directory (listRooms / createRoom)", () => {
     expect(entryFor(roomId)?.canClose).toBe(false); // no viewer → not closeable
   });
 
+  it("seeds the chosen match type at creation and shows it in the directory", () => {
+    // A Normal room created explicitly casual: seeded onto state.room and shown
+    // as not-ranked in the directory.
+    const casualId = uniqueRoom("casual");
+    const casual = createRoom({ roomId: casualId, name: "Casual", ranked: false });
+    expect(casual.state.room?.ranked).toBe(false);
+    expect(entryFor(casualId)?.ranked).toBe(false);
+
+    // A Ranked room, and a room created with no choice (legacy default → ranked).
+    const rankedId = uniqueRoom("ranked");
+    createRoom({ roomId: rankedId, name: "Ranked", ranked: true });
+    expect(entryFor(rankedId)?.ranked).toBe(true);
+
+    const defaultId = uniqueRoom("default");
+    createRoom({ roomId: defaultId, name: "Default" });
+    expect(entryFor(defaultId)?.ranked).toBe(true);
+  });
+
   it("reflects a live SET_ROOM_NAME rename in the directory", () => {
     const roomId = uniqueRoom("rename");
     createRoom({ roomId });

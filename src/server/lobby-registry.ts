@@ -46,6 +46,8 @@ export type RoomDirectoryEntry = {
   seatedCount: number;
   hosted: boolean;
   hostName: string | null;
+  /** Match type shown in the directory: true = Ranked (counts MMR), false = Normal. */
+  ranked: boolean;
   createdByName: string | null;
   createdAt: string;
   updatedAt: string;
@@ -72,6 +74,8 @@ export type LobbyRoomRecord = {
   hostName: string | null;
   hostClientId: string | null;
   memberClientIds: string[];
+  /** Match type: true = Ranked (counts MMR), false = Normal (casual). */
+  ranked: boolean;
   createdByName: string | null;
   createdAt: string;
   updatedAt: string;
@@ -104,6 +108,9 @@ export function deriveLobbyRecord(input: DeriveLobbyRecordInput): LobbyRoomRecor
     hostName: host?.name ?? null,
     hostClientId: room?.hostClientId ?? null,
     memberClientIds: members.map((member) => member.clientId),
+    // Absent flag (legacy rooms) shows as Ranked, matching the match-report
+    // default; only an explicit Normal table (`ranked === false`) shows casual.
+    ranked: room?.ranked !== false,
     createdByName: input.createdByName ?? null,
     createdAt,
     updatedAt
@@ -156,6 +163,7 @@ export function toDirectoryEntry(record: LobbyRoomRecord, viewerClientId?: strin
     seatedCount: record.seatedCount,
     hosted: record.hosted,
     hostName: record.hostName,
+    ranked: record.ranked,
     createdByName: record.createdByName,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
@@ -183,6 +191,7 @@ export function lobbyRecordSignature(record: LobbyRoomRecord): string {
     hostName: record.hostName,
     hostClientId: record.hostClientId,
     memberClientIds: record.memberClientIds,
+    ranked: record.ranked,
     createdByName: record.createdByName,
     createdAt: record.createdAt
   });

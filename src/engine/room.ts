@@ -32,7 +32,8 @@ const ROOM_MEMBERSHIP_ACTION_TYPES = new Set<GameAction["type"]>([
   "KICK_MEMBER",
   "TRANSFER_HOST",
   "SET_ROOM_NAME",
-  "SET_ROOM_REQUIRE_AUTH"
+  "SET_ROOM_REQUIRE_AUTH",
+  "SET_ROOM_RANKED"
 ]);
 
 export function isRoomMembershipAction(action: GameAction): boolean {
@@ -482,6 +483,26 @@ export function setRoomRequireAuth(
     delete room.requireAuth;
   }
   appendEvent(state, { type: "ROOM_REQUIRE_AUTH_CHANGED", requireAuth, byClientId: action.clientId });
+}
+
+export function setRoomRanked(state: GameState, action: Extract<GameAction, { type: "SET_ROOM_RANKED" }>): void {
+  const room = ensureRoom(state);
+  const member = findMember(room, action.clientId);
+  if (!member) {
+    throw new Error("Join the room before changing its match type.");
+  }
+  // Host-controlled on a hosted room (like the name); any member on an open
+  // table. Only meaningful before the game starts — locked once the map is
+  // built, so nobody can flip Ranked ↔ Normal to dodge a loss mid-game.
+  if (room.hosted && !isEffectiveHost(room, action.clientId)) {
+    throw new Error("Only the host can change the match type.");
+  }
+  if (!(state.phase === "setup" && Boolean(state.setupLobby))) {
+    throw new Error("The match type can only be set before the adventure starts.");
+  }
+  const ranked = Boolean(action.ranked);
+  room.ranked = ranked;
+  appendEvent(state, { type: "ROOM_RANKED_CHANGED", ranked, byClientId: action.clientId });
 }
 
 // ---------------------------------------------------------------------------

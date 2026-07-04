@@ -75,6 +75,12 @@ export type RoomCreateOptions = RoomResetOptions & {
   name?: string;
   /** Display name of the creator (lobby attribution only). */
   createdByName?: string;
+  /**
+   * Match type chosen at creation (the lobby's Ranked/Normal picker), seeded
+   * into `state.room.ranked`. `false` = a casual game that never counts MMR.
+   * Absent leaves it unset (treated as ranked, the legacy default).
+   */
+  ranked?: boolean;
 };
 
 type GameRoomRecord = GameRoomSnapshot;
@@ -207,11 +213,18 @@ function makeRoom(roomId: string, options: RoomCreateOptions = {}): GameRoomReco
           // factions and heroes, then the scenario map builds itself.
           createAdventureLobbyState({ seed, scenarioId: options.scenarioId });
 
-  // A name chosen at creation seeds an (open) room membership record so the
-  // lobby shows it before anyone joins; JOIN_ROOM then fills in members.
+  // A name and/or match type chosen at creation seeds an (open) room membership
+  // record so the lobby shows both before anyone joins; JOIN_ROOM then fills in
+  // members.
   const name = options.name?.trim().slice(0, MAX_ROOM_NAME_LENGTH);
-  if (name) {
-    state.room = { hosted: false, hostClientId: null, members: [], name };
+  if (name || options.ranked !== undefined) {
+    state.room = {
+      hosted: false,
+      hostClientId: null,
+      members: [],
+      ...(name ? { name } : {}),
+      ...(options.ranked !== undefined ? { ranked: Boolean(options.ranked) } : {})
+    };
   }
 
   return {

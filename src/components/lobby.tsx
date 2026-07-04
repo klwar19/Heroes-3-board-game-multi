@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Crown, Eye, Lock, Plus, RefreshCw, Search, Trash2, Users } from "lucide-react";
+import { Crown, Eye, Lock, Medal, Plus, RefreshCw, Search, Swords, Trash2, Users } from "lucide-react";
 import type { RoomDirectoryEntry } from "@/lib/realtime";
 
 /** Show the room filter once the list is long enough for scanning to hurt. */
@@ -49,8 +49,11 @@ export function LobbyScreen({
   onRename: (name: string) => void;
   onRefresh: () => void;
   onJoin: (roomId: string) => void;
-  /** Create a room; `hosted` picks Closed (host-controlled seats) vs Open (free seats). */
-  onCreate: (name: string, hosted: boolean) => void;
+  /**
+   * Create a room; `hosted` picks Closed (host-controlled seats) vs Open (free
+   * seats), `ranked` picks Ranked (counts MMR) vs Normal (casual, no MMR).
+   */
+  onCreate: (name: string, hosted: boolean, ranked: boolean) => void;
   onClose: (roomId: string) => void;
   /** A signed-in platform admin: may delete ANY room (the server verifies the session). */
   isAdmin?: boolean;
@@ -64,6 +67,8 @@ export function LobbyScreen({
   const [nameDraft, setNameDraft] = useState(displayName);
   const [newRoomName, setNewRoomName] = useState("");
   const [createHosted, setCreateHosted] = useState(false);
+  // Default Normal (casual): a game only counts toward MMR when explicitly Ranked.
+  const [createRanked, setCreateRanked] = useState(false);
   const [joinCode, setJoinCode] = useState("");
   const [roomFilter, setRoomFilter] = useState("");
 
@@ -71,7 +76,7 @@ export function LobbyScreen({
   const visibleRooms = showFilter ? rooms.filter((room) => roomMatchesFilter(room, roomFilter)) : rooms;
 
   const createRoom = () => {
-    onCreate(newRoomName.trim(), createHosted);
+    onCreate(newRoomName.trim(), createHosted, createRanked);
     setNewRoomName("");
   };
   const joinByCode = () => {
@@ -151,6 +156,31 @@ export function LobbyScreen({
               <span className="lobbyModeHint">You host — one player per seat</span>
             </button>
           </div>
+
+          <div className="lobbyCreateMode" role="radiogroup" aria-label="Match type">
+            <button
+              aria-checked={!createRanked}
+              className={`lobbyModeOption ${!createRanked ? "active" : ""}`}
+              onClick={() => setCreateRanked(false)}
+              role="radio"
+              type="button"
+            >
+              <Swords aria-hidden="true" size={14} />
+              <span className="lobbyModeName">Normal game</span>
+              <span className="lobbyModeHint">Casual — does not count MMR</span>
+            </button>
+            <button
+              aria-checked={createRanked}
+              className={`lobbyModeOption ${createRanked ? "active" : ""}`}
+              onClick={() => setCreateRanked(true)}
+              role="radio"
+              type="button"
+            >
+              <Medal aria-hidden="true" size={14} />
+              <span className="lobbyModeName">Ranked game</span>
+              <span className="lobbyModeHint">Counts toward your MMR</span>
+            </button>
+          </div>
           <div className="lobbyJoinCode">
             <input
               aria-label="Room code"
@@ -211,6 +241,20 @@ export function LobbyScreen({
                     </span>
                     <span className={`lobbyRoomStatus ${room.inProgress ? "playing" : "setup"}`}>
                       {room.inProgress ? "In progress" : "Setting up"}
+                    </span>
+                    <span
+                      className={`lobbyRoomRanked ${room.ranked ? "ranked" : "casual"}`}
+                      title={room.ranked ? "Ranked game — counts MMR" : "Normal game — does not count MMR"}
+                    >
+                      {room.ranked ? (
+                        <>
+                          <Medal aria-hidden="true" size={12} /> Ranked
+                        </>
+                      ) : (
+                        <>
+                          <Swords aria-hidden="true" size={12} /> Normal
+                        </>
+                      )}
                     </span>
                     {room.hostName ? (
                       <span className="lobbyRoomHost" title="Host">

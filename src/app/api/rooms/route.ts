@@ -26,7 +26,8 @@ export async function POST(request: Request) {
     mode: body?.mode,
     difficulty: body?.difficulty,
     scenarioId: body?.scenarioId,
-    players: body?.players
+    players: body?.players,
+    ...(typeof body?.ranked === "boolean" ? { ranked: body.ranked } : {})
   });
 
   return NextResponse.json({ roomId: snapshot.roomId, snapshot });

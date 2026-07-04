@@ -19,9 +19,12 @@ const KEY = "homm3bg.pendingRoomName";
 const HOSTED_KEY = "homm3bg.pendingRoomHosted";
 /** The game mode to switch a freshly created room into (e.g. a battle test). */
 const MODE_KEY = "homm3bg.pendingRoomMode";
+/** The match type (Ranked/Normal) chosen at create time. */
+const RANKED_KEY = "homm3bg.pendingRoomRanked";
 
 export type PendingRoomName = { roomId: string; name: string };
 export type PendingRoomMode = { roomId: string; mode: GameMode };
+export type PendingRoomRanked = { roomId: string; ranked: boolean };
 
 export function savePendingRoomName(roomId: string, name: string): void {
   if (typeof window === "undefined" || !name) {
@@ -109,6 +112,49 @@ export function savePendingRoomMode(roomId: string, mode: GameMode): void {
     window.sessionStorage.setItem(MODE_KEY, JSON.stringify({ roomId, mode } satisfies PendingRoomMode));
   } catch {
     /* Private mode etc. — the room simply opens as a normal adventure. */
+  }
+}
+
+/**
+ * One-shot handoff of a freshly created room's match type (Ranked/Normal),
+ * exactly like the name/hosted hints above. The API backend seeds it
+ * server-side at creation, but PartyKit creates rooms implicitly, so the first
+ * client applies it via SET_ROOM_RANKED once connected (page.tsx).
+ */
+export function savePendingRoomRanked(roomId: string, ranked: boolean): void {
+  if (typeof window === "undefined" || !roomId) {
+    return;
+  }
+  try {
+    window.sessionStorage.setItem(RANKED_KEY, JSON.stringify({ roomId, ranked } satisfies PendingRoomRanked));
+  } catch {
+    /* Private mode etc. — the room keeps the server-seeded default. */
+  }
+}
+
+/** Read AND clear the pending match type (a one-shot hint, never re-applied). */
+export function takePendingRoomRanked(): PendingRoomRanked | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  try {
+    const raw = window.sessionStorage.getItem(RANKED_KEY);
+    if (!raw) {
+      return null;
+    }
+    window.sessionStorage.removeItem(RANKED_KEY);
+    const parsed: unknown = JSON.parse(raw);
+    if (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      typeof (parsed as PendingRoomRanked).roomId === "string" &&
+      typeof (parsed as PendingRoomRanked).ranked === "boolean"
+    ) {
+      return parsed as PendingRoomRanked;
+    }
+    return null;
+  } catch {
+    return null;
   }
 }
 

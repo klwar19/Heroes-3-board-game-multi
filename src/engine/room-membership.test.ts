@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyAction,
   createAdventureGameState,
+  createAdventureLobbyState,
   dropDisconnectedMember,
   seatOfClient,
   type GameAction,
@@ -310,6 +311,47 @@ describe("naming a room", () => {
     );
     // The name is unchanged after the rejected rename.
     expect(state.room?.name).toBe("Hosted Table");
+  });
+});
+
+describe("setting the match type (Ranked / Normal)", () => {
+  const lobby = () => createAdventureLobbyState({ seed: "rank-test" });
+
+  it("any member sets it on an open lobby; false marks a casual game and logs the change", () => {
+    let state = lobby();
+    state = expectOk(state, { type: "JOIN_ROOM", clientId: "c1", name: "Alice" });
+    state = expectOk(state, { type: "SET_ROOM_RANKED", clientId: "c1", ranked: false });
+    expect(state.room?.ranked).toBe(false);
+    expect(
+      state.eventLog.some((event) => event.type === "ROOM_RANKED_CHANGED" && event.ranked === false)
+    ).toBe(true);
+    // And back to ranked.
+    state = expectOk(state, { type: "SET_ROOM_RANKED", clientId: "c1", ranked: true });
+    expect(state.room?.ranked).toBe(true);
+  });
+
+  it("hosted: only the host may change the match type (a non-host is the CONTROL)", () => {
+    let state = lobby();
+    state = expectOk(state, { type: "JOIN_ROOM", clientId: "c1", name: "Alice" });
+    state = expectOk(state, { type: "JOIN_ROOM", clientId: "c2", name: "Bob" });
+    state = expectOk(state, { type: "SET_ROOM_HOSTED", clientId: "c1", hosted: true });
+    expect(expectRejected(state, { type: "SET_ROOM_RANKED", clientId: "c2", ranked: false }, "c2")).toContain(
+      "Only the host"
+    );
+    state = expectOk(state, { type: "SET_ROOM_RANKED", clientId: "c1", ranked: false }, "c1");
+    expect(state.room?.ranked).toBe(false);
+  });
+
+  it("a non-member cannot set it, and it is locked once the adventure has started", () => {
+    expect(expectRejected(lobby(), { type: "SET_ROOM_RANKED", clientId: "ghost", ranked: true })).toContain(
+      "Join the room"
+    );
+    // A started game (no longer a setup lobby) refuses the change.
+    let started = makeGame();
+    started = expectOk(started, { type: "JOIN_ROOM", clientId: "c1", name: "Alice" });
+    expect(expectRejected(started, { type: "SET_ROOM_RANKED", clientId: "c1", ranked: false })).toContain(
+      "before the adventure starts"
+    );
   });
 });
 

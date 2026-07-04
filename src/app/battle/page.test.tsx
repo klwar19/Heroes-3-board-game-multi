@@ -28,6 +28,7 @@ function entry(overrides: Partial<RoomDirectoryEntry> = {}): RoomDirectoryEntry 
     seatedCount: 1,
     hosted: false,
     hostName: null,
+    ranked: true,
     createdByName: "Binh",
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -75,7 +76,8 @@ describe("/battle (combat-sandbox arena browser)", () => {
     expect(createRoomOnServer).toHaveBeenCalledWith({
       name: "My Arena",
       createdByName: "Binh",
-      mode: "combat-sandbox"
+      mode: "combat-sandbox",
+      ranked: false
     });
     await vi.waitFor(() => expect(push).toHaveBeenCalledWith("/?room=new-arena-3"));
     // The mode crosses the navigation so the game page switches the fresh room

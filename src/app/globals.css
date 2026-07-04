@@ -11099,6 +11099,26 @@ img.cardBack {
   border-color: rgb(217 192 140 / 45%);
 }
 
+.lobbyRoomRanked {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  font-weight: 700;
+}
+
+.lobbyRoomRanked.ranked {
+  color: #e6c463;
+  border-color: rgb(230 196 99 / 50%);
+}
+
+.lobbyRoomRanked.casual {
+  color: #a9b6c6;
+  border-color: rgb(169 182 198 / 40%);
+}
+
 .lobbyRoomButtons {
   display: inline-flex;
   align-items: center;
@@ -14286,6 +14306,40 @@ img.cardBack {
 }
 
 .afkVotePanel .afkVoteWaiting {
+  opacity: 0.75;
+  font-style: italic;
+}
+
+/* Pre-start ready check (all seated players must confirm within 30s). */
+.startReadyCheck {
+  margin-top: 12px;
+}
+
+.startReadyCheckBody {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border: 1px solid rgba(214, 168, 96, 0.55);
+  border-radius: 10px;
+  background: rgba(24, 18, 10, 0.92);
+  color: #f3e4c3;
+  font-size: 13px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+
+.startReadyCheckProgress {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+}
+
+.startReadyCheckButtons {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.startReadyCheckWaiting {
   opacity: 0.75;
   font-style: italic;
 }

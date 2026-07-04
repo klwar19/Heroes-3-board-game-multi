@@ -14,7 +14,12 @@ import { assetUrl } from "@/lib/asset-url";
 import { fetchSession } from "@/lib/auth-client";
 import { getClientId, getDisplayName, setDisplayName } from "@/lib/identity";
 import { fetchLobbyChat, postLobbyChat, type LobbyChatMessage } from "@/lib/lobby-chat-client";
-import { savePendingRoomHosted, savePendingRoomMode, savePendingRoomName } from "@/lib/pending-room-name";
+import {
+  savePendingRoomHosted,
+  savePendingRoomMode,
+  savePendingRoomName,
+  savePendingRoomRanked
+} from "@/lib/pending-room-name";
 import { createRoomOnServer, fetchRoomList, requestCloseRoom, type RoomDirectoryEntry } from "@/lib/realtime";
 
 /**
@@ -121,12 +126,13 @@ export function RoomBrowser({ mode, labels }: { mode: GameMode; labels: RoomBrow
     [router]
   );
 
-  const handleCreate = (name: string, hosted: boolean) => {
+  const handleCreate = (name: string, hosted: boolean, ranked: boolean) => {
     setError(null);
     createRoomOnServer({
       name: name || undefined,
       createdByName: displayName.trim() || undefined,
-      mode
+      mode,
+      ranked
     })
       .then(({ roomId }) => {
         // PartyKit creates rooms implicitly, so carry the choices across the
@@ -138,6 +144,10 @@ export function RoomBrowser({ mode, labels }: { mode: GameMode; labels: RoomBrow
         if (hosted) {
           savePendingRoomHosted(roomId);
         }
+        // Always carry the match type so PartyKit applies the explicit choice
+        // (both Ranked and Normal, since the edge default would otherwise be
+        // "ranked").
+        savePendingRoomRanked(roomId, ranked);
         // A battle test needs the room switched to combat-sandbox on connect.
         if (mode !== "adventure") {
           savePendingRoomMode(roomId, mode);

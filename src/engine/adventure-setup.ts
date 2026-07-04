@@ -68,6 +68,7 @@ import type {
   PlayerId,
   PlayerState,
   PvpTroopLoss,
+  StartCheckState,
   UnitLevel,
   VictoryMode,
   WogModOptions
@@ -2114,8 +2115,100 @@ export function randomAssignSeat(state: GameState, action: Extract<GameAction, {
   });
 }
 
-/** Builds the scenario map in place once every seat picked a faction. */
-export function startAdventureFromLobby(state: GameState, action: Extract<GameAction, { type: "START_ADVENTURE" }>): void {
+/**
+ * How long (ms) every seated player has to confirm the pre-start ready check
+ * before it auto-aborts back to setup. "AFK for 30 seconds → go back."
+ */
+export const START_CHECK_MS = 30_000;
+
+function seatName(state: GameState, playerId: PlayerId): string {
+  return state.players[playerId]?.name ?? playerId;
+}
+
+/**
+ * The seats whose confirmation the ready check waits on: on a HOSTED table, the
+ * seats currently held by a member (one distinct human each). Empty on an open
+ * table / solo game, where the pre-start check is not enforced (an open table
+ * has no per-seat identity — one browser can act as every seat — so requiring
+ * "all confirm" there would be meaningless).
+ */
+export function readyCheckConfirmers(state: GameState): PlayerId[] {
+  const room = state.room;
+  if (!room?.hosted) {
+    return [];
+  }
+  const lobbySeatIds = new Set((state.setupLobby?.seats ?? []).map((seat) => seat.playerId));
+  const confirmers = new Set<PlayerId>();
+  for (const member of room.members) {
+    if (member.seat !== "observer" && lobbySeatIds.has(member.seat)) {
+      confirmers.add(member.seat);
+    }
+  }
+  return [...confirmers];
+}
+
+/**
+ * Whether pressing Start must open the ready check rather than build the map
+ * immediately: a multiplayer HOSTED table with 2+ seated players. Solo, open
+ * tables and engine tests (no room) start immediately, exactly as before.
+ */
+export function readyCheckRequired(state: GameState): boolean {
+  if ((state.setupLobby?.seats.length ?? 0) < 2) {
+    return false;
+  }
+  return readyCheckConfirmers(state).length >= 2;
+}
+
+/** Clears the open ready check and logs why (a player cancelled, or it timed out). */
+function abortStartCheck(
+  state: GameState,
+  reason: "cancel" | "timeout",
+  byPlayerId: PlayerId,
+  check: StartCheckState
+): void {
+  const lobby = state.setupLobby;
+  if (lobby) {
+    lobby.startCheck = null;
+  }
+  let message: string;
+  if (reason === "timeout") {
+    const missing = readyCheckConfirmers(state).filter((seat) => !check.confirmations.includes(seat));
+    message =
+      missing.length > 0
+        ? `${missing.map((seat) => seatName(state, seat)).join(", ")} didn't confirm in time — back to setup.`
+        : "The start timed out — back to setup.";
+  } else {
+    message = `${seatName(state, byPlayerId)} cancelled the start — back to setup.`;
+  }
+  appendEvent(state, { type: "START_CHECK_CANCELLED", reason, byPlayerId, message });
+}
+
+/** Builds the map the instant every seated player has confirmed the ready check. */
+function maybeCompleteStartCheck(state: GameState): void {
+  const lobby = state.setupLobby;
+  const check = lobby?.startCheck;
+  if (!lobby || !check) {
+    return;
+  }
+  const confirmers = readyCheckConfirmers(state);
+  if (confirmers.length === 0 || !confirmers.every((seat) => check.confirmations.includes(seat))) {
+    return;
+  }
+  lobby.startCheck = null;
+  buildAdventureFromLobby(state);
+}
+
+/**
+ * START_ADVENTURE. Solo / open tables build the map immediately (unchanged). A
+ * multiplayer hosted table instead opens (or, if already open, re-confirms the
+ * presser for) the pre-start ready check; the map builds only once everyone has
+ * confirmed via CONFIRM_START_ADVENTURE.
+ */
+export function startAdventureFromLobby(
+  state: GameState,
+  action: Extract<GameAction, { type: "START_ADVENTURE" }>,
+  now?: number
+): void {
   const lobby = state.setupLobby;
   if (!lobby || state.phase !== "setup") {
     throw new Error("The adventure already started.");
@@ -2129,6 +2222,115 @@ export function startAdventureFromLobby(state: GameState, action: Extract<GameAc
     throw new Error("Every seat needs a faction and hero before the adventure starts.");
   }
 
+  // An already-open check whose window has elapsed aborts here rather than
+  // building — a Start pressed after the deadline can never sneak past.
+  if (lobby.startCheck && now !== undefined && now >= lobby.startCheck.deadline) {
+    abortStartCheck(state, "timeout", action.playerId, lobby.startCheck);
+    return;
+  }
+
+  if (!readyCheckRequired(state)) {
+    buildAdventureFromLobby(state);
+    return;
+  }
+
+  // Multiplayer hosted table: the presser must be one of the seated players.
+  const confirmers = readyCheckConfirmers(state);
+  if (!confirmers.includes(action.playerId)) {
+    throw new Error("Only a seated player may start the adventure.");
+  }
+
+  if (!lobby.startCheck) {
+    const startedAt = now ?? 0;
+    lobby.startCheck = {
+      startedByPlayerId: action.playerId,
+      startedAt,
+      deadline: startedAt + START_CHECK_MS,
+      confirmations: [action.playerId]
+    };
+    appendEvent(state, {
+      type: "START_CHECK_STARTED",
+      byPlayerId: action.playerId,
+      message: `${seatName(state, action.playerId)} wants to start — every player must confirm within 30 seconds.`
+    });
+  } else if (!lobby.startCheck.confirmations.includes(action.playerId)) {
+    lobby.startCheck.confirmations.push(action.playerId);
+    appendEvent(state, {
+      type: "START_CHECK_CONFIRMED",
+      playerId: action.playerId,
+      confirmed: lobby.startCheck.confirmations.length,
+      needed: confirmers.length
+    });
+  }
+  maybeCompleteStartCheck(state);
+}
+
+/** CONFIRM_START_ADVENTURE: one seated player confirms the open ready check. */
+export function confirmStartAdventure(
+  state: GameState,
+  action: Extract<GameAction, { type: "CONFIRM_START_ADVENTURE" }>,
+  now?: number
+): void {
+  const lobby = state.setupLobby;
+  if (!lobby || state.phase !== "setup") {
+    throw new Error("The adventure already started.");
+  }
+  const check = lobby.startCheck;
+  if (!check) {
+    throw new Error("No start check is open.");
+  }
+  // Past the window: abort as a timeout instead of confirming late.
+  if (now !== undefined && now >= check.deadline) {
+    abortStartCheck(state, "timeout", action.playerId, check);
+    return;
+  }
+  const confirmers = readyCheckConfirmers(state);
+  if (!confirmers.includes(action.playerId)) {
+    throw new Error("Only a seated player may confirm the start.");
+  }
+  if (!check.confirmations.includes(action.playerId)) {
+    check.confirmations.push(action.playerId);
+    appendEvent(state, {
+      type: "START_CHECK_CONFIRMED",
+      playerId: action.playerId,
+      confirmed: check.confirmations.length,
+      needed: confirmers.length
+    });
+  }
+  maybeCompleteStartCheck(state);
+}
+
+/**
+ * CANCEL_START_ADVENTURE: abort the open ready check back to setup. A seated
+ * player pressing Cancel, or any client firing this once the 30-second window
+ * has elapsed (an AFK seat never confirmed). The server clock decides which.
+ */
+export function cancelStartAdventure(
+  state: GameState,
+  action: Extract<GameAction, { type: "CANCEL_START_ADVENTURE" }>,
+  now?: number
+): void {
+  const lobby = state.setupLobby;
+  if (!lobby || state.phase !== "setup") {
+    throw new Error("The adventure already started.");
+  }
+  const check = lobby.startCheck;
+  if (!check) {
+    throw new Error("No start check is open.");
+  }
+  if (!readyCheckConfirmers(state).includes(action.playerId)) {
+    throw new Error("Only a seated player may cancel the start.");
+  }
+  const timedOut = now !== undefined && now >= check.deadline;
+  abortStartCheck(state, timedOut ? "timeout" : "cancel", action.playerId, check);
+}
+
+/** Builds the scenario map in place once every seat picked a faction. */
+function buildAdventureFromLobby(state: GameState): void {
+  const lobby = state.setupLobby;
+  if (!lobby) {
+    return;
+  }
   const built = createAdventureGameState({
     seed: state.seed,
     scenarioId: lobby.options.scenarioId,

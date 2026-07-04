@@ -17,6 +17,7 @@ function entry(overrides: Partial<RoomDirectoryEntry> = {}): RoomDirectoryEntry 
     seatedCount: 0,
     hosted: false,
     hostName: null,
+    ranked: true,
     createdByName: "Binh",
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -60,12 +61,12 @@ describe("LobbyScreen", () => {
     expect(handlers.onJoin).toHaveBeenCalledWith("room-1");
   });
 
-  it("creates an OPEN room with the typed name by default", () => {
+  it("creates an OPEN, NORMAL room with the typed name by default", () => {
     const handlers = renderLobby();
     fireEvent.change(screen.getByLabelText("New room name"), { target: { value: "My Table" } });
     fireEvent.click(screen.getByRole("button", { name: /Create room/i }));
-    // Open table is the default (hosted = false).
-    expect(handlers.onCreate).toHaveBeenCalledWith("My Table", false);
+    // Open table + Normal (casual) are the defaults: hosted = false, ranked = false.
+    expect(handlers.onCreate).toHaveBeenCalledWith("My Table", false, false);
   });
 
   it("creates a CLOSED (hosted) room when Closed table is picked", () => {
@@ -73,12 +74,38 @@ describe("LobbyScreen", () => {
     fireEvent.change(screen.getByLabelText("New room name"), { target: { value: "Locked Table" } });
     fireEvent.click(screen.getByRole("radio", { name: /Closed table/i }));
     fireEvent.click(screen.getByRole("button", { name: /Create room/i }));
-    expect(handlers.onCreate).toHaveBeenCalledWith("Locked Table", true);
+    expect(handlers.onCreate).toHaveBeenCalledWith("Locked Table", true, false);
     // Control: switching back to Open reverts the choice (re-type — create clears the field).
     fireEvent.change(screen.getByLabelText("New room name"), { target: { value: "Free Table" } });
     fireEvent.click(screen.getByRole("radio", { name: /Open table/i }));
     fireEvent.click(screen.getByRole("button", { name: /Create room/i }));
-    expect(handlers.onCreate).toHaveBeenLastCalledWith("Free Table", false);
+    expect(handlers.onCreate).toHaveBeenLastCalledWith("Free Table", false, false);
+  });
+
+  it("creates a RANKED room when Ranked game is picked (Normal is the default CONTROL)", () => {
+    const handlers = renderLobby();
+    fireEvent.change(screen.getByLabelText("New room name"), { target: { value: "Ladder Match" } });
+    fireEvent.click(screen.getByRole("radio", { name: /Ranked game/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Create room/i }));
+    expect(handlers.onCreate).toHaveBeenCalledWith("Ladder Match", false, true);
+    // Control: switching back to Normal reverts the choice.
+    fireEvent.change(screen.getByLabelText("New room name"), { target: { value: "Casual Match" } });
+    fireEvent.click(screen.getByRole("radio", { name: /Normal game/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Create room/i }));
+    expect(handlers.onCreate).toHaveBeenLastCalledWith("Casual Match", false, false);
+  });
+
+  it("shows each room's match type so everyone in the lobby can see it", () => {
+    renderLobby({
+      rooms: [
+        entry({ roomId: "r1", name: "Ranked Room", ranked: true }),
+        entry({ roomId: "r2", name: "Normal Room", ranked: false })
+      ]
+    });
+    const ranked = screen.getByText("Ranked Room").closest("li") as HTMLElement;
+    const normal = screen.getByText("Normal Room").closest("li") as HTMLElement;
+    expect(within(ranked).getByText("Ranked")).toBeTruthy();
+    expect(within(normal).getByText("Normal")).toBeTruthy();
   });
 
   it("joins by room code", () => {

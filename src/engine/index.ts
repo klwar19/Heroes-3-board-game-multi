@@ -14,7 +14,14 @@ export {
   isBattlefieldPosition
 } from "./battlefield";
 export { applyAction, findEvent, unitMatchesSpecialtyName } from "./reducer";
-export { AFK_IDLE_MS, AFK_REASK_MS, getAfkState, idleMillis } from "./afk";
+export {
+  AFK_AUTO_KICK_MS,
+  AFK_IDLE_MS,
+  AFK_REASK_MS,
+  getAfkState,
+  idleMillis,
+  seatIsAwaitedInOrderedPlay
+} from "./afk";
 export { afkDropPending, driveAfkDrop, nextAfkDropAction } from "./afk-drop";
 export {
   defaultRoomName,
@@ -154,8 +161,11 @@ export {
   DRAFT_FORMAT_LABELS,
   getDraftPhase,
   getScenario,
+  readyCheckConfirmers,
+  readyCheckRequired,
   reservedTownIdsForOtherSeats,
   scenarioStartingUnitLevels,
+  START_CHECK_MS,
   TIER_LEVELS,
   tierOfLevel,
   UNIT_LEVELS,
@@ -393,6 +403,7 @@ export type {
   SourceRef,
   SpellLevel,
   SpellSchool,
+  StartCheckState,
   StatisticType,
   TableReaction,
   TargetRef,

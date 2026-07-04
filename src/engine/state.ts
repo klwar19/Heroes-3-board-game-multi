@@ -3088,8 +3088,36 @@ export type GameAction =
       options: Partial<GameSetupOptions>;
     }
   | {
-      /** Map-setup lobby: build the scenario map once every seat has a faction. */
+      /**
+       * Map-setup lobby: start the adventure. On a solo/open table this builds
+       * the scenario map immediately (as before). On a multiplayer HOSTED table
+       * (2+ seated players) it instead OPENS the pre-start ready check
+       * (`setupLobby.startCheck`) with the presser as the first confirmation —
+       * the map builds only once everyone confirms (see
+       * `CONFIRM_START_ADVENTURE`). Pressing it again while a check is open
+       * simply re-confirms the presser.
+       */
       type: "START_ADVENTURE";
+      playerId: PlayerId;
+    }
+  | {
+      /**
+       * Confirm the open pre-start ready check for this seat. Once every seated
+       * player has confirmed, the map builds. Rejected (aborts the check as a
+       * timeout) if the 30-second window has already elapsed.
+       */
+      type: "CONFIRM_START_ADVENTURE";
+      playerId: PlayerId;
+    }
+  | {
+      /**
+       * Abort the open pre-start ready check and drop the table back to setup.
+       * Any seated player may cancel (the "press cancel → go back" path); the
+       * clients also fire this when the 30-second window elapses so an AFK seat's
+       * missing confirmation cannot hang the table (the "AFK 30s → go back"
+       * path). The handler records which one it was from the server clock.
+       */
+      type: "CANCEL_START_ADVENTURE";
       playerId: PlayerId;
     }
   | {
@@ -3235,6 +3263,19 @@ export type GameAction =
     }
   | {
       /**
+       * Choose the room's match type (the lobby's Ranked vs Normal picker).
+       * `ranked: false` marks a casual game whose result never touches the Elo
+       * ladder; `ranked: true` a ranked game. Open table: any member may set it;
+       * hosted: host-only (mirrors `SET_ROOM_NAME`). Allowed only while the room
+       * is still a setup lobby — locked once the adventure starts. Keyed by the
+       * caller's `clientId`.
+       */
+      type: "SET_ROOM_RANKED";
+      clientId: string;
+      ranked: boolean;
+    }
+  | {
+      /**
        * Send a quick table reaction (emote) to everyone at the table. A purely
        * social broadcast, keyed by the sender's `clientId` (like membership
        * actions) — never a seat `playerId`, so observers may react too and it is
@@ -3311,6 +3352,19 @@ export type GameAction =
        */
       type: "RESOLVE_AFK_DROP";
       playerId: PlayerId;
+    }
+  | {
+      /**
+       * Certain auto-kick of a seat idle past `AFK_AUTO_KICK_MS` (30 minutes) —
+       * no vote required. Any live seat's client fires it once the target has
+       * been away that long; the server re-checks the idle time against its own
+       * clock, cancels any open vote about the target, and begins the same
+       * force-drop the passed vote uses (`afk.droppingPlayerId`). This is the
+       * "after 30 minutes the AFK player is certainly kicked" guarantee.
+       */
+      type: "FORCE_AFK_KICK";
+      playerId: PlayerId;
+      targetPlayerId: PlayerId;
     };
 
 export type LegalAction = {
@@ -4393,6 +4447,44 @@ export type GameEvent =
     }
   | {
       id: string;
+      /** A seat idle past AFK_AUTO_KICK_MS (30 min) was auto-kicked without a vote. */
+      type: "AFK_AUTO_KICKED";
+      targetPlayerId: PlayerId;
+      byPlayerId: PlayerId;
+      message: string;
+    }
+  | {
+      id: string;
+      /** The room's match type was set (Ranked vs Normal). */
+      type: "ROOM_RANKED_CHANGED";
+      ranked: boolean;
+      byClientId: string;
+    }
+  | {
+      id: string;
+      /** A pre-start ready check opened / advanced / finished. */
+      type: "START_CHECK_STARTED";
+      byPlayerId: PlayerId;
+      message: string;
+    }
+  | {
+      id: string;
+      type: "START_CHECK_CONFIRMED";
+      playerId: PlayerId;
+      /** Confirmations so far / total seated players. */
+      confirmed: number;
+      needed: number;
+    }
+  | {
+      id: string;
+      type: "START_CHECK_CANCELLED";
+      /** "cancel" when a player pressed Cancel; "timeout" when the 30s window elapsed. */
+      reason: "cancel" | "timeout";
+      byPlayerId: PlayerId;
+      message: string;
+    }
+  | {
+      id: string;
       type: "PLAYER_ELIMINATION_CLOCK";
       playerId: PlayerId;
       /** Turns the player has left before elimination, or null when cleared. */
@@ -4863,6 +4955,20 @@ export type RoomMembershipState = {
    * guest table, so the default behaviour is unchanged.
    */
   requireAuth?: boolean;
+  /**
+   * Match type chosen when the room is created (the lobby's "Ranked vs Normal"
+   * picker) and shown in the room directory so everyone can see a table's type
+   * before joining. Only a RANKED game reports its result to the Elo ladder;
+   * a NORMAL ("casual") game (`ranked === false`) never counts toward MMR
+   * (`detectFinishedMatch` returns null for it). Absent on legacy snapshots and
+   * rooms created before the picker — treated as ranked, matching the original
+   * "every finished verified game counts" behaviour, so only an explicit Normal
+   * table opts out. Set via `SET_ROOM_RANKED` while the room is still a setup
+   * lobby (locked once the adventure starts, so nobody can dodge a loss by
+   * flipping to Normal mid-game). Carried across a game reset with the rest of
+   * the membership record.
+   */
+  ranked?: boolean;
 };
 
 /**
@@ -7283,6 +7389,25 @@ export type GameSetupDraft = {
   seatRolls?: Record<PlayerId, { townOptions?: FactionId[]; heroOptions?: string[] }>;
 };
 
+/**
+ * The pre-start "ready check" (multiplayer hosted tables only). Pressing
+ * "Start the adventure" no longer builds the map immediately: it opens this
+ * check, and the map is built only once EVERY seated player has confirmed. If
+ * any seat presses Cancel, or the 30-second window elapses before everyone has
+ * confirmed (a seat went AFK), the check is aborted and the table drops back to
+ * setup. Present only while a check is open; null/absent otherwise.
+ */
+export type StartCheckState = {
+  /** The seat that pressed Start (implicitly the first confirmation). */
+  startedByPlayerId: PlayerId;
+  /** Server wall-clock ms when the check opened. */
+  startedAt: number;
+  /** Server wall-clock ms after which an incomplete check auto-aborts. */
+  deadline: number;
+  /** Seats that have confirmed so far. The check completes once every seated player is here. */
+  confirmations: PlayerId[];
+};
+
 /** Pre-game lobby: players pick factions and heroes before the map builds. */
 export type GameSetupState = {
   scenarioId: string;
@@ -7298,6 +7423,12 @@ export type GameSetupState = {
    * saved before this feature still load; treated as `{ mode: "open", bans: [] }`.
    */
   draft?: GameSetupDraft;
+  /**
+   * The open pre-start ready check (all seated players must confirm within the
+   * window). Absent until a player presses Start on a multiplayer hosted table;
+   * cleared on completion, cancel or timeout. See {@link StartCheckState}.
+   */
+  startCheck?: StartCheckState | null;
 };
 
 export type TownState = {

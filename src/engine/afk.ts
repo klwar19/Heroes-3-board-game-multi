@@ -25,6 +25,12 @@ import type { AfkState, GameAction, GameState, PlayerId } from "./state";
 export const AFK_IDLE_MS = 10 * 60_000;
 /** After a vote ends in "wait", the next vote may start this much later (ms). */
 export const AFK_REASK_MS = 10 * 60_000;
+/**
+ * A seat idle this long (ms) is CERTAINLY kicked — no vote needed. Any live
+ * seat's client fires `FORCE_AFK_KICK` once the target has been away this long
+ * ("after 30 minutes the AFK player is certainly kicked").
+ */
+export const AFK_AUTO_KICK_MS = 30 * 60_000;
 
 /** The AFK slice, created on demand (absent on legacy snapshots and solo games). */
 export function getAfkState(state: GameState): AfkState {
@@ -43,9 +49,56 @@ function gameIsOver(state: GameState): boolean {
   return state.phase === "game-over" || Boolean(state.adventure?.winnerPlayerId);
 }
 
-/** The three AFK meta-actions themselves never count as "activity". */
+/** The AFK meta-actions themselves never count as "activity". */
 function isAfkMetaAction(action: GameAction): boolean {
-  return action.type === "START_AFK_VOTE" || action.type === "CAST_AFK_VOTE" || action.type === "RESOLVE_AFK_DROP";
+  return (
+    action.type === "START_AFK_VOTE" ||
+    action.type === "CAST_AFK_VOTE" ||
+    action.type === "RESOLVE_AFK_DROP" ||
+    action.type === "FORCE_AFK_KICK"
+  );
+}
+
+/**
+ * Whether the table is currently WAITING ON `playerId` to act — the only seat a
+ * kick VOTE may target in ordered play. In parallel-turn mode every live seat's
+ * turn is open at once, so everyone is "awaited". In ordered play only the seat
+ * the table is blocked on is: the active player, a participant of an open
+ * battle, or the holder of an open pending interaction / reaction priority. A
+ * player simply waiting for their turn is idle BY DESIGN and must not be
+ * kickable ("if it's another player's turn, you can't vote-kick the others").
+ */
+export function seatIsAwaitedInOrderedPlay(state: GameState, playerId: PlayerId): boolean {
+  if (state.turn?.mode === "parallel") {
+    return true;
+  }
+  if (state.activePlayerId === playerId) {
+    return true;
+  }
+  const combat = state.combat;
+  if (
+    combat &&
+    !combat.outcome &&
+    combat.context.kind !== "sandbox" &&
+    (combat.attackerPlayerId === playerId || combat.defenderPlayerId === playerId)
+  ) {
+    return true;
+  }
+  if (state.pendingChoice?.playerId === playerId) {
+    return true;
+  }
+  if (state.reactionWindow?.priorityPlayerId === playerId) {
+    return true;
+  }
+  const adventure = state.adventure;
+  return Boolean(
+    adventure &&
+      (adventure.pendingVisit?.playerId === playerId ||
+        adventure.pendingTileChoice?.playerId === playerId ||
+        adventure.pendingNecromancy?.playerId === playerId ||
+        adventure.pendingFarTileFlip?.playerId === playerId ||
+        adventure.pendingGarrison?.defenderPlayerId === playerId)
+  );
 }
 
 function playerName(state: GameState, playerId: PlayerId): string {
@@ -147,6 +200,12 @@ export function startAfkVote(
   if (idleMillis(state, action.targetPlayerId, now) < AFK_IDLE_MS) {
     throw new Error(`${playerName(state, action.targetPlayerId)} has not been away for 10 minutes yet.`);
   }
+  // Ordered play: a seat can only be voted out while the table is actually
+  // waiting on it (its turn / its battle / its choice). Someone idling through
+  // another player's turn is not holding anything up and must not be kickable.
+  if (!seatIsAwaitedInOrderedPlay(state, action.targetPlayerId)) {
+    throw new Error(`You can only call an AFK vote against ${playerName(state, action.targetPlayerId)} on their own turn.`);
+  }
   const lastEnded = afk.lastVoteEndedAt?.[action.targetPlayerId];
   if (lastEnded !== undefined && now - lastEnded < AFK_REASK_MS) {
     throw new Error("The table chose to wait — the next AFK vote opens 10 minutes after the last one.");
@@ -226,5 +285,55 @@ function maybeResolveAfkVote(state: GameState, now: number | undefined): void {
     targetPlayerId: vote.targetPlayerId,
     outcome: "kick",
     message: `The vote passed — ${playerName(state, vote.targetPlayerId)} is removed from the game (AFK).`
+  });
+}
+
+/**
+ * FORCE_AFK_KICK: certain auto-kick of a seat idle past AFK_AUTO_KICK_MS (30
+ * minutes) — no vote. Unlike the vote, this is NOT restricted to the awaited
+ * seat: a seat gone 30 minutes has abandoned the game and is removed whatever
+ * the turn state. Any live seat's client fires it; the server re-checks the
+ * idle time against its own clock, then begins the shared force-drop
+ * (`afk.droppingPlayerId`) the passed vote uses, so the drop runs through the
+ * exact same tested pipeline (pending choices default-resolved, open combat
+ * conceded, elimination + turn/round machinery).
+ */
+export function forceAfkKick(
+  state: GameState,
+  action: Extract<GameAction, { type: "FORCE_AFK_KICK" }>,
+  now: number | undefined
+): void {
+  const afk = assertVoteContext(state);
+  const seats = liveSeats(state);
+  if (seats.length < 2) {
+    throw new Error("An AFK kick needs at least two players still in the game.");
+  }
+  if (!seats.includes(action.playerId) || !seats.includes(action.targetPlayerId)) {
+    throw new Error("Both the actor and the target must still be in the game.");
+  }
+  if (action.playerId === action.targetPlayerId) {
+    throw new Error("You cannot auto-kick yourself.");
+  }
+  if (afk.droppingPlayerId) {
+    throw new Error("A player is already being removed.");
+  }
+  if (now === undefined) {
+    throw new Error("AFK timing is unavailable on this table.");
+  }
+  if (idleMillis(state, action.targetPlayerId, now) < AFK_AUTO_KICK_MS) {
+    throw new Error(`${playerName(state, action.targetPlayerId)} has not been away for 30 minutes yet.`);
+  }
+
+  // A vote about this seat is now moot — the hard timeout overrides it.
+  if (afk.vote && afk.vote.targetPlayerId === action.targetPlayerId) {
+    afk.vote = null;
+  }
+  (afk.lastVoteEndedAt ??= {})[action.targetPlayerId] = now;
+  afk.droppingPlayerId = action.targetPlayerId;
+  appendEvent(state, {
+    type: "AFK_AUTO_KICKED",
+    targetPlayerId: action.targetPlayerId,
+    byPlayerId: action.playerId,
+    message: `${playerName(state, action.targetPlayerId)} was away for 30 minutes and is removed from the game (AFK).`
   });
 }
