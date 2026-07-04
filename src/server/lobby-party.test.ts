@@ -63,6 +63,7 @@ function makeRecord(overrides: Partial<LobbyRoomRecord> & { roomId: string }): L
     hostName: null,
     hostClientId: null,
     memberClientIds: ["c1"],
+    ranked: true,
     createdByName: null,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),

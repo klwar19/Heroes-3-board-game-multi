@@ -84,8 +84,10 @@ import {
 } from "./adventure-reducer";
 import {
   banHero,
+  cancelStartAdventure,
   chooseFaction,
   chooseTown,
+  confirmStartAdventure,
   randomAssignSeat,
   resetSeatDraft,
   rollHeroOptions,
@@ -102,6 +104,7 @@ import {
   roomActionGuard,
   setRoomHosted,
   setRoomName,
+  setRoomRanked,
   setRoomRequireAuth,
   transferHost
 } from "./room";
@@ -207,7 +210,7 @@ import {
   unitDealsElementalDamage,
   unitImmuneToParalysis
 } from "./active-effects";
-import { applyAfkBookkeeping, castAfkVote, startAfkVote } from "./afk";
+import { applyAfkBookkeeping, castAfkVote, forceAfkKick, startAfkVote } from "./afk";
 import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
 import { gainRunes, gainRunesForAttack, gainRunesForDefend, grantStartingRunes } from "./runes";
 import { drawCardsForPlayer, isSharedDeckId, shuffleCards } from "./decks";
@@ -15413,6 +15416,8 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "CHOOSE_FACTION",
   "SET_GAME_OPTIONS",
   "START_ADVENTURE",
+  "CONFIRM_START_ADVENTURE",
+  "CANCEL_START_ADVENTURE",
   "SET_DRAFT_FORMAT",
   "ROLL_TOWN_OPTIONS",
   "CHOOSE_TOWN",
@@ -15436,11 +15441,13 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "TRANSFER_HOST",
   "SET_ROOM_NAME",
   "SET_ROOM_REQUIRE_AUTH",
+  "SET_ROOM_RANKED",
   "SEND_TABLE_REACTION",
   "SEND_CHAT",
   "START_AFK_VOTE",
   "CAST_AFK_VOTE",
-  "RESOLVE_AFK_DROP"
+  "RESOLVE_AFK_DROP",
+  "FORCE_AFK_KICK"
 ]);
 
 function isHandlerValidated(state: GameState, action: GameAction): boolean {
@@ -15518,7 +15525,10 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
   // the player from. So they bypass the bystander fingerprint and the event
   // barrier below; their own handlers enforce their legality.
   const isAfkMetaAction =
-    action.type === "START_AFK_VOTE" || action.type === "CAST_AFK_VOTE" || action.type === "RESOLVE_AFK_DROP";
+    action.type === "START_AFK_VOTE" ||
+    action.type === "CAST_AFK_VOTE" ||
+    action.type === "RESOLVE_AFK_DROP" ||
+    action.type === "FORCE_AFK_KICK";
   const parallelBystanderBlocker =
     actorPlayerId && !isAfkMetaAction ? parallelInteractionBlocker(nextState, actorPlayerId) : null;
   const parallelSlotBefore = parallelBystanderBlocker ? parallelSlotSignature(nextState) : null;
@@ -15678,7 +15688,13 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         chooseFaction(nextState, action);
         break;
       case "START_ADVENTURE":
-        startAdventureFromLobby(nextState, action);
+        startAdventureFromLobby(nextState, action, options.now);
+        break;
+      case "CONFIRM_START_ADVENTURE":
+        confirmStartAdventure(nextState, action, options.now);
+        break;
+      case "CANCEL_START_ADVENTURE":
+        cancelStartAdventure(nextState, action, options.now);
         break;
       case "SET_DRAFT_FORMAT":
         setDraftFormat(nextState, action);
@@ -15724,6 +15740,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "SET_ROOM_REQUIRE_AUTH":
         setRoomRequireAuth(nextState, action);
+        break;
+      case "SET_ROOM_RANKED":
+        setRoomRanked(nextState, action);
         break;
       case "SEND_TABLE_REACTION":
         sendTableReaction(nextState, action);
@@ -15916,6 +15935,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "RESOLVE_AFK_DROP":
         resolveAfkDrop(nextState, action);
+        break;
+      case "FORCE_AFK_KICK":
+        forceAfkKick(nextState, action, options.now);
         break;
     }
   } catch (error) {

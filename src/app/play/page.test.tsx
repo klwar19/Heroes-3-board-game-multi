@@ -28,6 +28,7 @@ function entry(overrides: Partial<RoomDirectoryEntry> = {}): RoomDirectoryEntry 
     seatedCount: 0,
     hosted: false,
     hostName: null,
+    ranked: true,
     createdByName: "Binh",
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -77,7 +78,12 @@ describe("/play (multiplayer room browser)", () => {
     fireEvent.change(screen.getByLabelText("New room name"), { target: { value: "My Table" } });
     fireEvent.click(screen.getByRole("button", { name: /Create room/i }));
 
-    expect(createRoomOnServer).toHaveBeenCalledWith({ name: "My Table", createdByName: "Binh", mode: "adventure" });
+    expect(createRoomOnServer).toHaveBeenCalledWith({
+      name: "My Table",
+      createdByName: "Binh",
+      mode: "adventure",
+      ranked: false
+    });
     // The create call resolves asynchronously before navigation.
     await vi.waitFor(() => expect(push).toHaveBeenCalledWith("/?room=new-room-7"));
     // The chosen name crosses the navigation for the game page to apply

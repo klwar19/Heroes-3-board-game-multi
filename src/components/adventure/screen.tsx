@@ -52,6 +52,7 @@ import {
   MAX_PARALLEL_TURN_ROUNDS,
   parallelInteractionBlocker,
   parallelTurnsActive,
+  readyCheckConfirmers,
   remainingParallelPlayerIds,
   observatoryRevealTargets,
   parseHexSpaceId,
@@ -5438,6 +5439,102 @@ function SetupCheatWarning({ state, viewerPlayerId }: { state: GameState; viewer
   );
 }
 
+/**
+ * The pre-start ready check (multiplayer hosted table). Once a player presses
+ * Start, every seated player must confirm within 30 seconds. This panel shows
+ * the live countdown and the confirm/cancel controls, and — crucially — auto-
+ * fires CANCEL_START_ADVENTURE the moment its own countdown hits zero, so an AFK
+ * seat that never confirms drops the whole table back to setup ("AFK 30s → go
+ * back"). Every live client runs the same countdown, so the abort fires even if
+ * the presser themselves went away; the server re-checks the deadline against
+ * its own clock, so the first arriving abort wins and the rest no-op.
+ */
+export function StartReadyCheck({
+  state,
+  viewerPlayerId,
+  onAction
+}: {
+  state: GameState;
+  viewerPlayerId: PlayerId;
+  onAction: (action: GameAction) => void;
+}) {
+  const check = state.setupLobby?.startCheck ?? null;
+  const [now, setNow] = useState(() => Date.now());
+  const firedRef = useRef(false);
+
+  // Reset the one-shot auto-cancel guard whenever a (new) check opens/closes.
+  useEffect(() => {
+    firedRef.current = false;
+  }, [check?.startedAt]);
+
+  // Tick every 250ms while a check is open so the countdown is smooth and the
+  // deadline auto-cancel fires promptly.
+  useEffect(() => {
+    if (!check) {
+      return;
+    }
+    const timer = setInterval(() => setNow(Date.now()), 250);
+    return () => clearInterval(timer);
+  }, [check]);
+
+  const confirmers = readyCheckConfirmers(state);
+  const viewerIsConfirmer = confirmers.includes(viewerPlayerId);
+
+  // Deadline auto-cancel: once the window elapses, any live seated client fires
+  // the abort (guarded so it fires once per open check).
+  useEffect(() => {
+    if (!check || !viewerIsConfirmer || firedRef.current) {
+      return;
+    }
+    if (now >= check.deadline) {
+      firedRef.current = true;
+      onAction({ type: "CANCEL_START_ADVENTURE", playerId: viewerPlayerId });
+    }
+  }, [check, now, viewerIsConfirmer, onAction, viewerPlayerId]);
+
+  if (!check) {
+    return null;
+  }
+
+  const secondsLeft = Math.max(0, Math.ceil((check.deadline - now) / 1000));
+  const confirmedCount = confirmers.filter((seat) => check.confirmations.includes(seat)).length;
+  const viewerConfirmed = check.confirmations.includes(viewerPlayerId);
+  const starterName = state.players[check.startedByPlayerId]?.name ?? check.startedByPlayerId;
+
+  return (
+    <div className="startReadyCheck" role="dialog" aria-label="Start ready check">
+      <div className="startReadyCheckBody">
+        <Hourglass aria-hidden="true" size={16} />
+        <strong>{starterName} wants to start the adventure.</strong>
+        <span className="startReadyCheckProgress">
+          {confirmedCount}/{confirmers.length} ready · {secondsLeft}s left
+        </span>
+        {viewerIsConfirmer ? (
+          <span className="startReadyCheckButtons">
+            <button
+              className="commandButton primary"
+              disabled={viewerConfirmed}
+              onClick={() => onAction({ type: "CONFIRM_START_ADVENTURE", playerId: viewerPlayerId })}
+              type="button"
+            >
+              <Check aria-hidden="true" size={14} /> {viewerConfirmed ? "Ready — waiting…" : "Confirm start"}
+            </button>
+            <button
+              className="commandButton danger"
+              onClick={() => onAction({ type: "CANCEL_START_ADVENTURE", playerId: viewerPlayerId })}
+              type="button"
+            >
+              <X aria-hidden="true" size={14} /> Cancel
+            </button>
+          </span>
+        ) : (
+          <span className="startReadyCheckWaiting">Waiting for the players to confirm…</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function SetupLobbyScreen({
   state,
   viewerPlayerId,
@@ -5533,7 +5630,7 @@ export function SetupLobbyScreen({
       {mySeat ? (
         <button
           className={`commandButton primary startAdventure ${allChosen ? "newGameButton" : ""}`}
-          disabled={!allChosen}
+          disabled={!allChosen || Boolean(lobby.startCheck)}
           onClick={() => onAction({ type: "START_ADVENTURE", playerId: viewerPlayerId })}
           title={allChosen ? "Start the adventure" : "Every seat must pick a faction and hero first"}
           type="button"
@@ -5549,6 +5646,8 @@ export function SetupLobbyScreen({
           )}
         </button>
       ) : null}
+
+      <StartReadyCheck onAction={onAction} state={state} viewerPlayerId={viewerPlayerId} />
 
       {infoHeroId ? <HeroInfoModal heroDefId={infoHeroId} onClose={() => setInfoHeroId(null)} /> : null}
     </section>

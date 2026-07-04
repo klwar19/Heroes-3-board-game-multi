@@ -34,6 +34,7 @@ function record(overrides: Partial<LobbyRoomRecord> & { roomId: string }): Lobby
     hostName: null,
     hostClientId: null,
     memberClientIds: [],
+    ranked: true,
     createdByName: null,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -93,6 +94,19 @@ describe("deriveLobbyRecord", () => {
     expect(derived.hostClientId).toBeNull();
     expect(derived.memberClientIds).toEqual([]);
     expect(derived.createdByName).toBeNull();
+    // No explicit match type on a legacy/fresh room shows as Ranked (matching
+    // the match-report default that only an explicit Normal table opts out).
+    expect(derived.ranked).toBe(true);
+  });
+
+  it("reflects the room's match type: an explicit Normal table shows casual, Ranked shows ranked", () => {
+    const casual = createAdventureLobbyState({ seed: "derive-casual" });
+    casual.room = { hosted: false, hostClientId: null, members: [], ranked: false };
+    expect(deriveLobbyRecord({ roomId: "n", state: casual, ...META }).ranked).toBe(false);
+
+    const ranked = createAdventureLobbyState({ seed: "derive-ranked" });
+    ranked.room = { hosted: false, hostClientId: null, members: [], ranked: true };
+    expect(deriveLobbyRecord({ roomId: "r", state: ranked, ...META }).ranked).toBe(true);
   });
 });
 

@@ -10,8 +10,10 @@ import { cardLibrary } from "@/data/cards/library";
 import { getFxSheet } from "@/data/fx";
 import { playDiceRoll, playLibrarySound } from "@/lib/sound";
 import {
+  AFK_AUTO_KICK_MS,
   AFK_IDLE_MS,
   AFK_REASK_MS,
+  seatIsAwaitedInOrderedPlay,
   effectHasExpertMode,
   getEffectAmount,
   getEffectiveCardEffect,
@@ -2127,17 +2129,51 @@ export function AfkVotePanel({
   onAction: (action: GameAction) => void;
 }) {
   // Re-evaluate idleness periodically so the button appears without a reload.
+  // A short tick keeps the 30-minute auto-kick prompt (which fires an action)
+  // responsive without hammering; 5s is plenty for a minute-scale threshold.
   const [nowTick, setNowTick] = useState(() => Date.now());
   useEffect(() => {
-    const timer = setInterval(() => setNowTick(Date.now()), 15_000);
+    const timer = setInterval(() => setNowTick(Date.now()), 5_000);
     return () => clearInterval(timer);
   }, []);
+  // Two-step "call a vote" confirm: the first click arms this target, the second
+  // (Confirm) actually opens the vote. "Press it, then confirm or cancel."
+  const [pendingKickTarget, setPendingKickTarget] = useState<PlayerId | null>(null);
+  // One-shot guard so the 30-minute auto-kick fires a single action per target.
+  const autoKickFiredRef = useRef<string | null>(null);
 
   const afk = state.afk;
   const liveSeats = state.turnOrder.filter(
     (id) => id !== "neutral" && !state.players[id]?.eliminated
   );
   const viewerLive = liveSeats.includes(viewerPlayerId);
+
+  // Certain 30-minute auto-kick: once ANY seat has been idle past the hard
+  // threshold, a live seat's client fires FORCE_AFK_KICK (the server re-checks
+  // the idle time). Fired from an effect so render stays pure; guarded to once
+  // per target and skipped while a drop is already in progress.
+  const afkActive =
+    state.mode === "adventure" && !state.setupLobby && state.phase !== "game-over" && liveSeats.length >= 2;
+  const autoKickTarget =
+    afkActive && viewerLive && afk && !afk.droppingPlayerId
+      ? (liveSeats.find(
+          (seat) =>
+            seat !== viewerPlayerId &&
+            afk.lastActionAt?.[seat] !== undefined &&
+            nowTick - (afk.lastActionAt?.[seat] ?? nowTick) >= AFK_AUTO_KICK_MS
+        ) ?? null)
+      : null;
+  useEffect(() => {
+    if (!autoKickTarget) {
+      return;
+    }
+    if (autoKickFiredRef.current === autoKickTarget) {
+      return;
+    }
+    autoKickFiredRef.current = autoKickTarget;
+    onAction({ type: "FORCE_AFK_KICK", playerId: viewerPlayerId, targetPlayerId: autoKickTarget });
+  }, [autoKickTarget, onAction, viewerPlayerId]);
+
   if (state.mode !== "adventure" || state.setupLobby || state.phase === "game-over" || liveSeats.length < 2) {
     return null;
   }
@@ -2184,7 +2220,10 @@ export function AfkVotePanel({
   if (!viewerLive || !afk || afk.droppingPlayerId) {
     return null;
   }
-  // A seat is callable once idle past the window AND past the re-ask cooldown.
+  // A seat is callable once idle past the window AND past the re-ask cooldown —
+  // and, in ordered play, only while the table is actually waiting on it (its
+  // turn / battle / choice). A seat idling through another player's turn is idle
+  // by design and is NOT offered as a kick target.
   const callable = liveSeats.filter((seat) => {
     if (seat === viewerPlayerId) {
       return false;
@@ -2193,12 +2232,45 @@ export function AfkVotePanel({
     if (lastAction === undefined || nowTick - lastAction < AFK_IDLE_MS) {
       return false;
     }
+    if (!seatIsAwaitedInOrderedPlay(state, seat)) {
+      return false;
+    }
     const lastVote = afk.lastVoteEndedAt?.[seat];
     return lastVote === undefined || nowTick - lastVote >= AFK_REASK_MS;
   });
   if (callable.length === 0) {
     return null;
   }
+
+  // Second step of the confirm: an armed target shows Confirm / Cancel instead
+  // of opening the vote on the first click.
+  if (pendingKickTarget && callable.includes(pendingKickTarget)) {
+    const targetName = state.players[pendingKickTarget]?.name ?? pendingKickTarget;
+    return (
+      <div className="afkVotePanel" role="dialog" aria-label="Confirm AFK vote">
+        <Hourglass aria-hidden="true" size={14} />
+        <span>
+          Call a vote to kick <strong>{targetName}</strong>?
+        </span>
+        <span className="afkVoteButtons">
+          <button
+            className="commandButton danger"
+            type="button"
+            onClick={() => {
+              onAction({ type: "START_AFK_VOTE", playerId: viewerPlayerId, targetPlayerId: pendingKickTarget });
+              setPendingKickTarget(null);
+            }}
+          >
+            Confirm vote
+          </button>
+          <button className="commandButton" type="button" onClick={() => setPendingKickTarget(null)}>
+            Cancel
+          </button>
+        </span>
+      </div>
+    );
+  }
+
   return (
     <div className="afkVotePanel" role="status" aria-label="AFK player detected">
       <Hourglass aria-hidden="true" size={14} />
@@ -2207,7 +2279,7 @@ export function AfkVotePanel({
           className="commandButton danger"
           key={seat}
           type="button"
-          onClick={() => onAction({ type: "START_AFK_VOTE", playerId: viewerPlayerId, targetPlayerId: seat })}
+          onClick={() => setPendingKickTarget(seat)}
         >
           {(state.players[seat]?.name ?? seat) + " is away (10 min+) — call a kick vote"}
         </button>

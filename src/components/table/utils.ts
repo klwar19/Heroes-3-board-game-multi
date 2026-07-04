@@ -538,6 +538,18 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       return `${playerName(state, event.playerId)} votes to ${event.vote === "kick" ? "kick the AFK player" : "keep waiting"}.`;
     case "AFK_VOTE_RESOLVED":
       return event.message;
+    case "AFK_AUTO_KICKED":
+      return event.message;
+    case "ROOM_RANKED_CHANGED":
+      return event.ranked
+        ? `${roomMemberName(state, event.byClientId)} set this to a Ranked game (counts MMR).`
+        : `${roomMemberName(state, event.byClientId)} set this to a Normal game (no MMR).`;
+    case "START_CHECK_STARTED":
+      return event.message;
+    case "START_CHECK_CONFIRMED":
+      return `${playerName(state, event.playerId)} is ready to start (${event.confirmed}/${event.needed}).`;
+    case "START_CHECK_CANCELLED":
+      return event.message;
     case "PLAYER_ELIMINATION_CLOCK":
       return event.turnsLeft === null
         ? `${playerName(state, event.playerId)} secures a base — no longer facing elimination.`

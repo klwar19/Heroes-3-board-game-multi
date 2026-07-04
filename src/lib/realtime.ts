@@ -543,6 +543,8 @@ export async function createRoomOnServer(options: {
   createdByName?: string;
   roomId?: string;
   mode?: GameMode;
+  /** Ranked (counts MMR) vs Normal (casual). Applied on connect for PartyKit. */
+  ranked?: boolean;
 }): Promise<{ roomId: string }> {
   if (getPartyKitHost()) {
     return { roomId: options.roomId?.trim() || `room-${Math.random().toString(36).slice(2, 8)}` };

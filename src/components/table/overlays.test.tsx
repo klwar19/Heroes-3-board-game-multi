@@ -14,6 +14,7 @@ import {
 } from "./overlays";
 import { CardZoomProvider } from "./zoom";
 import {
+  AFK_AUTO_KICK_MS,
   AFK_IDLE_MS,
   applyAction,
   createAdventureGameState,
@@ -1129,22 +1130,58 @@ describe("AfkVotePanel — the vote UI and the idle call-a-vote button", () => {
     expect(onAction).toHaveBeenCalledWith({ type: "CAST_AFK_VOTE", playerId: "p2", vote: "wait" });
   });
 
-  it("shows the call-a-vote button only once a seat is 10 minutes idle (fresh seat is the CONTROL)", () => {
+  it("calls a vote in two steps (arm then confirm), only against the idle awaited seat", () => {
     const state = adventureGame();
+    state.activePlayerId = "p1"; // p1 is on turn → the awaited, kickable seat
     const afk = getAfkState(state);
     afk.lastActionAt.p1 = Date.now() - AFK_IDLE_MS - 60_000; // long gone
     afk.lastActionAt.p2 = Date.now();
     const onAction = vi.fn();
     render(<AfkVotePanel onAction={onAction} state={state} viewerPlayerId={"p2" as PlayerId} />);
-    const button = screen.getByRole("button", { name: /is away .* call a kick vote/i });
-    fireEvent.click(button);
+    // First click ARMS the target — it must NOT dispatch the vote yet.
+    fireEvent.click(screen.getByRole("button", { name: /is away .* call a kick vote/i }));
+    expect(onAction).not.toHaveBeenCalled();
+    // The confirm step is shown; confirming dispatches the vote.
+    fireEvent.click(screen.getByRole("button", { name: /confirm vote/i }));
     expect(onAction).toHaveBeenCalledWith({ type: "START_AFK_VOTE", playerId: "p2", targetPlayerId: "p1" });
     cleanup();
 
-    // CONTROL: with both seats fresh, no button renders at all.
+    // CONTROL 1 (fresh): with both seats fresh, no button renders at all.
     const fresh = adventureGame();
     getAfkState(fresh).lastActionAt = { p1: Date.now(), p2: Date.now() };
     render(<AfkVotePanel onAction={vi.fn()} state={fresh} viewerPlayerId={"p2" as PlayerId} />);
     expect(screen.queryByRole("button")).toBeNull();
+    cleanup();
+
+    // CONTROL 2 (not their turn): p1 is idle but it is p2's turn, so p1 is NOT
+    // offered as a kick target in ordered play.
+    const notTheirTurn = adventureGame();
+    notTheirTurn.activePlayerId = "p2";
+    const afk2 = getAfkState(notTheirTurn);
+    afk2.lastActionAt = { p1: Date.now() - AFK_IDLE_MS - 60_000, p2: Date.now() };
+    render(<AfkVotePanel onAction={vi.fn()} state={notTheirTurn} viewerPlayerId={"p2" as PlayerId} />);
+    expect(screen.queryByRole("button", { name: /call a kick vote/i })).toBeNull();
+  });
+
+  it("auto-fires the certain 30-minute kick against a seat idle that long", () => {
+    const state = adventureGame();
+    const afk = getAfkState(state);
+    afk.lastActionAt.p1 = Date.now() - AFK_AUTO_KICK_MS - 1_000; // 30 min+ gone
+    afk.lastActionAt.p2 = Date.now();
+    const onAction = vi.fn();
+    render(<AfkVotePanel onAction={onAction} state={state} viewerPlayerId={"p2" as PlayerId} />);
+    expect(onAction).toHaveBeenCalledWith({ type: "FORCE_AFK_KICK", playerId: "p2", targetPlayerId: "p1" });
+    cleanup();
+
+    // CONTROL: idle only ~10 min (past the vote window, short of the 30-min hard
+    // kick) fires no auto-kick.
+    const shorter = adventureGame();
+    const afk2 = getAfkState(shorter);
+    afk2.lastActionAt = { p1: Date.now() - AFK_IDLE_MS - 1_000, p2: Date.now() };
+    const onAction2 = vi.fn();
+    render(<AfkVotePanel onAction={onAction2} state={shorter} viewerPlayerId={"p2" as PlayerId} />);
+    expect(onAction2).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: "FORCE_AFK_KICK" })
+    );
   });
 });

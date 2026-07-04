@@ -52,6 +52,13 @@ export function detectFinishedMatch(prev: GameState, next: GameState): FinishedM
   if (gameIsOver(prev) || !gameIsOver(next)) {
     return null;
   }
+  // A NORMAL ("casual") table never touches the ladder. `ranked === false` is
+  // the explicit opt-out set by the lobby's Ranked/Normal picker; an absent flag
+  // (legacy rooms, rooms created before the picker) stays ranked so the original
+  // "every finished verified game counts" behaviour is unchanged.
+  if (next.room?.ranked === false) {
+    return null;
+  }
   const winnerSeat = next.adventure?.winnerPlayerId;
   if (!winnerSeat || winnerSeat === NEUTRAL_PLAYER_ID) {
     return null;

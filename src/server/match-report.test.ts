@@ -120,6 +120,20 @@ describe("detectFinishedMatch — the shared game-over → ranked-result detecto
     expect(detectFinishedMatch(prev, stateWith({ over: true, winnerSeat: "p1" }))).toBeNull();
   });
 
+  it("a NORMAL (casual) table never counts — ranked === false blocks it (undefined/true is the CONTROL)", () => {
+    const prev = stateWith({ over: false, members: TWO_ACCOUNT_MEMBERS });
+    const next = stateWith({ over: true, winnerSeat: "p1", members: TWO_ACCOUNT_MEMBERS });
+    // Explicit Normal game: no ladder report even with a clean winner and two
+    // verified accounts.
+    (next.room as { ranked?: boolean }).ranked = false;
+    expect(detectFinishedMatch(prev, next)).toBeNull();
+    // CONTROL: explicitly Ranked counts, and so does the legacy absent flag.
+    (next.room as { ranked?: boolean }).ranked = true;
+    expect(detectFinishedMatch(prev, next)).not.toBeNull();
+    delete (next.room as { ranked?: boolean }).ranked;
+    expect(detectFinishedMatch(prev, next)).not.toBeNull();
+  });
+
   it("an account holding TWO seats disqualifies itself, not the whole match", () => {
     const prev = stateWith({ over: false });
     const selfPlayPlusOne = [
