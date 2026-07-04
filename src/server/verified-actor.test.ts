@@ -43,9 +43,24 @@ describe("httpTokenVerifier", () => {
   it("resolves a valid token to its verified identity", async () => {
     const { impl, calls } = fakeFetch({ ok: true, json: async () => ({ userId: "u1", nickname: "Gelu" }) });
     const verify = httpTokenVerifier("https://app.example/", impl);
-    expect(await verify("tok")).toEqual({ userId: "u1", nickname: "Gelu" });
+    // An absent `isAdmin` on the wire (older app deploys) resolves to false.
+    expect(await verify("tok")).toEqual({ userId: "u1", nickname: "Gelu", isAdmin: false });
     // Trailing slash trimmed, endpoint path appended.
     expect(calls[0]).toBe("https://app.example/api/auth/verify-token");
+  });
+
+  it("carries the admin flag through so the edge can bypass room authority", async () => {
+    const asAdmin = httpTokenVerifier(
+      "https://app.example",
+      fakeFetch({ ok: true, json: async () => ({ userId: "boss", nickname: "Overlord", isAdmin: true }) }).impl
+    );
+    expect(await asAdmin("tok")).toEqual({ userId: "boss", nickname: "Overlord", isAdmin: true });
+    // Only a literal `true` counts — a truthy-but-not-true value never grants it.
+    const spoof = httpTokenVerifier(
+      "https://app.example",
+      fakeFetch({ ok: true, json: async () => ({ userId: "u", nickname: "n", isAdmin: "yes" }) }).impl
+    );
+    expect((await spoof("tok"))?.isAdmin).toBe(false);
   });
 
   it("degrades to null (guest) on every failure mode — never throws, never grants", async () => {
@@ -73,7 +88,7 @@ describe("httpTokenVerifier", () => {
 describe("memoizeVerifier", () => {
   it("caches a positive result but re-checks a negative one", async () => {
     let hits = 0;
-    const identity: VerifiedIdentity = { userId: "u1", nickname: "Gelu" };
+    const identity: VerifiedIdentity = { userId: "u1", nickname: "Gelu", isAdmin: false };
     const base = async (token: string | undefined | null) => {
       hits += 1;
       return token === "good" ? identity : null;
@@ -94,7 +109,7 @@ describe("memoizeVerifier", () => {
     let hits = 0;
     const base = async (token: string | undefined | null) => {
       hits += 1;
-      return { userId: String(token), nickname: String(token) };
+      return { userId: String(token), nickname: String(token), isAdmin: false };
     };
     const verify = memoizeVerifier(base, 2);
     await verify("a");
@@ -131,9 +146,31 @@ describe("end-to-end through the real /api/auth/verify-token route", () => {
     };
 
     const verify = httpTokenVerifier("http://x", routeFetch);
-    expect(await verify(token)).toEqual({ userId: profile.id, nickname: "Kilgor" });
+    expect(await verify(token)).toEqual({ userId: profile.id, nickname: "Kilgor", isAdmin: false });
     // A forged/unknown token resolves to guest (null), never a seat.
     expect(await verify("not-a-real-token")).toBeNull();
+  });
+
+  it("resolves a platform admin's token with isAdmin: true (a player's is false)", async () => {
+    const route = await import("@/app/api/auth/verify-token/route");
+    const { getAccountStore } = await import("@/server/accounts/account-store-instance");
+    const store = getAccountStore();
+    const admin = store.ensureAdminAccount({ nickname: "Boss", email: "boss@erathia.io", password: "dungeon12" });
+    // ensureAdminAccount already makes the FIRST account an admin; assert it.
+    const { token } = store.login({ identifier: "Boss", password: "dungeon12" });
+
+    const routeFetch = async (_input: string, init?: { body?: string }) => {
+      const response = await route.POST(
+        new Request("http://x/api/auth/verify-token", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: init?.body ?? "{}"
+        })
+      );
+      return { ok: response.ok, json: () => response.json() };
+    };
+    const verify = httpTokenVerifier("http://x", routeFetch);
+    expect(await verify(token)).toEqual({ userId: admin.id, nickname: "Boss", isAdmin: true });
   });
 
   it("resolves a short-lived socket TICKET the same way (the PartyKit edge path)", async () => {
@@ -166,6 +203,6 @@ describe("end-to-end through the real /api/auth/verify-token route", () => {
       return { ok: response.ok, json: () => response.json() };
     };
     const verify = httpTokenVerifier("http://x", routeFetch);
-    expect(await verify(ticket)).toEqual({ userId: profile.id, nickname: "Tarnum" });
+    expect(await verify(ticket)).toEqual({ userId: profile.id, nickname: "Tarnum", isAdmin: false });
   });
 });

@@ -72,7 +72,11 @@ describe("/admin — room management", () => {
     const roomRow = screen.getByText("Border Skirmish").closest("tr") as HTMLElement;
     fireEvent.click(roomRow.querySelector("button.danger") as HTMLElement);
 
-    await waitFor(() => expect(realtime.requestCloseRoom).toHaveBeenCalledWith("room-xyz", expect.any(String)));
+    // The socket-token provider is passed so the cross-origin edge can verify
+    // this admin's session (the built-in backend ignores it).
+    await waitFor(() =>
+      expect(realtime.requestCloseRoom).toHaveBeenCalledWith("room-xyz", expect.any(String), expect.any(Function))
+    );
     confirmSpy.mockRestore();
   });
 });

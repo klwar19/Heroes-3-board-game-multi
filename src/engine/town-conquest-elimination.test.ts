@@ -259,7 +259,40 @@ describe("giving up", () => {
     expectRejected(state, { type: "END_TURN", playerId: "p1" });
   });
 
-  it("is illegal on another player's turn and while a choice is pending", () => {
+  it("lets a player concede OFF-TURN on a quiet table without disturbing the active turn (3 players)", () => {
+    let state = makeThreePlayerGame();
+    expect(state.activePlayerId).toBe("p1");
+    // p3 is not the active player, but the table is quiet — so p3 may still quit
+    // instead of being trapped watching until their own turn comes around.
+    expect(getLegalActions(state, "p3").some((legal) => legal.action.type === "GIVE_UP")).toBe(true);
+
+    state = apply(state, { type: "GIVE_UP", playerId: "p3" });
+
+    expect(state.players.p3.eliminated).toBe(true);
+    expect(state.turnOrder).toEqual(["p1", "p2"]);
+    // Crucially, the active player's turn is untouched — no advance past p1.
+    expect(state.activePlayerId).toBe("p1");
+    expect(state.adventure?.winnerPlayerId).toBeNull();
+    expect(state.phase).not.toBe("game-over");
+    expect(
+      state.eventLog.some((event) => event.type === "PLAYER_ELIMINATED" && event.gaveUp === true)
+    ).toBe(true);
+  });
+
+  it("an off-turn concede in a 2-player game hands the win to the remaining faction", () => {
+    let state = makeGame();
+    expect(state.activePlayerId).toBe("p1");
+    // p2 quits during p1's turn: offered off-turn, and it ends the game.
+    expect(getLegalActions(state, "p2").some((legal) => legal.action.type === "GIVE_UP")).toBe(true);
+
+    state = apply(state, { type: "GIVE_UP", playerId: "p2" });
+
+    expect(state.players.p2.eliminated).toBe(true);
+    expect(state.adventure?.winnerPlayerId).toBe("p1");
+    expect(state.phase).toBe("game-over");
+  });
+
+  it("is illegal for anyone while a choice is pending (even the active player)", () => {
     const opened = (() => {
       const state = makeGame();
       const townField = state.towns.town_p2.fieldId ?? "";

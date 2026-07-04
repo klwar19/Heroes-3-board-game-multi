@@ -148,14 +148,23 @@ function partyProtocol(host: string): string {
   return host.startsWith("localhost") || host.startsWith("127.") ? "http" : "https";
 }
 
-function partyHttpUrl(host: string, roomId: string, clientId?: string): string {
+function partyHttpUrl(host: string, roomId: string, clientId?: string, token?: string): string {
   // PartyKit serves the default ("main") party at /parties/main/<room> — the
   // same path PartySocket uses for the WebSocket. (The room server adds CORS
   // headers so these cross-origin GETs are not blocked by the browser.) The
   // clientId lets the edge redact a GET snapshot to this seat (Phase 2),
-  // matching the socket frames.
+  // matching the socket frames; the verified session `token` (same one the
+  // socket carries) lets the edge honour a platform admin for close/reset.
   const base = `${partyProtocol(host)}://${host}/parties/main/${encodeURIComponent(roomId)}`;
-  return clientId ? `${base}?clientId=${encodeURIComponent(clientId)}` : base;
+  const query = new URLSearchParams();
+  if (clientId) {
+    query.set("clientId", clientId);
+  }
+  if (token) {
+    query.set("token", token);
+  }
+  const suffix = query.toString();
+  return suffix ? `${base}?${suffix}` : base;
 }
 
 /**
@@ -564,12 +573,26 @@ export async function createRoomOnServer(options: {
 /**
  * Closes (deletes) a room. The server validates `actorClientId` against the
  * room's host / membership (host while connected, any member once the host is
- * gone), and the developer's admin key overrides — see localAdminKey.
+ * gone), plus two overrides that let a moderator close ANY room:
+ *  - a signed-in PLATFORM ADMIN — resolved server-side from the session. On the
+ *    built-in backend the same-origin httpOnly cookie carries it; on the
+ *    cross-origin PartyKit edge the browser can't send that cookie, so
+ *    `getSocketToken` mints the same short-lived ticket the live socket uses
+ *    and it rides on the request `?token=` for the edge to verify.
+ *  - the developer's admin key — see localAdminKey.
  */
-export async function requestCloseRoom(roomId: string, actorClientId?: string): Promise<CloseRoomResult> {
+export async function requestCloseRoom(
+  roomId: string,
+  actorClientId?: string,
+  /** See SocketTokenProvider — lets the edge resolve a platform-admin session. */
+  getSocketToken?: SocketTokenProvider
+): Promise<CloseRoomResult> {
   const host = getPartyKitHost();
+  // Only the cross-origin edge needs the ticket on the wire; the built-in
+  // backend reads the admin from the same-origin cookie the fetch sends anyway.
+  const token = host && getSocketToken ? await getSocketToken().catch(() => undefined) : undefined;
   const url = host
-    ? partyHttpUrl(host, roomId)
+    ? partyHttpUrl(host, roomId, actorClientId, token)
     : `/api/rooms/${encodeURIComponent(roomId)}`;
   const adminKey = localAdminKey();
   const response = await fetch(url, {

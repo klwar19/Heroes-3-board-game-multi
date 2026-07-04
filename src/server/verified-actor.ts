@@ -15,8 +15,16 @@
  * shell just wires a real `fetch` into `httpTokenVerifier`.
  */
 
-/** The minimal, non-secret identity a verified session resolves to. */
-export type VerifiedIdentity = { userId: string; nickname: string };
+/**
+ * The minimal, non-secret identity a verified session resolves to. `isAdmin`
+ * lets the cross-origin edge honour a PLATFORM ADMIN for destructive room ops
+ * (close/reset ANY room), the same power the built-in backend reads straight
+ * from the session cookie. Exposing this derived boolean leaks nothing an
+ * attacker could exploit: knowing a token already grants full impersonation of
+ * that account, so "the account you hold a token for is an admin" reveals
+ * nothing new — and the token never becomes JS-readable (a short-lived ticket).
+ */
+export type VerifiedIdentity = { userId: string; nickname: string; isAdmin: boolean };
 
 /** Resolve a raw session token to a verified identity, or null when invalid. */
 export type TokenVerifier = (token: string | undefined | null) => Promise<VerifiedIdentity | null>;
@@ -50,9 +58,13 @@ export function httpTokenVerifier(appUrl: string, fetchImpl: FetchLike): TokenVe
       if (!response.ok) {
         return null;
       }
-      const data = (await response.json()) as { userId?: unknown; nickname?: unknown } | null;
+      const data = (await response.json()) as
+        | { userId?: unknown; nickname?: unknown; isAdmin?: unknown }
+        | null;
       if (data && typeof data.userId === "string" && typeof data.nickname === "string") {
-        return { userId: data.userId, nickname: data.nickname };
+        // `isAdmin` is optional on the wire (older app deploys omit it): absent
+        // ⇒ not an admin, so the destructive-op bypass simply never triggers.
+        return { userId: data.userId, nickname: data.nickname, isAdmin: data.isAdmin === true };
       }
       return null;
     } catch {

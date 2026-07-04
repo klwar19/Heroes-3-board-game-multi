@@ -15,8 +15,12 @@ export const dynamic = "force-dynamic";
  * the party on the player's behalf). Knowledge of a valid token IS the
  * authorization — an attacker without one gets `null`, and one WITH a token
  * could already impersonate the user directly, so this reveals nothing new. It
- * returns only the non-secret public identity (never the email/role/hash) and
- * is IP-rate-limited to blunt blind probing.
+ * returns only the non-secret public identity (never the email or password
+ * hash) plus a derived `isAdmin` flag — the cross-origin edge needs it to
+ * honour a PLATFORM ADMIN for destructive room ops (close/reset ANY room), the
+ * same authority the built-in backend reads from the cookie. Exposing the
+ * boolean leaks nothing exploitable: a caller holding this token can already
+ * fully impersonate the account. IP-rate-limited to blunt blind probing.
  */
 export async function POST(request: Request) {
   try {
@@ -39,5 +43,9 @@ export async function POST(request: Request) {
     // guest. Same 200 shape so it cannot distinguish "no token" from "bad token".
     return NextResponse.json({ userId: null }, { status: 200 });
   }
-  return NextResponse.json({ userId: profile.id, nickname: profile.nickname });
+  return NextResponse.json({
+    userId: profile.id,
+    nickname: profile.nickname,
+    isAdmin: profile.role === "admin"
+  });
 }
