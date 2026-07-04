@@ -357,14 +357,31 @@ export function assignSeat(state: GameState, action: Extract<GameAction, { type:
   if (!room.hosted) {
     throw new Error("Seat assignment is only available in a hosted room.");
   }
-  if (!isEffectiveHost(room, action.clientId)) {
-    throw new Error("Only the host can assign seats.");
-  }
   const target = findMember(room, action.targetClientId);
   if (!target) {
     throw new Error("That member is not in the room.");
   }
   assertValidSeat(state, action.seat);
+
+  // Authority. The host may seat ANY member into ANY seat (bumping whoever holds
+  // it). A non-host may only SELF-SERVE: claim an OPEN seat, or step down to
+  // observer, for their OWN membership — they can never move another player, nor
+  // take a seat someone else already holds (that stays the host's call). This is
+  // the standard lobby rule, so a player in a hosted/closed room can pick a role
+  // themselves instead of being stuck as an observer waiting on the host.
+  if (!isEffectiveHost(room, action.clientId)) {
+    if (action.targetClientId !== action.clientId) {
+      throw new Error("Only the host can seat other players.");
+    }
+    if (action.seat !== "observer") {
+      const occupant = room.members.find(
+        (member) => member.clientId !== action.clientId && member.seat === action.seat
+      );
+      if (occupant) {
+        throw new Error("That seat is taken — ask the host to move you into it.");
+      }
+    }
+  }
 
   // Bump whoever else holds this seat back to observer (a real seat is single
   // occupancy; observer is not).

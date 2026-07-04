@@ -189,7 +189,10 @@ export function RoomPanel({
             ) : (
               <>
                 <span className="roomModeNote">
-                  Hosted — the host controls seats. {isHost ? "You are the host." : "Ask the host to seat you."}
+                  Hosted —{" "}
+                  {isHost
+                    ? "you are the host and can seat anyone; players may also take an open seat."
+                    : "pick an open seat below, or ask the host to move you into a taken one."}
                 </span>
                 {isHost ? (
                   <button
@@ -254,6 +257,7 @@ export function RoomPanel({
                   </span>
 
                   {hosted && isHost ? (
+                    // Host: full seat control over every member.
                     <select
                       aria-label={`Seat for ${member.name}`}
                       className="roomSeatSelect"
@@ -273,6 +277,36 @@ export function RoomPanel({
                           {seatLabel(seatId)}
                         </option>
                       ))}
+                    </select>
+                  ) : hosted && self ? (
+                    // Non-host, own row: self-serve seating — Observer plus any
+                    // seat not already held by someone else (the engine enforces
+                    // the same rule; the host can still override).
+                    <select
+                      aria-label="Your seat"
+                      className="roomSeatSelect"
+                      onChange={(event) =>
+                        onAction({
+                          type: "ASSIGN_SEAT",
+                          clientId,
+                          targetClientId: clientId,
+                          seat: event.target.value as RoomSeat
+                        })
+                      }
+                      value={member.seat}
+                    >
+                      <option value="observer">Observer</option>
+                      {seatIds
+                        .filter(
+                          (seatId) =>
+                            seatId === member.seat ||
+                            !members.some((other) => other.clientId !== member.clientId && other.seat === seatId)
+                        )
+                        .map((seatId) => (
+                          <option key={seatId} value={seatId}>
+                            {seatLabel(seatId)}
+                          </option>
+                        ))}
                     </select>
                   ) : (
                     <span className={`roomSeatBadge ${member.seat === "observer" ? "observer" : ""}`}>
