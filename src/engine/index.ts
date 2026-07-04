@@ -139,6 +139,7 @@ export {
   spellBookPowerAvailable,
   spellBookRuleEnabled,
   spellLimitFor,
+  unitSideRuleOverrides,
   wisdomGoldDiscount,
   wisdomSearchCount
 } from "./ruleset";
