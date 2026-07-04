@@ -234,6 +234,61 @@ function DesignedTileUnbuilt({
   );
 }
 
+/**
+ * A SHARED (two-in-one) bar whose faction ships a dedicated printed
+ * DOUBLE-SIDED tile (`spec.combinedTile`) — the physical Stronghold board.
+ * Instead of splitting the bar into two half-slots, it fills the whole bar with
+ * the printed face that matches how many of the pair are built:
+ *  - BOTH built → the `bothBuiltImage` face,
+ *  - exactly ONE built → the `oneBuiltImage` face, shown CRISP (never blurred),
+ *    plus a label naming which building is built (✓) and which is not (🔨) —
+ *    the shared face alone can't say which half went up first.
+ * Rendered only once at least one of the pair is built; an all-unbuilt shared
+ * bar shows the empty board scan's printed plates through it.
+ */
+function CombinedTile({
+  bar,
+  built,
+  oneBuiltImage,
+  bothBuiltImage
+}: {
+  bar: readonly string[];
+  built: (buildingId: string) => boolean;
+  oneBuiltImage: string;
+  bothBuiltImage: string;
+}) {
+  const builtIds = bar.filter((buildingId) => built(buildingId));
+  const missingIds = bar.filter((buildingId) => !built(buildingId));
+  const bothBuilt = missingIds.length === 0;
+  const nameOf = (buildingId: string) => coreBuildingDefinitions[buildingId]?.name ?? buildingId;
+  return (
+    <div className="tbFill combined">
+      <img
+        alt=""
+        aria-hidden="true"
+        className="tbCombinedImg"
+        draggable={false}
+        src={assetUrl(bothBuilt ? bothBuiltImage : oneBuiltImage)}
+      />
+      {!bothBuilt ? (
+        <span
+          className="tbPartialNote split"
+          title={`Built: ${builtIds.map(nameOf).join(", ")} · Not built (shares this tile): ${missingIds.map(nameOf).join(", ")}`}
+        >
+          <span className="tbPartialBuilt">
+            <Check aria-hidden="true" size={10} />
+            {builtIds.map(nameOf).join(", ")} built
+          </span>
+          <span className="tbPartialMissing">
+            <Hammer aria-hidden="true" size={10} />
+            {missingIds.map(nameOf).join(", ")} not built
+          </span>
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Real printed BUILDING-TILE slots (Factory): the physical portrait tiles show
 // directly — the built illustration when raised, the name/cost plaque while
@@ -723,6 +778,9 @@ export function TownBoardView({
           const builtIds = bar.filter((buildingId) => built(buildingId));
           const missingIds = bar.filter((buildingId) => !built(buildingId));
           const partial = builtIds.length > 0 && missingIds.length > 0;
+          // The unique two-building bar renders as one printed double-sided tile
+          // (no split, no blur) when the board ships a `combinedTile`.
+          const combinedBar = Boolean(spec.combinedTile) && bar.length === 2;
           const anyBuildable = bar.some((buildingId) => buildActionFor(buildingId));
           const style: CSSProperties = {
             left: pct(rect.left),
@@ -737,7 +795,7 @@ export function TownBoardView({
             })
             .join(", ");
           return (
-            <div className={`tbBar ${partial ? "partial" : ""}`} key={index} style={style}>
+            <div className={`tbBar ${partial && !combinedBar ? "partial" : ""}`} key={index} style={style}>
               {/* Invisible FX anchors — one per building in this bar — so the
                   construction burst (page.tsx) can land on the bar whichever
                   board render path drew it (designed / scan / real-tile). */}
@@ -758,6 +816,15 @@ export function TownBoardView({
                   built={built}
                   buildableOf={(buildingId) => Boolean(buildActionFor(buildingId))}
                   compact={bar.length > 1}
+                />
+              ) : combinedBar && builtIds.length > 0 ? (
+                // The printed double-sided shared tile: one crisp face for the
+                // whole bar (both-built or one-built), never split or blurred.
+                <CombinedTile
+                  bar={bar}
+                  built={built}
+                  oneBuiltImage={spec.combinedTile!.oneBuiltImage}
+                  bothBuiltImage={spec.combinedTile!.bothBuiltImage}
                 />
               ) : builtIds.length > 0 ? (
                 // A real printed board scan crops its one fully-built photo per
@@ -814,7 +881,7 @@ export function TownBoardView({
                   built. Name BOTH halves — which is built (✓) and which is not
                   (🔨) — so the player can tell them apart. Designed boards show
                   each half as its own tile/socket, so they need no note. */}
-              {partial && isScan && spec.fullImage ? (
+              {partial && !combinedBar && isScan && spec.fullImage ? (
                 <span
                   className="tbPartialNote split"
                   title={`Built: ${builtIds.map((id) => coreBuildingDefinitions[id]?.name ?? id).join(", ")} · Not built (shares this bar): ${missingIds.map((id) => coreBuildingDefinitions[id]?.name ?? id).join(", ")}`}
