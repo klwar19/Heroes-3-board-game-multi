@@ -6,7 +6,7 @@ import Link from "next/link";
 import { assetUrl } from "@/lib/asset-url";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Ban, BookOpen, Castle, Check, ChevronsUp, Crown, Dices, Hammer, Hourglass, Image as ImageIcon, Info, Layers, Lock, Minus, Plus, RotateCcw, RotateCw, Shield, Sparkles, Swords, Unlock, X } from "lucide-react";
+import { Ban, BookOpen, Castle, Check, ChevronsUp, Crown, Dices, Hammer, Hourglass, Image as ImageIcon, Info, Layers, Lock, Minus, Plus, RotateCcw, RotateCw, Sparkles, Swords, Unlock, X } from "lucide-react";
 import { cardLibrary } from "@/data/cards/library";
 import { buildingTimingLabel, describeBuildingEffect } from "@/data/towns/describe";
 import { TOWN_TOKEN_ICONS, townIconUrl } from "@/data/towns/boards";
@@ -84,13 +84,16 @@ import {
   type PlayerVisibleState
 } from "@/engine";
 import {
+  abilitySymbolIcon,
   creatureBankFieldImage,
+  HERO_INFO_STAT_ICONS,
   moraleIcon,
   RESOURCE_ICONS,
   subterraneanGateTokenImage,
   tileBackImage,
   TILE_BACK_IMAGES
 } from "@/data/assets/homm-assets";
+import { specialtyIconSrc } from "@/components/specialty-card-data";
 import { CARD_BACK_IMAGES, getDeckBack } from "@/data/decks";
 import { actionKey, cardName, formatCost, isEmpoweredStatisticCard, titleCase } from "@/components/table/utils";
 import { beginUnitPointerDrag } from "@/components/table/pointer-drag";
@@ -4610,6 +4613,45 @@ const SPECIALTY_LEVEL_NUMERAL: Record<1 | 4 | 6, string> = { 1: "I", 4: "IV", 6:
  * shows when the card is zoomed. Shown beside the faction grid when a hero is
  * clicked or its info button is pressed.
  */
+/** The printed statistic symbol (crossed swords / shield / spell book / tomes). */
+function HeroInfoStatIcon({ stat }: { stat: keyof typeof HERO_INFO_STAT_ICONS }) {
+  return <img alt="" aria-hidden="true" className="heroStatSymbol" src={assetUrl(HERO_INFO_STAT_ICONS[stat])} />;
+}
+
+/** The starting-ability's real secondary-skill emblem (or nothing if unmapped). */
+function AbilitySymbol({ cardId }: { cardId: string | undefined }) {
+  const src = abilitySymbolIcon(cardId);
+  if (!src) {
+    return null;
+  }
+  return (
+    <span aria-hidden="true" className="heroAbilitySymbol">
+      <img alt="" src={assetUrl(src)} />
+    </span>
+  );
+}
+
+/**
+ * A hero's specialty symbol only — the top-centre art of the printed specialty
+ * card, cropped by CSS (`.heroSpecArt img`) exactly as the hero board does, or,
+ * for an art-less specialty (Bulwark/Conflux/spell specialists), the transparent
+ * specialty symbol contained in the chip. A missing scan just shows the numeral.
+ */
+function SpecialtySymbol({ cardId }: { cardId: string | undefined }) {
+  const card = cardId ? cardLibrary[cardId] : undefined;
+  const scan = card?.assets?.cardImage;
+  const nativeIcon = !scan ? specialtyIconSrc(cardId) : undefined;
+  return (
+    <span aria-hidden="true" className="heroSpecArt">
+      {scan ? (
+        <img alt="" src={assetUrl(scan)} />
+      ) : nativeIcon ? (
+        <img alt="" className="heroSpecIcon" src={assetUrl(nativeIcon)} />
+      ) : null}
+    </span>
+  );
+}
+
 function HeroSetupDetail({ heroDefId }: { heroDefId: string }) {
   const hero = coreHeroDefinitions[heroDefId];
   if (!hero) {
@@ -4617,11 +4659,11 @@ function HeroSetupDetail({ heroDefId }: { heroDefId: string }) {
   }
   const faction = coreFactionDefinitions[hero.faction];
   const ability = cardLibrary[hero.startingAbilityCardId];
-  const stats: { key: keyof typeof hero.startingStats; label: string; icon: ReactNode }[] = [
-    { key: "attack", label: "Attack", icon: <Swords aria-hidden="true" size={14} /> },
-    { key: "defense", label: "Defense", icon: <Shield aria-hidden="true" size={14} /> },
-    { key: "power", label: "Power", icon: <Sparkles aria-hidden="true" size={14} /> },
-    { key: "knowledge", label: "Knowledge", icon: <BookOpen aria-hidden="true" size={14} /> }
+  const stats: { key: keyof typeof HERO_INFO_STAT_ICONS; label: string }[] = [
+    { key: "attack", label: "Attack" },
+    { key: "defense", label: "Defense" },
+    { key: "power", label: "Power" },
+    { key: "knowledge", label: "Knowledge" }
   ];
 
   return (
@@ -4644,7 +4686,9 @@ function HeroSetupDetail({ heroDefId }: { heroDefId: string }) {
             key={stat.key}
             role="group"
           >
-            <span className="heroStatIcon">{stat.icon}</span>
+            <span className="heroStatIcon">
+              <HeroInfoStatIcon stat={stat.key} />
+            </span>
             <span className="heroStatValue">{hero.startingStats[stat.key]}</span>
             <span className="heroStatLabel">{stat.label}</span>
           </div>
@@ -4654,9 +4698,12 @@ function HeroSetupDetail({ heroDefId }: { heroDefId: string }) {
       <div className="heroDetailSection">
         <h4>Starting ability</h4>
         {ability ? (
-          <div className="heroDetailEntry">
-            <strong>{ability.name}</strong>
-            <span>{cardRulesText(hero.startingAbilityCardId)}</span>
+          <div className="heroDetailEntry heroDetailEntrySymbol">
+            <AbilitySymbol cardId={hero.startingAbilityCardId} />
+            <div className="heroDetailEntryText">
+              <strong>{ability.name}</strong>
+              <span>{cardRulesText(hero.startingAbilityCardId)}</span>
+            </div>
           </div>
         ) : (
           <span className="heroDetailEmpty">—</span>
@@ -4669,10 +4716,15 @@ function HeroSetupDetail({ heroDefId }: { heroDefId: string }) {
           const cardId = hero.specialtyCardIds?.[level];
           const card = cardId ? cardLibrary[cardId] : undefined;
           return (
-            <div className="heroDetailEntry" key={level}>
-              <span className="heroSpecLevel">{SPECIALTY_LEVEL_NUMERAL[level]}</span>
-              <strong>{card?.name ?? cardId ?? "—"}</strong>
-              <span>{cardRulesText(cardId)}</span>
+            <div className="heroDetailEntry heroDetailEntrySymbol" key={level}>
+              <span className="heroSpecArtWrap">
+                <SpecialtySymbol cardId={cardId} />
+                <span className="heroSpecLevel">{SPECIALTY_LEVEL_NUMERAL[level]}</span>
+              </span>
+              <div className="heroDetailEntryText">
+                <strong>{card?.name ?? cardId ?? "—"}</strong>
+                <span>{cardRulesText(cardId)}</span>
+              </div>
             </div>
           );
         })}

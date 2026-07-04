@@ -6729,7 +6729,14 @@ button.hbSlot:disabled { cursor: default; }
 .heroStatIcon {
   display: inline-grid;
   place-items: center;
-  color: #ffd76a;
+}
+
+/* The printed statistic symbol (crossed swords / shield / spell book / tomes). */
+.heroStatSymbol {
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+  filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.6));
 }
 
 .heroStatValue {
@@ -6781,17 +6788,108 @@ button.hbSlot:disabled { cursor: default; }
   line-height: 1.4;
 }
 
+/* An entry led by a real ability/specialty symbol chip: chip on the left, the
+   name + rules text stacked to its right. */
+.heroDetailEntrySymbol {
+  display: flex;
+  align-items: flex-start;
+  column-gap: 10px;
+}
+
+.heroDetailEntryText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.heroDetailEntryText strong {
+  color: #ffe9bd;
+}
+
+.heroDetailEntryText > span {
+  color: #cbb88f;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+/* Shared leather chip that holds an ability emblem or a specialty symbol, so
+   the transparent skill emblems and the card-recovered symbols sit on one
+   surface that matches the printed cards. */
+.heroAbilitySymbol,
+.heroSpecArt {
+  flex: 0 0 auto;
+  display: block;
+  width: 48px;
+  height: 48px;
+  border-radius: 8px;
+  border: 1px solid rgba(200, 156, 88, 0.7);
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.7),
+    0 1px 3px rgba(0, 0, 0, 0.5);
+  background:
+    radial-gradient(70% 70% at 50% 40%, rgba(255, 226, 168, 0.12), transparent 72%),
+    url("/assets/specialty-card/leather.webp") center / cover,
+    #5c4026;
+  overflow: hidden;
+}
+
+.heroAbilitySymbol img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.55));
+}
+
+/* The specialty chip crops the specialty card scan to its top-centre art — the
+   same window the hero board uses (see .hbArt-specialty img). */
+.heroSpecArt {
+  position: relative;
+}
+
+.heroSpecArt img {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: block;
+  max-width: none;
+  width: 262%;
+  transform: translate(-31%, -9.5%);
+}
+
+/* An art-less specialty (Bulwark/Conflux/spell specialist) shows its
+   transparent symbol contained in the chip instead of a cropped scan. */
+.heroSpecArt .heroSpecIcon {
+  position: absolute;
+  inset: 8%;
+  width: 84%;
+  height: 84%;
+  object-fit: contain;
+  transform: none;
+}
+
+.heroSpecArtWrap {
+  position: relative;
+  flex: 0 0 auto;
+  display: block;
+}
+
 .heroSpecLevel {
+  position: absolute;
+  right: -5px;
+  bottom: -5px;
   display: inline-grid;
   place-items: center;
-  min-width: 26px;
-  padding: 1px 6px;
+  min-width: 22px;
+  padding: 1px 5px;
   border-radius: 6px;
   background: linear-gradient(180deg, #e8c576, #c2933f);
+  border: 1px solid rgba(0, 0, 0, 0.55);
   color: #2a1c08;
   font-weight: 800;
-  font-size: 12px;
-  align-self: center;
+  font-size: 11px;
+  line-height: 1.4;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
 }
 
 .heroDetailEmpty {
