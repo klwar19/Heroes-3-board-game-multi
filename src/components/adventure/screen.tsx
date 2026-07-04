@@ -22,6 +22,7 @@ import { CREATURE_BANKS, type CreatureBankId } from "@/data/map/creature-banks";
 import { allTileDefinitions } from "@/data/map/tiles";
 import {
   NEUTRAL_DECK_IDS,
+  NEUTRAL_PLAYER_ID,
   DEFAULT_WOG_OPTIONS,
   PVP_TROOP_LOSS_DESCRIPTIONS,
   PVP_TROOP_LOSS_LABELS,
@@ -2382,12 +2383,20 @@ export function PromptTray({
   state,
   viewerPlayerId,
   legalActions,
-  onAction
+  onAction,
+  onSwitchSeat
 }: {
   state: GameState;
   viewerPlayerId: PlayerId;
   legalActions: LegalAction[];
   onAction: (action: GameAction) => void;
+  /**
+   * Open-table only: jump the local view to the seat that owns the open prompt.
+   * Given, the "…is deciding" strip grows a one-click "Play as X" button so the
+   * player who must act reaches their own choice without hunting the seat
+   * switcher. Absent in hosted rooms, where the seat is fixed to this client.
+   */
+  onSwitchSeat?: (seat: PlayerId) => void;
 }) {
   const visit = state.adventure?.pendingVisit;
   const choice = state.pendingChoice;
@@ -2551,10 +2560,24 @@ export function PromptTray({
   // visible so a host in another seat cannot mistake the prompt for theirs.
   // Learning has its own waiting strip in LearningOfferModal.
   if (choice && choice.playerId !== viewerPlayerId && !(choice.type === "OPTION_CHOICE" && choice.context === "learning-level-up")) {
+    const ownerName = state.players[choice.playerId]?.name ?? choice.playerId;
+    // Offer the one-click jump for MAP choices only (a creature-bank placement,
+    // a visit option, a tile pick). Never mid-combat — switching seats during a
+    // fight is exactly the disorientation we want to avoid.
+    const canJumpToOwner =
+      Boolean(onSwitchSeat) &&
+      !state.combat &&
+      choice.playerId !== NEUTRAL_PLAYER_ID &&
+      Boolean(state.players[choice.playerId]);
     return (
       <div className="reactionStrip waiting" role="status">
         <Hourglass aria-hidden="true" size={15} />
-        <span>{state.players[choice.playerId]?.name ?? choice.playerId} is deciding…</span>
+        <span>{ownerName} is deciding…</span>
+        {canJumpToOwner ? (
+          <button className="promptSwitchSeat" onClick={() => onSwitchSeat?.(choice.playerId)} type="button">
+            Play as {ownerName}
+          </button>
+        ) : null}
       </div>
     );
   }

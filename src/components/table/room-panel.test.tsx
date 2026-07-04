@@ -134,6 +134,21 @@ describe("RoomPanel — hosted (a seated player's view)", () => {
     // And the engine accepts a player claiming their own open seat.
     expect(applyAction(state, action).errors).toHaveLength(0);
   });
+
+  it("a GUEST OBSERVER can self-serve into the open seat (the reported 'join → no role' case)", () => {
+    const state = hostedState(); // Cara (c3) is an observer; p2 is open, p1 taken by Bob
+    const { onAction } = renderPanel(state, "c3");
+    const caraRow = screen.getByText("Cara").closest("li") as HTMLElement;
+    const select = within(caraRow).getByRole("combobox") as HTMLSelectElement;
+    const optionValues = Array.from(select.options).map((option) => option.value);
+    // The open p2 is offered; the taken p1 is NOT (only the host can move people).
+    expect(optionValues).toContain("p2");
+    expect(optionValues).not.toContain("p1");
+    fireEvent.change(select, { target: { value: "p2" } });
+    const action: GameAction = { type: "ASSIGN_SEAT", clientId: "c3", targetClientId: "c3", seat: "p2" };
+    expect(onAction).toHaveBeenCalledWith(action);
+    expect(applyAction(state, action).errors).toHaveLength(0);
+  });
 });
 
 /**

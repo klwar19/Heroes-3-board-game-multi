@@ -6,6 +6,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { MenuShell } from "@/components/menu/menu-shell";
 import { adminAction, adminListPlayers, fetchSession, type SelfProfile } from "@/lib/auth-client";
 import { authEnabled } from "@/lib/auth-mode";
+import { getClientId } from "@/lib/identity";
+import { fetchRoomList, requestCloseRoom, type RoomDirectoryEntry } from "@/lib/realtime";
 
 /**
  * Admin moderation panel (Phase 1). Gated twice: the client redirects a
@@ -17,8 +19,10 @@ export default function AdminPage() {
   const router = useRouter();
   const [me, setMe] = useState<SelfProfile | null>(null);
   const [players, setPlayers] = useState<SelfProfile[] | null>(null);
+  const [rooms, setRooms] = useState<RoomDirectoryEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const started = useRef(false);
+  const clientId = getClientId();
 
   const refresh = useCallback(async () => {
     try {
@@ -27,6 +31,27 @@ export default function AdminPage() {
       setError(err instanceof Error ? err.message : "Failed to load players.");
     }
   }, []);
+
+  const refreshRooms = useCallback(async () => {
+    try {
+      const result = await fetchRoomList(clientId);
+      setRooms(result.rooms);
+    } catch {
+      // The room directory is best-effort; leave the last list in place.
+    }
+  }, [clientId]);
+
+  const deleteRoom = async (room: RoomDirectoryEntry) => {
+    setError(null);
+    if (!window.confirm(`Delete room "${room.name}" for everyone? This cannot be undone.`)) {
+      return;
+    }
+    const result = await requestCloseRoom(room.roomId, clientId);
+    if (!result.closed) {
+      setError(result.reason ?? "Could not delete the room.");
+    }
+    await refreshRooms();
+  };
 
   useEffect(() => {
     if (started.current) {
@@ -45,9 +70,10 @@ export default function AdminPage() {
       } else {
         setMe(profile);
         void refresh();
+        void refreshRooms();
       }
     });
-  }, [refresh, router]);
+  }, [refresh, refreshRooms, router]);
 
   const act = async (action: "ban" | "unban" | "delete" | "setRole", target: SelfProfile) => {
     setError(null);
@@ -129,6 +155,48 @@ export default function AdminPage() {
         </tbody>
       </table>
       {players && players.length === 0 ? <p className="authHint">No accounts yet.</p> : null}
+
+      <div className="adminSectionHead">
+        <h2>Rooms</h2>
+        <button className="authLink" onClick={() => void refreshRooms()} type="button">
+          Refresh
+        </button>
+      </div>
+      <table className="adminTable">
+        <thead>
+          <tr>
+            <th>Room</th>
+            <th>Type</th>
+            <th>State</th>
+            <th>Players</th>
+            <th>Host</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {(rooms ?? []).map((room) => (
+            <tr key={room.roomId}>
+              <td>{room.name}</td>
+              <td>
+                {room.mode === "adventure" ? "Adventure" : "Battle"}
+                {room.hosted ? " · closed" : " · open"}
+                {room.ranked ? " · ranked" : ""}
+              </td>
+              <td>{room.inProgress ? `in progress (${room.phase})` : "setup"}</td>
+              <td>
+                {room.seatedCount}/{room.memberCount}
+              </td>
+              <td>{room.hostName ?? (room.hosted ? "—" : "open table")}</td>
+              <td className="adminActions">
+                <button className="authLink danger" onClick={() => void deleteRoom(room)} type="button">
+                  Delete
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {rooms && rooms.length === 0 ? <p className="authHint">No active rooms.</p> : null}
     </MenuShell>
   );
 }

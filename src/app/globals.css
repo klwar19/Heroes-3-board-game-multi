@@ -509,6 +509,46 @@ button {
   color: var(--muted);
   font-size: 12px;
   font-weight: 700;
+  flex-wrap: wrap;
+}
+
+/* Self-serve seat claim in a hosted/closed room (top menu) + the "Play as X"
+   jump on the waiting strip: both let whoever must act reach their own seat. */
+.seatClaimButton,
+.promptSwitchSeat {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 700;
+  border-radius: 6px;
+  border: 1px solid #ffe9b0;
+  background: linear-gradient(180deg, #f6d27a, #d3a247);
+  color: #1a1105;
+  cursor: pointer;
+}
+
+.seatClaimButton.ghost {
+  border-color: rgba(140, 110, 65, 0.6);
+  background: rgba(20, 14, 9, 0.8);
+  color: #e8d3a8;
+}
+
+.seatClaimButton:hover,
+.promptSwitchSeat:hover {
+  filter: brightness(1.06);
+}
+
+.seatClaimHint {
+  font-weight: 500;
+  font-style: italic;
+  opacity: 0.85;
+}
+
+.promptSwitchSeat {
+  margin-left: 8px;
 }
 
 .roomPanel {
@@ -13375,6 +13415,23 @@ img.cardBack {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.adminSectionHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 22px 0 6px;
+  padding-top: 14px;
+  border-top: 1px solid rgb(213 168 79 / 22%);
+}
+
+.adminSectionHead h2 {
+  margin: 0;
+  font-family: var(--font-heroic);
+  font-size: 16px;
+  color: var(--gold);
 }
 
 /* -------------------------------------------------------------------------
