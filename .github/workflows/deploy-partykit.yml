@@ -15,6 +15,26 @@
 #   PARTYKIT_LOGIN  — your PartyKit/GitHub username (the "<user>" in
 #                     heroes3bg-rooms.<user>.partykit.dev, e.g. klwar19).
 #
+#   HOMM3BG_APP_URL — REQUIRED for verified accounts to work on the edge: the
+#                     PUBLIC URL of your deployed app (e.g. https://your-app.
+#                     vercel.app, no trailing slash). The edge is a different
+#                     origin from the app, so it CANNOT read your login cookie;
+#                     it verifies a signed-in player (and whether they are a
+#                     platform ADMIN) by calling this URL's /api/auth/verify-
+#                     token. WITHOUT it every player is a guest on the edge, so
+#                     admins can't delete rooms, verified-account-only rooms
+#                     reject everyone, and seat ownership never binds to accounts.
+#   HOMM3BG_ADMIN_KEY — optional break-glass: a shared secret that wipes/closes
+#                     ANY room. Set the SAME value here and in the browser
+#                     (localStorage["homm3bg.adminKey"]). Independent of the app
+#                     URL, so it works even if HOMM3BG_APP_URL is unset.
+#   HOMM3BG_MATCH_REPORT_KEY — optional: shared secret so the edge can post
+#                     finished ranked matches back to the app (must match the
+#                     app's value).
+#
+# Only PARTYKIT_TOKEN/PARTYKIT_LOGIN are mandatory; an unset optional secret is
+# simply not passed (the edge behaves exactly as before for that feature).
+#
 # NOTE: the trigger branch below must match the branch Vercel deploys to
 # production. Change `main` if your Vercel production branch is different.
 
@@ -44,7 +64,26 @@ jobs:
       # the rules tests or typecheck.
       - run: npm test
       - run: npm run typecheck
-      - run: npm run deploy:partykit
+      # Pass the edge its runtime vars. Without HOMM3BG_APP_URL the edge cannot
+      # verify a signed-in player cross-origin, so admins can't moderate rooms
+      # and verified-account-only rooms lock everyone out. Each var is passed
+      # only when its secret is set, so an unconfigured optional secret is a
+      # no-op (the deploy still succeeds).
+      - name: Deploy PartyKit (with edge env vars)
+        run: |
+          args=()
+          if [ -n "${HOMM3BG_APP_URL}" ]; then args+=(--var "HOMM3BG_APP_URL=${HOMM3BG_APP_URL}"); fi
+          if [ -n "${HOMM3BG_ADMIN_KEY}" ]; then args+=(--var "HOMM3BG_ADMIN_KEY=${HOMM3BG_ADMIN_KEY}"); fi
+          if [ -n "${HOMM3BG_MATCH_REPORT_KEY}" ]; then args+=(--var "HOMM3BG_MATCH_REPORT_KEY=${HOMM3BG_MATCH_REPORT_KEY}"); fi
+          if [ "${#args[@]}" -eq 0 ]; then
+            echo "::warning::No edge env vars set — set the HOMM3BG_APP_URL repo secret so admins can moderate rooms and verified accounts work on the edge."
+          else
+            echo "Passing ${#args[@]} edge var(s) to partykit deploy."
+          fi
+          npx partykit deploy "${args[@]}"
         env:
           PARTYKIT_TOKEN: ${{ secrets.PARTYKIT_TOKEN }}
           PARTYKIT_LOGIN: ${{ secrets.PARTYKIT_LOGIN }}
+          HOMM3BG_APP_URL: ${{ secrets.HOMM3BG_APP_URL }}
+          HOMM3BG_ADMIN_KEY: ${{ secrets.HOMM3BG_ADMIN_KEY }}
+          HOMM3BG_MATCH_REPORT_KEY: ${{ secrets.HOMM3BG_MATCH_REPORT_KEY }}
