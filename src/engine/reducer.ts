@@ -165,9 +165,11 @@ import {
   spellBookRuleEnabled,
   spellCanEnterSpellBook,
   spellLimitFor,
+  unitSideRuleOverrides,
   SPELL_DECK_BASIC,
   SPELL_DECK_EXPERT
 } from "./ruleset";
+import { houseRuleEnabled } from "./house-rules";
 import {
   destroyFortification,
   getDemolishAbility,
@@ -2444,7 +2446,8 @@ function applyWogOnKillEffects(
     attacker.controllerId,
     `unit_${attacker.controllerId}_wog_weak_${nextEventNumber(state)}`,
     defender.position,
-    getRuleset(state)
+    getRuleset(state),
+    unitSideRuleOverrides(state)
   );
   if (!summoned) {
     return;
@@ -10318,7 +10321,8 @@ function playTransformCard(
     throw new Error("Unknown player.");
   }
   const ruleset = getRuleset(state);
-  const entry = makeUnitTransformState(effect, card.id, ruleset);
+  const entry = makeUnitTransformState(effect, card.id, ruleset, houseRuleEnabled(state, "sandro-skeleton-hp"));
+  const sideOverrides = unitSideRuleOverrides(state);
 
   const removeFromHand = () => {
     const index = player.hand.indexOf(action.cardId);
@@ -10343,7 +10347,7 @@ function playTransformCard(
 
     removeFromHand();
     unit.transforms = insertUnitTransform(unit.transforms, entry);
-    applyUnitCurrentSide(unit, ruleset);
+    applyUnitCurrentSide(unit, ruleset, sideOverrides);
 
     // Mirror onto the backing army card so the Cloak rides out of the combat.
     const armyUnit = player.army.find((candidate) => candidate.id === unit.armyUnitId);
@@ -11383,10 +11387,10 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
         reason: `played ${card.name}`
       });
     }
-    // BINH house rule: Estates is nerfed to 2 / 4 gold.
+    // BINH house rule: Estates is nerfed to 2 / 4 gold (toggle: estates-nerf).
     const gain =
       card.id === "ability.estates"
-        ? { gold: estatesGold(getRuleset(state), mode) }
+        ? { gold: estatesGold(getRuleset(state), mode, houseRuleEnabled(state, "estates-nerf")) }
         : mode === "expert" && effect.expertGain
           ? effect.expertGain
           : effect.gain;
@@ -12066,10 +12070,15 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
         deck.discardPile.splice(inDiscard, 1);
       }
       const acquired = addArmyUnit(player, effect.toUnitDefId, "neutral");
-      if (effect.grantAttackBonus) {
-        // House rule (BINH) — Gelu IV: bake the permanent +Attack onto THIS card so
-        // every combat it joins starts (and stays) buffed.
-        acquired.permanentAttackBonus = effect.grantAttackBonus;
+      // House rule (BINH) — Gelu IV: bake the permanent +Attack onto THIS card so
+      // every combat it joins starts (and stays) buffed. Gated on the individual
+      // `gelu-sharpshooter-buff` toggle — off, the recruit is a plain Sharpshooters.
+      const geluAttackBuff =
+        effect.grantAttackBonus && houseRuleEnabled(state, "gelu-sharpshooter-buff")
+          ? effect.grantAttackBonus
+          : 0;
+      if (geluAttackBuff) {
+        acquired.permanentAttackBonus = geluAttackBuff;
       }
       appendEvent(state, {
         type: "UNIT_RECRUITED",
@@ -12077,7 +12086,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
         unitDefId: effect.toUnitDefId,
         kind: "recruit",
         cost: effect.goldCost ? { gold: effect.goldCost } : {},
-        ...(effect.grantAttackBonus ? { attackBuff: effect.grantAttackBonus } : {})
+        ...(geluAttackBuff ? { attackBuff: geluAttackBuff } : {})
       });
     }
   }
@@ -12204,7 +12213,7 @@ function resolveEagleEyeDig(
   // A Tome's School dig (option A) always reads the shared/basic Spell deck; the
   // level-based Eagle Eye dig may switch to the BINH Expert Spell deck.
   const deckId =
-    !school && getRuleset(state) === "binh" && wantedLevel === "expert" && state.decks["spells-expert"]
+    !school && houseRuleEnabled(state, "split-decks") && wantedLevel === "expert" && state.decks["spells-expert"]
       ? "spells-expert"
       : "spells";
   const deck = state.decks[deckId];
@@ -12639,7 +12648,8 @@ function placeSummonedUnit(
     playerId,
     `unit_${playerId}_${armyUnit.id}`,
     position,
-    getRuleset(state)
+    getRuleset(state),
+    unitSideRuleOverrides(state)
   );
   if (!summoned) {
     return null;
@@ -12681,7 +12691,8 @@ function placeCloneUnit(
     playerId,
     `unit_${playerId}_clone_${nextEventNumber(state)}`,
     position,
-    getRuleset(state)
+    getRuleset(state),
+    unitSideRuleOverrides(state)
   );
   if (!clone) {
     return null;
@@ -12759,7 +12770,8 @@ function borrowNeutralUnit(
           playerId,
           `unit_${playerId}_borrow_${nextEventNumber(state)}`,
           position,
-          getRuleset(state)
+          getRuleset(state),
+          unitSideRuleOverrides(state)
         );
   if (!unit) {
     // Could not place it: return the borrowed card to the discard pile and bail.
@@ -13092,7 +13104,8 @@ function summonDemons(state: GameState, action: Extract<GameAction, { type: "SUM
       action.playerId,
       `unit_${action.playerId}_${armyUnit.id}`,
       position,
-      ruleset
+      ruleset,
+      unitSideRuleOverrides(state)
     );
     if (!summoned) {
       throw new Error("Those Demons cannot be summoned.");
@@ -13123,7 +13136,7 @@ function summonDemons(state: GameState, action: Extract<GameAction, { type: "SUM
     }
 
     targetUnit.variant = "pack";
-    applyUnitCurrentSide(targetUnit, ruleset);
+    applyUnitCurrentSide(targetUnit, ruleset, unitSideRuleOverrides(state));
     // Mirror onto the backing army card so the reinforcement survives the combat.
     const armyUnit = player.army.find((candidate) => candidate.id === targetUnit.armyUnitId);
     if (armyUnit) {

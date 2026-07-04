@@ -1,7 +1,7 @@
 import { expireEffectsForCombatEnd } from "./active-effects";
 import { getUnitSide } from "./adventure";
 import { appendEvent } from "./events";
-import { getRuleset } from "./ruleset";
+import { getRuleset, unitSideRuleOverrides } from "./ruleset";
 import { isArrowTowerUnit } from "./siege";
 import { getOnRemovalDetonation, getSelfRebirthAbility, getUnitsAdjacentTo, isUnitDamageImmune } from "./unit-abilities";
 import { applyUnitCurrentSide, topTransform } from "./unit-transforms";
@@ -43,7 +43,7 @@ export function markUnitRemovedIfNeeded(state: GameState, unit: CombatUnitState)
       break;
     }
     const excess = Math.max(0, unit.damage - defeated.health);
-    applyUnitCurrentSide(unit, getRuleset(state));
+    applyUnitCurrentSide(unit, getRuleset(state), unitSideRuleOverrides(state));
     unit.damage = Math.min(unit.maxHealth, excess);
 
     const owner = state.players[unit.controllerId];
@@ -105,7 +105,7 @@ export function markUnitRemovedIfNeeded(state: GameState, unit: CombatUnitState)
     const excess = unit.damage - unit.maxHealth;
     unit.stackToken = null;
     unit.damage = 0;
-    applyUnitCurrentSide(unit, getRuleset(state));
+    applyUnitCurrentSide(unit, getRuleset(state), unitSideRuleOverrides(state));
     unit.damage = Math.min(unit.maxHealth, Math.max(0, excess));
 
     appendEvent(state, {
@@ -127,7 +127,7 @@ export function markUnitRemovedIfNeeded(state: GameState, unit: CombatUnitState)
       const excess = unit.damage - unit.maxHealth;
       unit.variant = "few";
       unit.damage = 0;
-      applyUnitCurrentSide(unit, getRuleset(state));
+      applyUnitCurrentSide(unit, getRuleset(state), unitSideRuleOverrides(state));
       unit.damage = Math.min(unit.maxHealth, Math.max(0, excess));
       // Cove Haspids (Few): record that this unit was knocked down from its
       // Pack side this combat, so the Few side's "Vengeance" +2 Attack turns on.

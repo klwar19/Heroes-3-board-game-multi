@@ -109,6 +109,7 @@ import {
   wisdomGoldDiscount,
   wisdomSearchCount
 } from "./ruleset";
+import { houseRuleEnabled } from "./house-rules";
 import type {
   AttackRerollSource,
   AttackRollMode,
@@ -6463,7 +6464,10 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
           });
         }
 
-        const expertCost = Math.max(0, cost - wisdomGoldDiscount(ruleset, "expert"));
+        const expertCost = Math.max(
+          0,
+          cost - wisdomGoldDiscount(ruleset, "expert", houseRuleEnabled(state, "wisdom-expert-discount"))
+        );
         // Empowered Wisdom skips the crown but still pays the gold.
         if (canPlayExpertMode(player, wisdomCardId) && player.resources.gold >= expertCost) {
           actions.push({

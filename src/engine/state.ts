@@ -35,6 +35,20 @@ export type GameDifficulty = "easy" | "normal" | "hard" | "impossible";
  */
 export type GameRuleset = "legacy" | "binh";
 
+/**
+ * Individual BINH house-rule toggle ids. Each gates one real engine tweak; the
+ * registry, defaults and resolver live in house-rules.ts (which imports this
+ * union). Defined here so the pure-type state module needs no data-layer import.
+ */
+export type HouseRuleId =
+  | "split-decks"
+  | "griffin-buff"
+  | "marksman-buff"
+  | "wisdom-expert-discount"
+  | "estates-nerf"
+  | "sandro-skeleton-hp"
+  | "gelu-sharpshooter-buff";
+
 /** Optional Wake of Gods modules. WOG is valid only while BINH is selected. */
 export type WogModOptions = {
   enabled: boolean;
@@ -7172,6 +7186,12 @@ export type AdventureState = {
    */
   spellBook?: boolean;
   /**
+   * Individual BINH house-rule toggles, resolved to concrete booleans at setup
+   * (see resolveHouseRules / houseRuleEnabled in house-rules.ts). Absent on older
+   * snapshots and the combat sandbox, where the mode default is derived instead.
+   */
+  houseRules?: Partial<Record<HouseRuleId, boolean>>;
+  /**
    * Grail Hunt: the single Grail Token's progress. Only one token exists in
    * the game even when several Grail fields are on the map.
    */
@@ -7245,6 +7265,14 @@ export type GameSetupOptions = {
    * Off disables the move-to-Book action and the discard→Book pickup entirely.
    */
   spellBook?: boolean;
+  /**
+   * Individual BINH house-rule toggles. Each id in this map overrides the mode
+   * default for that single rule, so a table can keep the split decks but drop
+   * the Estates nerf, buff Griffins in a Legacy game, and so on. Absent entries
+   * fall back to the chosen mode's default (all ON in "binh", OFF in "legacy").
+   * See {@link HouseRuleId} / house-rules.ts for the registry and resolver.
+   */
+  houseRules?: Partial<Record<HouseRuleId, boolean>>;
   /**
    * OPTIONAL parallel-turn mode (multiplayer only): the number of opening
    * rounds every player's turn runs at the same time (0/absent = off — the

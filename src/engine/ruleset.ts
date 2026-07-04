@@ -1,6 +1,7 @@
 import type { UnitSideDefinition } from "@/data/factions/types";
 import { cardLibrary } from "@/data/cards/library";
 import { STARTING_ONLY_SPELLS } from "@/data/cards/spells";
+import { houseRuleEnabled } from "./house-rules";
 import type {
   CardId,
   CardLibrary,
@@ -89,23 +90,43 @@ export function applyUnitSideRules(
   ruleset: GameRuleset,
   unitDefId: string,
   side: "few" | "pack" | "neutral",
-  definition: UnitSideDefinition
+  definition: UnitSideDefinition,
+  /**
+   * Per-rule overrides from the individual house-rule toggles. When omitted each
+   * flag falls back to the bundled mode default (`ruleset === "binh"`), so every
+   * existing caller keeps its old behaviour; live callers pass the resolved
+   * `griffin-buff` / `marksman-buff` flags so a table can flip either alone.
+   */
+  overrides?: { griffinBuff?: boolean; marksmanBuff?: boolean }
 ): UnitSideDefinition {
-  if (ruleset !== "binh") {
-    return definition;
-  }
+  const griffinBuff = overrides?.griffinBuff ?? ruleset === "binh";
+  const marksmanBuff = overrides?.marksmanBuff ?? ruleset === "binh";
 
-  if (unitDefId === "castle.griffins" && side === "few") {
+  if (griffinBuff && unitDefId === "castle.griffins" && side === "few") {
     return { ...definition, attack: 3 };
   }
-  if (unitDefId === "castle.griffins" && side === "pack") {
+  if (griffinBuff && unitDefId === "castle.griffins" && side === "pack") {
     return { ...definition, defense: 1 };
   }
-  if (unitDefId === "castle.marksmen" && side === "pack") {
+  if (marksmanBuff && unitDefId === "castle.marksmen" && side === "pack") {
     return { ...definition, health: 3 };
   }
 
   return definition;
+}
+
+/**
+ * Resolve the unit-stat house-rule overrides for a live state — passed to
+ * {@link applyUnitSideRules} / {@link applyUnitCurrentSide} so the Griffin and
+ * Marksman buffs each honour their own toggle rather than the bundled mode.
+ */
+export function unitSideRuleOverrides(
+  state: Pick<GameState, "ruleset" | "adventure">
+): { griffinBuff: boolean; marksmanBuff: boolean } {
+  return {
+    griffinBuff: houseRuleEnabled(state, "griffin-buff"),
+    marksmanBuff: houseRuleEnabled(state, "marksman-buff")
+  };
 }
 
 /**
@@ -114,8 +135,15 @@ export function applyUnitSideRules(
  * VI) — fight with 3 HP instead of the printed 2. The level IV Horde of
  * Zombies keeps its printed 3 HP in both modes.
  */
-export function specialtyTransformHealth(ruleset: GameRuleset, specialtyCardId: string, printedHealth: number): number {
-  if (ruleset === "binh" && (specialtyCardId === "specialty.sandro.1" || specialtyCardId === "specialty.sandro.6")) {
+export function specialtyTransformHealth(
+  ruleset: GameRuleset,
+  specialtyCardId: string,
+  printedHealth: number,
+  /** `sandro-skeleton-hp` toggle; falls back to the bundled mode default. */
+  enabled?: boolean
+): number {
+  const on = enabled ?? ruleset === "binh";
+  if (on && (specialtyCardId === "specialty.sandro.1" || specialtyCardId === "specialty.sandro.6")) {
     return 3;
   }
   return printedHealth;
@@ -125,10 +153,16 @@ export function specialtyTransformHealth(ruleset: GameRuleset, specialtyCardId: 
 // Wisdom and Estates values
 // ---------------------------------------------------------------------------
 
-/** Gold discount Wisdom gives on a Mage Guild spell purchase. */
-export function wisdomGoldDiscount(ruleset: GameRuleset, mode: CardPlayMode): number {
-  if (ruleset === "binh") {
-    return mode === "expert" ? 3 : 2;
+/**
+ * Gold discount Wisdom gives on a Mage Guild spell purchase. The `expert`
+ * discount is the house-rule buff (−3 vs the printed −2); `enabled` is the
+ * `wisdom-expert-discount` toggle and falls back to the bundled mode default.
+ * Basic is −2 in every mode.
+ */
+export function wisdomGoldDiscount(ruleset: GameRuleset, mode: CardPlayMode, enabled?: boolean): number {
+  const on = enabled ?? ruleset === "binh";
+  if (on && mode === "expert") {
+    return 3;
   }
   // Printed card: "reduced by 2 gold" at both levels.
   return 2;
@@ -139,9 +173,13 @@ export function wisdomSearchCount(mode: CardPlayMode): number {
   return mode === "expert" ? 4 : 3;
 }
 
-/** Gold gained by playing Estates (printed 3/6, BINH 2/4). */
-export function estatesGold(ruleset: GameRuleset, mode: CardPlayMode): number {
-  if (ruleset === "binh") {
+/**
+ * Gold gained by playing Estates (printed 3/6, BINH nerf 2/4). `enabled` is the
+ * `estates-nerf` toggle and falls back to the bundled mode default.
+ */
+export function estatesGold(ruleset: GameRuleset, mode: CardPlayMode, enabled?: boolean): number {
+  const nerf = enabled ?? ruleset === "binh";
+  if (nerf) {
     return mode === "expert" ? 4 : 2;
   }
   return mode === "expert" ? 6 : 3;
@@ -181,9 +219,9 @@ export const DECK_DISPLAY_NAMES: Record<string, string> = {
   "artifacts-relic": "Relic Artifacts"
 };
 
-/** In BINH mode the basic spell deck is labelled accordingly. */
-export function deckDisplayName(state: Pick<GameState, "ruleset">, deckId: DeckId): string {
-  if (deckId === SPELL_DECK_BASIC && getRuleset(state) === "binh") {
+/** With the split decks on, the basic spell deck is labelled accordingly. */
+export function deckDisplayName(state: Pick<GameState, "ruleset" | "adventure">, deckId: DeckId): string {
+  if (deckId === SPELL_DECK_BASIC && houseRuleEnabled(state, "split-decks")) {
     return "Basic Spells";
   }
   return DECK_DISPLAY_NAMES[deckId] ?? deckId;
@@ -346,7 +384,7 @@ function anyNearOrCenterTileRevealed(state: GameState): boolean {
  * elemental Magic), which unlocks the Expert deck at any level / map state.
  */
 export function canDrawExpertSpells(state: GameState, playerId: PlayerId, hero: HeroState | null): boolean {
-  if (getRuleset(state) !== "binh") {
+  if (!houseRuleEnabled(state, "split-decks")) {
     return false;
   }
 
@@ -394,7 +432,7 @@ export function artifactDeckAccess(
 
 /** The spell decks this player may search right now (BINH-aware). */
 export function eligibleSpellDecks(state: GameState, playerId: PlayerId, hero: HeroState | null): DeckId[] {
-  if (getRuleset(state) !== "binh") {
+  if (!houseRuleEnabled(state, "split-decks")) {
     return [SPELL_DECK_BASIC];
   }
 
@@ -412,7 +450,7 @@ export function eligibleArtifactDecks(
   hero: HeroState | null,
   artifactSource: boolean
 ): DeckId[] {
-  if (getRuleset(state) !== "binh") {
+  if (!houseRuleEnabled(state, "split-decks")) {
     return [ARTIFACT_DECK_SINGLE];
   }
 
