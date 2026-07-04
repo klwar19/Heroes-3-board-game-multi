@@ -191,6 +191,78 @@ describe("PartyKit edge server — reset authority", () => {
     }
   });
 
+  it("a verified PLATFORM ADMIN (session ticket) closes a hosted room it does not belong to", async () => {
+    // The edge resolves admin-ness by calling back to the app's verify-token
+    // route (it can't read the cross-origin cookie). Stub that callback: only
+    // "admin-tok" resolves to an admin; "player-tok" is an ordinary signed-in
+    // stranger. Both are strangers to the room's host/membership.
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async (_input: unknown, init?: { body?: string }) => {
+      const token = JSON.parse(String(init?.body ?? "{}")).token as string;
+      const isAdmin = token === "admin-tok";
+      return { ok: true, json: async () => ({ userId: token, nickname: token, isAdmin }) };
+    }) as unknown as typeof fetch;
+
+    try {
+      const env = { HOMM3BG_APP_URL: "http://app.test" };
+      const deleteReq = (token: string) =>
+        ({
+          method: "DELETE",
+          url: `https://example.partykit.dev/parties/main/room?token=${token}`,
+          json: async () => ({ actorClientId: "stranger-9" })
+        }) as unknown as Parameters<GameRoomServer["onRequest"]>[0];
+
+      // CONTROL: an ordinary signed-in player who is a stranger is still refused.
+      const player = await bootHostedRoom("edge-close-admin-session-player", true, env);
+      const denied = await player.server.onRequest(deleteReq("player-tok"));
+      expect(denied.status).toBe(403);
+      expect((await denied.json()).closed).toBe(false);
+      expect(latestVersion(player.host)).toBe(7); // untouched
+
+      // The admin's session ticket closes the very same hosted room.
+      const admin = await bootHostedRoom("edge-close-admin-session", true, env);
+      const closed = await admin.server.onRequest(deleteReq("admin-tok"));
+      expect(closed.status).toBe(200);
+      expect((await closed.json()).closed).toBe(true);
+      const finalFrame = JSON.parse(admin.host.received.at(-1)!) as { snapshot?: RoomSnapshot };
+      expect(finalFrame.snapshot?.closed).toBe(true);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
+  it("a verified PLATFORM ADMIN (session ticket) resets a hosted room over HTTP", async () => {
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async (_input: unknown, init?: { body?: string }) => {
+      const token = JSON.parse(String(init?.body ?? "{}")).token as string;
+      return { ok: true, json: async () => ({ userId: token, nickname: token, isAdmin: token === "admin-tok" }) };
+    }) as unknown as typeof fetch;
+
+    try {
+      const env = { HOMM3BG_APP_URL: "http://app.test" };
+      const resetReq = (token: string) =>
+        ({
+          method: "POST",
+          url: `https://example.partykit.dev/parties/main/room?token=${token}`,
+          json: async () => ({ reset: true, mode: "adventure", actorClientId: "stranger-9" })
+        }) as unknown as Parameters<GameRoomServer["onRequest"]>[0];
+
+      // CONTROL: an ordinary player stranger cannot reset while the host is live.
+      const player = await bootHostedRoom("edge-reset-admin-session-player", true, env);
+      const denied = await player.server.onRequest(resetReq("player-tok"));
+      expect(denied.status).toBe(403);
+      expect(latestVersion(player.host)).toBe(7);
+
+      // The admin's session ticket wipes the game even with the host connected.
+      const admin = await bootHostedRoom("edge-reset-admin-session", true, env);
+      const allowed = await admin.server.onRequest(resetReq("admin-tok"));
+      expect(allowed.status).toBe(200);
+      expect(latestVersion(admin.host)).toBe(8);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
   it("the admin key also authorizes CLOSE over HTTP DELETE", async () => {
     const { server, host } = await bootHostedRoom("edge-close-admin", true, { HOMM3BG_ADMIN_KEY: "sekret" });
     const denied = await server.onRequest({

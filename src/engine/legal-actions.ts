@@ -7235,6 +7235,28 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
   addTownActions(actions, state, playerId);
   addMoraleActions(actions, state, playerId);
 
+  // Concede the whole game OFF-TURN: a player may give up while another player
+  // is active, as long as the table is quiet (no combat or pending interaction
+  // anywhere) — so nobody is trapped watching an opponent's turn just to quit.
+  // Guarded to players WITHOUT an open turn; the active player is offered it
+  // below (with full turn context). Mirrors giveUpAdventure's own guards.
+  if (
+    playerId !== NEUTRAL_PLAYER_ID &&
+    !hasOpenAdventureTurn(state, playerId) &&
+    !state.combat &&
+    !state.pendingChoice &&
+    !state.reactionWindow &&
+    !adventure.pendingVisit &&
+    !adventure.pendingNecromancy &&
+    !adventure.pendingTileChoice &&
+    !player.eliminated
+  ) {
+    actions.push({
+      label: "Give up (become an observer)",
+      action: { type: "GIVE_UP", playerId }
+    });
+  }
+
   // Parallel turns: every open parallel turn counts as "your turn" here.
   if (!hasOpenAdventureTurn(state, playerId)) {
     return actions;

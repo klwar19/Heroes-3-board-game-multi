@@ -3005,6 +3005,11 @@ export default function Home() {
   // a rename, or after switching rooms. Deliberately NOT re-sent on every
   // snapshot, so a kicked player does not silently auto-rejoin.
   const joinedRoomRef = useRef<string | null>(null);
+  // Why a JOIN_ROOM was refused, if it was (e.g. a guest hitting a room that
+  // requires a verified account). The engine returns this in result.errors
+  // rather than throwing, so it would otherwise be swallowed — leaving the
+  // viewer a non-member who can never seat. Surfaced in the seat panel below.
+  const [roomJoinError, setRoomJoinError] = useState<string | null>(null);
   useEffect(() => {
     const connection = connectionRef.current;
     if (!roomId || !state || !connection) {
@@ -3058,6 +3063,7 @@ export default function Home() {
 
     if (joinedRoomRef.current === joinKey) {
       if (me) {
+        setRoomJoinError(null);
         applyPendingName();
       }
       return;
@@ -3065,15 +3071,29 @@ export default function Home() {
     joinedRoomRef.current = joinKey;
     // Already a member under this name (carried across a reset / reconnect)? Adopt it.
     if (me && me.name === desiredName) {
+      setRoomJoinError(null);
       applyPendingName();
       return;
     }
     // Fire-and-forget through the connection directly: the live stream delivers
     // the resulting snapshot. (Routing JOIN through the submitAction wrapper
-    // would be a setState during this effect.)
+    // would be a setState during this effect.) A REFUSED join comes back in
+    // result.errors (not a throw), so capture it — otherwise the viewer is left
+    // a silent non-member who can only get "That member is not in the room" if
+    // they try to seat. A network/timeout rejection leaves the last state.
     void connection
       .submitAction({ type: "JOIN_ROOM", clientId, name: desiredName })
-      .then(() => applyPendingName())
+      .then((res) => {
+        const joinError = res.result.errors[0]?.message ?? null;
+        setRoomJoinError(joinError);
+        if (!joinError) {
+          applyPendingName();
+        } else {
+          // Let a later change (e.g. the host lifting the account requirement,
+          // or the player signing in) re-attempt the join instead of latching.
+          joinedRoomRef.current = null;
+        }
+      })
       .catch(() => {});
   }, [state, roomId, displayName, clientId]);
 
@@ -3086,6 +3106,15 @@ export default function Home() {
     const seat = state.room.members.find((member) => member.clientId === clientId)?.seat ?? "observer";
     return seat !== "observer" && state.players[seat] ? seat : OBSERVER_SEAT;
   })();
+  // Whether the viewer has actually JOINED the room yet. The seat-claim buttons
+  // dispatch ASSIGN_SEAT keyed by this clientId, which the engine refuses with
+  // "That member is not in the room" unless a matching member exists — so a
+  // non-member (JOIN still in flight on connect, or refused) must never be shown
+  // a Take-seat button that can only fail. Distinct from hostedSeat, which
+  // collapses "no membership" and "observer member" into the same value.
+  const isRoomMember = Boolean(
+    state?.room?.members.some((member) => member.clientId === clientId)
+  );
   // Adjust the locked seat during render (React's supported "derive state from
   // props" pattern) rather than in an effect; it converges in one extra render
   // once viewerPlayerId already equals the assignment.
@@ -3408,7 +3437,14 @@ export default function Home() {
         // panel below.
         <div className="menuRow seatLocked" aria-label="Your seat">
           <Lock aria-hidden="true" size={13} />
-          {hostedSeat === OBSERVER_SEAT ? (
+          {hostedSeat === OBSERVER_SEAT && !isRoomMember ? (
+            // Not a member yet: the JOIN is either still in flight or was
+            // refused. Offering Take-seat here would only yield "That member is
+            // not in the room", so show the real status instead.
+            <span className="seatClaimHint">
+              {roomJoinError ?? "Joining the room…"}
+            </span>
+          ) : hostedSeat === OBSERVER_SEAT ? (
             <>
               <span>You are an observer —</span>
               {openHostedSeats.length > 0 ? (

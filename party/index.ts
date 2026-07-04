@@ -159,6 +159,21 @@ export default class GameRoomServer implements Party.Server {
     return identity?.userId;
   }
 
+  /**
+   * Whether the socket's verified session belongs to a PLATFORM ADMIN. Resolved
+   * from the same token callback as the seat identity, so a spoofed clientId
+   * cannot claim it. Lets an admin close/reset ANY room over the edge, matching
+   * the built-in backend (which reads the role from the session cookie). False
+   * for a guest, an ordinary player, or when no app URL is configured.
+   */
+  private async verifiedIsAdmin(connection: Party.Connection): Promise<boolean> {
+    const verify = this.verifier();
+    if (!verify) {
+      return false;
+    }
+    return (await verify(this.tokenOf(connection)))?.isAdmin === true;
+  }
+
   async onStart(): Promise<void> {
     this.snapshot = (await this.room.storage.get<RoomSnapshot>(SNAPSHOT_KEY)) ?? null;
   }
@@ -349,8 +364,10 @@ export default class GameRoomServer implements Party.Server {
     return { allowed: true };
   }
 
-  private authorizeClose(actorClientId: string | undefined, adminKey?: string): CloseRoomResult {
-    if (this.adminAuthorizes(adminKey)) {
+  private authorizeClose(actorClientId: string | undefined, adminKey?: string, isAdmin = false): CloseRoomResult {
+    // A verified platform admin (from the socket ticket) or the developer's
+    // admin key may close ANY room, exactly like the built-in backend.
+    if (isAdmin || this.adminAuthorizes(adminKey)) {
       return { closed: true };
     }
     const authority = this.hostAuthorizes(actorClientId, "close");
@@ -393,6 +410,24 @@ export default class GameRoomServer implements Party.Server {
       return (await verify(token))?.userId;
     } catch {
       return undefined;
+    }
+  }
+
+  /**
+   * Whether an HTTP request's `?token=` belongs to a PLATFORM ADMIN. Backs the
+   * admin panel's "Delete" on the edge: the admin is a stranger to the hosted
+   * room, so only this role bypass lets them close it. False on any failure.
+   */
+  private async verifiedIsAdminFromRequest(request: Party.Request): Promise<boolean> {
+    const verify = this.verifier();
+    if (!verify) {
+      return false;
+    }
+    try {
+      const token = new URL(request.url).searchParams.get("token") ?? undefined;
+      return (await verify(token))?.isAdmin === true;
+    } catch {
+      return false;
     }
   }
 
@@ -497,9 +532,10 @@ export default class GameRoomServer implements Party.Server {
     if (message.type === "reset") {
       const previous = this.ensureSnapshot();
       // Same authority as close: host while connected, any member once the
-      // host is gone, the developer's admin key always. The socket's own
-      // ?clientId= identity backs up the message field.
-      if (!this.adminAuthorizes(message.adminKey)) {
+      // host is gone, a verified platform admin (socket ticket) or the
+      // developer's admin key always. The socket's own ?clientId= identity
+      // backs up the message field.
+      if (!this.adminAuthorizes(message.adminKey) && !(await this.verifiedIsAdmin(sender))) {
         const authority = this.hostAuthorizes(message.actorClientId ?? this.clientIdOf(sender), "reset");
         if (!authority.allowed) {
           // Refused: the room is untouched; tell the sender (only) why.
@@ -650,7 +686,8 @@ export default class GameRoomServer implements Party.Server {
       const body = (await request.json().catch(() => null)) as
         | { actorClientId?: string; adminKey?: string }
         | null;
-      const result = this.authorizeClose(body?.actorClientId, body?.adminKey);
+      const isAdmin = await this.verifiedIsAdminFromRequest(request);
+      const result = this.authorizeClose(body?.actorClientId, body?.adminKey, isAdmin);
       if (!result.closed) {
         return jsonWithCors(result, 403);
       }
@@ -676,8 +713,9 @@ export default class GameRoomServer implements Party.Server {
       if (body && "reset" in body && body.reset) {
         const previous = this.ensureSnapshot();
         // Same authority as DELETE: host while connected, member once the
-        // host is gone, the developer's admin key always.
-        if (!this.adminAuthorizes(body.adminKey)) {
+        // host is gone, a verified platform admin (?token=) or the developer's
+        // admin key always.
+        if (!this.adminAuthorizes(body.adminKey) && !(await this.verifiedIsAdminFromRequest(request))) {
           const authority = this.hostAuthorizes(
             "actorClientId" in body ? body.actorClientId : undefined,
             "reset"

@@ -7848,21 +7848,34 @@ function endParallelTurn(
 /**
  * GIVE_UP: the player concedes, is removed from the game, and becomes an
  * observer; the game continues with one fewer player and the last faction
- * standing wins. Legal only on the player's own quiet map turn — never while a
- * Combat is open ("you cannot surrender when defending your Faction Town").
+ * standing wins. Allowed whenever the table is QUIET (no combat or pending
+ * interaction anywhere — "you cannot surrender when defending your Faction
+ * Town"), whether or not it is the conceding player's turn: a player should
+ * never be trapped waiting for their turn just to quit a game. On their own
+ * (open) turn it ends the turn AND removes the seat through the normal
+ * advance/wrap path; off-turn it removes the seat without disturbing whoever is
+ * currently active (the same in-place elimination town-conquest already uses).
  */
 export function giveUpAdventure(state: GameState, action: Extract<GameAction, { type: "GIVE_UP" }>): void {
   if (state.mode !== "adventure" || !state.adventure) {
     throw new Error("Giving up is only possible during an adventure game.");
   }
-  assertActiveTurn(state, action.playerId);
-  assertNoPendingInput(state);
   const player = state.players[action.playerId];
   if (!player || player.eliminated) {
     throw new Error("That player is not in the game.");
   }
+  // The whole table must be quiet — no open combat, choice, reaction, visit,
+  // Necromancy or tile rotation — before anyone may concede.
+  assertNoPendingInput(state);
 
-  advanceAfterTurn(state, action.playerId, { reason: "gave up and became an observer" }, true);
+  if (hasOpenAdventureTurn(state, action.playerId)) {
+    advanceAfterTurn(state, action.playerId, { reason: "gave up and became an observer" }, true);
+    return;
+  }
+  // Off-turn concede: drop the seat in place, leaving the active player's turn
+  // untouched. Marks eliminated, prunes the turn order, and declares the last
+  // faction standing the winner when only one remains.
+  eliminatePlayer(state, action.playerId, "gave up and became an observer", true);
 }
 
 /**

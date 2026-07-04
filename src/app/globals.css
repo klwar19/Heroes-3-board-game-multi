@@ -3442,6 +3442,12 @@ button.battleCell {
   border: 1px solid rgba(170, 130, 70, 0.35);
   border-radius: 10px;
   min-height: 56px;
+  /* Wrap the status cells onto a second line rather than pushing the action
+     buttons (End turn / Give up) off the right edge where they get clipped and
+     become unclickable — the "the Give up button is blocked when zoomed out"
+     bug. min-width:0 lets the flex row actually shrink inside its grid column. */
+  flex-wrap: wrap;
+  min-width: 0;
 }
 
 .advHudCell {
@@ -4663,7 +4669,12 @@ button.hbSlot:disabled { cursor: default; }
   flex-direction: row;
   flex-wrap: wrap;
   align-items: center;
-  align-content: center;
+  /* Stack wrapped lines (deck / permanents / Spell Book) from the TOP, not
+     centered: when the cluster wraps to more rows than the bar is tall — what a
+     browser zoom-out triggers — centering spilled the top row upward so the
+     Spell Book tome and the permanent/ongoing cards overlapped. Top-aligning
+     keeps the rows flowing downward and the bar grows to hold them. */
+  align-content: flex-start;
   gap: 10px;
   max-width: 360px;
   min-width: 0;
