@@ -10,6 +10,8 @@ import { cardLibrary } from "@/data/cards/library";
 import { getFxSheet } from "@/data/fx";
 import { playDiceRoll, playLibrarySound } from "@/lib/sound";
 import {
+  AFK_IDLE_MS,
+  AFK_REASK_MS,
   effectHasExpertMode,
   getEffectAmount,
   getEffectiveCardEffect,
@@ -2095,6 +2097,121 @@ export function NeutralStepOverlay({
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * AFK vote-kick (multiplayer): one panel that covers the whole flow.
+ *
+ *  - While a vote is OPEN, every player sees it; live seats other than the
+ *    target answer Kick / Wait (one "wait" closes it, unanimous "kick" drops
+ *    the target through the engine driver).
+ *  - With no vote open, a live viewer gets a "call a vote" button for any
+ *    seat idle past AFK_IDLE_MS whose re-ask cooldown (AFK_REASK_MS after a
+ *    "wait") has passed — so the table is re-asked every 10 minutes, never
+ *    spammed. The timestamps come from the SERVER's clock; the engine
+ *    re-checks legality on submit, so a skewed local clock can only make the
+ *    button appear a little early or late, never force a kick.
+ *
+ * Rendered on the adventure map AND the combat table — a battle is exactly
+ * where an AFK opponent hurts most.
+ */
+export function AfkVotePanel({
+  state,
+  viewerPlayerId,
+  onAction
+}: {
+  state: GameState;
+  viewerPlayerId: PlayerId;
+  onAction: (action: GameAction) => void;
+}) {
+  // Re-evaluate idleness periodically so the button appears without a reload.
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNowTick(Date.now()), 15_000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const afk = state.afk;
+  const liveSeats = state.turnOrder.filter(
+    (id) => id !== "neutral" && !state.players[id]?.eliminated
+  );
+  const viewerLive = liveSeats.includes(viewerPlayerId);
+  if (state.mode !== "adventure" || state.setupLobby || state.phase === "game-over" || liveSeats.length < 2) {
+    return null;
+  }
+
+  const vote = afk?.vote ?? null;
+  if (vote) {
+    const targetName = state.players[vote.targetPlayerId]?.name ?? vote.targetPlayerId;
+    const myVote = vote.votes[viewerPlayerId];
+    const canVote = viewerLive && viewerPlayerId !== vote.targetPlayerId && !myVote;
+    const kicks = Object.values(vote.votes).filter((entry) => entry === "kick").length;
+    const needed = liveSeats.filter((seat) => seat !== vote.targetPlayerId).length;
+    return (
+      <div className="afkVotePanel" role="dialog" aria-label="AFK vote">
+        <Hourglass aria-hidden="true" size={14} />
+        <span>
+          <strong>{targetName}</strong> seems to be away — kick them from the game? ({kicks}/{needed} votes)
+        </span>
+        {canVote ? (
+          <span className="afkVoteButtons">
+            <button
+              className="commandButton danger"
+              type="button"
+              onClick={() => onAction({ type: "CAST_AFK_VOTE", playerId: viewerPlayerId, vote: "kick" })}
+            >
+              Kick
+            </button>
+            <button
+              className="commandButton"
+              type="button"
+              onClick={() => onAction({ type: "CAST_AFK_VOTE", playerId: viewerPlayerId, vote: "wait" })}
+            >
+              Wait
+            </button>
+          </span>
+        ) : (
+          <span className="afkVoteWaiting">
+            {viewerPlayerId === vote.targetPlayerId ? "act to cancel the vote" : "waiting for the other players…"}
+          </span>
+        )}
+      </div>
+    );
+  }
+
+  if (!viewerLive || !afk || afk.droppingPlayerId) {
+    return null;
+  }
+  // A seat is callable once idle past the window AND past the re-ask cooldown.
+  const callable = liveSeats.filter((seat) => {
+    if (seat === viewerPlayerId) {
+      return false;
+    }
+    const lastAction = afk.lastActionAt?.[seat];
+    if (lastAction === undefined || nowTick - lastAction < AFK_IDLE_MS) {
+      return false;
+    }
+    const lastVote = afk.lastVoteEndedAt?.[seat];
+    return lastVote === undefined || nowTick - lastVote >= AFK_REASK_MS;
+  });
+  if (callable.length === 0) {
+    return null;
+  }
+  return (
+    <div className="afkVotePanel" role="status" aria-label="AFK player detected">
+      <Hourglass aria-hidden="true" size={14} />
+      {callable.map((seat) => (
+        <button
+          className="commandButton danger"
+          key={seat}
+          type="button"
+          onClick={() => onAction({ type: "START_AFK_VOTE", playerId: viewerPlayerId, targetPlayerId: seat })}
+        >
+          {(state.players[seat]?.name ?? seat) + " is away (10 min+) — call a kick vote"}
+        </button>
+      ))}
     </div>
   );
 }

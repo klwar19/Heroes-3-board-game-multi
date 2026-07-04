@@ -14,6 +14,8 @@ export {
   isBattlefieldPosition
 } from "./battlefield";
 export { applyAction, findEvent, unitMatchesSpecialtyName } from "./reducer";
+export { AFK_IDLE_MS, AFK_REASK_MS, getAfkState, idleMillis } from "./afk";
+export { afkDropPending, driveAfkDrop, nextAfkDropAction } from "./afk-drop";
 export {
   defaultRoomName,
   dropDisconnectedMember,

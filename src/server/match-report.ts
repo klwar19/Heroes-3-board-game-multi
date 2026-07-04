@@ -69,14 +69,21 @@ export function detectFinishedMatch(prev: GameState, next: GameState): FinishedM
     if ((seatsPerAccount.get(member.userId!) ?? 0) > 1) {
       continue;
     }
+    // A seat removed by the table's AFK kick vote is reported as "abandon":
+    // Elo and the loss column treat it exactly like a loss (see the account
+    // store), but the record keeps the drop distinguishable from a fought
+    // defeat. Eliminated players keep their seat membership, so every loser —
+    // kicked, conquered or resigned — still gets their result here.
+    const result: FinishedMatch["participants"][number]["result"] =
+      member.seat === winnerSeat ? "win" : next.players?.[member.seat]?.kickedByVote ? "abandon" : "loss";
     participants.push({
       accountId: member.userId!,
       nickname: member.name,
-      result: member.seat === winnerSeat ? "win" : "loss"
+      result
     });
   }
   const hasWinner = participants.some((p) => p.result === "win");
-  const hasLoser = participants.some((p) => p.result === "loss");
+  const hasLoser = participants.some((p) => p.result === "loss" || p.result === "abandon");
   if (participants.length < 2 || !hasWinner || !hasLoser) {
     return null;
   }

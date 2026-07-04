@@ -64,6 +64,30 @@ describe("detectFinishedMatch — the shared game-over → ranked-result detecto
     ]);
   });
 
+  it("reports a seat removed by the AFK kick vote as 'abandon' (a loss for Elo, a distinguishable record)", () => {
+    // The kicked player stays a seated room member (elimination never unseats),
+    // so they still receive their result — as "abandon", which the account
+    // store scores exactly like a loss. A 2-account game whose only loser was
+    // kicked must still count as ranked (the abandoner IS the loser).
+    const prev = stateWith({ over: false, members: TWO_ACCOUNT_MEMBERS });
+    const next = stateWith({ over: true, winnerSeat: "p1", members: TWO_ACCOUNT_MEMBERS });
+    (next as { players?: unknown }).players = { p2: { eliminated: true, kickedByVote: true } };
+    const match = detectFinishedMatch(prev, next);
+    expect(match!.participants).toEqual([
+      { accountId: "u_cat", nickname: "Catherine", result: "win" },
+      { accountId: "u_rol", nickname: "Roland", result: "abandon" }
+    ]);
+
+    // CONTROL: an ordinary elimination (not kicked) stays a plain loss.
+    const fought = stateWith({ over: true, winnerSeat: "p1", members: TWO_ACCOUNT_MEMBERS });
+    (fought as { players?: unknown }).players = { p2: { eliminated: true } };
+    expect(detectFinishedMatch(prev, fought)!.participants[1]).toEqual({
+      accountId: "u_rol",
+      nickname: "Roland",
+      result: "loss"
+    });
+  });
+
   it("CONTROL: fires only on the transition — an already-finished game never re-reports", () => {
     const finished = stateWith({ over: true, winnerSeat: "p1", members: TWO_ACCOUNT_MEMBERS });
     expect(detectFinishedMatch(finished, finished)).toBeNull();

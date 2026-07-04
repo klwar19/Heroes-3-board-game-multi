@@ -532,6 +532,12 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       return `${playerName(state, event.playerId)} wins the game: ${event.reason}!`;
     case "PLAYER_ELIMINATED":
       return `${playerName(state, event.playerId)} is eliminated — ${event.reason}. They become an observer.`;
+    case "AFK_VOTE_STARTED":
+      return event.message;
+    case "AFK_VOTE_CAST":
+      return `${playerName(state, event.playerId)} votes to ${event.vote === "kick" ? "kick the AFK player" : "keep waiting"}.`;
+    case "AFK_VOTE_RESOLVED":
+      return event.message;
     case "PLAYER_ELIMINATION_CLOCK":
       return event.turnsLeft === null
         ? `${playerName(state, event.playerId)} secures a base — no longer facing elimination.`

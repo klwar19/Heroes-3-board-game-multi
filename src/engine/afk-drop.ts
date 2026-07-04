@@ -1,0 +1,140 @@
+import { getLegalActions } from "./legal-actions";
+import { applyAction } from "./reducer";
+import type { GameAction, GameState, LegalAction, PlayerId } from "./state";
+
+/**
+ * Server-side driver for a PASSED AFK kick vote (`afk.droppingPlayerId`).
+ *
+ * The drop runs through the NORMAL action pipeline, one legal action at a
+ * time, so every rule and invariant the engine enforces keeps holding:
+ *
+ *  1. while the kicked seat owns a pending interaction (a choice, a visit
+ *     step, a tile rotation, a reaction window, the Necromancy window…), the
+ *     driver answers it with a default pick — preferring a "skip/decline"
+ *     option where one exists, else the first offer;
+ *  2. once the seat holds no pending input, RESOLVE_AFK_DROP concedes their
+ *     open combat (the opponent wins, normal finalization) and, called again,
+ *     eliminates them exactly like a give-up — the ordered/parallel turn
+ *     rotation, the round wrap and the last-faction-standing win all continue
+ *     through the existing machinery.
+ *
+ * When the table's exclusive interaction currently belongs to ANOTHER player
+ * (their choice, their reaction priority), the driver simply stops — the
+ * transports re-run it after every applied action, so the drop resumes the
+ * moment the interaction settles. Both transports call `driveAfkDrop` after
+ * each successful action; engine tests call it directly with explicit options.
+ */
+
+/** The seat a passed kick vote is currently removing, or null. */
+export function afkDropPending(state: GameState): PlayerId | null {
+  return state.afk?.droppingPlayerId ?? null;
+}
+
+/** Action types that RESOLVE a pending interaction (never "play the game"). */
+const RESOLVING_ACTION_TYPES = new Set<GameAction["type"]>([
+  "CHOOSE_OPTION",
+  "RESOLVE_VISIT_STEP",
+  "SET_TILE_ROTATION",
+  "SKIP_NECROMANCY",
+  "REFRESH_HAND"
+]);
+
+/** Prefer the do-nothing option so the drop changes as little as possible. */
+const SKIP_LABEL = /skip|decline|no thanks|keep|done|let it fall|cancel|nothing/i;
+
+function pickResolvingAction(offers: LegalAction[]): GameAction | null {
+  const candidates = offers.filter((offer) => RESOLVING_ACTION_TYPES.has(offer.action.type));
+  if (candidates.length === 0) {
+    return null;
+  }
+  return (candidates.find((offer) => SKIP_LABEL.test(offer.label)) ?? candidates[0]).action;
+}
+
+/** Whether the kicked seat itself owns the currently open pending input. */
+function ownsPendingInput(state: GameState, playerId: PlayerId): boolean {
+  const adventure = state.adventure;
+  return (
+    state.pendingChoice?.playerId === playerId ||
+    adventure?.pendingVisit?.playerId === playerId ||
+    adventure?.pendingTileChoice?.playerId === playerId ||
+    adventure?.pendingNecromancy?.playerId === playerId ||
+    adventure?.pendingFarTileFlip?.playerId === playerId ||
+    adventure?.pendingGarrison?.defenderPlayerId === playerId
+  );
+}
+
+/**
+ * The next single action that advances the drop, or null when the driver must
+ * wait (another player's interaction is open) or the drop is done.
+ */
+export function nextAfkDropAction(state: GameState, playerId: PlayerId): GameAction | null {
+  // A reaction window where the kicked seat holds priority: pass. (Passing is
+  // always legal for the priority holder.)
+  if (state.reactionWindow && state.reactionWindow.priorityPlayerId === playerId) {
+    return { type: "PASS_REACTION", playerId };
+  }
+
+  // Their own pending interaction: answer it with the default pick.
+  if (ownsPendingInput(state, playerId)) {
+    return pickResolvingAction(getLegalActions(state, playerId));
+  }
+
+  // Someone ELSE's interaction is open: wait — the transports re-run the
+  // driver after every action, so the drop resumes when it settles.
+  if (state.pendingChoice || state.reactionWindow || state.stack.length > 0) {
+    return null;
+  }
+
+  // A finished combat they fought in, waiting for the end notice (a kick that
+  // landed right after a battle ended): close it on their behalf.
+  const combat = state.combat;
+  if (
+    combat?.outcome &&
+    !combat.endAcknowledged &&
+    combat.context.kind !== "sandbox" &&
+    (combat.attackerPlayerId === playerId || combat.defenderPlayerId === playerId)
+  ) {
+    return { type: "ACKNOWLEDGE_COMBAT_END", playerId };
+  }
+
+  // A combat between two OTHER players: wait for it, like any bystander.
+  if (combat && !combat.outcome && combat.attackerPlayerId !== playerId && combat.defenderPlayerId !== playerId) {
+    return null;
+  }
+
+  // Clear of interactions: concede their combat / eliminate them.
+  return { type: "RESOLVE_AFK_DROP", playerId };
+}
+
+/**
+ * Runs the drop to completion (or to the first must-wait point). `optionsFor`
+ * lets the transports mint fresh per-step apply options (entropy, wall clock);
+ * tests may omit it.
+ */
+export function driveAfkDrop(
+  initial: GameState,
+  optionsFor: () => { entropy?: string; now?: number } = () => ({})
+): GameState {
+  let state = initial;
+  // Bounded hard: each step either resolves one interaction or eliminates the
+  // player; nothing a game can queue takes more steps than this.
+  for (let guard = 0; guard < 200; guard += 1) {
+    const playerId = afkDropPending(state);
+    if (!playerId) {
+      return state;
+    }
+    const action = nextAfkDropAction(state, playerId);
+    if (!action) {
+      return state;
+    }
+    const result = applyAction(state, action, optionsFor());
+    if (result.errors.length > 0) {
+      // Leave the flag set — the next applied action re-runs the driver. The
+      // error is deliberately not thrown: a stuck auto-step must never break
+      // the (unrelated) action that triggered this run.
+      return state;
+    }
+    state = result.state;
+  }
+  return state;
+}

@@ -3,10 +3,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { writeFileAtomic } from "@/server/atomic-file";
 import {
+  afkDropPending,
   applyAction,
   createAdventureGameState,
   createAdventureLobbyState,
   createInitialGameState,
+  driveAfkDrop,
   dropDisconnectedMember,
   ENGINE_SIGNATURE,
   ensureUniqueArmyUnitIds,
@@ -393,6 +395,9 @@ export function submitRoomAction(
   // applyAction directly without it (see random.ts).
   const result = applyAction(current.state, action, {
     entropy: freshEntropy(),
+    // Server wall clock: the AFK vote-kick's only time source (idle stamps +
+    // the 10-minute idle/re-ask gates).
+    now: Date.now(),
     ...(actorClientId ? { actorClientId } : {}),
     ...(actorUserId ? { actorUserId } : {})
   });
@@ -405,6 +410,12 @@ export function submitRoomAction(
     };
   }
 
+  // A passed AFK kick vote: drive the drop through the normal action pipeline
+  // until the seat is removed (or the table must wait for an open interaction).
+  const settledState = afkDropPending(result.state)
+    ? driveAfkDrop(result.state, () => ({ entropy: freshEntropy(), now: Date.now() }))
+    : result.state;
+
   const next: GameRoomRecord = {
     roomId,
     version: current.version + 1,
@@ -412,7 +423,7 @@ export function submitRoomAction(
     ...(current.createdAt ? { createdAt: current.createdAt } : {}),
     ...(current.createdByName ? { createdByName: current.createdByName } : {}),
     updatedAt: new Date().toISOString(),
-    state: result.state
+    state: settledState
   };
   roomStore.set(roomId, next);
   persistRoom(next);
@@ -422,7 +433,9 @@ export function submitRoomAction(
   // pending write is RETURNED so the HTTP route can hold its response open on a
   // serverless host (a floated promise there may be frozen mid-write); errors
   // are caught + logged inside, never breaking the winning action.
-  const pendingMatchReport = reportFinishedMatch(current.state, result.state) ?? undefined;
+  // Read the SETTLED state — an AFK kick driven right after this action may
+  // itself have ended the game (last faction standing).
+  const pendingMatchReport = reportFinishedMatch(current.state, settledState) ?? undefined;
   const snapshot = withBootId(cloneSerializable(next));
   notifyRoomListeners(roomId, snapshot);
 

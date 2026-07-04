@@ -47,6 +47,7 @@ import {
   NewDayOverlay,
   AstrologersProclamationOverlay,
   EventDrawnOverlay,
+  AfkVotePanel,
   ReactionTray,
   RerollModal,
   SearchModal,
@@ -3495,6 +3496,11 @@ export default function Home() {
         state={state}
         clientId={clientId}
         onSend={(text) => void submitAction({ type: "SEND_CHAT", clientId, text, at: Date.now() })}
+      />
+      <AfkVotePanel
+        state={state}
+        viewerPlayerId={viewerPlayerId}
+        onAction={(action) => void submitAction(action)}
       />
     </>
   );

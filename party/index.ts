@@ -1,9 +1,11 @@
 import type * as Party from "partykit/server";
 import {
+  afkDropPending,
   applyAction,
   createAdventureGameState,
   createAdventureLobbyState,
   createInitialGameState,
+  driveAfkDrop,
   dropDisconnectedMember,
   ENGINE_SIGNATURE,
   freshEntropy,
@@ -536,17 +538,25 @@ export default class GameRoomServer implements Party.Server {
         // tile flip genuinely unpredictable and non-reproducible (true random),
         // not derivable from the game seed (see random.ts).
         entropy: freshEntropy(),
+        // Server wall clock: the AFK vote-kick's only time source (idle
+        // stamps + the 10-minute idle/re-ask gates).
+        now: Date.now(),
         ...(message.actorClientId ? { actorClientId: message.actorClientId } : {}),
         ...(actorUserId ? { actorUserId } : {})
       });
 
       if (result.errors.length === 0) {
+        // A passed AFK kick vote: drive the drop through the normal action
+        // pipeline until the seat is removed (or the table must wait).
+        const settled = afkDropPending(result.state)
+          ? driveAfkDrop(result.state, () => ({ entropy: freshEntropy(), now: Date.now() }))
+          : result.state;
         this.snapshot = {
           roomId: this.room.id,
           version: current.version + 1,
           updatedAt: new Date().toISOString(),
-          ...this.creationMeta(result.state),
-          state: result.state
+          ...this.creationMeta(settled),
+          state: settled
         };
         await this.persist();
         await this.broadcastSnapshot();
@@ -575,7 +585,9 @@ export default class GameRoomServer implements Party.Server {
         // game, post the result to the app so seated verified accounts get
         // their win/loss + Elo. Awaited (not floated) so hibernation cannot
         // cancel it; failures are logged inside and never break the action.
-        await this.reportFinishedMatchToApp(current.state, result.state);
+        // Read the SETTLED snapshot, not result.state — an AFK kick driven
+        // right after this action may itself have ended the game.
+        await this.reportFinishedMatchToApp(current.state, this.snapshot?.state ?? result.state);
       }
     }
   }
@@ -700,21 +712,26 @@ export default class GameRoomServer implements Party.Server {
         const actorUserId = await this.verifiedUserIdFromRequest(request);
         const result = applyAction(current.state, body.action, {
           entropy: freshEntropy(),
+          now: Date.now(),
           ...(actorClientId ? { actorClientId } : {}),
           ...(actorUserId ? { actorUserId } : {})
         });
         if (result.errors.length === 0) {
+          // A passed AFK kick vote: settle the drop before storing/reporting.
+          const settled = afkDropPending(result.state)
+            ? driveAfkDrop(result.state, () => ({ entropy: freshEntropy(), now: Date.now() }))
+            : result.state;
           this.snapshot = {
             roomId: this.room.id,
             version: current.version + 1,
             updatedAt: new Date().toISOString(),
-            ...this.creationMeta(result.state),
-            state: result.state
+            ...this.creationMeta(settled),
+            state: settled
           };
           await this.persist();
           await this.broadcastSnapshot();
           await this.reportToLobby();
-          await this.reportFinishedMatchToApp(current.state, result.state);
+          await this.reportFinishedMatchToApp(current.state, settled);
         }
         const redacted = this.redactSnapshotForActor(this.signed(this.snapshot ?? current), {
           clientId: actorClientId,
