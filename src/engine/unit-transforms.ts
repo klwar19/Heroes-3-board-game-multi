@@ -16,14 +16,16 @@ type TransformEffect = Extract<EffectDefinition, { type: "TRANSFORM_UNIT" }>;
 export function makeUnitTransformState(
   effect: TransformEffect,
   cardId: string,
-  ruleset: GameRuleset
+  ruleset: GameRuleset,
+  /** `sandro-skeleton-hp` toggle; falls back to the bundled mode default. */
+  sandroSkeletonHp?: boolean
 ): UnitTransformState {
   return {
     cardId,
     name: effect.newName,
     attack: effect.attack,
     defense: effect.defense,
-    health: specialtyTransformHealth(ruleset, cardId, effect.health),
+    health: specialtyTransformHealth(ruleset, cardId, effect.health, sandroSkeletonHp),
     initiative: effect.initiative,
     ...(effect.cardImage ? { cardImage: effect.cardImage } : {}),
     ...(effect.alwaysOnTop ? { alwaysOnTop: true } : {})
@@ -95,7 +97,12 @@ export function printedCardName(side: "few" | "pack" | "neutral", unitName: stri
  * wiki FAQ), otherwise the printed side with the ruleset's unit tweaks.
  * Damage stays as it is — the tokens sit on the physical stack.
  */
-export function applyUnitCurrentSide(unit: CombatUnitState, ruleset: GameRuleset): void {
+export function applyUnitCurrentSide(
+  unit: CombatUnitState,
+  ruleset: GameRuleset,
+  /** Griffin/Marksman toggle overrides; falls back to the bundled mode default. */
+  overrides?: { griffinBuff?: boolean; marksmanBuff?: boolean }
+): void {
   const top = topTransform(unit);
   if (top) {
     unit.cardName = top.name;
@@ -134,7 +141,7 @@ export function applyUnitCurrentSide(unit: CombatUnitState, ruleset: GameRuleset
     return;
   }
 
-  const side = applyUnitSideRules(ruleset, unit.unitDefId as string, unit.variant, printed);
+  const side = applyUnitSideRules(ruleset, unit.unitDefId as string, unit.variant, printed, overrides);
   unit.cardName = printedCardName(unit.variant, def.name);
   // House rule (BINH) — Gelu IV: re-apply the permanent +Attack onto the printed
   // side so a Gelu-recruited Sharpshooters keeps its buff across any recompute

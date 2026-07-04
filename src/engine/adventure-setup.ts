@@ -65,6 +65,7 @@ import type {
   GameSetupOptions,
   GameSetupState,
   GameState,
+  HouseRuleId,
   PlayerId,
   PlayerState,
   PvpTroopLoss,
@@ -74,6 +75,7 @@ import type {
   WogModOptions
 } from "./state";
 import { DEFAULT_WOG_OPTIONS, MAX_FAR_TILES_PER_PLAYER, NEUTRAL_PLAYER_ID, UNOPENED_FAR_TILE } from "./state";
+import { HOUSE_RULE_BY_ID, resolveHouseRules } from "./house-rules";
 
 export type AdventurePlayerConfig = {
   id: string;
@@ -140,6 +142,8 @@ export type AdventureSetupOptions = {
   chooseSubterraneanGate?: boolean;
   /** Spell Book house rule (default on): a personal Spell Book each player may stash, cast and boost from. */
   spellBook?: boolean;
+  /** Individual BINH house-rule toggle overrides (see house-rules.ts). */
+  houseRules?: Partial<Record<HouseRuleId, boolean>>;
   /**
    * OPTIONAL parallel-turn mode (multiplayer only): how many opening rounds
    * every player's turn runs at the same time (0/absent = off). Stops early —
@@ -259,7 +263,7 @@ function makeNeutralDecks(seed: string, wog: WogModOptions): Record<string, Deck
  * Expert Spell decks plus Minor/Major/Relic Artifact decks. Each deck flips
  * its top card to start the discard pile, as printed.
  */
-function makeSharedDecks(seed: string, ruleset: GameRuleset): Record<string, DeckState> {
+function makeSharedDecks(seed: string, splitDecks: boolean): Record<string, DeckState> {
   const make = (id: string, cardIds: string[]): DeckState => ({
     id,
     // Shared decks start fully stacked with an empty discard pile; cards only
@@ -268,7 +272,7 @@ function makeSharedDecks(seed: string, ruleset: GameRuleset): Record<string, Dec
     discardPile: []
   });
 
-  if (ruleset === "binh") {
+  if (splitDecks) {
     return {
       spells: make("spells", spellDeckBinhBasic),
       "spells-expert": make("spells-expert", spellDeckBinhExpert),
@@ -620,6 +624,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     ...(options.events !== undefined ? { events: options.events } : {}),
     ...(options.parallelTurns !== undefined ? { parallelTurns: options.parallelTurns } : {}),
     ...(options.spellBook !== undefined ? { spellBook: options.spellBook } : {}),
+    ...(options.houseRules !== undefined ? { houseRules: options.houseRules } : {}),
     ...(options.farTileOpening !== undefined ? { farTileOpening: options.farTileOpening } : {}),
     ...(options.farTilesPerPlayer !== undefined ? { farTilesPerPlayer: options.farTilesPerPlayer } : {}),
     ...(options.customMap !== undefined ? { customMap: options.customMap } : {})
@@ -652,6 +657,10 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   // (rollFirstPlayer:false) skip it unless they ask for it explicitly.
   const rotateStartTilesOn = options.rotateStartTiles ?? options.rollFirstPlayer !== false;
   const ruleset: GameRuleset = setupOptions.ruleset;
+  // Resolve every individual house-rule toggle to a concrete boolean for this
+  // game (explicit flag if set, else the chosen mode's default). Frozen onto
+  // adventure state so the engine reads plain booleans during play.
+  const houseRules = resolveHouseRules(setupOptions);
   const wog: WogModOptions = ruleset === "binh"
     ? { ...DEFAULT_WOG_OPTIONS, ...setupOptions.wog }
     : { ...DEFAULT_WOG_OPTIONS, ...setupOptions.wog, enabled: false };
@@ -704,6 +713,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     victoryMode,
     pvpTroopLoss,
     spellBook: spellBookOn,
+    houseRules,
     chooseGatePlacement: chooseGatePlacementOn,
     ...(victoryMode === "grail" ? { grail: { status: "uncollected" as const } } : {}),
     // Grail Hunt and Dragon Hunt both track the "defeat every enemy hero" path.
@@ -766,7 +776,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     heroes: {},
     combat: null,
     decks: {
-      ...makeSharedDecks(seed, ruleset),
+      ...makeSharedDecks(seed, houseRules["split-decks"]),
       ...makeNeutralDecks(seed, wog),
       [ASTROLOGERS_DECK_ID]: makeAstrologersDeck(seed),
       // The Event deck exists only when the optional rule is on AND the table
@@ -1176,6 +1186,9 @@ export function createAdventureLobbyState(options: AdventureSetupOptions = {}): 
       ...(setupOptions.ruleset === "legacy" ? { enabled: false } : {})
     };
   }
+  if (options.houseRules) {
+    setupOptions.houseRules = options.houseRules;
+  }
   // Map-setup default: a fresh lobby opens with the three universal core town
   // cards (Citadel, Mage Guild, Bronze Dwelling) already pre-built, so every
   // faction starts the adventure with the standard opening buildings. Any seat
@@ -1289,6 +1302,10 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
       lobby.options.wog = { ...DEFAULT_WOG_OPTIONS, ...lobby.options.wog, enabled: false };
       state.wog = lobby.options.wog;
     }
+    // The mode is a preset: switching it clears the individual house-rule
+    // overrides so every toggle reverts to the new mode's default (all ON in
+    // BINH, OFF in Legacy). Players may then re-flip individual rules.
+    lobby.options.houseRules = undefined;
     changes.push(`game mode ${next.ruleset === "binh" ? "House rules BINH" : "Legacy (rulebook)"}`);
   }
 
@@ -1329,6 +1346,21 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
   if (next.spellBook !== undefined) {
     lobby.options.spellBook = Boolean(next.spellBook);
     changes.push(`Spell Book ${next.spellBook ? "on" : "off"}`);
+  }
+
+  if (next.houseRules !== undefined) {
+    // Merge the individual toggle(s) into the existing overrides. Unknown ids are
+    // rejected so a stale client can't smuggle in a non-rule flag.
+    const merged: Partial<Record<HouseRuleId, boolean>> = { ...lobby.options.houseRules };
+    for (const [id, value] of Object.entries(next.houseRules)) {
+      const def = HOUSE_RULE_BY_ID[id as HouseRuleId];
+      if (!def) {
+        throw new Error(`Unknown house rule "${id}".`);
+      }
+      merged[id as HouseRuleId] = Boolean(value);
+      changes.push(`${def.label} ${value ? "on" : "off"}`);
+    }
+    lobby.options.houseRules = merged;
   }
 
   if (next.events !== undefined) {
@@ -2340,6 +2372,7 @@ function buildAdventureFromLobby(state: GameState): void {
     pvpTroopLoss: lobby.options.pvpTroopLoss,
     events: lobby.options.events,
     spellBook: lobby.options.spellBook,
+    houseRules: lobby.options.houseRules,
     parallelTurns: lobby.options.parallelTurns,
     farTileOpening: lobby.options.farTileOpening,
     farTilesPerPlayer: lobby.options.farTilesPerPlayer,

@@ -40,6 +40,7 @@ import {
   canAcquireSharedDeckCard,
   expertUsesAvailable,
   getRuleset,
+  unitSideRuleOverrides,
   NECROMANCY_ABILITY_ID,
   NECROPOLIS_FACTION_ID
 } from "./ruleset";
@@ -5537,9 +5538,10 @@ export function buildCreatureBankCombatUnits(
   bankId: CreatureBankId
 ): { units: CombatUnitState[]; stackedCount: number } {
   const ruleset = getRuleset(state);
+  const sideOverrides = unitSideRuleOverrides(state);
   const draws = buildCreatureBankDraws(bankId);
   const units = draws.flatMap((draw, index) => {
-    const unit = makeCombatUnitFromNeutral(draw, `bank_${index + 1}_${draw.unitDefId.split(".")[1]}`, 0, ruleset);
+    const unit = makeCombatUnitFromNeutral(draw, `bank_${index + 1}_${draw.unitDefId.split(".")[1]}`, 0, ruleset, sideOverrides);
     return unit ? [unit] : [];
   });
 
@@ -5564,7 +5566,7 @@ export function buildCreatureBankCombatUnits(
     const unit = units[order[i]];
     unit.stackToken = STACK_TOKEN_STATS[random.nextInt(0, STACK_TOKEN_STATS.length - 1)];
     // Re-derive the fighting statistics so the token's bonus is baked in.
-    applyUnitCurrentSide(unit, ruleset);
+    applyUnitCurrentSide(unit, ruleset, sideOverrides);
     stackedCount += 1;
   }
 
@@ -5722,7 +5724,9 @@ export function makeCombatUnitFromNeutral(
   draw: NeutralDraw,
   unitId: UnitId,
   position: number,
-  ruleset: GameRuleset = "legacy"
+  ruleset: GameRuleset = "legacy",
+  /** Griffin/Marksman toggle overrides; falls back to the bundled mode default. */
+  overrides?: { griffinBuff?: boolean; marksmanBuff?: boolean }
 ): CombatUnitState | null {
   const def = coreUnitDefinitions[draw.unitDefId];
   // Creature Bank defenders fight from their own bank card; Random Town
@@ -5737,7 +5741,7 @@ export function makeCombatUnitFromNeutral(
 
   // Bank cards carry no ruleset (legacy/binh) tweaks; their printed side is
   // used verbatim. Other guards run through the ruleset side adjustments.
-  const side = draw.bankUnit ? printed : applyUnitSideRules(ruleset, draw.unitDefId, variant, printed);
+  const side = draw.bankUnit ? printed : applyUnitSideRules(ruleset, draw.unitDefId, variant, printed, overrides);
   const cardName = draw.bankUnit
     ? `${def.name} (Creature Bank)`
     : `${draw.factionPack ? "Pack of" : "Neutral"} ${def.name}`;
@@ -5784,7 +5788,9 @@ export function makeCombatUnitFromArmy(
   controllerId: PlayerId,
   unitId: UnitId,
   position: number,
-  ruleset: GameRuleset = "legacy"
+  ruleset: GameRuleset = "legacy",
+  /** Griffin/Marksman toggle overrides; falls back to the bundled mode default. */
+  overrides?: { griffinBuff?: boolean; marksmanBuff?: boolean }
 ): CombatUnitState | null {
   const def = coreUnitDefinitions[armyUnit.unitDefId];
   const printed = armyUnit.side === "few" ? def?.few : armyUnit.side === "pack" ? def?.pack : def?.neutral;
@@ -5792,7 +5798,7 @@ export function makeCombatUnitFromArmy(
     return null;
   }
 
-  const side = applyUnitSideRules(ruleset, armyUnit.unitDefId, armyUnit.side, printed);
+  const side = applyUnitSideRules(ruleset, armyUnit.unitDefId, armyUnit.side, printed, overrides);
   // House rule (BINH) — Gelu IV: a permanent +Attack baked onto this army card is
   // folded into the unit's printed Attack every combat (start to end).
   const permanentAttackBonus = armyUnit.permanentAttackBonus ?? 0;
@@ -5832,7 +5838,7 @@ export function makeCombatUnitFromArmy(
   // combat: the top card's statistics replace the printed side until defeated.
   if (armyUnit.transforms?.length) {
     unit.transforms = armyUnit.transforms.map((entry) => ({ ...entry }));
-    applyUnitCurrentSide(unit, ruleset);
+    applyUnitCurrentSide(unit, ruleset, overrides);
   }
 
   return unit;

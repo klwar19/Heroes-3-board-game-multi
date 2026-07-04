@@ -161,9 +161,11 @@ import {
   spellBookRuleEnabled,
   spellCanEnterSpellBook,
   takeSearchRepeatEffect,
+  unitSideRuleOverrides,
   wisdomGoldDiscount,
   wisdomSearchCount
 } from "./ruleset";
+import { houseRuleEnabled } from "./house-rules";
 import {
   HEX_DIRECTIONS,
   hexDistance,
@@ -4058,7 +4060,8 @@ export function revealNeutralArmy(state: GameState, draws: NeutralDraw[]): void 
       draw,
       `neutral_${index + 1}_${draw.unitDefId.split(".")[1]}`,
       0,
-      getRuleset(state)
+      getRuleset(state),
+      unitSideRuleOverrides(state)
     );
     return unit ? [unit] : [];
   });
@@ -4074,7 +4077,8 @@ export function revealNeutralArmy(state: GameState, draws: NeutralDraw[]): void 
         { unitDefId: effect.unitDefId, tier: guardTier, bankGuard: true },
         `neutral_guard_${index + 1}_${effectIndex + 1}`,
         0,
-        getRuleset(state)
+        getRuleset(state),
+        unitSideRuleOverrides(state)
       );
       return guard ? [guard] : [];
     })
@@ -4750,7 +4754,8 @@ export function placeCombatUnit(state: GameState, action: Extract<GameAction, { 
     action.playerId,
     `unit_${action.playerId}_${armyUnit.id}`,
     action.position,
-    getRuleset(state)
+    getRuleset(state),
+    unitSideRuleOverrides(state)
   );
   if (!combatUnit) {
     throw new Error("That unit has no printed side to fight with.");
@@ -6192,7 +6197,10 @@ export function spellBookAction(state: GameState, action: Extract<GameAction, { 
       throw new Error("No expert uses are available for expert Wisdom.");
     }
 
-    goldCost = Math.max(0, goldCost - wisdomGoldDiscount(getRuleset(state), wisdom.mode));
+    goldCost = Math.max(
+      0,
+      goldCost - wisdomGoldDiscount(getRuleset(state), wisdom.mode, houseRuleEnabled(state, "wisdom-expert-discount"))
+    );
     searchCount = wisdomSearchCount(wisdom.mode);
   }
 
@@ -6214,7 +6222,7 @@ export function spellBookAction(state: GameState, action: Extract<GameAction, { 
       cardId: wisdom.cardId,
       timing: "town",
       mode: wisdom.mode,
-      optionLabel: `Wisdom: −${wisdomGoldDiscount(getRuleset(state), wisdom.mode)} gold, Search (${searchCount})`
+      optionLabel: `Wisdom: −${wisdomGoldDiscount(getRuleset(state), wisdom.mode, houseRuleEnabled(state, "wisdom-expert-discount"))} gold, Search (${searchCount})`
     });
   }
 
