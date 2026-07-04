@@ -110,15 +110,29 @@ describe("RoomPanel — hosted (host's view)", () => {
 });
 
 describe("RoomPanel — hosted (a seated player's view)", () => {
-  it("locks seats: read-only badges, no dropdowns, no kick", () => {
+  it("gives a non-host a self-serve seat select on their OWN row only, and no kick", () => {
     const state = hostedState();
     renderPanel(state, "c2"); // Bob, seated at p1, not host
 
-    expect(screen.queryByRole("combobox")).toBeNull();
     expect(screen.queryByTitle(/Remove/i)).toBeNull();
-    // Bob sees he is seated (his seat badge shows the player's name).
+    // Bob's own row carries a self-serve seat select…
     const bobRow = screen.getByText("Bob").closest("li") as HTMLElement;
-    expect(within(bobRow).getByText(state.players.p1.name)).toBeTruthy();
+    expect(within(bobRow).getByRole("combobox")).toBeTruthy();
+    // …but he cannot control anyone else — their rows are read-only badges.
+    const caraRow = screen.getByText("Cara").closest("li") as HTMLElement;
+    expect(within(caraRow).queryByRole("combobox")).toBeNull();
+    expect(screen.getAllByRole("combobox")).toHaveLength(1);
+  });
+
+  it("a non-host taking an open seat fires a SELF-targeted ASSIGN_SEAT the engine accepts", () => {
+    const state = hostedState(); // Bob at p1; p2 is open
+    const { onAction } = renderPanel(state, "c2");
+    const bobRow = screen.getByText("Bob").closest("li") as HTMLElement;
+    fireEvent.change(within(bobRow).getByRole("combobox"), { target: { value: "p2" } });
+    const action: GameAction = { type: "ASSIGN_SEAT", clientId: "c2", targetClientId: "c2", seat: "p2" };
+    expect(onAction).toHaveBeenCalledWith(action);
+    // And the engine accepts a player claiming their own open seat.
+    expect(applyAction(state, action).errors).toHaveLength(0);
   });
 });
 

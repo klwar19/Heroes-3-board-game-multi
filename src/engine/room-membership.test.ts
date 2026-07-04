@@ -131,13 +131,23 @@ describe("host-controlled seating", () => {
     expectRejected(state, { type: "ASSIGN_SEAT", clientId: "c1", targetClientId: "c2", seat: "p9" });
   });
 
-  it("forbids a player from changing their own or another seat", () => {
+  it("lets a player self-serve an open seat, but not take an occupied one or move others", () => {
     let state = hostedRoomWithThree();
     state = expectOk(state, { type: "ASSIGN_SEAT", clientId: "c1", targetClientId: "c2", seat: "p2" });
 
-    // c2 cannot move themselves, and cannot move c3 — only the host assigns.
-    expectRejected(state, { type: "ASSIGN_SEAT", clientId: "c2", targetClientId: "c2", seat: "p1" });
+    // c2 (at p2) may claim the OPEN p1 seat themselves…
+    state = expectOk(state, { type: "ASSIGN_SEAT", clientId: "c2", targetClientId: "c2", seat: "p1" });
+    expect(seatOfClient(state, "c2")).toBe("p1");
+    // …and step back down to observer.
+    state = expectOk(state, { type: "ASSIGN_SEAT", clientId: "c2", targetClientId: "c2", seat: "observer" });
+    expect(seatOfClient(state, "c2")).toBe("observer");
+
+    // But c2 can never move ANOTHER player (only the host can).
     expectRejected(state, { type: "ASSIGN_SEAT", clientId: "c2", targetClientId: "c3", seat: "p1" });
+
+    // Nor take a seat someone else already holds — the host seats c3 at p1 first.
+    state = expectOk(state, { type: "ASSIGN_SEAT", clientId: "c1", targetClientId: "c3", seat: "p1" });
+    expectRejected(state, { type: "ASSIGN_SEAT", clientId: "c2", targetClientId: "c2", seat: "p1" });
   });
 });
 

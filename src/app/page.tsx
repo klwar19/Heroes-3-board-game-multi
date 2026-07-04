@@ -823,6 +823,33 @@ export default function Home() {
     viewerRef.current = viewerPlayerId;
   }, [viewerPlayerId]);
 
+  // Open-table hotseat hand-off. On an OPEN (non-hosted) table any client may view
+  // any seat, so a turn — or a blocking prompt (choice/visit/tile-rotation/reaction
+  // /combat) owned by a seat other than the one on screen — would otherwise be
+  // invisible to whoever must act: they see "player X is deciding" and have to
+  // hunt for the right seat in the switcher. `priorityPlayerId` is set ONLY while
+  // such an interaction is open (null on a normal free turn), so "who must act" is
+  // `priorityPlayerId ?? activePlayerId`. We snap the view to it on each CHANGE of
+  // acting seat, so control passes automatically like handing over the device,
+  // while a manual switch to inspect another seat still sticks until the next
+  // hand-off. Hosted rooms lock the seat (handled below); the lobby and a
+  // deliberate Observer are left alone.
+  const actingSeatRef = useRef<PlayerId | null>(null);
+  useEffect(() => {
+    if (!state || state.setupLobby || state.room?.hosted) {
+      actingSeatRef.current = null;
+      return;
+    }
+    const actingSeat = state.priorityPlayerId ?? state.activePlayerId ?? null;
+    if (!actingSeat || !state.players[actingSeat] || actingSeat === actingSeatRef.current) {
+      return;
+    }
+    actingSeatRef.current = actingSeat;
+    if (viewerRef.current !== OBSERVER_SEAT && viewerRef.current !== actingSeat) {
+      setViewerPlayerId(actingSeat);
+    }
+  }, [state]);
+
   // Map -> battle hand-off: the combat/map toggle is local and sticky, so a
   // fight opened (or finished) while it still pointed at "map" from a previous
   // combat would leave the player stranded on the map — the new battlefield
