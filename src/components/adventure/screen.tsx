@@ -68,6 +68,7 @@ import {
   tierOfLevel,
   UNIT_LEVELS,
   unitAbilities,
+  unitSideRuleOverrides,
   validateCustomMapPlan,
   astrologersCardDefinitions,
   eventCardDefinitions,
@@ -2147,6 +2148,9 @@ export function ArmyPanel({ state, playerId }: { state: GameState; playerId: Pla
   }
 
   const ruleset = getRuleset(state);
+  // Honour the individual Griffin/Marksman toggles so the roster shows the same
+  // live stats the engine will fight with (not just the bundled mode default).
+  const sideOverrides = unitSideRuleOverrides(state);
 
   return (
     <section className="armyPanel" aria-label="Unit deck">
@@ -2155,8 +2159,8 @@ export function ArmyPanel({ state, playerId }: { state: GameState; playerId: Pla
         {player.army.map((unit) => {
           const def = coreUnitDefinitions[unit.unitDefId];
           const printed = unit.side === "few" ? def?.few : def?.pack;
-          // BINH stat tweaks (Griffins, Marksmen, Cerberi) show live values.
-          const side = printed ? applyUnitSideRules(ruleset, unit.unitDefId, unit.side, printed) : printed;
+          // BINH stat tweaks (Griffins, Marksmen) show live values.
+          const side = printed ? applyUnitSideRules(ruleset, unit.unitDefId, unit.side, printed, sideOverrides) : printed;
           const engineLines = implementedAbilityLines(side?.abilities);
           const hoverTitle = [side?.abilityText, ...engineLines].filter(Boolean).join("\n") || `Read ${def?.name ?? unit.unitDefId}`;
           return (
@@ -4276,8 +4280,18 @@ function GameOptionsPanel({
   return (
     <div className="gameOptions" aria-label="Game options">
       <header className="gameOptionsHead">
-        <span className="gameOptionsEyebrow">⚜ Fan-made house-rule edition · BINH</span>
-        <h3>Game Setup</h3>
+        <div className="gameOptionsHeadText">
+          <span className="gameOptionsEyebrow">⚜ Fan-made house-rule edition · BINH</span>
+          <h3>Game Setup</h3>
+          <small className="gameOptionsHeadSub">Pick a mode, toggle the house rules, and set up your army.</small>
+        </div>
+        <img
+          alt=""
+          aria-hidden="true"
+          className="gameOptionsHeadArt"
+          draggable={false}
+          src={assetUrl("/assets/setup-minotaur-crusader.webp")}
+        />
       </header>
 
       <nav className="optionTabs" role="tablist" aria-label="Setup sections">
