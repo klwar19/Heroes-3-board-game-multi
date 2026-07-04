@@ -41,6 +41,7 @@ import {
   finishTactics,
   giveUpAdventure,
   hallOfValhallaBoost,
+  resolveAfkDrop,
   openDiplomacyRecruit,
   openVisionsScry,
   openSiegeDemolishChoice,
@@ -206,6 +207,7 @@ import {
   unitDealsElementalDamage,
   unitImmuneToParalysis
 } from "./active-effects";
+import { applyAfkBookkeeping, castAfkVote, startAfkVote } from "./afk";
 import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
 import { gainRunes, gainRunesForAttack, gainRunesForDefend, grantStartingRunes } from "./runes";
 import { drawCardsForPlayer, isSharedDeckId, shuffleCards } from "./decks";
@@ -397,6 +399,15 @@ type ReducerOptions = {
    * keeps the seeded behaviour deterministic.
    */
   entropy?: string;
+  /**
+   * Server wall-clock (ms) at which this action is applied, stamped by the
+   * transports (party/index.ts and submitRoomAction). The ONLY clock the AFK
+   * vote-kick reads: it timestamps each seat's last action and gates the
+   * 10-minute idle / re-ask windows (src/engine/afk.ts). Omitted by engine
+   * tests (which pass explicit values) — never read anywhere else, so the
+   * engine stays deterministic.
+   */
+  now?: number;
 };
 
 type ConcreteEffect = Exclude<EffectDefinition, { type: "CHOOSE_ONE" }>;
@@ -15426,7 +15437,10 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "SET_ROOM_NAME",
   "SET_ROOM_REQUIRE_AUTH",
   "SEND_TABLE_REACTION",
-  "SEND_CHAT"
+  "SEND_CHAT",
+  "START_AFK_VOTE",
+  "CAST_AFK_VOTE",
+  "RESOLVE_AFK_DROP"
 ]);
 
 function isHandlerValidated(state: GameState, action: GameAction): boolean {
@@ -15497,7 +15511,16 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
     "playerId" in action && typeof (action as { playerId?: unknown }).playerId === "string"
       ? (action as { playerId: PlayerId }).playerId
       : null;
-  const parallelBystanderBlocker = actorPlayerId ? parallelInteractionBlocker(nextState, actorPlayerId) : null;
+  // The AFK vote-kick actions are table-level meta actions, like chat: they
+  // must stay available exactly when the table is frozen (an open interaction,
+  // the round-start event barrier — a stuck AFK player is WHY they exist), and
+  // the passed vote's drop step legitimately clears the machinery it removes
+  // the player from. So they bypass the bystander fingerprint and the event
+  // barrier below; their own handlers enforce their legality.
+  const isAfkMetaAction =
+    action.type === "START_AFK_VOTE" || action.type === "CAST_AFK_VOTE" || action.type === "RESOLVE_AFK_DROP";
+  const parallelBystanderBlocker =
+    actorPlayerId && !isAfkMetaAction ? parallelInteractionBlocker(nextState, actorPlayerId) : null;
   const parallelSlotBefore = parallelBystanderBlocker ? parallelSlotSignature(nextState) : null;
 
   // Round-start Event / Astrologers barrier (ordered AND parallel play): while
@@ -15507,7 +15530,7 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
   // draw, no town/morale actions, no ending the turn). Read from the PRE-handler
   // clone, so the round-wrap action that first raises the barrier (inside its own
   // handler) is not itself rejected, and chat (no `playerId`) is exempt.
-  if (actorPlayerId && isRoundStartEventBarrierActive(nextState)) {
+  if (actorPlayerId && !isAfkMetaAction && isRoundStartEventBarrierActive(nextState)) {
     const resolver = roundStartEventResolver(nextState);
     if (resolver && resolver !== actorPlayerId) {
       return fail(base, {
@@ -15885,6 +15908,15 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
       case "GIVE_UP":
         giveUpAdventure(nextState, action);
         break;
+      case "START_AFK_VOTE":
+        startAfkVote(nextState, action, options.now);
+        break;
+      case "CAST_AFK_VOTE":
+        castAfkVote(nextState, action, options.now);
+        break;
+      case "RESOLVE_AFK_DROP":
+        resolveAfkDrop(nextState, action);
+        break;
     }
   } catch (error) {
     return fail(base, {
@@ -15940,6 +15972,11 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
       message: parallelWaitMessage(base, parallelBystanderBlocker as PlayerId | "table")
     });
   }
+
+  // AFK vote-kick bookkeeping, success path only: stamp the actor's
+  // last-action clock from the server wall time and cancel an open kick vote
+  // the moment its target acts (see src/engine/afk.ts).
+  applyAfkBookkeeping(nextState, action, options.now);
 
     return ok(nextState, startEventNumber);
   } finally {

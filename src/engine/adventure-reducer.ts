@@ -7857,6 +7857,79 @@ export function giveUpAdventure(state: GameState, action: Extract<GameAction, { 
   advanceAfterTurn(state, action.playerId, { reason: "gave up and became an observer" }, true);
 }
 
+/**
+ * RESOLVE_AFK_DROP: one force-drop step for the seat a passed AFK kick vote is
+ * removing (`afk.droppingPlayerId`). Issued by the server-side driver
+ * (src/engine/afk-drop.ts), never by a client button, and only after the
+ * driver has auto-resolved every pending interaction the player owns:
+ *
+ *  1. If they are a participant of an OPEN combat, this step only concedes it
+ *     (PvP: the opponent wins with the give-up consequences; a neutral fight
+ *     ends as a retreat) and auto-acknowledges the end, so the normal
+ *     finalization automation applies XP/casualties/hero-retreat exactly like
+ *     any other fought battle. The driver then calls again.
+ *  2. Otherwise they are eliminated like a give-up — through the same
+ *     advance/wrap machinery ordered and parallel turns already use — and
+ *     flagged `kickedByVote` so the ladder reports them as "abandon".
+ */
+export function resolveAfkDrop(state: GameState, action: Extract<GameAction, { type: "RESOLVE_AFK_DROP" }>): void {
+  const playerId = action.playerId;
+  const afk = state.afk;
+  if (state.mode !== "adventure" || !state.adventure) {
+    throw new Error("AFK removal exists only in adventure games.");
+  }
+  if (!afk || afk.droppingPlayerId !== playerId) {
+    throw new Error("No passed AFK vote is removing this player.");
+  }
+
+  const player = state.players[playerId];
+  if (state.phase === "game-over" || state.adventure.winnerPlayerId || !player || player.eliminated) {
+    // Nothing left to do (the game ended or they are already out): just clear.
+    afk.droppingPlayerId = null;
+    return;
+  }
+
+  const combat = state.combat;
+  const inCombat =
+    combat &&
+    combat.context.kind !== "sandbox" &&
+    (combat.attackerPlayerId === playerId || combat.defenderPlayerId === playerId);
+  if (inCombat && !combat.outcome) {
+    // Concede the open fight — any phase (prep, deployment, mid-round), both
+    // fight kinds. The end-of-combat automation finalizes it after this action.
+    const winnerPlayerId =
+      combat.attackerPlayerId === playerId ? combat.defenderPlayerId : combat.attackerPlayerId;
+    const reason = combat.context.kind === "player" ? ("give-up" as const) : ("retreat" as const);
+    combat.prep = null;
+    combat.awaitingContinue = false;
+    combat.outcome = { winnerPlayerId, defeatedPlayerId: playerId, reason };
+    combat.endAcknowledged = true;
+    appendEvent(state, { type: "COMBAT_ENDED", winnerPlayerId, defeatedPlayerId: playerId, reason });
+    return;
+  }
+  if (inCombat && combat.outcome && !combat.endAcknowledged) {
+    // A fight that already ended is only waiting for the notice to be closed.
+    combat.endAcknowledged = true;
+    return;
+  }
+
+  player.kickedByVote = true;
+  afk.droppingPlayerId = null;
+  const reason = "was removed by the table's AFK vote";
+  if (parallelTurnsActive(state)) {
+    // Marks their open turn done (a no-op if already ended), eliminates them,
+    // and wraps the round once nobody live still owes a turn.
+    endParallelTurn(state, playerId, { reason }, false);
+    return;
+  }
+  if (state.activePlayerId === playerId) {
+    // Their ordered turn is open: hand it on exactly like a give-up.
+    advanceAfterTurn(state, playerId, { reason }, false);
+    return;
+  }
+  eliminatePlayer(state, playerId, reason, false);
+}
+
 // ---------------------------------------------------------------------------
 // Shared-deck searches (split decks, Scouting, school fetches, repeats)
 // ---------------------------------------------------------------------------

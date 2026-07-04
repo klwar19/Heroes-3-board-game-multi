@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { applyAction, createAdventureGameState, createAdventureLobbyState, getLegalActions } from "@/engine";
+import { AFK_IDLE_MS, applyAction, createAdventureGameState, createAdventureLobbyState, getAfkState, getLegalActions } from "@/engine";
 import {
   closeRoom,
   createRoom,
@@ -645,5 +645,54 @@ describe("stale-room expiry", () => {
     seedDiskRoom(oldOccupied, oldStamp, [{ clientId: "c1", name: "Stayed" }]);
 
     expect(listRooms().map((entry) => entry.roomId)).toContain(oldOccupied);
+  });
+});
+
+describe("AFK vote-kick through the store (transport wiring)", () => {
+  it("stamps the server wall clock and drives a passed kick to completion in one submit", () => {
+    // A 2-player game whose p1 clock reads 10+ minutes ago: the opponent's
+    // START_AFK_VOTE alone passes the vote, and submitRoomAction must then run
+    // the drop driver — p1 eliminated, p2 the last faction standing — without
+    // any further client input. Fails if the transport forgets the `now`
+    // stamp OR the driveAfkDrop call.
+    const roomId = uniqueRoom("afkkick");
+    getRoomSnapshot(roomId);
+    const game = createAdventureGameState({ seed: "store-afk", difficulty: "normal", rollFirstPlayer: false });
+    for (const player of Object.values(game.players)) {
+      player.canMulligan = false;
+      player.needsHandRefresh = false;
+    }
+    const afk = getAfkState(game);
+    afk.lastActionAt.p1 = Date.now() - AFK_IDLE_MS - 60_000;
+    afk.lastActionAt.p2 = Date.now();
+    restoreRoom(roomId, game);
+
+    const { result, snapshot } = submitRoomAction(roomId, {
+      type: "START_AFK_VOTE",
+      playerId: "p2",
+      targetPlayerId: "p1"
+    });
+    expect(result.errors, result.errors.map((error) => error.message).join("; ")).toEqual([]);
+    expect(snapshot.state.players.p1.eliminated).toBe(true);
+    expect(snapshot.state.players.p1.kickedByVote).toBe(true);
+    expect(snapshot.state.adventure?.winnerPlayerId).toBe("p2");
+    expect(snapshot.state.afk?.droppingPlayerId ?? null).toBeNull();
+  });
+
+  it("CONTROL: a freshly active seat cannot be voted on (the server clock is authoritative)", () => {
+    const roomId = uniqueRoom("afkfresh");
+    getRoomSnapshot(roomId);
+    const game = createAdventureGameState({ seed: "store-afk-fresh", difficulty: "normal", rollFirstPlayer: false });
+    const afk = getAfkState(game);
+    afk.lastActionAt.p1 = Date.now();
+    afk.lastActionAt.p2 = Date.now();
+    restoreRoom(roomId, game);
+
+    const { result } = submitRoomAction(roomId, {
+      type: "START_AFK_VOTE",
+      playerId: "p2",
+      targetPlayerId: "p1"
+    });
+    expect(result.errors[0]?.message).toContain("has not been away");
   });
 });

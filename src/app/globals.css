@@ -14148,3 +14148,35 @@ img.cardBack {
     animation: none;
   }
 }
+
+/* ---- AFK vote-kick panel (multiplayer) ------------------------------------ */
+/* Fixed banner above the table, like the chat/reactions layer it ships with:
+   shows the open kick-or-wait vote to everyone, or the "call a vote" button
+   for seats idle past the 10-minute window. */
+.afkVotePanel {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  border: 1px solid rgba(214, 168, 96, 0.55);
+  border-radius: 10px;
+  background: rgba(24, 18, 10, 0.92);
+  color: #f3e4c3;
+  font-size: 13px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+
+.afkVotePanel .afkVoteButtons {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.afkVotePanel .afkVoteWaiting {
+  opacity: 0.75;
+  font-style: italic;
+}

@@ -3268,6 +3268,41 @@ export type GameAction =
        */
       type: "GIVE_UP";
       playerId: PlayerId;
+    }
+  | {
+      /**
+       * Open an AFK kick-or-wait vote against `targetPlayerId`. Legal only in a
+       * multiplayer adventure when the target has been idle for AFK_IDLE_MS
+       * (per the server-stamped clock), no other vote is open, and any earlier
+       * vote about them that ended in "wait" is AFK_REASK_MS old. The starter's
+       * own vote counts as "kick", so in a 2-player game this alone drops the
+       * target. Exempt from the turn/barrier gates like chat — a frozen table
+       * is exactly when it is needed.
+       */
+      type: "START_AFK_VOTE";
+      playerId: PlayerId;
+      targetPlayerId: PlayerId;
+    }
+  | {
+      /**
+       * Answer the open AFK vote: "kick" (drop the target once every live
+       * voter agrees) or "wait" (close the vote; it can be re-opened
+       * AFK_REASK_MS later). The target cannot vote.
+       */
+      type: "CAST_AFK_VOTE";
+      playerId: PlayerId;
+      vote: "kick" | "wait";
+    }
+  | {
+      /**
+       * One force-drop step for the seat a passed AFK vote is removing
+       * (`afk.droppingPlayerId` — `playerId` must match it). Issued by the
+       * server-side driver, never by a client button: concedes the player's
+       * open combat first, then (called again once it finalized) eliminates
+       * them and hands the turn on. See src/engine/afk-drop.ts.
+       */
+      type: "RESOLVE_AFK_DROP";
+      playerId: PlayerId;
     };
 
 export type LegalAction = {
@@ -4330,6 +4365,26 @@ export type GameEvent =
     }
   | {
       id: string;
+      type: "AFK_VOTE_STARTED";
+      targetPlayerId: PlayerId;
+      byPlayerId: PlayerId;
+      message: string;
+    }
+  | {
+      id: string;
+      type: "AFK_VOTE_CAST";
+      playerId: PlayerId;
+      vote: "kick" | "wait";
+    }
+  | {
+      id: string;
+      type: "AFK_VOTE_RESOLVED";
+      targetPlayerId: PlayerId;
+      outcome: "kick" | "wait" | "cancelled";
+      message: string;
+    }
+  | {
+      id: string;
       type: "PLAYER_ELIMINATION_CLOCK";
       playerId: PlayerId;
       /** Turns the player has left before elimination, or null when cleared. */
@@ -5017,6 +5072,12 @@ export type PlayerState = {
    * turns. Rulebook p.11: "Eliminated players are immediately removed."
    */
   eliminated?: boolean;
+  /**
+   * True when this player's elimination came from a passed AFK kick vote.
+   * The ladder reports them as "abandon" (a loss for Elo, tracked distinctly)
+   * instead of a plain loss — see src/server/match-report.ts.
+   */
+  kickedByVote?: boolean;
   /**
    * Player Elimination clock (rulebook p.11, house rule: 2 of the player's own
    * turns instead of 3 full Rounds). Set while the player controls no Town and
@@ -7834,6 +7895,55 @@ export type GameState = {
   tableReactions?: TableReaction[];
   /** Monotonic reaction id counter; each reaction's `seq` is unique + ordered. */
   tableReactionSeq?: number;
+  /**
+   * AFK vote-kick bookkeeping (multiplayer adventure only): per-seat
+   * last-action wall clocks, the open kick-or-wait vote, and the seat a passed
+   * vote is currently force-dropping. Absent on legacy snapshots and solo
+   * games. Public — it holds no hidden information. See src/engine/afk.ts.
+   */
+  afk?: AfkState | null;
+};
+
+/**
+ * One open AFK kick-or-wait vote. A single vote runs at a time; it ends the
+ * moment any voter chooses "wait" (ask again later), every live voter chooses
+ * "kick" (the target is force-dropped), or the target acts (auto-cancelled —
+ * they are back).
+ */
+export type AfkVoteState = {
+  /** The seat accused of being AFK. */
+  targetPlayerId: PlayerId;
+  /** Who opened the vote (their own vote is an implicit "kick"). */
+  startedByPlayerId: PlayerId;
+  /** Server wall-clock ms when the vote opened. */
+  startedAt: number;
+  /** Each live voter's choice so far (the target never votes). */
+  votes: Record<PlayerId, "kick" | "wait">;
+};
+
+export type AfkState = {
+  /**
+   * Server wall-clock ms of each seat's last successful game action (stamped
+   * by the transport's `now`; chat and the AFK votes themselves do not count).
+   * Bootstrapped for every live seat on the first stamped action, so a player
+   * who never acts still becomes kickable once the idle window passes.
+   */
+  lastActionAt: Record<PlayerId, number>;
+  /** The open kick-or-wait vote, if any. */
+  vote: AfkVoteState | null;
+  /**
+   * When the last vote about each seat ended in "wait" (server wall-clock ms):
+   * a new vote against that seat may only be started AFK_REASK_MS later —
+   * "asked again every 10 minutes", never spammed.
+   */
+  lastVoteEndedAt?: Record<PlayerId, number>;
+  /**
+   * Seat a passed kick vote is force-dropping right now. While set, the
+   * server-side driver (src/engine/afk-drop.ts) auto-resolves that seat's
+   * pending interactions with default choices and finally applies
+   * RESOLVE_AFK_DROP, which concedes their combat and eliminates them.
+   */
+  droppingPlayerId?: PlayerId | null;
 };
 
 /**

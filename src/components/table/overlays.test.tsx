@@ -2,6 +2,7 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  AfkVotePanel,
   DICE_PRESENT_MS,
   DICE_ROLL_MS,
   DiceOverlay,
@@ -13,8 +14,11 @@ import {
 } from "./overlays";
 import { CardZoomProvider } from "./zoom";
 import {
+  AFK_IDLE_MS,
   applyAction,
+  createAdventureGameState,
   createInitialGameState,
+  getAfkState,
   getLegalActions,
   getPlayerView,
   type GameAction,
@@ -1085,5 +1089,62 @@ describe("RerollModal — the die rolls before the keep/reroll choice", () => {
     expect(screen.getByText(/may reroll the attack die/i)).toBeTruthy();
     expect(container.querySelector(".dieCube.tumbling")).toBeNull();
     expect(screen.queryByRole("button", { name: /^Keep/ })).toBeNull();
+  });
+});
+
+describe("AfkVotePanel — the vote UI and the idle call-a-vote button", () => {
+  function adventureGame(): GameState {
+    return createAdventureGameState({ seed: "afk-panel", difficulty: "normal", rollFirstPlayer: false });
+  }
+
+  it("offers Kick / Wait to a live non-target viewer and dispatches the vote", () => {
+    const state = adventureGame();
+    getAfkState(state).vote = {
+      targetPlayerId: "p1",
+      startedByPlayerId: "p2",
+      startedAt: Date.now(),
+      votes: { p2: "kick" }
+    };
+    // A 2-player game: the starter p2 already voted, so render as an
+    // (impossible in play, but shape-wise fine) undecided third seat is not
+    // available — instead check the TARGET p1 sees no buttons, only the hint.
+    const onAction = vi.fn();
+    render(<AfkVotePanel onAction={onAction} state={state} viewerPlayerId={"p1" as PlayerId} />);
+    expect(screen.queryByRole("button", { name: "Kick" })).toBeNull();
+    expect(screen.getByText(/act to cancel the vote/i)).toBeTruthy();
+    cleanup();
+
+    // An undecided live voter gets both buttons; clicking dispatches the vote.
+    const open = adventureGame();
+    getAfkState(open).vote = {
+      targetPlayerId: "p1",
+      startedByPlayerId: "p2",
+      startedAt: Date.now(),
+      votes: {}
+    };
+    render(<AfkVotePanel onAction={onAction} state={open} viewerPlayerId={"p2" as PlayerId} />);
+    fireEvent.click(screen.getByRole("button", { name: "Kick" }));
+    expect(onAction).toHaveBeenCalledWith({ type: "CAST_AFK_VOTE", playerId: "p2", vote: "kick" });
+    fireEvent.click(screen.getByRole("button", { name: "Wait" }));
+    expect(onAction).toHaveBeenCalledWith({ type: "CAST_AFK_VOTE", playerId: "p2", vote: "wait" });
+  });
+
+  it("shows the call-a-vote button only once a seat is 10 minutes idle (fresh seat is the CONTROL)", () => {
+    const state = adventureGame();
+    const afk = getAfkState(state);
+    afk.lastActionAt.p1 = Date.now() - AFK_IDLE_MS - 60_000; // long gone
+    afk.lastActionAt.p2 = Date.now();
+    const onAction = vi.fn();
+    render(<AfkVotePanel onAction={onAction} state={state} viewerPlayerId={"p2" as PlayerId} />);
+    const button = screen.getByRole("button", { name: /is away .* call a kick vote/i });
+    fireEvent.click(button);
+    expect(onAction).toHaveBeenCalledWith({ type: "START_AFK_VOTE", playerId: "p2", targetPlayerId: "p1" });
+    cleanup();
+
+    // CONTROL: with both seats fresh, no button renders at all.
+    const fresh = adventureGame();
+    getAfkState(fresh).lastActionAt = { p1: Date.now(), p2: Date.now() };
+    render(<AfkVotePanel onAction={vi.fn()} state={fresh} viewerPlayerId={"p2" as PlayerId} />);
+    expect(screen.queryByRole("button")).toBeNull();
   });
 });
