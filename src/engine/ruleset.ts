@@ -1,4 +1,5 @@
 import type { UnitSideDefinition } from "@/data/factions/types";
+import { cardLibrary } from "@/data/cards/library";
 import { STARTING_ONLY_SPELLS } from "@/data/cards/spells";
 import type {
   CardId,
@@ -467,9 +468,25 @@ export function takeSearchRepeatEffect(state: GameState, playerId: PlayerId): bo
   return true;
 }
 
-/** Spell schools the player can fetch instead of searching (Basic X Magic). */
+/**
+ * Spell schools the player can fetch instead of searching (Basic X Magic).
+ * Primary source is the in-play permanent card (its `permanentEffect.schoolFetch`)
+ * — the fetch is tied to the single permanent slot, so it stops the instant the
+ * card is replaced or discarded. Legacy snapshots that still carry the old
+ * `SPELL_SCHOOL_FETCH` active effect keep working via the union below.
+ */
 export function activeSchoolFetches(state: GameState, playerId: PlayerId): ("air" | "earth" | "fire" | "water")[] {
   const schools = new Set<"air" | "earth" | "fire" | "water">();
+
+  const player = state.players[playerId];
+  const permanentIds = player?.permanents ?? (player?.permanent ? [player.permanent] : []);
+  for (const cardId of permanentIds) {
+    const fetch = cardLibrary[cardId]?.permanentEffect?.schoolFetch;
+    if (fetch) {
+      schools.add(fetch);
+    }
+  }
+
   for (const effect of state.activeEffects) {
     if (effect.controllerId !== playerId) {
       continue;

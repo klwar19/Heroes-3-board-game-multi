@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { applyAction, createInitialGameState, getLegalActions } from "./index";
+import { activeSchoolFetches } from "./ruleset";
 import type { GameAction, GameState, PlayerId } from "./state";
 
 function applyOk(state: GameState, action: GameAction): GameState {
@@ -56,6 +57,67 @@ describe("permanent cards", () => {
     expect(second.players.p1.hand).toHaveLength(0);
     // The replaced tent's combat effect leaves with it.
     expect(second.activeEffects.some((effect) => effect.name === "First Aid Tent")).toBe(false);
+  });
+
+  it("treats a Basic School of Magic as a permanent — one slot with war machines", () => {
+    // The bug: a Basic Fire/Earth/Water/Air Magic ability created a floating
+    // active effect instead of occupying the single permanent slot, so a player
+    // could hold it AND a war machine / income artifact at once. It now enters
+    // play as a permanent like every other, subject to the one-permanent limit.
+    const state = createInitialGameState();
+    state.players.p1.hand = ["ability.basic_fire_magic", "war_machine.first_aid_tent"];
+
+    // Play the Basic Fire Magic as its "Permanent" side (option 0 = ENTER_PLAY).
+    const first = applyOk(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "ability.basic_fire_magic",
+      optionIndex: 0,
+      target: { type: "none" }
+    });
+    expect(first.players.p1.permanents).toEqual(["ability.basic_fire_magic"]);
+    // While it is in the slot, the owner fetches Fire spells instead of searching.
+    expect(activeSchoolFetches(first, "p1")).toEqual(["fire"]);
+
+    // Playing ANY other permanent replaces it — the one-permanent limit — and
+    // the fetch stops the instant the card leaves the slot (tied to the slot,
+    // not a lingering active effect).
+    const second = applyOk(first, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "war_machine.first_aid_tent",
+      target: { type: "none" }
+    });
+    expect(second.players.p1.permanents).toEqual(["war_machine.first_aid_tent"]);
+    expect(second.players.p1.discard).toContain("ability.basic_fire_magic");
+    expect(activeSchoolFetches(second, "p1")).toEqual([]);
+  });
+
+  it("replaces a Basic School of Magic with an income artifact (one slot)", () => {
+    // The user's other example: a magic ability + an income artifact must not
+    // coexist. Playing the income artifact's enter-play side discards the ability.
+    const state = createInitialGameState();
+    state.players.p1.hand = ["ability.basic_water_magic", "artifact.eversmoking_ring_of_sulfur"];
+
+    const first = applyOk(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "ability.basic_water_magic",
+      optionIndex: 0,
+      target: { type: "none" }
+    });
+    expect(first.players.p1.permanents).toEqual(["ability.basic_water_magic"]);
+
+    const second = applyOk(first, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "artifact.eversmoking_ring_of_sulfur",
+      optionIndex: 0, // the ENTER_PLAY (income) side, not the crack-open side
+      target: { type: "none" }
+    });
+    expect(second.players.p1.permanents).toEqual(["artifact.eversmoking_ring_of_sulfur"]);
+    expect(second.players.p1.discard).toContain("ability.basic_water_magic");
+    expect(activeSchoolFetches(second, "p1")).toEqual([]);
   });
 
   it("gives matching spells +1 power while a School of Magic is in play", () => {

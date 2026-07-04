@@ -28,29 +28,29 @@ function basicSchoolMagic(school: Exclude<SpellSchool, "any">): CardLibrary[stri
     id: `ability.basic_${school}_magic`,
     name: `Basic ${schoolName} Magic`,
     kind: "ability",
-    timing: "instant",
+    // A Permanent, like the war machines, income artifacts and advanced School
+    // of Magic abilities: option 0 enters play and occupies the single permanent
+    // slot, so playing another permanent discards it (and vice versa) — a player
+    // can never hold two permanents at once.
+    timing: "ongoing",
     abilityClass: "magic",
+    permanent: true,
+    permanentEffect: { schoolFetch: school },
     tags: [
       "ability",
       "magic-school",
+      "permanent",
       `Permanent: Instead of Searching the Spell deck, find the first ${schoolName} Magic spell in it and take it into your hand. Then, reshuffle the deck. Expert: +3 Power for ${article} ${schoolName} Magic spell.`
     ],
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
+          // Enter play as the owner's permanent; the school-fetch runs only
+          // while it sits in the slot (permanentEffect.schoolFetch, read by
+          // activeSchoolFetches), so replacing it stops the fetch.
           label: `Permanent: fetch ${schoolName} spells instead of searching`,
-          effect: {
-            type: "CREATE_ACTIVE_EFFECT",
-            effect: {
-              name: `Basic ${schoolName} Magic`,
-              scope: "player",
-              duration: { type: "permanent" },
-              polarity: "positive",
-              removable: false,
-              modifiers: [{ type: "SPELL_SCHOOL_FETCH", school }]
-            }
-          }
+          effect: { type: "ENTER_PLAY" }
         },
         {
           label: `+3 Power for ${article} ${schoolName} Magic spell`,

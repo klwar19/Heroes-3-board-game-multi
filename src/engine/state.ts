@@ -2247,6 +2247,14 @@ export type PermanentEffectDefinition = {
    */
   resourceRoundGain?: { resource: ResourceKind; amount: number };
   /**
+   * Basic School of Magic abilities (Basic Fire/Earth/Water/Air Magic): while
+   * the card is in play, the owner fetches the first spell of this school from
+   * the Spell deck instead of Searching it. Like every permanent it occupies the
+   * single permanent slot, so the fetch stops the moment the card is replaced or
+   * discarded (read via `activeSchoolFetches`).
+   */
+  schoolFetch?: Exclude<SpellSchool, "any">;
+  /**
    * Pandora's Box "You can have up to 3 permanent cards played at a time,
    * including this one": while in play, the owner's permanent limit becomes
    * this number instead of the printed one.
