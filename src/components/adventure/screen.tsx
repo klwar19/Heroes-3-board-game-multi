@@ -4280,18 +4280,9 @@ function GameOptionsPanel({
   return (
     <div className="gameOptions" aria-label="Game options">
       <header className="gameOptionsHead">
-        <div className="gameOptionsHeadText">
-          <span className="gameOptionsEyebrow">⚜ Fan-made house-rule edition · BINH</span>
-          <h3>Game Setup</h3>
-          <small className="gameOptionsHeadSub">Pick a mode, toggle the house rules, and set up your army.</small>
-        </div>
-        <img
-          alt=""
-          aria-hidden="true"
-          className="gameOptionsHeadArt"
-          draggable={false}
-          src={assetUrl("/assets/setup-minotaur-crusader.webp")}
-        />
+        <span className="gameOptionsEyebrow">⚜ Fan-made house-rule edition · BINH</span>
+        <h3>Game Setup</h3>
+        <small className="gameOptionsHeadSub">Pick a mode, toggle the house rules, and set up your army.</small>
       </header>
 
       <nav className="optionTabs" role="tablist" aria-label="Setup sections">

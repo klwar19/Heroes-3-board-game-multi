@@ -14383,9 +14383,18 @@ img.cardBack {
    Game Setup — tabbed, olden-era Heroes styling (fan-made BINH edition)
    =========================================================================== */
 
+/* The whole Game-Setup window is backed by the Homm3BG Minotaur + Crusader art
+   (transparent PNG → webp). It is a CSS background layer, so it always paints
+   BEHIND the panel's text/controls; a dark veil gradient (the first, frontmost
+   background layer) sits over the art to keep every option readable. Anchored
+   bottom-right and fit to height so the two figures stay whole; a soft radial
+   in the top-left keeps the title area especially clear. */
 .gameOptions {
   position: relative;
   background:
+    linear-gradient(180deg, rgba(24, 17, 10, 0.9) 0%, rgba(24, 17, 10, 0.8) 40%, rgba(20, 14, 8, 0.86) 100%),
+    radial-gradient(circle at 20% 12%, rgba(24, 17, 10, 0.86), transparent 55%),
+    url("/assets/setup-bg-minotaur-crusader.webp") right bottom / auto 100% no-repeat,
     radial-gradient(circle at 15% 0%, rgba(255, 214, 120, 0.06), transparent 45%),
     linear-gradient(180deg, rgba(41, 31, 18, 0.96), rgba(26, 19, 11, 0.97));
   border: 1px solid rgba(220, 175, 95, 0.42);
@@ -14394,53 +14403,16 @@ img.cardBack {
 }
 
 .gameOptionsHead {
-  position: relative;
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 12px;
-  min-height: 96px;
-  padding-bottom: 8px;
-  overflow: hidden;
-  border-bottom: 1px solid rgba(220, 175, 95, 0.22);
-}
-
-.gameOptionsHeadText {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  /* Keep title text clear of the art no matter how narrow the panel gets. */
-  max-width: calc(100% - 150px);
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(220, 175, 95, 0.22);
 }
 
 .gameOptionsHeadSub {
   font-size: 11px;
   color: #b39a72;
-}
-
-/* The Minotaur + Crusader flourish (Homm3BG art, transparent PNG → webp). It
-   sits in the header's right margin, is pointer-transparent, and fades out on
-   its left edge so it decorates the banner without ever covering the title. */
-.gameOptionsHeadArt {
-  flex: 0 0 auto;
-  align-self: flex-end;
-  height: 118px;
-  width: auto;
-  margin-bottom: -8px;
-  pointer-events: none;
-  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.55));
-  -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 26%);
-  mask-image: linear-gradient(90deg, transparent 0%, #000 26%);
-}
-
-@media (max-width: 620px) {
-  .gameOptionsHeadArt {
-    display: none;
-  }
-
-  .gameOptionsHeadText {
-    max-width: 100%;
-  }
 }
 
 .gameOptionsEyebrow {
