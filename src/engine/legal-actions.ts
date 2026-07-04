@@ -272,8 +272,22 @@ export function standingSpellPower(state: GameState, playerId: PlayerId, card: C
   return bonus;
 }
 
-/** Whether the player can pay an option's card cost from hand right now. */
-function canAffordCardCost(state: GameState, playerId: PlayerId, cardId: string, cost?: CardPlayCost): boolean {
+/**
+ * Whether the player can pay an option's card cost from hand right now.
+ *
+ * `allowSpellBookPower` (the lethal-save window) also lets the Spell Book's
+ * once-per-turn +1 Power source count toward a value/discard cost — one stashed
+ * Book Spell may be spent for Power exactly like the "+1 Power" discard budget.
+ * Without it a silver/gold save was unaffordable whenever the missing Power sat
+ * in the Book instead of the hand (Magic Arrow in hand, a Spell in the Book).
+ */
+function canAffordCardCost(
+  state: GameState,
+  playerId: PlayerId,
+  cardId: string,
+  cost?: CardPlayCost,
+  allowSpellBookPower = false
+): boolean {
   const player = state.players[playerId];
   if (!player) {
     return false;
@@ -298,12 +312,22 @@ function canAffordCardCost(state: GameState, playerId: PlayerId, cardId: string,
     rest.splice(selfIndex, 1);
   }
 
-  const eligible =
+  const passesFilter = (id: CardId) =>
     cost.costCardFilter === "spell"
-      ? rest.filter((id) => cardLibrary[id]?.kind === "spell")
+      ? cardLibrary[id]?.kind === "spell"
       : cost.costCardFilter === "power-source"
-        ? rest.filter((id) => cardCanBoostPower(cardLibrary[id]))
-        : rest;
+        ? cardCanBoostPower(cardLibrary[id])
+        : true;
+
+  const eligible = rest.filter(passesFilter);
+
+  // Spell Book (house rule): one usable Book Spell may pay for Power, capped at
+  // the once-per-turn Book Power budget. A Book Spell is always a valid power
+  // source (a Spell counts as +1), and never the very card being played.
+  const bookPowerSourceId =
+    allowSpellBookPower && spellBookRuleEnabled(state) && spellBookPowerAvailable(player)
+      ? (player.spellBook ?? []).find((id) => id !== cardId && passesFilter(id)) ?? null
+      : null;
 
   // Power-value cost (Sorrow): the standing spell Power plus the full printed
   // Power of every eligible power-source card in hand must reach the threshold.
@@ -312,11 +336,12 @@ function canAffordCardCost(state: GameState, playerId: PlayerId, cardId: string,
     const schools = card?.spellSchools ?? [];
     const standing = card ? standingSpellPower(state, playerId, card) : 0;
     const fromCards = eligible.reduce((sum, id) => sum + spellPowerValueOfCard(cardLibrary[id], schools), 0);
-    return standing + fromCards >= cost.powerCost;
+    const fromBook = bookPowerSourceId ? spellPowerValueOfCard(cardLibrary[bookPowerSourceId], schools) : 0;
+    return standing + fromCards + fromBook >= cost.powerCost;
   }
 
   const needed = cost.discardCards ?? 0;
-  return eligible.length >= needed;
+  return eligible.length + (bookPowerSourceId ? 1 : 0) >= needed;
 }
 
 /** Grade ordering shared by spell-immunity and Magic Mirror grade gates. */
@@ -4434,7 +4459,19 @@ function getLethalSaveReactions(
     // Archangels' ability do not.
     const spellLimitReached = player.combatStats.spellsCastThisRound >= spellLimitFor(state, player);
 
-    for (const cardId of new Set(player.hand)) {
+    // Spell Book (house rule): a Resurrection Spell you stashed in the Book is
+    // still yours to cast, so the save window offers it exactly like a hand
+    // Spell (flagged `fromSpellBook` so it cycles Book → discard on resolution).
+    // Without this a Book Resurrection was never offered — you could not save a
+    // unit with a Spell you had set aside for that very emergency.
+    const saveSources: { cardId: CardId; fromSpellBook?: true }[] = [
+      ...[...new Set(player.hand)].map((cardId) => ({ cardId })),
+      ...(spellBookRuleEnabled(state)
+        ? [...new Set(player.spellBook)].map((cardId) => ({ cardId, fromSpellBook: true as const }))
+        : [])
+    ];
+
+    for (const { cardId, fromSpellBook } of saveSources) {
       const card = cards[cardId];
       if (!card || card.implementationStatus !== "implemented" || card.effect.type !== "CHOOSE_ONE") {
         continue;
@@ -4450,16 +4487,18 @@ function getLethalSaveReactions(
         ) {
           continue;
         }
-        if (!canAffordCardCost(state, playerId, cardId, option.cost)) {
+        // The Spell Book's once-per-turn +1 Power may help pay a lethal save.
+        if (!canAffordCardCost(state, playerId, cardId, option.cost, true)) {
           continue;
         }
         reactions.push(
-          makeReactionAction(`${card.name}: ${option.label}`, {
+          makeReactionAction(`${card.name}: ${option.label}${fromSpellBook ? " (Spell Book)" : ""}`, {
             type: "PLAY_REACTION",
             playerId,
             cardId,
             mode: "basic",
-            optionIndex
+            optionIndex,
+            ...(fromSpellBook ? { fromSpellBook: true } : {})
           })
         );
       }

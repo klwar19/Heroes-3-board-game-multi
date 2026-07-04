@@ -263,9 +263,12 @@ export const NECROPOLIS_FACTION_ID = "necropolis";
 
 /**
  * Every card the player currently holds, across every zone they could later
- * draw it back from: hand, draw pile, discard, cards held in play (ongoing
+ * draw it back from: hand, draw pile, discard, the Spell Book (house-rule stash
+ * — a Book Spell is still owned and re-castable), cards held in play (ongoing
  * spells/abilities), spell scrolls, and any permanent effect already on the
- * table. Used to stop a hero ever owning two copies of the same Ability/Spell.
+ * table. Used to stop a hero ever owning two copies of the same Ability/Spell —
+ * so Basic X Magic and every shared-deck draw/search skip a Spell already stashed
+ * in the Book, not just one in hand/deck/discard.
  */
 function playerHeldCardIds(state: GameState, playerId: PlayerId): Set<CardId> {
   const player = state.players[playerId];
@@ -273,7 +276,7 @@ function playerHeldCardIds(state: GameState, playerId: PlayerId): Set<CardId> {
     return new Set();
   }
 
-  const held = new Set<CardId>([...player.hand, ...player.deck, ...player.discard]);
+  const held = new Set<CardId>([...player.hand, ...player.deck, ...player.discard, ...(player.spellBook ?? [])]);
   for (const ongoing of player.ongoingCards ?? []) {
     held.add(ongoing.cardId);
   }

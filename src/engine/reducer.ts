@@ -8688,7 +8688,8 @@ function payOptionCardCost(
   playedCard: CardDefinition,
   cost: CardPlayCost | undefined,
   costCardIds: CardId[] | undefined,
-  cards: CardLibrary
+  cards: CardLibrary,
+  allowSpellBookPower = false
 ): number {
   const cardName = playedCard.name;
   const paying = costCardIds ?? [];
@@ -8735,6 +8736,19 @@ function payOptionCardCost(
   for (const cardId of player.hand) {
     handCounts.set(cardId, (handCounts.get(cardId) ?? 0) + 1);
   }
+  // Spell Book (house rule): in the lethal-save window, ONE stashed Book Spell
+  // may pay for Power — the once-per-turn Book Power budget, the same limit as
+  // the "+1 Power" discard. Every other cost card must come from the hand.
+  const bookRuleOn = allowSpellBookPower && spellBookRuleEnabled(state) && spellBookPowerAvailable(player);
+  const bookCounts = new Map<string, number>();
+  if (bookRuleOn) {
+    for (const cardId of player.spellBook ?? []) {
+      bookCounts.set(cardId, (bookCounts.get(cardId) ?? 0) + 1);
+    }
+  }
+  // Payment source, index-aligned with `paying`: which zone each cost card left.
+  const paySources: ("hand" | "book")[] = [];
+  let bookPaid = 0;
   for (const cardId of paying) {
     if (cost.costCardFilter === "spell" && cards[cardId]?.kind !== "spell") {
       throw new Error(`${cardName} can only be paid with Spell cards.`);
@@ -8742,11 +8756,25 @@ function payOptionCardCost(
     if (cost.costCardFilter === "power-source" && !cardCanBoostPower(cards[cardId])) {
       throw new Error(`${cardName} can only be paid with Power statistics or Spell cards.`);
     }
-    const left = handCounts.get(cardId) ?? 0;
-    if (left <= 0) {
-      throw new Error("Cost cards must come from your hand.");
+    const handLeft = handCounts.get(cardId) ?? 0;
+    if (handLeft > 0) {
+      handCounts.set(cardId, handLeft - 1);
+      paySources.push("hand");
+      continue;
     }
-    handCounts.set(cardId, left - 1);
+    // Fall back to the Book, capped at one Spell (the Book Power budget).
+    const bookLeft = bookCounts.get(cardId) ?? 0;
+    if (bookRuleOn && bookPaid === 0 && bookLeft > 0 && cards[cardId]?.kind === "spell") {
+      bookCounts.set(cardId, bookLeft - 1);
+      bookPaid += 1;
+      paySources.push("book");
+      continue;
+    }
+    throw new Error(
+      bookPaid > 0
+        ? "Only one Spell Book Spell may help pay a save per turn — other cost cards must come from your hand."
+        : "Cost cards must come from your hand."
+    );
   }
 
   // Power-value cost (Sorrow): the caster's standing spell Power plus the full
@@ -8767,14 +8795,23 @@ function payOptionCardCost(
     }
   }
 
-  for (const cardId of paying) {
-    const index = player.hand.indexOf(cardId);
-    player.hand.splice(index, 1);
+  paying.forEach((cardId, payIndex) => {
+    const fromBook = paySources[payIndex] === "book";
+    const zone = fromBook ? player.spellBook : player.hand;
+    const index = zone.indexOf(cardId);
+    if (index !== -1) {
+      zone.splice(index, 1);
+    }
     if (cost.removeCostCards) {
       player.removed.push(cardId);
     } else {
       player.discard.push(cardId);
     }
+  });
+  // Spending a Book Spell for Power consumes the once-per-turn Book Power budget
+  // (shared with the "+1 Power" discard, so it can't be doubled up in a turn).
+  if (bookPaid > 0) {
+    player.combatStats.spellBookPowerUsedThisTurn = true;
   }
 
   // Power sources spent to pay a Power-value cost (Sorrow's silver/gold,
@@ -9036,7 +9073,17 @@ function applyReactionPlayCore(
 
   const costCardsPaid = play.fromScroll
     ? 0
-    : payOptionCardCost(state, playerId, card, option?.cost, play.costCardIds, cards);
+    : // A lethal save (Resurrection Spell / specialty) may draw one of its Power
+      // cost cards from the Spell Book — the once-per-turn Book Power budget.
+      payOptionCardCost(
+        state,
+        playerId,
+        card,
+        option?.cost,
+        play.costCardIds,
+        cards,
+        effect.type === "CANCEL_LETHAL_ATTACK"
+      );
 
   let effectAmount = getEffectAmount(effect, mode);
   // An Empowered ability's Expert side spends no crown.
