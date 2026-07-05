@@ -733,6 +733,7 @@ export default function Home() {
   // Last round whose Astrologers proclamation this client already popped, so the
   // card resurfaces once per round (not on every action) and never on reconnect.
   const seenAstrologerRoundRef = useRef<number | null>(null);
+  const seenAstrologerDrawIdsRef = useRef<Set<string>>(new Set());
   // Event draws (Fortress deck) already popped as the big EventDrawnOverlay —
   // one pop per draw, never replayed on reconnect.
   const seenEventDrawIdsRef = useRef<Set<string>>(new Set());
@@ -921,6 +922,9 @@ export default function Home() {
     const mapDiceEvents = nextState.eventLog.filter(
       (event): event is Extract<GameEvent, { type: "ADVENTURE_DICE_ROLLED" }> => event.type === "ADVENTURE_DICE_ROLLED"
     );
+    const astrologerDrawEvents = nextState.eventLog.filter(
+      (event): event is Extract<GameEvent, { type: "ASTROLOGERS_DRAWN" }> => event.type === "ASTROLOGERS_DRAWN"
+    );
     const turnEvents = nextState.eventLog.filter(
       (event): event is Extract<GameEvent, { type: "TURN_STARTED" }> => event.type === "TURN_STARTED"
     );
@@ -967,6 +971,7 @@ export default function Home() {
       seenParallelStopIdsRef.current = new Set(
         nextState.eventLog.filter((event) => event.type === "PARALLEL_TURNS_STOPPED").map((event) => event.id)
       );
+      seenAstrologerDrawIdsRef.current = new Set(astrologerDrawEvents.map((event) => event.id));
       // A fresh connection joins mid-game without replaying every past turn's
       // sunrise: the first snapshot's TURN_STARTED events count as already seen.
       seenTurnIdsRef.current = new Set(turnEvents.map((event) => event.id));
@@ -994,6 +999,7 @@ export default function Home() {
       setMapNotice({ current: null, queue: [] });
       setFirstRoll(null);
       setNewDay({ current: null, queue: [] });
+      setAstrologerCue(null);
       setEventCue(null);
       deferredStartDrawRef.current = null;
       pendingDiceFeedRef.current = { items: [], sounds: [] };
@@ -1238,6 +1244,42 @@ export default function Home() {
           winnerName: nextState.players[event.winnerPlayerId]?.name ?? event.winnerPlayerId,
           order
         });
+      }
+
+      const freshAstrologerDraws = astrologerDrawEvents.filter((event) => !seenAstrologerDrawIdsRef.current.has(event.id));
+      for (const event of astrologerDrawEvents) {
+        seenAstrologerDrawIdsRef.current.add(event.id);
+      }
+      const latestAstrologerDraw = freshAstrologerDraws[freshAstrologerDraws.length - 1];
+      if (latestAstrologerDraw && !isGameStart) {
+        const card = astrologersCardDefinitions[latestAstrologerDraw.cardId];
+        if (card) {
+          let reshuffle: { discarded: number; drawn: number } | undefined;
+          for (let i = nextState.eventLog.length - 1; i >= 0; i -= 1) {
+            const logEvent = nextState.eventLog[i];
+            if (
+              logEvent.type === "ASTROLOGERS_HAND_RESHUFFLED" &&
+              logEvent.round === latestAstrologerDraw.round &&
+              logEvent.cardId === latestAstrologerDraw.cardId &&
+              logEvent.playerId === viewerRef.current
+            ) {
+              reshuffle = { discarded: logEvent.discarded, drawn: logEvent.drawn };
+              break;
+            }
+          }
+          seenAstrologerRoundRef.current = latestAstrologerDraw.round;
+          setAstrologerCue({
+            id: latestAstrologerDraw.id,
+            cardId: latestAstrologerDraw.cardId,
+            name: card.name,
+            text: card.text,
+            image: card.image,
+            expansion: card.expansion,
+            ongoing: card.ongoing,
+            round: latestAstrologerDraw.round,
+            ...(reshuffle ? { reshuffle } : {})
+          });
+        }
       }
 
       // New day: the sunrise cinematic at the start of every turn, driven off

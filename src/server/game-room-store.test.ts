@@ -2,7 +2,17 @@ import { existsSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { AFK_IDLE_MS, applyAction, createAdventureGameState, createAdventureLobbyState, getAfkState, getLegalActions } from "@/engine";
+import {
+  AFK_IDLE_MS,
+  applyAction,
+  createAdventureGameState,
+  createAdventureLobbyState,
+  getAfkState,
+  getLegalActions,
+  type GameAction,
+  type GameState,
+  type PlayerId
+} from "@/engine";
 import {
   closeRoom,
   createRoom,
@@ -27,6 +37,28 @@ const persistDir = process.env.HOMM3BG_ROOM_DIR ?? join(tmpdir(), "homm3bg-rooms
 
 function entryFor(roomId: string, viewerClientId?: string) {
   return listRooms(viewerClientId).find((entry) => entry.roomId === roomId) ?? null;
+}
+
+function totalResources(state: GameState, playerId: PlayerId): number {
+  const resources = state.players[playerId]?.resources;
+  return resources ? resources.gold + resources.buildingMaterials + resources.valuables : 0;
+}
+
+function whiteRavenState(seed: string): GameState {
+  const state = createAdventureGameState({ seed, difficulty: "normal", rollFirstPlayer: false });
+  state.decks.astrologers.drawPile = ["astrologers.white_raven"];
+  state.activeEffects = [];
+  for (const playerId of ["p1", "p2"] as const) {
+    state.players[playerId].hand = [];
+    state.players[playerId].morale = 0;
+    state.players[playerId].canMulligan = false;
+    state.players[playerId].needsHandRefresh = false;
+  }
+  return state;
+}
+
+function submitAs(roomId: string, action: GameAction, actor?: { clientId?: string; userId?: string }) {
+  return submitRoomAction(roomId, action, actor?.clientId, actor?.userId);
 }
 
 describe("room recovery (restoreRoom)", () => {
@@ -391,6 +423,110 @@ describe("room membership through the store", () => {
     expect(allowed.result.errors).toHaveLength(0);
     expect(allowed.snapshot.state.players.p1.resources.gold).toBe(goldBefore + 1);
     expect(allowed.snapshot.state.adventure!.pendingVisit).toBeNull();
+  });
+});
+
+describe("room Astrologers resolution", () => {
+  const roomModes: {
+    label: string;
+    hosted: boolean;
+    ranked: boolean;
+    actors: { p1?: { clientId?: string; userId?: string }; p2?: { clientId?: string; userId?: string } };
+  }[] = [
+    { label: "open ranked guest table", hosted: false, ranked: true, actors: {} },
+    {
+      label: "hosted normal guest table",
+      hosted: true,
+      ranked: false,
+      actors: { p1: { clientId: "c1" }, p2: { clientId: "c2" } }
+    },
+    {
+      label: "hosted ranked account table",
+      hosted: true,
+      ranked: true,
+      actors: {
+        p1: { clientId: "c1", userId: "u_p1" },
+        p2: { clientId: "c2", userId: "u_p2" }
+      }
+    }
+  ];
+
+  for (const mode of roomModes) {
+    it(`resolves White Raven for every seat in a ${mode.label}`, () => {
+      const roomId = uniqueRoom(`white-raven-${mode.label.replace(/\s+/g, "-")}`);
+      createRoom({ roomId, name: mode.label, ranked: mode.ranked });
+      restoreRoom(roomId, whiteRavenState(roomId));
+
+      submitAs(roomId, { type: "JOIN_ROOM", clientId: "c1", name: "P1" }, mode.actors.p1);
+      submitAs(roomId, { type: "JOIN_ROOM", clientId: "c2", name: "P2" }, mode.actors.p2);
+      if (mode.hosted) {
+        submitAs(roomId, { type: "SET_ROOM_HOSTED", clientId: "c1", hosted: true }, mode.actors.p1);
+        submitAs(roomId, { type: "ASSIGN_SEAT", clientId: "c1", targetClientId: "c1", seat: "p1" }, mode.actors.p1);
+        submitAs(roomId, { type: "ASSIGN_SEAT", clientId: "c1", targetClientId: "c2", seat: "p2" }, mode.actors.p1);
+      }
+
+      const before = getRoomSnapshot(roomId).state;
+      const p1Before = totalResources(before, "p1");
+      const p2Before = totalResources(before, "p2");
+
+      expect(submitAs(roomId, { type: "END_TURN", playerId: "p1" }, mode.actors.p1).result.errors).toHaveLength(0);
+      const wrapped = submitAs(roomId, { type: "END_TURN", playerId: "p2" }, mode.actors.p2);
+      expect(wrapped.result.errors).toHaveLength(0);
+
+      const final = wrapped.snapshot.state;
+      expect(final.room?.ranked).toBe(mode.ranked);
+      expect(final.room?.hosted ?? false).toBe(mode.hosted);
+      expect(final.round).toBe(2);
+      expect(final.adventure?.astrologers?.activeCardId).toBe("astrologers.white_raven");
+      expect(final.adventure?.eventResolution ?? null).toBeNull();
+      expect(final.adventure?.pendingVisit ?? null).toBeNull();
+      expect(totalResources(final, "p1")).toBeGreaterThan(p1Before);
+      expect(totalResources(final, "p2")).toBeGreaterThan(p2Before);
+      expect(final.eventLog.some((event) => event.type === "ADVENTURE_DICE_ROLLED" && event.playerId === "p1")).toBe(true);
+      expect(final.eventLog.some((event) => event.type === "ADVENTURE_DICE_ROLLED" && event.playerId === "p2")).toBe(true);
+    });
+  }
+
+  it("passes White Raven's die choice from player 1 to player 2 in a hosted room", () => {
+    const roomId = uniqueRoom("white-raven-choice-chain");
+    const state = whiteRavenState(roomId);
+    state.players.p1.morale = 1;
+    state.players.p2.morale = 1;
+    createRoom({ roomId, name: "White Raven chain", ranked: false });
+    restoreRoom(roomId, state);
+
+    const p1 = { clientId: "c1" };
+    const p2 = { clientId: "c2" };
+    submitAs(roomId, { type: "JOIN_ROOM", clientId: "c1", name: "P1" }, p1);
+    submitAs(roomId, { type: "JOIN_ROOM", clientId: "c2", name: "P2" }, p2);
+    submitAs(roomId, { type: "SET_ROOM_HOSTED", clientId: "c1", hosted: true }, p1);
+    submitAs(roomId, { type: "ASSIGN_SEAT", clientId: "c1", targetClientId: "c1", seat: "p1" }, p1);
+    submitAs(roomId, { type: "ASSIGN_SEAT", clientId: "c1", targetClientId: "c2", seat: "p2" }, p1);
+
+    expect(submitAs(roomId, { type: "END_TURN", playerId: "p1" }, p1).result.errors).toHaveLength(0);
+    const opened = submitAs(roomId, { type: "END_TURN", playerId: "p2" }, p2);
+    expect(opened.result.errors).toHaveLength(0);
+    expect(opened.snapshot.state.adventure?.pendingVisit?.playerId).toBe("p1");
+    expect(opened.snapshot.state.adventure?.eventResolution?.round).toBe(2);
+    expect(getLegalActions(opened.snapshot.state, "p2")).toEqual([]);
+
+    const p1TakeDie = getLegalActions(opened.snapshot.state, "p1").find(
+      (legal) => legal.action.type === "RESOLVE_VISIT_STEP" && legal.action.optionIndex === 0
+    );
+    expect(p1TakeDie).toBeTruthy();
+    const handedToP2 = submitAs(roomId, p1TakeDie!.action, p1);
+    expect(handedToP2.result.errors).toHaveLength(0);
+    expect(handedToP2.snapshot.state.adventure?.pendingVisit?.playerId).toBe("p2");
+    expect(getLegalActions(handedToP2.snapshot.state, "p1")).toEqual([]);
+
+    const p2TakeDie = getLegalActions(handedToP2.snapshot.state, "p2").find(
+      (legal) => legal.action.type === "RESOLVE_VISIT_STEP" && legal.action.optionIndex === 0
+    );
+    expect(p2TakeDie).toBeTruthy();
+    const done = submitAs(roomId, p2TakeDie!.action, p2);
+    expect(done.result.errors).toHaveLength(0);
+    expect(done.snapshot.state.adventure?.pendingVisit ?? null).toBeNull();
+    expect(done.snapshot.state.adventure?.eventResolution ?? null).toBeNull();
   });
 });
 
