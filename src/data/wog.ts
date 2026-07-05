@@ -136,14 +136,14 @@ export const wogUnitDefinitions: Record<WogUnitId, UnitDefinition> = {
     tier: "silver",
     type: "ranged",
     neutral: {
-      attack: 4,
+      attack: 3,
       defense: 1,
       health: 4,
       initiative: 6,
       cost: { gold: 13 },
-      abilities: ["ignore-combat-penalties", "wog-war-zealot-mirror"],
+      abilities: ["ignore-combat-penalties", "wog-war-zealot-mirror", "wog-attack-when-attacking-1"],
       abilityText:
-        "[unit_passive] Ignore the combat penalty against adjacent units. This unit has Magic Mirror at all times.",
+        "[unit_passive] Ignore the combat penalty against adjacent units. This unit has Magic Mirror at all times. [unit_attack] When this unit attacks, it gains +1 [attack].",
       cardImage: "/assets/units-neutral-silver-wog_war_zealot.webp"
     },
     wikiUrl: "https://heroes.thelazy.net/index.php/In_the_Wake_of_Gods/War_Zealot",
@@ -156,7 +156,7 @@ export const wogUnitDefinitions: Record<WogUnitId, UnitDefinition> = {
     tier: "silver",
     type: "ranged",
     neutral: {
-      attack: 4,
+      attack: 3,
       defense: 1,
       health: 5,
       initiative: 8,
@@ -179,17 +179,18 @@ export const wogUnitDefinitions: Record<WogUnitId, UnitDefinition> = {
     tier: "silver",
     type: "ranged",
     neutral: {
-      attack: 4,
+      attack: 3,
       defense: 0,
-      health: 6,
+      health: 5,
       initiative: 9,
       cost: { gold: 15 },
       // engine: `ignore-all-combat-penalties` waives the range/adjacent penalties
       // on this unit's OWN attack only (never its Retaliation Attack) — the same
       // [unit_attack] scope as the base Sharpshooters/Magi/Halflings that share the
-      // ability; the "1 damage to an adjacent attacker" (wog-fire-shield-1) is the passive.
-      abilities: ["ignore-all-combat-penalties", "wog-fire-shield-1"],
-      abilityText: "[unit_passive] Ignore combat penalties. An adjacent attacker takes 1 [damage] after attacking this unit.",
+      // ability; the "1 damage to an adjacent attacker" (wog-fire-shield-1) is the passive;
+      // `wog-attack-when-attacking-1` adds +1 Attack on its OWN attack only.
+      abilities: ["ignore-all-combat-penalties", "wog-fire-shield-1", "wog-attack-when-attacking-1"],
+      abilityText: "[unit_passive] Ignore combat penalties. An adjacent attacker takes 1 [damage] after attacking this unit. [unit_attack] When this unit attacks, it gains +1 [attack].",
       cardImage: "/assets/units-neutral-silver-wog_lava_sharpshooter.webp"
     },
     wikiUrl: "https://heroes.thelazy.net/index.php/In_the_Wake_of_Gods/Lava_Sharpshooter",
@@ -243,7 +244,7 @@ export const wogUnitDefinitions: Record<WogUnitId, UnitDefinition> = {
     neutral: {
       attack: 5,
       defense: 2,
-      health: 7,
+      health: 6,
       initiative: 11,
       cost: { gold: 25 },
       abilities: ["gorgon-death-stare"],
@@ -262,7 +263,7 @@ export const wogUnitDefinitions: Record<WogUnitId, UnitDefinition> = {
     neutral: {
       attack: 5,
       defense: 1,
-      health: 8,
+      health: 7,
       initiative: 9,
       cost: { gold: 22 },
       // engine: a NORMAL melee attacker — it rolls its Attack die and its blow is

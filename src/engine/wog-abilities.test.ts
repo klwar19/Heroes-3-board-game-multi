@@ -242,6 +242,81 @@ describe("WOG abilities in two-player combat", () => {
     );
   });
 
+  it("War Zealot / Lava Sharpshooter gain +1 Attack on their OWN attack, but NOT on Retaliation", () => {
+    // Own attack: a War Zealot (Attack 3) strikes a Defense-0 target with a "0" die.
+    // The +1 "when this unit attacks" bonus makes the blow land for 4, not 3.
+    let own = createInitialGameState("wog-zealot-own-attack");
+    const zealot = installWogUnit(own, "unit_p1_marksmen", "wog.war_zealot");
+    const target = own.combat!.units.unit_p2_skeletons;
+    zealot.type = "ground"; // isolate the melee blow from any ranged penalty machinery
+    zealot.position = 8;
+    target.position = 9;
+    target.defense = 0;
+    target.defenseToken = false;
+    target.maxHealth = 20;
+    target.retaliatedThisRound = true; // no Retaliation Attack to muddy the reading
+    expect(zealot.attack).toBe(3);
+    own.combat!.dice.scriptedRolls = Array.from({ length: 10 }, () => 0);
+    own.combat!.dice.rollCount = 0;
+    activate(own, "p1", zealot.id);
+    own = passReactions(applyOk(own, { type: "ATTACK_UNIT", playerId: "p1", attackerId: zealot.id, defenderId: target.id }));
+    expect(own.combat!.units[target.id].damage).toBe(4);
+
+    // CONTROL (mutation): strip the ability id and the very same attack lands for 3.
+    let control = createInitialGameState("wog-zealot-own-attack-control");
+    const zealot2 = installWogUnit(control, "unit_p1_marksmen", "wog.war_zealot");
+    zealot2.abilities = zealot2.abilities.filter((id) => id !== "wog-attack-when-attacking-1");
+    const target2 = control.combat!.units.unit_p2_skeletons;
+    zealot2.type = "ground";
+    zealot2.position = 8;
+    target2.position = 9;
+    target2.defense = 0;
+    target2.defenseToken = false;
+    target2.maxHealth = 20;
+    target2.retaliatedThisRound = true;
+    control.combat!.dice.scriptedRolls = Array.from({ length: 10 }, () => 0);
+    control.combat!.dice.rollCount = 0;
+    activate(control, "p1", zealot2.id);
+    control = passReactions(applyOk(control, { type: "ATTACK_UNIT", playerId: "p1", attackerId: zealot2.id, defenderId: target2.id }));
+    expect(control.combat!.units[target2.id].damage).toBe(3);
+
+    // Retaliation: an enemy attacks the Zealot; the Zealot's Retaliation Attack must
+    // NOT receive the +1 — it lands for exactly its printed Attack 3, not 4.
+    let ret = createInitialGameState("wog-zealot-retaliation");
+    const zealot3 = installWogUnit(ret, "unit_p2_skeletons", "wog.war_zealot");
+    const enemy = ret.combat!.units.unit_p1_marksmen;
+    zealot3.type = "ground";
+    zealot3.position = 9;
+    zealot3.defense = 0;
+    zealot3.defenseToken = false;
+    zealot3.maxHealth = 20;
+    zealot3.retaliatedThisRound = false;
+    enemy.type = "ground";
+    enemy.position = 8;
+    enemy.attack = 2;
+    enemy.defense = 0;
+    enemy.defenseToken = false;
+    enemy.maxHealth = 20;
+    enemy.damage = 0;
+    enemy.abilities = [];
+    ret.combat!.dice.scriptedRolls = Array.from({ length: 12 }, () => 0);
+    ret.combat!.dice.rollCount = 0;
+    activate(ret, "p1", enemy.id);
+    ret = passReactions(applyOk(ret, { type: "ATTACK_UNIT", playerId: "p1", attackerId: enemy.id, defenderId: zealot3.id }));
+    // The Zealot really did retaliate...
+    expect(
+      ret.eventLog.some(
+        (event) => event.type === "ATTACK_ROLLED" && event.attackerId === zealot3.id && event.isRetaliation === true
+      )
+    ).toBe(true);
+    // ...and its retaliation dealt 3 (Attack 3, die 0, no +1), not the own-attack 4.
+    expect(ret.combat!.units[enemy.id].damage).toBe(3);
+
+    // Both re-balanced units carry the shared ability id (data wiring guard).
+    expect(coreUnitDefinitions["wog.war_zealot"].neutral!.abilities).toContain("wog-attack-when-attacking-1");
+    expect(coreUnitDefinitions["wog.lava_sharpshooter"].neutral!.abilities).toContain("wog-attack-when-attacking-1");
+  });
+
   it("Fire Shield burns only when the shielded unit is ATTACKED, never on its own Retaliation", () => {
     // Scenario A: a Hell Steed ATTACKS an enemy, which strikes back. The enemy's
     // Retaliation Attack must NOT trip the Steed's Fire Shield — you burn

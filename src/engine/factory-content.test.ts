@@ -295,7 +295,11 @@ describe("Factory faction — art wired, not playable", () => {
 
   it("carries the physical-card stats/costs and single-cost Neutral sides (the redo)", () => {
     // Regression guard against the PC-guess placeholders: a few exact card values.
-    expect(coreUnitDefinitions["factory.halflings"].few).toMatchObject({ attack: 2, defense: 0, health: 2, initiative: 4, cost: { gold: 3 } });
+    // House-rule rebalance: the three bronze units' Few recruit cost is 2/3/4 gold
+    // (Halflings lv1 / Mechanics lv2 / Armadillos lv3).
+    expect(coreUnitDefinitions["factory.halflings"].few).toMatchObject({ attack: 2, defense: 0, health: 2, initiative: 4, cost: { gold: 2 } });
+    expect(coreUnitDefinitions["factory.mechanics"].few).toMatchObject({ cost: { gold: 3 } });
+    expect(coreUnitDefinitions["factory.armadillos"].few).toMatchObject({ cost: { gold: 4 } });
     expect(coreUnitDefinitions["factory.automatons"].few).toMatchObject({ attack: 3, defense: 1, health: 4, initiative: 8, cost: { gold: 6 } });
     expect(coreUnitDefinitions["factory.dreadnoughts"].pack).toMatchObject({ attack: 5, defense: 3, health: 10, initiative: 7, cost: { gold: 32, valuables: 2 } });
     expect(coreUnitDefinitions["factory.couatls"].few).toMatchObject({ cost: { gold: 18, valuables: 1 } });
@@ -358,7 +362,7 @@ describe("Factory faction — art wired, not playable", () => {
     }
     // City Hall is the "classic" gold-or-Armadillo variant (the +1 Movement guess
     // is gone); the reinforce-a-bronze option is what recruits/upgrades Armadillos.
-    expect(b["factory.city_hall"]).toMatchObject({ cost: { gold: 13, buildingMaterials: 5 }, effect: { type: "RESOURCE_ROUND_CHOICE" } });
+    expect(b["factory.city_hall"]).toMatchObject({ cost: { gold: 10, buildingMaterials: 4 }, effect: { type: "RESOURCE_ROUND_CHOICE" } });
     const cityHallEffect = b["factory.city_hall"].effect;
     expect(cityHallEffect?.type === "RESOURCE_ROUND_CHOICE" && cityHallEffect.options.some((o) => o.gold)).toBe(true);
     expect(cityHallEffect?.type === "RESOURCE_ROUND_CHOICE" && cityHallEffect.options.some((o) => o.reinforceBronzeFree)).toBe(true);

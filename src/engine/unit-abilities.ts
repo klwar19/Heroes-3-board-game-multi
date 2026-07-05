@@ -1101,6 +1101,18 @@ export function getFlatAttackBonus(unit: CombatUnitState): number {
 }
 
 /**
+ * WoG Lava Sharpshooter / War Zealot: "+N Attack when this unit attacks." A flat
+ * innate bonus on the unit's OWN attack only — the reducer gates the caller on
+ * `!isRetaliation`, so a Retaliation Attack never receives it.
+ */
+export function getOwnAttackFlatBonus(unit: CombatUnitState): number {
+  return getAbilitiesWithEffect(unit, "OWN_ATTACK_FLAT_BONUS").reduce(
+    (total, ability) => total + (ability.effect?.type === "OWN_ATTACK_FLAT_BONUS" ? ability.effect.amount : 0),
+    0
+  );
+}
+
+/**
  * Creature Bank Medusa Stores Medusas (while Stacked): the on-attack paralysis
  * inflicted by this unit's own attack, if any.
  */

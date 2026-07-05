@@ -1174,7 +1174,7 @@ export const coreBuildingDefinitions: Record<string, TownBuildingDefinition> = {
     id: "factory.city_hall",
     name: "City Hall",
     faction: "factory",
-    cost: { gold: 13, buildingMaterials: 5 },
+    cost: { gold: 10, buildingMaterials: 4 },
     effect: {
       type: "RESOURCE_ROUND_CHOICE",
       options: [

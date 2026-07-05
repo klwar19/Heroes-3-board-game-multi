@@ -267,18 +267,18 @@ const CARDS = [
   },
   {
     slug: "wog_war_zealot", name: "War Zealot", tier: "silver", type: "unit_ranged",
-    art: "wog_war_zealot.png", stats: [4, 1, 4, 6], cost: 13, fontSize: 17,
-    lines: [[g("unit_passive"), " Ignore the penalty against adjacent units."], ["This unit always has Magic Mirror."]]
+    art: "wog_war_zealot.png", stats: [3, 1, 4, 6], cost: 13, fontSize: 16,
+    lines: [[g("unit_passive"), " Ignore the penalty against adjacent units."], ["This unit always has Magic Mirror."], [g("unit_attack"), " When this unit attacks, it gains +1 ", g("attack"), "."]]
   },
   {
     slug: "wog_arctic_sharpshooter", name: "Arctic Sharpshooter", tier: "silver", type: "unit_ranged",
-    art: "wog_arctic_sharpshooter.png", stats: [4, 1, 5, 8], cost: 15, fontSize: 17,
+    art: "wog_arctic_sharpshooter.png", stats: [3, 1, 5, 8], cost: 15, fontSize: 17,
     lines: [[g("unit_passive"), " Ignore combat penalties. +1 ", g("defense")], ["against attacks from ranged units."]]
   },
   {
     slug: "wog_lava_sharpshooter", name: "Lava Sharpshooter", tier: "silver", type: "unit_ranged",
-    art: "wog_lava_sharpshooter.png", stats: [4, 0, 6, 9], cost: 15, fontSize: 17,
-    lines: [[g("unit_passive"), " Ignore combat penalties."], ["An adjacent attacker takes 1 ", g("damage"), "."]]
+    art: "wog_lava_sharpshooter.png", stats: [3, 0, 5, 9], cost: 15, fontSize: 16,
+    lines: [[g("unit_passive"), " Ignore combat penalties."], ["An adjacent attacker takes 1 ", g("damage"), "."], [g("unit_attack"), " When this unit attacks, it gains +1 ", g("attack"), "."]]
   },
   {
     slug: "wog_sylvan_centaur", name: "Sylvan Centaur", tier: "silver", type: "unit_ranged",
@@ -296,12 +296,12 @@ const CARDS = [
   },
   {
     slug: "wog_nightmare", name: "Nightmare", tier: "golden", type: "unit_ground",
-    art: "wog_nightmare.png", stats: [5, 2, 7, 11], cost: 25, fontSize: 15,
+    art: "wog_nightmare.png", stats: [5, 2, 6, 11], cost: 25, fontSize: 15,
     lines: [[g("unit_attack"), " Death Stare: after attacking, roll 2 Attack dice."], ["Two \"-1\" results reduce the target's ", g("health_points"), " to 0."]]
   },
   {
     slug: "wog_hell_steed", name: "Hell Steed", tier: "golden", type: "unit_ground",
-    art: "wog_hell_steed.png", stats: [5, 1, 8, 9], cost: 22, fontSize: 14,
+    art: "wog_hell_steed.png", stats: [5, 1, 7, 9], cost: 22, fontSize: 14,
     lines: [
       [g("unit_passive"), " Immune to Magic Arrow and Fire Magic ", g("spell"), "."],
       ["Adjacent attackers take 1 ", g("damage"), "."],

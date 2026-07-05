@@ -1016,9 +1016,9 @@ describe("map setup lobby", () => {
     expect(state.towns.town_p2.factionId).toBe("inferno");
     // Scenario resources applied per the sheet.
     expect(state.players.p1.resources.gold).toBe(10);
-    // Setup defaults: Impossible neutrals, base income 10 gold / 0 / 0.
+    // Setup defaults: Impossible neutrals, base income 10 gold / 2 materials / 1 valuables.
     expect(state.adventure?.difficulty).toBe("impossible");
-    expect(state.players.p1.production).toEqual({ gold: 10, buildingMaterials: 0, valuables: 0 });
+    expect(state.players.p1.production).toEqual({ gold: 10, buildingMaterials: 2, valuables: 1 });
   });
 
   it("rolls for the starting player before any starting hand is dealt", () => {
@@ -1327,7 +1327,8 @@ describe("neutral combat", () => {
     // Difficulty I at hero level I: +1 experience.
     expect(state.heroes.hero_p1.experience).toBe(1);
     expect(state.adventure?.fields["h:9:1"].flagOwnerId).toBe("p1");
-    expect(state.players.p1.production.buildingMaterials).toBe(2);
+    // Base materials income (2) + the flagged mine's +2.
+    expect(state.players.p1.production.buildingMaterials).toBe(4);
     expect(state.phase).toBe("player-turn");
   });
 
@@ -1590,6 +1591,10 @@ describe("neutral combat", () => {
 describe("town economy", () => {
   it("builds with the build token, enforcing cost and dwelling order", () => {
     let state = refreshP1(makeGame());
+    // This test exercises build order/cost, not the default resource sheet — give
+    // the materials the bronze dwelling needs (default income is a lean 2 materials).
+    state.players.p1.resources.buildingMaterials = 20;
+    state.players.p1.resources.valuables = 20;
 
     const silverFirst = applyAction(state, {
       type: "BUILD_STRUCTURE",
@@ -1620,6 +1625,9 @@ describe("town economy", () => {
 
   it("recruits with the population token once a dwelling stands", () => {
     let state = refreshP1(makeGame());
+    // Give the materials the bronze dwelling needs (default income is 2 materials).
+    state.players.p1.resources.buildingMaterials = 20;
+    state.players.p1.resources.valuables = 20;
 
     const tooEarly = applyAction(state, {
       type: "POPULATION_ACTION",
@@ -1665,6 +1673,9 @@ describe("town economy", () => {
     // exists once) to leave them freshly recruitable.
     function townReady(): GameState {
       let state = refreshP1(makeGame());
+      // Materials for the bronze dwelling (default income is a lean 2 materials).
+      state.players.p1.resources.buildingMaterials = 20;
+      state.players.p1.resources.valuables = 20;
       state = apply(state, {
         type: "BUILD_STRUCTURE",
         playerId: "p1",
