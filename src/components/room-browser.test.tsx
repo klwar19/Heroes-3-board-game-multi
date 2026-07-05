@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { RoomBrowser } from "./room-browser";
+import { RoomBrowser, type RoomBrowserLabels } from "./room-browser";
 import * as authClient from "@/lib/auth-client";
 import * as realtime from "@/lib/realtime";
 import type { RoomDirectoryEntry } from "@/lib/realtime";
@@ -42,7 +42,7 @@ const ROOM: RoomDirectoryEntry = {
   canClose: false
 };
 
-const LABELS = {
+const LABELS: RoomBrowserLabels = {
   badgeNote: "Adventure tables",
   title: "Multiplayer Lobby",
   createLabel: "Create room",
