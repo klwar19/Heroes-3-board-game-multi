@@ -40,6 +40,7 @@ import {
   canCrossEdge,
   canHeroDiscoverAdjacentTile,
   canHeroReachPlacedTile,
+  canHeroReachPlacementCenter,
   createAdventureGameState,
   getLegalActions,
   isOuterEdgeSealed,
@@ -335,6 +336,111 @@ describe("LOCKED: Speculum ignores edges and borders", () => {
     const revealed = apply(opened, reveal!.action);
     expect(revealed.adventure!.tiles[faceDown.id].faceDown).toBe(false);
     expect(revealed.adventure!.pendingTileChoice?.heroId).toBeUndefined();
+  });
+});
+
+// ===========================================================================
+// 6. Opening a tile is DIRECT-ADJACENCY, never roundabout reachability.
+//    A hero standing at a sealed yellow border may not open a Ⅱ–Ⅲ tile across
+//    it, even when a long way around the map would eventually reach the notch.
+//    (Regression: the placement gate used a flood fill, so once enough tiles
+//    surrounded a notch the sealed edge under the hero was silently bypassed —
+//    the "still opens at the yellow border" bug.)
+// ===========================================================================
+describe("LOCKED: opening a Ⅱ–Ⅲ tile needs the hero's OWN open edge, not a detour", () => {
+  it("refuses placement across a sealed edge even when the notch is reachable the long way around", () => {
+    const state = createAdventureGameState({ seed: "lock-roundabout", difficulty: "normal", rollFirstPlayer: false });
+    for (const _pl of Object.values(state.players)) {
+      _pl.canMulligan = false;
+      _pl.needsHandRefresh = false;
+    }
+    const adventure = state.adventure!;
+    // Clean slate we fully control.
+    adventure.tiles = {};
+    adventure.fields = {};
+
+    const notch: HexCoord = { row: 40, col: 30 };
+    const ring = tileLatticeNeighbors(notch); // six lattice slots around the empty notch
+    // Surround the notch on FIVE sides with fully-open tiles (N1 has no sealed
+    // arcs), leaving one lattice slot for the hero's tile. This makes the notch
+    // touch ≥2 tiles AND opens a detour path from the hero right around to it.
+    const heroSlotCenter = ring[0];
+    for (const c of ring.slice(1)) {
+      instantiateTile(adventure, "N1", c, 0, false);
+    }
+
+    // The hero's tile (F7 — carries sealed arcs). Rotate it so one ring field that
+    // borders the notch has its OUTER ARC SEALED, and stand the hero on it.
+    const notchFoot = new Set(tileFootprint(notch, 0).map(hexSpaceId));
+    let heroSpace: string | null = null;
+    for (let rot = 0; rot < 6 && !heroSpace; rot += 1) {
+      // tear down any prior hero tile at this slot
+      for (const [id, t] of Object.entries(adventure.tiles)) {
+        if (t.centerRow === heroSlotCenter.row && t.centerCol === heroSlotCenter.col) {
+          for (const [fid, f] of Object.entries(adventure.fields)) {
+            if (f.tileInstanceId === id) delete adventure.fields[fid];
+          }
+          delete adventure.tiles[id];
+        }
+      }
+      const tile = instantiateTile(adventure, "F7", heroSlotCenter, rot, false);
+      const foot = tileFootprint(heroSlotCenter, rot);
+      for (let slot = 1; slot <= 6; slot += 1) {
+        const cellId = hexSpaceId(foot[slot]);
+        const bordersNotch = [0, 1, 2, 3, 4, 5].some((d) => notchFoot.has(hexSpaceId(hexNeighbor(foot[slot], d))));
+        if (bordersNotch && isTileSlotOuterSealed("F7", slot)) {
+          heroSpace = cellId;
+          break;
+        }
+      }
+      if (!heroSpace) {
+        for (const [fid, f] of Object.entries(adventure.fields)) {
+          if (f.tileInstanceId === tile.id) delete adventure.fields[fid];
+        }
+        delete adventure.tiles[tile.id];
+      }
+    }
+    expect(heroSpace, "must construct a hero field sealed toward the notch").toBeTruthy();
+
+    state.heroes.hero_p1.spaceId = heroSpace as any;
+    state.heroes.hero_p1.movementPoints = 5;
+
+    // The hero's own edge toward the notch is a printed yellow line → NO opening,
+    // for the def-blind pre-flip gate AND every concrete rotation.
+    expect(canHeroReachPlacementCenter(state, state.heroes.hero_p1, notch)).toBe(false);
+    expect(
+      [0, 1, 2, 3, 4, 5].some((r) => canHeroReachPlacedTile(state, state.heroes.hero_p1, "F1", notch, r))
+    ).toBe(false);
+
+    // PLACE_TILE is rejected with the yellow-border message and spends no MP.
+    const mpBefore = state.heroes.hero_p1.movementPoints;
+    const result = applyAction(state, {
+      type: "PLACE_TILE",
+      playerId: "p1",
+      heroId: "hero_p1",
+      supplyIndex: 0,
+      centerRow: notch.row,
+      centerCol: notch.col
+    });
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0].message).toContain("yellow border");
+    expect(result.state.heroes.hero_p1.movementPoints).toBe(mpBefore);
+
+    // CONTROL — the notch really IS reachable the long way around: from an OPEN
+    // field of one of the surrounding tiles that borders the notch, the very same
+    // placement gate returns true. So the ONLY thing blocking the hero above is
+    // the sealed edge under their feet, not a disconnected notch.
+    const openBorderField = Object.values(adventure.fields).find(
+      (f) =>
+        !isOuterEdgeSealed(adventure, f) &&
+        [0, 1, 2, 3, 4, 5].some((d) => {
+          const coord = { row: Number(f.spaceId.split(":")[1]), col: Number(f.spaceId.split(":")[2]) };
+          return notchFoot.has(hexSpaceId(hexNeighbor(coord, d)));
+        })
+    );
+    expect(openBorderField, "an open field bordering the notch must exist").toBeTruthy();
+    const heroControl = { ...state.heroes.hero_p1, spaceId: openBorderField!.spaceId };
+    expect(canHeroReachPlacementCenter(state, heroControl, notch)).toBe(true);
   });
 });
 

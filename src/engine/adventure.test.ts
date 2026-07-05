@@ -846,10 +846,12 @@ describe("tile discovery and placement", () => {
 
   it("only offers far-tile rotations the placing hero can cross onto", () => {
     const state = refreshP1(makeGame());
-    // From h:9:1 the (10,0) notch has a rotation (2) whose border line seals the
-    // tile off from the hero, while the others leave a doorway — so the gate has
-    // both an allowed and a rejected rotation to exercise.
-    state.heroes.hero_p1.spaceId = "h:9:1";
+    // The hero stands on h:8:1 — an OPEN-border S3 field directly bordering the
+    // (10,0) notch (rule #2: opening a tile needs the hero's own edge open). At
+    // this slot the NEW tile's rotation 2 turns its own yellow arc back toward the
+    // hero (sealed off), while the other rotations leave a doorway — so the gate
+    // has both an allowed and a rejected rotation to exercise.
+    state.heroes.hero_p1.spaceId = "h:8:1";
     state.heroes.hero_p1.movementPoints = 3;
     // The supply tile's identity is rolled at the flip, so force F1 — a Settlement
     // (no Mine) tile that auto-finalizes on the 1st opening (no reroll) and whose

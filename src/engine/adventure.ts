@@ -1023,18 +1023,18 @@ export function canPlaceTileAt(
 }
 
 /**
- * Whether the hero placing a Far (Ⅱ–Ⅲ) tile could actually cross onto it once
- * it lands at `rotation`. A new tile sits next to the hero, but a solid yellow
- * border on the facing edge — on the hero's field or the new tile's — can wall
- * it off; the rulebook forbids placing a tile the hero cannot reach.
+ * Whether the hero placing a Far (Ⅱ–Ⅲ) tile could actually OPEN it at
+ * `rotation`. Per locked rule #2 (map-geometry-invariants.test.ts): opening a
+ * Map Tile requires the border-and-edge interaction — the hero's OWN field must
+ * touch the new tile across an OPEN (unsealed) outer edge. A yellow border line
+ * on the facing edge — on the hero's field OR the new tile's slot — walls it off,
+ * and standing at that border means the hero cannot open here, even if some long
+ * way around the map would eventually reach the notch.
  *
- * The new tile's fields are not materialized yet, so its own fields are read
- * from the definition (slot → location and outer-arc seal) and the rest of the
- * map from the already-revealed fields. A flood fill over crossable edges from
- * the hero decides whether the hero's field and any field of the new tile share
- * a connected component. Border lines are permanent while guards and rival
- * heroes are not, so transient blockers are ignored: this answers "can the hero
- * ever cross there", not "this turn".
+ * This is a DIRECT-ADJACENCY test, not a flood fill: a hero at a sealed yellow
+ * edge must never be able to open a tile across it just because an unrelated open
+ * path exists elsewhere (the bug this replaced). The new tile's fields are not
+ * materialized yet, so its own slot seal/location is read from the definition.
  */
 export function canHeroReachPlacedTile(
   state: GameState,
@@ -1045,97 +1045,59 @@ export function canHeroReachPlacedTile(
 ): boolean {
   const adventure = state.adventure;
   const def = allTileDefinitions[tileDefId];
-  if (!adventure || !def || !hero.spaceId || !adventure.fields[hero.spaceId]) {
+  if (!adventure || !def || !hero.spaceId) {
+    return false;
+  }
+  const heroField = adventure.fields[hero.spaceId];
+  if (!heroField) {
+    return false;
+  }
+
+  // The hero's own field edge toward the tile must be an OPEN border. A ring
+  // slot's outer arc seals all three outward edges together, so a sealed arc
+  // walls the hero off in every outward direction.
+  if (isOuterEdgeSealed(adventure, heroField)) {
     return false;
   }
 
   const footprint = tileFootprint(center, rotation);
-  // Map every candidate hex to its tile slot (0 = center, 1–6 = ring).
-  const candidateSlots = new Map<MapSpaceId, number>();
-  footprint.forEach((cell, slot) => candidateSlots.set(hexSpaceId(cell), slot));
+  const slotByCell = new Map<MapSpaceId, number>();
+  footprint.forEach((cell, slot) => slotByCell.set(hexSpaceId(cell), slot));
 
-  type Cell = { tileId: string; slot: number; blocked: boolean; sealed: boolean };
-  const cellAt = (spaceId: MapSpaceId): Cell | null => {
-    const candidateSlot = candidateSlots.get(spaceId);
-    if (candidateSlot !== undefined) {
-      const fieldDef = def.fields[candidateSlot];
-      return {
-        tileId: "__candidate__",
-        slot: candidateSlot,
-        blocked: locationDefinitions[fieldDef?.location]?.category === "blocked",
-        // A ring field's outer-arc seal travels with its slot; the center never
-        // seals. Same primitive the placed fields below use — one source of truth.
-        sealed: isTileSlotOuterSealed(tileDefId, candidateSlot)
-      };
-    }
-    const field = adventure.fields[spaceId];
-    if (!field) {
-      return null;
-    }
-    return {
-      tileId: field.tileInstanceId,
-      slot: field.slot,
-      blocked: locationDefinitions[field.location]?.category === "blocked",
-      sealed: isOuterEdgeSealed(adventure, field)
-    };
-  };
-
-  const internalBorderBlocks = (cell: Cell, otherSlot: number): boolean => {
-    const tileDef =
-      cell.tileId === "__candidate__" ? def : allTileDefinitions[adventure.tiles[cell.tileId]?.tileDefId ?? ""];
-    return tileDef ? hasInternalBorder(tileDef, cell.slot, otherSlot) : false;
-  };
-
-  const canCross = (from: Cell, to: Cell): boolean => {
-    if (to.blocked) {
-      return false;
-    }
-    if (from.tileId === to.tileId) {
-      // Same tile: only a printed internal yellow line blocks the step.
-      return !internalBorderBlocks(from, to.slot);
-    }
-    // Crossing between tiles needs both outer arcs open.
-    return !from.sealed && !to.sealed;
-  };
-
-  // Flood fill from the hero; succeed the moment a crossable step lands on the
-  // new tile.
-  const start = hero.spaceId;
-  const visited = new Set<MapSpaceId>([start]);
-  const queue: MapSpaceId[] = [start];
-  while (queue.length > 0) {
-    const currentId = queue.shift() as MapSpaceId;
-    const current = cellAt(currentId);
-    if (!current) {
+  // Some hex neighbouring the hero's own field must be a field of the new tile
+  // that (a) is not a blocked location and (b) does not present its own sealed
+  // yellow arc back toward the hero. That is the single open doorway the hero
+  // steps through — no walking around.
+  for (const neighborId of getAdjacentSpaceIds(hero.spaceId)) {
+    const slot = slotByCell.get(neighborId);
+    if (slot === undefined) {
       continue;
     }
-    for (const neighborId of getAdjacentSpaceIds(currentId)) {
-      if (visited.has(neighborId)) {
-        continue;
-      }
-      const neighbor = cellAt(neighborId);
-      if (!neighbor || !canCross(current, neighbor)) {
-        continue;
-      }
-      if (candidateSlots.has(neighborId)) {
-        return true;
-      }
-      visited.add(neighborId);
-      queue.push(neighborId);
+    const fieldDef = def.fields[slot];
+    if (locationDefinitions[fieldDef?.location]?.category === "blocked") {
+      continue;
     }
+    if (isTileSlotOuterSealed(tileDefId, slot)) {
+      continue;
+    }
+    return true;
   }
   return false;
 }
 
 /**
- * Whether the hero can reach any cell of the candidate tile center's footprint
- * through the EXISTING map's crossable edges, without knowing which tile def
- * will be drawn. Treats the candidate footprint as fully open (no sealed arcs
- * on the new tile). Returns false only when every path from the hero to the
- * footprint crosses a sealed outer arc on the existing-map side.
+ * Whether the hero may OPEN a tile at the candidate footprint, before the tile
+ * def is drawn. Per locked rule #2: the hero's OWN field must directly touch the
+ * footprint across an OPEN (unsealed) outer edge — standing at a sealed yellow
+ * border means the hero cannot open here, no matter what long way around the map
+ * would reach the notch. The new tile's own arc is unknown (any rotation of it
+ * may open the facing edge), so only the hero-side seal is checked here; the
+ * new-tile-side seal is enforced once the def is known (canHeroReachPlacedTile,
+ * at SET_TILE_ROTATION).
  *
- * Called before the tile def is drawn (PLACE_TILE handler and the UI
- * placement-centre filter) so a sealed yellow arc cannot be circumvented.
+ * Called by the PLACE_TILE handler and the UI placement-centre filter so a
+ * sealed yellow arc under the hero cannot be circumvented. The footprint is the
+ * same seven hexes at every rotation, so rotation 0 suffices for adjacency.
  */
 export function canHeroReachPlacementCenter(
   state: GameState,
@@ -1143,53 +1105,19 @@ export function canHeroReachPlacementCenter(
   center: HexCoord
 ): boolean {
   const adventure = state.adventure;
-  if (!adventure || !hero.spaceId || !adventure.fields[hero.spaceId]) {
+  if (!adventure || !hero.spaceId) {
+    return false;
+  }
+  const heroField = adventure.fields[hero.spaceId];
+  if (!heroField) {
+    return false;
+  }
+  // A sealed outer arc under the hero walls off every outward edge — no opening.
+  if (isOuterEdgeSealed(adventure, heroField)) {
     return false;
   }
   const footprintCells = new Set<MapSpaceId>(tileFootprint(center, 0).map(hexSpaceId));
-  const visited = new Set<MapSpaceId>([hero.spaceId]);
-  const queue: MapSpaceId[] = [hero.spaceId];
-  while (queue.length > 0) {
-    const currentId = queue.shift() as MapSpaceId;
-    const currentField = adventure.fields[currentId];
-    if (!currentField) {
-      continue;
-    }
-    for (const neighborId of getAdjacentSpaceIds(currentId)) {
-      if (footprintCells.has(neighborId)) {
-        // Crossing into the new tile: only the existing side's outer arc matters
-        // (the new tile's arc is unknown; any rotation of it may open it later).
-        if (!isOuterEdgeSealed(adventure, currentField)) {
-          return true;
-        }
-        continue;
-      }
-      if (visited.has(neighborId)) {
-        continue;
-      }
-      const neighborField = adventure.fields[neighborId];
-      if (!neighborField) {
-        continue;
-      }
-      if (locationDefinitions[neighborField.location]?.category === "blocked") {
-        continue;
-      }
-      if (currentField.tileInstanceId !== neighborField.tileInstanceId) {
-        if (isOuterEdgeSealed(adventure, currentField) || isOuterEdgeSealed(adventure, neighborField)) {
-          continue;
-        }
-      } else {
-        const tile = adventure.tiles[currentField.tileInstanceId];
-        const def = tile ? allTileDefinitions[tile.tileDefId] : undefined;
-        if (def && hasInternalBorder(def, currentField.slot, neighborField.slot)) {
-          continue;
-        }
-      }
-      visited.add(neighborId);
-      queue.push(neighborId);
-    }
-  }
-  return false;
+  return getAdjacentSpaceIds(hero.spaceId).some((neighborId) => footprintCells.has(neighborId));
 }
 
 // ---------------------------------------------------------------------------
