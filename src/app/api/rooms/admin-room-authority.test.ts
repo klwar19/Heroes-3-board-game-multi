@@ -15,6 +15,9 @@ const ROOM_DIR = mkdtempSync(join(tmpdir(), "homm3bg-admin-rooms-"));
 process.env.HOMM3BG_ACCOUNT_DIR = ACCOUNT_DIR;
 process.env.HOMM3BG_ROOM_DIR = ROOM_DIR;
 process.env.HOMM3BG_MAIL_TRANSPORT = "capture";
+// These rooms live in the BUILT-IN store; ensure no edge host is configured so
+// the DELETE route resolves them locally (never forwarding to a live edge).
+delete process.env.NEXT_PUBLIC_PARTYKIT_HOST;
 
 const SESSION_COOKIE = "homm3bg_session";
 let roomCounter = 0;

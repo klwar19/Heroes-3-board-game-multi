@@ -154,6 +154,7 @@ import {
   connectRoom,
   createRoomOnServer,
   isResetDenied,
+  requestAdminCloseRoom,
   requestCloseRoom,
   type GameRoomSnapshot,
   type RoomConnection
@@ -588,6 +589,8 @@ export default function Home() {
    * verifies the real session; this cache never grants authority by itself.
    */
   const accountUserId = useMemo(() => getAccountIdentity()?.userId ?? null, []);
+  /** The signed-in account's platform role (admins may delete any room). */
+  const accountRole = useMemo(() => getAccountIdentity()?.role ?? null, []);
   // Browser-only state (persisted name, URL room) is read AFTER mount (see the
   // effect below), not in the useState initializers: the page is statically
   // prerendered (window/localStorage absent), so seeding from them here would
@@ -3353,12 +3356,15 @@ export default function Home() {
     if (!roomId) {
       return;
     }
-    // The socket ticket lets the cross-origin PartyKit edge verify a signed-in
-    // PLATFORM ADMIN closing a room they are not a member of; guests resolve no
-    // ticket and close by host/membership exactly as before.
-    void requestCloseRoom(roomId, clientId, fetchSocketToken).catch(() => {
-      /* The host-close broadcast (onClosed) will still bounce connected clients. */
-    });
+    // A PLATFORM ADMIN closes through the SAME-ORIGIN app (cookie-verified, then
+    // forwarded to the edge server-side) — the reliable path. The host/member
+    // closing their OWN room keeps the direct edge close (their clientId is the
+    // authority there). The host-close broadcast (onClosed) bounces clients.
+    const closing =
+      accountRole === "admin"
+        ? requestAdminCloseRoom(roomId)
+        : requestCloseRoom(roomId, clientId, fetchSocketToken);
+    void closing.catch(() => {});
     goToLobby();
   };
 

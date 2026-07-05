@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import type { GameState } from "@/engine";
 import { closeRoom, getRoomSnapshot, resetRoom, restoreRoom, type RoomResetOptions } from "@/server/game-room-store";
-import { sessionProfile } from "@/server/accounts/http";
+import { readSessionToken, sessionProfile } from "@/server/accounts/http";
 import { redactSnapshotForViewer } from "@/server/redact-snapshot";
+import { closeEdgeRoomAsAdmin, partyKitConfigured } from "@/server/edge-close";
 
 export const dynamic = "force-dynamic";
 
@@ -110,7 +111,25 @@ export async function DELETE(request: Request, context: RoomContext) {
     | null;
   const actorClientId = typeof body?.actorClientId === "string" ? body.actorClientId : fromQuery;
   const adminKey = typeof body?.adminKey === "string" ? body.adminKey : undefined;
+  const isAdmin = await requestIsAdmin(request);
 
-  const result = closeRoom(decodeURIComponent(roomId), actorClientId, adminKey, await requestIsAdmin(request));
+  // Rooms live on the cross-origin PartyKit EDGE when it is configured, so the
+  // built-in closeRoom below has no such room to delete. A signed-in admin's
+  // authority is proven RIGHT HERE from the same-origin session cookie (reliable
+  // — no cross-origin ticket needed), so we forward the delete to the edge with
+  // the app's server-held credentials. This is the robust replacement for the
+  // browser → edge admin delete that kept failing with "Only members of this
+  // room can close it".
+  if (isAdmin && partyKitConfigured()) {
+    const forwarded = await closeEdgeRoomAsAdmin(decodeURIComponent(roomId), readSessionToken(request));
+    if (forwarded.forwarded) {
+      return NextResponse.json(
+        { closed: forwarded.closed, reason: forwarded.reason },
+        { status: forwarded.closed ? 200 : 403 }
+      );
+    }
+  }
+
+  const result = closeRoom(decodeURIComponent(roomId), actorClientId, adminKey, isAdmin);
   return NextResponse.json(result, { status: result.closed ? 200 : 403 });
 }

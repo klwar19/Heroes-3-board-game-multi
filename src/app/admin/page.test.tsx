@@ -16,7 +16,7 @@ vi.mock("@/lib/auth-client", async (importOriginal) => {
 });
 vi.mock("@/lib/realtime", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/realtime")>();
-  return { ...actual, fetchRoomList: vi.fn(), requestCloseRoom: vi.fn() };
+  return { ...actual, fetchRoomList: vi.fn(), requestAdminCloseRoom: vi.fn() };
 });
 
 const ADMIN = { id: "a1", nickname: "Overlord", email: "boss@x.io", role: "admin", mmr: 1000 } as never;
@@ -47,7 +47,7 @@ beforeEach(() => {
   vi.mocked(authClient.fetchSession).mockResolvedValue(ADMIN);
   vi.mocked(authClient.adminListPlayers).mockResolvedValue([ADMIN]);
   vi.mocked(realtime.fetchRoomList).mockResolvedValue({ rooms: [room({})], supported: true });
-  vi.mocked(realtime.requestCloseRoom).mockResolvedValue({ closed: true });
+  vi.mocked(realtime.requestAdminCloseRoom).mockResolvedValue({ closed: true });
 });
 
 afterEach(() => {
@@ -72,11 +72,9 @@ describe("/admin — room management", () => {
     const roomRow = screen.getByText("Border Skirmish").closest("tr") as HTMLElement;
     fireEvent.click(roomRow.querySelector("button.danger") as HTMLElement);
 
-    // The socket-token provider is passed so the cross-origin edge can verify
-    // this admin's session (the built-in backend ignores it).
-    await waitFor(() =>
-      expect(realtime.requestCloseRoom).toHaveBeenCalledWith("room-xyz", expect.any(String), expect.any(Function))
-    );
+    // Deletes through the SAME-ORIGIN admin path: the app verifies the admin from
+    // the cookie and forwards to the edge server-side (no cross-origin ticket).
+    await waitFor(() => expect(realtime.requestAdminCloseRoom).toHaveBeenCalledWith("room-xyz"));
     confirmSpy.mockRestore();
   });
 });

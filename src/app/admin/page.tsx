@@ -4,10 +4,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MenuShell } from "@/components/menu/menu-shell";
-import { adminAction, adminListPlayers, fetchSession, fetchSocketToken, type SelfProfile } from "@/lib/auth-client";
+import { adminAction, adminListPlayers, fetchSession, type SelfProfile } from "@/lib/auth-client";
 import { authEnabled } from "@/lib/auth-mode";
 import { getClientId } from "@/lib/identity";
-import { fetchRoomList, requestCloseRoom, type RoomDirectoryEntry } from "@/lib/realtime";
+import { fetchRoomList, requestAdminCloseRoom, type RoomDirectoryEntry } from "@/lib/realtime";
 
 /**
  * Admin moderation panel (Phase 1). Gated twice: the client redirects a
@@ -46,10 +46,11 @@ export default function AdminPage() {
     if (!window.confirm(`Delete room "${room.name}" for everyone? This cannot be undone.`)) {
       return;
     }
-    // Pass fetchSocketToken so the cross-origin PartyKit edge can verify this
-    // admin's session (the httpOnly cookie can't cross origins); the built-in
-    // backend ignores it and reads the same-origin cookie directly.
-    const result = await requestCloseRoom(room.roomId, clientId, fetchSocketToken);
+    // Delete through the SAME-ORIGIN app: it verifies this admin from the login
+    // cookie (reliable) and forwards to the edge server-side with the app's own
+    // credentials — the robust path that no longer depends on the cross-origin
+    // socket ticket, which kept failing with "Only members of this room…".
+    const result = await requestAdminCloseRoom(room.roomId);
     if (!result.closed) {
       setError(result.reason ?? "Could not delete the room.");
     }
