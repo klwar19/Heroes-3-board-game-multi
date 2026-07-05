@@ -1302,7 +1302,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     // the penalty's lower. The Pack ALSO carries halfling-precise-shot: on a "+1"
     // resolved Attack die it drops a Corrosion token on the target (-1 Defense,
     // min 0) — both halves are now wired.
-    few: { attack: 2, defense: 0, health: 2, initiative: 4, cost: { gold: 3 }, abilities: ["attack-roll-advantage"], abilityText: "[unit_attack] Roll 2 Attack dice and resolve the higher one.", cardImage: "/assets/units-factory-bronze-halflings-few.webp" },
+    few: { attack: 2, defense: 0, health: 2, initiative: 4, cost: { gold: 2 }, abilities: ["attack-roll-advantage"], abilityText: "[unit_attack] Roll 2 Attack dice and resolve the higher one.", cardImage: "/assets/units-factory-bronze-halflings-few.webp" },
     pack: { attack: 2, defense: 0, health: 2, initiative: 6, cost: { gold: 4 }, abilities: ["attack-roll-advantage", "halfling-precise-shot"], abilityText: "[unit_attack] Roll 2 Attack dice and resolve the higher one. If you resolve a +1 on the Attack Die, the attacked unit suffers -1 [defense] (to a minimum of 0).", cardImage: "/assets/units-factory-bronze-halflings-pack.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Halfling_(Factory)",
     source: {
@@ -1325,7 +1325,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     // there is nothing to repair) — the Enchanter heal-or-buff path gated to
     // ADJACENT + mechanical (Automatons / Dreadnoughts). The Neutral guard's card
     // prints only the reach (no Repair).
-    few: { attack: 2, defense: 0, health: 3, initiative: 6, cost: { gold: 4 }, abilities: ["mechanics-repair-1", "mechanics-line-attack-1"], abilityText: "[activation] Remove up to 1 [damage] from an adjacent [mechanical] unit. Attack 2 spaces in a line. The first attack resolves normally, and the second has 1 [attack].", cardImage: "/assets/units-factory-bronze-mechanics-few.webp" },
+    few: { attack: 2, defense: 0, health: 3, initiative: 6, cost: { gold: 3 }, abilities: ["mechanics-repair-1", "mechanics-line-attack-1"], abilityText: "[activation] Remove up to 1 [damage] from an adjacent [mechanical] unit. Attack 2 spaces in a line. The first attack resolves normally, and the second has 1 [attack].", cardImage: "/assets/units-factory-bronze-mechanics-few.webp" },
     pack: { attack: 2, defense: 1, health: 4, initiative: 7, cost: { gold: 6 }, abilities: ["mechanics-repair-2", "mechanics-line-attack-2"], abilityText: "[activation] Remove up to 2 [damage] from an adjacent [mechanical] unit, or gain +1 [attack]. Attack 2 spaces in a line. The first attack resolves normally, and the second has 2 [attack].", cardImage: "/assets/units-factory-bronze-mechanics-pack.webp" },
     neutral: { attack: 2, defense: 0, health: 4, initiative: 6, cost: { gold: 5 }, abilities: ["mechanics-line-attack-1"], abilityText: "[activation] Attack 2 spaces in a line. The first attack resolves normally, and the second has 1 [attack].", cardImage: "/assets/units-factory-bronze-mechanics-neutral.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Mechanic",
@@ -1345,7 +1345,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     // unit's Initiative is increased by an effect, increase it by an additional 1"
     // is wired (armadillo-initiative-amplify → AMPLIFY_INITIATIVE_INCREASE). The
     // prior armadillo-curl (+2 Defense) was a fabrication — no such text on the card.
-    few: { attack: 2, defense: 1, health: 4, initiative: 4, cost: { gold: 5 }, abilities: [], cardImage: "/assets/units-factory-bronze-armadillos-few.webp" },
+    few: { attack: 2, defense: 1, health: 4, initiative: 4, cost: { gold: 4 }, abilities: [], cardImage: "/assets/units-factory-bronze-armadillos-few.webp" },
     pack: { attack: 3, defense: 1, health: 4, initiative: 6, cost: { gold: 7 }, abilities: ["armadillo-initiative-amplify"], abilityText: "[unit_passive] Whenever this unit's [initiative] is increased by an effect, increase it by an additional 1.", cardImage: "/assets/units-factory-bronze-armadillos-pack.webp" },
     neutral: { attack: 2, defense: 1, health: 4, initiative: 6, cost: { gold: 5 }, abilities: [], cardImage: "/assets/units-factory-bronze-armadillos-neutral.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Armadillo",

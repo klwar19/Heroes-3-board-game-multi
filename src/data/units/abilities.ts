@@ -877,6 +877,17 @@ export type UnitAbilityEffectDefinition =
     }
   | {
       /**
+       * WoG Lava Sharpshooter / War Zealot: "+N Attack when this unit attacks."
+       * A flat, unclamped innate Attack bonus added to the unit's OWN attack
+       * only — NOT its Retaliation Attack (the reducer gates it on
+       * `!isRetaliation`). Distinct from `FLAT_ATTACK_BONUS`, which also raises
+       * the Retaliation Attack.
+       */
+      type: "OWN_ATTACK_FLAT_BONUS";
+      amount: number;
+    }
+  | {
+      /**
        * Creature Bank Dwarven Treasury Dwarves and Dragon Utopia Crystal
        * Dragons: "As long as this unit is Stacked, it is treated as if it had a
        * Defense token on it." The unit rolls the Defend die when attacked (a
@@ -1208,6 +1219,17 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     name: "Precise Shot",
     text: 'On a "+1" on the Attack die, place a Corrosion token on the target: -1 Defense (to a minimum of 0) for the rest of the combat.',
     effect: { type: "ON_ATTACK_DIE_TOKEN", onRoll: 1, token: "corrosion", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  // WoG Lava Sharpshooter and War Zealot: "When this unit attacks, it gains +1
+  // Attack." A flat innate bonus on the unit's OWN attack only (never its
+  // Retaliation Attack). Wired via OWN_ATTACK_FLAT_BONUS + getOwnAttackFlatBonus,
+  // gated on `!isRetaliation` in the reducer; covered by wog-abilities.test.ts.
+  "wog-attack-when-attacking-1": {
+    id: "wog-attack-when-attacking-1",
+    name: "Battle Fury",
+    text: "[unit_attack] When this unit attacks, it gains +1 Attack.",
+    effect: { type: "OWN_ATTACK_FLAT_BONUS", amount: 1 },
     implementationStatus: "implemented"
   },
   // Factory Bounty Hunters (Few/Pack): "At the start of Combat, place a Mark

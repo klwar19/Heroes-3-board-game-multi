@@ -278,6 +278,7 @@ import {
   getEnchanterActivationAbility,
   getEnemyDiscardAbility,
   getFlatAttackBonus,
+  getOwnAttackFlatBonus,
   getInvulnerabilityActivation,
   isUnitDamageImmune,
   getSplashAllocationAttack,
@@ -2690,6 +2691,10 @@ function getAttackStackDetails(
   // flat innate bonus (added unclamped, like Hatred/Vengeance); the Stacked gate
   // is enforced upstream, so it is 0 the moment the Stack Token is discarded.
   const stackedAttackBonus = getFlatAttackBonus(attacker);
+  // WoG Lava Sharpshooter / War Zealot: "+1 Attack when this unit attacks." A
+  // flat innate bonus on the unit's OWN attack only — never its Retaliation
+  // Attack (added unclamped, like Hatred/the Stacked bonus).
+  const ownAttackFlatBonus = isRetaliation ? 0 : getOwnAttackFlatBonus(attacker);
   const astrologersRoundAttackBonus = state.round % 2 === 0 ? getAstrologersRoundFrenzy(attacker) : 0;
 
   // Retaliation-only modifiers keyed off the retaliation's defender — i.e. the
@@ -2725,6 +2730,7 @@ function getAttackStackDetails(
       markAttackBonus +
       flippedAttackBonus +
       stackedAttackBonus +
+      ownAttackFlatBonus +
       astrologersRoundAttackBonus -
       retaliationAttackPenalty,
     defenseBonus: defenseBonusBeforeAbility - defenseReductionAmount + retaliationDefenseBonus,

@@ -199,6 +199,9 @@ describe("Buying troops is NOT gated by the draw (so 'stop and buy troops' works
   it("offers Build and Recruit before the draw is taken, and keeps them after", () => {
     let state = makeGame();
     // Town management is available before the draw: build a dwelling now.
+    // Fund the materials the bronze dwelling needs (default income is 2 materials).
+    state.players.p1.resources.buildingMaterials = 20;
+    state.players.p1.resources.valuables = 20;
     expect(typesOf(state, "p1").has("BUILD_STRUCTURE")).toBe(true);
     state = apply(state, {
       type: "BUILD_STRUCTURE",
