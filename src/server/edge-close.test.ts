@@ -72,7 +72,8 @@ describe("closeEdgeRoomAsAdmin", () => {
     expect(JSON.parse(init.body as string)).toEqual({});
   });
 
-  it("surfaces the edge's refusal reason instead of a silent success", async () => {
+  it("surfaces an ACTIONABLE refusal (the edge's terse reason + the likely cause)", async () => {
+    process.env.HOMM3BG_ADMIN_KEY = "break-glass-secret";
     const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => ({
       ok: false,
       json: async () => ({ closed: false, reason: "Only members of this room can close it." })
@@ -81,7 +82,12 @@ describe("closeEdgeRoomAsAdmin", () => {
 
     const { closeEdgeRoomAsAdmin } = await import("./edge-close");
     const result = await closeEdgeRoomAsAdmin("room-9", "admin-session");
-    expect(result).toEqual({ forwarded: true, closed: false, reason: "Only members of this room can close it." });
+    expect(result.forwarded).toBe(true);
+    expect(result.closed).toBe(false);
+    // Names the two things that must both hold (edge redeployed since the key
+    // was set, values match) AND echoes the edge's own message for debugging.
+    expect(result.reason).toContain("HOMM3BG_ADMIN_KEY");
+    expect(result.reason).toContain("Only members of this room can close it.");
   });
 
   it("reports forwarded:false when no edge is configured (built-in store path)", async () => {

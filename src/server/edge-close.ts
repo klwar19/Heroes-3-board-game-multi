@@ -79,7 +79,20 @@ export async function closeEdgeRoomAsAdmin(
       body: JSON.stringify({ ...(adminKey ? { adminKey } : {}) })
     });
     const data = (await response.json().catch(() => ({}))) as { closed?: boolean; reason?: string };
-    return { forwarded: true, closed: response.ok && data.closed !== false, reason: data.reason };
+    const closed = response.ok && data.closed !== false;
+    if (closed) {
+      return { forwarded: true, closed: true };
+    }
+    // The app already verified this caller as an admin, so a refusal here means
+    // the EDGE could not confirm it — almost always because the edge and the app
+    // disagree on the credentials. Turn the edge's terse "Only members…" into an
+    // actionable message naming the two things that must both be true.
+    const detail = data.reason ? ` (edge said: ${data.reason})` : "";
+    const cause = adminKey
+      ? "the room server was not redeployed since HOMM3BG_ADMIN_KEY was set, or its value does not match the app's"
+      : "HOMM3BG_ADMIN_KEY is not set on the app, and the admin session ticket could not be verified by the edge";
+    console.warn(`[admin-close] edge refused admin delete of ${roomId}: ${cause}${detail}`);
+    return { forwarded: true, closed: false, reason: `The room server rejected the admin delete — ${cause}.${detail}` };
   } catch {
     return { forwarded: true, closed: false, reason: "Could not reach the room server to delete it." };
   }
