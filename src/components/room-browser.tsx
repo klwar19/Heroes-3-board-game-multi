@@ -20,7 +20,13 @@ import {
   savePendingRoomName,
   savePendingRoomRanked
 } from "@/lib/pending-room-name";
-import { createRoomOnServer, fetchRoomList, requestCloseRoom, type RoomDirectoryEntry } from "@/lib/realtime";
+import {
+  createRoomOnServer,
+  fetchRoomList,
+  requestAdminCloseRoom,
+  requestCloseRoom,
+  type RoomDirectoryEntry
+} from "@/lib/realtime";
 
 /**
  * Shared room browser powering BOTH the Multiplayer lobby (`/play`, adventure
@@ -161,11 +167,15 @@ export function RoomBrowser({ mode, labels }: { mode: GameMode; labels: RoomBrow
     if (!window.confirm("Close this room for everyone? This deletes the game and cannot be undone.")) {
       return;
     }
-    // Attach the signed-in session's socket ticket so the cross-origin PartyKit
-    // edge can verify a PLATFORM ADMIN's close of any room (the lobby shows
-    // admins a Delete button on every table; the httpOnly cookie cannot cross
-    // origins). Guests resolve no ticket and close by membership, as before.
-    requestCloseRoom(roomId, clientId, fetchSocketToken)
+    // A PLATFORM ADMIN deletes through the SAME-ORIGIN app (cookie-verified,
+    // then forwarded to the edge server-side) — the reliable path that replaced
+    // the cross-origin socket-ticket delete that kept refusing with "Only
+    // members of this room can close it". A non-admin closing their OWN room
+    // (room.canClose — host/member authority) keeps the direct edge close.
+    const close = isAdmin
+      ? requestAdminCloseRoom(roomId)
+      : requestCloseRoom(roomId, clientId, fetchSocketToken);
+    close
       .then((result) => {
         if (!result.closed) {
           setError(result.reason ?? "Could not close the room.");

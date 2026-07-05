@@ -581,6 +581,32 @@ export async function createRoomOnServer(options: {
  *    and it rides on the request `?token=` for the edge to verify.
  *  - the developer's admin key — see localAdminKey.
  */
+/**
+ * Close (delete) a room AS A PLATFORM ADMIN, through the SAME-ORIGIN app.
+ *
+ * This is the reliable admin path: the app verifies the admin from the httpOnly
+ * session cookie (which is proven to work — the admin sees the admin panel) and
+ * then deletes the room itself, forwarding to the PartyKit edge server-side with
+ * the app's own credentials (see src/server/edge-close.ts). It sidesteps every
+ * fragile link of the cross-origin browser → edge path (socket-ticket store
+ * sharing, CORS preflight, the localStorage admin key) that produced repeated
+ * "Only members of this room can close it" refusals. Works for a room on the
+ * edge OR the built-in store — the server routes it correctly either way.
+ */
+export async function requestAdminCloseRoom(roomId: string): Promise<CloseRoomResult> {
+  try {
+    const response = await fetch(`/api/rooms/${encodeURIComponent(roomId)}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({})
+    });
+    const data = (await response.json().catch(() => ({}))) as CloseRoomResult;
+    return { closed: response.ok && data.closed !== false, reason: data.reason };
+  } catch {
+    return { closed: false, reason: "Could not reach the server to delete the room." };
+  }
+}
+
 export async function requestCloseRoom(
   roomId: string,
   actorClientId?: string,

@@ -20,7 +20,13 @@ vi.mock("@/lib/lobby-chat-client", () => ({
 }));
 vi.mock("@/lib/realtime", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/realtime")>();
-  return { ...actual, fetchRoomList: vi.fn(), requestCloseRoom: vi.fn(), createRoomOnServer: vi.fn() };
+  return {
+    ...actual,
+    fetchRoomList: vi.fn(),
+    requestCloseRoom: vi.fn(),
+    requestAdminCloseRoom: vi.fn(),
+    createRoomOnServer: vi.fn()
+  };
 });
 
 const ADMIN = { id: "a1", nickname: "Overlord", email: "boss@x.io", role: "admin", mmr: 1000 } as never;
@@ -53,30 +59,27 @@ const LABELS: RoomBrowserLabels = {
 beforeEach(() => {
   vi.mocked(authClient.fetchSession).mockResolvedValue(ADMIN);
   vi.mocked(realtime.fetchRoomList).mockResolvedValue({ rooms: [ROOM], supported: true });
+  vi.mocked(realtime.requestAdminCloseRoom).mockResolvedValue({ closed: true });
   vi.mocked(realtime.requestCloseRoom).mockResolvedValue({ closed: true });
 });
 
 afterEach(cleanup);
 
-describe("lobby room browser — admin delete goes through the ticketed close path", () => {
-  it("passes the socket-token provider so the PartyKit edge can verify the admin session", async () => {
-    // The /admin page attaches the ticket, but the LOBBY is where an admin
-    // actually sees a Delete button on every table — a close from here used to
-    // omit the ticket, so the cross-origin edge saw a stranger and refused
-    // ("Only members of this room can close it"). Pin the wired call shape.
+describe("lobby room browser — admin delete goes through the reliable same-origin path", () => {
+  it("an admin deletes via requestAdminCloseRoom (cookie-verified, NOT the cross-origin edge)", async () => {
+    // The LOBBY is where an admin sees a Delete button on every table. The old
+    // cross-origin socket-ticket close kept refusing with "Only members of this
+    // room can close it"; an admin now deletes through the same-origin app,
+    // which verifies the cookie and forwards to the edge server-side.
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     render(<RoomBrowser labels={LABELS} mode="adventure" />);
     await waitFor(() => expect(screen.getByText("Border Skirmish")).toBeTruthy());
 
     fireEvent.click(screen.getByRole("button", { name: /Admin: delete Border Skirmish/ }));
 
-    await waitFor(() =>
-      expect(realtime.requestCloseRoom).toHaveBeenCalledWith("room-xyz", expect.any(String), expect.any(Function))
-    );
-    // The provider handed over IS the session-ticket minting function — not
-    // some inert stub — so the edge can resolve the admin's session.
-    const provider = vi.mocked(realtime.requestCloseRoom).mock.calls[0][2];
-    expect(provider).toBe(authClient.fetchSocketToken);
+    await waitFor(() => expect(realtime.requestAdminCloseRoom).toHaveBeenCalledWith("room-xyz"));
+    // The fragile cross-origin ticket close is NOT used for the admin action.
+    expect(realtime.requestCloseRoom).not.toHaveBeenCalled();
     confirmSpy.mockRestore();
   });
 });
