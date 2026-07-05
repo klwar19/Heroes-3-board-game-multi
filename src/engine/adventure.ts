@@ -34,7 +34,7 @@ import {
 import { drawCardsForPlayer, shuffleCards } from "./decks";
 import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
 import { parallelInteractionBlocker, stopParallelTurns } from "./parallel-turns";
-import { removePermanentFromPlayToRemoved } from "./permanents";
+import { playerOwnsWarMachine, removePermanentFromPlayToRemoved } from "./permanents";
 import {
   applyUnitSideRules,
   canAcquireSharedDeckCard,
@@ -3639,10 +3639,12 @@ export function processPendingVisit(state: GameState): void {
         break;
       }
       case "WAR_MACHINE_GRANT_OFFER": {
-        // McGiver: rebuild the take-one menu from the LIVE supply each time so a
-        // later player never sees a machine an earlier one already took. Optional
-        // — a Skip exit lets a player decline. No-ops on an empty supply.
-        const supply = adventure.warMachineSupply ?? [];
+        // McGiver: take one War Machine free. Per-player catalog — offer only the
+        // machines THIS player does not already own (buying never depletes it for
+        // others). Optional — a Skip exit lets a player decline.
+        const supply = (adventure.warMachineSupply ?? []).filter(
+          (cardId) => !playerOwnsWarMachine(state, visit.playerId, cardId)
+        );
         if (supply.length === 0) {
           break;
         }
@@ -3659,13 +3661,15 @@ export function processPendingVisit(state: GameState): void {
         break;
       }
       case "WAR_MACHINE_DISCOUNT_OFFER": {
-        // Wandering Merchant: rebuild the buy menu from the LIVE supply each time
-        // (a later player never sees a machine an earlier one bought). Price each
-        // machine at the Trading-Post rate minus the discount (floored at 0) and
-        // only offer ones the player can still afford. Optional Skip exit; no-ops
-        // on an empty supply or when nothing is affordable.
+        // Wandering Merchant: buy one War Machine at a discount. Per-player
+        // catalog — a machine another player already bought is STILL available to
+        // this one (the reported "1 player buys the Tent, nobody else can" bug);
+        // only a machine THIS player already owns drops out. Price at the
+        // Trading-Post rate minus the discount (floored at 0), affordable only.
         const player = state.players[visit.playerId];
-        const supply = adventure.warMachineSupply ?? [];
+        const supply = (adventure.warMachineSupply ?? []).filter(
+          (cardId) => !playerOwnsWarMachine(state, visit.playerId, cardId)
+        );
         if (!player || supply.length === 0) {
           break;
         }
@@ -3697,13 +3701,15 @@ export function processPendingVisit(state: GameState): void {
         break;
       }
       case "GRANT_WAR_MACHINE": {
-        // War-machine leaf: move the chosen machine from the shared supply to hand
-        // (the player plays it as a permanent later, like any purchase). A free
-        // grant (McGiver) carries no cost; a Wandering Merchant buy carries the
-        // discounted Trading-Post cost, spent here.
+        // War-machine leaf: move the chosen machine from the catalog to hand (the
+        // player plays it as a permanent later, like any purchase). A free grant
+        // (McGiver) carries no cost; a Wandering Merchant buy carries the
+        // discounted Trading-Post cost, spent here. The catalog is NOT depleted —
+        // each player buys each machine once (guarded by ownership), so one
+        // buyer never removes a machine from the rest of the table.
         const player = state.players[visit.playerId];
         const supply = adventure.warMachineSupply ?? [];
-        if (!player || !supply.includes(step.cardId)) {
+        if (!player || !supply.includes(step.cardId) || playerOwnsWarMachine(state, visit.playerId, step.cardId)) {
           break;
         }
         if (step.cost) {
@@ -3712,7 +3718,6 @@ export function processPendingVisit(state: GameState): void {
           }
           spendResources(state, visit.playerId, step.cost, `bought the ${cardLibrary[step.cardId]?.name ?? step.cardId}`);
         }
-        adventure.warMachineSupply = supply.filter((cardId) => cardId !== step.cardId);
         player.hand.push(step.cardId);
         appendEvent(state, {
           type: "WAR_MACHINE_BOUGHT",

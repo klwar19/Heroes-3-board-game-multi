@@ -65,7 +65,7 @@ describe("Astrologers — Wandering Merchant (discounted War Machine buy)", () =
     expect(offers.map((offer) => offer.playerId).sort()).toEqual(["p1", "p2"]);
   });
 
-  it("buys a machine for the Trading-Post price MINUS 3, moving it to hand and out of the supply", () => {
+  it("buys a machine for the Trading-Post price MINUS 3, moving it to hand (catalog NOT depleted)", () => {
     const state = roundWith("astrologers.wandering_merchant");
     state.players.p1.resources.gold = 10;
     drawAstrologersCard(state);
@@ -81,7 +81,9 @@ describe("Astrologers — Wandering Merchant (discounted War Machine buy)", () =
     // Spent EXACTLY the discounted 3 (full price would have left 4, not 7).
     expect(next.players.p1.resources.gold).toBe(7);
     expect(next.players.p1.hand).toContain("war_machine.first_aid_tent");
-    expect(next.adventure?.warMachineSupply).not.toContain("war_machine.first_aid_tent");
+    // HOUSE RULE: the catalog is per-player and NEVER depletes — the Tent stays
+    // available so every OTHER player can still buy their own.
+    expect(next.adventure?.warMachineSupply).toContain("war_machine.first_aid_tent");
   });
 
   it("only offers machines the player can still afford at the discounted price", () => {
@@ -109,7 +111,10 @@ describe("Astrologers — Wandering Merchant (discounted War Machine buy)", () =
     expect(next.players.p1.hand.filter((id) => id.startsWith("war_machine."))).toEqual([]);
   });
 
-  it("rebuilds from the live shared supply: a machine one player buys is gone from the next player's menu", () => {
+  it("per-player catalog: a machine one player buys is STILL on the next player's menu (both can buy the Tent)", () => {
+    // The reported bug: "1 player buys the Tent → nobody else ever can." The
+    // catalog is per-player and never depletes, so p2 still sees AND can buy the
+    // Tent after p1 bought one. The only per-player limit is not owning two.
     const state = roundWith("astrologers.wandering_merchant");
     state.players.p1.resources.gold = 20;
     state.players.p2.resources.gold = 20;
@@ -120,14 +125,30 @@ describe("Astrologers — Wandering Merchant (discounted War Machine buy)", () =
     expect(state.adventure?.pendingVisit?.playerId).toBe("p1");
     const afterP1 = chooseVisitOption(state, "p1", /^Buy First Aid Tent \(3 gold\)$/);
 
-    // ...then p2's offer opens, and the Tent is no longer purchasable.
+    // ...then p2's offer opens, and the Tent is STILL purchasable for p2.
     expect(afterP1.adventure?.pendingVisit?.playerId).toBe("p2");
     const p2Labels = visitOptionLabels(afterP1, "p2");
-    expect(p2Labels.some((label) => /First Aid Tent/.test(label))).toBe(false);
-    expect(p2Labels.some((label) => /Cannon/.test(label))).toBe(true);
+    expect(p2Labels.some((label) => /First Aid Tent/.test(label))).toBe(true);
 
-    expect(afterP1.players.p1.hand).toContain("war_machine.first_aid_tent");
-    expect(afterP1.adventure?.warMachineSupply).not.toContain("war_machine.first_aid_tent");
+    const afterP2 = chooseVisitOption(afterP1, "p2", /^Buy First Aid Tent \(3 gold\)$/);
+    // BOTH players now own their own Tent; the catalog is untouched.
+    expect(afterP2.players.p1.hand).toContain("war_machine.first_aid_tent");
+    expect(afterP2.players.p2.hand).toContain("war_machine.first_aid_tent");
+    expect(afterP2.adventure?.warMachineSupply).toContain("war_machine.first_aid_tent");
+  });
+
+  it("per-player uniqueness: a player who ALREADY owns the Tent is not offered a second one", () => {
+    const state = roundWith("astrologers.wandering_merchant");
+    state.players.p1.resources.gold = 20;
+    state.players.p1.hand = [...state.players.p1.hand, "war_machine.first_aid_tent"]; // already owns one
+    drawAstrologersCard(state);
+    pumpAdventureQueues(state);
+
+    expect(state.adventure?.pendingVisit?.playerId).toBe("p1");
+    const labels = visitOptionLabels(state, "p1");
+    expect(labels.some((label) => /First Aid Tent/.test(label))).toBe(false);
+    // Other machines are still on offer (only the owned one drops out).
+    expect(labels.some((label) => /Ammo Cart|Ballista|Catapult|Cannon/.test(label))).toBe(true);
   });
 
   it("CONTROL: a different proclamation queues no discount offer", () => {

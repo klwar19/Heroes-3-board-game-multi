@@ -1211,16 +1211,48 @@ export function resolveWarMachineTarget(state: GameState, playerId: PlayerId, ta
 // Buying war machines / school expert discard
 // ---------------------------------------------------------------------------
 
-/** Machines still in the shared supply, with their price at this shop. */
+/**
+ * Whether `playerId` already owns a copy of the war machine `cardId` — in hand,
+ * deck, discard, or in play as a permanent. HOUSE RULE: the War Machine supply
+ * is NOT a shared single-copy pool that empties for the whole table when one
+ * player buys a machine ("1 player buys the Tent → nobody else ever can" was the
+ * bug). Each player may buy every machine ONCE; the only limit is that a player
+ * never holds two copies of the SAME machine. A removed (out-of-game) copy does
+ * not count, so a player who removed their Tent may buy another. Buying never
+ * depletes the catalog, so another player is never shut out.
+ */
+export function playerOwnsWarMachine(state: GameState, playerId: PlayerId, cardId: CardId): boolean {
+  const player = state.players[playerId];
+  if (!player) {
+    return false;
+  }
+  return (
+    player.hand.includes(cardId) ||
+    player.deck.includes(cardId) ||
+    player.discard.includes(cardId) ||
+    getPermanentCardIds(state, playerId).includes(cardId)
+  );
+}
+
+/**
+ * Machines this player may still buy at this shop, with the shop's price. The
+ * catalog (`warMachineSupply`) never depletes; a machine drops out only when
+ * THIS player already owns a copy (per-player uniqueness), so one buyer can
+ * never remove a machine from everyone else's menu.
+ */
 export function warMachinesForSale(
   state: GameState,
-  pricing: "factory" | "trading-post"
+  pricing: "factory" | "trading-post",
+  playerId?: PlayerId
 ): { cardId: CardId; card: CardDefinition; cost: NonNullable<CardDefinition["warMachineCosts"]>["factory"] }[] {
   const supply = state.adventure?.warMachineSupply ?? [];
   return supply.flatMap((cardId) => {
     const card = cardLibrary[cardId];
     const costs = card?.warMachineCosts;
     if (!card || !costs) {
+      return [];
+    }
+    if (playerId && playerOwnsWarMachine(state, playerId, cardId)) {
       return [];
     }
     return [{ cardId, card, cost: pricing === "factory" ? costs.factory : costs.tradingPost }];
@@ -1253,10 +1285,12 @@ export function buyWarMachine(state: GameState, action: Extract<GameAction, { ty
     throw new Error("This visit cannot buy a war machine any more.");
   }
 
-  const offer = warMachinesForSale(state, pricing).find((candidate) => candidate.cardId === action.cardId);
+  const offer = warMachinesForSale(state, pricing, action.playerId).find(
+    (candidate) => candidate.cardId === action.cardId
+  );
   const player = state.players[action.playerId];
   if (!offer || !player) {
-    throw new Error("That war machine is not in the supply.");
+    throw new Error("That war machine is not available to buy.");
   }
 
   if (!hasResources(player, offer.cost)) {
@@ -1264,7 +1298,8 @@ export function buyWarMachine(state: GameState, action: Extract<GameAction, { ty
   }
 
   spendResources(state, action.playerId, offer.cost, `bought the ${offer.card.name}`);
-  adventure.warMachineSupply = (adventure.warMachineSupply ?? []).filter((cardId) => cardId !== action.cardId);
+  // The catalog is NOT depleted (each player may buy each machine once — see
+  // playerOwnsWarMachine); the card goes to the buyer's hand.
   player.hand.push(action.cardId);
 
   appendEvent(state, {

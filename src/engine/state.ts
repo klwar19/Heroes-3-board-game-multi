@@ -7097,6 +7097,15 @@ export type AdventureState = {
    * "the 2nd tile each player opens is the settlement-guaranteed one" rule.
    */
   farTilesOpenedByPlayer?: Record<PlayerId, number>;
+  /**
+   * Whether a player has ALREADY opened a Ⅱ–Ⅲ tile that carries a Settlement.
+   * The 2nd-tile settlement guarantee is a floor, not a bonus: once a player's
+   * earlier Far tile already gave them a Settlement, the guarantee is satisfied,
+   * so their 2nd opening must NOT offer/force the settlement reroll (it would let
+   * them fish for a second Settlement, which is not the rule). Absent on
+   * pre-feature saves (treated as "no settlement yet").
+   */
+  farSettlementOpenedByPlayer?: Record<PlayerId, boolean>;
   /** A Ⅱ–Ⅲ tile flip in progress (keep / reroll / pick decision pending). */
   pendingFarTileFlip?: PendingFarTileFlip | null;
   /**

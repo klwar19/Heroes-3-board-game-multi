@@ -814,7 +814,9 @@ describe("rulebook conformance fixes", () => {
     const next = apply(state, buy!.action);
     expect(next.players.p1.resources.gold).toBe(4);
     expect(next.players.p1.hand).toContain("war_machine.first_aid_tent");
-    expect(next.adventure?.warMachineSupply).not.toContain("war_machine.first_aid_tent");
+    // HOUSE RULE: the catalog is per-player and never depletes — buying leaves it
+    // available so other players can still buy their own.
+    expect(next.adventure?.warMachineSupply).toContain("war_machine.first_aid_tent");
     expect(next.adventure?.pendingVisit).toBeNull();
   });
 

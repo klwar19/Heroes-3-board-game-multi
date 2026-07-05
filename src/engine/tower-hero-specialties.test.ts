@@ -296,7 +296,8 @@ describe("Torosar's Ballista specialty", () => {
     const next = applyOk(state, gain!.action);
     expect(next.players.p1.hand).toContain("war_machine.ballista");
     expect(next.players.p1.resources.gold).toBe(7);
-    expect(next.adventure?.warMachineSupply).not.toContain("war_machine.ballista");
+    // HOUSE RULE: the catalog is per-player and never depletes.
+    expect(next.adventure?.warMachineSupply).toContain("war_machine.ballista");
   });
 
   it("I option A is not offered without the 5 gold", () => {
