@@ -1960,8 +1960,17 @@ function presentFarTileOffersOrFinalize(state: GameState): void {
   // a Settlement specifically for the 2nd-opening guarantee, or any tile for the
   // one-time material-Mine reroll.
   const poolHasDraw = (state.adventure?.farTilePool?.length ?? 0) > 0;
+  // The settlement guarantee is a FLOOR — it only kicks in when the player has
+  // not already secured a Settlement from an earlier Far tile. If their 1st tile
+  // already had one, the 2nd opening is a normal keep (no fishing for a second
+  // Settlement). Without this guard a player who opened a Settlement first was
+  // still offered/forced the reroll on their 2nd tile — the reported bug.
+  const alreadyHasFarSettlement = Boolean(state.adventure?.farSettlementOpenedByPlayer?.[flip.playerId]);
   const settlementEligible =
-    flip.openingIndex === 2 && !tileDefHasSettlement(candidate) && farTilePoolHasSettlement(state);
+    flip.openingIndex === 2 &&
+    !alreadyHasFarSettlement &&
+    !tileDefHasSettlement(candidate) &&
+    farTilePoolHasSettlement(state);
   // Only an ORE Mine triggers the reroll — never a gold or valuables Mine.
   const mineEligible = !flip.mineRerollUsed && tileDefHasOreMine(candidate) && poolHasDraw;
 
@@ -2013,6 +2022,13 @@ function finalizeFarTileFlip(state: GameState, chosenTileDefId: string): void {
 
   adventure.farTilesOpenedByPlayer = adventure.farTilesOpenedByPlayer ?? {};
   adventure.farTilesOpenedByPlayer[flip.playerId] = (adventure.farTilesOpenedByPlayer[flip.playerId] ?? 0) + 1;
+  // Record that this player has now secured a Settlement from a Far tile, so a
+  // later opening's settlement guarantee stops firing (the guarantee is a floor
+  // — one Settlement — not a repeatable reroll for more).
+  if (tileDefHasSettlement(chosenTileDefId)) {
+    adventure.farSettlementOpenedByPlayer = adventure.farSettlementOpenedByPlayer ?? {};
+    adventure.farSettlementOpenedByPlayer[flip.playerId] = true;
+  }
 
   const center = { row: flip.centerRow, col: flip.centerCol };
   const via = flip.via;

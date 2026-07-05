@@ -2464,8 +2464,11 @@ function isOptionEffectPlayable(
         : siege.walls.length > 0 || siege.gatePosition !== null;
     }
     case "GAIN_WAR_MACHINE": {
-      // Torosar's Ballista I "Pay 5 gold to gain a Ballista": needs the machine
-      // still in the supply and enough gold (a map/economy play).
+      // Torosar's Ballista I "Pay 5 gold to gain a Ballista": needs the machine in
+      // the catalog, NOT already owned by this player, and enough gold (a map play).
+      // The catalog is per-player and never depletes — another player owning a
+      // Ballista never blocks this one. (It still offers the fallback draw at
+      // resolution when the player already holds it — see GAIN_WAR_MACHINE.)
       if (context !== "map" || !state.adventure) {
         return false;
       }

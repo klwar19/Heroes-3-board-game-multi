@@ -147,6 +147,7 @@ import {
   getPermanentSchoolBonus,
   isLowestInitiativeEnemy,
   playerCanUseFirstAidVolley,
+  playerOwnsWarMachine,
   putPermanentIntoPlay,
   resolveWarMachineTarget,
   spendFirstAidExpert,
@@ -12035,11 +12036,16 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     }
   }
 
-  // Gem's First Aid: take the war machine from the shared supply for free
-  // (Torosar's Ballista I pays gold), or draw the fallback when none remain.
+  // Gem's First Aid: take the war machine from the catalog for free (Torosar's
+  // Ballista I pays gold), or draw the fallback when the player already owns it.
+  // The catalog is per-player (not a shared depleting pool): a grant is available
+  // as long as THIS player does not already hold that machine.
   if (effect.type === "GAIN_WAR_MACHINE") {
     const supply = state.adventure?.warMachineSupply ?? [];
-    if (state.adventure && supply.includes(effect.warMachineCardId)) {
+    const available =
+      supply.includes(effect.warMachineCardId) &&
+      !playerOwnsWarMachine(state, action.playerId, effect.warMachineCardId);
+    if (state.adventure && available) {
       const cost = effect.goldCost ? { gold: effect.goldCost } : {};
       if (effect.goldCost) {
         const buyer = state.players[action.playerId];
@@ -12054,7 +12060,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
           reason: `gained the ${cards[effect.warMachineCardId]?.name ?? "war machine"}`
         });
       }
-      state.adventure.warMachineSupply = supply.filter((cardId) => cardId !== effect.warMachineCardId);
+      // Catalog is NOT depleted — other players keep their access to this machine.
       state.players[action.playerId].hand.push(effect.warMachineCardId);
       appendEvent(state, {
         type: "WAR_MACHINE_BOUGHT",

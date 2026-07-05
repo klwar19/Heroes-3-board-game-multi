@@ -223,6 +223,38 @@ describe("Ⅱ–Ⅲ tile flip — true random + keep/reroll/pick", () => {
       expect(rotateAndHasSettlement(picked)).toBe(false);
     });
 
+    it("does NOT offer the settlement reroll on the 2nd tile when the 1st tile ALREADY had a Settlement", () => {
+      // The guarantee is a FLOOR (one Settlement), not a repeatable reroll: a
+      // player whose 1st Ⅱ–Ⅲ tile was a Settlement must NOT be offered/forced a
+      // settlement reroll on their 2nd, no-Settlement tile — it just places.
+      const state = secondOpening([MINE_NO_SETTLEMENT]);
+      state.adventure!.farSettlementOpenedByPlayer = { p1: true }; // 1st tile gave a Settlement
+      const placed = apply(state, PLACE);
+      expect(placed.adventure!.pendingFarTileFlip).toBeNull();
+      expect(placed.pendingChoice).toBeNull();
+      expect(placed.adventure!.tiles[placed.adventure!.pendingTileChoice!.tileInstanceId].tileDefId).toBe(
+        MINE_NO_SETTLEMENT
+      );
+    });
+
+    it("CONTROL: without a prior Settlement, the SAME 2nd no-Settlement tile DOES offer the reroll", () => {
+      // Same setup minus the prior-settlement flag: the reroll offer appears —
+      // proving the guard above is what suppresses it (mutation control).
+      const placed = apply(secondOpening([MINE_NO_SETTLEMENT]), PLACE);
+      expect(placed.adventure!.pendingFarTileFlip?.offerMode).toBe("settlement");
+      expect(placed.pendingChoice?.type).toBe("OPTION_CHOICE");
+    });
+
+    it("end-to-end: opening a Settlement 1st sets the flag so the 2nd tile does not fish for another", () => {
+      // Drive a real 1st opening of a Settlement tile, then assert the per-player
+      // flag is set (the wiring finalizeFarTileFlip does), which is exactly what
+      // suppresses the 2nd-tile guarantee.
+      const state = setup();
+      state.adventure!.farTileScriptedDraws = [SETTLEMENT_NO_MINE];
+      const opened = apply(state, PLACE);
+      expect(opened.adventure!.farSettlementOpenedByPlayer?.p1).toBe(true);
+    });
+
     it("does NOT fire the settlement reroll on the 1st opening (only the 2nd)", () => {
       const state = setup();
       state.adventure!.farTileScriptedDraws = [MINE_NO_SETTLEMENT];

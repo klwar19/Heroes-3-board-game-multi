@@ -200,7 +200,7 @@ describe("Gem's First Aid I", () => {
     expect(adventureCards["specialty.gem.1"].implementationStatus).toBe("implemented");
   });
 
-  it("takes the First Aid Tent from the supply for free, then draws when none is left", () => {
+  it("takes the First Aid Tent from the catalog for free, then draws when the player already owns one", () => {
     let state = gemAdventure();
     state.players.p1.hand = ["specialty.gem.1"];
     expect(state.adventure!.warMachineSupply).toContain("war_machine.first_aid_tent");
@@ -212,17 +212,21 @@ describe("Gem's First Aid I", () => {
 
     state = applyOk(state, grab!.action);
     expect(state.players.p1.hand).toContain("war_machine.first_aid_tent");
-    expect(state.adventure!.warMachineSupply).not.toContain("war_machine.first_aid_tent");
+    // HOUSE RULE: the catalog is per-player and never depletes.
+    expect(state.adventure!.warMachineSupply).toContain("war_machine.first_aid_tent");
 
-    // Played again with the Tent already gone: the alternative draws 1 card.
-    state.players.p1.hand = ["specialty.gem.1"];
+    // Played again while the player STILL owns a Tent: the alternative draws 1
+    // card instead of a second Tent (per-player uniqueness — keep the Tent in hand).
+    state.players.p1.hand = ["war_machine.first_aid_tent", "specialty.gem.1"];
     state.players.p1.deck = ["stat.attack"];
     const again = getLegalActions(state, "p1").find(
       (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "specialty.gem.1"
     );
     state = applyOk(state, again!.action);
-    expect(state.players.p1.hand).toEqual(["stat.attack"]);
-    expect(state.adventure!.warMachineSupply).not.toContain("war_machine.first_aid_tent");
+    // Drew the fallback card; still holds exactly ONE Tent (never two).
+    expect(state.players.p1.hand).toContain("stat.attack");
+    expect(state.players.p1.hand.filter((id) => id === "war_machine.first_aid_tent")).toHaveLength(1);
+    expect(state.adventure!.warMachineSupply).toContain("war_machine.first_aid_tent");
   });
 });
 

@@ -80,7 +80,7 @@ describe("Astrologers — McGiver (free War Machine next round)", () => {
     expect(offers.map((offer) => offer.playerId).sort()).toEqual(["p1", "p2"]);
   });
 
-  it("lets a player take one machine of their choice for free; it leaves the supply", () => {
+  it("lets a player take one machine of their choice for free; the catalog is NOT depleted", () => {
     const state = resourceRoundWithMcGiver();
     const supplyBefore = [...(state.adventure!.warMachineSupply ?? [])];
     expect(supplyBefore).toContain("war_machine.ballista");
@@ -97,27 +97,29 @@ describe("Astrologers — McGiver (free War Machine next round)", () => {
     const next = chooseVisitOption(state, "p1", /Take Ballista \(free\)/);
 
     expect(next.players.p1.hand).toContain("war_machine.ballista");
-    expect(next.adventure?.warMachineSupply).not.toContain("war_machine.ballista");
+    // HOUSE RULE: per-player catalog — taking a machine never removes it for the
+    // rest of the table, so it stays in the shared catalog.
+    expect(next.adventure?.warMachineSupply).toContain("war_machine.ballista");
     // "At no cost" — the take is free.
     expect(next.players.p1.resources.gold).toBe(goldBefore);
   });
 
-  it("rebuilds the menu from the live supply: a later player never sees a taken machine", () => {
+  it("per-player catalog: a later player CAN still take a machine an earlier player took", () => {
     const state = resourceRoundWithMcGiver();
     startAdventureRound(state);
     pumpAdventureQueues(state);
 
     // p1 takes the Ballista...
     const afterP1 = chooseVisitOption(state, "p1", /Take Ballista \(free\)/);
-    // ...then p2's offer opens, and the Ballista is gone from its menu.
+    // ...then p2's offer opens, and the Ballista is STILL there for p2 to take.
     expect(afterP1.adventure?.pendingVisit?.playerId).toBe("p2");
     const p2Labels = visitOptionLabels(afterP1, "p2");
-    expect(p2Labels.some((label) => /Take Ballista/.test(label))).toBe(false);
-    expect(p2Labels.some((label) => /Take Cannon \(free\)/.test(label))).toBe(true);
+    expect(p2Labels.some((label) => /Take Ballista \(free\)/.test(label))).toBe(true);
 
-    const afterP2 = chooseVisitOption(afterP1, "p2", /Take Cannon \(free\)/);
-    expect(afterP2.players.p2.hand).toContain("war_machine.cannon");
+    const afterP2 = chooseVisitOption(afterP1, "p2", /Take Ballista \(free\)/);
+    // BOTH players own their own Ballista.
     expect(afterP2.players.p1.hand).toContain("war_machine.ballista");
+    expect(afterP2.players.p2.hand).toContain("war_machine.ballista");
   });
 
   it("is optional — Skip takes nothing and leaves the supply intact", () => {
