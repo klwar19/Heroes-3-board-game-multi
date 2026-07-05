@@ -73,6 +73,26 @@ describe("SetupLobbyScreen — setup format selector", () => {
   });
 });
 
+describe("SetupLobbyScreen — hosted/closed room observer guidance", () => {
+  it("tells an unseated observer in a hosted room to TAKE A SEAT when one is open", () => {
+    const state = createAdventureLobbyState({ seed: "ui-observer" });
+    // A hosted room where nobody holds a seat yet: the viewer is an observer.
+    state.room = { hosted: true, hostClientId: "c1", members: [{ clientId: "c1", name: "Host", seat: "observer", isHost: true }] };
+    render(<SetupLobbyScreen onAction={vi.fn()} state={state} viewerPlayerId={"observer" as never} />);
+    // The misleading "just wait" note is replaced by an actionable take-a-seat hint.
+    expect(screen.getByText(/take a seat/i)).toBeTruthy();
+    expect(screen.queryByText(/waiting for the players to finish setup/i)).toBeNull();
+  });
+
+  it("keeps the plain waiting note on an OPEN table (no seat lock) — gating control", () => {
+    const state = createAdventureLobbyState({ seed: "ui-observer-open" });
+    // Open table (not hosted): the observer note stays the original wording.
+    render(<SetupLobbyScreen onAction={vi.fn()} state={state} viewerPlayerId={"observer" as never} />);
+    expect(screen.getByText(/waiting for the players to finish map setup/i)).toBeTruthy();
+    expect(screen.queryByText(/take a seat/i)).toBeNull();
+  });
+});
+
 describe("SetupLobbyScreen — TYPE 4 free pick", () => {
   it("clicking a hero dispatches CHOOSE_FACTION", () => {
     const state = createAdventureLobbyState({ seed: "ui-open" });
