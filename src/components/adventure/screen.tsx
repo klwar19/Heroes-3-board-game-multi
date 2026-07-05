@@ -2627,6 +2627,14 @@ export function PromptTray({
     // Magi Power Drain: discard a chosen Power card or take a random discard.
     title = choice.prompt;
     body = combatDiscardActions;
+  } else if (choice?.type === "TARNUM_SEARCH" && choice.playerId === viewerPlayerId) {
+    // Tarnum (Conflux) VI's over-limit Spell search: pick WHICH Spell deck to
+    // Search (basic or expert). It emits CHOOSE_OPTION actions like an option
+    // choice but is its OWN pendingChoice type — without this branch no surface
+    // recognised it, so the owner saw a blank table and the choice froze the
+    // game ("player sees no choice, can't do anything").
+    title = `Tarnum — Search a Spell deck (${choice.remaining} search${choice.remaining === 1 ? "" : "es"} left)`;
+    body = optionActions;
   } else if (visit && visit.playerId === viewerPlayerId && visitActions.length > 0) {
     const step = visit.steps[0];
     // The market panel owns the Trading Post / War Machine Factory visits.
@@ -2644,6 +2652,25 @@ export function PromptTray({
   } else if (combatGate.length > 0) {
     title = "The combat round is over";
     body = combatGate;
+  }
+
+  // Safety net against a frozen table: ANY pending choice OWNED by this viewer
+  // that no surface above claimed — and that no sibling modal owns (DECK_SEARCH →
+  // SearchModal, ATTACK_DIE_REROLL → RerollModal, learning-level-up →
+  // LearningOfferModal) — still renders its resolving actions here. A pending
+  // choice returns ONLY its own resolving actions from getLegalActions, so this
+  // can never leak unrelated turn actions. It exists so a new/rare choice type
+  // (the Tarnum-search class of bug) can never silently strand its owner with a
+  // blank table — the failure the closed-room report described.
+  if (!title && choice && choice.playerId === viewerPlayerId) {
+    const ownedElsewhere =
+      choice.type === "DECK_SEARCH" ||
+      choice.type === "ATTACK_DIE_REROLL" ||
+      (choice.type === "OPTION_CHOICE" && choice.context === "learning-level-up");
+    if (!ownedElsewhere && legalActions.length > 0) {
+      title = choice.type === "OPTION_CHOICE" ? choice.prompt : "Choose how to resolve this";
+      body = legalActions;
+    }
   }
 
   if (!title || body.length === 0) {
@@ -5907,7 +5934,28 @@ export function SetupLobbyScreen({
           )}
         </>
       ) : (
-        <p className="observerNote">Observer: waiting for the players to finish map setup.</p>
+        (() => {
+          // In a HOSTED/closed room a fresh joiner (and the host) starts as an
+          // unseated observer and MUST claim a seat before they can pick a
+          // faction or do anything — but a plain "waiting for the players" note
+          // read as "just sit tight", so people got stuck thinking the room was
+          // broken and "couldn't do anything". When a seat is still open, tell
+          // them to take one (the seat controls live in the top bar).
+          const room = state.room;
+          const openSeatExists =
+            Boolean(room?.hosted) &&
+            lobby.seats.some(
+              (candidate) => !(room?.members ?? []).some((member) => member.seat === candidate.playerId)
+            );
+          return openSeatExists ? (
+            <p className="observerNote">
+              You&apos;re observing — <strong>take a seat</strong> using the seat controls at the top of the screen to
+              pick a faction and play.
+            </p>
+          ) : (
+            <p className="observerNote">Observer: waiting for the players to finish map setup.</p>
+          );
+        })()
       )}
 
       {mySeat ? (
