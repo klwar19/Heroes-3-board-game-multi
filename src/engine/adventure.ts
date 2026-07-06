@@ -2613,6 +2613,25 @@ function stepNeedsInput(step: VisitStep): boolean {
   );
 }
 
+function queueVisitFollowUpReward(state: GameState, adventure: AdventureState, reward: AdventureReward): void {
+  if (adventure.eventResolution?.round !== state.round) {
+    adventure.rewardQueue.push(reward);
+    return;
+  }
+
+  const nextRoundStartEventIndex = adventure.rewardQueue.findIndex(
+    (queued) =>
+      queued.kind === "round-start-events-resolved" ||
+      (queued.kind === "visit-steps" && queued.steps[0]?.type === "EVENT_PLAYER_CHOICE")
+  );
+  if (nextRoundStartEventIndex === -1) {
+    adventure.rewardQueue.push(reward);
+    return;
+  }
+
+  adventure.rewardQueue.splice(nextRoundStartEventIndex, 0, reward);
+}
+
 /**
  * Resolves queued visit steps until one needs input or the visit completes.
  * Search steps hand off to the shared pendingChoice deck-search flow.
@@ -2843,14 +2862,16 @@ export function processPendingVisit(state: GameState): void {
           target: step.target
         });
         break;
-      case "SEARCH_SHARED_DECK":
-        adventure.rewardQueue.push({
+      case "SEARCH_SHARED_DECK": {
+        const reward: AdventureReward = {
           playerId: visit.playerId,
           kind: "shared-deck-search",
           deckId: step.deckId,
           count: step.count
-        });
+        };
+        queueVisitFollowUpReward(state, adventure, reward);
         break;
+      }
       // Event cards (Fortress expansion): every EVENT_* step plus the shared
       // LOSE_RESOURCES / SPEND_HERO_MOVEMENT leaves resolve in one place.
       case "EVENT_PLAYER_CHOICE":
@@ -2994,14 +3015,16 @@ export function processPendingVisit(state: GameState): void {
       case "NECROMANCY_FETCH":
         resolveNecromancyFetch(state, visit.playerId);
         break;
-      case "DISCARD_PICK":
-        adventure.rewardQueue.push({
+      case "DISCARD_PICK": {
+        const reward: AdventureReward = {
           playerId: visit.playerId,
           kind: "discard-pick",
           count: step.count,
           filter: step.filter
-        });
+        };
+        queueVisitFollowUpReward(state, adventure, reward);
         break;
+      }
       case "MANA_VORTEX_RESOLVE":
         resolveManaVortex(state, visit.playerId, step.discardCardId);
         break;
@@ -6075,9 +6098,11 @@ export function commitPopulationOnMove(state: GameState, controllerId: PlayerId)
  * by `isRoundStartEventBarrierActive` — legal-actions offers nothing but the
  * current resolver's choice, and the applyAction backstop rejects every other
  * player's action — and a trailing "round-start-events-resolved" sentinel reward
- * (pushed here, always the LAST event reward because follow-ups `unshift` ahead
- * of it) lifts the freeze in `pumpAdventureQueues`. Called only when resolution
- * work was actually queued, so a fully-instant proclamation raises no barrier.
+ * (pushed here after the queued event work) lifts the freeze in
+ * `pumpAdventureQueues`. Follow-up rewards earned inside a player's event slot
+ * are inserted before the next queued event resolver, so the earning player sees
+ * the payout immediately. Called only when resolution work was actually queued,
+ * so a fully-instant proclamation raises no barrier.
  */
 function beginRoundStartEventBarrier(state: GameState): void {
   const adventure = state.adventure;
