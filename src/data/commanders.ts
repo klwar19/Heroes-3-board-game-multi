@@ -31,7 +31,7 @@ export interface CommanderDefinition {
   original?: boolean;
   /** Two signature abilities (printed on the card face). */
   abilities: string[];
-  /** Built card asset (frame + art + name + abilities; stat wells left EMPTY). */
+  /** Built card asset (frame + art only; name, abilities, and stats are overlaid). */
   cardImage: string;
 }
 
@@ -47,32 +47,32 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
   },
   hierophant: {
     slug: "hierophant", name: "Hierophant", faction: "Rampart",
-    abilities: ["First Aid Master: +1 First Aid Tent per level.", "Shield: may cast Shield."],
+    abilities: ["First Aid Master: First Aid Tents = level.", "Shield: may cast Shield (duration = Power)."],
     cardImage: "/assets/units-commander-hierophant.webp"
   },
   temple_guardian: {
     slug: "temple_guardian", name: "Temple Guardian", faction: "Tower",
-    abilities: ["Mana Magician: restores some of the Hero's mana.", "Precision: may cast Precision."],
+    abilities: ["Mana Magician: restores lost mana (20% + 5%/level).", "Precision: may cast Precision (duration = Power)."],
     cardImage: "/assets/units-commander-temple_guardian.webp"
   },
   succubus: {
     slug: "succubus", name: "Succubus", faction: "Inferno",
-    abilities: ["Charming: steals neutral stacks before combat.", "Fire Shield: may cast Fire Shield."],
+    abilities: ["Charming: steals 5% + (level-1)/2 of neutral stacks.", "Fire Shield: may cast Fire Shield (duration = Power)."],
     cardImage: "/assets/units-commander-succubus.webp"
   },
   brute: {
     slug: "brute", name: "Brute", faction: "Dungeon",
-    abilities: ["Soul Reformer: 50% of battle experience as gold.", "Bloodlust: may cast Bloodlust."],
+    abilities: ["Soul Reformer: converts 50% of battle XP to gold.", "Bloodlust: may cast Bloodlust (duration = Power)."],
     cardImage: "/assets/units-commander-brute.webp"
   },
   soul_eater: {
     slug: "soul_eater", name: "Soul Eater", faction: "Necropolis",
-    abilities: ["Undead: has the properties of an undead creature.", "Animate Dead: revives Level 1-5 creatures."],
+    abilities: ["Undead: counts as an undead creature.", "Animate Dead: revives Level 1-5 creatures."],
     cardImage: "/assets/units-commander-soul_eater.webp"
   },
   ogre_leader: {
     slug: "ogre_leader", name: "Ogre Leader", faction: "Stronghold",
-    abilities: ["Ballista Master: provides additional Ballistas.", "Stone Skin: may cast Stone Skin."],
+    abilities: ["Ballista Master: adds ballistas (level/4 + 1).", "Stone Skin: may cast Stone Skin (duration = Power)."],
     cardImage: "/assets/units-commander-ogre_leader.webp"
   },
   shaman: {
@@ -82,7 +82,7 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
   },
   astral_spirit: {
     slug: "astral_spirit", name: "Astral Spirit", faction: "Conflux",
-    abilities: ["Pacifist: some enemy creatures flee before combat.", "Counterstrike: may cast Counterstrike."],
+    abilities: ["Pacifist: 5% + (level-1)/2 enemies flee (max 20%).", "Counterstrike: may cast Counterstrike (duration = Power)."],
     cardImage: "/assets/units-commander-astral_spirit.webp"
   },
   corsair: {

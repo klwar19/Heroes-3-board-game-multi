@@ -2402,8 +2402,12 @@ export function PromptTray({
   const visit = state.adventure?.pendingVisit;
   const choice = state.pendingChoice;
   const roundStartEventActive = isRoundStartEventBarrierActive(state);
+  const roundStartBarrierKind =
+    roundStartEventActive ? (state.round % 2 === 0 ? "astrologers" : "event") : null;
   const visitStep = visit?.steps[0];
-  const activeRoundEventCard = roundStartEventActive ? getActiveEventCard(state) : null;
+  const activeRoundEventCard = roundStartBarrierKind === "event" ? getActiveEventCard(state) : null;
+  const activeRoundAstrologersCard =
+    roundStartBarrierKind === "astrologers" ? getActiveAstrologersCard(state) : null;
   const roundStartEventCard =
     activeRoundEventCard &&
     visitStep &&
@@ -2413,6 +2417,8 @@ export function PromptTray({
         visitStep.prompt.startsWith(activeRoundEventCard.name)))
       ? activeRoundEventCard
       : null;
+  const roundStartAstrologersCard =
+    activeRoundAstrologersCard && visit ? activeRoundAstrologersCard : null;
 
   const visitActions = legalActions.filter(
     (legal) =>
@@ -2588,7 +2594,9 @@ export function PromptTray({
         ? {
             ownerId: visit.playerId,
             doing: roundStartEventActive
-              ? "is resolving the round's Event…"
+              ? roundStartAstrologersCard
+                ? "is resolving the Astrologers proclamation…"
+                : "is resolving the round's Event…"
               : "is resolving a visit…"
           }
         : !choice && !visit && tileChoice && tileChoice.playerId !== viewerPlayerId
@@ -2657,6 +2665,8 @@ export function PromptTray({
     title =
       roundStartEventCard
         ? `Event: ${roundStartEventCard.name}`
+        : roundStartAstrologersCard
+          ? `Astrologers Proclaim: ${roundStartAstrologersCard.name}`
         : step?.type === "CHOOSE_ONE"
         ? step.prompt
         : step?.type === "PAY_TO"

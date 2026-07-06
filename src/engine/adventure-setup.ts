@@ -723,7 +723,9 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
       activeCardId: null,
       nextResourceModifiers: { gold: 0, valuables: 0 },
       crazyWizardUsedBy: [],
-      swiftWeaselUsedBy: []
+      swiftWeaselUsedBy: [],
+      heroEmpowerChosenRoundBy: {},
+      heroEmpowerUsesBy: {}
     },
     // Event deck state (only meaningful while the "events" deck exists).
     ...(eventsOn

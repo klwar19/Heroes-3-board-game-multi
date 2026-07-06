@@ -3,6 +3,7 @@ import type {
   DeckId,
   GameState,
   PendingChoice,
+  PendingVisit,
   PlayerId,
   PlayerVisibleDeckState,
   PlayerVisiblePlayerState,
@@ -144,6 +145,21 @@ function getVisiblePendingChoice(choice: PendingChoice, viewerPlayerId: PlayerId
   return cloneSerializable(choice);
 }
 
+function getVisiblePendingVisit(visit: PendingVisit | null, viewerPlayerId: PlayerId): PendingVisit | null {
+  if (!visit) {
+    return null;
+  }
+
+  if (visit.playerId === viewerPlayerId) {
+    return cloneSerializable(visit);
+  }
+
+  return {
+    ...cloneSerializable(visit),
+    steps: []
+  };
+}
+
 export function getPlayerView(state: GameState, viewerPlayerId: PlayerId): PlayerVisibleState {
   const base = cloneSerializable(state);
   const players = Object.fromEntries(
@@ -231,7 +247,8 @@ export function getPlayerView(state: GameState, viewerPlayerId: PlayerId): Playe
                   }
                 : null
             }
-          : undefined
+          : undefined,
+        pendingVisit: getVisiblePendingVisit(base.adventure.pendingVisit, viewerPlayerId)
       }
     : null;
 

@@ -60,6 +60,27 @@ function whiteRavenState(seed: string): GameState {
   return state;
 }
 
+function dancingImpState(seed: string): GameState {
+  const state = createAdventureGameState({ seed, difficulty: "normal", rollFirstPlayer: false });
+  state.decks.astrologers.drawPile = ["astrologers.dancing_imp"];
+  state.decks.astrologers.discardPile = [];
+  state.activeEffects = [];
+  state.players.p1.hand = ["stat.attack"];
+  state.players.p1.deck = [];
+  state.players.p1.discard = [];
+  state.players.p1.removed = [];
+  state.players.p2.hand = ["stat.defense"];
+  state.players.p2.deck = [];
+  state.players.p2.discard = [];
+  state.players.p2.removed = [];
+  for (const playerId of ["p1", "p2"] as const) {
+    state.players[playerId].morale = 0;
+    state.players[playerId].canMulligan = false;
+    state.players[playerId].needsHandRefresh = false;
+  }
+  return state;
+}
+
 function shadyAuctionEventState(seed: string): GameState {
   const state = createAdventureGameState({
     seed,
@@ -517,6 +538,59 @@ describe("room Astrologers resolution", () => {
       expect(totalResources(final, "p2")).toBeGreaterThan(p2Before);
       expect(final.eventLog.some((event) => event.type === "ADVENTURE_DICE_ROLLED" && event.playerId === "p1")).toBe(true);
       expect(final.eventLog.some((event) => event.type === "ADVENTURE_DICE_ROLLED" && event.playerId === "p2")).toBe(true);
+    });
+
+    it(`hands Dancing Imp's optional prompt across seats in a ${mode.label}`, () => {
+      const roomId = uniqueRoom(`dancing-imp-${mode.label.replace(/\s+/g, "-")}`);
+      createRoom({ roomId, name: mode.label, ranked: mode.ranked });
+      restoreRoom(roomId, dancingImpState(roomId));
+
+      submitAs(roomId, { type: "JOIN_ROOM", clientId: "c1", name: "P1" }, mode.actors.p1);
+      submitAs(roomId, { type: "JOIN_ROOM", clientId: "c2", name: "P2" }, mode.actors.p2);
+      if (mode.hosted) {
+        submitAs(roomId, { type: "SET_ROOM_HOSTED", clientId: "c1", hosted: true }, mode.actors.p1);
+        submitAs(roomId, { type: "ASSIGN_SEAT", clientId: "c1", targetClientId: "c1", seat: "p1" }, mode.actors.p1);
+        submitAs(roomId, { type: "ASSIGN_SEAT", clientId: "c1", targetClientId: "c2", seat: "p2" }, mode.actors.p1);
+      }
+
+      expect(submitAs(roomId, { type: "END_TURN", playerId: "p1" }, mode.actors.p1).result.errors).toHaveLength(0);
+      const opened = submitAs(roomId, { type: "END_TURN", playerId: "p2" }, mode.actors.p2);
+      expect(opened.result.errors).toHaveLength(0);
+
+      let canonical = getRoomSnapshot(roomId).state;
+      expect(canonical.room?.ranked).toBe(mode.ranked);
+      expect(canonical.room?.hosted ?? false).toBe(mode.hosted);
+      expect(canonical.round).toBe(2);
+      expect(canonical.adventure?.astrologers?.activeCardId).toBe("astrologers.dancing_imp");
+      expect(canonical.adventure?.pendingVisit?.playerId).toBe("p1");
+
+      const p1Empower = getLegalActions(canonical, "p1").find(
+        (legal) => legal.action.type === "RESOLVE_VISIT_STEP" && /Empower Attack \(hand\)/.test(legal.label)
+      );
+      expect(p1Empower).toBeTruthy();
+      expect(submitAs(roomId, p1Empower!.action, mode.actors.p1).result.errors).toHaveLength(0);
+
+      canonical = getRoomSnapshot(roomId).state;
+      expect(canonical.adventure?.pendingVisit?.playerId).toBe("p2");
+      const p1Frame = redactStateForSeat(canonical, "p1");
+      expect(p1Frame.adventure?.pendingVisit?.steps).toEqual([]);
+      expect(JSON.stringify(p1Frame)).not.toContain("Empower Defense");
+
+      const p2Frame = redactStateForSeat(canonical, "p2");
+      const p2Empower = getLegalActions(p2Frame, "p2").find(
+        (legal) => legal.action.type === "RESOLVE_VISIT_STEP" && /Empower Defense \(hand\)/.test(legal.label)
+      );
+      expect(p2Empower).toBeTruthy();
+      const done = submitAs(roomId, p2Empower!.action, mode.actors.p2);
+      expect(done.result.errors).toHaveLength(0);
+
+      const final = getRoomSnapshot(roomId).state;
+      expect(final.players.p1.hand).toContain("stat.attack.empowered");
+      expect(final.players.p2.hand).toContain("stat.defense.empowered");
+      expect(final.players.p1.removed).toContain("stat.attack");
+      expect(final.players.p2.removed).toContain("stat.defense");
+      expect(final.adventure?.pendingVisit ?? null).toBeNull();
+      expect(final.adventure?.eventResolution ?? null).toBeNull();
     });
   }
 

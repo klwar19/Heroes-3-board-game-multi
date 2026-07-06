@@ -50,9 +50,9 @@ export type AstrologersEffect =
   // Plane Between Planes: each player may immediately Remove up to `count` cards
   // from their hand or discard pile. Resolved at draw.
   | { type: "REMOVE_CARDS_CHOICE"; count: number }
-  // Hero: ongoing — at the start of each of a player's turns they may pay
+  // Hero: ongoing, while face up each player chooses one of their turns and may pay
   // `costGold` to Remove a hand Statistic and replace it with the same-type
-  // Empowered Statistic, up to `maxPerTurn` times that turn.
+  // Empowered Statistic, up to `maxPerTurn` times during that chosen turn.
   | { type: "PAID_EMPOWER_PER_TURN"; costGold: number; maxPerTurn: number }
   // McGiver: at the start of the next round each player may take one War Machine
   // of their choice from the shared supply for free. Resolved at that next

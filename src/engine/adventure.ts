@@ -200,9 +200,17 @@ export function getAstrologersState(state: GameState): AstrologersState | null {
       activeCardId: null,
       nextResourceModifiers: { gold: 0, valuables: 0 },
       crazyWizardUsedBy: [],
-      swiftWeaselUsedBy: []
+      swiftWeaselUsedBy: [],
+      heroEmpowerChosenRoundBy: {},
+      heroEmpowerUsesBy: {}
     };
   }
+
+  adventure.astrologers.nextResourceModifiers ??= { gold: 0, valuables: 0 };
+  adventure.astrologers.crazyWizardUsedBy ??= [];
+  adventure.astrologers.swiftWeaselUsedBy ??= [];
+  adventure.astrologers.heroEmpowerChosenRoundBy ??= {};
+  adventure.astrologers.heroEmpowerUsesBy ??= {};
 
   return adventure.astrologers;
 }
@@ -3364,9 +3372,13 @@ export function processPendingVisit(state: GameState): void {
         if (!player || step.remaining <= 0 || (cost > 0 && !hasResources(player, { gold: cost }))) {
           break;
         }
+        // Hero is the only paid Stat empower that uses this shared step, and its
+        // printed source is hand-only. Clamp here too so older saved prompts or
+        // stale clients cannot keep offering paid discard-pile swaps.
+        const sources: ("hand" | "discard")[] = cost > 0 ? ["hand"] : step.sources;
         const seen = new Set<string>();
         const options: { label: string; steps: VisitStep[] }[] = [];
-        for (const source of step.sources) {
+        for (const source of sources) {
           for (const cardId of player[source]) {
             const card = cardLibrary[cardId];
             const stat = card?.statisticType;
@@ -3385,7 +3397,7 @@ export function processPendingVisit(state: GameState): void {
             }
             const next: VisitStep[] = [empowerLeaf];
             if (step.remaining - 1 > 0) {
-              next.push({ ...step, remaining: step.remaining - 1 });
+              next.push({ ...step, sources, remaining: step.remaining - 1 });
             }
             options.push({
               label: `${cost > 0 ? `Pay ${cost} gold: ` : ""}Empower ${card.name ?? cardId} (${source})`,
@@ -3406,7 +3418,13 @@ export function processPendingVisit(state: GameState): void {
         const stat = cardLibrary[step.cardId]?.statisticType;
         const index = pile?.indexOf(step.cardId) ?? -1;
         const cost = step.costGold ?? 0;
-        if (!player || !pile || !stat || index === -1 || (cost > 0 && !hasResources(player, { gold: cost }))) {
+        if (
+          !player ||
+          !pile ||
+          !stat ||
+          index === -1 ||
+          (cost > 0 && (step.source !== "hand" || !hasResources(player, { gold: cost })))
+        ) {
           break;
         }
         if (cost > 0) {
@@ -6546,9 +6564,6 @@ export function startPlayerTurn(state: GameState, playerId: PlayerId): void {
   // "Resolve any 'at the beginning of your turn' abilities after drawing":
   // Necromancy Amplifier, Portal of Summoning, Mana Vortex.
   queueTurnStartBuildingChoices(state, playerId);
-  // Hero (Astrologers): the ongoing "pay 4 gold to empower a Statistic, twice
-  // this turn" offer, if that proclamation is the one face up.
-  queueTurnStartAstrologersChoices(state, playerId);
 
   // Phase divider: the hand-limit snapshot runs after every effect queued above
   // (this turn's start-of-turn effects) and every round-start effect queued
@@ -6774,6 +6789,8 @@ function expireActiveAstrologersCard(state: GameState): void {
   astrologers.activeCardId = null;
   astrologers.crazyWizardUsedBy = [];
   astrologers.swiftWeaselUsedBy = [];
+  astrologers.heroEmpowerChosenRoundBy = {};
+  astrologers.heroEmpowerUsesBy = {};
 }
 
 function popAstrologersCard(state: GameState): string | undefined {
@@ -6811,6 +6828,8 @@ export function drawAstrologersCard(state: GameState): void {
 
   const card = astrologersCardDefinitions[cardId];
   astrologers.activeCardId = cardId;
+  astrologers.heroEmpowerChosenRoundBy = {};
+  astrologers.heroEmpowerUsesBy = {};
   appendEvent(state, {
     type: "ASTROLOGERS_DRAWN",
     cardId,
@@ -6860,8 +6879,8 @@ function resolveAstrologersCard(state: GameState, card: AstrologersCardDefinitio
       // seaStepHalts; Mages' free Spell Book at the Spell Book gate;
       // hand-limit in effectiveHandLimit, die rerolls in maybeReroll, the spell
       // bonuses in getCurrentSpellPower, the spell return in maybeReturnSpell;
-      // Hero's paid empower is offered at the start of each turn, see
-      // queueTurnStartAstrologersChoices; Ammo Cart's war-machine buffs are read
+      // Hero's paid empower is offered from live hand Statistic card menus;
+      // Ammo Cart's war-machine buffs are read
       // in permanents.ts / reducer.ts; McGiver's free war machine is handed out
       // at the next Resource round, see startAdventureRound; Explorers' empower is
       // granted per the cards discarded in each hand refresh, see refreshHand).
@@ -7254,34 +7273,76 @@ function hasEmpowerableStatistic(player: PlayerState, sources: ("hand" | "discar
 }
 
 /**
- * Hero (ongoing): at the start of the active player's turn, offer up to
- * `maxPerTurn` paid empowers of a hand Statistic into its same-type Empowered
- * version. Both swaps must happen this turn — enforced by offering the whole
- * allotment now and nowhere else. Only queued when the player can afford and
- * holds a swappable hand Statistic, so it never opens an empty prompt.
+ * Hero (ongoing): the paid Statistic exchange is a live hand-card action. The
+ * first use chooses this player's turn for the face-up Hero card; any second
+ * use must happen during the same turn's round. Skipping the Astrologers-round
+ * turn leaves the Resource-round turn available because the card remains face
+ * up until the next Astrologers round.
  */
-function queueTurnStartAstrologersChoices(state: GameState, playerId: PlayerId): void {
+function activeHeroEmpowerEffect(state: GameState): { costGold: number; maxPerTurn: number } | null {
   const active = getActiveAstrologersCard(state);
-  if (active?.effect.type !== "PAID_EMPOWER_PER_TURN") {
-    return;
+  return active?.effect.type === "PAID_EMPOWER_PER_TURN" ? active.effect : null;
+}
+
+export function astrologersHeroEmpowerRemaining(state: GameState, playerId: PlayerId): number {
+  const effect = activeHeroEmpowerEffect(state);
+  const astrologers = state.adventure?.astrologers;
+  if (!effect || !astrologers) {
+    return 0;
   }
+
+  const chosenRound = astrologers.heroEmpowerChosenRoundBy?.[playerId];
+  if (chosenRound !== undefined && chosenRound !== state.round) {
+    return 0;
+  }
+
+  const used = chosenRound === state.round ? (astrologers.heroEmpowerUsesBy?.[playerId] ?? 0) : 0;
+  return Math.max(0, effect.maxPerTurn - used);
+}
+
+export function canUseAstrologersHeroEmpower(state: GameState, playerId: PlayerId, cardId: CardId): boolean {
+  const effect = activeHeroEmpowerEffect(state);
   const player = state.players[playerId];
-  if (!player || !hasResources(player, { gold: active.effect.costGold }) || !hasEmpowerableStatistic(player, ["hand"])) {
-    return;
+  const card = cardLibrary[cardId];
+  return Boolean(
+    effect &&
+      player &&
+      player.hand.includes(cardId) &&
+      hasResources(player, { gold: effect.costGold }) &&
+      astrologersHeroEmpowerRemaining(state, playerId) > 0 &&
+      card?.kind === "statistic" &&
+      card.statisticType &&
+      !cardId.endsWith(".empowered")
+  );
+}
+
+export function applyAstrologersHeroEmpower(state: GameState, playerId: PlayerId, cardId: CardId): void {
+  const effect = activeHeroEmpowerEffect(state);
+  const astrologers = getAstrologersState(state);
+  const player = state.players[playerId];
+  const card = cardLibrary[cardId];
+  const statisticType = card?.statisticType;
+  const handIndex = player?.hand.indexOf(cardId) ?? -1;
+
+  if (!effect || !astrologers || !player || !statisticType || handIndex === -1) {
+    throw new Error("Hero cannot empower that Statistic card right now.");
   }
-  state.adventure?.rewardQueue.push({
-    playerId,
-    kind: "visit-steps",
-    steps: [
-      {
-        type: "STAT_EMPOWER_OFFER",
-        sources: ["hand"],
-        remaining: active.effect.maxPerTurn,
-        costGold: active.effect.costGold,
-        prompt: `Hero: pay ${active.effect.costGold} gold to empower a Statistic card (up to ${active.effect.maxPerTurn}× this turn)`
-      }
-    ]
-  });
+  if (!canUseAstrologersHeroEmpower(state, playerId, cardId)) {
+    throw new Error("Hero cannot empower that Statistic card right now.");
+  }
+
+  astrologers.heroEmpowerChosenRoundBy ??= {};
+  astrologers.heroEmpowerUsesBy ??= {};
+  astrologers.heroEmpowerChosenRoundBy[playerId] ??= state.round;
+  if (astrologers.heroEmpowerChosenRoundBy[playerId] !== state.round) {
+    throw new Error("Hero's Statistic exchanges must happen during the one turn you chose.");
+  }
+
+  spendResources(state, playerId, { gold: effect.costGold }, "Hero Astrologers Proclaim");
+  player.hand.splice(handIndex, 1);
+  player.removed.push(cardId);
+  player.hand.push(`stat.${statisticType}.empowered`);
+  astrologers.heroEmpowerUsesBy[playerId] = (astrologers.heroEmpowerUsesBy[playerId] ?? 0) + 1;
 }
 
 /**

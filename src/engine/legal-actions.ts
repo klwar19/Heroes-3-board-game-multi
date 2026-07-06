@@ -13,6 +13,7 @@ import {
   adventurePvpTroopLoss,
   applyRecruitGoldDiscount,
   armyHasMapEffect,
+  canUseAstrologersHeroEmpower,
   canHeroReachPlacedTile,
   capturableEnemyMinesWithin,
   freeSpellBookActive,
@@ -2907,6 +2908,15 @@ function addTurnCardActions(
     const card = cards[cardId];
     if (!card || card.implementationStatus !== "implemented") {
       continue;
+    }
+
+    if (context === "map" && !fromSpellBook && canUseAstrologersHeroEmpower(state, playerId, cardId)) {
+      const effect = getActiveAstrologersCard(state)?.effect;
+      const costGold = effect?.type === "PAID_EMPOWER_PER_TURN" ? effect.costGold : 4;
+      actions.push({
+        label: `Hero: pay ${costGold} gold to Empower ${card.name}`,
+        action: { type: "ASTROLOGERS_HERO_EMPOWER", playerId, cardId }
+      });
     }
 
     // PvP prep: a map-movement Spell (Town Portal et al.) would relocate the hero
@@ -5986,6 +5996,13 @@ function addVisitStepActions(actions: LegalAction[], state: GameState, playerId:
 
   if (step.type === "CHOOSE_ONE") {
     for (const [optionIndex, option] of step.options.entries()) {
+      if (
+        option.steps.some(
+          (inner) => inner.type === "EMPOWER_STATISTIC" && (inner.costGold ?? 0) > 0 && inner.source !== "hand"
+        )
+      ) {
+        continue;
+      }
       // Pandora's Box: the deck-draw option needs cards left in the deck.
       if (
         option.steps.some((inner) => inner.type === "DRAW_PANDORA_CARD") &&

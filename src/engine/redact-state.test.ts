@@ -70,6 +70,47 @@ describe("redactStateForSeat — privacy", () => {
     // Counts still survive so the UI can show "N cards".
     expect(redacted.players.p1.hand).toHaveLength(state.players.p1.hand.length);
   });
+
+  it("hides another seat's pending visit options while preserving the owner's prompt", () => {
+    const state = twoPlayerGame();
+    state.players.p1.hand = ["stat.attack"];
+    state.players.p1.deck = [];
+    state.players.p1.discard = [];
+    state.players.p1.removed = [];
+    state.players.p2.hand = ["stat.defense"];
+    state.players.p2.deck = [];
+    state.players.p2.discard = [];
+    state.players.p2.removed = [];
+    state.adventure!.pendingVisit = {
+      heroId: "hero_p2",
+      playerId: "p2",
+      fieldId: state.heroes.hero_p2.spaceId!,
+      steps: [
+        {
+          type: "CHOOSE_ONE",
+          prompt: "Dancing Imp: empower one Statistic card",
+          options: [
+            {
+              label: "Empower Defense (hand)",
+              steps: [{ type: "EMPOWER_STATISTIC", cardId: "stat.defense", source: "hand" }]
+            }
+          ]
+        }
+      ]
+    };
+
+    const p1Frame = redactStateForSeat(state, "p1");
+    const p2Frame = redactStateForSeat(state, "p2");
+
+    expect(p1Frame.adventure?.pendingVisit?.playerId).toBe("p2");
+    expect(p1Frame.adventure?.pendingVisit?.steps).toEqual([]);
+    expect(JSON.stringify(p1Frame)).not.toContain("Empower Defense");
+    expect(JSON.stringify(p1Frame)).not.toContain("stat.defense");
+
+    expect(p2Frame.adventure?.pendingVisit?.steps).toEqual(state.adventure!.pendingVisit.steps);
+    expect(JSON.stringify(p2Frame)).toContain("Empower Defense");
+    expect(JSON.stringify(p2Frame)).toContain("stat.defense");
+  });
 });
 
 describe("redactStateForSeat — fidelity (the seated player sees no change)", () => {
