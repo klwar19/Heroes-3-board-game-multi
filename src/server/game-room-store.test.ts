@@ -9,10 +9,13 @@ import {
   createAdventureLobbyState,
   getAfkState,
   getLegalActions,
+  redactStateForSeat,
   type GameAction,
   type GameState,
   type PlayerId
 } from "@/engine";
+import { EVENTS_DECK_ID, getEventsState, startAdventureRound } from "@/engine/adventure";
+import { pumpAdventureQueues } from "@/engine/adventure-reducer";
 import {
   closeRoom,
   createRoom,
@@ -54,6 +57,36 @@ function whiteRavenState(seed: string): GameState {
     state.players[playerId].canMulligan = false;
     state.players[playerId].needsHandRefresh = false;
   }
+  return state;
+}
+
+function shadyAuctionEventState(seed: string): GameState {
+  const state = createAdventureGameState({
+    seed,
+    difficulty: "normal",
+    rollFirstPlayer: false,
+    events: true
+  });
+  const eventDeck = state.decks[EVENTS_DECK_ID];
+  if (!eventDeck) {
+    throw new Error("Event deck was not created");
+  }
+  eventDeck.drawPile = eventDeck.drawPile.filter((cardId) => cardId !== "event.a_shady_auction");
+  eventDeck.drawPile.push("event.a_shady_auction");
+  state.pendingChoice = null;
+  state.adventure!.pendingVisit = null;
+  state.adventure!.rewardQueue = [];
+  for (const playerId of ["p1", "p2"] as const) {
+    const player = state.players[playerId];
+    player.hand = [];
+    player.canMulligan = false;
+    player.needsHandRefresh = false;
+    player.resources = { gold: 30, buildingMaterials: 0, valuables: 0 };
+    player.production = { gold: 0, buildingMaterials: 0, valuables: 0 };
+  }
+  state.round = 3;
+  startAdventureRound(state);
+  pumpAdventureQueues(state);
   return state;
 }
 
@@ -527,6 +560,66 @@ describe("room Astrologers resolution", () => {
     expect(done.result.errors).toHaveLength(0);
     expect(done.snapshot.state.adventure?.pendingVisit ?? null).toBeNull();
     expect(done.snapshot.state.adventure?.eventResolution ?? null).toBeNull();
+  });
+});
+
+describe("room Event resolution", () => {
+  it("keeps A Shady Auction secret, seat-owned, and resolvable for guest/account hosted seats", () => {
+    const roomId = uniqueRoom("shady-auction-hosted");
+    const p1Guest = { clientId: "c1" };
+    const p2Account = { clientId: "c2", userId: "u_p2" };
+    const p2AccountOtherTab = { clientId: "c2-other-tab", userId: "u_p2" };
+    const outsider = { clientId: "c3", userId: "u_p3" };
+
+    createRoom({ roomId, name: "Event Auction", ranked: true });
+    submitAs(roomId, { type: "JOIN_ROOM", clientId: "c1", name: "P1" }, p1Guest);
+    submitAs(roomId, { type: "JOIN_ROOM", clientId: "c2", name: "P2" }, p2Account);
+    submitAs(roomId, { type: "SET_ROOM_HOSTED", clientId: "c1", hosted: true }, p1Guest);
+    submitAs(roomId, { type: "ASSIGN_SEAT", clientId: "c1", targetClientId: "c1", seat: "p1" }, p1Guest);
+    submitAs(roomId, { type: "ASSIGN_SEAT", clientId: "c1", targetClientId: "c2", seat: "p2" }, p1Guest);
+    restoreRoom(roomId, shadyAuctionEventState(roomId), "c1");
+
+    let canonical = getRoomSnapshot(roomId).state;
+    expect(canonical.room?.ranked).toBe(true);
+    expect(canonical.room?.hosted).toBe(true);
+    expect(canonical.adventure?.events?.activeCardId).toBe("event.a_shady_auction");
+    expect(canonical.adventure?.eventResolution?.round).toBe(3);
+    expect(canonical.adventure?.pendingVisit?.playerId).toBe("p1");
+    expect(getLegalActions(canonical, "p2")).toEqual([]);
+
+    const lot1 = getEventsState(canonical)!.auction!.lotCardId;
+    const p1Bid = getLegalActions(canonical, "p1").find(
+      (legal) => legal.action.type === "RESOLVE_VISIT_STEP" && /^Bid 3 gold$/.test(legal.label)
+    );
+    expect(p1Bid).toBeTruthy();
+    expect(submitAs(roomId, p1Bid!.action, p2Account).result.errors).toHaveLength(1);
+    expect(submitAs(roomId, p1Bid!.action, outsider).result.errors).toHaveLength(1);
+    expect(submitAs(roomId, p1Bid!.action, p1Guest).result.errors).toHaveLength(0);
+
+    canonical = getRoomSnapshot(roomId).state;
+    expect(getEventsState(canonical)!.auction!.bids).toEqual({ p1: 3 });
+    expect(canonical.adventure?.pendingVisit?.playerId).toBe("p2");
+
+    const p1Frame = redactStateForSeat(canonical, "p1");
+    expect(p1Frame.adventure?.events?.auction?.bids).toEqual({ p1: 3 });
+    expect(p1Frame.adventure?.pendingVisit?.steps).toEqual([]);
+
+    const p2Frame = redactStateForSeat(canonical, "p2");
+    expect(p2Frame.adventure?.events?.auction?.bids).toEqual({});
+    const p2Bid = getLegalActions(p2Frame, "p2").find(
+      (legal) => legal.action.type === "RESOLVE_VISIT_STEP" && /^Bid 5 gold$/.test(legal.label)
+    );
+    expect(p2Bid).toBeTruthy();
+    expect(submitAs(roomId, p2Bid!.action, p1Guest).result.errors).toHaveLength(1);
+
+    const awarded = submitAs(roomId, p2Bid!.action, p2AccountOtherTab);
+    expect(awarded.result.errors).toHaveLength(0);
+    const afterLot = awarded.snapshot.state;
+    expect(afterLot.players.p2.hand).toContain(lot1);
+    expect(afterLot.players.p2.resources.gold).toBe(25);
+    expect(afterLot.players.p1.resources.gold).toBe(30);
+    expect(afterLot.adventure?.pendingVisit?.playerId).toBe("p1");
+    expect(getEventsState(afterLot)!.auction!.bids).toEqual({});
   });
 });
 
