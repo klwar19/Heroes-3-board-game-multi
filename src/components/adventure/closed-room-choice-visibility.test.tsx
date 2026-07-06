@@ -5,8 +5,10 @@ import { PromptTray } from "./screen";
 import {
   applyAction,
   createAdventureGameState,
+  ASTROLOGERS_DECK_ID,
   EVENTS_DECK_ID,
   getActiveEventCard,
+  getActiveAstrologersCard,
   getLegalActions,
   pumpAdventureQueues,
   redactStateForSeat,
@@ -75,6 +77,12 @@ function stackEventDeck(state: GameState, cardId: string): void {
   deck.drawPile.push(cardId);
 }
 
+function stackAstrologersDeck(state: GameState, cardId: string): void {
+  const deck = state.decks[ASTROLOGERS_DECK_ID];
+  deck.drawPile = deck.drawPile.filter((id) => id !== cardId);
+  deck.drawPile.push(cardId);
+}
+
 function eventGame(options: { hosted: boolean; ranked: boolean; p2UserId?: string }): GameState {
   const state = createAdventureGameState({
     seed: `event-visibility-${options.hosted ? "hosted" : "open"}-${options.ranked ? "ranked" : "normal"}-${
@@ -114,6 +122,7 @@ function eventGame(options: { hosted: boolean; ranked: boolean; p2UserId?: strin
     : { hosted: false, hostClientId: null, ranked: options.ranked, members: [] };
 
   state.adventure!.events!.nextDrawerIndex = 1;
+  state.adventure!.astrologers!.activeCardId = "astrologers.dancing_imp";
   stackEventDeck(state, "event.stables");
   state.round = 3;
   startAdventureRound(state);
@@ -221,6 +230,126 @@ const eventVisibilityCases = [
   p2UserId?: string;
   actor?: TestActor;
 }[];
+
+const astrologersVisibilityCases = [
+  { label: "open normal guest", hosted: false, ranked: false },
+  { label: "open ranked guest", hosted: false, ranked: true },
+  { label: "closed normal guest", hosted: true, ranked: false, actor: { clientId: "c1" } },
+  { label: "closed ranked guest", hosted: true, ranked: true, actor: { clientId: "c1" } },
+  {
+    label: "closed ranked account player",
+    hosted: true,
+    ranked: true,
+    p1UserId: "u-player",
+    actor: { clientId: "new-tab", userId: "u-player" }
+  },
+  {
+    label: "closed ranked admin account",
+    hosted: true,
+    ranked: true,
+    p1UserId: "u-admin",
+    actor: { clientId: "admin-tab", userId: "u-admin" }
+  }
+] satisfies {
+  label: string;
+  hosted: boolean;
+  ranked: boolean;
+  p1UserId?: string;
+  actor?: TestActor;
+}[];
+
+function astrologersGame(options: {
+  hosted: boolean;
+  ranked: boolean;
+  p1UserId?: string;
+}): GameState {
+  const state = createAdventureGameState({
+    seed: `astrologers-visibility-${options.hosted ? "hosted" : "open"}-${options.ranked ? "ranked" : "normal"}-${
+      options.p1UserId ?? "guest"
+    }`,
+    difficulty: "normal",
+    rollFirstPlayer: false,
+    players: [
+      { id: "p1", name: "Catherine", factionId: "castle", heroDefId: "catherine" },
+      { id: "p2", name: "Sandro", factionId: "necropolis", heroDefId: "sandro" }
+    ]
+  });
+  for (const player of Object.values(state.players)) {
+    player.canMulligan = false;
+    player.needsHandRefresh = false;
+    player.morale = 0;
+  }
+  state.players.p1.hand = ["stat.attack"];
+  state.players.p1.discard = [];
+  state.players.p2.hand = ["stat.defense"];
+  state.players.p2.discard = [];
+  state.adventure!.rewardQueue = [];
+  state.adventure!.pendingVisit = null;
+  state.pendingChoice = null;
+  state.room = options.hosted
+    ? {
+        hosted: true,
+        hostClientId: "c1",
+        ranked: options.ranked,
+        members: [
+          {
+            clientId: "c1",
+            name: "Catherine",
+            seat: "p1",
+            isHost: true,
+            ...(options.p1UserId ? { userId: options.p1UserId } : {})
+          },
+          { clientId: "c2", name: "Sandro", seat: "p2", isHost: false }
+        ]
+      }
+    : { hosted: false, hostClientId: null, ranked: options.ranked, members: [] };
+
+  stackAstrologersDeck(state, "astrologers.dancing_imp");
+  state.round = 2;
+  startAdventureRound(state);
+  pumpAdventureQueues(state);
+  const pendingVisit = state.adventure?.pendingVisit as { playerId?: string } | null | undefined;
+  expect(pendingVisit?.playerId).toBe("p1");
+  return state;
+}
+
+describe("Astrologers Proclaim visibility: every seat can see and resolve its proclamation prompt", () => {
+  it.each(astrologersVisibilityCases)("$label: the current resolver sees Dancing Imp and can resolve it", (testCase) => {
+    const state = astrologersGame(testCase);
+    const actor = testCase.actor;
+    const viewer = testCase.hosted ? seatForViewer(state, actor ?? {}) : "p1";
+    expect(viewer).toBe("p1");
+    const frame = testCase.hosted ? frameForActor(state, actor ?? {}) : state;
+    expect(frame.adventure?.astrologers?.activeCardId).toBe("astrologers.dancing_imp");
+    expect(getActiveAstrologersCard(frame)?.name).toBe("Dancing Imp");
+    const legalActions = getLegalActions(frame, "p1");
+
+    const onAction = vi.fn();
+    render(<PromptTray legalActions={legalActions} onAction={onAction} state={frame} viewerPlayerId="p1" />);
+
+    expect(screen.getByRole("dialog", { name: /Astrologers Proclaim: Dancing Imp/i })).toBeTruthy();
+    const resolve = screen.getByRole("button", { name: /Empower Attack \(hand\)/i });
+    fireEvent.click(resolve);
+    expect(onAction).toHaveBeenCalledTimes(1);
+
+    const submitted = onAction.mock.calls[0][0] as GameAction;
+    const resolved = applyOk(state, submitted, testCase.hosted ? actor : undefined);
+    expect(resolved.players.p1.hand).toContain("stat.attack.empowered");
+    expect(resolved.adventure?.pendingVisit?.playerId).toBe("p2");
+  });
+
+  it.each(astrologersVisibilityCases)("$label: the waiting seat sees the Astrologers proclamation is being resolved", (testCase) => {
+    const state = astrologersGame(testCase);
+    const frame = testCase.hosted ? frameForActor(state, { clientId: "c2" }) : state;
+    expect(frame.adventure?.astrologers?.activeCardId).toBe("astrologers.dancing_imp");
+    expect(getActiveAstrologersCard(frame)?.name).toBe("Dancing Imp");
+
+    render(<PromptTray legalActions={getLegalActions(frame, "p2")} onAction={vi.fn()} state={frame} viewerPlayerId="p2" />);
+
+    expect(screen.queryByRole("button", { name: /Empower Attack \(hand\)/i })).toBeNull();
+    expect(screen.getByText(/Catherine is resolving the Astrologers proclamation/i)).toBeTruthy();
+  });
+});
 
 describe("Event deck visibility: rotated starter still shows the Event to every seat", () => {
   it.each(eventVisibilityCases)("$label: the current resolver sees the Event prompt and can resolve it", (testCase) => {

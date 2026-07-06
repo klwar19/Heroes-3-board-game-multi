@@ -2721,6 +2721,15 @@ export type GameAction =
       playerId: PlayerId;
       cardId: CardId;
     }
+  | {
+      /**
+       * Astrologers Hero: during one chosen turn while Hero is face up, pay gold
+       * to remove this hand Statistic and gain its same-type Empowered version.
+       */
+      type: "ASTROLOGERS_HERO_EMPOWER";
+      playerId: PlayerId;
+      cardId: CardId;
+    }
   | { type: "REVISIT_FIELD"; playerId: PlayerId; heroId: HeroId }
   | {
       /**
@@ -6927,6 +6936,13 @@ export type AstrologersState = {
   crazyWizardUsedBy: PlayerId[];
   /** Players who already used this turn's free die reroll (Swift Weasel). */
   swiftWeaselUsedBy: PlayerId[];
+  /**
+   * Hero proclamation: round containing the one turn each player chose for
+   * their paid Statistic exchanges. If absent, they have not chosen yet.
+   */
+  heroEmpowerChosenRoundBy?: Record<PlayerId, number>;
+  /** Hero proclamation: number of exchanges made in the chosen turn. */
+  heroEmpowerUsesBy?: Record<PlayerId, number>;
 };
 
 /** A shared-deck card (or Neutral unit card) sitting in the open Event pool. */

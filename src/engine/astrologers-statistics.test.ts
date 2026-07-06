@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { applyAction, createAdventureGameState, getLegalActions } from "./index";
-import { drawAstrologersCard, startPlayerTurn } from "./adventure";
+import { drawAstrologersCard } from "./adventure";
 import { pumpAdventureQueues } from "./adventure-reducer";
-import type { GameState, PlayerId } from "./state";
+import type { GameAction, GameState, LegalAction, PlayerId } from "./state";
 
 /**
  * Statistic-empowering / card-removal Astrologers proclamations, engine-enforced
@@ -10,12 +10,12 @@ import type { GameState, PlayerId } from "./state";
  *   - Dancing Imp (Inferno): free, swap one Statistic card (hand OR discard) for
  *     its same-type Empowered version.
  *   - Plane Between Planes (Fortress): Remove up to 2 cards from hand/discard.
- *   - Hero (Inferno, ongoing): at the start of a turn, pay 4 gold to empower a
- *     hand Statistic, up to twice that turn.
+ *   - Hero (Inferno, ongoing): during one chosen turn while the card is face
+ *     up, pay 4 gold to empower a hand Statistic, up to twice that turn.
  *
  * Each test drives the real reward-queue / visit-step flow (RESOLVE_VISIT_STEP),
- * so deleting the wiring — the resolveAstrologersCard case, the turn-start hook,
- * or the EMPOWER_STATISTIC / REMOVE_UP_TO step handlers — makes a test fail.
+ * so deleting the wiring — the resolveAstrologersCard case, the Hero hand-card
+ * action, or the EMPOWER_STATISTIC / REMOVE_UP_TO step handlers — makes a test fail.
  */
 
 function makeGame(): GameState {
@@ -39,6 +39,38 @@ function visitOptionLabels(state: GameState, playerId: PlayerId): string[] {
   return getLegalActions(state, playerId)
     .filter((entry) => entry.action.type === "RESOLVE_VISIT_STEP")
     .map((entry) => entry.label);
+}
+
+type HeroEmpowerLegal = LegalAction & {
+  action: Extract<GameAction, { type: "ASTROLOGERS_HERO_EMPOWER" }>;
+};
+
+function readyMapTurn(state: GameState, playerId: PlayerId): void {
+  state.activePlayerId = playerId;
+  state.phase = "player-turn";
+  state.combat = null;
+  state.pendingChoice = null;
+  state.reactionWindow = null;
+  state.adventure!.pendingVisit = null;
+  state.adventure!.pendingTileChoice = null;
+  state.adventure!.pendingNecromancy = null;
+  state.adventure!.rewardQueue = [];
+  state.players[playerId]!.canMulligan = false;
+  state.players[playerId]!.needsHandRefresh = false;
+}
+
+function heroEmpowerActions(state: GameState, playerId: PlayerId): HeroEmpowerLegal[] {
+  return getLegalActions(state, playerId).filter(
+    (entry): entry is HeroEmpowerLegal => entry.action.type === "ASTROLOGERS_HERO_EMPOWER"
+  );
+}
+
+function applyHeroEmpower(state: GameState, playerId: PlayerId, cardId: string): GameState {
+  const legal = heroEmpowerActions(state, playerId).find((entry) => entry.action.cardId === cardId);
+  expect(legal, `expected Hero empower action for ${cardId}`).toBeTruthy();
+  const result = applyAction(state, legal!.action);
+  expect(result.errors, result.errors.map((error) => error.message).join("; ")).toEqual([]);
+  return result.state;
 }
 
 describe("Astrologers — Dancing Imp (empower a Statistic)", () => {
@@ -150,64 +182,207 @@ describe("Astrologers — Hero (pay to empower, twice per turn)", () => {
       activeCardId: "astrologers.hero",
       nextResourceModifiers: { gold: 0, valuables: 0 },
       crazyWizardUsedBy: [],
-      swiftWeaselUsedBy: []
+      swiftWeaselUsedBy: [],
+      heroEmpowerChosenRoundBy: {},
+      heroEmpowerUsesBy: {}
     };
   }
 
-  it("offers two 4-gold same-type empowers at the start of the turn, then stops", () => {
+  it("offers two 4-gold hand-statistic exchanges during the chosen turn, then stops", () => {
     const state = makeGame();
     setHeroActive(state);
-    state.players.p1.hand = ["stat.attack", "stat.power", "spell.magic_arrow"];
+    state.round = 2;
+    readyMapTurn(state, "p1");
+    state.players.p1.hand = ["stat.attack", "stat.power", "stat.defense", "spell.magic_arrow"];
     state.players.p1.discard = [];
     state.players.p1.removed = [];
     state.players.p1.resources.gold = 20;
 
-    startPlayerTurn(state, "p1");
-    pumpAdventureQueues(state);
+    expect(state.adventure?.pendingVisit).toBeNull();
+    expect(heroEmpowerActions(state, "p1").map((entry) => entry.action.cardId)).toEqual([
+      "stat.attack",
+      "stat.power",
+      "stat.defense"
+    ]);
 
-    expect(state.adventure?.pendingVisit?.playerId).toBe("p1");
-    expect(visitOptionLabels(state, "p1")).toContain("Done");
-
-    // First paid swap: Attack → Empowered Attack, -4 gold.
-    let s = chooseVisitOption(state, "p1", /Pay 4 gold: Empower Attack \(hand\)/);
+    let s = applyHeroEmpower(state, "p1", "stat.attack");
     expect(s.players.p1.hand).toContain("stat.attack.empowered");
     expect(s.players.p1.hand).not.toContain("stat.attack");
+    expect(s.players.p1.removed).toContain("stat.attack");
     expect(s.players.p1.resources.gold).toBe(16);
+    expect(s.adventure?.astrologers?.heroEmpowerChosenRoundBy?.p1).toBe(2);
+    expect(s.adventure?.astrologers?.heroEmpowerUsesBy?.p1).toBe(1);
 
-    // Second paid swap is offered (same turn): Power → Empowered Power, -4 gold.
-    expect(s.adventure?.pendingVisit?.playerId).toBe("p1");
-    s = chooseVisitOption(s, "p1", /Pay 4 gold: Empower Power \(hand\)/);
+    s = applyHeroEmpower(s, "p1", "stat.power");
     expect(s.players.p1.hand).toContain("stat.power.empowered");
     expect(s.players.p1.resources.gold).toBe(12);
+    expect(s.adventure?.astrologers?.heroEmpowerUsesBy?.p1).toBe(2);
 
-    // Capped at twice per turn — no third offer even though gold and (had) cards.
-    expect(s.adventure?.pendingVisit).toBeNull();
+    // Capped at twice during the chosen turn: Defense is still in hand but no
+    // third Hero exchange is legal.
+    expect(s.players.p1.hand).toContain("stat.defense");
+    expect(heroEmpowerActions(s, "p1")).toEqual([]);
   });
 
   it("is not offered when the player cannot afford the 4 gold", () => {
     const state = makeGame();
     setHeroActive(state);
+    readyMapTurn(state, "p1");
     state.players.p1.hand = ["stat.attack"];
     state.players.p1.discard = [];
     state.players.p1.resources.gold = 3;
 
-    startPlayerTurn(state, "p1");
-    pumpAdventureQueues(state);
-
-    expect(state.adventure?.pendingVisit).toBeNull();
+    expect(heroEmpowerActions(state, "p1")).toEqual([]);
   });
 
   it("only empowers from the hand, never the discard pile", () => {
     const state = makeGame();
     setHeroActive(state);
+    readyMapTurn(state, "p1");
     state.players.p1.hand = ["spell.magic_arrow"];
     state.players.p1.discard = ["stat.defense"];
     state.players.p1.resources.gold = 20;
 
-    startPlayerTurn(state, "p1");
+    expect(heroEmpowerActions(state, "p1")).toEqual([]);
+  });
+
+  it("appears only after the mandatory turn hand refresh is resolved", () => {
+    const state = makeGame();
+    setHeroActive(state);
+    readyMapTurn(state, "p1");
+    state.players.p1.hand = ["stat.attack"];
+    state.players.p1.resources.gold = 20;
+    state.players.p1.canMulligan = true;
+
+    expect(heroEmpowerActions(state, "p1")).toEqual([]);
+
+    const refreshed = applyAction(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+    expect(refreshed.errors, refreshed.errors.map((error) => error.message).join("; ")).toEqual([]);
+    expect(heroEmpowerActions(refreshed.state, "p1").map((entry) => entry.action.cardId)).toContain("stat.attack");
+  });
+
+  it("lets each player choose the Astrologers-round turn or the next Resource-round turn, not both", () => {
+    const state = makeGame();
+    setHeroActive(state);
+    state.round = 2;
+    readyMapTurn(state, "p1");
+    state.players.p1.hand = ["stat.attack", "stat.power"];
+    state.players.p1.resources.gold = 20;
+
+    let s = applyHeroEmpower(state, "p1", "stat.attack");
+
+    // p1 chose the Astrologers-round turn, so the following Resource-round turn
+    // is no longer available for this same face-up Hero card.
+    s.round = 3;
+    readyMapTurn(s, "p1");
+    s.players.p1.hand.push("stat.defense");
+    expect(heroEmpowerActions(s, "p1")).toEqual([]);
+
+    // Another player who skipped their Astrologers-round turn may still choose
+    // their Resource-round turn while the same Hero card remains face up.
+    readyMapTurn(s, "p2");
+    s.players.p2.hand = ["stat.defense"];
+    s.players.p2.resources.gold = 20;
+    expect(heroEmpowerActions(s, "p2").map((entry) => entry.action.cardId)).toEqual(["stat.defense"]);
+
+    // If p1 had skipped round 2 instead, round 3 would be a legal chosen turn.
+    const late = makeGame();
+    setHeroActive(late);
+    late.round = 3;
+    readyMapTurn(late, "p1");
+    late.players.p1.hand = ["stat.knowledge"];
+    late.players.p1.resources.gold = 20;
+    const usedLate = applyHeroEmpower(late, "p1", "stat.knowledge");
+    expect(usedLate.players.p1.hand).toContain("stat.knowledge.empowered");
+  });
+
+  it("clamps stale paid Hero prompts to hand-only even if their saved sources include discard", () => {
+    const state = makeGame();
+    setHeroActive(state);
+    state.players.p1.hand = ["stat.attack"];
+    state.players.p1.discard = ["stat.defense"];
+    state.players.p1.resources.gold = 20;
+    state.adventure!.pendingVisit = {
+      heroId: "hero_p1",
+      playerId: "p1",
+      fieldId: state.heroes.hero_p1.spaceId ?? "",
+      steps: [
+        {
+          type: "STAT_EMPOWER_OFFER",
+          sources: ["hand", "discard"],
+          remaining: 1,
+          costGold: 4,
+          prompt: "Legacy Hero prompt"
+        }
+      ]
+    };
+
     pumpAdventureQueues(state);
 
-    // A discard-only Statistic gives Hero nothing to do (it is hand-only).
+    const labels = visitOptionLabels(state, "p1");
+    expect(labels.some((label) => /Pay 4 gold: Empower Attack \(hand\)/.test(label))).toBe(true);
+    expect(labels.some((label) => /\(discard\)/.test(label))).toBe(false);
+  });
+
+  it("hides and rejects already-built stale paid discard-pile Hero options", () => {
+    const state = makeGame();
+    setHeroActive(state);
+    state.players.p1.hand = ["stat.attack"];
+    state.players.p1.discard = ["stat.defense"];
+    state.players.p1.resources.gold = 20;
+    state.adventure!.pendingVisit = {
+      heroId: "hero_p1",
+      playerId: "p1",
+      fieldId: state.heroes.hero_p1.spaceId ?? "",
+      steps: [
+        {
+          type: "CHOOSE_ONE",
+          prompt: "Legacy Hero prompt",
+          options: [
+            {
+              label: "Pay 4 gold: Empower Defense (discard)",
+              steps: [{ type: "EMPOWER_STATISTIC", cardId: "stat.defense", source: "discard", costGold: 4 }]
+            },
+            {
+              label: "Pay 4 gold: Empower Attack (hand)",
+              steps: [{ type: "EMPOWER_STATISTIC", cardId: "stat.attack", source: "hand", costGold: 4 }]
+            },
+            { label: "Done", steps: [] }
+          ]
+        }
+      ]
+    };
+
+    const labels = visitOptionLabels(state, "p1");
+    expect(labels).not.toContain("Pay 4 gold: Empower Defense (discard)");
+    expect(labels).toContain("Pay 4 gold: Empower Attack (hand)");
+
+    const rejected = applyAction(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 0 });
+    expect(rejected.errors[0]?.message).toBe("Choose one of the printed options.");
+    expect(rejected.state.players.p1.resources.gold).toBe(20);
+    expect(rejected.state.players.p1.discard).toEqual(["stat.defense"]);
+  });
+
+  it("ignores stale paid discard-pile empower leaves without spending gold or moving the card", () => {
+    const state = makeGame();
+    setHeroActive(state);
+    state.players.p1.hand = [];
+    state.players.p1.discard = ["stat.defense"];
+    state.players.p1.removed = [];
+    state.players.p1.resources.gold = 20;
+    state.adventure!.pendingVisit = {
+      heroId: "hero_p1",
+      playerId: "p1",
+      fieldId: state.heroes.hero_p1.spaceId ?? "",
+      steps: [{ type: "EMPOWER_STATISTIC", cardId: "stat.defense", source: "discard", costGold: 4 }]
+    };
+
+    pumpAdventureQueues(state);
+
+    expect(state.players.p1.resources.gold).toBe(20);
+    expect(state.players.p1.discard).toEqual(["stat.defense"]);
+    expect(state.players.p1.hand).toEqual([]);
+    expect(state.players.p1.removed).toEqual([]);
     expect(state.adventure?.pendingVisit).toBeNull();
   });
 });

@@ -12,6 +12,7 @@ import { isMarketLocation, locationDefinitions, TRADE_RATES } from "@/data/map/l
 import { allTileDefinitions } from "@/data/map/tiles";
 import {
   addArmyUnit,
+  applyAstrologersHeroEmpower,
   adventurePvpTroopLoss,
   adventureVictoryMode,
   armyHasMapEffect,
@@ -2316,7 +2317,12 @@ export function resolveVisitStep(state: GameState, action: Extract<GameAction, {
   switch (step.type) {
     case "CHOOSE_ONE": {
       const option = action.optionIndex !== undefined ? step.options[action.optionIndex] : undefined;
-      if (!option) {
+      if (
+        !option ||
+        option.steps.some(
+          (inner) => inner.type === "EMPOWER_STATISTIC" && (inner.costGold ?? 0) > 0 && inner.source !== "hand"
+        )
+      ) {
         throw new Error("Choose one of the printed options.");
       }
       visit.steps.shift();
@@ -3016,6 +3022,17 @@ export function observatoryPlacementCenters(
     centers.push(center);
   }
   return centers;
+}
+
+export function astrologersHeroEmpower(
+  state: GameState,
+  action: Extract<GameAction, { type: "ASTROLOGERS_HERO_EMPOWER" }>
+): void {
+  requireAdventure(state);
+  assertActiveTurn(state, action.playerId);
+  assertHandRefreshed(state, action.playerId);
+  assertNoPendingInput(state);
+  applyAstrologersHeroEmpower(state, action.playerId, action.cardId);
 }
 
 export function tradeResources(state: GameState, action: Extract<GameAction, { type: "TRADE_RESOURCES" }>): void {

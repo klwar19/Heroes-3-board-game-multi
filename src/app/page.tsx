@@ -3802,16 +3802,30 @@ export default function Home() {
     // offered on the wrong card (the hand shows hand plays; the Book panel shows
     // Book casts).
     type PlayLegal = LegalAction & { action: Extract<GameAction, { type: "PLAY_CARD" }> };
-    const playActionsByCard = new Map<string, PlayLegal[]>();
+    type HandCardLegal = LegalAction & {
+      action: Extract<GameAction, { type: "PLAY_CARD" | "ASTROLOGERS_HERO_EMPOWER" }>;
+    };
+    const playActionsByCard = new Map<string, HandCardLegal[]>();
     const bookPlayActionsByCard = new Map<string, PlayLegal[]>();
     for (const legal of legalActions) {
+      if (legal.action.type === "ASTROLOGERS_HERO_EMPOWER") {
+        const list = playActionsByCard.get(legal.action.cardId) ?? [];
+        list.push(legal as HandCardLegal);
+        playActionsByCard.set(legal.action.cardId, list);
+        continue;
+      }
       if (legal.action.type !== "PLAY_CARD") {
         continue;
       }
-      const target = legal.action.fromSpellBook ? bookPlayActionsByCard : playActionsByCard;
-      const list = target.get(legal.action.cardId) ?? [];
-      list.push(legal as PlayLegal);
-      target.set(legal.action.cardId, list);
+      if (legal.action.fromSpellBook) {
+        const list = bookPlayActionsByCard.get(legal.action.cardId) ?? [];
+        list.push(legal as PlayLegal);
+        bookPlayActionsByCard.set(legal.action.cardId, list);
+      } else {
+        const list = playActionsByCard.get(legal.action.cardId) ?? [];
+        list.push(legal as HandCardLegal);
+        playActionsByCard.set(legal.action.cardId, list);
+      }
     }
 
     // Spell Book (house rule): "Move <Spell> to your Spell Book" offers, keyed by
@@ -3831,7 +3845,13 @@ export default function Home() {
       return card.effect.options[action.optionIndex]?.cost;
     };
 
-    const startPlay = (legal: LegalAction & { action: Extract<GameAction, { type: "PLAY_CARD" }> }) => {
+    const startPlay = (legal: HandCardLegal) => {
+      if (legal.action.type === "ASTROLOGERS_HERO_EMPOWER") {
+        setOpenHandIndex(null);
+        setArmedHandPlay(null);
+        void submitAction(legal.action);
+        return;
+      }
       const cost = optionCostOf(legal.action);
       if (cost && (cost.discardCards !== undefined || cost.discardCardsUpTo !== undefined)) {
         setPendingCostPlay({

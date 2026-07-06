@@ -77,6 +77,7 @@ import {
   spendMorale,
   spendTownCube,
   activateTownBuilding,
+  astrologersHeroEmpower,
   tradeResources,
   sellScrollSpell,
   unplaceCombatUnit,
@@ -15457,6 +15458,7 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
 /** Adventure actions are validated inside their handlers, not by enumeration. */
 const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "REFRESH_HAND",
+  "ASTROLOGERS_HERO_EMPOWER",
   "REVISIT_FIELD",
   "OPEN_MARKET",
   "DISCOVER_TILE",
@@ -15734,6 +15736,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "REFRESH_HAND":
         refreshHand(nextState, action);
+        break;
+      case "ASTROLOGERS_HERO_EMPOWER":
+        astrologersHeroEmpower(nextState, action);
         break;
       case "MOVE_SPELL_TO_SPELL_BOOK":
         moveSpellToSpellBook(nextState, action, cards);

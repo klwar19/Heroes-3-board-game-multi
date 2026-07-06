@@ -60,6 +60,59 @@ const WIRED_EFFECT_TYPES = {
   FREE_SPELL_BOOK: true
 } satisfies Record<AstrologersEffect["type"], true>;
 
+// Exhaustive public index from https://en.homm3bg.wiki/astrologers_proclaim/.
+const WIKI_ASTROLOGERS_CARD_NAMES = [
+  "Ammo Cart",
+  "Annoying Lizard",
+  "Battalion's Stallion",
+  "Big Cleanup",
+  "Blue Sky",
+  "Charlie and his Circus",
+  "Crag Hack",
+  "Crazy Wizard",
+  "Dancing Imp",
+  "Dead Silence",
+  "Destruction",
+  "Disruption",
+  "Elementals",
+  "Explorers",
+  "Fancy Pixie",
+  "Fluffy Rabbit",
+  "Forty Thieves",
+  "Friendly Beaver",
+  "Gold Dragon",
+  "Greedy Dragon",
+  "Grim Warlock",
+  "Groovy Satyr",
+  "Hero",
+  "Isra's Friends",
+  "Judge Dread",
+  "Mages",
+  "Magic Tortoise",
+  "McGiver",
+  "Merry Leprechaun",
+  "Multilingual Bron",
+  "Offense",
+  "Pirates",
+  "Plane Between Planes",
+  "Plastic Tray",
+  "Profuse Growth",
+  "Restart",
+  "Rulebook",
+  "Sanctuary",
+  "Scorched Ground",
+  "Society",
+  "Spells",
+  "Swift Weasel",
+  "Terrible Plague",
+  "Unexpected Reinforcements",
+  "Wandering Merchant",
+  "Whirlpool",
+  "White Raven",
+  "Wild Debauchery",
+  "Wind"
+] as const;
+
 const ASSETS_DIR = join(process.cwd(), "public", "assets");
 
 describe("astrologers deck data integrity", () => {
@@ -128,5 +181,13 @@ describe("astrologers deck data integrity", () => {
     for (const entry of ASTROLOGERS_NOT_IMPLEMENTED) {
       expect(liveNames.has(entry.name), `${entry.name} is both dealt and listed as not-implemented`).toBe(false);
     }
+  });
+
+  it("accounts for every proclamation listed on the wiki index", () => {
+    const accountedFor = new Set([
+      ...Object.values(astrologersCardDefinitions).map((card) => card.name),
+      ...ASTROLOGERS_NOT_IMPLEMENTED.map((entry) => entry.name)
+    ]);
+    expect(accountedFor).toEqual(new Set(WIKI_ASTROLOGERS_CARD_NAMES));
   });
 });
