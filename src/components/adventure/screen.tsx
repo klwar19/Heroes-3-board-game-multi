@@ -2401,6 +2401,18 @@ export function PromptTray({
 }) {
   const visit = state.adventure?.pendingVisit;
   const choice = state.pendingChoice;
+  const roundStartEventActive = isRoundStartEventBarrierActive(state);
+  const visitStep = visit?.steps[0];
+  const activeRoundEventCard = roundStartEventActive ? getActiveEventCard(state) : null;
+  const roundStartEventCard =
+    activeRoundEventCard &&
+    visitStep &&
+    (visitStep.type.startsWith("EVENT_") ||
+      ("prompt" in visitStep &&
+        typeof visitStep.prompt === "string" &&
+        visitStep.prompt.startsWith(activeRoundEventCard.name)))
+      ? activeRoundEventCard
+      : null;
 
   const visitActions = legalActions.filter(
     (legal) =>
@@ -2575,7 +2587,7 @@ export function PromptTray({
       : !choice && visit && visit.playerId !== viewerPlayerId
         ? {
             ownerId: visit.playerId,
-            doing: isRoundStartEventBarrierActive(state)
+            doing: roundStartEventActive
               ? "is resolving the round's Event…"
               : "is resolving a visit…"
           }
@@ -2643,7 +2655,9 @@ export function PromptTray({
     }
     const field = state.adventure?.fields[visit.fieldId];
     title =
-      step?.type === "CHOOSE_ONE"
+      roundStartEventCard
+        ? `Event: ${roundStartEventCard.name}`
+        : step?.type === "CHOOSE_ONE"
         ? step.prompt
         : step?.type === "PAY_TO"
           ? step.prompt

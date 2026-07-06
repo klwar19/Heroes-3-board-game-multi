@@ -16,8 +16,8 @@ import { startNeutralEncounter, startPlayerCombat } from "./adventure-reducer";
 //
 // Tactics: regular side switches any two of your units at the start of Combat;
 // the expert side switches two on your turn before your active unit moves.
-// Diplomacy: the Map side draws one Neutral Unit card per Dwelling and lets you
-// recruit one; the Instant side skips a matching-level Neutral fight for no XP.
+// Diplomacy: the Map side draws from Dwelling tiers (Gold also opens Azure) and
+// lets you recruit one; the Instant side skips a matching-level Neutral fight for no XP.
 // ---------------------------------------------------------------------------
 
 function makeGame(): GameState {
@@ -445,6 +445,50 @@ describe("Diplomacy — Map recruit", () => {
     expect(state.players.p1.resources.gold).toBeLessThan(goldBefore);
     const recruited = state.eventLog.find((event) => event.type === "UNIT_RECRUITED");
     expect(recruited).toBeTruthy();
+  });
+
+  it("a Gold Dwelling also opens Azure Neutral units for Diplomacy recruits", () => {
+    let state = refreshP1(makeGame());
+    const player = state.players.p1;
+    player.resources.gold = 200;
+    player.resources.buildingMaterials = 50;
+    player.resources.valuables = 50;
+    player.hand = ["ability.diplomacy"];
+    const town = getTownOfPlayer(state, "p1")!;
+    town.buildings = town.buildings.filter(
+      (id) => id !== "castle.dwelling_bronze" && id !== "castle.dwelling_silver" && id !== "castle.dwelling_gold"
+    );
+    town.buildings.push("castle.dwelling_gold");
+
+    state.decks[NEUTRAL_DECK_IDS.gold]!.drawPile = [];
+    state.decks[NEUTRAL_DECK_IDS.gold]!.discardPile = [];
+    state.decks[NEUTRAL_DECK_IDS.azure]!.drawPile = ["neutral.azure_dragons"];
+    state.decks[NEUTRAL_DECK_IDS.azure]!.discardPile = [];
+
+    const play = getLegalActions(state, "p1").find(
+      (a) => a.action.type === "PLAY_CARD" && a.action.cardId === "ability.diplomacy"
+    );
+    expect(play).toBeTruthy();
+    state = apply(state, play!.action);
+
+    const drawn = state.eventLog.find((event) => event.type === "DIPLOMACY_NEUTRALS_DRAWN");
+    expect(drawn?.type === "DIPLOMACY_NEUTRALS_DRAWN" ? drawn.unitDefIds : []).toContain("neutral.azure_dragons");
+    expect(
+      state.pendingChoice?.type === "OPTION_CHOICE" &&
+        state.pendingChoice.diplomacyRecruit?.recruitable.some((draw) => draw.tier === "azure")
+    ).toBe(true);
+
+    state = apply(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: (state.pendingChoice as { id: string }).id,
+      optionIndex: 0
+    });
+
+    expect(state.players.p1.army.at(-1)).toMatchObject({
+      unitDefId: "neutral.azure_dragons",
+      side: "neutral"
+    });
   });
 
   it("recruiting nothing keeps the army and returns the drawn cards to their deck", () => {

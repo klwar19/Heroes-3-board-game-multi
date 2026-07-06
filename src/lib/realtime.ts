@@ -206,6 +206,16 @@ function connectPartyRoom(
     }
     return query;
   };
+  const actorToken = async (): Promise<string | undefined> => {
+    if (!getSocketToken) {
+      return undefined;
+    }
+    try {
+      return await getSocketToken();
+    } catch {
+      return undefined;
+    }
+  };
   const socket = new PartySocket({
     host,
     room: roomId,
@@ -342,7 +352,7 @@ function connectPartyRoom(
         );
       }),
     fetchSnapshot: async () => {
-      const response = await fetch(partyHttpUrl(host, roomId, actorClientId), { cache: "no-store" });
+      const response = await fetch(partyHttpUrl(host, roomId, actorClientId, await actorToken()), { cache: "no-store" });
       if (!response.ok) {
         throw new Error("Could not load room.");
       }
@@ -351,7 +361,7 @@ function connectPartyRoom(
     // PartyKit Durable Objects persist their state, so a room is never lost
     // there — restoring is just reading the authoritative copy back.
     restoreRoom: async () => {
-      const response = await fetch(partyHttpUrl(host, roomId, actorClientId), { cache: "no-store" });
+      const response = await fetch(partyHttpUrl(host, roomId, actorClientId, await actorToken()), { cache: "no-store" });
       if (!response.ok) {
         throw new Error("Could not load room.");
       }

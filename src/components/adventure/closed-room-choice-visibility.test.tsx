@@ -5,16 +5,22 @@ import { PromptTray } from "./screen";
 import {
   applyAction,
   createAdventureGameState,
+  EVENTS_DECK_ID,
+  getActiveEventCard,
   getLegalActions,
+  pumpAdventureQueues,
   redactStateForSeat,
   seatForViewer,
   OBSERVER_VIEWER_SEAT
 } from "@/engine";
+import { startAdventureRound } from "@/engine/adventure";
 import type { GameAction, GameState } from "@/engine";
 
 afterEach(cleanup);
 
 const EAGLE = "ability.eagle_eye";
+
+type TestActor = { clientId?: string; userId?: string };
 
 function hostedGame(): GameState {
   const state = createAdventureGameState({
@@ -38,16 +44,83 @@ function hostedGame(): GameState {
 }
 
 /** Exactly what the page sends a hosted connection: seat via seatForViewer → redact. */
-function frameFor(state: GameState, clientId: string): GameState {
-  const seat = seatForViewer(state, { clientId });
+function frameForActor(state: GameState, actor: TestActor): GameState {
+  const seat = seatForViewer(state, actor);
   const viewer = seat === "observer" ? OBSERVER_VIEWER_SEAT : seat;
   return redactStateForSeat(state, viewer);
 }
 
-function applyOk(state: GameState, action: GameAction, clientId?: string): GameState {
-  const result = applyAction(state, action, clientId ? { actorClientId: clientId } : undefined);
+function frameFor(state: GameState, clientId: string): GameState {
+  return frameForActor(state, { clientId });
+}
+
+function applyOk(state: GameState, action: GameAction, actor?: string | TestActor): GameState {
+  const options =
+    typeof actor === "string"
+      ? { actorClientId: actor }
+      : actor
+        ? {
+            ...(actor.clientId ? { actorClientId: actor.clientId } : {}),
+            ...(actor.userId ? { actorUserId: actor.userId } : {})
+          }
+        : undefined;
+  const result = applyAction(state, action, options);
   expect(result.errors, result.errors.map((e) => e.message).join("; ")).toEqual([]);
   return result.state;
+}
+
+function stackEventDeck(state: GameState, cardId: string): void {
+  const deck = state.decks[EVENTS_DECK_ID];
+  deck.drawPile = deck.drawPile.filter((id) => id !== cardId);
+  deck.drawPile.push(cardId);
+}
+
+function eventGame(options: { hosted: boolean; ranked: boolean; p2UserId?: string }): GameState {
+  const state = createAdventureGameState({
+    seed: `event-visibility-${options.hosted ? "hosted" : "open"}-${options.ranked ? "ranked" : "normal"}-${
+      options.p2UserId ?? "guest"
+    }`,
+    difficulty: "normal",
+    rollFirstPlayer: false,
+    events: true,
+    players: [
+      { id: "p1", name: "Catherine", factionId: "castle", heroDefId: "catherine" },
+      { id: "p2", name: "Sandro", factionId: "necropolis", heroDefId: "sandro" }
+    ]
+  });
+  for (const player of Object.values(state.players)) {
+    player.canMulligan = false;
+    player.needsHandRefresh = false;
+  }
+  state.adventure!.rewardQueue = [];
+  state.adventure!.pendingVisit = null;
+  state.pendingChoice = null;
+  state.room = options.hosted
+    ? {
+        hosted: true,
+        hostClientId: "c1",
+        ranked: options.ranked,
+        members: [
+          { clientId: "c1", name: "Catherine", seat: "p1", isHost: true },
+          {
+            clientId: "c2",
+            name: "Sandro",
+            seat: "p2",
+            isHost: false,
+            ...(options.p2UserId ? { userId: options.p2UserId } : {})
+          }
+        ]
+      }
+    : { hosted: false, hostClientId: null, ranked: options.ranked, members: [] };
+
+  state.adventure!.events!.nextDrawerIndex = 1;
+  stackEventDeck(state, "event.stables");
+  state.round = 3;
+  startAdventureRound(state);
+  pumpAdventureQueues(state);
+  const pendingVisit = state.adventure?.pendingVisit as { playerId?: string } | null | undefined;
+  expect(pendingVisit?.playerId).toBe("p2");
+  return state;
 }
 
 describe("closed room: the choice owner actually SEES and can click their Eagle Eye choice", () => {
@@ -119,6 +192,70 @@ describe("closed room: the choice owner actually SEES and can click their Eagle 
     // No take/discard buttons for the non-owner; a "is deciding" strip instead.
     expect(screen.queryByRole("button", { name: /into hand/ })).toBeNull();
     expect(screen.getByText(/is deciding/i)).toBeTruthy();
+  });
+});
+
+const eventVisibilityCases = [
+  { label: "open normal guest", hosted: false, ranked: false },
+  { label: "open ranked guest", hosted: false, ranked: true },
+  { label: "closed normal guest", hosted: true, ranked: false, actor: { clientId: "c2" } },
+  { label: "closed ranked guest", hosted: true, ranked: true, actor: { clientId: "c2" } },
+  {
+    label: "closed ranked account player",
+    hosted: true,
+    ranked: true,
+    p2UserId: "u-player",
+    actor: { clientId: "new-tab", userId: "u-player" }
+  },
+  {
+    label: "closed ranked admin account",
+    hosted: true,
+    ranked: true,
+    p2UserId: "u-admin",
+    actor: { clientId: "admin-tab", userId: "u-admin" }
+  }
+] satisfies {
+  label: string;
+  hosted: boolean;
+  ranked: boolean;
+  p2UserId?: string;
+  actor?: TestActor;
+}[];
+
+describe("Event deck visibility: rotated starter still shows the Event to every seat", () => {
+  it.each(eventVisibilityCases)("$label: the current resolver sees the Event prompt and can resolve it", (testCase) => {
+    const state = eventGame(testCase);
+    const actor = testCase.actor;
+    const viewer = testCase.hosted ? seatForViewer(state, actor ?? {}) : "p2";
+    expect(viewer).toBe("p2");
+    const frame = testCase.hosted ? frameForActor(state, actor ?? {}) : state;
+    expect(frame.adventure?.events?.activeCardId).toBe("event.stables");
+    expect(getActiveEventCard(frame)?.name).toMatch(/Stables/i);
+    const legalActions = getLegalActions(frame, "p2");
+
+    const onAction = vi.fn();
+    render(<PromptTray legalActions={legalActions} onAction={onAction} state={frame} viewerPlayerId="p2" />);
+
+    expect(screen.getByRole("dialog", { name: /Event: Stables/i })).toBeTruthy();
+    const resolve = screen.getByRole("button", { name: /Main hero gains \+1 movement/i });
+    fireEvent.click(resolve);
+    expect(onAction).toHaveBeenCalledTimes(1);
+
+    const submitted = onAction.mock.calls[0][0] as GameAction;
+    const resolved = applyOk(state, submitted, testCase.hosted ? actor : undefined);
+    expect(resolved.adventure?.pendingVisit?.playerId).toBe("p1");
+  });
+
+  it.each(eventVisibilityCases)("$label: the waiting seat still sees which Event is being resolved", (testCase) => {
+    const state = eventGame(testCase);
+    const frame = testCase.hosted ? frameForActor(state, { clientId: "c1" }) : state;
+    expect(frame.adventure?.events?.activeCardId).toBe("event.stables");
+    expect(getActiveEventCard(frame)?.name).toMatch(/Stables/i);
+
+    render(<PromptTray legalActions={getLegalActions(frame, "p1")} onAction={vi.fn()} state={frame} viewerPlayerId="p1" />);
+
+    expect(screen.queryByRole("button", { name: /Main hero gains \+1 movement/i })).toBeNull();
+    expect(screen.getByText(/Sandro is resolving the round's Event/i)).toBeTruthy();
   });
 });
 
