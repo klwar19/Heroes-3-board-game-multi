@@ -117,6 +117,35 @@ describe("Event — Crypt", () => {
     expect(sawVoid, "no seed rolled an experience face — widen the sweep").toBe(true);
     expect(sawPayout, "no seed rolled a clean gamble — widen the sweep").toBe(true);
   });
+
+  it("opens the artifact-search gamble payout before the next player's event choice", () => {
+    let sawArtifactSearch = false;
+    for (let salt = 0; salt < 48 && !sawArtifactSearch; salt += 1) {
+      const state = setup(`crypt-search-owner-${salt}`, "event.crypt");
+      let after = chooseVisitOption(state, "p1", /Gain Negative Morale, then roll 2 Treasure dice/);
+      const faces = lastRoll(after, "treasure").treasureRolls ?? [];
+
+      if (faces.includes("experience") || !faces.includes("artifact-search")) {
+        continue;
+      }
+
+      sawArtifactSearch = true;
+      after = chooseVisitOption(after, "p1", /Search \(2\) the Artifact deck/);
+
+      if (after.pendingChoice?.type === "OPTION_CHOICE" && after.pendingChoice.context === "deck-pick") {
+        expect(after.pendingChoice.playerId).toBe("p1");
+        expect(after.pendingChoice.deckPick?.count).toBe(2);
+      } else {
+        expect(after.pendingChoice?.type).toBe("DECK_SEARCH");
+        expect(after.pendingChoice?.playerId).toBe("p1");
+      }
+
+      expect(after.adventure?.pendingVisit?.playerId).not.toBe("p2");
+      expect(getLegalActions(after, "p2").some((entry) => entry.action.type === "RESOLVE_VISIT_STEP")).toBe(false);
+    }
+
+    expect(sawArtifactSearch, "no seed rolled a clean Crypt artifact-search face - widen the sweep").toBe(true);
+  });
 });
 
 // ===========================================================================
