@@ -131,7 +131,7 @@ export type AdventureSetupOptions = {
   pvpTroopLoss?: PvpTroopLoss;
   /** Naval Battles Creature Banks (default on): offer bank placement on Far/Near tile discovery. */
   creatureBanks?: boolean;
-  /** Event deck (Fortress expansion, default on; multiplayer only): draw an Event each Resource Round. */
+  /** Event deck (Fortress expansion, default off; multiplayer only): draw an Event each Resource Round. */
   events?: boolean;
   /**
    * Pick-on-reveal Subterranean Gate placement (default on): when a revealed tile

@@ -7263,7 +7263,7 @@ export type GameSetupOptions = {
    */
   creatureBanks?: boolean;
   /**
-   * Event deck optional rule (Fortress expansion, default ON). Multiplayer
+   * Event deck optional rule (Fortress expansion, default OFF). Multiplayer
    * only: with 2+ players an Event card is drawn at the start of every
    * Resource Round after income, the drawer rotating clockwise per draw. Off
    * (or a solo game) skips the deck entirely.
