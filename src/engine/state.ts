@@ -2085,9 +2085,10 @@ export type EffectDefinition =
     }
   | {
       /**
-       * Cyra's Diplomacy, Map side: draw 1 Neutral Unit card per Dwelling the
-       * player controls, then open a recruit choice over the draws (pay the
-       * chosen unit's Recruitment cost; the rest return to their tier decks).
+       * Cyra's Diplomacy, Map side: draw Neutral Unit cards from the player's
+       * Dwelling tiers (Gold Dwellings also open Azure), then open a recruit
+       * choice over the draws (pay the chosen unit's Recruitment cost; the rest
+       * return to their tier decks).
        * Resolved in openDiplomacyRecruit.
        */
       type: "DIPLOMACY_RECRUIT";

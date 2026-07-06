@@ -757,16 +757,17 @@ describe("Bulwark hero — Oidana the diplomat (Diplomacy + card draw)", () => {
   });
 
   it("the recruit side caps the Neutral draw at maxDraws (I=1, IV=2) however many Dwellings she owns", () => {
-    // Three Dwelling tiers: Cyra's UNCAPPED Diplomacy draws one per Dwelling (3);
-    // Oidana's caps that draw. (The cap is the only difference, so this CONTROL
-    // is what proves maxDraws actually does the limiting.)
+    // Three Dwelling tiers: Cyra's UNCAPPED Diplomacy draws bronze, silver,
+    // gold, and the Azure card opened by the Gold Dwelling (4). Oidana's caps
+    // that draw. (The cap is the only difference, so this CONTROL is what proves
+    // maxDraws actually does the limiting.)
     const drawsFor = (cardId: string, optionIndex: number): number => {
       const state = oidanaMap(`cap-${cardId}`, cardId, ["bronze", "silver", "gold"]);
       const play = findPlay(state, cardId, optionIndex);
       expect(play, `${cardId} recruit option offered`).toBeTruthy();
       return neutralsDrawn(applyOk(state, play!.action));
     };
-    expect(drawsFor("ability.diplomacy", 0), "uncapped control draws 3").toBe(3);
+    expect(drawsFor("ability.diplomacy", 0), "uncapped control draws 4").toBe(4);
     expect(drawsFor("specialty.oidana.1", 1), "I caps at 1").toBe(1);
     expect(drawsFor("specialty.oidana.4", 1), "IV caps at 2").toBe(2);
   });
