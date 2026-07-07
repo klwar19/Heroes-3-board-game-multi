@@ -8766,6 +8766,15 @@ export function pumpAdventureQueues(state: GameState): void {
           (!option.reinforceBronzeFree || canReinforceBronze)
       );
 
+      // Every option filtered out: opening the choice anyway would strand the
+      // whole table on a prompt with ZERO legal answers (nobody — not even the
+      // AFK-drop driver — can resolve an empty OPTION_CHOICE, and under the
+      // round-start Event barrier that freezes every seat). Skip the reward.
+      if (options.length === 0) {
+        adventure.rewardQueue.shift();
+        continue;
+      }
+
       adventure.rewardQueue.shift();
       state.pendingChoice = {
         id: `choice_${nextEventNumber(state)}`,

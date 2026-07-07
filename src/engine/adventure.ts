@@ -2079,6 +2079,43 @@ export function eliminatePlayer(
     if (state.adventure.pendingVisit?.playerId === playerId) {
       state.adventure.pendingVisit = null;
     }
+    if (state.adventure.pendingNecromancy?.playerId === playerId) {
+      state.adventure.pendingNecromancy = null;
+    }
+    if (state.adventure.pendingFarTileFlip?.playerId === playerId) {
+      state.adventure.pendingFarTileFlip = null;
+    }
+  }
+
+  // An OPEN choice owned by the seat is the same table-freezing trap as a
+  // queued reward (only the owner may answer a pendingChoice, and under the
+  // round-start Event/Astrologers barrier every other seat is frozen behind
+  // it). Drop it — returning any cards the choice lifted OUT of a shared zone
+  // first, so eliminating the owner never destroys shared-deck cards.
+  const choice = state.pendingChoice;
+  if (choice && choice.playerId === playerId) {
+    if (choice.type === "DECK_SEARCH") {
+      state.decks[choice.deckId]?.discardPile.push(...choice.revealedCardIds);
+    }
+    if (choice.type === "OPTION_CHOICE" && choice.visionsScry) {
+      state.decks[NEUTRAL_DECK_IDS[choice.visionsScry.tier]]?.discardPile.push(
+        ...choice.visionsScry.remaining,
+        ...choice.visionsScry.toReturn
+      );
+    }
+    state.pendingChoice = null;
+    if (state.phase === "choice") {
+      const returnPhase = "returnPhase" in choice ? choice.returnPhase : undefined;
+      state.phase =
+        returnPhase && !(returnPhase === "combat" && !state.combat)
+          ? returnPhase
+          : state.combat
+            ? "combat"
+            : "player-turn";
+    }
+    if (state.priorityPlayerId === playerId) {
+      state.priorityPlayerId = null;
+    }
   }
 
   appendEvent(state, { type: "PLAYER_ELIMINATED", playerId, reason, gaveUp });

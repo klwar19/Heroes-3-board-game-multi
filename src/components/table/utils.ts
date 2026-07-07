@@ -1,9 +1,12 @@
 import { cardLibrary } from "@/data/cards/library";
+import { astrologersCardDefinitions } from "@/data/cards/astrologers";
+import { eventCardDefinitions } from "@/data/cards/events";
 import { CREATURE_BANKS } from "@/data/map/creature-banks";
 import {
   cardCanBoostPower,
   getBattlefieldLabel,
   heroMoveStartsBattle,
+  isRoundStartEventBarrierActive,
   type BuildingEffectDefinition,
   type CardDefinition,
   type GameAction,
@@ -658,4 +661,117 @@ export function cardSelectionKey(action: CardBoardAction): string {
 
 export function sameCardSelection(selected: CardBoardAction | null, action: CardBoardAction): boolean {
   return Boolean(selected && cardSelectionKey(selected) === cardSelectionKey(action));
+}
+
+/**
+ * Round-start cues a (re)connecting client must still be shown. The first
+ * snapshot of a fresh connection primes every "seen" set with the events
+ * already in the log — deliberately, so a reload never replays history. But
+ * while the round-start Event/Astrologers BARRIER is still up, the table is
+ * mid-resolution of this round's proclamation/Event: a player who reconnects
+ * (or joins) right now would get the frozen table with no idea what everyone
+ * is resolving, because the draw event that pops the overlay was primed as
+ * "seen" (the "one player sees the event, the other doesn't" report). This
+ * helper rebuilds the overlay cue(s) from live state for exactly that window;
+ * once the barrier lifts it returns nothing and reconnects stay replay-free.
+ *
+ * Returned shapes mirror AstrologersProclamationCue / EventDrawnCue
+ * (components/table/overlays.tsx) structurally — utils.ts cannot import them
+ * without an import cycle (overlays.tsx imports this module).
+ */
+export function reconnectRoundStartCues(
+  state: GameState,
+  viewerPlayerId: PlayerId
+): {
+  astrologers: {
+    id: string;
+    cardId: string;
+    name: string;
+    text: string;
+    image: string;
+    expansion: string;
+    ongoing: boolean;
+    round: number;
+    reshuffle?: { discarded: number; drawn: number };
+  } | null;
+  event: {
+    id: string;
+    cardId: string;
+    name: string;
+    text: string;
+    image: string;
+    expansion: string;
+    round: number;
+    drawerName: string;
+    viewerIsDrawer: boolean;
+  } | null;
+} {
+  const none = { astrologers: null, event: null };
+  if (!isRoundStartEventBarrierActive(state)) {
+    return none;
+  }
+
+  // Astrologers proclamations are drawn on even rounds; Fortress Events on the
+  // odd Resource rounds — the same parity split the barrier itself uses.
+  if (state.round % 2 === 0) {
+    const cardId = state.adventure?.astrologers?.activeCardId ?? null;
+    const card = cardId ? astrologersCardDefinitions[cardId] : undefined;
+    if (!cardId || !card) {
+      return none;
+    }
+    // Forced-hand proclamations (Big Cleanup, Annoying Lizard): surface the
+    // viewer's own already-applied result, exactly like the live pop.
+    let reshuffle: { discarded: number; drawn: number } | undefined;
+    for (let i = state.eventLog.length - 1; i >= 0; i -= 1) {
+      const logEvent = state.eventLog[i];
+      if (
+        logEvent.type === "ASTROLOGERS_HAND_RESHUFFLED" &&
+        logEvent.round === state.round &&
+        logEvent.cardId === cardId &&
+        logEvent.playerId === viewerPlayerId
+      ) {
+        reshuffle = { discarded: logEvent.discarded, drawn: logEvent.drawn };
+        break;
+      }
+    }
+    return {
+      astrologers: {
+        id: `astro-reconnect-${state.round}-${cardId}`,
+        cardId,
+        name: card.name,
+        text: card.text,
+        image: card.image,
+        expansion: card.expansion,
+        ongoing: card.ongoing,
+        round: state.round,
+        ...(reshuffle ? { reshuffle } : {})
+      },
+      event: null
+    };
+  }
+
+  for (let i = state.eventLog.length - 1; i >= 0; i -= 1) {
+    const logEvent = state.eventLog[i];
+    if (logEvent.type === "EVENT_CARD_DRAWN" && logEvent.round === state.round) {
+      const card = eventCardDefinitions[logEvent.cardId];
+      if (!card) {
+        return none;
+      }
+      return {
+        astrologers: null,
+        event: {
+          id: logEvent.id,
+          cardId: logEvent.cardId,
+          name: card.name,
+          text: card.text,
+          image: card.image,
+          expansion: card.expansion,
+          round: logEvent.round,
+          drawerName: state.players[logEvent.drawerId]?.name ?? logEvent.drawerId,
+          viewerIsDrawer: logEvent.drawerId === viewerPlayerId
+        }
+      };
+    }
+  }
+  return none;
 }
