@@ -3777,6 +3777,15 @@ export default function Home() {
     const moraleRedrawCardAvailable = legalActions.some(
       (legal) => legal.action.type === "SPEND_MORALE" && legal.action.benefit === "redraw"
     );
+    // Positive Morale card plays that only open during the holder's own combat
+    // (+1 Attack/Defense for this Combat; remove a negative token from an own
+    // unit). Offered straight from legal actions, so they appear exactly when
+    // the engine accepts them.
+    const moraleCombatPlays = legalActions.filter(
+      (legal) =>
+        legal.action.type === "SPEND_MORALE" &&
+        (legal.action.benefit === "combat-bonus" || legal.action.benefit === "remove-token")
+    );
     const moraleOverflow = viewer?.moraleOverflow ?? 0;
     const overLimit = viewer ? handCards.length - handDiscards.length - handLimit : 0;
     const selecting = handMode !== null || forcedDiscard;
@@ -4155,6 +4164,16 @@ export default function Home() {
                         ) : null}
                       </>
                     ) : null}
+                    {moraleCombatPlays.map((legal) => (
+                      <button
+                        className="commandButton"
+                        key={legal.label}
+                        onClick={() => submitAction(legal.action)}
+                        type="button"
+                      >
+                        {legal.label}
+                      </button>
+                    ))}
                   </div>
                 ) : null}
                 {selecting ? (

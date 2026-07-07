@@ -464,7 +464,9 @@ export function formatEvent(event: GameEvent, state: GameState): string {
     case "MORALE_CARD_DISCARDED":
       return event.reason === "cancelled-by-positive"
         ? `${playerName(state, event.playerId)} discards ${cardName(event.cardId)} instead of drawing Positive Morale.`
-        : `${playerName(state, event.playerId)} discards ${cardName(event.cardId)} to stay at two Positive Morale cards.`;
+        : event.reason === "absorbed-negative"
+          ? `${playerName(state, event.playerId)} discards ${cardName(event.cardId)} to absorb the Negative Morale.`
+          : `${playerName(state, event.playerId)} discards ${cardName(event.cardId)} to stay at two Positive Morale cards.`;
     case "MORALE_CARD_USED":
       return `${playerName(state, event.playerId)} uses ${cardName(event.cardId)} and returns it to the bottom of its morale deck.`;
     case "FIELD_MORALE_IGNORED":

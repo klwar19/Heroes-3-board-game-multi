@@ -172,7 +172,8 @@ import {
   SPELL_DECK_EXPERT
 } from "./ruleset";
 import { houseRuleEnabled } from "./house-rules";
-import { returnHeldMoraleCardToDeckBottom } from "./morale-cards";
+import { consumeHeldMoraleCard, playerHoldsMoraleCard, returnHeldMoraleCardToDeckBottom } from "./morale-cards";
+import { MORALE_CARD_IDS } from "@/data/cards/morale";
 import {
   destroyFortification,
   getDemolishAbility,
@@ -942,6 +943,131 @@ function rollApplyBothCandidate(combat: CombatState, rerollMinusOnce: boolean): 
   const second = rollOne();
   // Both faces are summed into the outcome, so the overlay keeps both lit.
   return { rolls: [first, second], roll: first + second, sumAllDice: true };
+}
+
+// ---------------------------------------------------------------------------
+// Morale Cards on the Attack die (optional rule; drawn cards resolve when the
+// printed situation occurs, then return under their deck)
+// ---------------------------------------------------------------------------
+
+/**
+ * How a candidate's dice fold into its outcome: the three roll modes, the
+ * apply-both sum, and Slayer's count-the-"+1"s.
+ */
+type MoraleDiceAggregation = AttackRollMode | "sum" | "count-plus";
+
+function aggregateCandidateRoll(rolls: number[], aggregation: MoraleDiceAggregation): number {
+  if (rolls.length === 0) {
+    return 0;
+  }
+  switch (aggregation) {
+    case "sum":
+      return rolls.reduce((total, roll) => total + roll, 0);
+    case "count-plus":
+      return rolls.filter((roll) => roll === 1).length;
+    case "advantage":
+      return Math.max(...rolls);
+    case "disadvantage":
+      return Math.min(...rolls);
+    default:
+      return rolls[0] ?? 0;
+  }
+}
+
+/**
+ * Negative Morale on the holder's just-rolled Attack dice, in resolve order:
+ * - "set one of the dice to the -1 side" flips the die whose flip lowers the
+ *   outcome the most (a curse resolves against its holder), once;
+ * - "on a +1 on an Attack die, reroll the die" forcibly rerolls the first "+1"
+ *   still showing, once.
+ * Each resolved card returns under its deck (MORALE_CARD_USED feed line).
+ * Mutates and returns the candidate; a no-op for neutral controllers, with the
+ * rule off, or when neither card is held. Also run on window rerolls and the
+ * set-die result, so a "+1" that only appears later still triggers the curse.
+ */
+function applyMoraleDiceCurses(
+  state: GameState,
+  controllerId: PlayerId,
+  candidate: AttackRollCandidate,
+  aggregation: MoraleDiceAggregation
+): AttackRollCandidate {
+  const combat = state.combat;
+  if (!combat || !state.adventure?.moraleCards) {
+    return candidate;
+  }
+
+  if (playerHoldsMoraleCard(state, controllerId, MORALE_CARD_IDS.setAttackDieMinus)) {
+    let flipIndex = -1;
+    let flippedOutcome = Number.POSITIVE_INFINITY;
+    candidate.rolls.forEach((_, index) => {
+      const flipped = candidate.rolls.map((roll, at) => (at === index ? -1 : roll));
+      const outcome = aggregateCandidateRoll(flipped, aggregation);
+      if (outcome < flippedOutcome) {
+        flippedOutcome = outcome;
+        flipIndex = index;
+      }
+    });
+    if (flipIndex >= 0) {
+      consumeHeldMoraleCard(state, controllerId, MORALE_CARD_IDS.setAttackDieMinus);
+      candidate.rolls[flipIndex] = -1;
+      candidate.roll = aggregateCandidateRoll(candidate.rolls, aggregation);
+    }
+  }
+
+  // One copy exists, so this fires at most once — but a rerolled "+1" would be
+  // a fresh trigger if another copy were ever held, hence the loop.
+  while (
+    candidate.rolls.includes(1) &&
+    playerHoldsMoraleCard(state, controllerId, MORALE_CARD_IDS.rerollPlusOne)
+  ) {
+    consumeHeldMoraleCard(state, controllerId, MORALE_CARD_IDS.rerollPlusOne);
+    const index = candidate.rolls.indexOf(1);
+    candidate.rolls[index] = rollAttackDie(combat);
+    candidate.roll = aggregateCandidateRoll(candidate.rolls, aggregation);
+  }
+
+  return candidate;
+}
+
+/**
+ * Negative Morale "when you are about to roll at least 2 Attack dice, roll 1
+ * die less": resolves the held card and reports the reduced count. Applies to
+ * every ≥2-dice Attack roll the holder makes — advantage AND disadvantage
+ * both collapse to a single straight die (the printed reduction is mandatory,
+ * even where it helps), apply-both rolls one die, Slayer rolls N-1.
+ */
+function takeMoraleRollOneLess(state: GameState, controllerId: PlayerId, diceCount: number): number {
+  if (diceCount < 2 || !state.adventure?.moraleCards) {
+    return diceCount;
+  }
+  if (!consumeHeldMoraleCard(state, controllerId, MORALE_CARD_IDS.rollOneLess)) {
+    return diceCount;
+  }
+  return diceCount - 1;
+}
+
+/**
+ * Negative Morale "-1 to your next Attack, Defense, or Combat Power roll" —
+ * the Attack-roll half. Latches onto the attack whose die actually rolls
+ * (never a Mummy-forced or Bless-suppressed die), resolves the card, and
+ * mutates the already-derived details so the pending window and the final
+ * damage agree; recomputes read stackItem.modifiers.moraleRollPenalty. The
+ * Defense-roll half lives in resolveDefendBonus; a Combat Power roll is a
+ * Battlefield-expansion-mode concept that never occurs in regular games.
+ */
+function applyMoraleAttackRollPenalty(
+  state: GameState,
+  stackItem: ResolutionStackItem,
+  details: { attacker: CombatUnitState; attackBonus: number }
+): void {
+  if (stackItem.modifiers.moraleRollPenalty) {
+    return;
+  }
+  if (!consumeHeldMoraleCard(state, details.attacker.controllerId, MORALE_CARD_IDS.nextRollMinusOne)) {
+    return;
+  }
+  stackItem.modifiers.moraleRollPenalty = 1;
+  details.attackBonus -= 1;
 }
 
 function hasExpertUseAvailable(state: GameState, playerId: PlayerId): boolean {
@@ -2735,7 +2861,11 @@ function getAttackStackDetails(
       stackedAttackBonus +
       ownAttackFlatBonus +
       astrologersRoundAttackBonus -
-      retaliationAttackPenalty,
+      retaliationAttackPenalty -
+      // Negative Morale "-1 to your next Attack … roll": latched onto this
+      // attack when its die rolled (applyMoraleAttackRollPenalty), then folded
+      // into every recompute — arithmetically identical to -1 on the die result.
+      (stackItem.modifiers.moraleRollPenalty ?? 0),
     defenseBonus: defenseBonusBeforeAbility - defenseReductionAmount + retaliationDefenseBonus,
     dieMultiplier: stackItem.modifiers.attackDieMultiplier ?? 1,
     // Elemental damage never rolls the Attack die and ignores Defense entirely:
@@ -2836,6 +2966,23 @@ function buildRerollSources(
       ? [{ name: "Positive morale token", morale: true, remaining: 1, used: 0 }]
       : [];
 
+  // Positive Morale "set one of the dice to the +1 side": offered in the same
+  // window but as a SET, spent only by the explicit set-die action (never by a
+  // plain reroll press). The attackRerollsBlocked gate above withholds it too —
+  // a deliberate reading: the lockout stops every Attack-die manipulation.
+  const moraleSetSources: AttackRerollSource[] =
+    player && state.adventure?.moraleCards
+      ? (player.moraleCards?.positive ?? [])
+          .filter((cardId) => cardId === MORALE_CARD_IDS.setAttackDiePlus)
+          .map((cardId) => ({
+            name: cardLibrary[cardId]?.name ?? "Positive Morale: Set Attack Die +1",
+            moraleCardId: cardId,
+            setDieFace: 1,
+            remaining: 1,
+            used: 0
+          }))
+      : [];
+
   // Diplomat's Ring / Ambassador's Sash: their "Reroll a die" half is an instant
   // played from hand in reaction to the Attack die — one offer per distinct held
   // copy, blocked when the attacker cannot use their Deck this Combat. Taking the
@@ -2860,7 +3007,8 @@ function buildRerollSources(
       used: 0
     })),
     ...artifactSources,
-    ...moraleSources
+    ...moraleSources,
+    ...moraleSetSources
   ].filter((source) => source.remaining > 0);
 }
 
@@ -3256,7 +3404,24 @@ function resolveDefendBonus(
     return null;
   }
   if (stackItem.modifiers.defendRoll === undefined) {
-    stackItem.modifiers.defendRoll = rollAttackDie(combat);
+    let defendRoll = rollAttackDie(combat);
+    // Morale (defender's own cards, resolved at their Defense roll):
+    // - "on a +1 on an Attack die, reroll the die" — the shield face is an
+    //   Attack die the defender rolled, so a "+1" is forcibly rerolled;
+    // - "-1 to your next Attack, Defense, or Combat Power roll" — the stored
+    //   face carries the -1, so a rolled "+1" no longer pays the shield (and
+    //   Merist's on-zero variant reads the same penalized value).
+    if (
+      defendRoll === 1 &&
+      playerHoldsMoraleCard(state, details.defender.controllerId, MORALE_CARD_IDS.rerollPlusOne)
+    ) {
+      consumeHeldMoraleCard(state, details.defender.controllerId, MORALE_CARD_IDS.rerollPlusOne);
+      defendRoll = rollAttackDie(combat);
+    }
+    if (consumeHeldMoraleCard(state, details.defender.controllerId, MORALE_CARD_IDS.nextRollMinusOne)) {
+      defendRoll -= 1;
+    }
+    stackItem.modifiers.defendRoll = defendRoll;
   }
   const roll = stackItem.modifiers.defendRoll;
   // Merist's Stone Skin VI: while the defender's owner has the DEFENSE_TOKEN_ON_ZERO
@@ -5939,6 +6104,46 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
     return;
   }
 
+  // Negative Morale "roll 1 Attack die before your unit's activation; a -1
+  // skips it": checked for every activation of the holder's units while the
+  // card is face-up, resolving (and leaving) only when a skip actually
+  // happens. The check die is an Attack die the holder rolls, so a "+1" on it
+  // still trips the holder's own reroll-the-"+1" curse first.
+  if (
+    state.adventure?.moraleCards &&
+    playerHoldsMoraleCard(state, activeUnit.controllerId, MORALE_CARD_IDS.skipActivation)
+  ) {
+    let checkRoll = rollAttackDie(state.combat);
+    if (
+      checkRoll === 1 &&
+      playerHoldsMoraleCard(state, activeUnit.controllerId, MORALE_CARD_IDS.rerollPlusOne)
+    ) {
+      consumeHeldMoraleCard(state, activeUnit.controllerId, MORALE_CARD_IDS.rerollPlusOne);
+      checkRoll = rollAttackDie(state.combat);
+    }
+    const skips = checkRoll === -1;
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: activeUnit.id,
+      abilityId: "morale-skip-activation-check",
+      message: `${activeUnit.cardName} checks Negative Morale before activating and rolls ${
+        checkRoll > 0 ? `+${checkRoll}` : checkRoll
+      }${skips ? " — the activation is skipped" : ""}.`
+    });
+    if (skips) {
+      consumeHeldMoraleCard(state, activeUnit.controllerId, MORALE_CARD_IDS.skipActivation);
+      activeUnit.activatedThisRound = true;
+      appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, activeUnit.id), "activation-ended");
+      appendEvent(state, {
+        type: "UNIT_ACTIVATION_ENDED",
+        playerId: activeUnit.controllerId,
+        unitId: activeUnit.id
+      });
+      advanceActiveUnit(state);
+      return;
+    }
+  }
+
   state.activePlayerId = activeUnit.controllerId;
   activeUnit.movedThisActivation = false;
   activeUnit.attackedThisActivation = false;
@@ -7242,8 +7447,18 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
   // nothing), so the die's whole contribution is the number of "+1"s. Then
   // draw 1 card once the attack has resolved. No reroll choice is opened.
   if (stackItem.modifiers.slayerRolls && stackItem.modifiers.slayerRolls > 0) {
-    const rolls = Array.from({ length: stackItem.modifiers.slayerRolls }, () => rollAttackDie(combat));
-    const bonus = rolls.filter((roll) => roll === 1).length;
+    // Morale: an "about to roll ≥2 Attack dice" holder rolls one Slayer die
+    // less; the -1-to-this-roll and the die curses apply to what was rolled.
+    const slayerCount = takeMoraleRollOneLess(state, details.attacker.controllerId, stackItem.modifiers.slayerRolls);
+    applyMoraleAttackRollPenalty(state, stackItem, details);
+    const rolls = Array.from({ length: slayerCount }, () => rollAttackDie(combat));
+    const slayerCandidate = applyMoraleDiceCurses(
+      state,
+      details.attacker.controllerId,
+      { rolls, roll: rolls.filter((roll) => roll === 1).length, sumAllDice: true },
+      "count-plus"
+    );
+    const bonus = slayerCandidate.roll;
     // Slayer's fire flares over the gold target (the FX layer plays it after the
     // dice read out and the blow lands — see abilityFxPlans.slayer).
     appendEvent(state, {
@@ -7251,11 +7466,11 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
       unitId: details.attacker.id,
       abilityId: "slayer",
       targetUnitId: details.defender.id,
-      message: `Slayer rolls ${rolls.length} Attack dice against ${details.defender.cardName} (+${bonus}).`
+      message: `Slayer rolls ${slayerCandidate.rolls.length} Attack dice against ${details.defender.cardName} (+${bonus}).`
     });
     // sumAllDice: every die counts toward the bonus, so the overlay lights them
     // all (the dice read out before the strike, then the damage lands).
-    finishResolvedAttack(state, stackItem, details, { rolls, roll: bonus, sumAllDice: true }, cards);
+    finishResolvedAttack(state, stackItem, details, slayerCandidate, cards);
     if (stackItem.modifiers.slayerDraw) {
       stackItem.modifiers.slayerDraw = false;
       drawCardsForPlayer(state, details.attacker.controllerId, 1);
@@ -7287,11 +7502,43 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
   // so no separate reroll choice is opened.
   const applyBoth = getRollTwoDiceApplyBoth(details.attacker);
   if (applyBoth) {
-    resolveAttackOrOfferDieCancel(state, stackItem, details, rollApplyBothCandidate(combat, applyBoth.rerollMinusOnce), cards);
+    // Morale "roll 1 die less": the 2-dice apply-both roll becomes a single
+    // die (its built-in "-1 once" reroll still applies to that die).
+    const reduced = takeMoraleRollOneLess(state, details.attacker.controllerId, 2) < 2;
+    applyMoraleAttackRollPenalty(state, stackItem, details);
+    const applyBothCandidate = reduced
+      ? (() => {
+          const value = rollAttackDie(combat);
+          const roll = applyBoth.rerollMinusOnce && value === -1 ? rollAttackDie(combat) : value;
+          return { rolls: [roll], roll, sumAllDice: true } satisfies AttackRollCandidate;
+        })()
+      : rollApplyBothCandidate(combat, applyBoth.rerollMinusOnce);
+    resolveAttackOrOfferDieCancel(
+      state,
+      stackItem,
+      details,
+      applyMoraleDiceCurses(state, details.attacker.controllerId, applyBothCandidate, "sum"),
+      cards
+    );
     return;
   }
 
-  const candidate = rollAttackCandidate(combat, details.rollMode);
+  // Morale "roll 1 die less": a 2-dice advantage/disadvantage roll collapses to
+  // one straight die — mutate details.rollMode so the reroll window (and its
+  // rerolls) stay single-die for this attack.
+  if (
+    details.rollMode !== "normal" &&
+    takeMoraleRollOneLess(state, details.attacker.controllerId, 2) < 2
+  ) {
+    details.rollMode = "normal";
+  }
+  applyMoraleAttackRollPenalty(state, stackItem, details);
+  const candidate = applyMoraleDiceCurses(
+    state,
+    details.attacker.controllerId,
+    rollAttackCandidate(combat, details.rollMode),
+    details.rollMode
+  );
   const rerollEffects = getAttackRerollEffects(state, {
     attacker: details.attacker,
     defender: details.defender,
@@ -13354,12 +13601,42 @@ function rerollPendingChoice(
   }
 
   const currentRoll = choice.candidates.at(-1)?.roll ?? 0;
-  const source = choice.rerollSources.find((candidate) => rerollSourceAvailableFor(candidate, currentRoll));
+  // A plain reroll never spends a set-die source; the explicit set-die action
+  // (useSetDie) spends nothing else.
+  const source = choice.rerollSources.find(
+    (candidate) =>
+      rerollSourceAvailableFor(candidate, currentRoll) &&
+      (action.useSetDie ? candidate.setDieFace !== undefined : candidate.setDieFace === undefined)
+  );
   if (!source) {
-    throw new Error("No rerolls remain for that choice.");
+    throw new Error(action.useSetDie ? "No set-die morale card remains for that choice." : "No rerolls remain for that choice.");
   }
 
-  const candidate = rollAttackCandidate(combat, choice.rollMode);
+  const latest = choice.candidates.at(-1);
+  const candidate =
+    source.setDieFace !== undefined && latest
+      ? // "Set one of the dice to the +1 side": flip the die that raises the
+        // outcome the most — no new roll. A "+1" now showing can still trip the
+        // holder's own reroll-the-+1 curse below, exactly as a rolled one would.
+        (() => {
+          const face = source.setDieFace;
+          let flipIndex = 0;
+          let flippedOutcome = Number.NEGATIVE_INFINITY;
+          latest.rolls.forEach((_, index) => {
+            const flipped = latest.rolls.map((roll, at) => (at === index ? face : roll));
+            const outcome = aggregateCandidateRoll(flipped, choice.rollMode);
+            if (outcome > flippedOutcome) {
+              flippedOutcome = outcome;
+              flipIndex = index;
+            }
+          });
+          const rolls = latest.rolls.map((roll, at) => (at === flipIndex ? face : roll));
+          return { rolls, roll: aggregateCandidateRoll(rolls, choice.rollMode) } satisfies AttackRollCandidate;
+        })()
+      : rollAttackCandidate(combat, choice.rollMode);
+  // A fresh face may be the first "+1" of this attack — the holder's own
+  // Negative Morale reroll-the-"+1" curse (if still held) triggers on it.
+  applyMoraleDiceCurses(state, action.playerId, candidate, choice.rollMode);
   choice.candidates.push(candidate);
   // Face-gated sources (Crusaders' 'every "0"') never deplete; everything
   // else spends one use.
@@ -15012,6 +15289,34 @@ function resolveDeckSearch(state: GameState, action: Extract<GameAction, { type:
   state.pendingChoice = null;
   state.phase = choice.returnPhase;
   state.priorityPlayerId = null;
+
+  // Positive Morale "discard the cards gained from Search (X) to perform the
+  // Search (X) again": right after a Search resolves into a kept card, its
+  // holder may resolve the card — the offer opens as its own choice, and any
+  // queued follow-ups (the Pendant repeat below included) wait behind it.
+  if (
+    !removePicked &&
+    state.adventure?.moraleCards &&
+    choice.baseCount !== undefined &&
+    playerHoldsMoraleCard(state, action.playerId, MORALE_CARD_IDS.repeatSearch)
+  ) {
+    const keptName = cardLibrary[keptCardId]?.name ?? keptCardId;
+    state.pendingChoice = {
+      id: `choice_${nextEventNumber(state)}`,
+      type: "OPTION_CHOICE",
+      playerId: action.playerId,
+      prompt: `Positive Morale: discard ${keptName} to perform the Search (${choice.baseCount}) again?`,
+      options: [
+        { label: `Discard ${keptName} — repeat the Search (${choice.baseCount})` },
+        { label: `Keep ${keptName} (save the morale card)` }
+      ],
+      context: "morale-repeat-search",
+      moraleRepeatSearch: { deckId: choice.deckId, count: choice.baseCount, cardId: keptCardId },
+      returnPhase: choice.returnPhase
+    };
+    state.phase = "choice";
+    state.priorityPlayerId = action.playerId;
+  }
 
   // Pendant of Courage: the whole Search action happens once more.
   if (repeat) {
