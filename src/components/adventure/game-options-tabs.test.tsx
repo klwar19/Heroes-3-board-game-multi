@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { SetupLobbyScreen } from "./screen";
 import { createAdventureLobbyState } from "@/engine";
 
@@ -44,6 +44,20 @@ describe("Game options — tabbed layout", () => {
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
       options: { houseRules: { "estates-nerf": false } }
+    });
+  });
+
+  it("the Match tab wires the Morale Cards optional-rule toggle", () => {
+    const onAction = openOptions();
+    fireEvent.click(screen.getByRole("tab", { name: /Match/ }));
+    const moraleCardsRow = screen.getByText("Morale Cards").closest(".optionRow");
+    expect(moraleCardsRow).toBeTruthy();
+
+    fireEvent.click(within(moraleCardsRow as HTMLElement).getByRole("button", { name: "On" }));
+    expect(onAction).toHaveBeenCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { moraleCards: true }
     });
   });
 

@@ -6807,6 +6807,15 @@ function addGiveUpCombatActions(actions: LegalAction[], state: GameState, player
 
 function addMoraleActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
   const player = state.players[playerId];
+  if (state.adventure?.moraleCards) {
+    if ((player?.moraleCards?.positive ?? []).includes("morale.positive.redraw_hand") && (player?.hand.length ?? 0) > 0) {
+      actions.push({
+        label: "Positive Morale: discard any cards, draw that many",
+        action: { type: "SPEND_MORALE", playerId, benefit: "redraw", discardCardIds: [] }
+      });
+    }
+    return;
+  }
   // The stored +1 token, or an overflow token gained past the cap that must be
   // spent now — both resolve through the same draw / discard-redraw actions.
   if (!player || ((player.morale ?? 0) <= 0 && (player.moraleOverflow ?? 0) <= 0)) {

@@ -33,6 +33,7 @@ import {
 } from "./active-effects";
 import { drawCardsForPlayer, shuffleCards } from "./decks";
 import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
+import { applyMoraleCardGain, moraleCardsRuleEnabled } from "./morale-cards";
 import { parallelInteractionBlocker, stopParallelTurns } from "./parallel-turns";
 import { playerOwnsWarMachine, removePermanentFromPlayToRemoved } from "./permanents";
 import {
@@ -1228,6 +1229,11 @@ export function changeMorale(state: GameState, playerId: PlayerId, amount: numbe
 
   const faction = player.factionId ? coreFactionDefinitions[player.factionId] : undefined;
   if (faction?.ignoresMorale) {
+    return;
+  }
+
+  if (moraleCardsRuleEnabled(state)) {
+    applyMoraleCardGain(state, playerId, amount);
     return;
   }
 

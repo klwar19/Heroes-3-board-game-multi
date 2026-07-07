@@ -109,6 +109,7 @@ function makeSimPlayer(config: SimPlayerConfig): PlayerState {
       spellBook: true
     },
     morale: 0,
+    moraleCards: { positive: [], negative: [] },
     resources: {
       gold: 10,
       buildingMaterials: 5,

@@ -77,6 +77,7 @@ import {
   LearningOfferModal,
   LOCATION_GLYPHS,
   MarketPanel,
+  MoraleCardsDock,
   PileModal,
   PlacementPanel,
   PreBattlePanel,
@@ -3760,6 +3761,9 @@ export default function Home() {
     const canDraw =
       Boolean(viewer?.canMulligan) && hasOpenAdventureTurn(state, viewerPlayerId) && !forcedDiscard;
     const hasMorale = (viewer?.morale ?? 0) > 0;
+    const moraleRedrawCardAvailable = legalActions.some(
+      (legal) => legal.action.type === "SPEND_MORALE" && legal.action.benefit === "redraw"
+    );
     const moraleOverflow = viewer?.moraleOverflow ?? 0;
     const overLimit = viewer ? handCards.length - handDiscards.length - handLimit : 0;
     const selecting = handMode !== null || forcedDiscard;
@@ -3943,6 +3947,7 @@ export default function Home() {
                   state={state}
                   viewerPlayerId={isSeated ? viewerPlayerId : seatIds[0]}
                 />
+                <MoraleCardsDock state={state} viewerPlayerId={isSeated ? viewerPlayerId : seatIds[0]} />
               </div>
               {/* Observers see every seat's permanent(s) + unit deck listed here. */}
               {isSeated
@@ -4119,18 +4124,20 @@ export default function Home() {
                         ) : null}
                       </>
                     ) : null}
-                    {hasMorale ? (
+                    {hasMorale || moraleRedrawCardAvailable ? (
                       <>
-                        <button
-                          className="commandButton"
-                          onClick={() => submitAction({ type: "SPEND_MORALE", playerId: viewerPlayerId, benefit: "draw" })}
-                          type="button"
-                        >
-                          Morale: draw 1
-                        </button>
-                        {handCards.length > 0 ? (
+                        {hasMorale ? (
+                          <button
+                            className="commandButton"
+                            onClick={() => submitAction({ type: "SPEND_MORALE", playerId: viewerPlayerId, benefit: "draw" })}
+                            type="button"
+                          >
+                            Morale: draw 1
+                          </button>
+                        ) : null}
+                        {handCards.length > 0 && (hasMorale || moraleRedrawCardAvailable) ? (
                           <button className="commandButton" onClick={() => setHandMode("morale-redraw")} type="button">
-                            Morale: redraw cards
+                            {hasMorale ? "Morale: redraw cards" : "Positive Morale: redraw cards"}
                           </button>
                         ) : null}
                       </>

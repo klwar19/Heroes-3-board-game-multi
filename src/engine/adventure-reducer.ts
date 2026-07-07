@@ -128,6 +128,11 @@ import { drawCardsForPlayer, shuffleCards } from "./decks";
 import { getCombatStartDraws, getCombatStartMark } from "./unit-abilities";
 import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
 import {
+  discardHeldMoraleCardByIndex,
+  openMoralePositiveLimitChoiceIfNeeded,
+  returnHeldMoraleCardToDeckBottom
+} from "./morale-cards";
+import {
   assertParallelInteractionFree,
   hasOpenAdventureTurn,
   isParallelActor,
@@ -4974,6 +4979,7 @@ function finalizeCombatStart(state: GameState): void {
   seedFactoryHeroEffects(state);
   // In-play permanents join the fight and round-start war machines fire.
   applyPermanentCombatEffects(state);
+  applyCombatStartMoraleCards(state);
   applyCombatStartUnitAbilities(state);
   startWarMachineRound(state);
 }
@@ -5209,6 +5215,46 @@ export function applyCombatStartUnitAbilities(state: GameState): void {
       targetUnitId: target.id,
       message: `${unit.name}: ${mark.abilityName} — Marks ${target.name}.`
     });
+  }
+}
+
+function applyCombatStartMoraleCards(state: GameState): void {
+  const combat = state.combat;
+  if (!combat || !state.adventure?.moraleCards) {
+    return;
+  }
+
+  const participantIds = new Set(
+    Object.values(combat.units)
+      .map((unit) => unit.controllerId)
+      .filter((playerId) => playerId !== NEUTRAL_PLAYER_ID)
+  );
+
+  for (const playerId of participantIds) {
+    const player = state.players[playerId];
+    if (!player) {
+      continue;
+    }
+
+    while ((player.moraleCards?.positive ?? []).includes("morale.positive.combat_draw")) {
+      drawCardsForPlayer(state, playerId, 1);
+      returnHeldMoraleCardToDeckBottom(state, playerId, "morale.positive.combat_draw", "used");
+    }
+
+    while ((player.moraleCards?.negative ?? []).includes("morale.negative.random_combat_discard")) {
+      if (player.hand.length > 0) {
+        const random = createSeededRandom(
+          `${state.seed}#morale-random-combat-discard#${playerId}#${eventSeedNumber(state)}`
+        );
+        const index = random.nextInt(0, player.hand.length - 1);
+        const [discarded] = player.hand.splice(index, 1);
+        if (discarded) {
+          player.discard.push(discarded);
+          appendEvent(state, { type: "HAND_REFRESHED", playerId, discarded: 1, drawn: 0 });
+        }
+      }
+      returnHeldMoraleCardToDeckBottom(state, playerId, "morale.negative.random_combat_discard", "used");
+    }
   }
 }
 
@@ -6631,8 +6677,44 @@ export function hallOfValhallaBoost(
  */
 export function spendMorale(state: GameState, action: Extract<GameAction, { type: "SPEND_MORALE" }>): void {
   const player = state.players[action.playerId];
+  if (!player) {
+    throw new Error("No positive morale token to spend.");
+  }
+
+  if (state.adventure?.moraleCards) {
+    const redrawCardId = "morale.positive.redraw_hand";
+    if (action.benefit !== "redraw" || !(player.moraleCards?.positive ?? []).includes(redrawCardId)) {
+      throw new Error("No Positive Morale redraw card to use.");
+    }
+    const discards = action.discardCardIds ?? [];
+    if (discards.length === 0) {
+      throw new Error("Choose at least one card to discard and redraw.");
+    }
+
+    const handCounts = new Map<string, number>();
+    for (const cardId of player.hand) {
+      handCounts.set(cardId, (handCounts.get(cardId) ?? 0) + 1);
+    }
+    for (const cardId of discards) {
+      const left = handCounts.get(cardId) ?? 0;
+      if (left <= 0) {
+        throw new Error("Cannot discard a card that is not in hand.");
+      }
+      handCounts.set(cardId, left - 1);
+    }
+
+    for (const cardId of discards) {
+      const index = player.hand.indexOf(cardId);
+      player.hand.splice(index, 1);
+      player.discard.push(cardId);
+    }
+    drawCardsForPlayer(state, action.playerId, discards.length);
+    returnHeldMoraleCardToDeckBottom(state, action.playerId, redrawCardId, "used");
+    return;
+  }
+
   const hasOverflow = (player?.moraleOverflow ?? 0) > 0;
-  if (!player || (!hasOverflow && player.morale < 1)) {
+  if (!hasOverflow && player.morale < 1) {
     throw new Error("No positive morale token to spend.");
   }
 
@@ -6859,6 +6941,33 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
   const choice = state.pendingChoice;
   if (!choice || choice.type !== "OPTION_CHOICE" || choice.id !== action.choiceId || choice.playerId !== action.playerId) {
     throw new Error("That choice cannot be resolved.");
+  }
+
+  if (choice.context === "morale-positive-limit") {
+    const cardId = choice.moralePositiveLimit?.cardIds[action.optionIndex];
+    if (!cardId) {
+      throw new Error("Pick one of the Positive Morale cards to discard.");
+    }
+    const player = state.players[action.playerId];
+    const heldIndex = player?.moraleCards?.positive.findIndex((candidate, index) => {
+      if (candidate !== cardId) {
+        return false;
+      }
+      const priorCopiesInChoice = choice.moralePositiveLimit?.cardIds
+        .slice(0, action.optionIndex)
+        .filter((prior) => prior === cardId).length ?? 0;
+      const priorCopiesHeld = player.moraleCards?.positive.slice(0, index).filter((prior) => prior === cardId).length ?? 0;
+      return priorCopiesHeld === priorCopiesInChoice;
+    }) ?? -1;
+    if (heldIndex === -1) {
+      throw new Error("That Positive Morale card is no longer held.");
+    }
+    discardHeldMoraleCardByIndex(state, action.playerId, "positive", heldIndex, "positive-limit");
+    state.pendingChoice = null;
+    state.phase = choice.returnPhase;
+    state.priorityPlayerId = null;
+    openMoralePositiveLimitChoiceIfNeeded(state, action.playerId);
+    return;
   }
 
   if (choice.context === "place-creature-bank") {

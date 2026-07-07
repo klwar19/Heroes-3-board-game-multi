@@ -4182,6 +4182,30 @@ export type GameEvent =
       total: number;
     }
   | {
+      id: string;
+      type: "MORALE_CARD_DRAWN";
+      playerId: PlayerId;
+      cardId: CardId;
+      polarity: "positive" | "negative";
+      reshuffledDiscard: boolean;
+    }
+  | {
+      id: string;
+      type: "MORALE_CARD_DISCARDED";
+      playerId: PlayerId;
+      cardId: CardId;
+      polarity: "positive" | "negative";
+      reason: "cancelled-by-positive" | "positive-limit";
+    }
+  | {
+      id: string;
+      type: "MORALE_CARD_USED";
+      playerId: PlayerId;
+      cardId: CardId;
+      polarity: "positive" | "negative";
+      reason: "used";
+    }
+  | {
       /** Crest of Valor: a Field's negative-morale token was ignored. */
       id: string;
       type: "FIELD_MORALE_IGNORED";
@@ -5170,6 +5194,11 @@ export type PlayerState = {
    * the reroll use does not apply to these.
    */
   moraleOverflow?: number;
+  /** Optional Morale Cards variant: held card ids by polarity. */
+  moraleCards?: {
+    positive: CardId[];
+    negative: CardId[];
+  };
   /**
    * Over the hand limit at the start of the turn (only reachable via card
    * effects, since the hand is no longer auto-drawn): the player must discard
@@ -7212,6 +7241,11 @@ export type AdventureState = {
    */
   spellBook?: boolean;
   /**
+   * Optional Morale Cards variant. When on, morale gains/losses draw from the
+   * positive/negative Morale decks instead of changing the numeric morale token.
+   */
+  moraleCards?: boolean;
+  /**
    * Individual BINH house-rule toggles, resolved to concrete booleans at setup
    * (see resolveHouseRules / houseRuleEnabled in house-rules.ts). Absent on older
    * snapshots and the combat sandbox, where the mode default is derived instead.
@@ -7291,6 +7325,11 @@ export type GameSetupOptions = {
    * Off disables the move-to-Book action and the discard→Book pickup entirely.
    */
   spellBook?: boolean;
+  /**
+   * Optional Morale Cards variant (default OFF). Replaces the normal morale
+   * token system with positive/negative Morale decks and held morale cards.
+   */
+  moraleCards?: boolean;
   /**
    * Individual BINH house-rule toggles. Each id in this map overrides the mode
    * default for that single rule, so a table can keep the split decks but drop
@@ -7541,6 +7580,8 @@ export type AttackRerollSource = {
   effectId?: string;
   /** Positive morale token: spending the reroll discards the token. */
   morale?: boolean;
+  /** Positive Morale card variant: using the reroll returns this card to the bottom of its deck. */
+  moraleCardId?: CardId;
   /**
    * Held reroll artifact (Diplomat's Ring / Ambassador's Sash): taking the
    * reroll plays the card, discarding it from the owner's hand.
@@ -7645,6 +7686,7 @@ export type PendingChoice =
         | "visions-deck"
         | "visions-scry"
         | "pandora-upkeep"
+        | "morale-positive-limit"
         | "place-creature-bank"
         | "subterranean-gate-placement"
         | "judge-dread"
@@ -7784,6 +7826,8 @@ export type PendingChoice =
       artifactDeckPick?: { deckIds: DeckId[] };
       /** rogues-scout: the deck being peeked and its revealed top card. */
       rogueScout?: { deckId: DeckId; cardId: CardId };
+      /** morale-positive-limit: held Positive Morale card ids, index-aligned with the discard options. */
+      moralePositiveLimit?: { cardIds: CardId[] };
       /**
        * thieves-guild: the deck being peeked and its top 2 cards (index 0 is the
        * very top). The chosen option's card is discarded; the other returns on

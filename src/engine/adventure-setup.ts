@@ -46,6 +46,7 @@ import {
 import { pumpAdventureQueues } from "./adventure-reducer";
 import { normalizeParallelTurnRounds } from "./parallel-turns";
 import { drawCardsForPlayer, shuffleCards } from "./decks";
+import { makeMoraleDecks } from "./morale-cards";
 import { createSeededRandom, type SeededRandom } from "./random";
 import { freshSeed } from "./seed";
 import { appendEvent, eventSeedNumber } from "./events";
@@ -142,6 +143,8 @@ export type AdventureSetupOptions = {
   chooseSubterraneanGate?: boolean;
   /** Spell Book house rule (default on): a personal Spell Book each player may stash, cast and boost from. */
   spellBook?: boolean;
+  /** Morale Cards optional rule (default off): replaces normal morale tokens with morale card decks. */
+  moraleCards?: boolean;
   /** Individual BINH house-rule toggle overrides (see house-rules.ts). */
   houseRules?: Partial<Record<HouseRuleId, boolean>>;
   /**
@@ -218,6 +221,7 @@ export function defaultGameSetupOptions(scenario: ScenarioDefinition): GameSetup
     victoryMode: "conquest",
     pvpTroopLoss: "normal",
     spellBook: true,
+    moraleCards: false,
     farTileOpening: true,
     farTilesPerPlayer: scenario.farTiles.perPlayer,
     difficulty: "impossible",
@@ -365,6 +369,7 @@ function makePlayer(config: AdventurePlayerConfig, seed: string, options: GameSe
       spellBook: true
     },
     morale: 0,
+    moraleCards: { positive: [], negative: [] },
     needsHandRefresh: false,
     canMulligan: false,
     limits: {
@@ -440,6 +445,7 @@ function makeNeutralSeatPlayer(): PlayerState {
     production: { gold: 0, buildingMaterials: 0, valuables: 0 },
     townTokens: { build: false, population: false, spellBook: false },
     morale: 0,
+    moraleCards: { positive: [], negative: [] },
     limits: { hand: 0, expertUses: 0 },
     combatStats: {
       spellsCastThisRound: 0,
@@ -624,6 +630,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     ...(options.events !== undefined ? { events: options.events } : {}),
     ...(options.parallelTurns !== undefined ? { parallelTurns: options.parallelTurns } : {}),
     ...(options.spellBook !== undefined ? { spellBook: options.spellBook } : {}),
+    ...(options.moraleCards !== undefined ? { moraleCards: options.moraleCards } : {}),
     ...(options.houseRules !== undefined ? { houseRules: options.houseRules } : {}),
     ...(options.farTileOpening !== undefined ? { farTileOpening: options.farTileOpening } : {}),
     ...(options.farTilesPerPlayer !== undefined ? { farTilesPerPlayer: options.farTilesPerPlayer } : {}),
@@ -636,6 +643,8 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   const creatureBanksOn = setupOptions.creatureBanks ?? true;
   // Spell Book house rule default ON: each player keeps a personal Spell Book.
   const spellBookOn = setupOptions.spellBook ?? true;
+  // Morale Cards are opt-in: when on, morale draws cards instead of changing tokens.
+  const moraleCardsOn = setupOptions.moraleCards ?? false;
   // Pick-on-reveal Subterranean Gate placement default ON.
   const chooseGatePlacementOn = options.chooseSubterraneanGate ?? true;
   // Far-tile opening default ON: each player drafts a Ⅱ–Ⅲ Far-tile supply they
@@ -713,6 +722,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     victoryMode,
     pvpTroopLoss,
     spellBook: spellBookOn,
+    moraleCards: moraleCardsOn,
     houseRules,
     chooseGatePlacement: chooseGatePlacementOn,
     ...(victoryMode === "grail" ? { grail: { status: "uncollected" as const } } : {}),
@@ -781,6 +791,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
       ...makeSharedDecks(seed, houseRules["split-decks"]),
       ...makeNeutralDecks(seed, wog),
       [ASTROLOGERS_DECK_ID]: makeAstrologersDeck(seed),
+      ...(moraleCardsOn ? makeMoraleDecks(seed) : {}),
       // The Event deck exists only when the optional rule is on AND the table
       // is multiplayer — its absence is the engine's off switch.
       ...(eventsOn ? { [EVENTS_DECK_ID]: makeEventsDeck(seed) } : {})
@@ -1124,6 +1135,7 @@ function makeLobbySeatPlayer(playerId: PlayerId, name: string, options: GameSetu
     production: { ...options.startingProduction },
     townTokens: { build: true, population: true, spellBook: true },
     morale: 0,
+    moraleCards: { positive: [], negative: [] },
     limits: { hand: 4, expertUses: 0 },
     combatStats: {
       spellsCastThisRound: 0,
@@ -1190,6 +1202,9 @@ export function createAdventureLobbyState(options: AdventureSetupOptions = {}): 
   }
   if (options.houseRules) {
     setupOptions.houseRules = options.houseRules;
+  }
+  if (options.moraleCards !== undefined) {
+    setupOptions.moraleCards = options.moraleCards;
   }
   // Map-setup default: a fresh lobby opens with the three universal core town
   // cards (Citadel, Mage Guild, Bronze Dwelling) already pre-built, so every
@@ -1348,6 +1363,11 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
   if (next.spellBook !== undefined) {
     lobby.options.spellBook = Boolean(next.spellBook);
     changes.push(`Spell Book ${next.spellBook ? "on" : "off"}`);
+  }
+
+  if (next.moraleCards !== undefined) {
+    lobby.options.moraleCards = Boolean(next.moraleCards);
+    changes.push(`Morale Cards ${next.moraleCards ? "on" : "off"}`);
   }
 
   if (next.houseRules !== undefined) {
@@ -2374,6 +2394,7 @@ function buildAdventureFromLobby(state: GameState): void {
     pvpTroopLoss: lobby.options.pvpTroopLoss,
     events: lobby.options.events,
     spellBook: lobby.options.spellBook,
+    moraleCards: lobby.options.moraleCards,
     houseRules: lobby.options.houseRules,
     parallelTurns: lobby.options.parallelTurns,
     farTileOpening: lobby.options.farTileOpening,
