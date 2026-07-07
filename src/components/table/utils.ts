@@ -454,6 +454,16 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       return `${playerName(state, event.playerId)} reaches level ${event.level}${event.effects.length ? `: ${event.effects.join(", ")}` : ""}.`;
     case "MORALE_CHANGED":
       return `${playerName(state, event.playerId)} morale ${event.amount > 0 ? "+" : ""}${event.amount} (now ${event.total}).`;
+    case "MORALE_CARD_DRAWN":
+      return `${playerName(state, event.playerId)} draws ${cardName(event.cardId)}${
+        event.reshuffledDiscard ? " after reshuffling the morale discard pile" : ""
+      }.`;
+    case "MORALE_CARD_DISCARDED":
+      return event.reason === "cancelled-by-positive"
+        ? `${playerName(state, event.playerId)} discards ${cardName(event.cardId)} instead of drawing Positive Morale.`
+        : `${playerName(state, event.playerId)} discards ${cardName(event.cardId)} to stay at two Positive Morale cards.`;
+    case "MORALE_CARD_USED":
+      return `${playerName(state, event.playerId)} uses ${cardName(event.cardId)} and returns it to the bottom of its morale deck.`;
     case "FIELD_MORALE_IGNORED":
       return `${playerName(state, event.playerId)} uses Crest of Valor to ignore the negative morale from the field.`;
     case "NEUTRAL_COMBAT_STARTED":

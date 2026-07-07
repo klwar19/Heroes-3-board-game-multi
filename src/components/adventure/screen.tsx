@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNod
 import { createPortal } from "react-dom";
 import { Ban, BookOpen, Castle, Check, ChevronsUp, Crown, Dices, Hammer, Hourglass, Image as ImageIcon, Info, Layers, Lock, Minus, Plus, RotateCcw, RotateCw, Sparkles, Swords, Unlock, X } from "lucide-react";
 import { cardLibrary } from "@/data/cards/library";
+import { MORALE_NEGATIVE_DECK_ID, MORALE_POSITIVE_DECK_ID } from "@/data/cards/morale";
 import { buildingTimingLabel, describeBuildingEffect } from "@/data/towns/describe";
 import { TOWN_TOKEN_ICONS, townIconUrl } from "@/data/towns/boards";
 import {
@@ -2117,6 +2118,89 @@ export function TownHeroDock({
         </>
       ) : null}
     </div>
+  );
+}
+
+export function MoraleCardsDock({ state, viewerPlayerId }: { state: GameState; viewerPlayerId: PlayerId }) {
+  const { zoomContent } = useCardZoom();
+  const player = state.players[viewerPlayerId];
+  if (!state.adventure?.moraleCards || !player) {
+    return null;
+  }
+
+  const held = player.moraleCards ?? { positive: [], negative: [] };
+  const positiveDeck = state.decks[MORALE_POSITIVE_DECK_ID];
+  const negativeDeck = state.decks[MORALE_NEGATIVE_DECK_ID];
+
+  const showCard = (cardId: string) => {
+    const card = cardLibrary[cardId];
+    const rulesText = card?.tags.find((tag) => tag.length > 20);
+    zoomContent({
+      title: card?.name ?? cardId,
+      image: card?.assets?.cardImage,
+      subtitle: cardId.includes(".positive.") ? "Positive Morale" : "Negative Morale",
+      lines: [rulesText ?? ""].filter(Boolean)
+    });
+  };
+
+  const deckTile = (deckId: string, label: string, count: number, discardCount: number) => {
+    const back = getDeckBack(deckId);
+    return (
+      <div className="moraleDeckTile" title={`${label}: ${count} in deck, ${discardCount} discarded`}>
+        {back.image ? <img alt="" aria-hidden="true" src={assetUrl(back.image)} /> : null}
+        <span>
+          <strong>{count}</strong>
+          <small>{label}</small>
+        </span>
+      </div>
+    );
+  };
+
+  const heldCards = (cardIds: string[], polarity: "positive" | "negative") => {
+    const visible = cardIds.slice(0, polarity === "positive" ? 3 : 6);
+    const extra = Math.max(0, cardIds.length - visible.length);
+    return (
+      <div className={`moraleHeldCards ${polarity}`}>
+        {visible.map((cardId, index) => {
+          const card = cardLibrary[cardId];
+          return (
+            <button
+              aria-label={`Inspect ${card?.name ?? cardId}`}
+              className="moraleHeldCard"
+              key={`${cardId}-${index}`}
+              onClick={() => showCard(cardId)}
+              title={card?.name ?? cardId}
+              type="button"
+            >
+              {card?.assets?.cardImage ? <img alt="" src={assetUrl(card.assets.cardImage)} /> : <span>{polarity[0].toUpperCase()}</span>}
+            </button>
+          );
+        })}
+        {extra > 0 ? <span className="moraleExtraCount">+{extra}</span> : null}
+        {cardIds.length === 0 ? <span className="moraleEmpty">None</span> : null}
+      </div>
+    );
+  };
+
+  return (
+    <section className="moraleCardsDock" aria-label="Morale cards">
+      <header>
+        <Sparkles aria-hidden="true" size={14} />
+        <strong>Morale Cards</strong>
+      </header>
+      <div className="moraleDeckGrid">
+        {deckTile(MORALE_POSITIVE_DECK_ID, "Positive", positiveDeck?.drawPile.length ?? 0, positiveDeck?.discardPile.length ?? 0)}
+        {deckTile(MORALE_NEGATIVE_DECK_ID, "Negative", negativeDeck?.drawPile.length ?? 0, negativeDeck?.discardPile.length ?? 0)}
+      </div>
+      <div className="moraleHeldGroup">
+        <span>Positive</span>
+        {heldCards(held.positive, "positive")}
+      </div>
+      <div className="moraleHeldGroup">
+        <span>Negative</span>
+        {heldCards(held.negative, "negative")}
+      </div>
+    </section>
   );
 }
 
@@ -4630,6 +4714,36 @@ function GameOptionsPanel({
       })()}
 
       {(() => {
+        const moraleCardsOn = options.moraleCards ?? false;
+        return (
+          <div className="optionRow">
+            <small title="Optional rule: replace normal morale tokens with Positive and Negative Morale decks">
+              Morale Cards
+            </small>
+            <div className="optionButtons">
+              {([true, false] as const).map((on) => (
+                <button
+                  aria-pressed={moraleCardsOn === on}
+                  className={moraleCardsOn === on ? "selected" : ""}
+                  key={String(on)}
+                  onClick={() => send({ moraleCards: on })}
+                  title={on ? "Morale Cards on" : "Normal morale tokens"}
+                  type="button"
+                >
+                  {on ? "On" : "Off"}
+                </button>
+              ))}
+            </div>
+            <small className="optionHint">
+              {moraleCardsOn
+                ? "Morale draws cards instead of changing the morale token: positive morale clears one Negative card first, then draws Positive cards (max 2 held)."
+                : "Normal morale tokens: positive morale can be spent for draw/redraw/reroll, and doubled negative morale discards your hand at turn end."}
+            </small>
+          </div>
+        );
+      })()}
+
+      {(() => {
         const parallelRounds = Math.max(0, Math.min(MAX_PARALLEL_TURN_ROUNDS, options.parallelTurns ?? 0));
         const presets = [0, 1, 2, 3, 4, 6] as const;
         return (
@@ -6032,6 +6146,9 @@ export const ADVENTURE_FEED_CUES: Partial<Record<GameEventType, { icon: string; 
   HERO_LEVEL_UP: { icon: "⭐", cue: "level-up" },
   HERO_GAINED: { icon: "🧙", cue: "recruit" },
   MORALE_CHANGED: { icon: "🎺", cue: "morale" },
+  MORALE_CARD_DRAWN: { icon: "🎺", cue: "morale" },
+  MORALE_CARD_DISCARDED: { icon: "🎺", cue: "morale" },
+  MORALE_CARD_USED: { icon: "🎺", cue: "morale" },
   QUICK_COMBAT_WON: { icon: "⚡", cue: "quick-combat" },
   NEUTRAL_COMBAT_STARTED: { icon: "⚔️", cue: "battle-begin" },
   NEUTRAL_ARMY_REVEALED: { icon: "👁", cue: "reveal" },

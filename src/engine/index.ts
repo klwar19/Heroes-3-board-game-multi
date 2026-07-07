@@ -217,6 +217,7 @@ export {
   canCrossEdge,
   canHeroReachPlacedTile,
   canHeroReachPlacementCenter,
+  changeMorale,
   classifyHeroStep,
   effectiveHandLimit,
   ensureUniqueArmyUnitIds,

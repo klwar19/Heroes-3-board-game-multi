@@ -13987,6 +13987,146 @@ img.cardBack {
   overflow-y: auto;
 }
 
+.moraleCardsDock {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid rgba(170, 130, 70, 0.45);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(34, 26, 17, 0.94), rgba(18, 14, 10, 0.97));
+  color: #ead8ad;
+  box-shadow: inset 0 1px 0 rgba(255, 235, 190, 0.06), 0 8px 22px rgba(0, 0, 0, 0.28);
+}
+
+.moraleCardsDock header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 8px;
+  color: #f2dfaf;
+  font-size: 13px;
+}
+
+.moraleDeckGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.moraleDeckTile {
+  min-width: 0;
+  min-height: 58px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px;
+  border: 1px solid rgba(214, 172, 91, 0.28);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.24);
+}
+
+.moraleDeckTile img {
+  width: 34px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: 4px;
+  box-shadow: 0 2px 7px rgba(0, 0, 0, 0.55);
+}
+
+.moraleDeckTile span,
+.moraleHeldGroup {
+  min-width: 0;
+}
+
+.moraleDeckTile strong {
+  display: block;
+  color: #f5d77e;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.moraleDeckTile small {
+  display: block;
+  margin-top: 2px;
+  color: #bfa982;
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.moraleHeldGroup {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  margin-top: 7px;
+}
+
+.moraleHeldGroup > span {
+  color: #cdb98c;
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.moraleHeldCards {
+  min-height: 45px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  overflow: hidden;
+}
+
+.moraleHeldCard {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 42px;
+  padding: 0;
+  border: 1px solid rgba(220, 180, 100, 0.4);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.moraleHeldCard:hover,
+.moraleHeldCard:focus-visible {
+  border-color: #f0c46a;
+  outline: none;
+  box-shadow: 0 0 0 1px rgba(240, 196, 106, 0.35);
+}
+
+.moraleHeldCard img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.moraleHeldCard span,
+.moraleExtraCount,
+.moraleEmpty {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #cdb98c;
+  font-size: 11px;
+}
+
+.moraleExtraCount {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border: 1px solid rgba(220, 180, 100, 0.28);
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.32);
+  color: #f1d891;
+  font-weight: 700;
+}
+
+.moraleEmpty {
+  min-height: 30px;
+  color: #8f8064;
+}
+
 /* ---------- Bottom deck shelf: Spell / Neutral / Artifact / Event ---------- */
 .advDecksBottom {
   width: 100%;

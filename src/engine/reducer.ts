@@ -172,6 +172,7 @@ import {
   SPELL_DECK_EXPERT
 } from "./ruleset";
 import { houseRuleEnabled } from "./house-rules";
+import { returnHeldMoraleCardToDeckBottom } from "./morale-cards";
 import {
   destroyFortification,
   getDemolishAbility,
@@ -2822,7 +2823,16 @@ function buildRerollSources(
   // The positive morale token's "reroll any die" use is available in every mode
   // a combat runs in (adventure and the combat sandbox alike).
   const moraleSources: AttackRerollSource[] =
-    player && player.morale > 0
+    player && state.adventure?.moraleCards
+      ? (player.moraleCards?.positive ?? [])
+          .filter((cardId) => cardId === "morale.positive.reroll_die")
+          .map((cardId) => ({
+            name: cardLibrary[cardId]?.name ?? "Positive Morale: Reroll a Die",
+            moraleCardId: cardId,
+            remaining: 1,
+            used: 0
+          }))
+    : player && player.morale > 0
       ? [{ name: "Positive morale token", morale: true, remaining: 1, used: 0 }]
       : [];
 
@@ -13372,6 +13382,10 @@ function rerollPendingChoice(
         total: player.morale
       });
     }
+  }
+
+  if (source.moraleCardId && source.used === 1) {
+    returnHeldMoraleCardToDeckBottom(state, action.playerId, source.moraleCardId, "used");
   }
 
   // Diplomat's Ring / Ambassador's Sash: playing the reroll discards the artifact.
