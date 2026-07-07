@@ -124,6 +124,22 @@ function getVisiblePendingChoice(choice: PendingChoice, viewerPlayerId: PlayerId
     };
   }
 
+  // Positive Morale "Repeat Search": the offer names the card the Search just
+  // gained — a card that went into the searcher's (private) hand, revealed to
+  // no one else — so other viewers only learn that the offer is open.
+  if (
+    choice.type === "OPTION_CHOICE" &&
+    choice.context === "morale-repeat-search" &&
+    choice.playerId !== viewerPlayerId
+  ) {
+    return {
+      ...cloneSerializable(choice),
+      prompt: "Positive Morale: deciding whether to repeat the Search.",
+      options: choice.options.map(() => ({ label: "Hidden card" })),
+      moraleRepeatSearch: choice.moraleRepeatSearch ? { ...choice.moraleRepeatSearch, cardId: "hidden" } : undefined
+    };
+  }
+
   // Thieves' Guild: the two peeked cards (and the option labels that name them)
   // stay private to the thieving player — even when an opponent's deck is the
   // one being looked at, the deck's owner does not learn which cards were on top.

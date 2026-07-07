@@ -33,7 +33,8 @@ import {
 } from "./active-effects";
 import { drawCardsForPlayer, shuffleCards } from "./decks";
 import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
-import { applyMoraleCardGain, moraleCardsRuleEnabled } from "./morale-cards";
+import { applyMoraleCardGain, consumeHeldMoraleCard, moraleCardsRuleEnabled } from "./morale-cards";
+import { MORALE_CARD_IDS } from "@/data/cards/morale";
 import { parallelInteractionBlocker, stopParallelTurns } from "./parallel-turns";
 import { playerOwnsWarMachine, removePermanentFromPlayToRemoved } from "./permanents";
 import {
@@ -5127,6 +5128,13 @@ function treasureFaceLabel(face: TreasureDieFace): string {
 }
 
 function rollTreasureDice(state: GameState, visit: PendingVisit, count: number): void {
+  // Negative Morale "when you are about to roll at least 2 Treasure dice, roll
+  // 1 die less": resolves the held card on the first ≥2-dice Treasure roll.
+  // Applied before the roll (and before the Luck-reroll option is built, so a
+  // reroll re-throws the reduced count, matching the dice actually thrown).
+  if (count >= 2 && consumeHeldMoraleCard(state, visit.playerId, MORALE_CARD_IDS.rollOneLess)) {
+    count -= 1;
+  }
   const random = adventureRandom(state, "treasure-die");
   const rolls = Array.from({ length: count }, () => TREASURE_DIE_FACES[random.nextInt(0, TREASURE_DIE_FACES.length - 1)]);
 
@@ -8970,10 +8978,17 @@ function applyEventVisitStep(state: GameState, visit: PendingVisit, step: VisitS
     }
     case "EVENT_TREASURE_GAMBLE": {
       // Crypt's gamble is its own roll: Luck rerolls / die-set effects do not
-      // apply here (they hook the standard ROLL_TREASURE_DICE step only).
+      // apply here (they hook the standard ROLL_TREASURE_DICE step only). The
+      // Negative Morale "roll 1 die less" DOES: its trigger is the player being
+      // about to roll 2+ Treasure dice, whatever grants the roll — even though
+      // here fewer dice mean fewer chances of the gamble-ending experience face.
+      const gambleCount =
+        step.count >= 2 && consumeHeldMoraleCard(state, visit.playerId, MORALE_CARD_IDS.rollOneLess)
+          ? step.count - 1
+          : step.count;
       const random = adventureRandom(state, "event-treasure-gamble");
       const rolls = Array.from(
-        { length: step.count },
+        { length: gambleCount },
         () => TREASURE_DIE_FACES[random.nextInt(0, TREASURE_DIE_FACES.length - 1)]
       );
       appendEvent(state, {
