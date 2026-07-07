@@ -95,6 +95,7 @@ import {
   cardName,
   costCardEligible,
   formatEvent,
+  reconnectRoundStartCues,
   titleCase,
   unitName,
   type CardBoardAction
@@ -1004,6 +1005,18 @@ export default function Home() {
       setEventCue(null);
       deferredStartDrawRef.current = null;
       pendingDiceFeedRef.current = { items: [], sounds: [] };
+      // Mid-barrier (re)connect: the table is still resolving this round's
+      // Astrologers proclamation / Event — the priming above just marked its
+      // draw event as "seen", so without this the (re)joining client would sit
+      // frozen with no idea what everyone is resolving ("one player sees the
+      // event, the other doesn't"). Rebuild the overlay cue from live state.
+      const reconnectCues = reconnectRoundStartCues(nextState, viewerRef.current);
+      if (reconnectCues.astrologers) {
+        setAstrologerCue(reconnectCues.astrologers);
+      }
+      if (reconnectCues.event) {
+        setEventCue(reconnectCues.event);
+      }
     } else {
       // Adventure feed: spell out every visit effect, fight, gain and reveal
       // as a toast. The cue name is the future audio hook.

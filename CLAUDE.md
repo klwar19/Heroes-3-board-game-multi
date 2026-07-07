@@ -357,6 +357,24 @@ event-before-City-Hall ordering, ordered mode, a real Resource-round wrap, and a
 no-barrier CONTROL) and `astrologers-parallel-turns.test.ts` (Astrologers side),
 each with a CONTROL where the same action succeeds once the barrier lifts.
 
+**Barrier RECOVERY (the barrier may freeze the table, but never strand it).**
+Three guards keep a mid-resolution table recoverable, each pinned in
+`astrologers-barrier-recovery.test.ts` (fails if the guard is removed):
+(1) `eliminatePlayer` drops EVERY interaction the eliminated seat owns — its
+queued rewards and open `pendingVisit` (as before) AND an open `pendingChoice`
+(returning cards a DECK_SEARCH / Visions scry had lifted out of a shared deck,
+restoring `phase`), plus an owned `pendingNecromancy`/`pendingFarTileFlip` — so
+a seat eliminated mid-resolution (AFK kick, concede) hands the slot to the next
+seat in order and the barrier still lifts after the last LIVE seat. (2) A
+round-start City-Hall choice whose every option was context-filtered away
+(e.g. Cove's remove-an-Artifact arm with no Artifact in hand) is SKIPPED in
+`pumpAdventureQueues`, never opened as a zero-option prompt nobody (not even
+the AFK-drop driver) could answer. (3) A client that (re)connects mid-barrier
+still gets the proclamation/Event overlay: the first-snapshot priming marks the
+draw event "seen", so `reconnectRoundStartCues` (components/table/utils.ts,
+pinned in `reconnect-round-start-cue.test.ts`) rebuilds the cue from live state
+for exactly the barrier-up window — reconnects after resolution stay replay-free.
+
 Engine readings / deviations a reviewer should know (all deliberate, commented at
 the wiring site):
 - **Den of Thieves** resolves for the DRAWER only — its printed "you" with no
