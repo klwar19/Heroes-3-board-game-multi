@@ -25,7 +25,11 @@ export const moraleCardDefinitions: CardLibrary = {
       cardImage: face("positive-repeat-search"),
       imageAlt: "Positive Morale card: repeat Search X"
     },
-    implementationStatus: "not-implemented",
+    // engine: after the holder resolves a shared-deck Search, an offer opens to
+    // discard the gained card and run the same Search (X) again (reducer
+    // resolveDeckSearch -> "morale-repeat-search" choice). Test:
+    // morale-card-effects.test.ts "Repeat Search".
+    implementationStatus: "implemented",
     source: moraleSource
   },
   "morale.positive.combat_draw": {
@@ -53,7 +57,12 @@ export const moraleCardDefinitions: CardLibrary = {
       cardImage: face("positive-combat-power"),
       imageAlt: "Positive Morale card: next combat +1 attack, defense or combat power"
     },
-    implementationStatus: "not-implemented",
+    // engine: played during the holder's own Combat via SPEND_MORALE
+    // "combat-bonus" -> a combat-long +1 ATTACK_BONUS or +1 DEFENSE_BONUS
+    // player effect. The printed third option (+1 Combat Power) is a
+    // Battlefield-expansion-mode value with no regular-game roll, so only the
+    // Attack/Defense picks exist. Test: morale-card-effects.test.ts "Combat Bonus".
+    implementationStatus: "implemented",
     source: moraleSource
   },
   "morale.positive.reroll_die": {
@@ -81,7 +90,10 @@ export const moraleCardDefinitions: CardLibrary = {
       cardImage: face("positive-set-attack-die-plus"),
       imageAlt: "Positive Morale card: set next Attack die to +1"
     },
-    implementationStatus: "not-implemented",
+    // engine: offered inside the attack-die window as a SET source (never spent
+    // by a plain reroll): the die that improves the outcome most flips to +1,
+    // no reroll. Test: morale-card-effects.test.ts "Set Attack Die +1".
+    implementationStatus: "implemented",
     source: moraleSource
   },
   "morale.positive.remove_token": {
@@ -95,7 +107,11 @@ export const moraleCardDefinitions: CardLibrary = {
       cardImage: face("positive-remove-token"),
       imageAlt: "Positive Morale card: remove one token from one of your units"
     },
-    implementationStatus: "not-implemented",
+    // engine reading: the printed morale-token marker exists only in the
+    // Battlefield expansion's own modes, so in regular games this removes one
+    // NEGATIVE combat token (Weakness/Corrosion/Paralysis) from an own unit —
+    // SPEND_MORALE "remove-token". Test: morale-card-effects.test.ts "Remove Token".
+    implementationStatus: "implemented",
     source: moraleSource
   },
   "morale.positive.replace_adventure_card": {
@@ -109,6 +125,12 @@ export const moraleCardDefinitions: CardLibrary = {
       cardImage: face("positive-replace-adventure-card"),
       imageAlt: "Positive Morale card: discard 1 Adventure card and draw another"
     },
+    // engine: never in play. The printed card carries the Battlefield Symbol
+    // (the sword glyph under the text) — the Battlefield-expansion rulebook
+    // removes such cards from the Morale decks in regular games, and "Adventure
+    // cards" (the expansion's own 50-card deck) exist only in its Adventure/
+    // Skirmish modes. Excluded from the regular deck in BATTLEFIELD_ONLY_
+    // MORALE_CARD_IDS below; kept here so the scanned card can still be shown.
     implementationStatus: "not-implemented",
     source: moraleSource
   },
@@ -142,7 +164,10 @@ export const moraleCardDefinitions: CardLibrary = {
       cardImage: face("negative-research"),
       imageAlt: "Negative Morale card: next Search X becomes Search 1"
     },
-    implementationStatus: "not-implemented",
+    // engine: the holder's next shared-deck Search that would reveal 2+ cards
+    // reveals 1 instead (revealSharedDeckSearch), never triggered by Search (1).
+    // Test: morale-card-effects.test.ts "Search One".
+    implementationStatus: "implemented",
     source: moraleSource
   },
   "morale.negative.set_attack_die_minus": {
@@ -156,7 +181,10 @@ export const moraleCardDefinitions: CardLibrary = {
       cardImage: face("negative-next-attack-minus-side"),
       imageAlt: "Negative Morale card: set next Attack die to -1"
     },
-    implementationStatus: "not-implemented",
+    // engine: at the holder's next Attack-die roll the die whose flip hurts the
+    // outcome most is set to -1 (a curse resolves against its holder), then the
+    // card returns under its deck. Test: morale-card-effects.test.ts "Set Attack Die -1".
+    implementationStatus: "implemented",
     source: moraleSource
   },
   "morale.negative.next_roll_minus_one": {
@@ -170,7 +198,12 @@ export const moraleCardDefinitions: CardLibrary = {
       cardImage: face("negative-next-roll-minus-one"),
       imageAlt: "Negative Morale card: suffer -1 to next Attack, Defense, or Combat Power roll"
     },
-    implementationStatus: "not-implemented",
+    // engine: -1 latched onto the holder's next Attack roll (stack modifier,
+    // survives window rerolls) OR next Defense (Defend-die) roll — whichever
+    // comes first. "Combat Power" rolls exist only in the Battlefield
+    // expansion's own modes, so that clause cannot come first in a regular
+    // game. Test: morale-card-effects.test.ts "Next Roll -1".
+    implementationStatus: "implemented",
     source: moraleSource
   },
   "morale.negative.roll_one_less": {
@@ -184,7 +217,11 @@ export const moraleCardDefinitions: CardLibrary = {
       cardImage: face("negative-roll-one-less"),
       imageAlt: "Negative Morale card: roll one die less when rolling at least 2 Treasure or Attack dice"
     },
-    implementationStatus: "not-implemented",
+    // engine: the holder's next roll of 2+ Treasure dice (map treasure rolls,
+    // the Crypt gamble) or 2+ Attack dice (advantage/disadvantage, apply-both,
+    // Slayer) throws one die less — mandatory even where fewer dice help.
+    // Test: morale-card-effects.test.ts "Roll One Less".
+    implementationStatus: "implemented",
     source: moraleSource
   },
   "morale.negative.skip_activation": {
@@ -202,7 +239,11 @@ export const moraleCardDefinitions: CardLibrary = {
       cardImage: face("negative-skip-activation"),
       imageAlt: "Negative Morale card: before activation, -1 skips that unit"
     },
-    implementationStatus: "not-implemented",
+    // engine: before each of the holder's unit activations one Attack die is
+    // rolled (setActiveUnit); a -1 skips that activation and only then does the
+    // card leave, exactly as printed. Test: morale-card-effects.test.ts
+    // "Skip Activation Check".
+    implementationStatus: "implemented",
     source: moraleSource
   },
   "morale.negative.random_combat_discard": {
@@ -230,6 +271,11 @@ export const moraleCardDefinitions: CardLibrary = {
       cardImage: face("negative-put-token-unit"),
       imageAlt: "Negative Morale card: put one token on one of your units"
     },
+    // engine: never in play. The printed card carries the Battlefield Symbol
+    // (the sword glyph under the text) — the Battlefield-expansion rulebook
+    // removes such cards from the Morale decks in regular games (the morale
+    // marker it places on a unit is a Battlefield-mode component). Excluded
+    // from the regular deck in BATTLEFIELD_ONLY_MORALE_CARD_IDS below.
     implementationStatus: "not-implemented",
     source: moraleSource
   },
@@ -244,11 +290,33 @@ export const moraleCardDefinitions: CardLibrary = {
       cardImage: face("negative-reroll-minus-one"),
       imageAlt: "Negative Morale card: on a +1 Attack die, reroll the die"
     },
-    implementationStatus: "not-implemented",
+    // engine: the next +1 the holder rolls on an Attack die — attack rolls
+    // (window rerolls included), the Defend die, the skip-activation check —
+    // is forcibly rerolled once, then the card resolves. Map-side attack-die
+    // rolls (Scholar) are deliberately out of scope. Test:
+    // morale-card-effects.test.ts "Reroll +1".
+    implementationStatus: "implemented",
     source: moraleSource
   }
 };
 
+/**
+ * Battlefield-Symbol cards: the Battlefield-expansion rulebook removes/ignores
+ * cards printed with that symbol during a regular game (their effects reference
+ * components that exist only in its Adventure/Skirmish modes). This engine runs
+ * regular games, so these two never enter the shuffled Morale decks. Their
+ * definitions stay in the library (the scans are real cards), and the data test
+ * pins that no deck list contains them.
+ */
+export const BATTLEFIELD_ONLY_MORALE_CARD_IDS = [
+  "morale.positive.replace_adventure_card",
+  "morale.negative.put_token"
+] as const;
+
+// Deck composition mirrors the provided contact sheet (the TTS scan): 10
+// positive faces and 9 negative faces, with combat_draw / reroll_die /
+// skip_activation printed twice — MINUS the two Battlefield-Symbol cards the
+// rulebook removes from regular games (see BATTLEFIELD_ONLY_MORALE_CARD_IDS).
 export const moralePositiveDeckCardIds = [
   "morale.positive.repeat_search",
   "morale.positive.combat_draw",
@@ -258,7 +326,6 @@ export const moralePositiveDeckCardIds = [
   "morale.positive.reroll_die",
   "morale.positive.set_attack_die_plus",
   "morale.positive.remove_token",
-  "morale.positive.replace_adventure_card",
   "morale.positive.redraw_hand"
 ];
 
@@ -269,10 +336,29 @@ export const moraleNegativeDeckCardIds = [
   "morale.negative.roll_one_less",
   "morale.negative.skip_activation",
   "morale.negative.random_combat_discard",
-  "morale.negative.put_token",
   "morale.negative.reroll_plus_one",
   "morale.negative.skip_activation"
 ];
+
+/** Card ids by effect, so engine wiring never repeats raw strings. */
+export const MORALE_CARD_IDS = {
+  repeatSearch: "morale.positive.repeat_search",
+  combatDraw: "morale.positive.combat_draw",
+  combatBonus: "morale.positive.combat_bonus",
+  rerollDie: "morale.positive.reroll_die",
+  setAttackDiePlus: "morale.positive.set_attack_die_plus",
+  removeToken: "morale.positive.remove_token",
+  replaceAdventureCard: "morale.positive.replace_adventure_card",
+  redrawHand: "morale.positive.redraw_hand",
+  searchOne: "morale.negative.search_one",
+  setAttackDieMinus: "morale.negative.set_attack_die_minus",
+  nextRollMinusOne: "morale.negative.next_roll_minus_one",
+  rollOneLess: "morale.negative.roll_one_less",
+  skipActivation: "morale.negative.skip_activation",
+  randomCombatDiscard: "morale.negative.random_combat_discard",
+  putToken: "morale.negative.put_token",
+  rerollPlusOne: "morale.negative.reroll_plus_one"
+} as const;
 
 export function moraleDeckIdFor(polarity: MoraleCardPolarity): string {
   return polarity === "positive" ? MORALE_POSITIVE_DECK_ID : MORALE_NEGATIVE_DECK_ID;

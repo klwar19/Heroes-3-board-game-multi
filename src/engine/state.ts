@@ -2601,7 +2601,17 @@ export type GameAction =
   | { type: "END_COMBAT_ROUND"; playerId: PlayerId }
   | { type: "BUILD_STRUCTURE"; playerId: PlayerId; townId: TownId; buildingId: BuildingId }
   | { type: "COMPLETE_SIMULTANEOUS_TURN"; playerId: PlayerId }
-  | { type: "REROLL_PENDING_CHOICE"; playerId: PlayerId; choiceId: string }
+  | {
+      type: "REROLL_PENDING_CHOICE";
+      playerId: PlayerId;
+      choiceId: string;
+      /**
+       * Positive Morale "set one of the dice to the +1 side": spend the held
+       * set-die source instead of the next reroll source. The die is SET, not
+       * rerolled — the optimal die of the current candidate flips to the face.
+       */
+      useSetDie?: boolean;
+    }
   | { type: "CHOOSE_PENDING_ROLL"; playerId: PlayerId; choiceId: string; candidateIndex: number }
   | {
       type: "PLAY_REACTION";
@@ -3068,8 +3078,19 @@ export type GameAction =
        */
       type: "SPEND_MORALE";
       playerId: PlayerId;
-      benefit: "draw" | "redraw";
+      /**
+       * Token mode spends the +1 token for "draw" / "redraw". With the Morale
+       * Cards rule on, each benefit maps to a held Positive Morale card:
+       * "redraw" (discard any number, draw as many), "combat-bonus" (+1 Attack
+       * or +1 Defense for the rest of this Combat — `bonus` picks which) and
+       * "remove-token" (remove one negative combat token from an own unit —
+       * `unitId` + `tokenKind` name it).
+       */
+      benefit: "draw" | "redraw" | "combat-bonus" | "remove-token";
       discardCardIds?: CardId[];
+      bonus?: "attack" | "defense";
+      unitId?: UnitId;
+      tokenKind?: "weakness" | "corrosion" | "paralysis";
     }
   | { type: "CHOOSE_OPTION"; playerId: PlayerId; choiceId: string; optionIndex: number }
   | {
@@ -4195,7 +4216,12 @@ export type GameEvent =
       playerId: PlayerId;
       cardId: CardId;
       polarity: "positive" | "negative";
-      reason: "cancelled-by-positive" | "positive-limit";
+      /**
+       * cancelled-by-positive: a Positive gain removed a held Negative card;
+       * absorbed-negative: a Negative gain was soaked by a held Positive card;
+       * positive-limit: discarded down to the two-Positive-cards cap.
+       */
+      reason: "cancelled-by-positive" | "absorbed-negative" | "positive-limit";
     }
   | {
       id: string;
@@ -4755,6 +4781,12 @@ export type ResolutionStackItem = {
      * Only a "+1" grants +1 Defense.
      */
     defendRoll?: number;
+    /**
+     * Negative Morale "-1 to your next Attack … roll": consumed at this
+     * attack's die roll and folded into the attack value for every recompute
+     * of the same attack (reroll window re-entries included).
+     */
+    moraleRollPenalty?: number;
     /**
      * Attack-window spell instants (Bloodlust, Precision, Bless's bonus,
      * Curse/Weakness…) whose attack/defense bonus scales with Power. Recorded
@@ -7593,6 +7625,12 @@ export type AttackRerollSource = {
    * depletes `remaining` — every new matching face may be rerolled again.
    */
   onlyOnRoll?: number;
+  /**
+   * Positive Morale "set one of the dice to the +1 side": this source SETS one
+   * die of the current candidate to the face instead of rerolling. Spent only
+   * via the explicit set-die action, never by a plain reroll.
+   */
+  setDieFace?: number;
   remaining: number;
   used: number;
 };
@@ -7625,6 +7663,11 @@ export type PendingChoice =
       revealedCardIds: CardId[];
       /** Pendant of Courage: this search repeats once after it resolves. */
       repeatSearch?: { deckId: DeckId; count: number };
+      /**
+       * The Search (X) this reveal was invoked with, before per-player count
+       * effects — the X a "perform the Search (X) again" morale repeat re-runs.
+       */
+      baseCount?: number;
       /** Tarnum (Conflux) I: each revealed card may be Removed instead of kept. */
       allowRemove?: boolean;
       returnPhase: GamePhase;
@@ -7687,6 +7730,7 @@ export type PendingChoice =
         | "visions-scry"
         | "pandora-upkeep"
         | "morale-positive-limit"
+        | "morale-repeat-search"
         | "place-creature-bank"
         | "subterranean-gate-placement"
         | "judge-dread"
@@ -7828,6 +7872,11 @@ export type PendingChoice =
       rogueScout?: { deckId: DeckId; cardId: CardId };
       /** morale-positive-limit: held Positive Morale card ids, index-aligned with the discard options. */
       moralePositiveLimit?: { cardIds: CardId[] };
+      /**
+       * morale-repeat-search: the just-resolved Search (X) and the card it
+       * gained — option 0 discards that card and performs the Search again.
+       */
+      moraleRepeatSearch?: { deckId: DeckId; count: number; cardId: CardId };
       /**
        * thieves-guild: the deck being peeked and its top 2 cards (index 0 is the
        * very top). The chosen option's card is discarded; the other returns on

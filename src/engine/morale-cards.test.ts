@@ -32,7 +32,10 @@ describe("Morale Cards optional rule", () => {
 
     expect(state.players.p1.moraleCards?.negative).toHaveLength(0);
     expect(state.players.p1.moraleCards?.positive).toHaveLength(0);
-    expect(state.decks[MORALE_NEGATIVE_DECK_ID].discardPile).toContain(negative);
+    // Every card that leaves a player goes UNDER its deck (the decks recycle;
+    // there is no printed morale discard zone).
+    expect(state.decks[MORALE_NEGATIVE_DECK_ID].drawPile[0]).toBe(negative);
+    expect(state.decks[MORALE_NEGATIVE_DECK_ID].discardPile).toHaveLength(0);
   });
 
   it("caps held Positive Morale cards at two through a discard choice", () => {
@@ -60,7 +63,9 @@ describe("Morale Cards optional rule", () => {
     });
 
     expect(state.players.p1.moraleCards?.positive).toHaveLength(2);
-    expect(state.decks[MORALE_POSITIVE_DECK_ID].discardPile).toHaveLength(1);
+    // The cap-discarded card goes under the Positive deck, not to a discard zone.
+    expect(state.decks[MORALE_POSITIVE_DECK_ID].drawPile).toHaveLength(1);
+    expect(state.decks[MORALE_POSITIVE_DECK_ID].discardPile).toHaveLength(0);
     expect(state.pendingChoice).toBeNull();
   });
 
