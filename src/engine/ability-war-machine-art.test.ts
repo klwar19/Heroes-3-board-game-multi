@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { cardLibrary } from "@/data/cards/library";
+import { moraleCardPolarity } from "@/data/cards/morale";
 
 /**
  * Every ability and war-machine card whose definition names a `cardImage` must
@@ -19,6 +20,12 @@ describe("ability & war-machine card art is committed", () => {
     const checked: string[] = [];
     for (const card of Object.values(cardLibrary)) {
       if (card.kind !== "ability" && card.kind !== "war-machine") {
+        continue;
+      }
+      // Morale cards carry kind "ability" but ship as their own committed
+      // /assets/morale-cards/*.png scans, validated with the morale subsystem —
+      // not the .webp ability/war-machine scans this guard covers.
+      if (moraleCardPolarity(card.id) !== null) {
         continue;
       }
       const image = card.assets?.cardImage;
