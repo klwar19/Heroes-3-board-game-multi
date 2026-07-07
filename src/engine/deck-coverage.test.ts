@@ -8,6 +8,7 @@ import {
 } from "@/data/cards/artifacts";
 import { STARTING_ONLY_SPELLS, spellDeckBinhBasic, spellDeckBinhExpert, spellDeckLegacy } from "@/data/cards/spells";
 import { abilityDeckBinh, abilityDeckLegacy } from "@/data/cards/abilities-extra";
+import { moraleCardPolarity } from "@/data/cards/morale";
 import { coreHeroDefinitions } from "@/data/factions/core";
 
 /**
@@ -15,8 +16,10 @@ import { coreHeroDefinitions } from "@/data/factions/core";
  * game — i.e. present in at least one shared draw deck (legacy or BINH).
  * Statistics (built into hero starting decks), hero specialties (dealt per
  * hero), war machines (bought at the Factory/Trading Post), Pandora cards
- * (their own deck) and starting-only spells (Magic Arrow — gifted at setup,
- * never shuffled into a deck) are acquired through other channels and excluded.
+ * (their own deck), morale cards (their own positive/negative morale decks,
+ * gated behind the optional Morale Cards rule) and starting-only spells (Magic
+ * Arrow — gifted at setup, never shuffled into a deck) are acquired through
+ * other channels and excluded.
  *
  * This guards against the "implemented but orphaned" trap: a card whose effect
  * runs and is tested, yet can never be drawn because nobody added it to a deck.
@@ -41,7 +44,7 @@ describe("deck coverage", () => {
     const orphaned = Object.entries(cardLibrary)
       .filter(([, card]) => card.implementationStatus === "implemented" && DECK_KINDS.has(card.kind))
       .map(([id]) => id)
-      .filter((id) => !decked.has(id) && !startingOnly.has(id))
+      .filter((id) => !decked.has(id) && !startingOnly.has(id) && moraleCardPolarity(id) === null)
       .sort();
 
     expect(orphaned).toEqual([]);
@@ -87,7 +90,12 @@ describe("deck coverage", () => {
 
     const problems: string[] = [];
     for (const card of Object.values(cardLibrary)) {
-      if (card.implementationStatus !== "implemented" || !DECK_KINDS.has(card.kind) || startingOnly.has(card.id)) {
+      if (
+        card.implementationStatus !== "implemented" ||
+        !DECK_KINDS.has(card.kind) ||
+        startingOnly.has(card.id) ||
+        moraleCardPolarity(card.id) !== null
+      ) {
         continue;
       }
       const kind = card.kind as "spell" | "artifact" | "ability";
