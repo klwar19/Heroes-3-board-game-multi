@@ -263,6 +263,71 @@ dedicated rule, not an ability tag). Re-verify any prose claim here against
 those registries and `src/data/factions/units.ts` before trusting it. The
 Creature Bank system tracks its own display-only items in the section below.
 
+## Morale Cards (Battlefield expansion, OPTIONAL rule) — what runs vs. printed nuances
+
+Lobby option `GameSetupOptions.moraleCards` (default OFF). With it on, every
+morale gain/loss draws from two shuffled decks instead of using the ±1 token
+(regular-game rules from the expansion rulebook: DRAW 1, not the expansion
+modes' Search (2)). Data in `src/data/cards/morale.ts` (crops from the provided
+contact sheet); engine in `src/engine/morale-cards.ts` plus wiring in
+`reducer.ts` / `adventure-reducer.ts` / `adventure.ts` / `legal-actions.ts`.
+Behaviour is pinned in `src/engine/morale-card-effects.test.ts` (observable
+outcomes with CONTROLs) and `morale-cards.test.ts` (gain flow).
+
+Leading with what does NOT run:
+- **`morale.positive.replace_adventure_card` and `morale.negative.put_token`
+  are never in play.** Both print the expansion's Battlefield Symbol, and the
+  rulebook removes/ignores such cards in regular games ("Adventure cards" and
+  the unit-borne morale marker exist only in its Adventure/Skirmish modes).
+  They are excluded from the shuffled decks via
+  `BATTLEFIELD_ONLY_MORALE_CARD_IDS` (definitions stay, `not-implemented`, with
+  the exclusion pinned in `morale-card-effects.test.ts`). The regular decks are
+  therefore 9 positive / 8 negative.
+- **"Combat Power" clauses are inert in regular games** (the roll exists only
+  in the expansion's Adventure mode): `combat_bonus` offers only its +1 Attack /
+  +1 Defense picks, and `next_roll_minus_one` can only come first on an Attack
+  or Defense (Defend-die) roll. Both documented at the definitions.
+- **`morale.positive.remove_token` is a documented engine reading**: the
+  printed marker is Battlefield-mode-only, so in regular games it removes one
+  NEGATIVE combat token (Weakness/Corrosion/Paralysis) from an own unit.
+- Deck exhaustion with every card face-up is a silent no-op gain (rare:
+  positive is capped at 2/player; the rulebook's fall-back-to-tokens is NOT
+  modeled). Map-side attack-die rolls (Scholar) deliberately don't trigger
+  `reroll_plus_one`; the Leprechaun event pool roll deliberately doesn't
+  trigger `roll_one_less` (the event, not the player, rolls it).
+
+Rulebook flow (all engine-enforced): positive gain cancels a held Negative
+card first, else draws; **negative gain is absorbed by discarding a held
+Positive card first** (oldest, deterministic), else draws face-up; a resolved/
+cancelled/absorbed card always returns to the BOTTOM of its deck (no morale
+discard zone — the legacy discardPile only reshuffles in for old snapshots);
+held cards are public (face-up beside the hero) so player views never mask
+them; positive cards cap at 2 (discard-down choice). Negative cards resolve
+automatically the first time their printed situation occurs; only
+`skip_activation` keeps re-rolling (one Attack die before each of the holder's
+activations, -1 skips) until it actually skips, exactly as printed.
+
+Wiring map (positive): `combat_draw` at combat start; `reroll_die` a reroll
+source; `set_attack_die_plus` a SET source in the same window (never spent by
+a plain reroll — `AttackRerollSource.setDieFace`, `REROLL_PENDING_CHOICE
+.useSetDie`); `redraw_hand` via `SPEND_MORALE redraw`; `combat_bonus` /
+`remove_token` via `SPEND_MORALE combat-bonus / remove-token` during the
+holder's own combat (offers in `addMoraleActions`, buttons in the hand panel);
+`repeat_search` opens a post-Search offer (`morale-repeat-search` choice —
+discard the gained card, re-run the same Search (X); the gained card is masked
+from other viewers in `player-view.ts`). (Negative): `search_one` forces the
+next 2+-card shared-deck Search to 1 (`revealSharedDeckSearch`);
+`set_attack_die_minus` flips the holder-worst die of the next attack roll;
+`next_roll_minus_one` latches -1 onto the next attack roll (stack modifier,
+survives window rerolls) or Defend-die roll, whichever first;
+`roll_one_less` drops one die from the next 2+-dice Treasure roll (incl. the
+Crypt gamble) or 2+-dice Attack roll (advantage/disadvantage collapse to one
+straight die — mandatory even where that helps, e.g. under disadvantage or the
+Crypt's experience-face gamble); `reroll_plus_one` forcibly rerolls the
+holder's next "+1" Attack die (attack rolls incl. window rerolls and the
+just-set +1 of `set_attack_die_plus`, the Defend die, the skip-activation
+check die); `random_combat_discard` at combat start.
+
 ## Parallel turns (OPTIONAL house rule, multiplayer only) — what runs vs. limits
 
 Engine in `src/engine/parallel-turns.ts` (predicates, the stop/collapse, the

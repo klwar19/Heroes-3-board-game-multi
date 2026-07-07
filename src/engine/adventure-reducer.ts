@@ -128,10 +128,13 @@ import { drawCardsForPlayer, shuffleCards } from "./decks";
 import { getCombatStartDraws, getCombatStartMark } from "./unit-abilities";
 import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
 import {
+  consumeHeldMoraleCard,
   discardHeldMoraleCardByIndex,
   openMoralePositiveLimitChoiceIfNeeded,
   returnHeldMoraleCardToDeckBottom
 } from "./morale-cards";
+import { MORALE_CARD_IDS } from "@/data/cards/morale";
+import { removeToken } from "./tokens";
 import {
   assertParallelInteractionFree,
   hasOpenAdventureTurn,
@@ -6682,6 +6685,74 @@ export function spendMorale(state: GameState, action: Extract<GameAction, { type
   }
 
   if (state.adventure?.moraleCards) {
+    // Positive Morale "+1 Attack, +1 Defense, or +1 Combat Power during the
+    // next Combat": played while the holder is fighting; the chosen stat buffs
+    // every own unit for the rest of this Combat. The third printed option —
+    // Combat Power — is a Battlefield-expansion-mode value with no regular-game
+    // roll, so only the Attack/Defense picks are offered.
+    if (action.benefit === "combat-bonus") {
+      const combat = state.combat;
+      const combatBonusCardId = MORALE_CARD_IDS.combatBonus;
+      if (!(player.moraleCards?.positive ?? []).includes(combatBonusCardId)) {
+        throw new Error("No Positive Morale combat-bonus card to use.");
+      }
+      if (!combat || combat.outcome || (combat.attackerPlayerId !== action.playerId && combat.defenderPlayerId !== action.playerId)) {
+        throw new Error("The combat bonus is used during your own Combat.");
+      }
+      const stat = action.bonus;
+      if (stat !== "attack" && stat !== "defense") {
+        throw new Error("Choose +1 Attack or +1 Defense for this Combat.");
+      }
+      const effect = makeActiveEffect(
+        state,
+        {
+          name: stat === "attack" ? "Positive Morale: +1 Attack" : "Positive Morale: +1 Defense",
+          scope: "player",
+          duration: { type: "combat" },
+          polarity: "positive",
+          removable: false,
+          modifiers: [stat === "attack" ? { type: "ATTACK_BONUS", amount: 1 } : { type: "DEFENSE_BONUS", amount: 1 }]
+        },
+        { type: "card", cardId: combatBonusCardId, controllerId: action.playerId },
+        action.playerId
+      );
+      state.activeEffects.push(effect);
+      appendEvent(state, {
+        type: "ACTIVE_EFFECT_CREATED",
+        effectId: effect.id,
+        controllerId: effect.controllerId,
+        name: effect.name,
+        duration: effect.duration
+      });
+      returnHeldMoraleCardToDeckBottom(state, action.playerId, combatBonusCardId, "used");
+      return;
+    }
+
+    // Positive Morale "remove a morale-token marker from one of your units":
+    // the marker itself is a Battlefield-mode component, so in regular games
+    // the card lifts one negative combat token — Weakness, Corrosion or
+    // Paralysis — off an own unit (deliberate engine reading, see the card).
+    if (action.benefit === "remove-token") {
+      const combat = state.combat;
+      const removeTokenCardId = MORALE_CARD_IDS.removeToken;
+      if (!(player.moraleCards?.positive ?? []).includes(removeTokenCardId)) {
+        throw new Error("No Positive Morale remove-token card to use.");
+      }
+      const unit = action.unitId ? combat?.units[action.unitId] : undefined;
+      if (!combat || combat.outcome || !unit || unit.controllerId !== action.playerId) {
+        throw new Error("Pick one of your own units in the running Combat.");
+      }
+      const kind = action.tokenKind;
+      if (kind !== "weakness" && kind !== "corrosion" && kind !== "paralysis") {
+        throw new Error("Pick the negative token to remove.");
+      }
+      if (!removeToken(state, unit, kind, "dispelled")) {
+        throw new Error("That unit does not carry that token.");
+      }
+      returnHeldMoraleCardToDeckBottom(state, action.playerId, removeTokenCardId, "used");
+      return;
+    }
+
     const redrawCardId = "morale.positive.redraw_hand";
     if (action.benefit !== "redraw" || !(player.moraleCards?.positive ?? []).includes(redrawCardId)) {
       throw new Error("No Positive Morale redraw card to use.");
@@ -6967,6 +7038,50 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     state.phase = choice.returnPhase;
     state.priorityPlayerId = null;
     openMoralePositiveLimitChoiceIfNeeded(state, action.playerId);
+    return;
+  }
+
+  if (choice.context === "morale-repeat-search") {
+    const data = choice.moraleRepeatSearch;
+    const player = state.players[action.playerId];
+    if (!data || !player) {
+      throw new Error("That morale offer cannot be resolved.");
+    }
+    state.pendingChoice = null;
+    state.phase = choice.returnPhase;
+    state.priorityPlayerId = null;
+
+    // Option 0 resolves the card: the gained card is discarded from hand and
+    // the same Search (X) runs again. Any other option keeps both cards.
+    if (action.optionIndex === 0) {
+      const handIndex = player.hand.indexOf(data.cardId);
+      if (handIndex === -1) {
+        throw new Error("The card gained from the Search is no longer in hand.");
+      }
+      if (!consumeHeldMoraleCard(state, action.playerId, MORALE_CARD_IDS.repeatSearch)) {
+        throw new Error("That Positive Morale card is no longer held.");
+      }
+      player.hand.splice(handIndex, 1);
+      player.discard.push(data.cardId);
+      if (state.adventure) {
+        state.adventure.rewardQueue.unshift({
+          playerId: action.playerId,
+          kind: "shared-deck-search",
+          deckId: data.deckId,
+          count: data.count
+        });
+        pumpAdventureQueues(state);
+      } else {
+        openSharedDeckSearch(state, action.playerId, data.deckId, data.count);
+      }
+      return;
+    }
+
+    // Declined: follow-ups queued behind the offer (a Pendant repeat, round
+    // rewards) resume.
+    if (state.adventure) {
+      pumpAdventureQueues(state);
+    }
     return;
   }
 
@@ -8416,7 +8531,13 @@ export function revealSharedDeckSearch(
     return;
   }
 
-  const count = applySearchCountEffects(state, playerId, baseCount);
+  let count = applySearchCountEffects(state, playerId, baseCount);
+  // Negative Morale "instead of your next Search (X), do Search (1)": resolves
+  // on the first shared-deck Search that would reveal 2+ cards (whatever
+  // widened it) and never on a Search (1) — the card's own exemption.
+  if (count >= 2 && consumeHeldMoraleCard(state, playerId, MORALE_CARD_IDS.searchOne)) {
+    count = 1;
+  }
   const revealedCardIds: string[] = [];
   // Redraw past any card this hero may not take — a duplicate of one it already
   // owns, a Necromancy it cannot use, or a starting-only spell — and also past a
@@ -8492,6 +8613,8 @@ export function revealSharedDeckSearch(
     revealedCardIds,
     ...(repeats ? { repeatSearch: { deckId, count: baseCount } } : {}),
     ...(allowRemove ? { allowRemove: true } : {}),
+    // The X this Search was invoked with — what a morale "Search (X) again" re-runs.
+    baseCount,
     returnPhase: state.combat ? "combat" : "player-turn"
   };
   state.phase = "choice";

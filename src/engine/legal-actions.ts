@@ -1,4 +1,6 @@
 import { cardLibrary } from "@/data/cards/library";
+import { MORALE_CARD_IDS } from "@/data/cards/morale";
+import { hasToken as unitHasToken } from "./tokens";
 import {
   coreBuildingDefinitions,
   coreFactionDefinitions,
@@ -1008,6 +1010,12 @@ export function rerollSourceAvailableFor(source: AttackRerollSource, currentRoll
   }
 
   if (source.onlyOnRoll !== undefined && currentRoll !== source.onlyOnRoll) {
+    return false;
+  }
+
+  // A set-die source (Positive Morale "set one of the dice to the +1 side")
+  // is only worth offering while the outcome sits below the face it sets.
+  if (source.setDieFace !== undefined && currentRoll >= source.setDieFace) {
     return false;
   }
 
@@ -4140,8 +4148,8 @@ export function getLegalActions(
       }
     ];
 
-    const nextSource = state.pendingChoice.rerollSources.find((source) =>
-      rerollSourceAvailableFor(source, latest.roll)
+    const nextSource = state.pendingChoice.rerollSources.find(
+      (source) => rerollSourceAvailableFor(source, latest.roll) && source.setDieFace === undefined
     );
     if (nextSource) {
       actions.push({
@@ -4150,6 +4158,23 @@ export function getLegalActions(
           type: "REROLL_PENDING_CHOICE",
           playerId,
           choiceId: state.pendingChoice.id
+        }
+      });
+    }
+
+    // Positive Morale "set one of the dice to the +1 side": its own button —
+    // a set, not a reroll, so neither spends the other.
+    const setSource = state.pendingChoice.rerollSources.find(
+      (source) => rerollSourceAvailableFor(source, latest.roll) && source.setDieFace !== undefined
+    );
+    if (setSource) {
+      actions.push({
+        label: `Set a die to +${setSource.setDieFace} (${setSource.name})`,
+        action: {
+          type: "REROLL_PENDING_CHOICE",
+          playerId,
+          choiceId: state.pendingChoice.id,
+          useSetDie: true
         }
       });
     }
@@ -6808,11 +6833,51 @@ function addGiveUpCombatActions(actions: LegalAction[], state: GameState, player
 function addMoraleActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
   const player = state.players[playerId];
   if (state.adventure?.moraleCards) {
-    if ((player?.moraleCards?.positive ?? []).includes("morale.positive.redraw_hand") && (player?.hand.length ?? 0) > 0) {
+    const held = player?.moraleCards?.positive ?? [];
+    if (held.includes("morale.positive.redraw_hand") && (player?.hand.length ?? 0) > 0) {
       actions.push({
         label: "Positive Morale: discard any cards, draw that many",
         action: { type: "SPEND_MORALE", playerId, benefit: "redraw", discardCardIds: [] }
       });
+    }
+
+    const combat = state.combat;
+    const inOwnCombat =
+      combat && !combat.outcome && (combat.attackerPlayerId === playerId || combat.defenderPlayerId === playerId);
+
+    // "+1 Attack, +1 Defense, or +1 Combat Power during the next Combat":
+    // played while the holder fights; Combat Power is a Battlefield-mode value
+    // with no regular-game roll, so only the two live picks are offered.
+    if (inOwnCombat && held.includes(MORALE_CARD_IDS.combatBonus)) {
+      actions.push(
+        {
+          label: "Positive Morale: +1 Attack for this Combat",
+          action: { type: "SPEND_MORALE", playerId, benefit: "combat-bonus", bonus: "attack" }
+        },
+        {
+          label: "Positive Morale: +1 Defense for this Combat",
+          action: { type: "SPEND_MORALE", playerId, benefit: "combat-bonus", bonus: "defense" }
+        }
+      );
+    }
+
+    // "Remove a morale-token marker from one of your units" (engine reading:
+    // one negative combat token — Weakness/Corrosion/Paralysis — off an own
+    // unit): one offer per removable token on the holder's living units.
+    if (inOwnCombat && held.includes(MORALE_CARD_IDS.removeToken)) {
+      for (const unit of Object.values(combat.units)) {
+        if (unit.controllerId !== playerId || !isUnitAlive(unit)) {
+          continue;
+        }
+        for (const kind of ["weakness", "corrosion", "paralysis"] as const) {
+          if (unitHasToken(unit, kind)) {
+            actions.push({
+              label: `Positive Morale: remove the ${kind} token from ${unit.cardName}`,
+              action: { type: "SPEND_MORALE", playerId, benefit: "remove-token", unitId: unit.id, tokenKind: kind }
+            });
+          }
+        }
+      }
     }
     return;
   }

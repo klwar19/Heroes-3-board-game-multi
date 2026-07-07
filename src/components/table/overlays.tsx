@@ -1384,7 +1384,8 @@ export function RerollModal({
   const keepAction = legalActions.find(
     (legal) => legal.action.type === "CHOOSE_PENDING_ROLL" && legal.action.candidateIndex === latestIndex
   );
-  const rerollAction = legalActions.find((legal) => legal.action.type === "REROLL_PENDING_CHOICE");
+  // Both the plain reroll and the Positive Morale set-die (useSetDie) offers.
+  const rerollActions = legalActions.filter((legal) => legal.action.type === "REROLL_PENDING_CHOICE");
 
   return (
     <div className="modalBackdrop" role="dialog" aria-label="Reroll choice">
@@ -1434,12 +1435,17 @@ export function RerollModal({
                 </div>
               );
             })}
-            {rerollAction ? (
-              <button className="rerollDie again" onClick={() => onAction(rerollAction.action)} type="button">
+            {rerollActions.map((rerollAction) => (
+              <button
+                className="rerollDie again"
+                key={rerollAction.label}
+                onClick={() => onAction(rerollAction.action)}
+                type="button"
+              >
                 <Dices aria-hidden="true" size={22} />
                 <span>{rerollAction.label.replace(/^Reroll attack die /, "Reroll ")}</span>
               </button>
-            ) : null}
+            ))}
           </div>
         )}
       </div>
