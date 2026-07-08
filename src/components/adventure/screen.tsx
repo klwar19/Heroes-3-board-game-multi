@@ -9,6 +9,7 @@ import { createPortal } from "react-dom";
 import { Ban, BookOpen, Castle, Check, ChevronsUp, Crown, Dices, Hammer, Hourglass, Image as ImageIcon, Info, Layers, Lock, Minus, Plus, RotateCcw, RotateCw, Sparkles, Swords, Unlock, X } from "lucide-react";
 import { cardLibrary } from "@/data/cards/library";
 import { MORALE_NEGATIVE_DECK_ID, MORALE_POSITIVE_DECK_ID } from "@/data/cards/morale";
+import { MORALE_CARD_HINTS, moraleCardRulesText } from "@/components/table/morale-card-cue";
 import { buildingTimingLabel, describeBuildingEffect } from "@/data/towns/describe";
 import { TOWN_TOKEN_ICONS, townIconUrl } from "@/data/towns/boards";
 import {
@@ -2225,15 +2226,24 @@ export function MoraleCardsDock({ state, viewerPlayerId }: { state: GameState; v
   const held = player.moraleCards ?? { positive: [], negative: [] };
   const positiveDeck = state.decks[MORALE_POSITIVE_DECK_ID];
   const negativeDeck = state.decks[MORALE_NEGATIVE_DECK_ID];
+  // Every player's held Morale cards are public (face-up beside the hero) —
+  // list the other seats' cards under the viewer's own.
+  const others = Object.values(state.players)
+    .filter((candidate) => candidate.id !== viewerPlayerId && !candidate.eliminated)
+    .map((candidate) => ({
+      playerId: candidate.id,
+      name: candidate.name,
+      cards: [...(candidate.moraleCards?.positive ?? []), ...(candidate.moraleCards?.negative ?? [])]
+    }))
+    .filter((entry) => entry.cards.length > 0);
 
   const showCard = (cardId: string) => {
     const card = cardLibrary[cardId];
-    const rulesText = card?.tags.find((tag) => tag.length > 20);
     zoomContent({
       title: card?.name ?? cardId,
       image: card?.assets?.cardImage,
       subtitle: cardId.includes(".positive.") ? "Positive Morale" : "Negative Morale",
-      lines: [rulesText ?? ""].filter(Boolean)
+      lines: [moraleCardRulesText(cardId), MORALE_CARD_HINTS[cardId] ?? ""].filter(Boolean)
     });
   };
 
@@ -2257,13 +2267,14 @@ export function MoraleCardsDock({ state, viewerPlayerId }: { state: GameState; v
       <div className={`moraleHeldCards ${polarity}`}>
         {visible.map((cardId, index) => {
           const card = cardLibrary[cardId];
+          const hint = MORALE_CARD_HINTS[cardId];
           return (
             <button
               aria-label={`Inspect ${card?.name ?? cardId}`}
               className="moraleHeldCard"
               key={`${cardId}-${index}`}
               onClick={() => showCard(cardId)}
-              title={card?.name ?? cardId}
+              title={hint ? `${card?.name ?? cardId} — ${hint}` : card?.name ?? cardId}
               type="button"
             >
               {card?.assets?.cardImage ? <img alt="" src={assetUrl(card.assets.cardImage)} /> : <span>{polarity[0].toUpperCase()}</span>}
@@ -2294,6 +2305,28 @@ export function MoraleCardsDock({ state, viewerPlayerId }: { state: GameState; v
         <span>Negative</span>
         {heldCards(held.negative, "negative")}
       </div>
+      {others.map((entry) => (
+        <div className="moraleOthersRow" key={entry.playerId}>
+          <span title={`${entry.name}'s held Morale cards (public)`}>{entry.name}</span>
+          {entry.cards.slice(0, 5).map((cardId, index) => {
+            const card = cardLibrary[cardId];
+            const negative = cardId.includes(".negative.");
+            return (
+              <button
+                aria-label={`Inspect ${entry.name}'s ${card?.name ?? cardId}`}
+                className={`moraleHeldCard${negative ? " othersNegative" : ""}`}
+                key={`${cardId}-${index}`}
+                onClick={() => showCard(cardId)}
+                title={card?.name ?? cardId}
+                type="button"
+              >
+                {card?.assets?.cardImage ? <img alt="" src={assetUrl(card.assets.cardImage)} /> : <span>{negative ? "N" : "P"}</span>}
+              </button>
+            );
+          })}
+          {entry.cards.length > 5 ? <span className="moraleExtraCount">+{entry.cards.length - 5}</span> : null}
+        </div>
+      ))}
     </section>
   );
 }
