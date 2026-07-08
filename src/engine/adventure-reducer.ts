@@ -6113,6 +6113,32 @@ export function commanderGradeUp(
 }
 
 /**
+ * COMMANDER_SET_STANCE: Superior Combat specialty (Shaman / Sea Marshal) — pick
+ * the +1 Attack / +1 Defense stance the commander enters its next combat with.
+ * Chosen outside combat (the bonus is baked into the unit at combat setup).
+ */
+export function commanderSetStance(
+  state: GameState,
+  action: Extract<GameAction, { type: "COMMANDER_SET_STANCE" }>
+): void {
+  const player = state.players[action.playerId];
+  const commander = player?.commander;
+  if (!player || !commander) {
+    throw new Error("You have no commander.");
+  }
+  if (state.combat) {
+    throw new Error("The commander's stance is chosen outside of combat.");
+  }
+  if (commanderDefinitions[commander.slug as CommanderSlug]?.specialty.id !== "superior-combat") {
+    throw new Error("This commander has no combat stance.");
+  }
+  if (action.stance !== "attack" && action.stance !== "defense") {
+    throw new Error("Pick +1 Attack or +1 Defense.");
+  }
+  commander.stance = action.stance;
+}
+
+/**
  * REVIVE_COMMANDER: pay gold (2 + 2x hero level) on the map to bring a dead
  * commander back for its next combat.
  */

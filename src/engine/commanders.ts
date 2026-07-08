@@ -207,6 +207,9 @@ export function makeCommanderCombatUnit(
   }
 
   const grades = commanderGradesOf(commander);
+  // Superior Combat specialty (Shaman / Sea Marshal): +1 to the chosen stance
+  // stat (default Attack), baked into the unit at combat setup.
+  const stanceStat = definition.specialty.id === "superior-combat" ? (commander.stance ?? "attack") : null;
   return {
     id: commanderUnitId(player.id),
     controllerId: player.id,
@@ -215,8 +218,8 @@ export function makeCommanderCombatUnit(
     variant: "few",
     grade: "gold",
     type: "ground",
-    attack: commanderStatValue("attack", grades.attack),
-    defense: commanderStatValue("defense", grades.defense),
+    attack: commanderStatValue("attack", grades.attack) + (stanceStat === "attack" ? 1 : 0),
+    defense: commanderStatValue("defense", grades.defense) + (stanceStat === "defense" ? 1 : 0),
     maxHealth: commanderStatValue("health", grades.health),
     damage: 0,
     initiative: commanderStatValue("speed", grades.speed),
@@ -529,11 +532,8 @@ export function applyCommanderCombatStart(state: GameState): void {
       case "temple_guardian":
         player.combatStats.commanderManaCharges = 2;
         break;
-      case "bulwark":
-        // Rune Ritual: +1 Rune at combat start (on top of the seeded pool).
-        gainRunes(state, playerId, 1);
-        emitSpecialty(state, playerId, "bulwark", "rune-ritual", "The Rune Keeper's ritual grants 1 Rune.");
-        break;
+      // Rune Keeper's Rune Ritual is NOT a combat-start grant — it triggers the
+      // first time the commander is attacked (applyCommanderRuneRitual).
       case "succubus":
         applyCharming(state, playerId);
         break;
@@ -544,6 +544,30 @@ export function applyCommanderCombatStart(state: GameState): void {
         break;
     }
   }
+}
+
+/**
+ * Rune Keeper commander — Rune Ritual: the first time the commander is attacked
+ * in a combat, its owner gains 1 Rune (once per combat). Called from the attack
+ * resolution with the attack's DEFENDER; a no-op unless that defender is a
+ * living Rune Keeper commander that has not yet banked the grant this fight.
+ * `isRetaliation` is the incoming attack's flag — a retaliation's "defender" is
+ * the original attacker (the commander striking back is not "being attacked"),
+ * so those are skipped.
+ */
+export function applyCommanderRuneRitual(state: GameState, defender: CombatUnitState, isRetaliation: boolean): void {
+  if (isRetaliation || defender.commanderSlug !== "bulwark" || defender.runeRitualDone) {
+    return;
+  }
+  defender.runeRitualDone = true;
+  gainRunes(state, defender.controllerId, 1);
+  emitSpecialty(
+    state,
+    defender.controllerId,
+    "bulwark",
+    "rune-ritual",
+    `The Rune Keeper's ritual answers the attack — +1 Rune.`
+  );
 }
 
 // ---------------------------------------------------------------------------

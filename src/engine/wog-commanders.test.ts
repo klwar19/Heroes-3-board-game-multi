@@ -18,7 +18,6 @@ import {
   makeCommanderCombatUnit,
   commanderAbilityIds,
   commanderUnitId,
-  heroMovementMax,
   gainExperience,
   spellLimitFor
 } from "./index";
@@ -551,23 +550,36 @@ describe("WOG commanders — death and revive", () => {
 // ===========================================================================
 
 describe("WOG commanders — specialties", () => {
-  it("Swiftness (Shaman): the own MAIN hero has +1 movement range while the commander lives", () => {
-    const state = adventureWithCommanders("cmd-swift", "fortress", undefined);
-    const hero = getMainHero(state, "p1")!;
-    const base = hero.movementPointsMax;
-    expect(heroMovementMax(state, hero)).toBe(base + 1);
-    state.players.p1.commander!.dead = true;
-    expect(heroMovementMax(state, hero)).toBe(base);
-  });
+  it("Superior Combat (Shaman / Sea Marshal): +1 Attack or +1 Defense on the commander at combat setup", () => {
+    // Default stance = Attack: the Fortress commander enters combat at Attack 3.
+    const atk = intoNeutralFight(adventureWithCommanders("cmd-stance-atk", "fortress", undefined));
+    const attackUnit = atk.combat!.units[commanderUnitId("p1")];
+    expect(attackUnit.attack).toBe(3); // base 2 + 1 stance
+    expect(attackUnit.defense).toBe(1);
 
-  it("Dead Calm (Sea Marshal): every ENEMY hero has -1 movement range; the owner is untouched", () => {
-    const state = adventureWithCommanders("cmd-calm", "cove", undefined);
-    const own = getMainHero(state, "p1")!;
-    const enemy = getMainHero(state, "p2")!;
-    expect(heroMovementMax(state, own)).toBe(own.movementPointsMax);
-    expect(heroMovementMax(state, enemy)).toBe(enemy.movementPointsMax - 1);
-    state.players.p1.commander!.dead = true;
-    expect(heroMovementMax(state, enemy)).toBe(enemy.movementPointsMax);
+    // Switch to Defense on the map, then fight: +1 Defense instead.
+    let picked = adventureWithCommanders("cmd-stance-def", "fortress", undefined);
+    picked = apply(picked, { type: "COMMANDER_SET_STANCE", playerId: "p1", stance: "defense" });
+    expect(picked.players.p1.commander?.stance).toBe("defense");
+    const defFight = intoNeutralFight(picked);
+    const defenseUnit = defFight.combat!.units[commanderUnitId("p1")];
+    expect(defenseUnit.attack).toBe(2);
+    expect(defenseUnit.defense).toBe(2); // base 1 + 1 stance
+
+    // Sea Marshal shares the specialty — it too gains the stance bonus.
+    const marshal = intoNeutralFight(adventureWithCommanders("cmd-stance-cove", "cove", undefined));
+    expect(marshal.combat!.units[commanderUnitId("p1")].attack).toBe(3);
+
+    // CONTROL: a Paladin commander has no stance bonus, and rejects the action.
+    const ctrl = intoNeutralFight(adventureWithCommanders("cmd-stance-ctrl"));
+    const ctrlUnit = ctrl.combat!.units[commanderUnitId("p1")];
+    expect(ctrlUnit.attack).toBe(2);
+    expect(ctrlUnit.defense).toBe(1);
+    applyError(adventureWithCommanders("cmd-stance-ctrl2"), {
+      type: "COMMANDER_SET_STANCE",
+      playerId: "p1",
+      stance: "defense"
+    });
   });
 
   it("Tinkerer (Artificer): war machines cost 5 less gold (min 0); other players pay full price", () => {
@@ -790,24 +802,42 @@ describe("WOG commanders — specialties", () => {
     expect(oneOnGuards).toBe(oneOffGuards >= 2 ? oneOffGuards - 1 : oneOffGuards);
   });
 
-  it("Rune Ritual (Rune Keeper): the Bulwark pool opens each combat with +1 Rune", () => {
-    const state = adventureWithCommanders("cmd-rune", "bulwark", undefined);
-    const fight = intoNeutralFight(state);
-    expect(fight.combat!.runes?.p1?.count).toBe(1);
+  it("Rune Ritual (Rune Keeper): +1 Rune the FIRST time the commander is attacked, once per combat", () => {
+    // The pool does NOT open with a free Rune any more (the grant is on-attack).
+    function ritualState(slug: CommanderSlug): GameState {
+      const state = sandboxWithCommander(slug, {}, 9);
+      state.players.p1.factionId = "bulwark"; // gainRunes gates on the Bulwark faction
+      const commander = state.combat!.units[commanderUnitId("p1")];
+      commander.maxHealth = 20; // survive the assault
+      commander.retaliatedThisRound = true; // no retaliation → no attack-earned Runes
+      return state;
+    }
+    function attackCommander(state: GameState, attackerId: string, from: number): GameState {
+      const attacker = state.combat!.units[attackerId];
+      attacker.abilities = [];
+      attacker.position = from;
+      state.combat!.activeUnitId = attackerId;
+      state.activePlayerId = "p2";
+      state.combat!.dice.scriptedRolls = [0, 0, 0, 0];
+      state.combat!.dice.rollCount = 0;
+      return settle(
+        apply(state, { type: "ATTACK_UNIT", playerId: "p2", attackerId, defenderId: commanderUnitId("p1") })
+      );
+    }
 
-    // CONTROL: without the commander the pool opens at 0.
-    const control = createAdventureGameState({
-      seed: "cmd-rune-ctrl",
-      ruleset: "binh",
-      wog: { ...WOG_ON, commanders: false },
-      rollFirstPlayer: false,
-      players: [
-        { id: "p1", name: "One", factionId: "bulwark" },
-        { id: "p2", name: "Two", factionId: "castle" }
-      ]
-    });
-    const controlFight = intoNeutralFight(control);
-    expect(controlFight.combat!.runes?.p1?.count ?? 0).toBe(0);
+    const bulwark = ritualState("bulwark");
+    expect(bulwark.combat!.runes?.p1?.count ?? 0).toBe(0); // no combat-start grant
+    let s = attackCommander(bulwark, "unit_p2_skeletons", 10);
+    expect(s.combat!.runes?.p1?.count).toBe(1); // first attack banks the Rune
+    // A second incoming attack (a different attacker) pays out nothing more.
+    s = attackCommander(s, "unit_p2_vampires", 13);
+    expect(s.combat!.runes?.p1?.count).toBe(1);
+
+    // CONTROL: a Paladin commander (even for a Bulwark player) has no Rune
+    // Ritual, so being attacked banks nothing.
+    const control = ritualState("paladin");
+    const ctrl = attackCommander(control, "unit_p2_skeletons", 10);
+    expect(ctrl.combat!.runes?.p1?.count ?? 0).toBe(0);
   });
 });
 

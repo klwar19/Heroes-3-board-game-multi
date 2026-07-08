@@ -76,6 +76,7 @@ import {
   commanderGradeUp,
   reviveCommander,
   resolveCommanderFirstAid,
+  commanderSetStance,
   spellBookAction,
   spendMorale,
   spendTownCube,
@@ -226,6 +227,7 @@ import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
 import { gainRunes, gainRunesForAttack, gainRunesForDefend, grantStartingRunes, spendRunes } from "./runes";
 import { commanderCastTierIndex } from "@/data/commanders";
 import {
+  applyCommanderRuneRitual,
   commanderCastCandidates,
   commanderCastOf,
   commanderCastPower,
@@ -3738,6 +3740,8 @@ function finishResolvedAttack(
   applyFireShieldDamage(state, details.attacker, details.defender, details.attackKind, details.isRetaliation);
   // Vampires: drain life back to themselves after their own attack.
   applyOnAttackSelfHeal(state, details.attacker, details.isRetaliation);
+  // Rune Keeper commander: +1 Rune the first time it is attacked this combat.
+  applyCommanderRuneRitual(state, details.defender, details.isRetaliation);
 
   if (details.isRetaliation) {
     details.attacker.retaliatedThisRound = true;
@@ -16118,6 +16122,7 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "COMMANDER_GRADE_UP",
   "REVIVE_COMMANDER",
   "COMMANDER_FIRST_AID",
+  "COMMANDER_SET_STANCE",
   "USE_SCHOOL_FETCH_EXPERT",
   "USE_TOWN_BUILDING",
   "SPEND_TOWN_CUBE",
@@ -16481,6 +16486,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "COMMANDER_FIRST_AID":
         resolveCommanderFirstAid(nextState, action);
+        break;
+      case "COMMANDER_SET_STANCE":
+        commanderSetStance(nextState, action);
         break;
       case "PLACE_COMBAT_UNIT":
         placeCombatUnit(nextState, action);
