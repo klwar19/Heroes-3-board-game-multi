@@ -53,7 +53,7 @@ export function commanderSlugForFaction(factionId: string | undefined): Commande
   return factionId ? (COMMANDER_SLUG_BY_FACTION[factionId] ?? null) : null;
 }
 
-/** Fresh commander state for a faction (all six stats at grade 1). */
+/** Fresh commander state for a faction (all six stats at grade 0, the base). */
 export function makeInitialCommanderState(factionId: string | undefined): CommanderPlayerState | null {
   const slug = commanderSlugForFaction(factionId);
   if (!slug) {
@@ -61,7 +61,7 @@ export function makeInitialCommanderState(factionId: string | undefined): Comman
   }
   return {
     slug,
-    grades: { attack: 1, defense: 1, health: 1, damage: 1, magic: 1, speed: 1 }
+    grades: { attack: 0, defense: 0, health: 0, damage: 0, magic: 0, speed: 0 }
   };
 }
 
@@ -76,8 +76,8 @@ export function commanderDefinitionOf(commander: CommanderPlayerState | undefine
 export function commanderGradesOf(commander: CommanderPlayerState): CommanderGrades {
   const grades = {} as Record<CommanderStatKey, CommanderGrade>;
   for (const key of COMMANDER_STAT_KEYS) {
-    const raw = commander.grades?.[key] ?? 1;
-    grades[key] = (raw >= 3 ? 3 : raw === 2 ? 2 : 1) as CommanderGrade;
+    const raw = commander.grades?.[key] ?? 0;
+    grades[key] = (raw >= 3 ? 3 : raw === 2 ? 2 : raw === 1 ? 1 : 0) as CommanderGrade;
   }
   return grades;
 }
@@ -148,9 +148,11 @@ export function findCommanderUnit(state: GameState, playerId: PlayerId): CombatU
 
 /**
  * Ability ids the commander's combat unit carries, derived from its grades:
- *  - Magic grade 1+: ongoing-effect immunity and -1 Spell damage (grade 3: -2);
- *  - Damage grade 2/3: +1/+2 bonus damage on its attacks;
- *  - both combo pairs at grade 3: Death Stare / Charge;
+ *  - Magic package (grade 0 baseline): ongoing-effect immunity and -1 Spell
+ *    damage, rising to -2 at Magic grade 2 and -3 at grade 3;
+ *  - Damage grade 1/2/3: +1/+2/+3 bonus damage on its attacks;
+ *  - every unlocked combination skill (one stat of the pair at grade 3, the
+ *    other at 2+) — Sharpshooter has no ability id (it is the type flip);
  *  - the Soul Eater's Undead paralysis immunity;
  *  - the commander's command ability (the once-per-round cast).
  */
@@ -159,21 +161,26 @@ export function commanderAbilityIds(commander: CommanderPlayerState): string[] {
   const grades = commanderGradesOf(commander);
   const ids: string[] = [];
 
-  // Magic package (grade 1 baseline, per the module spec).
-  ids.push(COMMANDER_MAGIC_SPELL_DAMAGE_REDUCTION[grades.magic - 1] >= 2 ? "reduce-spell-damage-2" : "reduce-spell-damage-1");
+  // Magic package (grade 0 baseline, per the module spec).
+  const spellWard = COMMANDER_MAGIC_SPELL_DAMAGE_REDUCTION[grades.magic];
+  ids.push(spellWard >= 3 ? "reduce-spell-damage-3" : spellWard >= 2 ? "reduce-spell-damage-2" : "reduce-spell-damage-1");
   ids.push("titan-ignore-ongoing");
 
   // Damage grade: bonus damage on hits.
   const damageBonus = commanderStatValue("damage", grades.damage);
-  if (damageBonus >= 2) {
+  if (damageBonus >= 3) {
+    ids.push("commander-might-3");
+  } else if (damageBonus >= 2) {
     ids.push("commander-might-2");
   } else if (damageBonus >= 1) {
     ids.push("commander-might-1");
   }
 
-  // Combos (both stats of the pair at grade 3).
+  // Combination skills (one stat of the pair at grade 3, the other at 2+).
   for (const combo of commanderUnlockedCombos(grades)) {
-    ids.push(combo.abilityId);
+    if (combo.abilityId) {
+      ids.push(combo.abilityId);
+    }
   }
 
   // Specialty-borne combat passive.
@@ -210,6 +217,9 @@ export function makeCommanderCombatUnit(
   // Superior Combat specialty (Shaman / Sea Marshal): +1 to the chosen stance
   // stat (default Attack), baked into the unit at combat setup.
   const stanceStat = definition.specialty.id === "superior-combat" ? (commander.stance ?? "attack") : null;
+  // Sharpshooter combination skill (Attack+Speed): the commander fights as a
+  // ranged unit — the combo has no ability tag, the TYPE is the mechanic.
+  const canShoot = commanderUnlockedCombos(grades).some((combo) => combo.id === "can-shoot");
   return {
     id: commanderUnitId(player.id),
     controllerId: player.id,
@@ -217,7 +227,7 @@ export function makeCommanderCombatUnit(
     cardName: definition.name,
     variant: "few",
     grade: "gold",
-    type: "ground",
+    type: canShoot ? "ranged" : "ground",
     attack: commanderStatValue("attack", grades.attack) + (stanceStat === "attack" ? 1 : 0),
     defense: commanderStatValue("defense", grades.defense) + (stanceStat === "defense" ? 1 : 0),
     maxHealth: commanderStatValue("health", grades.health),
@@ -230,6 +240,9 @@ export function makeCommanderCombatUnit(
     defenseToken: false,
     abilities: commanderAbilityIds(commander),
     commanderSlug: commander.slug,
+    // Grade snapshot for the UI (inspect/zoom render the dynamic card face
+    // from it). Grades cannot change mid-combat, so the copy stays true.
+    commanderGrades: { ...grades },
     assets: {
       cardImage: definition.cardImage,
       imageAlt: `${definition.name} commander card`

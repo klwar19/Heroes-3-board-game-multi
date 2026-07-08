@@ -10,19 +10,23 @@
  * Model summary:
  *  - One commander per faction. It joins every combat of its owner's MAIN
  *    hero while alive, as a real battlefield unit (no army card).
- *  - Six stats, each at grade 1..3 (values in COMMANDER_GRADE_VALUES). All
- *    stats start at grade 1. At hero level 3 and 6 (Paladin: 2 and 5 — Wise)
- *    the owner picks TWO DIFFERENT stats and raises each one grade.
- *  - The Magic stat grades the whole magic package: grade 1 = Power 0,
- *    take -1 Spell damage, immune to ongoing effects; grade 2 = Power 1;
- *    grade 3 = Power 2 and -2 Spell damage (immunity stays throughout).
+ *  - Six stats, each at grade 0..3 (values in COMMANDER_GRADE_VALUES). All
+ *    stats START at grade 0 (the base line). At hero level 2, 4 and 6
+ *    (Paladin: 2, 3 and 5 — Wise) the owner picks TWO DIFFERENT stats and
+ *    raises each one grade. A grade's bonus over the base is NOT additive
+ *    with the previous grades — it IS the value shown (+1 / +2 at grade
+ *    I/II; grade III is adjusted per spec: Attack +3, Health +4, Speed +5).
+ *  - The Magic stat grades the whole magic package: grade 0 = Power 0,
+ *    take -1 Spell damage, immune to ongoing effects; grade 1 = Power 1;
+ *    grade 2 = Power 2 and -2 Spell damage; grade 3 = Power 3 and -3 Spell
+ *    damage (the ongoing-effect immunity stays throughout).
  *  - Each commander has ONE command ability (a "cast"): usable once per
  *    combat round during the commander's own activation, free (does not end
- *    the activation), scaling with Power 0/1/2.
+ *    the activation), scaling with Power (tiers 0 / 1 / 2+).
  *  - Each commander has ONE specialty (a passive engine rule).
- *  - Combos: both stats of a pair at grade 3 unlock an extra ability —
- *    Damage+Magic = Death Stare, Damage+Speed = Charge (+1 Attack after
- *    moving). Reaching two grade-3 stats takes all four grade-up picks.
+ *  - Combination skills (COMMANDER_COMBOS): every pair of the six stats
+ *    unlocks one of the 15 WoG combination skills once ONE stat of the pair
+ *    reaches grade 3 and the OTHER at least grade 2.
  *  - Death is persistent: a commander killed in combat stays dead until the
  *    owner revives it for gold (2 + 2x hero level).
  */
@@ -41,7 +45,7 @@ export const COMMANDER_STAT_KEYS = [
 ] as const;
 export type CommanderStatKey = (typeof COMMANDER_STAT_KEYS)[number];
 
-export type CommanderGrade = 1 | 2 | 3;
+export type CommanderGrade = 0 | 1 | 2 | 3;
 export type CommanderGrades = Record<CommanderStatKey, CommanderGrade>;
 
 export const COMMANDER_STAT_LABELS: Record<CommanderStatKey, string> = {
@@ -54,44 +58,49 @@ export const COMMANDER_STAT_LABELS: Record<CommanderStatKey, string> = {
 };
 
 /**
- * Stat value at grade 1/2/3 (index grade-1).
+ * Stat value at grade 0/1/2/3 (index = grade). Grade 0 is the starting base
+ * line; each grade's bonus over that base REPLACES the previous grade's
+ * bonus (+1 / +2 at grade I/II, grade III adjusted per the module spec:
+ * Attack +3, Health +4, Speed +5).
  *  - attack/defense/health/speed are the unit's printed statistics
  *    (speed = Initiative).
  *  - damage is BONUS damage added to the commander's attacks that deal at
  *    least 1 damage (normal attacks and retaliations).
- *  - magic is the command-ability Power (0/1/2).
+ *  - magic is the command-ability Power (0/1/2/3; cast tiers cap at 2).
  */
-export const COMMANDER_GRADE_VALUES: Record<CommanderStatKey, readonly [number, number, number]> = {
-  attack: [2, 3, 4],
-  defense: [1, 2, 3],
-  health: [4, 6, 8],
-  damage: [0, 1, 2],
-  magic: [0, 1, 2],
-  speed: [5, 6, 7]
+export const COMMANDER_GRADE_VALUES: Record<CommanderStatKey, readonly [number, number, number, number]> = {
+  attack: [2, 3, 4, 5],
+  defense: [1, 2, 3, 4],
+  health: [4, 5, 6, 8],
+  damage: [0, 1, 2, 3],
+  magic: [0, 1, 2, 3],
+  speed: [5, 6, 7, 10]
 };
 
-/** Spell-damage reduction granted by the Magic stat at grade 1/2/3. */
-export const COMMANDER_MAGIC_SPELL_DAMAGE_REDUCTION: readonly [number, number, number] = [1, 1, 2];
+/** Spell-damage reduction granted by the Magic stat at grade 0/1/2/3. */
+export const COMMANDER_MAGIC_SPELL_DAMAGE_REDUCTION: readonly [number, number, number, number] = [1, 1, 2, 3];
 
-export const COMMANDER_ALL_GRADES_ONE: CommanderGrades = {
-  attack: 1, defense: 1, health: 1, damage: 1, magic: 1, speed: 1
+export const COMMANDER_ALL_GRADES_ZERO: CommanderGrades = {
+  attack: 0, defense: 0, health: 0, damage: 0, magic: 0, speed: 0
 };
 
 export function commanderStatValue(key: CommanderStatKey, grade: CommanderGrade): number {
-  return COMMANDER_GRADE_VALUES[key][grade - 1];
+  return COMMANDER_GRADE_VALUES[key][grade];
 }
 
-/** Command-ability Power (0/1/2) at the given Magic grade. */
+/** Command-ability Power (0..3) at the given Magic grade. */
 export function commanderPower(grades: Pick<CommanderGrades, "magic">): number {
   return commanderStatValue("magic", grades.magic);
 }
 
 /**
  * Hero levels at which the owner picks two different stats to grade up.
- * The Paladin's Wise specialty reaches each pick one hero level EARLIER.
+ * The Paladin's Wise specialty reaches the later picks EARLIER (2/3/5).
+ * Three picks x two stats = 6 raises: enough to take one stat to grade 3
+ * and its combo partner to grade 2 (a combination skill) with one to spare.
  */
-export const COMMANDER_GRADE_UP_LEVELS: readonly number[] = [3, 6];
-export const COMMANDER_WISE_GRADE_UP_LEVELS: readonly number[] = [2, 5];
+export const COMMANDER_GRADE_UP_LEVELS: readonly number[] = [2, 4, 6];
+export const COMMANDER_WISE_GRADE_UP_LEVELS: readonly number[] = [2, 3, 5];
 
 export function commanderGradeUpLevels(slug: CommanderSlug): readonly number[] {
   return slug === "paladin" ? COMMANDER_WISE_GRADE_UP_LEVELS : COMMANDER_GRADE_UP_LEVELS;
@@ -103,37 +112,176 @@ export function commanderReviveCost(heroLevel: number): number {
 }
 
 // ---------------------------------------------------------------------------
-// Combos — both stats of the pair at grade 3 unlock the extra ability.
+// Combination skills — the 15 WoG secondary skills, one per stat pair
+// (docs/wog-commanders-plan.md §5, board-game adapted). A combo unlocks once
+// ONE stat of its pair reaches grade 3 and the OTHER at least grade 2.
 // ---------------------------------------------------------------------------
 
 export interface CommanderCombo {
-  id: "death-stare" | "charge";
+  id: string;
+  /** The WoG one-letter tag (docs/wog-commanders-plan.md §5). */
+  tag: string;
   name: string;
   requires: readonly [CommanderStatKey, CommanderStatKey];
-  /** Unit ability id granted to the commander's combat unit. */
-  abilityId: string;
+  /**
+   * Unit ability id granted to the commander's combat unit — null only for
+   * Sharpshooter, which is wired as the unit's type flipping to "ranged" in
+   * makeCommanderCombatUnit (there is no ability tag for a type).
+   */
+  abilityId: string | null;
+  /** HoMM3 spell icon for the skill (scripts/fetch-commander-spell-icons.py). */
+  icon: string;
   text: string;
 }
 
 export const COMMANDER_COMBOS: readonly CommanderCombo[] = [
   {
+    id: "no-retaliation",
+    tag: "N",
+    name: "No Enemy Retaliation",
+    requires: ["attack", "magic"],
+    abilityId: "ignores-retaliation",
+    icon: "/assets/spell-icons/forgetfulness.png",
+    text: "Attacks by the commander never provoke a Retaliation Attack."
+  },
+  {
+    id: "can-shoot",
+    tag: "S",
+    name: "Sharpshooter",
+    requires: ["attack", "speed"],
+    abilityId: null,
+    icon: "/assets/spell-icons/magic_arrow.png",
+    text: "The commander becomes a ranged unit: it may attack from anywhere (normal ranged penalties apply)."
+  },
+  {
+    id: "max-damage",
+    tag: "M",
+    name: "Mighty Blow",
+    requires: ["attack", "damage"],
+    abilityId: "commander-max-damage",
+    icon: "/assets/spell-icons/frenzy.png",
+    text: 'The commander\'s own Attack die always counts as "+1" (maximum damage).'
+  },
+  {
+    id: "endless-retaliation",
+    tag: "E",
+    name: "Endless Retaliation",
+    requires: ["defense", "health"],
+    abilityId: "unlimited-retaliation",
+    icon: "/assets/spell-icons/counterstrike.png",
+    text: "The commander may retaliate any number of times each combat round."
+  },
+  {
+    id: "crushing-strike",
+    tag: "D",
+    name: "Crushing Strike",
+    requires: ["attack", "defense"],
+    abilityId: "commander-defense-crush",
+    icon: "/assets/spell-icons/disrupting_ray.png",
+    text: "The commander's attacks reduce the target's Defense by 2 (to a minimum of 0)."
+  },
+  {
+    id: "fearsome",
+    tag: "O",
+    name: "Fearsome",
+    requires: ["attack", "health"],
+    abilityId: "commander-fearsome",
+    icon: "/assets/spell-icons/sorrow.png",
+    text: 'On a "-1" on the commander\'s Attack die, the target is frozen by fear — it gains Paralysis.'
+  },
+  {
+    id: "strike-all",
+    tag: "A",
+    name: "Whirlwind Strike",
+    requires: ["defense", "damage"],
+    abilityId: "commander-strike-all",
+    icon: "/assets/spell-icons/fireball.png",
+    text: "After its attack, the commander also attacks every other adjacent enemy (these extra attacks never provoke Retaliation)."
+  },
+  {
+    id: "fire-shield",
+    tag: "I",
+    name: "Fire Shield",
+    requires: ["defense", "magic"],
+    abilityId: "commander-fire-shield",
+    icon: "/assets/spell-icons/fire_shield.png",
+    text: "Permanent Fire Shield: an adjacent attacker takes 1 damage after attacking the commander."
+  },
+  {
+    id: "block",
+    tag: "B",
+    name: "Block",
+    requires: ["defense", "speed"],
+    abilityId: "commander-block",
+    icon: "/assets/spell-icons/force_field.png",
+    text: 'When the commander is attacked, roll an Attack die — on "-1" the attack\'s damage is fully blocked.'
+  },
+  {
+    id: "double-strike",
+    tag: "2",
+    name: "Double Strike",
+    requires: ["health", "damage"],
+    abilityId: "commander-double-strike",
+    icon: "/assets/spell-icons/slayer.png",
+    text: "After the target retaliates (if it can), the commander strikes it once more; the extra attack never provokes Retaliation."
+  },
+  {
+    id: "paralyze",
+    tag: "P",
+    name: "Paralyzing Touch",
+    requires: ["health", "magic"],
+    abilityId: "commander-paralyze",
+    icon: "/assets/spell-icons/blind.png",
+    text: 'After the commander\'s attack, roll an Attack die — on "0" the target gains Paralysis.'
+  },
+  {
+    id: "regeneration",
+    tag: "R",
+    name: "Regeneration",
+    requires: ["health", "speed"],
+    abilityId: "commander-regeneration",
+    icon: "/assets/spell-icons/resurrection.png",
+    text: "The commander removes 1 damage at the start of each of its activations."
+  },
+  {
     id: "death-stare",
+    tag: "G",
     name: "Death Stare",
     requires: ["damage", "magic"],
     abilityId: "gorgon-death-stare",
-    text: 'Damage + Magic at grade 3: after the commander\'s attack, roll 2 Attack dice — on two "-1" results the target\'s Health drops to 0.'
+    icon: "/assets/spell-icons/death_ripple.png",
+    text: 'After the commander\'s attack, roll 2 Attack dice — two "-1" results drop the target\'s Health to 0.'
+  },
+  {
+    id: "battle-teleport",
+    tag: "F",
+    name: "Battle Teleport",
+    requires: ["magic", "speed"],
+    abilityId: "teleport-move",
+    icon: "/assets/spell-icons/teleport.png",
+    text: "As its regular movement, the commander may move to ANY empty space on the battlefield."
   },
   {
     id: "charge",
+    tag: "C",
     name: "Charge",
     requires: ["damage", "speed"],
     abilityId: "commander-charge",
-    text: "Damage + Speed at grade 3: +1 Attack when the commander attacks after moving this activation."
+    icon: "/assets/spell-icons/haste.png",
+    text: "+1 Attack when the commander attacks after moving this activation."
   }
 ] as const;
 
+/** A combo unlocks with ONE stat of its pair at grade 3 and the other at 2+. */
+export function commanderComboUnlocked(grades: CommanderGrades, combo: CommanderCombo): boolean {
+  const [first, second] = combo.requires;
+  const a = grades[first];
+  const b = grades[second];
+  return (a >= 3 && b >= 2) || (b >= 3 && a >= 2);
+}
+
 export function commanderUnlockedCombos(grades: CommanderGrades): CommanderCombo[] {
-  return COMMANDER_COMBOS.filter((combo) => combo.requires.every((key) => grades[key] >= 3));
+  return COMMANDER_COMBOS.filter((combo) => commanderComboUnlocked(grades, combo));
 }
 
 // ---------------------------------------------------------------------------
@@ -233,7 +381,7 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
     cast: {
       abilityId: "commander-cast-paladin",
       name: "Cure",
-      icon: "/assets/spells-cure.webp",
+      icon: "/assets/spell-icons/cure.png",
       targeting: { side: "friendly", canTargetSelf: true },
       effect: { kind: "heal-cleanse", healByPower: [1, 1, 2], cleanseFromPower: 1 },
       tierText: [
@@ -245,7 +393,7 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
     specialty: {
       id: "wise",
       name: "Wise",
-      text: "The commander grades up early: the two grade-up picks arrive at hero level 2 and 5 (instead of 3 and 6)."
+      text: "The commander grades up early: the grade-up picks arrive at hero level 2, 3 and 5 (instead of 2, 4 and 6)."
     },
     cardImage: "/assets/units-commander-paladin.webp"
   },
@@ -254,7 +402,7 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
     cast: {
       abilityId: "commander-cast-hierophant",
       name: "Shield",
-      icon: "/assets/spells-shield.webp",
+      icon: "/assets/spell-icons/shield.png",
       targeting: { side: "friendly", canTargetSelf: false },
       effect: { kind: "defense-buff", amountByPower: [1, 2, 3], vs: "melee" },
       tierText: [
@@ -275,7 +423,7 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
     cast: {
       abilityId: "commander-cast-temple_guardian",
       name: "Precision",
-      icon: "/assets/spells-precision.webp",
+      icon: "/assets/spell-icons/precision.png",
       targeting: { side: "friendly", unitType: "ranged", canTargetSelf: false },
       effect: { kind: "precision", amountByPower: [1, 2, 3] },
       tierText: [
@@ -296,7 +444,7 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
     cast: {
       abilityId: "commander-cast-succubus",
       name: "Fire Shield",
-      icon: "/assets/spells-fire_shield.webp",
+      icon: "/assets/spell-icons/fire_shield.png",
       targeting: { side: "friendly", canTargetSelf: false },
       effect: {
         kind: "fire-shield",
@@ -321,7 +469,7 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
     cast: {
       abilityId: "commander-cast-brute",
       name: "Bloodlust",
-      icon: "/assets/spells-bloodlust.webp",
+      icon: "/assets/spell-icons/bloodlust.png",
       targeting: { side: "friendly", unitType: "melee", canTargetSelf: false },
       effect: { kind: "attack-buff", amountByPower: [1, 2, 3] },
       tierText: [
@@ -342,7 +490,7 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
     cast: {
       abilityId: "commander-cast-soul_eater",
       name: "Animate Dead",
-      icon: "/assets/spells-resurrection.webp",
+      icon: "/assets/spell-icons/animate_dead.png",
       targeting: {
         side: "friendly",
         damagedOnly: true,
@@ -368,7 +516,7 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
     cast: {
       abilityId: "commander-cast-ogre_leader",
       name: "Stone Skin",
-      icon: "/assets/spells-stone_skin.webp",
+      icon: "/assets/spell-icons/stone_skin.png",
       targeting: { side: "friendly", canTargetSelf: false },
       effect: { kind: "defense-buff", amountByPower: [1, 2, 3], vs: "all" },
       tierText: [
@@ -389,7 +537,7 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
     cast: {
       abilityId: "commander-cast-shaman",
       name: "Haste",
-      icon: "/assets/spells-haste.webp",
+      icon: "/assets/spell-icons/haste.png",
       targeting: { side: "friendly", canTargetSelf: false },
       effect: { kind: "initiative-shift", amountByPower: [2, 3, 4], attackVs: "slower", attackAmount: 1 },
       tierText: [
@@ -410,7 +558,7 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
     cast: {
       abilityId: "commander-cast-astral_spirit",
       name: "Counterstrike",
-      icon: "/assets/spells-counterstrike.webp",
+      icon: "/assets/spell-icons/counterstrike.png",
       targeting: {
         side: "friendly",
         maxTierByPower: ["bronze", "silver", "gold"],
@@ -435,7 +583,7 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
     cast: {
       abilityId: "commander-cast-corsair",
       name: "Slow",
-      icon: "/assets/spells-slow.webp",
+      icon: "/assets/spell-icons/slow.png",
       targeting: { side: "enemy", canTargetSelf: false },
       effect: { kind: "initiative-shift", amountByPower: [-2, -3, -4], attackVs: "faster", attackAmount: -1 },
       tierText: [
@@ -456,7 +604,7 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
     cast: {
       abilityId: "commander-cast-factory",
       name: "Field Repair",
-      icon: "/assets/specialty-card/icon-ballista.webp",
+      icon: "/assets/spell-icons/cure.png",
       targeting: {
         side: "friendly",
         mechanical: true,
@@ -483,7 +631,7 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
     cast: {
       abilityId: "commander-cast-bulwark",
       name: "Rune Mend",
-      icon: "/assets/spells-frost_ring.webp",
+      icon: "/assets/spell-icons/sacrifice.png",
       targeting: {
         side: "friendly",
         damagedOnly: true,

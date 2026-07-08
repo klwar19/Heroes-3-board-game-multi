@@ -406,14 +406,54 @@ Lobby: WOG crest + "Commanders" module (`WogModOptions.commanders`, default
 OFF). Content in `src/data/commanders.ts`, engine in `src/engine/commanders.ts`
 wired through setup/adventure/reducer/legal-actions/permanents/runes; behaviour
 pinned in `src/engine/wog-commanders.test.ts` + `wog-commander-casts.test.ts`
-(observable outcomes with CONTROLs; each fails if its wiring is removed).
++ `wog-commander-combos.test.ts` (observable outcomes with CONTROLs; each
+fails if its wiring is removed).
 
 Leading with what does NOT run / deliberate readings:
 - **The WoG PC reference layer did NOT ship**: the 5-tier primary skills and
-  15 secondary skills in `docs/wog-commanders-plan.md` §4–5 are design history.
-  The shipped system is grades 1–3 per stat + exactly TWO combos.
+  the PC numbers in `docs/wog-commanders-plan.md` §4–5 are design history. The
+  shipped system is grades 0–3 per stat plus the 15 combination skills below.
+- **Stats are grades 0–3** (`COMMANDER_GRADE_VALUES`): every stat STARTS at
+  grade 0 (the base line A2/D1/H4/dmg+0/Pow0/Spd5). A grade's bonus over the
+  base is the value shown, never summed with earlier grades: +1/+2 at grade
+  I/II; grade III is adjusted per the user spec — Attack +3 (5), Defense +3
+  (4), Health +4 (8), Damage +3, Power 3, Speed +5 (Initiative 10). The Magic
+  ladder: Power 0/1/2/3 (cast tiers cap at "Power 2+"), Spell ward
+  -1/-1/-2/-3 (`reduce-spell-damage-1/2/3`), ongoing-effect immunity at EVERY
+  grade. Grade-up picks (two DIFFERENT stats each) at hero level 2/4/6 —
+  Paladin's Wise: 2/3/5. Pinned in `wog-commanders.test.ts`.
+- **15 combination skills** (`COMMANDER_COMBOS`, one per stat pair): a combo
+  unlocks once ONE stat of its pair is grade 3 and the OTHER at least grade 2
+  (either orientation; 2+2 and 3+1 stay locked). Death Stare (DMG+MAG,
+  `gorgon-death-stare`) and Charge (DMG+SPD, `commander-charge`) kept their
+  original wiring; the other 13 (plan §5, board-adapted): No Enemy Retaliation
+  (ATK+MAG, `ignores-retaliation`), Sharpshooter/Can Shoot (ATK+SPD — the
+  unit's TYPE flips to ranged in `makeCommanderCombatUnit`, no ability tag),
+  Mighty Blow/max damage (ATK+DMG, `MINIMUM_ATTACK_DIE` 1 — the own die always
+  counts +1), Endless Retaliation (DEF+HP, `unlimited-retaliation`), Crushing
+  Strike/-50% Defense (ATK+DEF, `DEFENSE_REDUCTION_ON_ATTACK` 2), Fearsome
+  (ATK+HP, Paralysis on an own "-1" die), Whirlwind Strike (DEF+DMG,
+  `SECOND_ATTACK_ALL_ADJACENT_TO_SELF`), Fire Shield (DEF+MAG, passive
+  `FIRE_SHIELD_DAMAGE` 1), Block (DEF+SPD, a "-1" defensive die fully blocks
+  the hit), Double Strike (HP+DMG, `SECOND_ATTACK_SAME_TARGET_AFTER_
+  RETALIATION`), Paralyzing Touch (HP+MAG, extra die "0" Paralyzes),
+  Regeneration (HP+SPD, heal 1 on activation), Battle Teleport (MAG+SPD,
+  `teleport-move` MOVE_ANYWHERE — the user-spec "can move anywhere in battle",
+  replacing WoG's Fly). Each behaviour + a locked CONTROL one grade below is
+  pinned in `wog-commander-combos.test.ts`. With 6 raises per game at most ONE
+  combo is reachable — a deliberate build choice.
+- **Deployment cap**: with the module on, `combatUnitLimit` = 4 army units
+  (both neutral and PvP setups) — the commander IS the 5th body. Module off =
+  the classic 5 (pinned with a CONTROL in `wog-commanders.test.ts`).
+- **UI**: cast + combo icons are the classic HoMM3 spell icons fetched from
+  heroes.thelazy.net (`scripts/fetch-commander-spell-icons.py` →
+  `public/assets/spell-icons/`; existence pinned in the combos test). The card
+  face (`CommanderCardFace`) overlays the REAL stat numbers on the frame wells
+  plus damage/Power badges and unlocked-combo chips; combat inspect/zoom render
+  it from the unit's `commanderGrades` snapshot instead of the static scan. A
+  new grade-up pick pulses/blinks the dock tile (`commanderTilePulse/Blink`).
 - **Specialty adaptations** (each engine-enforced, but a conscious rewrite of
-  the WoG printed passive): Paladin Wise = grade-up picks at hero level 2 & 5
+  the WoG printed passive): Paladin Wise = grade-up picks one level early
   (not 150% XP); Temple Guardian Mana Magician = twice per COMBAT a Spell may
   exceed the per-round limit (this game has no mana pool; a burned charge
   converts into `spellLimitBonusThisRound` so the limit never dips below the
@@ -441,7 +481,7 @@ Leading with what does NOT run / deliberate readings:
   persists (revive anywhere on your map turn for 2 + 2x hero level gold).
 - **Tierless both ways** (bank-guard convention): tier-gated spells (Blind…)
   never target a commander, and the neutral AI hits it LAST.
-- **Ongoing-effect immunity is total** (Magic grade 1 baseline, titan-style):
+- **Ongoing-effect immunity is total** (Magic grade 0 baseline, titan-style):
   even FRIENDLY ongoing buffs skip the commander, so the buff-type command
   casts exclude commanders from their target lists up front. Tokens are NOT
   ongoing effects — a commander can still be Paralyzed (unless Soul Eater).
@@ -458,7 +498,7 @@ Leading with what does NOT run / deliberate readings:
   "mechanical" = the engine's `isMechanicalUnit` (Factory Automatons /
   Dreadnoughts); Shield shares the Shield SPELL's `DEFENSE_VS_ATTACKER_TYPE`
   semantics (a ranged-TYPE unit attacking adjacent is still not "melee").
-- **Might (Damage grade)** adds +1/+2 to the commander's attacks AND
+- **Might (Damage grade)** adds +1/+2/+3 to the commander's attacks AND
   retaliations that deal ≥1 damage — it never turns a fully-blocked hit into
   chip damage and stays under per-attack damage caps (Cove Nix). Charge fires
   on its own attacks after moving, never on retaliations. Death Stare reuses

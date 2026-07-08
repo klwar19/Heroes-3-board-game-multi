@@ -19,6 +19,7 @@ import {
   commanderAbilityIds,
   commanderUnitId,
   gainExperience,
+  placementCellsFor,
   spellLimitFor
 } from "./index";
 import { finalizeAdventureCombat, startNeutralEncounter } from "./adventure-reducer";
@@ -80,7 +81,7 @@ function adventureWithCommanders(seed: string, factionId = "castle", heroDefId =
 function freshCommander(slug: CommanderSlug, grades: Partial<Record<(typeof COMMANDER_STAT_KEYS)[number], number>> = {}): CommanderPlayerState {
   return {
     slug,
-    grades: { attack: 1, defense: 1, health: 1, damage: 1, magic: 1, speed: 1, ...grades }
+    grades: { attack: 0, defense: 0, health: 0, damage: 0, magic: 0, speed: 0, ...grades }
   };
 }
 
@@ -151,12 +152,12 @@ describe("WOG commanders — content integrity", () => {
 // ===========================================================================
 
 describe("WOG commanders — setup gating", () => {
-  it("seeds each player's faction commander (all grades 1) when the module is on", () => {
+  it("seeds each player's faction commander (all grades 0 — the base line) when the module is on", () => {
     const state = adventureWithCommanders("cmd-setup");
     expect(state.players.p1.commander).toMatchObject({ slug: "paladin" });
     expect(state.players.p2.commander).toMatchObject({ slug: "soul_eater" });
     for (const key of COMMANDER_STAT_KEYS) {
-      expect(state.players.p1.commander?.grades[key], key).toBe(1);
+      expect(state.players.p1.commander?.grades[key], key).toBe(0);
     }
     expect(state.players.p1.commander?.dead).toBeFalsy();
   });
@@ -200,7 +201,7 @@ function intoNeutralFight(state: GameState, difficulty = 2): GameState {
 }
 
 describe("WOG commanders — combat injection", () => {
-  it("puts the commander on the attacker's rows at grade-1 stats when the fight starts", () => {
+  it("puts the commander on the attacker's rows at grade-0 (base) stats when the fight starts", () => {
     const state = intoNeutralFight(adventureWithCommanders("cmd-inject"));
     const unit = state.combat!.units[commanderUnitId("p1")];
     expect(unit, "commander unit").toBeTruthy();
@@ -235,38 +236,102 @@ describe("WOG commanders — combat injection", () => {
     expect(deadFight.combat!.units[commanderUnitId("p1")]).toBeUndefined();
   });
 
-  it("builds the unit from the CURRENT grades (attack 4 / health 8 / init 7 at grade 3)", () => {
+  it("builds the unit from the CURRENT grades (attack 5 / health 8 / init 10 at grade 3 — the adjusted grade-III bonuses)", () => {
     const state = adventureWithCommanders("cmd-inject-graded");
     state.players.p1.commander = freshCommander("paladin", { attack: 3, health: 3, speed: 3 });
     const fight = intoNeutralFight(state);
     const unit = fight.combat!.units[commanderUnitId("p1")];
-    expect(unit).toMatchObject({ attack: 4, maxHealth: 8, initiative: 7 });
+    // Grade III bonuses are absolute, not summed: Attack +3, Health +4, Speed +5.
+    expect(unit).toMatchObject({ attack: 5, maxHealth: 8, initiative: 10 });
+
+    // Grades I/II are +1/+2 over the base (attack 3/4, health 5/6, init 6/7).
+    const mid = adventureWithCommanders("cmd-inject-graded-mid");
+    mid.players.p1.commander = freshCommander("paladin", { attack: 1, health: 2, speed: 2 });
+    const midUnit = intoNeutralFight(mid).combat!.units[commanderUnitId("p1")];
+    expect(midUnit).toMatchObject({ attack: 3, maxHealth: 6, initiative: 7 });
   });
 });
 
 // ===========================================================================
-// Grade-ups — hero level 3/6 (Wise: 2/5), two DIFFERENT stats per pick.
+// Deployment limit — the commander is the army's 5th body, so a player
+// deploys at most 4 army units while the module is on.
+// ===========================================================================
+
+describe("WOG commanders — the 4-unit deployment limit", () => {
+  function openPlacement(state: GameState): GameState {
+    if (state.players.p1.needsHandRefresh || state.players.p1.canMulligan) {
+      state = apply(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+    }
+    const hero = getMainHero(state, "p1")!;
+    const field = state.adventure!.fields[hero.spaceId!];
+    field.difficulty = 2;
+    startNeutralEncounter(state, hero, field);
+    return state;
+  }
+
+  it("caps deployment at 4 army units with the module on (the commander takes the 5th slot)", () => {
+    const state = openPlacement(adventureWithCommanders("cmd-deploy-cap"));
+    const setup = state.combat!.setup!;
+    expect(setup.unitLimit).toBe(4);
+
+    // With 4 units already placed, a 5th placement is refused outright and
+    // no further PLACE_COMBAT_UNIT is offered.
+    setup.placedUnitIds.p1 = ["u1", "u2", "u3", "u4"];
+    const armyUnit = state.players.p1.army[0]!;
+    const cell = placementCellsFor(state, "p1")[0]!;
+    const message = applyError(state, {
+      type: "PLACE_COMBAT_UNIT",
+      playerId: "p1",
+      armyUnitId: armyUnit.id,
+      position: cell
+    });
+    expect(message).toContain("Only 4 units");
+    expect(
+      getLegalActions(state, "p1").some((legal) => legal.action.type === "PLACE_COMBAT_UNIT")
+    ).toBe(false);
+  });
+
+  it("CONTROL: without the module the classic 5-unit limit stands", () => {
+    const off = createAdventureGameState({
+      seed: "cmd-deploy-cap-off",
+      ruleset: "binh",
+      wog: { ...WOG_ON, commanders: false },
+      rollFirstPlayer: false
+    });
+    const state = openPlacement(off);
+    expect(state.combat!.setup!.unitLimit).toBe(5);
+  });
+});
+
+// ===========================================================================
+// Grade-ups — hero level 2/4/6 (Wise: 2/3/5), two DIFFERENT stats per pick.
 // ===========================================================================
 
 describe("WOG commanders — grade-ups with the hero's level", () => {
-  it("queues a pick at level 3 and 6, spends it on two different stats, and rejects abuse", () => {
+  it("queues a pick at level 2, 4 and 6, spends each on two different stats, and rejects abuse", () => {
     let state = adventureWithCommanders("cmd-gradeup", "necropolis", undefined);
-    // necropolis p1 → soul_eater (grade-ups at 3/6).
-    gainExperience(state, "p1", 4); // level 1 → 3
-    expect(state.players.p1.commander?.pendingGradeUps).toEqual([3]);
+    // necropolis p1 → soul_eater (grade-ups at 2/4/6).
+    gainExperience(state, "p1", 2); // level 1 → 2
+    expect(state.players.p1.commander?.pendingGradeUps).toEqual([2]);
 
     // Same stat twice is rejected; so is an unknown pair order abuse.
     applyError(state, { type: "COMMANDER_GRADE_UP", playerId: "p1", stats: ["attack", "attack"] });
 
     state = apply(state, { type: "COMMANDER_GRADE_UP", playerId: "p1", stats: ["attack", "magic"] });
-    expect(state.players.p1.commander?.grades.attack).toBe(2);
-    expect(state.players.p1.commander?.grades.magic).toBe(2);
+    expect(state.players.p1.commander?.grades.attack).toBe(1);
+    expect(state.players.p1.commander?.grades.magic).toBe(1);
     expect(state.players.p1.commander?.pendingGradeUps).toEqual([]);
 
     // No pick owed → rejected.
     applyError(state, { type: "COMMANDER_GRADE_UP", playerId: "p1", stats: ["attack", "magic"] });
 
-    gainExperience(state, "p1", 6); // level 3 → 6
+    gainExperience(state, "p1", 6); // xp 8 → level 5 (crosses 3, 4 and 5 — only 4 queues)
+    expect(state.players.p1.commander?.pendingGradeUps).toEqual([4]);
+    state = apply(state, { type: "COMMANDER_GRADE_UP", playerId: "p1", stats: ["attack", "magic"] });
+    expect(state.players.p1.commander?.grades.attack).toBe(2);
+    expect(state.players.p1.commander?.grades.magic).toBe(2);
+
+    gainExperience(state, "p1", 2); // xp 10 → level 6
     expect(state.players.p1.commander?.pendingGradeUps).toEqual([6]);
     state = apply(state, { type: "COMMANDER_GRADE_UP", playerId: "p1", stats: ["attack", "magic"] });
     expect(state.players.p1.commander?.grades.attack).toBe(3);
@@ -277,21 +342,21 @@ describe("WOG commanders — grade-ups with the hero's level", () => {
     applyError(state, { type: "COMMANDER_GRADE_UP", playerId: "p1", stats: ["attack", "defense"] });
   });
 
-  it("Wise (Paladin): the picks arrive at hero level 2 and 5 instead of 3 and 6", () => {
-    expect(commanderGradeUpLevels("paladin")).toEqual([2, 5]);
-    expect(commanderGradeUpLevels("soul_eater")).toEqual([3, 6]);
+  it("Wise (Paladin): the picks arrive at hero level 2, 3 and 5 instead of 2, 4 and 6", () => {
+    expect(commanderGradeUpLevels("paladin")).toEqual([2, 3, 5]);
+    expect(commanderGradeUpLevels("soul_eater")).toEqual([2, 4, 6]);
 
     const paladin = adventureWithCommanders("cmd-wise"); // castle → paladin
-    gainExperience(paladin, "p1", 2); // level 2
-    expect(paladin.players.p1.commander?.pendingGradeUps).toEqual([2]);
+    gainExperience(paladin, "p1", 4); // level 3: Wise queues BOTH 2 and 3
+    expect(paladin.players.p1.commander?.pendingGradeUps).toEqual([2, 3]);
 
-    // CONTROL: a non-Paladin commander gets nothing at level 2 …
+    // CONTROL: a non-Paladin commander only has the level-2 pick at level 3 …
     const other = adventureWithCommanders("cmd-wise-ctrl", "necropolis");
-    gainExperience(other, "p1", 2);
-    expect(other.players.p1.commander?.pendingGradeUps ?? []).toEqual([]);
-    // … and the Paladin gets nothing NEW at level 3.
-    gainExperience(paladin, "p1", 2); // level 3
-    expect(paladin.players.p1.commander?.pendingGradeUps).toEqual([2]);
+    gainExperience(other, "p1", 4);
+    expect(other.players.p1.commander?.pendingGradeUps).toEqual([2]);
+    // … and the Paladin gets nothing NEW at level 4 (its next pick is level 5).
+    gainExperience(paladin, "p1", 2); // level 4
+    expect(paladin.players.p1.commander?.pendingGradeUps).toEqual([2, 3]);
   });
 
   it("offers the grade-up pairs as map-turn legal actions", () => {
@@ -333,14 +398,19 @@ describe("WOG commanders — the Magic grade package", () => {
     return settle(apply(state, cast!.action));
   }
 
-  it("takes -1 Spell damage at grade 1 and -2 at grade 3 (Lightning Bolt, Power 0: 2 damage)", () => {
-    // Grade 1: 2 - 1 = 1 damage.
+  it("takes -1 Spell damage at grade 0 and -2 from grade 2 (Lightning Bolt, Power 0: 2 damage)", () => {
+    // Grade 0 (base): 2 - 1 = 1 damage.
     const state = boltAt(sandboxWithCommander("paladin"), commanderUnitId("p1"));
     expect(state.combat!.units[commanderUnitId("p1")].damage).toBe(1);
 
-    // Grade 3: 2 - 2 = 0 damage.
-    const graded = boltAt(sandboxWithCommander("paladin", { magic: 3 }), commanderUnitId("p1"));
+    // Grade 2: 2 - 2 = 0 damage.
+    const graded = boltAt(sandboxWithCommander("paladin", { magic: 2 }), commanderUnitId("p1"));
     expect(graded.combat!.units[commanderUnitId("p1")].damage).toBe(0);
+
+    // Grade 3 carries the -3 ward (behaviour of the shared REDUCE_SPELL_DAMAGE
+    // id is pinned by its own ability tests; here we pin WHICH ward is wired).
+    const maxed = sandboxWithCommander("paladin", { magic: 3 });
+    expect(maxed.combat!.units[commanderUnitId("p1")].abilities).toContain("reduce-spell-damage-3");
 
     // CONTROL: a plain unit takes the full 2.
     const plain = createInitialGameState();
@@ -426,16 +496,21 @@ describe("WOG commanders — Might, Charge and Death Stare", () => {
     defenderId: "unit_p2_skeletons"
   };
 
-  it("Might: +1/+2 damage on a hit at Damage grade 2/3; a fully-blocked attack gains nothing", () => {
-    // Grade 1 control: attack 2 + die 0 = 2 damage.
+  it("Might: +1/+2/+3 damage on a hit at Damage grade 1/2/3; a fully-blocked attack gains nothing", () => {
+    // Grade 0 control: attack 2 + die 0 = 2 damage.
     let control = meleeDuel("paladin", {});
     control = settle(apply(control, COMMANDER_ATTACK));
     expect(control.combat!.units.unit_p2_skeletons.damage).toBe(2);
 
-    // Damage grade 3: 2 + 2 Might = 4.
+    // Damage grade 1: 2 + 1 Might = 3.
+    let light = meleeDuel("paladin", { damage: 1 });
+    light = settle(apply(light, COMMANDER_ATTACK));
+    expect(light.combat!.units.unit_p2_skeletons.damage).toBe(3);
+
+    // Damage grade 3: 2 + 3 Might = 5.
     let mighty = meleeDuel("paladin", { damage: 3 });
     mighty = settle(apply(mighty, COMMANDER_ATTACK));
-    expect(mighty.combat!.units.unit_p2_skeletons.damage).toBe(4);
+    expect(mighty.combat!.units.unit_p2_skeletons.damage).toBe(5);
 
     // Fully blocked (defense 9 vs attack 2): still 0 — Might never creates a hit.
     let blocked = meleeDuel("paladin", { damage: 3 });
@@ -444,11 +519,13 @@ describe("WOG commanders — Might, Charge and Death Stare", () => {
     expect(blocked.combat!.units.unit_p2_skeletons.damage).toBe(0);
   });
 
-  it("Charge (Damage+Speed grade 3): +1 Attack only when attacking after moving", () => {
-    // Stationary: attack 2 + Might 2 = 4 damage.
-    let still = meleeDuel("paladin", { damage: 3, speed: 3 });
+  it("Charge (Damage grade 3 + Speed grade 2): +1 Attack only when attacking after moving", () => {
+    // Stationary: attack 2 + Might 3 = 5 damage. Speed 2 is enough for the
+    // combo under the grade-3 + grade-2 unlock rule — but Charge only fires
+    // after a move.
+    let still = meleeDuel("paladin", { damage: 3, speed: 2 });
     still = settle(apply(still, COMMANDER_ATTACK));
-    expect(still.combat!.units.unit_p2_skeletons.damage).toBe(4);
+    expect(still.combat!.units.unit_p2_skeletons.damage).toBe(5);
 
     // Move (13 → 9), then strike from the new cell in the same activation —
     // the player flow that sets movedThisActivation before the attack.
@@ -465,16 +542,22 @@ describe("WOG commanders — Might, Charge and Death Stare", () => {
       return current;
     }
 
-    const charging = moveAndStrike(meleeDuel("paladin", { damage: 3, speed: 3 }));
-    expect(charging.combat!.units.unit_p2_skeletons.damage).toBe(5);
+    const charging = moveAndStrike(meleeDuel("paladin", { damage: 3, speed: 2 }));
+    expect(charging.combat!.units.unit_p2_skeletons.damage).toBe(6);
 
-    // CONTROL: without the combo (speed grade 2) the same move-then-attack is 4.
-    const noCombo = moveAndStrike(meleeDuel("paladin", { damage: 3, speed: 2 }));
-    expect(noCombo.combat!.units.unit_p2_skeletons.damage).toBe(4);
+    // The reversed orientation (Speed 3 + Damage 2) unlocks the combo too:
+    // 2 attack + 1 Charge + 2 Might = 5 after moving.
+    const reversed = moveAndStrike(meleeDuel("paladin", { damage: 2, speed: 3 }));
+    expect(reversed.combat!.units.unit_p2_skeletons.damage).toBe(5);
+
+    // CONTROL: below the threshold (speed grade 1) the same move-then-attack
+    // gains no Charge: 2 + 3 Might = 5.
+    const noCombo = moveAndStrike(meleeDuel("paladin", { damage: 3, speed: 1 }));
+    expect(noCombo.combat!.units.unit_p2_skeletons.damage).toBe(5);
   });
 
-  it("Death Stare (Damage+Magic grade 3): a double '-1' follow-up destroys the target's side", () => {
-    let state = meleeDuel("paladin", { damage: 3, magic: 3 });
+  it("Death Stare (Damage grade 3 + Magic grade 2): a double '-1' follow-up destroys the target's side", () => {
+    let state = meleeDuel("paladin", { damage: 3, magic: 2 });
     expect(state.combat!.units[commanderUnitId("p1")].abilities).toContain("gorgon-death-stare");
     // Attack die 0, then the two Death Stare dice both roll -1: the 20-Health
     // PACK side is destroyed outright — it flips down to its Few side.
@@ -482,8 +565,9 @@ describe("WOG commanders — Might, Charge and Death Stare", () => {
     state = settle(apply(state, COMMANDER_ATTACK));
     expect(state.combat!.units.unit_p2_skeletons.variant).toBe("few");
 
-    // CONTROL: no combo → the same rolls only scratch the Pack (4 of 20).
-    let control = meleeDuel("paladin", { damage: 3, magic: 2 });
+    // CONTROL: magic grade 1 stays below the combo threshold → the same rolls
+    // only scratch the Pack (5 of 20).
+    let control = meleeDuel("paladin", { damage: 3, magic: 1 });
     expect(control.combat!.units[commanderUnitId("p1")].abilities).not.toContain("gorgon-death-stare");
     control.combat!.dice.scriptedRolls = [0, -1, -1];
     control = settle(apply(control, COMMANDER_ATTACK));

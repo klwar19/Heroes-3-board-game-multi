@@ -1981,6 +1981,21 @@ export function TownHeroDock({
     : undefined;
   const commanderGradeUps = commander?.pendingGradeUps?.length ?? 0;
 
+  // Commander level-up notice: when a NEW grade-up pick arrives, blink the
+  // commander tile hard for a few seconds (the steady gold pulse then stays
+  // until the pick is spent).
+  const [commanderBlink, setCommanderBlink] = useState(false);
+  const prevGradeUpsRef = useRef(commanderGradeUps);
+  useEffect(() => {
+    const previous = prevGradeUpsRef.current;
+    prevGradeUpsRef.current = commanderGradeUps;
+    if (commanderGradeUps > previous) {
+      setCommanderBlink(true);
+      const timer = window.setTimeout(() => setCommanderBlink(false), 5000);
+      return () => window.clearTimeout(timer);
+    }
+  }, [commanderGradeUps]);
+
   if (!onOpenTown && heroSeats.length === 0 && !armyPlayer) {
     return null;
   }
@@ -2106,7 +2121,9 @@ export function TownHeroDock({
         <button
           aria-expanded={commanderOpen}
           aria-label={`Open your commander, ${commanderDef.name}`}
-          className={`dockTile unitDockTile ${commanderOpen ? "open" : ""}`}
+          className={`dockTile unitDockTile ${commanderOpen ? "open" : ""}${
+            commanderGradeUps > 0 && !commander.dead ? " commanderTilePulse" : ""
+          }${commanderBlink ? " commanderTileBlink" : ""}`}
           onClick={() => setCommanderOpen((value) => !value)}
           style={{ "--dock-faction": playerFactionColor(armyPlayer.factionId) } as CSSProperties}
           title={`${commanderDef.name} — your WOG commander`}
@@ -4724,7 +4741,7 @@ function GameOptionsPanel({
             <div className="wogModuleList">
               {([
                 ["newCreatures", "New neutral creatures", "Adds the 15-card WOG roster to the Bronze, Silver, Gold and Azure Neutral decks."],
-                ["commanders", "Commanders", "Every player gets their faction's commander: it fights in the main hero's battles, grades up at hero level 3 and 6, and casts a command ability once per combat round."],
+                ["commanders", "Commanders", "Every player gets their faction's commander: it fights in the main hero's battles as the army's 5th unit (you deploy up to 4), grades up at hero level 2, 4 and 6, and casts a command ability once per combat round."],
                 ["newObjects", "New adventure objects", "Saves the object module choice; WOG map objects will be added as their data and art arrive."]
               ] as const).map(([key, label, description]) => {
                 const active = wog[key];
@@ -6308,7 +6325,14 @@ export const ADVENTURE_FEED_CUES: Partial<Record<GameEventType, { icon: string; 
   COMBAT_TOKEN_PLACED: { icon: "🔘", cue: "swap" },
   PARALLEL_TURNS_STARTED: { icon: "🔀", cue: "options" },
   PARALLEL_TURN_ENDED: { icon: "🔀", cue: "options" },
-  PARALLEL_TURNS_STOPPED: { icon: "⚠️", cue: "warning" }
+  PARALLEL_TURNS_STOPPED: { icon: "⚠️", cue: "warning" },
+  // WOG Commanders: level-ups (grade-ups), death and revival announce
+  // themselves in the feed alongside the dock tile's blink.
+  COMMANDER_GRADED_UP: { icon: "👑", cue: "level-up" },
+  COMMANDER_DIED: { icon: "🪦", cue: "defeat" },
+  COMMANDER_REVIVED: { icon: "👑", cue: "recruit" },
+  COMMANDER_FIRST_AID_USED: { icon: "⛑", cue: "recruit" },
+  COMMANDER_SPECIALTY_TRIGGERED: { icon: "👑", cue: "options" }
 };
 
 type GameEventType = GameState["eventLog"][number]["type"];

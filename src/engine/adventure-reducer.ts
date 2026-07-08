@@ -542,6 +542,16 @@ export const ATTACKER_BACKLINE = [16, 17, 18, 19];
 export const DEFENDER_FRONTLINE = [4, 5, 6, 7];
 export const DEFENDER_BACKLINE = [0, 1, 2, 3];
 export const COMBAT_UNIT_LIMIT = 5;
+/**
+ * WOG Commanders module: the commander itself is the army's fifth body, so a
+ * player deploys at most 4 army units — the commander takes the 5th slot.
+ */
+export const COMMANDER_COMBAT_UNIT_LIMIT = 4;
+
+/** Per-game deployment cap (4 with the WOG Commanders module, else 5). */
+export function combatUnitLimit(state: GameState): number {
+  return commandersModuleEnabled(state) ? COMMANDER_COMBAT_UNIT_LIMIT : COMBAT_UNIT_LIMIT;
+}
 
 /**
  * Creature Bank battlefield (rulebook Creature Bank setup): unlike a normal
@@ -3236,7 +3246,8 @@ function beginNeutralCombatPlacement(
   const playerId = hero.controllerId;
   restoreStartingArmyIfEmpty(state, playerId);
 
-  // Rulebook Combat Setup order: the player places up to 5 units first; the
+  // Rulebook Combat Setup order: the player places up to 5 units first (4 when
+  // the WOG Commanders module reserves the fifth slot for the commander); the
   // guard army is drawn from the tier decks only after placement finishes.
   const bankId = fieldCreatureBankId(field);
   const combat = makeCombatShell(state, playerId, NEUTRAL_PLAYER_ID);
@@ -3252,7 +3263,7 @@ function beginNeutralCombatPlacement(
   combat.setup = {
     pendingPlayerIds: [playerId],
     placedUnitIds: { [playerId]: [] },
-    unitLimit: COMBAT_UNIT_LIMIT
+    unitLimit: combatUnitLimit(state)
   };
 
   state.combat = combat;
@@ -4426,7 +4437,7 @@ export function startPlayerCombat(
   combat.setup = {
     pendingPlayerIds: [attacker.controllerId, defenderPlayerId],
     placedUnitIds: { [attacker.controllerId]: [], [defenderPlayerId]: [] },
-    unitLimit: COMBAT_UNIT_LIMIT
+    unitLimit: combatUnitLimit(state)
   };
 
   state.combat = combat;

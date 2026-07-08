@@ -41,6 +41,8 @@ import {
   type PlayerId
 } from "@/engine";
 import { beginUnitPointerDrag } from "@/components/table/pointer-drag";
+import { CommanderCardFace } from "@/components/commander-card";
+import type { CommanderSlug } from "@/data/commanders";
 import {
   actionKey,
   formatEvent,
@@ -1550,6 +1552,16 @@ export function InitiativeRail({ state }: { state: GameState }) {
   );
 }
 
+/** The controller's MAIN hero level (a commander's level = its hero's level). */
+function heroLevelOf(state: GameState, playerId: PlayerId): number {
+  for (const hero of Object.values(state.heroes)) {
+    if (hero.controllerId === playerId && hero.kind === "main") {
+      return hero.level;
+    }
+  }
+  return 1;
+}
+
 export function InspectPanel({ state, unitId }: { state: GameState; unitId: string | null }) {
   const { zoomUnit } = useCardZoom();
   const unit = unitId ? state.combat?.units[unitId] : undefined;
@@ -1585,7 +1597,19 @@ export function InspectPanel({ state, unitId }: { state: GameState; unitId: stri
         title="Click to enlarge"
         type="button"
       >
-        {unit.assets?.cardImage ? (
+        {unit.commanderSlug && unit.commanderGrades ? (
+          // WOG commander: the dynamic card face — real stat numbers (with
+          // live buffs folded in) and the unlocked combination skills.
+          <div className="inspectImage" style={{ aspectRatio: "auto", background: "transparent" }}>
+            <CommanderCardFace
+              slug={unit.commanderSlug as CommanderSlug}
+              grades={unit.commanderGrades}
+              level={heroLevelOf(state, unit.controllerId)}
+              dead={unit.damage >= unit.maxHealth}
+              statValues={{ attack, defense, health: unit.maxHealth, speed: init }}
+            />
+          </div>
+        ) : unit.assets?.cardImage ? (
           <img
             alt={unit.assets?.imageAlt ?? unit.cardName}
             className="inspectImage"

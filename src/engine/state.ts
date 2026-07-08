@@ -5263,12 +5263,12 @@ export type CommanderStatKey = "attack" | "defense" | "health" | "damage" | "mag
 export type CommanderPlayerState = {
   /** Commander identity (a CommanderSlug from src/data/commanders.ts). */
   slug: string;
-  /** Grade 1..3 of each of the six stats. All start at 1. */
+  /** Grade 0..3 of each of the six stats. All start at 0 (the base line). */
   grades: Record<CommanderStatKey, number>;
   /**
    * Hero levels whose two-stat grade-up pick is still owed. Queued when the
-   * hero reaches a grade-up level (3/6; Paladin's Wise: 2/5) and consumed by
-   * COMMANDER_GRADE_UP — the pick never blocks play, it waits for the owner.
+   * hero reaches a grade-up level (2/4/6; Paladin's Wise: 2/3/5) and consumed
+   * by COMMANDER_GRADE_UP — the pick never blocks play, it waits for the owner.
    */
   pendingGradeUps?: number[];
   /** Killed in combat; stays dead until revived for gold (REVIVE_COMMANDER). */
@@ -5792,6 +5792,13 @@ export type CombatUnitState = {
    * AI hits it last) and its death persists on PlayerState.commander.dead.
    */
   commanderSlug?: string;
+  /**
+   * Snapshot of the owner's commander grades (0..3 per stat) taken when the
+   * unit was built at combat setup — grade-ups never resolve mid-combat, so
+   * it stays true for the whole fight. Consumed by the UI (the inspect/zoom
+   * panels render the dynamic commander card face from it).
+   */
+  commanderGrades?: Record<CommanderStatKey, number>;
   /**
    * Combat round in which the commander last used its command ability — the
    * cast is once per combat round ("may cast"), free during its own activation.

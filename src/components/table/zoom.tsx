@@ -10,6 +10,8 @@ import { describeCardEffect, getUnitAbilityDefinitions, type CombatUnitState } f
 import { getCardMetaLabels, isEmpoweredStatisticCard, titleCase } from "./utils";
 import { SpecialtyCard } from "@/components/specialty-card";
 import { canRenderSpecialtyCard } from "@/components/specialty-card-data";
+import { CommanderCardFace } from "@/components/commander-card";
+import type { CommanderSlug, CommanderStatKey } from "@/data/commanders";
 
 /** Anything the table can blow up to readable size: a card id or a unit card. */
 export type ZoomContent = {
@@ -17,6 +19,16 @@ export type ZoomContent = {
   image?: string;
   /** Art-less specialty: render the native SpecialtyCard instead of an image. */
   specialtyCardId?: string;
+  /**
+   * WOG commander unit: render the DYNAMIC card face (real stat numbers and
+   * the unlocked combination skills) instead of the static frame image.
+   */
+  commanderFace?: {
+    slug: CommanderSlug;
+    grades: Partial<Record<CommanderStatKey, number>>;
+    statValues: { attack: number; defense: number; health: number; speed: number };
+    dead?: boolean;
+  };
   subtitle?: string;
   lines: string[];
   /** Empowered card (Empowered Statistic / an Empowered ability) — show the cue. */
@@ -69,7 +81,18 @@ export function unitZoomContent(unit: CombatUnitState): ZoomContent {
   return {
     title: unit.cardName,
     image: unit.assets?.cardImage,
-    subtitle: `${titleCase(unit.grade)} ${unit.type} · initiative ${unit.initiative}`,
+    commanderFace:
+      unit.commanderSlug && unit.commanderGrades
+        ? {
+            slug: unit.commanderSlug as CommanderSlug,
+            grades: unit.commanderGrades,
+            statValues: { attack: unit.attack, defense: unit.defense, health: unit.maxHealth, speed: unit.initiative },
+            dead: unit.damage >= unit.maxHealth
+          }
+        : undefined,
+    subtitle: unit.commanderSlug
+      ? `commander (tierless) ${unit.type} · initiative ${unit.initiative}`
+      : `${titleCase(unit.grade)} ${unit.type} · initiative ${unit.initiative}`,
     lines: [
       `Attack ${unit.attack} · Defense ${unit.defense}${unit.defenseToken ? " (defending: rolls +1 for +1 Defense)" : ""} · HP ${health}/${unit.maxHealth}`,
       ...abilities.map(
@@ -122,7 +145,16 @@ export function CardZoomProvider({ children }: { children: ReactNode }) {
       {content ? (
         <div aria-label={`${content.title} enlarged`} className="zoomBackdrop" onClick={close} role="dialog">
           <div className="zoomCardStage">
-            {content.specialtyCardId ? (
+            {content.commanderFace ? (
+              <div className="zoomCardImage" style={{ background: "transparent", boxShadow: "none" }}>
+                <CommanderCardFace
+                  slug={content.commanderFace.slug}
+                  grades={content.commanderFace.grades}
+                  statValues={content.commanderFace.statValues}
+                  dead={content.commanderFace.dead}
+                />
+              </div>
+            ) : content.specialtyCardId ? (
               <div className="zoomNativeCard">
                 <SpecialtyCard cardId={content.specialtyCardId} />
               </div>
