@@ -2667,7 +2667,14 @@ export function PromptTray({
     Boolean(state.combat?.awaitingContinue) && state.combat?.context.kind === "neutral";
   const combatGate = combatRoundOver
     ? legalActions.filter(
-        (legal) => legal.action.type === "CONTINUE_NEUTRAL_COMBAT" || legal.action.type === "RETREAT_FROM_COMBAT"
+        (legal) =>
+          legal.action.type === "CONTINUE_NEUTRAL_COMBAT" ||
+          legal.action.type === "RETREAT_FROM_COMBAT" ||
+          // The continue window also offers card plays: Dessa's free-continue
+          // and a +Movement top-up (Boots of Speed, Logistics, …) that buys
+          // another round. During awaitingContinue these are the ONLY PLAY_CARD
+          // actions legal-actions returns, so surface them all as gate buttons.
+          legal.action.type === "PLAY_CARD"
       )
     : [];
 
@@ -2798,6 +2805,27 @@ export function PromptTray({
           {movingName
             ? `Teleport — click an empty slot on the battlefield to place ${movingName}.`
             : "Teleport — click an empty slot on the battlefield."}
+        </strong>
+      </div>
+    );
+  }
+  // BINH house rule: the neutral guard must move to reach its (already-fixed)
+  // target and several cells work — click the empty slot it should land on.
+  if (
+    choice?.type === "OPTION_CHOICE" &&
+    choice.context === "neutral-destination" &&
+    choice.playerId === viewerPlayerId
+  ) {
+    const movingId = choice.neutralDestination?.unitId;
+    const movingName = movingId ? state.combat?.units[movingId]?.name : undefined;
+    const targetId = choice.neutralDestination?.defenderId;
+    const targetName = targetId ? state.combat?.units[targetId]?.name : undefined;
+    return (
+      <div className="promptTray" role="dialog" aria-label="Neutral move destination">
+        <strong>
+          {movingName && targetName
+            ? `${movingName} attacks ${targetName} — click the empty slot it should move to.`
+            : "Choose where the neutral moves to attack — click an empty battlefield slot."}
         </strong>
       </div>
     );

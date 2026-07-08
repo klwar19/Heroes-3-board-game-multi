@@ -328,18 +328,32 @@ export type NeutralIntent =
       /** Rulebook tie between equally valid targets: the player chooses. */
       kind: "choose-target";
       candidateIds: UnitId[];
+    }
+  | {
+      /**
+       * BINH house rule: a melee/flying neutral must step next to its chosen
+       * target and SEVERAL legal cells reach it — the attacking player picks
+       * which. It still attacks `defenderId` (the target is fixed by the rules);
+       * only the landing cell is the player's choice. Composes with a preceding
+       * `choose-target` tie: once the target is picked, this offers the cells.
+       */
+      kind: "choose-destination";
+      defenderId: UnitId;
+      destinations: number[];
     };
 
 /**
  * Decides what the active neutral unit does this activation. With
  * `forcedTargetId` set (the player already resolved a target tie) the unit
- * commits to that target.
+ * commits to that target; with `forcedDestination` set (the player picked the
+ * move destination) it commits to landing on that cell before striking.
  */
 export function planNeutralActivation(
   state: GameState,
   combat: CombatState,
   unit: CombatUnitState,
-  forcedTargetId?: UnitId
+  forcedTargetId?: UnitId,
+  forcedDestination?: number
 ): NeutralIntent {
   // A neutral that already fired never repositions: its activation is over.
   if (unit.attackedThisActivation) {
@@ -350,15 +364,18 @@ export function planNeutralActivation(
   // NEAREST unit (friend or foe), or move to the nearest and attack it. The
   // attacker is berserked, so canUnitAttack lets it strike its own allies.
   if (unitIsBerserk(state.activeEffects, unit)) {
-    return planBerserkActivation(state, combat, unit, forcedTargetId);
+    return planBerserkActivation(state, combat, unit, forcedTargetId, forcedDestination);
   }
 
   // The player resolved a target tie: commit to that exact unit if it still
-  // stands — strike it directly or close the last step into it.
+  // stands — strike it directly or close the last step into it (letting the
+  // player pick the landing cell too when several reach it).
   if (forcedTargetId) {
     const forced = combat.units[forcedTargetId] ?? null;
     if (forced && isUnitAlive(forced)) {
-      return attackOrReach(state, combat, unit, forced) ?? approachTarget(state, combat, unit, forced);
+      return (
+        attackOrReach(state, combat, unit, forced, forcedDestination) ?? approachTarget(state, combat, unit, forced)
+      );
     }
     // The chosen target is gone — fall through and re-plan from scratch.
   }
@@ -375,7 +392,9 @@ export function planNeutralActivation(
     const target = ties[0];
     // attackable membership guarantees a hit is reachable, but keep the
     // approach fallback so a stale plan never returns a non-attacking nothing.
-    return attackOrReach(state, combat, unit, target) ?? approachTarget(state, combat, unit, target);
+    return (
+      attackOrReach(state, combat, unit, target, forcedDestination) ?? approachTarget(state, combat, unit, target)
+    );
   }
 
   // It can reach no one this activation: advance on the top-priority target to
@@ -398,18 +417,22 @@ function planBerserkActivation(
   state: GameState,
   combat: CombatState,
   unit: CombatUnitState,
-  forcedTargetId?: UnitId
+  forcedTargetId?: UnitId,
+  forcedDestination?: number
 ): NeutralIntent {
   const nearest = getBerserkNearestTargets(combat, unit);
   if (nearest.length === 0) {
     return { kind: "pass" };
   }
 
-  // Commit to a resolved tie if that unit is still one of the nearest.
+  // Commit to a resolved tie if that unit is still one of the nearest (letting
+  // the player pick the landing cell too when several reach it).
   if (forcedTargetId) {
     const forced = nearest.find((candidate) => candidate.id === forcedTargetId);
     if (forced) {
-      return attackOrReach(state, combat, unit, forced) ?? approachTarget(state, combat, unit, forced);
+      return (
+        attackOrReach(state, combat, unit, forced, forcedDestination) ?? approachTarget(state, combat, unit, forced)
+      );
     }
   }
 
@@ -418,7 +441,10 @@ function planBerserkActivation(
     if (!forcedTargetId && attackable.length > 1) {
       return { kind: "choose-target", candidateIds: attackable.map((candidate) => candidate.id) };
     }
-    return attackOrReach(state, combat, unit, attackable[0]) ?? approachTarget(state, combat, unit, attackable[0]);
+    return (
+      attackOrReach(state, combat, unit, attackable[0], forcedDestination) ??
+      approachTarget(state, combat, unit, attackable[0])
+    );
   }
 
   // Cannot reach a strike this activation — close on a nearest unit (or pass).
@@ -426,15 +452,22 @@ function planBerserkActivation(
 }
 
 /**
- * Strike the target from here, or (melee & flyers) move into the nearest space
- * adjacent to it and strike. Returns null when the unit cannot reach the target
- * to attack it this activation — ranged units never move-then-shoot.
+ * Strike the target from here, or (melee & flyers) move into a space adjacent to
+ * it and strike. Returns null when the unit cannot reach the target to attack it
+ * this activation — ranged units never move-then-shoot.
+ *
+ * When several legal cells reach the target, the attacking player picks which
+ * (the BINH house rule: `choose-destination`, cells listed by ascending index) —
+ * unless the player has already picked (`forcedDestination`, still one of the
+ * legal cells), in which case it commits to that cell, or only one cell works,
+ * in which case it moves-and-attacks there with no prompt.
  */
 function attackOrReach(
   state: GameState,
   combat: CombatState,
   unit: CombatUnitState,
-  target: CombatUnitState
+  target: CombatUnitState,
+  forcedDestination?: number
 ): NeutralIntent | null {
   if (canUnitAttack(combat, unit, target, state.activeEffects)) {
     return { kind: "attack", defenderId: target.id };
@@ -451,11 +484,23 @@ function attackOrReach(
     return null;
   }
 
-  const destination = attackSpots.sort(
-    (left, right) =>
-      getBattlefieldDistance(unit.position, left) - getBattlefieldDistance(unit.position, right) || left - right
-  )[0];
-  return { kind: "move-and-attack", destination, defenderId: target.id };
+  // The player already picked a destination (via the choose-destination window):
+  // commit to it as long as it is still a legal attack cell.
+  if (forcedDestination !== undefined && attackSpots.includes(forcedDestination)) {
+    return { kind: "move-and-attack", destination: forcedDestination, defenderId: target.id };
+  }
+
+  // Several legal cells reach the target — the attacking player chooses which.
+  // A single cell needs no prompt.
+  if (attackSpots.length > 1) {
+    return {
+      kind: "choose-destination",
+      defenderId: target.id,
+      destinations: [...attackSpots].sort((left, right) => left - right)
+    };
+  }
+
+  return { kind: "move-and-attack", destination: attackSpots[0], defenderId: target.id };
 }
 
 /** Step toward a target the unit cannot strike yet, or pass if it cannot close in. */

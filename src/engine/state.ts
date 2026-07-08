@@ -6052,6 +6052,13 @@ export type CombatState = {
     cardId: CardId;
     playerId: PlayerId;
     fromSpellBook: boolean;
+    /**
+     * Power-source ("pow") cards discarded to pay a silver/gold Sorrow's cost
+     * (its `power-source` cost cards). Mysticism's EXPERT side — "also take back
+     * all other cards played together with it" — sweeps these back to hand along
+     * with the Sorrow; basic Mysticism and Knowledge leave them in the discard.
+     */
+    powerCardIds?: CardId[];
   } | null;
   /**
    * Round-start war machine triggers still waiting to resolve, in owner
@@ -7982,6 +7989,7 @@ export type PendingChoice =
         | "genie-take-spell"
         | "combat-knockback"
         | "combat-teleport"
+        | "neutral-destination"
         | "place-battlefield-tokens"
         | "combat-clone"
         | "combat-step"
@@ -8055,6 +8063,13 @@ export type PendingChoice =
        * plays that ability's teleport sound; absent for the Spell.
        */
       teleport?: { unitId: UnitId; positions: number[]; abilityId?: string };
+      /**
+       * neutral-destination (BINH house rule): a neutral guard `unitId` must
+       * move to reach its chosen target and several legal cells work; the
+       * attacking player picks which (index-aligned with the options). It still
+       * attacks `defenderId` — only the landing cell is the player's choice.
+       */
+      neutralDestination?: { unitId: UnitId; positions: number[]; defenderId: UnitId };
       /**
        * place-battlefield-tokens: the caster places the rest of a Quicksand /
        * Land Mine set, one token per pick. `positions` are the empty spaces still

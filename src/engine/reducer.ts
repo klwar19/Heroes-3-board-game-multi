@@ -5618,6 +5618,51 @@ function resolveTeleportChoice(
   finishCombatIfNeeded(state);
 }
 
+/**
+ * Resolves the neutral-destination pick (BINH house rule): resume the guard's
+ * activation, committing to the chosen landing cell before it strikes its
+ * (already-fixed) target. Mirrors the target-tie resolution — re-enter
+ * executeNeutralActivation with the choice forced — so the combat pump picks the
+ * fight back up afterward (runAdventureAutomations at the end of applyAction).
+ */
+function resolveNeutralDestinationChoice(
+  state: GameState,
+  action: Extract<GameAction, { type: "CHOOSE_OPTION" }>,
+  cards: CardLibrary
+): void {
+  const choice = state.pendingChoice;
+  if (
+    !choice ||
+    choice.type !== "OPTION_CHOICE" ||
+    choice.context !== "neutral-destination" ||
+    choice.id !== action.choiceId ||
+    choice.playerId !== action.playerId ||
+    !choice.neutralDestination
+  ) {
+    throw new Error("There is no neutral destination choice to resolve.");
+  }
+
+  const combat = state.combat;
+  const unit = combat?.units[choice.neutralDestination.unitId];
+  const destination = choice.neutralDestination.positions[action.optionIndex];
+  const defenderId = choice.neutralDestination.defenderId;
+  if (!combat || !unit || destination === undefined) {
+    throw new Error("That neutral destination is not available.");
+  }
+
+  appendEvent(state, {
+    type: "PENDING_CHOICE_RESOLVED",
+    choiceId: choice.id,
+    playerId: action.playerId,
+    selectedIndex: action.optionIndex
+  });
+  state.pendingChoice = null;
+
+  // Resume the activation, forcing BOTH the (rules-fixed) target and the picked
+  // cell — planNeutralActivation then commits to the move-and-attack.
+  executeNeutralActivation(state, unit, cards, defenderId, destination);
+}
+
 // ---------------------------------------------------------------------------
 // Battlefield-obstacle Spells: Force Field, Fire Wall, Quicksand, Land Mine.
 // Each places a token on a Combat-board space (see BattlefieldTokenState). The
@@ -9828,10 +9873,16 @@ function applyReactionPlayCore(
         );
       });
     if (holdsRecall && state.combat && state.reactionWindow) {
+      // Capture the power-source ("pow") cards spent on a silver/gold Sorrow's
+      // cost. They were just discarded by payOptionCardCost above; expert
+      // Mysticism ("also take back all other cards played together with it")
+      // sweeps them back to hand in the take-back handler below.
+      const powerCardIds = play.costCardIds && play.costCardIds.length > 0 ? [...play.costCardIds] : undefined;
       state.combat.pendingActivationSkipRecall = {
         cardId: play.cardId,
         playerId,
-        fromSpellBook: Boolean(play.fromSpellBook)
+        fromSpellBook: Boolean(play.fromSpellBook),
+        ...(powerCardIds ? { powerCardIds } : {})
       };
       // Recompute the window's offers — now ONLY the caster's recall — and hand
       // priority back to them (advanceReactionWindowAfterPlay re-derives this too,
@@ -9853,10 +9904,12 @@ function applyReactionPlayCore(
   // applied, so the Sorrow returns to the caster's hand — or Spell Book, when it
   // was cast from the Book — right away; expert Knowledge still raises the round
   // Spell limit. Then close the window and resume combat (the next unit's
-  // pre-activation window opens through the normal pump). NOTE: Mysticism
-  // expert's "recall every card played with it" power-source sweep is not done
-  // in this window (a Sorrow has no attack stack item tracking its power cards);
-  // the Sorrow itself is always taken back.
+  // pre-activation window opens through the normal pump). Mysticism's EXPERT side
+  // ("also take back all other cards played together with it") also sweeps the
+  // power-source ("pow") cards paid for a silver/gold Sorrow back to hand — they
+  // were captured on pendingActivationSkipRecall.powerCardIds when the window was
+  // kept open (a Sorrow has no attack stack item to track them like the cast /
+  // attack windows do). Knowledge and basic Mysticism leave those pow cards spent.
   if (
     effect.type === "RECALL_SPELL" &&
     !stackItem &&
@@ -9869,6 +9922,17 @@ function applyReactionPlayCore(
       caster.combatStats.spellLimitBonusThisRound += effect.expertSpellLimitBonus ?? 0;
     }
     returnSpellFromDiscardToHand(state, playerId, recall.cardId, recall.fromSpellBook);
+    if (mode === "expert" && effect.expertRecallPlayedCards) {
+      // Sorrow's pow cost cards always come from hand (a Sorrow skip never taps
+      // the Book Power budget), so each returns from the discard to the hand.
+      for (const powerCardId of recall.powerCardIds ?? []) {
+        const index = caster.discard.lastIndexOf(powerCardId);
+        if (index !== -1) {
+          caster.discard.splice(index, 1);
+          caster.hand.push(powerCardId);
+        }
+      }
+    }
     state.combat.pendingActivationSkipRecall = null;
     closeReactionWindow(state, "reaction-played");
     if (!finishCombatIfNeeded(state)) {
@@ -11400,7 +11464,16 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   if (option?.expertOnly && mode !== "expert") {
     throw new Error(`${option.label} is the card's expert side.`);
   }
-  if (option?.mapOnly && state.combat) {
+  // A hero's +Movement card is map-only, but may be spent inside a neutral
+  // combat's continue-or-retreat window (see the awaitingContinue tail below) to
+  // top up the movement pool and buy another combat round — waive its map-only
+  // flag for exactly that window and exactly its movement side.
+  const continueMovementTopUp =
+    effect.type === "GAIN_HERO_MOVEMENT" &&
+    Boolean(state.combat?.awaitingContinue) &&
+    state.combat?.context.kind === "neutral" &&
+    state.combat?.attackerPlayerId === action.playerId;
+  if (option?.mapOnly && state.combat && !continueMovementTopUp) {
     throw new Error(`${option.label} cannot be used during combat.`);
   }
   // Crown of the Five Seas' sea side: only while this player's main Hero stands
@@ -12872,6 +12945,16 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   // A play that opened a choice (Chain Lightning's allocation, Solmyr IV's deck
   // dig) owns the phase/priority it just set — don't stomp it back to combat.
   if (state.pendingChoice) {
+    return;
+  }
+
+  // A +Movement top-up played in a neutral combat's continue-or-retreat window
+  // keeps that window OPEN: the player now spends the fresh movement on another
+  // combat round (CONTINUE_NEUTRAL_COMBAT) or still retreats. Hand priority back
+  // to them rather than nulling it and pumping the map queues as a map play would.
+  if (state.combat?.awaitingContinue) {
+    state.phase = "combat";
+    state.priorityPlayerId = action.playerId;
     return;
   }
 
@@ -16025,7 +16108,8 @@ function executeNeutralActivation(
   state: GameState,
   unit: CombatUnitState,
   cards: CardLibrary,
-  forcedTargetId?: UnitId
+  forcedTargetId?: UnitId,
+  forcedDestination?: number
 ): void {
   const combat = state.combat;
   if (!combat) {
@@ -16043,7 +16127,7 @@ function executeNeutralActivation(
     }
   }
 
-  const intent = planNeutralActivation(state, combat, unit, forcedTargetId);
+  const intent = planNeutralActivation(state, combat, unit, forcedTargetId, forcedDestination);
 
   if (intent.kind === "choose-target") {
     // Rulebook AI: "If there is ever a tie between equally valid targets,
@@ -16072,6 +16156,39 @@ function executeNeutralActivation(
       playerId: chooser,
       sourceEffectIds: [],
       message: `${unit.name} has tied targets: the player chooses which unit is attacked.`
+    });
+    return;
+  }
+
+  if (intent.kind === "choose-destination") {
+    // BINH house rule: a neutral must move to reach its chosen target and
+    // several legal cells work — the attacking player picks which. It still
+    // attacks the same target (the rules fix that); only the landing cell is the
+    // player's choice. Resolved by resolveNeutralDestinationChoice, which resumes
+    // this activation with the picked cell forced.
+    const chooser = combat.attackerPlayerId;
+    const target = combat.units[intent.defenderId];
+    const choiceId = `choice_${nextEventNumber(state)}`;
+    state.pendingChoice = {
+      id: choiceId,
+      type: "OPTION_CHOICE",
+      playerId: chooser,
+      prompt: `${unit.name} — choose where it moves to attack ${target?.name ?? "its target"}.`,
+      options: intent.destinations.map((cell) => ({ label: `Move to ${getBattlefieldLabel(cell)}` })),
+      context: "neutral-destination",
+      neutralDestination: { unitId: unit.id, positions: intent.destinations, defenderId: intent.defenderId },
+      returnPhase: "combat"
+    };
+    state.phase = "choice";
+    state.priorityPlayerId = chooser;
+
+    appendEvent(state, {
+      type: "PENDING_CHOICE_CREATED",
+      choiceId,
+      choiceType: "ABILITY_TARGET_CHOICE",
+      playerId: chooser,
+      sourceEffectIds: [],
+      message: `${unit.name}: the player chooses its move destination.`
     });
     return;
   }
@@ -16161,6 +16278,12 @@ function previewNeutralIntent(
       return { kind: "move", destination: intent.destination };
     case "choose-target":
       return { kind: "attack" };
+    case "choose-destination": {
+      // The neutral is about to move-and-attack; the exact landing cell is the
+      // player's choice, so preview it as a plain attack on the fixed target.
+      const target = combat.units[intent.defenderId];
+      return { kind: "attack", targetUnitId: intent.defenderId, targetName: target?.name };
+    }
     default:
       return { kind: "pass" };
   }
@@ -16938,6 +17061,11 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
           nextState.pendingChoice.context === "combat-teleport"
         ) {
           resolveTeleportChoice(nextState, action);
+        } else if (
+          nextState.pendingChoice?.type === "OPTION_CHOICE" &&
+          nextState.pendingChoice.context === "neutral-destination"
+        ) {
+          resolveNeutralDestinationChoice(nextState, action, cards);
         } else if (
           nextState.pendingChoice?.type === "OPTION_CHOICE" &&
           nextState.pendingChoice.context === "place-battlefield-tokens"

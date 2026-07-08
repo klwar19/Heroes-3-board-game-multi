@@ -413,6 +413,64 @@ describe("Sorrow", () => {
     expect(state.players.p1.discard).not.toContain("spell.sorrow");
     expect(state.combat!.units.unit_p2_skeletons.activatedThisRound).toBe(true);
   });
+
+  /** The expert Mysticism recall for the given mode, in the kept-open window. */
+  function mysticismRecall(state: GameState, mode: "basic" | "expert") {
+    return getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "PLAY_REACTION" &&
+        legal.action.cardId === "ability.mysticism" &&
+        legal.action.mode === mode
+    );
+  }
+
+  it("expert Mysticism recalls every pow card paid for the Sorrow, not just the Sorrow", () => {
+    // A silver Sorrow paid with two Power statistics — the "pow" cards played
+    // with it. Mysticism expert ("also take back all other cards played together
+    // with it") must return those two Power cards along with the Sorrow.
+    let state = aboutToActivate("unit_p2_vampires", ["spell.sorrow", "stat.power", "stat.power", "ability.mysticism"]);
+    state.players.p1.limits.expertUses = 1; // one expert use for the recall
+
+    const silver = reactionFor(state, "p1", "spell.sorrow", 1);
+    expect(silver, "the silver skip is offered").toBeTruthy();
+    state = applyOk(state, { ...silver!.action, costCardIds: ["stat.power", "stat.power"] } as GameAction);
+
+    // The skip landed and the window stayed open with the pow cards recorded.
+    expect(state.combat!.units.unit_p2_vampires.activatedThisRound).toBe(true);
+    expect(state.reactionWindow, "the window stays open for the recall").toBeTruthy();
+    expect(state.combat!.pendingActivationSkipRecall?.powerCardIds).toEqual(["stat.power", "stat.power"]);
+    // Both pow cards are in the discard until the expert recall sweeps them back.
+    expect(state.players.p1.discard.filter((id) => id === "stat.power")).toHaveLength(2);
+
+    const recall = mysticismRecall(state, "expert");
+    expect(recall, "expert Mysticism is offered in the kept-open Sorrow window").toBeTruthy();
+    state = applyOk(state, recall!.action);
+
+    // The Sorrow AND both pow cards are back in hand; the skip still stands.
+    expect(state.players.p1.hand).toContain("spell.sorrow");
+    expect(state.players.p1.hand.filter((id) => id === "stat.power")).toHaveLength(2);
+    expect(state.players.p1.discard).not.toContain("stat.power");
+    expect(state.players.p1.discard).not.toContain("spell.sorrow");
+    expect(state.combat!.units.unit_p2_vampires.activatedThisRound).toBe(true);
+    expect(state.reactionWindow).toBeNull();
+  });
+
+  it("CONTROL: basic Mysticism recalls only the Sorrow — the pow cards stay in the discard", () => {
+    let state = aboutToActivate("unit_p2_vampires", ["spell.sorrow", "stat.power", "stat.power", "ability.mysticism"]);
+    state.players.p1.limits.expertUses = 0; // no expert use available
+
+    const silver = reactionFor(state, "p1", "spell.sorrow", 1);
+    state = applyOk(state, { ...silver!.action, costCardIds: ["stat.power", "stat.power"] } as GameAction);
+
+    const recall = mysticismRecall(state, "basic");
+    expect(recall, "basic Mysticism is offered").toBeTruthy();
+    state = applyOk(state, recall!.action);
+
+    // Only the Sorrow returns; the two pow cards remain spent in the discard.
+    expect(state.players.p1.hand).toContain("spell.sorrow");
+    expect(state.players.p1.hand).not.toContain("stat.power");
+    expect(state.players.p1.discard.filter((id) => id === "stat.power")).toHaveLength(2);
+  });
 });
 
 // ---------------------------------------------------------------------------

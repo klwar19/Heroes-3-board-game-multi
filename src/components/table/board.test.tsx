@@ -722,6 +722,43 @@ describe("BattlefieldBoard — battlefield-obstacle spell tokens", () => {
     fireEvent.click(stop!);
     expect(onAction).toHaveBeenCalledWith({ type: "CHOOSE_OPTION", playerId: "p1", choiceId: "choice_place", optionIndex: 1 });
   });
+
+  it("neutral move destination (BINH house rule): candidate cells submit the CHOOSE_OPTION", () => {
+    const state = createInitialGameState("board-neutral-dest");
+    // Park every unit on the top/bottom rows so the middle cells 9 and 12 are
+    // empty and can render as the guard's move-destination candidates.
+    const parking = [0, 1, 2, 3, 16, 17, 18, 19];
+    Object.values(state.combat!.units).forEach((unit, index) => {
+      unit.position = parking[index] ?? 3;
+    });
+    state.combat!.obstacles = [];
+    state.combat!.activeUnitId = "unit_p2_skeletons";
+    state.phase = "choice";
+    state.priorityPlayerId = "p1";
+    state.pendingChoice = {
+      id: "choice_dest",
+      type: "OPTION_CHOICE",
+      playerId: "p1",
+      prompt: "Skeletons — choose where it moves to attack Griffins.",
+      options: [{ label: "Move to B2" }, { label: "Move to C3" }],
+      context: "neutral-destination",
+      neutralDestination: { unitId: "unit_p2_skeletons", positions: [9, 12], defenderId: "unit_p1_griffins" },
+      returnPhase: "combat"
+    };
+    const { onAction } = renderBoard(state);
+
+    // The offered empty cell is a clickable MOVE destination (not "Teleport").
+    const cell = document.querySelector<HTMLButtonElement>('button[data-fx-cell="12"]');
+    expect(cell, "the second candidate cell renders as a button").toBeTruthy();
+    expect(cell!.getAttribute("aria-label")).toMatch(/Move to/i);
+    fireEvent.click(cell!);
+    expect(onAction).toHaveBeenCalledWith({
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: "choice_dest",
+      optionIndex: 1
+    });
+  });
 });
 
 describe("BattlefieldBoard — move route planner (Fire Wall on the field)", () => {

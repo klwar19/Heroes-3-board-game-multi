@@ -60,7 +60,12 @@ import {
   unitImmuneToSpellSchoolsByEffect,
   unitIsBerserk
 } from "./active-effects";
-import { cancelSpellAllowsSchoolAndLevel, cardCanBoostPower, spellPowerValueOfCard } from "./effects";
+import {
+  cancelSpellAllowsSchoolAndLevel,
+  cardCanBoostPower,
+  heroMovementGrantOption,
+  spellPowerValueOfCard
+} from "./effects";
 import { commanderReviveCost } from "@/data/commanders";
 import {
   commanderCastAvailable,
@@ -7453,6 +7458,44 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
               action: { type: "PLAY_CARD", playerId, cardId, target: { type: "none" } }
             });
           }
+        }
+        // A hero's +Movement card (Boots of Speed, the Logistics ability's
+        // expert side, Dessa's Logistics IV/VI, Shield of Naval Glory's sea
+        // side, …) is normally map-only, but may be spent HERE to top up the
+        // movement pool and buy another combat round — so a hero out of movement
+        // can fight on (spend the fresh movement on CONTINUE_NEUTRAL_COMBAT)
+        // instead of being forced to retreat. Its map-only flag is waived for
+        // exactly this window (in the reducer). The gates below mirror the
+        // reducer's so an offered top-up never rejects.
+        const expertUsesLeft =
+          (player?.limits.expertUses ?? 0) +
+          (player?.combatStats.expertUseBonusThisRound ?? 0) -
+          (player?.combatStats.expertUsesSpentThisRound ?? 0);
+        for (const cardId of new Set(player?.hand ?? [])) {
+          const grant = heroMovementGrantOption(cards[cardId]);
+          if (!grant || !player) {
+            continue;
+          }
+          if (grant.mode === "expert" && expertUsesLeft <= 0 && !abilityExpertIsCrownFree(player, cardId)) {
+            continue;
+          }
+          if (grant.option?.requiresSeaTile) {
+            const main = getMainHero(state, playerId);
+            if (!main?.spaceId || !isSeaField(state, main.spaceId)) {
+              continue;
+            }
+          }
+          actions.push({
+            label: `Play ${cards[cardId]?.name}: gain movement to fight another combat round`,
+            action: {
+              type: "PLAY_CARD",
+              playerId,
+              cardId,
+              ...(grant.optionIndex !== undefined ? { optionIndex: grant.optionIndex } : {}),
+              ...(grant.mode === "expert" ? { mode: "expert" as const } : {}),
+              target: { type: "none" }
+            }
+          });
         }
         actions.push({
           label: "Retreat to the last visited field",

@@ -479,6 +479,16 @@ describe("neutral Faerie Dragons zap a target then act", () => {
 
     state = defendThrough(state);
 
+    // The dragon zapped first (its activation ability), THEN — several cells
+    // reach its prey — a destination choice opens (BINH house rule). Resolve it
+    // so the guard steps in to melee, producing the UNIT_MOVED this test orders
+    // against. The zap+damage were logged before the choice, so they still lead.
+    const destChoice = state.pendingChoice;
+    if (destChoice?.type === "OPTION_CHOICE" && destChoice.context === "neutral-destination") {
+      expect(destChoice.neutralDestination?.defenderId).toBe(prey.id);
+      state = applyOk(state, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: destChoice.id, optionIndex: 0 });
+    }
+
     const log = state.eventLog;
     const boltIndex = log.findIndex(
       (event) => event.type === "UNIT_ABILITY_TRIGGERED" && event.abilityId === "faerie-dragon-spell"
