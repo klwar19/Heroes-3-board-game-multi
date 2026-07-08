@@ -588,7 +588,13 @@ export function spellLimitFor(state: GameState, player: PlayerState): number {
     );
   }, 0);
 
-  return 1 + player.combatStats.spellLimitBonusThisRound + effectBonus;
+  // Temple Guardian commander ("Mana Magician"): each unspent charge lets one
+  // more Spell through this round's limit. A cast that actually exceeds the
+  // charge-free limit burns a charge in noteSpellCast, so the allowance is
+  // twice per COMBAT (charges are seeded once at combat start), not per round.
+  const manaCharges = state.combat ? (player.combatStats.commanderManaCharges ?? 0) : 0;
+
+  return 1 + player.combatStats.spellLimitBonusThisRound + effectBonus + manaCharges;
 }
 
 /** Expert uses available this round, including one-shot bonuses. */

@@ -1246,6 +1246,11 @@ export function warMachinesForSale(
   playerId?: PlayerId
 ): { cardId: CardId; card: CardDefinition; cost: NonNullable<CardDefinition["warMachineCosts"]>["factory"] }[] {
   const supply = state.adventure?.warMachineSupply ?? [];
+  // Artificer commander ("Tinkerer"): war machines cost this player 5 less
+  // gold, to a minimum of 0, at both shops. Applied here so the displayed
+  // price and buyWarMachine (which re-derives the same offer) always agree.
+  const tinkerer = playerId ? state.players[playerId]?.commander : undefined;
+  const goldDiscount = tinkerer && !tinkerer.dead && tinkerer.slug === "factory" ? 5 : 0;
   return supply.flatMap((cardId) => {
     const card = cardLibrary[cardId];
     const costs = card?.warMachineCosts;
@@ -1255,7 +1260,11 @@ export function warMachinesForSale(
     if (playerId && playerOwnsWarMachine(state, playerId, cardId)) {
       return [];
     }
-    return [{ cardId, card, cost: pricing === "factory" ? costs.factory : costs.tradingPost }];
+    const printed = pricing === "factory" ? costs.factory : costs.tradingPost;
+    const cost = goldDiscount
+      ? { ...printed, gold: Math.max(0, (printed.gold ?? 0) - goldDiscount) }
+      : printed;
+    return [{ cardId, card, cost }];
   });
 }
 

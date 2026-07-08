@@ -528,6 +528,52 @@ export function getConditionalDefenseBonus(
 }
 
 /**
+ * WOG commander Haste/Slow riders (ATTACK_BONUS_VS_INITIATIVE): the signed
+ * Attack shift the ATTACKER gets against a defender that is strictly slower
+ * ("slower", Shaman's Haste +1) or strictly faster ("faster", Sea Marshal's
+ * Slow -1) than it, by effective Initiative at attack time.
+ */
+export function getConditionalAttackBonus(
+  state: GameState,
+  attacker: CombatUnitState,
+  defender: CombatUnitState
+): number {
+  const attackerInitiative = effectiveInitiative(attacker, state.activeEffects);
+  const defenderInitiative = effectiveInitiative(defender, state.activeEffects);
+  return state.activeEffects.reduce((total, effect) => {
+    if (!effectAppliesToUnit(effect, attacker)) {
+      return total;
+    }
+    return (
+      total +
+      effect.modifiers.reduce((sum, modifier) => {
+        if (modifier.type !== "ATTACK_BONUS_VS_INITIATIVE") {
+          return sum;
+        }
+        const matches =
+          modifier.comparison === "slower"
+            ? defenderInitiative < attackerInitiative
+            : defenderInitiative > attackerInitiative;
+        return matches ? sum + modifier.amount : sum;
+      }, 0)
+    );
+  }, 0);
+}
+
+/**
+ * Astral Spirit's Counterstrike: whether the unit holds an UNLIMITED_RETALIATION
+ * active effect — the effect twin of the ALLOW_UNLIMITED_RETALIATION ability
+ * (read by shouldRetaliate; a Titan-style ongoing-immunity unit ignores it).
+ */
+export function unitHasUnlimitedRetaliationEffect(state: GameState, unit: CombatUnitState): boolean {
+  return state.activeEffects.some(
+    (effect) =>
+      effectAppliesToUnit(effect, unit) &&
+      effect.modifiers.some((modifier) => modifier.type === "UNLIMITED_RETALIATION")
+  );
+}
+
+/**
  * Shield / Air Shield: extra Defense the unit gets only against an attacker of a
  * matching UNIT TYPE. Shield ("ground-or-flying") applies against any non-ranged
  * attacker; Air Shield ("ranged") applies against a ranged attacker — exactly as
@@ -571,8 +617,15 @@ export function countExtraBallistas(state: GameState, playerId: PlayerId): numbe
  * Gerwulf's Ballista VI (ongoing): whether `playerId` currently holds a
  * BALLISTA_CHOOSE_TARGET effect, letting their Ballista's round-start shot pick
  * any enemy unit instead of being forced onto the lowest-initiative enemy.
+ * The Ogre Leader commander's "Ballista Master" specialty grants the same
+ * freedom passively while the commander lives (checked inline off PlayerState
+ * so this module never imports the commanders engine layer).
  */
 export function hasBallistaChooseTarget(state: GameState, playerId: PlayerId): boolean {
+  const commander = state.players[playerId]?.commander;
+  if (commander && !commander.dead && commander.slug === "ogre_leader") {
+    return true;
+  }
   return state.activeEffects.some(
     (effect) =>
       effect.controllerId === playerId &&

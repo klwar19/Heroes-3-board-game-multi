@@ -90,10 +90,35 @@ export {
   getRuneSummary,
   getRuneTrack,
   isBulwarkPlayer,
+  spendRunes,
   RUNE_LEVEL_LABELS,
   RUNE_LEVEL_THRESHOLDS
 } from "./runes";
 export type { RuneLevelStatus, RuneTrackView } from "./runes";
+export {
+  commanderAbilityIds,
+  commanderCastAvailable,
+  commanderCastCandidates,
+  commanderCastOf,
+  commanderCastPower,
+  commanderCastRuneCost,
+  commanderCastUsedThisRound,
+  commanderDefinitionOf,
+  commanderGradesOf,
+  commanderGradeUpChoices,
+  commanderPowerOf,
+  commanderRunePool,
+  commandersModuleEnabled,
+  commanderSlugForFaction,
+  commanderUnitId,
+  findCommanderUnit,
+  isCommanderUnit,
+  livingCommanderOf,
+  makeCommanderCombatUnit,
+  makeInitialCommanderState,
+  playerHasLivingCommander
+} from "./commanders";
+export type { CommanderFirstAidOption } from "./commanders";
 export {
   cardCanBoostPower,
   describeCardEffect,

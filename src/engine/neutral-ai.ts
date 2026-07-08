@@ -103,7 +103,10 @@ function isGradelessNeutralAttacker(unit: CombatUnitState): boolean {
  * isGradelessNeutralAttacker.)
  */
 function isNoTierTarget(unit: CombatUnitState): boolean {
-  return Boolean(unit.summoned || unit.bankUnit);
+  // Summons, bank defenders and WOG commanders all fight without a printed
+  // tier, so the same-tier priority never applies to them — a graded neutral
+  // attacker turns on them last.
+  return Boolean(unit.summoned || unit.bankUnit || unit.commanderSlug);
 }
 
 /**

@@ -1007,6 +1007,35 @@ export type UnitAbilityEffectDefinition =
        * round (the pre-emptive strike spends its retaliation).
        */
       type: "PREEMPTIVE_RETALIATION";
+    }
+  | {
+      /**
+       * WOG commander command ability: once per combat round, free during the
+       * commander's own activation, the owner casts the commander's signature
+       * effect on a chosen target. The whole cast (targeting rules, Power
+       * scaling, effect) is data-driven from src/data/commanders.ts keyed by
+       * the unit's `commanderSlug`; resolution lives in the reducer's
+       * "commander-cast" ABILITY_TARGET_CHOICE branch.
+       */
+      type: "COMMANDER_CAST";
+    }
+  | {
+      /**
+       * WOG commander Damage grade: the unit's attacks (and retaliations) that
+       * deal at least 1 damage deal `amount` more. Applied after the defense
+       * math, still inside any per-attack damage cap (Cove Nix).
+       */
+      type: "BONUS_DAMAGE_ON_HIT";
+      amount: number;
+    }
+  | {
+      /**
+       * WOG commander Charge combo (Damage+Speed at grade 3): +`amount` Attack
+       * when the unit attacks after having moved this activation (never on a
+       * retaliation).
+       */
+      type: "ATTACK_BONUS_AFTER_MOVE";
+      amount: number;
     };
 
 /**
@@ -2501,6 +2530,117 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     name: "Necrotic Death Cloud",
     text: "[unit_attack] Choose a unit adjacent to the target and attack it with 4 Attack.",
     effect: { type: "SECOND_ATTACK_ADJACENT_TO_TARGET", baseAttack: 4 },
+    implementationStatus: "implemented"
+  },
+
+  // -------------------------------------------------------------------------
+  // WOG Commanders (module content — src/data/commanders.ts is the source of
+  // truth for targeting rules and Power scaling; the reducer's
+  // "commander-cast" branch resolves each COMMANDER_CAST by commanderSlug).
+  // -------------------------------------------------------------------------
+  "commander-might-1": {
+    id: "commander-might-1",
+    name: "Might",
+    text: "[unit_passive] This commander's attacks that deal damage deal 1 more.",
+    effect: { type: "BONUS_DAMAGE_ON_HIT", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "commander-might-2": {
+    id: "commander-might-2",
+    name: "Might",
+    text: "[unit_passive] This commander's attacks that deal damage deal 2 more.",
+    effect: { type: "BONUS_DAMAGE_ON_HIT", amount: 2 },
+    implementationStatus: "implemented"
+  },
+  "commander-charge": {
+    id: "commander-charge",
+    name: "Charge",
+    text: "[unit_attack] +1 Attack when this commander attacks after moving this activation.",
+    effect: { type: "ATTACK_BONUS_AFTER_MOVE", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "commander-cast-paladin": {
+    id: "commander-cast-paladin",
+    name: "Cure",
+    text: "[activation] Once per combat round: remove 1 damage from a friendly unit (Power 1: also remove its negative tokens and effects; Power 2: remove 2 damage instead). Does not end the activation.",
+    effect: { type: "COMMANDER_CAST" },
+    implementationStatus: "implemented"
+  },
+  "commander-cast-hierophant": {
+    id: "commander-cast-hierophant",
+    name: "Shield",
+    text: "[activation] Once per combat round: a friendly unit gains +1/+2/+3 Defense (Power 0/1/2) against melee attacks this round. Does not end the activation.",
+    effect: { type: "COMMANDER_CAST" },
+    implementationStatus: "implemented"
+  },
+  "commander-cast-temple_guardian": {
+    id: "commander-cast-temple_guardian",
+    name: "Precision",
+    text: "[activation] Once per combat round: a friendly ranged unit gains +1/+2/+3 Attack (Power 0/1/2) and ignores all ranged penalties this round. Does not end the activation.",
+    effect: { type: "COMMANDER_CAST" },
+    implementationStatus: "implemented"
+  },
+  "commander-cast-succubus": {
+    id: "commander-cast-succubus",
+    name: "Fire Shield",
+    text: "[activation] Once per combat round: a friendly unit gains a Fire Shield — Power 0: 1 damage for this round; Power 1: 1 damage for the whole combat; Power 2: 2 damage for two rounds. Does not end the activation.",
+    effect: { type: "COMMANDER_CAST" },
+    implementationStatus: "implemented"
+  },
+  "commander-cast-brute": {
+    id: "commander-cast-brute",
+    name: "Bloodlust",
+    text: "[activation] Once per combat round: a friendly melee unit anywhere gains +1/+2/+3 Attack (Power 0/1/2) this round. Does not end the activation.",
+    effect: { type: "COMMANDER_CAST" },
+    implementationStatus: "implemented"
+  },
+  "commander-cast-soul_eater": {
+    id: "commander-cast-soul_eater",
+    name: "Animate Dead",
+    text: "[activation] Once per combat round: remove 2 damage from a friendly bronze unit (Power 1: or silver; Power 2: any tier). Does not end the activation.",
+    effect: { type: "COMMANDER_CAST" },
+    implementationStatus: "implemented"
+  },
+  "commander-cast-ogre_leader": {
+    id: "commander-cast-ogre_leader",
+    name: "Stone Skin",
+    text: "[activation] Once per combat round: a friendly unit gains +1/+2/+3 Defense (Power 0/1/2) against all attacks this round. Does not end the activation.",
+    effect: { type: "COMMANDER_CAST" },
+    implementationStatus: "implemented"
+  },
+  "commander-cast-shaman": {
+    id: "commander-cast-shaman",
+    name: "Haste",
+    text: "[activation] Once per combat round: a friendly unit gains +2/+3/+4 Initiative (Power 0/1/2) and +1 Attack against slower units this round. Does not end the activation.",
+    effect: { type: "COMMANDER_CAST" },
+    implementationStatus: "implemented"
+  },
+  "commander-cast-astral_spirit": {
+    id: "commander-cast-astral_spirit",
+    name: "Counterstrike",
+    text: "[activation] Once per combat round: a friendly bronze unit (Power 1: or silver; Power 2: any tier) may retaliate any number of times this round. Does not end the activation.",
+    effect: { type: "COMMANDER_CAST" },
+    implementationStatus: "implemented"
+  },
+  "commander-cast-corsair": {
+    id: "commander-cast-corsair",
+    name: "Slow",
+    text: "[activation] Once per combat round: an enemy unit suffers -2/-3/-4 Initiative (Power 0/1/2) and -1 Attack against faster units this round. Does not end the activation.",
+    effect: { type: "COMMANDER_CAST" },
+    implementationStatus: "implemented"
+  },
+  "commander-cast-factory": {
+    id: "commander-cast-factory",
+    name: "Field Repair",
+    text: "[activation] Once per combat round: remove 1 damage from an adjacent friendly mechanical unit (Power 1: 2 damage; Power 2: 2 damage at any range). Does not end the activation.",
+    effect: { type: "COMMANDER_CAST" },
+    implementationStatus: "implemented"
+  },
+  "commander-cast-bulwark": {
+    id: "commander-cast-bulwark",
+    name: "Rune Mend",
+    text: "[activation] Once per combat round: spend 1/2/2 Runes (Power 0/1/2) to remove 1/2/3 damage from a friendly unit. Does not end the activation.",
+    effect: { type: "COMMANDER_CAST" },
     implementationStatus: "implemented"
   }
 };

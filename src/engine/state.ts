@@ -351,6 +351,25 @@ export type ActiveEffectModifier =
     }
   | {
       /**
+       * WOG commander Haste/Slow riders: the affected unit's Attack shifts by
+       * `amount` (signed) when it attacks a target whose effective Initiative
+       * is strictly lower ("slower") / higher ("faster") than its own.
+       * Shaman's Haste: +1 vs slower; Sea Marshal's Slow: -1 vs faster.
+       */
+      type: "ATTACK_BONUS_VS_INITIATIVE";
+      comparison: "slower" | "faster";
+      amount: number;
+    }
+  | {
+      /**
+       * Astral Spirit commander (Counterstrike): while held, the unit may
+       * retaliate any number of times per combat round — the active-effect
+       * twin of the ALLOW_UNLIMITED_RETALIATION unit ability.
+       */
+      type: "UNLIMITED_RETALIATION";
+    }
+  | {
+      /**
        * Shield / Air Shield: extra Defense that applies only against an attacker
        * of a given UNIT TYPE — "ground-or-flying" (Shield) matches any non-ranged
        * attacker; "ranged" (Air Shield) matches a ranged attacker. Lasts the
@@ -2596,6 +2615,32 @@ export type GameAction =
       unitId: UnitId;
     }
   | { type: "USE_ACTIVE_EFFECT"; playerId: PlayerId; effectId: string; target: TargetRef; mode?: CardPlayMode }
+  | {
+      /**
+       * WOG Commanders: spend one owed grade-up pick (hero level 3/6; Paladin
+       * 2/5) — raise TWO DIFFERENT stats by one grade each (max grade 3).
+       */
+      type: "COMMANDER_GRADE_UP";
+      playerId: PlayerId;
+      stats: [CommanderStatKey, CommanderStatKey];
+    }
+  | {
+      /**
+       * WOG Commanders: pay gold (2 + 2x hero level) on your own map turn to
+       * bring a dead commander back for its next combat.
+       */
+      type: "REVIVE_COMMANDER";
+      playerId: PlayerId;
+    }
+  | {
+      /**
+       * Hierophant commander: resolve the post-combat First Aid window —
+       * restore the chosen casualty (optionIndex) or decline (null).
+       */
+      type: "COMMANDER_FIRST_AID";
+      playerId: PlayerId;
+      optionIndex: number | null;
+    }
   | { type: "DEFEND_UNIT"; playerId: PlayerId; unitId: UnitId }
   | { type: "END_ACTIVATION"; playerId: PlayerId; unitId: UnitId }
   | { type: "END_COMBAT_ROUND"; playerId: PlayerId }
@@ -4196,6 +4241,59 @@ export type GameEvent =
       effects: string[];
     }
   | {
+      /** WOG commander: its command ability resolved on a target. */
+      id: string;
+      type: "COMMANDER_CAST_USED";
+      playerId: PlayerId;
+      commanderSlug: string;
+      castName: string;
+      power: number;
+      targetUnitId: UnitId;
+      message: string;
+    }
+  | {
+      /** WOG commander: a two-stat grade-up pick was spent. */
+      id: string;
+      type: "COMMANDER_GRADED_UP";
+      playerId: PlayerId;
+      commanderSlug: string;
+      stats: CommanderStatKey[];
+      message: string;
+    }
+  | {
+      /** WOG commander: killed in combat (stays dead until revived). */
+      id: string;
+      type: "COMMANDER_DIED";
+      playerId: PlayerId;
+      commanderSlug: string;
+      message: string;
+    }
+  | {
+      /** WOG commander: revived for gold on the owner's map turn. */
+      id: string;
+      type: "COMMANDER_REVIVED";
+      playerId: PlayerId;
+      commanderSlug: string;
+      goldPaid: number;
+      message: string;
+    }
+  | {
+      /** Hierophant commander: a post-combat First Aid restoration. */
+      id: string;
+      type: "COMMANDER_FIRST_AID_USED";
+      playerId: PlayerId;
+      message: string;
+    }
+  | {
+      /** A WOG commander specialty fired (Charming, Pacifist, Soul Reformer…). */
+      id: string;
+      type: "COMMANDER_SPECIALTY_TRIGGERED";
+      playerId: PlayerId;
+      commanderSlug: string;
+      specialtyId: string;
+      message: string;
+    }
+  | {
       id: string;
       type: "MORALE_CHANGED";
       playerId: PlayerId;
@@ -5134,6 +5232,30 @@ export type RecruitDiscountVoucher = {
     | { kind: "reinforce"; armyUnitId: string };
 };
 
+/** The six gradeable stats of a WOG commander (see src/data/commanders.ts). */
+export type CommanderStatKey = "attack" | "defense" | "health" | "damage" | "magic" | "speed";
+
+/**
+ * WOG Commanders module: the player's persistent, hero-attached battlefield
+ * champion. Present only when the game was created with `wog.commanders` on.
+ * Level is NOT stored — the commander always matches its main hero's level.
+ * (Slug typed loosely: state.ts has no data-layer imports.)
+ */
+export type CommanderPlayerState = {
+  /** Commander identity (a CommanderSlug from src/data/commanders.ts). */
+  slug: string;
+  /** Grade 1..3 of each of the six stats. All start at 1. */
+  grades: Record<CommanderStatKey, number>;
+  /**
+   * Hero levels whose two-stat grade-up pick is still owed. Queued when the
+   * hero reaches a grade-up level (3/6; Paladin's Wise: 2/5) and consumed by
+   * COMMANDER_GRADE_UP — the pick never blocks play, it waits for the owner.
+   */
+  pendingGradeUps?: number[];
+  /** Killed in combat; stays dead until revived for gold (REVIVE_COMMANDER). */
+  dead?: boolean;
+};
+
 export type PlayerState = {
   id: PlayerId;
   name: string;
@@ -5343,6 +5465,12 @@ export type PlayerState = {
      * Cleared at the start of each combat and each combat round.
      */
     tarnumOverlimitCards?: CardId[];
+    /**
+     * Temple Guardian commander (Mana Magician): charges left this combat.
+     * Seeded to 2 at combat start while the commander lives; each charge lets
+     * one Spell cast exceed the per-round spell limit. NOT reset per round.
+     */
+    commanderManaCharges?: number;
   };
   /** Round the Blacksmith action was last used ("once per your turn"). */
   blacksmithUsedRound?: number;
@@ -5387,6 +5515,8 @@ export type PlayerState = {
    * Spell cards usable in combat at power 0 or sellable at the market.
    */
   scrolls?: SpellScrollState[];
+  /** WOG Commanders module: this player's commander (absent = module off). */
+  commander?: CommanderPlayerState;
 };
 
 /**
@@ -5630,6 +5760,18 @@ export type CombatUnitState = {
    * Combat). Whether it survived or died, the borrowed card is discarded.
    */
   temporary?: boolean;
+  /**
+   * WOG Commanders module: this unit IS the controller's commander (the value
+   * is its CommanderSlug). A commander has no army card, is tierless on both
+   * targeting axes (like a bank guard: tier-gated spells skip it, the neutral
+   * AI hits it last) and its death persists on PlayerState.commander.dead.
+   */
+  commanderSlug?: string;
+  /**
+   * Combat round in which the commander last used its command ability — the
+   * cast is once per combat round ("may cast"), free during its own activation.
+   */
+  commanderCastRound?: number;
   assets?: {
     cardImage?: string;
     imageAlt?: string;
@@ -7248,6 +7390,28 @@ export type AdventureState = {
     heroId?: HeroId;
     fieldId?: MapSpaceId;
   } | null;
+  /**
+   * Hierophant commander (First Aid Master): after a combat in which the
+   * commander survived, ONE of the owner's bronze/silver casualties may be
+   * restored — a unit that died comes back (its side re-added; a recycled
+   * neutral card is pulled back out of its tier discard), a Pack that flipped
+   * down to Few flips back up. Resolved by COMMANDER_FIRST_AID (option index
+   * or null to decline); blocks that player's other actions like Necromancy.
+   */
+  pendingCommanderFirstAid?: {
+    playerId: PlayerId;
+    options: {
+      label: string;
+      /** "revive": re-add a died card; "flip-up": restore a Pack side. */
+      kind: "revive" | "flip-up";
+      unitDefId: string;
+      side: "few" | "pack" | "neutral";
+      /** flip-up: the surviving army card to flip back to its Pack side. */
+      armyUnitId?: string;
+      /** revive of a neutral-side card: tier discard pile it recycled into. */
+      neutralTier?: string;
+    }[];
+  } | null;
   /** Rewards waiting to resolve one at a time (level-up searches, City Halls). */
   rewardQueue: AdventureReward[];
   /** Last field each hero visited, where a retreating hero returns. */
@@ -8045,7 +8209,10 @@ export type PendingChoice =
         // Factory Dreadnoughts: "instead of attacking", allocate the printed
         // damage across up to N adjacent units, one pick at a time (the k-th
         // pick takes chainRemainingDamages[0]).
-        | "dreadnought-splash";
+        | "dreadnought-splash"
+        // WOG commander command ability: pick the unit the cast lands on
+        // (free during the commander's activation, once per combat round).
+        | "commander-cast";
       abilityId: string | null;
       abilityName: string;
       prompt: string;

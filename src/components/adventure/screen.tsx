@@ -102,6 +102,8 @@ import {
   TILE_BACK_IMAGES
 } from "@/data/assets/homm-assets";
 import { specialtyIconSrc } from "@/components/specialty-card-data";
+import { CommanderCard } from "@/components/commander-card";
+import { commanderDefinitions, commanderReviveCost, type CommanderSlug } from "@/data/commanders";
 import { CARD_BACK_IMAGES, getDeckBack } from "@/data/decks";
 import { actionKey, cardName, formatCost, isEmpoweredStatisticCard, titleCase } from "@/components/table/utils";
 import { beginUnitPointerDrag } from "@/components/table/pointer-drag";
@@ -1939,7 +1941,8 @@ export function TownHeroDock({
   viewerPlayerId,
   heroSeatIds,
   onOpenTown,
-  armySeatId
+  armySeatId,
+  onAction
 }: {
   state: GameState;
   viewerPlayerId: PlayerId;
@@ -1949,9 +1952,12 @@ export function TownHeroDock({
   onOpenTown?: () => void;
   /** Seat whose Unit deck this dock exposes as its own big tile (seated viewer). */
   armySeatId?: PlayerId;
+  /** Seated viewer's dispatcher (commander grade-up / revive live on the dock). */
+  onAction?: (action: GameAction) => void;
 }) {
   const [openHeroSeat, setOpenHeroSeat] = useState<PlayerId | null>(null);
   const [armyOpen, setArmyOpen] = useState(false);
+  const [commanderOpen, setCommanderOpen] = useState(false);
   const player = state.players[viewerPlayerId];
   const faction = player?.factionId ? coreFactionDefinitions[player.factionId] : undefined;
 
@@ -1962,6 +1968,17 @@ export function TownHeroDock({
 
   const armyPlayer = armySeatId ? state.players[armySeatId] : undefined;
   const army = armyPlayer?.army ?? [];
+
+  // WOG Commanders: the seated viewer's commander tile (module on = the state
+  // exists). Everything on it is live: grades, level, death, owed grade-ups.
+  const commander = armyPlayer?.commander;
+  const commanderDef = commander ? commanderDefinitions[commander.slug as CommanderSlug] : undefined;
+  const commanderHero = armyPlayer
+    ? Object.values(state.heroes).find(
+        (candidate) => candidate.controllerId === armyPlayer.id && candidate.kind === "main"
+      )
+    : undefined;
+  const commanderGradeUps = commander?.pendingGradeUps?.length ?? 0;
 
   if (!onOpenTown && heroSeats.length === 0 && !armyPlayer) {
     return null;
@@ -2084,6 +2101,41 @@ export function TownHeroDock({
         </button>
       ) : null}
 
+      {commander && commanderDef && armyPlayer ? (
+        <button
+          aria-expanded={commanderOpen}
+          aria-label={`Open your commander, ${commanderDef.name}`}
+          className={`dockTile unitDockTile ${commanderOpen ? "open" : ""}`}
+          onClick={() => setCommanderOpen((value) => !value)}
+          style={{ "--dock-faction": playerFactionColor(armyPlayer.factionId) } as CSSProperties}
+          title={`${commanderDef.name} — your WOG commander`}
+          type="button"
+        >
+          <span aria-hidden="true" className="dockUnitStack">
+            <img
+              alt=""
+              className="dockUnitThumb"
+              src={assetUrl(commanderDef.cardImage)}
+              style={commander.dead ? { filter: "grayscale(0.9) brightness(0.6)" } : undefined}
+            />
+          </span>
+          <span className="dockTileText">
+            <strong>{commanderDef.name}</strong>
+            <small>
+              {commander.dead
+                ? `Fallen — revive ${commanderReviveCost(commanderHero?.level ?? 1)} gold`
+                : `Commander · Lv ${commanderHero?.level ?? 1}`}
+            </small>
+            <small className="dockSubtle" style={commanderGradeUps > 0 ? { color: "#f4d774", fontWeight: 700 } : undefined}>
+              {commanderGradeUps > 0 ? `Grade up available (x${commanderGradeUps})!` : commanderDef.specialty.name}
+            </small>
+          </span>
+          <span aria-hidden="true" className="dockOpenHint">
+            {commanderOpen ? "Close ▾" : "Open ▸"}
+          </span>
+        </button>
+      ) : null}
+
       {openHeroSeat ? (
         <>
           <div aria-hidden="true" className="heroDropBackdrop" onClick={() => setOpenHeroSeat(null)} />
@@ -2097,6 +2149,42 @@ export function TownHeroDock({
               <X aria-hidden="true" size={16} />
             </button>
             <HeroBoard playerId={openHeroSeat} state={state} />
+          </div>
+        </>
+      ) : null}
+
+      {commanderOpen && commander && commanderDef && armyPlayer ? (
+        <>
+          <div aria-hidden="true" className="heroDropBackdrop" onClick={() => setCommanderOpen(false)} />
+          <div className="heroDrop unitDrop" role="dialog" aria-label="Commander">
+            <button
+              aria-label="Close the commander card"
+              className="heroDropClose"
+              onClick={() => setCommanderOpen(false)}
+              type="button"
+            >
+              <X aria-hidden="true" size={16} />
+            </button>
+            <div style={{ maxHeight: "min(78vh, 900px)", overflowY: "auto", padding: 4 }}>
+              <CommanderCard
+                slug={commander.slug as CommanderSlug}
+                grades={commander.grades}
+                level={commanderHero?.level ?? 1}
+                dead={Boolean(commander.dead)}
+                pendingGradeUps={commanderGradeUps}
+                goldAvailable={armyPlayer.resources.gold}
+                onGradeUp={
+                  onAction && !state.combat
+                    ? (stats) => onAction({ type: "COMMANDER_GRADE_UP", playerId: armyPlayer.id, stats })
+                    : undefined
+                }
+                onRevive={
+                  onAction && !state.combat && commander.dead
+                    ? () => onAction({ type: "REVIVE_COMMANDER", playerId: armyPlayer.id })
+                    : undefined
+                }
+              />
+            </div>
           </div>
         </>
       ) : null}
@@ -2555,13 +2643,14 @@ export function PromptTray({
       </div>
     );
   }
-  // Ogres' Attack ("Bloodlust") token / Sorceresses' Weakness token — the same
-  // two-click board flow as teleport: the board already highlights the eligible
-  // units (abilityTarget) and submits the pick on click, so the tray only shows
-  // the instruction and a single Cancel, never a wall of one-button-per-target.
+  // Ogres' Attack ("Bloodlust") token / Sorceresses' Weakness token — and the
+  // WOG commander's command-ability cast — the same two-click board flow as
+  // teleport: the board already highlights the eligible units (abilityTarget)
+  // and submits the pick on click, so the tray only shows the instruction and
+  // a single Cancel, never a wall of one-button-per-target.
   if (
     choice?.type === "ABILITY_TARGET_CHOICE" &&
-    choice.kind === "place-token" &&
+    (choice.kind === "place-token" || choice.kind === "commander-cast") &&
     choice.playerId === viewerPlayerId
   ) {
     const cancel = abilityTargetActions.find(
@@ -4596,7 +4685,7 @@ function GameOptionsPanel({
             <div className="wogModuleList">
               {([
                 ["newCreatures", "New neutral creatures", "Adds the 15-card WOG roster to the Bronze, Silver, Gold and Azure Neutral decks."],
-                ["commanders", "Commanders", "Saves the Commander module choice; Commander gameplay is the next content slice."],
+                ["commanders", "Commanders", "Every player gets their faction's commander: it fights in the main hero's battles, grades up at hero level 3 and 6, and casts a command ability once per combat round."],
                 ["newObjects", "New adventure objects", "Saves the object module choice; WOG map objects will be added as their data and art arrive."]
               ] as const).map(([key, label, description]) => {
                 const active = wog[key];

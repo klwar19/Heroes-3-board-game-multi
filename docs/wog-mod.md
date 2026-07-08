@@ -9,10 +9,23 @@ WOG is an optional module available only under **House rules BINH**.
 3. Click **Mod options** to open the compact setup window.
 4. Choose modules:
    - New neutral creatures (implemented: adds 15 WOG cards to matching Neutral decks)
-   - Commanders (selection persisted; gameplay is a future content slice)
+   - Commanders (implemented: every player gets their faction's battlefield
+     commander — grades, command abilities, specialties, combos, death/revive;
+     see the "Commanders" section below and CLAUDE.md for the full contract)
    - New adventure objects (selection persisted; content is a future slice)
 
 Switching to Legacy immediately disables WOG. Older saves without `wog` remain WOG-off.
+
+## Commanders (implemented — board-game adaptation)
+
+Content tables in `src/data/commanders.ts`, engine in `src/engine/commanders.ts`
+plus wiring across the reducer/adventure layers; behaviour pinned in
+`src/engine/wog-commanders.test.ts` and `src/engine/wog-commander-casts.test.ts`
+(every mechanic has a test with a CONTROL that fails if the wiring is removed).
+The shipped system is the BOARD adaptation (grades 1-3, two combos), NOT the
+WoG PC reference tables — see CLAUDE.md's "WOG Commanders" section for what
+runs verbatim vs. the documented adaptations, and docs/wog-commanders-plan.md
+for the design history and art pipeline.
 
 ## Neutral creature slice
 
