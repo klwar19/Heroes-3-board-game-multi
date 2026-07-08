@@ -155,6 +155,7 @@ import {
   TILE_SOUNDS
 } from "@/data/map-sounds";
 import { COMBAT_EVENT_SOUNDS } from "@/data/combat-event-sounds";
+import { commanderCastFxPlan, commanderSpecialtySound } from "@/data/commander-fx";
 import { allTileDefinitions } from "@/data/map/tiles";
 import { playLibrarySound, playSpellBookOpen, playTableUiClickSound, playUnitSound } from "@/lib/sound";
 import { commanderVoiceId, unitAttackFlourish } from "@/data/unit-sounds";
@@ -2188,6 +2189,36 @@ export default function Home() {
                 } else if (plan.sound) {
                   const soundKey = plan.sound;
                   window.setTimeout(() => playLibrarySound(soundKey), at);
+                }
+              }
+              break;
+            }
+            case "COMMANDER_CAST_USED": {
+              // WOG commander command ability — the activation cast AND the
+              // Shield / Stone Skin instant reaction both emit this. Reuse the
+              // matching H3 spell's sprite + sound over the buffed/healed target
+              // so every commander cast animates and sounds (Bloodlust tints red,
+              // Animate Dead falls back to a heal shimmer).
+              const plan = commanderCastFxPlan(event.commanderSlug);
+              queueBoardFx(plan, event.id, `hand:${event.playerId}`, event.targetUnitId);
+              if (inCombat) {
+                combatFxActive = true;
+                combatPresentationEnd = Math.max(combatPresentationEnd, timeline + 900);
+              }
+              break;
+            }
+            case "COMMANDER_SPECIALTY_TRIGGERED": {
+              // A themed sting for an in-combat commander specialty (Charming,
+              // Elemental Scourge, Rune Ritual). No single unit to anchor a sprite
+              // on, so the sound plays on the timeline; the specialty's own
+              // damage/token FX (if any) ride their normal events.
+              const specialtySound = commanderSpecialtySound(event.specialtyId);
+              if (specialtySound) {
+                const at = timeline;
+                window.setTimeout(() => playLibrarySound(specialtySound), at);
+                if (inCombat) {
+                  combatFxActive = true;
+                  combatPresentationEnd = Math.max(combatPresentationEnd, at + 600);
                 }
               }
               break;

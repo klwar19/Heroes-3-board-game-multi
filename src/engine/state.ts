@@ -2737,6 +2737,19 @@ export type GameAction =
       savingUnitId: UnitId;
     }
   | {
+      /**
+       * WOG Commanders module: play a commander's INSTANT-REACTION defend buff
+       * (Hierophant's Shield, Ogre Leader's Stone Skin) in an open attack window,
+       * buffing the attacked unit's Defense before the hit's damage is computed.
+       * `commanderUnitId` is the reacting commander; `targetUnitId` is the unit
+       * under attack (the trigger's defender).
+       */
+      type: "USE_COMMANDER_CAST_REACTION";
+      playerId: PlayerId;
+      commanderUnitId: UnitId;
+      targetUnitId: UnitId;
+    }
+  | {
       /** WOG War Zealot: free innate Magic Mirror, without a card or spell-limit cost. */
       type: "USE_UNIT_MAGIC_MIRROR";
       playerId: PlayerId;
@@ -4277,6 +4290,21 @@ export type GameEvent =
       message: string;
     }
   | {
+      /**
+       * WOG commander: a hero level-up awarded commander stat points to spend
+       * (1 normally, 2 at a milestone level). Drives the level-up popup; the
+       * points wait on the commander card until COMMANDER_GRADE_UP spends them.
+       */
+      id: string;
+      type: "COMMANDER_POINTS_AWARDED";
+      playerId: PlayerId;
+      commanderSlug: string;
+      points: number;
+      level: number;
+      totalUnspent: number;
+      message: string;
+    }
+  | {
       /** WOG commander: a stat point was spent to raise one stat by a grade. */
       id: string;
       type: "COMMANDER_GRADED_UP";
@@ -5665,6 +5693,14 @@ export type CombatUnitState = {
   /** Attacks resolved during this activation (double-attack abilities stop at 2). */
   attacksThisActivation?: number;
   /**
+   * WOG Commanders module: set the moment a commander uses its command ability
+   * during its own activation (a non-reaction cast). While set the commander may
+   * no longer MOVE this activation (it may still attack) — casting ends its
+   * movement (user spec). Reset every time the unit becomes active. The two
+   * instant-reaction defend buffs never set this (they are played off-turn).
+   */
+  movementLockedThisActivation?: boolean;
+  /**
    * Position this unit stood on when its current activation began. Harpies'
    * "Strike and Return" repositioning flies the unit back here after its
    * attack; reset every time the unit activates.
@@ -5846,13 +5882,6 @@ export type CombatUnitState = {
    * cast is once per combat round ("may cast"), free during its own activation.
    */
   commanderCastRound?: number;
-  /**
-   * Rune Keeper commander (Rune Ritual): set once this commander has banked its
-   * once-per-combat "+1 Rune the first time it is attacked" grant, so a second
-   * incoming attack never pays out again. Combat-scoped (the unit is rebuilt
-   * each fight, so it naturally resets).
-   */
-  runeRitualDone?: boolean;
   assets?: {
     cardImage?: string;
     imageAlt?: string;

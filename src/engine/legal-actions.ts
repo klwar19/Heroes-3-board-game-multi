@@ -69,8 +69,10 @@ import {
 import { commanderReviveCost } from "@/data/commanders";
 import {
   commanderCastAvailable,
+  commanderCastOf,
   commanderCastPower,
   commanderCastRuneCost,
+  commanderDefenseReactionUnit,
   commanderGradeUpChoices
 } from "./commanders";
 import { RUNE_MAX } from "./runes";
@@ -752,6 +754,13 @@ function isBoundByAdjacentEnemy(combat: CombatState, unit: CombatUnitState): boo
 
 export function getLegalMoveDestinations(combat: CombatState, unit: CombatUnitState, state?: GameState): number[] {
   if (!isUnitAlive(unit) || unit.activatedThisRound || unit.movedThisActivation) {
+    return [];
+  }
+
+  // WOG Commanders: a commander that used its command ability this activation may
+  // no longer move (casting ends its movement — user spec). Covers the Battle
+  // Teleport MOVE_ANYWHERE branch below too, since it sits before it.
+  if (unit.movementLockedThisActivation) {
     return [];
   }
 
@@ -5580,6 +5589,32 @@ export function getLegalReactionsForTrigger(
       : [];
     if (defenderId && heals.length > 0) {
       result[defenderId] = [...(result[defenderId] ?? []), ...heals];
+    }
+
+    // WOG Commanders: the defend buffs (Hierophant's Shield, Ogre Leader's Stone
+    // Skin) are INSTANT REACTIONS — offered to the attacked unit's controller
+    // before the hit's damage, buffing that unit's Defense. Once per combat round,
+    // free, off-turn (does not lock the commander's movement).
+    const defenderUnit = state.combat?.units[triggerEvent.defenderId];
+    const attackerUnit = state.combat?.units[triggerEvent.attackerId];
+    if (defenderUnit) {
+      const commander = commanderDefenseReactionUnit(state, defenderUnit, attackerUnit);
+      const cast = commander ? commanderCastOf(commander) : null;
+      if (commander && cast) {
+        const owner = defenderUnit.controllerId;
+        result[owner] = [
+          ...(result[owner] ?? []),
+          {
+            label: `${commander.cardName}: cast ${cast.name} (Power ${commanderCastPower(state, commander)}) on ${defenderUnit.cardName}`,
+            action: {
+              type: "USE_COMMANDER_CAST_REACTION",
+              playerId: owner,
+              commanderUnitId: commander.id,
+              targetUnitId: defenderUnit.id
+            }
+          }
+        ];
+      }
     }
   }
 

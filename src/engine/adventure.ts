@@ -1392,8 +1392,18 @@ export function gainExperience(state: GameState, playerId: PlayerId, amount: num
     // level — levels 3 & 6, or the Paladin's Wise 2 & 5). Points never block
     // play — they wait on the commander card until COMMANDER_GRADE_UP spends them.
     const commanderPoints = awardCommanderGradePoints(player, level);
-    if (commanderPoints > 0) {
+    if (commanderPoints > 0 && player.commander) {
       effects.push(`commander +${commanderPoints} stat ${commanderPoints === 1 ? "point" : "points"}`);
+      // Dedicated event so the UI can pop a level-up "spend your points" prompt.
+      appendEvent(state, {
+        type: "COMMANDER_POINTS_AWARDED",
+        playerId,
+        commanderSlug: player.commander.slug,
+        points: commanderPoints,
+        level,
+        totalUnspent: player.commander.gradePoints ?? commanderPoints,
+        message: `Your commander earned ${commanderPoints} stat ${commanderPoints === 1 ? "point" : "points"} at level ${level}.`
+      });
     }
 
     appendEvent(state, {

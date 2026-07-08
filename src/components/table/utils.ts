@@ -456,6 +456,7 @@ export function formatEvent(event: GameEvent, state: GameState): string {
     case "HERO_LEVEL_UP":
       return `${playerName(state, event.playerId)} reaches level ${event.level}${event.effects.length ? `: ${event.effects.join(", ")}` : ""}.`;
     case "COMMANDER_CAST_USED":
+    case "COMMANDER_POINTS_AWARDED":
     case "COMMANDER_GRADED_UP":
     case "COMMANDER_DIED":
     case "COMMANDER_REVIVED":

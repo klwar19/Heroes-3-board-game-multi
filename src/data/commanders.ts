@@ -491,10 +491,12 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
       icon: "/assets/spell-icons/shield.png",
       targeting: { side: "friendly", canTargetSelf: false },
       effect: { kind: "defense-buff", amountByPower: [1, 2, 3], vs: "melee" },
+      // INSTANT REACTION (not an activation cast): play when one of your units is
+      // attacked in melee, before damage — the attacked unit gains the Defense.
       tierText: [
-        "A friendly unit gains +1 Defense against melee attacks this round.",
-        "A friendly unit gains +2 Defense against melee attacks this round.",
-        "A friendly unit gains +3 Defense against melee attacks this round."
+        "Instant reaction: when your unit is attacked in melee, it gains +1 Defense vs melee this round.",
+        "Instant reaction: when your unit is attacked in melee, it gains +2 Defense vs melee this round.",
+        "Instant reaction: when your unit is attacked in melee, it gains +3 Defense vs melee this round."
       ]
     },
     specialty: {
@@ -510,12 +512,15 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
       abilityId: "commander-cast-temple_guardian",
       name: "Precision",
       icon: "/assets/spell-icons/precision.png",
-      targeting: { side: "friendly", unitType: "ranged", canTargetSelf: false },
-      effect: { kind: "precision", amountByPower: [1, 2, 3] },
+      // Power ladder (user spec): Pow 0 = +1 but the ranged unit must be
+      // adjacent to the commander; Pow 1 = +1 anywhere; Pow 2 = +2 anywhere.
+      // Always for THIS round only. The "ignore ranged penalties" rider stays.
+      targeting: { side: "friendly", unitType: "ranged", adjacentBelowPower: 1, canTargetSelf: false },
+      effect: { kind: "precision", amountByPower: [1, 1, 2] },
       tierText: [
-        "A friendly ranged unit gains +1 Attack and ignores all ranged penalties this round.",
-        "A friendly ranged unit gains +2 Attack and ignores all ranged penalties this round.",
-        "A friendly ranged unit gains +3 Attack and ignores all ranged penalties this round."
+        "A friendly ranged unit ADJACENT to the commander gains +1 Attack and ignores all ranged penalties this round.",
+        "A friendly ranged unit anywhere gains +1 Attack and ignores all ranged penalties this round.",
+        "A friendly ranged unit anywhere gains +2 Attack and ignores all ranged penalties this round."
       ]
     },
     specialty: {
@@ -556,12 +561,15 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
       abilityId: "commander-cast-brute",
       name: "Bloodlust",
       icon: "/assets/spell-icons/bloodlust.png",
-      targeting: { side: "friendly", unitType: "melee", canTargetSelf: false },
-      effect: { kind: "attack-buff", amountByPower: [1, 2, 3] },
+      // Power ladder (user spec): Pow 0 = +1 but the melee unit must be adjacent
+      // to the commander; Pow 1 = +1 anywhere; Pow 2 = +2 anywhere. Always for
+      // THIS round only.
+      targeting: { side: "friendly", unitType: "melee", adjacentBelowPower: 1, canTargetSelf: false },
+      effect: { kind: "attack-buff", amountByPower: [1, 1, 2] },
       tierText: [
+        "A friendly melee unit ADJACENT to the commander gains +1 Attack this round.",
         "A friendly melee unit anywhere gains +1 Attack this round.",
-        "A friendly melee unit anywhere gains +2 Attack this round.",
-        "A friendly melee unit anywhere gains +3 Attack this round."
+        "A friendly melee unit anywhere gains +2 Attack this round."
       ]
     },
     specialty: {
@@ -605,10 +613,12 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
       icon: "/assets/spell-icons/stone_skin.png",
       targeting: { side: "friendly", canTargetSelf: false },
       effect: { kind: "defense-buff", amountByPower: [1, 2, 3], vs: "all" },
+      // INSTANT REACTION (not an activation cast): play when one of your units is
+      // attacked (melee OR ranged), before damage — the attacked unit gains the Defense.
       tierText: [
-        "A friendly unit gains +1 Defense against all attacks this round.",
-        "A friendly unit gains +2 Defense against all attacks this round.",
-        "A friendly unit gains +3 Defense against all attacks this round."
+        "Instant reaction: when your unit is attacked, it gains +1 Defense vs all attacks this round.",
+        "Instant reaction: when your unit is attacked, it gains +2 Defense vs all attacks this round.",
+        "Instant reaction: when your unit is attacked, it gains +3 Defense vs all attacks this round."
       ]
     },
     specialty: {
@@ -734,7 +744,7 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
     specialty: {
       id: "rune-ritual",
       name: "Rune Ritual",
-      text: "Gain 1 Rune at the start of each combat."
+      text: "Gain +1 Rune every time the commander MOVES, and +1 Rune every time it is attacked."
     },
     cardImage: "/assets/units-commander-bulwark.webp"
   }
@@ -758,4 +768,17 @@ export const COMMANDER_SLUG_BY_FACTION: Record<string, CommanderSlug> = {
 
 export function commanderCastTierIndex(power: number): 0 | 1 | 2 {
   return power >= 2 ? 2 : power === 1 ? 1 : 0;
+}
+
+/**
+ * The two "defend buff" commands (Hierophant's Shield, Ogre Leader's Stone Skin)
+ * are INSTANT REACTIONS, not activation casts: instead of being cast during the
+ * commander's own turn, they are played in response to one of the owner's units
+ * being attacked, buffing the attacked unit's Defense before damage. Every other
+ * command is a normal activation cast. Keyed off the effect kind so the single
+ * source of truth is the cast definition. (See src/engine/commanders.ts for the
+ * offer/resolution wiring and wog-commander-casts.test.ts for the behaviour.)
+ */
+export function commanderCastIsInstantReaction(cast: CommanderCastDefinition): boolean {
+  return cast.effect.kind === "defense-buff";
 }

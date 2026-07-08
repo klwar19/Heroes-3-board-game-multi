@@ -359,6 +359,14 @@ describe("WOG commanders — stat points from the hero's level", () => {
     // necropolis p1 → soul_eater (milestones at 3 & 6).
     gainExperience(state, "p1", 2); // level 1 → 2 → +1 point
     expect(state.players.p1.commander?.gradePoints).toBe(1);
+    // The level-up emits a COMMANDER_POINTS_AWARDED event (drives the popup).
+    const awarded = state.eventLog.find((event) => event.type === "COMMANDER_POINTS_AWARDED");
+    expect(awarded, "a COMMANDER_POINTS_AWARDED event").toBeTruthy();
+    if (awarded?.type === "COMMANDER_POINTS_AWARDED") {
+      expect(awarded.points).toBe(1);
+      expect(awarded.playerId).toBe("p1");
+      expect(awarded.commanderSlug).toBe("soul_eater");
+    }
 
     // An unknown stat is rejected.
     applyError(state, { type: "COMMANDER_GRADE_UP", playerId: "p1", stat: "bogus" as never });
@@ -1043,8 +1051,7 @@ describe("WOG commanders — specialties", () => {
     }
   });
 
-  it("Rune Ritual (Rune Keeper): +1 Rune the FIRST time the commander is attacked, once per combat", () => {
-    // The pool does NOT open with a free Rune any more (the grant is on-attack).
+  it("Rune Ritual (Rune Keeper): +1 Rune EVERY time it is attacked AND every time it moves", () => {
     function ritualState(slug: CommanderSlug): GameState {
       const state = sandboxWithCommander(slug, {}, 9);
       state.players.p1.factionId = "bulwark"; // gainRunes gates on the Bulwark faction
@@ -1065,20 +1072,36 @@ describe("WOG commanders — specialties", () => {
         apply(state, { type: "ATTACK_UNIT", playerId: "p2", attackerId, defenderId: commanderUnitId("p1") })
       );
     }
+    function moveCommander(state: GameState, destination: number): GameState {
+      state.combat!.activeUnitId = commanderUnitId("p1");
+      state.activePlayerId = "p1";
+      return apply(state, {
+        type: "MOVE_UNIT",
+        playerId: "p1",
+        unitId: commanderUnitId("p1"),
+        destination
+      });
+    }
 
+    // Attacked half: EVERY incoming attack banks a Rune (no once-per-combat cap).
     const bulwark = ritualState("bulwark");
     expect(bulwark.combat!.runes?.p1?.count ?? 0).toBe(0); // no combat-start grant
     let s = attackCommander(bulwark, "unit_p2_skeletons", 10);
-    expect(s.combat!.runes?.p1?.count).toBe(1); // first attack banks the Rune
-    // A second incoming attack (a different attacker) pays out nothing more.
+    expect(s.combat!.runes?.p1?.count).toBe(1); // first attack banks a Rune
     s = attackCommander(s, "unit_p2_vampires", 13);
-    expect(s.combat!.runes?.p1?.count).toBe(1);
+    expect(s.combat!.runes?.p1?.count).toBe(2); // and so does the second
 
-    // CONTROL: a Paladin commander (even for a Bulwark player) has no Rune
-    // Ritual, so being attacked banks nothing.
-    const control = ritualState("paladin");
-    const ctrl = attackCommander(control, "unit_p2_skeletons", 10);
-    expect(ctrl.combat!.runes?.p1?.count ?? 0).toBe(0);
+    // Moved half: moving the commander banks a Rune too (cell 9 → the free 10).
+    const moved = moveCommander(ritualState("bulwark"), 10);
+    expect(moved.combat!.units[commanderUnitId("p1")].position).toBe(10);
+    expect(moved.combat!.runes?.p1?.count).toBe(1);
+
+    // CONTROL: a Paladin commander (even for a Bulwark player) has no Rune Ritual,
+    // so neither being attacked nor moving banks anything.
+    const ctrlAttacked = attackCommander(ritualState("paladin"), "unit_p2_skeletons", 10);
+    expect(ctrlAttacked.combat!.runes?.p1?.count ?? 0).toBe(0);
+    const ctrlMoved = moveCommander(ritualState("paladin"), 10);
+    expect(ctrlMoved.combat!.runes?.p1?.count ?? 0).toBe(0);
   });
 });
 

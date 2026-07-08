@@ -228,14 +228,16 @@ import {
 import { applyAfkBookkeeping, castAfkVote, forceAfkKick, startAfkVote } from "./afk";
 import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
 import { gainRunes, gainRunesForAttack, gainRunesForDefend, grantStartingRunes, spendRunes } from "./runes";
-import { commanderCastTierIndex } from "@/data/commanders";
+import { commanderCastIsInstantReaction, commanderCastTierIndex } from "@/data/commanders";
 import {
+  applyCommanderRuneOnMove,
   applyCommanderRuneRitual,
   commanderCastCandidates,
   commanderCastOf,
   commanderCastPower,
   commanderCastRuneCost,
   commanderCastUsedThisRound,
+  commanderDefenseReactionUnit,
   commanderRunePool
 } from "./commanders";
 import { drawCardsForPlayer, isSharedDeckId, shuffleCards } from "./decks";
@@ -6297,6 +6299,7 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
 
   state.activePlayerId = activeUnit.controllerId;
   activeUnit.movedThisActivation = false;
+  activeUnit.movementLockedThisActivation = false;
   activeUnit.attackedThisActivation = false;
   activeUnit.attacksThisActivation = 0;
   // A fresh activation may open one pre-activation reaction pause for the
@@ -10849,6 +10852,41 @@ function applyUnitResurrection(
   advanceReactionWindowAfterPlay(state, action.playerId, cards);
 }
 
+/**
+ * WOG Commanders — instant-reaction defend buff (Hierophant's Shield / Ogre
+ * Leader's Stone Skin). Played in an open attack window on one of the reacting
+ * player's units: it buffs the attacked unit's Defense (a current-combat-round
+ * active effect) BEFORE the hit's damage is computed, so the very attack that
+ * triggered the window is blunted (getAttackStackDetails re-reads defense when
+ * the window closes). Free, off-turn, once per combat round — it does NOT lock
+ * the commander's movement (unlike an activation cast).
+ */
+function applyCommanderCastReaction(
+  state: GameState,
+  action: Extract<GameAction, { type: "USE_COMMANDER_CAST_REACTION" }>,
+  cards: CardLibrary
+): void {
+  const window = state.reactionWindow;
+  if (!window || window.triggerEvent.type !== "UNIT_ATTACK_DECLARED" || window.priorityPlayerId !== action.playerId) {
+    throw new Error("No attack window is open for your commander.");
+  }
+  const combat = state.combat;
+  const commander = combat?.units[action.commanderUnitId];
+  const target = combat?.units[action.targetUnitId];
+  if (!combat || !commander || !target || commander.controllerId !== action.playerId) {
+    throw new Error("That commander reaction cannot be used now.");
+  }
+  // Re-validate against the actual trigger: the target must BE the attacked unit
+  // and the offered commander must still be the legal reactor for this hit.
+  const attackerUnit = combat.units[window.triggerEvent.attackerId];
+  const legal = commanderDefenseReactionUnit(state, target, attackerUnit);
+  if (!legal || legal.id !== commander.id || target.id !== window.triggerEvent.defenderId) {
+    throw new Error("That commander reaction cannot be used now.");
+  }
+  resolveCommanderCast(state, commander, target);
+  advanceReactionWindowAfterPlay(state, action.playerId, cards);
+}
+
 /** WOG War Zealot's always-on Magic Mirror, resolved without spending a card. */
 function applyUnitMagicMirror(
   state: GameState,
@@ -13313,7 +13351,9 @@ function applyUnitAbilityAction(
   // Cancelling the pick costs nothing.
   if (ability.effect?.type === "COMMANDER_CAST") {
     const cast = commanderCastOf(unit);
-    if (!cast || unit.attackedThisActivation || commanderCastUsedThisRound(state, unit)) {
+    // The two defend buffs are instant reactions, never an activation cast
+    // (they are played through USE_COMMANDER_CAST_REACTION when a unit is attacked).
+    if (!cast || commanderCastIsInstantReaction(cast) || unit.attackedThisActivation || commanderCastUsedThisRound(state, unit)) {
       throw new Error("That unit ability cannot be used now.");
     }
     const runeCost = commanderCastRuneCost(state, unit);
@@ -14501,6 +14541,9 @@ function chooseAbilityTarget(
         throw new Error("That commander cast is no longer possible.");
       }
       resolveCommanderCast(state, caster, target);
+      // User spec: casting a (non-reaction) command ability ends the commander's
+      // movement for this activation — it may still attack, but no longer move.
+      caster.movementLockedThisActivation = true;
       finishCombatIfNeeded(state);
     }
     return;
@@ -15485,6 +15528,9 @@ function moveUnit(state: GameState, action: Extract<GameAction, { type: "MOVE_UN
     from,
     to: finalPosition
   });
+
+  // Rune Keeper commander (Rune Ritual, move half): +1 Rune whenever it moves.
+  applyCommanderRuneOnMove(state, unit);
 
   // A Fire Wall or Land Mine that struck the mover down ends its activation.
   if (!isUnitAlive(unit)) {
@@ -16789,6 +16835,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "USE_UNIT_RESURRECTION":
         applyUnitResurrection(nextState, action, cards);
+        break;
+      case "USE_COMMANDER_CAST_REACTION":
+        applyCommanderCastReaction(nextState, action, cards);
         break;
       case "USE_UNIT_MAGIC_MIRROR":
         applyUnitMagicMirror(nextState, action, cards);

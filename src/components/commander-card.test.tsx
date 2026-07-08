@@ -1,7 +1,18 @@
 // @vitest-environment jsdom
-import { cleanup, render, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
-import { CommanderStatsPanel } from "./commander-card";
+import { cleanup, fireEvent, render, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("@/lib/sound", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/sound")>();
+  return { ...actual, playLibrarySound: vi.fn() };
+});
+
+import {
+  CommanderCardFace,
+  CommanderLevelUpOverlay,
+  CommanderLevelUpPicker,
+  CommanderStatsPanel
+} from "./commander-card";
 
 afterEach(cleanup);
 
@@ -67,5 +78,69 @@ describe("CommanderStatsPanel", () => {
     const chip = getByText(/No Enemy Retaliation/).closest("div") as HTMLElement;
     expect(within(chip).getByText(/\[N\]/)).toBeTruthy();
     expect(container.querySelector('img[src*="/assets/commander-icons/combo-N.jpg"]')).toBeTruthy();
+  });
+});
+
+// The rainbow frame spark (a purely decorative animated ring) is present on a
+// living commander's card face and hidden once it has fallen.
+describe("CommanderCardFace — rainbow frame spark", () => {
+  it("shows the spark for a living commander, hidden when fallen", () => {
+    const live = render(<CommanderCardFace slug="paladin" grades={{}} />);
+    expect(live.queryByTestId("commander-rainbow-spark")).toBeTruthy();
+    cleanup();
+    const dead = render(<CommanderCardFace slug="paladin" grades={{}} dead />);
+    expect(dead.queryByTestId("commander-rainbow-spark")).toBeNull();
+  });
+});
+
+// The clearer level-up picker: one separated, highlighted option per stat.
+describe("CommanderLevelUpPicker", () => {
+  it("lists all six stats, each its own highlighted option showing the grade jump", () => {
+    const picked: string[] = [];
+    const { container } = render(
+      <CommanderLevelUpPicker grades={{ attack: 1 }} gradePoints={2} onGradeUp={(s) => picked.push(s)} />
+    );
+    for (const key of ["attack", "defense", "health", "damage", "magic", "speed"]) {
+      expect(container.querySelector(`button.commanderPickStat[data-stat="${key}"]`), key).toBeTruthy();
+    }
+    // The Attack option shows its grade jump (→ II) and the numeric value it buys.
+    const attack = container.querySelector('button[data-stat="attack"]') as HTMLButtonElement;
+    expect(attack.textContent).toContain("→ II");
+    expect(attack.textContent).toContain("Attack 4"); // grade II Attack value
+    // One click spends one point on that stat.
+    fireEvent.click(attack);
+    expect(picked).toEqual(["attack"]);
+  });
+
+  it("disables and marks a capped (grade III) stat", () => {
+    const { container } = render(
+      <CommanderLevelUpPicker grades={{ magic: 3 }} gradePoints={1} onGradeUp={() => undefined} />
+    );
+    const magic = container.querySelector('button[data-stat="magic"]') as HTMLButtonElement;
+    expect(magic.disabled).toBe(true);
+    expect(magic.getAttribute("data-capped")).toBe("true");
+    expect(magic.textContent?.toLowerCase()).toContain("max");
+  });
+});
+
+// The level-up popup: a celebratory modal carrying the picker.
+describe("CommanderLevelUpOverlay", () => {
+  it("pops the banner, the commander face and the stat picker", () => {
+    const { getByText, container } = render(
+      <CommanderLevelUpOverlay slug="paladin" grades={{}} level={3} gradePoints={2} onGradeUp={() => undefined} onClose={() => undefined} />
+    );
+    expect(getByText(/COMMANDER LEVEL UP/i)).toBeTruthy();
+    expect(container.querySelector(".commanderLevelUpPicker")).toBeTruthy();
+    // The face (with its rainbow spark) is shown inside the modal.
+    expect(container.querySelector('[data-testid="commander-rainbow-spark"]')).toBeTruthy();
+  });
+
+  it("closes via the Done / Spend-later button", () => {
+    let closed = false;
+    const { getByRole } = render(
+      <CommanderLevelUpOverlay slug="paladin" grades={{}} gradePoints={0} onGradeUp={() => undefined} onClose={() => { closed = true; }} />
+    );
+    fireEvent.click(getByRole("button", { name: /done/i }));
+    expect(closed).toBe(true);
   });
 });

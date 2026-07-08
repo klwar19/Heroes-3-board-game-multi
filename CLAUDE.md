@@ -505,6 +505,21 @@ Leading with what does NOT run / deliberate readings:
   point picker lists each stat with a plain-words "what you gain" line
   (`gradeUpBenefit`); one click spends one point on a stat and the count ticks
   down. Unspent points pulse/blink the dock tile.
+- **Presentation (sfx + animation, all engine-event-driven, tested where pure):**
+  the card FACE now carries an animated **rainbow frame spark** (a rotating
+  rainbow ring + travelling white spark tracing the border; hidden for a fallen
+  commander; `.commanderRainbowFrame` in globals.css). Every command ability
+  animates + sounds in combat: `COMMANDER_CAST_USED` (the activation cast AND the
+  Shield / Stone Skin reaction) reuses the matching H3 spell's sprite + sound
+  over the target via `commanderCastFxPlan` (`src/data/commander-fx.ts`, Animate
+  Dead falls back to a heal shimmer), and `COMMANDER_SPECIALTY_TRIGGERED` plays a
+  themed sting (`commanderSpecialtySound`) — both wired in `page.tsx`'s combat FX
+  loop; the mapping is pinned in `commander-fx.test.ts`. A hero level-up that
+  awards commander points fires `COMMANDER_POINTS_AWARDED` and pops a celebratory
+  **level-up popup** (`CommanderLevelUpOverlay`, slam-in + fanfare) carrying the
+  clearer `CommanderLevelUpPicker`: one clearly-separated, per-stat-accent-
+  coloured option showing the grade jump, the numeric value change and the
+  benefit (render + click tested in `commander-card.test.tsx`).
 - **Battlefield voices**: a commander has no unit definition, so its combat
   voice is keyed by slug in `commanderVoices` (`unit-sounds.ts`,
   `commanderSoundKey`); the table passes `commander:<slug>` as the voice id
@@ -531,8 +546,11 @@ Leading with what does NOT run / deliberate readings:
   damage through the normal removal path, every neutral combat incl. banks —
   this REPLACED the old "Pacifist" flee specialty; pinned in
   `wog-commanders.test.ts` with a module-off and a non-Conflux CONTROL); Rune
-  Keeper Rune Ritual = +1 Rune the FIRST time the commander is attacked each
-  combat (once per fight; NOT a combat-start grant — original, a non-WoG add);
+  Keeper Rune Ritual = +1 Rune EVERY time the commander is attacked AND +1 EVERY
+  time it MOVES (`applyCommanderRuneRitual` on the attack, `applyCommanderRuneOnMove`
+  in `moveUnit`; NO once-per-combat cap any more — user spec "when he move or get
+  attacked, also gain rune +1"; retaliations don't count as being attacked;
+  pinned in `wog-commanders.test.ts` with a Paladin CONTROL for both halves);
   Hierophant First Aid = post-combat window restoring ONE bronze/silver
   casualty (died card returns — a Neutral-side card is pulled back OUT of its
   tier discard so it is never duplicated; a Pack that fell to Few flips back);
@@ -559,7 +577,13 @@ Leading with what does NOT run / deliberate readings:
   and `wog-commander-casts.test.ts`. Tokens are NOT ongoing effects — a commander
   can still be Paralyzed (unless Soul Eater).
 - **Cast readings**: the cast is once per combat round, FREE during the
-  commander's own activation (before it moves/attacks — it may still do both).
+  commander's own activation. Per the user spec a cast ENDS the commander's
+  MOVEMENT for that activation (it may still attack, but no longer move —
+  `movementLockedThisActivation`, gated in `getLegalMoveDestinations` so
+  MOVE_UNIT / MOVE_AND_ATTACK / the Battle-Teleport MOVE_ANYWHERE are all
+  blocked; pinned in `wog-commander-casts.test.ts`). The lone EXCEPTION is the
+  two **instant-reaction** defend buffs below, which are played off-turn and
+  never touch movement.
   Cure's cleanse removes ALL negative tokens+effects (not one); Animate Dead
   heals a flat 2 (the bronze/silver/gold ladder IS the Power scaling);
   Counterstrike = unlimited retaliation for the round (tier-laddered);
@@ -571,6 +595,28 @@ Leading with what does NOT run / deliberate readings:
   "mechanical" = the engine's `isMechanicalUnit` (Factory Automatons /
   Dreadnoughts); Shield shares the Shield SPELL's `DEFENSE_VS_ATTACKER_TYPE`
   semantics (a ranged-TYPE unit attacking adjacent is still not "melee").
+- **Hierophant Shield & Ogre Leader Stone Skin are INSTANT REACTIONS**, NOT
+  activation casts (user spec "the defend buff of 2 commanders is instant
+  reaction"). Keyed off `commanderCastIsInstantReaction` (`effect.kind ===
+  "defense-buff"`): removed from the activation offer (`commanderCastAvailable`
+  returns false for them) and instead offered to the ATTACKED unit's controller
+  in the open attack window (`commanderDefenseReactionUnit` →
+  `USE_COMMANDER_CAST_REACTION`, resolved via `applyCommanderCastReaction` +
+  `advanceReactionWindowAfterPlay`). They buff the attacked unit's Defense
+  BEFORE the hit resolves (a `current-combat-round` effect folds into the
+  triggering attack, like Interference), stay once-per-combat-round, cost no
+  activation and never lock movement. Shield (vs melee) is NOT offered against a
+  ranged-TYPE attacker (its `DEFENSE_VS_ATTACKER_TYPE` would do nothing); Stone
+  Skin (vs all) is offered against any attacker. Pinned in
+  `wog-commander-casts.test.ts` with a pass-the-reaction CONTROL, the melee-only
+  gate, and a once-per-round CONTROL.
+- **Dungeon Brute Bloodlust (melee) & Tower Temple Guardian Precision (ranged)**
+  now scale Pow 0 = +1 (target must be ADJACENT to the commander), Pow 1 = +1
+  (anywhere), Pow 2 = +2 (anywhere), always THIS round only
+  (`adjacentBelowPower: 1`, `amountByPower: [1, 1, 2]`; user spec). Precision
+  keeps its "ignore ranged penalties" rider. Pinned in
+  `wog-commander-casts.test.ts` (targeting-adjacency + amount, each with a
+  no-cast CONTROL).
 - **Might (Damage grade)** rolls N EXTRA attack dice (N = Damage grade 0/1/2/3)
   on the commander's attacks AND retaliations, folded into the attack value
   beside the normal die (each "+1" raises the attack; at most one "−1" counts).

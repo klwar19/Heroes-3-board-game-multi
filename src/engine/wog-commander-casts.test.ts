@@ -136,17 +136,43 @@ function enemyAttack(state: GameState, attackerUnitId: string, from: number, def
   );
 }
 
+/**
+ * p2's stripped attacker (Attack 3) at `from` DECLARES an attack on `defenderId`
+ * but does NOT settle — it leaves the attack-declared reaction window open so a
+ * commander's instant-reaction defend buff can be played into it.
+ */
+function declareEnemyAttack(state: GameState, attackerUnitId: string, from: number, defenderId: string): GameState {
+  const attacker = state.combat!.units[attackerUnitId];
+  attacker.abilities = [];
+  attacker.position = from;
+  attacker.attack = 3;
+  state.combat!.activeUnitId = attackerUnitId;
+  state.activePlayerId = "p2";
+  state.combat!.dice.scriptedRolls = [0, 0, 0, 0];
+  state.combat!.dice.rollCount = 0;
+  return apply(state, { type: "ATTACK_UNIT", playerId: "p2", attackerId: attackerUnitId, defenderId });
+}
+
+/** The commander defend-buff reaction offered to p1 in an open attack window. */
+function commanderReactionOffer(state: GameState) {
+  return (state.reactionWindow?.legalReactions.p1 ?? []).find(
+    (legal) => legal.action.type === "USE_COMMANDER_CAST_REACTION"
+  );
+}
+
 // ===========================================================================
 // The shared cast rules.
 // ===========================================================================
 
 describe("commander casts — shared rules", () => {
+  // Brute's Bloodlust is a plain activation cast; the adjacent griffins (cell 5,
+  // next to the commander at 9) are a legal melee target at every Power.
   it("is free (the commander still attacks) but only ONCE per combat round", () => {
-    let state = castState("ogre_leader");
-    state = castOn(state, "ogre_leader", "unit_p1_marksmen");
+    let state = castState("brute");
+    state = castOn(state, "brute", "unit_p1_griffins");
 
     // Still this commander's activation: the cast is NOT offered again…
-    expect(castOffer(state, "ogre_leader")).toBeUndefined();
+    expect(castOffer(state, "brute")).toBeUndefined();
 
     // …but its attack is still available and lands (free action).
     state = settle(
@@ -164,21 +190,51 @@ describe("commander casts — shared rules", () => {
     state.combat!.round += 1;
     state.combat!.units[commanderUnitId("p1")].activatedThisRound = false;
     state.combat!.units[commanderUnitId("p1")].movedThisActivation = false;
+    state.combat!.units[commanderUnitId("p1")].movementLockedThisActivation = false;
     state.combat!.units[commanderUnitId("p1")].attackedThisActivation = undefined;
     state.combat!.activeUnitId = commanderUnitId("p1");
     state.activePlayerId = "p1";
-    expect(castOffer(state, "ogre_leader")).toBeTruthy();
+    expect(castOffer(state, "brute")).toBeTruthy();
+  });
+
+  it("a (non-reaction) cast ENDS the commander's movement — it may still attack", () => {
+    let state = castState("brute");
+    const commanderId = commanderUnitId("p1");
+    const canMove = (s: GameState) =>
+      getLegalActions(s, "p1").some(
+        (legal) => legal.action.type === "MOVE_UNIT" && legal.action.unitId === commanderId
+      );
+
+    // CONTROL: before casting the commander may still move.
+    expect(canMove(state)).toBe(true);
+
+    state = castOn(state, "brute", "unit_p1_griffins");
+    expect(state.combat!.units[commanderId].movementLockedThisActivation).toBe(true);
+
+    // Movement is gone — no offer, and a forced MOVE_UNIT is rejected outright.
+    expect(canMove(state)).toBe(false);
+    const rejected = applyAction(state, {
+      type: "MOVE_UNIT",
+      playerId: "p1",
+      unitId: commanderId,
+      destination: 13
+    });
+    expect(rejected.errors.length).toBeGreaterThan(0);
+
+    // …but the attack still lands (the cast is free, only movement is spent).
+    state = settle(apply(state, { type: "ATTACK_UNIT", playerId: "p1", attackerId: commanderId, defenderId: "unit_p2_skeletons" }));
+    expect(state.combat!.units.unit_p2_skeletons.damage).toBe(2);
   });
 
   it("is offered only during the commander's OWN activation", () => {
-    const state = castState("ogre_leader");
+    const state = castState("brute");
     state.combat!.activeUnitId = "unit_p1_marksmen";
-    expect(castOffer(state, "ogre_leader")).toBeUndefined();
+    expect(castOffer(state, "brute")).toBeUndefined();
   });
 
   it("cancelling the pick costs nothing — the cast stays available", () => {
-    const state = castState("ogre_leader");
-    const offer = castOffer(state, "ogre_leader")!;
+    const state = castState("brute");
+    const offer = castOffer(state, "brute")!;
     const opened = apply(state, offer.action);
     const choice = opened.pendingChoice;
     if (choice?.type !== "ABILITY_TARGET_CHOICE") {
@@ -190,7 +246,7 @@ describe("commander casts — shared rules", () => {
       choiceId: choice.id,
       targetUnitId: "skip"
     });
-    expect(castOffer(cancelled, "ogre_leader")).toBeTruthy();
+    expect(castOffer(cancelled, "brute")).toBeTruthy();
   });
 
   it("ongoing-effect casts never offer an ONGOING-IMMUNE commander (Magic grade 1+)", () => {
@@ -249,57 +305,107 @@ describe("commander casts — Paladin's Cure", () => {
   });
 });
 
-describe("commander casts — Hierophant's Shield vs Ogre Leader's Stone Skin", () => {
-  it("Shield blunts MELEE attacks only; Stone Skin blunts ranged shots too (sibling cross-check)", () => {
-    // Baseline: skeletons (attack 2 + die 0) hit the crusaders for 2 - 1 defense = 1… use marksmen defense 0.
-    function meleeInto(state: GameState): number {
-      // The defender never retaliates — the burn/blunt reading stays clean.
-      state.combat!.units.unit_p1_marksmen.retaliatedThisRound = true;
-      const next = enemyAttack(state, "unit_p2_skeletons", 2, "unit_p1_marksmen");
-      return next.combat!.units.unit_p1_marksmen.damage;
+describe("commander casts — Hierophant Shield / Ogre Stone Skin are INSTANT REACTIONS", () => {
+  function targetMarksmen(state: GameState): void {
+    const marksmen = state.combat!.units.unit_p1_marksmen;
+    marksmen.abilities = [];
+    marksmen.defense = 1;
+    marksmen.maxHealth = 20;
+    marksmen.damage = 0;
+    marksmen.retaliatedThisRound = true; // clean reading (no retaliation noise)
+    marksmen.position = 1;
+  }
+
+  it("shields the ATTACKED unit before damage; Shield is melee-only, Stone Skin also stops ranged", () => {
+    // A stripped melee attacker (skeletons, Attack 3) hits the marksmen (def 1).
+    function meleeInto(slug: CommanderSlug, useShield: boolean): number {
+      const state = castState(slug, { magic: 3 }); // Power 2 → +3 Defense
+      targetMarksmen(state);
+      let s = declareEnemyAttack(state, "unit_p2_skeletons", 2, "unit_p1_marksmen");
+      if (useShield) {
+        const offer = commanderReactionOffer(s);
+        expect(offer, `${slug} defend reaction offered vs melee`).toBeTruthy();
+        s = apply(s, offer!.action);
+      }
+      return settle(s).combat!.units.unit_p1_marksmen.damage;
     }
-    function rangedInto(state: GameState): number {
-      // Vampires make a fake ranged shooter: type ranged, far away.
-      const shooter = state.combat!.units.unit_p2_vampires;
-      shooter.type = "ranged";
-      shooter.attack = 3;
-      const next = enemyAttack(state, "unit_p2_vampires", 14, "unit_p1_marksmen");
-      return next.combat!.units.unit_p1_marksmen.damage;
+
+    // CONTROL (pass the reaction): 3 - 1 = 2 damage.
+    expect(meleeInto("hierophant", false)).toBe(2);
+    // Shield +3 vs melee: 3 - (1+3) = 0.
+    expect(meleeInto("hierophant", true)).toBe(0);
+    // Stone Skin +3 vs ALL also blunts the melee hit to 0.
+    expect(meleeInto("ogre_leader", true)).toBe(0);
+
+    // A RANGED shot (vampires turned ranged): Shield is NOT offered (melee-only),
+    // Stone Skin IS and blunts the shot.
+    function rangedInto(slug: CommanderSlug): { offered: boolean; damage: number } {
+      const state = castState(slug, { magic: 3 });
+      targetMarksmen(state);
+      state.combat!.units.unit_p2_vampires.type = "ranged";
+      let s = declareEnemyAttack(state, "unit_p2_vampires", 14, "unit_p1_marksmen");
+      const offer = commanderReactionOffer(s);
+      if (offer) {
+        s = apply(s, offer.action);
+      }
+      return { offered: Boolean(offer), damage: settle(s).combat!.units.unit_p1_marksmen.damage };
     }
 
-    // CONTROL: unbuffed marksmen (defense 1) take 3 - 1 = 2 from the melee hit.
-    const plain = castState("hierophant");
-    plain.combat!.units.unit_p1_marksmen.defense = 1;
-    expect(meleeInto(plain)).toBe(2);
+    const shieldVsRanged = rangedInto("hierophant");
+    expect(shieldVsRanged.offered).toBe(false); // melee-only → no dead offer
+    expect(shieldVsRanged.damage).toBe(2); // full 3 - 1 = 2
+    const stoneVsRanged = rangedInto("ogre_leader");
+    expect(stoneVsRanged.offered).toBe(true);
+    expect(stoneVsRanged.damage).toBe(0);
+  });
 
-    // Shield Pow 2 (+3 vs melee): the same hit is fully blunted.
-    let shielded = castState("hierophant", { magic: 3 });
-    shielded.combat!.units.unit_p1_marksmen.defense = 1;
-    shielded = castOn(shielded, "hierophant", "unit_p1_marksmen");
-    expect(meleeInto(shielded)).toBe(0);
+  it("is NOT an activation cast, and the reaction is once per combat round", () => {
+    // Never offered as a USE_UNIT_ABILITY during the commander's own activation.
+    const own = castState("hierophant", { magic: 3 });
+    expect(castOffer(own, "hierophant")).toBeUndefined();
 
-    // …but Shield does NOT stop a ranged shot (3 - 1 = 2 damage).
-    let shotThrough = castState("hierophant", { magic: 3 });
-    shotThrough.combat!.units.unit_p1_marksmen.defense = 1;
-    shotThrough = castOn(shotThrough, "hierophant", "unit_p1_marksmen");
-    expect(rangedInto(shotThrough)).toBe(2);
+    // Once per round: after shielding one hit, a second attack the same round
+    // offers no further reaction (the once-per-round budget was spent).
+    const state = castState("hierophant", { magic: 3 });
+    targetMarksmen(state);
+    let s = declareEnemyAttack(state, "unit_p2_skeletons", 2, "unit_p1_marksmen");
+    const first = commanderReactionOffer(s);
+    expect(first).toBeTruthy();
+    s = settle(apply(s, first!.action));
 
-    // Stone Skin Pow 2 (+3 vs ALL): the ranged shot is blunted to 0 as well.
-    let stone = castState("ogre_leader", { magic: 3 });
-    stone.combat!.units.unit_p1_marksmen.defense = 1;
-    stone = castOn(stone, "ogre_leader", "unit_p1_marksmen");
-    expect(rangedInto(stone)).toBe(0);
+    s.combat!.units.unit_p1_marksmen.retaliatedThisRound = true;
+    const s2 = declareEnemyAttack(s, "unit_p2_vampires", 0, "unit_p1_marksmen");
+    expect(commanderReactionOffer(s2)).toBeFalsy();
+    settle(s2);
   });
 });
 
 describe("commander casts — Temple Guardian's Precision", () => {
-  it("targets RANGED friendlies only and adds +1/+3 Attack to their shot", () => {
-    // Targeting: the ground crusaders are never offered; the ranged marksmen are.
-    const gate = castState("temple_guardian");
-    const candidates = castCandidateIds(gate, "temple_guardian");
-    expect(candidates).toContain("unit_p1_marksmen");
-    expect(candidates).not.toContain("unit_p1_crusaders");
+  // Power ladder (user spec): Pow 0 = +1 but ADJACENT; Pow 1 = +1 anywhere; Pow 2
+  // = +2 anywhere. Always this round only; the ignore-ranged-penalties rider stays.
+  it("targets RANGED friendlies only; Pow 0 needs adjacency, Pow 1+ reaches anywhere", () => {
+    function gate(magic: number): string[] {
+      const state = castState("temple_guardian", magic ? { magic } : {});
+      state.combat!.units.unit_p1_marksmen.position = 13; // ranged, adjacent to the commander at 9
+      const griffins = state.combat!.units.unit_p1_griffins;
+      griffins.type = "ranged";
+      griffins.position = 1; // ranged, FAR from the commander
+      return castCandidateIds(state, "temple_guardian");
+    }
+    // Pow 0: only the ADJACENT ranged marksmen; the distant ranged griffins and
+    // the ground crusaders are NOT offered.
+    const low = gate(0);
+    expect(low).toContain("unit_p1_marksmen");
+    expect(low).not.toContain("unit_p1_griffins");
+    expect(low).not.toContain("unit_p1_crusaders");
+    // Pow 1 (magic grade 2): the distant ranged griffins joins; crusaders never do.
+    const mid = gate(2);
+    expect(mid).toContain("unit_p1_marksmen");
+    expect(mid).toContain("unit_p1_griffins");
+    expect(mid).not.toContain("unit_p1_crusaders");
+  });
 
+  it("adds +1 Attack at Pow 1 and +2 at Pow 2 to the buffed unit's shot", () => {
     function shoot(state: GameState): number {
       const marksmen = state.combat!.units.unit_p1_marksmen;
       marksmen.abilities = [];
@@ -321,14 +427,13 @@ describe("commander casts — Temple Guardian's Precision", () => {
 
     // CONTROL: marksmen attack 3 + die 0 = 3.
     expect(shoot(castState("temple_guardian"))).toBe(3);
-    // Pow 0: +1 → 4. (The cast happens during the commander's activation;
-    // the buff then rides the marksmen's own shot.)
-    expect(shoot(castOn(castState("temple_guardian"), "temple_guardian", "unit_p1_marksmen"))).toBe(4);
-    // Pow 2: +3 → 6.
-    expect(shoot(castOn(castState("temple_guardian", { magic: 3 }), "temple_guardian", "unit_p1_marksmen"))).toBe(6);
+    // Pow 1 (magic grade 2), reaches anywhere: +1 → 4.
+    expect(shoot(castOn(castState("temple_guardian", { magic: 2 }), "temple_guardian", "unit_p1_marksmen"))).toBe(4);
+    // Pow 2 (magic grade 3): +2 → 5.
+    expect(shoot(castOn(castState("temple_guardian", { magic: 3 }), "temple_guardian", "unit_p1_marksmen"))).toBe(5);
   });
 
-  it("lifts the adjacent-shot penalty: a point-blank shot rolls one straight die", () => {
+  it("lifts the adjacent-shot penalty (Pow 1): a point-blank shot rolls one straight die", () => {
     function pointBlank(state: GameState): number {
       const marksmen = state.combat!.units.unit_p1_marksmen;
       marksmen.abilities = [];
@@ -358,34 +463,44 @@ describe("commander casts — Temple Guardian's Precision", () => {
     penalized.combat!.units.unit_p2_skeletons.position = 5;
     expect(pointBlank(penalized)).toBe(2);
 
-    // Precision waives every ranged penalty → the +1 stands: 3 + 1 + 1(Pow 0 attack) = 5.
-    let waived = castState("temple_guardian");
+    // Precision at Pow 1 (magic grade 2, reaches anywhere) waives every ranged
+    // penalty → the +1 stands: 3 + 1(buff) + 1(die) = 5.
+    let waived = castState("temple_guardian", { magic: 2 });
     waived.combat!.units.unit_p2_skeletons.position = 5;
-    state_fixup(waived);
+    waived.combat!.activeUnitId = commanderUnitId("p1");
+    waived.activePlayerId = "p1";
     waived = castOn(waived, "temple_guardian", "unit_p1_marksmen");
     expect(pointBlank(waived)).toBe(5);
-
-    function state_fixup(state: GameState): void {
-      // keep the commander's own activation valid for the cast first
-      state.combat!.activeUnitId = commanderUnitId("p1");
-      state.activePlayerId = "p1";
-    }
   });
 });
 
 describe("commander casts — Brute's Bloodlust", () => {
-  it("buffs a MELEE friendly anywhere (+1/+3 Attack); ranged units are never offered", () => {
-    const gate = castState("brute");
-    const candidates = castCandidateIds(gate, "brute");
-    expect(candidates).toContain("unit_p1_crusaders");
-    expect(candidates).not.toContain("unit_p1_marksmen");
+  // Power ladder (user spec): Pow 0 = +1 but ADJACENT; Pow 1 = +1 anywhere;
+  // Pow 2 = +2 anywhere. Always this round only.
+  it("targets MELEE friendlies only; Pow 0 needs adjacency, Pow 1+ reaches anywhere", () => {
+    function gate(magic: number): string[] {
+      const state = castState("brute", magic ? { magic } : {});
+      state.combat!.units.unit_p1_crusaders.position = 6; // melee, NOT adjacent to the commander at 9
+      return castCandidateIds(state, "brute");
+    }
+    // Pow 0: only the ADJACENT melee griffins (cell 5); the distant melee crusaders
+    // and the ranged marksmen are NOT offered.
+    const low = gate(0);
+    expect(low).toContain("unit_p1_griffins");
+    expect(low).not.toContain("unit_p1_crusaders");
+    expect(low).not.toContain("unit_p1_marksmen");
+    // Pow 1 (magic grade 2): the distant melee crusaders joins; ranged never do.
+    const mid = gate(2);
+    expect(mid).toContain("unit_p1_crusaders");
+    expect(mid).not.toContain("unit_p1_marksmen");
+  });
 
+  it("adds +1 Attack at Pow 1 and +2 at Pow 2 to the buffed unit's strike", () => {
     function strike(state: GameState): number {
       const crusaders = state.combat!.units.unit_p1_crusaders;
       crusaders.abilities = [];
       crusaders.attack = 2;
-      crusaders.position = 13; // adjacent to the skeletons at 10? no — 13 is adjacent to 9/12/14/17; use 6→10.
-      crusaders.position = 6;
+      crusaders.position = 6; // adjacent to the skeletons at 10
       state.combat!.units.unit_p2_skeletons.position = 10;
       state.combat!.activeUnitId = "unit_p1_crusaders";
       state.activePlayerId = "p1";
@@ -402,9 +517,12 @@ describe("commander casts — Brute's Bloodlust", () => {
       return next.combat!.units.unit_p2_skeletons.damage;
     }
 
+    // CONTROL: crusaders attack 2 + die 0 = 2.
     expect(strike(castState("brute"))).toBe(2);
-    expect(strike(castOn(castState("brute"), "brute", "unit_p1_crusaders"))).toBe(3);
-    expect(strike(castOn(castState("brute", { magic: 3 }), "brute", "unit_p1_crusaders"))).toBe(5);
+    // Pow 1 (magic grade 2), reaches anywhere: +1 → 3.
+    expect(strike(castOn(castState("brute", { magic: 2 }), "brute", "unit_p1_crusaders"))).toBe(3);
+    // Pow 2 (magic grade 3): +2 → 4.
+    expect(strike(castOn(castState("brute", { magic: 3 }), "brute", "unit_p1_crusaders"))).toBe(4);
   });
 });
 
