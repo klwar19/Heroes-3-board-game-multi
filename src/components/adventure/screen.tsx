@@ -2183,6 +2183,12 @@ export function TownHeroDock({
                     ? () => onAction({ type: "REVIVE_COMMANDER", playerId: armyPlayer.id })
                     : undefined
                 }
+                stance={commander.stance}
+                onSetStance={
+                  onAction && !state.combat
+                    ? (stance) => onAction({ type: "COMMANDER_SET_STANCE", playerId: armyPlayer.id, stance })
+                    : undefined
+                }
               />
             </div>
           </div>

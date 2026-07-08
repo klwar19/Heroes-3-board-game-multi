@@ -72,6 +72,8 @@ export function CommanderCard({
   onGradeUp,
   onRevive,
   goldAvailable,
+  stance,
+  onSetStance,
   editable = false,
   showPanel = true,
   className
@@ -90,6 +92,10 @@ export function CommanderCard({
   onRevive?: () => void;
   /** Live mode: owner's gold, to enable/disable the revive button. */
   goldAvailable?: number;
+  /** Superior Combat commanders: the current +1 Attack/Defense stance. */
+  stance?: "attack" | "defense";
+  /** Live mode: change the Superior Combat stance (only outside combat). */
+  onSetStance?: (stance: "attack" | "defense") => void;
   /** Preview mode: local grade/level editing (no engine). */
   editable?: boolean;
   /** Hide the info panel to show just the card face. */
@@ -100,7 +106,10 @@ export function CommanderCard({
   const [localGrades, setLocalGrades] = useState<CommanderGrades>({ ...GRADES_ONE });
   const [localLevel, setLocalLevel] = useState(1);
   const [picked, setPicked] = useState<CommanderStatKey[]>([]);
+  const [localStance, setLocalStance] = useState<"attack" | "defense">("attack");
 
+  const hasStance = def?.specialty.id === "superior-combat";
+  const shownStance: "attack" | "defense" = editable ? localStance : (stance ?? "attack");
   const grades = editable ? localGrades : normalizeGrades(gradesProp);
   const shownLevel = editable ? localLevel : level;
   const power = commanderStatValue("magic", grades.magic);
@@ -203,27 +212,31 @@ export function CommanderCard({
           {def.faction.toUpperCase()} COMMANDER
         </span>
 
-        {/* Dynamic stat numbers over the frame wells (Attack/Defense/Health/Speed). */}
-        {STAT_WELLS.map(({ key, topPct }) => (
-          <span
-            key={key}
-            title={`${COMMANDER_STAT_LABELS[key]} (grade ${grades[key]})`}
-            style={{
-              position: "absolute",
-              left: `${STAT_LEFT_PCT}%`,
-              top: `${topPct}%`,
-              transform: "translate(-50%, -50%)",
-              fontSize: "4.6cqw",
-              fontWeight: 700,
-              color: grades[key] >= 3 ? GOLD : PALE,
-              textShadow: OUTLINE,
-              pointerEvents: "none",
-              lineHeight: 1
-            }}
-          >
-            {commanderStatValue(key, grades[key])}
-          </span>
-        ))}
+        {/* Dynamic stat numbers over the frame wells (Attack/Defense/Health/Speed).
+            A Superior Combat commander shows its +1 stance bonus baked in. */}
+        {STAT_WELLS.map(({ key, topPct }) => {
+          const stanceBonus = hasStance && key === shownStance ? 1 : 0;
+          return (
+            <span
+              key={key}
+              title={`${COMMANDER_STAT_LABELS[key]} (grade ${grades[key]}${stanceBonus ? ", +1 stance" : ""})`}
+              style={{
+                position: "absolute",
+                left: `${STAT_LEFT_PCT}%`,
+                top: `${topPct}%`,
+                transform: "translate(-50%, -50%)",
+                fontSize: "4.6cqw",
+                fontWeight: 700,
+                color: stanceBonus ? "#9be29b" : grades[key] >= 3 ? GOLD : PALE,
+                textShadow: OUTLINE,
+                pointerEvents: "none",
+                lineHeight: 1
+              }}
+            >
+              {commanderStatValue(key, grades[key]) + stanceBonus}
+            </span>
+          );
+        })}
 
         {/* Level badge (top-left of the art window). */}
         <span
@@ -484,6 +497,40 @@ export function CommanderCard({
             <div style={{ fontSize: 12.5 }}>
               <b style={{ color: PALE }}>{def.specialty.name}.</b> {def.specialty.text}
             </div>
+            {hasStance ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
+                <span style={{ opacity: 0.85 }}>Combat stance:</span>
+                {(["attack", "defense"] as const).map((option) => {
+                  const active = shownStance === option;
+                  const settable = editable || Boolean(onSetStance);
+                  return (
+                    <button
+                      key={option}
+                      type="button"
+                      disabled={!settable}
+                      onClick={
+                        editable
+                          ? () => setLocalStance(option)
+                          : onSetStance
+                            ? () => onSetStance(option)
+                            : undefined
+                      }
+                      style={{
+                        padding: "3px 10px",
+                        borderRadius: 12,
+                        border: `1px solid ${active ? GOLD : "#6b5433"}`,
+                        background: active ? "#7a5a2c" : "#2a2119",
+                        color: active ? PALE : DIM,
+                        cursor: settable ? "pointer" : "default",
+                        fontWeight: 600
+                      }}
+                    >
+                      +1 {option === "attack" ? "Attack" : "Defense"}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
           </div>
           <div>
             <div style={{ color: "#e6c56a", fontWeight: 700, letterSpacing: 1, marginBottom: 4 }}>

@@ -400,13 +400,14 @@ Leading with what does NOT run / deliberate readings:
   exceed the per-round limit (this game has no mana pool; a burned charge
   converts into `spellLimitBonusThisRound` so the limit never dips below the
   count); Brute Soul Reformer = flat +2 gold after each WON combat (no XP→gold
-  pools); Soul Eater Undead = Paralysis-token immunity; Shaman Swiftness = +1
-  map movement for the OWN MAIN hero (replaces "Superior Combat"); Sea Marshal
-  Dead Calm = -1 map movement for every ENEMY hero (non-stacking across
-  multiple Sea Marshals); Astral Spirit Pacifist = at combat start vs 2+
-  neutral guards one random bronze/silver guard flees to its tier discard (no
-  rewards for it; bank fights exempt); Rune Keeper Rune Ritual = +1 Rune at
-  combat start (original — the commander itself is a non-WoG original);
+  pools); Soul Eater Undead = Paralysis-token immunity; Shaman Superior Combat
+  AND Sea Marshal Battle Stance = the owner picks the commander's combat stance
+  (+1 Attack OR +1 Defense) on the commander card OUTSIDE combat, baked into the
+  unit at each combat's setup (default +1 Attack; `commander.stance`); Astral
+  Spirit Pacifist = at combat start vs 2+ neutral guards one random bronze/silver
+  guard flees to its tier discard (no rewards for it; bank fights exempt); Rune
+  Keeper Rune Ritual = +1 Rune the FIRST time the commander is attacked each
+  combat (once per fight; NOT a combat-start grant — original, a non-WoG add);
   Hierophant First Aid = post-combat window restoring ONE bronze/silver
   casualty (died card returns — a Neutral-side card is pulled back OUT of its
   tier discard so it is never duplicated; a Pack that fell to Few flips back);

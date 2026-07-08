@@ -207,9 +207,8 @@ export interface CommanderSpecialtyDefinition {
     | "soul-reformer"
     | "undead"
     | "ballista-master"
-    | "swiftness"
+    | "superior-combat"
     | "pacifist"
-    | "dead-calm"
     | "tinkerer"
     | "rune-ritual";
   name: string;
@@ -400,9 +399,9 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
       ]
     },
     specialty: {
-      id: "swiftness",
-      name: "Swiftness",
-      text: "While the commander lives, your main hero has +1 movement range."
+      id: "superior-combat",
+      name: "Superior Combat",
+      text: "At combat setup, choose +1 Attack or +1 Defense for the commander (applied at the start of each of its combats)."
     },
     cardImage: "/assets/units-commander-shaman.webp"
   },
@@ -446,9 +445,9 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
       ]
     },
     specialty: {
-      id: "dead-calm",
-      name: "Dead Calm",
-      text: "While the commander lives, every enemy hero has -1 movement range."
+      id: "superior-combat",
+      name: "Battle Stance",
+      text: "At combat setup, choose +1 Attack or +1 Defense for the commander (applied at the start of each of its combats)."
     },
     cardImage: "/assets/units-commander-corsair.webp"
   },

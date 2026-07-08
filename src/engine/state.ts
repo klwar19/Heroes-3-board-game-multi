@@ -2641,6 +2641,16 @@ export type GameAction =
       playerId: PlayerId;
       optionIndex: number | null;
     }
+  | {
+      /**
+       * Superior Combat specialty (Shaman / Sea Marshal): set the commander's
+       * combat-setup stance — +1 Attack or +1 Defense, applied at the start of
+       * each of its combats. Chosen outside combat on the commander card.
+       */
+      type: "COMMANDER_SET_STANCE";
+      playerId: PlayerId;
+      stance: "attack" | "defense";
+    }
   | { type: "DEFEND_UNIT"; playerId: PlayerId; unitId: UnitId }
   | { type: "END_ACTIVATION"; playerId: PlayerId; unitId: UnitId }
   | { type: "END_COMBAT_ROUND"; playerId: PlayerId }
@@ -5254,6 +5264,12 @@ export type CommanderPlayerState = {
   pendingGradeUps?: number[];
   /** Killed in combat; stays dead until revived for gold (REVIVE_COMMANDER). */
   dead?: boolean;
+  /**
+   * Superior Combat specialty (Shaman / Sea Marshal): the stat the owner raises
+   * by +1 at combat setup. Applied when the commander's combat unit is built
+   * each combat. Absent = "attack". Ignored for every other commander.
+   */
+  stance?: "attack" | "defense";
 };
 
 export type PlayerState = {
@@ -5772,6 +5788,13 @@ export type CombatUnitState = {
    * cast is once per combat round ("may cast"), free during its own activation.
    */
   commanderCastRound?: number;
+  /**
+   * Rune Keeper commander (Rune Ritual): set once this commander has banked its
+   * once-per-combat "+1 Rune the first time it is attacked" grant, so a second
+   * incoming attack never pays out again. Combat-scoped (the unit is rebuilt
+   * each fight, so it naturally resets).
+   */
+  runeRitualDone?: boolean;
   assets?: {
     cardImage?: string;
     imageAlt?: string;

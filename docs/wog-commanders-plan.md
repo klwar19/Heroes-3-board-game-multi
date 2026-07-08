@@ -255,10 +255,17 @@ Astral Spirit (croppable) — both fall outside/at the edge of the 540×594 art 
 The open decisions below were settled by the user's board-game spec and the
 module is engine-wired end to end:
 
-- **Roster renames**: Cove "Corsair" → **Sea Marshal** (Slow + Dead Calm),
+- **Roster renames**: Cove "Corsair" → **Sea Marshal** (Slow + Battle Stance),
   Factory "Engineer" → **Artificer** (Field Repair + Tinkerer), Bulwark
   "Frost Warlord" → **Rune Keeper** (Rune Mend + Rune Ritual). Slugs and art
   assets unchanged.
+- **Superior Combat / Battle Stance** (Shaman & Sea Marshal): the owner chooses
+  the commander's stance — +1 Attack OR +1 Defense — on the commander card
+  outside combat; it is baked into the commander's unit at the start of each of
+  its combats (`COMMANDER_SET_STANCE`; default +1 Attack). This replaced the
+  earlier map-movement passives (Swiftness / Dead Calm), which were removed.
+- **Rune Ritual** (Rune Keeper): +1 Rune the first time the commander is
+  attacked each combat (once per fight), not a combat-start grant.
 - **Stats**: six stats at grade 1–3 (`COMMANDER_GRADE_VALUES`) replacing §4's
   5-tier tracks: Attack 2/3/4, Defense 1/2/3, Health 4/6/8, Damage +0/+1/+2
   on-hit, Magic = Power 0/1/2 with -1/-1/-2 Spell damage + ongoing-effect
