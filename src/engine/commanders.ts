@@ -3,6 +3,7 @@ import {
   COMMANDER_MAGIC_SPELL_DAMAGE_REDUCTION,
   COMMANDER_SLUG_BY_FACTION,
   COMMANDER_STAT_KEYS,
+  commanderCastIsInstantReaction,
   commanderCastTierIndex,
   commanderDefinitions,
   commanderGradePointsForLevelUp,
@@ -442,7 +443,13 @@ export function commanderCastCandidates(state: GameState, unit: CombatUnitState)
  */
 export function commanderCastAvailable(state: GameState, unit: CombatUnitState): boolean {
   const combat = state.combat;
-  if (!combat || !unit.commanderSlug || combat.activeUnitId !== unit.id) {
+  const cast = commanderCastOf(unit);
+  if (!combat || !unit.commanderSlug || !cast || combat.activeUnitId !== unit.id) {
+    return false;
+  }
+  // The two defend buffs are INSTANT REACTIONS (played when a unit is attacked),
+  // never offered as an activation cast — see commanderDefenseReactionUnit.
+  if (commanderCastIsInstantReaction(cast)) {
     return false;
   }
   if (unit.activatedThisRound || unit.movedThisActivation || unit.attackedThisActivation) {
@@ -456,6 +463,55 @@ export function commanderCastAvailable(state: GameState, unit: CombatUnitState):
     return false;
   }
   return commanderCastCandidates(state, unit).length > 0;
+}
+
+/**
+ * INSTANT-REACTION defend buffs (Hierophant's Shield, Ogre Leader's Stone Skin):
+ * the living commander that may react to `defenderUnit` being attacked by
+ * `attackerUnit`, or null when no reaction is available. Offered off-turn (no
+ * activation gate) when:
+ *  - the defender's controller owns a living commander whose command is an
+ *    instant-reaction defend buff, not yet used this combat round,
+ *  - the attacked unit is a legal target of that buff (side/self/immune rules,
+ *    via commanderCastCandidates), and
+ *  - the buff would actually blunt this hit: a melee-only Shield is NOT offered
+ *    against a ranged-TYPE attacker (its DEFENSE_VS_ATTACKER_TYPE would do
+ *    nothing), matching how the Shield spell's reaction is gated.
+ * The commander itself is never a target (canTargetSelf is false on both), so it
+ * cannot self-shield — commanderCastCandidates already excludes it.
+ */
+export function commanderDefenseReactionUnit(
+  state: GameState,
+  defenderUnit: CombatUnitState,
+  attackerUnit: CombatUnitState | undefined
+): CombatUnitState | null {
+  const combat = state.combat;
+  if (!combat) {
+    return null;
+  }
+  const commander = findCommanderUnit(state, defenderUnit.controllerId);
+  if (!commander || commander.damage >= commander.maxHealth) {
+    return null;
+  }
+  const cast = commanderCastOf(commander);
+  if (!cast || !commanderCastIsInstantReaction(cast) || commanderCastUsedThisRound(state, commander)) {
+    return null;
+  }
+  const runeCost = commanderCastRuneCost(state, commander);
+  if (runeCost > 0 && commanderRunePool(state, commander.controllerId) < runeCost) {
+    return null;
+  }
+  if (!commanderCastCandidates(state, commander).some((candidate) => candidate.id === defenderUnit.id)) {
+    return null;
+  }
+  if (
+    cast.effect.kind === "defense-buff" &&
+    cast.effect.vs === "melee" &&
+    attackerUnit?.type === "ranged"
+  ) {
+    return null;
+  }
+  return commander;
 }
 
 // ---------------------------------------------------------------------------
@@ -595,19 +651,18 @@ export function applyCommanderCombatStart(state: GameState): void {
 }
 
 /**
- * Rune Keeper commander — Rune Ritual: the first time the commander is attacked
- * in a combat, its owner gains 1 Rune (once per combat). Called from the attack
- * resolution with the attack's DEFENDER; a no-op unless that defender is a
- * living Rune Keeper commander that has not yet banked the grant this fight.
- * `isRetaliation` is the incoming attack's flag — a retaliation's "defender" is
- * the original attacker (the commander striking back is not "being attacked"),
- * so those are skipped.
+ * Rune Keeper commander — Rune Ritual (attack half): EVERY time the commander is
+ * attacked in a combat, its owner gains 1 Rune. Called from the attack resolution
+ * with the attack's DEFENDER; a no-op unless that defender is a living Rune Keeper
+ * commander. `isRetaliation` is the incoming attack's flag — a retaliation's
+ * "defender" is the original attacker (the commander striking back is not "being
+ * attacked"), so those are skipped. There is NO once-per-combat cap: each incoming
+ * attack banks a Rune (the move half is applyCommanderRuneOnMove).
  */
 export function applyCommanderRuneRitual(state: GameState, defender: CombatUnitState, isRetaliation: boolean): void {
-  if (isRetaliation || defender.commanderSlug !== "bulwark" || defender.runeRitualDone) {
+  if (isRetaliation || defender.commanderSlug !== "bulwark" || defender.damage >= defender.maxHealth) {
     return;
   }
-  defender.runeRitualDone = true;
   gainRunes(state, defender.controllerId, 1);
   emitSpecialty(
     state,
@@ -615,6 +670,26 @@ export function applyCommanderRuneRitual(state: GameState, defender: CombatUnitS
     "bulwark",
     "rune-ritual",
     `The Rune Keeper's ritual answers the attack — +1 Rune.`
+  );
+}
+
+/**
+ * Rune Keeper commander — Rune Ritual (move half): every time the commander
+ * MOVES, its owner gains 1 Rune. Called from moveUnit after a Rune Keeper
+ * commander's move resolves; a no-op for any other unit. A commander moves at
+ * most once per activation, so this is naturally bounded to one Rune per turn.
+ */
+export function applyCommanderRuneOnMove(state: GameState, unit: CombatUnitState): void {
+  if (unit.commanderSlug !== "bulwark" || unit.damage >= unit.maxHealth) {
+    return;
+  }
+  gainRunes(state, unit.controllerId, 1);
+  emitSpecialty(
+    state,
+    unit.controllerId,
+    "bulwark",
+    "rune-ritual",
+    `The Rune Keeper carves a rune as it advances — +1 Rune.`
   );
 }
 

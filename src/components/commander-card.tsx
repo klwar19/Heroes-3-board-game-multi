@@ -1,10 +1,11 @@
 "use client";
 
 /* eslint-disable @next/next/no-img-element */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 
 import { assetUrl } from "@/lib/asset-url";
+import { playLibrarySound } from "@/lib/sound";
 import {
   COMMANDER_COMBOS,
   COMMANDER_DEFENSE_TOKEN_GRADE,
@@ -153,6 +154,12 @@ export function CommanderCardFace({
         src={assetUrl(def.cardImage)}
         style={{ width: "100%", display: "block", borderRadius: "2.5cqw", filter: dead ? "grayscale(0.9) brightness(0.6)" : undefined }}
       />
+
+      {/* Animated rainbow frame spark: a rotating rainbow ring with a bright
+          travelling spark, tracing the card border. Hidden for a fallen
+          commander (its frame is greyed out). Purely decorative — pointer-events
+          off so it never eats clicks. */}
+      {!dead ? <div className="commanderRainbowFrame" aria-hidden="true" data-testid="commander-rainbow-spark" /> : null}
 
       {/* Name + faction tag (overlaid on the banner). */}
       <span
@@ -803,58 +810,10 @@ export function CommanderCard({
           ) : null}
 
           {/* Grade-up picker (live mode, when points are unspent) — one click
-              spends one point on a stat. Pulses so a fresh level-up is
-              impossible to miss; a spend re-renders with the remaining count. */}
+              spends one point on a stat. Each stat is a clearly-separated,
+              individually-highlighted option. */}
           {!editable && gradePoints > 0 && onGradeUp && !dead ? (
-            <div className="commanderGradeUpPulse" style={{ padding: 8, border: "1px dashed #b9985a", borderRadius: 6, background: "#241b10" }}>
-              <div style={{ color: GOLD, fontWeight: 700, marginBottom: 2 }}>
-                LEVEL UP — {gradePoints} stat {gradePoints === 1 ? "point" : "points"} to spend
-              </div>
-              <div style={{ color: DIM, fontSize: 11.5, marginBottom: 6 }}>
-                Click a stat to raise it one grade (each click spends 1 point).
-              </div>
-              <div style={{ display: "grid", gap: 5 }}>
-                {COMMANDER_STAT_KEYS.map((key) => {
-                  const capped = grades[key] >= 3;
-                  const nextGrade = (grades[key] + 1) as CommanderGrade;
-                  return (
-                    <button
-                      key={key}
-                      type="button"
-                      disabled={capped}
-                      onClick={() => onGradeUp(key)}
-                      title={capped ? undefined : gradeUpBenefit(key, nextGrade)}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 8,
-                        textAlign: "left",
-                        padding: "5px 9px",
-                        borderRadius: 8,
-                        border: `1px solid ${capped ? "#4d3d26" : "#8d683c"}`,
-                        background: capped ? "#1c1710" : "#2f2415",
-                        color: capped ? "#6d6252" : PALE,
-                        cursor: capped ? "default" : "pointer",
-                        fontWeight: 600
-                      }}
-                    >
-                      <CommanderStatIcon statKey={key} size={22} />
-                      <span style={{ width: 58, fontWeight: 700, color: capped ? "#6d6252" : "#e6c56a" }}>
-                        {COMMANDER_STAT_LABELS[key]}
-                      </span>
-                      {capped ? (
-                        <span style={{ opacity: 0.75 }}>at grade III (max)</span>
-                      ) : (
-                        <span style={{ fontSize: 11.5, lineHeight: 1.2 }}>
-                          <b style={{ color: GOLD }}>{gradeNumeral(grades[key])} → {gradeNumeral(nextGrade)}</b>{" "}
-                          <span style={{ opacity: 0.9 }}>· {gradeUpBenefit(key, nextGrade)}</span>
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+            <CommanderLevelUpPicker grades={grades} gradePoints={gradePoints} onGradeUp={onGradeUp} />
           ) : null}
 
           {/* Editable grade tracks (preview tool only — click a pip to set a
@@ -951,6 +910,133 @@ export function CommanderCard({
           />
         </div>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * The commander level-up stat picker: one clearly-separated, individually
+ * highlighted option per stat. Each option shows the stat's comm3 symbol, its
+ * name, the grade pips (current → next), the numeric stat value change and a
+ * plain-words "what this buys" line. One click spends one point (COMMANDER_
+ * GRADE_UP). Reused by the commander card panel AND the level-up popup.
+ */
+export function CommanderLevelUpPicker({
+  grades: gradesProp,
+  gradePoints,
+  onGradeUp
+}: {
+  grades?: Partial<Record<CommanderStatKey, number>>;
+  gradePoints: number;
+  onGradeUp: (stat: CommanderStatKey) => void;
+}) {
+  const grades = normalizeGrades(gradesProp);
+  return (
+    <div className="commanderGradeUpPulse commanderLevelUpPicker">
+      <div className="commanderLevelUpTitle">
+        LEVEL UP — {gradePoints} stat {gradePoints === 1 ? "point" : "points"} to spend
+      </div>
+      <div className="commanderLevelUpHint">
+        Click a stat to raise it one grade — each click spends 1 point.
+      </div>
+      <div className="commanderLevelUpGrid">
+        {COMMANDER_STAT_KEYS.map((key) => {
+          const current = grades[key];
+          const capped = current >= 3;
+          const nextGrade = (current + 1) as CommanderGrade;
+          return (
+            <button
+              key={key}
+              type="button"
+              disabled={capped}
+              onClick={() => onGradeUp(key)}
+              className="commanderPickStat"
+              data-stat={key}
+              data-capped={capped ? "true" : "false"}
+              aria-label={
+                capped
+                  ? `${COMMANDER_STAT_LABELS[key]} is already at grade III`
+                  : `Raise ${COMMANDER_STAT_LABELS[key]} to grade ${gradeNumeral(nextGrade)}: ${gradeUpBenefit(key, nextGrade)}`
+              }
+              title={capped ? `${COMMANDER_STAT_LABELS[key]} is at grade III (max)` : gradeUpBenefit(key, nextGrade)}
+            >
+              <span className="commanderPickAccent" aria-hidden="true" />
+              <CommanderStatIcon statKey={key} size={30} />
+              <span className="commanderPickBody">
+                <span className="commanderPickHead">
+                  <span className="commanderPickName">{COMMANDER_STAT_LABELS[key]}</span>
+                  <span className="commanderPickGrades">
+                    <GradeChips grade={current} />
+                    <span className="commanderPickArrow">{capped ? "MAX" : `→ ${gradeNumeral(nextGrade)}`}</span>
+                  </span>
+                </span>
+                {capped ? (
+                  <span className="commanderPickCapped">Already grade III (max) — pick another stat</span>
+                ) : (
+                  <span className="commanderPickBenefit">
+                    <b>
+                      {gradeValueLabel(key, current)} → {gradeValueLabel(key, nextGrade)}
+                    </b>{" "}
+                    · {gradeUpBenefit(key, nextGrade)}
+                  </span>
+                )}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Level-up POPUP: a slam-in celebratory modal shown the moment a hero level-up
+ * awards the commander stat points. It plays a fanfare, shows the commander face
+ * and the clearer stat picker so the owner can spend right away (or close and
+ * spend later from the dock). Driven by live props — screen.tsx renders it while
+ * new points are owed and closes it when they are all spent.
+ */
+export function CommanderLevelUpOverlay({
+  slug,
+  grades,
+  level,
+  gradePoints,
+  onGradeUp,
+  onClose
+}: {
+  slug: CommanderSlug;
+  grades?: Partial<Record<CommanderStatKey, number>>;
+  level?: number;
+  gradePoints: number;
+  onGradeUp: (stat: CommanderStatKey) => void;
+  onClose: () => void;
+}) {
+  // A one-shot fanfare on mount (the converted H3 "climax" sting), like the
+  // morale-card overlay plays its good/bad sting.
+  useEffect(() => {
+    playLibrarySound("effects/climax", 0.6);
+  }, []);
+
+  if (!commanderDefinitions[slug]) {
+    return null;
+  }
+
+  return (
+    <div className="commanderLevelUpBackdrop" role="dialog" aria-modal="true" aria-label="Commander level up">
+      <div className="commanderLevelUpModal">
+        <div className="commanderLevelUpBanner">
+          ⭐ COMMANDER LEVEL UP{level ? ` — Level ${level}` : ""} ⭐
+        </div>
+        <div className="commanderLevelUpModalBody">
+          <div className="commanderLevelUpFace">
+            <CommanderCardFace slug={slug} grades={grades} level={level} />
+          </div>
+          <CommanderLevelUpPicker grades={grades} gradePoints={gradePoints} onGradeUp={onGradeUp} />
+        </div>
+        <button type="button" className="commanderLevelUpDone" onClick={onClose}>
+          {gradePoints > 0 ? "Spend later" : "Done"}
+        </button>
+      </div>
     </div>
   );
 }

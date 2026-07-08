@@ -15512,3 +15512,319 @@ img.cardBack {
 .dockTile.commanderTileBlink {
   animation: commanderBlink 0.55s ease-in-out 8;
 }
+
+/* ---------------------------------------------------------------------------
+   WOG Commander — rainbow frame spark: a rotating rainbow ring, with a bright
+   white "spark" that travels around the card border (the white stop in the
+   conic gradient rotates with --cmdrRainbowAngle). Drawn as a gradient BORDER
+   (conic fill masked to the padding ring) sitting over the frame art. Purely
+   decorative; sits inside the container-query box so cqw units track the card.
+   -------------------------------------------------------------------------- */
+@property --cmdrRainbowAngle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes commanderRainbowSpin {
+  to {
+    --cmdrRainbowAngle: 360deg;
+  }
+}
+
+@keyframes commanderRainbowGlow {
+  0%,
+  100% {
+    opacity: 0.72;
+    filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.35)) saturate(1.25);
+  }
+  50% {
+    opacity: 1;
+    filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.6)) saturate(1.5);
+  }
+}
+
+.commanderRainbowFrame {
+  position: absolute;
+  inset: 0;
+  border-radius: 2.5cqw;
+  padding: 1.5cqw; /* ring thickness */
+  pointer-events: none;
+  z-index: 2;
+  background: conic-gradient(
+    from var(--cmdrRainbowAngle),
+    #ff004c,
+    #ff8a00,
+    #ffe600,
+    #ffffff,
+    /* the travelling spark */ #33ff5a,
+    #00e5ff,
+    #4d6bff,
+    #d400ff,
+    #ff004c
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  animation:
+    commanderRainbowSpin 4.5s linear infinite,
+    commanderRainbowGlow 2.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .commanderRainbowFrame {
+    animation: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   WOG Commander — level-up stat picker: one clearly-separated, individually
+   highlighted option per stat, each with its own accent colour, a hover lift
+   and a full "current → next" readout. Used in the dock card AND the level-up
+   popup below.
+   -------------------------------------------------------------------------- */
+.commanderLevelUpPicker {
+  padding: 10px;
+  border: 1px dashed #b9985a;
+  border-radius: 8px;
+  background: #241b10;
+}
+
+.commanderLevelUpTitle {
+  color: #f4d774;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  margin-bottom: 2px;
+}
+
+.commanderLevelUpHint {
+  color: #b9a988;
+  font-size: 11.5px;
+  margin-bottom: 8px;
+}
+
+.commanderLevelUpGrid {
+  display: grid;
+  gap: 8px;
+}
+
+.commanderPickStat {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px 8px 14px;
+  border-radius: 9px;
+  border: 1px solid #6f5533;
+  background: linear-gradient(180deg, #322614, #241b10);
+  color: #fff4c8;
+  cursor: pointer;
+  font-weight: 600;
+  transition:
+    transform 0.12s ease,
+    box-shadow 0.12s ease,
+    border-color 0.12s ease,
+    background 0.12s ease;
+}
+
+.commanderPickStat:hover:not([data-capped="true"]),
+.commanderPickStat:focus-visible:not([data-capped="true"]) {
+  transform: translateY(-1px);
+  border-color: var(--pick-accent, #f4d774);
+  box-shadow:
+    0 0 0 1px var(--pick-accent, #f4d774),
+    0 4px 14px rgba(0, 0, 0, 0.45);
+  background: linear-gradient(180deg, #3c2d18, #281e11);
+  outline: none;
+}
+
+.commanderPickStat[data-capped="true"] {
+  border-color: #3f3320;
+  background: #1c1710;
+  color: #6d6252;
+  cursor: default;
+}
+
+/* Per-stat accent bar down the left edge — each option is visually distinct. */
+.commanderPickAccent {
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 4px;
+  border-radius: 4px;
+  background: var(--pick-accent, #f4d774);
+  opacity: 0.9;
+}
+
+.commanderPickStat[data-capped="true"] .commanderPickAccent {
+  opacity: 0.25;
+}
+
+.commanderPickStat[data-stat="attack"] {
+  --pick-accent: #ff6b4a;
+}
+.commanderPickStat[data-stat="defense"] {
+  --pick-accent: #6ba7ff;
+}
+.commanderPickStat[data-stat="health"] {
+  --pick-accent: #6ee06e;
+}
+.commanderPickStat[data-stat="damage"] {
+  --pick-accent: #ff5d7d;
+}
+.commanderPickStat[data-stat="magic"] {
+  --pick-accent: #c48cff;
+}
+.commanderPickStat[data-stat="speed"] {
+  --pick-accent: #5fe0d6;
+}
+
+.commanderPickBody {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.commanderPickHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.commanderPickName {
+  font-weight: 800;
+  color: #e6c56a;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  font-size: 12.5px;
+}
+
+.commanderPickStat[data-capped="true"] .commanderPickName {
+  color: #6d6252;
+}
+
+.commanderPickGrades {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.commanderPickArrow {
+  font-weight: 800;
+  color: #f4d774;
+  font-size: 11px;
+}
+
+.commanderPickBenefit {
+  font-size: 11.5px;
+  line-height: 1.25;
+  color: #d8cba9;
+}
+
+.commanderPickBenefit b {
+  color: #f4d774;
+}
+
+.commanderPickCapped {
+  font-size: 11.5px;
+  opacity: 0.75;
+}
+
+/* ---------------------------------------------------------------------------
+   WOG Commander — level-up POPUP: a slam-in celebratory modal shown the moment
+   a level-up awards commander stat points (mirrors the morale-card overlay).
+   -------------------------------------------------------------------------- */
+@keyframes commanderLevelUpSlamIn {
+  0% {
+    transform: scale(0.7) translateY(14px);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.03);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.commanderLevelUpBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 96;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(6, 4, 2, 0.62);
+  backdrop-filter: blur(2px);
+  animation: moraleCueBackdropIn 0.2s ease-out;
+}
+
+.commanderLevelUpModal {
+  width: min(440px, 96vw);
+  max-height: 92vh;
+  overflow-y: auto;
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 14px;
+  border: 2px solid #d9b25a;
+  background: linear-gradient(180deg, #241a10, #17110a);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.5),
+    0 18px 60px rgba(0, 0, 0, 0.7),
+    0 0 30px rgba(244, 215, 116, 0.35);
+  animation: commanderLevelUpSlamIn 0.42s cubic-bezier(0.18, 0.9, 0.28, 1.2);
+}
+
+.commanderLevelUpBanner {
+  text-align: center;
+  font-weight: 900;
+  letter-spacing: 0.6px;
+  color: #ffe9a3;
+  font-size: 16px;
+  text-shadow: 0 0 10px rgba(244, 215, 116, 0.7);
+}
+
+.commanderLevelUpModalBody {
+  display: grid;
+  gap: 12px;
+}
+
+.commanderLevelUpFace {
+  width: min(230px, 62%);
+  margin: 0 auto;
+}
+
+.commanderLevelUpDone {
+  justify-self: center;
+  padding: 7px 18px;
+  border-radius: 8px;
+  border: 1px solid #b9985a;
+  background: #3a2c18;
+  color: #fff4c8;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.commanderLevelUpDone:hover {
+  background: #4a3820;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .commanderLevelUpModal {
+    animation: none;
+  }
+}

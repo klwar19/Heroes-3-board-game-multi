@@ -103,7 +103,7 @@ import {
   TILE_BACK_IMAGES
 } from "@/data/assets/homm-assets";
 import { specialtyIconSrc } from "@/components/specialty-card-data";
-import { CommanderCard } from "@/components/commander-card";
+import { CommanderCard, CommanderLevelUpOverlay } from "@/components/commander-card";
 import { commanderDefinitions, commanderReviveCost, type CommanderSlug } from "@/data/commanders";
 import { CARD_BACK_IMAGES, getDeckBack } from "@/data/decks";
 import { actionKey, cardName, formatCost, isEmpoweredStatisticCard, titleCase } from "@/components/table/utils";
@@ -1983,14 +1983,21 @@ export function TownHeroDock({
 
   // Commander level-up notice: when NEW stat points arrive, blink the commander
   // tile hard for a few seconds (the steady gold pulse then stays until every
-  // point is spent).
+  // point is spent) AND pop the level-up modal so the owner can spend right away.
   const [commanderBlink, setCommanderBlink] = useState(false);
+  // "Not dismissed by the owner" flag for the level-up popup. The popup only
+  // RENDERS while there are unspent points on the owner's own map turn (see the
+  // render gate), so it auto-hides the moment the last point is spent or combat
+  // starts — no separate close effect needed.
+  const [commanderLevelUpOpen, setCommanderLevelUpOpen] = useState(true);
   const prevGradeUpsRef = useRef(commanderGradeUps);
   useEffect(() => {
     const previous = prevGradeUpsRef.current;
     prevGradeUpsRef.current = commanderGradeUps;
     if (commanderGradeUps > previous) {
       setCommanderBlink(true);
+      // Re-arm the popup so a fresh level-up pops even if a prior one was dismissed.
+      setCommanderLevelUpOpen(true);
       const timer = window.setTimeout(() => setCommanderBlink(false), 5000);
       return () => window.clearTimeout(timer);
     }
@@ -2169,6 +2176,17 @@ export function TownHeroDock({
             <HeroBoard playerId={openHeroSeat} state={state} />
           </div>
         </>
+      ) : null}
+
+      {commanderLevelUpOpen && commander && commanderDef && armyPlayer && onAction && !state.combat && !commander.dead && commanderGradeUps > 0 ? (
+        <CommanderLevelUpOverlay
+          slug={commander.slug as CommanderSlug}
+          grades={commander.grades}
+          level={commanderHero?.level ?? 1}
+          gradePoints={commanderGradeUps}
+          onGradeUp={(stat) => onAction({ type: "COMMANDER_GRADE_UP", playerId: armyPlayer.id, stat })}
+          onClose={() => setCommanderLevelUpOpen(false)}
+        />
       ) : null}
 
       {commanderOpen && commander && commanderDef && armyPlayer ? (
