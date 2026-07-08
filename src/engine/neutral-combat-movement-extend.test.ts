@@ -139,6 +139,35 @@ describe("neutral combat: a +Movement card extends the fight when out of movemen
     expect(state.players.p1.discard).not.toContain("artifact.boots_of_speed");
   });
 
+  it("Equestrian's Gloves — its +movement side (option 1) also tops up the pool to buy a round", () => {
+    let state = driveToAwaitingContinue("move-extend-gloves");
+    expect(state.combat?.awaitingContinue).toBe(true);
+    getMainHero(state, "p1")!.movementPoints = 0;
+    // The Gloves are an "OR" card: +1 initiative (combat) OR +1 movement (map).
+    // The movement side sits at option index 1 (Boots' is at index 0), so this
+    // pins that heroMovementGrantOption finds it regardless of position.
+    state.players.p1.hand = ["artifact.equestrians_gloves"];
+
+    const topUp = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "artifact.equestrians_gloves"
+    );
+    expect(topUp, "the map-only Gloves +movement side IS offered in the continue window").toBeTruthy();
+    // It is the movement side (option 1), not the initiative side (option 0).
+    expect(topUp!.action.type === "PLAY_CARD" && topUp!.action.optionIndex).toBe(1);
+
+    state = apply(state, topUp!.action);
+    expect(getMainHero(state, "p1")!.movementPoints).toBe(1);
+    expect(state.combat?.awaitingContinue).toBe(true);
+    expect(state.players.p1.discard).toContain("artifact.equestrians_gloves");
+
+    // The hero spends the fresh movement to fight on.
+    const cont = getLegalActions(state, "p1").find((legal) => legal.action.type === "CONTINUE_NEUTRAL_COMBAT");
+    expect(cont, "spending the gained movement to continue is now offered").toBeTruthy();
+    state = apply(state, cont!.action);
+    expect(getMainHero(state, "p1")!.movementPoints).toBe(0);
+    expect(state.combat?.awaitingContinue ?? false).toBe(false);
+  });
+
   it("the Logistics ability's EXPERT side (an expert-only +movement) also tops up the pool", () => {
     let state = driveToAwaitingContinue("move-extend-logistics");
     getMainHero(state, "p1")!.movementPoints = 0;

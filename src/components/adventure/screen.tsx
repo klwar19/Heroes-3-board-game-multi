@@ -2629,6 +2629,11 @@ export function PromptTray({
 }) {
   const visit = state.adventure?.pendingVisit;
   const choice = state.pendingChoice;
+  // A Shady Auction: the open lot (an Artifact card) the viewer is bidding on.
+  // It is public to every bidder (only the bids are secret), so the tray must
+  // show WHICH artifact is on the block — otherwise the player bids blind.
+  const auctionLot = state.adventure?.events?.auction ?? null;
+  const auctionLotCard = auctionLot ? cardLibrary[auctionLot.lotCardId] : undefined;
   const roundStartEventActive = isRoundStartEventBarrierActive(state);
   const roundStartBarrierKind =
     roundStartEventActive ? (state.round % 2 === 0 ? "astrologers" : "event") : null;
@@ -2886,6 +2891,8 @@ export function PromptTray({
 
   let title: string | null = null;
   let body: LegalAction[] = [];
+  // Extra card art shown above the buttons (currently the Shady Auction lot).
+  let preview: ReactNode = null;
 
   if (
     choice?.type === "OPTION_CHOICE" &&
@@ -2919,16 +2926,45 @@ export function PromptTray({
       return null;
     }
     const field = state.adventure?.fields[visit.fieldId];
-    title =
-      roundStartEventCard
-        ? `Event: ${roundStartEventCard.name}`
-        : roundStartAstrologersCard
-          ? `Astrologers Proclaim: ${roundStartAstrologersCard.name}`
-        : step?.type === "CHOOSE_ONE"
-        ? step.prompt
-        : step?.type === "PAY_TO"
+    // A Shady Auction bid: keep the lot-naming prompt (not the generic event
+    // title) AND show the artifact card, so the bidder knows exactly what is on
+    // the block. The auction's only CHOOSE_ONE visit step is the secret bid.
+    const isAuctionBid = Boolean(auctionLot) && step?.type === "CHOOSE_ONE";
+    if (isAuctionBid) {
+      title =
+        step?.type === "CHOOSE_ONE"
           ? step.prompt
-          : `${locationDefinitions[field?.location ?? ""]?.name ?? "Field"}: choose`;
+          : `A Shady Auction: bid for ${auctionLotCard?.name ?? "the lot"}`;
+      preview = (
+        <div
+          className="auctionLotPreview"
+          data-testid="auction-lot"
+          style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, margin: "6px 0" }}
+        >
+          {auctionLotCard?.assets?.cardImage ? (
+            <img
+              alt={auctionLotCard.name}
+              loading="lazy"
+              referrerPolicy="no-referrer"
+              src={assetUrl(auctionLotCard.assets.cardImage)}
+              style={{ maxWidth: "160px", height: "auto", borderRadius: 6 }}
+            />
+          ) : null}
+          <span>{auctionLotCard?.name ?? "Unknown artifact"}</span>
+        </div>
+      );
+    } else {
+      title =
+        roundStartEventCard
+          ? `Event: ${roundStartEventCard.name}`
+          : roundStartAstrologersCard
+            ? `Astrologers Proclaim: ${roundStartAstrologersCard.name}`
+          : step?.type === "CHOOSE_ONE"
+          ? step.prompt
+          : step?.type === "PAY_TO"
+            ? step.prompt
+            : `${locationDefinitions[field?.location ?? ""]?.name ?? "Field"}: choose`;
+    }
     body = visitActions;
   } else if (combatGate.length > 0) {
     title = "The combat round is over";
@@ -2961,6 +2997,7 @@ export function PromptTray({
   return (
     <div className="promptTray" role="dialog" aria-label={title}>
       <strong>{title}</strong>
+      {preview}
       <div className="promptOptions">
         {body.map((legal) => (
           <button className="commandButton" key={actionKey(legal.action)} onClick={() => onAction(legal.action)} type="button">

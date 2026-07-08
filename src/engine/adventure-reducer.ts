@@ -146,7 +146,7 @@ import {
   returnHeldMoraleCardToDeckBottom
 } from "./morale-cards";
 import { MORALE_CARD_IDS } from "@/data/cards/morale";
-import { removeToken } from "./tokens";
+import { placeCombatToken, removeToken } from "./tokens";
 import {
   assertParallelInteractionFree,
   hasOpenAdventureTurn,
@@ -181,7 +181,6 @@ import {
   isSpellDeck,
   spellBookRuleEnabled,
   spellCanEnterSpellBook,
-  takeSearchRepeatEffect,
   unitSideRuleOverrides,
   wisdomGoldDiscount,
   wisdomSearchCount
@@ -206,7 +205,9 @@ import type {
   CardId,
   CombatState,
   CombatUnitState,
+  DeckId,
   GameAction,
+  GamePhase,
   GameState,
   HeroId,
   HeroState,
@@ -4979,9 +4980,138 @@ export function seedFactoryHeroEffects(state: GameState): void {
  * in-play permanents join and round-start war machines fire. Runs after the
  * start-of-combat Tactics windows, if any, have all resolved.
  */
+/**
+ * Ring of the Wayfarer's paralysis side ("At start of Combat with Neutral Units
+ * put a Paralysis token on any unit except Azure") in the attacker's hand, if
+ * any — returns the card id and its grade ceiling (the `gradeByPower` at the
+ * card's power). Kept off the normal play list (see legal-actions), it is used
+ * ONLY through the start-of-combat decision so it fires before any unit acts.
+ */
+function findWayfarerParalysisCard(
+  state: GameState,
+  playerId: PlayerId
+): { cardId: CardId; ceilingRank: number } | null {
+  for (const cardId of state.players[playerId]?.hand ?? []) {
+    const card = cardLibrary[cardId];
+    if (card?.effect.type !== "CHOOSE_ONE") {
+      continue;
+    }
+    const option = card.effect.options.find(
+      (candidate) => candidate.effect.type === "PLACE_PARALYSIS" && candidate.requiresNeutralCombatStart
+    );
+    if (option && option.effect.type === "PLACE_PARALYSIS") {
+      // "except Azure": the option's gradeByPower ceiling at this card's power.
+      const power = card.power ?? 0;
+      const ladder = option.effect.gradeByPower ?? {};
+      const breakpoint = Object.keys(ladder)
+        .map(Number)
+        .filter((value) => value <= power)
+        .sort((a, b) => b - a)[0];
+      const ceiling = breakpoint !== undefined ? ladder[breakpoint] : undefined;
+      return { cardId, ceilingRank: wayfarerGradeRank(ceiling) };
+    }
+  }
+  return null;
+}
+
+/** Grade ordering (bronze<silver<gold<azure), matching legal-actions.gradeRank. */
+function wayfarerGradeRank(grade: CombatUnitState["grade"] | undefined): number {
+  return grade === "bronze" ? 0 : grade === "silver" ? 1 : grade === "gold" ? 2 : 3;
+}
+
+/**
+ * Ring of the Wayfarer: offer the attacking player the start-of-combat paralysis
+ * decision. Presented once (before any unit acts) in a Neutral combat when the
+ * attacker holds the Ring — pick any non-Azure unit to Paralyse, or keep the
+ * Ring (and its initiative side). Returns true when the decision opened; the
+ * resolver re-enters finalizeCombatStart to finish setup. Bank/commander units
+ * are tierless (rank above every grade) and are never valid targets, matching
+ * the hand-play's tier filter.
+ */
+export function maybeOpenWayfarerParalysisDecision(state: GameState): boolean {
+  const combat = state.combat;
+  if (!combat || combat.context.kind !== "neutral" || combat.wayfarerParalysisOffered) {
+    return false;
+  }
+  const attackerId = combat.attackerPlayerId;
+  const ring = findWayfarerParalysisCard(state, attackerId);
+  if (!ring) {
+    return false;
+  }
+  // Mark offered up front so the resolver's finalizeCombatStart re-entry — and a
+  // kept Ring — never re-opens the prompt.
+  combat.wayfarerParalysisOffered = true;
+
+  const unitRank = (unit: CombatUnitState): number =>
+    unit.bankUnit || unit.commanderSlug ? Number.POSITIVE_INFINITY : wayfarerGradeRank(unit.grade);
+  const targets = Object.values(combat.units).filter(
+    (unit) => unit.damage < unit.maxHealth && unitRank(unit) <= ring.ceilingRank
+  );
+  if (targets.length === 0) {
+    return false; // nothing paralysable — skip the prompt, keep the Ring
+  }
+
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId: attackerId,
+    prompt: "Ring of the Wayfarer: paralyse a unit at the start of this Combat? (any non-Azure unit)",
+    options: [
+      ...targets.map((unit) => ({ label: `Paralyse ${unit.name}` })),
+      { label: "Keep the Ring (don't paralyse)" }
+    ],
+    context: "wayfarer-paralysis",
+    wayfarerParalysis: { cardId: ring.cardId, unitIds: targets.map((unit) => unit.id) },
+    returnPhase: "combat"
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = attackerId;
+  return true;
+}
+
+/** Resolves the attacker's start-of-combat Ring of the Wayfarer decision. */
+export function resolveWayfarerParalysisChoice(state: GameState, playerId: PlayerId, optionIndex: number): void {
+  const combat = state.combat;
+  const choice = state.pendingChoice;
+  if (!combat || choice?.type !== "OPTION_CHOICE" || choice.context !== "wayfarer-paralysis" || !choice.wayfarerParalysis) {
+    throw new Error("There is no Ring of the Wayfarer decision to make.");
+  }
+  const data = choice.wayfarerParalysis;
+  state.pendingChoice = null;
+
+  // Options 0..n-1 paralyse the matching unit and discard the Ring; the trailing
+  // option keeps the Ring (its initiative side stays playable).
+  if (optionIndex >= 0 && optionIndex < data.unitIds.length) {
+    const unit = combat.units[data.unitIds[optionIndex]];
+    const player = state.players[playerId];
+    const handIndex = player?.hand.indexOf(data.cardId) ?? -1;
+    if (unit && player && handIndex >= 0) {
+      player.hand.splice(handIndex, 1);
+      player.discard.push(data.cardId);
+      placeCombatToken(state, unit, "paralysis", 0, cardLibrary[data.cardId]?.name ?? "Ring of the Wayfarer");
+      appendEvent(state, {
+        type: "CARD_PLAYED",
+        playerId,
+        cardId: data.cardId,
+        timing: "instant",
+        mode: "basic"
+      });
+    }
+  }
+
+  // Continue combat setup from the top (the decision is now marked offered).
+  finalizeCombatStart(state);
+}
+
 function finalizeCombatStart(state: GameState): void {
   const combat = state.combat;
   if (!combat) {
+    return;
+  }
+
+  // Ring of the Wayfarer: the attacker's start-of-combat paralysis decision, made
+  // before any unit acts (Neutral combats only). Resolving it re-enters here.
+  if (maybeOpenWayfarerParalysisDecision(state)) {
     return;
   }
 
@@ -7390,8 +7520,59 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
       return;
     }
 
-    // Declined: follow-ups queued behind the offer (a Pendant repeat, round
-    // rewards) resume.
+    // Declined: the Pendant of Courage (if held) may still repeat this Search;
+    // otherwise the queued round rewards resume.
+    if (maybeOpenPendantRepeatOffer(state, action.playerId, data.deckId, data.count, choice.returnPhase)) {
+      return;
+    }
+    if (state.adventure) {
+      pumpAdventureQueues(state);
+    }
+    return;
+  }
+
+  if (choice.context === "pendant-repeat-search") {
+    const data = choice.pendantRepeatSearch;
+    const player = state.players[action.playerId];
+    if (!data || !player) {
+      throw new Error("That Pendant of Courage offer cannot be resolved.");
+    }
+    state.pendingChoice = null;
+    state.phase = choice.returnPhase;
+    state.priorityPlayerId = null;
+
+    // Option 0 plays the Pendant: discard it and run the same Search (X) once
+    // more. The card gained from the first Search is KEPT (unlike the morale
+    // card, which trades its gained card). Any other option keeps the Pendant.
+    if (action.optionIndex === 0) {
+      const handIndex = player.hand.indexOf(PENDANT_OF_COURAGE_ID);
+      if (handIndex === -1) {
+        throw new Error("The Pendant of Courage is no longer in hand.");
+      }
+      player.hand.splice(handIndex, 1);
+      player.discard.push(PENDANT_OF_COURAGE_ID);
+      appendEvent(state, {
+        type: "CARD_PLAYED",
+        playerId: action.playerId,
+        cardId: PENDANT_OF_COURAGE_ID,
+        timing: "instant",
+        mode: "basic"
+      });
+      if (state.adventure) {
+        state.adventure.rewardQueue.unshift({
+          playerId: action.playerId,
+          kind: "shared-deck-search",
+          deckId: data.deckId,
+          count: data.count
+        });
+        pumpAdventureQueues(state);
+      } else {
+        openSharedDeckSearch(state, action.playerId, data.deckId, data.count);
+      }
+      return;
+    }
+
+    // Declined: keep the Pendant; queued round rewards resume.
     if (state.adventure) {
       pumpAdventureQueues(state);
     }
@@ -7633,21 +7814,10 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     state.phase = choice.returnPhase;
     state.priorityPlayerId = null;
 
-    // Pendant of Courage: the whole Search action repeats once, even when this
-    // branch took the discard top or drew from a School of Magic.
-    if (takeSearchRepeatEffect(state, action.playerId)) {
-      if (state.adventure) {
-        state.adventure.rewardQueue.unshift({
-          playerId: action.playerId,
-          kind: "shared-deck-search",
-          deckId: mode.deckId,
-          count: mode.count
-        });
-        pumpAdventureQueues(state);
-      } else {
-        openSharedDeckSearch(state, action.playerId, mode.deckId, mode.count);
-      }
-    }
+    // Pendant of Courage: offered as a post-Search decision to perform the whole
+    // Search action once more, even when this branch took the discard top or
+    // drew from a School of Magic.
+    maybeOpenPendantRepeatOffer(state, action.playerId, mode.deckId, mode.count, choice.returnPhase);
     return;
   }
 
@@ -7884,6 +8054,11 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
 
   if (choice.context === "shackles-of-war") {
     resolveShacklesChoice(state, action.playerId, action.optionIndex);
+    return;
+  }
+
+  if (choice.context === "wayfarer-paralysis") {
+    resolveWayfarerParalysisChoice(state, action.playerId, action.optionIndex);
     return;
   }
 
@@ -9028,8 +9203,6 @@ export function revealSharedDeckSearch(
   // Basic X Magic's "draw instead of Searching" is offered up front (see
   // openSharedDeckSearch), so reaching this reveal means the player chose to
   // Search — only the keep-one picks apply here.
-  const repeats = takeSearchRepeatEffect(state, playerId);
-
   const choiceId = `choice_${nextEventNumber(state)}`;
   state.pendingChoice = {
     id: choiceId,
@@ -9037,7 +9210,6 @@ export function revealSharedDeckSearch(
     playerId,
     deckId,
     revealedCardIds,
-    ...(repeats ? { repeatSearch: { deckId, count: baseCount } } : {}),
     ...(allowRemove ? { allowRemove: true } : {}),
     // The X this Search was invoked with — what a morale "Search (X) again" re-runs.
     baseCount,
@@ -9053,6 +9225,47 @@ export function revealSharedDeckSearch(
     choiceId,
     revealedCount: revealedCardIds.length
   });
+}
+
+/** The Pendant of Courage's card id (its repeat-Search side is post-Search). */
+const PENDANT_OF_COURAGE_ID = "artifact.pendant_of_courage";
+
+/**
+ * Pendant of Courage: "Play immediately after you perform a Search action and
+ * perform that action again." Offered as a post-Search CHOICE (not a pre-armed
+ * modifier): right after a Search(X) resolves, its holder may discard the
+ * Pendant to run the same Search(X) once more (the card gained from the first
+ * Search is kept). Opens the `pendant-repeat-search` choice; returns true when
+ * it did (the caller must then stop — the choice owns the flow). Returns false
+ * when the player is not holding the Pendant, so the caller continues normally.
+ */
+export function maybeOpenPendantRepeatOffer(
+  state: GameState,
+  playerId: PlayerId,
+  deckId: DeckId,
+  baseCount: number,
+  returnPhase: GamePhase
+): boolean {
+  const player = state.players[playerId];
+  if (!player || !player.hand.includes(PENDANT_OF_COURAGE_ID)) {
+    return false;
+  }
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId,
+    prompt: `Play Pendant of Courage to perform the Search (${baseCount}) again?`,
+    options: [
+      { label: `Play Pendant of Courage — Search (${baseCount}) again` },
+      { label: "Keep the Pendant" }
+    ],
+    context: "pendant-repeat-search",
+    pendantRepeatSearch: { deckId, count: baseCount },
+    returnPhase
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = playerId;
+  return true;
 }
 
 // ---------------------------------------------------------------------------

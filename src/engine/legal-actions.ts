@@ -2673,6 +2673,12 @@ function addOptionPlays(
     if (option.effect.type === "BLOCK_ENEMY_SURRENDER") {
       continue;
     }
+    // Pendant of Courage's repeat-Search side is played AFTER a Search, not from
+    // hand — it is offered as a post-Search decision (pendant-repeat-search), so
+    // it never appears on the normal play list.
+    if (option.postSearchOnly) {
+      continue;
+    }
     // Mystic Orb of Mana's "draw 2" option is offered only on an empty discard.
     if (option.requiresEmptyDiscard && (state.players[playerId]?.discard.length ?? 0) > 0) {
       continue;
@@ -2685,12 +2691,13 @@ function addOptionPlays(
         continue;
       }
     }
-    // Ring of the Wayfarer's paralysis side: only at the start (opening round)
-    // of a Combat against Neutral Units.
+    // Ring of the Wayfarer's paralysis side ("At start of Combat with Neutral
+    // Units …") is NOT played from hand: it is offered as a dedicated start-of-
+    // combat decision (maybeOpenWayfarerParalysisDecision) so it lands BEFORE any
+    // unit acts — a hand play could only fire mid-round-1, after a faster guard
+    // had already moved. Skip it here (the initiative side stays a hand play).
     if (option.requiresNeutralCombatStart) {
-      if (!state.combat || state.combat.context.kind !== "neutral" || state.combat.round !== 1) {
-        continue;
-      }
+      continue;
     }
     // Jeremy's Cannon IV/VI "use the Cannon" side: only while the player has the
     // war-machine card in play (the same gate as Torosar's "if you have one").
@@ -2905,7 +2912,6 @@ function isMapPlayableEffect(state: GameState, playerId: PlayerId, card: CardDef
         modifier.type === "ADVENTURE_DIE_REROLL" ||
         modifier.type === "ADVENTURE_DIE_SET" ||
         modifier.type === "SEARCH_COUNT_OVERRIDE" ||
-        modifier.type === "SEARCH_REPEAT_ONCE" ||
         modifier.type === "SPELL_SCHOOL_FETCH" ||
         modifier.type === "END_TURN_ADJACENT_MOVE" ||
         modifier.type === "HERO_MOVE_THROUGH"
@@ -5367,6 +5373,34 @@ export function getLegalReactionsForTrigger(
             action: { type: "SPEND_TOWN_CUBE", playerId: player.id, buildingId, boost: "defense" }
           });
         }
+      }
+    }
+
+    // Positive Morale "Combat Bonus" (+1 Attack / +1 Defense for this Combat):
+    // playable as an instant-window reaction too, not only on the holder's own
+    // turn (addMoraleActions). It is a combat-long player buff, so a holder may
+    // drop it into an open attack window — the defender adds +1 Defense to blunt
+    // the incoming hit, the attacker +1 Attack. The +Attack pick is withheld only
+    // when THIS attack is Misfortune-locked and it is the player's own attack
+    // (a negated buff would be misleading; +Defense is never negated). The used
+    // card returns to its deck, and the window refreshes (reducer) so it is not
+    // re-offered. "+1 Combat Power" is Battlefield-mode only (inert here).
+    if (triggerEvent.type === "UNIT_ATTACK_DECLARED" && state.adventure?.moraleCards) {
+      const held = player.moraleCards?.positive ?? [];
+      if (held.includes(MORALE_CARD_IDS.combatBonus)) {
+        const attacker = state.combat?.units[triggerEvent.attackerId];
+        const attackLocked = Boolean(state.stack.at(-1)?.modifiers.negateAttackBuffs);
+        const isOwnAttack = attacker?.controllerId === player.id;
+        if (!(isOwnAttack && attackLocked)) {
+          reactions.push({
+            label: "Positive Morale: +1 Attack for this Combat",
+            action: { type: "SPEND_MORALE", playerId: player.id, benefit: "combat-bonus", bonus: "attack" }
+          });
+        }
+        reactions.push({
+          label: "Positive Morale: +1 Defense for this Combat",
+          action: { type: "SPEND_MORALE", playerId: player.id, benefit: "combat-bonus", bonus: "defense" }
+        });
       }
     }
 

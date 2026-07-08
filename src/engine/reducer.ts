@@ -53,6 +53,7 @@ import {
   openViewEarthChoice,
   openMarket,
   openSharedDeckSearch,
+  maybeOpenPendantRepeatOffer,
   beginSharedDeckSearchNow,
   removableHandCards,
   openFortuneBoostStep,
@@ -16006,15 +16007,14 @@ function resolveDeckSearch(state: GameState, action: Extract<GameAction, { type:
     discardedCardIds
   });
 
-  const repeat = choice.repeatSearch;
   state.pendingChoice = null;
   state.phase = choice.returnPhase;
   state.priorityPlayerId = null;
 
   // Positive Morale "discard the cards gained from Search (X) to perform the
   // Search (X) again": right after a Search resolves into a kept card, its
-  // holder may resolve the card — the offer opens as its own choice, and any
-  // queued follow-ups (the Pendant repeat below included) wait behind it.
+  // holder may resolve the card — the offer opens as its own choice, and the
+  // Pendant repeat below waits behind it (offered when the morale card declines).
   if (
     !removePicked &&
     state.adventure?.moraleCards &&
@@ -16037,21 +16037,14 @@ function resolveDeckSearch(state: GameState, action: Extract<GameAction, { type:
     };
     state.phase = "choice";
     state.priorityPlayerId = action.playerId;
+    return;
   }
 
-  // Pendant of Courage: the whole Search action happens once more.
-  if (repeat) {
-    if (state.adventure) {
-      state.adventure.rewardQueue.unshift({
-        playerId: action.playerId,
-        kind: "shared-deck-search",
-        deckId: repeat.deckId,
-        count: repeat.count
-      });
-      pumpAdventureQueues(state);
-    } else {
-      openSharedDeckSearch(state, action.playerId, repeat.deckId, repeat.count);
-    }
+  // Pendant of Courage: "Play immediately after you perform a Search action and
+  // perform that action again." Offered as a post-Search CHOICE (not a hand
+  // pre-activation): its holder may discard the Pendant to re-run this Search.
+  if (choice.baseCount !== undefined) {
+    maybeOpenPendantRepeatOffer(state, action.playerId, choice.deckId, choice.baseCount, choice.returnPhase);
   }
 }
 
@@ -17033,6 +17026,10 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "SPEND_MORALE":
         spendMorale(nextState, action);
+        // A combat-bonus spent inside an open attack/instant window keeps the
+        // window open; re-derive its offers so the just-spent card drops out
+        // (no-op when no reaction window is open).
+        refreshReactionWindowLegalReactions(nextState, cards);
         break;
       case "CHOOSE_OPTION":
         // The combat-only option choices (Harpy fly-back, Genies' Wish spell

@@ -43,13 +43,13 @@ function place(
   return unit;
 }
 
-function onlyUnits(state: GameState, units: CombatUnitState[]): void {
+function onlyUnits(state: GameState, units: CombatUnitState[], obstacles: number[] = []): void {
   const map: Record<string, CombatUnitState> = {};
   for (const unit of units) {
     map[unit.id] = unit;
   }
   state.combat!.units = map;
-  state.combat!.obstacles = [];
+  state.combat!.obstacles = obstacles;
 }
 
 describe("neutral move-to-attack destination choice (intent)", () => {
@@ -117,6 +117,85 @@ describe("neutral move-to-attack destination choice (intent)", () => {
 
     const forced = planNeutralActivation(state, state.combat!, guard, prey.id, chosen);
     expect(forced).toEqual({ kind: "move-and-attack", destination: chosen, defenderId: prey.id });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Obstacles (ground must path around; flyers pass over) and ranged (no prompt)
+// ---------------------------------------------------------------------------
+
+/**
+ * Scenario: guard at 2, prey at 10, one Combat Obstacle at 6 (a neighbour of the
+ * prey). Cells 9 and 11 (prey neighbours) are reachable by BOTH ground and flying;
+ * cell 6 is a neighbour too but nobody may LAND on an obstacle; cell 14 (the
+ * fourth neighbour) is reachable ONLY by a flyer crossing the obstacle. So the
+ * obstacle changes what a GROUND guard is offered, while a FLYER reaches past it.
+ */
+describe("neutral destination choice respects obstacles (ground) and flight", () => {
+  it("a GROUND guard's offer drops an obstacle cell — the choice is obstacle-aware", () => {
+    // No obstacle: cell 6 (a reachable prey-neighbour) IS among the offers.
+    const open = createInitialGameState("neutral-dest-ground-open");
+    const g1 = place(open, "unit_p2_skeletons", NEUTRAL_PLAYER_ID, "bronze", "ground", 2);
+    const p1 = place(open, "unit_p1_griffins", "p1", "bronze", "ground", 10);
+    onlyUnits(open, [g1, p1], []);
+    const openIntent = planNeutralActivation(open, open.combat!, g1);
+    expect(openIntent.kind).toBe("choose-destination");
+    const openCells = openIntent.kind === "choose-destination" ? openIntent.destinations : [];
+    expect(openCells, "cell 6 is a legal landing spot with no obstacle").toContain(6);
+
+    // Obstacle on cell 6: it is no longer a legal landing spot, so the offer omits
+    // it — the same guard/prey, only the obstacle changed the destinations.
+    const blocked = createInitialGameState("neutral-dest-ground-blocked");
+    const g2 = place(blocked, "unit_p2_skeletons", NEUTRAL_PLAYER_ID, "bronze", "ground", 2);
+    const p2 = place(blocked, "unit_p1_griffins", "p1", "bronze", "ground", 10);
+    onlyUnits(blocked, [g2, p2], [6]);
+    const blockedIntent = planNeutralActivation(blocked, blocked.combat!, g2);
+    expect(blockedIntent.kind).toBe("choose-destination");
+    if (blockedIntent.kind === "choose-destination") {
+      expect(blockedIntent.destinations, "no offered cell is the obstacle").not.toContain(6);
+      // Every offered cell is still adjacent to the prey and none is the obstacle.
+      expect(blockedIntent.destinations.every((cell) => isAdjacent(cell, p2.position))).toBe(true);
+      // The offer genuinely shrank because of the obstacle (subset of the open one).
+      expect(blockedIntent.destinations.every((cell) => openCells.includes(cell))).toBe(true);
+      expect(blockedIntent.destinations.length).toBeLessThan(openCells.length);
+    }
+  });
+
+  it("a FLYING guard reaches a landing cell ACROSS the obstacle that a ground guard cannot", () => {
+    // Ground guard, obstacle at 6: cell 14 (behind the prey/obstacle) is NOT reachable.
+    const ground = createInitialGameState("neutral-dest-fly-ground");
+    const gg = place(ground, "unit_p2_skeletons", NEUTRAL_PLAYER_ID, "bronze", "ground", 2);
+    const gp = place(ground, "unit_p1_griffins", "p1", "bronze", "ground", 10);
+    onlyUnits(ground, [gg, gp], [6]);
+    const groundIntent = planNeutralActivation(ground, ground.combat!, gg);
+    const groundCells = groundIntent.kind === "choose-destination" ? groundIntent.destinations : [];
+    expect(groundCells, "a ground guard cannot reach cell 14 past the obstacle").not.toContain(14);
+
+    // Flying guard, SAME obstacle: it flies over cell 6 and can land on 14.
+    const flying = createInitialGameState("neutral-dest-fly-flying");
+    const fg = place(flying, "unit_p2_skeletons", NEUTRAL_PLAYER_ID, "bronze", "flying", 2);
+    const fp = place(flying, "unit_p1_griffins", "p1", "bronze", "ground", 10);
+    onlyUnits(flying, [fg, fp], [6]);
+    const flyIntent = planNeutralActivation(flying, flying.combat!, fg);
+    expect(flyIntent.kind).toBe("choose-destination");
+    if (flyIntent.kind === "choose-destination") {
+      expect(flyIntent.destinations, "a flyer reaches cell 14 across the obstacle").toContain(14);
+      // A flyer still cannot LAND on the obstacle itself.
+      expect(flyIntent.destinations, "nobody lands on the obstacle cell").not.toContain(6);
+      expect(flyIntent.destinations.every((cell) => isAdjacent(cell, fp.position))).toBe(true);
+    }
+  });
+
+  it("a RANGED guard never gets a destination prompt — it shoots from where it stands", () => {
+    const state = createInitialGameState("neutral-dest-ranged");
+    // A ranged guard three spaces from a lone enemy: no move-to-attack, no prompt.
+    const guard = place(state, "unit_p2_skeletons", NEUTRAL_PLAYER_ID, "bronze", "ranged", 0);
+    const prey = place(state, "unit_p1_griffins", "p1", "bronze", "ground", 9);
+    onlyUnits(state, [guard, prey], []);
+
+    const intent = planNeutralActivation(state, state.combat!, guard);
+    expect(intent.kind).not.toBe("choose-destination");
+    expect(intent).toEqual({ kind: "attack", defenderId: prey.id });
   });
 });
 

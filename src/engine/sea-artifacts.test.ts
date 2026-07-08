@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { applyAction, createAdventureGameState, createInitialGameState, getLegalActions, getMainHero } from "./index";
+import { maybeOpenWayfarerParalysisDecision, resolveWayfarerParalysisChoice } from "./adventure-reducer";
 import type { CombatContext, GameAction, GameState, PlayerId, UnitId } from "./state";
 
 /**
@@ -187,67 +188,98 @@ describe("Ring of the Wayfarer", () => {
     expect(buff, "an initiative buff should sit on the chosen friendly unit").toBeTruthy();
   });
 
-  it("the paralysis side is offered only at the opening round of a Neutral combat", () => {
-    // Sandbox combat (createInitialGameState's default): not a Neutral combat.
-    const sandbox = ringState("ring-sandbox");
-    expect(
-      findPlay(sandbox, "p1", "artifact.ring_of_the_wayfarer", 1),
-      "the paralysis side must be hidden outside a Neutral combat"
-    ).toBeFalsy();
-
-    // Neutral combat, opening round: offered.
+  it("the paralysis side is NOT played from hand — it is a dedicated start-of-combat decision", () => {
+    // Even in a Neutral combat's opening round, the paralysis side must not be a
+    // hand play: a hand play could only fire mid-round-1, after a faster guard had
+    // already acted. It is offered as a start-of-combat decision instead (below).
     const round1 = ringState("ring-neutral-1");
     round1.combat!.context = neutralContext();
     expect(
       findPlay(round1, "p1", "artifact.ring_of_the_wayfarer", 1),
-      "the paralysis side must appear at the start of a Neutral combat"
-    ).toBeTruthy();
-
-    // Neutral combat, but a later round: no longer "at start of Combat".
-    const round2 = ringState("ring-neutral-2");
-    round2.combat!.context = neutralContext();
-    round2.combat!.round = 2;
-    expect(
-      findPlay(round2, "p1", "artifact.ring_of_the_wayfarer", 1),
-      "the paralysis side must be hidden after the opening round"
+      "the paralysis side must never be a hand play"
     ).toBeFalsy();
+    // The initiative side (option 0) is still a normal hand play.
+    expect(
+      findPlay(round1, "p1", "artifact.ring_of_the_wayfarer", 0),
+      "the +1 initiative side stays a hand play"
+    ).toBeTruthy();
   });
 
-  it("the paralysis side drops a Paralysis token on a chosen non-Azure unit", () => {
+  it("the start-of-combat decision paralyses the CHOSEN non-Azure unit and discards the Ring", () => {
     const state = ringState("ring-paralyse");
     state.combat!.context = neutralContext();
+    state.combat!.attackerPlayerId = "p1";
     state.combat!.units.unit_p2_skeletons.grade = "bronze";
 
-    const play = findPlay(state, "p1", "artifact.ring_of_the_wayfarer", 1, "unit_p2_skeletons");
-    expect(play, "a bronze enemy should be a legal paralysis target").toBeTruthy();
+    // The decision opens at combat start (a Neutral fight, Ring in hand).
+    expect(maybeOpenWayfarerParalysisDecision(state)).toBe(true);
+    const choice = state.pendingChoice;
+    expect(choice?.type === "OPTION_CHOICE" ? choice.context : null).toBe("wayfarer-paralysis");
+    if (choice?.type !== "OPTION_CHOICE" || !choice.wayfarerParalysis) {
+      return;
+    }
+    // The bronze enemy is among the offered targets; a "keep" option trails them.
+    const targetIndex = choice.wayfarerParalysis.unitIds.indexOf("unit_p2_skeletons");
+    expect(targetIndex, "a bronze enemy is a legal paralysis target").toBeGreaterThanOrEqual(0);
+    expect(choiceLabels(state).at(-1)).toMatch(/keep/i);
     expect(hasParalysis(state, "unit_p2_skeletons")).toBe(false);
 
-    const result = applyOk(state, play!);
-    expect(hasParalysis(result, "unit_p2_skeletons")).toBe(true);
+    resolveWayfarerParalysisChoice(state, "p1", targetIndex);
+    // The chosen unit is paralysed, the Ring is spent, and combat proceeds.
+    expect(hasParalysis(state, "unit_p2_skeletons")).toBe(true);
+    expect(state.players.p1.hand).not.toContain("artifact.ring_of_the_wayfarer");
+    expect(state.players.p1.discard).toContain("artifact.ring_of_the_wayfarer");
+    expect(state.pendingChoice).toBeNull();
   });
 
-  it("never offers an Azure unit as a paralysis target (any non-Azure unit is fine)", () => {
+  it("never offers an Azure unit as a target (any OTHER unit, incl. a friendly one, is fine)", () => {
     const state = ringState("ring-azure");
     state.combat!.context = neutralContext();
+    state.combat!.attackerPlayerId = "p1";
     state.combat!.units.unit_p2_dread_knights.grade = "azure";
     state.combat!.units.unit_p2_skeletons.grade = "bronze";
+    state.combat!.units.unit_p1_griffins.grade = "bronze";
 
-    // "Any unit except Azure": the Azure unit is filtered out (its grade is
-    // above the gradeByPower gate), while a bronze unit remains a legal target.
-    expect(
-      findPlay(state, "p1", "artifact.ring_of_the_wayfarer", 1, "unit_p2_dread_knights"),
-      "an Azure unit must never be offered as a paralysis target"
-    ).toBeFalsy();
-    expect(findPlay(state, "p1", "artifact.ring_of_the_wayfarer", 1, "unit_p2_skeletons")).toBeTruthy();
+    expect(maybeOpenWayfarerParalysisDecision(state)).toBe(true);
+    const choice = state.pendingChoice;
+    if (choice?.type !== "OPTION_CHOICE" || !choice.wayfarerParalysis) {
+      throw new Error("expected the wayfarer-paralysis decision");
+    }
+    const offered = choice.wayfarerParalysis.unitIds;
+    // "Any unit except Azure": the Azure unit is excluded; a bronze enemy AND a
+    // friendly bronze unit are both offered.
+    expect(offered).not.toContain("unit_p2_dread_knights");
+    expect(offered).toContain("unit_p2_skeletons");
+    expect(offered).toContain("unit_p1_griffins");
   });
 
-  it("offers the paralysis on any unit — including a friendly one (the 'any unit' wording)", () => {
-    const state = ringState("ring-any-unit");
+  it("keeping the Ring paralyses nothing and leaves the card in hand", () => {
+    const state = ringState("ring-keep");
     state.combat!.context = neutralContext();
-    // A friendly unit is also a legal target under "any unit except Azure".
-    expect(
-      findPlay(state, "p1", "artifact.ring_of_the_wayfarer", 1, "unit_p1_griffins"),
-      "the paralysis side targets any unit, not only enemies"
-    ).toBeTruthy();
+    state.combat!.attackerPlayerId = "p1";
+    state.combat!.units.unit_p2_skeletons.grade = "bronze";
+
+    expect(maybeOpenWayfarerParalysisDecision(state)).toBe(true);
+    const choice = state.pendingChoice;
+    if (choice?.type !== "OPTION_CHOICE" || !choice.wayfarerParalysis) {
+      throw new Error("expected the wayfarer-paralysis decision");
+    }
+    // The trailing option is "keep" (index === number of unit targets).
+    const keepIndex = choice.wayfarerParalysis.unitIds.length;
+    resolveWayfarerParalysisChoice(state, "p1", keepIndex);
+
+    expect(hasParalysis(state, "unit_p2_skeletons")).toBe(false);
+    expect(state.players.p1.hand).toContain("artifact.ring_of_the_wayfarer");
+    expect(state.players.p1.discard).not.toContain("artifact.ring_of_the_wayfarer");
+    expect(state.pendingChoice).toBeNull();
+  });
+
+  it("CONTROL: without the Ring in hand, no start-of-combat decision opens", () => {
+    const state = ringState("ring-none");
+    state.players.p1.hand = [];
+    state.combat!.context = neutralContext();
+    state.combat!.attackerPlayerId = "p1";
+    expect(maybeOpenWayfarerParalysisDecision(state)).toBe(false);
+    expect(state.pendingChoice).toBeNull();
   });
 });
