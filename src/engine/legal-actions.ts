@@ -3117,8 +3117,8 @@ function addSpellBookStashActions(actions: LegalAction[], state: GameState, play
  */
 /**
  * WOG Commanders — map-turn actions on the player's own turn:
- *  - COMMANDER_GRADE_UP: one action per valid pair of DIFFERENT stats below
- *    grade 3, while a level-3/6 (Wise: 2/5) pick is owed;
+ *  - COMMANDER_GRADE_UP: one action per stat below grade 3, while the commander
+ *    has at least one unspent stat point;
  *  - REVIVE_COMMANDER: pay 2 + 2x hero level gold to bring a dead commander back.
  */
 function addCommanderMapActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
@@ -3128,19 +3128,16 @@ function addCommanderMapActions(actions: LegalAction[], state: GameState, player
     return;
   }
 
-  if ((commander.pendingGradeUps?.length ?? 0) > 0) {
-    const choices = commanderGradeUpChoices(commander);
-    for (let first = 0; first < choices.length; first += 1) {
-      for (let second = first + 1; second < choices.length; second += 1) {
-        actions.push({
-          label: `Commander grade-up: ${choices[first]} + ${choices[second]}`,
-          action: {
-            type: "COMMANDER_GRADE_UP",
-            playerId,
-            stats: [choices[first], choices[second]]
-          }
-        });
-      }
+  if ((commander.gradePoints ?? 0) > 0) {
+    for (const stat of commanderGradeUpChoices(commander)) {
+      actions.push({
+        label: `Commander grade-up: raise ${stat}`,
+        action: {
+          type: "COMMANDER_GRADE_UP",
+          playerId,
+          stat
+        }
+      });
     }
   }
 

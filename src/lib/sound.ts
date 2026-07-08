@@ -141,6 +141,35 @@ export function playLibrarySound(key: string, volume = 0.55): void {
 }
 
 /**
+ * The converted Heroes III button click, played on any in-game UI button. A
+ * single delegated handler on the table root (see the tableRoot <main>s in
+ * app/page.tsx) catches clicks that land on — or inside — a <button>, so the
+ * whole in-game UI gets the same click the menu already has, without wiring
+ * every button by hand. Excluded so a click never doubles with richer foley or
+ * fires where it shouldn't:
+ *   - the combat board itself (`.boardFelt` — cells own strike/move/deploy
+ *     sounds), and
+ *   - anything (a button or an ancestor) marked `data-no-click-sound`.
+ */
+export function isTableUiClickTarget(target: EventTarget | null): boolean {
+  const element = target as HTMLElement | null;
+  const button = element?.closest?.("button") as HTMLButtonElement | null;
+  if (!button || button.disabled) {
+    return false;
+  }
+  return !button.closest("[data-no-click-sound]") && !button.closest(".boardFelt");
+}
+
+export function playTableUiClickSound(event: { target: EventTarget | null }): void {
+  if (muted || typeof window === "undefined") {
+    return;
+  }
+  if (isTableUiClickTarget(event.target)) {
+    playLibrarySound("ui/button", 0.32);
+  }
+}
+
+/**
  * Creature voice for a combat moment: the unit's own H3 clip for placing
  * its card, striking, blocking, wincing, moving or dying. Unknown units and
  * missing clips stay silent.

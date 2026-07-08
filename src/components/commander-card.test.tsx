@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, render, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { CommanderStatsPanel } from "./commander-card";
 
@@ -35,10 +35,22 @@ describe("CommanderStatsPanel", () => {
   });
 
   it("shows the Magic Power ladder with the current tier and spell ward", () => {
+    // The spec ladders Power 0/0/1/2: grade 2 = Power 1, ward −1.
     const { getByText, getByTitle } = render(<CommanderStatsPanel slug="paladin" grades={{ magic: 2 }} />);
-    // The Power ladder marks the current tier; the ward text reflects grade 2.
-    expect(getByTitle("Power 2 (current)")).toBeTruthy();
-    expect(getByText(/−2 Spell dmg/i)).toBeTruthy();
+    expect(getByTitle("Power 1 (current)")).toBeTruthy();
+    expect(getByText(/−1 Spell dmg/i)).toBeTruthy();
+    expect(getByText(/immune to ongoing effects/i)).toBeTruthy();
+    cleanup();
+    // Grade 3 = Power 2, ward −3.
+    const top = render(<CommanderStatsPanel slug="paladin" grades={{ magic: 3 }} />);
+    expect(top.getByTitle("Power 2 (current)")).toBeTruthy();
+    expect(top.getByText(/−3 Spell dmg/i)).toBeTruthy();
+  });
+
+  it("says a Magic grade-0 commander gets the cast only (no ward, not immune)", () => {
+    const { getByText } = render(<CommanderStatsPanel slug="paladin" grades={{ magic: 0 }} />);
+    expect(getByText(/cast only/i)).toBeTruthy();
+    expect(getByText(/grade I gains both/i)).toBeTruthy();
   });
 
   it("shows the Conflux commander's new Elemental Scourge specialty", () => {

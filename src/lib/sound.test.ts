@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import soundManifest from "../../public/sounds/manifest.json";
-import { playLibrarySound, playUnitSound, setSoundMuted } from "./sound";
+import { isTableUiClickTarget, playLibrarySound, playTableUiClickSound, playUnitSound, setSoundMuted } from "./sound";
 
 /**
  * Records every <audio> the foley layer creates so a test asserts real
@@ -104,6 +104,61 @@ describe("playLibrarySound", () => {
   it("stays silent while muted", () => {
     setSoundMuted(true);
     playLibrarySound("units/arch-devil-teleport");
+    expect(FakeAudio.instances).toHaveLength(0);
+  });
+});
+
+describe("in-game UI click sound", () => {
+  // A tiny DOM the delegated table handler runs against.
+  function build(): { button: HTMLButtonElement; icon: HTMLElement; board: HTMLButtonElement; quiet: HTMLButtonElement; disabled: HTMLButtonElement; plain: HTMLElement } {
+    document.body.innerHTML = `
+      <main class="tableRoot">
+        <button id="cmd"><span id="icon">End turn</span></button>
+        <button id="disabled" disabled>Wait</button>
+        <span data-no-click-sound><button id="quiet">Silent</button></span>
+        <div class="boardFelt"><button id="cell">Cell 9</button></div>
+        <div id="plain">not a button</div>
+      </main>`;
+    return {
+      button: document.getElementById("cmd") as HTMLButtonElement,
+      icon: document.getElementById("icon") as HTMLElement,
+      board: document.getElementById("cell") as HTMLButtonElement,
+      quiet: document.getElementById("quiet") as HTMLButtonElement,
+      disabled: document.getElementById("disabled") as HTMLButtonElement,
+      plain: document.getElementById("plain") as HTMLElement
+    };
+  }
+
+  it("plays the ui/button click once for a chrome button (or an icon inside it)", () => {
+    const dom = build();
+    playTableUiClickSound({ target: dom.button });
+    expect(FakeAudio.instances).toHaveLength(1);
+    expect(FakeAudio.instances[0].src).toContain("/sounds/ui/button.mp3");
+
+    // A click that lands on the label/icon inside the button still counts.
+    playTableUiClickSound({ target: dom.icon });
+    expect(FakeAudio.instances).toHaveLength(2);
+  });
+
+  it("stays silent for the combat board, opted-out, disabled, and non-button targets", () => {
+    const dom = build();
+    expect(isTableUiClickTarget(dom.board)).toBe(false); // .boardFelt has its own foley
+    expect(isTableUiClickTarget(dom.quiet)).toBe(false); // data-no-click-sound
+    expect(isTableUiClickTarget(dom.disabled)).toBe(false); // disabled button
+    expect(isTableUiClickTarget(dom.plain)).toBe(false); // not a button
+    for (const target of [dom.board, dom.quiet, dom.disabled, dom.plain]) {
+      playTableUiClickSound({ target });
+    }
+    expect(FakeAudio.instances).toHaveLength(0);
+
+    // CONTROL: the chrome button is a valid target.
+    expect(isTableUiClickTarget(dom.button)).toBe(true);
+  });
+
+  it("stays silent while muted", () => {
+    const dom = build();
+    setSoundMuted(true);
+    playTableUiClickSound({ target: dom.button });
     expect(FakeAudio.instances).toHaveLength(0);
   });
 });

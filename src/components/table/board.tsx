@@ -1652,15 +1652,20 @@ export function InspectPanel({ state, unitId }: { state: GameState; unitId: stri
           (() => {
             const clamp = (value: number | undefined): CommanderGrade =>
               (value !== undefined && value >= 3 ? 3 : value === 2 ? 2 : value === 1 ? 1 : 0);
+            const magicGrade = clamp(unit.commanderGrades.magic);
             const mightDice = commanderStatValue("damage", clamp(unit.commanderGrades.damage));
-            const power = commanderStatValue("magic", clamp(unit.commanderGrades.magic));
-            const ward = COMMANDER_MAGIC_SPELL_DAMAGE_REDUCTION[clamp(unit.commanderGrades.magic)];
+            const power = commanderStatValue("magic", magicGrade);
+            const ward = COMMANDER_MAGIC_SPELL_DAMAGE_REDUCTION[magicGrade];
+            const immune = magicGrade >= 1;
+            const magicTitle = immune
+              ? `Magic Power ${power}${ward > 0 ? ` · −${ward} Spell damage taken` : ""} · immune to ongoing effects`
+              : "Magic grade 0: cast only — takes full Spell damage, NOT immune to ongoing effects";
             return (
               <div className="inspectStats" style={{ marginTop: 2 }}>
                 <span title={`Damage grade (Might): rolls ${mightDice} extra attack ${mightDice === 1 ? "die" : "dice"} on each attack — each “+1” raises Attack, at most one “−1”.`}>
                   🎲 <b>{mightDice}</b> Might {mightDice === 1 ? "die" : "dice"}
                 </span>
-                <span title={`Magic Power ${power} · −${ward} Spell damage taken · immune to ongoing effects`}>
+                <span title={magicTitle}>
                   ✦ Power <b style={{ color: power > 0 ? "#f4d774" : undefined }}>{power}</b>
                 </span>
               </div>

@@ -413,11 +413,21 @@ Leading with what does NOT run / deliberate readings:
 - **The WoG PC reference layer did NOT ship**: the 5-tier primary skills and
   the PC numbers in `docs/wog-commanders-plan.md` §4–5 are design history. The
   shipped system is grades 0–3 per stat plus the 15 combination skills below.
+- **Stat points from level-ups** (`commanderGradePointsForLevelUp`,
+  `awardCommanderGradePoints`): every hero level-up awards the commander stat
+  POINTS to spend (one point raises one stat by one grade). A normal level-up
+  gives 1 point; the two MILESTONE levels give 2 — levels 3 & 6 for everyone
+  EXCEPT the Castle Paladin, whose Wise specialty pulls the milestones EARLIER
+  to levels 2 & 5 (`commanderDoublePointLevels`). A full run to level 7 is 8
+  points either way. Points live in `commander.gradePoints`; `COMMANDER_GRADE_UP`
+  spends ONE to raise a single stat (max grade 3). Pinned in
+  `wog-commanders.test.ts` ("stat points from the hero's level": the point
+  schedule, the spend, the Paladin milestone shift, the legal-action offers).
 - **Stats are grades 0–3** (`COMMANDER_GRADE_VALUES`): every stat STARTS at
   grade 0 (the base line A2/D1/H4/dmg0/Pow0/Spd5). A grade's bonus over the
   base is the value shown, never summed with earlier grades: +1/+2 at grade
   I/II; grade III is adjusted per the user spec — Attack +3 (5), Health +4 (8),
-  Power 3, Speed +5 (Initiative 10). Two stats work differently:
+  Speed +5 (Initiative 10). Two stats work differently:
   - **Defense = 1/2/2/3** (NOT +3 at III). Grade II is the "+1 def when
     attacked" tier: Defense 2 PLUS a permanent Defense token
     (`commander-defense-token`, `SELF_DEFENSE_TOKEN` — the commander rolls the
@@ -435,10 +445,17 @@ Leading with what does NOT run / deliberate readings:
     value BEFORE Defense (they can push through Defense; a fully-blocked hit is
     still 0). Pinned in `wog-commanders.test.ts` (the "Might" case, with the
     "at most one −1" and the push-through-Defense CONTROLs).
-  The Magic ladder: Power 0/1/2/3 (cast tiers cap at "Power 2+"), Spell ward
-  -1/-1/-2/-3 (`reduce-spell-damage-1/2/3`), ongoing-effect immunity at EVERY
-  grade. Grade-up picks (two DIFFERENT stats each) at hero level 2/4/6 —
-  Paladin's Wise: 2/3/5. Pinned in `wog-commanders.test.ts`.
+  The Magic ladder (user spec — grade 0 buys NOTHING but the cast itself):
+  Power **0/0/1/2** (`COMMANDER_GRADE_VALUES.magic`; cast tiers cap at "Power
+  2+"), Spell ward **0/1/1/3** (`COMMANDER_MAGIC_SPELL_DAMAGE_REDUCTION` — no
+  `reduce-spell-damage-*` id at all at grade 0, `-1/-1/-3` from grade 1),
+  ongoing-effect immunity from **grade 1** (`titan-ignore-ongoing`, gate
+  `COMMANDER_MAGIC_ONGOING_IMMUNE_GRADE` = 1 — a grade-0-Magic commander is NOT
+  immune and takes full Spell damage). So grade 0 = the once-per-round cast
+  only; grade 1 = -1 ward + ongoing immunity; grade 2 = +Power 1; grade 3 =
+  Power 2 + -3 ward. Pinned in `wog-commanders.test.ts` ("the Magic grade
+  package", with grade-0 full-damage / not-immune CONTROLs) and the injection
+  test.
 - **15 combination skills** (`COMMANDER_COMBOS`, one per stat pair): a combo
   unlocks once ONE stat of its pair is grade 3 and the OTHER at least grade 2
   (either orientation; 2+2 and 3+1 stay locked). Death Stare (DMG+MAG,
@@ -457,8 +474,10 @@ Leading with what does NOT run / deliberate readings:
   Regeneration (HP+SPD, heal 1 on activation), Battle Teleport (MAG+SPD,
   `teleport-move` MOVE_ANYWHERE — the user-spec "can move anywhere in battle",
   replacing WoG's Fly). Each behaviour + a locked CONTROL one grade below is
-  pinned in `wog-commander-combos.test.ts`. With 6 raises per game at most ONE
-  combo is reachable — a deliberate build choice.
+  pinned in `wog-commander-combos.test.ts`. With ~8 points over a full run one
+  combo is comfortably reachable (grade a stat to 3 = 3 points, its partner to
+  2 = 2 points) and a second is possible if the builds overlap — a deliberate
+  build choice.
 - **Deployment cap**: with the module on, `combatUnitLimit` = 4 army units
   (both neutral and PvP setups) — the commander IS the 5th body. Module off =
   the classic 5 (pinned with a CONTROL in `wog-commanders.test.ts`).
@@ -472,10 +491,13 @@ Leading with what does NOT run / deliberate readings:
   heroesofmightandmagic.com/wakeofgods/pics/comds; existence pinned in
   `wog-commander-combos.test.ts`). It spells out each grade bonus (base + grade
   delta), the Defense-token "+1 def when attacked" tier, the Damage DICE, a
-  Magic Power ladder with the current tier + spell ward highlighted, and every
-  combination skill with its symbol + full text (render smoke-tested in
-  `commander-card.test.tsx`). Combat inspect also shows the Might dice + Power
-  inline. A new grade-up pick pulses/blinks the dock tile.
+  Magic Power ladder with the current tier + spell ward highlighted (grade 0
+  reads "cast only — no ward, not immune"), and every combination skill with its
+  symbol + full text (render smoke-tested in `commander-card.test.tsx`). Combat
+  inspect also shows the Might dice + Power inline. On level-up the map card's
+  point picker lists each stat with a plain-words "what you gain" line
+  (`gradeUpBenefit`); one click spends one point on a stat and the count ticks
+  down. Unspent points pulse/blink the dock tile.
 - **Battlefield voices**: a commander has no unit definition, so its combat
   voice is keyed by slug in `commanderVoices` (`unit-sounds.ts`,
   `commanderSoundKey`); the table passes `commander:<slug>` as the voice id
@@ -487,8 +509,9 @@ Leading with what does NOT run / deliberate readings:
   Efreet, Factory=Cove Seamen, Cove=Sea Dogs, Bulwark=Jotunns. Pinned in
   `unit-sounds.test.ts`.
 - **Specialty adaptations** (each engine-enforced, but a conscious rewrite of
-  the WoG printed passive): Paladin Wise = grade-up picks one level early
-  (not 150% XP); Temple Guardian Mana Magician = twice per COMBAT a Spell may
+  the WoG printed passive): Paladin Wise = the two MILESTONE (2-point) level-ups
+  come early, at hero level 2 & 5 instead of 3 & 6 (not 150% XP); Temple Guardian
+  Mana Magician = twice per COMBAT a Spell may
   exceed the per-round limit (this game has no mana pool; a burned charge
   converts into `spellLimitBonusThisRound` so the limit never dips below the
   count); Brute Soul Reformer = flat +2 gold after each WON combat (no XP→gold
@@ -518,10 +541,16 @@ Leading with what does NOT run / deliberate readings:
   persists (revive anywhere on your map turn for 2 + 2x hero level gold).
 - **Tierless both ways** (bank-guard convention): tier-gated spells (Blind…)
   never target a commander, and the neutral AI hits it LAST.
-- **Ongoing-effect immunity is total** (Magic grade 0 baseline, titan-style):
-  even FRIENDLY ongoing buffs skip the commander, so the buff-type command
-  casts exclude commanders from their target lists up front. Tokens are NOT
-  ongoing effects — a commander can still be Paralyzed (unless Soul Eater).
+- **Ongoing-effect immunity is a Magic grade-1+ perk** (titan-style, gate
+  `COMMANDER_MAGIC_ONGOING_IMMUNE_GRADE` = 1): from grade 1 even FRIENDLY ongoing
+  buffs skip the commander, so the buff-type command casts exclude an
+  ongoing-IMMUNE commander from their target lists up front
+  (`commanderUnitImmuneToOngoing`). A grade-0-Magic commander is NOT immune — an
+  ongoing cast (e.g. an enemy Slow) CAN land on it, and it takes full Spell
+  damage; the cast-candidate exclusion and the effect application both key off
+  the actual immunity, pinned with grade-0 CONTROLs in `wog-commanders.test.ts`
+  and `wog-commander-casts.test.ts`. Tokens are NOT ongoing effects — a commander
+  can still be Paralyzed (unless Soul Eater).
 - **Cast readings**: the cast is once per combat round, FREE during the
   commander's own activation (before it moves/attacks — it may still do both).
   Cure's cleanse removes ALL negative tokens+effects (not one); Animate Dead

@@ -156,7 +156,7 @@ import {
 } from "@/data/map-sounds";
 import { COMBAT_EVENT_SOUNDS } from "@/data/combat-event-sounds";
 import { allTileDefinitions } from "@/data/map/tiles";
-import { playLibrarySound, playSpellBookOpen, playUnitSound } from "@/lib/sound";
+import { playLibrarySound, playSpellBookOpen, playTableUiClickSound, playUnitSound } from "@/lib/sound";
 import { commanderVoiceId, unitAttackFlourish } from "@/data/unit-sounds";
 import { useBackgroundMusic, type MusicScene } from "@/lib/music";
 import { MusicToggle } from "@/components/music-toggle";
@@ -3697,7 +3697,7 @@ export default function Home() {
   if (adventureMode && inLobby) {
     return (
       <CardZoomProvider>
-        <main className="tableRoot adventureRoot setupPhase">
+        <main className="tableRoot adventureRoot setupPhase" onClick={playTableUiClickSound}>
           <div className="tableTopRow">
             <div className="advHud">
               <div className="advHudCell">
@@ -3899,7 +3899,7 @@ export default function Home() {
 
     return (
       <CardZoomProvider>
-        <main className="tableRoot adventureRoot">
+        <main className="tableRoot adventureRoot" onClick={playTableUiClickSound}>
           <div className="tableTopRow">
             <AdventureHud
               legalActions={legalActions}
@@ -4529,7 +4529,7 @@ export default function Home() {
       }}
     >
     <CardZoomProvider>
-    <main className="tableRoot">
+    <main className="tableRoot" onClick={playTableUiClickSound}>
       {/* All card logistics live up here: every opponent's hand/deck/discard and
           the viewer's own dock + permanents + playable hand. Card-flight
           animations land in this strip. Heroes stay on the right rail. */}

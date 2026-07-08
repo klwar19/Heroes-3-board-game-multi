@@ -6074,9 +6074,9 @@ function discardDefeatedArmyUnit(state: GameState, player: PlayerState, armyUnit
 // ---------------------------------------------------------------------------
 
 /**
- * COMMANDER_GRADE_UP: spend one owed pick (hero level 3/6; Paladin's Wise 2/5)
- * to raise TWO DIFFERENT stats by one grade each. Never inside a combat — the
- * commander's battlefield unit is built from its grades at combat start.
+ * COMMANDER_GRADE_UP: spend one stat point to raise a single stat by one grade
+ * (max grade 3). Points are earned on hero level-ups. Never inside a combat —
+ * the commander's battlefield unit is built from its grades at combat start.
  */
 export function commanderGradeUp(
   state: GameState,
@@ -6090,37 +6090,27 @@ export function commanderGradeUp(
   if (state.combat) {
     throw new Error("Commander grade-ups resolve outside of combat.");
   }
-  const pending = commander.pendingGradeUps ?? [];
-  if (pending.length === 0) {
-    throw new Error("No commander grade-up is available.");
+  if ((commander.gradePoints ?? 0) <= 0) {
+    throw new Error("No commander stat points to spend.");
   }
 
-  const [first, second] = action.stats;
-  if (
-    !first ||
-    !second ||
-    first === second ||
-    !COMMANDER_STAT_KEYS.includes(first) ||
-    !COMMANDER_STAT_KEYS.includes(second)
-  ) {
-    throw new Error("Pick two different commander stats.");
+  const { stat } = action;
+  if (!stat || !COMMANDER_STAT_KEYS.includes(stat)) {
+    throw new Error("Pick a commander stat to raise.");
   }
   const grades = commanderGradesOf(commander);
-  for (const key of [first, second]) {
-    if (grades[key] >= 3) {
-      throw new Error(`${key} is already at grade 3.`);
-    }
+  if (grades[stat] >= 3) {
+    throw new Error(`${stat} is already at grade 3.`);
   }
 
-  commander.grades[first] = grades[first] + 1;
-  commander.grades[second] = grades[second] + 1;
-  commander.pendingGradeUps = pending.slice(1);
+  commander.grades[stat] = grades[stat] + 1;
+  commander.gradePoints = (commander.gradePoints ?? 0) - 1;
   appendEvent(state, {
     type: "COMMANDER_GRADED_UP",
     playerId: action.playerId,
     commanderSlug: commander.slug,
-    stats: [first, second],
-    message: `Commander grade-up: ${first} and ${second} each rise one grade.`
+    stat,
+    message: `Commander grade-up: ${stat} rises to grade ${commander.grades[stat]}.`
   });
 }
 

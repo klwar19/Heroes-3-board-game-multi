@@ -17,7 +17,8 @@ import {
   commanderComboSiteIcon,
   commanderComboUnlocked,
   commanderDefinitions,
-  commanderGradeUpLevels,
+  commanderDoublePointLevels,
+  commanderMagicImmuneToOngoing,
   commanderReviveCost,
   commanderStatValue,
   commanderUnlockedCombos,
@@ -38,7 +39,7 @@ import {
 //  - the panel below lists the six grade tracks (grade 0..3 pips), the
 //    command ability's Power tiers (current tier highlighted), the specialty,
 //    and all 15 combination skills with their unlock state.
-// Live mode: pass `grades`/`level`/`dead`/`pendingGradeUps` from engine state
+// Live mode: pass `grades`/`level`/`dead`/`gradePoints` from engine state
 // plus `onGradeUp`/`onRevive` callbacks. Preview mode: `editable` keeps local
 // state so every configuration can be inspected at /commander-preview.
 // CommanderCardFace alone renders in the combat inspect/zoom panels (pass
@@ -236,8 +237,8 @@ export function CommanderCardFace({
         </span>
       ) : null}
 
-      {/* Bonus Damage / command Power badges (top-right of the art window),
-          shown only once they rise above 0 — a fresh commander stays clean. */}
+      {/* Bonus Damage / Magic badges (top-right of the art window), shown only
+          once the grade buys something — a fresh commander stays clean. */}
       <span style={{ position: "absolute", right: "6%", top: "15.2%", display: "flex", gap: "1cqw" }}>
         {might > 0 ? (
           <span
@@ -247,12 +248,12 @@ export function CommanderCardFace({
             🎲 +{might}
           </span>
         ) : null}
-        {power > 0 ? (
+        {grades.magic > 0 ? (
           <span
             style={badgeStyle}
-            title={`Magic grade ${gradeNumeral(grades.magic)}: command Power ${power}, takes ${spellWard} less Spell damage, immune to ongoing effects.`}
+            title={`Magic grade ${gradeNumeral(grades.magic)}: command Power ${power}${spellWard > 0 ? `, takes ${spellWard} less Spell damage` : ""}, immune to ongoing effects.`}
           >
-            ✦ {power}
+            ✦ {power > 0 ? `Pow ${power}` : "🛡"}
           </span>
         ) : null}
       </span>
@@ -485,10 +486,19 @@ export function CommanderStatsPanel({
               ? <>Rolls <b style={{ color: GOLD }}>{mightDice}</b> extra attack {mightDice === 1 ? "die" : "dice"} — each “+1” raises Attack; at most one “−1”.</>
               : <span style={{ opacity: 0.7 }}>No extra attack dice yet.</span>;
           } else if (key === "magic") {
+            const immune = commanderMagicImmuneToOngoing(gradeIndex);
             detail = (
               <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                 <PowerLadder power={power} />
-                <span style={{ opacity: 0.85 }}>−{spellWard} Spell dmg · immune to ongoing effects</span>
+                {spellWard > 0 || immune ? (
+                  <span style={{ opacity: 0.85 }}>
+                    {spellWard > 0 ? `−${spellWard} Spell dmg` : ""}
+                    {spellWard > 0 && immune ? " · " : ""}
+                    {immune ? "immune to ongoing effects" : ""}
+                  </span>
+                ) : (
+                  <span style={{ opacity: 0.7 }}>Cast only — no ward, not immune to ongoing (grade I gains both).</span>
+                )}
               </span>
             );
           } else if (key === "defense") {
@@ -514,13 +524,13 @@ export function CommanderStatsPanel({
                 style={{
                   minWidth: 30,
                   textAlign: "center",
-                  fontSize: key === "damage" ? 15 : 19,
+                  fontSize: key === "damage" || key === "magic" ? 15 : 19,
                   fontWeight: 800,
                   color: buffed || stanceLift ? "#9be29b" : gradeIndex >= 3 ? GOLD : PALE,
                   textShadow: OUTLINE
                 }}
               >
-                {key === "damage" ? `🎲${mightDice}` : mainValue}
+                {key === "damage" ? `🎲${mightDice}` : key === "magic" ? `✦${power}` : mainValue}
               </span>
               <GradeChips grade={gradeIndex} />
               <span style={{ flex: 1, fontSize: 11.5, lineHeight: 1.25, textAlign: "right" }}>{detail}</span>
@@ -643,11 +653,12 @@ function GradeChips({ grade }: { grade: CommanderGrade }) {
   );
 }
 
-/** Magic Power ladder 0→1→2→3 with the current tier highlighted (pow difference). */
+/** Magic Power ladder 0→1→2 with the current tier highlighted (the spec caps
+ *  command Power at 2 — grades map to Power 0/0/1/2). */
 function PowerLadder({ power }: { power: number }) {
   return (
     <span style={{ display: "inline-flex", gap: 3 }}>
-      {[0, 1, 2, 3].map((step) => {
+      {[0, 1, 2].map((step) => {
         const active = power === step;
         const reached = power >= step;
         return (
@@ -679,7 +690,7 @@ export function CommanderCard({
   grades: gradesProp,
   level = 1,
   dead = false,
-  pendingGradeUps = 0,
+  gradePoints = 0,
   onGradeUp,
   onRevive,
   goldAvailable,
@@ -695,10 +706,10 @@ export function CommanderCard({
   /** Hero level (= commander level). */
   level?: number;
   dead?: boolean;
-  /** Owed grade-up picks (PlayerState.commander.pendingGradeUps.length). */
-  pendingGradeUps?: number;
-  /** Live mode: spend a grade-up pick on two DIFFERENT stats. */
-  onGradeUp?: (stats: [CommanderStatKey, CommanderStatKey]) => void;
+  /** Unspent stat points (PlayerState.commander.gradePoints). */
+  gradePoints?: number;
+  /** Live mode: spend ONE point to raise a single stat by a grade. */
+  onGradeUp?: (stat: CommanderStatKey) => void;
   /** Live mode: revive the dead commander (cost = 2 + 2x level gold). */
   onRevive?: () => void;
   /** Live mode: owner's gold, to enable/disable the revive button. */
@@ -716,7 +727,6 @@ export function CommanderCard({
   const def = commanderDefinitions[slug];
   const [localGrades, setLocalGrades] = useState<CommanderGrades>({ ...GRADES_ZERO });
   const [localLevel, setLocalLevel] = useState(1);
-  const [picked, setPicked] = useState<CommanderStatKey[]>([]);
   const [localStance, setLocalStance] = useState<"attack" | "defense">("attack");
 
   const hasStance = def?.specialty.id === "superior-combat";
@@ -724,29 +734,11 @@ export function CommanderCard({
   const grades = editable ? localGrades : normalizeGrades(gradesProp);
   const shownLevel = editable ? localLevel : level;
   const reviveCost = commanderReviveCost(shownLevel);
-  const gradeUpLevels = commanderGradeUpLevels(slug);
+  const doublePointLevels = commanderDoublePointLevels(slug);
 
   if (!def) {
     return null;
   }
-
-  const togglePick = (key: CommanderStatKey) => {
-    setPicked((current) =>
-      current.includes(key) ? current.filter((entry) => entry !== key) : current.length < 2 ? [...current, key] : current
-    );
-  };
-
-  const confirmGradeUp = () => {
-    if (picked.length !== 2 || !onGradeUp) {
-      return;
-    }
-    // Canonical stat-key order — must match the engine's offered pairs.
-    const sorted = [...picked].sort(
-      (left, right) => COMMANDER_STAT_KEYS.indexOf(left) - COMMANDER_STAT_KEYS.indexOf(right)
-    ) as [CommanderStatKey, CommanderStatKey];
-    setPicked([]);
-    onGradeUp(sorted);
-  };
 
   return (
     <div className={className} style={{ position: "relative", width: "100%", maxWidth: 420, fontFamily: 'Georgia, "Times New Roman", serif' }}>
@@ -801,7 +793,7 @@ export function CommanderCard({
           ) : null}
 
           {editable ? (
-            <Row label={`Level (grade-ups at ${gradeUpLevels.join(" & ")})`}>
+            <Row label={`Level (milestone points at ${doublePointLevels.join(" & ")})`}>
               <Stepper
                 value={localLevel}
                 onDec={() => setLocalLevel((value) => Math.max(1, value - 1))}
@@ -810,56 +802,58 @@ export function CommanderCard({
             </Row>
           ) : null}
 
-          {/* Grade-up picker (live mode, when a pick is owed) — pulses so a
-              fresh commander level-up is impossible to miss. */}
-          {!editable && pendingGradeUps > 0 && onGradeUp && !dead ? (
+          {/* Grade-up picker (live mode, when points are unspent) — one click
+              spends one point on a stat. Pulses so a fresh level-up is
+              impossible to miss; a spend re-renders with the remaining count. */}
+          {!editable && gradePoints > 0 && onGradeUp && !dead ? (
             <div className="commanderGradeUpPulse" style={{ padding: 8, border: "1px dashed #b9985a", borderRadius: 6, background: "#241b10" }}>
-              <div style={{ color: GOLD, fontWeight: 700, marginBottom: 6 }}>
-                LEVEL UP{pendingGradeUps > 1 ? ` (x${pendingGradeUps})` : ""} — pick two different stats to grade up
+              <div style={{ color: GOLD, fontWeight: 700, marginBottom: 2 }}>
+                LEVEL UP — {gradePoints} stat {gradePoints === 1 ? "point" : "points"} to spend
               </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              <div style={{ color: DIM, fontSize: 11.5, marginBottom: 6 }}>
+                Click a stat to raise it one grade (each click spends 1 point).
+              </div>
+              <div style={{ display: "grid", gap: 5 }}>
                 {COMMANDER_STAT_KEYS.map((key) => {
                   const capped = grades[key] >= 3;
-                  const active = picked.includes(key);
+                  const nextGrade = (grades[key] + 1) as CommanderGrade;
                   return (
                     <button
                       key={key}
                       type="button"
-                      disabled={capped || (!active && picked.length >= 2)}
-                      onClick={() => togglePick(key)}
+                      disabled={capped}
+                      onClick={() => onGradeUp(key)}
+                      title={capped ? undefined : gradeUpBenefit(key, nextGrade)}
                       style={{
-                        padding: "4px 10px",
-                        borderRadius: 12,
-                        border: `1px solid ${active ? GOLD : "#6b5433"}`,
-                        background: active ? "#7a5a2c" : "#2a2119",
-                        color: capped ? "#6d6252" : active ? PALE : DIM,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        textAlign: "left",
+                        padding: "5px 9px",
+                        borderRadius: 8,
+                        border: `1px solid ${capped ? "#4d3d26" : "#8d683c"}`,
+                        background: capped ? "#1c1710" : "#2f2415",
+                        color: capped ? "#6d6252" : PALE,
                         cursor: capped ? "default" : "pointer",
                         fontWeight: 600
                       }}
                     >
-                      {COMMANDER_STAT_LABELS[key]}
-                      {capped ? " (max)" : ` ${gradeValueLabel(key, grades[key])} → ${gradeValueLabel(key, (grades[key] + 1) as CommanderGrade)}`}
+                      <CommanderStatIcon statKey={key} size={22} />
+                      <span style={{ width: 58, fontWeight: 700, color: capped ? "#6d6252" : "#e6c56a" }}>
+                        {COMMANDER_STAT_LABELS[key]}
+                      </span>
+                      {capped ? (
+                        <span style={{ opacity: 0.75 }}>at grade III (max)</span>
+                      ) : (
+                        <span style={{ fontSize: 11.5, lineHeight: 1.2 }}>
+                          <b style={{ color: GOLD }}>{gradeNumeral(grades[key])} → {gradeNumeral(nextGrade)}</b>{" "}
+                          <span style={{ opacity: 0.9 }}>· {gradeUpBenefit(key, nextGrade)}</span>
+                        </span>
+                      )}
                     </button>
                   );
                 })}
               </div>
-              <button
-                type="button"
-                disabled={picked.length !== 2}
-                onClick={confirmGradeUp}
-                style={{
-                  marginTop: 8,
-                  padding: "6px 14px",
-                  background: picked.length === 2 ? "#3f5c1c" : "#2a2119",
-                  color: picked.length === 2 ? PALE : DIM,
-                  border: "1px solid #8d683c",
-                  borderRadius: 6,
-                  cursor: picked.length === 2 ? "pointer" : "default",
-                  fontWeight: 700
-                }}
-              >
-                Confirm grade-up
-              </button>
             </div>
           ) : null}
 
@@ -869,7 +863,7 @@ export function CommanderCard({
             <div>
               <div style={{ color: "#e6c56a", fontWeight: 700, letterSpacing: 1, marginBottom: 4 }}>
                 EDIT GRADES{" "}
-                <span style={{ opacity: 0.6, fontWeight: 400 }}>(picks at hero level {gradeUpLevels.join(" & ")})</span>
+                <span style={{ opacity: 0.6, fontWeight: 400 }}>(milestone points at hero level {doublePointLevels.join(" & ")})</span>
               </div>
               {COMMANDER_STAT_KEYS.map((key) => (
                 <div key={key} style={{ display: "flex", alignItems: "center", gap: 8, padding: "2px 0" }}>
@@ -968,13 +962,56 @@ function gradeValueLabel(key: CommanderStatKey, grade: CommanderGrade): string {
     return value === 0 ? "no dice" : `${value} ${value === 1 ? "die" : "dice"}`;
   }
   if (key === "magic") {
-    return `Power ${value}`;
+    // The Magic grade ladders a whole package, not just Power (0/0/1/2).
+    if (grade === 0) {
+      return "cast only";
+    }
+    const ward = COMMANDER_MAGIC_SPELL_DAMAGE_REDUCTION[grade];
+    return value > 0 ? `Power ${value}, −${ward} ward` : `−${ward} ward, immune`;
   }
   if (key === "defense" && grade === COMMANDER_DEFENSE_TOKEN_GRADE) {
     // Grade II is Defense 2 PLUS the "+1 when attacked" Defense token.
     return `${value} +token`;
   }
   return `${value}`;
+}
+
+/**
+ * A short, human "what this grade buys" line — used to explain each stat point
+ * the owner is about to spend (the grade-up picker). `grade` is the grade the
+ * stat would REACH by spending the point.
+ */
+function gradeUpBenefit(key: CommanderStatKey, grade: CommanderGrade): string {
+  const base = COMMANDER_GRADE_VALUES[key][0];
+  const value = COMMANDER_GRADE_VALUES[key][grade];
+  switch (key) {
+    case "attack":
+      return `Attack ${value} (+${value - base} over base)`;
+    case "health":
+      return `Health ${value} (+${value - base} over base)`;
+    case "speed":
+      return `Initiative ${value} (+${value - base} over base)`;
+    case "defense":
+      if (grade === COMMANDER_DEFENSE_TOKEN_GRADE) {
+        return `Defense ${value} + a "+1 when attacked" Defend die`;
+      }
+      return grade >= 3 ? `Defense ${value} (reliable, no die)` : `Defense ${value}`;
+    case "damage":
+      return `Roll ${value} extra attack ${value === 1 ? "die" : "dice"} on every attack (Might)`;
+    case "magic":
+      switch (grade) {
+        case 1:
+          return "−1 Spell damage + immune to ongoing effects";
+        case 2:
+          return "command Power 1 (keeps −1 ward + ongoing immunity)";
+        case 3:
+          return "command Power 2, −3 Spell damage, immune to ongoing";
+        default:
+          return "the once-per-round cast";
+      }
+    default:
+      return "";
+  }
 }
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {

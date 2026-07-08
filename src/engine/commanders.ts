@@ -5,7 +5,8 @@ import {
   COMMANDER_STAT_KEYS,
   commanderCastTierIndex,
   commanderDefinitions,
-  commanderGradeUpLevels,
+  commanderGradePointsForLevelUp,
+  commanderMagicImmuneToOngoing,
   commanderStatValue,
   commanderUnlockedCombos,
   type CommanderCastDefinition,
@@ -102,26 +103,24 @@ export function playerHasLivingCommander(state: GameState, playerId: PlayerId, s
 }
 
 /**
- * Queue the grade-up picks a hero level-up crossed (hero level 3/6; the
- * Paladin's Wise: 2/5). Called from gainExperience for each level crossed.
+ * Award the stat points a hero level-up earns (1 normally, 2 at a milestone
+ * level — see commanderGradePointsForLevelUp; the Paladin's Wise milestones are
+ * levels 2 & 5). Called from gainExperience for each level crossed. Returns the
+ * number of points awarded (0 = no commander, or level < 2).
  */
-export function queueCommanderGradeUp(player: PlayerState, level: number): boolean {
+export function awardCommanderGradePoints(player: PlayerState, level: number): number {
   const commander = player.commander;
   if (!commander) {
-    return false;
+    return 0;
   }
-  const levels = commanderGradeUpLevels(commander.slug as CommanderSlug);
-  if (!levels.includes(level)) {
-    return false;
+  const points = commanderGradePointsForLevelUp(commander.slug as CommanderSlug, level);
+  if (points > 0) {
+    commander.gradePoints = (commander.gradePoints ?? 0) + points;
   }
-  const pending = (commander.pendingGradeUps ??= []);
-  if (!pending.includes(level)) {
-    pending.push(level);
-  }
-  return true;
+  return points;
 }
 
-/** Stats a COMMANDER_GRADE_UP pick may still raise (below grade 3). */
+/** Stats a COMMANDER_GRADE_UP point may still be spent on (below grade 3). */
 export function commanderGradeUpChoices(commander: CommanderPlayerState): CommanderStatKey[] {
   const grades = commanderGradesOf(commander);
   return COMMANDER_STAT_KEYS.filter((key) => grades[key] < 3);
@@ -139,6 +138,15 @@ export function isCommanderUnit(unit: CombatUnitState | undefined | null): boole
   return Boolean(unit?.commanderSlug);
 }
 
+/**
+ * Whether a commander combat unit is immune to ongoing effects. The immunity is
+ * part of the Magic grade-1 package, so it keys off the unit's grade snapshot —
+ * a grade-0-Magic commander is NOT immune (it carries no titan-ignore-ongoing).
+ */
+export function commanderUnitImmuneToOngoing(unit: CombatUnitState): boolean {
+  return Boolean(unit.commanderSlug) && commanderMagicImmuneToOngoing(unit.commanderGrades?.magic ?? 0);
+}
+
 export function findCommanderUnit(state: GameState, playerId: PlayerId): CombatUnitState | null {
   const combat = state.combat;
   if (!combat) {
@@ -150,8 +158,9 @@ export function findCommanderUnit(state: GameState, playerId: PlayerId): CombatU
 
 /**
  * Ability ids the commander's combat unit carries, derived from its grades:
- *  - Magic package (grade 0 baseline): ongoing-effect immunity and -1 Spell
- *    damage, rising to -2 at Magic grade 2 and -3 at grade 3;
+ *  - Magic package: NOTHING at grade 0 (the commander still takes full Spell
+ *    damage and can be hit by ongoing effects); from grade 1 the ongoing-effect
+ *    immunity plus the spell ward (-1 at grades 1 & 2, -3 at grade 3);
  *  - Damage grade 1/2/3: +1/+2/+3 bonus damage on its attacks;
  *  - every unlocked combination skill (one stat of the pair at grade 3, the
  *    other at 2+) — Sharpshooter has no ability id (it is the type flip);
@@ -163,10 +172,20 @@ export function commanderAbilityIds(commander: CommanderPlayerState): string[] {
   const grades = commanderGradesOf(commander);
   const ids: string[] = [];
 
-  // Magic package (grade 0 baseline, per the module spec).
+  // Magic package — begins at grade 1 per the module spec. At grade 0 the
+  // commander gets NO spell ward and NO ongoing-effect immunity (only the
+  // once-per-round cast, which every commander always has).
   const spellWard = COMMANDER_MAGIC_SPELL_DAMAGE_REDUCTION[grades.magic];
-  ids.push(spellWard >= 3 ? "reduce-spell-damage-3" : spellWard >= 2 ? "reduce-spell-damage-2" : "reduce-spell-damage-1");
-  ids.push("titan-ignore-ongoing");
+  if (spellWard >= 3) {
+    ids.push("reduce-spell-damage-3");
+  } else if (spellWard >= 2) {
+    ids.push("reduce-spell-damage-2");
+  } else if (spellWard >= 1) {
+    ids.push("reduce-spell-damage-1");
+  }
+  if (commanderMagicImmuneToOngoing(grades.magic)) {
+    ids.push("titan-ignore-ongoing");
+  }
 
   // Defense grade II ("+1 def when attacked"): a permanent Defense token — the
   // commander rolls the Defend die when attacked. Grade III is a reliable flat
@@ -375,9 +394,15 @@ export function commanderCastCandidates(state: GameState, unit: CombatUnitState)
     if (target.id === unit.id && !targeting.canTargetSelf) {
       return false;
     }
-    // Ongoing-effect casts never land on ANY commander (they all carry the
-    // Magic grade 1 ongoing-effect immunity) — no dead choices offered.
-    if (ongoingCast && target.commanderSlug && target.id !== unit.id) {
+    // Ongoing-effect casts never land on a commander that is IMMUNE to ongoing
+    // effects (Magic grade >= 1) — the buff would fizzle, so no dead choices are
+    // offered. A grade-0-Magic commander is NOT immune and stays a legal target.
+    if (
+      ongoingCast &&
+      target.commanderSlug &&
+      target.id !== unit.id &&
+      commanderUnitImmuneToOngoing(target)
+    ) {
       return false;
     }
     if (targeting.unitType === "ranged" && target.type !== "ranged") {
