@@ -693,10 +693,12 @@ export function BattlefieldBoard({
     }
   }
 
-  // Empty-space destination pickers: the Teleport Spell (combat-teleport) and
-  // Necklace of Swiftness's one-space move (combat-step) both ask the controller
-  // to pick an empty space. Map each offered position to its CHOOSE_OPTION so the
-  // empty cell lights up and lands the unit when clicked (works in both views).
+  // Empty-space destination pickers: the Teleport Spell (combat-teleport),
+  // Necklace of Swiftness's one-space move (combat-step) and the BINH house-rule
+  // neutral move-to-attack destination (neutral-destination) all ask the
+  // controller to pick an empty space. Map each offered position to its
+  // CHOOSE_OPTION so the empty cell lights up and lands the unit when clicked
+  // (works in both views).
   const teleportActionsByPosition = new Map<number, GameAction>();
   const teleportChoice = state.pendingChoice;
   if (combat && teleportChoice?.type === "OPTION_CHOICE" && teleportChoice.playerId === viewerPlayerId) {
@@ -705,7 +707,9 @@ export function BattlefieldBoard({
         ? teleportChoice.teleport?.positions
         : teleportChoice.context === "combat-step"
           ? teleportChoice.step?.positions
-          : undefined;
+          : teleportChoice.context === "neutral-destination"
+            ? teleportChoice.neutralDestination?.positions
+            : undefined;
     destinationPositions?.forEach((position, optionIndex) => {
       teleportActionsByPosition.set(position, {
         type: "CHOOSE_OPTION",
@@ -715,6 +719,12 @@ export function BattlefieldBoard({
       });
     });
   }
+  // A neutral move-to-attack destination is a walk, not a blink — label it "Move".
+  const teleportIsNeutralMove =
+    combat &&
+    teleportChoice?.type === "OPTION_CHOICE" &&
+    teleportChoice.context === "neutral-destination" &&
+    teleportChoice.playerId === viewerPlayerId;
 
   // Spell tokens on the board (Force Field / Fire Wall / Quicksand / Land Mine).
   const battlefieldTokensByPosition = new Map<number, BattlefieldTokenState>();
@@ -1400,7 +1410,7 @@ export function BattlefieldBoard({
                 : spaceCardAction
                   ? `Cast on ${getBattlefieldLabel(index)}${unit ? ` (over ${unit.name})` : ""}`
                   : teleportAction
-                    ? repositionKind === "move"
+                    ? repositionKind === "move" || teleportIsNeutralMove
                       ? `Move to ${getBattlefieldLabel(index)}`
                       : `Teleport to ${getBattlefieldLabel(index)}`
                     : placeTokenAction

@@ -847,3 +847,47 @@ and `creature-bank-combat.test.ts` "Pyramid: a Stacked win …" end-to-end).
   via `gradeRankOfUnit`. The "gain a Stacked unit" reward is modelled as gaining
   the recruitable card's Pack side — a HOUSE-RULE reading of "Stacked", since
   army cards carry no Stack Token of their own.
+
+## Neutral-combat & Sorrow refinements (BINH house rules) — what runs
+
+Three engine-enforced additions; each fails a named test if its wiring is removed.
+
+- **Mysticism EXPERT recalls the "pow" cards paid for a Sorrow.** A silver/gold
+  Sorrow is paid with power-source ("pow") cards. When the caster then plays
+  Mysticism into the kept-open activation-skip window, Mysticism's expert side
+  ("also take back all other cards played together with it") now sweeps those pow
+  cards back to hand along with the Sorrow — not just the Sorrow. The paid cards
+  are captured on `combat.pendingActivationSkipRecall.powerCardIds` when the
+  window is held open and returned from the discard in the RECALL_SPELL take-back
+  handler (reducer.ts). Knowledge and BASIC Mysticism leave the pow cards spent
+  (the control). Pinned in `rampart-inferno-spells.test.ts` ("expert Mysticism
+  recalls every pow card paid for the Sorrow", with a basic-Mysticism control).
+
+- **A +Movement card can extend a neutral combat.** Boots of Speed, the Logistics
+  ability's expert side, Dessa's Logistics IV/VI, Shield of Naval Glory's sea
+  side — normally map-only — may be played in a neutral combat's
+  continue-or-retreat window (`awaitingContinue`) to top up `hero.movementPoints`,
+  so a hero OUT of movement can buy another round (spend 1 on
+  `CONTINUE_NEUTRAL_COMBAT`) instead of being forced to retreat. Optional: the
+  player chooses to use it or not at the end of each round. `heroMovementGrantOption`
+  (effects.ts) detects the movement side; the offer lives in the awaitingContinue
+  gate (legal-actions.ts, gated on the same expert-use / sea-tile conditions the
+  reducer checks); playCard waives `mapOnly` ONLY for that exact window
+  (`continueMovementTopUp`) and keeps the window open afterwards. Pinned in
+  `neutral-combat-movement-extend.test.ts` (Boots + the expert-only Logistics
+  sibling, with a normal-combat control that mapOnly still holds) and the UI in
+  `combat-round-over-prompt.test.tsx`.
+
+- **The player picks a neutral's move destination.** When a neutral must MOVE to
+  reach the target it will attack and several legal cells reach it, the attacking
+  player picks which — a `choose-destination` intent (`neutral-ai.ts`) →
+  `neutral-destination` OPTION_CHOICE (reducer.ts) → resume the activation with
+  the picked cell forced. It still attacks the rules-fixed target (target
+  selection is unchanged); only the landing cell is the player's choice. A single
+  legal cell needs no prompt (move-and-attack directly), and an already-adjacent
+  guard just attacks. Composes with the existing "player breaks a target tie"
+  choice: pick the target, THEN the cell. Board cells are clickable (board.tsx,
+  reusing the teleport cell-picker). Pinned in `neutral-move-destination.test.ts`
+  (unit-level intents + an end-to-end test proving the guard lands on the CELL the
+  player picked), the composition in `adventure.test.ts`, and the board wiring in
+  `board.test.tsx`.

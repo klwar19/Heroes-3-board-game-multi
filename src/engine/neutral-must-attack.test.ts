@@ -76,10 +76,15 @@ describe("neutral units must attack if possible (rulebook AI)", () => {
 
     const intent = planNeutralActivation(state, state.combat!, attacker);
 
-    expect(intent.kind).toBe("move-and-attack");
-    if (intent.kind === "move-and-attack") {
+    // Reaching a target several spaces away offers more than one legal landing
+    // cell, so the attacking player picks which (BINH house rule). The target it
+    // will attack is still the reachable silver, and every offered cell is a
+    // legal attack space adjacent to it.
+    expect(intent.kind).toBe("choose-destination");
+    if (intent.kind === "choose-destination") {
       expect(intent.defenderId).toBe(reachableSilver.id);
-      expect(isAdjacent(intent.destination, reachableSilver.position)).toBe(true);
+      expect(intent.destinations.length).toBeGreaterThan(1);
+      expect(intent.destinations.every((cell) => isAdjacent(cell, reachableSilver.position))).toBe(true);
     }
   });
 
@@ -154,8 +159,10 @@ describe("neutral units must attack if possible (rulebook AI)", () => {
 
     const intent = planNeutralActivation(state, state.combat!, attacker);
 
-    expect(intent.kind).toBe("move-and-attack");
-    if (intent.kind === "move-and-attack") {
+    // The target is the lower silver (a move away, so several cells reach it →
+    // the player picks the landing cell); tier priority chose the target.
+    expect(intent.kind).toBe("choose-destination");
+    if (intent.kind === "choose-destination") {
       expect(intent.defenderId).toBe(farSilver.id);
     }
   });
@@ -171,8 +178,10 @@ describe("neutral units must attack if possible (rulebook AI)", () => {
 
     const intent = planNeutralActivation(state, state.combat!, attacker);
 
-    expect(intent.kind).toBe("move-and-attack");
-    if (intent.kind === "move-and-attack") {
+    // The target is the closer-tier silver (a move away, so the player picks the
+    // landing cell); the tier gap chose the target, distance did not.
+    expect(intent.kind).toBe("choose-destination");
+    if (intent.kind === "choose-destination") {
       expect(intent.defenderId).toBe(farSilver.id);
     }
   });

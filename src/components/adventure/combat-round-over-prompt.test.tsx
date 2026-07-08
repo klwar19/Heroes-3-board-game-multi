@@ -87,4 +87,22 @@ describe("The 'combat round is over' prompt", () => {
     expect(screen.getByRole("button", { name: /fight another combat round/i })).toBeTruthy();
     expect(screen.getByRole("button", { name: /retreat/i })).toBeTruthy();
   });
+
+  it("surfaces a +Movement top-up button when the out-of-move hero holds one", () => {
+    const state = neutralRoundOver("neutral-move-topup");
+    // Out of movement: the plain "spend 1 MP" continue is impossible, but a
+    // held +Movement card (Boots of Speed) can be spent to buy another round.
+    state.heroes.hero_p1.movementPoints = 0;
+    state.players.p1.hand = ["artifact.boots_of_speed"];
+    const legal = getLegalActions(state, "p1");
+    expect(legal.some((l) => l.action.type === "CONTINUE_NEUTRAL_COMBAT")).toBe(false);
+    expect(
+      legal.some((l) => l.action.type === "PLAY_CARD" && l.action.cardId === "artifact.boots_of_speed")
+    ).toBe(true);
+
+    render(<PromptTray legalActions={legal} onAction={vi.fn()} state={state} viewerPlayerId="p1" />);
+    expect(screen.getByText(/combat round is over/i)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /gain movement to fight another combat round/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /retreat/i })).toBeTruthy();
+  });
 });

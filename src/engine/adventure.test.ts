@@ -1474,6 +1474,18 @@ describe("neutral combat", () => {
       targetUnitId: griffins.id
     });
 
+    // The destination choice composes with the target choice (BINH house rule):
+    // now that the griffins are the target and several cells reach them, the
+    // player also picks WHERE the guard lands. It still attacks the griffins.
+    const destChoice = state.pendingChoice;
+    expect(destChoice?.type).toBe("OPTION_CHOICE");
+    if (destChoice?.type === "OPTION_CHOICE") {
+      expect(destChoice.context).toBe("neutral-destination");
+      expect(destChoice.playerId).toBe("p1");
+      expect(destChoice.neutralDestination?.defenderId).toBe(griffins.id);
+      state = apply(state, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: destChoice.id, optionIndex: 0 });
+    }
+
     // The guard walked toward the chosen griffins.
     const movedGuard = Object.values(state.combat!.units).find(
       (unit) => unit.controllerId === NEUTRAL_PLAYER_ID

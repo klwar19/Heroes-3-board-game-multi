@@ -193,6 +193,37 @@ export function cardCanBoostPower(card: CardDefinition | undefined): boolean {
 }
 
 /**
+ * If this card can be played to top up a hero's movement pool — a bare
+ * GAIN_HERO_MOVEMENT card, or an "OR" card with a GAIN_HERO_MOVEMENT side (Boots
+ * of Speed, the Logistics ability's expert side, Dessa's Logistics IV/VI, Shield
+ * of Naval Glory's sea side, …) — the exact side that must be chosen to do so:
+ * its `optionIndex` (undefined for a bare card), the `mode` it needs (expert for
+ * an `expertOnly` side) and the option itself (so callers can honour its gates,
+ * e.g. `requiresSeaTile`). Returns null when no side grants hero movement.
+ *
+ * Used to let these otherwise map-only cards be spent inside a neutral combat's
+ * continue-or-retreat window to buy another combat round.
+ */
+export function heroMovementGrantOption(card: CardDefinition | undefined):
+  | { optionIndex?: number; mode: CardPlayMode; option?: CardOptionDefinition }
+  | null {
+  if (!card) {
+    return null;
+  }
+  if (card.effect.type === "GAIN_HERO_MOVEMENT") {
+    return { mode: "basic" };
+  }
+  if (card.effect.type === "CHOOSE_ONE") {
+    const index = card.effect.options.findIndex((option) => option.effect.type === "GAIN_HERO_MOVEMENT");
+    if (index >= 0) {
+      const option = card.effect.options[index];
+      return { optionIndex: index, mode: option.expertOnly ? "expert" : "basic", option };
+    }
+  }
+  return null;
+}
+
+/**
  * The card's ADD_SPELL_POWER effect (top-level or inside an "OR" option) used to
  * value it as a discarded power source. A cost-free power side is preferred over
  * one that demands its own extra discard (Titan's Cuirass: +2 plain, not the
