@@ -269,13 +269,21 @@ module is engine-wired end to end:
 - **Rune Ritual** (Rune Keeper): +1 Rune the first time the commander is
   attacked each combat (once per fight), not a combat-start grant.
 - **Stats**: six stats at grade 0–3 (`COMMANDER_GRADE_VALUES`) replacing §4's
-  5-tier tracks. Every stat STARTS at grade 0 (the base A2/D1/H4/dmg+0/Pow0/
+  5-tier tracks. Every stat STARTS at grade 0 (the base A2/D1/H4/dmg0/Pow0/
   Spd5); grade bonuses are the value shown, never summed (+1/+2 at grade I/II;
   grade III adjusted per user spec: Attack +3, Health +4, Speed +5): Attack
-  2/3/4/5, Defense 1/2/3/4, Health 4/5/6/8, Damage +0/+1/+2/+3 on-hit, Magic =
-  Power 0/1/2/3 with -1/-1/-2/-3 Spell damage + ongoing-effect immunity from
-  grade 0, Speed (Initiative) 5/6/7/10. Grade-up picks (two DIFFERENT stats
-  each) at hero level 2, 4 & 6 — the Paladin's Wise: 2, 3 & 5.
+  2/3/4/5, Health 4/5/6/8, Speed (Initiative) 5/6/7/10, Magic = Power 0/1/2/3
+  with -1/-1/-2/-3 Spell damage + ongoing-effect immunity from grade 0. **Defense
+  = 1/2/2/3**: grade II is Defense 2 PLUS a permanent Defense token (rolls the
+  Defend die when attacked — the user's "+1 def when attacked"), grade III a
+  reliable flat 3 (no die). **Damage = extra ATTACK DICE**: at grade N the
+  commander rolls N additional attack dice per attack (each "+1" raises the
+  attack, at most one "−1" counts) — NOT a flat on-hit bonus. Grade-up picks
+  (two DIFFERENT stats each) at hero level 2, 4 & 6 — the Paladin's Wise: 2,3&5.
+- **Specialty change**: the Conflux Astral Spirit's specialty is now **Elemental
+  Scourge** (every enemy neutral unit takes 1 damage at the start of a neutral
+  combat), replacing the old "Pacifist" flee. The §2 table above keeps the WoG
+  reference wording as design history.
 - **Combination skills**: ALL fifteen of §5's tags are engine-wired
   (`COMMANDER_COMBOS`, one skill per stat pair), board-adapted; a combo
   unlocks with ONE stat of its pair at grade 3 and the other at grade 2+.

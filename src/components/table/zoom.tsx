@@ -10,7 +10,7 @@ import { describeCardEffect, getUnitAbilityDefinitions, type CombatUnitState } f
 import { getCardMetaLabels, isEmpoweredStatisticCard, titleCase } from "./utils";
 import { SpecialtyCard } from "@/components/specialty-card";
 import { canRenderSpecialtyCard } from "@/components/specialty-card-data";
-import { CommanderCardFace } from "@/components/commander-card";
+import { CommanderCardFace, CommanderStatsPanel } from "@/components/commander-card";
 import type { CommanderSlug, CommanderStatKey } from "@/data/commanders";
 
 /** Anything the table can blow up to readable size: a card id or a unit card. */
@@ -180,9 +180,19 @@ export function CardZoomProvider({ children }: { children: ReactNode }) {
                 </span>
               ) : null}
               {content.subtitle ? <span className="zoomMeta">{content.subtitle}</span> : null}
-              {content.lines.map((line) => (
-                <p key={line}>{line}</p>
-              ))}
+              {content.commanderFace ? (
+                // WOG commander: the pro stats view (authentic comm3 symbols,
+                // grade bonuses, Damage dice, the Power ladder, and every
+                // combination skill explained) instead of the plain stat lines.
+                <CommanderStatsPanel
+                  slug={content.commanderFace.slug}
+                  grades={content.commanderFace.grades}
+                  statValues={content.commanderFace.statValues}
+                  style={{ maxWidth: "100%", marginTop: 4 }}
+                />
+              ) : (
+                content.lines.map((line) => <p key={line}>{line}</p>)
+              )}
               <button onClick={close} type="button">
                 <X aria-hidden="true" size={14} />
                 <span>Close</span>

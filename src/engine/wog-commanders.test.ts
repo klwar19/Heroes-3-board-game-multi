@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  COMMANDER_DEFENSE_TOKEN_GRADE,
+  COMMANDER_GRADE_VALUES,
   COMMANDER_SLUGS,
   COMMANDER_STAT_KEYS,
   commanderDefinitions,
@@ -118,6 +120,17 @@ describe("WOG commanders — content integrity", () => {
     for (const slug of COMMANDER_SLUGS) {
       expect(commanderDefinitions[slug], slug).toBeTruthy();
     }
+  });
+
+  it("pins the grade ladders — Defense 1/2/2/3 (token at II), Damage as extra-dice counts", () => {
+    expect(COMMANDER_GRADE_VALUES.attack).toEqual([2, 3, 4, 5]);
+    expect(COMMANDER_GRADE_VALUES.defense).toEqual([1, 2, 2, 3]);
+    expect(COMMANDER_GRADE_VALUES.health).toEqual([4, 5, 6, 8]);
+    expect(COMMANDER_GRADE_VALUES.speed).toEqual([5, 6, 7, 10]);
+    // Damage grade = the number of EXTRA attack dice; Magic grade = Power.
+    expect(COMMANDER_GRADE_VALUES.damage).toEqual([0, 1, 2, 3]);
+    expect(COMMANDER_GRADE_VALUES.magic).toEqual([0, 1, 2, 3]);
+    expect(COMMANDER_DEFENSE_TOKEN_GRADE).toBe(2);
   });
 
   it("every commander's cast ability id resolves to an implemented COMMANDER_CAST registry entry", () => {
@@ -468,6 +481,56 @@ describe("WOG commanders — the Magic grade package", () => {
 });
 
 // ===========================================================================
+// Defense grade II — the "+1 def when attacked" Defense token.
+// ===========================================================================
+
+describe("WOG commanders — Defense grade II Defense token", () => {
+  // Grade values: 1 / 2 / 2 / 3. Grade II is Defense 2 PLUS a Defense token
+  // (rolls the Defend die when attacked); grade III is a reliable flat 3.
+  function commanderTakes(defenseGrade: number, defendDie: number, attackerAttack = 5): number {
+    const state = sandboxWithCommander("paladin", { defense: defenseGrade }, 9);
+    const commander = state.combat!.units[commanderUnitId("p1")];
+    commander.maxHealth = 20; // survive the blow so we can read the damage
+    commander.retaliatedThisRound = true;
+    const attacker = state.combat!.units.unit_p2_skeletons;
+    attacker.abilities = [];
+    attacker.attack = attackerAttack;
+    attacker.position = 10; // adjacent to cell 9
+    state.combat!.activeUnitId = attacker.id;
+    state.activePlayerId = "p2";
+    // Roll order: the attacker's main die (0), then the commander's Defend die.
+    state.combat!.dice.scriptedRolls = [0, defendDie];
+    state.combat!.dice.rollCount = 0;
+    const after = settle(
+      apply(state, { type: "ATTACK_UNIT", playerId: "p2", attackerId: attacker.id, defenderId: commander.id })
+    );
+    return after.combat!.units[commanderUnitId("p1")].damage;
+  }
+
+  it("only grade II carries commander-defense-token", () => {
+    expect(commanderAbilityIds(freshCommander("paladin", { defense: 2 }))).toContain("commander-defense-token");
+    expect(commanderAbilityIds(freshCommander("paladin", { defense: 1 }))).not.toContain("commander-defense-token");
+    expect(commanderAbilityIds(freshCommander("paladin", { defense: 3 }))).not.toContain("commander-defense-token");
+  });
+
+  it("grade II rolls the Defend die when attacked (+1 def on a '+1' face)", () => {
+    // Defense 2, Defend die '+1' → effective 3 → 5 - 3 = 2 damage.
+    expect(commanderTakes(2, 1)).toBe(2);
+    // Same commander, Defend die '0' → the die pays nothing → 5 - 2 = 3 damage.
+    expect(commanderTakes(2, 0)).toBe(3);
+  });
+
+  it("grade I (no token) never rolls; grade III is a reliable flat 3 with no die", () => {
+    // CONTROL: grade I is Defense 2 but NO token, so a scripted '+1' is ignored
+    // (no Defend die is rolled): always 5 - 2 = 3.
+    expect(commanderTakes(1, 1)).toBe(3);
+    // Grade III is a flat Defense 3 with NO die — a scripted '+1' changes
+    // nothing: 5 - 3 = 2, never 5 - 4 = 1.
+    expect(commanderTakes(3, 1)).toBe(2);
+  });
+});
+
+// ===========================================================================
 // Damage grade (Might) and the two grade-3 combos.
 // ===========================================================================
 
@@ -496,34 +559,70 @@ describe("WOG commanders — Might, Charge and Death Stare", () => {
     defenderId: "unit_p2_skeletons"
   };
 
-  it("Might: +1/+2/+3 damage on a hit at Damage grade 1/2/3; a fully-blocked attack gains nothing", () => {
-    // Grade 0 control: attack 2 + die 0 = 2 damage.
+  it("Might: Damage grade rolls that many EXTRA attack dice — each '+1' raises the attack, at most one '−1' counts", () => {
+    // Roll order per attack: index 0 = the normal attack die, indices 1.. = the
+    // Damage-grade Might dice. (No shield/defense die here to shift them.)
+
+    // Grade 0 control: no extra dice → attack 2 + main die 0 = 2 damage.
     let control = meleeDuel("paladin", {});
     control = settle(apply(control, COMMANDER_ATTACK));
     expect(control.combat!.units.unit_p2_skeletons.damage).toBe(2);
 
-    // Damage grade 1: 2 + 1 Might = 3.
-    let light = meleeDuel("paladin", { damage: 1 });
-    light = settle(apply(light, COMMANDER_ATTACK));
-    expect(light.combat!.units.unit_p2_skeletons.damage).toBe(3);
+    // Grade 1, the one extra die rolls '+1' → attack 2 + 1 = 3.
+    let up = meleeDuel("paladin", { damage: 1 });
+    up.combat!.dice.scriptedRolls = [0, 1];
+    up = settle(apply(up, COMMANDER_ATTACK));
+    expect(up.combat!.units.unit_p2_skeletons.damage).toBe(3);
 
-    // Damage grade 3: 2 + 3 Might = 5.
+    // Grade 1, the extra die rolls '−1' → attack 2 − 1 = 1 (a die can also lower).
+    let down = meleeDuel("paladin", { damage: 1 });
+    down.combat!.dice.scriptedRolls = [0, -1];
+    down = settle(apply(down, COMMANDER_ATTACK));
+    expect(down.combat!.units.unit_p2_skeletons.damage).toBe(1);
+
+    // Grade 3, all three '+1' → attack 2 + 3 = 5 (the maximum).
     let mighty = meleeDuel("paladin", { damage: 3 });
+    mighty.combat!.dice.scriptedRolls = [0, 1, 1, 1];
     mighty = settle(apply(mighty, COMMANDER_ATTACK));
     expect(mighty.combat!.units.unit_p2_skeletons.damage).toBe(5);
 
-    // Fully blocked (defense 9 vs attack 2): still 0 — Might never creates a hit.
+    // Grade 3, two '−1' and one '+1' → the '−1's are capped at ONE:
+    // +1 − 1 = +0, so attack stays 2. (Summing every die would give 1 − 2 = −1
+    // → only 1 damage, so this pins the "at most one −1" rule.)
+    let capped = meleeDuel("paladin", { damage: 3 });
+    capped.combat!.dice.scriptedRolls = [0, -1, -1, 1];
+    capped = settle(apply(capped, COMMANDER_ATTACK));
+    expect(capped.combat!.units.unit_p2_skeletons.damage).toBe(2);
+
+    // The Might dice are ATTACK dice — they push through Defense: grade 3 with
+    // three '+1' is attack 5, so vs Defense 4 it lands 1 damage…
+    let pushes = meleeDuel("paladin", { damage: 3 });
+    pushes.combat!.units.unit_p2_skeletons.defense = 4;
+    pushes.combat!.dice.scriptedRolls = [0, 1, 1, 1];
+    pushes = settle(apply(pushes, COMMANDER_ATTACK));
+    expect(pushes.combat!.units.unit_p2_skeletons.damage).toBe(1);
+
+    // …but a genuinely blocked hit (Defense 9 vs attack 5) is still 0.
     let blocked = meleeDuel("paladin", { damage: 3 });
     blocked.combat!.units.unit_p2_skeletons.defense = 9;
+    blocked.combat!.dice.scriptedRolls = [0, 1, 1, 1];
     blocked = settle(apply(blocked, COMMANDER_ATTACK));
     expect(blocked.combat!.units.unit_p2_skeletons.damage).toBe(0);
   });
 
   it("Charge (Damage grade 3 + Speed grade 2): +1 Attack only when attacking after moving", () => {
+    // Script the Might dice to all '+1' so the extra dice add their full count
+    // (Damage grade) and the Charge +1 is isolated. main die 0, then '+1's.
+    function withFullMight(grades: Partial<Record<(typeof COMMANDER_STAT_KEYS)[number], number>>): GameState {
+      const s = meleeDuel("paladin", grades);
+      s.combat!.dice.scriptedRolls = [0, 1, 1, 1, 1, 1];
+      return s;
+    }
+
     // Stationary: attack 2 + Might 3 = 5 damage. Speed 2 is enough for the
     // combo under the grade-3 + grade-2 unlock rule — but Charge only fires
     // after a move.
-    let still = meleeDuel("paladin", { damage: 3, speed: 2 });
+    let still = withFullMight({ damage: 3, speed: 2 });
     still = settle(apply(still, COMMANDER_ATTACK));
     expect(still.combat!.units.unit_p2_skeletons.damage).toBe(5);
 
@@ -542,34 +641,35 @@ describe("WOG commanders — Might, Charge and Death Stare", () => {
       return current;
     }
 
-    const charging = moveAndStrike(meleeDuel("paladin", { damage: 3, speed: 2 }));
+    const charging = moveAndStrike(withFullMight({ damage: 3, speed: 2 }));
     expect(charging.combat!.units.unit_p2_skeletons.damage).toBe(6);
 
     // The reversed orientation (Speed 3 + Damage 2) unlocks the combo too:
     // 2 attack + 1 Charge + 2 Might = 5 after moving.
-    const reversed = moveAndStrike(meleeDuel("paladin", { damage: 2, speed: 3 }));
+    const reversed = moveAndStrike(withFullMight({ damage: 2, speed: 3 }));
     expect(reversed.combat!.units.unit_p2_skeletons.damage).toBe(5);
 
     // CONTROL: below the threshold (speed grade 1) the same move-then-attack
     // gains no Charge: 2 + 3 Might = 5.
-    const noCombo = moveAndStrike(meleeDuel("paladin", { damage: 3, speed: 1 }));
+    const noCombo = moveAndStrike(withFullMight({ damage: 3, speed: 1 }));
     expect(noCombo.combat!.units.unit_p2_skeletons.damage).toBe(5);
   });
 
   it("Death Stare (Damage grade 3 + Magic grade 2): a double '-1' follow-up destroys the target's side", () => {
     let state = meleeDuel("paladin", { damage: 3, magic: 2 });
     expect(state.combat!.units[commanderUnitId("p1")].abilities).toContain("gorgon-death-stare");
-    // Attack die 0, then the two Death Stare dice both roll -1: the 20-Health
-    // PACK side is destroyed outright — it flips down to its Few side.
-    state.combat!.dice.scriptedRolls = [0, -1, -1];
+    // Roll order: main die 0, then the three Damage-grade Might dice (0/0/0 → no
+    // bonus), then the two Death Stare dice both roll -1: the 20-Health PACK side
+    // is destroyed outright — it flips down to its Few side.
+    state.combat!.dice.scriptedRolls = [0, 0, 0, 0, -1, -1];
     state = settle(apply(state, COMMANDER_ATTACK));
     expect(state.combat!.units.unit_p2_skeletons.variant).toBe("few");
 
-    // CONTROL: magic grade 1 stays below the combo threshold → the same rolls
-    // only scratch the Pack (5 of 20).
+    // CONTROL: magic grade 1 stays below the combo threshold → no Death Stare,
+    // so the same rolls only scratch the Pack (the plain 2-damage attack).
     let control = meleeDuel("paladin", { damage: 3, magic: 1 });
     expect(control.combat!.units[commanderUnitId("p1")].abilities).not.toContain("gorgon-death-stare");
-    control.combat!.dice.scriptedRolls = [0, -1, -1];
+    control.combat!.dice.scriptedRolls = [0, 0, 0, 0, -1, -1];
     control = settle(apply(control, COMMANDER_ATTACK));
     expect(control.combat!.units.unit_p2_skeletons.variant).toBe("pack");
     expect(control.combat!.units.unit_p2_skeletons.damage).toBeLessThan(20);
@@ -832,10 +932,11 @@ describe("WOG commanders — specialties", () => {
     expect(none).toHaveLength(0);
   });
 
-  it("Pacifist (Astral Spirit): one bronze/silver neutral flees a 2+ guard fight into its tier discard", () => {
-    // Same seed, module OFF: the identical difficulty-3 fight fields all guards.
+  it("Elemental Scourge (Astral Spirit): every neutral unit takes 1 damage at the start of a neutral combat", () => {
+    // Same seed, module OFF: the identical difficulty-3 fight leaves guards at
+    // full health — nothing scorches them.
     const control = createAdventureGameState({
-      seed: "cmd-pacifist",
+      seed: "cmd-scourge",
       ruleset: "binh",
       wog: { ...WOG_ON, commanders: false },
       rollFirstPlayer: false,
@@ -844,46 +945,33 @@ describe("WOG commanders — specialties", () => {
         { id: "p2", name: "Two", factionId: "necropolis" }
       ]
     });
-    const controlFight = intoNeutralFight(control, 3);
-    const controlGuards = Object.values(controlFight.combat!.units).filter(
+    const controlGuards = Object.values(intoNeutralFight(control, 3).combat!.units).filter(
       (unit) => unit.controllerId === NEUTRAL_PLAYER_ID
     );
     expect(controlGuards.length).toBeGreaterThanOrEqual(2);
-    const controlRecycled =
-      (controlFight.decks["neutral-bronze"]?.discardPile.length ?? 0) +
-      (controlFight.decks["neutral-silver"]?.discardPile.length ?? 0);
+    for (const guard of controlGuards) {
+      expect(guard.damage, guard.cardName).toBe(0);
+    }
 
-    // Astral Spirit owner, same seed: one bronze/silver guard fled to its
-    // tier's discard pile before the first activation.
-    const state = adventureWithCommanders("cmd-pacifist", "conflux", undefined);
-    const fight = intoNeutralFight(state, 3);
-    const guards = Object.values(fight.combat!.units).filter((unit) => unit.controllerId === NEUTRAL_PLAYER_ID);
-    expect(guards.length).toBe(controlGuards.length - 1);
-    const recycled =
-      (fight.decks["neutral-bronze"]?.discardPile.length ?? 0) +
-      (fight.decks["neutral-silver"]?.discardPile.length ?? 0);
-    expect(recycled).toBe(controlRecycled + 1);
+    // Astral Spirit owner, same seed: every neutral guard now carries exactly 1
+    // damage before the first activation.
+    const state = adventureWithCommanders("cmd-scourge", "conflux", undefined);
+    const guards = Object.values(intoNeutralFight(state, 3).combat!.units).filter(
+      (unit) => unit.controllerId === NEUTRAL_PLAYER_ID
+    );
+    expect(guards.length).toBeGreaterThanOrEqual(2);
+    for (const guard of guards) {
+      expect(guard.damage, guard.cardName).toBe(1);
+    }
 
-    // CONTROL: below 2 guards Pacifist stays quiet — compare the same seed at
-    // field difficulty 1 with the module off vs on: nobody flees a lone guard.
-    const oneOff = createAdventureGameState({
-      seed: "cmd-pacifist-one",
-      ruleset: "binh",
-      wog: { ...WOG_ON, commanders: false },
-      rollFirstPlayer: false,
-      players: [
-        { id: "p1", name: "One", factionId: "conflux" },
-        { id: "p2", name: "Two", factionId: "necropolis" }
-      ]
-    });
-    const oneOffGuards = Object.values(intoNeutralFight(oneOff, 1).combat!.units).filter(
+    // MUTATION CONTROL: a Paladin (Castle) owner — module still ON — has no
+    // scourge, so the same difficulty leaves every neutral guard undamaged.
+    const paladin = adventureWithCommanders("cmd-scourge-castle", "castle", undefined);
+    for (const guard of Object.values(intoNeutralFight(paladin, 3).combat!.units).filter(
       (unit) => unit.controllerId === NEUTRAL_PLAYER_ID
-    ).length;
-    const oneOn = adventureWithCommanders("cmd-pacifist-one", "conflux", undefined);
-    const oneOnGuards = Object.values(intoNeutralFight(oneOn, 1).combat!.units).filter(
-      (unit) => unit.controllerId === NEUTRAL_PLAYER_ID
-    ).length;
-    expect(oneOnGuards).toBe(oneOffGuards >= 2 ? oneOffGuards - 1 : oneOffGuards);
+    )) {
+      expect(guard.damage, guard.cardName).toBe(0);
+    }
   });
 
   it("Rune Ritual (Rune Keeper): +1 Rune the FIRST time the commander is attacked, once per combat", () => {

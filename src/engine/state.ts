@@ -3567,6 +3567,13 @@ export type GameEvent =
        * Defense on a "+1" face. Present whenever the defender was defending.
        */
       defendRoll?: number;
+      /**
+       * WOG commander Might (Damage grade): the extra attack dice this attack
+       * rolled ON TOP of the normal die (Damage grade = how many). Each "+1"
+       * raised the attack; at most one "−1" counted. Present only when the
+       * commander rolled them, so the client can show the Might dice.
+       */
+      mightRolls?: number[];
       attackValue: number;
       defenseValue: number;
       damage: number;
@@ -4898,6 +4905,13 @@ export type ResolutionStackItem = {
      * Only a "+1" grants +1 Defense.
      */
     defendRoll?: number;
+    /**
+     * WOG commander Damage grade ("Might"): the extra attack dice rolled for
+     * this attack (Damage grade = how many). Rolled once and reused across the
+     * lethal-save window so the previews and the resolved hit agree. Each "+1"
+     * raises the attack; at most one "−1" counts (mightDiceAttackBonus).
+     */
+    mightRolls?: number[];
     /**
      * Negative Morale "-1 to your next Attack … roll": consumed at this
      * attack's die roll and folded into the attack value for every recompute

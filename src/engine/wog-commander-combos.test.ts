@@ -4,7 +4,9 @@ import { describe, expect, it } from "vitest";
 import {
   COMMANDER_COMBOS,
   COMMANDER_SLUGS,
+  COMMANDER_STAT_ICON,
   COMMANDER_STAT_KEYS,
+  commanderComboSiteIcon,
   commanderComboUnlocked,
   commanderDefinitions,
   type CommanderGrades,
@@ -164,6 +166,25 @@ describe("WOG commander combination skills — data", () => {
     expect(missing).toEqual([]);
   });
 
+  it("ships the authentic WoG comm3 symbols the stats UI uses (6 stat + 15 combo)", () => {
+    const missing: string[] = [];
+    for (const key of COMMANDER_STAT_KEYS) {
+      const icon = COMMANDER_STAT_ICON[key];
+      if (!existsSync(join(process.cwd(), "public", icon))) {
+        missing.push(`stat ${key} -> ${icon}`);
+      }
+    }
+    for (const combo of COMMANDER_COMBOS) {
+      const icon = commanderComboSiteIcon(combo.tag);
+      if (!existsSync(join(process.cwd(), "public", icon))) {
+        missing.push(`combo [${combo.tag}] ${combo.id} -> ${icon}`);
+      }
+    }
+    expect(missing).toEqual([]);
+    // Every combo tag is distinct, so each maps to its own site symbol.
+    expect(new Set(COMMANDER_COMBOS.map((combo) => combo.tag)).size).toBe(COMMANDER_COMBOS.length);
+  });
+
   it("unlocks with grade 3 + grade 2 in EITHER orientation, never below", () => {
     const deathStare = COMMANDER_COMBOS.find((combo) => combo.id === "death-stare")!;
     expect(commanderComboUnlocked(grades({ damage: 3, magic: 2 }), deathStare)).toBe(true);
@@ -210,15 +231,17 @@ describe("WOG commander combination skills — combat behaviour", () => {
   });
 
   it('Mighty Blow (ATK+DMG): the commander\'s own Attack die always counts as "+1"', () => {
-    // A scripted "-1" is floored to +1: (attack 5 + 1) + Might 2 = 8 damage.
+    // Main die "-1" is floored to +1; the two Damage-grade Might dice ('+1'
+    // each) then add 2: (attack 5 + 1) + Might 2 = 8 damage.
     let state = comboDuel({ attack: 3, damage: 2 });
-    state.combat!.dice.scriptedRolls = [-1];
+    state.combat!.dice.scriptedRolls = [-1, 1, 1];
     state = settle(apply(state, COMMANDER_ATTACK));
     expect(state.combat!.units.unit_p2_skeletons.damage).toBe(8);
 
-    // CONTROL: damage grade 1 → the "-1" stands: (5 - 1) + Might 1 = 5.
+    // CONTROL: damage grade 1 → Mighty Blow is NOT unlocked, so the main "-1"
+    // stands and the single Might die ('+1') adds 1: (5 - 1) + 1 = 5.
     let control = comboDuel({ attack: 3, damage: 1 });
-    control.combat!.dice.scriptedRolls = [-1];
+    control.combat!.dice.scriptedRolls = [-1, 1];
     control = settle(apply(control, COMMANDER_ATTACK));
     expect(control.combat!.units.unit_p2_skeletons.damage).toBe(5);
   });
@@ -303,6 +326,10 @@ describe("WOG commander combination skills — combat behaviour", () => {
       vampires.maxHealth = 20;
       vampires.damage = 0;
       vampires.retaliatedThisRound = true;
+      // Each strike (the target, then the Whirlwind follow-up) rolls main die 0
+      // and its Damage-grade Might dice — scripted '+1' so Might adds its full
+      // grade (2) to every strike.
+      state.combat!.dice.scriptedRolls = [0, 1, 1, 0, 1, 1];
       return settle(apply(state, COMMANDER_ATTACK));
     }
 
@@ -321,10 +348,11 @@ describe("WOG commander combination skills — combat behaviour", () => {
     function strikeInto(overrides: Partial<Record<CommanderStatKey, number>>): GameState {
       const state = comboDuel(overrides);
       state.combat!.units[commanderUnitId("p1")].retaliatedThisRound = true; // isolate the burn
-      return enemyStrikesCommander(state, "unit_p2_skeletons", 10, 5);
+      return enemyStrikesCommander(state, "unit_p2_skeletons", 10, 4);
     }
 
-    // Defense 4 → the attack lands 1; the Fire Shield burns the attacker for 1.
+    // Defense grade 3 = 3 → attack 4 lands 1; the Fire Shield burns the
+    // attacker for 1.
     const shielded = strikeInto({ defense: 3, magic: 2 });
     expect(shielded.combat!.units[commanderUnitId("p1")].damage).toBe(1);
     expect(shielded.combat!.units.unit_p2_skeletons.damage).toBe(1);
@@ -356,13 +384,16 @@ describe("WOG commander combination skills — combat behaviour", () => {
   });
 
   it("Double Strike (HP+DMG): the commander strikes the target a second time", () => {
-    // Two strikes at (attack 2 + Might 2) = 8 total.
+    // Two strikes, each main die 0 + two Might dice ('+1'): (2 + Might 2) × 2 = 8.
     let state = comboDuel({ health: 3, damage: 2 });
+    state.combat!.dice.scriptedRolls = [0, 1, 1, 0, 1, 1];
     state = settle(apply(state, COMMANDER_ATTACK));
     expect(state.combat!.units.unit_p2_skeletons.damage).toBe(8);
 
-    // CONTROL: damage grade 1 → a single strike (2 + 1 = 3).
+    // CONTROL: damage grade 1 → Double Strike is NOT unlocked, so a single
+    // strike (2 + Might 1 = 3).
     let control = comboDuel({ health: 3, damage: 1 });
+    control.combat!.dice.scriptedRolls = [0, 1];
     control = settle(apply(control, COMMANDER_ATTACK));
     expect(control.combat!.units.unit_p2_skeletons.damage).toBe(3);
   });

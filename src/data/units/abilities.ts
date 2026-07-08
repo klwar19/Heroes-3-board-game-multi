@@ -1040,12 +1040,14 @@ export type UnitAbilityEffectDefinition =
     }
   | {
       /**
-       * WOG commander Damage grade: the unit's attacks (and retaliations) that
-       * deal at least 1 damage deal `amount` more. Applied after the defense
-       * math, still inside any per-attack damage cap (Cove Nix).
+       * WOG commander Damage grade (Might): on each of the unit's attacks (and
+       * retaliations) it rolls `dice` ADDITIONAL attack dice alongside its
+       * normal attack die. Every extra "+1" face raises the attack value; at
+       * most one "−1" face counts (extra "−1"s are ignored). Resolved before
+       * the defense math in the attack pipeline (reducer.ts / getMightDiceCount).
        */
-      type: "BONUS_DAMAGE_ON_HIT";
-      amount: number;
+      type: "MIGHT_ATTACK_DICE";
+      dice: number;
     }
   | {
       /**
@@ -2571,15 +2573,15 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "commander-might-1": {
     id: "commander-might-1",
     name: "Might",
-    text: "[unit_passive] This commander's attacks that deal damage deal 1 more.",
-    effect: { type: "BONUS_DAMAGE_ON_HIT", amount: 1 },
+    text: "[unit_passive] When this commander attacks it rolls 1 extra attack die: a \"+1\" face raises the attack (a \"−1\" lowers it by 1, no matter how many).",
+    effect: { type: "MIGHT_ATTACK_DICE", dice: 1 },
     implementationStatus: "implemented"
   },
   "commander-might-2": {
     id: "commander-might-2",
     name: "Might",
-    text: "[unit_passive] This commander's attacks that deal damage deal 2 more.",
-    effect: { type: "BONUS_DAMAGE_ON_HIT", amount: 2 },
+    text: "[unit_passive] When this commander attacks it rolls 2 extra attack dice: each \"+1\" face raises the attack; at most one \"−1\" counts.",
+    effect: { type: "MIGHT_ATTACK_DICE", dice: 2 },
     implementationStatus: "implemented"
   },
   "commander-charge": {
@@ -2592,8 +2594,18 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "commander-might-3": {
     id: "commander-might-3",
     name: "Might",
-    text: "[unit_passive] This commander's attacks that deal damage deal 3 more.",
-    effect: { type: "BONUS_DAMAGE_ON_HIT", amount: 3 },
+    text: "[unit_passive] When this commander attacks it rolls 3 extra attack dice: each \"+1\" face raises the attack; at most one \"−1\" counts.",
+    effect: { type: "MIGHT_ATTACK_DICE", dice: 3 },
+    implementationStatus: "implemented"
+  },
+  "commander-defense-token": {
+    id: "commander-defense-token",
+    name: "Guarded",
+    // WOG commander Defense grade II ("+1 def when attacked"): a permanent
+    // Defense token (unlike the bank sibling, NOT gated on Stacked). Grade III
+    // is a flat Defense 3 with no die and does NOT carry this.
+    text: "[unit_passive] This commander is always treated as if it had a Defense token — it rolls the Defend die when attacked (a \"+1\" face gives +1 Defense).",
+    effect: { type: "SELF_DEFENSE_TOKEN" },
     implementationStatus: "implemented"
   },
   // Commander combination skills (COMMANDER_COMBOS in src/data/commanders.ts;

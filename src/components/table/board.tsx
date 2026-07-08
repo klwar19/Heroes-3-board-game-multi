@@ -42,7 +42,8 @@ import {
 } from "@/engine";
 import { beginUnitPointerDrag } from "@/components/table/pointer-drag";
 import { CommanderCardFace } from "@/components/commander-card";
-import type { CommanderSlug } from "@/data/commanders";
+import { COMMANDER_MAGIC_SPELL_DAMAGE_REDUCTION, commanderStatValue } from "@/data/commanders";
+import type { CommanderGrade, CommanderSlug } from "@/data/commanders";
 import {
   actionKey,
   formatEvent,
@@ -1644,6 +1645,28 @@ export function InspectPanel({ state, unitId }: { state: GameState; unitId: stri
             ♥ {health}/{unit.maxHealth}
           </span>
         </div>
+        {unit.commanderSlug && unit.commanderGrades ? (
+          // Commander-only extras: the Might dice (Damage grade) and the Magic
+          // Power — the stats the generic row omits. Full detail (grade bonuses,
+          // Power ladder, every combo explained) is in the click-to-enlarge view.
+          (() => {
+            const clamp = (value: number | undefined): CommanderGrade =>
+              (value !== undefined && value >= 3 ? 3 : value === 2 ? 2 : value === 1 ? 1 : 0);
+            const mightDice = commanderStatValue("damage", clamp(unit.commanderGrades.damage));
+            const power = commanderStatValue("magic", clamp(unit.commanderGrades.magic));
+            const ward = COMMANDER_MAGIC_SPELL_DAMAGE_REDUCTION[clamp(unit.commanderGrades.magic)];
+            return (
+              <div className="inspectStats" style={{ marginTop: 2 }}>
+                <span title={`Damage grade (Might): rolls ${mightDice} extra attack ${mightDice === 1 ? "die" : "dice"} on each attack — each “+1” raises Attack, at most one “−1”.`}>
+                  🎲 <b>{mightDice}</b> Might {mightDice === 1 ? "die" : "dice"}
+                </span>
+                <span title={`Magic Power ${power} · −${ward} Spell damage taken · immune to ongoing effects`}>
+                  ✦ Power <b style={{ color: power > 0 ? "#f4d774" : undefined }}>{power}</b>
+                </span>
+              </div>
+            );
+          })()
+        ) : null}
         {getUnitTokens(unit).length > 0 ? (
           <div className="inspectTokens">
             {getUnitTokens(unit).map((token) => {

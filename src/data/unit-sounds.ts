@@ -165,6 +165,53 @@ const creatureVoices: Record<string, string> = {
 };
 
 /**
+ * WOG commanders have no unit definition (they are tierless, army-card-less
+ * champions), so their battlefield voices are keyed by commander slug (== the
+ * faction) with a per-action creature-voice mapping, exactly as the user
+ * specified. A commander combat unit carries no `unitDefId`; the table passes
+ * `commander:<slug>` as its voice id (commanderVoiceId), and unitSoundKey routes
+ * that to commanderSoundKey. "shoot" (only a Sharpshooter-combo commander ever
+ * shoots) borrows the "attack" voice.
+ */
+export const COMMANDER_VOICE_PREFIX = "commander:";
+
+type CommanderVoiceActions = Exclude<UnitSoundAction, "shoot">;
+
+const commanderVoices: Record<string, Record<CommanderVoiceActions, string>> = {
+  // Castle — Swordsman (user: "not Crusader").
+  paladin: { attack: "swordsman", move: "swordsman", defend: "swordsman", hurt: "swordsman", death: "swordsman" },
+  // Rampart — Monk (user: "not Zealot").
+  hierophant: { attack: "monk", move: "monk", defend: "monk", hurt: "monk", death: "monk" },
+  // Tower — "like sorceress": the only Sorceress voice set is the Cove
+  // Sorceresses' Sea Witch clips.
+  temple_guardian: { attack: "sea-witch", move: "sea-witch", defend: "sea-witch", hurt: "sea-witch", death: "sea-witch" },
+  // Inferno — move: Gargoyle; hurt/death/defend: Pixie; attack: Magi (Mage).
+  succubus: { attack: "mage", move: "stone-gargoyle", defend: "pixie", hurt: "pixie", death: "pixie" },
+  // Dungeon — all Minotaur.
+  brute: { attack: "minotaur", move: "minotaur", defend: "minotaur", hurt: "minotaur", death: "minotaur" },
+  // Necropolis — move: Zombie; hurt/defend/death: Lich; attack: Lich melee
+  // (the "attack" action resolves to lich-attack, not lich-shoot).
+  soul_eater: { attack: "lich", move: "zombie-lord", defend: "lich", hurt: "lich", death: "lich" },
+  // Stronghold — all Ogre.
+  ogre_leader: { attack: "ogre", move: "ogre", defend: "ogre", hurt: "ogre", death: "ogre" },
+  // Fortress — all Gnoll.
+  shaman: { attack: "gnoll", move: "gnoll", defend: "gnoll", hurt: "gnoll", death: "gnoll" },
+  // Conflux — hurt/death/defend: Pixie; move/attack: Inferno Efreet.
+  astral_spirit: { attack: "efreet", move: "efreet", defend: "pixie", hurt: "pixie", death: "pixie" },
+  // Cove — the Cove level-3 unit (Sea Dogs = Pirate voice).
+  corsair: { attack: "pirate", move: "pirate", defend: "pirate", hurt: "pirate", death: "pirate" },
+  // Factory — the Cove level-2 unit (Seamen = Crew Mate voice).
+  factory: { attack: "crew-mate", move: "crew-mate", defend: "crew-mate", hurt: "crew-mate", death: "crew-mate" },
+  // Bulwark — the Bulwark level-7 unit (Jotunns = Titan voice).
+  bulwark: { attack: "titan", move: "titan", defend: "titan", hurt: "titan", death: "titan" }
+};
+
+/** The voice id the table uses for a commander combat unit ("commander:<slug>"). */
+export function commanderVoiceId(slug: string): string {
+  return `${COMMANDER_VOICE_PREFIX}${slug}`;
+}
+
+/**
  * A handful of creatures only voice one kind of strike (Gog's shoot is its
  * attack), so melee and ranged cover for each other; every other action
  * plays its own clip or stays silent.
@@ -195,11 +242,36 @@ const actionSoundOverrides: Partial<Record<string, Partial<Record<UnitSoundActio
 };
 
 /**
+ * Manifest key of a WOG commander action clip from the per-slug voice map
+ * ("commander:paladin", "attack") -> "units/swordsman-attack". "shoot" (a
+ * Sharpshooter-combo commander) borrows the "attack" voice. Undefined for an
+ * unknown slug / missing clip so callers degrade to silence.
+ */
+export function commanderSoundKey(slug: string, action: UnitSoundAction): string | undefined {
+  const voices = commanderVoices[slug];
+  if (!voices) {
+    return undefined;
+  }
+  const voice = action === "shoot" ? voices.attack : voices[action];
+  for (const candidate of actionCandidates[action]) {
+    const key = `units/${voice}-${candidate}`;
+    if (soundLibrary[key]) {
+      return key;
+    }
+  }
+  return undefined;
+}
+
+/**
  * Manifest key of a creature action clip, e.g. ("castle.marksmen", "shoot")
- * -> "units/archer-shoot". Undefined when the unit or clip is unknown so
+ * -> "units/archer-shoot". A `commander:<slug>` voice id routes to the
+ * commander voice map. Undefined when the unit or clip is unknown so
  * callers degrade to silence instead of requesting a missing file.
  */
 export function unitSoundKey(unitDefId: string, action: UnitSoundAction): string | undefined {
+  if (unitDefId.startsWith(COMMANDER_VOICE_PREFIX)) {
+    return commanderSoundKey(unitDefId.slice(COMMANDER_VOICE_PREFIX.length), action);
+  }
   const bareName = unitDefId.split(".")[1] ?? unitDefId;
   const voice = creatureVoices[bareName];
   if (!voice) {

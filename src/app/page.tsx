@@ -157,7 +157,7 @@ import {
 import { COMBAT_EVENT_SOUNDS } from "@/data/combat-event-sounds";
 import { allTileDefinitions } from "@/data/map/tiles";
 import { playLibrarySound, playSpellBookOpen, playUnitSound } from "@/lib/sound";
-import { unitAttackFlourish } from "@/data/unit-sounds";
+import { commanderVoiceId, unitAttackFlourish } from "@/data/unit-sounds";
 import { useBackgroundMusic, type MusicScene } from "@/lib/music";
 import { MusicToggle } from "@/components/music-toggle";
 import {
@@ -856,8 +856,10 @@ export default function Home() {
     }
     if (nextState.combat) {
       for (const unit of Object.values(nextState.combat.units)) {
-        if (unit.unitDefId) {
-          unitDefIdsRef.current.set(unit.id, unit.unitDefId);
+        // WOG commanders carry no unitDefId; they voice by `commander:<slug>`.
+        const voiceId = unit.commanderSlug ? commanderVoiceId(unit.commanderSlug) : unit.unitDefId;
+        if (voiceId) {
+          unitDefIdsRef.current.set(unit.id, voiceId);
         }
       }
     }
@@ -1637,9 +1639,14 @@ export default function Home() {
         const seatVisible = (playerId: PlayerId) => Boolean(nextState.combat) || playerId === viewerId;
 
         // Definition behind a combat unit, surviving the unit's removal so
-        // the killing blow still gets its death cry.
-        const unitVoice = (unitId: string) =>
-          nextState.combat?.units[unitId]?.unitDefId ?? unitDefIdsRef.current.get(unitId);
+        // the killing blow still gets its death cry. A WOG commander has no
+        // unitDefId — it voices by `commander:<slug>` (unitDefIdsRef preserves
+        // that too, so its fall/death cry still plays after removal).
+        const unitVoice = (unitId: string) => {
+          const unit = nextState.combat?.units[unitId];
+          const voiceId = unit?.commanderSlug ? commanderVoiceId(unit.commanderSlug) : unit?.unitDefId;
+          return voiceId ?? unitDefIdsRef.current.get(unitId);
+        };
 
         // Leading activation-spell preamble: present the cast(s) FIRST — at the
         // very front of the timeline — so a neutral Faerie Dragon's Ice Bolt
