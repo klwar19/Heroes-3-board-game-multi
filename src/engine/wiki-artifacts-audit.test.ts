@@ -952,17 +952,18 @@ describe("Expert-use / draw relics", () => {
     expect(after.players.p1.combatStats.expertUseBonusThisRound ?? 0).toBe(before + 1);
   });
 
-  it("Pendant of Courage option 0 arms a one-shot Search repeat for this turn", () => {
+  it("Pendant of Courage option 0 (repeat Search) is NOT a hand play — it is offered AFTER a Search", () => {
+    // The repeat-Search side is post-Search only (printed "Play immediately
+    // AFTER you perform a Search action"). It must never appear on the normal
+    // play list as a pre-activation; behaviour is pinned in pendant-of-courage.test.ts.
     const state = mapState("pendant-courage-repeat");
     state.players.p1.hand = ["artifact.pendant_of_courage"];
-    const play = findPlay(state, "artifact.pendant_of_courage", 0);
-    expect(play).toBeTruthy();
-    const after = applyOk(state, play!.action);
-    const effect = after.activeEffects.find((entry) =>
-      entry.modifiers.some((modifier) => modifier.type === "SEARCH_REPEAT_ONCE")
-    );
-    expect(effect, "a SEARCH_REPEAT_ONCE effect should be created").toBeTruthy();
-    expect(effect!.duration).toEqual({ type: "current-turn" });
+    expect(
+      findPlay(state, "artifact.pendant_of_courage", 0),
+      "the repeat-Search side must not be playable from hand"
+    ).toBeFalsy();
+    // The expert-use side (option 1) is still a normal hand play.
+    expect(findPlay(state, "artifact.pendant_of_courage", 1)).toBeTruthy();
   });
 });
 

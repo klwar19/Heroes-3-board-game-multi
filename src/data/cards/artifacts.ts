@@ -1460,7 +1460,14 @@ export const artifactCards: CardLibrary = {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "Repeat your next Search action",
+          // Played AFTER a Search, not before: it is never on the normal play
+          // list (postSearchOnly) — instead, right after a Search resolves its
+          // holder is offered the pendant-repeat-search choice, which discards
+          // the Pendant and re-runs the same Search. The SEARCH_REPEAT_ONCE
+          // effect below is the side's declared meaning; it is resolved by that
+          // dedicated post-Search offer, never created from hand.
+          label: "After a Search: perform that Search again",
+          postSearchOnly: true,
           effect: {
             type: "CREATE_ACTIVE_EFFECT",
             effect: {

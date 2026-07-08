@@ -751,6 +751,46 @@ describe("Positive Morale: Combat Bonus", () => {
     expect(lastAttackRoll(state).damage).toBe(1);
   });
 
+  it("is playable as an INSTANT-WINDOW REACTION: the defender adds +1 Defense inside the open attack window", () => {
+    let state = stageCombat(makeGame("morale-combat-bonus-reaction"));
+    holdPositive(state, "p2", MORALE_CARD_IDS.combatBonus);
+    state.combat!.dice.scriptedRolls = [0];
+
+    // p1 declares the attack — this opens an instant/reaction window in which
+    // p2 (the target's controller) may respond.
+    state = apply(state, { type: "ATTACK_UNIT", playerId: "p1", attackerId: "a1", defenderId: "b1" });
+    expect(state.reactionWindow, "the attack opens a reaction window").toBeTruthy();
+
+    // The combat bonus is offered to p2 INSIDE the window (both picks).
+    const windowOffers = getLegalActions(state, "p2").filter(
+      (legal) => legal.action.type === "SPEND_MORALE" && legal.action.benefit === "combat-bonus"
+    );
+    expect(windowOffers.map((legal) => (legal.action as { bonus?: string }).bonus).sort()).toEqual([
+      "attack",
+      "defense"
+    ]);
+
+    // p2 plays +1 Defense as a reaction to the incoming attack.
+    state = apply(state, { type: "SPEND_MORALE", playerId: "p2", benefit: "combat-bonus", bonus: "defense" });
+    // The card is spent, the window stays open, and the spent card is no longer
+    // re-offered (the window was refreshed).
+    expect(state.players.p2.moraleCards?.positive).toHaveLength(0);
+    expect(state.reactionWindow, "the window stays open after the buff").toBeTruthy();
+    expect(
+      getLegalActions(state, "p2").some(
+        (legal) => legal.action.type === "SPEND_MORALE" && legal.action.benefit === "combat-bonus"
+      )
+    ).toBe(false);
+
+    // Everyone passes; the attack resolves with the reaction defense buff.
+    let safety = 20;
+    while (state.reactionWindow && safety-- > 0) {
+      state = apply(state, { type: "PASS_REACTION", playerId: state.reactionWindow.priorityPlayerId });
+    }
+    // attack 3 + 0 vs defense 1 +1 → 1 damage (control: 2).
+    expect(lastAttackRoll(state).damage).toBe(1);
+  });
+
   it("CONTROL: unplayed, the same attack deals 2 — and the play is rejected outside the holder's combat", () => {
     let state = stageCombat(makeGame("morale-combat-bonus-control"));
     state.combat!.dice.scriptedRolls = [0];

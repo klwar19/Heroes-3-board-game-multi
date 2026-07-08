@@ -2362,6 +2362,14 @@ export type CardOptionDefinition = {
    */
   requiresWarMachine?: CardId;
   /**
+   * Pendant of Courage's repeat-Search side ("Play immediately after you perform
+   * a Search action and perform that action again"): never played directly from
+   * hand — it is offered as a post-Search decision (see the pendant-repeat-search
+   * choice). Kept off the normal option-play list so it can only be used with
+   * the printed timing.
+   */
+  postSearchOnly?: boolean;
+  /**
    * Targ of the Rampaging Ogre's top side: "Then, instead of discarding, put
    * this card back into your hand." After the option's effect resolves the
    * played card is returned to the owner's hand instead of staying in the
@@ -6112,6 +6120,11 @@ export type CombatState = {
    */
   shacklesOffered?: boolean;
   /**
+   * True once the Ring of the Wayfarer's start-of-combat paralysis decision has
+   * been offered this combat (a Neutral fight), so it is never re-offered.
+   */
+  wayfarerParalysisOffered?: boolean;
+  /**
    * Player-vs-player pre-battle preparation window, presented on the adventure
    * MAP (not the battlefield) so both sides can see their towns, resources and
    * armies and plan with a clear head. When an enemy hero attacks, BOTH the
@@ -7937,11 +7950,10 @@ export type PendingChoice =
       deckId: DeckId;
       /** Cards lifted off the top of the deck; only the searcher may see them. */
       revealedCardIds: CardId[];
-      /** Pendant of Courage: this search repeats once after it resolves. */
-      repeatSearch?: { deckId: DeckId; count: number };
       /**
        * The Search (X) this reveal was invoked with, before per-player count
-       * effects — the X a "perform the Search (X) again" morale repeat re-runs.
+       * effects — the X a "perform the Search (X) again" morale/Pendant repeat
+       * re-runs.
        */
       baseCount?: number;
       /** Tarnum (Conflux) I: each revealed card may be Removed instead of kept. */
@@ -7996,6 +8008,7 @@ export type PendingChoice =
         | "combat-activation-order"
         | "cover-of-darkness"
         | "shackles-of-war"
+        | "wayfarer-paralysis"
         | "diplomacy-skip"
         | "diplomacy-recruit"
         | "dimension-door"
@@ -8008,6 +8021,7 @@ export type PendingChoice =
         | "pandora-upkeep"
         | "morale-positive-limit"
         | "morale-repeat-search"
+        | "pendant-repeat-search"
         | "place-creature-bank"
         | "subterranean-gate-placement"
         | "judge-dread"
@@ -8176,6 +8190,19 @@ export type PendingChoice =
        * gained — option 0 discards that card and performs the Search again.
        */
       moraleRepeatSearch?: { deckId: DeckId; count: number; cardId: CardId };
+      /**
+       * pendant-repeat-search: the just-resolved Search (X) — Pendant of Courage
+       * is played AFTER a Search to perform that action again (option 0 discards
+       * the Pendant and re-runs the same Search; the gained card is KEPT).
+       */
+      pendantRepeatSearch?: { deckId: DeckId; count: number };
+      /**
+       * wayfarer-paralysis: Ring of the Wayfarer's start-of-combat decision in a
+       * Neutral combat. `unitIds` are the offer's non-Azure targets (index-aligned
+       * with the options); the trailing "keep" option carries no unit. `cardId`
+       * is the Ring, discarded when a unit is picked.
+       */
+      wayfarerParalysis?: { cardId: CardId; unitIds: UnitId[] };
       /**
        * thieves-guild: the deck being peeked and its top 2 cards (index 0 is the
        * very top). The chosen option's card is discarded; the other returns on

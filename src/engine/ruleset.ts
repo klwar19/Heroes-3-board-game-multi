@@ -543,21 +543,6 @@ export function applySearchCountEffects(state: GameState, playerId: PlayerId, ba
   return count;
 }
 
-/** Pops a one-shot "repeat the next search" effect (Pendant of Courage). */
-export function takeSearchRepeatEffect(state: GameState, playerId: PlayerId): boolean {
-  const effect = state.activeEffects.find(
-    (candidate) =>
-      candidate.controllerId === playerId &&
-      candidate.modifiers.some((modifier) => modifier.type === "SEARCH_REPEAT_ONCE")
-  );
-  if (!effect) {
-    return false;
-  }
-
-  state.activeEffects = state.activeEffects.filter((candidate) => candidate.id !== effect.id);
-  return true;
-}
-
 /**
  * Spell schools the player can fetch instead of searching (Basic X Magic).
  * Primary source is the in-play permanent card (its `permanentEffect.schoolFetch`)

@@ -312,7 +312,14 @@ source; `set_attack_die_plus` a SET source in the same window (never spent by
 a plain reroll — `AttackRerollSource.setDieFace`, `REROLL_PENDING_CHOICE
 .useSetDie`); `redraw_hand` via `SPEND_MORALE redraw`; `combat_bonus` /
 `remove_token` via `SPEND_MORALE combat-bonus / remove-token` during the
-holder's own combat (offers in `addMoraleActions`, buttons in the hand panel);
+holder's own combat (offers in `addMoraleActions`, buttons in the hand panel).
+`combat_bonus` (the +1 Attack / +1 Defense combat-long buff) is ALSO offered as
+an instant-window reaction inside an open attack window (`getLegalReactionsForTrigger`
+on `UNIT_ATTACK_DECLARED`; the +Attack pick is withheld only on the player's own
+Misfortune-locked attack), so a defender can add +1 Defense in response to an
+incoming hit; the window refreshes after the spend (`refreshReactionWindowLegalReactions`
+in the `SPEND_MORALE` dispatch) so the used card drops out — pinned in
+`morale-card-effects.test.ts` ("is playable as an INSTANT-WINDOW REACTION");
 `repeat_search` opens a post-Search offer (`morale-repeat-search` choice —
 discard the gained card, re-run the same Search (X); the gained card is masked
 from other viewers in `player-view.ts`). (Negative): `search_one` forces the
@@ -865,18 +872,21 @@ Three engine-enforced additions; each fails a named test if its wiring is remove
 
 - **A +Movement card can extend a neutral combat.** Boots of Speed, the Logistics
   ability's expert side, Dessa's Logistics IV/VI, Shield of Naval Glory's sea
-  side — normally map-only — may be played in a neutral combat's
+  side, AND Equestrian's Gloves' "+1 movement" side — normally map-only — may be
+  played in a neutral combat's
   continue-or-retreat window (`awaitingContinue`) to top up `hero.movementPoints`,
   so a hero OUT of movement can buy another round (spend 1 on
   `CONTINUE_NEUTRAL_COMBAT`) instead of being forced to retreat. Optional: the
   player chooses to use it or not at the end of each round. `heroMovementGrantOption`
-  (effects.ts) detects the movement side; the offer lives in the awaitingContinue
-  gate (legal-actions.ts, gated on the same expert-use / sea-tile conditions the
-  reducer checks); playCard waives `mapOnly` ONLY for that exact window
-  (`continueMovementTopUp`) and keeps the window open afterwards. Pinned in
-  `neutral-combat-movement-extend.test.ts` (Boots + the expert-only Logistics
-  sibling, with a normal-combat control that mapOnly still holds) and the UI in
-  `combat-round-over-prompt.test.tsx`.
+  (effects.ts) detects the movement side by EFFECT KIND (`GAIN_HERO_MOVEMENT`),
+  wherever it sits in a `CHOOSE_ONE` — so the Gloves' movement side at option
+  index 1 is caught exactly like Boots' at index 0; the offer lives in the
+  awaitingContinue gate (legal-actions.ts, gated on the same expert-use / sea-tile
+  conditions the reducer checks); playCard waives `mapOnly` ONLY for that exact
+  window (`continueMovementTopUp`) and keeps the window open afterwards. Pinned in
+  `neutral-combat-movement-extend.test.ts` (Boots, Equestrian's Gloves, and the
+  expert-only Logistics sibling, with a normal-combat control that mapOnly still
+  holds) and the UI in `combat-round-over-prompt.test.tsx`.
 
 - **The player picks a neutral's move destination.** When a neutral must MOVE to
   reach the target it will attack and several legal cells reach it, the attacking
@@ -885,9 +895,14 @@ Three engine-enforced additions; each fails a named test if its wiring is remove
   the picked cell forced. It still attacks the rules-fixed target (target
   selection is unchanged); only the landing cell is the player's choice. A single
   legal cell needs no prompt (move-and-attack directly), and an already-adjacent
-  guard just attacks. Composes with the existing "player breaks a target tie"
-  choice: pick the target, THEN the cell. Board cells are clickable (board.tsx,
-  reusing the teleport cell-picker). Pinned in `neutral-move-destination.test.ts`
-  (unit-level intents + an end-to-end test proving the guard lands on the CELL the
-  player picked), the composition in `adventure.test.ts`, and the board wiring in
-  `board.test.tsx`.
+  guard just attacks. The offered cells are the obstacle-aware reachable set
+  (`getLegalMoveDestinations` → `getReachableDestinations`): a GROUND guard's
+  offer drops cells blocked or severed by Combat Obstacles, a FLYING guard's
+  offer includes cells reachable only by crossing over obstacles (but never a
+  cell it cannot land on), and a RANGED guard shoots from where it stands and is
+  never prompted. Composes with the existing "player breaks a target tie" choice:
+  pick the target, THEN the cell. Board cells are clickable (board.tsx, reusing
+  the teleport cell-picker). Pinned in `neutral-move-destination.test.ts`
+  (unit-level intents, the obstacle/flying/ranged cases each with a control, and
+  an end-to-end test proving the guard lands on the CELL the player picked), the
+  composition in `adventure.test.ts`, and the board wiring in `board.test.tsx`.
