@@ -327,6 +327,92 @@ describe("Sorrow", () => {
     } as GameAction);
     expect(result.errors[0]?.message).toContain("more Power than it needs");
   });
+
+  // -------------------------------------------------------------------------
+  // Knowledge / Mysticism take-back of a Sorrow (its window is kept open)
+  // -------------------------------------------------------------------------
+
+  it("holds the skip window open so a held Knowledge takes the Sorrow back — the skip still stands", () => {
+    let state = aboutToActivate("unit_p2_skeletons", ["spell.sorrow", "stat.knowledge"]);
+    state = applyOk(state, reactionFor(state, "p1", "spell.sorrow", 0)!.action);
+
+    // The skip landed AND the window stayed open for the caster's recall.
+    expect(state.combat!.units.unit_p2_skeletons.activatedThisRound).toBe(true);
+    expect(state.reactionWindow, "the window stays open for the Knowledge recall").toBeTruthy();
+    // Only the Knowledge take-back is offered now — no second Sorrow on the
+    // already-skipped unit.
+    const knowledge = reactionFor(state, "p1", "stat.knowledge");
+    expect(knowledge, "Knowledge take-back is offered in the kept-open window").toBeTruthy();
+    expect(reactionFor(state, "p1", "spell.sorrow", 0), "no second Sorrow in the kept-open window").toBeUndefined();
+
+    state = applyOk(state, knowledge!.action);
+    // Sorrow returned to hand ("instead of discarding it"); the skip still stands;
+    // the window closed and combat resumed.
+    expect(state.players.p1.hand).toContain("spell.sorrow");
+    expect(state.players.p1.discard).not.toContain("spell.sorrow");
+    expect(state.combat!.units.unit_p2_skeletons.activatedThisRound).toBe(true);
+    expect(state.reactionWindow).toBeNull();
+    expect(state.combat!.pendingActivationSkipRecall ?? null).toBeNull();
+  });
+
+  it("CONTROL: passing (declining the recall) leaves the used Sorrow in the discard, skip intact", () => {
+    let state = aboutToActivate("unit_p2_skeletons", ["spell.sorrow", "stat.knowledge"]);
+    state = applyOk(state, reactionFor(state, "p1", "spell.sorrow", 0)!.action);
+    expect(state.reactionWindow).toBeTruthy();
+
+    state = applyOk(state, { type: "PASS_REACTION", playerId: "p1" });
+    expect(state.players.p1.discard).toContain("spell.sorrow");
+    expect(state.players.p1.hand).not.toContain("spell.sorrow");
+    expect(state.reactionWindow).toBeNull();
+    expect(state.combat!.pendingActivationSkipRecall ?? null).toBeNull();
+    // The skip still stands and combat continues normally.
+    expect(state.combat!.units.unit_p2_skeletons.activatedThisRound).toBe(true);
+  });
+
+  it("CONTROL: with no recall card in hand the Sorrow window closes at once (unchanged behavior)", () => {
+    let state = aboutToActivate("unit_p2_skeletons", ["spell.sorrow"]);
+    state = applyOk(state, reactionFor(state, "p1", "spell.sorrow", 0)!.action);
+    // No Knowledge → the window closes immediately, the Sorrow is spent.
+    expect(state.reactionWindow).toBeNull();
+    expect(state.players.p1.discard).toContain("spell.sorrow");
+    expect(state.combat!.units.unit_p2_skeletons.activatedThisRound).toBe(true);
+  });
+
+  it("a Book Sorrow recalled routes back into the Spell Book (not the hand)", () => {
+    const setup = createInitialGameState("sorrow-book-seed");
+    setup.players.p1.hand = ["stat.knowledge"];
+    setup.players.p1.spellBook = ["spell.sorrow"]; // Sorrow lives in the Book
+    setup.players.p2.hand = [];
+    setup.activePlayerId = "p1";
+    setup.combat!.activeUnitId = "unit_p1_griffins";
+    for (const unit of Object.values(setup.combat!.units)) {
+      unit.activatedThisRound = unit.id !== "unit_p1_griffins" && unit.id !== "unit_p2_skeletons";
+    }
+    let state = applyOk(setup, { type: "DEFEND_UNIT", playerId: "p1", unitId: "unit_p1_griffins" });
+    expect(state.combat!.activeUnitId).toBe("unit_p2_skeletons");
+
+    // The Book Sorrow (bronze) is offered in the activation-skip window.
+    const bookSorrow = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "PLAY_REACTION" &&
+        legal.action.cardId === "spell.sorrow" &&
+        legal.action.fromSpellBook === true &&
+        legal.action.optionIndex === 0
+    );
+    expect(bookSorrow, "a Book Sorrow should be offered").toBeTruthy();
+    state = applyOk(state, bookSorrow!.action);
+    expect(state.players.p1.spellBook).not.toContain("spell.sorrow"); // left the Book for the discard
+
+    const knowledge = reactionFor(state, "p1", "stat.knowledge");
+    expect(knowledge, "Knowledge take-back is offered for the Book Sorrow").toBeTruthy();
+    state = applyOk(state, knowledge!.action);
+
+    // Recalled back into the BOOK — never the public hand — with the skip intact.
+    expect(state.players.p1.spellBook).toContain("spell.sorrow");
+    expect(state.players.p1.hand).not.toContain("spell.sorrow");
+    expect(state.players.p1.discard).not.toContain("spell.sorrow");
+    expect(state.combat!.units.unit_p2_skeletons.activatedThisRound).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------

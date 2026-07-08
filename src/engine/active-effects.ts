@@ -858,8 +858,14 @@ export function releaseEndedOngoingCards(state: GameState): void {
         continue;
       }
 
-      if (held.returnTo === "hand") {
-        player.hand.push(held.cardId);
+      if (held.returnTo === "hand" || held.returnTo === "spellBook") {
+        // A Book-cast ongoing spell recalled by Knowledge/Mysticism returns to
+        // the Spell Book (a private zone); a hand-cast one to the hand.
+        if (held.returnTo === "spellBook") {
+          player.spellBook.push(held.cardId);
+        } else {
+          player.hand.push(held.cardId);
+        }
         appendEvent(state, {
           type: "SPELL_RETURNED_TO_HAND",
           playerId: player.id,

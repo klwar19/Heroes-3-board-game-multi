@@ -3728,6 +3728,9 @@ function finishResolvedAttack(
     }
     stackItem.status = "resolved";
     state.stack.pop();
+    // The attack has finished (cancelled): release any held Knowledge/Mysticism
+    // take-back — a recalled lethal-save Resurrection returns to its owner now.
+    processDeferredSpellRecalls(state, stackItem);
     if (finishCombatIfNeeded(state)) {
       return;
     }
@@ -3794,6 +3797,13 @@ function finishResolvedAttack(
   stackItem.status = "resolved";
   state.stack.pop();
 
+  // The attack has finished: release any Knowledge/Mysticism take-back held on
+  // it (see processDeferredSpellRecalls) — the recalled spell only now returns
+  // to its owner's hand or Spell Book, so it was never available to re-cast into
+  // this same attack. Done before finishCombatIfNeeded so a fight-ending blow
+  // still returns the card.
+  processDeferredSpellRecalls(state, stackItem);
+
   if (finishCombatIfNeeded(state)) {
     return;
   }
@@ -3820,6 +3830,9 @@ function finishResolvedAttack(
       if (parked) {
         parked.status = "resolved";
         state.stack.pop();
+        // The dropped attack never resolves through finishResolvedAttack, so
+        // release any held Knowledge/Mysticism recall on it here too.
+        processDeferredSpellRecalls(state, parked);
       }
       if (state.combat && state.combat.attackSequence?.attackerId === parkedAttackerId) {
         state.combat.attackSequence = null;
@@ -7707,18 +7720,20 @@ function finalizeSpellCardDestination(
   const playerId = stackItem.action.playerId;
   const cardId = stackItem.action.cardId;
   const recall = stackItem.modifiers.recallSpell;
+  // A recalled Spell cast from the Spell Book returns to the Book, not the hand.
+  const recallZone = recall?.toSpellBook ? "spellBook" : "hand";
 
   const held = holdOngoingCardIfEffectCreated(
     state,
     playerId,
     cardId,
     effectCountBeforeCast,
-    recall?.toHand ? "hand" : "discard"
+    recall?.toHand ? recallZone : "discard"
   );
 
   if (!held) {
     if (recall?.toHand) {
-      returnSpellFromDiscardToHand(state, playerId, cardId);
+      returnSpellFromDiscardToHand(state, playerId, cardId, recall.toSpellBook);
     } else {
       maybeReturnFirstSpellToHand(state, playerId, cardId);
     }
@@ -7726,13 +7741,19 @@ function finalizeSpellCardDestination(
 
   // Mysticism expert: the support cards played with the spell come back at
   // once (they resolved on the spot — only the spell itself can be ongoing).
+  // Book-sourced support cards (a Book "+1 Power" discard) return to the Book.
   if (recall?.recallPlayedCards) {
     const caster = state.players[playerId];
+    const bookPlayed = stackItem.modifiers.bookPlayedCardIds ?? [];
     for (const playedCardId of stackItem.modifiers.playedCardIds) {
       const playedIndex = caster.discard.lastIndexOf(playedCardId);
       if (playedIndex !== -1) {
         caster.discard.splice(playedIndex, 1);
-        caster.hand.push(playedCardId);
+        if (bookPlayed.includes(playedCardId)) {
+          caster.spellBook.push(playedCardId);
+        } else {
+          caster.hand.push(playedCardId);
+        }
       }
     }
   }
@@ -8507,7 +8528,7 @@ function holdOngoingCardIfEffectCreated(
   playerId: PlayerId,
   cardId: CardId,
   effectCountBefore: number,
-  returnTo: "discard" | "hand"
+  returnTo: "discard" | "hand" | "spellBook"
 ): boolean {
   const player = state.players[playerId];
   if (!player) {
@@ -8536,22 +8557,39 @@ function holdOngoingCardIfEffectCreated(
   return true;
 }
 
-/** Knowledge/Mysticism on an instant spell: the card comes back right away. */
-function returnSpellFromDiscardToHand(state: GameState, playerId: PlayerId, cardId: CardId): void {
+/**
+ * Knowledge/Mysticism on an instant spell: the card comes back from the discard
+ * pile. It returns to the hand by default, or to the Spell Book (a private zone)
+ * when the spell was cast/played from the Book — so a Book Spell recalled stays
+ * in the Book, never leaking into the public hand. No-op if the card is not in
+ * the discard pile (an ongoing spell is still held in play; a scroll cast is
+ * gone). Returns whether the card was moved.
+ */
+function returnSpellFromDiscardToHand(
+  state: GameState,
+  playerId: PlayerId,
+  cardId: CardId,
+  toSpellBook = false
+): boolean {
   const player = state.players[playerId];
   const discardIndex = player?.discard.lastIndexOf(cardId) ?? -1;
   if (!player || discardIndex === -1) {
-    return;
+    return false;
   }
 
   player.discard.splice(discardIndex, 1);
-  player.hand.push(cardId);
+  if (toSpellBook) {
+    player.spellBook.push(cardId);
+  } else {
+    player.hand.push(cardId);
+  }
   appendEvent(state, {
     type: "SPELL_RETURNED_TO_HAND",
     playerId,
     cardId,
     reason: "Knowledge/Mysticism"
   });
+  return true;
 }
 
 /**
@@ -8586,6 +8624,26 @@ function maybeReturnFirstSpellToHand(state: GameState, playerId: PlayerId, cardI
   });
 }
 
+/**
+ * Knowledge / Mysticism recalls declared into an ATTACK window are held (see
+ * modifiers.deferredSpellRecalls) until the attack has finished resolving, then
+ * released here — so the recalled copy is never in hand while the same attack is
+ * still open and can never be cast a second time into it ("only after the spell
+ * is used can it be taken back"). Each spell returns to its owner's hand, or to
+ * their Spell Book when it was cast from the Book. Idempotent: the queue is
+ * cleared as it is drained, so a second call is a no-op.
+ */
+function processDeferredSpellRecalls(state: GameState, stackItem: ResolutionStackItem): void {
+  const deferred = stackItem.modifiers.deferredSpellRecalls;
+  if (!deferred || deferred.length === 0) {
+    return;
+  }
+  stackItem.modifiers.deferredSpellRecalls = [];
+  for (const entry of deferred) {
+    returnSpellFromDiscardToHand(state, entry.playerId, entry.cardId, entry.toSpellBook);
+  }
+}
+
 function closeReactionWindow(state: GameState, reason: "all-pass" | "reaction-played"): void {
   if (!state.reactionWindow) {
     return;
@@ -8598,6 +8656,12 @@ function closeReactionWindow(state: GameState, reason: "all-pass" | "reaction-pl
   });
   state.reactionWindow = null;
   state.priorityPlayerId = null;
+  // A Sorrow take-back window (kept open by pendingActivationSkipRecall) is only
+  // meaningful while open — clear it whenever a reaction window closes, so a
+  // caster who simply passes (declines the recall) does not leave it dangling.
+  if (state.combat?.pendingActivationSkipRecall) {
+    state.combat.pendingActivationSkipRecall = null;
+  }
 }
 
 /**
@@ -9273,6 +9337,10 @@ function applyReactionPlayCore(
       stackItemForBoost.modifiers.spellPowerBonus += 1;
     }
     stackItemForBoost.modifiers.playedCardIds.push(play.cardId);
+    if (play.fromSpellBook) {
+      // Record the Book source so a Mysticism-expert sweep returns it to the Book.
+      (stackItemForBoost.modifiers.bookPlayedCardIds ??= []).push(play.cardId);
+    }
     recomputePowerScaledAttackInstants(stackItemForBoost);
     appendEvent(state, {
       type: "CARD_PLAYED",
@@ -9502,7 +9570,15 @@ function applyReactionPlayCore(
     !play.tarnumReturn &&
     !option?.cost?.removeSelf
   ) {
-    (stackItem.modifiers.recallableSpellReactions ??= []).push({ cardId: play.cardId, playerId });
+    (stackItem.modifiers.recallableSpellReactions ??= []).push({
+      cardId: play.cardId,
+      playerId,
+      // A Book instant recalls back into the Book, not the hand.
+      ...(play.fromSpellBook ? { fromSpellBook: true } : {})
+    });
+    if (play.fromSpellBook) {
+      (stackItem.modifiers.bookPlayedCardIds ??= []).push(play.cardId);
+    }
   }
 
   const optionLabel =
@@ -9540,8 +9616,14 @@ function applyReactionPlayCore(
     });
     // A Knowledge/Mysticism recall declared before the cancel still takes the
     // card back ("instead of discarding it" — no effect ever hit the table).
+    // A Book cast returns to the Book, not the hand.
     if (stackItem.modifiers.recallSpell?.toHand) {
-      returnSpellFromDiscardToHand(state, stackItem.action.playerId, stackItem.action.cardId);
+      returnSpellFromDiscardToHand(
+        state,
+        stackItem.action.playerId,
+        stackItem.action.cardId,
+        stackItem.modifiers.recallSpell.toSpellBook
+      );
     } else {
       maybeReturnFirstSpellToHand(state, stackItem.action.playerId, stackItem.action.cardId);
     }
@@ -9721,6 +9803,73 @@ function applyReactionPlayCore(
       });
       skipUnitActivation(state, unit);
     }
+
+    // Knowledge / Mysticism: a Sorrow closes its own window, so — unlike an
+    // attack instant — hold the window OPEN for the caster alone so they may
+    // take the just-played Sorrow back. The skip has already applied and there
+    // is no attack to re-cast it into, so the recall (handled below via
+    // pendingActivationSkipRecall) returns the card straight away. Only when the
+    // caster holds a recall card and the Sorrow was a recallable own spell (not
+    // a scroll / Tarnum-return / removeSelf play, which leave no card to take
+    // back). getActivationSkipRecallReactions then offers ONLY that recall.
+    const holdsRecall =
+      card.kind === "spell" &&
+      !play.fromScroll &&
+      !play.tarnumReturn &&
+      !option?.cost?.removeSelf &&
+      Boolean(state.combat) &&
+      Boolean(player) &&
+      (player?.hand ?? []).some((heldId) => {
+        const held = cards[heldId];
+        return (
+          held?.effect.type === "RECALL_SPELL" &&
+          held.implementationStatus === "implemented" &&
+          (held.timing === "reaction" || held.timing === "instant")
+        );
+      });
+    if (holdsRecall && state.combat && state.reactionWindow) {
+      state.combat.pendingActivationSkipRecall = {
+        cardId: play.cardId,
+        playerId,
+        fromSpellBook: Boolean(play.fromSpellBook)
+      };
+      // Recompute the window's offers — now ONLY the caster's recall — and hand
+      // priority back to them (advanceReactionWindowAfterPlay re-derives this too,
+      // but set it here so the window never briefly reads empty).
+      state.reactionWindow.passedPlayerIds = [];
+      refreshReactionWindowLegalReactions(state, cards);
+      return { windowEnded: false };
+    }
+
+    closeReactionWindow(state, "reaction-played");
+    if (!finishCombatIfNeeded(state)) {
+      state.phase = "combat";
+    }
+    return { windowEnded: true };
+  }
+
+  // Sorrow take-back: the caster plays Knowledge / Mysticism into the kept-open
+  // activation-skip window (see pendingActivationSkipRecall). The skip already
+  // applied, so the Sorrow returns to the caster's hand — or Spell Book, when it
+  // was cast from the Book — right away; expert Knowledge still raises the round
+  // Spell limit. Then close the window and resume combat (the next unit's
+  // pre-activation window opens through the normal pump). NOTE: Mysticism
+  // expert's "recall every card played with it" power-source sweep is not done
+  // in this window (a Sorrow has no attack stack item tracking its power cards);
+  // the Sorrow itself is always taken back.
+  if (
+    effect.type === "RECALL_SPELL" &&
+    !stackItem &&
+    state.combat?.pendingActivationSkipRecall?.playerId === playerId
+  ) {
+    const recall = state.combat.pendingActivationSkipRecall;
+    const caster = state.players[playerId];
+    caster.combatStats.spellLimitBonusThisRound += effect.basicSpellLimitBonus ?? 0;
+    if (mode === "expert") {
+      caster.combatStats.spellLimitBonusThisRound += effect.expertSpellLimitBonus ?? 0;
+    }
+    returnSpellFromDiscardToHand(state, playerId, recall.cardId, recall.fromSpellBook);
+    state.combat.pendingActivationSkipRecall = null;
     closeReactionWindow(state, "reaction-played");
     if (!finishCombatIfNeeded(state)) {
       state.phase = "combat";
@@ -10193,10 +10342,12 @@ function applyReactionPlayCore(
 
     // The recall is deferred to the spell's resolution: an instant spell
     // comes straight back, an ongoing spell (Summon/Clone-style) only after
-    // its effect ends — Knowledge cannot loop it onto the table twice.
+    // its effect ends — Knowledge cannot loop it onto the table twice. A Spell
+    // cast from the Spell Book returns to the Book (a private zone), not hand.
     stackItem.modifiers.recallSpell = {
       toHand: true,
-      recallPlayedCards: mode === "expert" && Boolean(effect.expertRecallPlayedCards)
+      recallPlayedCards: mode === "expert" && Boolean(effect.expertRecallPlayedCards),
+      toSpellBook: Boolean(stackItem.action.fromSpellBook)
     };
 
     // Empowered Knowledge raises the limit on the basic play; the regular
@@ -10211,10 +10362,15 @@ function applyReactionPlayCore(
 
   // Knowledge / Mysticism played into an ATTACK window: take back the most
   // recent spell instant this player played into the pending attack (Stone
-  // Skin, Bloodlust, Curse, …). Attack instants resolve on the spot — never
-  // ongoing — so the card comes straight back ("instead of discarding it")
-  // while its effect on the attack stays; the limit raise applies exactly
-  // like the cast-window play above.
+  // Skin, Bloodlust, Curse, Misfortune, a lethal-save Resurrection …). The
+  // instant's effect on the attack stays, but the physical take-back is
+  // DEFERRED until the attack has finished resolving (processDeferredSpellRecalls
+  // at the attack's pop). Deferring is the fix for "the recalled copy can be
+  // cast a second time into the same attack": while this attack is still open
+  // the spell stays in the discard pile — never back in hand — so it cannot be
+  // re-cast into it. Only after the spell is used (the attack resolves) does it
+  // return, to the hand or (a Book instant) to the Spell Book. The limit raise
+  // applies at once, exactly like the cast-window play above.
   if (effect.type === "RECALL_SPELL" && stackItem && isAttackStackItem(stackItem)) {
     const caster = state.players[playerId];
     const entries = stackItem.modifiers.recallableSpellReactions ?? [];
@@ -10236,16 +10392,32 @@ function applyReactionPlayCore(
     }
 
     stackItem.modifiers.playedCardIds.push(play.cardId);
-    returnSpellFromDiscardToHand(state, playerId, entry.cardId);
+    const deferred = (stackItem.modifiers.deferredSpellRecalls ??= []);
+    deferred.push({ cardId: entry.cardId, playerId, toSpellBook: Boolean(entry.fromSpellBook) });
 
-    // Mysticism expert: the other cards played alongside come back too — the
-    // same own-discard sweep the cast-window recall runs at spell resolution.
+    // Mysticism expert: the OTHER cards this player played into the attack come
+    // back too. Snapshot them now (so cards played after the recall are not
+    // swept) and defer their return alongside the spell — a Book-sourced support
+    // card routes back to the Book. The spell itself and the Knowledge/Mysticism
+    // card just played are excluded from the sweep (the spell rides its own
+    // deferred entry; the played Mysticism card returns via `expertRecallPlayedCards`
+    // below only when it is not the recalled spell).
     if (mode === "expert" && effect.expertRecallPlayedCards) {
+      const bookPlayed = stackItem.modifiers.bookPlayedCardIds ?? [];
+      const remainingDiscard = [...caster.discard];
+      // Do not double-count the spell already queued for deferred return.
+      const spellIdx = remainingDiscard.lastIndexOf(entry.cardId);
+      if (spellIdx !== -1) {
+        remainingDiscard.splice(spellIdx, 1);
+      }
       for (const playedCardId of stackItem.modifiers.playedCardIds) {
-        const playedIndex = caster.discard.lastIndexOf(playedCardId);
-        if (playedIndex !== -1) {
-          caster.discard.splice(playedIndex, 1);
-          caster.hand.push(playedCardId);
+        if (playedCardId === entry.cardId) {
+          continue;
+        }
+        const idx = remainingDiscard.lastIndexOf(playedCardId);
+        if (idx !== -1) {
+          remainingDiscard.splice(idx, 1);
+          deferred.push({ cardId: playedCardId, playerId, toSpellBook: bookPlayed.includes(playedCardId) });
         }
       }
     }
@@ -12676,12 +12848,16 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
             prompt: `Expert Knowledge: take ${card.name} back?`,
             options: [
               {
-                label: `Use 1 crown and return ${card.name} to your hand`,
+                label: action.fromSpellBook
+                  ? `Use 1 crown and return ${card.name} to your Spell Book`
+                  : `Use 1 crown and return ${card.name} to your hand`,
                 steps: [
                   {
                     type: "KNOWLEDGE_RECALL_MAP_SPELL",
                     spellCardId: action.cardId,
-                    knowledgeCardId
+                    knowledgeCardId,
+                    // A Book-cast Map Spell recalls back into the Book.
+                    ...(action.fromSpellBook ? { fromSpellBook: true } : {})
                   }
                 ]
               },

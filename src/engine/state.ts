@@ -4848,18 +4848,37 @@ export type ResolutionStackItem = {
     /**
      * Knowledge / Mysticism was played on this cast. The recall resolves
      * after the spell does: instants come back at once, ongoing spells only
-     * when the effect they created ends.
+     * when the effect they created ends. `toSpellBook` routes a Spell cast from
+     * the Spell Book back into the Book (a private zone) rather than the hand.
      */
-    recallSpell?: { toHand: boolean; recallPlayedCards: boolean };
+    recallSpell?: { toHand: boolean; recallPlayedCards: boolean; toSpellBook?: boolean };
     /**
      * Spell instants played as reactions into this ATTACK window whose card now
-     * sits in the caster's own discard pile (Stone Skin, Bloodlust, Curse, …).
-     * A Knowledge/Mysticism play in the same window takes the caster's most
-     * recent entry back to hand ("instead of discarding it") — the instant's
-     * effect on the attack stays. Scroll / Tarnum-return / removeSelf plays
-     * leave no card in the caster's discard, so they are never listed.
+     * sits in the caster's own discard pile (Stone Skin, Bloodlust, Curse,
+     * Misfortune, a lethal-save Resurrection …). A Knowledge/Mysticism play in
+     * the same window arms a DEFERRED take-back of the caster's most recent
+     * entry ("instead of discarding it") — the spell stays in the discard while
+     * the attack resolves (so it can never be re-cast into this same attack) and
+     * returns to hand (or the Book, when `fromSpellBook`) only once the attack
+     * finishes. Scroll / Tarnum-return / removeSelf plays leave no card in the
+     * caster's discard, so they are never listed.
      */
-    recallableSpellReactions?: { cardId: CardId; playerId: PlayerId }[];
+    recallableSpellReactions?: { cardId: CardId; playerId: PlayerId; fromSpellBook?: boolean }[];
+    /**
+     * Cards played from the Spell Book into THIS stack item (a Book instant, a
+     * Book "+1 Power" discard). A Mysticism-expert recall that sweeps every card
+     * played alongside the spell routes these back to the Book instead of the
+     * hand, keeping the Book's contents tight.
+     */
+    bookPlayedCardIds?: CardId[];
+    /**
+     * Knowledge / Mysticism recalls declared into this ATTACK window but held
+     * until the attack resolves (see `recallableSpellReactions`). Each entry is
+     * returned to hand — or the Spell Book when `toSpellBook` — the moment the
+     * attack finishes, so the recalled copy is never available to re-cast into
+     * the same attack. Processed by processDeferredSpellRecalls.
+     */
+    deferredSpellRecalls?: { cardId: CardId; playerId: PlayerId; toSpellBook: boolean }[];
     /**
      * Alamar's Resurrection armed on this attack: if it would reduce the named
      * unit (of `grade` or lower) to 0 HP, the blow is cancelled.
@@ -5527,7 +5546,7 @@ export type PlayerState = {
    * so a recalled Summon/Clone-style spell cannot be recast while its first
    * casting is still on the table.
    */
-  ongoingCards?: { cardId: CardId; effectIds: string[]; returnTo: "discard" | "hand" }[];
+  ongoingCards?: { cardId: CardId; effectIds: string[]; returnTo: "discard" | "hand" | "spellBook" }[];
   /**
    * Necromancy timing window: set when this player wins a Combat other than
    * a Quick Combat, cleared by the next movement / town action / turn end —
@@ -6017,6 +6036,21 @@ export type CombatState = {
       /** "move"/"move-and-attack": where the guard will step to. */
       destination?: number;
     };
+  } | null;
+  /**
+   * Sorrow (activation-skip) recall: a Sorrow played into the pre-activation
+   * window closes that window on resolution, so — unlike an attack instant —
+   * there is no still-open window to play Knowledge/Mysticism into. When the
+   * caster holds a recall card and a recallable Sorrow, the window is instead
+   * KEPT OPEN (for the caster only) with this record set: the skip has already
+   * applied, and the caster may now take the Sorrow back (immediately — there is
+   * no attack it could be re-cast into) to their hand, or to the Spell Book when
+   * `fromSpellBook`. Cleared when the window closes (recall played, or passed).
+   */
+  pendingActivationSkipRecall?: {
+    cardId: CardId;
+    playerId: PlayerId;
+    fromSpellBook: boolean;
   } | null;
   /**
    * Round-start war machine triggers still waiting to resolve, in owner
@@ -6563,11 +6597,14 @@ export type VisitStep =
       /**
        * Optional Expert Knowledge reaction after a Spell resolves on the map.
        * The spell may already be in the discard pile, or held in play by an
-       * ongoing effect; the latter is marked to return to hand when it expires.
+       * ongoing effect; the latter is marked to return when it expires.
+       * `fromSpellBook` routes a Book-cast Spell back into the Spell Book
+       * (a private zone) rather than the hand.
        */
       type: "KNOWLEDGE_RECALL_MAP_SPELL";
       spellCardId: CardId;
       knowledgeCardId: CardId;
+      fromSpellBook?: boolean;
     }
   | {
       /** Sea Chest / Jetsam: roll one Attack die, resolve the matching branch. */
