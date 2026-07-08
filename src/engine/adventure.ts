@@ -95,7 +95,7 @@ import type {
   VisitStep
 } from "./state";
 import { NEUTRAL_PLAYER_ID } from "./state";
-import { queueCommanderGradeUp } from "./commanders";
+import { awardCommanderGradePoints } from "./commanders";
 
 /** Hero level track: hand limit and expert-effect uses by level (hero board). */
 export const HAND_LIMIT_BY_LEVEL: Record<number, number> = { 1: 4, 2: 4, 3: 5, 4: 5, 5: 6, 6: 6, 7: 7 };
@@ -1388,11 +1388,12 @@ export function gainExperience(state: GameState, playerId: PlayerId, amount: num
       }
     }
 
-    // WOG Commanders: crossing a grade-up level (3/6; the Paladin's Wise: 2/5)
-    // owes the owner a two-different-stats grade-up pick. It never blocks play —
-    // the pick waits on the commander card until COMMANDER_GRADE_UP spends it.
-    if (queueCommanderGradeUp(player, level)) {
-      effects.push("commander grade-up available");
+    // WOG Commanders: every level-up awards stat points (2 at a milestone
+    // level — levels 3 & 6, or the Paladin's Wise 2 & 5). Points never block
+    // play — they wait on the commander card until COMMANDER_GRADE_UP spends them.
+    const commanderPoints = awardCommanderGradePoints(player, level);
+    if (commanderPoints > 0) {
+      effects.push(`commander +${commanderPoints} stat ${commanderPoints === 1 ? "point" : "points"}`);
     }
 
     appendEvent(state, {

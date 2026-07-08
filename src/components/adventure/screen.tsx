@@ -1979,11 +1979,11 @@ export function TownHeroDock({
         (candidate) => candidate.controllerId === armyPlayer.id && candidate.kind === "main"
       )
     : undefined;
-  const commanderGradeUps = commander?.pendingGradeUps?.length ?? 0;
+  const commanderGradeUps = commander?.gradePoints ?? 0;
 
-  // Commander level-up notice: when a NEW grade-up pick arrives, blink the
-  // commander tile hard for a few seconds (the steady gold pulse then stays
-  // until the pick is spent).
+  // Commander level-up notice: when NEW stat points arrive, blink the commander
+  // tile hard for a few seconds (the steady gold pulse then stays until every
+  // point is spent).
   const [commanderBlink, setCommanderBlink] = useState(false);
   const prevGradeUpsRef = useRef(commanderGradeUps);
   useEffect(() => {
@@ -2189,11 +2189,11 @@ export function TownHeroDock({
                 grades={commander.grades}
                 level={commanderHero?.level ?? 1}
                 dead={Boolean(commander.dead)}
-                pendingGradeUps={commanderGradeUps}
+                gradePoints={commanderGradeUps}
                 goldAvailable={armyPlayer.resources.gold}
                 onGradeUp={
                   onAction && !state.combat
-                    ? (stats) => onAction({ type: "COMMANDER_GRADE_UP", playerId: armyPlayer.id, stats })
+                    ? (stat) => onAction({ type: "COMMANDER_GRADE_UP", playerId: armyPlayer.id, stat })
                     : undefined
                 }
                 onRevive={

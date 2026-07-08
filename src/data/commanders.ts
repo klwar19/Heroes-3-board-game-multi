@@ -11,11 +11,13 @@
  *  - One commander per faction. It joins every combat of its owner's MAIN
  *    hero while alive, as a real battlefield unit (no army card).
  *  - Six stats, each at grade 0..3 (values in COMMANDER_GRADE_VALUES). All
- *    stats START at grade 0 (the base line). At hero level 2, 4 and 6
- *    (Paladin: 2, 3 and 5 — Wise) the owner picks TWO DIFFERENT stats and
- *    raises each one grade. A grade's bonus over the base is NOT additive
- *    with the previous grades — it IS the value shown (+1 / +2 at grade
- *    I/II; grade III is adjusted per spec: Attack +3, Health +4, Speed +5).
+ *    stats START at grade 0 (the base line). Each hero level-up awards the
+ *    commander stat POINTS to spend (one point raises one stat by one grade,
+ *    max grade 3): every level-up gives 1 point, and the two "milestone"
+ *    levels give 2 (levels 3 & 6 for everyone; the Castle Paladin's Wise
+ *    milestones are levels 2 & 5). A grade's bonus over the base is NOT
+ *    additive with the previous grades — it IS the value shown (+1 / +2 at
+ *    grade I/II; grade III is adjusted per spec: Attack +3, Health +4, Speed +5).
  *  - Defense is the exception: base line 1/2/2/3, and grade II additionally
  *    grants a permanent Defense token (the commander rolls the Defend die when
  *    attacked → +1 Defense on a "+1" face). Grade III is a reliable flat 3
@@ -24,10 +26,13 @@
  *    rolls N ADDITIONAL attack dice alongside its normal attack die on each of
  *    its attacks; every extra "+1" face raises the attack, and at most one "−1"
  *    face counts (see the Might wiring in reducer.ts / getMightDiceCount).
- *  - The Magic stat grades the whole magic package: grade 0 = Power 0,
- *    take -1 Spell damage, immune to ongoing effects; grade 1 = Power 1;
- *    grade 2 = Power 2 and -2 Spell damage; grade 3 = Power 3 and -3 Spell
- *    damage (the ongoing-effect immunity stays throughout).
+ *  - The Magic stat grades the whole magic package per the module spec:
+ *    grade 0 = Power 0 and NOTHING else (only the once-per-round cast itself);
+ *    grade 1 = Power 0, take -1 Spell damage, immune to ongoing effects;
+ *    grade 2 = Power 1 (keeps -1 Spell damage + ongoing immunity);
+ *    grade 3 = Power 2, take -3 Spell damage, immune to ongoing effects.
+ *    The spell ward and the ongoing-effect immunity begin at grade 1 — a
+ *    grade-0 commander is NOT immune and takes full Spell damage.
  *  - Each commander has ONE command ability (a "cast"): usable once per
  *    combat round during the commander's own activation, free (does not end
  *    the activation), scaling with Power (tiers 0 / 1 / 2+).
@@ -102,14 +107,16 @@ export function commanderComboSiteIcon(tag: string): string {
  *    of its attacks (0/1/2/3). It is not a flat damage bonus — see the Might
  *    dice pool in reducer.ts (every extra "+1" raises the attack; at most one
  *    "−1" counts).
- *  - magic is the command-ability Power (0/1/2/3; cast tiers cap at 2).
+ *  - magic is the command-ability Power. Per the module spec the Power ladder
+ *    is 0/0/1/2 (grade 1 buys the defensive package, not Power; grade 2 is the
+ *    first Power step, grade 3 the top). Cast tiers cap at Power 2.
  */
 export const COMMANDER_GRADE_VALUES: Record<CommanderStatKey, readonly [number, number, number, number]> = {
   attack: [2, 3, 4, 5],
   defense: [1, 2, 2, 3],
   health: [4, 5, 6, 8],
   damage: [0, 1, 2, 3],
-  magic: [0, 1, 2, 3],
+  magic: [0, 0, 1, 2],
   speed: [5, 6, 7, 10]
 };
 
@@ -121,8 +128,26 @@ export const COMMANDER_GRADE_VALUES: Record<CommanderStatKey, readonly [number, 
  */
 export const COMMANDER_DEFENSE_TOKEN_GRADE = 2;
 
-/** Spell-damage reduction granted by the Magic stat at grade 0/1/2/3. */
-export const COMMANDER_MAGIC_SPELL_DAMAGE_REDUCTION: readonly [number, number, number, number] = [1, 1, 2, 3];
+/**
+ * Spell-damage reduction granted by the Magic stat at grade 0/1/2/3. Per the
+ * module spec grade 0 grants NONE (0); the ward begins at grade 1 (-1), holds
+ * at grade 2 (-1) and jumps to grade 3 (-3). A 0 means no `reduce-spell-damage`
+ * ability is wired at all (the commander takes full Spell damage).
+ */
+export const COMMANDER_MAGIC_SPELL_DAMAGE_REDUCTION: readonly [number, number, number, number] = [0, 1, 1, 3];
+
+/**
+ * The Magic grade at (and above) which the commander is immune to ongoing
+ * effects (the titan-style ward). Per the module spec a grade-0 Magic commander
+ * is NOT immune — the immunity is part of the grade-1 package. Consumed by
+ * commanderAbilityIds and the stats UI so the single source of truth is here.
+ */
+export const COMMANDER_MAGIC_ONGOING_IMMUNE_GRADE = 1;
+
+/** Whether a commander at the given Magic grade is immune to ongoing effects. */
+export function commanderMagicImmuneToOngoing(magicGrade: number): boolean {
+  return magicGrade >= COMMANDER_MAGIC_ONGOING_IMMUNE_GRADE;
+}
 
 export const COMMANDER_ALL_GRADES_ZERO: CommanderGrades = {
   attack: 0, defense: 0, health: 0, damage: 0, magic: 0, speed: 0
@@ -138,16 +163,33 @@ export function commanderPower(grades: Pick<CommanderGrades, "magic">): number {
 }
 
 /**
- * Hero levels at which the owner picks two different stats to grade up.
- * The Paladin's Wise specialty reaches the later picks EARLIER (2/3/5).
- * Three picks x two stats = 6 raises: enough to take one stat to grade 3
- * and its combo partner to grade 2 (a combination skill) with one to spare.
+ * Every hero level-up awards the commander stat POINTS to spend (one point
+ * raises one stat by one grade). A normal level-up gives 1 point; the two
+ * "milestone" levels give 2. Milestones are levels 3 & 6 for everyone EXCEPT
+ * the Castle Paladin, whose Wise specialty pulls the milestone points EARLIER
+ * to levels 2 & 5. Over a full run to level 7 that is 8 points either way —
+ * enough to take one stat to grade 3 (3 points) and its combo partner to
+ * grade 2 (2 points) with room to spare.
  */
-export const COMMANDER_GRADE_UP_LEVELS: readonly number[] = [2, 4, 6];
-export const COMMANDER_WISE_GRADE_UP_LEVELS: readonly number[] = [2, 3, 5];
+export const COMMANDER_DOUBLE_POINT_LEVELS: readonly number[] = [3, 6];
+export const COMMANDER_WISE_DOUBLE_POINT_LEVELS: readonly number[] = [2, 5];
 
-export function commanderGradeUpLevels(slug: CommanderSlug): readonly number[] {
-  return slug === "paladin" ? COMMANDER_WISE_GRADE_UP_LEVELS : COMMANDER_GRADE_UP_LEVELS;
+/** The two milestone (2-point) level-ups for a commander. */
+export function commanderDoublePointLevels(slug: CommanderSlug): readonly number[] {
+  return slug === "paladin" ? COMMANDER_WISE_DOUBLE_POINT_LEVELS : COMMANDER_DOUBLE_POINT_LEVELS;
+}
+
+/**
+ * Stat points a commander earns when its hero reaches `level`:
+ *  - level < 2 (the starting level): 0 (no level-up happened);
+ *  - a milestone level (see commanderDoublePointLevels): 2;
+ *  - any other level-up: 1.
+ */
+export function commanderGradePointsForLevelUp(slug: CommanderSlug, level: number): number {
+  if (level < 2) {
+    return 0;
+  }
+  return commanderDoublePointLevels(slug).includes(level) ? 2 : 1;
 }
 
 /** Reviving a dead commander costs gold scaling with the hero's level. */
@@ -437,7 +479,7 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
     specialty: {
       id: "wise",
       name: "Wise",
-      text: "The commander grades up early: the grade-up picks arrive at hero level 2, 3 and 5 (instead of 2, 4 and 6)."
+      text: "The commander earns its milestone points early: the two-point level-ups are hero level 2 & 5 (instead of 3 & 6)."
     },
     cardImage: "/assets/units-commander-paladin.webp"
   },

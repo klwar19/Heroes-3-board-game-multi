@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   COMMANDER_DEFENSE_TOKEN_GRADE,
   COMMANDER_GRADE_VALUES,
+  COMMANDER_MAGIC_SPELL_DAMAGE_REDUCTION,
   COMMANDER_SLUGS,
   COMMANDER_STAT_KEYS,
   commanderDefinitions,
-  commanderGradeUpLevels,
+  commanderDoublePointLevels,
+  commanderGradePointsForLevelUp,
   commanderReviveCost,
   COMMANDER_SLUG_BY_FACTION,
   type CommanderSlug
@@ -128,8 +130,12 @@ describe("WOG commanders — content integrity", () => {
     expect(COMMANDER_GRADE_VALUES.health).toEqual([4, 5, 6, 8]);
     expect(COMMANDER_GRADE_VALUES.speed).toEqual([5, 6, 7, 10]);
     // Damage grade = the number of EXTRA attack dice; Magic grade = Power.
+    // Per the module spec the Power ladder is 0/0/1/2 (grade 1 buys the
+    // defensive package, not Power) and the spell ward is 0/1/1/3 (nothing at
+    // grade 0, -1 from grade 1, -3 at grade 3).
     expect(COMMANDER_GRADE_VALUES.damage).toEqual([0, 1, 2, 3]);
-    expect(COMMANDER_GRADE_VALUES.magic).toEqual([0, 1, 2, 3]);
+    expect(COMMANDER_GRADE_VALUES.magic).toEqual([0, 0, 1, 2]);
+    expect(COMMANDER_MAGIC_SPELL_DAMAGE_REDUCTION).toEqual([0, 1, 1, 3]);
     expect(COMMANDER_DEFENSE_TOKEN_GRADE).toBe(2);
   });
 
@@ -228,9 +234,19 @@ describe("WOG commanders — combat injection", () => {
       controllerId: "p1"
     });
     expect(unit.position).toBeGreaterThanOrEqual(12);
+    // Magic grade 0 (base): the commander gets ONLY its cast — no spell ward,
+    // no ongoing-effect immunity (both begin at Magic grade 1).
+    expect(unit.abilities).not.toContain("reduce-spell-damage-1");
+    expect(unit.abilities).not.toContain("titan-ignore-ongoing");
+    expect(unit.abilities).toContain("commander-cast-paladin");
+  });
+
+  it("gains the magic package (ward + ongoing immunity) from Magic grade 1", () => {
+    const state = adventureWithCommanders("cmd-inject-magic");
+    state.players.p1.commander = freshCommander("paladin", { magic: 1 });
+    const unit = intoNeutralFight(state).combat!.units[commanderUnitId("p1")];
     expect(unit.abilities).toContain("reduce-spell-damage-1");
     expect(unit.abilities).toContain("titan-ignore-ongoing");
-    expect(unit.abilities).toContain("commander-cast-paladin");
   });
 
   it("CONTROL: no commander unit when the module is off, and none for a DEAD commander", () => {
@@ -317,78 +333,105 @@ describe("WOG commanders — the 4-unit deployment limit", () => {
 });
 
 // ===========================================================================
-// Grade-ups — hero level 2/4/6 (Wise: 2/3/5), two DIFFERENT stats per pick.
+// Stat points — every level-up gives 1 (2 at a milestone level: 3 & 6, or the
+// Paladin's Wise 2 & 5). One point raises one stat by one grade.
 // ===========================================================================
 
-describe("WOG commanders — grade-ups with the hero's level", () => {
-  it("queues a pick at level 2, 4 and 6, spends each on two different stats, and rejects abuse", () => {
-    let state = adventureWithCommanders("cmd-gradeup", "necropolis", undefined);
-    // necropolis p1 → soul_eater (grade-ups at 2/4/6).
-    gainExperience(state, "p1", 2); // level 1 → 2
-    expect(state.players.p1.commander?.pendingGradeUps).toEqual([2]);
+describe("WOG commanders — stat points from the hero's level", () => {
+  it("pins the point schedule: 1 per level-up, 2 at the milestone levels", () => {
+    // soul_eater (any non-Paladin) — milestones at levels 3 & 6.
+    expect(commanderDoublePointLevels("soul_eater")).toEqual([3, 6]);
+    expect([1, 2, 3, 4, 5, 6, 7].map((lvl) => commanderGradePointsForLevelUp("soul_eater", lvl)))
+      .toEqual([0, 1, 2, 1, 1, 2, 1]);
 
-    // Same stat twice is rejected; so is an unknown pair order abuse.
-    applyError(state, { type: "COMMANDER_GRADE_UP", playerId: "p1", stats: ["attack", "attack"] });
+    // Paladin (Castle) — Wise pulls the milestones EARLIER to levels 2 & 5.
+    expect(commanderDoublePointLevels("paladin")).toEqual([2, 5]);
+    expect([1, 2, 3, 4, 5, 6, 7].map((lvl) => commanderGradePointsForLevelUp("paladin", lvl)))
+      .toEqual([0, 2, 1, 1, 2, 1, 1]);
 
-    state = apply(state, { type: "COMMANDER_GRADE_UP", playerId: "p1", stats: ["attack", "magic"] });
-    expect(state.players.p1.commander?.grades.attack).toBe(1);
+    // Either way a full run to level 7 is 8 points.
+    expect([2, 3, 4, 5, 6, 7].reduce((sum, lvl) => sum + commanderGradePointsForLevelUp("soul_eater", lvl), 0)).toBe(8);
+    expect([2, 3, 4, 5, 6, 7].reduce((sum, lvl) => sum + commanderGradePointsForLevelUp("paladin", lvl), 0)).toBe(8);
+  });
+
+  it("awards points on level-up, spends each on one stat, and rejects abuse", () => {
+    let state = adventureWithCommanders("cmd-points", "necropolis", undefined);
+    // necropolis p1 → soul_eater (milestones at 3 & 6).
+    gainExperience(state, "p1", 2); // level 1 → 2 → +1 point
+    expect(state.players.p1.commander?.gradePoints).toBe(1);
+
+    // An unknown stat is rejected.
+    applyError(state, { type: "COMMANDER_GRADE_UP", playerId: "p1", stat: "bogus" as never });
+
+    state = apply(state, { type: "COMMANDER_GRADE_UP", playerId: "p1", stat: "magic" });
     expect(state.players.p1.commander?.grades.magic).toBe(1);
-    expect(state.players.p1.commander?.pendingGradeUps).toEqual([]);
+    expect(state.players.p1.commander?.gradePoints).toBe(0);
 
-    // No pick owed → rejected.
-    applyError(state, { type: "COMMANDER_GRADE_UP", playerId: "p1", stats: ["attack", "magic"] });
+    // No points left → rejected.
+    applyError(state, { type: "COMMANDER_GRADE_UP", playerId: "p1", stat: "attack" });
 
-    gainExperience(state, "p1", 6); // xp 8 → level 5 (crosses 3, 4 and 5 — only 4 queues)
-    expect(state.players.p1.commander?.pendingGradeUps).toEqual([4]);
-    state = apply(state, { type: "COMMANDER_GRADE_UP", playerId: "p1", stats: ["attack", "magic"] });
-    expect(state.players.p1.commander?.grades.attack).toBe(2);
-    expect(state.players.p1.commander?.grades.magic).toBe(2);
+    // xp 2 → 8 crosses levels 3, 4 and 5: 2 + 1 + 1 = 4 points.
+    gainExperience(state, "p1", 6);
+    expect(state.players.p1.commander?.gradePoints).toBe(4);
 
-    gainExperience(state, "p1", 2); // xp 10 → level 6
-    expect(state.players.p1.commander?.pendingGradeUps).toEqual([6]);
-    state = apply(state, { type: "COMMANDER_GRADE_UP", playerId: "p1", stats: ["attack", "magic"] });
-    expect(state.players.p1.commander?.grades.attack).toBe(3);
+    // Spend all 4 raising magic to grade 3, then attack once.
+    state = apply(state, { type: "COMMANDER_GRADE_UP", playerId: "p1", stat: "magic" });
+    state = apply(state, { type: "COMMANDER_GRADE_UP", playerId: "p1", stat: "magic" });
     expect(state.players.p1.commander?.grades.magic).toBe(3);
-
-    // Grade 3 is the cap: a capped stat can no longer be picked.
-    state.players.p1.commander!.pendingGradeUps = [6];
-    applyError(state, { type: "COMMANDER_GRADE_UP", playerId: "p1", stats: ["attack", "defense"] });
+    // Magic is capped at grade 3 now — a 3rd raise is rejected.
+    applyError(state, { type: "COMMANDER_GRADE_UP", playerId: "p1", stat: "magic" });
+    state = apply(state, { type: "COMMANDER_GRADE_UP", playerId: "p1", stat: "attack" });
+    state = apply(state, { type: "COMMANDER_GRADE_UP", playerId: "p1", stat: "attack" });
+    expect(state.players.p1.commander?.grades.attack).toBe(2);
+    expect(state.players.p1.commander?.gradePoints).toBe(0);
   });
 
-  it("Wise (Paladin): the picks arrive at hero level 2, 3 and 5 instead of 2, 4 and 6", () => {
-    expect(commanderGradeUpLevels("paladin")).toEqual([2, 3, 5]);
-    expect(commanderGradeUpLevels("soul_eater")).toEqual([2, 4, 6]);
-
+  it("Wise (Paladin): the milestone (2-point) levels are 2 & 5, not 3 & 6", () => {
     const paladin = adventureWithCommanders("cmd-wise"); // castle → paladin
-    gainExperience(paladin, "p1", 4); // level 3: Wise queues BOTH 2 and 3
-    expect(paladin.players.p1.commander?.pendingGradeUps).toEqual([2, 3]);
+    gainExperience(paladin, "p1", 2); // level 2 = milestone → +2
+    expect(paladin.players.p1.commander?.gradePoints).toBe(2);
 
-    // CONTROL: a non-Paladin commander only has the level-2 pick at level 3 …
+    // CONTROL: a non-Paladin at level 2 gets only 1 point.
     const other = adventureWithCommanders("cmd-wise-ctrl", "necropolis");
-    gainExperience(other, "p1", 4);
-    expect(other.players.p1.commander?.pendingGradeUps).toEqual([2]);
-    // … and the Paladin gets nothing NEW at level 4 (its next pick is level 5).
-    gainExperience(paladin, "p1", 2); // level 4
-    expect(paladin.players.p1.commander?.pendingGradeUps).toEqual([2, 3]);
+    gainExperience(other, "p1", 2);
+    expect(other.players.p1.commander?.gradePoints).toBe(1);
+
+    // Paladin level 3 is a normal +1 (its milestone was 2); soul_eater level 3
+    // is the +2 milestone.
+    gainExperience(paladin, "p1", 2); // level 3 → +1 (total 3)
+    expect(paladin.players.p1.commander?.gradePoints).toBe(3);
+    gainExperience(other, "p1", 2); // level 3 → +2 (total 3)
+    expect(other.players.p1.commander?.gradePoints).toBe(3);
   });
 
-  it("offers the grade-up pairs as map-turn legal actions", () => {
-    const state = adventureWithCommanders("cmd-gradeup-legal");
+  it("offers one grade-up per raisable stat as map-turn legal actions", () => {
+    const state = adventureWithCommanders("cmd-points-legal");
     if (state.players.p1.needsHandRefresh || state.players.p1.canMulligan) {
       apply(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
     }
-    state.players.p1.commander!.pendingGradeUps = [3];
+    state.players.p1.commander!.gradePoints = 1;
     const refreshed = apply(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
-    const pairs = getLegalActions(refreshed, "p1").filter(
+    const raises = getLegalActions(refreshed, "p1").filter(
       (legal) => legal.action.type === "COMMANDER_GRADE_UP"
     );
-    // 6 stats below cap → C(6,2) = 15 distinct pairs.
-    expect(pairs).toHaveLength(15);
+    // 6 stats below cap → one action each.
+    expect(raises).toHaveLength(6);
+
+    // A capped stat drops out of the offers.
+    refreshed.players.p1.commander!.grades.attack = 3;
+    const capped = getLegalActions(refreshed, "p1").filter(
+      (legal) => legal.action.type === "COMMANDER_GRADE_UP"
+    );
+    expect(capped).toHaveLength(5);
+    expect(
+      capped.some((legal) => legal.action.type === "COMMANDER_GRADE_UP" && legal.action.stat === "attack")
+    ).toBe(false);
   });
 });
 
 // ===========================================================================
-// Magic package — -1/-2 Spell damage and ongoing-effect immunity, by grade.
+// Magic package — NOTHING at grade 0; -1 Spell damage + ongoing-effect
+// immunity from grade 1, -3 at grade 3.
 // ===========================================================================
 
 describe("WOG commanders — the Magic grade package", () => {
@@ -411,19 +454,26 @@ describe("WOG commanders — the Magic grade package", () => {
     return settle(apply(state, cast!.action));
   }
 
-  it("takes -1 Spell damage at grade 0 and -2 from grade 2 (Lightning Bolt, Power 0: 2 damage)", () => {
-    // Grade 0 (base): 2 - 1 = 1 damage.
+  it("takes FULL Spell damage at grade 0 and -1 from grade 1 (Lightning Bolt, Power 0: 2 damage)", () => {
+    // Grade 0 (base): NO ward — the commander takes the full 2 damage.
     const state = boltAt(sandboxWithCommander("paladin"), commanderUnitId("p1"));
-    expect(state.combat!.units[commanderUnitId("p1")].damage).toBe(1);
+    expect(state.combat!.units[commanderUnitId("p1")].damage).toBe(2);
 
-    // Grade 2: 2 - 2 = 0 damage.
+    // Grade 1: the -1 ward begins → 2 - 1 = 1 damage.
+    const warded = boltAt(sandboxWithCommander("paladin", { magic: 1 }), commanderUnitId("p1"));
+    expect(warded.combat!.units[commanderUnitId("p1")].damage).toBe(1);
+
+    // Grade 2 keeps the -1 ward → 2 - 1 = 1 damage.
     const graded = boltAt(sandboxWithCommander("paladin", { magic: 2 }), commanderUnitId("p1"));
-    expect(graded.combat!.units[commanderUnitId("p1")].damage).toBe(0);
+    expect(graded.combat!.units[commanderUnitId("p1")].damage).toBe(1);
 
     // Grade 3 carries the -3 ward (behaviour of the shared REDUCE_SPELL_DAMAGE
     // id is pinned by its own ability tests; here we pin WHICH ward is wired).
     const maxed = sandboxWithCommander("paladin", { magic: 3 });
     expect(maxed.combat!.units[commanderUnitId("p1")].abilities).toContain("reduce-spell-damage-3");
+    // Grade 0 has NO reduce-spell-damage id at all.
+    expect(sandboxWithCommander("paladin").combat!.units[commanderUnitId("p1")].abilities)
+      .not.toContain("reduce-spell-damage-1");
 
     // CONTROL: a plain unit takes the full 2.
     const plain = createInitialGameState();
@@ -432,8 +482,8 @@ describe("WOG commanders — the Magic grade package", () => {
     expect(control.combat!.units.unit_p1_marksmen.damage).toBe(2);
   });
 
-  it("is immune to ongoing effects: an enemy Slow never shifts its initiative", () => {
-    let state = sandboxWithCommander("paladin");
+  it("is immune to ongoing effects from Magic grade 1: an enemy Slow never shifts its initiative", () => {
+    let state = sandboxWithCommander("paladin", { magic: 1 });
     state.players.p2.hand = ["spell.slow"];
     state.combat!.activeUnitId = "unit_p2_skeletons";
     state.activePlayerId = "p2";
@@ -465,6 +515,25 @@ describe("WOG commanders — the Magic grade package", () => {
       })
     );
     expect(effectiveInitiative(control.combat!.units.unit_p1_marksmen, control.activeEffects)).toBeLessThan(baseline);
+
+    // CONTROL 2: a Magic grade-0 commander is NOT immune — the same Slow drags
+    // IT down too (the immunity is the grade-1 package, not a baseline).
+    let unwarded = sandboxWithCommander("paladin"); // magic grade 0
+    unwarded.players.p2.hand = ["spell.slow"];
+    unwarded.combat!.activeUnitId = "unit_p2_skeletons";
+    unwarded.activePlayerId = "p2";
+    const rawBefore = effectiveInitiative(unwarded.combat!.units[commanderUnitId("p1")], unwarded.activeEffects);
+    unwarded = settle(
+      apply(unwarded, {
+        type: "CAST_SPELL",
+        playerId: "p2",
+        cardId: "spell.slow",
+        target: { type: "unit", unitId: commanderUnitId("p1") }
+      })
+    );
+    expect(
+      effectiveInitiative(unwarded.combat!.units[commanderUnitId("p1")], unwarded.activeEffects)
+    ).toBeLessThan(rawBefore);
   });
 
   it("is tierless: tier-gated casts (Blind) never offer the commander as a target", () => {

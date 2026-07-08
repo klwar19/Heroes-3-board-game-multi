@@ -193,22 +193,31 @@ describe("commander casts — shared rules", () => {
     expect(castOffer(cancelled, "ogre_leader")).toBeTruthy();
   });
 
-  it("ongoing-effect casts never offer a commander as the target (its immunity would fizzle them)", () => {
-    // Sea Marshal's Slow against an enemy commander: excluded up front.
-    const state = castState("corsair");
-    const enemyCommander = makeCommanderCombatUnit(
-      { ...state.players.p2, commander: { slug: "paladin", grades: { attack: 0, defense: 0, health: 0, damage: 0, magic: 0, speed: 0 } } } as never,
-      14
-    );
-    // makeCommanderCombatUnit reads player.id — rebuild it for p2 cleanly.
-    expect(enemyCommander).toBeTruthy();
-    enemyCommander!.id = "unit_p2_commander";
-    enemyCommander!.controllerId = "p2";
-    enemyCommander!.position = 13;
-    state.combat!.units[enemyCommander!.id] = enemyCommander!;
-    const candidates = castCandidateIds(state, "corsair");
-    expect(candidates).toContain("unit_p2_skeletons");
-    expect(candidates).not.toContain("unit_p2_commander");
+  it("ongoing-effect casts never offer an ONGOING-IMMUNE commander (Magic grade 1+)", () => {
+    function withEnemyCommander(magic: number): GameState {
+      // Sea Marshal's Slow against an enemy commander.
+      const state = castState("corsair");
+      const enemyCommander = makeCommanderCombatUnit(
+        { ...state.players.p2, commander: { slug: "paladin", grades: { attack: 0, defense: 0, health: 0, damage: 0, magic, speed: 0 } } } as never,
+        14
+      );
+      // makeCommanderCombatUnit reads player.id — rebuild it for p2 cleanly.
+      expect(enemyCommander).toBeTruthy();
+      enemyCommander!.id = "unit_p2_commander";
+      enemyCommander!.controllerId = "p2";
+      enemyCommander!.position = 13;
+      state.combat!.units[enemyCommander!.id] = enemyCommander!;
+      return state;
+    }
+
+    // Magic grade 1 (immune to ongoing): excluded up front.
+    const immune = castCandidateIds(withEnemyCommander(1), "corsair");
+    expect(immune).toContain("unit_p2_skeletons");
+    expect(immune).not.toContain("unit_p2_commander");
+
+    // CONTROL: a Magic grade-0 enemy commander is NOT immune → it IS offered.
+    const vulnerable = castCandidateIds(withEnemyCommander(0), "corsair");
+    expect(vulnerable).toContain("unit_p2_commander");
   });
 });
 
@@ -422,7 +431,8 @@ describe("commander casts — Succubus' Fire Shield", () => {
     const lowEffect = low.activeEffects.find((effect) => effect.modifiers.some((m) => m.type === "FIRE_SHIELD"));
     expect(lowEffect?.expiresAtCombatRoundEnd).toBe(low.combat!.round);
 
-    const mid = castOn(castState("succubus", { magic: 1 }), "succubus", "unit_p1_marksmen");
+    // Magic grade 2 = Power 1 (the ladder is 0/0/1/2).
+    const mid = castOn(castState("succubus", { magic: 2 }), "succubus", "unit_p1_marksmen");
     const midEffect = mid.activeEffects.find((effect) => effect.modifiers.some((m) => m.type === "FIRE_SHIELD"));
     expect(midEffect?.duration.type).toBe("combat");
     expect(midEffect?.expiresAtCombatRoundEnd).toBeUndefined();
@@ -458,8 +468,8 @@ describe("commander casts — Soul Eater's Animate Dead", () => {
     expect(lowIds).not.toContain("unit_p1_griffins");
     expect(lowIds).not.toContain("unit_p1_crusaders");
 
-    // Pow 1: silver joins; Pow 2: even gold.
-    const mid = prepare(castState("soul_eater", { magic: 1 }));
+    // Pow 1 (Magic grade 2): silver joins; Pow 2 (grade 3): even gold.
+    const mid = prepare(castState("soul_eater", { magic: 2 }));
     const midIds = castCandidateIds(mid, "soul_eater");
     expect(midIds).toContain("unit_p1_griffins");
     expect(midIds).not.toContain("unit_p1_crusaders");

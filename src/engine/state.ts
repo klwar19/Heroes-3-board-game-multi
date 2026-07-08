@@ -2617,12 +2617,12 @@ export type GameAction =
   | { type: "USE_ACTIVE_EFFECT"; playerId: PlayerId; effectId: string; target: TargetRef; mode?: CardPlayMode }
   | {
       /**
-       * WOG Commanders: spend one owed grade-up pick (hero level 3/6; Paladin
-       * 2/5) — raise TWO DIFFERENT stats by one grade each (max grade 3).
+       * WOG Commanders: spend ONE stat point to raise a single stat by one
+       * grade (max grade 3). Points are earned on hero level-ups.
        */
       type: "COMMANDER_GRADE_UP";
       playerId: PlayerId;
-      stats: [CommanderStatKey, CommanderStatKey];
+      stat: CommanderStatKey;
     }
   | {
       /**
@@ -4269,12 +4269,12 @@ export type GameEvent =
       message: string;
     }
   | {
-      /** WOG commander: a two-stat grade-up pick was spent. */
+      /** WOG commander: a stat point was spent to raise one stat by a grade. */
       id: string;
       type: "COMMANDER_GRADED_UP";
       playerId: PlayerId;
       commanderSlug: string;
-      stats: CommanderStatKey[];
+      stat: CommanderStatKey;
       message: string;
     }
   | {
@@ -5299,11 +5299,12 @@ export type CommanderPlayerState = {
   /** Grade 0..3 of each of the six stats. All start at 0 (the base line). */
   grades: Record<CommanderStatKey, number>;
   /**
-   * Hero levels whose two-stat grade-up pick is still owed. Queued when the
-   * hero reaches a grade-up level (2/4/6; Paladin's Wise: 2/3/5) and consumed
-   * by COMMANDER_GRADE_UP — the pick never blocks play, it waits for the owner.
+   * Unspent stat points. Every hero level-up awards points (1 normally, 2 at a
+   * milestone level — see commanderGradePointsForLevelUp) and each
+   * COMMANDER_GRADE_UP spends one to raise a stat by a grade. Points never
+   * block play — they wait on the commander card until the owner spends them.
    */
-  pendingGradeUps?: number[];
+  gradePoints?: number;
   /** Killed in combat; stays dead until revived for gold (REVIVE_COMMANDER). */
   dead?: boolean;
   /**

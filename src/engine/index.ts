@@ -97,6 +97,7 @@ export {
 export type { RuneLevelStatus, RuneTrackView } from "./runes";
 export {
   commanderAbilityIds,
+  awardCommanderGradePoints,
   commanderCastAvailable,
   commanderCastCandidates,
   commanderCastOf,
@@ -111,6 +112,7 @@ export {
   commandersModuleEnabled,
   commanderSlugForFaction,
   commanderUnitId,
+  commanderUnitImmuneToOngoing,
   findCommanderUnit,
   isCommanderUnit,
   livingCommanderOf,
