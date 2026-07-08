@@ -58,7 +58,7 @@ function castState(
   state.wog = { enabled: true, commanders: true, newObjects: false, newCreatures: false };
   state.players.p1.commander = {
     slug,
-    grades: { attack: 1, defense: 1, health: 1, damage: 1, magic: 1, speed: 1, ...grades }
+    grades: { attack: 0, defense: 0, health: 0, damage: 0, magic: 0, speed: 0, ...grades }
   };
   const unit = makeCommanderCombatUnit(state.players.p1, 9);
   if (!unit) {
@@ -197,7 +197,7 @@ describe("commander casts — shared rules", () => {
     // Sea Marshal's Slow against an enemy commander: excluded up front.
     const state = castState("corsair");
     const enemyCommander = makeCommanderCombatUnit(
-      { ...state.players.p2, commander: { slug: "paladin", grades: { attack: 1, defense: 1, health: 1, damage: 1, magic: 1, speed: 1 } } } as never,
+      { ...state.players.p2, commander: { slug: "paladin", grades: { attack: 0, defense: 0, health: 0, damage: 0, magic: 0, speed: 0 } } } as never,
       14
     );
     // makeCommanderCombatUnit reads player.id — rebuild it for p2 cleanly.
@@ -422,7 +422,7 @@ describe("commander casts — Succubus' Fire Shield", () => {
     const lowEffect = low.activeEffects.find((effect) => effect.modifiers.some((m) => m.type === "FIRE_SHIELD"));
     expect(lowEffect?.expiresAtCombatRoundEnd).toBe(low.combat!.round);
 
-    const mid = castOn(castState("succubus", { magic: 2 }), "succubus", "unit_p1_marksmen");
+    const mid = castOn(castState("succubus", { magic: 1 }), "succubus", "unit_p1_marksmen");
     const midEffect = mid.activeEffects.find((effect) => effect.modifiers.some((m) => m.type === "FIRE_SHIELD"));
     expect(midEffect?.duration.type).toBe("combat");
     expect(midEffect?.expiresAtCombatRoundEnd).toBeUndefined();
@@ -459,7 +459,7 @@ describe("commander casts — Soul Eater's Animate Dead", () => {
     expect(lowIds).not.toContain("unit_p1_crusaders");
 
     // Pow 1: silver joins; Pow 2: even gold.
-    const mid = prepare(castState("soul_eater", { magic: 2 }));
+    const mid = prepare(castState("soul_eater", { magic: 1 }));
     const midIds = castCandidateIds(mid, "soul_eater");
     expect(midIds).toContain("unit_p1_griffins");
     expect(midIds).not.toContain("unit_p1_crusaders");

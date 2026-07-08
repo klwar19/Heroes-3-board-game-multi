@@ -1,13 +1,15 @@
 # Wake of Gods — Commanders (design + card-art prep)
 
 > **Status: ENGINE GAMEPLAY IMPLEMENTED (board-game adaptation).** The shipped
-> system is the 3-grade / 2-combo BOARD adaptation in `src/data/commanders.ts` +
-> `src/engine/commanders.ts`, pinned by `src/engine/wog-commanders.test.ts` and
-> `src/engine/wog-commander-casts.test.ts`. **The WoG PC reference tables in
-> §3–§5 below did NOT ship** — they remain as design history only (the 5-tier
-> primary skills and 15 secondary skills were replaced by grades 1–3 per stat
-> and the two Damage-pair combos). CLAUDE.md's "WOG Commanders" section is the
-> authoritative list of what runs verbatim vs. the documented adaptations.
+> system is the grade-0–3 / 15-combination-skill BOARD adaptation in
+> `src/data/commanders.ts` + `src/engine/commanders.ts`, pinned by
+> `src/engine/wog-commanders.test.ts`, `wog-commander-casts.test.ts` and
+> `wog-commander-combos.test.ts`. **The WoG PC reference NUMBERS in §3–§5
+> below did NOT ship** — they remain as design history (the 5-tier primary
+> skills became grades 0–3 per stat; §5's fifteen secondary skills ARE now
+> wired, board-adapted, unlocking at grade 3 + grade 2 of their pair).
+> CLAUDE.md's "WOG Commanders" section is the authoritative list of what runs
+> verbatim vs. the documented adaptations.
 
 Reference (fan pages, HTTP-only — mirror the numbers, not the site):
 - Sorts of commanders: <http://www.heroesofmightandmagic.com/wakeofgods/comm2.shtml>
@@ -266,13 +268,25 @@ module is engine-wired end to end:
   earlier map-movement passives (Swiftness / Dead Calm), which were removed.
 - **Rune Ritual** (Rune Keeper): +1 Rune the first time the commander is
   attacked each combat (once per fight), not a combat-start grant.
-- **Stats**: six stats at grade 1–3 (`COMMANDER_GRADE_VALUES`) replacing §4's
-  5-tier tracks: Attack 2/3/4, Defense 1/2/3, Health 4/6/8, Damage +0/+1/+2
-  on-hit, Magic = Power 0/1/2 with -1/-1/-2 Spell damage + ongoing-effect
-  immunity from grade 1, Speed (Initiative) 5/6/7. Grade-up picks (two
-  DIFFERENT stats each) at hero level 3 & 6 — the Paladin's Wise: 2 & 5.
-- **Combos** replacing §5's fifteen tags: both stats of a pair at grade 3 —
-  Damage+Magic = Death Stare, Damage+Speed = Charge (+1 Attack after moving).
+- **Stats**: six stats at grade 0–3 (`COMMANDER_GRADE_VALUES`) replacing §4's
+  5-tier tracks. Every stat STARTS at grade 0 (the base A2/D1/H4/dmg+0/Pow0/
+  Spd5); grade bonuses are the value shown, never summed (+1/+2 at grade I/II;
+  grade III adjusted per user spec: Attack +3, Health +4, Speed +5): Attack
+  2/3/4/5, Defense 1/2/3/4, Health 4/5/6/8, Damage +0/+1/+2/+3 on-hit, Magic =
+  Power 0/1/2/3 with -1/-1/-2/-3 Spell damage + ongoing-effect immunity from
+  grade 0, Speed (Initiative) 5/6/7/10. Grade-up picks (two DIFFERENT stats
+  each) at hero level 2, 4 & 6 — the Paladin's Wise: 2, 3 & 5.
+- **Combination skills**: ALL fifteen of §5's tags are engine-wired
+  (`COMMANDER_COMBOS`, one skill per stat pair), board-adapted; a combo
+  unlocks with ONE stat of its pair at grade 3 and the other at grade 2+.
+  Death Stare (Damage+Magic) and Charge (Damage+Speed) kept their original
+  wiring; Magic+Speed is the user-spec **Battle Teleport** ("can move
+  anywhere in battle", `MOVE_ANYWHERE`) instead of WoG's Fly. Icons are the
+  classic HoMM3 spell icons (heroes.thelazy.net →
+  `public/assets/spell-icons/`). Behaviour pinned per-skill (with locked
+  CONTROLs) in `src/engine/wog-commander-combos.test.ts`.
+- **Deployment**: with the module on a player deploys at most 4 army units —
+  the commander is the army's 5th body (`combatUnitLimit`).
 - **Command ability**: once per combat round, free during the commander's own
   activation, Power-scaled per `commanderDefinitions[slug].cast`.
 - **Death/revive**: a fallen commander stays dead until revived on the map for

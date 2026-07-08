@@ -15471,3 +15471,44 @@ img.cardBack {
     background: linear-gradient(0deg, rgba(18, 13, 7, 0.92) 4%, transparent 60%);
   }
 }
+
+/* ---------------------------------------------------------------------------
+   WOG Commander — level-up notice: the dock tile and the card's grade-up box
+   pulse gold while a grade-up pick is owed, so a commander level-up is
+   impossible to miss. The dock tile additionally BLINKS hard for a few
+   seconds right after the pick arrives (screen.tsx toggles the class).
+   -------------------------------------------------------------------------- */
+@keyframes commanderPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(244, 215, 116, 0);
+    border-color: rgba(244, 215, 116, 0.55);
+  }
+  50% {
+    box-shadow: 0 0 14px 3px rgba(244, 215, 116, 0.55);
+    border-color: var(--gold, #f0c46a);
+  }
+}
+
+@keyframes commanderBlink {
+  0%,
+  100% {
+    filter: brightness(1);
+  }
+  50% {
+    filter: brightness(1.7);
+    box-shadow: 0 0 22px 6px rgba(244, 215, 116, 0.85);
+  }
+}
+
+.commanderGradeUpPulse {
+  animation: commanderPulse 1.6s ease-in-out infinite;
+}
+
+.dockTile.commanderTilePulse {
+  animation: commanderPulse 1.6s ease-in-out infinite;
+}
+
+.dockTile.commanderTileBlink {
+  animation: commanderBlink 0.55s ease-in-out 8;
+}

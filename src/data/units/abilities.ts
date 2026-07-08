@@ -2559,6 +2559,81 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     effect: { type: "ATTACK_BONUS_AFTER_MOVE", amount: 1 },
     implementationStatus: "implemented"
   },
+  "commander-might-3": {
+    id: "commander-might-3",
+    name: "Might",
+    text: "[unit_passive] This commander's attacks that deal damage deal 3 more.",
+    effect: { type: "BONUS_DAMAGE_ON_HIT", amount: 3 },
+    implementationStatus: "implemented"
+  },
+  // Commander combination skills (COMMANDER_COMBOS in src/data/commanders.ts;
+  // one stat of the pair at grade 3 + the other at 2+ puts the id on the
+  // commander's combat unit). Skills matching an existing creature mechanic
+  // reuse its ability id (ignores-retaliation, unlimited-retaliation,
+  // teleport-move, gorgon-death-stare); the rest live here.
+  "commander-max-damage": {
+    id: "commander-max-damage",
+    name: "Mighty Blow",
+    text: '[unit_attack] This commander\'s own Attack die always counts as "+1" (maximum damage).',
+    effect: { type: "MINIMUM_ATTACK_DIE", minimum: 1 },
+    implementationStatus: "implemented"
+  },
+  "commander-defense-crush": {
+    id: "commander-defense-crush",
+    name: "Crushing Strike",
+    text: "[unit_attack] Decrease the target's defense by 2, to a minimum of 0, for this commander's attacks.",
+    effect: { type: "DEFENSE_REDUCTION_ON_ATTACK", amount: 2 },
+    implementationStatus: "implemented"
+  },
+  "commander-fearsome": {
+    id: "commander-fearsome",
+    name: "Fearsome",
+    text: '[unit_attack] On a "-1" on this commander\'s Attack die, the target is frozen by fear — it gains Paralysis (it skips its next activation; any damage clears it).',
+    effect: { type: "PARALYZE_TARGET_ON_DIE", source: "own", onRoll: -1 },
+    implementationStatus: "implemented"
+  },
+  "commander-strike-all": {
+    id: "commander-strike-all",
+    name: "Whirlwind Strike",
+    text: "[unit_attack] After the attack, this commander attacks every other adjacent enemy with a full separate attack. These extra attacks never provoke Retaliation.",
+    effect: { type: "SECOND_ATTACK_ALL_ADJACENT_TO_SELF" },
+    implementationStatus: "implemented"
+  },
+  "commander-fire-shield": {
+    id: "commander-fire-shield",
+    name: "Fire Shield",
+    text: "[unit_passive] An adjacent attacker takes 1 damage after attacking this commander.",
+    effect: { type: "FIRE_SHIELD_DAMAGE", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "commander-block": {
+    id: "commander-block",
+    name: "Block",
+    text: '[unit_passive] When attacked, roll an Attack die; on "-1" the attack\'s damage is fully blocked.',
+    effect: { type: "REDUCE_ATTACK_DAMAGE_ON_DEFENSE_DIE", onRoll: -1, amount: 99 },
+    implementationStatus: "implemented"
+  },
+  "commander-double-strike": {
+    id: "commander-double-strike",
+    name: "Double Strike",
+    text: "[unit_attack] After the target retaliates (if it can), this commander attacks it once more. The second attack does not provoke another retaliation.",
+    effect: { type: "SECOND_ATTACK_SAME_TARGET_AFTER_RETALIATION" },
+    implementationStatus: "implemented"
+  },
+  "commander-paralyze": {
+    id: "commander-paralyze",
+    name: "Paralyzing Touch",
+    text: '[unit_attack] After the attack, roll 1 Attack die; on a "0" the target gains Paralysis (it skips its next activation; any damage clears it).',
+    effect: { type: "PARALYZE_TARGET_ON_DIE", source: "extra", onRoll: 0 },
+    implementationStatus: "implemented"
+  },
+  "commander-regeneration": {
+    id: "commander-regeneration",
+    name: "Regeneration",
+    text: "[unit_passive] When this commander activates, remove up to 1 damage from it.",
+    effect: { type: "ON_ACTIVATION_HEAL_SELF", amount: 1 },
+    implementationStatus: "implemented"
+  },
   "commander-cast-paladin": {
     id: "commander-cast-paladin",
     name: "Cure",
