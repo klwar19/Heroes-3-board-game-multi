@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /**
  * Convert Heroes 3 sound-archive WAVs (dropped in the repo root) into named,
  * web-ready MP3s under public/sounds/, then rebuild public/sounds/manifest.json.
@@ -200,6 +199,9 @@ const RELOCATE = {
   "effects/icerayex": "spells/ice-bolt-hit",
   "effects/sacrif2": "spells/sacrifice-2",
   "effects/telptin": "spells/teleport-in",
+  // HotA Factory ability sounds (shipped under public/sounds/spells/)
+  "effects/grenade": "spells/grenade",
+  "effects/repair": "spells/repair",
   // multiplayer / interface
   "effects/playcome": "ui/player-joined",
   "effects/playexit": "ui/player-left",

@@ -239,3 +239,135 @@ describe("Event secrecy in player views", () => {
     expect(p2View.adventure!.events!.auction!.bids).toEqual({ p2: 5 });
   });
 });
+
+// ===========================================================================
+// Mid-Event elimination (AFK kick / concede while an Event is resolving):
+// shared bookkeeping queued on the eliminated seat must be handed to a live
+// seat — dropping it would leak the displayed cards out of the game — and the
+// seat's stakes in shared Event state (secret bids, an open deal) must vanish.
+// ===========================================================================
+
+/** Fresh 3-player events game with a quiet board (mirrors eventsGame). */
+function eventsGame3(seed: string): GameState {
+  const state = createAdventureGameState({
+    seed,
+    difficulty: "normal",
+    rollFirstPlayer: false,
+    events: true,
+    players: [
+      { id: "p1", name: "Catherine", factionId: "castle", heroDefId: "catherine" },
+      { id: "p2", name: "Sandro", factionId: "necropolis", heroDefId: "sandro" },
+      { id: "p3", name: "Alamar", factionId: "dungeon", heroDefId: "alamar" }
+    ]
+  });
+  for (const player of Object.values(state.players)) {
+    player.canMulligan = false;
+    player.needsHandRefresh = false;
+    player.resources = { gold: 10, buildingMaterials: 5, valuables: 5 };
+    player.production = { gold: 0, buildingMaterials: 0, valuables: 0 };
+  }
+  state.adventure!.rewardQueue = [];
+  state.adventure!.pendingVisit = null;
+  state.pendingChoice = null;
+  return state;
+}
+
+/** Total card count (draw + discard) across the given shared decks. */
+function deckFamilySize(state: GameState, deckIds: string[]): number {
+  return deckIds.reduce((sum, deckId) => {
+    const deck = state.decks[deckId];
+    return sum + (deck?.drawPile.length ?? 0) + (deck?.discardPile.length ?? 0);
+  }, 0);
+}
+
+describe("Event resolution survives a mid-Event elimination", () => {
+  it("Spell market: eliminating the drawer still returns the whole display to the decks (no card leak) and lifts the barrier", () => {
+    const state = eventsGame3("elim-pool");
+    stackEventDeck(state, "event.library_of_enlightenment");
+    const spellsTotal = deckFamilySize(state, ["spells", "spells-expert"]);
+    startResourceRound(state);
+    expect(getEventsState(state)!.pool).toHaveLength(6); // 2 per player
+    expect(state.adventure!.pendingVisit?.playerId).toBe("p1");
+
+    // The drawer closes their tab and is kicked while their market menu is open.
+    eliminatePlayer(state, "p1", "removed mid-event", false);
+    pumpAdventureQueues(state);
+
+    // The live seats finish their turns without buying.
+    let after = chooseVisitOption(state, "p2", /Skip/);
+    after = chooseVisitOption(after, "p3", /Skip/);
+
+    // The pool cleanup (queued on the dead drawer) still ran: every displayed
+    // spell went back into the Spell decks and the round-start barrier lifted.
+    expect(getEventsState(after)!.pool).toHaveLength(0);
+    expect(deckFamilySize(after, ["spells", "spells-expert"])).toBe(spellsTotal);
+    expect(after.adventure!.eventResolution).toBeNull();
+  });
+
+  it("Shady Auction: a dead seat's secret bid can never win, the open lot still resolves, and the remaining lots still run", () => {
+    const state = eventsGame3("elim-auction");
+    stackEventDeck(state, "event.a_shady_auction");
+    const artifactDecks = ["artifacts", "artifacts-minor", "artifacts-major", "artifacts-relic"];
+    const artifactsTotal = deckFamilySize(state, artifactDecks);
+    startResourceRound(state);
+
+    // Lot 1 is on display; the drawer (p1) secretly bids 3 first.
+    const lot1 = getEventsState(state)!.auction!.lotCardId;
+    let after = chooseVisitOption(state, "p1", /^Bid 3 gold$/);
+    expect(getEventsState(after)!.auction!.bids.p1).toBe(3);
+
+    // Now the drawer (and current highest bidder) is eliminated mid-bidding.
+    eliminatePlayer(after, "p1", "removed mid-auction", false);
+    expect(getEventsState(after)!.auction!.bids.p1).toBeUndefined();
+    pumpAdventureQueues(after);
+
+    // The live seats bid on: p2's single gold now wins the lot.
+    const goldBefore = after.players.p2.resources.gold;
+    after = chooseVisitOption(after, "p2", /^Bid 1 gold$/);
+    after = chooseVisitOption(after, "p3", /^No bid$/);
+    expect(after.players.p2.hand).toContain(lot1);
+    expect(after.players.p1.hand).not.toContain(lot1);
+    expect(after.players.p2.resources.gold).toBe(goldBefore - 1);
+
+    // Lots 2 and 3 (their open/resolve steps were queued on the dead drawer)
+    // still run for the live seats; nobody bids, so they recycle.
+    for (let lot = 0; lot < 2; lot += 1) {
+      expect(getEventsState(after)!.auction, `lot ${lot + 2} opened`).toBeTruthy();
+      after = chooseVisitOption(after, "p2", /^No bid$/);
+      after = chooseVisitOption(after, "p3", /^No bid$/);
+    }
+
+    // No card leaked: only the won lot left the Artifact family, the auction
+    // is closed and the round-start barrier lifted.
+    expect(getEventsState(after)!.auction).toBeNull();
+    expect(deckFamilySize(after, artifactDecks)).toBe(artifactsTotal - 1);
+    expect(after.adventure!.eventResolution).toBeNull();
+  });
+
+  it("Marketplace: eliminating the proposer voids their open 1-for-1 deal — accepting it is a clean no-op", () => {
+    const state = eventsGame3("elim-deal");
+    stackEventDeck(state, "event.marketplace");
+    startResourceRound(state);
+
+    // The drawer proposes a 1-for-1 exchange; p2's answer menu opens.
+    let after = chooseVisitOption(state, "p1", /Propose a 1-for-1 resource exchange/);
+    after = chooseVisitOption(after, "p1", /Offer 1 gold for 1 valuables/);
+    expect(getEventsState(after)!.deal?.proposerId).toBe("p1");
+
+    // The proposer is eliminated before anyone answers: the deal is void.
+    eliminatePlayer(after, "p1", "removed mid-deal", false);
+    expect(getEventsState(after)!.deal).toBeNull();
+    pumpAdventureQueues(after);
+
+    // p2's already-open Accept button does nothing — no swap with a dead seat.
+    const p2Before = { ...after.players.p2.resources };
+    const p1Before = { ...after.players.p1.resources };
+    after = chooseVisitOption(after, "p2", /^Accept — give 1 valuables, receive 1 gold$/);
+    expect(after.players.p2.resources).toEqual(p2Before);
+    expect(after.players.p1.resources).toEqual(p1Before);
+
+    // The table is not stuck: p2 proceeds to their own Marketplace turn.
+    after = chooseVisitOption(after, "p2", /Roll 1 resource die|Roll 1 Resource die/);
+    expect(after.adventure!.pendingVisit?.playerId).toBe("p3");
+  });
+});

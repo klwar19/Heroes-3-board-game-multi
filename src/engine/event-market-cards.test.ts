@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { applyAction, getLegalActions } from "./index";
-import { EVENT_ARTIFACT_PRICES, getEventsState, NEUTRAL_DECK_IDS } from "./adventure";
+import { EVENT_ARTIFACT_PRICES, EVENT_RELIC_MIN_ROUND, getEventsState, NEUTRAL_DECK_IDS } from "./adventure";
 import { cardLibrary } from "@/data/cards/library";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { neutralUnitIdsByTier } from "@/data/factions/core";
@@ -496,5 +496,117 @@ describe("Event — Marketplace", () => {
     declined = chooseVisitOption(declined, "p2", /Decline/);
     expect(declined.players.p1.resources).toMatchObject({ gold: 5, valuables: 0 });
     expect(declined.players.p2.resources).toMatchObject({ gold: 0, valuables: 3 });
+  });
+});
+
+// ===========================================================================
+// Early-game Relic lock — artifact-giving Events offer minor/major only
+// before round EVENT_RELIC_MIN_ROUND; Relics join the offers from then on.
+// ===========================================================================
+
+describe("Event — early-game Relic lock", () => {
+  /** Leaves ONLY the Relic split deck stocked, so any gated draw must miss. */
+  function onlyRelicsLeft(s: GameState): void {
+    for (const deckId of ["artifacts-minor", "artifacts-major"]) {
+      s.decks[deckId].drawPile = [];
+      s.decks[deckId].discardPile = [];
+    }
+  }
+
+  function setupAtRound(seed: string, cardId: string, round: number, mutate?: (state: GameState) => void): GameState {
+    const state = eventsGame(seed);
+    stackEventDeck(state, cardId);
+    mutate?.(state);
+    startResourceRound(state, round);
+    return state;
+  }
+
+  it(`Messenger with Supplies draws NO Relics before round ${EVENT_RELIC_MIN_ROUND} (CONTROL: from round ${EVENT_RELIC_MIN_ROUND} it offers them at 7 gold)`, () => {
+    // Round 3, only Relics left: the gate locks the whole family away.
+    let relicsTotal = 0;
+    const locked = setupAtRound("relic-messenger-locked", "event.messenger_with_supplies", 3, (s) => {
+      richPlayers(s);
+      onlyRelicsLeft(s);
+      relicsTotal = familySize(s, ARTIFACT_DECKS);
+    });
+    // Nothing was drawn or displayed — every Relic still sits in the family.
+    expect(familySize(locked, ARTIFACT_DECKS)).toBe(relicsTotal);
+    expect(visitOptionLabels(locked, "p1").filter((label) => /^Buy /.test(label))).toEqual([]);
+
+    // CONTROL — round 5, identical decks: the messenger now shows Relics.
+    const open = setupAtRound("relic-messenger-open", "event.messenger_with_supplies", EVENT_RELIC_MIN_ROUND, (s) => {
+      richPlayers(s);
+      onlyRelicsLeft(s);
+    });
+    const buyLabel = visitOptionLabels(open, "p1").find((label) => /^Buy .* \(7 gold\)$/.test(label));
+    expect(buyLabel, "expected a 7-gold Relic offer at round 5").toBeTruthy();
+    const after = chooseVisitOption(open, "p1", new RegExp(buyLabel!.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    const bought = after.players.p1.hand.find((cardId) => cardLibrary[cardId]?.artifactTier === "relic");
+    expect(bought, "the bought card is a Relic in hand").toBeTruthy();
+    expect(after.players.p1.resources.gold).toBe(30 - 7);
+  });
+
+  it("Magical Forest: the Artifact draw-and-view offer respects the Relic lock (CONTROL: round 5 offers it)", () => {
+    // Round 3, only Relics left: an Artifact draw could hit nothing, so the
+    // option is not offered at all (no dead click).
+    const locked = setupAtRound("relic-forest-locked", "event.magical_forest", 3, onlyRelicsLeft);
+    expect(visitOptionLabels(locked, "p1").some((label) => /top Artifact card/.test(label))).toBe(false);
+
+    // CONTROL — round 5, identical decks: the offer is back.
+    const open = setupAtRound("relic-forest-open", "event.magical_forest", EVENT_RELIC_MIN_ROUND, onlyRelicsLeft);
+    expect(visitOptionLabels(open, "p1").some((label) => /top Artifact card/.test(label))).toBe(true);
+  });
+
+  it("A Shady Auction redraws past Relics on a legacy SINGLE Artifact deck (CONTROL: round 5 auctions the Relic)", () => {
+    const singleDeck = (s: GameState) => {
+      delete s.decks["artifacts-minor"];
+      delete s.decks["artifacts-major"];
+      delete s.decks["artifacts-relic"];
+      // Deck top = array end: the Relic Tome sits ON TOP of the minor Armor.
+      s.decks["artifacts"] = {
+        id: "artifacts",
+        drawPile: ["artifact.armor_of_wonder", "artifact.tome_of_air"],
+        discardPile: []
+      };
+    };
+
+    const locked = setupAtRound("relic-auction-locked", "event.a_shady_auction", 3, singleDeck);
+    // The lot skipped the top Relic and took the minor beneath it…
+    expect(getEventsState(locked)!.auction?.lotCardId).toBe("artifact.armor_of_wonder");
+    // …and the Relic was tucked back under the deck, never consumed.
+    expect(locked.decks["artifacts"].drawPile).toEqual(["artifact.tome_of_air"]);
+
+    // CONTROL — round 5: the top Relic itself becomes the lot.
+    const open = setupAtRound("relic-auction-open", "event.a_shady_auction", EVENT_RELIC_MIN_ROUND, singleDeck);
+    expect(getEventsState(open)!.auction?.lotCardId).toBe("artifact.tome_of_air");
+  });
+
+  it("Artifact Merchant: before round 5 the pool skips the Relic deck AND a Relic discard-top is never offered (CONTROL: round 5 offers both)", () => {
+    const relicOnDiscard = (s: GameState) => {
+      richPlayers(s);
+      onlyRelicsLeft(s);
+      // MOVE one Relic onto its discard pile (no duplicate copies).
+      const relicDeck = s.decks["artifacts-relic"];
+      relicDeck.drawPile = relicDeck.drawPile.filter((cardId) => cardId !== "artifact.tome_of_air");
+      relicDeck.discardPile.push("artifact.tome_of_air");
+    };
+
+    const locked = setupAtRound("relic-merchant-locked", "event.artifact_merchant", 3, relicOnDiscard);
+    // Pool: the 5 draws had only the (locked) Relic deck to hit — nothing shows.
+    expect(getEventsState(locked)!.pool).toEqual([]);
+    // Discard-top: the face-up Relic is NOT purchasable.
+    expect(visitOptionLabels(locked, "p1").some((label) => /discard top/.test(label))).toBe(false);
+    expect(locked.decks["artifacts-relic"].discardPile).toContain("artifact.tome_of_air");
+
+    // CONTROL — round 5: the pool fills with Relics and the discard-top offer appears.
+    const open = setupAtRound("relic-merchant-open", "event.artifact_merchant", EVENT_RELIC_MIN_ROUND, relicOnDiscard);
+    const pool = getEventsState(open)!.pool;
+    expect(pool).toHaveLength(5);
+    for (const entry of pool) {
+      expect(cardLibrary[entry.cardId]?.artifactTier, entry.cardId).toBe("relic");
+    }
+    const after = chooseVisitOption(open, "p1", /Buy the discard top Tome of Air \(7 gold\)/);
+    expect(after.players.p1.hand).toContain("artifact.tome_of_air");
+    expect(after.players.p1.resources.gold).toBe(30 - 7);
   });
 });
