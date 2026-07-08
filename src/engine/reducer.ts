@@ -73,6 +73,9 @@ import {
   thievesGuildAction,
   setTileRotation,
   skipNecromancy,
+  commanderGradeUp,
+  reviveCommander,
+  resolveCommanderFirstAid,
   spellBookAction,
   spendMorale,
   spendTownCube,
@@ -205,6 +208,7 @@ import {
   getActiveDefenseBonus,
   getAttackerTypeDefenseBonus,
   getAttackRerollEffects,
+  getConditionalAttackBonus,
   getConditionalDefenseBonus,
   hasActiveIgnoresDefense,
   hasActiveRetaliationDisadvantage,
@@ -214,11 +218,21 @@ import {
   spellNullifiedByRestriction,
   syncAbilitySuppression,
   unitDealsElementalDamage,
+  unitHasUnlimitedRetaliationEffect,
   unitImmuneToParalysis
 } from "./active-effects";
 import { applyAfkBookkeeping, castAfkVote, forceAfkKick, startAfkVote } from "./afk";
 import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
-import { gainRunes, gainRunesForAttack, gainRunesForDefend, grantStartingRunes } from "./runes";
+import { gainRunes, gainRunesForAttack, gainRunesForDefend, grantStartingRunes, spendRunes } from "./runes";
+import { commanderCastTierIndex } from "@/data/commanders";
+import {
+  commanderCastCandidates,
+  commanderCastOf,
+  commanderCastPower,
+  commanderCastRuneCost,
+  commanderCastUsedThisRound,
+  commanderRunePool
+} from "./commanders";
 import { drawCardsForPlayer, isSharedDeckId, shuffleCards } from "./decks";
 import {
   cancelSpellAllowsSchoolAndLevel,
@@ -263,11 +277,13 @@ import {
   getActivationDamageSpellAbility,
   getActivationSpellPowerBoost,
   getAfterRetaliationAttackAbility,
+  getAttackBonusAfterMove,
   getAttackBonusIfFlipped,
   getAttackBonusOnAttackDie,
   getAttackBonusVsDefenderName,
   getAttackBonusVsMarked,
   getAttackDefenseReductionAbility,
+  getBonusDamageOnHit,
   getDamageCapPerAttack,
   getOnKillResourceGain,
   getAttackDieDamageFollowUps,
@@ -1146,7 +1162,9 @@ function gradeRank(grade: CombatUnitState["grade"]): number {
  * raw grade) whenever the value being gated is a unit's own tier.
  */
 function gradeRankOfUnit(unit: CombatUnitState): number {
-  return unit.bankUnit ? Number.POSITIVE_INFINITY : gradeRank(unit.grade);
+  // Creature Bank defenders and WOG commanders carry no tier in play, so they
+  // sit above every grade gate (a tier-gated cast at them always fizzles).
+  return unit.bankUnit || unit.commanderSlug ? Number.POSITIVE_INFINITY : gradeRank(unit.grade);
 }
 
 /** Highest grade unlocked by the paid power (e.g. {0:bronze,2:silver,4:gold}). */
@@ -1478,6 +1496,24 @@ function noteSpellCast(state: GameState, player: PlayerState, countsTowardLimit 
   // and fires "on Spell cast" draw effects.
   if (countsTowardLimit) {
     player.combatStats.spellsCastThisRound += 1;
+
+    // Temple Guardian commander ("Mana Magician"): a cast that lands ABOVE the
+    // charge-free limit burns one of the two per-combat charges. The burned
+    // charge converts into this round's spellLimitBonusThisRound so the cast
+    // it just paid for stays covered (the limit must not shrink under the
+    // count); the per-round bonus reset then naturally re-arms nothing — only
+    // UNSPENT charges carry to later rounds.
+    const charges = state.combat ? (player.combatStats.commanderManaCharges ?? 0) : 0;
+    if (charges > 0) {
+      const limitWithCharges = spellLimitFor(state, player);
+      if (
+        Number.isFinite(limitWithCharges) &&
+        player.combatStats.spellsCastThisRound > limitWithCharges - charges
+      ) {
+        player.combatStats.commanderManaCharges = charges - 1;
+        player.combatStats.spellLimitBonusThisRound += 1;
+      }
+    }
   }
   player.combatStats.spellsCastThisTurn = (player.combatStats.spellsCastThisTurn ?? 0) + 1;
   // The "first spell this round" Power gate (Tower Magi Pack) closes on the first
@@ -2271,12 +2307,16 @@ function getAttackDamagePreview(
   // Siege wall cover: "reduce the attack's damage by 1" comes off the damage,
   // not the defense.
   const rawDamage = Math.max(0, Math.max(0, attackValue - defenseValue) - damageReduction);
+  // WOG commander Damage grade ("Might"): a hit that deals at least 1 damage
+  // deals the bonus on top — a fully-blocked attack (0 damage) gains nothing.
+  // Resolved here so the actual hit and the lethal-save preview agree.
+  const onHitBonus = rawDamage > 0 ? getBonusDamageOnHit(attacker) : 0;
   // Cove Nix (Pack): "cannot take more than N damage from a single attack." The
-  // cap clamps the resolved damage of this one attack and is reflected in the
-  // lethal-save preview too (both go through here), so a capped blow correctly
-  // reads as non-lethal.
+  // cap clamps the resolved damage of this one attack — Might included — and is
+  // reflected in the lethal-save preview too (both go through here), so a
+  // capped blow correctly reads as non-lethal.
   const cap = getDamageCapPerAttack(defender);
-  const damage = cap ? Math.min(rawDamage, cap.amount) : rawDamage;
+  const damage = cap ? Math.min(rawDamage + onHitBonus, cap.amount) : rawDamage + onHitBonus;
 
   return {
     attackValue,
@@ -2816,6 +2856,17 @@ function getAttackStackDetails(
   // Hatred) it is added unclamped even for elemental attackers.
   const flippedAttackBonus = getAttackBonusIfFlipped(attacker);
 
+  // WOG commander Charge combo: +1 Attack when the commander attacks after
+  // moving this activation. An innate ability bonus (unclamped, like Hatred);
+  // never on a retaliation.
+  const chargeAttackBonus =
+    !isRetaliation && attacker.movedThisActivation ? getAttackBonusAfterMove(attacker) : 0;
+
+  // WOG commander Haste/Slow riders: signed Attack shift on the buffed/slowed
+  // unit when its target is strictly slower/faster (effective Initiative).
+  // Spell-borne like Bless, so it rides the elemental clamp with the card bonus.
+  const initiativeConditionalAttackBonus = getConditionalAttackBonus(state, attacker, defender);
+
   // Creature Bank Dragon Utopia Black Dragons: "+3 Attack while Stacked". A
   // flat innate bonus (added unclamped, like Hatred/Vengeance); the Stacked gate
   // is enforced upstream, so it is 0 the moment the Stack Token is discarded.
@@ -2839,7 +2890,8 @@ function getAttackStackDetails(
   // contributions to 0 while leaving every negative one (and the printed
   // attack) intact.
   const dealsElemental = unitDealsElementalDamage(state, attacker);
-  const cardAttackBonus = stackItem.modifiers.attackBonus + activeAttackBonus + redirectedAttackDelta;
+  const cardAttackBonus =
+    stackItem.modifiers.attackBonus + activeAttackBonus + redirectedAttackDelta + initiativeConditionalAttackBonus;
   const effectiveCardAttackBonus = dealsElemental ? Math.min(0, cardAttackBonus) : cardAttackBonus;
   const effectiveTokenAttack = dealsElemental ? Math.min(0, tokenAttack) : tokenAttack;
 
@@ -2858,6 +2910,7 @@ function getAttackStackDetails(
       hatredAttackBonus +
       markAttackBonus +
       flippedAttackBonus +
+      chargeAttackBonus +
       stackedAttackBonus +
       ownAttackFlatBonus +
       astrologersRoundAttackBonus -
@@ -3781,7 +3834,8 @@ function finishResolvedAttack(
         details.attacker,
         details.defender,
         details.attackKind,
-        stackItem.modifiers.ignoresRetaliationThisAttack
+        stackItem.modifiers.ignoresRetaliationThisAttack,
+        state
       ),
       afterRetaliationAbilityAttack: getAfterRetaliationAttack(details.attacker, details.defender),
       // A Magic-Mirror-bounced Curse/Weakness on this attack carries to the
@@ -4540,7 +4594,7 @@ function resumeAttackSequence(state: GameState, cards: CardLibrary): void {
     sequence.retaliationPending &&
     attacker &&
     defender &&
-    shouldRetaliate(attacker, defender, sequence.attackKind)
+    shouldRetaliate(attacker, defender, sequence.attackKind, false, state)
   ) {
     sequence.retaliationPending = false;
     openRetaliationWindow(state, attacker, defender, cards);
@@ -7219,7 +7273,9 @@ function shouldRetaliate(
   defender: CombatUnitState,
   attackKind: "melee" | "ranged",
   /** Ash's Bloodlust VI: this single attack ignores Retaliation Attacks. */
-  ignoreRetaliationOverride = false
+  ignoreRetaliationOverride = false,
+  /** When given, the Counterstrike UNLIMITED_RETALIATION effect is honoured. */
+  state?: GameState
 ): boolean {
   return (
     isUnitAlive(attacker) &&
@@ -7228,7 +7284,9 @@ function shouldRetaliate(
     isAdjacent(attacker.position, defender.position) &&
     !ignoreRetaliationOverride &&
     !hasUnitAbilityEffect(attacker, "IGNORE_RETALIATION") &&
-    (!defender.retaliatedThisRound || hasUnitAbilityEffect(defender, "ALLOW_UNLIMITED_RETALIATION"))
+    (!defender.retaliatedThisRound ||
+      hasUnitAbilityEffect(defender, "ALLOW_UNLIMITED_RETALIATION") ||
+      (state ? unitHasUnlimitedRetaliationEffect(state, defender) : false))
   );
 }
 
@@ -12817,6 +12875,55 @@ function applyUnitAbilityAction(
     return;
   }
 
+  // WOG commander command ability: once per combat round, free during the
+  // commander's own activation (it may still move and attack afterwards). The
+  // player picks the target by clicking a glowing unit on the board — the
+  // targeting rules (side, ranged/melee, mechanical, tier ladder, adjacency,
+  // rune cost) all live in commanderCastCandidates/commanderCastAvailable.
+  // Cancelling the pick costs nothing.
+  if (ability.effect?.type === "COMMANDER_CAST") {
+    const cast = commanderCastOf(unit);
+    if (!cast || unit.attackedThisActivation || commanderCastUsedThisRound(state, unit)) {
+      throw new Error("That unit ability cannot be used now.");
+    }
+    const runeCost = commanderCastRuneCost(state, unit);
+    if (runeCost > 0 && commanderRunePool(state, unit.controllerId) < runeCost) {
+      throw new Error(`${ability.name} needs ${runeCost} Runes.`);
+    }
+    const candidateUnitIds = commanderCastCandidates(state, unit).map((candidate) => candidate.id);
+    if (candidateUnitIds.length === 0) {
+      throw new Error("That unit ability cannot be used now.");
+    }
+
+    const power = commanderCastPower(state, unit);
+    const choiceId = `choice_${nextEventNumber(state)}`;
+    state.pendingChoice = {
+      id: choiceId,
+      type: "ABILITY_TARGET_CHOICE",
+      playerId: unit.controllerId,
+      kind: "commander-cast",
+      abilityId: ability.id,
+      abilityName: ability.name,
+      prompt: `${unit.cardName}: cast ${ability.name} (Power ${power}) on a chosen ${cast.targeting.side === "enemy" ? "enemy" : "friendly"} unit.${runeCost > 0 ? ` Costs ${runeCost} Runes.` : ""}`,
+      sourceUnitId: unit.id,
+      anchorUnitId: null,
+      candidateUnitIds,
+      optional: true,
+      skipLabel: "Cancel"
+    };
+    state.phase = "choice";
+    state.priorityPlayerId = unit.controllerId;
+    appendEvent(state, {
+      type: "PENDING_CHOICE_CREATED",
+      choiceId,
+      choiceType: "ABILITY_TARGET_CHOICE",
+      playerId: unit.controllerId,
+      sourceEffectIds: [],
+      message: `${unit.cardName} chooses a target for ${ability.name}.`
+    });
+    return;
+  }
+
   // Factory Dreadnoughts (Juggernaut): "[activation] Instead of attacking, select
   // up to N units adjacent to this one. Allocate the printed damage, starting
   // with the first selected." Offered as an "other action" in place of attacking;
@@ -13742,6 +13849,175 @@ function choosePendingRoll(
  * (flat damage), the Liches' Death Cloud second attack, or a neutral-AI
  * target tie the player breaks.
  */
+/**
+ * WOG commander command ability — the data-driven cast resolution. Every
+ * targeting rule was enforced when the "commander-cast" choice opened
+ * (commanderCastCandidates); this applies the effect at the commander's
+ * current Power and stamps the once-per-combat-round budget.
+ */
+function resolveCommanderCast(state: GameState, caster: CombatUnitState, target: CombatUnitState): void {
+  const combat = state.combat;
+  const cast = commanderCastOf(caster);
+  if (!combat || !cast) {
+    throw new Error("That commander cast is no longer possible.");
+  }
+
+  const power = commanderCastPower(state, caster);
+  const tier = commanderCastTierIndex(power);
+  const source = { type: "unit" as const, unitId: caster.id, controllerId: caster.controllerId };
+  const targetRef = { type: "unit" as const, unitId: target.id };
+
+  // Rune Mend's cost first — the heal never resolves unpaid.
+  const runeCost = commanderCastRuneCost(state, caster);
+  if (runeCost > 0 && !spendRunes(state, caster.controllerId, runeCost)) {
+    throw new Error(`${cast.name} needs ${runeCost} Runes.`);
+  }
+
+  const effect = cast.effect;
+  switch (effect.kind) {
+    case "heal":
+      healUnitDamage(state, source, targetRef, effect.healByPower[tier]);
+      break;
+    case "heal-cleanse": {
+      healUnitDamage(state, source, targetRef, effect.healByPower[tier]);
+      if (power >= effect.cleanseFromPower) {
+        removeEffectsFromTarget(state, source, targetRef, "negative");
+        for (const kind of ["weakness", "corrosion", "paralysis"] as const) {
+          if (hasToken(target, kind)) {
+            removeToken(state, target, kind, "dispelled");
+          }
+        }
+      }
+      break;
+    }
+    case "defense-buff":
+      createActiveEffect(
+        state,
+        {
+          name: `${cast.name} (${caster.cardName})`,
+          scope: "unit",
+          duration: { type: "current-combat-round" },
+          polarity: "positive",
+          removable: true,
+          modifiers:
+            effect.vs === "melee"
+              ? [{ type: "DEFENSE_VS_ATTACKER_TYPE", attackerType: "ground-or-flying", amount: effect.amountByPower[tier] }]
+              : [{ type: "DEFENSE_BONUS", amount: effect.amountByPower[tier] }]
+        },
+        source,
+        caster.controllerId,
+        targetRef
+      );
+      break;
+    case "precision":
+      createActiveEffect(
+        state,
+        {
+          name: `${cast.name} (${caster.cardName})`,
+          scope: "unit",
+          duration: { type: "current-combat-round" },
+          polarity: "positive",
+          removable: true,
+          modifiers: [
+            { type: "ATTACK_BONUS", amount: effect.amountByPower[tier] },
+            { type: "RANGED_IGNORE_ALL_PENALTIES" }
+          ]
+        },
+        source,
+        caster.controllerId,
+        targetRef
+      );
+      break;
+    case "attack-buff":
+      createActiveEffect(
+        state,
+        {
+          name: `${cast.name} (${caster.cardName})`,
+          scope: "unit",
+          duration: { type: "current-combat-round" },
+          polarity: "positive",
+          removable: true,
+          modifiers: [{ type: "ATTACK_BONUS", amount: effect.amountByPower[tier] }]
+        },
+        source,
+        caster.controllerId,
+        targetRef
+      );
+      break;
+    case "fire-shield": {
+      const span = effect.durationByPower[tier];
+      createActiveEffect(
+        state,
+        {
+          name: `${cast.name} (${caster.cardName})`,
+          scope: "unit",
+          duration:
+            span === "combat"
+              ? { type: "combat" }
+              : span === "two-rounds"
+                ? { type: "combat-rounds", rounds: 2 }
+                : { type: "current-combat-round" },
+          polarity: "positive",
+          removable: true,
+          modifiers: [{ type: "FIRE_SHIELD", amount: effect.damageByPower[tier] }]
+        },
+        source,
+        caster.controllerId,
+        targetRef
+      );
+      break;
+    }
+    case "initiative-shift": {
+      const amount = effect.amountByPower[tier];
+      createActiveEffect(
+        state,
+        {
+          name: `${cast.name} (${caster.cardName})`,
+          scope: "unit",
+          duration: { type: "current-combat-round" },
+          polarity: amount >= 0 ? "positive" : "negative",
+          removable: true,
+          modifiers: [
+            { type: "INITIATIVE_BONUS", amount },
+            { type: "ATTACK_BONUS_VS_INITIATIVE", comparison: effect.attackVs, amount: effect.attackAmount }
+          ]
+        },
+        source,
+        caster.controllerId,
+        targetRef
+      );
+      break;
+    }
+    case "unlimited-retaliation":
+      createActiveEffect(
+        state,
+        {
+          name: `${cast.name} (${caster.cardName})`,
+          scope: "unit",
+          duration: { type: "current-combat-round" },
+          polarity: "positive",
+          removable: true,
+          modifiers: [{ type: "UNLIMITED_RETALIATION" }]
+        },
+        source,
+        caster.controllerId,
+        targetRef
+      );
+      break;
+  }
+
+  caster.commanderCastRound = combat.round;
+  appendEvent(state, {
+    type: "COMMANDER_CAST_USED",
+    playerId: caster.controllerId,
+    commanderSlug: caster.commanderSlug ?? "",
+    castName: cast.name,
+    power,
+    targetUnitId: target.id,
+    message: `${caster.cardName} casts ${cast.name} (Power ${power}) on ${target.cardName}.`
+  });
+}
+
 function chooseAbilityTarget(
   state: GameState,
   action: Extract<GameAction, { type: "CHOOSE_ABILITY_TARGET" }>,
@@ -13781,6 +14057,22 @@ function chooseAbilityTarget(
   if (choice.kind === "war-machine") {
     resolveWarMachineTarget(state, action.playerId, action.targetUnitId, choice.amount ?? 1);
     finishCombatIfNeeded(state);
+    return;
+  }
+
+  // WOG commander cast: resolve the command ability on the chosen unit (a
+  // Cancel costs nothing — the once-per-round budget is only stamped on a
+  // resolved cast).
+  if (choice.kind === "commander-cast") {
+    if (!isSkip) {
+      const caster = choice.sourceUnitId ? combat.units[choice.sourceUnitId] : undefined;
+      const target = combat.units[action.targetUnitId];
+      if (!caster || !target || !isUnitAlive(caster) || !isUnitAlive(target)) {
+        throw new Error("That commander cast is no longer possible.");
+      }
+      resolveCommanderCast(state, caster, target);
+      finishCombatIfNeeded(state);
+    }
     return;
   }
 
@@ -15819,6 +16111,13 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "RESET_SEAT_DRAFT",
   "RANDOM_ASSIGN_SEAT",
   "BUY_WAR_MACHINE",
+  // WOG commander bookkeeping: the handlers fully self-validate (ownership,
+  // owed picks, distinct stats, grade caps, gold, the open First Aid window),
+  // and the actions touch only the actor's own state — so, like the choice
+  // resolutions above, they skip the getLegalActions membership check.
+  "COMMANDER_GRADE_UP",
+  "REVIVE_COMMANDER",
+  "COMMANDER_FIRST_AID",
   "USE_SCHOOL_FETCH_EXPERT",
   "USE_TOWN_BUILDING",
   "SPEND_TOWN_CUBE",
@@ -16173,6 +16472,15 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "SKIP_NECROMANCY":
         skipNecromancy(nextState, action);
+        break;
+      case "COMMANDER_GRADE_UP":
+        commanderGradeUp(nextState, action);
+        break;
+      case "REVIVE_COMMANDER":
+        reviveCommander(nextState, action);
+        break;
+      case "COMMANDER_FIRST_AID":
+        resolveCommanderFirstAid(nextState, action);
         break;
       case "PLACE_COMBAT_UNIT":
         placeCombatUnit(nextState, action);

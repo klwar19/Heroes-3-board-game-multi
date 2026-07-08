@@ -281,6 +281,25 @@ export function grantStartingRunes(state: GameState, playerId: PlayerId | undefi
   return next;
 }
 
+/**
+ * WOG Rune Keeper commander ("Rune Mend"): spends Runes from the per-combat
+ * pool. Reached Rune Levels are add-only (`appliedLevel` never drops), so a
+ * spend never revokes an already-applied army buff — it only delays reaching
+ * the next threshold. Returns false (and changes nothing) when the pool
+ * cannot cover the cost.
+ */
+export function spendRunes(state: GameState, playerId: PlayerId, amount: number): boolean {
+  if (amount <= 0) {
+    return true;
+  }
+  const entry = state.combat?.runes?.[playerId];
+  if (!entry || entry.count < amount) {
+    return false;
+  }
+  entry.count -= amount;
+  return true;
+}
+
 /** Rune gain for a resolved attack (Attack +1) or Retaliation Attack (+1). */
 export function gainRunesForAttack(state: GameState, attacker: CombatUnitState, isRetaliation: boolean): void {
   gainRunes(state, attacker.controllerId, isRetaliation ? RUNE_GAIN_RETALIATION : RUNE_GAIN_ATTACK);

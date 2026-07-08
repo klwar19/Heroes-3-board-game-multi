@@ -455,6 +455,13 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       return `${playerName(state, event.playerId)} gains ${event.amount} experience (level ${event.level}).`;
     case "HERO_LEVEL_UP":
       return `${playerName(state, event.playerId)} reaches level ${event.level}${event.effects.length ? `: ${event.effects.join(", ")}` : ""}.`;
+    case "COMMANDER_CAST_USED":
+    case "COMMANDER_GRADED_UP":
+    case "COMMANDER_DIED":
+    case "COMMANDER_REVIVED":
+    case "COMMANDER_FIRST_AID_USED":
+    case "COMMANDER_SPECIALTY_TRIGGERED":
+      return `${playerName(state, event.playerId)} — ${event.message}`;
     case "MORALE_CHANGED":
       return `${playerName(state, event.playerId)} morale ${event.amount > 0 ? "+" : ""}${event.amount} (now ${event.total}).`;
     case "MORALE_CARD_DRAWN":

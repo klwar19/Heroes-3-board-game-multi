@@ -44,6 +44,7 @@ import {
   victoryModeCountsHeroDefeats
 } from "./adventure";
 import { pumpAdventureQueues } from "./adventure-reducer";
+import { makeInitialCommanderState } from "./commanders";
 import { normalizeParallelTurnRounds } from "./parallel-turns";
 import { drawCardsForPlayer, shuffleCards } from "./decks";
 import { makeMoraleDecks } from "./morale-cards";
@@ -814,6 +815,19 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
       observingPlayerId: playerConfigs[0].id
     }
   };
+
+  // WOG Commanders module: each player starts with their faction's commander
+  // (all six stats at grade 1, alive). Gated exactly like the neutral-creature
+  // module — on the effective (legacy-force-off) wog options.
+  if (wog.enabled && wog.commanders) {
+    for (const config of playerConfigs) {
+      const player = state.players[config.id];
+      const commander = makeInitialCommanderState(config.factionId);
+      if (player && commander) {
+        player.commander = commander;
+      }
+    }
+  }
 
   const customMap = setupOptions.customMap?.length
     ? validateCustomMapPlan(setupOptions.customMap, scenario).accepted

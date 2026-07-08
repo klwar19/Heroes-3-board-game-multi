@@ -1,11 +1,13 @@
 # Wake of Gods — Commanders (design + card-art prep)
 
-> **Status: DESIGN + ART PREP ONLY. No engine gameplay is implemented.**
-> Per `docs/wog-mod.md`, the WOG "Commanders" module today only persists the
-> lobby selection — there is no combat/turn logic. This document prepares the
-> *content and card art* so a later slice can wire the rules. Nothing here is
-> "done" in the CLAUDE.md sense (engine-enforced + a test that fails if removed).
-> Treat every stat/ability below as **display/reference data, not wired rules.**
+> **Status: ENGINE GAMEPLAY IMPLEMENTED (board-game adaptation).** The shipped
+> system is the 3-grade / 2-combo BOARD adaptation in `src/data/commanders.ts` +
+> `src/engine/commanders.ts`, pinned by `src/engine/wog-commanders.test.ts` and
+> `src/engine/wog-commander-casts.test.ts`. **The WoG PC reference tables in
+> §3–§5 below did NOT ship** — they remain as design history only (the 5-tier
+> primary skills and 15 secondary skills were replaced by grades 1–3 per stat
+> and the two Damage-pair combos). CLAUDE.md's "WOG Commanders" section is the
+> authoritative list of what runs verbatim vs. the documented adaptations.
 
 Reference (fan pages, HTTP-only — mirror the numbers, not the site):
 - Sorts of commanders: <http://www.heroesofmightandmagic.com/wakeofgods/comm2.shtml>
@@ -248,23 +250,31 @@ Astral Spirit (croppable) — both fall outside/at the edge of the 540×594 art 
   and auto-unlocks the secondary skills at two Master primaries. Roster/skill data
   in `src/data/commanders.ts`; preview at `/commander-preview` (dev).
 
+### Engine gameplay — SHIPPED (the 2026-07 board adaptation)
+
+The open decisions below were settled by the user's board-game spec and the
+module is engine-wired end to end:
+
+- **Roster renames**: Cove "Corsair" → **Sea Marshal** (Slow + Dead Calm),
+  Factory "Engineer" → **Artificer** (Field Repair + Tinkerer), Bulwark
+  "Frost Warlord" → **Rune Keeper** (Rune Mend + Rune Ritual). Slugs and art
+  assets unchanged.
+- **Stats**: six stats at grade 1–3 (`COMMANDER_GRADE_VALUES`) replacing §4's
+  5-tier tracks: Attack 2/3/4, Defense 1/2/3, Health 4/6/8, Damage +0/+1/+2
+  on-hit, Magic = Power 0/1/2 with -1/-1/-2 Spell damage + ongoing-effect
+  immunity from grade 1, Speed (Initiative) 5/6/7. Grade-up picks (two
+  DIFFERENT stats each) at hero level 3 & 6 — the Paladin's Wise: 2 & 5.
+- **Combos** replacing §5's fifteen tags: both stats of a pair at grade 3 —
+  Damage+Magic = Death Stare, Damage+Speed = Charge (+1 Attack after moving).
+- **Command ability**: once per combat round, free during the commander's own
+  activation, Power-scaled per `commanderDefinitions[slug].cast`.
+- **Death/revive**: a fallen commander stays dead until revived on the map for
+  2 + 2x hero level gold.
+- Tests: `wog-commanders.test.ts` (52 cases with the casts file) — every claim
+  above fails if its wiring is removed.
+
 ### Still TODO (not done)
 
-- **Engine gameplay** — still entirely unimplemented (this slice is art + design +
-  card UI only, per the top-of-file banner and `docs/wog-mod.md`). The stat/skill
-  numbers are an interactive editor, not wired to combat.
-- **Board-game stat/skill tuning** and the three originals' (Corsair / Engineer /
-  Frost Warlord) provisional abilities need confirming before any wiring.
 - Optional art cleanups (fake "signature" on Shaman, paper edge on Astral Spirit).
-
----
-
-## 9. Open decisions (confirm before wiring)
-
-1. **Cove commander** — accept "Corsair" (Plunder + Fortune) or pick a different
-   concept/name.
-2. **Board-game stat adaptation** — the WoG PC numbers don't map 1:1 to our
-   A/D/Health/Initiative + gold scale; needs a tuning pass.
-3. **Per-commander 4-of-6 primary-skill loadout** — comm2/comm3 don't enumerate
-   which four each commander starts with; to be sourced/decided.
-4. **Growth-layer UI** — flip-card vs. slide-out panel for the option bar.
+- The lobby "New adventure objects" module remains selection-only (unrelated to
+  commanders).

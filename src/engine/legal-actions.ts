@@ -61,6 +61,13 @@ import {
   unitIsBerserk
 } from "./active-effects";
 import { cancelSpellAllowsSchoolAndLevel, cardCanBoostPower, spellPowerValueOfCard } from "./effects";
+import { commanderReviveCost } from "@/data/commanders";
+import {
+  commanderCastAvailable,
+  commanderCastPower,
+  commanderCastRuneCost,
+  commanderGradeUpChoices
+} from "./commanders";
 import { RUNE_MAX } from "./runes";
 import {
   BATTLEFIELD_CELL_COUNT,
@@ -132,6 +139,7 @@ import type {
   GameAction,
   GameEvent,
   GameState,
+  HeroState,
   LegalAction,
   PlayerId,
   PlayerState,
@@ -354,11 +362,12 @@ export function gradeRank(grade: CombatUnitState["grade"]): number {
 
 /**
  * Tier-gate rank of a UNIT (mirrors the reducer): a Creature Bank defender has
- * NO tier (rulebook p.66), so it ranks above every grade and fails every
- * tier-specific spell/specialty gate — it can never be such an effect's target.
+ * NO tier (rulebook p.66) — and a WOG commander is likewise tierless in play —
+ * so both rank above every grade and fail every tier-specific spell/specialty
+ * gate; neither can ever be such an effect's target.
  */
 function gradeRankOfUnit(unit: CombatUnitState): number {
-  return unit.bankUnit ? Number.POSITIVE_INFINITY : gradeRank(unit.grade);
+  return unit.bankUnit || unit.commanderSlug ? Number.POSITIVE_INFINITY : gradeRank(unit.grade);
 }
 
 /**
@@ -3075,6 +3084,56 @@ function addSpellBookStashActions(actions: LegalAction[], state: GameState, play
  * ability may be played basic, or expert when a crown use is spare. Used only
  * inside the pendingNecromancy now-or-never gate.
  */
+/**
+ * WOG Commanders — map-turn actions on the player's own turn:
+ *  - COMMANDER_GRADE_UP: one action per valid pair of DIFFERENT stats below
+ *    grade 3, while a level-3/6 (Wise: 2/5) pick is owed;
+ *  - REVIVE_COMMANDER: pay 2 + 2x hero level gold to bring a dead commander back.
+ */
+function addCommanderMapActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
+  const player = state.players[playerId];
+  const commander = player?.commander;
+  if (!player || !commander || state.combat) {
+    return;
+  }
+
+  if ((commander.pendingGradeUps?.length ?? 0) > 0) {
+    const choices = commanderGradeUpChoices(commander);
+    for (let first = 0; first < choices.length; first += 1) {
+      for (let second = first + 1; second < choices.length; second += 1) {
+        actions.push({
+          label: `Commander grade-up: ${choices[first]} + ${choices[second]}`,
+          action: {
+            type: "COMMANDER_GRADE_UP",
+            playerId,
+            stats: [choices[first], choices[second]]
+          }
+        });
+      }
+    }
+  }
+
+  if (commander.dead) {
+    const hero = getMainHeroOf(state, playerId);
+    const cost = commanderReviveCost(hero?.level ?? 1);
+    if ((player.resources.gold ?? 0) >= cost) {
+      actions.push({
+        label: `Revive the commander (${cost} gold)`,
+        action: { type: "REVIVE_COMMANDER", playerId }
+      });
+    }
+  }
+}
+
+function getMainHeroOf(state: GameState, playerId: PlayerId): HeroState | null {
+  for (const hero of Object.values(state.heroes)) {
+    if (hero.controllerId === playerId && hero.kind === "main") {
+      return hero;
+    }
+  }
+  return null;
+}
+
 function addNecromancyPlays(actions: LegalAction[], state: GameState, playerId: PlayerId, cards: CardLibrary): void {
   const player = state.players[playerId];
   if (!player || player.factionId !== "necropolis") {
@@ -3399,6 +3458,25 @@ function addUnitAbilityActions(actions: LegalAction[], state: GameState, playerI
           }
         });
       }
+    }
+
+    // WOG commander command ability: a single "cast" command that opens the
+    // board target picker. Offered only during the commander's own activation,
+    // before it moves/attacks, once per combat round, with the rune cost
+    // payable and at least one legal target (commanderCastAvailable).
+    if (ability.effect?.type === "COMMANDER_CAST" && commanderCastAvailable(state, activeUnit)) {
+      const power = commanderCastPower(state, activeUnit);
+      const runeCost = commanderCastRuneCost(state, activeUnit);
+      actions.push({
+        label: `${activeUnit.cardName}: cast ${ability.name} (Power ${power}${runeCost > 0 ? `, ${runeCost} Runes` : ""})`,
+        action: {
+          type: "USE_UNIT_ABILITY",
+          playerId,
+          unitId: activeUnit.id,
+          abilityId: ability.id,
+          target: { type: "none" }
+        }
+      });
     }
 
     // Tower Genies (Few) "Wish" other action: dig Spells out of your own deck.
@@ -4073,6 +4151,8 @@ export function getLegalActions(
                 ? "Become invulnerable —"
               : choice.kind === "automaton-cube"
                 ? "Place a faction cube on"
+              : choice.kind === "commander-cast"
+                ? `${choice.abilityName}: cast on`
               : choice.kind === "flat-damage" ||
                   choice.kind === "spell-splash" ||
                   choice.kind === "ballistics-splash" ||
@@ -7312,6 +7392,27 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
     return actions;
   }
 
+  // WOG Hierophant commander: the after-combat First Aid window resolves
+  // before anything else on the map — the owner restores ONE bronze/silver
+  // casualty of the fight (or declines); everyone else waits, exactly like the
+  // Necromancy deferral below.
+  if (adventure.pendingCommanderFirstAid) {
+    const firstAid = adventure.pendingCommanderFirstAid;
+    if (firstAid.playerId === playerId) {
+      firstAid.options.forEach((option, index) => {
+        actions.push({
+          label: `First Aid: ${option.label}`,
+          action: { type: "COMMANDER_FIRST_AID", playerId, optionIndex: index }
+        });
+      });
+      actions.push({
+        label: "Decline First Aid",
+        action: { type: "COMMANDER_FIRST_AID", playerId, optionIndex: null }
+      });
+    }
+    return actions;
+  }
+
   // BINH house rule: the after-combat Necromancy window is now-or-never. Until
   // the winner plays Necromancy or skips it, NOTHING else on the map is legal
   // and the field reward of the fight they just won stays withheld — so "collect
@@ -7395,6 +7496,8 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
   // Spell Book (house rule): stash hand Spells into the Book to free hand slots.
   addSpellBookStashActions(actions, state, playerId, cards);
   addPermanentDiscardActions(actions, state, playerId);
+  // WOG Commanders: spend an owed grade-up pick / revive a dead commander.
+  addCommanderMapActions(actions, state, playerId);
 
   for (const hero of Object.values(state.heroes)) {
     if (hero.controllerId !== playerId || !hero.spaceId) {

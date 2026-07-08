@@ -1,18 +1,30 @@
 /**
- * Wake of Gods Commanders — content/reference data for the card renderer.
+ * Wake of Gods Commanders — board-game content data (engine-consumed).
  *
- * DESIGN/ART DATA ONLY. No engine gameplay exists yet (see docs/wog-commanders-
- * plan.md and docs/wog-mod.md). This module feeds the CommanderCard renderer:
- *   - the roster (name, faction, HD art path, signature abilities),
- *   - the fixed BEGINNING stat line (Attack 2 / Defense 1 / Health 4 / Speed 5)
- *     used to seed the card's DYNAMIC, upgradeable stat numbers (the numbers are
- *     NOT baked into the art — CommanderCard overlays them so they can change as
- *     the commander levels up), and
- *   - the WoG primary/secondary skill tables (comm3) for the growth panel.
+ * This is the BINH board-game adaptation of the WoG commander system
+ * (docs/wog-commanders-plan.md keeps the original PC-scale reference). The
+ * engine wiring lives in src/engine/commanders.ts; behaviour is pinned by
+ * src/engine/wog-commander-*.test.ts. Every field in here is consumed by
+ * engine code or the card UI — no decorative data.
  *
- * Reference (fan pages, HTTP-only):
- *   http://www.heroesofmightandmagic.com/wakeofgods/comm2.shtml  (sorts)
- *   http://www.heroesofmightandmagic.com/wakeofgods/comm3.shtml  (skills)
+ * Model summary:
+ *  - One commander per faction. It joins every combat of its owner's MAIN
+ *    hero while alive, as a real battlefield unit (no army card).
+ *  - Six stats, each at grade 1..3 (values in COMMANDER_GRADE_VALUES). All
+ *    stats start at grade 1. At hero level 3 and 6 (Paladin: 2 and 5 — Wise)
+ *    the owner picks TWO DIFFERENT stats and raises each one grade.
+ *  - The Magic stat grades the whole magic package: grade 1 = Power 0,
+ *    take -1 Spell damage, immune to ongoing effects; grade 2 = Power 1;
+ *    grade 3 = Power 2 and -2 Spell damage (immunity stays throughout).
+ *  - Each commander has ONE command ability (a "cast"): usable once per
+ *    combat round during the commander's own activation, free (does not end
+ *    the activation), scaling with Power 0/1/2.
+ *  - Each commander has ONE specialty (a passive engine rule).
+ *  - Combos: both stats of a pair at grade 3 unlock an extra ability —
+ *    Damage+Magic = Death Stare, Damage+Speed = Charge (+1 Attack after
+ *    moving). Reaching two grade-3 stats takes all four grade-up picks.
+ *  - Death is persistent: a commander killed in combat stays dead until the
+ *    owner revives it for gold (2 + 2x hero level).
  */
 
 export const COMMANDER_SLUGS = [
@@ -23,132 +35,494 @@ export const COMMANDER_SLUGS = [
 
 export type CommanderSlug = (typeof COMMANDER_SLUGS)[number];
 
+/** The six gradeable commander stats. */
+export const COMMANDER_STAT_KEYS = [
+  "attack", "defense", "health", "damage", "magic", "speed"
+] as const;
+export type CommanderStatKey = (typeof COMMANDER_STAT_KEYS)[number];
+
+export type CommanderGrade = 1 | 2 | 3;
+export type CommanderGrades = Record<CommanderStatKey, CommanderGrade>;
+
+export const COMMANDER_STAT_LABELS: Record<CommanderStatKey, string> = {
+  attack: "Attack",
+  defense: "Defense",
+  health: "Health",
+  damage: "Damage",
+  magic: "Magic",
+  speed: "Speed"
+};
+
+/**
+ * Stat value at grade 1/2/3 (index grade-1).
+ *  - attack/defense/health/speed are the unit's printed statistics
+ *    (speed = Initiative).
+ *  - damage is BONUS damage added to the commander's attacks that deal at
+ *    least 1 damage (normal attacks and retaliations).
+ *  - magic is the command-ability Power (0/1/2).
+ */
+export const COMMANDER_GRADE_VALUES: Record<CommanderStatKey, readonly [number, number, number]> = {
+  attack: [2, 3, 4],
+  defense: [1, 2, 3],
+  health: [4, 6, 8],
+  damage: [0, 1, 2],
+  magic: [0, 1, 2],
+  speed: [5, 6, 7]
+};
+
+/** Spell-damage reduction granted by the Magic stat at grade 1/2/3. */
+export const COMMANDER_MAGIC_SPELL_DAMAGE_REDUCTION: readonly [number, number, number] = [1, 1, 2];
+
+export const COMMANDER_ALL_GRADES_ONE: CommanderGrades = {
+  attack: 1, defense: 1, health: 1, damage: 1, magic: 1, speed: 1
+};
+
+export function commanderStatValue(key: CommanderStatKey, grade: CommanderGrade): number {
+  return COMMANDER_GRADE_VALUES[key][grade - 1];
+}
+
+/** Command-ability Power (0/1/2) at the given Magic grade. */
+export function commanderPower(grades: Pick<CommanderGrades, "magic">): number {
+  return commanderStatValue("magic", grades.magic);
+}
+
+/**
+ * Hero levels at which the owner picks two different stats to grade up.
+ * The Paladin's Wise specialty reaches each pick one hero level EARLIER.
+ */
+export const COMMANDER_GRADE_UP_LEVELS: readonly number[] = [3, 6];
+export const COMMANDER_WISE_GRADE_UP_LEVELS: readonly number[] = [2, 5];
+
+export function commanderGradeUpLevels(slug: CommanderSlug): readonly number[] {
+  return slug === "paladin" ? COMMANDER_WISE_GRADE_UP_LEVELS : COMMANDER_GRADE_UP_LEVELS;
+}
+
+/** Reviving a dead commander costs gold scaling with the hero's level. */
+export function commanderReviveCost(heroLevel: number): number {
+  return 2 + 2 * Math.max(1, heroLevel);
+}
+
+// ---------------------------------------------------------------------------
+// Combos — both stats of the pair at grade 3 unlock the extra ability.
+// ---------------------------------------------------------------------------
+
+export interface CommanderCombo {
+  id: "death-stare" | "charge";
+  name: string;
+  requires: readonly [CommanderStatKey, CommanderStatKey];
+  /** Unit ability id granted to the commander's combat unit. */
+  abilityId: string;
+  text: string;
+}
+
+export const COMMANDER_COMBOS: readonly CommanderCombo[] = [
+  {
+    id: "death-stare",
+    name: "Death Stare",
+    requires: ["damage", "magic"],
+    abilityId: "gorgon-death-stare",
+    text: 'Damage + Magic at grade 3: after the commander\'s attack, roll 2 Attack dice — on two "-1" results the target\'s Health drops to 0.'
+  },
+  {
+    id: "charge",
+    name: "Charge",
+    requires: ["damage", "speed"],
+    abilityId: "commander-charge",
+    text: "Damage + Speed at grade 3: +1 Attack when the commander attacks after moving this activation."
+  }
+] as const;
+
+export function commanderUnlockedCombos(grades: CommanderGrades): CommanderCombo[] {
+  return COMMANDER_COMBOS.filter((combo) => combo.requires.every((key) => grades[key] >= 3));
+}
+
+// ---------------------------------------------------------------------------
+// Command abilities (the once-per-combat-round cast).
+// ---------------------------------------------------------------------------
+
+export type CommanderTargetTier = "bronze" | "silver" | "gold";
+
+export interface CommanderCastTargeting {
+  side: "friendly" | "enemy";
+  /** "ranged" = ranged units only; "melee" = non-ranged units only. */
+  unitType?: "ranged" | "melee";
+  /** Target must be a mechanical unit (Factory machines). */
+  mechanical?: boolean;
+  /** Target must carry at least 1 damage (heals). */
+  damagedOnly?: boolean;
+  /**
+   * Highest target tier allowed at Power 0/1/2 (Animate Dead, Counterstrike).
+   * Tierless targets (other commanders, bank guards, summons) never qualify.
+   */
+  maxTierByPower?: readonly [CommanderTargetTier, CommanderTargetTier, CommanderTargetTier];
+  /** Below this Power the target must be adjacent to the commander. */
+  adjacentBelowPower?: number;
+  /** Runes spent from the owner's combat pool per Power tier (Rune Keeper). */
+  runeCostByPower?: readonly [number, number, number];
+  /**
+   * Ongoing-effect buffs never land on the commander itself (its Magic grade 1
+   * ongoing-effect immunity would fizzle them), so those casts exclude self.
+   */
+  canTargetSelf: boolean;
+}
+
+export type CommanderCastEffect =
+  | { kind: "heal-cleanse"; healByPower: readonly [number, number, number]; cleanseFromPower: number }
+  | { kind: "defense-buff"; amountByPower: readonly [number, number, number]; vs: "melee" | "all" }
+  | { kind: "precision"; amountByPower: readonly [number, number, number] }
+  | { kind: "attack-buff"; amountByPower: readonly [number, number, number] }
+  | {
+      kind: "fire-shield";
+      damageByPower: readonly [number, number, number];
+      durationByPower: readonly ["round" | "combat" | "two-rounds", "round" | "combat" | "two-rounds", "round" | "combat" | "two-rounds"];
+    }
+  | { kind: "heal"; healByPower: readonly [number, number, number] }
+  | {
+      kind: "initiative-shift";
+      amountByPower: readonly [number, number, number];
+      /** The shifted unit's Attack also changes vs slower/faster targets. */
+      attackVs: "slower" | "faster";
+      attackAmount: number;
+    }
+  | { kind: "unlimited-retaliation" };
+
+export interface CommanderCastDefinition {
+  /** Unit ability id carried by the commander's combat unit. */
+  abilityId: string;
+  name: string;
+  /** Spell art used on the card face and in the cast prompt. */
+  icon: string;
+  targeting: CommanderCastTargeting;
+  effect: CommanderCastEffect;
+  /** Printed rules text per Power 0/1/2 (shown on the card, current tier highlighted). */
+  tierText: readonly [string, string, string];
+}
+
+export interface CommanderSpecialtyDefinition {
+  id:
+    | "wise"
+    | "first-aid"
+    | "mana-magician"
+    | "charming"
+    | "soul-reformer"
+    | "undead"
+    | "ballista-master"
+    | "swiftness"
+    | "pacifist"
+    | "dead-calm"
+    | "tinkerer"
+    | "rune-ritual";
+  name: string;
+  text: string;
+}
+
 export interface CommanderDefinition {
   slug: CommanderSlug;
   name: string;
   faction: string;
-  /** true for the three non-WoG originals (Cove/Factory/Bulwark) — abilities provisional. */
+  /** true for the three non-WoG originals (Cove/Factory/Bulwark). */
   original?: boolean;
-  /** Two signature abilities (printed on the card face). */
-  abilities: string[];
-  /** Built card asset (frame + art only; name, abilities, and stats are overlaid). */
+  cast: CommanderCastDefinition;
+  specialty: CommanderSpecialtyDefinition;
+  /** Built card asset (frame + art only; name, abilities and stats are overlaid). */
   cardImage: string;
 }
-
-/** Fixed beginning stats for EVERY commander (user-specified). Editable at runtime. */
-export const COMMANDER_BASE_STATS = { attack: 2, defense: 1, health: 4, speed: 5 } as const;
-export type CommanderStats = { attack: number; defense: number; health: number; speed: number };
 
 export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = {
   paladin: {
     slug: "paladin", name: "Paladin", faction: "Castle",
-    abilities: ["Wise: gains 150% of the Hero's experience.", "Cure: may cast Cure."],
+    cast: {
+      abilityId: "commander-cast-paladin",
+      name: "Cure",
+      icon: "/assets/spells-cure.webp",
+      targeting: { side: "friendly", canTargetSelf: true },
+      effect: { kind: "heal-cleanse", healByPower: [1, 1, 2], cleanseFromPower: 1 },
+      tierText: [
+        "Remove 1 damage from a friendly unit.",
+        "Remove 1 damage from a friendly unit and remove its negative tokens and effects.",
+        "Remove 2 damage from a friendly unit and remove its negative tokens and effects."
+      ]
+    },
+    specialty: {
+      id: "wise",
+      name: "Wise",
+      text: "The commander grades up early: the two grade-up picks arrive at hero level 2 and 5 (instead of 3 and 6)."
+    },
     cardImage: "/assets/units-commander-paladin.webp"
   },
   hierophant: {
     slug: "hierophant", name: "Hierophant", faction: "Rampart",
-    abilities: ["First Aid Master: First Aid Tents = level.", "Shield: may cast Shield (duration = Power)."],
+    cast: {
+      abilityId: "commander-cast-hierophant",
+      name: "Shield",
+      icon: "/assets/spells-shield.webp",
+      targeting: { side: "friendly", canTargetSelf: false },
+      effect: { kind: "defense-buff", amountByPower: [1, 2, 3], vs: "melee" },
+      tierText: [
+        "A friendly unit gains +1 Defense against melee attacks this round.",
+        "A friendly unit gains +2 Defense against melee attacks this round.",
+        "A friendly unit gains +3 Defense against melee attacks this round."
+      ]
+    },
+    specialty: {
+      id: "first-aid",
+      name: "First Aid Master",
+      text: "After a combat: one of your bronze/silver units that died or flipped from Pack to Few may be restored (choose 1)."
+    },
     cardImage: "/assets/units-commander-hierophant.webp"
   },
   temple_guardian: {
     slug: "temple_guardian", name: "Temple Guardian", faction: "Tower",
-    abilities: ["Mana Magician: restores lost mana (20% + 5%/level).", "Precision: may cast Precision (duration = Power)."],
+    cast: {
+      abilityId: "commander-cast-temple_guardian",
+      name: "Precision",
+      icon: "/assets/spells-precision.webp",
+      targeting: { side: "friendly", unitType: "ranged", canTargetSelf: false },
+      effect: { kind: "precision", amountByPower: [1, 2, 3] },
+      tierText: [
+        "A friendly ranged unit gains +1 Attack and ignores all ranged penalties this round.",
+        "A friendly ranged unit gains +2 Attack and ignores all ranged penalties this round.",
+        "A friendly ranged unit gains +3 Attack and ignores all ranged penalties this round."
+      ]
+    },
+    specialty: {
+      id: "mana-magician",
+      name: "Mana Magician",
+      text: "Twice per combat, casting a Spell may exceed your per-round spell limit."
+    },
     cardImage: "/assets/units-commander-temple_guardian.webp"
   },
   succubus: {
     slug: "succubus", name: "Succubus", faction: "Inferno",
-    abilities: ["Charming: steals 5% + (level-1)/2 of neutral stacks.", "Fire Shield: may cast Fire Shield (duration = Power)."],
+    cast: {
+      abilityId: "commander-cast-succubus",
+      name: "Fire Shield",
+      icon: "/assets/spells-fire_shield.webp",
+      targeting: { side: "friendly", canTargetSelf: false },
+      effect: {
+        kind: "fire-shield",
+        damageByPower: [1, 1, 2],
+        durationByPower: ["round", "combat", "two-rounds"]
+      },
+      tierText: [
+        "A friendly unit gains a Fire Shield (melee attackers take 1 damage) for this round.",
+        "A friendly unit gains a Fire Shield (melee attackers take 1 damage) for the whole combat.",
+        "A friendly unit gains a Fire Shield (melee attackers take 2 damage) for two rounds."
+      ]
+    },
+    specialty: {
+      id: "charming",
+      name: "Charming",
+      text: "At the start of a combat against neutral units, one random enemy neutral unit (any tier) gains a Paralysis token."
+    },
     cardImage: "/assets/units-commander-succubus.webp"
   },
   brute: {
     slug: "brute", name: "Brute", faction: "Dungeon",
-    abilities: ["Soul Reformer: converts 50% of battle XP to gold.", "Bloodlust: may cast Bloodlust (duration = Power)."],
+    cast: {
+      abilityId: "commander-cast-brute",
+      name: "Bloodlust",
+      icon: "/assets/spells-bloodlust.webp",
+      targeting: { side: "friendly", unitType: "melee", canTargetSelf: false },
+      effect: { kind: "attack-buff", amountByPower: [1, 2, 3] },
+      tierText: [
+        "A friendly melee unit anywhere gains +1 Attack this round.",
+        "A friendly melee unit anywhere gains +2 Attack this round.",
+        "A friendly melee unit anywhere gains +3 Attack this round."
+      ]
+    },
+    specialty: {
+      id: "soul-reformer",
+      name: "Soul Reformer",
+      text: "After each combat you win, gain 2 gold."
+    },
     cardImage: "/assets/units-commander-brute.webp"
   },
   soul_eater: {
     slug: "soul_eater", name: "Soul Eater", faction: "Necropolis",
-    abilities: ["Undead: counts as an undead creature.", "Animate Dead: revives Level 1-5 creatures."],
+    cast: {
+      abilityId: "commander-cast-soul_eater",
+      name: "Animate Dead",
+      icon: "/assets/spells-resurrection.webp",
+      targeting: {
+        side: "friendly",
+        damagedOnly: true,
+        maxTierByPower: ["bronze", "silver", "gold"],
+        canTargetSelf: false
+      },
+      effect: { kind: "heal", healByPower: [2, 2, 2] },
+      tierText: [
+        "Remove 2 damage from a friendly bronze unit.",
+        "Remove 2 damage from a friendly bronze or silver unit.",
+        "Remove 2 damage from a friendly unit of any tier — even gold."
+      ]
+    },
+    specialty: {
+      id: "undead",
+      name: "Undead",
+      text: "The commander is undead: it can never gain a Paralysis token."
+    },
     cardImage: "/assets/units-commander-soul_eater.webp"
   },
   ogre_leader: {
     slug: "ogre_leader", name: "Ogre Leader", faction: "Stronghold",
-    abilities: ["Ballista Master: adds ballistas (level/4 + 1).", "Stone Skin: may cast Stone Skin (duration = Power)."],
+    cast: {
+      abilityId: "commander-cast-ogre_leader",
+      name: "Stone Skin",
+      icon: "/assets/spells-stone_skin.webp",
+      targeting: { side: "friendly", canTargetSelf: false },
+      effect: { kind: "defense-buff", amountByPower: [1, 2, 3], vs: "all" },
+      tierText: [
+        "A friendly unit gains +1 Defense against all attacks this round.",
+        "A friendly unit gains +2 Defense against all attacks this round.",
+        "A friendly unit gains +3 Defense against all attacks this round."
+      ]
+    },
+    specialty: {
+      id: "ballista-master",
+      name: "Ballista Master",
+      text: "Your Ballista's round-start shot targets an enemy unit of YOUR choice (instead of the lowest-initiative enemy)."
+    },
     cardImage: "/assets/units-commander-ogre_leader.webp"
   },
   shaman: {
     slug: "shaman", name: "Shaman", faction: "Fortress",
-    abilities: ["Superior Combat: 150% of the Hero's Attack & Defense.", "Haste: may cast Haste (Speed +5)."],
+    cast: {
+      abilityId: "commander-cast-shaman",
+      name: "Haste",
+      icon: "/assets/spells-haste.webp",
+      targeting: { side: "friendly", canTargetSelf: false },
+      effect: { kind: "initiative-shift", amountByPower: [2, 3, 4], attackVs: "slower", attackAmount: 1 },
+      tierText: [
+        "A friendly unit gains +2 Initiative and +1 Attack against slower units this round.",
+        "A friendly unit gains +3 Initiative and +1 Attack against slower units this round.",
+        "A friendly unit gains +4 Initiative and +1 Attack against slower units this round."
+      ]
+    },
+    specialty: {
+      id: "swiftness",
+      name: "Swiftness",
+      text: "While the commander lives, your main hero has +1 movement range."
+    },
     cardImage: "/assets/units-commander-shaman.webp"
   },
   astral_spirit: {
     slug: "astral_spirit", name: "Astral Spirit", faction: "Conflux",
-    abilities: ["Pacifist: 5% + (level-1)/2 enemies flee (max 20%).", "Counterstrike: may cast Counterstrike (duration = Power)."],
+    cast: {
+      abilityId: "commander-cast-astral_spirit",
+      name: "Counterstrike",
+      icon: "/assets/spells-counterstrike.webp",
+      targeting: {
+        side: "friendly",
+        maxTierByPower: ["bronze", "silver", "gold"],
+        canTargetSelf: false
+      },
+      effect: { kind: "unlimited-retaliation" },
+      tierText: [
+        "A friendly bronze unit may retaliate any number of times this round.",
+        "A friendly bronze or silver unit may retaliate any number of times this round.",
+        "A friendly unit of any tier — even gold — may retaliate any number of times this round."
+      ]
+    },
+    specialty: {
+      id: "pacifist",
+      name: "Pacifist",
+      text: "At the start of a combat against 2 or more neutral units, one random bronze/silver neutral flees the battlefield (no rewards for it)."
+    },
     cardImage: "/assets/units-commander-astral_spirit.webp"
   },
   corsair: {
-    slug: "corsair", name: "Corsair", faction: "Cove", original: true,
-    abilities: ["Plunder: bonus gold after a won combat.  [provisional]", "Fortune: may cast Fortune."],
+    slug: "corsair", name: "Sea Marshal", faction: "Cove", original: true,
+    cast: {
+      abilityId: "commander-cast-corsair",
+      name: "Slow",
+      icon: "/assets/spells-slow.webp",
+      targeting: { side: "enemy", canTargetSelf: false },
+      effect: { kind: "initiative-shift", amountByPower: [-2, -3, -4], attackVs: "faster", attackAmount: -1 },
+      tierText: [
+        "An enemy unit suffers -2 Initiative and -1 Attack against faster units this round.",
+        "An enemy unit suffers -3 Initiative and -1 Attack against faster units this round.",
+        "An enemy unit suffers -4 Initiative and -1 Attack against faster units this round."
+      ]
+    },
+    specialty: {
+      id: "dead-calm",
+      name: "Dead Calm",
+      text: "While the commander lives, every enemy hero has -1 movement range."
+    },
     cardImage: "/assets/units-commander-corsair.webp"
   },
   factory: {
-    slug: "factory", name: "Engineer", faction: "Factory", original: true,
-    abilities: ["Mechanist: provides an additional War Machine.  [provisional]", "Precision: may cast Precision."],
+    slug: "factory", name: "Artificer", faction: "Factory", original: true,
+    cast: {
+      abilityId: "commander-cast-factory",
+      name: "Field Repair",
+      icon: "/assets/specialty-card/icon-ballista.webp",
+      targeting: {
+        side: "friendly",
+        mechanical: true,
+        damagedOnly: true,
+        adjacentBelowPower: 2,
+        canTargetSelf: false
+      },
+      effect: { kind: "heal", healByPower: [1, 2, 2] },
+      tierText: [
+        "Remove 1 damage from an adjacent friendly mechanical unit.",
+        "Remove 2 damage from an adjacent friendly mechanical unit.",
+        "Remove 2 damage from a friendly mechanical unit anywhere."
+      ]
+    },
+    specialty: {
+      id: "tinkerer",
+      name: "Tinkerer",
+      text: "War machines cost you 5 less gold (to a minimum of 0)."
+    },
     cardImage: "/assets/units-commander-factory.webp"
   },
   bulwark: {
-    slug: "bulwark", name: "Frost Warlord", faction: "Bulwark", original: true,
-    abilities: ["Frostborn: chills enemies, lowering Speed.  [provisional]", "Stone Skin: may cast Stone Skin."],
+    slug: "bulwark", name: "Rune Keeper", faction: "Bulwark", original: true,
+    cast: {
+      abilityId: "commander-cast-bulwark",
+      name: "Rune Mend",
+      icon: "/assets/spells-frost_ring.webp",
+      targeting: {
+        side: "friendly",
+        damagedOnly: true,
+        runeCostByPower: [1, 2, 2],
+        canTargetSelf: true
+      },
+      effect: { kind: "heal", healByPower: [1, 2, 3] },
+      tierText: [
+        "Spend 1 Rune: remove 1 damage from a friendly unit.",
+        "Spend 2 Runes: remove 2 damage from a friendly unit.",
+        "Spend 2 Runes: remove 3 damage from a friendly unit."
+      ]
+    },
+    specialty: {
+      id: "rune-ritual",
+      name: "Rune Ritual",
+      text: "Gain 1 Rune at the start of each combat."
+    },
     cardImage: "/assets/units-commander-bulwark.webp"
   }
 };
 
-// ---------------------------------------------------------------------------
-// Growth layer (comm3): 6 primary skills, 5 tiers each; a commander takes 4 of 6.
-// These are the WoG PC-game reference values (shown in the growth panel). The
-// board-game adaptation of these numbers is a future tuning decision — the card's
-// live Attack/Defense/Health/Speed are edited directly for now.
-// ---------------------------------------------------------------------------
+/** Faction id → commander slug (all 12 factions have exactly one commander). */
+export const COMMANDER_SLUG_BY_FACTION: Record<string, CommanderSlug> = {
+  castle: "paladin",
+  rampart: "hierophant",
+  tower: "temple_guardian",
+  inferno: "succubus",
+  dungeon: "brute",
+  necropolis: "soul_eater",
+  stronghold: "ogre_leader",
+  fortress: "shaman",
+  conflux: "astral_spirit",
+  cove: "corsair",
+  factory: "factory",
+  bulwark: "bulwark"
+};
 
-export const SKILL_TIERS = ["none", "Basic", "Advanced", "Expert", "Master", "Grandmaster"] as const;
-export type SkillTier = 0 | 1 | 2 | 3 | 4 | 5;
-
-export interface PrimarySkill {
-  key: "attack" | "defense" | "health" | "damage" | "power" | "speed";
-  label: string;
-  /** WoG reference value at each tier (index 0 = no skill). */
-  tiers: string[];
+export function commanderCastTierIndex(power: number): 0 | 1 | 2 {
+  return power >= 2 ? 2 : power === 1 ? 1 : 0;
 }
-
-export const PRIMARY_SKILLS: PrimarySkill[] = [
-  { key: "attack", label: "Attack", tiers: ["5", "7", "10", "14", "20", "30"] },
-  { key: "defense", label: "Defense", tiers: ["5", "9", "15", "23", "35", "55"] },
-  { key: "health", label: "Hit Points", tiers: ["base", "+10%", "+25%", "+45%", "+70%", "+100%"] },
-  { key: "damage", label: "Damage", tiers: ["base", "+10%", "+25%", "+45%", "+70%", "+100%"] },
-  { key: "power", label: "Magic Power", tiers: ["1", "2", "4", "7", "15", "30"] },
-  { key: "speed", label: "Speed", tiers: ["4", "5", "6", "7", "8", "10"] }
-];
-
-/** Secondary skills unlock when BOTH named primaries reach Master (tier 4). */
-export interface SecondarySkill {
-  tag: string;
-  name: string;
-  requires: [PrimarySkill["key"], PrimarySkill["key"]];
-}
-
-export const SECONDARY_SKILLS: SecondarySkill[] = [
-  { tag: "N", name: "No Enemy Retaliation", requires: ["attack", "power"] },
-  { tag: "S", name: "Can Shoot", requires: ["attack", "speed"] },
-  { tag: "M", name: "Maximum damage always", requires: ["attack", "damage"] },
-  { tag: "E", name: "Endless Retaliation", requires: ["defense", "health"] },
-  { tag: "D", name: "Reduce Enemy Defense by 50%", requires: ["attack", "defense"] },
-  { tag: "O", name: "Fearsome", requires: ["attack", "health"] },
-  { tag: "A", name: "Strikes all enemies around", requires: ["defense", "damage"] },
-  { tag: "I", name: "Permanent Fire Shield", requires: ["defense", "power"] },
-  { tag: "B", name: "30% chance to Block Physical Damage", requires: ["defense", "speed"] },
-  { tag: "2", name: "Attack twice", requires: ["health", "damage"] },
-  { tag: "P", name: "Melee 50% chance to Paralyze (3 rounds)", requires: ["health", "power"] },
-  { tag: "R", name: "Regeneration 50 HP every turn", requires: ["health", "speed"] },
-  { tag: "G", name: "DeathStare", requires: ["damage", "power"] },
-  { tag: "F", name: "Ignore Obstacles (fly)", requires: ["power", "speed"] },
-  { tag: "C", name: "Champion Distance Bonus", requires: ["damage", "speed"] }
-];

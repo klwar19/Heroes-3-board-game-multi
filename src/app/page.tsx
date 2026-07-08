@@ -3965,6 +3965,7 @@ export default function Home() {
                 <TownHeroDock
                   armySeatId={isSeated ? viewerPlayerId : undefined}
                   heroSeatIds={isSeated ? [viewerPlayerId] : seatIds}
+                  onAction={isSeated ? submitAction : undefined}
                   onOpenTown={isSeated && viewerTown ? () => setTownOpen(true) : undefined}
                   state={state}
                   viewerPlayerId={isSeated ? viewerPlayerId : seatIds[0]}

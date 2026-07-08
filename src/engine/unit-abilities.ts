@@ -296,6 +296,29 @@ export function hasIgnoreParalysis(unit: CombatUnitState): boolean {
 }
 
 /**
+ * WOG commander Damage grade ("Might"): extra damage this unit's attacks and
+ * retaliations deal whenever they deal at least 1 damage. Applied inside
+ * getAttackDamagePreview (still under any per-attack damage cap).
+ */
+export function getBonusDamageOnHit(unit: CombatUnitState): number {
+  return getAbilitiesWithEffect(unit, "BONUS_DAMAGE_ON_HIT").reduce(
+    (total, ability) => total + (ability.effect?.type === "BONUS_DAMAGE_ON_HIT" ? ability.effect.amount : 0),
+    0
+  );
+}
+
+/**
+ * WOG commander Charge combo: +Attack when this unit attacks after having
+ * moved this activation (never on a retaliation).
+ */
+export function getAttackBonusAfterMove(unit: CombatUnitState): number {
+  return getAbilitiesWithEffect(unit, "ATTACK_BONUS_AFTER_MOVE").reduce(
+    (total, ability) => total + (ability.effect?.type === "ATTACK_BONUS_AFTER_MOVE" ? ability.effect.amount : 0),
+    0
+  );
+}
+
+/**
  * Factory Armadillos (Pack): a positive Initiative increase this unit receives
  * from active effects is amplified by one more point (read in effectiveInitiative).
  */

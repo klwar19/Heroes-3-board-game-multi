@@ -94,6 +94,7 @@ import type {
   VisitStep
 } from "./state";
 import { NEUTRAL_PLAYER_ID } from "./state";
+import { livingCommanderOf, playerHasLivingCommander, queueCommanderGradeUp } from "./commanders";
 
 /** Hero level track: hand limit and expert-effect uses by level (hero board). */
 export const HAND_LIMIT_BY_LEVEL: Record<number, number> = { 1: 4, 2: 4, 3: 5, 4: 5, 5: 6, 6: 6, 7: 7 };
@@ -274,7 +275,28 @@ export const SECONDARY_HERO_MOVEMENT = 2;
 export function heroMovementMax(state: GameState, hero: HeroState): number {
   const active = getActiveAstrologersCard(state);
   const modifier = active?.effect.type === "MOVEMENT_MODIFIER" ? active.effect.amount : 0;
-  return Math.max(0, hero.movementPointsMax + modifier);
+
+  // WOG Commanders — map-movement specialties:
+  //  - Shaman "Swiftness": the owner's MAIN hero has +1 movement range while
+  //    the commander lives (the commander marches with that hero).
+  //  - Sea Marshal "Dead Calm": every ENEMY hero (main and secondary) has -1
+  //    movement range while any opposing player's Sea Marshal lives.
+  let commanderModifier = 0;
+  if (hero.kind === "main" && playerHasLivingCommander(state, hero.controllerId, "shaman")) {
+    commanderModifier += 1;
+  }
+  for (const player of Object.values(state.players)) {
+    if (
+      player.id !== hero.controllerId &&
+      !player.eliminated &&
+      livingCommanderOf(player)?.slug === "corsair"
+    ) {
+      commanderModifier -= 1;
+      break; // Multiple Sea Marshals never stack below -1.
+    }
+  }
+
+  return Math.max(0, hero.movementPointsMax + modifier + commanderModifier);
 }
 
 export function getUnitDefinition(unitDefId: string): UnitDefinition | undefined {
@@ -1386,6 +1408,13 @@ export function gainExperience(state: GameState, playerId: PlayerId, amount: num
       }
     }
 
+    // WOG Commanders: crossing a grade-up level (3/6; the Paladin's Wise: 2/5)
+    // owes the owner a two-different-stats grade-up pick. It never blocks play —
+    // the pick waits on the commander card until COMMANDER_GRADE_UP spends it.
+    if (queueCommanderGradeUp(player, level)) {
+      effects.push("commander grade-up available");
+    }
+
     appendEvent(state, {
       type: "HERO_LEVEL_UP",
       playerId,
@@ -2082,6 +2111,9 @@ export function eliminatePlayer(
     }
     if (state.adventure.pendingNecromancy?.playerId === playerId) {
       state.adventure.pendingNecromancy = null;
+    }
+    if (state.adventure.pendingCommanderFirstAid?.playerId === playerId) {
+      state.adventure.pendingCommanderFirstAid = null;
     }
     if (state.adventure.pendingFarTileFlip?.playerId === playerId) {
       state.adventure.pendingFarTileFlip = null;

@@ -382,6 +382,76 @@ ordered-mode or unowned-target CONTROL.
   solo tables and legacy snapshots are untouched — every parallel predicate
   no-ops when the mode is off.
 
+## WOG Commanders (optional module, BINH-only) — what runs vs. adaptations
+
+Lobby: WOG crest + "Commanders" module (`WogModOptions.commanders`, default
+OFF). Content in `src/data/commanders.ts`, engine in `src/engine/commanders.ts`
+wired through setup/adventure/reducer/legal-actions/permanents/runes; behaviour
+pinned in `src/engine/wog-commanders.test.ts` + `wog-commander-casts.test.ts`
+(observable outcomes with CONTROLs; each fails if its wiring is removed).
+
+Leading with what does NOT run / deliberate readings:
+- **The WoG PC reference layer did NOT ship**: the 5-tier primary skills and
+  15 secondary skills in `docs/wog-commanders-plan.md` §4–5 are design history.
+  The shipped system is grades 1–3 per stat + exactly TWO combos.
+- **Specialty adaptations** (each engine-enforced, but a conscious rewrite of
+  the WoG printed passive): Paladin Wise = grade-up picks at hero level 2 & 5
+  (not 150% XP); Temple Guardian Mana Magician = twice per COMBAT a Spell may
+  exceed the per-round limit (this game has no mana pool; a burned charge
+  converts into `spellLimitBonusThisRound` so the limit never dips below the
+  count); Brute Soul Reformer = flat +2 gold after each WON combat (no XP→gold
+  pools); Soul Eater Undead = Paralysis-token immunity; Shaman Swiftness = +1
+  map movement for the OWN MAIN hero (replaces "Superior Combat"); Sea Marshal
+  Dead Calm = -1 map movement for every ENEMY hero (non-stacking across
+  multiple Sea Marshals); Astral Spirit Pacifist = at combat start vs 2+
+  neutral guards one random bronze/silver guard flees to its tier discard (no
+  rewards for it; bank fights exempt); Rune Keeper Rune Ritual = +1 Rune at
+  combat start (original — the commander itself is a non-WoG original);
+  Hierophant First Aid = post-combat window restoring ONE bronze/silver
+  casualty (died card returns — a Neutral-side card is pulled back OUT of its
+  tier discard so it is never duplicated; a Pack that fell to Few flips back);
+  Ogre Leader Ballista Master = the player aims the Ballista's round-start
+  shot (the Gerwulf `BALLISTA_CHOOSE_TARGET` freedom, granted passively);
+  Artificer Tinkerer = war machines cost 5 less gold (min 0) at both shops.
+- **Roster renames** (user spec): Cove Corsair → Sea Marshal, Factory Engineer
+  → Artificer, Bulwark Frost Warlord → Rune Keeper (slugs/assets unchanged).
+- **Commander scope**: it fights ONLY the main hero's combats (garrison
+  defenses and secondary-hero fights get none), is AUTO-placed at combat start
+  (own backline first, then frontline; bank fights use the six central cells)
+  rather than hand-placed, enters every combat at full health, and only DEATH
+  persists (revive anywhere on your map turn for 2 + 2x hero level gold).
+- **Tierless both ways** (bank-guard convention): tier-gated spells (Blind…)
+  never target a commander, and the neutral AI hits it LAST.
+- **Ongoing-effect immunity is total** (Magic grade 1 baseline, titan-style):
+  even FRIENDLY ongoing buffs skip the commander, so the buff-type command
+  casts exclude commanders from their target lists up front. Tokens are NOT
+  ongoing effects — a commander can still be Paralyzed (unless Soul Eater).
+- **Cast readings**: the cast is once per combat round, FREE during the
+  commander's own activation (before it moves/attacks — it may still do both).
+  Cure's cleanse removes ALL negative tokens+effects (not one); Animate Dead
+  heals a flat 2 (the bronze/silver/gold ladder IS the Power scaling);
+  Counterstrike = unlimited retaliation for the round (tier-laddered);
+  Haste/Slow riders compare effective Initiative at attack time (+1 vs slower
+  / -1 vs faster, on the buffed/slowed unit's own attacks); Fire Shield
+  durations are 1 round / whole combat / 2 rounds by Power; Rune Mend spends
+  the per-combat Rune pool (1/2/2 → heal 1/2/3) and never revokes an
+  already-latched Rune Level (that pool is add-only by design); Field Repair's
+  "mechanical" = the engine's `isMechanicalUnit` (Factory Automatons /
+  Dreadnoughts); Shield shares the Shield SPELL's `DEFENSE_VS_ATTACKER_TYPE`
+  semantics (a ranged-TYPE unit attacking adjacent is still not "melee").
+- **Might (Damage grade)** adds +1/+2 to the commander's attacks AND
+  retaliations that deal ≥1 damage — it never turns a fully-blocked hit into
+  chip damage and stays under per-attack damage caps (Cove Nix). Charge fires
+  on its own attacks after moving, never on retaliations. Death Stare reuses
+  `gorgon-death-stare` verbatim (2 dice, double "-1" destroys the side).
+- The commander COUNTS for win/loss (`livingControllerIds`): an army can fight
+  on through its commander, and killing a side needs the commander dead too.
+- `COMMANDER_GRADE_UP` / `REVIVE_COMMANDER` / `COMMANDER_FIRST_AID` are
+  handler-validated actions (self-validating; usable outside combat without a
+  legal-actions membership match). While `pendingCommanderFirstAid` is open,
+  the owner's map actions are gated to answering it (Necromancy-style);
+  `eliminatePlayer` clears an eliminated seat's window.
+
 ## Event deck (Fortress expansion, OPTIONAL rule) — what runs vs. printed nuances
 
 A separate system from the Astrologers Proclaim deck (do not confuse the two).

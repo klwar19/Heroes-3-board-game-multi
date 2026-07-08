@@ -113,6 +113,17 @@ import {
 } from "./adventure";
 import { ATTACK_DIE_FACES } from "./battlefield";
 import { appendExpiredEffectEvents, pvpEscapeWindowOpen } from "./combat-units";
+import { COMMANDER_STAT_KEYS, commanderDefinitions, commanderReviveCost, type CommanderSlug } from "@/data/commanders";
+import {
+  applyCommanderCombatStart,
+  collectFirstAidCandidates,
+  commanderGradesOf,
+  commandersModuleEnabled,
+  finalizeCommandersAfterCombat,
+  injectCommanderIntoCombat,
+  playerHasLivingCommander,
+  type CommanderFirstAidOption
+} from "./commanders";
 import { expireEffectsForCombatEnd, makeActiveEffect, playerCannotSurrenderCombat } from "./active-effects";
 import { assignCombatBoardArt } from "./combat-board-art";
 import { cardCanBoostPower } from "./effects";
@@ -4973,6 +4984,10 @@ function finalizeCombatStart(state: GameState): void {
     activeUnitId: null
   });
 
+  // WOG Commanders: each MAIN hero fighting this battle brings its living
+  // commander onto the board (auto-placed on the first free cell of its own
+  // backline, then frontline; bank fights use the six central attacker cells).
+  injectCombatCommanders(state);
   // Bulwark "Runes" (Gamefound Update #3): seed each Bulwark player's per-combat
   // Rune pool from their Sieidi/Altar baseline + City Hall flag, applying any
   // Rune Level the starting pool already qualifies for.
@@ -4984,7 +4999,54 @@ function finalizeCombatStart(state: GameState): void {
   applyPermanentCombatEffects(state);
   applyCombatStartMoraleCards(state);
   applyCombatStartUnitAbilities(state);
+  // Commander combat-start specialties (Mana Magician charges, Rune Ritual,
+  // Charming, Pacifist) resolve after unit abilities and BEFORE the first
+  // war-machine round, so a charmed/fled defender never soaks a Ballista shot.
+  applyCommanderCombatStart(state);
   startWarMachineRound(state);
+}
+
+/**
+ * WOG Commanders: put each fighting MAIN hero's living commander on the board.
+ * Garrison defenses (no defender hero) and secondary-hero fights get none —
+ * the commander marches with the main hero only.
+ */
+function injectCombatCommanders(state: GameState): void {
+  const combat = state.combat;
+  if (!combat || !commandersModuleEnabled(state)) {
+    return;
+  }
+
+  const context = combat.context;
+  const heroBrings = (heroId: HeroId | null | undefined): PlayerId | null => {
+    const hero = heroId ? state.heroes[heroId] : null;
+    return hero && hero.kind === "main" ? hero.controllerId : null;
+  };
+
+  const sides: { playerId: PlayerId | null; cells: readonly number[] }[] = [];
+  if (context.kind === "neutral") {
+    sides.push({
+      playerId: heroBrings(context.heroId),
+      cells: context.bankId
+        ? CREATURE_BANK_ATTACKER_CELLS
+        : [...ATTACKER_BACKLINE, ...ATTACKER_FRONTLINE]
+    });
+  } else if (context.kind === "player") {
+    sides.push({
+      playerId: heroBrings(context.attackerHeroId),
+      cells: [...ATTACKER_BACKLINE, ...ATTACKER_FRONTLINE]
+    });
+    sides.push({
+      playerId: heroBrings(context.defenderHeroId),
+      cells: [...DEFENDER_BACKLINE, ...DEFENDER_FRONTLINE]
+    });
+  }
+
+  for (const side of sides) {
+    if (side.playerId && side.playerId !== NEUTRAL_PLAYER_ID) {
+      injectCommanderIntoCombat(state, side.playerId, side.cells);
+    }
+  }
 }
 
 /** A player's living, swappable (non-Arrow-Tower) units in this combat. */
@@ -5631,6 +5693,35 @@ export function finalizeAdventureCombat(state: GameState): void {
   const giveUpLoserId = gaveUp ? outcome.defeatedPlayerId : null;
   const giveUpKeepsTroops = gaveUp && context.kind === "player" && adventurePvpTroopLoss(state) === "none";
 
+  // WOG Commanders: persist deaths (a fallen commander stays dead until
+  // revived for gold) and remember whose commander survived this battle.
+  const commanderSurvivors = finalizeCommandersAfterCombat(state);
+  // Hierophant "First Aid Master": collect restorable bronze/silver casualties
+  // BEFORE the army-sync loop below rewrites `armyUnit.side` (the Pack→Few
+  // flip detection needs the pre-sync side). Only a surviving Hierophant tends
+  // the wounded, and only when this fight actually costs casualties.
+  let firstAidPlayerId: PlayerId | null = null;
+  let firstAidOptions: CommanderFirstAidOption[] = [];
+  if (!keepTroops) {
+    for (const playerId of [combat.attackerPlayerId, combat.defenderPlayerId]) {
+      if (
+        playerId !== NEUTRAL_PLAYER_ID &&
+        commanderSurvivors.has(playerId) &&
+        playerHasLivingCommander(state, playerId, "hierophant") &&
+        !(giveUpKeepsTroops && playerId === giveUpLoserId)
+      ) {
+        const options = collectFirstAidCandidates(state, playerId);
+        if (options.length > 0) {
+          // One window per combat: with unique factions there is never more
+          // than one Hierophant owner in a fight.
+          firstAidPlayerId = playerId;
+          firstAidOptions = options;
+          break;
+        }
+      }
+    }
+  }
+
   // Sync army cards with what happened on the board.
   for (const unit of Object.values(combat.units)) {
     if (unit.controllerId === NEUTRAL_PLAYER_ID) {
@@ -5692,6 +5783,31 @@ export function finalizeAdventureCombat(state: GameState): void {
       player.discard.push(...player.hand);
       player.hand = [];
     }
+  }
+
+  // Brute "Soul Reformer": the winner gains 2 gold after each combat won while
+  // the Brute survived it (the board adaptation of "50% of battle experience
+  // in gold" — this game has no mana/XP pools to convert).
+  if (
+    outcome.winnerPlayerId !== NEUTRAL_PLAYER_ID &&
+    commanderSurvivors.has(outcome.winnerPlayerId) &&
+    playerHasLivingCommander(state, outcome.winnerPlayerId, "brute")
+  ) {
+    gainResources(state, outcome.winnerPlayerId, { gold: 2 }, "Soul Reformer");
+    appendEvent(state, {
+      type: "COMMANDER_SPECIALTY_TRIGGERED",
+      playerId: outcome.winnerPlayerId,
+      commanderSlug: "brute",
+      specialtyId: "soul-reformer",
+      message: "The Brute reforges the fallen — +2 gold."
+    });
+  }
+
+  // Open the Hierophant's post-combat First Aid window (choose 1 casualty to
+  // restore, or decline). Gated in legal-actions: until resolved, the owner
+  // may only answer it — exactly like the Necromancy deferral it mirrors.
+  if (firstAidPlayerId && firstAidOptions.length > 0) {
+    adventure.pendingCommanderFirstAid = { playerId: firstAidPlayerId, options: firstAidOptions };
   }
 
   if (context.kind === "neutral") {
@@ -5939,6 +6055,160 @@ function discardDefeatedArmyUnit(state: GameState, player: PlayerState, armyUnit
     const tier = (def?.tier ?? "bronze") as "bronze" | "silver" | "gold" | "azure";
     state.decks[NEUTRAL_DECK_IDS[tier]]?.discardPile.push(armyUnit.unitDefId);
   }
+}
+
+// ---------------------------------------------------------------------------
+// WOG Commanders — map-side actions (grade-up picks, revive, First Aid).
+// ---------------------------------------------------------------------------
+
+/**
+ * COMMANDER_GRADE_UP: spend one owed pick (hero level 3/6; Paladin's Wise 2/5)
+ * to raise TWO DIFFERENT stats by one grade each. Never inside a combat — the
+ * commander's battlefield unit is built from its grades at combat start.
+ */
+export function commanderGradeUp(
+  state: GameState,
+  action: Extract<GameAction, { type: "COMMANDER_GRADE_UP" }>
+): void {
+  const player = state.players[action.playerId];
+  const commander = player?.commander;
+  if (!player || !commander) {
+    throw new Error("You have no commander to grade up.");
+  }
+  if (state.combat) {
+    throw new Error("Commander grade-ups resolve outside of combat.");
+  }
+  const pending = commander.pendingGradeUps ?? [];
+  if (pending.length === 0) {
+    throw new Error("No commander grade-up is available.");
+  }
+
+  const [first, second] = action.stats;
+  if (
+    !first ||
+    !second ||
+    first === second ||
+    !COMMANDER_STAT_KEYS.includes(first) ||
+    !COMMANDER_STAT_KEYS.includes(second)
+  ) {
+    throw new Error("Pick two different commander stats.");
+  }
+  const grades = commanderGradesOf(commander);
+  for (const key of [first, second]) {
+    if (grades[key] >= 3) {
+      throw new Error(`${key} is already at grade 3.`);
+    }
+  }
+
+  commander.grades[first] = grades[first] + 1;
+  commander.grades[second] = grades[second] + 1;
+  commander.pendingGradeUps = pending.slice(1);
+  appendEvent(state, {
+    type: "COMMANDER_GRADED_UP",
+    playerId: action.playerId,
+    commanderSlug: commander.slug,
+    stats: [first, second],
+    message: `Commander grade-up: ${first} and ${second} each rise one grade.`
+  });
+}
+
+/**
+ * REVIVE_COMMANDER: pay gold (2 + 2x hero level) on the map to bring a dead
+ * commander back for its next combat.
+ */
+export function reviveCommander(
+  state: GameState,
+  action: Extract<GameAction, { type: "REVIVE_COMMANDER" }>
+): void {
+  const player = state.players[action.playerId];
+  const commander = player?.commander;
+  if (!player || !commander) {
+    throw new Error("You have no commander.");
+  }
+  if (!commander.dead) {
+    throw new Error("Your commander is alive.");
+  }
+  if (state.combat) {
+    throw new Error("Commanders are revived outside of combat.");
+  }
+
+  const hero = getMainHero(state, action.playerId);
+  const cost = commanderReviveCost(hero?.level ?? 1);
+  if (!hasResources(player, { gold: cost })) {
+    throw new Error(`Reviving the commander costs ${cost} gold.`);
+  }
+  spendResources(state, action.playerId, { gold: cost }, "revived the commander");
+  commander.dead = false;
+  appendEvent(state, {
+    type: "COMMANDER_REVIVED",
+    playerId: action.playerId,
+    commanderSlug: commander.slug,
+    goldPaid: cost,
+    message: `The ${commanderDefinitions[commander.slug as CommanderSlug]?.name ?? "commander"} returns to duty (${cost} gold).`
+  });
+}
+
+/**
+ * COMMANDER_FIRST_AID: resolve the Hierophant's post-combat window — restore
+ * the chosen bronze/silver casualty (a died card returns to the army, a
+ * flipped-down Pack flips back up) or decline (optionIndex null).
+ */
+export function resolveCommanderFirstAid(
+  state: GameState,
+  action: Extract<GameAction, { type: "COMMANDER_FIRST_AID" }>
+): void {
+  const adventure = state.adventure;
+  const pending = adventure?.pendingCommanderFirstAid;
+  if (!adventure || !pending || pending.playerId !== action.playerId) {
+    throw new Error("No First Aid window is open for you.");
+  }
+  const player = state.players[action.playerId];
+  if (!player) {
+    throw new Error("Unknown player.");
+  }
+
+  if (action.optionIndex === null) {
+    adventure.pendingCommanderFirstAid = null;
+    appendEvent(state, {
+      type: "COMMANDER_FIRST_AID_USED",
+      playerId: action.playerId,
+      message: "The Hierophant's First Aid is declined."
+    });
+    return;
+  }
+
+  const option = pending.options[action.optionIndex];
+  if (!option) {
+    throw new Error("That First Aid choice does not exist.");
+  }
+
+  if (option.kind === "flip-up") {
+    const armyUnit = player.army.find((candidate) => candidate.id === option.armyUnitId);
+    if (!armyUnit || armyUnit.unitDefId !== option.unitDefId || armyUnit.side !== "few") {
+      throw new Error("That unit can no longer be restored.");
+    }
+    armyUnit.side = "pack";
+  } else {
+    // A revived Neutral-side card is pulled back OUT of the tier discard pile
+    // it just recycled into, so the physical card is never duplicated.
+    if (option.side === "neutral") {
+      const tier = (option.neutralTier ?? "bronze") as keyof typeof NEUTRAL_DECK_IDS;
+      const discard = state.decks[NEUTRAL_DECK_IDS[tier]]?.discardPile;
+      const index = discard ? discard.lastIndexOf(option.unitDefId) : -1;
+      if (!discard || index === -1) {
+        throw new Error("That card has left the Neutral discard pile.");
+      }
+      discard.splice(index, 1);
+    }
+    addArmyUnit(player, option.unitDefId, option.side);
+  }
+
+  adventure.pendingCommanderFirstAid = null;
+  appendEvent(state, {
+    type: "COMMANDER_FIRST_AID_USED",
+    playerId: action.playerId,
+    message: `First Aid Master: ${option.label}.`
+  });
 }
 
 function moveDefeatedHeroHome(state: GameState, hero: HeroState): void {
