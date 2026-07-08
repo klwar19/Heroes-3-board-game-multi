@@ -650,6 +650,39 @@ describe("Expert Knowledge after a map Spell", () => {
     expect(state.players.p1.hand).not.toContain("spell.fly");
     expect(state.players.p1.ongoingCards?.find((entry) => entry.cardId === "spell.fly")?.returnTo).toBe("hand");
   });
+
+  it("a Book map Spell (Fly) recalled is marked to return to the Spell Book, not the hand", () => {
+    const base = createAdventureGameState({
+      seed: "map-book-recall",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      spellBook: true
+    });
+    for (const player of Object.values(base.players)) {
+      player.canMulligan = false;
+      player.needsHandRefresh = false;
+    }
+    let state = withHand(base, ["stat.knowledge"]);
+    state.players.p1.spellBook = ["spell.fly"]; // Fly lives in the Book
+    state.players.p1.limits.expertUses = 1;
+
+    const fly = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "PLAY_CARD" &&
+        legal.action.cardId === "spell.fly" &&
+        legal.action.fromSpellBook === true &&
+        legal.action.optionIndex === 0
+    );
+    expect(fly, "a Book Fly should be playable from the map").toBeTruthy();
+    state = applyOk(state, fly!.action);
+    expect(state.players.p1.spellBook).not.toContain("spell.fly"); // held ongoing, out of the Book
+
+    // Take it back with Expert Knowledge → marked to return to the BOOK (a
+    // private zone) when Fly's effect ends, never the public hand.
+    state = applyOk(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 0 });
+    expect(state.players.p1.ongoingCards?.find((entry) => entry.cardId === "spell.fly")?.returnTo).toBe("spellBook");
+    expect(state.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
+  });
 });
 
 // ---------------------------------------------------------------------------

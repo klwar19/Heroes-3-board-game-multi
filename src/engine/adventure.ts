@@ -2881,11 +2881,16 @@ export function processPendingVisit(state: GameState): void {
         if (ongoing) {
           // Fly / Water Walk and any future lasting map spell cannot be cast a
           // second time while active. Knowledge marks the held card to come
-          // back as soon as its effect naturally ends.
-          ongoing.returnTo = "hand";
+          // back as soon as its effect naturally ends — to the Spell Book when
+          // it was cast from the Book, otherwise the hand.
+          ongoing.returnTo = step.fromSpellBook ? "spellBook" : "hand";
         } else {
           player.discard.splice(spellIndex, 1);
-          player.hand.push(step.spellCardId);
+          if (step.fromSpellBook) {
+            player.spellBook.push(step.spellCardId);
+          } else {
+            player.hand.push(step.spellCardId);
+          }
         }
 
         appendEvent(state, {

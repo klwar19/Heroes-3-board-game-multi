@@ -4570,6 +4570,69 @@ function getMisfortunePreWindowReactions(
   return reactions.length > 0 ? { [playerId]: reactions } : {};
 }
 
+/**
+ * Knowledge / Mysticism "take the Spell card back" plays a player holds in hand:
+ * the basic recall plus, when an expert use (or a crown-free Empowered ability)
+ * is available, the expert side. Shared by every window where a recall may be
+ * offered after a reaction Spell is played (the attack buff exchange, the
+ * lethal-save window, the Sorrow activation-skip window) so all three offer the
+ * same cards; the caller decides WHEN there is a recallable Spell to take back.
+ */
+function spellRecallReactionOffers(
+  player: PlayerState,
+  cards: CardLibrary
+): LegalAction[] {
+  const expertUsesLeft =
+    player.limits.expertUses +
+    (player.combatStats.expertUseBonusThisRound ?? 0) -
+    player.combatStats.expertUsesSpentThisRound;
+  const offers: LegalAction[] = [];
+  for (const cardId of new Set(player.hand)) {
+    const card = cards[cardId];
+    if (
+      !card ||
+      card.effect.type !== "RECALL_SPELL" ||
+      card.implementationStatus !== "implemented" ||
+      (card.timing !== "reaction" && card.timing !== "instant")
+    ) {
+      continue;
+    }
+    offers.push(makeReactionAction(card.name, { type: "PLAY_REACTION", playerId: player.id, cardId, mode: "basic" }));
+    if (effectHasExpertMode(card.effect) && (expertUsesLeft > 0 || abilityExpertIsCrownFree(player, cardId))) {
+      offers.push(
+        makeReactionAction(`${card.name} expert`, {
+          type: "PLAY_REACTION",
+          playerId: player.id,
+          cardId,
+          mode: "expert"
+        })
+      );
+    }
+  }
+  return offers;
+}
+
+/**
+ * Sorrow (activation-skip) recall window: a Sorrow closes its own window, so the
+ * reducer keeps it OPEN for the caster alone (recording combat.pendingActivation
+ * SkipRecall) to take the just-played Sorrow back. While that record is set this
+ * window offers ONLY the caster's Knowledge/Mysticism recall — no second Sorrow
+ * or other interrupt, which would assume a fresh activation of the already-
+ * skipped unit.
+ */
+function getActivationSkipRecallReactions(
+  state: GameState,
+  cards: CardLibrary
+): Record<PlayerId, LegalAction[]> {
+  const recall = state.combat?.pendingActivationSkipRecall;
+  const player = recall ? state.players[recall.playerId] : undefined;
+  if (!recall || !player || isHandLockedInCombat(state, recall.playerId)) {
+    return {};
+  }
+  const offers = spellRecallReactionOffers(player, cards);
+  return offers.length > 0 ? { [recall.playerId]: offers } : {};
+}
+
 function getLethalSaveReactions(
   state: GameState,
   triggerEvent: Extract<GameEvent, { type: "UNIT_LETHAL_HIT" }>,
@@ -4587,12 +4650,25 @@ function getLethalSaveReactions(
   }
 
   // The killing blow is saved at most once: if a save is already armed on the
-  // pending attack, offer nothing more so a second source can't double-save.
+  // pending attack, offer no second save. The one remaining play is a
+  // Knowledge/Mysticism take-back of the Spell that armed it (a lethal-save
+  // Resurrection) — held until the attack resolves, so the save still lands and
+  // the Spell can never be re-cast into this same attack. Offered only to the
+  // saving player, and only when they hold a recall card and have an own
+  // recallable Spell recorded on this attack; a Book Resurrection routes back
+  // into the Book on resolution (recallableSpellReactions carries fromSpellBook).
   const pendingAttack = state.stack.find(
     (item) => item.action.type === "ATTACK_UNIT" || item.action.type === "MOVE_AND_ATTACK_UNIT"
   );
   if (pendingAttack?.modifiers.cancelLethal) {
-    return {};
+    const hasOwnRecallable = (pendingAttack.modifiers.recallableSpellReactions ?? []).some(
+      (entry) => entry.playerId === playerId
+    );
+    if (!hasOwnRecallable || isHandLockedInCombat(state, playerId)) {
+      return {};
+    }
+    const recall = spellRecallReactionOffers(player, cards);
+    return recall.length > 0 ? { [playerId]: recall } : {};
   }
 
   const reactions: LegalAction[] = [];
@@ -4875,6 +4951,13 @@ export function getLegalReactionsForTrigger(
   // other cards are played".
   if (isAttackWindow && state.stack.at(-1)?.modifiers.misfortunePhase) {
     return getMisfortunePreWindowReactions(state, triggerEvent, cards);
+  }
+
+  // Sorrow take-back: while the activation-skip window is being held open for the
+  // caster's Knowledge/Mysticism recall, offer ONLY that recall (see the reducer's
+  // SKIP_ACTIVATION handler) — nothing else on the already-skipped unit.
+  if (triggerEvent.type === "UNIT_ACTIVATION_STARTED" && state.combat?.pendingActivationSkipRecall) {
+    return getActivationSkipRecallReactions(state, cards);
   }
 
   for (const player of Object.values(state.players)) {
@@ -5183,47 +5266,29 @@ export function getLegalReactionsForTrigger(
     }
 
     // Knowledge / Mysticism after a spell instant this player played into the
-    // pending attack (Stone Skin, Bloodlust, Curse, …): "play immediately after
-    // casting a spell — take the Spell card back into your hand instead of
-    // discarding it." The cast-window play is matched by the generic variant
-    // loop (Knowledge's printed trigger is SPELL_CAST_STARTED); this dedicated
-    // pass covers the attack window, where the spell was cast as a reaction and
-    // no cast window ever opens. The reducer takes back the player's most
-    // recent recallable entry and consumes it, so the offer disappears once
-    // every own spell on this attack has been recalled.
-    // KNOWN LIMIT: a spell reaction that CLOSES its window on play (Sorrow's
-    // activation skip, Magic Mirror's redirect, a counter played into a cast)
-    // leaves no window to offer the recall in — those casts stay unrecallable.
+    // pending attack (Stone Skin, Bloodlust, Curse, Misfortune, …): "play
+    // immediately after casting a spell — take the Spell card back into your
+    // hand instead of discarding it." The cast-window play is matched by the
+    // generic variant loop (Knowledge's printed trigger is SPELL_CAST_STARTED);
+    // this dedicated pass covers the attack-declared buff exchange
+    // (UNIT_ATTACK_DECLARED, incl. Misfortune's pre-buff phase), where the spell
+    // was cast as a reaction and no cast window ever opens. The reducer arms a
+    // DEFERRED take-back of the player's most recent recallable entry and
+    // consumes it — released only once the attack resolves, so it can never be
+    // re-cast into the same attack. The offer disappears once every own spell on
+    // this attack has been recalled. (The lethal-save window's Resurrection
+    // recall is offered separately in getLethalSaveReactions, since that window
+    // is computed on its own path.)
+    // (Sorrow's activation-skip recall is handled by its own kept-open window
+    // above; Magic Mirror's redirect and a counter played into a cast still
+    // close their window on play, so those casts stay unrecallable.)
     if (triggerEvent.type === "UNIT_ATTACK_DECLARED") {
       const attackItem = state.stack.at(-1);
       const hasOwnRecallable =
         (attackItem?.action.type === "ATTACK_UNIT" || attackItem?.action.type === "MOVE_AND_ATTACK_UNIT") &&
         (attackItem.modifiers.recallableSpellReactions ?? []).some((entry) => entry.playerId === player.id);
       if (hasOwnRecallable) {
-        for (const cardId of new Set(player.hand)) {
-          const card = cards[cardId];
-          if (
-            !card ||
-            card.effect.type !== "RECALL_SPELL" ||
-            card.implementationStatus !== "implemented" ||
-            (card.timing !== "reaction" && card.timing !== "instant")
-          ) {
-            continue;
-          }
-          reactions.push(
-            makeReactionAction(card.name, { type: "PLAY_REACTION", playerId: player.id, cardId, mode: "basic" })
-          );
-          if (effectHasExpertMode(card.effect) && (expertUsesLeft > 0 || abilityExpertIsCrownFree(player, cardId))) {
-            reactions.push(
-              makeReactionAction(`${card.name} expert`, {
-                type: "PLAY_REACTION",
-                playerId: player.id,
-                cardId,
-                mode: "expert"
-              })
-            );
-          }
-        }
+        reactions.push(...spellRecallReactionOffers(player, cards));
       }
     }
 
