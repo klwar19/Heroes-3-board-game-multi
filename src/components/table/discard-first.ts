@@ -68,3 +68,18 @@ export function armedPaymentFor(
   }
   return armed.costCardIds;
 }
+
+/**
+ * "Click to discard, then aim": in discard-first arming mode, picking the FINAL
+ * card of an EXACT discard cost should bank the payment and start aiming straight
+ * away — no separate "Discard, then aim" confirm click. `nextPickCount` is the
+ * number of cards that WILL be picked after this click. An `up-to` cost is never
+ * auto-armed (the player may want to discard fewer than the maximum, so they must
+ * confirm explicitly), and neither is a non-arming ("pay & play now") picker.
+ */
+export function shouldAutoArmOnPick(
+  pending: { exact?: number; upTo?: number; armSelection?: unknown },
+  nextPickCount: number
+): boolean {
+  return Boolean(pending.armSelection) && pending.exact !== undefined && nextPickCount === pending.exact;
+}

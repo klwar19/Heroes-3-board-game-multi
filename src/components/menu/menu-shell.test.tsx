@@ -1,17 +1,23 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MenuShell } from "./menu-shell";
 import { UI_ART_SLOTS } from "@/data/ui-art";
 import { useBackgroundMusic } from "@/lib/music";
+import { playLibrarySound } from "@/lib/sound";
 
 vi.mock("@/lib/music", () => ({
   useBackgroundMusic: vi.fn()
 }));
 
+vi.mock("@/lib/sound", () => ({
+  playLibrarySound: vi.fn()
+}));
+
 afterEach(() => {
   cleanup();
   vi.mocked(useBackgroundMusic).mockClear();
+  vi.mocked(playLibrarySound).mockClear();
 });
 
 describe("MenuShell", () => {
@@ -59,5 +65,27 @@ describe("MenuShell", () => {
       </MenuShell>
     );
     expect(screen.getByText("Playing as Binh")).toBeTruthy();
+  });
+
+  it("plays the button click sound when a menu nav button is clicked (and not otherwise)", () => {
+    render(
+      <MenuShell>
+        <button className="menuNavButton" type="button">
+          <span className="menuNavLabel">Multiplayer</span>
+        </button>
+        <button className="somethingElse" type="button">
+          Plain
+        </button>
+      </MenuShell>
+    );
+
+    // Clicking a nested label inside the nav button still resolves via closest().
+    fireEvent.click(screen.getByText("Multiplayer"));
+    expect(playLibrarySound).toHaveBeenCalledWith("ui/button", expect.any(Number));
+
+    // CONTROL: a click that is not on a menu nav button plays nothing.
+    vi.mocked(playLibrarySound).mockClear();
+    fireEvent.click(screen.getByText("Plain"));
+    expect(playLibrarySound).not.toHaveBeenCalled();
   });
 });

@@ -247,8 +247,9 @@ export const wogUnitDefinitions: Record<WogUnitId, UnitDefinition> = {
       health: 6,
       initiative: 11,
       cost: { gold: 25 },
-      abilities: ["gorgon-death-stare"],
-      abilityText: "[unit_attack] Death Stare: after the attack, roll 2 Attack dice. On two \"-1\" results, reduce the target's [health_points] to 0.",
+      abilities: ["gorgon-death-stare", "wog-nightmare-fear"],
+      abilityText:
+        "[unit_passive] Fear: when this unit is attacked (not on a Retaliation Attack), the attacker rolls 2 Attack dice and resolves the lower result. [unit_attack] Death Stare: after the attack, roll 2 Attack dice. On two \"-1\" results, reduce the target's [health_points] to 0.",
       cardImage: "/assets/units-neutral-golden-wog_nightmare.webp"
     },
     wikiUrl: "https://heroes.thelazy.net/index.php/In_the_Wake_of_Gods/Nightmare",

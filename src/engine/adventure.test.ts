@@ -1669,6 +1669,73 @@ describe("town economy", () => {
     expect(state.players.p1.populationPurchasedThisRound).toBe(true);
   });
 
+  describe("Population Token — recruiting a Secondary Hero blocks unit recruit/reinforce", () => {
+    // Bronze dwelling up, gold to spare, and a bronze Few freed so it is
+    // recruitable — the same starting point as the population window tests.
+    function townReadyToRecruit(): GameState {
+      let state = refreshP1(makeGame());
+      state.players.p1.resources.buildingMaterials = 20;
+      state.players.p1.resources.valuables = 20;
+      state.players.p1.resources.gold = 100;
+      state = apply(state, {
+        type: "BUILD_STRUCTURE",
+        playerId: "p1",
+        townId: "town_p1",
+        buildingId: "castle.dwelling_bronze"
+      });
+      state.players.p1.army = state.players.p1.army.filter((unit) => unit.unitDefId !== "castle.griffins");
+      return state;
+    }
+
+    const recruitGriffins: GameAction = {
+      type: "POPULATION_ACTION",
+      playerId: "p1",
+      purchases: [{ kind: "recruit", unitDefId: "castle.griffins" }]
+    };
+    const hireOffer = (state: GameState) =>
+      getLegalActions(state, "p1").find((legal) => legal.action.type === "HIRE_SECONDARY_HERO")?.action as
+        | Extract<GameAction, { type: "HIRE_SECONDARY_HERO" }>
+        | undefined;
+    const recruitOffered = (state: GameState) =>
+      getLegalActions(state, "p1").some(
+        (legal) =>
+          legal.action.type === "POPULATION_ACTION" && legal.action.purchases[0]?.unitDefId === "castle.griffins"
+      );
+
+    it("hiring a hero spends the token: recruit/reinforce offers vanish and the action is rejected", () => {
+      const state = townReadyToRecruit();
+      // Both offers are live on the fresh Population Token.
+      expect(recruitOffered(state)).toBe(true);
+      const hire = hireOffer(state);
+      expect(hire).toBeDefined();
+
+      const afterHire = apply(state, hire!);
+      // The Population Token is spent on the hero...
+      expect(afterHire.players.p1.townTokens.population).toBe(false);
+      // ...so no unit recruit/reinforce is offered any more...
+      expect(recruitOffered(afterHire)).toBe(false);
+      // ...and forcing the POPULATION_ACTION is rejected.
+      const forced = applyAction(afterHire, recruitGriffins);
+      expect(forced.errors.length).toBeGreaterThan(0);
+    });
+
+    it("CONTROL: without hiring a hero, the same recruit goes through on the token", () => {
+      const state = townReadyToRecruit();
+      const recruited = apply(state, recruitGriffins);
+      expect(recruited.players.p1.army.some((unit) => unit.unitDefId === "castle.griffins")).toBe(true);
+      expect(recruited.players.p1.townTokens.population).toBe(true);
+    });
+
+    it("a Population Token already spent this round offers no hero hire and rejects it", () => {
+      const state = townReadyToRecruit();
+      const hire = hireOffer(state)!; // capture a valid portrait while the token is up
+      state.players.p1.townTokens.population = false;
+      expect(hireOffer(state)).toBeUndefined();
+      const forced = applyAction(state, hire);
+      expect(forced.errors.length).toBeGreaterThan(0);
+    });
+  });
+
   describe("Population window stays open until a move (BINH house rule)", () => {
     // Bronze dwelling up and gold to spare. The scenario seeds every bronze
     // few into the starting army, so clear marksmen + griffins (each unit card

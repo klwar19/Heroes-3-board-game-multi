@@ -2,12 +2,12 @@ import { cardLibrary } from "@/data/cards/library";
 import { isAdjacent } from "./battlefield";
 import { appendEvent, nextEventNumber } from "./events";
 import {
+  getUnitAbilityDefinitions,
   hasAmplifyInitiativeIncrease,
   hasIgnoreOngoingEffects,
   hasIgnoreOngoingSpellEffects,
   hasIgnoreSpellAndSpecialtyNonDamage,
-  hasIgnoreParalysis,
-  hasUnitAbilityEffect
+  hasIgnoreParalysis
 } from "./unit-abilities";
 import type {
   ActiveEffectDefinition,
@@ -299,9 +299,27 @@ export function spellNullifiedByRestriction(state: GameState, finalPower: number
  * (the Elemental units) or a granted effect (Moandor's Liches VI specialty).
  * Elemental damage cannot be raised by attack cards or Attack tokens; debuffs
  * such as a Sorceress' Weakness still lower it (handled in the attack maths).
+ *
+ * `attackKind` is the kind of the attack currently being resolved. The WOG Santa
+ * Gremlin's Ice Bolt is `rangedOnly`: it deals elemental damage on a ranged shot
+ * but NOT on a melee attack (in particular a forced melee Retaliation Attack),
+ * which rolls the Attack die normally. When called without an `attackKind` (the
+ * general "does this unit deal elemental damage at all" question — deck audits,
+ * clone/summon checks, FX) a ranged-only source still counts.
  */
-export function unitDealsElementalDamage(state: GameState, unit: CombatUnitState): boolean {
-  if (hasUnitAbilityEffect(unit, "DEALS_ELEMENTAL_DAMAGE")) {
+export function unitDealsElementalDamage(
+  state: GameState,
+  unit: CombatUnitState,
+  attackKind?: "melee" | "ranged"
+): boolean {
+  for (const ability of getUnitAbilityDefinitions(unit)) {
+    if (ability.implementationStatus !== "implemented" || ability.effect?.type !== "DEALS_ELEMENTAL_DAMAGE") {
+      continue;
+    }
+    // A ranged-only elemental hit (Ice Bolt) does not apply to a melee attack.
+    if (ability.effect.rangedOnly && attackKind !== undefined && attackKind !== "ranged") {
+      continue;
+    }
     return true;
   }
 

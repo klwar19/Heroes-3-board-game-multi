@@ -33,8 +33,15 @@ export type UnitAbilityEffectDefinition =
        * unit deals elemental damage." Its attack value cannot be raised by
        * attack cards or Attack tokens — only lowered by debuffs such as a
        * Sorceress' Weakness. A passive, always-on trait of the printed card.
+       *
+       * `rangedOnly` (WOG Santa Gremlin's Ice Bolt): the elemental hit is fired
+       * only on a RANGED shot. A melee attack — in particular a forced melee
+       * Retaliation Attack — rolls the Attack die normally (respecting Defense)
+       * instead of dealing the un-rollable elemental damage. Threaded through
+       * unitDealsElementalDamage via the current attack's `attackKind`.
        */
       type: "DEALS_ELEMENTAL_DAMAGE";
+      rangedOnly?: boolean;
     }
   | {
       /**
@@ -416,6 +423,18 @@ export type UnitAbilityEffectDefinition =
        * Retaliation Attack against this unit rolls at disadvantage.
        */
       type: "RETALIATION_AGAINST_DISADVANTAGE";
+    }
+  | {
+      /**
+       * WOG Nightmare: "[unit_passive] When this unit is attacked, the attacker
+       * rolls 2 Attack dice and resolves the LOWER result." A defender-side Fear
+       * that forces the incoming attack to roll at disadvantage. It fires only on
+       * a real attack ON the Nightmare — never on the Nightmare's own Retaliation
+       * Attack, and never on a foe's retaliation back against the Nightmare (a
+       * Retaliation Attack is not "attacking" it). Read via the `defender` param
+       * of getAttackRollMode, gated on `!isRetaliation`.
+       */
+      type: "FEAR_ATTACKER_DISADVANTAGE";
     }
   | {
       /**
@@ -1759,6 +1778,13 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     effect: { type: "RETALIATION_AGAINST_DISADVANTAGE" },
     implementationStatus: "implemented"
   },
+  "wog-nightmare-fear": {
+    id: "wog-nightmare-fear",
+    name: "Fear",
+    text: "When this unit is attacked (not on a Retaliation Attack), the attacker rolls 2 Attack dice and resolves the lower result.",
+    effect: { type: "FEAR_ATTACKER_DISADVANTAGE" },
+    implementationStatus: "implemented"
+  },
   "ghost-dragon-morale-drain": {
     id: "ghost-dragon-morale-drain",
     name: "Aging",
@@ -2493,8 +2519,12 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "wog-santa-ice-bolt": {
     id: "wog-santa-ice-bolt",
     name: "Ice Bolt Attack",
-    text: "[unit_attack] This unit's ranged attack uses Ice Bolt.",
-    effect: { type: "DEALS_ELEMENTAL_DAMAGE" },
+    text: "[unit_attack] This unit's ranged attack uses Ice Bolt. A melee Retaliation Attack instead rolls the Attack die normally.",
+    // rangedOnly: the un-rollable Ice Bolt applies only to a RANGED shot. Forced
+    // into a melee Retaliation Attack the Santa Gremlin rolls its Attack die like
+    // any shooter fighting in melee (at the ranged-in-melee disadvantage), rather
+    // than dealing fixed elemental damage that ignores the die and Defense.
+    effect: { type: "DEALS_ELEMENTAL_DAMAGE", rangedOnly: true },
     implementationStatus: "implemented"
   },
   "wog-santa-guard": {

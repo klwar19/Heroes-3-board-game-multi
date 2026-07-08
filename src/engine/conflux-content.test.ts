@@ -9,8 +9,11 @@ import {
   applyAction,
   createAdventureGameState,
   createInitialGameState,
+  getAttackRollMode,
   getLegalActions,
+  getUnitMoveRange,
   makeCombatUnitFromArmy,
+  markUnitRemovedIfNeeded,
   standingSpellPower,
   unitMatchesSpecialtyName
 } from "./index";
@@ -236,6 +239,45 @@ describe("Conflux content", () => {
     // Magma Elementals stay ground on both sides.
     const magma = makeCombatUnitFromArmy({ id: "a-magma", unitDefId: "conflux.magma_elementals", side: "pack" }, "p1", "u-magma", 0);
     expect(magma?.type).toBe("ground");
+  });
+
+  it("a Pack Storm/Ice Elemental knocked down to its Few side becomes MELEE (ground) and changes combat behaviour", () => {
+    // The Few side is ground (melee); the Pack side is ranged. When a Pack is
+    // knocked down to its Few side mid-combat the unit must STOP shooting and
+    // fight in melee — the type has to be recomputed on the side change, not
+    // frozen at the Pack's ranged type.
+    for (const id of ["conflux.storm_elementals", "conflux.ice_elementals"]) {
+      const state = createInitialGameState(`elemental-flip-${id}`);
+      const elem = state.combat!.units.unit_p2_skeletons;
+      elem.unitDefId = id;
+      elem.name = coreUnitDefinitions[id].name;
+      elem.variant = "pack";
+      elem.type = "ranged"; // Pack side is ranged
+      elem.maxHealth = coreUnitDefinitions[id].pack!.health;
+      elem.damage = 0;
+      elem.position = 13;
+
+      // A foe placed directly above (adjacent) to test the attack roll.
+      const foe = state.combat!.units.unit_p1_griffins;
+      foe.type = "ground";
+      foe.position = 9;
+
+      // BEFORE the flip (Pack, ranged): shooting an ADJACENT enemy suffers the
+      // ranged Combat penalty (roll two dice, keep the lower), and it moves 1.
+      expect(getAttackRollMode(elem, foe), `${id} pack adjacent`).toBe("disadvantage");
+      expect(getUnitMoveRange(elem), `${id} pack move`).toBe(1);
+
+      // Knock the Pack down to its Few side.
+      elem.damage = elem.maxHealth;
+      markUnitRemovedIfNeeded(state, elem);
+      expect(elem.variant, `${id} flipped`).toBe("few");
+
+      // AFTER the flip (Few, ground/melee): it strikes the adjacent enemy with a
+      // normal single-die roll (no ranged penalty) and moves 3 like a ground unit.
+      expect(elem.type, `${id} few type`).toBe("ground");
+      expect(getAttackRollMode(elem, foe), `${id} few adjacent`).toBe("normal");
+      expect(getUnitMoveRange(elem), `${id} few move`).toBe(3);
+    }
   });
 
   it("places the Conflux starting tile and town for a seated Conflux player", () => {

@@ -2780,6 +2780,13 @@ function getAttackStackDetails(
     rollMode = "disadvantage";
   }
 
+  // WOG Nightmare's Fear is a defender-side forced disadvantage, not a ranged
+  // penalty, so the Precision/Golden Bow waiver above must never lift it either —
+  // re-assert it when a real attack targets the Nightmare (never on a retaliation).
+  if (!isRetaliation && hasUnitAbilityEffect(defender, "FEAR_ATTACKER_DISADVANTAGE")) {
+    rollMode = "disadvantage";
+  }
+
   const activeAttackBonus = getActiveAttackBonus(state, {
     attacker,
     defender,
@@ -2893,7 +2900,7 @@ function getAttackStackDetails(
   // by debuffs such as a Sorceress' Weakness. Clamp the positive card/token
   // contributions to 0 while leaving every negative one (and the printed
   // attack) intact.
-  const dealsElemental = unitDealsElementalDamage(state, attacker);
+  const dealsElemental = unitDealsElementalDamage(state, attacker, attackKind);
   const cardAttackBonus =
     stackItem.modifiers.attackBonus + activeAttackBonus + redirectedAttackDelta + initiativeConditionalAttackBonus;
   const effectiveCardAttackBonus = dealsElemental ? Math.min(0, cardAttackBonus) : cardAttackBonus;

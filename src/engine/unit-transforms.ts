@@ -143,6 +143,15 @@ export function applyUnitCurrentSide(
 
   const side = applyUnitSideRules(ruleset, unit.unitDefId as string, unit.variant, printed, overrides);
   unit.cardName = printedCardName(unit.variant, def.name);
+  // The melee/ranged/flying TYPE is a per-side property (`side.type ?? def.type`),
+  // exactly like the creation-time formula in makeCombatUnitFromArmy. Recompute it
+  // here so a mid-combat side change carries the new type: Storm/Ice Elementals are
+  // ranged on their Pack side but MELEE (ground) on the Few side, so a Pack knocked
+  // down to its Few side must stop shooting and fight in melee — likewise a Pack
+  // Energy Elemental (flying) reverts to ground, and a Pack Gremlin/Titan (ranged)
+  // reverts to ground. Without this the flipped unit kept its Pack type and behaved
+  // as a shooter on a melee card.
+  unit.type = side.type ?? def.type;
   // House rule (BINH) — Gelu IV: re-apply the permanent +Attack onto the printed
   // side so a Gelu-recruited Sharpshooters keeps its buff across any recompute
   // (e.g. a Pack→Few flip). A specialty cover (top branch) or a bank card (above)

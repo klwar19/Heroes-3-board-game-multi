@@ -989,6 +989,16 @@ export function getAttackRollMode(
     return "disadvantage";
   }
 
+  // WOG Nightmare's Fear: attacking the Nightmare forces the attacker to roll two
+  // Attack dice and keep the LOWER. Like the Shaman's Puppet it is a forced
+  // disadvantage that beats the attacker's own advantage, so it is resolved before
+  // the ATTACK_ROLL_ADVANTAGE block. It fires only on a real attack ON the
+  // Nightmare (the `defender`), never when the current attack is a Retaliation
+  // Attack — so a foe's retaliation back against the Nightmare rolls normally.
+  if (!isRetaliation && hasUnitAbilityEffect(defender, "FEAR_ATTACKER_DISADVANTAGE")) {
+    return "disadvantage";
+  }
+
   // "[unit_attack] Roll 2 Attack dice and resolve the higher one" (Factory
   // Halflings Few/Pack, the neutral Crusaders/Leprechaun/Halfling). Per the
   // board-game ruling this specific card ability OVERRIDES the general ranged
@@ -6828,8 +6838,11 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
   }
 
   // Buy a Secondary Hero for 10 gold (one per player). It appears at the town
-  // wearing the portrait of one of your faction's other heroes.
-  if (!getSecondaryHero(state, playerId) && playerHasResources(player, { gold: 10 })) {
+  // wearing the portrait of one of your faction's other heroes. Hiring one spends
+  // the Population Token (the same token that recruits/reinforces units), so it is
+  // only offered while that token is still available this round — and taking it
+  // hides the recruit/reinforce offers (which are likewise gated on the token).
+  if (!getSecondaryHero(state, playerId) && player.townTokens.population && playerHasResources(player, { gold: 10 })) {
     const faction = player.factionId ? coreFactionDefinitions[player.factionId] : undefined;
     const mainHeroDefId = Object.values(state.heroes).find(
       (candidate) => candidate.controllerId === playerId && candidate.kind === "main"
