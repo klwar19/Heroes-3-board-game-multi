@@ -463,3 +463,117 @@ describe("no owner-owned pending choice is ever invisible (freeze guard)", () =>
 function state0Phase(): GameState["phase"] {
   return "player-turn";
 }
+
+/**
+ * Mage Laboratory regression (the original multiplayer report): while the
+ * drawer shopped the spell market, the OTHER seat's screen was blocked by a
+ * wrong overlay and their clicks bought nothing. Pin both halves per seat:
+ * the waiting seat renders NO buy buttons (only the named waiting strip) and
+ * holds NO resolving actions engine-side; once the drawer finishes, the
+ * waiting seat's own menu opens and a click REALLY buys — the spell shuffles
+ * into their deck (Mage Laboratory's buy-to-deck) and the gold is paid.
+ */
+function mageLabGame(options: { hosted: boolean; ranked: boolean; p2UserId?: string }): GameState {
+  const state = createAdventureGameState({
+    seed: `mage-lab-visibility-${options.hosted ? "hosted" : "open"}-${options.ranked ? "ranked" : "normal"}-${
+      options.p2UserId ?? "guest"
+    }`,
+    difficulty: "normal",
+    rollFirstPlayer: false,
+    events: true,
+    players: [
+      { id: "p1", name: "Catherine", factionId: "castle", heroDefId: "catherine" },
+      { id: "p2", name: "Sandro", factionId: "necropolis", heroDefId: "sandro" }
+    ]
+  });
+  for (const player of Object.values(state.players)) {
+    player.canMulligan = false;
+    player.needsHandRefresh = false;
+    player.resources = { gold: 30, buildingMaterials: 5, valuables: 5 };
+    player.production = { gold: 0, buildingMaterials: 0, valuables: 0 };
+  }
+  state.adventure!.rewardQueue = [];
+  state.adventure!.pendingVisit = null;
+  state.pendingChoice = null;
+  state.room = options.hosted
+    ? {
+        hosted: true,
+        hostClientId: "c1",
+        ranked: options.ranked,
+        members: [
+          { clientId: "c1", name: "Catherine", seat: "p1", isHost: true },
+          {
+            clientId: "c2",
+            name: "Sandro",
+            seat: "p2",
+            isHost: false,
+            ...(options.p2UserId ? { userId: options.p2UserId } : {})
+          }
+        ]
+      }
+    : { hosted: false, hostClientId: null, ranked: options.ranked, members: [] };
+
+  state.adventure!.events!.nextDrawerIndex = 1; // p2 (Sandro) draws and shops first
+  stackEventDeck(state, "event.mage_laboratory");
+  state.round = 3;
+  startAdventureRound(state);
+  pumpAdventureQueues(state);
+  const pendingVisit = state.adventure?.pendingVisit as { playerId?: string } | null | undefined;
+  expect(pendingVisit?.playerId).toBe("p2");
+  return state;
+}
+
+describe("Mage Laboratory visibility: the waiting seat is never blocked by the drawer's market and can buy on its own turn", () => {
+  it.each(eventVisibilityCases)("$label: waiting seat has no buy buttons or resolving actions while the drawer shops", (testCase) => {
+    const state = mageLabGame(testCase);
+    const frame = testCase.hosted ? frameForActor(state, { clientId: "c1" }) : state;
+
+    // Engine side: the waiting seat holds NO event-resolving action at all — a
+    // click landing anyway (the reported "click, get nothing") is impossible.
+    const p1Legal = getLegalActions(frame, "p1");
+    expect(p1Legal.filter((entry) => entry.action.type === "RESOLVE_VISIT_STEP")).toEqual([]);
+
+    // UI side: no buy buttons render for p1 — only the waiting strip naming p2.
+    render(<PromptTray legalActions={p1Legal} onAction={vi.fn()} state={frame} viewerPlayerId="p1" />);
+    expect(screen.queryByRole("button", { name: /^Buy / })).toBeNull();
+    expect(screen.getByText(/Sandro is resolving the round's Event/i)).toBeTruthy();
+  });
+
+  it.each(eventVisibilityCases)("$label: after the drawer finishes, the waiting seat's own menu opens and a click REALLY buys", (testCase) => {
+    const state = mageLabGame(testCase);
+
+    // The drawer (p2) finishes their shopping without buying.
+    const skip = getLegalActions(state, "p2").find(
+      (entry) => entry.action.type === "RESOLVE_VISIT_STEP" && entry.label === "Skip"
+    );
+    expect(skip, "the drawer has a Skip option").toBeTruthy();
+    const afterDrawer = applyOk(state, skip!.action, testCase.hosted ? testCase.actor : undefined);
+    const afterVisit = afterDrawer.adventure?.pendingVisit as { playerId?: string } | null | undefined;
+    expect(afterVisit?.playerId).toBe("p1");
+
+    // Now p1's own market menu renders with live buy buttons…
+    const frame = testCase.hosted ? frameForActor(afterDrawer, { clientId: "c1" }) : afterDrawer;
+    const p1Legal = getLegalActions(frame, "p1");
+    const onAction = vi.fn();
+    render(<PromptTray legalActions={p1Legal} onAction={onAction} state={frame} viewerPlayerId="p1" />);
+    const buyButton = screen.getAllByRole("button", { name: /^Buy .* \(4 gold\)$/ })[0];
+    fireEvent.click(buyButton);
+    expect(onAction).toHaveBeenCalledTimes(1);
+
+    // …and the submitted click ACTUALLY buys: the spell leaves the shared pool
+    // and shuffles into p1's DECK (Mage Laboratory buys to deck, not hand),
+    // with the 4 gold paid.
+    const poolBefore = afterDrawer.adventure!.events!.pool.map((entry) => entry.cardId);
+    const goldBefore = afterDrawer.players.p1.resources.gold;
+    const countIn = (cards: string[], id: string) => cards.filter((cardId) => cardId === id).length;
+    const submitted = onAction.mock.calls[0][0] as GameAction;
+    const done = applyOk(afterDrawer, submitted, testCase.hosted ? { clientId: "c1" } : undefined);
+    const boughtId = poolBefore.find(
+      (id) => countIn(done.players.p1.deck, id) > countIn(afterDrawer.players.p1.deck, id)
+    );
+    expect(boughtId, "a pool spell landed in p1's deck").toBeTruthy();
+    expect(done.players.p1.hand).not.toContain(boughtId);
+    expect(done.players.p1.resources.gold).toBe(goldBefore - 4);
+    expect(done.adventure!.events!.pool.map((entry) => entry.cardId)).not.toContain(boughtId);
+  });
+});

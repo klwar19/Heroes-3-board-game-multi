@@ -43,6 +43,7 @@ import {
   expertUsesAvailable,
   getRuleset,
   unitSideRuleOverrides,
+  ARTIFACT_DECK_RELIC,
   NECROMANCY_ABILITY_ID,
   NECROPOLIS_FACTION_ID
 } from "./ruleset";
@@ -2082,6 +2083,18 @@ export function eliminatePlayer(
   // barrier. The barrier sentinel carries only a nominal playerId and is
   // pumped regardless of seat, so it stays.
   if (state.adventure) {
+    // Shared Event bookkeeping queued on the eliminated seat (the Event
+    // drawer's auction opens/resolves, the end-of-Event pool cleanup) acts on
+    // TABLE state, not on the seat: dropping it with the seat's own rewards
+    // would leak the displayed pool/lot cards out of the game (the next Event
+    // resets events.pool/auction) and leave remaining auction lots unrun.
+    // Hand those steps to the next live seat — they never read visit.playerId.
+    const nextLiveId = liveEventPlayers(state)[0];
+    for (const reward of state.adventure.rewardQueue) {
+      if (nextLiveId && reward.playerId === playerId && isSharedEventBookkeepingReward(reward)) {
+        reward.playerId = nextLiveId;
+      }
+    }
     state.adventure.rewardQueue = state.adventure.rewardQueue.filter(
       (reward) => reward.kind === "round-start-events-resolved" || reward.playerId !== playerId
     );
@@ -2096,6 +2109,17 @@ export function eliminatePlayer(
     }
     if (state.adventure.pendingFarTileFlip?.playerId === playerId) {
       state.adventure.pendingFarTileFlip = null;
+    }
+    // Event shared-state the seat held a stake in: a secret auction bid must
+    // not win the lot for a dead hand, and an open 1-for-1 Marketplace deal
+    // they proposed must not stay acceptable (with the deal voided, queued
+    // EVENT_MARKET_DEAL_ANSWER steps see no deal and fall through cleanly).
+    const events = state.adventure.events;
+    if (events?.auction) {
+      delete events.auction.bids[playerId];
+    }
+    if (events?.deal && events.deal.proposerId === playerId && !events.deal.done) {
+      events.deal = null;
     }
   }
 
@@ -4114,9 +4138,16 @@ function spellDeckCandidates(state: GameState): string[] {
  * When `playerId` is given, redraws past any card that player may not acquire
  * (a duplicate they already own, a starting-only spell) — the skipped cards are
  * tucked back under the deck, never consumed, so the other copies survive for
- * everyone else. Returns null when nothing acquirable is left.
+ * everyone else. An `accept` filter redraws past rejected cards the same way
+ * (the Events' early-game Relic lock on a legacy single Artifact deck).
+ * Returns null when nothing acquirable is left.
  */
-function drawTopOfSharedDeck(state: GameState, deckId: string, playerId?: PlayerId): string | null {
+function drawTopOfSharedDeck(
+  state: GameState,
+  deckId: string,
+  playerId?: PlayerId,
+  accept?: (cardId: string) => boolean
+): string | null {
   const deck = state.decks[deckId];
   if (!deck) {
     return null;
@@ -4135,7 +4166,7 @@ function drawTopOfSharedDeck(state: GameState, deckId: string, playerId?: Player
     if (!card) {
       break;
     }
-    if (!playerId || canAcquireSharedDeckCard(state, playerId, deckId, card)) {
+    if ((!playerId || canAcquireSharedDeckCard(state, playerId, deckId, card)) && (!accept || accept(card))) {
       taken = card;
       break;
     }
@@ -8370,6 +8401,29 @@ function liveEventPlayers(state: GameState): PlayerId[] {
   return humanPlayerIds(state).filter((id) => !state.players[id]?.eliminated);
 }
 
+/**
+ * Visit-step types that do TABLE bookkeeping for an Event rather than acting
+ * on their owner: the Shady Auction's lot open/resolve and the end-of-Event
+ * pool cleanup. They are queued on the DRAWER's seat but never read
+ * `visit.playerId` — so when that seat is eliminated mid-Event they must be
+ * handed to a live seat, not dropped (dropping them leaks the displayed
+ * pool/lot cards out of the game and leaves an open auction unresolved).
+ */
+const SHARED_EVENT_BOOKKEEPING_STEP_TYPES = new Set<VisitStep["type"]>([
+  "EVENT_POOL_CLEANUP",
+  "EVENT_AUCTION_OPEN",
+  "EVENT_AUCTION_RESOLVE"
+]);
+
+/** A queued reward that ONLY does shared Event bookkeeping (safe to reassign). */
+export function isSharedEventBookkeepingReward(reward: AdventureReward): boolean {
+  return (
+    reward.kind === "visit-steps" &&
+    reward.steps.length > 0 &&
+    reward.steps.every((step) => SHARED_EVENT_BOOKKEEPING_STEP_TYPES.has(step.type))
+  );
+}
+
 function eventNote(state: GameState, message: string, playerId?: PlayerId): void {
   appendEvent(state, { type: "EVENT_NOTE", ...(playerId ? { playerId } : {}), message });
 }
@@ -8617,6 +8671,23 @@ function resolveEventCard(state: GameState, card: EventCardDefinition, order: Pl
 
 type EventDeckFamily = "spells" | "artifacts" | "abilities";
 
+/**
+ * Fortress Events that GIVE Artifact cards — the Shady Auction's lots, the
+ * Artifact Merchant's pool and discard-top offer, Messenger with Supplies'
+ * draws, and a Magical Forest "draw and view" contribution — offer minor/major
+ * Artifacts only in the early game; Relic-tier cards join the offers from this
+ * round on (balance house rule). Event-granted SEARCHES of the Artifact deck
+ * are not touched — they keep the normal BINH progression gates
+ * (artifactDeckAccess) — and a Relic a player contributes from their own hand
+ * was already in circulation, so it stays legal in the Forest pool.
+ */
+export const EVENT_RELIC_MIN_ROUND = 5;
+
+/** Whether Event artifact offers must skip Relic-tier cards this round. */
+function eventRelicsLocked(state: GameState): boolean {
+  return state.round < EVENT_RELIC_MIN_ROUND;
+}
+
 /** The shared-deck ids a family resolves to in this game (BINH splits / legacy single decks). */
 function eventFamilyDeckIds(state: GameState, family: EventDeckFamily): string[] {
   const candidates =
@@ -8628,6 +8699,18 @@ function eventFamilyDeckIds(state: GameState, family: EventDeckFamily): string[]
           ? ["artifacts"]
           : ["artifacts-minor", "artifacts-major", "artifacts-relic"];
   return candidates.filter((deckId) => state.decks[deckId]);
+}
+
+/**
+ * The family deck ids an Event DRAW may currently hit — eventFamilyDeckIds
+ * minus the Relic deck while the early-game lock holds, so "is there anything
+ * to draw?" offers (Magical Forest's draw-and-view) agree with what
+ * drawEventFamilyCard would actually find. A legacy single mixed deck stays
+ * listed; its Relic cards are skipped per-card at draw time instead.
+ */
+function eventFamilyDrawableDeckIds(state: GameState, family: EventDeckFamily): string[] {
+  const relicLocked = family === "artifacts" && eventRelicsLocked(state);
+  return eventFamilyDeckIds(state, family).filter((deckId) => !(relicLocked && deckId === ARTIFACT_DECK_RELIC));
 }
 
 /**
@@ -8644,7 +8727,12 @@ function drawEventFamilyCard(
   playerId: PlayerId | undefined,
   salt: number
 ): { cardId: CardId; deckId: string } | null {
-  const piles = eventFamilyDeckIds(state, family)
+  // Early-game Relic lock (EVENT_RELIC_MIN_ROUND): the split Relic deck drops
+  // out of the weighted pick entirely (eventFamilyDrawableDeckIds); a legacy
+  // single Artifact deck instead redraws past Relic cards below (the `accept`
+  // filter).
+  const relicLocked = family === "artifacts" && eventRelicsLocked(state);
+  const piles = eventFamilyDrawableDeckIds(state, family)
     .map((deckId) => {
       const deck = state.decks[deckId];
       return { deckId, size: (deck?.drawPile.length ?? 0) + (deck?.discardPile.length ?? 0) };
@@ -8667,7 +8755,12 @@ function drawEventFamilyCard(
   }
 
   for (const pile of [picked, ...piles.filter((candidate) => candidate !== picked)]) {
-    const cardId = drawTopOfSharedDeck(state, pile.deckId, playerId);
+    const cardId = drawTopOfSharedDeck(
+      state,
+      pile.deckId,
+      playerId,
+      relicLocked ? (candidate) => cardLibrary[candidate]?.artifactTier !== "relic" : undefined
+    );
     if (cardId) {
       return { cardId, deckId: pile.deckId };
     }
@@ -9450,7 +9543,9 @@ function applyEventVisitStep(state: GameState, visit: PendingVisit, step: VisitS
         });
       }
       for (const family of ["spells", "artifacts", "abilities"] as EventDeckFamily[]) {
-        const hasCards = eventFamilyDeckIds(state, family).some((deckId) => {
+        // Drawable ids only: an Artifact draw-and-view is not offered when the
+        // early-game Relic lock leaves nothing this draw could actually hit.
+        const hasCards = eventFamilyDrawableDeckIds(state, family).some((deckId) => {
           const deck = state.decks[deckId];
           return (deck?.drawPile.length ?? 0) + (deck?.discardPile.length ?? 0) > 0;
         });
@@ -9868,7 +9963,12 @@ function applyEventVisitStep(state: GameState, visit: PendingVisit, step: VisitS
           if (!top) {
             continue;
           }
-          const price = EVENT_ARTIFACT_PRICES[cardLibrary[top]?.artifactTier ?? "minor"];
+          const tier = cardLibrary[top]?.artifactTier ?? "minor";
+          // The early-game Relic lock covers the discard-top offer too.
+          if (tier === "relic" && eventRelicsLocked(state)) {
+            continue;
+          }
+          const price = EVENT_ARTIFACT_PRICES[tier];
           if (canAcquireSharedDeckCard(state, visit.playerId, deckId, top) && hasResources(player, { gold: price })) {
             options.push({
               label: `Buy the discard top ${cardLibrary[top]?.name ?? top} (${price} gold)`,

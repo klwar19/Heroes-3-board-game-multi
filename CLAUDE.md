@@ -568,9 +568,33 @@ still gets the proclamation/Event overlay: the first-snapshot priming marks the
 draw event "seen", so `reconnectRoundStartCues` (components/table/utils.ts,
 pinned in `reconnect-round-start-cue.test.ts`) rebuilds the cue from live state
 for exactly the barrier-up window — reconnects after resolution stay replay-free.
+(4) A mid-Event elimination (AFK kick / concede while a Fortress Event is
+resolving) must not leak the shared display: the drawer-owned TABLE bookkeeping
+rewards (`EVENT_POOL_CLEANUP`, `EVENT_AUCTION_OPEN`/`_RESOLVE` — playerId-
+agnostic steps) are handed to the next live seat instead of being dropped with
+the seat's own rewards (`isSharedEventBookkeepingReward`, applied in
+`eliminatePlayer` AND in `pumpAdventureQueues`' eliminated-owner skip for
+pre-fix snapshots); the dead seat's secret auction bid is scrubbed so it can
+never win a lot into a dead hand, and an un-answered 1-for-1 Marketplace deal
+they proposed is voided (queued ANSWER steps fall through cleanly — an
+already-open Accept button becomes a no-op). Pinned in `event-deck.test.ts`
+("Event resolution survives a mid-Event elimination"), each fix
+mutation-checked.
 
 Engine readings / deviations a reviewer should know (all deliberate, commented at
 the wiring site):
+- **Early-game Relic lock (HOUSE RULE)**: Events that GIVE Artifact cards — the
+  Shady Auction's lots, the Artifact Merchant's pool AND its discard-top offer,
+  Messenger with Supplies' draws, a Magical Forest "draw and view" contribution
+  (whose menu option is also hidden when the lock leaves nothing drawable) —
+  offer minor/major Artifacts only before round 5; Relics join the offers from
+  round `EVENT_RELIC_MIN_ROUND` (= 5, `src/engine/adventure.ts`) on. With split
+  decks the Relic deck drops out of the weighted pick; a legacy single Artifact
+  deck redraws past Relic cards (tucked under, never consumed). Event-granted
+  SEARCHES of the Artifact deck keep the normal BINH progression gates instead,
+  and a Relic contributed from a player's own hand stays legal in the Forest
+  pool. Pinned in `event-market-cards.test.ts` ("Event — early-game Relic
+  lock") with round-5 CONTROLs; mutation-checked.
 - **Den of Thieves** resolves for the DRAWER only — its printed "you" with no
   pass-around clause, read like Artifact Merchant's "you" (which the rulebook's
   own example pins to the drawer).

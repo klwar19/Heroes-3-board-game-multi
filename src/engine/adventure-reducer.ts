@@ -82,6 +82,7 @@ import {
   instantiateTile,
   isFieldGuarded,
   isOuterEdgeSealed,
+  isSharedEventBookkeepingReward,
   seaStepHalts,
   makeCombatUnitFromArmy,
   makeCombatUnitFromNeutral,
@@ -9192,8 +9193,17 @@ export function pumpAdventureQueues(state: GameState): void {
 
     // A reward whose owner has been eliminated since it was queued would open
     // a choice nobody can answer — drop it. (The barrier sentinel below is
-    // table-wide and pumps regardless of its nominal playerId.)
+    // table-wide and pumps regardless of its nominal playerId.) Shared Event
+    // bookkeeping (pool cleanup, auction open/resolve) is the exception: it
+    // acts on TABLE state, so it is handed to the next live seat instead of
+    // dropping the displayed cards — mirrors eliminatePlayer, and covers
+    // snapshots saved before that cleanup existed.
     if (reward.kind !== "round-start-events-resolved" && state.players[reward.playerId]?.eliminated) {
+      const nextLiveId = humanPlayerIds(state).find((id) => !state.players[id]?.eliminated);
+      if (nextLiveId && isSharedEventBookkeepingReward(reward)) {
+        reward.playerId = nextLiveId;
+        continue;
+      }
       adventure.rewardQueue.shift();
       continue;
     }
