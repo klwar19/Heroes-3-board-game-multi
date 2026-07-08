@@ -135,6 +135,52 @@ describe("canAcquireSharedDeckCard — the acquisition gate", () => {
     state.players.p1.discard = [];
     expect(canAcquireSharedDeckCard(state, "p1", "spells", "spell.magic_arrow")).toBe(false);
   });
+
+  // A permanent ability card in play (Fire/Water/Air/Earth Magic and Basic X
+  // Magic) lives ONLY in `player.permanents` and spawns no active effect, so the
+  // acquisition gate must read that zone too — otherwise a hero already holding
+  // one in play can draw a SECOND copy from the Ability deck. This is the
+  // "permanent card still duplicates the ability" bug.
+  for (const permanentId of [
+    "ability.fire_magic", // Tower School of Magic (schoolBonus)
+    "ability.basic_fire_magic", // Conflux Basic X Magic (schoolFetch)
+    "ability.water_magic",
+    "ability.basic_air_magic"
+  ] as const) {
+    it(`rejects a second copy of ${permanentId} while it is in play as a permanent`, () => {
+      const state = createInitialGameState(`acq-perm-${permanentId}`);
+      const player = state.players.p1;
+      player.hand = [];
+      player.deck = [];
+      player.discard = [];
+      player.ongoingCards = [];
+      // The card is neither in hand/deck/discard nor an active effect — it is
+      // purely an in-play permanent, exactly the zone the old gate ignored.
+      player.permanents = [permanentId];
+
+      expect(canAcquireSharedDeckCard(state, "p1", "abilities", permanentId)).toBe(false);
+
+      // CONTROL 1: a DIFFERENT ability the hero does not hold is still acquirable.
+      expect(canAcquireSharedDeckCard(state, "p1", "abilities", "ability.luck")).toBe(true);
+
+      // CONTROL 2: discard the permanent (empty the slot) and the very same card
+      // becomes acquirable again — proving the permanent slot is what blocks it,
+      // not some unrelated ownership.
+      player.permanents = [];
+      expect(canAcquireSharedDeckCard(state, "p1", "abilities", permanentId)).toBe(true);
+    });
+  }
+
+  it("also honours the deprecated single `permanent` slot from older snapshots", () => {
+    const state = createInitialGameState("acq-perm-legacy-slot");
+    const player = state.players.p1;
+    player.hand = [];
+    player.deck = [];
+    player.discard = [];
+    player.permanents = undefined;
+    player.permanent = "ability.earth_magic";
+    expect(canAcquireSharedDeckCard(state, "p1", "abilities", "ability.earth_magic")).toBe(false);
+  });
 });
 
 describe("revealSharedDeckSearch — redraws past cards the hero may not take", () => {
@@ -221,6 +267,30 @@ describe("revealSharedDeckSearch — redraws past cards the hero may not take", 
     // The skipped second copy of Luck is tucked back under the deck, not discarded.
     expect(state.decks.abilities.discardPile).toEqual([]);
     expect(state.decks.abilities.drawPile).toEqual(["ability.luck"]);
+  });
+
+  it("skips a duplicate of a permanent ability card the hero has in play (Fire Magic)", () => {
+    const state = freshState("reveal-permanent-dup");
+    state.players.p1.deck = [];
+    state.players.p1.discard = [];
+    // Fire Magic is in play as a permanent — NOT in hand/deck/discard and NOT an
+    // active effect. Before the fix this second copy would be revealed as a
+    // legal duplicate; now the Search must redraw past it to Luck.
+    state.players.p1.permanents = ["ability.fire_magic"];
+    state.decks.abilities.drawPile = ["ability.luck", "ability.fire_magic"]; // Fire Magic on top
+    state.decks.abilities.discardPile = [];
+
+    revealSharedDeckSearch(state, "p1", "abilities", 1);
+
+    const choice = state.pendingChoice;
+    expect(choice?.type).toBe("DECK_SEARCH");
+    if (choice?.type === "DECK_SEARCH") {
+      expect(choice.revealedCardIds).toEqual(["ability.luck"]);
+      expect(choice.revealedCardIds).not.toContain("ability.fire_magic");
+    }
+    // The skipped duplicate is tucked back under the deck, never discarded.
+    expect(state.decks.abilities.discardPile).toEqual([]);
+    expect(state.decks.abilities.drawPile).toEqual(["ability.fire_magic"]);
   });
 
   it("skips a duplicate spell the hero owns", () => {

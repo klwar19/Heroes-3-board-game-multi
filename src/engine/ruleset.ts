@@ -237,6 +237,16 @@ export const EXPERT_SPELL_KEY_CARDS = [
   "ability.basic_water_magic"
 ];
 
+/**
+ * The permanent cards this player has in play (war machines, Schools of Magic,
+ * Basic X Magic, Pandora's permanents), oldest first. Read inline instead of
+ * importing getPermanentCardIds from permanents.ts, which imports this module —
+ * pulling it in here would create a cycle. Mirrors getPermanentCardIds exactly.
+ */
+function inPlayPermanentIds(player: PlayerState): CardId[] {
+  return player.permanents ?? (player.permanent ? [player.permanent] : []);
+}
+
 function playerOwnsAnyCard(state: GameState, playerId: PlayerId, cardIds: string[]): boolean {
   const player = state.players[playerId];
   if (!player) {
@@ -248,7 +258,14 @@ function playerOwnsAnyCard(state: GameState, playerId: PlayerId, cardIds: string
     return true;
   }
 
-  // Permanent effects already played count too (Basic X Magic in play).
+  // Permanent cards already played count too (Basic X Magic in play). The
+  // School-of-Magic / Basic-Magic cards live ONLY in `player.permanents` — they
+  // spawn no active effect (no combatEffect) — so reading permanents directly is
+  // the only way to see them; scanning activeEffects alone would miss them.
+  if (cardIds.some((cardId) => inPlayPermanentIds(player).includes(cardId))) {
+    return true;
+  }
+
   return state.activeEffects.some(
     (effect) =>
       effect.controllerId === playerId &&
@@ -265,10 +282,11 @@ export const NECROPOLIS_FACTION_ID = "necropolis";
  * Every card the player currently holds, across every zone they could later
  * draw it back from: hand, draw pile, discard, the Spell Book (house-rule stash
  * — a Book Spell is still owned and re-castable), cards held in play (ongoing
- * spells/abilities), spell scrolls, and any permanent effect already on the
- * table. Used to stop a hero ever owning two copies of the same Ability/Spell —
- * so Basic X Magic and every shared-deck draw/search skip a Spell already stashed
- * in the Book, not just one in hand/deck/discard.
+ * spells/abilities), spell scrolls, in-play permanents (Fire/Water/Air/Earth
+ * Magic and Basic X Magic), and any permanent effect already on the table. Used
+ * to stop a hero ever owning two copies of the same Ability/Spell — so Basic X
+ * Magic and every shared-deck draw/search skip a Spell already stashed in the
+ * Book, not just one in hand/deck/discard.
  */
 function playerHeldCardIds(state: GameState, playerId: PlayerId): Set<CardId> {
   const player = state.players[playerId];
@@ -284,6 +302,14 @@ function playerHeldCardIds(state: GameState, playerId: PlayerId): Set<CardId> {
     for (const cardId of scroll.spellCardIds) {
       held.add(cardId);
     }
+  }
+  // In-play permanents: the School-of-Magic (Fire/Water/Air/Earth Magic) and
+  // Basic X Magic ability cards sit ONLY in `player.permanents` and spawn no
+  // active effect, so without this a hero holding one in play could still draw a
+  // second copy from the Ability deck — the "permanent card still duplicates"
+  // bug. War machines are permanents too, but they are never in the shared decks.
+  for (const cardId of inPlayPermanentIds(player)) {
+    held.add(cardId);
   }
   for (const effect of state.activeEffects) {
     if (effect.controllerId === playerId && effect.source.type === "card") {
@@ -385,13 +411,26 @@ function anyNearOrCenterTileRevealed(state: GameState): boolean {
  * (or deeper) map tile has been revealed. Below both, only the Basic deck is
  * available, unless the hero owns a key card (Eagle Eye, Wisdom, or a Basic
  * elemental Magic), which unlocks the Expert deck at any level / map state.
+ *
+ * `ignoreKeyCards` drops that key-card bypass: buying spells at the **Mage
+ * Guild** must be Basic-only until the hero actually reaches level 4 or a IV–V
+ * tile is discovered — owning Wisdom/Eagle Eye/Basic Magic must NOT open the
+ * Expert deck there (those cards keep their own Expert access via their own
+ * effects and via other spell sources, which pass the bypass through). The map
+ * Spell Scroll and Eagle Eye's combat dig reach the Expert deck directly and
+ * never route through this gate at all.
  */
-export function canDrawExpertSpells(state: GameState, playerId: PlayerId, hero: HeroState | null): boolean {
+export function canDrawExpertSpells(
+  state: GameState,
+  playerId: PlayerId,
+  hero: HeroState | null,
+  options?: { ignoreKeyCards?: boolean }
+): boolean {
   if (!houseRuleEnabled(state, "split-decks")) {
     return false;
   }
 
-  if (playerOwnsAnyCard(state, playerId, EXPERT_SPELL_KEY_CARDS)) {
+  if (!options?.ignoreKeyCards && playerOwnsAnyCard(state, playerId, EXPERT_SPELL_KEY_CARDS)) {
     return true;
   }
 
@@ -433,14 +472,24 @@ export function artifactDeckAccess(
   };
 }
 
-/** The spell decks this player may search right now (BINH-aware). */
-export function eligibleSpellDecks(state: GameState, playerId: PlayerId, hero: HeroState | null): DeckId[] {
+/**
+ * The spell decks this player may search right now (BINH-aware). `ignoreKeyCards`
+ * enforces the strict Mage-Guild gate (Basic-only until level 4 / a IV–V tile,
+ * no Wisdom/Eagle-Eye/Basic-Magic bypass); every other spell source leaves it
+ * off and keeps the bypass.
+ */
+export function eligibleSpellDecks(
+  state: GameState,
+  playerId: PlayerId,
+  hero: HeroState | null,
+  options?: { ignoreKeyCards?: boolean }
+): DeckId[] {
   if (!houseRuleEnabled(state, "split-decks")) {
     return [SPELL_DECK_BASIC];
   }
 
   const decks: DeckId[] = [SPELL_DECK_BASIC];
-  if (canDrawExpertSpells(state, playerId, hero) && state.decks[SPELL_DECK_EXPERT]) {
+  if (canDrawExpertSpells(state, playerId, hero, options) && state.decks[SPELL_DECK_EXPERT]) {
     decks.push(SPELL_DECK_EXPERT);
   }
   return decks;

@@ -245,7 +245,7 @@ describe("attack-all-adjacent mechanism", () => {
 });
 
 describe("Wisdom at the Mage Guild", () => {
-  it("reduces the purchase price and upgrades the search size", () => {
+  it("reduces the purchase price and upgrades the search size, but stays Basic-only at low level even holding Wisdom", () => {
     const state = makeBinhGame();
     const player = state.players.p1;
     const town = Object.values(state.towns).find((candidate) => candidate.controllerId === "p1")!;
@@ -255,6 +255,11 @@ describe("Wisdom at the Mage Guild", () => {
     player.townTokens.spellBook = true;
     player.hand = ["ability.wisdom"];
     player.limits.expertUses = 1;
+    // Level 1, no IV–V tile revealed: the Mage Guild must NOT reach the Expert
+    // deck even though the buyer holds Wisdom (a key card). The key-card bypass
+    // is disabled for Mage Guild purchases — this is the "buy Expert freely at
+    // the Guild" bug fix.
+    state.heroes.hero_p1.level = 1;
 
     // Castle guild costs 6; expert Wisdom in BINH reduces it by 3.
     const bought = apply(state, {
@@ -268,12 +273,42 @@ describe("Wisdom at the Mage Guild", () => {
     expect(bought.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
     expect(findEvent(bought, "SPELLS_PURCHASED")).toMatchObject({ cost: { gold: 3 } });
 
-    // Holding Wisdom also unlocks the Expert spell deck (BINH key card), so
-    // the purchase first asks which spell deck to search.
+    // No Basic-vs-Expert deck pick: with only the Basic deck eligible the
+    // purchase goes straight to searching it. (Contrast the level-4 case below,
+    // where the deck pick DOES appear — that divergence is the mutation control.)
+    const choice = bought.pendingChoice;
+    expect(choice?.type).toBe("DECK_SEARCH");
+    if (choice?.type !== "DECK_SEARCH") {
+      throw new Error("Expected a direct Basic-deck search, not a deck pick.");
+    }
+    // The Wisdom discount/search size still apply: expert Wisdom = Search 4.
+    expect(choice.revealedCardIds.length).toBe(4);
+    expect(choice.deckId).toBe("spells");
+  });
+
+  it("offers the Expert deck at the Mage Guild once the hero is level 4 (progression, not the key card, unlocks it)", () => {
+    const state = makeBinhGame();
+    const player = state.players.p1;
+    const town = Object.values(state.towns).find((candidate) => candidate.controllerId === "p1")!;
+
+    town.buildings.push("castle.mage_guild");
+    player.resources.gold = 10;
+    player.townTokens.spellBook = true;
+    player.hand = ["ability.wisdom"];
+    player.limits.expertUses = 1;
+    // Level 4 is the real unlock condition the user asked for.
+    state.heroes.hero_p1.level = 4;
+
+    const bought = apply(state, {
+      type: "SPELL_BOOK_ACTION",
+      playerId: "p1",
+      wisdom: { cardId: "ability.wisdom", mode: "expert" }
+    });
+
     const deckPick = bought.pendingChoice;
     expect(deckPick?.type).toBe("OPTION_CHOICE");
     if (deckPick?.type !== "OPTION_CHOICE" || deckPick.context !== "deck-pick") {
-      throw new Error("Expected the spell deck pick.");
+      throw new Error("Expected the spell deck pick at level 4.");
     }
     expect(deckPick.deckPick?.deckIds).toEqual(["spells", "spells-expert"]);
 
@@ -281,16 +316,30 @@ describe("Wisdom at the Mage Guild", () => {
       type: "CHOOSE_OPTION",
       playerId: "p1",
       choiceId: deckPick.id,
-      optionIndex: 0
+      optionIndex: 1
     });
-
-    // The purchase search reveals 4 cards (Wisdom expert = Search 4).
     const choice = searched.pendingChoice;
     expect(choice?.type).toBe("DECK_SEARCH");
     if (choice?.type === "DECK_SEARCH") {
-      expect(choice.revealedCardIds.length).toBe(4);
-      expect(choice.deckId).toBe("spells");
+      expect(choice.deckId).toBe("spells-expert");
     }
+  });
+
+  it("keeps the key-card bypass for NON-Mage-Guild spell searches (surgical fix)", () => {
+    // A generic shared-deck spell Search (a map object / bank reward, NOT the
+    // Mage Guild) still honours the Wisdom/Eagle-Eye/Basic-Magic bypass: owning
+    // a key card opens the Expert deck at level 1 with no tile revealed. This is
+    // the CONTROL proving only the Mage Guild path was tightened.
+    const state = makeBinhGame();
+    const hero = state.heroes.hero_p1;
+    hero.level = 1;
+    state.players.p1.hand = [];
+    state.players.p1.discard = ["ability.eagle_eye"];
+
+    // Strict (Mage Guild): key card ignored → Basic only.
+    expect(canDrawExpertSpells(state, "p1", hero, { ignoreKeyCards: true })).toBe(false);
+    // Default (every other source): key card still unlocks Expert.
+    expect(canDrawExpertSpells(state, "p1", hero)).toBe(true);
   });
 });
 
