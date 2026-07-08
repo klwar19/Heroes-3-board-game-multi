@@ -16,6 +16,14 @@
  *    raises each one grade. A grade's bonus over the base is NOT additive
  *    with the previous grades — it IS the value shown (+1 / +2 at grade
  *    I/II; grade III is adjusted per spec: Attack +3, Health +4, Speed +5).
+ *  - Defense is the exception: base line 1/2/2/3, and grade II additionally
+ *    grants a permanent Defense token (the commander rolls the Defend die when
+ *    attacked → +1 Defense on a "+1" face). Grade III is a reliable flat 3
+ *    with no die (see commanderAbilityIds / the DEFEND spec).
+ *  - Damage is a DICE bonus, not a flat one: at Damage grade N the commander
+ *    rolls N ADDITIONAL attack dice alongside its normal attack die on each of
+ *    its attacks; every extra "+1" face raises the attack, and at most one "−1"
+ *    face counts (see the Might wiring in reducer.ts / getMightDiceCount).
  *  - The Magic stat grades the whole magic package: grade 0 = Power 0,
  *    take -1 Spell damage, immune to ongoing effects; grade 1 = Power 1;
  *    grade 2 = Power 2 and -2 Spell damage; grade 3 = Power 3 and -3 Spell
@@ -58,24 +66,60 @@ export const COMMANDER_STAT_LABELS: Record<CommanderStatKey, string> = {
 };
 
 /**
+ * The authentic WoG commander-skill symbols, downloaded from the reference page
+ * (heroesofmightandmagic.com/wakeofgods/comm3.shtml → pics/comds). Used by the
+ * combat "commander stats" UI — NOT the card face (which keeps the HoMM3 spell
+ * icons). One 70×70 glyph per primary stat.
+ */
+export const COMMANDER_STAT_ICON: Record<CommanderStatKey, string> = {
+  attack: "/assets/commander-icons/stat-attack.jpg",
+  defense: "/assets/commander-icons/stat-defense.jpg",
+  health: "/assets/commander-icons/stat-health.jpg",
+  damage: "/assets/commander-icons/stat-damage.jpg",
+  magic: "/assets/commander-icons/stat-magic.jpg",
+  speed: "/assets/commander-icons/stat-speed.jpg"
+};
+
+/**
+ * The WoG combination-skill symbol for a combo, keyed by its one-letter `tag`
+ * (the same tag the reference page marks it with in battle). Downloaded from
+ * pics/comds/_XX_YY.jpg into /assets/commander-icons/combo-<tag>.jpg.
+ */
+export function commanderComboSiteIcon(tag: string): string {
+  return `/assets/commander-icons/combo-${tag}.jpg`;
+}
+
+/**
  * Stat value at grade 0/1/2/3 (index = grade). Grade 0 is the starting base
  * line; each grade's bonus over that base REPLACES the previous grade's
  * bonus (+1 / +2 at grade I/II, grade III adjusted per the module spec:
  * Attack +3, Health +4, Speed +5).
- *  - attack/defense/health/speed are the unit's printed statistics
- *    (speed = Initiative).
- *  - damage is BONUS damage added to the commander's attacks that deal at
- *    least 1 damage (normal attacks and retaliations).
+ *  - attack/health/speed are the unit's printed statistics (speed = Initiative).
+ *  - defense is the printed Defense (1/2/2/3); grade II ALSO grants a Defense
+ *    token — the "+1 def when attacked" rider (commanderAbilityIds wires
+ *    `commander-defense-token`), grade III is the reliable flat 3.
+ *  - damage is the NUMBER OF ADDITIONAL attack dice the commander rolls on each
+ *    of its attacks (0/1/2/3). It is not a flat damage bonus — see the Might
+ *    dice pool in reducer.ts (every extra "+1" raises the attack; at most one
+ *    "−1" counts).
  *  - magic is the command-ability Power (0/1/2/3; cast tiers cap at 2).
  */
 export const COMMANDER_GRADE_VALUES: Record<CommanderStatKey, readonly [number, number, number, number]> = {
   attack: [2, 3, 4, 5],
-  defense: [1, 2, 3, 4],
+  defense: [1, 2, 2, 3],
   health: [4, 5, 6, 8],
   damage: [0, 1, 2, 3],
   magic: [0, 1, 2, 3],
   speed: [5, 6, 7, 10]
 };
+
+/**
+ * Defense grade that grants the "+1 def when attacked" Defense token (the
+ * commander rolls the Defend die when attacked). Exactly grade II — grade III
+ * is a reliable flat 3 with no die. Consumed by commanderAbilityIds and the
+ * stats UI so the single source of truth is here.
+ */
+export const COMMANDER_DEFENSE_TOKEN_GRADE = 2;
 
 /** Spell-damage reduction granted by the Magic stat at grade 0/1/2/3. */
 export const COMMANDER_MAGIC_SPELL_DAMAGE_REDUCTION: readonly [number, number, number, number] = [1, 1, 2, 3];
@@ -356,7 +400,7 @@ export interface CommanderSpecialtyDefinition {
     | "undead"
     | "ballista-master"
     | "superior-combat"
-    | "pacifist"
+    | "elemental-scourge"
     | "tinkerer"
     | "rune-ritual";
   name: string;
@@ -572,9 +616,9 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
       ]
     },
     specialty: {
-      id: "pacifist",
-      name: "Pacifist",
-      text: "At the start of a combat against 2 or more neutral units, one random bronze/silver neutral flees the battlefield (no rewards for it)."
+      id: "elemental-scourge",
+      name: "Elemental Scourge",
+      text: "At the start of a combat against neutral units, every enemy neutral unit takes 1 damage."
     },
     cardImage: "/assets/units-commander-astral_spirit.webp"
   },

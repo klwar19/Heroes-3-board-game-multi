@@ -1,17 +1,20 @@
 "use client";
 
 /* eslint-disable @next/next/no-img-element */
-import { useMemo, useState } from "react";
-import type { CSSProperties } from "react";
+import { useState } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 import { assetUrl } from "@/lib/asset-url";
 import {
   COMMANDER_COMBOS,
+  COMMANDER_DEFENSE_TOKEN_GRADE,
   COMMANDER_GRADE_VALUES,
   COMMANDER_MAGIC_SPELL_DAMAGE_REDUCTION,
+  COMMANDER_STAT_ICON,
   COMMANDER_STAT_KEYS,
   COMMANDER_STAT_LABELS,
   commanderCastTierIndex,
+  commanderComboSiteIcon,
   commanderComboUnlocked,
   commanderDefinitions,
   commanderGradeUpLevels,
@@ -237,8 +240,11 @@ export function CommanderCardFace({
           shown only once they rise above 0 — a fresh commander stays clean. */}
       <span style={{ position: "absolute", right: "6%", top: "15.2%", display: "flex", gap: "1cqw" }}>
         {might > 0 ? (
-          <span style={badgeStyle} title={`Damage grade ${gradeNumeral(grades.damage)}: attacks that deal damage deal +${might}.`}>
-            ⚔ +{might}
+          <span
+            style={badgeStyle}
+            title={`Damage grade ${gradeNumeral(grades.damage)} (Might): rolls ${might} extra attack ${might === 1 ? "die" : "dice"} on each attack — every "+1" raises the Attack, at most one "−1" counts.`}
+          >
+            🎲 +{might}
           </span>
         ) : null}
         {power > 0 ? (
@@ -355,6 +361,319 @@ export function CommanderCardFace({
   );
 }
 
+// ---------------------------------------------------------------------------
+// CommanderStatsPanel — the "pro" read-only stats view used in the combat
+// inspect / zoom (the user asked for the authentic WoG comm3 symbols here, NOT
+// on the card face). It surfaces all SIX stats with the grade bonus spelled
+// out, the Damage DICE mechanic, the Magic Power ladder (current tier + spell
+// ward highlighted), the command ability, the specialty, and every combination
+// skill with its site symbol + full explanation.
+// ---------------------------------------------------------------------------
+
+const PANEL_BG = "#191308";
+const PANEL_BORDER = "#8d683c";
+const ROW_BG = "#221a0f";
+
+/** Damage grade shows the DICE count, not a stat number; the rest show a value. */
+function statMainValue(
+  key: CommanderStatKey,
+  grades: CommanderGrades,
+  statValues: { attack: number; defense: number; health: number; speed: number } | undefined,
+  stanceBonus: number
+): number {
+  if (key === "damage") {
+    return commanderStatValue("damage", grades.damage);
+  }
+  if (key === "magic") {
+    return commanderStatValue("magic", grades.magic);
+  }
+  if (statValues && (key === "attack" || key === "defense" || key === "health" || key === "speed")) {
+    return statValues[key];
+  }
+  return commanderStatValue(key, grades[key]) + stanceBonus;
+}
+
+function CommanderStatIcon({ statKey, size = 30 }: { statKey: CommanderStatKey; size?: number }) {
+  return (
+    <img
+      alt={COMMANDER_STAT_LABELS[statKey]}
+      src={assetUrl(COMMANDER_STAT_ICON[statKey])}
+      style={{
+        width: size,
+        height: size,
+        objectFit: "contain",
+        flexShrink: 0,
+        filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.8))"
+      }}
+    />
+  );
+}
+
+export function CommanderStatsPanel({
+  slug,
+  grades: gradesProp,
+  level,
+  statValues,
+  stance,
+  className,
+  style
+}: {
+  slug: CommanderSlug;
+  grades?: Partial<Record<CommanderStatKey, number>>;
+  level?: number;
+  /** Live combat values (already fold in buffs/stance) for the four board stats. */
+  statValues?: { attack: number; defense: number; health: number; speed: number };
+  stance?: "attack" | "defense";
+  className?: string;
+  style?: CSSProperties;
+}) {
+  const def = commanderDefinitions[slug];
+  const grades = normalizeGrades(gradesProp);
+  const power = commanderStatValue("magic", grades.magic);
+  const tierIndex = commanderCastTierIndex(power);
+  const spellWard = COMMANDER_MAGIC_SPELL_DAMAGE_REDUCTION[grades.magic];
+  const mightDice = commanderStatValue("damage", grades.damage);
+  const hasStance = def?.specialty.id === "superior-combat";
+  const shownStance: "attack" | "defense" = stance ?? "attack";
+  const combosUnlocked = commanderUnlockedCombos(grades);
+
+  if (!def) {
+    return null;
+  }
+
+  return (
+    <div
+      className={className}
+      style={{
+        fontFamily: 'Georgia, "Times New Roman", serif',
+        color: "#e8ddc6",
+        background: PANEL_BG,
+        border: `1px solid ${PANEL_BORDER}`,
+        borderRadius: 8,
+        padding: 12,
+        display: "grid",
+        gap: 12,
+        maxWidth: 460,
+        ...style
+      }}
+    >
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, borderBottom: "1px solid #4d3d26", paddingBottom: 6 }}>
+        <span>
+          <b style={{ color: GOLD, fontSize: 16, letterSpacing: 0.3 }}>{def.name}</b>
+          <span style={{ color: DIM, fontSize: 12, marginLeft: 8 }}>{def.faction} Commander · tierless</span>
+        </span>
+        {level !== undefined ? <span style={{ color: PALE, fontSize: 12, fontWeight: 700 }}>Lv {level}</span> : null}
+      </div>
+
+      {/* Stat rows — authentic WoG comm3 symbols + grade bonus spelled out. */}
+      <div style={{ display: "grid", gap: 5 }}>
+        {COMMANDER_STAT_KEYS.map((key) => {
+          const gradeIndex = grades[key];
+          const base = COMMANDER_GRADE_VALUES[key][0];
+          const stanceBonus = !statValues && hasStance && key === shownStance ? 1 : 0;
+          const mainValue = statMainValue(key, grades, statValues, stanceBonus);
+          const gradeValue = commanderStatValue(key, gradeIndex);
+          const bonusOverBase = gradeValue - base;
+          const buffed = Boolean(statValues) && (key === "attack" || key === "defense" || key === "health" || key === "speed") && mainValue > gradeValue;
+          const stanceLift = stanceBonus > 0;
+
+          // The right-hand explanation of what this grade buys.
+          let detail: ReactNode;
+          if (key === "damage") {
+            detail = mightDice > 0
+              ? <>Rolls <b style={{ color: GOLD }}>{mightDice}</b> extra attack {mightDice === 1 ? "die" : "dice"} — each “+1” raises Attack; at most one “−1”.</>
+              : <span style={{ opacity: 0.7 }}>No extra attack dice yet.</span>;
+          } else if (key === "magic") {
+            detail = (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                <PowerLadder power={power} />
+                <span style={{ opacity: 0.85 }}>−{spellWard} Spell dmg · immune to ongoing effects</span>
+              </span>
+            );
+          } else if (key === "defense") {
+            detail = gradeIndex === COMMANDER_DEFENSE_TOKEN_GRADE
+              ? <><b style={{ color: GOLD }}>+1 def when attacked</b> — rolls the Defend die (a “+1” face gives +1 Defense).</>
+              : gradeIndex >= 3
+                ? <span style={{ opacity: 0.85 }}>Reliable flat Defense (no die).</span>
+                : <span style={{ opacity: 0.7 }}>{bonusOverBase > 0 ? `+${bonusOverBase} over base ${base}.` : `Base ${base}.`}</span>;
+          } else {
+            detail = (
+              <span style={{ opacity: 0.75 }}>
+                base {base}{bonusOverBase > 0 ? ` · grade ${gradeNumeral(gradeIndex)} +${bonusOverBase}` : ""}
+                {stanceLift ? " · +1 stance" : ""}
+              </span>
+            );
+          }
+
+          return (
+            <div key={key} style={{ display: "flex", alignItems: "center", gap: 9, background: ROW_BG, borderRadius: 6, padding: "5px 8px" }}>
+              <CommanderStatIcon statKey={key} />
+              <span style={{ width: 62, fontWeight: 700, color: PALE, fontSize: 13 }}>{COMMANDER_STAT_LABELS[key]}</span>
+              <span
+                style={{
+                  minWidth: 30,
+                  textAlign: "center",
+                  fontSize: key === "damage" ? 15 : 19,
+                  fontWeight: 800,
+                  color: buffed || stanceLift ? "#9be29b" : gradeIndex >= 3 ? GOLD : PALE,
+                  textShadow: OUTLINE
+                }}
+              >
+                {key === "damage" ? `🎲${mightDice}` : mainValue}
+              </span>
+              <GradeChips grade={gradeIndex} />
+              <span style={{ flex: 1, fontSize: 11.5, lineHeight: 1.25, textAlign: "right" }}>{detail}</span>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Command ability (once per combat round). */}
+      <div style={{ background: ROW_BG, borderRadius: 6, padding: "7px 9px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+          <img
+            alt=""
+            src={assetUrl(def.cast.icon)}
+            style={{ width: 22, height: 22, objectFit: "cover", borderRadius: 4, border: "1px solid #6b5433" }}
+          />
+          <b style={{ color: "#e6c56a", fontSize: 13, letterSpacing: 0.3 }}>{def.cast.name}</b>
+          <span style={{ color: DIM, fontSize: 11 }}>once per combat round · Power {power}</span>
+        </div>
+        <div style={{ display: "grid", gap: 2 }}>
+          {def.cast.tierText.map((text, index) => (
+            <div
+              key={index}
+              style={{
+                display: "flex",
+                gap: 6,
+                padding: "2px 6px",
+                borderRadius: 4,
+                background: index === tierIndex ? "#3a2c10" : "transparent",
+                border: index === tierIndex ? "1px solid #8d683c" : "1px solid transparent",
+                color: index === tierIndex ? PALE : DIM,
+                fontSize: 11.5
+              }}
+            >
+              <b style={{ color: index === tierIndex ? GOLD : DIM, whiteSpace: "nowrap" }}>Pow {index === 2 ? "2+" : index}</b>
+              <span>{text}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Specialty. */}
+      <div style={{ fontSize: 12 }}>
+        <span style={{ color: "#e6c56a", fontWeight: 700, letterSpacing: 1, fontSize: 11 }}>SPECIALTY</span>
+        <div style={{ marginTop: 2 }}>
+          <b style={{ color: PALE }}>{def.specialty.name}.</b> <span style={{ opacity: 0.9 }}>{def.specialty.text}</span>
+        </div>
+      </div>
+
+      {/* Combination skills — the WoG comm3 symbols + full explanation. */}
+      <div>
+        <div style={{ color: "#e6c56a", fontWeight: 700, letterSpacing: 1, fontSize: 11, marginBottom: 4 }}>
+          COMBINATION SKILLS{" "}
+          <span style={{ opacity: 0.55, fontWeight: 400 }}>(one stat at grade III + the other at II)</span>
+        </div>
+        {combosUnlocked.length > 0 ? (
+          <div style={{ display: "grid", gap: 4, marginBottom: 6 }}>
+            {combosUnlocked.map((combo) => (
+              <div key={combo.id} style={{ display: "flex", gap: 8, alignItems: "flex-start", background: "#2c210f", borderRadius: 6, padding: "5px 7px" }}>
+                <img
+                  alt={combo.name}
+                  src={assetUrl(commanderComboSiteIcon(combo.tag))}
+                  style={{ width: 30, height: 30, objectFit: "contain", flexShrink: 0, filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.8))" }}
+                />
+                <span style={{ fontSize: 11.5, lineHeight: 1.3 }}>
+                  <b style={{ color: GOLD }}>[{combo.tag}] {combo.name}</b>
+                  <span style={{ color: DIM }}> · {COMMANDER_STAT_ABBR[combo.requires[0]]}+{COMMANDER_STAT_ABBR[combo.requires[1]]}</span>
+                  <br />
+                  <span style={{ opacity: 0.9 }}>{combo.text}</span>
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : null}
+        {/* All 15 at a glance (locked dimmed) so the growth path reads clearly. */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(30px, 1fr))", gap: 4 }}>
+          {COMMANDER_COMBOS.map((combo) => {
+            const unlocked = commanderComboUnlocked(grades, combo);
+            return (
+              <img
+                key={combo.id}
+                alt={combo.name}
+                src={assetUrl(commanderComboSiteIcon(combo.tag))}
+                title={`[${combo.tag}] ${combo.name} (${COMMANDER_STAT_LABELS[combo.requires[0]]} + ${COMMANDER_STAT_LABELS[combo.requires[1]]})${unlocked ? " — UNLOCKED" : " — locked"}: ${combo.text}`}
+                style={{
+                  width: "100%",
+                  aspectRatio: "1",
+                  objectFit: "contain",
+                  borderRadius: 5,
+                  border: `1px solid ${unlocked ? GOLD : "#4d3d26"}`,
+                  background: unlocked ? "#2c210f" : "#161009",
+                  filter: unlocked ? "none" : "grayscale(0.85) brightness(0.55)"
+                }}
+              />
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** The 3 grade pips (I/II/III) for a stat, filled up to `grade`. */
+function GradeChips({ grade }: { grade: CommanderGrade }) {
+  return (
+    <span style={{ display: "inline-flex", gap: 2 }} title={`grade ${gradeNumeral(grade)}`}>
+      {([1, 2, 3] as const).map((step) => (
+        <span
+          key={step}
+          style={{
+            width: 8,
+            height: 8,
+            borderRadius: "50%",
+            border: `1px solid ${grade >= step ? GOLD : "#6b5433"}`,
+            background: grade >= step ? (grade >= 3 ? GOLD : "#a8842f") : "#241d16"
+          }}
+        />
+      ))}
+    </span>
+  );
+}
+
+/** Magic Power ladder 0→1→2→3 with the current tier highlighted (pow difference). */
+function PowerLadder({ power }: { power: number }) {
+  return (
+    <span style={{ display: "inline-flex", gap: 3 }}>
+      {[0, 1, 2, 3].map((step) => {
+        const active = power === step;
+        const reached = power >= step;
+        return (
+          <span
+            key={step}
+            title={`Power ${step}${active ? " (current)" : ""}`}
+            style={{
+              minWidth: 16,
+              textAlign: "center",
+              fontSize: 11,
+              fontWeight: 800,
+              borderRadius: 4,
+              padding: "0 3px",
+              color: active ? "#1a1206" : reached ? GOLD : "#6b5f49",
+              background: active ? GOLD : "transparent",
+              border: `1px solid ${reached ? GOLD : "#4d3d26"}`
+            }}
+          >
+            {step}
+          </span>
+        );
+      })}
+    </span>
+  );
+}
+
 export function CommanderCard({
   slug,
   grades: gradesProp,
@@ -404,10 +723,6 @@ export function CommanderCard({
   const shownStance: "attack" | "defense" = editable ? localStance : (stance ?? "attack");
   const grades = editable ? localGrades : normalizeGrades(gradesProp);
   const shownLevel = editable ? localLevel : level;
-  const power = commanderStatValue("magic", grades.magic);
-  const tierIndex = commanderCastTierIndex(power);
-  const spellWard = COMMANDER_MAGIC_SPELL_DAMAGE_REDUCTION[grades.magic];
-  const combosUnlocked = useMemo(() => commanderUnlockedCombos(grades), [grades]);
   const reviveCost = commanderReviveCost(shownLevel);
   const gradeUpLevels = commanderGradeUpLevels(slug);
 
@@ -548,193 +863,98 @@ export function CommanderCard({
             </div>
           ) : null}
 
-          {/* Six grade tracks (grade 0 = base, three pips to grade 3). */}
-          <div>
-            <div style={{ color: "#e6c56a", fontWeight: 700, letterSpacing: 1, marginBottom: 4 }}>
-              STATS{" "}
-              <span style={{ opacity: 0.6, fontWeight: 400 }}>
-                (start at grade 0 · picks at hero level {gradeUpLevels.join(" & ")})
-              </span>
-            </div>
-            {COMMANDER_STAT_KEYS.map((key) => (
-              <div key={key} style={{ display: "flex", alignItems: "center", gap: 8, padding: "2px 0" }}>
-                <span style={{ width: 72, opacity: 0.9 }}>{COMMANDER_STAT_LABELS[key]}</span>
-                <span style={{ display: "inline-flex", gap: 3 }}>
-                  {([1, 2, 3] as const).map((grade) => {
-                    const reached = grades[key] >= grade;
-                    return (
-                      <button
-                        key={grade}
-                        type="button"
-                        title={`Grade ${gradeNumeral(grade)}: ${gradeValueLabel(key, grade)}`}
-                        onClick={
-                          editable
-                            ? () =>
-                                setLocalGrades((current) => ({
-                                  ...current,
-                                  // Clicking the current grade steps back down,
-                                  // so grade 0 stays reachable in the preview.
-                                  [key]: current[key] === grade ? ((grade - 1) as CommanderGrade) : grade
-                                }))
-                            : undefined
-                        }
-                        style={{
-                          width: 14,
-                          height: 14,
-                          borderRadius: "50%",
-                          border: `1px solid ${reached ? GOLD : "#6b5433"}`,
-                          background: reached ? (grades[key] >= 3 ? GOLD : "#a8842f") : "#241d16",
-                          cursor: editable ? "pointer" : "default",
-                          padding: 0
-                        }}
-                      />
-                    );
-                  })}
-                </span>
-                <span style={{ marginLeft: "auto", color: PALE, fontWeight: 700 }}>{gradeValueLabel(key, grades[key])}</span>
+          {/* Editable grade tracks (preview tool only — click a pip to set a
+              grade). The rich read-only display lives in CommanderStatsPanel. */}
+          {editable ? (
+            <div>
+              <div style={{ color: "#e6c56a", fontWeight: 700, letterSpacing: 1, marginBottom: 4 }}>
+                EDIT GRADES{" "}
+                <span style={{ opacity: 0.6, fontWeight: 400 }}>(picks at hero level {gradeUpLevels.join(" & ")})</span>
               </div>
-            ))}
-            <div style={{ marginTop: 4, fontSize: 12, opacity: 0.75 }}>
-              Grade bonuses are the value shown, never added together (grade III: Attack +3, Health +4, Speed +5).
-              <br />
-              Magic (any grade): immune to ongoing effects · -{spellWard} Spell damage taken.
+              {COMMANDER_STAT_KEYS.map((key) => (
+                <div key={key} style={{ display: "flex", alignItems: "center", gap: 8, padding: "2px 0" }}>
+                  <span style={{ width: 72, opacity: 0.9 }}>{COMMANDER_STAT_LABELS[key]}</span>
+                  <span style={{ display: "inline-flex", gap: 3 }}>
+                    {([1, 2, 3] as const).map((grade) => {
+                      const reached = grades[key] >= grade;
+                      return (
+                        <button
+                          key={grade}
+                          type="button"
+                          title={`Grade ${gradeNumeral(grade)}: ${gradeValueLabel(key, grade)}`}
+                          onClick={() =>
+                            setLocalGrades((current) => ({
+                              ...current,
+                              // Clicking the current grade steps back down, so
+                              // grade 0 stays reachable in the preview.
+                              [key]: current[key] === grade ? ((grade - 1) as CommanderGrade) : grade
+                            }))
+                          }
+                          style={{
+                            width: 14,
+                            height: 14,
+                            borderRadius: "50%",
+                            border: `1px solid ${reached ? GOLD : "#6b5433"}`,
+                            background: reached ? (grades[key] >= 3 ? GOLD : "#a8842f") : "#241d16",
+                            cursor: "pointer",
+                            padding: 0
+                          }}
+                        />
+                      );
+                    })}
+                  </span>
+                  <span style={{ marginLeft: "auto", color: PALE, fontWeight: 700 }}>{gradeValueLabel(key, grades[key])}</span>
+                </div>
+              ))}
             </div>
-          </div>
+          ) : null}
 
-          {/* Command ability tiers. */}
-          <div>
-            <div style={{ color: "#e6c56a", fontWeight: 700, letterSpacing: 1, marginBottom: 4 }}>
-              <img
-                alt=""
-                src={assetUrl(def.cast.icon)}
-                style={{ width: 18, height: 18, objectFit: "cover", borderRadius: 4, verticalAlign: "-4px", marginRight: 6, border: "1px solid #6b5433" }}
-              />
-              {def.cast.name.toUpperCase()}{" "}
-              <span style={{ opacity: 0.6, fontWeight: 400 }}>(once per combat round · Power {power})</span>
-            </div>
-            {def.cast.tierText.map((text, index) => (
-              <div
-                key={index}
-                style={{
-                  padding: "3px 6px",
-                  borderRadius: 4,
-                  background: index === tierIndex ? "#33270f" : "transparent",
-                  border: index === tierIndex ? "1px solid #8d683c" : "1px solid transparent",
-                  color: index === tierIndex ? PALE : DIM,
-                  fontSize: 12.5
-                }}
-              >
-                <b style={{ color: index === tierIndex ? GOLD : DIM }}>Pow {index === 2 ? "2+" : index}:</b> {text}
-              </div>
-            ))}
-          </div>
-
-          {/* Specialty + stance. */}
-          <div>
-            <div style={{ color: "#e6c56a", fontWeight: 700, letterSpacing: 1, marginBottom: 4 }}>SPECIALTY</div>
-            <div style={{ fontSize: 12.5 }}>
-              <b style={{ color: PALE }}>{def.specialty.name}.</b> {def.specialty.text}
-            </div>
-            {hasStance ? (
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
-                <span style={{ opacity: 0.85 }}>Combat stance:</span>
-                {(["attack", "defense"] as const).map((option) => {
-                  const active = shownStance === option;
-                  const settable = editable || Boolean(onSetStance);
-                  return (
-                    <button
-                      key={option}
-                      type="button"
-                      disabled={!settable}
-                      onClick={
-                        editable
-                          ? () => setLocalStance(option)
-                          : onSetStance
-                            ? () => onSetStance(option)
-                            : undefined
-                      }
-                      style={{
-                        padding: "3px 10px",
-                        borderRadius: 12,
-                        border: `1px solid ${active ? GOLD : "#6b5433"}`,
-                        background: active ? "#7a5a2c" : "#2a2119",
-                        color: active ? PALE : DIM,
-                        cursor: settable ? "pointer" : "default",
-                        fontWeight: 600
-                      }}
-                    >
-                      +1 {option === "attack" ? "Attack" : "Defense"}
-                    </button>
-                  );
-                })}
-              </div>
-            ) : null}
-          </div>
-
-          {/* All 15 combination skills with their unlock state. */}
-          <div>
-            <div style={{ color: "#e6c56a", fontWeight: 700, letterSpacing: 1, marginBottom: 4 }}>
-              COMBINATION SKILLS{" "}
-              <span style={{ opacity: 0.6, fontWeight: 400 }}>(one stat at grade III + the other at grade II)</span>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2px 10px" }}>
-              {COMMANDER_COMBOS.map((combo) => {
-                const unlocked = commanderComboUnlocked(grades, combo);
+          {/* Superior Combat stance toggle (interactive). */}
+          {hasStance ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ opacity: 0.85 }}>Combat stance:</span>
+              {(["attack", "defense"] as const).map((option) => {
+                const active = shownStance === option;
+                const settable = editable || Boolean(onSetStance);
                 return (
-                  <div
-                    key={combo.id}
-                    title={`${combo.name} (${COMMANDER_STAT_LABELS[combo.requires[0]]} + ${COMMANDER_STAT_LABELS[combo.requires[1]]}) — ${combo.text}`}
+                  <button
+                    key={option}
+                    type="button"
+                    disabled={!settable}
+                    onClick={
+                      editable
+                        ? () => setLocalStance(option)
+                        : onSetStance
+                          ? () => onSetStance(option)
+                          : undefined
+                    }
                     style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 6,
-                      padding: "2px 4px",
-                      borderRadius: 4,
-                      background: unlocked ? "#2c210f" : "transparent",
-                      color: unlocked ? PALE : DIM,
-                      fontSize: 12,
-                      // Grid items must be allowed to shrink below their text's
-                      // min-content width, or the panel overflows narrow cards.
-                      minWidth: 0
+                      padding: "3px 10px",
+                      borderRadius: 12,
+                      border: `1px solid ${active ? GOLD : "#6b5433"}`,
+                      background: active ? "#7a5a2c" : "#2a2119",
+                      color: active ? PALE : DIM,
+                      cursor: settable ? "pointer" : "default",
+                      fontWeight: 600
                     }}
                   >
-                    <img
-                      alt=""
-                      src={assetUrl(combo.icon)}
-                      style={{
-                        width: 20,
-                        height: 20,
-                        objectFit: "cover",
-                        borderRadius: "50%",
-                        border: `1px solid ${unlocked ? GOLD : "#4d3d26"}`,
-                        filter: unlocked ? undefined : "grayscale(0.85) brightness(0.7)",
-                        flexShrink: 0
-                      }}
-                    />
-                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: unlocked ? 700 : 400 }}>
-                      {combo.name}
-                    </span>
-                    <span style={{ marginLeft: "auto", fontSize: 10.5, color: unlocked ? GOLD : "#8a7551", whiteSpace: "nowrap" }}>
-                      {COMMANDER_STAT_ABBR[combo.requires[0]]}+{COMMANDER_STAT_ABBR[combo.requires[1]]}
-                    </span>
-                  </div>
+                    +1 {option === "attack" ? "Attack" : "Defense"}
+                  </button>
                 );
               })}
             </div>
-            {combosUnlocked.length > 0 ? (
-              <div style={{ marginTop: 6, display: "grid", gap: 3 }}>
-                {combosUnlocked.map((combo) => (
-                  <div key={combo.id} style={{ fontSize: 12, color: PALE }}>
-                    <b style={{ color: GOLD }}>◆ {combo.name}.</b> {combo.text}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div style={{ marginTop: 4, fontSize: 11.5, opacity: 0.65 }}>
-                None unlocked yet — hover a skill to read what it will do.
-              </div>
-            )}
-          </div>
+          ) : null}
+
+          {/* The pro read-only stats view: the authentic WoG comm3 symbols, the
+              grade bonuses spelled out, the Damage dice, the Power ladder and
+              every combination skill with its explanation. */}
+          <CommanderStatsPanel
+            slug={slug}
+            grades={grades}
+            level={shownLevel}
+            stance={hasStance ? shownStance : undefined}
+            style={{ maxWidth: "100%", background: "transparent", border: "none", padding: 0 }}
+          />
         </div>
       ) : null}
     </div>
@@ -744,10 +964,15 @@ export function CommanderCard({
 function gradeValueLabel(key: CommanderStatKey, grade: CommanderGrade): string {
   const value = COMMANDER_GRADE_VALUES[key][grade];
   if (key === "damage") {
-    return `+${value} dmg`;
+    // Damage grade = number of extra attack dice rolled (not a flat bonus).
+    return value === 0 ? "no dice" : `${value} ${value === 1 ? "die" : "dice"}`;
   }
   if (key === "magic") {
     return `Power ${value}`;
+  }
+  if (key === "defense" && grade === COMMANDER_DEFENSE_TOKEN_GRADE) {
+    // Grade II is Defense 2 PLUS the "+1 when attacked" Defense token.
+    return `${value} +token`;
   }
   return `${value}`;
 }

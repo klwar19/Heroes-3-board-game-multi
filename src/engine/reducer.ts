@@ -287,7 +287,8 @@ import {
   getAttackBonusVsDefenderName,
   getAttackBonusVsMarked,
   getAttackDefenseReductionAbility,
-  getBonusDamageOnHit,
+  getMightDiceCount,
+  mightDiceAttackBonus,
   getDamageCapPerAttack,
   getOnKillResourceGain,
   getAttackDieDamageFollowUps,
@@ -2282,7 +2283,8 @@ function getAttackDamagePreview(
   baseAttackOverride?: number,
   damageReduction = 0,
   ignoreDefense = false,
-  dieCancelled = false
+  dieCancelled = false,
+  mightBonus = 0
 ): { attackValue: number; defenseValue: number; damage: number; dieAttackBonus: number; dieDefenseBonus: number } {
   // Attack-die-face conditioned modifiers, resolved here so the actual hit and
   // the lethal-save preview always agree: Dread Knights' "Death Blow" adds to
@@ -2293,7 +2295,12 @@ function getAttackDamagePreview(
   const dieAttackBonus = dieCancelled ? 0 : getAttackBonusOnAttackDie(attacker, roll);
   const dieDefenseBonus = dieCancelled ? 0 : getDefenseBonusOnAttackDie(defender, roll);
   const baseAttack = baseAttackOverride ?? attacker.attack;
-  const attackValue = Math.max(0, baseAttack + attackBonus + dieAttackBonus + roll * dieMultiplier);
+  // WOG commander Might (Damage grade): `mightBonus` is the contribution of the
+  // extra attack dice the commander rolled for this attack (+1 per "+1" face,
+  // −1 for the whole pool if any "−1" appeared). They are ADDITIONAL attack
+  // dice, so they ride the attack value beside the normal die (before Defense),
+  // rolled once by the caller and passed in so every recompute agrees.
+  const attackValue = Math.max(0, baseAttack + attackBonus + dieAttackBonus + roll * dieMultiplier + mightBonus);
   // Elemental damage ignores Defense outright; otherwise sum printed Defense,
   // the Defend roll's bonus (0 or +1, rolled per attack by the caller), played
   // Defense buffs and any die-face Defense bonus.
@@ -2309,18 +2316,15 @@ function getAttackDamagePreview(
     ? 0
     : Math.max(0, defender.defense + defenseBonus) + defendBonus + dieDefenseBonus;
   // Siege wall cover: "reduce the attack's damage by 1" comes off the damage,
-  // not the defense.
+  // not the defense. The commander's Might dice already rode into attackValue
+  // above (they are extra attack dice, not a post-defense bonus).
   const rawDamage = Math.max(0, Math.max(0, attackValue - defenseValue) - damageReduction);
-  // WOG commander Damage grade ("Might"): a hit that deals at least 1 damage
-  // deals the bonus on top — a fully-blocked attack (0 damage) gains nothing.
-  // Resolved here so the actual hit and the lethal-save preview agree.
-  const onHitBonus = rawDamage > 0 ? getBonusDamageOnHit(attacker) : 0;
   // Cove Nix (Pack): "cannot take more than N damage from a single attack." The
-  // cap clamps the resolved damage of this one attack — Might included — and is
-  // reflected in the lethal-save preview too (both go through here), so a
-  // capped blow correctly reads as non-lethal.
+  // cap clamps the resolved damage of this one attack and is reflected in the
+  // lethal-save preview too (both go through here), so a capped blow correctly
+  // reads as non-lethal.
   const cap = getDamageCapPerAttack(defender);
-  const damage = cap ? Math.min(rawDamage + onHitBonus, cap.amount) : rawDamage + onHitBonus;
+  const damage = cap ? Math.min(rawDamage, cap.amount) : rawDamage;
 
   return {
     attackValue,
@@ -2348,7 +2352,9 @@ function applyAttackDamageFromCandidate(
   lethalCancel?: { grade: UnitGrade },
   ignoreDefense = false,
   noDie = false,
-  dieCancelled = false
+  dieCancelled = false,
+  mightBonus = 0,
+  mightRolls: number[] = []
 ): { damage: number; roll: number; cancelled: boolean } {
   if (!state.combat) {
     return { damage: 0, roll: 0, cancelled: false };
@@ -2365,7 +2371,8 @@ function applyAttackDamageFromCandidate(
     baseAttackOverride,
     damageReduction,
     ignoreDefense,
-    dieCancelled
+    dieCancelled,
+    mightBonus
   );
   const { attackValue, defenseValue, dieAttackBonus, dieDefenseBonus } = preview;
   let damage = preview.damage;
@@ -2425,6 +2432,7 @@ function applyAttackDamageFromCandidate(
       ...(skipDieCinematic ? { noDie: true } : {}),
       ...(candidate.sumAllDice ? { sumAllDice: true } : {}),
       ...(defendRoll !== undefined ? { defendRoll } : {}),
+      ...(mightRolls.length > 0 ? { mightRolls } : {}),
       rollMode,
       attackBonus: reportedAttackBonus,
       defenseBonus: reportedDefenseBonus,
@@ -2461,6 +2469,7 @@ function applyAttackDamageFromCandidate(
     ...(skipDieCinematic ? { noDie: true } : {}),
     ...(candidate.sumAllDice ? { sumAllDice: true } : {}),
     ...(defendRoll !== undefined ? { defendRoll } : {}),
+    ...(mightRolls.length > 0 ? { mightRolls } : {}),
     rollMode,
     attackBonus: reportedAttackBonus,
     defenseBonus: reportedDefenseBonus,
@@ -3549,6 +3558,18 @@ function finishResolvedAttack(
   const defend = resolveDefendBonus(state, stackItem, details);
   const defendBonus = defend?.bonus ?? 0;
 
+  // WOG commander Might (Damage grade): roll the attacker's extra attack dice
+  // now — once, then reused (stored on the stack item like the Defend die) so
+  // the lethal-save preview, the will-be-cancelled preview and the resolved hit
+  // all read the same dice. Each "+1" raises the attack; at most one "−1"
+  // counts. Non-commanders (and Damage grade 0) roll nothing.
+  const mightDiceCount = getMightDiceCount(details.attacker);
+  if (mightDiceCount > 0 && stackItem.modifiers.mightRolls === undefined && state.combat) {
+    stackItem.modifiers.mightRolls = Array.from({ length: mightDiceCount }, () => rollAttackDie(state.combat!));
+  }
+  const mightRolls = stackItem.modifiers.mightRolls ?? [];
+  const mightBonus = mightDiceAttackBonus(mightRolls);
+
   // Shield of the Dwarven Lords: the defender ignored the rolled die. The face
   // counts as 0 (so it adds nothing to the attack) and the lethal-save preview,
   // the resolved hit and the die-triggered abilities below all read it the same.
@@ -3595,7 +3616,8 @@ function finishResolvedAttack(
       details.abilityAttack?.baseAttack,
       details.damageReduction,
       details.ignoreDefense,
-      dieCancelled
+      dieCancelled,
+      mightBonus
     );
     if (preview.damage > 0 && details.defender.damage + preview.damage >= details.defender.maxHealth) {
       stackItem.modifiers.rolledCandidate = candidate;
@@ -3652,7 +3674,8 @@ function finishResolvedAttack(
         details.abilityAttack?.baseAttack,
         details.damageReduction,
         details.ignoreDefense,
-        dieCancelled
+        dieCancelled,
+        mightBonus
       );
       return (
         preview.damage > 0 &&
@@ -3688,7 +3711,9 @@ function finishResolvedAttack(
     lethalCancel,
     details.ignoreDefense,
     details.ignoreAttackDie,
-    dieCancelled
+    dieCancelled,
+    mightBonus,
+    mightRolls
   );
 
   // Alamar's Resurrection cancelled the whole attack: the attacker still spent

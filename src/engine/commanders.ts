@@ -1,4 +1,5 @@
 import {
+  COMMANDER_DEFENSE_TOKEN_GRADE,
   COMMANDER_MAGIC_SPELL_DAMAGE_REDUCTION,
   COMMANDER_SLUG_BY_FACTION,
   COMMANDER_STAT_KEYS,
@@ -15,10 +16,11 @@ import {
 } from "@/data/commanders";
 import { unitImmuneToParalysis } from "./active-effects";
 import { isAdjacent } from "./battlefield";
+import { finishCombatIfNeeded, markUnitRemovedIfNeeded } from "./combat-units";
 import { shuffleCards } from "./decks";
 import { appendEvent, nextEventNumber } from "./events";
 import { gainRunes } from "./runes";
-import { placeCombatToken } from "./tokens";
+import { noteUnitDamagedForTokens, placeCombatToken } from "./tokens";
 import { isMechanicalUnit } from "./unit-abilities";
 import { NEUTRAL_PLAYER_ID } from "./state";
 import type {
@@ -166,13 +168,22 @@ export function commanderAbilityIds(commander: CommanderPlayerState): string[] {
   ids.push(spellWard >= 3 ? "reduce-spell-damage-3" : spellWard >= 2 ? "reduce-spell-damage-2" : "reduce-spell-damage-1");
   ids.push("titan-ignore-ongoing");
 
-  // Damage grade: bonus damage on hits.
-  const damageBonus = commanderStatValue("damage", grades.damage);
-  if (damageBonus >= 3) {
+  // Defense grade II ("+1 def when attacked"): a permanent Defense token — the
+  // commander rolls the Defend die when attacked. Grade III is a reliable flat
+  // Defense 3 with no die, so ONLY grade II carries it.
+  if (grades.defense === COMMANDER_DEFENSE_TOKEN_GRADE) {
+    ids.push("commander-defense-token");
+  }
+
+  // Damage grade (Might): the number of EXTRA attack dice on each attack
+  // (commanderStatValue("damage", grade) = 0/1/2/3 dice). Rolled + applied in
+  // reducer.ts; each "+1" raises the attack, at most one "−1" counts.
+  const mightDice = commanderStatValue("damage", grades.damage);
+  if (mightDice >= 3) {
     ids.push("commander-might-3");
-  } else if (damageBonus >= 2) {
+  } else if (mightDice >= 2) {
     ids.push("commander-might-2");
-  } else if (damageBonus >= 1) {
+  } else if (mightDice >= 1) {
     ids.push("commander-might-1");
   }
 
@@ -474,56 +485,55 @@ function applyCharming(state: GameState, playerId: PlayerId): void {
 }
 
 /**
- * Astral Spirit — Pacifist: at the start of a combat against 2+ neutral
- * units, one random bronze/silver neutral flees: it leaves the battlefield
- * and recycles to its tier's Neutral discard pile, granting nothing (it was
- * never defeated). Creature-bank fights are exempt (their defenders and
- * rewards are bank-scoped).
+ * Astral Spirit — Elemental Scourge: at the start of a combat against neutral
+ * units, every enemy neutral unit takes 1 damage. Dealt as effect damage
+ * through the normal removal path (so a 1-HP guard that dies triggers rebirth /
+ * a Pack→Few flip and the outcome check), sourced from the commander's own
+ * combat unit. Every neutral combat qualifies (creature banks included — its
+ * bank guards are neutral units too).
  */
-function applyPacifist(state: GameState, playerId: PlayerId): void {
+function applyElementalScourge(state: GameState, playerId: PlayerId, commander: CombatUnitState): void {
   const combat = state.combat;
-  if (!combat || combat.context.kind !== "neutral" || combat.context.bankId) {
+  if (!combat || combat.context.kind !== "neutral") {
     return;
   }
-  const defenders = livingNeutralDefenders(state);
-  if (defenders.length < 2) {
+  const targets = livingNeutralDefenders(state);
+  if (targets.length === 0) {
     return;
-  }
-  const candidates = defenders.filter(
-    (unit) => (unit.grade === "bronze" || unit.grade === "silver") && !unit.bankUnit && !unit.bankGuard
-  );
-  if (candidates.length === 0) {
-    return;
-  }
-  const pick = shuffleCards(
-    candidates.map((unit) => unit.id).sort(),
-    combatSeed(state, "pacifist")
-  )[0];
-  const target = pick ? combat.units[pick] : undefined;
-  if (!target) {
-    return;
-  }
-
-  delete combat.units[target.id];
-  // Recycle the fled card to its tier's Neutral discard pile (deck ids follow
-  // the fixed `neutral-<tier>` convention — see NEUTRAL_DECK_IDS in adventure.ts).
-  if (target.unitDefId) {
-    state.decks[`neutral-${target.grade}`]?.discardPile.push(target.unitDefId);
   }
   emitSpecialty(
     state,
     playerId,
     "astral_spirit",
-    "pacifist",
-    `${target.cardName} flees the battlefield before the Astral Spirit (no rewards for it).`
+    "elemental-scourge",
+    `The Astral Spirit's Elemental Scourge sears every neutral unit for 1 damage.`
   );
+  for (const target of targets) {
+    // A rebirth/flip earlier in the loop can only ADD units, never revive one
+    // already resolved, so re-check the target is still standing before hitting.
+    if (target.damage >= target.maxHealth) {
+      continue;
+    }
+    target.damage += 1;
+    noteUnitDamagedForTokens(state, target, 1);
+    appendEvent(state, {
+      type: "DAMAGE_ASSIGNED",
+      source: { type: "unit", unitId: commander.id, controllerId: playerId },
+      target: { type: "unit", unitId: target.id },
+      amount: 1,
+      damageKind: "effect"
+    });
+    markUnitRemovedIfNeeded(state, target);
+  }
+  // A scourge that wipes the last 1-HP guard ends the fight before any turn.
+  finishCombatIfNeeded(state);
 }
 
 /**
  * Commander combat-start package, run from finalizeCombatStart AFTER the
  * commanders were injected: Mana Magician charges, Rune Ritual, Charming and
- * Pacifist. Only players whose commander actually stands in this combat get
- * their specialty (the commander must be present and alive).
+ * the Elemental Scourge. Only players whose commander actually stands in this
+ * combat get their specialty (the commander must be present and alive).
  */
 export function applyCommanderCombatStart(state: GameState): void {
   const combat = state.combat;
@@ -551,7 +561,7 @@ export function applyCommanderCombatStart(state: GameState): void {
         applyCharming(state, playerId);
         break;
       case "astral_spirit":
-        applyPacifist(state, playerId);
+        applyElementalScourge(state, playerId, unit);
         break;
       default:
         break;

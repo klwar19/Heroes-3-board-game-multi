@@ -3,7 +3,8 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import soundManifest from "../../public/sounds/manifest.json";
 import { coreUnitDefinitions } from "./factions/units";
-import { unitAttackFlourish, unitSoundKey, type UnitSoundAction } from "./unit-sounds";
+import { COMMANDER_SLUGS } from "./commanders";
+import { commanderSoundKey, commanderVoiceId, unitAttackFlourish, unitSoundKey, type UnitSoundAction } from "./unit-sounds";
 
 const soundLibrary = soundManifest as Record<string, { src?: string; sequence?: string[] }>;
 const roster = Object.values(coreUnitDefinitions);
@@ -107,6 +108,80 @@ describe("unit combat voices", () => {
 
   it("stays silent for unknown units", () => {
     expect(unitSoundKey("castle.unknown", "attack")).toBeUndefined();
+  });
+
+  it("gives every WOG commander a voice for every action, resolving to a real clip on disk", () => {
+    const missing: string[] = [];
+    for (const slug of COMMANDER_SLUGS) {
+      for (const action of coreActions) {
+        const key = commanderSoundKey(slug, action);
+        const srcs = clipSrcs(key);
+        if (!key || srcs.length === 0) {
+          missing.push(`${slug}: ${action}`);
+          continue;
+        }
+        for (const src of srcs) {
+          const file = fileURLToPath(new URL(`../../public${src}`, import.meta.url));
+          if (!existsSync(file)) {
+            missing.push(`${slug}: ${action} -> ${src} (no file)`);
+          }
+        }
+      }
+    }
+    expect(missing).toEqual([]);
+  });
+
+  it("routes a `commander:<slug>` voice id through unitSoundKey", () => {
+    expect(commanderVoiceId("paladin")).toBe("commander:paladin");
+    expect(unitSoundKey(commanderVoiceId("paladin"), "attack")).toBe("units/swordsman-attack");
+    expect(unitSoundKey("commander:soul_eater", "move")).toBe("units/zombie-lord-move");
+  });
+
+  it("maps each faction commander to the user-specified creature voice(s)", () => {
+    // Castle → Swordsman (not Crusader); Rampart → Monk (not Zealot).
+    expect(commanderSoundKey("paladin", "attack")).toBe("units/swordsman-attack");
+    expect(commanderSoundKey("paladin", "death")).toBe("units/swordsman-death");
+    expect(commanderSoundKey("hierophant", "attack")).toBe("units/monk-attack");
+    // Tower → "sorceress" (the Cove Sorceresses' Sea Witch voice).
+    expect(commanderSoundKey("temple_guardian", "hurt")).toBe("units/sea-witch-hurt");
+    // Inferno — move: Gargoyle; hurt/death/defend: Pixie; attack: Magi (Mage).
+    expect(commanderSoundKey("succubus", "move")).toBe("units/stone-gargoyle-move");
+    expect(commanderSoundKey("succubus", "hurt")).toBe("units/pixie-hurt");
+    expect(commanderSoundKey("succubus", "death")).toBe("units/pixie-death");
+    expect(commanderSoundKey("succubus", "defend")).toBe("units/pixie-defend");
+    expect(commanderSoundKey("succubus", "attack")).toBe("units/mage-attack");
+    // Dungeon → Minotaur; Stronghold → Ogre; Fortress → Gnoll (all actions).
+    expect(commanderSoundKey("brute", "attack")).toBe("units/minotaur-attack");
+    expect(commanderSoundKey("brute", "move")).toBe("units/minotaur-move");
+    expect(commanderSoundKey("ogre_leader", "death")).toBe("units/ogre-death");
+    expect(commanderSoundKey("shaman", "defend")).toBe("units/gnoll-defend");
+    // Necropolis — move: Zombie; hurt/defend/death: Lich; attack: Lich melee
+    // (the "attack" action must be lich-attack, NOT lich-shoot).
+    expect(commanderSoundKey("soul_eater", "move")).toBe("units/zombie-lord-move");
+    expect(commanderSoundKey("soul_eater", "hurt")).toBe("units/lich-hurt");
+    expect(commanderSoundKey("soul_eater", "death")).toBe("units/lich-death");
+    expect(commanderSoundKey("soul_eater", "attack")).toBe("units/lich-attack");
+    // Conflux — hurt/death/defend: Pixie; move/attack: Inferno Efreet.
+    expect(commanderSoundKey("astral_spirit", "death")).toBe("units/pixie-death");
+    expect(commanderSoundKey("astral_spirit", "move")).toBe("units/efreet-move");
+    expect(commanderSoundKey("astral_spirit", "attack")).toBe("units/efreet-attack");
+    // Cove → the level-3 unit (Sea Dogs = Pirate); Factory → the Cove level-2
+    // unit (Seamen = Crew Mate); Bulwark → the level-7 unit (Jotunns = Titan).
+    expect(commanderSoundKey("corsair", "attack")).toBe("units/pirate-attack");
+    expect(commanderSoundKey("factory", "attack")).toBe("units/crew-mate-attack");
+    expect(commanderSoundKey("bulwark", "attack")).toBe("units/titan-attack");
+  });
+
+  it("borrows the attack voice for a Sharpshooter-combo commander's shoot", () => {
+    // Swordsman has no shoot clip → the commander's shoot falls back to attack.
+    expect(commanderSoundKey("paladin", "shoot")).toBe("units/swordsman-attack");
+    // A voice that does have a shoot clip uses it.
+    expect(commanderSoundKey("hierophant", "shoot")).toBe("units/monk-shoot");
+  });
+
+  it("stays silent for an unknown commander slug", () => {
+    expect(commanderSoundKey("nobody", "attack")).toBeUndefined();
+    expect(unitSoundKey("commander:nobody", "attack")).toBeUndefined();
   });
 
   it("layers a magical strike flourish over the Magic Elemental's blow", () => {

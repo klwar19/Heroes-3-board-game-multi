@@ -414,11 +414,28 @@ Leading with what does NOT run / deliberate readings:
   the PC numbers in `docs/wog-commanders-plan.md` §4–5 are design history. The
   shipped system is grades 0–3 per stat plus the 15 combination skills below.
 - **Stats are grades 0–3** (`COMMANDER_GRADE_VALUES`): every stat STARTS at
-  grade 0 (the base line A2/D1/H4/dmg+0/Pow0/Spd5). A grade's bonus over the
+  grade 0 (the base line A2/D1/H4/dmg0/Pow0/Spd5). A grade's bonus over the
   base is the value shown, never summed with earlier grades: +1/+2 at grade
-  I/II; grade III is adjusted per the user spec — Attack +3 (5), Defense +3
-  (4), Health +4 (8), Damage +3, Power 3, Speed +5 (Initiative 10). The Magic
-  ladder: Power 0/1/2/3 (cast tiers cap at "Power 2+"), Spell ward
+  I/II; grade III is adjusted per the user spec — Attack +3 (5), Health +4 (8),
+  Power 3, Speed +5 (Initiative 10). Two stats work differently:
+  - **Defense = 1/2/2/3** (NOT +3 at III). Grade II is the "+1 def when
+    attacked" tier: Defense 2 PLUS a permanent Defense token
+    (`commander-defense-token`, `SELF_DEFENSE_TOKEN` — the commander rolls the
+    Defend die when attacked, +1 on a "+1" face). Grade III is a reliable flat
+    Defense 3 with NO die (the token is on grade II ONLY —
+    `COMMANDER_DEFENSE_TOKEN_GRADE`). Pinned in `wog-commanders.test.ts`
+    ("Defense grade II Defense token", with grade-I no-token / grade-III no-die
+    CONTROLs).
+  - **Damage = extra ATTACK DICE, not a flat bonus.** At Damage grade N the
+    commander rolls N ADDITIONAL attack dice (0/1/2/3) alongside its normal
+    attack die on every attack; each extra "+1" face raises the attack value,
+    and AT MOST ONE "−1" counts (`getMightDiceCount` / `mightDiceAttackBonus`,
+    rolled once per attack in `finishResolvedAttack` and reused by the
+    lethal-save preview). Because they are attack dice they ride the attack
+    value BEFORE Defense (they can push through Defense; a fully-blocked hit is
+    still 0). Pinned in `wog-commanders.test.ts` (the "Might" case, with the
+    "at most one −1" and the push-through-Defense CONTROLs).
+  The Magic ladder: Power 0/1/2/3 (cast tiers cap at "Power 2+"), Spell ward
   -1/-1/-2/-3 (`reduce-spell-damage-1/2/3`), ongoing-effect immunity at EVERY
   grade. Grade-up picks (two DIFFERENT stats each) at hero level 2/4/6 —
   Paladin's Wise: 2/3/5. Pinned in `wog-commanders.test.ts`.
@@ -445,13 +462,30 @@ Leading with what does NOT run / deliberate readings:
 - **Deployment cap**: with the module on, `combatUnitLimit` = 4 army units
   (both neutral and PvP setups) — the commander IS the 5th body. Module off =
   the classic 5 (pinned with a CONTROL in `wog-commanders.test.ts`).
-- **UI**: cast + combo icons are the classic HoMM3 spell icons fetched from
-  heroes.thelazy.net (`scripts/fetch-commander-spell-icons.py` →
-  `public/assets/spell-icons/`; existence pinned in the combos test). The card
-  face (`CommanderCardFace`) overlays the REAL stat numbers on the frame wells
-  plus damage/Power badges and unlocked-combo chips; combat inspect/zoom render
-  it from the unit's `commanderGrades` snapshot instead of the static scan. A
-  new grade-up pick pulses/blinks the dock tile (`commanderTilePulse/Blink`).
+- **UI**: the CARD face (`CommanderCardFace`) keeps the classic HoMM3 spell
+  icons (`public/assets/spell-icons/`) for the cast/combo chips and overlays the
+  REAL stat numbers on the frame wells plus the Might-dice / Power badges. The
+  read-only STATS view (`CommanderStatsPanel`, used by the map card AND the
+  combat inspect/zoom — `board.tsx` / `zoom.tsx`) instead uses the AUTHENTIC WoG
+  comm3 symbols (`public/assets/commander-icons/stat-*.jpg` for the six stats,
+  `combo-<tag>.jpg` for the fifteen skills, downloaded from
+  heroesofmightandmagic.com/wakeofgods/pics/comds; existence pinned in
+  `wog-commander-combos.test.ts`). It spells out each grade bonus (base + grade
+  delta), the Defense-token "+1 def when attacked" tier, the Damage DICE, a
+  Magic Power ladder with the current tier + spell ward highlighted, and every
+  combination skill with its symbol + full text (render smoke-tested in
+  `commander-card.test.tsx`). Combat inspect also shows the Might dice + Power
+  inline. A new grade-up pick pulses/blinks the dock tile.
+- **Battlefield voices**: a commander has no unit definition, so its combat
+  voice is keyed by slug in `commanderVoices` (`unit-sounds.ts`,
+  `commanderSoundKey`); the table passes `commander:<slug>` as the voice id
+  (`commanderVoiceId`) and `unitSoundKey` routes it. Per the user spec:
+  Castle=Swordsman, Rampart=Monk, Tower=Sorceress(Sea Witch), Inferno=move
+  Gargoyle/hurt-death-defend Pixie/attack Magi, Dungeon=Minotaur,
+  Necropolis=move Zombie/hurt-defend-death Lich/attack Lich-melee,
+  Stronghold=Ogre, Fortress=Gnoll, Conflux=hurt-death-defend Pixie/move-attack
+  Efreet, Factory=Cove Seamen, Cove=Sea Dogs, Bulwark=Jotunns. Pinned in
+  `unit-sounds.test.ts`.
 - **Specialty adaptations** (each engine-enforced, but a conscious rewrite of
   the WoG printed passive): Paladin Wise = grade-up picks one level early
   (not 150% XP); Temple Guardian Mana Magician = twice per COMBAT a Spell may
@@ -462,8 +496,11 @@ Leading with what does NOT run / deliberate readings:
   AND Sea Marshal Battle Stance = the owner picks the commander's combat stance
   (+1 Attack OR +1 Defense) on the commander card OUTSIDE combat, baked into the
   unit at each combat's setup (default +1 Attack; `commander.stance`); Astral
-  Spirit Pacifist = at combat start vs 2+ neutral guards one random bronze/silver
-  guard flees to its tier discard (no rewards for it; bank fights exempt); Rune
+  Spirit **Elemental Scourge** = at the start of a combat vs neutral units,
+  EVERY enemy neutral unit takes 1 damage (`applyElementalScourge`, effect
+  damage through the normal removal path, every neutral combat incl. banks —
+  this REPLACED the old "Pacifist" flee specialty; pinned in
+  `wog-commanders.test.ts` with a module-off and a non-Conflux CONTROL); Rune
   Keeper Rune Ritual = +1 Rune the FIRST time the commander is attacked each
   combat (once per fight; NOT a combat-start grant — original, a non-WoG add);
   Hierophant First Aid = post-combat window restoring ONE bronze/silver
@@ -498,11 +535,14 @@ Leading with what does NOT run / deliberate readings:
   "mechanical" = the engine's `isMechanicalUnit` (Factory Automatons /
   Dreadnoughts); Shield shares the Shield SPELL's `DEFENSE_VS_ATTACKER_TYPE`
   semantics (a ranged-TYPE unit attacking adjacent is still not "melee").
-- **Might (Damage grade)** adds +1/+2/+3 to the commander's attacks AND
-  retaliations that deal ≥1 damage — it never turns a fully-blocked hit into
-  chip damage and stays under per-attack damage caps (Cove Nix). Charge fires
-  on its own attacks after moving, never on retaliations. Death Stare reuses
-  `gorgon-death-stare` verbatim (2 dice, double "-1" destroys the side).
+- **Might (Damage grade)** rolls N EXTRA attack dice (N = Damage grade 0/1/2/3)
+  on the commander's attacks AND retaliations, folded into the attack value
+  beside the normal die (each "+1" raises the attack; at most one "−1" counts).
+  Because they are attack dice they interact with Defense and stay under
+  per-attack damage caps (Cove Nix). Charge fires on its own attacks after
+  moving, never on retaliations. Death Stare reuses `gorgon-death-stare`
+  verbatim (2 dice, double "-1" destroys the side). The ATTACK_ROLLED event
+  carries the extra dice as `mightRolls` so the combat UI can show them.
 - The commander COUNTS for win/loss (`livingControllerIds`): an army can fight
   on through its commander, and killing a side needs the commander dead too.
 - `COMMANDER_GRADE_UP` / `REVIVE_COMMANDER` / `COMMANDER_FIRST_AID` are

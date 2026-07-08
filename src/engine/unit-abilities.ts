@@ -296,15 +296,28 @@ export function hasIgnoreParalysis(unit: CombatUnitState): boolean {
 }
 
 /**
- * WOG commander Damage grade ("Might"): extra damage this unit's attacks and
- * retaliations deal whenever they deal at least 1 damage. Applied inside
- * getAttackDamagePreview (still under any per-attack damage cap).
+ * WOG commander Damage grade ("Might"): the number of ADDITIONAL attack dice
+ * this unit rolls on each of its attacks (and retaliations). The caller rolls
+ * that many dice, adds +1 to the attack for each "+1" face and subtracts 1 for
+ * the whole roll if any "−1" face appears (at most one "−1" counts). Resolved
+ * in reducer.ts (rolled once per attack, reused by the lethal-save preview).
  */
-export function getBonusDamageOnHit(unit: CombatUnitState): number {
-  return getAbilitiesWithEffect(unit, "BONUS_DAMAGE_ON_HIT").reduce(
-    (total, ability) => total + (ability.effect?.type === "BONUS_DAMAGE_ON_HIT" ? ability.effect.amount : 0),
+export function getMightDiceCount(unit: CombatUnitState): number {
+  return getAbilitiesWithEffect(unit, "MIGHT_ATTACK_DICE").reduce(
+    (total, ability) => total + (ability.effect?.type === "MIGHT_ATTACK_DICE" ? ability.effect.dice : 0),
     0
   );
+}
+
+/**
+ * The Might-dice attack modifier for a rolled pool of ADDITIONAL attack dice:
+ * +1 per "+1" face, and −1 for the whole pool if any "−1" face appears (extra
+ * "−1"s are ignored). Pure so the reducer and its tests share one definition.
+ */
+export function mightDiceAttackBonus(rolls: readonly number[]): number {
+  const plus = rolls.filter((roll) => roll > 0).length;
+  const anyMinus = rolls.some((roll) => roll < 0);
+  return plus - (anyMinus ? 1 : 0);
 }
 
 /**
