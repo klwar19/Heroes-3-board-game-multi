@@ -14127,6 +14127,325 @@ img.cardBack {
   color: #8f8064;
 }
 
+/* A held NEGATIVE morale card is an armed curse — pulse it red so its owner
+   never forgets it is waiting to strike. */
+.moraleHeldCards.negative .moraleHeldCard {
+  border-color: rgba(226, 92, 92, 0.55);
+  animation: moraleArmedPulse 2.2s ease-in-out infinite;
+}
+
+@keyframes moraleArmedPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(226, 60, 60, 0);
+  }
+  50% {
+    box-shadow: 0 0 9px 1px rgba(226, 60, 60, 0.55);
+  }
+}
+
+/* Other players' held morale cards (public info) under the dock. */
+.moraleOthersRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 7px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(170, 130, 70, 0.22);
+}
+
+.moraleOthersRow > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #cdb98c;
+  font-size: 10px;
+}
+
+.moraleOthersRow .moraleHeldCard {
+  width: 24px;
+  height: 34px;
+}
+
+.moraleHeldCard.othersNegative {
+  border-color: rgba(226, 92, 92, 0.55);
+}
+
+/* ---------- Morale-card moment overlay (map + combat) ---------- */
+.moraleCueBackdrop {
+  position: fixed;
+  inset: 0;
+  /* Same layer as the map-visit notice: above the boards and trays, below the
+     Astrologers ceremony (96) and the tumbling dice (100). */
+  z-index: 95;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(ellipse at center, rgba(8, 6, 3, 0.32), rgba(8, 6, 3, 0.62));
+  cursor: pointer;
+  animation: moraleCueBackdropIn 220ms ease-out;
+}
+
+@keyframes moraleCueBackdropIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.moraleCueCard {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  gap: 14px;
+  max-width: min(92vw, 560px);
+  padding: 16px 18px;
+  border-radius: 14px;
+  border: 1px solid rgba(214, 172, 91, 0.5);
+  background: linear-gradient(180deg, rgba(38, 29, 16, 0.97), rgba(20, 15, 9, 0.98));
+  color: #ead8ad;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 235, 190, 0.08),
+    0 18px 48px rgba(0, 0, 0, 0.6);
+  animation: moraleCueSlamIn 420ms cubic-bezier(0.18, 1.25, 0.4, 1);
+}
+
+.moraleCueCard.positive {
+  border-color: rgba(240, 200, 110, 0.75);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 235, 190, 0.08),
+    0 0 34px rgba(245, 205, 100, 0.35),
+    0 18px 48px rgba(0, 0, 0, 0.6);
+}
+
+.moraleCueCard.negative {
+  border-color: rgba(226, 92, 92, 0.7);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 210, 190, 0.06),
+    0 0 34px rgba(226, 60, 60, 0.38),
+    0 18px 48px rgba(0, 0, 0, 0.6);
+  animation:
+    moraleCueSlamIn 420ms cubic-bezier(0.18, 1.25, 0.4, 1),
+    moraleCueShake 340ms ease-in-out 420ms;
+}
+
+@keyframes moraleCueSlamIn {
+  from {
+    opacity: 0;
+    transform: scale(1.35);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes moraleCueShake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-7px) rotate(-0.6deg);
+  }
+  45% {
+    transform: translateX(6px) rotate(0.5deg);
+  }
+  70% {
+    transform: translateX(-4px);
+  }
+  85% {
+    transform: translateX(3px);
+  }
+}
+
+/* Expanding ring behind the card art — gold for positive, red for negative. */
+.moraleCueRing {
+  position: absolute;
+  top: 50%;
+  left: 74px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  animation: moraleCueRing 900ms ease-out 160ms both;
+}
+
+.moraleCueCard.positive .moraleCueRing {
+  border: 3px solid rgba(245, 205, 100, 0.8);
+}
+
+.moraleCueCard.negative .moraleCueRing {
+  border: 3px solid rgba(230, 80, 80, 0.8);
+}
+
+@keyframes moraleCueRing {
+  from {
+    opacity: 0.9;
+    transform: translate(-50%, -50%) scale(0.6);
+  }
+  to {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(6.5);
+  }
+}
+
+.moraleCueArt {
+  flex: 0 0 auto;
+  width: 112px;
+  height: 158px;
+  object-fit: cover;
+  border-radius: 8px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.65);
+}
+
+.moraleCueArtFallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 44px;
+  border: 1px solid rgba(214, 172, 91, 0.4);
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.moraleCueBody {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+}
+
+.moraleCueHeadline {
+  font-size: 18px;
+  line-height: 1.15;
+}
+
+.moraleCueCard.positive .moraleCueHeadline {
+  color: #f5d77e;
+}
+
+.moraleCueCard.negative .moraleCueHeadline {
+  color: #f08a8a;
+}
+
+.moraleCueName {
+  color: #d9c391;
+  font-size: 12px;
+}
+
+.moraleCueHolder {
+  color: #bfa982;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.moraleCueBody p {
+  margin: 5px 0 2px;
+  color: #e6d5ab;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+/* ---------- In-combat morale card panel (held cards + use buttons) ---------- */
+.combatMoraleCards {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 8px;
+  border: 1px solid rgba(170, 130, 70, 0.4);
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(34, 26, 17, 0.92), rgba(18, 14, 10, 0.95));
+  color: #ead8ad;
+}
+
+.combatMoraleCards > header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #f2dfaf;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.combatMoraleRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.combatMoraleRow .moraleHeldCard {
+  width: 38px;
+  height: 53px;
+}
+
+.combatMoraleRow.negative .moraleHeldCard {
+  border-color: rgba(226, 92, 92, 0.55);
+  animation: moraleArmedPulse 2.2s ease-in-out infinite;
+}
+
+.combatMoraleRowBody {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.combatMoraleRowBody > strong {
+  font-size: 11px;
+  color: #e8d29a;
+}
+
+.combatMoraleRow.negative .combatMoraleRowBody > strong {
+  color: #f0a0a0;
+}
+
+.combatMoraleRowBody > small {
+  color: #bfa982;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.combatMoraleRowBody .handButtons {
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.combatMoraleRowBody .handButtons .commandButton {
+  padding: 3px 8px;
+  font-size: 11px;
+}
+
+.combatMoraleOthers {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-top: 5px;
+  border-top: 1px solid rgba(170, 130, 70, 0.22);
+}
+
+.combatMoraleOthers > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #cdb98c;
+  font-size: 10px;
+}
+
+.combatMoraleOthers .moraleHeldCard {
+  width: 26px;
+  height: 36px;
+}
+
 /* ---------- Bottom deck shelf: Spell / Neutral / Artifact / Event ---------- */
 .advDecksBottom {
   width: 100%;

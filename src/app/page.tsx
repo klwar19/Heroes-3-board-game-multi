@@ -43,6 +43,7 @@ import {
   FirstPlayerRollOverlay,
   MapDiceOverlay,
   MapNoticeOverlay,
+  MoraleCardOverlay,
   NeutralStepOverlay,
   NewDayOverlay,
   AstrologersProclamationOverlay,
@@ -62,6 +63,12 @@ import {
   type EventDrawnCue
 } from "@/components/table/overlays";
 import { CardZoomProvider, useCardZoom, ZoomButton } from "@/components/table/zoom";
+import {
+  buildMoraleCardCues,
+  isMoraleCardEvent,
+  type MoraleCardCue
+} from "@/components/table/morale-card-cue";
+import { CombatMoralePanel } from "@/components/table/combat-morale-panel";
 import { healFreezeDisplayDamage } from "@/components/table/heal-display";
 import { TableErrorBoundary } from "@/components/error-boundary";
 import {
@@ -349,110 +356,6 @@ function MoraleOverflowPrompt({
 }
 
 /**
- * Spend the positive morale token DURING combat: draw 1, or discard any number
- * of cards and redraw that many. (The token's third use — rerolling a die — is
- * offered inside the attack-die reroll prompt when a die is thrown.) Shown in
- * the combat table when the engine offers the morale plays to this seat.
- */
-function CombatMoralePanel({
-  legalActions,
-  hand,
-  viewerPlayerId,
-  onAction
-}: {
-  legalActions: LegalAction[];
-  hand: string[];
-  viewerPlayerId: PlayerId;
-  onAction: (action: GameAction) => void;
-}) {
-  const [picking, setPicking] = useState(false);
-  const [picks, setPicks] = useState<number[]>([]);
-
-  const drawAction = legalActions.find(
-    (legal) => legal.action.type === "SPEND_MORALE" && legal.action.benefit === "draw"
-  );
-  const redrawAction = legalActions.find(
-    (legal) => legal.action.type === "SPEND_MORALE" && legal.action.benefit === "redraw"
-  );
-
-  if (!drawAction && !redrawAction) {
-    return null;
-  }
-
-  const confirmRedraw = () => {
-    if (picks.length === 0) {
-      return;
-    }
-    onAction({
-      type: "SPEND_MORALE",
-      playerId: viewerPlayerId,
-      benefit: "redraw",
-      discardCardIds: picks.map((index) => hand[index])
-    });
-    setPicking(false);
-    setPicks([]);
-  };
-
-  return (
-    <div className="combatMorale" aria-label="Spend morale">
-      <div className="handButtons">
-        {drawAction ? (
-          <button className="commandButton" onClick={() => onAction(drawAction.action)} type="button">
-            🎖 Morale: draw 1
-          </button>
-        ) : null}
-        {redrawAction ? (
-          <button className="commandButton" onClick={() => setPicking(true)} type="button">
-            🎖 Morale: discard &amp; redraw
-          </button>
-        ) : null}
-      </div>
-      {picking ? (
-        <div className="moraleOverflowBackdrop" role="dialog" aria-modal="true" aria-label="Discard and redraw">
-          <div className="moraleOverflowPopup">
-            <strong>Spend morale: discard cards, draw that many</strong>
-            <div className="moraleRedrawCards">
-              {hand.map((cardId, index) => (
-                <button
-                  aria-pressed={picks.includes(index)}
-                  className={`trayChip ${picks.includes(index) ? "picked" : ""}`}
-                  key={`${cardId}-${index}`}
-                  onClick={() =>
-                    setPicks((current) =>
-                      current.includes(index)
-                        ? current.filter((value) => value !== index)
-                        : [...current, index]
-                    )
-                  }
-                  type="button"
-                >
-                  {cardName(cardId)}
-                </button>
-              ))}
-            </div>
-            <div className="handButtons">
-              <button className="commandButton primary" disabled={picks.length === 0} onClick={confirmRedraw} type="button">
-                Discard {picks.length} &amp; draw {picks.length}
-              </button>
-              <button
-                className="commandButton ghost"
-                onClick={() => {
-                  setPicking(false);
-                  setPicks([]);
-                }}
-                type="button"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-/**
  * The room from the URL `?room=` param, or `null` when none is present — then
  * the app shows the multiplayer lobby (room browser) instead of dropping the
  * player straight into a fixed "dev-room". A shared `?room=` link still opens
@@ -698,6 +601,12 @@ export default function Home() {
     current: null,
     queue: []
   });
+  // Morale-card moments (draw / auto-strike / cancel / absorb): queued big-card
+  // overlays with the H3 good/bad-morale sting, shown on map AND combat screens.
+  const [moraleCue, setMoraleCue] = useState<{ current: MoraleCardCue | null; queue: MoraleCardCue[] }>({
+    current: null,
+    queue: []
+  });
   const [astrologerCue, setAstrologerCue] = useState<AstrologersProclamationCue | null>(null);
   const [eventCue, setEventCue] = useState<EventDrawnCue | null>(null);
   const [drawCue, setDrawCue] = useState<DrawCue | null>(null);
@@ -750,6 +659,9 @@ export default function Home() {
   const seenStructureIdsRef = useRef<Set<string>>(new Set());
   const seenFeedIdsRef = useRef<Set<string>>(new Set());
   const seenFxIdsRef = useRef<Set<string>>(new Set());
+  // Morale-card events already popped as the big MoraleCardOverlay — one pop
+  // per event, never replayed on reconnect.
+  const seenMoraleCueIdsRef = useRef<Set<string>>(new Set());
   // House rule (BINH) notices, popped once per event and pre-seeded on reconnect:
   //  - Dracon reaching level IV (his new Few-of-Magi recruit option).
   //  - A Gelu-recruited Sharpshooters joining the army with its +1 Attack BUFF.
@@ -935,6 +847,7 @@ export default function Home() {
     );
     const feedEvents = nextState.eventLog.filter((event) => ADVENTURE_FEED_CUES[event.type]);
     const fxEvents = nextState.eventLog.filter((event) => FX_EVENT_TYPES.has(event.type));
+    const moraleCardEvents = nextState.eventLog.filter((event) => isMoraleCardEvent(event));
 
     if (!seenRollIdsRef.current) {
       // Fresh room connection: forget the previous room's units.
@@ -959,6 +872,7 @@ export default function Home() {
       seenVisitIdsRef.current = new Set(visitEvents.map((event) => event.id));
       seenFeedIdsRef.current = new Set(feedEvents.map((event) => event.id));
       seenFxIdsRef.current = new Set(fxEvents.map((event) => event.id));
+      seenMoraleCueIdsRef.current = new Set(moraleCardEvents.map((event) => event.id));
       // A mid-game join must not re-pop a past Dracon level-up or buffed recruit.
       seenLevelNoticeIdsRef.current = new Set(
         nextState.eventLog.filter((event) => event.type === "HERO_LEVEL_UP").map((event) => event.id)
@@ -999,6 +913,7 @@ export default function Home() {
       setCombatDamageDisplay(new Map());
       setMapDice({ current: null, queue: [] });
       setMapNotice({ current: null, queue: [] });
+      setMoraleCue({ current: null, queue: [] });
       setFirstRoll(null);
       setNewDay({ current: null, queue: [] });
       setAstrologerCue(null);
@@ -1030,6 +945,12 @@ export default function Home() {
         // so one snapshot never piles identical sounds.
         const cueSounds: string[] = [];
         for (const event of freshFeed) {
+          // Morale-card events pop the big MoraleCardOverlay, which owns the
+          // good/bad-morale sting — their feed lines stay silent (the plain
+          // MORALE_CHANGED token event keeps the generic morale cue).
+          if (isMoraleCardEvent(event)) {
+            continue;
+          }
           const cue = ADVENTURE_FEED_CUES[event.type]?.cue;
           let key = cue ? MAP_CUE_SOUNDS[cue] : null;
           if (event.type === "FIELD_VISITED") {
@@ -1063,6 +984,23 @@ export default function Home() {
           };
         } else {
           showFeedItems(items, cueSounds);
+        }
+      }
+
+      // Morale-card moments: every draw, automatic strike, cancel and absorb
+      // pops the big card overlay (art + who + what happened) with the H3
+      // good/bad-morale sting — on the map AND over the battlefield.
+      const freshMoraleCardEvents = moraleCardEvents.filter((event) => !seenMoraleCueIdsRef.current.has(event.id));
+      for (const event of freshMoraleCardEvents) {
+        seenMoraleCueIdsRef.current.add(event.id);
+      }
+      if (freshMoraleCardEvents.length > 0) {
+        const cues = buildMoraleCardCues(freshMoraleCardEvents, nextState, viewerRef.current);
+        if (cues.length > 0) {
+          setMoraleCue((current) => {
+            const queue = [...current.queue, ...cues];
+            return current.current ? { ...current, queue } : { current: queue[0], queue: queue.slice(1) };
+          });
         }
       }
 
@@ -2852,6 +2790,14 @@ export default function Home() {
     );
   }, []);
 
+  const dismissMoraleCue = useCallback(() => {
+    setMoraleCue((current) =>
+      current.queue.length > 0
+        ? { current: current.queue[0], queue: current.queue.slice(1) }
+        : { current: null, queue: [] }
+    );
+  }, []);
+
   // Closing the first-player ceremony releases the opening deal: the deck->hand
   // flights stashed at game start fly now, and the freshly dealt hand reveals as
   // they land — the roll having led, the cards draw after.
@@ -4530,6 +4476,11 @@ export default function Home() {
           {!firstRoll && !newDay.current && !astrologerCue && eventCue ? (
             <EventDrawnOverlay cue={eventCue} key={eventCue.id} onDone={() => setEventCue(null)} />
           ) : null}
+          {/* Morale-card moment: waits out dice and the bigger round ceremonies,
+              then pops the card with its good/bad-morale sting. */}
+          {!firstRoll && !newDay.current && !astrologerCue && !eventCue && !mapDice.current && moraleCue.current ? (
+            <MoraleCardOverlay cue={moraleCue.current} key={moraleCue.current.id} onDone={dismissMoraleCue} />
+          ) : null}
           <FxStage cues={fxCues} onDone={handleFxDone} />
           {reactionsLayer}
         </main>
@@ -4598,6 +4549,7 @@ export default function Home() {
                   hand={playerView.players[viewerPlayerId]?.hand ?? []}
                   legalActions={legalActions}
                   onAction={submitAction}
+                  state={state}
                   viewerPlayerId={viewerPlayerId}
                 />
               </div>
@@ -4815,6 +4767,13 @@ export default function Home() {
       ) : null}
       {!firstRoll && !dice.current && !newDay.current && !astrologerCue && eventCue ? (
         <EventDrawnOverlay cue={eventCue} key={eventCue.id} onDone={() => setEventCue(null)} />
+      ) : null}
+      {/* Morale-card moment over the battlefield: a Negative card striking
+          mid-fight (skipped activation, forced −1 die…) or a Positive card
+          being used pops with its art and sting — but only once the dice and
+          the strike animation they gate have fully played out. */}
+      {!firstRoll && !dice.current && !combatPresenting && !newDay.current && !astrologerCue && !eventCue && moraleCue.current ? (
+        <MoraleCardOverlay cue={moraleCue.current} key={moraleCue.current.id} onDone={dismissMoraleCue} />
       ) : null}
       <FxStage cues={fxCues} onDone={handleFxDone} />
       {reactionsLayer}

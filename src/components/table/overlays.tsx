@@ -35,6 +35,7 @@ import {
   type ReactionPlay
 } from "@/engine";
 import { cardIsEmpoweredFor, cardName, costCardEligible, formatDieFace, formatEvent, unitName } from "./utils";
+import { MORALE_CUE_SOUNDS, type MoraleCardCue } from "./morale-card-cue";
 import { CardBack, CardFrame } from "./seats";
 import { AnkhIcon, CrossedShovelsIcon, StarBannerIcon } from "./dice-icons";
 import { useCardZoom, ZoomButton } from "./zoom";
@@ -2095,6 +2096,57 @@ export function EventDrawnOverlay({
           <button className="commandButton primary" onClick={onDone} type="button">
             Understood
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Morale-card moment (map AND combat screens): a drawn / auto-striking /
+ * cancelled / absorbed Morale card slams onto the screen with its real card
+ * art, the holder's name and one plain-words line saying what just happened,
+ * plus the H3 good/bad-morale sting. Positive moments glow gold; negative
+ * ones flash red and shake. Click (or wait) to dismiss — the game state is
+ * final before the cue shows, so this is pure presentation.
+ */
+export function MoraleCardOverlay({ cue, onDone }: { cue: MoraleCardCue; onDone: () => void }) {
+  const [imageFailed, setImageFailed] = useState(false);
+  const negative = cue.soundKey === MORALE_CUE_SOUNDS.bad;
+
+  useEffect(() => {
+    playLibrarySound(cue.soundKey, 0.6);
+    const doneId = window.setTimeout(onDone, negative ? 4400 : 3600);
+    return () => window.clearTimeout(doneId);
+  }, [cue, onDone, negative]);
+
+  return (
+    <div
+      className={`moraleCueBackdrop ${negative ? "negative" : "positive"}`}
+      onClick={onDone}
+      role="status"
+      aria-label={`${cue.headline} — ${cue.playerName}`}
+    >
+      <div className={`moraleCueCard ${negative ? "negative" : "positive"} ${cue.kind}`}>
+        <span aria-hidden="true" className="moraleCueRing" />
+        {cue.image && !imageFailed ? (
+          <img
+            alt={cue.cardName}
+            className="moraleCueArt"
+            src={assetUrl(cue.image)}
+            onError={() => setImageFailed(true)}
+          />
+        ) : (
+          <div className="moraleCueArt moraleCueArtFallback" aria-hidden="true">
+            {cue.polarity === "positive" ? "🎺" : "🌩"}
+          </div>
+        )}
+        <div className="moraleCueBody">
+          <strong className="moraleCueHeadline">{cue.headline}</strong>
+          <span className="moraleCueName">{cue.cardName}</span>
+          <span className="moraleCueHolder">{cue.viewerIsHolder ? "You" : cue.playerName}</span>
+          <p>{cue.detail}</p>
+          <small className="mapNoticeHint">click to continue</small>
         </div>
       </div>
     </div>

@@ -328,6 +328,24 @@ holder's next "+1" Attack die (attack rolls incl. window rerolls and the
 just-set +1 of `set_attack_die_plus`, the Defend die, the skip-activation
 check die); `random_combat_discard` at combat start.
 
+Presentation layer (pure UI over the wiring above, no engine change): every
+`MORALE_CARD_DRAWN`/`_USED`/`_DISCARDED` event pops the `MoraleCardOverlay`
+(card art + holder + a plain-words "what happened" line, gold vs red-shake
+styling) on the map AND combat screens, with the converted H3
+`effects/good-morale`/`bad-morale` sting — good/bad picked by whether the
+moment favors the holder (a cancelled Negative card sounds GOOD, an absorbed
+Positive sounds BAD), the positive-limit tidy-up stays a quiet feed line, and
+the generic feed sound is suppressed for these events so nothing double-plays.
+Cue builder + per-card hint/outcome texts in
+`src/components/table/morale-card-cue.ts` (`morale-card-cue.test.ts`,
+`morale-card-overlay.test.tsx`). In combat the `CombatMoralePanel`
+(`combat-morale-panel.tsx`, extracted from page.tsx) lists the viewer's held
+cards with live use buttons driven by the engine's `SPEND_MORALE` offers
+(combat-bonus / remove-token / redraw; hint text for cards whose use is
+offered elsewhere, e.g. the reroll window) plus the opposing fighter's public
+held cards (`combat-morale-panel.test.tsx`); the map `MoraleCardsDock` also
+shows other seats' held cards.
+
 ## Parallel turns (OPTIONAL house rule, multiplayer only) — what runs vs. limits
 
 Engine in `src/engine/parallel-turns.ts` (predicates, the stop/collapse, the
