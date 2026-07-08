@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { cardLibrary } from "@/data/cards/library";
 import type { GameAction } from "@/engine/state";
 import type { CardBoardAction } from "./utils";
-import { armedPaymentFor, boardCardDiscardCost, costChargesDiscard } from "./discard-first";
+import { armedPaymentFor, boardCardDiscardCost, costChargesDiscard, shouldAutoArmOnPick } from "./discard-first";
 
 type PlayCardAction = Extract<GameAction, { type: "PLAY_CARD" }>;
 
@@ -74,5 +74,22 @@ describe("armedPaymentFor — re-attaching a banked discard to the right play", 
     expect(armedPaymentFor(armed, ringPlay("specialty.adelaide.1", 0)), "different card").toBeUndefined();
     expect(armedPaymentFor(armed, ringPlay("specialty.glacius.1", 1)), "different option").toBeUndefined();
     expect(armedPaymentFor(null, ringPlay("specialty.glacius.1", 0)), "nothing armed").toBeUndefined();
+  });
+});
+
+describe("shouldAutoArmOnPick — click to discard, then aim (no separate confirm)", () => {
+  it("auto-arms once an EXACT discard is fully picked in arming mode", () => {
+    // Frost Ring's one-card discard: the single pick completes it and auto-arms.
+    expect(shouldAutoArmOnPick({ exact: 1, armSelection: {} }, 1)).toBe(true);
+    // A 2-card exact cost auto-arms only on the SECOND pick, not the first.
+    expect(shouldAutoArmOnPick({ exact: 2, armSelection: {} }, 1)).toBe(false);
+    expect(shouldAutoArmOnPick({ exact: 2, armSelection: {} }, 2)).toBe(true);
+  });
+
+  it("never auto-arms an up-to cost, nor a non-arming (pay-&-play) picker", () => {
+    // Up-to costs need the explicit confirm (the player may discard fewer).
+    expect(shouldAutoArmOnPick({ upTo: 2, armSelection: {} }, 2)).toBe(false);
+    // No armSelection = the ordinary "pay & play now" picker: never auto-fires.
+    expect(shouldAutoArmOnPick({ exact: 1 }, 1)).toBe(false);
   });
 });

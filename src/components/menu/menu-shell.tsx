@@ -1,10 +1,25 @@
 "use client";
 
 /* eslint-disable @next/next/no-img-element */
-import type { ReactNode } from "react";
+import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { uiArtSlot, type UiArtSlotId } from "@/data/ui-art";
 import { assetUrl } from "@/lib/asset-url";
 import { useBackgroundMusic } from "@/lib/music";
+import { playLibrarySound } from "@/lib/sound";
+
+/**
+ * The converted Heroes III button click, played on any menu nav button across
+ * every pre-game screen. A single delegated handler on the shell catches clicks
+ * on `.menuNavButton` elements (or a nested icon/label inside one) so each menu
+ * screen gets the click sound without wiring every `<button>`/`<Link>` by hand.
+ * A detached `new Audio()` keeps playing even when a nav Link navigates away.
+ */
+export function playMenuNavClickSound(event: ReactMouseEvent<HTMLElement>): void {
+  const target = event.target as HTMLElement | null;
+  if (target?.closest?.(".menuNavButton")) {
+    playLibrarySound("ui/button", 0.4);
+  }
+}
 
 /**
  * Shared chrome for every pre-game screen (login, main menu, multiplayer
@@ -44,7 +59,7 @@ export function MenuShell({
     <Root className="menuShellRoot">
       <img alt="" aria-hidden className="menuShellBackdrop" src={assetUrl(art.src)} />
       <div aria-hidden className="menuShellVignette" />
-      <div className="menuShellContent">
+      <div className="menuShellContent" onClick={playMenuNavClickSound}>
         {panel ? (
           <section className={`menuShellPanel${wide ? " wide" : ""}`}>
             {title ? <h1 className="menuShellTitle">{title}</h1> : null}

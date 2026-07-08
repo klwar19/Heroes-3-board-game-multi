@@ -110,6 +110,7 @@ import {
 import {
   armedPaymentFor,
   boardCardDiscardCost,
+  shouldAutoArmOnPick,
   type ArmedCardPayment
 } from "@/components/table/discard-first";
 import {
@@ -264,7 +265,7 @@ function CostPlayBar({
     armSelection?: unknown;
   };
   hand: string[];
-  onPick: (index: number) => void;
+  onPick: (index: number, hand: string[]) => void;
   onConfirm: (hand: string[]) => void;
   onCancel: () => void;
 }) {
@@ -296,7 +297,7 @@ function CostPlayBar({
             className={picked ? "selected" : ""}
             disabled={!eligible && !picked}
             key={`${cardId}-${index}`}
-            onClick={() => onPick(index)}
+            onClick={() => onPick(index, hand)}
             type="button"
           >
             {cardName(cardId)}
@@ -3154,36 +3155,19 @@ export default function Home() {
     setViewerPlayerId(hostedSeat);
   }
 
-  /** Toggle a hand card as payment for the pending discard-cost play. */
-  const toggleCostPick = (index: number) => {
-    setPendingCostPlay((current) => {
-      if (!current) {
-        return current;
-      }
-      const has = current.picks.includes(index);
-      const max = current.exact ?? current.upTo ?? 0;
-      if (!has && current.picks.length >= max) {
-        return current;
-      }
-      return {
-        ...current,
-        picks: has ? current.picks.filter((value) => value !== index) : [...current.picks, index]
-      };
-    });
-  };
-
   /**
-   * Confirm the discard picker. For an ordinary "target first" play this pays the
-   * picked cards and submits. For a "discard first" arming (`armSelection` set) it
-   * instead BANKS the payment and arms the selection for board targeting — the
-   * play is sent later, once the target is clicked (submitAction re-attaches it).
+   * Resolve a fully-paid discard-cost picker with an explicit set of picks. For a
+   * "discard first" arming (`armSelection` set) it BANKS the payment and arms the
+   * selection for board targeting (the play is sent later, when the target is
+   * clicked and submitAction re-attaches it); otherwise it submits straight away.
    */
-  const confirmPendingCostPlay = (hand: string[]) => {
-    if (!pendingCostPlay) {
-      return;
-    }
-    const costCardIds = pendingCostPlay.picks.map((index) => hand[index]);
-    const armSelection = pendingCostPlay.armSelection;
+  const resolveCostPlay = (
+    pending: NonNullable<typeof pendingCostPlay>,
+    picks: number[],
+    hand: string[]
+  ) => {
+    const costCardIds = picks.map((index) => hand[index]);
+    const armSelection = pending.armSelection;
     if (armSelection) {
       setArmedCardPayment({
         cardId: armSelection.cardId,
@@ -3192,9 +3176,46 @@ export default function Home() {
       });
       setSelectedCardAction(armSelection);
     } else {
-      void submitAction({ ...pendingCostPlay.action, costCardIds });
+      void submitAction({ ...pending.action, costCardIds });
     }
     setPendingCostPlay(null);
+  };
+
+  /** Toggle a hand card as payment for the pending discard-cost play. */
+  const toggleCostPick = (index: number, hand: string[]) => {
+    const pending = pendingCostPlay;
+    if (!pending) {
+      return;
+    }
+    const has = pending.picks.includes(index);
+    const max = pending.exact ?? pending.upTo ?? 0;
+    if (!has && pending.picks.length >= max) {
+      return;
+    }
+    const nextPicks = has ? pending.picks.filter((value) => value !== index) : [...pending.picks, index];
+
+    // "Click to discard, then aim": picking the final card of an EXACT discard
+    // cost in arming mode banks the payment and starts aiming immediately — no
+    // separate "Discard, then aim" click (Frost Ring's one-card discard is the
+    // common case). An up-to cost still confirms explicitly (fewer may be meant).
+    if (shouldAutoArmOnPick(pending, nextPicks.length)) {
+      resolveCostPlay(pending, nextPicks, hand);
+      return;
+    }
+
+    setPendingCostPlay({ ...pending, picks: nextPicks });
+  };
+
+  /**
+   * Confirm the discard picker (the explicit "Pay & play" / "Discard, then aim"
+   * button, and the only path for an `up-to` cost). Exact costs normally auto-arm
+   * on the final pick (see toggleCostPick), so this covers the up-to case.
+   */
+  const confirmPendingCostPlay = (hand: string[]) => {
+    if (!pendingCostPlay) {
+      return;
+    }
+    resolveCostPlay(pendingCostPlay, pendingCostPlay.picks, hand);
   };
 
   /**

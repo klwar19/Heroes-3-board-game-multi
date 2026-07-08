@@ -44,11 +44,10 @@ test("Frost Ring specialty: the discard is paid BEFORE the space is aimed", asyn
   await page.locator('.handFan .fanCard[title^="Frost Ring I"]').click();
   await expect(costPicker, "the discard picker opens first").toBeVisible({ timeout: 15000 });
   await expect(targetBanner, "aiming has NOT started yet").toBeHidden();
-  await expect(costPicker.getByRole("button", { name: /discard, then aim/i })).toBeVisible();
 
-  // Pay the discard (pick the Power card), then confirm.
+  // Pay the exact 1-card discard (pick the Power card): that final pick auto-arms,
+  // so aiming begins immediately — no separate "Discard, then aim" confirm click.
   await costPicker.getByRole("button", { name: /^Power$/ }).click();
-  await costPicker.getByRole("button", { name: /discard, then aim/i }).click();
 
   // Only NOW does aiming begin: the target banner appears and the picker is gone.
   await expect(targetBanner, "aiming starts only after the discard is paid").toBeVisible({ timeout: 15000 });

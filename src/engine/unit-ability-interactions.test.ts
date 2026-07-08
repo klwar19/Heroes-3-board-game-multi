@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { applyAction, createAdventureGameState, createInitialGameState, getLegalActions, makeCombatUnitFromArmy } from "./index";
 import { startAdventureRound } from "./adventure";
 import { getCombatStartDraws } from "./unit-abilities";
+import { unitDealsElementalDamage } from "./active-effects";
 import type { CombatUnitState, GameAction, GameEvent, GameState, PlayerId } from "./state";
 
 function applyOk(state: GameState, action: GameAction): GameState {
@@ -239,6 +240,85 @@ describe("retaliation stat interactions", () => {
 
     const retaliation = declaredAttacks(next).find((event) => event.isRetaliation);
     expect(retaliation?.rollMode).toBe("disadvantage");
+  });
+});
+
+describe("WOG Nightmare — Fear forces the attacker to roll at disadvantage", () => {
+  it("an attack ON the Nightmare rolls two dice and keeps the lower (control: normal without Fear)", () => {
+    const state = meleeDuel();
+    // The Nightmare is the DEFENDER of a normal attack.
+    state.combat!.units.unit_p2_skeletons.abilities = ["wog-nightmare-fear"];
+    script(state, [1, 1, 1, 1, 1, 1]);
+    const next = settle(
+      applyOk(state, { type: "ATTACK_UNIT", playerId: "p1", attackerId: "unit_p1_griffins", defenderId: "unit_p2_skeletons" })
+    );
+    expect(declaredAttacks(next).find((event) => !event.isRetaliation)?.rollMode).toBe("disadvantage");
+
+    // CONTROL: the same attack against a unit WITHOUT Fear rolls a single normal die.
+    const control = meleeDuel();
+    control.combat!.units.unit_p2_skeletons.abilities = [];
+    script(control, [1, 1, 1, 1, 1, 1]);
+    const controlNext = settle(
+      applyOk(control, { type: "ATTACK_UNIT", playerId: "p1", attackerId: "unit_p1_griffins", defenderId: "unit_p2_skeletons" })
+    );
+    expect(declaredAttacks(controlNext).find((event) => !event.isRetaliation)?.rollMode).toBe("normal");
+  });
+
+  it("does NOT apply to the Nightmare's own attack, nor to a Retaliation Attack made back against it", () => {
+    const state = meleeDuel();
+    // Now the Nightmare is the ATTACKER; its target retaliates back at it.
+    state.combat!.units.unit_p1_griffins.abilities = ["wog-nightmare-fear"];
+    state.combat!.units.unit_p2_skeletons.abilities = [];
+    script(state, [1, 1, 1, 1, 1, 1]);
+    const next = settle(
+      applyOk(state, { type: "ATTACK_UNIT", playerId: "p1", attackerId: "unit_p1_griffins", defenderId: "unit_p2_skeletons" })
+    );
+    // The Nightmare's own attack is normal (Fear fires only when it is attacked)...
+    expect(declaredAttacks(next).find((event) => !event.isRetaliation)?.rollMode).toBe("normal");
+    // ...and the foe's Retaliation Attack back against the Nightmare rolls normally,
+    // NOT at Fear's disadvantage (a Retaliation Attack is not "attacking" it).
+    expect(declaredAttacks(next).find((event) => event.isRetaliation)?.rollMode).toBe("normal");
+  });
+});
+
+describe("WOG Santa Gremlin — Ice Bolt is a RANGED shot; its retaliation rolls the die", () => {
+  it("gates the elemental Ice Bolt to ranged shots (melee/retaliation rolls the Attack die)", () => {
+    const state = meleeDuel();
+    const santa = state.combat!.units.unit_p2_skeletons;
+    santa.abilities = ["wog-santa-ice-bolt"];
+    // General question (no attack context): it deals elemental damage.
+    expect(unitDealsElementalDamage(state, santa)).toBe(true);
+    // A ranged shot fires the un-rollable Ice Bolt...
+    expect(unitDealsElementalDamage(state, santa, "ranged")).toBe(true);
+    // ...but a melee attack — in particular a forced melee Retaliation Attack —
+    // rolls the Attack die normally instead.
+    expect(unitDealsElementalDamage(state, santa, "melee")).toBe(false);
+  });
+
+  it("retaliates with a rolled, Defense-reduced Attack die at disadvantage — not the un-rollable Ice Bolt", () => {
+    const state = meleeDuel();
+    const santa = state.combat!.units.unit_p2_skeletons;
+    santa.unitDefId = "wog.santa_gremlin";
+    santa.name = "Santa Gremlin";
+    santa.variant = "neutral";
+    santa.type = "ranged";
+    santa.attack = 3;
+    santa.abilities = ["wog-santa-ice-bolt"];
+    // The attacker (retaliation target) has Defense: a ROLLED retaliation is
+    // reduced by it, whereas the elemental Ice Bolt would ignore Defense entirely.
+    state.combat!.units.unit_p1_griffins.defense = 2;
+    script(state, [1, 1, 1, 1, 1, 1]);
+    const next = settle(
+      applyOk(state, { type: "ATTACK_UNIT", playerId: "p1", attackerId: "unit_p1_griffins", defenderId: "unit_p2_skeletons" })
+    );
+    const retaliation = attackRolls(next).find((event) => event.isRetaliation);
+    expect(retaliation, "Santa Gremlin retaliated").toBeDefined();
+    // The die is ROLLED (not skipped like elemental damage)...
+    expect(retaliation?.noDie ?? false).toBe(false);
+    // ...at the shooter-in-melee disadvantage...
+    expect(retaliation?.rollMode).toBe("disadvantage");
+    // ...and the foe's Defense reduces it (elemental would zero Defense out).
+    expect(retaliation?.defenseValue).toBe(2);
   });
 });
 

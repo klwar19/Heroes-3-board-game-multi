@@ -6363,6 +6363,15 @@ export function hireSecondaryHero(
   if (getSecondaryHero(state, action.playerId)) {
     throw new Error("You already field a Secondary Hero.");
   }
+  // Recruiting a Secondary Hero at the Town spends the Population Token — the same
+  // token that recruits/reinforces units. Requiring and consuming it here enforces
+  // the rule "Units cannot be recruited or reinforced while using the Population
+  // Token to recruit a Secondary Hero": once it is spent on the hero, the recruit/
+  // reinforce offers (gated on townTokens.population) are gone for the round, and a
+  // token already spent on units this round can't also buy a hero.
+  if (!player.townTokens.population) {
+    throw new Error("The Population token was already used this round.");
+  }
   const cost = { gold: 10 };
   if (!hasResources(player, cost)) {
     throw new Error("Hiring a Secondary Hero costs 10 gold.");
@@ -6383,6 +6392,8 @@ export function hireSecondaryHero(
   }
 
   spendResources(state, action.playerId, cost, "hired a Secondary Hero");
+  // Spend the Population Token on the hero: no unit recruit/reinforce this round.
+  player.townTokens.population = false;
   if (placements.length === 1) {
     createSecondaryHero(state, action.playerId, placements[0].fieldId, action.heroDefId);
     return;
