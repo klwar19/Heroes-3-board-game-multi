@@ -700,7 +700,22 @@ export function discardPickAllowedInCombat(
   card: { kind?: string; timing?: string } | undefined,
   effect: { allowInCombat?: boolean }
 ): boolean {
-  return Boolean(effect.allowInCombat) || (card?.kind === "artifact" && card?.timing === "instant");
+  return Boolean(effect.allowInCombat) || instantArtifactSideAllowedInCombat(card);
+}
+
+/**
+ * The HOUSE RULE behind discardPickAllowedInCombat, shared by every deck-
+ * manipulation side an instant artifact carries: an INSTANT artifact is a
+ * click-to-use card, NOT reaction-only, so its "Search a shared deck" /
+ * "remove a card" / Eagle-Eye-dig sides (Spellbinder's Hat, Breastplate of
+ * Brimstone, Crown of Dragontooth, the Tomes, …) are playable mid-Combat too.
+ * Keying on the CARD keeps hero-specialty/ability twins of the same effects
+ * (Miriam's Scouting I, Tarnum I) map-only as designed.
+ */
+export function instantArtifactSideAllowedInCombat(
+  card: { kind?: string; timing?: string } | undefined
+): boolean {
+  return card?.kind === "artifact" && card?.timing === "instant";
 }
 
 /**

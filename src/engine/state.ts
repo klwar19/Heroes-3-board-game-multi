@@ -4845,6 +4845,15 @@ export type ResolutionStackItem = {
      */
     recallSpell?: { toHand: boolean; recallPlayedCards: boolean };
     /**
+     * Spell instants played as reactions into this ATTACK window whose card now
+     * sits in the caster's own discard pile (Stone Skin, Bloodlust, Curse, …).
+     * A Knowledge/Mysticism play in the same window takes the caster's most
+     * recent entry back to hand ("instead of discarding it") — the instant's
+     * effect on the attack stays. Scroll / Tarnum-return / removeSelf plays
+     * leave no card in the caster's discard, so they are never listed.
+     */
+    recallableSpellReactions?: { cardId: CardId; playerId: PlayerId }[];
+    /**
      * Alamar's Resurrection armed on this attack: if it would reduce the named
      * unit (of `grade` or lower) to 0 HP, the blow is cancelled.
      */
@@ -7935,7 +7944,9 @@ export type PendingChoice =
         | "place-creature-bank"
         | "subterranean-gate-placement"
         | "judge-dread"
-        | "far-tile-flip";
+        | "far-tile-flip"
+        | "combat-remove-then-search"
+        | "combat-remove-another";
       /**
        * city-hall: the income options for the City Hall (Resource-round) choice
        * under resolution, index-aligned with `options`. Stored here in game
@@ -8026,6 +8037,19 @@ export type PendingChoice =
       activationOrder?: { unitIds: UnitId[]; side: PlayerId };
       /** deck-pick: the shared-deck search waiting on the deck choice. */
       deckPick?: { deckIds: DeckId[]; count: number; allowRemove?: boolean };
+      /**
+       * combat-remove-then-search: Spellbinder's Hat (option A) played
+       * mid-combat — the removable hand cards, index-aligned with the options
+       * (a trailing "Skip" carries none). The picked card is removed from the
+       * game and its own deck Searched (searchCount) immediately.
+       */
+      removeThenSearch?: { cardIds: CardId[]; searchCount: number };
+      /**
+       * combat-remove-another: Spellbinder's Hat (option B) played mid-combat —
+       * every hand and discard card, index-aligned with the options (a trailing
+       * "Skip" carries none). The picked card is removed from the game.
+       */
+      removeAnother?: { entries: { cardId: CardId; source: "hand" | "discard" }[] };
       /**
        * deck-search-mode: a "Search X" with a non-empty discard pile, waiting on
        * the up-front either/or — Search the deck (reveal the top X, keep one) OR

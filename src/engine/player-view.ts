@@ -111,6 +111,27 @@ function getVisiblePendingChoice(choice: PendingChoice, viewerPlayerId: PlayerId
     };
   }
 
+  // Spellbinder's Hat played mid-combat: the removal menus name the owner's
+  // (private) hand cards, so other viewers only learn that the choice is open.
+  // (Option B also lists public discard cards, but masking the whole menu is
+  // simpler and leaks nothing.)
+  if (
+    choice.type === "OPTION_CHOICE" &&
+    (choice.context === "combat-remove-then-search" || choice.context === "combat-remove-another") &&
+    choice.playerId !== viewerPlayerId
+  ) {
+    return {
+      ...cloneSerializable(choice),
+      options: choice.options.map(() => ({ label: "Hidden card" })),
+      removeThenSearch: choice.removeThenSearch
+        ? { ...choice.removeThenSearch, cardIds: choice.removeThenSearch.cardIds.map(() => "hidden") }
+        : undefined,
+      removeAnother: choice.removeAnother
+        ? { entries: choice.removeAnother.entries.map(() => ({ cardId: "hidden", source: "hand" as const })) }
+        : undefined
+    };
+  }
+
   // Rogues' scout: the peeked top card stays private to the scouting player.
   if (
     choice.type === "OPTION_CHOICE" &&

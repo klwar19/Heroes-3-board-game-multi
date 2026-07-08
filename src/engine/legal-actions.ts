@@ -108,6 +108,7 @@ import {
   canPlayExpertMode,
   deckDisplayName,
   discardPickAllowedInCombat,
+  instantArtifactSideAllowedInCombat,
   expertUsesAvailable,
   getRuleset,
   spellBookPowerAvailable,
@@ -2275,6 +2276,17 @@ function isOptionEffectPlayable(
     }
     case "CARD_DECK_SEARCH":
     case "EAGLE_EYE_DIG":
+      // Map plays; ALSO — house rule, mirroring TAKE_FROM_DISCARD — an INSTANT
+      // artifact's Search/dig side is playable mid-Combat (Breastplate of
+      // Brimstone, Crown of Dragontooth, the Tomes, …): the printed Instant
+      // timing makes it a click-to-use card, not a map-only one. The reducer
+      // opens the Search/dig choice immediately (the reward queue is parked
+      // during a live combat). Hero-specialty twins (Adrienne, Tarnum I) stay
+      // map-only — see instantArtifactSideAllowedInCombat.
+      if (context === "combat") {
+        return Boolean(state.combat) && instantArtifactSideAllowedInCombat(excludeCardId ? cardLibrary[excludeCardId] : undefined);
+      }
+      return Boolean(state.adventure);
     case "TELEPORT_HERO_TO_TOWN":
     case "DISCOVER_TILE_CARD":
     case "GAIN_HERO_MOVEMENT":
@@ -2284,26 +2296,35 @@ function isOptionEffectPlayable(
     case "RESOURCE_FORTUNE_PLAY":
       return context === "map" && Boolean(state.adventure);
     case "REMOVE_HAND_CARD_THEN_SEARCH": {
-      // Map play that removes a card matching the filter (default "removable" =
+      // Play that removes a card matching the filter (default "removable" =
       // ability / artifact / spell; Miriam's Scouting I narrows it to "ability"),
       // then Searches that card's deck. There must be at least one matching card
       // to remove OTHER than the card being played: the Hat is itself a removable
       // artifact (so it needs a second removable), while Miriam's hero-specialty
-      // never matches the filter (so one matching card is enough).
+      // never matches the filter (so one matching card is enough). Mid-Combat it
+      // is offered only for an INSTANT artifact (the Hat — same house rule as
+      // the Search side above); Miriam's specialty stays map-only.
       const removeFilter = effect.filter ?? "removable";
       const removable = removableHandCards(state, playerId, removeFilter).filter(
         (candidate) => candidate.cardId !== excludeCardId
       );
-      return context === "map" && Boolean(state.adventure) && removable.length >= 1;
+      if (context === "combat") {
+        const playedCard = excludeCardId ? cardLibrary[excludeCardId] : undefined;
+        return Boolean(state.combat) && instantArtifactSideAllowedInCombat(playedCard) && removable.length >= 1;
+      }
+      return Boolean(state.adventure) && removable.length >= 1;
     }
     case "REMOVE_ANOTHER_CARD_FROM_HAND_OR_DISCARD": {
-      // Spellbinder's Hat (option B): map play; needs at least one OTHER card to
-      // remove alongside the Hat (which is still in hand at this point).
-      if (context !== "map" || !state.adventure) {
-        return false;
-      }
+      // Spellbinder's Hat (option B): needs at least one OTHER card to remove
+      // alongside the Hat (which is still in hand at this point). Playable
+      // mid-Combat too — the Hat is an INSTANT artifact (house rule above).
       const player = state.players[playerId];
-      return Boolean(player && player.hand.length + player.discard.length >= 2);
+      const hasAnother = Boolean(player && player.hand.length + player.discard.length >= 2);
+      if (context === "combat") {
+        const playedCard = excludeCardId ? cardLibrary[excludeCardId] : undefined;
+        return Boolean(state.combat) && instantArtifactSideAllowedInCombat(playedCard) && hasAnother;
+      }
+      return Boolean(state.adventure) && hasAnother;
     }
     case "VIEW_EARTH":
       // View Earth captures an enemy-owned Mine in reach — offered only when at
@@ -5145,6 +5166,51 @@ export function getLegalReactionsForTrigger(
           ) {
             reactions.push(
               makeReactionAction(`${card.name} expert`, { type: "PLAY_REACTION", playerId: player.id, cardId, mode: "expert" })
+            );
+          }
+        }
+      }
+    }
+
+    // Knowledge / Mysticism after a spell instant this player played into the
+    // pending attack (Stone Skin, Bloodlust, Curse, …): "play immediately after
+    // casting a spell — take the Spell card back into your hand instead of
+    // discarding it." The cast-window play is matched by the generic variant
+    // loop (Knowledge's printed trigger is SPELL_CAST_STARTED); this dedicated
+    // pass covers the attack window, where the spell was cast as a reaction and
+    // no cast window ever opens. The reducer takes back the player's most
+    // recent recallable entry and consumes it, so the offer disappears once
+    // every own spell on this attack has been recalled.
+    // KNOWN LIMIT: a spell reaction that CLOSES its window on play (Sorrow's
+    // activation skip, Magic Mirror's redirect, a counter played into a cast)
+    // leaves no window to offer the recall in — those casts stay unrecallable.
+    if (triggerEvent.type === "UNIT_ATTACK_DECLARED") {
+      const attackItem = state.stack.at(-1);
+      const hasOwnRecallable =
+        (attackItem?.action.type === "ATTACK_UNIT" || attackItem?.action.type === "MOVE_AND_ATTACK_UNIT") &&
+        (attackItem.modifiers.recallableSpellReactions ?? []).some((entry) => entry.playerId === player.id);
+      if (hasOwnRecallable) {
+        for (const cardId of new Set(player.hand)) {
+          const card = cards[cardId];
+          if (
+            !card ||
+            card.effect.type !== "RECALL_SPELL" ||
+            card.implementationStatus !== "implemented" ||
+            (card.timing !== "reaction" && card.timing !== "instant")
+          ) {
+            continue;
+          }
+          reactions.push(
+            makeReactionAction(card.name, { type: "PLAY_REACTION", playerId: player.id, cardId, mode: "basic" })
+          );
+          if (effectHasExpertMode(card.effect) && (expertUsesLeft > 0 || abilityExpertIsCrownFree(player, cardId))) {
+            reactions.push(
+              makeReactionAction(`${card.name} expert`, {
+                type: "PLAY_REACTION",
+                playerId: player.id,
+                cardId,
+                mode: "expert"
+              })
             );
           }
         }
