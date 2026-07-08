@@ -7471,6 +7471,62 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     return;
   }
 
+  if (choice.context === "combat-remove-then-search") {
+    // Spellbinder's Hat (option A) played mid-combat: remove the picked hand
+    // card from the game, then Search its own deck immediately (the reward
+    // queue is parked during a live combat). A trailing "Skip" carries no
+    // card — no removal, no Search — mirroring the map visit-step's Skip.
+    const data = choice.removeThenSearch;
+    const player = state.players[action.playerId];
+    if (!data || !player) {
+      throw new Error("That removal cannot be resolved.");
+    }
+    const cardId = data.cardIds[action.optionIndex];
+    if (cardId !== undefined) {
+      const handIndex = player.hand.indexOf(cardId);
+      if (handIndex === -1) {
+        throw new Error("That card is no longer in your hand.");
+      }
+      player.hand.splice(handIndex, 1);
+      player.removed.push(cardId);
+    }
+    state.pendingChoice = null;
+    state.phase = choice.returnPhase;
+    state.priorityPlayerId = null;
+    if (cardId !== undefined) {
+      // The same deck derivation as the map flow's "search-same-deck" step:
+      // only removable kinds (spell/ability/artifact) are ever offered.
+      const kind = cardLibrary[cardId]?.kind;
+      const deckId = kind === "spell" ? "spells" : kind === "artifact" ? "artifacts" : "abilities";
+      beginSharedDeckSearchNow(state, action.playerId, deckId, data.searchCount);
+    }
+    return;
+  }
+
+  if (choice.context === "combat-remove-another") {
+    // Spellbinder's Hat (option B) played mid-combat: the Hat already removed
+    // itself (cost.removeSelf); the picked hand or discard card leaves the
+    // game too. A trailing "Skip" carries no entry and removes nothing.
+    const player = state.players[action.playerId];
+    if (!choice.removeAnother || !player) {
+      throw new Error("That removal cannot be resolved.");
+    }
+    const entry = choice.removeAnother.entries[action.optionIndex];
+    if (entry) {
+      const pile = entry.source === "hand" ? player.hand : player.discard;
+      const pileIndex = pile.indexOf(entry.cardId);
+      if (pileIndex === -1) {
+        throw new Error("That card is no longer available to remove.");
+      }
+      pile.splice(pileIndex, 1);
+      player.removed.push(entry.cardId);
+    }
+    state.pendingChoice = null;
+    state.phase = choice.returnPhase;
+    state.priorityPlayerId = null;
+    return;
+  }
+
   if (choice.context === "scouting-prompt") {
     const prompt = choice.scoutingPrompt;
     if (!prompt) {
@@ -8528,6 +8584,58 @@ export function resolveAfkDrop(state: GameState, action: Extract<GameAction, { t
 // ---------------------------------------------------------------------------
 
 /**
+ * Starts a shared-deck Search RIGHT NOW, bypassing the reward queue: the same
+ * family expansion + deck-pick choice the reward pump applies ("spells"/
+ * "artifacts" split into their unlocked BINH decks), then the standard
+ * openSharedDeckSearch pipeline. Returns false when no candidate deck holds a
+ * card (nothing opened). Combat-aware (returnPhase), so instant-artifact
+ * combat plays (Spellbinder's Hat, Breastplate of Brimstone, …) can Search
+ * mid-battle — the reward queue is parked while a live combat runs, so a
+ * queued Search would not surface until the fight ended.
+ */
+export function beginSharedDeckSearchNow(
+  state: GameState,
+  playerId: PlayerId,
+  deckId: string,
+  count: number,
+  allowRemove = false,
+  options?: { strictExpertGate?: boolean }
+): boolean {
+  const candidates = resolveSearchDeckCandidates(state, playerId, deckId, {
+    strictExpertGate: options?.strictExpertGate
+  }).filter((candidateId) => {
+    const deck = state.decks[candidateId];
+    return deck && deck.drawPile.length + deck.discardPile.length > 0;
+  });
+
+  if (candidates.length === 0) {
+    return false;
+  }
+
+  if (candidates.length > 1) {
+    const choiceId = `choice_${nextEventNumber(state)}`;
+    state.pendingChoice = {
+      id: choiceId,
+      type: "OPTION_CHOICE",
+      playerId,
+      prompt: `Search which deck? (Search ${count})`,
+      options: candidates.map((candidateId) => ({
+        label: `${deckDisplayName(state, candidateId)} (${(state.decks[candidateId]?.drawPile.length ?? 0) + (state.decks[candidateId]?.discardPile.length ?? 0)} cards)`
+      })),
+      context: "deck-pick",
+      deckPick: { deckIds: candidates, count, ...(allowRemove ? { allowRemove: true } : {}) },
+      returnPhase: state.combat ? "combat" : "player-turn"
+    };
+    state.phase = "choice";
+    state.priorityPlayerId = playerId;
+    return true;
+  }
+
+  openSharedDeckSearch(state, playerId, candidates[0], count, false, allowRemove);
+  return true;
+}
+
+/**
  * Expands a deck-family id ("spells", "artifacts") into the decks this player
  * may search right now. Explicit split-deck ids pass through unchanged.
  */
@@ -9120,42 +9228,18 @@ export function pumpAdventureQueues(state: GameState): void {
 
     if (reward.kind === "shared-deck-search") {
       adventure.rewardQueue.shift();
-
-      // "Spells"/"artifacts" are deck families: in BINH mode the player may
-      // pick among the unlocked split decks (rulebook optional rule + the
-      // BINH level/map gates); decks that ran out of cards drop out.
-      const candidates = resolveSearchDeckCandidates(state, reward.playerId, reward.deckId, {
-        strictExpertGate: reward.strictExpertGate
-      }).filter((deckId) => {
-        const deck = state.decks[deckId];
-        return deck && deck.drawPile.length + deck.discardPile.length > 0;
-      });
-
-      if (candidates.length === 0) {
-        continue;
-      }
-
-      if (candidates.length > 1) {
-        const choiceId = `choice_${nextEventNumber(state)}`;
-        state.pendingChoice = {
-          id: choiceId,
-          type: "OPTION_CHOICE",
-          playerId: reward.playerId,
-          prompt: `Search which deck? (Search ${reward.count})`,
-          options: candidates.map((deckId) => ({
-            label: `${deckDisplayName(state, deckId)} (${(state.decks[deckId]?.drawPile.length ?? 0) + (state.decks[deckId]?.discardPile.length ?? 0)} cards)`
-          })),
-          context: "deck-pick",
-          deckPick: { deckIds: candidates, count: reward.count, ...(reward.allowRemove ? { allowRemove: true } : {}) },
-          returnPhase: "player-turn"
-        };
-        state.phase = "choice";
-        state.priorityPlayerId = reward.playerId;
+      // "Spells"/"artifacts" are deck families; beginSharedDeckSearchNow does
+      // the family expansion + deck-pick choice and opens the Search. The
+      // strictExpertGate flag (Mage Guild expert-spell gating) is threaded
+      // through to resolveSearchDeckCandidates.
+      if (
+        beginSharedDeckSearchNow(state, reward.playerId, reward.deckId, reward.count, Boolean(reward.allowRemove), {
+          strictExpertGate: reward.strictExpertGate
+        })
+      ) {
         return;
       }
-
-      openSharedDeckSearch(state, reward.playerId, candidates[0], reward.count, false, Boolean(reward.allowRemove));
-      return;
+      continue;
     }
 
     if (reward.kind === "discard-pick") {

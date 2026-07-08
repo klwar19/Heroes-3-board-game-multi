@@ -53,6 +53,8 @@ import {
   openViewEarthChoice,
   openMarket,
   openSharedDeckSearch,
+  beginSharedDeckSearchNow,
+  removableHandCards,
   openFortuneBoostStep,
   hireSecondaryHero,
   placeCombatUnit,
@@ -9452,6 +9454,25 @@ function applyReactionPlayCore(
     noteSpellCast(state, player, !play.tarnumReturn);
   }
 
+  // A spell instant played into a pending ATTACK may be taken back by a
+  // Knowledge/Mysticism (RECALL_SPELL) play in the same window — record it.
+  // Recorded up front (some effect handlers below return early, e.g. a Dwarf
+  // shrugging Bloodlust off — the spell was still cast, so it stays
+  // recallable, like a Resistance-cancelled cast). Scroll and Tarnum-return
+  // plays leave no card in the caster's own discard; a removeSelf option
+  // leaves the game entirely — none of those can be recalled.
+  if (
+    card.kind === "spell" &&
+    player &&
+    stackItem &&
+    isAttackStackItem(stackItem) &&
+    !play.fromScroll &&
+    !play.tarnumReturn &&
+    !option?.cost?.removeSelf
+  ) {
+    (stackItem.modifiers.recallableSpellReactions ??= []).push({ cardId: play.cardId, playerId });
+  }
+
   const optionLabel =
     card.effect.type === "CHOOSE_ONE" && play.optionIndex !== undefined
       ? card.effect.options[play.optionIndex]?.label
@@ -10154,6 +10175,48 @@ function applyReactionPlayCore(
     }
 
     stackItem.modifiers.playedCardIds.push(play.cardId);
+  }
+
+  // Knowledge / Mysticism played into an ATTACK window: take back the most
+  // recent spell instant this player played into the pending attack (Stone
+  // Skin, Bloodlust, Curse, …). Attack instants resolve on the spot — never
+  // ongoing — so the card comes straight back ("instead of discarding it")
+  // while its effect on the attack stays; the limit raise applies exactly
+  // like the cast-window play above.
+  if (effect.type === "RECALL_SPELL" && stackItem && isAttackStackItem(stackItem)) {
+    const caster = state.players[playerId];
+    const entries = stackItem.modifiers.recallableSpellReactions ?? [];
+    let entryIndex = -1;
+    for (let i = entries.length - 1; i >= 0; i -= 1) {
+      if (entries[i].playerId === playerId) {
+        entryIndex = i;
+        break;
+      }
+    }
+    if (entryIndex === -1) {
+      throw new Error("You have not played a Spell into this attack to take back.");
+    }
+    const [entry] = entries.splice(entryIndex, 1);
+
+    caster.combatStats.spellLimitBonusThisRound += effect.basicSpellLimitBonus ?? 0;
+    if (mode === "expert") {
+      caster.combatStats.spellLimitBonusThisRound += effect.expertSpellLimitBonus ?? 0;
+    }
+
+    stackItem.modifiers.playedCardIds.push(play.cardId);
+    returnSpellFromDiscardToHand(state, playerId, entry.cardId);
+
+    // Mysticism expert: the other cards played alongside come back too — the
+    // same own-discard sweep the cast-window recall runs at spell resolution.
+    if (mode === "expert" && effect.expertRecallPlayedCards) {
+      for (const playedCardId of stackItem.modifiers.playedCardIds) {
+        const playedIndex = caster.discard.lastIndexOf(playedCardId);
+        if (playedIndex !== -1) {
+          caster.discard.splice(playedIndex, 1);
+          caster.hand.push(playedCardId);
+        }
+      }
+    }
   }
 
   // Interference: react to an enemy damaging Spell aimed at one of your units
@@ -11938,49 +12001,120 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   }
 
   if (effect.type === "CARD_DECK_SEARCH") {
-    state.adventure?.rewardQueue.unshift({
-      playerId: action.playerId,
-      kind: "shared-deck-search",
-      deckId: effect.deck,
-      count: effect.count,
-      ...(effect.allowRemove ? { allowRemove: true } : {})
-    });
+    // The adventure reward queue is parked while a live (non-prep) combat
+    // runs — a queued Search would not surface until the fight ended. An
+    // instant artifact's Search side played mid-Combat (Breastplate of
+    // Brimstone, Crown of Dragontooth, … — see instantArtifactSideAllowedInCombat)
+    // opens the Search straight away; on the map (or a prep window, where the
+    // queue still pumps) it keeps queuing as a reward.
+    if (state.combat && !state.combat.prep) {
+      beginSharedDeckSearchNow(state, action.playerId, effect.deck, effect.count, Boolean(effect.allowRemove));
+    } else {
+      state.adventure?.rewardQueue.unshift({
+        playerId: action.playerId,
+        kind: "shared-deck-search",
+        deckId: effect.deck,
+        count: effect.count,
+        ...(effect.allowRemove ? { allowRemove: true } : {})
+      });
+    }
   }
 
   // Spellbinder's Hat (option A): remove a card from hand, then Search(N) its
   // own deck. Reuses the Market-of-Time / Faerie-Ring REMOVE_HAND_CARD step with
   // the "removable" filter (only abilities, artifacts and spells — the cards
-  // that have a deck to dig) and the "search-same-deck" follow-up.
+  // that have a deck to dig) and the "search-same-deck" follow-up. Played
+  // mid-Combat (the Hat is an INSTANT artifact — the reward queue is parked
+  // during a live combat) the removal opens immediately as a combat choice.
   if (effect.type === "REMOVE_HAND_CARD_THEN_SEARCH") {
-    state.adventure?.rewardQueue.unshift({
-      playerId: action.playerId,
-      kind: "visit-steps",
-      steps: [
-        {
-          type: "REMOVE_HAND_CARD",
+    if (state.combat && !state.combat.prep) {
+      const removable = removableHandCards(state, action.playerId, effect.filter ?? "removable");
+      if (removable.length > 0) {
+        state.pendingChoice = {
+          id: `choice_${nextEventNumber(state)}`,
+          type: "OPTION_CHOICE",
+          playerId: action.playerId,
           prompt: `${card.name}: remove a card to Search (${effect.count}) its deck`,
-          filter: effect.filter ?? "removable",
-          then: "search-same-deck",
-          searchCount: effect.count,
-          tieredReach: effect.tieredReach
-        }
-      ]
-    });
+          options: [
+            ...removable.map(({ cardId }) => ({ label: `Remove ${cards[cardId]?.name ?? cardId}` })),
+            { label: "Skip" }
+          ],
+          context: "combat-remove-then-search",
+          removeThenSearch: { cardIds: removable.map(({ cardId }) => cardId), searchCount: effect.count },
+          returnPhase: "combat"
+        };
+        state.phase = "choice";
+        state.priorityPlayerId = action.playerId;
+      }
+    } else {
+      state.adventure?.rewardQueue.unshift({
+        playerId: action.playerId,
+        kind: "visit-steps",
+        steps: [
+          {
+            type: "REMOVE_HAND_CARD",
+            prompt: `${card.name}: remove a card to Search (${effect.count}) its deck`,
+            filter: effect.filter ?? "removable",
+            then: "search-same-deck",
+            searchCount: effect.count,
+            tieredReach: effect.tieredReach
+          }
+        ]
+      });
+    }
   }
 
   // Spellbinder's Hat (option B): the Hat was removed by cost.removeSelf; now
-  // remove one more card the player picks from hand OR discard pile.
+  // remove one more card the player picks from hand OR discard pile. Played
+  // mid-Combat the pick opens immediately (the reward queue is parked).
   if (effect.type === "REMOVE_ANOTHER_CARD_FROM_HAND_OR_DISCARD") {
-    state.adventure?.rewardQueue.unshift({
-      playerId: action.playerId,
-      kind: "visit-steps",
-      steps: [
-        {
-          type: "REMOVE_ONE_FROM_HAND_OR_DISCARD",
-          prompt: `${card.name}: remove another card from your hand or discard pile`
+    if (state.combat && !state.combat.prep) {
+      const owner = state.players[action.playerId];
+      // One option per distinct (source, card) — the same dedup the map
+      // visit-step applies; removal takes the first matching copy.
+      const seen = new Set<string>();
+      const entries: { cardId: CardId; source: "hand" | "discard" }[] = [];
+      for (const { cardId, source } of [
+        ...(owner?.hand ?? []).map((cardId) => ({ cardId, source: "hand" as const })),
+        ...(owner?.discard ?? []).map((cardId) => ({ cardId, source: "discard" as const }))
+      ]) {
+        const key = `${source}:${cardId}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          entries.push({ cardId, source });
         }
-      ]
-    });
+      }
+      if (entries.length > 0) {
+        state.pendingChoice = {
+          id: `choice_${nextEventNumber(state)}`,
+          type: "OPTION_CHOICE",
+          playerId: action.playerId,
+          prompt: `${card.name}: remove another card from your hand or discard pile`,
+          options: [
+            ...entries.map(({ cardId, source }) => ({
+              label: `Remove ${cards[cardId]?.name ?? cardId} (${source})`
+            })),
+            { label: "Skip" }
+          ],
+          context: "combat-remove-another",
+          removeAnother: { entries },
+          returnPhase: "combat"
+        };
+        state.phase = "choice";
+        state.priorityPlayerId = action.playerId;
+      }
+    } else {
+      state.adventure?.rewardQueue.unshift({
+        playerId: action.playerId,
+        kind: "visit-steps",
+        steps: [
+          {
+            type: "REMOVE_ONE_FROM_HAND_OR_DISCARD",
+            prompt: `${card.name}: remove another card from your hand or discard pile`
+          }
+        ]
+      });
+    }
   }
 
   if (effect.type === "RANDOM_ENEMY_DISCARD") {

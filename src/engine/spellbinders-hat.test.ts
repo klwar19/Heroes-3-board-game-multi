@@ -3,8 +3,9 @@ import { applyAction, createAdventureGameState, getLegalActions } from "./index"
 import type { GameAction, GameState } from "./state";
 
 /**
- * Spellbinder's Hat (Relic). Both sides are map plays driven through the real
- * engine; each test fails if the wiring is removed.
+ * Spellbinder's Hat (Relic). Both sides driven through the real engine as MAP
+ * plays here; the mid-combat plays of the same sides are pinned in
+ * instant-artifacts-combat.test.ts. Each test fails if the wiring is removed.
  *
  *   • Option A — "Remove 1 card from your hand, then Search(2) the card's deck":
  *     the Hat discards, the player removes one ability/artifact/spell from hand,

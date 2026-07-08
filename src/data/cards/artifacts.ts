@@ -47,8 +47,9 @@ function artifactAssets(tier: "minor" | "major" | "relic", slug: string, name: s
 
 // Tome of Air/Earth/Fire/Water (Conflux expansion, Relic). One per School of
 // Magic, sharing one shape. Each side names exactly what the engine runs:
-//   • Option A (map): the School-filtered Spell-deck dig — find the first spell
-//     of this School (any level), take it into hand OR discard it, then reshuffle
+//   • Option A (map AND mid-combat — the Tome is a printed Instant): the
+//     School-filtered Spell-deck dig — find the first spell of this School
+//     (any level), take it into hand OR discard it, then reshuffle
 //     (engine: EAGLE_EYE_DIG { school }, the school-aware Eagle Eye dig).
 //   • Option B (combat reaction, the new mechanic): "When playing a {School}
 //     Magic spell, resolve its effect without paying the Power cost." Played
@@ -78,7 +79,6 @@ function tomeArtifact(school: Exclude<SpellSchool, "any">): CardLibrary[string] 
       options: [
         {
           label: `Find the first ${schoolName} Magic spell in the Spell deck (take or discard), then reshuffle`,
-          mapOnly: true,
           effect: { type: "EAGLE_EYE_DIG", school }
         },
         {
@@ -1563,8 +1563,9 @@ export const artifactCards: CardLibrary = {
   },
   // Mystic Orb of Mana: Search (4) the top of your discard pile and take 1 card
   // (the TAKE_FROM_DISCARD `fromTop` machinery is built for exactly this), or,
-  // only on an empty discard pile, draw 2 cards. The Search option resolves
-  // through the adventure reward queue, so it is a map play.
+  // only on an empty discard pile, draw 2 cards. On the map the Search resolves
+  // through the adventure reward queue; mid-combat it opens the discard pick
+  // immediately (discardPickAllowedInCombat — an instant artifact).
   "artifact.mystic_orb_of_mana": {
     id: "artifact.mystic_orb_of_mana",
     name: "Mystic Orb of Mana",
@@ -1937,8 +1938,9 @@ export const artifactCards: CardLibrary = {
   // Surcoat of Counterpoise (Tower): option A is a low-power spell counter —
   // played as the enemy casts, it ends that Spell only if it was cast with 1
   // Power or less (engine: CANCEL_SPELL maxPower 1, re-checked against the
-  // spell's final Power at resolution, exactly like Resistance). Option B is a
-  // map play: remove the Surcoat and Search (1) the Artifact deck.
+  // spell's final Power at resolution, exactly like Resistance). Option B —
+  // remove the Surcoat and Search (1) the Artifact deck — plays on the map AND
+  // mid-combat (a printed Instant; see instantArtifactSideAllowedInCombat).
   "artifact.surcoat_of_counterpoise": {
     id: "artifact.surcoat_of_counterpoise",
     name: "Surcoat of Counterpoise",
@@ -1960,7 +1962,6 @@ export const artifactCards: CardLibrary = {
         },
         {
           label: "Remove this card: Search (1) the Artifact deck",
-          mapOnly: true,
           cost: { removeSelf: true },
           effect: { type: "CARD_DECK_SEARCH", deck: "artifacts", count: 1 }
         }
@@ -2010,7 +2011,8 @@ export const artifactCards: CardLibrary = {
   },
   // Trident of Dominion (Cove): a plain +2 attack on your attacker, OR — only
   // while this Hero stands on a Sea tile — a 2-card draw (the requiresSeaTile
-  // gate shared with Crown of the Five Seas). The naval side is a map play.
+  // gate shared with Crown of the Five Seas). The naval draw plays on the map
+  // AND mid-combat (a printed Instant); the sea-tile gate still applies.
   "artifact.trident_of_dominion": {
     id: "artifact.trident_of_dominion",
     name: "Trident of Dominion",
@@ -2028,7 +2030,6 @@ export const artifactCards: CardLibrary = {
         },
         {
           label: "On a Sea tile: draw 2 cards",
-          mapOnly: true,
           requiresSeaTile: true,
           effect: { type: "DRAW_CARDS", amount: 2 }
         }
@@ -2073,8 +2074,9 @@ export const artifactCards: CardLibrary = {
     source: artifactSource("shield_of_naval_glory")
   },
   // Royal Armor of Nix (Cove): a flat +2 Power as you cast a spell, OR — only
-  // while this Hero stands on a Sea tile — Search (2) the Spell deck (a map
-  // play, the requiresSeaTile gate). Major like the original-game artifact and
+  // while this Hero stands on a Sea tile — Search (2) the Spell deck (playable
+  // on the map AND mid-combat, a printed Instant; the requiresSeaTile gate
+  // still applies). Major like the original-game artifact and
   // the other Cove sea artifacts; no wiki scan, so it shows the deck back.
   "artifact.royal_armor_of_nix": {
     id: "artifact.royal_armor_of_nix",
@@ -2093,7 +2095,6 @@ export const artifactCards: CardLibrary = {
         },
         {
           label: "On a Sea tile: Search (2) the Spell deck",
-          mapOnly: true,
           requiresSeaTile: true,
           effect: { type: "CARD_DECK_SEARCH", deck: "spells", count: 2 }
         }
@@ -2849,7 +2850,9 @@ export const artifactCards: CardLibrary = {
     source: artifactSource("thunder_helmet")
   },
   // Spellbinder's Hat (Relic, Tower Expansion). A deck-management relic; both
-  // sides are map plays.
+  // sides play on the map AND mid-combat (a printed Instant — mid-combat the
+  // removal/Search open immediately as combat choices, since the reward queue
+  // is parked during a live combat; see instantArtifactSideAllowedInCombat).
   //   • Option A ("Remove 1 card from your hand, then Search(2) the card's
   //     deck"): the Hat discards normally, then the player removes one card from
   //     hand and Search(2)s whichever deck it belonged to. Only abilities,

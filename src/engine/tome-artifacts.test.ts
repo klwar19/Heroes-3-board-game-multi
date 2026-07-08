@@ -119,7 +119,10 @@ describe("Tome artifact definitions", () => {
     expect(card.artifactTier).toBe("relic");
     expect(card.effect.type).toBe("CHOOSE_ONE");
     if (card.effect.type !== "CHOOSE_ONE") return;
-    expect(card.effect.options[0].mapOnly).toBe(true);
+    // The dig side carries NO mapOnly flag: a printed Instant, it plays on the
+    // map AND mid-combat (instant-artifacts-combat.test.ts drives the combat
+    // dig end-to-end).
+    expect(card.effect.options[0].mapOnly).toBeUndefined();
     expect(card.effect.options[0].effect).toMatchObject({ type: "EAGLE_EYE_DIG", school });
     expect(card.effect.options[1].trigger).toMatchObject({ event: "SPELL_CAST_STARTED", controller: "self" });
     expect(card.effect.options[1].effect).toMatchObject({ type: "SET_SPELL_POWER_MAX", schoolOnly: school });
