@@ -6629,7 +6629,11 @@ export function spellBookAction(state: GameState, action: Extract<GameAction, { 
     playerId: action.playerId,
     kind: "shared-deck-search",
     deckId: "spells",
-    count: searchCount
+    count: searchCount,
+    // Buying spells at the Mage Guild is Basic-only until the hero is level 4 or
+    // a IV–V tile has been discovered. Owning Wisdom/Eagle Eye/Basic Magic does
+    // NOT unlock the Expert deck here (unlike every other spell source).
+    strictExpertGate: true
   });
 }
 
@@ -8527,11 +8531,16 @@ export function resolveAfkDrop(state: GameState, action: Extract<GameAction, { t
  * Expands a deck-family id ("spells", "artifacts") into the decks this player
  * may search right now. Explicit split-deck ids pass through unchanged.
  */
-export function resolveSearchDeckCandidates(state: GameState, playerId: PlayerId, deckId: string): string[] {
+export function resolveSearchDeckCandidates(
+  state: GameState,
+  playerId: PlayerId,
+  deckId: string,
+  options?: { strictExpertGate?: boolean }
+): string[] {
   const hero = getMainHero(state, playerId);
 
   if (deckId === "spells") {
-    return eligibleSpellDecks(state, playerId, hero);
+    return eligibleSpellDecks(state, playerId, hero, { ignoreKeyCards: options?.strictExpertGate });
   }
 
   if (deckId === "artifacts") {
@@ -9115,7 +9124,9 @@ export function pumpAdventureQueues(state: GameState): void {
       // "Spells"/"artifacts" are deck families: in BINH mode the player may
       // pick among the unlocked split decks (rulebook optional rule + the
       // BINH level/map gates); decks that ran out of cards drop out.
-      const candidates = resolveSearchDeckCandidates(state, reward.playerId, reward.deckId).filter((deckId) => {
+      const candidates = resolveSearchDeckCandidates(state, reward.playerId, reward.deckId, {
+        strictExpertGate: reward.strictExpertGate
+      }).filter((deckId) => {
         const deck = state.decks[deckId];
         return deck && deck.drawPile.length + deck.discardPile.length > 0;
       });

@@ -6236,7 +6236,21 @@ export type PendingVisit = {
 };
 
 export type AdventureReward =
-  | { playerId: PlayerId; kind: "shared-deck-search"; deckId: DeckId; count: number; allowRemove?: boolean }
+  | {
+      playerId: PlayerId;
+      kind: "shared-deck-search";
+      deckId: DeckId;
+      count: number;
+      allowRemove?: boolean;
+      /**
+       * Mage Guild spell purchase: enforce the strict Expert gate (Basic-only
+       * until the hero is level 4 or a IV–V tile is revealed) — the
+       * Wisdom/Eagle-Eye/Basic-Magic key-card bypass does NOT open the Expert
+       * deck when buying spells at the Guild. Omitted (bypass allowed) for every
+       * other spell search.
+       */
+      strictExpertGate?: boolean;
+    }
   | { playerId: PlayerId; kind: "city-hall-choice"; buildingId: BuildingId }
   | {
       /** Scholar / Rib Cage / Crown of Dragontooth: pick from the discard pile. */
