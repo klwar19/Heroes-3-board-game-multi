@@ -37,6 +37,7 @@ export function MenuShell({
   children,
   panel = true,
   wide = false,
+  logo = false,
   as: Root = "main",
   footer
 }: {
@@ -48,18 +49,22 @@ export function MenuShell({
   panel?: boolean;
   /** Wider panel for list-heavy screens (hall of fame, room browser). */
   wide?: boolean;
+  /** true → float the official gold wordmark above the panel (main menu). */
+  logo?: boolean;
   as?: "main" | "div";
   /** Small line pinned under the panel (e.g. "Playing as …"). */
   footer?: ReactNode;
 }) {
   useBackgroundMusic("menu");
   const art = uiArtSlot(backdrop);
+  const brand = uiArtSlot("game-logo");
 
   return (
     <Root className="menuShellRoot">
       <img alt="" aria-hidden className="menuShellBackdrop" src={assetUrl(art.src)} />
       <div aria-hidden className="menuShellVignette" />
       <div className="menuShellContent" onClick={playMenuNavClickSound}>
+        {logo ? <img alt={brand.alt} className="menuGameLogo" src={assetUrl(brand.src)} /> : null}
         {panel ? (
           <section className={`menuShellPanel${wide ? " wide" : ""}`}>
             {title ? <h1 className="menuShellTitle">{title}</h1> : null}

@@ -67,6 +67,27 @@ describe("MenuShell", () => {
     expect(screen.getByText("Playing as Binh")).toBeTruthy();
   });
 
+  it("floats the gold wordmark from the registry above the panel when logo is set", () => {
+    const { container } = render(
+      <MenuShell logo title="Main Menu">
+        <p>content</p>
+      </MenuShell>
+    );
+    const logo = container.querySelector<HTMLImageElement>(".menuGameLogo");
+    expect(logo).toBeTruthy();
+    // The wordmark comes from the art-slot registry, not a hardcoded path.
+    expect(logo?.getAttribute("src")).toBe(UI_ART_SLOTS["game-logo"].src);
+  });
+
+  it("omits the wordmark by default (CONTROL)", () => {
+    const { container } = render(
+      <MenuShell title="Main Menu">
+        <p>content</p>
+      </MenuShell>
+    );
+    expect(container.querySelector(".menuGameLogo")).toBeNull();
+  });
+
   it("plays the button click sound when a menu nav button is clicked (and not otherwise)", () => {
     render(
       <MenuShell>
