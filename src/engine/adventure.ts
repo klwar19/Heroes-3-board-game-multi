@@ -245,6 +245,18 @@ export function freeSpellBookActive(state: GameState): boolean {
   return getActiveAstrologersCard(state)?.effect.type === "FREE_SPELL_BOOK" && state.round % 2 === 0;
 }
 
+/**
+ * Multilingual Bron (Astrologers): whether a player's unit special-ability roll
+ * that came up against them is rerolled once. "Until the next Astrologers'
+ * round" — active the whole time the card is face up (no round-parity gate).
+ * Read at each ability-roll site (Death Stare, Thunderbird/Wyvern die, extra-die
+ * Paralysis, Ghost Dragon knockback, Dwarven Magic Resistance, the Satyr map
+ * morale roll).
+ */
+export function abilityRollRerollActive(state: GameState): boolean {
+  return getActiveAstrologersCard(state)?.effect.type === "ABILITY_ROLL_REROLL";
+}
+
 /** Hand limit including temporary Astrologers effects (Profuse Growth / Restart). */
 export function effectiveHandLimit(state: GameState, playerId: PlayerId): number {
   const player = state.players[playerId];
@@ -466,6 +478,119 @@ export function materializeTileFields(
 
 export function getTileFootprintSpaceIds(tile: MapTileState): MapSpaceId[] {
   return tileFootprint({ row: tile.centerRow, col: tile.centerCol }, tile.rotation).map(hexSpaceId);
+}
+
+/**
+ * Disruption (Astrologers): rotate an already-revealed tile IN PLACE without
+ * losing any accumulated field state. The six ring hexes are the same six map
+ * hexes at every rotation — only WHICH slot's field sits on each changes — so
+ * the rotation is a pure permutation: each ring `MapFieldState` object moves,
+ * whole, to the hex its slot occupies under the new rotation (flags, Black
+ * Cubes, settlements, banks, obelisk rolls all travel with it). The centre
+ * (slot 0) is rotation-invariant. This is deliberately NOT
+ * `materializeTileFields`, which rebuilds fields from the definition and would
+ * wipe that state. Borders/edges derive from the definition + `tile.rotation`
+ * at query time, so they follow automatically.
+ *
+ * The caller is responsible for eligibility (no hero/town/gate on the tile —
+ * see disruptionEligibleTiles); this routine only refuses a tile whose seven
+ * fields are not all materialized, returning false untouched.
+ */
+export function rotateTileInPlace(adventure: AdventureState, tile: MapTileState, rotation: number): boolean {
+  const normalized = ((rotation % 6) + 6) % 6;
+  if (normalized === tile.rotation) {
+    return false;
+  }
+
+  const center = { row: tile.centerRow, col: tile.centerCol };
+  const oldCells = tileFootprint(center, tile.rotation);
+  const newCells = tileFootprint(center, normalized);
+
+  const bySlot: MapFieldState[] = [];
+  for (let slot = 1; slot < oldCells.length; slot += 1) {
+    const field = adventure.fields[hexSpaceId(oldCells[slot])];
+    if (!field || field.tileInstanceId !== tile.id) {
+      return false;
+    }
+    bySlot[slot] = field;
+  }
+
+  // Same six keys before and after: writing all six re-keys every ring hex, so
+  // no stale duplicate can survive the permutation.
+  for (let slot = 1; slot < newCells.length; slot += 1) {
+    const spaceId = hexSpaceId(newCells[slot]);
+    const field = bySlot[slot];
+    field.spaceId = spaceId;
+    adventure.fields[spaceId] = field;
+  }
+  tile.rotation = normalized;
+  return true;
+}
+
+/**
+ * Disruption (Astrologers): the tiles a player may rotate right now. Eligible =
+ * revealed and fully materialized, no Hero (main or secondary, any seat) on any
+ * of its seven hexes, and not yet rotated during this Disruption resolution.
+ * Tiles carrying a Town or a Subterranean Gate half are excluded as an engine
+ * safety reading: a Town's `fieldId` and a Gate pair's `gateLinkSpaceId` anchor
+ * to fixed hexes that a rotation would leave dangling.
+ */
+export function disruptionEligibleTiles(state: GameState): MapTileState[] {
+  const adventure = state.adventure;
+  if (!adventure) {
+    return [];
+  }
+
+  const rotated = new Set(adventure.astrologers?.disruptionRotatedTileIds ?? []);
+  const heroSpaces = new Set(
+    Object.values(state.heroes)
+      .map((hero) => hero.spaceId)
+      .filter((spaceId): spaceId is MapSpaceId => Boolean(spaceId))
+  );
+  const townSpaces = new Set(
+    Object.values(state.towns)
+      .map((town) => town.fieldId)
+      .filter((fieldId): fieldId is MapSpaceId => Boolean(fieldId))
+  );
+
+  return Object.values(adventure.tiles).filter((tile) => {
+    if (tile.faceDown || tile.awaitingRotation || rotated.has(tile.id)) {
+      return false;
+    }
+    const spaceIds = getTileFootprintSpaceIds(tile);
+    for (const spaceId of spaceIds) {
+      const field = adventure.fields[spaceId];
+      if (!field || field.tileInstanceId !== tile.id) {
+        return false; // not (fully) materialized — nothing real to rotate
+      }
+      if (heroSpaces.has(spaceId) || townSpaces.has(spaceId)) {
+        return false;
+      }
+      if (field.gateToTileId || field.gateLinkSpaceId) {
+        return false;
+      }
+    }
+    return true;
+  });
+}
+
+/** A human-readable pick label for a Disruption tile: its printed id + a landmark. */
+export function disruptionTileLabel(state: GameState, tile: MapTileState): string {
+  const adventure = state.adventure;
+  const landmarks: string[] = [];
+  if (adventure) {
+    for (const spaceId of getTileFootprintSpaceIds(tile)) {
+      const field = adventure.fields[spaceId];
+      const name = field ? locationDefinitions[field.location]?.name : null;
+      if (field && name && locationDefinitions[field.location]?.category !== "blocked") {
+        landmarks.push(field.flagOwnerId ? `${name} (${state.players[field.flagOwnerId]?.name ?? "flagged"})` : name);
+      }
+      if (landmarks.length === 2) {
+        break;
+      }
+    }
+  }
+  return landmarks.length > 0 ? `${tile.tileDefId} — ${landmarks.join(", ")}` : tile.tileDefId;
 }
 
 export function findTileAtSpace(adventure: AdventureState, spaceId: MapSpaceId): MapTileState | null {
@@ -3070,6 +3195,73 @@ export function processPendingVisit(state: GameState): void {
       case "REINFORCE_FREE":
         reinforceArmyUnit(state, visit.playerId, step.armyUnitId, false, false, false, true);
         break;
+      case "DISRUPTION_ROTATE_OFFER": {
+        // Disruption (Astrologers): pick one eligible tile to rotate, or skip.
+        // Eligibility is recomputed from live state each time this step runs,
+        // so a tile an earlier seat rotated has dropped out; with nothing left
+        // the offer resolves silently (the printed "if possible").
+        const eligible = disruptionEligibleTiles(state);
+        if (eligible.length === 0) {
+          break;
+        }
+        visit.steps.unshift({
+          type: "CHOOSE_ONE",
+          prompt: "Disruption: rotate one tile with no Hero on it (or skip)",
+          options: [
+            ...eligible.map((tile) => ({
+              label: `Rotate tile ${disruptionTileLabel(state, tile)}`,
+              steps: [{ type: "DISRUPTION_ROTATE_TILE", tileInstanceId: tile.id } as VisitStep]
+            })),
+            { label: "Skip", steps: [] }
+          ]
+        });
+        break;
+      }
+      case "DISRUPTION_ROTATE_TILE": {
+        // The picked tile: choose its new orientation (any of the five others —
+        // "freely rotate"), or back out to the tile pick.
+        const tile = adventure.tiles[step.tileInstanceId];
+        const stillEligible = tile && disruptionEligibleTiles(state).some((candidate) => candidate.id === tile.id);
+        if (!stillEligible) {
+          visit.steps.unshift({ type: "DISRUPTION_ROTATE_OFFER" });
+          break;
+        }
+        const options: { label: string; steps: VisitStep[] }[] = [];
+        for (let turns = 1; turns <= 5; turns += 1) {
+          const rotation = (tile.rotation + turns) % 6;
+          options.push({
+            label: `Turn ${turns * 60}° clockwise`,
+            steps: [{ type: "DISRUPTION_SET_ROTATION", tileInstanceId: tile.id, rotation }]
+          });
+        }
+        options.push({ label: "Pick a different tile", steps: [{ type: "DISRUPTION_ROTATE_OFFER" }] });
+        visit.steps.unshift({
+          type: "CHOOSE_ONE",
+          prompt: `Disruption: rotate tile ${disruptionTileLabel(state, tile)} by how much?`,
+          options
+        });
+        break;
+      }
+      case "DISRUPTION_SET_ROTATION": {
+        // Apply the rotation in place. Re-validated against live eligibility as
+        // a transactional backstop — a stale/duplicated step can only no-op,
+        // never corrupt a tile or rotate one twice.
+        const tile = adventure.tiles[step.tileInstanceId];
+        const stillEligible = tile && disruptionEligibleTiles(state).some((candidate) => candidate.id === tile.id);
+        if (!stillEligible || !rotateTileInPlace(adventure, tile, step.rotation)) {
+          break;
+        }
+        const astrologers = getAstrologersState(state);
+        if (astrologers) {
+          astrologers.disruptionRotatedTileIds = [...(astrologers.disruptionRotatedTileIds ?? []), tile.id];
+        }
+        appendEvent(state, {
+          type: "EVENT_NOTE",
+          playerId: visit.playerId,
+          message: `Disruption: ${state.players[visit.playerId]?.name ?? visit.playerId} rotated tile ${tile.tileDefId}.`
+        });
+        break;
+      }
       case "RECRUIT_FREE": {
         // Add a unit to the army for free: a Few (Garden of Life) or a Pack
         // (a Creature Bank "gain a Stacked unit" reward).
@@ -7295,6 +7487,21 @@ function expireActiveAstrologersCard(state: GameState): void {
   astrologers.swiftWeaselUsedBy = [];
   astrologers.heroEmpowerChosenRoundBy = {};
   astrologers.heroEmpowerUsesBy = {};
+  astrologers.firstCombatGroundAttackUsed = false;
+  astrologers.disruptionRotatedTileIds = [];
+}
+
+/**
+ * "Ignore this card and draw another one" — printed board-state gates checked
+ * at draw. Disruption is unresolvable when no tile is rotatable at all (every
+ * revealed tile carries a hero, a town, a gate — or nothing is revealed yet).
+ * A card not listed here is always applicable.
+ */
+function proclamationRequiresRedraw(state: GameState, cardId: string): boolean {
+  if (astrologersCardDefinitions[cardId]?.effect.type === "ROTATE_TILE_EACH") {
+    return disruptionEligibleTiles(state).length === 0;
+  }
+  return false;
 }
 
 function popAstrologersCard(state: GameState): string | undefined {
@@ -7319,14 +7526,20 @@ export function drawAstrologersCard(state: GameState): void {
 
   let cardId = popAstrologersCard(state);
 
-  // Friendly Beaver / Restart drawn on the first Astrologers round: discard it
-  // and draw another card (their printed exception). Bounded by the deck size
-  // so a (hypothetical) deck holding only first-round-redraw cards keeps the
-  // last one drawn instead of looping through the reshuffle forever.
-  if (state.round === 2) {
+  // Printed redraw exceptions: Friendly Beaver / Restart drawn on the first
+  // Astrologers round, and any card whose board-state gate makes it
+  // unresolvable right now (Disruption with no rotatable tile). The skipped
+  // card goes to the discard and another is drawn. Bounded by the deck size so
+  // a (hypothetical) deck holding only redraw cards keeps the last one drawn
+  // instead of looping through the reshuffle forever.
+  {
     const deck = state.decks[ASTROLOGERS_DECK_ID];
     let redrawsLeft = (deck?.drawPile.length ?? 0) + (deck?.discardPile.length ?? 0);
-    while (cardId && FIRST_ROUND_REDRAWN_PROCLAMATIONS.has(cardId) && redrawsLeft > 0) {
+    while (
+      cardId &&
+      redrawsLeft > 0 &&
+      ((state.round === 2 && FIRST_ROUND_REDRAWN_PROCLAMATIONS.has(cardId)) || proclamationRequiresRedraw(state, cardId))
+    ) {
       deck?.discardPile.push(cardId);
       cardId = popAstrologersCard(state);
       redrawsLeft -= 1;
@@ -7384,6 +7597,7 @@ function resolveAstrologersCard(state: GameState, card: AstrologersCardDefinitio
     case "FREE_SPELL_BOOK":
     case "DEFEND_FLAT_BONUS":
     case "EVENT_DRAW_PICK":
+    case "ABILITY_ROLL_REROLL":
       // Passive while the card stays face up (read where the effect applies:
       // Sanctuary's PvP ban in startPlayerCombat via pvpAttacksBanned; the Spells
       // Search widening in openSharedDeckSearch; Pirates' combat-win die in
@@ -7398,7 +7612,36 @@ function resolveAstrologersCard(state: GameState, card: AstrologersCardDefinitio
       // at the next Resource round, see startAdventureRound; Explorers' empower is
       // granted per the cards discarded in each hand refresh, see refreshHand;
       // Plastic Tray's flat Defend payout in resolveDefendBonus (reducer.ts);
-      // Forty Thieves' 2-card Event draw in drawEventCard).
+      // Forty Thieves' 2-card Event draw in drawEventCard; Multilingual Bron's
+      // ability-roll reroll at each roll site via abilityRollRerollActive).
+      break;
+    case "FIRST_COMBAT_GROUND_ATTACK": {
+      // Crag Hack: the ground +1 latches onto the round's first combat in
+      // makeCombatShell (passive read). The second clause resolves now: the
+      // player whose hero is Crag Hack may reinforce their Goblins for free
+      // once — a skippable round-start offer, like Isra's Friends.
+      const cragHack = Object.values(state.heroes).find((hero) => hero.heroDefId === "crag_hack");
+      const controllerId = cragHack?.controllerId;
+      if (controllerId && playerIds.includes(controllerId)) {
+        queueFreeUnitReinforce(
+          state,
+          controllerId,
+          "stronghold.goblins",
+          "Crag Hack: reinforce your Goblins for free."
+        );
+      }
+      break;
+    }
+    case "ROTATE_TILE_EACH":
+      // Disruption: one skippable rotate offer per seat, in turn order ("starting
+      // from the first player"), resolved inside the round-start barrier. Each
+      // offer recomputes eligibility live, so earlier rotations drop out
+      // ("no tile more than once" via disruptionRotatedTileIds) and a seat left
+      // with nothing resolves silently.
+      astrologers.disruptionRotatedTileIds = [];
+      for (const playerId of playerIds) {
+        adventure.rewardQueue.push({ playerId, kind: "visit-steps", steps: [{ type: "DISRUPTION_ROTATE_OFFER" }] });
+      }
       break;
     case "GAIN_MORALE_ALL":
       for (const playerId of playerIds) {
@@ -8435,6 +8678,39 @@ export function queueFreeBronzeReinforce(state: GameState, playerId: PlayerId, p
  */
 export function queueSkeletonReinforce(state: GameState, playerId: PlayerId): void {
   queueFreeBronzeReinforce(state, playerId, "Skeletons defeated: reinforce a bronze unit for free.");
+}
+
+/**
+ * Crag Hack (Astrologers): offer a free Few→Pack reinforcement of one SPECIFIC
+ * unit (the controller's Goblins), skippable. Nothing is queued when the player
+ * holds no Few-side copy of that unit, so the offer never opens empty — the
+ * same self-guard every round-start Astrologers offer uses.
+ */
+export function queueFreeUnitReinforce(state: GameState, playerId: PlayerId, unitDefId: string, prompt: string): void {
+  const player = state.players[playerId];
+  const adventure = state.adventure;
+  if (!player || !adventure) {
+    return;
+  }
+  const options: { label: string; steps: VisitStep[] }[] = [];
+  for (const unit of player.army) {
+    if (unit.side !== "few" || unit.unitDefId !== unitDefId || !getUnitSide(unit.unitDefId, "pack")) {
+      continue;
+    }
+    options.push({
+      label: `Reinforce ${coreUnitDefinitions[unit.unitDefId]?.name ?? unit.unitDefId} (free)`,
+      steps: [{ type: "REINFORCE_FREE", armyUnitId: unit.id }]
+    });
+  }
+  if (options.length === 0) {
+    return;
+  }
+  options.push({ label: "Skip", steps: [] });
+  adventure.rewardQueue.push({
+    playerId,
+    kind: "visit-steps",
+    steps: [{ type: "CHOOSE_ONE", prompt, options }]
+  });
 }
 
 /**

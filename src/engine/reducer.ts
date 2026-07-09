@@ -3,6 +3,7 @@ import { REROLL_REACTION_ARTIFACT_IDS } from "@/data/cards/artifacts";
 import { sampleBuildings } from "@/data/towns/buildings";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import {
+  abilityRollRerollActive,
   addArmyUnit,
   changeMorale,
   commitPopulationOnMove,
@@ -1943,14 +1944,31 @@ function unitIgnoresCardDamage(state: GameState, unit: CombatUnitState, card: Ca
 }
 
 /**
+ * Multilingual Bron (Astrologers): whether this unit's special-ability roll is
+ * rerolled once when it comes up against the unit's controller. Neutral guards
+ * are not "you" — only a unit a real player controls rerolls.
+ */
+function bronRerollsAbilityRoll(state: GameState, unit: CombatUnitState): boolean {
+  return !isNeutralUnit(unit) && abilityRollRerollActive(state);
+}
+
+/**
  * Rampart Dwarves "Magic Resistance": when a Spell or Specialty card targets a
  * single Dwarf unit, it rolls one Attack die; on the printed face ("+1") the
  * card has no effect on it. The roll happens whether the card is friendly or
  * hostile. Returns true when the card is negated (the caller skips the effect).
  * Rolls at most once, and only when the target is a living Dwarf carrying the
  * ability — otherwise it is a no-op that never touches the dice.
+ * `casterId` (the card's player) tells Multilingual Bron which outcome the
+ * Dwarves' owner is hoping for: shrugging off a HOSTILE card, or letting their
+ * own FRIENDLY card take hold.
  */
-function negatesCardOnDwarfRoll(state: GameState, target: TargetRef | undefined, cardName: string): boolean {
+function negatesCardOnDwarfRoll(
+  state: GameState,
+  target: TargetRef | undefined,
+  cardName: string,
+  casterId: PlayerId
+): boolean {
   const combat = state.combat;
   if (!combat || !target || target.type !== "unit") {
     return false;
@@ -1966,7 +1984,20 @@ function negatesCardOnDwarfRoll(state: GameState, target: TargetRef | undefined,
     return false;
   }
 
-  const roll = rollAttackDie(combat);
+  let roll = rollAttackDie(combat);
+  // Multilingual Bron: the Dwarves' owner rerolls a resistance die that came up
+  // against them, once.
+  const ownerWantsNegate = casterId !== unit.controllerId;
+  if ((roll === negate.onRoll) !== ownerWantsNegate && bronRerollsAbilityRoll(state, unit)) {
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: unit.id,
+      abilityId: `${negate.abilityId}-roll`,
+      targetUnitId: unit.id,
+      message: `${unit.cardName} rolls ${roll} for ${negate.abilityName} — Multilingual Bron rerolls.`
+    });
+    roll = rollAttackDie(combat);
+  }
   const negated = roll === negate.onRoll;
   appendEvent(state, {
     type: "UNIT_ABILITY_TRIGGERED",
@@ -2902,6 +2933,12 @@ function getAttackStackDetails(
   const ownAttackFlatBonus = isRetaliation ? 0 : getOwnAttackFlatBonus(attacker);
   const astrologersRoundAttackBonus = state.round % 2 === 0 ? getAstrologersRoundFrenzy(attacker) : 0;
 
+  // Crag Hack (Astrologers): the round's first combat grants every GROUND-type
+  // unit (both sides) the latched +Attack. A card-borne buff, so it joins the
+  // card bonus below and the elemental clamp applies to it like any other.
+  const proclamationGroundAttackBonus =
+    attacker.type === "ground" ? (combat.proclamationGroundAttackBonus ?? 0) : 0;
+
   // Retaliation-only modifiers keyed off the retaliation's defender — i.e. the
   // original attacker being struck back: Dread Knights gain Defense, Dragon
   // Flies sap the retaliator's Attack.
@@ -2916,7 +2953,11 @@ function getAttackStackDetails(
   // attack) intact.
   const dealsElemental = unitDealsElementalDamage(state, attacker, attackKind);
   const cardAttackBonus =
-    stackItem.modifiers.attackBonus + activeAttackBonus + redirectedAttackDelta + initiativeConditionalAttackBonus;
+    stackItem.modifiers.attackBonus +
+    activeAttackBonus +
+    redirectedAttackDelta +
+    initiativeConditionalAttackBonus +
+    proclamationGroundAttackBonus;
   const effectiveCardAttackBonus = dealsElemental ? Math.min(0, cardAttackBonus) : cardAttackBonus;
   const effectiveTokenAttack = dealsElemental ? Math.min(0, tokenAttack) : tokenAttack;
 
@@ -4364,7 +4405,19 @@ function applyAttackDieDamageFollowUps(
       break;
     }
 
-    const candidate = rollAttackCandidate(combat, "normal");
+    let candidate = rollAttackCandidate(combat, "normal");
+    // Multilingual Bron: reroll a missed ability die once.
+    const missed = candidate.roll < followUp.minRoll || (followUp.maxRoll !== undefined && candidate.roll > followUp.maxRoll);
+    if (!forceRoll && missed && bronRerollsAbilityRoll(state, attacker)) {
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: attacker.id,
+        abilityId: `${followUp.abilityId}-roll`,
+        targetUnitId: defender.id,
+        message: `${attacker.name} rolls ${candidate.roll} for ${followUp.abilityName} — Multilingual Bron rerolls.`
+      });
+      candidate = rollAttackCandidate(combat, "normal");
+    }
     appendEvent(state, {
       type: "UNIT_ABILITY_TRIGGERED",
       unitId: attacker.id,
@@ -4479,7 +4532,19 @@ function applyDeathStareFollowUps(
     if (!isUnitAlive(defender)) {
       break;
     }
-    const rolls = Array.from({ length: Math.max(1, followUp.diceCount) }, () => rollAttackDie(combat));
+    let rolls = Array.from({ length: Math.max(1, followUp.diceCount) }, () => rollAttackDie(combat));
+    // Multilingual Bron: a missed stare is rerolled once (the whole roll — all
+    // its dice — is the ability's one roll).
+    if (!forceRoll && !rolls.every((roll) => roll === followUp.onRoll) && bronRerollsAbilityRoll(state, attacker)) {
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: attacker.id,
+        abilityId: `${followUp.abilityId}-roll`,
+        targetUnitId: defender.id,
+        message: `${attacker.name} rolls ${rolls.join(", ")} for ${followUp.abilityName} — Multilingual Bron rerolls.`
+      });
+      rolls = Array.from({ length: Math.max(1, followUp.diceCount) }, () => rollAttackDie(combat));
+    }
     // Tarnum (Fortress) Basilisks VI forces the Death Stare regardless of the dice.
     const petrifies = forceRoll || rolls.every((roll) => roll === followUp.onRoll);
     // One ability event per stare; its message carries the outcome so the log
@@ -4985,8 +5050,20 @@ function applyParalysisFollowUps(
     }
     let roll = attackRoll;
     if (followUp.source === "extra") {
-      const candidate = rollAttackCandidate(combat, "normal");
-      roll = candidate.roll;
+      roll = rollAttackCandidate(combat, "normal").roll;
+      // Multilingual Bron: reroll a missed extra Paralysis die once. Only the
+      // "extra" source is an ability's OWN roll — the "own" source reads the
+      // attack die, which the attack-reroll window already covers.
+      if (!forceRoll && roll !== followUp.onRoll && bronRerollsAbilityRoll(state, attacker)) {
+        appendEvent(state, {
+          type: "UNIT_ABILITY_TRIGGERED",
+          unitId: attacker.id,
+          abilityId: `${followUp.abilityId}-roll`,
+          targetUnitId: defender.id,
+          message: `${attacker.name} rolls ${roll} for ${followUp.abilityName} — Multilingual Bron rerolls.`
+        });
+        roll = rollAttackCandidate(combat, "normal").roll;
+      }
       appendEvent(state, {
         type: "UNIT_ABILITY_TRIGGERED",
         unitId: attacker.id,
@@ -5078,7 +5155,18 @@ function applyRetaliationParalysis(
   }
 
   if (ability.onRoll !== undefined) {
-    const candidate = rollAttackCandidate(combat, "normal");
+    let candidate = rollAttackCandidate(combat, "normal");
+    // Multilingual Bron: reroll a missed retaliation-gaze die once.
+    if (candidate.roll !== ability.onRoll && bronRerollsAbilityRoll(state, retaliator)) {
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: retaliator.id,
+        abilityId: `${ability.abilityId}-roll`,
+        targetUnitId: target.id,
+        message: `${retaliator.name} rolls ${candidate.roll} for ${ability.abilityName} — Multilingual Bron rerolls.`
+      });
+      candidate = rollAttackCandidate(combat, "normal");
+    }
     appendEvent(state, {
       type: "UNIT_ABILITY_TRIGGERED",
       unitId: retaliator.id,
@@ -5440,7 +5528,19 @@ function openGhostDragonKnockback(
   }
 
   // "After the attack, roll 1 Attack die."
-  const candidate = rollAttackCandidate(combat, "normal");
+  let candidate = rollAttackCandidate(combat, "normal");
+  // Multilingual Bron: reroll a missed knock-back die once (the push denies the
+  // retaliation, so the attacker's controller always wants it to land).
+  if (candidate.roll !== ability.onRoll && bronRerollsAbilityRoll(state, attacker)) {
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: attacker.id,
+      abilityId: `${ability.abilityId}-roll`,
+      targetUnitId: defender.id,
+      message: `${attacker.name} rolls ${candidate.roll} for ${ability.abilityName} — Multilingual Bron rerolls.`
+    });
+    candidate = rollAttackCandidate(combat, "normal");
+  }
   appendEvent(state, {
     type: "UNIT_ABILITY_TRIGGERED",
     unitId: attacker.id,
@@ -7840,7 +7940,7 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
     // Rampart Dwarves "Magic Resistance": a spell aimed at a Dwarf rolls a die
     // to shrug it off. On the matching face the spell still resolves (and is
     // discarded) but applies none of its effects to the Dwarf.
-    if (negatesCardOnDwarfRoll(state, stackItem.action.target, card?.name ?? "the spell")) {
+    if (negatesCardOnDwarfRoll(state, stackItem.action.target, card?.name ?? "the spell", stackItem.action.playerId)) {
       appendEvent(state, {
         type: "SPELL_CAST_RESOLVED",
         playerId: stackItem.action.playerId,
@@ -10074,7 +10174,7 @@ function applyReactionPlayCore(
     if (
       card.kind === "spell" &&
       affectedUnit &&
-      negatesCardOnDwarfRoll(state, { type: "unit", unitId: affectedUnit.id }, card.name)
+      negatesCardOnDwarfRoll(state, { type: "unit", unitId: affectedUnit.id }, card.name, playerId)
     ) {
       stackItem.modifiers.playedCardIds.push(play.cardId);
       return { windowEnded: false };
@@ -10298,7 +10398,7 @@ function applyReactionPlayCore(
     if (
       card.kind === "spell" &&
       blessTarget &&
-      negatesCardOnDwarfRoll(state, { type: "unit", unitId: blessTarget.id }, card.name)
+      negatesCardOnDwarfRoll(state, { type: "unit", unitId: blessTarget.id }, card.name, playerId)
     ) {
       stackItem.modifiers.playedCardIds.push(play.cardId);
       return { windowEnded: false };
@@ -10374,7 +10474,7 @@ function applyReactionPlayCore(
   ) {
     stackItem.modifiers.playedCardIds.push(play.cardId);
     const defenderRef: TargetRef = { type: "unit", unitId: stackItem.action.defenderId };
-    if (!negatesCardOnDwarfRoll(state, defenderRef, card.name)) {
+    if (!negatesCardOnDwarfRoll(state, defenderRef, card.name, playerId)) {
       // Adrienne's Fire Magic adds her bonus to a fire Slayer's roll-count Power.
       const slayerSchoolBonus = play.fromScroll ? 0 : getSchoolPowerBonus(state, playerId, card);
       const power = play.fromScroll ? 0 : attackPowerFor(stackItem, playerId) + slayerSchoolBonus;
@@ -11633,7 +11733,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   // target makes every unit-targeted branch below a no-op, while the card still
   // resolves and goes to the discard pile as usual.
   const negatedByDwarf =
-    card.kind === "hero-specialty" && negatesCardOnDwarfRoll(state, action.target, card.name);
+    card.kind === "hero-specialty" && negatesCardOnDwarfRoll(state, action.target, card.name, action.playerId);
   const target = negatedByDwarf ? undefined : action.target?.type === "unit" ? action.target : undefined;
 
   if (effect.type === "HEAL_DAMAGE" && target) {
