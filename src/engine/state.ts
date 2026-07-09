@@ -2181,6 +2181,49 @@ export type EffectDefinition =
        */
       type: "SACRIFICE_TRANSFER";
       gradeByPower: Record<number, UnitGrade>;
+    }
+  | {
+      /**
+       * Pandora's Box map plays whose whole resolution is a list of visit steps —
+       * queued as a main-hero "visit-steps" reward so it reuses the tested visit
+       * pipeline (GAIN_EXPERIENCE, GAIN_MOVEMENT, GAIN_RESOURCES, ROLL_RESOURCE_DICE,
+       * SEARCH_SHARED_DECK, nested CHOOSE_ONE, PANDORA_PAY_FOR_DICE, …). The steps
+       * run against the player's MAIN hero (a Secondary Hero never gains map XP).
+       * Used by every straightforward Pandora card (experience/movement/resource-
+       * dice/search/pay-for-dice) and as the option effects of the "OR" cards.
+       */
+      type: "PANDORA_VISIT";
+      steps: VisitStep[];
+    }
+  | {
+      /**
+       * Pandora's Box "peek" cards: reveal the top `count` cards of a shared deck,
+       * discard up to `maxDiscard` of them, and return the rest to the top of the
+       * deck in an order you choose (first kept is drawn next). Then resolve the
+       * `then` follow-up steps (a resource gain or a Search) — which happen even
+       * when the deck was empty. `deck` is a deck FAMILY ("abilities" / "spells" /
+       * "artifacts" / "astrologers"); the concrete pile scryed is resolved by
+       * pandoraScryDeckId (the basic/lowest split-deck when a family splits).
+       * Resolved through the "pandora-scry" pending choice.
+       */
+      type: "PANDORA_SCRY";
+      deck: "abilities" | "spells" | "artifacts" | "astrologers";
+      count: number;
+      maxDiscard: number;
+      then?: VisitStep[];
+    }
+  | {
+      /**
+       * Pandora's Box (card 173): "If you have no Silver unit in your Unit Deck,
+       * discard this card and draw another. Otherwise, choose one: (A) reverse a
+       * Silver unit to its Handful (Few) side, OR (B) discard a Silver unit, then
+       * draw 3 Bronze + 3 Silver Neutral units and Recruit 1 of each for free."
+       * With no Silver in the army the card self-cycles: it draws another Pandora
+       * card. Otherwise it opens the interactive choice. (Unit Deck = player.army;
+       * "Handful" = the Few side; the [bronze]/Neutral decks = neutral-bronze /
+       * neutral-silver.)
+       */
+      type: "PANDORA_SILVER_REFRESH";
     };
 
 /**
@@ -6778,6 +6821,63 @@ export type VisitStep =
       type: "DRAW_PANDORA_CARD";
     }
   | {
+      /**
+       * Pandora's Box (card 177): "First pay 3 gold / 2 building materials / 1
+       * valuables up to six times in any combination. THEN for each payment made,
+       * roll and resolve 1 Resource die." Payments are committed FIRST (from the
+       * player's starting resources — die winnings can never bootstrap more
+       * payments), then the accumulated dice roll at the end. `remaining` is how
+       * many more payments may be made (starts at 6); `paid` is how many have been
+       * made so far (drives the trailing dice rolls). Only affordable payments are
+       * offered; a Stop exit, no affordable payment, or reaching six ends the pay
+       * phase and rolls `paid` Resource dice.
+       */
+      type: "PANDORA_PAY_FOR_DICE";
+      remaining: number;
+      paid?: number;
+    }
+  | {
+      /**
+       * Pandora's Box (cards 179/180/181, option B): roll `diceCount` Treasure
+       * dice as a pure gamble; if at least one shows the artifact-search (ankh)
+       * face, queue a Search(`searchCount`) of the `deck` family. The dice faces
+       * are NOT otherwise resolved — the roll only tests the ankh condition.
+       */
+      type: "PANDORA_TREASURE_GAMBLE_SEARCH";
+      deck: "abilities" | "spells" | "artifacts";
+      diceCount: number;
+      searchCount: number;
+    }
+  | {
+      /**
+       * Pandora's Box (card 173, option B): discard one army unit. A faction
+       * few/pack card simply leaves the army; a single-sided neutral card returns
+       * to its tier's Neutral discard pile.
+       */
+      type: "PANDORA_DISCARD_ARMY_UNIT";
+      armyUnitId: string;
+    }
+  | {
+      /**
+       * Pandora's Box (card 173, option B): draw 3 cards from the `tier` Neutral
+       * deck and open a free-recruit choice (Recruit one for free, or decline);
+       * the rest return to that tier's discard pile (PANDORA_FREE_NEUTRAL_RESOLVE).
+       */
+      type: "PANDORA_FREE_NEUTRAL_RECRUIT";
+      tier: "bronze" | "silver";
+    }
+  | {
+      /**
+       * Resolves a PANDORA_FREE_NEUTRAL_RECRUIT choice: add `recruit` (if any) to
+       * the army for free as a neutral-side card, and return every other drawn
+       * unit to the `tier` Neutral discard pile.
+       */
+      type: "PANDORA_FREE_NEUTRAL_RESOLVE";
+      drawn: string[];
+      recruit?: string;
+      tier: "bronze" | "silver";
+    }
+  | {
       /** Necromancy Amplifier: fetch the Ability deck's first Necromancy card. */
       type: "NECROMANCY_FETCH";
     }
@@ -8074,6 +8174,7 @@ export type PendingChoice =
         | "visions-boost"
         | "visions-deck"
         | "visions-scry"
+        | "pandora-scry"
         | "pandora-upkeep"
         | "morale-positive-limit"
         | "morale-repeat-search"
@@ -8365,6 +8466,22 @@ export type PendingChoice =
         tier: "bronze" | "silver" | "gold" | "azure";
         remaining: CardId[];
         toReturn: CardId[];
+      };
+      /**
+       * pandora-scry (Pandora cards 183/184/185/186): the shared-deck cards lifted
+       * off the top of `deckId` still awaiting a keep/discard decision
+       * (`remaining`), the cards already kept (`toReturn`, in pick order — the
+       * first kept ends on top), how many discards are still allowed
+       * (`discardsRemaining`, the printed "up to 2"), and the follow-up steps
+       * (`then`, a resource gain or Search) to run once the scry ends. The card
+       * identities stay private to the scrying player (masked in player-view).
+       */
+      pandoraScry?: {
+        deckId: DeckId;
+        remaining: CardId[];
+        toReturn: CardId[];
+        discardsRemaining: number;
+        then: VisitStep[];
       };
       /**
        * place-creature-bank: a discovered Far/Near tile's Blocked Field at

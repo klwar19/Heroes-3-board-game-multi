@@ -71,6 +71,24 @@ function getVisiblePendingChoice(choice: PendingChoice, viewerPlayerId: PlayerId
     };
   }
 
+  // Pandora scry: the shared-deck cards lifted off the top are revealed only to
+  // the scrying player; opponents just see that a scry is happening.
+  if (choice.type === "OPTION_CHOICE" && choice.context === "pandora-scry" && choice.playerId !== viewerPlayerId) {
+    return {
+      ...cloneSerializable(choice),
+      options: choice.options.map(() => ({ label: "Hidden card" })),
+      pandoraScry: choice.pandoraScry
+        ? {
+            deckId: choice.pandoraScry.deckId,
+            remaining: choice.pandoraScry.remaining.map(() => "hidden"),
+            toReturn: choice.pandoraScry.toReturn.map(() => "hidden"),
+            discardsRemaining: choice.pandoraScry.discardsRemaining,
+            then: choice.pandoraScry.then
+          }
+        : undefined
+    };
+  }
+
   // Magi Power Drain: the candidate Power cards are the defender's hand, so
   // their identities stay private to the choosing player.
   if (choice.type === "COMBAT_HAND_DISCARD" && choice.playerId !== viewerPlayerId) {

@@ -88,6 +88,7 @@ import {
   makeCombatUnitFromNeutral,
   materializeTileFields,
   MAX_EXPERIENCE,
+  ASTROLOGERS_DECK_ID,
   NEUTRAL_DECK_IDS,
   placeNeutralUnits,
   playerDwellingTiers,
@@ -4106,6 +4107,179 @@ export function resolveVisionsScryChoice(state: GameState, playerId: PlayerId, o
   }
 }
 
+// ---------------------------------------------------------------------------
+// Pandora's Box "peek" cards (183/184/185/186): peek the top of a SHARED deck,
+// discard up to N, reorder the rest on top, then resolve a resource/Search bonus.
+// Mirrors the Visions scry but over the shared Ability/Spell/Artifact/Astrologers
+// decks (via cardLibrary names and state.decks[deckId]) with a discard cap.
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolves the concrete shared-deck pile a Pandora "peek" card scrys for a deck
+ * FAMILY. Abilities and Astrologers are single decks; the split Spell / Artifact
+ * families (BINH house rule) name one physical deck, so this peeks the basic /
+ * lowest pile that has cards (a documented reading — the "starter" pile stands
+ * in), falling back to the first pile that merely exists so the bonus still
+ * resolves. Returns null when the family has no deck at all.
+ */
+export function pandoraScryDeckId(state: GameState, family: string): string | null {
+  const candidatesByFamily: Record<string, string[]> = {
+    abilities: ["abilities"],
+    astrologers: [ASTROLOGERS_DECK_ID],
+    spells: ["spells", "spells-expert"],
+    artifacts: ["artifacts", "artifacts-minor", "artifacts-major", "artifacts-relic"]
+  };
+  const candidates = candidatesByFamily[family] ?? [family];
+  const existing = candidates.filter((id) => state.decks[id]);
+  const withCards = existing.find((id) => (state.decks[id]?.drawPile.length ?? 0) > 0);
+  return withCards ?? existing[0] ?? null;
+}
+
+/** Friendly deck name for the scry prompt (deckDisplayName has no Astrologers entry). */
+function pandoraScryDeckLabel(state: GameState, deckId: string): string {
+  return deckId === ASTROLOGERS_DECK_ID ? "Astrologers Proclaim" : deckDisplayName(state, deckId);
+}
+
+/** Queues the Pandora scry's follow-up bonus (a resource gain / Search), if any. */
+function queuePandoraScryFollowUp(state: GameState, playerId: PlayerId, then: VisitStep[]): void {
+  if (then.length === 0) {
+    return;
+  }
+  state.adventure?.rewardQueue.unshift({ playerId, kind: "visit-steps", steps: [...then] });
+}
+
+/**
+ * Pandora's Box "peek" cards: reveal the top `count` cards of the resolved shared
+ * deck, open the keep/discard scry (capped at `maxDiscard` discards), then resolve
+ * the `then` bonus. The bonus runs even when the deck is empty (nothing to scry,
+ * but the printed reward still applies). Called from playCard, so the empty path
+ * relies on playCard's trailing pumpAdventureQueues to drain the follow-up.
+ */
+export function openPandoraScry(
+  state: GameState,
+  playerId: PlayerId,
+  family: string,
+  count: number,
+  maxDiscard: number,
+  then: VisitStep[]
+): void {
+  const deckId = pandoraScryDeckId(state, family);
+  const deck = deckId ? state.decks[deckId] : undefined;
+  const revealed: CardId[] = [];
+  if (deck) {
+    for (let index = 0; index < count && deck.drawPile.length > 0; index += 1) {
+      revealed.push(deck.drawPile.pop() as CardId);
+    }
+  }
+  if (!deckId || revealed.length === 0) {
+    queuePandoraScryFollowUp(state, playerId, then);
+    return;
+  }
+  openPandoraScryStep(state, playerId, deckId, revealed, [], Math.min(maxDiscard, revealed.length), then);
+}
+
+/**
+ * Opens (or re-opens) the keep/discard scry over the cards still in hand: each
+ * step the player either puts one card back on top of the deck (kept in pick
+ * order — first kept is drawn next) or discards it, until none remain. Discards
+ * are capped at `discardsRemaining` (the printed "up to 2"); once spent, only the
+ * keep options are offered so the rest go back on top.
+ */
+function openPandoraScryStep(
+  state: GameState,
+  playerId: PlayerId,
+  deckId: string,
+  remaining: CardId[],
+  toReturn: CardId[],
+  discardsRemaining: number,
+  then: VisitStep[]
+): void {
+  if (remaining.length === 0) {
+    finishPandoraScry(state, playerId, deckId, toReturn, then);
+    return;
+  }
+
+  const name = (cardId: CardId) => cardLibrary[cardId]?.name ?? cardId;
+  const deckLabel = pandoraScryDeckLabel(state, deckId);
+  // Options are [keep r0, …, keep rN] then (while discards remain) [discard r0, …].
+  const options: { label: string }[] = [
+    ...remaining.map((cardId) => ({ label: `Put ${name(cardId)} back on top` })),
+    ...(discardsRemaining > 0 ? remaining.map((cardId) => ({ label: `Discard ${name(cardId)}` })) : [])
+  ];
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId,
+    prompt:
+      discardsRemaining > 0
+        ? `Pandora's Box: put a card back on top of the ${deckLabel} deck (first kept is drawn next) or discard it (up to ${discardsRemaining} more).`
+        : `Pandora's Box: put the remaining card(s) back on top of the ${deckLabel} deck (first put back is drawn next).`,
+    options,
+    context: "pandora-scry",
+    pandoraScry: { deckId, remaining: [...remaining], toReturn: [...toReturn], discardsRemaining, then: [...then] },
+    returnPhase: "player-turn"
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = playerId;
+}
+
+/** Returns the kept cards to the top of the deck (first kept on top), then bonus. */
+function finishPandoraScry(
+  state: GameState,
+  playerId: PlayerId,
+  deckId: string,
+  toReturn: CardId[],
+  then: VisitStep[]
+): void {
+  const deck = state.decks[deckId];
+  if (deck) {
+    // drawPile top is the last element; push kept cards in reverse pick order so
+    // the first one kept ends up on top (drawn next).
+    for (let index = toReturn.length - 1; index >= 0; index -= 1) {
+      deck.drawPile.push(toReturn[index]);
+    }
+  }
+  state.pendingChoice = null;
+  state.phase = "player-turn";
+  state.priorityPlayerId = null;
+  queuePandoraScryFollowUp(state, playerId, then);
+  if (!state.pendingChoice) {
+    pumpAdventureQueues(state);
+  }
+}
+
+/** Resolves one keep/discard step of a Pandora scry (CHOOSE_OPTION "pandora-scry"). */
+export function resolvePandoraScryChoice(state: GameState, playerId: PlayerId, optionIndex: number): void {
+  const choice = state.pendingChoice;
+  if (
+    !choice ||
+    choice.type !== "OPTION_CHOICE" ||
+    choice.context !== "pandora-scry" ||
+    !choice.pandoraScry ||
+    choice.playerId !== playerId
+  ) {
+    throw new Error("There is no Pandora scry to resolve.");
+  }
+
+  const { deckId, remaining, toReturn, discardsRemaining, then } = choice.pandoraScry;
+  const keepCount = remaining.length;
+  // Options are [keep r0, …, keep rN, discard r0, …].
+  const isKeep = optionIndex < keepCount;
+  const cardIndex = isKeep ? optionIndex : optionIndex - keepCount;
+  const cardId = remaining[cardIndex];
+  if (!cardId || (!isKeep && discardsRemaining <= 0)) {
+    throw new Error("Pick one of the revealed cards.");
+  }
+
+  const nextRemaining = remaining.filter((_, index) => index !== cardIndex);
+  if (isKeep) {
+    openPandoraScryStep(state, playerId, deckId, nextRemaining, [...toReturn, cardId], discardsRemaining, then);
+  } else {
+    state.decks[deckId]?.discardPile.push(cardId);
+    openPandoraScryStep(state, playerId, deckId, nextRemaining, toReturn, discardsRemaining - 1, then);
+  }
+}
+
 /**
  * Draws and reveals the guard army once the player's placement is locked in:
  * checks the Field Difficulty Level Table, then places the cards by the
@@ -8094,6 +8268,11 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
 
   if (choice.context === "visions-scry") {
     resolveVisionsScryChoice(state, action.playerId, action.optionIndex);
+    return;
+  }
+
+  if (choice.context === "pandora-scry") {
+    resolvePandoraScryChoice(state, action.playerId, action.optionIndex);
     return;
   }
 

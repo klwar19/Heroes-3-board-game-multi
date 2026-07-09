@@ -2973,6 +2973,97 @@ export function processPendingVisit(state: GameState): void {
         }
         break;
       }
+      case "PANDORA_DISCARD_ARMY_UNIT": {
+        // Pandora's Box (card 173, option B): discard one army unit. A faction
+        // few/pack card simply leaves the army; a single-sided neutral card
+        // returns to its tier's Neutral discard pile (mirrors the Event discard).
+        const player = state.players[visit.playerId];
+        const unit = player?.army.find((candidate) => candidate.id === step.armyUnitId);
+        if (player && unit) {
+          player.army = player.army.filter((candidate) => candidate.id !== step.armyUnitId);
+          if (unit.side === "neutral") {
+            const tier = (coreUnitDefinitions[unit.unitDefId]?.tier ?? "bronze") as
+              | "bronze"
+              | "silver"
+              | "gold"
+              | "azure";
+            state.decks[NEUTRAL_DECK_IDS[tier]]?.discardPile.push(unit.unitDefId);
+          }
+          appendEvent(state, {
+            type: "ARMY_UNIT_FLIPPED",
+            playerId: visit.playerId,
+            unitDefId: unit.unitDefId,
+            reason: "Pandora's Box: Silver refresh (discarded)"
+          });
+        }
+        break;
+      }
+      case "PANDORA_FREE_NEUTRAL_RECRUIT": {
+        // Pandora's Box (card 173, option B): draw 3 from the tier's Neutral deck
+        // and open a free-recruit pick (Recruit one for free, or decline). The
+        // rest return to the tier discard via PANDORA_FREE_NEUTRAL_RESOLVE.
+        const drawn: string[] = [];
+        for (let index = 0; index < 3; index += 1) {
+          const card = drawFromNeutralDeck(state, step.tier);
+          if (!card) {
+            break;
+          }
+          drawn.push(card);
+        }
+        if (drawn.length === 0) {
+          break;
+        }
+        const seen = new Set<string>();
+        const recruitOptions = drawn
+          .filter((unitDefId) => {
+            if (seen.has(unitDefId)) {
+              return false;
+            }
+            seen.add(unitDefId);
+            return true;
+          })
+          .map((unitDefId) => ({
+            label: `Recruit ${coreUnitDefinitions[unitDefId]?.name ?? unitDefId} (free)`,
+            steps: [{ type: "PANDORA_FREE_NEUTRAL_RESOLVE", drawn, recruit: unitDefId, tier: step.tier } as VisitStep]
+          }));
+        visit.steps.unshift({
+          type: "CHOOSE_ONE",
+          prompt: `Pandora's Box: Recruit one ${step.tier} unit for free — drew ${drawn
+            .map((id) => coreUnitDefinitions[id]?.name ?? id)
+            .join(", ")}`,
+          options: [
+            ...recruitOptions,
+            { label: "Decline (return all)", steps: [{ type: "PANDORA_FREE_NEUTRAL_RESOLVE", drawn, tier: step.tier } as VisitStep] }
+          ]
+        });
+        break;
+      }
+      case "PANDORA_FREE_NEUTRAL_RESOLVE": {
+        // Add the chosen unit to the army for free (neutral side), return the rest
+        // (only ONE copy of the recruited id is consumed) to the tier discard pile.
+        const player = state.players[visit.playerId];
+        if (player) {
+          if (step.recruit) {
+            addArmyUnit(player, step.recruit, "neutral");
+            appendEvent(state, {
+              type: "UNIT_RECRUITED",
+              playerId: visit.playerId,
+              unitDefId: step.recruit,
+              kind: "recruit",
+              cost: {}
+            });
+          }
+          let skipped = false;
+          for (const unitDefId of step.drawn) {
+            if (!skipped && step.recruit && unitDefId === step.recruit) {
+              skipped = true;
+              continue;
+            }
+            state.decks[NEUTRAL_DECK_IDS[step.tier]]?.discardPile.push(unitDefId);
+          }
+        }
+        break;
+      }
       case "REINFORCE_ARMY_UNIT":
         reinforceArmyUnit(state, visit.playerId, step.armyUnitId, step.halfCost);
         break;
@@ -3694,6 +3785,91 @@ export function processPendingVisit(state: GameState): void {
           prompt: `Pyramid: remove a card and Search (${step.searchCount}) its deck (up to ${step.remaining} more)`,
           options
         });
+        break;
+      }
+      case "PANDORA_PAY_FOR_DICE": {
+        // Pandora's Box (card 177): "First pay 3 gold, 2 building materials, or 1
+        // valuables up to six times in any combination. THEN for each payment made,
+        // roll and resolve 1 Resource die." Payments are committed FIRST — the die
+        // rolls are DEFERRED to the end (so a die's winnings can never fund another
+        // payment). Rebuild the menu each time offering only affordable payments;
+        // a Stop exit, no affordable payment, or reaching six ends the pay phase
+        // and rolls `paid` Resource dice.
+        const player = state.players[visit.playerId];
+        const paid = step.paid ?? 0;
+        const rollSteps: VisitStep[] = Array.from({ length: paid }, () => ({ type: "ROLL_RESOURCE_DICE", count: 1 }));
+        if (!player || step.remaining <= 0) {
+          visit.steps.unshift(...rollSteps);
+          break;
+        }
+        const payments: { cost: ResourceCost; label: string }[] = [
+          { cost: { gold: 3 }, label: "Pay 3 gold" },
+          { cost: { buildingMaterials: 2 }, label: "Pay 2 building materials" },
+          { cost: { valuables: 1 }, label: "Pay 1 valuables" }
+        ];
+        const options: { label: string; steps: VisitStep[] }[] = [];
+        for (const { cost, label } of payments) {
+          const canPay = (Object.entries(cost) as [ResourceKind, number][]).every(
+            ([resource, amount]) => (player.resources[resource] ?? 0) >= amount
+          );
+          if (!canPay) {
+            continue;
+          }
+          options.push({
+            label,
+            steps: [
+              { type: "LOSE_RESOURCES", ...cost, reason: "Pandora's Box: pay for a Resource die" } as VisitStep,
+              { type: "PANDORA_PAY_FOR_DICE", remaining: step.remaining - 1, paid: paid + 1 }
+            ]
+          });
+        }
+        if (options.length === 0) {
+          // Cannot afford another payment — roll the dice earned so far.
+          visit.steps.unshift(...rollSteps);
+          break;
+        }
+        options.push({
+          label: paid > 0 ? `Stop — roll ${paid} Resource ${paid === 1 ? "die" : "dice"}` : "Stop (roll nothing)",
+          steps: rollSteps
+        });
+        visit.steps.unshift({
+          type: "CHOOSE_ONE",
+          prompt: `Pandora's Box: pay for a Resource die (${paid} paid, up to ${step.remaining} more)`,
+          options
+        });
+        break;
+      }
+      case "PANDORA_TREASURE_GAMBLE_SEARCH": {
+        // Pandora's Box (cards 179/180/181, option B): roll `diceCount` Treasure
+        // dice purely to test for the artifact-search (ankh) face — the faces are
+        // NOT otherwise resolved. If at least one ankh shows, queue a Search of the
+        // named deck family. Honours the Negative Morale "roll one less" card on a
+        // 2+-dice roll, mirroring the Crypt gamble; no Luck reroll (gamble rolls
+        // are not rerollable, matching the treasure-gamble convention).
+        let diceCount = step.diceCount;
+        if (diceCount >= 2 && consumeHeldMoraleCard(state, visit.playerId, MORALE_CARD_IDS.rollOneLess)) {
+          diceCount -= 1;
+        }
+        const random = adventureRandom(state, "pandora-treasure-gamble");
+        const rolls = Array.from(
+          { length: diceCount },
+          () => TREASURE_DIE_FACES[random.nextInt(0, TREASURE_DIE_FACES.length - 1)]
+        );
+        appendEvent(state, {
+          type: "ADVENTURE_DICE_ROLLED",
+          playerId: visit.playerId,
+          dice: "treasure",
+          results: rolls.map(treasureFaceLabel),
+          treasureRolls: [...rolls]
+        });
+        if (rolls.includes("artifact-search")) {
+          queueVisitFollowUpReward(state, adventure, {
+            playerId: visit.playerId,
+            kind: "shared-deck-search",
+            deckId: step.deck,
+            count: step.searchCount
+          });
+        }
         break;
       }
       case "EMPOWER_ABILITY": {
@@ -5495,6 +5671,90 @@ export function openNeutralRecruitOffer(
         ]
       }
     ]
+  };
+}
+
+/**
+ * Pandora's Box (card 173): "If you have no Silver unit in your Unit Deck,
+ * discard this card and draw another. Otherwise choose one: (A) reverse a Silver
+ * unit to its Handful (Few) side, OR (B) discard a Silver unit, then draw 3
+ * Bronze + 3 Silver Neutral units and Recruit 1 of each for free."
+ *
+ * With no Silver in the army the card self-cycles (draws another Pandora card
+ * into hand). Otherwise it opens the interactive choice through a pendingVisit.
+ * Option A is only offered when a Silver unit is on its Pack side (a Few silver
+ * has no Handful side to reverse to).
+ */
+export function openPandoraSilverRefresh(state: GameState, playerId: PlayerId): void {
+  const adventure = state.adventure;
+  const player = state.players[playerId];
+  if (!adventure || !player) {
+    return;
+  }
+
+  const silvers = player.army.filter((unit) => coreUnitDefinitions[unit.unitDefId]?.tier === "silver");
+  if (silvers.length === 0) {
+    // "discard this card and draw another": the played card is discarded by the
+    // normal play path; draw a fresh Pandora card into hand.
+    const drawn = adventure.pandoraDeck?.pop();
+    if (drawn) {
+      player.hand.push(drawn);
+      appendEvent(state, { type: "PANDORA_CARD_DRAWN", playerId, cardId: drawn });
+    }
+    return;
+  }
+
+  const unitName = (unit: (typeof player.army)[number]) => coreUnitDefinitions[unit.unitDefId]?.name ?? unit.unitDefId;
+  const options: { label: string; steps: VisitStep[] }[] = [];
+
+  // Option A — reverse a Pack-side Silver to its Handful (Few) side.
+  const packSilvers = silvers.filter((unit) => unit.side === "pack");
+  if (packSilvers.length > 0) {
+    const reverseSteps: VisitStep[] =
+      packSilvers.length === 1
+        ? [{ type: "FLIP_PACK_TO_FEW", armyUnitId: packSilvers[0].id }]
+        : [
+            {
+              type: "CHOOSE_ONE",
+              prompt: "Reverse which Silver unit to its Handful side?",
+              options: packSilvers.map((unit) => ({
+                label: unitName(unit),
+                steps: [{ type: "FLIP_PACK_TO_FEW", armyUnitId: unit.id } as VisitStep]
+              }))
+            }
+          ];
+    options.push({ label: "Reverse 1 Silver unit to its Handful side", steps: reverseSteps });
+  }
+
+  // Option B — discard a Silver, draw 3 Bronze + 3 Silver, free-recruit 1 of each.
+  const recruitSteps: VisitStep[] = [
+    { type: "PANDORA_FREE_NEUTRAL_RECRUIT", tier: "bronze" },
+    { type: "PANDORA_FREE_NEUTRAL_RECRUIT", tier: "silver" }
+  ];
+  const discardSteps: VisitStep[] =
+    silvers.length === 1
+      ? [{ type: "PANDORA_DISCARD_ARMY_UNIT", armyUnitId: silvers[0].id }, ...recruitSteps]
+      : [
+          {
+            type: "CHOOSE_ONE",
+            prompt: "Discard which Silver unit?",
+            options: silvers.map((unit) => ({
+              label: unitName(unit),
+              steps: [{ type: "PANDORA_DISCARD_ARMY_UNIT", armyUnitId: unit.id } as VisitStep, ...recruitSteps]
+            }))
+          }
+        ];
+  options.push({
+    label: "Discard 1 Silver unit, then draw 3 Bronze + 3 Silver and Recruit 1 of each for free",
+    steps: discardSteps
+  });
+
+  const hero = getMainHero(state, playerId);
+  adventure.pendingVisit = {
+    heroId: hero?.id ?? "",
+    playerId,
+    fieldId: hero?.spaceId ?? "",
+    steps: [{ type: "CHOOSE_ONE", prompt: "Pandora's Box: choose one option", options }]
   };
 }
 
