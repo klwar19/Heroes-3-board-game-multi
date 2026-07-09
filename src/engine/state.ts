@@ -934,15 +934,6 @@ export type EffectDefinition =
   | { type: "GAIN_MORALE"; amount: number; expertDrawCards?: number }
   | {
       /**
-       * Pandora's Gift: Income — "Roll 1 Resource die and increase the income of
-       * the corresponding resource by 1 tier." A map play: rolls one Resource die
-       * (seeded) and raises the rolled resource's production by one resource-gain
-       * level (+5 gold / +2 materials / +1 valuables).
-       */
-      type: "RAISE_INCOME_BY_DIE";
-    }
-  | {
-      /**
        * Pandora's Gift: Recruits — "Draw `count` cards from the Neutral Unit deck.
        * You may Recruit one of them for half its recruit cost (rounded up)." A map
        * play: draws `count` units from the `tier` Neutral deck, offers a one-of pick
@@ -2323,6 +2314,16 @@ export type PermanentEffectDefinition = {
    * start of every Resources round (the odd rounds after the first).
    */
   resourceRoundGain?: { resource: ResourceKind; amount: number };
+  /**
+   * Pandora's Gift: Income (card 174 — a PERMANENT, the printed ∞): entering
+   * play rolls 1 Resource die and records the rolled resource on the owner
+   * (`player.pandoraIncomeResource`); while the card stays in play the owner
+   * gains that resource's FULL income tier (+5 gold / +2 materials / +1
+   * valuables) at the start of every Resources round. Leaving play stops the
+   * boost — the round-start read only sees in-play permanents, exactly as the
+   * printed reminder ("lasts only as long as it is in play") requires.
+   */
+  incomeTierDieOnEnter?: boolean;
   /**
    * Basic School of Magic abilities (Basic Fire/Earth/Water/Air Magic): while
    * the card is in play, the owner fetches the first spell of this school from
@@ -5516,6 +5517,13 @@ export type PlayerState = {
    */
   pandoraUpkeepResolvedThisTurn?: boolean;
   /**
+   * Pandora's Gift: Income (the ∞ permanent) — the resource its enter-play
+   * Resource die rolled. Only meaningful while that permanent is in play (the
+   * Resources-round income read checks the in-play card, so a stale value is
+   * inert); replaying the card re-rolls and overwrites it.
+   */
+  pandoraIncomeResource?: ResourceKind | null;
+  /**
    * Opening free-rotation of this player's faction Ⅰ (starting) tile. A
    * tri-state: `undefined` means the feature is off for this game (deterministic
    * test fixtures); `false` means the rotation is still owed — the start of the
@@ -6488,6 +6496,16 @@ export type VisitStep =
   | { type: "GAIN_RESOURCES"; gold?: number; buildingMaterials?: number; valuables?: number }
   | { type: "GAIN_EXPERIENCE"; amount: number }
   | { type: "GAIN_MOVEMENT"; amount: number }
+  | {
+      /**
+       * Pandora's Box "One of your Heroes gains N movement": with both a Main
+       * and a Secondary Hero on the map the OWNER picks which one gains it (a
+       * CHOOSE_ONE is unshifted); a lone hero auto-resolves without a prompt.
+       */
+      type: "GAIN_MOVEMENT_ANY_HERO";
+      amount: number;
+    }
+  | { type: "GAIN_MOVEMENT_FOR_HERO"; heroId: HeroId; amount: number }
   | { type: "GAIN_MORALE"; amount: number }
   | { type: "ROLL_RESOURCE_DICE"; count: number }
   | { type: "RESUME_FIELD_VISIT"; heroId: HeroId; fieldId: MapSpaceId; revisit: boolean }

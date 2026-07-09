@@ -10,7 +10,7 @@ import {
   type GameAction,
   type GameState
 } from "./index";
-import { NEUTRAL_DECK_IDS, RESOURCE_GAIN_LEVEL_AMOUNTS } from "./adventure";
+import { NEUTRAL_DECK_IDS, RESOURCE_GAIN_LEVEL_AMOUNTS, startAdventureRound } from "./adventure";
 import { pandoraScryDeckId } from "./adventure-reducer";
 import { getPlayerView } from "./player-view";
 import type { GameEvent, HeroState, PlayerId, ResourceCost, ResourceKind } from "./state";
@@ -55,30 +55,52 @@ describe("Pandora reserve cards — now in the game", () => {
 });
 
 // ===========================================================================
-// Pandora's Gift: Income — roll 1 Resource die, raise that income by a tier
+// Pandora's Gift: Income — a PERMANENT (∞): enter-play die, per-round tier
 // ===========================================================================
 
-describe("Pandora's Gift: Income", () => {
-  it("raises one resource's production by a full resource-gain level", () => {
+describe("Pandora's Gift: Income (permanent)", () => {
+  it("enters play as a permanent, rolls the Resource die, and touches NO production track", () => {
     const state = readyAdventure("pandora-income");
     state.players.p1.hand = ["pandora.resource_income"];
-    const before = { ...state.players.p1.production };
+    const productionBefore = { ...state.players.p1.production };
+    const logLen = state.eventLog.length;
 
     const after = playCardFromHand(state, "pandora.resource_income");
 
-    const changed = after.eventLog.find(
-      (event): event is Extract<GameEvent, { type: "PRODUCTION_CHANGED" }> => event.type === "PRODUCTION_CHANGED"
-    );
-    expect(changed, "the income raise must log a PRODUCTION_CHANGED").toBeTruthy();
-    const resource = changed!.resource;
-    // The observable outcome: that resource's income rose by EXACTLY one tier,
-    // and no other track moved.
-    expect(after.players.p1.production[resource] - before[resource]).toBe(RESOURCE_GAIN_LEVEL_AMOUNTS[resource]);
-    for (const other of Object.keys(before) as ResourceKind[]) {
-      if (other !== resource) {
-        expect(after.players.p1.production[other]).toBe(before[other]);
-      }
+    // The printed ∞: the card sits in play, not in the discard.
+    expect(after.players.p1.permanents).toContain("pandora.resource_income");
+    // The enter-play die was rolled and its resource recorded.
+    expect(resourceDieEvents(after, logLen).length).toBe(1);
+    expect(after.players.p1.pandoraIncomeResource).toBeTruthy();
+    // No production track moved — the boost is paid per Resources round while
+    // in play, so removing the card cleanly ends it.
+    expect(after.players.p1.production).toEqual(productionBefore);
+  });
+
+  it("pays the rolled resource's FULL income tier each Resources round — and stops once the card leaves play", () => {
+    // Same-seed pair: the only difference is the permanent in play, so the
+    // Resources-round gold delta isolates the card's income boost.
+    const withCard = readyAdventure("pandora-income-round");
+    const control = readyAdventure("pandora-income-round");
+    withCard.players.p1.permanents = ["pandora.resource_income"];
+    withCard.players.p1.pandoraIncomeResource = "gold";
+
+    for (const state of [withCard, control]) {
+      state.round = 3; // an odd round after the first = a Resources round
+      startAdventureRound(state);
     }
+    const boost = withCard.players.p1.resources.gold - control.players.p1.resources.gold;
+    expect(boost).toBe(RESOURCE_GAIN_LEVEL_AMOUNTS.gold);
+
+    // Control: the card LEAVING play ends the boost ("lasts only as long as it
+    // is in play") — a stale rolled resource with no in-play card pays nothing.
+    const left = readyAdventure("pandora-income-round");
+    left.players.p1.permanents = [];
+    left.players.p1.discard = ["pandora.resource_income"];
+    left.players.p1.pandoraIncomeResource = "gold";
+    left.round = 3;
+    startAdventureRound(left);
+    expect(left.players.p1.resources.gold).toBe(control.players.p1.resources.gold);
   });
 });
 
@@ -97,34 +119,38 @@ function halfCost(cost: ResourceCost): ResourceCost {
 }
 
 describe("Pandora's Gift: Recruits", () => {
-  it("draws 3 Neutral units and recruits one for half cost; the rest return to the deck", () => {
+  it("draws 3 SILVER Neutral units and recruits one for half cost; the rest return to the deck", () => {
     const state = readyAdventure("pandora-recruits");
     state.players.p1.hand = ["pandora.neutral_recruits"];
     // Plenty of resources so a half-cost recruit is affordable.
     state.players.p1.resources = { gold: 99, buildingMaterials: 99, valuables: 99 };
 
-    const bronze = state.decks[NEUTRAL_DECK_IDS.bronze]!;
-    const drawPileBefore = bronze.drawPile.length;
-    const discardBefore = bronze.discardPile.length;
+    const silver = state.decks[NEUTRAL_DECK_IDS.silver]!;
+    const drawPileBefore = silver.drawPile.length;
+    const discardBefore = silver.discardPile.length;
+    const bronzeDrawBefore = state.decks[NEUTRAL_DECK_IDS.bronze]!.drawPile.length;
     const armyBefore = state.players.p1.army.length;
     const resourcesBefore = { ...state.players.p1.resources };
 
     const played = playCardFromHand(state, "pandora.neutral_recruits");
 
-    // The draw opened a one-of pick (3 fewer cards in the bronze draw pile).
+    // The draw opened a one-of pick — 3 fewer cards in the SILVER draw pile
+    // (the printed star is the silver tier), bronze untouched (control).
     const visit = played.adventure!.pendingVisit;
     expect(visit, "the recruit offer should open a visit").toBeTruthy();
     const step = visit!.steps[0];
     expect(step.type).toBe("CHOOSE_ONE");
-    expect(played.decks[NEUTRAL_DECK_IDS.bronze]!.drawPile.length).toBe(drawPileBefore - 3);
+    expect(played.decks[NEUTRAL_DECK_IDS.silver]!.drawPile.length).toBe(drawPileBefore - 3);
+    expect(played.decks[NEUTRAL_DECK_IDS.bronze]!.drawPile.length).toBe(bronzeDrawBefore);
 
     // Recruit the first offered unit (option 0 is a "Recruit …" choice here).
     const recruited = apply(played, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 0 });
 
-    // Army gained exactly one neutral unit.
+    // Army gained exactly one SILVER-tier neutral unit.
     expect(recruited.players.p1.army.length).toBe(armyBefore + 1);
     const gained = recruited.players.p1.army[recruited.players.p1.army.length - 1];
     expect(gained.side).toBe("neutral");
+    expect(coreUnitDefinitions[gained.unitDefId]?.tier).toBe("silver");
 
     // It cost HALF (rounded up) of that unit's printed recruit cost — proven by
     // the resource delta, not just that something was spent.
@@ -134,8 +160,8 @@ describe("Pandora's Gift: Recruits", () => {
       expect(spent, `${resource} spent`).toBe(expected[resource] ?? 0);
     }
 
-    // The other two drawn units went back to the bronze discard pile.
-    expect(recruited.decks[NEUTRAL_DECK_IDS.bronze]!.discardPile.length).toBe(discardBefore + 2);
+    // The other two drawn units went back to the silver discard pile.
+    expect(recruited.decks[NEUTRAL_DECK_IDS.silver]!.discardPile.length).toBe(discardBefore + 2);
     expect(recruited.adventure!.pendingVisit).toBeNull();
   });
 
@@ -144,8 +170,8 @@ describe("Pandora's Gift: Recruits", () => {
     state.players.p1.hand = ["pandora.neutral_recruits"];
     state.players.p1.resources = { gold: 99, buildingMaterials: 99, valuables: 99 };
 
-    const bronze = state.decks[NEUTRAL_DECK_IDS.bronze]!;
-    const discardBefore = bronze.discardPile.length;
+    const silver = state.decks[NEUTRAL_DECK_IDS.silver]!;
+    const discardBefore = silver.discardPile.length;
     const armyBefore = state.players.p1.army.length;
     const resourcesBefore = { ...state.players.p1.resources };
 
@@ -160,7 +186,7 @@ describe("Pandora's Gift: Recruits", () => {
 
     expect(declined.players.p1.army.length).toBe(armyBefore); // no recruit
     expect(declined.players.p1.resources).toEqual(resourcesBefore); // nothing spent
-    expect(declined.decks[NEUTRAL_DECK_IDS.bronze]!.discardPile.length).toBe(discardBefore + 3); // all 3 returned
+    expect(declined.decks[NEUTRAL_DECK_IDS.silver]!.discardPile.length).toBe(discardBefore + 3); // all 3 returned
     expect(declined.adventure!.pendingVisit).toBeNull();
   });
 });
@@ -225,7 +251,10 @@ describe("Pandora's Bargain: Power — end-of-turn upkeep", () => {
       optionIndex: 0
     });
     expect(removed.players.p1.permanents ?? []).not.toContain("pandora.power_or_morale");
-    expect(removed.players.p1.discard).toContain("pandora.power_or_morale");
+    // "Remove" is the rulebook keyword: the card leaves the GAME, not to the
+    // discard pile (it must never be recallable for another +1 Power run).
+    expect(removed.players.p1.removed).toContain("pandora.power_or_morale");
+    expect(removed.players.p1.discard).not.toContain("pandora.power_or_morale");
     expect(removed.pendingChoice).toBeNull();
   });
 
@@ -383,7 +412,7 @@ describe("Pandora 187: experience or movement", () => {
     expect(hero.movementPoints).toBe(moveBefore); // the exp side never moves
   });
 
-  it("the movement side gives the MAIN hero +1 movement (control: no experience)", () => {
+  it("the movement side gives the lone MAIN hero +1 movement without a prompt (control: no experience)", () => {
     const state = readyAdventure("p187-move");
     state.players.p1.hand = ["pandora.experience_or_movement"];
     const heroBefore = mainHeroOf(state);
@@ -391,9 +420,35 @@ describe("Pandora 187: experience or movement", () => {
     const expBefore = heroBefore.experience;
 
     const after = playOption(state, "pandora.experience_or_movement", 1);
+    // A single hero: "One of your Heroes" auto-resolves, no picker opens.
+    expect(after.adventure!.pendingVisit).toBeNull();
     const hero = mainHeroOf(after);
     expect(hero.movementPoints).toBe(moveBefore + 1);
     expect(hero.experience).toBe(expBefore); // the movement side never gives XP
+  });
+
+  it("with a Secondary Hero fielded, the OWNER picks which Hero gains the movement", async () => {
+    const { createSecondaryHero } = await import("./adventure");
+    const state = readyAdventure("p187-secondary");
+    state.players.p1.hand = ["pandora.experience_or_movement"];
+    const main = mainHeroOf(state);
+    const secondary = createSecondaryHero(state, "p1", main.spaceId!);
+    const mainMoveBefore = main.movementPoints;
+    const secondaryMoveBefore = secondary.movementPoints;
+
+    const played = playOption(state, "pandora.experience_or_movement", 1);
+    // Two heroes on the map: the printed "One of your Heroes" opens a picker.
+    const step = played.adventure!.pendingVisit!.steps[0];
+    expect(step.type).toBe("CHOOSE_ONE");
+    const secondaryIndex =
+      step.type === "CHOOSE_ONE" ? step.options.findIndex((o) => o.label === "Secondary Hero") : -1;
+    expect(secondaryIndex).toBeGreaterThanOrEqual(0);
+
+    const after = resolveVisit(played, secondaryIndex);
+    // The CHOSEN hero gains it; the main hero is untouched (control).
+    expect(after.heroes[secondary.id].movementPoints).toBe(secondaryMoveBefore + 1);
+    expect(mainHeroOf(after).movementPoints).toBe(mainMoveBefore);
+    expect(after.adventure!.pendingVisit).toBeNull();
   });
 });
 
@@ -786,6 +841,34 @@ describe("Pandora 183: peek the Astrologers deck, then Search(2) Artifact", () =
     expect(after.pendingChoice?.type === "DECK_SEARCH" && after.pendingChoice.deckId).toContain("artifact");
     // The astrologers deck is intact (all kept back on top).
     expect(after.decks.astrologers!.drawPile.length).toBe(drawBefore);
+  });
+});
+
+// ===========================================================================
+// Multiplayer secrecy — a drawn Pandora card must not leak to other seats
+// ===========================================================================
+
+describe("Pandora draw secrecy", () => {
+  it("masks the drawn card id from other players' event logs (owner still sees it)", () => {
+    const state = readyAdventureN("pandora-draw-mask", 2);
+    // No Silver unit → playing Silver Muster self-cycles into a Pandora draw,
+    // which logs PANDORA_CARD_DRAWN with the drawn card id.
+    state.players.p1.army = [];
+    state.players.p1.hand = ["pandora.silver_refresh"];
+
+    const after = playCardFromHand(state, "pandora.silver_refresh");
+    const drawnEvent = (view: { eventLog: GameState["eventLog"] }) =>
+      view.eventLog.find(
+        (event): event is Extract<GameEvent, { type: "PANDORA_CARD_DRAWN" }> => event.type === "PANDORA_CARD_DRAWN"
+      );
+    expect(drawnEvent(after), "the self-cycle draw logs the event").toBeTruthy();
+
+    // The drawer's own view keeps the real card; the opponent sees "hidden"
+    // (the card went into p1's hidden hand — naming it would leak the hand).
+    const ownerEvent = drawnEvent(getPlayerView(after, "p1"));
+    const oppEvent = drawnEvent(getPlayerView(after, "p2"));
+    expect(ownerEvent?.cardId.startsWith("pandora.")).toBe(true);
+    expect(oppEvent?.cardId).toBe("hidden");
   });
 });
 

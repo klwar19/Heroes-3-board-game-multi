@@ -21,8 +21,7 @@ import {
   openNeutralRecruitOffer,
   openPandoraSilverRefresh,
   queueLegionDiscountChoice,
-  queueNecromancyReinforce,
-  raiseIncomeByResourceDie
+  queueNecromancyReinforce
 } from "./adventure";
 import {
   applyUnitCurrentSide,
@@ -12373,11 +12372,6 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
 
   if (effect.type === "DIPLOMACY_RECRUIT") {
     openDiplomacyRecruit(state, action.playerId, effect.maxDraws, effect.goldReduction);
-  }
-
-  // Pandora's Gift: Income — roll 1 Resource die, raise that resource's income.
-  if (effect.type === "RAISE_INCOME_BY_DIE") {
-    raiseIncomeByResourceDie(state, action.playerId);
   }
 
   // Pandora's Gift: Recruits — draw N Neutral units, offer one at half cost.

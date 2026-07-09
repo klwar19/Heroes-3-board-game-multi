@@ -324,6 +324,19 @@ export function getPlayerView(state: GameState, viewerPlayerId: PlayerId): Playe
       }
     : base.combat;
 
+  // A drawn Pandora's Box card goes INTO A HIDDEN HAND (the draw pile is
+  // already face down above), so its identity must not reach other seats via
+  // the event log: only the drawer's own view keeps the card id.
+  const eventLog = base.eventLog.some(
+    (event) => event.type === "PANDORA_CARD_DRAWN" && event.playerId !== viewerPlayerId
+  )
+    ? base.eventLog.map((event) =>
+        event.type === "PANDORA_CARD_DRAWN" && event.playerId !== viewerPlayerId
+          ? { ...event, cardId: HIDDEN_CARD_ID }
+          : event
+      )
+    : base.eventLog;
+
   return {
     ...base,
     viewerPlayerId,
@@ -331,6 +344,7 @@ export function getPlayerView(state: GameState, viewerPlayerId: PlayerId): Playe
     decks,
     adventure,
     combat,
+    eventLog,
     reactionWindow: getVisibleReactionWindow(base.reactionWindow, viewerPlayerId),
     pendingChoice: getVisiblePendingChoice(base.pendingChoice, viewerPlayerId)
   };

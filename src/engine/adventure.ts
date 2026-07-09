@@ -2956,6 +2956,37 @@ export function processPendingVisit(state: GameState): void {
         }
         break;
       }
+      case "GAIN_MOVEMENT_ANY_HERO": {
+        // Pandora's Box "One of your Heroes gains N movement": the owner picks
+        // the hero when both the Main and the Secondary Hero are on the map; a
+        // lone hero (the common case) gains it without a prompt.
+        const heroes = Object.values(state.heroes).filter(
+          (hero) => hero.controllerId === visit.playerId && hero.spaceId !== null
+        );
+        if (heroes.length <= 1) {
+          const hero = heroes[0] ?? state.heroes[visit.heroId];
+          if (hero) {
+            hero.movementPoints += step.amount;
+          }
+          break;
+        }
+        visit.steps.unshift({
+          type: "CHOOSE_ONE",
+          prompt: `Which Hero gains ${step.amount} movement?`,
+          options: heroes.map((hero) => ({
+            label: hero.kind === "main" ? "Main Hero" : "Secondary Hero",
+            steps: [{ type: "GAIN_MOVEMENT_FOR_HERO", heroId: hero.id, amount: step.amount }]
+          }))
+        });
+        break;
+      }
+      case "GAIN_MOVEMENT_FOR_HERO": {
+        const hero = state.heroes[step.heroId];
+        if (hero) {
+          hero.movementPoints += step.amount;
+        }
+        break;
+      }
       case "GAIN_MORALE":
         // Crest of Valor (map side): a held shield negates one negative-morale
         // token handed out by a Field. Positive morale and combat-loss morale
@@ -5756,18 +5787,21 @@ export function drawFromNeutralDeck(state: GameState, tier: "bronze" | "silver" 
 }
 
 /**
- * Pandora's Gift: Income — roll ONE Resource die and raise the rolled
- * resource's production by a full resource-gain level (+5 gold / +2 materials
- * / +1 valuables). A one-shot map play; the income increase is permanent.
+ * Pandora's Gift: Income (card 174 — a PERMANENT, the printed ∞): rolled when
+ * the card ENTERS PLAY. Records the rolled resource on the owner; while the
+ * card stays in play the Resources-round income (startAdventureRound) pays
+ * that resource's full income tier (+5 gold / +2 materials / +1 valuables) on
+ * top of production. No production track is touched, so the boost stops the
+ * moment the card leaves play — "the effect of this card lasts only as long
+ * as it is in play", as printed.
  */
-export function raiseIncomeByResourceDie(state: GameState, playerId: PlayerId): void {
+export function rollPandoraIncomePermanentDie(state: GameState, playerId: PlayerId): void {
   const player = state.players[playerId];
   if (!player) {
     return;
   }
   const random = adventureRandom(state, "pandora-income-die");
   const roll = RESOURCE_DIE_FACES[random.nextInt(0, RESOURCE_DIE_FACES.length - 1)];
-  const amount = RESOURCE_GAIN_LEVEL_AMOUNTS[roll.resource];
   appendEvent(state, {
     type: "ADVENTURE_DICE_ROLLED",
     playerId,
@@ -5775,8 +5809,7 @@ export function raiseIncomeByResourceDie(state: GameState, playerId: PlayerId): 
     results: [resourceDieLabel(roll)],
     resourceRolls: [{ resource: roll.resource, amount: roll.amount }]
   });
-  player.production[roll.resource] += amount;
-  appendEvent(state, { type: "PRODUCTION_CHANGED", playerId, resource: roll.resource, amount });
+  player.pandoraIncomeResource = roll.resource;
 }
 
 /** Half a recruit cost, each resource rounded UP (Pandora's Gift: Recruits). */
@@ -6872,9 +6905,20 @@ export function startAdventureRound(state: GameState): void {
     // so it cannot be imported back here.
     const incomePermanentIds = player.permanents ?? (player.permanent ? [player.permanent] : []);
     for (const permanentId of incomePermanentIds) {
-      const incomeGain = cardLibrary[permanentId]?.permanentEffect?.resourceRoundGain;
+      const permanentEffect = cardLibrary[permanentId]?.permanentEffect;
+      const incomeGain = permanentEffect?.resourceRoundGain;
       if (incomeGain) {
         gainResources(state, playerId, { [incomeGain.resource]: incomeGain.amount }, cardLibrary[permanentId]?.name ?? "income artifact");
+      }
+      // Pandora's Gift: Income — while the ∞ permanent is in play, its
+      // enter-play die's resource pays a FULL income tier each Resources round.
+      if (permanentEffect?.incomeTierDieOnEnter && player.pandoraIncomeResource) {
+        gainResources(
+          state,
+          playerId,
+          { [player.pandoraIncomeResource]: RESOURCE_GAIN_LEVEL_AMOUNTS[player.pandoraIncomeResource] },
+          cardLibrary[permanentId]?.name ?? "Pandora income"
+        );
       }
     }
 
