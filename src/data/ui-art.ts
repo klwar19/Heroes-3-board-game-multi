@@ -64,6 +64,21 @@ export const UI_ART_SLOTS = {
     alt: "Heroes III of Might and Magic — The Board Game",
     size: "1000x400 transparent PNG wordmark (rendered above the menu panel)"
   },
+  /** Faint grayscale creature that flanks the LEFT of the menu column.
+   *  Rendered decoratively (aria-hidden, empty img alt); this text documents
+   *  the art for a future replacement. */
+  "menu-guardian-left": {
+    src: "/assets/ui/layout/guardian-griffin.png",
+    alt: "Griffin — decorative menu guardian",
+    size: "~680x760 transparent PNG, monochrome, bled off the bottom-left corner"
+  },
+  /** Faint grayscale creature that flanks the RIGHT of the menu column.
+   *  Rendered decoratively (aria-hidden, empty img alt). */
+  "menu-guardian-right": {
+    src: "/assets/ui/layout/guardian-pegasus.png",
+    alt: "Pegasus rider — decorative menu guardian",
+    size: "~680x760 transparent PNG, monochrome, bled off the bottom-right corner"
+  },
   /** Square emblem for the Erathia game server (server browser badge). */
   "server-emblem-erathia": {
     src: "/assets/town-icon-castle.webp",

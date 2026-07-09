@@ -88,6 +88,30 @@ describe("MenuShell", () => {
     expect(container.querySelector(".menuGameLogo")).toBeNull();
   });
 
+  it("flanks the menu with two guardian images from the registry when guardians is set", () => {
+    const { container } = render(
+      <MenuShell guardians title="Main Menu">
+        <p>content</p>
+      </MenuShell>
+    );
+    expect(container.querySelectorAll(".menuGuardian")).toHaveLength(2);
+    expect(container.querySelector(".menuGuardian.left")?.getAttribute("src")).toBe(
+      UI_ART_SLOTS["menu-guardian-left"].src
+    );
+    expect(container.querySelector(".menuGuardian.right")?.getAttribute("src")).toBe(
+      UI_ART_SLOTS["menu-guardian-right"].src
+    );
+  });
+
+  it("omits guardians by default (CONTROL)", () => {
+    const { container } = render(
+      <MenuShell title="Main Menu">
+        <p>content</p>
+      </MenuShell>
+    );
+    expect(container.querySelector(".menuGuardian")).toBeNull();
+  });
+
   it("plays the button click sound when a menu nav button is clicked (and not otherwise)", () => {
     render(
       <MenuShell>

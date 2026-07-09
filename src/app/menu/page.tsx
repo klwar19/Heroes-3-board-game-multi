@@ -74,6 +74,7 @@ export default function MenuPage() {
     <WelcomeNotice />
     <MenuShell
       logo
+      guardians
       footer={
         accounts ? (
           account ? (
