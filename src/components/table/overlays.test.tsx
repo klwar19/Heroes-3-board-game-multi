@@ -177,6 +177,19 @@ describe("MapNoticeOverlay location art", () => {
     }
   });
 
+  it("insets the edge-to-edge treasure-chest art but not the padded bank/resource art", () => {
+    const chest = renderNotice("treasure_symbol");
+    expect(chest.container.querySelector(".mapNoticeArt.compact")).toBeTruthy();
+    chest.unmount();
+
+    for (const location of ["creature_bank", "resource_symbol"]) {
+      const { container, unmount } = renderNotice(location);
+      expect(container.querySelector(".mapNoticeArt")).toBeTruthy();
+      expect(container.querySelector(".mapNoticeArt.compact")).toBeNull();
+      unmount();
+    }
+  });
+
   it("falls back to the cue glyph when a location has no dedicated art", () => {
     renderNotice("windmill", "W");
 

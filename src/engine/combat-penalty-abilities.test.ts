@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createInitialGameState } from "./index";
 import { getAttackRollMode } from "./legal-actions";
 import type { GameState } from "./state";
+import { coreUnitDefinitions } from "@/data/factions/units";
 
 /**
  * Ranged combat-penalty waivers (Evil Eyes / Medusas / Zealots / Titans vs.
@@ -91,5 +92,58 @@ describe("ranged combat-penalty waivers", () => {
     const state = combatWith(["ignore-combat-penalties"]);
     expect(adjacentMode(state)).toBe("normal");
     expect(adjacentRetaliationMode(state)).toBe("normal");
+  });
+});
+
+/**
+ * "Roll 2 Attack dice and resolve the higher one" (attack-roll-advantage). The
+ * two printed variants differ by icon:
+ *   • Leprechaun / Halflings — "[unit_attack] Roll 2 Attack dice …": fires ONLY
+ *     on the unit's own declared attack, NOT on a Retaliation Attack.
+ *   • Crusaders — "[unit_passive] During any attack …": applies to every attack,
+ *     retaliations included (the CONTROL that proves only the [unit_attack]
+ *     variant is attack-scoped).
+ */
+describe("twin Attack dice advantage", () => {
+  // A ground melee attacker (no ranged penalty to muddy the mode) hitting an
+  // adjacent enemy, carrying the given unit's real ability list.
+  function groundAttackerWith(abilities: readonly string[] | undefined): GameState {
+    const state = createInitialGameState();
+    if (!state.combat) {
+      throw new Error("Expected combat setup.");
+    }
+    const attacker = state.combat.units.unit_p1_marksmen;
+    attacker.type = "ground";
+    attacker.abilities = [...(abilities ?? [])];
+    state.combat.units.unit_p2_skeletons.position = 2;
+    return state;
+  }
+
+  function ownAttackMode(state: GameState): ReturnType<typeof getAttackRollMode> {
+    const combat = state.combat!;
+    return getAttackRollMode(combat.units.unit_p1_marksmen, combat.units.unit_p2_skeletons, state);
+  }
+
+  function retaliationMode(state: GameState): ReturnType<typeof getAttackRollMode> {
+    const combat = state.combat!;
+    return getAttackRollMode(combat.units.unit_p1_marksmen, combat.units.unit_p2_skeletons, state, true);
+  }
+
+  it("the neutral Leprechaun rolls advantage on its own attack but NORMAL on a retaliation", () => {
+    const state = groundAttackerWith(coreUnitDefinitions["neutral.leprechaun"].neutral?.abilities);
+    expect(ownAttackMode(state)).toBe("advantage");
+    expect(retaliationMode(state)).toBe("normal");
+  });
+
+  it("the Factory Halflings' [unit_attack] advantage is likewise dropped on a retaliation", () => {
+    const state = groundAttackerWith(coreUnitDefinitions["factory.halflings"].few?.abilities);
+    expect(ownAttackMode(state)).toBe("advantage");
+    expect(retaliationMode(state)).toBe("normal");
+  });
+
+  it("CONTROL: the Crusaders' [unit_passive] advantage still applies on a retaliation", () => {
+    const state = groundAttackerWith(coreUnitDefinitions["neutral.crusaders"].neutral?.abilities);
+    expect(ownAttackMode(state)).toBe("advantage");
+    expect(retaliationMode(state)).toBe("advantage");
   });
 });

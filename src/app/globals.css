@@ -9536,6 +9536,12 @@ button.hbSlot:disabled { cursor: default; }
   object-fit: contain;
 }
 
+/* Edge-to-edge art (the treasure chest) inset so it doesn't dwarf the frame. */
+.mapNoticeArt.compact {
+  box-sizing: border-box;
+  padding: 12px;
+}
+
 .mapNotice strong {
   font-family: Georgia, serif;
   font-size: 20px;
@@ -10739,27 +10745,105 @@ img.cardBack {
 
 /* Lobby "Start the adventure": the ornate Heroes III New Game plate is the
    button — the gold chrome steps back so only the art shows. */
-.commandButton.newGameButton,
-.commandButton.newGameButton:disabled {
-  background: none;
-  border: none;
-  padding: 4px;
-  box-shadow: none;
-  line-height: 0;
-  transition: transform 120ms ease, filter 120ms ease;
+/* Start-the-adventure "New Game" button, styled like the main-menu plaques
+   (see .menuNavButton): the LARGE Slayer emblem fills a blue-and-gold gilt
+   plate with the engraved golden serif title laid across its middle. Kept
+   self-contained (its own plaque + scrim) so it reads well on the map-setup
+   screen, which has no dragon backdrop behind it. */
+.newGameMenuButton {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: min(320px, 78vw);
+  min-height: 108px;
+  margin-inline: auto;
+  padding: 12px 26px;
+  border: 1px solid rgb(196 156 78 / 64%);
+  border-radius: 12px;
+  background:
+    radial-gradient(130% 150% at 50% -28%, rgb(92 132 190 / 42%), transparent 60%),
+    linear-gradient(180deg, #28384f 0%, #172536 52%, #0b1320 100%);
+  color: var(--gold);
+  text-align: center;
+  cursor: pointer;
+  box-shadow:
+    inset 0 0 0 1px rgb(0 0 0 / 42%),
+    inset 0 1px 0 rgb(192 216 248 / 22%),
+    inset 0 -16px 30px rgb(4 10 20 / 48%),
+    0 7px 18px rgb(0 0 0 / 55%);
+  transition: filter 130ms ease, border-color 130ms ease, transform 130ms ease, box-shadow 130ms ease;
 }
 
-.commandButton.newGameButton:hover:not(:disabled) {
-  background: none;
-  filter: brightness(1.08) drop-shadow(0 6px 14px rgb(0 0 0 / 55%));
-  transform: translateY(-1px) scale(1.02);
+/* The large emblem, centred and bleeding top & bottom, UNDER the title. */
+.newGameMenuIcon {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  height: 150%;
+  width: auto;
+  transform: translate(-50%, -50%);
+  object-fit: contain;
+  opacity: 0.92;
+  filter: drop-shadow(0 3px 8px rgb(0 0 0 / 72%));
+  pointer-events: none;
+  z-index: 0;
 }
 
-.newGameButtonArt {
-  display: block;
-  width: clamp(180px, 22vw, 240px);
-  height: auto;
-  filter: drop-shadow(0 4px 10px rgb(0 0 0 / 55%));
+/* Blue vignette scrim — darkest through the middle where the title crosses. */
+.newGameMenuButton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(125% 92% at 50% 50%, rgb(6 12 24 / 74%) 0%, rgb(6 12 24 / 48%) 52%, rgb(6 12 24 / 26%) 100%);
+  z-index: 1;
+  pointer-events: none;
+}
+
+.newGameMenuButton:hover:not(:disabled) {
+  border-color: var(--focus);
+  transform: translateY(-1px);
+  filter: brightness(1.09);
+  box-shadow:
+    inset 0 0 0 1px rgb(0 0 0 / 42%),
+    inset 0 1px 0 rgb(192 216 248 / 28%),
+    0 0 18px rgb(96 156 226 / 44%),
+    0 9px 22px rgb(0 0 0 / 58%);
+}
+
+.newGameMenuButton:hover:not(:disabled) .newGameMenuIcon {
+  opacity: 1;
+}
+
+.newGameMenuButton:disabled {
+  cursor: not-allowed;
+  filter: grayscale(0.55) brightness(0.78);
+  opacity: 0.66;
+}
+
+/* Engraved golden title — gold-sheen gradient with a carved dark shadow, laid
+   over the emblem's middle (same treatment as the main-menu labels). */
+.newGameMenuLabel {
+  position: relative;
+  z-index: 2;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  line-height: 1.15;
+  background: linear-gradient(180deg, #fff4cf 0%, #f4d079 45%, #bd8d36 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 1px 1px rgb(0 0 0 / 96%)) drop-shadow(0 0 4px rgb(0 0 0 / 82%));
+}
+
+/* The disabled "waiting for seats" copy is longer, so shrink it to fit. */
+.newGameMenuLabel.waiting {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
 }
 
 /* Your draw deck + discard, lifted above the hand and enlarged so "your cards"

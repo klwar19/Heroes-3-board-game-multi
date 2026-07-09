@@ -277,8 +277,18 @@ export type UnitAbilityEffectDefinition =
       requiresMoved?: boolean;
     }
   | {
-      /** Neutral Crusaders: roll 2 Attack dice, resolve the higher outcome. */
+      /**
+       * Roll 2 Attack dice and resolve the higher outcome. Two printed
+       * variants share this effect:
+       *  - `[unit_passive] During any attack …` (neutral Crusaders): applies to
+       *    EVERY attack this unit makes, including a Retaliation Attack.
+       *  - `[unit_attack] Roll 2 Attack dice …` (neutral/Factory Halflings,
+       *    neutral Leprechaun): the `[unit_attack]` icon fires ONLY on the
+       *    unit's OWN declared attack, never on a Retaliation Attack — set
+       *    `ownAttackOnly: true` so the advantage is dropped when retaliating.
+       */
       type: "ATTACK_ROLL_ADVANTAGE";
+      ownAttackOnly?: boolean;
     }
   | {
       /**
@@ -1619,8 +1629,23 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     effect: { type: "ATTACK_DIE_REROLL", rerollsPerAttack: 1, onlyOnRoll: 0 },
     implementationStatus: "implemented"
   },
+  // "[unit_attack] Roll 2 Attack dice and resolve the higher one." (neutral &
+  // Factory Halflings, neutral Leprechaun). The [unit_attack] icon fires ONLY on
+  // the unit's OWN declared attack, so `ownAttackOnly` drops the advantage on a
+  // Retaliation Attack — matching the same [unit_attack] convention the
+  // IGNORE_RANGED_PENALTIES waivers follow.
   "attack-roll-advantage": {
     id: "attack-roll-advantage",
+    name: "Twin Attack Dice",
+    text: "On this unit's own attack, roll 2 Attack dice and resolve the higher outcome (not on a Retaliation Attack).",
+    effect: { type: "ATTACK_ROLL_ADVANTAGE", ownAttackOnly: true },
+    implementationStatus: "implemented"
+  },
+  // "[unit_passive] During any attack, roll 2 Attack dice and resolve the higher
+  // outcome." (neutral Crusaders). The [unit_passive] "any attack" wording
+  // includes Retaliation Attacks, so this variant carries NO ownAttackOnly gate.
+  "attack-roll-advantage-passive": {
+    id: "attack-roll-advantage-passive",
     name: "Twin Attack Dice",
     text: "During any attack, roll 2 Attack dice and resolve the higher outcome.",
     effect: { type: "ATTACK_ROLL_ADVANTAGE" },

@@ -6340,21 +6340,22 @@ export function SetupLobbyScreen({
 
       {mySeat ? (
         <button
-          className={`commandButton primary startAdventure ${allChosen ? "newGameButton" : ""}`}
+          className="newGameMenuButton"
           disabled={!allChosen || Boolean(lobby.startCheck)}
           onClick={() => onAction({ type: "START_ADVENTURE", playerId: viewerPlayerId })}
           title={allChosen ? "Start the adventure" : "Every seat must pick a faction and hero first"}
           type="button"
         >
-          {allChosen ? (
-            <img
-              alt="Start the adventure"
-              className="newGameButtonArt"
-              src={assetUrl("/assets/ui/new-game-button.png")}
-            />
-          ) : (
-            "Waiting for every seat to pick…"
-          )}
+          <img
+            alt=""
+            aria-hidden="true"
+            className="newGameMenuIcon"
+            draggable={false}
+            src={assetUrl("/assets/skills/slayer.webp")}
+          />
+          <span className={`newGameMenuLabel${allChosen ? "" : " waiting"}`}>
+            {allChosen ? "New Game" : "Waiting for every seat to pick…"}
+          </span>
         </button>
       ) : null}
 
