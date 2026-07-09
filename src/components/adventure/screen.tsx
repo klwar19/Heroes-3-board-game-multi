@@ -2680,6 +2680,14 @@ export function PromptTray({
   const optionActions = legalActions.filter((legal) => legal.action.type === "CHOOSE_OPTION");
   const abilityTargetActions = legalActions.filter((legal) => legal.action.type === "CHOOSE_ABILITY_TARGET");
   const combatDiscardActions = legalActions.filter((legal) => legal.action.type === "RESOLVE_COMBAT_DISCARD");
+  // WOG Hierophant commander: the after-combat First Aid window (heal 1
+  // bronze/silver casualty, or decline). It is its OWN adventure field
+  // (pendingCommanderFirstAid), NOT a pendingChoice/pendingVisit, so no surface
+  // below claimed it — the owner saw a blank table and the turn froze (no heal,
+  // no End turn, no Give up, because the engine gates every other action behind
+  // this now-or-never window). This branch renders the window's own actions.
+  const firstAidActions = legalActions.filter((legal) => legal.action.type === "COMMANDER_FIRST_AID");
+  const firstAidOpen = state.adventure?.pendingCommanderFirstAid?.playerId === viewerPlayerId;
   // "The combat round is over" is ONLY the neutral between-rounds gate: spend
   // 1 MP to fight another round, or retreat. RETREAT_FROM_COMBAT *also* appears
   // in the PvP start-of-combat escape window (offered to both heroes before any
@@ -2937,6 +2945,12 @@ export function PromptTray({
     // game ("player sees no choice, can't do anything").
     title = `Tarnum — Search a Spell deck (${choice.remaining} search${choice.remaining === 1 ? "" : "es"} left)`;
     body = optionActions;
+  } else if (firstAidOpen && firstAidActions.length > 0) {
+    // Hierophant First Aid Master: choose which fallen bronze/silver unit to
+    // restore after the combat, or decline. Gated first in the engine, so it
+    // must render or the turn is stuck.
+    title = "First Aid Master — restore one fallen unit";
+    body = firstAidActions;
   } else if (visit && visit.playerId === viewerPlayerId && visitActions.length > 0) {
     const step = visit.steps[0];
     // The market panel owns the Trading Post / War Machine Factory visits.
