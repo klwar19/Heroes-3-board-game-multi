@@ -16020,27 +16020,26 @@ img.cardBack {
   content: none; /* remove the scrim — that was the last visible "box" */
 }
 
-/* The emblem is cut into a LARGE CIRCULAR medallion with a HARD edge — no
-   feather, no glow, no shadow, so the art stays perfectly crisp (nothing is
-   blurred). The circle is as wide as the emblem (touching its edges) but cuts
-   the four square corners off, so the near-full-frame emblems (the Map-Designer
-   map, Logistics, Wisdom) can never show a rectangular "box"; the ~2% edge step
-   is only anti-aliasing to keep the rim smooth, not a fade. */
+/* The emblem is shown WHOLE and natural — no mask, no circle, no crop, no
+   blur, no shadow. These are transparent PNGs, so at full opacity they read as
+   the emblem itself (sword, banner, map, book…) over the dragon, with the
+   engraved title laid across the middle. The only "box" ever removed is the
+   button plaque + scrim above; the icon art is never reshaped. */
 .menuNavIcon {
-  height: 132%;
+  height: 116%;
   opacity: 1;
-  -webkit-mask-image: radial-gradient(circle at 50% 48%, #000 66%, transparent 70%);
-  mask-image: radial-gradient(circle at 50% 48%, #000 66%, transparent 70%);
+  -webkit-mask-image: none;
+  mask-image: none;
 }
 
 /* Bigger option rows on the boxless menu: taller buttons with more breathing
-   room so the enlarged medallions never collide, and a larger engraved title. */
+   room so the enlarged emblems have space, and a larger engraved title. */
 .menuNav {
-  gap: 16px;
+  gap: 24px;
 }
 
 .menuNavButton {
-  min-height: 128px;
+  min-height: 150px;
 }
 
 /* Large, hard-carved words that read clearly over the emblem + dragon with no
