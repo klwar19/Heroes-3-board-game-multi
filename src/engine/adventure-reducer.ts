@@ -63,10 +63,12 @@ import {
   flagField,
   capturableEnemyMinesWithin,
   freeSpellBookActive,
+  abilityRollRerollActive,
   gainExperience,
   gainResources,
   gainTownCube,
   getActiveAstrologersCard,
+  getAstrologersState,
   getAdjacentSpaceIds,
   type RecruitPurchaseRef,
   getHeroMovementCapabilities,
@@ -3165,7 +3167,7 @@ function makeCombatShell(state: GameState, attackerPlayerId: PlayerId, defenderP
     }
   }
 
-  return {
+  const shell: CombatState = {
     id: `combat_${nextEventNumber(state)}`,
     round: 1,
     attackerPlayerId,
@@ -3185,6 +3187,27 @@ function makeCombatShell(state: GameState, attackerPlayerId: PlayerId, defenderP
     },
     units: {}
   };
+
+  // Crag Hack (Astrologers): "For the first Combat this round, all ground units
+  // gain +1 attack." This is the single chokepoint every real combat's shell is
+  // created through (neutral, bank and PvP alike), so the round's FIRST combat
+  // begun while the card is up on its drawn (even) round latches the bonus onto
+  // the shell — getAttackStackDetails reads it for every ground-type unit on
+  // both sides. The one-shot flag lives on AstrologersState and expires with
+  // the card, so the second combat of the round goes unbuffed.
+  const proclamation = getActiveAstrologersCard(state)?.effect;
+  const astrologers = getAstrologersState(state);
+  if (
+    proclamation?.type === "FIRST_COMBAT_GROUND_ATTACK" &&
+    state.round % 2 === 0 &&
+    astrologers &&
+    !astrologers.firstCombatGroundAttackUsed
+  ) {
+    astrologers.firstCombatGroundAttackUsed = true;
+    shell.proclamationGroundAttackBonus = proclamation.amount;
+  }
+
+  return shell;
 }
 
 export function startNeutralEncounter(state: GameState, hero: HeroState, field: MapFieldState): void {
@@ -7523,7 +7546,20 @@ export function satyrMoraleRoll(state: GameState, action: Extract<GameAction, { 
 
   const faces = [-1, -1, 0, 0, 1, 1] as const;
   const random = createSeededRandom(`${state.seed}#adventure#satyr-morale-roll#${eventSeedNumber(state)}`);
-  const roll = faces[random.nextInt(0, faces.length - 1)] ?? 0;
+  let roll = faces[random.nextInt(0, faces.length - 1)] ?? 0;
+
+  // Multilingual Bron (Astrologers): a unit-ability roll that came up against
+  // its user is rerolled once — the Satyrs' morale die gains only on a "+1".
+  if (roll <= 0 && abilityRollRerollActive(state)) {
+    appendEvent(state, {
+      type: "ADVENTURE_DICE_ROLLED",
+      playerId: action.playerId,
+      dice: "attack",
+      results: [`Satyrs: ${roll > 0 ? "+" : ""}${roll} — Multilingual Bron rerolls`],
+      attackRolls: [roll]
+    });
+    roll = faces[random.nextInt(0, faces.length - 1)] ?? 0;
+  }
 
   appendEvent(state, {
     type: "ADVENTURE_DICE_ROLLED",

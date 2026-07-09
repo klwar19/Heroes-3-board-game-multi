@@ -15,7 +15,9 @@
  * parallel-turns mode running because no PvP ever triggers), plus the second
  * wave Elementals, Forty Thieves, Plastic Tray and Restart (Forty Thieves rides
  * the round-start event barrier; it only joins the deck when the optional Event
- * deck is in play). Only the cards that
+ * deck is in play), plus the third wave Crag Hack (Stronghold is playable now),
+ * Multilingual Bron (ability-roll reroll) and Disruption (state-preserving
+ * rotate-in-place). Only the two cards that
  * would each need a whole new subsystem remain out — see
  * ASTROLOGERS_NOT_IMPLEMENTED, whose entries each name the missing subsystem.
  * The `effect` field is the single source of truth for what the engine runs;
@@ -146,7 +148,24 @@ export type AstrologersEffect =
   // to resolve and the other goes to the BOTTOM of the Event deck. Read in
   // drawEventCard (adventure.ts); the pick is a CHOOSE_ONE resolved inside the
   // round-start event barrier.
-  | { type: "EVENT_DRAW_PICK"; count: number };
+  | { type: "EVENT_DRAW_PICK"; count: number }
+  // Crag Hack: the FIRST combat begun on the drawn (even) round grants every
+  // GROUND-type unit in it (both sides) +`amount` Attack — latched onto the
+  // combat shell at creation (makeCombatShell) and read in getAttackStackDetails.
+  // The card's second clause (the Crag Hack controller's one free Goblin
+  // reinforce) is queued at draw in resolveAstrologersCard.
+  | { type: "FIRST_COMBAT_GROUND_ATTACK"; amount: number }
+  // Multilingual Bron: a unit special-ability roll (a die rolled BY an ability,
+  // not the attack or Defend die) that misses its printed face is rerolled once
+  // for the ability's controller. Read at each ability-roll site (reducer.ts /
+  // the Satyr map roll in adventure-reducer.ts).
+  | { type: "ABILITY_ROLL_REROLL" }
+  // Disruption: starting from the first player, each player may rotate one
+  // hero-less, already-revealed tile in place (state-preserving permutation of
+  // its six ring fields); no tile twice. Resolved at draw through per-player
+  // seat-order offers inside the round-start barrier; redrawn when no tile is
+  // rotatable at all.
+  | { type: "ROTATE_TILE_EACH" };
 
 /** Boxed sets / expansions a proclamation can ship in (provenance, shown in the UI). */
 export const ASTROLOGERS_EXPANSIONS = [
@@ -215,7 +234,10 @@ export const ART_PENDING_PROCLAMATIONS: ReadonlySet<string> = new Set<string>([
   "astrologers.elementals",
   "astrologers.forty_thieves",
   "astrologers.plastic_tray",
-  "astrologers.restart"
+  "astrologers.restart",
+  "astrologers.crag_hack",
+  "astrologers.multilingual_bron",
+  "astrologers.disruption"
 ]);
 
 function source(slug: string, expansion: AstrologersExpansion) {
@@ -296,6 +318,26 @@ export const astrologersCardDefinitions: Record<string, AstrologersCardDefinitio
     image: image("charlie_and_his_circus"),
     source: source("charlie_and_his_circus", "Rampart Expansion")
   },
+  "astrologers.crag_hack": {
+    id: "astrologers.crag_hack",
+    name: "Crag Hack",
+    text: "For the first Combat this round, all ground units gain +1 attack. The faction controlling Crag Hack can Reinforce Goblins for free once.",
+    // "This round" — the even Astrologers round it is drawn (the Sanctuary/Mages
+    // parity reading): the +1 latches onto the round's FIRST combat shell in
+    // makeCombatShell and rides that combat to its end; a round without combat
+    // simply never grants it. "All ground units" is both sides, neutral guards
+    // included (unit.type === "ground"). Engine reading for the second clause:
+    // the free Goblin reinforce is OFFERED at draw (a skippable round-start
+    // choice for the player whose hero is Crag Hack, like Isra's Friends) rather
+    // than banked for later in the round; nobody controlling Crag Hack (or no
+    // Few-side Goblins) means the clause does nothing.
+    ongoing: true,
+    effect: { type: "FIRST_COMBAT_GROUND_ATTACK", amount: 1 },
+    expansion: "Stronghold Expansion",
+    // Art pending (see ART_PENDING_PROCLAMATIONS) — renders via the text face.
+    image: "",
+    source: source("crag_hack", "Stronghold Expansion")
+  },
   "astrologers.crazy_wizard": {
     id: "astrologers.crazy_wizard",
     name: "Crazy Wizard",
@@ -340,6 +382,26 @@ export const astrologersCardDefinitions: Record<string, AstrologersCardDefinitio
     // Art pending (see ART_PENDING_PROCLAMATIONS) — renders via the text face.
     image: "",
     source: source("destruction", "Stretch Goals")
+  },
+  "astrologers.disruption": {
+    id: "astrologers.disruption",
+    name: "Disruption",
+    text: "Starting from the first player, each player (if possible) can freely rotate 1 tile that has no Hero on it. No tile can be rotated more than once. If it is not possible to rotate even 1 tile, ignore this card and draw another one.",
+    // Immediate: one skippable rotate offer per seat, resolved in turn order
+    // inside the round-start barrier. The rotation is a state-PRESERVING
+    // permutation of the tile's six ring fields (rotateTileInPlace — flags,
+    // Black Cubes, settlements, banks all travel with their printed field; the
+    // centre is rotation-invariant), never a re-materialize. Eligible tiles are
+    // revealed, hero-less tiles not yet rotated this resolution; tiles carrying
+    // a Town or a Subterranean Gate half are additionally excluded (engine
+    // safety reading: both anchor cross-references to fixed hexes). With no
+    // eligible tile at draw the card is discarded and another drawn, as printed.
+    ongoing: false,
+    effect: { type: "ROTATE_TILE_EACH" },
+    expansion: "Stretch Goals",
+    // Art pending (see ART_PENDING_PROCLAMATIONS) — renders via the text face.
+    image: "",
+    source: source("disruption", "Stretch Goals")
   },
   "astrologers.elementals": {
     id: "astrologers.elementals",
@@ -536,6 +598,30 @@ export const astrologersCardDefinitions: Record<string, AstrologersCardDefinitio
     expansion: "Core Game",
     image: image("merry_leprechaun"),
     source: source("merry_leprechaun", "Core Game")
+  },
+  "astrologers.multilingual_bron": {
+    id: "astrologers.multilingual_bron",
+    name: "Multilingual Bron",
+    text: "Until the next Astrologers' round: every time you use a unit's special ability that requires a roll, you can reroll it once.",
+    // Passive while face up, read at every ability-ROLL site — the dice an
+    // ability rolls itself: Death Stare, the Thunderbird/Wyvern extra die, the
+    // extra-die Paralysis (incl. the retaliation variant), the Ghost Dragon
+    // knockback, the Rampart Dwarves' Magic Resistance and the Satyrs' map
+    // morale roll. Engine reading: "you can reroll it once" resolves as ONE
+    // automatic reroll whenever the first roll came up AGAINST the ability's
+    // controller (a player would always reroll a miss and never a success; for
+    // the Dwarves' resistance "against" depends on whether the rolled-at card
+    // is friendly or hostile). Neutral guards are not "you" — only units a
+    // player controls reroll. Abilities keyed off the ATTACK die itself
+    // (Minotaur draw, Rust Dragon token, own-die Paralysis, commander dice) and
+    // Defend-die effects already ride the attack/defend reroll machinery and
+    // are deliberately not double-hooked.
+    ongoing: true,
+    effect: { type: "ABILITY_ROLL_REROLL" },
+    expansion: "Stretch Goals",
+    // Art pending (see ART_PENDING_PROCLAMATIONS) — renders via the text face.
+    image: "",
+    source: source("multilingual_bron", "Stretch Goals")
   },
   "astrologers.pirates": {
     id: "astrologers.pirates",
@@ -771,28 +857,17 @@ export const astrologersDeckCardIds: string[] = Object.keys(astrologersCardDefin
  * the omission is a conscious, reviewable decision rather than a silent gap.
  */
 export const ASTROLOGERS_NOT_IMPLEMENTED: { name: string; expansion: string; needs: string }[] = [
-  // Crag Hack ties a first-combat ground-unit attack buff to the specific hero
-  // Crag Hack's faction (Stronghold), which is not a playable faction in this
-  // build — so its "reinforce Goblins for free" half has no home. Left out until
-  // Stronghold ships.
-  { name: "Crag Hack", expansion: "Stronghold", needs: "the Stronghold faction (Crag Hack's) + its free-Goblin reinforce" },
-  // Disruption rotates an ALREADY-EXPLORED map tile in place. The existing
-  // rotation machinery (materializeTileFields) rebuilds a tile's fields from its
-  // definition — resetting flags, Black Cubes and everFlagged — so reusing it
-  // mid-game would WIPE the tile's accumulated state. A correct implementation
-  // needs a rotate-in-place that permutes each ring hex's full MapFieldState
-  // (flag/cube/settlement/bank) around the centre. Deferred rather than ship
-  // state corruption (CLAUDE.md #1: no bug).
-  { name: "Disruption", expansion: "Stretch Goals", needs: "a rotate-in-place tile subsystem that preserves each hex's accumulated state" },
-  // Multilingual Bron rerolls the die of a unit's special ABILITY (Halfling shot,
-  // Satyr morale, ...). Those ability rolls resolve inline without a reroll hook;
-  // adding one uniformly across every ability roll is a combat-wide subsystem.
-  { name: "Multilingual Bron", expansion: "Stretch Goals", needs: "a uniform reroll hook on every unit special-ability roll" },
-  // Offense swaps Defense→Attack on every card that grants Defense — a
-  // fundamental combat-value reinterpretation across Statistics, abilities and
-  // tokens. Too invasive to wire correctly without a value-source rework.
-  { name: "Offense", expansion: "Stronghold", needs: "a global Defense→Attack reinterpretation of every value source" },
-  // Whirlpool needs the whirlpool map-location travel subsystem (enter one, pick
-  // an exit whirlpool) which does not exist yet.
-  { name: "Whirlpool", expansion: "Cove", needs: "the whirlpool travel subsystem (enter/exit whirlpool locations)" }
+  // Offense swaps Defense→Attack on every card that grants Defense. That is not
+  // one chokepoint: the instant ADD_COMBAT_STAT defense route, the ongoing
+  // CREATE_DEFENSE_BUFF route (Stone Skin / Air Shield) and the reaction-offer
+  // flow (a Defense card is the DEFENDER's reaction on UNIT_ATTACK_DECLARED —
+  // "provides attack instead" changes who benefits and in which window). Too
+  // invasive to wire correctly without a value-source rework; deferred rather
+  // than shipped half-right.
+  { name: "Offense", expansion: "Stronghold", needs: "a global Defense→Attack reinterpretation of every value source (instant stats, ongoing buffs, AND the defender-reaction play window)" },
+  // Whirlpool buffs a map feature this build does not have: no sea tile (W1-W7)
+  // carries a whirlpool field in the transcribed board data, and no whirlpool
+  // location/travel interaction exists. Implementing the card would mean
+  // inventing board content, not just wiring an effect.
+  { name: "Whirlpool", expansion: "Cove", needs: "whirlpool fields on the sea tiles (none exist in the transcribed W1-W7 data) + the enter/exit travel subsystem" }
 ];

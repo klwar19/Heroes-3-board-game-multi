@@ -6057,6 +6057,13 @@ export type CombatState = {
   defenderPlayerId: PlayerId;
   activeUnitId: UnitId | null;
   context: CombatContext;
+  /**
+   * Crag Hack (Astrologers): +Attack granted to every GROUND-type unit in this
+   * combat (both sides). Latched at combat creation onto the FIRST combat of
+   * the drawn round only, so it rides this fight to its end even across a
+   * round wrap; absent everywhere else (older snapshots included).
+   */
+  proclamationGroundAttackBonus?: number;
   /** Deterministic combat-board art selected when the fight starts. */
   boardArtId?: CombatBoardArtId;
   setup: CombatSetupState | null;
@@ -6531,6 +6538,26 @@ export type VisitStep =
       /** Terrible Plague: flip one army card from Pack back to Few. */
       type: "FLIP_PACK_TO_FEW";
       armyUnitId: string;
+    }
+  | {
+      /**
+       * Disruption (Astrologers): open the player's skippable pick of one
+       * eligible tile to rotate. Recomputed from live state each time it runs,
+       * so earlier seats' rotations drop out and it silently resolves when no
+       * eligible tile remains.
+       */
+      type: "DISRUPTION_ROTATE_OFFER";
+    }
+  | {
+      /** Disruption: the picked tile — opens the rotation choice (or backs out). */
+      type: "DISRUPTION_ROTATE_TILE";
+      tileInstanceId: string;
+    }
+  | {
+      /** Disruption: rotate the tile in place to the chosen orientation. */
+      type: "DISRUPTION_SET_ROTATION";
+      tileInstanceId: string;
+      rotation: number;
     }
   | {
       /** Isra's Friends / settlements: reinforce a Few unit, possibly at half cost. */
@@ -7418,6 +7445,13 @@ export type AstrologersState = {
   heroEmpowerChosenRoundBy?: Record<PlayerId, number>;
   /** Hero proclamation: number of exchanges made in the chosen turn. */
   heroEmpowerUsesBy?: Record<PlayerId, number>;
+  /**
+   * Crag Hack proclamation: set once the round's FIRST combat latched the
+   * ground +1 Attack, so the second combat that round goes unbuffed.
+   */
+  firstCombatGroundAttackUsed?: boolean;
+  /** Disruption proclamation: tiles already rotated ("no tile more than once"). */
+  disruptionRotatedTileIds?: string[];
 };
 
 /** A shared-deck card (or Neutral unit card) sitting in the open Event pool. */
