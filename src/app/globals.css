@@ -16032,6 +16032,17 @@ img.cardBack {
   mask-image: none;
 }
 
+/* Per-emblem size tweaks so every option reads at a comparable visual weight:
+   the Map-Designer parchment fills its frame, so trim it a touch; the Hall of
+   Fame clover/dice sit small in theirs, so enlarge them a touch. */
+.menuNavIcon[src*="pathfinding"] {
+  height: 106%;
+}
+
+.menuNavIcon[src*="luck"] {
+  height: 128%;
+}
+
 /* Bigger option rows on the boxless menu: taller buttons with more breathing
    room so the enlarged emblems have space, and a larger engraved title. */
 .menuNav {
