@@ -115,7 +115,10 @@ export const implementedCardEffectTypes = [
   "PLACE_FIRE_WALL_FIXED",
   "PLACE_HIDDEN_TOKENS",
   "REMOVE_ACTIVE_EFFECT",
-  "TARNUM_OVERLIMIT_SEARCH"
+  "TARNUM_OVERLIMIT_SEARCH",
+  "PANDORA_VISIT",
+  "PANDORA_SCRY",
+  "PANDORA_SILVER_REFRESH"
 ] satisfies EffectDefinition["type"][];
 
 export function isImplementedCardEffect(effect: EffectDefinition): boolean {
@@ -906,6 +909,19 @@ export function describeCardEffect(card: CardDefinition): string {
 
   if (card.effect.type === "TARNUM_OVERLIMIT_SEARCH") {
     return `Search(1) the Spell deck ${card.effect.count} times into hand; cast any of those spells for free over the per-round limit, returning each to the Spell deck top or discard`;
+  }
+
+  if (card.effect.type === "PANDORA_VISIT") {
+    return "resolve this Pandora card's map effect";
+  }
+
+  if (card.effect.type === "PANDORA_SILVER_REFRESH") {
+    return "with a Silver unit: reverse one to Handful, or discard one for free Bronze+Silver recruits; else redraw";
+  }
+
+  if (card.effect.type === "PANDORA_SCRY") {
+    const bonus = card.effect.then && card.effect.then.length > 0 ? ", then resolve a bonus" : "";
+    return `peek the top ${card.effect.count} cards of the ${card.effect.deck} deck, discard up to ${card.effect.maxDiscard}, reorder the rest on top${bonus}`;
   }
 
   if (card.effect.type === "ADVANCE_EXPERIENCE") {

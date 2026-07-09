@@ -2318,6 +2318,10 @@ function isOptionEffectPlayable(
     // Octavia "Gold" / Melodia "Fortune": Resource-die roll, morale/gold gain,
     // and the location-dice buff are all resolved through a queued map visit.
     case "RESOURCE_FORTUNE_PLAY":
+    // Pandora's Box map plays: a queued main-hero visit-steps reward, and the
+    // "peek a deck" scry — both resolve on the map through the adventure queues.
+    case "PANDORA_VISIT":
+    case "PANDORA_SCRY":
       return context === "map" && Boolean(state.adventure);
     case "REMOVE_HAND_CARD_THEN_SEARCH": {
       // Play that removes a card matching the filter (default "removable" =

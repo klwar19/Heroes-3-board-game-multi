@@ -18,6 +18,7 @@ import {
   makeCombatUnitFromArmy,
   NEUTRAL_DECK_IDS,
   openNeutralRecruitOffer,
+  openPandoraSilverRefresh,
   queueLegionDiscountChoice,
   queueNecromancyReinforce,
   raiseIncomeByResourceDie
@@ -44,6 +45,7 @@ import {
   resolveAfkDrop,
   openDiplomacyRecruit,
   openVisionsScry,
+  openPandoraScry,
   openSiegeDemolishChoice,
   openRemoveObstacleChoice,
   openSkeletonReinforceChoice,
@@ -12288,6 +12290,31 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   // is chosen and scryed.
   if (effect.type === "VISIONS_SCRY") {
     openVisionsScry(state, action.playerId, effect.cardsByPower);
+  }
+
+  // Pandora's Box: resolve a list of map visit steps against the MAIN hero
+  // (gain experience/movement/resources, roll Resource dice, Search decks, the
+  // pay-for-dice loop, the treasure gamble, and the nested "choose 2 of 3" /
+  // "OR" menus). Queued as a visit-steps reward so it reuses the tested pipeline.
+  if (effect.type === "PANDORA_VISIT") {
+    state.adventure?.rewardQueue.unshift({
+      playerId: action.playerId,
+      kind: "visit-steps",
+      steps: [...effect.steps]
+    });
+  }
+
+  // Pandora's Box (peek cards): reveal the top of a shared deck, discard up to
+  // N, reorder the rest on top, then resolve a resource/Search bonus.
+  if (effect.type === "PANDORA_SCRY") {
+    openPandoraScry(state, action.playerId, effect.deck, effect.count, effect.maxDiscard, effect.then ?? []);
+  }
+
+  // Pandora's Box (card 173): with a Silver army unit, choose to reverse one to
+  // its Handful side OR discard one for free Bronze+Silver recruits; with none,
+  // the card self-cycles into a fresh Pandora draw.
+  if (effect.type === "PANDORA_SILVER_REFRESH") {
+    openPandoraSilverRefresh(state, action.playerId);
   }
 
   if (effect.type === "TAKE_FROM_DISCARD") {
