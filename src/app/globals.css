@@ -15966,17 +15966,41 @@ img.cardBack {
   width: min(560px, 100%);
 }
 
-/* Menu options: drop the PLAQUE box ONLY (its background / border / shadow).
-   The ORIGINAL option design is otherwise untouched — the emblem stays large
-   behind the engraved title (the words still cross the icon), the scrim and
-   text are unchanged; only the box is gone, and the frameless panel + dragon
-   show around it. */
+/* Menu options: NO BOX at all — the plaque (background/border/shadow) AND the
+   dark scrim are removed. The emblem stays LARGE behind the engraved title so
+   the words still cross the icon; its rectangular edges are masked to
+   transparent so it blends into the dragon instead of reading as a tile. */
 .menuNavButton,
 .menuNavButton:hover:not(:disabled),
 .menuNavButton:disabled {
   background: transparent;
   border-color: transparent;
   box-shadow: none;
+}
+
+.menuNavButton::after {
+  content: none; /* remove the scrim — that was the last visible "box" */
+}
+
+/* Keep the emblem large & centred behind the words, but fade its edges so no
+   rectangle shows — only the emblem shape blended over the dragon. */
+.menuNavIcon {
+  opacity: 0.88;
+  -webkit-mask-image: radial-gradient(ellipse 60% 58% at 50% 50%, #000 44%, transparent 74%);
+  mask-image: radial-gradient(ellipse 60% 58% at 50% 50%, #000 44%, transparent 74%);
+}
+
+/* Large, hard-carved words that read clearly over the emblem + dragon with no
+   box behind them. */
+.menuNavLabel {
+  font-size: 25px;
+  filter: drop-shadow(0 1px 1px #000) drop-shadow(0 2px 7px #000) drop-shadow(0 0 4px #000);
+}
+
+.menuNavButton small {
+  color: #eaf0fb;
+  font-size: 12.5px;
+  text-shadow: 0 1px 2px #000, 0 2px 7px #000, 0 0 5px #000;
 }
 
 /* The menu / lobby panel becomes a gilded compendium page — kept MUCH more
