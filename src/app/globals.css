@@ -16020,26 +16020,34 @@ img.cardBack {
   content: none; /* remove the scrim — that was the last visible "box" */
 }
 
-/* The emblem is masked into a clean CIRCULAR medallion, centred behind the
-   words. This is the fix for the "box": several skill emblems (the Map-Designer
-   map, Logistics, Wisdom) are near-full-frame bright illustrations that would
-   otherwise show their square edge as a light tile. A true `circle` mask cuts
-   every rectangular corner away, so NO box can ever appear — while the centre
-   stays FULLY opaque (crisp, not blurred) out to a wide radius, feathering only
-   in a thin ring at the rim so it reads as a medallion, not a hard crop. */
+/* The emblem is cut into a LARGE CIRCULAR medallion with a HARD edge — no
+   feather, no glow, no shadow, so the art stays perfectly crisp (nothing is
+   blurred). The circle is as wide as the emblem (touching its edges) but cuts
+   the four square corners off, so the near-full-frame emblems (the Map-Designer
+   map, Logistics, Wisdom) can never show a rectangular "box"; the ~2% edge step
+   is only anti-aliasing to keep the rim smooth, not a fade. */
 .menuNavIcon {
-  height: 128%;
+  height: 132%;
   opacity: 1;
-  -webkit-mask-image: radial-gradient(circle at 50% 47%, #000 50%, rgb(0 0 0 / 42%) 64%, transparent 77%);
-  mask-image: radial-gradient(circle at 50% 47%, #000 50%, rgb(0 0 0 / 42%) 64%, transparent 77%);
-  filter: drop-shadow(0 2px 8px rgb(0 0 0 / 72%)) drop-shadow(0 0 3px rgb(0 0 0 / 55%));
+  -webkit-mask-image: radial-gradient(circle at 50% 48%, #000 66%, transparent 70%);
+  mask-image: radial-gradient(circle at 50% 48%, #000 66%, transparent 70%);
+}
+
+/* Bigger option rows on the boxless menu: taller buttons with more breathing
+   room so the enlarged medallions never collide, and a larger engraved title. */
+.menuNav {
+  gap: 16px;
+}
+
+.menuNavButton {
+  min-height: 128px;
 }
 
 /* Large, hard-carved words that read clearly over the emblem + dragon with no
    box behind them — legibility comes from the carved text-shadows below, never
    a panel or halo. */
 .menuNavLabel {
-  font-size: 25px;
+  font-size: 32px;
   filter: drop-shadow(0 1px 1px #000) drop-shadow(0 2px 7px #000) drop-shadow(0 0 4px #000);
 }
 
