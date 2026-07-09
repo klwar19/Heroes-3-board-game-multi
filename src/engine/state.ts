@@ -7148,6 +7148,24 @@ export type VisitStep =
       type: "EVENT_POOL_CLEANUP";
     }
   | {
+      /**
+       * Forty Thieves (Astrologers): opens the "which of the 2 drawn Event
+       * cards resolves" CHOOSE_ONE from events.pendingPick. Table bookkeeping —
+       * it never reads visit.playerId, so an elimination hands it to the next
+       * live seat (isSharedEventBookkeepingReward / eliminatePlayer).
+       */
+      type: "EVENT_FORTY_PICK";
+    }
+  | {
+      /**
+       * Leaf of the pick above: `cardId` becomes the drawn Event (overlay +
+       * clockwise resolution queued AHEAD of the round-start barrier sentinel);
+       * the other pick card goes to the bottom of the Event deck.
+       */
+      type: "EVENT_FORTY_RESOLVE";
+      cardId: CardId;
+    }
+  | {
       /** Magical Forest: menu — contribute a hand card or a drawn deck card face-down. */
       type: "EVENT_FOREST_CONTRIBUTE";
     }
@@ -7346,6 +7364,15 @@ export type EventsState = {
   auction: { lotCardId: CardId; lotDeckId: DeckId; bids: Record<PlayerId, number> } | null;
   /** Marketplace: the open 1-for-1 resource deal; the first accept closes it. */
   deal: { proposerId: PlayerId; give: ResourceKind; get: ResourceKind; done: boolean } | null;
+  /**
+   * Forty Thieves (Astrologers): the two Event cards drawn together, waiting
+   * for the drawer's "which one resolves" pick (the other goes to the bottom
+   * of the Event deck). Cards are custodied HERE — not in the pick step — so
+   * an elimination mid-pick can hand the same pick to the next live seat
+   * without any card leaving the game (eliminatePlayer). Public information:
+   * both cards are drawn face up.
+   */
+  pendingPick?: { cardIds: CardId[]; drawerId: PlayerId } | null;
 };
 
 export type PendingTileChoice = {

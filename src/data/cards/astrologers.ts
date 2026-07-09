@@ -12,7 +12,10 @@
  * Stretch/Conflux/Cove/Stronghold cards Destruction, Sanctuary, Spells, Pirates,
  * Rulebook, Judge Dread, Wind and Mages (Sanctuary's PvP-attack ban is enforced
  * at the combat chokepoint and, by construction, keeps the optional
- * parallel-turns mode running because no PvP ever triggers). Only the cards that
+ * parallel-turns mode running because no PvP ever triggers), plus the second
+ * wave Elementals, Forty Thieves, Plastic Tray and Restart (Forty Thieves rides
+ * the round-start event barrier; it only joins the deck when the optional Event
+ * deck is in play). Only the cards that
  * would each need a whole new subsystem remain out — see
  * ASTROLOGERS_NOT_IMPLEMENTED, whose entries each name the missing subsystem.
  * The `effect` field is the single source of truth for what the engine runs;
@@ -34,7 +37,9 @@ export type AstrologersEffect =
   | { type: "REMOVE_BLACK_CUBES" }
   | { type: "NEXT_RESOURCE_ROUND"; gold?: number; valuables?: number }
   | { type: "MOVEMENT_MODIFIER"; amount: number }
-  | { type: "HAND_LIMIT_MODIFIER"; amount: number }
+  // `minimum` (Restart): "reduced by 2, to a minimum of 4" — the floor caps the
+  // reduction but never RAISES a limit already at or below it (effectiveHandLimit).
+  | { type: "HAND_LIMIT_MODIFIER"; amount: number; minimum?: number }
   | { type: "RESHUFFLE_ARTIFACTS_SPELLS" }
   | { type: "DISCARD_REDRAW_ALL" }
   | { type: "PLAGUE_FLIP_ALL" }
@@ -128,7 +133,20 @@ export type AstrologersEffect =
   | { type: "SEA_CONTINUE_AFTER_EMBARK" }
   // Mages: using the Spell Book token is FREE this round and allowed even without
   // a Mage Guild built. Read at the Spell Book gate (legal-actions + spellBookAction).
-  | { type: "FREE_SPELL_BOOK" };
+  | { type: "FREE_SPELL_BOOK" }
+  // Elementals: dig each non-Azure Neutral deck (bronze/silver/gold) top-down,
+  // discarding until an Elemental shows, and leave it on top — the next guard
+  // drawn from that deck. Resolved once at draw; see seedNeutralElementals
+  // (adventure.ts).
+  | { type: "SEED_NEUTRAL_ELEMENTALS" }
+  // Plastic Tray: a defending unit's shield grants a flat +`amount` Defense with
+  // NO Defend-die roll at all. Read in resolveDefendBonus (reducer.ts).
+  | { type: "DEFEND_FLAT_BONUS"; amount: number }
+  // Forty Thieves: the next Event draw pops `count` cards; the drawer picks ONE
+  // to resolve and the other goes to the BOTTOM of the Event deck. Read in
+  // drawEventCard (adventure.ts); the pick is a CHOOSE_ONE resolved inside the
+  // round-start event barrier.
+  | { type: "EVENT_DRAW_PICK"; count: number };
 
 /** Boxed sets / expansions a proclamation can ship in (provenance, shown in the UI). */
 export const ASTROLOGERS_EXPANSIONS = [
@@ -193,7 +211,11 @@ export const ART_PENDING_PROCLAMATIONS: ReadonlySet<string> = new Set<string>([
   "astrologers.rulebook",
   "astrologers.judge_dread",
   "astrologers.wind",
-  "astrologers.mages"
+  "astrologers.mages",
+  "astrologers.elementals",
+  "astrologers.forty_thieves",
+  "astrologers.plastic_tray",
+  "astrologers.restart"
 ]);
 
 function source(slug: string, expansion: AstrologersExpansion) {
@@ -319,6 +341,25 @@ export const astrologersCardDefinitions: Record<string, AstrologersCardDefinitio
     image: "",
     source: source("destruction", "Stretch Goals")
   },
+  "astrologers.elementals": {
+    id: "astrologers.elementals",
+    name: "Elementals",
+    text: "For each Neutral Unit deck except Azure, discard until you find an Elemental. Place each Elemental face up on top of its deck.",
+    // Instant deck seeding at draw: each non-Azure Neutral tier deck (bronze/
+    // silver/gold) is dug through top-down until an Elemental shows, which then
+    // stays on top — the next guard drawn from that deck. A deck that exhausts
+    // mid-dig reshuffles its discards back in once (the printed reshuffle rule)
+    // and keeps digging; a deck with no Elemental left anywhere (all at large
+    // in armies) is skipped. The engine has no face-up deck display, so a feed
+    // note names the seeded Elementals — the same public information the
+    // physical face-up cards give the table.
+    ongoing: false,
+    effect: { type: "SEED_NEUTRAL_ELEMENTALS" },
+    expansion: "Conflux Expansion",
+    // Art pending (see ART_PENDING_PROCLAMATIONS) — renders via the text face.
+    image: "",
+    source: source("elementals", "Conflux Expansion")
+  },
   "astrologers.explorers": {
     id: "astrologers.explorers",
     name: "Explorers",
@@ -352,6 +393,25 @@ export const astrologersCardDefinitions: Record<string, AstrologersCardDefinitio
     expansion: "Core Game",
     image: image("fluffy_rabbit"),
     source: source("fluffy_rabbit", "Core Game")
+  },
+  "astrologers.forty_thieves": {
+    id: "astrologers.forty_thieves",
+    name: "Forty Thieves",
+    text: "Until the next Astrologers' round: whenever a player is about to draw an Event card, they draw 2 cards instead of 1, choose 1 to resolve, and put the other at the bottom of the Event deck.",
+    // Passive while face up, read in drawEventCard: the next Resource round's
+    // Event draw pops TWO cards; the rotating drawer picks which one resolves
+    // (a CHOOSE_ONE opened inside the round-start event barrier, so the pick —
+    // like every Event resolution — finishes before any turn begins) and the
+    // other goes to the BOTTOM of the Event deck. Only shuffled into the
+    // Astrologers deck when the (optional, multiplayer-only) Event deck is in
+    // play — without Events the card would be printed dead weight
+    // (adventure-setup.ts).
+    ongoing: true,
+    effect: { type: "EVENT_DRAW_PICK", count: 2 },
+    expansion: "Fortress Expansion",
+    // Art pending (see ART_PENDING_PROCLAMATIONS) — renders via the text face.
+    image: "",
+    source: source("forty_thieves", "Fortress Expansion")
   },
   "astrologers.friendly_beaver": {
     id: "astrologers.friendly_beaver",
@@ -500,6 +560,27 @@ export const astrologersCardDefinitions: Record<string, AstrologersCardDefinitio
     image: image("plane_between_planes"),
     source: source("plane_between_planes", "Fortress Expansion")
   },
+  "astrologers.plastic_tray": {
+    id: "astrologers.plastic_tray",
+    name: "Plastic Tray",
+    text: "Until the next Astrologers' round: units that take Defense roll no Attack dice to get +1 Defense.",
+    // Passive while face up, read in resolveDefendBonus (reducer.ts): a
+    // defending unit's shield pays a FLAT +1 Defense instead of rolling the
+    // Defend die for a 1-in-3 chance at it. Engine reading: the flat payout
+    // applies to every Defend-die shield the engine resolves through that one
+    // mechanic (the Defend action's token, Merist's granted tokens, the
+    // Halberdier Phalanx aura, a Stacked bank card's virtual token) — the
+    // token set by the Defend action is indistinguishable from a granted one
+    // in unit state, and one mechanic gets one modification. Die-triggered
+    // extras (the morale forced-reroll / -1-next-roll cards, Merist's
+    // shield-on-zero) simply never fire because no die is rolled.
+    ongoing: true,
+    effect: { type: "DEFEND_FLAT_BONUS", amount: 1 },
+    expansion: "Stretch Goals",
+    // Art pending (see ART_PENDING_PROCLAMATIONS) — renders via the text face.
+    image: "",
+    source: source("plastic_tray", "Stretch Goals")
+  },
   "astrologers.profuse_growth": {
     id: "astrologers.profuse_growth",
     name: "Profuse Growth",
@@ -509,6 +590,24 @@ export const astrologersCardDefinitions: Record<string, AstrologersCardDefinitio
     expansion: "Core Game",
     image: image("profuse_growth"),
     source: source("profuse_growth", "Core Game")
+  },
+  "astrologers.restart": {
+    id: "astrologers.restart",
+    name: "Restart",
+    text: "Until the next Astrologers' round: your hand limit is reduced by 2, to a minimum of 4. (Drawn on the first Astrologers' round: discard it and draw another card.)",
+    // The hand limit GROWS with hero level in this build (4 → 7 at levels
+    // 3/5/7, HAND_LIMIT_BY_LEVEL) and permanents can raise it further, so the
+    // -2 genuinely bites from level 3 on; the floor caps the reduction but
+    // never RAISES a limit already at or below 4 (effectiveHandLimit). A hand
+    // left over the shrunken limit forces the normal start-of-turn
+    // discard-down (finalizeStartOfTurnHand). Redrawn on the first Astrologers
+    // round like Friendly Beaver (drawAstrologersCard).
+    ongoing: true,
+    effect: { type: "HAND_LIMIT_MODIFIER", amount: -2, minimum: 4 },
+    expansion: "Stretch Goals",
+    // Art pending (see ART_PENDING_PROCLAMATIONS) — renders via the text face.
+    image: "",
+    source: source("restart", "Stretch Goals")
   },
   "astrologers.rulebook": {
     id: "astrologers.rulebook",
@@ -677,14 +776,6 @@ export const ASTROLOGERS_NOT_IMPLEMENTED: { name: string; expansion: string; nee
   // build — so its "reinforce Goblins for free" half has no home. Left out until
   // Stronghold ships.
   { name: "Crag Hack", expansion: "Stronghold", needs: "the Stronghold faction (Crag Hack's) + its free-Goblin reinforce" },
-  // Forty Thieves inserts the drawer's "pick 1 of 2 Events" choice into the
-  // Event draw, which happens at the START of a Resource round BEFORE turns
-  // begin. The round-advance queues each player's turn-start rewards immediately
-  // after drawEventCard with no pause for a pending choice, so a choice opened
-  // mid-draw would resolve the Event AFTER turn-start rewards — breaking the
-  // "Events resolve before turns" ordering. Needs a round-start restructure that
-  // fully resolves the Event pick before startPlayerTurn. Deferred (CLAUDE.md #1).
-  { name: "Forty Thieves", expansion: "Fortress", needs: "a round-start hook that resolves the drawer's Event pick before turns begin" },
   // Disruption rotates an ALREADY-EXPLORED map tile in place. The existing
   // rotation machinery (materializeTileFields) rebuilds a tile's fields from its
   // definition — resetting flags, Black Cubes and everFlagged — so reusing it
@@ -693,10 +784,6 @@ export const ASTROLOGERS_NOT_IMPLEMENTED: { name: string; expansion: string; nee
   // (flag/cube/settlement/bank) around the centre. Deferred rather than ship
   // state corruption (CLAUDE.md #1: no bug).
   { name: "Disruption", expansion: "Stretch Goals", needs: "a rotate-in-place tile subsystem that preserves each hex's accumulated state" },
-  // Elementals seeds a face-up Elemental on TOP of each Neutral deck and makes it
-  // "return when defeated" — a per-deck face-up-guard subsystem the neutral decks
-  // do not model. Deferred rather than faked.
-  { name: "Elementals", expansion: "Conflux", needs: "a face-up Elemental guard seeded on each Neutral deck that returns on defeat" },
   // Multilingual Bron rerolls the die of a unit's special ABILITY (Halfling shot,
   // Satyr morale, ...). Those ability rolls resolve inline without a reroll hook;
   // adding one uniformly across every ability roll is a combat-wide subsystem.
@@ -705,14 +792,6 @@ export const ASTROLOGERS_NOT_IMPLEMENTED: { name: string; expansion: string; nee
   // fundamental combat-value reinterpretation across Statistics, abilities and
   // tokens. Too invasive to wire correctly without a value-source rework.
   { name: "Offense", expansion: "Stronghold", needs: "a global Defense→Attack reinterpretation of every value source" },
-  // Plastic Tray changes the Defend action itself (roll no Attack dice, get +1
-  // Defense) — a rework of the defend/defense-token combat mechanic.
-  { name: "Plastic Tray", expansion: "Stronghold", needs: "a reworked Defend action (no attack dice, +1 Defense)" },
-  // Restart reduces the hand LIMIT by 2 to a minimum of 4. This build's base hand
-  // limit is already 4 (adventure-setup.ts), so the card would be inert unless a
-  // permanent first raised the limit above 4 — i.e. effectively decorative here.
-  // Left out rather than shipped as a near-no-op (CLAUDE.md #1).
-  { name: "Restart", expansion: "Stretch Goals", needs: "a base hand limit above 4 for the -2 (min 4) reduction to ever bite" },
   // Whirlpool needs the whirlpool map-location travel subsystem (enter one, pick
   // an exit whirlpool) which does not exist yet.
   { name: "Whirlpool", expansion: "Cove", needs: "the whirlpool travel subsystem (enter/exit whirlpool locations)" }
