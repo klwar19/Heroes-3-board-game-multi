@@ -1785,7 +1785,10 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "silver",
     type: "ground",
-    neutral: { attack: 3, defense: 2, health: 4, initiative: 5, cost: { gold: 11 }, abilities: ["attack-roll-advantage"], abilityText: "[unit_passive] During any attack, roll 2 Attack dice and resolve the higher outcome.", cardImage: "/assets/units-neutral-silver-crusaders.webp" },
+    // engine: attack-roll-advantage-passive — the [unit_passive] "any attack"
+    // variant applies to Retaliation Attacks too (unlike the [unit_attack]
+    // Halfling/Leprechaun variant, which is own-attack-only).
+    neutral: { attack: 3, defense: 2, health: 4, initiative: 5, cost: { gold: 11 }, abilities: ["attack-roll-advantage-passive"], abilityText: "[unit_passive] During any attack, roll 2 Attack dice and resolve the higher outcome.", cardImage: "/assets/units-neutral-silver-crusaders.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/crusaders/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",

@@ -176,6 +176,7 @@ import {
   hasSpellCastLock,
   hasSpellCastPowerTax,
   hasUnitAbilityEffect,
+  unitHasAttackRollAdvantage,
   unitImmuneToSpellSchools
 } from "./unit-abilities";
 
@@ -1022,7 +1023,12 @@ export function getAttackRollMode(
   // neutral core Halfling additionally prints "Ignore combat penalties" — a
   // separate waiver that drops the penalty outright; the Factory Halfling has only
   // this override, so it still rolls two dice, just keeping the better face.)
-  if (hasUnitAbilityEffect(attacker, "ATTACK_ROLL_ADVANTAGE")) {
+  //
+  // The [unit_attack] Halfling/Leprechaun variant (`ownAttackOnly`) is dropped on
+  // a Retaliation Attack — like the [unit_attack] penalty waivers above — while
+  // the Crusaders' [unit_passive] "any attack" variant keeps the advantage even
+  // when retaliating (handled inside unitHasAttackRollAdvantage).
+  if (unitHasAttackRollAdvantage(attacker, isRetaliation)) {
     return "advantage";
   }
 

@@ -1682,6 +1682,15 @@ const NOTICE_ART_BY_LOCATION: Record<string, string> = {
 };
 
 /**
+ * The treasure-chest art fills its 256² canvas edge-to-edge (unlike the
+ * creature-bank / resource art, which carry their own internal margin), so it
+ * reads noticeably larger in the same notice frame. Inset these locations' art a
+ * little (a `.compact` padding on the image only) so it matches the others —
+ * the notice frame and text layout are unchanged.
+ */
+const NOTICE_ART_COMPACT = new Set(["sea_chest", "treasure_symbol"]);
+
+/**
  * Location-visit notice, popped into the player's face instead of a corner
  * toast: who stepped where, and what the visit did. Click (or wait) to
  * dismiss; dice rolls layer on top with their own overlay.
@@ -1699,7 +1708,11 @@ export function MapNoticeOverlay({ cue, onDone }: { cue: MapNoticeCue; onDone: (
       <div className="mapNotice">
         <span aria-hidden="true" className={`mapNoticeIcon${noticeArt ? " withArt" : ""}`}>
           {noticeArt ? (
-            <img alt="" className="mapNoticeArt" src={assetUrl(noticeArt)} />
+            <img
+              alt=""
+              className={`mapNoticeArt${NOTICE_ART_COMPACT.has(cue.location ?? "") ? " compact" : ""}`}
+              src={assetUrl(noticeArt)}
+            />
           ) : (
             cue.icon
           )}

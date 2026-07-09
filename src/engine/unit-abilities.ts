@@ -71,6 +71,24 @@ function getAbilitiesWithEffect(
 }
 
 /**
+ * Whether the unit's "roll 2 Attack dice and resolve the higher" advantage
+ * applies to the current roll. The `[unit_attack]` printed variant
+ * (`ownAttackOnly`) fires only on the unit's OWN declared attack, so it drops on
+ * a Retaliation Attack; the `[unit_passive]` "any attack" variant applies always.
+ */
+export function unitHasAttackRollAdvantage(
+  unit: CombatUnitState,
+  isRetaliation: boolean
+): boolean {
+  return getAbilitiesWithEffect(unit, "ATTACK_ROLL_ADVANTAGE").some((ability) => {
+    if (ability.effect?.type !== "ATTACK_ROLL_ADVANTAGE") {
+      return false;
+    }
+    return !(ability.effect.ownAttackOnly && isRetaliation);
+  });
+}
+
+/**
  * The Spell schools an Elemental is printed immune to — Magic Arrow's school
  * ("any") plus its own element (Air/Earth/Fire/Water), or just "any" for Magic
  * Elementals. Empty for ordinary units.
