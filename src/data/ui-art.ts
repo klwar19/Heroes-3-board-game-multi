@@ -32,14 +32,18 @@ export type UiArtSlot = {
 export const UI_ART_SLOTS = {
   /** Full-bleed backdrop behind the login / name screen. */
   "login-backdrop": {
-    src: "/assets/ui/setup-wallpaper.jpg",
-    alt: "Painted vista of castle banners over a war table",
+    // Soft, low-contrast parchment castle from the Homm3BG layout kit — calm
+    // enough for the name/sign-in form overlaid on it.
+    src: "/assets/ui/layout/castle.jpg",
+    alt: "Misty parchment vista of a castle beside a lake",
     size: "1920x1080 full-bleed, dark edges (text is overlaid)"
   },
   /** Full-bleed backdrop behind the main menu. */
   "menu-backdrop": {
-    src: "/assets/ui/setup-wallpaper.jpg",
-    alt: "Painted vista of castle banners over a war table",
+    // Cinematic cover art (the board-game box dragon) — the dramatic hero
+    // screen. The vignette + panel keep the menu text readable over it.
+    src: "/assets/ui/layout/cover.jpg",
+    alt: "A great dragon breathing fire — Heroes III board game cover art",
     size: "1920x1080 full-bleed, dark edges (menu panel is overlaid)"
   },
   /** Full-bleed backdrop behind the multiplayer lobby (room browser). */
@@ -50,9 +54,15 @@ export const UI_ART_SLOTS = {
   },
   /** Full-bleed backdrop behind loading screens (room join, map entry). */
   "loading-backdrop": {
-    src: "/assets/ui/map-backdrop.jpg",
-    alt: "Weathered parchment map of Erathia",
+    src: "/assets/ui/layout/cover.jpg",
+    alt: "A great dragon breathing fire — Heroes III board game cover art",
     size: "1920x1080 full-bleed, low contrast (progress bar is overlaid)"
+  },
+  /** The official gold "Heroes III — The Board Game" wordmark logo. */
+  "game-logo": {
+    src: "/assets/ui/layout/logo.png",
+    alt: "Heroes III of Might and Magic — The Board Game",
+    size: "1000x400 transparent PNG wordmark (rendered above the menu panel)"
   },
   /** Square emblem for the Erathia game server (server browser badge). */
   "server-emblem-erathia": {

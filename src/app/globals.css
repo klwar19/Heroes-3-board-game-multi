@@ -15828,3 +15828,326 @@ img.cardBack {
     animation: none;
   }
 }
+
+/* ==================================================================== */
+/* COMPENDIUM THEME (Homm3BG layout kit)                                 */
+/*                                                                       */
+/* A cohesive "premium board-game" skin drawn from the Homm3BG           */
+/* /assets/layout art: gold filigree frames, royal-blue leather bands,   */
+/* black-marble panel interiors, a brown-leather table and the official  */
+/* gold wordmark. Everything below is a VISUAL reskin only — it overrides */
+/* background / border / box-shadow / colour / filter on existing        */
+/* classes and never changes layout, positioning or hit-areas, so no     */
+/* button, cell or drag target moves. Every decorative pseudo-element is  */
+/* pointer-events:none, so gameplay clicks are completely untouched.      */
+/* This block sits last so its skin wins over the base rules above.      */
+/* ==================================================================== */
+:root {
+  /* Filigree gold (three stops for bevelled gilding). */
+  --cmp-gold: #d9b25a;
+  --cmp-gold-bright: #f6e2a8;
+  --cmp-gold-deep: #6e4e1f;
+  /* Royal-blue leather band. */
+  --cmp-blue: #3f6bb5;
+  --cmp-blue-deep: #21406f;
+  /* Black-marble panel interior. */
+  --cmp-marble-1: #262a34;
+  --cmp-marble-2: #14161d;
+  --cmp-marble-3: #0d0f14;
+  /* Bronze rule + leather table. */
+  --cmp-bronze: #b08d5a;
+  --cmp-leather: url("/assets/ui/layout/leather.jpg");
+  --cmp-separator: url("/assets/ui/layout/separator.png");
+  --cmp-frame-banner: url("/assets/ui/layout/frame-banner.png");
+  /* The gilded concentric frame: gold → blue → deep-gold banding read from
+     the edge inward, an inner shadow for depth, and a soft outer rim + drop.
+     Applied via box-shadow so it honours border-radius (border-image does
+     not) and adds zero layout. */
+  --cmp-frame:
+    inset 0 0 0 2px var(--cmp-gold),
+    inset 0 0 0 4px var(--cmp-blue-deep),
+    inset 0 0 0 6px var(--cmp-gold-deep),
+    inset 0 3px 26px rgb(0 0 0 / 55%),
+    0 0 0 2px var(--cmp-gold-deep),
+    0 24px 56px rgb(0 0 0 / 62%);
+  /* Marble fill for panel interiors. */
+  --cmp-marble-fill:
+    radial-gradient(130% 90% at 50% -6%, rgb(63 107 181 / 12%), transparent 62%),
+    linear-gradient(158deg, var(--cmp-marble-1) 0%, var(--cmp-marble-2) 56%, var(--cmp-marble-3) 100%);
+}
+
+/* ---- Reusable utilities (also used by the design preview) ----------- */
+
+/* A gilded, marble-filled ornate frame — the workhorse panel skin. */
+.ornateFrame {
+  position: relative;
+  border: none;
+  border-radius: 12px;
+  background: var(--cmp-marble-fill);
+  box-shadow: var(--cmp-frame);
+}
+
+/* An engraved gold section title over a bronze rule. */
+.compendiumHeading {
+  margin: 0;
+  text-align: center;
+  font-family: var(--font-heroic);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--cmp-gold-bright);
+  background: linear-gradient(180deg, #fbeec0 0%, var(--cmp-gold) 54%, #a67c33 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 2px 3px rgb(0 0 0 / 65%));
+}
+
+/* The bronze subsection separator from the layout kit. */
+.compendiumRule {
+  width: min(320px, 80%);
+  height: 10px;
+  margin: 2px auto 0;
+  border: 0;
+  background: var(--cmp-separator) center / 100% 100% no-repeat;
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+/* An authentic ornate banner (gold/blue/marble) for short wide titles. */
+.compendiumBanner {
+  display: grid;
+  place-items: center;
+  padding: 22px 60px;
+  border-image: var(--cmp-frame-banner) 70 110 fill / 40px 90px stretch;
+  color: var(--cmp-gold-bright);
+  font-family: var(--font-heroic);
+}
+
+/* ---- Pre-game chrome ------------------------------------------------ */
+
+/* Cinematic full-bleed backdrop with a slow ken-burns drift. */
+.menuShellBackdrop {
+  filter: saturate(1.04) contrast(1.05) brightness(0.6);
+  transform-origin: 55% 42%;
+  animation: cmpKenBurns 46s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+/* Deeper, warmer vignette so overlaid gold reads and the edges fall to ink. */
+.menuShellVignette {
+  background:
+    radial-gradient(ellipse at 50% 40%, transparent 26%, rgb(6 5 3 / 72%) 100%),
+    linear-gradient(180deg, rgb(6 5 3 / 62%) 0%, transparent 22%, transparent 74%, rgb(6 5 3 / 82%) 100%);
+}
+
+/* The official gold wordmark, floated above the panel. */
+.menuGameLogo {
+  width: min(560px, 82vw);
+  height: auto;
+  margin: 0 auto -2px;
+  filter: drop-shadow(0 6px 16px rgb(0 0 0 / 70%)) drop-shadow(0 0 26px rgb(217 178 90 / 22%));
+  pointer-events: none;
+  user-select: none;
+  animation: cmpLogoIn 900ms cubic-bezier(0.2, 0.85, 0.25, 1) both;
+}
+
+/* The menu / lobby panel becomes a gilded marble compendium page. */
+.menuShellPanel {
+  border: none;
+  border-radius: 14px;
+  background: var(--cmp-marble-fill);
+  box-shadow: var(--cmp-frame);
+  backdrop-filter: blur(3px);
+}
+
+/* Engraved gold title with a bronze rule beneath it. */
+.menuShellTitle,
+.loadingTitle {
+  color: var(--cmp-gold-bright);
+  background: linear-gradient(180deg, #fbeec0 0%, var(--cmp-gold) 55%, #a67c33 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 2px 4px rgb(0 0 0 / 70%));
+  font-family: var(--font-heroic);
+}
+
+.menuShellTitle::after,
+.loadingTitle::after {
+  content: "";
+  display: block;
+  width: min(280px, 72%);
+  height: 10px;
+  margin: 8px auto 0;
+  background: var(--cmp-separator) center / 100% 100% no-repeat;
+  opacity: 0.8;
+  pointer-events: none;
+}
+
+/* Themed loading bar: gold fill running through a marble channel, with a
+   travelling sheen so a long download still feels alive. */
+.loadingBar {
+  border: 1px solid var(--cmp-gold-deep);
+  background: linear-gradient(180deg, #0c0e13, #191c24);
+  box-shadow: inset 0 2px 5px rgb(0 0 0 / 60%), inset 0 0 0 1px rgb(217 178 90 / 22%);
+}
+
+.loadingBarFill {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(180deg, var(--cmp-gold-bright) 0%, var(--cmp-gold) 50%, #a67c33 100%);
+  box-shadow: 0 0 12px rgb(217 178 90 / 55%);
+}
+
+.loadingBarFill::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 30%, rgb(255 250 230 / 70%) 50%, transparent 70%);
+  transform: translateX(-120%);
+  animation: cmpSheen 1.9s ease-in-out infinite;
+  pointer-events: none;
+}
+
+/* ---- In-game HUD & board (click-safe visual overrides) -------------- */
+
+/* Brown-leather table grain beneath the existing atmosphere glows. */
+body {
+  background:
+    radial-gradient(circle at 18% 8%, rgb(93 135 100 / 12%), transparent 26rem),
+    radial-gradient(circle at 84% 14%, rgb(120 111 166 / 10%), transparent 24rem),
+    linear-gradient(160deg, rgb(23 19 16 / 90%) 0%, rgb(28 22 16 / 90%) 46%, rgb(18 20 23 / 92%) 100%),
+    var(--cmp-leather) center top / 480px repeat;
+}
+
+/* The top status ribbon → a gilded marble bar. */
+.advHud {
+  background: linear-gradient(180deg, rgb(32 35 44 / 95%), rgb(14 16 22 / 97%));
+  border: 1px solid var(--cmp-gold-deep);
+  box-shadow:
+    inset 0 0 0 1px rgb(217 178 90 / 45%),
+    inset 0 1px 0 rgb(246 226 168 / 22%),
+    0 8px 22px rgb(0 0 0 / 45%);
+}
+
+.advHudCell {
+  border-right: 1px solid rgb(217 178 90 / 26%);
+}
+
+/* Command rail dock → marble panel with a gold hairline. */
+.commandDock {
+  border: 1px solid var(--cmp-gold-deep);
+  background: linear-gradient(180deg, rgb(28 31 40 / 96%), rgb(13 15 20 / 97%));
+  box-shadow: inset 0 0 0 1px rgb(217 178 90 / 34%), 0 6px 18px rgb(0 0 0 / 42%);
+}
+
+/* Primary gilded action buttons get a bevelled gold face + hover lift.
+   Scoped away from the .ghost / heal variants so their own colours stand. */
+.commandButton:not(.ghost):not(.healCommandButton) {
+  border: 1px solid var(--cmp-gold-deep);
+  color: #2c1d08;
+  background: linear-gradient(180deg, #f4d78c 0%, var(--cmp-gold) 48%, #b98f3f 100%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 247 218 / 78%),
+    inset 0 -2px 4px rgb(110 78 31 / 45%),
+    0 2px 5px rgb(0 0 0 / 40%);
+  transition: filter 120ms ease, transform 120ms ease, box-shadow 120ms ease;
+}
+
+.commandButton:not(.ghost):not(.healCommandButton):hover {
+  filter: brightness(1.07);
+  transform: translateY(-1px);
+  box-shadow:
+    inset 0 1px 0 rgb(255 250 232 / 85%),
+    inset 0 -2px 4px rgb(110 78 31 / 45%),
+    0 5px 12px rgb(0 0 0 / 48%);
+}
+
+.commandButton:not(.ghost):not(.healCommandButton):active {
+  transform: translateY(0);
+  filter: brightness(0.98);
+}
+
+/* The .ghost secondary gets a quiet marble face (no gold bevel bleed-through). */
+.commandButton.ghost {
+  background: linear-gradient(180deg, rgb(38 41 50 / 96%), rgb(22 24 30 / 96%));
+  border: 1px solid rgb(217 178 90 / 34%);
+  box-shadow: inset 0 1px 0 rgb(246 226 168 / 12%);
+}
+
+/* Floating prompt tray → ornate gilded frame. */
+.promptTray {
+  border: none;
+  background: var(--cmp-marble-fill);
+  box-shadow: var(--cmp-frame);
+}
+
+/* Map action cards → gilded marble chips. */
+.mapFloatCard {
+  background: linear-gradient(180deg, rgb(30 33 42 / 97%), rgb(15 17 23 / 98%));
+  border: 1px solid var(--cmp-gold);
+  box-shadow:
+    inset 0 0 0 1px rgb(33 64 111 / 55%),
+    inset 0 1px 0 rgb(246 226 168 / 20%),
+    0 6px 18px rgb(0 0 0 / 52%);
+}
+
+/* Dock tiles (hand / deck / hero) → marble with a gold hairline. */
+.dockTile {
+  border: 1px solid var(--cmp-gold-deep);
+  box-shadow: inset 0 0 0 1px rgb(217 178 90 / 30%), 0 4px 12px rgb(0 0 0 / 40%);
+}
+
+/* The battlefield gets a real gilded frame — gold, royal-blue and deep-gold
+   banding around the board, the signature look of the section-heading art. */
+.battlefieldFrame {
+  border: 2px solid var(--cmp-gold-deep);
+  box-shadow:
+    inset 0 0 0 2px rgb(217 178 90 / 82%),
+    inset 0 0 0 4px rgb(33 64 111 / 62%),
+    inset 0 0 0 6px rgb(110 78 31 / 72%),
+    inset 0 0 42px rgb(0 0 0 / 42%),
+    0 24px 30px rgb(0 0 0 / 42%);
+}
+
+@keyframes cmpKenBurns {
+  from {
+    transform: scale(1) translate(0, 0);
+  }
+  to {
+    transform: scale(1.07) translate(-1.4%, -1%);
+  }
+}
+
+@keyframes cmpLogoIn {
+  from {
+    opacity: 0;
+    transform: translateY(-14px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes cmpSheen {
+  0% {
+    transform: translateX(-120%);
+  }
+  60%,
+  100% {
+    transform: translateX(240%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .menuShellBackdrop {
+    animation: none;
+  }
+  .menuGameLogo {
+    animation: none;
+  }
+  .loadingBarFill::after {
+    animation: none;
+  }
+}

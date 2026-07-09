@@ -73,7 +73,7 @@ export default function MenuPage() {
     <>
     <WelcomeNotice />
     <MenuShell
-      title="Heroes III — The Board Game"
+      logo
       footer={
         accounts ? (
           account ? (

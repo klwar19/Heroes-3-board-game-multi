@@ -90,12 +90,14 @@ export function LoadingScreen({
   const determinate = progress.total > 0;
   const percent = determinate ? Math.round((progress.loaded / progress.total) * 100) : 0;
   const art = uiArtSlot(backdrop);
+  const brand = uiArtSlot("game-logo");
 
   return (
     <main className="menuShellRoot loadingScreenRoot">
       <img alt="" aria-hidden className="menuShellBackdrop" src={assetUrl(art.src)} />
       <div aria-hidden className="menuShellVignette" />
       <div className="menuShellContent">
+        <img alt={brand.alt} className="menuGameLogo" src={assetUrl(brand.src)} />
         <section className="menuShellPanel loadingPanel">
           <h1 className="loadingTitle" suppressHydrationWarning>
             {title}
