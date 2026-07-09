@@ -88,28 +88,20 @@ describe("MenuShell", () => {
     expect(container.querySelector(".menuGameLogo")).toBeNull();
   });
 
-  it("flanks the menu with two guardian images from the registry when guardians is set", () => {
-    const { container } = render(
-      <MenuShell guardians title="Main Menu">
+  it("drops the panel box (bare) when frameless is set, and keeps it otherwise (CONTROL)", () => {
+    const { container: bare } = render(
+      <MenuShell frameless title="Main Menu">
         <p>content</p>
       </MenuShell>
     );
-    expect(container.querySelectorAll(".menuGuardian")).toHaveLength(2);
-    expect(container.querySelector(".menuGuardian.left")?.getAttribute("src")).toBe(
-      UI_ART_SLOTS["menu-guardian-left"].src
-    );
-    expect(container.querySelector(".menuGuardian.right")?.getAttribute("src")).toBe(
-      UI_ART_SLOTS["menu-guardian-right"].src
-    );
-  });
+    expect(bare.querySelector(".menuShellPanel")?.classList.contains("bare")).toBe(true);
 
-  it("omits guardians by default (CONTROL)", () => {
-    const { container } = render(
+    const { container: framed } = render(
       <MenuShell title="Main Menu">
         <p>content</p>
       </MenuShell>
     );
-    expect(container.querySelector(".menuGuardian")).toBeNull();
+    expect(framed.querySelector(".menuShellPanel")?.classList.contains("bare")).toBe(false);
   });
 
   it("plays the button click sound when a menu nav button is clicked (and not otherwise)", () => {

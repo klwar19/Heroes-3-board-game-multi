@@ -15951,25 +15951,58 @@ img.cardBack {
   animation: cmpLogoIn 900ms cubic-bezier(0.2, 0.85, 0.25, 1) both;
 }
 
-/* Menu options are BOXLESS — the plaque background / border / shadow are
-   dropped so only the secondary-skill emblem and the engraved gold words show,
-   floating over the backdrop. Legibility comes from a whisper of scrim behind
-   the text (the ::after) plus the label's own carved shadow. */
+/* FRAMELESS main menu — the panel box (background, gold frame, blur) is fully
+   removed so the options float as ONLY their emblem + engraved words directly
+   over the dragon. Opt-in via `frameless`; the lobby / hall / loading panels
+   keep their framed compendium page below. */
+.menuShellPanel.bare {
+  background: none;
+  box-shadow: none;
+  border: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  padding: 0;
+  gap: 4px;
+  width: min(560px, 100%);
+}
+
+/* Menu options are BOXLESS — no plaque, no scrim, no border, no clipped art
+   tile: only a small emblem ICON and the engraved gold words show. Deep carved
+   text shadows carry the legibility a box used to, so the dragon reads through
+   everywhere around. */
 .menuNavButton {
+  overflow: visible; /* stop clipping the emblem into a rounded-rect "box" */
+  min-height: 0;
+  padding: 8px 14px;
+  gap: 6px;
   border-color: transparent;
   background: transparent;
   box-shadow: none;
 }
 
 .menuNavButton::after {
-  background: radial-gradient(120% 82% at 50% 50%, rgb(6 10 20 / 46%) 0%, rgb(6 10 20 / 16%) 58%, transparent 100%);
+  content: none; /* drop the dark scrim entirely — see the dragon behind */
+}
+
+/* The emblem is now a small, uniform icon sitting ABOVE the words (not a large
+   full-bleed art clipped to the button rectangle). */
+.menuNavIcon {
+  position: static;
+  left: auto;
+  top: auto;
+  width: 52px;
+  height: 52px;
+  transform: none;
+  object-fit: contain;
+  opacity: 1;
+  filter: drop-shadow(0 2px 5px rgb(0 0 0 / 92%));
 }
 
 .menuNavButton:hover:not(:disabled) {
   border-color: transparent;
   background: transparent;
   box-shadow: none;
-  filter: brightness(1.12) drop-shadow(0 0 12px rgb(120 170 235 / 42%));
+  filter: brightness(1.12) drop-shadow(0 0 10px rgb(120 170 235 / 48%));
 }
 
 .menuNavButton:disabled {
@@ -15978,35 +16011,15 @@ img.cardBack {
   box-shadow: none;
 }
 
-/* Faint monochrome guardians flanking the menu column — purely decorative,
-   bled off the bottom corners, well behind the option words. */
-.menuGuardian {
-  position: absolute;
-  bottom: -3vh;
-  height: min(76vh, 740px);
-  width: auto;
-  z-index: 0;
-  opacity: 0.16;
-  filter: grayscale(1) brightness(1.15) drop-shadow(0 6px 22px rgb(0 0 0 / 60%));
-  pointer-events: none;
-  user-select: none;
-  animation: cmpGuardianIn 1200ms ease-out both;
+/* Carve the words hard enough to read over the dragon with no box behind. */
+.menuNavLabel {
+  filter: drop-shadow(0 1px 1px rgb(0 0 0)) drop-shadow(0 2px 6px rgb(0 0 0 / 94%))
+    drop-shadow(0 0 3px rgb(0 0 0));
 }
 
-.menuGuardian.left {
-  left: max(-4vw, -90px);
-  transform: scaleX(-1); /* face inward toward the panel */
-}
-
-.menuGuardian.right {
-  right: max(-4vw, -90px);
-}
-
-@media (max-width: 760px) {
-  /* Too cramped beside the panel on phones — hide the flanking art. */
-  .menuGuardian {
-    display: none;
-  }
+.menuNavButton small {
+  color: #e7eefb;
+  text-shadow: 0 1px 2px rgb(0 0 0), 0 2px 7px rgb(0 0 0 / 96%), 0 0 4px rgb(0 0 0);
 }
 
 /* The menu / lobby panel becomes a gilded compendium page — kept MUCH more
@@ -16251,16 +16264,6 @@ body {
   }
 }
 
-/* Guardians fade in only (no transform, so .left keeps its scaleX flip). */
-@keyframes cmpGuardianIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 0.16;
-  }
-}
-
 @keyframes cmpSheen {
   0% {
     transform: translateX(-120%);
@@ -16276,9 +16279,6 @@ body {
     animation: none;
   }
   .menuGameLogo {
-    animation: none;
-  }
-  .menuGuardian {
     animation: none;
   }
   .loadingBarFill::after {
