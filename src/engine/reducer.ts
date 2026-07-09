@@ -3462,7 +3462,7 @@ function resolveDefendBonus(
   state: GameState,
   stackItem: ResolutionStackItem,
   details: NonNullable<ReturnType<typeof getAttackStackDetails>>
-): { roll: number; bonus: number } | null {
+): { roll: number | null; bonus: number } | null {
   // A real Defense token, a virtual one from an adjacent Halberdier's "Phalanx"
   // aura, or a Creature Bank card's "treated as if it had a Defense token while
   // Stacked" (Dwarven Treasury Dwarves, Dragon Utopia Crystal Dragons) lets the
@@ -3478,6 +3478,14 @@ function resolveDefendBonus(
   const combat = state.combat;
   if (!combat) {
     return null;
+  }
+  // Plastic Tray (Astrologers): while face up, a defending unit's shield pays a
+  // FLAT +1 Defense and NO Defend die is rolled at all — so die-triggered
+  // extras (the morale forced-reroll / -1-next-roll cards, Merist's
+  // shield-on-zero) never fire, exactly as "roll no Attack dice" prints.
+  const proclamation = getActiveAstrologersCard(state)?.effect;
+  if (proclamation?.type === "DEFEND_FLAT_BONUS") {
+    return { roll: null, bonus: proclamation.amount + getDefendBonus(details.defender) };
   }
   if (stackItem.modifiers.defendRoll === undefined) {
     let defendRoll = rollAttackDie(combat);
@@ -3706,7 +3714,7 @@ function finishResolvedAttack(
     details.attackBonus,
     details.defenseBonus,
     defendBonus,
-    defend?.roll,
+    defend?.roll ?? undefined,
     resolvedCandidate,
     details.dieMultiplier,
     details.abilityAttack?.baseAttack,

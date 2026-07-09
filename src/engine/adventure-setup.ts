@@ -295,10 +295,16 @@ function makeSharedDecks(seed: string, splitDecks: boolean): Record<string, Deck
   };
 }
 
-function makeAstrologersDeck(seed: string): DeckState {
+function makeAstrologersDeck(seed: string, eventsOn: boolean): DeckState {
+  // Forty Thieves modifies the Event draw; without the (optional, multiplayer
+  // only) Event deck it would be printed dead weight, so it only shuffles in
+  // when the Event deck exists in this game.
+  const cardIds = eventsOn
+    ? astrologersDeckCardIds
+    : astrologersDeckCardIds.filter((id) => id !== "astrologers.forty_thieves");
   return {
     id: ASTROLOGERS_DECK_ID,
-    drawPile: shuffleCards(astrologersDeckCardIds, `${seed}#astrologers`),
+    drawPile: shuffleCards(cardIds, `${seed}#astrologers`),
     discardPile: []
   };
 }
@@ -791,7 +797,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     decks: {
       ...makeSharedDecks(seed, houseRules["split-decks"]),
       ...makeNeutralDecks(seed, wog),
-      [ASTROLOGERS_DECK_ID]: makeAstrologersDeck(seed),
+      [ASTROLOGERS_DECK_ID]: makeAstrologersDeck(seed, eventsOn),
       ...(moraleCardsOn ? makeMoraleDecks(seed) : {}),
       // The Event deck exists only when the optional rule is on AND the table
       // is multiplayer — its absence is the engine's off switch.

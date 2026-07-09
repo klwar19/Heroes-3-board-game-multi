@@ -245,15 +245,13 @@ export function freeSpellBookActive(state: GameState): boolean {
   return getActiveAstrologersCard(state)?.effect.type === "FREE_SPELL_BOOK" && state.round % 2 === 0;
 }
 
-/** Hand limit including temporary Astrologers effects (Profuse Growth). */
+/** Hand limit including temporary Astrologers effects (Profuse Growth / Restart). */
 export function effectiveHandLimit(state: GameState, playerId: PlayerId): number {
   const player = state.players[playerId];
   if (!player) {
     return 0;
   }
 
-  const active = getActiveAstrologersCard(state);
-  const bonus = active?.effect.type === "HAND_LIMIT_MODIFIER" ? active.effect.amount : 0;
   // In-play permanents may raise the hand limit (Pandora's "hand +1").
   // Computed inline: permanents.ts imports this module, so it cannot be
   // imported back from here.
@@ -262,7 +260,18 @@ export function effectiveHandLimit(state: GameState, playerId: PlayerId): number
     (total, cardId) => total + (cardLibrary[cardId]?.permanentEffect?.handLimitBonus ?? 0),
     0
   );
-  return Math.max(1, player.limits.hand + bonus + permanentBonus);
+  const base = player.limits.hand + permanentBonus;
+
+  const active = getActiveAstrologersCard(state);
+  let limit = base;
+  if (active?.effect.type === "HAND_LIMIT_MODIFIER") {
+    const shifted = base + active.effect.amount;
+    // Restart's "reduced by 2, to a minimum of 4": the floor caps the reduction
+    // but never RAISES a limit already at or below it. Profuse Growth carries
+    // no minimum and shifts unconditionally.
+    limit = active.effect.minimum !== undefined ? Math.max(Math.min(base, active.effect.minimum), shifted) : shifted;
+  }
+  return Math.max(1, limit);
 }
 
 /** Base movement points of a Secondary Hero — buffs raise it from here. */
@@ -2132,6 +2141,42 @@ export function eliminatePlayer(
     if (events?.deal && events.deal.proposerId === playerId && !events.deal.done) {
       events.deal = null;
     }
+    // Forty Thieves: the two drawn Event cards are custodied in
+    // events.pendingPick, so an elimination never destroys them — but if the
+    // seat's cleanup above just dropped the OPEN pick (its queued reward or its
+    // open visit), somebody still has to answer it or the round resolves no
+    // Event and the pair leaks out of the deck. Re-queue the pick at the FRONT
+    // for the next live seat (the queued-reward case is already re-owned via
+    // isSharedEventBookkeepingReward and detected here as still referenced);
+    // with no live seat left, void the pick back onto the top of the deck.
+    if (events?.pendingPick) {
+      const referencesFortyPick = (steps: VisitStep[]): boolean =>
+        steps.some(
+          (step) =>
+            step.type === "EVENT_FORTY_PICK" ||
+            step.type === "EVENT_FORTY_RESOLVE" ||
+            (step.type === "CHOOSE_ONE" && step.options.some((option) => referencesFortyPick(option.steps)))
+        );
+      const stillReferenced =
+        state.adventure.rewardQueue.some(
+          (reward) => reward.kind === "visit-steps" && referencesFortyPick(reward.steps)
+        ) || Boolean(state.adventure.pendingVisit && referencesFortyPick(state.adventure.pendingVisit.steps));
+      if (!stillReferenced) {
+        if (nextLiveId) {
+          state.adventure.rewardQueue.unshift({
+            playerId: nextLiveId,
+            kind: "visit-steps",
+            steps: [{ type: "EVENT_FORTY_PICK" }]
+          });
+        } else {
+          const deck = state.decks[EVENTS_DECK_ID];
+          for (const cardId of [...events.pendingPick.cardIds].reverse()) {
+            deck?.drawPile.push(cardId);
+          }
+          events.pendingPick = null;
+        }
+      }
+    }
   }
 
   // An OPEN choice owned by the seat is the same table-freezing trap as a
@@ -2969,6 +3014,8 @@ export function processPendingVisit(state: GameState): void {
       }
       // Event cards (Fortress expansion): every EVENT_* step plus the shared
       // LOSE_RESOURCES / SPEND_HERO_MOVEMENT leaves resolve in one place.
+      case "EVENT_FORTY_PICK":
+      case "EVENT_FORTY_RESOLVE":
       case "EVENT_PLAYER_CHOICE":
       case "EVENT_CHANGE_MORALE":
       case "LOSE_RESOURCES":
@@ -6912,6 +6959,69 @@ function queueTurnStartBuildingChoices(state: GameState, playerId: PlayerId): vo
 // Astrologers Proclaim (even rounds)
 // ---------------------------------------------------------------------------
 
+/**
+ * Proclamations whose printed exception says "drawn on the first Astrologers'
+ * round: discard it and draw another card" (Friendly Beaver, Restart).
+ */
+const FIRST_ROUND_REDRAWN_PROCLAMATIONS: ReadonlySet<string> = new Set<string>([
+  "astrologers.friendly_beaver",
+  "astrologers.restart"
+]);
+
+/** A Neutral-deck card the Elementals proclamation digs for. */
+function isNeutralElementalUnit(unitDefId: string): boolean {
+  return Boolean(coreUnitDefinitions[unitDefId]?.name.includes("Elemental"));
+}
+
+/**
+ * Elementals (Astrologers, Conflux): "For each Neutral Unit deck except Azure,
+ * discard until you find an Elemental. Place each Elemental face up on top of
+ * its deck." Each of the bronze/silver/gold decks is dug top-down; discarded
+ * non-Elementals go to the tier's discard pile. A draw pile that exhausts
+ * mid-dig reshuffles its discards back in ONCE (the printed exhausted-deck
+ * rule) and keeps digging; a deck with no Elemental left anywhere (all at
+ * large in armies) is skipped. The seeded Elemental stays on top, so the next
+ * guard drawn from that deck IS the Elemental. The engine has no face-up deck
+ * display, so a feed note names the seeded cards — the same public information
+ * the physical face-up cards give the table.
+ */
+function seedNeutralElementals(state: GameState): void {
+  const seeded: string[] = [];
+  for (const tier of ["bronze", "silver", "gold"] as const) {
+    const deck = state.decks[NEUTRAL_DECK_IDS[tier]];
+    if (!deck) {
+      continue;
+    }
+    let reshuffled = false;
+    for (;;) {
+      if (deck.drawPile.length === 0) {
+        if (reshuffled || deck.discardPile.length === 0) {
+          break;
+        }
+        deck.drawPile = shuffleCards(
+          deck.discardPile,
+          `${state.seed}#astrologers-elementals#${tier}#${eventSeedNumber(state)}`
+        );
+        deck.discardPile = [];
+        reshuffled = true;
+        continue;
+      }
+      const top = deck.drawPile[deck.drawPile.length - 1];
+      if (isNeutralElementalUnit(top)) {
+        seeded.push(coreUnitDefinitions[top]?.name ?? top);
+        break;
+      }
+      deck.discardPile.push(deck.drawPile.pop() as string);
+    }
+  }
+  if (seeded.length > 0) {
+    appendEvent(state, {
+      type: "EVENT_NOTE",
+      message: `Elementals: ${seeded.join(", ")} now sit face up on top of the Neutral decks.`
+    });
+  }
+}
+
 function expireActiveAstrologersCard(state: GameState): void {
   const astrologers = getAstrologersState(state);
   const deck = state.decks[ASTROLOGERS_DECK_ID];
@@ -6949,11 +7059,18 @@ export function drawAstrologersCard(state: GameState): void {
 
   let cardId = popAstrologersCard(state);
 
-  // Friendly Beaver drawn on the first Astrologers round: discard it and
-  // draw another card (its printed exception).
-  if (cardId === "astrologers.friendly_beaver" && state.round === 2) {
-    state.decks[ASTROLOGERS_DECK_ID]?.discardPile.push(cardId);
-    cardId = popAstrologersCard(state);
+  // Friendly Beaver / Restart drawn on the first Astrologers round: discard it
+  // and draw another card (their printed exception). Bounded by the deck size
+  // so a (hypothetical) deck holding only first-round-redraw cards keeps the
+  // last one drawn instead of looping through the reshuffle forever.
+  if (state.round === 2) {
+    const deck = state.decks[ASTROLOGERS_DECK_ID];
+    let redrawsLeft = (deck?.drawPile.length ?? 0) + (deck?.discardPile.length ?? 0);
+    while (cardId && FIRST_ROUND_REDRAWN_PROCLAMATIONS.has(cardId) && redrawsLeft > 0) {
+      deck?.discardPile.push(cardId);
+      cardId = popAstrologersCard(state);
+      redrawsLeft -= 1;
+    }
   }
 
   if (!cardId) {
@@ -7005,6 +7122,8 @@ function resolveAstrologersCard(state: GameState, card: AstrologersCardDefinitio
     case "NEUTRAL_REDRAW_ALL":
     case "SEA_CONTINUE_AFTER_EMBARK":
     case "FREE_SPELL_BOOK":
+    case "DEFEND_FLAT_BONUS":
+    case "EVENT_DRAW_PICK":
       // Passive while the card stays face up (read where the effect applies:
       // Sanctuary's PvP ban in startPlayerCombat via pvpAttacksBanned; the Spells
       // Search widening in openSharedDeckSearch; Pirates' combat-win die in
@@ -7017,7 +7136,9 @@ function resolveAstrologersCard(state: GameState, card: AstrologersCardDefinitio
       // Ammo Cart's war-machine buffs are read
       // in permanents.ts / reducer.ts; McGiver's free war machine is handed out
       // at the next Resource round, see startAdventureRound; Explorers' empower is
-      // granted per the cards discarded in each hand refresh, see refreshHand).
+      // granted per the cards discarded in each hand refresh, see refreshHand;
+      // Plastic Tray's flat Defend payout in resolveDefendBonus (reducer.ts);
+      // Forty Thieves' 2-card Event draw in drawEventCard).
       break;
     case "GAIN_MORALE_ALL":
       for (const playerId of playerIds) {
@@ -7038,6 +7159,9 @@ function resolveAstrologersCard(state: GameState, card: AstrologersCardDefinitio
       for (const field of Object.values(adventure.fields)) {
         field.blackCube = false;
       }
+      break;
+    case "SEED_NEUTRAL_ELEMENTALS":
+      seedNeutralElementals(state);
       break;
     case "REMOVE_PERMANENT_FOR_GOLD":
       // Destruction: every player holding a permanent must Remove it (out of the
@@ -8428,7 +8552,10 @@ function liveEventPlayers(state: GameState): PlayerId[] {
 const SHARED_EVENT_BOOKKEEPING_STEP_TYPES = new Set<VisitStep["type"]>([
   "EVENT_POOL_CLEANUP",
   "EVENT_AUCTION_OPEN",
-  "EVENT_AUCTION_RESOLVE"
+  "EVENT_AUCTION_RESOLVE",
+  // Forty Thieves' "which Event resolves" pick reads events.pendingPick, never
+  // visit.playerId — the next live seat can answer it just as well.
+  "EVENT_FORTY_PICK"
 ]);
 
 /** A queued reward that ONLY does shared Event bookkeeping (safe to reassign). */
@@ -8446,6 +8573,42 @@ function eventNote(state: GameState, message: string, playerId?: PlayerId): void
 
 function eventPlayerName(state: GameState, playerId: PlayerId): string {
   return state.players[playerId]?.name ?? playerId;
+}
+
+/**
+ * Advances the rotating Event drawer and returns who draws THIS Event. The
+ * drawer rotates clockwise per draw — by IDENTITY, not by index into the
+ * live-player list: after an elimination a bare index would point at the
+ * wrong seat (the same player drawing twice in a row, or a seat skipped).
+ * The full seat ring is read from `state.players` (insertion = seat order,
+ * eliminated seats included) so the clockwise successor stays correct even
+ * when the previous drawer was just eliminated. Legacy snapshots without
+ * `lastDrawerId` fall back to the stored index once.
+ */
+function advanceEventDrawer(state: GameState, events: EventsState, order: PlayerId[]): PlayerId {
+  let drawerSeat = events.nextDrawerIndex % order.length;
+  if (events.lastDrawerId) {
+    const seating = Object.keys(state.players).filter((id) => id !== NEUTRAL_PLAYER_ID);
+    const lastSeat = seating.indexOf(events.lastDrawerId);
+    if (lastSeat !== -1) {
+      for (let offset = 1; offset <= seating.length; offset += 1) {
+        const liveIndex = order.indexOf(seating[(lastSeat + offset) % seating.length]);
+        if (liveIndex !== -1) {
+          drawerSeat = liveIndex;
+          break;
+        }
+      }
+    }
+  }
+  events.lastDrawerId = order[drawerSeat];
+  events.nextDrawerIndex = (drawerSeat + 1) % order.length;
+  return order[drawerSeat];
+}
+
+/** The live-player list rotated to start at `anchorId` (clockwise resolution order). */
+function clockwiseEventOrder(order: PlayerId[], anchorId: PlayerId): PlayerId[] {
+  const anchorIndex = Math.max(0, order.indexOf(anchorId));
+  return [...order.slice(anchorIndex), ...order.slice(0, anchorIndex)];
 }
 
 /**
@@ -8477,36 +8640,47 @@ export function drawEventCard(state: GameState): void {
     deck.drawPile = shuffleCards(deck.discardPile, `${state.seed}#events-reshuffle#${eventSeedNumber(state)}`);
     deck.discardPile = [];
   }
+
+  // Forty Thieves (Astrologers): while face up, the draw pops TWO cards and the
+  // drawer picks which one resolves; the other goes to the bottom of the deck.
+  // The pick is queued as the round-start event resolution itself, so the event
+  // barrier freezes the table until the pick AND the picked Event resolve. With
+  // fewer than 2 cards available even after the reshuffle above (one exhausted
+  // physical deck), the draw falls back to the normal single-card path.
+  if (getActiveAstrologersCard(state)?.effect.type === "EVENT_DRAW_PICK" && state.adventure) {
+    if (deck.drawPile.length === 1 && deck.discardPile.length > 0) {
+      // Mid-draw exhaustion: the second card comes off the reshuffled discards,
+      // which stack UNDER the remaining known top card.
+      deck.drawPile = [
+        ...shuffleCards(deck.discardPile, `${state.seed}#events-reshuffle#${eventSeedNumber(state)}`),
+        ...deck.drawPile
+      ];
+      deck.discardPile = [];
+    }
+    if (deck.drawPile.length >= 2) {
+      const drawerId = advanceEventDrawer(state, events, order);
+      const first = deck.drawPile.pop() as CardId;
+      const second = deck.drawPile.pop() as CardId;
+      events.pendingPick = { cardIds: [first, second], drawerId };
+      eventNote(
+        state,
+        `Forty Thieves: ${eventPlayerName(state, drawerId)} draws 2 Event cards — ${
+          eventCardDefinitions[first]?.name ?? first
+        } and ${eventCardDefinitions[second]?.name ?? second} — and chooses which one resolves.`
+      );
+      state.adventure.rewardQueue.push({ playerId: drawerId, kind: "visit-steps", steps: [{ type: "EVENT_FORTY_PICK" }] });
+      return;
+    }
+  }
+
   const cardId = deck.drawPile.pop();
   const card = cardId ? eventCardDefinitions[cardId] : undefined;
   if (!cardId || !card) {
     return;
   }
 
-  // The drawer rotates clockwise per draw — by IDENTITY, not by index into the
-  // live-player list: after an elimination a bare index would point at the
-  // wrong seat (the same player drawing twice in a row, or a seat skipped).
-  // The full seat ring is read from `state.players` (insertion = seat order,
-  // eliminated seats included) so the clockwise successor stays correct even
-  // when the previous drawer was just eliminated. Legacy snapshots without
-  // `lastDrawerId` fall back to the stored index once.
-  let drawerSeat = events.nextDrawerIndex % order.length;
-  if (events.lastDrawerId) {
-    const seating = Object.keys(state.players).filter((id) => id !== NEUTRAL_PLAYER_ID);
-    const lastSeat = seating.indexOf(events.lastDrawerId);
-    if (lastSeat !== -1) {
-      for (let offset = 1; offset <= seating.length; offset += 1) {
-        const liveIndex = order.indexOf(seating[(lastSeat + offset) % seating.length]);
-        if (liveIndex !== -1) {
-          drawerSeat = liveIndex;
-          break;
-        }
-      }
-    }
-  }
-  events.lastDrawerId = order[drawerSeat];
-  events.nextDrawerIndex = (drawerSeat + 1) % order.length;
-  const rotated = [...order.slice(drawerSeat), ...order.slice(0, drawerSeat)];
+  const drawerId = advanceEventDrawer(state, events, order);
+  const rotated = clockwiseEventOrder(order, drawerId);
 
   events.activeCardId = cardId;
   appendEvent(state, {
@@ -9063,6 +9237,70 @@ function applyEventVisitStep(state: GameState, visit: PendingVisit, step: VisitS
   const events = getEventsState(state);
 
   switch (step.type) {
+    case "EVENT_FORTY_PICK": {
+      // Forty Thieves: the pick menu is rebuilt from events.pendingPick (the
+      // custodied pair), never from step data — so the SAME step re-queued for
+      // the next live seat after an elimination reopens the identical choice.
+      const pick = events?.pendingPick;
+      if (!pick || pick.cardIds.length === 0) {
+        break;
+      }
+      visit.steps.unshift({
+        type: "CHOOSE_ONE",
+        prompt: "Forty Thieves: choose which Event card resolves (the other goes to the bottom of the Event deck)",
+        options: pick.cardIds.map((cardId) => {
+          const card = eventCardDefinitions[cardId];
+          return {
+            label: `${card?.name ?? cardId} — ${card?.text ?? ""}`,
+            steps: [{ type: "EVENT_FORTY_RESOLVE", cardId }]
+          };
+        })
+      });
+      break;
+    }
+    case "EVENT_FORTY_RESOLVE": {
+      const adventure = state.adventure;
+      const pick = events?.pendingPick;
+      const deck = state.decks[EVENTS_DECK_ID];
+      if (!events || !adventure || !pick || !deck || !pick.cardIds.includes(step.cardId)) {
+        break;
+      }
+      events.pendingPick = null;
+      for (const other of pick.cardIds) {
+        if (other !== step.cardId) {
+          // "Put the other at the bottom of the Event deck" (pop draws the end).
+          deck.drawPile.unshift(other);
+        }
+      }
+      const card = eventCardDefinitions[step.cardId];
+      if (!card) {
+        break;
+      }
+      // Clockwise resolution from the ORIGINAL drawer; if an elimination handed
+      // the pick on, the answering seat anchors instead.
+      const live = liveEventPlayers(state);
+      const anchorId = live.includes(pick.drawerId) ? pick.drawerId : visit.playerId;
+      const rotated = clockwiseEventOrder(live, anchorId);
+      events.activeCardId = step.cardId;
+      appendEvent(state, {
+        type: "EVENT_CARD_DRAWN",
+        cardId: step.cardId,
+        name: card.name,
+        text: card.text,
+        round: state.round,
+        drawerId: rotated[0]
+      });
+      // The picked Event's per-player resolution must run BEFORE the round-start
+      // barrier sentinel (and before the City-Hall / turn-start rewards queued
+      // behind it). resolveEventCard pushes to the queue's END, so splice its
+      // additions to the FRONT in order — the same "event follow-ups run ahead
+      // of the sentinel" rule every mid-Event unshift follows.
+      const before = adventure.rewardQueue.length;
+      resolveEventCard(state, card, rotated);
+      const added = adventure.rewardQueue.splice(before);
+      adventure.rewardQueue.unshift(...added);
+      break;
+    }
     case "EVENT_PLAYER_CHOICE": {
       const card = eventCardDefinitions[step.eventCardId];
       if (card) {

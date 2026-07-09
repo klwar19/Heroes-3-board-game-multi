@@ -57,7 +57,10 @@ const WIRED_EFFECT_TYPES = {
   NEUTRAL_DIFFICULTY_LOWER: true,
   NEUTRAL_REDRAW_ALL: true,
   SEA_CONTINUE_AFTER_EMBARK: true,
-  FREE_SPELL_BOOK: true
+  FREE_SPELL_BOOK: true,
+  SEED_NEUTRAL_ELEMENTALS: true,
+  DEFEND_FLAT_BONUS: true,
+  EVENT_DRAW_PICK: true
 } satisfies Record<AstrologersEffect["type"], true>;
 
 // Exhaustive public index from https://en.homm3bg.wiki/astrologers_proclaim/.
