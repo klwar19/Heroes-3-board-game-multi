@@ -1,6 +1,13 @@
 import { cardLibrary } from "@/data/cards/library";
 import { countExtraBallistas, effectiveInitiative, hasBallistaChooseTarget, makeActiveEffect } from "./active-effects";
-import { gainResources, getActiveAstrologersCard, hasResources, processPendingVisit, spendResources } from "./adventure";
+import {
+  gainResources,
+  getActiveAstrologersCard,
+  hasResources,
+  processPendingVisit,
+  rollPandoraIncomePermanentDie,
+  spendResources
+} from "./adventure";
 import { isAdjacent } from "./battlefield";
 import { finishCombatIfNeeded, markUnitRemovedIfNeeded } from "./combat-units";
 import { destroyFortification, fortificationTargets, parseFortificationTargetId } from "./siege";
@@ -346,6 +353,13 @@ export function putPermanentIntoPlay(state: GameState, playerId: PlayerId, cardI
     cardId,
     replacedCardId
   });
+
+  // Pandora's Gift: Income — the ∞ permanent rolls its Resource die as it
+  // enters play; the rolled resource pays a full income tier each Resources
+  // round for as long as the card stays in play (startAdventureRound).
+  if (card.permanentEffect?.incomeTierDieOnEnter) {
+    rollPandoraIncomePermanentDie(state, playerId);
+  }
 
   applyPermanentCombatEffectsForPlayer(state, playerId);
 }

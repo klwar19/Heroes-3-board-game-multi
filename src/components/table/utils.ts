@@ -546,7 +546,11 @@ export function formatEvent(event: GameEvent, state: GameState): string {
         event.reason === "limit" ? " (over the permanent limit)" : ""
       }.`;
     case "PANDORA_CARD_DRAWN":
-      return `${playerName(state, event.playerId)} opens Pandora's Box and draws ${cardName(event.cardId)}.`;
+      // Other viewers get the card id masked (player-view) — the card lands in
+      // a hidden hand, so the feed only names it for the drawer.
+      return event.cardId === "hidden"
+        ? `${playerName(state, event.playerId)} opens Pandora's Box and draws a card.`
+        : `${playerName(state, event.playerId)} opens Pandora's Box and draws ${cardName(event.cardId)}.`;
     case "ARTIFACT_DUG":
       return `${playerName(state, event.playerId)} digs up ${cardName(event.cardId)} and ${event.kept ? "keeps it" : "discards it"}.`;
     case "WAR_MACHINE_TRIGGERED":

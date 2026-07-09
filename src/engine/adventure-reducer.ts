@@ -164,8 +164,8 @@ import {
 } from "./parallel-turns";
 import {
   applyPermanentCombatEffects,
-  discardPermanentFromPlay,
   getPermanentCardIds,
+  removePermanentFromPlayToRemoved,
   resolveWarMachineOption,
   startWarMachineRound
 } from "./permanents";
@@ -8338,12 +8338,14 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
       player.pandoraUpkeepResolvedThisTurn = true;
     }
     if (action.optionIndex === 0) {
-      // Remove the upkeep permanent from play (to the discard pile).
+      // "Remove this card": the rulebook Remove keyword — the card leaves the
+      // GAME (removed pile), not the discard, so it can never be recalled and
+      // replayed for another free +1 Power run.
       const cardId = getPermanentCardIds(state, action.playerId).find(
         (id) => cardLibrary[id]?.permanentEffect?.endTurnUpkeep === "remove-or-negative-morale"
       );
       if (cardId) {
-        discardPermanentFromPlay(state, action.playerId, cardId);
+        removePermanentFromPlayToRemoved(state, action.playerId, cardId);
       }
     } else {
       // Keep the card; take a Negative Morale token instead.

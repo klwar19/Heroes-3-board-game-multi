@@ -22,7 +22,6 @@ export const implementedCardEffectTypes = [
   "RECALL_SPELL",
   "ENTER_PLAY",
   "GAIN_RESOURCES",
-  "RAISE_INCOME_BY_DIE",
   "DRAW_NEUTRAL_RECRUIT_OFFER",
   "RESOURCE_FORTUNE_PLAY",
   "GAIN_RECRUIT_DISCOUNT",
@@ -431,6 +430,11 @@ export function describePermanentEffect(card: CardDefinition): string {
       `gain ${permanent.resourceRoundGain.amount} ${permanent.resourceRoundGain.resource} at the start of each Resources round`
     );
   }
+  if (permanent.incomeTierDieOnEnter) {
+    parts.push(
+      "entering play rolls 1 Resource die; while in play, gain that resource's full income tier (+5 gold / +2 materials / +1 valuables) each Resources round"
+    );
+  }
   if (permanent.permanentLimitOverride) {
     parts.push(`you may keep up to ${permanent.permanentLimitOverride} permanent cards in play, including this one`);
   }
@@ -617,10 +621,6 @@ export function describeCardEffect(card: CardDefinition): string {
               : "";
     const top = card.effect.fromTop ? ` (top ${card.effect.fromTop})` : "";
     return `take ${card.effect.count}${filter} card${card.effect.count === 1 ? "" : "s"} from your discard pile${top}`;
-  }
-
-  if (card.effect.type === "RAISE_INCOME_BY_DIE") {
-    return "roll 1 Resource die and raise that resource's income by one tier";
   }
 
   if (card.effect.type === "DRAW_NEUTRAL_RECRUIT_OFFER") {

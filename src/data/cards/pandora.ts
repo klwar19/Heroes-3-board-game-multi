@@ -92,26 +92,37 @@ export const pandoraCards: CardLibrary = {
     implementationStatus: "implemented",
     source: pandoraSource
   },
-  // engine: a map play that rolls 1 Resource die and raises that resource's
-  // production by one resource-gain level (+5 gold / +2 materials / +1
-  // valuables) — RAISE_INCOME_BY_DIE. (Card 174) See pandora-cards.test.ts.
+  // engine: a PERMANENT (the card scan carries the printed ∞ marker and the
+  // reminder "the effect of this card lasts only as long as it is in play").
+  // Entering play rolls 1 Resource die (incomeTierDieOnEnter); while the card
+  // stays in play the owner gains that resource's FULL income tier (+5 gold /
+  // +2 materials / +1 valuables) at every Resources round, on top of
+  // production. Leaving play (replaced, discarded, Destruction) stops the
+  // boost. (Card 174) See pandora-cards.test.ts.
   "pandora.resource_income": {
     id: "pandora.resource_income",
     name: "Pandora's Gift: Income",
     kind: "pandora",
-    timing: "map",
+    timing: "ongoing",
     tags: [
       "pandora",
-      "Roll 1 Resource die and increase the income of the corresponding resource by 1 tier."
+      "permanent",
+      "Roll 1 Resource die and increase the income of the corresponding resource by 1 tier.",
+      "Remember, the effect of this card lasts only as long as it is in play."
     ],
-    effect: { type: "RAISE_INCOME_BY_DIE" },
+    permanent: true,
+    permanentEffect: {
+      incomeTierDieOnEnter: true
+    },
+    effect: { type: "ENTER_PLAY" },
     assets: { cardImage: art("resource_income"), imageAlt: "Pandora's Box card: raise a resource's income" },
     implementationStatus: "implemented",
     source: pandoraSource
   },
-  // engine: a map play that draws 3 bronze Neutral units and offers to Recruit
-  // ONE at half its cost (rounded up); the rest return to the Neutral discard —
-  // DRAW_NEUTRAL_RECRUIT_OFFER. (Card 182) See pandora-cards.test.ts.
+  // engine: a map play that draws 3 SILVER Neutral units (the card's star icon
+  // is the silver tier — confirmed against the scan and the wiki) and offers to
+  // Recruit ONE at half its cost (rounded up); the rest return to the Neutral
+  // discard — DRAW_NEUTRAL_RECRUIT_OFFER. (Card 182) See pandora-cards.test.ts.
   "pandora.neutral_recruits": {
     id: "pandora.neutral_recruits",
     name: "Pandora's Gift: Recruits",
@@ -119,9 +130,9 @@ export const pandoraCards: CardLibrary = {
     timing: "map",
     tags: [
       "pandora",
-      "Draw 3 cards from the Neutral Unit deck. You can Recruit one of these units if you pay half of its recruit cost rounded up."
+      "Draw 3 cards from the Silver Neutral Unit deck. You can Recruit one of these units if you pay half of its recruit cost rounded up."
     ],
-    effect: { type: "DRAW_NEUTRAL_RECRUIT_OFFER", count: 3, tier: "bronze" },
+    effect: { type: "DRAW_NEUTRAL_RECRUIT_OFFER", count: 3, tier: "silver" },
     assets: { cardImage: art("neutral_recruits"), imageAlt: "Pandora's Box card: draw 3 Neutral recruits" },
     implementationStatus: "implemented",
     source: pandoraSource
@@ -131,8 +142,9 @@ export const pandoraCards: CardLibrary = {
   // New cards (168–187, everything except the five above)
   // =========================================================================
 
-  // engine (Card 187): OR — gain 1 experience (main hero) OR the main hero gains
-  // 1 movement. Both sides queued as a main-hero visit-steps reward.
+  // engine (Card 187): OR — gain 1 experience (main hero) OR "One of your
+  // Heroes" gains 1 movement (GAIN_MOVEMENT_ANY_HERO: with a Secondary Hero on
+  // the map the owner picks which; a lone hero auto-resolves).
   "pandora.experience_or_movement": {
     id: "pandora.experience_or_movement",
     name: "Pandora's Gift: Insight or Haste",
@@ -148,7 +160,7 @@ export const pandoraCards: CardLibrary = {
         },
         {
           label: "One of your Heroes gains 1 movement",
-          effect: { type: "PANDORA_VISIT", steps: [{ type: "GAIN_MOVEMENT", amount: 1 }] }
+          effect: { type: "PANDORA_VISIT", steps: [{ type: "GAIN_MOVEMENT_ANY_HERO", amount: 1 }] }
         }
       ]
     },
@@ -183,8 +195,9 @@ export const pandoraCards: CardLibrary = {
     source: pandoraSource
   },
 
-  // engine (Card 170): OR — the main hero gains 2 movement OR remove 1 card from
-  // your hand or discard pile.
+  // engine (Card 170): OR — "One of your Heroes" gains 2 movement (owner picks
+  // the hero when a Secondary Hero is fielded) OR remove 1 card from your hand
+  // or discard pile.
   "pandora.movement_or_remove": {
     id: "pandora.movement_or_remove",
     name: "Pandora's Gift: Speed or Cleansing",
@@ -196,7 +209,7 @@ export const pandoraCards: CardLibrary = {
       options: [
         {
           label: "One of your Heroes gains 2 movement",
-          effect: { type: "PANDORA_VISIT", steps: [{ type: "GAIN_MOVEMENT", amount: 2 }] }
+          effect: { type: "PANDORA_VISIT", steps: [{ type: "GAIN_MOVEMENT_ANY_HERO", amount: 2 }] }
         },
         {
           label: "Remove 1 card from your hand or discard pile",
@@ -398,7 +411,7 @@ export const pandoraCards: CardLibrary = {
               label: "Roll 2 Resource dice (resolve one) + one Hero gains 1 movement",
               steps: [
                 { type: "ROLL_RESOURCE_DICE", count: 2 },
-                { type: "GAIN_MOVEMENT", amount: 1 }
+                { type: "GAIN_MOVEMENT_ANY_HERO", amount: 1 }
               ]
             },
             {
@@ -411,7 +424,7 @@ export const pandoraCards: CardLibrary = {
             {
               label: "One Hero gains 1 movement + gain 1 experience",
               steps: [
-                { type: "GAIN_MOVEMENT", amount: 1 },
+                { type: "GAIN_MOVEMENT_ANY_HERO", amount: 1 },
                 { type: "GAIN_EXPERIENCE", amount: 1 }
               ]
             }
