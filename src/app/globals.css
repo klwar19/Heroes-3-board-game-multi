@@ -6396,10 +6396,13 @@ button.hbSlot:disabled { cursor: default; }
   margin-top: 4px;
 }
 
-/* Setting phase backdrop: the splash art, blurred and dimmed so it sets the
-   mood without fighting the panels. Fixed + z-index:-1 keeps it behind the
-   lobby content (each panel has its own semi-opaque fill) but above the body
-   gradient. Scoped to .setupPhase so it never leaks into the live game. */
+/* Setting-phase backdrop: the Gold Dragon card art is the SHARED atmosphere for
+   the whole map-setup / hero-draft screen — one golden scene the central board
+   sits inside, so the screen reads as a single composition. Fixed + z-index:-1
+   keeps it behind the lobby content but above the body gradient; scoped to
+   .setupPhase so it never leaks into the live game. The frosted panels above
+   blur it locally, so the dragon reads crisp in the open air and softly out of
+   focus behind the hero-draft board (its "background"). */
 .setupPhase::before,
 .setupPhase::after {
   content: "";
@@ -6410,17 +6413,19 @@ button.hbSlot:disabled { cursor: default; }
 }
 
 .setupPhase::before {
-  background: url("/assets/ui/setup-wallpaper.jpg") center / cover no-repeat;
-  filter: blur(6px) brightness(0.42) saturate(0.92);
-  /* Scale up so the blur does not bleed blank edges into view. */
-  transform: scale(1.08);
+  background: url("/assets/ui/draft-gold-dragon.webp") center 20% / cover no-repeat;
+  filter: brightness(0.5) saturate(1.04) contrast(1.02);
+  /* Slight scale so the ken-burns-free image never shows a blank edge. */
+  transform: scale(1.04);
 }
 
 .setupPhase::after {
-  /* Warm-to-dark scrim so the gold panels and text stay legible over the art. */
+  /* Warm vignette: brightest through the upper-centre where the dragon sits,
+     falling to deep ink at the edges and bottom so the gold panels and text
+     all stay legible over the scene. */
   background:
-    radial-gradient(circle at 50% 24%, rgba(24, 16, 8, 0.15), transparent 60%),
-    linear-gradient(160deg, rgba(14, 10, 6, 0.52) 0%, rgba(8, 8, 11, 0.82) 100%);
+    radial-gradient(ellipse 82% 74% at 50% 30%, transparent 0%, rgb(10 7 4 / 34%) 62%, rgb(6 5 3 / 74%) 100%),
+    linear-gradient(180deg, rgb(10 7 4 / 46%) 0%, transparent 26%, transparent 62%, rgb(6 5 3 / 78%) 100%);
 }
 
 /* Frost the setting-phase panels so the art reads softly through them. */
@@ -6433,6 +6438,14 @@ button.hbSlot:disabled { cursor: default; }
 
 /* Map-setup lobby */
 .setupLobby {
+  /* Sit above the fixed backdrop scene so the panels always read on top. */
+  position: relative;
+  z-index: 1;
+  /* The grid parent (.tableRoot) orders the top bar at `order:1`; without an
+     order the lobby would default to 0 and jump ABOVE the "Map setup" top bar,
+     leaving that bar floating in the middle of the screen. Order it (and the
+     game-log drawer below) AFTER the top bar + error banner. */
+  order: 3;
   flex: 1;
   overflow-y: auto;
   display: flex;
@@ -6444,15 +6457,23 @@ button.hbSlot:disabled { cursor: default; }
   width: 100%;
 }
 
+/* Keep the game-log drawer at the bottom of the setup screen, below the lobby
+   (same reason as above — it also defaults to order 0). */
+.setupPhase > .logDrawer {
+  order: 4;
+}
+
 .setupLobby header h2 {
   margin: 0 0 6px;
   color: #ffe9bd;
+  text-shadow: 0 2px 10px rgb(0 0 0 / 82%), 0 0 4px rgb(0 0 0 / 70%);
 }
 
 .setupLobby header p {
   margin: 0;
-  color: #b89f78;
+  color: #dcc79c;
   max-width: 70ch;
+  text-shadow: 0 1px 6px rgb(0 0 0 / 88%), 0 0 3px rgb(0 0 0 / 70%);
 }
 
 /* Red take-back warning broadcast to every player when a seat resets a roll,
@@ -7026,15 +7047,27 @@ button.hbSlot:disabled { cursor: default; }
 }
 
 /* Draft & random tab. */
+/* Hero-draft board: a frosted gold-framed surface that lets the shared Gold
+   Dragon backdrop read softly THROUGH it (the dragon is the hero-draft
+   "background"), while the frost keeps every button, label and hero card
+   crisply legible. Consistent with the other setup panels' frosted-over-scene
+   language so the whole screen feels like one board. */
 .draftPanel {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 14px 16px;
-  border: 1px solid rgba(220, 175, 95, 0.4);
-  border-radius: 12px;
-  background: rgba(33, 25, 15, 0.92);
-  color: #ecd9b0;
+  padding: 16px 18px;
+  border: 1px solid rgb(222 179 99 / 55%);
+  border-radius: 14px;
+  background:
+    radial-gradient(120% 100% at 50% 0%, rgb(64 44 20 / 30%), transparent 62%),
+    rgb(24 17 9 / 58%);
+  -webkit-backdrop-filter: blur(9px) saturate(1.06);
+  backdrop-filter: blur(9px) saturate(1.06);
+  box-shadow:
+    inset 0 1px 0 rgb(246 226 168 / 20%),
+    0 12px 34px rgb(0 0 0 / 46%);
+  color: #f2e3c0;
 }
 
 .draftIntro {
@@ -15968,26 +16001,50 @@ img.cardBack {
 
 /* Menu options: NO BOX at all — the plaque (background/border/shadow) AND the
    dark scrim are removed. The emblem stays LARGE behind the engraved title so
-   the words still cross the icon; its rectangular edges are masked to
-   transparent so it blends into the dragon instead of reading as a tile. */
+   the words still cross the icon. The skill emblems are genuine transparent
+   PNGs (soft glow fading to alpha 0 — github.com/Heegu-sama/Homm3BG), so they
+   already blend into the dragon with NO rectangle: the old radial mask + the
+   button's overflow-clip were what softened ("blurred") and cropped the
+   emblem, and both are removed here so the icon shows crisp and whole. */
 .menuNavButton,
 .menuNavButton:hover:not(:disabled),
 .menuNavButton:disabled {
   background: transparent;
   border-color: transparent;
   box-shadow: none;
+  /* Let the emblem breathe past the button box instead of being hard-cropped. */
+  overflow: visible;
 }
 
 .menuNavButton::after {
   content: none; /* remove the scrim — that was the last visible "box" */
 }
 
-/* Keep the emblem large & centred behind the words, but fade its edges so no
-   rectangle shows — only the emblem shape blended over the dragon. */
+/* The emblem is masked into a clean CIRCULAR medallion, centred behind the
+   words. This is the fix for the "box": several skill emblems (the Map-Designer
+   map, Logistics, Wisdom) are near-full-frame bright illustrations that would
+   otherwise show their square edge as a light tile. A true `circle` mask cuts
+   every rectangular corner away, so NO box can ever appear — while the centre
+   stays FULLY opaque (crisp, not blurred) out to a wide radius, feathering only
+   in a thin ring at the rim so it reads as a medallion, not a hard crop. */
 .menuNavIcon {
-  opacity: 0.88;
-  -webkit-mask-image: radial-gradient(ellipse 60% 58% at 50% 50%, #000 44%, transparent 74%);
-  mask-image: radial-gradient(ellipse 60% 58% at 50% 50%, #000 44%, transparent 74%);
+  height: 128%;
+  opacity: 1;
+  -webkit-mask-image: radial-gradient(circle at 50% 47%, #000 50%, rgb(0 0 0 / 42%) 64%, transparent 77%);
+  mask-image: radial-gradient(circle at 50% 47%, #000 50%, rgb(0 0 0 / 42%) 64%, transparent 77%);
+  filter: drop-shadow(0 2px 8px rgb(0 0 0 / 72%)) drop-shadow(0 0 3px rgb(0 0 0 / 55%));
+}
+
+/* A soft, feathered legibility halo hugging the words ONLY (not the button) so
+   the engraved title stays readable where it crosses the emblem's bright metal
+   — feathered to transparent, so it is a glow, never a box. */
+.menuNavText::before {
+  content: "";
+  position: absolute;
+  inset: -10px -22px;
+  z-index: -1;
+  background: radial-gradient(ellipse 74% 118% at 50% 50%, rgb(4 8 15 / 62%) 0%, rgb(4 8 15 / 34%) 52%, transparent 74%);
+  pointer-events: none;
 }
 
 /* Large, hard-carved words that read clearly over the emblem + dragon with no
