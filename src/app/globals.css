@@ -15966,60 +15966,17 @@ img.cardBack {
   width: min(560px, 100%);
 }
 
-/* Menu options are BOXLESS — no plaque, no scrim, no border, no clipped art
-   tile: only a small emblem ICON and the engraved gold words show. Deep carved
-   text shadows carry the legibility a box used to, so the dragon reads through
-   everywhere around. */
-.menuNavButton {
-  overflow: visible; /* stop clipping the emblem into a rounded-rect "box" */
-  min-height: 0;
-  padding: 8px 14px;
-  gap: 6px;
-  border-color: transparent;
-  background: transparent;
-  box-shadow: none;
-}
-
-.menuNavButton::after {
-  content: none; /* drop the dark scrim entirely — see the dragon behind */
-}
-
-/* The emblem is now a small, uniform icon sitting ABOVE the words (not a large
-   full-bleed art clipped to the button rectangle). */
-.menuNavIcon {
-  position: static;
-  left: auto;
-  top: auto;
-  width: 52px;
-  height: 52px;
-  transform: none;
-  object-fit: contain;
-  opacity: 1;
-  filter: drop-shadow(0 2px 5px rgb(0 0 0 / 92%));
-}
-
-.menuNavButton:hover:not(:disabled) {
-  border-color: transparent;
-  background: transparent;
-  box-shadow: none;
-  filter: brightness(1.12) drop-shadow(0 0 10px rgb(120 170 235 / 48%));
-}
-
+/* Menu options: drop the PLAQUE box ONLY (its background / border / shadow).
+   The ORIGINAL option design is otherwise untouched — the emblem stays large
+   behind the engraved title (the words still cross the icon), the scrim and
+   text are unchanged; only the box is gone, and the frameless panel + dragon
+   show around it. */
+.menuNavButton,
+.menuNavButton:hover:not(:disabled),
 .menuNavButton:disabled {
   background: transparent;
   border-color: transparent;
   box-shadow: none;
-}
-
-/* Carve the words hard enough to read over the dragon with no box behind. */
-.menuNavLabel {
-  filter: drop-shadow(0 1px 1px rgb(0 0 0)) drop-shadow(0 2px 6px rgb(0 0 0 / 94%))
-    drop-shadow(0 0 3px rgb(0 0 0));
-}
-
-.menuNavButton small {
-  color: #e7eefb;
-  text-shadow: 0 1px 2px rgb(0 0 0), 0 2px 7px rgb(0 0 0 / 96%), 0 0 4px rgb(0 0 0);
 }
 
 /* The menu / lobby panel becomes a gilded compendium page — kept MUCH more
