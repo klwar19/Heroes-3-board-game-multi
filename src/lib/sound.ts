@@ -266,6 +266,15 @@ export function playSpellBookOpen(): void {
 }
 
 /**
+ * Turning a single page inside the open Spell Book (selecting another stored
+ * Spell): one light parchment flip — quieter and shorter than the two-page
+ * open riffle above, so leafing through the index reads as paper, not dealing.
+ */
+export function playSpellBookPageTurn(): void {
+  playLibrarySound("cards/card-deal-2", 0.32);
+}
+
+/**
  * A soft two-note chime when a table reaction (emote) arrives — a gentle,
  * synthesized "pop" so a reaction is felt, not just seen. Self-contained
  * WebAudio (no asset), degrading to silence before the first gesture / when

@@ -75,6 +75,7 @@ export default function MenuPage() {
     <MenuShell
       logo
       frameless
+      dragonBreath
       footer={
         accounts ? (
           account ? (

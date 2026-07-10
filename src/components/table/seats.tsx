@@ -40,6 +40,7 @@ import {
 import { useCardZoom, ZoomButton } from "./zoom";
 import { SpecialtyCard } from "@/components/specialty-card";
 import { canRenderSpecialtyCard } from "@/components/specialty-card-data";
+import { SpellBookModal } from "@/components/adventure/spell-book-modal";
 
 export function CardFrame({
   cardId,
@@ -462,6 +463,17 @@ export function HandFan({
   // the icon opens a window listing them with their available cast buttons.
   const spellBook = player.spellBook ?? [];
   const bookCastActions = cardActions.filter((legal) => legal.action.fromSpellBook);
+  // Grouped for the grimoire modal: the cast offers per stored Spell id. While
+  // a board tray interaction is active no casts are offered (the old popover's
+  // `castable` gate), so the Book still opens read-only.
+  const bookCastsByCard = new Map<string, LegalAction[]>();
+  if (!trayActive) {
+    for (const legal of bookCastActions) {
+      const list = bookCastsByCard.get(legal.action.cardId) ?? [];
+      list.push(legal);
+      bookCastsByCard.set(legal.action.cardId, list);
+    }
+  }
   // The Book icon is shown from the start whenever the house rule is on (even
   // empty), so the player can always open it to see what it holds.
   const showSpellBook = spellBookRuleEnabled(state);
@@ -494,17 +506,33 @@ export function HandFan({
                 <span className="shelfCount">{spellBook.length}</span>
               </button>
               {shelfOpen === "book" ? (
-                <SpellShelfPopover
-                  actions={bookCastActions}
+                // The same full two-page grimoire the map opens — combat casts
+                // are already concrete (pre-targeted, fromSpellBook), so each
+                // book button dispatches directly; the label appends the target.
+                <SpellBookModal
+                  cardIds={[...new Set(spellBook)]}
+                  castsByCard={bookCastsByCard}
+                  castLabel={(legal) => {
+                    const action = legal.action;
+                    if (action.type !== "CAST_SPELL" && action.type !== "PLAY_CARD") {
+                      return legal.label;
+                    }
+                    const targetLabel =
+                      action.target?.type === "unit"
+                        ? ` → ${targetName(state, action.target)}`
+                        : action.target?.type === "space"
+                          ? " → space"
+                          : "";
+                    const expert = action.type === "CAST_SPELL" && action.useSchoolExpert ? " + School of Magic" : "";
+                    return `Cast${expert}${targetLabel}`;
+                  }}
                   emptyHint={(spellId) => timingHint(spellId)}
-                  onAction={onAction}
+                  onCast={(legal) => {
+                    onAction(legal.action);
+                    setShelfOpen(null);
+                  }}
                   onClose={() => setShelfOpen(null)}
-                  spellIds={spellBook}
-                  state={state}
-                  subtitle="Cast a stored Spell — Power boosts are played in the instant window."
-                  title="Spell Book"
-                  trayActive={trayActive}
-                  zoomCard={zoomCard}
+                  subtitle="Cast a stored Spell — the normal Spell limit applies. Power boosts are played in the instant window."
                 />
               ) : null}
             </div>
