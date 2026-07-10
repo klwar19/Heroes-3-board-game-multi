@@ -16389,3 +16389,332 @@ body {
     animation: none;
   }
 }
+
+/* ==================================================================== */
+/* ORNATE ART SKIN (AI-generated chrome, /assets/ui/ornate)              */
+/*                                                                       */
+/* Painted game chrome generated with gpt-image (Codex image_gen) and    */
+/* chroma-key-cut locally: a dragon-flanked title banner, ruby corner    */
+/* flourishes, a riveted dark-iron button plate, a real open grimoire    */
+/* for the Spell Book, a dragon-seal medallion, and leather/parchment    */
+/* material textures. Like the compendium block above, this is a VISUAL  */
+/* reskin only: it overrides background / border / box-shadow / colour   */
+/* on existing classes, decorative pseudo-elements are pointer-events:   */
+/* none, and no layout hit-area moves. It sits LAST so it wins.          */
+/* ==================================================================== */
+:root {
+  --orn-banner: url("/assets/ui/ornate/dragon-banner.webp");
+  --orn-button: url("/assets/ui/ornate/button-plate.webp");
+  --orn-grimoire: url("/assets/ui/ornate/grimoire.webp");
+  --orn-seal: url("/assets/ui/ornate/seal-emblem.webp");
+  --orn-parchment: url("/assets/ui/ornate/parchment.webp");
+  --orn-leather: url("/assets/ui/ornate/leather-panel.webp");
+  --orn-corner-tl: url("/assets/ui/ornate/corner-tl.webp");
+  --orn-corner-tr: url("/assets/ui/ornate/corner-tr.webp");
+  --orn-corner-bl: url("/assets/ui/ornate/corner-bl.webp");
+  --orn-corner-br: url("/assets/ui/ornate/corner-br.webp");
+}
+
+/* ---- App chrome: leather top bar & footer ---------------------------- */
+
+.topBar {
+  border-bottom: 1px solid rgb(213 168 79 / 46%);
+  background:
+    linear-gradient(180deg, rgb(12 9 6 / 42%) 0%, rgb(8 6 4 / 62%) 100%),
+    var(--orn-leather) center / cover;
+  box-shadow: 0 2px 10px rgb(0 0 0 / 55%);
+}
+
+.brand {
+  font-family: var(--font-heroic);
+  font-size: 17px;
+  letter-spacing: 0.05em;
+  background: linear-gradient(180deg, #fbeec0 0%, var(--cmp-gold) 55%, #a67c33 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 85%));
+}
+
+.footerNotice {
+  border-top: 1px solid rgb(213 168 79 / 34%);
+  background:
+    linear-gradient(180deg, rgb(8 6 4 / 66%) 0%, rgb(12 9 6 / 50%) 100%),
+    var(--orn-leather) center / cover;
+}
+
+/* ---- Ornate panels: leather fill + ruby corner flourishes ------------ */
+
+.menuShellPanel:not(.bare),
+.lobbyCard,
+.serverBadge {
+  position: relative;
+  border: none;
+  background:
+    radial-gradient(120% 80% at 50% -10%, rgb(213 168 79 / 10%), transparent 60%),
+    linear-gradient(180deg, rgb(14 10 7 / 58%) 0%, rgb(9 7 5 / 72%) 100%),
+    var(--orn-leather) center / cover;
+  box-shadow: var(--cmp-frame);
+}
+
+/* The four generated ruby-and-gold flourishes, hung just outside the
+   panel's gold banding. One overlay pseudo-element carries all four as
+   separately-positioned backgrounds; it never intercepts clicks. */
+.menuShellPanel:not(.bare)::after,
+.lobbyCard::after {
+  content: "";
+  position: absolute;
+  inset: -13px;
+  background:
+    var(--orn-corner-tl) left 0 top 0 / 76px 76px no-repeat,
+    var(--orn-corner-tr) right 0 top 0 / 76px 76px no-repeat,
+    var(--orn-corner-bl) left 0 bottom 0 / 76px 76px no-repeat,
+    var(--orn-corner-br) right 0 bottom 0 / 76px 76px no-repeat;
+  filter: drop-shadow(0 3px 5px rgb(0 0 0 / 60%));
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* ---- The dragon-flanked title banner --------------------------------- */
+
+/* Login / Hall of Fame / loading titles: the engraved words sit inside the
+   banner's dark central plaque, hugged by the two gold dragons. */
+.menuShellTitle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: min(470px, 100%);
+  aspect-ratio: 3.148;
+  margin: -6px auto 0;
+  padding: 10.5% 21% 8%;
+  background: var(--orn-banner) center / contain no-repeat;
+  filter: drop-shadow(0 10px 22px rgb(0 0 0 / 62%));
+  font-size: clamp(15px, 2.6vw, 20px);
+  line-height: 1.15;
+  /* the compendium block paints this title as a transparent-fill gradient
+     clipped to the glyphs; over the painted banner the glyphs must be solid
+     gold again or they vanish */
+  color: var(--cmp-gold-bright);
+  -webkit-text-fill-color: var(--cmp-gold-bright);
+  text-shadow: 0 2px 4px rgb(0 0 0 / 85%);
+}
+
+.menuShellTitle::after {
+  content: none; /* the banner replaces the bronze rule */
+}
+
+/* Lobby heading: same banner, with the refresh control floated clear. */
+.lobbyHeader {
+  position: relative;
+  justify-content: center;
+  min-height: 0;
+}
+
+.lobbyHeader h1 {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: min(440px, 86%);
+  aspect-ratio: 3.148;
+  padding: 10.5% 20% 8%;
+  background: var(--orn-banner) center / contain no-repeat;
+  filter: drop-shadow(0 10px 22px rgb(0 0 0 / 62%));
+  font-family: var(--font-heroic);
+  font-size: clamp(14px, 2.2vw, 17px);
+  white-space: nowrap;
+  letter-spacing: 0.04em;
+  line-height: 1.1;
+  text-align: center;
+  color: var(--cmp-gold-bright);
+  background-clip: border-box;
+  text-shadow: 0 2px 4px rgb(0 0 0 / 85%);
+}
+
+.lobbyHeader > .commandButton {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+/* ---- Riveted dark-iron button plate ----------------------------------- */
+
+/* The hero CTA look: painted plate stretched under the label. Scoped to
+   the big action buttons (never the dense in-combat micro buttons). */
+.commandButton.primary:not(.ghost):not(.healCommandButton),
+.lobbyIdentity .commandButton:not(.ghost),
+.lobbyJoinCode .commandButton:not(.ghost),
+.commanderLevelUpDone {
+  min-height: 42px;
+  padding: 9px 20px;
+  border: none;
+  border-radius: 10px;
+  background:
+    linear-gradient(180deg, rgb(255 235 180 / 7%) 0%, transparent 40%),
+    var(--orn-button) center / 100% 100% no-repeat;
+  color: #f2dea6;
+  font-family: var(--font-heroic);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-align: center;
+  text-shadow: 0 1px 3px rgb(0 0 0 / 92%);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 50%);
+  transition: filter 120ms ease, transform 120ms ease, box-shadow 120ms ease;
+}
+
+.commandButton.primary:not(.ghost):not(.healCommandButton):hover:not(:disabled),
+.lobbyIdentity .commandButton:not(.ghost):hover:not(:disabled),
+.lobbyJoinCode .commandButton:not(.ghost):hover:not(:disabled),
+.commanderLevelUpDone:hover {
+  filter: brightness(1.18);
+  transform: translateY(-1px);
+  box-shadow:
+    0 0 14px rgb(213 168 79 / 40%),
+    0 6px 14px rgb(0 0 0 / 55%);
+}
+
+.commandButton.primary:not(.ghost):not(.healCommandButton):active:not(:disabled),
+.lobbyIdentity .commandButton:not(.ghost):active:not(:disabled),
+.lobbyJoinCode .commandButton:not(.ghost):active:not(:disabled) {
+  transform: translateY(1px);
+  filter: brightness(0.94);
+}
+
+.commandButton.primary:not(.ghost):not(.healCommandButton):disabled,
+.lobbyIdentity .commandButton:not(.ghost):disabled {
+  filter: grayscale(0.55) brightness(0.7);
+  cursor: not-allowed;
+}
+
+/* ---- Inputs: dark engraved wells with a gold focus glow ---------------- */
+
+.lobbyIdentity input,
+.lobbyCreate input,
+.lobbyJoinCode input,
+.lobbyFilter input,
+.lobbyChatComposer input,
+.menuShellPanel input {
+  border: 1px solid rgb(213 168 79 / 32%);
+  border-radius: 7px;
+  background: rgb(8 6 4 / 78%);
+  color: #f0e6cd;
+  box-shadow: inset 0 2px 6px rgb(0 0 0 / 65%);
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.lobbyIdentity input:focus,
+.lobbyCreate input:focus,
+.lobbyJoinCode input:focus,
+.lobbyFilter input:focus,
+.lobbyChatComposer input:focus,
+.menuShellPanel input:focus {
+  outline: none;
+  border-color: var(--focus);
+  box-shadow:
+    inset 0 2px 6px rgb(0 0 0 / 65%),
+    0 0 10px rgb(247 207 110 / 35%);
+}
+
+/* ---- Lobby inner trays -------------------------------------------------- */
+
+.lobbyActions,
+.lobbyChat {
+  border: 1px solid rgb(213 168 79 / 26%);
+  border-radius: 10px;
+  background:
+    linear-gradient(180deg, rgb(0 0 0 / 30%), rgb(0 0 0 / 18%));
+  box-shadow: inset 0 1px 6px rgb(0 0 0 / 45%);
+}
+
+.lobbyModeOption {
+  border-color: rgb(213 168 79 / 22%);
+  background: rgb(8 6 4 / 45%);
+}
+
+.lobbyModeOption.active {
+  border-color: var(--cmp-gold);
+  background: rgb(213 168 79 / 14%);
+  box-shadow:
+    inset 0 0 0 1px rgb(246 226 168 / 30%),
+    0 0 10px rgb(213 168 79 / 22%);
+}
+
+/* ---- Spell Book: the real grimoire ------------------------------------- */
+
+.spellBookBook {
+  grid-template-columns: 1fr 7.4% 1fr;
+  width: min(1000px, 95vw, calc(86vh * 1.42));
+  max-height: none;
+  aspect-ratio: 1.42;
+  padding: 4% 6.4% 5%;
+  border: none;
+  border-radius: 0;
+  background: var(--orn-grimoire) center / 100% 100% no-repeat;
+  box-shadow: none;
+  filter: drop-shadow(0 34px 60px rgb(0 0 0 / 75%));
+}
+
+.spellBookPage {
+  background: transparent;
+  color: #3a2a10;
+}
+
+.spellBookPage.left,
+.spellBookPage.right {
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.spellBookSpine {
+  background: transparent; /* the painted jeweled spine shows through */
+}
+
+/* Close: the dragon-seal medallion. */
+.spellBookBookClose {
+  top: -18px;
+  right: -18px;
+  width: 44px;
+  height: 44px;
+  border: none;
+  background: var(--orn-seal) center / cover no-repeat;
+  color: #fdf3cf;
+  filter: drop-shadow(0 3px 6px rgb(0 0 0 / 70%));
+  transition: transform 120ms ease, filter 120ms ease;
+}
+
+.spellBookBookClose:hover,
+.spellBookBookClose:focus-visible {
+  color: #fff;
+  filter: drop-shadow(0 3px 6px rgb(0 0 0 / 70%)) brightness(1.25);
+  transform: scale(1.1);
+}
+
+.spellBookBookClose svg {
+  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 95%));
+}
+
+/* Index entries read as ink on the painted parchment. */
+.spellBookIndexItem {
+  background: rgb(96 64 22 / 10%);
+}
+
+.spellBookIndexItem:hover {
+  background: rgb(96 64 22 / 20%);
+}
+
+.spellBookIndexItem.active {
+  background: rgb(150 102 36 / 26%);
+  border-color: rgb(110 74 26 / 60%);
+}
+
+/* ---- Server badge ------------------------------------------------------- */
+
+.serverBadge {
+  border-radius: 12px;
+}
+
+.serverBadgeName {
+  font-family: var(--font-heroic);
+  letter-spacing: 0.05em;
+}
