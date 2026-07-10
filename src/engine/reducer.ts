@@ -43,6 +43,7 @@ import {
   giveUpAdventure,
   hallOfValhallaBoost,
   resolveAfkDrop,
+  resolveTurnTimeout,
   openDiplomacyRecruit,
   openVisionsScry,
   openPandoraScry,
@@ -227,7 +228,16 @@ import {
   unitHasUnlimitedRetaliationEffect,
   unitImmuneToParalysis
 } from "./active-effects";
-import { applyAfkBookkeeping, castAfkVote, forceAfkKick, startAfkVote } from "./afk";
+import {
+  applyAfkBookkeeping,
+  applyTurnClockBookkeeping,
+  castAfkVote,
+  forceAfkKick,
+  forceTurnTimeout,
+  startAfkVote,
+  turnClockPausedFor,
+  turnClockRunningSeats
+} from "./afk";
 import { cancelRoomReset, confirmRoomReset, requestRoomReset } from "./reset-vote";
 import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
 import { gainRunes, gainRunesForAttack, gainRunesForDefend, grantStartingRunes, spendRunes } from "./runes";
@@ -17595,6 +17605,8 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "CAST_AFK_VOTE",
   "RESOLVE_AFK_DROP",
   "FORCE_AFK_KICK",
+  "FORCE_TURN_TIMEOUT",
+  "RESOLVE_TURN_TIMEOUT",
   "REQUEST_ROOM_RESET",
   "CONFIRM_ROOM_RESET",
   "CANCEL_ROOM_RESET"
@@ -17656,6 +17668,14 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
   const nextState = cloneState(base);
   const startEventNumber = eventSeedNumber(nextState);
 
+  // Per-turn clock: which open-turn seats are PAUSED right now, read BEFORE the
+  // handler runs — the action that lifts a pause (the blocker resolving their
+  // choice) must still forgive the blocked stretch (see applyTurnClockBookkeeping).
+  const turnClockPausedBefore =
+    options.now !== undefined && nextState.mode === "adventure"
+      ? turnClockRunningSeats(nextState).filter((seat) => turnClockPausedFor(nextState, seat))
+      : [];
+
   // Parallel turns, transactional backstop: when a player acts while ANOTHER
   // player's exclusive interaction (battle, choice, visit…) is open, their
   // action must leave that machinery untouched — quiet moves, hand refreshes,
@@ -17681,6 +17701,8 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
     action.type === "CAST_AFK_VOTE" ||
     action.type === "RESOLVE_AFK_DROP" ||
     action.type === "FORCE_AFK_KICK" ||
+    action.type === "FORCE_TURN_TIMEOUT" ||
+    action.type === "RESOLVE_TURN_TIMEOUT" ||
     action.type === "REQUEST_ROOM_RESET" ||
     action.type === "CONFIRM_ROOM_RESET" ||
     action.type === "CANCEL_ROOM_RESET";
@@ -18121,6 +18143,12 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
       case "FORCE_AFK_KICK":
         forceAfkKick(nextState, action, options.now);
         break;
+      case "FORCE_TURN_TIMEOUT":
+        forceTurnTimeout(nextState, action, options.now);
+        break;
+      case "RESOLVE_TURN_TIMEOUT":
+        resolveTurnTimeout(nextState, action);
+        break;
       case "REQUEST_ROOM_RESET":
         requestRoomReset(nextState, action, options.now);
         break;
@@ -18190,6 +18218,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
   // last-action clock from the server wall time and cancel an open kick vote
   // the moment its target acts (see src/engine/afk.ts).
   applyAfkBookkeeping(nextState, action, options.now);
+  // Per-turn clock (10-minute budget): stamp/re-stamp/drop each seat's
+  // turn-open clock from the post-action turn state (see src/engine/afk.ts).
+  applyTurnClockBookkeeping(nextState, options.now, turnClockPausedBefore);
 
     return ok(nextState, startEventNumber);
   } finally {

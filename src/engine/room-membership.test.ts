@@ -77,6 +77,36 @@ describe("joining a room", () => {
     expect(state.room?.members).toHaveLength(8);
     expect(state.room?.members.every((member) => member.seat === "observer")).toBe(true);
   });
+
+  it("announces a NEW arrival to the whole room — verified by nickname, a guest labeled 'guest — name'", () => {
+    let state = makeGame();
+    // A verified account joins: the event says verified + newMember, and a
+    // forced system chat line tells the table who walked in.
+    const verified = applyAction(state, { type: "JOIN_ROOM", clientId: "c1", name: "Catherine" }, { actorUserId: "u_cat" });
+    expect(verified.errors).toEqual([]);
+    state = verified.state;
+    const joinEvent = state.eventLog.find((event) => event.type === "ROOM_MEMBER_JOINED");
+    expect(joinEvent).toMatchObject({ name: "Catherine", verified: true, newMember: true });
+    expect(state.room?.chat?.some((line) => line.kind === "system" && line.text === "Catherine joined the room.")).toBe(
+      true
+    );
+
+    // A guest joins: honestly labeled, never mistaken for an account.
+    state = expectOk(state, { type: "JOIN_ROOM", clientId: "c2", name: "Bob" });
+    const guestEvent = [...state.eventLog].reverse().find((event) => event.type === "ROOM_MEMBER_JOINED");
+    expect(guestEvent).toMatchObject({ name: "Bob", verified: false, newMember: true });
+    expect(
+      state.room?.chat?.some((line) => line.kind === "system" && line.text === "guest — Bob joined the room.")
+    ).toBe(true);
+
+    // CONTROL: a RECONNECT (same client re-joining) re-emits the event as
+    // newMember:false and adds NO second chat line — refreshes never spam.
+    const linesBefore = state.room?.chat?.length ?? 0;
+    state = expectOk(state, { type: "JOIN_ROOM", clientId: "c2", name: "Bob" });
+    const rejoin = [...state.eventLog].reverse().find((event) => event.type === "ROOM_MEMBER_JOINED");
+    expect(rejoin).toMatchObject({ name: "Bob", newMember: false });
+    expect(state.room?.chat?.length ?? 0).toBe(linesBefore);
+  });
 });
 
 describe("becoming the host", () => {

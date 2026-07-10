@@ -3,13 +3,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { writeFileAtomic } from "@/server/atomic-file";
 import {
-  afkDropPending,
   applyAction,
   createAdventureGameState,
   createAdventureLobbyState,
   createInitialGameState,
   driveAfkDrop,
   dropDisconnectedMember,
+  forcedResolutionPending,
   ENGINE_SIGNATURE,
   ensureUniqueArmyUnitIds,
   freshEntropy,
@@ -440,9 +440,10 @@ export function submitRoomAction(
     };
   }
 
-  // A passed AFK kick vote: drive the drop through the normal action pipeline
-  // until the seat is removed (or the table must wait for an open interaction).
-  const settledState = afkDropPending(result.state)
+  // A passed AFK kick vote or an expired 10-minute turn: drive the forced
+  // resolution through the normal action pipeline until the seat is removed /
+  // its turn ends (or the table must wait for an open interaction).
+  const settledState = forcedResolutionPending(result.state)
     ? driveAfkDrop(result.state, () => ({ entropy: freshEntropy(), now: Date.now() }))
     : result.state;
 

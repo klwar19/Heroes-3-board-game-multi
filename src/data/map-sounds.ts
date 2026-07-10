@@ -36,6 +36,8 @@ export const MAP_CUE_SOUNDS: Record<string, string | null> = {
   event: null,
   swap: null,
   options: null,
+  // A NEW member walking into the room: a soft sting so the table notices.
+  join: "adventure/mystery",
   victory: "adventure/ultimate-artifact"
 };
 

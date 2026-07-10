@@ -923,7 +923,14 @@ export default function Home() {
     const visitEvents = nextState.eventLog.filter(
       (event): event is Extract<GameEvent, { type: "FIELD_VISITED" }> => event.type === "FIELD_VISITED"
     );
-    const feedEvents = nextState.eventLog.filter((event) => ADVENTURE_FEED_CUES[event.type]);
+    const feedEvents = nextState.eventLog.filter(
+      (event) =>
+        ADVENTURE_FEED_CUES[event.type] &&
+        // Join toasts announce genuinely NEW members only — reconnects and
+        // cross-tab rebinds re-emit the event with newMember:false and must
+        // not pop "joined" on every refresh.
+        (event.type !== "ROOM_MEMBER_JOINED" || event.newMember === true)
+    );
     const fxEvents = nextState.eventLog.filter((event) => FX_EVENT_TYPES.has(event.type));
     const moraleCardEvents = nextState.eventLog.filter((event) => isMoraleCardEvent(event));
 

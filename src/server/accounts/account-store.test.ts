@@ -47,6 +47,19 @@ describe("AccountStore — registration + mail confirmation", () => {
     expect(confirmation!.text).toContain(confirmation!.link);
   });
 
+  it("looks up a PUBLIC profile by nickname (case-insensitive), without the email", () => {
+    store.register(VALID);
+    const profile = store.getProfileByNickname("cAtHeRiNe");
+    expect(profile).not.toBeNull();
+    expect(profile!.nickname).toBe("Catherine");
+    expect(profile!.mmr).toBe(1200);
+    // The public shape never carries the private email.
+    expect("email" in profile!).toBe(false);
+    // Unknown / blank nicknames resolve to null, never throw.
+    expect(store.getProfileByNickname("nobody-here")).toBeNull();
+    expect(store.getProfileByNickname("")).toBeNull();
+  });
+
   it("distinguishes 'nickname taken' from 'email already registered'", () => {
     store.register(VALID);
     expect(codeOf(() => store.register({ ...VALID, email: "other@erathia.io" }))).toBe("NICKNAME_TAKEN");

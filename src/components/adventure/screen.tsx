@@ -6321,6 +6321,9 @@ export const ADVENTURE_FEED_CUES: Partial<Record<GameEventType, { icon: string; 
   // feed too — the big EventDrawnOverlay owns the sound, so this cue is silent.
   EVENT_CARD_DRAWN: { icon: "📜", cue: "event" },
   NEUTRAL_DRAW_SWAPPED: { icon: "🔄", cue: "swap" },
+  // A genuinely NEW member joining the room announces itself (page.tsx filters
+  // out the newMember:false reconnect re-emits, so refreshes stay silent).
+  ROOM_MEMBER_JOINED: { icon: "👋", cue: "join" },
   GAME_OPTIONS_CHANGED: { icon: "⚙️", cue: "options" },
   SETUP_SEAT_RESET: { icon: "⚠️", cue: "warning" },
   GAME_WON: { icon: "👑", cue: "victory" },
