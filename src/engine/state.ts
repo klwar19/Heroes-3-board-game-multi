@@ -3530,6 +3530,39 @@ export type GameAction =
       type: "FORCE_AFK_KICK";
       playerId: PlayerId;
       targetPlayerId: PlayerId;
+    }
+  | {
+      /**
+       * Open an "all players must confirm" vote to start a NEW adventure
+       * (wiping the running game) — the table-consent gate for the "New
+       * adventure" button while a multiplayer game is IN PROGRESS. The starter's
+       * own request counts as their confirmation. Legal only in an in-progress
+       * adventure with two or more live seats (a setup lobby / solo game / a
+       * finished game resets directly, no vote). `clientId` records the browser
+       * that opened it, so that same browser fires the actual reset once every
+       * live seat has confirmed. Exempt from the turn/barrier gates like chat.
+       */
+      type: "REQUEST_ROOM_RESET";
+      playerId: PlayerId;
+      clientId: string;
+    }
+  | {
+      /**
+       * Confirm the open new-adventure vote for `playerId`'s seat. The reset
+       * proceeds only once EVERY live seat has confirmed. Hosted rooms gate this
+       * to the seat's own controller (roomActionGuard); an open table lets the
+       * local controller confirm each seat it holds.
+       */
+      type: "CONFIRM_ROOM_RESET";
+      playerId: PlayerId;
+    }
+  | {
+      /**
+       * Decline / withdraw the open new-adventure vote — any live seat may
+       * cancel it, clearing the vote for the whole table.
+       */
+      type: "CANCEL_ROOM_RESET";
+      playerId: PlayerId;
     };
 
 export type LegalAction = {
@@ -8959,6 +8992,36 @@ export type GameState = {
    * games. Public — it holds no hidden information. See src/engine/afk.ts.
    */
   afk?: AfkState | null;
+  /**
+   * The open "start a new adventure" confirmation vote (multiplayer adventure
+   * only): pressing "New adventure" during an in-progress game opens this
+   * instead of wiping immediately, and the reset proceeds only once every live
+   * seat has confirmed. Absent when no vote is open, on solo/lobby/finished
+   * games, and on legacy snapshots. Public — it holds no hidden information, and
+   * is naturally cleared by the reset it triggers. See src/engine/reset-vote.ts.
+   */
+  resetVote?: ResetVoteState | null;
+};
+
+/**
+ * One open "start a new adventure" (room reset) confirmation vote. A single
+ * vote runs at a time; it ends when every live seat has confirmed (the starter
+ * fires the reset), any live seat cancels it, or a player is eliminated.
+ */
+export type ResetVoteState = {
+  /** The seat that requested the new adventure (its request is an implicit confirm). */
+  startedByPlayerId: PlayerId;
+  /**
+   * The browser (stable per-tab clientId) that opened the vote. Once every live
+   * seat has confirmed, THIS browser fires the actual reset (so exactly one
+   * client resets the room), and the server honours a reset from it as
+   * vote-authorised even in a hosted room where it is not the host.
+   */
+  startedByClientId: string;
+  /** Server wall-clock ms when the vote opened (display / stable vote key only). */
+  startedAt: number;
+  /** Each live seat's confirmation so far (true once confirmed). */
+  confirmations: Record<PlayerId, boolean>;
 };
 
 /**

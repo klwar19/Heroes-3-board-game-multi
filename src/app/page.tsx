@@ -16,6 +16,8 @@ import {
   hasOpenAdventureTurn,
   healLegacyPlayerFields,
   isParallelActor,
+  isResetVoteApproved,
+  resetVoteRequired,
   rulesetCardNote,
   NEUTRAL_PLAYER_ID,
   type GameAction,
@@ -50,6 +52,7 @@ import {
   AstrologersProclamationOverlay,
   EventDrawnOverlay,
   AfkVotePanel,
+  ResetVotePanel,
   ReactionTray,
   RerollModal,
   SearchModal,
@@ -3515,6 +3518,43 @@ export default function Home() {
     setSyncStatus(`synced v${snapshot.version}`);
   };
 
+  // "New adventure" entry point. While a multiplayer game is IN PROGRESS this
+  // does NOT wipe it immediately — it opens the "all players must confirm" vote
+  // (resetVoteRequired), and the reset fires only once every live seat has
+  // agreed (the effect below). A setup lobby, a solo game, a finished game and
+  // the Battle Test sandbox reset directly, as before.
+  const requestNewGame = (mode: "adventure" | "combat-sandbox") => {
+    if (mode === "adventure" && state && resetVoteRequired(state) && viewerPlayerId !== OBSERVER_SEAT) {
+      void submitAction({ type: "REQUEST_ROOM_RESET", playerId: viewerPlayerId, clientId });
+      return;
+    }
+    void resetRoom(mode);
+  };
+
+  // The browser that opened a passed new-adventure vote completes it: once every
+  // live seat has confirmed, fire the actual reset exactly once (the reset RPC
+  // clears the vote for everyone). Keyed by the vote's opener+start so a single
+  // vote fires a single reset, however many snapshots carry the approved state.
+  // resetRoom is redefined each render, so keep the latest in a ref (updated in
+  // an effect, never during render) for the fire effect to call.
+  const resetRoomRef = useRef(resetRoom);
+  useEffect(() => {
+    resetRoomRef.current = resetRoom;
+  });
+  const resetVoteFiredRef = useRef<string | null>(null);
+  useEffect(() => {
+    const vote = state?.resetVote;
+    if (!state || !vote || vote.startedByClientId !== clientId || !isResetVoteApproved(state)) {
+      return;
+    }
+    const voteKey = `${vote.startedByClientId}:${vote.startedAt}`;
+    if (resetVoteFiredRef.current === voteKey) {
+      return;
+    }
+    resetVoteFiredRef.current = voteKey;
+    void resetRoomRef.current("adventure");
+  }, [state, clientId]);
+
   const switchToRoom = (nextRoomId: string) => {
     if (nextRoomId === roomId) {
       return;
@@ -3810,7 +3850,7 @@ export default function Home() {
       <div className="menuRow resetRow">
         <button
           className="commandButton"
-          onClick={() => resetRoom(adventureMode ? "adventure" : "combat-sandbox")}
+          onClick={() => requestNewGame(adventureMode ? "adventure" : "combat-sandbox")}
           title={
             adventureMode
               ? "Restart this table from a fresh map setup"
@@ -3880,6 +3920,11 @@ export default function Home() {
         onSend={(text) => void submitAction({ type: "SEND_CHAT", clientId, text, at: Date.now() })}
       />
       <AfkVotePanel
+        state={state}
+        viewerPlayerId={viewerPlayerId}
+        onAction={(action) => void submitAction(action)}
+      />
+      <ResetVotePanel
         state={state}
         viewerPlayerId={viewerPlayerId}
         onAction={(action) => void submitAction(action)}
@@ -4909,7 +4954,7 @@ export default function Home() {
             <CommandDock
               legalActions={legalActions}
               onAction={submitAction}
-              onReset={() => resetRoom(adventureMode ? "adventure" : "combat-sandbox")}
+              onReset={() => requestNewGame(adventureMode ? "adventure" : "combat-sandbox")}
               state={state}
               viewerPlayerId={viewerPlayerId}
             />
@@ -4963,7 +5008,7 @@ export default function Home() {
           key={`result-${state.combat?.id ?? "none"}`}
           legalActions={legalActions}
           onAction={submitAction}
-          onReset={() => resetRoom(adventureMode ? "adventure" : "combat-sandbox")}
+          onReset={() => requestNewGame(adventureMode ? "adventure" : "combat-sandbox")}
           state={state}
           viewerPlayerId={viewerPlayerId}
         />

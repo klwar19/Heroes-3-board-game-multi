@@ -41,6 +41,7 @@ import {
 } from "./morale-cards";
 import { MORALE_CARD_IDS } from "@/data/cards/morale";
 import { parallelInteractionBlocker, stopParallelTurns } from "./parallel-turns";
+import { clearResetVote } from "./reset-vote";
 import { playerOwnsWarMachine, removePermanentFromPlayToRemoved } from "./permanents";
 import {
   applyUnitSideRules,
@@ -2372,6 +2373,11 @@ export function eliminatePlayer(
       }
     }
   }
+
+  // An open "new adventure" confirmation vote is void once the live-seat set
+  // changes (this seat can no longer confirm / may have been the requester):
+  // clear it so a stale vote never sits half-approved. The table can re-open it.
+  clearResetVote(state);
 
   appendEvent(state, { type: "PLAYER_ELIMINATED", playerId, reason, gaveUp });
 
