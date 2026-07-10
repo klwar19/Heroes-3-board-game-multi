@@ -292,7 +292,10 @@ export function formatEvent(event: GameEvent, state: GameState): string {
     case "PENDING_CHOICE_CREATED":
       return event.message;
     case "ATTACK_REROLLED":
-      return `${playerName(state, event.playerId)} rerolls with ${event.sourceName} -> ${formatDieFace(event.roll)}.`;
+      // A multi-die ability roll (Death Stare) rerolls all its dice at once.
+      return `${playerName(state, event.playerId)} rerolls with ${event.sourceName} -> ${
+        event.rolls.length > 1 ? event.rolls.map(formatDieFace).join("/") : formatDieFace(event.roll)
+      }.`;
     case "PENDING_CHOICE_RESOLVED":
       return `${playerName(state, event.playerId)} keeps roll option ${event.selectedIndex + 1}.`;
     case "RETALIATION_ATTACKED":

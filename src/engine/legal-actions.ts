@@ -4274,9 +4274,15 @@ export function getLegalActions(
     // can be kept, earlier candidates are history.
     const latestIndex = state.pendingChoice.candidates.length - 1;
     const latest = state.pendingChoice.candidates[latestIndex];
+    // An ability-roll window (Death Stare & co.) names the ability and shows
+    // every die — its outcome is the faces, not a single kept value.
+    const abilityRoll = state.pendingChoice.abilityRoll;
+    const facesLabel = latest.rolls.map((roll) => (roll >= 0 ? `+${roll}` : `${roll}`)).join(", ");
     const actions: LegalAction[] = [
       {
-        label: `Keep the attack roll ${latest.roll >= 0 ? "+" : ""}${latest.roll}`,
+        label: abilityRoll
+          ? `Keep the ${abilityRoll.abilityName} roll ${facesLabel}`
+          : `Keep the attack roll ${latest.roll >= 0 ? "+" : ""}${latest.roll}`,
         action: {
           type: "CHOOSE_PENDING_ROLL",
           playerId,
@@ -4291,7 +4297,9 @@ export function getLegalActions(
     );
     if (nextSource) {
       actions.push({
-        label: `Reroll attack die (${nextSource.name})`,
+        label: abilityRoll
+          ? `Reroll ${abilityRoll.abilityName} dice (${nextSource.name})`
+          : `Reroll attack die (${nextSource.name})`,
         action: {
           type: "REROLL_PENDING_CHOICE",
           playerId,

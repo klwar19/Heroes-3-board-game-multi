@@ -365,7 +365,9 @@ import {
   hasSpellCastPowerTax,
   hasUnitAbilityEffect,
   isUndeadUnit,
-  unitImmuneToSpellSchools
+  unitImmuneToSpellSchools,
+  type AttackDieDamageFollowUp,
+  type DeathStareFollowUp
 } from "./unit-abilities";
 import type {
   ActiveEffectDefinition,
@@ -375,6 +377,7 @@ import type {
   AttackRollCandidate,
   AttackRollMode,
   AttackRollModifierNote,
+  PendingAbilityRollContext,
   BuildingLibrary,
   BattlefieldTokenKind,
   BattlefieldTokenState,
@@ -1996,35 +1999,47 @@ function negatesCardOnDwarfRoll(
     return false;
   }
 
-  let roll = rollAttackDie(combat);
+  // The resistance die rolls mid-card-resolution, so no interactive reroll
+  // window — but it still goes through the shared pipeline: the owner's
+  // universal 'reroll a "+1"' morale curse forces even a successful shrug-off
+  // to reroll, exactly as the card prints ("On a +1 on an Attack die…").
+  const window: AbilityRollWindow = { minRoll: negate.onRoll, maxRoll: negate.onRoll };
+  let candidate = rollAbilityCandidate(state, combat, unit.controllerId, 1, window, false);
   // Multilingual Bron: the Dwarves' owner rerolls a resistance die that came up
   // against them, once.
   const ownerWantsNegate = casterId !== unit.controllerId;
-  if ((roll === negate.onRoll) !== ownerWantsNegate && bronRerollsAbilityRoll(state, unit)) {
+  if (abilityRollSucceeds(candidate.rolls, window) !== ownerWantsNegate && bronRerollsAbilityRoll(state, unit)) {
     appendEvent(state, {
       type: "UNIT_ABILITY_TRIGGERED",
       unitId: unit.id,
       abilityId: `${negate.abilityId}-roll`,
       targetUnitId: unit.id,
-      message: `${unit.cardName} rolls ${roll} for ${negate.abilityName} — Multilingual Bron rerolls.`,
-      dice: { rolls: [roll], success: false, label: negate.abilityName, caption: "Multilingual Bron rerolls…" }
+      message: `${unit.cardName} rolls ${candidate.roll} for ${negate.abilityName} — Multilingual Bron rerolls.`,
+      dice: {
+        rolls: [...candidate.rolls],
+        success: false,
+        label: negate.abilityName,
+        caption: "Multilingual Bron rerolls…",
+        ...(candidate.modifierNotes?.length ? { modifiers: candidate.modifierNotes } : {})
+      }
     });
-    roll = rollAttackDie(combat);
+    candidate = rollAbilityCandidate(state, combat, unit.controllerId, 1, window, false);
   }
-  const negated = roll === negate.onRoll;
+  const negated = abilityRollSucceeds(candidate.rolls, window);
   appendEvent(state, {
     type: "UNIT_ABILITY_TRIGGERED",
     unitId: unit.id,
     abilityId: negate.abilityId,
     targetUnitId: unit.id,
     message: negated
-      ? `${unit.cardName} rolls ${roll} and shrugs off ${cardName} (${negate.abilityName}).`
-      : `${unit.cardName} rolls ${roll} for ${negate.abilityName}; ${cardName} takes hold.`,
+      ? `${unit.cardName} rolls ${candidate.roll} and shrugs off ${cardName} (${negate.abilityName}).`
+      : `${unit.cardName} rolls ${candidate.roll} for ${negate.abilityName}; ${cardName} takes hold.`,
     dice: {
-      rolls: [roll],
+      rolls: [...candidate.rolls],
       success: negated,
       label: negate.abilityName,
-      caption: negated ? `${cardName} is shrugged off!` : `${cardName} takes hold.`
+      caption: negated ? `${cardName} is shrugged off!` : `${cardName} takes hold.`,
+      ...(candidate.modifierNotes?.length ? { modifiers: candidate.modifierNotes } : {})
     }
   });
   return negated;
@@ -2433,8 +2448,13 @@ function applyAttackDamageFromCandidate(
   let damage = preview.damage;
   const defensiveRoll = getDefenseDieDamageReduction(defender);
   if (defensiveRoll && damage > 0) {
-    const roll = rollAttackDie(state.combat);
-    if (roll === defensiveRoll.onRoll) {
+    // The soak die rolls inside the blow's damage computation, so no
+    // interactive reroll window — it still goes through the shared pipeline:
+    // the defender's universal 'reroll a "+1"' morale curse can force a
+    // reroll (which for a "-1"-keyed armor may even land the soak).
+    const window: AbilityRollWindow = { minRoll: defensiveRoll.onRoll, maxRoll: defensiveRoll.onRoll };
+    const candidate = rollAbilityCandidate(state, state.combat, defender.controllerId, 1, window, false);
+    if (abilityRollSucceeds(candidate.rolls, window)) {
       const reduced = Math.min(damage, defensiveRoll.amount);
       damage -= reduced;
       appendEvent(state, {
@@ -2442,12 +2462,13 @@ function applyAttackDamageFromCandidate(
         unitId: defender.id,
         abilityId: defensiveRoll.abilityId,
         targetUnitId: defender.id,
-        message: `${defender.cardName} rolls ${roll} and reduces the attack's damage by ${reduced}.`,
+        message: `${defender.cardName} rolls ${candidate.roll} and reduces the attack's damage by ${reduced}.`,
         dice: {
-          rolls: [roll],
+          rolls: [...candidate.rolls],
           success: true,
           label: defensiveRoll.abilityName,
-          caption: `${defender.cardName} soaks ${reduced} damage!`
+          caption: `${defender.cardName} soaks ${reduced} damage!`,
+          ...(candidate.modifierNotes?.length ? { modifiers: candidate.modifierNotes } : {})
         }
       });
     }
@@ -3167,6 +3188,219 @@ function countAvailableRerolls(sources: AttackRerollSource[], currentRoll: numbe
     // Face-gated sources never deplete — count them as one offer each.
     return total + (source.onlyOnRoll !== undefined ? 1 : source.remaining);
   }, 0);
+}
+
+// ---------------------------------------------------------------------------
+// Ability rolls (Death Stare, the Thunderbird extra die, extra-die Paralysis,
+// the Ghost Dragon knock-back, the Dwarven resistance die, the defensive
+// soak, the Medusa gaze): the SAME roll pipeline the attack die uses — the
+// seeded combat dice stream, the holder's Negative Morale curses, and (for
+// the attacker's own post-attack rolls) the interactive reroll window.
+// ---------------------------------------------------------------------------
+
+/** An ability roll's success window: the effect needs every die in [min, max]. */
+type AbilityRollWindow = { minRoll: number; maxRoll: number };
+
+/** How many of an ability roll's dice landed inside its success window. */
+function abilityRollScore(rolls: number[], window: AbilityRollWindow): number {
+  return rolls.filter((roll) => roll >= window.minRoll && roll <= window.maxRoll).length;
+}
+
+/** An ability roll lands only when EVERY die falls inside its success window. */
+function abilityRollSucceeds(rolls: number[], window: AbilityRollWindow): boolean {
+  return rolls.every((roll) => roll >= window.minRoll && roll <= window.maxRoll);
+}
+
+/**
+ * Negative Morale on an ability's own just-rolled dice. Mirrors
+ * applyMoraleDiceCurses, but the "against the holder" heuristics rank flips
+ * by the ability's SUCCESS WINDOW instead of the face value — a Death Stare
+ * wants "-1"s, so hurting its holder means flipping a die OUT of the window,
+ * not to the lowest face.
+ *
+ * `fullKit` marks the attacker's own post-attack ability roll ("during the
+ * next Attack die roll" reads naturally there): it additionally suffers the
+ * set-a-die-to-"-1" curse. Incidental single-die checks (the Dwarven
+ * resistance die, the defensive soak, the Medusa gaze) take only the
+ * universal 'reroll a "+1"' — the same narrow set the Defend die and the
+ * skip-activation check already use.
+ */
+function applyAbilityDiceCurses(
+  state: GameState,
+  controllerId: PlayerId,
+  candidate: AttackRollCandidate,
+  window: AbilityRollWindow,
+  fullKit: boolean
+): AttackRollCandidate {
+  const combat = state.combat;
+  if (!combat || !state.adventure?.moraleCards) {
+    return candidate;
+  }
+
+  if (fullKit && playerHoldsMoraleCard(state, controllerId, MORALE_CARD_IDS.setAttackDieMinus)) {
+    let flipIndex = -1;
+    let flippedScore = Number.POSITIVE_INFINITY;
+    candidate.rolls.forEach((_, index) => {
+      const flipped = candidate.rolls.map((roll, at) => (at === index ? -1 : roll));
+      const score = abilityRollScore(flipped, window);
+      if (score < flippedScore) {
+        flippedScore = score;
+        flipIndex = index;
+      }
+    });
+    if (flipIndex >= 0) {
+      consumeHeldMoraleCard(state, controllerId, MORALE_CARD_IDS.setAttackDieMinus);
+      candidate.rolls[flipIndex] = -1;
+      candidate.roll = candidate.rolls[0] ?? 0;
+      pushRollModifierNote(candidate, "Negative Morale", 'one die is set to the "-1" side');
+    }
+  }
+
+  while (
+    candidate.rolls.includes(1) &&
+    playerHoldsMoraleCard(state, controllerId, MORALE_CARD_IDS.rerollPlusOne)
+  ) {
+    consumeHeldMoraleCard(state, controllerId, MORALE_CARD_IDS.rerollPlusOne);
+    const index = candidate.rolls.indexOf(1);
+    candidate.rolls[index] = rollAttackDie(combat);
+    candidate.roll = candidate.rolls[0] ?? 0;
+    pushRollModifierNote(candidate, "Negative Morale", 'a "+1" is forcibly rerolled');
+  }
+
+  return candidate;
+}
+
+/**
+ * One ability-roll throw through the SAME seeded combat dice stream every
+ * attack die uses, with the roller's Negative Morale curses applied on top.
+ * `candidate.roll` is a display anchor (the first face) — ability outcomes
+ * always read `rolls` against the success window, never an aggregate.
+ */
+function rollAbilityCandidate(
+  state: GameState,
+  combat: CombatState,
+  controllerId: PlayerId,
+  diceCount: number,
+  window: AbilityRollWindow,
+  fullKit: boolean
+): AttackRollCandidate {
+  const rolls = Array.from({ length: Math.max(1, diceCount) }, () => rollAttackDie(combat));
+  const candidate: AttackRollCandidate = { rolls, roll: rolls[0] ?? 0, sumAllDice: true };
+  return applyAbilityDiceCurses(state, controllerId, candidate, window, fullKit);
+}
+
+/**
+ * The optional "adjust a die you just rolled" pools that also apply to an
+ * ABILITY's own roll: the generic "Reroll a die" reactions (Cards of
+ * Prophecy, Diplomat's Ring, Ambassador's Sash), the Positive Morale reroll
+ * card / set-a-die-to-"+1" card, and the positive morale token. The
+ * attack-roll-specific pools stay out — unit reroll abilities (Charge, the
+ * Crusaders' 'every "0"'), the Ammo Cart and the Luck/Fortune/Mirth combat
+ * effects are all printed against the ATTACK roll. The Spirit of Oppression
+ * lockout suppresses these exactly like the attack window's.
+ */
+function buildAbilityRerollSources(state: GameState, roller: CombatUnitState): AttackRerollSource[] {
+  if (isNeutralUnit(roller) || attackRerollsBlocked(state)) {
+    return [];
+  }
+  const player = state.players[roller.controllerId];
+  if (!player) {
+    return [];
+  }
+
+  const moraleSources: AttackRerollSource[] = state.adventure?.moraleCards
+    ? (player.moraleCards?.positive ?? [])
+        .filter((cardId) => cardId === MORALE_CARD_IDS.rerollDie)
+        .map((cardId) => ({
+          name: cardLibrary[cardId]?.name ?? "Positive Morale: Reroll a Die",
+          moraleCardId: cardId,
+          remaining: 1,
+          used: 0
+        }))
+    : player.morale > 0
+      ? [{ name: "Positive morale token", morale: true, remaining: 1, used: 0 }]
+      : [];
+
+  const moraleSetSources: AttackRerollSource[] = state.adventure?.moraleCards
+    ? (player.moraleCards?.positive ?? [])
+        .filter((cardId) => cardId === MORALE_CARD_IDS.setAttackDiePlus)
+        .map((cardId) => ({
+          name: cardLibrary[cardId]?.name ?? "Positive Morale: Set Attack Die +1",
+          moraleCardId: cardId,
+          setDieFace: 1,
+          remaining: 1,
+          used: 0
+        }))
+    : [];
+
+  const artifactSources: AttackRerollSource[] = !isHandLockedInCombat(state, roller.controllerId)
+    ? REROLL_REACTION_ARTIFACT_IDS.filter((cardId) => player.hand.includes(cardId)).map((cardId) => ({
+        name: cardLibrary[cardId]?.name ?? cardId,
+        cardId,
+        remaining: 1,
+        used: 0
+      }))
+    : [];
+
+  return [...artifactSources, ...moraleSources, ...moraleSetSources].filter((source) => source.remaining > 0);
+}
+
+/**
+ * Offer the roller's controller the keep/reroll window on an ability's own
+ * just-rolled dice, exactly like an attack roll. Opens only when an optional
+ * source exists (a "Reroll a die" artifact in hand, the Positive Morale
+ * reroll/set-die card, the morale token); with none, the roll resolves
+ * straight through as before. Returns true when the follow-up tail paused.
+ */
+function openAbilityRollWindow(
+  state: GameState,
+  roller: CombatUnitState,
+  target: CombatUnitState,
+  candidate: AttackRollCandidate,
+  context: PendingAbilityRollContext
+): boolean {
+  const sources = buildAbilityRerollSources(state, roller);
+  if (sources.length === 0) {
+    return false;
+  }
+  const remainingRerolls = countAvailableRerolls(sources, candidate.roll);
+  if (remainingRerolls <= 0) {
+    return false;
+  }
+
+  const choiceId = `choice_${nextEventNumber(state)}`;
+  state.pendingChoice = {
+    id: choiceId,
+    type: "ATTACK_DIE_REROLL",
+    playerId: roller.controllerId,
+    // The attack's stack item is already resolved — the keep resumes the
+    // follow-up tail via `abilityRoll.resume`, never the stack.
+    stackItemId: "",
+    attackerId: roller.id,
+    defenderId: target.id,
+    isRetaliation: false,
+    attackKind: context.resume.attackKind,
+    rollMode: "normal",
+    attackBonus: 0,
+    defenseBonus: 0,
+    candidates: [candidate],
+    remainingRerolls,
+    rerollSources: sources,
+    sourceEffectIds: [],
+    abilityRoll: context
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = roller.controllerId;
+
+  appendEvent(state, {
+    type: "PENDING_CHOICE_CREATED",
+    choiceId,
+    choiceType: "ATTACK_DIE_REROLL",
+    playerId: roller.controllerId,
+    sourceEffectIds: [],
+    message: `${roller.name} may reroll the ${context.abilityName} dice.`
+  });
+  return true;
 }
 
 function openAttackRerollChoice(
@@ -4006,74 +4240,95 @@ function finishResolvedAttack(
     };
   }
 
-  // Printed flat-damage follow-ups (Magog splash, Cerberi second head)
-  // resolve before retaliation; a target choice pauses the sequence here.
-  if (openFlatDamageFollowUps(state, details.attacker, details.defender, details.attackKind)) {
+  runPostAttackFollowUps(
+    state,
+    cards,
+    {
+      attackerId: details.attacker.id,
+      defenderId: details.defender.id,
+      attackKind: details.attackKind,
+      attackRoll: attackResult.roll,
+      forceAbilityRoll
+    },
+    0
+  );
+}
+
+/**
+ * Context the post-attack follow-up tail runs against: everything it reads
+ * from the (already-resolved) attack, id-referenced so an ability-roll reroll
+ * window can serialize it and resume after the pause.
+ */
+type PostAttackFollowUpContext = {
+  attackerId: UnitId;
+  defenderId: UnitId;
+  attackKind: "melee" | "ranged";
+  /** The resolved attack die (the "own"-die Paralysis and double attacks read it). */
+  attackRoll: number;
+  /** Tarnum (Fortress) Basilisks VI: die-gated follow-ups fire regardless. */
+  forceAbilityRoll: boolean;
+};
+
+/**
+ * The pause-capable follow-ups of a resolved, NON-retaliation attack, in
+ * printed order — the parked retaliation (attackSequence) resumes after the
+ * last. Each step returns true when it paused the sequence on a choice or
+ * ended the combat. `fromStep` lets an ability-roll reroll window
+ * (ATTACK_DIE_REROLL with abilityRoll context) resume the tail exactly where
+ * its roll paused it; step indexes are stored in that serialized choice, so
+ * the ORDER of this table must stay stable.
+ */
+function runPostAttackFollowUps(
+  state: GameState,
+  cards: CardLibrary,
+  ctx: PostAttackFollowUpContext,
+  fromStep: number
+): void {
+  const combat = state.combat;
+  const attacker = combat?.units[ctx.attackerId];
+  const defender = combat?.units[ctx.defenderId];
+  if (!combat || !attacker || !defender) {
+    resumeAttackSequence(state, cards);
     return;
   }
 
-  if (applyAttackDieDamageFollowUps(state, details.attacker, details.defender, forceAbilityRoll)) {
-    return;
-  }
+  const steps: (() => boolean)[] = [
+    // 0 — printed flat-damage follow-ups (Magog splash, Cerberi second head).
+    () => openFlatDamageFollowUps(state, attacker, defender, ctx.attackKind),
+    // 1 — Thunderbirds' lightning / Wyverns' sting extra die.
+    () => applyAttackDieDamageFollowUps(state, attacker, defender, ctx, 1),
+    // 2 — Gorgons' Death Stare (may reduce the target to 0 Health).
+    () => applyDeathStareFollowUps(state, attacker, defender, ctx, 2),
+    // 3 — Azure Dragons / Basilisks Paralysis (own or extra die).
+    () => applyParalysisFollowUps(state, attacker, defender, ctx, 3),
+    // 4 — Dragon Flies: dispel the enemy's ongoing buffs on the target.
+    () => {
+      applyDispelFollowUps(state, attacker, defender);
+      return false;
+    },
+    // 5 — double attack against the same target.
+    () => maybeDeclareDoubleAttack(state, attacker, defender, ctx.attackKind, ctx.attackRoll, cards),
+    // 6 — Liches' Death Cloud second attack.
+    () => openSecondAttackFollowUp(state, attacker, defender, cards),
+    // 7 — Gold Dragons' line attack.
+    () => openGoldDragonLineAttack(state, attacker, defender, cards),
+    // 8 — Hydras' extra adjacent attack.
+    () => openHydraSecondAttack(state, attacker, defender, cards),
+    // 9 — the multi-attack queue (attack-all mechanics).
+    () => queueAttackAllFollowUps(state, attacker, defender, cards),
+    // 10 — Neutral Magi Power Drain discard choice.
+    () => openMagiDiscardChoice(state, attacker, defender, cards),
+    // 11 — Tower Genies' Spell dig.
+    () => openGenieSpellDraw(state, attacker, false),
+    // 12 — Ghost Dragons' knock-back, last: the push is what denies the
+    // parked retaliation.
+    () => openGhostDragonKnockback(state, attacker, defender, ctx, 12)
+  ];
 
-  // Gorgons' Death Stare: roll the extra dice and possibly reduce the target to
-  // 0 Health before retaliation.
-  if (applyDeathStareFollowUps(state, details.attacker, details.defender, forceAbilityRoll)) {
-    return;
-  }
-
-  // Azure Dragons / Basilisks: paralyse the target on a matching Attack die.
-  applyParalysisFollowUps(state, details.attacker, details.defender, attackResult.roll, forceAbilityRoll);
-
-  // Dragon Flies: dispel the enemy's ongoing buffs on the target.
-  applyDispelFollowUps(state, details.attacker, details.defender);
-
-  if (maybeDeclareDoubleAttack(state, details.attacker, details.defender, details.attackKind, attackResult.roll, cards)) {
-    return;
-  }
-
-  // Liches' Death Cloud: a full second attack against a unit adjacent to the
-  // original target, resolved before the original target's retaliation.
-  if (openSecondAttackFollowUp(state, details.attacker, details.defender, cards)) {
-    return;
-  }
-
-  // Gold Dragons' line attack: a separate attack on the unit directly behind
-  // the target, resolved before the original target's retaliation.
-  if (openGoldDragonLineAttack(state, details.attacker, details.defender, cards)) {
-    return;
-  }
-
-  // Hydras: one more separate attack against an enemy adjacent to the Hydra.
-  if (openHydraSecondAttack(state, details.attacker, details.defender, cards)) {
-    return;
-  }
-
-  // Cerberi attack-all mechanism (kept for the engine's multi-attack queue;
-  // no boxed unit uses it now that Cerberi follow the printed card).
-  if (queueAttackAllFollowUps(state, details.attacker, details.defender, cards)) {
-    return;
-  }
-
-  // Neutral Magi Power Drain: the defending player picks a Power card to
-  // discard or takes a random discard. Pauses the parked retaliation when a
-  // real choice exists.
-  if (openMagiDiscardChoice(state, details.attacker, details.defender, cards)) {
-    return;
-  }
-
-  // Tower Genies (Pack): after their attack, dig Spells out of the controller's
-  // deck. Pauses the parked retaliation when several Spells offer a choice.
-  if (openGenieSpellDraw(state, details.attacker, details.isRetaliation)) {
-    return;
-  }
-
-  // Ghost Dragons (neutral): roll for the knock-back last — moving the target
-  // out of reach is what denies its Retaliation Attack, so it must resolve
-  // before the parked retaliation. Pauses when the defender has a real choice
-  // of empty spaces.
-  if (openGhostDragonKnockback(state, details.attacker, details.defender)) {
-    return;
+  for (let step = Math.max(0, fromStep); step < steps.length; step += 1) {
+    if (steps[step]()) {
+      return;
+    }
   }
 
   resumeAttackSequence(state, cards);
@@ -4437,17 +4692,81 @@ function applyOnAttackFireWall(
   });
 }
 
+/** The success window an ATTACK_DIE_FLAT_DAMAGE_TO_TARGET follow-up rolls against. */
+function attackDieDamageWindow(followUp: AttackDieDamageFollowUp): AbilityRollWindow {
+  return { minRoll: followUp.minRoll, maxRoll: followUp.maxRoll ?? 1 };
+}
+
+/**
+ * The read-out + damage of one resolved Thunderbird-lightning / Wyvern-sting
+ * roll (or its forced Basilisks-VI proc). Shared by the straight-through path
+ * and the reroll window's keep.
+ */
+function resolveAttackDieDamageOutcome(
+  state: GameState,
+  attacker: CombatUnitState,
+  defender: CombatUnitState,
+  followUp: AttackDieDamageFollowUp,
+  candidate: AttackRollCandidate | null,
+  forceRoll: boolean
+): void {
+  const lands = forceRoll || (candidate !== null && abilityRollSucceeds(candidate.rolls, attackDieDamageWindow(followUp)));
+  appendEvent(state, {
+    type: "UNIT_ABILITY_TRIGGERED",
+    unitId: attacker.id,
+    abilityId: followUp.abilityId,
+    targetUnitId: defender.id,
+    message: forceRoll
+      ? `${attacker.name} uses ${followUp.abilityName} regardless of the roll (Basilisks VI).`
+      : `${attacker.name} rolls ${candidate?.rolls.join(", ")} for ${followUp.abilityName}.`,
+    // A forced (no-roll) proc throws no dice, so it gets no dice read-out.
+    ...(forceRoll || !candidate
+      ? {}
+      : {
+          dice: {
+            rolls: [...candidate.rolls],
+            success: lands,
+            label: followUp.abilityName,
+            caption: lands ? `${followUp.amount} extra damage to ${defender.cardName}!` : "No effect.",
+            ...(candidate.modifierNotes?.length ? { modifiers: candidate.modifierNotes } : {})
+          }
+        })
+  });
+
+  if (!lands) {
+    return;
+  }
+
+  const assignedDamage = Math.min(followUp.amount, Math.max(0, defender.maxHealth - defender.damage));
+  defender.damage += followUp.amount;
+  noteUnitDamagedForTokens(state, defender, followUp.amount);
+  if (assignedDamage > 0) {
+    appendEvent(state, {
+      type: "DAMAGE_ASSIGNED",
+      source: { type: "unit", unitId: attacker.id, controllerId: attacker.controllerId },
+      target: { type: "unit", unitId: defender.id },
+      amount: assignedDamage,
+      damageKind: "effect"
+    });
+  }
+  markUnitRemovedIfNeeded(state, defender);
+}
+
 /**
  * Thunderbirds' lightning / Wyverns' sting: roll one extra Attack die after the
  * attack and before the parked retaliation, dealing flat damage when the face
  * falls in the ability's window (Thunderbirds 0/+1, Wyverns exactly 0). The
- * roll is deterministic through the same combat dice stream as normal attacks.
+ * roll goes through the shared ability-roll pipeline — the same combat dice
+ * stream, the holder's morale curses, and the optional reroll window. Returns
+ * true when it paused on that window or ended the combat.
  */
 function applyAttackDieDamageFollowUps(
   state: GameState,
   attacker: CombatUnitState,
   defender: CombatUnitState,
-  forceRoll = false
+  ctx: PostAttackFollowUpContext,
+  myStep: number,
+  startIndex = 0
 ): boolean {
   const combat = state.combat;
   if (!combat || !isUnitAlive(attacker) || !isUnitAlive(defender)) {
@@ -4455,66 +4774,53 @@ function applyAttackDieDamageFollowUps(
   }
 
   const followUps = getAttackDieDamageFollowUps(attacker);
-  for (const followUp of followUps) {
+  for (let index = Math.max(0, startIndex); index < followUps.length; index += 1) {
+    const followUp = followUps[index];
     if (!isUnitAlive(defender)) {
       break;
     }
 
-    let candidate = rollAttackCandidate(combat, "normal");
+    // Tarnum (Fortress) Basilisks VI forces the ability regardless of the face.
+    if (ctx.forceAbilityRoll) {
+      resolveAttackDieDamageOutcome(state, attacker, defender, followUp, null, true);
+      continue;
+    }
+
+    const window = attackDieDamageWindow(followUp);
+    let candidate = rollAbilityCandidate(state, combat, attacker.controllerId, 1, window, true);
     // Multilingual Bron: reroll a missed ability die once.
-    const missed = candidate.roll < followUp.minRoll || (followUp.maxRoll !== undefined && candidate.roll > followUp.maxRoll);
-    if (!forceRoll && missed && bronRerollsAbilityRoll(state, attacker)) {
+    if (!abilityRollSucceeds(candidate.rolls, window) && bronRerollsAbilityRoll(state, attacker)) {
       appendEvent(state, {
         type: "UNIT_ABILITY_TRIGGERED",
         unitId: attacker.id,
         abilityId: `${followUp.abilityId}-roll`,
         targetUnitId: defender.id,
         message: `${attacker.name} rolls ${candidate.roll} for ${followUp.abilityName} — Multilingual Bron rerolls.`,
-        dice: { rolls: [...candidate.rolls], success: false, label: followUp.abilityName, caption: "Multilingual Bron rerolls…" }
+        dice: {
+          rolls: [...candidate.rolls],
+          success: false,
+          label: followUp.abilityName,
+          caption: "Multilingual Bron rerolls…",
+          ...(candidate.modifierNotes?.length ? { modifiers: candidate.modifierNotes } : {})
+        }
       });
-      candidate = rollAttackCandidate(combat, "normal");
-    }
-    const lands =
-      forceRoll || (candidate.roll >= followUp.minRoll && (followUp.maxRoll === undefined || candidate.roll <= followUp.maxRoll));
-    appendEvent(state, {
-      type: "UNIT_ABILITY_TRIGGERED",
-      unitId: attacker.id,
-      abilityId: followUp.abilityId,
-      targetUnitId: defender.id,
-      message: forceRoll
-        ? `${attacker.name} uses ${followUp.abilityName} regardless of the roll (Basilisks VI).`
-        : `${attacker.name} rolls ${candidate.roll} for ${followUp.abilityName}.`,
-      // A forced (no-roll) proc throws no dice, so it gets no dice read-out.
-      ...(forceRoll
-        ? {}
-        : {
-            dice: {
-              rolls: [...candidate.rolls],
-              success: lands,
-              label: followUp.abilityName,
-              caption: lands ? `${followUp.amount} extra damage to ${defender.cardName}!` : "No effect."
-            }
-          })
-    });
-
-    // Tarnum (Fortress) Basilisks VI forces the ability regardless of the face.
-    if (!forceRoll && (candidate.roll < followUp.minRoll || (followUp.maxRoll !== undefined && candidate.roll > followUp.maxRoll))) {
-      continue;
+      candidate = rollAbilityCandidate(state, combat, attacker.controllerId, 1, window, true);
     }
 
-    const assignedDamage = Math.min(followUp.amount, Math.max(0, defender.maxHealth - defender.damage));
-    defender.damage += followUp.amount;
-    noteUnitDamagedForTokens(state, defender, followUp.amount);
-    if (assignedDamage > 0) {
-      appendEvent(state, {
-        type: "DAMAGE_ASSIGNED",
-        source: { type: "unit", unitId: attacker.id, controllerId: attacker.controllerId },
-        target: { type: "unit", unitId: defender.id },
-        amount: assignedDamage,
-        damageKind: "effect"
-      });
+    if (
+      openAbilityRollWindow(state, attacker, defender, candidate, {
+        kind: "attack-die-damage",
+        abilityId: followUp.abilityId,
+        abilityName: followUp.abilityName,
+        diceCount: 1,
+        ...window,
+        resume: { ...ctx, fromStep: myStep, followUpIndex: index }
+      })
+    ) {
+      return true;
     }
-    markUnitRemovedIfNeeded(state, defender);
+
+    resolveAttackDieDamageOutcome(state, attacker, defender, followUp, candidate, false);
   }
 
   return finishCombatIfNeeded(state);
@@ -4581,80 +4887,135 @@ function applyOnAttackDieDraw(
 }
 
 /**
+ * The read-out + petrification of one resolved Death Stare roll. Shared by the
+ * straight-through path and the reroll window's keep.
+ *
+ * One ability event per stare; its message carries the outcome so the log
+ * reads correctly and tests can assert it. The FX/sound must play only when
+ * the stare actually PROCS, so only the landed petrification carries the
+ * mapped ability id (which abilityFxPlans keys the death-stare cue off). A
+ * failed roll fires an ANNOUNCE-only id (`…-roll`, deliberately unmapped) so
+ * the die read-out still logs without flashing the death stare — the same
+ * announce-vs-proc split the extra-die paralysis variants use.
+ */
+function resolveDeathStareOutcome(
+  state: GameState,
+  attacker: CombatUnitState,
+  defender: CombatUnitState,
+  followUp: DeathStareFollowUp,
+  candidate: AttackRollCandidate,
+  forceRoll: boolean
+): void {
+  // Tarnum (Fortress) Basilisks VI forces the Death Stare regardless of the dice.
+  const petrifies =
+    forceRoll || abilityRollSucceeds(candidate.rolls, { minRoll: followUp.onRoll, maxRoll: followUp.onRoll });
+  appendEvent(state, {
+    type: "UNIT_ABILITY_TRIGGERED",
+    unitId: attacker.id,
+    abilityId: petrifies ? followUp.abilityId : `${followUp.abilityId}-roll`,
+    targetUnitId: defender.id,
+    message: petrifies
+      ? `${attacker.name}'s ${followUp.abilityName} (rolled ${candidate.rolls.join(", ")}) reduces ${defender.cardName} to 0 Health.`
+      : `${attacker.name} rolls ${candidate.rolls.join(", ")} for ${followUp.abilityName}.`,
+    dice: {
+      rolls: [...candidate.rolls],
+      success: petrifies,
+      label: followUp.abilityName,
+      caption: petrifies ? `${defender.cardName} is reduced to 0 Health!` : "No effect.",
+      ...(candidate.modifierNotes?.length ? { modifiers: candidate.modifierNotes } : {})
+    }
+  });
+  if (!petrifies) {
+    return;
+  }
+  const lethal = Math.max(0, defender.maxHealth - defender.damage);
+  defender.damage = defender.maxHealth;
+  noteUnitDamagedForTokens(state, defender, lethal);
+  if (lethal > 0) {
+    appendEvent(state, {
+      type: "DAMAGE_ASSIGNED",
+      source: { type: "unit", unitId: attacker.id, controllerId: attacker.controllerId },
+      target: { type: "unit", unitId: defender.id },
+      amount: lethal,
+      damageKind: "effect"
+    });
+  }
+  markUnitRemovedIfNeeded(state, defender);
+}
+
+/**
  * Gorgons' Death Stare: after the attack, roll `diceCount` Attack dice; when
  * every one shows `onRoll`, the still-living target's current side is reduced
- * to 0 Health (a Pack flips to its Few side as usual). Returns true when the
- * combat ended as a result.
+ * to 0 Health (a Pack flips to its Few side as usual). The dice go through the
+ * shared ability-roll pipeline — the same combat dice stream, the holder's
+ * morale curses ("roll 1 die less" applies: the stare throws 2 Attack dice)
+ * and the optional reroll window. Returns true when it paused on that window
+ * or the combat ended.
  */
 function applyDeathStareFollowUps(
   state: GameState,
   attacker: CombatUnitState,
   defender: CombatUnitState,
-  forceRoll = false
+  ctx: PostAttackFollowUpContext,
+  myStep: number,
+  startIndex = 0
 ): boolean {
   const combat = state.combat;
   if (!combat || !isUnitAlive(attacker) || !isUnitAlive(defender)) {
     return false;
   }
 
-  for (const followUp of getDeathStareFollowUps(attacker)) {
+  const followUps = getDeathStareFollowUps(attacker);
+  for (let index = Math.max(0, startIndex); index < followUps.length; index += 1) {
+    const followUp = followUps[index];
     if (!isUnitAlive(defender)) {
       break;
     }
-    let rolls = Array.from({ length: Math.max(1, followUp.diceCount) }, () => rollAttackDie(combat));
+    const window: AbilityRollWindow = { minRoll: followUp.onRoll, maxRoll: followUp.onRoll };
+    // Negative Morale "roll 1 die less": the stare is a 2+-Attack-dice roll,
+    // so the holder throws one less — mandatory even though fewer stare dice
+    // HELP (the engine-wide reading, like a collapsed advantage roll).
+    const printedDice = Math.max(1, followUp.diceCount);
+    const diceCount = takeMoraleRollOneLess(state, attacker.controllerId, printedDice);
+    let candidate = rollAbilityCandidate(state, combat, attacker.controllerId, diceCount, window, true);
+    if (diceCount < printedDice) {
+      pushRollModifierNote(candidate, "Negative Morale", "one die less is rolled");
+    }
     // Multilingual Bron: a missed stare is rerolled once (the whole roll — all
     // its dice — is the ability's one roll).
-    if (!forceRoll && !rolls.every((roll) => roll === followUp.onRoll) && bronRerollsAbilityRoll(state, attacker)) {
+    if (!ctx.forceAbilityRoll && !abilityRollSucceeds(candidate.rolls, window) && bronRerollsAbilityRoll(state, attacker)) {
       appendEvent(state, {
         type: "UNIT_ABILITY_TRIGGERED",
         unitId: attacker.id,
         abilityId: `${followUp.abilityId}-roll`,
         targetUnitId: defender.id,
-        message: `${attacker.name} rolls ${rolls.join(", ")} for ${followUp.abilityName} — Multilingual Bron rerolls.`,
-        dice: { rolls: [...rolls], success: false, label: followUp.abilityName, caption: "Multilingual Bron rerolls…" }
+        message: `${attacker.name} rolls ${candidate.rolls.join(", ")} for ${followUp.abilityName} — Multilingual Bron rerolls.`,
+        dice: {
+          rolls: [...candidate.rolls],
+          success: false,
+          label: followUp.abilityName,
+          caption: "Multilingual Bron rerolls…",
+          ...(candidate.modifierNotes?.length ? { modifiers: candidate.modifierNotes } : {})
+        }
       });
-      rolls = Array.from({ length: Math.max(1, followUp.diceCount) }, () => rollAttackDie(combat));
+      candidate = rollAbilityCandidate(state, combat, attacker.controllerId, diceCount, window, true);
     }
-    // Tarnum (Fortress) Basilisks VI forces the Death Stare regardless of the dice.
-    const petrifies = forceRoll || rolls.every((roll) => roll === followUp.onRoll);
-    // One ability event per stare; its message carries the outcome so the log
-    // reads correctly and tests can assert it. The FX/sound must play only when
-    // the stare actually PROCS, so only the landed petrification carries the
-    // mapped ability id (which abilityFxPlans keys the death-stare cue off). A
-    // failed roll fires an ANNOUNCE-only id (`…-roll`, deliberately unmapped) so
-    // the die read-out still logs without flashing the death stare — the same
-    // announce-vs-proc split the extra-die paralysis variants use.
-    appendEvent(state, {
-      type: "UNIT_ABILITY_TRIGGERED",
-      unitId: attacker.id,
-      abilityId: petrifies ? followUp.abilityId : `${followUp.abilityId}-roll`,
-      targetUnitId: defender.id,
-      message: petrifies
-        ? `${attacker.name}'s ${followUp.abilityName} (rolled ${rolls.join(", ")}) reduces ${defender.cardName} to 0 Health.`
-        : `${attacker.name} rolls ${rolls.join(", ")} for ${followUp.abilityName}.`,
-      dice: {
-        rolls: [...rolls],
-        success: petrifies,
-        label: followUp.abilityName,
-        caption: petrifies ? `${defender.cardName} is reduced to 0 Health!` : "No effect."
-      }
-    });
-    if (!petrifies) {
-      continue;
+
+    if (
+      !ctx.forceAbilityRoll &&
+      openAbilityRollWindow(state, attacker, defender, candidate, {
+        kind: "death-stare",
+        abilityId: followUp.abilityId,
+        abilityName: followUp.abilityName,
+        diceCount,
+        ...window,
+        resume: { ...ctx, fromStep: myStep, followUpIndex: index }
+      })
+    ) {
+      return true;
     }
-    const lethal = Math.max(0, defender.maxHealth - defender.damage);
-    defender.damage = defender.maxHealth;
-    noteUnitDamagedForTokens(state, defender, lethal);
-    if (lethal > 0) {
-      appendEvent(state, {
-        type: "DAMAGE_ASSIGNED",
-        source: { type: "unit", unitId: attacker.id, controllerId: attacker.controllerId },
-        target: { type: "unit", unitId: defender.id },
-        amount: lethal,
-        damageKind: "effect"
-      });
-    }
-    markUnitRemovedIfNeeded(state, defender);
+
+    resolveDeathStareOutcome(state, attacker, defender, followUp, candidate, ctx.forceAbilityRoll);
   }
 
   return finishCombatIfNeeded(state);
@@ -5105,85 +5466,146 @@ function openHydraSecondAttack(
 }
 
 /**
+ * The Paralysis application of a landed follow-up (immunity checked at the
+ * moment it lands). Shared by both the "own"-die and "extra"-die sources and
+ * the reroll window's keep.
+ */
+function applyParalysisToTarget(
+  state: GameState,
+  attacker: CombatUnitState,
+  defender: CombatUnitState,
+  followUp: { abilityId: string; abilityName: string }
+): void {
+  if (unitImmuneToParalysis(state, defender)) {
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: defender.id,
+      abilityId: "ignore-paralysis",
+      targetUnitId: defender.id,
+      message: `${defender.cardName} is immune to Paralysis.`
+    });
+    return;
+  }
+  placeCombatToken(state, defender, "paralysis", 0, followUp.abilityName);
+  appendEvent(state, {
+    type: "UNIT_ABILITY_TRIGGERED",
+    unitId: attacker.id,
+    abilityId: followUp.abilityId,
+    targetUnitId: defender.id,
+    message: `${attacker.name} paralyses ${defender.cardName} with ${followUp.abilityName}.`
+  });
+}
+
+/**
+ * The read-out + token of one resolved extra-die Paralysis roll. Shared by
+ * the straight-through path and the reroll window's keep.
+ */
+function resolveParalysisExtraOutcome(
+  state: GameState,
+  attacker: CombatUnitState,
+  defender: CombatUnitState,
+  followUp: { abilityId: string; abilityName: string; onRoll: number },
+  candidate: AttackRollCandidate,
+  forceRoll: boolean
+): void {
+  const paralyses =
+    forceRoll || abilityRollSucceeds(candidate.rolls, { minRoll: followUp.onRoll, maxRoll: followUp.onRoll });
+  const gazeImmune = paralyses && unitImmuneToParalysis(state, defender);
+  appendEvent(state, {
+    type: "UNIT_ABILITY_TRIGGERED",
+    unitId: attacker.id,
+    abilityId: followUp.abilityId,
+    targetUnitId: defender.id,
+    message: `${attacker.name} rolls ${candidate.rolls.join(", ")} for ${followUp.abilityName}.`,
+    dice: {
+      rolls: [...candidate.rolls],
+      success: paralyses && !gazeImmune,
+      label: followUp.abilityName,
+      caption: paralyses
+        ? gazeImmune
+          ? `${defender.cardName} is immune to Paralysis.`
+          : `${defender.cardName} is Paralyzed!`
+        : "No effect.",
+      ...(candidate.modifierNotes?.length ? { modifiers: candidate.modifierNotes } : {})
+    }
+  });
+  if (paralyses) {
+    applyParalysisToTarget(state, attacker, defender, followUp);
+  }
+}
+
+/**
  * Azure Dragons / Basilisks: paralyse the target on a matching Attack die.
  * "own" reads this attack's resolved roll; "extra" rolls a fresh die through
- * the combat dice stream. The token only lands on a unit still alive.
+ * the shared ability-roll pipeline (combat dice stream, morale curses, the
+ * optional reroll window). The token only lands on a unit still alive.
+ * Returns true when it paused on the reroll window.
  */
 function applyParalysisFollowUps(
   state: GameState,
   attacker: CombatUnitState,
   defender: CombatUnitState,
-  attackRoll: number,
-  forceRoll = false
-): void {
+  ctx: PostAttackFollowUpContext,
+  myStep: number,
+  startIndex = 0
+): boolean {
   const combat = state.combat;
   if (!combat) {
-    return;
+    return false;
   }
-  for (const followUp of getParalysisFollowUps(attacker)) {
+  const followUps = getParalysisFollowUps(attacker);
+  for (let index = Math.max(0, startIndex); index < followUps.length; index += 1) {
+    const followUp = followUps[index];
     if (!isUnitAlive(defender)) {
       break;
     }
-    let roll = attackRoll;
-    if (followUp.source === "extra") {
-      roll = rollAttackCandidate(combat, "normal").roll;
-      // Multilingual Bron: reroll a missed extra Paralysis die once. Only the
-      // "extra" source is an ability's OWN roll — the "own" source reads the
-      // attack die, which the attack-reroll window already covers.
-      if (!forceRoll && roll !== followUp.onRoll && bronRerollsAbilityRoll(state, attacker)) {
-        appendEvent(state, {
-          type: "UNIT_ABILITY_TRIGGERED",
-          unitId: attacker.id,
-          abilityId: `${followUp.abilityId}-roll`,
-          targetUnitId: defender.id,
-          message: `${attacker.name} rolls ${roll} for ${followUp.abilityName} — Multilingual Bron rerolls.`,
-          dice: { rolls: [roll], success: false, label: followUp.abilityName, caption: "Multilingual Bron rerolls…" }
-        });
-        roll = rollAttackCandidate(combat, "normal").roll;
+    if (followUp.source !== "extra") {
+      // The "own" source reads the attack die, which the attack-reroll window
+      // (and the attack roll's own curses) already covered.
+      if (ctx.forceAbilityRoll || ctx.attackRoll === followUp.onRoll) {
+        applyParalysisToTarget(state, attacker, defender, followUp);
       }
-      const paralyses = forceRoll || roll === followUp.onRoll;
-      const gazeImmune = paralyses && unitImmuneToParalysis(state, defender);
+      continue;
+    }
+
+    const window: AbilityRollWindow = { minRoll: followUp.onRoll, maxRoll: followUp.onRoll };
+    let candidate = rollAbilityCandidate(state, combat, attacker.controllerId, 1, window, true);
+    // Multilingual Bron: reroll a missed extra Paralysis die once.
+    if (!ctx.forceAbilityRoll && !abilityRollSucceeds(candidate.rolls, window) && bronRerollsAbilityRoll(state, attacker)) {
       appendEvent(state, {
         type: "UNIT_ABILITY_TRIGGERED",
         unitId: attacker.id,
-        abilityId: followUp.abilityId,
+        abilityId: `${followUp.abilityId}-roll`,
         targetUnitId: defender.id,
-        message: `${attacker.name} rolls ${roll} for ${followUp.abilityName}.`,
+        message: `${attacker.name} rolls ${candidate.roll} for ${followUp.abilityName} — Multilingual Bron rerolls.`,
         dice: {
-          rolls: [roll],
-          success: paralyses && !gazeImmune,
+          rolls: [...candidate.rolls],
+          success: false,
           label: followUp.abilityName,
-          caption: paralyses
-            ? gazeImmune
-              ? `${defender.cardName} is immune to Paralysis.`
-              : `${defender.cardName} is Paralyzed!`
-            : "No effect."
+          caption: "Multilingual Bron rerolls…",
+          ...(candidate.modifierNotes?.length ? { modifiers: candidate.modifierNotes } : {})
         }
       });
+      candidate = rollAbilityCandidate(state, combat, attacker.controllerId, 1, window, true);
     }
-    // Tarnum (Fortress) Basilisks VI forces the Paralysis regardless of the face.
-    if (!forceRoll && roll !== followUp.onRoll) {
-      continue;
+
+    if (
+      !ctx.forceAbilityRoll &&
+      openAbilityRollWindow(state, attacker, defender, candidate, {
+        kind: "paralysis-extra",
+        abilityId: followUp.abilityId,
+        abilityName: followUp.abilityName,
+        diceCount: 1,
+        ...window,
+        resume: { ...ctx, fromStep: myStep, followUpIndex: index }
+      })
+    ) {
+      return true;
     }
-    if (unitImmuneToParalysis(state, defender)) {
-      appendEvent(state, {
-        type: "UNIT_ABILITY_TRIGGERED",
-        unitId: defender.id,
-        abilityId: "ignore-paralysis",
-        targetUnitId: defender.id,
-        message: `${defender.cardName} is immune to Paralysis.`
-      });
-      continue;
-    }
-    placeCombatToken(state, defender, "paralysis", 0, followUp.abilityName);
-    appendEvent(state, {
-      type: "UNIT_ABILITY_TRIGGERED",
-      unitId: attacker.id,
-      abilityId: followUp.abilityId,
-      targetUnitId: defender.id,
-      message: `${attacker.name} paralyses ${defender.cardName} with ${followUp.abilityName}.`
-    });
+
+    resolveParalysisExtraOutcome(state, attacker, defender, followUp, candidate, ctx.forceAbilityRoll);
   }
+  return false;
 }
 
 /**
@@ -5244,20 +5666,31 @@ function applyRetaliationParalysis(
   }
 
   if (ability.onRoll !== undefined) {
-    let candidate = rollAttackCandidate(combat, "normal");
+    // The retaliation gaze fires mid-attack-resolution (the enemy's attack is
+    // still on the stack), so it cannot pause on the interactive reroll
+    // window — the roll still goes through the shared pipeline and suffers
+    // the universal 'reroll a "+1"' morale curse, like the Defend die.
+    const window: AbilityRollWindow = { minRoll: ability.onRoll, maxRoll: ability.onRoll };
+    let candidate = rollAbilityCandidate(state, combat, retaliator.controllerId, 1, window, false);
     // Multilingual Bron: reroll a missed retaliation-gaze die once.
-    if (candidate.roll !== ability.onRoll && bronRerollsAbilityRoll(state, retaliator)) {
+    if (!abilityRollSucceeds(candidate.rolls, window) && bronRerollsAbilityRoll(state, retaliator)) {
       appendEvent(state, {
         type: "UNIT_ABILITY_TRIGGERED",
         unitId: retaliator.id,
         abilityId: `${ability.abilityId}-roll`,
         targetUnitId: target.id,
         message: `${retaliator.name} rolls ${candidate.roll} for ${ability.abilityName} — Multilingual Bron rerolls.`,
-        dice: { rolls: [...candidate.rolls], success: false, label: ability.abilityName, caption: "Multilingual Bron rerolls…" }
+        dice: {
+          rolls: [...candidate.rolls],
+          success: false,
+          label: ability.abilityName,
+          caption: "Multilingual Bron rerolls…",
+          ...(candidate.modifierNotes?.length ? { modifiers: candidate.modifierNotes } : {})
+        }
       });
-      candidate = rollAttackCandidate(combat, "normal");
+      candidate = rollAbilityCandidate(state, combat, retaliator.controllerId, 1, window, false);
     }
-    const lands = candidate.roll === ability.onRoll;
+    const lands = abilityRollSucceeds(candidate.rolls, window);
     const gazeImmune = lands && unitImmuneToParalysis(state, target);
     appendEvent(state, {
       type: "UNIT_ABILITY_TRIGGERED",
@@ -5273,7 +5706,8 @@ function applyRetaliationParalysis(
           ? gazeImmune
             ? `${target.cardName} is immune to Paralysis.`
             : `${target.cardName} is Paralyzed!`
-          : "No effect."
+          : "No effect.",
+        ...(candidate.modifierNotes?.length ? { modifiers: candidate.modifierNotes } : {})
       }
     });
     if (!lands) {
@@ -5615,47 +6049,35 @@ function openKnockbackChoice(
  * retaliates as normal. Returns true only when it pauses on the defender's
  * choice.
  */
-function openGhostDragonKnockback(
+/**
+ * The read-out + push (or the defender's destination choice) of one resolved
+ * knock-back roll. Shared by the straight-through path and the reroll
+ * window's keep. Returns true when it paused on the destination choice.
+ */
+function resolveKnockbackOutcome(
   state: GameState,
   attacker: CombatUnitState,
-  defender: CombatUnitState
+  defender: CombatUnitState,
+  ability: NonNullable<ReturnType<typeof getKnockbackAbility>>,
+  candidate: AttackRollCandidate
 ): boolean {
   const combat = state.combat;
-  if (!combat || !isUnitAlive(attacker) || !isUnitAlive(defender)) {
+  if (!combat) {
     return false;
   }
-  const ability = getKnockbackAbility(attacker);
-  if (!ability) {
-    return false;
-  }
-
-  // "After the attack, roll 1 Attack die."
-  let candidate = rollAttackCandidate(combat, "normal");
-  // Multilingual Bron: reroll a missed knock-back die once (the push denies the
-  // retaliation, so the attacker's controller always wants it to land).
-  if (candidate.roll !== ability.onRoll && bronRerollsAbilityRoll(state, attacker)) {
-    appendEvent(state, {
-      type: "UNIT_ABILITY_TRIGGERED",
-      unitId: attacker.id,
-      abilityId: `${ability.abilityId}-roll`,
-      targetUnitId: defender.id,
-      message: `${attacker.name} rolls ${candidate.roll} for ${ability.abilityName} — Multilingual Bron rerolls.`,
-      dice: { rolls: [...candidate.rolls], success: false, label: ability.abilityName, caption: "Multilingual Bron rerolls…" }
-    });
-    candidate = rollAttackCandidate(combat, "normal");
-  }
-  const pushes = candidate.roll === ability.onRoll;
+  const pushes = abilityRollSucceeds(candidate.rolls, { minRoll: ability.onRoll, maxRoll: ability.onRoll });
   appendEvent(state, {
     type: "UNIT_ABILITY_TRIGGERED",
     unitId: attacker.id,
     abilityId: ability.abilityId,
     targetUnitId: defender.id,
-    message: `${attacker.name} rolls ${candidate.roll} for ${ability.abilityName}.`,
+    message: `${attacker.name} rolls ${candidate.rolls.join(", ")} for ${ability.abilityName}.`,
     dice: {
       rolls: [...candidate.rolls],
       success: pushes,
       label: ability.abilityName,
-      caption: pushes ? `${defender.cardName} is knocked back!` : "No effect."
+      caption: pushes ? `${defender.cardName} is knocked back!` : "No effect.",
+      ...(candidate.modifierNotes?.length ? { modifiers: candidate.modifierNotes } : {})
     }
   });
   if (!pushes) {
@@ -5684,6 +6106,62 @@ function openGhostDragonKnockback(
 
   openKnockbackChoice(state, attacker, defender, destinations, ability);
   return true;
+}
+
+function openGhostDragonKnockback(
+  state: GameState,
+  attacker: CombatUnitState,
+  defender: CombatUnitState,
+  ctx: PostAttackFollowUpContext,
+  myStep: number
+): boolean {
+  const combat = state.combat;
+  if (!combat || !isUnitAlive(attacker) || !isUnitAlive(defender)) {
+    return false;
+  }
+  const ability = getKnockbackAbility(attacker);
+  if (!ability) {
+    return false;
+  }
+
+  // "After the attack, roll 1 Attack die" — through the shared ability-roll
+  // pipeline (combat dice stream, morale curses, the optional reroll window).
+  const window: AbilityRollWindow = { minRoll: ability.onRoll, maxRoll: ability.onRoll };
+  let candidate = rollAbilityCandidate(state, combat, attacker.controllerId, 1, window, true);
+  // Multilingual Bron: reroll a missed knock-back die once (the push denies the
+  // retaliation, so the attacker's controller always wants it to land).
+  if (!abilityRollSucceeds(candidate.rolls, window) && bronRerollsAbilityRoll(state, attacker)) {
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: attacker.id,
+      abilityId: `${ability.abilityId}-roll`,
+      targetUnitId: defender.id,
+      message: `${attacker.name} rolls ${candidate.roll} for ${ability.abilityName} — Multilingual Bron rerolls.`,
+      dice: {
+        rolls: [...candidate.rolls],
+        success: false,
+        label: ability.abilityName,
+        caption: "Multilingual Bron rerolls…",
+        ...(candidate.modifierNotes?.length ? { modifiers: candidate.modifierNotes } : {})
+      }
+    });
+    candidate = rollAbilityCandidate(state, combat, attacker.controllerId, 1, window, true);
+  }
+
+  if (
+    openAbilityRollWindow(state, attacker, defender, candidate, {
+      kind: "knockback",
+      abilityId: ability.abilityId,
+      abilityName: ability.abilityName,
+      diceCount: 1,
+      ...window,
+      resume: { ...ctx, fromStep: myStep, followUpIndex: 0 }
+    })
+  ) {
+    return true;
+  }
+
+  return resolveKnockbackOutcome(state, attacker, defender, ability, candidate);
 }
 
 /** Resolves the Ghost Dragon knock-back space pick, then unparks the attack. */
@@ -14467,6 +14945,14 @@ function rerollPendingChoice(
     throw new Error(action.useSetDie ? "No set-die morale card remains for that choice." : "No rerolls remain for that choice.");
   }
 
+  // An ability-roll window ranks dice by the ability's SUCCESS WINDOW (a
+  // Death Stare wants "-1"s); the attack window keeps its roll-mode aggregate.
+  const abilityWindow: AbilityRollWindow | null = choice.abilityRoll
+    ? { minRoll: choice.abilityRoll.minRoll, maxRoll: choice.abilityRoll.maxRoll }
+    : null;
+  const outcomeOf = (rolls: number[]): number =>
+    abilityWindow ? abilityRollScore(rolls, abilityWindow) : aggregateCandidateRoll(rolls, choice.rollMode);
+
   const latest = choice.candidates.at(-1);
   const candidate =
     source.setDieFace !== undefined && latest
@@ -14479,7 +14965,7 @@ function rerollPendingChoice(
           let flippedOutcome = Number.NEGATIVE_INFINITY;
           latest.rolls.forEach((_, index) => {
             const flipped = latest.rolls.map((roll, at) => (at === index ? face : roll));
-            const outcome = aggregateCandidateRoll(flipped, choice.rollMode);
+            const outcome = outcomeOf(flipped);
             if (outcome > flippedOutcome) {
               flippedOutcome = outcome;
               flipIndex = index;
@@ -14488,7 +14974,8 @@ function rerollPendingChoice(
           const rolls = latest.rolls.map((roll, at) => (at === flipIndex ? face : roll));
           return {
             rolls,
-            roll: aggregateCandidateRoll(rolls, choice.rollMode),
+            roll: abilityWindow ? (rolls[0] ?? 0) : aggregateCandidateRoll(rolls, choice.rollMode),
+            ...(abilityWindow ? { sumAllDice: true } : {}),
             // The set die reshapes the LATEST throw, so that throw's earlier
             // adjustments still describe these dice — carry them forward.
             modifierNotes: [
@@ -14497,10 +14984,19 @@ function rerollPendingChoice(
             ]
           } satisfies AttackRollCandidate;
         })()
-      : rollAttackCandidate(combat, choice.rollMode);
+      : choice.abilityRoll
+        ? { rolls: Array.from({ length: Math.max(1, choice.abilityRoll.diceCount) }, () => rollAttackDie(combat)), roll: 0, sumAllDice: true }
+        : rollAttackCandidate(combat, choice.rollMode);
+  if (choice.abilityRoll && source.setDieFace === undefined) {
+    candidate.roll = candidate.rolls[0] ?? 0;
+  }
   // A fresh face may be the first "+1" of this attack — the holder's own
   // Negative Morale reroll-the-"+1" curse (if still held) triggers on it.
-  applyMoraleDiceCurses(state, action.playerId, candidate, choice.rollMode);
+  if (abilityWindow) {
+    applyAbilityDiceCurses(state, action.playerId, candidate, abilityWindow, true);
+  } else {
+    applyMoraleDiceCurses(state, action.playerId, candidate, choice.rollMode);
+  }
   choice.candidates.push(candidate);
   // Face-gated sources (Crusaders' 'every "0"') never deplete; everything
   // else spends one use.
@@ -14587,6 +15083,16 @@ function choosePendingRoll(
     throw new Error("A reroll replaces the previous result — only the latest roll counts.");
   }
 
+  // An ability-roll window (Death Stare & co.): the attack's stack item is
+  // already resolved, so the kept dice resolve the ability's outcome and the
+  // post-attack follow-up tail resumes where it paused.
+  if (choice.abilityRoll) {
+    const abilityRoll = choice.abilityRoll;
+    closePendingChoice(state, choice, action.candidateIndex);
+    resolveAbilityRollKeep(state, cards, abilityRoll, candidate);
+    return;
+  }
+
   const stackItem = state.stack.find((item) => item.id === choice.stackItemId);
   if (!stackItem) {
     throw new Error("The pending attack is no longer available.");
@@ -14599,6 +15105,96 @@ function choosePendingRoll(
 
   closePendingChoice(state, choice, action.candidateIndex);
   resolveAttackOrOfferDieCancel(state, stackItem, details, candidate, cards);
+}
+
+/**
+ * The kept dice of an ability-roll reroll window: resolve the paused
+ * follow-up's outcome with them, finish that step's remaining follow-ups,
+ * then continue the post-attack tail from the next step. Mirrors the tail's
+ * own stop contract — a nested pause (another window, a target choice) or a
+ * finished combat ends the walk.
+ */
+function resolveAbilityRollKeep(
+  state: GameState,
+  cards: CardLibrary,
+  context: PendingAbilityRollContext,
+  candidate: AttackRollCandidate
+): void {
+  const resume = context.resume;
+  const combat = state.combat;
+  const attacker = combat?.units[resume.attackerId];
+  const defender = combat?.units[resume.defenderId];
+  if (!combat || !attacker || !defender) {
+    resumeAttackSequence(state, cards);
+    return;
+  }
+  const ctx: PostAttackFollowUpContext = {
+    attackerId: resume.attackerId,
+    defenderId: resume.defenderId,
+    attackKind: resume.attackKind,
+    attackRoll: resume.attackRoll,
+    forceAbilityRoll: resume.forceAbilityRoll
+  };
+
+  switch (context.kind) {
+    case "attack-die-damage": {
+      const followUps = getAttackDieDamageFollowUps(attacker);
+      const followUp =
+        followUps[resume.followUpIndex]?.abilityId === context.abilityId
+          ? followUps[resume.followUpIndex]
+          : followUps.find((entry) => entry.abilityId === context.abilityId);
+      if (followUp) {
+        resolveAttackDieDamageOutcome(state, attacker, defender, followUp, candidate, false);
+      }
+      if (finishCombatIfNeeded(state)) {
+        return;
+      }
+      if (applyAttackDieDamageFollowUps(state, attacker, defender, ctx, resume.fromStep, resume.followUpIndex + 1)) {
+        return;
+      }
+      break;
+    }
+    case "death-stare": {
+      const followUps = getDeathStareFollowUps(attacker);
+      const followUp =
+        followUps[resume.followUpIndex]?.abilityId === context.abilityId
+          ? followUps[resume.followUpIndex]
+          : followUps.find((entry) => entry.abilityId === context.abilityId);
+      if (followUp) {
+        resolveDeathStareOutcome(state, attacker, defender, followUp, candidate, false);
+      }
+      if (finishCombatIfNeeded(state)) {
+        return;
+      }
+      if (applyDeathStareFollowUps(state, attacker, defender, ctx, resume.fromStep, resume.followUpIndex + 1)) {
+        return;
+      }
+      break;
+    }
+    case "paralysis-extra": {
+      const followUps = getParalysisFollowUps(attacker);
+      const followUp =
+        followUps[resume.followUpIndex]?.abilityId === context.abilityId
+          ? followUps[resume.followUpIndex]
+          : followUps.find((entry) => entry.abilityId === context.abilityId && entry.source === "extra");
+      if (followUp && isUnitAlive(defender)) {
+        resolveParalysisExtraOutcome(state, attacker, defender, followUp, candidate, false);
+      }
+      if (applyParalysisFollowUps(state, attacker, defender, ctx, resume.fromStep, resume.followUpIndex + 1)) {
+        return;
+      }
+      break;
+    }
+    case "knockback": {
+      const ability = getKnockbackAbility(attacker);
+      if (ability && isUnitAlive(defender) && resolveKnockbackOutcome(state, attacker, defender, ability, candidate)) {
+        return;
+      }
+      break;
+    }
+  }
+
+  runPostAttackFollowUps(state, cards, ctx, resume.fromStep + 1);
 }
 
 /**

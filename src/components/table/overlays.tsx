@@ -1436,12 +1436,18 @@ export function RerollModal({
     return null;
   }
 
+  // An ability's own roll (Death Stare, the Thunderbird extra die…) reads out
+  // under the ability's name and shows every die; an attack window keeps the
+  // attacker → defender line and its single kept face.
+  const abilityRoll = choice.abilityRoll;
+
   if (choice.playerId !== viewerPlayerId) {
     return (
       <div className="reactionStrip waiting" role="status">
         <Hourglass aria-hidden="true" size={15} />
         <span>
-          {state.players[choice.playerId]?.name ?? choice.playerId} may reroll the attack die (
+          {state.players[choice.playerId]?.name ?? choice.playerId} may reroll the{" "}
+          {abilityRoll ? `${abilityRoll.abilityName} dice` : "attack die"} (
           {unitName(state, choice.attackerId)} → {unitName(state, choice.defenderId)})…
         </span>
       </div>
@@ -1458,10 +1464,12 @@ export function RerollModal({
     <div className="modalBackdrop" role="dialog" aria-label="Reroll choice">
       <div className="searchModal rerollModal">
         <header>
-          <strong>Fate is in your hands</strong>
+          <strong>{abilityRoll ? `${abilityRoll.abilityName} — fate is in your hands` : "Fate is in your hands"}</strong>
           <span>
-            {unitName(state, choice.attackerId)} attacks {unitName(state, choice.defenderId)} — a reroll replaces the
-            result, the latest roll counts.
+            {abilityRoll
+              ? `${unitName(state, choice.attackerId)} rolls for ${abilityRoll.abilityName} against ${unitName(state, choice.defenderId)}`
+              : `${unitName(state, choice.attackerId)} attacks ${unitName(state, choice.defenderId)}`}{" "}
+            — a reroll replaces the result, the latest roll counts.
           </span>
         </header>
         {rolling && latestCandidate ? (
@@ -1486,14 +1494,19 @@ export function RerollModal({
           <div className="rerollRow">
             {choice.candidates.map((candidate, index) => {
               const isLatest = index === latestIndex;
+              // Ability rolls (Death Stare) count EVERY face; the attack roll
+              // keeps one. Show what the outcome actually reads.
+              const facesText = abilityRoll
+                ? candidate.rolls.map(formatDieFace).join(" · ")
+                : formatDieFace(candidate.roll);
               return (
                 <div className={`rerollDie ${isLatest ? "current" : "rerolledAway"}`} key={index}>
-                  <span className="dieFaceBig">{formatDieFace(candidate.roll)}</span>
+                  <span className="dieFaceBig">{facesText}</span>
                   <small>{candidate.rolls.map(formatDieFace).join(" / ")}</small>
                   {isLatest ? (
                     keepAction ? (
                       <button className="commandButton primary" onClick={() => onAction(keepAction.action)} type="button">
-                        Keep {formatDieFace(candidate.roll)}
+                        Keep {facesText}
                       </button>
                     ) : null
                   ) : (
