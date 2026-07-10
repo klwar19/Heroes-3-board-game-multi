@@ -1,20 +1,17 @@
 "use client";
 
-// Dev-only preview of the ORNATE DRAGON chrome (same precedent as
-// /spell-book-preview): reproduces the adventure map screen's DOM classes
-// with mock content so the dragon's claw grips the card bar with living
-// frost/chill under the talons — plus the combat shelf via ?combat=1 —
-// without a live game.
+// Dev-only preview of the map card tray layout:
+// LEFT deck/discard/spell box · RIGHT permanents-on-top + hand box.
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { AzureClawChill } from "@/components/adventure/azure-claw-chill";
 
-function MockCard({ label }: { label: string }) {
+function MockCard({ label, w = 108, h = 148 }: { label: string; w?: number; h?: number }) {
   return (
     <div
       style={{
-        width: 108,
-        height: 148,
+        width: w,
+        height: h,
         borderRadius: 10,
         border: "1px solid rgba(213,168,79,0.55)",
         background: "linear-gradient(180deg, #3a2b18, #241a0e)",
@@ -23,7 +20,9 @@ function MockCard({ label }: { label: string }) {
         alignItems: "center",
         justifyContent: "center",
         fontSize: 12,
-        flex: "0 0 auto"
+        flex: "0 0 auto",
+        textAlign: "center",
+        padding: 4
       }}
     >
       {label}
@@ -67,19 +66,124 @@ function MapScreenPreview() {
       </div>
 
       <div
-        className="playerCardBar"
-        style={{ order: 3, display: "flex", gap: 12, padding: "9px 12px", position: "relative", minHeight: 168 }}
+        className="adventureHand playerCardBar"
+        style={{ order: 3, position: "relative", minHeight: 200, marginTop: 40 }}
       >
-        <div className="ownDeckColumn" style={{ display: "flex", gap: 8 }}>
-          <MockCard label="Deck" />
-          <MockCard label="Discard" />
+        {/* LEFT: deck + discard + spell book */}
+        <div className="ownDeckColumn">
+          <div className="ownDeckToolsRow">
+            <div className="ownDeckPile" aria-label="Your deck and discard">
+              <div className="ownDeckSpot">
+                <MockCard label="Deck 12" w={72} h={100} />
+                <small>Deck</small>
+              </div>
+              <div className="ownDiscardSpot" style={{ width: 72, height: 100 }}>
+                <span className="ownDeckCount">3</span>
+                <small>Discard</small>
+              </div>
+            </div>
+            <div className="spellBookPanel">
+              <button className="spellBookToggle" type="button">
+                <span className="spellBookCount">2</span>
+                <small>Spell Book</small>
+              </button>
+            </div>
+          </div>
         </div>
-        <div className="handArea" style={{ display: "flex", gap: 8 }}>
-          {["Marksmen", "Griffins", "Magic Arrow", "Tactics", "Gold"].map((label) => (
-            <MockCard key={label} label={label} />
-          ))}
+
+        {/* RIGHT: permanents on top, hand below */}
+        <div className="handMain">
+          <div className="permanentEffectsPanel">
+            <div className="trayBoxHeader">
+              <strong>Permanents &amp; Ongoing</strong>
+            </div>
+            <div className="permanentRow" aria-label="Permanents and ongoing in play">
+              {[
+                {
+                  name: "Ballista",
+                  text: "At the start of each Combat round, deal 1 damage to an enemy unit",
+                  kind: "permanent" as const
+                },
+                {
+                  name: "Eversmoking Ring",
+                  text: "Gain 1 valuables at the start of each Resources round",
+                  kind: "permanent" as const
+                },
+                {
+                  name: "Cart of Lumber",
+                  text: "Gain 1 wood at the start of each Resources round",
+                  kind: "permanent" as const
+                },
+                {
+                  name: "Bless",
+                  text: "Until the effect ends → then discard",
+                  kind: "ongoing" as const
+                },
+                {
+                  name: "Shield",
+                  text: "Until the end of Combat → then discard",
+                  kind: "ongoing" as const
+                },
+                {
+                  name: "Haste",
+                  text: "Until the effect ends → then hand (recalled)",
+                  kind: "ongoing" as const
+                }
+              ].map((p) => (
+                <div
+                  className={`permanentSlot ${p.kind === "ongoing" ? "ongoing" : ""}`}
+                  key={`${p.kind}-${p.name}`}
+                >
+                  <div
+                    className="permanentCardImage"
+                    style={{
+                      width: 52,
+                      height: 72,
+                      borderRadius: 6,
+                      border: "1px solid rgba(213,168,79,0.55)",
+                      background:
+                        p.kind === "ongoing"
+                          ? "linear-gradient(180deg, #2a3a48, #152028)"
+                          : "linear-gradient(180deg, #3a2b18, #241a0e)",
+                      color: "#e8d5a2",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 9,
+                      textAlign: "center",
+                      padding: 3,
+                      flex: "0 0 auto"
+                    }}
+                  >
+                    {p.name.split(" ")[0]}
+                  </div>
+                  <div className="permanentMeta">
+                    <span className={`permanentBadge ${p.kind === "ongoing" ? "ongoingBadge" : ""}`}>
+                      {p.kind === "ongoing" ? "ongoing" : "permanent"}
+                    </span>
+                    <strong>{p.name}</strong>
+                    <small>{p.text}</small>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="handArea">
+            <div className="handTopBar">
+              <small>Hand 5/5</small>
+            </div>
+            <div className="adventureHandCards" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {["Marksmen", "Griffins", "Magic Arrow", "Tactics", "Gold"].map((label) => (
+                <MockCard key={label} label={label} />
+              ))}
+            </div>
+          </div>
         </div>
         <AzureClawChill />
+        <div aria-hidden className="trayFootFrost">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img alt="" draggable={false} src="/assets/ui/ornate/tray-foot-frost.webp" />
+        </div>
       </div>
 
       <div className="adventureMidRow" style={{ order: 4, flex: 1 }}>
@@ -110,14 +214,6 @@ function MapScreenPreview() {
           <div className="mapStage">
             <div className="hexMapWrap" />
           </div>
-        </div>
-      </div>
-
-      <div className="advDecksBottom" style={{ order: 5 }}>
-        <div className="advDecks" style={{ display: "flex", gap: 10, padding: 10 }}>
-          {["Spells", "Neutrals", "Artifacts"].map((label) => (
-            <MockCard key={label} label={label} />
-          ))}
         </div>
       </div>
     </main>
