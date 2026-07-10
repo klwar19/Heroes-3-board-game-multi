@@ -43,7 +43,12 @@ function expectRejected(state: GameState, action: GameAction, actorClientId?: st
   return result.errors[0]?.message ?? "";
 }
 
-/** An open table with two joined members (Alice=c1, Bob=c2). */
+/**
+ * An open table with two joined members (Alice=c1, Bob=c2). Each NEW join now
+ * announces itself with a forced system line ("… joined the room." — see
+ * room.ts / room-membership.test.ts), so the buffer starts with TWO system
+ * notices; the player-line assertions below read through playerLinesOf.
+ */
 function tableWithTwo(): GameState {
   let state = makeGame();
   state = expectOk(state, { type: "JOIN_ROOM", clientId: "c1", name: "Alice" });
@@ -53,6 +58,11 @@ function tableWithTwo(): GameState {
 
 function chatOf(state: GameState): ChatMessage[] {
   return state.room?.chat ?? [];
+}
+
+/** Only the members' own lines — system notices (join announcements) excluded. */
+function playerLinesOf(state: GameState): ChatMessage[] {
+  return chatOf(state).filter((entry) => entry.kind === "chat");
 }
 
 function realSeatId(state: GameState): string {
@@ -68,13 +78,15 @@ describe("sending a chat message", () => {
     let state = tableWithTwo();
     state = expectOk(state, { type: "SEND_CHAT", clientId: "c1", text: "Well met, Bob." });
 
-    expect(chatOf(state)).toHaveLength(1);
-    const line = chatOf(state)[0];
+    // The two join announcements are system lines; the player line follows.
+    expect(chatOf(state).filter((entry) => entry.kind === "system")).toHaveLength(2);
+    expect(playerLinesOf(state)).toHaveLength(1);
+    const line = playerLinesOf(state)[0];
     expect(line.text).toBe("Well met, Bob.");
     expect(line.name).toBe("Alice");
     expect(line.clientId).toBe("c1");
     expect(line.kind).toBe("chat");
-    expect(line.seq).toBe(1);
+    expect(line.seq).toBe(3);
   });
 
   it("attributes to the member's CURRENT name — the account nickname flows in on rejoin", () => {
@@ -95,8 +107,8 @@ describe("sending a chat message", () => {
     // carries no seat playerId, so roomActionGuard / turn checks skip it.
     let state = tableWithTwo();
     state = expectOk(state, { type: "SEND_CHAT", clientId: "c2", text: "Watching." }, "c2");
-    expect(chatOf(state).map((entry) => entry.name)).toEqual(["Bob"]);
-    expect(chatOf(state)[0].seat).toBe("observer");
+    expect(playerLinesOf(state).map((entry) => entry.name)).toEqual(["Bob"]);
+    expect(playerLinesOf(state)[0].seat).toBe("observer");
   });
 
   it("carries the sender's assigned seat in a hosted room (for seat-coloured names)", () => {
@@ -124,7 +136,7 @@ describe("chat validation and hygiene", () => {
     expect(expectRejected(state, { type: "SEND_CHAT", clientId: "c1", text: "   " })).toMatch(/message/i);
     // Control: the same flow with real text lands.
     const ok = expectOk(state, { type: "SEND_CHAT", clientId: "c1", text: "hi" });
-    expect(chatOf(ok)).toHaveLength(1);
+    expect(playerLinesOf(ok)).toHaveLength(1);
   });
 
   it("strips control characters and collapses whitespace to a single line", () => {
@@ -162,7 +174,7 @@ describe("chat membership and anti-spam", () => {
     ).toMatch(/join the room/i);
     // Control: a joined member on the same table can chat.
     const ok = expectOk(state, { type: "SEND_CHAT", clientId: "c1", text: "member" });
-    expect(chatOf(ok)).toHaveLength(1);
+    expect(playerLinesOf(ok)).toHaveLength(1);
   });
 
   it("flood-caps one client, and another sender resets the budget (control)", () => {
@@ -184,8 +196,10 @@ describe("chat membership and anti-spam", () => {
     state = expectOk(state, { type: "SEND_CHAT", clientId: "c1", text: "a" });
     state = expectOk(state, { type: "SEND_CHAT", clientId: "c2", text: "b" });
     state = expectOk(state, { type: "SEND_CHAT", clientId: "c1", text: "c" });
-    const seqs = chatOf(state).map((entry) => entry.seq);
-    expect(seqs).toEqual([1, 2, 3]);
+    // Two join notices took seq 1-2; the player lines continue the same
+    // strictly-increasing counter.
+    const seqs = playerLinesOf(state).map((entry) => entry.seq);
+    expect(seqs).toEqual([3, 4, 5]);
   });
 });
 
@@ -230,7 +244,9 @@ describe("chat is ephemeral and public", () => {
 describe("system chat notices (appendSystemChat)", () => {
   it("seeds a system line when forced, and is a no-op on a silent table otherwise", () => {
     const state = tableWithTwo();
-    // Not forced + empty feed → nothing added.
+    // A genuinely SILENT table (the join notices cleared away — the empty-buffer
+    // contract this test pins): not forced + empty feed → nothing added.
+    state.room!.chat = [];
     expect(appendSystemChat(state, "Bob left the table")).toBeNull();
     expect(chatOf(state)).toHaveLength(0);
     // Forced → a system line appears, distinct kind, not counted as a player line.

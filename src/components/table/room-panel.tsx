@@ -249,7 +249,22 @@ export function RoomPanel({
                     ) : null}
                     <span className="roomMemberWho">
                       <span className="roomMemberPerson">
-                        {member.name}
+                        {/* A verified member's name opens their public profile
+                            (signed-in members are named by their account
+                            nickname); guests stay plain text. */}
+                        {member.userId && authEnabled() ? (
+                          <a
+                            className="roomMemberProfileLink"
+                            href={`/players/${encodeURIComponent(member.name)}`}
+                            rel="noreferrer"
+                            target="_blank"
+                            title={`View ${member.name}'s profile`}
+                          >
+                            {member.name}
+                          </a>
+                        ) : (
+                          member.name
+                        )}
                         {self ? <em> (you)</em> : null}
                       </span>
                       {pick ? <small className="roomMemberPick">{pick}</small> : null}

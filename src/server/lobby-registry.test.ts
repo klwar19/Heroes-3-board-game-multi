@@ -99,6 +99,34 @@ describe("deriveLobbyRecord", () => {
     expect(derived.ranked).toBe(true);
   });
 
+  it("carries the visible ROSTER — host first, guests labeled — so the lobby shows who is in which room", () => {
+    const state = createAdventureLobbyState({ seed: "derive-roster" });
+    state.room = {
+      hosted: true,
+      hostClientId: "c2",
+      members: [
+        { clientId: "c1", name: "Lan", seat: "p2", isHost: false }, // guest (no userId)
+        { clientId: "c2", name: "Binh", seat: "p1", isHost: true, userId: "u_binh" },
+        { clientId: "c3", name: "Watcher", seat: "observer", isHost: false, userId: "u_watch" }
+      ]
+    };
+    const derived = deriveLobbyRecord({ roomId: "r", state, ...META });
+    // Host first, then seated players, then observers; guest = no verified account.
+    expect(derived.members).toEqual([
+      { name: "Binh", host: true, guest: false, seated: true },
+      { name: "Lan", host: false, guest: true, seated: true },
+      { name: "Watcher", host: false, guest: false, seated: false }
+    ]);
+    // The directory row carries it through (legacy records read as empty).
+    expect(toDirectoryEntry(derived).members).toEqual(derived.members);
+    expect(toDirectoryEntry(record({ roomId: "legacy" })).members).toEqual([]);
+    // A roster change (a rename, a guest signing in) re-reports to the lobby:
+    // the signature must move with it.
+    const renamed = deriveLobbyRecord({ roomId: "r", state, ...META });
+    renamed.members = renamed.members!.map((entry) => (entry.name === "Lan" ? { ...entry, name: "Lan II" } : entry));
+    expect(lobbyRecordSignature(renamed)).not.toBe(lobbyRecordSignature(derived));
+  });
+
   it("reflects the room's match type: an explicit Normal table shows casual, Ranked shows ranked", () => {
     const casual = createAdventureLobbyState({ seed: "derive-casual" });
     casual.room = { hosted: false, hostClientId: null, members: [], ranked: false };

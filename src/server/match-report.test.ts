@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import type { GameState, RoomMember } from "@/engine";
+import { applyAction, createAdventureLobbyState, type GameState, type RoomMember, type RoomMembershipState } from "@/engine";
 import { detectFinishedMatch, gameIsOver } from "./match-report";
 
 // Isolate the built-in account store used by the integration tests below. The
@@ -32,13 +32,21 @@ function stateWith(options: {
   winnerSeat?: string | null;
   members?: RoomMember[];
   seed?: string;
+  matchSeats?: RoomMembershipState["matchSeats"];
 }): GameState {
   const over = options.over ?? false;
   return {
     seed: options.seed ?? "room-r1-nonce42",
     phase: over ? "game-over" : "adventure",
     adventure: { winnerPlayerId: over ? (options.winnerSeat === null ? undefined : (options.winnerSeat ?? "p1")) : undefined },
-    room: options.members ? { hosted: true, hostClientId: options.members[0]?.clientId ?? null, members: options.members } : null
+    room: options.members
+      ? {
+          hosted: true,
+          hostClientId: options.members[0]?.clientId ?? null,
+          members: options.members,
+          ...(options.matchSeats ? { matchSeats: options.matchSeats } : {})
+        }
+      : null
   } as unknown as GameState;
 }
 
@@ -132,6 +140,134 @@ describe("detectFinishedMatch — the shared game-over → ranked-result detecto
     expect(detectFinishedMatch(prev, next)).not.toBeNull();
     delete (next.room as { ranked?: boolean }).ranked;
     expect(detectFinishedMatch(prev, next)).not.toBeNull();
+  });
+
+  it("QUITTING LOSES POINTS: an account seated at game start that LEFT THE ROOM is reported as 'abandon'", () => {
+    const matchSeats = {
+      p1: { userId: "u_cat", name: "Catherine" },
+      p2: { userId: "u_rol", name: "Roland" }
+    };
+    // Roland rage-quit: his LEAVE_ROOM removed the member row entirely. The
+    // start-of-game snapshot still binds his account to seat p2, so he is
+    // reported as an abandon (an Elo loss) — and the match STAYS ranked even
+    // though only one live member remains.
+    const staying = [member({ clientId: "c1", name: "Catherine", seat: "p1", userId: "u_cat", isHost: true })];
+    const match = detectFinishedMatch(
+      stateWith({ over: false, members: staying, matchSeats }),
+      stateWith({ over: true, winnerSeat: "p1", members: staying, matchSeats })
+    );
+    expect(match!.participants).toEqual([
+      { accountId: "u_cat", nickname: "Catherine", result: "win" },
+      { accountId: "u_rol", nickname: "Roland", result: "abandon" }
+    ]);
+
+    // Stepping down to OBSERVER mid-game is the same desertion: the member row
+    // survives but no longer holds the seat.
+    const steppedDown = [
+      member({ clientId: "c1", name: "Catherine", seat: "p1", userId: "u_cat", isHost: true }),
+      member({ clientId: "c2", name: "Roland", seat: "observer", userId: "u_rol" })
+    ];
+    const observed = detectFinishedMatch(
+      stateWith({ over: false, members: steppedDown, matchSeats }),
+      stateWith({ over: true, winnerSeat: "p1", members: steppedDown, matchSeats })
+    );
+    expect(observed!.participants).toContainEqual({ accountId: "u_rol", nickname: "Roland", result: "abandon" });
+
+    // CONTROL (legacy games, no snapshot): the leaver is invisible, so this
+    // 2-account game degrades to a solo win and is NOT ranked — proving the
+    // snapshot is exactly what closes the quit-to-dodge hole.
+    expect(
+      detectFinishedMatch(
+        stateWith({ over: false, members: staying }),
+        stateWith({ over: true, winnerSeat: "p1", members: staying })
+      )
+    ).toBeNull();
+  });
+
+  it("a deserter's replacement gets the seat's real result; the deserter still gets the abandon", () => {
+    const matchSeats = {
+      p1: { userId: "u_cat", name: "Catherine" },
+      p2: { userId: "u_rol", name: "Roland" }
+    };
+    // Roland left; the host seated Xeron (a fresh account) into p2, who then
+    // fought the game to the end and lost it normally.
+    const withReplacement = [
+      member({ clientId: "c1", name: "Catherine", seat: "p1", userId: "u_cat", isHost: true }),
+      member({ clientId: "c9", name: "Xeron", seat: "p2", userId: "u_xer" })
+    ];
+    const match = detectFinishedMatch(
+      stateWith({ over: false, members: withReplacement, matchSeats }),
+      stateWith({ over: true, winnerSeat: "p1", members: withReplacement, matchSeats })
+    );
+    expect(match!.participants).toEqual([
+      { accountId: "u_cat", nickname: "Catherine", result: "win" },
+      { accountId: "u_xer", nickname: "Xeron", result: "loss" },
+      { accountId: "u_rol", nickname: "Roland", result: "abandon" }
+    ]);
+  });
+
+  it("a snapshot account whose SEAT ends up winning still gets the win, and finishers are never double-reported", () => {
+    const matchSeats = {
+      p1: { userId: "u_cat", name: "Catherine" },
+      p2: { userId: "u_rol", name: "Roland" }
+    };
+    // Catherine disconnected and left the room, but every rival got eliminated
+    // and her seat won by last-faction-standing: her seat's result is a win.
+    const onlyRoland = [member({ clientId: "c2", name: "Roland", seat: "p2", userId: "u_rol" })];
+    const match = detectFinishedMatch(
+      stateWith({ over: false, members: onlyRoland, matchSeats }),
+      stateWith({ over: true, winnerSeat: "p1", members: onlyRoland, matchSeats })
+    );
+    expect(match!.participants).toEqual([
+      { accountId: "u_rol", nickname: "Roland", result: "loss" },
+      { accountId: "u_cat", nickname: "Catherine", result: "win" }
+    ]);
+
+    // CONTROL: with everyone still seated, the snapshot adds NOTHING — one
+    // result per account, exactly the live-member attribution.
+    const both = [
+      member({ clientId: "c1", name: "Catherine", seat: "p1", userId: "u_cat", isHost: true }),
+      member({ clientId: "c2", name: "Roland", seat: "p2", userId: "u_rol" })
+    ];
+    const clean = detectFinishedMatch(
+      stateWith({ over: false, members: both, matchSeats }),
+      stateWith({ over: true, winnerSeat: "p1", members: both, matchSeats })
+    );
+    expect(clean!.participants).toEqual([
+      { accountId: "u_cat", nickname: "Catherine", result: "win" },
+      { accountId: "u_rol", nickname: "Roland", result: "loss" }
+    ]);
+  });
+
+  it("starting the adventure STAMPS the seat→account snapshot (room.matchSeats) the reporting reads", () => {
+    // Real engine flow: a hosted 2-seat lobby with verified members starts via
+    // the ready check; the built game must carry the frozen bindings.
+    const lobby = createAdventureLobbyState({ seed: "match-seats-stamp", playerCount: 2 });
+    const seats = lobby.setupLobby!.seats;
+    seats[0].factionId = "castle";
+    seats[0].heroDefId = "catherine";
+    seats[1].factionId = "necropolis";
+    seats[1].heroDefId = "sandro";
+    lobby.room = {
+      hosted: true,
+      hostClientId: "c1",
+      members: [
+        { clientId: "c1", name: "Catherine", seat: "p1", isHost: true, userId: "u_cat" },
+        { clientId: "c2", name: "Roland", seat: "p2", isHost: false, userId: "u_rol" },
+        { clientId: "c3", name: "Lurker", seat: "observer", isHost: false, userId: "u_lurk" }
+      ]
+    };
+    const t0 = 1_000_000;
+    const opened = applyAction(lobby, { type: "START_ADVENTURE", playerId: "p1" }, { now: t0 });
+    expect(opened.errors).toEqual([]);
+    const built = applyAction(opened.state, { type: "CONFIRM_START_ADVENTURE", playerId: "p2" }, { now: t0 + 1_000 });
+    expect(built.errors).toEqual([]);
+    expect(built.state.adventure).not.toBeNull();
+    // Observers are not part of the snapshot; both seats are, with their accounts.
+    expect(built.state.room?.matchSeats).toEqual({
+      p1: { userId: "u_cat", name: "Catherine" },
+      p2: { userId: "u_rol", name: "Roland" }
+    });
   });
 
   it("an account holding TWO seats disqualifies itself, not the whole match", () => {

@@ -24,6 +24,7 @@ import {
   getAfkState,
   getLegalActions,
   getPlayerView,
+  TURN_TIME_LIMIT_MS,
   type GameAction,
   type GameState,
   type LegalAction,
@@ -1263,6 +1264,53 @@ describe("AfkVotePanel — the vote UI and the idle call-a-vote button", () => {
     afk2.lastActionAt = { p1: Date.now() - AFK_IDLE_MS - 60_000, p2: Date.now() };
     render(<AfkVotePanel onAction={vi.fn()} state={notTheirTurn} viewerPlayerId={"p2" as PlayerId} />);
     expect(screen.queryByRole("button", { name: /call a kick vote/i })).toBeNull();
+  });
+
+  it("turn timer: shows the countdown once an open turn is under five minutes (a fresh turn is the CONTROL)", () => {
+    const state = adventureGame();
+    state.activePlayerId = "p1";
+    const afk = getAfkState(state);
+    afk.lastActionAt = { p1: Date.now(), p2: Date.now() }; // nobody is idle
+    afk.turnOpenSince = { p1: Date.now() - TURN_TIME_LIMIT_MS + 4 * 60_000 }; // 4:00 left
+    render(<AfkVotePanel onAction={vi.fn()} state={state} viewerPlayerId={"p1" as PlayerId} />);
+    expect(screen.getByText(/Your turn auto-ends in/i)).toBeTruthy();
+    cleanup();
+
+    // The opponent sees the same countdown named after the seat it is about.
+    render(<AfkVotePanel onAction={vi.fn()} state={state} viewerPlayerId={"p2" as PlayerId} />);
+    expect(screen.getByText(/turn ends in/i)).toBeTruthy();
+    cleanup();
+
+    // CONTROL: a freshly-opened turn (9+ minutes left) shows no countdown.
+    const fresh = adventureGame();
+    fresh.activePlayerId = "p1";
+    const afk2 = getAfkState(fresh);
+    afk2.lastActionAt = { p1: Date.now(), p2: Date.now() };
+    afk2.turnOpenSince = { p1: Date.now() };
+    render(<AfkVotePanel onAction={vi.fn()} state={fresh} viewerPlayerId={"p1" as PlayerId} />);
+    expect(screen.queryByText(/auto-ends in/i)).toBeNull();
+  });
+
+  it("turn timer: auto-fires FORCE_TURN_TIMEOUT once the open turn is over budget (still-in-budget is the CONTROL)", () => {
+    const state = adventureGame();
+    state.activePlayerId = "p1";
+    const afk = getAfkState(state);
+    afk.lastActionAt = { p1: Date.now(), p2: Date.now() }; // actively clicking, never "idle"
+    afk.turnOpenSince = { p1: Date.now() - TURN_TIME_LIMIT_MS - 1_000 }; // budget burned
+    const onAction = vi.fn();
+    render(<AfkVotePanel onAction={onAction} state={state} viewerPlayerId={"p2" as PlayerId} />);
+    expect(onAction).toHaveBeenCalledWith({ type: "FORCE_TURN_TIMEOUT", playerId: "p2", targetPlayerId: "p1" });
+    cleanup();
+
+    // CONTROL: with budget left nothing fires.
+    const inBudget = adventureGame();
+    inBudget.activePlayerId = "p1";
+    const afk2 = getAfkState(inBudget);
+    afk2.lastActionAt = { p1: Date.now(), p2: Date.now() };
+    afk2.turnOpenSince = { p1: Date.now() - 60_000 };
+    const onAction2 = vi.fn();
+    render(<AfkVotePanel onAction={onAction2} state={inBudget} viewerPlayerId={"p2" as PlayerId} />);
+    expect(onAction2).not.toHaveBeenCalledWith(expect.objectContaining({ type: "FORCE_TURN_TIMEOUT" }));
   });
 
   it("auto-fires the certain 30-minute kick against a seat idle that long", () => {

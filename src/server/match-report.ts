@@ -20,6 +20,11 @@
  *    nothing;
  *  - only members bound to a VERIFIED account (`RoomMember.userId`) on a real
  *    seat participate — guests and observers are invisible to the ladder;
+ *  - QUITTING LOSES POINTS: accounts seated when the adventure started
+ *    (`room.matchSeats`, stamped at map build) that no longer hold their seat at
+ *    game end — left the room, stepped down to observer, host-kicked — are
+ *    reported as "abandon" (an Elo loss). Deleting your membership row cannot
+ *    dodge the ladder;
  *  - at least TWO distinct accounts, including the winner and at least one
  *    loser: solo games, games against neutrals only, and one-account tables
  *    (self-play across tabs) are never ranked;
@@ -71,22 +76,41 @@ export function detectFinishedMatch(prev: GameState, next: GameState): FinishedM
   for (const member of seatHolders) {
     seatsPerAccount.set(member.userId!, (seatsPerAccount.get(member.userId!) ?? 0) + 1);
   }
-  const participants: FinishedMatch["participants"] = [];
+  // Seat → account, LIVE members first. These are players still in the room at
+  // game end: their result comes from their seat (win / abandon-if-vote-kicked /
+  // loss). Eliminated players keep their seat membership, so every loser who
+  // stayed — conquered, resigned or vote-kicked — is attributed here.
+  const liveByAccount = new Map<string, { seat: string; nickname: string }>();
   for (const member of seatHolders) {
     if ((seatsPerAccount.get(member.userId!) ?? 0) > 1) {
       continue;
     }
-    // A seat removed by the table's AFK kick vote is reported as "abandon":
-    // Elo and the loss column treat it exactly like a loss (see the account
-    // store), but the record keeps the drop distinguishable from a fought
-    // defeat. Eliminated players keep their seat membership, so every loser —
-    // kicked, conquered or resigned — still gets their result here.
+    liveByAccount.set(member.userId!, { seat: member.seat, nickname: member.name });
+  }
+  // Deserters: the seat → account snapshot frozen when the adventure STARTED
+  // (room.matchSeats). An account that was seated at the start but no longer
+  // holds that seat now — left the room, stepped down to observer, was kicked
+  // by the host — is reported as "abandon" (an Elo loss), so quitting a ranked
+  // game can never dodge the ladder. If their seat is the winning seat (their
+  // faction won by last-standing after they left) they still get the win.
+  // Games started before the snapshot existed simply have no extra entries.
+  const participants: FinishedMatch["participants"] = [];
+  for (const [accountId, live] of liveByAccount) {
     const result: FinishedMatch["participants"][number]["result"] =
-      member.seat === winnerSeat ? "win" : next.players?.[member.seat]?.kickedByVote ? "abandon" : "loss";
+      live.seat === winnerSeat ? "win" : next.players?.[live.seat]?.kickedByVote ? "abandon" : "loss";
+    participants.push({ accountId, nickname: live.nickname, result });
+  }
+  for (const [seat, bound] of Object.entries(next.room?.matchSeats ?? {})) {
+    if (!bound.userId || (seatsPerAccount.get(bound.userId) ?? 0) > 1) {
+      continue; // guest seat, or an ambiguous multi-seat account (dropped above).
+    }
+    if (liveByAccount.has(bound.userId) || participants.some((p) => p.accountId === bound.userId)) {
+      continue; // the account is already attributed (still here, or moved seats).
+    }
     participants.push({
-      accountId: member.userId!,
-      nickname: member.name,
-      result
+      accountId: bound.userId,
+      nickname: bound.name,
+      result: seat === winnerSeat ? "win" : "abandon"
     });
   }
   const hasWinner = participants.some((p) => p.result === "win");

@@ -473,6 +473,15 @@ export class SupabaseAccountStore implements AccountBackend {
     return account ? toProfile(rowToRecord(account)) : null;
   }
 
+  /** Public profile by (case-insensitive) nickname — the /players page. */
+  async getProfileByNickname(nickname: string): Promise<AccountProfile | null> {
+    if (typeof nickname !== "string" || !nickname.trim()) {
+      return null;
+    }
+    const row = await this.findByNicknameKey(normalizeNicknameKey(nickname));
+    return row ? toProfile(rowToRecord(row)) : null;
+  }
+
   async adminListAccounts(): Promise<SelfProfile[]> {
     const rows = await this.db.select<AccountRow>(ACCOUNTS_TABLE, {}, { order: "nickname.asc" });
     return rows.map((row) => toSelfProfile(rowToRecord(row)));

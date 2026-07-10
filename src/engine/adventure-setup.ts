@@ -75,6 +75,7 @@ import type {
   PlayerId,
   PlayerState,
   PvpTroopLoss,
+  RoomMembershipState,
   StartCheckState,
   UnitLevel,
   VictoryMode,
@@ -2500,6 +2501,25 @@ function buildAdventureFromLobby(state: GameState): void {
   const previousLog = state.eventLog;
   Object.assign(state, built);
   state.setupLobby = null;
+
+  // Freeze the seat → account bindings of the game that is starting RIGHT NOW,
+  // so a player who later leaves the room (or steps down to observer) cannot
+  // erase themselves from the ranked result — match reporting reads this
+  // snapshot alongside the live member list and records deserters as "abandon".
+  // Open tables store no seat on members, so their snapshot is simply empty.
+  if (state.room) {
+    const matchSeats: NonNullable<RoomMembershipState["matchSeats"]> = {};
+    const seatIds = new Set(lobby.seats.map((seat) => seat.playerId));
+    for (const member of state.room.members) {
+      if (member.seat !== "observer" && seatIds.has(member.seat)) {
+        matchSeats[member.seat] = {
+          name: member.name,
+          ...(member.userId ? { userId: member.userId } : {})
+        };
+      }
+    }
+    state.room.matchSeats = matchSeats;
+  }
   // Re-sequence ids so the combined log keeps every event id unique.
   state.eventLog = [...previousLog, ...built.eventLog.slice(1)].map((event, index) => ({
     ...event,
