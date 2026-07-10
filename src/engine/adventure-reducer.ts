@@ -4567,6 +4567,246 @@ export function resolveJudgeDread(state: GameState, playerId: PlayerId, optionIn
   revealNeutralArmy(state, draws);
 }
 
+/** The Visions spell id — its pre-battle cast lets the attacker swap guards. */
+const VISIONS_SPELL_ID = "spell.visions";
+
+/** Visions' Power → card-count table (1/2/3), reused as the swap budget. */
+function visionsCardsByPower(): Record<number, number> {
+  const card = cardLibrary[VISIONS_SPELL_ID];
+  return card?.effect.type === "VISIONS_SCRY" ? card.effect.cardsByPower : { 0: 1 };
+}
+
+/**
+ * Visions (pre-battle, neutral guard fights): after the guard army is DRAWN but
+ * before it is revealed, an attacker holding Visions may cast it to SWAP OUT the
+ * drawn Neutral guards — discard up to N of them and draw fresh cards of the same
+ * tier, exactly like the Groovy Satyr but player-initiated. N scales with Visions'
+ * Power (1/2/3), paid the board-game way by discarding extra Spells. Fixed bank
+ * guards are never swappable. Returns true if it opened the cast offer (the
+ * caller then returns instead of revealing). This is the "swap out neutral before
+ * battle" use — an addition to Visions' map-turn deck scry, not a replacement.
+ */
+function maybeOpenVisionsGuardSwap(state: GameState, draws: NeutralDraw[]): boolean {
+  const combat = state.combat;
+  if (!combat || combat.context.kind !== "neutral") {
+    return false;
+  }
+  const attackerId = combat.attackerPlayerId;
+  const player = state.players[attackerId];
+  // Offer only when the attacker actually holds Visions and at least one drawn
+  // guard is a deck card (fixed bank guards can never be swapped).
+  if (!player?.hand.includes(VISIONS_SPELL_ID) || !draws.some((draw) => !draw.bankGuard)) {
+    return false;
+  }
+
+  combat.pendingNeutralDraws = draws;
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId: attackerId,
+    prompt: "Visions: cast it to swap out the drawn Neutral guards before battle?",
+    options: [
+      { label: "Keep the drawn army (don't cast Visions)" },
+      { label: "Cast Visions — swap out drawn guards" }
+    ],
+    context: "visions-guard-cast",
+    returnPhase: "combat-setup"
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = attackerId;
+  return true;
+}
+
+/** Resolves the Visions pre-battle cast offer (context "visions-guard-cast"). */
+export function resolveVisionsGuardCast(state: GameState, playerId: PlayerId, optionIndex: number): void {
+  const combat = state.combat;
+  const draws = combat?.pendingNeutralDraws;
+  if (!combat || !draws) {
+    throw new Error("There is no drawn neutral army to swap with Visions.");
+  }
+
+  // Option 0 keeps the drawn army; Visions stays in hand.
+  if (optionIndex === 0) {
+    revealNeutralArmy(state, draws);
+    return;
+  }
+
+  const player = state.players[playerId];
+  const handIndex = player?.hand.indexOf(VISIONS_SPELL_ID) ?? -1;
+  if (!player || handIndex === -1) {
+    // Visions left the hand between the draw and the choice — reveal as-is.
+    revealNeutralArmy(state, draws);
+    return;
+  }
+
+  // Pay the cast: discard Visions, then scale the swap budget by its Power (paid
+  // the board-game way — discard extra Spells for +1 swap each, up to Power 2).
+  player.hand.splice(handIndex, 1);
+  player.discard.push(VISIONS_SPELL_ID);
+  appendEvent(state, {
+    type: "CARD_PLAYED",
+    playerId,
+    cardId: VISIONS_SPELL_ID,
+    timing: "instant",
+    mode: "basic",
+    optionLabel: "swap Neutral guards (pre-battle)"
+  });
+  openVisionsGuardSwapBoost(state, playerId, visionsCardsByPower(), 0);
+}
+
+/**
+ * Visions pre-battle swap Power boost: discard a Spell for +1 swap (up to the
+ * spell's top breakpoint), or start swapping now. Mirrors the map scry's Power
+ * payment (openVisionsBoostStep) but ends by opening the guard-swap loop.
+ */
+function openVisionsGuardSwapBoost(
+  state: GameState,
+  playerId: PlayerId,
+  cardsByPower: Record<number, number>,
+  boost: number
+): void {
+  const player = state.players[playerId];
+  const maxPower = Math.max(...Object.keys(cardsByPower).map(Number));
+  const spellCardIds =
+    boost < maxPower ? (player?.hand.filter((cardId) => cardCanBoostPower(cardLibrary[cardId])) ?? []) : [];
+
+  if (spellCardIds.length === 0) {
+    openVisionsGuardSwapLoop(state, playerId, visionsCardCount(cardsByPower, boost));
+    return;
+  }
+
+  const nextCount = visionsCardCount(cardsByPower, boost + 1);
+  const nowCount = visionsCardCount(cardsByPower, boost);
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId,
+    prompt: `Visions: discard a Spell for +1 swap (swap ${nextCount}), or swap now (${nowCount})?`,
+    options: [
+      ...spellCardIds.map((cardId) => ({
+        label: `Discard ${cardLibrary[cardId]?.name ?? cardId} → swap up to ${nextCount}`
+      })),
+      { label: `Swap now — up to ${nowCount} guard${nowCount === 1 ? "" : "s"}` }
+    ],
+    context: "visions-guard-boost",
+    visionsBoost: { boost, spellCardIds: [...spellCardIds], cardsByPower },
+    returnPhase: "combat-setup"
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = playerId;
+}
+
+/** Resolves a Visions swap Power boost (context "visions-guard-boost"). */
+export function resolveVisionsGuardBoost(state: GameState, playerId: PlayerId, optionIndex: number): void {
+  const choice = state.pendingChoice;
+  if (
+    !choice ||
+    choice.type !== "OPTION_CHOICE" ||
+    choice.context !== "visions-guard-boost" ||
+    !choice.visionsBoost ||
+    choice.playerId !== playerId
+  ) {
+    throw new Error("There is no Visions swap Power decision to resolve.");
+  }
+  const { boost, spellCardIds, cardsByPower } = choice.visionsBoost;
+  const player = state.players[playerId];
+  state.pendingChoice = null;
+
+  const paySpell = spellCardIds[optionIndex];
+  const handIndex = player ? player.hand.indexOf(paySpell ?? "") : -1;
+  // The trailing option (or a Spell that left the hand) starts swapping now.
+  if (!player || optionIndex >= spellCardIds.length || !paySpell || handIndex === -1) {
+    openVisionsGuardSwapLoop(state, playerId, visionsCardCount(cardsByPower, boost));
+    return;
+  }
+
+  // Spend the Spell for +1 Power (one more swap), then offer the next boost.
+  player.hand.splice(handIndex, 1);
+  player.discard.push(paySpell);
+  appendEvent(state, {
+    type: "CARD_PLAYED",
+    playerId,
+    cardId: paySpell,
+    timing: cardLibrary[paySpell]?.timing ?? "instant",
+    mode: "basic",
+    optionLabel: "+1 Power (Visions swap)"
+  });
+  openVisionsGuardSwapBoost(state, playerId, cardsByPower, boost + 1);
+}
+
+/**
+ * Visions pre-battle swap loop: offer to swap one of the drawn (non-bank) Neutral
+ * guards for a fresh card of the same tier, up to `swapsRemaining` times, or stop
+ * and reveal. Re-opens itself (one fewer swap) after each swap. Reveals the final
+ * army when the budget is spent, no swappable guard remains, or the player stops.
+ */
+function openVisionsGuardSwapLoop(state: GameState, playerId: PlayerId, swapsRemaining: number): void {
+  const combat = state.combat;
+  const draws = combat?.pendingNeutralDraws;
+  if (!combat || !draws) {
+    return;
+  }
+
+  if (swapsRemaining <= 0 || !draws.some((draw) => !draw.bankGuard)) {
+    revealNeutralArmy(state, draws);
+    return;
+  }
+
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId,
+    prompt: `Visions: swap a drawn Neutral guard (${swapsRemaining} left), or reveal the army?`,
+    options: [
+      ...draws.map((draw) => ({
+        label: draw.bankGuard
+          ? `${coreUnitDefinitions[draw.unitDefId]?.name ?? draw.unitDefId} (bank guard — cannot swap)`
+          : `Swap ${coreUnitDefinitions[draw.unitDefId]?.name ?? draw.unitDefId} (${draw.tier})`
+      })),
+      { label: "Done — reveal the army" }
+    ],
+    context: "visions-guard-swap",
+    visionsGuardSwap: { swapsRemaining },
+    returnPhase: "combat-setup"
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = playerId;
+}
+
+/** Resolves one Visions guard swap (context "visions-guard-swap"). */
+export function resolveVisionsGuardSwap(state: GameState, playerId: PlayerId, optionIndex: number): void {
+  const combat = state.combat;
+  const choice = state.pendingChoice;
+  const draws = combat?.pendingNeutralDraws;
+  if (
+    !combat ||
+    !draws ||
+    !choice ||
+    choice.type !== "OPTION_CHOICE" ||
+    choice.context !== "visions-guard-swap" ||
+    !choice.visionsGuardSwap
+  ) {
+    throw new Error("There is no Visions guard swap to resolve.");
+  }
+  const swapsRemaining = choice.visionsGuardSwap.swapsRemaining;
+  state.pendingChoice = null;
+
+  // Trailing "Done" option: reveal the army as it stands.
+  const draw = optionIndex < draws.length ? draws[optionIndex] : undefined;
+  if (!draw) {
+    revealNeutralArmy(state, draws);
+    return;
+  }
+  // A fixed bank guard cannot be swapped — re-offer without spending a swap.
+  if (draw.bankGuard) {
+    openVisionsGuardSwapLoop(state, playerId, swapsRemaining);
+    return;
+  }
+
+  swapNeutralDraw(state, playerId, draws, optionIndex);
+  openVisionsGuardSwapLoop(state, playerId, swapsRemaining - 1);
+}
+
 export function startPlayerCombat(
   state: GameState,
   attacker: HeroState,
@@ -5120,6 +5360,11 @@ export function finishCombatPlacement(state: GameState, action: Extract<GameActi
     }
     if (activeEffect === "NEUTRAL_DRAW_SWAP" && draws.some((draw) => !draw.bankGuard)) {
       openSatyrSwapChoice(state, draws);
+      return;
+    }
+    // No Astrologers swap up: an attacker holding Visions may cast it now to swap
+    // out the drawn guards before the battle (the pre-battle Visions use).
+    if (maybeOpenVisionsGuardSwap(state, draws)) {
       return;
     }
 
@@ -7846,6 +8091,24 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
   if (choice.context === "judge-dread") {
     state.pendingChoice = null;
     resolveJudgeDread(state, action.playerId, action.optionIndex);
+    return;
+  }
+
+  if (choice.context === "visions-guard-cast") {
+    state.pendingChoice = null;
+    resolveVisionsGuardCast(state, action.playerId, action.optionIndex);
+    return;
+  }
+
+  if (choice.context === "visions-guard-boost") {
+    // The resolver reads and then clears the pending choice.
+    resolveVisionsGuardBoost(state, action.playerId, action.optionIndex);
+    return;
+  }
+
+  if (choice.context === "visions-guard-swap") {
+    // The resolver reads and then clears the pending choice.
+    resolveVisionsGuardSwap(state, action.playerId, action.optionIndex);
     return;
   }
 

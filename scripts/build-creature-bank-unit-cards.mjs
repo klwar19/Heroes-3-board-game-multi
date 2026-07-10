@@ -170,19 +170,50 @@ function textWidth(text, fontSize) {
   return text.length * fontSize * 0.51;
 }
 
-function statPanel(stats) {
-  const ys = [286, 441, 596, 750];
-  const boxes = [[249, 72], [404, 76], [558, 80], [712, 117]];
-  const patches = boxes.map(([top, height]) =>
-    `<rect x="86" y="${top}" width="66" height="${height}" rx="5" fill="#302117" fill-opacity="0.995"/>`
-  ).join("");
-  const values = stats.map((value, index) => {
-    const size = String(value).length > 1 ? 29 : 34;
-    return `<text x="119" y="${ys[index]}" text-anchor="middle" dominant-baseline="middle"
+// Stat-number centres, measured off the real scans. There are TWO frame
+// layouts: the faction "few" cards share one (template A), while the four
+// neutral-golden / neutral-azure scans (gold/diamond Golems, faerie/crystal
+// Dragons) space their lower cells further down (template B). Using one set for
+// both left the neutral cards' printed numbers peeking out below the plaque.
+const STAT_CENTERS = {
+  few: [258, 415, 578, 748],
+  neutral: [270, 452, 632, 800]
+};
+
+function statPanel(stats, centers) {
+  // The old build placed the values ~20px too low, so they drifted toward each
+  // cell's divider and read as loose stickers; these sit them back in the icon's
+  // number slot and give each a carved plaque matching the CREATURE BANK strip +
+  // rules panel, so the whole overlay reads as one deliberate restat rather than
+  // four mismatched dark boxes.
+  const x = 86;
+  const w = 66;
+  const h = 54;
+  const defs = `<defs>
+    <linearGradient id="statPlaque" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3c2b1c"/>
+      <stop offset="0.5" stop-color="#2a1d13"/>
+      <stop offset="1" stop-color="#1c120c"/>
+    </linearGradient>
+  </defs>`;
+  const plaques = centers
+    .map((cy) => {
+      const top = cy - h / 2;
+      return `<rect x="${x}" y="${top}" width="${w}" height="${h}" rx="8"
+        fill="url(#statPlaque)" stroke="#8d683c" stroke-width="2.5"/>
+      <rect x="${x + 2.5}" y="${top + 2.5}" width="${w - 5}" height="${h - 5}" rx="6"
+        fill="none" stroke="#d8ad63" stroke-width="0.9" stroke-opacity="0.45"/>`;
+    })
+    .join("");
+  const values = stats
+    .map((value, index) => {
+      const size = String(value).length > 1 ? 30 : 35;
+      return `<text x="${x + w / 2}" y="${centers[index]}" text-anchor="middle" dominant-baseline="middle"
       font-family="Georgia, 'Times New Roman', serif" font-size="${size}" font-weight="700"
       fill="#fff4c8" stroke="#140c07" stroke-width="3" paint-order="stroke">${value}</text>`;
-  }).join("");
-  return patches + values;
+    })
+    .join("");
+  return defs + plaques + values;
 }
 
 function bankStrip() {
@@ -230,10 +261,17 @@ async function buildCard(card) {
   const metadata = await sharp(sourcePath).metadata();
   if (!metadata.width || !metadata.height) throw new Error(`Cannot read ${card.source}`);
 
+  // The "few" faction scans and the neutral-golden/azure scans lay their stat
+  // wells out differently — pick the matching number centres.
+  const centers = card.source.includes("-few") ? STAT_CENTERS.few : STAT_CENTERS.neutral;
+  // Draw the stat plaques LAST so the (low) neutral-template initiative plaque
+  // sits on top of the CREATURE BANK strip's empty left box instead of being
+  // hidden behind it. The plaques only occupy the stat column, so they never
+  // overlap the "CREATURE BANK" banner text or the rules panel.
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${metadata.width}" height="${metadata.height}" viewBox="0 0 ${VIEW_WIDTH} ${VIEW_HEIGHT}">
-    ${statPanel(card.stats)}
     ${bankStrip()}
     ${await abilityPanel(card)}
+    ${statPanel(card.stats, centers)}
   </svg>`;
   const destination = path.join(ASSETS, `units-creature-bank-${card.slug}.webp`);
 
