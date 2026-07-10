@@ -3449,6 +3449,8 @@ button.battleCell {
 
 .adventureRoot {
   gap: 8px;
+  /* Tray bottom frost hangs slightly past the card bar into the gap above town. */
+  overflow: visible;
 }
 
 /* ------------------------------------------------------------------ */
@@ -3472,6 +3474,7 @@ button.battleCell {
 
 .adventureRoot > .playerCardBar {
   order: 3;
+  overflow: visible;
 }
 
 .adventureRoot > .adventureMidRow {
@@ -4682,18 +4685,27 @@ button.hbSlot:disabled { cursor: default; }
 }
 
 /* Adventure hand strip */
-/* ---------- Top command bar: your hand · deck · discard · Spell Book -------- */
-/* The player's personal card zone now rides the TOP of the map screen (moved up
-   from beneath the map). It reads left → right: your deck + discard pile, the
-   Spell Book tome and any permanent(s), then your hand of cards. Its inner DOM
-   is unchanged (AdventureOwnDeck stays a descendant), so every nesting/selector
-   test contract still holds — only the visual placement moved. */
+/* ---------- Top command bar: THREE framed boxes ------------------------ */
+/*
+ * DOM order = visual order (playerCardBar is flex-direction:row):
+ *   1. LEFT  .ownDeckColumn          — deck + discard + Spell Book
+ *   2. RIGHT .handMain (column)
+ *        ├─ .permanentEffectsPanel   — permanents / ongoing
+ *        └─ .handArea                — hand cards
+ *
+ *   ┌─────────────────┐   ┌────────────────────────────────┐
+ *   │ deck · discard  │   │ Permanents & Ongoing           │
+ *   │ spell book      │   ├────────────────────────────────┤
+ *   │                 │   │ Hand cards                     │
+ *   └─────────────────┘   └────────────────────────────────┘
+ */
 .playerCardBar {
+  position: relative;
   display: flex;
   flex-direction: row;
   align-items: stretch;
-  gap: 12px;
-  padding: 9px 12px;
+  gap: 14px;
+  padding: 10px 12px;
   background: linear-gradient(180deg, rgba(46, 34, 19, 0.95), rgba(25, 18, 10, 0.96));
   border: 1px solid rgba(190, 150, 85, 0.42);
   border-radius: 13px;
@@ -4701,6 +4713,26 @@ button.hbSlot:disabled { cursor: default; }
     inset 0 1px 0 rgba(255, 235, 190, 0.07),
     inset 0 0 0 1px rgba(0, 0, 0, 0.35),
     0 8px 22px rgba(0, 0, 0, 0.42);
+  /* Let bottom frost rim hang slightly past the tray edge (above the town). */
+  overflow: visible;
+}
+
+/* Hand + permanents: light wash so tray leather / griffin show through. */
+.playerCardBar .permanentEffectsPanel,
+.playerCardBar .handArea {
+  position: relative;
+  z-index: 1;
+  border-radius: 10px;
+  border: 1px solid rgba(190, 150, 85, 0.42);
+  background: linear-gradient(
+    180deg,
+    rgb(30 21 11 / 30%) 0%,
+    rgb(16 11 7 / 22%) 100%
+  );
+  box-shadow:
+    inset 0 0 0 1px rgb(217 178 90 / 14%),
+    inset 0 1px 0 rgb(255 235 190 / 6%),
+    0 4px 12px rgb(0 0 0 / 16%);
 }
 
 /* Discard/draw in progress — a soft gold wash over the whole bar. */
@@ -4711,62 +4743,294 @@ button.hbSlot:disabled { cursor: default; }
     0 8px 22px rgba(0, 0, 0, 0.42);
 }
 
-/* Left cluster: deck/discard + Spell Book + permanent(s), horizontal, wrapping
-   onto a second line only when the bar is narrow. */
+/* ===== LEFT cluster: deck/discard BOX + Spell Book (same row height) ===== */
 .playerCardBar .ownDeckColumn {
+  position: relative;
+  z-index: 1;
   flex: 0 0 auto;
+  /* Full tray height so frost can pin to OUTER bottom (above town). */
+  align-self: stretch;
   display: flex;
-  flex-direction: row;
-  flex-wrap: wrap;
-  align-items: center;
-  /* Stack wrapped lines (deck / permanents / Spell Book) from the TOP, not
-     centered: when the cluster wraps to more rows than the bar is tall — what a
-     browser zoom-out triggers — centering spilled the top row upward so the
-     Spell Book tome and the permanent/ongoing cards overlapped. Top-aligning
-     keeps the rows flowing downward and the bar grows to hold them. */
-  align-content: flex-start;
-  gap: 10px;
-  max-width: 360px;
+  flex-direction: column;
+  justify-content: center; /* tools sit mid-tray, not shoved up */
+  align-items: stretch;
+  max-width: none;
   min-width: 0;
-  padding: 6px 10px;
-  background: rgba(18, 13, 7, 0.55);
-  border: 1px solid rgba(170, 130, 70, 0.28);
-  border-radius: 10px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  overflow: visible;
 }
 
+/* Deck/discard + Spell Book on ONE row, vertically centered together. */
+.playerCardBar .ownDeckToolsRow {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center; /* same vertical position for pile box and spell book */
+  justify-content: flex-start;
+  gap: 12px;
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+}
+
+/*
+ * Deck/discard gold plate only (separate from Spell Book).
+ */
 .playerCardBar .ownDeckColumn .ownDeckPile {
-  gap: 8px;
-  padding: 0;
-  align-self: center;
-  justify-content: center;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px 10px;
+  border-radius: 12px;
+  border: 1px solid rgb(214 178 104 / 55%);
+  background:
+    radial-gradient(ellipse at 50% 0%, rgb(120 92 40 / 35%), transparent 70%),
+    rgb(28 21 12 / 88%);
+  box-shadow:
+    inset 0 0 0 1px rgb(0 0 0 / 35%),
+    0 6px 16px rgb(0 0 0 / 35%);
+  position: relative;
+  z-index: 1;
+  margin: 0;
 }
 
 .playerCardBar .ownDeckColumn .ownDeckBack,
 .playerCardBar .ownDeckColumn .ownDiscardSpot {
-  width: 56px;
-  height: 80px;
+  width: 72px;
+  height: 100px;
 }
 
-/* Permanent(s) beside the deck: compact thumbs so they never crowd the hand. */
-.playerCardBar .ownDeckColumn .permanentRow {
-  flex-direction: row;
+.playerCardBar .ownDeckColumn .ownDeckCount {
+  font-size: 20px;
+}
+
+.playerCardBar .ownDeckColumn .spellBookPanel {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+  display: flex;
   align-items: center;
-  gap: 6px;
 }
 
-.playerCardBar .ownDeckColumn .permanentSlot {
-  max-width: 92px;
+.playerCardBar .ownDeckColumn .spellBookToggle {
+  padding: 10px 12px;
 }
 
-.playerCardBar .ownDeckColumn .permanentCardImage {
-  width: 48px;
+.playerCardBar .ownDeckColumn .spellBookIcon {
+  width: 72px;
+  height: 56px;
 }
 
-.playerCardBar .ownDeckColumn .permanentMeta small {
+/*
+ * Ice spikes + soft mist around them — OUTER tray bottom, left tools only.
+ * Spikes (img) on the bottom line; mist wraps around (no hard rectangle).
+ */
+.playerCardBar .trayFootFrost {
+  position: absolute;
+  left: 4px;
+  width: clamp(240px, 26%, 320px);
+  max-width: 32%;
+  bottom: 0;
+  height: 54px;
+  z-index: 6;
+  pointer-events: none;
+  overflow: visible;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+/* Soft mist pool under / around the spikes */
+.playerCardBar .trayFootFrost::before {
+  content: "";
+  position: absolute;
+  left: -8%;
+  right: -8%;
+  bottom: -2px;
+  height: 72%;
+  z-index: 0;
+  border-radius: 50%;
+  background: radial-gradient(
+    ellipse 100% 90% at 50% 100%,
+    rgb(170 225 255 / 40%) 0%,
+    rgb(130 205 255 / 18%) 42%,
+    rgb(100 190 240 / 6%) 65%,
+    transparent 80%
+  );
+  filter: blur(5px);
+  animation: trayMistBreathe 5s ease-in-out infinite;
+}
+
+/* Lighter haze rising around spike tips */
+.playerCardBar .trayFootFrost::after {
+  content: "";
+  position: absolute;
+  left: 6%;
+  right: 6%;
+  bottom: 8%;
+  height: 100%;
+  z-index: 0;
+  border-radius: 50%;
+  background: radial-gradient(
+    ellipse 88% 100% at 50% 80%,
+    rgb(190 235 255 / 24%) 0%,
+    rgb(150 220 255 / 8%) 48%,
+    transparent 74%
+  );
+  filter: blur(7px);
+  animation: trayMistRise 5s ease-in-out infinite;
+}
+
+/* Ice spike crystals (above the mist) */
+.playerCardBar .trayFootFrost img {
+  display: block !important;
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  object-fit: fill;
+  object-position: center bottom;
+  pointer-events: none;
+  user-select: none;
   opacity: 0.95;
+  border: none !important;
+  background: transparent !important;
+  filter: drop-shadow(0 0 5px rgb(100 200 255 / 45%));
+  transform-origin: center bottom;
+  animation: trayIceSpikeRise 4.5s ease-in-out infinite;
 }
 
-/* Right: the hand of cards, filling the rest of the bar. */
+@keyframes trayMistBreathe {
+  0%,
+  100% {
+    opacity: 0.7;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes trayMistRise {
+  0%,
+  100% {
+    opacity: 0.5;
+    transform: translateY(2px);
+  }
+  50% {
+    opacity: 0.88;
+    transform: translateY(-3px);
+  }
+}
+
+@keyframes trayIceSpikeRise {
+  0%,
+  100% {
+    opacity: 0.88;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-1px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .playerCardBar .trayFootFrost::before,
+  .playerCardBar .trayFootFrost::after,
+  .playerCardBar .trayFootFrost img {
+    animation: none;
+    opacity: 0.9;
+    transform: none;
+  }
+}
+
+/* ===== RIGHT column: permanents on top, hand under ===== */
+.playerCardBar .handMain {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  margin-left: 4px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}
+
+/* ===== BOX 2: Permanents & Ongoing (top of right column) ===== */
+.playerCardBar .permanentEffectsPanel {
+  display: flex;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: 6px;
+  min-height: 64px;
+  padding: 8px 12px 10px;
+  flex: 0 0 auto;
+}
+
+.playerCardBar .trayBoxHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #f0dcb8;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.playerCardBar .trayBoxHeader strong {
+  font-weight: 700;
+  color: #ffd766;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 70%);
+}
+
+.playerCardBar .trayBoxEmpty {
+  color: #b9a37c;
+  font-size: 11px;
+  opacity: 0.85;
+  padding: 2px 0 2px;
+}
+
+.playerCardBar .permanentEffectsPanel .permanentRow {
+  flex: 1 1 auto;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+.playerCardBar .permanentEffectsPanel .permanentSlot {
+  flex: 0 1 220px;
+  max-width: 280px;
+  min-width: 140px;
+}
+
+.playerCardBar .permanentEffectsPanel .permanentCardImage {
+  width: 52px;
+}
+
+.playerCardBar .permanentEffectsPanel .permanentMeta small {
+  opacity: 0.95;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ===== BOX 3: Hand cards (bottom of right column) ===== */
 .playerCardBar .handArea {
   grid-column: auto;
   flex: 1 1 auto;
@@ -4774,15 +5038,10 @@ button.hbSlot:disabled { cursor: default; }
   flex-direction: column;
   gap: 6px;
   min-width: 0;
-  padding: 2px 4px 2px 12px;
-  background: transparent;
-  border: none;
-  border-left: 1px solid rgba(170, 130, 70, 0.24);
-  border-radius: 0;
+  padding: 8px 10px 10px;
 }
 
 @media (max-width: 1000px) {
-  /* Narrow: stack the deck/book cluster above the full-width hand. */
   .playerCardBar {
     flex-wrap: wrap;
   }
@@ -4790,13 +5049,17 @@ button.hbSlot:disabled { cursor: default; }
   .playerCardBar .ownDeckColumn {
     max-width: none;
     flex: 1 1 100%;
+    align-self: stretch;
   }
 
-  .playerCardBar .handArea {
+  .playerCardBar .handMain {
     flex: 1 1 100%;
-    border-left: none;
-    border-top: 1px solid rgba(170, 130, 70, 0.24);
-    padding: 6px 4px 2px;
+    margin-left: 0;
+  }
+
+  .playerCardBar .permanentEffectsPanel .permanentSlot {
+    flex: 1 1 100%;
+    max-width: none;
   }
 }
 
@@ -6452,7 +6715,8 @@ button.hbSlot:disabled { cursor: default; }
    keeps it behind the lobby content but above the body gradient; scoped to
    .setupPhase so it never leaks into the live game. The frosted panels above
    blur it locally, so the dragon reads crisp in the open air and softly out of
-   focus behind the hero-draft board (its "background"). */
+   focus behind the hero-draft board (its "background"). Static art only —
+   ambient wisps live in .setupAmbient and never touch this layer. */
 .setupPhase::before,
 .setupPhase::after {
   content: "";
@@ -6465,7 +6729,7 @@ button.hbSlot:disabled { cursor: default; }
 .setupPhase::before {
   background: url("/assets/ui/draft-gold-dragon.webp") center 20% / cover no-repeat;
   filter: brightness(0.5) saturate(1.04) contrast(1.02);
-  /* Slight scale so the ken-burns-free image never shows a blank edge. */
+  /* Slight scale so the image never shows a blank edge. */
   transform: scale(1.04);
 }
 
@@ -6478,12 +6742,225 @@ button.hbSlot:disabled { cursor: default; }
     linear-gradient(180deg, rgb(10 7 4 / 46%) 0%, transparent 26%, transparent 62%, rgb(6 5 3 / 78%) 100%);
 }
 
-/* Frost the setting-phase panels so the art reads softly through them. */
+/* ---- Map-setup ambient: WC3 wisps only (no dragon overlays) -------------- */
+
+.setupAmbient {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.setupWisps {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.setupWisp {
+  position: absolute;
+  width: 56px;
+  height: 48px;
+  opacity: 0;
+  will-change: transform, opacity;
+  animation: setupWispFloat 15s ease-in-out infinite;
+  /* Soft teal bloom behind the sprite (matches the unit's glow). */
+  filter: drop-shadow(0 0 6px rgb(40 220 200 / 45%));
+}
+
+.setupWispImg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+  /* Extra life: the sprite itself gently pulses/rotates. */
+  animation: setupWispPulse 2.4s ease-in-out infinite alternate;
+  will-change: transform, filter, opacity;
+}
+
+@keyframes setupWispPulse {
+  from {
+    transform: scale(0.92) rotate(-4deg);
+    filter: brightness(0.95) saturate(1.05);
+    opacity: 0.82;
+  }
+  to {
+    transform: scale(1.08) rotate(5deg);
+    filter: brightness(1.25) saturate(1.25);
+    opacity: 1;
+  }
+}
+
+/* Start posts around the glade edges / canopy air (keeps dragon face clear). */
+.setupWisp1 { left: 10%; top: 64%; width: 48px; height: 41px; animation-duration: 16s; animation-delay: 0s; }
+.setupWisp2 { left: 82%; top: 46%; width: 64px; height: 54px; animation-name: setupWispFloatAlt; animation-duration: 18s; animation-delay: -2.8s; }
+.setupWisp3 { left: 18%; top: 26%; width: 42px; height: 36px; animation-duration: 13.5s; animation-delay: -5.2s; }
+.setupWisp4 { left: 88%; top: 70%; width: 52px; height: 44px; animation-name: setupWispFloatAlt; animation-duration: 17s; animation-delay: -1.4s; }
+.setupWisp5 { left: 4%;  top: 42%; width: 58px; height: 50px; animation-duration: 15s; animation-delay: -7.5s; }
+.setupWisp6 { left: 68%; top: 18%; width: 44px; height: 38px; animation-name: setupWispFloatAlt; animation-duration: 19s; animation-delay: -4s; }
+
+/* Nested img has its own pulse; float keyframes only move the wrapper. */
+@keyframes setupWispFloat {
+  0% {
+    opacity: 0;
+    transform: translate(0, 10px) scale(0.55);
+  }
+  8% {
+    opacity: 0.85;
+  }
+  25% {
+    opacity: 1;
+    transform: translate(16px, -26px) scale(0.95);
+  }
+  50% {
+    opacity: 0.75;
+    transform: translate(-14px, -68px) scale(1.05);
+  }
+  75% {
+    opacity: 0.95;
+    transform: translate(20px, -108px) scale(0.9);
+  }
+  92% {
+    opacity: 0.35;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-4px, -148px) scale(0.45);
+  }
+}
+
+@keyframes setupWispFloatAlt {
+  0% {
+    opacity: 0;
+    transform: translate(0, 8px) scale(0.5);
+  }
+  10% {
+    opacity: 0.9;
+  }
+  30% {
+    opacity: 0.95;
+    transform: translate(-20px, -22px) scale(1);
+  }
+  55% {
+    opacity: 0.7;
+    transform: translate(12px, -60px) scale(1.08);
+  }
+  80% {
+    opacity: 0.9;
+    transform: translate(-16px, -102px) scale(0.88);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(6px, -142px) scale(0.4);
+  }
+}
+
+/* Fine teal/gold motes (cheap dots, no images). */
+.setupMotes {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.setupMote {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #e8fff8 0%, #5ef0d0 40%, #1a9a80 75%, transparent 100%);
+  box-shadow: 0 0 6px 2px rgb(60 230 200 / 45%);
+  mix-blend-mode: screen;
+  opacity: 0;
+  animation: setupMoteDrift 9s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+.setupMote1  { left: 14%; top: 58%; animation-delay: 0s;    animation-duration: 8.5s; }
+.setupMote2  { left: 26%; top: 74%; animation-delay: -1s;   animation-duration: 10s; width: 3px; height: 3px; }
+.setupMote3  { left: 78%; top: 40%; animation-delay: -2.2s; animation-duration: 9s; }
+.setupMote4  { left: 90%; top: 62%; animation-delay: -0.5s; animation-duration: 11s; width: 5px; height: 5px; }
+.setupMote5  { left: 8%;  top: 32%; animation-delay: -3.1s; animation-duration: 8s; }
+.setupMote6  { left: 70%; top: 78%; animation-delay: -1.6s; animation-duration: 9.5s; width: 3px; height: 3px; }
+.setupMote7  { left: 42%; top: 20%; animation-delay: -4s;   animation-duration: 10.5s; }
+.setupMote8  { left: 94%; top: 28%; animation-delay: -2.8s; animation-duration: 8.8s; }
+.setupMote9  { left: 20%; top: 86%; animation-delay: -5.2s; animation-duration: 12s; width: 3px; height: 3px; }
+.setupMote10 { left: 60%; top: 16%; animation-delay: -0.9s; animation-duration: 9.2s; }
+
+/* Gold-tinted motes near the dragon for mixed spirit/scale dust. */
+.setupMote4,
+.setupMote7,
+.setupMote10 {
+  background: radial-gradient(circle, #fff6c8 0%, #e0d060 38%, #6aaa40 78%, transparent 100%);
+  box-shadow: 0 0 7px 2px rgb(200 220 90 / 40%);
+}
+
+@keyframes setupMoteDrift {
+  0% {
+    opacity: 0;
+    transform: translate(0, 8px) scale(0.4);
+  }
+  12% {
+    opacity: 0.9;
+    transform: translate(4px, -6px) scale(1);
+  }
+  45% {
+    opacity: 0.7;
+    transform: translate(-10px, -36px) scale(0.85);
+  }
+  78% {
+    opacity: 0.5;
+    transform: translate(12px, -64px) scale(0.6);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-4px, -88px) scale(0.25);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .setupWisp,
+  .setupWispImg,
+  .setupMote {
+    animation: none !important;
+    transform: none;
+  }
+  .setupWisp {
+    opacity: 0;
+  }
+  .setupWisp1,
+  .setupWisp3 {
+    opacity: 0.55;
+  }
+  .setupWispImg {
+    opacity: 1;
+    filter: none;
+  }
+  .setupMote {
+    opacity: 0;
+  }
+  .setupMote2,
+  .setupMote5 {
+    opacity: 0.35;
+  }
+}
+
+/* Frost only the top HUD + Game options tab — Heroes & draft stays clear so
+   the Gold Dragon backdrop reads through that tab. */
 .setupPhase .advHud,
-.setupLobby .gameOptions,
-.setupLobby .factionCard,
-.setupLobby .lobbySeat {
+.setupLobby .gameOptions {
   backdrop-filter: blur(3px);
+}
+
+/* Keep interactive setup chrome above the fixed ambient wisp layer (z-index 0). */
+.setupPhase > .tableTopRow,
+.setupPhase > .setupLobby,
+.setupPhase > .logDrawer,
+.setupPhase > .errorBanner {
+  position: relative;
+  z-index: 1;
 }
 
 /* Map-setup lobby */
@@ -6635,9 +7112,10 @@ button.hbSlot:disabled { cursor: default; }
   flex-direction: column;
   gap: 2px;
   padding: 8px 12px;
-  border: 1px solid rgba(170, 130, 70, 0.35);
+  border: 1px solid rgba(170, 130, 70, 0.45);
   border-radius: 8px;
-  background: rgba(33, 25, 15, 0.8);
+  background: transparent;
+  text-shadow: 0 1px 4px rgb(0 0 0 / 85%);
 }
 
 .lobbySeat.mine {
@@ -6658,10 +7136,12 @@ button.hbSlot:disabled { cursor: default; }
   border: 1.5px solid;
   border-radius: 10px;
   padding: 10px;
-  background: rgba(24, 18, 10, 0.85);
+  /* Transparent so the Gold Dragon setup backdrop shows through. */
+  background: rgb(24 18 10 / 18%);
   display: flex;
   flex-direction: column;
   gap: 8px;
+  text-shadow: 0 1px 4px rgb(0 0 0 / 88%);
 }
 
 .factionCard.taken {
@@ -6686,11 +7166,12 @@ button.hbSlot:disabled { cursor: default; }
   align-items: center;
   text-align: left;
   padding: 6px;
-  background: rgba(33, 25, 15, 0.7);
-  border: 1px solid rgba(170, 130, 70, 0.3);
+  background: rgb(33 25 15 / 22%);
+  border: 1px solid rgba(170, 130, 70, 0.4);
   border-radius: 8px;
   color: #e8d9b8;
   cursor: pointer;
+  text-shadow: 0 1px 3px rgb(0 0 0 / 85%);
 }
 
 .lobbyHero img {
@@ -6747,9 +7228,10 @@ button.hbSlot:disabled { cursor: default; }
 
 /* Setting-phase buttons styled to match the gold/parchment splash. */
 .setupLobby .optionButtons button {
-  background: linear-gradient(180deg, rgba(62, 47, 25, 0.92), rgba(34, 25, 13, 0.94));
+  background: rgb(62 47 25 / 32%);
   border-color: rgba(150, 116, 60, 0.7);
-  box-shadow: inset 0 1px 0 rgba(255, 232, 174, 0.12);
+  box-shadow: none;
+  text-shadow: 0 1px 3px rgb(0 0 0 / 85%);
 }
 
 .setupLobby .optionButtons button:hover {
@@ -6764,11 +7246,11 @@ button.hbSlot:disabled { cursor: default; }
 }
 
 .setupLobby .lobbyHero {
-  background: linear-gradient(180deg, rgba(48, 35, 18, 0.72), rgba(30, 22, 12, 0.8));
+  background: rgb(48 35 18 / 20%);
 }
 
 .setupLobby .lobbyHero.selected {
-  background: linear-gradient(180deg, rgba(82, 61, 29, 0.88), rgba(54, 40, 19, 0.92));
+  background: rgb(82 61 29 / 38%);
 }
 
 /* Map-setup tabs (Heroes & specialties / Draft & random / Game options). */
@@ -7096,28 +7578,164 @@ button.hbSlot:disabled { cursor: default; }
   text-decoration: line-through;
 }
 
-/* Draft & random tab. */
-/* Hero-draft board: a frosted gold-framed surface that lets the shared Gold
-   Dragon backdrop read softly THROUGH it (the dragon is the hero-draft
-   "background"), while the frost keeps every button, label and hero card
-   crisply legible. Consistent with the other setup panels' frosted-over-scene
-   language so the whole screen feels like one board. */
+/* Heroes & draft tab: one continuous realistic parchment sheet with restrained
+   edge blood, light burn aging, and faint surface scratches (all in the art).
+   Texture on ::before (slightly translucent so the dragon peeks through). */
 .draftPanel {
+  position: relative;
+  isolation: isolate;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 16px 18px;
-  border: 1px solid rgb(222 179 99 / 55%);
-  border-radius: 14px;
-  background:
-    radial-gradient(120% 100% at 50% 0%, rgb(64 44 20 / 30%), transparent 62%),
-    rgb(24 17 9 / 58%);
-  -webkit-backdrop-filter: blur(9px) saturate(1.06);
-  backdrop-filter: blur(9px) saturate(1.06);
+  padding: 18px 20px;
+  border: 1px solid rgb(120 90 55 / 48%);
+  border-radius: 8px;
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
   box-shadow:
-    inset 0 1px 0 rgb(246 226 168 / 20%),
-    0 12px 34px rgb(0 0 0 / 46%);
-  color: #f2e3c0;
+    inset 0 1px 0 rgb(255 246 230 / 22%),
+    inset 0 0 0 1px rgb(80 55 30 / 14%),
+    0 12px 28px rgb(0 0 0 / 38%);
+  color: #2a1c08;
+  text-shadow: none;
+}
+
+.draftPanel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  /* Full sheet of parchment — no extra CSS filters that fake “ancient”. */
+  background-color: #d4bc8e;
+  background-image: url("/assets/ui/ornate/draft-parchment-panel.webp");
+  background-position: center;
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  opacity: 0.9;
+  /* Soft paper depth only — keep edge aging as painted in the texture. */
+  box-shadow: inset 0 0 36px rgb(70 48 24 / 12%);
+}
+
+/* Keep controls above the parchment layer. */
+.draftPanel > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* ---- Draft panel text/controls: dark ink on light parchment ------------- */
+.draftPanel .draftIntro,
+.draftPanel .draftSectionLabel,
+.draftPanel .draftPhaseHead strong,
+.draftPanel .draftPhaseHead small,
+.draftPanel .draftHint,
+.draftPanel .draftLockNote,
+.draftPanel .draftBannedList,
+.draftPanel .draftModeRow > small:first-child {
+  color: #3a2810;
+  text-shadow: none;
+}
+
+.draftPanel .draftIntro,
+.draftPanel .draftSectionLabel,
+.draftPanel .draftPhaseHead small,
+.draftPanel .draftHint,
+.draftPanel .draftModeRow > small:first-child {
+  color: #5c4322;
+}
+
+.draftPanel .draftPhaseHead strong {
+  color: #1f1408;
+  font-weight: 700;
+}
+
+.draftPanel .draftTurnNote {
+  background: rgb(255 240 210 / 42%);
+  border-color: rgb(110 78 40 / 48%);
+  color: #2a1c08;
+  text-shadow: none;
+}
+
+.draftPanel .draftTurnNote.waiting {
+  background: rgb(255 244 220 / 32%);
+  border-color: rgb(110 78 40 / 35%);
+  color: #5c4322;
+}
+
+.draftPanel .factionCard {
+  /* Soft ink-wash chips so the manuscript grain still shows under them. */
+  background: rgb(72 48 22 / 10%);
+  text-shadow: none;
+  color: #2a1c08;
+  box-shadow: inset 0 0 0 1px rgb(70 45 20 / 18%);
+}
+
+.draftPanel .factionCard small {
+  color: #5c4322;
+}
+
+.draftPanel .lobbyHero {
+  background: rgb(255 244 220 / 36%);
+  border-color: rgb(110 78 40 / 42%);
+  color: #2a1c08;
+  text-shadow: none;
+}
+
+.draftPanel .lobbyHero small {
+  color: #5c4322;
+}
+
+.draftPanel .lobbyHero.selected {
+  background: rgb(210 160 70 / 38%);
+  border-color: #9a6e28;
+  box-shadow: inset 0 0 0 1px rgb(255 220 140 / 35%);
+}
+
+.draftPanel .draftBanFaction {
+  background: rgb(72 48 22 / 10%);
+  border-color: rgb(110 78 40 / 38%);
+}
+
+.draftPanel .draftBanHero {
+  background: rgb(255 244 220 / 40%);
+  border-color: rgb(110 78 40 / 42%);
+  color: #2a1c08;
+  text-shadow: none;
+}
+
+.draftPanel .draftTownButton {
+  background: rgb(255 244 220 / 40%);
+  border-color: rgb(110 78 40 / 48%);
+  color: #2a1c08;
+  text-shadow: none;
+}
+
+.draftPanel .draftTownButton small {
+  color: #5c4322;
+}
+
+.draftPanel .draftResetBtn {
+  background: rgb(255 240 210 / 42%);
+  border-color: rgb(110 78 40 / 45%);
+  color: #3a2810;
+  text-shadow: none;
+}
+
+.draftPanel .optionButtons button {
+  background: rgb(255 240 210 / 52%);
+  border-color: rgb(110 78 40 / 50%);
+  color: #2a1c08;
+  text-shadow: none;
+  box-shadow: inset 0 1px 0 rgb(255 250 230 / 40%);
+}
+
+.draftPanel .optionButtons button.selected {
+  background: linear-gradient(180deg, #e8c576 0%, #c2933f 52%, #8f6824 100%);
+  color: #2a1c08;
+  border-color: #9a6e28;
+  text-shadow: 0 1px 0 rgb(255 244 214 / 45%);
 }
 
 .draftIntro {
@@ -7185,9 +7803,9 @@ button.hbSlot:disabled { cursor: default; }
   flex-direction: column;
   gap: 6px;
   padding: 8px 10px;
-  border: 1px solid rgba(170, 130, 70, 0.3);
+  border: 1px solid rgba(170, 130, 70, 0.4);
   border-radius: 10px;
-  background: rgba(24, 18, 10, 0.6);
+  background: rgb(24 18 10 / 18%);
 }
 
 .draftBanHeroes {
@@ -7202,11 +7820,12 @@ button.hbSlot:disabled { cursor: default; }
   gap: 4px;
   padding: 4px 9px;
   border-radius: 999px;
-  border: 1px solid rgba(170, 130, 70, 0.4);
-  background: rgba(48, 35, 18, 0.72);
+  border: 1px solid rgba(170, 130, 70, 0.45);
+  background: rgb(48 35 18 / 28%);
   color: #e8d9b8;
   font-size: 12px;
   cursor: pointer;
+  text-shadow: 0 1px 3px rgb(0 0 0 / 85%);
 }
 
 .draftBanHero:hover:not(:disabled) {
@@ -7290,15 +7909,16 @@ button.hbSlot:disabled { cursor: default; }
   padding: 8px 12px;
   border-radius: 9px;
   border: 1px solid rgba(214, 178, 94, 0.55);
-  background: rgba(82, 61, 29, 0.45);
+  background: rgb(82 61 29 / 22%);
   color: #ffe9bd;
   font-weight: 600;
+  text-shadow: 0 1px 4px rgb(0 0 0 / 88%);
 }
 
 .draftTurnNote.waiting {
-  border-color: rgba(170, 130, 70, 0.3);
-  background: rgba(24, 18, 10, 0.6);
-  color: #b89f78;
+  border-color: rgba(170, 130, 70, 0.35);
+  background: transparent;
+  color: #dcc79c;
   font-weight: 500;
 }
 
@@ -7321,9 +7941,10 @@ button.hbSlot:disabled { cursor: default; }
   gap: 2px;
   padding: 9px 11px;
   border-radius: 10px;
-  border: 1px solid rgba(170, 130, 70, 0.5);
-  background: linear-gradient(180deg, rgba(48, 35, 18, 0.72), rgba(30, 22, 12, 0.82));
+  border: 1px solid rgba(170, 130, 70, 0.55);
+  background: rgb(48 35 18 / 22%);
   color: #ecd9b0;
+  text-shadow: 0 1px 3px rgb(0 0 0 / 85%);
   cursor: pointer;
   text-align: left;
   transition:
@@ -7381,8 +8002,9 @@ button.hbSlot:disabled { cursor: default; }
   align-self: flex-start;
   padding: 7px 12px;
   border-radius: 9px;
-  border: 1px solid rgba(170, 130, 70, 0.4);
-  background: rgba(33, 25, 15, 0.7);
+  border: 1px solid rgba(170, 130, 70, 0.45);
+  background: rgb(33 25 15 / 25%);
+  text-shadow: 0 1px 3px rgb(0 0 0 / 85%);
   color: #d8c39a;
   font-size: 12px;
   cursor: pointer;
@@ -13002,6 +13624,8 @@ img.cardBack {
 .menuShellVignette {
   position: absolute;
   inset: 0;
+  /* Above ambient dragon-breath; below the interactive content column. */
+  z-index: 2;
   background:
     radial-gradient(ellipse at 50% 42%, transparent 30%, rgb(8 7 5 / 62%) 100%),
     linear-gradient(180deg, rgb(8 7 5 / 55%) 0%, transparent 18%, transparent 82%, rgb(8 7 5 / 65%) 100%);
@@ -13009,6 +13633,7 @@ img.cardBack {
 
 .menuShellContent {
   position: relative;
+  z-index: 3;
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -16259,6 +16884,7 @@ body {
 .playerCardBar {
   position: relative;
   isolation: isolate;
+  overflow: visible;
   background:
     linear-gradient(180deg, rgb(30 21 11 / 72%), rgb(20 14 8 / 78%)),
     var(--cmp-leather) center / 340px repeat;
@@ -16269,21 +16895,19 @@ body {
     0 8px 22px rgb(0 0 0 / 45%);
 }
 
-/* A faint griffin resting at the end of the table — it HUGS the right end of
-   the tray and sits BEHIND the cards (z-index:-1 within the bar's own stacking
-   context), so it only reads through the empty leather and never dims a card.
-   Purely decorative: pointer-events:none, contained, no layout shift. */
+/* Faint griffin on the tray — scales with the bar. Fills the full height of
+   .playerCardBar and grows/shrinks as the hand/permanent/deck boxes change
+   the tray size; stays behind content (z-index:-1) and pointer-events:none. */
 .playerCardBar::before {
   content: "";
   position: absolute;
   z-index: -1;
-  right: 8px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 174px;
-  height: 96%;
-  background: url("/assets/ui/layout/guardian-griffin.png") right center / contain no-repeat;
-  opacity: 0.12;
+  inset: 0;
+  /* Full box footprint so height tracks the tray; art sized to the box. */
+  width: 100%;
+  height: 100%;
+  background: url("/assets/ui/layout/guardian-griffin.png") right center / auto 100% no-repeat;
+  opacity: 0.14;
   filter: grayscale(1) brightness(1.3);
   pointer-events: none;
 }
@@ -16429,7 +17053,8 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .menuShellBackdrop {
+  .menuShellBackdrop,
+  .menuDragonBreath {
     animation: none;
   }
   .menuGameLogo {
@@ -16438,4 +17063,1148 @@ body {
   .loadingBarFill::after {
     animation: none;
   }
+  .menuDragonBreathPlume,
+  .menuDragonBreathRage,
+  .menuDragonBreathShimmer,
+  .menuDragonBreathImpact,
+  .menuDragonBreathEmbers,
+  .menuDragonGroundBurn,
+  .menuDragonSpark,
+  .menuDragonGroundEmber {
+    animation: none !important;
+    transform: none;
+    filter: none;
+  }
+  .menuDragonBreathPlume {
+    opacity: 0.6;
+  }
+  .menuDragonBreathRage,
+  .menuDragonBreathShimmer {
+    opacity: 0;
+  }
+  .menuDragonBreathImpact {
+    opacity: 0.45;
+  }
+  .menuDragonGroundBurn {
+    opacity: 0.5;
+  }
+  .menuDragonBreathEmbers {
+    opacity: 0.3;
+  }
+  .menuDragonSpark,
+  .menuDragonGroundEmber {
+    opacity: 0;
+  }
 }
+
+/* ==================================================================== */
+/* ORNATE ART SKIN (AI-generated chrome, /assets/ui/ornate)              */
+/*                                                                       */
+/* Painted game chrome generated with gpt-image (Codex image_gen) and    */
+/* chroma-key-cut locally: a dragon-flanked title banner, ruby corner    */
+/* flourishes, a riveted dark-iron button plate, a real open grimoire    */
+/* for the Spell Book, a dragon-seal medallion, and leather/parchment    */
+/* material textures. Like the compendium block above, this is a VISUAL  */
+/* reskin only: it overrides background / border / box-shadow / colour   */
+/* on existing classes, decorative pseudo-elements are pointer-events:   */
+/* none, and no layout hit-area moves. It sits LAST so it wins.          */
+/* ==================================================================== */
+:root {
+  --orn-banner: url("/assets/ui/ornate/dragon-banner.webp");
+  --orn-button: url("/assets/ui/ornate/button-plate.webp");
+  --orn-grimoire: url("/assets/ui/ornate/grimoire.webp");
+  --orn-seal: url("/assets/ui/ornate/seal-emblem.webp");
+  --orn-parchment: url("/assets/ui/ornate/parchment.webp");
+  --orn-leather: url("/assets/ui/ornate/leather-panel.webp");
+  --orn-corner-tl: url("/assets/ui/ornate/corner-tl.webp");
+  --orn-corner-tr: url("/assets/ui/ornate/corner-tr.webp");
+  --orn-corner-bl: url("/assets/ui/ornate/corner-bl.webp");
+  --orn-corner-br: url("/assets/ui/ornate/corner-br.webp");
+}
+
+/* ---- App chrome: leather top bar & footer ---------------------------- */
+
+.topBar {
+  border-bottom: 1px solid rgb(213 168 79 / 46%);
+  background:
+    linear-gradient(180deg, rgb(12 9 6 / 42%) 0%, rgb(8 6 4 / 62%) 100%),
+    var(--orn-leather) center / cover;
+  box-shadow: 0 2px 10px rgb(0 0 0 / 55%);
+}
+
+.brand {
+  font-family: var(--font-heroic);
+  font-size: 17px;
+  letter-spacing: 0.05em;
+  background: linear-gradient(180deg, #fbeec0 0%, var(--cmp-gold) 55%, #a67c33 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 85%));
+}
+
+.footerNotice {
+  border-top: 1px solid rgb(213 168 79 / 34%);
+  background:
+    linear-gradient(180deg, rgb(8 6 4 / 66%) 0%, rgb(12 9 6 / 50%) 100%),
+    var(--orn-leather) center / cover;
+}
+
+/* ---- Ornate panels: leather fill + ruby corner flourishes ------------ */
+
+.menuShellPanel:not(.bare),
+.lobbyCard,
+.serverBadge {
+  position: relative;
+  border: none;
+  background:
+    radial-gradient(120% 80% at 50% -10%, rgb(213 168 79 / 10%), transparent 60%),
+    linear-gradient(180deg, rgb(14 10 7 / 58%) 0%, rgb(9 7 5 / 72%) 100%),
+    var(--orn-leather) center / cover;
+  box-shadow: var(--cmp-frame);
+}
+
+/* The four generated ruby-and-gold flourishes, hung just outside the
+   panel's gold banding. One overlay pseudo-element carries all four as
+   separately-positioned backgrounds; it never intercepts clicks. */
+.menuShellPanel:not(.bare)::after,
+.lobbyCard::after {
+  content: "";
+  position: absolute;
+  inset: -13px;
+  background:
+    var(--orn-corner-tl) left 0 top 0 / 76px 76px no-repeat,
+    var(--orn-corner-tr) right 0 top 0 / 76px 76px no-repeat,
+    var(--orn-corner-bl) left 0 bottom 0 / 76px 76px no-repeat,
+    var(--orn-corner-br) right 0 bottom 0 / 76px 76px no-repeat;
+  filter: drop-shadow(0 3px 5px rgb(0 0 0 / 60%));
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* ---- The dragon-flanked title banner --------------------------------- */
+
+/* Login / Hall of Fame / loading titles: the engraved words sit inside the
+   banner's dark central plaque, hugged by the two gold dragons. */
+.menuShellTitle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: min(470px, 100%);
+  aspect-ratio: 3.148;
+  margin: -6px auto 0;
+  padding: 10.5% 21% 8%;
+  background: var(--orn-banner) center / contain no-repeat;
+  filter: drop-shadow(0 10px 22px rgb(0 0 0 / 62%));
+  font-size: clamp(15px, 2.6vw, 20px);
+  line-height: 1.15;
+  /* the compendium block paints this title as a transparent-fill gradient
+     clipped to the glyphs; over the painted banner the glyphs must be solid
+     gold again or they vanish */
+  color: var(--cmp-gold-bright);
+  -webkit-text-fill-color: var(--cmp-gold-bright);
+  text-shadow: 0 2px 4px rgb(0 0 0 / 85%);
+}
+
+.menuShellTitle::after {
+  content: none; /* the banner replaces the bronze rule */
+}
+
+/* Lobby heading: same banner, with the refresh control floated clear. */
+.lobbyHeader {
+  position: relative;
+  justify-content: center;
+  min-height: 0;
+}
+
+.lobbyHeader h1 {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: min(440px, 86%);
+  aspect-ratio: 3.148;
+  padding: 10.5% 20% 8%;
+  background: var(--orn-banner) center / contain no-repeat;
+  filter: drop-shadow(0 10px 22px rgb(0 0 0 / 62%));
+  font-family: var(--font-heroic);
+  font-size: clamp(14px, 2.2vw, 17px);
+  white-space: nowrap;
+  letter-spacing: 0.04em;
+  line-height: 1.1;
+  text-align: center;
+  color: var(--cmp-gold-bright);
+  background-clip: border-box;
+  text-shadow: 0 2px 4px rgb(0 0 0 / 85%);
+}
+
+.lobbyHeader > .commandButton {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+/* ---- Riveted dark-iron button plate ----------------------------------- */
+
+/* The hero CTA look: painted plate stretched under the label. Scoped to
+   the big action buttons (never the dense in-combat micro buttons). */
+.commandButton.primary:not(.ghost):not(.healCommandButton),
+.lobbyIdentity .commandButton:not(.ghost),
+.lobbyJoinCode .commandButton:not(.ghost),
+.commanderLevelUpDone {
+  min-height: 42px;
+  padding: 9px 20px;
+  border: none;
+  border-radius: 10px;
+  background:
+    linear-gradient(180deg, rgb(255 235 180 / 7%) 0%, transparent 40%),
+    var(--orn-button) center / 100% 100% no-repeat;
+  color: #f2dea6;
+  font-family: var(--font-heroic);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-align: center;
+  text-shadow: 0 1px 3px rgb(0 0 0 / 92%);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 50%);
+  transition: filter 120ms ease, transform 120ms ease, box-shadow 120ms ease;
+}
+
+.commandButton.primary:not(.ghost):not(.healCommandButton):hover:not(:disabled),
+.lobbyIdentity .commandButton:not(.ghost):hover:not(:disabled),
+.lobbyJoinCode .commandButton:not(.ghost):hover:not(:disabled),
+.commanderLevelUpDone:hover {
+  filter: brightness(1.18);
+  transform: translateY(-1px);
+  box-shadow:
+    0 0 14px rgb(213 168 79 / 40%),
+    0 6px 14px rgb(0 0 0 / 55%);
+}
+
+.commandButton.primary:not(.ghost):not(.healCommandButton):active:not(:disabled),
+.lobbyIdentity .commandButton:not(.ghost):active:not(:disabled),
+.lobbyJoinCode .commandButton:not(.ghost):active:not(:disabled) {
+  transform: translateY(1px);
+  filter: brightness(0.94);
+}
+
+.commandButton.primary:not(.ghost):not(.healCommandButton):disabled,
+.lobbyIdentity .commandButton:not(.ghost):disabled {
+  filter: grayscale(0.55) brightness(0.7);
+  cursor: not-allowed;
+}
+
+/* ---- Inputs: dark engraved wells with a gold focus glow ---------------- */
+
+.lobbyIdentity input,
+.lobbyCreate input,
+.lobbyJoinCode input,
+.lobbyFilter input,
+.lobbyChatComposer input,
+.menuShellPanel input {
+  border: 1px solid rgb(213 168 79 / 32%);
+  border-radius: 7px;
+  background: rgb(8 6 4 / 78%);
+  color: #f0e6cd;
+  box-shadow: inset 0 2px 6px rgb(0 0 0 / 65%);
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.lobbyIdentity input:focus,
+.lobbyCreate input:focus,
+.lobbyJoinCode input:focus,
+.lobbyFilter input:focus,
+.lobbyChatComposer input:focus,
+.menuShellPanel input:focus {
+  outline: none;
+  border-color: var(--focus);
+  box-shadow:
+    inset 0 2px 6px rgb(0 0 0 / 65%),
+    0 0 10px rgb(247 207 110 / 35%);
+}
+
+/* ---- Lobby inner trays -------------------------------------------------- */
+
+.lobbyActions,
+.lobbyChat {
+  border: 1px solid rgb(213 168 79 / 26%);
+  border-radius: 10px;
+  background:
+    linear-gradient(180deg, rgb(0 0 0 / 30%), rgb(0 0 0 / 18%));
+  box-shadow: inset 0 1px 6px rgb(0 0 0 / 45%);
+}
+
+.lobbyModeOption {
+  border-color: rgb(213 168 79 / 22%);
+  background: rgb(8 6 4 / 45%);
+}
+
+.lobbyModeOption.active {
+  border-color: var(--cmp-gold);
+  background: rgb(213 168 79 / 14%);
+  box-shadow:
+    inset 0 0 0 1px rgb(246 226 168 / 30%),
+    0 0 10px rgb(213 168 79 / 22%);
+}
+
+/* ---- Spell Book: the real grimoire ------------------------------------- */
+
+.spellBookBook {
+  grid-template-columns: 1fr 7.4% 1fr;
+  width: min(1000px, 95vw, calc(86vh * 1.42));
+  max-height: none;
+  aspect-ratio: 1.42;
+  padding: 4% 6.4% 5%;
+  border: none;
+  border-radius: 0;
+  background: var(--orn-grimoire) center / 100% 100% no-repeat;
+  box-shadow: none;
+  filter: drop-shadow(0 34px 60px rgb(0 0 0 / 75%));
+}
+
+.spellBookPage {
+  background: transparent;
+  color: #3a2a10;
+}
+
+.spellBookPage.left,
+.spellBookPage.right {
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.spellBookSpine {
+  background: transparent; /* the painted jeweled spine shows through */
+}
+
+/* Close: the dragon-seal medallion. */
+.spellBookBookClose {
+  top: -18px;
+  right: -18px;
+  width: 44px;
+  height: 44px;
+  border: none;
+  background: var(--orn-seal) center / cover no-repeat;
+  color: #fdf3cf;
+  filter: drop-shadow(0 3px 6px rgb(0 0 0 / 70%));
+  transition: transform 120ms ease, filter 120ms ease;
+}
+
+.spellBookBookClose:hover,
+.spellBookBookClose:focus-visible {
+  color: #fff;
+  filter: drop-shadow(0 3px 6px rgb(0 0 0 / 70%)) brightness(1.25);
+  transform: scale(1.1);
+}
+
+.spellBookBookClose svg {
+  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 95%));
+}
+
+/* Index entries read as ink on the painted parchment. */
+.spellBookIndexItem {
+  background: rgb(96 64 22 / 10%);
+}
+
+.spellBookIndexItem:hover {
+  background: rgb(96 64 22 / 20%);
+}
+
+.spellBookIndexItem.active {
+  background: rgb(150 102 36 / 26%);
+  border-color: rgb(110 74 26 / 60%);
+}
+
+/* ---- Server badge ------------------------------------------------------- */
+
+.serverBadge {
+  border-radius: 12px;
+}
+
+.serverBadgeName {
+  font-family: var(--font-heroic);
+  letter-spacing: 0.05em;
+}
+
+/* ---- Main-menu dragon breath (opt-in via dragonBreath) ------------------- */
+/*
+ * The painted flame ART itself rages and pours (not a static image + soft mask):
+ *   1) Base jet — always on, violent brightness/contrast flicker
+ *   2) Three phase-offset copies of the same art that continuously translate +
+ *      scale from the mouth down-right along the jet — texture rolls outward
+ *   3) Blurred heat-shimmer ghost moving faster
+ *   4) Bottom impact smolder + ground embers + jet sparks
+ * Alignment: same object-fit/cover + ken-burns as .menuShellBackdrop.
+ */
+.menuDragonBreath {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  overflow: hidden;
+  transform-origin: 55% 42%;
+  animation: cmpKenBurns 46s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+.menuDragonBreathPlume,
+.menuDragonBreathRage,
+.menuDragonBreathShimmer,
+.menuDragonBreathImpact,
+.menuDragonBreathEmbers {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  pointer-events: none;
+  user-select: none;
+  mix-blend-mode: screen;
+  /* Mouth of the cover dragon — all pour motion grows from here. */
+  transform-origin: 46% 37%;
+}
+
+/* --- 1) Base jet: the art stays on and RAGES (filters + micro-warp) --- */
+.menuDragonBreathPlume {
+  opacity: 0.86;
+  -webkit-mask-image: linear-gradient(152deg, #000 0%, #000 92%, transparent 100%);
+  mask-image: linear-gradient(152deg, #000 0%, #000 92%, transparent 100%);
+  animation: menuDragonArtRage 0.55s steps(2, end) infinite,
+    menuDragonArtWobble 1.1s ease-in-out infinite alternate;
+  will-change: filter, transform, opacity;
+}
+
+/* Stepped filter changes = hot flicker like real fire frames. */
+@keyframes menuDragonArtRage {
+  0% {
+    opacity: 0.78;
+    filter: brightness(1.05) contrast(1.08) saturate(1.12) hue-rotate(-4deg);
+  }
+  25% {
+    opacity: 0.95;
+    filter: brightness(1.28) contrast(1.18) saturate(1.28) hue-rotate(3deg);
+  }
+  50% {
+    opacity: 0.82;
+    filter: brightness(1.12) contrast(1.1) saturate(1.15) hue-rotate(-2deg);
+  }
+  75% {
+    opacity: 1;
+    filter: brightness(1.38) contrast(1.22) saturate(1.32) hue-rotate(4deg);
+  }
+  100% {
+    opacity: 0.8;
+    filter: brightness(1.08) contrast(1.09) saturate(1.14) hue-rotate(-3deg);
+  }
+}
+
+/* Micro stretch along the jet so the painted tongue "breathes". */
+@keyframes menuDragonArtWobble {
+  from {
+    transform: scale(0.985, 0.99) rotate(-0.35deg);
+  }
+  to {
+    transform: scale(1.025, 1.04) rotate(0.4deg);
+  }
+}
+
+/*
+ * --- 2) Rage pour layers: the ART moves mouth → down ---
+ * Each copy of the flame image slides + expands along the jet diagonal and
+ * fades as it "lands". Three copies, 1/3 cycle apart → never a still frame.
+ */
+.menuDragonBreathRage {
+  opacity: 0;
+  will-change: transform, opacity, filter;
+  -webkit-mask-image: linear-gradient(152deg, #000 0%, #000 88%, transparent 100%);
+  mask-image: linear-gradient(152deg, #000 0%, #000 88%, transparent 100%);
+  animation: menuDragonArtPour 1.15s linear infinite;
+}
+
+.menuDragonBreathRage1 {
+  animation-delay: 0s;
+  filter: brightness(1.25) saturate(1.2) contrast(1.08);
+}
+
+.menuDragonBreathRage2 {
+  animation-delay: -0.38s;
+  filter: brightness(1.35) saturate(1.25) contrast(1.12);
+}
+
+.menuDragonBreathRage3 {
+  animation-delay: -0.76s;
+  filter: brightness(1.18) saturate(1.15) contrast(1.06);
+}
+
+/*
+ * Push the painted fire along the cover jet (down-right). Origin = mouth.
+ * Scale grows as it leaves the jaws so it reads as force blasting outward.
+ */
+@keyframes menuDragonArtPour {
+  0% {
+    opacity: 0.15;
+    transform: translate(-0.6%, -0.9%) scale(0.94) rotate(-0.5deg);
+    filter: brightness(1.15) saturate(1.15) contrast(1.05);
+  }
+  8% {
+    opacity: 0.9;
+  }
+  35% {
+    opacity: 1;
+    transform: translate(1.1%, 1.8%) scale(1.03) rotate(0.15deg);
+    filter: brightness(1.4) saturate(1.28) contrast(1.14);
+  }
+  65% {
+    opacity: 0.85;
+    transform: translate(2.4%, 3.8%) scale(1.07) rotate(0.35deg);
+    filter: brightness(1.3) saturate(1.22) contrast(1.1);
+  }
+  88% {
+    opacity: 0.35;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(3.6%, 5.8%) scale(1.12) rotate(0.55deg);
+    filter: brightness(1.1) saturate(1.1) contrast(1.04);
+  }
+}
+
+/* --- 3) Heat shimmer: blurred art ghost, faster pour --- */
+.menuDragonBreathShimmer {
+  opacity: 0.4;
+  filter: blur(2.4px) brightness(1.45) saturate(1.3);
+  -webkit-mask-image: linear-gradient(152deg, #000 0%, #000 85%, transparent 100%);
+  mask-image: linear-gradient(152deg, #000 0%, #000 85%, transparent 100%);
+  animation: menuDragonArtShimmer 0.85s linear infinite;
+  will-change: transform, opacity;
+}
+
+@keyframes menuDragonArtShimmer {
+  0% {
+    opacity: 0.15;
+    transform: translate(-0.4%, -0.6%) scale(0.97);
+  }
+  20% {
+    opacity: 0.55;
+  }
+  55% {
+    opacity: 0.45;
+    transform: translate(1.8%, 2.8%) scale(1.06);
+  }
+  100% {
+    opacity: 0.1;
+    transform: translate(3.2%, 5%) scale(1.12);
+  }
+}
+
+/* --- 4) Bottom landing blaze — constant smolder where the stream hits --- */
+.menuDragonBreathImpact {
+  opacity: 0.75;
+  clip-path: ellipse(50% 44% at 78% 91%);
+  transform-origin: 78% 91%;
+  animation: menuDragonImpactSmolder 1.4s ease-in-out infinite alternate,
+    menuDragonImpactRage 0.45s steps(2, end) infinite;
+}
+
+@keyframes menuDragonImpactSmolder {
+  from {
+    opacity: 0.55;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 0.92;
+    transform: scale(1.06);
+  }
+}
+
+@keyframes menuDragonImpactRage {
+  0% {
+    filter: brightness(1.1) blur(0.5px) saturate(1.08);
+  }
+  50% {
+    filter: brightness(1.4) blur(0.1px) saturate(1.25);
+  }
+  100% {
+    filter: brightness(1.15) blur(0.4px) saturate(1.1);
+  }
+}
+
+.menuDragonGroundBurn {
+  position: absolute;
+  left: 50%;
+  top: 64%;
+  width: 52%;
+  height: 42%;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  background:
+    radial-gradient(ellipse 58% 48% at 58% 74%, rgb(255 72 10 / 55%) 0%, rgb(255 40 0 / 26%) 44%, transparent 74%),
+    radial-gradient(ellipse 38% 34% at 70% 82%, rgb(255 168 48 / 45%) 0%, rgb(255 90 20 / 20%) 52%, transparent 76%),
+    radial-gradient(ellipse 28% 26% at 44% 86%, rgb(160 28 0 / 38%) 0%, transparent 72%);
+  filter: blur(11px);
+  animation: menuDragonGroundGlow 1.8s ease-in-out infinite alternate;
+}
+
+@keyframes menuDragonGroundGlow {
+  from {
+    opacity: 0.48;
+    transform: scale(0.96);
+    filter: blur(13px) brightness(0.95);
+  }
+  to {
+    opacity: 0.95;
+    transform: scale(1.05);
+    filter: blur(8px) brightness(1.2);
+  }
+}
+
+.menuDragonBreathEmbers {
+  opacity: 0.6;
+  filter: blur(0.3px);
+  animation: menuDragonEmberField 1.6s ease-in-out infinite alternate;
+}
+
+@keyframes menuDragonEmberField {
+  from {
+    opacity: 0.35;
+    filter: blur(0.5px) brightness(0.95);
+    transform: translate(0, 0);
+  }
+  to {
+    opacity: 0.8;
+    filter: blur(0.15px) brightness(1.2);
+    transform: translate(0.4%, 0.6%);
+  }
+}
+
+/* Sparks leave the mouth and ride the raging jet downward. */
+.menuDragonBreathSparks {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.menuDragonSpark {
+  position: absolute;
+  left: 46%;
+  top: 38%;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #fff8d0 0%, #ffb040 36%, #ff4a00 72%, transparent 100%);
+  box-shadow: 0 0 5px 2px rgb(255 120 30 / 55%);
+  opacity: 0;
+  mix-blend-mode: screen;
+  animation: menuDragonSparkDown 1.55s linear infinite;
+  will-change: transform, opacity;
+}
+
+.menuDragonSpark:nth-child(1)  { animation-delay: 0s;    animation-duration: 1.4s;  width: 3px; height: 3px; }
+.menuDragonSpark:nth-child(2)  { animation-delay: 0.08s; animation-duration: 1.55s; left: 47%; top: 39%; }
+.menuDragonSpark:nth-child(3)  { animation-delay: 0.15s; animation-duration: 1.45s; left: 45%; top: 37%; width: 3px; height: 3px; }
+.menuDragonSpark:nth-child(4)  { animation-delay: 0.22s; animation-duration: 1.65s; left: 46.5%; top: 38.5%; width: 5px; height: 5px; }
+.menuDragonSpark:nth-child(5)  { animation-delay: 0.3s;  animation-duration: 1.5s;  left: 47%; top: 37.5%; }
+.menuDragonSpark:nth-child(6)  { animation-delay: 0.38s; animation-duration: 1.6s;  left: 45.5%; top: 39%; width: 3px; height: 3px; }
+.menuDragonSpark:nth-child(7)  { animation-delay: 0.45s; animation-duration: 1.42s; left: 46%; top: 38%; width: 5px; height: 5px; }
+.menuDragonSpark:nth-child(8)  { animation-delay: 0.52s; animation-duration: 1.58s; left: 47.5%; top: 38%; }
+.menuDragonSpark:nth-child(9)  { animation-delay: 0.6s;  animation-duration: 1.48s; left: 45%; top: 38.5%; width: 3px; height: 3px; }
+.menuDragonSpark:nth-child(10) { animation-delay: 0.68s; animation-duration: 1.62s; left: 46.5%; top: 37%; }
+.menuDragonSpark:nth-child(11) { animation-delay: 0.75s; animation-duration: 1.4s;  left: 47%; top: 39%; }
+.menuDragonSpark:nth-child(12) { animation-delay: 0.82s; animation-duration: 1.56s; left: 45.5%; top: 37.5%; }
+.menuDragonSpark:nth-child(13) { animation-delay: 0.9s;  animation-duration: 1.44s; left: 46%; top: 38.5%; width: 3px; height: 3px; }
+.menuDragonSpark:nth-child(14) { animation-delay: 0.98s; animation-duration: 1.6s;  left: 47.2%; top: 37.8%; width: 5px; height: 5px; }
+.menuDragonSpark:nth-child(15) { animation-delay: 1.05s; animation-duration: 1.46s; left: 45.8%; top: 38.2%; }
+.menuDragonSpark:nth-child(16) { animation-delay: 1.12s; animation-duration: 1.52s; left: 46.3%; top: 39.2%; width: 3px; height: 3px; }
+.menuDragonSpark:nth-child(17) { animation-delay: 1.2s;  animation-duration: 1.38s; left: 47%; top: 37.2%; }
+.menuDragonSpark:nth-child(18) { animation-delay: 1.28s; animation-duration: 1.64s; left: 45.2%; top: 38.8%; }
+.menuDragonSpark:nth-child(19) { animation-delay: 1.35s; animation-duration: 1.5s;  left: 46.8%; top: 38%; width: 3px; height: 3px; }
+.menuDragonSpark:nth-child(20) { animation-delay: 1.42s; animation-duration: 1.58s; left: 45.6%; top: 37.6%; width: 5px; height: 5px; }
+
+@keyframes menuDragonSparkDown {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) scale(0.35);
+  }
+  6% {
+    opacity: 1;
+    transform: translate(12px, 16px) scale(1.1);
+  }
+  30% {
+    opacity: 0.95;
+    transform: translate(52px, 78px) scale(0.95);
+  }
+  60% {
+    opacity: 0.7;
+    transform: translate(105px, 155px) scale(0.7);
+  }
+  85% {
+    opacity: 0.25;
+    transform: translate(135px, 200px) scale(0.35);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(150px, 220px) scale(0.12);
+  }
+}
+
+.menuDragonGroundEmbers {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.menuDragonGroundEmber {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #ffe9a0 0%, #ff7a18 40%, #c42000 75%, transparent 100%);
+  box-shadow:
+    0 0 7px 2px rgb(255 90 20 / 65%),
+    0 0 14px 3px rgb(180 30 0 / 32%);
+  opacity: 0;
+  mix-blend-mode: screen;
+  animation: menuDragonGroundEmberBurn 2.1s ease-out infinite;
+}
+
+.menuDragonGroundEmber:nth-child(1)  { left: 70%; top: 85%; animation-delay: 0s;    width: 7px; height: 7px; animation-duration: 1.9s; }
+.menuDragonGroundEmber:nth-child(2)  { left: 76%; top: 88%; animation-delay: 0.18s; width: 5px; height: 5px; animation-duration: 2.2s; }
+.menuDragonGroundEmber:nth-child(3)  { left: 82%; top: 86%; animation-delay: 0.36s; width: 8px; height: 8px; animation-duration: 1.85s; }
+.menuDragonGroundEmber:nth-child(4)  { left: 88%; top: 90%; animation-delay: 0.54s; width: 4px; height: 4px; animation-duration: 2.4s; }
+.menuDragonGroundEmber:nth-child(5)  { left: 74%; top: 92%; animation-delay: 0.72s; width: 6px; height: 6px; animation-duration: 2s; }
+.menuDragonGroundEmber:nth-child(6)  { left: 80%; top: 83%; animation-delay: 0.9s;  width: 5px; height: 5px; animation-duration: 2.15s; }
+.menuDragonGroundEmber:nth-child(7)  { left: 86%; top: 85%; animation-delay: 1.08s; width: 7px; height: 7px; animation-duration: 1.8s; }
+.menuDragonGroundEmber:nth-child(8)  { left: 66%; top: 88%; animation-delay: 0.12s; width: 4px; height: 4px; animation-duration: 2.3s; }
+.menuDragonGroundEmber:nth-child(9)  { left: 90%; top: 88%; animation-delay: 0.42s; width: 6px; height: 6px; animation-duration: 2.05s; }
+.menuDragonGroundEmber:nth-child(10) { left: 72%; top: 81%; animation-delay: 0.6s;  width: 5px; height: 5px; animation-duration: 1.95s; }
+.menuDragonGroundEmber:nth-child(11) { left: 78%; top: 93%; animation-delay: 0.78s; width: 7px; height: 7px; animation-duration: 2.25s; }
+.menuDragonGroundEmber:nth-child(12) { left: 84%; top: 80%; animation-delay: 0.96s; width: 4px; height: 4px; animation-duration: 1.85s; }
+
+@keyframes menuDragonGroundEmberBurn {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) scale(0.4);
+    filter: brightness(1.4);
+  }
+  12% {
+    opacity: 1;
+    transform: translate(2px, -4px) scale(1.2);
+    filter: brightness(1.55);
+  }
+  45% {
+    opacity: 0.85;
+    transform: translate(-3px, -14px) scale(0.9);
+    filter: brightness(1.1);
+  }
+  75% {
+    opacity: 0.35;
+    transform: translate(4px, -22px) scale(0.5);
+    filter: brightness(0.75);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(0, -28px) scale(0.2);
+    filter: brightness(0.5);
+  }
+}
+
+/* ==================================================================== */
+/* ORNATE ART SKIN II — leather shelves, box skins, the Spell Book's     */
+/* turning paper leaf, and micro-feel (press glints, hotter sparks).     */
+/* The living-dragon chrome (claw grips on the trays, the tail coiled    */
+/* around the rails) lives in the ORNATE DRAGON section further down.    */
+/* Everything decorative: pseudo-elements / aria-hidden layers, pointer- */
+/* events: none, no layout hit-area moves, reduced-motion safe.          */
+/* ==================================================================== */
+
+/* ---- The shared-deck shelf ----------------------------------------------- */
+
+.advDecksBottom {
+  position: relative;
+  z-index: 0;
+}
+
+/* The shelf gets the leather tray like the hand trays. */
+.advDecksBottom .advDecks {
+  border: 1px solid rgb(213 168 79 / 36%);
+  border-radius: 12px;
+  padding-top: 10px;
+  padding-bottom: 10px;
+  background:
+    linear-gradient(180deg, rgb(24 17 10 / 78%) 0%, rgb(13 9 6 / 88%) 100%),
+    var(--orn-leather) center / cover;
+  box-shadow:
+    inset 0 0 0 1px rgb(217 178 90 / 22%),
+    inset 0 1px 0 rgb(255 235 190 / 7%),
+    0 8px 22px rgb(0 0 0 / 45%);
+}
+
+/* ---- Victory / Defeat plaque tints -------------------------------------- */
+
+.combatResultModal {
+  position: relative;
+  isolation: isolate;
+  overflow: visible;
+}
+
+.combatResultModal.won {
+  border-color: rgb(246 214 130 / 80%);
+  box-shadow:
+    0 0 46px rgb(240 196 106 / 26%),
+    0 18px 50px rgb(0 0 0 / 60%);
+}
+
+.combatResultModal.lost {
+  border-color: rgb(200 92 62 / 70%);
+  box-shadow:
+    0 0 46px rgb(200 70 30 / 24%),
+    0 18px 50px rgb(0 0 0 / 60%);
+}
+
+/* ---- Spell Book: the turning paper leaf --------------------------------- */
+
+/* Switching spells re-mounts the right page (keyed by turn count): the new
+   plate swings in from the spine while a paper leaf — parchment-textured,
+   with a sweeping edge shadow — flips away over it. */
+.spellBookPage.right.turning {
+  animation: spellBookPageTurn 460ms cubic-bezier(0.16, 0.7, 0.3, 1);
+}
+
+.spellBookTurnLeaf {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transform-origin: left center;
+  backface-visibility: hidden;
+  background:
+    linear-gradient(105deg, rgb(96 64 22 / 0%) 52%, rgb(96 64 22 / 20%) 86%, rgb(60 40 14 / 34%) 100%),
+    var(--orn-parchment) center / cover;
+  box-shadow: inset 0 0 26px rgb(96 64 22 / 24%);
+}
+
+.spellBookPage.right.turning .spellBookTurnLeaf {
+  animation: spellBookLeafFlip 460ms cubic-bezier(0.3, 0.4, 0.2, 1);
+}
+
+@keyframes spellBookLeafFlip {
+  0% {
+    opacity: 1;
+    transform: perspective(1400px) rotateY(0deg);
+  }
+  55% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: perspective(1400px) rotateY(-126deg);
+  }
+}
+
+/* The grimoire opens with more heft: a low swing up from the table. */
+.spellBookBook {
+  animation: ornBookOpen 340ms cubic-bezier(0.18, 0.82, 0.26, 1);
+}
+
+@keyframes ornBookOpen {
+  from {
+    opacity: 0;
+    transform: translateY(26px) scale(0.9) rotateX(14deg);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1) rotateX(0);
+  }
+}
+
+/* ---- Main menu: rising motes + wordmark glow ----------------------------- */
+
+/* Viewport-locked so the motes drift over the whole screen however tall the
+   menu content scrolls. */
+.menuGuardians {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.menuGuardianMotes {
+  position: absolute;
+  inset: 0;
+}
+
+.menuMote {
+  position: absolute;
+  bottom: -12px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #ffe9a8 0%, rgb(240 196 106 / 55%) 55%, transparent 75%);
+  opacity: 0;
+  animation: ornMoteRise 11s linear infinite;
+}
+
+.menuMote:nth-child(1) { left: 6%; animation-delay: 0s; animation-duration: 12s; }
+.menuMote:nth-child(2) { left: 13%; animation-delay: 2.4s; animation-duration: 10s; width: 4px; height: 4px; }
+.menuMote:nth-child(3) { left: 21%; animation-delay: 5.1s; animation-duration: 13s; }
+.menuMote:nth-child(4) { left: 28%; animation-delay: 1.2s; animation-duration: 9.5s; width: 3px; height: 3px; }
+.menuMote:nth-child(5) { left: 36%; animation-delay: 3.8s; animation-duration: 12.5s; }
+.menuMote:nth-child(6) { left: 44%; animation-delay: 6.6s; animation-duration: 10.5s; width: 4px; height: 4px; }
+.menuMote:nth-child(7) { left: 52%; animation-delay: 0.9s; animation-duration: 11.5s; }
+.menuMote:nth-child(8) { left: 59%; animation-delay: 4.4s; animation-duration: 9s; width: 3px; height: 3px; }
+.menuMote:nth-child(9) { left: 67%; animation-delay: 7.2s; animation-duration: 13.5s; }
+.menuMote:nth-child(10) { left: 74%; animation-delay: 2s; animation-duration: 10s; width: 4px; height: 4px; }
+.menuMote:nth-child(11) { left: 81%; animation-delay: 5.7s; animation-duration: 12s; }
+.menuMote:nth-child(12) { left: 88%; animation-delay: 0.4s; animation-duration: 9.8s; width: 3px; height: 3px; }
+.menuMote:nth-child(13) { left: 94%; animation-delay: 3.1s; animation-duration: 11.2s; }
+.menuMote:nth-child(14) { left: 47%; animation-delay: 8.3s; animation-duration: 12.8s; width: 4px; height: 4px; }
+
+/* The gold wordmark keeps its entrance, then breathes a slow glint. */
+.menuGameLogo {
+  animation:
+    cmpLogoIn 900ms cubic-bezier(0.2, 0.85, 0.25, 1) both,
+    ornLogoGlow 7s ease-in-out 1.2s infinite;
+}
+
+/* ---- Boxes: popovers, pile viewer, inspect panel, initiative rail -------- */
+
+/* The floating card/shelf popovers and the pile viewer join the leather-and-
+   gold family (they were flat dark boxes) — same skin as the trays, so every
+   "box" reads as part of one table. */
+.cardPopover,
+.shelfPopover,
+.pileModal {
+  border: 1px solid rgb(213 168 79 / 46%);
+  background:
+    linear-gradient(180deg, rgb(22 16 9 / 92%) 0%, rgb(12 9 6 / 96%) 100%),
+    var(--orn-leather) center / cover;
+  box-shadow:
+    inset 0 0 0 1px rgb(217 178 90 / 24%),
+    inset 0 1px 0 rgb(255 235 190 / 8%),
+    0 18px 40px rgb(0 0 0 / 55%);
+}
+
+/* The combat inspect panel and initiative rail (the battle's own boxes). */
+.inspectPanel,
+.initiativeRail {
+  border: 1px solid rgb(213 168 79 / 34%);
+  background:
+    linear-gradient(180deg, rgb(24 18 11 / 90%) 0%, rgb(13 10 6 / 94%) 100%),
+    var(--orn-leather) center / cover;
+  box-shadow:
+    inset 0 0 0 1px rgb(217 178 90 / 20%),
+    inset 0 1px 0 rgb(255 235 190 / 7%),
+    0 6px 16px rgb(0 0 0 / 40%);
+}
+
+/* ---- Click / battle / move micro-feel ------------------------------------ */
+
+/* Every command button flashes a quick gold glint under the press. */
+.commandButton {
+  position: relative;
+  overflow: hidden;
+}
+
+.commandButton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(130% 110% at 50% 0%, rgb(255 232 155 / 45%), transparent 58%);
+  opacity: 0;
+  transition: opacity 340ms ease;
+  pointer-events: none;
+}
+
+.commandButton:active:not(:disabled)::after {
+  opacity: 1;
+  transition-duration: 0ms;
+}
+
+/* Melee slash and impact sparks hit harder (hotter core, deeper glow). */
+.fxSlashStreak {
+  filter: brightness(1.22) drop-shadow(0 0 10px rgb(255 214 120 / 65%));
+}
+
+.fxImpactSpark {
+  filter: brightness(1.3) drop-shadow(0 0 6px rgb(255 190 90 / 70%));
+}
+
+/* Gliding unit/card ghosts trail a soft gold wake. */
+.fxMoveGhost {
+  filter: drop-shadow(0 0 12px rgb(240 196 106 / 40%)) drop-shadow(0 6px 14px rgb(0 0 0 / 45%));
+}
+
+/* ---- Shared keyframes ----------------------------------------------------- */
+
+@keyframes ornMoteRise {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) scale(0.7);
+  }
+  12% {
+    opacity: 0.9;
+  }
+  55% {
+    opacity: 0.65;
+    transform: translate(14px, -46vh) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-10px, -88vh) scale(0.6);
+  }
+}
+
+@keyframes ornLogoGlow {
+  0%, 100% {
+    filter: drop-shadow(0 4px 14px rgb(0 0 0 / 55%)) drop-shadow(0 0 10px rgb(240 196 106 / 0%));
+  }
+  50% {
+    filter: drop-shadow(0 4px 14px rgb(0 0 0 / 55%)) drop-shadow(0 0 16px rgb(240 196 106 / 42%));
+  }
+}
+
+/* ==================================================================== */
+/* ORNATE DRAGON — Azure claw + frost under grip.                        */
+/* Glow = silhouette drop-shadow on the claw ONLY (curves with art).     */
+/* NEVER linear-mask the claw (full-width fade = square light frame).    */
+/* Frost rim is separate, tightly oval-masked under the talons.          */
+/* ==================================================================== */
+:root {
+  --orn-azure-claw: url("/assets/ui/ornate/azure-claw.webp");
+  --orn-azure-frost-rim: url("/assets/ui/ornate/azure-frost-rim.webp");
+}
+
+/*
+ * Painted geometry (claw 820×520): bar top edge at ~67.4% of art height.
+ * Displayed 300px wide → that line is 128px from the art top.
+ * top: -128px lands the knuckles on the real bar rim.
+ * Anchored LEFT over the deck / Spell Book cluster (ownDeckColumn sits under
+ * the grip with margin-top so the talons clear the faces).
+ */
+.azureClawChrome {
+  position: absolute;
+  top: -128px;
+  left: 12px;
+  width: 300px;
+  height: 190px;
+  z-index: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+
+/*
+ * Frost under the talons / bar edge. Narrow + strong radial mask so it
+ * reads as ice under the grip, never a horizontal box.
+ */
+.azureClawFrostRim {
+  position: absolute;
+  left: 20%;
+  /* Slightly below the bar rim (~128px) so frost sits under the talons. */
+  top: 126px;
+  width: 60%;
+  height: auto;
+  display: block;
+  object-fit: contain;
+  object-position: center top;
+  pointer-events: none;
+  user-select: none;
+  opacity: 0.5;
+  filter: drop-shadow(0 0 3px rgb(160 220 255 / 25%));
+  -webkit-mask-image: radial-gradient(
+    ellipse 52% 78% at 50% 12%,
+    #000 0%,
+    #000 32%,
+    rgb(0 0 0 / 45%) 55%,
+    transparent 76%
+  );
+  mask-image: radial-gradient(
+    ellipse 52% 78% at 50% 12%,
+    #000 0%,
+    #000 32%,
+    rgb(0 0 0 / 45%) 55%,
+    transparent 76%
+  );
+  animation: azureFrostBreathe 7.5s ease-in-out infinite;
+}
+
+@keyframes azureFrostBreathe {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 0.58;
+  }
+}
+
+/*
+ * Claw — tight cyan drop-shadows hug the painted outline.
+ * Short blur only (long blur = soft rectangular cloud).
+ * NO mask-image on this element.
+ */
+.azureClawHand {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 300px;
+  height: auto;
+  display: block;
+  object-fit: contain;
+  object-position: center top;
+  pointer-events: none;
+  user-select: none;
+  filter:
+    drop-shadow(0 3px 6px rgb(0 0 0 / 50%))
+    drop-shadow(0 0 2px rgb(200 240 255 / 70%))
+    drop-shadow(0 0 6px rgb(160 225 255 / 48%))
+    drop-shadow(0 0 11px rgb(130 210 255 / 28%));
+  animation: azureClawSilhouetteGlow 7.5s ease-in-out infinite;
+}
+
+@keyframes azureClawSilhouetteGlow {
+  0%,
+  100% {
+    filter:
+      drop-shadow(0 3px 6px rgb(0 0 0 / 50%))
+      drop-shadow(0 0 2px rgb(190 235 255 / 55%))
+      drop-shadow(0 0 5px rgb(150 220 255 / 36%))
+      drop-shadow(0 0 10px rgb(120 205 250 / 18%));
+  }
+  50% {
+    filter:
+      drop-shadow(0 3px 6px rgb(0 0 0 / 50%))
+      drop-shadow(0 0 3px rgb(220 248 255 / 85%))
+      drop-shadow(0 0 8px rgb(175 230 255 / 55%))
+      drop-shadow(0 0 14px rgb(145 215 255 / 30%));
+  }
+}
+
+/* ---- Reduced motion: everything settles, nothing is lost ----------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .menuGameLogo,
+  .spellBookPage.right.turning,
+  .spellBookPage.right.turning .spellBookTurnLeaf,
+  .spellBookBook {
+    animation: none;
+  }
+
+  .azureClawFrostRim,
+  .azureClawHand {
+    animation: none;
+  }
+
+  .azureClawFrostRim {
+    opacity: 0.5;
+  }
+
+  .menuMote {
+    display: none;
+  }
+}
+

@@ -10,6 +10,7 @@ import {
   ENGINE_SIGNATURE,
   getEffectiveCardEffect,
   getLegalActions,
+  getPermanentCardIds,
   getPlayerView,
   getRuleset,
   hasOpenAdventureTurn,
@@ -97,7 +98,10 @@ import {
   type HeroMoveCue,
   type TilePlacementSelection
 } from "@/components/adventure/screen";
+import { SetupAmbientFx } from "@/components/adventure/setup-ambient";
+import { AzureClawChill } from "@/components/adventure/azure-claw-chill";
 import { TownWindow } from "@/components/adventure/town-board";
+import { isDemoTrayEnabled, seedDemoTrayCards } from "@/lib/demo-tray-seed";
 import {
   moveIntoBattleWithTroopsToBuy,
   actionKey,
@@ -3528,13 +3532,26 @@ export default function Home() {
   };
 
   const isSeated = Boolean(state && viewerPlayerId !== OBSERVER_SEAT && state.players[viewerPlayerId]);
+  // UI-check: ?demoTray=1 injects real permanent + ongoing cards for the seated
+  // player so the tray boxes show real card art. Re-applied each render so a
+  // server snapshot cannot wipe the preview while the flag is on.
+  const [demoTrayOn, setDemoTrayOn] = useState(false);
+  useEffect(() => {
+    setDemoTrayOn(isDemoTrayEnabled());
+  }, [roomId]);
+  const uiState = useMemo(() => {
+    if (!state || !isSeated || !demoTrayOn) {
+      return state;
+    }
+    return seedDemoTrayCards(state, viewerPlayerId);
+  }, [state, isSeated, demoTrayOn, viewerPlayerId]);
   const playerView = useMemo(
-    () => (state ? getPlayerView(state, isSeated ? viewerPlayerId : OBSERVER_SEAT) : null),
-    [state, viewerPlayerId, isSeated]
+    () => (uiState ? getPlayerView(uiState, isSeated ? viewerPlayerId : OBSERVER_SEAT) : null),
+    [uiState, viewerPlayerId, isSeated]
   );
   const legalActions = useMemo(
-    () => (state && isSeated ? getLegalActions(state, viewerPlayerId) : []),
-    [viewerPlayerId, state, isSeated]
+    () => (uiState && isSeated ? getLegalActions(uiState, viewerPlayerId) : []),
+    [viewerPlayerId, uiState, isSeated]
   );
 
   // Background-music scene, mirroring the three render branches below: the
@@ -3827,6 +3844,8 @@ export default function Home() {
     return (
       <CardZoomProvider>
         <main className="tableRoot adventureRoot setupPhase" onClick={playTableUiClickSound}>
+          {/* Green spirit wisps + gold-dragon shimmer over the setup backdrop. */}
+          <SetupAmbientFx />
           <div className="tableTopRow">
             <div className="advHud">
               <div className="advHudCell">
@@ -4161,53 +4180,63 @@ export default function Home() {
 
           {isSeated ? (
             <div className={`adventureHand playerCardBar ${selecting ? "refreshing" : ""}`} aria-label="Your hand">
-              <div className="ownDeckColumn">
-                <AdventureOwnDeck
-                  onShowPile={(title, cardIds, kind) => setPile({ title, cardIds, kind })}
-                  view={playerView}
-                  viewerPlayerId={viewerPlayerId}
-                />
-                {/* Permanent(s) in play — shown here in the card tray so the
-                    effect is clearly readable while on the map. */}
+              {/* LEFT: deck+discard box + Spell Book on one row (same vertical center). */}
+              <div className="ownDeckColumn" aria-label="Your deck, discard, and Spell Book">
+                <div className="ownDeckToolsRow">
+                  <AdventureOwnDeck
+                    onShowPile={(title, cardIds, kind) => setPile({ title, cardIds, kind })}
+                    view={playerView}
+                    viewerPlayerId={viewerPlayerId}
+                  />
+                  {spellBookOn ? (
+                    <div className={`spellBookPanel ${spellBookCards.length === 0 ? "empty" : ""}`}>
+                      <button
+                        aria-expanded={spellBookOpen}
+                        aria-haspopup="dialog"
+                        className={`spellBookToggle ${spellBookOpen ? "open" : ""}`}
+                        onClick={() => {
+                          const opening = !spellBookOpen;
+                          setSpellBookOpen(opening);
+                          if (opening) {
+                            playSpellBookOpen();
+                          }
+                        }}
+                        title={
+                          spellBookCards.length === 0
+                            ? "Your Spell Book is empty — stash a hand Spell with its 📖 button to store it here"
+                            : "Open your Spell Book — stored Spells you can cast (normal Spell limit applies)"
+                        }
+                        type="button"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element -- small pixelated game icon, not a content image */}
+                        <img alt="" aria-hidden="true" className="spellBookIcon" src={assetUrl("/assets/ui/spell-book-button.png")} />
+                        <span className="spellBookCount">{spellBookCards.length}</span>
+                        <small>Spell Book</small>
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+
+              {/* RIGHT column: permanents box on top, hand box below. */}
+              <div className="handMain">
+              <div className="permanentEffectsPanel" aria-label="Permanents and ongoing effects">
+                <div className="trayBoxHeader">
+                  <strong>Permanents &amp; Ongoing</strong>
+                </div>
                 <PermanentSlot
                   legalActions={legalActions}
                   onAction={submitAction}
                   playerId={viewerPlayerId}
-                  state={state}
+                  state={uiState ?? state}
                   viewerPlayerId={viewerPlayerId}
                 />
-                {/* Spell Book toggle — a tome that opens the real, two-page Book
-                    overlay (SpellBookModal, rendered at the map root). */}
-                {spellBookOn ? (
-                  <div className={`spellBookPanel ${spellBookCards.length === 0 ? "empty" : ""}`}>
-                    <button
-                      aria-expanded={spellBookOpen}
-                      aria-haspopup="dialog"
-                      className={`spellBookToggle ${spellBookOpen ? "open" : ""}`}
-                      onClick={() => {
-                        const opening = !spellBookOpen;
-                        setSpellBookOpen(opening);
-                        // Play the page-flip cue only when the Book is opened.
-                        if (opening) {
-                          playSpellBookOpen();
-                        }
-                      }}
-                      title={
-                        spellBookCards.length === 0
-                          ? "Your Spell Book is empty — stash a hand Spell with its 📖 button to store it here"
-                          : "Open your Spell Book — stored Spells you can cast (normal Spell limit applies)"
-                      }
-                      type="button"
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element -- small pixelated game icon, not a content image */}
-                      <img alt="" aria-hidden="true" className="spellBookIcon" src={assetUrl("/assets/ui/spell-book-button.png")} />
-                      <span className="spellBookCount">{spellBookCards.length}</span>
-                      <small>Spell Book</small>
-                    </button>
-                  </div>
+                {getPermanentCardIds(uiState ?? state, viewerPlayerId).length === 0 &&
+                ((uiState ?? state).players[viewerPlayerId]?.ongoingCards?.length ?? 0) === 0 ? (
+                  <small className="trayBoxEmpty">No permanent or ongoing effects in play.</small>
                 ) : null}
               </div>
-              <div className="handArea">
+              <div className="handArea" aria-label="Your hand">
               <div className="handTopBar">
                 <small>
                   Hand {handCards.length}/{handLimit}
@@ -4547,6 +4576,15 @@ export default function Home() {
                   );
                 })}
               </div>
+              </div>
+              </div>
+              {/* Living Azure claw + frost/chill — after hand content so the
+                  stack paints over cards; pointer-events none. */}
+              <AzureClawChill />
+              {/* Ice spikes + soft mist around them — tray bottom, left tools only. */}
+              <div aria-hidden className="trayFootFrost" data-testid="tray-foot-frost">
+                {/* eslint-disable-next-line @next/next/no-img-element -- ice spike fringe art */}
+                <img alt="" draggable={false} src={assetUrl("/assets/ui/ornate/tray-foot-frost.webp")} />
               </div>
             </div>
           ) : null}
