@@ -16328,6 +16328,38 @@ function walkMoveThroughTokens(
 }
 
 /**
+ * Walks a NEUTRAL guard's move through battlefield tokens exactly like a player
+ * move (moveUnit / moveAndAttack): a Fire Wall burns it on the way in or when it
+ * stops, a Land Mine bites it, a Quicksand can swallow it short of its goal. The
+ * neutral AI plans a landing cell but sets no explicit route, so the path is
+ * auto-routed (shortest, then least-hazard — hazard-aware like the player's), and
+ * a flyer only enters its landing space. With no tokens on the board the
+ * destination is returned unchanged. Returns where the guard comes to rest and
+ * whether a Quicksand halted it.
+ */
+function planNeutralTokenWalk(
+  state: GameState,
+  combat: CombatState,
+  unit: CombatUnitState,
+  destination: number
+): { finalPosition: number; haltedByQuicksand: boolean } {
+  if ((combat.battlefieldTokens ?? []).length === 0) {
+    return { finalPosition: destination, haltedByQuicksand: false };
+  }
+  const enteredSpaces =
+    unit.type === "flying"
+      ? [destination]
+      : (planMovePath(
+          unit.position,
+          destination,
+          getUnitMoveRange(unit, state),
+          getBlockedSpaces(combat, unit),
+          getKnownHazardSpaces(combat, unit)
+        ) ?? [destination]);
+  return walkMoveThroughTokens(state, unit, enteredSpaces);
+}
+
+/**
  * Validates a player-chosen movement route for a NON-flying unit: the ordered
  * spaces it ENTERS (start exclusive, `destination` last). It must be an
  * orthogonal step-by-step walk, no longer than the unit's movement, that ends
@@ -17134,36 +17166,61 @@ function executeNeutralActivation(
 
   if (intent.kind === "move") {
     const from = unit.position;
-    unit.position = intent.destination;
+    // A guard's move is walked through battlefield tokens exactly like a player
+    // move: a Fire Wall burns it, a Land Mine bites it, a Quicksand can swallow
+    // it short of its goal. (Previously the position was set directly, so a
+    // monster walking onto a Fire Wall took no damage at all.)
+    const walked = planNeutralTokenWalk(state, combat, unit, intent.destination);
+    unit.position = walked.finalPosition;
     unit.movedThisActivation = true;
     unit.activatedThisRound = true;
-    appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, unit.id), "activation-ended");
     appendEvent(state, {
       type: "UNIT_MOVED",
       playerId: unit.controllerId,
       unitId: unit.id,
       from,
-      to: intent.destination
+      to: walked.finalPosition
     });
-    // The pre-activation reaction pause already paced this guard (the human saw
-    // it about to move and had their window), so the move just advances to the
-    // next unit — whose own pre-activation pause holds the board to show this
-    // move's result.
+    appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, unit.id), "activation-ended");
+    // A token strike may have felled the guard (and, if it was the last enemy,
+    // ended the combat). Otherwise the pre-activation reaction pause already
+    // paced this guard, so the move just advances to the next unit — whose own
+    // pre-activation pause holds the board to show this move's result.
+    if (finishCombatIfNeeded(state)) {
+      return;
+    }
     advanceActiveUnit(state);
     return;
   }
 
   if (intent.kind === "move-and-attack") {
     const from = unit.position;
-    unit.position = intent.destination;
+    // The approach is walked through battlefield tokens just like a player's
+    // move-and-attack: a Fire Wall / Land Mine bites the guard on the way in,
+    // and a Quicksand can halt it short of its target.
+    const walked = planNeutralTokenWalk(state, combat, unit, intent.destination);
+    unit.position = walked.finalPosition;
     unit.movedThisActivation = true;
     appendEvent(state, {
       type: "UNIT_MOVED",
       playerId: unit.controllerId,
       unitId: unit.id,
       from,
-      to: intent.destination
+      to: walked.finalPosition
     });
+    // A Fire Wall / Land Mine that felled the guard, or a Quicksand that stopped
+    // it short, ends the activation with no attack — it never reaches its quarry.
+    if (!isUnitAlive(unit) || walked.haltedByQuicksand || walked.finalPosition !== intent.destination) {
+      if (isUnitAlive(unit)) {
+        unit.activatedThisRound = true;
+      }
+      appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, unit.id), "activation-ended");
+      if (finishCombatIfNeeded(state)) {
+        return;
+      }
+      advanceActiveUnit(state);
+      return;
+    }
   }
 
   declareAttack(
