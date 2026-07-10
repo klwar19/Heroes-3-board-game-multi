@@ -2,11 +2,12 @@
 
 // Dev-only preview of the ORNATE DRAGON chrome (same precedent as
 // /spell-book-preview): reproduces the adventure map screen's DOM classes
-// with mock content so the dragon's claw grips (card bar), head (map felt)
-// and tail coil (left rail) — plus the combat shelf's wrapping vine via
-// ?combat=1 — can be checked without a live game.
+// with mock content so the dragon's claw grips the card bar with living
+// frost/chill under the talons — plus the combat shelf via ?combat=1 —
+// without a live game.
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
+import { AzureClawChill } from "@/components/adventure/azure-claw-chill";
 
 function MockCard({ label }: { label: string }) {
   return (
@@ -65,7 +66,10 @@ function MapScreenPreview() {
         </div>
       </div>
 
-      <div className="playerCardBar" style={{ order: 3, display: "flex", gap: 12, padding: "9px 12px" }}>
+      <div
+        className="playerCardBar"
+        style={{ order: 3, display: "flex", gap: 12, padding: "9px 12px", position: "relative", minHeight: 168 }}
+      >
         <div className="ownDeckColumn" style={{ display: "flex", gap: 8 }}>
           <MockCard label="Deck" />
           <MockCard label="Discard" />
@@ -75,6 +79,7 @@ function MapScreenPreview() {
             <MockCard key={label} label={label} />
           ))}
         </div>
+        <AzureClawChill />
       </div>
 
       <div className="adventureMidRow" style={{ order: 4, flex: 1 }}>
