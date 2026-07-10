@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { applyAction, createAdventureGameState, seatForViewer, seatOfClient, type GameAction, type GameState } from "./index";
+import {
+  applyAction,
+  createAdventureGameState,
+  healVerifiedMembership,
+  seatForViewer,
+  seatOfClient,
+  type GameAction,
+  type GameState
+} from "./index";
+import { deriveLobbyRecord } from "@/server/lobby-registry";
+
+const NOW = "2026-01-01T00:00:00.000Z";
 
 // ---------------------------------------------------------------------------
 // Verified-identity seats (Phase 2).
@@ -253,6 +264,43 @@ describe("a verified session over a guest-joined member (the fallback binding)",
     const state = guestSeatedGame();
     const next = expectOk(state, { type: "END_TURN", playerId: "p1" }, { clientId: "cA", userId: "uA" });
     expect(next.activePlayerId).toBe("p2");
+  });
+
+  it("STAMPS the verified id onto the guest-joined member (so the roster stops calling them a guest)", () => {
+    const state = guestSeatedGame();
+    // Before: Alice's member joined without a verified id, so she reads as a guest.
+    expect(state.room?.members.find((m) => m.clientId === "cA")?.userId).toBeUndefined();
+
+    // Her first verified action (whatever it is) heals the member: the
+    // server-verified userId is stamped, without a re-JOIN. END_TURN is just a
+    // convenient action — any action carrying her verified id would do.
+    const next = expectOk(state, { type: "END_TURN", playerId: "p1" }, { clientId: "cA", userId: "uA" });
+    expect(next.room?.members.find((m) => m.clientId === "cA")?.userId).toBe("uA");
+    // Bob (the control) was already verified and is untouched.
+    expect(next.room?.members.find((m) => m.clientId === "cB")?.userId).toBe("uB");
+
+    // The observable outcome the user reported: the lobby roster no longer
+    // labels Alice "guest". A mutation that drops the heal fails here.
+    const roster = deriveLobbyRecord({ roomId: "r", state: next, createdAt: NOW, updatedAt: NOW }).members ?? [];
+    expect(roster.find((m) => m.name === "Alice")?.guest).toBe(false);
+    expect(roster.find((m) => m.name === "Bob")?.guest).toBe(false);
+  });
+
+  it("NEVER rebinds a member already bound to a DIFFERENT account (no seat theft)", () => {
+    const state = guestSeatedGame();
+    // Mallory (uM) claims Bob's clientId cB. Bob's member already carries uB, so
+    // the heal refuses — it can only ever FILL an empty id, never overwrite one.
+    expect(healVerifiedMembership(state, { clientId: "cB", userId: "uM" })).toBe(false);
+    expect(state.room?.members.find((m) => m.clientId === "cB")?.userId).toBe("uB");
+
+    // It also refuses to bind a second member to an account that already holds
+    // one, and does nothing for a clientId that matches no member.
+    expect(healVerifiedMembership(state, { clientId: "cA", userId: "uB" })).toBe(false);
+    expect(healVerifiedMembership(state, { clientId: "no-such-tab", userId: "uZ" })).toBe(false);
+
+    // The one legitimate case — Alice's own guest member, empty id — DOES heal.
+    expect(healVerifiedMembership(state, { clientId: "cA", userId: "uA" })).toBe(true);
+    expect(state.room?.members.find((m) => m.clientId === "cA")?.userId).toBe("uA");
   });
 
   it("resolves the redaction viewer seat the same way (no observer-view lockout)", () => {

@@ -15,6 +15,7 @@ import {
   getRuleset,
   hasOpenAdventureTurn,
   healLegacyPlayerFields,
+  roomDisplayName,
   isParallelActor,
   isResetVoteApproved,
   resetVoteRequired,
@@ -184,6 +185,7 @@ import {
 import { clearCachedRoom, loadCachedRoom, saveCachedRoom } from "@/lib/room-cache";
 import { getAccountIdentity, getClientId, getDisplayName, setDisplayName as persistDisplayName } from "@/lib/identity";
 import { fetchSocketToken } from "@/lib/auth-client";
+import { leavePresence, sendPresence } from "@/lib/lobby-presence-client";
 import {
   takePendingRoomHosted,
   takePendingRoomMode,
@@ -3074,7 +3076,15 @@ export default function Home() {
       // their seat to the verified account. A guest resolves undefined and simply
       // connects unauthenticated; the built-in backend ignores this (it reads the
       // same-origin session cookie directly).
-      () => (getAccountIdentity() ? fetchSocketToken() : Promise.resolve(undefined))
+      //
+      // ALWAYS ask for the ticket rather than gating on the localStorage account
+      // cache: the httpOnly SESSION COOKIE is the real source of truth, and
+      // fetchSocketToken() rides it (same-origin) — so a player signed in by
+      // cookie but with a missing/stale local cache (a fresh device, a direct
+      // link straight into the room, cleared storage) still gets bound to their
+      // account instead of being shown as a guest. A true guest just gets a 401
+      // → undefined and connects unauthenticated, exactly as before.
+      () => fetchSocketToken()
     );
     connectionRef.current = connection;
 
@@ -3204,6 +3214,12 @@ export default function Home() {
   // a rename, or after switching rooms. Deliberately NOT re-sent on every
   // snapshot, so a kicked player does not silently auto-rejoin.
   const joinedRoomRef = useRef<string | null>(null);
+  // A signed-in player whose member is still flagged guest (their JOIN reached
+  // the server before its verified token could resolve) is re-JOINed ONCE to
+  // upgrade it — the fix for "a real account is shown as guest in the roster".
+  // Bounded to one attempt per room so a genuinely unverifiable session (edge
+  // misconfig) can never spin the effect: keyed by the room we last tried.
+  const verifiedUpgradeRoomRef = useRef<string | null>(null);
   // Why a JOIN_ROOM was refused, if it was (e.g. a guest hitting a room that
   // requires a verified account). The engine returns this in result.errors
   // rather than throwing, so it would otherwise be swallowed — leaving the
@@ -3267,7 +3283,14 @@ export default function Home() {
     // connection DROP arms this; a kick over a live socket does not, so a
     // kicked player still never silently auto-rejoins.
     const reapedAfterDrop = !me && connectionDroppedRef.current;
-    if (joinedRoomRef.current === joinKey && !reapedAfterDrop) {
+    // Signed in, but the server still sees this member as a guest (no bound
+    // userId): the JOIN landed before its verified token resolved. Re-send JOIN
+    // once — carrying a fresh verified token — so the member upgrades and the
+    // roster stops labelling a real account "guest". One attempt per room
+    // (verifiedUpgradeRoomRef) so an unverifiable session never loops.
+    const needsVerifiedUpgrade =
+      Boolean(accountUserId) && Boolean(me) && !me?.userId && verifiedUpgradeRoomRef.current !== roomId;
+    if (joinedRoomRef.current === joinKey && !reapedAfterDrop && !needsVerifiedUpgrade) {
       if (me) {
         // Membership confirmed on live state — clear any drop since then.
         connectionDroppedRef.current = false;
@@ -3279,9 +3302,14 @@ export default function Home() {
     if (reapedAfterDrop) {
       connectionDroppedRef.current = false;
     }
+    if (needsVerifiedUpgrade) {
+      verifiedUpgradeRoomRef.current = roomId;
+    }
     joinedRoomRef.current = joinKey;
-    // Already a member under this name (carried across a reset / reconnect)? Adopt it.
-    if (me && me.name === desiredName) {
+    // Already a member under this name (carried across a reset / reconnect)? Adopt
+    // it — UNLESS we still need the verified upgrade (fall through to re-JOIN so
+    // the guest-flagged member gets its account id stamped).
+    if (me && me.name === desiredName && !needsVerifiedUpgrade) {
       setRoomJoinError(null);
       applyPendingName();
       return;
@@ -3306,7 +3334,43 @@ export default function Home() {
         }
       })
       .catch(() => {});
-  }, [state, roomId, displayName, clientId]);
+  }, [state, roomId, displayName, clientId, accountUserId]);
+
+  // Global presence while IN a room: heartbeat to the lobby's "Players online"
+  // board so this player shows up as "in <room>" (and can be invited/joined),
+  // the same board the /play lobby feeds when idle. Read the live room name and
+  // display name from refs so the interval stays stable (keyed only on the
+  // room/tab) instead of restarting on every snapshot. The refs are refreshed
+  // in an effect (never during render) so the interval always sees current data.
+  const presenceStateRef = useRef<GameState | null>(null);
+  const presenceNameRef = useRef<string>("");
+  useEffect(() => {
+    presenceStateRef.current = state;
+    presenceNameRef.current = displayName;
+  });
+  useEffect(() => {
+    if (!roomId) {
+      return;
+    }
+    const beat = () => {
+      const liveState = presenceStateRef.current;
+      const roomName = liveState ? roomDisplayName(liveState, roomId) : undefined;
+      void sendPresence({
+        clientId,
+        name: presenceNameRef.current.trim() || "Player",
+        roomId,
+        ...(roomName ? { roomName } : {})
+      });
+    };
+    beat();
+    const intervalId = window.setInterval(beat, 12000);
+    return () => {
+      window.clearInterval(intervalId);
+      // Drop off promptly on leaving the room (back to lobby / new room / tab
+      // close); the lobby browser re-registers us as idle within its next poll.
+      leavePresence(clientId);
+    };
+  }, [roomId, clientId]);
 
   // The room member this client acts as: matched by this tab's clientId, or —
   // when signed in — by the verified account id. The engine's one-account-one-

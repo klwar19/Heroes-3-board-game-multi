@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { LobbyScreen } from "@/components/lobby";
 import { LobbyChat } from "@/components/lobby-chat";
+import { PlayersOnline } from "@/components/players-online";
 import { MenuShell } from "@/components/menu/menu-shell";
 import { DEFAULT_SERVER } from "@/data/servers";
 import { uiArtSlot } from "@/data/ui-art";
@@ -14,6 +15,7 @@ import { assetUrl } from "@/lib/asset-url";
 import { fetchSession, fetchSocketToken } from "@/lib/auth-client";
 import { getClientId, getDisplayName, setDisplayName } from "@/lib/identity";
 import { fetchLobbyChat, postLobbyChat, type LobbyChatMessage } from "@/lib/lobby-chat-client";
+import { leavePresence, sendPresence, type PresenceEntry } from "@/lib/lobby-presence-client";
 import {
   savePendingRoomHosted,
   savePendingRoomMode,
@@ -61,6 +63,7 @@ export function RoomBrowser({ mode, labels }: { mode: GameMode; labels: RoomBrow
   const [accountName, setAccountName] = useState<string | null>(null);
   const [chatMessages, setChatMessages] = useState<LobbyChatMessage[]>([]);
   const [chatError, setChatError] = useState<string | null>(null);
+  const [playersOnline, setPlayersOnline] = useState<PresenceEntry[]>([]);
 
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
@@ -104,6 +107,13 @@ export function RoomBrowser({ mode, labels }: { mode: GameMode; labels: RoomBrow
       .catch(() => {
         /* transient — the next poll retries */
       });
+    // Announce that we are online (in the lobby, no room) and pick up the fresh
+    // online list in the same round trip. Best-effort — presence is decorative.
+    sendPresence({ clientId, name: getDisplayName().trim() || "Player" })
+      .then(setPlayersOnline)
+      .catch(() => {
+        /* transient — the next poll retries */
+      });
   }, [clientId, mode]);
 
   // Poll the directory (and lobby chat) every 5s while the browser is open.
@@ -112,6 +122,17 @@ export function RoomBrowser({ mode, labels }: { mode: GameMode; labels: RoomBrow
     const intervalId = window.setInterval(refresh, 5000);
     return () => window.clearInterval(intervalId);
   }, [refresh]);
+
+  // Drop off the online list promptly when the lobby is left (navigating into a
+  // room, back to the menu, or closing the tab) instead of lingering out the TTL.
+  useEffect(() => {
+    const leave = () => leavePresence(clientId);
+    window.addEventListener("pagehide", leave);
+    return () => {
+      window.removeEventListener("pagehide", leave);
+      leave();
+    };
+  }, [clientId]);
 
   const sendChat = useCallback(
     (text: string) => {
@@ -130,6 +151,17 @@ export function RoomBrowser({ mode, labels }: { mode: GameMode; labels: RoomBrow
       router.push(`/?room=${encodeURIComponent(roomId)}`);
     },
     [router]
+  );
+
+  // Invite an online player from the lobby: a friendly ping in the global lobby
+  // chat (the "lobby-chat ping" the user asked for). From the lobby you have no
+  // room to link yet, so this nudges them to team up; the in-room panel's Invite
+  // carries an actual join link.
+  const invitePlayer = useCallback(
+    (player: PresenceEntry) => {
+      sendChat(`👋 ${player.name} — want to play? Create or join a room and let's go!`);
+    },
+    [sendChat]
   );
 
   const handleCreate = (name: string, hosted: boolean, ranked: boolean) => {
@@ -230,6 +262,12 @@ export function RoomBrowser({ mode, labels }: { mode: GameMode; labels: RoomBrow
         rooms={rooms}
         supported={supported}
         title={labels.title}
+      />
+      <PlayersOnline
+        players={playersOnline}
+        clientId={clientId}
+        onJoinRoom={goToRoom}
+        onInvite={invitePlayer}
       />
       <LobbyChat clientId={clientId} messages={chatMessages} error={chatError} onSend={sendChat} />
     </MenuShell>

@@ -163,6 +163,51 @@ export function seatForViewer(state: GameState, actor: VerifiedActor): RoomSeat 
   return member?.seat ?? "observer";
 }
 
+/**
+ * Heal a member that JOINED as a guest but is actually a VERIFIED account, so
+ * the roster (and every seat check) stops calling a real player "guest — name".
+ *
+ * Why this is needed: a member's `userId` is stamped only at JOIN time, from the
+ * identity the server verified for that JOIN. If verification was not available
+ * at that instant — the client connected before its session token could be
+ * minted, a transient verify-token failure on the edge, or a member that
+ * predates verified sessions — the member is created as a guest, and because the
+ * client deliberately never re-sends JOIN_ROOM (so a kicked player can't
+ * auto-rejoin) it would stay a guest forever. Every LATER action the same player
+ * takes DOES carry their server-verified `userId`, so we upgrade the member the
+ * first time we see one.
+ *
+ * Strictly safe — it can only ever ADD the server-verified id to a member that
+ * had none, never rebind or overwrite:
+ *  - `userId` is the SERVER-verified account id (never the forgeable action
+ *    body), so a guest cannot claim someone else's account this way;
+ *  - it upgrades ONLY the guest member holding the actor's own claimed
+ *    `clientId` (the same match `fallbackGuestMember` already trusts for seat
+ *    authority), and never a member already bound to any account;
+ *  - it refuses when another member already holds this `userId` (one account =
+ *    one member), so it can't create a duplicate seat.
+ *
+ * Returns true when it changed a member, so the caller re-reports the roster.
+ */
+export function healVerifiedMembership(state: GameState, actor: VerifiedActor): boolean {
+  const room = state.room;
+  const { clientId, userId } = actor;
+  if (!room || !userId || !clientId) {
+    return false;
+  }
+  // Already bound to this account somewhere → nothing to heal (and never bind a
+  // second member to the same account).
+  if (findMemberByUserId(room, userId)) {
+    return false;
+  }
+  const member = findMember(room, clientId);
+  if (!member || member.userId) {
+    return false;
+  }
+  member.userId = userId;
+  return true;
+}
+
 // ---------------------------------------------------------------------------
 // Handlers
 // ---------------------------------------------------------------------------
