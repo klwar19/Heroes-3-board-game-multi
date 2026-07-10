@@ -33,6 +33,7 @@ export function reportFinishedMatch(prev: GameState, next: GameState): Promise<v
 async function recordMatch(match: FinishedMatch): Promise<void> {
   const result = await getAccountBackend().recordMatchResult({
     matchId: match.matchId,
+    ranked: match.ranked,
     participants: match.participants.map(({ accountId, result }) => ({ accountId, result }))
   });
   if (result.applied && accountsBackendKind() === "builtin") {

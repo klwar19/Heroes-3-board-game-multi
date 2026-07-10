@@ -297,6 +297,30 @@ describe("SupabaseAccountStore — Postgres-backed accounts", () => {
     expect((await store.getProfileById(a.id))!.wins).toBe(1);
   });
 
+  it("a NORMAL (ranked:false) match bumps W/L + matches but leaves MMR at the start value", async () => {
+    const a = await store.ensureAdminAccount({ nickname: "Alpha", email: "a@erathia.io", password: "password1" });
+    const b = await store.ensureAdminAccount({ nickname: "Beta", email: "b@erathia.io", password: "password2" });
+
+    const result = await store.recordMatchResult({
+      matchId: "casual-room:game-1",
+      ranked: false,
+      participants: [
+        { accountId: a.id, result: "win" },
+        { accountId: b.id, result: "loss" }
+      ]
+    });
+    expect(result.applied).toBe(true);
+    const winner = (await store.getProfileById(a.id))!;
+    const loser = (await store.getProfileById(b.id))!;
+    // Win/loss + matches DID advance; MMR did NOT (the ranked test above, which
+    // moved it to 1216/1184 on the identical result, is the CONTROL).
+    expect(winner.wins).toBe(1);
+    expect(loser.losses).toBe(1);
+    expect(winner.matches).toBe(1);
+    expect(winner.mmr).toBe(1200);
+    expect(loser.mmr).toBe(1200);
+  });
+
   it("hall of fame: best first, banned accounts excluded", async () => {
     const a = await store.ensureAdminAccount({ nickname: "Alpha", email: "a@erathia.io", password: "password1" });
     const b = await store.ensureAdminAccount({ nickname: "Beta", email: "b@erathia.io", password: "password2" });

@@ -275,6 +275,37 @@ describe("room membership through the store", () => {
     expect(done.snapshot.state.resetVote ?? null).toBeNull();
   });
 
+  it("the HOST of a hosted in-progress game may start a new adventure directly (override); a non-host member cannot", () => {
+    const roomId = uniqueRoom("resethost");
+    createRoom({
+      roomId,
+      players: [
+        { id: "p1", name: "Ann", factionId: "castle", heroDefId: "catherine" },
+        { id: "p2", name: "Bob", factionId: "necropolis", heroDefId: "sandro" }
+      ]
+    });
+    // Host the running game: c1 is the host, c2 an ordinary member.
+    submitRoomAction(roomId, { type: "JOIN_ROOM", clientId: "c1", name: "Host" }, undefined);
+    submitRoomAction(roomId, { type: "SET_ROOM_HOSTED", clientId: "c1", hosted: true }, undefined);
+    submitRoomAction(roomId, { type: "JOIN_ROOM", clientId: "c2", name: "Player" }, undefined);
+    markRoomClientConnected(roomId, "c1");
+    const before = getRoomSnapshot(roomId);
+    expect(before.state.setupLobby ?? null).toBeNull();
+
+    // CONTROL: a non-host member still cannot wipe the running game without the
+    // vote (the host is connected, so the member-when-host-gone path is closed).
+    const blocked = resetRoom(roomId, { mode: "adventure" }, "c2");
+    expect(blocked.reset).toBe(false);
+    expect(blocked.reason).toMatch(/confirm a new adventure|host can start/i);
+    expect(getRoomSnapshot(roomId).state.seed).toBe(before.state.seed);
+
+    // The HOST starts the new adventure directly — no vote needed. This is the
+    // escape hatch that keeps a stuck vote from being a dead end.
+    const done = resetRoom(roomId, { mode: "adventure" }, "c1");
+    expect(done.reset).toBe(true);
+    expect(done.snapshot.state.seed).not.toBe(before.state.seed);
+  });
+
   it("the developer's HOMM3BG_ADMIN_KEY resets any table; a wrong or unconfigured key never does", () => {
     const roomId = uniqueRoom("resetadmin");
     getRoomSnapshot(roomId);

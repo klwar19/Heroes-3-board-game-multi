@@ -14,7 +14,10 @@
  *    backends no-op a repeated matchId, so double delivery (retry, both
  *    transports racing, a duplicate action broadcast) can never double-count.
  *
- * What counts as a RANKED match (deliberately strict, documented):
+ * What counts as a recordable match (deliberately strict, documented). Every
+ * match below records each account's WIN/LOSS (so a give-up / quit shows on the
+ * profile even in a NORMAL game); the `ranked` flag then decides whether MMR
+ * also moves (RANKED) or stays put (NORMAL) — see recordMatchResult:
  *  - the game ended with a declared winner seat (`adventure.winnerPlayerId`);
  *    a bare `game-over` with no winner (or a neutral "winner") attributes
  *    nothing;
@@ -40,6 +43,12 @@ import type { MatchParticipantInput } from "@/server/accounts/account-store";
 export type FinishedMatch = {
   /** Idempotency key: the finished game's unique seed. */
   matchId: string;
+  /**
+   * Whether this game counts toward MMR/Elo. A NORMAL ("casual") table still
+   * records the WIN/LOSS on each account (so a give-up / quit shows up on the
+   * profile), but leaves the rating untouched — only a RANKED game moves MMR.
+   */
+  ranked: boolean;
   participants: (MatchParticipantInput & { nickname: string })[];
 };
 
@@ -57,13 +66,12 @@ export function detectFinishedMatch(prev: GameState, next: GameState): FinishedM
   if (gameIsOver(prev) || !gameIsOver(next)) {
     return null;
   }
-  // A NORMAL ("casual") table never touches the ladder. `ranked === false` is
-  // the explicit opt-out set by the lobby's Ranked/Normal picker; an absent flag
-  // (legacy rooms, rooms created before the picker) stays ranked so the original
-  // "every finished verified game counts" behaviour is unchanged.
-  if (next.room?.ranked === false) {
-    return null;
-  }
+  // A NORMAL ("casual") table still records the WIN/LOSS on each account — so a
+  // give-up / quit is reflected on the profile even in a casual game — but does
+  // NOT move MMR (see `ranked` on the result, honoured by recordMatchResult).
+  // `ranked === false` is the explicit opt-out set by the lobby's Ranked/Normal
+  // picker; an absent flag (legacy rooms) stays ranked, unchanged.
+  const ranked = next.room?.ranked !== false;
   const winnerSeat = next.adventure?.winnerPlayerId;
   if (!winnerSeat || winnerSeat === NEUTRAL_PLAYER_ID) {
     return null;
@@ -118,6 +126,6 @@ export function detectFinishedMatch(prev: GameState, next: GameState): FinishedM
   if (participants.length < 2 || !hasWinner || !hasLoser) {
     return null;
   }
-  return { matchId: next.seed, participants };
+  return { matchId: next.seed, ranked, participants };
 }
 

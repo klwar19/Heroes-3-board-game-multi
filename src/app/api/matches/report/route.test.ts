@@ -72,6 +72,37 @@ describe("/api/matches/report", () => {
     expect(store.getProfileById(cat.id)!.mmr).toBe(1216);
   });
 
+  it("a casual (ranked:false) report records the win/loss but leaves MMR at 1200", async () => {
+    process.env.HOMM3BG_MATCH_REPORT_KEY = "shared-secret-9";
+    const { POST } = await import("./route");
+    const { getAccountStore } = await import("@/server/accounts/account-store-instance");
+    const store = getAccountStore();
+    const cat = store.ensureAdminAccount({ nickname: "Catherine", email: "cat@erathia.io", password: "griffins7" });
+    const rol = store.ensureAdminAccount({ nickname: "Roland", email: "rol@erathia.io", password: "swordsman1" });
+
+    const ok = await POST(
+      report(
+        {
+          matchId: "casual-9:seed-1",
+          ranked: false,
+          participants: [
+            { accountId: cat.id, result: "win" },
+            { accountId: rol.id, result: "loss" }
+          ]
+        },
+        "shared-secret-9"
+      )
+    );
+    expect(ok.status).toBe(200);
+    expect((await ok.json()).applied).toBe(true);
+    // W/L counted (the give-up / quit shows up), MMR untouched — the CONTROL is
+    // the ranked test above where the same result moved MMR to 1216/1184.
+    expect(store.getProfileById(cat.id)!.wins).toBe(1);
+    expect(store.getProfileById(rol.id)!.losses).toBe(1);
+    expect(store.getProfileById(cat.id)!.mmr).toBe(1200);
+    expect(store.getProfileById(rol.id)!.mmr).toBe(1200);
+  });
+
   it("rejects malformed payloads (missing matchId, fewer than two valid participants)", async () => {
     process.env.HOMM3BG_MATCH_REPORT_KEY = "shared-secret-9";
     const { POST } = await import("./route");

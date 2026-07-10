@@ -65,6 +65,8 @@ describe("detectFinishedMatch — the shared game-over → ranked-result detecto
     );
     expect(match).not.toBeNull();
     expect(match!.matchId).toBe("room-r1-nonce42");
+    // A table with no explicit Normal opt-out is ranked (moves MMR).
+    expect(match!.ranked).toBe(true);
     // Observers and guests are invisible to the ladder.
     expect(match!.participants).toEqual([
       { accountId: "u_cat", nickname: "Catherine", result: "win" },
@@ -128,18 +130,22 @@ describe("detectFinishedMatch — the shared game-over → ranked-result detecto
     expect(detectFinishedMatch(prev, stateWith({ over: true, winnerSeat: "p1" }))).toBeNull();
   });
 
-  it("a NORMAL (casual) table never counts — ranked === false blocks it (undefined/true is the CONTROL)", () => {
+  it("a NORMAL (casual) table STILL records the win/loss but is flagged ranked:false (so MMR won't move)", () => {
     const prev = stateWith({ over: false, members: TWO_ACCOUNT_MEMBERS });
     const next = stateWith({ over: true, winnerSeat: "p1", members: TWO_ACCOUNT_MEMBERS });
-    // Explicit Normal game: no ladder report even with a clean winner and two
-    // verified accounts.
+    // Explicit Normal game: the win/loss is still reported (a give-up / quit
+    // shows on the profile), but the match is flagged casual so recordMatchResult
+    // leaves every rating untouched.
     (next.room as { ranked?: boolean }).ranked = false;
-    expect(detectFinishedMatch(prev, next)).toBeNull();
-    // CONTROL: explicitly Ranked counts, and so does the legacy absent flag.
+    const casual = detectFinishedMatch(prev, next);
+    expect(casual).not.toBeNull();
+    expect(casual!.ranked).toBe(false);
+    expect(casual!.participants.map((p) => p.result)).toEqual(["win", "loss"]);
+    // CONTROL: explicitly Ranked, and the legacy absent flag, both count as ranked.
     (next.room as { ranked?: boolean }).ranked = true;
-    expect(detectFinishedMatch(prev, next)).not.toBeNull();
+    expect(detectFinishedMatch(prev, next)!.ranked).toBe(true);
     delete (next.room as { ranked?: boolean }).ranked;
-    expect(detectFinishedMatch(prev, next)).not.toBeNull();
+    expect(detectFinishedMatch(prev, next)!.ranked).toBe(true);
   });
 
   it("QUITTING LOSES POINTS: an account seated at game start that LEFT THE ROOM is reported as 'abandon'", () => {

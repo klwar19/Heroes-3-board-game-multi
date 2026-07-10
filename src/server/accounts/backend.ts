@@ -69,5 +69,11 @@ export interface AccountBackend {
   recordMatchResult(input: {
     matchId: string;
     participants: MatchParticipantInput[];
+    /**
+     * Whether this match moves MMR. Defaults to true (back-compat). When false
+     * (a NORMAL/casual table) the win/loss + matches-played are still recorded,
+     * but every account's rating is left untouched.
+     */
+    ranked?: boolean;
   }): MaybePromise<RecordMatchResult>;
 }

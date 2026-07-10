@@ -629,22 +629,31 @@ export class AccountStore implements AccountBackend {
    * Winner-takes-field Elo (elo.ts). Abandon counts as a loss for the leaver;
    * draws leave MMR unchanged but still count as a match played.
    */
-  recordMatchResult(input: { matchId: string; participants: MatchParticipantInput[] }): RecordMatchResult {
+  recordMatchResult(input: {
+    matchId: string;
+    participants: MatchParticipantInput[];
+    ranked?: boolean;
+  }): RecordMatchResult {
     if (this.recordedMatches.has(input.matchId)) {
       return { matchId: input.matchId, applied: false, changes: [] };
     }
+    // A NORMAL (casual) game still records win/loss below, but leaves MMR alone:
+    // no Elo pairing is computed, so every rating stays put.
+    const ranked = input.ranked !== false;
     const eloInputs: EloParticipant[] = [];
-    for (const p of input.participants) {
-      const record = this.accounts.get(p.accountId);
-      if (!record) {
-        continue;
+    if (ranked) {
+      for (const p of input.participants) {
+        const record = this.accounts.get(p.accountId);
+        if (!record) {
+          continue;
+        }
+        if (p.result === "win") {
+          eloInputs.push({ id: p.accountId, rating: record.mmr, result: "win" });
+        } else if (p.result === "loss" || p.result === "abandon") {
+          eloInputs.push({ id: p.accountId, rating: record.mmr, result: "loss" });
+        }
+        // draws contribute no rating pairing.
       }
-      if (p.result === "win") {
-        eloInputs.push({ id: p.accountId, rating: record.mmr, result: "win" });
-      } else if (p.result === "loss" || p.result === "abandon") {
-        eloInputs.push({ id: p.accountId, rating: record.mmr, result: "loss" });
-      }
-      // draws contribute no rating pairing.
     }
     const ratings = computeRatings(eloInputs);
     const changes: RecordMatchResult["changes"] = [];

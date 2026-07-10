@@ -631,11 +631,16 @@ export default class GameRoomServer implements Party.Server {
         if (!isAdmin) {
           const actor = message.actorClientId ?? this.clientIdOf(sender);
           if (resetVoteRequired(previous.state)) {
-            // In-progress multiplayer adventure: only the unanimous "new
-            // adventure" vote, fired by the browser that opened it, may wipe the
-            // running game — even in a hosted room where it is not the host.
-            if (!resetVoteAuthorizes(previous.state, actor)) {
-              return "Everyone still in the game must confirm a new adventure first.";
+            // In-progress multiplayer adventure: the unanimous "new adventure"
+            // vote, fired by the browser that opened it, may wipe the running
+            // game. The HOST of a hosted room may ALSO start it directly (host
+            // override) — the escape hatch so a stuck vote (a player who left
+            // but is not eliminated, a solo-host test) is never a dead end. An
+            // OPEN table has no host, so it still needs the vote.
+            const hostOverride =
+              Boolean(previous.state.room?.hosted) && this.hostAuthorizes(actor, "reset").allowed;
+            if (!resetVoteAuthorizes(previous.state, actor) && !hostOverride) {
+              return "Everyone still in the game must confirm a new adventure — or the host can start it.";
             }
           } else {
             const authority = this.hostAuthorizes(actor, "reset");
