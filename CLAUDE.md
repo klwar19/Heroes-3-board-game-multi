@@ -936,6 +936,67 @@ and `creature-bank-combat.test.ts` "Pyramid: a Stacked win …" end-to-end).
   the recruitable card's Pack side — a HOUSE-RULE reading of "Stacked", since
   army cards carry no Stack Token of their own.
 
+## Monolith & Whirlpool Tokens (Conflux/Cove, map-designer content) — what runs vs. readings
+
+Location Tokens per rulebook p.35/83, placeable ONLY through the map designer
+(`CustomMapTilePlan.token`; no standard scenario ships them). Data in
+`src/data/map/locations.ts` (`monolith`, `whirlpool`, category "revisitable"),
+engine in `src/engine/adventure.ts` (`resolveTokenTeleport` and the map-token
+section) + `adventure-reducer.ts` (`offerPendingTokenPlacement`,
+`place-map-token`), setup in `adventure-setup.ts` (`applyCustomMapTokens`).
+Behaviour pinned in `src/engine/map-tokens.test.ts` (observable outcomes — hero
+position, army size, field state — each mutation-checked with CONTROLs), the
+designer UI in `map-designer.test.tsx`, save round-trip in
+`map-registry.test.ts`.
+
+Leading with what does NOT run / deliberate readings:
+- **Only the Two-Way Monolith is modeled.** The printed One-Way
+  Entrance/Exit Monolith pair is NOT a separate location — every monolith is
+  two-way. With 3+ monoliths the TRAVELLER PICKS the destination (the printed
+  "corresponding" pairing has no meaning on a designed map); with exactly 2 the
+  travel is automatic.
+- **"Lose 1 unit from your unit Deck" is the traveller's pick** of one army
+  card (the card names no unit); a Neutral-side card recycles to its tier
+  discard pile like a combat casualty. An empty army loses nothing (noted).
+- **Occupied destinations are skipped** (the p.83 "skip the movement if you
+  would be stepping onto an allied Hero" note, read for ANY hero): a token a
+  hero stands on is not offered, the 3-whirlpool die rerolls its number, and
+  with no free destination the travel fizzles with a note.
+- **Guarded fields refuse a token placement** (engine safety reading — the
+  printed rule bans only Location Tokens/Blocked Fields/victory Locations, but
+  overwriting a guard would erase it for free). Towns, Settlements, Mines,
+  Obelisks, the Grail and the Dragon Utopia are excluded as the conservative
+  "victory conditions" reading. Terrain is enforced: monolith = land hex,
+  whirlpool = sea hex.
+- **Cross-layer monoliths are allowed** (a designer may knowingly link the
+  Surface and the Underground — a Town-Portal-like exception to the
+  gate-only-crossing rule; the teleport never consults `canCrossEdge`).
+- The designer caps whirlpools at 3 (the physical numbered tokens; the engine
+  falls back to traveller's-pick if a hand-edited save exceeds it) and allows
+  at most ONE token per tile.
+
+What runs (each with a failing-if-removed test):
+- Designer: token per tile — face-up tiles pin a legal slot (picker filtered by
+  `legalTokenSlotsForTileDef`), face-down tiles carry a pending token placed on
+  discovery. Lone-token maps show the "needs at least 2 to work" warning; a
+  lone token in play is inert with the same note. Tokens survive save/load
+  (`sanitizeTile`) and are validated again at setup (illegal slots dropped).
+- Discovery: revealing a pending-token tile lets the DISCOVERING player place
+  it on "a Field of your choosing" (`place-map-token` choice, glowing
+  candidates; single candidate auto-places, zero drops the token). It waits
+  behind the Subterranean-Gate and Creature-Bank prompts on the same reveal;
+  gates and tokens never cover each other.
+- Travel: entering (or Revisiting, 1 MP) a token teleports to another token of
+  the kind. Arrival does NOT re-trigger (no ping-pong). Whirlpool numbers are
+  the die faces +1/0/-1 (assigned in plan order); with exactly 3 whirlpools the
+  Attack die decides, rerolling the origin's number, per the printed rule.
+  Each whirlpool travel then costs the unit toll.
+- Travel into a face-down tile: the tile flips for FREE, the traveller rotates
+  it (a Ⅱ–Ⅲ tile runs the standard keep/reroll flip), places the destination
+  token, and arrives on it (`pendingTokenTeleport`; whirlpool toll after
+  arrival). Elimination mid-flow auto-places the token and cancels only the
+  dead seat's travel.
+
 ## Neutral-combat & Sorrow refinements (BINH house rules) — what runs
 
 Three engine-enforced additions; each fails a named test if its wiring is removed.

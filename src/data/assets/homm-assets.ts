@@ -314,6 +314,41 @@ export function subterraneanGateTokenImage(layer: "surface" | "subterranean"): s
 }
 
 /**
+ * Monolith (Conflux) / Whirlpool (Cove) Location Token art — hex-shaped scans
+ * cropped from the rulebook's component pages (alpha-masked to the printed hex).
+ * The three Whirlpool tokens carry their printed Attack-die numbers (+1/0/-1);
+ * an unnumbered whirlpool (hand-edited saves beyond the printed three) falls
+ * back to the "0" face art.
+ */
+export const MAP_TOKEN_IMAGES = {
+  monolith: "/assets/board/tokens/monolith.webp",
+  "whirlpool+1": "/assets/board/tokens/whirlpool-plus1.webp",
+  whirlpool0: "/assets/board/tokens/whirlpool-zero.webp",
+  "whirlpool-1": "/assets/board/tokens/whirlpool-minus1.webp"
+} as const;
+
+/** The Two-Way Monolith token art. */
+export function monolithTokenImage(): string {
+  return MAP_TOKEN_IMAGES.monolith;
+}
+
+/** A Whirlpool token's art, picked by its printed die number. */
+export function whirlpoolTokenImage(number?: -1 | 0 | 1): string {
+  if (number === 1) {
+    return MAP_TOKEN_IMAGES["whirlpool+1"];
+  }
+  if (number === -1) {
+    return MAP_TOKEN_IMAGES["whirlpool-1"];
+  }
+  return MAP_TOKEN_IMAGES.whirlpool0;
+}
+
+/** Token art for a Monolith/Whirlpool field or a pending (face-down) token. */
+export function mapTokenImage(kind: "monolith" | "whirlpool", number?: -1 | 0 | 1): string {
+  return kind === "monolith" ? monolithTokenImage() : whirlpoolTokenImage(number);
+}
+
+/**
  * Creature Bank field-tile art (Naval Battles), shown on a placed bank's hex.
  *
  * Each of the twelve banks has its OWN cropped field-tile scan (the Crypt

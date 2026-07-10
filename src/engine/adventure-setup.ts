@@ -32,7 +32,9 @@ import {
 import {
   addArmyUnit,
   ASTROLOGERS_DECK_ID,
+  carveMapTokenField,
   EVENTS_DECK_ID,
+  getTileFootprintSpaceIds,
   getUnitSide,
   instantiateTile,
   NEUTRAL_DECK_IDS,
@@ -41,6 +43,7 @@ import {
   subterraneanTileBand,
   startAdventureRound,
   startPlayerTurn,
+  tokenMayCoverFieldDef,
   victoryModeCountsHeroDefeats
 } from "./adventure";
 import { pumpAdventureQueues } from "./adventure-reducer";
@@ -68,6 +71,7 @@ import type {
   GameSetupState,
   GameState,
   HouseRuleId,
+  MapTileState,
   PlayerId,
   PlayerState,
   PvpTroopLoss,
@@ -78,6 +82,53 @@ import type {
 } from "./state";
 import { DEFAULT_WOG_OPTIONS, MAX_FAR_TILES_PER_PLAYER, NEUTRAL_PLAYER_ID, UNOPENED_FAR_TILE } from "./state";
 import { HOUSE_RULE_BY_ID, resolveHouseRules } from "./house-rules";
+
+/**
+ * Applies the map designer's Monolith/Whirlpool tokens to the tiles just laid
+ * out. A face-up plan carves its designed slot right away (an illegal slot in a
+ * hand-edited save is simply dropped — the designer only offers legal ones); a
+ * face-down plan parks the token on the tile (`pendingToken`), to be placed by
+ * the discovering player when the tile is revealed. Runs BEFORE
+ * `recomputeSubterraneanGates`, whose carve refuses token fields ("Tokens
+ * cannot be placed on other Location Tokens" — and vice versa).
+ *
+ * Whirlpool numbers: the three printed tokens carry the Attack-die faces, so
+ * the applied whirlpools are numbered +1, 0, -1 in plan order. A 4th+ whirlpool
+ * (hand-edited save; the designer caps at 3) stays unnumbered, which turns the
+ * 3-token die rule off — travel falls back to the traveller's pick.
+ */
+function applyCustomMapTokens(
+  adventure: AdventureState,
+  planned: { plan: CustomMapTilePlan; tile: MapTileState }[]
+): void {
+  const WHIRLPOOL_NUMBERS: (-1 | 0 | 1)[] = [1, 0, -1];
+  let whirlpoolsApplied = 0;
+
+  for (const { plan, tile } of planned) {
+    const token = plan.token;
+    if (!token || (token.kind !== "monolith" && token.kind !== "whirlpool")) {
+      continue;
+    }
+
+    if (tile.faceDown) {
+      const number = token.kind === "whirlpool" ? WHIRLPOOL_NUMBERS[whirlpoolsApplied++] : undefined;
+      tile.pendingToken = { kind: token.kind, ...(number !== undefined ? { number } : {}) };
+      continue;
+    }
+
+    const def = allTileDefinitions[tile.tileDefId];
+    const slot = token.slot;
+    if (!def || slot === undefined || !tokenMayCoverFieldDef(def, slot, token.kind)) {
+      continue;
+    }
+    const spaceId = getTileFootprintSpaceIds(tile)[slot];
+    if (!spaceId || adventure.fields[spaceId]?.tileInstanceId !== tile.id) {
+      continue;
+    }
+    const number = token.kind === "whirlpool" ? WHIRLPOOL_NUMBERS[whirlpoolsApplied++] : undefined;
+    carveMapTokenField(adventure, spaceId, token.kind, number);
+  }
+}
 
 export type AdventurePlayerConfig = {
   id: string;
@@ -946,6 +997,10 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     const forcedCenters = forcedObjectiveCenterTiles(centerPool, faceDownCenterSlots, victoryMode);
     let forcedCenterIndex = 0;
 
+    // Designed Monolith/Whirlpool Location Tokens, applied once every planned
+    // tile is down (whirlpool numbering spans all of them, in plan order).
+    const plannedTokens: { plan: (typeof customMap)[number]; tile: MapTileState }[] = [];
+
     for (const plan of customMap) {
       if (plan.group === "starting") {
         continue;
@@ -967,12 +1022,20 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
         if (tileDefId) {
           // "Down means random", but the designer's chosen orientation still
           // rides along — the random tile is revealed at the slot's rotation.
-          instantiateTile(adventure, tileDefId, center, plan.rotation ?? 0, true);
+          const tile = instantiateTile(adventure, tileDefId, center, plan.rotation ?? 0, true);
+          if (plan.token) {
+            plannedTokens.push({ plan, tile });
+          }
         }
       } else if (plan.tileDefId) {
-        instantiateTile(adventure, plan.tileDefId, center, plan.rotation ?? 0, false);
+        const tile = instantiateTile(adventure, plan.tileDefId, center, plan.rotation ?? 0, false);
+        if (plan.token) {
+          plannedTokens.push({ plan, tile });
+        }
       }
     }
+
+    applyCustomMapTokens(adventure, plannedTokens);
   } else {
     // Face-down Far (II–III) tiles fixed in the layout (symmetric clash maps use
     // these as the outer ring between the starts and the Ⅳ–Ⅴ ring).
