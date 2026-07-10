@@ -354,6 +354,12 @@ export function putPermanentIntoPlay(state: GameState, playerId: PlayerId, cardI
     replacedCardId
   });
 
+  // The replaced (oldest) card may have been the Pandora "up to 3" card that was
+  // itself holding the door open — the limit is back to 1 the moment it leaves,
+  // so the extras must go too. The just-played card is the newest and the
+  // enforcement discards oldest-first, so it always survives.
+  enforcePermanentLimit(state, playerId);
+
   // Pandora's Gift: Income — the ∞ permanent rolls its Resource die as it
   // enters play; the rolled resource pays a full income tier each Resources
   // round for as long as the card stays in play (startAdventureRound).

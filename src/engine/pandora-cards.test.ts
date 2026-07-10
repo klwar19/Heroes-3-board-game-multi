@@ -10,7 +10,7 @@ import {
   type GameAction,
   type GameState
 } from "./index";
-import { NEUTRAL_DECK_IDS, RESOURCE_GAIN_LEVEL_AMOUNTS, startAdventureRound } from "./adventure";
+import { eliminatePlayer, NEUTRAL_DECK_IDS, RESOURCE_GAIN_LEVEL_AMOUNTS, startAdventureRound } from "./adventure";
 import { pandoraScryDeckId } from "./adventure-reducer";
 import { getPlayerView } from "./player-view";
 import type { GameEvent, HeroState, PlayerId, ResourceCost, ResourceKind } from "./state";
@@ -781,6 +781,39 @@ describe("Pandora 186: peek the Ability deck, gain 1 valuables", () => {
     expect(ownerChoice?.type === "OPTION_CHOICE" && ownerChoice.pandoraScry!.remaining.every((id) => id !== "hidden")).toBe(true);
     expect(oppChoice?.type === "OPTION_CHOICE" && oppChoice.pandoraScry!.remaining.every((id) => id === "hidden")).toBe(true);
     expect(oppChoice?.type === "OPTION_CHOICE" && oppChoice.options.every((o) => o.label === "Hidden card")).toBe(true);
+  });
+
+  it("eliminating the scrying player mid-scry destroys NO shared-deck cards", () => {
+    // Invariant: the scry only LIFTS cards off the top of the draw pile, so an
+    // elimination (AFK kick, concede) while the keep/discard choice is open must
+    // put every undecided AND already-kept card back — the deck never shrinks.
+    const state = readyAdventureN("p186-eliminate", 2);
+    state.players.p1.hand = ["pandora.scry_abilities"];
+    const deck = state.decks.abilities!;
+    const totalBefore = deck.drawPile.length + deck.discardPile.length;
+
+    let after = playOption(state, "pandora.scry_abilities");
+    expect(after.pendingChoice?.type === "OPTION_CHOICE" && after.pendingChoice.context).toBe("pandora-scry");
+    const revealed =
+      after.pendingChoice?.type === "OPTION_CHOICE" ? [...after.pendingChoice.pandoraScry!.remaining] : [];
+    expect(revealed).toHaveLength(3);
+
+    // Exercise all three zones: keep r0 (toReturn), discard r1 (discard pile),
+    // leave r2 undecided (remaining) — then eliminate the seat mid-choice.
+    after = chooseOptionNow(after, 0); // keep r0
+    after = chooseOptionNow(after, 2); // options [keep r1, keep r2, discard r1, discard r2] -> discard r1
+    expect(after.pendingChoice?.type === "OPTION_CHOICE" && after.pendingChoice.context).toBe("pandora-scry");
+
+    eliminatePlayer(after, "p1", "conceded the game", true);
+
+    expect(after.pendingChoice).toBeNull();
+    const deckAfter = after.decks.abilities!;
+    // Nothing left the game: the kept + undecided cards are back in the draw
+    // pile, the discarded one sits in the discard pile.
+    expect(deckAfter.drawPile.length + deckAfter.discardPile.length).toBe(totalBefore);
+    expect(deckAfter.drawPile).toContain(revealed[0]);
+    expect(deckAfter.drawPile).toContain(revealed[2]);
+    expect(deckAfter.discardPile).toContain(revealed[1]);
   });
 });
 

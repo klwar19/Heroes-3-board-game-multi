@@ -337,19 +337,46 @@ describe("permanent cards", () => {
       "ability.fire_magic"
     ]);
 
-    // A fourth permanent is over the raised limit: the oldest one leaves.
+    // A fourth permanent is over the raised limit: the oldest one leaves — and
+    // the oldest IS the Pandora limit card, so the printed one-permanent rule
+    // is back the moment it hits the discard pile. The remaining extras follow
+    // it out (oldest first) instead of lingering as three permanents under a
+    // limit of one (the audited "limit survives its card" bug).
     current = applyOk(current, {
       type: "PLAY_CARD",
       playerId: "p1",
       cardId: "war_machine.ballista",
       target: { type: "none" }
     });
-    expect(current.players.p1.permanents).toEqual([
+    expect(current.players.p1.permanents).toEqual(["war_machine.ballista"]);
+    expect(current.players.p1.discard).toEqual(
+      expect.arrayContaining(["pandora.permanent_slots", "war_machine.first_aid_tent", "ability.fire_magic"])
+    );
+  });
+
+  it("keeps all three permanents when the replaced (oldest) card is NOT the limit card", () => {
+    // CONTROL for the re-enforcement above: replacing an ordinary permanent
+    // while Pandora's "up to 3" stays in play must NOT discard anything extra.
+    const state = createInitialGameState();
+    state.players.p1.permanents = [
       "war_machine.first_aid_tent",
+      "pandora.permanent_slots",
+      "ability.fire_magic"
+    ];
+    state.players.p1.hand = ["war_machine.ballista"];
+
+    const next = applyOk(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "war_machine.ballista",
+      target: { type: "none" }
+    });
+    expect(next.players.p1.permanents).toEqual([
+      "pandora.permanent_slots",
       "ability.fire_magic",
       "war_machine.ballista"
     ]);
-    expect(current.players.p1.discard).toContain("pandora.permanent_slots");
+    expect(next.players.p1.discard).toEqual(["war_machine.first_aid_tent"]);
   });
 
   it("voluntarily discards a permanent and re-enforces the limit when Pandora leaves", () => {

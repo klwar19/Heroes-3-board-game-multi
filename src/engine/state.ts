@@ -6555,6 +6555,16 @@ export type VisitStep =
       type: "CONSUME_MORALE";
     }
   | {
+      /**
+       * Resolves a held Morale CARD (optional Morale Cards rule) as part of a
+       * map-die option — e.g. "Positive Morale: Reroll a Die" played on a
+       * Resource/Treasure/map-Attack die. The card returns under its deck
+       * (consumeHeldMoraleCard); a no-op if the card is no longer held.
+       */
+      type: "CONSUME_MORALE_CARD";
+      cardId: CardId;
+    }
+  | {
       /** Marks the Swift Weasel once-per-turn adventure-die reroll as used. */
       type: "CONSUME_WEASEL";
     }

@@ -33,7 +33,12 @@ import {
 } from "./active-effects";
 import { drawCardsForPlayer, shuffleCards } from "./decks";
 import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
-import { applyMoraleCardGain, consumeHeldMoraleCard, moraleCardsRuleEnabled } from "./morale-cards";
+import {
+  applyMoraleCardGain,
+  consumeHeldMoraleCard,
+  moraleCardsRuleEnabled,
+  playerHoldsMoraleCard
+} from "./morale-cards";
 import { MORALE_CARD_IDS } from "@/data/cards/morale";
 import { parallelInteractionBlocker, stopParallelTurns } from "./parallel-turns";
 import { playerOwnsWarMachine, removePermanentFromPlayToRemoved } from "./permanents";
@@ -2320,6 +2325,20 @@ export function eliminatePlayer(
         ...choice.visionsScry.toReturn
       );
     }
+    if (choice.type === "OPTION_CHOICE" && choice.pandoraScry) {
+      // A Pandora scry lifted these cards OFF the top of a shared draw pile
+      // (finishPandoraScry puts the kept ones back there); return every
+      // undecided AND already-kept card to the top so eliminating the scrying
+      // seat never shrinks the deck. Cards it already discarded sit in the
+      // discard pile and stay there.
+      const deck = state.decks[choice.pandoraScry.deckId];
+      if (deck) {
+        const returning = [...choice.pandoraScry.remaining, ...choice.pandoraScry.toReturn];
+        for (let index = returning.length - 1; index >= 0; index -= 1) {
+          deck.drawPile.push(returning[index]);
+        }
+      }
+    }
     state.pendingChoice = null;
     if (state.phase === "choice") {
       const returnPhase = "returnPhase" in choice ? choice.returnPhase : undefined;
@@ -3030,6 +3049,12 @@ export function processPendingVisit(state: GameState): void {
         }
         break;
       }
+      case "CONSUME_MORALE_CARD":
+        // A held Morale card played into a map-die option ("Reroll a Die"):
+        // returns under its deck with the MORALE_CARD_USED cue. No-op if the
+        // card left the player's side since the option was built.
+        consumeHeldMoraleCard(state, visit.playerId, step.cardId);
+        break;
       case "CONSUME_WEASEL": {
         const astrologers = getAstrologersState(state);
         if (astrologers && !astrologers.swiftWeaselUsedBy.includes(visit.playerId)) {
@@ -3394,7 +3419,20 @@ export function processPendingVisit(state: GameState): void {
           results: [`Attack die: ${roll >= 0 ? "+" : ""}${roll}`],
           attackRolls: [roll]
         });
-        visit.steps.unshift(...(roll > 0 ? step.plus : roll === 0 ? step.zero : step.minus));
+        const branch = roll > 0 ? step.plus : roll === 0 ? step.zero : step.minus;
+        // Positive Morale "Reroll a die.": the holder just threw this Attack
+        // die, so the held card may reroll it (re-running this very step)
+        // before the branch resolves. Without the card: straight through.
+        const rerollCard = moraleRerollCardOption(state, visit.playerId, "the Attack die", step);
+        if (!rerollCard) {
+          visit.steps.unshift(...branch);
+          break;
+        }
+        visit.steps.unshift({
+          type: "CHOOSE_ONE",
+          prompt: `Attack die: ${roll >= 0 ? "+" : ""}${roll}. Keep the result, or reroll?`,
+          options: [{ label: `Keep the ${roll >= 0 ? "+" : ""}${roll} result`, steps: branch }, rerollCard]
+        });
         break;
       }
       case "SUBTERRANEAN_GATE":
@@ -5472,6 +5510,33 @@ function setTreasureDieOptions(setEffect: ActiveEffectState): { label: string; s
 }
 
 /**
+ * Positive Morale "Reroll a die." (optional Morale Cards rule): with the rule
+ * on, morale cards REPLACE the ±1 token — and the token's "Reroll any Die you
+ * have thrown" action covers the map dice — so the held card is offered on the
+ * same player-thrown map dice: the Resource/Treasure windows AND the map-side
+ * Attack-die branch rolls (Scholar, Sea Chest/Jetsam). Playing it resolves the
+ * card (back under its deck). Deliberately NOT offered on the Obelisk die (its
+ * face locks once for every visitor — a shared reveal, not the holder's own
+ * throw) nor the Satyr/Leprechaun-style specific-face gambles, matching the
+ * documented map-side exclusions of the negative die curses.
+ */
+function moraleRerollCardOption(
+  state: GameState,
+  playerId: PlayerId,
+  dieLabel: string,
+  rollStep: VisitStep
+): { label: string; steps: VisitStep[] } | null {
+  if (!playerHoldsMoraleCard(state, playerId, MORALE_CARD_IDS.rerollDie)) {
+    return null;
+  }
+  const cardName = cardLibrary[MORALE_CARD_IDS.rerollDie]?.name ?? "Positive Morale: Reroll a Die";
+  return {
+    label: `Play ${cardName}: reroll ${dieLabel}`,
+    steps: [{ type: "CONSUME_MORALE_CARD", cardId: MORALE_CARD_IDS.rerollDie } as VisitStep, rollStep]
+  };
+}
+
+/**
  * Optional rerolls of an adventure die beyond Luck: the positive morale token
  * ("Reroll any Die you have thrown") and the Swift Weasel Astrologers card
  * (one free Treasure/Resource reroll per turn).
@@ -5500,6 +5565,18 @@ function extraDieRerollOptions(
       label: `Spend morale: reroll the ${dice} ${count > 1 ? "dice" : "die"}`,
       steps: [{ type: "CONSUME_MORALE" }, rollStep]
     });
+  }
+
+  // Morale Cards rule: the held "Reroll a Die" card stands in for the token
+  // reroll above (the token count stays 0 while the rule is on).
+  const rerollCard = moraleRerollCardOption(
+    state,
+    visit.playerId,
+    `the ${dice} ${count > 1 ? "dice" : "die"}`,
+    rollStep
+  );
+  if (rerollCard) {
+    options.push(rerollCard);
   }
 
   // Diplomat's Ring / Ambassador's Sash: their "Reroll a die" half is an instant
@@ -5700,35 +5777,52 @@ function rollScholar(state: GameState, visit: PendingVisit): void {
     attackRolls: [roll]
   });
 
-  if (roll > 0) {
-    visit.steps.unshift({
-      type: "CHOOSE_ONE",
-      prompt: "Scholar: gain a Statistic card",
-      options: [
-        { label: "Gain an Attack card", steps: [] },
-        { label: "Gain a Defense card", steps: [] },
-        { label: "Gain a Power card", steps: [] },
-        { label: "Gain a Knowledge card", steps: [] },
-        {
-          label: "Remove a Statistic card from your hand",
-          steps: [
-            {
-              type: "REMOVE_HAND_CARD",
-              prompt: "Scholar: remove a Statistic card",
-              filter: "statistic",
-              then: "none"
-            }
-          ]
-        }
-      ]
-    });
+  const branch: VisitStep[] =
+    roll > 0
+      ? [
+          {
+            type: "CHOOSE_ONE",
+            prompt: "Scholar: gain a Statistic card",
+            options: [
+              { label: "Gain an Attack card", steps: [] },
+              { label: "Gain a Defense card", steps: [] },
+              { label: "Gain a Power card", steps: [] },
+              { label: "Gain a Knowledge card", steps: [] },
+              {
+                label: "Remove a Statistic card from your hand",
+                steps: [
+                  {
+                    type: "REMOVE_HAND_CARD",
+                    prompt: "Scholar: remove a Statistic card",
+                    filter: "statistic",
+                    then: "none"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      : [
+          {
+            type: "SEARCH_SHARED_DECK",
+            deckId: roll === 0 ? "abilities" : "spells",
+            count: 2
+          }
+        ];
+
+  // Positive Morale "Reroll a die.": the Scholar Attack die is a die its holder
+  // just threw, so the held card may reroll it before the branch resolves
+  // (mirrors the Resource/Treasure windows). Without the card the roll resolves
+  // straight through, exactly as before.
+  const rerollCard = moraleRerollCardOption(state, visit.playerId, "the Scholar Attack die", { type: "SCHOLAR" });
+  if (!rerollCard) {
+    visit.steps.unshift(...branch);
     return;
   }
-
   visit.steps.unshift({
-    type: "SEARCH_SHARED_DECK",
-    deckId: roll === 0 ? "abilities" : "spells",
-    count: 2
+    type: "CHOOSE_ONE",
+    prompt: `Scholar Attack die: ${roll >= 0 ? "+" : ""}${roll}. Keep the result, or reroll?`,
+    options: [{ label: `Keep the ${roll >= 0 ? "+" : ""}${roll} result`, steps: branch }, rerollCard]
   });
 }
 

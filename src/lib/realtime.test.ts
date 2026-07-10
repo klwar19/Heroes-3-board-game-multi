@@ -2,7 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { connectRoom, requestCloseRoom } from "./realtime";
 
 const partySocketMock = vi.hoisted(() => ({
-  instances: [] as { close: ReturnType<typeof vi.fn>; send: ReturnType<typeof vi.fn>; options: unknown }[]
+  instances: [] as {
+    close: ReturnType<typeof vi.fn>;
+    send: ReturnType<typeof vi.fn>;
+    options: unknown;
+    emit: (type: string, event?: unknown) => void;
+  }[]
 }));
 
 vi.mock("partysocket", () => {
@@ -10,13 +15,24 @@ vi.mock("partysocket", () => {
     close = vi.fn();
     send = vi.fn();
     options: unknown;
+    private listeners = new Map<string, ((event: unknown) => void)[]>();
 
     constructor(options: unknown) {
       this.options = options;
       partySocketMock.instances.push(this);
     }
 
-    addEventListener() {}
+    addEventListener(type: string, listener: (event: unknown) => void) {
+      const list = this.listeners.get(type) ?? [];
+      list.push(listener);
+      this.listeners.set(type, list);
+    }
+
+    emit(type: string, event: unknown = {}) {
+      for (const listener of this.listeners.get(type) ?? []) {
+        listener(event);
+      }
+    }
   }
 
   return { default: FakePartySocket };
@@ -116,6 +132,67 @@ describe("connectRoom - PartyKit snapshot identity", () => {
       expect(parsed.searchParams.get("clientId")).toBe("client-abc");
       expect(parsed.searchParams.get("token")).toBe("player-ticket");
     }
+    connection.close();
+  });
+});
+
+/**
+ * Hosted-room reconnect healing. The server's synchronous connect frame is the
+ * zero-trust OBSERVER view at the room's CURRENT version; if nothing changed
+ * while the socket was down, no later broadcast is due — so without a
+ * seat-authoritative refetch the player's own hand/Pandora cards stayed masked
+ * until someone changed the room state. The transport must also report every
+ * drop (onDropped) so the app can re-join a membership the server reaped.
+ */
+describe("connectRoom — PartyKit drop/reconnect handling", () => {
+  const realFetch = globalThis.fetch;
+
+  beforeEach(() => {
+    partySocketMock.instances.length = 0;
+    process.env.NEXT_PUBLIC_PARTYKIT_HOST = "rooms.example.partykit.dev";
+    globalThis.fetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ roomId: "room-42", version: 7, updatedAt: "now", state: {} })
+    })) as unknown as typeof fetch;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+    delete process.env.NEXT_PUBLIC_PARTYKIT_HOST;
+    vi.restoreAllMocks();
+  });
+
+  it("reports drops, and refetches a SEAT-AUTHORITATIVE snapshot on re-open (never on first open)", async () => {
+    const onSnapshot = vi.fn();
+    const onDropped = vi.fn();
+    const connection = connectRoom(
+      "room-42",
+      { onSnapshot, onStatus: vi.fn(), onDropped },
+      "client-abc",
+      async () => "player-ticket"
+    );
+    const socket = partySocketMock.instances.at(-1)!;
+
+    // First open: the server's connect frame is on its way — no extra fetch.
+    socket.emit("open");
+    await Promise.resolve();
+    expect(vi.mocked(globalThis.fetch)).not.toHaveBeenCalled();
+    expect(onDropped).not.toHaveBeenCalled();
+
+    // Transient drop: the app is told, so it can re-arm its join guard.
+    socket.emit("close");
+    expect(onDropped).toHaveBeenCalledTimes(1);
+
+    // Reconnect: the seat-redacted HTTP snapshot is fetched and delivered as a
+    // seat-authoritative frame (accepted even at the SAME version).
+    socket.emit("open");
+    await vi.waitFor(() => expect(onSnapshot).toHaveBeenCalledTimes(1));
+    expect(onSnapshot.mock.calls[0][1]).toEqual({ seatAuthoritative: true });
+    expect((onSnapshot.mock.calls[0][0] as { version: number }).version).toBe(7);
+    const url = new URL(String(vi.mocked(globalThis.fetch).mock.calls[0][0]));
+    expect(url.searchParams.get("clientId")).toBe("client-abc");
+    expect(url.searchParams.get("token")).toBe("player-ticket");
+
     connection.close();
   });
 });

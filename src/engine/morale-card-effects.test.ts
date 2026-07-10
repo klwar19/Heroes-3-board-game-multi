@@ -848,3 +848,180 @@ describe("Positive Morale: Remove Token", () => {
     expect(offers).toHaveLength(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Positive Morale: Reroll a Die — the MAP dice (Resource / Treasure / the
+// Scholar & Sea-Chest Attack-die branch rolls). With the Morale Cards rule on,
+// this card stands in for the ±1 token's "Reroll any Die you have thrown"
+// map action, so a holder must get the reroll window the token used to give.
+// ---------------------------------------------------------------------------
+
+describe("Positive Morale: Reroll a Die (map dice)", () => {
+  /** A p1-turn game with an empty hand (no reroll artifacts muddying offers). */
+  function readyMapGame(seed: string): GameState {
+    const state = makeGame(seed);
+    const readied =
+      state.players.p1.needsHandRefresh || state.players.p1.canMulligan
+        ? apply(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] })
+        : state;
+    readied.players.p1.hand = [];
+    return readied;
+  }
+
+  function injectVisit(state: GameState, steps: unknown[]): void {
+    const hero = getMainHero(state, "p1")!;
+    state.adventure!.pendingVisit = {
+      heroId: hero.id,
+      playerId: "p1",
+      fieldId: hero.spaceId!,
+      steps: steps as never
+    };
+  }
+
+  function attackDieEvents(state: GameState) {
+    return state.eventLog.filter(
+      (event) => event.type === "ADVENTURE_DICE_ROLLED" && event.dice === "attack"
+    );
+  }
+
+  function treasureDieEvents(state: GameState) {
+    return state.eventLog.filter(
+      (event) => event.type === "ADVENTURE_DICE_ROLLED" && event.dice === "treasure"
+    );
+  }
+
+  /** The open visit CHOOSE_ONE's option index whose label plays the reroll card. */
+  function rerollOptionIndex(state: GameState): number {
+    const step = state.adventure?.pendingVisit?.steps[0];
+    expect(step?.type, "a CHOOSE_ONE die window is open").toBe("CHOOSE_ONE");
+    const options = step?.type === "CHOOSE_ONE" ? step.options : [];
+    return options.findIndex((option) => /Reroll a Die/.test(option.label));
+  }
+
+  it("offers — and resolves — the held card on a single map Treasure die", () => {
+    let state = readyMapGame("morale-reroll-map-treasure");
+    holdPositive(state, "p1", MORALE_CARD_IDS.rerollDie);
+    injectVisit(state, [{ type: "ROLL_TREASURE_DICE", count: 1 }]);
+
+    processPendingVisit(state);
+
+    // The roll no longer resolves silently: a window opened with the card play.
+    const index = rerollOptionIndex(state);
+    expect(index).toBeGreaterThan(0);
+
+    state = apply(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: index });
+
+    // The die was thrown again, and the card resolved back under its deck.
+    expect(treasureDieEvents(state)).toHaveLength(2);
+    expect(state.players.p1.moraleCards?.positive).toHaveLength(0);
+    expect(state.decks[MORALE_POSITIVE_DECK_ID].drawPile[0]).toBe(MORALE_CARD_IDS.rerollDie);
+  });
+
+  it("offers the held card on a map Resource die too", () => {
+    let state = readyMapGame("morale-reroll-map-resource");
+    holdPositive(state, "p1", MORALE_CARD_IDS.rerollDie);
+    injectVisit(state, [{ type: "ROLL_RESOURCE_DICE", count: 1 }]);
+
+    processPendingVisit(state);
+
+    const index = rerollOptionIndex(state);
+    expect(index).toBeGreaterThan(0);
+
+    state = apply(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: index });
+
+    const rolls = state.eventLog.filter(
+      (event) => event.type === "ADVENTURE_DICE_ROLLED" && event.dice === "resource"
+    );
+    expect(rolls).toHaveLength(2);
+    expect(state.players.p1.moraleCards?.positive).toHaveLength(0);
+  });
+
+  it("CONTROL: without the card a single Treasure die resolves with no window", () => {
+    const state = readyMapGame("morale-reroll-map-treasure-control");
+    injectVisit(state, [{ type: "ROLL_TREASURE_DICE", count: 1 }]);
+
+    processPendingVisit(state);
+
+    expect(treasureDieEvents(state)).toHaveLength(1);
+    const step = state.adventure?.pendingVisit?.steps[0];
+    expect(step?.type === "CHOOSE_ONE" && /Reroll a Die/.test(JSON.stringify(step.options))).toBe(false);
+  });
+
+  it("lets the holder reroll the Scholar's Attack die before the branch resolves", () => {
+    let state = readyMapGame("morale-reroll-map-scholar");
+    holdPositive(state, "p1", MORALE_CARD_IDS.rerollDie);
+    injectVisit(state, [{ type: "SCHOLAR" }]);
+
+    processPendingVisit(state);
+
+    // The keep-or-reroll window is open on the rolled face.
+    const step = state.adventure?.pendingVisit?.steps[0];
+    expect(step?.type === "CHOOSE_ONE" && step.prompt).toMatch(/Scholar Attack die/);
+    const index = rerollOptionIndex(state);
+    expect(index).toBe(1);
+
+    state = apply(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: index });
+
+    // The Scholar die was thrown a second time and the card is spent.
+    expect(attackDieEvents(state)).toHaveLength(2);
+    expect(state.players.p1.moraleCards?.positive).toHaveLength(0);
+    expect(state.decks[MORALE_POSITIVE_DECK_ID].drawPile[0]).toBe(MORALE_CARD_IDS.rerollDie);
+  });
+
+  it("CONTROL: without the card the Scholar roll resolves its branch straight through", () => {
+    const state = readyMapGame("morale-reroll-map-scholar-control");
+    injectVisit(state, [{ type: "SCHOLAR" }]);
+
+    processPendingVisit(state);
+
+    expect(attackDieEvents(state)).toHaveLength(1);
+    const step = state.adventure?.pendingVisit?.steps[0];
+    expect(step?.type === "CHOOSE_ONE" && /Keep the .* result/.test(step.prompt ?? "")).toBe(false);
+  });
+
+  it("lets the holder reroll a Sea-Chest-style ATTACK_DIE_TABLE roll (keeping is also honoured)", () => {
+    let state = readyMapGame("morale-reroll-map-die-table");
+    holdPositive(state, "p1", MORALE_CARD_IDS.rerollDie);
+    const table = {
+      type: "ATTACK_DIE_TABLE",
+      plus: [{ type: "GAIN_RESOURCES", gold: 5 }],
+      zero: [{ type: "GAIN_RESOURCES", gold: 5 }],
+      minus: [{ type: "GAIN_RESOURCES", gold: 5 }]
+    };
+    injectVisit(state, [table]);
+
+    processPendingVisit(state);
+
+    const goldBefore = state.players.p1.resources.gold;
+    const step = state.adventure?.pendingVisit?.steps[0];
+    expect(step?.type === "CHOOSE_ONE" && step.prompt).toMatch(/Attack die/);
+
+    // Reroll once…
+    state = apply(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: rerollOptionIndex(state) });
+    expect(attackDieEvents(state)).toHaveLength(2);
+    expect(state.players.p1.moraleCards?.positive).toHaveLength(0);
+
+    // …the card is spent, so the SECOND roll resolves its branch directly.
+    expect(state.adventure?.pendingVisit).toBeNull();
+    expect(state.players.p1.resources.gold).toBe(goldBefore + 5);
+  });
+
+  it("CONTROL: without the card the ATTACK_DIE_TABLE branch resolves with no window", () => {
+    const state = readyMapGame("morale-reroll-map-die-table-control");
+    const goldBefore = state.players.p1.resources.gold;
+    injectVisit(state, [
+      {
+        type: "ATTACK_DIE_TABLE",
+        plus: [{ type: "GAIN_RESOURCES", gold: 5 }],
+        zero: [{ type: "GAIN_RESOURCES", gold: 5 }],
+        minus: [{ type: "GAIN_RESOURCES", gold: 5 }]
+      }
+    ]);
+
+    processPendingVisit(state);
+
+    expect(attackDieEvents(state)).toHaveLength(1);
+    expect(state.adventure?.pendingVisit).toBeNull();
+    expect(state.players.p1.resources.gold).toBe(goldBefore + 5);
+  });
+});
