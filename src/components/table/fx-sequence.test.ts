@@ -7,6 +7,7 @@ import {
   planApproachAttackPreDelays,
   planApproachMoveDelays,
   planHarpyReturnHolds,
+  planMoveArrivalBeats,
   planReturnMoveDelays
 } from "./fx-sequence";
 
@@ -332,5 +333,39 @@ describe("planApproachMoveDelays / planReturnMoveDelays (batched neutral activat
     // so it trails the running timeline end (the fallback).
     const fallback = planReturnMoveDelays([{ unitId: "harpy" }], new Map(), 450, 130);
     expect(fallback).toEqual([450]);
+  });
+});
+
+describe("planMoveArrivalBeats", () => {
+  const COMBAT_MOVE_MS = 480;
+
+  it("maps each mover to glide-start + glide-duration (its arrival beat)", () => {
+    // A plain move glides from t=0, so its Fire Wall burn must wait a full
+    // COMBAT_MOVE_MS — NOT fire at t=0 before the card reaches the wall.
+    const arrivals = planMoveArrivalBeats(
+      [{ unitId: "crusaders" }, { unitId: "pikemen" }],
+      [0, 300],
+      COMBAT_MOVE_MS
+    );
+    expect(arrivals.get("crusaders")).toBe(480); // 0 + 480 — not 0
+    expect(arrivals.get("pikemen")).toBe(780); // 300 + 480
+  });
+
+  it("a unit that did not move has no arrival beat (its burn stays on the timeline)", () => {
+    // The begun-activation-on-a-wall case: no glide, so the map is empty and the
+    // handler falls back to the running timeline (already in place, visible).
+    const arrivals = planMoveArrivalBeats([], [], COMBAT_MOVE_MS);
+    expect(arrivals.size).toBe(0);
+    expect(arrivals.get("griffins")).toBeUndefined();
+  });
+
+  it("keeps the LATEST arrival when a unit has two moves, and skips a missing delay", () => {
+    const arrivals = planMoveArrivalBeats(
+      [{ unitId: "harpy" }, { unitId: "harpy" }, { unitId: "ghost" }],
+      [100, 500, undefined as unknown as number],
+      COMBAT_MOVE_MS
+    );
+    expect(arrivals.get("harpy")).toBe(980); // max(100+480, 500+480)
+    expect(arrivals.has("ghost")).toBe(false); // undefined delay is skipped
   });
 });
