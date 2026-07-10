@@ -164,15 +164,16 @@ export function commanderPower(grades: Pick<CommanderGrades, "magic">): number {
 
 /**
  * Every hero level-up awards the commander stat POINTS to spend (one point
- * raises one stat by one grade). A normal level-up gives 1 point; the two
- * "milestone" levels give 2. Milestones are levels 3 & 6 for everyone EXCEPT
- * the Castle Paladin, whose Wise specialty pulls the milestone points EARLIER
- * to levels 2 & 5. Over a full run to level 7 that is 8 points either way —
+ * raises one stat by one grade). A normal level-up gives 1 point; a "milestone"
+ * level gives 2. Milestones are levels 3 & 6 for everyone EXCEPT the Castle
+ * Paladin, whose Wise specialty (a) pulls the two milestone points EARLIER to
+ * levels 2 & 5 AND (b) adds a THIRD milestone at level 7. So a full run to level
+ * 7 is 8 points for everyone else but 9 for the Paladin (its level-7 double) —
  * enough to take one stat to grade 3 (3 points) and its combo partner to
  * grade 2 (2 points) with room to spare.
  */
 export const COMMANDER_DOUBLE_POINT_LEVELS: readonly number[] = [3, 6];
-export const COMMANDER_WISE_DOUBLE_POINT_LEVELS: readonly number[] = [2, 5];
+export const COMMANDER_WISE_DOUBLE_POINT_LEVELS: readonly number[] = [2, 5, 7];
 
 /** The two milestone (2-point) level-ups for a commander. */
 export function commanderDoublePointLevels(slug: CommanderSlug): readonly number[] {
@@ -190,6 +191,30 @@ export function commanderGradePointsForLevelUp(slug: CommanderSlug, level: numbe
     return 0;
   }
   return commanderDoublePointLevels(slug).includes(level) ? 2 : 1;
+}
+
+/**
+ * A commander stat can only be raised to grade 3 — "mastery" — once its main
+ * hero has reached this level. Grades 1 and 2 have no level requirement; only
+ * the final grade-2 → grade-3 raise waits for level 5. (A raise TO grade 3 is
+ * the 2 → 3 step, so the gate keys off the stat currently sitting at grade 2.)
+ */
+export const COMMANDER_MASTERY_MIN_HERO_LEVEL = 5;
+
+/**
+ * Whether a commander stat may be raised from `currentGrade` to the next grade
+ * given the hero's `heroLevel`. Only the step INTO grade 3 (from grade 2) is
+ * gated — it needs level `COMMANDER_MASTERY_MIN_HERO_LEVEL`+. Everything else is
+ * bounded only by the grade cap (3).
+ */
+export function commanderCanRaiseGrade(currentGrade: number, heroLevel: number): boolean {
+  if (currentGrade >= 3) {
+    return false;
+  }
+  if (currentGrade === 2 && heroLevel < COMMANDER_MASTERY_MIN_HERO_LEVEL) {
+    return false;
+  }
+  return true;
 }
 
 /** Reviving a dead commander costs gold scaling with the hero's level. */
@@ -327,7 +352,7 @@ export const COMMANDER_COMBOS: readonly CommanderCombo[] = [
     requires: ["health", "speed"],
     abilityId: "commander-regeneration",
     icon: "/assets/spell-icons/resurrection.png",
-    text: "The commander removes 1 damage at the start of each of its activations."
+    text: "The commander removes 2 damage at the start of each of its activations."
   },
   {
     id: "death-stare",
@@ -479,7 +504,7 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
     specialty: {
       id: "wise",
       name: "Wise",
-      text: "The commander earns its milestone points early: the two-point level-ups are hero level 2 & 5 (instead of 3 & 6)."
+      text: "The commander earns its milestone points early AND gains an extra one: the two-point level-ups are hero level 2 & 5 (instead of 3 & 6), and it earns a third two-point milestone at level 7."
     },
     cardImage: "/assets/units-commander-paladin.webp"
   },

@@ -154,27 +154,32 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
     group: "starting",
     content: "regular_stretch_goals",
     terrain: "rough",
-    // The Factory starting tile — labelled "&S1" on the tile (the "&" prefix is the
-    // Factory set's marker, like "#" is another set's). Its industrial/wasteland
-    // theme sits on ROUGH terrain, so the hex layout and outer borders mirror the
-    // Stronghold starting tile (S7), which is the art base: scripts composite the
-    // Factory town panorama over S7's central town hex and re-label it "&S1"
-    // (placeholder art, like Bulwark's S10), keeping S7's ring glyphs so the engine
-    // fields line up. Drop in the real &S1 scan to replace it.
+    // Factory starting tile "&S1" — the real "&"-prefixed desert scan (sf1.webp),
+    // NOT a Stronghold composite. Like the other Factory "&" tiles it is not on
+    // the fan wiki, so the field TYPES are read from the printed art, and the ring
+    // rotation follows the scanned icon POSITIONS (slots 1-6 = NE, E, SE, SW, W,
+    // NW): centre domed foundry = the Factory town; the "&S1" tar-chasm anchor
+    // (NW) = blocked_field; a mine cart "↻2" + stone pile + guard I (W) = a
+    // buildingMaterials mine (loop 2); a treasure cabin + guard I (SW) =
+    // treasure_symbol; a campfire + crossed-pick tools (NE) = a resource_symbol;
+    // the pine-dotted desert (E) and the rocky outcrop (SE) are open ground. The
+    // outerImpassable edges are a best-fit from the art (rocky SE, mine pit W,
+    // treasure SW and the chasm NW seal their outer edges). Verify against the
+    // physical tile before final release.
     fields: [
       { location: "town", faction: "factory" },
-      { location: "mine", difficulty: 1, resource: "buildingMaterials", amount: 2 },
-      { location: "blocked_field" },
+      { location: "resource_symbol" },
+      { location: "empty_field" },
       { location: "empty_field" },
       { location: "treasure_symbol", difficulty: 1 },
-      { location: "empty_field" },
-      { location: "resource_symbol" },
+      { location: "mine", difficulty: 1, resource: "buildingMaterials", amount: 2 },
+      { location: "blocked_field" },
     ],
-    outerImpassable: [false, true, false, true, true, true],
+    outerImpassable: [false, false, true, true, true, true],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
       credit:
-        "Factory starting tile (labelled &S1); rough terrain and hex layout mirror the Stronghold starting tile (S7), the placeholder art base (Factory town composited over the centre, re-labelled &S1). Verify against physical tiles before final release.",
+        "Factory starting tile &S1 — fields transcribed from the physical tile scan (sf1.webp; not on the wiki, field types assigned from the printed art, ring rotation from the scanned icon positions, outer borders a best-fit). Verify against physical tiles before final release.",
       url: "https://heroes.thelazy.net/index.php/Factory"
     },
     assets: {

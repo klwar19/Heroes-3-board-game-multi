@@ -2697,8 +2697,8 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "commander-regeneration": {
     id: "commander-regeneration",
     name: "Regeneration",
-    text: "[unit_passive] When this commander activates, remove up to 1 damage from it.",
-    effect: { type: "ON_ACTIVATION_HEAL_SELF", amount: 1 },
+    text: "[unit_passive] When this commander activates, remove up to 2 damage from it.",
+    effect: { type: "ON_ACTIVATION_HEAL_SELF", amount: 2 },
     implementationStatus: "implemented"
   },
   "commander-cast-paladin": {

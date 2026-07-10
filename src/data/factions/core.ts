@@ -2831,7 +2831,7 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     townImage: "/assets/towns-factory-empty.webp",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
-      credit: "HotA PC-game faction (heroes.thelazy.net/Factory); rescaled to the board game, placeholder art. No official board game cards exist yet — all mechanics are stubs. Verify before release.",
+      credit: "Factory Expansion faction: PLAYABLE, with the &S1 starting tile. Unit Few/Pack art and abilities are transcribed from the real board-game scans; buildings map to shared archetype effects. Some town/hero PC art remains placeholder — verify before final release.",
       url: "https://heroes.thelazy.net/index.php/Factory"
     }
   }
@@ -2903,10 +2903,10 @@ export const neutralUnitIdsByFaction: Record<string, string[]> = Object.fromEntr
 /**
  * Which starting tile faces which faction, derived from the faction
  * definitions so the public faction data and the runtime setup map can never
- * drift apart. S1 = Necropolis, S2 = Dungeon, S3 = Castle (core box dirt/
- * cursed/subterranean tiles); S4 = Rampart, S6 = Inferno, S7 = Stronghold
- * (expansion tiles). S5 is the Fortress tile — that faction is not playable
- * yet, so no seat draws it.
+ * drift apart. S1 = Necropolis, S2 = Dungeon, S3 = Castle (core box); S4 =
+ * Rampart, S5 = Fortress, S6 = Inferno, S7 = Stronghold, S8 = Conflux, S9 =
+ * Cove, S10 = Bulwark, #S1 = Tower, &S1 = Factory (expansion tiles). Every
+ * shipped faction is playable and draws its own tile.
  */
 export const startingTileByFaction: Record<string, string> = Object.fromEntries(
   Object.values(coreFactionDefinitions).map((faction) => [faction.id, faction.startingTileId])
@@ -2914,10 +2914,12 @@ export const startingTileByFaction: Record<string, string> = Object.fromEntries(
 
 /**
  * A faction a seat may actually draft, roll and play. Every setup/draft picker
- * and the Random Town defender pool route through this so a non-playable,
- * art-only faction (Factory) can never enter a real game and crash on its
- * missing starting tile. A faction is playable unless its definition explicitly
- * sets `playable: false`.
+ * and the Random Town defender pool route through this so a faction flagged
+ * `playable: false` can never enter a real game and crash on a missing starting
+ * tile. A faction is playable unless its definition explicitly sets
+ * `playable: false`. (Every shipped faction — Factory included, with its &S1
+ * starting tile — is currently playable; the flag is the guard for any future
+ * art-only stub.)
  */
 export function isPlayableFaction(id: string): boolean {
   return coreFactionDefinitions[id as FactionId]?.playable !== false;

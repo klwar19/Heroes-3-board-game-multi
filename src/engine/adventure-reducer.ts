@@ -117,7 +117,13 @@ import {
 } from "./adventure";
 import { ATTACK_DIE_FACES } from "./battlefield";
 import { appendExpiredEffectEvents, pvpEscapeWindowOpen } from "./combat-units";
-import { COMMANDER_STAT_KEYS, commanderDefinitions, commanderReviveCost, type CommanderSlug } from "@/data/commanders";
+import {
+  COMMANDER_MASTERY_MIN_HERO_LEVEL,
+  COMMANDER_STAT_KEYS,
+  commanderDefinitions,
+  commanderReviveCost,
+  type CommanderSlug
+} from "@/data/commanders";
 import {
   applyCommanderCombatStart,
   collectFirstAidCandidates,
@@ -6673,6 +6679,17 @@ export function commanderGradeUp(
   const grades = commanderGradesOf(commander);
   if (grades[stat] >= 3) {
     throw new Error(`${stat} is already at grade 3.`);
+  }
+  // Mastery gate: the final step INTO grade 3 (from grade 2) is only allowed
+  // once the main hero has reached level COMMANDER_MASTERY_MIN_HERO_LEVEL.
+  // Grades 1 and 2 are unrestricted.
+  if (grades[stat] === 2) {
+    const heroLevel = getMainHero(state, action.playerId)?.level ?? 1;
+    if (heroLevel < COMMANDER_MASTERY_MIN_HERO_LEVEL) {
+      throw new Error(
+        `Your commander can only master ${stat} (grade 3) once your hero reaches level ${COMMANDER_MASTERY_MIN_HERO_LEVEL}.`
+      );
+    }
   }
 
   commander.grades[stat] = grades[stat] + 1;

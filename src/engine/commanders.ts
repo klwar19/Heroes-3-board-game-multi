@@ -3,6 +3,7 @@ import {
   COMMANDER_MAGIC_SPELL_DAMAGE_REDUCTION,
   COMMANDER_SLUG_BY_FACTION,
   COMMANDER_STAT_KEYS,
+  commanderCanRaiseGrade,
   commanderCastIsInstantReaction,
   commanderCastTierIndex,
   commanderDefinitions,
@@ -121,10 +122,18 @@ export function awardCommanderGradePoints(player: PlayerState, level: number): n
   return points;
 }
 
-/** Stats a COMMANDER_GRADE_UP point may still be spent on (below grade 3). */
-export function commanderGradeUpChoices(commander: CommanderPlayerState): CommanderStatKey[] {
+/**
+ * Stats a COMMANDER_GRADE_UP point may still be spent on: below grade 3, and —
+ * for a grade-2 stat — only once the hero has reached the mastery level (a
+ * grade-2 → grade-3 raise is gated by `heroLevel`). Pass the main hero's level;
+ * it defaults to 1 (pre-mastery) so a missing hero never offers a masked raise.
+ */
+export function commanderGradeUpChoices(
+  commander: CommanderPlayerState,
+  heroLevel = 1
+): CommanderStatKey[] {
   const grades = commanderGradesOf(commander);
-  return COMMANDER_STAT_KEYS.filter((key) => grades[key] < 3);
+  return COMMANDER_STAT_KEYS.filter((key) => commanderCanRaiseGrade(grades[key], heroLevel));
 }
 
 // ---------------------------------------------------------------------------
