@@ -110,6 +110,14 @@ describe("Astrologers — Crag Hack (first combat: ground units +1 Attack)", () 
     return state;
   }
 
+  /** Clear the finished combat and begin a fresh encounter in the same round. */
+  function beginSecondCombat(state: GameState): void {
+    state.combat = null;
+    state.phase = "player-turn";
+    const hero = getMainHero(state, "p1")!;
+    startNeutralEncounter(state, hero, state.adventure!.fields[hero.spaceId!]);
+  }
+
   it("latches +1 onto the round's FIRST combat shell (and marks the one-shot used)", () => {
     const state = beginCombat("crag-latch", "astrologers.crag_hack", 2);
     expect(state.combat?.proclamationGroundAttackBonus).toBe(1);
@@ -118,10 +126,7 @@ describe("Astrologers — Crag Hack (first combat: ground units +1 Attack)", () 
 
   it("the SECOND combat of the round goes unbuffed", () => {
     const state = beginCombat("crag-second", "astrologers.crag_hack", 2);
-    state.combat = null;
-    state.phase = "adventure";
-    const hero = getMainHero(state, "p1")!;
-    startNeutralEncounter(state, hero, state.adventure!.fields[hero.spaceId!]);
+    beginSecondCombat(state);
     expect(state.combat?.proclamationGroundAttackBonus).toBeUndefined();
   });
 
