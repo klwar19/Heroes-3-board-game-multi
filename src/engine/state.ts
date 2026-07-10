@@ -8155,6 +8155,44 @@ export type AbilityDiceRoll = {
   label: string;
   /** Outcome read-out under the dice (e.g. "Silver Pegasi are destroyed!"). */
   caption: string;
+  /**
+   * Morale adjustments that visibly changed this ability roll (the forced
+   * "+1" reroll, a die set to −1, one die less thrown, a window reroll/set) —
+   * shown as chips under the dice, exactly like an attack roll's.
+   */
+  modifiers?: AttackRollModifierNote[];
+};
+
+/**
+ * Marks an ATTACK_DIE_REROLL window that rerolls an ABILITY's own dice (Death
+ * Stare, the Thunderbird/Wyvern extra die, extra-die Paralysis, the Ghost
+ * Dragon knock-back) instead of an attack roll. The attack's stack item is
+ * already resolved by the time these dice roll, so the window resumes the
+ * post-attack follow-up tail (runPostAttackFollowUps) rather than the stack.
+ */
+export type PendingAbilityRollContext = {
+  kind: "attack-die-damage" | "death-stare" | "paralysis-extra" | "knockback";
+  abilityId: string;
+  abilityName: string;
+  /** Dice thrown per (re)roll — after any "roll 1 die less" reduction. */
+  diceCount: number;
+  /** Success window: the effect lands when EVERY die falls in [minRoll, maxRoll]. */
+  minRoll: number;
+  maxRoll: number;
+  /** Where the post-attack follow-up tail picks back up once the roll is kept. */
+  resume: {
+    attackerId: UnitId;
+    defenderId: UnitId;
+    attackKind: "melee" | "ranged";
+    /** The resolved attack die (some later follow-ups read it). */
+    attackRoll: number;
+    /** Tarnum (Fortress) Basilisks VI: die-gated follow-ups fire regardless. */
+    forceAbilityRoll: boolean;
+    /** The tail step this roll belongs to (the tail continues at fromStep + 1). */
+    fromStep: number;
+    /** This roll's index within its step's follow-up list. */
+    followUpIndex: number;
+  };
 };
 
 export type AttackRerollSource = {
@@ -8205,6 +8243,12 @@ export type PendingChoice =
       /** Reroll pools in spend order — Luck is always sorted last. */
       rerollSources: AttackRerollSource[];
       sourceEffectIds: string[];
+      /**
+       * Present when this window rerolls an ABILITY's own dice (Death Stare…)
+       * rather than an attack roll: `stackItemId` is then empty and the keep
+       * resumes the post-attack follow-up tail instead of the attack stack.
+       */
+      abilityRoll?: PendingAbilityRollContext;
     }
   | {
       id: string;

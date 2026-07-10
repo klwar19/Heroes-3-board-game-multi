@@ -310,7 +310,22 @@ activations, -1 skips) until it actually skips, exactly as printed.
 Wiring map (positive): `combat_draw` at combat start; `reroll_die` a reroll
 source; `set_attack_die_plus` a SET source in the same window (never spent by
 a plain reroll — `AttackRerollSource.setDieFace`, `REROLL_PENDING_CHOICE
-.useSetDie`); `redraw_hand` via `SPEND_MORALE redraw`; `combat_bonus` /
+.useSetDie`). Both — plus the generic "Reroll a die" artifacts (Cards of
+Prophecy, Diplomat's Ring, Ambassador's Sash) and the positive morale token —
+are ALSO offered on an ABILITY's own roll (Death Stare, the Thunderbird/
+Wyvern extra die, extra-die Paralysis, the Ghost Dragon knock-back) via the
+ability-roll reroll window: the same `ATTACK_DIE_REROLL` pending choice with
+an `abilityRoll` context. A reroll re-throws ALL that ability's dice
+(whole-roll, like Bron's), the set-die flips the die that most helps the
+ability's SUCCESS WINDOW (a Death Stare wants "-1"s, not high faces), and the
+kept roll resumes the post-attack follow-up tail exactly where it paused
+(`runPostAttackFollowUps` step table — its order is serialized in the choice,
+keep it stable). Attack-roll-specific pools (unit reroll abilities, the Ammo
+Cart, Luck/Fortune/Mirth effects) deliberately stay OFF ability rolls; rolls
+that fire mid-resolution (the Dwarven resistance die, the defensive soak, the
+Medusa retaliation gaze, the skip-activation check) cannot pause so they get
+no window. All pinned in `ability-dice-events.test.ts`.
+`redraw_hand` via `SPEND_MORALE redraw`; `combat_bonus` /
 `remove_token` via `SPEND_MORALE combat-bonus / remove-token` during the
 holder's own combat (offers in `addMoraleActions`, buttons in the hand panel).
 `combat_bonus` (the +1 Attack / +1 Defense combat-long buff) is ALSO offered as
@@ -324,16 +339,24 @@ in the `SPEND_MORALE` dispatch) so the used card drops out — pinned in
 discard the gained card, re-run the same Search (X); the gained card is masked
 from other viewers in `player-view.ts`). (Negative): `search_one` forces the
 next 2+-card shared-deck Search to 1 (`revealSharedDeckSearch`);
-`set_attack_die_minus` flips the holder-worst die of the next attack roll;
+`set_attack_die_minus` flips the holder-worst die of the next attack roll —
+and of the holder's own post-attack ABILITY rolls (Death Stare & co., where
+"worst" is judged against the ability's success window, so it may be a no-op
+flip on a stare that already shows "-1"s);
 `next_roll_minus_one` latches -1 onto the next attack roll (stack modifier,
-survives window rerolls) or Defend-die roll, whichever first;
+survives window rerolls) or Defend-die roll, whichever first — deliberately
+NOT onto ability rolls (the card names Attack/Defense/Combat-Power ROLLS);
 `roll_one_less` drops one die from the next 2+-dice Treasure roll (incl. the
-Crypt gamble) or 2+-dice Attack roll (advantage/disadvantage collapse to one
+Crypt gamble), 2+-dice Attack roll (advantage/disadvantage collapse to one
 straight die — mandatory even where that helps, e.g. under disadvantage or the
-Crypt's experience-face gamble); `reroll_plus_one` forcibly rerolls the
-holder's next "+1" Attack die (attack rolls incl. window rerolls and the
-just-set +1 of `set_attack_die_plus`, the Defend die, the skip-activation
-check die); `random_combat_discard` at combat start.
+Crypt's experience-face gamble) or the 2-dice Death Stare (one lone die then
+petrifies — mandatory-even-when-it-helps again); `reroll_plus_one` forcibly
+rerolls the holder's next "+1" Attack die (attack rolls incl. window rerolls
+and the just-set +1 of `set_attack_die_plus`, the Defend die, the
+skip-activation check die, and EVERY ability die the holder rolls — the
+post-attack rolls above plus the Dwarven resistance die, the defensive soak
+and the Medusa gaze); `random_combat_discard` at combat start.
+Ability-die curse behaviour is pinned in `ability-dice-events.test.ts`.
 
 Presentation layer (pure UI over the wiring above, no engine change): every
 `MORALE_CARD_DRAWN`/`_USED`/`_DISCARDED` event pops the `MoraleCardOverlay`

@@ -434,6 +434,7 @@ describe("WOG abilities in two-player combat", () => {
     dracolich.defenseToken = false;
     expect(getDefenseDieDamageReduction(dracolich)).toEqual({
       abilityId: "wog-dracolich-armor",
+      abilityName: "Necrotic Armor",
       onRoll: -1,
       amount: 2
     });
@@ -446,6 +447,7 @@ describe("WOG abilities in two-player combat", () => {
 
     expect(getDefenseDieDamageReduction(state.combat!.units[dracolich.id])).toEqual({
       abilityId: "wog-dracolich-armor",
+      abilityName: "Necrotic Armor",
       onRoll: -1,
       amount: 2
     });

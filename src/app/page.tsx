@@ -489,6 +489,8 @@ function makeAbilityDiceCue(
     title: `${dice.label} — ${unitName(state, event.unitId)}`,
     caption: dice.caption,
     readMs: ABILITY_DICE_READ_MS,
+    // Morale curses / window rerolls that changed this roll read out as chips.
+    ...(dice.modifiers?.length ? { modifiers: dice.modifiers } : {}),
     ...(preDelayMs > 0 ? { preDelayMs } : {})
   };
 }
