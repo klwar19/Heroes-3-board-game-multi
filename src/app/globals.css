@@ -17496,3 +17496,636 @@ body {
     filter: brightness(0.5);
   }
 }
+
+/* ==================================================================== */
+/* ORNATE ART SKIN II — living creature chrome (AI-generated, chroma-    */
+/* keyed like the first batch): a leaf-and-gold vine draped along the    */
+/* card trays with bronze dragon claws gripping their corners, a gold-   */
+/* crimson dragon rising behind the shared-deck shelf, a scaled tail     */
+/* hugging the side columns, the Azure & Crystal Dragon guardians dozing */
+/* at the main menu's corners, an Archangel / Archdevil descending on    */
+/* the combat Victory / Defeat plaque, a skeleton keeping the discard    */
+/* graveyard, and the Spell Book's real turning paper leaf. Everything   */
+/* here is decorative: pseudo-elements / aria-hidden layers, pointer-    */
+/* events: none, no layout hit-area moves, reduced-motion safe.          */
+/* ==================================================================== */
+:root {
+  --orn-vine: url("/assets/ui/ornate/vine-tray.webp");
+  --orn-claw-l: url("/assets/ui/ornate/claw-left.webp");
+  --orn-claw-r: url("/assets/ui/ornate/claw-right.webp");
+  --orn-dragon-behind: url("/assets/ui/ornate/dragon-behind.webp");
+  --orn-dragon-tail: url("/assets/ui/ornate/dragon-tail.webp");
+  --orn-azure: url("/assets/ui/ornate/azure-dragon.webp");
+  --orn-crystal: url("/assets/ui/ornate/crystal-dragon.webp");
+  --orn-angel: url("/assets/ui/ornate/angel.webp");
+  --orn-devil: url("/assets/ui/ornate/devil.webp");
+  --orn-skeleton: url("/assets/ui/ornate/skeleton.webp");
+}
+
+/* ---- Map card tray: the vine drape + gripping claws -------------------- */
+
+/* One overlay pseudo carries the garland and both foreclaw grips (the
+   griffin watermark owns ::before). It paints ABOVE the tray chrome but
+   never intercepts clicks; the claws straddle the corners like the dragon
+   is holding the tray up from behind. */
+.playerCardBar::after {
+  content: "";
+  position: absolute;
+  inset: -14px -6px auto;
+  height: 96px;
+  background:
+    var(--orn-claw-l) left 2px top 0 / 58px auto no-repeat,
+    var(--orn-claw-r) right 2px top 0 / 58px auto no-repeat,
+    var(--orn-vine) center top 6px / auto 30px repeat-x;
+  filter: drop-shadow(0 3px 5px rgb(0 0 0 / 60%));
+  pointer-events: none;
+  /* BEHIND the cards (negative z inside the bar's isolated context): the
+     garland and claw tips peek over the tray's top edge and through gaps,
+     never over a card face — decoration must not cost readability. */
+  z-index: -1;
+}
+
+/* ---- Combat hand tray: a real leather shelf, vined and clawed ---------- */
+
+.handFan {
+  position: relative;
+  z-index: 0;
+}
+
+/* The tray shelf itself — the fan previously floated on nothing. */
+.handFan::before {
+  content: "";
+  position: absolute;
+  left: -4px;
+  right: -4px;
+  bottom: -6px;
+  height: 96px;
+  z-index: -1;
+  border: 1px solid rgb(213 168 79 / 42%);
+  border-radius: 14px;
+  background:
+    linear-gradient(180deg, rgb(26 18 10 / 74%) 0%, rgb(14 10 6 / 88%) 100%),
+    var(--orn-leather) center / cover;
+  box-shadow:
+    inset 0 0 0 1px rgb(217 178 90 / 24%),
+    inset 0 1px 0 rgb(255 235 190 / 8%),
+    0 10px 26px rgb(0 0 0 / 48%);
+}
+
+/* Vine along the shelf lip, claws gripping its corners — BEHIND the fanned
+   cards (negative z like the map tray): the dragon holds the tray from
+   behind, showing at the ends and through the gaps, never over a card. */
+.handFan::after {
+  content: "";
+  position: absolute;
+  left: -10px;
+  right: -10px;
+  bottom: 26px;
+  height: 78px;
+  z-index: -1;
+  background:
+    var(--orn-claw-l) left 0 top 0 / 52px auto no-repeat,
+    var(--orn-claw-r) right 0 top 0 / 52px auto no-repeat,
+    var(--orn-vine) center top 14px / auto 26px repeat-x;
+  filter: drop-shadow(0 3px 5px rgb(0 0 0 / 55%));
+  pointer-events: none;
+}
+
+/* The Spell Book / Scroll shelf icons sit at the tray's left end — keep them
+   and their popover above the vine layer. */
+.handFan .spellShelf {
+  position: relative;
+  z-index: 5;
+}
+
+/* ---- The shared-deck shelf: a dragon rises behind the library ---------- */
+
+.advDecksBottom {
+  position: relative;
+  z-index: 0;
+}
+
+/* The gold-crimson dragon peers over the shelf from behind; its flat-cut
+   chest hides behind the shelf's leather so only head, neck and wing tips
+   show. A slow breathing bob keeps it alive without stealing focus. */
+.advDecksBottom::before {
+  content: "";
+  position: absolute;
+  top: -108px;
+  right: 4%;
+  width: min(320px, 34vw);
+  aspect-ratio: 1631 / 927;
+  z-index: -1;
+  background: var(--orn-dragon-behind) center bottom / contain no-repeat;
+  filter: saturate(0.94) drop-shadow(0 6px 16px rgb(0 0 0 / 55%));
+  opacity: 0.94;
+  pointer-events: none;
+  animation: ornBreathe 9s ease-in-out infinite;
+}
+
+/* The shelf itself gets the leather tray so the dragon has something to
+   lean on (and the flat art cut stays masked). */
+.advDecksBottom .advDecks {
+  border: 1px solid rgb(213 168 79 / 36%);
+  border-radius: 12px;
+  padding-top: 10px;
+  padding-bottom: 10px;
+  background:
+    linear-gradient(180deg, rgb(24 17 10 / 78%) 0%, rgb(13 9 6 / 88%) 100%),
+    var(--orn-leather) center / cover;
+  box-shadow:
+    inset 0 0 0 1px rgb(217 178 90 / 22%),
+    inset 0 1px 0 rgb(255 235 190 / 7%),
+    0 8px 22px rgb(0 0 0 / 45%);
+}
+
+/* ---- Side columns: the scaled tail hugs the rails ----------------------- */
+
+/* Combat right rail (inspect + command dock): the tail curls out from
+   behind the column's outer edge, tip swaying slightly. */
+.rightRail {
+  position: relative;
+  z-index: 0;
+}
+
+/* On the rail's INNER edge (the outer edge sits at the viewport border,
+   where the overhang would be clipped). */
+.rightRail::before {
+  content: "";
+  position: absolute;
+  top: 96px;
+  left: -18px;
+  width: 92px;
+  aspect-ratio: 611 / 1780;
+  z-index: -1;
+  background: var(--orn-dragon-tail) center / contain no-repeat;
+  transform-origin: 50% 90%;
+  filter: drop-shadow(0 4px 8px rgb(0 0 0 / 55%));
+  opacity: 0.96;
+  pointer-events: none;
+  animation: ornTailSwayPlain 11s ease-in-out infinite;
+}
+
+/* Map left dock rail: the same tail wraps its outer (left) edge. */
+.leftRailDock::before {
+  content: "";
+  position: absolute;
+  bottom: 4%;
+  left: -14px;
+  width: 86px;
+  aspect-ratio: 611 / 1780;
+  z-index: -1;
+  background: var(--orn-dragon-tail) center / contain no-repeat;
+  transform-origin: 50% 90%;
+  filter: drop-shadow(0 4px 8px rgb(0 0 0 / 55%));
+  opacity: 0.96;
+  pointer-events: none;
+  animation: ornTailSwayPlain 13s ease-in-out infinite;
+}
+
+/* ---- The discard graveyard keeper --------------------------------------- */
+
+/* A skeleton warrior climbs out from behind the LEFT (discard) end of the
+   shared-deck shelf — the library's graveyard totem, opposite the dragon.
+   Same layer as the dragon: behind the shelf leather, above the map. */
+.advDecksBottom::after {
+  content: "";
+  position: absolute;
+  top: -64px;
+  left: 5%;
+  width: 118px;
+  aspect-ratio: 1086 / 1220;
+  z-index: -1;
+  background: var(--orn-skeleton) center top / contain no-repeat;
+  filter: drop-shadow(0 3px 6px rgb(0 0 0 / 60%));
+  opacity: 0.95;
+  pointer-events: none;
+  animation: ornBreathe 7s ease-in-out infinite;
+}
+
+/* ---- Victory / Defeat: the Archangel and the Archdevil ------------------ */
+
+.combatResultModal {
+  position: relative;
+  isolation: isolate;
+  overflow: visible;
+}
+
+/* Victory: the Archangel descends behind the plaque, sword raised, inside
+   a pulsing golden halo. */
+.combatResultModal.won {
+  border-color: rgb(246 214 130 / 80%);
+  box-shadow:
+    0 0 46px rgb(240 196 106 / 26%),
+    0 18px 50px rgb(0 0 0 / 60%);
+}
+
+.combatResultModal.won::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% - 34px);
+  width: 236px;
+  aspect-ratio: 812 / 1466;
+  z-index: -1;
+  background: var(--orn-angel) center bottom / contain no-repeat;
+  filter:
+    drop-shadow(0 0 20px rgb(255 226 140 / 50%))
+    drop-shadow(0 12px 26px rgb(0 0 0 / 55%));
+  pointer-events: none;
+  animation: ornAngelDescend 950ms cubic-bezier(0.17, 0.84, 0.3, 1) both;
+}
+
+.combatResultModal.won::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% - 130px);
+  width: 460px;
+  height: 460px;
+  z-index: -2;
+  transform: translateX(-50%);
+  background: radial-gradient(closest-side, rgb(255 224 130 / 34%), rgb(255 224 130 / 10%) 55%, transparent 74%);
+  pointer-events: none;
+  animation: ornHaloPulse 3.2s ease-in-out infinite;
+}
+
+/* Defeat: the Archdevil looms up behind the plaque in an infernal glow. */
+.combatResultModal.lost {
+  border-color: rgb(200 92 62 / 70%);
+  box-shadow:
+    0 0 46px rgb(200 70 30 / 24%),
+    0 18px 50px rgb(0 0 0 / 60%);
+}
+
+.combatResultModal.lost::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% - 34px);
+  width: 250px;
+  aspect-ratio: 878 / 1447;
+  z-index: -1;
+  background: var(--orn-devil) center bottom / contain no-repeat;
+  filter:
+    drop-shadow(0 0 20px rgb(255 120 40 / 42%))
+    drop-shadow(0 12px 26px rgb(0 0 0 / 60%));
+  pointer-events: none;
+  animation: ornDevilRise 950ms cubic-bezier(0.2, 0.75, 0.3, 1) both;
+}
+
+.combatResultModal.lost::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% - 130px);
+  width: 440px;
+  height: 440px;
+  z-index: -2;
+  transform: translateX(-50%);
+  background: radial-gradient(closest-side, rgb(255 110 40 / 26%), rgb(180 50 20 / 10%) 55%, transparent 74%);
+  pointer-events: none;
+  animation: ornHaloPulse 2.4s ease-in-out infinite;
+}
+
+/* ---- Spell Book: the turning paper leaf --------------------------------- */
+
+/* Switching spells re-mounts the right page (keyed by turn count): the new
+   plate swings in from the spine while a paper leaf — parchment-textured,
+   with a sweeping edge shadow — flips away over it. */
+.spellBookPage.right.turning {
+  animation: spellBookPageTurn 460ms cubic-bezier(0.16, 0.7, 0.3, 1);
+}
+
+.spellBookTurnLeaf {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transform-origin: left center;
+  backface-visibility: hidden;
+  background:
+    linear-gradient(105deg, rgb(96 64 22 / 0%) 52%, rgb(96 64 22 / 20%) 86%, rgb(60 40 14 / 34%) 100%),
+    var(--orn-parchment) center / cover;
+  box-shadow: inset 0 0 26px rgb(96 64 22 / 24%);
+}
+
+.spellBookPage.right.turning .spellBookTurnLeaf {
+  animation: spellBookLeafFlip 460ms cubic-bezier(0.3, 0.4, 0.2, 1);
+}
+
+@keyframes spellBookLeafFlip {
+  0% {
+    opacity: 1;
+    transform: perspective(1400px) rotateY(0deg);
+  }
+  55% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: perspective(1400px) rotateY(-126deg);
+  }
+}
+
+/* The grimoire opens with more heft: a low swing up from the table. */
+.spellBookBook {
+  animation: ornBookOpen 340ms cubic-bezier(0.18, 0.82, 0.26, 1);
+}
+
+@keyframes ornBookOpen {
+  from {
+    opacity: 0;
+    transform: translateY(26px) scale(0.9) rotateX(14deg);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1) rotateX(0);
+  }
+}
+
+/* ---- Main menu: guardian dragons + rising motes + wordmark glow --------- */
+
+/* Viewport-locked so the guardians stay dozing at the screen's lower corners
+   however tall the menu content scrolls. */
+.menuGuardians {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.menuGuardianDragon {
+  position: absolute;
+  bottom: -34px;
+  width: min(320px, 27vw);
+  filter: drop-shadow(0 10px 24px rgb(0 0 0 / 60%));
+  opacity: 0.95;
+}
+
+/* Azure faces left as painted — mirrored on the left flank it watches the
+   center; Crystal faces right and takes the right flank mirrored likewise. */
+.menuGuardianDragon.azure {
+  left: -44px;
+  transform: scaleX(-1);
+  animation: ornGuardianBobFlip 8s ease-in-out infinite;
+}
+
+.menuGuardianDragon.crystal {
+  right: -44px;
+  transform: scaleX(-1);
+  animation: ornGuardianBob 9.5s ease-in-out infinite;
+}
+
+.menuGuardianMotes {
+  position: absolute;
+  inset: 0;
+}
+
+.menuMote {
+  position: absolute;
+  bottom: -12px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #ffe9a8 0%, rgb(240 196 106 / 55%) 55%, transparent 75%);
+  opacity: 0;
+  animation: ornMoteRise 11s linear infinite;
+}
+
+.menuMote:nth-child(1) { left: 6%; animation-delay: 0s; animation-duration: 12s; }
+.menuMote:nth-child(2) { left: 13%; animation-delay: 2.4s; animation-duration: 10s; width: 4px; height: 4px; }
+.menuMote:nth-child(3) { left: 21%; animation-delay: 5.1s; animation-duration: 13s; }
+.menuMote:nth-child(4) { left: 28%; animation-delay: 1.2s; animation-duration: 9.5s; width: 3px; height: 3px; }
+.menuMote:nth-child(5) { left: 36%; animation-delay: 3.8s; animation-duration: 12.5s; }
+.menuMote:nth-child(6) { left: 44%; animation-delay: 6.6s; animation-duration: 10.5s; width: 4px; height: 4px; }
+.menuMote:nth-child(7) { left: 52%; animation-delay: 0.9s; animation-duration: 11.5s; }
+.menuMote:nth-child(8) { left: 59%; animation-delay: 4.4s; animation-duration: 9s; width: 3px; height: 3px; }
+.menuMote:nth-child(9) { left: 67%; animation-delay: 7.2s; animation-duration: 13.5s; }
+.menuMote:nth-child(10) { left: 74%; animation-delay: 2s; animation-duration: 10s; width: 4px; height: 4px; }
+.menuMote:nth-child(11) { left: 81%; animation-delay: 5.7s; animation-duration: 12s; }
+.menuMote:nth-child(12) { left: 88%; animation-delay: 0.4s; animation-duration: 9.8s; width: 3px; height: 3px; }
+.menuMote:nth-child(13) { left: 94%; animation-delay: 3.1s; animation-duration: 11.2s; }
+.menuMote:nth-child(14) { left: 47%; animation-delay: 8.3s; animation-duration: 12.8s; width: 4px; height: 4px; }
+
+/* The gold wordmark keeps its entrance, then breathes a slow glint. */
+.menuGameLogo {
+  animation:
+    cmpLogoIn 900ms cubic-bezier(0.2, 0.85, 0.25, 1) both,
+    ornLogoGlow 7s ease-in-out 1.2s infinite;
+}
+
+/* ---- Boxes: popovers, pile viewer, inspect panel, initiative rail -------- */
+
+/* The floating card/shelf popovers and the pile viewer join the leather-and-
+   gold family (they were flat dark boxes) — same skin as the trays, so every
+   "box" reads as part of one table. */
+.cardPopover,
+.shelfPopover,
+.pileModal {
+  border: 1px solid rgb(213 168 79 / 46%);
+  background:
+    linear-gradient(180deg, rgb(22 16 9 / 92%) 0%, rgb(12 9 6 / 96%) 100%),
+    var(--orn-leather) center / cover;
+  box-shadow:
+    inset 0 0 0 1px rgb(217 178 90 / 24%),
+    inset 0 1px 0 rgb(255 235 190 / 8%),
+    0 18px 40px rgb(0 0 0 / 55%);
+}
+
+/* The combat inspect panel and initiative rail (the battle's own boxes). */
+.inspectPanel,
+.initiativeRail {
+  border: 1px solid rgb(213 168 79 / 34%);
+  background:
+    linear-gradient(180deg, rgb(24 18 11 / 90%) 0%, rgb(13 10 6 / 94%) 100%),
+    var(--orn-leather) center / cover;
+  box-shadow:
+    inset 0 0 0 1px rgb(217 178 90 / 20%),
+    inset 0 1px 0 rgb(255 235 190 / 7%),
+    0 6px 16px rgb(0 0 0 / 40%);
+}
+
+/* ---- Click / battle / move micro-feel ------------------------------------ */
+
+/* Every command button flashes a quick gold glint under the press. */
+.commandButton {
+  position: relative;
+  overflow: hidden;
+}
+
+.commandButton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(130% 110% at 50% 0%, rgb(255 232 155 / 45%), transparent 58%);
+  opacity: 0;
+  transition: opacity 340ms ease;
+  pointer-events: none;
+}
+
+.commandButton:active:not(:disabled)::after {
+  opacity: 1;
+  transition-duration: 0ms;
+}
+
+/* Melee slash and impact sparks hit harder (hotter core, deeper glow). */
+.fxSlashStreak {
+  filter: brightness(1.22) drop-shadow(0 0 10px rgb(255 214 120 / 65%));
+}
+
+.fxImpactSpark {
+  filter: brightness(1.3) drop-shadow(0 0 6px rgb(255 190 90 / 70%));
+}
+
+/* Gliding unit/card ghosts trail a soft gold wake. */
+.fxMoveGhost {
+  filter: drop-shadow(0 0 12px rgb(240 196 106 / 40%)) drop-shadow(0 6px 14px rgb(0 0 0 / 45%));
+}
+
+/* ---- Shared keyframes ----------------------------------------------------- */
+
+@keyframes ornBreathe {
+  0%, 100% {
+    transform: translateY(4px);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+
+@keyframes ornTailSway {
+  0%, 100% {
+    transform: scaleX(-1) rotate(0deg);
+  }
+  50% {
+    transform: scaleX(-1) rotate(2.2deg);
+  }
+}
+
+@keyframes ornTailSwayPlain {
+  0%, 100% {
+    transform: rotate(0deg);
+  }
+  50% {
+    transform: rotate(-2.2deg);
+  }
+}
+
+@keyframes ornAngelDescend {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-48px) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+}
+
+@keyframes ornDevilRise {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(34px) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+}
+
+@keyframes ornHaloPulse {
+  0%, 100% {
+    opacity: 0.75;
+    transform: translateX(-50%) scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: translateX(-50%) scale(1.08);
+  }
+}
+
+@keyframes ornGuardianBob {
+  0%, 100% {
+    transform: scaleX(-1) translateY(6px);
+  }
+  50% {
+    transform: scaleX(-1) translateY(-4px);
+  }
+}
+
+@keyframes ornGuardianBobFlip {
+  0%, 100% {
+    transform: scaleX(-1) translateY(4px);
+  }
+  50% {
+    transform: scaleX(-1) translateY(-6px);
+  }
+}
+
+@keyframes ornMoteRise {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) scale(0.7);
+  }
+  12% {
+    opacity: 0.9;
+  }
+  55% {
+    opacity: 0.65;
+    transform: translate(14px, -46vh) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-10px, -88vh) scale(0.6);
+  }
+}
+
+@keyframes ornLogoGlow {
+  0%, 100% {
+    filter: drop-shadow(0 4px 14px rgb(0 0 0 / 55%)) drop-shadow(0 0 10px rgb(240 196 106 / 0%));
+  }
+  50% {
+    filter: drop-shadow(0 4px 14px rgb(0 0 0 / 55%)) drop-shadow(0 0 16px rgb(240 196 106 / 42%));
+  }
+}
+
+/* The angel/devil pseudo needs its centering transform outside the keyframed
+   animation start — set it for browsers that skip animations. */
+.combatResultModal.won::before,
+.combatResultModal.lost::before {
+  transform: translateX(-50%);
+}
+
+/* ---- Reduced motion: everything settles, nothing is lost ----------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .advDecksBottom::before,
+  .advDecksBottom::after,
+  .rightRail::before,
+  .leftRailDock::before,
+  .menuGuardianDragon.azure,
+  .menuGuardianDragon.crystal,
+  .menuGameLogo,
+  .combatResultModal.won::after,
+  .combatResultModal.lost::after,
+  .spellBookPage.right.turning,
+  .spellBookPage.right.turning .spellBookTurnLeaf,
+  .spellBookBook {
+    animation: none;
+  }
+
+  .menuMote {
+    display: none;
+  }
+
+  .combatResultModal.won::before,
+  .combatResultModal.lost::before {
+    animation: none;
+    opacity: 1;
+  }
+}
