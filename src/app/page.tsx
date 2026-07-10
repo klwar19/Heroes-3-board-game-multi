@@ -95,6 +95,7 @@ import {
   type HeroMoveCue,
   type TilePlacementSelection
 } from "@/components/adventure/screen";
+import { SetupAmbientFx } from "@/components/adventure/setup-ambient";
 import { TownWindow } from "@/components/adventure/town-board";
 import {
   moveIntoBattleWithTroopsToBuy,
@@ -3729,6 +3730,8 @@ export default function Home() {
     return (
       <CardZoomProvider>
         <main className="tableRoot adventureRoot setupPhase" onClick={playTableUiClickSound}>
+          {/* Green spirit wisps + gold-dragon shimmer over the setup backdrop. */}
+          <SetupAmbientFx />
           <div className="tableTopRow">
             <div className="advHud">
               <div className="advHudCell">

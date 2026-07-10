@@ -21,6 +21,53 @@ export function playMenuNavClickSound(event: ReactMouseEvent<HTMLElement>): void
   }
 }
 
+/** Jet sparks that ride the continuous stream (nth-child positions in CSS). */
+const DRAGON_BREATH_SPARKS = 20;
+/** Ground-pool embers that smolder in the lower-right landing zone. */
+const DRAGON_GROUND_EMBERS = 12;
+
+/**
+ * Ambient dragon-breath on the main-menu cover: painted fire extracted from
+ * the same cover art, locked to ken-burns. The ART itself rages — multiple
+ * phase-offset copies of the flame image push mouth → down so the texture
+ * constantly rolls outward (not a static overlay with a soft mask). Decorative
+ * only (pointer-events: none).
+ */
+function MenuDragonBreath() {
+  const breathSrc = assetUrl("/assets/ui/ornate/dragon-breath.webp");
+  return (
+    <div aria-hidden className="menuDragonBreath">
+      {/* Base jet — always on, raging flicker. */}
+      <img alt="" className="menuDragonBreathPlume" draggable={false} src={breathSrc} />
+      {/* Three phase-offset pours of the same art = seamless rolling flame. */}
+      <img alt="" className="menuDragonBreathRage menuDragonBreathRage1" draggable={false} src={breathSrc} />
+      <img alt="" className="menuDragonBreathRage menuDragonBreathRage2" draggable={false} src={breathSrc} />
+      <img alt="" className="menuDragonBreathRage menuDragonBreathRage3" draggable={false} src={breathSrc} />
+      {/* Soft heat shimmer ghost (blurred art moving faster). */}
+      <img alt="" className="menuDragonBreathShimmer" draggable={false} src={breathSrc} />
+      {/* Landing blaze in the lower-right pool. */}
+      <img alt="" className="menuDragonBreathImpact" draggable={false} src={breathSrc} />
+      <div className="menuDragonGroundBurn" />
+      <img
+        alt=""
+        className="menuDragonBreathEmbers"
+        draggable={false}
+        src={assetUrl("/assets/ui/ornate/dragon-ember.webp")}
+      />
+      <div className="menuDragonBreathSparks">
+        {Array.from({ length: DRAGON_BREATH_SPARKS }, (_, i) => (
+          <span className="menuDragonSpark" key={`s${i}`} />
+        ))}
+      </div>
+      <div className="menuDragonGroundEmbers">
+        {Array.from({ length: DRAGON_GROUND_EMBERS }, (_, i) => (
+          <span className="menuDragonGroundEmber" key={`g${i}`} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /**
  * Shared chrome for every pre-game screen (login, main menu, multiplayer
  * lobby, hall of fame): a full-bleed backdrop from the art-slot registry, a
@@ -39,6 +86,7 @@ export function MenuShell({
   wide = false,
   logo = false,
   frameless = false,
+  dragonBreath = false,
   as: Root = "main",
   footer
 }: {
@@ -55,6 +103,11 @@ export function MenuShell({
   /** true → drop the panel box entirely so children float over the backdrop
    *  (main menu: only the option emblems + words show over the dragon). */
   frameless?: boolean;
+  /**
+   * true → ambient dragon-breath fire over the cover (main menu only). Not a
+   * frame: the painted jet from the backdrop art surges in/out with embers.
+   */
+  dragonBreath?: boolean;
   as?: "main" | "div";
   /** Small line pinned under the panel (e.g. "Playing as …"). */
   footer?: ReactNode;
@@ -66,6 +119,7 @@ export function MenuShell({
   return (
     <Root className="menuShellRoot">
       <img alt="" aria-hidden className="menuShellBackdrop" src={assetUrl(art.src)} />
+      {dragonBreath ? <MenuDragonBreath /> : null}
       <div aria-hidden className="menuShellVignette" />
       <div className="menuShellContent" onClick={playMenuNavClickSound}>
         {logo ? <img alt={brand.alt} className="menuGameLogo" src={assetUrl(brand.src)} /> : null}

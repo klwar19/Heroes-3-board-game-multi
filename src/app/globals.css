@@ -6402,7 +6402,8 @@ button.hbSlot:disabled { cursor: default; }
    keeps it behind the lobby content but above the body gradient; scoped to
    .setupPhase so it never leaks into the live game. The frosted panels above
    blur it locally, so the dragon reads crisp in the open air and softly out of
-   focus behind the hero-draft board (its "background"). */
+   focus behind the hero-draft board (its "background"). Static art only —
+   ambient wisps live in .setupAmbient and never touch this layer. */
 .setupPhase::before,
 .setupPhase::after {
   content: "";
@@ -6415,7 +6416,7 @@ button.hbSlot:disabled { cursor: default; }
 .setupPhase::before {
   background: url("/assets/ui/draft-gold-dragon.webp") center 20% / cover no-repeat;
   filter: brightness(0.5) saturate(1.04) contrast(1.02);
-  /* Slight scale so the ken-burns-free image never shows a blank edge. */
+  /* Slight scale so the image never shows a blank edge. */
   transform: scale(1.04);
 }
 
@@ -6428,12 +6429,225 @@ button.hbSlot:disabled { cursor: default; }
     linear-gradient(180deg, rgb(10 7 4 / 46%) 0%, transparent 26%, transparent 62%, rgb(6 5 3 / 78%) 100%);
 }
 
-/* Frost the setting-phase panels so the art reads softly through them. */
+/* ---- Map-setup ambient: WC3 wisps only (no dragon overlays) -------------- */
+
+.setupAmbient {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.setupWisps {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.setupWisp {
+  position: absolute;
+  width: 56px;
+  height: 48px;
+  opacity: 0;
+  will-change: transform, opacity;
+  animation: setupWispFloat 15s ease-in-out infinite;
+  /* Soft teal bloom behind the sprite (matches the unit's glow). */
+  filter: drop-shadow(0 0 6px rgb(40 220 200 / 45%));
+}
+
+.setupWispImg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+  /* Extra life: the sprite itself gently pulses/rotates. */
+  animation: setupWispPulse 2.4s ease-in-out infinite alternate;
+  will-change: transform, filter, opacity;
+}
+
+@keyframes setupWispPulse {
+  from {
+    transform: scale(0.92) rotate(-4deg);
+    filter: brightness(0.95) saturate(1.05);
+    opacity: 0.82;
+  }
+  to {
+    transform: scale(1.08) rotate(5deg);
+    filter: brightness(1.25) saturate(1.25);
+    opacity: 1;
+  }
+}
+
+/* Start posts around the glade edges / canopy air (keeps dragon face clear). */
+.setupWisp1 { left: 10%; top: 64%; width: 48px; height: 41px; animation-duration: 16s; animation-delay: 0s; }
+.setupWisp2 { left: 82%; top: 46%; width: 64px; height: 54px; animation-name: setupWispFloatAlt; animation-duration: 18s; animation-delay: -2.8s; }
+.setupWisp3 { left: 18%; top: 26%; width: 42px; height: 36px; animation-duration: 13.5s; animation-delay: -5.2s; }
+.setupWisp4 { left: 88%; top: 70%; width: 52px; height: 44px; animation-name: setupWispFloatAlt; animation-duration: 17s; animation-delay: -1.4s; }
+.setupWisp5 { left: 4%;  top: 42%; width: 58px; height: 50px; animation-duration: 15s; animation-delay: -7.5s; }
+.setupWisp6 { left: 68%; top: 18%; width: 44px; height: 38px; animation-name: setupWispFloatAlt; animation-duration: 19s; animation-delay: -4s; }
+
+/* Nested img has its own pulse; float keyframes only move the wrapper. */
+@keyframes setupWispFloat {
+  0% {
+    opacity: 0;
+    transform: translate(0, 10px) scale(0.55);
+  }
+  8% {
+    opacity: 0.85;
+  }
+  25% {
+    opacity: 1;
+    transform: translate(16px, -26px) scale(0.95);
+  }
+  50% {
+    opacity: 0.75;
+    transform: translate(-14px, -68px) scale(1.05);
+  }
+  75% {
+    opacity: 0.95;
+    transform: translate(20px, -108px) scale(0.9);
+  }
+  92% {
+    opacity: 0.35;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-4px, -148px) scale(0.45);
+  }
+}
+
+@keyframes setupWispFloatAlt {
+  0% {
+    opacity: 0;
+    transform: translate(0, 8px) scale(0.5);
+  }
+  10% {
+    opacity: 0.9;
+  }
+  30% {
+    opacity: 0.95;
+    transform: translate(-20px, -22px) scale(1);
+  }
+  55% {
+    opacity: 0.7;
+    transform: translate(12px, -60px) scale(1.08);
+  }
+  80% {
+    opacity: 0.9;
+    transform: translate(-16px, -102px) scale(0.88);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(6px, -142px) scale(0.4);
+  }
+}
+
+/* Fine teal/gold motes (cheap dots, no images). */
+.setupMotes {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.setupMote {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #e8fff8 0%, #5ef0d0 40%, #1a9a80 75%, transparent 100%);
+  box-shadow: 0 0 6px 2px rgb(60 230 200 / 45%);
+  mix-blend-mode: screen;
+  opacity: 0;
+  animation: setupMoteDrift 9s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+.setupMote1  { left: 14%; top: 58%; animation-delay: 0s;    animation-duration: 8.5s; }
+.setupMote2  { left: 26%; top: 74%; animation-delay: -1s;   animation-duration: 10s; width: 3px; height: 3px; }
+.setupMote3  { left: 78%; top: 40%; animation-delay: -2.2s; animation-duration: 9s; }
+.setupMote4  { left: 90%; top: 62%; animation-delay: -0.5s; animation-duration: 11s; width: 5px; height: 5px; }
+.setupMote5  { left: 8%;  top: 32%; animation-delay: -3.1s; animation-duration: 8s; }
+.setupMote6  { left: 70%; top: 78%; animation-delay: -1.6s; animation-duration: 9.5s; width: 3px; height: 3px; }
+.setupMote7  { left: 42%; top: 20%; animation-delay: -4s;   animation-duration: 10.5s; }
+.setupMote8  { left: 94%; top: 28%; animation-delay: -2.8s; animation-duration: 8.8s; }
+.setupMote9  { left: 20%; top: 86%; animation-delay: -5.2s; animation-duration: 12s; width: 3px; height: 3px; }
+.setupMote10 { left: 60%; top: 16%; animation-delay: -0.9s; animation-duration: 9.2s; }
+
+/* Gold-tinted motes near the dragon for mixed spirit/scale dust. */
+.setupMote4,
+.setupMote7,
+.setupMote10 {
+  background: radial-gradient(circle, #fff6c8 0%, #e0d060 38%, #6aaa40 78%, transparent 100%);
+  box-shadow: 0 0 7px 2px rgb(200 220 90 / 40%);
+}
+
+@keyframes setupMoteDrift {
+  0% {
+    opacity: 0;
+    transform: translate(0, 8px) scale(0.4);
+  }
+  12% {
+    opacity: 0.9;
+    transform: translate(4px, -6px) scale(1);
+  }
+  45% {
+    opacity: 0.7;
+    transform: translate(-10px, -36px) scale(0.85);
+  }
+  78% {
+    opacity: 0.5;
+    transform: translate(12px, -64px) scale(0.6);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-4px, -88px) scale(0.25);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .setupWisp,
+  .setupWispImg,
+  .setupMote {
+    animation: none !important;
+    transform: none;
+  }
+  .setupWisp {
+    opacity: 0;
+  }
+  .setupWisp1,
+  .setupWisp3 {
+    opacity: 0.55;
+  }
+  .setupWispImg {
+    opacity: 1;
+    filter: none;
+  }
+  .setupMote {
+    opacity: 0;
+  }
+  .setupMote2,
+  .setupMote5 {
+    opacity: 0.35;
+  }
+}
+
+/* Frost only the top HUD + Game options tab — Heroes & draft stays clear so
+   the Gold Dragon backdrop reads through that tab. */
 .setupPhase .advHud,
-.setupLobby .gameOptions,
-.setupLobby .factionCard,
-.setupLobby .lobbySeat {
+.setupLobby .gameOptions {
   backdrop-filter: blur(3px);
+}
+
+/* Keep interactive setup chrome above the fixed ambient wisp layer (z-index 0). */
+.setupPhase > .tableTopRow,
+.setupPhase > .setupLobby,
+.setupPhase > .logDrawer,
+.setupPhase > .errorBanner {
+  position: relative;
+  z-index: 1;
 }
 
 /* Map-setup lobby */
@@ -6585,9 +6799,10 @@ button.hbSlot:disabled { cursor: default; }
   flex-direction: column;
   gap: 2px;
   padding: 8px 12px;
-  border: 1px solid rgba(170, 130, 70, 0.35);
+  border: 1px solid rgba(170, 130, 70, 0.45);
   border-radius: 8px;
-  background: rgba(33, 25, 15, 0.8);
+  background: transparent;
+  text-shadow: 0 1px 4px rgb(0 0 0 / 85%);
 }
 
 .lobbySeat.mine {
@@ -6608,10 +6823,12 @@ button.hbSlot:disabled { cursor: default; }
   border: 1.5px solid;
   border-radius: 10px;
   padding: 10px;
-  background: rgba(24, 18, 10, 0.85);
+  /* Transparent so the Gold Dragon setup backdrop shows through. */
+  background: rgb(24 18 10 / 18%);
   display: flex;
   flex-direction: column;
   gap: 8px;
+  text-shadow: 0 1px 4px rgb(0 0 0 / 88%);
 }
 
 .factionCard.taken {
@@ -6636,11 +6853,12 @@ button.hbSlot:disabled { cursor: default; }
   align-items: center;
   text-align: left;
   padding: 6px;
-  background: rgba(33, 25, 15, 0.7);
-  border: 1px solid rgba(170, 130, 70, 0.3);
+  background: rgb(33 25 15 / 22%);
+  border: 1px solid rgba(170, 130, 70, 0.4);
   border-radius: 8px;
   color: #e8d9b8;
   cursor: pointer;
+  text-shadow: 0 1px 3px rgb(0 0 0 / 85%);
 }
 
 .lobbyHero img {
@@ -6697,9 +6915,10 @@ button.hbSlot:disabled { cursor: default; }
 
 /* Setting-phase buttons styled to match the gold/parchment splash. */
 .setupLobby .optionButtons button {
-  background: linear-gradient(180deg, rgba(62, 47, 25, 0.92), rgba(34, 25, 13, 0.94));
+  background: rgb(62 47 25 / 32%);
   border-color: rgba(150, 116, 60, 0.7);
-  box-shadow: inset 0 1px 0 rgba(255, 232, 174, 0.12);
+  box-shadow: none;
+  text-shadow: 0 1px 3px rgb(0 0 0 / 85%);
 }
 
 .setupLobby .optionButtons button:hover {
@@ -6714,11 +6933,11 @@ button.hbSlot:disabled { cursor: default; }
 }
 
 .setupLobby .lobbyHero {
-  background: linear-gradient(180deg, rgba(48, 35, 18, 0.72), rgba(30, 22, 12, 0.8));
+  background: rgb(48 35 18 / 20%);
 }
 
 .setupLobby .lobbyHero.selected {
-  background: linear-gradient(180deg, rgba(82, 61, 29, 0.88), rgba(54, 40, 19, 0.92));
+  background: rgb(82 61 29 / 38%);
 }
 
 /* Map-setup tabs (Heroes & specialties / Draft & random / Game options). */
@@ -7046,28 +7265,164 @@ button.hbSlot:disabled { cursor: default; }
   text-decoration: line-through;
 }
 
-/* Draft & random tab. */
-/* Hero-draft board: a frosted gold-framed surface that lets the shared Gold
-   Dragon backdrop read softly THROUGH it (the dragon is the hero-draft
-   "background"), while the frost keeps every button, label and hero card
-   crisply legible. Consistent with the other setup panels' frosted-over-scene
-   language so the whole screen feels like one board. */
+/* Heroes & draft tab: one continuous realistic parchment sheet with restrained
+   edge blood, light burn aging, and faint surface scratches (all in the art).
+   Texture on ::before (slightly translucent so the dragon peeks through). */
 .draftPanel {
+  position: relative;
+  isolation: isolate;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 16px 18px;
-  border: 1px solid rgb(222 179 99 / 55%);
-  border-radius: 14px;
-  background:
-    radial-gradient(120% 100% at 50% 0%, rgb(64 44 20 / 30%), transparent 62%),
-    rgb(24 17 9 / 58%);
-  -webkit-backdrop-filter: blur(9px) saturate(1.06);
-  backdrop-filter: blur(9px) saturate(1.06);
+  padding: 18px 20px;
+  border: 1px solid rgb(120 90 55 / 48%);
+  border-radius: 8px;
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
   box-shadow:
-    inset 0 1px 0 rgb(246 226 168 / 20%),
-    0 12px 34px rgb(0 0 0 / 46%);
-  color: #f2e3c0;
+    inset 0 1px 0 rgb(255 246 230 / 22%),
+    inset 0 0 0 1px rgb(80 55 30 / 14%),
+    0 12px 28px rgb(0 0 0 / 38%);
+  color: #2a1c08;
+  text-shadow: none;
+}
+
+.draftPanel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  /* Full sheet of parchment — no extra CSS filters that fake “ancient”. */
+  background-color: #d4bc8e;
+  background-image: url("/assets/ui/ornate/draft-parchment-panel.webp");
+  background-position: center;
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  opacity: 0.9;
+  /* Soft paper depth only — keep edge aging as painted in the texture. */
+  box-shadow: inset 0 0 36px rgb(70 48 24 / 12%);
+}
+
+/* Keep controls above the parchment layer. */
+.draftPanel > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* ---- Draft panel text/controls: dark ink on light parchment ------------- */
+.draftPanel .draftIntro,
+.draftPanel .draftSectionLabel,
+.draftPanel .draftPhaseHead strong,
+.draftPanel .draftPhaseHead small,
+.draftPanel .draftHint,
+.draftPanel .draftLockNote,
+.draftPanel .draftBannedList,
+.draftPanel .draftModeRow > small:first-child {
+  color: #3a2810;
+  text-shadow: none;
+}
+
+.draftPanel .draftIntro,
+.draftPanel .draftSectionLabel,
+.draftPanel .draftPhaseHead small,
+.draftPanel .draftHint,
+.draftPanel .draftModeRow > small:first-child {
+  color: #5c4322;
+}
+
+.draftPanel .draftPhaseHead strong {
+  color: #1f1408;
+  font-weight: 700;
+}
+
+.draftPanel .draftTurnNote {
+  background: rgb(255 240 210 / 42%);
+  border-color: rgb(110 78 40 / 48%);
+  color: #2a1c08;
+  text-shadow: none;
+}
+
+.draftPanel .draftTurnNote.waiting {
+  background: rgb(255 244 220 / 32%);
+  border-color: rgb(110 78 40 / 35%);
+  color: #5c4322;
+}
+
+.draftPanel .factionCard {
+  /* Soft ink-wash chips so the manuscript grain still shows under them. */
+  background: rgb(72 48 22 / 10%);
+  text-shadow: none;
+  color: #2a1c08;
+  box-shadow: inset 0 0 0 1px rgb(70 45 20 / 18%);
+}
+
+.draftPanel .factionCard small {
+  color: #5c4322;
+}
+
+.draftPanel .lobbyHero {
+  background: rgb(255 244 220 / 36%);
+  border-color: rgb(110 78 40 / 42%);
+  color: #2a1c08;
+  text-shadow: none;
+}
+
+.draftPanel .lobbyHero small {
+  color: #5c4322;
+}
+
+.draftPanel .lobbyHero.selected {
+  background: rgb(210 160 70 / 38%);
+  border-color: #9a6e28;
+  box-shadow: inset 0 0 0 1px rgb(255 220 140 / 35%);
+}
+
+.draftPanel .draftBanFaction {
+  background: rgb(72 48 22 / 10%);
+  border-color: rgb(110 78 40 / 38%);
+}
+
+.draftPanel .draftBanHero {
+  background: rgb(255 244 220 / 40%);
+  border-color: rgb(110 78 40 / 42%);
+  color: #2a1c08;
+  text-shadow: none;
+}
+
+.draftPanel .draftTownButton {
+  background: rgb(255 244 220 / 40%);
+  border-color: rgb(110 78 40 / 48%);
+  color: #2a1c08;
+  text-shadow: none;
+}
+
+.draftPanel .draftTownButton small {
+  color: #5c4322;
+}
+
+.draftPanel .draftResetBtn {
+  background: rgb(255 240 210 / 42%);
+  border-color: rgb(110 78 40 / 45%);
+  color: #3a2810;
+  text-shadow: none;
+}
+
+.draftPanel .optionButtons button {
+  background: rgb(255 240 210 / 52%);
+  border-color: rgb(110 78 40 / 50%);
+  color: #2a1c08;
+  text-shadow: none;
+  box-shadow: inset 0 1px 0 rgb(255 250 230 / 40%);
+}
+
+.draftPanel .optionButtons button.selected {
+  background: linear-gradient(180deg, #e8c576 0%, #c2933f 52%, #8f6824 100%);
+  color: #2a1c08;
+  border-color: #9a6e28;
+  text-shadow: 0 1px 0 rgb(255 244 214 / 45%);
 }
 
 .draftIntro {
@@ -7135,9 +7490,9 @@ button.hbSlot:disabled { cursor: default; }
   flex-direction: column;
   gap: 6px;
   padding: 8px 10px;
-  border: 1px solid rgba(170, 130, 70, 0.3);
+  border: 1px solid rgba(170, 130, 70, 0.4);
   border-radius: 10px;
-  background: rgba(24, 18, 10, 0.6);
+  background: rgb(24 18 10 / 18%);
 }
 
 .draftBanHeroes {
@@ -7152,11 +7507,12 @@ button.hbSlot:disabled { cursor: default; }
   gap: 4px;
   padding: 4px 9px;
   border-radius: 999px;
-  border: 1px solid rgba(170, 130, 70, 0.4);
-  background: rgba(48, 35, 18, 0.72);
+  border: 1px solid rgba(170, 130, 70, 0.45);
+  background: rgb(48 35 18 / 28%);
   color: #e8d9b8;
   font-size: 12px;
   cursor: pointer;
+  text-shadow: 0 1px 3px rgb(0 0 0 / 85%);
 }
 
 .draftBanHero:hover:not(:disabled) {
@@ -7240,15 +7596,16 @@ button.hbSlot:disabled { cursor: default; }
   padding: 8px 12px;
   border-radius: 9px;
   border: 1px solid rgba(214, 178, 94, 0.55);
-  background: rgba(82, 61, 29, 0.45);
+  background: rgb(82 61 29 / 22%);
   color: #ffe9bd;
   font-weight: 600;
+  text-shadow: 0 1px 4px rgb(0 0 0 / 88%);
 }
 
 .draftTurnNote.waiting {
-  border-color: rgba(170, 130, 70, 0.3);
-  background: rgba(24, 18, 10, 0.6);
-  color: #b89f78;
+  border-color: rgba(170, 130, 70, 0.35);
+  background: transparent;
+  color: #dcc79c;
   font-weight: 500;
 }
 
@@ -7271,9 +7628,10 @@ button.hbSlot:disabled { cursor: default; }
   gap: 2px;
   padding: 9px 11px;
   border-radius: 10px;
-  border: 1px solid rgba(170, 130, 70, 0.5);
-  background: linear-gradient(180deg, rgba(48, 35, 18, 0.72), rgba(30, 22, 12, 0.82));
+  border: 1px solid rgba(170, 130, 70, 0.55);
+  background: rgb(48 35 18 / 22%);
   color: #ecd9b0;
+  text-shadow: 0 1px 3px rgb(0 0 0 / 85%);
   cursor: pointer;
   text-align: left;
   transition:
@@ -7331,8 +7689,9 @@ button.hbSlot:disabled { cursor: default; }
   align-self: flex-start;
   padding: 7px 12px;
   border-radius: 9px;
-  border: 1px solid rgba(170, 130, 70, 0.4);
-  background: rgba(33, 25, 15, 0.7);
+  border: 1px solid rgba(170, 130, 70, 0.45);
+  background: rgb(33 25 15 / 25%);
+  text-shadow: 0 1px 3px rgb(0 0 0 / 85%);
   color: #d8c39a;
   font-size: 12px;
   cursor: pointer;
@@ -12952,6 +13311,8 @@ img.cardBack {
 .menuShellVignette {
   position: absolute;
   inset: 0;
+  /* Above ambient dragon-breath; below the interactive content column. */
+  z-index: 2;
   background:
     radial-gradient(ellipse at 50% 42%, transparent 30%, rgb(8 7 5 / 62%) 100%),
     linear-gradient(180deg, rgb(8 7 5 / 55%) 0%, transparent 18%, transparent 82%, rgb(8 7 5 / 65%) 100%);
@@ -12959,6 +13320,7 @@ img.cardBack {
 
 .menuShellContent {
   position: relative;
+  z-index: 3;
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -16379,7 +16741,8 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .menuShellBackdrop {
+  .menuShellBackdrop,
+  .menuDragonBreath {
     animation: none;
   }
   .menuGameLogo {
@@ -16387,6 +16750,38 @@ body {
   }
   .loadingBarFill::after {
     animation: none;
+  }
+  .menuDragonBreathPlume,
+  .menuDragonBreathRage,
+  .menuDragonBreathShimmer,
+  .menuDragonBreathImpact,
+  .menuDragonBreathEmbers,
+  .menuDragonGroundBurn,
+  .menuDragonSpark,
+  .menuDragonGroundEmber {
+    animation: none !important;
+    transform: none;
+    filter: none;
+  }
+  .menuDragonBreathPlume {
+    opacity: 0.6;
+  }
+  .menuDragonBreathRage,
+  .menuDragonBreathShimmer {
+    opacity: 0;
+  }
+  .menuDragonBreathImpact {
+    opacity: 0.45;
+  }
+  .menuDragonGroundBurn {
+    opacity: 0.5;
+  }
+  .menuDragonBreathEmbers {
+    opacity: 0.3;
+  }
+  .menuDragonSpark,
+  .menuDragonGroundEmber {
+    opacity: 0;
   }
 }
 
@@ -16717,4 +17112,387 @@ body {
 .serverBadgeName {
   font-family: var(--font-heroic);
   letter-spacing: 0.05em;
+}
+
+/* ---- Main-menu dragon breath (opt-in via dragonBreath) ------------------- */
+/*
+ * The painted flame ART itself rages and pours (not a static image + soft mask):
+ *   1) Base jet — always on, violent brightness/contrast flicker
+ *   2) Three phase-offset copies of the same art that continuously translate +
+ *      scale from the mouth down-right along the jet — texture rolls outward
+ *   3) Blurred heat-shimmer ghost moving faster
+ *   4) Bottom impact smolder + ground embers + jet sparks
+ * Alignment: same object-fit/cover + ken-burns as .menuShellBackdrop.
+ */
+.menuDragonBreath {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  overflow: hidden;
+  transform-origin: 55% 42%;
+  animation: cmpKenBurns 46s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+.menuDragonBreathPlume,
+.menuDragonBreathRage,
+.menuDragonBreathShimmer,
+.menuDragonBreathImpact,
+.menuDragonBreathEmbers {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  pointer-events: none;
+  user-select: none;
+  mix-blend-mode: screen;
+  /* Mouth of the cover dragon — all pour motion grows from here. */
+  transform-origin: 46% 37%;
+}
+
+/* --- 1) Base jet: the art stays on and RAGES (filters + micro-warp) --- */
+.menuDragonBreathPlume {
+  opacity: 0.86;
+  -webkit-mask-image: linear-gradient(152deg, #000 0%, #000 92%, transparent 100%);
+  mask-image: linear-gradient(152deg, #000 0%, #000 92%, transparent 100%);
+  animation: menuDragonArtRage 0.55s steps(2, end) infinite,
+    menuDragonArtWobble 1.1s ease-in-out infinite alternate;
+  will-change: filter, transform, opacity;
+}
+
+/* Stepped filter changes = hot flicker like real fire frames. */
+@keyframes menuDragonArtRage {
+  0% {
+    opacity: 0.78;
+    filter: brightness(1.05) contrast(1.08) saturate(1.12) hue-rotate(-4deg);
+  }
+  25% {
+    opacity: 0.95;
+    filter: brightness(1.28) contrast(1.18) saturate(1.28) hue-rotate(3deg);
+  }
+  50% {
+    opacity: 0.82;
+    filter: brightness(1.12) contrast(1.1) saturate(1.15) hue-rotate(-2deg);
+  }
+  75% {
+    opacity: 1;
+    filter: brightness(1.38) contrast(1.22) saturate(1.32) hue-rotate(4deg);
+  }
+  100% {
+    opacity: 0.8;
+    filter: brightness(1.08) contrast(1.09) saturate(1.14) hue-rotate(-3deg);
+  }
+}
+
+/* Micro stretch along the jet so the painted tongue "breathes". */
+@keyframes menuDragonArtWobble {
+  from {
+    transform: scale(0.985, 0.99) rotate(-0.35deg);
+  }
+  to {
+    transform: scale(1.025, 1.04) rotate(0.4deg);
+  }
+}
+
+/*
+ * --- 2) Rage pour layers: the ART moves mouth → down ---
+ * Each copy of the flame image slides + expands along the jet diagonal and
+ * fades as it "lands". Three copies, 1/3 cycle apart → never a still frame.
+ */
+.menuDragonBreathRage {
+  opacity: 0;
+  will-change: transform, opacity, filter;
+  -webkit-mask-image: linear-gradient(152deg, #000 0%, #000 88%, transparent 100%);
+  mask-image: linear-gradient(152deg, #000 0%, #000 88%, transparent 100%);
+  animation: menuDragonArtPour 1.15s linear infinite;
+}
+
+.menuDragonBreathRage1 {
+  animation-delay: 0s;
+  filter: brightness(1.25) saturate(1.2) contrast(1.08);
+}
+
+.menuDragonBreathRage2 {
+  animation-delay: -0.38s;
+  filter: brightness(1.35) saturate(1.25) contrast(1.12);
+}
+
+.menuDragonBreathRage3 {
+  animation-delay: -0.76s;
+  filter: brightness(1.18) saturate(1.15) contrast(1.06);
+}
+
+/*
+ * Push the painted fire along the cover jet (down-right). Origin = mouth.
+ * Scale grows as it leaves the jaws so it reads as force blasting outward.
+ */
+@keyframes menuDragonArtPour {
+  0% {
+    opacity: 0.15;
+    transform: translate(-0.6%, -0.9%) scale(0.94) rotate(-0.5deg);
+    filter: brightness(1.15) saturate(1.15) contrast(1.05);
+  }
+  8% {
+    opacity: 0.9;
+  }
+  35% {
+    opacity: 1;
+    transform: translate(1.1%, 1.8%) scale(1.03) rotate(0.15deg);
+    filter: brightness(1.4) saturate(1.28) contrast(1.14);
+  }
+  65% {
+    opacity: 0.85;
+    transform: translate(2.4%, 3.8%) scale(1.07) rotate(0.35deg);
+    filter: brightness(1.3) saturate(1.22) contrast(1.1);
+  }
+  88% {
+    opacity: 0.35;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(3.6%, 5.8%) scale(1.12) rotate(0.55deg);
+    filter: brightness(1.1) saturate(1.1) contrast(1.04);
+  }
+}
+
+/* --- 3) Heat shimmer: blurred art ghost, faster pour --- */
+.menuDragonBreathShimmer {
+  opacity: 0.4;
+  filter: blur(2.4px) brightness(1.45) saturate(1.3);
+  -webkit-mask-image: linear-gradient(152deg, #000 0%, #000 85%, transparent 100%);
+  mask-image: linear-gradient(152deg, #000 0%, #000 85%, transparent 100%);
+  animation: menuDragonArtShimmer 0.85s linear infinite;
+  will-change: transform, opacity;
+}
+
+@keyframes menuDragonArtShimmer {
+  0% {
+    opacity: 0.15;
+    transform: translate(-0.4%, -0.6%) scale(0.97);
+  }
+  20% {
+    opacity: 0.55;
+  }
+  55% {
+    opacity: 0.45;
+    transform: translate(1.8%, 2.8%) scale(1.06);
+  }
+  100% {
+    opacity: 0.1;
+    transform: translate(3.2%, 5%) scale(1.12);
+  }
+}
+
+/* --- 4) Bottom landing blaze — constant smolder where the stream hits --- */
+.menuDragonBreathImpact {
+  opacity: 0.75;
+  clip-path: ellipse(50% 44% at 78% 91%);
+  transform-origin: 78% 91%;
+  animation: menuDragonImpactSmolder 1.4s ease-in-out infinite alternate,
+    menuDragonImpactRage 0.45s steps(2, end) infinite;
+}
+
+@keyframes menuDragonImpactSmolder {
+  from {
+    opacity: 0.55;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 0.92;
+    transform: scale(1.06);
+  }
+}
+
+@keyframes menuDragonImpactRage {
+  0% {
+    filter: brightness(1.1) blur(0.5px) saturate(1.08);
+  }
+  50% {
+    filter: brightness(1.4) blur(0.1px) saturate(1.25);
+  }
+  100% {
+    filter: brightness(1.15) blur(0.4px) saturate(1.1);
+  }
+}
+
+.menuDragonGroundBurn {
+  position: absolute;
+  left: 50%;
+  top: 64%;
+  width: 52%;
+  height: 42%;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  background:
+    radial-gradient(ellipse 58% 48% at 58% 74%, rgb(255 72 10 / 55%) 0%, rgb(255 40 0 / 26%) 44%, transparent 74%),
+    radial-gradient(ellipse 38% 34% at 70% 82%, rgb(255 168 48 / 45%) 0%, rgb(255 90 20 / 20%) 52%, transparent 76%),
+    radial-gradient(ellipse 28% 26% at 44% 86%, rgb(160 28 0 / 38%) 0%, transparent 72%);
+  filter: blur(11px);
+  animation: menuDragonGroundGlow 1.8s ease-in-out infinite alternate;
+}
+
+@keyframes menuDragonGroundGlow {
+  from {
+    opacity: 0.48;
+    transform: scale(0.96);
+    filter: blur(13px) brightness(0.95);
+  }
+  to {
+    opacity: 0.95;
+    transform: scale(1.05);
+    filter: blur(8px) brightness(1.2);
+  }
+}
+
+.menuDragonBreathEmbers {
+  opacity: 0.6;
+  filter: blur(0.3px);
+  animation: menuDragonEmberField 1.6s ease-in-out infinite alternate;
+}
+
+@keyframes menuDragonEmberField {
+  from {
+    opacity: 0.35;
+    filter: blur(0.5px) brightness(0.95);
+    transform: translate(0, 0);
+  }
+  to {
+    opacity: 0.8;
+    filter: blur(0.15px) brightness(1.2);
+    transform: translate(0.4%, 0.6%);
+  }
+}
+
+/* Sparks leave the mouth and ride the raging jet downward. */
+.menuDragonBreathSparks {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.menuDragonSpark {
+  position: absolute;
+  left: 46%;
+  top: 38%;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #fff8d0 0%, #ffb040 36%, #ff4a00 72%, transparent 100%);
+  box-shadow: 0 0 5px 2px rgb(255 120 30 / 55%);
+  opacity: 0;
+  mix-blend-mode: screen;
+  animation: menuDragonSparkDown 1.55s linear infinite;
+  will-change: transform, opacity;
+}
+
+.menuDragonSpark:nth-child(1)  { animation-delay: 0s;    animation-duration: 1.4s;  width: 3px; height: 3px; }
+.menuDragonSpark:nth-child(2)  { animation-delay: 0.08s; animation-duration: 1.55s; left: 47%; top: 39%; }
+.menuDragonSpark:nth-child(3)  { animation-delay: 0.15s; animation-duration: 1.45s; left: 45%; top: 37%; width: 3px; height: 3px; }
+.menuDragonSpark:nth-child(4)  { animation-delay: 0.22s; animation-duration: 1.65s; left: 46.5%; top: 38.5%; width: 5px; height: 5px; }
+.menuDragonSpark:nth-child(5)  { animation-delay: 0.3s;  animation-duration: 1.5s;  left: 47%; top: 37.5%; }
+.menuDragonSpark:nth-child(6)  { animation-delay: 0.38s; animation-duration: 1.6s;  left: 45.5%; top: 39%; width: 3px; height: 3px; }
+.menuDragonSpark:nth-child(7)  { animation-delay: 0.45s; animation-duration: 1.42s; left: 46%; top: 38%; width: 5px; height: 5px; }
+.menuDragonSpark:nth-child(8)  { animation-delay: 0.52s; animation-duration: 1.58s; left: 47.5%; top: 38%; }
+.menuDragonSpark:nth-child(9)  { animation-delay: 0.6s;  animation-duration: 1.48s; left: 45%; top: 38.5%; width: 3px; height: 3px; }
+.menuDragonSpark:nth-child(10) { animation-delay: 0.68s; animation-duration: 1.62s; left: 46.5%; top: 37%; }
+.menuDragonSpark:nth-child(11) { animation-delay: 0.75s; animation-duration: 1.4s;  left: 47%; top: 39%; }
+.menuDragonSpark:nth-child(12) { animation-delay: 0.82s; animation-duration: 1.56s; left: 45.5%; top: 37.5%; }
+.menuDragonSpark:nth-child(13) { animation-delay: 0.9s;  animation-duration: 1.44s; left: 46%; top: 38.5%; width: 3px; height: 3px; }
+.menuDragonSpark:nth-child(14) { animation-delay: 0.98s; animation-duration: 1.6s;  left: 47.2%; top: 37.8%; width: 5px; height: 5px; }
+.menuDragonSpark:nth-child(15) { animation-delay: 1.05s; animation-duration: 1.46s; left: 45.8%; top: 38.2%; }
+.menuDragonSpark:nth-child(16) { animation-delay: 1.12s; animation-duration: 1.52s; left: 46.3%; top: 39.2%; width: 3px; height: 3px; }
+.menuDragonSpark:nth-child(17) { animation-delay: 1.2s;  animation-duration: 1.38s; left: 47%; top: 37.2%; }
+.menuDragonSpark:nth-child(18) { animation-delay: 1.28s; animation-duration: 1.64s; left: 45.2%; top: 38.8%; }
+.menuDragonSpark:nth-child(19) { animation-delay: 1.35s; animation-duration: 1.5s;  left: 46.8%; top: 38%; width: 3px; height: 3px; }
+.menuDragonSpark:nth-child(20) { animation-delay: 1.42s; animation-duration: 1.58s; left: 45.6%; top: 37.6%; width: 5px; height: 5px; }
+
+@keyframes menuDragonSparkDown {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) scale(0.35);
+  }
+  6% {
+    opacity: 1;
+    transform: translate(12px, 16px) scale(1.1);
+  }
+  30% {
+    opacity: 0.95;
+    transform: translate(52px, 78px) scale(0.95);
+  }
+  60% {
+    opacity: 0.7;
+    transform: translate(105px, 155px) scale(0.7);
+  }
+  85% {
+    opacity: 0.25;
+    transform: translate(135px, 200px) scale(0.35);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(150px, 220px) scale(0.12);
+  }
+}
+
+.menuDragonGroundEmbers {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.menuDragonGroundEmber {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #ffe9a0 0%, #ff7a18 40%, #c42000 75%, transparent 100%);
+  box-shadow:
+    0 0 7px 2px rgb(255 90 20 / 65%),
+    0 0 14px 3px rgb(180 30 0 / 32%);
+  opacity: 0;
+  mix-blend-mode: screen;
+  animation: menuDragonGroundEmberBurn 2.1s ease-out infinite;
+}
+
+.menuDragonGroundEmber:nth-child(1)  { left: 70%; top: 85%; animation-delay: 0s;    width: 7px; height: 7px; animation-duration: 1.9s; }
+.menuDragonGroundEmber:nth-child(2)  { left: 76%; top: 88%; animation-delay: 0.18s; width: 5px; height: 5px; animation-duration: 2.2s; }
+.menuDragonGroundEmber:nth-child(3)  { left: 82%; top: 86%; animation-delay: 0.36s; width: 8px; height: 8px; animation-duration: 1.85s; }
+.menuDragonGroundEmber:nth-child(4)  { left: 88%; top: 90%; animation-delay: 0.54s; width: 4px; height: 4px; animation-duration: 2.4s; }
+.menuDragonGroundEmber:nth-child(5)  { left: 74%; top: 92%; animation-delay: 0.72s; width: 6px; height: 6px; animation-duration: 2s; }
+.menuDragonGroundEmber:nth-child(6)  { left: 80%; top: 83%; animation-delay: 0.9s;  width: 5px; height: 5px; animation-duration: 2.15s; }
+.menuDragonGroundEmber:nth-child(7)  { left: 86%; top: 85%; animation-delay: 1.08s; width: 7px; height: 7px; animation-duration: 1.8s; }
+.menuDragonGroundEmber:nth-child(8)  { left: 66%; top: 88%; animation-delay: 0.12s; width: 4px; height: 4px; animation-duration: 2.3s; }
+.menuDragonGroundEmber:nth-child(9)  { left: 90%; top: 88%; animation-delay: 0.42s; width: 6px; height: 6px; animation-duration: 2.05s; }
+.menuDragonGroundEmber:nth-child(10) { left: 72%; top: 81%; animation-delay: 0.6s;  width: 5px; height: 5px; animation-duration: 1.95s; }
+.menuDragonGroundEmber:nth-child(11) { left: 78%; top: 93%; animation-delay: 0.78s; width: 7px; height: 7px; animation-duration: 2.25s; }
+.menuDragonGroundEmber:nth-child(12) { left: 84%; top: 80%; animation-delay: 0.96s; width: 4px; height: 4px; animation-duration: 1.85s; }
+
+@keyframes menuDragonGroundEmberBurn {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) scale(0.4);
+    filter: brightness(1.4);
+  }
+  12% {
+    opacity: 1;
+    transform: translate(2px, -4px) scale(1.2);
+    filter: brightness(1.55);
+  }
+  45% {
+    opacity: 0.85;
+    transform: translate(-3px, -14px) scale(0.9);
+    filter: brightness(1.1);
+  }
+  75% {
+    opacity: 0.35;
+    transform: translate(4px, -22px) scale(0.5);
+    filter: brightness(0.75);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(0, -28px) scale(0.2);
+    filter: brightness(0.5);
+  }
 }

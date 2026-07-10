@@ -104,6 +104,35 @@ describe("MenuShell", () => {
     expect(framed.querySelector(".menuShellPanel")?.classList.contains("bare")).toBe(false);
   });
 
+  it("mounts the ambient dragon-breath layer only when dragonBreath is set (CONTROL)", () => {
+    const { container: withBreath } = render(
+      <MenuShell dragonBreath logo frameless>
+        <p>content</p>
+      </MenuShell>
+    );
+    const layer = withBreath.querySelector(".menuDragonBreath");
+    expect(layer).toBeTruthy();
+    expect(layer?.getAttribute("aria-hidden")).toBe("true");
+    expect(layer?.querySelector(".menuDragonBreathPlume")).toBeTruthy();
+    expect(layer?.querySelectorAll(".menuDragonBreathRage").length).toBe(3);
+    expect(layer?.querySelector(".menuDragonBreathRage1")).toBeTruthy();
+    expect(layer?.querySelector(".menuDragonBreathShimmer")).toBeTruthy();
+    expect(layer?.querySelector(".menuDragonBreathImpact")).toBeTruthy();
+    expect(layer?.querySelector(".menuDragonGroundBurn")).toBeTruthy();
+    expect(layer?.querySelector(".menuDragonBreathEmbers")).toBeTruthy();
+    expect(layer?.querySelectorAll(".menuDragonSpark").length).toBe(20);
+    expect(layer?.querySelectorAll(".menuDragonGroundEmber").length).toBe(12);
+    // No border/frame chrome from the old approach.
+    expect(withBreath.querySelector(".menuFlameFrame")).toBeNull();
+
+    const { container: plain } = render(
+      <MenuShell logo frameless>
+        <p>content</p>
+      </MenuShell>
+    );
+    expect(plain.querySelector(".menuDragonBreath")).toBeNull();
+  });
+
   it("plays the button click sound when a menu nav button is clicked (and not otherwise)", () => {
     render(
       <MenuShell>
