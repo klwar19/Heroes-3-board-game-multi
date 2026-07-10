@@ -96,6 +96,7 @@ import {
   type TilePlacementSelection
 } from "@/components/adventure/screen";
 import { SetupAmbientFx } from "@/components/adventure/setup-ambient";
+import { AzureClawChill } from "@/components/adventure/azure-claw-chill";
 import { TownWindow } from "@/components/adventure/town-board";
 import {
   moveIntoBattleWithTroopsToBuy,
@@ -4453,6 +4454,9 @@ export default function Home() {
                 })}
               </div>
               </div>
+              {/* Living Azure claw + frost/chill — after hand content so the
+                  stack paints over cards; pointer-events none. */}
+              <AzureClawChill />
             </div>
           ) : null}
 

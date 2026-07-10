@@ -17757,36 +17757,117 @@ body {
 }
 
 /* ==================================================================== */
-/* ORNATE DRAGON — ONE Azure Dragon foreclaw (HoMM3 creature-art style,  */
-/* pose from the user's reference) clutches the map card bar: painted    */
-/* around a green-screen bar so the wrap occlusion is REAL — the knuckle */
-/* arch rises above the bar's top edge, the palm hides behind it, and    */
-/* the hooked ivory talons wrap over the edge down the bar's face.       */
-/* Rendered above the static cards but dropped to ~45% alpha below the   */
-/* bar edge, so every card face stays readable; positioned popovers      */
-/* (z-index ≥ 1) still cover it. Pointer-events: none throughout.        */
+/* ORNATE DRAGON — Azure claw + frost under grip.                        */
+/* Glow = silhouette drop-shadow on the claw ONLY (curves with art).     */
+/* NEVER linear-mask the claw (full-width fade = square light frame).    */
+/* Frost rim is separate, tightly oval-masked under the talons.          */
 /* ==================================================================== */
 :root {
   --orn-azure-claw: url("/assets/ui/ornate/azure-claw.webp");
+  --orn-azure-frost-rim: url("/assets/ui/ornate/azure-frost-rim.webp");
 }
 
-/* Painted geometry (keyed art 1214x766): the invisible bar's top edge sits
-   at 67.4% of the height (y=516). Displayed 300px wide (scale 0.247) that
-   line is 128px from the art's top — top: -128px lands it exactly on the
-   bar's real top edge. The arch overlaps the HUD ribbon's quiet middle
-   stretch; it never intercepts clicks. */
-.playerCardBar::after {
-  content: "";
+/*
+ * Painted geometry (claw 820×520): bar top edge at ~67.4% of art height.
+ * Displayed 300px wide → that line is 128px from the art top.
+ * top: -128px lands the knuckles on the real bar rim.
+ */
+.azureClawChrome {
   position: absolute;
   top: -128px;
   right: 300px;
   width: 300px;
   height: 190px;
-  background: var(--orn-azure-claw) center top / 100% auto no-repeat;
-  mask-image: linear-gradient(180deg, #000 0, #000 134px, rgb(0 0 0 / 45%) 158px, rgb(0 0 0 / 45%) 100%);
-  -webkit-mask-image: linear-gradient(180deg, #000 0, #000 134px, rgb(0 0 0 / 45%) 158px, rgb(0 0 0 / 45%) 100%);
-  filter: drop-shadow(0 4px 8px rgb(0 0 0 / 45%));
+  z-index: 0;
   pointer-events: none;
+  overflow: visible;
+}
+
+/*
+ * Frost under the talons / bar edge. Narrow + strong radial mask so it
+ * reads as ice under the grip, never a horizontal box.
+ */
+.azureClawFrostRim {
+  position: absolute;
+  left: 20%;
+  /* Slightly below the bar rim (~128px) so frost sits under the talons. */
+  top: 126px;
+  width: 60%;
+  height: auto;
+  display: block;
+  object-fit: contain;
+  object-position: center top;
+  pointer-events: none;
+  user-select: none;
+  opacity: 0.5;
+  filter: drop-shadow(0 0 3px rgb(160 220 255 / 25%));
+  -webkit-mask-image: radial-gradient(
+    ellipse 52% 78% at 50% 12%,
+    #000 0%,
+    #000 32%,
+    rgb(0 0 0 / 45%) 55%,
+    transparent 76%
+  );
+  mask-image: radial-gradient(
+    ellipse 52% 78% at 50% 12%,
+    #000 0%,
+    #000 32%,
+    rgb(0 0 0 / 45%) 55%,
+    transparent 76%
+  );
+  animation: azureFrostBreathe 7.5s ease-in-out infinite;
+}
+
+@keyframes azureFrostBreathe {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 0.58;
+  }
+}
+
+/*
+ * Claw — tight cyan drop-shadows hug the painted outline.
+ * Short blur only (long blur = soft rectangular cloud).
+ * NO mask-image on this element.
+ */
+.azureClawHand {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 300px;
+  height: auto;
+  display: block;
+  object-fit: contain;
+  object-position: center top;
+  pointer-events: none;
+  user-select: none;
+  filter:
+    drop-shadow(0 3px 6px rgb(0 0 0 / 50%))
+    drop-shadow(0 0 2px rgb(200 240 255 / 70%))
+    drop-shadow(0 0 6px rgb(160 225 255 / 48%))
+    drop-shadow(0 0 11px rgb(130 210 255 / 28%));
+  animation: azureClawSilhouetteGlow 7.5s ease-in-out infinite;
+}
+
+@keyframes azureClawSilhouetteGlow {
+  0%,
+  100% {
+    filter:
+      drop-shadow(0 3px 6px rgb(0 0 0 / 50%))
+      drop-shadow(0 0 2px rgb(190 235 255 / 55%))
+      drop-shadow(0 0 5px rgb(150 220 255 / 36%))
+      drop-shadow(0 0 10px rgb(120 205 250 / 18%));
+  }
+  50% {
+    filter:
+      drop-shadow(0 3px 6px rgb(0 0 0 / 50%))
+      drop-shadow(0 0 3px rgb(220 248 255 / 85%))
+      drop-shadow(0 0 8px rgb(175 230 255 / 55%))
+      drop-shadow(0 0 14px rgb(145 215 255 / 30%));
+  }
 }
 
 /* ---- Reduced motion: everything settles, nothing is lost ----------------- */
@@ -17799,7 +17880,17 @@ body {
     animation: none;
   }
 
+  .azureClawFrostRim,
+  .azureClawHand {
+    animation: none;
+  }
+
+  .azureClawFrostRim {
+    opacity: 0.5;
+  }
+
   .menuMote {
     display: none;
   }
 }
+

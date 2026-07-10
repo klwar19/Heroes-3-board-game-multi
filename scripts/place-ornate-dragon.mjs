@@ -14,7 +14,8 @@ const jobs = [
   // The Azure Dragon foreclaw clutching the map card bar's top edge (pose
   // from the user's reference; painted around a green-screen bar whose top
   // edge sits at 67.4% of the keyed height — knuckle arch above, hooked
-  // talons wrapping down in front below).
+  // talons wrapping down in front below). Chill is CSS-only on the chrome
+  // (no extra frost/mist image plates — those read as a hard square).
   { in: "clutch-b-keyed.png", out: "azure-claw.webp", width: 820 }
 ];
 
