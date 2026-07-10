@@ -6852,24 +6852,13 @@ export function startAdventureRound(state: GameState): void {
     return;
   }
 
-  // FORTRESS EXPANSION Events (optional rule, multiplayer only) resolve FIRST as
-  // a whole-table barrier — before any City Hall choice, resource die, war-machine
-  // offer, start-of-turn draw or turn. Drawn here (not last) so its per-player
-  // resolution rewards sit at the FRONT of the queue; the barrier then freezes
-  // everyone until the whole table has resolved it. Income is still applied
-  // inline below, so a player has their fresh Resources to spend inside the
-  // event's own markets/auctions (rulebook p.15: income precedes the Event; the
-  // per-player menus are built at resolve time, after this income runs). No-op
-  // when the Event deck is off or fewer than 2 live players remain.
-  const eventQueueBefore = state.adventure?.rewardQueue.length ?? 0;
-  drawEventCard(state);
-  if ((state.adventure?.rewardQueue.length ?? 0) > eventQueueBefore) {
-    beginRoundStartEventBarrier(state);
-  }
-
   const astrologers = getAstrologersState(state);
   const modifiers = astrologers?.nextResourceModifiers ?? { gold: 0, valuables: 0 };
 
+  // Automatic Resource income FIRST, for every player, in the rulebook's own
+  // order (p.15: income precedes the Event) — so the log/feed chronology
+  // matches what actually happens and every seat holds its fresh Resources
+  // before the Event's markets/auctions open.
   for (const playerId of state.turnOrder) {
     const player = state.players[playerId];
     if (!player || playerId === NEUTRAL_PLAYER_ID) {
@@ -6920,6 +6909,27 @@ export function startAdventureRound(state: GameState): void {
           cardLibrary[permanentId]?.name ?? "Pandora income"
         );
       }
+    }
+  }
+
+  // FORTRESS EXPANSION Events (optional rule, multiplayer only) resolve as a
+  // whole-table barrier — before any City Hall choice, resource die,
+  // war-machine offer, start-of-turn draw or turn. Drawn AFTER the inline
+  // income above (rulebook p.15: income, then Event) but BEFORE the building
+  // pass below, so its per-player resolution rewards sit at the FRONT of the
+  // queue; the barrier then freezes everyone until the whole table has
+  // resolved it. No-op when the Event deck is off or fewer than 2 live
+  // players remain.
+  const eventQueueBefore = state.adventure?.rewardQueue.length ?? 0;
+  drawEventCard(state);
+  if ((state.adventure?.rewardQueue.length ?? 0) > eventQueueBefore) {
+    beginRoundStartEventBarrier(state);
+  }
+
+  for (const playerId of state.turnOrder) {
+    const player = state.players[playerId];
+    if (!player || playerId === NEUTRAL_PLAYER_ID) {
+      continue;
     }
 
     const town = getTownOfPlayer(state, playerId);
@@ -9621,8 +9631,21 @@ function buildEventPlayerChoice(state: GameState, visit: PendingVisit, card: Eve
           if (unit.side !== "few" || !getUnitSide(unit.unitDefId, "pack") || (tier !== "bronze" && tier !== "silver")) {
             continue;
           }
+          // Offer only what the player can actually PAY (the Isra pattern):
+          // reinforceArmyUnit silently no-ops when the cost can't be met, so an
+          // ungated offer would let the player click it, get nothing, and lose
+          // the Event's benefit. Gate + label use the actual charged cost.
+          const finalCost = reinforceCostFor(state, visit.playerId, unit.id, true, false, false);
+          if (!finalCost || !hasRecruitResources(state, visit.playerId, finalCost)) {
+            continue;
+          }
+          const costLabel =
+            Object.entries(finalCost)
+              .filter(([, amount]) => amount)
+              .map(([resource, amount]) => `${amount} ${resource}`)
+              .join(" + ") || "free";
           options.push({
-            label: `Necropolis: reinforce ${coreUnitDefinitions[unit.unitDefId]?.name ?? unit.unitDefId} at half cost`,
+            label: `Necropolis: reinforce ${coreUnitDefinitions[unit.unitDefId]?.name ?? unit.unitDefId} at half cost (${costLabel})`,
             steps: [{ type: "REINFORCE_ARMY_UNIT", armyUnitId: unit.id, halfCost: true }]
           });
         }

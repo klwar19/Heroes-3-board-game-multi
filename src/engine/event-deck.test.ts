@@ -108,6 +108,26 @@ describe("Event deck flow", () => {
     expect(solo.decks[EVENTS_DECK_ID]).toBeUndefined();
   });
 
+  it("logs Resource income BEFORE the Event draw (rulebook p.15: income, then Event)", () => {
+    const state = eventsGame("flow-order");
+    startResourceRound(state);
+
+    const eventIndex = state.eventLog.findIndex((event) => event.type === "EVENT_CARD_DRAWN");
+    expect(eventIndex).toBeGreaterThan(-1);
+    const incomeIndexes = state.eventLog
+      .map((event, index) => ({ event, index }))
+      .filter(({ event }) => event.type === "RESOURCES_GAINED" && event.reason === "resource round income")
+      .map(({ index }) => index);
+    // Every seat's automatic income lands in the log (and thus the feed /
+    // animation chronology) before the Event card is drawn — matching both the
+    // printed order and the fact that the Event's markets already see the
+    // fresh Resources.
+    expect(incomeIndexes.length).toBeGreaterThan(0);
+    for (const index of incomeIndexes) {
+      expect(index).toBeLessThan(eventIndex);
+    }
+  });
+
   it("draws at Resource rounds only, rotating the drawer clockwise; Astrologers rounds draw no Event", () => {
     const state = eventsGame("flow-rotate");
     stackEventDeck(state, "event.stables");

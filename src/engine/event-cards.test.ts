@@ -90,6 +90,26 @@ describe("Event — Crypt", () => {
     expect(after.players.p2.resources.gold).toBe(goldBefore - 2);
   });
 
+  it("an UNAFFORDABLE Necropolis reinforce is NOT offered — clicking it could only silently do nothing", () => {
+    const state = setup("crypt-broke", "event.crypt", (s) => {
+      s.players.p2.army = [];
+      addArmyUnit(s.players.p2, "necropolis.skeletons", "few");
+      // No resources AND no income: the half-cost 2 gold cannot be paid, so the
+      // option must not appear (reinforceArmyUnit would no-op and the Event's
+      // benefit would be lost with zero feedback).
+      s.players.p2.resources = { gold: 0, buildingMaterials: 0, valuables: 0 };
+      s.players.p2.production = { gold: 0, buildingMaterials: 0, valuables: 0 };
+    });
+
+    const after = chooseVisitOption(state, "p1", /Gain Positive Morale/);
+    const labels = visitOptionLabels(after, "p2");
+    expect(labels.some((label) => /Necropolis/.test(label))).toBe(false);
+    // The printed morale/gamble picks are still there — only the unpayable
+    // reinforce dropped out.
+    expect(labels.some((label) => /Gain Positive Morale/.test(label))).toBe(true);
+    expect(labels.some((label) => /roll 2 Treasure dice/.test(label))).toBe(true);
+  });
+
   it("the treasure gamble voids on any experience face, otherwise pays one chosen face", () => {
     // Sweep seeds so BOTH branches are exercised deterministically.
     let sawVoid = false;
