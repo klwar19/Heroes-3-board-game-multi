@@ -483,6 +483,20 @@ export class AccountStore implements AccountBackend {
     return record ? toProfile(record) : null;
   }
 
+  /**
+   * Public profile by nickname (case-insensitive, same key the uniqueness rule
+   * uses) — lets any player view another player's profile. Returns null for
+   * unknown nicknames; the caller decides how banned accounts are presented.
+   */
+  getProfileByNickname(nickname: string): AccountProfile | null {
+    if (typeof nickname !== "string" || !nickname.trim()) {
+      return null;
+    }
+    const id = this.byNickname.get(normalizeNicknameKey(nickname));
+    const record = id ? this.accounts.get(id) : undefined;
+    return record ? toProfile(record) : null;
+  }
+
   // -------------------------------------------------------------------------
   // Admin
   // -------------------------------------------------------------------------

@@ -1,4 +1,9 @@
 import { appendEvent } from "./events";
+import {
+  isRoundStartEventBarrierActive,
+  parallelTurnsActive,
+  roundStartEventResolver
+} from "./parallel-turns";
 import { NEUTRAL_PLAYER_ID } from "./state";
 import type { AfkState, GameAction, GameState, PlayerId } from "./state";
 
@@ -31,6 +36,17 @@ export const AFK_REASK_MS = 10 * 60_000;
  * ("after 30 minutes the AFK player is certainly kicked").
  */
 export const AFK_AUTO_KICK_MS = 30 * 60_000;
+/**
+ * Hard per-TURN budget (multiplayer adventure): a player — even one actively
+ * clicking, so never "idle" for the AFK vote — gets at most this long per open
+ * turn before any live seat's client may fire `FORCE_TURN_TIMEOUT` and the
+ * server force-ends the turn (pending inputs default-resolved, an open neutral
+ * fight retreated, then a normal END_TURN — the player is NOT eliminated; play
+ * simply shifts to the others). The clock pauses while the seat is blocked by
+ * someone ELSE'S exclusive interaction, a PvP battle or the round-start event
+ * barrier, so only time the player could actually spend counts against them.
+ */
+export const TURN_TIME_LIMIT_MS = 10 * 60_000;
 
 /** The AFK slice, created on demand (absent on legacy snapshots and solo games). */
 export function getAfkState(state: GameState): AfkState {
@@ -49,13 +65,15 @@ function gameIsOver(state: GameState): boolean {
   return state.phase === "game-over" || Boolean(state.adventure?.winnerPlayerId);
 }
 
-/** The AFK meta-actions themselves never count as "activity". */
+/** The AFK/timeout meta-actions themselves never count as "activity". */
 function isAfkMetaAction(action: GameAction): boolean {
   return (
     action.type === "START_AFK_VOTE" ||
     action.type === "CAST_AFK_VOTE" ||
     action.type === "RESOLVE_AFK_DROP" ||
-    action.type === "FORCE_AFK_KICK"
+    action.type === "FORCE_AFK_KICK" ||
+    action.type === "FORCE_TURN_TIMEOUT" ||
+    action.type === "RESOLVE_TURN_TIMEOUT"
   );
 }
 
@@ -130,6 +148,14 @@ export function applyAfkBookkeeping(state: GameState, action: GameAction, now: n
       ? (action as { playerId: PlayerId }).playerId
       : null;
   if (!actorId || actorId === NEUTRAL_PLAYER_ID || !state.players[actorId]) {
+    return;
+  }
+  // Actions the SERVER driver takes on a seat's behalf (answering the pending
+  // choices of a passed kick vote or an expired turn with default picks) are
+  // not the player's own activity: they must neither refresh the idle clock
+  // (the 30-minute auto-kick would never fire for a seat that times out every
+  // turn) nor cancel a kick vote as "they are back".
+  if (state.afk && (state.afk.droppingPlayerId === actorId || state.afk.turnTimeoutPlayerId === actorId)) {
     return;
   }
 
@@ -335,5 +361,194 @@ export function forceAfkKick(
     targetPlayerId: action.targetPlayerId,
     byPlayerId: action.playerId,
     message: `${playerName(state, action.targetPlayerId)} was away for 30 minutes and is removed from the game (AFK).`
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Per-turn time budget (TURN_TIME_LIMIT_MS): even an ACTIVE player's turn ends
+// after 10 minutes — force-shifted to the others, never eliminated.
+// ---------------------------------------------------------------------------
+
+/**
+ * The seats whose per-turn clock is running right now: in ordered play the
+ * active seat, in parallel mode every live seat whose turn is still open.
+ * Empty outside multiplayer adventures (solo tables, setup lobbies, sandbox,
+ * finished games) — the turn budget exists only where someone is kept waiting.
+ */
+export function turnClockRunningSeats(state: GameState): PlayerId[] {
+  if (state.mode !== "adventure" || !state.adventure || state.setupLobby || gameIsOver(state)) {
+    return [];
+  }
+  const seats = liveSeats(state);
+  if (seats.length < 2) {
+    return [];
+  }
+  if (parallelTurnsActive(state)) {
+    return seats.filter((seat) => !state.turn.completedPlayerIds.includes(seat));
+  }
+  const active = state.activePlayerId;
+  return active && seats.includes(active) ? [active] : [];
+}
+
+/**
+ * Whether `playerId`'s turn clock is PAUSED: the seat cannot meaningfully act,
+ * so the time must not count against their 10-minute budget. Paused while
+ *  - a PvP battle is open (both fighters are engaged; a defender must never be
+ *    able to run down the attacker's map-turn clock — and a bystander cannot
+ *    act at all until it ends);
+ *  - the round-start Event/Astrologers barrier freezes the table for everyone
+ *    but the current resolver;
+ *  - the table's exclusive interaction (choice, reaction priority, visit, tile
+ *    rotation, Necromancy window, far-tile flip, garrison prompt) is owned by
+ *    ANOTHER seat. The player's own open windows keep the clock running — the
+ *    budget covers everything they themselves are deciding.
+ */
+export function turnClockPausedFor(state: GameState, playerId: PlayerId): boolean {
+  const combat = state.combat;
+  if (combat && !combat.outcome && combat.context.kind !== "sandbox") {
+    const isParticipant = combat.attackerPlayerId === playerId || combat.defenderPlayerId === playerId;
+    const isPvp = combat.attackerPlayerId !== NEUTRAL_PLAYER_ID && combat.defenderPlayerId !== NEUTRAL_PLAYER_ID;
+    if (!isParticipant || isPvp) {
+      return true;
+    }
+  }
+  if (isRoundStartEventBarrierActive(state) && roundStartEventResolver(state) !== playerId) {
+    return true;
+  }
+  if (state.pendingChoice && state.pendingChoice.playerId !== playerId) {
+    return true;
+  }
+  if (state.reactionWindow && state.reactionWindow.priorityPlayerId !== playerId) {
+    return true;
+  }
+  const adventure = state.adventure;
+  if (adventure) {
+    if (adventure.pendingVisit && adventure.pendingVisit.playerId !== playerId) {
+      return true;
+    }
+    if (adventure.pendingTileChoice && adventure.pendingTileChoice.playerId !== playerId) {
+      return true;
+    }
+    if (adventure.pendingNecromancy && adventure.pendingNecromancy.playerId !== playerId) {
+      return true;
+    }
+    if (adventure.pendingFarTileFlip && adventure.pendingFarTileFlip.playerId !== playerId) {
+      return true;
+    }
+    if (adventure.pendingGarrison && adventure.pendingGarrison.defenderPlayerId !== playerId) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * How long (ms) `playerId`'s open turn has been burning its budget at `now`.
+ * 0 when their clock is not running (no open turn / stamps not bootstrapped).
+ */
+export function turnElapsedMillis(state: GameState, playerId: PlayerId, now: number): number {
+  const since = state.afk?.turnOpenSince?.[playerId];
+  return since === undefined ? 0 : Math.max(0, now - since);
+}
+
+/**
+ * Post-action bookkeeping for the per-turn clock, called from applyAction's
+ * success path for EVERY stamped action (unlike the idle stamps it must run on
+ * other players' and driver actions too — those are exactly what opens/closes
+ * turns). Stamps a seat's clock when its turn opens, RE-stamps it while the
+ * seat is paused (so paused time never accrues — see turnClockPausedFor), and
+ * drops the stamp when the turn closes. Also clears a stale timeout flag once
+ * the timed-out seat's turn is gone.
+ *
+ * `pausedBefore` lists the seats whose clock was paused in the PRE-action
+ * state: the action that LIFTS a pause (the blocker resolving their choice)
+ * leaves the post-action state un-paused, so without it the whole blocked
+ * stretch would land on the innocent seat's clock. A re-stamp on either side
+ * of the action keeps paused time forgiven.
+ */
+export function applyTurnClockBookkeeping(
+  state: GameState,
+  now: number | undefined,
+  pausedBefore: readonly PlayerId[] = []
+): void {
+  if (state.mode !== "adventure" || now === undefined) {
+    return;
+  }
+  const open = turnClockRunningSeats(state);
+  const afk = state.afk;
+  if (open.length === 0) {
+    // No running clocks (solo table, setup, game over): drop any stale stamps
+    // without creating the AFK slice on tables that never needed it.
+    if (afk?.turnOpenSince && Object.keys(afk.turnOpenSince).length > 0) {
+      afk.turnOpenSince = {};
+    }
+    if (afk?.turnTimeoutPlayerId) {
+      afk.turnTimeoutPlayerId = null;
+    }
+    return;
+  }
+  const slice = getAfkState(state);
+  const clock = (slice.turnOpenSince ??= {});
+  for (const seat of Object.keys(clock)) {
+    if (!open.includes(seat)) {
+      delete clock[seat];
+    }
+  }
+  for (const seat of open) {
+    if (clock[seat] === undefined || pausedBefore.includes(seat) || turnClockPausedFor(state, seat)) {
+      clock[seat] = now;
+    }
+  }
+  if (slice.turnTimeoutPlayerId && !open.includes(slice.turnTimeoutPlayerId)) {
+    slice.turnTimeoutPlayerId = null;
+  }
+}
+
+/**
+ * FORCE_TURN_TIMEOUT: any live seat's client fires this once `targetPlayerId`'s
+ * open turn has burned its full TURN_TIME_LIMIT_MS budget (the server re-checks
+ * everything against its own clock). It only ARMS the force-shift
+ * (`afk.turnTimeoutPlayerId`); the server-side driver (src/engine/afk-drop.ts)
+ * then default-resolves the seat's pending inputs, retreats it from an open
+ * neutral fight and ends the turn through the normal END_TURN machinery.
+ */
+export function forceTurnTimeout(
+  state: GameState,
+  action: Extract<GameAction, { type: "FORCE_TURN_TIMEOUT" }>,
+  now: number | undefined
+): void {
+  const afk = assertVoteContext(state);
+  const seats = liveSeats(state);
+  if (seats.length < 2) {
+    throw new Error("The turn timer runs only with at least two players still in the game.");
+  }
+  if (!seats.includes(action.playerId) || !seats.includes(action.targetPlayerId)) {
+    throw new Error("Both the actor and the target must still be in the game.");
+  }
+  if (afk.droppingPlayerId) {
+    throw new Error("A player is already being removed.");
+  }
+  if (afk.turnTimeoutPlayerId) {
+    throw new Error("A turn is already being timed out.");
+  }
+  if (now === undefined) {
+    throw new Error("Turn timing is unavailable on this table.");
+  }
+  if (!turnClockRunningSeats(state).includes(action.targetPlayerId)) {
+    throw new Error(`${playerName(state, action.targetPlayerId)} has no open turn to time out.`);
+  }
+  if (turnClockPausedFor(state, action.targetPlayerId)) {
+    throw new Error(`${playerName(state, action.targetPlayerId)}'s turn clock is paused right now.`);
+  }
+  if (turnElapsedMillis(state, action.targetPlayerId, now) < TURN_TIME_LIMIT_MS) {
+    throw new Error(`${playerName(state, action.targetPlayerId)} still has turn time left.`);
+  }
+
+  afk.turnTimeoutPlayerId = action.targetPlayerId;
+  appendEvent(state, {
+    type: "TURN_TIME_EXPIRED",
+    targetPlayerId: action.targetPlayerId,
+    byPlayerId: action.playerId,
+    message: `${playerName(state, action.targetPlayerId)}'s 10 minutes are up — their turn ends and play shifts on.`
   });
 }

@@ -30,6 +30,19 @@ export function afkDropPending(state: GameState): PlayerId | null {
   return state.afk?.droppingPlayerId ?? null;
 }
 
+/** The seat whose expired 10-minute turn is being force-ended, or null. */
+export function turnTimeoutPending(state: GameState): PlayerId | null {
+  return state.afk?.turnTimeoutPlayerId ?? null;
+}
+
+/**
+ * Whether the driver has ANY forced resolution to run (an AFK drop or a turn
+ * timeout) — the transports' cheap "should I call driveAfkDrop?" test.
+ */
+export function forcedResolutionPending(state: GameState): boolean {
+  return afkDropPending(state) !== null || turnTimeoutPending(state) !== null;
+}
+
 /** Action types that RESOLVE a pending interaction (never "play the game"). */
 const RESOLVING_ACTION_TYPES = new Set<GameAction["type"]>([
   "CHOOSE_OPTION",
@@ -107,8 +120,63 @@ export function nextAfkDropAction(state: GameState, playerId: PlayerId): GameAct
 }
 
 /**
- * Runs the drop to completion (or to the first must-wait point). `optionsFor`
- * lets the transports mint fresh per-step apply options (entropy, wall clock);
+ * The next single action that advances a TURN TIMEOUT force-shift, or null when
+ * the driver must wait (another player's interaction is open) or nothing is
+ * left. Mirrors the drop driver, but the terminal step ends the turn instead of
+ * eliminating the seat (see resolveTurnTimeout in adventure-reducer.ts).
+ */
+export function nextTurnTimeoutAction(state: GameState, playerId: PlayerId): GameAction | null {
+  if (state.reactionWindow && state.reactionWindow.priorityPlayerId === playerId) {
+    return { type: "PASS_REACTION", playerId };
+  }
+
+  // Their own pending interaction: answer it with the default pick.
+  if (ownsPendingInput(state, playerId)) {
+    return pickResolvingAction(getLegalActions(state, playerId));
+  }
+
+  // Someone ELSE's interaction is open: wait — the transports re-run the
+  // driver after every action, so the shift resumes when it settles.
+  if (state.pendingChoice || state.reactionWindow || state.stack.length > 0) {
+    return null;
+  }
+  const adventure = state.adventure;
+  if (
+    adventure &&
+    (adventure.pendingVisit ||
+      adventure.pendingTileChoice ||
+      adventure.pendingNecromancy ||
+      adventure.pendingFarTileFlip ||
+      adventure.pendingGarrison)
+  ) {
+    return null;
+  }
+
+  const combat = state.combat;
+  if (combat && combat.context.kind !== "sandbox" && (combat.attackerPlayerId === playerId || combat.defenderPlayerId === playerId)) {
+    if (combat.outcome && !combat.endAcknowledged) {
+      return { type: "ACKNOWLEDGE_COMBAT_END", playerId };
+    }
+    if (!combat.outcome) {
+      // Reaching here means a NEUTRAL fight (PvP battles pause the clock, so a
+      // timeout cannot normally arm mid-PvP): concede it as a retreat.
+      return { type: "RESOLVE_TURN_TIMEOUT", playerId };
+    }
+    return null; // acknowledged but not yet finalized — the automation finishes it.
+  }
+  // A battle between two OTHER players: wait for it, like any bystander.
+  if (combat && !combat.outcome) {
+    return null;
+  }
+
+  // Clear of interactions: end their turn (or just clear a stale flag).
+  return { type: "RESOLVE_TURN_TIMEOUT", playerId };
+}
+
+/**
+ * Runs every pending forced resolution — the AFK drop first, then a turn
+ * timeout — to completion (or to the first must-wait point). `optionsFor` lets
+ * the transports mint fresh per-step apply options (entropy, wall clock);
  * tests may omit it.
  */
 export function driveAfkDrop(
@@ -116,14 +184,17 @@ export function driveAfkDrop(
   optionsFor: () => { entropy?: string; now?: number } = () => ({})
 ): GameState {
   let state = initial;
-  // Bounded hard: each step either resolves one interaction or eliminates the
-  // player; nothing a game can queue takes more steps than this.
+  // Bounded hard: each step either resolves one interaction, eliminates the
+  // dropped player or ends the expired turn; nothing a game can queue takes
+  // more steps than this.
   for (let guard = 0; guard < 200; guard += 1) {
-    const playerId = afkDropPending(state);
+    const droppingId = afkDropPending(state);
+    const timeoutId = droppingId ? null : turnTimeoutPending(state);
+    const playerId = droppingId ?? timeoutId;
     if (!playerId) {
       return state;
     }
-    const action = nextAfkDropAction(state, playerId);
+    const action = droppingId ? nextAfkDropAction(state, droppingId) : nextTurnTimeoutAction(state, playerId);
     if (!action) {
       return state;
     }

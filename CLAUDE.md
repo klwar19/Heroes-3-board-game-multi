@@ -439,6 +439,64 @@ ordered-mode or unowned-target CONTROL.
   solo tables and legacy snapshots are untouched — every parallel predicate
   no-ops when the mode is off.
 
+## Multiplayer ladder & turn discipline (MMR, quit penalty, 10-min turns) — what runs vs. limits
+
+Leading with what does NOT run: a ranked game that never reaches a winner
+(every seat walks away before anything triggers the last-standing win) reports
+nothing; OPEN tables are never ranked (their members hold no seats, so results
+cannot be attributed); a turn-clock pause forgives the seat's WHOLE 10-minute
+budget (fresh stamp), not just the paused interval; and the timeout/auto-kick
+triggers are CLIENT-fired (server-validated) — with zero connected clients
+nothing fires, which is fine because nobody is waiting.
+
+- **MMR covers every win of every mode.** All victory modes funnel through
+  `declareAdventureWinner` (conquest, grail, dragon-hunt, dragon-conqueror,
+  last-faction-standing after eliminations/give-ups/AFK kicks), so
+  `detectFinishedMatch` (`src/server/match-report.ts`) ranks them all on a
+  hosted table with ≥2 verified accounts and `room.ranked !== false`. Elo is
+  winner-takes-field (`accounts/elo.ts`); "abandon" scores as a loss on BOTH
+  account backends.
+- **Losing or quitting loses points.** `buildAdventureFromLobby` freezes
+  `room.matchSeats` (seat → account) at map build; at game end the reporter
+  unions that snapshot with the live members, so LEAVE_ROOM, stepping down to
+  observer or a host kick mid-game is reported as **abandon** instead of
+  vanishing. A replacement account seated mid-game gets the seat's real result;
+  the deserter still gets the abandon. Pinned in `match-report.test.ts`
+  (leaver / stepped-down / replacement / winner-seat cases, with a no-snapshot
+  legacy CONTROL proving the snapshot is what closes the quit-to-dodge hole).
+- **10-minute turn budget** (`TURN_TIME_LIMIT_MS`; engine in `afk.ts`,
+  `afk-drop.ts`, `resolveTurnTimeout` in `adventure-reducer.ts`): even an
+  actively-clicking seat gets 10 minutes per OPEN turn (`afk.turnOpenSince`,
+  maintained by `applyTurnClockBookkeeping` on every server-stamped action;
+  ordered AND parallel modes). The clock PAUSES (re-stamps, checked on BOTH
+  sides of each action) while the seat is blocked: an open PvP battle, another
+  seat's exclusive interaction, the round-start event barrier. On expiry any
+  live client fires `FORCE_TURN_TIMEOUT` (the server re-checks its own clock
+  and the pause state); the shared forced-resolution driver then
+  default-resolves the seat's pending inputs, retreats an open NEUTRAL fight,
+  and ends the turn through the normal `endTurnAdventure` — Pandora/Logistics
+  end-turn prompts and the no-base elimination clock run exactly as if End
+  Turn was pressed by hand. The player is NOT eliminated (the AFK vote /
+  30-minute kick remain the removal path), driver-issued auto-answers do NOT
+  refresh the target's AFK idle clock, and force-ending the LAST open parallel
+  turn wraps the round WITHOUT consuming the seat's fresh next turn. Pinned in
+  `turn-timeout.test.ts` (too-early / paused / wrong-seat CONTROLs); the
+  countdown chip + client auto-fire live in `overlays.tsx`
+  (`overlays.test.tsx`).
+- **Who is here / who joined.** A genuinely NEW `JOIN_ROOM` announces itself —
+  a forced system chat line plus a feed toast — with verified accounts named
+  by nickname and guests honestly labeled "guest — name"; reconnects/rebinds
+  re-emit the event with `newMember: false` and stay silent so refreshes never
+  spam (`room-membership.test.ts`, `chat.test.ts`). The lobby directory carries
+  a bounded per-room roster (host first, guests dashed + labeled,
+  `MAX_DIRECTORY_MEMBERS`) so players can see who is in which room — and who
+  hosts it — before joining (`lobby-registry.test.ts`).
+- **Public profiles.** `GET /api/players/[nickname]` (rate-limited; banned →
+  404) serves the PUBLIC profile — rating, W/L record, member-since, the
+  owner-editable contact fields, never the email — and `/players/[nickname]`
+  renders it, linked from Hall of Fame rows and verified room-member names
+  (`account-store.test.ts` "looks up a PUBLIC profile by nickname").
+
 ## WOG Commanders (optional module, BINH-only) — what runs vs. adaptations
 
 Lobby: WOG crest + "Commanders" module (`WogModOptions.commanders`, default

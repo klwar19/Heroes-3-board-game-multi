@@ -3530,6 +3530,30 @@ export type GameAction =
       type: "FORCE_AFK_KICK";
       playerId: PlayerId;
       targetPlayerId: PlayerId;
+    }
+  | {
+      /**
+       * Hard 10-minute turn budget (`TURN_TIME_LIMIT_MS`): any live seat's
+       * client fires this once `targetPlayerId`'s open turn has burned its
+       * whole budget (per the server-stamped `afk.turnOpenSince` clock; the
+       * server re-checks). Arms `afk.turnTimeoutPlayerId` — the driver then
+       * force-ends the turn. The target is NOT kicked or eliminated.
+       */
+      type: "FORCE_TURN_TIMEOUT";
+      playerId: PlayerId;
+      targetPlayerId: PlayerId;
+    }
+  | {
+      /**
+       * One force-shift step for the seat whose turn timed out
+       * (`afk.turnTimeoutPlayerId` — `playerId` must match it). Issued by the
+       * server-side driver, never by a client button: concedes the seat's open
+       * combat first (retreat vs neutrals, give-up vs a player), then — called
+       * again once it finalized — ends the turn through the normal END_TURN
+       * machinery. See src/engine/afk-drop.ts.
+       */
+      type: "RESOLVE_TURN_TIMEOUT";
+      playerId: PlayerId;
     };
 
 export type LegalAction = {
@@ -4093,6 +4117,18 @@ export type GameEvent =
       name: string;
       seat: RoomSeat;
       isHost: boolean;
+      /**
+       * True when the joiner is bound to a VERIFIED account (the name is their
+       * registered nickname); false/absent for a guest — the join notices show
+       * "name (guest)" so the table always knows who walked in.
+       */
+      verified?: boolean;
+      /**
+       * True only for a genuinely NEW member (first join). Reconnects and
+       * cross-tab rebinds re-emit this event with false, so the feed toast +
+       * system chat announce real arrivals without spamming every refresh.
+       */
+      newMember?: boolean;
     }
   | {
       id: string;
@@ -4742,6 +4778,14 @@ export type GameEvent =
     }
   | {
       id: string;
+      /** A turn burned its whole 10-minute budget and is being force-ended. */
+      type: "TURN_TIME_EXPIRED";
+      targetPlayerId: PlayerId;
+      byPlayerId: PlayerId;
+      message: string;
+    }
+  | {
+      id: string;
       /** The room's match type was set (Ranked vs Normal). */
       type: "ROOM_RANKED_CHANGED";
       ranked: boolean;
@@ -5303,6 +5347,20 @@ export type RoomMembershipState = {
    * the membership record.
    */
   ranked?: boolean;
+  /**
+   * Seat → account binding frozen the moment the adventure STARTS (stamped by
+   * `buildAdventureFromLobby` from the members seated at that instant). This is
+   * what makes "quitting loses points" enforceable: match reporting
+   * (`detectFinishedMatch`) unions this snapshot with the live member list, so a
+   * player who leaves the room, steps down to observer or gets kicked mid-game
+   * still gets their loss recorded as "abandon" — deleting the membership row can
+   * no longer dodge the ladder. A seat later re-assigned to a different account
+   * keeps both records (the deserter's abandon and the finisher's real result).
+   * Absent on games started before this field existed and on open tables (whose
+   * members hold no seats): reporting then falls back to live members only,
+   * exactly the old behaviour.
+   */
+  matchSeats?: Record<PlayerId, { userId?: string; name: string }>;
 };
 
 /**
@@ -8906,6 +8964,25 @@ export type AfkState = {
    * RESOLVE_AFK_DROP, which concedes their combat and eliminates them.
    */
   droppingPlayerId?: PlayerId | null;
+  /**
+   * Server wall-clock ms each seat's OPEN turn started burning its 10-minute
+   * budget (`TURN_TIME_LIMIT_MS`). Stamped when the turn opens and re-stamped
+   * while the seat is paused behind a PvP battle, another player's exclusive
+   * interaction or the round-start event barrier — so only time the player
+   * could actually spend counts. Dropped when the turn closes. Maintained by
+   * `applyTurnClockBookkeeping` on every stamped action; absent on solo tables
+   * and legacy snapshots.
+   */
+  turnOpenSince?: Record<PlayerId, number>;
+  /**
+   * Seat whose expired turn is being force-ended right now (the 10-minute
+   * per-turn budget ran out — `FORCE_TURN_TIMEOUT`). While set, the server-side
+   * driver auto-resolves that seat's pending interactions with default picks,
+   * retreats it from an open neutral fight, and ends the turn through the
+   * normal END_TURN machinery via RESOLVE_TURN_TIMEOUT. Unlike
+   * `droppingPlayerId` the seat is NOT eliminated — play just shifts on.
+   */
+  turnTimeoutPlayerId?: PlayerId | null;
 };
 
 /**

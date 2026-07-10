@@ -7,15 +7,18 @@ import type { RoomDirectoryEntry } from "@/lib/realtime";
 /** Show the room filter once the list is long enough for scanning to hurt. */
 const ROOM_FILTER_MIN_ROOMS = 6;
 
-/** Case-insensitive match on the room's name, host, or creator. */
+/** Case-insensitive match on the room's name, host, creator, or any member. */
 function roomMatchesFilter(room: RoomDirectoryEntry, filter: string): boolean {
   const needle = filter.trim().toLowerCase();
   if (!needle) {
     return true;
   }
-  return [room.name, room.hostName ?? "", room.createdByName ?? ""].some((field) =>
-    field.toLowerCase().includes(needle)
-  );
+  return [
+    room.name,
+    room.hostName ?? "",
+    room.createdByName ?? "",
+    ...(room.members ?? []).map((member) => member.name)
+  ].some((field) => field.toLowerCase().includes(needle));
 }
 
 /**
@@ -264,6 +267,29 @@ export function LobbyScreen({
                       <span className="lobbyRoomHost">by {room.createdByName}</span>
                     ) : null}
                   </span>
+                  {(room.members ?? []).length > 0 ? (
+                    // Who is inside: host first (crown), registered players by
+                    // nickname, guests honestly labeled "guest — name".
+                    <span className="lobbyRoomPeople" aria-label="Players in this room">
+                      {(room.members ?? []).map((member, index) => (
+                        <span
+                          className={`lobbyRoomPerson${member.guest ? " guest" : ""}${member.seated ? "" : " observer"}`}
+                          key={`${member.name}-${index}`}
+                          title={
+                            (member.host ? "Host — " : "") +
+                            (member.guest ? "guest (no account)" : "verified account") +
+                            (member.seated ? "" : ", observer")
+                          }
+                        >
+                          {member.host ? <Crown aria-hidden="true" size={11} /> : null}
+                          {member.guest ? `guest — ${member.name}` : member.name}
+                        </span>
+                      ))}
+                      {room.memberCount > (room.members ?? []).length ? (
+                        <span className="lobbyRoomPerson observer">+{room.memberCount - (room.members ?? []).length} more</span>
+                      ) : null}
+                    </span>
+                  ) : null}
                 </button>
                 <div className="lobbyRoomButtons">
                   <button className="commandButton" onClick={() => onJoin(room.roomId)} type="button">

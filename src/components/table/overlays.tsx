@@ -14,6 +14,9 @@ import {
   AFK_IDLE_MS,
   AFK_REASK_MS,
   seatIsAwaitedInOrderedPlay,
+  TURN_TIME_LIMIT_MS,
+  turnClockPausedFor,
+  turnClockRunningSeats,
   effectHasExpertMode,
   getEffectAmount,
   getEffectiveCardEffect,
@@ -2469,7 +2472,8 @@ export function NeutralStepOverlay({
 }
 
 /**
- * AFK vote-kick (multiplayer): one panel that covers the whole flow.
+ * AFK vote-kick + the 10-minute TURN TIMER (multiplayer): one panel that
+ * covers the whole flow.
  *
  *  - While a vote is OPEN, every player sees it; live seats other than the
  *    target answer Kick / Wait (one "wait" closes it, unanimous "kick" drops
@@ -2480,6 +2484,11 @@ export function NeutralStepOverlay({
  *    spammed. The timestamps come from the SERVER's clock; the engine
  *    re-checks legality on submit, so a skewed local clock can only make the
  *    button appear a little early or late, never force a kick.
+ *  - The TURN TIMER chip counts down the open turn's 10-minute budget
+ *    (`afk.turnOpenSince` + TURN_TIME_LIMIT_MS) once under five minutes
+ *    remain, and any live client fires FORCE_TURN_TIMEOUT the moment a turn
+ *    is over budget — the server re-checks its own clock and then force-ends
+ *    that turn (never kicks the player).
  *
  * Rendered on the adventure map AND the combat table — a battle is exactly
  * where an AFK opponent hurts most.
@@ -2495,17 +2504,24 @@ export function AfkVotePanel({
 }) {
   // Re-evaluate idleness periodically so the button appears without a reload.
   // A short tick keeps the 30-minute auto-kick prompt (which fires an action)
-  // responsive without hammering; 5s is plenty for a minute-scale threshold.
+  // responsive without hammering; 5s is plenty for a minute-scale threshold —
+  // but tighten to 1s while a turn-timer countdown is on screen, so the
+  // MM:SS readout ticks smoothly.
   const [nowTick, setNowTick] = useState(() => Date.now());
+  const hasTurnClock = Boolean(
+    state.afk?.turnOpenSince && Object.keys(state.afk.turnOpenSince).length > 0
+  );
   useEffect(() => {
-    const timer = setInterval(() => setNowTick(Date.now()), 5_000);
+    const timer = setInterval(() => setNowTick(Date.now()), hasTurnClock ? 1_000 : 5_000);
     return () => clearInterval(timer);
-  }, []);
+  }, [hasTurnClock]);
   // Two-step "call a vote" confirm: the first click arms this target, the second
   // (Confirm) actually opens the vote. "Press it, then confirm or cancel."
   const [pendingKickTarget, setPendingKickTarget] = useState<PlayerId | null>(null);
   // One-shot guard so the 30-minute auto-kick fires a single action per target.
   const autoKickFiredRef = useRef<string | null>(null);
+  // One-shot guard per (seat, turn-open stamp) for the turn-timer force-end.
+  const turnTimeoutFiredRef = useRef<string | null>(null);
 
   const afk = state.afk;
   const liveSeats = state.turnOrder.filter(
@@ -2539,12 +2555,90 @@ export function AfkVotePanel({
     onAction({ type: "FORCE_AFK_KICK", playerId: viewerPlayerId, targetPlayerId: autoKickTarget });
   }, [autoKickTarget, onAction, viewerPlayerId]);
 
+  // Turn timer: the open-turn seats whose 10-minute budget is burning right
+  // now (server-stamped clocks; paused seats show no countdown). Any live
+  // seat's client — including the timed-out player's own — force-ends a turn
+  // that is over budget; the server re-checks everything before acting.
+  const turnClocks =
+    afkActive && afk?.turnOpenSince
+      ? turnClockRunningSeats(state)
+          .filter((seat) => afk.turnOpenSince?.[seat] !== undefined && !turnClockPausedFor(state, seat))
+          .map((seat) => ({
+            seat,
+            since: afk.turnOpenSince![seat],
+            remaining: TURN_TIME_LIMIT_MS - (nowTick - afk.turnOpenSince![seat])
+          }))
+      : [];
+  const expiredTurn =
+    viewerLive && afk && !afk.droppingPlayerId && !afk.turnTimeoutPlayerId
+      ? (turnClocks.find((clock) => clock.remaining <= 0) ?? null)
+      : null;
+  // One-shot per (seat, stamp, 30s bucket): the bucket lets a client whose
+  // local clock ran slightly FAST retry after the server rejected its early
+  // fire — without it one rejection would silence this client for the whole
+  // turn. A duplicate fire is harmless (the server refuses an already-armed
+  // timeout and the effect stops once the flag appears in the synced state).
+  const expiredTurnKey = expiredTurn
+    ? `${expiredTurn.seat}:${expiredTurn.since}:${Math.floor(-expiredTurn.remaining / 30_000)}`
+    : null;
+  useEffect(() => {
+    if (!expiredTurn || !expiredTurnKey) {
+      return;
+    }
+    if (turnTimeoutFiredRef.current === expiredTurnKey) {
+      return;
+    }
+    turnTimeoutFiredRef.current = expiredTurnKey;
+    onAction({ type: "FORCE_TURN_TIMEOUT", playerId: viewerPlayerId, targetPlayerId: expiredTurn.seat });
+  }, [expiredTurn, expiredTurnKey, onAction, viewerPlayerId]);
+
   if (state.mode !== "adventure" || state.setupLobby || state.phase === "game-over" || liveSeats.length < 2) {
     return null;
   }
 
-  const vote = afk?.vote ?? null;
-  if (vote) {
+  // Countdown chip: shown once an open turn is under five minutes, so the
+  // deadline is never a surprise — reads "your turn" for the seat it is about.
+  const countdownClock = turnClocks
+    .filter((clock) => clock.remaining <= 5 * 60_000)
+    .sort((a, b) => a.remaining - b.remaining)[0];
+  const turnTimerChip = countdownClock ? (
+    <div
+      className={`turnTimerChip${countdownClock.remaining <= 60_000 ? " urgent" : ""}`}
+      role="status"
+      aria-label="Turn timer"
+    >
+      <Hourglass aria-hidden="true" size={13} />
+      <span>
+        {countdownClock.seat === viewerPlayerId
+          ? "Your turn auto-ends in "
+          : `${state.players[countdownClock.seat]?.name ?? countdownClock.seat}'s turn ends in `}
+        <strong>{formatCountdown(countdownClock.remaining)}</strong>
+      </span>
+    </div>
+  ) : afk?.turnTimeoutPlayerId ? (
+    <div className="turnTimerChip urgent" role="status" aria-label="Turn timer">
+      <Hourglass aria-hidden="true" size={13} />
+      <span>
+        {(state.players[afk.turnTimeoutPlayerId]?.name ?? afk.turnTimeoutPlayerId) +
+          "'s 10 minutes are up — ending their turn…"}
+      </span>
+    </div>
+  ) : null;
+
+  const votePanel = renderVotePanel();
+  if (!turnTimerChip && !votePanel) {
+    return null;
+  }
+  return (
+    <>
+      {turnTimerChip}
+      {votePanel}
+    </>
+  );
+
+  function renderVotePanel() {
+    const vote = afk?.vote ?? null;
+    if (vote) {
     const targetName = state.players[vote.targetPlayerId]?.name ?? vote.targetPlayerId;
     const myVote = vote.votes[viewerPlayerId];
     const canVote = viewerLive && viewerPlayerId !== vote.targetPlayerId && !myVote;
@@ -2636,19 +2730,28 @@ export function AfkVotePanel({
     );
   }
 
-  return (
-    <div className="afkVotePanel" role="status" aria-label="AFK player detected">
-      <Hourglass aria-hidden="true" size={14} />
-      {callable.map((seat) => (
-        <button
-          className="commandButton danger"
-          key={seat}
-          type="button"
-          onClick={() => setPendingKickTarget(seat)}
-        >
-          {(state.players[seat]?.name ?? seat) + " is away (10 min+) — call a kick vote"}
-        </button>
-      ))}
-    </div>
-  );
+    return (
+      <div className="afkVotePanel" role="status" aria-label="AFK player detected">
+        <Hourglass aria-hidden="true" size={14} />
+        {callable.map((seat) => (
+          <button
+            className="commandButton danger"
+            key={seat}
+            type="button"
+            onClick={() => setPendingKickTarget(seat)}
+          >
+            {(state.players[seat]?.name ?? seat) + " is away (10 min+) — call a kick vote"}
+          </button>
+        ))}
+      </div>
+    );
+  }
+}
+
+/** ms → "M:SS" (never negative) for the turn-timer countdown chip. */
+function formatCountdown(remainingMs: number): string {
+  const total = Math.max(0, Math.ceil(remainingMs / 1000));
+  const minutes = Math.floor(total / 60);
+  const seconds = total % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }

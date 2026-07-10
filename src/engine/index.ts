@@ -20,9 +20,20 @@ export {
   AFK_REASK_MS,
   getAfkState,
   idleMillis,
-  seatIsAwaitedInOrderedPlay
+  seatIsAwaitedInOrderedPlay,
+  TURN_TIME_LIMIT_MS,
+  turnClockPausedFor,
+  turnClockRunningSeats,
+  turnElapsedMillis
 } from "./afk";
-export { afkDropPending, driveAfkDrop, nextAfkDropAction } from "./afk-drop";
+export {
+  afkDropPending,
+  driveAfkDrop,
+  forcedResolutionPending,
+  nextAfkDropAction,
+  nextTurnTimeoutAction,
+  turnTimeoutPending
+} from "./afk-drop";
 export {
   defaultRoomName,
   dropDisconnectedMember,

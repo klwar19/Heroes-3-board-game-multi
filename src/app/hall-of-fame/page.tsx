@@ -69,7 +69,12 @@ export default function HallOfFamePage() {
             {rows.map((row, index) => (
               <tr key={row.nickname}>
                 <td>{index + 1}</td>
-                <td>{row.nickname}</td>
+                <td>
+                  {/* Every nickname opens the public player profile. */}
+                  <Link className="hallOfFameName" href={`/players/${encodeURIComponent(row.nickname)}`}>
+                    {row.nickname}
+                  </Link>
+                </td>
                 <td>{row.mmr}</td>
                 <td>{row.wins}</td>
                 <td>{row.losses}</td>

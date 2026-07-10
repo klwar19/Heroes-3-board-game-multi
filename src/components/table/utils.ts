@@ -412,8 +412,13 @@ export function formatEvent(event: GameEvent, state: GameState): string {
         : `${playerName(state, event.playerId)} ends their parallel turn — the round is complete.`;
     case "PARALLEL_TURNS_STOPPED":
       return event.message;
-    case "ROOM_MEMBER_JOINED":
-      return `${event.name} joined${event.seat === "observer" ? " as an observer" : ` (seat ${playerName(state, event.seat)})`}.`;
+    case "ROOM_MEMBER_JOINED": {
+      // Registered players show their verified nickname; guests are honestly
+      // labeled so nobody mistakes them for an account. Rebinds read "reconnected".
+      const who = event.verified ? event.name : `guest — ${event.name}`;
+      const how = event.newMember === false ? "reconnected" : "joined";
+      return `${who} ${how}${event.seat === "observer" ? " as an observer" : ` (seat ${playerName(state, event.seat)})`}.`;
+    }
     case "ROOM_MEMBER_LEFT":
       return `${roomMemberName(state, event.clientId)} left the room.`;
     case "ROOM_SEAT_CHANGED":
@@ -575,6 +580,8 @@ export function formatEvent(event: GameEvent, state: GameState): string {
     case "AFK_VOTE_RESOLVED":
       return event.message;
     case "AFK_AUTO_KICKED":
+      return event.message;
+    case "TURN_TIME_EXPIRED":
       return event.message;
     case "ROOM_RANKED_CHANGED":
       return event.ranked

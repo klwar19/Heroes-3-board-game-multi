@@ -9264,6 +9264,87 @@ export function resolveAfkDrop(state: GameState, action: Extract<GameAction, { t
   eliminatePlayer(state, playerId, reason, false);
 }
 
+/**
+ * RESOLVE_TURN_TIMEOUT: one force-shift step for the seat whose 10-minute turn
+ * budget expired (`afk.turnTimeoutPlayerId`). Issued by the server-side driver
+ * (src/engine/afk-drop.ts), never by a client button, and only after the
+ * driver has default-resolved every pending interaction the seat owns:
+ *
+ *  1. If they are fighting an OPEN combat, this step only concedes it (a
+ *     neutral fight ends as a retreat; a PvP fight — which normally pauses the
+ *     clock, so this is a pure backstop — as a give-up) and auto-acknowledges
+ *     the end, so the normal finalization applies exactly like any battle.
+ *     The driver then calls again.
+ *  2. Otherwise their turn ends through the NORMAL END_TURN machinery
+ *     (endTurnAdventure) — the Pandora/Logistics end-of-turn prompts and the
+ *     no-base elimination clock all run exactly as if they pressed End Turn
+ *     themselves; the driver answers any prompt that opens and calls again.
+ *     Unlike the AFK drop the player is NOT eliminated — the turn just shifts
+ *     to the others.
+ */
+export function resolveTurnTimeout(state: GameState, action: Extract<GameAction, { type: "RESOLVE_TURN_TIMEOUT" }>): void {
+  const playerId = action.playerId;
+  const afk = state.afk;
+  if (state.mode !== "adventure" || !state.adventure) {
+    throw new Error("Turn timeouts exist only in adventure games.");
+  }
+  if (!afk || afk.turnTimeoutPlayerId !== playerId) {
+    throw new Error("No expired turn is being ended for this player.");
+  }
+
+  const player = state.players[playerId];
+  if (
+    state.phase === "game-over" ||
+    state.adventure.winnerPlayerId ||
+    !player ||
+    player.eliminated ||
+    !hasOpenAdventureTurn(state, playerId)
+  ) {
+    // Nothing left to do (the game ended, they are out, or the turn already
+    // closed some other way): just clear the flag.
+    afk.turnTimeoutPlayerId = null;
+    return;
+  }
+
+  const combat = state.combat;
+  const inCombat =
+    combat &&
+    combat.context.kind !== "sandbox" &&
+    (combat.attackerPlayerId === playerId || combat.defenderPlayerId === playerId);
+  if (inCombat && !combat.outcome) {
+    const winnerPlayerId =
+      combat.attackerPlayerId === playerId ? combat.defenderPlayerId : combat.attackerPlayerId;
+    const reason = combat.context.kind === "player" ? ("give-up" as const) : ("retreat" as const);
+    combat.prep = null;
+    combat.awaitingContinue = false;
+    combat.outcome = { winnerPlayerId, defeatedPlayerId: playerId, reason };
+    combat.endAcknowledged = true;
+    appendEvent(state, { type: "COMBAT_ENDED", winnerPlayerId, defeatedPlayerId: playerId, reason });
+    return;
+  }
+  if (inCombat && combat.outcome && !combat.endAcknowledged) {
+    combat.endAcknowledged = true;
+    return;
+  }
+
+  // Did the turn actually end? endTurnAdventure may instead have opened an
+  // end-of-turn prompt (Pandora upkeep, Logistics/Nomads move) — then the flag
+  // stays and the driver answers the prompt and calls again. Detected via the
+  // round counter / rotation rather than "is a turn open": force-ending the
+  // LAST open parallel turn wraps the round and immediately opens the seat's
+  // FRESH turn, which must not be consumed too.
+  const roundBefore = state.round;
+  endTurnAdventure(state, { type: "END_TURN", playerId });
+  const turnEnded =
+    state.round !== roundBefore ||
+    (parallelTurnsActive(state)
+      ? state.turn.completedPlayerIds.includes(playerId)
+      : state.activePlayerId !== playerId);
+  if (turnEnded) {
+    afk.turnTimeoutPlayerId = null;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Shared-deck searches (split decks, Scouting, school fetches, repeats)
 // ---------------------------------------------------------------------------
