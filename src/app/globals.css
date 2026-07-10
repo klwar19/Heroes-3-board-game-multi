@@ -3399,6 +3399,8 @@ button.battleCell {
 
 .adventureRoot {
   gap: 8px;
+  /* Tray bottom frost hangs slightly past the card bar into the gap above town. */
+  overflow: visible;
 }
 
 /* ------------------------------------------------------------------ */
@@ -3422,6 +3424,7 @@ button.battleCell {
 
 .adventureRoot > .playerCardBar {
   order: 3;
+  overflow: visible;
 }
 
 .adventureRoot > .adventureMidRow {
@@ -4632,18 +4635,27 @@ button.hbSlot:disabled { cursor: default; }
 }
 
 /* Adventure hand strip */
-/* ---------- Top command bar: your hand · deck · discard · Spell Book -------- */
-/* The player's personal card zone now rides the TOP of the map screen (moved up
-   from beneath the map). It reads left → right: your deck + discard pile, the
-   Spell Book tome and any permanent(s), then your hand of cards. Its inner DOM
-   is unchanged (AdventureOwnDeck stays a descendant), so every nesting/selector
-   test contract still holds — only the visual placement moved. */
+/* ---------- Top command bar: THREE framed boxes ------------------------ */
+/*
+ * DOM order = visual order (playerCardBar is flex-direction:row):
+ *   1. LEFT  .ownDeckColumn          — deck + discard + Spell Book
+ *   2. RIGHT .handMain (column)
+ *        ├─ .permanentEffectsPanel   — permanents / ongoing
+ *        └─ .handArea                — hand cards
+ *
+ *   ┌─────────────────┐   ┌────────────────────────────────┐
+ *   │ deck · discard  │   │ Permanents & Ongoing           │
+ *   │ spell book      │   ├────────────────────────────────┤
+ *   │                 │   │ Hand cards                     │
+ *   └─────────────────┘   └────────────────────────────────┘
+ */
 .playerCardBar {
+  position: relative;
   display: flex;
   flex-direction: row;
   align-items: stretch;
-  gap: 12px;
-  padding: 9px 12px;
+  gap: 14px;
+  padding: 10px 12px;
   background: linear-gradient(180deg, rgba(46, 34, 19, 0.95), rgba(25, 18, 10, 0.96));
   border: 1px solid rgba(190, 150, 85, 0.42);
   border-radius: 13px;
@@ -4651,6 +4663,26 @@ button.hbSlot:disabled { cursor: default; }
     inset 0 1px 0 rgba(255, 235, 190, 0.07),
     inset 0 0 0 1px rgba(0, 0, 0, 0.35),
     0 8px 22px rgba(0, 0, 0, 0.42);
+  /* Let bottom frost rim hang slightly past the tray edge (above the town). */
+  overflow: visible;
+}
+
+/* Hand + permanents: light wash so tray leather / griffin show through. */
+.playerCardBar .permanentEffectsPanel,
+.playerCardBar .handArea {
+  position: relative;
+  z-index: 1;
+  border-radius: 10px;
+  border: 1px solid rgba(190, 150, 85, 0.42);
+  background: linear-gradient(
+    180deg,
+    rgb(30 21 11 / 30%) 0%,
+    rgb(16 11 7 / 22%) 100%
+  );
+  box-shadow:
+    inset 0 0 0 1px rgb(217 178 90 / 14%),
+    inset 0 1px 0 rgb(255 235 190 / 6%),
+    0 4px 12px rgb(0 0 0 / 16%);
 }
 
 /* Discard/draw in progress — a soft gold wash over the whole bar. */
@@ -4661,62 +4693,294 @@ button.hbSlot:disabled { cursor: default; }
     0 8px 22px rgba(0, 0, 0, 0.42);
 }
 
-/* Left cluster: deck/discard + Spell Book + permanent(s), horizontal, wrapping
-   onto a second line only when the bar is narrow. */
+/* ===== LEFT cluster: deck/discard BOX + Spell Book (same row height) ===== */
 .playerCardBar .ownDeckColumn {
+  position: relative;
+  z-index: 1;
   flex: 0 0 auto;
+  /* Full tray height so frost can pin to OUTER bottom (above town). */
+  align-self: stretch;
   display: flex;
-  flex-direction: row;
-  flex-wrap: wrap;
-  align-items: center;
-  /* Stack wrapped lines (deck / permanents / Spell Book) from the TOP, not
-     centered: when the cluster wraps to more rows than the bar is tall — what a
-     browser zoom-out triggers — centering spilled the top row upward so the
-     Spell Book tome and the permanent/ongoing cards overlapped. Top-aligning
-     keeps the rows flowing downward and the bar grows to hold them. */
-  align-content: flex-start;
-  gap: 10px;
-  max-width: 360px;
+  flex-direction: column;
+  justify-content: center; /* tools sit mid-tray, not shoved up */
+  align-items: stretch;
+  max-width: none;
   min-width: 0;
-  padding: 6px 10px;
-  background: rgba(18, 13, 7, 0.55);
-  border: 1px solid rgba(170, 130, 70, 0.28);
-  border-radius: 10px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  overflow: visible;
 }
 
+/* Deck/discard + Spell Book on ONE row, vertically centered together. */
+.playerCardBar .ownDeckToolsRow {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center; /* same vertical position for pile box and spell book */
+  justify-content: flex-start;
+  gap: 12px;
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+}
+
+/*
+ * Deck/discard gold plate only (separate from Spell Book).
+ */
 .playerCardBar .ownDeckColumn .ownDeckPile {
-  gap: 8px;
-  padding: 0;
-  align-self: center;
-  justify-content: center;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px 10px;
+  border-radius: 12px;
+  border: 1px solid rgb(214 178 104 / 55%);
+  background:
+    radial-gradient(ellipse at 50% 0%, rgb(120 92 40 / 35%), transparent 70%),
+    rgb(28 21 12 / 88%);
+  box-shadow:
+    inset 0 0 0 1px rgb(0 0 0 / 35%),
+    0 6px 16px rgb(0 0 0 / 35%);
+  position: relative;
+  z-index: 1;
+  margin: 0;
 }
 
 .playerCardBar .ownDeckColumn .ownDeckBack,
 .playerCardBar .ownDeckColumn .ownDiscardSpot {
-  width: 56px;
-  height: 80px;
+  width: 72px;
+  height: 100px;
 }
 
-/* Permanent(s) beside the deck: compact thumbs so they never crowd the hand. */
-.playerCardBar .ownDeckColumn .permanentRow {
-  flex-direction: row;
+.playerCardBar .ownDeckColumn .ownDeckCount {
+  font-size: 20px;
+}
+
+.playerCardBar .ownDeckColumn .spellBookPanel {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+  display: flex;
   align-items: center;
-  gap: 6px;
 }
 
-.playerCardBar .ownDeckColumn .permanentSlot {
-  max-width: 92px;
+.playerCardBar .ownDeckColumn .spellBookToggle {
+  padding: 10px 12px;
 }
 
-.playerCardBar .ownDeckColumn .permanentCardImage {
-  width: 48px;
+.playerCardBar .ownDeckColumn .spellBookIcon {
+  width: 72px;
+  height: 56px;
 }
 
-.playerCardBar .ownDeckColumn .permanentMeta small {
+/*
+ * Ice spikes + soft mist around them — OUTER tray bottom, left tools only.
+ * Spikes (img) on the bottom line; mist wraps around (no hard rectangle).
+ */
+.playerCardBar .trayFootFrost {
+  position: absolute;
+  left: 4px;
+  width: clamp(240px, 26%, 320px);
+  max-width: 32%;
+  bottom: 0;
+  height: 54px;
+  z-index: 6;
+  pointer-events: none;
+  overflow: visible;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+/* Soft mist pool under / around the spikes */
+.playerCardBar .trayFootFrost::before {
+  content: "";
+  position: absolute;
+  left: -8%;
+  right: -8%;
+  bottom: -2px;
+  height: 72%;
+  z-index: 0;
+  border-radius: 50%;
+  background: radial-gradient(
+    ellipse 100% 90% at 50% 100%,
+    rgb(170 225 255 / 40%) 0%,
+    rgb(130 205 255 / 18%) 42%,
+    rgb(100 190 240 / 6%) 65%,
+    transparent 80%
+  );
+  filter: blur(5px);
+  animation: trayMistBreathe 5s ease-in-out infinite;
+}
+
+/* Lighter haze rising around spike tips */
+.playerCardBar .trayFootFrost::after {
+  content: "";
+  position: absolute;
+  left: 6%;
+  right: 6%;
+  bottom: 8%;
+  height: 100%;
+  z-index: 0;
+  border-radius: 50%;
+  background: radial-gradient(
+    ellipse 88% 100% at 50% 80%,
+    rgb(190 235 255 / 24%) 0%,
+    rgb(150 220 255 / 8%) 48%,
+    transparent 74%
+  );
+  filter: blur(7px);
+  animation: trayMistRise 5s ease-in-out infinite;
+}
+
+/* Ice spike crystals (above the mist) */
+.playerCardBar .trayFootFrost img {
+  display: block !important;
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  object-fit: fill;
+  object-position: center bottom;
+  pointer-events: none;
+  user-select: none;
   opacity: 0.95;
+  border: none !important;
+  background: transparent !important;
+  filter: drop-shadow(0 0 5px rgb(100 200 255 / 45%));
+  transform-origin: center bottom;
+  animation: trayIceSpikeRise 4.5s ease-in-out infinite;
 }
 
-/* Right: the hand of cards, filling the rest of the bar. */
+@keyframes trayMistBreathe {
+  0%,
+  100% {
+    opacity: 0.7;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes trayMistRise {
+  0%,
+  100% {
+    opacity: 0.5;
+    transform: translateY(2px);
+  }
+  50% {
+    opacity: 0.88;
+    transform: translateY(-3px);
+  }
+}
+
+@keyframes trayIceSpikeRise {
+  0%,
+  100% {
+    opacity: 0.88;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-1px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .playerCardBar .trayFootFrost::before,
+  .playerCardBar .trayFootFrost::after,
+  .playerCardBar .trayFootFrost img {
+    animation: none;
+    opacity: 0.9;
+    transform: none;
+  }
+}
+
+/* ===== RIGHT column: permanents on top, hand under ===== */
+.playerCardBar .handMain {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  margin-left: 4px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}
+
+/* ===== BOX 2: Permanents & Ongoing (top of right column) ===== */
+.playerCardBar .permanentEffectsPanel {
+  display: flex;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: 6px;
+  min-height: 64px;
+  padding: 8px 12px 10px;
+  flex: 0 0 auto;
+}
+
+.playerCardBar .trayBoxHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #f0dcb8;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.playerCardBar .trayBoxHeader strong {
+  font-weight: 700;
+  color: #ffd766;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 70%);
+}
+
+.playerCardBar .trayBoxEmpty {
+  color: #b9a37c;
+  font-size: 11px;
+  opacity: 0.85;
+  padding: 2px 0 2px;
+}
+
+.playerCardBar .permanentEffectsPanel .permanentRow {
+  flex: 1 1 auto;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+.playerCardBar .permanentEffectsPanel .permanentSlot {
+  flex: 0 1 220px;
+  max-width: 280px;
+  min-width: 140px;
+}
+
+.playerCardBar .permanentEffectsPanel .permanentCardImage {
+  width: 52px;
+}
+
+.playerCardBar .permanentEffectsPanel .permanentMeta small {
+  opacity: 0.95;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ===== BOX 3: Hand cards (bottom of right column) ===== */
 .playerCardBar .handArea {
   grid-column: auto;
   flex: 1 1 auto;
@@ -4724,15 +4988,10 @@ button.hbSlot:disabled { cursor: default; }
   flex-direction: column;
   gap: 6px;
   min-width: 0;
-  padding: 2px 4px 2px 12px;
-  background: transparent;
-  border: none;
-  border-left: 1px solid rgba(170, 130, 70, 0.24);
-  border-radius: 0;
+  padding: 8px 10px 10px;
 }
 
 @media (max-width: 1000px) {
-  /* Narrow: stack the deck/book cluster above the full-width hand. */
   .playerCardBar {
     flex-wrap: wrap;
   }
@@ -4740,13 +4999,17 @@ button.hbSlot:disabled { cursor: default; }
   .playerCardBar .ownDeckColumn {
     max-width: none;
     flex: 1 1 100%;
+    align-self: stretch;
   }
 
-  .playerCardBar .handArea {
+  .playerCardBar .handMain {
     flex: 1 1 100%;
-    border-left: none;
-    border-top: 1px solid rgba(170, 130, 70, 0.24);
-    padding: 6px 4px 2px;
+    margin-left: 0;
+  }
+
+  .playerCardBar .permanentEffectsPanel .permanentSlot {
+    flex: 1 1 100%;
+    max-width: none;
   }
 }
 
@@ -16571,6 +16834,7 @@ body {
 .playerCardBar {
   position: relative;
   isolation: isolate;
+  overflow: visible;
   background:
     linear-gradient(180deg, rgb(30 21 11 / 72%), rgb(20 14 8 / 78%)),
     var(--cmp-leather) center / 340px repeat;
@@ -16581,21 +16845,19 @@ body {
     0 8px 22px rgb(0 0 0 / 45%);
 }
 
-/* A faint griffin resting at the end of the table — it HUGS the right end of
-   the tray and sits BEHIND the cards (z-index:-1 within the bar's own stacking
-   context), so it only reads through the empty leather and never dims a card.
-   Purely decorative: pointer-events:none, contained, no layout shift. */
+/* Faint griffin on the tray — scales with the bar. Fills the full height of
+   .playerCardBar and grows/shrinks as the hand/permanent/deck boxes change
+   the tray size; stays behind content (z-index:-1) and pointer-events:none. */
 .playerCardBar::before {
   content: "";
   position: absolute;
   z-index: -1;
-  right: 8px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 174px;
-  height: 96%;
-  background: url("/assets/ui/layout/guardian-griffin.png") right center / contain no-repeat;
-  opacity: 0.12;
+  inset: 0;
+  /* Full box footprint so height tracks the tray; art sized to the box. */
+  width: 100%;
+  height: 100%;
+  background: url("/assets/ui/layout/guardian-griffin.png") right center / auto 100% no-repeat;
+  opacity: 0.14;
   filter: grayscale(1) brightness(1.3);
   pointer-events: none;
 }
@@ -17771,11 +18033,13 @@ body {
  * Painted geometry (claw 820×520): bar top edge at ~67.4% of art height.
  * Displayed 300px wide → that line is 128px from the art top.
  * top: -128px lands the knuckles on the real bar rim.
+ * Anchored LEFT over the deck / Spell Book cluster (ownDeckColumn sits under
+ * the grip with margin-top so the talons clear the faces).
  */
 .azureClawChrome {
   position: absolute;
   top: -128px;
-  right: 300px;
+  left: 12px;
   width: 300px;
   height: 190px;
   z-index: 0;
