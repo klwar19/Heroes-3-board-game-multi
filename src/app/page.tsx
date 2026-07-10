@@ -146,6 +146,7 @@ import {
   planApproachAttackPreDelays,
   planApproachMoveDelays,
   planHarpyReturnHolds,
+  planMoveArrivalBeats,
   planReturnMoveDelays
 } from "@/components/table/fx-sequence";
 import {
@@ -1769,6 +1770,12 @@ export default function Home() {
           activationSpellLeadMs,
           130
         );
+        // Each mover's ARRIVAL beat (glide start + glide duration). A Fire Wall /
+        // Land Mine burn sprung by the move — its flare, its "−N" and the hurt
+        // cry — is held to this beat (see the BATTLEFIELD_TOKEN_TRIGGERED and
+        // DAMAGE_ASSIGNED handlers) so it lands as the card reaches the wall,
+        // not at t=0 before it has glided there.
+        const moveArrivalByUnit = planMoveArrivalBeats(approachMoves, approachMoveDelays, COMBAT_MOVE_MS);
         approachMoves.forEach((event, index) => {
           const unit = nextState.combat?.units[event.unitId];
           const moveDelay = approachMoveDelays[index];
@@ -2344,12 +2351,23 @@ export default function Home() {
                 // land after the animation, and the attacker's later retaliation
                 // strike still pins to its own beat below.
                 const burnAt = leadAt === undefined ? fireShieldBurnAt.get(targetId) : undefined;
+                // A battlefield-token burn (Fire Wall / Land Mine, damageKind
+                // "effect") sprung by THIS unit's move: hold its "−N" until the
+                // card has glided onto the token's cell, so it lands as the unit
+                // arrives — not at t=0, before the glide. Only effect damage on a
+                // unit that moved this batch; attacks pin to their strike beat.
+                const tokenMoveAt =
+                  leadAt === undefined && burnAt === undefined && event.damageKind === "effect"
+                    ? moveArrivalByUnit.get(targetId)
+                    : undefined;
                 // Attack damage lands on its strike beat; spell/ability damage
                 // lands only once its sprite + sound have finished (the timeline
                 // was just advanced past them by queueBoardFx / the ability cue).
                 const attackBeat =
-                  leadAt === undefined && burnAt === undefined ? impactByTarget.get(targetId) : undefined;
-                let at = leadAt ?? burnAt ?? attackBeat ?? timeline;
+                  leadAt === undefined && burnAt === undefined && tokenMoveAt === undefined
+                    ? impactByTarget.get(targetId)
+                    : undefined;
+                let at = leadAt ?? burnAt ?? tokenMoveAt ?? attackBeat ?? timeline;
                 if (burnAt !== undefined) {
                   fireShieldBurnAt.delete(targetId);
                 }
@@ -2638,8 +2656,14 @@ export default function Home() {
               // A unit moving over a token sprang it: a Fire Wall flames, an armed
               // Land Mine detonates, an armed Quicksand swallows, and a face-down
               // decoy flips up empty and is cleared away. Any damage number floats
-              // off the DAMAGE_ASSIGNED that follows.
-              const at = timeline;
+              // off the DAMAGE_ASSIGNED that follows. When a MOVE sprang it, the
+              // flare is held to the beat the card glides onto the token's cell
+              // (moveArrivalByUnit) — not t=0, before the unit has arrived; a
+              // token sprung with no move (e.g. begun-activation-on-a-wall) has no
+              // arrival beat and plays on the running timeline as before.
+              const springArrivalAt =
+                event.unitId !== undefined ? moveArrivalByUnit.get(event.unitId) : undefined;
+              const at = springArrivalAt ?? timeline;
               if (event.outcome === "decoy") {
                 // An empty decoy: the dull token cue plays as it is removed, no bite.
                 window.setTimeout(() => playLibrarySound(event.kind === "land_mine" ? "spells/land-mine" : "spells/quicksand"), at);
@@ -2653,7 +2677,9 @@ export default function Home() {
                 cues.push({ kind: "sprite", id: `${event.id}-sink`, fxKey: "quicksand", at: `cell:${event.position}`, sound: "spells/quicksand", delayMs: at });
                 cues.push({ kind: "floater", id: `${event.id}-stuck`, at: `cell:${event.position}`, text: "Stuck!", tone: "info", delayMs: at + 120 });
               }
-              timeline += 600;
+              // Advance past this burn's beat (which may sit ahead of `timeline`
+              // when it was pinned to a move arrival) so later events follow it.
+              timeline = Math.max(timeline, at) + 600;
               if (inCombat) {
                 combatFxActive = true;
                 combatPresentationEnd = Math.max(combatPresentationEnd, timeline + 600);

@@ -253,6 +253,40 @@ export function planReturnMoveDelays(
 }
 
 /**
+ * Map each moving unit to the beat its card finishes gliding onto its
+ * destination cell — the glide-start beat (`delays[i]`, from
+ * planApproachMoveDelays) plus the glide duration (`combatMoveMs`).
+ *
+ * A battlefield-token burn sprung BY that move — a Fire Wall's flames and the
+ * effect-damage "−N" it deals, a Land Mine's blast — must be held to this beat.
+ * Otherwise the burn is queued on the running `timeline`, which is 0 at the
+ * start of a plain move, so the flare + number + hurt cry fire a whole glide
+ * BEFORE the card reaches the token and are gone by the time it arrives — the
+ * "nothing happened" bug. This is the token-burn analogue of `impactByTarget`
+ * (which pins an ATTACK's damage to its strike beat).
+ *
+ * Keyed by unit id; if a unit somehow has two moves this batch, the later
+ * (latest) arrival wins. A `delays` entry may be undefined (defensive) and is
+ * skipped.
+ */
+export function planMoveArrivalBeats(
+  approachMoves: readonly { unitId: string }[],
+  delays: readonly number[],
+  combatMoveMs: number
+): Map<string, number> {
+  const arrivals = new Map<string, number>();
+  approachMoves.forEach((move, index) => {
+    const start = delays[index];
+    if (start === undefined) {
+      return;
+    }
+    const arrival = start + combatMoveMs;
+    arrivals.set(move.unitId, Math.max(arrivals.get(move.unitId) ?? arrival, arrival));
+  });
+  return arrivals;
+}
+
+/**
  * Split this snapshot's combat-unit moves into the ones that happen BEFORE a
  * unit's own attack (its approach to the target) and the ones that happen AFTER
  * it (a Harpy's "Strike and Return" fly-back, or a ranged unit's step after

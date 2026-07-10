@@ -12,9 +12,9 @@ import type { BattlefieldTokenState, GameAction, GameState, UnitId } from "./sta
  *  - Force Field (Basic Earth) — places a blocking Obstacle for a Power-scaled
  *    span (this round / next round / whole combat).
  *  - Fire Wall  (Basic Fire)  — a lasting Effect Obstacle: burns a GROUND or
- *    RANGED unit that passes through OR stops on it, and ANY unit (flyers too)
- *    that BEGINS its activation on it. A flyer that merely crosses or lands on
- *    the wall while moving is safe. It is NEVER consumed — it stays the whole
+ *    RANGED unit that passes through OR stops on it, a FLYING unit that STOPS on
+ *    it, and ANY unit that BEGINS its activation on it. Only a flyer CROSSING
+ *    the wall mid-move is spared. It is NEVER consumed — it stays the whole
  *    combat.
  *  - Quicksand  (Basic Earth) — face-down traps; an armed one ends the entering
  *    unit's movement AND activation, a decoy does nothing. A sprung trap is
@@ -227,10 +227,10 @@ describe("Fire Wall spell", () => {
     expect((moved.combat!.battlefieldTokens ?? []).filter((token) => token.kind === "fire_wall")).toHaveLength(1);
   });
 
-  it("burns a RANGED unit that stops on the wall (ranged burns like ground, unlike a flyer)", () => {
+  it("burns a RANGED unit that stops on the wall (ranged burns like ground)", () => {
     // A ranged unit's Combat move range is 1, so it only ever STOPS on a wall
     // (never crosses it to a farther cell) — and stopping burns it, since it is
-    // non-flying. This is the mutation control paired with the flyer-stop test.
+    // non-flying.
     const stop = createInitialGameState("fw-ranged-stop");
     soloMover(stop, "unit_p1_marksmen", 0);
     stop.combat!.units.unit_p1_marksmen.maxHealth = 40;
@@ -240,24 +240,24 @@ describe("Fire Wall spell", () => {
     expect(landed.combat!.units.unit_p1_marksmen.damage).toBe(2);
   });
 
-  it("does NOT burn a flying unit crossing OR stopping on the wall (only ground/ranged burn from movement)", () => {
+  it("does NOT burn a flying unit CROSSING the wall, but DOES when it STOPS on it", () => {
     const overState = createInitialGameState("fw-fly-over");
     soloMover(overState, "unit_p1_griffins", 0);
     overState.combat!.units.unit_p1_griffins.maxHealth = 40;
     injectToken(overState, { kind: "fire_wall", position: 1, controllerId: "p2", damage: 2 });
     const flewOver = moveTo(overState, "unit_p1_griffins", 2);
     expect(flewOver.combat!.units.unit_p1_griffins.position).toBe(2);
+    // Flying OVER the wall (mid-move) is unharmed.
     expect(flewOver.combat!.units.unit_p1_griffins.damage).toBe(0);
 
-    // A flyer LANDING on the wall is now unharmed too — flames don't catch it in
-    // flight. It only burns if it BEGINS its turn there (see the activation test).
+    // But a flyer that LANDS (stops) on the wall IS burned.
     const stopState = createInitialGameState("fw-fly-stop");
     soloMover(stopState, "unit_p1_griffins", 0);
     stopState.combat!.units.unit_p1_griffins.maxHealth = 40;
     injectToken(stopState, { kind: "fire_wall", position: 1, controllerId: "p2", damage: 2 });
     const landedOn = moveTo(stopState, "unit_p1_griffins", 1);
     expect(landedOn.combat!.units.unit_p1_griffins.position).toBe(1);
-    expect(landedOn.combat!.units.unit_p1_griffins.damage).toBe(0);
+    expect(landedOn.combat!.units.unit_p1_griffins.damage).toBe(2);
   });
 
   it("burns ANY unit — a flyer included — that BEGINS its activation standing on the wall", () => {

@@ -13344,9 +13344,9 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
 
   // Luna's Fire Wall specialty (I = 1 damage, VI = 3): place a Fire Wall token
   // on the chosen empty space for this Combat. Reuses the spell's `fire_wall`
-  // battlefield token (burns a ground/ranged unit that stops on or passes
-  // through it, and any unit that begins its activation on it), but the damage
-  // is FIXED, not Power-scaled.
+  // battlefield token (burns any unit that stops on it, a ground/ranged unit
+  // that passes through it, and any unit that begins its activation on it), but
+  // the damage is FIXED, not Power-scaled.
   if (effect.type === "PLACE_FIRE_WALL_FIXED" && state.combat && action.target?.type === "space") {
     addBattlefieldToken(state, {
       kind: "fire_wall",
@@ -16193,9 +16193,9 @@ function dealBattlefieldTokenDamage(
  * wall "takes effect at that unit's turn" (a Hell Steed drops its Fire Wall on
  * the target's occupied space, and the target only feels it when its own turn
  * comes round). Beginning an activation on a Fire Wall burns ANY unit, flyers
- * included — this is the ONLY way a flyer is burned by a wall, since a flyer
- * that merely crosses or lands on one while moving (walkMoveThroughTokens) is
- * spared. Ground/ranged units, by contrast, are burned by movement too. Returns
+ * included. A flyer is otherwise burned only when it STOPS on a wall while
+ * moving (walkMoveThroughTokens); crossing over one mid-move spares it. Ground
+ * and ranged units are burned by any movement onto or through a wall. Returns
  * true when the burn removed the unit (its activation is then skipped by the
  * caller).
  */
@@ -16226,10 +16226,9 @@ function applyFireWallAtActivation(state: GameState, unit: CombatUnitState): boo
  * remaining face-down tokens are real) — an armed Land Mine deals its damage and
  * the unit moves on, an armed Quicksand ends movement at once, a decoy of either
  * does nothing. A Fire Wall is a lasting Effect Obstacle: it is NOT consumed —
- * it burns any GROUND or RANGED unit that passes through OR stops on it (a
- * flyer is unharmed by crossing/landing — it only burns if it BEGINS its
- * activation on the wall), for the whole Combat. Stops early the moment a token
- * kills the mover.
+ * it burns any GROUND or RANGED unit that passes through OR stops on it, and a
+ * FLYING unit that STOPS on it (a flyer CROSSING one mid-move is unharmed), for
+ * the whole Combat. Stops early the moment a token kills the mover.
  */
 function walkMoveThroughTokens(
   state: GameState,
@@ -16245,17 +16244,19 @@ function walkMoveThroughTokens(
   for (let index = 0; index < enteredSpaces.length; index += 1) {
     const position = enteredSpaces[index];
     finalPosition = position;
+    const isLastStep = index === enteredSpaces.length - 1;
     const tokens = tokensAtPosition(combat, position);
 
     // Fire Wall (Effect Obstacle): a GROUND or RANGED unit is burned whether it
-    // passes THROUGH the wall or STOPS on it. A FLYING unit is unharmed by
-    // moving over or landing on it — it only burns if it BEGINS its activation
-    // standing on the wall (applyFireWallAtActivation, which burns ANY type).
+    // passes THROUGH the wall or STOPS on it. A FLYING unit is unharmed CROSSING
+    // one (it flies over the flames), but IS burned when it STOPS on it. (A unit
+    // of any type that BEGINS its activation on the wall is burned separately by
+    // applyFireWallAtActivation.)
     for (const token of tokens) {
       if (token.kind !== "fire_wall") {
         continue;
       }
-      if (unit.type !== "flying") {
+      if (isLastStep || unit.type !== "flying") {
         dealBattlefieldTokenDamage(state, token, unit, token.damage ?? 0);
         if (!isUnitAlive(unit)) {
           return { finalPosition, haltedByQuicksand: false };
