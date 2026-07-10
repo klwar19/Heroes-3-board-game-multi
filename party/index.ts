@@ -51,6 +51,15 @@ export type RoomSnapshot = {
   serverSignature?: string;
   /** Set on the final frame a closed room sends, so clients return to the lobby. */
   closed?: boolean;
+  /**
+   * The seat this frame was redacted for ("p1"…, or "observer"), stamped at
+   * send time on HOSTED rooms only. Lets the client tell a zero-trust observer
+   * frame from its own seat frame at the SAME version — after a socket
+   * reconnect both arrive back-to-back, and the version gate alone would drop
+   * the seat-correct one (the "no Event buttons after reconnect" freeze).
+   * Absent on open-table frames (the full shared state) and older servers.
+   */
+  viewerSeat?: string;
 };
 
 type CloseRoomResult = { closed: boolean; reason?: string };
@@ -118,6 +127,50 @@ export default class GameRoomServer implements Party.Server {
    * is configured — the current guest behaviour, unchanged.
    */
   private tokenVerifier: TokenVerifier | null | undefined;
+
+  /**
+   * Serializes every snapshot MUTATION on this room. A Durable Object delivers
+   * new events while a handler is awaiting non-storage work (the identity
+   * verification fetch), so without this two concurrent actions could both
+   * read the same snapshot, both apply against it, and both write
+   * `version + 1` — the first writer's action vanished while its reply still
+   * reported success ("I clicked, got nothing"; lost Event choices, stuck
+   * round barriers). Every read-modify-write of `this.snapshot` goes through
+   * `serialized()`; read-only paths (sync, GET) stay lock-free. Identity
+   * verification is resolved BEFORE taking the lock so one player's slow
+   * token fetch never stalls the whole table.
+   */
+  private mutationQueue: Promise<unknown> = Promise.resolve();
+
+  private serialized<T>(run: () => Promise<T>): Promise<T> {
+    const next = this.mutationQueue.then(run, run);
+    // Keep the chain alive whether `run` resolved or rejected.
+    this.mutationQueue = next.then(
+      () => undefined,
+      () => undefined
+    );
+    return next;
+  }
+
+  /**
+   * Recently answered action requestIds (keyed by sender identity), so a
+   * DUPLICATED frame — a client retry after a socket flap, a double-send — is
+   * answered from this ledger with the original outcome instead of applying
+   * the same action twice. Bounded FIFO (Map keeps insertion order).
+   */
+  private answeredActionRequests = new Map<string, { code: string; message: string }[]>();
+
+  private static readonly ANSWERED_REQUEST_CAP = 256;
+
+  private recordAnsweredRequest(key: string, errors: { code: string; message: string }[]): void {
+    if (this.answeredActionRequests.size >= GameRoomServer.ANSWERED_REQUEST_CAP) {
+      const oldest = this.answeredActionRequests.keys().next().value;
+      if (oldest !== undefined) {
+        this.answeredActionRequests.delete(oldest);
+      }
+    }
+    this.answeredActionRequests.set(key, errors);
+  }
 
   constructor(readonly room: Party.Room) {}
 
@@ -387,7 +440,10 @@ export default class GameRoomServer implements Party.Server {
     }
     const seat = seatForViewer(signed.state, actor);
     const viewer = seat === "observer" ? OBSERVER_VIEWER_SEAT : seat;
-    return { ...signed, state: redactStateForSeat(signed.state, viewer) };
+    // Stamp which seat this frame is redacted for, so the client can accept a
+    // seat-correct frame that follows an observer frame at the SAME version
+    // (the post-reconnect redaction refresh) without weakening its version gate.
+    return { ...signed, viewerSeat: viewer, state: redactStateForSeat(signed.state, viewer) };
   }
 
   /** The signed snapshot redacted to one live socket's seat. */
@@ -457,12 +513,34 @@ export default class GameRoomServer implements Party.Server {
     // VERIFIED seat. An open table sends the full shared frame as before.
     const room = this.snapshot!.state.room;
     const snapshot = room?.hosted
-      ? { ...this.signed(this.snapshot!), state: redactStateForSeat(this.snapshot!.state, OBSERVER_VIEWER_SEAT) }
+      ? {
+          ...this.signed(this.snapshot!),
+          viewerSeat: OBSERVER_VIEWER_SEAT,
+          state: redactStateForSeat(this.snapshot!.state, OBSERVER_VIEWER_SEAT)
+        }
       : this.signed(this.snapshot!);
     connection.send(JSON.stringify({ type: "snapshot", snapshot } satisfies ServerMessage));
+    if (room?.hosted) {
+      // Follow up with the frame redacted to the socket's ACTUAL seat once its
+      // identity resolves. An automatic reconnect never re-sends JOIN_ROOM, so
+      // without this a seated player who reconnected mid-game would stay stuck
+      // on the zero-trust observer frame above — no hand, no pending-Event
+      // steps, and (during a round-start barrier) a table frozen for everyone.
+      void this.sendSeatFrame(connection);
+    }
     // A connection means the room exists — surface it in the lobby. The
     // JOIN_ROOM that follows re-reports reliably (awaited) once it has a member.
     void this.reportToLobby();
+  }
+
+  /** Push the current snapshot, redacted to one socket's verified seat. */
+  private async sendSeatFrame(connection: Party.Connection): Promise<void> {
+    try {
+      const snapshot = await this.snapshotForConnection(connection);
+      connection.send(JSON.stringify({ type: "snapshot", snapshot } satisfies ServerMessage));
+    } catch {
+      // Best effort — the client's sync / polling paths keep retrying.
+    }
   }
 
   /** The stable per-tab client id the browser put on the socket URL, if any. */
@@ -491,21 +569,29 @@ export default class GameRoomServer implements Party.Server {
    * choices to anyone else. Only re-broadcasts when the member list changed.
    */
   private async handleDisconnect(connection: Party.Connection): Promise<void> {
-    if (!this.snapshot) {
-      return;
-    }
     const clientId = this.clientIdOf(connection);
-    if (!clientId || !dropDisconnectedMember(this.snapshot.state, clientId)) {
+    if (!clientId) {
       return;
     }
-    this.snapshot = {
-      ...this.snapshot,
-      version: this.snapshot.version + 1,
-      updatedAt: new Date().toISOString()
-    };
-    await this.persist();
-    await this.broadcastSnapshot();
-    await this.reportToLobby();
+    // Serialized with the action pipeline: the reap is a read-modify-write of
+    // the snapshot, and racing it against an in-flight action could publish
+    // two different snapshots under the same version.
+    const changed = await this.serialized(async () => {
+      if (!this.snapshot || !dropDisconnectedMember(this.snapshot.state, clientId)) {
+        return false;
+      }
+      this.snapshot = {
+        ...this.snapshot,
+        version: this.snapshot.version + 1,
+        updatedAt: new Date().toISOString()
+      };
+      await this.persist();
+      await this.broadcastSnapshot();
+      return true;
+    });
+    if (changed) {
+      await this.reportToLobby();
+    }
   }
 
   async onClose(connection: Party.Connection): Promise<void> {
@@ -530,58 +616,81 @@ export default class GameRoomServer implements Party.Server {
     }
 
     if (message.type === "reset") {
-      const previous = this.ensureSnapshot();
       // Same authority as close: host while connected, any member once the
       // host is gone, a verified platform admin (socket ticket) or the
       // developer's admin key always. The socket's own ?clientId= identity
-      // backs up the message field.
-      if (!this.adminAuthorizes(message.adminKey) && !(await this.verifiedIsAdmin(sender))) {
-        const authority = this.hostAuthorizes(message.actorClientId ?? this.clientIdOf(sender), "reset");
-        if (!authority.allowed) {
-          // Refused: the room is untouched; tell the sender (only) why.
-          const reply: ServerMessage = {
-            type: "reset-denied",
-            reason: authority.reason ?? "Only the host can reset this room."
-          };
-          sender.send(JSON.stringify(reply));
-          return;
+      // backs up the message field. Identity resolves BEFORE the lock (it may
+      // fetch); the snapshot read-modify-write runs inside it.
+      const isAdmin = this.adminAuthorizes(message.adminKey) || (await this.verifiedIsAdmin(sender));
+      const deniedReason = await this.serialized(async () => {
+        const previous = this.ensureSnapshot();
+        if (!isAdmin) {
+          const authority = this.hostAuthorizes(message.actorClientId ?? this.clientIdOf(sender), "reset");
+          if (!authority.allowed) {
+            return authority.reason ?? "Only the host can reset this room.";
+          }
         }
+        const state = this.makeState(message);
+        // Carry room membership (host, seats, observers) across a game reset.
+        state.room = previous.state.room ?? null;
+        this.snapshot = {
+          roomId: this.room.id,
+          version: previous.version + 1,
+          updatedAt: new Date().toISOString(),
+          ...this.creationMeta(state),
+          state
+        };
+        await this.persist();
+        await this.broadcastSnapshot();
+        return null;
+      });
+      if (deniedReason) {
+        // Refused: the room is untouched; tell the sender (only) why.
+        const reply: ServerMessage = { type: "reset-denied", reason: deniedReason };
+        sender.send(JSON.stringify(reply));
+        return;
       }
-      const state = this.makeState(message);
-      // Carry room membership (host, seats, observers) across a game reset.
-      state.room = previous.state.room ?? null;
-      this.snapshot = {
-        roomId: this.room.id,
-        version: previous.version + 1,
-        updatedAt: new Date().toISOString(),
-        ...this.creationMeta(state),
-        state
-      };
-      await this.persist();
-      await this.broadcastSnapshot();
       await this.reportToLobby();
       return;
     }
 
     if (message.type === "action") {
-      const current = this.ensureSnapshot();
       // Resolve the sender's VERIFIED account id from the token on its socket
       // (Phase 2). Authoritative over the claimed actorClientId — a spoofed id
       // can no longer act for a signed-in player's seat. Undefined for guests.
+      // Resolved BEFORE the mutation lock: the verification may fetch, and the
+      // room must stay serialized-but-responsive while it does.
       const actorUserId = await this.verifiedUserId(sender);
-      const result = applyAction(current.state, message.action, {
-        // Fresh crypto entropy per action makes every die roll, shuffle and Ⅱ–Ⅲ
-        // tile flip genuinely unpredictable and non-reproducible (true random),
-        // not derivable from the game seed (see random.ts).
-        entropy: freshEntropy(),
-        // Server wall clock: the AFK vote-kick's only time source (idle
-        // stamps + the 10-minute idle/re-ask gates).
-        now: Date.now(),
-        ...(message.actorClientId ? { actorClientId: message.actorClientId } : {}),
-        ...(actorUserId ? { actorUserId } : {})
-      });
-
-      if (result.errors.length === 0) {
+      const senderClientId = message.actorClientId ?? this.clientIdOf(sender);
+      const dedupeKey = message.requestId
+        ? `${actorUserId ?? senderClientId ?? sender.id}:${message.requestId}`
+        : null;
+      const outcome = await this.serialized(async () => {
+        const current = this.ensureSnapshot();
+        // A requestId this room already answered is a duplicate frame (client
+        // retry / double-send): reply with the recorded outcome, apply nothing.
+        const answered = dedupeKey ? this.answeredActionRequests.get(dedupeKey) : undefined;
+        if (answered) {
+          return { errors: answered, applied: false, prev: null as GameState | null, replyBase: current };
+        }
+        const result = applyAction(current.state, message.action, {
+          // Fresh crypto entropy per action makes every die roll, shuffle and Ⅱ–Ⅲ
+          // tile flip genuinely unpredictable and non-reproducible (true random),
+          // not derivable from the game seed (see random.ts).
+          entropy: freshEntropy(),
+          // Server wall clock: the AFK vote-kick's only time source (idle
+          // stamps + the 10-minute idle/re-ask gates).
+          now: Date.now(),
+          ...(message.actorClientId ? { actorClientId: message.actorClientId } : {}),
+          ...(actorUserId ? { actorUserId } : {})
+        });
+        const errors = result.errors.map((error) => ({ code: error.code, message: error.message }));
+        if (dedupeKey) {
+          this.recordAnsweredRequest(dedupeKey, errors);
+        }
+        if (result.errors.length > 0) {
+          return { errors, applied: false, prev: null as GameState | null, replyBase: current };
+        }
         // A passed AFK kick vote: drive the drop through the normal action
         // pipeline until the seat is removed (or the table must wait).
         const settled = afkDropPending(result.state)
@@ -596,16 +705,19 @@ export default class GameRoomServer implements Party.Server {
         };
         await this.persist();
         await this.broadcastSnapshot();
-      }
+        return { errors, applied: true, prev: current.state, replyBase: this.snapshot };
+      });
 
       const reply: ServerMessage = {
         type: "action-result",
         requestId: message.requestId,
-        errors: result.errors.map((error) => ({ code: error.code, message: error.message })),
+        errors: outcome.errors,
         // Redact the reply to the ACTING sender's own seat — the initiator must
-        // not receive opponents' hidden info in the action result either.
-        snapshot: this.redactSnapshotForActor(this.signed(this.snapshot ?? current), {
-          clientId: message.actorClientId ?? this.clientIdOf(sender),
+        // not receive opponents' hidden info in the action result either. Uses
+        // the snapshot captured under the lock (falling back to it if the room
+        // was closed meanwhile) so a concurrent close is never resurrected.
+        snapshot: this.redactSnapshotForActor(this.signed(this.snapshot ?? outcome.replyBase), {
+          clientId: senderClientId,
           userId: actorUserId
         })
       };
@@ -615,7 +727,7 @@ export default class GameRoomServer implements Party.Server {
       // replying now lets local UI state (including discard selections) settle
       // immediately. Keep awaiting the best-effort directory report afterward
       // so the Durable Object remains alive until it finishes.
-      if (result.errors.length === 0) {
+      if (outcome.applied && outcome.prev) {
         await this.reportToLobby();
         // Ranked-match auto-report (Phase 6): if this action just ended the
         // game, post the result to the app so seated verified accounts get
@@ -623,7 +735,7 @@ export default class GameRoomServer implements Party.Server {
         // cancel it; failures are logged inside and never break the action.
         // Read the SETTLED snapshot, not result.state — an AFK kick driven
         // right after this action may itself have ended the game.
-        await this.reportFinishedMatchToApp(current.state, this.snapshot?.state ?? result.state);
+        await this.reportFinishedMatchToApp(outcome.prev, this.snapshot?.state ?? outcome.prev);
       }
     }
   }
@@ -692,13 +804,17 @@ export default class GameRoomServer implements Party.Server {
         return jsonWithCors(result, 403);
       }
       // Tell everyone still connected the room is gone, then wipe its storage.
-      const closing = this.snapshot;
-      if (closing) {
-        const message: ServerMessage = { type: "snapshot", snapshot: this.signed({ ...closing, closed: true }) };
-        this.room.broadcast(JSON.stringify(message));
-      }
-      this.snapshot = null;
-      await this.room.storage.delete(SNAPSHOT_KEY);
+      // Serialized so an in-flight action can never resurrect the snapshot by
+      // writing after the wipe.
+      await this.serialized(async () => {
+        const closing = this.snapshot;
+        if (closing) {
+          const message: ServerMessage = { type: "snapshot", snapshot: this.signed({ ...closing, closed: true }) };
+          this.room.broadcast(JSON.stringify(message));
+        }
+        this.snapshot = null;
+        await this.room.storage.delete(SNAPSHOT_KEY);
+      });
       // Drop it from the lobby directory too, so the room browser stops listing it.
       await this.deregisterFromLobby();
       return jsonWithCors(result);
@@ -711,73 +827,91 @@ export default class GameRoomServer implements Party.Server {
         | null;
 
       if (body && "reset" in body && body.reset) {
-        const previous = this.ensureSnapshot();
         // Same authority as DELETE: host while connected, member once the
         // host is gone, a verified platform admin (?token=) or the developer's
-        // admin key always.
-        if (!this.adminAuthorizes(body.adminKey) && !(await this.verifiedIsAdminFromRequest(request))) {
-          const authority = this.hostAuthorizes(
-            "actorClientId" in body ? body.actorClientId : undefined,
-            "reset"
-          );
-          if (!authority.allowed) {
-            return jsonWithCors({ reason: authority.reason }, 403);
+        // admin key always. Identity resolves before the mutation lock.
+        const isAdmin = this.adminAuthorizes(body.adminKey) || (await this.verifiedIsAdminFromRequest(request));
+        const resetOutcome = await this.serialized(async () => {
+          const previous = this.ensureSnapshot();
+          if (!isAdmin) {
+            const authority = this.hostAuthorizes(
+              "actorClientId" in body ? body.actorClientId : undefined,
+              "reset"
+            );
+            if (!authority.allowed) {
+              return { denied: authority.reason ?? "Only the host can reset this room.", snapshot: previous };
+            }
           }
+          const state = this.makeState(body);
+          // Carry room membership (host, seats, observers) across a game reset.
+          state.room = previous.state.room ?? null;
+          this.snapshot = {
+            roomId: this.room.id,
+            version: previous.version + 1,
+            updatedAt: new Date().toISOString(),
+            ...this.creationMeta(state),
+            state
+          };
+          await this.persist();
+          await this.broadcastSnapshot();
+          return { denied: null, snapshot: this.snapshot };
+        });
+        if (resetOutcome.denied) {
+          return jsonWithCors({ reason: resetOutcome.denied }, 403);
         }
-        const state = this.makeState(body);
-        // Carry room membership (host, seats, observers) across a game reset.
-        state.room = previous.state.room ?? null;
-        this.snapshot = {
-          roomId: this.room.id,
-          version: previous.version + 1,
-          updatedAt: new Date().toISOString(),
-          ...this.creationMeta(state),
-          state
-        };
-        await this.persist();
-        await this.broadcastSnapshot();
         await this.reportToLobby();
         return jsonWithCors(
-          this.redactSnapshotForActor(this.signed(this.snapshot), {
+          this.redactSnapshotForActor(this.signed(this.snapshot ?? resetOutcome.snapshot), {
             clientId: "actorClientId" in body ? body.actorClientId : undefined
           })
         );
       }
 
       if (body && "action" in body && body.action) {
-        const current = this.ensureSnapshot();
         const actorClientId = "actorClientId" in body ? body.actorClientId : undefined;
         const actorUserId = await this.verifiedUserIdFromRequest(request);
-        const result = applyAction(current.state, body.action, {
-          entropy: freshEntropy(),
-          now: Date.now(),
-          ...(actorClientId ? { actorClientId } : {}),
-          ...(actorUserId ? { actorUserId } : {})
-        });
-        if (result.errors.length === 0) {
-          // A passed AFK kick vote: settle the drop before storing/reporting.
-          const settled = afkDropPending(result.state)
-            ? driveAfkDrop(result.state, () => ({ entropy: freshEntropy(), now: Date.now() }))
-            : result.state;
-          this.snapshot = {
-            roomId: this.room.id,
-            version: current.version + 1,
-            updatedAt: new Date().toISOString(),
-            ...this.creationMeta(settled),
-            state: settled
+        const action = body.action;
+        const outcome = await this.serialized(async () => {
+          const current = this.ensureSnapshot();
+          const result = applyAction(current.state, action, {
+            entropy: freshEntropy(),
+            now: Date.now(),
+            ...(actorClientId ? { actorClientId } : {}),
+            ...(actorUserId ? { actorUserId } : {})
+          });
+          if (result.errors.length === 0) {
+            // A passed AFK kick vote: settle the drop before storing/reporting.
+            const settled = afkDropPending(result.state)
+              ? driveAfkDrop(result.state, () => ({ entropy: freshEntropy(), now: Date.now() }))
+              : result.state;
+            this.snapshot = {
+              roomId: this.room.id,
+              version: current.version + 1,
+              updatedAt: new Date().toISOString(),
+              ...this.creationMeta(settled),
+              state: settled
+            };
+            await this.persist();
+            await this.broadcastSnapshot();
+          }
+          return {
+            result,
+            prev: current.state,
+            applied: result.errors.length === 0,
+            replyBase: this.snapshot ?? current
           };
-          await this.persist();
-          await this.broadcastSnapshot();
+        });
+        if (outcome.applied) {
           await this.reportToLobby();
-          await this.reportFinishedMatchToApp(current.state, settled);
+          await this.reportFinishedMatchToApp(outcome.prev, this.snapshot?.state ?? outcome.prev);
         }
-        const redacted = this.redactSnapshotForActor(this.signed(this.snapshot ?? current), {
+        const redacted = this.redactSnapshotForActor(this.signed(this.snapshot ?? outcome.replyBase), {
           clientId: actorClientId,
           userId: actorUserId
         });
         // Redact result.state too (the full GameState) so the HTTP action
         // response leaks no opponent hidden info, matching the snapshot.
-        return jsonWithCors({ snapshot: redacted, result: { ...result, state: redacted.state } });
+        return jsonWithCors({ snapshot: redacted, result: { ...outcome.result, state: redacted.state } });
       }
 
       this.ensureSnapshot();

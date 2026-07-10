@@ -31,6 +31,14 @@ export type GameRoomSnapshot = {
   serverSignature?: string;
   /** Set on the final frame a closed room sends, so the client returns to the lobby. */
   closed?: boolean;
+  /**
+   * The seat this frame was redacted for ("p1"…, or "observer"), stamped on
+   * HOSTED-room frames only. Lets the client accept a seat-correct frame that
+   * follows an observer frame at the SAME version after a reconnect, without
+   * weakening the out-of-order version gate. Absent on open-table frames and
+   * on servers that predate the field.
+   */
+  viewerSeat?: string;
 };
 
 /**
@@ -55,6 +63,13 @@ export type RoomConnectionHandlers = {
   onStatus: (status: string) => void;
   /** The room was closed (deleted) by its host — drop back to the lobby. */
   onClosed?: () => void;
+  /**
+   * The live stream/socket came back after dropping (NOT the first connect).
+   * The server may have reaped this client's ephemeral membership while it was
+   * gone — the app uses this to restore it (re-JOIN) once a fresh snapshot
+   * confirms the membership is missing.
+   */
+  onReconnect?: () => void;
 };
 
 export type RoomConnection = {
@@ -238,8 +253,19 @@ function connectPartyRoom(
 
   handlers.onStatus("connecting (edge)");
 
+  let openedBefore = false;
   socket.addEventListener("open", () => {
     handlers.onStatus("live (edge)");
+    if (openedBefore) {
+      // An automatic RE-connect: ask the room for a frame redacted to this
+      // socket's verified seat (the synchronous connect frame on a hosted room
+      // is the zero-trust observer view), and let the app restore any reaped
+      // membership. The first connect needs neither — the app's initial
+      // fetch + JOIN_ROOM cover it.
+      socket.send(JSON.stringify({ type: "sync" }));
+      handlers.onReconnect?.();
+    }
+    openedBefore = true;
   });
   socket.addEventListener("close", () => {
     handlers.onStatus("edge socket reconnecting");
@@ -410,7 +436,12 @@ function connectApiRoom(
 
   source.onmessage = (message) => {
     lastMessageAt = Date.now();
-    streamErrored = false;
+    if (streamErrored) {
+      // The SSE stream recovered after an error: the server reaps ephemeral
+      // membership when the stream drops, so let the app restore it.
+      streamErrored = false;
+      handlers.onReconnect?.();
+    }
     try {
       const payload = JSON.parse(message.data) as GameRoomSnapshot | { ping: true };
       if ("ping" in payload) {

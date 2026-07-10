@@ -567,6 +567,28 @@ export default function Home() {
   const [roomId, setRoomId] = useState<string | null>(null);
   const [roomInput, setRoomInput] = useState("");
   const [roomVersion, setRoomVersion] = useState(0);
+  /**
+   * The seat the last INGESTED hosted-room frame was redacted for ("p1"…,
+   * "observer"), or null for open-table/legacy frames. After a reconnect the
+   * server sends the zero-trust observer frame and then the seat-correct frame
+   * at the SAME version — this lets ingestSnapshot accept exactly that
+   * observer→seat upgrade without weakening the out-of-order version gate.
+   */
+  const lastViewerSeatRef = useRef<string | null>(null);
+  /**
+   * Set when the live stream/socket RE-connected: the server reaps an
+   * ephemeral (unseated / open-table) membership when a socket drops, and an
+   * automatic reconnect never re-sends JOIN_ROOM on its own. Holds the room
+   * version seen at reconnect; once a NEWER frame confirms the membership is
+   * gone, the join effect re-joins exactly once. A seated hosted player is
+   * never reaped, so this stays a no-op for them.
+   */
+  const pendingRejoinRef = useRef<number | null>(null);
+  /** Live mirror of roomVersion for callbacks outside the React data flow. */
+  const roomVersionRef = useRef(0);
+  useEffect(() => {
+    roomVersionRef.current = roomVersion;
+  }, [roomVersion]);
   // A name to apply once a freshly created room connects (the create flow on
   // /play seeds it server-side too, but PartyKit needs this client path; the
   // value crosses the /play→/?room= navigation via sessionStorage).
@@ -2885,9 +2907,24 @@ export default function Home() {
         saveCachedRoom(roomId, snapshot.version, snapshot.state);
       }
       setRoomVersion((currentVersion) => {
-        if (bootChanged || snapshot.version > currentVersion) {
+        const newer = bootChanged || snapshot.version > currentVersion;
+        // A SAME-version frame may still upgrade this client's redaction: after
+        // a hosted-room reconnect the server's synchronous first frame is the
+        // zero-trust OBSERVER view, and the seat-correct frame that follows
+        // carries the same version. Dropping it left a seated player with no
+        // hand and no pending-Event steps (the frozen-table report). Only the
+        // observer→seat direction is accepted, so a stray observer frame can
+        // never downgrade a live seat view.
+        const seatUpgrade =
+          !newer &&
+          snapshot.version === currentVersion &&
+          lastViewerSeatRef.current === "observer" &&
+          Boolean(snapshot.viewerSeat) &&
+          snapshot.viewerSeat !== "observer";
+        if (newer || seatUpgrade) {
+          lastViewerSeatRef.current = snapshot.viewerSeat ?? null;
           ingestServerState(snapshot.state);
-          return snapshot.version;
+          return newer ? snapshot.version : currentVersion;
         }
         return currentVersion;
       });
@@ -3006,12 +3043,23 @@ export default function Home() {
     seenRollIdsRef.current = null;
     // Each room gets its own recovery attempt, even on the same server boot.
     restoredForBootRef.current = null;
+    // Redaction/rejoin tracking is per-connection.
+    lastViewerSeatRef.current = null;
+    pendingRejoinRef.current = null;
 
     const connection = connectRoom(
       roomId,
       {
         onSnapshot: ingestSnapshot,
         onStatus: setSyncStatus,
+        // The stream/socket came back after dropping: the server may have
+        // reaped this client's ephemeral membership meanwhile. Remember the
+        // version we were on — once a newer frame confirms the membership is
+        // gone, the join effect re-joins exactly once (never on a kick that
+        // happened while the connection was up, which fires no reconnect).
+        onReconnect: () => {
+          pendingRejoinRef.current = roomVersionRef.current;
+        },
         // The host closed this room: drop the cached game and return to the lobby.
         onClosed: () => {
           clearCachedRoom(roomId);
@@ -3172,6 +3220,18 @@ export default function Home() {
     const joinKey = `${roomId}:${desiredName}`;
     const me = state.room?.members.find((member) => member.clientId === clientId) ?? null;
 
+    // The socket reconnected earlier and a NEWER frame has arrived since: if it
+    // confirms the server reaped this client's membership while it was gone (an
+    // open-table member / unseated spectator), re-join once. A seated hosted
+    // player is never reaped (me survives) and a kick with the connection up
+    // never sets the flag — so neither can silently auto-rejoin through this.
+    if (pendingRejoinRef.current !== null && roomVersion > pendingRejoinRef.current) {
+      pendingRejoinRef.current = null;
+      if (!me) {
+        joinedRoomRef.current = null;
+      }
+    }
+
     // Apply a name chosen at create time once we are a member of that room (the
     // API backend already seeded it server-side; PartyKit relies on this path).
     const applyPendingName = () => {
@@ -3248,7 +3308,7 @@ export default function Home() {
         }
       })
       .catch(() => {});
-  }, [state, roomId, displayName, clientId]);
+  }, [state, roomId, displayName, clientId, roomVersion]);
 
   // The room member this client acts as: matched by this tab's clientId, or —
   // when signed in — by the verified account id. The engine's one-account-one-
