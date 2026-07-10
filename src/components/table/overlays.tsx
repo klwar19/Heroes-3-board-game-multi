@@ -2652,3 +2652,82 @@ export function AfkVotePanel({
     </div>
   );
 }
+
+/**
+ * The "start a NEW adventure" table-consent panel. Pressing "New adventure"
+ * while a multiplayer game is in progress opens this vote (state.resetVote)
+ * instead of wiping the game immediately: EVERY live seat must confirm before
+ * the reset fires (the requester's browser fires it — see page.tsx). Any live
+ * seat can Decline to cancel the whole vote. Renders nothing when no vote is
+ * open, so it self-gates on every screen exactly like AfkVotePanel.
+ *
+ * Confirm targeting: a HOSTED room offers the viewer only their OWN seat (seat
+ * ownership is enforced server-side); an OPEN table — where one browser holds
+ * every seat through the local switcher — offers a Confirm button per still-
+ * unconfirmed live seat, matching the open-table "act as any seat" model.
+ */
+export function ResetVotePanel({
+  state,
+  viewerPlayerId,
+  onAction
+}: {
+  state: GameState;
+  viewerPlayerId: PlayerId;
+  onAction: (action: GameAction) => void;
+}) {
+  const vote = state.resetVote ?? null;
+  if (!vote) {
+    return null;
+  }
+  const liveSeats = state.turnOrder.filter((id) => id !== "neutral" && !state.players[id]?.eliminated);
+  const hosted = Boolean(state.room?.hosted);
+  const viewerLive = liveSeats.includes(viewerPlayerId);
+  const confirmed = liveSeats.filter((seat) => vote.confirmations[seat]).length;
+  const total = liveSeats.length;
+  const requesterName = state.players[vote.startedByPlayerId]?.name ?? vote.startedByPlayerId;
+
+  // Seats this viewer may confirm now: their OWN seat in a hosted room; every
+  // still-unconfirmed live seat on an open table (the local controller holds
+  // them all through the seat switcher).
+  const confirmableSeats = (hosted ? (viewerLive ? [viewerPlayerId] : []) : liveSeats).filter(
+    (seat) => !vote.confirmations[seat]
+  );
+  // A live seat this viewer controls, used to Decline (cancel the whole vote).
+  const cancelSeat = viewerLive ? viewerPlayerId : hosted ? null : (liveSeats[0] ?? null);
+
+  return (
+    <div className="afkVotePanel resetVotePanel" role="dialog" aria-label="New adventure vote">
+      <Sparkles aria-hidden="true" size={14} />
+      <span>
+        <strong>{requesterName}</strong> wants to start a NEW adventure — this wipes the current game. Everyone still in
+        the game must confirm. ({confirmed}/{total} confirmed)
+      </span>
+      <span className="afkVoteButtons">
+        {confirmableSeats.map((seat) => (
+          <button
+            className="commandButton"
+            key={seat}
+            type="button"
+            onClick={() => onAction({ type: "CONFIRM_ROOM_RESET", playerId: seat })}
+          >
+            {hosted || confirmableSeats.length === 1
+              ? "Confirm new adventure"
+              : `Confirm as ${state.players[seat]?.name ?? seat}`}
+          </button>
+        ))}
+        {cancelSeat ? (
+          <button
+            className="commandButton danger"
+            type="button"
+            onClick={() => onAction({ type: "CANCEL_ROOM_RESET", playerId: cancelSeat })}
+          >
+            {vote.startedByPlayerId === viewerPlayerId ? "Withdraw" : "Decline"}
+          </button>
+        ) : null}
+      </span>
+      {viewerLive && confirmableSeats.length === 0 ? (
+        <span className="afkVoteWaiting">you confirmed — waiting for the other players…</span>
+      ) : null}
+    </div>
+  );
+}

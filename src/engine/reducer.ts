@@ -228,6 +228,7 @@ import {
   unitImmuneToParalysis
 } from "./active-effects";
 import { applyAfkBookkeeping, castAfkVote, forceAfkKick, startAfkVote } from "./afk";
+import { cancelRoomReset, confirmRoomReset, requestRoomReset } from "./reset-vote";
 import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
 import { gainRunes, gainRunesForAttack, gainRunesForDefend, grantStartingRunes, spendRunes } from "./runes";
 import { commanderCastIsInstantReaction, commanderCastTierIndex } from "@/data/commanders";
@@ -17593,7 +17594,10 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "START_AFK_VOTE",
   "CAST_AFK_VOTE",
   "RESOLVE_AFK_DROP",
-  "FORCE_AFK_KICK"
+  "FORCE_AFK_KICK",
+  "REQUEST_ROOM_RESET",
+  "CONFIRM_ROOM_RESET",
+  "CANCEL_ROOM_RESET"
 ]);
 
 function isHandlerValidated(state: GameState, action: GameAction): boolean {
@@ -17664,19 +17668,24 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
     "playerId" in action && typeof (action as { playerId?: unknown }).playerId === "string"
       ? (action as { playerId: PlayerId }).playerId
       : null;
-  // The AFK vote-kick actions are table-level meta actions, like chat: they
-  // must stay available exactly when the table is frozen (an open interaction,
-  // the round-start event barrier — a stuck AFK player is WHY they exist), and
-  // the passed vote's drop step legitimately clears the machinery it removes
-  // the player from. So they bypass the bystander fingerprint and the event
-  // barrier below; their own handlers enforce their legality.
-  const isAfkMetaAction =
+  // The AFK vote-kick AND new-adventure (room reset) vote actions are
+  // table-level meta actions, like chat: they must stay available exactly when
+  // the table is frozen (an open interaction, the round-start event barrier — a
+  // stuck AFK player is WHY the AFK ones exist), and the passed AFK vote's drop
+  // step legitimately clears the machinery it removes the player from. So they
+  // bypass the bystander fingerprint and the event barrier below; their own
+  // handlers enforce their legality (and the reset-vote ones touch only
+  // `state.resetVote`, which is not part of the exclusive-interaction slot).
+  const isTableMetaAction =
     action.type === "START_AFK_VOTE" ||
     action.type === "CAST_AFK_VOTE" ||
     action.type === "RESOLVE_AFK_DROP" ||
-    action.type === "FORCE_AFK_KICK";
+    action.type === "FORCE_AFK_KICK" ||
+    action.type === "REQUEST_ROOM_RESET" ||
+    action.type === "CONFIRM_ROOM_RESET" ||
+    action.type === "CANCEL_ROOM_RESET";
   const parallelBystanderBlocker =
-    actorPlayerId && !isAfkMetaAction ? parallelInteractionBlocker(nextState, actorPlayerId) : null;
+    actorPlayerId && !isTableMetaAction ? parallelInteractionBlocker(nextState, actorPlayerId) : null;
   const parallelSlotBefore = parallelBystanderBlocker ? parallelSlotSignature(nextState) : null;
 
   // Round-start Event / Astrologers barrier (ordered AND parallel play): while
@@ -17686,7 +17695,7 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
   // draw, no town/morale actions, no ending the turn). Read from the PRE-handler
   // clone, so the round-wrap action that first raises the barrier (inside its own
   // handler) is not itself rejected, and chat (no `playerId`) is exempt.
-  if (actorPlayerId && !isAfkMetaAction && isRoundStartEventBarrierActive(nextState)) {
+  if (actorPlayerId && !isTableMetaAction && isRoundStartEventBarrierActive(nextState)) {
     const resolver = roundStartEventResolver(nextState);
     if (resolver && resolver !== actorPlayerId) {
       return fail(base, {
@@ -18111,6 +18120,15 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "FORCE_AFK_KICK":
         forceAfkKick(nextState, action, options.now);
+        break;
+      case "REQUEST_ROOM_RESET":
+        requestRoomReset(nextState, action, options.now);
+        break;
+      case "CONFIRM_ROOM_RESET":
+        confirmRoomReset(nextState, action);
+        break;
+      case "CANCEL_ROOM_RESET":
+        cancelRoomReset(nextState, action);
         break;
     }
   } catch (error) {

@@ -11,6 +11,8 @@ import {
   freshEntropy,
   OBSERVER_VIEWER_SEAT,
   redactStateForSeat,
+  resetVoteAuthorizes,
+  resetVoteRequired,
   seatForViewer,
   type AdventurePlayerConfig,
   type GameAction,
@@ -627,9 +629,19 @@ export default class GameRoomServer implements Party.Server {
       const deniedReason = await this.serialized(async () => {
         const previous = this.ensureSnapshot();
         if (!isAdmin) {
-          const authority = this.hostAuthorizes(message.actorClientId ?? this.clientIdOf(sender), "reset");
-          if (!authority.allowed) {
-            return authority.reason ?? "Only the host can reset this room.";
+          const actor = message.actorClientId ?? this.clientIdOf(sender);
+          if (resetVoteRequired(previous.state)) {
+            // In-progress multiplayer adventure: only the unanimous "new
+            // adventure" vote, fired by the browser that opened it, may wipe the
+            // running game — even in a hosted room where it is not the host.
+            if (!resetVoteAuthorizes(previous.state, actor)) {
+              return "Everyone still in the game must confirm a new adventure first.";
+            }
+          } else {
+            const authority = this.hostAuthorizes(actor, "reset");
+            if (!authority.allowed) {
+              return authority.reason ?? "Only the host can reset this room.";
+            }
           }
         }
         const state = this.makeState(message);

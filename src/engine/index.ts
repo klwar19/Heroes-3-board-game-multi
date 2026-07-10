@@ -24,6 +24,12 @@ export {
 } from "./afk";
 export { afkDropPending, driveAfkDrop, nextAfkDropAction } from "./afk-drop";
 export {
+  clearResetVote,
+  isResetVoteApproved,
+  resetVoteAuthorizes,
+  resetVoteRequired
+} from "./reset-vote";
+export {
   defaultRoomName,
   dropDisconnectedMember,
   isRoomMembershipAction,
@@ -443,6 +449,7 @@ export type {
   ReactionPlay,
   ReactionWindow,
   ResolutionStackItem,
+  ResetVoteState,
   RoomMember,
   RoomMembershipState,
   RoomSeat,

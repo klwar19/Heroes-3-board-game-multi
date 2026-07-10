@@ -15637,6 +15637,18 @@ img.cardBack {
   font-style: italic;
 }
 
+/* "Start a new adventure" table-consent vote. Sits just below the AFK panel so
+   the two never overlap if both are open, and reads as a blue "table decision"
+   rather than the amber AFK warning. */
+.resetVotePanel {
+  top: 56px;
+  max-width: min(600px, calc(100vw - 24px));
+  flex-wrap: wrap;
+  justify-content: center;
+  text-align: center;
+  border-color: rgba(120, 190, 255, 0.6);
+}
+
 /* Pre-start ready check (all seated players must confirm within 30s). */
 .startReadyCheck {
   margin-top: 12px;

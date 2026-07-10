@@ -10,6 +10,7 @@ import {
   MapNoticeOverlay,
   NeutralStepOverlay,
   ReactionTray,
+  ResetVotePanel,
   RerollModal,
   type DiceCue
 } from "./overlays";
@@ -1284,5 +1285,48 @@ describe("AfkVotePanel — the vote UI and the idle call-a-vote button", () => {
     expect(onAction2).not.toHaveBeenCalledWith(
       expect.objectContaining({ type: "FORCE_AFK_KICK" })
     );
+  });
+});
+
+describe("ResetVotePanel — the New-adventure confirmation UI", () => {
+  function game(): GameState {
+    return createAdventureGameState({ seed: "reset-panel", difficulty: "normal", rollFirstPlayer: false });
+  }
+  function openVote(state: GameState) {
+    state.resetVote = {
+      startedByPlayerId: "p1",
+      startedByClientId: "cA",
+      startedAt: Date.now(),
+      confirmations: { p1: true }
+    };
+  }
+
+  it("renders nothing when no vote is open", () => {
+    const { container } = render(<ResetVotePanel onAction={vi.fn()} state={game()} viewerPlayerId={"p2" as PlayerId} />);
+    expect(container.firstChild).toBeNull();
+  });
+
+  it("offers Confirm to a not-yet-confirmed seat and dispatches CONFIRM_ROOM_RESET", () => {
+    const state = game();
+    openVote(state);
+    const onAction = vi.fn();
+    render(<ResetVotePanel onAction={onAction} state={state} viewerPlayerId={"p2" as PlayerId} />);
+    fireEvent.click(screen.getByRole("button", { name: /confirm new adventure/i }));
+    expect(onAction).toHaveBeenCalledWith({ type: "CONFIRM_ROOM_RESET", playerId: "p2" });
+    // Decline cancels the whole vote for the table.
+    fireEvent.click(screen.getByRole("button", { name: /decline/i }));
+    expect(onAction).toHaveBeenCalledWith({ type: "CANCEL_ROOM_RESET", playerId: "p2" });
+  });
+
+  it("a HOSTED room offers the viewer only their OWN seat — the requester (already confirmed) sees Withdraw, not Confirm", () => {
+    const state = game();
+    openVote(state);
+    state.room = { hosted: true, hostClientId: "cA", members: [] };
+    // The requester p1 has already confirmed: in a hosted room only their own
+    // seat is offered, so there is no Confirm button — only Withdraw. (The
+    // CONTROL: an open table WOULD offer them p2's seat.)
+    render(<ResetVotePanel onAction={vi.fn()} state={state} viewerPlayerId={"p1" as PlayerId} />);
+    expect(screen.queryByRole("button", { name: /confirm/i })).toBeNull();
+    expect(screen.getByRole("button", { name: /withdraw/i })).toBeTruthy();
   });
 });

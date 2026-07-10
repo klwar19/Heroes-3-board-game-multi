@@ -239,6 +239,42 @@ describe("room membership through the store", () => {
     expect(memberReset.snapshot.state.seed).not.toBe(afterHostReset.state.seed);
   });
 
+  it("an in-progress game refuses a direct reset until the all-players vote passes, then only the opener fires it", () => {
+    const roomId = uniqueRoom("resetvote");
+    // A real in-progress adventure (past the setup lobby), so the "New
+    // adventure" reset must be confirmed by every seat first.
+    createRoom({
+      roomId,
+      players: [
+        { id: "p1", name: "Ann", factionId: "castle", heroDefId: "catherine" },
+        { id: "p2", name: "Bob", factionId: "necropolis", heroDefId: "sandro" }
+      ]
+    });
+    const before = getRoomSnapshot(roomId);
+    expect(before.state.setupLobby ?? null).toBeNull();
+
+    // A direct reset (no vote) is refused — the running game is protected.
+    const blocked = resetRoom(roomId, { mode: "adventure" }, "cA");
+    expect(blocked.reset).toBe(false);
+    expect(blocked.reason).toMatch(/confirm a new adventure/i);
+    expect(getRoomSnapshot(roomId).state.seed).toBe(before.state.seed);
+
+    // Open + pass the vote through the normal action pipeline.
+    submitRoomAction(roomId, { type: "REQUEST_ROOM_RESET", playerId: "p1", clientId: "cA" }, "cA");
+    submitRoomAction(roomId, { type: "CONFIRM_ROOM_RESET", playerId: "p2" }, "cB");
+
+    // CONTROL: a DIFFERENT browser still cannot fire the approved reset — exactly
+    // one client (the opener) completes it.
+    expect(resetRoom(roomId, { mode: "adventure" }, "cB").reset).toBe(false);
+    expect(getRoomSnapshot(roomId).state.seed).toBe(before.state.seed);
+
+    // The opening browser completes it: a fresh game (new seed), vote cleared.
+    const done = resetRoom(roomId, { mode: "adventure" }, "cA");
+    expect(done.reset).toBe(true);
+    expect(done.snapshot.state.seed).not.toBe(before.state.seed);
+    expect(done.snapshot.state.resetVote ?? null).toBeNull();
+  });
+
   it("the developer's HOMM3BG_ADMIN_KEY resets any table; a wrong or unconfigured key never does", () => {
     const roomId = uniqueRoom("resetadmin");
     getRoomSnapshot(roomId);

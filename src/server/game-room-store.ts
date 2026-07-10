@@ -14,6 +14,8 @@ import {
   ensureUniqueArmyUnitIds,
   freshEntropy,
   MAX_ROOM_NAME_LENGTH,
+  resetVoteAuthorizes,
+  resetVoteRequired,
   type AdventurePlayerConfig,
   type EngineResult,
   type GameAction,
@@ -309,10 +311,25 @@ export function resetRoom(
 ): ResetRoomResult {
   const existing = roomStore.get(roomId) ?? loadPersistedRoom(roomId);
   const room = existing?.state.room ?? null;
-  if (room?.hosted && !adminKeyAuthorizes(adminKey) && !isAdmin) {
-    const authority = authorizeHostedWipe(roomId, room, actorClientId, "reset");
-    if (!authority.allowed) {
-      return { reset: false, reason: authority.reason, snapshot: getRoomSnapshot(roomId) };
+  const existingState = existing?.state ?? null;
+  if (!adminKeyAuthorizes(adminKey) && !isAdmin && existingState) {
+    if (resetVoteRequired(existingState)) {
+      // In-progress multiplayer adventure: only the unanimous "new adventure"
+      // vote — approved by every live seat and fired by the browser that opened
+      // it — may wipe the running game, even in a hosted room where the
+      // requester is not the host. See src/engine/reset-vote.ts.
+      if (!resetVoteAuthorizes(existingState, actorClientId)) {
+        return {
+          reset: false,
+          reason: "Everyone still in the game must confirm a new adventure first.",
+          snapshot: getRoomSnapshot(roomId)
+        };
+      }
+    } else if (room?.hosted) {
+      const authority = authorizeHostedWipe(roomId, room, actorClientId, "reset");
+      if (!authority.allowed) {
+        return { reset: false, reason: authority.reason, snapshot: getRoomSnapshot(roomId) };
+      }
     }
   }
   const reset = makeRoom(roomId, options);
