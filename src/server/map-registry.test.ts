@@ -97,6 +97,28 @@ describe("sanitizeSharedMap", () => {
     expect(record!.tiles[0]).toMatchObject({ group: "sea", seaBand: "vi-vii" });
     expect(record!.tiles[1]).toMatchObject({ group: "subterranean", subBand: "vi-vii" });
     expect(record!.tiles[2]).toMatchObject({ group: "subterranean", subBand: "iv-v" });
+  });
+
+  it("preserves a tile's Monolith/Whirlpool token through sanitization (malformed tokens dropped)", () => {
+    // sanitizeTile rebuilds each plan from an allow-list, so the designed token
+    // must be carried explicitly or a saved map silently loses its Monoliths/
+    // Whirlpools on reload — the teleport network would vanish from the game.
+    const record = sanitizeSharedMap(
+      {
+        id: "m",
+        tiles: [
+          { row: 1, col: 1, group: "far", faceDown: false, tileDefId: "F1", token: { kind: "monolith", slot: 0 } },
+          { row: 2, col: 2, group: "sea", faceDown: true, token: { kind: "whirlpool" } },
+          { row: 3, col: 3, group: "far", faceDown: true, token: { kind: "wormhole" } }, // unknown kind → token dropped
+          { row: 4, col: 4, group: "far", faceDown: false, tileDefId: "F1", token: { kind: "monolith", slot: 9 } } // bad slot → slot dropped
+        ]
+      },
+      1
+    );
+    expect(record!.tiles[0].token).toEqual({ kind: "monolith", slot: 0 });
+    expect(record!.tiles[1].token).toEqual({ kind: "whirlpool" });
+    expect(record!.tiles[2].token).toBeUndefined();
+    expect(record!.tiles[3].token).toEqual({ kind: "monolith" });
     // A malformed band is stripped, not stored.
     expect(record!.tiles[3]).not.toHaveProperty("subBand");
   });

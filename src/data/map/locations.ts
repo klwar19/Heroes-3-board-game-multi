@@ -684,6 +684,35 @@ export const locationDefinitions: Record<string, LocationDefinition> = {
     implementationStatus: "implemented",
     source: source("cyclops_stockpile")
   },
+  monolith: {
+    id: "monolith",
+    name: "Two-Way Monolith",
+    // "Move your Hero to the corresponding Two-Way Monolith" (rulebook p.83,
+    // category Revisitable). "revisitable" gives both halves of the printed
+    // behaviour: movement always STOPS on the token (entering it teleports, so
+    // it can never be walked through), and a hero standing on it may pay 1 MP
+    // to travel again (the Revisit action). The teleport itself resolves in the
+    // TOKEN_TELEPORT visit step; with fewer than 2 Monoliths on the map the
+    // step is a no-op ("must have at least 2 to work").
+    category: "revisitable",
+    interaction: { type: "TOKEN_TELEPORT", token: "monolith" },
+    implementationStatus: "implemented",
+    source: source("two-way_monolith")
+  },
+  whirlpool: {
+    id: "whirlpool",
+    name: "Whirlpool",
+    // "Move your Hero to another Whirlpool Token. If there are 3 Whirlpools,
+    // roll an Attack Die to determine where your Hero goes, and reroll any Die
+    // that shows the number of the Whirlpool your Hero is moving from. After
+    // each Whirlpool travel, lose 1 unit from your unit Deck." (p.83, category
+    // Revisitable). The printed tokens are numbered with the Attack-die faces
+    // (-1 / 0 / +1) — `MapFieldState.whirlpoolNumber` carries the number.
+    category: "revisitable",
+    interaction: { type: "TOKEN_TELEPORT", token: "whirlpool" },
+    implementationStatus: "implemented",
+    source: source("whirlpool")
+  },
   subterranean_gate: {
     id: "subterranean_gate",
     name: "Subterranean Gate",

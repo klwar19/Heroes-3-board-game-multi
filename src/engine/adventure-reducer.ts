@@ -92,6 +92,9 @@ import {
   MAX_EXPERIENCE,
   ASTROLOGERS_DECK_ID,
   NEUTRAL_DECK_IDS,
+  dropPendingMapToken,
+  mapTokenLabel,
+  placeMapToken,
   placeNeutralUnits,
   playerDwellingTiers,
   processPendingVisit,
@@ -110,6 +113,7 @@ import {
   startAdventureRound,
   startPlayerTurn,
   swapNeutralDraw,
+  tokenPlacementCandidates,
   townHasBuildingEffect,
   unlockedRecruitTiers,
   victoryModeCountsHeroDefeats,
@@ -1660,6 +1664,12 @@ export function setTileRotation(state: GameState, action: Extract<GameAction, { 
   // player place a Creature Bank token there. The home (Ⅰ) tile never offers one.
   if (!isStartTile) {
     offerCreatureBankPlacement(state, tile, action.playerId);
+    // A designed Monolith/Whirlpool token riding this tile is placed by the
+    // discovering player ("a Field of your choosing", p.35). It waits behind an
+    // open bank prompt; the bank resolution re-offers it.
+    if (!state.pendingChoice) {
+      offerPendingTokenPlacement(state, tile, action.playerId);
+    }
   }
 
   // Parallel turns: the opening round starts EVERY player's turn at once, so
@@ -1831,6 +1841,56 @@ function offerCreatureBankPlacement(state: GameState, tile: MapTileState, player
     options: [{ label: "Place a Creature Bank" }, { label: "Leave it blocked" }],
     context: "place-creature-bank",
     creatureBank: { fieldId: blockedSpaceId, tier },
+    returnPhase: state.phase
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = playerId;
+}
+
+/**
+ * Offers the discovering player the placement of a Monolith/Whirlpool token the
+ * map designer attached to this (just-revealed) tile: one option per legal hex
+ * (matching terrain, no Blocked Field/Town/guard/other token — rulebook p.35's
+ * "a Field of your choosing"). A single legal hex places automatically, zero
+ * legal hexes drop the token (and fizzle any travel aimed at it). No-op while
+ * the tile still rides face-down or carries no token.
+ */
+function offerPendingTokenPlacement(state: GameState, tile: MapTileState, playerId: PlayerId): void {
+  const adventure = state.adventure;
+  const pendingToken = tile.pendingToken;
+  if (!adventure || !pendingToken || tile.faceDown || tile.awaitingRotation) {
+    return;
+  }
+
+  const candidates = tokenPlacementCandidates(state, tile, pendingToken.kind);
+  if (candidates.length === 0) {
+    dropPendingMapToken(state, tile, playerId);
+    return;
+  }
+  if (candidates.length === 1) {
+    // Mirrors the gate's single-candidate auto-carve: no zero-information prompt.
+    placeMapToken(state, tile, candidates[0], playerId);
+    return;
+  }
+
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId,
+    prompt: `${mapTokenLabel(pendingToken.kind)} token — choose which glowing field of the revealed tile it overwrites.`,
+    options: candidates.map((spaceId) => {
+      const field = adventure.fields[spaceId];
+      const edge = field ? ringEdgeDirection(tile, spaceId) : "";
+      const location = field ? locationDefinitions[field.location]?.name ?? field.location : "field";
+      return { label: `${edge ? `${edge} edge — ` : "Centre — "}${location}` };
+    }),
+    context: "place-map-token",
+    mapToken: {
+      tileInstanceId: tile.id,
+      kind: pendingToken.kind,
+      ...(pendingToken.number !== undefined ? { number: pendingToken.number } : {}),
+      candidates
+    },
     returnPhase: state.phase
   };
   state.phase = "choice";
@@ -8066,6 +8126,32 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     state.pendingChoice = null;
     state.phase = choice.returnPhase;
     state.priorityPlayerId = null;
+    // A Monolith/Whirlpool token riding the same tile waited behind the bank
+    // prompt; its placement (by the same discovering player) opens now.
+    const bankTile = data ? adventure?.tiles[adventure.fields[data.fieldId]?.tileInstanceId ?? ""] : undefined;
+    if (bankTile) {
+      offerPendingTokenPlacement(state, bankTile, action.playerId);
+    }
+    return;
+  }
+
+  if (choice.context === "place-map-token") {
+    const data = choice.mapToken;
+    const adventure = state.adventure;
+    const spaceId = data?.candidates[action.optionIndex];
+    if (!data || !adventure || !spaceId) {
+      throw new Error("Choose one of the offered fields for the token.");
+    }
+    state.pendingChoice = null;
+    state.phase = choice.returnPhase;
+    state.priorityPlayerId = null;
+    const tile = adventure.tiles[data.tileInstanceId];
+    if (tile) {
+      // Carves the token at the pick; when this placement was the destination
+      // of an in-flight Monolith/Whirlpool travel, the hero arrives on it (and
+      // a Whirlpool travel takes its unit toll).
+      placeMapToken(state, tile, spaceId, action.playerId);
+    }
     return;
   }
 
@@ -8088,6 +8174,11 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     const tile = data ? adventure?.tiles[data.tileInstanceId] : undefined;
     if (data?.deferBank && tile) {
       offerCreatureBankPlacement(state, tile, action.playerId);
+    }
+    // And a Monolith/Whirlpool token on the tile waits behind BOTH the gate and
+    // the bank prompts (the gate carve may have consumed a candidate hex).
+    if (tile && !state.pendingChoice) {
+      offerPendingTokenPlacement(state, tile, action.playerId);
     }
     return;
   }
