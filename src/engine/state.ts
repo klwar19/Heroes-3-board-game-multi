@@ -5719,9 +5719,11 @@ export type BattlefieldTokenKind = "force_field" | "fire_wall" | "quicksand" | "
  * A token (or card) occupying a Combat-board space, placed by a Spell:
  *  - force_field — an Obstacle: blocks non-flying movement and bars stopping
  *    on it, until `expiresAtCombatRoundEnd` (absent = the whole Combat).
- *  - fire_wall   — an Effect Obstacle: units may enter, but stopping on it (any
- *    type) or passing through it (ground/ranged only) costs `damage`. Lasts the
- *    whole Combat.
+ *  - fire_wall   — an Effect Obstacle: units may enter, but a GROUND or RANGED
+ *    unit that stops on it OR passes through it costs `damage`, and a unit of
+ *    ANY type that BEGINS its activation standing on it is burned too (a flyer
+ *    is otherwise unharmed by crossing or landing on the wall). Lasts the whole
+ *    Combat.
  *  - quicksand / land_mine — a face-down trap: `armed` true for a real token,
  *    false for a decoy ("empty"). `armed` is hidden from non-controllers (see
  *    getPlayerView) — only the caster ever knows which are real. The instant a

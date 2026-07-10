@@ -344,14 +344,16 @@ describe("WOG commanders — stat points from the hero's level", () => {
     expect([1, 2, 3, 4, 5, 6, 7].map((lvl) => commanderGradePointsForLevelUp("soul_eater", lvl)))
       .toEqual([0, 1, 2, 1, 1, 2, 1]);
 
-    // Paladin (Castle) — Wise pulls the milestones EARLIER to levels 2 & 5.
-    expect(commanderDoublePointLevels("paladin")).toEqual([2, 5]);
+    // Paladin (Castle) — Wise pulls the milestones EARLIER to levels 2 & 5 AND
+    // adds a THIRD milestone at level 7.
+    expect(commanderDoublePointLevels("paladin")).toEqual([2, 5, 7]);
     expect([1, 2, 3, 4, 5, 6, 7].map((lvl) => commanderGradePointsForLevelUp("paladin", lvl)))
-      .toEqual([0, 2, 1, 1, 2, 1, 1]);
+      .toEqual([0, 2, 1, 1, 2, 1, 2]);
 
-    // Either way a full run to level 7 is 8 points.
+    // A full run to level 7 is 8 points for a normal commander but 9 for the
+    // Paladin (its extra level-7 double).
     expect([2, 3, 4, 5, 6, 7].reduce((sum, lvl) => sum + commanderGradePointsForLevelUp("soul_eater", lvl), 0)).toBe(8);
-    expect([2, 3, 4, 5, 6, 7].reduce((sum, lvl) => sum + commanderGradePointsForLevelUp("paladin", lvl), 0)).toBe(8);
+    expect([2, 3, 4, 5, 6, 7].reduce((sum, lvl) => sum + commanderGradePointsForLevelUp("paladin", lvl), 0)).toBe(9);
   });
 
   it("awards points on level-up, spends each on one stat, and rejects abuse", () => {
@@ -394,7 +396,7 @@ describe("WOG commanders — stat points from the hero's level", () => {
     expect(state.players.p1.commander?.gradePoints).toBe(0);
   });
 
-  it("Wise (Paladin): the milestone (2-point) levels are 2 & 5, not 3 & 6", () => {
+  it("Wise (Paladin): milestone points are levels 2, 5 & 7 — an extra one vs 3 & 6", () => {
     const paladin = adventureWithCommanders("cmd-wise"); // castle → paladin
     gainExperience(paladin, "p1", 2); // level 2 = milestone → +2
     expect(paladin.players.p1.commander?.gradePoints).toBe(2);
@@ -410,6 +412,21 @@ describe("WOG commanders — stat points from the hero's level", () => {
     expect(paladin.players.p1.commander?.gradePoints).toBe(3);
     gainExperience(other, "p1", 2); // level 3 → +2 (total 3)
     expect(other.players.p1.commander?.gradePoints).toBe(3);
+
+    // Level 6 → 7: the Paladin's THIRD milestone gives +2 where a normal
+    // commander gets +1. Drive both to level 6 first (xp 10), then cross to 7.
+    gainExperience(paladin, "p1", 6); // level 3 → 6 (+1 +2 +1 = +4, total 7)
+    gainExperience(other, "p1", 6); // level 3 → 6 (+2 +1 +1 = +4, total 7)
+    expect(paladin.players.p1.commander?.gradePoints).toBe(7);
+    expect(other.players.p1.commander?.gradePoints).toBe(7);
+    expect(getMainHero(paladin, "p1")?.level).toBe(6);
+
+    gainExperience(paladin, "p1", 2); // level 6 → 7 → +2 (Paladin milestone)
+    gainExperience(other, "p1", 2); // level 6 → 7 → +1 (normal)
+    expect(getMainHero(paladin, "p1")?.level).toBe(7);
+    // Paladin's level-7 milestone: 7 → 9 (+2). CONTROL soul_eater: 7 → 8 (+1).
+    expect(paladin.players.p1.commander?.gradePoints).toBe(9);
+    expect(other.players.p1.commander?.gradePoints).toBe(8);
   });
 
   it("offers one grade-up per raisable stat as map-turn legal actions", () => {
@@ -434,6 +451,59 @@ describe("WOG commanders — stat points from the hero's level", () => {
     expect(
       capped.some((legal) => legal.action.type === "COMMANDER_GRADE_UP" && legal.action.stat === "attack")
     ).toBe(false);
+  });
+
+  it("mastery (grade 3) is gated to hero level 5 — grades 0→1 and 1→2 are not", () => {
+    const state = adventureWithCommanders("cmd-mastery", "necropolis", undefined); // soul_eater
+    expect(getMainHero(state, "p1")?.level).toBe(1);
+
+    // A grade 0 → 1 raise is fine at level 1.
+    state.players.p1.commander!.gradePoints = 1;
+    let current = apply(state, { type: "COMMANDER_GRADE_UP", playerId: "p1", stat: "attack" });
+    expect(current.players.p1.commander?.grades.attack).toBe(1);
+    // And a grade 1 → 2 raise is fine at level 1.
+    current.players.p1.commander!.gradePoints = 1;
+    current = apply(current, { type: "COMMANDER_GRADE_UP", playerId: "p1", stat: "attack" });
+    expect(current.players.p1.commander?.grades.attack).toBe(2);
+
+    // But a grade 2 → 3 (mastery) raise is rejected below hero level 5.
+    current.players.p1.commander!.gradePoints = 1;
+    const err = applyError(current, { type: "COMMANDER_GRADE_UP", playerId: "p1", stat: "attack" });
+    expect(err).toMatch(/level 5/i);
+    expect(current.players.p1.commander?.grades.attack, "the stat stays at grade 2").toBe(2);
+    expect(current.players.p1.commander?.gradePoints, "the point is not spent").toBe(1);
+
+    // Reaching hero level 5 unlocks the mastery raise.
+    gainExperience(current, "p1", 8); // xp 0 → 8 = level 5
+    expect(getMainHero(current, "p1")?.level).toBe(5);
+    current.players.p1.commander!.gradePoints = 1;
+    const mastered = apply(current, { type: "COMMANDER_GRADE_UP", playerId: "p1", stat: "attack" });
+    expect(mastered.players.p1.commander?.grades.attack).toBe(3);
+  });
+
+  it("hides the grade 2 → 3 mastery offer in legal actions until hero level 5", () => {
+    let state = adventureWithCommanders("cmd-mastery-legal", "necropolis", undefined);
+    if (state.players.p1.needsHandRefresh || state.players.p1.canMulligan) {
+      state = apply(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+    }
+    const gradeUpsFor = (s: GameState, stat: string) =>
+      getLegalActions(s, "p1").filter(
+        (legal) => legal.action.type === "COMMANDER_GRADE_UP" && legal.action.stat === stat
+      );
+
+    // Damage at grade 2 with a point, hero still level 1.
+    state.players.p1.commander!.grades.damage = 2;
+    state.players.p1.commander!.gradePoints = 1;
+    expect(gradeUpsFor(state, "damage"), "no mastery offer below level 5").toHaveLength(0);
+    // A grade-0 stat is still offered — the gate only touches the grade 2 → 3 step.
+    expect(gradeUpsFor(state, "attack"), "lower-grade raises stay offered").toHaveLength(1);
+
+    // At hero level 5 the mastery offer appears.
+    gainExperience(state, "p1", 8);
+    expect(getMainHero(state, "p1")?.level).toBe(5);
+    state.players.p1.commander!.grades.damage = 2;
+    state.players.p1.commander!.gradePoints = 1;
+    expect(gradeUpsFor(state, "damage"), "mastery offered at level 5").toHaveLength(1);
   });
 });
 

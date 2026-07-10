@@ -11,6 +11,7 @@ import {
   COMMANDER_DEFENSE_TOKEN_GRADE,
   COMMANDER_GRADE_VALUES,
   COMMANDER_MAGIC_SPELL_DAMAGE_REDUCTION,
+  COMMANDER_MASTERY_MIN_HERO_LEVEL,
   COMMANDER_STAT_ICON,
   COMMANDER_STAT_KEYS,
   COMMANDER_STAT_LABELS,
@@ -813,7 +814,12 @@ export function CommanderCard({
               spends one point on a stat. Each stat is a clearly-separated,
               individually-highlighted option. */}
           {!editable && gradePoints > 0 && onGradeUp && !dead ? (
-            <CommanderLevelUpPicker grades={grades} gradePoints={gradePoints} onGradeUp={onGradeUp} />
+            <CommanderLevelUpPicker
+              grades={grades}
+              gradePoints={gradePoints}
+              level={shownLevel}
+              onGradeUp={onGradeUp}
+            />
           ) : null}
 
           {/* Editable grade tracks (preview tool only — click a pip to set a
@@ -924,41 +930,58 @@ export function CommanderCard({
 export function CommanderLevelUpPicker({
   grades: gradesProp,
   gradePoints,
+  level,
   onGradeUp
 }: {
   grades?: Partial<Record<CommanderStatKey, number>>;
   gradePoints: number;
+  /** Hero level — gates the grade 2 → 3 "mastery" raise (needs level 5+). */
+  level?: number;
   onGradeUp: (stat: CommanderStatKey) => void;
 }) {
   const grades = normalizeGrades(gradesProp);
+  const heroLevel = level ?? 1;
   return (
     <div className="commanderGradeUpPulse commanderLevelUpPicker">
       <div className="commanderLevelUpTitle">
         LEVEL UP — {gradePoints} stat {gradePoints === 1 ? "point" : "points"} to spend
       </div>
       <div className="commanderLevelUpHint">
-        Click a stat to raise it one grade — each click spends 1 point.
+        Click a stat to raise it one grade — each click spends 1 point. Mastery (grade III) unlocks at hero level{" "}
+        {COMMANDER_MASTERY_MIN_HERO_LEVEL}.
       </div>
       <div className="commanderLevelUpGrid">
         {COMMANDER_STAT_KEYS.map((key) => {
           const current = grades[key];
           const capped = current >= 3;
+          // The final grade-2 → grade-3 raise waits for the mastery level.
+          const masteryLocked = current === 2 && heroLevel < COMMANDER_MASTERY_MIN_HERO_LEVEL;
+          const disabled = capped || masteryLocked;
           const nextGrade = (current + 1) as CommanderGrade;
           return (
             <button
               key={key}
               type="button"
-              disabled={capped}
+              disabled={disabled}
               onClick={() => onGradeUp(key)}
               className="commanderPickStat"
               data-stat={key}
               data-capped={capped ? "true" : "false"}
+              data-locked={masteryLocked ? "true" : "false"}
               aria-label={
                 capped
                   ? `${COMMANDER_STAT_LABELS[key]} is already at grade III`
-                  : `Raise ${COMMANDER_STAT_LABELS[key]} to grade ${gradeNumeral(nextGrade)}: ${gradeUpBenefit(key, nextGrade)}`
+                  : masteryLocked
+                    ? `${COMMANDER_STAT_LABELS[key]} mastery (grade III) unlocks at hero level ${COMMANDER_MASTERY_MIN_HERO_LEVEL}`
+                    : `Raise ${COMMANDER_STAT_LABELS[key]} to grade ${gradeNumeral(nextGrade)}: ${gradeUpBenefit(key, nextGrade)}`
               }
-              title={capped ? `${COMMANDER_STAT_LABELS[key]} is at grade III (max)` : gradeUpBenefit(key, nextGrade)}
+              title={
+                capped
+                  ? `${COMMANDER_STAT_LABELS[key]} is at grade III (max)`
+                  : masteryLocked
+                    ? `Mastery (grade III) unlocks at hero level ${COMMANDER_MASTERY_MIN_HERO_LEVEL}`
+                    : gradeUpBenefit(key, nextGrade)
+              }
             >
               <span className="commanderPickAccent" aria-hidden="true" />
               <CommanderStatIcon statKey={key} size={30} />
@@ -972,6 +995,10 @@ export function CommanderLevelUpPicker({
                 </span>
                 {capped ? (
                   <span className="commanderPickCapped">Already grade III (max) — pick another stat</span>
+                ) : masteryLocked ? (
+                  <span className="commanderPickCapped">
+                    Mastery (grade III) unlocks at hero level {COMMANDER_MASTERY_MIN_HERO_LEVEL}
+                  </span>
                 ) : (
                   <span className="commanderPickBenefit">
                     <b>
@@ -1031,7 +1058,12 @@ export function CommanderLevelUpOverlay({
           <div className="commanderLevelUpFace">
             <CommanderCardFace slug={slug} grades={grades} level={level} />
           </div>
-          <CommanderLevelUpPicker grades={grades} gradePoints={gradePoints} onGradeUp={onGradeUp} />
+          <CommanderLevelUpPicker
+            grades={grades}
+            gradePoints={gradePoints}
+            level={level}
+            onGradeUp={onGradeUp}
+          />
         </div>
         <button type="button" className="commanderLevelUpDone" onClick={onClose}>
           {gradePoints > 0 ? "Spend later" : "Done"}

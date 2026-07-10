@@ -11,9 +11,11 @@ import type { BattlefieldTokenState, GameAction, GameState, UnitId } from "./sta
  * engine-enforced; each test fails if its wiring is removed.
  *  - Force Field (Basic Earth) — places a blocking Obstacle for a Power-scaled
  *    span (this round / next round / whole combat).
- *  - Fire Wall  (Basic Fire)  — a lasting Effect Obstacle: burns a unit stopping
- *    on it and a ground/ranged unit passing through (a flyer over it is safe).
- *    It is NEVER consumed — it stays for the whole combat.
+ *  - Fire Wall  (Basic Fire)  — a lasting Effect Obstacle: burns a GROUND or
+ *    RANGED unit that passes through OR stops on it, and ANY unit (flyers too)
+ *    that BEGINS its activation on it. A flyer that merely crosses or lands on
+ *    the wall while moving is safe. It is NEVER consumed — it stays the whole
+ *    combat.
  *  - Quicksand  (Basic Earth) — face-down traps; an armed one ends the entering
  *    unit's movement AND activation, a decoy does nothing. A sprung trap is
  *    REMOVED, and armed/decoy stays hidden from the opponent throughout.
@@ -213,7 +215,7 @@ describe("Fire Wall spell", () => {
     expect((moved.combat!.battlefieldTokens ?? []).filter((token) => token.kind === "fire_wall")).toHaveLength(1);
   });
 
-  it("burns any unit STOPPING on the wall", () => {
+  it("burns a ground unit STOPPING on the wall", () => {
     const state = createInitialGameState("fw-stop");
     soloMover(state, "unit_p1_crusaders", 0);
     state.combat!.units.unit_p1_crusaders.maxHealth = 40;
@@ -225,7 +227,20 @@ describe("Fire Wall spell", () => {
     expect((moved.combat!.battlefieldTokens ?? []).filter((token) => token.kind === "fire_wall")).toHaveLength(1);
   });
 
-  it("does NOT burn a flying unit passing over it, but DOES when it stops on it", () => {
+  it("burns a RANGED unit that stops on the wall (ranged burns like ground, unlike a flyer)", () => {
+    // A ranged unit's Combat move range is 1, so it only ever STOPS on a wall
+    // (never crosses it to a farther cell) — and stopping burns it, since it is
+    // non-flying. This is the mutation control paired with the flyer-stop test.
+    const stop = createInitialGameState("fw-ranged-stop");
+    soloMover(stop, "unit_p1_marksmen", 0);
+    stop.combat!.units.unit_p1_marksmen.maxHealth = 40;
+    injectToken(stop, { kind: "fire_wall", position: 1, controllerId: "p2", damage: 2 });
+    const landed = moveTo(stop, "unit_p1_marksmen", 1);
+    expect(landed.combat!.units.unit_p1_marksmen.position).toBe(1);
+    expect(landed.combat!.units.unit_p1_marksmen.damage).toBe(2);
+  });
+
+  it("does NOT burn a flying unit crossing OR stopping on the wall (only ground/ranged burn from movement)", () => {
     const overState = createInitialGameState("fw-fly-over");
     soloMover(overState, "unit_p1_griffins", 0);
     overState.combat!.units.unit_p1_griffins.maxHealth = 40;
@@ -234,13 +249,51 @@ describe("Fire Wall spell", () => {
     expect(flewOver.combat!.units.unit_p1_griffins.position).toBe(2);
     expect(flewOver.combat!.units.unit_p1_griffins.damage).toBe(0);
 
+    // A flyer LANDING on the wall is now unharmed too — flames don't catch it in
+    // flight. It only burns if it BEGINS its turn there (see the activation test).
     const stopState = createInitialGameState("fw-fly-stop");
     soloMover(stopState, "unit_p1_griffins", 0);
     stopState.combat!.units.unit_p1_griffins.maxHealth = 40;
     injectToken(stopState, { kind: "fire_wall", position: 1, controllerId: "p2", damage: 2 });
     const landedOn = moveTo(stopState, "unit_p1_griffins", 1);
     expect(landedOn.combat!.units.unit_p1_griffins.position).toBe(1);
-    expect(landedOn.combat!.units.unit_p1_griffins.damage).toBe(2);
+    expect(landedOn.combat!.units.unit_p1_griffins.damage).toBe(0);
+  });
+
+  it("burns ANY unit — a flyer included — that BEGINS its activation standing on the wall", () => {
+    // Drive a real activation start: everyone has acted except a prior unit
+    // (about to Defend) and the flying griffins (standing on the wall). When the
+    // griffins activates, the wall bites even though it is a flyer.
+    const state = createInitialGameState("fw-fly-activation");
+    const combat = state.combat!;
+    combat.units.unit_p1_griffins.position = 9;
+    combat.units.unit_p1_griffins.maxHealth = 40;
+    combat.units.unit_p1_griffins.damage = 0;
+    for (const unit of Object.values(combat.units)) {
+      unit.activatedThisRound = unit.id !== "unit_p1_crusaders" && unit.id !== "unit_p1_griffins";
+    }
+    combat.activeUnitId = "unit_p1_crusaders";
+    state.activePlayerId = "p1";
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    injectToken(state, { kind: "fire_wall", position: 9, controllerId: "p2", damage: 2 });
+
+    const after = passAllReactions(
+      applyOk(state, { type: "DEFEND_UNIT", playerId: "p1", unitId: "unit_p1_crusaders" })
+    );
+    expect(after.combat!.activeUnitId).toBe("unit_p1_griffins");
+    expect(after.combat!.units.unit_p1_griffins.damage).toBe(2);
+    expect(
+      after.eventLog.some(
+        (event) =>
+          event.type === "BATTLEFIELD_TOKEN_TRIGGERED" &&
+          event.kind === "fire_wall" &&
+          event.unitId === "unit_p1_griffins" &&
+          event.outcome === "damage"
+      )
+    ).toBe(true);
+    // Still not consumed by the burn.
+    expect((after.combat!.battlefieldTokens ?? []).filter((token) => token.kind === "fire_wall")).toHaveLength(1);
   });
 
   it("a ground unit dodges a visible Fire Wall when an equally short clean route exists", () => {
@@ -265,13 +318,14 @@ describe("Fire Wall spell", () => {
     expect(first.combat!.units.unit_p1_crusaders.damage).toBe(3);
     expect((first.combat!.battlefieldTokens ?? []).filter((token) => token.kind === "fire_wall")).toHaveLength(1);
 
-    // The wall still stands: a second unit stopping on it is burned just the same
-    // (soloMover re-parks the others but leaves the battlefield tokens in place).
-    soloMover(first, "unit_p1_griffins", 0);
-    first.combat!.units.unit_p1_griffins.maxHealth = 40;
-    const second = moveTo(first, "unit_p1_griffins", 1);
-    expect(second.combat!.units.unit_p1_griffins.position).toBe(1);
-    expect(second.combat!.units.unit_p1_griffins.damage).toBe(3);
+    // The wall still stands: a second (ground/ranged) unit stopping on it is
+    // burned just the same (soloMover re-parks the others but leaves the
+    // battlefield tokens in place).
+    soloMover(first, "unit_p1_marksmen", 0);
+    first.combat!.units.unit_p1_marksmen.maxHealth = 40;
+    const second = moveTo(first, "unit_p1_marksmen", 1);
+    expect(second.combat!.units.unit_p1_marksmen.position).toBe(1);
+    expect(second.combat!.units.unit_p1_marksmen.damage).toBe(3);
     expect((second.combat!.battlefieldTokens ?? []).filter((token) => token.kind === "fire_wall")).toHaveLength(1);
   });
 });

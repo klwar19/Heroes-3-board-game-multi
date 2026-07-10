@@ -3159,7 +3159,10 @@ function addCommanderMapActions(actions: LegalAction[], state: GameState, player
   }
 
   if ((commander.gradePoints ?? 0) > 0) {
-    for (const stat of commanderGradeUpChoices(commander)) {
+    // The mastery gate (grade 2 → 3 needs hero level 5+) filters the offers, so
+    // the legal actions mirror what the reducer will actually accept.
+    const heroLevel = getMainHeroOf(state, playerId)?.level ?? 1;
+    for (const stat of commanderGradeUpChoices(commander, heroLevel)) {
       actions.push({
         label: `Commander grade-up: raise ${stat}`,
         action: {

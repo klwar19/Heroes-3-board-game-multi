@@ -22,17 +22,16 @@ import { applyAction, createAdventureGameState, createAdventureLobbyState } from
 import type { GameAction, GameState } from "./state";
 
 /**
- * Factory is an ART/DATA stub, NOT a playable faction. This file is the
- * "done" bar for the art import (every town/unit/hero/building image resolves to
- * a file on disk) AND for the non-playable gate that keeps the stub from ever
- * entering — and crashing — a real game. Each gate carries a mutation control
- * (castle is the playable twin) so a test fails if the wiring is removed.
+ * Factory is a PLAYABLE Expansion faction with its own &S1 starting tile. This
+ * file is the "done" bar for the art import (every town/unit/hero/building image
+ * resolves to a file on disk) AND for the playable wiring (registered faction,
+ * &S1 starting tile carrying the Factory town, Random-Town defender pool, lobby
+ * pick, real adventure start). Each claim carries a mutation control (castle is
+ * the twin) so a test fails if the wiring is removed.
  *
- * LEAD WITH WHAT DOES NOT WORK: Factory has no engine mechanics at all. Its
- * units carry `abilities: []` (the printed abilityText is display-only), its
- * buildings are `not-implemented`, its heroes have no specialty cards, and it
- * has no board-game starting map tile. The assertions below pin that stub state
- * so nobody mistakes the art wiring for a working faction.
+ * The Factory unit abilities and combat rules are pinned in their own files
+ * (factory-unit-abilities.test.ts / factory-combat.test.ts / factory-gold-
+ * abilities.test.ts); this file covers the art + the faction/tile wiring.
  */
 
 const PUBLIC = join(process.cwd(), "public");
@@ -69,7 +68,7 @@ function apply(state: GameState, action: GameAction): GameState {
   return result.state;
 }
 
-describe("Factory faction — art wired, not playable", () => {
+describe("Factory faction — art wired and playable (&S1 starting tile)", () => {
   it("registers the faction with all 8 units and the 6 kept heroes", () => {
     const faction = coreFactionDefinitions.factory;
     expect(faction, "factory faction should be registered").toBeDefined();
@@ -156,6 +155,29 @@ describe("Factory faction — art wired, not playable", () => {
     expect(tile.group).toBe("starting");
     expect(tile.fields[0]).toMatchObject({ location: "town", faction: "factory" });
     expect(tile.assets?.tileImage).toBe("/assets/board/tiles/sf1.webp");
+  });
+
+  it("&S1 fields follow the real sf1.webp scan (not the Stronghold-S7 rotation)", () => {
+    // Ring slots 1-6 = NE, E, SE, SW, W, NW. Read off the printed art: campfire +
+    // crossed-pick resource (NE), open pine-desert (E) and rocky outcrop (SE),
+    // the "I" treasure cabin (SW), the "loop 2" materials mine "I" (W), and the
+    // "&S1" tar-chasm anchor (NW). This diverges from the old S7-clone rotation
+    // (which put the mine at NE and the blocked field at E), so a regression back
+    // to it fails here.
+    const f = allTileDefinitions["&S1"].fields;
+    expect(f[1]).toMatchObject({ location: "resource_symbol" }); // NE
+    expect(f[2]).toMatchObject({ location: "empty_field" }); // E
+    expect(f[3]).toMatchObject({ location: "empty_field" }); // SE
+    expect(f[4]).toMatchObject({ location: "treasure_symbol", difficulty: 1 }); // SW
+    expect(f[5]).toMatchObject({
+      location: "mine",
+      resource: "buildingMaterials",
+      amount: 2,
+      difficulty: 1
+    }); // W
+    expect(f[6]).toMatchObject({ location: "blocked_field" }); // NW
+    // The blocked-field anchor's outer edge is sealed (best-fit borders).
+    expect(allTileDefinitions["&S1"].outerImpassable[5]).toBe(true);
   });
 
   it("is in the Random Town defender pool alongside the other factions", () => {

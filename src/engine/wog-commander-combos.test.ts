@@ -411,11 +411,11 @@ describe("WOG commander combination skills — combat behaviour", () => {
     expect(control.combat!.units.unit_p2_skeletons.tokens?.some((token) => token.kind === "paralysis") ?? false).toBe(false);
   });
 
-  it("Regeneration (HP+SPD): the commander heals 1 damage when it activates", () => {
+  it("Regeneration (HP+SPD): the commander heals 2 damage when it activates", () => {
     function activateCommander(overrides: Partial<Record<CommanderStatKey, number>>): GameState {
       const state = comboDuel(overrides);
       const commander = state.combat!.units[commanderUnitId("p1")];
-      commander.damage = 2;
+      commander.damage = 3;
       // Leave only the griffins (active) and the commander un-activated: ending
       // the griffins' activation advances straight to the commander and fires
       // its activation-start abilities.
@@ -427,12 +427,13 @@ describe("WOG commander combination skills — combat behaviour", () => {
       return apply(state, { type: "DEFEND_UNIT", playerId: "p1", unitId: "unit_p1_griffins" });
     }
 
+    // 3 damage → heals exactly 2 → 1 remaining (pins the amount, not "heal >= 2").
     const healed = activateCommander({ health: 3, speed: 2 });
     expect(healed.combat!.units[commanderUnitId("p1")].damage).toBe(1);
 
-    // CONTROL: speed grade 1 → the damage stays.
+    // CONTROL: speed grade 1 → the combo is locked, the damage stays.
     const control = activateCommander({ health: 3, speed: 1 });
-    expect(control.combat!.units[commanderUnitId("p1")].damage).toBe(2);
+    expect(control.combat!.units[commanderUnitId("p1")].damage).toBe(3);
   });
 
   it("Battle Teleport (MAG+SPD): a regular move may land on ANY empty space", () => {
