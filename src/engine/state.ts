@@ -8226,6 +8226,9 @@ export type PendingChoice =
         | "visions-boost"
         | "visions-deck"
         | "visions-scry"
+        | "visions-guard-cast"
+        | "visions-guard-boost"
+        | "visions-guard-swap"
         | "pandora-scry"
         | "pandora-upkeep"
         | "morale-positive-limit"
@@ -8519,6 +8522,14 @@ export type PendingChoice =
         remaining: CardId[];
         toReturn: CardId[];
       };
+      /**
+       * visions-guard-swap: casting Visions BEFORE a neutral guard battle to swap
+       * out the drawn guards. `swapsRemaining` is how many more of the drawn
+       * (non-bank) Neutral guards may still be discarded-and-redrawn this cast;
+       * the guards themselves live on `combat.pendingNeutralDraws`. The Power
+       * boost step that sets this count reuses the `visionsBoost` field above.
+       */
+      visionsGuardSwap?: { swapsRemaining: number };
       /**
        * pandora-scry (Pandora cards 183/184/185/186): the shared-deck cards lifted
        * off the top of `deckId` still awaiting a keep/discard decision

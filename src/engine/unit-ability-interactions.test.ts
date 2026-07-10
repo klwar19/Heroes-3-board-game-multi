@@ -319,6 +319,12 @@ describe("WOG Santa Gremlin — Ice Bolt is a RANGED shot; its retaliation rolls
     expect(retaliation?.rollMode).toBe("disadvantage");
     // ...and the foe's Defense reduces it (elemental would zero Defense out).
     expect(retaliation?.defenseValue).toBe(2);
+    // The OBSERVABLE outcome (CLAUDE.md #1a): a NORMAL rolled hit — Attack 3 + the
+    // "+1" die − Defense 2 = 2 damage. The un-rollable Ice Bolt would instead have
+    // dealt a fixed 3 (ignoring the die AND Defense), so this pins that the melee
+    // Retaliation Attack is normal, not elemental.
+    expect(retaliation?.damage).toBe(2);
+    expect(next.combat!.units.unit_p1_griffins.damage).toBe(2);
   });
 });
 
