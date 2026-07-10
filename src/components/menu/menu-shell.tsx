@@ -68,6 +68,40 @@ function MenuDragonBreath() {
   );
 }
 
+/** Rising gold motes (WC3-menu fireflies), positioned per-index in CSS. */
+const MENU_MOTES = 14;
+
+/**
+ * The Azure and Crystal Dragon guardians dozing at the lower corners of the
+ * main menu, mostly tucked behind the screen edge: a slow breathing bob and a
+ * soft glow pulse, plus a column of rising gold motes across the backdrop.
+ * Decorative only (pointer-events: none), hidden under reduced motion's
+ * static fallback like the dragon breath.
+ */
+function MenuGuardianDragons() {
+  return (
+    <div aria-hidden className="menuGuardians">
+      <img
+        alt=""
+        className="menuGuardianDragon azure"
+        draggable={false}
+        src={assetUrl("/assets/ui/ornate/azure-dragon.webp")}
+      />
+      <img
+        alt=""
+        className="menuGuardianDragon crystal"
+        draggable={false}
+        src={assetUrl("/assets/ui/ornate/crystal-dragon.webp")}
+      />
+      <div className="menuGuardianMotes">
+        {Array.from({ length: MENU_MOTES }, (_, i) => (
+          <span className="menuMote" key={`m${i}`} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /**
  * Shared chrome for every pre-game screen (login, main menu, multiplayer
  * lobby, hall of fame): a full-bleed backdrop from the art-slot registry, a
@@ -120,6 +154,7 @@ export function MenuShell({
     <Root className="menuShellRoot">
       <img alt="" aria-hidden className="menuShellBackdrop" src={assetUrl(art.src)} />
       {dragonBreath ? <MenuDragonBreath /> : null}
+      {dragonBreath ? <MenuGuardianDragons /> : null}
       <div aria-hidden className="menuShellVignette" />
       <div className="menuShellContent" onClick={playMenuNavClickSound}>
         {logo ? <img alt={brand.alt} className="menuGameLogo" src={assetUrl(brand.src)} /> : null}

@@ -326,7 +326,7 @@ describe("PermanentSlot — the permanent effect is shown clearly (map card tray
 });
 
 describe("HandFan — Spell Book window (house rule)", () => {
-  it("the Spell Book icon opens a list of stored Spells and casting one routes to target picking", () => {
+  it("the Spell Book icon opens the full grimoire and casting a stored Spell dispatches it", () => {
     const state = createInitialGameState("book-window-ui");
     state.players.p1.hand = [];
     // Lightning Bolt (not the starting-only Magic Arrow) is a Spell that can
@@ -352,13 +352,16 @@ describe("HandFan — Spell Book window (house rule)", () => {
       </CardZoomProvider>
     );
 
-    // The window is closed until the Spell Book icon is clicked.
-    expect(screen.queryByRole("menu", { name: /Spell Book spells/i })).toBeNull();
+    // The grimoire is closed until the Spell Book icon is clicked. In combat
+    // it opens the SAME full two-page book the map uses (a dialog portal),
+    // not the old list popover.
+    expect(screen.queryByRole("dialog", { name: /Spell Book/i })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /Spell Book/i }));
 
-    // The stored Spell is listed, with a concrete (pre-targeted) cast button.
-    const menu = screen.getByRole("menu", { name: /Spell Book spells/i });
-    expect(menu).toBeTruthy();
+    // The stored Spell is on the index page, with a concrete (pre-targeted)
+    // cast button on the plate.
+    const book = screen.getByRole("dialog", { name: /Spell Book/i });
+    expect(book.textContent).toContain("Lightning Bolt");
     const castButtons = screen.getAllByRole("button", { name: /^Cast →/i });
     expect(castButtons.length).toBeGreaterThanOrEqual(1);
     fireEvent.click(castButtons[0]!);
@@ -369,7 +372,7 @@ describe("HandFan — Spell Book window (house rule)", () => {
     );
   });
 
-  it("lists each stored Spell WITH its card icon (art shown, not just the name)", () => {
+  it("shows the selected Spell's card art on the grimoire plate (art, not just the name)", () => {
     const state = createInitialGameState("book-window-icon");
     state.players.p1.hand = [];
     state.players.p1.spellBook = ["spell.lightning_bolt"];
@@ -377,7 +380,7 @@ describe("HandFan — Spell Book window (house rule)", () => {
     state.activePlayerId = "p1";
     state.combat!.activeUnitId = "unit_p1_marksmen";
 
-    const { container } = render(
+    render(
       <CardZoomProvider>
         <HandFan
           view={getPlayerView(state, "p1")}
@@ -394,14 +397,12 @@ describe("HandFan — Spell Book window (house rule)", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Spell Book/i }));
 
-    // The stored Spell shows a card-art thumbnail (the requested icon), one per
-    // Spell — remove the <CardFrame> from the popover row and this fails.
-    const icons = container.querySelectorAll(".shelfSpellIcon");
-    expect(icons).toHaveLength(1);
-    // Lightning Bolt has a real scan, so the icon renders as an <img> of its art.
-    const img = icons[0] as HTMLImageElement;
-    expect(img.tagName).toBe("IMG");
-    expect(img.getAttribute("src")).toBeTruthy();
+    // The grimoire portals to document.body; its right page renders the
+    // selected Spell's illustrated plate — remove the <img> and this fails.
+    const img = document.querySelector(".spellBookArt") as HTMLImageElement | null;
+    expect(img).toBeTruthy();
+    expect(img!.tagName).toBe("IMG");
+    expect(img!.getAttribute("src")).toBeTruthy();
   });
 
   it("plays the Spell Book open cue when opened — and NOT when closed", () => {
@@ -465,9 +466,9 @@ describe("HandFan — Spell Book window (house rule)", () => {
     const icon = screen.getByRole("button", { name: /Spell Book/i });
     expect(icon).toBeTruthy();
     fireEvent.click(icon);
-    // …and opening it shows the empty-state message.
-    const menu = screen.getByRole("menu", { name: /Spell Book spells/i });
-    expect(menu.textContent).toMatch(/No Spells here/i);
+    // …and opening it shows the grimoire's blank-pages message.
+    const book = screen.getByRole("dialog", { name: /Spell Book/i });
+    expect(book.textContent).toMatch(/pages are blank/i);
   });
 });
 

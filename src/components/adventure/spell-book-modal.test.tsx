@@ -10,6 +10,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SpellBookModal } from "./screen";
+import * as sound from "@/lib/sound";
 import { cardLibrary } from "@/data/cards/library";
 import type { LegalAction } from "@/engine/state";
 
@@ -38,6 +39,31 @@ describe("SpellBookModal — the openable Spell Book", () => {
     const items = document.querySelectorAll<HTMLElement>(".spellBookIndexItem");
     fireEvent.click(items[1]);
     expect(document.querySelector(".spellBookSpellTitle")?.textContent).toBe(cardLibrary["spell.slow"].name);
+  });
+
+  it("flips a real paper leaf (and plays the page foley) on a turn — but not on the initial open", () => {
+    const spy = vi.spyOn(sound, "playSpellBookPageTurn").mockImplementation(() => {});
+    render(
+      <SpellBookModal cardIds={["spell.haste", "spell.slow"]} castsByCard={EMPTY} onCast={() => {}} onClose={() => {}} />
+    );
+    // Freshly opened: the right page has not turned yet (no leaf animation class).
+    const rightBefore = document.querySelector(".spellBookPage.right");
+    expect(rightBefore?.classList.contains("turning")).toBe(false);
+    expect(document.querySelector(".spellBookTurnLeaf")).toBeTruthy();
+    expect(spy).not.toHaveBeenCalled();
+
+    // Picking another spell turns the page: the remounted right page carries
+    // the `turning` class (driving the 3D leaf flip) and the foley plays once.
+    const items = document.querySelectorAll<HTMLElement>(".spellBookIndexItem");
+    fireEvent.click(items[1]);
+    const rightAfter = document.querySelector(".spellBookPage.right");
+    expect(rightAfter?.classList.contains("turning")).toBe(true);
+    expect(spy).toHaveBeenCalledTimes(1);
+
+    // Re-picking the SAME spell is not a turn (no extra flip, no extra foley).
+    fireEvent.click(document.querySelectorAll<HTMLElement>(".spellBookIndexItem")[1]);
+    expect(spy).toHaveBeenCalledTimes(1);
+    spy.mockRestore();
   });
 
   it("offers a stored spell's cast action and reports the pick to onCast", () => {
