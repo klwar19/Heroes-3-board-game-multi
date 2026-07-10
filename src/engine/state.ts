@@ -3639,6 +3639,14 @@ export type GameEvent =
        * commander rolled them, so the client can show the Might dice.
        */
       mightRolls?: number[];
+      /**
+       * Morale/artifact/spell adjustments that visibly changed this roll
+       * (a Negative Morale die flip / forced reroll / −1 latch / dropped die,
+       * the Mummy's forced −1, a specialty-fixed face, a minimum-die floor).
+       * Display-only: the numbers above already include every adjustment; the
+       * dice overlay lists these so the player can see WHY the roll changed.
+       */
+      rollModifiers?: AttackRollModifierNote[];
       attackValue: number;
       defenseValue: number;
       damage: number;
@@ -3892,6 +3900,16 @@ export type GameEvent =
       abilityId: string;
       targetUnitId?: UnitId;
       message: string;
+      /**
+       * Structured dice for an ability's OWN roll (Death Stare, the
+       * Thunderbird/Wyvern extra die, extra-die Paralysis, the Medusa gaze,
+       * Ghost Dragon knockback, Dwarven Magic Resistance, the defense-die
+       * damage soak, the morale skip-activation check — and each Multilingual
+       * Bron reroll announce). Present only when the ability physically threw
+       * dice; the client shows the same tumbling-dice overlay the attack roll
+       * gets, headed `label` with `caption` as the outcome read-out.
+       */
+      dice?: AbilityDiceRoll;
     }
   | {
       id: string;
@@ -5004,6 +5022,12 @@ export type ResolutionStackItem = {
      * Only a "+1" grants +1 Defense.
      */
     defendRoll?: number;
+    /**
+     * Morale adjustments that visibly changed this attack's Defend roll (the
+     * forced reroll of a "+1" / the −1 latch), recorded when the roll is made
+     * and carried onto ATTACK_ROLLED as rollModifiers. Display-only.
+     */
+    defendRollNotes?: AttackRollModifierNote[];
     /**
      * WOG commander Damage grade ("Might"): the extra attack dice rolled for
      * this attack (Damage grade = how many). Rolled once and reused across the
@@ -8100,6 +8124,37 @@ export type AttackRollCandidate = {
    * the "unused" ones the way it does for an advantage/disadvantage keep-one roll.
    */
   sumAllDice?: boolean;
+  /**
+   * Morale/artifact/spell adjustments that visibly changed this candidate's
+   * dice, carried onto the ATTACK_ROLLED event as `rollModifiers` so the dice
+   * overlay can explain the change. Display-only bookkeeping — `rolls`/`roll`
+   * already reflect every adjustment.
+   */
+  modifierNotes?: AttackRollModifierNote[];
+};
+
+/** One morale/artifact/spell adjustment that visibly changed an Attack roll. */
+export type AttackRollModifierNote = {
+  /** What changed the roll (card/ability name, e.g. "Negative Morale"). */
+  source: string;
+  /** Plain-words description of the change (e.g. "−1 to this Attack roll"). */
+  text: string;
+};
+
+/**
+ * An ability's own dice throw (Death Stare, the Thunderbird/Wyvern extra die…)
+ * as carried on its UNIT_ABILITY_TRIGGERED event, so the client can show the
+ * roll with the same tumbling-dice overlay an attack roll gets.
+ */
+export type AbilityDiceRoll = {
+  /** The faces rolled, in throw order (all of them count — none dim). */
+  rolls: number[];
+  /** Whether the printed effect landed on this throw. */
+  success: boolean;
+  /** Overlay heading (the ability's name, e.g. "Death Stare"). */
+  label: string;
+  /** Outcome read-out under the dice (e.g. "Silver Pegasi are destroyed!"). */
+  caption: string;
 };
 
 export type AttackRerollSource = {

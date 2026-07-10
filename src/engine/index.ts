@@ -368,6 +368,7 @@ export { WAR_MACHINE_CARD_IDS } from "@/data/cards/permanents";
 export type { BattlefieldCoordinates, BattlefieldTerrain } from "./battlefield";
 export { DEFAULT_WOG_OPTIONS, NEUTRAL_PLAYER_ID } from "./state";
 export type {
+  AbilityDiceRoll,
   ActiveEffectDefinition,
   ActiveEffectModifier,
   ActiveEffectState,
@@ -378,6 +379,7 @@ export type {
   ArmyUnitState,
   ArtifactTier,
   AttackRollMode,
+  AttackRollModifierNote,
   BattlefieldTokenKind,
   BattlefieldTokenState,
   BuildingDefinition,

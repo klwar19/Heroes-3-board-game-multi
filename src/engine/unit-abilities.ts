@@ -896,10 +896,10 @@ export function getOnAttackFireWallDamage(unit: CombatUnitState): number {
 
 export function getDefenseDieDamageReduction(
   unit: CombatUnitState
-): { abilityId: string; onRoll: number; amount: number } | null {
+): { abilityId: string; abilityName: string; onRoll: number; amount: number } | null {
   for (const ability of getAbilitiesWithEffect(unit, "REDUCE_ATTACK_DAMAGE_ON_DEFENSE_DIE")) {
     if (ability.effect?.type === "REDUCE_ATTACK_DAMAGE_ON_DEFENSE_DIE") {
-      return { abilityId: ability.id, onRoll: ability.effect.onRoll, amount: ability.effect.amount };
+      return { abilityId: ability.id, abilityName: ability.name, onRoll: ability.effect.onRoll, amount: ability.effect.amount };
     }
   }
   return null;

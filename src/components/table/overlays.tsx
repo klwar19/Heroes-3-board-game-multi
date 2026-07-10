@@ -1059,13 +1059,44 @@ export type DiceCue = {
   /**
    * Spell-roll mode (Inferno): the cube(s) size a Spell's own effect, so the
    * overlay shows the spell's name and a "N hits" read-out instead of the
-   * attacker-vs-defender combat breakdown.
+   * attacker-vs-defender combat breakdown. Ability rolls (Death Stare, the
+   * Thunderbird extra die, the morale skip-activation check…) reuse this mode
+   * with `tone` colouring the outcome caption.
    */
   spellMode?: boolean;
   /** Spell-mode heading (the spell's name). */
   title?: string;
   /** Spell-mode read-out under the dice (e.g. "3 hits → 3 damage each"). */
   caption?: string;
+  /**
+   * Colours the spell-mode caption: "good" (the roll landed) glows gold,
+   * "bad" (no effect / a curse struck) reads muted red. Without it the
+   * caption falls back to the Inferno hits>0 colouring.
+   */
+  tone?: "good" | "bad";
+  /**
+   * Defending unit's per-attack Defend die (a "+1" pays +1 Defense) — shown
+   * as a shield chip under the breakdown when the defender was defending.
+   */
+  defendRoll?: number;
+  /**
+   * WOG commander Might dice: extra attack dice rolled alongside the main die
+   * (each "+1" raises the attack; at most one "−1" counts). Rendered as their
+   * own cubes after the main dice, never dimmed.
+   */
+  mightRolls?: number[];
+  /**
+   * Morale/artifact/spell adjustments that visibly changed this roll (e.g.
+   * "Negative Morale — one die is set to the "-1" side"). Listed as chips
+   * under the breakdown so the player sees WHY the dice differ.
+   */
+  modifiers?: { source: string; text: string }[];
+  /**
+   * How long the settled dice hold before the overlay dismisses itself.
+   * Defaults to DICE_READ_MS; ability rolls use the shorter
+   * ABILITY_DICE_READ_MS so a Death Stare after every attack stays snappy.
+   */
+  readMs?: number;
   /**
    * Hold the board (no overlay) this long before the cube starts tumbling.
    * Set for a neutral guard that moved into range first, so the table watches
@@ -1085,6 +1116,12 @@ export const DICE_ROLL_MS = 1850;
 export const DICE_READ_MS = 2150;
 /** Total time the attack-die overlay holds the screen (roll + read). */
 export const DICE_PRESENT_MS = DICE_ROLL_MS + DICE_READ_MS;
+/**
+ * The shorter read for an ability's own roll (Death Stare, the Thunderbird
+ * extra die…): it follows an attack that already had its full dice beat, so
+ * the outcome reads out quickly instead of holding the table a second time.
+ */
+export const ABILITY_DICE_READ_MS = 1500;
 
 /** How long each first-player attempt's dice clatter before the faces reveal. */
 export const FIRST_ROLL_TUMBLE_MS = 1300;
@@ -1125,6 +1162,8 @@ function DieCube({ value, rolling, dimmed }: { value: number; rolling: boolean; 
 /** Rendered with `key={cue.id}` so each roll mounts fresh in the rolling phase. */
 export function DiceOverlay({ cue, onDone }: { cue: DiceCue; onDone: () => void }) {
   const preDelay = cue.preDelayMs ?? 0;
+  const readMs = cue.readMs ?? DICE_READ_MS;
+  const diceCount = cue.rolls.length + (cue.mightRolls?.length ?? 0);
   // "waiting": board visible while a guard finishes sliding into range.
   const [phase, setPhase] = useState<"waiting" | "rolling" | "settled">(preDelay > 0 ? "waiting" : "rolling");
 
@@ -1132,7 +1171,7 @@ export function DiceOverlay({ cue, onDone }: { cue: DiceCue; onDone: () => void 
     const timers: ReturnType<typeof setTimeout>[] = [];
     const beginRoll = () => {
       setPhase("rolling");
-      playDiceRoll(cue.rolls.length, DICE_ROLL_MS - 120);
+      playDiceRoll(diceCount, DICE_ROLL_MS - 120);
     };
     if (preDelay > 0) {
       timers.push(setTimeout(beginRoll, preDelay));
@@ -1140,14 +1179,14 @@ export function DiceOverlay({ cue, onDone }: { cue: DiceCue; onDone: () => void 
       beginRoll();
     }
     timers.push(setTimeout(() => setPhase("settled"), preDelay + DICE_ROLL_MS));
-    timers.push(setTimeout(onDone, preDelay + DICE_ROLL_MS + DICE_READ_MS));
+    timers.push(setTimeout(onDone, preDelay + DICE_ROLL_MS + readMs));
 
     return () => {
       for (const timer of timers) {
         clearTimeout(timer);
       }
     };
-  }, [onDone, preDelay, cue.rolls.length]);
+  }, [onDone, preDelay, readMs, diceCount]);
 
   // During the pre-attack pause keep the board clear so the guard's move reads.
   if (phase === "waiting") {
@@ -1189,10 +1228,22 @@ export function DiceOverlay({ cue, onDone }: { cue: DiceCue; onDone: () => void 
               ×{cue.dieMultiplier}
             </span>
           ) : null}
+          {cue.mightRolls?.length ? (
+            <>
+              <span className="mightDiceTag" title="Commander Might: extra attack dice rolled alongside the main die">
+                Might
+              </span>
+              {cue.mightRolls.map((roll, index) => (
+                <DieCube dimmed={false} key={`might-${index}`} rolling={rolling} value={roll} />
+              ))}
+            </>
+          ) : null}
         </div>
         <div className={`diceBreakdown ${rolling ? "hidden" : ""}`}>
           {cue.spellMode ? (
-            <strong className={`damageResult ${cue.roll > 0 ? "hit" : "blocked"}`}>
+            <strong
+              className={`damageResult ${cue.tone ? (cue.tone === "good" ? "hit" : "blocked") : cue.roll > 0 ? "hit" : "blocked"}`}
+            >
               {cue.caption ?? (cue.roll > 0 ? `${cue.roll} hit${cue.roll === 1 ? "" : "s"}` : "No effect")}
             </strong>
           ) : (
@@ -1213,6 +1264,21 @@ export function DiceOverlay({ cue, onDone }: { cue: DiceCue; onDone: () => void 
             </>
           )}
         </div>
+        {!rolling && (cue.defendRoll !== undefined || (cue.modifiers?.length ?? 0) > 0) ? (
+          <div className="diceModifiers">
+            {cue.defendRoll !== undefined ? (
+              <span className="diceModChip shield">
+                🛡 Defend die {formatDieFace(cue.defendRoll)}
+                {cue.defendRoll === 1 ? " → +1 Defense" : ""}
+              </span>
+            ) : null}
+            {cue.modifiers?.map((modifier, index) => (
+              <span className="diceModChip" key={index}>
+                <strong>{modifier.source}</strong> — {modifier.text}
+              </span>
+            ))}
+          </div>
+        ) : null}
       </div>
     </div>
   );

@@ -52,7 +52,9 @@ import {
   ReactionTray,
   RerollModal,
   SearchModal,
+  ABILITY_DICE_READ_MS,
   DICE_PRESENT_MS,
+  DICE_ROLL_MS,
   type DiceCue,
   type DrawCue,
   type FirstPlayerRollCue,
@@ -445,9 +447,58 @@ function makeDiceCue(
     isRetaliation: event.isRetaliation,
     // Slayer (and the Champions' "apply both") sum every die — keep them all lit.
     ...(event.sumAllDice ? { sumAllDice: true } : {}),
+    // The defender's Defend die, the commander's Might dice and any morale/
+    // artifact/spell adjustment that changed this roll all read out with it.
+    ...(event.defendRoll !== undefined ? { defendRoll: event.defendRoll } : {}),
+    ...(event.mightRolls?.length ? { mightRolls: event.mightRolls } : {}),
+    ...(event.rollModifiers?.length ? { modifiers: event.rollModifiers } : {}),
     ...(preDelayMs > 0 ? { preDelayMs } : {})
   };
 }
+
+/**
+ * An ability's own dice throw (Death Stare, the Thunderbird extra die, the
+ * morale skip-activation check…): shown in the same overlay as an attack
+ * roll, headed with the ability + roller and a short outcome read-out. All
+ * its dice count (none dim) and the read is shorter — it follows an attack
+ * that already had its full dice beat.
+ */
+function makeAbilityDiceCue(
+  state: GameState,
+  event: Extract<GameEvent, { type: "UNIT_ABILITY_TRIGGERED" }>,
+  dice: NonNullable<Extract<GameEvent, { type: "UNIT_ABILITY_TRIGGERED" }>["dice"]>,
+  preDelayMs = 0
+): DiceCue {
+  return {
+    id: `${event.id}-dice`,
+    rolls: dice.rolls,
+    roll: dice.success ? 1 : 0,
+    dieMultiplier: 1,
+    rollMode: "normal",
+    attackerName: "",
+    defenderName: "",
+    attackValue: 0,
+    defenseValue: 0,
+    attackBonus: 0,
+    defenseBonus: 0,
+    damage: 0,
+    isRetaliation: false,
+    sumAllDice: true,
+    spellMode: true,
+    tone: dice.success ? "good" : "bad",
+    title: `${dice.label} — ${unitName(state, event.unitId)}`,
+    caption: dice.caption,
+    readMs: ABILITY_DICE_READ_MS,
+    ...(preDelayMs > 0 ? { preDelayMs } : {})
+  };
+}
+
+/**
+ * The board-settle beat an ability's dice wait out when they follow attack
+ * dice in the same snapshot: the strike lands (ATTACK_IMPACT_MS) and its
+ * damage number reads before the follow-up cube is thrown.
+ */
+const ABILITY_DICE_AFTER_STRIKE_MS = ATTACK_IMPACT_MS + 450;
 
 /**
  * The dice a Spell rolls to size its own effect (Inferno): shown in the same
@@ -2430,6 +2481,25 @@ export default function Home() {
               // below. Skip it here so the cast is not queued a second time.
               if (leadingSpellEventIds.has(event.id)) {
                 break;
+              }
+              // An ability that physically threw dice (Death Stare, the
+              // Thunderbird extra die, the Dwarven resistance die, the morale
+              // skip-activation check…) rolls them out in the attack-die
+              // overlay BEFORE its effect FX and the damage it caused land.
+              // Queued behind this snapshot's attack dice it waits only a
+              // short strike-settle beat — the overlay queue itself provides
+              // the ordering — while a batch with no attack dice (a spell
+              // resisted mid-cast) waits out the running timeline like the
+              // Inferno roll does.
+              if (event.dice) {
+                const afterStrike = fresh.length > 0;
+                const startAt = afterStrike ? ABILITY_DICE_AFTER_STRIKE_MS : timeline;
+                spellDiceCues.push(makeAbilityDiceCue(nextState, event, event.dice, startAt));
+                timeline += (afterStrike ? ABILITY_DICE_AFTER_STRIKE_MS : 0) + DICE_ROLL_MS + ABILITY_DICE_READ_MS;
+                if (inCombat) {
+                  combatFxActive = true;
+                  combatPresentationEnd = Math.max(combatPresentationEnd, timeline + 1200);
+                }
               }
               const plan = abilityFxPlans[event.abilityId];
               if (!plan) {

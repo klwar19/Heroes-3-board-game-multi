@@ -3217,6 +3217,56 @@ button.battleCell {
   background: rgb(93 135 100 / 30%);
 }
 
+/* Roll-modifier chips under the dice breakdown: the morale/artifact/spell
+   adjustments that changed this roll, plus the defender's Defend die. */
+.diceModifiers {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+  animation: diceModifiersIn 240ms ease;
+}
+
+@keyframes diceModifiersIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.diceModChip {
+  padding: 3px 10px;
+  border: 1px solid rgb(214 168 96 / 55%);
+  border-radius: 99px;
+  background: rgb(13 15 16 / 60%);
+  color: var(--gold);
+  font-size: 12px;
+}
+
+.diceModChip strong {
+  font-weight: 800;
+}
+
+.diceModChip.shield {
+  border-color: rgb(120 111 166 / 60%);
+  color: var(--violet);
+}
+
+/* "Might" divider tag before a WOG commander's extra attack dice. */
+.mightDiceTag {
+  align-self: center;
+  padding: 2px 8px;
+  border: 1px solid rgb(214 168 96 / 55%);
+  border-radius: 99px;
+  color: var(--gold);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
 /* ---------- log drawer ---------- */
 
 .logDrawer {
