@@ -54,6 +54,8 @@ export interface AccountBackend {
 
   updateContact(accountId: string, rawContact: unknown): MaybePromise<SelfProfile>;
   getProfileById(accountId: string): MaybePromise<AccountProfile | null>;
+  /** Public profile lookup by (case-insensitive) nickname — the /players page. */
+  getProfileByNickname(nickname: string): MaybePromise<AccountProfile | null>;
 
   adminListAccounts(): MaybePromise<SelfProfile[]>;
   setRole(accountId: string, role: AccountRole): MaybePromise<AccountProfile>;

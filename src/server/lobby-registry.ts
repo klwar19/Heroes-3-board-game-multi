@@ -29,6 +29,28 @@ export const STALE_ROOM_TTL_MS = 6 * 60 * 60 * 1000;
 export const LOBBY_SINGLETON_ID = "directory";
 
 /**
+ * Cap on the member roster carried per directory row: enough for any real table
+ * (games are 2-4 players plus a few observers) while keeping the directory
+ * payload bounded however many clients pile into one room.
+ */
+export const MAX_DIRECTORY_MEMBERS = 12;
+
+/**
+ * One member of a room as shown in the lobby directory — who is in which room,
+ * marked host / seated, and whether they are a verified account or a guest
+ * (guests render as "guest — name", so nobody is mistaken for a registered
+ * player).
+ */
+export type RoomDirectoryMember = {
+  name: string;
+  host: boolean;
+  /** True when the member is NOT bound to a verified account. */
+  guest: boolean;
+  /** True when they hold a real seat (not an observer). */
+  seated: boolean;
+};
+
+/**
  * One row of the lobby's room directory, as shown to a particular viewer: enough
  * to tell rooms apart and decide whether to join — and whether THIS viewer may
  * close it — without connecting to each room.
@@ -46,6 +68,12 @@ export type RoomDirectoryEntry = {
   seatedCount: number;
   hosted: boolean;
   hostName: string | null;
+  /**
+   * Who is in the room (host first, then seated players, then observers),
+   * capped at MAX_DIRECTORY_MEMBERS. Absent only on records persisted before
+   * the field existed — treat as empty.
+   */
+  members?: RoomDirectoryMember[];
   /** Match type shown in the directory: true = Ranked (counts MMR), false = Normal. */
   ranked: boolean;
   createdByName: string | null;
@@ -74,6 +102,8 @@ export type LobbyRoomRecord = {
   hostName: string | null;
   hostClientId: string | null;
   memberClientIds: string[];
+  /** The visible member roster (see RoomDirectoryMember); absent on legacy records. */
+  members?: RoomDirectoryMember[];
   /** Match type: true = Ranked (counts MMR), false = Normal (casual). */
   ranked: boolean;
   createdByName: string | null;
@@ -96,6 +126,21 @@ export function deriveLobbyRecord(input: DeriveLobbyRecordInput): LobbyRoomRecor
   const members = room?.members ?? [];
   const host = room?.hostClientId ? (members.find((member) => member.clientId === room.hostClientId) ?? null) : null;
   const isFreshLobby = state.phase === "setup" && Boolean(state.setupLobby);
+  // The visible roster: who is in this room — host first, then seated players,
+  // then observers — each marked guest (no verified account) or not, so the
+  // lobby can render "guest — name" honestly. Bounded (see the cap's comment).
+  const roster: RoomDirectoryMember[] = [...members]
+    .sort((a, b) => {
+      const rank = (member: (typeof members)[number]) => (member.isHost ? 0 : member.seat !== "observer" ? 1 : 2);
+      return rank(a) - rank(b);
+    })
+    .slice(0, MAX_DIRECTORY_MEMBERS)
+    .map((member) => ({
+      name: member.name,
+      host: member.isHost,
+      guest: !member.userId,
+      seated: member.seat !== "observer"
+    }));
   return {
     roomId,
     name: roomDisplayName(state, roomId),
@@ -108,6 +153,7 @@ export function deriveLobbyRecord(input: DeriveLobbyRecordInput): LobbyRoomRecor
     hostName: host?.name ?? null,
     hostClientId: room?.hostClientId ?? null,
     memberClientIds: members.map((member) => member.clientId),
+    members: roster,
     // Absent flag (legacy rooms) shows as Ranked, matching the match-report
     // default; only an explicit Normal table (`ranked === false`) shows casual.
     ranked: room?.ranked !== false,
@@ -163,6 +209,7 @@ export function toDirectoryEntry(record: LobbyRoomRecord, viewerClientId?: strin
     seatedCount: record.seatedCount,
     hosted: record.hosted,
     hostName: record.hostName,
+    members: record.members ?? [],
     ranked: record.ranked,
     createdByName: record.createdByName,
     createdAt: record.createdAt,
@@ -191,6 +238,9 @@ export function lobbyRecordSignature(record: LobbyRoomRecord): string {
     hostName: record.hostName,
     hostClientId: record.hostClientId,
     memberClientIds: record.memberClientIds,
+    // Roster changes (rename, sign-in upgrade, seat/host moves) must re-report,
+    // or the lobby would keep showing stale names for the room.
+    members: record.members ?? [],
     ranked: record.ranked,
     createdByName: record.createdByName,
     createdAt: record.createdAt

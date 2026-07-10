@@ -1,3 +1,4 @@
+import { appendSystemChat } from "./chat";
 import { appendEvent } from "./events";
 import { NEUTRAL_PLAYER_ID } from "./state";
 import type {
@@ -212,7 +213,9 @@ export function joinRoom(
       clientId: existingByUser.clientId,
       name: existingByUser.name,
       seat: existingByUser.seat,
-      isHost: existingByUser.isHost
+      isHost: existingByUser.isHost,
+      verified: true,
+      newMember: false
     });
     return;
   }
@@ -235,7 +238,9 @@ export function joinRoom(
       clientId: existing.clientId,
       name: existing.name,
       seat: existing.seat,
-      isHost: existing.isHost
+      isHost: existing.isHost,
+      verified: Boolean(existing.userId),
+      newMember: false
     });
     return;
   }
@@ -253,7 +258,16 @@ export function joinRoom(
     clientId: member.clientId,
     name: member.name,
     seat: member.seat,
-    isHost: member.isHost
+    isHost: member.isHost,
+    verified: Boolean(userId),
+    newMember: true
+  });
+  // Announce a genuinely NEW arrival in the room chat too (forced, so it shows
+  // even on a table where nobody has chatted yet): everyone should know who
+  // walked in — by registered nickname, or honestly labeled a guest. Reconnects
+  // and cross-tab rebinds above stay quiet, so refreshes never spam the feed.
+  appendSystemChat(state, userId ? `${name} joined the room.` : `guest — ${name} joined the room.`, {
+    force: true
   });
 }
 

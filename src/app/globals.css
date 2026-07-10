@@ -675,6 +675,20 @@ button {
   font-weight: 600;
 }
 
+/* Verified members' names (and Hall of Fame rows) open the public profile. */
+.roomMemberProfileLink,
+.hallOfFameName {
+  color: inherit;
+  text-decoration: underline dotted rgba(214, 168, 96, 0.6);
+  text-underline-offset: 2px;
+}
+
+.roomMemberProfileLink:hover,
+.hallOfFameName:hover {
+  color: var(--gold);
+  text-decoration-style: solid;
+}
+
 .roomMemberDot {
   align-self: center;
 }
@@ -11930,6 +11944,41 @@ img.cardBack {
   gap: 4px;
 }
 
+/* Who is in the room: host crowned, guests labeled "guest — name". */
+.lobbyRoomPeople {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+}
+
+.lobbyRoomPerson {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid rgba(214, 168, 96, 0.4);
+  color: #e8d9b5;
+}
+
+.lobbyRoomPerson .hostCrown,
+.lobbyRoomPerson svg {
+  color: var(--gold);
+}
+
+.lobbyRoomPerson.guest {
+  border-style: dashed;
+  border-color: var(--line);
+  color: var(--muted);
+  font-style: italic;
+}
+
+.lobbyRoomPerson.observer {
+  opacity: 0.75;
+}
+
 .lobbyRoomStatus {
   padding: 1px 7px;
   border-radius: 999px;
@@ -15635,6 +15684,46 @@ img.cardBack {
 .afkVotePanel .afkVoteWaiting {
   opacity: 0.75;
   font-style: italic;
+}
+
+/* 10-minute turn-timer countdown chip (top-right, clear of the vote banner):
+   appears once an open turn is under five minutes, turns red in the last
+   minute, and announces the force-end while the server shifts the turn. */
+.turnTimerChip {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border: 1px solid rgba(214, 168, 96, 0.55);
+  border-radius: 10px;
+  background: rgba(24, 18, 10, 0.92);
+  color: #f3e4c3;
+  font-size: 13px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+
+.turnTimerChip strong {
+  font-variant-numeric: tabular-nums;
+}
+
+.turnTimerChip.urgent {
+  border-color: rgba(214, 92, 74, 0.8);
+  color: #ffd9cf;
+  animation: turnTimerPulse 1.2s ease-in-out infinite;
+}
+
+@keyframes turnTimerPulse {
+  0%,
+  100% {
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  }
+  50% {
+    box-shadow: 0 6px 22px rgba(214, 92, 74, 0.55);
+  }
 }
 
 /* Pre-start ready check (all seated players must confirm within 30s). */

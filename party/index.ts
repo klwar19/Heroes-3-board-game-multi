@@ -1,12 +1,12 @@
 import type * as Party from "partykit/server";
 import {
-  afkDropPending,
   applyAction,
   createAdventureGameState,
   createAdventureLobbyState,
   createInitialGameState,
   driveAfkDrop,
   dropDisconnectedMember,
+  forcedResolutionPending,
   ENGINE_SIGNATURE,
   freshEntropy,
   OBSERVER_VIEWER_SEAT,
@@ -693,9 +693,10 @@ export default class GameRoomServer implements Party.Server {
         if (result.errors.length > 0) {
           return { errors, applied: false, prev: null as GameState | null, replyBase: current };
         }
-        // A passed AFK kick vote: drive the drop through the normal action
-        // pipeline until the seat is removed (or the table must wait).
-        const settled = afkDropPending(result.state)
+        // A passed AFK kick vote or an expired 10-minute turn: drive the forced
+        // resolution through the normal action pipeline until it settles (or
+        // the table must wait).
+        const settled = forcedResolutionPending(result.state)
           ? driveAfkDrop(result.state, () => ({ entropy: freshEntropy(), now: Date.now() }))
           : result.state;
         this.snapshot = {
@@ -883,8 +884,9 @@ export default class GameRoomServer implements Party.Server {
             ...(actorUserId ? { actorUserId } : {})
           });
           if (result.errors.length === 0) {
-            // A passed AFK kick vote: settle the drop before storing/reporting.
-            const settled = afkDropPending(result.state)
+            // A passed AFK kick vote or an expired turn: settle the forced
+            // resolution before storing/reporting.
+            const settled = forcedResolutionPending(result.state)
               ? driveAfkDrop(result.state, () => ({ entropy: freshEntropy(), now: Date.now() }))
               : result.state;
             this.snapshot = {
