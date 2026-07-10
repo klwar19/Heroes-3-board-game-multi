@@ -1377,4 +1377,31 @@ describe("ResetVotePanel — the New-adventure confirmation UI", () => {
     expect(screen.queryByRole("button", { name: /confirm/i })).toBeNull();
     expect(screen.getByRole("button", { name: /withdraw/i })).toBeTruthy();
   });
+
+  it("offers the HOST a 'Start now' override that fires onForceReset (escape hatch for a stuck vote)", () => {
+    const state = game();
+    openVote(state);
+    state.room = { hosted: true, hostClientId: "cA", members: [] };
+    const onForceReset = vi.fn();
+    render(
+      <ResetVotePanel
+        onAction={vi.fn()}
+        state={state}
+        viewerPlayerId={"p1" as PlayerId}
+        canForceReset
+        onForceReset={onForceReset}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: /start now/i }));
+    expect(onForceReset).toHaveBeenCalledTimes(1);
+  });
+
+  it("CONTROL: a non-host viewer never sees the 'Start now' override", () => {
+    const state = game();
+    openVote(state);
+    state.room = { hosted: true, hostClientId: "cA", members: [] };
+    // canForceReset defaults to false — the override button is host-only.
+    render(<ResetVotePanel onAction={vi.fn()} state={state} viewerPlayerId={"p2" as PlayerId} />);
+    expect(screen.queryByRole("button", { name: /start now/i })).toBeNull();
+  });
 });

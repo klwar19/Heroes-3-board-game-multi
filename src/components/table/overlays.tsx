@@ -2772,11 +2772,23 @@ function formatCountdown(remainingMs: number): string {
 export function ResetVotePanel({
   state,
   viewerPlayerId,
-  onAction
+  onAction,
+  canForceReset = false,
+  onForceReset
 }: {
   state: GameState;
   viewerPlayerId: PlayerId;
   onAction: (action: GameAction) => void;
+  /**
+   * The viewer is the HOST of a hosted table, so they may START the new
+   * adventure now without waiting for every seat to confirm. This is the escape
+   * hatch for a stuck vote — a player who left but is not eliminated, a solo
+   * host test — so "New adventure" is never a dead end. The host still opens the
+   * vote first (everyone sees the warning); this only skips the waiting.
+   */
+  canForceReset?: boolean;
+  /** Fire the host-override reset (resetRoom RPC). Required when canForceReset. */
+  onForceReset?: () => void;
 }) {
   const vote = state.resetVote ?? null;
   if (!vote) {
@@ -2827,9 +2839,24 @@ export function ResetVotePanel({
             {vote.startedByPlayerId === viewerPlayerId ? "Withdraw" : "Decline"}
           </button>
         ) : null}
+        {/* Host override: start the new adventure now without waiting for every
+            seat — so a stuck vote is never a dead end. */}
+        {canForceReset && onForceReset ? (
+          <button
+            className="commandButton primary"
+            type="button"
+            onClick={onForceReset}
+            title="Host: start the new adventure now, without waiting for everyone"
+          >
+            Start now (host)
+          </button>
+        ) : null}
       </span>
-      {viewerLive && confirmableSeats.length === 0 ? (
+      {viewerLive && confirmableSeats.length === 0 && !canForceReset ? (
         <span className="afkVoteWaiting">you confirmed — waiting for the other players…</span>
+      ) : null}
+      {canForceReset ? (
+        <span className="afkVoteWaiting">as host you can start now, or wait for everyone to confirm.</span>
       ) : null}
     </div>
   );

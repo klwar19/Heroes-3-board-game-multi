@@ -3999,6 +3999,8 @@ export default function Home() {
         state={state}
         viewerPlayerId={viewerPlayerId}
         onAction={(action) => void submitAction(action)}
+        canForceReset={Boolean(state.room?.hosted && myMember?.isHost)}
+        onForceReset={() => void resetRoom("adventure")}
       />
     </>
   );

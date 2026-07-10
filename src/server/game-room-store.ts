@@ -314,14 +314,21 @@ export function resetRoom(
   const existingState = existing?.state ?? null;
   if (!adminKeyAuthorizes(adminKey) && !isAdmin && existingState) {
     if (resetVoteRequired(existingState)) {
-      // In-progress multiplayer adventure: only the unanimous "new adventure"
-      // vote — approved by every live seat and fired by the browser that opened
-      // it — may wipe the running game, even in a hosted room where the
-      // requester is not the host. See src/engine/reset-vote.ts.
-      if (!resetVoteAuthorizes(existingState, actorClientId)) {
+      // In-progress multiplayer adventure: the unanimous "new adventure" vote —
+      // approved by every live seat and fired by the browser that opened it —
+      // may wipe the running game. The HOST of a hosted room may ALSO start it
+      // directly (host override): this is the escape hatch so a stuck vote — a
+      // player who left but is not eliminated, a solo-host test where nobody
+      // else is present to confirm — is never a dead end. An OPEN table has no
+      // host, so it still needs the vote (its requester can confirm every seat
+      // through the local switcher, so it is never stuck either). See
+      // src/engine/reset-vote.ts.
+      const hostOverride =
+        Boolean(room?.hosted) && authorizeHostedWipe(roomId, room!, actorClientId, "reset").allowed;
+      if (!resetVoteAuthorizes(existingState, actorClientId) && !hostOverride) {
         return {
           reset: false,
-          reason: "Everyone still in the game must confirm a new adventure first.",
+          reason: "Everyone still in the game must confirm a new adventure — or the host can start it.",
           snapshot: getRoomSnapshot(roomId)
         };
       }

@@ -439,6 +439,36 @@ describe("AccountStore — Hall of Fame + match results", () => {
     expect(store.hallOfFame().map((p) => p.nickname)).toEqual(["Bravo", "Alpha"]);
   });
 
+  it("a NORMAL (ranked:false) game records the win/loss but leaves MMR untouched", () => {
+    const store = new AccountStore();
+    const a = confirmedUser(store, { nickname: "Alpha", email: "a@e.io" });
+    const b = confirmedUser(store, { nickname: "Bravo", email: "b@e.io" });
+    const startA = store.getProfileById(a.id)!.mmr;
+    const startB = store.getProfileById(b.id)!.mmr;
+
+    const result = store.recordMatchResult({
+      matchId: "casual-1",
+      ranked: false,
+      participants: [
+        { accountId: b.id, result: "win" },
+        { accountId: a.id, result: "loss" }
+      ]
+    });
+    expect(result.applied).toBe(true);
+
+    const alpha = store.getProfileById(a.id)!;
+    const bravo = store.getProfileById(b.id)!;
+    // Win/loss + matches-played DID move (a give-up in a casual game still shows)…
+    expect(bravo.wins).toBe(1);
+    expect(alpha.losses).toBe(1);
+    expect(bravo.matches).toBe(1);
+    expect(alpha.matches).toBe(1);
+    // …but MMR is untouched — the whole point of a NORMAL game. The ranked test
+    // above is the CONTROL where the identical result DID move MMR (1216/1184).
+    expect(bravo.mmr).toBe(startB);
+    expect(alpha.mmr).toBe(startA);
+  });
+
   it("is idempotent on matchId (a duplicate report changes nothing)", () => {
     const store = new AccountStore();
     const a = confirmedUser(store, { nickname: "Alpha", email: "a@e.io" });

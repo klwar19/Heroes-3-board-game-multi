@@ -603,7 +603,14 @@ export class SupabaseAccountStore implements AccountBackend {
     return rows.map((row) => toProfile(rowToRecord(row)));
   }
 
-  async recordMatchResult(input: { matchId: string; participants: MatchParticipantInput[] }): Promise<RecordMatchResult> {
+  async recordMatchResult(input: {
+    matchId: string;
+    participants: MatchParticipantInput[];
+    ranked?: boolean;
+  }): Promise<RecordMatchResult> {
+    // A NORMAL (casual) game records win/loss but does not move MMR: skip the
+    // Elo pairing so every rating stays put (see match-report.ts).
+    const ranked = input.ranked !== false;
     // Resolve the participants' current ratings first (deleted accounts drop out).
     const rows = new Map<string, AccountRow>();
     for (const p of input.participants) {
@@ -615,15 +622,17 @@ export class SupabaseAccountStore implements AccountBackend {
       }
     }
     const eloInputs: EloParticipant[] = [];
-    for (const p of input.participants) {
-      const row = rows.get(p.accountId);
-      if (!row) {
-        continue;
-      }
-      if (p.result === "win") {
-        eloInputs.push({ id: p.accountId, rating: row.mmr, result: "win" });
-      } else if (p.result === "loss" || p.result === "abandon") {
-        eloInputs.push({ id: p.accountId, rating: row.mmr, result: "loss" });
+    if (ranked) {
+      for (const p of input.participants) {
+        const row = rows.get(p.accountId);
+        if (!row) {
+          continue;
+        }
+        if (p.result === "win") {
+          eloInputs.push({ id: p.accountId, rating: row.mmr, result: "win" });
+        } else if (p.result === "loss" || p.result === "abandon") {
+          eloInputs.push({ id: p.accountId, rating: row.mmr, result: "loss" });
+        }
       }
     }
     const ratings = computeRatings(eloInputs);

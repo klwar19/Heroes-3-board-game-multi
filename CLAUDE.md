@@ -441,21 +441,27 @@ ordered-mode or unowned-target CONTROL.
 
 ## Multiplayer ladder & turn discipline (MMR, quit penalty, 10-min turns) — what runs vs. limits
 
-Leading with what does NOT run: a ranked game that never reaches a winner
-(every seat walks away before anything triggers the last-standing win) reports
-nothing; OPEN tables are never ranked (their members hold no seats, so results
-cannot be attributed); a turn-clock pause forgives the seat's WHOLE 10-minute
-budget (fresh stamp), not just the paused interval; and the timeout/auto-kick
-triggers are CLIENT-fired (server-validated) — with zero connected clients
-nothing fires, which is fine because nobody is waiting.
+Leading with what does NOT run: a game that never reaches a winner (every seat
+walks away before anything triggers the last-standing win) reports nothing; OPEN
+tables are never recorded (their members hold no seats, so results cannot be
+attributed); a turn-clock pause forgives the seat's WHOLE 10-minute budget
+(fresh stamp), not just the paused interval; and the timeout/auto-kick triggers
+are CLIENT-fired (server-validated) — with zero connected clients nothing fires,
+which is fine because nobody is waiting.
 
-- **MMR covers every win of every mode.** All victory modes funnel through
-  `declareAdventureWinner` (conquest, grail, dragon-hunt, dragon-conqueror,
-  last-faction-standing after eliminations/give-ups/AFK kicks), so
-  `detectFinishedMatch` (`src/server/match-report.ts`) ranks them all on a
-  hosted table with ≥2 verified accounts and `room.ranked !== false`. Elo is
+- **Every finished win/loss is RECORDED; only a RANKED game moves MMR.** All
+  victory modes funnel through `declareAdventureWinner` (conquest, grail,
+  dragon-hunt, dragon-conqueror, last-faction-standing after eliminations/
+  give-ups/AFK kicks), so `detectFinishedMatch` (`src/server/match-report.ts`)
+  reports them all on a hosted table with ≥2 verified accounts, a winner AND a
+  loser — **including a NORMAL/casual table** (`room.ranked === false`), so a
+  give-up or quit shows up as a win/loss on the profile even in a casual game.
+  The match carries a `ranked` flag: `recordMatchResult` bumps wins/losses/
+  matches for every reported game but recomputes Elo ONLY when `ranked` (a
+  NORMAL game leaves every rating untouched — pinned with W/L-moves-MMR-doesn't
+  tests on both account backends AND the `/api/matches/report` route). Elo is
   winner-takes-field (`accounts/elo.ts`); "abandon" scores as a loss on BOTH
-  account backends.
+  account backends. An absent `ranked` flag (legacy rooms) stays ranked.
 - **Losing or quitting loses points.** `buildAdventureFromLobby` freezes
   `room.matchSeats` (seat → account) at map build; at game end the reporter
   unions that snapshot with the live members, so LEAVE_ROOM, stepping down to

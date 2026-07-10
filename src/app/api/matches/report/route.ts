@@ -32,9 +32,12 @@ export async function POST(request: Request) {
   }
 
   const body = (await request.json().catch(() => null)) as
-    | { matchId?: unknown; participants?: unknown }
+    | { matchId?: unknown; participants?: unknown; ranked?: unknown }
     | null;
   const matchId = typeof body?.matchId === "string" ? body.matchId.slice(0, 200) : "";
+  // Casual games still record win/loss but leave MMR alone. Absent ⇒ ranked
+  // (back-compat with edge deploys that predate the flag).
+  const ranked = body?.ranked !== false;
   const rawParticipants = Array.isArray(body?.participants) ? body.participants : [];
   const participants: MatchParticipantInput[] = [];
   for (const entry of rawParticipants.slice(0, MAX_PARTICIPANTS)) {
@@ -48,7 +51,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "INVALID", message: "A match needs a matchId and at least two participants." }, { status: 400 });
   }
 
-  const outcome = await getAccountBackend().recordMatchResult({ matchId, participants });
+  const outcome = await getAccountBackend().recordMatchResult({ matchId, participants, ranked });
   if (outcome.applied && accountsBackendKind() === "builtin") {
     persistAccounts(getAccountStore());
   }
