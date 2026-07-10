@@ -53,6 +53,7 @@ import {
   hexSpaceId,
   hexToPixel,
   inCombatPrep,
+  isMapTokenLocation,
   isParallelActor,
   isRoundStartEventBarrierActive,
   MAX_PARALLEL_TURN_ROUNDS,
@@ -96,11 +97,14 @@ import {
   abilitySymbolIcon,
   creatureBankFieldImage,
   HERO_INFO_STAT_ICONS,
+  mapTokenImage,
+  monolithTokenImage,
   moraleIcon,
   RESOURCE_ICONS,
   subterraneanGateTokenImage,
   tileBackImage,
-  TILE_BACK_IMAGES
+  TILE_BACK_IMAGES,
+  whirlpoolTokenImage
 } from "@/data/assets/homm-assets";
 import { specialtyIconSrc } from "@/components/specialty-card-data";
 import { CommanderCard, CommanderLevelUpOverlay } from "@/components/commander-card";
@@ -169,7 +173,9 @@ export const LOCATION_GLYPHS: Record<string, string> = {
   star_axis: "✴",
   blocked_field: "⛔",
   subterranean_gate: "🕳",
-  creature_bank: "🏦"
+  creature_bank: "🏦",
+  monolith: "⛩",
+  whirlpool: "🌀"
 };
 
 const ROMAN = ["", "Ⅰ", "Ⅱ", "Ⅲ", "Ⅳ", "Ⅴ", "Ⅵ", "Ⅶ"];
@@ -498,7 +504,9 @@ export function HexMapBoard({
           ? choice.viewEarth?.mineSpaceIds
           : choice.context === "subterranean-gate-placement"
             ? choice.subterraneanGate?.candidates.map((candidate) => candidate.hex)
-            : undefined;
+            : choice.context === "place-map-token"
+              ? choice.mapToken?.candidates
+              : undefined;
     if (!spaceIds) {
       return targets;
     }
@@ -546,6 +554,23 @@ export function HexMapBoard({
     // which layer was just revealed — so a single role labels the whole set.
     const role = candidates[0]?.role ?? "gate";
     return { role, hexes: new Set<MapSpaceId>(candidates.map((candidate) => candidate.hex)) };
+  }, [state.pendingChoice, viewerPlayerId, readOnly]);
+
+  // During a Monolith/Whirlpool token placement, tag every candidate hex so the
+  // map spells out — right on the revealed tile — which field the token would
+  // overwrite. Mirrors the Subterranean Gate pick-on-reveal overlay above.
+  const tokenPlacementChoice = useMemo(() => {
+    const choice = state.pendingChoice;
+    if (
+      readOnly ||
+      choice?.type !== "OPTION_CHOICE" ||
+      choice.playerId !== viewerPlayerId ||
+      choice.context !== "place-map-token" ||
+      !choice.mapToken
+    ) {
+      return null;
+    }
+    return { kind: choice.mapToken.kind, hexes: new Set<MapSpaceId>(choice.mapToken.candidates) };
   }, [state.pendingChoice, viewerPlayerId, readOnly]);
 
   // Redwood Observatory decisions are spatial too: an adjacent face-down tile
@@ -723,6 +748,26 @@ export function HexMapBoard({
           y={centerPixel.y - backHeight / 2}
         />
       );
+      // A designed Monolith/Whirlpool token riding this face-down tile is
+      // public info (the physical Scenario Map Layout prints token positions),
+      // so show it on the back: whoever discovers the tile places the token on
+      // a field of their choosing, and travelling to it reveals the tile.
+      if (tile.pendingToken) {
+        artLayer.push(
+          <image
+            className="tileBackPendingToken"
+            height={2 * HEX_SIZE * 0.9}
+            href={assetUrl(mapTokenImage(tile.pendingToken.kind, tile.pendingToken.number))}
+            key={`back-token-${tile.id}`}
+            opacity={0.9}
+            preserveAspectRatio="xMidYMid meet"
+            style={{ pointerEvents: "none" }}
+            width={HEX_WIDTH * 0.9}
+            x={centerPixel.x - (HEX_WIDTH * 0.9) / 2}
+            y={centerPixel.y - HEX_SIZE * 0.9}
+          />
+        );
+      }
       // A still-hidden Subterranean tile can never be discovered from the Surface
       // (or vice versa) — only a hero entering a Subterranean Gate opens it. When
       // it isn't otherwise discoverable, a tap explains that instead of doing
@@ -754,13 +799,19 @@ export function HexMapBoard({
               points={hexCorners(x, y, HEX_SIZE - 1.2)}
             >
               <title>
-                {discover
-                  ? normalDiscover
-                    ? `Spend 1 movement point to discover this ${backLabelDisplay} tile`
-                    : `Reveal this adjacent ${backLabelDisplay} tile with the Observatory`
-                  : cavernNeedsGate
-                    ? `Underground tile (${backLabelDisplay}) — you can't discover it from the Surface. Enter a Subterranean Gate to open it.`
-                    : `Face-down tile ${backLabelDisplay}`}
+                {`${
+                  discover
+                    ? normalDiscover
+                      ? `Spend 1 movement point to discover this ${backLabelDisplay} tile`
+                      : `Reveal this adjacent ${backLabelDisplay} tile with the Observatory`
+                    : cavernNeedsGate
+                      ? `Underground tile (${backLabelDisplay}) — you can't discover it from the Surface. Enter a Subterranean Gate to open it.`
+                      : `Face-down tile ${backLabelDisplay}`
+                }${
+                  tile.pendingToken
+                    ? ` — carries a ${tile.pendingToken.kind === "monolith" ? "Monolith" : "Whirlpool"} token: whoever discovers the tile places it on a field of their choosing`
+                    : ""
+                }`}
               </title>
             </polygon>
           </g>
@@ -954,6 +1005,14 @@ export function HexMapBoard({
                   ? " — step on to ascend to the Surface (the only crossing; reveals the Surface tile beyond for free)"
                   : " — step on to descend into the Underground (the only crossing; reveals the cavern beyond for free)"
                 : ""
+            }${
+              field.location === "monolith"
+                ? " — step on (or Revisit for 1 MP) to teleport to another Monolith; needs at least 2 Monoliths on the map to work"
+                : ""
+            }${
+              field.location === "whirlpool"
+                ? `${field.whirlpoolNumber !== undefined ? ` ${field.whirlpoolNumber >= 0 ? "+" : ""}${field.whirlpoolNumber}` : ""} — step on (or Revisit for 1 MP) to travel to another Whirlpool; each travel costs 1 unit card from your army. Needs at least 2 Whirlpools; with 3, the Attack die picks where you surface`
+                : ""
             }${target ? ` — ${target.cost} movement point${target.cost === 1 ? "" : "s"}` : ""}${
               mapChoice
                 ? " — click to choose this location"
@@ -972,6 +1031,34 @@ export function HexMapBoard({
         overlays.push(
           <text className="hexGateCue" key={`${spaceId}-gate-cue`} textAnchor="middle" x={x} y={y + HEX_SIZE * 0.92}>
             {tile.group === "subterranean" ? "↥ ascend" : "↧ descend"}
+          </text>
+        );
+      }
+
+      // A reachable Monolith/Whirlpool is a doorway too: cue the teleport so
+      // players realise stepping on moves them across the map.
+      if (isMapTokenLocation(field.location) && (target || remindMove)) {
+        overlays.push(
+          <text className="hexGateCue" key={`${spaceId}-token-cue`} textAnchor="middle" x={x} y={y + HEX_SIZE * 0.92}>
+            ⇄ teleport
+          </text>
+        );
+      }
+
+      // Pick-a-field Monolith/Whirlpool token placement: label each candidate
+      // hex of the just-revealed tile so the placing player sees exactly which
+      // field the token would overwrite (the hex also glows and is clickable
+      // via pendingMapChoiceTargets above).
+      if (tokenPlacementChoice?.hexes.has(spaceId)) {
+        overlays.push(
+          <text
+            className="hexGateChoiceCue"
+            key={`${spaceId}-token-choice-cue`}
+            textAnchor="middle"
+            x={x}
+            y={y + HEX_SIZE * 0.92}
+          >
+            {tokenPlacementChoice.kind === "monolith" ? "⛩ monolith here" : "🌀 whirlpool here"}
           </text>
         );
       }
@@ -1003,7 +1090,11 @@ export function HexMapBoard({
           ? subterraneanGateTokenImage(tile.group === "subterranean" ? "subterranean" : "surface")
           : field.location === "creature_bank"
             ? creatureBankFieldImage(field.bankId)
-            : undefined;
+            : field.location === "monolith"
+              ? monolithTokenImage()
+              : field.location === "whirlpool"
+                ? whirlpoolTokenImage(field.whirlpoolNumber)
+                : undefined;
       if (tokenImage) {
         if (field.location === "creature_bank") {
           // The bank's field-tile scan is landscape; clip it to the hex and use

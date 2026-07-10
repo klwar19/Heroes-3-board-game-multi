@@ -1804,6 +1804,8 @@ function interactionToSteps(interaction: LocationInteraction, extraLocationDice 
       return [{ type: "HILL_FORT" }];
     case "SUBTERRANEAN_GATE":
       return [{ type: "SUBTERRANEAN_GATE" }];
+    case "TOKEN_TELEPORT":
+      return [{ type: "TOKEN_TELEPORT", token: interaction.token }];
     case "DRAW_PANDORA_CARD":
       return [{ type: "DRAW_PANDORA_CARD" }];
     case "LIBRARY_OF_ENLIGHTENMENT":
@@ -2260,6 +2262,12 @@ export function eliminatePlayer(
     if (state.adventure.pendingFarTileFlip?.playerId === playerId) {
       state.adventure.pendingFarTileFlip = null;
     }
+    // A Monolith/Whirlpool travel the eliminated seat had in flight never
+    // completes (their hero has left the map); the destination token itself
+    // stays available for everyone else.
+    if (state.adventure.pendingTokenTeleport?.playerId === playerId) {
+      state.adventure.pendingTokenTeleport = null;
+    }
     // Event shared-state the seat held a stake in: a secret auction bid must
     // not win the lot for a dead hand, and an open 1-for-1 Marketplace deal
     // they proposed must not stay acceptable (with the deal voided, queued
@@ -2351,6 +2359,17 @@ export function eliminatePlayer(
     }
     if (state.priorityPlayerId === playerId) {
       state.priorityPlayerId = null;
+    }
+    // A dropped Monolith/Whirlpool placement must not strand the token on an
+    // already-revealed tile (nobody would ever be offered it again): auto-place
+    // it at the first legal candidate. The eliminated seat's own in-flight
+    // travel was already cleared above, so this never teleports a dead hero.
+    if (choice.type === "OPTION_CHOICE" && choice.context === "place-map-token" && choice.mapToken && state.adventure) {
+      const tokenTile = state.adventure.tiles[choice.mapToken.tileInstanceId];
+      const autoSpaceId = choice.mapToken.candidates[0];
+      if (tokenTile && autoSpaceId) {
+        placeMapToken(state, tokenTile, autoSpaceId, playerId);
+      }
     }
   }
 
@@ -3438,6 +3457,55 @@ export function processPendingVisit(state: GameState): void {
       case "SUBTERRANEAN_GATE":
         resolveSubterraneanGate(state, visit);
         break;
+      case "TOKEN_TELEPORT":
+        resolveTokenTeleport(state, visit, step.token);
+        break;
+      case "TOKEN_TELEPORT_REVEAL":
+        resolveTokenTeleportReveal(state, visit, step);
+        break;
+      case "WHIRLPOOL_PENALTY": {
+        // "After each Whirlpool travel, lose 1 unit from your unit Deck." The
+        // card says WHICH unit is lost nowhere, so the traveller picks (the
+        // friendlier reading, mirroring hand discards being the owner's pick).
+        const player = state.players[visit.playerId];
+        if (!player || player.army.length === 0) {
+          eventNote(state, `${eventPlayerName(state, visit.playerId)} has no unit left for the Whirlpool to claim.`, visit.playerId);
+          break;
+        }
+        if (player.army.length === 1) {
+          visit.steps.unshift({ type: "WHIRLPOOL_DISCARD_UNIT", unitId: player.army[0].id });
+          break;
+        }
+        visit.steps.unshift({
+          type: "CHOOSE_ONE",
+          prompt: "The Whirlpool drags a unit under — lose 1 unit card from your army",
+          options: player.army.map((unit) => ({
+            label: `Lose ${coreUnitDefinitions[unit.unitDefId]?.name ?? unit.unitDefId} (${unit.side})`,
+            steps: [{ type: "WHIRLPOOL_DISCARD_UNIT", unitId: unit.id }]
+          }))
+        });
+        break;
+      }
+      case "WHIRLPOOL_DISCARD_UNIT": {
+        const player = state.players[visit.playerId];
+        const unit = player?.army.find((candidate) => candidate.id === step.unitId);
+        if (!player || !unit) {
+          break;
+        }
+        player.army = player.army.filter((candidate) => candidate.id !== step.unitId);
+        // A Neutral-side card recycles to its tier discard pile, exactly like a
+        // combat casualty (the engine convention for lost Neutral cards).
+        if (unit.side === "neutral") {
+          const tier = (coreUnitDefinitions[unit.unitDefId]?.tier ?? "bronze") as "bronze" | "silver" | "gold" | "azure";
+          state.decks[NEUTRAL_DECK_IDS[tier]]?.discardPile.push(unit.unitDefId);
+        }
+        eventNote(
+          state,
+          `The Whirlpool claims ${eventPlayerName(state, visit.playerId)}'s ${coreUnitDefinitions[unit.unitDefId]?.name ?? unit.unitDefId}.`,
+          visit.playerId
+        );
+        break;
+      }
       case "TELEPORT_HERO": {
         const movedHero = state.heroes[step.heroId];
         if (movedHero && adventure.fields[step.spaceId]) {
@@ -4755,6 +4823,481 @@ function resolveSubterraneanGate(state: GameState, visit: PendingVisit): void {
 }
 
 // ---------------------------------------------------------------------------
+// Monolith (Conflux) / Whirlpool (Cove) Location Tokens
+// ---------------------------------------------------------------------------
+
+export type MapTokenKind = "monolith" | "whirlpool";
+
+/** Display name of a token kind for prompts, notes and warnings. */
+export function mapTokenLabel(kind: MapTokenKind): string {
+  return kind === "monolith" ? "Monolith" : "Whirlpool";
+}
+
+/** Whether a field's location IS a Monolith/Whirlpool Location Token. */
+export function isMapTokenLocation(locationId: string): boolean {
+  return locationId === "monolith" || locationId === "whirlpool";
+}
+
+/**
+ * Locations a Monolith/Whirlpool token may never overwrite. Rulebook p.35:
+ * "Tokens cannot be placed on other Location Tokens, Blocked Fields, or Fields
+ * containing Locations required to meet any of the Scenario's victory
+ * conditions." Towns, Settlements, Mines, Obelisks, the Grail and the Dragon
+ * Utopia all anchor victory/economy goals, so they are excluded as the
+ * conservative reading; guarded fields are excluded too (overwriting one would
+ * erase a live guard for free — an engine safety reading, commented here
+ * because the printed rule does not mention guards).
+ */
+const TOKEN_FORBIDDEN_LOCATIONS = new Set([
+  "settlement",
+  "mine",
+  "grail",
+  "obelisk",
+  "dragon_utopia",
+  "subterranean_gate",
+  "creature_bank",
+  "monolith",
+  "whirlpool"
+]);
+
+/**
+ * Whether a tile-DEFINITION field may host a `kind` token: legal location and
+ * matching printed terrain (Monoliths on land, Whirlpools on sea). Pure — used
+ * by the map designer to filter slot pickers and by setup to validate a
+ * designed face-up placement. Guards (printed difficulty) refuse the token.
+ */
+export function tokenMayCoverFieldDef(def: TileDefinition, slot: number, kind: MapTokenKind): boolean {
+  const fieldDef = def.fields[slot];
+  if (!fieldDef) {
+    return false;
+  }
+  const location = locationDefinitions[fieldDef.location];
+  if (!location || location.category === "blocked" || location.category === "town") {
+    return false;
+  }
+  if (TOKEN_FORBIDDEN_LOCATIONS.has(fieldDef.location) || fieldDef.difficulty) {
+    return false;
+  }
+  const isWater = fieldDef.terrain ? fieldDef.terrain === "water" : def.terrain === "water";
+  return (kind === "whirlpool") === isWater;
+}
+
+/** The tile-definition slots (0-6) that may host a `kind` token (designer picker). */
+export function legalTokenSlotsForTileDef(def: TileDefinition, kind: MapTokenKind): number[] {
+  return def.fields.map((_, slot) => slot).filter((slot) => tokenMayCoverFieldDef(def, slot, kind));
+}
+
+/**
+ * Whether a MATERIALIZED field may host a `kind` token right now: the same
+ * location/terrain rules as {@link tokenMayCoverFieldDef} plus the live map
+ * state — no still-guarded field, and no field a hero is standing on (the
+ * token overwrites the hex; it cannot be pulled out from under a hero).
+ */
+function tokenMayCoverField(state: GameState, field: MapFieldState | undefined, kind: MapTokenKind): boolean {
+  if (!field) {
+    return false;
+  }
+  const location = locationDefinitions[field.location];
+  if (!location || location.category === "blocked" || location.category === "town") {
+    return false;
+  }
+  if (TOKEN_FORBIDDEN_LOCATIONS.has(field.location) || isFieldGuarded(field) || field.difficulty) {
+    return false;
+  }
+  if (heroAtSpace(state, field.spaceId)) {
+    return false;
+  }
+  const isWater = field.terrain === "water";
+  return (kind === "whirlpool") === isWater;
+}
+
+/** The legal hexes of `tile` a just-discovered `kind` token may be placed on. */
+export function tokenPlacementCandidates(state: GameState, tile: MapTileState, kind: MapTokenKind): MapSpaceId[] {
+  const adventure = state.adventure;
+  if (!adventure) {
+    return [];
+  }
+  return getTileFootprintSpaceIds(tile).filter((spaceId) => {
+    const field = adventure.fields[spaceId];
+    return field?.tileInstanceId === tile.id && tokenMayCoverField(state, field, kind);
+  });
+}
+
+/**
+ * Every token of `kind` in play: carved fields plus tokens still riding
+ * face-down tiles. Both count toward "must have at least 2 to work" — a lone
+ * placed Monolith whose partner still hides on a face-down tile DOES lead
+ * somewhere (travelling there is what discovers the tile).
+ */
+function countMapTokens(state: GameState, kind: MapTokenKind): number {
+  const adventure = state.adventure;
+  if (!adventure) {
+    return 0;
+  }
+  const placed = Object.values(adventure.fields).filter((field) => field.location === kind).length;
+  const pending = Object.values(adventure.tiles).filter(
+    (tile) => tile.faceDown && tile.pendingToken?.kind === kind
+  ).length;
+  return placed + pending;
+}
+
+/** One reachable travel destination: a carved token field, or one still face-down. */
+type MapTokenDestination =
+  | { type: "field"; spaceId: MapSpaceId; number?: -1 | 0 | 1; label: string }
+  | { type: "pending-tile"; tileInstanceId: string; number?: -1 | 0 | 1; label: string };
+
+/**
+ * Where a `kind` travel from `fromSpaceId` may go: every OTHER token of the
+ * kind — carved fields (skipping any a hero currently occupies: the p.83 note
+ * "skip the movement" reading) plus face-down tiles still carrying the token
+ * (travelling there reveals the tile and the traveller places the token).
+ */
+function mapTokenDestinations(state: GameState, kind: MapTokenKind, fromSpaceId: MapSpaceId): MapTokenDestination[] {
+  const adventure = state.adventure;
+  if (!adventure) {
+    return [];
+  }
+  const destinations: MapTokenDestination[] = [];
+  for (const field of Object.values(adventure.fields)) {
+    if (field.location !== kind || field.spaceId === fromSpaceId || heroAtSpace(state, field.spaceId)) {
+      continue;
+    }
+    const tile = adventure.tiles[field.tileInstanceId];
+    const where = tile ? ` on the ${tile.backLabel ?? tile.group ?? "map"} tile at (${tile.centerRow}, ${tile.centerCol})` : "";
+    destinations.push({
+      type: "field",
+      spaceId: field.spaceId,
+      ...(field.whirlpoolNumber !== undefined ? { number: field.whirlpoolNumber } : {}),
+      label:
+        kind === "whirlpool" && field.whirlpoolNumber !== undefined
+          ? `Whirlpool ${field.whirlpoolNumber >= 0 ? "+" : ""}${field.whirlpoolNumber}${where}`
+          : `${mapTokenLabel(kind)}${where}`
+    });
+  }
+  for (const tile of Object.values(adventure.tiles)) {
+    if (!tile.faceDown || tile.pendingToken?.kind !== kind) {
+      continue;
+    }
+    const number = tile.pendingToken.number;
+    destinations.push({
+      type: "pending-tile",
+      tileInstanceId: tile.id,
+      ...(number !== undefined ? { number } : {}),
+      label: `${kind === "whirlpool" && number !== undefined ? `Whirlpool ${number >= 0 ? "+" : ""}${number}` : mapTokenLabel(kind)} — a face-down ${
+        tile.backLabel ?? "map"
+      } tile at (${tile.centerRow}, ${tile.centerCol}) (reveal it and place the token)`
+    });
+  }
+  return destinations;
+}
+
+/** The visit steps that carry the hero to one travel destination. */
+function mapTokenTravelSteps(visit: PendingVisit, kind: MapTokenKind, destination: MapTokenDestination): VisitStep[] {
+  if (destination.type === "pending-tile") {
+    // The unit toll of a Whirlpool travel into a face-down tile lands in
+    // completeMapTokenTeleport, after the token is placed and the hero moves.
+    return [{ type: "TOKEN_TELEPORT_REVEAL", token: kind, tileInstanceId: destination.tileInstanceId }];
+  }
+  return [
+    // TELEPORT_HERO without `visit`: arriving on the destination token must
+    // NOT re-run its own TOKEN_TELEPORT (an instant ping-pong loop). The hero
+    // may Revisit (1 MP) or re-enter later to travel again.
+    { type: "TELEPORT_HERO", heroId: visit.heroId, spaceId: destination.spaceId },
+    ...(kind === "whirlpool" ? [{ type: "WHIRLPOOL_PENALTY" } as const] : [])
+  ];
+}
+
+/**
+ * Monolith/Whirlpool travel (rulebook p.83). Entering (or Revisiting) the
+ * token moves the hero to another token of the same kind:
+ * - fewer than 2 tokens of the kind in play → the field does nothing (noted);
+ * - exactly one reachable destination → straight there;
+ * - exactly 3 Whirlpools, all numbered → the printed Attack-die rule: roll,
+ *   surface at the Whirlpool whose number matches, rerolling the origin's own
+ *   number (and any number that cannot be travelled to — an occupied token);
+ * - otherwise (several Monoliths, or Whirlpool counts the die cannot map) →
+ *   the traveller picks the destination (the board-game adaptation of the
+ *   "corresponding" pairing, which a designed map does not pin down).
+ * A destination still face-down routes through TOKEN_TELEPORT_REVEAL: the tile
+ * is discovered for free and the traveller places the destination token first.
+ */
+function resolveTokenTeleport(state: GameState, visit: PendingVisit, kind: MapTokenKind): void {
+  const adventure = state.adventure;
+  const field = adventure?.fields[visit.fieldId];
+  if (!adventure || !field || field.location !== kind) {
+    return;
+  }
+
+  const label = mapTokenLabel(kind);
+  if (countMapTokens(state, kind) < 2) {
+    eventNote(
+      state,
+      `The ${label} leads nowhere — at least 2 ${label}s must be on the map for it to work.`,
+      visit.playerId
+    );
+    return;
+  }
+
+  const destinations = mapTokenDestinations(state, kind, visit.fieldId);
+  if (destinations.length === 0) {
+    eventNote(state, `The ${label} fizzles — every other ${label} is occupied by a hero.`, visit.playerId);
+    return;
+  }
+  if (destinations.length === 1) {
+    visit.steps.unshift(...mapTokenTravelSteps(visit, kind, destinations[0]));
+    return;
+  }
+
+  // "If there are 3 Whirlpools, roll an Attack Die to determine where your
+  // Hero goes, and reroll any Die that shows the number of the Whirlpool your
+  // Hero is moving from." The printed tokens carry the die faces -1/0/+1 as
+  // their numbers, so the roll maps straight onto them. A face that maps to no
+  // reachable destination (its token occupied) is rerolled too.
+  if (kind === "whirlpool" && countMapTokens(state, "whirlpool") === 3 && field.whirlpoolNumber !== undefined) {
+    const byNumber = new Map<number, MapTokenDestination>();
+    for (const destination of destinations) {
+      if (destination.number !== undefined) {
+        byNumber.set(destination.number, destination);
+      }
+    }
+    if (byNumber.size === destinations.length) {
+      const random = adventureRandom(state, "whirlpool-die");
+      const faces = [-1, -1, 0, 0, 1, 1];
+      const rolls: number[] = [];
+      let destination: MapTokenDestination | undefined;
+      // Two of the six faces always match a reachable candidate here, so this
+      // terminates almost immediately; the bound is a pure safety net (falling
+      // through to the traveller's pick below).
+      for (let attempt = 0; attempt < 24 && !destination; attempt += 1) {
+        const roll = faces[random.nextInt(0, faces.length - 1)];
+        rolls.push(roll);
+        if (roll === field.whirlpoolNumber) {
+          continue;
+        }
+        destination = byNumber.get(roll);
+      }
+      if (destination) {
+        appendEvent(state, {
+          type: "ADVENTURE_DICE_ROLLED",
+          playerId: visit.playerId,
+          dice: "attack",
+          results: rolls.map((roll, index) => {
+            const face = `${roll >= 0 ? "+" : ""}${roll}`;
+            return index === rolls.length - 1
+              ? `Attack die: ${face} — the Whirlpool ${face}`
+              : `Attack die: ${face} (rerolled)`;
+          }),
+          attackRolls: rolls
+        });
+        visit.steps.unshift(...mapTokenTravelSteps(visit, kind, destination));
+        return;
+      }
+    }
+  }
+
+  visit.steps.unshift({
+    type: "CHOOSE_ONE",
+    prompt: `${label} — choose where to travel`,
+    options: destinations.map((destination) => ({
+      label: destination.label,
+      steps: mapTokenTravelSteps(visit, kind, destination)
+    }))
+  });
+}
+
+/**
+ * Monolith/Whirlpool travel into a still-face-down tile: flip it for free and
+ * hand its rotation to the traveller, exactly like the Subterranean Gate's
+ * reveal-on-entry. The in-flight travel is parked on
+ * `adventure.pendingTokenTeleport`; it completes once the traveller places the
+ * destination token on the revealed tile (placeMapToken).
+ */
+function resolveTokenTeleportReveal(
+  state: GameState,
+  visit: PendingVisit,
+  step: Extract<VisitStep, { type: "TOKEN_TELEPORT_REVEAL" }>
+): void {
+  const adventure = state.adventure;
+  const tile = adventure?.tiles[step.tileInstanceId];
+  if (!adventure || !tile || !tile.faceDown || tile.pendingToken?.kind !== step.token) {
+    // The destination vanished between offer and resolution (cannot happen in
+    // sequential play; a defensive no-op keeps the visit clean).
+    return;
+  }
+
+  adventure.pendingTokenTeleport = {
+    playerId: visit.playerId,
+    heroId: visit.heroId,
+    kind: step.token,
+    fromSpaceId: visit.fieldId,
+    destTileInstanceId: tile.id
+  };
+
+  // A face-down Ⅱ–Ⅲ tile flipped by the travel obeys the same keep/reroll/pick
+  // flip as any other discovery (the hook lives in the reducer, like the
+  // Subterranean Gate's). The travel visit is complete, so clear it first.
+  if (onMapTileRevealHook && tile.group === "far" && visit.steps.length === 0) {
+    adventure.pendingVisit = null;
+    onMapTileRevealHook(state, visit.playerId, tile);
+    return;
+  }
+
+  tile.faceDown = false;
+  tile.awaitingRotation = true;
+  adventure.pendingTileChoice = {
+    tileInstanceId: tile.id,
+    playerId: visit.playerId,
+    kind: "reveal"
+  };
+  appendEvent(state, {
+    type: "TILE_REVEALED",
+    playerId: visit.playerId,
+    tileInstanceId: tile.id,
+    tileDefId: tile.tileDefId
+  });
+}
+
+/** Carves a Monolith/Whirlpool Location Token onto a materialized field. */
+export function carveMapTokenField(
+  adventure: AdventureState,
+  spaceId: MapSpaceId,
+  kind: MapTokenKind,
+  number?: -1 | 0 | 1
+): MapFieldState | null {
+  const field = adventure.fields[spaceId];
+  if (!field) {
+    return null;
+  }
+  // The token overwrites the printed Location (p.35); clear everything tied to
+  // the old one so the token behaves as a clean field. A Whirlpool stays open
+  // sea (`terrain: "water"` — coastline halts and the naval board still apply);
+  // a Monolith is a land structure, and its candidates are land hexes already.
+  field.location = kind;
+  delete field.difficulty;
+  delete field.resource;
+  delete field.amount;
+  delete field.faction;
+  field.blackCube = false;
+  field.flagOwnerId = null;
+  delete field.extraFlagOwnerIds;
+  field.everFlagged = false;
+  field.settlementResource = null;
+  delete field.grailDiggable;
+  delete field.gateToTileId;
+  delete field.gateLinkSpaceId;
+  delete field.bankId;
+  if (kind === "whirlpool") {
+    field.terrain = "water";
+    if (number !== undefined) {
+      field.whirlpoolNumber = number;
+    }
+  } else {
+    delete field.terrain;
+    delete field.whirlpoolNumber;
+  }
+  return field;
+}
+
+/**
+ * Places a revealed tile's pending Monolith/Whirlpool token on `spaceId` (the
+ * placing player's pick, or the lone/auto candidate) and — when this placement
+ * was the destination of an in-flight travel — completes that travel: the hero
+ * arrives on the fresh token, and a Whirlpool travel then takes its unit toll.
+ */
+export function placeMapToken(state: GameState, tile: MapTileState, spaceId: MapSpaceId, playerId: PlayerId): void {
+  const adventure = state.adventure;
+  const pendingToken = tile.pendingToken;
+  const field = adventure?.fields[spaceId];
+  if (!adventure || !pendingToken || !field || field.tileInstanceId !== tile.id) {
+    return;
+  }
+  const sacrificed = field.location;
+  carveMapTokenField(adventure, spaceId, pendingToken.kind, pendingToken.number);
+  delete tile.pendingToken;
+  eventNote(
+    state,
+    `${eventPlayerName(state, playerId)} places the ${mapTokenLabel(pendingToken.kind)} token${
+      sacrificed !== "empty_field" ? ` over the ${locationDefinitionName(sacrificed)}` : ""
+    }.`,
+    playerId
+  );
+
+  const teleport = adventure.pendingTokenTeleport;
+  if (teleport && teleport.destTileInstanceId === tile.id) {
+    adventure.pendingTokenTeleport = null;
+    completeMapTokenTeleport(state, teleport, spaceId);
+  }
+}
+
+/**
+ * Drops a revealed tile's pending token when NO field of the tile may legally
+ * host it (all seven water/blocked/forbidden — a designed-map corner case).
+ * An in-flight travel aiming at it fizzles with the hero staying put.
+ */
+export function dropPendingMapToken(state: GameState, tile: MapTileState, playerId: PlayerId): void {
+  const adventure = state.adventure;
+  const pendingToken = tile.pendingToken;
+  if (!adventure || !pendingToken) {
+    return;
+  }
+  delete tile.pendingToken;
+  eventNote(
+    state,
+    `The ${mapTokenLabel(pendingToken.kind)} token could not be placed — the revealed tile has no legal field for it — and is removed from the game.`,
+    playerId
+  );
+  const teleport = adventure.pendingTokenTeleport;
+  if (teleport && teleport.destTileInstanceId === tile.id) {
+    adventure.pendingTokenTeleport = null;
+    eventNote(
+      state,
+      `${eventPlayerName(state, teleport.playerId)}'s ${mapTokenLabel(teleport.kind)} travel fizzles — the hero stays put.`,
+      teleport.playerId
+    );
+  }
+}
+
+/** Finishes a travel whose destination tile had to be revealed and placed first. */
+function completeMapTokenTeleport(
+  state: GameState,
+  teleport: NonNullable<AdventureState["pendingTokenTeleport"]>,
+  destSpaceId: MapSpaceId
+): void {
+  const adventure = state.adventure;
+  const hero = state.heroes[teleport.heroId];
+  const player = state.players[teleport.playerId];
+  // The world may have moved on mid-flow (the traveller eliminated, the hero
+  // relocated); the travel then simply does not happen.
+  if (!adventure || !hero || !player || player.eliminated || hero.spaceId !== teleport.fromSpaceId) {
+    return;
+  }
+  if (heroAtSpace(state, destSpaceId, hero.id)) {
+    eventNote(state, `${eventPlayerName(state, teleport.playerId)}'s travel fizzles — the destination is occupied.`, teleport.playerId);
+    return;
+  }
+  const from = hero.spaceId;
+  hero.spaceId = destSpaceId;
+  appendEvent(state, {
+    type: "HERO_MOVED",
+    playerId: hero.controllerId,
+    heroId: hero.id,
+    from,
+    to: destSpaceId,
+    movementLeft: hero.movementPoints
+  });
+  commitPopulationOnMove(state, hero.controllerId);
+  if (teleport.kind === "whirlpool") {
+    const penalty: VisitStep = { type: "WHIRLPOOL_PENALTY" };
+    if (adventure.pendingVisit) {
+      adventure.pendingVisit.steps.unshift(penalty);
+    } else {
+      adventure.pendingVisit = { heroId: hero.id, playerId: teleport.playerId, fieldId: destSpaceId, steps: [penalty] };
+    }
+    processPendingVisit(state);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Subterranean Gate placement (Stronghold expansion)
 // ---------------------------------------------------------------------------
 
@@ -4763,11 +5306,13 @@ function resolveSubterraneanGate(state: GameState, visit: PendingVisit): void {
  *
  * The token covers whatever Field is closest to the far tile — a Blocked Field,
  * a Mine, even a Town all give way to it (the gate IS the field now). The only
- * thing it never lands on is another gate half: each of the token's two halves
- * needs its own hex.
+ * things it never lands on are another gate half (each of the token's two
+ * halves needs its own hex) and a Monolith/Whirlpool Location Token ("Tokens
+ * cannot be placed on other Location Tokens", p.35 — the gate picks another
+ * touching hex instead).
  */
 function gateMayCoverField(field: MapFieldState | undefined): boolean {
-  return field !== undefined && field.location !== "subterranean_gate";
+  return field !== undefined && field.location !== "subterranean_gate" && !isMapTokenLocation(field.location);
 }
 
 /** A tile is "materialized" once its rotation is locked and its 7 fields exist. */

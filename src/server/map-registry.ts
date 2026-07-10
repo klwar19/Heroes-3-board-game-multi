@@ -101,6 +101,19 @@ function sanitizeTile(tile: unknown): CustomMapTilePlan | null {
   ) {
     return null;
   }
+  // Monolith/Whirlpool token: keep a well-formed kind; the designed slot (a
+  // face-up tile's fixed field, 0-6) only when it is a plausible slot index.
+  const token =
+    candidate.token && (candidate.token.kind === "monolith" || candidate.token.kind === "whirlpool")
+      ? {
+          kind: candidate.token.kind,
+          ...(Number.isInteger(candidate.token.slot) &&
+          (candidate.token.slot as number) >= 0 &&
+          (candidate.token.slot as number) <= 6
+            ? { slot: candidate.token.slot as number }
+            : {})
+        }
+      : undefined;
   return {
     row: candidate.row as number,
     col: candidate.col as number,
@@ -109,7 +122,8 @@ function sanitizeTile(tile: unknown): CustomMapTilePlan | null {
     ...(typeof candidate.tileDefId === "string" ? { tileDefId: candidate.tileDefId } : {}),
     ...(Number.isInteger(candidate.rotation) ? { rotation: (((candidate.rotation as number) % 6) + 6) % 6 } : {}),
     ...(candidate.seaBand === "iv-v" || candidate.seaBand === "vi-vii" ? { seaBand: candidate.seaBand } : {}),
-    ...(candidate.subBand === "iv-v" || candidate.subBand === "vi-vii" ? { subBand: candidate.subBand } : {})
+    ...(candidate.subBand === "iv-v" || candidate.subBand === "vi-vii" ? { subBand: candidate.subBand } : {}),
+    ...(token ? { token } : {})
   };
 }
 
