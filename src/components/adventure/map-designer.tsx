@@ -4,10 +4,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { assetUrl } from "@/lib/asset-url";
 import { Eye, Minus, Plus, RotateCcw, RotateCw, Shuffle, Trash2 } from "lucide-react";
 import { allTileDefinitions } from "@/data/map/tiles";
-import { TILE_BACK_IMAGES, subterraneanGateTokenImage } from "@/data/assets/homm-assets";
+import { locationDefinitions } from "@/data/map/locations";
+import { mapTokenImage, TILE_BACK_IMAGES, subterraneanGateTokenImage } from "@/data/assets/homm-assets";
 import {
   hexNeighbors,
   hexToPixel,
+  legalTokenSlotsForTileDef,
+  mapTokenLabel,
   pixelToHex,
   planSubterraneanGates,
   scenarioDefinitions,
@@ -18,7 +21,8 @@ import {
   tileLatticeNeighbors,
   unreachableUndergroundCenters,
   type CustomMapTilePlan,
-  type HexCoord
+  type HexCoord,
+  type MapTokenKind
 } from "@/engine";
 import { titleCase } from "@/components/table/utils";
 
@@ -81,6 +85,58 @@ const PALETTE: { key: string; group: DesignGroup; seaBand?: SeaBand; subBand?: S
 
 /** Groups whose tiles can be flipped face up and chosen exactly. */
 const PICKABLE_GROUPS = new Set<DesignGroup>(["far", "near", "center", "sea", "subterranean"]);
+
+/** The physical supply of numbered Whirlpool tokens (+1 / 0 / -1). */
+const MAX_WHIRLPOOL_TOKENS = 3;
+
+/**
+ * Which token kinds a FACE-DOWN plan of this group may carry (the discovering
+ * player places the token on a field of their choosing when the tile is
+ * revealed): sea tiles hide Whirlpools, every other non-starting group hides
+ * Monoliths (land). Face-up tiles instead offer whichever kinds have a legal
+ * printed field on the chosen tile.
+ */
+function faceDownTokenKinds(group: DesignGroup): MapTokenKind[] {
+  if (group === "starting") {
+    return [];
+  }
+  return group === "sea" ? ["whirlpool"] : ["monolith"];
+}
+
+/** Ring direction names for slots 1-6, before rotation. */
+const SLOT_DIRECTIONS = ["NE", "E", "SE", "SW", "W", "NW"] as const;
+
+/** Human label for a tile-definition slot in the token slot picker. */
+function tokenSlotLabel(defId: string | undefined, slot: number, rotation: number): string {
+  const def = defId ? allTileDefinitions[defId] : undefined;
+  const fieldDef = def?.fields[slot];
+  const where = slot === 0 ? "Centre" : `${SLOT_DIRECTIONS[(slot - 1 + rotation) % 6]} edge`;
+  const location = fieldDef ? locationDefinitions[fieldDef.location]?.name ?? fieldDef.location : "field";
+  return `${where} — ${location}`;
+}
+
+/**
+ * Revalidates a plan's token against a new face-up tile definition: the slot is
+ * kept when still legal, else moved to the first legal slot, else the token is
+ * dropped (the chosen tile simply has no field the token may overwrite).
+ */
+function retargetTokenForDef(
+  token: CustomMapTilePlan["token"],
+  tileDefId: string | undefined
+): CustomMapTilePlan["token"] {
+  if (!token) {
+    return undefined;
+  }
+  const def = tileDefId ? allTileDefinitions[tileDefId] : undefined;
+  if (!def) {
+    return undefined;
+  }
+  const legal = legalTokenSlotsForTileDef(def, token.kind);
+  if (legal.length === 0) {
+    return undefined;
+  }
+  return { kind: token.kind, slot: token.slot !== undefined && legal.includes(token.slot) ? token.slot : legal[0] };
+}
 
 /** Designer hex circumradius — the same pointy-top geometry the map uses. */
 const DESIGN_HEX = 24;
@@ -224,6 +280,33 @@ export function MapDesigner({
     ],
     [customMap, hasDesignerStarts, starts]
   );
+
+  // Monolith/Whirlpool token bookkeeping: counts for the "needs at least 2 to
+  // work" warnings and the plan-order Whirlpool numbers (+1, 0, -1 — the same
+  // order the engine assigns at setup, so the preview matches the game).
+  const tokenCounts = useMemo(() => {
+    let monolith = 0;
+    let whirlpool = 0;
+    for (const plan of customMap) {
+      if (plan.token?.kind === "monolith") {
+        monolith += 1;
+      } else if (plan.token?.kind === "whirlpool") {
+        whirlpool += 1;
+      }
+    }
+    return { monolith, whirlpool };
+  }, [customMap]);
+  const whirlpoolNumberByIndex = useMemo(() => {
+    const numbers = new Map<number, -1 | 0 | 1>();
+    const order: (-1 | 0 | 1)[] = [1, 0, -1];
+    let next = 0;
+    customMap.forEach((plan, index) => {
+      if (plan.token?.kind === "whirlpool" && next < order.length) {
+        numbers.set(index, order[next++]);
+      }
+    });
+    return numbers;
+  }, [customMap]);
 
   // The Subterranean Gates this layout will carve (same touch rule + one-gate-
   // per-tile as the engine) and the caverns it leaves with no way in.
@@ -392,6 +475,21 @@ export function MapDesigner({
         .sort((left, right) => left.id.localeCompare(right.id))
     : [];
   const selectedTileDef = selected?.tileDefId ? allTileDefinitions[selected.tileDefId] : undefined;
+  const selectedToken = selected?.token;
+  // Token kinds this tile may carry: a face-down tile hides its group's kind
+  // (sea → Whirlpool, land groups → Monolith); a revealed tile offers whichever
+  // kinds still have a legal printed field on it (an island hex on a sea tile
+  // can host a Monolith, the water hexes a Whirlpool).
+  const selectedTokenKinds: MapTokenKind[] =
+    !selected || selected.group === "starting"
+      ? []
+      : selected.faceDown
+        ? faceDownTokenKinds(selected.group)
+        : selectedTileDef
+          ? (["monolith", "whirlpool"] as MapTokenKind[]).filter(
+              (kind) => legalTokenSlotsForTileDef(selectedTileDef, kind).length > 0
+            )
+          : [];
 
   const rotateSelected = (steps: number) => {
     // Starting tiles take their faction art at a fixed orientation; every other
@@ -599,6 +697,42 @@ export function MapDesigner({
         y={entrancePixel.y - size}
       >
         <title>Subterranean Gate entrance — the cavern side of the crossing.</title>
+      </image>
+    );
+  }
+
+  // Monolith/Whirlpool tokens: a face-up tile shows the token on the exact hex
+  // it overwrites; a face-down tile shows it as a centred badge (the discovering
+  // player will pick the hex in play). Whirlpool art carries the plan-order
+  // number (+1/0/-1) the engine will assign at setup.
+  for (const [index, plan] of customMap.entries()) {
+    const token = plan.token;
+    if (!token) {
+      continue;
+    }
+    const center = { row: plan.row, col: plan.col };
+    const fixedSlot = !plan.faceDown && plan.tileDefId && token.slot !== undefined;
+    const cell = fixedSlot ? tileFootprint(center, plan.rotation ?? 0)[token.slot as number] : center;
+    const pixel = hexToPixel(cell ?? center, size);
+    const tokenWidth = hexWidth * (fixedSlot ? 1 : 0.9);
+    const tokenHeight = 2 * size * (fixedSlot ? 1 : 0.9);
+    gateLayer.push(
+      <image
+        height={tokenHeight}
+        href={assetUrl(mapTokenImage(token.kind, whirlpoolNumberByIndex.get(index)))}
+        key={`map-token-${index}`}
+        opacity={plan.faceDown ? 0.9 : 1}
+        preserveAspectRatio="xMidYMid meet"
+        style={{ pointerEvents: "none" }}
+        width={tokenWidth}
+        x={pixel.x - tokenWidth / 2}
+        y={pixel.y - tokenHeight / 2}
+      >
+        <title>
+          {plan.faceDown
+            ? `${mapTokenLabel(token.kind)} token — placed on a field of the discoverer's choosing when this tile is revealed.`
+            : `${mapTokenLabel(token.kind)} token — overwrites this field.`}
+        </title>
       </image>
     );
   }
@@ -811,13 +945,18 @@ export function MapDesigner({
                 <div className="popoverActions">
                   {selected.faceDown ? (
                     <button
-                      onClick={() =>
+                      onClick={() => {
+                        const tileDefId =
+                          selected.tileDefId ?? pickableTiles.find((tile) => !usedFaceUpIds.has(tile.id))?.id ?? pickableTiles[0]?.id;
                         updateTile(selectedIndex as number, {
                           faceDown: false,
-                          tileDefId:
-                            selected.tileDefId ?? pickableTiles.find((tile) => !usedFaceUpIds.has(tile.id))?.id ?? pickableTiles[0]?.id
-                        })
-                      }
+                          tileDefId,
+                          // A pending token becomes a fixed placement: it moves to
+                          // the first legal field of the revealed tile (or is
+                          // dropped when the tile has none).
+                          token: retargetTokenForDef(selected.token, tileDefId)
+                        });
+                      }}
                       title="Show a specific tile, face up"
                       type="button"
                     >
@@ -825,7 +964,18 @@ export function MapDesigner({
                     </button>
                   ) : (
                     <button
-                      onClick={() => updateTile(selectedIndex as number, { faceDown: true, tileDefId: undefined })}
+                      onClick={() =>
+                        updateTile(selectedIndex as number, {
+                          faceDown: true,
+                          tileDefId: undefined,
+                          // A fixed token turns back into a pending one (placed on
+                          // discovery) when its kind fits the face-down group.
+                          token:
+                            selected.token && faceDownTokenKinds(selected.group).includes(selected.token.kind)
+                              ? { kind: selected.token.kind }
+                              : undefined
+                        })
+                      }
                       title="Flip face-down so a random tile of this pool is drawn when the game starts"
                       type="button"
                     >
@@ -845,7 +995,12 @@ export function MapDesigner({
                     <select
                       aria-label="Tile"
                       className="popoverSelect"
-                      onChange={(event) => updateTile(selectedIndex as number, { tileDefId: event.target.value })}
+                      onChange={(event) =>
+                        updateTile(selectedIndex as number, {
+                          tileDefId: event.target.value,
+                          token: retargetTokenForDef(selected.token, event.target.value)
+                        })
+                      }
                       value={selected.tileDefId ?? ""}
                     >
                       {pickableTiles.map((tile) => (
@@ -869,6 +1024,78 @@ export function MapDesigner({
                     ) : null}
                   </>
                 ) : null}
+
+                {/* Monolith/Whirlpool Location Token on this tile. */}
+                {selectedToken ? (
+                  <>
+                    <small className="popoverHint">
+                      {mapTokenLabel(selectedToken.kind)} token on this tile
+                      {selected.faceDown
+                        ? " — whoever discovers the tile places it on a field of their choosing."
+                        : " — it overwrites the chosen field."}
+                    </small>
+                    {!selected.faceDown && selectedTileDef ? (
+                      <select
+                        aria-label="Token field"
+                        className="popoverSelect"
+                        onChange={(event) =>
+                          updateTile(selectedIndex as number, {
+                            token: { kind: selectedToken.kind, slot: Number(event.target.value) }
+                          })
+                        }
+                        value={selectedToken.slot ?? ""}
+                      >
+                        {legalTokenSlotsForTileDef(selectedTileDef, selectedToken.kind).map((slot) => (
+                          <option key={slot} value={slot}>
+                            {tokenSlotLabel(selected.tileDefId, slot, selected.rotation ?? 0)}
+                          </option>
+                        ))}
+                      </select>
+                    ) : null}
+                    <div className="popoverActions">
+                      <button
+                        onClick={() => updateTile(selectedIndex as number, { token: undefined })}
+                        title="Remove the token from this tile"
+                        type="button"
+                      >
+                        <Trash2 size={13} /> Remove the {mapTokenLabel(selectedToken.kind)} token
+                      </button>
+                    </div>
+                  </>
+                ) : selectedTokenKinds.length > 0 ? (
+                  <div className="popoverActions">
+                    {selectedTokenKinds.map((kind) => {
+                      const capped = kind === "whirlpool" && tokenCounts.whirlpool >= MAX_WHIRLPOOL_TOKENS;
+                      return (
+                        <button
+                          disabled={capped}
+                          key={kind}
+                          onClick={() => {
+                            if (capped) {
+                              return;
+                            }
+                            const token = selected.faceDown
+                              ? { kind }
+                              : retargetTokenForDef({ kind }, selected.tileDefId);
+                            if (token) {
+                              updateTile(selectedIndex as number, { token });
+                            }
+                          }}
+                          title={
+                            capped
+                              ? `Only ${MAX_WHIRLPOOL_TOKENS} numbered Whirlpool tokens exist — remove one to place it elsewhere.`
+                              : kind === "monolith"
+                                ? "Two-Way Monolith (land): heroes entering it teleport to another Monolith. At least 2 needed to work."
+                                : "Whirlpool (sea): heroes entering it travel to another Whirlpool and lose 1 unit card. At least 2 needed to work; with 3, the Attack die decides."
+                          }
+                          type="button"
+                        >
+                          {kind === "monolith" ? "⛩" : "🌀"} Add a {mapTokenLabel(kind)} token
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : null}
               </>
             )}
 
@@ -887,6 +1114,19 @@ export function MapDesigner({
         </div>
       ) : null}
 
+      {tokenCounts.monolith === 1 ? (
+        <div className="designerCavernAlert" role="alert">
+          ⚠ Only 1 Monolith token is placed — Monoliths need at least 2 on the map to work. A lone Monolith leads
+          nowhere; add a second one (on another tile) to open the teleport route.
+        </div>
+      ) : null}
+      {tokenCounts.whirlpool === 1 ? (
+        <div className="designerCavernAlert" role="alert">
+          ⚠ Only 1 Whirlpool token is placed — Whirlpools need at least 2 on the map to work. A lone Whirlpool leads
+          nowhere; add a second one (on another sea tile) to open the travel route.
+        </div>
+      ) : null}
+
       <small className="optionHint">
         Drag a tile from the palette and drop it anywhere — tiles can interlock, leave gaps, touch at just a corner or
         float on their own (room for teleport gates later); green guides mark where a tile nests with no hole. Drag a
@@ -894,7 +1134,12 @@ export function MapDesigner({
         <strong> Underground (⛰) tiles</strong> live on the subterranean layer: drop one touching a Surface tile and a
         <strong> Subterranean Gate</strong> token appears on the shared edge — that gate is the ONLY way heroes cross
         between the Surface and the Underground (they can&apos;t even discover an Underground tile from the Surface
-        without one). The Town (Ⅰ) tiles become the player seats; drag the empty background to pan and scroll to zoom.
+        without one). Click a placed tile to add a <strong>Monolith</strong> (land) or <strong>Whirlpool</strong> (sea)
+        token: it replaces a field of the tile, and a hero entering it teleports to another token of the same kind
+        (each Whirlpool travel also costs 1 unit card). A token on a face-down tile is placed on a field of the
+        discoverer&apos;s choosing; travelling to it reveals the tile for free. <strong>At least 2 tokens of a kind are
+        needed for them to work</strong> — a lone one leads nowhere. The Town (Ⅰ) tiles become the player seats; drag
+        the empty background to pan and scroll to zoom.
       </small>
 
       {/* Floating drag ghost follows the pointer. */}

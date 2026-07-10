@@ -6328,6 +6328,15 @@ export type MapTileState = {
    * materialized until the owner locks the rotation in.
    */
   awaitingRotation?: boolean;
+  /**
+   * A Monolith/Whirlpool Location Token the map designer attached to this
+   * still-face-down tile. When the tile is discovered, the discovering player
+   * places the token on a legal field of their choosing (rulebook p.35: "place
+   * the Token on … a Field of your choosing"); the entry is cleared once the
+   * token is carved. Public info — the physical Scenario Map Layout shows
+   * token positions up front. `number` is a Whirlpool's pre-assigned die face.
+   */
+  pendingToken?: { kind: "monolith" | "whirlpool"; number?: -1 | 0 | 1 };
 };
 
 export type MapFieldState = {
@@ -6396,6 +6405,14 @@ export type MapFieldState = {
    */
   gateToTileId?: string;
   gateLinkSpaceId?: MapSpaceId;
+  /**
+   * Whirlpool Location Token (Cove expansion): the Attack-die face printed on
+   * this token (-1, 0 or +1). With exactly 3 Whirlpools on the map, a travel
+   * rolls the Attack die and the hero surfaces at the Whirlpool whose number
+   * matches (rerolling the origin's own number, per the rulebook p.83). Set
+   * when `location` is "whirlpool"; Monolith tokens carry no number.
+   */
+  whirlpoolNumber?: -1 | 0 | 1;
 };
 
 /**
@@ -6864,6 +6881,42 @@ export type VisitStep =
        * field (the hero simply walks across the linked gate↔entrance edge).
        */
       type: "SUBTERRANEAN_GATE";
+    }
+  | {
+      /**
+       * Monolith/Whirlpool travel: entering (or Revisiting) the token resolves
+       * where the hero goes — straight to the only other token, the traveller's
+       * pick when several qualify, or the Attack-die roll when exactly 3
+       * numbered Whirlpools are in play. Destinations on a still-face-down tile
+       * route through TOKEN_TELEPORT_REVEAL instead.
+       */
+      type: "TOKEN_TELEPORT";
+      token: "monolith" | "whirlpool";
+    }
+  | {
+      /**
+       * Monolith/Whirlpool travel into a face-down tile: flip the destination
+       * tile for free and hand its rotation to the traveller. The teleport
+       * completes (and a Whirlpool's unit loss lands) once the traveller has
+       * also placed the destination token — tracked in
+       * `AdventureState.pendingTokenTeleport`.
+       */
+      type: "TOKEN_TELEPORT_REVEAL";
+      token: "monolith" | "whirlpool";
+      tileInstanceId: string;
+    }
+  | {
+      /**
+       * "After each Whirlpool travel, lose 1 unit from your unit Deck": the
+       * traveller picks one army card to discard (a CHOOSE_ONE opens when the
+       * army holds more than one). No-op with an empty army.
+       */
+      type: "WHIRLPOOL_PENALTY";
+    }
+  | {
+      /** Leaf of the WHIRLPOOL_PENALTY pick: discard this army card. */
+      type: "WHIRLPOOL_DISCARD_UNIT";
+      unitId: string;
     }
   | {
       /** Logistics / Town Portal: place the hero on the field directly. */
@@ -7741,6 +7794,23 @@ export type AdventureState = {
    * neighbours. Absent/empty on fully-automatic maps.
    */
   gatePlans?: SubterraneanGatePlan[];
+  /**
+   * A Monolith/Whirlpool travel whose destination tile was still face-down:
+   * the traveller flipped it for free and now owes its rotation and the
+   * destination token's placement. Once the token is carved on the revealed
+   * tile the teleport completes (the hero moves there; a Whirlpool travel then
+   * takes its unit toll). Cleared when the teleport completes, fizzles (no
+   * legal field for the token), or the traveller is eliminated.
+   */
+  pendingTokenTeleport?: {
+    playerId: PlayerId;
+    heroId: HeroId;
+    kind: "monolith" | "whirlpool";
+    /** The token the hero is travelling FROM (it stays put). */
+    fromSpaceId: MapSpaceId;
+    /** The face-down tile that hides the destination token. */
+    destTileInstanceId: string;
+  } | null;
   /** Field visit currently being resolved (choices pending). */
   pendingVisit: PendingVisit | null;
   /**
@@ -8008,6 +8078,16 @@ export type CustomMapTilePlan = {
    * "any subterranean tile".
    */
   subBand?: "iv-v" | "vi-vii";
+  /**
+   * A Monolith (land) or Whirlpool (sea) Location Token on this tile — at most
+   * one per tile. On a face-up tile `slot` names the tile-definition field
+   * (0-6, unrotated) the token overwrites at setup. On a face-down tile `slot`
+   * is ignored: the token rides the tile and the discovering player places it
+   * on a legal field of their choosing when the tile is revealed (p.35).
+   * Monoliths and Whirlpools each need at least 2 tokens on the map to lead
+   * anywhere; Whirlpool numbers (-1/0/+1) are assigned in plan order at setup.
+   */
+  token?: { kind: "monolith" | "whirlpool"; slot?: number };
 };
 
 /**
@@ -8346,6 +8426,7 @@ export type PendingChoice =
         | "morale-repeat-search"
         | "pendant-repeat-search"
         | "place-creature-bank"
+        | "place-map-token"
         | "subterranean-gate-placement"
         | "judge-dread"
         | "far-tile-flip"
@@ -8675,6 +8756,20 @@ export type PendingChoice =
         tileInstanceId: string;
         candidates: SubterraneanGateChoiceCandidate[];
         deferBank: boolean;
+      };
+      /**
+       * place-map-token: the discovering player picks which field of the
+       * just-revealed tile the Monolith/Whirlpool Location Token overwrites
+       * ("place the Token on … a Field of your choosing", p.35). Each option in
+       * `options` is index-aligned with `candidates` (the legal hexes — matching
+       * terrain, no Blocked Field/Town/guard/other token). `number` is a
+       * Whirlpool's pre-assigned die face, carved onto the chosen field.
+       */
+      mapToken?: {
+        tileInstanceId: string;
+        kind: "monolith" | "whirlpool";
+        number?: -1 | 0 | 1;
+        candidates: MapSpaceId[];
       };
       returnPhase: GamePhase;
     }

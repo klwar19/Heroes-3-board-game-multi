@@ -64,3 +64,48 @@ describe("MapDesigner — Subterranean Gates", () => {
     expect(container.querySelector('image[href*="subterranean-gate-surface"]')).toBeTruthy();
   });
 });
+
+describe("MapDesigner — Monolith/Whirlpool tokens", () => {
+  const town = { row: 10, col: 10 };
+  const spots = tileLatticeNeighbors(town);
+
+  it("renders a designed token on its tile (face-up at its hex, face-down as a badge)", () => {
+    const container = renderDesigner([
+      { row: town.row, col: town.col, group: "starting", faceDown: false },
+      {
+        row: spots[0].row,
+        col: spots[0].col,
+        group: "far",
+        faceDown: false,
+        tileDefId: "F1",
+        token: { kind: "monolith", slot: 0 }
+      },
+      { row: spots[1].row, col: spots[1].col, group: "sea", faceDown: true, seaBand: "iv-v", token: { kind: "whirlpool" } }
+    ]);
+
+    expect(container.querySelector('image[href*="tokens/monolith"]'), "monolith art rendered").toBeTruthy();
+    // The first (and only) whirlpool takes the printed +1 token.
+    expect(container.querySelector('image[href*="whirlpool-plus1"]'), "whirlpool +1 art rendered").toBeTruthy();
+  });
+
+  it("says at least 2 of a kind are needed when only 1 is placed — and stops once a second lands", () => {
+    const lone = renderDesigner([
+      { row: town.row, col: town.col, group: "starting", faceDown: false },
+      { row: spots[0].row, col: spots[0].col, group: "far", faceDown: true, token: { kind: "monolith" } }
+    ]);
+    const warnings = [...lone.querySelectorAll(".designerCavernAlert")].map((node) => node.textContent ?? "");
+    expect(
+      warnings.some((text) => /at least 2/i.test(text) && /Monolith/i.test(text)),
+      "lone-monolith warning shown"
+    ).toBe(true);
+
+    cleanup();
+    const paired = renderDesigner([
+      { row: town.row, col: town.col, group: "starting", faceDown: false },
+      { row: spots[0].row, col: spots[0].col, group: "far", faceDown: true, token: { kind: "monolith" } },
+      { row: spots[1].row, col: spots[1].col, group: "near", faceDown: true, token: { kind: "monolith" } }
+    ]);
+    const pairedWarnings = [...paired.querySelectorAll(".designerCavernAlert")].map((node) => node.textContent ?? "");
+    expect(pairedWarnings.some((text) => /Monolith/i.test(text))).toBe(false);
+  });
+});

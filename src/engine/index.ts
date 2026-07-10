@@ -265,10 +265,14 @@ export {
   heroMovementMax,
   heroMoveStartsBattle,
   isFieldGuarded,
+  isMapTokenLocation,
   isOuterEdgeSealed,
   isTileSlotOuterSealed,
   isSeaField,
+  legalTokenSlotsForTileDef,
   levelOfExperience,
+  mapTokenLabel,
+  tokenMayCoverFieldDef,
   planSubterraneanGates,
   planGateChoiceForReveal,
   upsertGatePlan,
@@ -286,7 +290,7 @@ export {
   subterraneanTileBand,
   tileLayer
 } from "./adventure";
-export type { HeroMovementCapabilities, HeroPathTarget, HeroStepKind, MapLayer, PlannedSubterraneanGate, RecruitPurchaseRef, TilePlacementLike } from "./adventure";
+export type { HeroMovementCapabilities, HeroPathTarget, HeroStepKind, MapLayer, MapTokenKind, PlannedSubterraneanGate, RecruitPurchaseRef, TilePlacementLike } from "./adventure";
 export {
   ATTACKER_BACKLINE,
   ATTACKER_FRONTLINE,

@@ -180,6 +180,17 @@ export type LocationInteraction =
       type: "SUBTERRANEAN_GATE";
     }
   | {
+      /**
+       * Monolith (Conflux) / Whirlpool (Cove) Location Token: entering the
+       * field moves the hero to another token of the same kind (rulebook
+       * p.35/83). Monoliths sit on land, Whirlpools on sea; a Whirlpool travel
+       * also costs the traveller 1 unit card from their army. With fewer than
+       * two tokens of the kind on the map the field does nothing.
+       */
+      type: "TOKEN_TELEPORT";
+      token: "monolith" | "whirlpool";
+    }
+  | {
       /** Pandora's Box: draw the top card of the Pandora deck into hand. */
       type: "DRAW_PANDORA_CARD";
     }
