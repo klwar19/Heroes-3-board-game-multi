@@ -310,7 +310,16 @@ activations, -1 skips) until it actually skips, exactly as printed.
 Wiring map (positive): `combat_draw` at combat start; `reroll_die` a reroll
 source; `set_attack_die_plus` a SET source in the same window (never spent by
 a plain reroll — `AttackRerollSource.setDieFace`, `REROLL_PENDING_CHOICE
-.useSetDie`). Both — plus the generic "Reroll a die" artifacts (Cards of
+.useSetDie`). `reroll_die` is ALSO offered on the holder's own MAP dice —
+the Resource/Treasure result windows plus the Scholar and Sea Chest/Jetsam
+Attack-die branch rolls (`moraleRerollCardOption` in adventure.ts, resolved
+via the `CONSUME_MORALE_CARD` visit step) — standing in for the ±1 token's
+"Reroll any Die you have thrown" while the rule is on; the Obelisk die (its
+face locks once for every visitor) and the specific-face gambles (Satyr,
+Leprechaun pool) stay out, and BOTH set-die cards stay combat/ability-roll
+scoped ("best/worst face" is undefined for a map branch table). Pinned in
+`morale-card-effects.test.ts` ("Reroll a Die (map dice)", with straight-
+through CONTROLs). Both — plus the generic "Reroll a die" artifacts (Cards of
 Prophecy, Diplomat's Ring, Ambassador's Sash) and the positive morale token —
 are ALSO offered on an ABILITY's own roll (Death Stare, the Thunderbird/
 Wyvern extra die, extra-die Paralysis, the Ghost Dragon knock-back) via the
@@ -701,8 +710,11 @@ Three guards keep a mid-resolution table recoverable, each pinned in
 `astrologers-barrier-recovery.test.ts` (fails if the guard is removed):
 (1) `eliminatePlayer` drops EVERY interaction the eliminated seat owns — its
 queued rewards and open `pendingVisit` (as before) AND an open `pendingChoice`
-(returning cards a DECK_SEARCH / Visions scry had lifted out of a shared deck,
-restoring `phase`), plus an owned `pendingNecromancy`/`pendingFarTileFlip` — so
+(returning cards a DECK_SEARCH / Visions scry / Pandora scry had lifted out of
+a shared deck — the Pandora scry's undecided AND kept cards go back on TOP of
+the draw pile, pinned in `pandora-cards.test.ts` "eliminating the scrying
+player mid-scry destroys NO shared-deck cards" — restoring `phase`), plus an
+owned `pendingNecromancy`/`pendingFarTileFlip` — so
 a seat eliminated mid-resolution (AFK kick, concede) hands the slot to the next
 seat in order and the barrier still lifts after the last LIVE seat. (2) A
 round-start City-Hall choice whose every option was context-filtered away

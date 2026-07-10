@@ -76,6 +76,16 @@ export const moraleCardDefinitions: CardLibrary = {
       cardImage: face("positive-reroll-die"),
       imageAlt: "Positive Morale card: reroll a die"
     },
+    // engine: a reroll source in the combat attack-die window and on ability
+    // rolls, AND offered on the holder's own map dice — the Resource/Treasure
+    // windows plus the Scholar / Sea Chest / Jetsam Attack-die branch rolls
+    // (moraleRerollCardOption in adventure.ts), standing in for the ±1 token's
+    // "Reroll any Die you have thrown" while the Morale Cards rule is on.
+    // Deliberately out: the Obelisk die (its face locks once for every
+    // visitor — a shared reveal, not the holder's own throw) and the
+    // specific-face gambles the other map exclusions share (Satyr's
+    // roll-for-morale, the Leprechaun event pool). Tests:
+    // morale-card-effects.test.ts "Positive Morale: Reroll a Die (map dice)".
     implementationStatus: "implemented",
     source: moraleSource
   },
@@ -93,6 +103,10 @@ export const moraleCardDefinitions: CardLibrary = {
     // engine: offered inside the attack-die window as a SET source (never spent
     // by a plain reroll): the die that improves the outcome most flips to +1,
     // no reroll. Test: morale-card-effects.test.ts "Set Attack Die +1".
+    // Map-side Attack-die branch rolls (Scholar, Sea Chest) are deliberately
+    // out of scope for BOTH set-die cards: "best/worst face" is undefined for
+    // their branch tables, so the siblings stay combat/ability-roll-scoped
+    // symmetrically (the generic "Reroll a die." card covers map dice instead).
     implementationStatus: "implemented",
     source: moraleSource
   },

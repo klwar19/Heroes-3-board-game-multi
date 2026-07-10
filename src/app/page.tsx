@@ -175,7 +175,8 @@ import {
   requestAdminCloseRoom,
   requestCloseRoom,
   type GameRoomSnapshot,
-  type RoomConnection
+  type RoomConnection,
+  type SnapshotMeta
 } from "@/lib/realtime";
 import { clearCachedRoom, loadCachedRoom, saveCachedRoom } from "@/lib/room-cache";
 import { getAccountIdentity, getClientId, getDisplayName, setDisplayName as persistDisplayName } from "@/lib/identity";
@@ -696,7 +697,21 @@ export default function Home() {
   /** Server boot we already tried to recover from (avoids restore loops). */
   const restoredForBootRef = useRef<string | null>(null);
   /** Stable handle to ingestSnapshot so the restore result can re-enter it. */
-  const ingestSnapshotRef = useRef<(snapshot: GameRoomSnapshot) => void>(() => {});
+  const ingestSnapshotRef = useRef<(snapshot: GameRoomSnapshot, meta?: SnapshotMeta) => void>(() => {});
+  /**
+   * Room version whose seat-authoritative (own-seat-redacted) frame has already
+   * been ingested — lets an equal-version HTTP/action frame upgrade the hosted
+   * room's observer connect frame exactly once, without re-rendering on every
+   * later poll of the same version.
+   */
+  const seatUpgradedVersionRef = useRef(0);
+  /**
+   * The live connection dropped since membership was last confirmed. The server
+   * reaps an unseated member on disconnect, so the join effect re-joins when the
+   * member is missing after a drop — while a kick over a LIVE socket never sets
+   * this, so a kicked player still does not silently auto-rejoin.
+   */
+  const connectionDroppedRef = useRef(false);
   const seenMapDiceIdsRef = useRef<Set<string>>(new Set());
   const seenVisitIdsRef = useRef<Set<string>>(new Set());
   const seenFirstRollIdsRef = useRef<Set<string>>(new Set());
@@ -2833,7 +2848,7 @@ export default function Home() {
   }, [showFeedItems]);
 
   const ingestSnapshot = useCallback(
-    (snapshot: GameRoomSnapshot) => {
+    (snapshot: GameRoomSnapshot, meta?: SnapshotMeta) => {
       // No live room (lobby): ignore any straggling frame. Narrows roomId to a
       // string for the cache calls below.
       if (!roomId) {
@@ -2866,7 +2881,7 @@ export default function Home() {
           seenBootIdRef.current = snapshot.bootId ?? null;
           connectionRef.current
             ?.restoreRoom(cached.state)
-            .then((restored) => ingestSnapshotRef.current(restored))
+            .then((restored) => ingestSnapshotRef.current(restored, { seatAuthoritative: true }))
             .catch(() => {
               // Restore failed: fall back to showing whatever the server has.
               ingestServerState(snapshot.state);
@@ -2885,7 +2900,21 @@ export default function Home() {
         saveCachedRoom(roomId, snapshot.version, snapshot.state);
       }
       setRoomVersion((currentVersion) => {
-        if (bootChanged || snapshot.version > currentVersion) {
+        // A SEAT-AUTHORITATIVE frame (HTTP fetch / action reply, redacted to
+        // this client's own seat) may also re-ingest the CURRENT version, once:
+        // a hosted room's socket connect frame is the zero-trust OBSERVER view
+        // at that same version, and if it wins the race the player's own hand /
+        // Pandora cards stay masked until the next state change. The
+        // seatUpgradedVersionRef latch keeps later same-version polls from
+        // re-rendering the table for nothing.
+        const seatUpgrade =
+          Boolean(meta?.seatAuthoritative) &&
+          snapshot.version === currentVersion &&
+          seatUpgradedVersionRef.current !== snapshot.version;
+        if (bootChanged || snapshot.version > currentVersion || seatUpgrade) {
+          if (meta?.seatAuthoritative) {
+            seatUpgradedVersionRef.current = snapshot.version;
+          }
           ingestServerState(snapshot.state);
           return snapshot.version;
         }
@@ -3012,6 +3041,11 @@ export default function Home() {
       {
         onSnapshot: ingestSnapshot,
         onStatus: setSyncStatus,
+        // A transient drop may have let the server reap this client's unseated
+        // membership — arm the join effect's re-join (see connectionDroppedRef).
+        onDropped: () => {
+          connectionDroppedRef.current = true;
+        },
         // The host closed this room: drop the cached game and return to the lobby.
         onClosed: () => {
           clearCachedRoom(roomId);
@@ -3036,7 +3070,7 @@ export default function Home() {
 
     connection
       .fetchSnapshot()
-      .then(ingestSnapshot)
+      .then((snapshot) => ingestSnapshot(snapshot, { seatAuthoritative: true }))
       .catch(() => setSyncStatus("room sync failed"));
 
     return () => {
@@ -3115,7 +3149,9 @@ export default function Home() {
         )
         .map((event) => event.reason);
       setErrors([...payload.result.errors.map((error) => error.message), ...refundNotices]);
-      ingestSnapshot(payload.snapshot);
+      // The action reply is redacted to the ACTING sender's own seat, so it may
+      // also upgrade an equal-version observer frame (seatAuthoritative).
+      ingestSnapshot(payload.snapshot, { seatAuthoritative: true });
       setSyncStatus(`synced v${payload.snapshot.version}`);
 
       if (payload.result.errors.length === 0) {
@@ -3130,7 +3166,7 @@ export default function Home() {
         // the next click works instead of staying frozen on old state.
         connection
           .fetchSnapshot()
-          .then(ingestSnapshot)
+          .then((snapshot) => ingestSnapshot(snapshot, { seatAuthoritative: true }))
           .catch(() => {
             /* the live stream keeps trying */
           });
@@ -3142,7 +3178,7 @@ export default function Home() {
       // Refetch the authoritative state either way.
       connection
         .fetchSnapshot()
-        .then(ingestSnapshot)
+        .then((snapshot) => ingestSnapshot(snapshot, { seatAuthoritative: true }))
         .catch(() => {
           /* the live stream keeps trying */
         });
@@ -3214,12 +3250,24 @@ export default function Home() {
       }
     };
 
-    if (joinedRoomRef.current === joinKey) {
+    // Membership reaped after a transient disconnect: the server drops an
+    // unseated member (observer / open-table member) when its connection dies,
+    // and the one-shot guard below would otherwise never re-join — leaving the
+    // viewer a permanent non-member until they navigate rooms. Only an observed
+    // connection DROP arms this; a kick over a live socket does not, so a
+    // kicked player still never silently auto-rejoins.
+    const reapedAfterDrop = !me && connectionDroppedRef.current;
+    if (joinedRoomRef.current === joinKey && !reapedAfterDrop) {
       if (me) {
+        // Membership confirmed on live state — clear any drop since then.
+        connectionDroppedRef.current = false;
         setRoomJoinError(null);
         applyPendingName();
       }
       return;
+    }
+    if (reapedAfterDrop) {
+      connectionDroppedRef.current = false;
     }
     joinedRoomRef.current = joinKey;
     // Already a member under this name (carried across a reset / reconnect)? Adopt it.
@@ -4691,7 +4739,7 @@ export default function Home() {
       onReset={() => {
         connectionRef.current
           ?.fetchSnapshot()
-          .then(ingestSnapshot)
+          .then((snapshot) => ingestSnapshot(snapshot, { seatAuthoritative: true }))
           .catch(() => setSyncStatus("room sync failed"));
       }}
     >

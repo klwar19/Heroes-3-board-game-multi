@@ -388,9 +388,17 @@ export const pandoraCards: CardLibrary = {
     source: pandoraSource
   },
 
-  // engine (Card 168, INSTANT played on your map turn — the printed Instant
-  // symbol is honoured as a map play since every option is map-side): choose 2 of
-  // the 3 options and resolve both. Modeled as the three distinct 2-of-3 combos.
+  // engine (Card 168): choose 2 of the 3 options and resolve both. Modeled as
+  // the three distinct 2-of-3 combos.
+  // DELIBERATE READING — the printed card carries the Instant lightning symbol,
+  // but it is encoded `timing: "map"` (playable on the owner's map turn and in
+  // the PvP combat-prep window, like every map card): all three options are
+  // self-directed map-side gains (Resource dice / own-hero movement / own
+  // experience), so an off-turn or mid-combat play changes nothing the player
+  // could not get on their own turn — while `timing: "instant"` would drag the
+  // card into the combat instant offers (addPlayableCardActions), where its
+  // PANDORA_VISIT reward cannot resolve until the fight ends. The map encoding
+  // keeps the engine truthful about when the card actually does something.
   "pandora.instant_choice": {
     id: "pandora.instant_choice",
     name: "Pandora's Gift: Twofold Boon",

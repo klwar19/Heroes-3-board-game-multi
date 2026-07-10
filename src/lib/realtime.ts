@@ -50,11 +50,32 @@ export type RoomResetOptions = {
   players?: AdventurePlayerConfig[];
 };
 
+/** Provenance of a delivered snapshot, for the caller's version gate. */
+export type SnapshotMeta = {
+  /**
+   * The snapshot came from a channel the server redacts to THIS client's own
+   * seat (the HTTP snapshot fetch with clientId+token attached). The caller may
+   * accept it at the SAME version it already holds: on a hosted room the
+   * socket's zero-trust connect frame is observer-redacted at the current
+   * version, and only an equal-version upgrade from a seat-authoritative
+   * channel can restore the player's own hidden cards without waiting for the
+   * next state change.
+   */
+  seatAuthoritative?: boolean;
+};
+
 export type RoomConnectionHandlers = {
-  onSnapshot: (snapshot: GameRoomSnapshot) => void;
+  onSnapshot: (snapshot: GameRoomSnapshot, meta?: SnapshotMeta) => void;
   onStatus: (status: string) => void;
   /** The room was closed (deleted) by its host — drop back to the lobby. */
   onClosed?: () => void;
+  /**
+   * The live channel (socket / event stream) dropped. The server reaps an
+   * unseated member's room membership on disconnect, so the caller uses this to
+   * re-arm its one-shot join guard — a member missing after a drop is re-joined,
+   * while a member kicked over a LIVE connection still never auto-rejoins.
+   */
+  onDropped?: () => void;
 };
 
 export type RoomConnection = {
@@ -238,13 +259,41 @@ function connectPartyRoom(
 
   handlers.onStatus("connecting (edge)");
 
+  // The seat-redacted HTTP snapshot, delivered as a seat-authoritative frame.
+  // Used on every REconnect: the server's synchronous connect frame is the
+  // zero-trust OBSERVER view at the current version, and if nothing changed
+  // while the socket was down no later broadcast is due — without this refetch
+  // a hosted-room player's own hand/Pandora cards would stay masked until the
+  // next state change (the closed-room reload bug).
+  const refetchSeatSnapshot = async (): Promise<void> => {
+    try {
+      const response = await fetch(partyHttpUrl(host, roomId, actorClientId, await actorToken()), {
+        cache: "no-store"
+      });
+      if (response.ok) {
+        handlers.onSnapshot((await response.json()) as GameRoomSnapshot, { seatAuthoritative: true });
+      }
+    } catch {
+      // The live socket keeps trying; the caller's own fetch paths also retry.
+    }
+  };
+
+  let dropped = false;
   socket.addEventListener("open", () => {
     handlers.onStatus("live (edge)");
+    if (dropped) {
+      dropped = false;
+      void refetchSeatSnapshot();
+    }
   });
   socket.addEventListener("close", () => {
+    dropped = true;
+    handlers.onDropped?.();
     handlers.onStatus("edge socket reconnecting");
   });
   socket.addEventListener("error", () => {
+    dropped = true;
+    handlers.onDropped?.();
     handlers.onStatus("edge socket reconnecting");
   });
   socket.addEventListener("message", (event) => {
@@ -430,6 +479,9 @@ function connectApiRoom(
   };
   source.onerror = () => {
     streamErrored = true;
+    // The server reaps an unseated member when its stream drops — let the
+    // caller re-arm its join guard, mirroring the PartyKit socket.
+    handlers.onDropped?.();
     handlers.onStatus("stream reconnecting");
   };
 
@@ -440,7 +492,9 @@ function connectApiRoom(
     }
     fetchSnapshot()
       .then((snapshot) => {
-        handlers.onSnapshot(snapshot);
+        // The HTTP snapshot is redacted to this client's own seat, so it may
+        // upgrade an equal-version frame (see SnapshotMeta.seatAuthoritative).
+        handlers.onSnapshot(snapshot, { seatAuthoritative: true });
         handlers.onStatus(`live (poll) v${snapshot.version}`);
       })
       .catch(() => handlers.onStatus("room sync failed"));
@@ -453,7 +507,7 @@ function connectApiRoom(
       return;
     }
     fetchSnapshot()
-      .then((snapshot) => handlers.onSnapshot(snapshot))
+      .then((snapshot) => handlers.onSnapshot(snapshot, { seatAuthoritative: true }))
       .catch(() => {
         /* The regular poll keeps retrying. */
       });

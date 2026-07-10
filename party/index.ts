@@ -393,7 +393,9 @@ export default class GameRoomServer implements Party.Server {
   /** The signed snapshot redacted to one live socket's seat. */
   private async snapshotForConnection(connection: Party.Connection): Promise<RoomSnapshot> {
     const userId = await this.verifiedUserId(connection);
-    return this.redactSnapshotForActor(this.signed(this.snapshot!), {
+    // Re-read AFTER the await: another event may have advanced (or re-created)
+    // the snapshot while the token verification round-trip was in flight.
+    return this.redactSnapshotForActor(this.signed(this.ensureSnapshot()), {
       clientId: this.clientIdOf(connection),
       userId
     });
@@ -530,12 +532,18 @@ export default class GameRoomServer implements Party.Server {
     }
 
     if (message.type === "reset") {
+      // Resolve the (async) admin verification BEFORE touching the snapshot:
+      // a Durable Object interleaves other events at every await, so the
+      // read-modify-write below must run with no await between reading
+      // `previous` and assigning `this.snapshot`, or a concurrent action's
+      // version could be silently overwritten (lost update).
+      const isAdmin = this.adminAuthorizes(message.adminKey) || (await this.verifiedIsAdmin(sender));
       const previous = this.ensureSnapshot();
       // Same authority as close: host while connected, any member once the
       // host is gone, a verified platform admin (socket ticket) or the
       // developer's admin key always. The socket's own ?clientId= identity
       // backs up the message field.
-      if (!this.adminAuthorizes(message.adminKey) && !(await this.verifiedIsAdmin(sender))) {
+      if (!isAdmin) {
         const authority = this.hostAuthorizes(message.actorClientId ?? this.clientIdOf(sender), "reset");
         if (!authority.allowed) {
           // Refused: the room is untouched; tell the sender (only) why.
@@ -564,11 +572,17 @@ export default class GameRoomServer implements Party.Server {
     }
 
     if (message.type === "action") {
-      const current = this.ensureSnapshot();
       // Resolve the sender's VERIFIED account id from the token on its socket
       // (Phase 2). Authoritative over the claimed actorClientId — a spoofed id
       // can no longer act for a signed-in player's seat. Undefined for guests.
+      // MUST resolve BEFORE the snapshot is read: the verification round-trip
+      // is an await, and a Durable Object interleaves other requests at every
+      // await — capturing `current` first let two simultaneous actions apply on
+      // the SAME base version, the later write silently overwriting the earlier
+      // one (lost update). From here to the `this.snapshot =` assignment the
+      // path is fully synchronous, so actions serialize correctly.
       const actorUserId = await this.verifiedUserId(sender);
+      const current = this.ensureSnapshot();
       const result = applyAction(current.state, message.action, {
         // Fresh crypto entropy per action makes every die roll, shuffle and Ⅱ–Ⅲ
         // tile flip genuinely unpredictable and non-reproducible (true random),
@@ -671,13 +685,14 @@ export default class GameRoomServer implements Party.Server {
     }
 
     if (request.method === "GET") {
-      this.ensureSnapshot();
       // Redact the snapshot to the requesting client's seat (Phase 2). The
       // browser attaches `?clientId=` (+ optional `?token=`) so a cross-origin
       // poll / initial load leaks no opponent hidden info, mirroring the socket.
+      // The snapshot is read AFTER the async verification, so the reply always
+      // reflects whatever concurrent events landed during the round-trip.
       const clientId = new URL(request.url).searchParams.get("clientId") ?? undefined;
       const userId = await this.verifiedUserIdFromRequest(request);
-      const snapshot = this.redactSnapshotForActor(this.signed(this.snapshot!), { clientId, userId });
+      const snapshot = this.redactSnapshotForActor(this.signed(this.ensureSnapshot()), { clientId, userId });
       void this.reportToLobby();
       return jsonWithCors(snapshot);
     }
@@ -711,11 +726,16 @@ export default class GameRoomServer implements Party.Server {
         | null;
 
       if (body && "reset" in body && body.reset) {
+        // Async admin verification FIRST, snapshot read after — no await may sit
+        // between reading `previous` and assigning `this.snapshot` (see the
+        // socket action handler for the lost-update rationale).
+        const isAdmin =
+          this.adminAuthorizes(body.adminKey) || (await this.verifiedIsAdminFromRequest(request));
         const previous = this.ensureSnapshot();
         // Same authority as DELETE: host while connected, member once the
         // host is gone, a verified platform admin (?token=) or the developer's
         // admin key always.
-        if (!this.adminAuthorizes(body.adminKey) && !(await this.verifiedIsAdminFromRequest(request))) {
+        if (!isAdmin) {
           const authority = this.hostAuthorizes(
             "actorClientId" in body ? body.actorClientId : undefined,
             "reset"
@@ -745,9 +765,12 @@ export default class GameRoomServer implements Party.Server {
       }
 
       if (body && "action" in body && body.action) {
-        const current = this.ensureSnapshot();
         const actorClientId = "actorClientId" in body ? body.actorClientId : undefined;
+        // Async token verification FIRST, snapshot read after: no await between
+        // reading `current` and assigning `this.snapshot` (lost-update guard,
+        // same as the socket action handler).
         const actorUserId = await this.verifiedUserIdFromRequest(request);
+        const current = this.ensureSnapshot();
         const result = applyAction(current.state, body.action, {
           entropy: freshEntropy(),
           now: Date.now(),
