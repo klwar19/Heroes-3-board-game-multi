@@ -1,7 +1,22 @@
 "use client";
 
-import { useState } from "react";
-import { Check, Copy, Crown, Eye, List, Lock, LogOut, ShieldCheck, Trash2, UserCog, UserX, Users } from "lucide-react";
+import { useEffect, useState } from "react";
+import {
+  BadgeCheck,
+  Check,
+  Copy,
+  Crown,
+  Eye,
+  List,
+  Lock,
+  LogOut,
+  ShieldCheck,
+  Trash2,
+  UserCog,
+  UserPlus,
+  UserX,
+  Users
+} from "lucide-react";
 import {
   getSeatIdentity,
   NEUTRAL_PLAYER_ID,
@@ -12,6 +27,8 @@ import {
   type RoomSeat
 } from "@/engine";
 import { authEnabled } from "@/lib/auth-mode";
+import { postLobbyChat } from "@/lib/lobby-chat-client";
+import { fetchPresence, type PresenceEntry } from "@/lib/lobby-presence-client";
 
 /**
  * Room membership UI: shareable invite link, host controls (assign seats, kick,
@@ -48,6 +65,10 @@ export function RoomPanel({
   // mounts); the user edits it freely and Save pushes it back up.
   const [nameDraft, setNameDraft] = useState(displayName);
   const [copied, setCopied] = useState(false);
+  // Global online players (for inviting), fetched while the panel is open.
+  const [online, setOnline] = useState<PresenceEntry[]>([]);
+  // Names we just pinged, to flip the button to "Invited" as feedback.
+  const [invited, setInvited] = useState<Record<string, boolean>>({});
 
   const room = state.room ?? null;
   const members = room?.members ?? [];
@@ -85,6 +106,50 @@ export function RoomPanel({
     } catch {
       done();
     }
+  };
+
+  // While the panel is open, poll the global online list so the host can invite
+  // specific players who are online elsewhere (in the lobby or another room).
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    let live = true;
+    const load = () => {
+      fetchPresence()
+        .then((players) => {
+          if (live) {
+            setOnline(players);
+          }
+        })
+        .catch(() => {
+          /* transient — the next tick retries */
+        });
+    };
+    load();
+    const id = window.setInterval(load, 5000);
+    return () => {
+      live = false;
+      window.clearInterval(id);
+    };
+  }, [open]);
+
+  // Players online who are NOT already in this room (and not me) — the invite
+  // candidates. Someone already here needs no invite.
+  const inviteCandidates = online.filter(
+    (player) => player.clientId !== clientId && player.roomId !== roomId
+  );
+
+  // Invite = a lobby-chat ping carrying THIS room's join link (the "link +
+  // lobby-chat ping" invite). Best-effort; a failure just leaves the button as-is.
+  const invitePlayer = (player: PresenceEntry) => {
+    const from = displayName.trim() || "A player";
+    const text = `🎲 ${player.name} — ${from} invites you to “${currentRoomName}”: ${inviteLink}`;
+    postLobbyChat({ clientId, name: from, text })
+      .then(() => setInvited((prev) => ({ ...prev, [player.clientId]: true })))
+      .catch(() => {
+        /* best-effort — the host can retry or copy the link instead */
+      });
   };
 
   const roleLabel = isHost
@@ -133,6 +198,44 @@ export function RoomPanel({
               </button>
             ) : null}
           </div>
+
+          {inviteCandidates.length > 0 ? (
+            <div className="roomInvitePlayers">
+              <span className="roomInvitePlayersLabel">
+                <UserPlus aria-hidden="true" size={12} /> Invite players online
+              </span>
+              <ul className="roomInvitePlayersList">
+                {inviteCandidates.map((player) => (
+                  <li className="roomInvitePlayer" key={player.clientId}>
+                    <span className="roomInvitePlayerName">
+                      {player.verified ? <BadgeCheck aria-hidden="true" size={11} /> : null}
+                      {player.verified ? player.name : `guest — ${player.name}`}
+                      <small className="roomInvitePlayerWhere">
+                        {player.roomId ? "(in another room)" : "(in the lobby)"}
+                      </small>
+                    </span>
+                    <button
+                      className="commandButton ghost"
+                      disabled={Boolean(invited[player.clientId])}
+                      onClick={() => invitePlayer(player)}
+                      title={`Ping ${player.name} in the lobby chat with this room's link`}
+                      type="button"
+                    >
+                      {invited[player.clientId] ? (
+                        <>
+                          <Check aria-hidden="true" size={12} /> Invited
+                        </>
+                      ) : (
+                        <>
+                          <UserPlus aria-hidden="true" size={12} /> Invite
+                        </>
+                      )}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
 
           <div className="roomTitleRow">
             <span className="roomTitleLabel">Room name</span>

@@ -11837,6 +11837,208 @@ img.cardBack {
   border-color: var(--focus);
 }
 
+/* --- Players online (global presence) panel ---------------------------- */
+.playersOnline {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgb(255 255 255 / 3%);
+}
+
+.playersOnlineHeader {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--gold);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.playersOnlineCount {
+  margin-left: auto;
+  min-width: 20px;
+  padding: 0 7px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-weight: 700;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.playersOnlineEmpty {
+  margin: 4px auto;
+  color: var(--muted);
+  font-size: 12px;
+  font-style: italic;
+}
+
+.playersOnlineList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  max-height: 220px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.playerOnline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgb(13 15 16 / 35%);
+}
+
+.playerOnline.guest {
+  border-style: dashed;
+}
+
+.playerOnlineDot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #57c47a;
+  box-shadow: 0 0 6px rgb(87 196 122 / 70%);
+}
+
+.playerOnline.guest .playerOnlineDot {
+  background: var(--muted);
+  box-shadow: none;
+}
+
+.playerOnlineWho {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.playerOnlineName {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #e8d9b5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.playerOnline.guest .playerOnlineName {
+  color: var(--muted);
+  font-style: italic;
+  font-weight: 600;
+}
+
+.playerOnlineName em {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.playerOnlineBadge {
+  color: var(--gold);
+  flex: none;
+}
+
+.playerOnlineWhere {
+  font-size: 10.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.playerOnlineActions {
+  display: inline-flex;
+  gap: 6px;
+  margin-left: auto;
+  flex: none;
+}
+
+.playerOnlineActions .commandButton {
+  padding: 3px 8px;
+  font-size: 11.5px;
+}
+
+/* --- Invite online players (in-room room panel) ------------------------ */
+.roomInvitePlayers {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgb(255 255 255 / 3%);
+}
+
+.roomInvitePlayersLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--gold);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.roomInvitePlayersList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 160px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.roomInvitePlayer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.roomInvitePlayerName {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+  font-size: 12px;
+  color: #e8d9b5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.roomInvitePlayerName svg {
+  color: var(--gold);
+  flex: none;
+}
+
+.roomInvitePlayerWhere {
+  color: var(--muted);
+  font-size: 10.5px;
+}
+
+.roomInvitePlayer .commandButton {
+  padding: 3px 8px;
+  font-size: 11.5px;
+  flex: none;
+}
+
 .lobbyFilter {
   display: flex;
   align-items: center;

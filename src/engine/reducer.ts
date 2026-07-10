@@ -109,6 +109,7 @@ import {
 } from "./adventure-setup";
 import {
   assignSeat,
+  healVerifiedMembership,
   joinRoom,
   kickMember,
   leaveRoom,
@@ -17666,6 +17667,17 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
   }
 
   const nextState = cloneState(base);
+
+  // Heal a member that joined as a guest but is really a verified account: the
+  // first action that carries the server-verified userId stamps it onto the
+  // member, so the lobby roster and seat checks stop labelling a real player
+  // "guest — name" when verification wasn't available at their JOIN. Safe and
+  // idempotent (see healVerifiedMembership); membership handlers below (JOIN)
+  // already stamp it themselves, so this only ever helps the other actions.
+  if (options.actorUserId) {
+    healVerifiedMembership(nextState, { clientId: options.actorClientId, userId: options.actorUserId });
+  }
+
   const startEventNumber = eventSeedNumber(nextState);
 
   // Per-turn clock: which open-turn seats are PAUSED right now, read BEFORE the

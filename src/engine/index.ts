@@ -43,6 +43,7 @@ export {
 export {
   defaultRoomName,
   dropDisconnectedMember,
+  healVerifiedMembership,
   isRoomMembershipAction,
   MAX_ROOM_NAME_LENGTH,
   roomActionGuard,
