@@ -2,6 +2,7 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  ABILITY_DICE_READ_MS,
   AfkVotePanel,
   DICE_PRESENT_MS,
   DICE_ROLL_MS,
@@ -140,6 +141,93 @@ describe("DiceOverlay — summed (Slayer/Inferno) and spell-roll modes", () => {
     expect(container.querySelector(".formula")).toBeNull();
     // Every die stays lit.
     expect(container.querySelectorAll(".dieScene.dimmed").length).toBe(0);
+  });
+});
+
+describe("DiceOverlay — ability rolls (Death Stare & friends)", () => {
+  /** An ability-roll cue as page.tsx's makeAbilityDiceCue builds it. */
+  function abilityCue(overrides: Partial<DiceCue> = {}): DiceCue {
+    return diceCue({
+      spellMode: true,
+      sumAllDice: true,
+      title: "Death Stare — Mighty Gorgons",
+      caption: "Silver Pegasi are reduced to 0 Health!",
+      tone: "good",
+      rolls: [-1, -1],
+      roll: 1,
+      readMs: ABILITY_DICE_READ_MS,
+      ...overrides
+    });
+  }
+
+  it("shows the ability heading, outcome caption and all dice lit", () => {
+    vi.useFakeTimers();
+    const { container } = render(<DiceOverlay cue={abilityCue()} onDone={vi.fn()} />);
+    expect(screen.getByRole("status", { name: /death stare — mighty gorgons roll/i })).toBeTruthy();
+    act(() => vi.advanceTimersByTime(2000));
+    expect(screen.getByText(/reduced to 0 Health/)).toBeTruthy();
+    // A landed effect reads dramatic (.hit); every die counts, none dim.
+    expect(container.querySelector(".damageResult.hit")).toBeTruthy();
+    expect(container.querySelectorAll(".dieScene.dimmed").length).toBe(0);
+  });
+
+  it("a missed roll reads calm (.blocked) via tone, whatever the roll value", () => {
+    vi.useFakeTimers();
+    const { container } = render(
+      <DiceOverlay cue={abilityCue({ tone: "bad", caption: "No effect.", rolls: [-1, 1], roll: 0 })} onDone={vi.fn()} />
+    );
+    act(() => vi.advanceTimersByTime(2000));
+    expect(container.querySelector(".damageResult.blocked")).toBeTruthy();
+  });
+
+  it("dismisses after the SHORTER ability read, not the full attack read", () => {
+    vi.useFakeTimers();
+    const onDone = vi.fn();
+    render(<DiceOverlay cue={abilityCue()} onDone={onDone} />);
+    act(() => vi.advanceTimersByTime(DICE_ROLL_MS + ABILITY_DICE_READ_MS - 100));
+    expect(onDone).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(200));
+    expect(onDone).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("DiceOverlay — roll modifiers, Defend die and Might dice", () => {
+  it("lists the modifier chips and the Defend-die chip once the dice settle", () => {
+    vi.useFakeTimers();
+    const { container } = render(
+      <DiceOverlay
+        cue={diceCue({
+          defendRoll: 1,
+          modifiers: [{ source: "Negative Morale", text: "-1 to this Attack roll" }]
+        })}
+        onDone={vi.fn()}
+      />
+    );
+    act(() => vi.advanceTimersByTime(2000));
+    expect(screen.getByText(/Defend die \+1 → \+1 Defense/)).toBeTruthy();
+    expect(screen.getByText("Negative Morale")).toBeTruthy();
+    expect(screen.getByText(/-1 to this Attack roll/)).toBeTruthy();
+    expect(container.querySelectorAll(".diceModChip").length).toBe(2);
+  });
+
+  it("renders the commander's Might dice as extra cubes behind a Might tag", () => {
+    vi.useFakeTimers();
+    const { container } = render(
+      <DiceOverlay cue={diceCue({ mightRolls: [1, -1] })} onDone={vi.fn()} />
+    );
+    act(() => vi.advanceTimersByTime(2000));
+    // 1 main die + 2 Might dice, none of the Might dice ever dimmed.
+    expect(container.querySelectorAll(".dieScene").length).toBe(3);
+    expect(container.querySelector(".mightDiceTag")).toBeTruthy();
+    expect(container.querySelectorAll(".dieScene.dimmed").length).toBe(0);
+  });
+
+  it("shows no chip row on a plain roll (control)", () => {
+    vi.useFakeTimers();
+    const { container } = render(<DiceOverlay cue={diceCue()} onDone={vi.fn()} />);
+    act(() => vi.advanceTimersByTime(2000));
+    expect(container.querySelector(".diceModifiers")).toBeNull();
+    expect(container.querySelector(".mightDiceTag")).toBeNull();
   });
 });
 

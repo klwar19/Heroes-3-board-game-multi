@@ -276,6 +276,12 @@ export function formatEvent(event: GameEvent, state: GameState): string {
         event.defendRoll !== undefined
           ? ` Defend roll ${formatDieFace(event.defendRoll)} (${event.defendRoll === 1 ? "+1 Defense" : "no bonus"}).`
           : ""
+      }${
+        event.mightRolls?.length ? ` Might dice ${event.mightRolls.map(formatDieFace).join("/")}.` : ""
+      }${
+        event.rollModifiers?.length
+          ? ` ${event.rollModifiers.map((modifier) => `${modifier.source}: ${modifier.text}`).join("; ")}.`
+          : ""
       }`;
     case "SPELL_DICE_ROLLED":
       return `${cardName(event.spellCardId)} rolls ${event.rolls.map(formatDieFace).join("/")}: ${event.hits} hit${event.hits === 1 ? "" : "s"}.`;

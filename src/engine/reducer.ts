@@ -374,6 +374,7 @@ import type {
   AttackRerollSource,
   AttackRollCandidate,
   AttackRollMode,
+  AttackRollModifierNote,
   BuildingLibrary,
   BattlefieldTokenKind,
   BattlefieldTokenState,
@@ -982,6 +983,16 @@ function rollApplyBothCandidate(combat: CombatState, rerollMinusOnce: boolean): 
  */
 type MoraleDiceAggregation = AttackRollMode | "sum" | "count-plus";
 
+/**
+ * Record a morale/artifact/spell adjustment that visibly changed a roll, so the
+ * ATTACK_ROLLED event (and the dice overlay) can explain it. Display-only —
+ * the candidate's rolls/roll are already mutated by the caller.
+ */
+function pushRollModifierNote(candidate: AttackRollCandidate, source: string, text: string): void {
+  candidate.modifierNotes ??= [];
+  candidate.modifierNotes.push({ source, text });
+}
+
 function aggregateCandidateRoll(rolls: number[], aggregation: MoraleDiceAggregation): number {
   if (rolls.length === 0) {
     return 0;
@@ -1037,6 +1048,7 @@ function applyMoraleDiceCurses(
       consumeHeldMoraleCard(state, controllerId, MORALE_CARD_IDS.setAttackDieMinus);
       candidate.rolls[flipIndex] = -1;
       candidate.roll = aggregateCandidateRoll(candidate.rolls, aggregation);
+      pushRollModifierNote(candidate, "Negative Morale", 'one die is set to the "-1" side');
     }
   }
 
@@ -1050,6 +1062,7 @@ function applyMoraleDiceCurses(
     const index = candidate.rolls.indexOf(1);
     candidate.rolls[index] = rollAttackDie(combat);
     candidate.roll = aggregateCandidateRoll(candidate.rolls, aggregation);
+    pushRollModifierNote(candidate, "Negative Morale", 'a "+1" is forcibly rerolled');
   }
 
   return candidate;
@@ -1993,7 +2006,8 @@ function negatesCardOnDwarfRoll(
       unitId: unit.id,
       abilityId: `${negate.abilityId}-roll`,
       targetUnitId: unit.id,
-      message: `${unit.cardName} rolls ${roll} for ${negate.abilityName} — Multilingual Bron rerolls.`
+      message: `${unit.cardName} rolls ${roll} for ${negate.abilityName} — Multilingual Bron rerolls.`,
+      dice: { rolls: [roll], success: false, label: negate.abilityName, caption: "Multilingual Bron rerolls…" }
     });
     roll = rollAttackDie(combat);
   }
@@ -2005,7 +2019,13 @@ function negatesCardOnDwarfRoll(
     targetUnitId: unit.id,
     message: negated
       ? `${unit.cardName} rolls ${roll} and shrugs off ${cardName} (${negate.abilityName}).`
-      : `${unit.cardName} rolls ${roll} for ${negate.abilityName}; ${cardName} takes hold.`
+      : `${unit.cardName} rolls ${roll} for ${negate.abilityName}; ${cardName} takes hold.`,
+    dice: {
+      rolls: [roll],
+      success: negated,
+      label: negate.abilityName,
+      caption: negated ? `${cardName} is shrugged off!` : `${cardName} takes hold.`
+    }
   });
   return negated;
 }
@@ -2422,7 +2442,13 @@ function applyAttackDamageFromCandidate(
         unitId: defender.id,
         abilityId: defensiveRoll.abilityId,
         targetUnitId: defender.id,
-        message: `${defender.cardName} rolls ${roll} and reduces the attack's damage by ${reduced}.`
+        message: `${defender.cardName} rolls ${roll} and reduces the attack's damage by ${reduced}.`,
+        dice: {
+          rolls: [roll],
+          success: true,
+          label: defensiveRoll.abilityName,
+          caption: `${defender.cardName} soaks ${reduced} damage!`
+        }
       });
     }
   }
@@ -2468,6 +2494,7 @@ function applyAttackDamageFromCandidate(
       ...(candidate.sumAllDice ? { sumAllDice: true } : {}),
       ...(defendRoll !== undefined ? { defendRoll } : {}),
       ...(mightRolls.length > 0 ? { mightRolls } : {}),
+      ...(candidate.modifierNotes?.length ? { rollModifiers: candidate.modifierNotes } : {}),
       rollMode,
       attackBonus: reportedAttackBonus,
       defenseBonus: reportedDefenseBonus,
@@ -2505,6 +2532,7 @@ function applyAttackDamageFromCandidate(
     ...(candidate.sumAllDice ? { sumAllDice: true } : {}),
     ...(defendRoll !== undefined ? { defendRoll } : {}),
     ...(mightRolls.length > 0 ? { mightRolls } : {}),
+    ...(candidate.modifierNotes?.length ? { rollModifiers: candidate.modifierNotes } : {}),
     rollMode,
     attackBonus: reportedAttackBonus,
     defenseBonus: reportedDefenseBonus,
@@ -3543,9 +3571,17 @@ function resolveDefendBonus(
     ) {
       consumeHeldMoraleCard(state, details.defender.controllerId, MORALE_CARD_IDS.rerollPlusOne);
       defendRoll = rollAttackDie(combat);
+      (stackItem.modifiers.defendRollNotes ??= []).push({
+        source: "Negative Morale",
+        text: 'the Defend die\'s "+1" is forcibly rerolled'
+      });
     }
     if (consumeHeldMoraleCard(state, details.defender.controllerId, MORALE_CARD_IDS.nextRollMinusOne)) {
       defendRoll -= 1;
+      (stackItem.modifiers.defendRollNotes ??= []).push({
+        source: "Negative Morale",
+        text: "-1 to the Defend roll"
+      });
     }
     stackItem.modifiers.defendRoll = defendRoll;
   }
@@ -3631,7 +3667,7 @@ function finishResolvedAttack(
     ? { rolls: candidate.rolls, roll: 0 }
     : candidate;
   const minimumAttackDie = getMinimumAttackDie(details.attacker);
-  const resolvedCandidate: AttackRollCandidate =
+  let resolvedCandidate: AttackRollCandidate =
     minimumAttackDie !== null && uncappedCandidate.roll < minimumAttackDie
       ? {
           ...uncappedCandidate,
@@ -3639,13 +3675,33 @@ function finishResolvedAttack(
           roll: minimumAttackDie
         }
       : uncappedCandidate;
+  // Assemble this attack's visible roll adjustments FRESH on every entry — the
+  // lethal-save resume re-runs this function with the same candidate object, so
+  // the notes must never be pushed into a shared array twice. Display-only:
+  // every number below already includes these adjustments.
+  const rollNotes: AttackRollModifierNote[] = [...(candidate.modifierNotes ?? [])];
   if (!dieCancelled && resolvedCandidate.roll !== candidate.roll) {
+    rollNotes.push({
+      source: details.attacker.name,
+      text: `treats its ${candidate.roll} Attack die as ${resolvedCandidate.roll}`
+    });
     appendEvent(state, {
       type: "UNIT_ABILITY_TRIGGERED",
       unitId: details.attacker.id,
       abilityId: "wog-no-negative-attack-roll",
       message: `${details.attacker.cardName} treats its ${candidate.roll} Attack die as ${resolvedCandidate.roll}.`
     });
+  }
+  // Negative Morale "-1 to your next Attack roll": the −1 was folded into the
+  // attack bonus when it latched (applyMoraleAttackRollPenalty) — name it here
+  // so the dice overlay can explain the lowered bonus.
+  if (stackItem.modifiers.moraleRollPenalty) {
+    rollNotes.push({ source: "Negative Morale", text: "-1 to this Attack roll" });
+  }
+  // Morale adjustments to the defender's Defend die (recorded when it rolled).
+  rollNotes.push(...(stackItem.modifiers.defendRollNotes ?? []));
+  if (rollNotes.length > 0) {
+    resolvedCandidate = { ...resolvedCandidate, modifierNotes: rollNotes };
   }
 
   // Alamar's Resurrection: before a killing normal attack lands, pause once and
@@ -4413,10 +4469,13 @@ function applyAttackDieDamageFollowUps(
         unitId: attacker.id,
         abilityId: `${followUp.abilityId}-roll`,
         targetUnitId: defender.id,
-        message: `${attacker.name} rolls ${candidate.roll} for ${followUp.abilityName} — Multilingual Bron rerolls.`
+        message: `${attacker.name} rolls ${candidate.roll} for ${followUp.abilityName} — Multilingual Bron rerolls.`,
+        dice: { rolls: [...candidate.rolls], success: false, label: followUp.abilityName, caption: "Multilingual Bron rerolls…" }
       });
       candidate = rollAttackCandidate(combat, "normal");
     }
+    const lands =
+      forceRoll || (candidate.roll >= followUp.minRoll && (followUp.maxRoll === undefined || candidate.roll <= followUp.maxRoll));
     appendEvent(state, {
       type: "UNIT_ABILITY_TRIGGERED",
       unitId: attacker.id,
@@ -4424,7 +4483,18 @@ function applyAttackDieDamageFollowUps(
       targetUnitId: defender.id,
       message: forceRoll
         ? `${attacker.name} uses ${followUp.abilityName} regardless of the roll (Basilisks VI).`
-        : `${attacker.name} rolls ${candidate.roll} for ${followUp.abilityName}.`
+        : `${attacker.name} rolls ${candidate.roll} for ${followUp.abilityName}.`,
+      // A forced (no-roll) proc throws no dice, so it gets no dice read-out.
+      ...(forceRoll
+        ? {}
+        : {
+            dice: {
+              rolls: [...candidate.rolls],
+              success: lands,
+              label: followUp.abilityName,
+              caption: lands ? `${followUp.amount} extra damage to ${defender.cardName}!` : "No effect."
+            }
+          })
     });
 
     // Tarnum (Fortress) Basilisks VI forces the ability regardless of the face.
@@ -4540,7 +4610,8 @@ function applyDeathStareFollowUps(
         unitId: attacker.id,
         abilityId: `${followUp.abilityId}-roll`,
         targetUnitId: defender.id,
-        message: `${attacker.name} rolls ${rolls.join(", ")} for ${followUp.abilityName} — Multilingual Bron rerolls.`
+        message: `${attacker.name} rolls ${rolls.join(", ")} for ${followUp.abilityName} — Multilingual Bron rerolls.`,
+        dice: { rolls: [...rolls], success: false, label: followUp.abilityName, caption: "Multilingual Bron rerolls…" }
       });
       rolls = Array.from({ length: Math.max(1, followUp.diceCount) }, () => rollAttackDie(combat));
     }
@@ -4560,7 +4631,13 @@ function applyDeathStareFollowUps(
       targetUnitId: defender.id,
       message: petrifies
         ? `${attacker.name}'s ${followUp.abilityName} (rolled ${rolls.join(", ")}) reduces ${defender.cardName} to 0 Health.`
-        : `${attacker.name} rolls ${rolls.join(", ")} for ${followUp.abilityName}.`
+        : `${attacker.name} rolls ${rolls.join(", ")} for ${followUp.abilityName}.`,
+      dice: {
+        rolls: [...rolls],
+        success: petrifies,
+        label: followUp.abilityName,
+        caption: petrifies ? `${defender.cardName} is reduced to 0 Health!` : "No effect."
+      }
     });
     if (!petrifies) {
       continue;
@@ -5059,16 +5136,29 @@ function applyParalysisFollowUps(
           unitId: attacker.id,
           abilityId: `${followUp.abilityId}-roll`,
           targetUnitId: defender.id,
-          message: `${attacker.name} rolls ${roll} for ${followUp.abilityName} — Multilingual Bron rerolls.`
+          message: `${attacker.name} rolls ${roll} for ${followUp.abilityName} — Multilingual Bron rerolls.`,
+          dice: { rolls: [roll], success: false, label: followUp.abilityName, caption: "Multilingual Bron rerolls…" }
         });
         roll = rollAttackCandidate(combat, "normal").roll;
       }
+      const paralyses = forceRoll || roll === followUp.onRoll;
+      const gazeImmune = paralyses && unitImmuneToParalysis(state, defender);
       appendEvent(state, {
         type: "UNIT_ABILITY_TRIGGERED",
         unitId: attacker.id,
         abilityId: followUp.abilityId,
         targetUnitId: defender.id,
-        message: `${attacker.name} rolls ${roll} for ${followUp.abilityName}.`
+        message: `${attacker.name} rolls ${roll} for ${followUp.abilityName}.`,
+        dice: {
+          rolls: [roll],
+          success: paralyses && !gazeImmune,
+          label: followUp.abilityName,
+          caption: paralyses
+            ? gazeImmune
+              ? `${defender.cardName} is immune to Paralysis.`
+              : `${defender.cardName} is Paralyzed!`
+            : "No effect."
+        }
       });
     }
     // Tarnum (Fortress) Basilisks VI forces the Paralysis regardless of the face.
@@ -5162,18 +5252,31 @@ function applyRetaliationParalysis(
         unitId: retaliator.id,
         abilityId: `${ability.abilityId}-roll`,
         targetUnitId: target.id,
-        message: `${retaliator.name} rolls ${candidate.roll} for ${ability.abilityName} — Multilingual Bron rerolls.`
+        message: `${retaliator.name} rolls ${candidate.roll} for ${ability.abilityName} — Multilingual Bron rerolls.`,
+        dice: { rolls: [...candidate.rolls], success: false, label: ability.abilityName, caption: "Multilingual Bron rerolls…" }
       });
       candidate = rollAttackCandidate(combat, "normal");
     }
+    const lands = candidate.roll === ability.onRoll;
+    const gazeImmune = lands && unitImmuneToParalysis(state, target);
     appendEvent(state, {
       type: "UNIT_ABILITY_TRIGGERED",
       unitId: retaliator.id,
       abilityId: ability.abilityId,
       targetUnitId: target.id,
-      message: `${retaliator.name} rolls ${candidate.roll} for ${ability.abilityName}.`
+      message: `${retaliator.name} rolls ${candidate.roll} for ${ability.abilityName}.`,
+      dice: {
+        rolls: [...candidate.rolls],
+        success: lands && !gazeImmune,
+        label: ability.abilityName,
+        caption: lands
+          ? gazeImmune
+            ? `${target.cardName} is immune to Paralysis.`
+            : `${target.cardName} is Paralyzed!`
+          : "No effect."
+      }
     });
-    if (candidate.roll !== ability.onRoll) {
+    if (!lands) {
       return;
     }
   }
@@ -5536,18 +5639,26 @@ function openGhostDragonKnockback(
       unitId: attacker.id,
       abilityId: `${ability.abilityId}-roll`,
       targetUnitId: defender.id,
-      message: `${attacker.name} rolls ${candidate.roll} for ${ability.abilityName} — Multilingual Bron rerolls.`
+      message: `${attacker.name} rolls ${candidate.roll} for ${ability.abilityName} — Multilingual Bron rerolls.`,
+      dice: { rolls: [...candidate.rolls], success: false, label: ability.abilityName, caption: "Multilingual Bron rerolls…" }
     });
     candidate = rollAttackCandidate(combat, "normal");
   }
+  const pushes = candidate.roll === ability.onRoll;
   appendEvent(state, {
     type: "UNIT_ABILITY_TRIGGERED",
     unitId: attacker.id,
     abilityId: ability.abilityId,
     targetUnitId: defender.id,
-    message: `${attacker.name} rolls ${candidate.roll} for ${ability.abilityName}.`
+    message: `${attacker.name} rolls ${candidate.roll} for ${ability.abilityName}.`,
+    dice: {
+      rolls: [...candidate.rolls],
+      success: pushes,
+      label: ability.abilityName,
+      caption: pushes ? `${defender.cardName} is knocked back!` : "No effect."
+    }
   });
-  if (candidate.roll !== ability.onRoll) {
+  if (!pushes) {
     return false;
   }
 
@@ -6390,7 +6501,15 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
       abilityId: "morale-skip-activation-check",
       message: `${activeUnit.cardName} checks Negative Morale before activating and rolls ${
         checkRoll > 0 ? `+${checkRoll}` : checkRoll
-      }${skips ? " — the activation is skipped" : ""}.`
+      }${skips ? " — the activation is skipped" : ""}.`,
+      // `success` = the printed situation LANDED (the skip), so the overlay
+      // flashes dramatic on a skip and stays calm on a normal activation.
+      dice: {
+        rolls: [checkRoll],
+        success: skips,
+        label: "Negative Morale check",
+        caption: skips ? `${activeUnit.cardName}'s activation is skipped!` : `${activeUnit.cardName} activates normally.`
+      }
     });
     if (skips) {
       consumeHeldMoraleCard(state, activeUnit.controllerId, MORALE_CARD_IDS.skipActivation);
@@ -7725,6 +7844,9 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
       { rolls, roll: rolls.filter((roll) => roll === 1).length, sumAllDice: true },
       "count-plus"
     );
+    if (slayerCount < stackItem.modifiers.slayerRolls) {
+      pushRollModifierNote(slayerCandidate, "Negative Morale", "one die less is rolled");
+    }
     const bonus = slayerCandidate.roll;
     // Slayer's fire flares over the gold target (the FX layer plays it after the
     // dice read out and the blow lands — see abilityFxPlans.slayer).
@@ -7752,7 +7874,17 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
   // Attack fires whatever that face triggers.
   if (stackItem.modifiers.forcedRoll !== undefined) {
     const forced = stackItem.modifiers.forcedRoll;
-    finishResolvedAttack(state, stackItem, details, { rolls: [forced], roll: forced }, cards);
+    finishResolvedAttack(
+      state,
+      stackItem,
+      details,
+      {
+        rolls: [forced],
+        roll: forced,
+        modifierNotes: [{ source: "Specialty", text: `the Attack die is fixed at ${forced > 0 ? `+${forced}` : forced}` }]
+      },
+      cards
+    );
     return;
   }
 
@@ -7760,7 +7892,19 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
   // the defender the attacker's die is forced — no roll, no reroll.
   const forcedDie = getForcedAttackerDie(details.defender);
   if (forcedDie !== null) {
-    finishResolvedAttack(state, stackItem, details, { rolls: [forcedDie], roll: forcedDie }, cards);
+    finishResolvedAttack(
+      state,
+      stackItem,
+      details,
+      {
+        rolls: [forcedDie],
+        roll: forcedDie,
+        modifierNotes: [
+          { source: details.defender.name, text: `sets the Attack die to ${forcedDie > 0 ? `+${forcedDie}` : forcedDie}` }
+        ]
+      },
+      cards
+    );
     return;
   }
 
@@ -7780,6 +7924,9 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
           return { rolls: [roll], roll, sumAllDice: true } satisfies AttackRollCandidate;
         })()
       : rollApplyBothCandidate(combat, applyBoth.rerollMinusOnce);
+    if (reduced) {
+      pushRollModifierNote(applyBothCandidate, "Negative Morale", "one die less is rolled");
+    }
     resolveAttackOrOfferDieCancel(
       state,
       stackItem,
@@ -7793,10 +7940,9 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
   // Morale "roll 1 die less": a 2-dice advantage/disadvantage roll collapses to
   // one straight die — mutate details.rollMode so the reroll window (and its
   // rerolls) stay single-die for this attack.
-  if (
-    details.rollMode !== "normal" &&
-    takeMoraleRollOneLess(state, details.attacker.controllerId, 2) < 2
-  ) {
+  const collapsedToOneDie =
+    details.rollMode !== "normal" && takeMoraleRollOneLess(state, details.attacker.controllerId, 2) < 2;
+  if (collapsedToOneDie) {
     details.rollMode = "normal";
   }
   applyMoraleAttackRollPenalty(state, stackItem, details);
@@ -7806,6 +7952,9 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
     rollAttackCandidate(combat, details.rollMode),
     details.rollMode
   );
+  if (collapsedToOneDie) {
+    pushRollModifierNote(candidate, "Negative Morale", "one die less is rolled");
+  }
   const rerollEffects = getAttackRerollEffects(state, {
     attacker: details.attacker,
     defender: details.defender,
@@ -14337,7 +14486,16 @@ function rerollPendingChoice(
             }
           });
           const rolls = latest.rolls.map((roll, at) => (at === flipIndex ? face : roll));
-          return { rolls, roll: aggregateCandidateRoll(rolls, choice.rollMode) } satisfies AttackRollCandidate;
+          return {
+            rolls,
+            roll: aggregateCandidateRoll(rolls, choice.rollMode),
+            // The set die reshapes the LATEST throw, so that throw's earlier
+            // adjustments still describe these dice — carry them forward.
+            modifierNotes: [
+              ...(latest.modifierNotes ?? []),
+              { source: "Positive Morale", text: `one die is set to the "${face > 0 ? `+${face}` : face}" side` }
+            ]
+          } satisfies AttackRollCandidate;
         })()
       : rollAttackCandidate(combat, choice.rollMode);
   // A fresh face may be the first "+1" of this attack — the holder's own
