@@ -113,6 +113,8 @@ export type LobbyRoomRecord = {
   createdByName: string | null;
   createdAt: string;
   updatedAt: string;
+  visibility?: "public" | "private";
+  sessionMode?: "multiplayer" | "single-player";
 };
 
 export type DeriveLobbyRecordInput = {
@@ -165,7 +167,9 @@ export function deriveLobbyRecord(input: DeriveLobbyRecordInput): LobbyRoomRecor
     locked: Boolean(room?.passwordHash),
     createdByName: input.createdByName ?? null,
     createdAt,
-    updatedAt
+    updatedAt,
+    ...(room?.visibility === "private" ? { visibility: "private" as const } : {}),
+    ...(state.sessionMode === "single-player" ? { sessionMode: "single-player" as const } : {})
   };
 }
 
@@ -251,7 +255,9 @@ export function lobbyRecordSignature(record: LobbyRoomRecord): string {
     ranked: record.ranked,
     locked: Boolean(record.locked),
     createdByName: record.createdByName,
-    createdAt: record.createdAt
+    createdAt: record.createdAt,
+    visibility: record.visibility ?? "public",
+    sessionMode: record.sessionMode ?? "multiplayer"
   });
 }
 
@@ -266,7 +272,8 @@ export class LobbyRegistry {
 
   constructor(records: Iterable<LobbyRoomRecord> = []) {
     for (const record of records) {
-      if (record && typeof record.roomId === "string" && record.roomId.length > 0) {
+      if (record && typeof record.roomId === "string" && record.roomId.length > 0 &&
+          record.visibility !== "private" && record.sessionMode !== "single-player") {
         this.rooms.set(record.roomId, record);
       }
     }
@@ -275,6 +282,10 @@ export class LobbyRegistry {
   /** Insert or replace a room's record (keyed by roomId — never duplicates). */
   upsert(record: LobbyRoomRecord): void {
     if (!record || typeof record.roomId !== "string" || record.roomId.length === 0) {
+      return;
+    }
+    if (record.visibility === "private" || record.sessionMode === "single-player") {
+      this.rooms.delete(record.roomId);
       return;
     }
     this.rooms.set(record.roomId, record);
@@ -312,6 +323,7 @@ export class LobbyRegistry {
   list(viewerClientId?: string, now: number = Date.now()): RoomDirectoryEntry[] {
     this.prune(now);
     return [...this.rooms.values()]
+      .filter((record) => record.visibility !== "private" && record.sessionMode !== "single-player")
       .map((record) => toDirectoryEntry(record, viewerClientId))
       .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
   }
