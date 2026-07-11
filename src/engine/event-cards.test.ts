@@ -38,6 +38,21 @@ function setup(seed: string, cardId: string, mutate?: (state: GameState) => void
   return state;
 }
 
+const ARTIFACT_DECK_IDS = ["artifacts", "artifacts-minor", "artifacts-major", "artifacts-relic"];
+const SPELL_DECK_IDS = ["spells", "spells-expert"];
+const ABILITY_DECK_IDS = ["abilities"];
+
+/**
+ * Empty the given shared decks' discard piles so a Search isolates from the
+ * first-round face-up seed (each shared discard now shows one card from round 1),
+ * which would otherwise open a "search deck / take top discard" choice first.
+ */
+function clearSharedDiscards(state: GameState, deckIds: string[]): void {
+  for (const deckId of deckIds) {
+    if (state.decks[deckId]) state.decks[deckId].discardPile = [];
+  }
+}
+
 // ===========================================================================
 // Stables
 // ===========================================================================
@@ -141,7 +156,9 @@ describe("Event — Crypt", () => {
   it("opens the artifact-search gamble payout before the next player's event choice", () => {
     let sawArtifactSearch = false;
     for (let salt = 0; salt < 48 && !sawArtifactSearch; salt += 1) {
-      const state = setup(`crypt-search-owner-${salt}`, "event.crypt");
+      const state = setup(`crypt-search-owner-${salt}`, "event.crypt", (s) =>
+        clearSharedDiscards(s, ARTIFACT_DECK_IDS)
+      );
       let after = chooseVisitOption(state, "p1", /Gain Negative Morale, then roll 2 Treasure dice/);
       const faces = lastRoll(after, "treasure").treasureRolls ?? [];
 
@@ -176,6 +193,7 @@ describe("Event — Cursed Swamp", () => {
   it("removing 2 Spells earns Search (3) of the Artifact deck; removing only 1 earns nothing", () => {
     const state = setup("swamp-remove", "event.cursed_swamp", (s) => {
       s.players.p1.hand = ["spell.magic_arrow", "spell.magic_arrow", "spell.magic_arrow"];
+      clearSharedDiscards(s, ARTIFACT_DECK_IDS);
     });
 
     let after = chooseVisitOption(state, "p1", /Remove one or more Spells/);
@@ -352,6 +370,7 @@ describe("Event — Withered Hermit", () => {
   it("the pay-to-search option charges the rolled face and opens a 2-card Artifact search; declining is free", () => {
     const state = setup("hermit-pay", "event.withered_hermit", (s) => {
       s.players.p1.resources = { gold: 20, buildingMaterials: 20, valuables: 20 };
+      clearSharedDiscards(s, ARTIFACT_DECK_IDS);
     });
     const before = resourcesOf(state, "p1");
     let after = chooseVisitOption(state, "p1", /Roll 1 Resource die — you may pay/);
@@ -389,6 +408,7 @@ describe("Event — Market of Time & School of Magic and School of War", () => {
     const state = setup("market-of-time", "event.market_of_time", (s) => {
       s.players.p1.hand = ["stat.attack", "spell.magic_arrow", "spell.magic_arrow", "stat.defense"];
       s.players.p1.deck = Array.from({ length: 10 }, () => "stat.power");
+      clearSharedDiscards(s, ARTIFACT_DECK_IDS);
     });
 
     let after = chooseVisitOption(state, "p1", /Discard any number of cards/);
@@ -416,6 +436,7 @@ describe("Event — Market of Time & School of Magic and School of War", () => {
       s.players.p1.hand = ["spell.magic_arrow", "spell.magic_arrow"];
       s.players.p1.deck = Array.from({ length: 10 }, () => "stat.power");
       s.players.p2.hand = ["stat.attack"];
+      clearSharedDiscards(s, [...ABILITY_DECK_IDS, ...SPELL_DECK_IDS]);
     });
 
     let after = chooseVisitOption(state, "p1", /Discard any number of cards/);
@@ -460,6 +481,7 @@ describe("Event — Garden of Revelation", () => {
       // Discard top = array END: the 4 Magic Arrows are the newest discards.
       s.players.p2.discard = ["stat.defense", "spell.magic_arrow", "spell.magic_arrow", "spell.magic_arrow", "spell.magic_arrow"];
       s.players.p2.deck = ["stat.power", "stat.power", "stat.power", "stat.power"];
+      clearSharedDiscards(s, [...SPELL_DECK_IDS, ...ABILITY_DECK_IDS]);
     });
 
     // p1 draws 4 from the deck (the deck holds the 2 Magic Arrows on top —

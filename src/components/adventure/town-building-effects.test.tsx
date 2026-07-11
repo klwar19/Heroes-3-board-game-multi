@@ -189,7 +189,7 @@ describe("TownPanel — in-place special-building effect / use buttons", () => {
     render(<TownPanel legalActions={getLegalActions(state, "p1")} onAction={vi.fn()} state={state} viewerPlayerId="p1" />);
 
     const cityHall = openPanel("City Hall");
-    expect(cityHall.textContent).toMatch(/Astrologers' round/i);
+    expect(cityHall.textContent).toMatch(/Resource round/i);
     expect(cityHall.textContent).not.toMatch(/No special effect/i);
 
     const pub = openPanel("Pub");

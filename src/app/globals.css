@@ -3965,6 +3965,18 @@ button.battleCell {
   pointer-events: none;
 }
 
+/* The Creature Bank a tile drew at reveal, named on its Blocked Field while the
+   player rotates (so they know the bank before committing the rotation). */
+.hexBankLabel {
+  fill: #ffe1a6;
+  font-size: 8.5px;
+  font-weight: 800;
+  paint-order: stroke;
+  stroke: rgba(18, 10, 3, 0.92);
+  stroke-width: 2.4;
+  pointer-events: none;
+}
+
 .hexProduction {
   fill: #ffe9bd;
   font-size: 10px;
@@ -8257,6 +8269,151 @@ span.recruitThumb {
 .heroInfoClose:hover {
   border-color: rgba(214, 178, 94, 0.85);
   color: #ffe9bd;
+}
+
+/* Opponent info — per-opponent button row (map + combat) and its read-only panel. */
+.opponentInfoDock {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 1px solid rgba(170, 130, 70, 0.4);
+  border-radius: 10px;
+  background: rgba(26, 22, 14, 0.7);
+}
+
+.opponentInfoDock.combat {
+  border-color: rgba(170, 130, 70, 0.5);
+  background: rgba(20, 16, 10, 0.82);
+}
+
+.opponentInfoDockLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #d9c79b;
+  text-transform: uppercase;
+}
+
+.opponentInfoBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  border: 1px solid rgba(170, 130, 70, 0.55);
+  border-radius: 8px;
+  background: rgba(38, 30, 18, 0.9);
+  color: #eedebd;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.opponentInfoBtn:hover {
+  border-color: rgba(214, 178, 94, 0.9);
+  color: #ffe9bd;
+}
+
+.opponentInfoBackdrop {
+  z-index: 120;
+  padding: 16px;
+}
+
+.opponentInfoModal {
+  position: relative;
+  width: min(560px, 96vw);
+  max-height: 90vh;
+  overflow-y: auto;
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 2px solid var(--gold);
+  border-radius: 14px;
+  background: rgb(24 21 15 / 98%);
+  box-shadow: 0 24px 60px rgb(0 0 0 / 60%);
+}
+
+.opponentInfoHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-right: 34px;
+}
+
+.opponentInfoLevel {
+  flex: none;
+  padding: 3px 8px;
+  border: 1px solid rgba(170, 130, 70, 0.5);
+  border-radius: 8px;
+  background: rgba(38, 30, 18, 0.8);
+  color: #ffe9bd;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.opponentInfoSection {
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid rgba(120, 92, 48, 0.35);
+  border-radius: 10px;
+  background: rgba(16, 13, 8, 0.55);
+}
+
+.opponentInfoSection h4 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: #d9c79b;
+  text-transform: uppercase;
+}
+
+.opponentResources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.opponentBuildingList {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 4px 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.opponentBuildingList li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 2px 0;
+  border-bottom: 1px dotted rgba(120, 92, 48, 0.3);
+  font-size: 12px;
+  color: #e8d9b8;
+}
+
+.opponentBuildingName {
+  font-weight: 600;
+}
+
+.opponentBuildingList li small {
+  color: #b7a578;
+  font-size: 10px;
+}
+
+.opponentInfoEmpty {
+  margin: 0;
+  color: #b7a578;
+  font-size: 12px;
+  font-style: italic;
 }
 
 /* Map-setup game options (scenario, difficulty, resources, income, units). */

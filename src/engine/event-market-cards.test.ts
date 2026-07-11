@@ -46,6 +46,18 @@ function familySize(state: GameState, deckIds: string[]): number {
 const SPELL_DECKS = ["spells", "spells-expert"];
 const ARTIFACT_DECKS = ["artifacts", "artifacts-minor", "artifacts-major", "artifacts-relic"];
 
+/**
+ * Tuck each shared deck's first-round face-up seed back UNDER its draw pile
+ * (shared decks draw with pop(), so the front is the bottom). This isolates a
+ * discard-count / family-total assertion from that seed without losing a card.
+ */
+function tuckDiscardSeed(state: GameState, deckIds: string[]): void {
+  for (const deckId of deckIds) {
+    const deck = state.decks[deckId];
+    if (deck) deck.drawPile.unshift(...deck.discardPile.splice(0));
+  }
+}
+
 // ===========================================================================
 // Library of Enlightenment / Mage Laboratory / Shrine of the Magic Thought
 // ===========================================================================
@@ -55,6 +67,9 @@ describe("Event — Spell markets", () => {
     let spellsTotal = 0;
     const state = setup("library", "event.library_of_enlightenment", (s) => {
       richPlayers(s);
+      // Tuck the first-round face-up seed under the draw piles so the "discarded"
+      // count reflects only this event's leftovers, not the round-1 seed.
+      tuckDiscardSeed(s, SPELL_DECKS);
       spellsTotal = familySize(s, SPELL_DECKS);
     });
     const events = getEventsState(state)!;
@@ -100,7 +115,12 @@ describe("Event — Spell markets", () => {
   });
 
   it("Shrine of the Magic Thought: a Resource-die alternative exists and leftovers go to the Spell DISCARD pile", () => {
-    const state = setup("shrine", "event.shrine_of_the_magic_thought", richPlayers);
+    const state = setup("shrine", "event.shrine_of_the_magic_thought", (s) => {
+      richPlayers(s);
+      // Tuck the round-1 seed under the draw piles so "discarded" counts only the
+      // 4 displayed spells this event puts on the Spell discard piles.
+      tuckDiscardSeed(s, SPELL_DECKS);
+    });
     const before = { ...state.players.p1.resources };
 
     let after = chooseVisitOption(state, "p1", /Roll 1 Resource die instead/);
@@ -150,7 +170,12 @@ describe("Event — Messenger with Supplies", () => {
   });
 
   it("discarding both rolls 2 Resource dice and pays out exactly one chosen face", () => {
-    const state = setup("messenger-dice", "event.messenger_with_supplies", richPlayers);
+    const state = setup("messenger-dice", "event.messenger_with_supplies", (s) => {
+      richPlayers(s);
+      // Tuck the round-1 seed under the draw piles so "discarded" counts only the
+      // 2 drawn artifacts this event puts on the Artifact discard piles.
+      tuckDiscardSeed(s, ARTIFACT_DECKS);
+    });
     let after = chooseVisitOption(state, "p1", /Put them on the Artifact discard pile/);
     // Both drawn cards sit on the Artifact discard piles now.
     const discarded = ARTIFACT_DECKS.reduce((sum, deckId) => sum + (after.decks[deckId]?.discardPile.length ?? 0), 0);

@@ -382,25 +382,33 @@ describe("printed tile borders", () => {
     expect(segments).toHaveLength(15);
   });
 
-  it("opens a Creature Bank's inner edges (walk in from within the tile) but keeps its outer arc", () => {
-    // S1's Blocked Field is slot 6 (NW). Carved into a Creature Bank it must
-    // stop looking sealed off: the three edges it shares with the centre/ring
-    // neighbours open up (you walk in from within the tile), while the outer arc
-    // that seals it from the adjacent tile (canCrossEdge forbids crossing in)
-    // stays. Without this the field is fully ringed and players cannot tell they
-    // may enter it.
+  it("draws NO borders on a Creature Bank field by default", () => {
+    // S1's Blocked Field is slot 6 (NW). Carved into a Creature Bank, by default
+    // the field is border-free: none of its six edges are drawn, so it reads as
+    // fully open. A plain (non-bank) blocked field keeps all its borders.
     const plainKeys = new Set(getTileBorderSegments(coreTileDefinitions.S1).map((s) => `${s.slot}:${s.edge}`));
     const bankKeys = new Set(
       getTileBorderSegments(coreTileDefinitions.S1, new Set([6])).map((s) => `${s.slot}:${s.edge}`)
     );
-    // The inner walls are present for a plain blocked field, gone for a bank.
-    for (const inner of ["6:1", "6:2", "6:3"]) {
-      expect(plainKeys.has(inner)).toBe(true);
-      expect(bankKeys.has(inner)).toBe(false);
+    for (const edge of ["6:0", "6:1", "6:2", "6:3", "6:4", "6:5"]) {
+      // Every edge is present for a plain blocked field, gone for a bank.
+      expect(plainKeys.has(edge)).toBe(true);
+      expect(bankKeys.has(edge), `bank slot edge ${edge} should be hidden by default`).toBe(false);
     }
-    // The outer arc sealing it from the neighbouring tile remains.
+  });
+
+  it("with borders toggled on, a Creature Bank keeps only its outer arc (open inward)", () => {
+    // showBankBorders=true restores the classic outline: the three edges the bank
+    // shares with the centre/ring neighbours stay OPEN (you walk in from within
+    // the tile), while the outer arc that seals it from the adjacent tile stays.
+    const bankKeys = new Set(
+      getTileBorderSegments(coreTileDefinitions.S1, new Set([6]), true).map((s) => `${s.slot}:${s.edge}`)
+    );
+    for (const inner of ["6:1", "6:2", "6:3"]) {
+      expect(bankKeys.has(inner), `inner edge ${inner} stays open`).toBe(false);
+    }
     for (const outer of ["6:4", "6:5", "6:0"]) {
-      expect(bankKeys.has(outer)).toBe(true);
+      expect(bankKeys.has(outer), `outer arc ${outer} is drawn`).toBe(true);
     }
   });
 

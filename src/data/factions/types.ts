@@ -122,14 +122,6 @@ export type TownBuildingEffect =
   | { type: "UNLOCK_REINFORCE" }
   | { type: "MAGE_GUILD" }
   | { type: "RESOURCE_ROUND_CHOICE"; options: CityHallOption[] }
-  | {
-      /**
-       * Cove City Hall: like RESOURCE_ROUND_CHOICE, but the choice is offered at
-       * the beginning of each Astrologers' round instead of each Resource round.
-       */
-      type: "ASTROLOGERS_ROUND_CHOICE";
-      options: CityHallOption[];
-    }
   | { type: "RESOURCE_ROUND_MORALE" }
   | {
       /** Mystic Pond: each Resource round, roll a Resource die and gain it. */

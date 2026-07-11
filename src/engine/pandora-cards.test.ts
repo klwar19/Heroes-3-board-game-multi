@@ -572,6 +572,9 @@ describe("Pandora 179: Ability Search / treasure gamble", () => {
   it("the Search(5) side opens a DECK_SEARCH of the Ability deck", () => {
     const state = readyAdventure("p179-search5");
     state.players.p1.hand = ["pandora.ability_search"];
+    // Isolate this search from the first-round face-up seed on the Ability discard,
+    // which would otherwise open a "search deck / take top discard" choice first.
+    state.decks.abilities.discardPile = [];
     const after = playOption(state, "pandora.ability_search", 0);
     expect(after.pendingChoice?.type).toBe("DECK_SEARCH");
     expect(after.pendingChoice?.type === "DECK_SEARCH" && after.pendingChoice.deckId).toBe("abilities");
@@ -583,6 +586,9 @@ describe("Pandora 179: Ability Search / treasure gamble", () => {
     for (let i = 0; i < 30 && (!sawSearch || !sawNoSearch); i += 1) {
       const state = readyAdventure(`p179-gamble-${i}`);
       state.players.p1.hand = ["pandora.ability_search"];
+      // Isolate the Search(8) from the first-round face-up seed on the Ability
+      // discard (else a "search deck / take top discard" choice opens first).
+      state.decks.abilities.discardPile = [];
       const logLen = state.eventLog.length;
       const after = playOption(state, "pandora.ability_search", 1);
 
@@ -857,6 +863,11 @@ describe("Pandora 183: peek the Astrologers deck, then Search(2) Artifact", () =
   it("scrys the Astrologers deck, then opens a Search of the Artifact deck", () => {
     const state = readyAdventure("p183");
     state.players.p1.hand = ["pandora.scry_astrologers"];
+    // Isolate the Search(2) Artifact from the first-round face-up seed on the
+    // Artifact discard(s) (else a "search deck / take top discard" choice first).
+    for (const deckId of ["artifacts", "artifacts-minor", "artifacts-major", "artifacts-relic"]) {
+      if (state.decks[deckId]) state.decks[deckId].discardPile = [];
+    }
     const astro = state.decks.astrologers!;
     const drawBefore = astro.drawPile.length;
     expect(drawBefore, "astrologers deck has cards").toBeGreaterThan(0);

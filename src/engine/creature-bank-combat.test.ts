@@ -246,6 +246,98 @@ describe("Creature Bank placement on tile discovery", () => {
 });
 
 // ===========================================================================
+// The Creature Bank is drawn (known) BEFORE the tile is rotated
+// ===========================================================================
+
+describe("Creature Bank — reserved (known) before the tile is rotated", () => {
+  function apply(state: GameState, action: GameAction): GameState {
+    const result = applyAction(state, action);
+    expect(result.errors, result.errors.map((error) => error.message).join("; ")).toHaveLength(0);
+    return result.state;
+  }
+
+  /** Places a Far tile (F1 — a Settlement with a Blocked Field) from p1's supply
+   *  and stops with it AWAITING rotation (rotation NOT yet chosen). */
+  function placeFarTileAwaitingRotation(): { state: GameState; tileId: string } {
+    let state = createAdventureGameState({
+      seed: "bank-reserve",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      creatureBanks: true
+    });
+    for (const player of Object.values(state.players)) {
+      player.canMulligan = false;
+      player.needsHandRefresh = false;
+    }
+    state.heroes.hero_p1.spaceId = "h:7:2";
+    state.heroes.hero_p1.movementPoints = 3;
+    state.adventure!.farTileScriptedDraws = ["F1"];
+    state = apply(state, { type: "PLACE_TILE", playerId: "p1", heroId: "hero_p1", supplyIndex: 0, centerRow: 6, centerCol: 4 });
+    const pending = state.adventure!.pendingTileChoice;
+    expect(pending?.tileInstanceId, "the placed Far tile awaits rotation").toBeTruthy();
+    return { state, tileId: pending!.tileInstanceId };
+  }
+
+  it("draws the bank face-up the moment the tile is revealed, BEFORE rotation (peek — pile intact)", () => {
+    const { state, tileId } = placeFarTileAwaitingRotation();
+    const tile = state.adventure!.tiles[tileId];
+    // The rotation has NOT been chosen yet…
+    expect(tile.awaitingRotation).toBe(true);
+    const pile = state.adventure!.creatureBankTokensFar!;
+    // …yet the bank is already known: reservedBankId is the pile's TOP token, and
+    // the pile is untouched (peeked, not popped — nothing is consumed until the
+    // player accepts the placement).
+    expect(tile.reservedBankId, "the bank is reserved before rotation").toBeTruthy();
+    expect(tile.reservedBankId).toBe(pile[pile.length - 1]);
+    expect(pile).toHaveLength(6);
+    expect(CREATURE_BANKS[tile.reservedBankId as CreatureBankId].tier).toBe("far");
+  });
+
+  it("carves EXACTLY the reserved bank on accept (pile −1, reservation cleared)", () => {
+    const { state: placed, tileId } = placeFarTileAwaitingRotation();
+    const reserved = placed.adventure!.tiles[tileId].reservedBankId;
+    const pileBefore = placed.adventure!.creatureBankTokensFar!.length;
+
+    const rotation = getLegalActions(placed, "p1").find((entry) => entry.action.type === "SET_TILE_ROTATION");
+    let state = apply(placed, rotation!.action);
+
+    const choice = state.pendingChoice;
+    if (choice?.type !== "OPTION_CHOICE" || choice.context !== "place-creature-bank") {
+      throw new Error("expected the creature-bank placement choice");
+    }
+    // The choice carries the SAME bank that was shown before rotation.
+    expect(choice.creatureBank?.bankId).toBe(reserved);
+    const fieldId = choice.creatureBank!.fieldId;
+
+    state = apply(state, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: choice.id, optionIndex: 0 });
+    const field = state.adventure!.fields[fieldId];
+    expect(field.location).toBe("creature_bank");
+    // The bank placed is exactly the one the player was shown while rotating.
+    expect(field.bankId).toBe(reserved);
+    expect(state.adventure!.creatureBankTokensFar!.length).toBe(pileBefore - 1);
+    expect(state.adventure!.tiles[tileId].reservedBankId).toBeUndefined();
+  });
+
+  it("declining leaves the field blocked, the pile intact, and clears the reservation", () => {
+    const { state: placed, tileId } = placeFarTileAwaitingRotation();
+    expect(placed.adventure!.tiles[tileId].reservedBankId).toBeTruthy();
+    const pileBefore = placed.adventure!.creatureBankTokensFar!.length;
+
+    const rotation = getLegalActions(placed, "p1").find((entry) => entry.action.type === "SET_TILE_ROTATION");
+    let state = apply(placed, rotation!.action);
+    const choice = state.pendingChoice;
+    if (choice?.type !== "OPTION_CHOICE") throw new Error("expected a placement choice");
+    const fieldId = choice.creatureBank!.fieldId;
+
+    state = apply(state, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: choice.id, optionIndex: 1 });
+    expect(state.adventure!.fields[fieldId].location).toBe("blocked_field");
+    // The peeked token was never consumed — the pile is unchanged.
+    expect(state.adventure!.creatureBankTokensFar!.length).toBe(pileBefore);
+    expect(state.adventure!.tiles[tileId].reservedBankId).toBeUndefined();
+  });
+});
+
+// ===========================================================================
 // Movement: enter from inside the tile, never a route to/from the outside
 // ===========================================================================
 

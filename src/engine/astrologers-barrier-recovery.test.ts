@@ -177,6 +177,9 @@ describe("eliminatePlayer — an OPEN pendingChoice owned by the eliminated seat
 
   it("clears the choice, restores the phase and returns DECK_SEARCH reveals to the deck (no card loss)", () => {
     const state = quietGame("elim-open-choice");
+    // Isolate the search from the first-round face-up seed on the Ability discard,
+    // so it opens straight onto its DECK_SEARCH reveal.
+    state.decks.abilities.discardPile = [];
     const deck = state.decks.abilities;
     const totalBefore = deck.drawPile.length + deck.discardPile.length;
 
@@ -250,7 +253,7 @@ describe("round-start City Hall choice — an all-filtered option list is skippe
       // The ONLY option requires holding an Artifact card — a player with none
       // filters the list down to zero options.
       effect: {
-        type: "ASTROLOGERS_ROUND_CHOICE",
+        type: "RESOURCE_ROUND_CHOICE",
         options: [
           {
             label: "Remove 1 Artifact card from your hand to gain 1 experience",
