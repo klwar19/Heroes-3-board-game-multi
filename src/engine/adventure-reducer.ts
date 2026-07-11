@@ -160,6 +160,7 @@ import {
 } from "./morale-cards";
 import { MORALE_CARD_IDS } from "@/data/cards/morale";
 import { placeCombatToken, removeToken } from "./tokens";
+import { neutralCombatControllerId } from "./neutral-control";
 import {
   assertParallelInteractionFree,
   hasOpenAdventureTurn,
@@ -3431,6 +3432,20 @@ function beginNeutralCombatPlacement(
     difficulty,
     unitDefIds: []
   });
+
+  // PvP Neutral Control: tell the table — and above all the controlling
+  // player — that a HUMAN plays the guards of this fight, PvP-style.
+  const neutralController = neutralCombatControllerId(state, combat);
+  if (neutralController) {
+    const controllerName = state.players[neutralController]?.name ?? neutralController;
+    const fighterName = state.players[playerId]?.name ?? playerId;
+    appendEvent(state, {
+      type: "NEUTRAL_CONTROL_ASSIGNED",
+      playerId: neutralController,
+      combatPlayerId: playerId,
+      message: `PvP Neutral Control: ${controllerName} plays the Neutral units in ${fighterName}'s combat.`
+    });
+  }
 }
 
 /** Opens the Diplomacy skip-or-fight pop-up at a matching-level Neutral field. */

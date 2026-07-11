@@ -144,6 +144,7 @@ import {
 } from "./battlefield";
 import { appendExpiredEffectEvents, finishCombatIfNeeded, markUnitRemovedIfNeeded } from "./combat-units";
 import { isNeutralUnit, pickNeutralTarget, planNeutralActivation, sortNeutralTargetCandidates } from "./neutral-ai";
+import { neutralCombatControllerId } from "./neutral-control";
 import {
   activateBallistas,
   applyPermanentCombatEffectsForPlayer,
@@ -7209,7 +7210,12 @@ function advanceActiveUnit(state: GameState): void {
 
   const step = getActivationStep(combat, state.activeEffects);
   if (step && step.candidates.length >= 2) {
-    const chooser = step.side === NEUTRAL_PLAYER_ID ? combat.attackerPlayerId : step.side;
+    // A Neutral-side tie is broken by a human: the PvP Neutral Control
+    // commander when the mode assigns one, else (rulebook) the attacker.
+    const chooser =
+      step.side === NEUTRAL_PLAYER_ID
+        ? (neutralCombatControllerId(state, combat) ?? combat.attackerPlayerId)
+        : step.side;
     if (chooser === NEUTRAL_PLAYER_ID) {
       // No human operates this tied side (cannot happen in a normal fight — a
       // Neutral combat's attacker is always the player). Fall back to the
@@ -7615,10 +7621,15 @@ function maybeOpenPlayerActivationChoice(state: GameState): void {
 
   const unitId = combat.activeUnitId;
   const unit = unitId ? combat.units[unitId] : undefined;
+  // PvP Neutral Control: a controlled guard's "[activation]" choice belongs to
+  // the HUMAN playing the Neutral side, exactly like a player unit's — the AI
+  // path (executeNeutralActivation) only ever runs when no controller exists.
+  const chooser =
+    unit && isNeutralUnit(unit) ? neutralCombatControllerId(state, combat) : (unit?.controllerId ?? null);
   if (
     !unit ||
     !isUnitAlive(unit) ||
-    isNeutralUnit(unit) ||
+    !chooser ||
     unit.activatedThisRound ||
     unit.activationAbilityDone ||
     unit.movedThisActivation ||
@@ -7657,7 +7668,7 @@ function maybeOpenPlayerActivationChoice(state: GameState): void {
     state.pendingChoice = {
       id: choiceId,
       type: "ABILITY_TARGET_CHOICE",
-      playerId: unit.controllerId,
+      playerId: chooser,
       kind: "jotunn-teleport",
       abilityId: teleportAbility.id,
       abilityName: teleportAbility.name,
@@ -7669,12 +7680,12 @@ function maybeOpenPlayerActivationChoice(state: GameState): void {
       skipLabel: "Don't teleport"
     };
     state.phase = "choice";
-    state.priorityPlayerId = unit.controllerId;
+    state.priorityPlayerId = chooser;
     appendEvent(state, {
       type: "PENDING_CHOICE_CREATED",
       choiceId,
       choiceType: "ABILITY_TARGET_CHOICE",
-      playerId: unit.controllerId,
+      playerId: chooser,
       sourceEffectIds: [],
       message: `${unit.cardName} may teleport a unit to an empty space.`
     });
@@ -7694,7 +7705,7 @@ function maybeOpenPlayerActivationChoice(state: GameState): void {
     state.pendingChoice = {
       id: choiceId,
       type: "ABILITY_TARGET_CHOICE",
-      playerId: unit.controllerId,
+      playerId: chooser,
       kind: "enchanter-activation",
       abilityId: enchant.abilityId,
       abilityName: enchant.abilityName,
@@ -7715,13 +7726,13 @@ function maybeOpenPlayerActivationChoice(state: GameState): void {
       optional: false
     };
     state.phase = "choice";
-    state.priorityPlayerId = unit.controllerId;
+    state.priorityPlayerId = chooser;
     const targetNoun = enchant.targetTrait === "mechanical" ? "repair an adjacent mechanical unit" : "heal a friendly unit";
     appendEvent(state, {
       type: "PENDING_CHOICE_CREATED",
       choiceId,
       choiceType: "ABILITY_TARGET_CHOICE",
-      playerId: unit.controllerId,
+      playerId: chooser,
       sourceEffectIds: [],
       message:
         enchant.attackBonus > 0
@@ -7748,7 +7759,7 @@ function maybeOpenPlayerActivationChoice(state: GameState): void {
     state.pendingChoice = {
       id: choiceId,
       type: "ABILITY_TARGET_CHOICE",
-      playerId: unit.controllerId,
+      playerId: chooser,
       kind: "faerie-damage",
       abilityId: faerie.abilityId,
       abilityName: faerie.abilityName,
@@ -7759,12 +7770,12 @@ function maybeOpenPlayerActivationChoice(state: GameState): void {
       amount: faerie.amount
     };
     state.phase = "choice";
-    state.priorityPlayerId = unit.controllerId;
+    state.priorityPlayerId = chooser;
     appendEvent(state, {
       type: "PENDING_CHOICE_CREATED",
       choiceId,
       choiceType: "ABILITY_TARGET_CHOICE",
-      playerId: unit.controllerId,
+      playerId: chooser,
       sourceEffectIds: [],
       message: `${unit.cardName} chooses a target for ${faerie.abilityName}.`
     });
@@ -7781,7 +7792,7 @@ function maybeOpenPlayerActivationChoice(state: GameState): void {
     state.pendingChoice = {
       id: choiceId,
       type: "ABILITY_TARGET_CHOICE",
-      playerId: unit.controllerId,
+      playerId: chooser,
       kind: "couatl-invulnerability",
       abilityId: couatlWard.abilityId,
       abilityName: couatlWard.abilityName,
@@ -7795,12 +7806,12 @@ function maybeOpenPlayerActivationChoice(state: GameState): void {
       skipLabel: "Don't activate"
     };
     state.phase = "choice";
-    state.priorityPlayerId = unit.controllerId;
+    state.priorityPlayerId = chooser;
     appendEvent(state, {
       type: "PENDING_CHOICE_CREATED",
       choiceId,
       choiceType: "ABILITY_TARGET_CHOICE",
-      playerId: unit.controllerId,
+      playerId: chooser,
       sourceEffectIds: [],
       message: `${unit.cardName} may become invulnerable this round.`
     });
@@ -7816,7 +7827,7 @@ function maybeOpenPlayerActivationChoice(state: GameState): void {
     state.pendingChoice = {
       id: choiceId,
       type: "ABILITY_TARGET_CHOICE",
-      playerId: unit.controllerId,
+      playerId: chooser,
       kind: "automaton-cube",
       abilityId: cubeAbility.abilityId,
       abilityName: cubeAbility.abilityName,
@@ -7828,12 +7839,12 @@ function maybeOpenPlayerActivationChoice(state: GameState): void {
       skipLabel: "Don't place a cube"
     };
     state.phase = "choice";
-    state.priorityPlayerId = unit.controllerId;
+    state.priorityPlayerId = chooser;
     appendEvent(state, {
       type: "PENDING_CHOICE_CREATED",
       choiceId,
       choiceType: "ABILITY_TARGET_CHOICE",
-      playerId: unit.controllerId,
+      playerId: chooser,
       sourceEffectIds: [],
       message: `${unit.cardName} may bank a faction cube.`
     });
@@ -17072,6 +17083,22 @@ function endTurn(state: GameState, action: Extract<GameAction, { type: "END_TURN
 }
 
 /**
+ * Ends a neutral unit's activation without an action ("pass" / the PvP Neutral
+ * Control commander's "hold position"): flags it activated, expires its
+ * activation-end effects and advances to the next unit.
+ */
+function passNeutralActivation(state: GameState, unit: CombatUnitState): void {
+  unit.activatedThisRound = true;
+  appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, unit.id), "activation-ended");
+  appendEvent(state, {
+    type: "UNIT_ACTIVATION_ENDED",
+    playerId: unit.controllerId,
+    unitId: unit.id
+  });
+  advanceActiveUnit(state);
+}
+
+/**
  * Executes one queued neutral activation according to the AI rules. The pump
  * pauses whenever a reaction window or pending choice opens for a human.
  */
@@ -17165,14 +17192,7 @@ function executeNeutralActivation(
   }
 
   if (intent.kind === "pass") {
-    unit.activatedThisRound = true;
-    appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, unit.id), "activation-ended");
-    appendEvent(state, {
-      type: "UNIT_ACTIVATION_ENDED",
-      playerId: unit.controllerId,
-      unitId: unit.id
-    });
-    advanceActiveUnit(state);
+    passNeutralActivation(state, unit);
     return;
   }
 
@@ -17372,15 +17392,35 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
       }
     }
 
+    // PvP Neutral Control: the seat (if any) playing the Neutral side of the
+    // open fight. Re-derived every pass so an elimination hands the guards to
+    // the next live seat (or back to the AI) mid-fight.
+    const neutralController =
+      combat && !combat.outcome ? neutralCombatControllerId(state, combat) : null;
+
     // A neutral unit's innate combat reaction (War Zealot Magic Mirror): the AI
     // has no UI to click it, so auto-resolve the window when it holds priority —
     // the reflect (or a pass) then happens on its own instead of the spell simply
-    // resolving against the neutral untouched.
+    // resolving against the neutral untouched. Under PvP Neutral Control the
+    // mirror still auto-fires (using it is strictly right — the printed reflect
+    // is treated as always-on), but the redirect TARGET pick it opens is handed
+    // to the controlling player below like every other neutral follow-up.
     if (
       state.reactionWindow?.priorityPlayerId === NEUTRAL_PLAYER_ID &&
       autoResolveNeutralReaction(state, cards)
     ) {
       continue;
+    }
+
+    // The Neutral side's ability follow-ups (Lich/Magog splash targets, Magic
+    // Mirror redirect, Faerie zap) and its attack-die reroll windows: with a
+    // PvP Neutral Control seat assigned, hand ANY open Neutral-owned decision
+    // to that HUMAN — re-stamp the choice to the controller and stop; without
+    // one, the AI resolves it exactly as before (the branches below).
+    if (state.pendingChoice && state.pendingChoice.playerId === NEUTRAL_PLAYER_ID && neutralController) {
+      state.pendingChoice.playerId = neutralController;
+      state.priorityPlayerId = neutralController;
+      break;
     }
 
     // Neutral Liches/Magogs/Cerberi resolve their own ability targets.
@@ -17494,7 +17534,11 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
               unitId: active.id,
               name: active.name,
               reactingPlayerId: reactor,
-              ...(isNeutralUnit(active) ? { intent: previewNeutralIntent(state, combat, active) } : {})
+              // No intent is previewed under PvP Neutral Control — the guard's
+              // human commander has not chosen yet (same as a PvP unit).
+              ...(isNeutralUnit(active) && !neutralCombatControllerId(state, combat)
+                ? { intent: previewNeutralIntent(state, combat, active) }
+                : {})
             };
             state.priorityPlayerId = reactor;
             break;
@@ -17503,6 +17547,15 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
         }
 
         if (isNeutralUnit(active)) {
+          // PvP Neutral Control: a HUMAN plays this guard. The pump stops
+          // exactly like it does for a PvP side's unit — the controlling
+          // player drives it with the normal combat actions (its "[activation]"
+          // ability choice opens for them via maybeOpenPlayerActivationChoice,
+          // after this pump settles).
+          if (neutralController) {
+            state.priorityPlayerId = neutralController;
+            break;
+          }
           executeNeutralActivation(state, active, cards);
           continue;
         }
@@ -17534,6 +17587,39 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
 
     break;
   }
+}
+
+/**
+ * PvP Neutral Control: a combat unit command the CONTROLLING player issued for
+ * a Neutral guard executes AS the neutral seat, so every downstream
+ * side-identity read (attack attribution, retaliation windows, friendly-target
+ * checks, morale) behaves exactly like the proven AI pipeline. Legality was
+ * already checked against the controller's own offered actions (assertLegal
+ * matched the ORIGINAL action, and the AFK/turn bookkeeping after the switch
+ * still sees the controller as the actor); only the acting seat handed to the
+ * HANDLER is re-stamped. Any other action — or the same action from a seat
+ * that does not control the guards — passes through untouched and fails the
+ * handler's normal ownership check.
+ */
+function asNeutralSeatCommand<
+  T extends Extract<
+    GameAction,
+    { type: "MOVE_UNIT" | "ATTACK_UNIT" | "MOVE_AND_ATTACK_UNIT" | "DEFEND_UNIT" | "END_ACTIVATION" }
+  >
+>(state: GameState, action: T): T {
+  const combat = state.combat;
+  if (!combat) {
+    return action;
+  }
+  const unitId = "unitId" in action ? action.unitId : action.attackerId;
+  const unit = combat.units[unitId];
+  if (!unit || unit.controllerId !== NEUTRAL_PLAYER_ID) {
+    return action;
+  }
+  if (neutralCombatControllerId(state, combat) !== action.playerId) {
+    return action;
+  }
+  return { ...action, playerId: NEUTRAL_PLAYER_ID };
 }
 
 /** Adventure actions are validated inside their handlers, not by enumeration. */
@@ -17765,13 +17851,13 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         playCard(nextState, action, cards);
         break;
       case "ATTACK_UNIT":
-        attackUnit(nextState, action, cards);
+        attackUnit(nextState, asNeutralSeatCommand(nextState, action), cards);
         break;
       case "MOVE_AND_ATTACK_UNIT":
-        moveAndAttackUnit(nextState, action, cards);
+        moveAndAttackUnit(nextState, asNeutralSeatCommand(nextState, action), cards);
         break;
       case "MOVE_UNIT":
-        moveUnit(nextState, action);
+        moveUnit(nextState, asNeutralSeatCommand(nextState, action));
         break;
       case "USE_UNIT_ABILITY":
         applyUnitAbilityAction(nextState, action);
@@ -17793,10 +17879,10 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         }
         break;
       case "DEFEND_UNIT":
-        defendUnit(nextState, action);
+        defendUnit(nextState, asNeutralSeatCommand(nextState, action));
         break;
       case "END_ACTIVATION":
-        endActivation(nextState, action);
+        endActivation(nextState, asNeutralSeatCommand(nextState, action));
         break;
       case "END_COMBAT_ROUND":
         endCombatRound(nextState, action);

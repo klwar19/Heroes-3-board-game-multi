@@ -1,4 +1,5 @@
 import { appendEvent } from "./events";
+import { neutralCombatControllerId } from "./neutral-control";
 import { NEUTRAL_PLAYER_ID } from "./state";
 import type { GameState, PlayerId } from "./state";
 
@@ -117,6 +118,15 @@ export function parallelInteractionBlocker(state: GameState, playerId: PlayerId)
   const combat = state.combat;
   if (combat) {
     if (combat.attackerPlayerId === playerId || combat.defenderPlayerId === playerId) {
+      return null;
+    }
+    // PvP Neutral Control: the player controlling the Neutral side IS a
+    // participant of this fight — they drive the guards' activations and
+    // answer the Neutral side's choices, so their inputs are the interaction's
+    // own, never a bystander intrusion. While the fight is open their legal
+    // actions come exclusively from the combat branches (unit commands, choice
+    // options), so this cannot leak any non-quiet map action to them.
+    if (neutralCombatControllerId(state, combat) === playerId) {
       return null;
     }
     // Report the human fighter (a neutral-guard fight's defender is the

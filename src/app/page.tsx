@@ -738,6 +738,7 @@ export default function Home() {
   const seenEventDrawIdsRef = useRef<Set<string>>(new Set());
   // Parallel-turn stop warnings already popped (never replayed on reconnect).
   const seenParallelStopIdsRef = useRef<Set<string>>(new Set());
+  const seenNeutralControlIdsRef = useRef<Set<string>>(new Set());
   const seenDrawIdsRef = useRef<Set<string>>(new Set());
   const seenFlipIdsRef = useRef<Set<string>>(new Set());
   const seenMoveIdsRef = useRef<Set<string>>(new Set());
@@ -1021,6 +1022,10 @@ export default function Home() {
       seenParallelStopIdsRef.current = new Set(
         nextState.eventLog.filter((event) => event.type === "PARALLEL_TURNS_STOPPED").map((event) => event.id)
       );
+      // ...and without re-popping a "you command the Neutral units" notice.
+      seenNeutralControlIdsRef.current = new Set(
+        nextState.eventLog.filter((event) => event.type === "NEUTRAL_CONTROL_ASSIGNED").map((event) => event.id)
+      );
       seenAstrologerDrawIdsRef.current = new Set(astrologerDrawEvents.map((event) => event.id));
       // A fresh connection joins mid-game without replaying every past turn's
       // sunrise: the first snapshot's TURN_STARTED events count as already seen.
@@ -1250,8 +1255,34 @@ export default function Home() {
       for (const event of parallelStops) {
         seenParallelStopIdsRef.current.add(event.id);
       }
+      // PvP Neutral Control: pop the "YOU command the Neutral units" notice
+      // into the commander's face when a Neutral fight assigns them the guards
+      // (everyone else just gets the feed line).
+      const neutralControlAssignments = nextState.eventLog.filter(
+        (event): event is Extract<GameEvent, { type: "NEUTRAL_CONTROL_ASSIGNED" }> =>
+          event.type === "NEUTRAL_CONTROL_ASSIGNED"
+      );
+      const freshNeutralCommands = neutralControlAssignments.filter(
+        (event) => !seenNeutralControlIdsRef.current.has(event.id) && event.playerId === viewerRef.current
+      );
+      for (const event of neutralControlAssignments) {
+        seenNeutralControlIdsRef.current.add(event.id);
+      }
 
       const houseRuleCues: MapNoticeCue[] = [
+        ...freshNeutralCommands.map(
+          (event) =>
+            ({
+              id: `neutral-command-${event.id}`,
+              icon: "🎯",
+              title: "You play the Neutral units",
+              subtitle: `${nextState.players[event.combatPlayerId]?.name ?? event.combatPlayerId} fights Neutral units`,
+              lines: [
+                "PvP Neutral Control: drive the guards this whole fight like your own units —",
+                "move and attack each one, break their activation ties, answer their ability targets and rolls."
+              ]
+            }) satisfies MapNoticeCue
+        ),
         ...freshParallelStops.map(
           (event) =>
             ({

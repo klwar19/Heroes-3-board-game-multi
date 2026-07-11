@@ -198,6 +198,13 @@ export type AdventureSetupOptions = {
   spellBook?: boolean;
   /** Morale Cards optional rule (default off): replaces normal morale tokens with morale card decks. */
   moraleCards?: boolean;
+  /**
+   * PvP Neutral Control mode (default off, multiplayer only): the next live
+   * player clockwise plays the Neutral units in every Neutral combat, PvP-style.
+   */
+  pvpNeutralControl?: boolean;
+  /** PvP Neutral Control sub-toggle (default on): controlled guards must still attack when they can. */
+  pvpNeutralControlMustAttack?: boolean;
   /** Individual BINH house-rule toggle overrides (see house-rules.ts). */
   houseRules?: Partial<Record<HouseRuleId, boolean>>;
   /**
@@ -275,6 +282,8 @@ export function defaultGameSetupOptions(scenario: ScenarioDefinition): GameSetup
     pvpTroopLoss: "normal",
     spellBook: true,
     moraleCards: false,
+    pvpNeutralControl: false,
+    pvpNeutralControlMustAttack: true,
     farTileOpening: true,
     farTilesPerPlayer: scenario.farTiles.perPlayer,
     difficulty: "impossible",
@@ -697,6 +706,10 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     ...(options.parallelTurns !== undefined ? { parallelTurns: options.parallelTurns } : {}),
     ...(options.spellBook !== undefined ? { spellBook: options.spellBook } : {}),
     ...(options.moraleCards !== undefined ? { moraleCards: options.moraleCards } : {}),
+    ...(options.pvpNeutralControl !== undefined ? { pvpNeutralControl: options.pvpNeutralControl } : {}),
+    ...(options.pvpNeutralControlMustAttack !== undefined
+      ? { pvpNeutralControlMustAttack: options.pvpNeutralControlMustAttack }
+      : {}),
     ...(options.houseRules !== undefined ? { houseRules: options.houseRules } : {}),
     ...(options.farTileOpening !== undefined ? { farTileOpening: options.farTileOpening } : {}),
     ...(options.farTilesPerPlayer !== undefined ? { farTilesPerPlayer: options.farTilesPerPlayer } : {}),
@@ -753,6 +766,11 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   // Parallel turns (optional, multiplayer only): the number of opening rounds
   // everyone plays simultaneously. A solo table always plays ordered.
   const parallelRounds = playerConfigs.length >= 2 ? normalizeParallelTurnRounds(setupOptions.parallelTurns) : 0;
+  // PvP Neutral Control (optional, multiplayer only): the next live player
+  // clockwise plays the Neutral units in every Neutral combat. A solo table
+  // has no next player, so the flag never lands there and the AI plays on.
+  const pvpNeutralControlOn = (setupOptions.pvpNeutralControl ?? false) && playerConfigs.length >= 2;
+  const pvpNeutralControlMustAttackOn = setupOptions.pvpNeutralControlMustAttack ?? true;
 
   const adventure: AdventureState = {
     difficulty,
@@ -790,6 +808,8 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     pvpTroopLoss,
     spellBook: spellBookOn,
     moraleCards: moraleCardsOn,
+    pvpNeutralControl: pvpNeutralControlOn,
+    pvpNeutralControlMustAttack: pvpNeutralControlMustAttackOn,
     houseRules,
     chooseGatePlacement: chooseGatePlacementOn,
     ...(victoryMode === "grail" ? { grail: { status: "uncollected" as const } } : {}),
@@ -1304,6 +1324,12 @@ export function createAdventureLobbyState(options: AdventureSetupOptions = {}): 
   if (options.moraleCards !== undefined) {
     setupOptions.moraleCards = options.moraleCards;
   }
+  if (options.pvpNeutralControl !== undefined) {
+    setupOptions.pvpNeutralControl = options.pvpNeutralControl;
+  }
+  if (options.pvpNeutralControlMustAttack !== undefined) {
+    setupOptions.pvpNeutralControlMustAttack = options.pvpNeutralControlMustAttack;
+  }
   // Map-setup default: a fresh lobby opens with the three universal core town
   // cards (Citadel, Mage Guild, Bronze Dwelling) already pre-built, so every
   // faction starts the adventure with the standard opening buildings. Any seat
@@ -1469,6 +1495,20 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
   if (next.moraleCards !== undefined) {
     lobby.options.moraleCards = Boolean(next.moraleCards);
     changes.push(`Morale Cards ${next.moraleCards ? "on" : "off"}`);
+  }
+
+  if (next.pvpNeutralControl !== undefined) {
+    lobby.options.pvpNeutralControl = Boolean(next.pvpNeutralControl);
+    changes.push(`PvP Neutral Control ${next.pvpNeutralControl ? "on (multiplayer only)" : "off"}`);
+  }
+
+  if (next.pvpNeutralControlMustAttack !== undefined) {
+    lobby.options.pvpNeutralControlMustAttack = Boolean(next.pvpNeutralControlMustAttack);
+    changes.push(
+      next.pvpNeutralControlMustAttack
+        ? "Neutral Control: guards must attack when they can"
+        : "Neutral Control: guards play with no constraint"
+    );
   }
 
   if (next.houseRules !== undefined) {
@@ -2503,6 +2543,8 @@ function buildAdventureFromLobby(state: GameState): void {
     events: lobby.options.events,
     spellBook: lobby.options.spellBook,
     moraleCards: lobby.options.moraleCards,
+    pvpNeutralControl: lobby.options.pvpNeutralControl,
+    pvpNeutralControlMustAttack: lobby.options.pvpNeutralControlMustAttack,
     houseRules: lobby.options.houseRules,
     parallelTurns: lobby.options.parallelTurns,
     farTileOpening: lobby.options.farTileOpening,

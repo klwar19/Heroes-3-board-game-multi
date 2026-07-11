@@ -101,6 +101,7 @@ import type {
   VictoryMode,
   VisitStep
 } from "./state";
+import { isNeutralSideCombatChoice } from "./neutral-control";
 import { NEUTRAL_PLAYER_ID } from "./state";
 import { awardCommanderGradePoints } from "./commanders";
 
@@ -2319,6 +2320,32 @@ export function eliminatePlayer(
           events.pendingPick = null;
         }
       }
+    }
+  }
+
+  // PvP Neutral Control: a NEUTRAL-side combat decision the eliminated seat
+  // was answering (a guard's splash target, reroll window, activation tie …)
+  // is NOT the seat's own interaction — it is the Neutral side's, merely
+  // re-stamped to its human controller. Dropping it would strand the paused
+  // attack stack, so hand it BACK to the neutral seat instead: the next
+  // action's pump re-stamps it to the new next-clockwise controller, or the
+  // AI auto-resolves it when nobody live remains to take the guards.
+  if (
+    state.pendingChoice &&
+    state.pendingChoice.playerId === playerId &&
+    state.combat &&
+    !state.combat.outcome &&
+    isNeutralSideCombatChoice(state.combat, state.pendingChoice) &&
+    // The AI-mode fighter picks (neutral-target tie / landing cell) belong to
+    // the FIGHTER's own flow — an eliminated fighter concedes the whole fight
+    // through the combat machinery, so only a non-participant's (the
+    // controller's) answer is handed back.
+    state.combat.attackerPlayerId !== playerId &&
+    state.combat.defenderPlayerId !== playerId
+  ) {
+    state.pendingChoice.playerId = NEUTRAL_PLAYER_ID;
+    if (state.priorityPlayerId === playerId) {
+      state.priorityPlayerId = null;
     }
   }
 

@@ -349,6 +349,7 @@ export {
 } from "./hex";
 export type { HexCoord, HexDirection } from "./hex";
 export { isNeutralUnit, pickNeutralTarget, planNeutralActivation } from "./neutral-ai";
+export { isNeutralSideCombatChoice, neutralCombatControllerId, neutralControlMustAttack } from "./neutral-control";
 export {
   canUnitAttack,
   canUnitMoveAndAttack,
