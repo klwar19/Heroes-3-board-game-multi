@@ -439,6 +439,76 @@ ordered-mode or unowned-target CONTROL.
   solo tables and legacy snapshots are untouched — every parallel predicate
   no-ops when the mode is off.
 
+## PvP Neutral Control (OPTIONAL mode, multiplayer only) — what runs vs. limits
+
+Lobby option `GameSetupOptions.pvpNeutralControl` (default OFF, Game options
+"play" tab; multiplayer only — a solo table never gets it), with the
+`pvpNeutralControlMustAttack` sub-toggle (default ON). With the mode on, every
+NEUTRAL combat (guard fields AND Creature Banks) plays like a PvP battle: the
+NEXT live player clockwise from the fighter — `neutralCombatControllerId` in
+`src/engine/neutral-control.ts`, derived from the live-only `turnOrder` so
+eliminations hand the guards to the next seat (or back to the AI) automatically;
+NOT related to the WOG Commanders module — PLAYS the Neutral units. The engine
+pump stops on each guard's activation exactly like on a PvP unit's, and that
+player drives it with the normal unit actions (offered by
+`addControlledNeutralUnitActions` in `legal-actions.ts`, executed AS the neutral
+seat via `asNeutralSeatCommand` in `reducer.ts` so attack attribution,
+retaliation and friendly checks match the AI pipeline verbatim). They also break
+the guards' activation-order ties (`advanceActiveUnit`) and answer every
+Neutral-owned decision the fight opens — ability follow-ups (Lich/Magog splash
+targets, Magic Mirror redirect), attack-die reroll windows, and the guards'
+"[activation]" ability choices (Enchanter heal pick, Faerie Bolt target, via
+`maybeOpenPlayerActivationChoice`) — the pump re-stamps any NEUTRAL-owned
+pendingChoice to the controller instead of auto-resolving. The controller is
+notified (`NEUTRAL_CONTROL_ASSIGNED` event → feed line + a controller-only
+overlay). Behaviour pinned in `src/engine/pvp-neutral-control.test.ts` (each
+claim with a mode-off / wrong-seat CONTROL).
+
+Leading with what does NOT run / deliberate limits:
+- **The War Zealot Magic Mirror still auto-USES** (the printed reflect is read
+  as always-on; declining is never right) — but its redirect TARGET pick goes
+  to the controller like every other follow-up.
+- **Guards' printed "other actions" stay off the controller's menu** (token
+  placements, Summon Demons, genie draws) — parity with the AI, which never
+  uses them either; passive/triggered abilities still fire normally.
+- **Berserk and the Astrologers Werewolf frenzy override both toggle modes**
+  (the spell/frenzy menu binds a controlled guard exactly like a player unit).
+- The continue-or-retreat window, the pre-activation reaction pause (which no
+  longer previews an intent under this mode — a human hasn't decided yet; the
+  pause can coexist with the controller's open choice, each resolving
+  independently) and every reward stay the FIGHTER's, exactly as before.
+- The mode never changes `unit.controllerId` — guards stay the NEUTRAL seat's
+  for rewards, win/loss and every rules read; only the acting SEAT differs.
+
+The `pvpNeutralControlMustAttack` sub-toggle:
+- **ON (default, rulebook spirit)**: a guard that can strike now gets ONLY its
+  attacks (no Defend, no move, no hold); one that can reach a strike by moving
+  gets only those landing cells; otherwise only steps that strictly CLOSE the
+  walked distance to some enemy — no wandering to run down the neutral round
+  limit; hold only when boxed in.
+- **OFF**: the controller plays the guards with NO constraint — the exact PvP
+  menu (move anywhere legal, attack, defend, hold after acting).
+
+Cross-mode seams (each pinned):
+- **Parallel turns**: the controller IS a participant of the open fight
+  (`parallelInteractionBlocker` returns null for them), so their unit commands
+  and answers pass the bystander fingerprint backstop; every other seat stays a
+  plain bystander.
+- **Turn clock**: the fighter's 10-minute clock pauses while the guards' slot
+  (or a controller-owned choice) is open (`turnClockPausedFor`); the controller
+  has no clock of their own — a staller is removed by the AFK vote / idle-kick
+  path, whose driver can now play a dropped controller's guard slot out with
+  default unit commands and default-answer `CHOOSE_ABILITY_TARGET` /
+  `CHOOSE_PENDING_ROLL` (both added to `RESOLVING_ACTION_TYPES`, `afk-drop.ts`).
+- **Elimination**: `eliminatePlayer` hands a dead controller's open
+  neutral-side choice BACK to the NEUTRAL seat (`isNeutralSideCombatChoice`)
+  instead of dropping it mid-attack; the next action's pump re-stamps it to the
+  new next-clockwise seat, or the AI resolves it when nobody live remains.
+
+Mode off / solo / legacy snapshots: the rulebook Neutral AI plays the guards
+unchanged (`executeNeutralActivation`), with the fighter breaking its ties and
+picking its landing cells exactly as before.
+
 ## Multiplayer ladder & turn discipline (MMR, quit penalty, 10-min turns) — what runs vs. limits
 
 Leading with what does NOT run: a game that never reaches a winner (every seat

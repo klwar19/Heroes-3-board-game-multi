@@ -4186,6 +4186,21 @@ export type GameEvent =
       message: string;
     }
   | {
+      /**
+       * PvP Neutral Control (optional mode): a Neutral combat is starting and
+       * `playerId` — the next live player clockwise from the fighter — plays
+       * the Neutral units like a PvP side (activation order, moves, attacks,
+       * abilities and rolls).
+       */
+      id: string;
+      type: "NEUTRAL_CONTROL_ASSIGNED";
+      /** The player controlling the Neutral units (NOT the one fighting). */
+      playerId: PlayerId;
+      /** The player whose hero is fighting the Neutral units. */
+      combatPlayerId: PlayerId;
+      message: string;
+    }
+  | {
       id: string;
       type: "ROOM_MEMBER_JOINED";
       clientId: string;
@@ -8025,6 +8040,18 @@ export type AdventureState = {
    */
   moraleCards?: boolean;
   /**
+   * PvP Neutral Control mode (optional, multiplayer only). When on, the next
+   * live player clockwise from a Neutral combat's fighter commands the Neutral
+   * side's decisions (see GameSetupOptions.pvpNeutralControl). Absent on older
+   * snapshots and solo tables — treated as OFF.
+   */
+  pvpNeutralControl?: boolean;
+  /**
+   * PvP Neutral Control "must attack" sub-toggle (default true when the mode is
+   * on). See GameSetupOptions.pvpNeutralControlMustAttack. Absent = true.
+   */
+  pvpNeutralControlMustAttack?: boolean;
+  /**
    * Individual BINH house-rule toggles, resolved to concrete booleans at setup
    * (see resolveHouseRules / houseRuleEnabled in house-rules.ts). Absent on older
    * snapshots and the combat sandbox, where the mode default is derived instead.
@@ -8109,6 +8136,25 @@ export type GameSetupOptions = {
    * token system with positive/negative Morale decks and held morale cards.
    */
   moraleCards?: boolean;
+  /**
+   * PvP Neutral Control mode (default OFF, multiplayer only). In every Neutral
+   * combat the NEXT live player clockwise from the fighter PLAYS the Neutral
+   * units — they drive the guards like a PvP side: move, attack, use abilities
+   * and resolve every ability follow-up (target picks, rerolls, Magic Mirror)
+   * exactly as a human fighter would. The only thing separating it from a plain
+   * PvP fight is the optional `pvpNeutralControlMustAttack` constraint below. A
+   * solo table (or a fight with no other live player) falls back to the AI.
+   */
+  pvpNeutralControl?: boolean;
+  /**
+   * PvP Neutral Control sub-toggle (default true = the rulebook "must attack"
+   * constraint). When true a controlled guard MUST attack whenever it can reach
+   * an enemy, may not Defend, and may not wander to stall — it may only approach
+   * when no attack is reachable. When false the controlling player plays the
+   * guards with NO constraint (move, defend, hold freely), exactly like their
+   * own units. Absent on older snapshots — treated as true.
+   */
+  pvpNeutralControlMustAttack?: boolean;
   /**
    * Individual BINH house-rule toggles. Each id in this map can override its
    * BINH default. Legacy is a hard rulebook preset and ignores the entire map,

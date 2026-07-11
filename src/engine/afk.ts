@@ -1,4 +1,5 @@
 import { appendEvent } from "./events";
+import { neutralCombatControllerId } from "./neutral-control";
 import {
   isRoundStartEventBarrierActive,
   parallelTurnsActive,
@@ -410,6 +411,18 @@ export function turnClockPausedFor(state: GameState, playerId: PlayerId): boolea
     const isPvp = combat.attackerPlayerId !== NEUTRAL_PLAYER_ID && combat.defenderPlayerId !== NEUTRAL_PLAYER_ID;
     if (!isParticipant || isPvp) {
       return true;
+    }
+    // PvP Neutral Control: while ANOTHER seat plays the guards, the fighter is
+    // waiting on a human's decisions exactly like in a PvP battle — the guard's
+    // open activation slot must not run down the fighter's own 10 minutes.
+    // (Choices/windows the controller owns are already covered below; this
+    // covers the slot itself, where the controller drives with unit actions.)
+    const controller = neutralCombatControllerId(state, combat);
+    if (controller && controller !== playerId) {
+      const active = combat.activeUnitId ? combat.units[combat.activeUnitId] : null;
+      if (active && active.controllerId === NEUTRAL_PLAYER_ID && !active.activatedThisRound) {
+        return true;
+      }
     }
   }
   if (isRoundStartEventBarrierActive(state) && roundStartEventResolver(state) !== playerId) {
