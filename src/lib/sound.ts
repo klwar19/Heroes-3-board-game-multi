@@ -309,6 +309,32 @@ export function playTableReaction(): void {
   }
 }
 
+/**
+ * A soft single-note chime when a table-chat line arrives while the panel is
+ * collapsed — lower and quieter than the reaction "ta-da" so chat nudges
+ * without competing with emotes. Same mute / pre-gesture silence rules.
+ */
+export function playTableChatMessage(): void {
+  if (muted) {
+    return;
+  }
+  const ctx = getContext();
+  if (!ctx || ctx.state !== "running") {
+    return;
+  }
+  const start = ctx.currentTime;
+  const osc = ctx.createOscillator();
+  osc.type = "sine";
+  osc.frequency.value = 784; // G5 — soft ping
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(0.0001, start);
+  gain.gain.exponentialRampToValueAtTime(0.08, start + 0.01);
+  gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.28);
+  osc.connect(gain).connect(ctx.destination);
+  osc.start(start);
+  osc.stop(start + 0.3);
+}
+
 /** Card settling on the table / into the hand. */
 export function playCardPlace(delayMs = 0): void {
   if (delayMs > 0) {

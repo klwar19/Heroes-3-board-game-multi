@@ -10,8 +10,12 @@ import { MAX_LOBBY_CHAT_TEXT_LENGTH, type LobbyChatMessage } from "@/server/lobb
  * polling `messages` and the `onSend` transport (postLobbyChat), so this only
  * renders and validates input (disabled Send when empty, a soft client
  * cooldown; the server also flood-caps).
+ *
+ * Smart auto-scroll: stick to the bottom only while the user is already near it,
+ * otherwise offer a "↓ new" chip so history is not yanked away mid-read.
  */
 const SEND_COOLDOWN_MS = 600;
+const STICK_BOTTOM_PX = 48;
 
 function timeAgo(at: number, now: number): string {
   const secs = Math.max(0, Math.round((now - at) / 1000));
@@ -40,6 +44,9 @@ export function LobbyChat({
   const [now, setNow] = useState(0);
   const listRef = useRef<HTMLDivElement | null>(null);
   const lastSendAtRef = useRef(0);
+  const stickToBottomRef = useRef(true);
+  const lastStuckSeqRef = useRef(0);
+  const [missedWhileReading, setMissedWhileReading] = useState(0);
   const latestSeq = messages.length > 0 ? messages[messages.length - 1].seq : 0;
 
   // Seed the display clock on mount and refresh it so "time ago" labels stay
@@ -54,10 +61,42 @@ export function LobbyChat({
   /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
-    if (listRef.current) {
-      listRef.current.scrollTop = listRef.current.scrollHeight;
+    if (!listRef.current) {
+      return;
     }
-  }, [latestSeq]);
+    if (stickToBottomRef.current) {
+      listRef.current.scrollTop = listRef.current.scrollHeight;
+      lastStuckSeqRef.current = latestSeq;
+      setMissedWhileReading(0);
+    } else {
+      const missed = messages.filter((message) => message.seq > lastStuckSeqRef.current).length;
+      setMissedWhileReading(Math.min(99, missed));
+    }
+  }, [latestSeq, messages]);
+
+  const scrollToLatest = () => {
+    if (!listRef.current) {
+      return;
+    }
+    stickToBottomRef.current = true;
+    listRef.current.scrollTop = listRef.current.scrollHeight;
+    lastStuckSeqRef.current = latestSeq;
+    setMissedWhileReading(0);
+  };
+
+  const onListScroll = () => {
+    const el = listRef.current;
+    if (!el) {
+      return;
+    }
+    const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+    const stuck = distance <= STICK_BOTTOM_PX;
+    stickToBottomRef.current = stuck;
+    if (stuck) {
+      lastStuckSeqRef.current = latestSeq;
+      setMissedWhileReading(0);
+    }
+  };
 
   const submit = () => {
     const text = draft.trim();
@@ -69,6 +108,7 @@ export function LobbyChat({
       return;
     }
     lastSendAtRef.current = at;
+    stickToBottomRef.current = true;
     onSend(text);
     setDraft("");
   };
@@ -81,7 +121,7 @@ export function LobbyChat({
         <small>while you pick a room</small>
       </header>
 
-      <div className="lobbyChatMessages" ref={listRef} role="log" aria-live="polite">
+      <div className="lobbyChatMessages" ref={listRef} role="log" aria-live="polite" onScroll={onListScroll}>
         {messages.length === 0 ? (
           <p className="lobbyChatEmpty">No messages yet — say hello to the lobby.</p>
         ) : (
@@ -94,6 +134,12 @@ export function LobbyChat({
           ))
         )}
       </div>
+
+      {missedWhileReading > 0 ? (
+        <button className="lobbyChatJump" onClick={scrollToLatest} type="button">
+          ↓ {missedWhileReading === 1 ? "1 new message" : `${missedWhileReading} new messages`}
+        </button>
+      ) : null}
 
       {error ? <p className="lobbyChatError">{error}</p> : null}
 
