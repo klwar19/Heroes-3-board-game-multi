@@ -46,6 +46,11 @@ export function forcedResolutionPending(state: GameState): boolean {
 /** Action types that RESOLVE a pending interaction (never "play the game"). */
 const RESOLVING_ACTION_TYPES = new Set<GameAction["type"]>([
   "CHOOSE_OPTION",
+  // An ABILITY_TARGET_CHOICE owned by the dropped seat (a Magog splash pick,
+  // the neutral-target tie — under PvP Neutral Control possibly held by a seat
+  // that is not even fighting) resolves through this; without it the driver
+  // waited forever on a choice only the vanished seat could answer.
+  "CHOOSE_ABILITY_TARGET",
   "RESOLVE_VISIT_STEP",
   "SET_TILE_ROTATION",
   "SKIP_NECROMANCY",

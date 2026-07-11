@@ -439,6 +439,62 @@ ordered-mode or unowned-target CONTROL.
   solo tables and legacy snapshots are untouched — every parallel predicate
   no-ops when the mode is off.
 
+## PvP Neutral Control (OPTIONAL mode, multiplayer only) — what runs vs. limits
+
+Lobby option `GameSetupOptions.pvpNeutralControl` (default OFF, Game options
+"play" tab; multiplayer only — a solo table never gets it). With it on, in every
+NEUTRAL combat (guard fields AND Creature Banks) the NEXT live player clockwise
+from the fighter — `neutralCombatControllerId` in `src/engine/neutral-control.ts`,
+derived from the live-only `turnOrder` so eliminations hand the guards to the
+next seat (or back to the AI) automatically — COMMANDS the Neutral units, and is
+notified (`NEUTRAL_CONTROL_ASSIGNED` event → feed line for the table + the
+"You command the Neutral units" overlay on the commander's client only).
+Behaviour pinned in `src/engine/pvp-neutral-control.test.ts` (each claim with a
+mode-off / wrong-seat CONTROL).
+
+Leading with what does NOT run / deliberate limits:
+- **Ability follow-ups stay AI-resolved**: the Lich-splash-style
+  `ABILITY_TARGET_CHOICE`s a neutral opens mid-attack, the Minotaur/Champion
+  "-1" rerolls and the War Zealot Magic Mirror reaction still auto-resolve for
+  the NEUTRAL seat (the pump's existing branches). The commander gets the three
+  COMMAND decisions only: activation-order tie, attack target, movement.
+- **The Neutral rulebook constraints still bind the commander**: a guard MUST
+  attack when it can reach someone (no stalling a bank fight into the round
+  limit), an engaged ranged guard must strike an adjacent enemy, ranged guards
+  never move-then-shoot, Berserk overrides everything (the commander only
+  answers the choices Berserk itself opens), and a guard that can already
+  strike from its cell attacks from there (no reposition-then-hit). Only the
+  PICK among reachable enemies / landing cells / free-move cells is the
+  commander's.
+- **No turn clock runs for the commander**: while their command choice is open
+  the fighter's 10-minute clock pauses (`pendingChoice` owned by another seat)
+  and the commander has no clock of their own — a stalling commander is removed
+  by the normal AFK vote / idle-kick path, whose forced-resolution driver can
+  now default-answer the target choice too (`CHOOSE_ABILITY_TARGET` added to
+  `RESOLVING_ACTION_TYPES` in `afk-drop.ts`). `eliminatePlayer` drops a dead
+  commander's open choice and the next action's pump re-opens it for the next
+  live seat (pinned in the recovery test).
+- The continue-or-retreat window, the pre-activation reaction pause (which no
+  longer previews an intent under this mode — a human hasn't decided yet) and
+  every reward stay the FIGHTER's, exactly as before.
+
+What runs (each engine-enforced): the guards' same-initiative activation-order
+tie goes to the commander (`advanceActiveUnit`); the target pick offers ALL
+reachable enemies — the AI's same-tier priority and ranged-hunts-ranged
+preference become free picks (`planNeutralActivationManual` /
+`manualAttackablePool` in `neutral-ai.ts`); the move-to-attack landing cell
+offers every legal attack cell (the existing `choose-destination` flow); a
+guard that can strike NO ONE opens the new `choose-move` — any legal cell
+(clickable on the board, `neutralDestination` without `defenderId`) or the
+trailing "holds position" option (`allowHold`, resolved by
+`resolveNeutralDestinationChoice` → `passNeutralActivation`). Under parallel
+turns the commander's answer is the open interaction's own input, exempted from
+the bystander fingerprint backstop via `isNeutralCommandChoice`
+(`parallel-turns.ts`); every other seat stays a plain bystander. The UI needed
+no gating changes (the combat board + choice prompts already key off
+`pendingChoice.playerId`); the commander-only overlay cue lives in `page.tsx`,
+the "hold position" button in the PromptTray's neutral-destination branch.
+
 ## Multiplayer ladder & turn discipline (MMR, quit penalty, 10-min turns) — what runs vs. limits
 
 Leading with what does NOT run: a game that never reaches a winner (every seat
