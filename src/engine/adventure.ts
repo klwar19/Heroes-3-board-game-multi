@@ -53,6 +53,7 @@ import {
   NECROMANCY_ABILITY_ID,
   NECROPOLIS_FACTION_ID
 } from "./ruleset";
+import { houseRuleEnabled } from "./house-rules";
 import {
   hexDistance,
   hexNeighbors,
@@ -672,7 +673,10 @@ export function getHeroMovementCapabilities(state: GameState, hero: HeroState): 
         moveThrough = true;
         passEncounters = true;
         crossSealedBorders = true;
-        if (modifier.expert) {
+        // House rule ("pathfinding-expert"): the Expert side additionally crosses
+        // the coastline and steps Surface↔Subterranean. Off: expert Pathfinding
+        // grants nothing beyond the basic set (and its option is not offered).
+        if (modifier.expert && houseRuleEnabled(state, "pathfinding-expert")) {
           waterWalk = true;
           crossLayers = true;
         }
@@ -4208,10 +4212,15 @@ export function processPendingVisit(state: GameState): void {
         break;
       }
       case "EMPOWER_ABILITY": {
-        // Dragon Fly Hive / Griffin Conservatory bonus: offer to Empower one of
-        // the player's own Ability cards (hand or discard) that is not already
-        // Empowered. Empowering is by card id, so a card owned in either pile
-        // qualifies once. No-op when the player owns no eligible ability.
+        // Dragon Fly Hive / Griffin Conservatory bonus (house rule
+        // "bank-empower-ability"): offer to Empower one of the player's own
+        // Ability cards (hand or discard) that is not already Empowered.
+        // Empowering is by card id, so a card owned in either pile qualifies
+        // once. No-op when the player owns no eligible ability — or when the
+        // house rule is off (those banks then grant only the unit, as printed).
+        if (!houseRuleEnabled(state, "bank-empower-ability")) {
+          break;
+        }
         const player = state.players[visit.playerId];
         if (!player) {
           break;

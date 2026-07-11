@@ -626,6 +626,53 @@ describe("Creature Bank combat lifecycle", () => {
     expect(state.combat?.outcome ?? null).toBeNull();
   });
 
+  it("OFF (house rule 'bank-move-points'): a bank has NO Round limit — it rolls straight on (rulebook)", () => {
+    let state = createAdventureGameState({
+      seed: "bank-rounds-off",
+      difficulty: "easy",
+      rollFirstPlayer: false,
+      houseRules: { "bank-move-points": false }
+    });
+    state = (state.players.p1.needsHandRefresh || state.players.p1.canMulligan)
+      ? apply(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] })
+      : state;
+    placeBankUnderHero(state, "crypt", 7);
+    const hero = getMainHero(state, "p1")!;
+
+    startNeutralEncounter(state, hero, state.adventure!.fields["bank-field"]);
+    const place = getLegalActions(state, "p1").find((entry) => entry.action.type === "PLACE_COMBAT_UNIT");
+    state = apply(state, place!.action);
+    state = apply(state, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
+    expect(state.phase).toBe("combat");
+
+    // Nobody can deal damage, so no side is ever destroyed.
+    state.combat!.dice.scriptedRolls = Array(120).fill(-1);
+    for (const unit of Object.values(state.combat!.units)) {
+      unit.attack = 0;
+    }
+
+    // Drive round 1 to its end. With the rule OFF the fight never pauses — it
+    // rolls straight into round 2 like an azure guard / a normal player fight.
+    let safety = 300;
+    while (state.combat && state.combat.round < 2 && !state.combat.outcome && safety > 0) {
+      safety -= 1;
+      const actions = getLegalActions(state, "p1");
+      const defend = actions.find((legal) => legal.action.type === "DEFEND_UNIT");
+      const pass = actions.find((legal) => legal.action.type === "PASS_REACTION");
+      const keepRoll = actions.find((legal) => legal.action.type === "CHOOSE_PENDING_ROLL");
+      const next = defend ?? pass ?? keepRoll ?? actions[0];
+      if (!next) break;
+      state = apply(state, next.action);
+    }
+
+    expect(state.combat?.round, "rolled straight into round 2 — no Round limit").toBe(2);
+    expect(state.combat?.awaitingContinue ?? false, "never paused for movement points").toBe(false);
+    expect(
+      getLegalActions(state, "p1").some((entry) => entry.action.type === "CONTINUE_NEUTRAL_COMBAT"),
+      "no spend-MP-to-extend prompt"
+    ).toBe(false);
+  });
+
   it("cubes the field and adds the gained Dragon Flies card to the army on a win", () => {
     expect(CREATURE_BANKS.dragon_fly_hive.rewardStatus).toBe("implemented");
 
@@ -773,6 +820,49 @@ describe("Creature Bank combat lifecycle", () => {
     // Archery is now permanently Empowered for this player.
     expect(state.players.p1.empoweredAbilities).toContain("ability.archery");
     expect(state.eventLog.some((event) => event.type === "ABILITY_EMPOWERED")).toBe(true);
+  });
+
+  it("OFF (house rule 'bank-empower-ability'): the win gains the unit but offers NO Empower", () => {
+    let state = createAdventureGameState({
+      seed: "bank-hive-empower-off",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      houseRules: { "bank-empower-ability": false }
+    });
+    state = (state.players.p1.needsHandRefresh || state.players.p1.canMulligan)
+      ? apply(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] })
+      : state;
+    placeBankUnderHero(state, "dragon_fly_hive", 7);
+    const hero = getMainHero(state, "p1")!;
+
+    startNeutralEncounter(state, hero, state.adventure!.fields["bank-field"]);
+    const place = getLegalActions(state, "p1").find((entry) => entry.action.type === "PLACE_COMBAT_UNIT");
+    state = apply(state, place!.action);
+    state = apply(state, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
+
+    state.players.p1.hand = ["ability.archery"];
+    state.players.p1.empoweredAbilities = [];
+    const armyIdsBefore = new Set(state.players.p1.army.map((unit) => unit.id));
+
+    for (const unit of Object.values(state.combat!.units)) {
+      if (unit.controllerId === "neutrals") {
+        unit.damage = unit.maxHealth;
+      }
+    }
+    state.pendingChoice = null;
+    finishCombatIfNeeded(state);
+    finalizeAdventureCombat(state);
+
+    // The unit reward still resolves — a Dragon Flies card joined the army…
+    const gained = state.players.p1.army.filter((unit) => !armyIdsBefore.has(unit.id));
+    expect(gained).toHaveLength(1);
+    expect(gained[0].unitDefId).toBe("fortress.dragon_flies");
+
+    // …but the Empower bonus is gated off: no menu, nothing empowered, no event.
+    const empowerActions = getLegalActions(state, "p1").filter((legal) => legal.label.includes("Empower"));
+    expect(empowerActions, "no Empower option offered without the rule").toHaveLength(0);
+    expect(state.players.p1.empoweredAbilities ?? [], "nothing was empowered").toHaveLength(0);
+    expect(state.eventLog.some((event) => event.type === "ABILITY_EMPOWERED"), "no empower event").toBe(false);
   });
 });
 
