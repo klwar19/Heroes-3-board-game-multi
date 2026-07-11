@@ -3,8 +3,22 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RoomPanel } from "./room-panel";
 import { applyAction, createAdventureGameState, type GameAction, type GameState } from "@/engine";
+import type { PresenceEntry } from "@/lib/lobby-presence-client";
 
-afterEach(cleanup);
+// The panel polls live presence to decide when the host is gone. Default: no
+// presence data (the async resolve lands AFTER the synchronous body of every
+// legacy test, so those are untouched); host-recovery tests set it explicitly
+// and await the resolve.
+let presenceReturn: PresenceEntry[] = [];
+vi.mock("@/lib/lobby-presence-client", () => ({
+  fetchPresence: vi.fn(async () => presenceReturn)
+}));
+vi.mock("@/lib/lobby-chat-client", () => ({ postLobbyChat: vi.fn(async () => {}) }));
+
+afterEach(() => {
+  cleanup();
+  presenceReturn = [];
+});
 
 /** A 2-seat game with three members; c1 hosts, c2 at p1, c3 observing. */
 function hostedState(): GameState {
@@ -276,5 +290,44 @@ describe("RoomPanel — naming, closing and browsing", () => {
     expect(
       applyAction(state, { type: "SET_ROOM_NAME", clientId: "c2", name: "Nope" }).errors.length
     ).toBeGreaterThan(0);
+  });
+});
+
+describe("RoomPanel — host recovery when the host is gone", () => {
+  it("offers a member 'Take over host' + 'Close room' once the host has no live presence", async () => {
+    // c1 hosts (and holds seat p1 in hostedState — via c2); the ghost host c1 is
+    // NOT in the live presence set, only the two other members are.
+    const state = hostedState();
+    presenceReturn = [
+      { clientId: "c2", name: "Bob", verified: false, roomId: "abc123" },
+      { clientId: "c3", name: "Cara", verified: false, roomId: "abc123" }
+    ];
+    // View as c3 (an observer member) — the returning/other member.
+    const { onAction, onCloseRoom } = renderPanel(state, "c3");
+
+    const reclaim = await screen.findByRole("button", { name: /Take over host/i });
+    fireEvent.click(reclaim);
+    expect(onAction).toHaveBeenCalledWith({ type: "RECLAIM_HOST", clientId: "c3" });
+
+    // The member may also delete the abandoned room (server re-checks the host).
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    fireEvent.click(screen.getByRole("button", { name: /Close room/i }));
+    expect(onCloseRoom).toHaveBeenCalled();
+    confirmSpy.mockRestore();
+  });
+
+  it("CONTROL: a live host means no recovery controls for a member", async () => {
+    const state = hostedState();
+    // The host c1 IS live — recovery must not be offered.
+    presenceReturn = [
+      { clientId: "c1", name: "Alice", verified: false, roomId: "abc123" },
+      { clientId: "c3", name: "Cara", verified: false, roomId: "abc123" }
+    ];
+    renderPanel(state, "c3");
+    // Let the presence poll resolve, then assert the reclaim control never shows.
+    await screen.findByText(/Cara/i);
+    expect(screen.queryByRole("button", { name: /Take over host/i })).toBeNull();
+    // A non-host member with a present host also gets no Close button.
+    expect(screen.queryByRole("button", { name: /Close room/i })).toBeNull();
   });
 });

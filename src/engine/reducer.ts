@@ -118,6 +118,7 @@ import {
   joinRoom,
   kickMember,
   leaveRoom,
+  reclaimHost,
   roomActionGuard,
   setRoomHosted,
   setRoomName,
@@ -473,6 +474,15 @@ type ReducerOptions = {
    * engine stays deterministic.
    */
   now?: number;
+  /**
+   * The clientIds currently holding a live stream on this room, injected by the
+   * server transports (both backends already track this set for the reset/close
+   * "host absent → a member may act" rule). Read only by `RECLAIM_HOST`, which
+   * refuses to hand host to a member while the current host is still connected.
+   * Omitted by engine tests / non-networked paths, where the guard is exercised
+   * by passing the set explicitly.
+   */
+  liveClientIds?: readonly string[];
 };
 
 type ConcreteEffect = Exclude<EffectDefinition, { type: "CHOOSE_ONE" }>;
@@ -17870,6 +17880,7 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "ASSIGN_SEAT",
   "KICK_MEMBER",
   "TRANSFER_HOST",
+  "RECLAIM_HOST",
   "SET_ROOM_NAME",
   "SET_ROOM_PASSWORD",
   "SET_ROOM_REQUIRE_AUTH",
@@ -18212,6 +18223,14 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "TRANSFER_HOST":
         transferHost(nextState, action);
+        break;
+      case "RECLAIM_HOST":
+        reclaimHost(
+          nextState,
+          action,
+          { clientId: options.actorClientId, userId: options.actorUserId },
+          options.liveClientIds
+        );
         break;
       case "SET_ROOM_NAME":
         setRoomName(nextState, action);

@@ -398,6 +398,30 @@ export default class GameRoomServer implements Party.Server {
   }
 
   /**
+   * The clientIds currently holding a live socket on this room (for
+   * RECLAIM_HOST). Called on every action, so it degrades gracefully if the
+   * runtime cannot enumerate connections — an unknown live set just means host
+   * recovery cannot verify the host is present (treated as absent), never a
+   * crashed action.
+   */
+  private liveClientIds(): string[] {
+    const ids: string[] = [];
+    const getConnections = (this.room as { getConnections?: () => Iterable<Party.Connection> | undefined })
+      .getConnections;
+    const connections = typeof getConnections === "function" ? getConnections.call(this.room) : undefined;
+    if (!connections || typeof (connections as { [Symbol.iterator]?: unknown })[Symbol.iterator] !== "function") {
+      return ids;
+    }
+    for (const connection of connections) {
+      const clientId = this.clientIdOf(connection);
+      if (clientId && !ids.includes(clientId)) {
+        ids.push(clientId);
+      }
+    }
+    return ids;
+  }
+
+  /**
    * Mirrors the store's authorizeHostedWipe for the two destructive room ops
    * (reset and close) — both wipe the running game for every seat. HOSTED
    * room: the host always may; any MEMBER may while the host holds no live
@@ -705,6 +729,9 @@ export default class GameRoomServer implements Party.Server {
           // Server wall clock: the AFK vote-kick's only time source (idle
           // stamps + the 10-minute idle/re-ask gates).
           now: Date.now(),
+          // Live-socket set for this room: RECLAIM_HOST refuses while the host
+          // is still connected (host-recovery mirror of the reset/close rule).
+          liveClientIds: this.liveClientIds(),
           ...(message.actorClientId ? { actorClientId: message.actorClientId } : {}),
           ...(actorUserId ? { actorUserId } : {})
         });
@@ -902,6 +929,7 @@ export default class GameRoomServer implements Party.Server {
           const result = applyAction(current.state, action, {
             entropy: freshEntropy(),
             now: Date.now(),
+            liveClientIds: this.liveClientIds(),
             ...(actorClientId ? { actorClientId } : {}),
             ...(actorUserId ? { actorUserId } : {})
           });
