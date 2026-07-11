@@ -71,6 +71,12 @@ type TraySelection = {
   /** Hand indexes chosen to pay the option's discard cost. */
   costHandIndexes: number[];
   /**
+   * Parallel to costHandIndexes: "expert" values that Power source at its
+   * expertAmount and spends one crown (Power-value costs — Sorrow, Alamar's
+   * Resurrection, …). Index-aligned with costHandIndexes.
+   */
+  costHandModes: CardPlayMode[];
+  /**
    * Spell Book (house rule): a Book Spell chosen to help pay a lethal save's
    * Power cost — capped at ONE (the once-per-turn Book Power budget). Held by
    * card id (a Book Spell has no hand index) and added to the play's costCardIds.
@@ -202,18 +208,33 @@ function SpellBookSaveTile({
   onAction: (action: GameAction) => void;
 }) {
   const [payIndexes, setPayIndexes] = useState<number[]>([]);
+  // Parallel to payIndexes: the chosen Power-value mode of each picked source.
+  const [payModes, setPayModes] = useState<CardPlayMode[]>([]);
   const hand = view.players[viewerPlayerId]?.hand ?? [];
   const playedSchools = cardLibrary[action.cardId]?.spellSchools ?? [];
   const isPowerCost = cost.powerCost !== undefined;
   const standing = cardLibrary[action.cardId]
     ? standingSpellPower(state, viewerPlayerId, cardLibrary[action.cardId])
     : 0;
-  const chosenValues = payIndexes.map((index) => spellPowerValueOfCard(cardLibrary[hand[index]], playedSchools));
+  const chosenValues = payIndexes.map((index, position) =>
+    spellPowerValueOfCard(cardLibrary[hand[index]], playedSchools, payModes[position] ?? "basic")
+  );
   const powerTotal = standing + chosenValues.reduce((sum, value) => sum + value, 0);
 
-  const satisfied = isPowerCost
-    ? powerTotal >= (cost.powerCost ?? 0) && !chosenValues.some((value) => powerTotal - value >= (cost.powerCost ?? 0))
-    : payIndexes.length === (cost.discardCards ?? 0);
+  const player = state.players[viewerPlayerId];
+  const crownsAvailable = player
+    ? player.limits.expertUses +
+      (player.combatStats.expertUseBonusThisRound ?? 0) -
+      player.combatStats.expertUsesSpentThisRound
+    : 0;
+  const crownsSelected = payModes.filter((mode) => mode === "expert").length;
+  const crownsOver = crownsSelected > crownsAvailable;
+
+  const satisfied =
+    !crownsOver &&
+    (isPowerCost
+      ? powerTotal >= (cost.powerCost ?? 0) && !chosenValues.some((value) => powerTotal - value >= (cost.powerCost ?? 0))
+      : payIndexes.length === (cost.discardCards ?? 0));
 
   const targetReached = isPowerCost ? powerTotal >= (cost.powerCost ?? 0) : payIndexes.length >= (cost.discardCards ?? 0);
 
@@ -224,9 +245,26 @@ function SpellBookSaveTile({
       : undefined;
 
   const togglePay = (index: number) =>
-    setPayIndexes((current) =>
-      current.includes(index) ? current.filter((value) => value !== index) : [...current, index]
-    );
+    setPayIndexes((current) => {
+      const at = current.indexOf(index);
+      if (at !== -1) {
+        setPayModes((modes) => modes.filter((_, position) => position !== at));
+        return current.filter((value) => value !== index);
+      }
+      setPayModes((modes) => [...modes, "basic"]);
+      return [...current, index];
+    });
+
+  const setPayMode = (index: number, mode: CardPlayMode) =>
+    setPayModes((modes) => {
+      const at = payIndexes.indexOf(index);
+      if (at === -1) {
+        return modes;
+      }
+      const next = [...modes];
+      next[at] = mode;
+      return next;
+    });
 
   return (
     <div className="trayTile scrollTile" key={JSON.stringify(action)}>
@@ -241,24 +279,56 @@ function SpellBookSaveTile({
           </small>
           <div className="trayPaymentChips">
             {hand.map((payCardId, index) => {
-              const picked = payIndexes.includes(index);
+              const at = payIndexes.indexOf(index);
+              const picked = at !== -1;
+              const payMode = picked ? (payModes[at] ?? "basic") : "basic";
               const wrongKind = cost.costCardFilter !== undefined && !costCardEligible(payCardId, cost.costCardFilter);
-              const powerValue = isPowerCost ? spellPowerValueOfCard(cardLibrary[payCardId], playedSchools) : 0;
-              if (wrongKind || (isPowerCost && powerValue <= 0)) {
+              const powerValueBasic = isPowerCost
+                ? spellPowerValueOfCard(cardLibrary[payCardId], playedSchools, "basic")
+                : 0;
+              const powerValue = isPowerCost
+                ? spellPowerValueOfCard(cardLibrary[payCardId], playedSchools, payMode)
+                : 0;
+              if (wrongKind || (isPowerCost && powerValueBasic <= 0)) {
                 return null;
               }
+              const payAddPower =
+                cardLibrary[payCardId]?.effect.type === "ADD_SPELL_POWER"
+                  ? cardLibrary[payCardId]?.effect
+                  : cardLibrary[payCardId]?.effect.type === "CHOOSE_ONE"
+                    ? cardLibrary[payCardId]?.effect.options.find((o) => o.effect.type === "ADD_SPELL_POWER")?.effect
+                    : undefined;
+              const canExpertPay =
+                isPowerCost &&
+                payAddPower?.type === "ADD_SPELL_POWER" &&
+                payAddPower.expertAmount !== undefined &&
+                payAddPower.expertAmount > payAddPower.amount;
+              const isExpertPay = payMode === "expert";
               return (
-                <button
-                  aria-pressed={picked}
-                  className={`trayChip ${picked ? "picked" : ""}`}
-                  disabled={!picked && targetReached}
-                  key={`${payCardId}-${index}`}
-                  onClick={() => togglePay(index)}
-                  type="button"
-                >
-                  {cardName(payCardId)}
-                  {isPowerCost ? ` (+${powerValue})` : ""}
-                </button>
+                <span className="trayChipGroup" key={`${payCardId}-${index}`}>
+                  <button
+                    aria-pressed={picked}
+                    className={`trayChip ${picked ? "picked" : ""}`}
+                    disabled={!picked && targetReached}
+                    onClick={() => togglePay(index)}
+                    type="button"
+                  >
+                    {cardName(payCardId)}
+                    {isPowerCost ? ` (+${powerValue})` : ""}
+                  </button>
+                  {picked && canExpertPay && (isExpertPay || crownsAvailable - crownsSelected > 0) ? (
+                    <button
+                      aria-pressed={isExpertPay}
+                      className={`trayExpert ${isExpertPay ? "picked" : ""}`}
+                      onClick={() => setPayMode(index, isExpertPay ? "basic" : "expert")}
+                      title="Spend a crown to pay this source at its expert Power value"
+                      type="button"
+                    >
+                      <Crown aria-hidden="true" size={13} />
+                      <span>{isExpertPay ? `Expert +${payAddPower?.expertAmount}` : "Crown"}</span>
+                    </button>
+                  ) : null}
+                </span>
               );
             })}
           </div>
@@ -266,7 +336,13 @@ function SpellBookSaveTile({
         <button
           className="trayInstant"
           disabled={!satisfied}
-          onClick={() => onAction({ ...action, costCardIds: payIndexes.map((index) => hand[index]) })}
+          onClick={() =>
+            onAction({
+              ...action,
+              costCardIds: payIndexes.map((index) => hand[index]),
+              ...(payModes.some((mode) => mode === "expert") ? { costCardModes: payModes } : {})
+            })
+          }
           type="button"
         >
           {optionLabel ?? "Play from Spell Book"}
@@ -467,11 +543,17 @@ export function ReactionTray({
   // exempts it from the crown spend and legal-actions offers it at 0 crowns. So it
   // must NOT count against the crown budget here, or the tray would disable Confirm
   // (and show "no crowns left") for a play the engine happily accepts.
-  const crownsSelected = selections.filter(
-    (selection) =>
-      selection.mode === "expert" &&
-      !cardIsEmpoweredFor(selection.cardId, view.players[viewerPlayerId]?.empoweredAbilities)
-  ).length;
+  const crownsSelected =
+    selections.filter(
+      (selection) =>
+        selection.mode === "expert" &&
+        !cardIsEmpoweredFor(selection.cardId, view.players[viewerPlayerId]?.empoweredAbilities)
+    ).length +
+    // Each Power source paid at its expert value spends one crown too.
+    selections.reduce(
+      (sum, selection) => sum + selection.costHandModes.filter((mode) => mode === "expert").length,
+      0
+    );
 
   // Spell Book (house rule): in the lethal-save window the Book's once-per-turn
   // +1 Power may help pay a save (e.g. a silver save fuelled by a hand Magic
@@ -501,7 +583,8 @@ export function ReactionTray({
         asPowerBoost: group.asPowerBoost,
         nonBatchable: group.batchable === false,
         costCards: group.costCards,
-        costHandIndexes: []
+        costHandIndexes: [],
+        costHandModes: []
       };
 
       // A window-ending play (Magic Mirror's paid redirect) is always solo:
@@ -512,11 +595,18 @@ export function ReactionTray({
 
       const next = current
         .filter((selection) => selection.handIndex !== handIndex && !selection.nonBatchable)
-        // A card leaving/entering play also leaves any payment role.
-        .map((selection) => ({
-          ...selection,
-          costHandIndexes: selection.costHandIndexes.filter((index) => index !== handIndex)
-        }));
+        // A card leaving/entering play also leaves any payment role (drop its
+        // mode at the same position so the two arrays stay index-aligned).
+        .map((selection) => {
+          const kept = selection.costHandIndexes
+            .map((index, position) => ({ index, mode: selection.costHandModes[position] ?? "basic" }))
+            .filter((entry) => entry.index !== handIndex);
+          return {
+            ...selection,
+            costHandIndexes: kept.map((entry) => entry.index),
+            costHandModes: kept.map((entry) => entry.mode)
+          };
+        });
       next.push(incoming);
       return next.sort((left, right) => left.handIndex - right.handIndex);
     });
@@ -534,13 +624,37 @@ export function ReactionTray({
         if (selection.handIndex !== selectionHandIndex) {
           return selection;
         }
-        const has = selection.costHandIndexes.includes(payHandIndex);
+        const at = selection.costHandIndexes.indexOf(payHandIndex);
+        const has = at !== -1;
         return {
           ...selection,
           costHandIndexes: has
             ? selection.costHandIndexes.filter((index) => index !== payHandIndex)
-            : [...selection.costHandIndexes, payHandIndex]
+            : [...selection.costHandIndexes, payHandIndex],
+          costHandModes: has
+            ? selection.costHandModes.filter((_, position) => position !== at)
+            : [...selection.costHandModes, "basic"]
         };
+      })
+    );
+  };
+
+  // Toggle a chosen Power source between its basic and expert (crown) value when
+  // paying a Power-value cost. Only power sources with an expert side ever show
+  // the toggle, so a card without one is left at basic.
+  const setCostCardMode = (selectionHandIndex: number, payHandIndex: number, mode: CardPlayMode) => {
+    setSelections((current) =>
+      current.map((selection) => {
+        if (selection.handIndex !== selectionHandIndex) {
+          return selection;
+        }
+        const at = selection.costHandIndexes.indexOf(payHandIndex);
+        if (at === -1) {
+          return selection;
+        }
+        const nextModes = [...selection.costHandModes];
+        nextModes[at] = mode;
+        return { ...selection, costHandModes: nextModes };
       })
     );
   };
@@ -575,7 +689,8 @@ export function ReactionTray({
     const schools = card?.spellSchools ?? [];
     const standing = card ? standingSpellPower(state, viewerPlayerId, card) : 0;
     const fromCards = selection.costHandIndexes.reduce(
-      (sum, index) => sum + spellPowerValueOfCard(cardLibrary[hand[index]], schools),
+      (sum, index, position) =>
+        sum + spellPowerValueOfCard(cardLibrary[hand[index]], schools, selection.costHandModes[position] ?? "basic"),
       0
     );
     const fromBook = selection.costBookCardId
@@ -604,7 +719,9 @@ export function ReactionTray({
       }
       const schools = cardLibrary[selection.cardId]?.spellSchools ?? [];
       const chosenValues = [
-        ...selection.costHandIndexes.map((index) => spellPowerValueOfCard(cardLibrary[hand[index]], schools)),
+        ...selection.costHandIndexes.map((index, position) =>
+          spellPowerValueOfCard(cardLibrary[hand[index]], schools, selection.costHandModes[position] ?? "basic")
+        ),
         ...(selection.costBookCardId ? [spellPowerValueOfCard(cardLibrary[selection.costBookCardId], schools)] : [])
       ];
       return chosenValues.some((value) => total - value >= cost.powerCost!);
@@ -659,12 +776,19 @@ export function ReactionTray({
         ...selection.costHandIndexes.map((index) => hand[index]),
         ...(selection.costBookCardId ? [selection.costBookCardId] : [])
       ];
+      // Index-aligned modes: hand sources by their chosen mode, then the Book
+      // Spell (always basic — a Spell has no expert Power side).
+      const costCardModes: CardPlayMode[] = [
+        ...selection.costHandIndexes.map((_, position) => selection.costHandModes[position] ?? "basic"),
+        ...(selection.costBookCardId ? (["basic"] as CardPlayMode[]) : [])
+      ];
       return {
         cardId: selection.cardId,
         mode: selection.mode,
         ...(selection.optionIndex !== undefined ? { optionIndex: selection.optionIndex } : {}),
         ...(selection.asPowerBoost ? { asPowerBoost: true } : {}),
-        ...(costCardIds.length > 0 ? { costCardIds } : {})
+        ...(costCardIds.length > 0 ? { costCardIds } : {}),
+        ...(costCardModes.some((mode) => mode === "expert") ? { costCardModes } : {})
       };
     };
 
@@ -905,19 +1029,41 @@ export function ReactionTray({
                               if (payIndex === tile.handIndex) {
                                 return null;
                               }
-                              const inThisPayment = Boolean(selection?.costHandIndexes.includes(payIndex));
+                              const payPosition = selection?.costHandIndexes.indexOf(payIndex) ?? -1;
+                              const inThisPayment = payPosition !== -1;
+                              const payMode = inThisPayment
+                                ? (selection?.costHandModes[payPosition] ?? "basic")
+                                : "basic";
                               const takenElsewhere = !inThisPayment && committedIndexes.has(payIndex);
                               const wrongKind =
                                 selection?.costCards?.filter !== undefined &&
                                 !costCardEligible(payCardId, selection.costCards.filter);
                               // A power source of the wrong school contributes
                               // nothing to this spell, so it can never validly pay.
+                              // Value it at the chosen mode (expert = crown).
                               const powerValue = isPowerCost
-                                ? spellPowerValueOfCard(cardLibrary[payCardId], playedSchools)
+                                ? spellPowerValueOfCard(cardLibrary[payCardId], playedSchools, payMode)
                                 : 0;
-                              if (takenElsewhere || wrongKind || (isPowerCost && powerValue <= 0)) {
+                              const powerValueBasic = isPowerCost
+                                ? spellPowerValueOfCard(cardLibrary[payCardId], playedSchools, "basic")
+                                : 0;
+                              if (takenElsewhere || wrongKind || (isPowerCost && powerValueBasic <= 0)) {
                                 return null;
                               }
+                              // A Power source with a higher expert value can be
+                              // upgraded with a crown once it is picked.
+                              const payCardEffect = cardLibrary[payCardId]?.effect;
+                              const payAddPower =
+                                payCardEffect?.type === "ADD_SPELL_POWER"
+                                  ? payCardEffect
+                                  : payCardEffect?.type === "CHOOSE_ONE"
+                                    ? payCardEffect.options.find((o) => o.effect.type === "ADD_SPELL_POWER")?.effect
+                                    : undefined;
+                              const canExpertPay =
+                                isPowerCost &&
+                                payAddPower?.type === "ADD_SPELL_POWER" &&
+                                payAddPower.expertAmount !== undefined &&
+                                payAddPower.expertAmount > payAddPower.amount;
                               // Count mode fills at the card target; Power mode
                               // stops once the threshold is met (no over-paying).
                               const full =
@@ -925,18 +1071,34 @@ export function ReactionTray({
                                 (isPowerCost
                                   ? (powerPaid?.total ?? 0) >= (powerCostValue ?? 0)
                                   : (selection ? paymentCardCount(selection) : 0) >= paymentTarget);
+                              const isExpertPay = payMode === "expert";
                               return (
-                                <button
-                                  aria-pressed={inThisPayment}
-                                  className={`trayChip ${inThisPayment ? "picked" : ""}`}
-                                  disabled={full}
-                                  key={`${payCardId}-${payIndex}`}
-                                  onClick={() => togglePayment(tile.handIndex, payIndex)}
-                                  type="button"
-                                >
-                                  {cardName(payCardId)}
-                                  {isPowerCost ? ` (+${powerValue})` : ""}
-                                </button>
+                                <span className="trayChipGroup" key={`${payCardId}-${payIndex}`}>
+                                  <button
+                                    aria-pressed={inThisPayment}
+                                    className={`trayChip ${inThisPayment ? "picked" : ""}`}
+                                    disabled={full}
+                                    onClick={() => togglePayment(tile.handIndex, payIndex)}
+                                    type="button"
+                                  >
+                                    {cardName(payCardId)}
+                                    {isPowerCost ? ` (+${powerValue})` : ""}
+                                  </button>
+                                  {inThisPayment && canExpertPay && (isExpertPay || crownsAvailable - crownsSelected > 0) ? (
+                                    <button
+                                      aria-pressed={isExpertPay}
+                                      className={`trayExpert ${isExpertPay ? "picked" : ""}`}
+                                      onClick={() =>
+                                        setCostCardMode(tile.handIndex, payIndex, isExpertPay ? "basic" : "expert")
+                                      }
+                                      title="Spend a crown to pay this source at its expert Power value"
+                                      type="button"
+                                    >
+                                      <Crown aria-hidden="true" size={13} />
+                                      <span>{isExpertPay ? `Expert +${payAddPower?.expertAmount}` : "Crown"}</span>
+                                    </button>
+                                  ) : null}
+                                </span>
                               );
                             })}
                             {/* Spell Book (house rule): one stashed Book Spell may help
