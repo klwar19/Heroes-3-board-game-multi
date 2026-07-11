@@ -19,6 +19,7 @@ import {
   isResetVoteApproved,
   resetVoteRequired,
   rulesetCardNote,
+  spellPowerValueOfCard,
   NEUTRAL_PLAYER_ID,
   type GameAction,
   type GameEvent,
@@ -621,13 +622,20 @@ export default function Home() {
     action: Extract<GameAction, { type: "PLAY_CARD" }>;
     label: string;
   } | null>(null);
-  /** A chosen play waiting for its discard-cost payment (cost card picks). */
+  /** A chosen play waiting for its discard/Power-cost payment (cost card picks). */
   const [pendingCostPlay, setPendingCostPlay] = useState<{
     action: Extract<GameAction, { type: "PLAY_CARD" }>;
     exact?: number;
     upTo?: number;
+    /** Power-value cost (View Air / Dimension Door / Sorrow-style map tiers). */
+    powerCost?: number;
     filter?: "spell" | "power-source";
     picks: number[];
+    /**
+     * Parallel to picks: "expert" values a Power statistic at expertAmount and
+     * spends a crown (map Power tiers). Index-aligned with `picks`.
+     */
+    pickModes: ("basic" | "expert")[];
     /**
      * "Discard first to use": when set, confirming the picker does NOT submit the
      * play — it banks the payment (see `armedCardPayment`) and arms this selection
@@ -3180,9 +3188,10 @@ export default function Home() {
     // was armed "discard first" gets its banked payment attached here.
     let outgoing = action;
 
-    // A play with a printed discard cost (Xyron's Inferno, "discard N: …"
-    // options) opens the cost picker first when the cost has not been paid yet.
-    // The reaction tray pays its own costs, so it always passes costCardIds.
+    // A play with a printed discard / Power cost (View Air tiers, Xyron's
+    // Inferno, "discard N: …" options) opens the cost picker first when the
+    // cost has not been paid yet. The reaction tray pays its own costs, so it
+    // always passes costCardIds.
     if (action.type === "PLAY_CARD" && !action.costCardIds) {
       const card = cardLibrary[action.cardId];
       const option =
@@ -3190,7 +3199,12 @@ export default function Home() {
           ? card.effect.options[action.optionIndex]
           : undefined;
       const cost = option?.cost;
-      if (cost && (cost.discardCards !== undefined || cost.discardCardsUpTo !== undefined)) {
+      if (
+        cost &&
+        (cost.discardCards !== undefined ||
+          cost.discardCardsUpTo !== undefined ||
+          cost.powerCost !== undefined)
+      ) {
         // "Discard first": a board-target play banks its discard when the card is
         // selected, so the payment is ready by the time the target is clicked —
         // attach it and play. Only fall back to the picker when the play was NOT
@@ -3203,8 +3217,10 @@ export default function Home() {
             action,
             exact: cost.discardCards,
             upTo: cost.discardCardsUpTo,
+            powerCost: cost.powerCost,
             filter: cost.costCardFilter,
-            picks: []
+            picks: [],
+            pickModes: []
           });
           return;
         }
@@ -3510,17 +3526,20 @@ export default function Home() {
   }
 
   /**
-   * Resolve a fully-paid discard-cost picker with an explicit set of picks. For a
-   * "discard first" arming (`armSelection` set) it BANKS the payment and arms the
-   * selection for board targeting (the play is sent later, when the target is
-   * clicked and submitAction re-attaches it); otherwise it submits straight away.
+   * Resolve a fully-paid discard/Power-cost picker with an explicit set of picks.
+   * For a "discard first" arming (`armSelection` set) it BANKS the payment and
+   * arms the selection for board targeting (the play is sent later, when the
+   * target is clicked and submitAction re-attaches it); otherwise it submits
+   * straight away.
    */
   const resolveCostPlay = (
     pending: NonNullable<typeof pendingCostPlay>,
     picks: number[],
+    pickModes: ("basic" | "expert")[],
     hand: string[]
   ) => {
     const costCardIds = picks.map((index) => hand[index]);
+    const costCardModes = pickModes.some((mode) => mode === "expert") ? pickModes : undefined;
     const armSelection = pending.armSelection;
     if (armSelection) {
       setArmedCardPayment({
@@ -3530,34 +3549,52 @@ export default function Home() {
       });
       setSelectedCardAction(armSelection);
     } else {
-      void submitAction({ ...pending.action, costCardIds });
+      void submitAction({
+        ...pending.action,
+        costCardIds,
+        ...(costCardModes ? { costCardModes } : {})
+      });
     }
     setPendingCostPlay(null);
   };
 
-  /** Toggle a hand card as payment for the pending discard-cost play. */
+  /** Toggle a hand card as payment for the pending discard/Power-cost play. */
   const toggleCostPick = (index: number, hand: string[]) => {
     const pending = pendingCostPlay;
     if (!pending) {
       return;
     }
     const has = pending.picks.includes(index);
-    const max = pending.exact ?? pending.upTo ?? 0;
-    if (!has && pending.picks.length >= max) {
+    // Power-value costs have no fixed card count — pick any number of sources.
+    const max =
+      pending.powerCost !== undefined
+        ? hand.length
+        : (pending.exact ?? pending.upTo ?? 0);
+    if (!has && pending.picks.length >= max && pending.powerCost === undefined) {
       return;
     }
-    const nextPicks = has ? pending.picks.filter((value) => value !== index) : [...pending.picks, index];
+    let nextPicks: number[];
+    let nextModes: ("basic" | "expert")[];
+    if (has) {
+      const at = pending.picks.indexOf(index);
+      nextPicks = pending.picks.filter((value) => value !== index);
+      nextModes = pending.pickModes.filter((_, i) => i !== at);
+    } else {
+      nextPicks = [...pending.picks, index];
+      nextModes = [...pending.pickModes, "basic"];
+    }
 
     // "Click to discard, then aim": picking the final card of an EXACT discard
     // cost in arming mode banks the payment and starts aiming immediately — no
     // separate "Discard, then aim" click (Frost Ring's one-card discard is the
     // common case). An up-to cost still confirms explicitly (fewer may be meant).
+    // Power-value costs never auto-arm (exact count is undefined).
     if (shouldAutoArmOnPick(pending, nextPicks.length)) {
-      resolveCostPlay(pending, nextPicks, hand);
+      resolveCostPlay(pending, nextPicks, nextModes, hand);
       return;
     }
 
-    setPendingCostPlay({ ...pending, picks: nextPicks });
+    setPendingCostPlay({ ...pending, picks: nextPicks, pickModes: nextModes });
   };
 
   /**
@@ -3569,7 +3606,7 @@ export default function Home() {
     if (!pendingCostPlay) {
       return;
     }
-    resolveCostPlay(pendingCostPlay, pendingCostPlay.picks, hand);
+    resolveCostPlay(pendingCostPlay, pendingCostPlay.picks, pendingCostPlay.pickModes, hand);
   };
 
   /**
@@ -3592,8 +3629,10 @@ export default function Home() {
         armSelection: action,
         exact: cost.discardCards,
         upTo: cost.discardCardsUpTo,
+        powerCost: cost.powerCost,
         filter: cost.costCardFilter,
-        picks: []
+        picks: [],
+        pickModes: []
       });
       return;
     }
@@ -4259,13 +4298,20 @@ export default function Home() {
         return;
       }
       const cost = optionCostOf(legal.action);
-      if (cost && (cost.discardCards !== undefined || cost.discardCardsUpTo !== undefined)) {
+      if (
+        cost &&
+        (cost.discardCards !== undefined ||
+          cost.discardCardsUpTo !== undefined ||
+          cost.powerCost !== undefined)
+      ) {
         setPendingCostPlay({
           action: legal.action,
           exact: cost.discardCards,
           upTo: cost.discardCardsUpTo,
+          powerCost: cost.powerCost,
           filter: cost.costCardFilter,
-          picks: []
+          picks: [],
+          pickModes: []
         });
         setOpenHandIndex(null);
         return;
@@ -4282,6 +4328,9 @@ export default function Home() {
         return;
       }
       const costCardIds = pendingCostPlay.picks.map((index) => handCards[index]);
+      const costCardModes = pendingCostPlay.pickModes.some((mode) => mode === "expert")
+        ? pendingCostPlay.pickModes
+        : undefined;
       const armSelection = pendingCostPlay.armSelection;
       if (armSelection) {
         // "Discard first": bank the payment and arm targeting (never submit here).
@@ -4294,9 +4343,41 @@ export default function Home() {
         setPendingCostPlay(null);
         return;
       }
-      void submitAction({ ...pendingCostPlay.action, costCardIds });
+      void submitAction({
+        ...pendingCostPlay.action,
+        costCardIds,
+        ...(costCardModes ? { costCardModes } : {})
+      });
       setPendingCostPlay(null);
     };
+
+    // Live Power total for the map cost picker (View Air / Dimension Door tiers).
+    const pendingPowerTotal = (() => {
+      if (!pendingCostPlay?.powerCost) {
+        return 0;
+      }
+      const schools = cardLibrary[pendingCostPlay.action.cardId]?.spellSchools ?? [];
+      return pendingCostPlay.picks.reduce((sum, handIndex, pickIndex) => {
+        const payId = handCards[handIndex];
+        const mode = pendingCostPlay.pickModes[pickIndex] ?? "basic";
+        return sum + spellPowerValueOfCard(cardLibrary[payId], schools, mode);
+      }, 0);
+    })();
+    const pendingPowerOk =
+      pendingCostPlay?.powerCost === undefined ||
+      (pendingPowerTotal >= pendingCostPlay.powerCost &&
+        // No wasteful over-payment: every picked card must be necessary.
+        pendingCostPlay.picks.every((_, pickIndex) => {
+          const schools = cardLibrary[pendingCostPlay.action.cardId]?.spellSchools ?? [];
+          const mode = pendingCostPlay.pickModes[pickIndex] ?? "basic";
+          const value = spellPowerValueOfCard(cardLibrary[handCards[pendingCostPlay.picks[pickIndex]]], schools, mode);
+          return pendingPowerTotal - value < (pendingCostPlay.powerCost ?? 0);
+        }));
+    const viewerCrownsLeft = viewer
+      ? viewer.limits.expertUses +
+        (viewer.combatStats.expertUseBonusThisRound ?? 0) -
+        viewer.combatStats.expertUsesSpentThisRound
+      : 0;
 
     // The Town window opens only for a seated viewer who actually owns a town.
     const viewerTown = isSeated
@@ -4612,19 +4693,73 @@ export default function Home() {
                 <div className="handButtons costPicker" aria-label="Pay the card cost">
                   <span>
                     {cardName(pendingCostPlay.action.cardId)}:{" "}
-                    {pendingCostPlay.exact !== undefined
-                      ? `pick exactly ${pendingCostPlay.exact} card${pendingCostPlay.exact === 1 ? "" : "s"} to discard`
-                      : `pick up to ${pendingCostPlay.upTo} card${(pendingCostPlay.upTo ?? 0) === 1 ? "" : "s"} to discard`}
+                    {pendingCostPlay.powerCost !== undefined
+                      ? `pay ${pendingCostPlay.powerCost} Power — ${pendingPowerTotal}/${pendingCostPlay.powerCost}`
+                      : pendingCostPlay.exact !== undefined
+                        ? `pick exactly ${pendingCostPlay.exact} card${pendingCostPlay.exact === 1 ? "" : "s"} to discard`
+                        : `pick up to ${pendingCostPlay.upTo} card${(pendingCostPlay.upTo ?? 0) === 1 ? "" : "s"} to discard`}
                     {pendingCostPlay.filter === "spell"
                       ? " (Spell cards only)"
                       : pendingCostPlay.filter === "power-source"
-                        ? " (Power statistics or Spells)"
+                        ? " (Power statistics or Spells; crown = expert Power)"
                         : ""}{" "}
-                    — {pendingCostPlay.picks.length} picked
+                    {pendingCostPlay.powerCost === undefined
+                      ? `— ${pendingCostPlay.picks.length} picked`
+                      : null}
                   </span>
+                  {pendingCostPlay.powerCost !== undefined && pendingCostPlay.picks.length > 0 ? (
+                    <div className="costPickerModes" aria-label="Expert Power payments">
+                      {pendingCostPlay.picks.map((handIndex, pickIndex) => {
+                        const payId = handCards[handIndex];
+                        const payCard = cardLibrary[payId];
+                        const addPower =
+                          payCard?.effect.type === "ADD_SPELL_POWER"
+                            ? payCard.effect
+                            : payCard?.effect.type === "CHOOSE_ONE"
+                              ? payCard.effect.options.find((o) => o.effect.type === "ADD_SPELL_POWER")?.effect
+                              : undefined;
+                        const canExpert =
+                          addPower?.type === "ADD_SPELL_POWER" &&
+                          addPower.expertAmount !== undefined &&
+                          (pendingCostPlay.pickModes[pickIndex] === "expert" || viewerCrownsLeft > 0);
+                        if (!canExpert) {
+                          return null;
+                        }
+                        const isExpert = pendingCostPlay.pickModes[pickIndex] === "expert";
+                        return (
+                          <button
+                            className={`commandButton ${isExpert ? "primary" : "ghost"}`}
+                            key={`expert-pay-${handIndex}`}
+                            onClick={() => {
+                              setPendingCostPlay((current) => {
+                                if (!current) {
+                                  return current;
+                                }
+                                const nextModes = [...current.pickModes];
+                                nextModes[pickIndex] = isExpert ? "basic" : "expert";
+                                return { ...current, pickModes: nextModes };
+                              });
+                            }}
+                            type="button"
+                          >
+                            {isExpert ? "Expert" : "Basic"} {cardName(payId)}
+                            {addPower?.type === "ADD_SPELL_POWER"
+                              ? ` (+${isExpert ? addPower.expertAmount : addPower.amount})`
+                              : ""}
+                            {isExpert ? " · 1 crown" : ""}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : null}
                   <button
                     className="commandButton primary"
-                    disabled={pendingCostPlay.exact !== undefined && pendingCostPlay.picks.length !== pendingCostPlay.exact}
+                    disabled={
+                      pendingCostPlay.powerCost !== undefined
+                        ? !pendingPowerOk
+                        : pendingCostPlay.exact !== undefined &&
+                          pendingCostPlay.picks.length !== pendingCostPlay.exact
+                    }
                     onClick={confirmCostPlay}
                     type="button"
                   >
@@ -4697,13 +4832,25 @@ export default function Home() {
                                 return current;
                               }
                               const has = current.picks.includes(index);
-                              const max = current.exact ?? current.upTo ?? 0;
-                              if (!has && current.picks.length >= max) {
+                              const max =
+                                current.powerCost !== undefined
+                                  ? handCards.length
+                                  : (current.exact ?? current.upTo ?? 0);
+                              if (!has && current.picks.length >= max && current.powerCost === undefined) {
                                 return current;
+                              }
+                              if (has) {
+                                const at = current.picks.indexOf(index);
+                                return {
+                                  ...current,
+                                  picks: current.picks.filter((value) => value !== index),
+                                  pickModes: current.pickModes.filter((_, i) => i !== at)
+                                };
                               }
                               return {
                                 ...current,
-                                picks: has ? current.picks.filter((value) => value !== index) : [...current.picks, index]
+                                picks: [...current.picks, index],
+                                pickModes: [...current.pickModes, "basic"]
                               };
                             });
                             return;

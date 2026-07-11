@@ -3159,17 +3159,33 @@ export function processPendingVisit(state: GameState): void {
         const knowledgeIndex = player?.hand.indexOf(step.knowledgeCardId) ?? -1;
         const spellIndex = player?.discard.lastIndexOf(step.spellCardId) ?? -1;
         const ongoing = player?.ongoingCards?.find((entry) => entry.cardId === step.spellCardId);
-
-        // A serialized/stale prompt is harmless: only pay Knowledge when the
-        // card, crown and spell destination are all still present.
-        if (!player || !effect || knowledgeIndex === -1 || expertUsesAvailable(player) <= 0 || (spellIndex === -1 && !ongoing)) {
+        const mode = step.mode ?? "basic";
+        // Expert spends a crown; Empowered / basic do not. Stale prompts that
+        // need a crown no longer available simply no-op.
+        const needsCrown = mode === "expert" && !effect?.basicSpellLimitBonus;
+        if (
+          !player ||
+          !effect ||
+          knowledgeIndex === -1 ||
+          (needsCrown && expertUsesAvailable(player) <= 0) ||
+          (spellIndex === -1 && !ongoing)
+        ) {
           break;
         }
 
         player.hand.splice(knowledgeIndex, 1);
         player.discard.push(step.knowledgeCardId);
-        player.combatStats.expertUsesSpentThisRound += 1;
-        player.combatStats.spellLimitBonusThisRound += effect.expertSpellLimitBonus ?? 0;
+        if (needsCrown) {
+          player.combatStats.expertUsesSpentThisRound += 1;
+        }
+        // Limit bonus: expert side of regular Knowledge, or always for Empowered.
+        const limitBonus =
+          mode === "expert"
+            ? (effect.expertSpellLimitBonus ?? 0)
+            : (effect.basicSpellLimitBonus ?? 0);
+        if (limitBonus > 0) {
+          player.combatStats.spellLimitBonusThisRound += limitBonus;
+        }
 
         if (ongoing) {
           // Fly / Water Walk and any future lasting map spell cannot be cast a
@@ -3191,7 +3207,7 @@ export function processPendingVisit(state: GameState): void {
           playerId: visit.playerId,
           cardId: step.knowledgeCardId,
           timing: knowledge.timing,
-          mode: "expert",
+          mode,
           optionLabel: `Recall ${cardLibrary[step.spellCardId]?.name ?? step.spellCardId}`
         });
         break;

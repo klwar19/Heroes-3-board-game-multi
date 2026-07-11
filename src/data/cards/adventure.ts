@@ -1162,9 +1162,11 @@ export const adventureCards: CardLibrary = {
     // Printed card: "+1 Power, then draw 1 card" (expert +2). On a SPELL_CAST it
     // adds the Power to that cast (and the draw can refresh another Power card
     // into the same window). Like Offense/Armorer's ADD_COMBAT_STAT draw-rider,
-    // it may also be played outside its window (on the map) purely for the draw:
-    // the +Power fizzles with no cast to land on (engine: legal-actions drawOnly
-    // / isMapPlayableEffect + the reducer's outside-combat draw handler).
+    // it may also be played outside its window purely for the draw — on the map
+    // (Power fizzles) OR during your own combat activation (draw-only; if the
+    // unit has not moved yet, the Power banks onto the next spell cast — wiki
+    // "play Sorcery first to draw, then cast"). Engine: legal-actions drawOnly /
+    // combatDrawOnly + playCard bank pendingDrawRiderSpellPower.
     trigger: {
       event: "SPELL_CAST_STARTED",
       controller: "self"
