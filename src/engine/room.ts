@@ -529,6 +529,13 @@ export function assignSeat(state: GameState, action: Extract<GameAction, { type:
   }
   assertValidSeat(state, action.seat);
 
+  // Single-player: the computer seats are never sit-able. A member seated onto
+  // p2+ would break the one-human invariant — both the member AND the computer
+  // runner would then act for the same seat. Only p1 (or observer) is legal.
+  if (state.sessionMode === "single-player" && action.seat !== "observer" && action.seat !== "p1") {
+    throw new Error("Computer seats cannot be taken in a single-player game.");
+  }
+
   // Authority. The host may seat ANY member into ANY seat (bumping whoever holds
   // it). A non-host may only SELF-SERVE: claim an OPEN seat, or step down to
   // observer, for their OWN membership — they can never move another player, nor

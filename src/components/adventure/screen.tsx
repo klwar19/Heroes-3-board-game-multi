@@ -5230,8 +5230,44 @@ function GameOptionsPanel({
 
       {(() => {
         const scenario = scenarioDefinitions[options.scenarioId];
-        const min = scenario?.minPlayers ?? 2;
         const max = Math.min(scenario?.maxPlayers ?? 2, scenario?.layout.starts.length ?? 2);
+        // Single-player: the seat count is 1 human + N computers, changed only
+        // through the dedicated action (the engine reasserts the controller
+        // invariant on every resize — no resize can mint a human opponent).
+        if (state.sessionMode === "single-player") {
+          const current = lobby.seats.length - 1;
+          const counts: number[] = [];
+          for (let n = 1; n < max; n += 1) {
+            counts.push(n);
+          }
+          return counts.length > 1 ? (
+            <div className="optionRow">
+              <small title="How many computer opponents this game seats — they pick their own factions after you pick yours">
+                Computer opponents
+              </small>
+              <div className="optionButtons">
+                {counts.map((count) => (
+                  <button
+                    aria-pressed={current === count}
+                    className={current === count ? "selected" : ""}
+                    key={count}
+                    onClick={() =>
+                      onAction({ type: "SET_COMPUTER_OPPONENTS", playerId: viewerPlayerId, count })
+                    }
+                    title={`Play against ${count} computer opponent${count === 1 ? "" : "s"}`}
+                    type="button"
+                  >
+                    {count === 1 ? "1 computer" : `${count} computers`}
+                  </button>
+                ))}
+              </div>
+              <small className="optionHint">
+                Playing with computer — every other seat is a computer opponent; nobody else can join this game.
+              </small>
+            </div>
+          ) : null;
+        }
+        const min = scenario?.minPlayers ?? 2;
         const seatCount = lobby.seats.length;
         const counts: number[] = [];
         for (let n = min; n <= max; n += 1) {
@@ -6357,6 +6393,7 @@ export function SetupLobbyScreen({
   const mySeat = lobby.seats.find((seat) => seat.playerId === viewerPlayerId);
   const allChosen = lobby.seats.every((seat) => seat.factionId && seat.heroDefId);
   const scenarioName = scenarioDefinitions[lobby.options.scenarioId]?.name ?? lobby.scenarioId;
+  const singlePlayer = state.sessionMode === "single-player";
 
   const tabs: { id: SetupTab; label: string }[] = [
     { id: "heroes", label: "Heroes & draft" },
@@ -6367,11 +6404,19 @@ export function SetupLobbyScreen({
     <section className="setupLobby" aria-label="Map setup">
       <header>
         <h2>Map setup — {scenarioName}</h2>
-        <p>
-          Pick a setup format (free pick, draft + ban, full random, or random with choice), then claim a town and
-          hero. Click any hero’s <Info aria-hidden="true" size={12} /> for its stats, ability and specialties. The
-          table also sets the game options on the second tab.
-        </p>
+        {singlePlayer ? (
+          <p>
+            <strong>Playing with computer.</strong> Pick a setup format, then claim your town and hero — the
+            computer opponents complete their own picks right after yours. Click any hero’s{" "}
+            <Info aria-hidden="true" size={12} /> for its stats; the game options live on the second tab.
+          </p>
+        ) : (
+          <p>
+            Pick a setup format (free pick, draft + ban, full random, or random with choice), then claim a town and
+            hero. Click any hero’s <Info aria-hidden="true" size={12} /> for its stats, ability and specialties. The
+            table also sets the game options on the second tab.
+          </p>
+        )}
       </header>
 
       <SetupCheatWarning state={state} viewerPlayerId={viewerPlayerId} />
@@ -6380,9 +6425,16 @@ export function SetupLobbyScreen({
         {lobby.seats.map((seat) => {
           const faction = seat.factionId ? coreFactionDefinitions[seat.factionId] : null;
           const hero = seat.heroDefId ? coreHeroDefinitions[seat.heroDefId] : null;
+          const isComputer = state.controllers?.[seat.playerId]?.kind === "computer";
           return (
             <div className={`lobbySeat ${seat.playerId === viewerPlayerId ? "mine" : ""}`} key={seat.playerId}>
-              <strong>{state.players[seat.playerId]?.name ?? seat.name}</strong>
+              <strong>
+                {state.players[seat.playerId]?.name ?? seat.name}
+                {isComputer ? <span className="computerSeatBadge">Computer</span> : null}
+                {singlePlayer && seat.playerId === viewerPlayerId ? (
+                  <span className="computerSeatBadge you">You</span>
+                ) : null}
+              </strong>
               {faction && hero ? (
                 <small>
                   {faction.name} — {hero.name} ({hero.class})

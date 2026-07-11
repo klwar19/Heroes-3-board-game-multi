@@ -48,6 +48,48 @@ describe("single-player privacy foundation", () => {
     expect(intruder.state.room?.members).toHaveLength(1);
   });
 
+  it("never lets a member take a computer seat (the one-human invariant)", () => {
+    const state = createAdventureLobbyState({
+      seed: "privacy-seats",
+      sessionMode: "single-player",
+      computerOpponents: 2,
+    });
+    state.room = {
+      hosted: true,
+      hostClientId: null,
+      members: [],
+      visibility: "private",
+      ranked: false,
+    };
+    const joined = applyAction(
+      state,
+      { type: "JOIN_ROOM", clientId: "owner-client", name: "Owner" },
+      { actorClientId: "owner-client" },
+    );
+    expect(joined.errors).toEqual([]);
+
+    const stolen = applyAction(
+      joined.state,
+      { type: "ASSIGN_SEAT", clientId: "owner-client", targetClientId: "owner-client", seat: "p2" },
+      { actorClientId: "owner-client" },
+    );
+    expect(stolen.errors[0]?.message).toContain("Computer seats cannot be taken");
+    // CONTROL: stepping down to observer and retaking the human seat both work.
+    const observer = applyAction(
+      joined.state,
+      { type: "ASSIGN_SEAT", clientId: "owner-client", targetClientId: "owner-client", seat: "observer" },
+      { actorClientId: "owner-client" },
+    );
+    expect(observer.errors).toEqual([]);
+    const retaken = applyAction(
+      observer.state,
+      { type: "ASSIGN_SEAT", clientId: "owner-client", targetClientId: "owner-client", seat: "p1" },
+      { actorClientId: "owner-client" },
+    );
+    expect(retaken.errors).toEqual([]);
+    expect(retaken.state.room?.members[0]?.seat).toBe("p1");
+  });
+
   it("removes a private single-player record from the shared lobby registry", () => {
     const state = createAdventureLobbyState({
       seed: "privacy-registry",

@@ -25,11 +25,10 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("/menu (main menu, guest-only build)", () => {
-  it("greys out Single player and links Multiplayer, Battle Test, Map Designer, Hall of Fame and Credits", () => {
+  it("links Single player, Multiplayer, Battle Test, Map Designer, Hall of Fame and Credits", () => {
     render(<MenuPage />);
 
-    const single = screen.getByRole("button", { name: /Single player/i });
-    expect(single).toHaveProperty("disabled", true);
+    expect(screen.getByRole("link", { name: /Single player/i }).getAttribute("href")).toBe("/single-player");
 
     expect(screen.getByRole("link", { name: /Multiplayer/i }).getAttribute("href")).toBe("/play");
     // The shared Battle Test arenas and Map Designer are first-class menu destinations.

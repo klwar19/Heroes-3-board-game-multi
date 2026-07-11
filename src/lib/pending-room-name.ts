@@ -183,3 +183,57 @@ export function takePendingRoomMode(): PendingRoomMode | null {
     return null;
   }
 }
+
+/**
+ * One-shot handoff of a freshly created SINGLE-PLAYER room's computer-opponent
+ * count. The built-in backend seeds the whole mode server-side at creation,
+ * but PartyKit creates rooms implicitly on first connect — so the creating
+ * tab's socket URL carries `?singlePlayer=<count>`, which the party honors
+ * ONLY while the room has no snapshot at all (fresh, memberless,
+ * unconfigured). Peeked (not cleared) when the socket query is built, so a
+ * failed first connect can retry; it dies with the tab's sessionStorage and is
+ * ignored by the server for any established room.
+ */
+const SINGLE_PLAYER_KEY = "homm3bg.pendingSinglePlayer";
+
+export type PendingSinglePlayer = { roomId: string; computerOpponents: number };
+
+export function savePendingSinglePlayer(roomId: string, computerOpponents: number): void {
+  if (typeof window === "undefined" || !roomId) {
+    return;
+  }
+  try {
+    window.sessionStorage.setItem(
+      SINGLE_PLAYER_KEY,
+      JSON.stringify({ roomId, computerOpponents } satisfies PendingSinglePlayer)
+    );
+  } catch {
+    /* Private mode etc. — the room simply opens as a normal lobby. */
+  }
+}
+
+/** Read WITHOUT clearing; validated against the room being connected to. */
+export function peekPendingSinglePlayer(roomId: string): PendingSinglePlayer | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  try {
+    const raw = window.sessionStorage.getItem(SINGLE_PLAYER_KEY);
+    if (!raw) {
+      return null;
+    }
+    const parsed: unknown = JSON.parse(raw);
+    if (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      (parsed as PendingSinglePlayer).roomId === roomId &&
+      typeof (parsed as PendingSinglePlayer).computerOpponents === "number" &&
+      (parsed as PendingSinglePlayer).computerOpponents >= 1
+    ) {
+      return parsed as PendingSinglePlayer;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}

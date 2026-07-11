@@ -24,8 +24,8 @@ function MenuNavIcon({ icon }: { icon: string }) {
 }
 
 /**
- * Main menu: the hub between login and the multiplayer lobby. Single player is
- * deliberately greyed out (out of scope by design, plan §6).
+ * Main menu: the hub between login and the multiplayer lobby. Single player
+ * creates a private table against computer opponents (/single-player).
  *
  * Guest mode (accounts flag off): unchanged — a display-name footer with a
  * change-name link, no Logout. Accounts mode: requires a session (redirects to
@@ -97,18 +97,13 @@ export default function MenuPage() {
       }
     >
       <nav aria-label="Main menu" className="menuNav">
-        <button
-          className="menuNavButton"
-          disabled
-          title="Not available yet — games vs AI are outside the multiplayer foundation"
-          type="button"
-        >
+        <Link className="menuNavButton" href="/single-player">
           <MenuNavIcon icon={SKILL_ICONS.attack} />
           <span className="menuNavText">
             <span className="menuNavLabel">Single player</span>
-            <small>Coming later — this fan project is multiplayer first</small>
+            <small>Playing with computer — a private table vs 1–3 computer opponents</small>
           </span>
-        </button>
+        </Link>
         <Link className="menuNavButton" href="/play">
           <MenuNavIcon icon={SKILL_ICONS.leadership} />
           <span className="menuNavText">
