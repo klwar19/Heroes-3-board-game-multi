@@ -34,10 +34,12 @@ export async function fetchPresence(): Promise<PresenceEntry[]> {
 
 /**
  * Send one heartbeat and get back the fresh online list (so a lobby poll can do
- * both in one round trip). Resolves to an empty list on any failure — presence
- * is decorative and must never break the surface that calls it.
+ * both in one round trip). Resolves to NULL on any failure — never an empty
+ * list, so a transient network hiccup can't be mistaken for "nobody online"
+ * (the lobby panel would flash empty for a poll cycle). Presence is decorative
+ * and must never break the surface that calls it.
  */
-export async function sendPresence(input: PresenceHeartbeatInput): Promise<PresenceEntry[]> {
+export async function sendPresence(input: PresenceHeartbeatInput): Promise<PresenceEntry[] | null> {
   try {
     const response = await fetch("/api/lobby-presence", {
       method: "POST",
@@ -45,12 +47,12 @@ export async function sendPresence(input: PresenceHeartbeatInput): Promise<Prese
       body: JSON.stringify(input)
     });
     if (!response.ok) {
-      return [];
+      return null;
     }
     const data = (await response.json()) as { players?: PresenceEntry[] };
     return data.players ?? [];
   } catch {
-    return [];
+    return null;
   }
 }
 

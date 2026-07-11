@@ -3446,8 +3446,18 @@ export default function Home() {
     };
     beat();
     const intervalId = window.setInterval(beat, 12000);
+    // Background tabs throttle setInterval to >= 60s; the presence TTL absorbs
+    // that, and beating again the moment the tab is visible snaps the board
+    // back to fresh data instead of waiting for the next stale tick.
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        beat();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", onVisible);
       // Drop off promptly on leaving the room (back to lobby / new room / tab
       // close); the lobby browser re-registers us as idle within its next poll.
       leavePresence(clientId);

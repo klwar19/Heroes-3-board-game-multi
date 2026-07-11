@@ -56,8 +56,27 @@ export type PresenceHeartbeat = {
   userId?: string;
 };
 
-/** An entry stops counting as online this long after its last heartbeat. */
-export const PRESENCE_TTL_MS = 30_000;
+/**
+ * An entry stops counting as online this long after its last heartbeat.
+ *
+ * Must comfortably exceed the browsers' background-tab timer throttling:
+ * a hidden tab's setInterval is clamped to >= 60s (Chrome's intensive
+ * throttling), so with a shorter TTL every player whose game tab loses focus
+ * expires and re-appears on each late beat — the "online keeps blinking" bug.
+ * Clean departures still drop instantly via the leave beacon.
+ */
+export const PRESENCE_TTL_MS = 120_000;
+
+/**
+ * Room info asserted by an in-room heartbeat outlives IDLE (lobby-tab) beats
+ * this long. A signed-in player with BOTH the game and the lobby open beats
+ * from two tabs into ONE account-keyed entry; without stickiness the entry
+ * flip-flops between "in <room>" and "in the lobby" every few seconds (and its
+ * clientId flips with it), which the room roster renders as online/away
+ * blinking. Covers the in-room beat interval (12s) even under background-tab
+ * throttling (>= 60s). The same tab reporting idle clears the room at once.
+ */
+export const ROOM_PRESENCE_STICKY_MS = 90_000;
 
 /** Hard cap on tracked entries (bounds memory against clientId spam). */
 export const MAX_PRESENCE_ENTRIES = 1000;
@@ -66,7 +85,12 @@ const MAX_PRESENCE_NAME_LENGTH = 24;
 const MAX_PRESENCE_ROOM_NAME_LENGTH = 40;
 const MAX_ID_LENGTH = 80;
 
-type StoredEntry = PresenceEntry & { userId?: string; at: number };
+type StoredEntry = PresenceEntry & {
+  userId?: string;
+  at: number;
+  /** When an in-ROOM heartbeat last asserted the room fields (stickiness). */
+  roomAt?: number;
+};
 
 export class LobbyPresenceError extends Error {
   constructor(message: string) {
@@ -112,18 +136,45 @@ export class LobbyPresenceBoard {
     // the old key; drop it so the same person never shows twice.
     if (userId) {
       this.entries.delete(clientId);
+    } else {
+      // The mirror: this tab was verified a moment ago (signed out, or the
+      // session cookie lapsed). Sweep the account-keyed entry it owned so the
+      // SAME person never shows twice — once as a player, once as a guest.
+      for (const [staleKey, stale] of this.entries) {
+        if (staleKey !== clientId && stale.clientId === clientId) {
+          this.entries.delete(staleKey);
+        }
+      }
     }
 
-    const entry: StoredEntry = {
-      clientId,
-      name,
-      verified: Boolean(userId),
-      ...(userId ? { userId } : {}),
-      ...(roomId ? { roomId } : {}),
-      ...(roomName ? { roomName } : {}),
-      ...(roomStatus ? { roomStatus } : {}),
-      at: now
-    };
+    const existing = this.entries.get(key);
+    // Room stickiness: an IDLE beat from a DIFFERENT tab (the lobby browser)
+    // must not strip a recent in-room beat's room fields — the account entry
+    // would flip-flop "in <room>" / "in the lobby" as the two tabs alternate.
+    // The room tab's clientId is kept too, so the room roster's liveness match
+    // stays stable and a lobby-tab leave can't knock the game presence off.
+    // The SAME tab reporting idle genuinely left its room and clears at once.
+    const stickyRoom =
+      !roomId &&
+      existing?.roomId &&
+      existing.clientId !== clientId &&
+      existing.roomAt !== undefined &&
+      now - existing.roomAt <= ROOM_PRESENCE_STICKY_MS
+        ? existing
+        : null;
+
+    const entry: StoredEntry = stickyRoom
+      ? { ...stickyRoom, name, verified: Boolean(userId), at: now }
+      : {
+          clientId,
+          name,
+          verified: Boolean(userId),
+          ...(userId ? { userId } : {}),
+          ...(roomId ? { roomId, roomAt: now } : {}),
+          ...(roomName ? { roomName } : {}),
+          ...(roomStatus ? { roomStatus } : {}),
+          at: now
+        };
     this.entries.set(key, entry);
 
     // Bound memory: past the cap, evict the least-recently-seen entries.
@@ -139,13 +190,19 @@ export class LobbyPresenceBoard {
 
   /**
    * Explicitly drop a player (a clean "left the lobby" / tab close). Idempotent.
-   * Matches by clientId OR userId so either identifier removes the right entry.
+   *
+   * A leave only removes the entry the leaving TAB owns (its clientId is the
+   * entry's latest). It deliberately does NOT delete by userId alone: a
+   * signed-in player closing their /play lobby tab while their game tab is
+   * still beating from a room would otherwise vanish from the board until the
+   * next room beat re-adds them — another online/offline blink.
    */
   remove(clientId: string | undefined, userId?: string): void {
-    if (userId) {
-      this.entries.delete(userId);
-    }
     if (!clientId) {
+      // No tab identity at all — fall back to dropping the account entry.
+      if (userId) {
+        this.entries.delete(userId);
+      }
       return;
     }
     this.entries.delete(clientId);

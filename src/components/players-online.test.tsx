@@ -11,9 +11,11 @@ const bob: PresenceEntry = { clientId: "cB", name: "Bob", verified: false };
 const me: PresenceEntry = { clientId: "me", name: "Me", verified: true };
 
 describe("PlayersOnline", () => {
-  it("shows an empty state when nobody is online", () => {
+  it("shows a loading state on an empty list (the viewer's own beat would list THEM)", () => {
     render(<PlayersOnline players={[]} clientId="me" onJoinRoom={vi.fn()} onInvite={vi.fn()} />);
-    expect(screen.getByText(/nobody else is online/i)).toBeTruthy();
+    // A loaded list always contains at least the viewer (their heartbeat adds
+    // them), so empty means "first poll pending" — never claim nobody is online.
+    expect(screen.getByText(/checking who is online/i)).toBeTruthy();
   });
 
   it("labels a verified account by name and a guest as 'guest — name' when accounts are ON", () => {

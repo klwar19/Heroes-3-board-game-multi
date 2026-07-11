@@ -36,11 +36,15 @@ export function PlayersOnline({
       <header className="playersOnlineHeader">
         <Users aria-hidden="true" size={15} />
         <span>Players online</span>
+        <span className="lobbyLiveDot" aria-hidden="true" />
         <small className="playersOnlineCount">{players.length}</small>
       </header>
 
       {players.length === 0 ? (
-        <p className="playersOnlineEmpty">Nobody else is online right now.</p>
+        // The viewer's own heartbeat always puts THEM in a loaded list, so an
+        // empty list means the first poll hasn't answered yet — never claim
+        // "nobody online" while we simply don't know.
+        <p className="playersOnlineEmpty">Checking who is online…</p>
       ) : (
         <ul className="playersOnlineList">
           {players.map((player) => {
