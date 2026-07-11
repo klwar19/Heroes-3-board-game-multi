@@ -652,8 +652,9 @@ function warlockDigSpecialty(level: 1 | 6, count: number): CardLibrary[string] {
       type: "CHOOSE_ONE",
       options: [
         {
+          // Printed Instant card-manipulation → playable on the map AND
+          // mid-Combat (see instantSideAllowedInCombat); no `mapOnly`.
           label: `Dig ${count} cards; keep Spells and Specialties`,
-          mapOnly: true,
           effect: { type: "DECK_DIG_KEEP_MATCHING", count, filter: "spell-or-specialty" }
         }
       ]
@@ -801,13 +802,14 @@ function scoutingSpecialty(level: 1 | 4 | 6, filter: "ability" | "removable", co
       type: "CHOOSE_ONE",
       options: [
         {
+          // Printed Instant card-manipulation → playable on the map AND
+          // mid-Combat (see instantSideAllowedInCombat); no `mapOnly`. The reducer
+          // opens the remove-then-Search choice inline during a live combat.
           label: `Remove ${what} to Search (${count}) ${deck}`,
-          mapOnly: true,
           effect: { type: "REMOVE_HAND_CARD_THEN_SEARCH", count, filter, tieredReach: filter === "removable" }
         },
         {
           label: `Remove ${what} to Search (${count}) ${deck}; then Remove this Specialty card`,
-          mapOnly: true,
           cost: { removeSelf: true },
           effect: { type: "REMOVE_HAND_CARD_THEN_SEARCH", count, filter, tieredReach: filter === "removable" }
         }
@@ -3518,14 +3520,14 @@ export const adventureCards: CardLibrary = {
       type: "CHOOSE_ONE",
       options: [
         {
+          // Printed Instant card-manipulation → playable on the map AND
+          // mid-Combat (see instantSideAllowedInCombat); no `mapOnly`.
           label: "Remove 1 card: draw the top Artifact card",
-          mapOnly: true,
           cost: { discardCards: 1, removeCostCards: true },
           effect: { type: "DRAW_TOP_ARTIFACT" }
         },
         {
           label: "Discard 3 cards: draw the top Artifact card",
-          mapOnly: true,
           cost: { discardCards: 3 },
           effect: { type: "DRAW_TOP_ARTIFACT" }
         }
@@ -3541,8 +3543,9 @@ export const adventureCards: CardLibrary = {
 
   // Adrienne (Fortress, Witch): the Fire Magic specialist. I/VI add +1/+2 Power
   // to every Fire-school Spell she casts for the Combat (SPELL_SCHOOL_POWER_BONUS
-  // via CREATE_ACTIVE_EFFECT); IV is a map play that Searches (3) her deck and
-  // shuffles her discard pile back in (SEARCH_DECK_THEN_RESHUFFLE).
+  // via CREATE_ACTIVE_EFFECT); IV is a printed Instant that Searches (3) her deck
+  // and shuffles her discard pile back in (SEARCH_DECK_THEN_RESHUFFLE) — playable
+  // on the map AND mid-Combat (instantSideAllowedInCombat).
   "specialty.adrienne.1": fireMagicSpecialty(1, 1),
   "specialty.adrienne.4": {
     id: "specialty.adrienne.4",
@@ -3561,8 +3564,10 @@ export const adventureCards: CardLibrary = {
       type: "CHOOSE_ONE",
       options: [
         {
+          // Printed Instant card-manipulation → playable on the map AND
+          // mid-Combat (see instantSideAllowedInCombat); no `mapOnly`. The reducer
+          // opens the own-deck pick with a combat returnPhase during a live fight.
           label: "Search (3) your deck, then shuffle the discard into your deck",
-          mapOnly: true,
           effect: { type: "SEARCH_DECK_THEN_RESHUFFLE", count: 3 }
         }
       ]

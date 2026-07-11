@@ -741,13 +741,23 @@ export type UnitAbilityEffectDefinition =
     }
   | {
       /**
-       * Neutral Champions: "Roll 2 Attack dice and apply both outcomes." Both
-       * dice are summed into the attack's die result. `rerollMinusOnce` also
-       * rerolls each "-1" face exactly once before summing (the neutral card's
-       * "Reroll this unit's all '-1' rolls").
+       * Neutral Champions ([unit_attack], attack-only): "Roll 2 Attack dice and
+       * apply both outcomes." Both dice are summed into the attack's die result.
+       * This is the ATTACK-triggered half only — the "-1" reroll is a SEPARATE
+       * always-on passive (`REROLL_ALL_MINUS_ONE`) so it also covers this unit's
+       * Defend die and any morale-reduced single die, not just this 2-dice roll.
        */
       type: "ROLL_TWO_DICE_APPLY_BOTH";
-      rerollMinusOnce: boolean;
+    }
+  | {
+      /**
+       * Neutral Champions ([unit_passive], always on): "Reroll this unit's all
+       * '-1' rolls." EVERY Attack/Defend die this unit rolls rerolls a "-1"
+       * face — repeatedly, until it is not "-1" (the card's "all", confirmed by
+       * the wiki note that it rerolls "even multiple times"). Independent of the
+       * attack-only 2-dice roll above, so it applies whenever the unit rolls.
+       */
+      type: "REROLL_ALL_MINUS_ONE";
     }
   | {
       /**
@@ -2185,12 +2195,24 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     effect: { type: "ATTACK_DIE_REROLL", rerollsPerAttack: 1, requiresMoved: true },
     implementationStatus: "implemented"
   },
-  // Neutral Champions: roll 2 dice, reroll each "-1" once, then sum both.
-  "champion-roll-two-dice-reroll": {
-    id: "champion-roll-two-dice-reroll",
+  // Neutral Champions ([unit_attack], own attacks only): roll 2 Attack dice and
+  // sum both. On a Retaliation Attack this does NOT apply — the champion rolls a
+  // single die then (the "-1" reroll passive below still fires on that die).
+  "champion-roll-two-dice": {
+    id: "champion-roll-two-dice",
     name: "Champion's Charge",
-    text: 'Roll 2 Attack dice and apply both outcomes. Reroll this unit\'s all "-1" rolls.',
-    effect: { type: "ROLL_TWO_DICE_APPLY_BOTH", rerollMinusOnce: true },
+    text: '[unit_attack] Roll 2 Attack dice and apply both outcomes.',
+    effect: { type: "ROLL_TWO_DICE_APPLY_BOTH" },
+    implementationStatus: "implemented"
+  },
+  // Neutral Champions ([unit_passive], always on): reroll every "-1" this unit
+  // rolls — repeatedly, until it is not "-1". Covers its Attack dice (own attack
+  // AND retaliation) and its Defend die alike.
+  "champion-reroll-minus": {
+    id: "champion-reroll-minus",
+    name: "Unstoppable",
+    text: '[unit_passive] Reroll this unit\'s all "-1" rolls.',
+    effect: { type: "REROLL_ALL_MINUS_ONE" },
     implementationStatus: "implemented"
   },
   // Mummies: own attack die counts as 0; an attacker's die is forced to -1.

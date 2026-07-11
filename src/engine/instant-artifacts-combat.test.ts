@@ -6,7 +6,7 @@ import type { GameAction, GameState, PlayerId } from "./state";
 /**
  * Instant artifacts with deck-manipulation sides are playable MID-COMBAT
  * (house rule shared with TAKE_FROM_DISCARD — see
- * instantArtifactSideAllowedInCombat): an Instant is a click-to-use card, not
+ * instantSideAllowedInCombat): an Instant is a click-to-use card, not
  * a map-only one. The reward queue is parked during a live combat, so these
  * plays open their removal/Search choices immediately instead of queueing.
  * Every test drives the real engine to the observable outcome (cards changing
@@ -183,13 +183,20 @@ describe("other instant artifacts' Search/dig sides mid-combat", () => {
     expect(done.phase).toBe("combat");
   });
 
-  it("CONTROL: Miriam's Scouting specialty (the Hat's hero-specialty twin) stays map-only", () => {
+  it("Miriam's Scouting specialty (the Hat's hero-specialty twin) is NOW playable in combat too", () => {
     const state = createInitialGameState();
     state.players.p1.hand = ["specialty.miriam.4", "spell.stone_skin"];
-    // The specialty exists and shares REMOVE_HAND_CARD_THEN_SEARCH, but it is
-    // not an instant artifact — no combat offer for either of its sides.
+    // The specialty shares REMOVE_HAND_CARD_THEN_SEARCH and is a printed Instant,
+    // so — like every instant card-manipulation side — it is a combat play now,
+    // not map-only (see instantSideAllowedInCombat). A removable Spell is present,
+    // so its remove-then-Search side is offered mid-combat. Full end-to-end
+    // coverage lives in instant-specialties-combat.test.ts.
     expect(cardLibrary["specialty.miriam.4"]).toBeTruthy();
-    expect(findPlay(state, "p1", "specialty.miriam.4", 0)).toBeFalsy();
-    expect(findPlay(state, "p1", "specialty.miriam.4", 1)).toBeFalsy();
+    expect(findPlay(state, "p1", "specialty.miriam.4", 0), "the instant twin should be offered in combat").toBeTruthy();
+    // CONTROL: with no removable (ability/artifact/spell) card in hand it offers
+    // nothing — the effect gate still requires a card to remove.
+    const noRemovable = createInitialGameState();
+    noRemovable.players.p1.hand = ["specialty.miriam.4", "stat.attack", "stat.defense"];
+    expect(findPlay(noRemovable, "p1", "specialty.miriam.4", 0)).toBeFalsy();
   });
 });

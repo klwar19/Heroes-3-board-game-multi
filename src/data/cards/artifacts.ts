@@ -1947,7 +1947,7 @@ export const artifactCards: CardLibrary = {
   // Power or less (engine: CANCEL_SPELL maxPower 1, re-checked against the
   // spell's final Power at resolution, exactly like Resistance). Option B —
   // remove the Surcoat and Search (1) the Artifact deck — plays on the map AND
-  // mid-combat (a printed Instant; see instantArtifactSideAllowedInCombat).
+  // mid-combat (a printed Instant; see instantSideAllowedInCombat).
   "artifact.surcoat_of_counterpoise": {
     id: "artifact.surcoat_of_counterpoise",
     name: "Surcoat of Counterpoise",
@@ -2859,7 +2859,7 @@ export const artifactCards: CardLibrary = {
   // Spellbinder's Hat (Relic, Tower Expansion). A deck-management relic; both
   // sides play on the map AND mid-combat (a printed Instant — mid-combat the
   // removal/Search open immediately as combat choices, since the reward queue
-  // is parked during a live combat; see instantArtifactSideAllowedInCombat).
+  // is parked during a live combat; see instantSideAllowedInCombat).
   //   • Option A ("Remove 1 card from your hand, then Search(2) the card's
   //     deck"): the Hat discards normally, then the player removes one card from
   //     hand and Search(2)s whichever deck it belonged to. Only abilities,
