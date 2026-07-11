@@ -9835,6 +9835,18 @@ span.recruitThumb {
   gap: 4px;
 }
 
+/* A picked Power source and its optional crown (expert-value) toggle sit together. */
+.trayChipGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.trayChipGroup .trayExpert {
+  padding: 2px 6px;
+  font-size: 10px;
+}
+
 .trayChip {
   appearance: none;
   border: 1px solid #5d4c2c;

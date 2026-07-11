@@ -811,6 +811,53 @@ describe("ReactionTray — Sorrow pays its skip with a Power-value cost picker",
     expect(applied.errors).toEqual([]);
     expect(applied.state.combat!.units.unit_p2_vampires.activatedThisRound).toBe(true);
   });
+
+  it("reaches the silver skip with ONE +1 Power card upgraded to expert with a crown", () => {
+    // A single basic Power card is worth +1 — not enough for the 2-Power silver
+    // skip. Clicking its Crown toggle values it at its expert +2 (spending a
+    // crown), which pays the skip on its own. The emitted action must carry
+    // costCardModes so the engine spends the crown and takes the expert value.
+    const state = silverSkipWindow(["stat.power"]);
+    expect(state.players.p1.limits.expertUses, "sandbox seat has crowns").toBeGreaterThan(0);
+
+    const onAction = vi.fn();
+    render(trayFor(state, onAction));
+
+    act(() => fireEvent.click(screen.getByRole("button", { name: /skip a silver unit/i })));
+    // Pick the lone Power card (basic +1) — still 1 short of the 2-Power skip.
+    act(() => fireEvent.click(screen.getByRole("button", { name: /^Power \(\+1\)$/ })));
+    expect(confirmButton().disabled, "basic +1 is one short of the 2-Power skip").toBe(true);
+
+    // The Crown toggle appears for the picked Power source; clicking it upgrades
+    // the value to +2 and satisfies the cost.
+    act(() => fireEvent.click(screen.getByRole("button", { name: /Crown/i })));
+    expect(confirmButton().disabled, "expert +2 reaches the silver skip").toBe(false);
+
+    act(() => fireEvent.click(confirmButton()));
+    const played = onAction.mock.calls[0][0] as Extract<GameAction, { type: "PLAY_REACTION" }>;
+    expect(played.costCardIds).toEqual(["stat.power"]);
+    expect(played.costCardModes).toEqual(["expert"]);
+
+    // The engine accepts it: the silver vampires are skipped and the crown spent.
+    const applied = applyAction(state, played);
+    expect(applied.errors).toEqual([]);
+    expect(applied.state.combat!.units.unit_p2_vampires.activatedThisRound).toBe(true);
+    expect(applied.state.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
+  });
+
+  it("CONTROL: with no crowns the +1 Power source shows no Crown toggle and cannot reach the skip", () => {
+    const state = silverSkipWindow(["stat.power"]);
+    state.players.p1.limits.expertUses = 0;
+
+    const onAction = vi.fn();
+    render(trayFor(state, onAction));
+
+    act(() => fireEvent.click(screen.getByRole("button", { name: /skip a silver unit/i })));
+    act(() => fireEvent.click(screen.getByRole("button", { name: /^Power \(\+1\)$/ })));
+    // No crown → no expert toggle, and basic +1 never reaches the 2-Power skip.
+    expect(screen.queryByRole("button", { name: /Crown/i })).toBeNull();
+    expect(confirmButton().disabled, "basic +1 with no crown cannot pay the skip").toBe(true);
+  });
 });
 
 describe("ReactionTray — Magic Mirror's paid redirect can pay its cost in the picker", () => {

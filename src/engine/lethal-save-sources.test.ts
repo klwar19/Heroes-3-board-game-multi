@@ -41,10 +41,14 @@ function lethalSetup(opts: {
   spellsAlreadyCast?: number;
   rolls?: number[];
   handLockP1?: boolean;
+  p1Crowns?: number;
 }): GameState {
   const state = createInitialGameState("lethal-save-seed");
   state.players.p1.hand = opts.p1Hand ?? [];
   state.players.p2.hand = [];
+  if (opts.p1Crowns !== undefined) {
+    state.players.p1.limits.expertUses = opts.p1Crowns;
+  }
   // Permanents must be in play BEFORE the attack resolves so the standing spell
   // Power they grant is folded into the save window's precomputed legal reactions.
   if (opts.p1Permanents) {
@@ -275,12 +279,46 @@ describe("Resurrection specialty: the Power cost is value-based and buffed by sp
     expect(griffins(saved).damage).toBe(griffins(saved).maxHealth - 1);
   });
 
-  it("CONTROL: ONE stat.power alone (Power 1) cannot afford the Power-2 silver save", () => {
+  it("ONE stat.power at its EXPERT value (1 crown) affords the Power-2 silver save", () => {
     const declared = lethalSetup({
       defenderGrade: "silver",
-      p1Hand: ["specialty.alamar.1", "stat.power"]
+      p1Hand: ["specialty.alamar.1", "stat.power"],
+      p1Crowns: 1
     });
-    expect(silverSave(declared), "Power 1 < the silver cost of 2 → not offered").toBeFalsy();
+    const save = silverSave(declared);
+    expect(save, "one crown raises stat.power to +2, reaching the silver cost").toBeTruthy();
+    const action = save!.action as Extract<GameAction, { type: "PLAY_REACTION" }>;
+    const saved = applyOk(declared, {
+      ...action,
+      costCardIds: ["stat.power"],
+      costCardModes: ["expert"]
+    });
+    expect(hasAbilityEvent(saved, "resurrection")).toBe(true);
+    expect(griffins(saved).damage).toBe(griffins(saved).maxHealth - 1); // fully saved
+    expect(saved.players.p1.discard).toContain("stat.power");
+    // The crown paying for the expert Power value was spent.
+    expect(saved.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
+  });
+
+  it("CONTROL: expert Power payment without a crown is rejected", () => {
+    const declared = lethalSetup({
+      defenderGrade: "silver",
+      p1Hand: ["specialty.alamar.1", "stat.power"],
+      p1Crowns: 0
+    });
+    // With no crowns the save is not even offered (basic Power 1 < the cost 2).
+    expect(silverSave(declared), "no crown, basic Power 1 < the silver cost of 2 → not offered").toBeFalsy();
+    // And a hand-crafted expert payment with no crown is refused outright, even
+    // if the reaction were forced.
+    const forced = applyAction(declared, {
+      type: "PLAY_REACTION",
+      playerId: "p1",
+      cardId: "specialty.alamar.1",
+      optionIndex: 1,
+      costCardIds: ["stat.power"],
+      costCardModes: ["expert"]
+    });
+    expect(forced.errors.length).toBeGreaterThan(0);
   });
 });
 

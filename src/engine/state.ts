@@ -2549,6 +2549,11 @@ export type ReactionPlay = {
   optionIndex?: number;
   /** Cards from hand paying the option's printed discard/remove cost. */
   costCardIds?: CardId[];
+  /**
+   * Parallel to costCardIds: "expert" values a Power source at its expertAmount
+   * and spends one crown when paying a Power-value cost. Index-aligned.
+   */
+  costCardModes?: CardPlayMode[];
   /** Play this Spell card for its alternative "+1 Power" bottom effect. */
   asPowerBoost?: boolean;
 };
@@ -2776,6 +2781,13 @@ export type GameAction =
       mode?: CardPlayMode;
       optionIndex?: number;
       costCardIds?: CardId[];
+      /**
+       * Parallel to costCardIds: when paying a Power-value cost (Sorrow, Alamar's
+       * Resurrection, …), each entry may be "expert" so a Power statistic/ability
+       * contributes its expertAmount and spends one crown. Absent or "basic" uses
+       * the printed basic amount. Index-aligned with costCardIds.
+       */
+      costCardModes?: CardPlayMode[];
       /**
        * Bowstring of the Unicorn's Mane (option A): the friendly ranged unit to
        * activate out of order in the pre-activation window. Reactions that pick a
