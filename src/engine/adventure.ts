@@ -918,6 +918,24 @@ export function isOuterEdgeSealed(adventure: AdventureState, field: MapFieldStat
   return tile ? isTileSlotOuterSealed(tile.tileDefId, field.slot) : false;
 }
 
+/**
+ * Whether a hero STANDING on `field` is walled off by a printed yellow border
+ * from ordinarily DISCOVERING a Tile across its outer edge.
+ *
+ * This is {@link isOuterEdgeSealed} with one exception: a Creature Bank draws NO
+ * border (it "reads as fully open" — see `getTileBorderSegments`), so a hero
+ * standing on a bank faces OPEN outer edges and may flip an adjacent face-down
+ * Tile — even though the Blocked Field the bank replaced kept its slot's sealed
+ * arc in the tile definition. Discovery only reveals the Tile; moving OUT of a
+ * bank across a Tile edge is a separate question still governed by the bank's own
+ * rule in {@link canCrossEdge}. Keeping `isOuterEdgeSealed` untouched preserves
+ * its slot-primitive invariant; only the hero-vantage discovery gate takes this
+ * bank exception.
+ */
+export function heroFieldSealedForDiscovery(adventure: AdventureState, field: MapFieldState): boolean {
+  return field.location !== "creature_bank" && isOuterEdgeSealed(adventure, field);
+}
+
 export function getAdjacentSpaceIds(spaceId: MapSpaceId): MapSpaceId[] {
   const coord = parseHexSpaceId(spaceId);
   if (!coord) {
