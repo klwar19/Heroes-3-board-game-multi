@@ -340,15 +340,6 @@ export type NeutralIntent =
       kind: "choose-destination";
       defenderId: UnitId;
       destinations: number[];
-    }
-  | {
-      /**
-       * PvP Neutral Control only: the unit can attack NO ONE this activation,
-       * so the commanding player steers it freely — any legal move cell, or
-       * hold position. (The AI instead auto-advances on its priority target.)
-       */
-      kind: "choose-move";
-      destinations: number[];
     };
 
 /**
@@ -413,121 +404,6 @@ export function planNeutralActivation(
     return { kind: "pass" };
   }
   return approachTarget(state, combat, unit, target);
-}
-
-/**
- * PvP Neutral Control (optional mode): what the active neutral unit MAY do this
- * activation, planned for a human commander instead of the AI. Same
- * {@link NeutralIntent} contract as {@link planNeutralActivation}, but every
- * genuine decision is handed to the commanding player:
- *
- *  - the target pool is EVERY enemy the unit can strike this activation — the
- *    AI's tier priority and ranged-hunts-ranged preference become free picks
- *    (only the HARD rules bind: "must attack if possible", an engaged ranged
- *    unit strikes an adjacent enemy, Berserk overrides everything);
- *  - a move-and-attack offers every legal landing cell (the existing
- *    choose-destination flow, via {@link attackOrReach});
- *  - with NO reachable attack the commander steers the move freely — any legal
- *    cell, or hold — instead of the AI's auto-advance (`choose-move`).
- *
- * `forcedTargetId`/`forcedDestination` resume the activation after a pick,
- * exactly like the AI planner; `forcedDestination` WITHOUT a target commits a
- * plain move to that cell (the resolved `choose-move`).
- */
-export function planNeutralActivationManual(
-  state: GameState,
-  combat: CombatState,
-  unit: CombatUnitState,
-  forcedTargetId?: UnitId,
-  forcedDestination?: number
-): NeutralIntent {
-  // A neutral that already fired never repositions: its activation is over.
-  if (unit.attackedThisActivation) {
-    return { kind: "pass" };
-  }
-
-  // Berserk is a rules override, not a command decision: the unit must attack
-  // the NEAREST unit (friend or foe). The commander still answers the choices
-  // this opens (target ties, landing cells) — routed by the executor.
-  if (unitIsBerserk(state.activeEffects, unit)) {
-    return planBerserkActivation(state, combat, unit, forcedTargetId, forcedDestination);
-  }
-
-  // The commander resolved a choose-move: commit the plain step (re-plan if the
-  // cell somehow stopped being legal — cannot normally happen mid-choice).
-  if (forcedTargetId === undefined && forcedDestination !== undefined) {
-    const legal = getLegalMoveDestinations(combat, unit, state).filter((destination) =>
-      canUnitMoveTo(combat, unit, destination, state)
-    );
-    if (legal.includes(forcedDestination)) {
-      return { kind: "move", destination: forcedDestination };
-    }
-  }
-
-  // The commander picked a target: strike it, or offer/commit the landing cell.
-  if (forcedTargetId) {
-    const forced = combat.units[forcedTargetId] ?? null;
-    if (forced && isUnitAlive(forced)) {
-      return (
-        attackOrReach(state, combat, unit, forced, forcedDestination) ?? approachTarget(state, combat, unit, forced)
-      );
-    }
-    // The chosen target is gone — fall through and re-plan from scratch.
-  }
-
-  // "Must always attack if possible" still binds; the pick among the reachable
-  // enemies is the commander's (ALL of them, not just the AI's tie group).
-  const attackable = manualAttackablePool(state, combat, unit);
-  if (attackable.length > 1) {
-    return { kind: "choose-target", candidateIds: attackable.map((candidate) => candidate.id) };
-  }
-  if (attackable.length === 1) {
-    return (
-      attackOrReach(state, combat, unit, attackable[0], forcedDestination) ??
-      approachTarget(state, combat, unit, attackable[0])
-    );
-  }
-
-  // No reachable attack: the commander moves the unit anywhere legal, or holds.
-  const destinations = getLegalMoveDestinations(combat, unit, state)
-    .filter((destination) => canUnitMoveTo(combat, unit, destination, state))
-    .sort((left, right) => left - right);
-  if (destinations.length === 0) {
-    return { kind: "pass" };
-  }
-  return { kind: "choose-move", destinations };
-}
-
-/**
- * PvP Neutral Control target pool: EVERY enemy this unit can actually strike
- * this activation, in board order — no tier priority, no ranged-hunts-ranged
- * preference (those are AI heuristics the commander replaces). The HARD rules
- * stay: an engaged ranged unit must strike an adjacent enemy, ranged units
- * never move-then-shoot, and a melee/flyer needs a legal landing cell.
- */
-function manualAttackablePool(
-  state: GameState,
-  combat: CombatState,
-  unit: CombatUnitState
-): CombatUnitState[] {
-  const enemies = Object.values(combat.units)
-    .filter((candidate) => candidate.controllerId !== unit.controllerId && isUnitAlive(candidate))
-    .sort((left, right) => left.position - right.position);
-  if (unit.type === "ranged") {
-    // Engaged ranged units must strike an adjacent enemy (hard rule, same as
-    // rankedTargetPool); an unengaged shooter picks among everyone it can hit.
-    const adjacent = enemies.filter((candidate) => isAdjacent(unit.position, candidate.position));
-    const pool = adjacent.length > 0 ? adjacent : enemies;
-    return pool.filter((target) => canUnitAttack(combat, unit, target, state.activeEffects));
-  }
-  const reachSpaces = getLegalMoveDestinations(combat, unit, state);
-  return enemies.filter(
-    (target) =>
-      canUnitAttack(combat, unit, target, state.activeEffects) ||
-      reachSpaces.some(
-        (space) => isAdjacent(space, target.position) && canUnitMoveAndAttack(combat, unit, space, target, state)
-      )
-  );
 }
 
 /**

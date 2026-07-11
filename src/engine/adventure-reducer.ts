@@ -3372,17 +3372,17 @@ function beginNeutralCombatPlacement(
     unitDefIds: []
   });
 
-  // PvP Neutral Control: tell the table — and above all the commander — that a
-  // HUMAN plays the guards of this fight (activation order, moves, attacks).
-  const neutralCommander = neutralCombatControllerId(state, combat);
-  if (neutralCommander) {
-    const commanderName = state.players[neutralCommander]?.name ?? neutralCommander;
+  // PvP Neutral Control: tell the table — and above all the controlling
+  // player — that a HUMAN plays the guards of this fight, PvP-style.
+  const neutralController = neutralCombatControllerId(state, combat);
+  if (neutralController) {
+    const controllerName = state.players[neutralController]?.name ?? neutralController;
     const fighterName = state.players[playerId]?.name ?? playerId;
     appendEvent(state, {
       type: "NEUTRAL_CONTROL_ASSIGNED",
-      playerId: neutralCommander,
+      playerId: neutralController,
       combatPlayerId: playerId,
-      message: `PvP Neutral Control: ${commanderName} commands the Neutral units in ${fighterName}'s combat.`
+      message: `PvP Neutral Control: ${controllerName} plays the Neutral units in ${fighterName}'s combat.`
     });
   }
 }
