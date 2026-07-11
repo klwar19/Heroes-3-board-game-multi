@@ -4378,6 +4378,10 @@ export default function Home() {
         (viewer.combatStats.expertUseBonusThisRound ?? 0) -
         viewer.combatStats.expertUsesSpentThisRound
       : 0;
+    // Multiple Power sources may each be upgraded with their OWN crown; the
+    // selection must never spend more crowns than the viewer holds.
+    const pendingCrownsSelected = (pendingCostPlay?.pickModes ?? []).filter((mode) => mode === "expert").length;
+    const pendingCrownsOk = pendingCrownsSelected <= viewerCrownsLeft;
 
     // The Town window opens only for a seated viewer who actually owns a town.
     const viewerTown = isSeated
@@ -4721,7 +4725,11 @@ export default function Home() {
                         const canExpert =
                           addPower?.type === "ADD_SPELL_POWER" &&
                           addPower.expertAmount !== undefined &&
-                          (pendingCostPlay.pickModes[pickIndex] === "expert" || viewerCrownsLeft > 0);
+                          addPower.expertAmount > addPower.amount &&
+                          // Already expert (so it can be toggled back), or there
+                          // is at least one crown still free for another upgrade.
+                          (pendingCostPlay.pickModes[pickIndex] === "expert" ||
+                            viewerCrownsLeft - pendingCrownsSelected > 0);
                         if (!canExpert) {
                           return null;
                         }
@@ -4756,7 +4764,7 @@ export default function Home() {
                     className="commandButton primary"
                     disabled={
                       pendingCostPlay.powerCost !== undefined
-                        ? !pendingPowerOk
+                        ? !pendingPowerOk || !pendingCrownsOk
                         : pendingCostPlay.exact !== undefined &&
                           pendingCostPlay.picks.length !== pendingCostPlay.exact
                     }
