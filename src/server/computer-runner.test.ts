@@ -1,6 +1,34 @@
 import { describe, expect, it } from "vitest";
-import { createAdventureLobbyState } from "@/engine";
+import {
+  applyAction,
+  computerDecisionOwner,
+  createAdventureGameState,
+  createAdventureLobbyState,
+  getLegalActions,
+  type ComputerDecision,
+  type GameAction,
+  type GameState,
+} from "@/engine";
 import { driveComputerPlayers } from "./computer-runner";
+
+function humanAct(state: GameState, action: GameAction): GameState {
+  const result = applyAction(state, action);
+  expect(result.errors).toEqual([]);
+  return result.state;
+}
+
+/** Take the human's first offered legal action of the given type. */
+function humanFirst(
+  state: GameState,
+  type: GameAction["type"],
+  playerId = "p1",
+): GameState {
+  const offer = getLegalActions(state, playerId).find(
+    (legal) => legal.action.type === type,
+  );
+  expect(offer, `expected a legal ${type} for ${playerId}`).toBeDefined();
+  return humanAct(state, offer!.action);
+}
 
 describe("computer runner foundation", () => {
   it("completes every computer free-pick seat through real legal actions and stops for the human", () => {
@@ -54,5 +82,198 @@ describe("computer runner foundation", () => {
     );
     expect(result.stalled).toBe(true);
     expect(result.reason).toContain("no safe legal action");
+  });
+
+  it("gives the same decisions for the same seed and state", () => {
+    const state = createAdventureLobbyState({
+      seed: "runner-deterministic",
+      scenarioId: "skirmish",
+      sessionMode: "single-player",
+      computerOpponents: 3,
+    });
+    const first = driveComputerPlayers(structuredClone(state));
+    const second = driveComputerPlayers(structuredClone(state));
+    expect(first.decisions).toEqual(second.decisions);
+  });
+});
+
+describe("computer setup formats", () => {
+  it("random: each computer seat completes with one legal roll", () => {
+    let state = createAdventureLobbyState({
+      seed: "runner-format-random",
+      scenarioId: "skirmish",
+      sessionMode: "single-player",
+      computerOpponents: 3,
+    });
+    state = humanAct(state, {
+      type: "SET_DRAFT_FORMAT",
+      playerId: "p1",
+      format: "random",
+    });
+    const run = driveComputerPlayers(state);
+    expect(run.stalled).toBe(false);
+    expect(run.decisions.map((decision) => decision.action.type)).toEqual([
+      "RANDOM_ASSIGN_SEAT",
+      "RANDOM_ASSIGN_SEAT",
+      "RANDOM_ASSIGN_SEAT",
+    ]);
+    const seats = run.state.setupLobby!.seats;
+    expect(
+      seats.slice(1).every((seat) => seat.factionId && seat.heroDefId),
+    ).toBe(true);
+    expect(new Set(seats.slice(1).map((seat) => seat.factionId)).size).toBe(3);
+  });
+
+  it("random-choice: roll town, lock a rolled town, roll heroes, pick a rolled hero", () => {
+    let state = createAdventureLobbyState({
+      seed: "runner-format-random-choice",
+      scenarioId: "skirmish",
+      sessionMode: "single-player",
+      computerOpponents: 1,
+    });
+    state = humanAct(state, {
+      type: "SET_DRAFT_FORMAT",
+      playerId: "p1",
+      format: "random-choice",
+    });
+    const run = driveComputerPlayers(state);
+    expect(run.stalled).toBe(false);
+    expect(run.decisions.map((decision) => decision.action.type)).toEqual([
+      "ROLL_TOWN_OPTIONS",
+      "CHOOSE_TOWN",
+      "ROLL_HERO_OPTIONS",
+      "CHOOSE_FACTION",
+    ]);
+    const seat = run.state.setupLobby!.seats[1];
+    expect(seat.factionId).toBeTruthy();
+    expect(seat.heroDefId).toBeTruthy();
+  });
+
+  it("draft: computers lock towns, wait for the human, ban in rotation and pick unbanned heroes", () => {
+    let state = createAdventureLobbyState({
+      seed: "runner-format-draft",
+      scenarioId: "skirmish",
+      sessionMode: "single-player",
+      computerOpponents: 2,
+    });
+    state = humanAct(state, {
+      type: "SET_DRAFT_FORMAT",
+      playerId: "p1",
+      format: "draft",
+    });
+
+    // Computers lock their towns directly (no reroll loops), then WAIT for the
+    // human's town — a clean stop, never a stall report.
+    const townsRun = driveComputerPlayers(state);
+    expect(townsRun.stalled).toBe(false);
+    expect(
+      townsRun.decisions.map((decision) => decision.action.type),
+    ).toEqual(["CHOOSE_TOWN", "CHOOSE_TOWN"]);
+    expect(
+      townsRun.state
+        .setupLobby!.seats.slice(1)
+        .every((seat) => seat.factionId && !seat.heroDefId),
+    ).toBe(true);
+
+    // Human locks a town; the ban rotation starts with the HUMAN, so the
+    // runner stays idle until the human has banned.
+    let next = humanFirst(townsRun.state, "CHOOSE_TOWN");
+    const waitRun = driveComputerPlayers(next);
+    expect(waitRun.stalled).toBe(false);
+    expect(waitRun.decisions).toHaveLength(0);
+
+    next = humanFirst(waitRun.state, "BAN_HERO");
+    const finishRun = driveComputerPlayers(next);
+    expect(finishRun.stalled).toBe(false);
+    // Two computer bans in rotation, then both computer hero picks.
+    expect(
+      finishRun.decisions.map((decision) => decision.action.type),
+    ).toEqual(["BAN_HERO", "BAN_HERO", "CHOOSE_FACTION", "CHOOSE_FACTION"]);
+    const lobby = finishRun.state.setupLobby!;
+    expect(lobby.draft?.bannedHeroDefIds).toHaveLength(3);
+    expect(
+      lobby.seats
+        .slice(1)
+        .every(
+          (seat) =>
+            seat.heroDefId &&
+            !lobby.draft!.bannedHeroDefIds.includes(seat.heroDefId),
+        ),
+    ).toBe(true);
+    // Only the human's hero pick is outstanding; picking it readies the table.
+    expect(lobby.seats[0].heroDefId).toBeNull();
+    const ready = humanFirst(finishRun.state, "CHOOSE_FACTION");
+    expect(
+      ready.setupLobby!.seats.every(
+        (seat) => seat.factionId && seat.heroDefId,
+      ),
+    ).toBe(true);
+  });
+});
+
+describe("computer map turns", () => {
+  it("plays the computer's whole map turn after the human ends theirs and hands control back", () => {
+    let state = createAdventureGameState({
+      seed: "runner-map-turn",
+      scenarioId: "skirmish",
+      playerCount: 2,
+      sessionMode: "single-player",
+    });
+    const decisions: ComputerDecision[] = [];
+
+    // Click through the human's required steps exactly like a player would,
+    // letting the runner settle all computer work between each step, until the
+    // human's round-2 turn is open.
+    const humanPriority: GameAction["type"][] = [
+      "SET_TILE_ROTATION",
+      "CHOOSE_OPTION",
+      "CHOOSE_ABILITY_TARGET",
+      "CHOOSE_PENDING_ROLL",
+      "RESOLVE_VISIT_STEP",
+      "RESOLVE_DECK_SEARCH",
+      "RESOLVE_COMBAT_DISCARD",
+      "REFRESH_HAND",
+      "END_TURN",
+    ];
+    let guard = 0;
+    for (;;) {
+      const run = driveComputerPlayers(state);
+      expect(run.stalled, run.reason).toBe(false);
+      decisions.push(...run.decisions);
+      state = run.state;
+      if (
+        state.round === 2 &&
+        state.activePlayerId === "p1" &&
+        state.players.p1.canMulligan
+      ) {
+        break;
+      }
+      expect(guard++, "human/computer loop did not reach round 2").toBeLessThan(
+        60,
+      );
+      const offers = getLegalActions(state, "p1");
+      const pick = humanPriority
+        .map((type) => offers.find((legal) => legal.action.type === type))
+        .find(Boolean);
+      expect(
+        pick,
+        `no human step among: ${offers.map((legal) => legal.action.type).join(", ")}`,
+      ).toBeDefined();
+      state = humanAct(state, pick!.action);
+    }
+
+    // The computer really played: it owned its start-of-turn draw and ended
+    // its own turn through validated actions, and control is back with the
+    // human with no computer work pending.
+    const byComputer = decisions.filter(
+      (decision) => decision.playerId === "p2",
+    );
+    expect(
+      byComputer.some((decision) => decision.action.type === "REFRESH_HAND"),
+    ).toBe(true);
+    expect(
+      byComputer.some((decision) => decision.action.type === "END_TURN"),
+    ).toBe(true);
+    expect(computerDecisionOwner(state)).toBeNull();
   });
 });

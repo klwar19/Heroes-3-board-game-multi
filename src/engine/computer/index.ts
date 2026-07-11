@@ -8,6 +8,10 @@ export {
   standardComputerController,
 } from "./control";
 export { observeForComputer } from "./observation";
-export { canonicalActionKey, chooseComputerAction } from "./policy";
+export {
+  canonicalActionKey,
+  chooseComputerAction,
+  legalityMatchKey,
+} from "./policy";
 export { computerDecisionOwner } from "./window";
 export type { ComputerDecision, ComputerObservation } from "./types";
