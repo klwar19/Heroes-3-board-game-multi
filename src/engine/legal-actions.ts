@@ -350,13 +350,37 @@ function canAffordCardCost(
       ? (player.spellBook ?? []).find((id) => id !== cardId && passesFilter(id)) ?? null
       : null;
 
-  // Power-value cost (Sorrow): the standing spell Power plus the full printed
-  // Power of every eligible power-source card in hand must reach the threshold.
+  // Power-value cost (Sorrow, map View Air / Dimension Door tiers): the standing
+  // spell Power plus the full printed Power of every eligible power-source card
+  // in hand must reach the threshold. Crowns let Power statistics use their
+  // expertAmount when checking affordability (the actual crown spend is chosen
+  // at payment via costCardModes).
   if (cost.powerCost !== undefined) {
     const card = cardLibrary[cardId];
     const schools = card?.spellSchools ?? [];
     const standing = card ? standingSpellPower(state, playerId, card) : 0;
-    const fromCards = eligible.reduce((sum, id) => sum + spellPowerValueOfCard(cardLibrary[id], schools), 0);
+    const crownsLeft =
+      player.limits.expertUses +
+      (player.combatStats.expertUseBonusThisRound ?? 0) -
+      player.combatStats.expertUsesSpentThisRound;
+    // Greedy: assign available crowns to the sources that gain the most from
+    // expert valuation, so one Expert Power (+2) alone can afford a Power-2 tier.
+    const valued = eligible.map((id) => {
+      const basic = spellPowerValueOfCard(cardLibrary[id], schools, "basic");
+      const expert = spellPowerValueOfCard(cardLibrary[id], schools, "expert");
+      return { basic, expertGain: Math.max(0, expert - basic) };
+    });
+    valued.sort((a, b) => b.expertGain - a.expertGain);
+    let crowns = crownsLeft;
+    let fromCards = 0;
+    for (const entry of valued) {
+      if (crowns > 0 && entry.expertGain > 0) {
+        fromCards += entry.basic + entry.expertGain;
+        crowns -= 1;
+      } else {
+        fromCards += entry.basic;
+      }
+    }
     const fromBook = bookPowerSourceId ? spellPowerValueOfCard(cardLibrary[bookPowerSourceId], schools) : 0;
     return standing + fromCards + fromBook >= cost.powerCost;
   }
@@ -2065,6 +2089,7 @@ function addPlayableCardActions(
       !activeUnit.activatedThisRound &&
       !activeUnit.attackedThisActivation
   );
+  const unitNotMovedYet = Boolean(activeUnit && !activeUnit.movedThisActivation);
 
   for (const cardId of new Set(player.hand)) {
     const card = cards[cardId];
@@ -2085,6 +2110,26 @@ function addPlayableCardActions(
           action: { type: "PLAY_CARD", playerId, cardId, mode: "basic", target: { type: "none" } }
         });
       }
+      continue;
+    }
+
+    // Offense/Armorer/Sorcery ("+stat / +Power, then draw a card"): on your own
+    // activation (before attack) they may be played just for the draw — the
+    // trigger window is not required. Basic only (no crown wasted on a fizzled
+    // stat). Sorcery still banks Power for the next spell when the unit has not
+    // moved yet (see playCard).
+    const combatDrawOnly =
+      ownActivationOpen &&
+      (card.effect.type === "ADD_COMBAT_STAT" || card.effect.type === "ADD_SPELL_POWER") &&
+      Boolean(card.effect.drawCards) &&
+      Boolean(card.trigger);
+    if (combatDrawOnly && isPhaseAllowedForCard(state, card)) {
+      actions.push({
+        label: `Play ${card.name} (draw${
+          card.effect.type === "ADD_SPELL_POWER" && unitNotMovedYet ? ", next spell +Power" : ""
+        })`,
+        action: { type: "PLAY_CARD", playerId, cardId, mode: "basic", target: { type: "none" } }
+      });
       continue;
     }
 

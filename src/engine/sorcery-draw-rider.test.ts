@@ -191,3 +191,118 @@ describe("Offense in an attack window refreshes the reaction list with its draw"
     expect(rolled && rolled.type === "ATTACK_ROLLED" ? rolled.attackBonus : null).toBe(2);
   });
 });
+
+// ===========================================================================
+// [4] Combat draw-only on your own activation (no attack / spell window open)
+// ===========================================================================
+
+function combatOwnTurn(hand: string[], deck: string[] = ["spell.bless", "stat.power"]): GameState {
+  let state = createInitialGameState(`combat-draw-${hand.join("-")}`);
+  state.players.p1.hand = [...hand];
+  state.players.p2.hand = [];
+  state.players.p1.deck = [...deck];
+  // Ensure p1 has an active unit that has not moved or attacked.
+  const activeId = state.combat!.activeUnitId!;
+  const active = state.combat!.units[activeId];
+  if (active.controllerId !== "p1") {
+    // Force a p1 unit active if the seed opened on p2.
+    const p1Unit = Object.values(state.combat!.units).find(
+      (u) => u.controllerId === "p1" && u.damage < u.maxHealth
+    );
+    expect(p1Unit, "sandbox needs a p1 unit").toBeTruthy();
+    state.combat!.activeUnitId = p1Unit!.id;
+    p1Unit!.activatedThisRound = false;
+    p1Unit!.attackedThisActivation = false;
+    p1Unit!.movedThisActivation = false;
+  } else {
+    active.activatedThisRound = false;
+    active.attackedThisActivation = false;
+    active.movedThisActivation = false;
+  }
+  state.phase = "combat";
+  state.stack = [];
+  state.reactionWindow = null;
+  state.pendingChoice = null;
+  return state;
+}
+
+function combatDrawPlay(state: GameState, cardId: string) {
+  return getLegalActions(state, "p1")
+    .map((l) => l.action)
+    .find((a): a is Extract<GameAction, { type: "PLAY_CARD" }> => a.type === "PLAY_CARD" && a.cardId === cardId);
+}
+
+describe("Combat draw-only: Sorcery / Offense / Armorer on your own activation", () => {
+  it("offers all three on your turn outside any reaction window", () => {
+    for (const cardId of ["ability.sorcery", "ability.offense", "ability.armorer"] as const) {
+      const state = combatOwnTurn([cardId]);
+      expect(combatDrawPlay(state, cardId), `${cardId} offered for draw-only`).toBeTruthy();
+    }
+  });
+
+  it("CONTROL: not offered off-turn (enemy activation)", () => {
+    let state = combatOwnTurn(["ability.sorcery"]);
+    const p2Unit = Object.values(state.combat!.units).find(
+      (u) => u.controllerId === "p2" && u.damage < u.maxHealth
+    );
+    expect(p2Unit).toBeTruthy();
+    state.combat!.activeUnitId = p2Unit!.id;
+    p2Unit!.activatedThisRound = false;
+    p2Unit!.attackedThisActivation = false;
+    expect(combatDrawPlay(state, "ability.sorcery"), "no draw-only off-turn").toBeUndefined();
+  });
+
+  it("Offense draws without applying attack (stat fizzles)", () => {
+    let state = combatOwnTurn(["ability.offense"], ["spell.bless", "stat.attack"]);
+    const deckBefore = state.players.p1.deck.length;
+    state = applyOk(state, combatDrawPlay(state, "ability.offense")!);
+    expect(state.players.p1.discard).toContain("ability.offense");
+    expect(deckBefore - state.players.p1.deck.length).toBe(1);
+    expect(state.players.p1.hand).toContain("stat.attack");
+    expect(state.stack).toHaveLength(0);
+  });
+
+  it("Sorcery draws and banks +1 Power for the next spell when the unit has not moved", () => {
+    let state = combatOwnTurn(["ability.sorcery", "spell.magic_arrow"], ["spell.bless", "stat.power"]);
+    // Own unit not moved.
+    const active = state.combat!.units[state.combat!.activeUnitId!];
+    expect(active.movedThisActivation).toBe(false);
+
+    state = applyOk(state, combatDrawPlay(state, "ability.sorcery")!);
+    expect(state.players.p1.combatStats.pendingDrawRiderSpellPower).toBe(1);
+    expect(state.players.p1.hand).toContain("stat.power");
+
+    // Cast Magic Arrow — banked Power lands on the cast.
+    const target = Object.values(state.combat!.units).find(
+      (u) => u.controllerId === "p2" && u.damage < u.maxHealth
+    )!;
+    state = applyOk(state, {
+      type: "CAST_SPELL",
+      playerId: "p1",
+      cardId: "spell.magic_arrow",
+      target: { type: "unit", unitId: target.id }
+    });
+    expect(state.players.p1.combatStats.pendingDrawRiderSpellPower ?? 0).toBe(0);
+    // Power 0 Arrow + banked 1 = power 1 on the started cast (or resolved).
+    const started = lastEvent(state, "SPELL_CAST_STARTED");
+    // Bank is on the stack modifier; resolve or read stack.
+    const stackPower =
+      state.stack[0]?.modifiers.spellPowerBonus ??
+      (lastEvent(state, "SPELL_CAST_RESOLVED") as { power?: number } | undefined)?.power;
+    // After reactions may still be open; the stack holds the banked bonus.
+    if (state.stack[0]) {
+      expect(state.stack[0].modifiers.spellPowerBonus).toBeGreaterThanOrEqual(1);
+    } else {
+      expect(stackPower).toBeGreaterThanOrEqual(1);
+    }
+    expect(started).toBeTruthy();
+  });
+
+  it("CONTROL: Sorcery after the unit has already moved draws but does NOT bank Power", () => {
+    let state = combatOwnTurn(["ability.sorcery"], ["spell.bless", "stat.power"]);
+    state.combat!.units[state.combat!.activeUnitId!].movedThisActivation = true;
+    state = applyOk(state, combatDrawPlay(state, "ability.sorcery")!);
+    expect(state.players.p1.hand).toContain("stat.power");
+    expect(state.players.p1.combatStats.pendingDrawRiderSpellPower ?? 0).toBe(0);
+  });
+});

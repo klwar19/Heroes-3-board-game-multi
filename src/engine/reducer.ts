@@ -9818,6 +9818,14 @@ function performSpellCast(state: GameState, action: Extract<GameAction, { type: 
       }
     }
 
+    // Sorcery draw-only bank: Power held from playing Sorcery outside a cast
+    // window (draw first, then cast). Consumed by the next non-scroll cast.
+    const banked = caster.combatStats.pendingDrawRiderSpellPower ?? 0;
+    if (banked > 0) {
+      stackItem.modifiers.spellPowerBonus += banked;
+      caster.combatStats.pendingDrawRiderSpellPower = 0;
+    }
+
     // School of Magic permanent in play: a matching spell takes its standing
     // basic bonus (+1) for free. If the caster chose, as part of this cast, to
     // discard the permanent for its expert bonus, take +3 instead — decided here
@@ -9971,10 +9979,13 @@ function payOptionCardCost(
   cost: CardPlayCost | undefined,
   costCardIds: CardId[] | undefined,
   cards: CardLibrary,
-  allowSpellBookPower = false
+  allowSpellBookPower = false,
+  /** Index-aligned with costCardIds: "expert" values a Power source at expertAmount and spends a crown. */
+  costCardModes?: CardPlayMode[]
 ): number {
   const cardName = playedCard.name;
   const paying = costCardIds ?? [];
+  const payModes: CardPlayMode[] = paying.map((_, index) => costCardModes?.[index] ?? "basic");
 
   // Resource price (Ballistics' expert bombardment): spend it up front. Charged
   // before any early return so a resource-only cost still resolves.
@@ -10059,13 +10070,38 @@ function payOptionCardCost(
     );
   }
 
-  // Power-value cost (Sorrow): the caster's standing spell Power plus the full
-  // printed Power of each discarded power-source card must reach the threshold,
-  // and every discarded card must be necessary (no wasteful over-payment).
+  // Power-value cost (Sorrow, map View Air / Dimension Door tiers, …): the
+  // caster's standing spell Power plus the full printed Power of each discarded
+  // power-source card must reach the threshold, and every discarded card must be
+  // necessary (no wasteful over-payment). Expert mode on a Power source uses
+  // expertAmount and spends one crown per such card.
   if (cost.powerCost !== undefined) {
     const schools = playedCard.spellSchools ?? [];
     const standing = standingSpellPower(state, playerId, playedCard);
-    const values = paying.map((cardId) => spellPowerValueOfCard(cards[cardId], schools));
+    const values = paying.map((cardId, index) => spellPowerValueOfCard(cards[cardId], schools, payModes[index]));
+    const expertPays = payModes.filter((mode) => mode === "expert").length;
+    const crownsLeft =
+      player.limits.expertUses +
+      (player.combatStats.expertUseBonusThisRound ?? 0) -
+      player.combatStats.expertUsesSpentThisRound;
+    if (expertPays > 0 && crownsLeft < expertPays) {
+      throw new Error(`${cardName} needs ${expertPays} crown${expertPays === 1 ? "" : "s"} for expert Power payment.`);
+    }
+    for (let index = 0; index < paying.length; index += 1) {
+      if (payModes[index] !== "expert") {
+        continue;
+      }
+      const paid = cards[paying[index]];
+      const add =
+        paid?.effect.type === "ADD_SPELL_POWER"
+          ? paid.effect
+          : paid?.effect.type === "CHOOSE_ONE"
+            ? paid.effect.options.find((option) => option.effect.type === "ADD_SPELL_POWER")?.effect
+            : undefined;
+      if (!add || add.type !== "ADD_SPELL_POWER" || add.expertAmount === undefined) {
+        throw new Error(`${paid?.name ?? paying[index]} has no expert Power side to pay with.`);
+      }
+    }
     const total = standing + values.reduce((sum, value) => sum + value, 0);
     if (total < cost.powerCost) {
       throw new Error(`${cardName} needs at least ${cost.powerCost} Power; this pays only ${total}.`);
@@ -10074,6 +10110,9 @@ function payOptionCardCost(
       if (total - value >= cost.powerCost) {
         throw new Error(`${cardName} was paid more Power than it needs — drop a card.`);
       }
+    }
+    if (expertPays > 0) {
+      player.combatStats.expertUsesSpentThisRound += expertPays;
     }
   }
 
@@ -12392,7 +12431,16 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     throw new Error(moveError.message);
   }
 
-  payOptionCardCost(state, action.playerId, card, option?.cost, action.costCardIds, cards);
+  payOptionCardCost(
+    state,
+    action.playerId,
+    card,
+    option?.cost,
+    action.costCardIds,
+    cards,
+    false,
+    action.costCardModes
+  );
 
   // An Empowered ability's Expert side spends no crown.
   if (mode === "expert" && !abilityExpertIsCrownFree(state.players[action.playerId], action.cardId)) {
@@ -12890,15 +12938,36 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   }
 
   // Offense/Armorer (ADD_COMBAT_STAT) and Sorcery (ADD_SPELL_POWER) played
-  // outside combat: with no attack/spell to apply it to the stat/Power fizzles,
-  // but the "then draw a card" rider still resolves. (In combat these route
-  // through the reaction path, which applies the stat/Power to the open window.)
+  // outside a reaction window: with no attack/spell to apply it to, the
+  // stat/Power normally fizzles, but the "then draw a card" rider still
+  // resolves. On the map this is pure card cycling. In combat (own activation
+  // draw-only play) the same draw fires; Sorcery additionally banks Power for
+  // the next spell when the active unit has not moved yet (wiki: play Sorcery
+  // first to draw, then cast the drawn spell with the bonus).
   if (
     (effect.type === "ADD_COMBAT_STAT" || effect.type === "ADD_SPELL_POWER") &&
     effect.drawCards &&
-    !state.combat
+    !state.reactionWindow &&
+    state.stack.length === 0
   ) {
     drawCardsForPlayer(state, action.playerId, effect.drawCards);
+    if (effect.type === "ADD_SPELL_POWER" && state.combat) {
+      const combat = state.combat;
+      const active = combat.activeUnitId ? combat.units[combat.activeUnitId] : undefined;
+      const ownFreshActivation =
+        active &&
+        active.controllerId === action.playerId &&
+        !active.activatedThisRound &&
+        !active.attackedThisActivation &&
+        !active.movedThisActivation;
+      if (ownFreshActivation) {
+        const bank = getEffectAmount(effect, mode);
+        if (bank > 0) {
+          const stats = state.players[action.playerId].combatStats;
+          stats.pendingDrawRiderSpellPower = (stats.pendingDrawRiderSpellPower ?? 0) + bank;
+        }
+      }
+    }
   }
 
   if (effect.type === "GAIN_MORALE") {
@@ -13763,20 +13832,80 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   }
 
   // Map Spells do not use the combat spell stack, so their SPELL_CAST_STARTED
-  // reaction never existed. Offer the same Expert Knowledge recall explicitly
-  // after map resolution. It is queued behind any immediate spell destination
-  // choice (Dimension Door / View Earth), then becomes a real choose/decline
-  // prompt; declining preserves both the card and the crown.
+  // reaction never existed. Offer Knowledge recall explicitly after map
+  // resolution (View Air, Dimension Door, Fly, Town Portal, Water Walk, …).
+  // Queued behind any immediate spell destination choice, then a real
+  // choose/decline prompt. Basic Knowledge takes the spell back with NO crown
+  // (there is no per-turn spell limit outside combat — BGG / wiki). Expert
+  // Knowledge (when a crown remains) also raises the combat-round spell limit;
+  // Empowered Knowledge recalls with the limit bonus and never spends a crown.
   if (card.kind === "spell" && !state.combat && playedToDiscard && state.adventure) {
     const player = state.players[action.playerId];
     const knowledgeCardId = player?.hand.find((cardId) => {
       const held = cards[cardId];
-      return held?.effect.type === "RECALL_SPELL" && Boolean(held.effect.expertSpellLimitBonus);
+      // Knowledge (regular or Empowered) — not Mysticism (expertRecallPlayedCards).
+      return (
+        held?.effect.type === "RECALL_SPELL" &&
+        (Boolean(held.effect.expertSpellLimitBonus) || Boolean(held.effect.basicSpellLimitBonus))
+      );
     });
+    const knowledge = knowledgeCardId ? cards[knowledgeCardId] : undefined;
+    const recallEffect = knowledge?.effect.type === "RECALL_SPELL" ? knowledge.effect : null;
     const spellIsRecallable =
       Boolean(player?.discard.includes(action.cardId)) ||
       Boolean(player?.ongoingCards?.some((entry) => entry.cardId === action.cardId));
-    if (player && knowledgeCardId && spellIsRecallable && hasExpertUseAvailable(state, action.playerId)) {
+    if (player && knowledgeCardId && recallEffect && spellIsRecallable) {
+      const returnLabel = action.fromSpellBook
+        ? `return ${card.name} to your Spell Book`
+        : `return ${card.name} to your hand`;
+      const bookFlag = action.fromSpellBook ? { fromSpellBook: true as const } : {};
+      const options: { label: string; steps: VisitStep[] }[] = [];
+
+      // Empowered Knowledge: single free recall that always includes the limit bonus.
+      if (recallEffect.basicSpellLimitBonus) {
+        options.push({
+          label: `Use Knowledge: ${returnLabel}`,
+          steps: [
+            {
+              type: "KNOWLEDGE_RECALL_MAP_SPELL",
+              spellCardId: action.cardId,
+              knowledgeCardId,
+              mode: "basic",
+              ...bookFlag
+            }
+          ]
+        });
+      } else {
+        // Regular Knowledge: basic (no crown) always; expert (crown + limit) when available.
+        options.push({
+          label: `Use Knowledge: ${returnLabel}`,
+          steps: [
+            {
+              type: "KNOWLEDGE_RECALL_MAP_SPELL",
+              spellCardId: action.cardId,
+              knowledgeCardId,
+              mode: "basic",
+              ...bookFlag
+            }
+          ]
+        });
+        if (hasExpertUseAvailable(state, action.playerId) && recallEffect.expertSpellLimitBonus) {
+          options.push({
+            label: `Use Knowledge expert (1 crown): ${returnLabel} and +1 spell limit`,
+            steps: [
+              {
+                type: "KNOWLEDGE_RECALL_MAP_SPELL",
+                spellCardId: action.cardId,
+                knowledgeCardId,
+                mode: "expert",
+                ...bookFlag
+              }
+            ]
+          });
+        }
+      }
+      options.push({ label: `Keep Knowledge; leave ${card.name} spent`, steps: [] });
+
       // Append after rewards the Spell itself just queued (notably Town
       // Portal's destination), so "take it back" is always asked after the
       // map effect has finished rather than before its target is chosen.
@@ -13786,24 +13915,8 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
         steps: [
           {
             type: "CHOOSE_ONE",
-            prompt: `Expert Knowledge: take ${card.name} back?`,
-            options: [
-              {
-                label: action.fromSpellBook
-                  ? `Use 1 crown and return ${card.name} to your Spell Book`
-                  : `Use 1 crown and return ${card.name} to your hand`,
-                steps: [
-                  {
-                    type: "KNOWLEDGE_RECALL_MAP_SPELL",
-                    spellCardId: action.cardId,
-                    knowledgeCardId,
-                    // A Book-cast Map Spell recalls back into the Book.
-                    ...(action.fromSpellBook ? { fromSpellBook: true } : {})
-                  }
-                ]
-              },
-              { label: `Keep Knowledge; leave ${card.name} spent`, steps: [] }
-            ]
+            prompt: `Knowledge: take ${card.name} back?`,
+            options
           }
         ]
       });
@@ -16616,6 +16729,9 @@ function advanceCombatRound(state: GameState, byPlayerId: PlayerId): void {
     // inside the SAME round stays blocked (the boolean is re-set on use). It is
     // also reset per map turn in refreshRoundTokens for the map→combat boundary.
     player.combatStats.spellBookPowerUsedThisTurn = false;
+    // Sorcery draw-only bank is same-activation intent; a new combat round
+    // drops any unused Power so it cannot leak across rounds.
+    player.combatStats.pendingDrawRiderSpellPower = 0;
     // Tarnum (Conflux) VI: "immediately cast" — the over-limit Search privilege
     // does not survive into the next combat round (an uncast Searched spell just
     // stays in hand as a normal card).

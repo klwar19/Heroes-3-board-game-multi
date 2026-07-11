@@ -612,27 +612,73 @@ describe("Expert Knowledge after a map Spell", () => {
     return state;
   }
 
-  it("offers a real choice and spends Knowledge + one crown only when taking the map Spell back", () => {
+  it("basic Knowledge takes the map Spell back with NO crown (no outside-combat spell limit)", () => {
     let state = openKnowledgeAfterDimensionDoor();
     const prompt = state.adventure!.pendingVisit!.steps[0];
-    expect(prompt.type === "CHOOSE_ONE" ? prompt.prompt : "").toMatch(/Expert Knowledge/i);
+    expect(prompt.type === "CHOOSE_ONE" ? prompt.prompt : "").toMatch(/Knowledge/i);
+    // Basic (no crown) first, expert (crown + limit) second, decline last.
+    expect(prompt.type === "CHOOSE_ONE" ? prompt.options.map((o) => o.label) : []).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/Use Knowledge: return/i),
+        expect.stringMatching(/Use Knowledge expert \(1 crown\)/i),
+        expect.stringMatching(/Keep Knowledge/i)
+      ])
+    );
 
     state = applyOk(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 0 });
     expect(state.players.p1.hand).toContain("spell.dimension_door");
     expect(state.players.p1.hand).not.toContain("stat.knowledge");
     expect(state.players.p1.discard).toContain("stat.knowledge");
     expect(state.players.p1.discard).not.toContain("spell.dimension_door");
+    expect(state.players.p1.combatStats.expertUsesSpentThisRound).toBe(0);
+    expect(state.players.p1.combatStats.spellLimitBonusThisRound).toBe(0);
+  });
+
+  it("expert Knowledge spends one crown and raises the combat-round spell limit", () => {
+    let state = openKnowledgeAfterDimensionDoor();
+    // Option 1 = expert (basic is 0, decline is last).
+    state = applyOk(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 1 });
+    expect(state.players.p1.hand).toContain("spell.dimension_door");
+    expect(state.players.p1.hand).not.toContain("stat.knowledge");
     expect(state.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
     expect(state.players.p1.combatStats.spellLimitBonusThisRound).toBe(1);
   });
 
   it("declining keeps Knowledge and its crown, leaving the map Spell spent", () => {
     let state = openKnowledgeAfterDimensionDoor();
-    state = applyOk(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 1 });
+    // Decline is the last option (index 2 when expert is offered).
+    const prompt = state.adventure!.pendingVisit!.steps[0];
+    const declineIndex =
+      prompt.type === "CHOOSE_ONE" ? prompt.options.findIndex((o) => /Keep Knowledge/i.test(o.label)) : -1;
+    expect(declineIndex).toBeGreaterThanOrEqual(0);
+    state = applyOk(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: declineIndex });
 
     expect(state.players.p1.hand).toContain("stat.knowledge");
     expect(state.players.p1.hand).not.toContain("spell.dimension_door");
     expect(state.players.p1.discard).toContain("spell.dimension_door");
+    expect(state.players.p1.combatStats.expertUsesSpentThisRound).toBe(0);
+  });
+
+  it("basic Knowledge works with zero crowns (CONTROL: expert is not required)", () => {
+    let state = withHand(makeGame(), ["spell.dimension_door", "stat.knowledge"]);
+    state.players.p1.limits.expertUses = 0; // no crowns at all
+    dimensionDoorSetup(state);
+    state = playDimensionDoor(state, 0);
+    const destinations = dimensionDoorDestinations(state);
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: state.pendingChoice!.id,
+      optionIndex: destinations.length
+    });
+    // Only basic + decline — no expert arm without crowns.
+    const prompt = state.adventure!.pendingVisit!.steps[0];
+    expect(prompt.type === "CHOOSE_ONE" ? prompt.options.map((o) => o.label) : []).toEqual([
+      expect.stringMatching(/Use Knowledge: return/i),
+      expect.stringMatching(/Keep Knowledge/i)
+    ]);
+    state = applyOk(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 0 });
+    expect(state.players.p1.hand).toContain("spell.dimension_door");
     expect(state.players.p1.combatStats.expertUsesSpentThisRound).toBe(0);
   });
 
@@ -677,11 +723,11 @@ describe("Expert Knowledge after a map Spell", () => {
     state = applyOk(state, fly!.action);
     expect(state.players.p1.spellBook).not.toContain("spell.fly"); // held ongoing, out of the Book
 
-    // Take it back with Expert Knowledge → marked to return to the BOOK (a
-    // private zone) when Fly's effect ends, never the public hand.
+    // Take it back with basic Knowledge → marked to return to the BOOK (a
+    // private zone) when Fly's effect ends, never the public hand. No crown.
     state = applyOk(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 0 });
     expect(state.players.p1.ongoingCards?.find((entry) => entry.cardId === "spell.fly")?.returnTo).toBe("spellBook");
-    expect(state.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
+    expect(state.players.p1.combatStats.expertUsesSpentThisRound).toBe(0);
   });
 });
 

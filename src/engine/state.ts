@@ -2638,6 +2638,13 @@ export type GameAction =
       optionIndex?: number;
       /** Cards from hand paying the option's printed discard/remove cost. */
       costCardIds?: CardId[];
+      /**
+       * Parallel to costCardIds: when paying a Power-value cost, each entry may
+       * be "expert" so a Power statistic/ability contributes its expertAmount
+       * and spends one crown (map View Air tiers, Dimension Door, …). Absent or
+       * "basic" uses the printed basic amount. Index-aligned with costCardIds.
+       */
+      costCardModes?: CardPlayMode[];
       /** Map plays of specialty transforms: the army unit card to cover. */
       armyUnitId?: string;
       /**
@@ -5784,6 +5791,14 @@ export type PlayerState = {
      */
     tarnumOverlimitCards?: CardId[];
     /**
+     * Sorcery played outside a spell-cast window (draw-only during own
+     * activation): banked Power for the NEXT spell this player casts. Wiki:
+     * "Sorcery may be played to first draw a card. A spell drawn in this way
+     * may then be played immediately … and receive the spell power bonus."
+     * Cleared when consumed by a cast, or when the combat round ends.
+     */
+    pendingDrawRiderSpellPower?: number;
+    /**
      * Temple Guardian commander (Mana Magician): charges left this combat.
      * Seeded to 2 at combat start while the commander lives; each charge lets
      * one Spell cast exceed the per-round spell limit. NOT reset per round.
@@ -6945,7 +6960,12 @@ export type VisitStep =
   | { type: "DISCOVER_ADJACENT_TILE" }
   | {
       /**
-       * Optional Expert Knowledge reaction after a Spell resolves on the map.
+       * Knowledge reaction after a Spell resolves on the map. Basic recall
+       * (mode "basic"/absent) takes the Spell back without a crown — there is
+       * no per-turn spell limit outside combat. Expert (mode "expert") also
+       * spends a crown and raises the combat-round spell limit by 1 (the printed
+       * expert side; mostly cosmetic on the map). Empowered Knowledge always
+       * recalls with the limit bonus and never spends a crown.
        * The spell may already be in the discard pile, or held in play by an
        * ongoing effect; the latter is marked to return when it expires.
        * `fromSpellBook` routes a Book-cast Spell back into the Spell Book
@@ -6955,6 +6975,8 @@ export type VisitStep =
       spellCardId: CardId;
       knowledgeCardId: CardId;
       fromSpellBook?: boolean;
+      /** "basic" (default) = free recall; "expert" = crown + limit bonus. */
+      mode?: CardPlayMode;
     }
   | {
       /** Sea Chest / Jetsam: roll one Attack die, resolve the matching branch. */

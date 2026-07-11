@@ -419,13 +419,13 @@ export const spellCards: CardLibrary = {
         {
           label: "Teleport and +1 movement (pay 2 Power)",
           mapOnly: true,
-          cost: { discardCards: 2, costCardFilter: "power-source" },
+          cost: { powerCost: 2, costCardFilter: "power-source" },
           effect: { type: "TELEPORT_HERO_TO_TOWN", movementBonus: 1 }
         },
         {
           label: "Teleport and +2 movement (pay 4 Power)",
           mapOnly: true,
-          cost: { discardCards: 4, costCardFilter: "power-source" },
+          cost: { powerCost: 4, costCardFilter: "power-source" },
           effect: { type: "TELEPORT_HERO_TO_TOWN", movementBonus: 2 }
         }
       ]
@@ -979,13 +979,13 @@ export const spellCards: CardLibrary = {
         {
           label: "Move up to 2 fields (pay 2 Power)",
           mapOnly: true,
-          cost: { discardCards: 2, costCardFilter: "power-source" },
+          cost: { powerCost: 2, costCardFilter: "power-source" },
           effect: { type: "DIMENSION_DOOR", fields: 2 }
         },
         {
           label: "Move up to 3 fields (pay 4 Power)",
           mapOnly: true,
-          cost: { discardCards: 4, costCardFilter: "power-source" },
+          cost: { powerCost: 4, costCardFilter: "power-source" },
           effect: { type: "DIMENSION_DOOR", fields: 3 }
         }
       ]
@@ -1028,13 +1028,13 @@ export const spellCards: CardLibrary = {
         {
           label: "Move through blocked fields and +1 movement (pay 2 Power)",
           mapOnly: true,
-          cost: { discardCards: 2, costCardFilter: "power-source" },
+          cost: { powerCost: 2, costCardFilter: "power-source" },
           effect: { type: "GAIN_HERO_MOVEMENT", amount: 1, moveThroughThisTurn: true }
         },
         {
           label: "Move through blocked fields and +2 movement (pay 4 Power)",
           mapOnly: true,
-          cost: { discardCards: 4, costCardFilter: "power-source" },
+          cost: { powerCost: 4, costCardFilter: "power-source" },
           effect: { type: "GAIN_HERO_MOVEMENT", amount: 2, moveThroughThisTurn: true }
         }
       ]
@@ -1074,13 +1074,13 @@ export const spellCards: CardLibrary = {
         {
           label: "Walk on the sea this turn and +1 movement (pay 1 Power)",
           mapOnly: true,
-          cost: { discardCards: 1, costCardFilter: "power-source" },
+          cost: { powerCost: 1, costCardFilter: "power-source" },
           effect: { type: "GAIN_HERO_MOVEMENT", amount: 1, waterWalkThisTurn: true }
         },
         {
           label: "Walk on the sea this turn and +2 movement (pay 2 Power)",
           mapOnly: true,
-          cost: { discardCards: 2, costCardFilter: "power-source" },
+          cost: { powerCost: 2, costCardFilter: "power-source" },
           effect: { type: "GAIN_HERO_MOVEMENT", amount: 2, waterWalkThisTurn: true }
         }
       ]
@@ -1280,13 +1280,13 @@ export const spellCards: CardLibrary = {
         {
           label: "Gain 2 Building Materials (pay 1 Power)",
           mapOnly: true,
-          cost: { discardCards: 1, costCardFilter: "power-source" },
+          cost: { powerCost: 1, costCardFilter: "power-source" },
           effect: { type: "GAIN_RESOURCES", gain: { buildingMaterials: 2 } }
         },
         {
           label: "Gain 1 Valuables (pay 2 Power)",
           mapOnly: true,
-          cost: { discardCards: 2, costCardFilter: "power-source" },
+          cost: { powerCost: 2, costCardFilter: "power-source" },
           effect: { type: "GAIN_RESOURCES", gain: { valuables: 1 } }
         }
       ]
@@ -1334,13 +1334,13 @@ export const spellCards: CardLibrary = {
         {
           label: "Capture an enemy Mine within 2 fields (pay 1 Power)",
           mapOnly: true,
-          cost: { discardCards: 1, costCardFilter: "power-source" },
+          cost: { powerCost: 1, costCardFilter: "power-source" },
           effect: { type: "VIEW_EARTH", withinFields: 2 }
         },
         {
           label: "Capture an enemy Mine within 3 fields (pay 2 Power)",
           mapOnly: true,
-          cost: { discardCards: 2, costCardFilter: "power-source" },
+          cost: { powerCost: 2, costCardFilter: "power-source" },
           effect: { type: "VIEW_EARTH", withinFields: 3 }
         }
       ]
