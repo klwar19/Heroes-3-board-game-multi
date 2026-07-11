@@ -1050,6 +1050,8 @@ describe("AFK vote-kick through the store (transport wiring)", () => {
       player.canMulligan = false;
       player.needsHandRefresh = false;
     }
+    // The AFK vote / turn timer run only on a CLOSED (hosted) table.
+    game.room = { hosted: true, hostClientId: "c1", members: [] };
     const afk = getAfkState(game);
     afk.lastActionAt.p1 = Date.now() - AFK_IDLE_MS - 60_000;
     afk.lastActionAt.p2 = Date.now();
@@ -1071,6 +1073,8 @@ describe("AFK vote-kick through the store (transport wiring)", () => {
     const roomId = uniqueRoom("afkfresh");
     getRoomSnapshot(roomId);
     const game = createAdventureGameState({ seed: "store-afk-fresh", difficulty: "normal", rollFirstPlayer: false });
+    // The AFK vote / turn timer run only on a CLOSED (hosted) table.
+    game.room = { hosted: true, hostClientId: "c1", members: [] };
     const afk = getAfkState(game);
     afk.lastActionAt.p1 = Date.now();
     afk.lastActionAt.p2 = Date.now();

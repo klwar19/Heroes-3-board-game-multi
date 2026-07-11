@@ -76,6 +76,8 @@ export type RoomDirectoryEntry = {
   members?: RoomDirectoryMember[];
   /** Match type shown in the directory: true = Ranked (counts MMR), false = Normal. */
   ranked: boolean;
+  /** Whether the room is password-protected (a boolean only — never the hash). */
+  locked?: boolean;
   createdByName: string | null;
   createdAt: string;
   updatedAt: string;
@@ -106,6 +108,8 @@ export type LobbyRoomRecord = {
   members?: RoomDirectoryMember[];
   /** Match type: true = Ranked (counts MMR), false = Normal (casual). */
   ranked: boolean;
+  /** Whether the room is password-protected (a boolean only — never the hash). */
+  locked?: boolean;
   createdByName: string | null;
   createdAt: string;
   updatedAt: string;
@@ -157,6 +161,7 @@ export function deriveLobbyRecord(input: DeriveLobbyRecordInput): LobbyRoomRecor
     // Absent flag (legacy rooms) shows as Ranked, matching the match-report
     // default; only an explicit Normal table (`ranked === false`) shows casual.
     ranked: room?.ranked !== false,
+    locked: Boolean(room?.passwordHash),
     createdByName: input.createdByName ?? null,
     createdAt,
     updatedAt
@@ -211,6 +216,7 @@ export function toDirectoryEntry(record: LobbyRoomRecord, viewerClientId?: strin
     hostName: record.hostName,
     members: record.members ?? [],
     ranked: record.ranked,
+    locked: Boolean(record.locked),
     createdByName: record.createdByName,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
@@ -242,6 +248,7 @@ export function lobbyRecordSignature(record: LobbyRoomRecord): string {
     // or the lobby would keep showing stale names for the room.
     members: record.members ?? [],
     ranked: record.ranked,
+    locked: Boolean(record.locked),
     createdByName: record.createdByName,
     createdAt: record.createdAt
   });

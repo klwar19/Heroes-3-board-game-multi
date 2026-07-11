@@ -22,10 +22,12 @@ function visitOwner(state: GameState): PlayerId | null {
 /**
  * 10-minute TURN TIMER (multiplayer house rule, engine-enforced): even a player
  * who keeps clicking — so is never "idle" for the AFK vote — gets at most
- * TURN_TIME_LIMIT_MS per open turn. Any live seat then fires FORCE_TURN_TIMEOUT
+ * TURN_TIME_LIMIT_MS per open turn. A battle PAUSES (resets) that clock, so the
+ * timer never counts combat time. Any live seat then fires FORCE_TURN_TIMEOUT
  * (the server re-checks its own clock) and the driver force-ends the turn:
- * pending inputs default-resolved, an open neutral fight retreated, then a
- * normal END_TURN. The player is NOT kicked or eliminated — play shifts on.
+ * pending inputs default-resolved, any still-open fight retreated (a safety
+ * net — a battle pauses the clock, so a timeout cannot normally arm mid-fight),
+ * then a normal END_TURN. The player is NOT kicked or eliminated — play shifts on.
  * Every behaviour below fails if its wiring is removed (CLAUDE.md #1), with
  * too-early / paused-clock / wrong-seat CONTROLs.
  */
@@ -67,6 +69,8 @@ function makeGame(seed: string, options: { players?: 2 | 3; parallelTurns?: numb
   for (let i = 0; i < 8; i += 1) {
     state.decks.astrologers.drawPile.push("astrologers.dead_silence");
   }
+  // The 10-minute turn timer runs only on a CLOSED (hosted) table.
+  state.room = { hosted: true, hostClientId: "host", members: [] };
   return state;
 }
 
@@ -94,6 +98,19 @@ describe("turn clock bookkeeping — stamps ride the real action pipeline", () =
     // gets a full fresh budget, nothing accumulates across turns.
     const later = applyOk(after, { type: "END_TURN", playerId: "p2" }, T0 + 123_456);
     expect(later.afk?.turnOpenSince).toEqual({ p3: T0 + 123_456 });
+  });
+
+  it("CONTROL: an OPEN (non-hosted) table runs NO turn clock at all", () => {
+    const state = makeGame("turn-clock-open", { players: 3 });
+    // Reopen the table: the casual mode has no per-turn timer.
+    state.room = { hosted: false, hostClientId: null, members: [] };
+    expect(turnClockRunningSeats(state)).toEqual([]);
+    const after = applyOk(state, { type: "END_TURN", playerId: "p1" }, T0);
+    // No clock is stamped, and FORCE_TURN_TIMEOUT has nothing to time out.
+    expect(after.afk?.turnOpenSince ?? {}).toEqual({});
+    expect(
+      expectRejected(after, { type: "FORCE_TURN_TIMEOUT", playerId: "p1", targetPlayerId: "p2" }, LIMIT)
+    ).toContain("no open turn");
   });
 
   it("parallel mode: EVERY open turn's clock runs; ending your own turn drops only your stamp", () => {
@@ -251,8 +268,8 @@ describe("the force-shift — the turn ends, the player stays in the game", () =
     expect(current.afk?.lastActionAt.p1).toBe(T0);
   });
 
-  it("mid-NEUTRAL-combat: the fight is conceded as a RETREAT, then the turn ends — the hero lives on", () => {
-    const state = makeGame("turn-shift-neutral", { players: 3 });
+  it("a NEUTRAL fight PAUSES (resets) the turn clock — the timer never expires mid-battle", () => {
+    const state = makeGame("turn-neutral-pause", { players: 3 });
     const hero = getMainHero(state, "p1")!;
     const fieldId = "99,9";
     const field: MapFieldState = {
@@ -270,19 +287,23 @@ describe("the force-shift — the turn ends, the player stays in the game", () =
     hero.spaceId = fieldId;
     startNeutralEncounter(state, hero, field);
     expect(state.combat?.context.kind).toBe("neutral");
-    // A neutral fight does NOT pause the clock — it is the player's own turn time.
-    expect(turnClockPausedFor(state, "p1")).toBe(false);
     seedTurnClock(state, T0);
 
-    let current = applyOk(state, { type: "FORCE_TURN_TIMEOUT", playerId: "p2", targetPlayerId: "p1" }, LIMIT);
-    current = driveAfkDrop(current, () => ({ now: LIMIT + 1_000 }));
+    // House rule "the 10-minute limit resets when in battle": the player's OWN
+    // neutral combat now pauses their turn clock, so the arm is refused even far
+    // past the limit — combat time can never expire the map-turn budget.
+    expect(turnClockPausedFor(state, "p1")).toBe(true);
+    expect(
+      expectRejected(state, { type: "FORCE_TURN_TIMEOUT", playerId: "p2", targetPlayerId: "p1" }, LIMIT + 5 * 60_000)
+    ).toContain("paused");
 
-    const ended = current.eventLog.find((event) => event.type === "COMBAT_ENDED");
-    expect(ended).toMatchObject({ defeatedPlayerId: "p1", reason: "retreat" });
-    expect(current.combat).toBeNull();
-    expect(current.players.p1.eliminated ?? false).toBe(false);
-    expect(current.activePlayerId).toBe("p2");
-    expect(current.phase).not.toBe("game-over");
+    // CONTROL: remove the battle from the SAME state (the fighter is back on the
+    // map) — now the clock runs and the very same seat DOES time out past the
+    // limit, proving the pause was specifically the open battle.
+    state.combat = null;
+    expect(turnClockPausedFor(state, "p1")).toBe(false);
+    const armed = applyOk(state, { type: "FORCE_TURN_TIMEOUT", playerId: "p2", targetPlayerId: "p1" }, LIMIT);
+    expect(armed.afk?.turnTimeoutPlayerId).toBe("p1");
   });
 
   it("parallel mode: the expired turn is marked done; force-ending the LAST open turn wraps the round WITHOUT eating the fresh one", () => {

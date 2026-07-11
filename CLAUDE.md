@@ -540,23 +540,40 @@ which is fine because nobody is waiting.
   the deserter still gets the abandon. Pinned in `match-report.test.ts`
   (leaver / stepped-down / replacement / winner-seat cases, with a no-snapshot
   legacy CONTROL proving the snapshot is what closes the quit-to-dodge hole).
+- **All time controls are CLOSED-table only** (`timeControlsActive(state)` =
+  `Boolean(state.room?.hosted)`, `afk.ts`). The AFK vote-kick, the 30-minute
+  certain auto-kick AND the 10-minute per-turn timer run ONLY on a CLOSED
+  (hosted) table — the ranked/serious mode. An OPEN table is the casual /
+  single-browser mode and carries NO time pressure at all: nobody is voted out,
+  auto-kicked or force-shifted for taking their time (user rule "remove all time
+  constraint in open game, keep it in closed game"). Gated at the source —
+  `startAfkVote` / `forceAfkKick` throw on an open table, `turnClockRunningSeats`
+  returns `[]` — and in the UI (the `AfkVotePanel` renders nothing on an open
+  table). A table later hosted picks the clocks up on its next action. Pinned
+  with open-table CONTROLs in `afk-vote.test.ts`, `turn-timeout.test.ts`,
+  `overlays.test.tsx`.
 - **10-minute turn budget** (`TURN_TIME_LIMIT_MS`; engine in `afk.ts`,
   `afk-drop.ts`, `resolveTurnTimeout` in `adventure-reducer.ts`): even an
   actively-clicking seat gets 10 minutes per OPEN turn (`afk.turnOpenSince`,
   maintained by `applyTurnClockBookkeeping` on every server-stamped action;
   ordered AND parallel modes). The clock PAUSES (re-stamps, checked on BOTH
-  sides of each action) while the seat is blocked: an open PvP battle, another
-  seat's exclusive interaction, the round-start event barrier. On expiry any
+  sides of each action), and thereby RESETS on exit, while the seat is blocked:
+  **ANY open battle it is in** (the fighter's OWN neutral combat, a PvP battle,
+  or a PvP-Neutral-Control guard slot — user rule "the 10-minute limit resets
+  when in battle", so combat time never eats the map-turn budget), another
+  seat's exclusive interaction, or the round-start event barrier. On expiry any
   live client fires `FORCE_TURN_TIMEOUT` (the server re-checks its own clock
   and the pause state); the shared forced-resolution driver then
-  default-resolves the seat's pending inputs, retreats an open NEUTRAL fight,
-  and ends the turn through the normal `endTurnAdventure` — Pandora/Logistics
-  end-turn prompts and the no-base elimination clock run exactly as if End
-  Turn was pressed by hand. The player is NOT eliminated (the AFK vote /
-  30-minute kick remain the removal path), driver-issued auto-answers do NOT
-  refresh the target's AFK idle clock, and force-ending the LAST open parallel
-  turn wraps the round WITHOUT consuming the seat's fresh next turn. Pinned in
-  `turn-timeout.test.ts` (too-early / paused / wrong-seat CONTROLs); the
+  default-resolves the seat's pending inputs, retreats any still-open fight (a
+  safety net — a battle pauses the clock, so a timeout cannot normally arm
+  mid-fight), and ends the turn through the normal `endTurnAdventure` —
+  Pandora/Logistics end-turn prompts and the no-base elimination clock run
+  exactly as if End Turn was pressed by hand. The player is NOT eliminated (the
+  AFK vote / 30-minute kick remain the removal path), driver-issued auto-answers
+  do NOT refresh the target's AFK idle clock, and force-ending the LAST open
+  parallel turn wraps the round WITHOUT consuming the seat's fresh next turn.
+  Pinned in `turn-timeout.test.ts` (a NEUTRAL fight pauses-then-times-out-off-map
+  CONTROL, plus too-early / paused / wrong-seat / open-table CONTROLs); the
   countdown chip + client auto-fire live in `overlays.tsx`
   (`overlays.test.tsx`).
 - **Who is here / who joined.** A genuinely NEW `JOIN_ROOM` announces itself —
@@ -572,6 +589,38 @@ which is fine because nobody is waiting.
   owner-editable contact fields, never the email — and `/players/[nickname]`
   renders it, linked from Hall of Fame rows and verified room-member names
   (`account-store.test.ts` "looks up a PUBLIC profile by nickname").
+- **Match reporting survives a missing edge key (dual-claim).** Finished games
+  normally report from the PartyKit edge via `HOMM3BG_MATCH_REPORT_KEY` (now
+  falling back to `HOMM3BG_ADMIN_KEY` on both the party and `/api/matches/report`
+  so a deployment that only set the admin key still records). When neither the
+  edge nor its key is available, a BROWSER dual-claim is the backup: each
+  signed-in participant POSTs `/api/matches/claim` once on the game-over
+  transition (`maybeClaimFinishedMatch`, `src/lib/match-claim-client.ts`); the
+  server PARKS the first claim and records W/L only when a SECOND distinct
+  participant confirms the identical fingerprint (`src/server/match-claim.ts`,
+  both account backends). Ranked rooms are forced CLOSED at creation (open
+  tables store no seats, so the ladder cannot attribute a result), and
+  `healVerifiedMembership` backfills a guest-stamped `matchSeats.userId` so a
+  leaver is still attributed. Pinned in `match-claim.test.ts` +
+  `match-report-giveup.test.ts` (a closed ranked give-up → a recordable
+  FinishedMatch), each with a single-claimer / non-participant CONTROL.
+- **Room join passwords (casual join-gate).** A room may carry a join password
+  (`SET_ROOM_PASSWORD`, host-only on a hosted table, any member on an open one;
+  `room.ts`). The engine stores ONLY a salted, dependency-free HASH
+  (`hashRoomPassword`, cyrb53), never the plaintext, and `getPlayerView` redacts
+  even the hash to `PASSWORD_REDACTED` in every view. A NEW joiner must supply
+  the matching password in `JOIN_ROOM` (the host and reconnecting members are
+  exempt); and — for a locked room — `roomActionGuard` lets ONLY members (who
+  supplied it) take game actions, even on an OPEN table where seats are
+  otherwise free. HONESTY: this is a casual Warcraft-III-style gate, NOT
+  cryptographic secrecy — the full room state is broadcast, so a weak password
+  is brute-forceable by anyone inspecting the transport; its real job is keeping
+  uninvited people out of the lobby's Join flow. UI: a host set/clear control in
+  the room panel, a per-room join-password prompt (`page.tsx`), and a lobby
+  lock badge (`RoomDirectoryEntry.locked`, a boolean only). Pinned in
+  `room-password.test.ts` (set/clear, the join gate with wrong/absent CONTROLs,
+  the members-only action gate with a no-password CONTROL, and the view
+  redaction) and `lobby-registry.test.ts` (the `locked` flag).
 
 ## WOG Commanders (optional module, BINH-only) — what runs vs. adaptations
 

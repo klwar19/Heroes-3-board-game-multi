@@ -116,6 +116,7 @@ import {
   roomActionGuard,
   setRoomHosted,
   setRoomName,
+  setRoomPassword,
   setRoomRanked,
   setRoomRequireAuth,
   transferHost
@@ -17738,6 +17739,7 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "KICK_MEMBER",
   "TRANSFER_HOST",
   "SET_ROOM_NAME",
+  "SET_ROOM_PASSWORD",
   "SET_ROOM_REQUIRE_AUTH",
   "SET_ROOM_RANKED",
   "SEND_TABLE_REACTION",
@@ -18072,6 +18074,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "SET_ROOM_NAME":
         setRoomName(nextState, action);
+        break;
+      case "SET_ROOM_PASSWORD":
+        setRoomPassword(nextState, action);
         break;
       case "SET_ROOM_REQUIRE_AUTH":
         setRoomRequireAuth(nextState, action);

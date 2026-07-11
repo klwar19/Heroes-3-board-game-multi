@@ -33,6 +33,7 @@ const ROOM_MEMBERSHIP_ACTION_TYPES = new Set<GameAction["type"]>([
   "KICK_MEMBER",
   "TRANSFER_HOST",
   "SET_ROOM_NAME",
+  "SET_ROOM_PASSWORD",
   "SET_ROOM_REQUIRE_AUTH",
   "SET_ROOM_RANKED"
 ]);
@@ -53,6 +54,50 @@ export type VerifiedActor = { clientId?: string; userId?: string };
 
 /** Longest accepted room name; longer input is trimmed to this. */
 export const MAX_ROOM_NAME_LENGTH = 40;
+
+/** Longest accepted room password; longer input is trimmed to this. */
+export const MAX_ROOM_PASSWORD_LENGTH = 32;
+
+/**
+ * Normalises a raw password the same way on both the set and the check path, so
+ * whitespace/length differences never make a correct password fail: trim the
+ * ends and cap the length. A result of "" means "no password / clear the lock".
+ */
+export function normalizeRoomPassword(raw: string | undefined | null): string {
+  return (raw ?? "").trim().slice(0, MAX_ROOM_PASSWORD_LENGTH);
+}
+
+/**
+ * Deterministic, dependency-free hash of a room password (cyrb53 by bryc,
+ * public domain — github.com/bryc), rendered as a fixed-width hex string. Runs
+ * identically in Node, the browser, and the Cloudflare Workers edge runtime,
+ * and synchronously (the reducer is sync, so Web Crypto's async digest is not
+ * an option).
+ *
+ * This is deliberately a NON-cryptographic hash: the room password is a casual
+ * join-gate (see `RoomMembershipState.passwordHash`), not a secret against a
+ * wire-sniffer, so a fast, salted, collision-resistant-enough mixer is the
+ * right tool. Callers MUST pass an already-`normalizeRoomPassword`d value so the
+ * stored hash and every future check agree.
+ */
+export function hashRoomPassword(normalized: string): string {
+  // Fixed salt so the on-wire hash of a short password is not a bare, rainbow-
+  // table-friendly digest of the raw text.
+  const input = `homm3bg:room-password:v1:${normalized}`;
+  let h1 = 0xdeadbeef;
+  let h2 = 0x41c6ce57;
+  for (let i = 0; i < input.length; i++) {
+    const ch = input.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507);
+  h1 ^= Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507);
+  h2 ^= Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  const combined = 4294967296 * (2097151 & h2) + (h1 >>> 0);
+  return combined.toString(16).padStart(14, "0");
+}
 
 /** A short, stable fallback label when a room has no name of its own. */
 export function defaultRoomName(roomId: string): string {
@@ -300,6 +345,18 @@ export function joinRoom(
       newMember: false
     });
     return;
+  }
+
+  // Password gate for a NEW member: a locked room demands the correct password
+  // from anyone who is not the sticky host (who owns the room and set the lock)
+  // or an existing member reconnecting (handled by the early returns above). The
+  // check normalises the attempt the same way the password was stored so
+  // whitespace never breaks it.
+  if (room.passwordHash && room.hostClientId !== action.clientId) {
+    const attempt = normalizeRoomPassword(action.password);
+    if (attempt.length === 0 || hashRoomPassword(attempt) !== room.passwordHash) {
+      throw new Error("Incorrect room password.");
+    }
   }
 
   const member: RoomMember = {
@@ -571,6 +628,34 @@ export function setRoomName(state: GameState, action: Extract<GameAction, { type
   appendEvent(state, { type: "ROOM_NAMED", name, byClientId: action.clientId });
 }
 
+export function setRoomPassword(
+  state: GameState,
+  action: Extract<GameAction, { type: "SET_ROOM_PASSWORD" }>
+): void {
+  const room = ensureRoom(state);
+  const member = findMember(room, action.clientId);
+  if (!member) {
+    throw new Error("Join the room before setting a password.");
+  }
+  // Same authority as naming: any member on an open table; host-only when hosted.
+  if (room.hosted && !isEffectiveHost(room, action.clientId)) {
+    throw new Error("Only the host can set a room password.");
+  }
+
+  const password = normalizeRoomPassword(action.password);
+  // Blank clears the lock; otherwise store ONLY the hash (never the plaintext).
+  if (password.length === 0) {
+    delete room.passwordHash;
+  } else {
+    room.passwordHash = hashRoomPassword(password);
+  }
+  appendEvent(state, {
+    type: "ROOM_PASSWORD_CHANGED",
+    hasPassword: Boolean(room.passwordHash),
+    byClientId: action.clientId
+  });
+}
+
 export function setRoomRequireAuth(
   state: GameState,
   action: Extract<GameAction, { type: "SET_ROOM_REQUIRE_AUTH" }>
@@ -645,8 +730,8 @@ export function roomActionGuard(
   actor: VerifiedActor
 ): string | null {
   const room = state.room;
-  if (!room || !room.hosted) {
-    return null; // open table → no seat enforcement
+  if (!room) {
+    return null; // no membership record → no enforcement
   }
   const { clientId, userId } = actor;
   if (!clientId && !userId) {
@@ -654,6 +739,24 @@ export function roomActionGuard(
   }
   if (isRoomMembershipAction(action)) {
     return null; // membership actions self-validate by clientId
+  }
+
+  // Password-protected room (open OR hosted): only members — who supplied the
+  // password when they joined — may take game actions. This is what makes a
+  // password meaningful on an OPEN table too, where seats are otherwise free: a
+  // client that reached the room by its id but never passed the password (so
+  // never became a member) can spectate the broadcast, but cannot play. A
+  // verified account is matched by its userId, a guest by the claimed clientId.
+  if (room.passwordHash) {
+    const member =
+      (userId ? findMemberByUserId(room, userId) : null) ?? (clientId ? findMember(room, clientId) : null);
+    if (!member) {
+      return "This room is password-protected — join with the password to play.";
+    }
+  }
+
+  if (!room.hosted) {
+    return null; // open table → members act as any seat
   }
   const playerId = actionSeat(action);
   if (!playerId) {

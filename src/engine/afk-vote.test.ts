@@ -70,6 +70,8 @@ function makeGame(
   for (let i = 0; i < 8; i += 1) {
     state.decks.astrologers.drawPile.push("astrologers.dead_silence");
   }
+  // The AFK vote / auto-kick / turn timer run only on a CLOSED (hosted) table.
+  state.room = { hosted: true, hostClientId: "host", members: [] };
   return state;
 }
 
@@ -108,6 +110,26 @@ describe("AFK vote — opening, waiting, cancelling", () => {
       votes: { p2: "kick" }
     });
     expect(open.eventLog.some((event) => event.type === "AFK_VOTE_STARTED")).toBe(true);
+  });
+
+  it("CONTROL: an OPEN (non-hosted) table has NO time controls — the vote is refused", () => {
+    const state = makeGame("afk-open-table", { players: 3 });
+    // Reopen the table (drop hosting): the casual mode carries no time pressure.
+    state.room = { hosted: false, hostClientId: null, members: [] };
+    stampClocks(state, T0);
+    expect(state.activePlayerId).toBe("p1");
+    // Even a seat idle well past the window cannot be vote-kicked on an open table.
+    expect(
+      expectRejected(state, { type: "START_AFK_VOTE", playerId: "p2", targetPlayerId: "p1" }, IDLE)
+    ).toContain("closed (hosted) table");
+    // And the 30-minute certain kick is refused on an open table too.
+    expect(
+      expectRejected(
+        state,
+        { type: "FORCE_AFK_KICK", playerId: "p2", targetPlayerId: "p1" },
+        T0 + AFK_AUTO_KICK_MS
+      )
+    ).toContain("closed (hosted) table");
   });
 
   it("stamps the idle clock from real actions and bootstraps every seat on the first one", () => {

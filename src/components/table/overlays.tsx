@@ -2523,9 +2523,14 @@ export function AfkVotePanel({
   // Certain 30-minute auto-kick: once ANY seat has been idle past the hard
   // threshold, a live seat's client fires FORCE_AFK_KICK (the server re-checks
   // the idle time). Fired from an effect so render stays pure; guarded to once
-  // per target and skipped while a drop is already in progress.
+  // per target and skipped while a drop is already in progress. The whole
+  // vote/timer system is CLOSED-table only (open games carry no time pressure).
   const afkActive =
-    state.mode === "adventure" && !state.setupLobby && state.phase !== "game-over" && liveSeats.length >= 2;
+    state.mode === "adventure" &&
+    !state.setupLobby &&
+    state.phase !== "game-over" &&
+    Boolean(state.room?.hosted) &&
+    liveSeats.length >= 2;
   const autoKickTarget =
     afkActive && viewerLive && afk && !afk.droppingPlayerId
       ? (liveSeats.find(
@@ -2583,7 +2588,14 @@ export function AfkVotePanel({
     onAction({ type: "FORCE_TURN_TIMEOUT", playerId: viewerPlayerId, targetPlayerId: expiredTurn.seat });
   }, [expiredTurn, expiredTurnKey, onAction, viewerPlayerId]);
 
-  if (state.mode !== "adventure" || state.setupLobby || state.phase === "game-over" || liveSeats.length < 2) {
+  if (
+    state.mode !== "adventure" ||
+    state.setupLobby ||
+    state.phase === "game-over" ||
+    !state.room?.hosted ||
+    liveSeats.length < 2
+  ) {
+    // Open (non-hosted) tables carry no AFK vote / auto-kick / turn timer UI.
     return null;
   }
 

@@ -3310,6 +3310,21 @@ export default function Home() {
   // rather than throwing, so it would otherwise be swallowed — leaving the
   // viewer a non-member who can never seat. Surfaced in the seat panel below.
   const [roomJoinError, setRoomJoinError] = useState<string | null>(null);
+  // Room join password: the value the viewer supplied for a password-protected
+  // room, sent in JOIN_ROOM. Submitting it clears the one-shot join guard so the
+  // effect re-joins WITH the password. Both the submitted value and the live
+  // input draft are TAGGED with the room they belong to, so switching rooms reads
+  // back "" without any reset effect (which would be a cascading setState).
+  const [joinPasswordEntry, setJoinPasswordEntry] = useState<{ roomId: string; value: string }>({
+    roomId: "",
+    value: ""
+  });
+  const joinRoomPassword = joinPasswordEntry.roomId === roomId ? joinPasswordEntry.value : "";
+  const [joinDraftEntry, setJoinDraftEntry] = useState<{ roomId: string; value: string }>({
+    roomId: "",
+    value: ""
+  });
+  const joinPasswordDraft = joinDraftEntry.roomId === roomId ? joinDraftEntry.value : "";
   useEffect(() => {
     const connection = connectionRef.current;
     if (!roomId || !state || !connection) {
@@ -3427,7 +3442,12 @@ export default function Home() {
     // a silent non-member who can only get "That member is not in the room" if
     // they try to seat. A network/timeout rejection leaves the last state.
     void connection
-      .submitAction({ type: "JOIN_ROOM", clientId, name: desiredName })
+      .submitAction({
+        type: "JOIN_ROOM",
+        clientId,
+        name: desiredName,
+        ...(joinRoomPassword ? { password: joinRoomPassword } : {})
+      })
       .then((res) => {
         const joinError = res.result.errors[0]?.message ?? null;
         setRoomJoinError(joinError);
@@ -3435,12 +3455,13 @@ export default function Home() {
           applyPendingName();
         } else {
           // Let a later change (e.g. the host lifting the account requirement,
-          // or the player signing in) re-attempt the join instead of latching.
+          // the player signing in, or a room password being entered) re-attempt
+          // the join instead of latching.
           joinedRoomRef.current = null;
         }
       })
       .catch(() => {});
-  }, [state, roomId, displayName, clientId, accountUserId]);
+  }, [state, roomId, displayName, clientId, accountUserId, joinRoomPassword]);
 
   // Global presence while IN a room: heartbeat to the lobby's "Players online"
   // board so this player shows up as "in <room>" (and can be invited/joined),
@@ -3922,8 +3943,55 @@ export default function Home() {
       !(state.room?.members ?? []).some((member) => member.clientId !== memberClientId && member.seat === seatId)
   );
 
+  // Password gate for a joiner: a locked room (passwordHash present, even
+  // redacted) the viewer has not joined shows a password prompt. Submitting it
+  // stores the attempt and clears the one-shot join guard so the JOIN effect
+  // re-fires WITH the password. Works for open AND hosted locked rooms.
+  const roomLockedForViewer = Boolean(state.room?.passwordHash) && !isRoomMember;
+  const submitJoinPassword = () => {
+    const attempt = joinPasswordDraft.trim();
+    if (attempt.length === 0) {
+      return;
+    }
+    joinedRoomRef.current = null;
+    setJoinPasswordEntry({ roomId, value: attempt });
+  };
+  const roomPasswordPrompt = roomLockedForViewer ? (
+    <div className="menuRow seatLocked" aria-label="Room password">
+      <Lock aria-hidden="true" size={13} />
+      <span className="seatClaimHint">
+        {joinRoomPassword && roomJoinError && /password/i.test(roomJoinError)
+          ? "Incorrect password — try again."
+          : "This room is password-protected."}
+      </span>
+      <input
+        aria-label="Room password"
+        autoComplete="off"
+        maxLength={32}
+        onChange={(event) => setJoinDraftEntry({ roomId, value: event.target.value })}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            submitJoinPassword();
+          }
+        }}
+        placeholder="Enter password"
+        type="password"
+        value={joinPasswordDraft}
+      />
+      <button
+        className="seatClaimButton"
+        disabled={joinPasswordDraft.trim().length === 0}
+        onClick={submitJoinPassword}
+        type="button"
+      >
+        Join
+      </button>
+    </div>
+  ) : null;
+
   const tableMenu = (
     <div className="tableMenu" aria-label="Table controls">
+      {roomPasswordPrompt}
       {roomHosted ? (
         // Hosted/closed room: the host controls seats, but a player may still
         // self-serve into an OPEN seat or step down to observer — so joiners are

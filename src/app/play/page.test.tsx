@@ -82,7 +82,10 @@ describe("/play (multiplayer room browser)", () => {
       name: "My Table",
       createdByName: "Binh",
       mode: "adventure",
-      ranked: false
+      ranked: false,
+      // Ranked forces a closed table; a Normal room carries the explicit choice
+      // (default Open) so the edge seeds the same hosting the client applies.
+      hosted: false
     });
     // The create call resolves asynchronously before navigation.
     await vi.waitFor(() => expect(push).toHaveBeenCalledWith("/?room=new-room-7"));

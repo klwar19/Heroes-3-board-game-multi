@@ -1,5 +1,4 @@
 import { appendEvent } from "./events";
-import { neutralCombatControllerId } from "./neutral-control";
 import {
   isRoundStartEventBarrierActive,
   parallelTurnsActive,
@@ -34,20 +33,36 @@ export const AFK_REASK_MS = 10 * 60_000;
 /**
  * A seat idle this long (ms) is CERTAINLY kicked — no vote needed. Any live
  * seat's client fires `FORCE_AFK_KICK` once the target has been away this long
- * ("after 30 minutes the AFK player is certainly kicked").
+ * ("after 30 minutes the AFK player is certainly kicked"). CLOSED tables only
+ * (see `timeControlsActive`).
  */
 export const AFK_AUTO_KICK_MS = 30 * 60_000;
 /**
- * Hard per-TURN budget (multiplayer adventure): a player — even one actively
- * clicking, so never "idle" for the AFK vote — gets at most this long per open
- * turn before any live seat's client may fire `FORCE_TURN_TIMEOUT` and the
- * server force-ends the turn (pending inputs default-resolved, an open neutral
- * fight retreated, then a normal END_TURN — the player is NOT eliminated; play
- * simply shifts to the others). The clock pauses while the seat is blocked by
- * someone ELSE'S exclusive interaction, a PvP battle or the round-start event
- * barrier, so only time the player could actually spend counts against them.
+ * Hard per-TURN budget (multiplayer adventure, CLOSED tables only — see
+ * `timeControlsActive`): a player — even one actively clicking, so never "idle"
+ * for the AFK vote — gets at most this long per open turn before any live seat's
+ * client may fire `FORCE_TURN_TIMEOUT` and the server force-ends the turn
+ * (pending inputs default-resolved, an open fight retreated, then a normal
+ * END_TURN — the player is NOT eliminated; play simply shifts to the others).
+ * The clock pauses (and thereby RESETS) while the seat is in a battle, blocked by
+ * someone ELSE'S exclusive interaction, or held by the round-start event barrier,
+ * so only time the player could actually spend on the map counts against them.
  */
 export const TURN_TIME_LIMIT_MS = 10 * 60_000;
+
+/**
+ * The turn/AFK time controls — the idle vote-kick, the 30-minute certain
+ * auto-kick, and the 10-minute per-turn timer — run ONLY on a CLOSED (hosted)
+ * table, the ranked/serious mode where seats are identity-bound and someone is
+ * genuinely kept waiting. An OPEN table is the casual/single-browser mode and
+ * carries NO time pressure at all: nobody is voted out, auto-kicked or
+ * force-shifted for taking their time (user rule: "remove all time constraint in
+ * open game, keep it in closed game"). A table that is later hosted picks the
+ * clocks up on its next action; one un-hosted drops them.
+ */
+export function timeControlsActive(state: GameState): boolean {
+  return Boolean(state.room?.hosted);
+}
 
 /** The AFK slice, created on demand (absent on legacy snapshots and solo games). */
 export function getAfkState(state: GameState): AfkState {
@@ -205,6 +220,9 @@ export function startAfkVote(
   now: number | undefined
 ): void {
   const afk = assertVoteContext(state);
+  if (!timeControlsActive(state)) {
+    throw new Error("AFK votes run only on a closed (hosted) table.");
+  }
   const seats = liveSeats(state);
   if (seats.length < 2) {
     throw new Error("An AFK vote needs at least two players still in the game.");
@@ -331,6 +349,9 @@ export function forceAfkKick(
   now: number | undefined
 ): void {
   const afk = assertVoteContext(state);
+  if (!timeControlsActive(state)) {
+    throw new Error("The AFK auto-kick runs only on a closed (hosted) table.");
+  }
   const seats = liveSeats(state);
   if (seats.length < 2) {
     throw new Error("An AFK kick needs at least two players still in the game.");
@@ -380,6 +401,10 @@ export function turnClockRunningSeats(state: GameState): PlayerId[] {
   if (state.mode !== "adventure" || !state.adventure || state.setupLobby || gameIsOver(state)) {
     return [];
   }
+  // Closed (hosted) tables only — an open table carries no per-turn timer.
+  if (!timeControlsActive(state)) {
+    return [];
+  }
   const seats = liveSeats(state);
   if (seats.length < 2) {
     return [];
@@ -392,11 +417,18 @@ export function turnClockRunningSeats(state: GameState): PlayerId[] {
 }
 
 /**
- * Whether `playerId`'s turn clock is PAUSED: the seat cannot meaningfully act,
- * so the time must not count against their 10-minute budget. Paused while
- *  - a PvP battle is open (both fighters are engaged; a defender must never be
- *    able to run down the attacker's map-turn clock — and a bystander cannot
- *    act at all until it ends);
+ * Whether `playerId`'s turn clock is PAUSED: the seat cannot meaningfully spend
+ * its 10-minute budget right now (or should not have to), so the time must not
+ * count against it. A pause is also a soft RESET: because the clock is re-stamped
+ * on every action while paused AND on the action that lifts the pause (see
+ * `applyTurnClockBookkeeping`), a seat that comes out of a pause resumes with a
+ * fresh, full budget. Paused while
+ *  - ANY (non-sandbox) battle is open and this seat is IN it — the fighter's own
+ *    neutral combat, a PvP battle (both sides), or a PvP-Neutral-Control guard
+ *    slot they are waiting on another human to play. A battle can run long and is
+ *    its own timed context; the player-facing rule is "the 10-minute limit resets
+ *    when in battle", so combat time never eats the map-turn budget. A bystander
+ *    to a battle they are not in is paused too (they cannot act until it ends);
  *  - the round-start Event/Astrologers barrier freezes the table for everyone
  *    but the current resolver;
  *  - the table's exclusive interaction (choice, reaction priority, visit, tile
@@ -406,24 +438,12 @@ export function turnClockRunningSeats(state: GameState): PlayerId[] {
  */
 export function turnClockPausedFor(state: GameState, playerId: PlayerId): boolean {
   const combat = state.combat;
+  // Any live battle pauses (and thereby resets) the turn clock for everyone: the
+  // two fighters are IN it, and a bystander cannot act until it ends. This
+  // includes the fighter's OWN neutral combat, which previously kept the clock
+  // running — per the user rule "the 10-minute limit resets when in battle".
   if (combat && !combat.outcome && combat.context.kind !== "sandbox") {
-    const isParticipant = combat.attackerPlayerId === playerId || combat.defenderPlayerId === playerId;
-    const isPvp = combat.attackerPlayerId !== NEUTRAL_PLAYER_ID && combat.defenderPlayerId !== NEUTRAL_PLAYER_ID;
-    if (!isParticipant || isPvp) {
-      return true;
-    }
-    // PvP Neutral Control: while ANOTHER seat plays the guards, the fighter is
-    // waiting on a human's decisions exactly like in a PvP battle — the guard's
-    // open activation slot must not run down the fighter's own 10 minutes.
-    // (Choices/windows the controller owns are already covered below; this
-    // covers the slot itself, where the controller drives with unit actions.)
-    const controller = neutralCombatControllerId(state, combat);
-    if (controller && controller !== playerId) {
-      const active = combat.activeUnitId ? combat.units[combat.activeUnitId] : null;
-      if (active && active.controllerId === NEUTRAL_PLAYER_ID && !active.activatedThisRound) {
-        return true;
-      }
-    }
+    return true;
   }
   if (isRoundStartEventBarrierActive(state) && roundStartEventResolver(state) !== playerId) {
     return true;

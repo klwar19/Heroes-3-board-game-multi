@@ -337,6 +337,16 @@ export function getPlayerView(state: GameState, viewerPlayerId: PlayerId): Playe
       )
     : base.eventLog;
 
+  // Redact the room's password hash: its PRESENCE is preserved (so a UI can show
+  // a "locked" badge) but the actual hash never appears in a rendered view. This
+  // is hygiene, not secrecy — the raw state is still what the transport
+  // broadcasts (see the note on RoomMembershipState.passwordHash); the
+  // authoritative JOIN_ROOM check runs on the unredacted server state.
+  const room =
+    base.room && base.room.passwordHash
+      ? { ...base.room, passwordHash: PASSWORD_REDACTED }
+      : base.room;
+
   return {
     ...base,
     viewerPlayerId,
@@ -345,10 +355,14 @@ export function getPlayerView(state: GameState, viewerPlayerId: PlayerId): Playe
     adventure,
     combat,
     eventLog,
+    room,
     reactionWindow: getVisibleReactionWindow(base.reactionWindow, viewerPlayerId),
     pendingChoice: getVisiblePendingChoice(base.pendingChoice, viewerPlayerId)
   };
 }
+
+/** Sentinel that replaces a room's password hash in any player-facing view. */
+export const PASSWORD_REDACTED = "__redacted__";
 
 /** The placeholder that stands in for a hidden card id on the wire. */
 const HIDDEN_CARD_ID: CardId = "hidden";

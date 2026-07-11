@@ -196,8 +196,9 @@ export function nextTurnTimeoutAction(state: GameState, playerId: PlayerId): Gam
       return { type: "ACKNOWLEDGE_COMBAT_END", playerId };
     }
     if (!combat.outcome) {
-      // Reaching here means a NEUTRAL fight (PvP battles pause the clock, so a
-      // timeout cannot normally arm mid-PvP): concede it as a retreat.
+      // Safety net: any open battle pauses the turn clock (PvP AND the fighter's
+      // own neutral combat), so a timeout cannot NORMALLY arm mid-fight. If a
+      // race ever leaves one open, concede it as a retreat so the shift proceeds.
       return { type: "RESOLVE_TURN_TIMEOUT", playerId };
     }
     return null; // acknowledged but not yet finalized — the automation finishes it.

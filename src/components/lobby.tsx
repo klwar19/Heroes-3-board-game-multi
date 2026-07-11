@@ -307,6 +307,14 @@ export function LobbyScreen({
                         </>
                       )}
                     </span>
+                    {room.locked ? (
+                      <span
+                        className="lobbyRoomLocked"
+                        title="Password-protected — you will be asked for the password to join"
+                      >
+                        <Lock aria-hidden="true" size={12} /> Password
+                      </span>
+                    ) : null}
                     {room.hostName ? (
                       <span className="lobbyRoomHost" title="Host">
                         <Crown aria-hidden="true" size={12} /> {room.hostName}
