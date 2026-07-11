@@ -22,6 +22,7 @@ import {
   getUnitAbilityDefinitions,
   getUnitMoveRange,
   getUnitTokens,
+  hasUnitAbilityEffect,
   inCombatPrep,
   isAdjacent,
   isArrowTowerUnit,
@@ -30,6 +31,7 @@ import {
   pickCombatBoardArtId,
   placementCellsFor,
   playerSpellCastsIgnoreLimit,
+  unitHasUnlimitedRetaliationEffect,
   unitIsBerserk,
   type BattlefieldTokenState,
   type CombatBoardArtId,
@@ -65,6 +67,26 @@ const STACK_TOKEN_LABELS: Record<NonNullable<CombatUnitState["stackToken"]>, str
   health: "+1 HP",
   initiative: "+2 INI"
 };
+
+/**
+ * Where a unit stands with its once-per-round Retaliation — the same reading the
+ * engine's `shouldRetaliate` uses (reducer.ts): a unit counter-attacks a melee
+ * blow unless it has already spent its retaliation this round, and unlimited
+ * retaliation (Griffins' ability or the Counterstrike active effect) never runs
+ * out. Surfaced so a player can tell at a glance whether striking a unit now will
+ * draw a counter-attack.
+ *  - "unlimited": always counters this round (ability or Counterstrike effect).
+ *  - "used": already retaliated this round → will NOT counter again.
+ *  - "ready": has not retaliated yet → will counter a melee hit.
+ */
+export type RetaliationStatus = "unlimited" | "used" | "ready";
+
+export function retaliationStatus(state: GameState, unit: CombatUnitState): RetaliationStatus {
+  if (hasUnitAbilityEffect(unit, "ALLOW_UNLIMITED_RETALIATION") || unitHasUnlimitedRetaliationEffect(state, unit)) {
+    return "unlimited";
+  }
+  return unit.retaliatedThisRound ? "used" : "ready";
+}
 
 /**
  * Seat-relative orientation: your rows should sit nearest your hand. The
@@ -1216,6 +1238,10 @@ export function BattlefieldBoard({
           // Berserk is an active effect, not a token — surface it as a badge so the
           // player can see a unit is forced to attack the nearest on its next turn.
           const isBerserked = Boolean(unit && unitIsBerserk(state.activeEffects, unit));
+          // Retaliation spent: flag a unit that has already used its once-per-round
+          // counter-attack, so the table can see it will NOT strike back if hit in
+          // melee now (a unit with unlimited retaliation is never flagged).
+          const retaliationSpent = Boolean(unit && retaliationStatus(state, unit) === "used");
           const content = unit ? (
             <article
               className={`boardCard ${unit.controllerId} ${isFlipping ? "flipping" : ""} ${tint ? `fxTint-${tint}` : ""} ${
@@ -1269,6 +1295,14 @@ export function BattlefieldBoard({
                   title={`Stack Token: ${STACK_TOKEN_LABELS[unit.stackToken]}. A Stacked defender absorbs one lethal blow — it discards this token instead of being removed.`}
                 >
                   {STACK_TOKEN_LABELS[unit.stackToken]}
+                </span>
+              ) : null}
+              {retaliationSpent ? (
+                <span
+                  className="retaliationSpentBadge"
+                  title="Retaliation spent — this unit already used its once-per-round counter-attack, so a melee hit now will NOT draw a retaliation."
+                >
+                  <Swords aria-hidden="true" size={9} /> no counter
                 </span>
               ) : null}
             </article>
@@ -1598,6 +1632,14 @@ export function InspectPanel({ state, unitId }: { state: GameState; unitId: stri
   const attack = unit.attack + attackBonus;
   const defenseBonus = getActiveDefenseBonus(state, unit);
   const defense = unit.defense + defenseBonus;
+  // Whether this unit will counter-attack a melee blow right now (the same
+  // reading the engine's shouldRetaliate uses), surfaced as a plain status line.
+  const retaliation = retaliationStatus(state, unit);
+  const retaliationText: Record<RetaliationStatus, string> = {
+    unlimited: "unlimited — counters every melee hit this round",
+    used: "spent — already retaliated, won't counter again this round",
+    ready: "ready — counters the next melee hit this round"
+  };
 
   return (
     <section className="inspectPanel" aria-label={`${unit.name} card`}>
@@ -1654,6 +1696,9 @@ export function InspectPanel({ state, unitId }: { state: GameState; unitId: stri
           <span title="Health">
             ♥ {health}/{unit.maxHealth}
           </span>
+        </div>
+        <div className={`inspectRetaliation ${retaliation}`} title={`Retaliation ${retaliationText[retaliation]}`}>
+          <Swords aria-hidden="true" size={12} /> Retaliation: <b>{retaliation === "used" ? "spent" : retaliation}</b>
         </div>
         {unit.commanderSlug && unit.commanderGrades ? (
           // Commander-only extras: the Might dice (Damage grade) and the Magic

@@ -101,6 +101,7 @@ export {
   makeActiveEffect,
   playerSpellCastsIgnoreLimit,
   unitDealsElementalDamage,
+  unitHasUnlimitedRetaliationEffect,
   unitIsBerserk
 } from "./active-effects";
 export {

@@ -281,16 +281,13 @@ export function ReactionTray({
   view,
   viewerPlayerId,
   legalActions,
-  onAction,
-  onViewHand
+  onAction
 }: {
   state: GameState;
   view: PlayerVisibleState;
   viewerPlayerId: PlayerId;
   legalActions: LegalAction[];
   onAction: (action: GameAction) => void;
-  /** Opens the full-size hand browser so cards stay readable mid-window. */
-  onViewHand?: () => void;
 }) {
   // The parent keys this component by window id + priority player, so the
   // selection naturally resets whenever the timing window changes hands.
@@ -1007,12 +1004,6 @@ export function ReactionTray({
             <Crown aria-hidden="true" size={13} /> {crownsSelected}/{crownsAvailable}
           </span>
         </div>
-        {onViewHand ? (
-          <button className="trayPass" onClick={onViewHand} title="Read every card in your hand" type="button">
-            <Layers aria-hidden="true" size={15} />
-            <span>View hand</span>
-          </button>
-        ) : null}
         <button
           className="trayConfirm"
           disabled={selections.length === 0 || crownsOver || paymentInvalid || powerNeedsSpell}

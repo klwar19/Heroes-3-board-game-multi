@@ -4880,21 +4880,10 @@ export default function Home() {
                 viewerPlayerId={viewerPlayerId}
               />
               <div className="handColumn">
-                <button
-                  className="commandButton ghost handBrowse"
-                  onClick={() =>
-                    setPile({
-                      title: "Your hand",
-                      cardIds: playerView.players[viewerPlayerId]?.hand ?? [],
-                      kind: "cards"
-                    })
-                  }
-                  title="Read every card in your hand at full size"
-                  type="button"
-                >
-                  <Eye aria-hidden="true" size={13} /> View hand (
-                  {playerView.players[viewerPlayerId]?.hand.length ?? 0})
-                </button>
+                {/* The combat "View hand" pile-browser button was removed to
+                    declutter the top strip: the HandFan below already shows every
+                    hand card, and each card is click/hover-zoomable for a full-size
+                    read. */}
                 <HandFan
                   hiddenTailCount={hiddenHandTail}
                   legalActions={legalActions}
@@ -5058,16 +5047,6 @@ export default function Home() {
           key={`${state.reactionWindow?.id ?? "none"}:${state.reactionWindow?.priorityPlayerId ?? ""}`}
           legalActions={legalActions}
           onAction={submitAction}
-          onViewHand={
-            isSeated
-              ? () =>
-                  setPile({
-                    title: "Your hand",
-                    cardIds: playerView.players[viewerPlayerId]?.hand ?? [],
-                    kind: "cards"
-                  })
-              : undefined
-          }
           state={state}
           view={playerView}
           viewerPlayerId={viewerPlayerId}

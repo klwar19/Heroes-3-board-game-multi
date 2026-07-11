@@ -52,6 +52,16 @@ export function useCardZoom(): CardZoomContextValue {
   return value;
 }
 
+/**
+ * Like useCardZoom but returns null instead of throwing when there is no
+ * provider, so a component (e.g. the town recruit rows) can offer click-to-zoom
+ * where a provider exists and degrade to a plain, non-zoomable view where it is
+ * rendered in isolation (unit tests, embeds).
+ */
+export function useOptionalCardZoom(): CardZoomContextValue | null {
+  return useContext(CardZoomContext);
+}
+
 export function cardZoomContent(cardId: string): ZoomContent {
   const card = cardLibrary[cardId];
   if (!card) {
