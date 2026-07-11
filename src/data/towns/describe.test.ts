@@ -22,13 +22,13 @@ describe("describeBuildingEffect — no implemented building reads as inert", ()
     }
   });
 
-  it("describes the Cove City Hall's Astrologers'-round gold / experience choice", () => {
+  it("describes the Cove City Hall's Resource-round gold / experience choice (BINH house rule)", () => {
     const building = coreBuildingDefinitions["cove.city_hall"];
     const text = describeBuildingEffect(building);
-    expect(text).toMatch(/Astrologers' round/i);
+    expect(text).toMatch(/Resource round/i);
     expect(text).toMatch(/4 gold/i);
     expect(text).toMatch(/experience/i);
-    expect(buildingTimingLabel(building)).toBe("start of Astrologers' rounds");
+    expect(buildingTimingLabel(building)).toBe("start of Resource rounds");
   });
 
   it("describes the Cove Pub's flat −3-gold Astrologers'-round reinforce", () => {

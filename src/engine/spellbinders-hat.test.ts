@@ -52,6 +52,13 @@ describe("Spellbinder's Hat — option A (remove a card, Search its deck)", () =
   it("discards the Hat, removes a chosen Spell, and queues a Spell-deck Search(2)", () => {
     const state = adventureState("hat-search-spell");
     state.players.p1.hand = [HAT, "spell.magic_arrow", "stat.attack"];
+    // Isolate the queued Spell-deck Search from the first-round face-up seed on
+    // the Spell discards, so it opens straight onto its DECK_SEARCH reveal
+    // instead of the incidental "Search, or take the top discard?" mode prompt.
+    state.decks.spells.discardPile = [];
+    if (state.decks["spells-expert"]) {
+      state.decks["spells-expert"].discardPile = [];
+    }
 
     const play = findPlay(state, HAT, 0);
     expect(play, "option A should be offered on the map with a removable card in hand").toBeTruthy();

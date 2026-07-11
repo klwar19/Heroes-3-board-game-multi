@@ -23,17 +23,20 @@ export type TileBorderSegment = {
  *   (none exist in the core box; expansion tiles may declare them).
  *
  * A Blocked Field carved into a Creature Bank (its slot listed in `bankSlots`)
- * is the one exception: a bank can be walked INTO from within its own Tile and
+ * is the one exception. A bank can be walked INTO from within its own Tile and
  * only seals OUTWARD (you cannot cross a Tile edge to it — enforced in
- * canCrossEdge). So a bank slot draws just its OUTER arc, never the inner walls
- * shared with the centre/ring neighbours, or the field would look completely
- * sealed off and the player would think they could not get in.
+ * canCrossEdge). By DEFAULT a bank field now draws NO printed borders at all —
+ * the field reads as fully open, which is what most players want once a bank is
+ * placed. Passing `showBankBorders: true` restores the classic bank outline:
+ * just its OUTER arc, never the inner walls shared with the centre/ring
+ * neighbours (so it never looks sealed off from within its own Tile).
  */
 const NO_BANK_SLOTS: ReadonlySet<number> = new Set();
 
 export function getTileBorderSegments(
   def: TileDefinition,
-  bankSlots: ReadonlySet<number> = NO_BANK_SLOTS
+  bankSlots: ReadonlySet<number> = NO_BANK_SLOTS,
+  showBankBorders = false
 ): TileBorderSegment[] {
   const segments = new Map<string, TileBorderSegment>();
   const add = (slot: number, edge: number) => {
@@ -47,17 +50,29 @@ export function getTileBorderSegments(
       return;
     }
     const slot = direction + 1;
+    // A border-free bank field draws none of its edges — including the tile's
+    // own outer arc, which would otherwise still seal it visually.
+    if (bankSlots.has(slot) && !showBankBorders) {
+      return;
+    }
     add(slot, direction - 1);
     add(slot, direction);
     add(slot, direction + 1);
   });
 
-  // Blocked fields are ringed completely — except a bank, which is open inward.
+  // Blocked fields are ringed completely — except a bank. By default a bank draws
+  // no borders at all; with `showBankBorders` it draws just its outer arc (open
+  // inward).
   def.fields.forEach((field, slot) => {
     if (field.location !== "blocked_field") {
       return;
     }
     const isBank = bankSlots.has(slot);
+
+    // Default: a Creature Bank field is border-free (toggle to bring them back).
+    if (isBank && !showBankBorders) {
+      return;
+    }
 
     if (slot === 0) {
       // A centre bank is reachable from every ring neighbour: no walls at all.

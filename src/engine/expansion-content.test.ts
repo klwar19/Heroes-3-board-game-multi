@@ -853,6 +853,10 @@ describe("rulebook conformance fixes", () => {
   it("resolves the Faerie Ring by searching the removed card's own deck", () => {
     const state = createAdventureGameState({ seed: "test-seed", difficulty: "normal", rotateStartTiles: false });
   for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
+    // Isolate this search from the first-round face-up seed on the Spell discard,
+    // which would otherwise open a "search deck / take top discard" choice first.
+    state.decks.spells.discardPile = [];
+    if (state.decks["spells-expert"]) state.decks["spells-expert"].discardPile = [];
     const adventure = state.adventure;
     const player = state.players.p1;
     const hero = Object.values(state.heroes).find((candidate) => candidate.controllerId === "p1");

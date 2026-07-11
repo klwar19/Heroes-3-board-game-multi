@@ -391,6 +391,11 @@ describe("Surcoat of Counterpoise", () => {
     state.activePlayerId = "p1";
     state.players.p1.hand = [SURCOAT];
     state.players.p1.removed = [];
+    // Isolate this Artifact-deck search from the first-round face-up seed on the
+    // Artifact discards (which would otherwise open a deck-search-mode prompt).
+    for (const id of ["artifacts", "artifacts-minor", "artifacts-major", "artifacts-relic"]) {
+      if (state.decks[id]) state.decks[id].discardPile = [];
+    }
 
     const play = findPlay(state, SURCOAT, 1);
     expect(play, "Surcoat's Search side should be offered on the map").toBeTruthy();
@@ -586,6 +591,9 @@ describe("Royal Armor of Nix", () => {
     onSea.activePlayerId = "p1";
     onSea.players.p1.hand = [NIX];
     setHeroSeaTile(onSea, true);
+    // Isolate the Sea-side Spell-deck search from the first-round face-up seed on
+    // the Spell discard (which would otherwise open a deck-search-mode prompt).
+    onSea.decks["spells"].discardPile = [];
 
     const play = findPlay(onSea, NIX, 1);
     expect(play, "the Sea side should appear on a Sea tile").toBeTruthy();

@@ -26,8 +26,6 @@ export function describeBuildingEffect(building: TownBuildingDefinition): string
       return `When built: Search (2) the Spell deck twice. Afterwards, once per round (Spell Book token): pay ${building.spellBookCost ?? 5} gold to Search (2) the Spell deck.`;
     case "RESOURCE_ROUND_CHOICE":
       return `At the beginning of each Resource round, choose: ${effect.options.map((option) => option.label).join(" — OR — ")}.`;
-    case "ASTROLOGERS_ROUND_CHOICE":
-      return `At the beginning of each Astrologers' round, choose: ${effect.options.map((option) => option.label).join(" — OR — ")}.`;
     case "RESOURCE_ROUND_MORALE":
       return "At the beginning of each Resource round, gain a positive Morale token.";
     case "RESOURCE_ROUND_RESOURCE_DIE":
@@ -89,7 +87,6 @@ export function buildingTimingLabel(building: TownBuildingDefinition): string | 
       return "start of Resource rounds";
     case "ASTROLOGERS_HALF_GOLD_REINFORCE":
     case "ASTROLOGERS_FLAT_GOLD_REINFORCE":
-    case "ASTROLOGERS_ROUND_CHOICE":
     case "ASTROLOGERS_TAKE_STATISTIC":
       return "start of Astrologers' rounds";
     case "TURN_START_NECROMANCY":

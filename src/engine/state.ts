@@ -6470,6 +6470,17 @@ export type MapTileState = {
    * token positions up front. `number` is a Whirlpool's pre-assigned die face.
    */
   pendingToken?: { kind: "monolith" | "whirlpool"; number?: -1 | 0 | 1 };
+  /**
+   * Naval Battles optional rule: the Creature Bank token drawn for this tile's
+   * Blocked Field the moment the tile is revealed — BEFORE its rotation is
+   * chosen — so the player knows which bank they are about to carve while they
+   * rotate. A CreatureBankId (typed loosely; state.ts has no data-layer imports).
+   * It is consumed from the pile only when the player accepts the placement; if
+   * the placement is declined or the Blocked Field is lost to a Subterranean
+   * Gate, it is cleared (the pile was only peeked, never popped, so nothing is
+   * lost). Public info — the token is drawn face-up.
+   */
+  reservedBankId?: string;
 };
 
 export type MapFieldState = {
@@ -8874,9 +8885,12 @@ export type PendingChoice =
       /**
        * place-creature-bank: a discovered Far/Near tile's Blocked Field at
        * `fieldId`, offered to the discovering player to convert into a Creature
-       * Bank drawn from the `tier` pile. Option 0 places it, option 1 declines.
+       * Bank. `bankId` is the token already drawn (face-up) for this tile when it
+       * was revealed — known to the player before they rotated — carved from the
+       * `tier` pile. Option 0 places it, option 1 declines. `tileInstanceId` lets
+       * the decline path clear the tile's reservation.
        */
-      creatureBank?: { fieldId: MapSpaceId; tier: "far" | "near" };
+      creatureBank?: { fieldId: MapSpaceId; tier: "far" | "near"; bankId?: string; tileInstanceId?: string };
       /**
        * subterranean-gate-placement: the revealing player picks which touching
        * hex becomes the Subterranean Gate half on the just-revealed tile (and,

@@ -133,6 +133,10 @@ describe("Learning resolution", () => {
 
   it("expert advances an extra full level (+2 Experience), removes the card and spends an expert use", () => {
     const state = offerLearningAfterLevelUp(5); // exp 6 (lvl 4); expertUses now 2
+    // Isolate the level-5 Ability-deck Search from the first-round face-up seed
+    // on the Ability discard, so it opens straight onto its DECK_SEARCH reveal
+    // instead of the incidental "Search, or take the top discard?" mode prompt.
+    state.decks.abilities.discardPile = [];
     expect(state.players.p1.combatStats.expertUsesSpentThisRound).toBe(0);
     const choice = state.pendingChoice!;
     if (choice.type !== "OPTION_CHOICE") {
@@ -259,6 +263,10 @@ describe("Learning offer surfaces from real map-object visits", () => {
   it("declining Learning then resolves the level-up's own Ability-deck Search", () => {
     let state = readyHeroWithLearning(makeGame(), 7); // exp 7 (lvl 4) -> 8 (lvl 5)
     state.adventure!.fields["h:7:2"].location = "learning_stone";
+    // Isolate the level-5 Ability-deck Search from the first-round face-up seed
+    // on the Ability discard, so declining Learning opens straight onto its
+    // DECK_SEARCH reveal instead of the "take the top discard?" mode prompt.
+    state.decks.abilities.discardPile = [];
     const heroId = getMainHero(state, "p1")!.id;
     state = apply(state, { type: "MOVE_HERO", playerId: "p1", heroId, to: "h:7:2" });
 

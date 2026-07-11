@@ -179,8 +179,11 @@ describe("Mandatory start-of-turn draw — six rounds, two players", () => {
       "ability.luck"
     ]);
     expect(state.players[active]!.hand).toHaveLength(4);
-    expect(state.players[active]!.deck).toEqual([]);
-    expect(state.players[active]!.discard).toEqual(["stat.attack"]);
+    // First-round rule: the discarded card returns to the BOTTOM of the deck (not
+    // the discard pile), and — because it went to the bottom — the replacement
+    // draw pulled the fresh top card (ability.luck), NOT the just-discarded one.
+    expect(state.players[active]!.deck).toEqual(["stat.attack"]);
+    expect(state.players[active]!.discard).toEqual([]);
     expect(state.players[active]!.canMulligan).toBe(false);
     expect(state.eventLog.slice(beforeEvents).map((event) => event.type)).toEqual([
       "CARDS_DRAWN",

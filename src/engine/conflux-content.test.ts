@@ -146,6 +146,12 @@ describe("Conflux content", () => {
     if (state.adventure) {
       state.adventure.rewardQueue = [];
     }
+    // Isolate the City Hall Spell Search from the first-round face-up seed on the
+    // Spell discards, so the search opens straight onto its reveal.
+    state.decks.spells.discardPile = [];
+    if (state.decks["spells-expert"]) {
+      state.decks["spells-expert"].discardPile = [];
+    }
     state.round = 3; // a Resource round (odd > 1)
     startAdventureRound(state);
     pumpAdventureQueues(state);
