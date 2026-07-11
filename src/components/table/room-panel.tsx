@@ -171,7 +171,14 @@ export function RoomPanel({
 
   const showAuthLabels = authEnabled();
   const gameInProgress = state.phase !== "setup" || !state.setupLobby;
-  const nowMs = Date.now();
+  // Wall-clock tick for the AFK badge (idleMillis compares against "now").
+  // Kept in state — render must stay pure — and refreshed every 15s so a seat
+  // crossing the AFK threshold shows up without any other prop changing.
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNowMs(Date.now()), 15_000);
+    return () => window.clearInterval(id);
+  }, []);
 
   const roleLabel = isHost
     ? "Host"

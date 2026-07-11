@@ -32,7 +32,7 @@ describe("Game options — tabbed layout", () => {
     // BINH is the default mode, so each toggle shows ON.
     const griffin = screen.getByRole("button", { name: /Griffin buff/ });
     expect(griffin.getAttribute("aria-pressed")).toBe("true");
-    expect(screen.getByRole("button", { name: /Split Spell & Artifact decks/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Split Spell\/Artifact decks by tier/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: /Estates nerf/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: /Gelu IV Sharpshooter buff/ })).toBeTruthy();
   });
