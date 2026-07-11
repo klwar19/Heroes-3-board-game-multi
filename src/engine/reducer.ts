@@ -17457,11 +17457,16 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
 
         // All units acted: neutral combats hit their one-round time limit,
         // player combats roll straight into the next round. Azure guards have NO
-        // Round limit and roll into the next round automatically. (House rule:
-        // Creature Banks DO obey the Round limit and the spend-MP-to-extend
-        // rule, exactly like an ordinary neutral fight — so they are NOT
-        // exempted here.)
-        if (combat.context.kind === "neutral" && !combat.context.hasAzure) {
+        // Round limit and roll into the next round automatically. House rule
+        // ("bank-move-points"): Creature Banks DO obey the Round limit and the
+        // spend-MP-to-extend rule, exactly like an ordinary neutral fight — so
+        // they are NOT exempted here. When that rule is off a bank reverts to the
+        // rulebook (no Round limit) and rolls straight on like an azure guard.
+        if (
+          combat.context.kind === "neutral" &&
+          !combat.context.hasAzure &&
+          (combat.context.bankId === undefined || houseRuleEnabled(state, "bank-move-points"))
+        ) {
           combat.awaitingContinue = true;
           state.priorityPlayerId = combat.attackerPlayerId;
           state.activePlayerId = combat.attackerPlayerId;

@@ -10,7 +10,7 @@ import { finalizeAdventureCombat } from "./adventure-reducer";
 import { gainRunes, seedRunesForCombat } from "./runes";
 import { getActiveAttackBonus } from "./active-effects";
 import { ATTACK_DIE_FACES } from "./battlefield";
-import type { CombatState, CombatUnitState, GameState, MapFieldState, PlayerId } from "./state";
+import type { CombatState, CombatUnitState, GameState, HouseRuleId, MapFieldState, PlayerId } from "./state";
 
 /**
  * House rule for leaving a player-vs-player Combat (see CLAUDE.md — every rule
@@ -29,7 +29,13 @@ import type { CombatState, CombatUnitState, GameState, MapFieldState, PlayerId }
 
 type Mode = "conquest" | "grail";
 
-function makeGame(opts: { victoryMode?: Mode; pvpTroopLoss?: "normal" | "none" } = {}): GameState {
+function makeGame(
+  opts: {
+    victoryMode?: Mode;
+    pvpTroopLoss?: "normal" | "none";
+    houseRules?: Partial<Record<HouseRuleId, boolean>>;
+  } = {}
+): GameState {
   // Both seats bear morale (Necropolis ignores it), so the loser's morale hit
   // is observable whichever side concedes.
   return createAdventureGameState({
@@ -38,6 +44,7 @@ function makeGame(opts: { victoryMode?: Mode; pvpTroopLoss?: "normal" | "none" }
     rollFirstPlayer: false,
     victoryMode: opts.victoryMode ?? "conquest",
     pvpTroopLoss: opts.pvpTroopLoss ?? "normal",
+    houseRules: opts.houseRules,
     players: [
       { id: "p1", name: "Catherine", factionId: "castle", heroDefId: "catherine" },
       { id: "p2", name: "Alamar", factionId: "dungeon", heroDefId: "alamar" }
@@ -213,6 +220,32 @@ describe("Retreat / fought-out loss (house rule): a real defeat", () => {
 
     // The loser pays the whole 5 (into debt); the winner receives the whole 5.
     expect(state.players[loserId].resources.gold).toBe(-3);
+    expect(state.players[winnerId].resources.gold).toBe(15);
+  });
+
+  it("OFF (house rule 'defeat-gold-debt'): the toll is capped so gold never goes negative", () => {
+    const state = makeGame({ houseRules: { "defeat-gold-debt": false } });
+    const { winnerId, loserId } = stageFinishedPvpFight(state, "retreat");
+    state.players[loserId].resources.gold = 2; // only 2 gold toward the 5-gold toll
+    state.players[winnerId].resources.gold = 10;
+
+    finalizeAdventureCombat(state);
+
+    // The loser pays only what they have (2) and floors at zero — no debt — and
+    // the winner receives only what the loser could actually pay.
+    expect(state.players[loserId].resources.gold, "capped at 0, never negative").toBe(0);
+    expect(state.players[winnerId].resources.gold, "winner gets what was paid").toBe(12);
+  });
+
+  it("OFF: a solvent loser still pays the full 5 — the cap only bites when short (control)", () => {
+    const state = makeGame({ houseRules: { "defeat-gold-debt": false } });
+    const { winnerId, loserId } = stageFinishedPvpFight(state, "retreat");
+    state.players[loserId].resources.gold = 8;
+    state.players[winnerId].resources.gold = 10;
+
+    finalizeAdventureCombat(state);
+
+    expect(state.players[loserId].resources.gold, "full 5 paid when affordable").toBe(3);
     expect(state.players[winnerId].resources.gold).toBe(15);
   });
 

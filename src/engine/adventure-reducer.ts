@@ -4653,6 +4653,12 @@ function visionsCardsByPower(): Record<number, number> {
  * battle" use — an addition to Visions' map-turn deck scry, not a replacement.
  */
 function maybeOpenVisionsGuardSwap(state: GameState, draws: NeutralDraw[]): boolean {
+  // House rule ("vision-battle-swap"): the pre-battle guard swap is an addition
+  // to Visions' map-turn deck scry. Off: Visions is only the map scry (wiki), so
+  // the guard army reveals normally without offering the cast.
+  if (!houseRuleEnabled(state, "vision-battle-swap")) {
+    return false;
+  }
   const combat = state.combat;
   if (!combat || combat.context.kind !== "neutral") {
     return false;
@@ -6623,10 +6629,17 @@ export function finalizeAdventureCombat(state: GameState): void {
         }
       }
 
-      // The loser pays the full 5-gold toll to the winner even if it overdraws
-      // their treasury (house rule: gold may go negative — paid down by income).
-      spendResources(state, loserId, { gold: RETREAT_GOLD_COST }, "defeated by an enemy hero");
-      gainResources(state, winnerId, { gold: RETREAT_GOLD_COST }, "spoils of victory");
+      // The loser pays the 5-gold toll to the winner. House rule
+      // ("defeat-gold-debt", default ON in BINH): the full toll is paid even if
+      // it overdraws the treasury — gold may go negative, paid down later by
+      // income. When off (the normal rule), the toll is capped at the loser's
+      // gold so it never drops below zero, and the winner receives only what the
+      // loser could actually pay.
+      const allowGoldDebt = houseRuleEnabled(state, "defeat-gold-debt");
+      const loserGold = Math.max(0, state.players[loserId]?.resources.gold ?? 0);
+      const goldToll = allowGoldDebt ? RETREAT_GOLD_COST : Math.min(RETREAT_GOLD_COST, loserGold);
+      spendResources(state, loserId, { gold: goldToll }, "defeated by an enemy hero");
+      gainResources(state, winnerId, { gold: goldToll }, "spoils of victory");
       changeMorale(state, loserId, -1);
       moveDefeatedHeroHome(state, loserHero);
 

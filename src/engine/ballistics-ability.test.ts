@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { applyAction, createInitialGameState, getLegalActions } from "./index";
+import { makeArrowTowerUnit } from "./siege";
 import { abilityDeckBinh, abilityDeckLegacy } from "@/data/cards/abilities-extra";
 import { cardLibrary } from "@/data/cards/library";
 import { cardShotFxPlans } from "@/data/fx";
@@ -199,5 +200,65 @@ describe("Ballistics expert — bombard 2 adjacent units", () => {
     const state = combatReady("ballistics-no-crown");
     state.players.p1.limits.expertUses = 0;
     expect(ballisticsPlays(state, "p1", 2)).toHaveLength(0);
+  });
+});
+
+// ===========================================================================
+// House-rule toggle "ballistics-buff": OFF reverts to the printed/wiki card —
+// levelling the Arrow Tower is the EXPERT side and there is no bombard.
+// ===========================================================================
+
+/** A sandbox combat with a full fortification line (3 Walls + Gate + Arrow Tower). */
+function combatReadyWithSiege(seed: string): GameState {
+  const state = combatReady(seed);
+  const tower = makeArrowTowerUnit("unit_tower", "p2");
+  state.combat!.units.unit_tower = tower;
+  state.combat!.siege = {
+    townPlayerId: "p2",
+    walls: [8, 10, 11],
+    gatePosition: 9,
+    arrowTowerUnitId: tower.id
+  };
+  state.combat!.obstacles = [];
+  return state;
+}
+
+/** Freeze the buff off on the sandbox (no adventure → falls back to this flag). */
+function disableBallisticsBuff(state: GameState): void {
+  state.adventure = { houseRules: { "ballistics-buff": false } } as unknown as GameState["adventure"];
+}
+
+describe("Ballistics buff toggle (house rule 'ballistics-buff')", () => {
+  it("OFF: the Arrow-Tower demolition becomes the Expert side, and the bombard disappears", () => {
+    const state = combatReadyWithSiege("ballistics-buff-off");
+
+    // Control (rule ON, default sandbox): Arrow Tower is a BASIC side, bombard offered.
+    const arrowOn = ballisticsPlays(state, "p1", 1);
+    expect(arrowOn.length, "arrow-tower offered with the buff on").toBeGreaterThan(0);
+    expect(
+      arrowOn.every((legal) => legal.action.type === "PLAY_CARD" && (legal.action.mode ?? "basic") === "basic"),
+      "…as a basic side (no crown)"
+    ).toBe(true);
+    expect(ballisticsPlays(state, "p1", 2).length, "bombard offered with the buff on").toBeGreaterThan(0);
+
+    // Now flip the buff OFF (same combat) and re-derive the offers.
+    disableBallisticsBuff(state);
+    const arrowOff = ballisticsPlays(state, "p1", 1);
+    expect(arrowOff.length, "arrow-tower is still reachable — but on the expert side").toBeGreaterThan(0);
+    expect(
+      arrowOff.every((legal) => legal.action.type === "PLAY_CARD" && legal.action.mode === "expert"),
+      "…offered only as an Expert side (spends a crown)"
+    ).toBe(true);
+    expect(ballisticsPlays(state, "p1", 2), "the Expert bombard is gone without the buff").toHaveLength(0);
+  });
+
+  it("OFF: levelling the Arrow Tower now spends a crown", () => {
+    const state = combatReadyWithSiege("ballistics-buff-off-crown");
+    disableBallisticsBuff(state);
+    const arrow = ballisticsPlays(state, "p1", 1)[0];
+    expect(arrow?.action.type === "PLAY_CARD" && arrow.action.mode, "expert").toBe("expert");
+    const after = applyOk(state, arrow!.action);
+    expect(after.combat!.siege!.arrowTowerUnitId, "the tower fell").toBeNull();
+    expect(after.players.p1.combatStats.expertUsesSpentThisRound, "a crown was spent").toBe(1);
   });
 });

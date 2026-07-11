@@ -620,9 +620,11 @@ export { isAdjacent } from "./battlefield";
 export function getUnitMoveRange(unit: CombatUnitState, state?: GameState): number {
   const base = unit.type === "ranged" ? 1 : 3;
 
-  // House rule (BINH only): Haste / Slow (and Cyra / Gundula's specialties) also
-  // shift Combat movement by ±1 (MOVEMENT_BONUS). Legacy keeps the fixed range.
-  if (!state || getRuleset(state) !== "binh") {
+  // House rule ("combat-move-initiative"): Haste / Slow (and the initiative-buff
+  // hero specialties — Cyra, Catherine VI, …) also shift Combat movement by ±1
+  // (MOVEMENT_BONUS), the Battlefield-Expansion reading. When the rule is off the
+  // buff changes only Initiative, keeping the fixed range (the standard/wiki rule).
+  if (!state || !houseRuleEnabled(state, "combat-move-initiative")) {
     return base;
   }
   let bonus = 0;
@@ -2723,6 +2725,13 @@ function addOptionPlays(
     if (option.requiresWarMachine && !getPermanentCardIds(state, playerId).includes(option.requiresWarMachine)) {
       continue;
     }
+    // House-rule-gated option (Ballistics' Expert bombard, Pathfinding's Expert
+    // coastline/layer crossing): offered only while the named rule is ON. Dropped
+    // from the offer when off — and, since seat actions are validated against this
+    // offer, rejected at play too.
+    if (option.requiresHouseRule && !houseRuleEnabled(state, option.requiresHouseRule)) {
+      continue;
+    }
     if (!isOptionEffectPlayable(state, playerId, option.effect, context, cardId)) {
       continue;
     }
@@ -2745,7 +2754,13 @@ function addOptionPlays(
 
     // An Empowered ability may take its Expert side without a crown.
     const expertOk = canPlayExpertMode(player, cardId);
-    const modes: CardPlayMode[] = option.expertOnly
+    // `expertUnlessHouseRule` flips an option to its Expert side (spend a crown)
+    // while the named rule is OFF — Ballistics' Arrow-Tower demolition is a basic
+    // side under the buff, but the printed/wiki Expert side without it.
+    const expertOnly =
+      option.expertOnly ||
+      (option.expertUnlessHouseRule !== undefined && !houseRuleEnabled(state, option.expertUnlessHouseRule));
+    const modes: CardPlayMode[] = expertOnly
       ? expertOk
         ? ["expert"]
         : []
