@@ -527,6 +527,84 @@ describe("BattlefieldBoard — Creature Bank Stack Token badge", () => {
   });
 });
 
+describe("Retaliation status — board badge + inspect line", () => {
+  function renderBoard(state: GameState) {
+    render(
+      <CardZoomProvider>
+        <BattlefieldBoard
+          state={state}
+          viewerPlayerId="p1"
+          legalActions={[]}
+          selectedCardAction={null}
+          onAction={vi.fn()}
+          onInspect={() => {}}
+        />
+      </CardZoomProvider>
+    );
+  }
+
+  function renderInspect(state: GameState, unitId: string) {
+    render(
+      <CardZoomProvider>
+        <InspectPanel state={state} unitId={unitId} />
+      </CardZoomProvider>
+    );
+  }
+
+  it("shows no 'no counter' badge on a fresh board (every unit's retaliation is ready)", () => {
+    const state = createInitialGameState("retaliation-ready");
+    renderBoard(state);
+    expect(document.querySelectorAll(".retaliationSpentBadge")).toHaveLength(0);
+  });
+
+  it("flags exactly the unit that has spent its retaliation this round", () => {
+    const state = createInitialGameState("retaliation-spent");
+    state.combat!.units.unit_p2_skeletons.retaliatedThisRound = true;
+    renderBoard(state);
+    const badges = document.querySelectorAll(".retaliationSpentBadge");
+    expect(badges).toHaveLength(1);
+    expect(badges[0].textContent).toMatch(/no counter/i);
+  });
+
+  it("does NOT flag a unit with unlimited retaliation even after it retaliated", () => {
+    const state = createInitialGameState("retaliation-unlimited");
+    const unit = state.combat!.units.unit_p2_skeletons;
+    unit.retaliatedThisRound = true;
+    unit.abilities = ["unlimited-retaliation"];
+    renderBoard(state);
+    // Unlimited retaliation never runs out, so the "spent" badge must stay off —
+    // striking it still draws a counter. (This is the mutation control: without
+    // the unlimited guard the unit would be flagged like any spent unit.)
+    expect(document.querySelectorAll(".retaliationSpentBadge")).toHaveLength(0);
+  });
+
+  it("inspect line reads 'ready', 'spent' or 'unlimited' to match the engine reading", () => {
+    const ready = createInitialGameState("retaliation-inspect-ready");
+    renderInspect(ready, "unit_p2_skeletons");
+    const line = document.querySelector(".inspectRetaliation")!;
+    expect(line.className).toContain("ready");
+    expect(line.textContent).toMatch(/ready/i);
+    cleanup();
+
+    const spent = createInitialGameState("retaliation-inspect-spent");
+    spent.combat!.units.unit_p2_skeletons.retaliatedThisRound = true;
+    renderInspect(spent, "unit_p2_skeletons");
+    const spentLine = document.querySelector(".inspectRetaliation")!;
+    expect(spentLine.className).toContain("used");
+    expect(spentLine.textContent).toMatch(/spent/i);
+    cleanup();
+
+    const unlimited = createInitialGameState("retaliation-inspect-unlimited");
+    const u = unlimited.combat!.units.unit_p2_skeletons;
+    u.retaliatedThisRound = true;
+    u.abilities = ["unlimited-retaliation"];
+    renderInspect(unlimited, "unit_p2_skeletons");
+    const unlimitedLine = document.querySelector(".inspectRetaliation")!;
+    expect(unlimitedLine.className).toContain("unlimited");
+    expect(unlimitedLine.textContent).toMatch(/unlimited/i);
+  });
+});
+
 describe("BattlefieldBoard — battlefield-obstacle spell tokens", () => {
   function renderBoard(state: ReturnType<typeof createInitialGameState>, onAction = vi.fn()) {
     render(

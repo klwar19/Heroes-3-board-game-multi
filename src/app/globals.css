@@ -1550,6 +1550,37 @@ button.battleCell {
   font-weight: 700;
 }
 
+/* Retaliation status line: tells the player whether striking this unit now will
+   draw its once-per-round counter-attack. Colour-coded by readiness. */
+.inspectRetaliation {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: start;
+  padding: 3px 8px;
+  border: 1px solid rgb(243 239 228 / 14%);
+  border-radius: 5px;
+  background: rgb(13 15 16 / 36%);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+.inspectRetaliation.ready {
+  color: #9fd7a6;
+  border-color: rgb(93 135 100 / 55%);
+}
+
+.inspectRetaliation.used {
+  color: #d9b48a;
+  border-color: rgb(150 110 70 / 55%);
+}
+
+.inspectRetaliation.unlimited {
+  color: #f4d774;
+  border-color: rgb(210 170 80 / 60%);
+}
+
 .inspectAbilities {
   display: flex;
   flex-wrap: wrap;
@@ -6108,6 +6139,30 @@ button.hbSlot:disabled { cursor: default; }
   box-shadow: 0 0 6px rgb(247 102 102 / 55%);
 }
 
+/* Retaliation spent: a small slate chip flagging a unit that has already used its
+   once-per-round counter-attack, so a melee hit on it now draws no retaliation.
+   Sits at the card's top-left corner, clear of the top-centre Berserk/Clone and
+   the bottom-centre Stack Token badges. */
+.retaliationSpentBadge {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 6;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 5px;
+  background: rgb(28 34 40 / 92%);
+  border: 1px solid rgb(150 168 186 / 70%);
+  border-radius: 999px;
+  color: #cdd8e4;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
 /* ---- Draw-card cinematic -------------------------------------------------- */
 .drawOverlay {
   position: fixed;
@@ -6663,6 +6718,67 @@ button.hbSlot:disabled { cursor: default; }
 
 .recruitRow small {
   color: #b89f78;
+}
+
+/* Recruit-row unit art: a click-to-enlarge thumbnail so the player can see the
+   unit they are about to muster (reuses the army-thumb crop). */
+.recruitThumb {
+  display: inline-flex;
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  line-height: 0;
+}
+
+.recruitThumb[disabled],
+span.recruitThumb {
+  cursor: default;
+}
+
+.recruitThumbImg {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border-radius: 6px;
+  border: 1px solid rgba(170, 130, 70, 0.45);
+  object-fit: cover;
+  object-position: 62% 30%;
+  background: #1a140c;
+}
+
+.recruitThumb:hover .recruitThumbImg {
+  border-color: rgba(230, 190, 110, 0.85);
+  box-shadow: 0 0 6px rgba(230, 190, 110, 0.4);
+}
+
+.recruitThumbImg.fallback {
+  display: inline-block;
+  background: linear-gradient(145deg, #3a2c18, #20160b);
+}
+
+/* One-click recruit / reinforce shortcut button on a recruit row. */
+.recruitQuick {
+  flex: none;
+  padding: 3px 9px;
+  border-radius: 6px;
+  border: 1px solid rgba(216, 185, 126, 0.55);
+  background: linear-gradient(180deg, rgba(150, 112, 46, 0.55), rgba(96, 70, 28, 0.55));
+  color: #ffe9b8;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.recruitQuick:hover:not(:disabled) {
+  border-color: rgba(247, 206, 102, 0.9);
+  background: linear-gradient(180deg, rgba(176, 132, 54, 0.7), rgba(112, 82, 32, 0.7));
+}
+
+.recruitQuick:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .recruitCounter {
@@ -9567,12 +9683,6 @@ button.hbSlot:disabled { cursor: default; }
   gap: 4px;
   justify-items: start;
   align-content: end;
-}
-
-.handBrowse {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
 }
 
 /* ------------------------------------------------------------------ */
@@ -18461,11 +18571,14 @@ body {
   object-position: center top;
   pointer-events: none;
   user-select: none;
+  /* Toned down so the deck / Spell Book text BEHIND the talons reads through:
+     the claw is semi-transparent and its cyan glow is tight (no wide blue haze
+     spilling over the tray labels). Decorative — never at the cost of legibility. */
+  opacity: 0.45;
   filter:
-    drop-shadow(0 3px 6px rgb(0 0 0 / 50%))
-    drop-shadow(0 0 2px rgb(200 240 255 / 70%))
-    drop-shadow(0 0 6px rgb(160 225 255 / 48%))
-    drop-shadow(0 0 11px rgb(130 210 255 / 28%));
+    drop-shadow(0 3px 6px rgb(0 0 0 / 45%))
+    drop-shadow(0 0 2px rgb(200 240 255 / 55%))
+    drop-shadow(0 0 4px rgb(160 225 255 / 30%));
   animation: azureClawSilhouetteGlow 7.5s ease-in-out infinite;
 }
 
@@ -18473,17 +18586,15 @@ body {
   0%,
   100% {
     filter:
-      drop-shadow(0 3px 6px rgb(0 0 0 / 50%))
-      drop-shadow(0 0 2px rgb(190 235 255 / 55%))
-      drop-shadow(0 0 5px rgb(150 220 255 / 36%))
-      drop-shadow(0 0 10px rgb(120 205 250 / 18%));
+      drop-shadow(0 3px 6px rgb(0 0 0 / 45%))
+      drop-shadow(0 0 2px rgb(190 235 255 / 45%))
+      drop-shadow(0 0 4px rgb(150 220 255 / 24%));
   }
   50% {
     filter:
-      drop-shadow(0 3px 6px rgb(0 0 0 / 50%))
-      drop-shadow(0 0 3px rgb(220 248 255 / 85%))
-      drop-shadow(0 0 8px rgb(175 230 255 / 55%))
-      drop-shadow(0 0 14px rgb(145 215 255 / 30%));
+      drop-shadow(0 3px 6px rgb(0 0 0 / 45%))
+      drop-shadow(0 0 3px rgb(220 248 255 / 62%))
+      drop-shadow(0 0 6px rgb(175 230 255 / 34%));
   }
 }
 

@@ -23,6 +23,7 @@ import {
 } from "@/engine";
 import { assetUrl } from "@/lib/asset-url";
 import { actionKey, formatCost } from "@/components/table/utils";
+import { useOptionalCardZoom } from "@/components/table/zoom";
 
 /**
  * Shared town-window building blocks. The classic TownPanel (PC-art building
@@ -245,6 +246,63 @@ export function BuildingDetailPanel({
 // Population token: the recruit & reinforce basket
 // ---------------------------------------------------------------------------
 
+/** Whether the player's resources cover a single purchase's cost. */
+function costAffordable(
+  cost: Record<string, number | undefined>,
+  resources: PlayerState["resources"]
+): boolean {
+  return (
+    (cost.gold ?? 0) <= resources.gold &&
+    (cost.buildingMaterials ?? 0) <= resources.buildingMaterials &&
+    (cost.valuables ?? 0) <= resources.valuables
+  );
+}
+
+/**
+ * A recruitable unit's card art: a click-to-enlarge thumbnail so the player can
+ * SEE the unit (its scan + stats) before spending the Population token on it.
+ * Degrades to a static, non-zoomable image when rendered without a
+ * CardZoomProvider (isolated unit tests) — the art still shows either way.
+ */
+function RecruitUnitView({ unitDefId, side }: { unitDefId: string; side: "few" | "pack" }) {
+  const zoom = useOptionalCardZoom();
+  const def = coreUnitDefinitions[unitDefId];
+  const unitSide = side === "pack" ? def?.pack : def?.few;
+  const image = unitSide?.cardImage;
+  const thumb = image ? (
+    <img alt="" aria-hidden="true" className="recruitThumbImg" loading="lazy" src={assetUrl(image)} />
+  ) : (
+    <span className={`recruitThumbImg fallback ${def?.tier ?? "bronze"}`} />
+  );
+  if (!zoom || !def || !unitSide) {
+    return <span className="recruitThumb">{thumb}</span>;
+  }
+  return (
+    <button
+      aria-label={`View the ${def.name} card`}
+      className="recruitThumb"
+      onClick={(event) => {
+        // A button inside the row's <label> must not toggle the basket checkbox.
+        event.preventDefault();
+        event.stopPropagation();
+        zoom.zoomContent({
+          title: `${side === "pack" ? "Pack of" : "Few"} ${def.name}`,
+          image: unitSide.cardImage,
+          subtitle: `${def.tier} ${def.type}`,
+          lines: [
+            `Attack ${unitSide.attack} · Defense ${unitSide.defense} · HP ${unitSide.health} · Initiative ${unitSide.initiative}`,
+            unitSide.abilityText ?? ""
+          ].filter(Boolean)
+        });
+      }}
+      title={`View the ${def.name} card`}
+      type="button"
+    >
+      {thumb}
+    </button>
+  );
+}
+
 /**
  * The Population-token basket: recruit each unit's Few side once, reinforce an
  * owned Few to its Pack side (with the Citadel), everything priced through the
@@ -372,6 +430,7 @@ export function TownRecruitSection({
         if (owned && owned.side !== "few") {
           return (
             <div className="recruitRow done" key={unitDefId}>
+              <RecruitUnitView side="pack" unitDefId={unitDefId} />
               <Star aria-hidden="true" className={`tierStar ${unit.tier}`} size={12} />
               <span className="recruitName">{unit.name}</span>
               <small className="recruitState">pack — fully mustered</small>
@@ -386,12 +445,14 @@ export function TownRecruitSection({
           const reinforceRef = { kind: "reinforce" as const, unitDefId: owned.unitDefId, armyUnitId: owned.id };
           const reinforceCost = applyRecruitGoldDiscount(state, viewerPlayerId, reinforceRef, def?.pack?.cost ?? {});
           const reinforceLegion = legionVoucherDiscount(state, viewerPlayerId, reinforceRef);
+          const reinforceAffordable = costAffordable(reinforceCost, player.resources);
           return (
             <label
               className={`recruitRow reinforce ${checked ? "checked" : ""} ${upgradable ? "" : "locked"}`}
               key={unitDefId}
               title={upgradable ? `Reinforce ${unit.name}: Few → Pack` : undefined}
             >
+              <RecruitUnitView side="few" unitDefId={unitDefId} />
               <Star aria-hidden="true" className={`tierStar ${unit.tier}`} size={12} />
               <span className="recruitName">
                 {unit.name} <span className="fewBadge">Few</span>
@@ -402,6 +463,31 @@ export function TownRecruitSection({
                     <ChevronsUp aria-hidden="true" size={12} /> Pack {formatCost(reinforceCost)}
                     {reinforceLegion > 0 ? ` · Legion −${reinforceLegion}` : ""}
                   </span>
+                  {/* One-click shortcut: reinforce this owned Few straight to its
+                      Pack without staging the basket. The cost is shown above and
+                      the button is gated on affordability, so the "limit/info"
+                      stays visible either way. */}
+                  <button
+                    className="recruitQuick"
+                    disabled={!canPopulate || !reinforceAffordable}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      onAction({
+                        type: "POPULATION_ACTION",
+                        playerId: viewerPlayerId,
+                        purchases: [{ kind: "reinforce", unitDefId: owned.unitDefId, armyUnitId: owned.id }]
+                      });
+                    }}
+                    title={
+                      reinforceAffordable
+                        ? `Reinforce ${unit.name} now — ${formatCost(reinforceCost)}`
+                        : "Not enough resources to reinforce"
+                    }
+                    type="button"
+                  >
+                    Reinforce
+                  </button>
                   <input
                     aria-label={`Reinforce ${unit.name} to a pack`}
                     checked={checked}
@@ -423,14 +509,38 @@ export function TownRecruitSection({
         const recruitRef = { kind: "recruit" as const, unitDefId };
         const recruitCost = applyRecruitGoldDiscount(state, viewerPlayerId, recruitRef, unit.few.cost);
         const recruitLegion = legionVoucherDiscount(state, viewerPlayerId, recruitRef);
+        const recruitAffordable = costAffordable(recruitCost, player.resources);
         return (
           <label className="recruitRow" key={unitDefId}>
+            <RecruitUnitView side="few" unitDefId={unitDefId} />
             <Star aria-hidden="true" className={`tierStar ${unit.tier}`} size={12} />
             <span className="recruitName">{unit.name}</span>
             <small title={recruitLegion > 0 ? `Legion voucher reserved: −${recruitLegion} gold` : undefined}>
               {formatCost(recruitCost)}
               {recruitLegion > 0 ? ` · Legion −${recruitLegion}` : ""}
             </small>
+            {/* One-click shortcut: recruit this unit's Few into your unit deck now,
+                skipping the basket. Cost shown to the left, button gated on
+                affordability — the "limit/info" stays visible. */}
+            <button
+              className="recruitQuick"
+              disabled={!canPopulate || !recruitAffordable}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                onAction({
+                  type: "POPULATION_ACTION",
+                  playerId: viewerPlayerId,
+                  purchases: [{ kind: "recruit", unitDefId }]
+                });
+              }}
+              title={
+                recruitAffordable ? `Recruit ${unit.name} now — ${formatCost(recruitCost)}` : "Not enough resources to recruit"
+              }
+              type="button"
+            >
+              Recruit
+            </button>
             <input
               checked={checked}
               onChange={() =>
