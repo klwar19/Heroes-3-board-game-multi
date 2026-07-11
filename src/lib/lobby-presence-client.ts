@@ -18,6 +18,8 @@ export type PresenceHeartbeatInput = {
   /** The room the player is in, if any (absent ⇒ idling in the lobby). */
   roomId?: string;
   roomName?: string;
+  /** "setup" = seating lobby, "playing" = game started (only when roomId set). */
+  roomStatus?: "setup" | "playing";
 };
 
 /** The currently-online players (verified first). */

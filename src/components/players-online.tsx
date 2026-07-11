@@ -1,6 +1,7 @@
 "use client";
 
 import { BadgeCheck, DoorOpen, UserPlus, Users } from "lucide-react";
+import { authEnabled } from "@/lib/auth-mode";
 import type { PresenceEntry } from "@/lib/lobby-presence-client";
 
 /**
@@ -14,6 +15,8 @@ import type { PresenceEntry } from "@/lib/lobby-presence-client";
  *
  * The verified/guest badge comes straight from the server (cookie-verified), so
  * it is trustworthy and consistent with the room roster's guest labelling.
+ * Guest labels are only shown when accounts are ENABLED — with accounts off
+ * everyone is a guest technically, and labelling them all "guest —" is noise.
  */
 export function PlayersOnline({
   players,
@@ -26,6 +29,8 @@ export function PlayersOnline({
   onJoinRoom: (roomId: string) => void;
   onInvite: (player: PresenceEntry) => void;
 }) {
+  const showAuthLabels = authEnabled();
+
   return (
     <section className="playersOnline" aria-label="Players online">
       <header className="playersOnlineHeader">
@@ -40,20 +45,31 @@ export function PlayersOnline({
         <ul className="playersOnlineList">
           {players.map((player) => {
             const self = player.clientId === clientId;
+            const showAsGuest = showAuthLabels && !player.verified;
+            const where = player.roomId
+              ? `in ${player.roomName ?? "a room"}${
+                  player.roomStatus === "playing"
+                    ? " · playing"
+                    : player.roomStatus === "setup"
+                      ? " · setting up"
+                      : ""
+                }`
+              : "in the lobby";
             return (
-              <li className={`playerOnline${player.verified ? " verified" : " guest"}`} key={player.clientId}>
+              <li
+                className={`playerOnline${showAuthLabels ? (player.verified ? " verified" : " guest") : ""}`}
+                key={player.clientId}
+              >
                 <span className="playerOnlineDot" aria-hidden="true" />
                 <span className="playerOnlineWho">
                   <span className="playerOnlineName">
-                    {player.verified ? (
+                    {showAuthLabels && player.verified ? (
                       <BadgeCheck aria-hidden="true" size={12} className="playerOnlineBadge" />
                     ) : null}
-                    {player.verified ? player.name : `guest — ${player.name}`}
+                    {showAsGuest ? `guest — ${player.name}` : player.name}
                     {self ? <em> (you)</em> : null}
                   </span>
-                  <small className="playerOnlineWhere">
-                    {player.roomId ? `in ${player.roomName ?? "a room"}` : "in the lobby"}
-                  </small>
+                  <small className="playerOnlineWhere">{where}</small>
                 </span>
                 {!self ? (
                   <span className="playerOnlineActions">
