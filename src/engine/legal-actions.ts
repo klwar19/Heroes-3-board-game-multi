@@ -4573,6 +4573,20 @@ export function getLegalActions(
     return getAdventureLegalActions(state, playerId, cards);
   }
 
+  // Battle Test (combat-sandbox): once a fight is open it runs on the exact
+  // same CombatState as a PvP battle, so drive it through the shared combat
+  // dispatcher — deployment placement (PLACE_COMBAT_UNIT / FINISH_COMBAT_
+  // PLACEMENT), Tactics, the neutral-step pause and the active fight. This MUST
+  // come before the simultaneous town-turn branch below: during `combat-setup`
+  // that branch would otherwise offer Build Training Ground / Marketplace and no
+  // way to deploy or start the fight.
+  if (state.mode === "combat-sandbox" && state.combat) {
+    const combatActions = getCombatInteractionActions(state, playerId, cards);
+    if (combatActions) {
+      return combatActions;
+    }
+  }
+
   if (isSimultaneousTurnAvailable(state, playerId)) {
     const actions: LegalAction[] = [];
     addTownBuildActions(actions, state, playerId, buildings);
@@ -7646,39 +7660,42 @@ function getParallelBystanderActions(state: GameState, playerId: PlayerId): Lega
   return actions;
 }
 
-function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: CardLibrary): LegalAction[] {
+/**
+ * Legal actions for an OPEN COMBAT, shared by adventure PvP/neutral fights AND
+ * Battle Test (combat-sandbox) fights — they run on the identical CombatState.
+ * Covers the end-of-combat acknowledgment, PvP prep, the Tactics window, the
+ * deployment placement step, the neutral-step pause, the continue/retreat
+ * window and the active fight. Returns `null` when the state is NOT in a combat
+ * interaction so the caller falls through to its own (map / sandbox) handling.
+ *
+ * Before this existed the combat-sandbox path had no deployment handling at all:
+ * getLegalActions offered the sandbox's simultaneous town-turn (Build Training
+ * Ground / Marketplace…) during `combat-setup` and never surfaced
+ * PLACE_COMBAT_UNIT / FINISH_COMBAT_PLACEMENT, so the tester could not deploy or
+ * start the fight. Routing both modes through this one function fixes that and
+ * keeps Battle Test combat behaviour identical to a real PvP battle.
+ */
+function getCombatInteractionActions(
+  state: GameState,
+  playerId: PlayerId,
+  cards: CardLibrary
+): LegalAction[] | null {
+  const combat = state.combat;
+  if (!combat) {
+    return null;
+  }
   const actions: LegalAction[] = [];
-  const adventure = state.adventure;
-  const player = state.players[playerId];
-  if (!adventure || !player) {
-    return actions;
-  }
 
-  // Round-start Event / Astrologers barrier: while the round's Event is being
-  // resolved clockwise, only the player whose event choice is currently open has
-  // any legal action (they flow through the normal branches below to their
-  // RESOLVE_VISIT_STEP); every other player is frozen with nothing to do until
-  // the whole table finishes. Mirrors the applyAction backstop (ordered AND
-  // parallel play).
-  if (isRoundStartEventBarrierActive(state)) {
-    const resolver = roundStartEventResolver(state);
-    if (resolver && resolver !== playerId) {
-      return actions;
-    }
-  }
-
-  // Parallel turns: while ANOTHER player's exclusive interaction is open this
-  // player is a bystander with only the quiet-action set, wherever the
-  // interaction machinery currently stands (combat, visit, tile, Necromancy…).
-  // Owners and combat participants have a null blocker and flow through the
-  // normal branches below unchanged.
-  if (parallelInteractionBlocker(state, playerId)) {
-    return getParallelBystanderActions(state, playerId);
-  }
-
-  // A finished combat waits on the battlefield until a participant closes
-  // the end-of-combat notice; only then does finalization run.
-  if (state.combat?.outcome && !state.combat.endAcknowledged && !state.pendingChoice) {
+  // A finished combat waits on the battlefield until a participant closes the
+  // end-of-combat notice; only then does finalization run. A Battle Test
+  // (sandbox) fight has no map to return to — it stays on the table until reset
+  // (ACKNOWLEDGE_COMBAT_END throws for it), so this ack is adventure-only.
+  if (
+    combat.outcome &&
+    !combat.endAcknowledged &&
+    !state.pendingChoice &&
+    combat.context.kind !== "sandbox"
+  ) {
     if (isCombatParticipant(state, playerId)) {
       actions.push({
         label: "Return to the adventure map",
@@ -7694,7 +7711,7 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
   // of the fight. Deployment begins only once both have accepted. The town
   // actions surface through addTownActions (allowed during this window). A
   // participant who has already accepted gets nothing here but waits.
-  if (state.combat?.prep) {
+  if (combat.prep) {
     if (inCombatPrep(state, playerId)) {
       addTownActions(actions, state, playerId);
       // Prepare for the fight with hand cards too — exactly the map-turn plays
@@ -7713,15 +7730,15 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
 
   // Start-of-combat Tactics window: the head of the queue switches two of their
   // units or declines, before round 1 begins.
-  if (state.combat?.pendingTacticsSwaps && state.combat.pendingTacticsSwaps.length > 0) {
-    if (state.combat.pendingTacticsSwaps[0] === playerId) {
+  if (combat.pendingTacticsSwaps && combat.pendingTacticsSwaps.length > 0) {
+    if (combat.pendingTacticsSwaps[0] === playerId) {
       addTacticsSetupActions(actions, state, playerId);
     }
     return actions;
   }
 
   // Combat setup placement.
-  if (state.combat?.setup) {
+  if (combat.setup) {
     addCombatSetupActions(actions, state, playerId);
     // A PvP hero may still Retreat while deploying (before any fighting).
     addPvpRetreatDuringSetup(actions, state, playerId);
@@ -7731,9 +7748,9 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
   // Combat pacing / reaction pause (see CombatState.pendingNeutralStep). The
   // reacting player may cast/react first (pre-activation) and then resumes; the
   // guard-walk pause just lets the table click the enemy move on.
-  if (state.combat?.pendingNeutralStep) {
-    const pause = state.combat.pendingNeutralStep;
-    const reactor = pause.reactingPlayerId ?? state.combat.attackerPlayerId;
+  if (combat.pendingNeutralStep) {
+    const pause = combat.pendingNeutralStep;
+    const reactor = pause.reactingPlayerId ?? combat.attackerPlayerId;
     if (playerId === reactor) {
       if (pause.kind === "pre-activation") {
         // Cast Intelligence-enabled spells, trigger-free instant spells, play
@@ -7753,8 +7770,8 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
   }
 
   // The neutral combat time limit: continue for 1 MP or retreat.
-  if (state.combat?.awaitingContinue) {
-    const context = state.combat.context;
+  if (combat.awaitingContinue) {
+    const context = combat.context;
     if (context.kind === "neutral") {
       const hero = state.heroes[context.heroId];
       if (hero?.controllerId === playerId) {
@@ -7823,7 +7840,7 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
 
   // Active combat: the standard combat actions apply. Spells and instants
   // stay available to both fighters whoever's unit is active.
-  if (state.combat && state.phase === "combat") {
+  if (state.phase === "combat" && !combat.outcome) {
     addActiveEffectActions(actions, state, playerId);
     addUnitActions(actions, state, playerId);
     addTacticsCombatActions(actions, state, playerId);
@@ -7832,6 +7849,12 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
     // Instant damage specialties are playable off-turn too (self-gates to the
     // off-turn side, so the active player is not double-offered them).
     addCombatAnytimeSpecialtyPlays(actions, state, playerId, cards);
+    // Battle Test only: the active player may Search any populated well mid-fight
+    // to pull cards for testing (there is no map reward loop in the sandbox). A
+    // real adventure combat never offers this — hence the mode gate.
+    if (state.mode === "combat-sandbox") {
+      addDeckSearchActions(actions, state, playerId);
+    }
     if (isCombatParticipant(state, playerId)) {
       addPermanentDiscardActions(actions, state, playerId);
       // A morale token (e.g. gained by playing Leadership mid-battle) may also
@@ -7844,6 +7867,49 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
       addGiveUpCombatActions(actions, state, playerId);
     }
     return actions;
+  }
+
+  return null;
+}
+
+function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: CardLibrary): LegalAction[] {
+  const actions: LegalAction[] = [];
+  const adventure = state.adventure;
+  const player = state.players[playerId];
+  if (!adventure || !player) {
+    return actions;
+  }
+
+  // Round-start Event / Astrologers barrier: while the round's Event is being
+  // resolved clockwise, only the player whose event choice is currently open has
+  // any legal action (they flow through the normal branches below to their
+  // RESOLVE_VISIT_STEP); every other player is frozen with nothing to do until
+  // the whole table finishes. Mirrors the applyAction backstop (ordered AND
+  // parallel play).
+  if (isRoundStartEventBarrierActive(state)) {
+    const resolver = roundStartEventResolver(state);
+    if (resolver && resolver !== playerId) {
+      return actions;
+    }
+  }
+
+  // Parallel turns: while ANOTHER player's exclusive interaction is open this
+  // player is a bystander with only the quiet-action set, wherever the
+  // interaction machinery currently stands (combat, visit, tile, Necromancy…).
+  // Owners and combat participants have a null blocker and flow through the
+  // normal branches below unchanged.
+  if (parallelInteractionBlocker(state, playerId)) {
+    return getParallelBystanderActions(state, playerId);
+  }
+
+  // Any open combat — end-of-combat ack, PvP prep, Tactics, deployment
+  // placement, the neutral-step pause, the continue/retreat window and the
+  // active fight — is handled by the shared combat dispatcher (also used by
+  // Battle Test). It returns null only when the state is NOT a combat
+  // interaction, so play falls through to the map handling below.
+  const combatActions = getCombatInteractionActions(state, playerId, cards);
+  if (combatActions) {
+    return combatActions;
   }
 
   // A freshly revealed or placed tile waits for its rotation choice.
