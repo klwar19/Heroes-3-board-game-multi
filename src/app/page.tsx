@@ -12,7 +12,6 @@ import {
   getLegalActions,
   getPermanentCardIds,
   getPlayerView,
-  getRuleset,
   hasOpenAdventureTurn,
   healLegacyPlayerFields,
   roomDisplayName,
@@ -4658,8 +4657,8 @@ export default function Home() {
                       {openHandIndex === index && !selecting && !isPayingSource && (actionable || canDraw) ? (
                         <div className="handPlayMenu" role="menu" aria-label={`${cardName(cardId)} plays`}>
                           <strong>{cardName(cardId)}</strong>
-                          {rulesetCardNote(getRuleset(state), cardId) ? (
-                            <small className="rulesetNote">{rulesetCardNote(getRuleset(state), cardId)}</small>
+                          {rulesetCardNote(state, cardId) ? (
+                            <small className="rulesetNote">{rulesetCardNote(state, cardId)}</small>
                           ) : null}
                           {canDraw && plays.length === 0 ? (
                             <small className="rulesetNote">

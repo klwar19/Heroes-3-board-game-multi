@@ -4523,17 +4523,23 @@ const HOUSE_RULE_CATEGORY_LABELS: Record<string, string> = {
  */
 function HouseRulesSection({
   houseRules,
-  setHouseRule
+  setHouseRule,
+  editable
 }: {
   houseRules: Record<HouseRuleId, boolean>;
   setHouseRule: (id: HouseRuleId, value: boolean) => void;
+  editable: boolean;
 }) {
   const categories = ["decks", "units", "abilities", "combat"] as const;
   return (
     <div className="houseRuleSection" aria-label="House rules">
       <div className="houseRuleHead">
         <strong>House rules</strong>
-        <small>Each tweak toggles on its own — defaults follow the mode above (all on in BINH, off in Legacy).</small>
+        <small>
+          {editable
+            ? "BINH starts with every tweak on; each one can then be customized."
+            : "Legacy is the strict rulebook mode: every house rule is locked off."}
+        </small>
       </div>
       {categories.map((category) => {
         const rules = HOUSE_RULES.filter((rule) => rule.category === category);
@@ -4550,9 +4556,10 @@ function HouseRulesSection({
                   <button
                     aria-pressed={on}
                     className={`houseRuleToggle ${on ? "on" : "off"}`}
+                    disabled={!editable}
                     key={rule.id}
                     onClick={() => setHouseRule(rule.id, !on)}
-                    title={rule.description}
+                    title={editable ? rule.description : `Legacy: ${rule.label} is locked off.`}
                     type="button"
                   >
                     <span aria-hidden="true" className="houseRuleCheck">
@@ -4693,10 +4700,15 @@ function GameOptionsPanel({
         </div>
       ) : null}
 
-      <HouseRulesSection houseRules={houseRules} setHouseRule={setHouseRule} />
+      <HouseRulesSection
+        editable={options.ruleset === "binh"}
+        houseRules={houseRules}
+        setHouseRule={setHouseRule}
+      />
 
       {(() => {
-        const spellBookOn = options.spellBook ?? true;
+        const spellBookEditable = options.ruleset === "binh";
+        const spellBookOn = spellBookEditable && (options.spellBook ?? true);
         return (
           <div className="optionRow">
             <small title="House rule: each player keeps a personal Spell Book to stash, cast and boost Spells from">
@@ -4707,9 +4719,16 @@ function GameOptionsPanel({
                 <button
                   aria-pressed={spellBookOn === on}
                   className={spellBookOn === on ? "selected" : ""}
+                  disabled={!spellBookEditable}
                   key={String(on)}
                   onClick={() => send({ spellBook: on })}
-                  title={on ? "Spell Book on (house rule)" : "Spell Book off"}
+                  title={
+                    spellBookEditable
+                      ? on
+                        ? "Spell Book on (house rule)"
+                        : "Spell Book off"
+                      : "Legacy locks the Spell Book house rule off"
+                  }
                   type="button"
                 >
                   {on ? "On" : "Off"}
@@ -4717,7 +4736,9 @@ function GameOptionsPanel({
               ))}
             </div>
             <small className="optionHint">
-              {spellBookOn
+              {!spellBookEditable
+                ? "Legacy rulebook mode locks the Spell Book house rule off."
+                : spellBookOn
                 ? "Each player may set Spells aside in a personal Spell Book to free hand slots, then cast or boost from it (one Book Power boost per turn)."
                 : "No Spell Book — Spells live only in hand, deck and discard."}
             </small>

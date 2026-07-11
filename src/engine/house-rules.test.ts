@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyAction,
   createAdventureGameState,
+  createAdventureLobbyState,
   getLegalActions,
   makeCombatUnitFromArmy,
   NEUTRAL_DECK_IDS
@@ -60,14 +61,55 @@ describe("house-rule resolver", () => {
     }
   });
 
-  it("lets an explicit flag override the mode default either way", () => {
+  it("lets BINH flags override defaults but keeps Legacy hard-locked off", () => {
     const binhOff = resolveHouseRules({ ruleset: "binh", houseRules: { "estates-nerf": false } });
     expect(binhOff["estates-nerf"]).toBe(false);
     expect(binhOff["griffin-buff"], "untouched rules keep the mode default").toBe(true);
 
     const legacyOn = resolveHouseRules({ ruleset: "legacy", houseRules: { "griffin-buff": true } });
-    expect(legacyOn["griffin-buff"]).toBe(true);
+    expect(legacyOn["griffin-buff"], "even a stale/crafted Legacy override is ignored").toBe(false);
     expect(legacyOn["estates-nerf"], "untouched rules keep the mode default").toBe(false);
+  });
+
+  it("ignores stale frozen true flags in a Legacy game", () => {
+    const state = binhWith({ "griffin-buff": true });
+    state.ruleset = "legacy";
+    expect(state.adventure?.houseRules?.["griffin-buff"]).toBe(true);
+    expect(houseRuleEnabled(state, "griffin-buff")).toBe(false);
+  });
+
+  it("locks every lobby toggle off in Legacy and restores BINH defaults when switched back", () => {
+    let state = createAdventureLobbyState({ seed: "legacy-house-rule-lock" });
+    state = applyOk(state, {
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { ruleset: "legacy", houseRules: { "split-decks": true, "griffin-buff": true } }
+    });
+    expect(state.setupLobby?.options.ruleset).toBe("legacy");
+    expect(state.setupLobby?.options.houseRules).toBeUndefined();
+    expect(state.setupLobby?.options.spellBook).toBe(false);
+    for (const enabled of Object.values(resolveHouseRules(state.setupLobby!.options))) {
+      expect(enabled).toBe(false);
+    }
+
+    // A stale multiplayer toggle arriving after the mode switch is a no-op.
+    state = applyOk(state, {
+      type: "SET_GAME_OPTIONS",
+      playerId: "p2",
+      options: { houseRules: { "split-decks": true } }
+    });
+    expect(state.setupLobby?.options.houseRules).toBeUndefined();
+    expect(resolveHouseRules(state.setupLobby!.options)["split-decks"]).toBe(false);
+
+    state = applyOk(state, {
+      type: "SET_GAME_OPTIONS",
+      playerId: "p2",
+      options: { ruleset: "binh" }
+    });
+    for (const enabled of Object.values(resolveHouseRules(state.setupLobby!.options))) {
+      expect(enabled).toBe(true);
+    }
+    expect(state.setupLobby?.options.spellBook).toBe(true);
   });
 
   it("freezes the resolved booleans onto adventure state and reads them back", () => {
@@ -211,6 +253,22 @@ describe("split-decks toggle", () => {
     expect(state.decks["artifacts-minor"]).toBeUndefined();
     expect(state.decks["artifacts-major"]).toBeUndefined();
     expect(state.decks["artifacts-relic"]).toBeUndefined();
+  });
+
+  it("Legacy cannot be tricked into split decks by a stale explicit override", () => {
+    const state = createAdventureGameState({
+      seed: "legacy-split-override",
+      ruleset: "legacy",
+      rollFirstPlayer: false,
+      houseRules: { "split-decks": true },
+      spellBook: true
+    });
+    expect(state.adventure?.houseRules?.["split-decks"]).toBe(false);
+    expect(state.adventure?.spellBook).toBe(false);
+    expect(state.decks.spells).toBeTruthy();
+    expect(state.decks.artifacts).toBeTruthy();
+    expect(state.decks["spells-expert"]).toBeUndefined();
+    expect(state.decks["artifacts-minor"]).toBeUndefined();
   });
 });
 

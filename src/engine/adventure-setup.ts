@@ -700,8 +700,9 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   // Blocked Field offers the discovering player a bank token from the matching
   // pile. Off skips both the piles and the offer.
   const creatureBanksOn = setupOptions.creatureBanks ?? true;
-  // Spell Book house rule default ON: each player keeps a personal Spell Book.
-  const spellBookOn = setupOptions.spellBook ?? true;
+  // Spell Book is a house rule: BINH defaults it ON, while strict Legacy locks
+  // it OFF even if an old/crafted setup payload carries `spellBook: true`.
+  const spellBookOn = setupOptions.ruleset === "binh" && (setupOptions.spellBook ?? true);
   // Morale Cards are opt-in: when on, morale draws cards instead of changing tokens.
   const moraleCardsOn = setupOptions.moraleCards ?? false;
   // Pick-on-reveal Subterranean Gate placement default ON.
@@ -1287,6 +1288,12 @@ export function createAdventureLobbyState(options: AdventureSetupOptions = {}): 
   if (options.houseRules) {
     setupOptions.houseRules = options.houseRules;
   }
+  if (options.spellBook !== undefined) {
+    setupOptions.spellBook = options.spellBook;
+  }
+  if (setupOptions.ruleset === "legacy") {
+    setupOptions.spellBook = false;
+  }
   if (options.moraleCards !== undefined) {
     setupOptions.moraleCards = options.moraleCards;
   }
@@ -1407,6 +1414,9 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
     // overrides so every toggle reverts to the new mode's default (all ON in
     // BINH, OFF in Legacy). Players may then re-flip individual rules.
     lobby.options.houseRules = undefined;
+    // Spell Book is also a house rule. Mode changes are presets, so Legacy
+    // locks it off and returning to BINH restores its default-on state.
+    lobby.options.spellBook = next.ruleset === "binh";
     changes.push(`game mode ${next.ruleset === "binh" ? "House rules BINH" : "Legacy (rulebook)"}`);
   }
 
@@ -1445,8 +1455,8 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
   }
 
   if (next.spellBook !== undefined) {
-    lobby.options.spellBook = Boolean(next.spellBook);
-    changes.push(`Spell Book ${next.spellBook ? "on" : "off"}`);
+    lobby.options.spellBook = lobby.options.ruleset === "binh" && Boolean(next.spellBook);
+    changes.push(`Spell Book ${lobby.options.spellBook ? "on" : "off"}`);
   }
 
   if (next.moraleCards !== undefined) {
@@ -1455,18 +1465,25 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
   }
 
   if (next.houseRules !== undefined) {
-    // Merge the individual toggle(s) into the existing overrides. Unknown ids are
-    // rejected so a stale client can't smuggle in a non-rule flag.
-    const merged: Partial<Record<HouseRuleId, boolean>> = { ...lobby.options.houseRules };
-    for (const [id, value] of Object.entries(next.houseRules)) {
-      const def = HOUSE_RULE_BY_ID[id as HouseRuleId];
-      if (!def) {
+    for (const id of Object.keys(next.houseRules)) {
+      if (!HOUSE_RULE_BY_ID[id as HouseRuleId]) {
         throw new Error(`Unknown house rule "${id}".`);
       }
-      merged[id as HouseRuleId] = Boolean(value);
-      changes.push(`${def.label} ${value ? "on" : "off"}`);
     }
-    lobby.options.houseRules = merged;
+    // Legacy is a hard all-off preset. A stale multiplayer click that arrives
+    // after another seat switches the mode must not re-enable an override, and
+    // neither may a crafted action.
+    if (lobby.options.ruleset === "legacy") {
+      lobby.options.houseRules = undefined;
+    } else {
+      const merged: Partial<Record<HouseRuleId, boolean>> = { ...lobby.options.houseRules };
+      for (const [id, value] of Object.entries(next.houseRules)) {
+        const def = HOUSE_RULE_BY_ID[id as HouseRuleId];
+        merged[id as HouseRuleId] = Boolean(value);
+        changes.push(`${def.label} ${value ? "on" : "off"}`);
+      }
+      lobby.options.houseRules = merged;
+    }
   }
 
   if (next.events !== undefined) {

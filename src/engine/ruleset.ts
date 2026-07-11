@@ -579,17 +579,28 @@ export function activeSchoolFetches(state: GameState, playerId: PlayerId): ("air
 // Ruleset-dependent card notes for the UI
 // ---------------------------------------------------------------------------
 
-/** Shown on the card popover when the active mode changes a printed value. */
-export function rulesetCardNote(ruleset: GameRuleset, cardId: string): string | null {
-  if (ruleset !== "binh") {
-    return null;
-  }
-
+/**
+ * Shown on card popovers when an active house rule changes a printed value.
+ * A state observes individual overrides; the ruleset-only compatibility form
+ * uses that mode's default preset.
+ */
+export function rulesetCardNote(
+  stateOrRuleset: GameRuleset | Pick<GameState, "ruleset" | "adventure">,
+  cardId: string
+): string | null {
+  const state =
+    typeof stateOrRuleset === "string"
+      ? ({ ruleset: stateOrRuleset } as Pick<GameState, "ruleset" | "adventure">)
+      : stateOrRuleset;
   switch (cardId) {
     case "ability.wisdom":
-      return "BINH: basic −2 gold & Search (3); expert −3 gold & Search (4).";
+      return houseRuleEnabled(state, "wisdom-expert-discount")
+        ? "House rule: Expert Wisdom reduces the Mage Guild price by 3 gold instead of the printed 2."
+        : null;
     case "ability.estates":
-      return "BINH: gain 2 gold (basic) / 4 gold (expert) instead of 3/6.";
+      return houseRuleEnabled(state, "estates-nerf")
+        ? "House rule: gain 2 gold (basic) / 4 gold (expert) instead of the printed 3/6."
+        : null;
     default:
       return null;
   }
@@ -647,6 +658,9 @@ export function expertUsesAvailable(player: PlayerState): number {
  * (the lobby toggle) is the only thing that turns it off.
  */
 export function spellBookRuleEnabled(state: GameState): boolean {
+  if (getRuleset(state) === "legacy") {
+    return false;
+  }
   return state.adventure ? state.adventure.spellBook ?? true : true;
 }
 
