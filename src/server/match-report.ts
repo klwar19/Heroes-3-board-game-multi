@@ -66,6 +66,7 @@ export function detectFinishedMatch(prev: GameState, next: GameState): FinishedM
   if (gameIsOver(prev) || !gameIsOver(next)) {
     return null;
   }
+  if (next.sessionMode === "single-player" || next.room?.visibility === "private") return null;
   // A NORMAL ("casual") table still records the WIN/LOSS on each account — so a
   // give-up / quit is reflected on the profile even in a casual game — but does
   // NOT move MMR (see `ranked` on the result, honoured by recordMatchResult).

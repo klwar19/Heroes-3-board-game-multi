@@ -9,6 +9,7 @@ import {
   forcedResolutionPending,
   ENGINE_SIGNATURE,
   freshEntropy,
+  isPrivateSinglePlayer,
   OBSERVER_VIEWER_SEAT,
   redactStateForSeat,
   resetVoteAuthorizes,
@@ -18,6 +19,7 @@ import {
   type GameAction,
   type GameDifficulty,
   type GameMode,
+  type GameSessionMode,
   type GameState
 } from "@/engine";
 import { deriveLobbyRecord, lobbyRecordSignature, LOBBY_SINGLETON_ID } from "@/server/lobby-registry";
@@ -71,6 +73,8 @@ export type RoomResetOptions = {
   difficulty?: GameDifficulty;
   scenarioId?: string;
   players?: AdventurePlayerConfig[];
+  sessionMode?: GameSessionMode;
+  computerOpponents?: number;
 };
 
 type ClientMessage =
@@ -251,9 +255,12 @@ export default class GameRoomServer implements Party.Server {
           seed,
           difficulty: options.difficulty,
           scenarioId: options.scenarioId,
-          players: options.players
+          players: options.players,
+          sessionMode: options.sessionMode,
+          computerOpponents: options.computerOpponents
         })
-      : createAdventureLobbyState({ seed, scenarioId: options.scenarioId });
+      : createAdventureLobbyState({ seed, scenarioId: options.scenarioId, sessionMode: options.sessionMode,
+          computerOpponents: options.computerOpponents });
   }
 
   private ensureSnapshot(): RoomSnapshot {
@@ -314,6 +321,10 @@ export default class GameRoomServer implements Party.Server {
     const snapshot = this.snapshot;
     const lobby = this.room.context?.parties?.lobby;
     if (!snapshot || !lobby) {
+      return;
+    }
+    if (isPrivateSinglePlayer(snapshot.state)) {
+      await this.deregisterFromLobby();
       return;
     }
     const record = deriveLobbyRecord({

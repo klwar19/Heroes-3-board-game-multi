@@ -48,6 +48,7 @@ import {
 } from "./adventure";
 import { pumpAdventureQueues } from "./adventure-reducer";
 import { makeInitialCommanderState } from "./commanders";
+import { controllerOf, standardComputerController } from "./computer/control";
 import { normalizeParallelTurnRounds } from "./parallel-turns";
 import { drawCardsForPlayer, shuffleCards } from "./decks";
 import { makeMoraleDecks } from "./morale-cards";
@@ -66,6 +67,7 @@ import type {
   GameAction,
   GameDifficulty,
   GameRuleset,
+  GameSessionMode,
   GameSetupDraft,
   GameSetupOptions,
   GameSetupState,
@@ -73,6 +75,7 @@ import type {
   HouseRuleId,
   MapTileState,
   PlayerId,
+  PlayerController,
   PlayerState,
   PvpTroopLoss,
   RoomMembershipState,
@@ -176,6 +179,9 @@ function appendSetupTakeBackWarning(
 
 export type AdventureSetupOptions = {
   seed?: string;
+  sessionMode?: GameSessionMode;
+  controllers?: Record<PlayerId, PlayerController>;
+  computerOpponents?: number;
   ruleset?: GameRuleset;
   /** Wake of Gods modules; honored only when the BINH ruleset is active. */
   wog?: Partial<WogModOptions>;
@@ -739,6 +745,12 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     0,
     Math.min(scenario.maxPlayers, scenario.layout.starts.length)
   );
+  const configuredControllers = options.controllers ?? (options.sessionMode === "single-player"
+    ? Object.fromEntries(playerConfigs.map((config, index) => [
+        config.id,
+        index === 0 ? ({ kind: "human" } satisfies PlayerController) : standardComputerController()
+      ]))
+    : undefined);
   // Event deck (Fortress expansion) is an OPT-IN optional rule: OFF unless the
   // table explicitly turns it on, and even then "Event cards may be used in
   // multiplayer games only" — a solo table never gets the deck.
@@ -830,6 +842,8 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     id: "adventure-game",
     seed,
     mode: "adventure",
+    ...(options.sessionMode ? { sessionMode: options.sessionMode } : {}),
+    ...(configuredControllers ? { controllers: configuredControllers } : {}),
     ruleset,
     wog,
     round: 1,
@@ -1267,6 +1281,38 @@ function resizeLobbySeats(state: GameState, scenario: ScenarioDefinition, target
   return count;
 }
 
+export function setComputerOpponents(
+  state: GameState,
+  action: Extract<GameAction, { type: "SET_COMPUTER_OPPONENTS" }>
+): void {
+  const lobby = state.setupLobby;
+  if (state.sessionMode !== "single-player" || !lobby || state.phase !== "setup" || lobby.startCheck) {
+    throw new Error("Computer opponents can only be changed during single-player setup.");
+  }
+  const humans = lobby.seats.filter((seat) => controllerOf(state, seat.playerId).kind === "human");
+  if (humans.length !== 1 || humans[0].playerId !== action.playerId || !Number.isFinite(action.count)) {
+    throw new Error("Only the single-player human seat may change computer opponents.");
+  }
+  const count = resizeLobbySeats(state, getScenario(lobby.options.scenarioId), 1 + Math.max(1, Math.floor(action.count)));
+  state.controllers = {};
+  lobby.seats.forEach((seat, index) => {
+    state.controllers![seat.playerId] = index === 0 ? { kind: "human" } : standardComputerController();
+    if (index > 0) {
+      seat.name = `Computer ${index}`;
+      state.players[seat.playerId].name = seat.name;
+    }
+  });
+  if (lobby.draft?.seatRolls) {
+    const live = new Set(lobby.seats.map((seat) => seat.playerId));
+    lobby.draft.seatRolls = Object.fromEntries(Object.entries(lobby.draft.seatRolls).filter(([id]) => live.has(id)));
+  }
+  appendEvent(state, {
+    type: "GAME_OPTIONS_CHANGED",
+    playerId: action.playerId,
+    message: `${state.players[action.playerId]?.name ?? action.playerId} set computer opponents ${count - 1}.`
+  });
+}
+
 /** Opens a new room in the map-setup phase: seats wait for faction picks. */
 export function createAdventureLobbyState(options: AdventureSetupOptions = {}): GameState {
   // Crypto entropy, not just Date.now() — two lobbies minted in the same
@@ -1305,15 +1351,26 @@ export function createAdventureLobbyState(options: AdventureSetupOptions = {}): 
   if (scenario.startingBuildings.length === 0) {
     setupOptions.startingBuildings = [...DEFAULT_SETUP_STARTING_BUILDINGS];
   }
-  const seatCount = clampSeatCount(scenario, options.playerCount ?? setupOptions.playerCount);
+  const requestedSeats = options.sessionMode === "single-player"
+    ? 1 + Math.max(1, Math.floor(options.computerOpponents ?? 1))
+    : options.playerCount ?? setupOptions.playerCount;
+  const seatCount = clampSeatCount(scenario, requestedSeats);
   setupOptions.playerCount = seatCount;
 
   const seats = Array.from({ length: seatCount }, (_, index) => ({
     playerId: `p${index + 1}`,
-    name: LOBBY_SEAT_NAMES[index] ?? `Player ${index + 1}`,
+    name: options.sessionMode === "single-player" && index > 0
+      ? `Computer ${index}`
+      : LOBBY_SEAT_NAMES[index] ?? `Player ${index + 1}`,
     factionId: null,
     heroDefId: null
   }));
+  const controllers = options.controllers ?? (options.sessionMode === "single-player"
+    ? Object.fromEntries(seats.map((seat, index) => [
+        seat.playerId,
+        index === 0 ? ({ kind: "human" } satisfies PlayerController) : standardComputerController()
+      ]))
+    : undefined);
 
   const players = Object.fromEntries(
     seats.map((seat) => [seat.playerId, makeLobbySeatPlayer(seat.playerId, seat.name, setupOptions)] as const)
@@ -1323,6 +1380,8 @@ export function createAdventureLobbyState(options: AdventureSetupOptions = {}): 
     id: "adventure-lobby",
     seed,
     mode: "adventure",
+    ...(options.sessionMode ? { sessionMode: options.sessionMode } : {}),
+    ...(controllers ? { controllers } : {}),
     ruleset: setupOptions.ruleset,
     wog: setupOptions.wog,
     round: 0,
@@ -2488,6 +2547,8 @@ function buildAdventureFromLobby(state: GameState): void {
   }
   const built = createAdventureGameState({
     seed: state.seed,
+    sessionMode: state.sessionMode,
+    controllers: state.controllers,
     scenarioId: lobby.options.scenarioId,
     ruleset: lobby.options.ruleset,
     wog: lobby.options.wog,

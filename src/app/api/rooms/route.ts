@@ -27,6 +27,8 @@ export async function POST(request: Request) {
     difficulty: body?.difficulty,
     scenarioId: body?.scenarioId,
     players: body?.players,
+    sessionMode: body?.sessionMode,
+    computerOpponents: body?.computerOpponents,
     ...(typeof body?.ranked === "boolean" ? { ranked: body.ranked } : {})
   });
 

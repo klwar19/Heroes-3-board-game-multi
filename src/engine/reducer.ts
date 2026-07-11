@@ -104,6 +104,7 @@ import {
   rollHeroOptions,
   rollTownOptions,
   setDraftFormat,
+  setComputerOpponents,
   setGameOptions,
   startAdventureFromLobby
 } from "./adventure-setup";
@@ -166,6 +167,7 @@ import {
   startWarMachineRound
 } from "./permanents";
 import { createSeededRandom, setActiveEntropy } from "./random";
+import { isComputerPlayer } from "./computer/control";
 import { hexDistance, parseHexSpaceId } from "./hex";
 import {
   abilityExpertIsCrownFree,
@@ -424,7 +426,7 @@ import type {
 } from "./state";
 import { NEUTRAL_PLAYER_ID } from "./state";
 
-type ReducerOptions = {
+export type ReducerOptions = {
   cards?: CardLibrary;
   buildings?: BuildingLibrary;
   /**
@@ -460,6 +462,7 @@ type ReducerOptions = {
    * engine stays deterministic.
    */
   now?: number;
+  computerActorPlayerId?: PlayerId;
 };
 
 type ConcreteEffect = Exclude<EffectDefinition, { type: "CHOOSE_ONE" }>;
@@ -17570,6 +17573,7 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "CHOOSE_ABILITY_TARGET",
   "CHOOSE_FACTION",
   "SET_GAME_OPTIONS",
+  "SET_COMPUTER_OPPONENTS",
   "START_ADVENTURE",
   "CONFIRM_START_ADVENTURE",
   "CANCEL_START_ADVENTURE",
@@ -17652,10 +17656,15 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
   // Hosted-room seat ownership: a client may only act for its own seat. No-op
   // on an open table or when the transport supplied no identity. A verified
   // userId (Phase 2) is authoritative over the claimed clientId.
-  const seatError = roomActionGuard(state, action, {
-    clientId: options.actorClientId,
-    userId: options.actorUserId
-  });
+  const computerActor = options.computerActorPlayerId;
+  const actionPlayer = "playerId" in action ? action.playerId : null;
+  const seatError = computerActor
+    ? actionPlayer !== computerActor
+      ? "Computer authority does not match this action's player."
+      : !isComputerPlayer(state, computerActor)
+        ? "Only a configured computer seat may use computer authority."
+        : null
+    : roomActionGuard(state, action, { clientId: options.actorClientId, userId: options.actorUserId });
   if (seatError) {
     return fail(state, { code: "ACTION_NOT_LEGAL", message: seatError });
   }
@@ -18137,6 +18146,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "SET_GAME_OPTIONS":
         setGameOptions(nextState, action);
+        break;
+      case "SET_COMPUTER_OPPONENTS":
+        setComputerOpponents(nextState, action);
         break;
       case "END_TURN":
         if (nextState.mode === "adventure") {

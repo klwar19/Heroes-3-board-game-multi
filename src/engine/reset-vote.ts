@@ -41,7 +41,8 @@ function gameIsOver(state: GameState): boolean {
  */
 export function resetVoteRequired(state: GameState): boolean {
   return (
-    state.mode === "adventure" && !state.setupLobby && !gameIsOver(state) && liveSeats(state).length >= 2
+    state.sessionMode !== "single-player" && state.mode === "adventure" && !state.setupLobby &&
+    !gameIsOver(state) && liveSeats(state).length >= 2
   );
 }
 
