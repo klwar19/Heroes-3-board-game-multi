@@ -106,6 +106,68 @@ describe("Battle Test free setup", () => {
     expect(state.heroes.hero_p2.heroDefId).toBe("sandro");
   });
 
+  it("getLegalActions drives deployment (not a town-build turn) during combat-setup", () => {
+    // Regression: the sandbox combat runs on turn.mode "simultaneous", and the
+    // simultaneous town-turn branch only excluded phase "combat" — NOT
+    // "combat-setup". So getLegalActions (the UI's only source of clickable
+    // actions) offered Build Training Ground / Marketplace and NO deployment,
+    // leaving the tester unable to place a unit or start the fight. The board
+    // has nothing to click without PLACE_COMBAT_UNIT here. Fails if the sandbox
+    // combat path stops routing through the shared combat dispatcher.
+    let state = createCombatSandboxLobbyState("sandbox-deploy-actions");
+    state = applyOk(state, { type: "SANDBOX_BEGIN_COMBAT", playerId: "p1" });
+    expect(state.phase).toBe("combat-setup");
+
+    const p1Offers = getLegalActions(state, "p1");
+    // The attacker (head of the placement queue) can place every army unit and
+    // has no town-build actions offered.
+    expect(p1Offers.some((legal) => legal.action.type === "PLACE_COMBAT_UNIT")).toBe(true);
+    expect(p1Offers.some((legal) => legal.action.type === "BUILD_STRUCTURE")).toBe(false);
+    expect(p1Offers.some((legal) => legal.action.type === "COMPLETE_SIMULTANEOUS_TURN")).toBe(false);
+    // The waiting defender is not yet at the head of the queue: no placement,
+    // and still no stray town-build actions.
+    const p2Offers = getLegalActions(state, "p2");
+    expect(p2Offers.some((legal) => legal.action.type === "PLACE_COMBAT_UNIT")).toBe(false);
+    expect(p2Offers.some((legal) => legal.action.type === "BUILD_STRUCTURE")).toBe(false);
+
+    // Place one unit → "Ready for battle" (FINISH_COMBAT_PLACEMENT) appears; the
+    // tester can actually start the fight.
+    const p1Army = state.players.p1.army[0]!;
+    state = applyOk(state, {
+      type: "PLACE_COMBAT_UNIT",
+      playerId: "p1",
+      armyUnitId: p1Army.id,
+      position: 12
+    });
+    const afterPlace = getLegalActions(state, "p1");
+    expect(afterPlace.some((legal) => legal.action.type === "FINISH_COMBAT_PLACEMENT")).toBe(true);
+
+    // Both sides deploy and lock in → the live fight offers unit ACTIONS (attack/
+    // move/defend), still never a town-build button.
+    state = applyOk(state, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
+    const p2Army = state.players.p2.army[0]!;
+    state = applyOk(state, { type: "PLACE_COMBAT_UNIT", playerId: "p2", armyUnitId: p2Army.id, position: 4 });
+    state = applyOk(state, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p2" });
+
+    // Whoever's unit is active gets real combat actions and no town build.
+    const active = state.combat!.activeUnitId
+      ? state.combat!.units[state.combat!.activeUnitId]?.controllerId ?? "p1"
+      : "p1";
+    if (state.phase === "combat") {
+      const combatOffers = getLegalActions(state, active);
+      expect(combatOffers.some((legal) => legal.action.type === "BUILD_STRUCTURE")).toBe(false);
+      expect(combatOffers.some((legal) => legal.action.type === "COMPLETE_SIMULTANEOUS_TURN")).toBe(false);
+      const combatActionTypes = new Set([
+        "MOVE_UNIT",
+        "ATTACK_UNIT",
+        "MOVE_AND_ATTACK_UNIT",
+        "DEFEND_UNIT",
+        "END_ACTIVATION"
+      ]);
+      expect(combatOffers.some((legal) => combatActionTypes.has(legal.action.type))).toBe(true);
+    }
+  });
+
   it("after both sides Ready, the fight starts and WOG commanders inject", () => {
     let state = createCombatSandboxLobbyState("sandbox-deploy");
     state = applyOk(state, {
