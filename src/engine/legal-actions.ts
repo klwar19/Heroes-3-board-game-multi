@@ -3786,19 +3786,86 @@ function addBerserkUnitActions(
 }
 
 /**
- * PvP Neutral Control: the unit menu the CONTROLLING player gets for an active
- * Neutral guard. Plays like a PvP side — the same move/attack/defend/hold set a
- * player unit offers (the guards' printed "other actions"/abilities stay off
- * the menu exactly as under the AI, which never uses them either; triggered
- * and [activation] abilities still fire, their choices going to the controller).
+ * The token-placement "other actions" a CONTROLLED neutral guard may use in the
+ * FREE-play menu (user rule "mode free: do whatever" — including "use token"):
+ * the Ogres' Bloodlust Attack token and the Sorceresses' Weakness token
+ * (`PLACE_TOKEN_ACTION`). These are the one guard "other action" that reads only
+ * the guard's OWN side (`activeUnit.controllerId`), so they are neutral-safe. The
+ * deck-digging (Genie Wish) and Summon Demons other-actions stay OFF a controlled
+ * guard — they read the CONTROLLER's own deck / removed units, not the neutral
+ * side, so handing them over would be a bug/exploit, and the AI never used them.
  *
- * The `pvpNeutralControlMustAttack` sub-toggle (default ON) applies the
- * rulebook constraint: a guard that can strike now may ONLY strike; one that
- * can reach a strike by moving may only move to those cells; otherwise it may
- * only step strictly CLOSER to some enemy — never Defend, never wander to buy
- * time, and it holds only when nothing else is possible. A WOG Werewolf's
- * Astrologers-round frenzy forces the same menu even with the toggle OFF.
- * Toggled off, the controller plays the guard entirely freely.
+ * The offer is issued for the controlling `playerId`; the dispatch re-stamps it
+ * to the neutral seat (asNeutralSeatCommand in reducer.ts), and the target-pick
+ * choice it opens is a NEUTRAL-owned choice the pump hands back to the controller
+ * — exactly like the guards' [activation] follow-ups.
+ */
+function addControlledNeutralTokenActions(
+  actions: LegalAction[],
+  state: GameState,
+  playerId: PlayerId,
+  activeUnit: CombatUnitState
+): void {
+  const combat = state.combat;
+  // A token "other action" is used INSTEAD of moving/attacking — never once the
+  // guard has begun to move (mirrors addUnitAbilityActions' own gate).
+  if (!combat || activeUnit.movedThisActivation) {
+    return;
+  }
+
+  for (const ability of getUnitAbilityDefinitions(activeUnit)) {
+    if (ability.implementationStatus !== "implemented" || ability.effect?.type !== "PLACE_TOKEN_ACTION") {
+      continue;
+    }
+    const effect = ability.effect;
+    const hasCandidate = Object.values(combat.units).some((target) => {
+      const sideOk =
+        effect.targets === "any" ||
+        (effect.targets === "friendly" && target.controllerId === activeUnit.controllerId) ||
+        (effect.targets === "enemy" && target.controllerId !== activeUnit.controllerId);
+      return (
+        sideOk &&
+        isUnitAlive(target) &&
+        !isArrowTowerUnit(target) &&
+        (!effect.targetTypes || effect.targetTypes.includes(target.type))
+      );
+    });
+    if (!hasCandidate) {
+      continue;
+    }
+    actions.push({
+      label: `${activeUnit.name}: ${ability.name} (${effect.amount >= 0 ? "+" : ""}${effect.amount})`,
+      action: {
+        type: "USE_UNIT_ABILITY",
+        playerId,
+        unitId: activeUnit.id,
+        abilityId: ability.id,
+        target: { type: "none" }
+      }
+    });
+  }
+}
+
+/**
+ * PvP Neutral Control: the unit menu the CONTROLLING player gets for an active
+ * Neutral guard. Depends on the fight and the `pvpNeutralControlMustAttack`
+ * sub-toggle (user rules):
+ *
+ *  - A normal guard FIELD in MUST-ATTACK mode (default): the rulebook
+ *    constraint — a guard that can strike now may ONLY strike; one that can
+ *    reach a strike by moving may only move to those cells; otherwise it may
+ *    only step strictly CLOSER to some enemy — never Defend, never a token
+ *    "other action", never wander to buy time; it holds only when boxed in.
+ *  - A normal guard FIELD in FREE mode: "do whatever" — move anywhere legal,
+ *    attack, Defend, hold, AND use the guard's token "other actions" (Bloodlust
+ *    / Weakness tokens; see addControlledNeutralTokenActions).
+ *  - A CREATURE BANK (either toggle): "move and fight, not placement" — the
+ *    guards keep their fixed corner deployment but the controller may move them
+ *    FREELY and attack; NO Defend and NO token placement. (A WOG Werewolf's
+ *    Astrologers-round frenzy never applies to a bank guard.)
+ *
+ * A WOG Werewolf's Astrologers-round frenzy forces the must-attack menu on a
+ * normal field even with the toggle OFF.
  */
 function addControlledNeutralUnitActions(
   actions: LegalAction[],
@@ -3811,10 +3878,16 @@ function addControlledNeutralUnitActions(
     return;
   }
 
+  // A Creature Bank fight is the "move and fight, not placement" case: the
+  // guards start pinned to their corners but the controller moves them FREELY
+  // and fights — no Defend, no token — regardless of the must-attack toggle.
+  const isBankFight = combat.context.kind === "neutral" && combat.context.bankId !== undefined;
+
   const alreadyAttacked = Boolean(activeUnit.attackedThisActivation);
   const mustAttack =
-    neutralControlMustAttack(state) ||
-    (state.round % 2 === 0 && getAstrologersRoundFrenzy(activeUnit) > 0 && !alreadyAttacked);
+    !isBankFight &&
+    (neutralControlMustAttack(state) ||
+      (state.round % 2 === 0 && getAstrologersRoundFrenzy(activeUnit) > 0 && !alreadyAttacked));
 
   // Attacks the guard can make from where it stands (any enemy, engine-legal).
   const attacks: LegalAction[] = [];
@@ -3852,19 +3925,26 @@ function addControlledNeutralUnitActions(
   }
 
   if (!mustAttack) {
-    // Free play: the exact PvP menu — move anywhere legal, attack, defend, or
-    // hold once it has begun acting.
+    // Free play — a normal guard field with the toggle OFF, OR any Creature
+    // Bank fight. Move anywhere legal and attack in both cases.
     for (const destination of moveDestinations) {
       pushMove(destination);
     }
     actions.push(...attacks);
-    if (!isArrowTowerUnit(activeUnit)) {
-      actions.push({
-        label: `${activeUnit.name} defend`,
-        action: { type: "DEFEND_UNIT", playerId, unitId: activeUnit.id }
-      });
+    if (!isBankFight) {
+      // A normal field gets the FULL "do whatever" menu: Defend and the token
+      // "other actions". A Creature Bank stays "move and fight" — neither.
+      if (!isArrowTowerUnit(activeUnit)) {
+        actions.push({
+          label: `${activeUnit.name} defend`,
+          action: { type: "DEFEND_UNIT", playerId, unitId: activeUnit.id }
+        });
+      }
+      addControlledNeutralTokenActions(actions, state, playerId, activeUnit);
     }
-    if (activeUnit.movedThisActivation) {
+    // A bank guard has no Defend to end its activation on, so hold is always
+    // available; a normal free-mode guard may hold once it has begun acting.
+    if (activeUnit.movedThisActivation || isBankFight) {
       actions.push(hold);
     }
     return;

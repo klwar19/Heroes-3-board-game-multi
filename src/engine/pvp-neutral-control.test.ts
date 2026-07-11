@@ -519,6 +519,110 @@ describe("PvP Neutral Control — the mustAttack sub-toggle", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Token "other actions" — offered in FREE mode only, never in must-attack,
+// never in a Creature Bank (user rules: "mode free: do whatever"; "must
+// attack: cant defend or use token"; "creature bank: … not placement").
+// ---------------------------------------------------------------------------
+
+describe("PvP Neutral Control — token 'other actions' (placement)", () => {
+  it("FREE mode: the controller uses a guard's Weakness token, landing it on the CHOSEN enemy", () => {
+    let state = sceneTwoPreys("pnc-free-token", { mustAttack: false }, (draft) => {
+      guardsOf(draft)[0].abilities = ["sorceress-weakness-few"];
+    });
+    const guard = guardsOf(state)[0];
+
+    // The token "other action" is on the controller's free-play menu.
+    const tokenOffer = getLegalActions(state, "p2").find(
+      (offer) =>
+        offer.action.type === "USE_UNIT_ABILITY" &&
+        offer.action.unitId === guard.id &&
+        offer.action.abilityId === "sorceress-weakness-few"
+    );
+    expect(tokenOffer, "the Weakness token should be offered in free mode").toBeTruthy();
+
+    // Using it opens the target pick for the CONTROLLER (re-stamped off the
+    // neutral seat by the pump), NOT the fighter.
+    state = applyOk(state, tokenOffer!.action);
+    const choice = state.pendingChoice;
+    expect(choice?.type).toBe("ABILITY_TARGET_CHOICE");
+    expect(choice?.playerId).toBe("p2");
+
+    const bronzePrey = playerUnitsOf(state, "p1").find((unit) => unit.grade === "bronze")!;
+    const silverPrey = playerUnitsOf(state, "p1").find((unit) => unit.grade === "silver")!;
+    // The controller drops the Weakness on the SILVER prey specifically…
+    state = applyOk(state, { type: "CHOOSE_ABILITY_TARGET", playerId: "p2", choiceId: choice!.id, targetUnitId: silverPrey.id });
+    expect(state.combat!.units[silverPrey.id].tokens?.some((token) => token.kind === "weakness")).toBe(true);
+    // …and only there — the bronze prey the controller did NOT pick is untouched.
+    expect(state.combat!.units[bronzePrey.id].tokens?.some((token) => token.kind === "weakness") ?? false).toBe(false);
+    // The "other action" replaced the guard's attack — its activation is over.
+    expect(state.combat!.units[guard.id].activatedThisRound).toBe(true);
+  });
+
+  it("CONTROL: in MUST-ATTACK mode the token 'other action' is NOT offered (only the strike)", () => {
+    const state = sceneTwoPreys("pnc-must-token", {}, (draft) => {
+      guardsOf(draft)[0].abilities = ["sorceress-weakness-few"];
+    });
+    const guard = guardsOf(state)[0];
+    const offers = getLegalActions(state, "p2");
+    expect(offers.some((offer) => offer.action.type === "USE_UNIT_ABILITY" && offer.action.unitId === guard.id)).toBe(false);
+    // The mandatory strike is still there — the guard is not stranded.
+    expect(offers.some((offer) => offer.action.type === "ATTACK_UNIT" && offer.action.attackerId === guard.id)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Creature Banks: "move and fight, not placement" — free movement (even with
+// the default must-attack toggle ON), attack, but never Defend or a token.
+// ---------------------------------------------------------------------------
+
+describe("PvP Neutral Control — Creature Bank guards", () => {
+  it("move FREELY and attack — but get no Defend and no token, even with must-attack ON", () => {
+    // Default toggle (must-attack ON). Guard bottom-left (12), prey top-right (3):
+    // on a normal FIELD, cell 16 (walking AWAY) would be suppressed. In a BANK the
+    // controller may move freely, so 16 IS offered — but Defend and the token are
+    // still withheld ("move and fight, not placement").
+    let state = fightWithGuards("pnc-bank-menu", {});
+    if (state.combat!.context.kind === "neutral") {
+      state.combat!.context.bankId = "imp_cache";
+    }
+    const [guard] = guardsOf(state);
+    reshape(guard, { grade: "bronze", position: 12, initiative: 1 });
+    guard.abilities = ["sorceress-weakness-few"]; // a token ability is present…
+    const [prey, spare] = playerUnitsOf(state, "p1");
+    reshape(prey, { grade: "bronze", position: 3, initiative: 99 });
+    onlyUnits(state, [guard, prey, ...(spare ? [reshape(spare, { grade: "bronze", position: 7, initiative: 98 })] : [])]);
+    state = driveTo(state, guardSlotOpen);
+    expect(guardSlotOpen(state)).toBe(true);
+
+    const offers = getLegalActions(state, "p2");
+    const moveCells = offers.flatMap((offer) =>
+      offer.action.type === "MOVE_UNIT" && offer.action.unitId === guard.id ? [offer.action.destination] : []
+    );
+    expect(moveCells).toContain(16); // free movement despite must-attack ON
+    expect(
+      offers.some((offer) => offer.action.type === "DEFEND_UNIT" && offer.action.unitId === guard.id)
+    ).toBe(false); // no Defend
+    expect(
+      offers.some((offer) => offer.action.type === "USE_UNIT_ABILITY" && offer.action.unitId === guard.id)
+    ).toBe(false); // …but the token is NEVER offered in a bank
+
+    // CONTROL: the SAME board as a normal guard FIELD (no bankId) suppresses the
+    // away-cell 16 under must-attack — proving the bank flag is what frees movement.
+    let field = fightWithGuards("pnc-bank-menu-control", {});
+    const [fieldGuard] = guardsOf(field);
+    reshape(fieldGuard, { grade: "bronze", position: 12, initiative: 1 });
+    const [fieldPrey, fieldSpare] = playerUnitsOf(field, "p1");
+    reshape(fieldPrey, { grade: "bronze", position: 3, initiative: 99 });
+    onlyUnits(field, [fieldGuard, fieldPrey, ...(fieldSpare ? [reshape(fieldSpare, { grade: "bronze", position: 7, initiative: 98 })] : [])]);
+    field = driveTo(field, guardSlotOpen);
+    const fieldMoveCells = getLegalActions(field, "p2").flatMap((offer) =>
+      offer.action.type === "MOVE_UNIT" && offer.action.unitId === fieldGuard.id ? [offer.action.destination] : []
+    );
+    expect(fieldMoveCells).not.toContain(16); // constrained to closing moves on a field
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Cross-mode seams: parallel turns, the turn clock, AFK, elimination
 // ---------------------------------------------------------------------------
 
