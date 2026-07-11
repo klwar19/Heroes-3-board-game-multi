@@ -354,7 +354,8 @@ import {
   getPostAttackAbilityDamageEffects,
   getRetaliationAgainstAttackPenalty,
   getRetaliationParalysis,
-  getRollTwoDiceApplyBoth,
+  hasRollTwoDiceApplyBoth,
+  hasRerollAllMinusOne,
   getReturnAfterAttackAbility,
   getSecondAttackAbility,
   getSecondAttackCandidates,
@@ -973,19 +974,39 @@ function rollAttackDice(combat: CombatState, rollMode: AttackRollMode): { rolls:
 }
 
 /**
- * Neutral Champions' "roll 2 Attack dice and apply both outcomes": roll two
- * dice, reroll each "-1" once when `rerollMinusOnce`, then sum both faces into a
- * single resolved roll. The reroll is built in, so no reroll choice is opened.
+ * Roll one Attack die and, when the unit carries the "-1" reroll passive
+ * (`REROLL_ALL_MINUS_ONE` — Neutral Champions), reroll it while it shows "-1":
+ * the card's "Reroll this unit's all '-1' rolls" is repeated until the face is
+ * not "-1" (the wiki notes it rerolls "even multiple times"). The guard caps the
+ * loop so a fully-scripted "-1" sequence in a test can never spin forever.
  */
-function rollApplyBothCandidate(combat: CombatState, rerollMinusOnce: boolean): AttackRollCandidate {
-  const rollOne = () => {
-    const value = rollAttackDie(combat);
-    return rerollMinusOnce && value === -1 ? rollAttackDie(combat) : value;
-  };
-  const first = rollOne();
-  const second = rollOne();
-  // Both faces are summed into the outcome, so the overlay keeps both lit.
-  return { rolls: [first, second], roll: first + second, sumAllDice: true };
+function rollAttackDieWithMinusReroll(combat: CombatState, rerollMinus: boolean): number {
+  let value = rollAttackDie(combat);
+  if (!rerollMinus) {
+    return value;
+  }
+  let guard = 0;
+  while (value === -1 && guard < 32) {
+    value = rollAttackDie(combat);
+    guard += 1;
+  }
+  return value;
+}
+
+/**
+ * Neutral Champions' "roll 2 Attack dice and apply both outcomes" ([unit_attack],
+ * own attacks only): roll `count` dice — 2 on an own attack, 1 on a Retaliation
+ * Attack (or when Negative Morale drops a die) — each rerolled while it shows
+ * "-1" under the always-on passive, then sum the faces into one resolved roll.
+ * The reroll is built in, so no reroll choice is opened.
+ */
+function rollApplyBothCandidate(combat: CombatState, count: number, rerollMinus: boolean): AttackRollCandidate {
+  const rolls: number[] = [];
+  for (let i = 0; i < count; i += 1) {
+    rolls.push(rollAttackDieWithMinusReroll(combat, rerollMinus));
+  }
+  // Every face is summed into the outcome, so the overlay keeps them all lit.
+  return { rolls, roll: rolls.reduce((sum, value) => sum + value, 0), sumAllDice: true };
 }
 
 // ---------------------------------------------------------------------------
@@ -2367,7 +2388,8 @@ function getAttackDamagePreview(
   damageReduction = 0,
   ignoreDefense = false,
   dieCancelled = false,
-  mightBonus = 0
+  mightBonus = 0,
+  isRetaliation = false
 ): { attackValue: number; defenseValue: number; damage: number; dieAttackBonus: number; dieDefenseBonus: number } {
   // Attack-die-face conditioned modifiers, resolved here so the actual hit and
   // the lethal-save preview always agree: Dread Knights' "Death Blow" adds to
@@ -2375,7 +2397,10 @@ function getAttackDamagePreview(
   // for the defender on the attacker's 0/+1. Shield of the Dwarven Lords ignores
   // the die "and any additional effects it triggered", so a cancelled die fires
   // none of these face-conditioned bonuses.
-  const dieAttackBonus = dieCancelled ? 0 : getAttackBonusOnAttackDie(attacker, roll);
+  // Death Blow is printed [unit_attack] (own declared attack only), so it drops
+  // on a Retaliation Attack; the defender-side resilience (a "when attacked"
+  // bonus) still applies whether the incoming hit is an attack or a retaliation.
+  const dieAttackBonus = dieCancelled || isRetaliation ? 0 : getAttackBonusOnAttackDie(attacker, roll);
   const dieDefenseBonus = dieCancelled ? 0 : getDefenseBonusOnAttackDie(defender, roll);
   const baseAttack = baseAttackOverride ?? attacker.attack;
   // WOG commander Might (Damage grade): `mightBonus` is the contribution of the
@@ -2455,7 +2480,8 @@ function applyAttackDamageFromCandidate(
     damageReduction,
     ignoreDefense,
     dieCancelled,
-    mightBonus
+    mightBonus,
+    isRetaliation
   );
   const { attackValue, defenseValue, dieAttackBonus, dieDefenseBonus } = preview;
   let damage = preview.damage;
@@ -2956,22 +2982,27 @@ function getAttackStackDetails(
         }
       : undefined;
 
-  // Ghost Dragons (Pack): "Add +1 to your Attack die result" on every attack
-  // and Retaliation Attack this unit makes.
-  const attackDieResultBonus = getAttackDieResultBonus(attacker);
+  // Ghost Dragons (Pack): "[unit_attack] Add +1 to your Attack die result." The
+  // attack trigger is the unit's own declared attack only (distinct from the
+  // retaliation symbol per the rules legend), so it drops on a Retaliation Attack.
+  const attackDieResultBonus = isRetaliation ? 0 : getAttackDieResultBonus(attacker);
 
   // "Hatred" grudge bonus (Archangels ↔ Arch Devils, Genies → Efreet, Titans →
-  // Black Dragons): extra Attack when this unit attacks the named creature.
-  const hatredAttackBonus = getAttackBonusVsDefenderName(attacker, defender.name);
+  // Black Dragons): extra Attack when this unit attacks the named creature. The
+  // card prints it with the [unit_attack] icon (own declared attack only), so it
+  // drops on a Retaliation Attack — the same convention as unitHasAttackRoll-
+  // Advantage / the own-attack flat bonuses below.
+  const hatredAttackBonus = isRetaliation ? 0 : getAttackBonusVsDefenderName(attacker, defender.name);
 
   // Factory Bounty Hunters: +1/+2 Attack when striking a Marked enemy. An innate
   // ability bonus, added unclamped like Hatred (elemental clamps don't apply).
   const markAttackBonus = getAttackBonusVsMarked(attacker, defender);
 
-  // Cove Haspids (Few) "Vengeance": +2 Attack once this unit has been flipped
-  // down from its Pack side this combat. An innate ability bonus, so (like
-  // Hatred) it is added unclamped even for elemental attackers.
-  const flippedAttackBonus = getAttackBonusIfFlipped(attacker);
+  // Cove Haspids (Few) "[unit_attack] Vengeance": +2 Attack once this unit has
+  // been flipped down from its Pack side this combat. An innate ability bonus, so
+  // (like Hatred) it is added unclamped even for elemental attackers — and, like
+  // Hatred, the attack trigger is own-attack-only, so it drops on retaliation.
+  const flippedAttackBonus = isRetaliation ? 0 : getAttackBonusIfFlipped(attacker);
 
   // WOG commander Charge combo: +1 Attack when the commander attacks after
   // moving this activation. An innate ability bonus (unclamped, like Hatred);
@@ -3050,9 +3081,12 @@ function getAttackStackDetails(
     dieMultiplier: stackItem.modifiers.attackDieMultiplier ?? 1,
     // Elemental damage never rolls the Attack die and ignores Defense entirely:
     // the hit always lands for the (un-buffable) Attack value.
-    // Mummies "ignore the result on the Attack die" — their own attack die is
-    // treated as 0, exactly like Bless / Elemental damage.
-    ignoreAttackDie: Boolean(stackItem.modifiers.ignoreAttackDie) || dealsElemental || hasIgnoreOwnAttackDie(attacker),
+    // Mummies "[unit_attack] ignore the result on the Attack die" — their OWN
+    // attack die is treated as 0, exactly like Bless / Elemental damage. The
+    // [unit_attack] icon means own declared attack only, so a Mummy's Retaliation
+    // Attack rolls a normal die (same convention as Hatred / the roll advantage).
+    ignoreAttackDie:
+      Boolean(stackItem.modifiers.ignoreAttackDie) || dealsElemental || (!isRetaliation && hasIgnoreOwnAttackDie(attacker)),
     // Frenzy: legacy fixed-grade sets modifiers.ignoreDefense outright; the
     // Power-scaled form re-derives its pierced grade now from the caster's final
     // pooled Power, so Power paid after Frenzy was played still counts. Elemental
@@ -3094,7 +3128,11 @@ function buildRerollSources(
   attacker: CombatUnitState,
   rerollEffects: ActiveEffectState[],
   /** Whether the attacker moved this attack — gates Champions' "Charge" reroll. */
-  moved = false
+  moved = false,
+  /** Whether this is a Retaliation Attack — drops the unit's [unit_attack] reroll
+   * abilities (Crusaders, neutral Minotaurs, Champions' Charge), which fire on the
+   * unit's own declared attack only. */
+  isRetaliation = false
 ): AttackRerollSource[] {
   // Spirit of Oppression (option A): a global combat-scoped lockout removes every
   // Attack-die reroll source for BOTH players — unit abilities, Luck/Fortune/Mirth
@@ -3105,7 +3143,7 @@ function buildRerollSources(
     return [];
   }
 
-  const abilitySources: AttackRerollSource[] = getUnitAttackRerollSources(attacker, moved).map((source) => ({
+  const abilitySources: AttackRerollSource[] = getUnitAttackRerollSources(attacker, moved, isRetaliation).map((source) => ({
     name: source.name,
     remaining: source.rerolls,
     used: 0,
@@ -3805,7 +3843,9 @@ function resolveDefendBonus(
     return { roll: null, bonus: proclamation.amount + getDefendBonus(details.defender) };
   }
   if (stackItem.modifiers.defendRoll === undefined) {
-    let defendRoll = rollAttackDie(combat);
+    // Neutral Champions ([unit_passive], always on): the "-1" reroll applies to
+    // EVERY die this unit rolls, including its Defend die — reroll while "-1".
+    let defendRoll = rollAttackDieWithMinusReroll(combat, hasRerollAllMinusOne(details.defender));
     // Morale (defender's own cards, resolved at their Defense roll):
     // - "on a +1 on an Attack die, reroll the die" — the shield face is an
     //   Attack die the defender rolled, so a "+1" is forcibly rerolled;
@@ -3973,7 +4013,8 @@ function finishResolvedAttack(
       details.damageReduction,
       details.ignoreDefense,
       dieCancelled,
-      mightBonus
+      mightBonus,
+      details.isRetaliation
     );
     if (preview.damage > 0 && details.defender.damage + preview.damage >= details.defender.maxHealth) {
       stackItem.modifiers.rolledCandidate = candidate;
@@ -4031,7 +4072,8 @@ function finishResolvedAttack(
         details.damageReduction,
         details.ignoreDefense,
         dieCancelled,
-        mightBonus
+        mightBonus,
+        details.isRetaliation
       );
       return (
         preview.damage > 0 &&
@@ -4118,8 +4160,9 @@ function finishResolvedAttack(
   const forceAbilityRoll = !details.isRetaliation && Boolean(stackItem.modifiers.forceAbilityRollsThisAttack);
   if (!dieCancelled) {
     applyOnAttackDieTokens(state, details.attacker, details.defender, attackResult.roll, details.isRetaliation, forceAbilityRoll);
-    // Dungeon Minotaurs: draw a card when this unit's Attack die resolves "-1".
-    applyOnAttackDieDraw(state, details.attacker, attackResult.roll, forceAbilityRoll);
+    // Dungeon Minotaurs: draw a card when this unit's OWN Attack die resolves
+    // "-1" ([unit_attack] — never on a Retaliation Attack).
+    applyOnAttackDieDraw(state, details.attacker, attackResult.roll, details.isRetaliation, forceAbilityRoll);
     applyPostAttackAbilityDamage(
       state,
       details.attacker,
@@ -4873,17 +4916,23 @@ function applyOnAttackDieTokens(
 }
 
 /**
- * Dungeon Minotaurs: "If you resolve a '-1' on the Attack die, draw a card."
- * Fires after this unit's attack (or Retaliation Attack) resolves on the
- * matching face; the controller draws the printed number of cards. (The neutral
- * Minotaur rerolls the "-1" instead — it never carries this ability.)
+ * Dungeon Minotaurs: "[unit_attack] If you resolve a '-1' on the Attack die, draw
+ * a card." The attack trigger is the unit's OWN declared attack only (a distinct
+ * symbol from retaliation per the rules legend), so it never fires on a
+ * Retaliation Attack — matching its sibling applyOnAttackDieTokens. The
+ * controller draws the printed number of cards. (The neutral Minotaur rerolls
+ * the "-1" instead — it never carries this ability.)
  */
 function applyOnAttackDieDraw(
   state: GameState,
   attacker: CombatUnitState,
   attackRoll: number,
+  isRetaliation: boolean,
   forceRoll = false
 ): void {
+  if (isRetaliation) {
+    return;
+  }
   for (const draw of getOnAttackDieDraw(attacker)) {
     // Tarnum (Fortress) Basilisks VI forces the draw regardless of the face.
     if (!forceRoll && attackRoll !== draw.onRoll) {
@@ -8409,22 +8458,20 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
     return;
   }
 
-  // Neutral Champions: "roll 2 Attack dice and apply both outcomes" — reroll
-  // each "-1" once, then sum both faces. The reroll is intrinsic to the ability,
-  // so no separate reroll choice is opened.
-  const applyBoth = getRollTwoDiceApplyBoth(details.attacker);
-  if (applyBoth) {
-    // Morale "roll 1 die less": the 2-dice apply-both roll becomes a single
-    // die (its built-in "-1 once" reroll still applies to that die).
-    const reduced = takeMoraleRollOneLess(state, details.attacker.controllerId, 2) < 2;
+  // Neutral Champions ([unit_attack], own attacks only): "roll 2 Attack dice and
+  // apply both outcomes". On a Retaliation Attack the champion rolls a SINGLE die
+  // instead (the doubling is own-attack-only). Either way the always-on
+  // [unit_passive] "-1" reroll applies to each die (repeated until not "-1"). The
+  // reroll is intrinsic, so no separate reroll choice is opened.
+  if (hasRollTwoDiceApplyBoth(details.attacker)) {
+    const rerollMinus = hasRerollAllMinusOne(details.attacker);
+    const doublesThisAttack = !details.isRetaliation;
+    // Morale "roll 1 die less" only bites when 2 dice would otherwise be rolled
+    // (an own attack); a retaliation already rolls a single die.
+    const reduced = doublesThisAttack && takeMoraleRollOneLess(state, details.attacker.controllerId, 2) < 2;
+    const diceCount = doublesThisAttack && !reduced ? 2 : 1;
     applyMoraleAttackRollPenalty(state, stackItem, details);
-    const applyBothCandidate = reduced
-      ? (() => {
-          const value = rollAttackDie(combat);
-          const roll = applyBoth.rerollMinusOnce && value === -1 ? rollAttackDie(combat) : value;
-          return { rolls: [roll], roll, sumAllDice: true } satisfies AttackRollCandidate;
-        })()
-      : rollApplyBothCandidate(combat, applyBoth.rerollMinusOnce);
+    const applyBothCandidate = rollApplyBothCandidate(combat, diceCount, rerollMinus);
     if (reduced) {
       pushRollModifierNote(applyBothCandidate, "Negative Morale", "one die less is rolled");
     }
@@ -8462,9 +8509,11 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
     attackKind: details.attackKind
   }).filter((effect) => !effect.usedChoiceIds.includes(stackItem.id));
   // Champions' "Charge" only offers its reroll when the unit moved to attack
-  // (never on a Retaliation Attack, where it did not move).
+  // (never on a Retaliation Attack, where it did not move). Every unit reroll
+  // ability is [unit_attack] (own declared attack only), so buildRerollSources
+  // drops them all on a retaliation.
   const moved = !details.isRetaliation && Boolean(details.attacker.movedThisActivation);
-  const rerollSources = buildRerollSources(state, details.attacker, rerollEffects, moved);
+  const rerollSources = buildRerollSources(state, details.attacker, rerollEffects, moved, details.isRetaliation);
 
   // Only pause when a source can actually fire on this roll — the Crusaders'
   // 'every "0"' reroll never interrupts a +1.
@@ -13099,7 +13148,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     // The adventure reward queue is parked while a live (non-prep) combat
     // runs — a queued Search would not surface until the fight ended. An
     // instant artifact's Search side played mid-Combat (Breastplate of
-    // Brimstone, Crown of Dragontooth, … — see instantArtifactSideAllowedInCombat)
+    // Brimstone, Crown of Dragontooth, … — see instantSideAllowedInCombat)
     // opens the Search straight away; on the map (or a prep window, where the
     // queue still pumps) it keeps queuing as a reward.
     if (state.combat && !state.combat.prep) {

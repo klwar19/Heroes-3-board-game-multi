@@ -116,7 +116,7 @@ import {
   canPlayExpertMode,
   deckDisplayName,
   discardPickAllowedInCombat,
-  instantArtifactSideAllowedInCombat,
+  instantSideAllowedInCombat,
   expertUsesAvailable,
   getRuleset,
   spellBookPowerAvailable,
@@ -2309,15 +2309,14 @@ function isOptionEffectPlayable(
     }
     case "CARD_DECK_SEARCH":
     case "EAGLE_EYE_DIG":
-      // Map plays; ALSO — house rule, mirroring TAKE_FROM_DISCARD — an INSTANT
-      // artifact's Search/dig side is playable mid-Combat (Breastplate of
-      // Brimstone, Crown of Dragontooth, the Tomes, …): the printed Instant
-      // timing makes it a click-to-use card, not a map-only one. The reducer
-      // opens the Search/dig choice immediately (the reward queue is parked
-      // during a live combat). Hero-specialty twins (Adrienne, Tarnum I) stay
-      // map-only — see instantArtifactSideAllowedInCombat.
+      // Map plays; ALSO — house rule, mirroring TAKE_FROM_DISCARD — any INSTANT
+      // card's Search/dig side is playable mid-Combat (Breastplate of Brimstone,
+      // the Tomes, AND hero-specialty twins): the printed Instant timing makes it
+      // a click-to-use card, not a map-only one. The reducer opens the Search/dig
+      // choice immediately (the reward queue is parked during a live combat).
+      // See instantSideAllowedInCombat.
       if (context === "combat") {
-        return Boolean(state.combat) && instantArtifactSideAllowedInCombat(excludeCardId ? cardLibrary[excludeCardId] : undefined);
+        return Boolean(state.combat) && instantSideAllowedInCombat(excludeCardId ? cardLibrary[excludeCardId] : undefined);
       }
       return Boolean(state.adventure);
     case "TELEPORT_HERO_TO_TOWN":
@@ -2347,7 +2346,7 @@ function isOptionEffectPlayable(
       );
       if (context === "combat") {
         const playedCard = excludeCardId ? cardLibrary[excludeCardId] : undefined;
-        return Boolean(state.combat) && instantArtifactSideAllowedInCombat(playedCard) && removable.length >= 1;
+        return Boolean(state.combat) && instantSideAllowedInCombat(playedCard) && removable.length >= 1;
       }
       return Boolean(state.adventure) && removable.length >= 1;
     }
@@ -2359,7 +2358,7 @@ function isOptionEffectPlayable(
       const hasAnother = Boolean(player && player.hand.length + player.discard.length >= 2);
       if (context === "combat") {
         const playedCard = excludeCardId ? cardLibrary[excludeCardId] : undefined;
-        return Boolean(state.combat) && instantArtifactSideAllowedInCombat(playedCard) && hasAnother;
+        return Boolean(state.combat) && instantSideAllowedInCombat(playedCard) && hasAnother;
       }
       return Boolean(state.adventure) && hasAnother;
     }
@@ -2439,27 +2438,35 @@ function isOptionEffectPlayable(
       return Boolean(player && player.deck.length + player.discard.length > 0);
     }
     case "DECK_DIG_KEEP_MATCHING": {
-      // Jeddite's Mysterious Warlock I/VI: a map dig — useful while the deck
-      // still holds at least one card to look at.
-      if (context !== "map" || !state.adventure) {
+      // Jeddite's Mysterious Warlock I/VI: dig your own deck, keeping Spells /
+      // Specialties. A printed Instant's card manipulation is playable on the map
+      // AND mid-Combat (instantSideAllowedInCombat — the reducer resolves the dig
+      // synchronously either way). Useful while the deck still holds a card.
+      if (context === "combat" ? !(state.combat && instantSideAllowedInCombat(excludeCardId ? cardLibrary[excludeCardId] : undefined)) : !state.adventure) {
         return false;
       }
       const player = state.players[playerId];
       return Boolean(player && player.deck.length > 0);
     }
     case "SEARCH_DECK_THEN_RESHUFFLE": {
-      // Adrienne's Fire Magic IV: a map Search + reshuffle — useful whenever
-      // there is a card to reveal or a discard pile to shuffle back.
-      if (context !== "map" || !state.adventure) {
+      // Adrienne's Fire Magic IV: Search your own deck + reshuffle the discard. A
+      // printed Instant's card manipulation is playable on the map AND mid-Combat
+      // (instantSideAllowedInCombat — the reducer opens the own-deck pick with a
+      // combat returnPhase). Useful whenever there is a card to reveal or a
+      // discard pile to shuffle back.
+      if (context === "combat" ? !(state.combat && instantSideAllowedInCombat(excludeCardId ? cardLibrary[excludeCardId] : undefined)) : !state.adventure) {
         return false;
       }
       const player = state.players[playerId];
       return Boolean(player && player.deck.length + player.discard.length > 0);
     }
     case "DRAW_TOP_ARTIFACT": {
-      // Tazar's War Hero VI: a map draw — useful while any Artifact deck (the
-      // Legacy deck, or a BINH Minor/Major/Relic deck) still holds a card.
-      if (context !== "map" || !state.adventure) {
+      // Tazar's War Hero VI: draw the top Artifact card to hand. A printed
+      // Instant's card manipulation is playable on the map AND mid-Combat
+      // (instantSideAllowedInCombat — the reducer draws / opens the deck pick with
+      // a combat returnPhase). Useful while any Artifact deck (the Legacy deck, or
+      // a BINH Minor/Major/Relic deck) still holds a card.
+      if (context === "combat" ? !(state.combat && instantSideAllowedInCombat(excludeCardId ? cardLibrary[excludeCardId] : undefined)) : !state.adventure) {
         return false;
       }
       return ["artifacts", "artifacts-minor", "artifacts-major", "artifacts-relic"].some(

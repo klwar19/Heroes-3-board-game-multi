@@ -8,7 +8,8 @@ import { discountedReinforceCost, queueSkeletonReinforce, reinforceArmyUnit, rei
 import { openSkeletonReinforceChoice, resolveSkeletonReinforceChoice } from "./adventure-reducer";
 import {
   getForcedAttackerDie,
-  getRollTwoDiceApplyBoth,
+  hasRollTwoDiceApplyBoth,
+  hasRerollAllMinusOne,
   getUnitAttackRerollSources,
   getUnitImmuneSpellSchools,
   hasIgnoreOwnAttackDie,
@@ -61,6 +62,7 @@ function duel(options: {
   attackerAttack?: number;
   defenderAbilities?: string[];
   defenderDefense?: number;
+  defenderName?: string;
   rolls: number[];
 }): GameState {
   const state = createInitialGameState();
@@ -74,6 +76,9 @@ function duel(options: {
   defender.defense = options.defenderDefense ?? 0;
   defender.maxHealth = 30;
   defender.damage = 0;
+  if (options.defenderName) {
+    defender.name = options.defenderName;
+  }
   state.players.p1.hand = [];
   state.players.p2.hand = [];
   script(state, options.rolls);
@@ -97,7 +102,7 @@ describe("batch-2 roster wiring", () => {
       { side: "few", abilities: ["champion-stables-discount"] },
       { side: "pack", abilities: ["champion-move-reroll"] }
     ],
-    "neutral.champions": [{ side: "neutral", abilities: ["champion-roll-two-dice-reroll"] }],
+    "neutral.champions": [{ side: "neutral", abilities: ["champion-roll-two-dice", "champion-reroll-minus"] }],
     "neutral.mummies": [{ side: "neutral", abilities: ["mummy-ignore-own-die", "mummy-force-attacker-die"] }],
     "neutral.black_dragons": [{ side: "neutral", abilities: ["dragon-line-attack-2"] }],
     "dungeon.black_dragons": [
@@ -123,7 +128,8 @@ describe("batch-2 roster wiring", () => {
     const effects: Record<string, string> = {
       "champion-stables-discount": "MAP_REINFORCE_DISCOUNT",
       "champion-move-reroll": "ATTACK_DIE_REROLL",
-      "champion-roll-two-dice-reroll": "ROLL_TWO_DICE_APPLY_BOTH",
+      "champion-roll-two-dice": "ROLL_TWO_DICE_APPLY_BOTH",
+      "champion-reroll-minus": "REROLL_ALL_MINUS_ONE",
       "mummy-ignore-own-die": "IGNORE_OWN_ATTACK_DIE",
       "mummy-force-attacker-die": "FORCE_ATTACKER_DIE",
       "immune-all-spells": "IMMUNE_TO_SPELL_SCHOOLS",
@@ -140,19 +146,146 @@ describe("batch-2 roster wiring", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Champions — roll 2 dice, apply both, reroll each "-1" once
+// Champions — [unit_attack] roll 2 dice on OWN attacks only; [unit_passive]
+// reroll every "-1" (repeatedly) on every die this unit rolls.
 // ---------------------------------------------------------------------------
 
-describe("Champion 'roll 2 dice and apply both outcomes'", () => {
-  it("sums both dice into the attack", () => {
-    expect(getRollTwoDiceApplyBoth(unitWith(["champion-roll-two-dice-reroll"]))?.rerollMinusOnce).toBe(true);
-    // attack 4, dice +1 and +1 → +2 total → 6 damage.
-    expect(defenderDamage(duel({ attackerAbilities: ["champion-roll-two-dice-reroll"], attackerAttack: 4, rolls: [1, 1] }))).toBe(6);
+const CHAMPION_ABILITIES = ["champion-roll-two-dice", "champion-reroll-minus"];
+
+/** An adjacent melee attack from p1 at a p2 CHAMPION that then retaliates. */
+function retaliationExchange(rolls: number[]): GameState {
+  const state = createInitialGameState();
+  const attacker = state.combat!.units.unit_p1_marksmen;
+  attacker.abilities = [];
+  attacker.type = "ground"; // melee, no ranged penalty → exactly one own attack die
+  attacker.attack = 3;
+  attacker.position = 1; // row 0, col 1
+  attacker.maxHealth = 40;
+  attacker.damage = 0;
+  attacker.defense = 0;
+  const champ = state.combat!.units.unit_p2_skeletons;
+  champ.abilities = CHAMPION_ABILITIES;
+  champ.attack = 4;
+  champ.type = "ground";
+  champ.position = 5; // row 1, col 1 — directly below the attacker → adjacent
+  champ.defense = 0;
+  champ.maxHealth = 40;
+  champ.damage = 0;
+  state.players.p1.hand = [];
+  state.players.p2.hand = [];
+  script(state, rolls);
+  setActive(state, "p1", "unit_p1_marksmen");
+  return passAllReactions(
+    applyOk(state, { type: "ATTACK_UNIT", playerId: "p1", attackerId: "unit_p1_marksmen", defenderId: "unit_p2_skeletons" })
+  );
+}
+
+function attackerDamage(state: GameState): number {
+  return state.combat!.units.unit_p1_marksmen.damage;
+}
+
+/**
+ * A p1 melee attacker hits an adjacent p2 defender that then RETALIATES. Used to
+ * prove `[unit_attack]` abilities (own declared attack only) DROP on the
+ * defender's Retaliation Attack.
+ */
+function defenderRetaliates(options: {
+  attackerName?: string;
+  attackerAttack?: number;
+  defenderAbilities: string[];
+  defenderAttack: number;
+  rolls: number[];
+}): GameState {
+  const state = createInitialGameState();
+  const attacker = state.combat!.units.unit_p1_marksmen;
+  attacker.abilities = [];
+  attacker.type = "ground"; // melee, no ranged penalty → exactly one own attack die
+  attacker.attack = options.attackerAttack ?? 3;
+  attacker.position = 1; // row 0, col 1
+  attacker.maxHealth = 40;
+  attacker.damage = 0;
+  attacker.defense = 0;
+  if (options.attackerName) {
+    attacker.name = options.attackerName;
+  }
+  const defender = state.combat!.units.unit_p2_skeletons;
+  defender.abilities = options.defenderAbilities;
+  defender.attack = options.defenderAttack;
+  defender.type = "ground";
+  defender.position = 5; // directly below the attacker → adjacent
+  defender.defense = 0;
+  defender.maxHealth = 40;
+  defender.damage = 0;
+  state.players.p1.hand = [];
+  state.players.p2.hand = [];
+  script(state, options.rolls);
+  setActive(state, "p1", "unit_p1_marksmen");
+  return passAllReactions(
+    applyOk(state, { type: "ATTACK_UNIT", playerId: "p1", attackerId: "unit_p1_marksmen", defenderId: "unit_p2_skeletons" })
+  );
+}
+
+describe("Champion [unit_attack] 'roll 2 dice and apply both outcomes'", () => {
+  it("is wired as two abilities: the attack-only 2-dice roll and the always-on '-1' reroll", () => {
+    expect(hasRollTwoDiceApplyBoth(unitWith(CHAMPION_ABILITIES))).toBe(true);
+    expect(hasRerollAllMinusOne(unitWith(CHAMPION_ABILITIES))).toBe(true);
   });
 
-  it("rerolls each '-1' once before summing", () => {
-    // d1 -1 → reroll 0; d2 +1 (no reroll). Sum = +1 → attack 4 + 1 = 5.
-    expect(defenderDamage(duel({ attackerAbilities: ["champion-roll-two-dice-reroll"], attackerAttack: 4, rolls: [-1, 0, 1] }))).toBe(5);
+  it("sums both dice on the champion's OWN attack", () => {
+    // attack 4, dice +1 and +1 → +2 total → 6 damage.
+    expect(defenderDamage(duel({ attackerAbilities: CHAMPION_ABILITIES, attackerAttack: 4, rolls: [1, 1] }))).toBe(6);
+  });
+
+  it("rolls only ONE die on a Retaliation Attack (own-attack-only), not two", () => {
+    // Own attacker rolls 0 (script[0]); the champion RETALIATES: with the
+    // [unit_attack] doubling gated off on retaliation it rolls a SINGLE die
+    // (script[1] = +1) → 4 + 1 = 5 damage to the attacker. The trailing +1
+    // (script[2]) is the CONTROL: it would only be consumed (→ 6) if the
+    // retaliation wrongly rolled two dice and summed both.
+    expect(attackerDamage(retaliationExchange([0, 1, 1]))).toBe(5);
+  });
+});
+
+describe("Champion [unit_passive] 'reroll all -1 rolls'", () => {
+  it("rerolls each '-1' REPEATEDLY until it is not '-1' before summing", () => {
+    // d1: -1 → reroll -1 (again!) → reroll 0; d2: +1. Sum = +1 → attack 4 + 1 = 5.
+    // (A single reroll would leave d1 = -1 and give attack 4 + (-1) + 0 = 3 — the
+    // control that proves the reroll loops on a repeated "-1".)
+    expect(defenderDamage(duel({ attackerAbilities: CHAMPION_ABILITIES, attackerAttack: 4, rolls: [-1, -1, 0, 1] }))).toBe(5);
+  });
+
+  it("applies the '-1' reroll to the champion's Retaliation Attack die too", () => {
+    // Own attacker rolls 0; the champion retaliates with a single die that comes
+    // up -1 → rerolled to +1 (script[2]) → 4 + 1 = 5 damage. Without the passive
+    // the retaliation die would stay -1 → 4 - 1 = 3.
+    expect(attackerDamage(retaliationExchange([0, -1, 1]))).toBe(5);
+  });
+
+  it("rerolls a '-1' on the champion's DEFEND die (a truly passive, all-rolls reroll)", () => {
+    // The champion holds a Defense token and is attacked. Its Defend die comes up
+    // -1 → rerolled to +1 (script[2]) → the "+1" grants +1 Defense, so the
+    // attacker's 4-Attack, +1-die hit (script[1]) deals 4 + 1 - 1 = 4, not 5.
+    const state = createInitialGameState();
+    const attacker = state.combat!.units.unit_p1_marksmen;
+    attacker.abilities = [];
+    attacker.type = "ground";
+    attacker.attack = 4;
+    attacker.position = 1;
+    const champ = state.combat!.units.unit_p2_skeletons;
+    champ.abilities = CHAMPION_ABILITIES;
+    champ.defense = 0;
+    champ.maxHealth = 40;
+    champ.damage = 0;
+    champ.position = 5;
+    champ.defenseToken = true;
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    script(state, [1, -1, 1]);
+    setActive(state, "p1", "unit_p1_marksmen");
+    const after = passAllReactions(
+      applyOk(state, { type: "ATTACK_UNIT", playerId: "p1", attackerId: "unit_p1_marksmen", defenderId: "unit_p2_skeletons" })
+    );
+    expect(after.combat!.units.unit_p2_skeletons.damage).toBe(4);
   });
 });
 
@@ -179,6 +312,48 @@ describe("Mummy die manipulation", () => {
     expect(getForcedAttackerDie(unitWith(["mummy-force-attacker-die"]))).toBe(-1);
     // Plain attacker (attack 3) vs a Mummy: die forced to -1 → 3 - 1 = 2 damage.
     expect(defenderDamage(duel({ attackerAbilities: [], attackerAttack: 3, defenderAbilities: ["mummy-force-attacker-die"], rolls: [1] }))).toBe(2);
+  });
+
+  it("[unit_attack] 'ignore own die' is own-attack-only — it rolls a NORMAL die on a Retaliation Attack", () => {
+    // A plain attacker hits a Mummy (its passive forces the attacker's die to -1,
+    // consuming no scripted roll); the Mummy RETALIATES rolling script[0] = +1 →
+    // attack 3 + 1 = 4 damage to the attacker. If ignore-die wrongly applied on
+    // the retaliation the die would count as 0 → only 3 damage (the CONTROL).
+    const after = defenderRetaliates({
+      defenderAbilities: ["mummy-ignore-own-die", "mummy-force-attacker-die"],
+      defenderAttack: 3,
+      rolls: [1]
+    });
+    expect(attackerDamage(after)).toBe(4);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Hatred — [unit_attack] "+Attack vs a named unit" fires on the OWN attack only
+// ---------------------------------------------------------------------------
+
+describe("Hatred [unit_attack] grudge bonus", () => {
+  it("adds the bonus on the unit's OWN declared attack", () => {
+    // An Archangel (Hatred: +2 vs Arch Devils) attacks Arch Devils: attack 5 + 2
+    // (Hatred) + die 0 = 7 damage.
+    expect(
+      defenderDamage(
+        duel({ attackerAbilities: ["archangel-hate-devils"], attackerAttack: 5, defenderName: "Arch Devils", rolls: [0] })
+      )
+    ).toBe(7);
+  });
+
+  it("does NOT add the bonus on a Retaliation Attack (own-attack-only)", () => {
+    // An "Arch Devils" unit attacks an Archangel, which RETALIATES against the
+    // Arch Devils: attack 5 + die 0 = 5 damage — the +2 grudge does NOT apply on
+    // the retaliation. If it wrongly did, the attacker would take 5 + 2 = 7.
+    const after = defenderRetaliates({
+      attackerName: "Arch Devils",
+      defenderAbilities: ["archangel-hate-devils"],
+      defenderAttack: 5,
+      rolls: [0, 0] // [attacker's own die, Archangel's retaliation die]
+    });
+    expect(attackerDamage(after)).toBe(5);
   });
 });
 

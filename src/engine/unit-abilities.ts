@@ -131,8 +131,15 @@ export function unitImmuneToSpellSchools(
 export function getUnitAttackRerollSources(
   unit: CombatUnitState,
   /** Whether the unit moved during this attack — gates Champions' "Charge". */
-  moved = false
+  moved = false,
+  /** Whether this is a Retaliation Attack — every unit reroll ability is
+   * printed [unit_attack] (own declared attack only, a distinct symbol from
+   * retaliation per the rules legend), so none is offered on a retaliation. */
+  isRetaliation = false
 ): { name: string; rerolls: number; onlyOnRoll?: number }[] {
+  if (isRetaliation) {
+    return [];
+  }
   return getAbilitiesWithEffect(unit, "ATTACK_DIE_REROLL").flatMap((ability) =>
     ability.effect?.type === "ATTACK_DIE_REROLL" &&
     ability.effect.rerollsPerAttack > 0 &&
@@ -1215,14 +1222,23 @@ export function hasSpellCastPowerTax(unit: CombatUnitState): boolean {
   return hasUnitAbilityEffect(unit, "SPELL_CAST_POWER_TAX");
 }
 
-/** Neutral Champions: "roll 2 Attack dice and apply both outcomes" (reroll each "-1"). */
-export function getRollTwoDiceApplyBoth(unit: CombatUnitState): { rerollMinusOnce: boolean } | null {
-  for (const ability of getAbilitiesWithEffect(unit, "ROLL_TWO_DICE_APPLY_BOTH")) {
-    if (ability.effect?.type === "ROLL_TWO_DICE_APPLY_BOTH") {
-      return { rerollMinusOnce: ability.effect.rerollMinusOnce };
-    }
-  }
-  return null;
+/**
+ * Neutral Champions ([unit_attack], own attacks only): "roll 2 Attack dice and
+ * apply both outcomes." Returns true when the unit carries the marker; the
+ * caller gates it off on Retaliation Attacks (own-attack-only) and decides the
+ * die count.
+ */
+export function hasRollTwoDiceApplyBoth(unit: CombatUnitState): boolean {
+  return hasUnitAbilityEffect(unit, "ROLL_TWO_DICE_APPLY_BOTH");
+}
+
+/**
+ * Neutral Champions ([unit_passive], always on): "Reroll this unit's all '-1'
+ * rolls." Every Attack/Defend die this unit rolls rerolls a "-1", repeatedly,
+ * until it is not "-1".
+ */
+export function hasRerollAllMinusOne(unit: CombatUnitState): boolean {
+  return hasUnitAbilityEffect(unit, "REROLL_ALL_MINUS_ONE");
 }
 
 /** Mummies (offence): this unit's own Attack die always counts as 0. */
