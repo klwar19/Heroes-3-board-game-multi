@@ -1233,6 +1233,19 @@ Six additions; each engine rule fails a named test if its wiring is removed.
   outline (outer arc only, inner open). Pure rendering — movement is unchanged
   (`canCrossEdge`). Pinned in `multi-target.test.ts` ("draws NO borders … by
   default" + a "borders toggled on … outer arc only" case).
+  - **The bank being border-free OPENS its outer edge for Tile discovery.** A
+    bank replaces a Blocked Field whose slot usually keeps a sealed `outerImpassable`
+    arc, which used to block a hero standing on the bank from flipping the
+    adjacent face-down Tile. Since a bank now reads as fully open, the discovery
+    gate takes a bank exception: `heroFieldSealedForDiscovery` (`adventure.ts`) =
+    `isOuterEdgeSealed` UNLESS the hero's field is a `creature_bank`, used by
+    `revealTileForHero` (the `DISCOVER_TILE` handler) and `canHeroDiscoverAdjacentTile`
+    (the legal-actions offer). `isOuterEdgeSealed` itself is untouched (its
+    slot-primitive invariant holds). Discovery only reveals the Tile; MOVING out
+    of a bank across a Tile edge stays blocked by the bank's own `canCrossEdge`
+    rule ("reachable only from within its own Tile"). Pinned in `adventure.test.ts`
+    ("lets a hero standing on a (border-free) Creature Bank discover across that
+    edge", with the plain-sealed-field refusal as the in-test CONTROL).
 - **Opponent info panel (map AND combat).** `OpponentInfoDock` / `OpponentInfoModal`
   (`components/adventure/opponent-info.tsx`) render a per-opponent button that
   opens a read-only panel of that opponent's PUBLIC state — resources (+income),

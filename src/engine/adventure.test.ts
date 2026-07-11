@@ -6,6 +6,7 @@ import {
   changeMorale,
   drawAstrologersCard,
   instantiateTile,
+  placeCreatureBank,
   refreshRoundTokens,
   subterraneanTileBand
 } from "./adventure";
@@ -808,6 +809,53 @@ describe("tile discovery and placement", () => {
     expect(result.errors[0].message).toContain("yellow border");
     expect(result.state.heroes.hero_p1.movementPoints).toBe(3);
     expect(result.state.adventure!.tiles[tile!.id].faceDown).toBe(true);
+  });
+
+  it("lets a hero standing on a (border-free) Creature Bank discover across that edge", () => {
+    // Same vantage as the sealed-border test: h:8:3 is S3 slot 2, whose outer arc
+    // toward the face-down hub at (9,4) is a printed yellow line — so an ordinary
+    // Location there cannot discover across it (that's the CONTROL above). But a
+    // Creature Bank draws NO border ("reads as fully open"), so a hero standing on
+    // one faces an OPEN edge and MAY flip the adjacent Tile. Carving a bank into
+    // that very field is the only change, isolating the bank as the cause.
+    const state = refreshP1(makeGame());
+    state.heroes.hero_p1.spaceId = "h:8:3";
+    state.heroes.hero_p1.movementPoints = 3;
+    const tile = Object.values(state.adventure!.tiles).find(
+      (candidate) => candidate.centerRow === 9 && candidate.centerCol === 4
+    )!;
+    expect(tile.faceDown).toBe(true);
+
+    // Guard the assumption: as a plain (sealed) field the reveal is refused.
+    const sealed = applyAction(state, {
+      type: "DISCOVER_TILE",
+      playerId: "p1",
+      heroId: "hero_p1",
+      tileInstanceId: tile.id
+    });
+    expect(sealed.errors).toHaveLength(1);
+    expect(sealed.state.adventure!.tiles[tile.id].faceDown).toBe(true);
+
+    // Now carve a Creature Bank into h:8:3 — the border is gone, the edge opens.
+    expect(placeCreatureBank(state, "h:8:3", "crypt")).not.toBeNull();
+    expect(state.adventure!.fields["h:8:3"].location).toBe("creature_bank");
+
+    // The action is now offered…
+    const offered = getLegalActions(state, "p1").some(
+      (legal) => legal.action.type === "DISCOVER_TILE" && legal.action.tileInstanceId === tile.id
+    );
+    expect(offered).toBe(true);
+
+    // …and succeeds: the tile flips face-up (awaiting the rotation), MP spent.
+    const next = apply(state, {
+      type: "DISCOVER_TILE",
+      playerId: "p1",
+      heroId: "hero_p1",
+      tileInstanceId: tile.id
+    });
+    expect(next.adventure!.tiles[tile.id].faceDown).toBe(false);
+    expect(next.adventure!.tiles[tile.id].awaitingRotation).toBe(true);
+    expect(next.heroes.hero_p1.movementPoints).toBe(2);
   });
 
   it("places a far tile at the border for 1 MP, touching two tiles, then rotates it", () => {

@@ -293,6 +293,7 @@ export {
   getTileFootprintSpaceIds,
   getUnitDefinition,
   getUnitSide,
+  heroFieldSealedForDiscovery,
   heroMovementMax,
   heroMoveStartsBattle,
   isFieldGuarded,
