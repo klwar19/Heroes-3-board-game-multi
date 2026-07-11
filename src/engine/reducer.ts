@@ -30,6 +30,11 @@ import {
   makeUnitTransformState
 } from "./unit-transforms";
 import {
+  sandboxBeginCombat,
+  sandboxConfigureSeat,
+  sandboxSetOptions
+} from "./combat-sandbox-setup";
+import {
   blacksmithAction,
   magicUniversityAction,
   buildStructureAdventure,
@@ -17807,6 +17812,9 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "UNPLACE_COMBAT_UNIT",
   "SWAP_COMBAT_UNITS",
   "SANDBOX_ADD_CARD",
+  "SANDBOX_CONFIGURE_SEAT",
+  "SANDBOX_SET_OPTIONS",
+  "SANDBOX_BEGIN_COMBAT",
   "FINISH_TACTICS",
   "FINISH_COMBAT_PLACEMENT",
   "ACCEPT_COMBAT",
@@ -18097,6 +18105,15 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "SANDBOX_ADD_CARD":
         sandboxAddCard(nextState, action, cards);
+        break;
+      case "SANDBOX_CONFIGURE_SEAT":
+        sandboxConfigureSeat(nextState, action);
+        break;
+      case "SANDBOX_SET_OPTIONS":
+        sandboxSetOptions(nextState, action);
+        break;
+      case "SANDBOX_BEGIN_COMBAT":
+        sandboxBeginCombat(nextState, action);
         break;
       case "RESOLVE_DECK_SEARCH":
         resolveDeckSearch(nextState, action);

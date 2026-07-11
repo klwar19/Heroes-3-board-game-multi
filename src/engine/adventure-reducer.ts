@@ -5772,6 +5772,16 @@ function injectCombatCommanders(state: GameState): void {
       playerId: heroBrings(context.defenderHeroId),
       cells: [...DEFENDER_BACKLINE, ...DEFENDER_FRONTLINE]
     });
+  } else if (context.kind === "sandbox") {
+    // Battle Test: both seats bring main heroes, so both get their commander.
+    sides.push({
+      playerId: combat.attackerPlayerId,
+      cells: [...ATTACKER_BACKLINE, ...ATTACKER_FRONTLINE]
+    });
+    sides.push({
+      playerId: combat.defenderPlayerId,
+      cells: [...DEFENDER_BACKLINE, ...DEFENDER_FRONTLINE]
+    });
   }
 
   for (const side of sides) {
@@ -5817,11 +5827,12 @@ function openTacticsSetupWindows(state: GameState): boolean {
   if (eligibleForTacticsSetup(state, combat, combat.attackerPlayerId)) {
     eligible.push(combat.attackerPlayerId);
   }
-  if (
-    combat.context.kind === "player" &&
-    combat.context.defenderHeroId != null &&
-    eligibleForTacticsSetup(state, combat, combat.defenderPlayerId)
-  ) {
+  // PvP defender with a hero in the fight, or Battle Test (sandbox) defender —
+  // both field a main hero and may rearrange with Tactics.
+  const defenderMayTactics =
+    (combat.context.kind === "player" && combat.context.defenderHeroId != null) ||
+    combat.context.kind === "sandbox";
+  if (defenderMayTactics && eligibleForTacticsSetup(state, combat, combat.defenderPlayerId)) {
     eligible.push(combat.defenderPlayerId);
   }
 
@@ -6017,7 +6028,8 @@ export function applyCombatStartUnitAbilities(state: GameState): void {
 
 function applyCombatStartMoraleCards(state: GameState): void {
   const combat = state.combat;
-  if (!combat || !state.adventure?.moraleCards) {
+  // Adventure + Battle Test (sandboxRules.moraleCards) both use the same rule.
+  if (!combat || !(state.adventure?.moraleCards || state.sandboxRules?.moraleCards)) {
     return;
   }
 

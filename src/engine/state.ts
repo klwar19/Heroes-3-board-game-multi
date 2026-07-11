@@ -2880,6 +2880,43 @@ export type GameAction =
    * the combat sandbox; see sandboxAddCard.
    */
   | { type: "SANDBOX_ADD_CARD"; playerId: PlayerId; cardId: CardId }
+  /**
+   * Battle Test free setup: edit one seat's faction / hero / units / cards /
+   * morale / commander grades. Only legal while phase is "setup" with a
+   * combatSandboxSetup present.
+   */
+  | {
+      type: "SANDBOX_CONFIGURE_SEAT";
+      playerId: PlayerId;
+      seatId: PlayerId;
+      factionId?: FactionId;
+      heroDefId?: string;
+      heroLevel?: number;
+      name?: string;
+      units?: CombatSandboxUnitPick[];
+      hand?: CardId[];
+      deck?: CardId[];
+      morale?: number;
+      moraleCards?: { positive: CardId[]; negative: CardId[] };
+      commanderGrades?: Partial<Record<CommanderStatKey, number>>;
+      commanderGradePoints?: number;
+    }
+  /**
+   * Battle Test free setup: battlefield art, obstacle cells, morale-cards rule,
+   * WOG modules.
+   */
+  | {
+      type: "SANDBOX_SET_OPTIONS";
+      playerId: PlayerId;
+      options: {
+        boardArtId?: CombatBoardArtId | "random";
+        obstacles?: number[];
+        moraleCards?: boolean;
+        wog?: Partial<WogModOptions>;
+      };
+    }
+  /** Battle Test free setup: materialise the setup into a live sandbox fight. */
+  | { type: "SANDBOX_BEGIN_COMBAT"; playerId: PlayerId }
   | { type: "MOVE_HERO"; playerId: PlayerId; heroId: HeroId; to: MapSpaceId }
   | {
       /**
@@ -4061,6 +4098,19 @@ export type GameEvent =
       playerId: PlayerId;
       cardId: CardId;
       message: string;
+    }
+  | {
+      id: string;
+      type: "SANDBOX_SETUP_CHANGED";
+      message: string;
+    }
+  | {
+      id: string;
+      type: "SANDBOX_COMBAT_BEGUN";
+      message: string;
+      boardArtId: CombatBoardArtId;
+      attackerPlayerId: PlayerId;
+      defenderPlayerId: PlayerId;
     }
   | {
       id: string;
@@ -8392,6 +8442,48 @@ export type GameSetupState = {
   startCheck?: StartCheckState | null;
 };
 
+/** One unit pick in the Battle Test free-setup army builder. */
+export type CombatSandboxUnitPick = {
+  unitDefId: string;
+  side: "few" | "pack" | "neutral";
+};
+
+/** One seat's free-setup choices in a Battle Test arena (before Begin). */
+export type CombatSandboxSeatConfig = {
+  playerId: PlayerId;
+  name: string;
+  factionId: FactionId;
+  heroDefId: string;
+  /** Hero level 1–7 (hand limit + crowns). Default 5. */
+  heroLevel: number;
+  units: CombatSandboxUnitPick[];
+  hand: CardId[];
+  deck: CardId[];
+  /** Numeric morale token (−1 / 0 / +1) when morale cards are off. */
+  morale: number;
+  /** Held morale cards when the Morale Cards rule is on. */
+  moraleCards?: { positive: CardId[]; negative: CardId[] };
+  /** WOG commander grades (0–3 each) when Commanders is on. */
+  commanderGrades?: Partial<Record<CommanderStatKey, number>>;
+  commanderGradePoints?: number;
+};
+
+/**
+ * Battle Test free-setup lobby: both seats, battlefield, morale and WOG options.
+ * Present only while phase is "setup"; cleared when Begin materialises the fight.
+ */
+export type CombatSandboxSetupState = {
+  seats: Record<PlayerId, CombatSandboxSeatConfig>;
+  /** Forced board art, or "random" (currently resolves to classic). */
+  boardArtId: CombatBoardArtId | "random";
+  /** Obstacle cells on the 0–19 board (middle-row blockers by default). */
+  obstacles: number[];
+  /** Optional Morale Cards rule (draws from morale decks instead of ±1 tokens). */
+  moraleCards: boolean;
+  /** Wake of Gods modules (commanders etc.). */
+  wog: WogModOptions;
+};
+
 export type TownState = {
   id: TownId;
   controllerId: PlayerId;
@@ -9146,6 +9238,16 @@ export type GameState = {
   adventure: AdventureState | null;
   /** Pre-game lobby choices; null once the adventure map is built. */
   setupLobby?: GameSetupState | null;
+  /**
+   * Battle Test free-setup lobby. Present while phase is "setup" in
+   * combat-sandbox mode; null once Begin has started the fight.
+   */
+  combatSandboxSetup?: CombatSandboxSetupState | null;
+  /**
+   * Battle Test rules that must survive Begin (morale cards etc.). Adventure
+   * games keep these on `adventure`; the sandbox has no adventure object.
+   */
+  sandboxRules?: { moraleCards?: boolean } | null;
   towns: Record<TownId, TownState>;
   heroes: Record<HeroId, HeroState>;
   combat: CombatState | null;

@@ -125,7 +125,8 @@ export function deriveLobbyRecord(input: DeriveLobbyRecordInput): LobbyRoomRecor
   const room: RoomMembershipState | null = state.room ?? null;
   const members = room?.members ?? [];
   const host = room?.hostClientId ? (members.find((member) => member.clientId === room.hostClientId) ?? null) : null;
-  const isFreshLobby = state.phase === "setup" && Boolean(state.setupLobby);
+  const isFreshLobby =
+    state.phase === "setup" && (Boolean(state.setupLobby) || Boolean(state.combatSandboxSetup));
   // The visible roster: who is in this room — host first, then seated players,
   // then observers — each marked guest (no verified account) or not, so the
   // lobby can render "guest — name" honestly. Bounded (see the cap's comment).

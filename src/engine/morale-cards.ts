@@ -22,7 +22,9 @@ export {
 };
 
 export function moraleCardsRuleEnabled(state: GameState): boolean {
-  return Boolean(state.adventure?.moraleCards);
+  // Adventure carries the rule on the map state; Battle Test keeps it on
+  // sandboxRules after Begin (there is no adventure object in combat-sandbox).
+  return Boolean(state.adventure?.moraleCards) || Boolean(state.sandboxRules?.moraleCards);
 }
 
 export function makeMoraleDecks(seed: string): Record<string, DeckState> {
