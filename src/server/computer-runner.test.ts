@@ -31,14 +31,26 @@ function humanFirst(
 }
 
 describe("computer runner foundation", () => {
-  it("completes every computer free-pick seat through real legal actions and stops for the human", () => {
+  it("completes every computer free-pick seat through real legal actions once the human picked", () => {
     const state = createAdventureLobbyState({
       seed: "runner-setup",
       scenarioId: "skirmish",
       sessionMode: "single-player",
       computerOpponents: 3,
     });
-    const result = driveComputerPlayers(state);
+    // Human first dibs: with the human seat unpicked the runner does nothing —
+    // a bot must never snipe the faction the human wants.
+    const idle = driveComputerPlayers(structuredClone(state));
+    expect(idle.stalled).toBe(false);
+    expect(idle.decisions).toHaveLength(0);
+
+    const picked = humanAct(state, {
+      type: "CHOOSE_FACTION",
+      playerId: "p1",
+      factionId: "castle",
+      heroDefId: "catherine",
+    });
+    const result = driveComputerPlayers(picked);
 
     expect(result.stalled).toBe(false);
     expect(result.decisions).toHaveLength(3);
@@ -48,11 +60,12 @@ describe("computer runner foundation", () => {
       ),
     ).toBe(true);
     const seats = result.state.setupLobby!.seats;
-    expect(seats[0].factionId).toBeNull();
+    expect(seats[0].factionId).toBe("castle");
     expect(
       seats.slice(1).every((seat) => seat.factionId && seat.heroDefId),
     ).toBe(true);
-    expect(new Set(seats.slice(1).map((seat) => seat.factionId)).size).toBe(3);
+    // Nobody took the human's faction; all four factions are distinct.
+    expect(new Set(seats.map((seat) => seat.factionId)).size).toBe(4);
   });
 
   it("reports an explicit stall instead of looping when policy has no safe action", () => {
@@ -85,14 +98,21 @@ describe("computer runner foundation", () => {
   });
 
   it("gives the same decisions for the same seed and state", () => {
-    const state = createAdventureLobbyState({
+    let state = createAdventureLobbyState({
       seed: "runner-deterministic",
       scenarioId: "skirmish",
       sessionMode: "single-player",
       computerOpponents: 3,
     });
+    state = humanAct(state, {
+      type: "CHOOSE_FACTION",
+      playerId: "p1",
+      factionId: "castle",
+      heroDefId: "catherine",
+    });
     const first = driveComputerPlayers(structuredClone(state));
     const second = driveComputerPlayers(structuredClone(state));
+    expect(first.decisions.length).toBeGreaterThan(0);
     expect(first.decisions).toEqual(second.decisions);
   });
 });
@@ -110,6 +130,7 @@ describe("computer setup formats", () => {
       playerId: "p1",
       format: "random",
     });
+    state = humanFirst(state, "RANDOM_ASSIGN_SEAT");
     const run = driveComputerPlayers(state);
     expect(run.stalled).toBe(false);
     expect(run.decisions.map((decision) => decision.action.type)).toEqual([
@@ -136,6 +157,10 @@ describe("computer setup formats", () => {
       playerId: "p1",
       format: "random-choice",
     });
+    state = humanFirst(state, "ROLL_TOWN_OPTIONS");
+    state = humanFirst(state, "CHOOSE_TOWN");
+    state = humanFirst(state, "ROLL_HERO_OPTIONS");
+    state = humanFirst(state, "CHOOSE_FACTION");
     const run = driveComputerPlayers(state);
     expect(run.stalled).toBe(false);
     expect(run.decisions.map((decision) => decision.action.type)).toEqual([
@@ -162,8 +187,14 @@ describe("computer setup formats", () => {
       format: "draft",
     });
 
-    // Computers lock their towns directly (no reroll loops), then WAIT for the
-    // human's town — a clean stop, never a stall report.
+    // Human town dibs first: until the human locks a town, the runner idles.
+    const idle = driveComputerPlayers(structuredClone(state));
+    expect(idle.stalled).toBe(false);
+    expect(idle.decisions).toHaveLength(0);
+
+    // Human locks a town, then the computers lock theirs directly (no reroll
+    // loops) and WAIT for the ban rotation, which starts with the HUMAN.
+    state = humanFirst(state, "CHOOSE_TOWN");
     const townsRun = driveComputerPlayers(state);
     expect(townsRun.stalled).toBe(false);
     expect(
@@ -175,14 +206,7 @@ describe("computer setup formats", () => {
         .every((seat) => seat.factionId && !seat.heroDefId),
     ).toBe(true);
 
-    // Human locks a town; the ban rotation starts with the HUMAN, so the
-    // runner stays idle until the human has banned.
-    let next = humanFirst(townsRun.state, "CHOOSE_TOWN");
-    const waitRun = driveComputerPlayers(next);
-    expect(waitRun.stalled).toBe(false);
-    expect(waitRun.decisions).toHaveLength(0);
-
-    next = humanFirst(waitRun.state, "BAN_HERO");
+    const next = humanFirst(townsRun.state, "BAN_HERO");
     const finishRun = driveComputerPlayers(next);
     expect(finishRun.stalled).toBe(false);
     // Two computer bans in rotation, then both computer hero picks.
