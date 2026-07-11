@@ -229,6 +229,8 @@ export {
   START_CHECK_MS,
   TIER_LEVELS,
   tierOfLevel,
+  TOURNAMENT_REMOVED_ABILITY_ID,
+  TOURNAMENT_REMOVED_ARTIFACT_ID,
   UNIT_LEVELS,
   validateCustomMapPlan
 } from "./adventure-setup";
@@ -310,6 +312,7 @@ export {
   queueLegionDiscountChoice,
   seaStepHalts,
   seaTileBand,
+  startingBonusDescription,
   subterraneanTileBand,
   tileLayer
 } from "./adventure";
