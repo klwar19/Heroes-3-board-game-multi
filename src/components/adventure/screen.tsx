@@ -66,6 +66,7 @@ import {
   seatPickSummary,
   reservedTownIdsForOtherSeats,
   scenarioDefinitions,
+  startingBonusDescription,
   tileCentersAdjacent,
   tileCentersOverlap,
   tileFootprint,
@@ -4226,10 +4227,26 @@ export function PlacementPanel({
 // ---------------------------------------------------------------------------
 
 const DIFFICULTY_CHOICES: { id: GameSetupOptions["difficulty"]; label: string; hint: string }[] = [
-  { id: "easy", label: "Easy", hint: "smallest guard armies" },
-  { id: "normal", label: "Normal", hint: "printed baseline" },
-  { id: "hard", label: "Hard", hint: "stronger guards" },
-  { id: "impossible", label: "Impossible", hint: "default — strongest guards" }
+  {
+    id: "easy",
+    label: "Easy",
+    hint: "Smallest guard armies. Starting bonus: Roll 2 Resource Dice and receive Resources from both — OR — Search (2) the Artifact Deck, twice."
+  },
+  {
+    id: "normal",
+    label: "Normal",
+    hint: "Printed baseline guards. Starting bonus: Roll 2 Resource Dice and receive the Resources from one of them — OR — Search (2) the Artifact Deck."
+  },
+  {
+    id: "hard",
+    label: "Hard",
+    hint: "Stronger guards. Starting bonus: Roll 1 Resource Die and receive the Resources on it — OR — reveal cards until you find 1 Minor Artifact (to hand)."
+  },
+  {
+    id: "impossible",
+    label: "Impossible",
+    hint: "Default — strongest guards. No starting bonus."
+  }
 ];
 
 /** Building ids (without the faction prefix) offered as pre-built options. */
@@ -4977,6 +4994,40 @@ function GameOptionsPanel({
       })()}
 
       {(() => {
+        const tournamentOn = options.tournamentMode ?? false;
+        return (
+          <div className="optionRow">
+            <small title="Rulebook Tournament Mode setup rules (p.54): remove Diplomacy and Hourglass of the Evil Hour from shared decks; second player gains +1 positive morale">
+              Tournament Mode
+            </small>
+            <div className="optionButtons">
+              {([true, false] as const).map((on) => (
+                <button
+                  aria-pressed={tournamentOn === on}
+                  className={tournamentOn === on ? "selected" : ""}
+                  key={String(on)}
+                  onClick={() => send({ tournamentMode: on })}
+                  title={
+                    on
+                      ? "Remove Diplomacy + Hourglass; second player +1 morale"
+                      : "Normal deck build and no second-player morale"
+                  }
+                  type="button"
+                >
+                  {on ? "On" : "Off"}
+                </button>
+              ))}
+            </div>
+            <small className="optionHint">
+              {tournamentOn
+                ? "Before building decks: remove Diplomacy (Ability) and Hourglass of the Evil Hour (Artifact) from the game. The second player gains 1 positive morale at the start. (Does not enable the full Tournament map-build / VP rules.)"
+                : "Off by default. Shared decks include Diplomacy and Hourglass of the Evil Hour; no second-player morale bonus."}
+            </small>
+          </div>
+        );
+      })()}
+
+      {(() => {
         const neutralControlOn = options.pvpNeutralControl ?? false;
         const mustAttackOn = options.pvpNeutralControlMustAttack ?? true;
         return (
@@ -5220,7 +5271,9 @@ function GameOptionsPanel({
       </div>
 
       <div className="optionRow">
-        <small title="Field Difficulty Level Table column used when guards are drawn">Neutral difficulty</small>
+        <small title="Field Difficulty Level Table column used when guards are drawn, and the printed starting bonus each player receives at setup (rulebook p.10)">
+          Neutral difficulty
+        </small>
         <div className="optionButtons">
           {DIFFICULTY_CHOICES.map((choice) => (
             <button
@@ -5235,6 +5288,11 @@ function GameOptionsPanel({
             </button>
           ))}
         </div>
+        <small className="optionHint">
+          <strong>Starting bonus ({options.difficulty}):</strong>{" "}
+          {startingBonusDescription(options.difficulty)}
+          {" "}Guards use the Field Difficulty Level Table column for this difficulty.
+        </small>
       </div>
 
       </div>

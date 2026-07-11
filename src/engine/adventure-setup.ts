@@ -41,7 +41,9 @@ import {
   recomputeSubterraneanGates,
   seaTileBand,
   subterraneanTileBand,
+  changeMorale,
   startAdventureRound,
+  startingBonusVisitSteps,
   startPlayerTurn,
   tokenMayCoverFieldDef,
   victoryModeCountsHeroDefeats
@@ -199,6 +201,11 @@ export type AdventureSetupOptions = {
   /** Morale Cards optional rule (default off): replaces normal morale tokens with morale card decks. */
   moraleCards?: boolean;
   /**
+   * Tournament Mode setup rules (default off): remove Diplomacy + Hourglass of
+   * the Evil Hour from shared decks; second player gains +1 positive morale.
+   */
+  tournamentMode?: boolean;
+  /**
    * PvP Neutral Control mode (default off, multiplayer only): the next live
    * player clockwise plays the Neutral units in every Neutral combat, PvP-style.
    */
@@ -244,6 +251,13 @@ export type AdventureSetupOptions = {
    * opening-ceremony gate (on unless `rollFirstPlayer` is explicitly false).
    */
   rotateStartTiles?: boolean;
+  /**
+   * Queue the rulebook Scenario Difficulty starting bonus (setup step 17).
+   * Defaults to the same opening-ceremony gate as `rollFirstPlayer` so
+   * deterministic tests that pin seat order are not blocked on a bonus choice;
+   * real games and lobbies leave the gate on.
+   */
+  startingBonus?: boolean;
 };
 
 /** Unit levels covered by each tier: bronze 1-3, silver 4-5, gold 6-7. */
@@ -282,6 +296,7 @@ export function defaultGameSetupOptions(scenario: ScenarioDefinition): GameSetup
     pvpTroopLoss: "normal",
     spellBook: true,
     moraleCards: false,
+    tournamentMode: false,
     pvpNeutralControl: false,
     pvpNeutralControlMustAttack: true,
     farTileOpening: true,
@@ -323,13 +338,24 @@ function makeNeutralDecks(seed: string, wog: WogModOptions): Record<string, Deck
   return decks;
 }
 
+/** Tournament Mode (p.54): removed from the Ability / Artifact shared decks. */
+export const TOURNAMENT_REMOVED_ABILITY_ID = "ability.diplomacy";
+export const TOURNAMENT_REMOVED_ARTIFACT_ID = "artifact.hourglass_of_the_evil_hour";
+
 /**
  * Shared deck construction. Legacy: one mixed Spell deck, one Artifact deck.
  * BINH: the rulebook's optional "Split Artifact and Spell Decks" — Basic and
  * Expert Spell decks plus Minor/Major/Relic Artifact decks. Each deck flips
  * its top card to start the discard pile, as printed.
+ *
+ * Tournament Mode removes Diplomacy and Hourglass of the Evil Hour from their
+ * respective decks before shuffling (rulebook p.54) — heroes who start with
+ * Diplomacy as their starting Ability still keep that personal copy.
  */
-function makeSharedDecks(seed: string, splitDecks: boolean): Record<string, DeckState> {
+function makeSharedDecks(seed: string, splitDecks: boolean, tournamentMode: boolean): Record<string, DeckState> {
+  const withoutTournament = (cardIds: string[], removeId: string): string[] =>
+    tournamentMode ? cardIds.filter((id) => id !== removeId) : cardIds;
+
   const make = (id: string, cardIds: string[]): DeckState => {
     // First-round rule (as printed): each shared deck flips its top card face-up
     // onto its discard pile at game start, so every discard pile (Abilities,
@@ -349,8 +375,11 @@ function makeSharedDecks(seed: string, splitDecks: boolean): Record<string, Deck
     return {
       spells: make("spells", spellDeckBinhBasic),
       "spells-expert": make("spells-expert", spellDeckBinhExpert),
-      abilities: make("abilities", abilityDeckBinh),
-      "artifacts-minor": make("artifacts-minor", artifactDeckBinhMinor),
+      abilities: make("abilities", withoutTournament(abilityDeckBinh, TOURNAMENT_REMOVED_ABILITY_ID)),
+      "artifacts-minor": make(
+        "artifacts-minor",
+        withoutTournament(artifactDeckBinhMinor, TOURNAMENT_REMOVED_ARTIFACT_ID)
+      ),
       "artifacts-major": make("artifacts-major", artifactDeckBinhMajor),
       "artifacts-relic": make("artifacts-relic", artifactDeckBinhRelic)
     };
@@ -358,8 +387,8 @@ function makeSharedDecks(seed: string, splitDecks: boolean): Record<string, Deck
 
   return {
     spells: make("spells", spellDeckLegacy),
-    abilities: make("abilities", abilityDeckLegacy),
-    artifacts: make("artifacts", artifactDeckLegacy)
+    abilities: make("abilities", withoutTournament(abilityDeckLegacy, TOURNAMENT_REMOVED_ABILITY_ID)),
+    artifacts: make("artifacts", withoutTournament(artifactDeckLegacy, TOURNAMENT_REMOVED_ARTIFACT_ID))
   };
 }
 
@@ -706,6 +735,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     ...(options.parallelTurns !== undefined ? { parallelTurns: options.parallelTurns } : {}),
     ...(options.spellBook !== undefined ? { spellBook: options.spellBook } : {}),
     ...(options.moraleCards !== undefined ? { moraleCards: options.moraleCards } : {}),
+    ...(options.tournamentMode !== undefined ? { tournamentMode: options.tournamentMode } : {}),
     ...(options.pvpNeutralControl !== undefined ? { pvpNeutralControl: options.pvpNeutralControl } : {}),
     ...(options.pvpNeutralControlMustAttack !== undefined
       ? { pvpNeutralControlMustAttack: options.pvpNeutralControlMustAttack }
@@ -725,6 +755,8 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   const spellBookOn = setupOptions.ruleset === "binh" && (setupOptions.spellBook ?? true);
   // Morale Cards are opt-in: when on, morale draws cards instead of changing tokens.
   const moraleCardsOn = setupOptions.moraleCards ?? false;
+  // Tournament Mode setup rules (p.54): deck removals + second-player morale.
+  const tournamentModeOn = setupOptions.tournamentMode ?? false;
   // Pick-on-reveal Subterranean Gate placement default ON.
   const chooseGatePlacementOn = options.chooseSubterraneanGate ?? true;
   // Far-tile opening default ON: each player drafts a Ⅱ–Ⅲ Far-tile supply they
@@ -808,6 +840,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     pvpTroopLoss,
     spellBook: spellBookOn,
     moraleCards: moraleCardsOn,
+    tournamentMode: tournamentModeOn,
     pvpNeutralControl: pvpNeutralControlOn,
     pvpNeutralControlMustAttack: pvpNeutralControlMustAttackOn,
     houseRules,
@@ -875,7 +908,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     heroes: {},
     combat: null,
     decks: {
-      ...makeSharedDecks(seed, houseRules["split-decks"]),
+      ...makeSharedDecks(seed, houseRules["split-decks"], tournamentModeOn),
       ...makeNeutralDecks(seed, wog),
       [ASTROLOGERS_DECK_ID]: makeAstrologersDeck(seed, eventsOn),
       ...(moraleCardsOn ? makeMoraleDecks(seed) : {}),
@@ -1139,10 +1172,40 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     rollFirstPlayer(state, seed);
   }
 
+  // Tournament Mode (p.54): "The second player gains +1 positive morale at the
+  // start of the game." Second = next seat after the starting player in the
+  // (possibly reordered) turn order. Necropolis still ignores morale.
+  if (tournamentModeOn) {
+    const humanOrder = state.turnOrder.filter((playerId) => playerId !== NEUTRAL_PLAYER_ID);
+    if (humanOrder.length >= 2) {
+      changeMorale(state, humanOrder[1]!, 1);
+    }
+  }
+
   // Then everyone draws their starting hand (visible from the first moment),
   // and the active player's turn starts as usual.
   for (const config of playerConfigs) {
     drawCardsForPlayer(state, config.id, state.players[config.id].limits.hand);
+  }
+
+  // Setup step 17: each player takes the Scenario Difficulty starting bonus
+  // (rulebook p.10). Queued before round/start-of-turn rewards so they resolve
+  // first. Impossible has none. Artifacts go to hand, not the Starting Deck.
+  // Gated with the opening ceremony so deterministic tests (rollFirstPlayer:
+  // false) are not blocked on a bonus prompt unless they opt in.
+  const applyStartingBonus = options.startingBonus ?? options.rollFirstPlayer !== false;
+  const bonusSteps = applyStartingBonus ? startingBonusVisitSteps(difficulty) : null;
+  if (bonusSteps) {
+    for (const playerId of state.turnOrder) {
+      if (playerId === NEUTRAL_PLAYER_ID || !state.players[playerId]) {
+        continue;
+      }
+      adventure.rewardQueue.push({
+        playerId,
+        kind: "visit-steps",
+        steps: bonusSteps.map((step) => structuredClone(step))
+      });
+    }
   }
 
   if (parallelRounds > 0) {
@@ -1163,6 +1226,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   // Drain the opening round-start / start-of-turn rewards — chiefly the
   // start-of-turn hand snapshot — so the first player's hand step is live the
   // instant the game state is handed back, before any action is dispatched.
+  // With a starting bonus the pump stops on the first player's choice instead.
   pumpAdventureQueues(state);
 
   return state;
@@ -1323,6 +1387,9 @@ export function createAdventureLobbyState(options: AdventureSetupOptions = {}): 
   }
   if (options.moraleCards !== undefined) {
     setupOptions.moraleCards = options.moraleCards;
+  }
+  if (options.tournamentMode !== undefined) {
+    setupOptions.tournamentMode = options.tournamentMode;
   }
   if (options.pvpNeutralControl !== undefined) {
     setupOptions.pvpNeutralControl = options.pvpNeutralControl;
@@ -1495,6 +1562,15 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
   if (next.moraleCards !== undefined) {
     lobby.options.moraleCards = Boolean(next.moraleCards);
     changes.push(`Morale Cards ${next.moraleCards ? "on" : "off"}`);
+  }
+
+  if (next.tournamentMode !== undefined) {
+    lobby.options.tournamentMode = Boolean(next.tournamentMode);
+    changes.push(
+      next.tournamentMode
+        ? "Tournament Mode on (remove Diplomacy + Hourglass; second player +1 morale)"
+        : "Tournament Mode off"
+    );
   }
 
   if (next.pvpNeutralControl !== undefined) {
@@ -2543,6 +2619,7 @@ function buildAdventureFromLobby(state: GameState): void {
     events: lobby.options.events,
     spellBook: lobby.options.spellBook,
     moraleCards: lobby.options.moraleCards,
+    tournamentMode: lobby.options.tournamentMode,
     pvpNeutralControl: lobby.options.pvpNeutralControl,
     pvpNeutralControlMustAttack: lobby.options.pvpNeutralControlMustAttack,
     houseRules: lobby.options.houseRules,
