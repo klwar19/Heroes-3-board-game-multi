@@ -3423,6 +3423,32 @@ export function processPendingVisit(state: GameState): void {
         queueVisitFollowUpReward(state, adventure, reward);
         break;
       }
+      case "STARTING_BONUS_ARTIFACT_SEARCH": {
+        // Search (2) once or twice, then reshuffle Artifact decks (p.10–11).
+        // Prepend so the searches resolve before the next player's bonus.
+        const followUps: AdventureReward[] = [];
+        for (let n = 0; n < step.times; n += 1) {
+          followUps.push({
+            playerId: visit.playerId,
+            kind: "shared-deck-search",
+            deckId: "artifacts",
+            count: 2
+          });
+        }
+        followUps.push({
+          playerId: visit.playerId,
+          kind: "visit-steps",
+          steps: [{ type: "RESHUFFLE_ARTIFACT_DECKS" }]
+        });
+        prependVisitFollowUpRewards(adventure, followUps);
+        break;
+      }
+      case "REVEAL_UNTIL_MINOR_ARTIFACT":
+        revealUntilMinorArtifact(state, visit.playerId);
+        break;
+      case "RESHUFFLE_ARTIFACT_DECKS":
+        reshuffleArtifactDecksAfterStartingBonus(state);
+        break;
       // Event cards (Fortress expansion): every EVENT_* step plus the shared
       // LOSE_RESOURCES / SPEND_HERO_MOVEMENT leaves resolve in one place.
       case "EVENT_FORTY_PICK":
@@ -6721,6 +6747,170 @@ export function removeFromNeutralDeck(
 
 /** Difficulty ladder, easiest first — the axis Rulebook shifts a guard draw along. */
 const GAME_DIFFICULTY_ORDER: GameDifficulty[] = ["easy", "normal", "hard", "impossible"];
+
+/** Shared deck ids that hold Artifact cards (legacy single deck or BINH split). */
+const ARTIFACT_DECK_IDS = ["artifacts", "artifacts-minor", "artifacts-major", "artifacts-relic"] as const;
+
+/**
+ * Rulebook p.10 Scenario Difficulty starting-bonus text (for lobby UI and
+ * choice prompts). Campaign scenarios replace these with unique bonuses —
+ * this digital build has no campaign scenarios, so every table uses these.
+ */
+export function startingBonusDescription(difficulty: GameDifficulty): string {
+  switch (difficulty) {
+    case "easy":
+      return "Roll 2 Resource Dice and receive Resources from both — OR — Search (2) the Artifact Deck, twice.";
+    case "normal":
+      return "Roll 2 Resource Dice and receive the Resources from one of them — OR — Search (2) the Artifact Deck.";
+    case "hard":
+      return "Roll 1 Resource Die and receive the Resources on it — OR — reveal cards from the top of the Artifact Deck until you find 1 Minor Artifact and add it to your hand.";
+    case "impossible":
+      return "No starting bonus.";
+  }
+}
+
+/**
+ * Visit steps for the printed starting bonus at `difficulty`. Null on Impossible
+ * (no bonus). Artifacts go to hand (via Search / reveal), never into the
+ * Starting Deck. After any Artifact Search the Artifact decks reshuffle.
+ */
+export function startingBonusVisitSteps(difficulty: GameDifficulty): VisitStep[] | null {
+  switch (difficulty) {
+    case "easy":
+      return [
+        {
+          type: "CHOOSE_ONE",
+          prompt: "Starting bonus (Easy)",
+          options: [
+            {
+              label: "Roll 2 Resource Dice and receive Resources from both",
+              steps: [
+                { type: "ROLL_RESOURCE_DICE", count: 1 },
+                { type: "ROLL_RESOURCE_DICE", count: 1 }
+              ]
+            },
+            {
+              label: "Search (2) the Artifact Deck, twice",
+              steps: [{ type: "STARTING_BONUS_ARTIFACT_SEARCH", times: 2 }]
+            }
+          ]
+        }
+      ];
+    case "normal":
+      return [
+        {
+          type: "CHOOSE_ONE",
+          prompt: "Starting bonus (Normal)",
+          options: [
+            {
+              label: "Roll 2 Resource Dice and receive the Resources from one of them",
+              steps: [{ type: "ROLL_RESOURCE_DICE", count: 2 }]
+            },
+            {
+              label: "Search (2) the Artifact Deck",
+              steps: [{ type: "STARTING_BONUS_ARTIFACT_SEARCH", times: 1 }]
+            }
+          ]
+        }
+      ];
+    case "hard":
+      return [
+        {
+          type: "CHOOSE_ONE",
+          prompt: "Starting bonus (Hard)",
+          options: [
+            {
+              label: "Roll 1 Resource Die and receive the Resources on it",
+              steps: [{ type: "ROLL_RESOURCE_DICE", count: 1 }]
+            },
+            {
+              label: "Reveal until you find 1 Minor Artifact (to hand)",
+              steps: [{ type: "REVEAL_UNTIL_MINOR_ARTIFACT" }]
+            }
+          ]
+        }
+      ];
+    case "impossible":
+      return null;
+  }
+}
+
+/**
+ * After a starting-bonus Artifact Search: shuffle each Artifact deck with its
+ * discard pile, then discard the top card to reseed the face-up discard
+ * (rulebook p.10–11).
+ */
+export function reshuffleArtifactDecksAfterStartingBonus(state: GameState): void {
+  for (const deckId of ARTIFACT_DECK_IDS) {
+    const deck = state.decks[deckId];
+    if (!deck) {
+      continue;
+    }
+    const combined = [...deck.drawPile, ...deck.discardPile];
+    deck.drawPile = shuffleCards(
+      combined,
+      `${state.seed}#starting-bonus-reshuffle#${deckId}#${eventSeedNumber(state)}`
+    );
+    deck.discardPile = [];
+    const top = deck.drawPile.pop();
+    if (top) {
+      deck.discardPile.push(top);
+    }
+  }
+}
+
+/**
+ * Hard starting bonus: reveal from the Artifact deck until a Minor Artifact
+ * the player may acquire is found, then put it in hand. Revealed non-minors
+ * (and unacquirable minors) go to that deck's discard. With split decks the
+ * Minor deck is searched first.
+ */
+export function revealUntilMinorArtifact(state: GameState, playerId: PlayerId): CardId | null {
+  const player = state.players[playerId];
+  if (!player) {
+    return null;
+  }
+
+  const deckOrder = state.decks["artifacts-minor"]
+    ? (["artifacts-minor", "artifacts-major", "artifacts-relic"] as const)
+    : (["artifacts"] as const);
+
+  for (const deckId of deckOrder) {
+    const deck = state.decks[deckId];
+    if (!deck) {
+      continue;
+    }
+    while (deck.drawPile.length > 0) {
+      const cardId = deck.drawPile.pop() as CardId;
+      const card = cardLibrary[cardId];
+      const isMinor = card?.kind === "artifact" && (card.artifactTier ?? "minor") === "minor";
+      if (isMinor && canAcquireSharedDeckCard(state, playerId, deckId, cardId)) {
+        player.hand.push(cardId);
+        appendEvent(state, {
+          type: "DECK_SEARCH_RESOLVED",
+          playerId,
+          deckId,
+          choiceId: `starting_bonus_${nextEventNumber(state)}`,
+          pick: "revealed",
+          discardedCardIds: []
+        });
+        return cardId;
+      }
+      deck.discardPile.push(cardId);
+    }
+  }
+  return null;
+}
+
+/**
+ * Prepends rewards so they resolve immediately after the current visit step
+ * (before other players' queued bonuses). Unshifts in reverse order.
+ */
+function prependVisitFollowUpRewards(adventure: AdventureState, rewards: AdventureReward[]): void {
+  for (let index = rewards.length - 1; index >= 0; index -= 1) {
+    adventure.rewardQueue.unshift(rewards[index]!);
+  }
+}
 
 /**
  * Rulebook (Astrologers): the GAME difficulty a neutral guard army is drawn at.
