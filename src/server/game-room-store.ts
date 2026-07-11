@@ -83,6 +83,13 @@ export type RoomCreateOptions = RoomResetOptions & {
    * Absent leaves it unset (treated as ranked, the legacy default).
    */
   ranked?: boolean;
+  /**
+   * Closed table hint at creation. NOT seeded as hosted:true alone (that would
+   * lock the room with no hostClientId and block SET_ROOM_HOSTED). The client
+   * still applies hosting via SET_ROOM_HOSTED once the creator has joined.
+   * Accepted for API symmetry / future use.
+   */
+  hosted?: boolean;
 };
 
 type GameRoomRecord = GameRoomSnapshot;
@@ -215,9 +222,10 @@ function makeRoom(roomId: string, options: RoomCreateOptions = {}): GameRoomReco
           // factions and heroes, then the scenario map builds itself.
           createAdventureLobbyState({ seed, scenarioId: options.scenarioId });
 
-  // A name and/or match type chosen at creation seeds an (open) room membership
-  // record so the lobby shows both before anyone joins; JOIN_ROOM then fills in
-  // members.
+  // A name and/or match type chosen at creation seeds a room membership record
+  // so the lobby shows them before anyone joins; JOIN_ROOM then fills in
+  // members. Hosting is applied by the creator via SET_ROOM_HOSTED after join
+  // (seeding hosted:true with no hostClientId would strand the room).
   const name = options.name?.trim().slice(0, MAX_ROOM_NAME_LENGTH);
   if (name || options.ranked !== undefined) {
     state.room = {

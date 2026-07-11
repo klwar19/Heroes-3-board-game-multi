@@ -110,27 +110,30 @@ describe("LobbyScreen", () => {
   it("creates a CLOSED (hosted) room when Closed table is picked", () => {
     const handlers = renderLobby();
     fireEvent.change(screen.getByLabelText("New room name"), { target: { value: "Locked Table" } });
-    fireEvent.click(screen.getByRole("radio", { name: /Closed table/i }));
+    // Name is exact to the table-type radio (ranked's hint also says "closed table").
+    fireEvent.click(screen.getByRole("radio", { name: /^Closed table/i }));
     fireEvent.click(screen.getByRole("button", { name: /Create room/i }));
     expect(handlers.onCreate).toHaveBeenCalledWith("Locked Table", true, false);
     // Control: switching back to Open reverts the choice (re-type — create clears the field).
     fireEvent.change(screen.getByLabelText("New room name"), { target: { value: "Free Table" } });
-    fireEvent.click(screen.getByRole("radio", { name: /Open table/i }));
+    fireEvent.click(screen.getByRole("radio", { name: /^Open table/i }));
     fireEvent.click(screen.getByRole("button", { name: /Create room/i }));
     expect(handlers.onCreate).toHaveBeenLastCalledWith("Free Table", false, false);
   });
 
-  it("creates a RANKED room when Ranked game is picked (Normal is the default CONTROL)", () => {
+  it("creates a RANKED room as CLOSED (hosted) — open tables cannot attribute W/L", () => {
     const handlers = renderLobby();
     fireEvent.change(screen.getByLabelText("New room name"), { target: { value: "Ladder Match" } });
     fireEvent.click(screen.getByRole("radio", { name: /Ranked game/i }));
     fireEvent.click(screen.getByRole("button", { name: /Create room/i }));
-    expect(handlers.onCreate).toHaveBeenCalledWith("Ladder Match", false, true);
-    // Control: switching back to Normal reverts the choice.
+    // Ranked forces hosted=true so seats exist for match reporting.
+    expect(handlers.onCreate).toHaveBeenCalledWith("Ladder Match", true, true);
+    // Control: switching back to Normal keeps the closed table choice the UI
+    // set when Ranked was picked (user can open it again explicitly).
     fireEvent.change(screen.getByLabelText("New room name"), { target: { value: "Casual Match" } });
     fireEvent.click(screen.getByRole("radio", { name: /Normal game/i }));
     fireEvent.click(screen.getByRole("button", { name: /Create room/i }));
-    expect(handlers.onCreate).toHaveBeenLastCalledWith("Casual Match", false, false);
+    expect(handlers.onCreate).toHaveBeenLastCalledWith("Casual Match", true, false);
   });
 
   it("shows each room's match type so everyone in the lobby can see it", () => {

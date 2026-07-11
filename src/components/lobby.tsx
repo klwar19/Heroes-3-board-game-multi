@@ -98,6 +98,8 @@ export function LobbyScreen({
   const [newRoomName, setNewRoomName] = useState("");
   const [createHosted, setCreateHosted] = useState(false);
   // Default Normal (casual): a game only counts toward MMR when explicitly Ranked.
+  // Ranked ALWAYS forces a Closed table — open tables store no seats, so the
+  // ladder cannot attribute a win/loss (detectFinishedMatch would drop them).
   const [createRanked, setCreateRanked] = useState(false);
   const [joinCode, setJoinCode] = useState("");
   const [roomFilter, setRoomFilter] = useState("");
@@ -106,7 +108,9 @@ export function LobbyScreen({
   const visibleRooms = showFilter ? rooms.filter((room) => roomMatchesFilter(room, roomFilter)) : rooms;
 
   const createRoom = () => {
-    onCreate(newRoomName.trim(), createHosted, createRanked);
+    // Ranked ⇒ closed (hosted), always — seat identity is required for W/L.
+    const hosted = createRanked ? true : createHosted;
+    onCreate(newRoomName.trim(), hosted, createRanked);
     setNewRoomName("");
   };
   const joinByCode = () => {
@@ -202,13 +206,16 @@ export function LobbyScreen({
             <button
               aria-checked={createRanked}
               className={`lobbyModeOption ${createRanked ? "active" : ""}`}
-              onClick={() => setCreateRanked(true)}
+              onClick={() => {
+                setCreateRanked(true);
+                setCreateHosted(true); // Ranked needs closed seats for the ladder.
+              }}
               role="radio"
               type="button"
             >
               <Medal aria-hidden="true" size={14} />
               <span className="lobbyModeName">Ranked game</span>
-              <span className="lobbyModeHint">Counts toward your MMR</span>
+              <span className="lobbyModeHint">Counts MMR · closed table</span>
             </button>
           </div>
           <div className="lobbyJoinCode">

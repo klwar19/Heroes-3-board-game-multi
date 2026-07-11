@@ -25,7 +25,12 @@ const MAX_PARTICIPANTS = 12;
  * no-ops a repeated matchId on both backends, so redelivery cannot double-count.
  */
 export async function POST(request: Request) {
-  const configured = process.env.HOMM3BG_MATCH_REPORT_KEY ?? "";
+  // Prefer the dedicated match-report secret; fall back to the admin break-glass
+  // key so a deployment that already set HOMM3BG_ADMIN_KEY on both the app and
+  // the party (for room moderation) still records finished games when the
+  // match-report key was never configured. Either secret empty ⇒ still 403.
+  const configured =
+    (process.env.HOMM3BG_MATCH_REPORT_KEY || process.env.HOMM3BG_ADMIN_KEY || "").trim();
   const presented = request.headers.get("x-homm3bg-report-key") ?? "";
   if (configured.length === 0 || presented !== configured) {
     return NextResponse.json({ error: "FORBIDDEN", message: "Match reporting is not enabled." }, { status: 403 });

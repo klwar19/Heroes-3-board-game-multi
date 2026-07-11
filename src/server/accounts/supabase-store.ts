@@ -28,6 +28,12 @@ import type { AccountBackend, RegisterOutcome } from "./backend";
 import { computeRatings, ELO_START, type EloParticipant } from "./elo";
 import type { MatchParticipantInput, RecordMatchResult } from "./account-store";
 import {
+  claimRowId,
+  claimRowsLikePattern,
+  matchClaimFingerprint,
+  type MatchClaimOutcome
+} from "@/server/match-claim";
+import {
   generateAccountId,
   generateToken,
   hashPassword,
@@ -684,6 +690,92 @@ export class SupabaseAccountStore implements AccountBackend {
       );
     }
     return { matchId: input.matchId, applied: true, changes };
+  }
+
+  /**
+   * Dual-claim ladder report (durable across serverless instances): each
+   * claimer inserts a reserved claim-row into the matches table; when two
+   * distinct participants agree on the fingerprint, recordMatchResult runs.
+   */
+  async claimMatchResult(input: {
+    claimerAccountId: string;
+    matchId: string;
+    participants: MatchParticipantInput[];
+    ranked?: boolean;
+  }): Promise<MatchClaimOutcome> {
+    const ranked = input.ranked !== false;
+    const claim = { matchId: input.matchId, ranked, participants: input.participants };
+    const fingerprint = matchClaimFingerprint(claim);
+
+    // Already fully recorded?
+    const existing = await this.db.select<{ match_id: string }>(
+      MATCHES_TABLE,
+      { match_id: input.matchId },
+      { limit: 1 }
+    );
+    if (existing.length > 0) {
+      return { status: "already-recorded" };
+    }
+
+    // Park this claimer's row (idempotent per claimer).
+    const rowId = claimRowId(input.matchId, input.claimerAccountId);
+    await this.db.insert(
+      MATCHES_TABLE,
+      {
+        match_id: rowId,
+        recorded_at: new Date(this.now()).toISOString(),
+        participants: {
+          kind: "dual-claim",
+          fingerprint,
+          ranked,
+          claimerAccountId: input.claimerAccountId,
+          participants: input.participants
+        }
+      },
+      { ignoreDuplicates: true }
+    );
+
+    // List every claim row for this matchId (prefix match via PostgREST like).
+    const claims = await this.db.select<{
+      match_id: string;
+      participants: {
+        kind?: string;
+        fingerprint?: string;
+        ranked?: boolean;
+        claimerAccountId?: string;
+        participants?: MatchParticipantInput[];
+      };
+    }>(MATCHES_TABLE, {}, { filters: [`match_id=like.${claimRowsLikePattern(input.matchId)}`] });
+
+    const agreeing = claims.filter(
+      (row) => row.participants?.kind === "dual-claim" && row.participants.fingerprint === fingerprint
+    );
+    if (agreeing.length < 2) {
+      // Conflicting fingerprints from other claimers count as non-agreeing.
+      const anyConflict = claims.some(
+        (row) =>
+          row.participants?.kind === "dual-claim" &&
+          row.participants.fingerprint &&
+          row.participants.fingerprint !== fingerprint
+      );
+      if (anyConflict && agreeing.length === 0) {
+        return { status: "rejected", detail: "Claim conflicts with an earlier report for this match." };
+      }
+      return {
+        status: "pending",
+        detail: `Waiting for ${2 - agreeing.length} more participant(s) to confirm.`
+      };
+    }
+
+    const result = await this.recordMatchResult({
+      matchId: input.matchId,
+      ranked,
+      participants: input.participants
+    });
+    if (!result.applied) {
+      return { status: "already-recorded", result };
+    }
+    return { status: "recorded", result };
   }
 
   // -------------------------------------------------------------------------
