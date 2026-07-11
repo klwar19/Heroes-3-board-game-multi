@@ -4,6 +4,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ChatPanel } from "./chat-panel";
 import { appendSystemChat, applyAction, createAdventureGameState, type GameAction, type GameState } from "@/engine";
 
+vi.mock("@/lib/sound", () => ({
+  playTableChatMessage: vi.fn()
+}));
+
 afterEach(cleanup);
 
 function ok(state: GameState, action: GameAction): GameState {
@@ -122,5 +126,40 @@ describe("ChatPanel", () => {
     const withMine = ok(withNew, { type: "SEND_CHAT", clientId: "me", text: "just me" });
     rerender(<ChatPanel state={withMine} clientId="me" onSend={vi.fn()} />);
     expect(container.querySelector(".chatBadge")?.textContent).toBe("1");
+  });
+
+  it("shows a preview toast and FAB snippet for a new line while collapsed", () => {
+    const initial = tableWith([{ clientId: "c2", text: "old" }]);
+    const { rerender, container } = render(<ChatPanel state={initial} clientId="me" onSend={vi.fn()} />);
+
+    const withNew = ok(initial, { type: "SEND_CHAT", clientId: "c2", text: "Hello from Bob" });
+    rerender(<ChatPanel state={withNew} clientId="me" onSend={vi.fn()} />);
+
+    expect(container.querySelector(".chatPreviewToast")).toBeTruthy();
+    expect(screen.getByText("Hello from Bob")).toBeTruthy();
+    expect(container.querySelector(".chatFabSnippet")?.textContent).toMatch(/Bob/i);
+    expect(container.querySelector(".chatFabSnippet")?.textContent).toMatch(/Hello from Bob/i);
+  });
+
+  it("shows a New messages divider when opening with unread", () => {
+    const initial = tableWith([{ clientId: "c2", text: "already seen" }]);
+    const { rerender } = render(<ChatPanel state={initial} clientId="me" onSend={vi.fn()} />);
+
+    const withNew = ok(initial, { type: "SEND_CHAT", clientId: "c2", text: "fresh line" });
+    rerender(<ChatPanel state={withNew} clientId="me" onSend={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /chat/i }));
+    expect(screen.getByText("New messages")).toBeTruthy();
+    expect(screen.getByText("fresh line")).toBeTruthy();
+  });
+
+  it("opens from the preview toast click", () => {
+    const initial = tableWith();
+    const { rerender } = render(<ChatPanel state={initial} clientId="me" onSend={vi.fn()} />);
+    const withNew = ok(initial, { type: "SEND_CHAT", clientId: "c2", text: "open me" });
+    rerender(<ChatPanel state={withNew} clientId="me" onSend={vi.fn()} />);
+
+    fireEvent.click(screen.getByText("open me"));
+    expect(screen.getByLabelText(/chat message/i)).toBeTruthy();
   });
 });
