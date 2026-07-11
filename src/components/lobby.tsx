@@ -25,8 +25,11 @@ function roomMatchesFilter(room: RoomDirectoryEntry, filter: string): boolean {
 
 /**
  * Members of this room who are ACTUALLY online right now (presence heartbeat),
- * keyed by lowercase name. Presence is short-TTL, so a seated player whose tab
- * died drops off within ~30s even though the room roster still lists them.
+ * keyed by lowercase name. Presence is short-TTL (generous enough to absorb
+ * background-tab timer throttling, so nobody blinks off just for alt-tabbing),
+ * so a seated player whose tab DIED still drops off within a couple of minutes
+ * even though the room roster keeps listing them; a clean close drops at once
+ * via the leave beacon.
  */
 function onlineNamesInRoom(roomId: string, players: PresenceEntry[] | undefined): Set<string> {
   const names = new Set<string>();

@@ -12074,6 +12074,98 @@ img.cardBack {
   color: var(--muted);
 }
 
+/* --- Two-column lobby: rooms left, live social rail right --------------- */
+/* The room browser (/play, /battle) pins "Players online" + the lobby chat
+   in a sticky right-hand column so they are visible at a glance, instead of
+   stacking below a full-viewport room list (where nobody ever scrolled). */
+.lobbyLayout {
+  width: min(1200px, 100%);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 18px;
+  align-items: start;
+}
+
+/* Inside the two-column layout the LobbyScreen is a grid cell, not a page:
+   drop its full-viewport centering so both columns top-align. */
+.lobbyLayout .lobbyRoot {
+  min-height: 0;
+  padding: 0;
+  overflow: visible;
+}
+
+.lobbyLayout .lobbyCard {
+  width: 100%;
+}
+
+.lobbySidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  position: sticky;
+  top: 16px;
+  max-height: calc(100dvh - 32px);
+}
+
+/* The rail panels float straight over the backdrop art now (they used to sit
+   under the lobby card), so give them the same solid, readable card body. */
+.lobbySidebar .playersOnline,
+.lobbySidebar .lobbyChat {
+  margin-top: 0;
+  border: 1px solid rgb(213 168 79 / 30%);
+  border-radius: 12px;
+  background: rgb(13 15 16 / 82%);
+  box-shadow: 0 14px 36px rgb(0 0 0 / 42%);
+}
+
+.lobbySidebar .playersOnlineList {
+  max-height: min(34dvh, 320px);
+}
+
+/* Chat fills the rest of the rail so the conversation is the visual anchor. */
+.lobbySidebar .lobbyChat {
+  flex: 1;
+  min-height: 240px;
+  overflow: hidden;
+}
+
+.lobbySidebar .lobbyChatMessages {
+  flex: 1;
+  max-height: none;
+  min-height: 140px;
+}
+
+/* Steady status dot in the rail headers (deliberately NOT animated — the
+   presence board must read calm, never blinking). */
+.lobbyLiveDot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #57c47a;
+  box-shadow: 0 0 6px rgb(87 196 122 / 60%);
+}
+
+@media (max-width: 1080px) {
+  .lobbyLayout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .lobbySidebar {
+    position: static;
+    max-height: none;
+  }
+
+  .lobbySidebar .lobbyChat {
+    min-height: 0;
+  }
+
+  .lobbySidebar .lobbyChatMessages {
+    max-height: 260px;
+  }
+}
+
 /* Lobby chat — global ephemeral feed shown in the room browser. */
 .lobbyChat {
   display: flex;

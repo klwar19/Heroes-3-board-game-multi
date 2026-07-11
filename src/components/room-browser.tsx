@@ -116,10 +116,15 @@ export function RoomBrowser({ mode, labels }: { mode: GameMode; labels: RoomBrow
     // Announce that we are online (in the lobby, no room) and pick up the fresh
     // online list in the same round trip. Prefer the signed-in nickname so the
     // online board never labels a real account under a stale guest name.
-    // Best-effort — presence is decorative.
+    // Best-effort — presence is decorative; a failed beat resolves null and
+    // must NOT blank the list (that read as everyone blinking offline).
     const presenceName = (accountName ?? getDisplayName()).trim() || "Player";
     sendPresence({ clientId, name: presenceName })
-      .then(setPlayersOnline)
+      .then((players) => {
+        if (players) {
+          setPlayersOnline(players);
+        }
+      })
       .catch(() => {
         /* transient — the next poll retries */
       });
@@ -127,10 +132,21 @@ export function RoomBrowser({ mode, labels }: { mode: GameMode; labels: RoomBrow
 
   // Poll the directory (and lobby chat) every 3s while the browser is open —
   // chat feels fresher without hammering the server (best-effort ephemeral).
+  // Background tabs get their timers throttled to >= 60s, so also refresh the
+  // moment the tab becomes visible again instead of waiting out a stale tick.
   useEffect(() => {
     refresh();
     const intervalId = window.setInterval(refresh, 3000);
-    return () => window.clearInterval(intervalId);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        refresh();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [refresh]);
 
   // Drop off the online list promptly when the lobby is left (navigating into a
@@ -257,33 +273,41 @@ export function RoomBrowser({ mode, labels }: { mode: GameMode; labels: RoomBrow
           )}
         </Link>
       </div>
-      {/* Remount when the persisted name hydrates/changes so the name field's
-          draft (captured at mount) always starts from the real value. */}
-      <LobbyScreen
-        key={displayName}
-        createLabel={labels.createLabel}
-        displayName={displayName}
-        emptyHint={labels.emptyHint}
-        error={error}
-        isAdmin={isAdmin}
-        loading={loading}
-        onClose={handleClose}
-        onCreate={handleCreate}
-        onJoin={goToRoom}
-        onRefresh={refresh}
-        onRename={handleRename}
-        onlinePlayers={playersOnline}
-        rooms={rooms}
-        supported={supported}
-        title={labels.title}
-      />
-      <PlayersOnline
-        players={playersOnline}
-        clientId={clientId}
-        onJoinRoom={goToRoom}
-        onInvite={invitePlayer}
-      />
-      <LobbyChat clientId={clientId} messages={chatMessages} error={chatError} onSend={sendChat} />
+      {/* Two-column lobby: the room directory on the left, a LIVE social rail
+          (who is online + the global lobby chat) pinned on the right so both
+          are visible at a glance instead of hiding below the fold. Narrow
+          screens stack the rail under the rooms (CSS). */}
+      <div className="lobbyLayout">
+        {/* Remount when the persisted name hydrates/changes so the name field's
+            draft (captured at mount) always starts from the real value. */}
+        <LobbyScreen
+          key={displayName}
+          createLabel={labels.createLabel}
+          displayName={displayName}
+          emptyHint={labels.emptyHint}
+          error={error}
+          isAdmin={isAdmin}
+          loading={loading}
+          onClose={handleClose}
+          onCreate={handleCreate}
+          onJoin={goToRoom}
+          onRefresh={refresh}
+          onRename={handleRename}
+          onlinePlayers={playersOnline}
+          rooms={rooms}
+          supported={supported}
+          title={labels.title}
+        />
+        <aside className="lobbySidebar" aria-label="Players online and lobby chat">
+          <PlayersOnline
+            players={playersOnline}
+            clientId={clientId}
+            onJoinRoom={goToRoom}
+            onInvite={invitePlayer}
+          />
+          <LobbyChat clientId={clientId} messages={chatMessages} error={chatError} onSend={sendChat} />
+        </aside>
+      </div>
     </MenuShell>
   );
 }

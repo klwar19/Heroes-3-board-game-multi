@@ -93,6 +93,24 @@ describe("/play (multiplayer room browser)", () => {
     );
   });
 
+  it("shows the social rail — Players online + lobby chat — beside the room directory", async () => {
+    render(<PlayPage />);
+    await screen.findByText("Friday Night");
+
+    // The rail is a landmark so it is discoverable and always on screen (the
+    // CSS pins it as the right-hand column; narrow screens stack it below).
+    const rail = screen.getByRole("complementary", { name: /Players online and lobby chat/i });
+    expect(rail.className).toBe("lobbySidebar");
+    // Both live panels render INSIDE the rail, not below the fold.
+    expect(screen.getByText("Players online").closest("aside")).toBe(rail);
+    expect(screen.getByText("Lobby chat").closest("aside")).toBe(rail);
+    // Rooms stay OUTSIDE the rail, in the main column of the same layout grid.
+    const layout = rail.parentElement;
+    expect(layout?.className).toBe("lobbyLayout");
+    expect(screen.getByText("Friday Night").closest("aside")).toBeNull();
+    expect(layout?.contains(screen.getByText("Friday Night"))).toBe(true);
+  });
+
   it("surfaces a directory failure instead of a silent empty list", async () => {
     fetchRoomList.mockRejectedValue(new Error("offline"));
     render(<PlayPage />);
