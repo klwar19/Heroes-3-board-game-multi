@@ -94,7 +94,12 @@ function appUrlOf(room: Party.Room): string | undefined {
 function matchReportConfigOf(room: Party.Room): { appUrl: string; key: string } | null {
   const appUrl = appUrlOf(room);
   const env = (room as unknown as { env?: Record<string, unknown> }).env;
-  const key = typeof env?.HOMM3BG_MATCH_REPORT_KEY === "string" ? env.HOMM3BG_MATCH_REPORT_KEY : "";
+  // Prefer the dedicated match-report secret; fall back to the admin key so a
+  // deployment that already set HOMM3BG_ADMIN_KEY for room moderation still
+  // records finished games when HOMM3BG_MATCH_REPORT_KEY was never configured.
+  const matchKey = typeof env?.HOMM3BG_MATCH_REPORT_KEY === "string" ? env.HOMM3BG_MATCH_REPORT_KEY : "";
+  const adminKey = typeof env?.HOMM3BG_ADMIN_KEY === "string" ? env.HOMM3BG_ADMIN_KEY : "";
+  const key = matchKey.trim() || adminKey.trim();
   if (!appUrl || key.length === 0) {
     return null;
   }

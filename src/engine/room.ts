@@ -205,6 +205,18 @@ export function healVerifiedMembership(state: GameState, actor: VerifiedActor): 
     return false;
   }
   member.userId = userId;
+  // Backfill the frozen match-report seat snapshot when this seat was stamped
+  // as a guest at adventure start (JOIN before the socket ticket resolved).
+  // Without this, a later heal would leave matchSeats.userId empty and a
+  // leaver/deserter path could drop the account from the ladder entirely —
+  // live members still record via their seat, but the quit-proof snapshot
+  // would not. Only fill a missing userId; never rebind a different account.
+  if (member.seat !== "observer" && room.matchSeats?.[member.seat] && !room.matchSeats[member.seat].userId) {
+    room.matchSeats[member.seat] = {
+      ...room.matchSeats[member.seat],
+      userId
+    };
+  }
   return true;
 }
 
@@ -402,9 +414,10 @@ export function setRoomHosted(
   }
 
   if (action.hosted) {
-    // Claiming host: allowed when the room is open (any member) or when already
-    // the host (a no-op refresh). Never lets a player seize host from another.
-    if (room.hosted && room.hostClientId !== action.clientId) {
+    // Claiming host: allowed when the room is open (any member), when no host
+    // is assigned yet (hosted flag without hostClientId), or when already the
+    // host (a no-op refresh). Never lets a player seize host from another.
+    if (room.hosted && room.hostClientId && room.hostClientId !== action.clientId) {
       throw new Error("Only the host can change the room settings.");
     }
     const wasHosted = room.hosted;

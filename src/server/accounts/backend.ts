@@ -16,6 +16,7 @@
  */
 import type { OutboundMail } from "./mailer";
 import type { MatchParticipantInput, RecordMatchResult } from "./account-store";
+import type { MatchClaimOutcome } from "@/server/match-claim";
 import type { AccountProfile, AccountRole, SelfProfile } from "./types";
 
 type MaybePromise<T> = T | Promise<T>;
@@ -76,4 +77,15 @@ export interface AccountBackend {
      */
     ranked?: boolean;
   }): MaybePromise<RecordMatchResult>;
+  /**
+   * Dual-claim ladder report (backup when the PartyKit edge cannot POST). The
+   * claimer must be a participant; a second distinct participant must submit
+   * the identical payload before W/L is applied. See match-claim.ts.
+   */
+  claimMatchResult(input: {
+    claimerAccountId: string;
+    matchId: string;
+    participants: MatchParticipantInput[];
+    ranked?: boolean;
+  }): MaybePromise<MatchClaimOutcome>;
 }

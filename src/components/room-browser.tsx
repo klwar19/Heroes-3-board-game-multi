@@ -195,11 +195,14 @@ export function RoomBrowser({ mode, labels }: { mode: GameMode; labels: RoomBrow
 
   const handleCreate = (name: string, hosted: boolean, ranked: boolean) => {
     setError(null);
+    // Ranked always closes the table so seats exist for match reporting.
+    const effectiveHosted = ranked ? true : hosted;
     createRoomOnServer({
       name: name || undefined,
       createdByName: displayName.trim() || undefined,
       mode,
-      ranked
+      ranked,
+      hosted: effectiveHosted
     })
       .then(({ roomId }) => {
         // PartyKit creates rooms implicitly, so carry the choices across the
@@ -208,7 +211,7 @@ export function RoomBrowser({ mode, labels }: { mode: GameMode; labels: RoomBrow
         if (name) {
           savePendingRoomName(roomId, name);
         }
-        if (hosted) {
+        if (effectiveHosted) {
           savePendingRoomHosted(roomId);
         }
         // Always carry the match type so PartyKit applies the explicit choice

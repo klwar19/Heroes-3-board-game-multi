@@ -41,6 +41,7 @@ import {
   type SessionRecord
 } from "./types";
 import { normalizeEmail, normalizeNicknameKey, validateContact, validateEmail, validateNickname, validatePassword } from "./validation";
+import { parkDualClaim, PendingMatchClaimBoard, type MatchClaimOutcome } from "@/server/match-claim";
 
 export type AccountStoreOptions = {
   /** Injectable clock (epoch ms). Defaults to Date.now. */
@@ -108,6 +109,8 @@ export class AccountStore implements AccountBackend {
    */
   private readonly socketTickets = new Map<string, SessionRecord>();
   private readonly recordedMatches = new Set<string>();
+  /** Pending dual-claims for claimMatchResult (participant-confirmed ladder). */
+  private readonly pendingMatchClaims = new PendingMatchClaimBoard();
   private readonly rateWindows = new Map<string, RateWindow>();
   private readonly lastResendAt = new Map<string, number>();
 
@@ -692,6 +695,44 @@ export class AccountStore implements AccountBackend {
     return { matchId: input.matchId, applied: true, changes };
   }
 
+  /**
+   * Dual-claim ladder report: parks a claim until a second distinct
+   * participant confirms the same payload, then records via recordMatchResult.
+   */
+  claimMatchResult(input: {
+    claimerAccountId: string;
+    matchId: string;
+    participants: MatchParticipantInput[];
+    ranked?: boolean;
+  }): MatchClaimOutcome {
+    // Already fully recorded (edge path or a prior dual-claim) → no-op.
+    if (this.recordedMatches.has(input.matchId)) {
+      return { status: "already-recorded" };
+    }
+    const claim = {
+      matchId: input.matchId,
+      ranked: input.ranked !== false,
+      participants: input.participants
+    };
+    const parked = parkDualClaim(input.claimerAccountId, claim, this.pendingMatchClaims);
+    if (parked.status === "pending") {
+      return { status: "pending", detail: parked.detail };
+    }
+    if (parked.status === "rejected") {
+      return { status: "rejected", detail: parked.detail };
+    }
+    const result = this.recordMatchResult({
+      matchId: parked.claim.matchId,
+      ranked: parked.claim.ranked,
+      participants: parked.claim.participants
+    });
+    this.pendingMatchClaims.clear(input.matchId);
+    if (!result.applied) {
+      return { status: "already-recorded", result };
+    }
+    return { status: "recorded", result };
+  }
+
   // -------------------------------------------------------------------------
   // Hygiene: keep the store (and therefore the persisted snapshot) bounded
   // -------------------------------------------------------------------------
@@ -743,7 +784,8 @@ export class AccountStore implements AccountBackend {
       accounts: [...this.accounts.values()],
       tokens: [...this.tokens.values()],
       sessions: [...this.sessions.values()],
-      recordedMatches: [...this.recordedMatches]
+      recordedMatches: [...this.recordedMatches],
+      pendingMatchClaims: this.pendingMatchClaims.toJSON()
     };
   }
 
@@ -771,6 +813,7 @@ export class AccountStore implements AccountBackend {
     for (const matchId of snapshot.recordedMatches ?? []) {
       this.recordedMatches.add(matchId);
     }
+    this.pendingMatchClaims.loadJSON(snapshot.pendingMatchClaims ?? []);
   }
 
   // -------------------------------------------------------------------------
@@ -897,6 +940,7 @@ export type AccountStoreSnapshot = {
   tokens: EmailToken[];
   sessions: SessionRecord[];
   recordedMatches?: string[];
+  pendingMatchClaims?: ReturnType<PendingMatchClaimBoard["toJSON"]>;
 };
 
 // A fixed scrypt hash of a random string, used to spend comparable CPU on a

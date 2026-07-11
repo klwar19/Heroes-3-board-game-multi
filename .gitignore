@@ -16,3 +16,12 @@ yarn-error.log*
 pnpm-debug.log*
 out/
 .boardgame-asset-stage
+
+.partykit-env.local
+.partykit-env*.local
+
+
+.playwright-vercel-debug/
+.partykit-env.local
+scripts/redeploy-vercel.mjs
+

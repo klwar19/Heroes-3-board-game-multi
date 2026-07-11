@@ -38,6 +38,7 @@ import {
 } from "@/components/table/board";
 import { CardFrame, HandFan, OpponentBar, PermanentSlot, PlayerDock } from "@/components/table/seats";
 import { assetUrl } from "@/lib/asset-url";
+import { maybeClaimFinishedMatch } from "@/lib/match-claim-client";
 import { HeroBoard } from "@/components/hero-board";
 import {
   CombatResultModal,
@@ -550,6 +551,8 @@ type HandMode = null | "mulligan" | "morale-redraw";
 
 export default function Home() {
   const [state, setState] = useState<GameState | null>(null);
+  /** Latest ingested state — used as `prev` for ladder dual-claim detection. */
+  const stateRef = useRef<GameState | null>(null);
   const [viewerPlayerId, setViewerPlayerId] = useState<PlayerId>("p1");
   /** Stable per-browser identity for room membership (host/seat enforcement). */
   const clientId = useMemo(() => getClientId(), []);
@@ -939,6 +942,12 @@ export default function Home() {
     // ("can't access property Symbol.iterator, spellBook is undefined"),
     // crashing the whole table. Backfill it before anything reads the state.
     healLegacyPlayerFields(nextState);
+
+    // Ladder dual-claim backup: when this frame ends a multiplayer game, each
+    // signed-in participant posts once so W/L still records if the PartyKit
+    // edge report key is missing. Uses the previous client state as `prev`.
+    maybeClaimFinishedMatch(stateRef.current ?? undefined, nextState);
+    stateRef.current = nextState;
 
     const rolls = nextState.eventLog.filter(
       (event): event is Extract<GameEvent, { type: "ATTACK_ROLLED" }> => event.type === "ATTACK_ROLLED"
@@ -3319,24 +3328,45 @@ export default function Home() {
         void connection.submitAction({ type: "SET_ROOM_NAME", clientId, name: pending.name }).catch(() => {});
       }
       // Closed table: turn hosting on now that we are a member (idempotent — a
-      // no-op if the room is already hosted, e.g. after a reconnect).
+      // no-op if the room is already hosted, e.g. after a reconnect). Keep the
+      // pending hint until the room actually shows hosted so a failed submit
+      // (network blip) is retried on the next snapshot instead of stranding an
+      // open table that can never record ranked W/L.
       const hostedRoomId = pendingRoomHostedRef.current;
       if (hostedRoomId && hostedRoomId === roomId) {
-        pendingRoomHostedRef.current = null;
-        if (!state.room?.hosted) {
-          void connection.submitAction({ type: "SET_ROOM_HOSTED", clientId, hosted: true }).catch(() => {});
+        if (state.room?.hosted) {
+          pendingRoomHostedRef.current = null;
+        } else {
+          void connection
+            .submitAction({ type: "SET_ROOM_HOSTED", clientId, hosted: true })
+            .then(() => {
+              pendingRoomHostedRef.current = null;
+            })
+            .catch(() => {
+              /* retry on next snapshot while the ref stays set */
+            });
         }
       }
       // Ranked/Normal: apply the chosen match type once we are a member (only
       // while still a setup lobby, matching the engine's lock; a no-op if the
       // room already carries the choice, e.g. the API backend seeded it).
+      // Ranked always re-asserts hosted so seat identity exists for the ladder.
       const pendingRanked = pendingRoomRankedRef.current;
       if (pendingRanked && pendingRanked.roomId === roomId) {
-        pendingRoomRankedRef.current = null;
-        if (state.room?.ranked !== pendingRanked.ranked && state.phase === "setup" && Boolean(state.setupLobby)) {
+        if (state.room?.ranked === pendingRanked.ranked) {
+          pendingRoomRankedRef.current = null;
+        } else if (state.phase === "setup" && Boolean(state.setupLobby)) {
           void connection
             .submitAction({ type: "SET_ROOM_RANKED", clientId, ranked: pendingRanked.ranked })
-            .catch(() => {});
+            .then(() => {
+              pendingRoomRankedRef.current = null;
+            })
+            .catch(() => {
+              /* retry on next snapshot */
+            });
+          if (pendingRanked.ranked && !state.room?.hosted) {
+            void connection.submitAction({ type: "SET_ROOM_HOSTED", clientId, hosted: true }).catch(() => {});
+          }
         }
       }
       // Battle Test: switch a freshly created room to combat-sandbox. Only ever
