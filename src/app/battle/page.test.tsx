@@ -58,7 +58,7 @@ describe("/battle (combat-sandbox arena browser)", () => {
     render(<BattlePage />);
 
     expect(screen.getByText("Battle Test Arenas")).toBeTruthy();
-    expect(screen.getByText(/set up and try a fight/i)).toBeTruthy();
+    expect(screen.getByText(/free army setup, then fight/i)).toBeTruthy();
 
     // The arena appears; the adventure table is filtered out (that lives on /play).
     expect(await screen.findByText("Test Arena")).toBeTruthy();

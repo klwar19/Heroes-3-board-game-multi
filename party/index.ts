@@ -3,7 +3,7 @@ import {
   applyAction,
   createAdventureGameState,
   createAdventureLobbyState,
-  createInitialGameState,
+  createCombatSandboxLobbyState,
   driveAfkDrop,
   dropDisconnectedMember,
   forcedResolutionPending,
@@ -248,7 +248,7 @@ export default class GameRoomServer implements Party.Server {
     const mode = options.mode ?? "adventure";
 
     if (mode === "combat-sandbox") {
-      return createInitialGameState(seed);
+      return createCombatSandboxLobbyState(seed);
     }
 
     return options.players?.length

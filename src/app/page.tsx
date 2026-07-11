@@ -14,6 +14,7 @@ import {
   getPlayerView,
   hasOpenAdventureTurn,
   healLegacyPlayerFields,
+  isCombatSandboxSetup,
   roomDisplayName,
   isParallelActor,
   isResetVoteApproved,
@@ -77,6 +78,7 @@ import {
   type MoraleCardCue
 } from "@/components/table/morale-card-cue";
 import { CombatMoralePanel } from "@/components/table/combat-morale-panel";
+import { CombatSandboxSetupScreen } from "@/components/table/combat-sandbox-setup";
 import { healFreezeDisplayDamage } from "@/components/table/heal-display";
 import { TableErrorBoundary } from "@/components/error-boundary";
 import {
@@ -3502,7 +3504,11 @@ export default function Home() {
       // sandbox mid-fight, post-setup phases) = "playing" so the online list
       // and lobby can tell a live game from an empty seating screen.
       const roomStatus =
-        liveState && liveState.phase === "setup" && liveState.setupLobby ? ("setup" as const) : ("playing" as const);
+        liveState &&
+        liveState.phase === "setup" &&
+        (Boolean(liveState.setupLobby) || Boolean(liveState.combatSandboxSetup))
+          ? ("setup" as const)
+          : ("playing" as const);
       void sendPresence({
         clientId,
         name: presenceNameRef.current.trim() || "Player",
@@ -3903,11 +3909,13 @@ export default function Home() {
     ? null
     : state.mode === "adventure" && Boolean(state.setupLobby) && state.phase === "setup"
       ? "menu"
-      : // PvP pre-battle preparation happens on the map, so keep the map theme
-        // playing until the fight actually begins (deployment).
-        state.mode === "adventure" && (!state.combat || combatTab === "map" || Boolean(state.combat.prep))
-        ? "map"
-        : "combat";
+      : state.mode === "combat-sandbox" && state.phase === "setup"
+        ? "menu"
+        : // PvP pre-battle preparation happens on the map, so keep the map theme
+          // playing until the fight actually begins (deployment).
+          state.mode === "adventure" && (!state.combat || combatTab === "map" || Boolean(state.combat.prep))
+          ? "map"
+          : "combat";
   useBackgroundMusic(musicScene);
 
   // No room selected → this page has nothing to show anymore: the effect
@@ -3963,6 +3971,7 @@ export default function Home() {
   const inBattlePrep = Boolean(state.combat?.prep) && !state.combat?.outcome;
   const adventureMode = state.mode === "adventure";
   const inLobby = Boolean(state.setupLobby) && state.phase === "setup";
+  const inCombatSandboxSetup = isCombatSandboxSetup(state);
 
   const roomHosted = Boolean(state.room?.hosted);
   const lockedSeatLabel =
@@ -4255,6 +4264,33 @@ export default function Home() {
             onAction={submitAction}
             state={state}
             viewerPlayerId={isSeated ? viewerPlayerId : OBSERVER_SEAT}
+          />
+          <LogDrawer state={state} />
+          {reactionsLayer}
+        </main>
+      </CardZoomProvider>
+    );
+  }
+
+  // ---- Battle Test free setup (factions / units / cards / battlefield) ------
+  if (inCombatSandboxSetup) {
+    return (
+      <CardZoomProvider>
+        <main className="tableRoot adventureRoot setupPhase sandboxSetupPhase" onClick={playTableUiClickSound}>
+          <div className="tableTopRow">
+            <div className="advHud">
+              <div className="advHudCell">
+                <strong>Battle Test setup</strong>
+                <small>build armies, then deploy like PvP</small>
+              </div>
+            </div>
+            {tableMenu}
+          </div>
+          {errorBanner}
+          <CombatSandboxSetupScreen
+            onAction={submitAction}
+            state={state}
+            viewerPlayerId={isSeated ? viewerPlayerId : "p1"}
           />
           <LogDrawer state={state} />
           {reactionsLayer}

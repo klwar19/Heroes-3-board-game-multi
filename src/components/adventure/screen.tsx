@@ -6442,6 +6442,7 @@ export const ADVENTURE_FEED_CUES: Partial<Record<GameEventType, { icon: string; 
   EXPERIENCE_GAINED: { icon: "📈", cue: "experience" },
   HERO_LEVEL_UP: { icon: "⭐", cue: "level-up" },
   HERO_GAINED: { icon: "🧙", cue: "recruit" },
+  HERO_LOST: { icon: "🏳", cue: "retreat" },
   MORALE_CHANGED: { icon: "🎺", cue: "morale" },
   MORALE_CARD_DRAWN: { icon: "🎺", cue: "morale" },
   MORALE_CARD_DISCARDED: { icon: "🎺", cue: "morale" },

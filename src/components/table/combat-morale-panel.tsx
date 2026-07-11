@@ -67,7 +67,10 @@ export function CombatMoralePanel({
   const [picking, setPicking] = useState(false);
   const [picks, setPicks] = useState<number[]>([]);
 
-  const moraleCardsOn = Boolean(state.adventure?.moraleCards);
+  // Adventure keeps the Morale Cards rule on the map state; Battle Test keeps it
+  // on `sandboxRules` after Begin (there is no adventure object in a sandbox), so
+  // the combat panel must honour both or the drawn cards would be unusable.
+  const moraleCardsOn = Boolean(state.adventure?.moraleCards || state.sandboxRules?.moraleCards);
   const drawAction = legalActions.find(
     (legal) => legal.action.type === "SPEND_MORALE" && legal.action.benefit === "draw"
   );
