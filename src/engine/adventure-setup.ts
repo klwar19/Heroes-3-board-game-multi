@@ -198,6 +198,11 @@ export type AdventureSetupOptions = {
   spellBook?: boolean;
   /** Morale Cards optional rule (default off): replaces normal morale tokens with morale card decks. */
   moraleCards?: boolean;
+  /**
+   * PvP Neutral Control mode (default off, multiplayer only): the next live
+   * player clockwise commands the Neutral units in every Neutral combat.
+   */
+  pvpNeutralControl?: boolean;
   /** Individual BINH house-rule toggle overrides (see house-rules.ts). */
   houseRules?: Partial<Record<HouseRuleId, boolean>>;
   /**
@@ -275,6 +280,7 @@ export function defaultGameSetupOptions(scenario: ScenarioDefinition): GameSetup
     pvpTroopLoss: "normal",
     spellBook: true,
     moraleCards: false,
+    pvpNeutralControl: false,
     farTileOpening: true,
     farTilesPerPlayer: scenario.farTiles.perPlayer,
     difficulty: "impossible",
@@ -690,6 +696,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     ...(options.parallelTurns !== undefined ? { parallelTurns: options.parallelTurns } : {}),
     ...(options.spellBook !== undefined ? { spellBook: options.spellBook } : {}),
     ...(options.moraleCards !== undefined ? { moraleCards: options.moraleCards } : {}),
+    ...(options.pvpNeutralControl !== undefined ? { pvpNeutralControl: options.pvpNeutralControl } : {}),
     ...(options.houseRules !== undefined ? { houseRules: options.houseRules } : {}),
     ...(options.farTileOpening !== undefined ? { farTileOpening: options.farTileOpening } : {}),
     ...(options.farTilesPerPlayer !== undefined ? { farTilesPerPlayer: options.farTilesPerPlayer } : {}),
@@ -745,6 +752,10 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   // Parallel turns (optional, multiplayer only): the number of opening rounds
   // everyone plays simultaneously. A solo table always plays ordered.
   const parallelRounds = playerConfigs.length >= 2 ? normalizeParallelTurnRounds(setupOptions.parallelTurns) : 0;
+  // PvP Neutral Control (optional, multiplayer only): the next live player
+  // clockwise commands the Neutral units in every Neutral combat. A solo table
+  // has no next player, so the flag never lands there and the AI plays on.
+  const pvpNeutralControlOn = (setupOptions.pvpNeutralControl ?? false) && playerConfigs.length >= 2;
 
   const adventure: AdventureState = {
     difficulty,
@@ -782,6 +793,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     pvpTroopLoss,
     spellBook: spellBookOn,
     moraleCards: moraleCardsOn,
+    pvpNeutralControl: pvpNeutralControlOn,
     houseRules,
     chooseGatePlacement: chooseGatePlacementOn,
     ...(victoryMode === "grail" ? { grail: { status: "uncollected" as const } } : {}),
@@ -1290,6 +1302,9 @@ export function createAdventureLobbyState(options: AdventureSetupOptions = {}): 
   if (options.moraleCards !== undefined) {
     setupOptions.moraleCards = options.moraleCards;
   }
+  if (options.pvpNeutralControl !== undefined) {
+    setupOptions.pvpNeutralControl = options.pvpNeutralControl;
+  }
   // Map-setup default: a fresh lobby opens with the three universal core town
   // cards (Citadel, Mage Guild, Bronze Dwelling) already pre-built, so every
   // faction starts the adventure with the standard opening buildings. Any seat
@@ -1452,6 +1467,11 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
   if (next.moraleCards !== undefined) {
     lobby.options.moraleCards = Boolean(next.moraleCards);
     changes.push(`Morale Cards ${next.moraleCards ? "on" : "off"}`);
+  }
+
+  if (next.pvpNeutralControl !== undefined) {
+    lobby.options.pvpNeutralControl = Boolean(next.pvpNeutralControl);
+    changes.push(`PvP Neutral Control ${next.pvpNeutralControl ? "on (multiplayer only)" : "off"}`);
   }
 
   if (next.houseRules !== undefined) {
@@ -2479,6 +2499,7 @@ function buildAdventureFromLobby(state: GameState): void {
     events: lobby.options.events,
     spellBook: lobby.options.spellBook,
     moraleCards: lobby.options.moraleCards,
+    pvpNeutralControl: lobby.options.pvpNeutralControl,
     houseRules: lobby.options.houseRules,
     parallelTurns: lobby.options.parallelTurns,
     farTileOpening: lobby.options.farTileOpening,

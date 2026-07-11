@@ -347,7 +347,8 @@ export {
   tileLatticeNeighbors
 } from "./hex";
 export type { HexCoord, HexDirection } from "./hex";
-export { isNeutralUnit, pickNeutralTarget, planNeutralActivation } from "./neutral-ai";
+export { isNeutralUnit, pickNeutralTarget, planNeutralActivation, planNeutralActivationManual } from "./neutral-ai";
+export { isNeutralCommandChoice, neutralCombatControllerId } from "./neutral-control";
 export {
   canUnitAttack,
   canUnitMoveAndAttack,

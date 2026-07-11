@@ -412,6 +412,8 @@ export function formatEvent(event: GameEvent, state: GameState): string {
         : `${playerName(state, event.playerId)} ends their parallel turn — the round is complete.`;
     case "PARALLEL_TURNS_STOPPED":
       return event.message;
+    case "NEUTRAL_CONTROL_ASSIGNED":
+      return event.message;
     case "ROOM_MEMBER_JOINED": {
       // Registered players show their verified nickname; guests are honestly
       // labeled so nobody mistakes them for an account. Rebinds read "reconnected".

@@ -1,4 +1,5 @@
 import { appendEvent } from "./events";
+import { isNeutralCommandChoice } from "./neutral-control";
 import { NEUTRAL_PLAYER_ID } from "./state";
 import type { GameState, PlayerId } from "./state";
 
@@ -117,6 +118,16 @@ export function parallelInteractionBlocker(state: GameState, playerId: PlayerId)
   const combat = state.combat;
   if (combat) {
     if (combat.attackerPlayerId === playerId || combat.defenderPlayerId === playerId) {
+      return null;
+    }
+    // PvP Neutral Control: the commanding player answering the open fight's
+    // own Neutral-command choice (target / landing cell / activation-order
+    // tie) is that interaction's input, not a bystander intrusion — without
+    // this the fingerprint backstop would reject their answer whole. While the
+    // choice is open their legal actions are exactly its options (the
+    // pendingChoice short-circuit in getLegalActions), so this cannot leak any
+    // other non-quiet action to them.
+    if (state.pendingChoice?.playerId === playerId && isNeutralCommandChoice(state.pendingChoice)) {
       return null;
     }
     // Report the human fighter (a neutral-guard fight's defender is the
