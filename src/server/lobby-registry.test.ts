@@ -136,6 +136,20 @@ describe("deriveLobbyRecord", () => {
     ranked.room = { hosted: false, hostClientId: null, members: [], ranked: true };
     expect(deriveLobbyRecord({ roomId: "r", state: ranked, ...META }).ranked).toBe(true);
   });
+
+  it("reports whether the room is password-protected (a boolean only — never the hash)", () => {
+    const locked = createAdventureLobbyState({ seed: "derive-locked" });
+    locked.room = { hosted: false, hostClientId: null, members: [], passwordHash: "abc123def45678" };
+    const record = deriveLobbyRecord({ roomId: "lk", state: locked, ...META });
+    expect(record.locked).toBe(true);
+    // The directory carries only the boolean, never the hash itself.
+    expect(JSON.stringify(record)).not.toContain("abc123def45678");
+
+    // CONTROL: an open, unlocked room reports locked === false.
+    const open = createAdventureLobbyState({ seed: "derive-unlocked" });
+    open.room = { hosted: false, hostClientId: null, members: [] };
+    expect(deriveLobbyRecord({ roomId: "op", state: open, ...META }).locked).toBe(false);
+  });
 });
 
 describe("viewerCanClose", () => {

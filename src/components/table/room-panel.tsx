@@ -83,6 +83,12 @@ export function RoomPanel({
   const [roomNameDraft, setRoomNameDraft] = useState(room?.name ?? "");
   const canRename = Boolean(me) && (!hosted || isHost);
   const currentRoomName = roomDisplayName(state, roomId);
+  // Room join password: same authority as the name (open: any member; hosted:
+  // host-only). The stored hash is redacted in views, so we only ever know
+  // whether a password is SET — never its value.
+  const [roomPasswordDraft, setRoomPasswordDraft] = useState("");
+  const canSetPassword = canRename;
+  const hasPassword = Boolean(room?.passwordHash);
   // Closing mirrors the engine rule: the host on a hosted room; anyone on an
   // open table (open tables have no ownership to protect — see viewerCanClose).
   const canClose = hosted ? isHost : true;
@@ -292,6 +298,56 @@ export function RoomPanel({
               Save
             </button>
           </div>
+
+          {canSetPassword ? (
+            <div className="roomTitleRow">
+              <span className="roomTitleLabel">
+                {hasPassword ? (
+                  <>
+                    <Lock aria-hidden="true" size={12} /> Password
+                  </>
+                ) : (
+                  "Password"
+                )}
+              </span>
+              <input
+                aria-label="Room password"
+                autoComplete="off"
+                maxLength={32}
+                onChange={(event) => setRoomPasswordDraft(event.target.value)}
+                placeholder={hasPassword ? "Password set — type to change" : "No password"}
+                type="password"
+                value={roomPasswordDraft}
+              />
+              <button
+                className="commandButton"
+                disabled={roomPasswordDraft.trim().length === 0}
+                onClick={() => {
+                  onAction({ type: "SET_ROOM_PASSWORD", clientId, password: roomPasswordDraft.trim() });
+                  setRoomPasswordDraft("");
+                }}
+                type="button"
+              >
+                {hasPassword ? "Change" : "Set"}
+              </button>
+              {hasPassword ? (
+                <button
+                  className="commandButton"
+                  onClick={() => {
+                    onAction({ type: "SET_ROOM_PASSWORD", clientId, password: "" });
+                    setRoomPasswordDraft("");
+                  }}
+                  type="button"
+                >
+                  Remove
+                </button>
+              ) : null}
+            </div>
+          ) : hasPassword ? (
+            <div className="roomModeNote">
+              <Lock aria-hidden="true" size={12} /> This room is password-protected.
+            </div>
+          ) : null}
 
           <div className="roomNameRow">
             <input

@@ -77,7 +77,10 @@ describe("/battle (combat-sandbox arena browser)", () => {
       name: "My Arena",
       createdByName: "Binh",
       mode: "combat-sandbox",
-      ranked: false
+      ranked: false,
+      // Ranked forces a closed table; a Normal room carries the explicit choice
+      // (default Open) so the edge seeds the same hosting the client applies.
+      hosted: false
     });
     await vi.waitFor(() => expect(push).toHaveBeenCalledWith("/?room=new-arena-3"));
     // The mode crosses the navigation so the game page switches the fresh room

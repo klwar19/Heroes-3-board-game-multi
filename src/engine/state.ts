@@ -3407,6 +3407,14 @@ export type GameAction =
       type: "JOIN_ROOM";
       clientId: string;
       name: string;
+      /**
+       * The room-password attempt. Required only when the room is
+       * password-protected (`RoomMembershipState.passwordHash` set) and the
+       * joiner is a NEW member who is neither the sticky host nor an existing
+       * member reconnecting — those keep their access. An absent/incorrect
+       * attempt against a locked room is rejected (see joinRoom in room.ts).
+       */
+      password?: string;
     }
   | {
       /** Remove this client from the room; frees its seat and hands off host. */
@@ -3456,6 +3464,18 @@ export type GameAction =
       type: "SET_ROOM_NAME";
       clientId: string;
       name: string;
+    }
+  | {
+      /**
+       * Set (or clear) the room's join password. Open table: any member may set
+       * it; hosted: host-only (mirrors `SET_ROOM_NAME`). Keyed by the caller's
+       * `clientId`. A blank/whitespace password clears the lock. The engine
+       * stores only a HASH of the password (`RoomMembershipState.passwordHash`),
+       * never the plaintext. See setRoomPassword in room.ts.
+       */
+      type: "SET_ROOM_PASSWORD";
+      clientId: string;
+      password: string;
     }
   | {
       /**
@@ -4255,6 +4275,13 @@ export type GameEvent =
       id: string;
       type: "ROOM_NAMED";
       name: string;
+      byClientId: string;
+    }
+  | {
+      id: string;
+      type: "ROOM_PASSWORD_CHANGED";
+      /** True when a password was set/changed; false when the lock was cleared. */
+      hasPassword: boolean;
       byClientId: string;
     }
   | {
@@ -5405,6 +5432,23 @@ export type RoomMembershipState = {
    * only), and seeded by the explicit "create room" flow.
    */
   name?: string;
+  /**
+   * A HASH of the room's join password (`hashRoomPassword` in room.ts) when the
+   * room is password-protected; absent for a public room. A new joiner must
+   * supply the matching password in `JOIN_ROOM` to become a member, and — for a
+   * locked room — only members (who supplied it) may take game actions, even on
+   * an open table (see `roomActionGuard`). Set/cleared via `SET_ROOM_PASSWORD`.
+   *
+   * Honesty note: this is a CASUAL join-gate, in the spirit of a Warcraft III /
+   * Battle.net game password — NOT cryptographic secrecy. Like every other
+   * hidden field in this guest-play model the full room state (this hash
+   * included) is broadcast to connected clients, so a determined party who
+   * inspects the transport could brute-force a weak password. `getPlayerView`
+   * redacts the hash so no UI surface renders it, and the authoritative
+   * `JOIN_ROOM` check runs server-side against the unredacted state — but the
+   * gate's real job is keeping uninvited people out of the lobby's Join flow.
+   */
+  passwordHash?: string;
   /**
    * Ephemeral live chat for this table — a bounded ring buffer (last
    * MAX_CHAT_MESSAGES lines; older lines roll off). Public room content, so it

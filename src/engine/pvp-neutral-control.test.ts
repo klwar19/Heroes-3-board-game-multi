@@ -546,15 +546,20 @@ describe("PvP Neutral Control — parallel turns, clock and forced resolution", 
     ).toBe(true);
   });
 
-  it("pauses the FIGHTER's 10-minute clock while the guards' slot is another human's (mode-off CONTROL: not paused)", () => {
+  it("pauses the FIGHTER's 10-minute clock while a guards' slot is open (any battle pauses; no-battle CONTROL: runs)", () => {
     const state = sceneTwoPreys("pnc-clock", {});
     expect(guardSlotOpen(state)).toBe(true);
     expect(turnClockPausedFor(state, "p1")).toBe(true);
 
-    const control = sceneTwoPreys("pnc-clock-control", { pvpNeutralControl: false });
-    // Mode off: the AI resolves guard slots instantly, so whenever the fighter
-    // is actually waiting for input the fight is theirs — clock runs.
-    expect(turnClockPausedFor(control, "p1")).toBe(false);
+    // Mode off (the AI plays the guards): the neutral battle is still an open
+    // battle, so under the "turn timer resets in battle" rule the fighter's clock
+    // is paused all the same — the pause is the open fight, not who plays it.
+    const modeOff = sceneTwoPreys("pnc-clock-mode-off", { pvpNeutralControl: false });
+    expect(turnClockPausedFor(modeOff, "p1")).toBe(true);
+
+    // CONTROL: with no battle open the fighter's own clock runs normally.
+    state.combat = null;
+    expect(turnClockPausedFor(state, "p1")).toBe(false);
   });
 
   it("lets the AFK driver play a dropped controller's guard slot out with real unit commands", () => {

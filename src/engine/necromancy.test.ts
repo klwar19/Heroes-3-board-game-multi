@@ -804,4 +804,87 @@ describe("Necromancy ability — after a Creature Bank win (reported bug)", () =
       )
     ).toBe(false);
   });
+
+  /**
+   * Stages a just-won Medusa Stores fight with ONE Stacked defender: its reward
+   * is a SEQUENCE ending in a "+3 gold OR +1 valuables" CHOICE, so after finalize
+   * a reward `pendingVisit` is still open. This is the realistic bug shape — a
+   * bank whose reward PROMPTS — proving the Necromancy window survives BEHIND the
+   * reward choice and surfaces the instant it resolves.
+   */
+  function stageMedusaStoresWin(state: GameState, playerId: "p1" | "p2"): { fieldId: string } {
+    const hero = getMainHero(state, playerId)!;
+    const fieldId = "bank,medusa";
+    state.adventure!.fields[fieldId] = {
+      spaceId: fieldId,
+      tileInstanceId: "test-tile",
+      slot: 0,
+      location: "creature_bank",
+      bankId: "medusa_stores",
+      difficulty: 1,
+      blackCube: false,
+      flagOwnerId: null,
+      everFlagged: false,
+      settlementResource: null
+    } as MapFieldState;
+    hero.spaceId = fieldId;
+    state.activePlayerId = playerId;
+    state.combat = {
+      context: {
+        kind: "neutral",
+        heroId: hero.id,
+        fieldId,
+        difficulty: 1,
+        hasAzure: false,
+        bankId: "medusa_stores",
+        bankStackCount: 1
+      },
+      outcome: { winnerPlayerId: playerId, defeatedPlayerId: "neutral", reason: "all-enemy-units-defeated" },
+      units: {}
+    } as unknown as CombatState;
+    return { fieldId };
+  }
+
+  it("a bank whose reward PROMPTS (Medusa Stores) resolves the choice FIRST, then opens Necromancy", () => {
+    const state = startGame("bank-necro-choice");
+    state.players.p1.hand = ["ability.necromancy"];
+    state.players.p1.army = [{ id: "army_skel", unitDefId: "necropolis.skeletons", side: "few" }];
+    state.players.p1.resources.gold = 20;
+    stageMedusaStoresWin(state, "p1");
+
+    finalizeAdventureCombat(state);
+
+    // Both are armed: the reward choice (pendingVisit) AND the Necromancy window.
+    expect(state.adventure?.pendingVisit?.playerId).toBe("p1");
+    expect(state.adventure?.pendingNecromancy?.playerId).toBe("p1");
+
+    // The reward CHOICE surfaces first; Necromancy is withheld behind it.
+    const beforeChoice = getLegalActions(state, "p1");
+    const rewardChoice = beforeChoice.find(
+      (l) => l.action.type === "RESOLVE_VISIT_STEP" && /gold/i.test(l.label)
+    );
+    expect(rewardChoice, "the Medusa Stores reward choice must be offered first").toBeTruthy();
+    expect(
+      beforeChoice.some((l) => l.action.type === "PLAY_CARD" && l.action.cardId === "ability.necromancy")
+    ).toBe(false);
+
+    // Resolve the reward choice → the Necromancy window now surfaces.
+    let next = apply(state, rewardChoice!.action);
+    expect(next.adventure?.pendingVisit ?? null).toBeNull();
+    expect(next.adventure?.pendingNecromancy?.playerId).toBe("p1");
+    const play = getLegalActions(next, "p1").find(
+      (l) => l.action.type === "PLAY_CARD" && l.action.cardId === "ability.necromancy"
+    );
+    expect(play, "Necromancy must be playable once the reward choice is resolved").toBeTruthy();
+
+    // ...and the reinforce actually upgrades the Skeletons (the real outcome).
+    next = apply(next, play!.action);
+    const reinforce = getLegalActions(next, "p1").find(
+      (l) => l.action.type === "RESOLVE_VISIT_STEP" && /Skeletons/.test(l.label)
+    );
+    expect(reinforce, "the bank window must offer a real Skeleton reinforce").toBeTruthy();
+    next = apply(next, reinforce!.action);
+    expect(next.players.p1.army.find((u) => u.id === "army_skel")?.side).toBe("pack");
+    expect(next.adventure?.pendingNecromancy ?? null).toBeNull();
+  });
 });

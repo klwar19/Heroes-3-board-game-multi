@@ -1198,7 +1198,11 @@ describe("RerollModal — the die rolls before the keep/reroll choice", () => {
 
 describe("AfkVotePanel — the vote UI and the idle call-a-vote button", () => {
   function adventureGame(): GameState {
-    return createAdventureGameState({ seed: "afk-panel", difficulty: "normal", rollFirstPlayer: false });
+    const state = createAdventureGameState({ seed: "afk-panel", difficulty: "normal", rollFirstPlayer: false });
+    // The AFK vote / auto-kick / turn timer UI shows only on a CLOSED (hosted)
+    // table — an open table carries no time pressure.
+    state.room = { hosted: true, hostClientId: "host", members: [] };
+    return state;
   }
 
   it("offers Kick / Wait to a live non-target viewer and dispatches the vote", () => {
@@ -1333,6 +1337,20 @@ describe("AfkVotePanel — the vote UI and the idle call-a-vote button", () => {
     expect(onAction2).not.toHaveBeenCalledWith(
       expect.objectContaining({ type: "FORCE_AFK_KICK" })
     );
+  });
+
+  it("CONTROL: an OPEN (non-hosted) table renders no AFK panel and fires no auto-kick", () => {
+    const state = adventureGame();
+    state.room = { hosted: false, hostClientId: null, members: [] };
+    const afk = getAfkState(state);
+    afk.lastActionAt.p1 = Date.now() - AFK_AUTO_KICK_MS - 1_000; // 30 min+ gone
+    afk.lastActionAt.p2 = Date.now();
+    const onAction = vi.fn();
+    const { container } = render(
+      <AfkVotePanel onAction={onAction} state={state} viewerPlayerId={"p2" as PlayerId} />
+    );
+    expect(container.firstChild).toBeNull();
+    expect(onAction).not.toHaveBeenCalled();
   });
 });
 

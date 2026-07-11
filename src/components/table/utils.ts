@@ -435,6 +435,10 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       return event.name
         ? `${roomMemberName(state, event.byClientId)} named the room “${event.name}”.`
         : `${roomMemberName(state, event.byClientId)} cleared the room name.`;
+    case "ROOM_PASSWORD_CHANGED":
+      return event.hasPassword
+        ? `${roomMemberName(state, event.byClientId)} set a room password.`
+        : `${roomMemberName(state, event.byClientId)} removed the room password.`;
     case "ROOM_REQUIRE_AUTH_CHANGED":
       return event.requireAuth
         ? `${roomMemberName(state, event.byClientId)} now requires a verified account to join.`

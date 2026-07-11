@@ -21,6 +21,7 @@ export {
   getAfkState,
   idleMillis,
   seatIsAwaitedInOrderedPlay,
+  timeControlsActive,
   TURN_TIME_LIMIT_MS,
   turnClockPausedFor,
   turnClockRunningSeats,
@@ -43,9 +44,12 @@ export {
 export {
   defaultRoomName,
   dropDisconnectedMember,
+  hashRoomPassword,
   healVerifiedMembership,
   isRoomMembershipAction,
   MAX_ROOM_NAME_LENGTH,
+  MAX_ROOM_PASSWORD_LENGTH,
+  normalizeRoomPassword,
   roomActionGuard,
   roomDisplayName,
   seatForViewer,
@@ -153,7 +157,7 @@ export {
   isImplementedCardEffect,
   spellPowerValueOfCard
 } from "./effects";
-export { getPlayerView, OBSERVER_VIEWER_SEAT, redactStateForSeat } from "./player-view";
+export { getPlayerView, OBSERVER_VIEWER_SEAT, PASSWORD_REDACTED, redactStateForSeat } from "./player-view";
 export { createSeededRandom } from "./random";
 export {
   applyCombatBoardArtObstacles,
