@@ -6,7 +6,7 @@ import {
 } from "../parallel-turns";
 import { NEUTRAL_PLAYER_ID } from "../state";
 import type { GameState, PlayerId } from "../state";
-import { isComputerPlayer } from "./control";
+import { controllerOf, isComputerPlayer } from "./control";
 
 function computer(
   state: GameState,
@@ -124,6 +124,24 @@ export function computerDecisionOwner(state: GameState): PlayerId | null {
     const phase = getDraftPhase(lobby);
     const banner = computer(state, phase.currentBannerPlayerId);
     if (banner) return banner;
+    // Faction/town picks are contended (a taken faction is gone): the human
+    // gets first dibs, so a bot never snipes the faction the human wanted.
+    // Computers complete their seats only once every human seat has passed
+    // the contended stage — the full pick in open/random/random-choice, the
+    // town lock in draft (hero picks there come from each seat's own town).
+    const humanSeats = lobby.seats.filter(
+      (seat) =>
+        seat.playerId !== NEUTRAL_PLAYER_ID &&
+        controllerOf(state, seat.playerId).kind === "human",
+    );
+    const humansPicked = humanSeats.every((seat) =>
+      phase.format === "draft"
+        ? Boolean(seat.factionId)
+        : Boolean(seat.factionId && seat.heroDefId),
+    );
+    if (!humansPicked) {
+      return null;
+    }
     for (const seat of lobby.seats) {
       if (seat.playerId === NEUTRAL_PLAYER_ID) continue;
       if (seat.factionId && seat.heroDefId) continue;

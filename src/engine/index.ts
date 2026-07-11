@@ -165,6 +165,7 @@ export {
   chooseComputerAction,
   computerDecisionOwner,
   computerPlayerIds,
+  configuredComputerOpponents,
   controllerOf,
   humanPlayerIdsByController,
   isComputerPlayer,

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { writeFileAtomic } from "@/server/atomic-file";
 import {
   applyAction,
+  configuredComputerOpponents,
   createAdventureGameState,
   createAdventureLobbyState,
   createCombatSandboxLobbyState,
@@ -17,6 +18,7 @@ import {
   MAX_ROOM_NAME_LENGTH,
   resetVoteAuthorizes,
   resetVoteRequired,
+  sessionModeOf,
   type AdventurePlayerConfig,
   type EngineResult,
   type GameAction,
@@ -25,6 +27,7 @@ import {
   type GameSessionMode,
   type GameState
 } from "@/engine";
+import { settleComputerWork } from "@/server/computer-runner";
 import { reportFinishedMatch } from "@/server/match-report-trigger";
 import {
   deriveLobbyRecord,
@@ -356,7 +359,37 @@ export function resetRoom(
       }
     }
   }
-  const reset = makeRoom(roomId, options);
+  // Single-player session rules for resets:
+  // — preservation: a single-player rematch stays single-player with the same
+  //   computer-seat count unless the caller explicitly overrides the mode
+  //   (plan §4.4 — resets keep the one human seat and the computer seats);
+  // — fresh-room-only creation: a reset may INTRODUCE single-player mode only
+  //   over a memberless, unstarted setup lobby — an established room can never
+  //   be flipped into a private single-player one (the marker is dropped).
+  const effectiveOptions: RoomResetOptions = (() => {
+    if (existingState && sessionModeOf(existingState) === "single-player") {
+      if (options.sessionMode !== undefined) {
+        return options;
+      }
+      return {
+        ...options,
+        sessionMode: "single-player",
+        computerOpponents:
+          options.computerOpponents ?? Math.max(1, configuredComputerOpponents(existingState))
+      };
+    }
+    if (options.sessionMode === "single-player" && existingState) {
+      const fresh =
+        existingState.phase === "setup" &&
+        Boolean(existingState.setupLobby) &&
+        (existingState.room?.members.length ?? 0) === 0;
+      if (!fresh) {
+        return { ...options, sessionMode: undefined, computerOpponents: undefined };
+      }
+    }
+    return options;
+  })();
+  const reset = makeRoom(roomId, effectiveOptions);
   reset.version = (existing?.version ?? 0) + 1;
   // Carry room membership (host, seats, observers, name) across a game reset so
   // the table does not have to re-host, re-seat, or re-name after "New adventure".
@@ -471,9 +504,15 @@ export function submitRoomAction(
   // A passed AFK kick vote or an expired 10-minute turn: drive the forced
   // resolution through the normal action pipeline until the seat is removed /
   // its turn ends (or the table must wait for an open interaction).
-  const settledState = forcedResolutionPending(result.state)
+  const afkSettledState = forcedResolutionPending(result.state)
     ? driveAfkDrop(result.state, () => ({ entropy: freshEntropy(), now: Date.now() }))
     : result.state;
+
+  // Single-player: the computer seats now play until the next HUMAN decision,
+  // inside this same synchronous transaction — the persisted snapshot, the
+  // broadcast frames and the match report below all see the settled state.
+  // A no-op for every game without live computer seats.
+  const settledState = settleComputerWork(afkSettledState);
 
   const next: GameRoomRecord = {
     roomId,
@@ -759,12 +798,29 @@ function randomRoomId(): string {
 }
 
 /**
+ * Non-guessable id for a PRIVATE single-player room: 128 random bits (plan
+ * §4.2), not the short public-room suffix — the room id is the only thing
+ * standing between a private game and a would-be spectator.
+ */
+function privateRoomId(): string {
+  const cryptoObj = (globalThis as { crypto?: Crypto }).crypto;
+  if (typeof cryptoObj?.getRandomValues === "function") {
+    const bytes = new Uint8Array(16);
+    cryptoObj.getRandomValues(bytes);
+    return `sp-${Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
+  }
+  return `sp-${freshEntropy()}${freshEntropy()}`;
+}
+
+/**
  * Creates a brand-new room with an optional name + creator attribution. When no
  * roomId is given a fresh random one is minted (retried on the rare collision).
  * Returns the created room's snapshot.
  */
 export function createRoom(options: RoomCreateOptions & { roomId?: string } = {}): GameRoomSnapshot {
-  let roomId = options.roomId?.trim() || randomRoomId();
+  let roomId =
+    options.roomId?.trim() ||
+    (options.sessionMode === "single-player" ? privateRoomId() : randomRoomId());
   // Never silently overwrite an existing room: mint a new id on collision when
   // the caller did not pin one, otherwise return the existing room untouched.
   if (roomStore.has(roomId) || loadPersistedRoom(roomId)) {

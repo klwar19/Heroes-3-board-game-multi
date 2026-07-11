@@ -1,5 +1,6 @@
 export {
   computerPlayerIds,
+  configuredComputerOpponents,
   controllerOf,
   humanPlayerIdsByController,
   isComputerPlayer,

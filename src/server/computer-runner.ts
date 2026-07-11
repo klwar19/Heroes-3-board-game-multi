@@ -2,6 +2,8 @@ import {
   applyAction,
   chooseComputerAction,
   computerDecisionOwner,
+  computerPlayerIds,
+  freshEntropy,
   legalityMatchKey,
   observeForComputer,
   type ComputerDecision,
@@ -105,8 +107,10 @@ const defaultApply: ComputerApply = (state, action, playerId) =>
   applyAction(state, action, { computerActorPlayerId: playerId });
 
 /**
- * Transport-neutral computer pump. It is intentionally not wired into live
- * rooms until the strategic policies are complete enough for user-facing play.
+ * Transport-neutral computer pump: while a computer seat owns the next
+ * required decision, pick one legal action and apply it, with per-fingerprint
+ * retry/no-progress guards and a hard step cap. Live rooms call it through
+ * settleComputerWork below; tests may inject their own apply.
  */
 export function driveComputerPlayers(
   initialState: GameState,
@@ -188,4 +192,33 @@ export function driveComputerPlayers(
     stalled: true,
     reason: `Computer runner reached its ${maxSteps}-action safety limit.`,
   };
+}
+
+/**
+ * Transport-facing settle step: run every owed computer decision through
+ * applyAction with trusted computer authority and fresh per-action entropy /
+ * wall clock, exactly like a human action. A cheap no-op for games without
+ * live computer seats. Both backends call this inside their room-serialized
+ * action transaction, AFTER the AFK forced-resolution settle and BEFORE the
+ * snapshot is versioned/persisted/broadcast, so match reporting and every
+ * client frame see the fully settled state. A stall is logged (never thrown):
+ * persisting the progress made so far always beats freezing the whole action.
+ */
+export function settleComputerWork(state: GameState): GameState {
+  if (computerPlayerIds(state).length === 0) {
+    return state;
+  }
+  const result = driveComputerPlayers(state, (current, action, playerId) =>
+    applyAction(current, action, {
+      computerActorPlayerId: playerId,
+      entropy: freshEntropy(),
+      now: Date.now(),
+    }),
+  );
+  if (result.stalled) {
+    console.warn(
+      `[computer-runner] ${result.reason ?? "stalled"} (after ${result.decisions.length} decisions)`,
+    );
+  }
+  return result.state;
 }

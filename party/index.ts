@@ -1,6 +1,7 @@
 import type * as Party from "partykit/server";
 import {
   applyAction,
+  configuredComputerOpponents,
   createAdventureGameState,
   createAdventureLobbyState,
   createCombatSandboxLobbyState,
@@ -15,6 +16,7 @@ import {
   resetVoteAuthorizes,
   resetVoteRequired,
   seatForViewer,
+  sessionModeOf,
   type AdventurePlayerConfig,
   type GameAction,
   type GameDifficulty,
@@ -22,6 +24,7 @@ import {
   type GameSessionMode,
   type GameState
 } from "@/engine";
+import { settleComputerWork } from "@/server/computer-runner";
 import { deriveLobbyRecord, lobbyRecordSignature, LOBBY_SINGLETON_ID } from "@/server/lobby-registry";
 import { detectFinishedMatch } from "@/server/match-report";
 import { httpTokenVerifier, memoizeVerifier, type TokenVerifier } from "@/server/verified-actor";
@@ -282,6 +285,38 @@ export default class GameRoomServer implements Party.Server {
     }
 
     return this.snapshot;
+  }
+
+  /**
+   * Reset options with the single-player session rules applied:
+   * — preservation: a single-player room's "New adventure" stays single-player
+   *   with the same computer-seat count unless the caller explicitly overrides
+   *   the mode (plan §4.4);
+   * — fresh-room-only creation: a reset may INTRODUCE single-player mode only
+   *   over a memberless, unstarted setup lobby (the implicit-creation flow).
+   *   An established room can never be flipped into a private single-player
+   *   one by a later client — the marker is silently dropped instead.
+   */
+  private resetOptionsFor(previous: RoomSnapshot, options: RoomResetOptions): RoomResetOptions {
+    const prev = previous.state;
+    if (sessionModeOf(prev) === "single-player") {
+      if (options.sessionMode !== undefined) {
+        return options;
+      }
+      return {
+        ...options,
+        sessionMode: "single-player",
+        computerOpponents: options.computerOpponents ?? Math.max(1, configuredComputerOpponents(prev))
+      };
+    }
+    if (options.sessionMode === "single-player") {
+      const fresh =
+        prev.phase === "setup" && Boolean(prev.setupLobby) && (prev.room?.members.length ?? 0) === 0;
+      if (!fresh) {
+        return { ...options, sessionMode: undefined, computerOpponents: undefined };
+      }
+    }
+    return options;
   }
 
   private async persist(): Promise<void> {
@@ -549,6 +584,26 @@ export default class GameRoomServer implements Party.Server {
   }
 
   onConnect(connection: Party.Connection): void {
+    // Single-player creation (plan §5.1): the creating browser's FIRST
+    // connection carries ?singlePlayer=<count> on the socket URL. Honored only
+    // while NO snapshot exists at all — a fresh, memberless, unconfigured
+    // room — so a later connection can never flip an established room. The
+    // state is single-player (hence private) before reportToLobby below can
+    // run, so not even a momentary public directory record exists.
+    if (!this.snapshot) {
+      const opponents = this.singlePlayerCreationOf(connection);
+      if (opponents !== null) {
+        const now = new Date().toISOString();
+        this.snapshot = {
+          roomId: this.room.id,
+          version: 1,
+          createdAt: now,
+          updatedAt: now,
+          state: this.makeState({ sessionMode: "single-player", computerOpponents: opponents })
+        };
+        void this.persist();
+      }
+    }
     this.ensureSnapshot();
     // Send the initial frame SYNCHRONOUSLY so it always precedes later messages.
     // The just-attached socket has not verified an identity or run its JOIN yet,
@@ -601,6 +656,30 @@ export default class GameRoomServer implements Party.Server {
       return new URL(uri).searchParams.get("clientId") ?? undefined;
     } catch {
       return undefined;
+    }
+  }
+
+  /**
+   * The `?singlePlayer=<computer count>` creation marker on the socket URL the
+   * creating browser opened (see createSinglePlayerRoom in src/lib/realtime.ts).
+   * Consumed by onConnect on a room with no snapshot at all; every other
+   * connection ignores it.
+   */
+  private singlePlayerCreationOf(connection: Party.Connection): number | null {
+    const uri = (connection as unknown as { uri?: string }).uri;
+    if (!uri) {
+      return null;
+    }
+    try {
+      const raw = new URL(uri).searchParams.get("singlePlayer");
+      if (!raw) {
+        return null;
+      }
+      const count = Math.floor(Number(raw));
+      // The seat cap is enforced again by scenario capacity in the engine.
+      return Number.isFinite(count) && count >= 1 ? Math.min(count, 11) : null;
+    } catch {
+      return null;
     }
   }
 
@@ -689,7 +768,7 @@ export default class GameRoomServer implements Party.Server {
             }
           }
         }
-        const state = this.makeState(message);
+        const state = this.makeState(this.resetOptionsFor(previous, message));
         // Carry room membership (host, seats, observers) across a game reset.
         state.room = previous.state.room ?? null;
         this.snapshot = {
@@ -755,10 +834,14 @@ export default class GameRoomServer implements Party.Server {
         }
         // A passed AFK kick vote or an expired 10-minute turn: drive the forced
         // resolution through the normal action pipeline until it settles (or
-        // the table must wait).
-        const settled = forcedResolutionPending(result.state)
+        // the table must wait). Then single-player computer seats play until
+        // the next HUMAN decision — still inside this serialized transaction,
+        // so the persisted snapshot, every broadcast frame and the match
+        // report see the settled state (a no-op without computer seats).
+        const afkSettled = forcedResolutionPending(result.state)
           ? driveAfkDrop(result.state, () => ({ entropy: freshEntropy(), now: Date.now() }))
           : result.state;
+        const settled = settleComputerWork(afkSettled);
         this.snapshot = {
           roomId: this.room.id,
           version: current.version + 1,
@@ -906,7 +989,7 @@ export default class GameRoomServer implements Party.Server {
               return { denied: authority.reason ?? "Only the host can reset this room.", snapshot: previous };
             }
           }
-          const state = this.makeState(body);
+          const state = this.makeState(this.resetOptionsFor(previous, body));
           // Carry room membership (host, seats, observers) across a game reset.
           state.room = previous.state.room ?? null;
           this.snapshot = {
@@ -946,10 +1029,13 @@ export default class GameRoomServer implements Party.Server {
           });
           if (result.errors.length === 0) {
             // A passed AFK kick vote or an expired turn: settle the forced
-            // resolution before storing/reporting.
-            const settled = forcedResolutionPending(result.state)
+            // resolution before storing/reporting. Then let single-player
+            // computer seats play until the next human decision (mirrors the
+            // WebSocket action path — the two must not drift).
+            const afkSettled = forcedResolutionPending(result.state)
               ? driveAfkDrop(result.state, () => ({ entropy: freshEntropy(), now: Date.now() }))
               : result.state;
+            const settled = settleComputerWork(afkSettled);
             this.snapshot = {
               roomId: this.room.id,
               version: current.version + 1,

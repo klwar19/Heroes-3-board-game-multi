@@ -52,6 +52,17 @@ export function computerPlayerIds(state: GameState): PlayerId[] {
   );
 }
 
+/**
+ * How many computer seats this game was CONFIGURED with — read from the
+ * persisted controller map, so eliminations never shrink it. Used by room
+ * resets/rematches to rebuild the same table.
+ */
+export function configuredComputerOpponents(state: GameState): number {
+  return Object.values(state.controllers ?? {}).filter(
+    (controller) => controller.kind === "computer",
+  ).length;
+}
+
 export function humanPlayerIdsByController(state: GameState): PlayerId[] {
   return state.turnOrder.filter(
     (playerId) =>

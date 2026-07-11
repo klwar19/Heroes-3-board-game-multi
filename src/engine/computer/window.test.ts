@@ -4,13 +4,18 @@ import { createAdventureLobbyState } from "../adventure-setup";
 import { computerDecisionOwner } from "./window";
 
 describe("computer decision ownership", () => {
-  it("finds an incomplete computer setup seat but never claims the human seat", () => {
+  it("finds an incomplete computer setup seat only after the human picked, and never claims the human seat", () => {
     const state = createAdventureLobbyState({
       seed: "window-setup",
       sessionMode: "single-player",
       computerOpponents: 2,
       scenarioId: "skirmish",
     });
+    // Human first dibs: while the human seat is incomplete, no computer seat
+    // owes a pick (a bot must not snipe the faction the human wants).
+    expect(computerDecisionOwner(state)).toBeNull();
+    state.setupLobby!.seats[0].factionId = "castle";
+    state.setupLobby!.seats[0].heroDefId = "catherine";
     expect(computerDecisionOwner(state)).toBe("p2");
     state.setupLobby!.seats[1].factionId = "inferno";
     state.setupLobby!.seats[1].heroDefId = "xyron";
@@ -44,6 +49,8 @@ describe("computer decision ownership", () => {
       sessionMode: "single-player",
       computerOpponents: 1,
     });
+    state.setupLobby!.seats[0].factionId = "castle";
+    state.setupLobby!.seats[0].heroDefId = "catherine";
     // Without a choice, the incomplete computer setup seat owes its pick…
     expect(computerDecisionOwner(state)).toBe("p2");
     // …but an open HUMAN-owned exclusive interaction freezes everyone else.
@@ -59,7 +66,7 @@ describe("computer decision ownership", () => {
     expect(computerDecisionOwner(state)).toBeNull();
   });
 
-  it("draft format: a town-locked computer seat waits for its ban turn and the pick phase", () => {
+  it("draft format: computers wait for the human's town, then lock; a locked seat waits for its ban turn", () => {
     let state = createAdventureLobbyState({
       seed: "window-draft-wait",
       sessionMode: "single-player",
@@ -70,7 +77,14 @@ describe("computer decision ownership", () => {
       playerId: "p1",
       format: "draft",
     }).state;
-    // Computer seat owes its town lock.
+    // Human town dibs first: the computer seat owes nothing yet.
+    expect(computerDecisionOwner(state)).toBeNull();
+    state = applyAction(state, {
+      type: "CHOOSE_TOWN",
+      playerId: "p1",
+      factionId: "castle",
+    }).state;
+    // Now the computer seat owes its town lock.
     expect(computerDecisionOwner(state)).toBe("p2");
     const locked = applyAction(
       state,
@@ -79,16 +93,8 @@ describe("computer decision ownership", () => {
     );
     expect(locked.errors).toEqual([]);
     state = locked.state;
-    // Town locked, human's town outstanding: the computer seat is incomplete
-    // (no hero) but has NO legal setup action — it must not be the owner.
-    expect(computerDecisionOwner(state)).toBeNull();
-    state = applyAction(state, {
-      type: "CHOOSE_TOWN",
-      playerId: "p1",
-      factionId: "castle",
-    }).state;
-    // Ban phase opens with the HUMAN as the first banner: still not the
-    // computer's move.
+    // Ban phase opens with the HUMAN as the first banner: the computer seat is
+    // incomplete (no hero) but has NO legal setup action — never the owner.
     expect(computerDecisionOwner(state)).toBeNull();
   });
 });
