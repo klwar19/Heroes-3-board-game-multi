@@ -5454,6 +5454,12 @@ button.hbSlot:disabled { cursor: default; }
   border-radius: 10px;
   color: #f6e3cc;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  /* The card bar sits directly below this panel and the decorative Azure claw
+     overflows UPWARD out of it into this panel's area. Give the panel its own
+     stacking layer (no layout move — position:relative with no offsets) so the
+     "Accept the battle" box always paints ABOVE the claw and stays readable. */
+  position: relative;
+  z-index: 4;
 }
 
 .preBattleHeader {
@@ -18571,14 +18577,11 @@ body {
   object-position: center top;
   pointer-events: none;
   user-select: none;
-  /* Toned down so the deck / Spell Book text BEHIND the talons reads through:
-     the claw is semi-transparent and its cyan glow is tight (no wide blue haze
-     spilling over the tray labels). Decorative — never at the cost of legibility. */
-  opacity: 0.45;
   filter:
-    drop-shadow(0 3px 6px rgb(0 0 0 / 45%))
-    drop-shadow(0 0 2px rgb(200 240 255 / 55%))
-    drop-shadow(0 0 4px rgb(160 225 255 / 30%));
+    drop-shadow(0 3px 6px rgb(0 0 0 / 50%))
+    drop-shadow(0 0 2px rgb(200 240 255 / 70%))
+    drop-shadow(0 0 6px rgb(160 225 255 / 48%))
+    drop-shadow(0 0 11px rgb(130 210 255 / 28%));
   animation: azureClawSilhouetteGlow 7.5s ease-in-out infinite;
 }
 
@@ -18586,15 +18589,17 @@ body {
   0%,
   100% {
     filter:
-      drop-shadow(0 3px 6px rgb(0 0 0 / 45%))
-      drop-shadow(0 0 2px rgb(190 235 255 / 45%))
-      drop-shadow(0 0 4px rgb(150 220 255 / 24%));
+      drop-shadow(0 3px 6px rgb(0 0 0 / 50%))
+      drop-shadow(0 0 2px rgb(190 235 255 / 55%))
+      drop-shadow(0 0 5px rgb(150 220 255 / 36%))
+      drop-shadow(0 0 10px rgb(120 205 250 / 18%));
   }
   50% {
     filter:
-      drop-shadow(0 3px 6px rgb(0 0 0 / 45%))
-      drop-shadow(0 0 3px rgb(220 248 255 / 62%))
-      drop-shadow(0 0 6px rgb(175 230 255 / 34%));
+      drop-shadow(0 3px 6px rgb(0 0 0 / 50%))
+      drop-shadow(0 0 3px rgb(220 248 255 / 85%))
+      drop-shadow(0 0 8px rgb(175 230 255 / 55%))
+      drop-shadow(0 0 14px rgb(145 215 255 / 30%));
   }
 }
 
