@@ -405,9 +405,13 @@ export const extraAbilityCards: CardLibrary = {
           }
         },
         {
+          // House rule ("pathfinding-expert"): the Expert side crosses the
+          // coastline and steps Surface↔Subterranean without a Gate. Offered only
+          // while the rule is on; off keeps Pathfinding to its basic map movement.
           label: "Expert: also cross the coastline and step into the Subterranean this turn (spend a crown)",
           mapOnly: true,
           expertOnly: true,
+          requiresHouseRule: "pathfinding-expert",
           effect: {
             type: "CREATE_ACTIVE_EFFECT",
             effect: {
@@ -519,15 +523,20 @@ export const extraAbilityCards: CardLibrary = {
           effect: { type: "SIEGE_DEMOLISH", target: "wall-or-gate" }
         },
         {
-          // House-rule buff: the Arrow-Tower demolition is now a basic side too.
+          // House-rule buff ("ballistics-buff"): the Arrow-Tower demolition is a
+          // basic side under the buff. With the rule off it reverts to the
+          // printed/wiki Expert side (spend a crown) via `expertUnlessHouseRule`.
           label: "Destroy the Arrow Tower",
+          expertUnlessHouseRule: "ballistics-buff",
           effect: { type: "SIEGE_DEMOLISH", target: "arrow-tower" }
         },
         {
-          // House-rule expert: spend a crown AND pay 1 building material to deal
-          // 1 damage to an enemy unit and an enemy adjacent to it.
+          // House-rule expert ("ballistics-buff"): spend a crown AND pay 1
+          // building material to deal 1 damage to an enemy unit and an enemy
+          // adjacent to it. Offered only while the buff is on.
           label: "Pay 1 building material: 1 damage to an enemy unit and an enemy adjacent to it",
           expertOnly: true,
+          requiresHouseRule: "ballistics-buff",
           cost: { resources: { buildingMaterials: 1 } },
           target: { type: "enemy-unit" },
           effect: { type: "BALLISTICS_BOMBARD", amount: 1 }

@@ -47,7 +47,34 @@ export type HouseRuleId =
   | "wisdom-expert-discount"
   | "estates-nerf"
   | "sandro-skeleton-hp"
-  | "gelu-sharpshooter-buff";
+  | "gelu-sharpshooter-buff"
+  // Initiative buffs (Haste, Slow AND the initiative-only hero specialties) also
+  // shift a unit's Combat movement by ±1 (the "Battlefield Expansion" reading).
+  // Off: they change only Initiative, never movement (the standard/wiki rule).
+  | "combat-move-initiative"
+  // Winning the Dragon Fly Hive / Griffin Conservatory bank ALSO lets the winner
+  // Empower one owned Ability (its Expert side then costs no crown). Off: those
+  // banks grant only the unit, as printed.
+  | "bank-empower-ability"
+  // A Creature-Bank fight obeys the one-Round time limit and the spend-1-move-
+  // point-to-extend rule, like an ordinary neutral fight. Off: a bank has no
+  // Round limit (rulebook) and rolls straight into the next round.
+  | "bank-move-points"
+  // The 5-gold penalty for losing a hero combat is paid in full even into debt
+  // (gold may go below zero). Off: the loss is capped so gold never goes negative
+  // (the normal rule).
+  | "defeat-gold-debt"
+  // Ballistics buff: levelling the Arrow Tower is a BASIC side, plus a new Expert
+  // bombard (pay 1 building material). Off: the Arrow-Tower demolition is the
+  // Expert side and there is no bombard (wiki).
+  | "ballistics-buff"
+  // Expert Pathfinding also crosses the coastline (land↔sea) with no halt and
+  // steps between the Surface and a Subterranean tile without a Gate. Off:
+  // Pathfinding grants only its basic map movement (no expert crossing).
+  | "pathfinding-expert"
+  // Holding Visions lets the attacker cast it before a Neutral fight to swap out
+  // the drawn guards. Off: Visions is only the map-turn deck scry (wiki).
+  | "vision-battle-swap";
 
 /** Optional Wake of Gods modules. WOG is valid only while BINH is selected. */
 export type WogModOptions = {
@@ -2379,6 +2406,21 @@ export type CardOptionDefinition = {
   combatAnytime?: boolean;
   /** This option is the card's expert side: playing it spends a crown. */
   expertOnly?: boolean;
+  /**
+   * House-rule gate: this option is offered ONLY while the named house rule is
+   * ON (e.g. Ballistics' expert bombard, Pathfinding's expert coastline/layer
+   * crossing). When the rule is off the option is dropped from the offer AND
+   * rejected at play (legality is validated against the offer). Absent = always
+   * offered. See house-rules.ts / `houseRuleEnabled`.
+   */
+  requiresHouseRule?: HouseRuleId;
+  /**
+   * House-rule gate on the option's SIDE: while the named house rule is ON the
+   * option plays as its BASIC side (no crown); while the rule is OFF it becomes
+   * an Expert side (spends a crown), reverting to the printed/wiki card. Used by
+   * Ballistics' Arrow-Tower demolition (basic under the buff, expert without it).
+   */
+  expertUnlessHouseRule?: HouseRuleId;
   /**
    * Mystic Orb of Mana's second option ("Only if your discard pile is empty:
    * draw 2 cards"): the option is offered only while the player's discard pile

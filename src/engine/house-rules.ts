@@ -25,7 +25,7 @@ import type { GameRuleset, GameState, GameSetupOptions, HouseRuleId } from "./st
  */
 export type { HouseRuleId };
 
-export type HouseRuleCategory = "decks" | "units" | "abilities";
+export type HouseRuleCategory = "decks" | "units" | "abilities" | "combat";
 
 export type HouseRuleDef = {
   id: HouseRuleId;
@@ -87,6 +87,62 @@ export const HOUSE_RULES: HouseRuleDef[] = [
     label: "Gelu IV Sharpshooter buff",
     description: "A Sharpshooters recruited via Gelu's level-IV specialty permanently carries +1 Attack in every combat.",
     category: "abilities",
+    default: true
+  },
+  {
+    id: "combat-move-initiative",
+    label: "Initiative buffs grant combat move",
+    description:
+      "Haste, Slow and the initiative-only hero specialties also shift a unit's Combat movement by ±1 (the Battlefield-Expansion rule). Off: they change only Initiative, not movement (the standard/wiki rule).",
+    category: "combat",
+    default: true
+  },
+  {
+    id: "ballistics-buff",
+    label: "Ballistics buff",
+    description:
+      "Ballistics can level the Arrow Tower on its basic side and adds an Expert bombard (pay 1 building material: 1 damage to a unit and an adjacent enemy). Off: levelling the Arrow Tower is the Expert side and there is no bombard (wiki).",
+    category: "combat",
+    default: true
+  },
+  {
+    id: "pathfinding-expert",
+    label: "Pathfinding expert crossing",
+    description:
+      "Expert Pathfinding also crosses the coastline (land↔sea) with no halt and steps between the Surface and Subterranean without a Gate. Off: Pathfinding grants only its basic map movement (no expert side).",
+    category: "combat",
+    default: true
+  },
+  {
+    id: "vision-battle-swap",
+    label: "Visions pre-battle guard swap",
+    description:
+      "Holding Visions lets the attacker cast it before a Neutral fight to swap out the drawn guards. Off: Visions is only the map-turn deck scry (wiki).",
+    category: "combat",
+    default: true
+  },
+  {
+    id: "bank-empower-ability",
+    label: "Creature-bank Empower reward",
+    description:
+      "Winning the Dragon Fly Hive or Griffin Conservatory also lets you Empower one owned Ability (its Expert side then costs no crown). Off: those banks grant only the unit (wiki).",
+    category: "combat",
+    default: true
+  },
+  {
+    id: "bank-move-points",
+    label: "Creature banks cost move points",
+    description:
+      "A Creature-Bank fight obeys the one-Round time limit and the spend-1-move-point-to-extend rule, like a normal neutral fight. Off: a bank has no Round limit and rolls straight on (rulebook).",
+    category: "combat",
+    default: true
+  },
+  {
+    id: "defeat-gold-debt",
+    label: "Defeat can push gold into debt",
+    description:
+      "The 5-gold penalty for losing a hero combat is paid in full even if it drops the loser below zero (into debt). Off: the loss is capped so gold never goes negative (the normal rule).",
+    category: "combat",
     default: true
   }
 ];

@@ -176,6 +176,38 @@ describe("Initiative specialty option B — draw a card instead of buffing", () 
   });
 });
 
+describe("combat-move-initiative toggle — the +1 move is gated by the house rule, not the mode", () => {
+  it("OFF in a BINH game: the buff still raises Initiative but no longer grants +1 movement", () => {
+    const state = createInitialGameState("init-hr-toggle-off");
+    state.players.p1.hand = ["specialty.catherine.6"];
+    const griffin = ground(state, "unit_p1_griffins");
+    const beforeInit = effectiveInitiative(griffin, state.activeEffects);
+
+    const play = findOption(state, "specialty.catherine.6", 0, "unit_p1_griffins");
+    const after = applyOk(state, play!.action);
+    const buffed = after.combat!.units.unit_p1_griffins;
+
+    // Default (rule ON in this BINH sandbox): +1 Initiative AND +1 movement.
+    expect(effectiveInitiative(buffed, after.activeEffects), "+1 initiative").toBe(beforeInit + 1);
+    expect(getUnitMoveRange(buffed, after), "+1 movement (3 → 4) with the rule on").toBe(4);
+    expect(after.ruleset, "still a BINH game").toBe("binh");
+
+    // Freeze the toggle OFF while STILL a BINH game (ruleset unchanged): the
+    // Initiative buff persists, but the movement rider is gated away — proving it
+    // is the toggle, not the mode, that controls it.
+    const off = {
+      ...after,
+      adventure: { houseRules: { "combat-move-initiative": false } }
+    } as unknown as GameState;
+    expect(off.ruleset, "still BINH — only the toggle changed").toBe("binh");
+    expect(
+      effectiveInitiative(off.combat!.units.unit_p1_griffins, off.activeEffects),
+      "initiative buff still applies"
+    ).toBe(beforeInit + 1);
+    expect(getUnitMoveRange(off.combat!.units.unit_p1_griffins, off), "movement back to base 3 (toggle off)").toBe(3);
+  });
+});
+
 describe("Initiative specialty offers", () => {
   it("offers option A for each friendly unit and option B exactly once", () => {
     const state = createInitialGameState("init-hr-offers");

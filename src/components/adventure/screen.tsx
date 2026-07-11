@@ -4512,7 +4512,8 @@ const OPTION_TABS: { id: OptionsTabId; label: string; icon: ReactNode }[] = [
 const HOUSE_RULE_CATEGORY_LABELS: Record<string, string> = {
   decks: "Decks",
   units: "Unit buffs",
-  abilities: "Abilities & heroes"
+  abilities: "Abilities & heroes",
+  combat: "Combat & map rules"
 };
 
 /**
@@ -4527,7 +4528,7 @@ function HouseRulesSection({
   houseRules: Record<HouseRuleId, boolean>;
   setHouseRule: (id: HouseRuleId, value: boolean) => void;
 }) {
-  const categories = ["decks", "units", "abilities"] as const;
+  const categories = ["decks", "units", "abilities", "combat"] as const;
   return (
     <div className="houseRuleSection" aria-label="House rules">
       <div className="houseRuleHead">
@@ -4572,8 +4573,8 @@ function HouseRulesSection({
       <p className="houseRuleAlwaysOn">
         <Info size={11} aria-hidden="true" />
         <span>
-          Not individually toggleable yet: the buffed Ballistics, Earthquake &amp; Pathfinding (always on), and the
-          initiative-specialty +1 Combat move — Dracon, Gelu VI… (follows the mode: on in BINH).
+          Earthquake already matches the wiki, so there is nothing to toggle — its Power-2 collapse of the Arrow Tower
+          is the standard “a full breach fells the tower” rule, not a buff.
         </span>
       </p>
     </div>

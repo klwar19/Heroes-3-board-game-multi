@@ -511,3 +511,51 @@ describe("expert Pathfinding — Surface↔Subterranean without a Gate (the BINH
     expect(destinations.every((id) => fieldLayer(state, id) === "surface")).toBe(true);
   });
 });
+
+describe("pathfinding-expert toggle — the expert coastline/layer crossing is gated by the house rule", () => {
+  it("OFF: expert Pathfinding grants no water-walk or layer crossing (same effect, gated away)", () => {
+    let state = withHand(makeGame(), ["ability.pathfinding"]);
+    state.players.p1.limits.expertUses = 1;
+    state = playPathfinding(state, "expert");
+
+    // Default (rule ON): the expert side grants the coastline + layer perks.
+    const on = getHeroMovementCapabilities(state, heroP1(state));
+    expect(on.waterWalk).toBe(true);
+    expect(on.crossLayers).toBe(true);
+
+    // Flip the frozen toggle OFF — the SAME active effect no longer grants them.
+    state.adventure!.houseRules!["pathfinding-expert"] = false;
+    const off = getHeroMovementCapabilities(state, heroP1(state));
+    expect(off.waterWalk, "no water-walk without the rule").toBe(false);
+    expect(off.crossLayers ?? false, "no layer crossing without the rule").toBe(false);
+    // The basic Pathfinding set survives — only the expert perks are gated.
+    expect(off.moveThrough).toBe(true);
+    expect(off.passEncounters).toBe(true);
+  });
+
+  it("OFF: the expert Pathfinding side is not offered — only its basic side plays", () => {
+    const offGame = createAdventureGameState({
+      seed: "pathfinding-expert-off",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      ruleset: "binh",
+      houseRules: { "pathfinding-expert": false }
+    });
+    const state = withHand(offGame, ["ability.pathfinding"]);
+    state.players.p1.limits.expertUses = 1;
+
+    // The basic side still plays…
+    const basic = playPathfinding(state, "basic");
+    expect(hasModifier(basic, "p1", "HERO_PATHFINDING")).toBe(true);
+
+    // …but the expert side (crown-in-hand) is rejected: its option is dropped.
+    expectError(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "ability.pathfinding",
+      mode: "expert",
+      optionIndex: 1,
+      target: { type: "none" }
+    });
+  });
+});
