@@ -87,6 +87,40 @@ describe("RoomPanel — hosted (host's view)", () => {
     expect(within(aliceRow).queryByTitle(/Remove Alice/i)).toBeNull();
   });
 
+  it("labels guests only when accounts are ON (never when accounts are off)", () => {
+    // Accounts OFF: everyone is technically a guest (no userId), but the UI
+    // must NOT prefix every name with "guest —" — that was the mix-up users saw.
+    const prev = process.env.NEXT_PUBLIC_ACCOUNTS_ENABLED;
+    delete process.env.NEXT_PUBLIC_ACCOUNTS_ENABLED;
+    try {
+      const state = hostedState();
+      // Stamp one member as a verified account so the ON case can diverge.
+      const bob = state.room?.members.find((m) => m.clientId === "c2");
+      if (bob) {
+        bob.userId = "u_bob";
+      }
+      renderPanel(state, "c1");
+      expect(screen.getByText("Alice")).toBeTruthy();
+      expect(screen.getByText("Bob")).toBeTruthy();
+      expect(screen.queryByText(/guest —/)).toBeNull();
+      cleanup();
+
+      process.env.NEXT_PUBLIC_ACCOUNTS_ENABLED = "1";
+      renderPanel(state, "c1");
+      // Alice has no userId → guest label; Bob is verified → plain nickname.
+      expect(screen.getByText(/guest — Alice/)).toBeTruthy();
+      expect(screen.getByText("Bob")).toBeTruthy();
+      expect(screen.queryByText(/guest — Bob/)).toBeNull();
+    } finally {
+      if (prev === undefined) {
+        delete process.env.NEXT_PUBLIC_ACCOUNTS_ENABLED;
+      } else {
+        process.env.NEXT_PUBLIC_ACCOUNTS_ENABLED = prev;
+      }
+      cleanup();
+    }
+  });
+
   it("offers the verified-accounts lock ONLY with accounts enabled (Phase 2)", () => {
     // Control: with accounts OFF (the default), the guest deployment has no
     // verified identity to require, so the toggle is never shown.

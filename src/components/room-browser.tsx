@@ -75,13 +75,19 @@ export function RoomBrowser({ mode, labels }: { mode: GameMode; labels: RoomBrow
   /* eslint-enable react-hooks/set-state-in-effect */
 
   // Authoritative session check (the cookie, not the localStorage cache): drives
-  // the "signed in as …" chip and the admin-only delete control. The server
-  // re-verifies every privileged action regardless, so this is display-only.
+  // the "signed in as …" chip, the admin-only delete control, and the display
+  // name used for presence / room joins. The server re-verifies every privileged
+  // action regardless; here we also force the nickname so a signed-in player is
+  // never heartbeating under an old guest name.
   useEffect(() => {
     fetchSession()
       .then((profile) => {
         setIsAdmin(profile?.role === "admin");
         setAccountName(profile?.nickname ?? null);
+        if (profile?.nickname) {
+          setDisplayName(profile.nickname);
+          setDisplayNameState(profile.nickname);
+        }
       })
       .catch(() => {
         setIsAdmin(false);
@@ -108,13 +114,16 @@ export function RoomBrowser({ mode, labels }: { mode: GameMode; labels: RoomBrow
         /* transient — the next poll retries */
       });
     // Announce that we are online (in the lobby, no room) and pick up the fresh
-    // online list in the same round trip. Best-effort — presence is decorative.
-    sendPresence({ clientId, name: getDisplayName().trim() || "Player" })
+    // online list in the same round trip. Prefer the signed-in nickname so the
+    // online board never labels a real account under a stale guest name.
+    // Best-effort — presence is decorative.
+    const presenceName = (accountName ?? getDisplayName()).trim() || "Player";
+    sendPresence({ clientId, name: presenceName })
       .then(setPlayersOnline)
       .catch(() => {
         /* transient — the next poll retries */
       });
-  }, [clientId, mode]);
+  }, [clientId, mode, accountName]);
 
   // Poll the directory (and lobby chat) every 5s while the browser is open.
   useEffect(() => {
@@ -259,6 +268,7 @@ export function RoomBrowser({ mode, labels }: { mode: GameMode; labels: RoomBrow
         onJoin={goToRoom}
         onRefresh={refresh}
         onRename={handleRename}
+        onlinePlayers={playersOnline}
         rooms={rooms}
         supported={supported}
         title={labels.title}

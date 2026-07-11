@@ -56,6 +56,32 @@ describe("heartbeat + list", () => {
     expect(idle?.roomName).toBeUndefined();
   });
 
+  it("carries setup vs playing roomStatus so the online list can tell a live game from seating", () => {
+    const { board } = boardAt();
+    board.heartbeat({
+      clientId: "c1",
+      name: "Alice",
+      roomId: "r1",
+      roomName: "Friday Night",
+      roomStatus: "playing"
+    });
+    board.heartbeat({
+      clientId: "c2",
+      name: "Bob",
+      roomId: "r2",
+      roomName: "New Table",
+      roomStatus: "setup"
+    });
+    // CONTROL: idle in the lobby has no status; garbage status is dropped.
+    board.heartbeat({ clientId: "c3", name: "Cara", roomStatus: "playing" });
+    board.heartbeat({ clientId: "c4", name: "Dan", roomId: "r3", roomStatus: "nope" });
+
+    expect(board.list().find((p) => p.name === "Alice")?.roomStatus).toBe("playing");
+    expect(board.list().find((p) => p.name === "Bob")?.roomStatus).toBe("setup");
+    expect(board.list().find((p) => p.name === "Cara")?.roomStatus).toBeUndefined();
+    expect(board.list().find((p) => p.name === "Dan")?.roomStatus).toBeUndefined();
+  });
+
   it("never leaks the verified userId into the public entry", () => {
     const { board } = boardAt();
     board.heartbeat({ clientId: "c1", name: "Alice", userId: "u_secret" });

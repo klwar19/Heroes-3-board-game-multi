@@ -184,7 +184,7 @@ import {
 } from "@/lib/realtime";
 import { clearCachedRoom, loadCachedRoom, saveCachedRoom } from "@/lib/room-cache";
 import { getAccountIdentity, getClientId, getDisplayName, setDisplayName as persistDisplayName } from "@/lib/identity";
-import { fetchSocketToken } from "@/lib/auth-client";
+import { fetchSession, fetchSocketToken } from "@/lib/auth-client";
 import { leavePresence, sendPresence } from "@/lib/lobby-presence-client";
 import {
   takePendingRoomHosted,
@@ -554,14 +554,22 @@ export default function Home() {
   /** Stable per-browser identity for room membership (host/seat enforcement). */
   const clientId = useMemo(() => getClientId(), []);
   /**
-   * The signed-in account id cached client-side (null for guests / SSR). Used
-   * only to RECOGNISE this player's own room member when its clientId was
-   * re-bound to another tab of the same account — the server independently
-   * verifies the real session; this cache never grants authority by itself.
+   * The signed-in account id (null for guests / SSR). Seeded from the
+   * localStorage cache for instant recognition, then refreshed from the
+   * httpOnly session cookie via fetchSession — the cache alone is NOT enough:
+   * a direct ?room= link or a missing localStorage entry used to freeze
+   * accountUserId at null for the whole session, so the guest→verified upgrade
+   * never ran and real accounts stayed labelled "guest". The server still
+   * verifies the real session on every action; this id only identifies OUR
+   * member row and triggers the one-shot re-JOIN upgrade.
    */
-  const accountUserId = useMemo(() => getAccountIdentity()?.userId ?? null, []);
+  const [accountUserId, setAccountUserId] = useState<string | null>(
+    () => (typeof window !== "undefined" ? getAccountIdentity()?.userId ?? null : null)
+  );
   /** The signed-in account's platform role (admins may delete any room). */
-  const accountRole = useMemo(() => getAccountIdentity()?.role ?? null, []);
+  const [accountRole, setAccountRole] = useState<"player" | "admin" | null>(
+    () => (typeof window !== "undefined" ? getAccountIdentity()?.role ?? null : null)
+  );
   // Browser-only state (persisted name, URL room) is read AFTER mount (see the
   // effect below), not in the useState initializers: the page is statically
   // prerendered (window/localStorage absent), so seeding from them here would
@@ -802,12 +810,49 @@ export default function Home() {
         pendingRoomRankedRef.current = pendingRanked;
       }
     }
-    const storedName = getDisplayName();
+    // Prefer the signed-in nickname (localStorage cache) so a verified player
+    // never JOINs under a stale guest display name from a previous session.
+    const account = getAccountIdentity();
+    const storedName = account?.nickname ?? getDisplayName();
     if (storedName) {
       setDisplayNameState(storedName);
     }
+    if (account) {
+      setAccountUserId(account.userId);
+      setAccountRole(account.role);
+    }
   }, []);
   /* eslint-enable react-hooks/set-state-in-effect */
+
+  // Authoritative session from the httpOnly cookie. Refreshes accountUserId so
+  // the guest→verified re-JOIN upgrade can fire even when localStorage was
+  // empty (direct room link, cleared storage, fresh device). Forces the room
+  // display name to the registered nickname so the roster never shows a
+  // signed-in player under an old guest alias.
+  useEffect(() => {
+    let cancelled = false;
+    fetchSession()
+      .then((profile) => {
+        if (cancelled) {
+          return;
+        }
+        if (profile) {
+          setAccountUserId(profile.id);
+          setAccountRole(profile.role);
+          setDisplayNameState(profile.nickname);
+          persistDisplayName(profile.nickname);
+        } else {
+          setAccountUserId(null);
+          setAccountRole(null);
+        }
+      })
+      .catch(() => {
+        /* keep the localStorage seed; next action still verifies server-side */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // The room browser moved to /play and the landing screen to /menu (expansion
   // plan Phase 0): a bare visit — and any return to "no room", e.g. the host
@@ -3355,11 +3400,17 @@ export default function Home() {
     const beat = () => {
       const liveState = presenceStateRef.current;
       const roomName = liveState ? roomDisplayName(liveState, roomId) : undefined;
+      // Fresh setup lobby = "setting up"; anything else (game started, combat
+      // sandbox mid-fight, post-setup phases) = "playing" so the online list
+      // and lobby can tell a live game from an empty seating screen.
+      const roomStatus =
+        liveState && liveState.phase === "setup" && liveState.setupLobby ? ("setup" as const) : ("playing" as const);
       void sendPresence({
         clientId,
         name: presenceNameRef.current.trim() || "Player",
         roomId,
-        ...(roomName ? { roomName } : {})
+        ...(roomName ? { roomName } : {}),
+        roomStatus
       });
     };
     beat();

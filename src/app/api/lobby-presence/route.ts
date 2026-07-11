@@ -33,7 +33,14 @@ export async function GET() {
  */
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => null)) as
-    | { clientId?: unknown; name?: unknown; roomId?: unknown; roomName?: unknown; leave?: unknown }
+    | {
+        clientId?: unknown;
+        name?: unknown;
+        roomId?: unknown;
+        roomName?: unknown;
+        roomStatus?: unknown;
+        leave?: unknown;
+      }
     | null;
   const board = getLobbyPresenceBoard();
   const userId = await verifiedUserId(request);
@@ -50,6 +57,7 @@ export async function POST(request: Request) {
       name: body?.name,
       roomId: body?.roomId,
       roomName: body?.roomName,
+      roomStatus: body?.roomStatus,
       userId
     });
     return NextResponse.json({ player, players: board.list() });

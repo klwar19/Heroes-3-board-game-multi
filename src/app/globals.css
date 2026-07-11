@@ -623,6 +623,13 @@ button {
   font-size: 11px;
 }
 
+.roomRosterStatus {
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
 .roomMembers {
   list-style: none;
   margin: 0;
@@ -640,6 +647,63 @@ button {
   border-radius: 6px;
   background: var(--surface-2);
   font-size: 12px;
+}
+
+.roomMember.guest {
+  border-style: dashed;
+}
+
+.roomMember.away {
+  opacity: 0.72;
+}
+
+.roomMemberLiveDot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.roomMemberLiveDot.on {
+  background: #57c47a;
+  box-shadow: 0 0 5px rgb(87 196 122 / 70%);
+}
+
+.roomMemberLiveDot.afk {
+  background: #d5a84f;
+  box-shadow: 0 0 5px rgb(213 168 79 / 55%);
+}
+
+.roomMemberVerified {
+  color: var(--gold);
+  flex: none;
+}
+
+.roomMemberPresence {
+  margin-left: 4px;
+  padding: 0 5px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: lowercase;
+}
+
+.roomMemberPresence.online {
+  border-color: rgb(87 196 122 / 45%);
+  color: #7ed69a;
+}
+
+.roomMemberPresence.afk {
+  border-color: rgb(213 168 79 / 45%);
+  color: var(--gold);
+}
+
+.roomMemberPresence.away {
+  border-color: var(--line);
+  color: var(--muted);
 }
 
 .roomMemberName {
@@ -12179,6 +12243,23 @@ img.cardBack {
 
 .lobbyRoomPerson.observer {
   opacity: 0.75;
+}
+
+.lobbyRoomPerson.away {
+  opacity: 0.6;
+}
+
+.lobbyRoomLiveDot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.lobbyRoomLiveDot.on {
+  background: #57c47a;
+  box-shadow: 0 0 4px rgb(87 196 122 / 70%);
 }
 
 .lobbyRoomStatus {
