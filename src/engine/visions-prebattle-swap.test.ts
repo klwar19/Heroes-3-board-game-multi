@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { applyAction, createAdventureGameState, getLegalActions, type GameAction, type GameState } from "./index";
 import { getMainHero, NEUTRAL_DECK_IDS } from "./adventure";
 import { startNeutralEncounter } from "./adventure-reducer";
-import { NEUTRAL_PLAYER_ID, type PendingChoice } from "./state";
+import { NEUTRAL_PLAYER_ID, type HouseRuleId, type PendingChoice } from "./state";
 
 // ===========================================================================
 // Visions (pre-battle) — casting Visions before a NEUTRAL guard battle to SWAP
@@ -29,8 +29,13 @@ function setActive(state: GameState, activeCardId: string): void {
 }
 
 /** A real neutral Combat Setup for p1 (level-1 hero vs a field-difficulty guard). */
-function neutralSetup(seed: string, hand: string[], difficulty = 2): GameState {
-  let state = createAdventureGameState({ seed, difficulty: "normal", rollFirstPlayer: false });
+function neutralSetup(
+  seed: string,
+  hand: string[],
+  difficulty = 2,
+  houseRules?: Partial<Record<HouseRuleId, boolean>>
+): GameState {
+  let state = createAdventureGameState({ seed, difficulty: "normal", rollFirstPlayer: false, houseRules });
   if (state.players.p1.needsHandRefresh || state.players.p1.canMulligan) {
     state = apply(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
   }
@@ -87,6 +92,15 @@ describe("Visions pre-battle swap", () => {
     const state = placeAndFinish(neutralSetup("vis-none", ["spell.slow"]));
     expect(state.pendingChoice).toBeNull();
     expect(neutralUnitDefIds(state).length).toBeGreaterThan(0);
+  });
+
+  it("OFF (house rule 'vision-battle-swap'): holding Visions offers NO swap — the army reveals directly", () => {
+    // Same hand as the offer case, but the toggle is off: the pre-battle cast is
+    // never offered, so the guards reveal straight away and Visions stays in hand.
+    const state = placeAndFinish(neutralSetup("vis-off", ["spell.visions"], 2, { "vision-battle-swap": false }));
+    expect(state.pendingChoice, "no visions-guard-cast offer without the rule").toBeNull();
+    expect(neutralUnitDefIds(state).length, "the guards revealed directly").toBeGreaterThan(0);
+    expect(state.players.p1.hand, "Visions was never cast").toContain("spell.visions");
   });
 
   it("KEEP leaves the drawn army and keeps Visions in hand", () => {
