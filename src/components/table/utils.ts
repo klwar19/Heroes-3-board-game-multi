@@ -341,6 +341,9 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       if (event.reason === "surrender") {
         return `${playerName(state, event.defeatedPlayerId)} surrenders the combat (10 gold, army kept) — not a win for ${playerName(state, event.winnerPlayerId)}.`;
       }
+      if (event.reason === "surrender-secondary") {
+        return `${playerName(state, event.defeatedPlayerId)} surrenders their Secondary Hero (no gold, army kept, the 2nd hero is lost) — not a win for ${playerName(state, event.winnerPlayerId)}.`;
+      }
       if (event.reason === "retreat") {
         return `${playerName(state, event.defeatedPlayerId)} retreats; ${playerName(state, event.winnerPlayerId)} wins the combat.`;
       }
@@ -372,6 +375,8 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       return `${playerName(state, event.playerId)} moves their hero ${event.from} -> ${event.to} (${event.movementLeft} movement left).`;
     case "HERO_GAINED":
       return `${playerName(state, event.playerId)} gains a Secondary Hero at ${event.fieldId}.`;
+    case "HERO_LOST":
+      return event.message;
     case "SPELL_CAST_CANCELLED":
       return `${playerName(state, event.cancelledByPlayerId)} ends ${cardName(event.spellCardId)} with ${cardName(event.cancelledByCardId)}.`;
     case "SPELL_CAST_REFUNDED":
@@ -659,6 +664,9 @@ export function formatEvent(event: GameEvent, state: GameState): string {
     case "SCROLL_SPELL_SOLD":
       return `${playerName(state, event.playerId)} sells ${cardName(event.cardId)} from a Spell Scroll for ${event.gold} gold.`;
     case "SANDBOX_CARD_ADDED":
+      return event.message;
+    case "SANDBOX_SETUP_CHANGED":
+    case "SANDBOX_COMBAT_BEGUN":
       return event.message;
     case "RUNE_LEVEL_REACHED":
       return `${playerName(state, event.playerId)} reaches Rune Level ${event.level} (${event.count} Runes) — the army-wide Rune buff turns on.`;

@@ -2446,25 +2446,33 @@ export function CombatResultModal({
       ? viewerLost
         ? "You surrender"
         : `${defeatedName} surrenders`
-      : outcome.reason === "retreat"
+      : outcome.reason === "surrender-secondary"
         ? viewerLost
-          ? "You retreat"
-          : `${defeatedName} retreats`
-        : viewerWon
-          ? "Victory!"
-          : viewerLost
-            ? "Defeat"
-            : `${winnerName} wins`;
+          ? "You surrender your Secondary Hero"
+          : `${defeatedName} surrenders their Secondary Hero`
+        : outcome.reason === "retreat"
+          ? viewerLost
+            ? "You retreat"
+            : `${defeatedName} retreats`
+          : viewerWon
+            ? "Victory!"
+            : viewerLost
+              ? "Defeat"
+              : `${winnerName} wins`;
   const detail =
     outcome.reason === "surrender"
       ? // House rule: a paid escape that keeps the army and is NOT a win for the
         // opponent (no experience, no Necromancy, no victory credit).
         `${defeatedName} pays ${SURRENDER_GOLD_COST} gold and withdraws to ${fallBackTo} with their whole army — it does not count as a win for ${winnerName}.`
-      : outcome.reason === "retreat"
-        ? `${defeatedName} falls back to ${fallBackTo}. The combat is over.`
-        : `${winnerName} defeats ${defeatedName}${
-            outcome.reason === "all-enemy-units-defeated" ? " — every opposing unit is gone" : ""
-          }.`;
+      : outcome.reason === "surrender-secondary"
+        ? // House rule: the 2nd hero is sacrificed (removed) instead of paying
+          // gold; the army and gold are kept and it is NOT a win for the opponent.
+          `${defeatedName} gives up their Secondary Hero to escape — no gold is paid and the army is kept, but the 2nd hero is lost. It does not count as a win for ${winnerName}.`
+        : outcome.reason === "retreat"
+          ? `${defeatedName} falls back to ${fallBackTo}. The combat is over.`
+          : `${winnerName} defeats ${defeatedName}${
+              outcome.reason === "all-enemy-units-defeated" ? " — every opposing unit is gone" : ""
+            }.`;
 
   return (
     <div className="combatResultBackdrop" role="dialog" aria-label="Combat result">

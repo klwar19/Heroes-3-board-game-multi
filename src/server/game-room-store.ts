@@ -6,7 +6,7 @@ import {
   applyAction,
   createAdventureGameState,
   createAdventureLobbyState,
-  createInitialGameState,
+  createCombatSandboxLobbyState,
   driveAfkDrop,
   dropDisconnectedMember,
   forcedResolutionPending,
@@ -210,7 +210,7 @@ function makeRoom(roomId: string, options: RoomCreateOptions = {}): GameRoomReco
   const now = new Date().toISOString();
   const state =
     mode === "combat-sandbox"
-      ? createInitialGameState(seed)
+      ? createCombatSandboxLobbyState(seed)
       : options.players?.length
         ? createAdventureGameState({
             seed,
