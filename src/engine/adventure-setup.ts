@@ -1373,6 +1373,23 @@ function resizeLobbySeats(state: GameState, scenario: ScenarioDefinition, target
     state.activePlayerId = state.turnOrder[0];
   }
   lobby.options.playerCount = count;
+
+  // Single-player controller invariant (plan §4.3): a resize NEVER mints a
+  // human opponent. Every seat-count change routes through here — the
+  // SET_COMPUTER_OPPONENTS action, SET_GAME_OPTIONS.playerCount AND a scenario
+  // change's capacity clamp — so seat 0 stays the one human and every other
+  // live seat is (re)stamped a standard computer, trimmed seats dropping out
+  // of the controller map entirely.
+  if (state.sessionMode === "single-player") {
+    state.controllers = {};
+    lobby.seats.forEach((seat, index) => {
+      state.controllers![seat.playerId] = index === 0 ? { kind: "human" } : standardComputerController();
+      if (index > 0) {
+        seat.name = `Computer ${index}`;
+        state.players[seat.playerId].name = seat.name;
+      }
+    });
+  }
   return count;
 }
 
@@ -1388,15 +1405,9 @@ export function setComputerOpponents(
   if (humans.length !== 1 || humans[0].playerId !== action.playerId || !Number.isFinite(action.count)) {
     throw new Error("Only the single-player human seat may change computer opponents.");
   }
+  // resizeLobbySeats itself (re)stamps the single-player controller invariant
+  // (seat 0 human, every other seat a named standard computer).
   const count = resizeLobbySeats(state, getScenario(lobby.options.scenarioId), 1 + Math.max(1, Math.floor(action.count)));
-  state.controllers = {};
-  lobby.seats.forEach((seat, index) => {
-    state.controllers![seat.playerId] = index === 0 ? { kind: "human" } : standardComputerController();
-    if (index > 0) {
-      seat.name = `Computer ${index}`;
-      state.players[seat.playerId].name = seat.name;
-    }
-  });
   if (lobby.draft?.seatRolls) {
     const live = new Set(lobby.seats.map((seat) => seat.playerId));
     lobby.draft.seatRolls = Object.fromEntries(Object.entries(lobby.draft.seatRolls).filter(([id]) => live.has(id)));

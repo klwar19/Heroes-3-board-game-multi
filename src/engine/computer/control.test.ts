@@ -57,6 +57,25 @@ describe("computer controller foundation", () => {
     expect(computerPlayerIds(shrunk.state)).toEqual(["p2"]);
   });
 
+  it("SET_GAME_OPTIONS.playerCount never mints a human opponent in single-player", () => {
+    let state = createAdventureLobbyState({
+      seed: "controller-invariant",
+      scenarioId: "skirmish",
+      sessionMode: "single-player",
+      computerOpponents: 1,
+    });
+    // The generic multiplayer resize path must reassert the controller
+    // invariant: seat 0 human, every new seat a named standard computer.
+    state = applyAction(state, {
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { playerCount: 4 },
+    }).state;
+    expect(computerPlayerIds(state)).toEqual(["p2", "p3", "p4"]);
+    expect(humanPlayerIdsByController(state)).toEqual(["p1"]);
+    expect(state.players.p4?.name).toBe("Computer 3");
+  });
+
   it("requires explicit trusted computer authority in a hosted room", () => {
     const state = createAdventureLobbyState({
       seed: "controller-authority",

@@ -439,6 +439,42 @@ ordered-mode or unowned-target CONTROL.
   solo tables and legacy snapshots are untouched — every parallel predicate
   no-ops when the mode is off.
 
+## Single player vs computer opponents (EXPERIMENTAL) — what runs vs. limits
+
+Menu → Single player → `/single-player` mints a PRIVATE room (128-bit `sp-` id,
+never in any lobby directory, never MMR/match-reported, no AFK votes or turn
+clocks; only the first owner may join — engine-enforced in `joinRoom`). One
+human (`p1`) plus 1–3 computer seats (`state.controllers`, persisted;
+`sessionMode: "single-player"`). Engine in `src/engine/computer/*`, server pump
+in `src/server/computer-runner.ts`, wired into BOTH backends' action
+transactions (store `submitRoomAction`; PartyKit WS+HTTP paths) after the AFK
+settle. Plan/contract: `docs/single-player-computer-opponents-plan.md`; tests:
+`computer-runner.test.ts`, `single-player-live.test.ts`,
+`single-player-privacy.test.ts`, `window.test.ts`, `control.test.ts`.
+
+Leading with what does NOT run (deliberate, phases 4–6 of the plan):
+- **No strategic play yet.** The policy is a total, deterministic FALLBACK: it
+  completes setup (all four formats, human-first dibs so a bot never snipes the
+  human's faction), resolves every mandatory choice/reaction/placement, attacks
+  when its combat unit can, defends otherwise, continues-or-retreats neutral
+  fights sanely — but on its map turn it does NOT build, recruit, or move
+  heroes with intent; it draws and ends the turn. The UI says so.
+- **No thinking presentation** — computer turns settle synchronously inside the
+  human's action transaction; the response already carries the settled state.
+- Computer actions use trusted in-process authority
+  (`ReducerOptions.computerActorPlayerId`, never client-deserializable); a
+  client cannot forge a computer-seat action, and `ASSIGN_SEAT` refuses
+  computer seats (one-human invariant, reasserted on EVERY lobby seat resize in
+  `resizeLobbySeats`).
+- Anti-freeze: `computerDecisionOwner` returns a seat only for a REAL owed
+  window (wait-vs-drive: human-owned interactions and open combats make bots
+  wait, never a false stall); the runner has per-fingerprint retry dedup, a
+  no-progress guard and a 256-step cap — a stall logs and persists progress.
+- Rematch ("New adventure", no vote needed) preserves the single-player session
+  + seat count on both backends; an ESTABLISHED room can never be reset-flipped
+  into single-player (fresh memberless lobbies only — the PartyKit implicit
+  creation flow via the first connection's `?singlePlayer=` marker).
+
 ## PvP Neutral Control (OPTIONAL mode, multiplayer only) — what runs vs. limits
 
 Lobby option `GameSetupOptions.pvpNeutralControl` (default OFF, Game options

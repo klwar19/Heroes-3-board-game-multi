@@ -19476,3 +19476,51 @@ body {
   justify-content: center;
   padding: 8px 0 16px;
 }
+
+/* Single-player creation panel (/single-player) ------------------------------ */
+
+.singlePlayerOpponents {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0;
+}
+
+.singlePlayerOpponentChoices {
+  display: flex;
+  gap: 8px;
+}
+
+.singlePlayerOpponentChoice {
+  min-width: 52px;
+  justify-content: center;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.singlePlayerOpponentChoice.selected {
+  border-color: var(--gold, #d9b45b);
+  box-shadow: 0 0 0 1px var(--gold, #d9b45b) inset;
+}
+
+/* Setup-lobby seat controller badges (single-player) ------------------------- */
+
+.computerSeatBadge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border: 1px solid rgb(140 150 190 / 55%);
+  border-radius: 8px;
+  background: rgb(40 46 70 / 60%);
+  color: #b9c4e8;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
+.computerSeatBadge.you {
+  border-color: rgb(217 180 91 / 60%);
+  background: rgb(70 58 26 / 60%);
+  color: #ecd9a4;
+}

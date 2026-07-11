@@ -2,6 +2,7 @@
 
 import PartySocket from "partysocket";
 import type { AdventurePlayerConfig, EngineResult, GameAction, GameDifficulty, GameMode, GameState } from "@/engine";
+import { peekPendingSinglePlayer, savePendingSinglePlayer } from "@/lib/pending-room-name";
 import { LOBBY_SINGLETON_ID, type RoomDirectoryEntry } from "@/server/lobby-registry";
 
 export type { RoomDirectoryEntry };
@@ -214,6 +215,13 @@ function connectPartyRoom(
     const query: Record<string, string> = {};
     if (actorClientId) {
       query.clientId = actorClientId;
+    }
+    // Single-player creation marker (this tab just created this room id via
+    // createSinglePlayerRoom): the party honors it ONLY while the room has no
+    // snapshot at all, so re-sending it on reconnects is harmless.
+    const singlePlayer = peekPendingSinglePlayer(roomId);
+    if (singlePlayer) {
+      query.singlePlayer = String(singlePlayer.computerOpponents);
     }
     if (getSocketToken) {
       try {
@@ -631,6 +639,36 @@ export async function createRoomOnServer(options: {
   });
   if (!response.ok) {
     throw new Error("Could not create the room.");
+  }
+  const data = (await response.json()) as { roomId: string };
+  return { roomId: data.roomId };
+}
+
+/**
+ * Creates a PRIVATE single-player room (one human + `computerOpponents`
+ * computer seats) and returns its id. Purpose-built (plan §5.1): on the
+ * built-in backend the server creates the room private/single-player with a
+ * non-guessable id BEFORE it could ever be listed; on PartyKit (implicit
+ * creation) this mints a 128-bit id locally and stores the one-shot
+ * `?singlePlayer=` socket marker the room server honors only on a fresh,
+ * memberless, unconfigured room.
+ */
+export async function createSinglePlayerRoom(computerOpponents: number): Promise<{ roomId: string }> {
+  const count = Math.max(1, Math.floor(computerOpponents));
+  if (getPartyKitHost()) {
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    const roomId = `sp-${Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
+    savePendingSinglePlayer(roomId, count);
+    return { roomId };
+  }
+  const response = await fetch("/api/rooms", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sessionMode: "single-player", computerOpponents: count })
+  });
+  if (!response.ok) {
+    throw new Error("Could not create the single-player game.");
   }
   const data = (await response.json()) as { roomId: string };
   return { roomId: data.roomId };

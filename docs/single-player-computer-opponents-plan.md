@@ -1,6 +1,11 @@
 # Single-player mode with computer opponents
 
-Status: foundation implemented; user-facing mode and strategic play are not implemented yet. Do not describe Single Player as available until the deferred work below is complete.
+Status: phases 1–3 implemented (state/privacy, setup UX + setup policy, live
+runner wiring in both backends). The mode is PLAYABLE end to end but the
+computer plays only the conservative FALLBACK strategy — it completes every
+mandatory decision, fights back when attacked and never freezes a table, but it
+does not yet build, recruit, or move heroes with intent (phases 4–5). Describe
+Single Player as EXPERIMENTAL, not complete.
 
 Implemented foundation (July 2026):
 
@@ -14,12 +19,45 @@ Implemented foundation (July 2026):
 - transport-neutral bounded runner with progress detection and explicit stall reporting;
 - focused controller, authority, window, runner, privacy, and match-report tests.
 
+Implemented continuation (July 2026, phases 2–3):
+
+- setup policy completes ALL FOUR formats (open, draft incl. the ban rotation,
+  random, random-choice) with human-first dibs — computers pick only after every
+  human seat passed the contended stage, so a bot never snipes the human's
+  faction (`computerDecisionOwner` setup gating; per-format runner tests);
+- wait-vs-drive owner semantics: a human-owned pending choice / reaction window
+  / event barrier / map interaction or an open combat with no computer-owned
+  slot makes every computer WAIT (a clean stop, never a false stall); draft
+  seats and parallel bystanders are only owners when they can actually act;
+- anti-stall hardening: the runner fingerprint sees lobby picks/rolls/bans and
+  per-unit combat state; REFRESH_HAND builds its own discard list on an
+  over-limit hand (`legalityMatchKey` template matching); PLACE_COMBAT_UNIT
+  outranks FINISH so every placeable unit deploys; CHOOSE_TOWN outranks rolls;
+- live wiring: `settleComputerWork` runs inside the same serialized transaction
+  as every human action in BOTH backends (store `submitRoomAction`; PartyKit WS
+  + HTTP action paths), after the AFK settle and before persist/broadcast/match
+  report;
+- creation + privacy: `createSinglePlayerRoom` (menu → `/single-player` page),
+  128-bit non-guessable `sp-` room ids on both backends, the PartyKit
+  fresh-room-only `?singlePlayer=` connection marker, reset preservation of the
+  single-player session (rematch) and the no-flip guard for established rooms;
+- invariants: every lobby seat resize (SET_COMPUTER_OPPONENTS,
+  SET_GAME_OPTIONS.playerCount, scenario clamps) reasserts seat 0 = the one
+  human and every other seat a named standard computer; ASSIGN_SEAT refuses
+  computer seats; one human + N computers starts with no ready check;
+- setup screen: "Playing with computer" header, Computer/You seat badges, the
+  Computer-opponents control replacing the multiplayer Players control.
+
 Still deferred intentionally:
 
-- the Single Player menu/creation/setup UI;
-- wiring the runner into live Next and PartyKit action transactions;
-- production-quality map, economy, Event, card, and combat strategy policies;
-- thinking presentation, reconnect/resume integration, broad interaction coverage, and soak tests.
+- production-quality map, economy, Event, card, and combat strategy policies
+  (phases 4–5) — the total fallback keeps games legal and un-frozen, but
+  computers end their map turns without building/recruiting/moving with intent;
+- thinking presentation (the settled state simply arrives with the human's
+  action response), reconnect/resume integration tests, broad interaction
+  coverage, and the fixed-seed soak suite (phase 6);
+- hiding the remaining multiplayer-only affordances inside the room table page
+  (invite/share controls render but the engine rejects unrelated joiners).
 
 This document is an implementation contract for an automated contributor. It is intentionally specific to this repository. Follow the phases in order, preserve the existing neutral-army rules, and do not replace engine behavior with UI-only labels.
 
