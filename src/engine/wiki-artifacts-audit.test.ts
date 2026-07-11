@@ -596,6 +596,9 @@ describe("+Power spell reactions", () => {
 describe("Breastplate of Brimstone (option 0) searches the Spell deck", () => {
   it("queues a 2-card Spell-deck Search on the map", () => {
     const state = mapState("brimstone-search");
+    // Isolate this Spell-deck search from the first-round face-up seed on the
+    // Spell discard (which would otherwise open a deck-search-mode prompt).
+    state.decks["spells"].discardPile = [];
     state.players.p1.hand = ["artifact.breastplate_of_brimstone"];
     const play = findPlay(state, "artifact.breastplate_of_brimstone", 0);
     expect(play, "the Search side should be offered").toBeTruthy();
@@ -872,6 +875,9 @@ describe("Crown of Dragontooth", () => {
 
   it("option 1 removes 1 Spell from hand and Searches the Spell deck", () => {
     const state = mapState("dragontooth-search");
+    // Isolate this Spell-deck search from the first-round face-up seed on the
+    // Spell discard (which would otherwise open a deck-search-mode prompt).
+    state.decks["spells"].discardPile = [];
     state.players.p1.hand = ["artifact.crown_of_dragontooth", "spell.haste"];
     state.players.p1.removed = [];
     const play = findPlay(state, "artifact.crown_of_dragontooth", 1);

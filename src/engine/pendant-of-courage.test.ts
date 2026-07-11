@@ -34,6 +34,16 @@ function makeGame(seed: string): GameState {
   return state;
 }
 
+// Isolate a Spell-deck Search from the first-round face-up seed on the Spell
+// discards, so the Search opens straight onto its DECK_SEARCH reveal instead of
+// the incidental "Search, or take the top discard?" mode prompt.
+function clearSpellDiscardSeed(state: GameState): void {
+  state.decks.spells.discardPile = [];
+  if (state.decks["spells-expert"]) {
+    state.decks["spells-expert"].discardPile = [];
+  }
+}
+
 function resolveSearch(state: GameState): GameState {
   const choice = state.pendingChoice;
   expect(choice?.type).toBe("DECK_SEARCH");
@@ -52,6 +62,7 @@ describe("Pendant of Courage — repeat a Search as a post-Search choice", () =>
   it("after a Search resolves, the holder is offered to discard the Pendant and repeat the SAME Search — keeping the gained card", () => {
     let state = makeGame("pendant-repeat");
     state.players.p1.hand = [PENDANT];
+    clearSpellDiscardSeed(state);
     openSharedDeckSearch(state, "p1", "spells", 2);
 
     const searchChoice = state.pendingChoice;
@@ -94,6 +105,7 @@ describe("Pendant of Courage — repeat a Search as a post-Search choice", () =>
   it("declining keeps the Pendant and does NOT re-run the Search", () => {
     let state = makeGame("pendant-decline");
     state.players.p1.hand = [PENDANT];
+    clearSpellDiscardSeed(state);
     openSharedDeckSearch(state, "p1", "spells", 2);
     state = resolveSearch(state);
 
@@ -113,6 +125,7 @@ describe("Pendant of Courage — repeat a Search as a post-Search choice", () =>
   it("CONTROL: with no Pendant in hand, a Search resolves with NO repeat offer", () => {
     let state = makeGame("pendant-control");
     state.players.p1.hand = []; // no Pendant
+    clearSpellDiscardSeed(state);
     openSharedDeckSearch(state, "p1", "spells", 2);
     state = resolveSearch(state);
 

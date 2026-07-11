@@ -140,6 +140,16 @@ function holdPositive(state: GameState, playerId: PlayerId, cardId: string): voi
   state.players[playerId].moraleCards!.positive.push(cardId);
 }
 
+// Isolate a Spell-deck Search from the first-round face-up seed on the Spell
+// discards, so the Search opens straight onto its DECK_SEARCH reveal instead of
+// the incidental "Search, or take the top discard?" mode prompt.
+function clearSpellDiscardSeed(state: GameState): void {
+  state.decks.spells.discardPile = [];
+  if (state.decks["spells-expert"]) {
+    state.decks["spells-expert"].discardPile = [];
+  }
+}
+
 function attack(state: GameState): GameState {
   return apply(state, { type: "ATTACK_UNIT", playerId: "p1", attackerId: "a1", defenderId: "b1" });
 }
@@ -259,6 +269,7 @@ describe("Negative Morale: Search One", () => {
   it("turns the next Search (3) into a Search (1) and resolves the card", () => {
     const state = makeGame("morale-search-one");
     holdNegative(state, "p1", MORALE_CARD_IDS.searchOne);
+    clearSpellDiscardSeed(state);
 
     openSharedDeckSearch(state, "p1", "spells", 3);
 
@@ -274,6 +285,7 @@ describe("Negative Morale: Search One", () => {
   it("is not triggered by a Search (1) — the card stays face-up", () => {
     const state = makeGame("morale-search-one-exempt");
     holdNegative(state, "p1", MORALE_CARD_IDS.searchOne);
+    clearSpellDiscardSeed(state);
 
     openSharedDeckSearch(state, "p1", "spells", 1);
 
@@ -287,6 +299,7 @@ describe("Negative Morale: Search One", () => {
 
   it("CONTROL: without the card the same Search reveals all 3", () => {
     const state = makeGame("morale-search-one-control");
+    clearSpellDiscardSeed(state);
     openSharedDeckSearch(state, "p1", "spells", 3);
     const choice = state.pendingChoice;
     expect(choice?.type).toBe("DECK_SEARCH");
@@ -315,6 +328,7 @@ describe("Positive Morale: Repeat Search", () => {
     let state = makeGame("morale-repeat-search");
     holdPositive(state, "p1", MORALE_CARD_IDS.repeatSearch);
     state.players.p1.hand = [];
+    clearSpellDiscardSeed(state);
     openSharedDeckSearch(state, "p1", "spells", 2);
     const searchChoice = state.pendingChoice;
     const gained = searchChoice?.type === "DECK_SEARCH" ? searchChoice.revealedCardIds[0] : "";
@@ -356,6 +370,7 @@ describe("Positive Morale: Repeat Search", () => {
     let state = makeGame("morale-repeat-decline");
     holdPositive(state, "p1", MORALE_CARD_IDS.repeatSearch);
     state.players.p1.hand = [];
+    clearSpellDiscardSeed(state);
     openSharedDeckSearch(state, "p1", "spells", 2);
     state = resolveSearch(state);
     const offer = state.pendingChoice;
@@ -373,6 +388,7 @@ describe("Positive Morale: Repeat Search", () => {
 
   it("CONTROL: without the card a resolved Search opens no offer", () => {
     let state = makeGame("morale-repeat-control");
+    clearSpellDiscardSeed(state);
     openSharedDeckSearch(state, "p1", "spells", 2);
     state = resolveSearch(state);
     expect(state.pendingChoice).toBeNull();
@@ -382,6 +398,7 @@ describe("Positive Morale: Repeat Search", () => {
     let state = makeGame("morale-repeat-mask");
     holdPositive(state, "p1", MORALE_CARD_IDS.repeatSearch);
     state.players.p1.hand = [];
+    clearSpellDiscardSeed(state);
     openSharedDeckSearch(state, "p1", "spells", 2);
     const searchChoice = state.pendingChoice;
     const gained = searchChoice?.type === "DECK_SEARCH" ? searchChoice.revealedCardIds[0] : "";

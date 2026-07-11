@@ -1061,6 +1061,67 @@ What runs (each with a failing-if-removed test):
   arrival). Elimination mid-flow auto-places the token and cancels only the
   dead seat's travel.
 
+## First-round rules, Cove City Hall & bank/opponent UI (BINH house rules) — what runs
+
+Six additions; each engine rule fails a named test if its wiring is removed.
+
+- **First-round hand discards return to your OWN deck, not the discard pile.**
+  During round 1 (`state.round === 1`) a card discarded in the opening hand
+  refresh (`refreshHand`, `adventure-reducer.ts`) is placed at the BOTTOM of the
+  player's `deck` (index 0; the top is the last element) instead of on
+  `player.discard` — so an early mulligan does not strand cards in the discard
+  for the whole first deck cycle, and (bottom placement) the immediate
+  draw-up-to-limit never just hands the same cards back. From round 2 on, discards
+  go to the discard pile as normal. Pinned in `first-round-hand-discard.test.ts`
+  (round-1 → deck / later-round → discard CONTROL) and `adventure.test.ts`.
+- **Each shared deck starts with one card face-up on its discard pile.** At game
+  setup (`makeSharedDecks`, `adventure-setup.ts`) every shared deck (Abilities,
+  Spells, Artifacts — and their BINH split variants spells-expert /
+  artifacts-minor/major/relic) flips its top card onto its discard pile, so each
+  discard pile shows one card from round 1. No card is lost — it stays in the
+  deck's discard/draw cycle. CONSEQUENCE (a real effect, not decoration): because
+  the discard-top is now non-empty, the FIRST search of a deck offers the normal
+  "Search the deck, or take its top discard?" option (`openSharedDeckSearch`) —
+  the seeded card is a genuine, takeable discard card (subject to
+  `canAcquireSharedDeckCard`; a low-level hero only ever searches its allowed-tier
+  deck, so it never reaches a high-tier seed's take-option). Pinned in
+  `shared-deck-discard-seed.test.ts` (one card of the right kind on every shared
+  discard, deck total conserved) and `adventure.test.ts`.
+- **Cove City Hall fires on the RESOURCE round, not the Astrologers' round.**
+  `cove.city_hall` (`core.ts`) is now a `RESOURCE_ROUND_CHOICE` (the 4-gold /
+  remove-an-Artifact-for-1-XP choice) like every other faction's City Hall,
+  overriding its printed "each Astrologers' round". The now-unused
+  `ASTROLOGERS_ROUND_CHOICE` effect type + its handlers were removed. Pinned in
+  `cove-content.test.ts` (queues on round 3 / a round-2 Astrologers CONTROL that
+  stays silent) and `describe.test.ts`.
+- **A tile's Creature Bank is drawn (known) BEFORE the tile is rotated.** On
+  reveal, `beginTileRotation` (`adventure-reducer.ts`) calls
+  `reserveCreatureBankForTile`, which PEEKS the top token of the matching tier
+  pile and stashes it on `tile.reservedBankId` (a peek, never a pop — the pile is
+  consumed only when the placement is accepted, so a decline or a Blocked Field
+  lost to a Subterranean Gate leaves the pile intact and nothing is stranded on an
+  elimination). The rotation-preview UI (`screen.tsx`) shows the reserved bank's
+  art + name on its Blocked Field, and the placement choice names it. Pinned in
+  `creature-bank-combat.test.ts` ("reserved (known) before the tile is rotated":
+  reservedBankId set before rotation with the pile intact; the placed bank EQUALS
+  the reserved one on accept; decline leaves the pile intact; both clear the
+  reservation).
+- **A Creature Bank field draws NO borders by default (toggleable).**
+  `getTileBorderSegments` (`borders.ts`) takes `showBankBorders` (default false):
+  a bank slot draws none of its edges — neither the blocked-field ring NOR the
+  tile's outer-impassable arc — so the field reads as fully open. A toolbar toggle
+  (`screen.tsx`, shown only when a bank is on the map) restores the classic
+  outline (outer arc only, inner open). Pure rendering — movement is unchanged
+  (`canCrossEdge`). Pinned in `multi-target.test.ts` ("draws NO borders … by
+  default" + a "borders toggled on … outer arc only" case).
+- **Opponent info panel (map AND combat).** `OpponentInfoDock` / `OpponentInfoModal`
+  (`components/adventure/opponent-info.tsx`) render a per-opponent button that
+  opens a read-only panel of that opponent's PUBLIC state — resources (+income),
+  hero (level + `HeroBoard`), current unit deck (`ArmyPanel`) and buildings — all
+  already public (player-view masks only hands/decks/spell-books), so this is a
+  pure presentation layer with no engine change. Rendered in the map left rail and
+  the combat card strip (`page.tsx`). Render-tested in `opponent-info.test.tsx`.
+
 ## Neutral-combat & Sorrow refinements (BINH house rules) — what runs
 
 Three engine-enforced additions; each fails a named test if its wiring is removed.

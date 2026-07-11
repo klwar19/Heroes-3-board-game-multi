@@ -258,12 +258,14 @@ describe("Cove buildings", () => {
     expect(coreBuildingDefinitions["cove.dwelling_gold"].effect).toMatchObject({ type: "UNLOCK_RECRUIT_TIER", tier: "gold" });
   });
 
-  it("gives the City Hall its Astrologers'-round gold/experience choice", () => {
+  it("gives the City Hall its Resource-round gold/experience choice (BINH house rule)", () => {
     const cityHall = coreBuildingDefinitions["cove.city_hall"];
     expect(cityHall.cost).toEqual({ gold: 10, buildingMaterials: 4 });
     expect(cityHall.implementationStatus).toBe("implemented");
+    // House rule: the Cove City Hall fires on the RESOURCE round like every
+    // other faction's, not the Astrologers' round it prints.
     expect(cityHall.effect).toMatchObject({
-      type: "ASTROLOGERS_ROUND_CHOICE",
+      type: "RESOURCE_ROUND_CHOICE",
       options: [
         { gold: 4 },
         { experience: 1, removeArtifactFromHand: true }
@@ -427,7 +429,7 @@ describe("Cove adventure setup", () => {
     expect(Object.values(state.heroes).some((hero) => hero.controllerId === "p1")).toBe(true);
   });
 
-  it("queues the City Hall choice for the Cove player on the Astrologers' round", () => {
+  it("queues the City Hall choice for the Cove player on the Resource round (BINH house rule)", () => {
     const state = coveGame("cove-cityhall-queue");
     const town = Object.values(state.towns).find((candidate) => candidate.controllerId === "p1");
     expect(town, "Cove town").toBeTruthy();
@@ -438,13 +440,32 @@ describe("Cove adventure setup", () => {
     if (state.adventure) {
       state.adventure.rewardQueue = [];
     }
-    state.round = 2; // even rounds are Astrologers' rounds
+    state.round = 3; // odd round > 1 → Resource round
     startAdventureRound(state);
     const queued =
       state.adventure?.rewardQueue.some(
         (reward) => reward.kind === "city-hall-choice" && reward.playerId === "p1" && reward.buildingId === "cove.city_hall"
       ) ?? false;
     expect(queued).toBe(true);
+  });
+
+  it("control: the City Hall does NOT queue on the Astrologers' round", () => {
+    const state = coveGame("cove-cityhall-not-astro");
+    const town = Object.values(state.towns).find((candidate) => candidate.controllerId === "p1");
+    if (!town!.buildings.includes("cove.city_hall")) {
+      town!.buildings.push("cove.city_hall");
+    }
+    state.pendingChoice = null;
+    if (state.adventure) {
+      state.adventure.rewardQueue = [];
+    }
+    state.round = 2; // even round → Astrologers' round; the House-ruled City Hall must stay silent
+    startAdventureRound(state);
+    const queued =
+      state.adventure?.rewardQueue.some(
+        (reward) => reward.kind === "city-hall-choice" && reward.playerId === "p1" && reward.buildingId === "cove.city_hall"
+      ) ?? false;
+    expect(queued).toBe(false);
   });
 
   /** Drives the City Hall choice straight off the reward queue (no turn machinery). */

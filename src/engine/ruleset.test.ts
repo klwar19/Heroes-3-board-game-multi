@@ -269,6 +269,10 @@ describe("attack-all-adjacent mechanism", () => {
 describe("Wisdom at the Mage Guild", () => {
   it("reduces the purchase price and upgrades the search size, but stays Basic-only at low level even holding Wisdom", () => {
     const state = makeBinhGame();
+    // Isolate the Mage Guild Spell search from the first-round face-up seed on
+    // the Basic Spell discard (which would otherwise raise a deck-search-mode
+    // prompt ahead of the direct search).
+    state.decks["spells"].discardPile = [];
     const player = state.players.p1;
     const town = Object.values(state.towns).find((candidate) => candidate.controllerId === "p1")!;
 
@@ -310,6 +314,10 @@ describe("Wisdom at the Mage Guild", () => {
 
   it("offers the Expert deck at the Mage Guild once the hero is level 4 (progression, not the key card, unlocks it)", () => {
     const state = makeBinhGame();
+    // Isolate the level-4 Expert-deck search from the first-round face-up seed on
+    // the Expert Spell discard (the deck-pick itself is the assertion under test;
+    // clearing the seed keeps the follow-up search a direct DECK_SEARCH).
+    state.decks["spells-expert"].discardPile = [];
     const player = state.players.p1;
     const town = Object.values(state.towns).find((candidate) => candidate.controllerId === "p1")!;
 

@@ -6,7 +6,7 @@ import Link from "next/link";
 import { assetUrl } from "@/lib/asset-url";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Ban, Castle, Check, ChevronsUp, Crown, Dices, Hammer, Hourglass, Image as ImageIcon, Info, Layers, Lock, Minus, Plus, RotateCcw, RotateCw, Sparkles, Swords, Unlock, X } from "lucide-react";
+import { Ban, Castle, Check, ChevronsUp, Crown, Dices, Fence, Hammer, Hourglass, Image as ImageIcon, Info, Layers, Lock, Minus, Plus, RotateCcw, RotateCw, Sparkles, Swords, Unlock, X } from "lucide-react";
 import { cardLibrary } from "@/data/cards/library";
 import { MORALE_NEGATIVE_DECK_ID, MORALE_POSITIVE_DECK_ID } from "@/data/cards/morale";
 import { MORALE_CARD_HINTS, moraleCardRulesText } from "@/components/table/morale-card-cue";
@@ -306,6 +306,9 @@ export function HexMapBoard({
 
   const [camera, setCamera] = useState({ x: 0, y: 0, scale: 1 });
   const [showArt, setShowArt] = useState(true);
+  // Creature Bank fields are drawn border-free by default; this toggle brings the
+  // printed bank outline (its outer arc) back for players who want it.
+  const [showBankBorders, setShowBankBorders] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   // Wheel-zoom is OFF by default so scrolling the wheel pans the page (the map
   // lives inside a scrolling layout) instead of fighting it. The toolbar lock
@@ -314,6 +317,13 @@ export function HexMapBoard({
   const svgRef = useRef<SVGSVGElement>(null);
   const dragRef = useRef<{ pointerId: number; startX: number; startY: number; originX: number; originY: number; moved: boolean } | null>(null);
   const suppressClickRef = useRef(false);
+
+  // Only surface the bank-border toggle once a Creature Bank is actually on the
+  // map (otherwise it toggles nothing).
+  const hasCreatureBank = useMemo(
+    () => Object.values(adventure?.fields ?? {}).some((field) => field.location === "creature_bank"),
+    [adventure]
+  );
 
   // A tap on a would-be move target while the MANDATORY start-of-turn draw is
   // still pending shows a brief, single, auto-fading "draw first" note anchored
@@ -850,7 +860,14 @@ export function HexMapBoard({
       // With the printed art visible the built-in icons are redundant —
       // the scan shows the real locations; only game-state markers stay.
       const artShown = showArt && Boolean(tileDef?.assets?.tileImage);
-      const borderSegments = tileDef ? getTileBorderSegments(tileDef) : [];
+      // Naval Battles: the Creature Bank this tile drew at reveal is known while
+      // it is being rotated. Mark its Blocked Field slot so its border follows the
+      // bank rule (border-free by default) and its art + name preview there.
+      const reservedBankId = (tile.reservedBankId as CreatureBankId | undefined) ?? undefined;
+      const bankPreviewSlot =
+        reservedBankId && tileDef ? tileDef.fields.findIndex((field) => field.location === "blocked_field") : -1;
+      const previewBankSlots = bankPreviewSlot >= 0 ? new Set([bankPreviewSlot]) : undefined;
+      const borderSegments = tileDef ? getTileBorderSegments(tileDef, previewBankSlots, showBankBorders) : [];
       const footprint = tileFootprint(center, rotation);
       for (const [slot, coord] of footprint.entries()) {
         const fieldDef = tileDef?.fields[slot];
@@ -864,6 +881,33 @@ export function HexMapBoard({
             points={hexCorners(x, y, HEX_SIZE - 1.2)}
           />
         );
+        // Preview the reserved Creature Bank right on its Blocked Field: its art
+        // fills the hex and its name sits below, so the player sees which bank
+        // they are about to carve before they lock the rotation.
+        if (slot === bankPreviewSlot && reservedBankId) {
+          const clipId = `bankPrevClip-${tile.id}-${slot}`;
+          overlays.push(
+            <g key={`${tile.id}-rot-bank-${slot}`}>
+              <clipPath id={clipId}>
+                <polygon points={hexCorners(x, y, HEX_SIZE - 1.2)} />
+              </clipPath>
+              <image
+                className="locationToken"
+                clipPath={`url(#${clipId})`}
+                height={2 * HEX_SIZE}
+                href={assetUrl(creatureBankFieldImage(reservedBankId))}
+                preserveAspectRatio="xMidYMid slice"
+                style={{ pointerEvents: "none" }}
+                width={HEX_WIDTH}
+                x={x - HEX_WIDTH / 2}
+                y={y - HEX_SIZE}
+              />
+              <text className="hexBankLabel" textAnchor="middle" x={x} y={y + HEX_SIZE * 0.66}>
+                {CREATURE_BANKS[reservedBankId]?.name ?? "Creature Bank"}
+              </text>
+            </g>
+          );
+        }
         if (fieldDef && !artShown) {
           const glyph = LOCATION_GLYPHS[fieldDef.location] ?? "";
           if (glyph && fieldDef.location !== "empty_field") {
@@ -923,7 +967,7 @@ export function HexMapBoard({
         bankSlots.add(slot);
       }
     });
-    const borderSegments = tileDef ? getTileBorderSegments(tileDef, bankSlots) : [];
+    const borderSegments = tileDef ? getTileBorderSegments(tileDef, bankSlots, showBankBorders) : [];
     for (const [slot, coord] of footprint.entries()) {
       const spaceId = `h:${coord.row}:${coord.col}`;
       const field = adventure.fields[spaceId];
@@ -1740,6 +1784,21 @@ export function HexMapBoard({
         >
           <ImageIcon size={13} />
         </button>
+        {hasCreatureBank ? (
+          <button
+            aria-pressed={showBankBorders}
+            className={showBankBorders ? "selected" : ""}
+            onClick={() => setShowBankBorders((value) => !value)}
+            title={
+              showBankBorders
+                ? "Creature Bank borders shown — click to hide them (default)"
+                : "Creature Bank fields are border-free — click to show their borders"
+            }
+            type="button"
+          >
+            <Fence size={13} />
+          </button>
+        ) : null}
       </div>
 
       {moveLockReason ? (

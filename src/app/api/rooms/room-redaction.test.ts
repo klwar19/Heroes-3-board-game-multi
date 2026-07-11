@@ -69,9 +69,15 @@ describe("GET /api/rooms/[roomId] redacts a hosted room per connection", () => {
     // preserved as "hidden" placeholders.
     expect(frame.state.players.p1.hand.every((c: string) => c === "hidden")).toBe(true);
     expect(frame.state.players.p1.hand).toHaveLength(aliceHand.length);
+    // Cards that are legitimately public elsewhere (each shared deck starts with
+    // one face-up card on its discard pile) can coincide with a hidden hand id, so
+    // they are exempt from the "must not appear" check.
+    const publicDiscardCards = new Set(
+      Object.values(truth.decks).flatMap((deck) => deck.discardPile as string[])
+    );
     for (const cardId of aliceHand) {
       // A distinctive id from Alice's hand must not be anywhere in Bob's frame.
-      if (!bobHand.includes(cardId)) {
+      if (!bobHand.includes(cardId) && !publicDiscardCards.has(cardId)) {
         expect(serialized).not.toContain(`"${cardId}"`);
       }
     }

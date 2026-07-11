@@ -321,13 +321,20 @@ function makeNeutralDecks(seed: string, wog: WogModOptions): Record<string, Deck
  * its top card to start the discard pile, as printed.
  */
 function makeSharedDecks(seed: string, splitDecks: boolean): Record<string, DeckState> {
-  const make = (id: string, cardIds: string[]): DeckState => ({
-    id,
-    // Shared decks start fully stacked with an empty discard pile; cards only
-    // reach the discard once a Search leaves them there.
-    drawPile: shuffleCards(cardIds, `${seed}#deck#${id}`),
-    discardPile: []
-  });
+  const make = (id: string, cardIds: string[]): DeckState => {
+    // First-round rule (as printed): each shared deck flips its top card face-up
+    // onto its discard pile at game start, so every discard pile (Abilities,
+    // Spells, Artifacts — and their split variants) shows one card from round 1.
+    // No card is lost — it stays in the deck's discard/draw cycle and can be
+    // Searched or taken like any other discarded card.
+    const drawPile = shuffleCards(cardIds, `${seed}#deck#${id}`);
+    const top = drawPile.pop();
+    return {
+      id,
+      drawPile,
+      discardPile: top ? [top] : []
+    };
+  };
 
   if (splitDecks) {
     return {

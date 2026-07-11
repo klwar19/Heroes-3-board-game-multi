@@ -7,7 +7,7 @@ import {
 } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { unitAbilities } from "@/data/units/abilities";
-import { type CreatureBankId } from "@/data/map/creature-banks";
+import { CREATURE_BANKS, type CreatureBankId } from "@/data/map/creature-banks";
 import { isMarketLocation, locationDefinitions, TRADE_RATES } from "@/data/map/locations";
 import { allTileDefinitions } from "@/data/map/tiles";
 import {
@@ -684,10 +684,21 @@ export function refreshHand(state: GameState, action: Extract<GameAction, { type
     handCounts.set(cardId, left - 1);
   }
 
+  // First-round rule: a card discarded during the opening round goes back to the
+  // BOTTOM of your OWN deck, not onto the discard pile — an early mulligan must
+  // not strand cards in the discard for the whole first deck cycle. It sits at
+  // the bottom (index 0; the top is the last element) so the immediate
+  // draw-up-to-limit below draws fresh cards and never just hands the same ones
+  // straight back.
+  const discardsReturnToDeck = state.round === 1;
   for (const cardId of action.discardCardIds) {
     const index = player.hand.indexOf(cardId);
     player.hand.splice(index, 1);
-    player.discard.push(cardId);
+    if (discardsReturnToDeck) {
+      player.deck.unshift(cardId);
+    } else {
+      player.discard.push(cardId);
+    }
   }
 
   const limit = effectiveHandLimit(state, action.playerId);
@@ -1526,6 +1537,43 @@ function beginTileRotation(
       rotation: tile.rotation
     });
   }
+
+  // Naval Battles: draw (face-up) the Creature Bank token this tile's Blocked
+  // Field would host NOW, before the rotation is chosen, so the player rotates
+  // knowing which bank they are about to carve.
+  reserveCreatureBankForTile(state, tile);
+}
+
+/**
+ * Peeks the top Creature Bank token of the tile's tier pile and stashes it on
+ * the tile (`reservedBankId`) the moment the tile is revealed — before rotation —
+ * so the player knows the bank up front. Only PEEKED (never popped): the token
+ * is consumed from the pile only when the placement is accepted, so a declined
+ * placement or a Blocked Field lost to a Subterranean Gate leaves the pile
+ * intact. No-op when the rule is off (no piles), the tile can't host a bank
+ * (wrong group / no Blocked Field in its definition), or the pile is empty.
+ */
+function reserveCreatureBankForTile(state: GameState, tile: MapTileState): void {
+  const adventure = state.adventure;
+  if (!adventure) {
+    return;
+  }
+  const tier = creatureBankTierForGroup(tile.group);
+  if (!tier) {
+    return;
+  }
+  const def = allTileDefinitions[tile.tileDefId];
+  if (!def?.fields.some((field) => field.location === "blocked_field")) {
+    return;
+  }
+  const pile = tier === "far" ? adventure.creatureBankTokensFar : adventure.creatureBankTokensNear;
+  if (!pile || pile.length === 0) {
+    return;
+  }
+  const bankId = pile[pile.length - 1];
+  if (isCreatureBankId(bankId)) {
+    tile.reservedBankId = bankId;
+  }
 }
 
 /**
@@ -1825,22 +1873,35 @@ function offerCreatureBankPlacement(state: GameState, tile: MapTileState, player
     (spaceId) => adventure.fields[spaceId]?.location === "blocked_field"
   );
   if (!blockedSpaceId) {
+    // The Blocked Field was lost (e.g. carved into a Subterranean Gate): the bank
+    // this tile reserved at reveal is not placed. The pile was only peeked, so
+    // nothing is consumed — just drop the reservation.
+    tile.reservedBankId = undefined;
     return;
   }
+
+  // The bank was drawn face-up when the tile was revealed (so the player already
+  // knew it while rotating); reaffirm it here, peeking the pile top for legacy
+  // snapshots that predate the reservation.
+  const reservedBankId =
+    tile.reservedBankId && isCreatureBankId(tile.reservedBankId) ? tile.reservedBankId : pile[pile.length - 1];
+  tile.reservedBankId = isCreatureBankId(reservedBankId) ? reservedBankId : undefined;
+  const bankName = isCreatureBankId(reservedBankId) ? CREATURE_BANKS[reservedBankId]?.name ?? "Creature Bank" : "Creature Bank";
+  const tierLabel = tile.group === "subterranean" ? "cavern" : tier === "far" ? "Far tile" : "Near tile";
 
   state.pendingChoice = {
     id: `choice_${nextEventNumber(state)}`,
     type: "OPTION_CHOICE",
     playerId,
-    prompt:
-      tile.group === "subterranean"
-        ? "This cavern has a Blocked Field — place a Creature Bank token here?"
-        : tier === "far"
-          ? "This Far tile has a Blocked Field — place a Creature Bank token here?"
-          : "This Near tile has a Blocked Field — place a Creature Bank token here?",
-    options: [{ label: "Place a Creature Bank" }, { label: "Leave it blocked" }],
+    prompt: `This ${tierLabel} has a Blocked Field — place the ${bankName} Creature Bank here?`,
+    options: [{ label: `Place the ${bankName} Creature Bank` }, { label: "Leave it blocked" }],
     context: "place-creature-bank",
-    creatureBank: { fieldId: blockedSpaceId, tier },
+    creatureBank: {
+      fieldId: blockedSpaceId,
+      tier,
+      ...(tile.reservedBankId ? { bankId: tile.reservedBankId } : {}),
+      tileInstanceId: tile.id
+    },
     returnPhase: state.phase
   };
   state.phase = "choice";
@@ -8127,8 +8188,14 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
   if (choice.context === "place-creature-bank") {
     const data = choice.creatureBank;
     const adventure = state.adventure;
-    // Option 0 places a bank (draw the top token of the matching pile and carve
-    // it onto the Blocked Field); option 1 (or any other) leaves the field blocked.
+    const bankTile = data
+      ? adventure?.tiles[data.tileInstanceId ?? adventure.fields[data.fieldId]?.tileInstanceId ?? ""]
+      : undefined;
+    // Option 0 places the bank the tile drew (face-up) at reveal — consume the
+    // top token of the matching pile (it IS the reserved one) and carve it onto
+    // the Blocked Field; option 1 (or any other) leaves the field blocked and the
+    // peeked token stays in the pile for the next tile. Either way the tile's
+    // reservation is now spent.
     if (data && adventure && action.optionIndex === 0) {
       const pile = data.tier === "far" ? adventure.creatureBankTokensFar : adventure.creatureBankTokensNear;
       const bankId = pile?.pop();
@@ -8136,12 +8203,14 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
         placeCreatureBank(state, data.fieldId, bankId);
       }
     }
+    if (bankTile) {
+      bankTile.reservedBankId = undefined;
+    }
     state.pendingChoice = null;
     state.phase = choice.returnPhase;
     state.priorityPlayerId = null;
     // A Monolith/Whirlpool token riding the same tile waited behind the bank
     // prompt; its placement (by the same discovering player) opens now.
-    const bankTile = data ? adventure?.tiles[adventure.fields[data.fieldId]?.tileInstanceId ?? ""] : undefined;
     if (bankTile) {
       offerPendingTokenPlacement(state, bankTile, action.playerId);
     }
@@ -10177,7 +10246,7 @@ export function pumpAdventureQueues(state: GameState): void {
     if (reward.kind === "city-hall-choice") {
       const building = coreBuildingDefinitions[reward.buildingId];
       const choiceEffect = building?.effect;
-      if (choiceEffect?.type !== "RESOURCE_ROUND_CHOICE" && choiceEffect?.type !== "ASTROLOGERS_ROUND_CHOICE") {
+      if (choiceEffect?.type !== "RESOURCE_ROUND_CHOICE") {
         adventure.rewardQueue.shift();
         continue;
       }
