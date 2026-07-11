@@ -209,7 +209,15 @@ export function parallelSlotSignature(state: GameState): string {
   return JSON.stringify([
     state.phase,
     state.priorityPlayerId,
-    state.combat ? [state.combat.id, Boolean(state.combat.outcome), Boolean(state.combat.setup), Boolean(state.combat.prep)] : null,
+    state.combat
+      ? [
+          state.combat.id,
+          Boolean(state.combat.outcome),
+          Boolean(state.combat.setup),
+          Boolean(state.combat.prep),
+          state.combat.pendingNeutralPlacement ?? null
+        ]
+      : null,
     state.pendingChoice?.id ?? null,
     state.reactionWindow?.id ?? null,
     state.stack.length,

@@ -469,23 +469,31 @@ Leading with what does NOT run / deliberate limits:
   as always-on; declining is never right) — but its redirect TARGET pick goes
   to the controller like every other follow-up.
 - **Token "other actions" (Ogre Bloodlust / Sorceress Weakness,
-  `PLACE_TOKEN_ACTION`) ARE offered on the controller's FREE-mode menu on a
-  normal guard FIELD** (user rule "mode free: do whatever" / "use token";
-  `addControlledNeutralTokenActions`): the offer is issued for the controlling
-  seat and re-stamped to the neutral seat (`asNeutralSeatCommand` now also wraps
-  `USE_UNIT_ABILITY`), and the target-pick choice it opens is a NEUTRAL-owned
-  choice the pump hands back to the controller — exactly like the guards'
-  [activation] follow-ups. They are NOT offered in MUST-ATTACK mode
-  ("cant … use token") nor in a Creature Bank ("not placement"). The
-  deck-digging (Genie Wish) and Summon Demons other-actions stay OFF a
-  controlled guard on every menu — they read the CONTROLLER's own deck / removed
-  units, not the neutral side, so handing them over would be a bug/exploit, and
-  the AI never used them. Passive/triggered abilities still fire normally.
-- **Creature Bank guards are "move and fight, not placement"** (user rule): the
-  guards keep their fixed corner deployment (`placeCreatureBankGuards`, no setup
-  reposition) but the controller may MOVE THEM FREELY and attack — regardless of
-  the must-attack toggle — with NO Defend and NO token placement. (A WOG
-  Werewolf's Astrologers-round frenzy never applies to a bank guard.)
+  `PLACE_TOKEN_ACTION`) ARE offered on the controller's FREE-mode menu** (user
+  rule "mode free: do whatever" / "use token"; `addControlledNeutralTokenActions`):
+  the offer is issued for the controlling seat and re-stamped to the neutral seat
+  (`asNeutralSeatCommand` now also wraps `USE_UNIT_ABILITY`), and the target-pick
+  choice it opens is a NEUTRAL-owned choice the pump hands back to the controller
+  — exactly like the guards' [activation] follow-ups. They are NOT offered in
+  MUST-ATTACK mode ("cant … use token"). The deck-digging (Genie Wish) and Summon
+  Demons other-actions stay OFF a controlled guard on every menu — they read the
+  CONTROLLER's own deck / removed units, not the neutral side, so handing them
+  over would be a bug/exploit, and the AI never used them. Passive/triggered
+  abilities still fire normally.
+- **The IN-COMBAT menu is IDENTICAL for a normal guard FIELD and a Creature
+  BANK** — both obey the `pvpNeutralControlMustAttack` toggle (must-attack: a
+  bank guard must attack too; free: "keeps its corner as start but can do
+  whatever it wants", token included). Banks differ ONLY in the pre-battle SORT
+  below.
+- **Pre-battle formation SORT** (`combat.pendingNeutralPlacement`, user rule
+  "sorting or moving neutral formation before battle, just like defender"): on a
+  normal guard FIELD, once the neutral army is revealed and auto-placed, the
+  controller gets a setup window (`PLACE_NEUTRAL_GUARD` to move a guard to an
+  empty defender cell or swap two guards within the defender zone;
+  `FINISH_NEUTRAL_PLACEMENT` to start the battle — then Tactics, then round 1) —
+  offered whenever ≥2 living guards stand (mirrors the Tactics threshold). A
+  **Creature Bank CANNOT sort** — its guards keep their fixed corner deployment
+  (`placeCreatureBankGuards`), so no sort window opens.
 - **Berserk and the Astrologers Werewolf frenzy override both toggle modes**
   (the spell/frenzy menu binds a controlled guard exactly like a player unit).
 - The continue-or-retreat window, the pre-activation reaction pause (which no
@@ -495,8 +503,8 @@ Leading with what does NOT run / deliberate limits:
 - The mode never changes `unit.controllerId` — guards stay the NEUTRAL seat's
   for rewards, win/loss and every rules read; only the acting SEAT differs.
 
-The `pvpNeutralControlMustAttack` sub-toggle (normal guard FIELDS only — a
-Creature Bank ignores it and always plays free "move and fight", see above):
+The `pvpNeutralControlMustAttack` sub-toggle (applies to normal guard FIELDS AND
+Creature Banks alike — the bank differs only in the no-sort setup, above):
 - **ON (default, rulebook spirit)**: a guard that can strike now gets ONLY its
   attacks (no Defend, no token, no move, no hold); one that can reach a strike by
   moving gets only those landing cells; otherwise only steps that strictly CLOSE
