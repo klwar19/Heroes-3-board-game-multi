@@ -300,6 +300,170 @@ describe("Retreat / fought-out loss (house rule): a real defeat", () => {
   });
 });
 
+describe("Secondary-Hero surrender (house rule): sacrifice the 2nd hero, not 10 gold", () => {
+  // Stage a finished PvP fight whose LOSER is p2's SECONDARY hero (out on the
+  // map), with p2's MAIN hero still safe at home. p1 (main) is the winner.
+  function stageSecondaryDefenderFight(
+    state: GameState,
+    reason: "surrender-secondary" | "retreat"
+  ): { secondaryId: string; homeFieldId: string | null } {
+    const attacker = getMainHero(state, "p1")!;
+    const field = injectField(state);
+    attacker.spaceId = field.spaceId;
+
+    const secondaryId = "hero2_p2";
+    state.heroes[secondaryId] = {
+      id: secondaryId,
+      controllerId: "p2",
+      kind: "secondary",
+      level: 1,
+      experience: 0,
+      movementPoints: 2,
+      movementPointsMax: 2,
+      spaceId: field.spaceId
+    };
+    // p2's main hero stays home (unchanged): p2 keeps a hero after the sacrifice.
+
+    state.players.p1.army = [{ id: "a1", unitDefId: "castle.pikemen", side: "pack" }];
+    state.players.p2.army = [
+      { id: "b1", unitDefId: "castle.pikemen", side: "few" },
+      { id: "b2", unitDefId: "castle.pikemen", side: "few" }
+    ];
+
+    state.combat = {
+      id: "c1",
+      round: 1,
+      attackerPlayerId: "p1",
+      defenderPlayerId: "p2",
+      activeUnitId: null,
+      context: { kind: "player", attackerHeroId: attacker.id, defenderHeroId: secondaryId, fieldId: field.spaceId },
+      setup: null,
+      awaitingContinue: false,
+      outcome: { winnerPlayerId: "p1", defeatedPlayerId: "p2", reason },
+      dice: { faces: [...ATTACK_DIE_FACES], seed: "s", rollCount: 0 },
+      units: {
+        a1: unit({ id: "a1", controllerId: "p1", armyUnitId: "a1", variant: "few", damage: 0 }),
+        b1: unit({ id: "b1", controllerId: "p2", armyUnitId: "b1", damage: 0 }),
+        b2: unit({ id: "b2", controllerId: "p2", armyUnitId: "b2", damage: 0 })
+      }
+    } as CombatState;
+    return { secondaryId, homeFieldId: state.towns.town_p2.fieldId ?? null };
+  }
+
+  it("removes ONLY the 2nd hero, charges no gold, no morale, and keeps the army", () => {
+    const state = makeGame({ pvpTroopLoss: "normal" });
+    const { secondaryId } = stageSecondaryDefenderFight(state, "surrender-secondary");
+    state.players.p2.resources.gold = 3; // below the 10-gold main-surrender toll
+    state.players.p2.morale = 0;
+    const winnerGoldBefore = state.players.p1.resources.gold;
+
+    finalizeAdventureCombat(state);
+
+    // The 2nd hero is gone; p2's main hero remains.
+    expect(state.heroes[secondaryId]).toBeUndefined();
+    expect(getMainHero(state, "p2")).not.toBeNull();
+    // No gold moves either way; no morale hit; army untouched.
+    expect(state.players.p2.resources.gold).toBe(3);
+    expect(state.players.p1.resources.gold).toBe(winnerGoldBefore);
+    expect(state.players.p2.morale).toBe(0);
+    expect(state.players.p2.army.map((u) => u.id)).toEqual(["b1", "b2"]);
+  });
+
+  it("gives the opponent NO victory credit (grail mode) and no Necromancy window", () => {
+    const state = makeGame({ victoryMode: "grail" });
+    stageSecondaryDefenderFight(state, "surrender-secondary");
+    state.players.p1.necromancyWindow = false;
+
+    finalizeAdventureCombat(state);
+
+    expect(state.adventure?.heroDefeats?.["p1"] ?? []).not.toContain("p2");
+    expect(state.adventure?.winnerPlayerId ?? null).toBeNull();
+    expect(state.players.p1.necromancyWindow).toBeFalsy();
+  });
+
+  it("but FIGHTING and losing with the 2nd hero DOES count as a win (5 gold + credit, hero survives)", () => {
+    const state = makeGame({ victoryMode: "grail" });
+    const { secondaryId, homeFieldId } = stageSecondaryDefenderFight(state, "retreat");
+    state.players.p2.resources.gold = 10;
+    state.players.p1.resources.gold = 10;
+    state.players.p2.morale = 0;
+
+    finalizeAdventureCombat(state);
+
+    // 5-gold toll + -1 morale; the 2nd hero SURVIVES and falls back home (not removed).
+    expect(state.players.p2.resources.gold).toBe(5);
+    expect(state.players.p1.resources.gold).toBe(15);
+    expect(state.players.p2.morale).toBe(-1);
+    expect(state.heroes[secondaryId]).toBeDefined();
+    expect(state.heroes[secondaryId].spaceId).toBe(homeFieldId);
+    // Counts as 1 win against p2 (2-player grail: beating the one rival wins).
+    expect(state.adventure?.heroDefeats?.["p1"] ?? []).toContain("p2");
+    expect(state.adventure?.winnerPlayerId).toBe("p1");
+  });
+});
+
+describe("Secondary-Hero surrender gating: a free sacrifice, no 10-gold toll", () => {
+  function secondaryPrepState(seed: string): GameState {
+    const state = createAdventureGameState({ seed, difficulty: "normal", rollFirstPlayer: false });
+    const fieldId = state.heroes.hero_p1.spaceId ?? "0,0";
+    state.heroes["hero2_p2"] = {
+      id: "hero2_p2",
+      controllerId: "p2",
+      kind: "secondary",
+      level: 1,
+      experience: 0,
+      movementPoints: 2,
+      movementPointsMax: 2,
+      spaceId: fieldId
+    };
+    state.combat = createInitialGameState(seed).combat;
+    state.combat!.context = {
+      kind: "player",
+      attackerHeroId: "hero_p1",
+      defenderHeroId: "hero2_p2",
+      fieldId
+    };
+    state.combat!.prep = { accepted: [] };
+    state.phase = "combat-setup";
+    state.priorityPlayerId = null;
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    return state;
+  }
+
+  const surrenderOffers = (state: GameState, playerId: PlayerId) =>
+    getLegalActions(state, playerId).filter((l) => l.action.type === "SURRENDER_COMBAT");
+
+  it("offers the 2nd hero's owner Surrender even with 0 gold (no toll needed)", () => {
+    const state = secondaryPrepState("sec-surr-poor");
+    state.players.p2.resources.gold = 0;
+    const offers = surrenderOffers(state, "p2");
+    expect(offers.length).toBe(1);
+    expect(offers[0].label).toMatch(/Secondary Hero/i);
+  });
+
+  it("resolves SURRENDER_COMBAT to a surrender-secondary outcome", () => {
+    const state = secondaryPrepState("sec-surr-apply");
+    state.players.p2.resources.gold = 0;
+    const result = applyAction(state, { type: "SURRENDER_COMBAT", playerId: "p2" });
+    expect(result.errors).toEqual([]);
+    expect(result.state.combat?.outcome).toMatchObject({ defeatedPlayerId: "p2", reason: "surrender-secondary" });
+  });
+
+  it("CONTROL: a MAIN-hero defender below 10 gold is NOT offered Surrender", () => {
+    const state = secondaryPrepState("sec-surr-control");
+    // Aim the fight at p2's MAIN hero instead: the paid surrender needs 10 gold.
+    state.combat!.context = {
+      kind: "player",
+      attackerHeroId: "hero_p1",
+      defenderHeroId: "hero_p2",
+      fieldId: state.heroes.hero_p1.spaceId ?? "0,0"
+    };
+    state.players.p2.resources.gold = 0;
+    expect(surrenderOffers(state, "p2").length).toBe(0);
+  });
+});
+
 describe("Combat-scoped effects do not leak past a Retreat/Surrender (Bulwark Runes)", () => {
   // A fought-out win expires combat effects when the last unit falls
   // (finishCombatIfNeeded); a Retreat/Surrender/Give-up ends the battle by

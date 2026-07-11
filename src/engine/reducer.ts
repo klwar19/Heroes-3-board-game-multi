@@ -189,7 +189,12 @@ import {
   SPELL_DECK_EXPERT
 } from "./ruleset";
 import { houseRuleEnabled } from "./house-rules";
-import { consumeHeldMoraleCard, playerHoldsMoraleCard, returnHeldMoraleCardToDeckBottom } from "./morale-cards";
+import {
+  consumeHeldMoraleCard,
+  moraleCardsRuleEnabled,
+  playerHoldsMoraleCard,
+  returnHeldMoraleCardToDeckBottom
+} from "./morale-cards";
 import { MORALE_CARD_IDS } from "@/data/cards/morale";
 import {
   destroyFortification,
@@ -1071,7 +1076,7 @@ function applyMoraleDiceCurses(
   aggregation: MoraleDiceAggregation
 ): AttackRollCandidate {
   const combat = state.combat;
-  if (!combat || !state.adventure?.moraleCards) {
+  if (!combat || !moraleCardsRuleEnabled(state)) {
     return candidate;
   }
 
@@ -1118,7 +1123,7 @@ function applyMoraleDiceCurses(
  * even where it helps), apply-both rolls one die, Slayer rolls N-1.
  */
 function takeMoraleRollOneLess(state: GameState, controllerId: PlayerId, diceCount: number): number {
-  if (diceCount < 2 || !state.adventure?.moraleCards) {
+  if (diceCount < 2 || !moraleCardsRuleEnabled(state)) {
     return diceCount;
   }
   if (!consumeHeldMoraleCard(state, controllerId, MORALE_CARD_IDS.rollOneLess)) {
@@ -3176,7 +3181,7 @@ function buildRerollSources(
   // The positive morale token's "reroll any die" use is available in every mode
   // a combat runs in (adventure and the combat sandbox alike).
   const moraleSources: AttackRerollSource[] =
-    player && state.adventure?.moraleCards
+    player && moraleCardsRuleEnabled(state)
       ? (player.moraleCards?.positive ?? [])
           .filter((cardId) => cardId === "morale.positive.reroll_die")
           .map((cardId) => ({
@@ -3194,7 +3199,7 @@ function buildRerollSources(
   // plain reroll press). The attackRerollsBlocked gate above withholds it too —
   // a deliberate reading: the lockout stops every Attack-die manipulation.
   const moraleSetSources: AttackRerollSource[] =
-    player && state.adventure?.moraleCards
+    player && moraleCardsRuleEnabled(state)
       ? (player.moraleCards?.positive ?? [])
           .filter((cardId) => cardId === MORALE_CARD_IDS.setAttackDiePlus)
           .map((cardId) => ({
@@ -3289,7 +3294,7 @@ function applyAbilityDiceCurses(
   fullKit: boolean
 ): AttackRollCandidate {
   const combat = state.combat;
-  if (!combat || !state.adventure?.moraleCards) {
+  if (!combat || !moraleCardsRuleEnabled(state)) {
     return candidate;
   }
 
@@ -3364,7 +3369,7 @@ function buildAbilityRerollSources(state: GameState, roller: CombatUnitState): A
     return [];
   }
 
-  const moraleSources: AttackRerollSource[] = state.adventure?.moraleCards
+  const moraleSources: AttackRerollSource[] = moraleCardsRuleEnabled(state)
     ? (player.moraleCards?.positive ?? [])
         .filter((cardId) => cardId === MORALE_CARD_IDS.rerollDie)
         .map((cardId) => ({
@@ -3377,7 +3382,7 @@ function buildAbilityRerollSources(state: GameState, roller: CombatUnitState): A
       ? [{ name: "Positive morale token", morale: true, remaining: 1, used: 0 }]
       : [];
 
-  const moraleSetSources: AttackRerollSource[] = state.adventure?.moraleCards
+  const moraleSetSources: AttackRerollSource[] = moraleCardsRuleEnabled(state)
     ? (player.moraleCards?.positive ?? [])
         .filter((cardId) => cardId === MORALE_CARD_IDS.setAttackDiePlus)
         .map((cardId) => ({
@@ -7028,7 +7033,7 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
   // happens. The check die is an Attack die the holder rolls, so a "+1" on it
   // still trips the holder's own reroll-the-"+1" curse first.
   if (
-    state.adventure?.moraleCards &&
+    moraleCardsRuleEnabled(state) &&
     playerHoldsMoraleCard(state, activeUnit.controllerId, MORALE_CARD_IDS.skipActivation)
   ) {
     let checkRoll = rollAttackDie(state.combat);
@@ -17179,7 +17184,7 @@ function resolveDeckSearch(state: GameState, action: Extract<GameAction, { type:
   // Pendant repeat below waits behind it (offered when the morale card declines).
   if (
     !removePicked &&
-    state.adventure?.moraleCards &&
+    moraleCardsRuleEnabled(state) &&
     choice.baseCount !== undefined &&
     playerHoldsMoraleCard(state, action.playerId, MORALE_CARD_IDS.repeatSearch)
   ) {
