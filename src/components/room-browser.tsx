@@ -125,10 +125,11 @@ export function RoomBrowser({ mode, labels }: { mode: GameMode; labels: RoomBrow
       });
   }, [clientId, mode, accountName]);
 
-  // Poll the directory (and lobby chat) every 5s while the browser is open.
+  // Poll the directory (and lobby chat) every 3s while the browser is open —
+  // chat feels fresher without hammering the server (best-effort ephemeral).
   useEffect(() => {
     refresh();
-    const intervalId = window.setInterval(refresh, 5000);
+    const intervalId = window.setInterval(refresh, 3000);
     return () => window.clearInterval(intervalId);
   }, [refresh]);
 
@@ -146,8 +147,11 @@ export function RoomBrowser({ mode, labels }: { mode: GameMode; labels: RoomBrow
   const sendChat = useCallback(
     (text: string) => {
       setChatError(null);
+      // After a successful post, re-fetch the full feed so concurrent lines from
+      // other browsers land immediately (not only our own optimistic merge).
       postLobbyChat({ clientId, name: displayName.trim() || "Player", text })
-        .then((message) => setChatMessages((prev) => [...prev.filter((m) => m.seq !== message.seq), message]))
+        .then(() => fetchLobbyChat())
+        .then(setChatMessages)
         .catch((sendError: unknown) =>
           setChatError(sendError instanceof Error ? sendError.message : "Could not send the message.")
         );
