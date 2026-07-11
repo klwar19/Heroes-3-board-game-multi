@@ -3,16 +3,14 @@ import type { GameRuleset, GameState, GameSetupOptions, HouseRuleId } from "./st
 /**
  * Individual house-rule toggles (BINH). Historically the BINH tweaks were an
  * all-or-nothing bundle switched by `ruleset: "binh" | "legacy"`. This registry
- * lifts each tweak into its OWN on/off flag so a table can mix-and-match: keep
- * the split decks but drop the Estates nerf, buff Griffins in a Legacy game, and
- * so on.
+ * lifts each tweak into its OWN on/off flag so a BINH table can mix-and-match:
+ * keep the split decks but drop the Estates nerf, for example. Legacy remains
+ * the strict all-house-rules-off rulebook mode.
  *
- * Resolution order for "is rule X on":
- *   1. an explicit per-rule flag in `options.houseRules` (the toggle the user
- *      clicked) — authoritative;
- *   2. otherwise the rule's default FOR THE CHOSEN MODE — every rule defaults ON
- *      in "binh" and OFF in "legacy" (i.e. picking a mode is a preset that sets
- *      all the still-untouched toggles).
+ * In BINH, an explicit per-rule flag overrides that rule's default. Legacy is a
+ * hard rulebook mode: every house rule is OFF, regardless of stale or crafted
+ * overrides. This also keeps old persisted rooms honest after the invariant was
+ * introduced.
  *
  * The resolved booleans are frozen onto `adventure.houseRules` at setup so the
  * engine reads plain booleans during play; `houseRuleEnabled` falls back to the
@@ -41,9 +39,9 @@ export type HouseRuleDef = {
 export const HOUSE_RULES: HouseRuleDef[] = [
   {
     id: "split-decks",
-    label: "Split Spell & Artifact decks",
+    label: "Split Spell/Artifact decks by tier",
     description:
-      "Basic/Expert Spell decks and Minor/Major/Relic Artifact decks with level and map gating, instead of one shared Spell deck and one Artifact deck.",
+      "On: Basic/Expert Spell decks and Minor/Major/Relic Artifact decks with level and map gating. Off: one combined Spell deck and one combined Artifact deck; Spells and Artifacts always remain separate families.",
     category: "decks",
     default: true
   },
@@ -171,7 +169,8 @@ export function resolveHouseRules(options: Pick<GameSetupOptions, "ruleset" | "h
   const explicit = options.houseRules ?? {};
   const resolved = {} as Record<HouseRuleId, boolean>;
   for (const def of HOUSE_RULES) {
-    resolved[def.id] = explicit[def.id] ?? houseRuleDefaultFor(options.ruleset, def.id);
+    resolved[def.id] =
+      options.ruleset === "legacy" ? false : explicit[def.id] ?? houseRuleDefaultFor(options.ruleset, def.id);
   }
   return resolved;
 }
@@ -184,6 +183,11 @@ export function resolveHouseRules(options: Pick<GameSetupOptions, "ruleset" | "h
  * `ruleset.ts` to keep the dependency one-way (ruleset.ts → house-rules.ts).
  */
 export function houseRuleEnabled(state: Pick<GameState, "ruleset" | "adventure">, id: HouseRuleId): boolean {
+  // Legacy is the strict rulebook preset. Ignore a stale frozen `true` from an
+  // older room and never let a malformed client opt individual rules back in.
+  if ((state.ruleset ?? "legacy") === "legacy") {
+    return false;
+  }
   const frozen = state.adventure?.houseRules;
   if (frozen && frozen[id] !== undefined) {
     return frozen[id]!;
