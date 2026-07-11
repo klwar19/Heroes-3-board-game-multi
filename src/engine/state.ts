@@ -8099,10 +8099,9 @@ export type GameSetupOptions = {
    */
   moraleCards?: boolean;
   /**
-   * Individual BINH house-rule toggles. Each id in this map overrides the mode
-   * default for that single rule, so a table can keep the split decks but drop
-   * the Estates nerf, buff Griffins in a Legacy game, and so on. Absent entries
-   * fall back to the chosen mode's default (all ON in "binh", OFF in "legacy").
+   * Individual BINH house-rule toggles. Each id in this map can override its
+   * BINH default. Legacy is a hard rulebook preset and ignores the entire map,
+   * keeping every house rule off even in old snapshots with stale true flags.
    * See {@link HouseRuleId} / house-rules.ts for the registry and resolver.
    */
   houseRules?: Partial<Record<HouseRuleId, boolean>>;

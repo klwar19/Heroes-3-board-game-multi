@@ -560,6 +560,15 @@ describe("Spell Book — refill from discard on pickup", () => {
 // ---------------------------------------------------------------------------
 
 describe("Spell Book — off-switch and privacy", () => {
+  it("Legacy locks the house rule off even for a stale snapshot that says it is on", () => {
+    const state = adventure("legacy-book-lock", true);
+    state.ruleset = "legacy";
+    state.adventure!.spellBook = true;
+    expect(spellBookRuleEnabled(state)).toBe(false);
+    state.players.p1.hand = ["spell.haste"];
+    expect(legal(state, "p1").some((l) => l.action.type === "MOVE_SPELL_TO_SPELL_BOOK")).toBe(false);
+  });
+
   it("with the rule OFF, no stashing and no Book pickup route", () => {
     const state = adventure("book-off", false);
     expect(spellBookRuleEnabled(state)).toBe(false);
