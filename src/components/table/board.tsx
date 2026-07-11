@@ -27,6 +27,7 @@ import {
   isAdjacent,
   isArrowTowerUnit,
   isUnitAlive,
+  NEUTRAL_PLAYER_ID,
   parseFortificationTargetId,
   pickCombatBoardArtId,
   placementCellsFor,
@@ -843,7 +844,11 @@ export function BattlefieldBoard({
   // advertise drop targets yet.
   const setup = combat?.setup;
   const placing = Boolean(setup && !combat?.prep && setup.pendingPlayerIds[0] === viewerPlayerId);
-  const ownRows = placing ? new Set(placementCellsFor(state, viewerPlayerId)) : new Set<number>();
+  // PvP Neutral Control: the controller SORTS the revealed Neutral formation
+  // before battle — the guards are draggable within the defender zone, exactly
+  // like a defender repositioning their own line (pendingNeutralPlacement).
+  const sorting = Boolean(combat && combat.pendingNeutralPlacement === viewerPlayerId);
+  const ownRows = placing || sorting ? new Set(placementCellsFor(state, viewerPlayerId)) : new Set<number>();
 
   // Tactics swap: a click-to-select board interaction for BOTH the start-of-combat
   // setup window (Basic) and the mid-combat expert swap (Expert). Basic is always
@@ -1123,7 +1128,7 @@ export function BattlefieldBoard({
           const healAction = unit && !selectedCardAction ? healActionsByTarget.get(unit.id) : undefined;
           const isActive = Boolean(unit && combat?.activeUnitId === unit.id);
           const isFlipping = Boolean(unit && flippedUnitIds?.has(unit.id));
-          const dropTarget = placing && ownRows.has(index) && !unit && !isObstacle;
+          const dropTarget = (placing || sorting) && ownRows.has(index) && !unit && !isObstacle;
           // Tactics swap roles for this cell's unit (only during the setup window).
           const isSwapSelected = Boolean(unit && activeSwapSelection === unit.id);
           const isSwapTarget = Boolean(unit && swapPartners.has(unit.id));
@@ -1311,22 +1316,30 @@ export function BattlefieldBoard({
           );
 
           // During deployment your placed units stay draggable to new spaces.
-          // Pointer-based so it works on touch devices, not just a mouse.
-          const placedUnitDraggable = Boolean(
-            placing && unit && unit.controllerId === viewerPlayerId && unit.armyUnitId
+          // Pointer-based so it works on touch devices, not just a mouse. Under
+          // PvP Neutral Control the controller likewise drags the Neutral guards
+          // to sort the formation (dropping onto another guard swaps them).
+          const deployDraggable = Boolean(placing && unit && unit.controllerId === viewerPlayerId && unit.armyUnitId);
+          const sortDraggable = Boolean(
+            sorting && unit && unit.controllerId === NEUTRAL_PLAYER_ID && !isArrowTowerUnit(unit)
           );
+          const placedUnitDraggable = deployDraggable || sortDraggable;
           const dragProps = placedUnitDraggable
             ? {
                 onPointerDown: (event: React.PointerEvent) => {
                   beginUnitPointerDrag(event, {
                     portraitUrl: unit!.assets?.cardImage,
                     onDrop: (position) =>
-                      onAction({
-                        type: "PLACE_COMBAT_UNIT",
-                        playerId: viewerPlayerId,
-                        armyUnitId: unit!.armyUnitId as string,
-                        position
-                      })
+                      onAction(
+                        sortDraggable
+                          ? { type: "PLACE_NEUTRAL_GUARD", playerId: viewerPlayerId, unitId: unit!.id, position }
+                          : {
+                              type: "PLACE_COMBAT_UNIT",
+                              playerId: viewerPlayerId,
+                              armyUnitId: unit!.armyUnitId as string,
+                              position
+                            }
+                      )
                   });
                 }
               }
@@ -1815,6 +1828,10 @@ const COMMAND_ACTION_TYPES = new Set<GameAction["type"]>([
   // surface as command buttons (their legal-action labels name the two units).
   "SWAP_COMBAT_UNITS",
   "FINISH_TACTICS",
+  // PvP Neutral Control: the "Ready for battle" button that ends the pre-battle
+  // formation sort (the moves/swaps themselves are board drag/click, like
+  // deployment, so PLACE_NEUTRAL_GUARD is intentionally NOT a command button).
+  "FINISH_NEUTRAL_PLACEMENT",
   "SUMMON_DEMONS",
   "USE_GENIE_DECK_DRAW",
   "COMPLETE_SIMULTANEOUS_TURN",

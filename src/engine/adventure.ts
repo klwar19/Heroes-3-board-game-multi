@@ -101,7 +101,7 @@ import type {
   VictoryMode,
   VisitStep
 } from "./state";
-import { isNeutralSideCombatChoice } from "./neutral-control";
+import { isNeutralSideCombatChoice, neutralCombatControllerId } from "./neutral-control";
 import { NEUTRAL_PLAYER_ID } from "./state";
 import { awardCommanderGradePoints } from "./commanders";
 
@@ -2364,6 +2364,19 @@ export function eliminatePlayer(
     state.pendingChoice.playerId = NEUTRAL_PLAYER_ID;
     if (state.priorityPlayerId === playerId) {
       state.priorityPlayerId = null;
+    }
+  }
+
+  // PvP Neutral Control: the pre-battle formation-SORT window is the Neutral
+  // side's, held by the eliminated controller. Hand it to the next live
+  // controller (re-derived from the shrunken turn order); with nobody left to
+  // take the guards the table is down to the fighter (the game is ending), so
+  // the window simply clears and priority returns to the fighter.
+  if (state.combat && !state.combat.outcome && state.combat.pendingNeutralPlacement === playerId) {
+    const nextController = neutralCombatControllerId(state, state.combat);
+    state.combat.pendingNeutralPlacement = nextController;
+    if (state.phase === "combat-setup") {
+      state.priorityPlayerId = nextController ?? state.combat.attackerPlayerId;
     }
   }
 

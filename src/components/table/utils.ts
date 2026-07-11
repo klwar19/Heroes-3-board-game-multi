@@ -419,6 +419,8 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       return event.message;
     case "NEUTRAL_CONTROL_ASSIGNED":
       return event.message;
+    case "NEUTRAL_FORMATION_SORT_OPENED":
+      return `${playerName(state, event.playerId)} may sort the Neutral formation before ${playerName(state, event.combatPlayerId)}'s battle.`;
     case "ROOM_MEMBER_JOINED": {
       // Registered players show their verified nickname; guests are honestly
       // labeled so nobody mistakes them for an account. Rebinds read "reconnected".

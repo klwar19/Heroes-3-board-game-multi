@@ -4556,9 +4556,117 @@ export function revealNeutralArmy(state: GameState, draws: NeutralDraw[]): void 
     unitDefIds: draws.map((draw) => draw.unitDefId)
   });
 
-  // The guards are on the board: a Tactics-holding attacker may now rearrange
-  // their line before round 1 (finalizeCombatStart) begins.
+  // The guards are on the board: under PvP Neutral Control the controller may
+  // first SORT the Neutral formation (a normal FIELD only — never a bank), then
+  // a Tactics-holding attacker may rearrange their own line, before round 1
+  // (finalizeCombatStart) begins.
   combat.setup = null;
+  if (openNeutralPlacementWindow(state)) {
+    return;
+  }
+  if (openTacticsSetupWindows(state)) {
+    return;
+  }
+  finalizeCombatStart(state);
+}
+
+/**
+ * PvP Neutral Control: open the pre-battle formation-SORT window for the
+ * controlling player once the Neutral army is revealed and auto-placed on a
+ * normal guard FIELD (user rule "sorting or moving neutral formation before
+ * battle, just like defender"). Returns true (and holds priority for the
+ * controller) when the window opens. Never opens for a Creature Bank (corners
+ * are fixed), with no controller (AI/solo), or with fewer than two living
+ * guards to arrange — mirroring the Tactics window's threshold.
+ */
+function openNeutralPlacementWindow(state: GameState): boolean {
+  const combat = state.combat;
+  if (!combat) {
+    return false;
+  }
+  // A Creature Bank keeps its fixed corner deployment — no sorting.
+  if (combat.context.kind === "neutral" && combat.context.bankId !== undefined) {
+    return false;
+  }
+  const controller = neutralCombatControllerId(state, combat);
+  if (!controller) {
+    return false;
+  }
+  const guards = Object.values(combat.units).filter(
+    (unit) => unit.controllerId === NEUTRAL_PLAYER_ID && unit.damage < unit.maxHealth && !isArrowTowerUnit(unit)
+  );
+  if (guards.length < 2) {
+    return false;
+  }
+
+  combat.pendingNeutralPlacement = controller;
+  state.phase = "combat-setup";
+  state.priorityPlayerId = controller;
+  appendEvent(state, {
+    type: "NEUTRAL_FORMATION_SORT_OPENED",
+    playerId: controller,
+    combatPlayerId: combat.attackerPlayerId
+  });
+  return true;
+}
+
+/**
+ * PvP Neutral Control: the controller repositions ONE Neutral guard during the
+ * pre-battle sort (PLACE_NEUTRAL_GUARD). Moves the guard to an empty defender
+ * cell, or SWAPS it with another guard already standing there. Only the
+ * controller may act, only on a living neutral guard, only within the defender
+ * zone — the formation stays on the Neutral side (no cross-zone teleport).
+ */
+export function placeNeutralGuard(state: GameState, action: Extract<GameAction, { type: "PLACE_NEUTRAL_GUARD" }>): void {
+  const combat = state.combat;
+  if (!combat || combat.pendingNeutralPlacement !== action.playerId) {
+    throw new Error("There is no Neutral formation to sort right now.");
+  }
+  const guard = combat.units[action.unitId];
+  if (!guard || guard.controllerId !== NEUTRAL_PLAYER_ID || guard.damage >= guard.maxHealth || isArrowTowerUnit(guard)) {
+    throw new Error("That unit is not a Neutral guard you can reposition.");
+  }
+  // The controller is never the attacker, so placementCellsFor is the defender zone.
+  if (!placementCellsFor(state, action.playerId).includes(action.position)) {
+    throw new Error("A Neutral guard must stay on the defender's back or front line.");
+  }
+
+  const occupant = Object.values(combat.units).find(
+    (unit) => unit.position === action.position && unit.id !== guard.id
+  );
+  if (occupant) {
+    // Only another guard may be swapped with — an Arrow Tower or a stray unit
+    // holds its cell (there are none but the neutral guards during this window).
+    if (occupant.controllerId !== NEUTRAL_PLAYER_ID || isArrowTowerUnit(occupant)) {
+      throw new Error("That space is taken.");
+    }
+    occupant.position = guard.position;
+    appendEvent(state, {
+      type: "COMBAT_UNIT_PLACED",
+      playerId: action.playerId,
+      unitId: occupant.id,
+      position: occupant.position
+    });
+  }
+  guard.position = action.position;
+  appendEvent(state, {
+    type: "COMBAT_UNIT_PLACED",
+    playerId: action.playerId,
+    unitId: guard.id,
+    position: guard.position
+  });
+}
+
+/** Finish the Neutral formation sort (FINISH_NEUTRAL_PLACEMENT) and start play. */
+export function finishNeutralPlacement(
+  state: GameState,
+  action: Extract<GameAction, { type: "FINISH_NEUTRAL_PLACEMENT" }>
+): void {
+  const combat = state.combat;
+  if (!combat || combat.pendingNeutralPlacement !== action.playerId) {
+    throw new Error("There is no Neutral formation to finish sorting.");
+  }
+  combat.pendingNeutralPlacement = null;
   if (openTacticsSetupWindows(state)) {
     return;
   }

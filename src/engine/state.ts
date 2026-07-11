@@ -3101,6 +3101,22 @@ export type GameAction =
       type: "FINISH_TACTICS";
       playerId: PlayerId;
     }
+  | {
+      /**
+       * PvP Neutral Control: the controller sorts the revealed Neutral formation
+       * before battle — move a guard to an empty defender-zone cell, or swap it
+       * with another guard there. Validated in placeNeutralGuard.
+       */
+      type: "PLACE_NEUTRAL_GUARD";
+      playerId: PlayerId;
+      unitId: UnitId;
+      position: number;
+    }
+  | {
+      /** Finish the Neutral formation sort and start the battle. */
+      type: "FINISH_NEUTRAL_PLACEMENT";
+      playerId: PlayerId;
+    }
   | { type: "CONTINUE_NEUTRAL_COMBAT"; playerId: PlayerId }
   | { type: "CONTINUE_NEUTRAL_STEP"; playerId: PlayerId }
   | { type: "RETREAT_FROM_COMBAT"; playerId: PlayerId }
@@ -4309,6 +4325,18 @@ export type GameEvent =
       /** The player whose hero is fighting the Neutral units. */
       combatPlayerId: PlayerId;
       message: string;
+    }
+  | {
+      /**
+       * PvP Neutral Control: the pre-battle formation-SORT window opened for the
+       * controlling player (they may move/swap the Neutral guards before battle).
+       */
+      id: string;
+      type: "NEUTRAL_FORMATION_SORT_OPENED";
+      /** The player controlling (sorting) the Neutral formation. */
+      playerId: PlayerId;
+      /** The player whose hero is fighting the Neutral units. */
+      combatPlayerId: PlayerId;
     }
   | {
       id: string;
@@ -6558,6 +6586,17 @@ export type CombatState = {
    * Combat round 1 begins (finalizeCombatStart) only once the queue drains.
    */
   pendingTacticsSwaps?: PlayerId[] | null;
+  /**
+   * PvP Neutral Control: the controlling player may SORT the revealed Neutral
+   * formation before battle — "just like a defender" (user rule). Set to the
+   * controller id after the guards are revealed and auto-placed on a normal
+   * guard FIELD (never a Creature Bank, whose corners are fixed); the head holds
+   * priority (phase "combat-setup", `setup` already null, exactly like the
+   * Tactics window). `PLACE_NEUTRAL_GUARD` moves/swaps a guard within the
+   * defender zone; `FINISH_NEUTRAL_PLACEMENT` starts the battle (→ Tactics →
+   * round 1). Absent when no controller exists or for a bank.
+   */
+  pendingNeutralPlacement?: PlayerId | null;
   /**
    * Controllers who have had at least one unit removed from the board this
    * combat (Pit Lords' "Summon Demons" triggers off a friendly removal).
