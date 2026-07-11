@@ -858,6 +858,58 @@ describe("ReactionTray — Sorrow pays its skip with a Power-value cost picker",
     expect(screen.queryByRole("button", { name: /Crown/i })).toBeNull();
     expect(confirmButton().disabled, "basic +1 with no crown cannot pay the skip").toBe(true);
   });
+
+  /** A gold unit is about to activate; p1 holds Sorrow + two basic Power cards. */
+  function goldSkipWindow(): GameState {
+    const state = createInitialGameState("sorrow-gold-tray-seed");
+    state.players.p1.hand = ["spell.sorrow", "stat.power", "stat.power"];
+    state.players.p2.hand = [];
+    state.players.p1.limits.expertUses = 2; // two crowns available
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    state.combat!.units.unit_p2_vampires.grade = "gold";
+    for (const unit of Object.values(state.combat!.units)) {
+      unit.activatedThisRound = unit.id !== "unit_p1_griffins" && unit.id !== "unit_p2_vampires";
+    }
+    const result = applyAction(state, { type: "DEFEND_UNIT", playerId: "p1", unitId: "unit_p1_griffins" });
+    expect(result.errors).toEqual([]);
+    expect(result.state.combat!.activeUnitId).toBe("unit_p2_vampires");
+    return result.state;
+  }
+
+  it("pays the Power-4 gold skip with TWO Power cards each upgraded by its own crown", () => {
+    const state = goldSkipWindow();
+
+    const onAction = vi.fn();
+    render(trayFor(state, onAction));
+
+    act(() => fireEvent.click(screen.getByRole("button", { name: /skip a gold unit/i })));
+    // Pick both basic Power cards — 1 + 1 = 2, still short of the 4-Power skip.
+    const powerChips = () => screen.getAllByRole("button", { name: /^Power \(\+1\)$/ });
+    expect(powerChips()).toHaveLength(2);
+    act(() => fireEvent.click(powerChips()[0]));
+    act(() => fireEvent.click(powerChips()[1]));
+    expect(confirmButton().disabled, "two basic Power (2) < the 4-Power gold skip").toBe(true);
+
+    // Each picked source gets its own Crown toggle; upgrading BOTH reaches +2+2=4.
+    const crownToggles = () => screen.getAllByRole("button", { name: /Crown/i });
+    expect(crownToggles()).toHaveLength(2);
+    act(() => fireEvent.click(crownToggles()[0]));
+    expect(confirmButton().disabled, "one crown (3) is still short of 4").toBe(true);
+    act(() => fireEvent.click(crownToggles()[0])); // the second remaining toggle
+    expect(confirmButton().disabled, "two crowns (4) reach the gold skip").toBe(false);
+
+    act(() => fireEvent.click(confirmButton()));
+    const played = onAction.mock.calls[0][0] as Extract<GameAction, { type: "PLAY_REACTION" }>;
+    expect(played.costCardIds).toEqual(["stat.power", "stat.power"]);
+    expect(played.costCardModes).toEqual(["expert", "expert"]);
+
+    // The engine accepts it: the gold unit is skipped and both crowns are spent.
+    const applied = applyAction(state, played);
+    expect(applied.errors).toEqual([]);
+    expect(applied.state.combat!.units.unit_p2_vampires.activatedThisRound).toBe(true);
+    expect(applied.state.players.p1.combatStats.expertUsesSpentThisRound).toBe(2);
+  });
 });
 
 describe("ReactionTray — Magic Mirror's paid redirect can pay its cost in the picker", () => {
