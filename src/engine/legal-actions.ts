@@ -350,11 +350,12 @@ function canAffordCardCost(
       ? (player.spellBook ?? []).find((id) => id !== cardId && passesFilter(id)) ?? null
       : null;
 
-  // Power-value cost (Sorrow, map View Air / Dimension Door tiers): the standing
-  // spell Power plus the full printed Power of every eligible power-source card
-  // in hand must reach the threshold. Crowns let Power statistics use their
-  // expertAmount when checking affordability (the actual crown spend is chosen
-  // at payment via costCardModes).
+  // Power-value cost (Sorrow, Alamar's Resurrection, map View Air / Dimension
+  // Door tiers): the standing spell Power plus the full printed Power of every
+  // eligible power-source card in hand must reach the threshold. Crowns let
+  // Power statistics use their expertAmount when checking affordability — on the
+  // map (PLAY_CARD) AND in combat (the reaction path). The actual crown spend is
+  // chosen at payment via costCardModes.
   if (cost.powerCost !== undefined) {
     const card = cardLibrary[cardId];
     const schools = card?.spellSchools ?? [];

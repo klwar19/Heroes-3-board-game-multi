@@ -1243,3 +1243,60 @@ Three engine-enforced additions; each fails a named test if its wiring is remove
   (unit-level intents, the obstacle/flying/ranged cases each with a control, and
   an end-to-end test proving the guard lands on the CELL the player picked), the
   composition in `adventure.test.ts`, and the board wiring in `board.test.tsx`.
+
+## Combat draw-only abilities, Knowledge recall & value-based Power costs (BINH house rules) — what runs
+
+Five additions; each engine rule fails a named test if its wiring is removed.
+
+- **Combat draw-only Sorcery / Offense / Armorer.** On your own combat
+  activation (the active unit is yours and has not attacked), Sorcery
+  (`ADD_SPELL_POWER`) / Offense / Armorer (`ADD_COMBAT_STAT`) — each a
+  "+stat/+Power, then draw a card" ability — may be played JUST for the draw,
+  with no attack/spell window open. The stat/Power fizzles (no stack, no target),
+  only the "then draw" rider resolves. Offered as `combatDrawOnly` in
+  `legal-actions.ts` (basic only — a fizzled stat wastes no crown); the draw
+  fires in `playCard` when `!state.reactionWindow && state.stack.length === 0`.
+  Pinned in `sorcery-draw-rider.test.ts` ("Combat draw-only …", with an
+  off-turn CONTROL and the stat-fizzles assertion).
+- **Sorcery banks +Power for the next spell if the unit has not moved.** A
+  draw-only Sorcery played before the active unit has moved
+  (`!movedThisActivation`) banks its Power on
+  `combatStats.pendingDrawRiderSpellPower`; the NEXT spell cast consumes it in
+  `performSpellCast` (folded into `stackItem.modifiers.spellPowerBonus`). Cleared
+  on consume and each combat round. Pinned in `sorcery-draw-rider.test.ts` (bank
+  + cast lands the +Power, with an already-moved CONTROL that banks nothing).
+- **Knowledge (basic OR expert) recalls ANY spell — combat AND map.** In combat
+  the recall is the pre-existing `RECALL_SPELL` reaction to `SPELL_CAST_STARTED`
+  (any spell you cast) and the attack-window instant recall; both basic and
+  expert are offered whenever the caster holds Knowledge (crown for expert).
+  Pinned in `knowledge-recall-instants.test.ts` (cast-window basic + expert,
+  attack-window instants). On the map — where there is no per-turn spell limit —
+  every resolved map Spell (View Air, Dimension Door, Fly, Town Portal, Water
+  Walk, …) offers a Knowledge recall: BASIC takes the Spell back for FREE (no
+  crown), EXPERT (when a crown remains) also raises the combat-round spell limit,
+  Empowered Knowledge always recalls with the limit bonus crown-free. Wired in
+  `playCard` (the map recall offer) + `processPendingVisit`
+  (`KNOWLEDGE_RECALL_MAP_SPELL` with a `mode`). Pinned in
+  `map-movement-spells.test.ts` (basic no-crown / expert crown+limit / zero-crown
+  basic) and `view-spells.test.ts` (Knowledge retakes View Air).
+- **Map pay-N-Power tiers use a Power VALUE, not a card count.** The View Air /
+  View Earth / Dimension Door / Fly / Water Walk / Town Portal "pay N Power"
+  tiers now carry `cost.powerCost` (was `discardCards`), so they are paid by the
+  standing spell Power plus the printed Power VALUE of the discarded power-source
+  cards — a single Expert Power (+2) can pay a Power-2 tier by spending a crown
+  (`costCardModes: ["expert"]`). Fixes the old bug where View Air's Power tiers
+  could never use a crown. Pinned in `view-spells.test.ts` (Power 2 paid with one
+  Expert Power + crown; a no-crown CONTROL rejects the expert payment).
+- **Expert Power payment (crown) works for combat reactions too.** The same
+  value-based `powerCost` costs paid in combat — Sorrow's silver/gold skip,
+  Alamar's / Jeddite's lethal-save Resurrection, any future one — accept
+  `costCardModes` through the reaction path (`PLAY_REACTION` / `PLAY_REACTIONS`
+  → `applyReactionPlayCore` → `payOptionCardCost`), so one Expert Power card +
+  a crown reaches a Power-2 cost. Affordability (`canAffordCardCost`) greedily
+  assigns available crowns to the sources that gain most, on the map AND in
+  combat. The reaction cost pickers (`overlays.tsx` batch tray +
+  `SpellBookSaveTile`) show a per-source Crown toggle and count each expert cost
+  card against the crown budget. Pinned in `lethal-save-sources.test.ts` (silver
+  save paid with one Expert Power + crown; a no-crown CONTROL rejects it) and
+  `overlays.test.tsx` (the Crown toggle emits `costCardModes` and the engine
+  accepts it, with a no-crown CONTROL that hides the toggle).

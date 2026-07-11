@@ -10172,6 +10172,8 @@ function applyReactionPlayCore(
     mode?: "basic" | "expert";
     optionIndex?: number;
     costCardIds?: CardId[];
+    /** Index-aligned with costCardIds: "expert" values a Power source at expertAmount and spends a crown. */
+    costCardModes?: CardPlayMode[];
     asPowerBoost?: boolean;
     /** Spell Scroll reaction: power-locked to 0, consumed from the scroll. */
     fromScroll?: string;
@@ -10407,7 +10409,8 @@ function applyReactionPlayCore(
         option?.cost,
         play.costCardIds,
         cards,
-        effect.type === "CANCEL_LETHAL_ATTACK"
+        effect.type === "CANCEL_LETHAL_ATTACK",
+        play.costCardModes
       );
 
   let effectAmount = getEffectAmount(effect, mode);
