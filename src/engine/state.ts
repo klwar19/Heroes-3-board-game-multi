@@ -6848,6 +6848,30 @@ export type VisitStep =
   | { type: "RESUME_FIELD_VISIT"; heroId: HeroId; fieldId: MapSpaceId; revisit: boolean }
   | { type: "ROLL_TREASURE_DICE"; count: number }
   | {
+      /**
+       * Starting bonus (rulebook p.10): Search (2) the Artifact deck once or
+       * twice. Queues the Search reward(s) then reshuffles every Artifact deck
+       * + discard and reseeds one face-up discard card, as printed.
+       */
+      type: "STARTING_BONUS_ARTIFACT_SEARCH";
+      times: 1 | 2;
+    }
+  | {
+      /**
+       * Starting bonus (Hard): reveal cards from the top of the Artifact deck
+       * until a Minor Artifact is found and add it to hand. Non-matching cards
+       * go to the discard pile. Not a Search — no post-search reshuffle.
+       */
+      type: "REVEAL_UNTIL_MINOR_ARTIFACT";
+    }
+  | {
+      /**
+       * After a starting-bonus Artifact Search: shuffle each Artifact deck with
+       * its discard, then flip one card face-up to reseed the discard pile.
+       */
+      type: "RESHUFFLE_ARTIFACT_DECKS";
+    }
+  | {
       /** Marks one Luck reroll (per dice kind) as spent before re-rolling. */
       type: "CONSUME_LUCK";
       effectId: string;
@@ -8182,6 +8206,12 @@ export type AdventureState = {
    */
   moraleCards?: boolean;
   /**
+   * Tournament Mode setup rules (default OFF). When on, Diplomacy and Hourglass
+   * of the Evil Hour are removed from shared decks, and the second player gains
+   * 1 positive morale at game start. See GameSetupOptions.tournamentMode.
+   */
+  tournamentMode?: boolean;
+  /**
    * PvP Neutral Control mode (optional, multiplayer only). When on, the next
    * live player clockwise from a Neutral combat's fighter commands the Neutral
    * side's decisions (see GameSetupOptions.pvpNeutralControl). Absent on older
@@ -8278,6 +8308,16 @@ export type GameSetupOptions = {
    * token system with positive/negative Morale decks and held morale cards.
    */
   moraleCards?: boolean;
+  /**
+   * Tournament Mode setup rules (default OFF, rulebook p.54). When on:
+   *  - Diplomacy (Ability) and Hourglass of the Evil Hour (Artifact) are
+   *    removed from the game before their shared decks are built;
+   *  - the second player (seat after the starting player) gains 1 positive
+   *    morale at the start of the game.
+   * Does NOT implement the rest of Tournament Mode (player-built map, VP
+   * scoring, round-1 mulligan, etc.) — only these two printed setup changes.
+   */
+  tournamentMode?: boolean;
   /**
    * PvP Neutral Control mode (default OFF, multiplayer only). In every Neutral
    * combat the NEXT live player clockwise from the fighter PLAYS the Neutral
