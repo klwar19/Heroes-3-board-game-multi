@@ -12,6 +12,7 @@ import {
   findEvent,
   getLegalActions,
   getRuleset,
+  rulesetCardNote,
   wisdomGoldDiscount,
   wisdomSearchCount,
   NEUTRAL_PLAYER_ID,
@@ -74,6 +75,27 @@ describe("ruleset numbers", () => {
     expect(binhCerberi.abilities).toContain("cerberi-second-head");
     expect(binhCerberi.abilities).not.toContain("cerberi-attack-all");
     expect(binhCerberi.abilities).toContain("ignores-retaliation");
+  });
+});
+
+describe("house-rule card notes", () => {
+  it("follows BINH overrides and keeps Legacy hard-locked off", () => {
+    const binhOverridesOff = makeBinhGame();
+    binhOverridesOff.adventure!.houseRules!["wisdom-expert-discount"] = false;
+    binhOverridesOff.adventure!.houseRules!["estates-nerf"] = false;
+    expect(rulesetCardNote(binhOverridesOff, "ability.wisdom")).toBeNull();
+    expect(rulesetCardNote(binhOverridesOff, "ability.estates")).toBeNull();
+
+    const legacyOverridesOn = makeLegacyGame();
+    legacyOverridesOn.adventure!.houseRules!["wisdom-expert-discount"] = true;
+    legacyOverridesOn.adventure!.houseRules!["estates-nerf"] = true;
+    expect(rulesetCardNote(legacyOverridesOn, "ability.wisdom")).toBeNull();
+    expect(rulesetCardNote(legacyOverridesOn, "ability.estates")).toBeNull();
+  });
+
+  it("keeps the ruleset-only compatibility path on the mode defaults", () => {
+    expect(rulesetCardNote("binh", "ability.wisdom")).toContain("3 gold");
+    expect(rulesetCardNote("legacy", "ability.wisdom")).toBeNull();
   });
 });
 
