@@ -128,6 +128,39 @@ describe("PartyKit edge server — reset authority", () => {
     expect(final.snapshot.state.room?.hostClientId).toBe("host-1");
   });
 
+  it("RECLAIM_HOST over the socket: refused while the host is connected, allowed once the host's socket is gone", async () => {
+    const { server, host, guest, connections } = await bootHostedRoom("edge-reclaim-host");
+
+    const send = (conn: MockConnection) =>
+      server.onMessage(
+        JSON.stringify({ type: "action", action: { type: "RECLAIM_HOST", clientId: "guest-1" }, actorClientId: "guest-1" }),
+        conn as unknown as EdgeConnection
+      );
+
+    // CONTROL: the host still holds a live socket — the reclaim is refused and
+    // the host pointer is untouched.
+    await send(guest);
+    const refused = JSON.parse(guest.received.at(-1)!) as {
+      type: string;
+      errors: { message: string }[];
+      snapshot: RoomSnapshot;
+    };
+    expect(refused.type).toBe("action-result");
+    expect(refused.errors.length).toBeGreaterThan(0);
+    expect(refused.snapshot.state.room?.hostClientId).toBe("host-1");
+
+    // The host's browser dies: its socket drops. The member may now take host.
+    connections.delete(host);
+    await send(guest);
+    const taken = JSON.parse(guest.received.at(-1)!) as {
+      errors: { message: string }[];
+      snapshot: RoomSnapshot;
+    };
+    expect(taken.errors).toHaveLength(0);
+    expect(taken.snapshot.state.room?.hostClientId).toBe("guest-1");
+    expect(taken.snapshot.state.room?.members.find((m) => m.clientId === "guest-1")?.isHost).toBe(true);
+  });
+
   it("guest HTTP reset 403s while the host is connected; the host's own succeeds (the CONTROL)", async () => {
     const { server, host } = await bootHostedRoom("edge-reset-http");
 

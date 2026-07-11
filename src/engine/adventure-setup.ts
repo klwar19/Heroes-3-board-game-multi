@@ -1191,9 +1191,13 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   // Setup step 17: each player takes the Scenario Difficulty starting bonus
   // (rulebook p.10). Queued before round/start-of-turn rewards so they resolve
   // first. Impossible has none. Artifacts go to hand, not the Starting Deck.
-  // Gated with the opening ceremony so deterministic tests (rollFirstPlayer:
-  // false) are not blocked on a bonus prompt unless they opt in.
-  const applyStartingBonus = options.startingBonus ?? options.rollFirstPlayer !== false;
+  // OFF by default and turned ON explicitly by the lobby build
+  // (`buildAdventureFromLobby`), so every real game gets the bonus while the
+  // thousands of direct `createAdventureGameState` test constructions keep their
+  // established, bonus-free opening state (the prompt would otherwise sit on the
+  // first player's turn-1 flow). The feature's own tests opt in with
+  // `startingBonus: true`.
+  const applyStartingBonus = options.startingBonus ?? false;
   const bonusSteps = applyStartingBonus ? startingBonusVisitSteps(difficulty) : null;
   if (bonusSteps) {
     for (const playerId of state.turnOrder) {
@@ -2620,6 +2624,9 @@ function buildAdventureFromLobby(state: GameState): void {
     spellBook: lobby.options.spellBook,
     moraleCards: lobby.options.moraleCards,
     tournamentMode: lobby.options.tournamentMode,
+    // Every real game takes the rulebook Scenario Difficulty starting bonus
+    // (p.10); it is not a lobby toggle, so it is always on for a lobby build.
+    startingBonus: true,
     pvpNeutralControl: lobby.options.pvpNeutralControl,
     pvpNeutralControlMustAttack: lobby.options.pvpNeutralControlMustAttack,
     houseRules: lobby.options.houseRules,

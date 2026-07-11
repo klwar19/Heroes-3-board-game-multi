@@ -32,6 +32,7 @@ const ROOM_MEMBERSHIP_ACTION_TYPES = new Set<GameAction["type"]>([
   "ASSIGN_SEAT",
   "KICK_MEMBER",
   "TRANSFER_HOST",
+  "RECLAIM_HOST",
   "SET_ROOM_NAME",
   "SET_ROOM_PASSWORD",
   "SET_ROOM_REQUIRE_AUTH",
@@ -603,6 +604,66 @@ export function transferHost(state: GameState, action: Extract<GameAction, { typ
     type: "ROOM_HOST_CHANGED",
     clientId: target.clientId,
     byClientId: action.clientId
+  });
+}
+
+/**
+ * Recover host on a hosted room whose host is GONE. A member may claim host for
+ * THEMSELVES only while the current host holds no live connection — the exact
+ * "host absent → a member may act" rule the destructive reset/close ops already
+ * use (see authorizeHostedWipe in game-room-store.ts / hostAuthorizes on the
+ * edge). This is what unsticks the common guest case: a host whose per-tab
+ * clientId died with their browser rejoins as a fresh member and would
+ * otherwise be locked out of deleting or re-seating their OWN table, because a
+ * guest carries no stable id to rebind by.
+ *
+ * `liveClientIds` is the set of clientIds currently holding a live stream on
+ * this room, injected by the server transport (both backends track it for the
+ * wipe rule). Undefined only in isolated engine tests / non-networked paths;
+ * treated as "the host is not provably connected", so recovery is permitted —
+ * the networked path always supplies it and thus always enforces the guard.
+ */
+export function reclaimHost(
+  state: GameState,
+  action: Extract<GameAction, { type: "RECLAIM_HOST" }>,
+  actor: VerifiedActor = {},
+  liveClientIds?: readonly string[]
+): void {
+  const room = ensureRoom(state);
+  if (!room.hosted) {
+    throw new Error("There is no host to reclaim in an open room.");
+  }
+  // Resolve the acting member: a verified account binds by its id; a guest by
+  // the claimed clientId. The returning host is normally a guest who just
+  // rejoined, so the clientId path is the common one.
+  const member = actor.userId
+    ? (findMemberByUserId(room, actor.userId) ?? fallbackGuestMember(room, action.clientId))
+    : findMember(room, action.clientId);
+  if (!member) {
+    throw new Error("Join the room before reclaiming host.");
+  }
+  // Already the host → make sure the flags are consistent and do nothing else.
+  if (room.hostClientId === member.clientId) {
+    for (const other of room.members) {
+      other.isHost = other.clientId === member.clientId;
+    }
+    return;
+  }
+  // The living host keeps their room: recovery is only for an ABSENT host.
+  const hostConnected = Boolean(
+    room.hostClientId && liveClientIds && liveClientIds.includes(room.hostClientId)
+  );
+  if (hostConnected) {
+    throw new Error("Only the host can manage this room while the host is connected.");
+  }
+  room.hostClientId = member.clientId;
+  for (const other of room.members) {
+    other.isHost = other.clientId === member.clientId;
+  }
+  appendEvent(state, {
+    type: "ROOM_HOST_CHANGED",
+    clientId: member.clientId,
+    byClientId: member.clientId
   });
 }
 

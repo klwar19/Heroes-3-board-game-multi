@@ -204,8 +204,8 @@ describe("starting bonus at game setup", () => {
     // First Search opens as pendingChoice (or deck-search-mode for discard top)
     expect(
       state.pendingChoice?.type === "DECK_SEARCH" ||
-        state.pendingChoice?.context === "deck-search-mode" ||
-        // Scouting prompt is also fine — still a search pipeline entry
+        // A "Search X" with a non-empty discard top opens the mode picker, and a
+        // scouting prompt is also fine — both are OPTION_CHOICE search entries.
         state.pendingChoice?.type === "OPTION_CHOICE"
     ).toBe(true);
     expect(state.pendingChoice?.playerId).toBe("p1");
@@ -255,13 +255,50 @@ describe("starting bonus at game setup", () => {
     expect(state.players.p1!.deck).toEqual(deckBefore);
   });
 
-  it("deterministic tests with rollFirstPlayer:false skip the bonus unless opted in (CONTROL)", () => {
-    const state = createAdventureGameState({
-      seed: "bonus-skip-default",
+  it("is OFF by default so a direct construction keeps its bonus-free opening (CONTROL)", () => {
+    // Regression guard: the bonus must NOT auto-apply just because the real
+    // first-player roll ran — that broke the turn-1 setup flow of many suites.
+    // A direct build (no `startingBonus`) opens with no bonus prompt, whether or
+    // not the first-player roll is skipped.
+    const rolled = createAdventureGameState({ seed: "bonus-off-rolled", difficulty: "easy" });
+    expect(rolled.adventure?.rewardQueue.some((r) => r.kind === "visit-steps")).toBe(false);
+    const skipped = createAdventureGameState({ seed: "bonus-off-skip", difficulty: "easy", rollFirstPlayer: false });
+    expect(startingBonusPrompt(skipped) ?? "").not.toMatch(/Starting bonus/);
+  });
+
+  it("resolves for every player and hands off to a normal, playable round 1", () => {
+    // The whole point of the feature: once the bonus is taken it must not strand
+    // setup. After every seat resolves, the table is at round 1 with the first
+    // player's mandatory start-of-turn draw armed — identical to a bonus-free
+    // build — and nothing left pending.
+    let state = createAdventureGameState({
+      seed: "bonus-handoff",
+      difficulty: "easy",
+      rollFirstPlayer: false,
+      startingBonus: true
+    });
+    expect(state.adventure?.pendingVisit?.playerId).toBe("p1");
+
+    let guard = 0;
+    while (state.adventure?.pendingVisit && guard < 30) {
+      const owner = state.adventure.pendingVisit.playerId;
+      state = resolveVisitOption(state, owner, 0);
+      state = resolveResourceDieWindow(state, owner);
+      guard += 1;
+    }
+
+    expect(state.adventure?.pendingVisit).toBeFalsy();
+    expect(state.pendingChoice).toBeNull();
+    expect(state.round).toBe(1);
+    expect(state.activePlayerId).toBe("p1");
+    // The turn-1 mandatory draw is armed, exactly as in a game with no bonus.
+    const control = createAdventureGameState({
+      seed: "bonus-handoff",
       difficulty: "easy",
       rollFirstPlayer: false
     });
-    expect(startingBonusPrompt(state) ?? "").not.toMatch(/Starting bonus/);
+    expect(state.players.p1?.canMulligan).toBe(control.players.p1?.canMulligan);
+    expect(state.players.p1?.needsHandRefresh).toBe(control.players.p1?.needsHandRefresh);
   });
 });
 

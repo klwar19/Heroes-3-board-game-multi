@@ -400,6 +400,33 @@ describe("room membership through the store", () => {
     expect(allowed.snapshot.state.activePlayerId).toBe("p2");
   });
 
+  it("RECLAIM_HOST through the store honours live presence (refused while host connected, allowed once gone)", () => {
+    const roomId = uniqueRoom("reclaim");
+    getRoomSnapshot(roomId);
+    submitRoomAction(roomId, { type: "JOIN_ROOM", clientId: "c1", name: "Host" });
+    submitRoomAction(roomId, { type: "SET_ROOM_HOSTED", clientId: "c1", hosted: true });
+    submitRoomAction(roomId, { type: "JOIN_ROOM", clientId: "c2", name: "Guest" });
+    markRoomClientConnected(roomId, "c1"); // the host holds a live stream
+    markRoomClientConnected(roomId, "c2");
+
+    try {
+      // CONTROL: while the store still sees the host's stream, a member cannot
+      // seize host — the store injects the live set into applyAction.
+      const refused = submitRoomAction(roomId, { type: "RECLAIM_HOST", clientId: "c2" }, "c2");
+      expect(refused.result.errors.length).toBeGreaterThan(0);
+      expect(getRoomSnapshot(roomId).state.room?.hostClientId).toBe("c1");
+
+      // The host's browser dies: its stream drops. Now the member may reclaim.
+      markRoomClientDisconnected(roomId, "c1");
+      const taken = submitRoomAction(roomId, { type: "RECLAIM_HOST", clientId: "c2" }, "c2");
+      expect(taken.result.errors).toHaveLength(0);
+      expect(taken.snapshot.state.room?.hostClientId).toBe("c2");
+      expect(taken.snapshot.state.room?.members.find((m) => m.clientId === "c2")?.isHost).toBe(true);
+    } finally {
+      markRoomClientDisconnected(roomId, "c2");
+    }
+  });
+
   it("keeps player 2's settlement reroll and tile rotation with player 2 when player 2 is host", () => {
     const roomId = uniqueRoom("p2-host-far-tile");
     let seeded = createAdventureGameState({ seed: "p2-host-far", difficulty: "normal", rollFirstPlayer: false });

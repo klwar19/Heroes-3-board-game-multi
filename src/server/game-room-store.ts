@@ -443,6 +443,10 @@ export function submitRoomAction(
     // Server wall clock: the AFK vote-kick's only time source (idle stamps +
     // the 10-minute idle/re-ask gates).
     now: Date.now(),
+    // Live-stream set for this room: RECLAIM_HOST refuses while the current host
+    // is still connected (the reset/close "host absent" rule, applied to host
+    // recovery so a restarted guest host can take their own table back).
+    liveClientIds: liveRoomClientIds(roomId),
     ...(actorClientId ? { actorClientId } : {}),
     ...(actorUserId ? { actorUserId } : {})
   });
@@ -545,6 +549,21 @@ export function markRoomClientDisconnected(roomId: string, clientId: string | un
 
 function isRoomClientConnected(roomId: string, clientId: string | null | undefined): boolean {
   return Boolean(clientId && (liveRoomClients.get(roomId)?.get(clientId) ?? 0) > 0);
+}
+
+/** The clientIds currently holding a live stream on `roomId` (for RECLAIM_HOST). */
+function liveRoomClientIds(roomId: string): string[] {
+  const clients = liveRoomClients.get(roomId);
+  if (!clients) {
+    return [];
+  }
+  const ids: string[] = [];
+  for (const [clientId, count] of clients) {
+    if (count > 0) {
+      ids.push(clientId);
+    }
+  }
+  return ids;
 }
 
 /**

@@ -69,6 +69,9 @@ export function RoomPanel({
   const [copied, setCopied] = useState(false);
   // Global online players (for inviting), fetched while the panel is open.
   const [online, setOnline] = useState<PresenceEntry[]>([]);
+  // Whether the live-presence poll has returned at least once. Until it has, we
+  // must assume the host is present (never offer host recovery on a cold panel).
+  const [presenceLoaded, setPresenceLoaded] = useState(false);
   // Names we just pinged, to flip the button to "Invited" as feedback.
   const [invited, setInvited] = useState<Record<string, boolean>>({});
 
@@ -89,9 +92,8 @@ export function RoomPanel({
   const [roomPasswordDraft, setRoomPasswordDraft] = useState("");
   const canSetPassword = canRename;
   const hasPassword = Boolean(room?.passwordHash);
-  // Closing mirrors the engine rule: the host on a hosted room; anyone on an
-  // open table (open tables have no ownership to protect — see viewerCanClose).
-  const canClose = hosted ? isHost : true;
+  // `canClose` / `canReclaimHost` also depend on live presence, so they are
+  // derived below once `liveInThisRoom` is built.
 
   const seatIds = state.turnOrder.filter((id) => id !== NEUTRAL_PLAYER_ID);
   const seatLabel = (seat: RoomSeat) => (seat === "observer" ? "Observer" : state.players[seat]?.name ?? seat);
@@ -128,6 +130,7 @@ export function RoomPanel({
         .then((players) => {
           if (live) {
             setOnline(players);
+            setPresenceLoaded(true);
           }
         })
         .catch(() => {
@@ -162,6 +165,25 @@ export function RoomPanel({
         return keys;
       })
   );
+
+  // Host recovery (mirrors the engine RECLAIM_HOST rule + the server's
+  // reset/close authority): a hosted room whose host holds NO live connection
+  // is not owned by anyone reachable, so any member may take it over or delete
+  // it. This unsticks the common guest case — a host whose per-tab clientId died
+  // with their browser rejoins as a fresh member and would otherwise be locked
+  // out of managing their OWN table. Until presence has loaded once we assume
+  // the host is present, so a cold panel never offers recovery by mistake; the
+  // engine/server re-check the live host and refuse if we guessed wrong.
+  const hostClientId = room?.hostClientId ?? null;
+  const hostIsLive =
+    !presenceLoaded ||
+    Boolean(hostClientId && (hostClientId === clientId || liveInThisRoom.has(hostClientId)));
+  const hostAbsent = hosted && Boolean(me) && !isHost && Boolean(hostClientId) && !hostIsLive;
+  // Closing mirrors the engine rule: the host on a hosted room, any member once
+  // the host is gone, and anyone on an open table (no ownership to protect).
+  const canClose = hosted ? isHost || hostAbsent : true;
+  // "Take over host": offered to a member of a hosted room whose host is absent.
+  const canReclaimHost = hostAbsent;
 
   // Invite = a lobby-chat ping carrying THIS room's join link (the "link +
   // lobby-chat ping" invite). Best-effort; a failure just leaves the button as-is.
@@ -630,6 +652,16 @@ export function RoomPanel({
                 type="button"
               >
                 <LogOut aria-hidden="true" size={13} /> Leave room
+              </button>
+            ) : null}
+            {canReclaimHost ? (
+              <button
+                className="commandButton ghost roomReclaimHost"
+                onClick={() => onAction({ type: "RECLAIM_HOST", clientId })}
+                title="The host has left — take over hosting so you can manage seats and settings"
+                type="button"
+              >
+                <Crown aria-hidden="true" size={13} /> Take over host
               </button>
             ) : null}
             {onCloseRoom && canClose ? (

@@ -3513,6 +3513,19 @@ export type GameAction =
     }
   | {
       /**
+       * Recover host on a hosted room whose host is GONE. Any member may claim
+       * host for themselves ONLY when the current host holds no live connection
+       * (a per-tab clientId dies with the browser, so a restarted host — the
+       * common guest case — must not strand the table). Mirrors the reset/close
+       * "host absent → a member may act" rule (see authorizeHostedWipe): the
+       * server injects the live-client set, and the engine refuses while the
+       * host is still connected. Keyed by the caller's `clientId`.
+       */
+      type: "RECLAIM_HOST";
+      clientId: string;
+    }
+  | {
+      /**
        * Rename the room so it is identifiable in the lobby. Open table: any
        * member may set it; hosted: host-only (mirrors `SET_ROOM_HOSTED`). Keyed
        * by the caller's `clientId`. A blank name clears it back to the default.

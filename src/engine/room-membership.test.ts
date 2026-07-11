@@ -395,6 +395,91 @@ describe("setting the match type (Ranked / Normal)", () => {
   });
 });
 
+describe("reclaiming host when the host is gone (RECLAIM_HOST)", () => {
+  // The live-client set the server injects; the engine refuses to move host
+  // while the current host is still in it.
+  function reclaim(state: GameState, clientId: string, liveClientIds: string[]) {
+    return applyAction(state, { type: "RECLAIM_HOST", clientId }, { actorClientId: clientId, liveClientIds });
+  }
+
+  it("lets a member take host once the host holds no live connection", () => {
+    const state = hostedRoomWithThree(); // c1 host, c2/c3 members
+    expect(state.room?.hostClientId).toBe("c1");
+    // c1 (the host) is NOT in the live set — its browser is gone.
+    const result = reclaim(state, "c2", ["c2", "c3"]);
+    expect(result.errors).toEqual([]);
+    expect(result.state.room?.hostClientId).toBe("c2");
+    expect(result.state.room?.members.find((m) => m.clientId === "c2")?.isHost).toBe(true);
+    expect(result.state.room?.members.find((m) => m.clientId === "c1")?.isHost).toBe(false);
+  });
+
+  it("CONTROL: refuses while the host is still connected", () => {
+    const state = hostedRoomWithThree();
+    // c1 (host) IS live — a member cannot seize host from a present host.
+    const result = applyAction(
+      state,
+      { type: "RECLAIM_HOST", clientId: "c2" },
+      { actorClientId: "c2", liveClientIds: ["c1", "c2", "c3"] }
+    );
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.errors[0]?.message).toMatch(/while the host is connected/i);
+    // Host is untouched.
+    expect(result.state.room?.hostClientId).toBe("c1");
+    expect(result.state.room?.members.find((m) => m.clientId === "c1")?.isHost).toBe(true);
+  });
+
+  it("recovers a restarted GUEST host end-to-end: reclaim, then re-seat their own seat", () => {
+    // c1 hosts and takes seat p1.
+    let state = hostedRoomWithThree();
+    state = expectOk(state, { type: "ASSIGN_SEAT", clientId: "c1", targetClientId: "c1", seat: "p1" });
+    expect(seatOfClient(state, "c1")).toBe("p1");
+
+    // c1's browser restarts → a brand-new per-tab clientId joins as an observer;
+    // the old c1 member lingers as a ghost holding host + seat p1.
+    state = expectOk(state, { type: "JOIN_ROOM", clientId: "c1b", name: "Alice" });
+    expect(state.room?.hostClientId).toBe("c1");
+    expect(seatOfClient(state, "c1b")).toBe("observer");
+    // Before recovery the returning host cannot take seat p1 — the ghost holds it.
+    const blocked = apply(
+      state,
+      { type: "ASSIGN_SEAT", clientId: "c1b", targetClientId: "c1b", seat: "p1" },
+      "c1b"
+    );
+    expect(blocked.errors.length).toBeGreaterThan(0);
+
+    // Reclaim host: the ghost c1 is not in the live set.
+    state = reclaim(state, "c1b", ["c1b", "c2", "c3"]).state;
+    expect(state.room?.hostClientId).toBe("c1b");
+    // Now a host, c1b re-seats itself at p1, bumping the ghost to observer.
+    state = expectOk(state, { type: "ASSIGN_SEAT", clientId: "c1b", targetClientId: "c1b", seat: "p1" });
+    expect(seatOfClient(state, "c1b")).toBe("p1");
+    expect(seatOfClient(state, "c1")).toBe("observer");
+  });
+
+  it("is a no-op when the caller is already the host", () => {
+    const state = hostedRoomWithThree();
+    // Even with the host marked live, reclaiming as the host itself just succeeds.
+    const result = applyAction(
+      state,
+      { type: "RECLAIM_HOST", clientId: "c1" },
+      { actorClientId: "c1", liveClientIds: ["c1"] }
+    );
+    expect(result.errors).toEqual([]);
+    expect(result.state.room?.hostClientId).toBe("c1");
+  });
+
+  it("refuses a non-member and an open table", () => {
+    const state = hostedRoomWithThree();
+    expect(reclaim(state, "stranger", ["c2"]).errors.length).toBeGreaterThan(0);
+
+    // Open table: no host to reclaim.
+    let open = makeGame();
+    open = expectOk(open, { type: "JOIN_ROOM", clientId: "c1", name: "Alice" });
+    const result = reclaim(open, "c1", []);
+    expect(result.errors[0]?.message).toMatch(/open room/i);
+  });
+});
+
 describe("open table preserves the free-seat test mode", () => {
   it("ignores seat ownership when the room is not hosted", () => {
     // No JOIN/host at all: legacy/open snapshot, room is undefined.
