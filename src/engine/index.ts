@@ -209,6 +209,12 @@ export {
 export { markUnitRemovedIfNeeded } from "./combat-units";
 export { makeCombatUnitFromArmy } from "./adventure";
 export { createInitialGameState } from "./setup";
+export {
+  createCombatSandboxLobbyState,
+  isCombatSandboxSetup,
+  makeDefaultSandboxSeat,
+  sandboxBattlefieldChoices
+} from "./combat-sandbox-setup";
 export { freshEntropy, freshSeed } from "./seed";
 export {
   bannableHeroesForSeat,
@@ -419,6 +425,9 @@ export type {
   CombatContext,
   CombatBoardArtId,
   CombatDice,
+  CombatSandboxSeatConfig,
+  CombatSandboxSetupState,
+  CombatSandboxUnitPick,
   CombatSetupState,
   DeckSearchPick,
   CombatStat,

@@ -19141,3 +19141,338 @@ body {
   }
 }
 
+
+/* ---- Battle Test free setup ---------------------------------------------- */
+
+.setupPhase > .sandboxSetup {
+  position: relative;
+  z-index: 1;
+  order: 3;
+  flex: 1;
+  overflow-y: auto;
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 14px 18px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.sandboxSetupHero {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(168, 137, 79, 0.45);
+  background: linear-gradient(180deg, rgba(28, 20, 12, 0.92), rgba(14, 10, 6, 0.92));
+}
+
+.sandboxEyebrow {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #c9a45c;
+  margin-bottom: 4px;
+}
+
+.sandboxSetupHero h2 {
+  margin: 0 0 6px;
+  font-size: 1.45rem;
+  color: #f3e2b8;
+}
+
+.sandboxSetupHero p {
+  margin: 0;
+  max-width: 52ch;
+  color: #cbb892;
+  font-size: 0.92rem;
+  line-height: 1.4;
+}
+
+.sandboxBeginBtn {
+  min-width: 10rem;
+  font-weight: 700;
+}
+
+.sandboxOptions {
+  display: grid;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(120, 95, 55, 0.4);
+  background: rgba(18, 13, 8, 0.88);
+}
+
+.sandboxBoardPreview {
+  max-width: 320px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid rgba(160, 130, 70, 0.35);
+}
+
+.sandboxBoardPreview img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.sandboxToggleRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px 20px;
+}
+
+.sandboxToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #e6d2a6;
+  font-size: 0.92rem;
+  cursor: pointer;
+}
+
+.sandboxHint {
+  margin: 0;
+  font-size: 0.82rem;
+  color: #a89068;
+}
+
+.sandboxSeats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 14px;
+}
+
+.sandboxSeatPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(140, 110, 65, 0.4);
+  background: linear-gradient(180deg, rgba(26, 18, 10, 0.95), rgba(12, 9, 5, 0.95));
+}
+
+.sandboxSeatHead {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-bottom: 1px solid rgba(168, 137, 79, 0.25);
+  padding-bottom: 8px;
+}
+
+.sandboxSeatHead h3 {
+  margin: 0;
+  font-size: 0.78rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #c9a45c;
+}
+
+.sandboxSeatHead strong {
+  color: #f0dfb4;
+  font-size: 1.05rem;
+}
+
+.sandboxField,
+.sandboxFieldRow .sandboxField {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sandboxField label {
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #a8894f;
+}
+
+.sandboxField select,
+.sandboxField input,
+.sandboxFilter {
+  border-radius: 8px;
+  border: 1px solid rgba(140, 110, 65, 0.5);
+  background: rgba(10, 8, 5, 0.9);
+  color: #f0dfb4;
+  padding: 6px 8px;
+  font: inherit;
+}
+
+.sandboxFieldRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.sandboxBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.sandboxBlockHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sandboxBlock strong {
+  color: #e6d2a6;
+  font-size: 0.9rem;
+}
+
+.sandboxChipList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 140px;
+  overflow-y: auto;
+}
+
+.sandboxChipList li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: rgba(40, 28, 14, 0.7);
+  color: #e6d2a6;
+  font-size: 0.85rem;
+}
+
+.sandboxChipList button {
+  border: 0;
+  background: transparent;
+  color: #d4a070;
+  cursor: pointer;
+  font-size: 0.78rem;
+}
+
+.sandboxEmpty {
+  color: #8a7654 !important;
+  font-style: italic;
+}
+
+.sandboxPickGrid {
+  max-height: 180px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  border: 1px solid rgba(100, 80, 45, 0.35);
+  border-radius: 8px;
+  padding: 4px;
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.sandboxPickRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 3px 6px;
+  color: #dcc9a0;
+  font-size: 0.82rem;
+}
+
+.sandboxPickRow small {
+  color: #8a7654;
+}
+
+.sandboxSideButtons {
+  display: inline-flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.sandboxSideButtons button,
+.sandboxCardPick {
+  border-radius: 5px;
+  border: 1px solid rgba(140, 110, 65, 0.45);
+  background: rgba(36, 26, 14, 0.9);
+  color: #f0dfb4;
+  font-size: 0.75rem;
+  padding: 2px 6px;
+  cursor: pointer;
+}
+
+.sandboxSideButtons button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.sandboxCardPick {
+  text-align: left;
+  padding: 4px 8px;
+}
+
+.sandboxCardPick small {
+  color: #8a7654;
+  margin-right: 6px;
+  text-transform: uppercase;
+  font-size: 0.68rem;
+}
+
+.sandboxZoneToggle {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.sandboxZoneToggle button {
+  border-radius: 6px;
+  border: 1px solid rgba(140, 110, 65, 0.45);
+  background: transparent;
+  color: #cbb892;
+  padding: 3px 8px;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.sandboxZoneToggle button.selected {
+  background: rgba(168, 137, 79, 0.25);
+  color: #f3e2b8;
+  border-color: rgba(200, 160, 80, 0.6);
+}
+
+.sandboxGradeGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.sandboxGradeGrid label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 0.72rem;
+  color: #a8894f;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.sandboxGradeGrid select {
+  border-radius: 6px;
+  border: 1px solid rgba(140, 110, 65, 0.5);
+  background: rgba(10, 8, 5, 0.9);
+  color: #f0dfb4;
+  padding: 4px 6px;
+}
+
+.sandboxSetupFoot {
+  display: flex;
+  justify-content: center;
+  padding: 8px 0 16px;
+}
