@@ -40,8 +40,16 @@ const PICKABLE_CARDS = Object.values(cardLibrary)
   .filter((card) => card.implementationStatus === "implemented" && HAND_CARD_KINDS.has(card.kind))
   .sort((a, b) => a.name.localeCompare(b.name));
 
-const MORALE_POSITIVE = Object.values(cardLibrary).filter((card) => card.id.startsWith("morale.positive."));
-const MORALE_NEGATIVE = Object.values(cardLibrary).filter((card) => card.id.startsWith("morale.negative."));
+// Only offer morale cards the engine actually runs in a regular/Battle Test game:
+// the two Battlefield-Symbol cards are `not-implemented` (the rulebook removes
+// them from regular play), so filtering on implementationStatus keeps a tester
+// from stocking a held card that would do nothing.
+const MORALE_POSITIVE = Object.values(cardLibrary).filter(
+  (card) => card.id.startsWith("morale.positive.") && card.implementationStatus === "implemented"
+);
+const MORALE_NEGATIVE = Object.values(cardLibrary).filter(
+  (card) => card.id.startsWith("morale.negative.") && card.implementationStatus === "implemented"
+);
 
 function heroesForFaction(factionId: FactionId) {
   return Object.values(coreHeroDefinitions).filter((hero) => hero.faction === factionId);

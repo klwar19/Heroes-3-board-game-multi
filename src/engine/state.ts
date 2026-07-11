@@ -3969,7 +3969,7 @@ export type GameEvent =
       type: "COMBAT_ENDED";
       winnerPlayerId: PlayerId;
       defeatedPlayerId: PlayerId;
-      reason: "all-enemy-units-defeated" | "retreat" | "surrender" | "give-up";
+      reason: "all-enemy-units-defeated" | "retreat" | "surrender" | "surrender-secondary" | "give-up";
     }
   | {
       id: string;
@@ -4144,6 +4144,14 @@ export type GameEvent =
       playerId: PlayerId;
       heroId: HeroId;
       fieldId: MapSpaceId;
+    }
+  | {
+      /** A hero left the game (e.g. a Secondary Hero surrendered/sacrificed). */
+      id: string;
+      type: "HERO_LOST";
+      playerId: PlayerId;
+      heroId: HeroId;
+      message: string;
     }
   | {
       id: string;
@@ -6429,7 +6437,13 @@ export type CombatState = {
   outcome: {
     winnerPlayerId: PlayerId;
     defeatedPlayerId: PlayerId;
-    reason: "all-enemy-units-defeated" | "retreat" | "surrender" | "give-up";
+    /**
+     * "surrender" is the main-hero paid escape (10 gold). "surrender-secondary"
+     * is the Secondary-Hero variant (house rule): the 2nd hero is sacrificed —
+     * removed from the game — instead of paying gold, and the opponent gets no
+     * victory credit (see finalizeAdventureCombat).
+     */
+    reason: "all-enemy-units-defeated" | "retreat" | "surrender" | "surrender-secondary" | "give-up";
   } | null;
   /**
    * Adventure combats stay on the battlefield after the outcome until a

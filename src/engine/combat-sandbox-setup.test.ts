@@ -3,6 +3,7 @@ import {
   applyAction,
   createCombatSandboxLobbyState,
   createInitialGameState,
+  getLegalActions,
   isCombatSandboxSetup,
   type GameState
 } from "./index";
@@ -178,6 +179,66 @@ describe("Battle Test free setup", () => {
     expect(state.players.p1.moraleCards?.positive).toContain("morale.positive.combat_bonus");
     // Morale decks are stocked when the rule is on (ids from data/cards/morale).
     expect(Object.keys(state.decks).some((id) => id.includes("morale"))).toBe(true);
+  });
+
+  it("morale cards drawn in a Battle Test are actually USABLE in the fight (not decorative)", () => {
+    // Regression: the sandbox drew morale cards at combat start but every USE
+    // path still gated on state.adventure?.moraleCards (null in a sandbox), so a
+    // held card could never be spent. Prove a held Positive Morale combat-bonus
+    // both (a) is OFFERED in the running fight and (b) produces its +1 Attack
+    // effect when spent. Fails if the gate reverts to adventure-only.
+    let state = createCombatSandboxLobbyState("sandbox-morale-usable");
+    state = applyOk(state, {
+      type: "SANDBOX_SET_OPTIONS",
+      playerId: "p1",
+      options: { moraleCards: true }
+    });
+    // Both seats hold the card so whoever activates first is offered it.
+    for (const seatId of ["p1", "p2"] as const) {
+      state = applyOk(state, {
+        type: "SANDBOX_CONFIGURE_SEAT",
+        playerId: "p1",
+        seatId,
+        moraleCards: { positive: ["morale.positive.combat_bonus"], negative: [] }
+      });
+    }
+    state = applyOk(state, { type: "SANDBOX_BEGIN_COMBAT", playerId: "p1" });
+
+    // Deploy one unit each and lock in — same flow as a PvP fight.
+    const p1Army = state.players.p1.army[0]!;
+    const p2Army = state.players.p2.army[0]!;
+    state = applyOk(state, { type: "PLACE_COMBAT_UNIT", playerId: "p1", armyUnitId: p1Army.id, position: 12 });
+    state = applyOk(state, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
+    state = applyOk(state, { type: "PLACE_COMBAT_UNIT", playerId: "p2", armyUnitId: p2Army.id, position: 4 });
+    state = applyOk(state, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p2" });
+
+    // The card survives Begin into the live fight for both seats.
+    expect(state.players.p1.moraleCards?.positive).toContain("morale.positive.combat_bonus");
+    expect(state.combat).not.toBeNull();
+
+    // (a) It is offered in the running combat to the participant whose unit is
+    // active — the addMoraleActions gate now honours the sandbox rule.
+    const activeController = state.combat!.activeUnitId
+      ? state.combat!.units[state.combat!.activeUnitId]?.controllerId
+      : "p1";
+    const offers = getLegalActions(state, activeController ?? "p1").filter(
+      (legal) => legal.action.type === "SPEND_MORALE" && legal.action.benefit === "combat-bonus"
+    );
+    expect(offers.length).toBeGreaterThan(0);
+
+    // (b) Spending it lands the +1 Attack player-scoped effect — the spendMorale
+    // handler now runs the card branch instead of throwing "no morale token".
+    const before = state.activeEffects.filter((effect) => effect.name.includes("+1 Attack")).length;
+    const spent = applyAction(state, {
+      type: "SPEND_MORALE",
+      playerId: activeController ?? "p1",
+      benefit: "combat-bonus",
+      bonus: "attack"
+    });
+    expect(spent.errors.map((error) => error.message).join("; ")).toBe("");
+    const after = spent.state.activeEffects.filter((effect) => effect.name.includes("+1 Attack"));
+    expect(after.length).toBe(before + 1);
+    expect(after.some((effect) => effect.controllerId === (activeController ?? "p1"))).toBe(true);
   });
 
   it("rejects setup actions once deployment has begun", () => {

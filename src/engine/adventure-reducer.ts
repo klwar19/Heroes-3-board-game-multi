@@ -155,6 +155,7 @@ import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
 import {
   consumeHeldMoraleCard,
   discardHeldMoraleCardByIndex,
+  moraleCardsRuleEnabled,
   openMoralePositiveLimitChoiceIfNeeded,
   returnHeldMoraleCardToDeckBottom
 } from "./morale-cards";
@@ -6259,6 +6260,12 @@ function escapePvpCombat(state: GameState, playerId: PlayerId, reason: "retreat"
   if (!inPrep && !duringPlacement && !pvpEscapeWindowOpen(combat)) {
     throw new Error("Retreat is only possible before any unit acts.");
   }
+  // A Secondary Hero surrenders differently (house rule): instead of paying the
+  // 10-gold toll it SACRIFICES itself — the 2nd hero is removed from the game and
+  // the opponent gains no victory credit (see finalizeAdventureCombat). This is
+  // the only escape that costs no gold, so it needs no affordability check.
+  const escapingHero = state.heroes[heroId];
+  const secondarySurrender = reason === "surrender" && escapingHero?.kind === "secondary";
   if (reason === "surrender") {
     // Surrender is a before-battle (prep) decision only — never once deployment
     // has begun.
@@ -6273,18 +6280,20 @@ function escapePvpCombat(state: GameState, playerId: PlayerId, reason: "retreat"
     if (isDefendingOwnFactionTown(state, playerId)) {
       throw new Error("You cannot surrender while defending your Faction Town.");
     }
-    // Surrender is a paid escape: you must hold the full toll to choose it
-    // (no debt). A poorer hero must Retreat or fight on.
-    if ((state.players[playerId]?.resources.gold ?? 0) < SURRENDER_GOLD_COST) {
+    // The main-hero surrender is a paid escape: you must hold the full toll to
+    // choose it (no debt). A poorer hero must Retreat or fight on. The Secondary
+    // Hero pays with the hero itself, not gold, so it is exempt.
+    if (!secondarySurrender && (state.players[playerId]?.resources.gold ?? 0) < SURRENDER_GOLD_COST) {
       throw new Error(`Surrender costs ${SURRENDER_GOLD_COST} gold — Retreat or fight on instead.`);
     }
   }
   const winnerPlayerId = playerId === combat.attackerPlayerId ? combat.defenderPlayerId : combat.attackerPlayerId;
+  const outcomeReason = secondarySurrender ? "surrender-secondary" : reason;
   // Escaping straight from the pre-battle prep window ends the fight before it
   // begins: close the prep so the result is shown (the map no longer holds).
   combat.prep = null;
-  combat.outcome = { winnerPlayerId, defeatedPlayerId: playerId, reason };
-  appendEvent(state, { type: "COMBAT_ENDED", winnerPlayerId, defeatedPlayerId: playerId, reason });
+  combat.outcome = { winnerPlayerId, defeatedPlayerId: playerId, reason: outcomeReason };
+  appendEvent(state, { type: "COMBAT_ENDED", winnerPlayerId, defeatedPlayerId: playerId, reason: outcomeReason });
 }
 
 /**
@@ -6425,7 +6434,12 @@ export function finalizeAdventureCombat(state: GameState): void {
   // is removed and no Pack is downgraded — the army cards stay exactly as they
   // entered the fight. Fights against Neutral guards always cost casualties.
   const keepTroops =
-    context.kind === "player" && (adventurePvpTroopLoss(state) === "none" || outcome.reason === "surrender");
+    context.kind === "player" &&
+    (adventurePvpTroopLoss(state) === "none" ||
+      outcome.reason === "surrender" ||
+      // A Secondary-Hero surrender (house rule) sacrifices only the hero — the
+      // player's shared army is kept intact, in both troop-loss modes.
+      outcome.reason === "surrender-secondary");
 
   // Give up (concede, player-vs-player only): a defeat that costs only the
   // casualties taken up to the point of conceding — destroyed units leave and
@@ -6697,6 +6711,12 @@ export function finalizeAdventureCombat(state: GameState): void {
   // with the usual consequences (and its 5-gold toll may push the loser into
   // debt — gold can go negative).
   const surrendered = outcome.reason === "surrender";
+  // Secondary-Hero surrender (house rule): the loser sacrifices ONLY the 2nd
+  // hero (removed from the game) — no gold, no morale, and the opponent earns no
+  // victory credit, exactly like a main-hero surrender denies credit. The 2nd
+  // hero's owner keeps their main hero, army, cards and gold.
+  const surrenderedSecondary = outcome.reason === "surrender-secondary";
+  const escapedWithoutDefeat = surrendered || surrenderedSecondary;
 
   if (loserHero) {
     if (surrendered) {
@@ -6705,6 +6725,10 @@ export function finalizeAdventureCombat(state: GameState): void {
       spendResources(state, loserId, { gold: SURRENDER_GOLD_COST }, "surrendered the combat");
       gainResources(state, winnerId, { gold: SURRENDER_GOLD_COST }, "accepted the enemy's surrender");
       moveDefeatedHeroHome(state, loserHero);
+    } else if (surrenderedSecondary) {
+      // No gold, no morale hit, no victory credit — the 2nd hero itself is the
+      // price. Remove it from the game (the player may hire another later).
+      removeSecondaryHeroFromGame(state, loserHero);
     } else {
       // Winner gains experience by the defeated main hero's level. No experience
       // when no Main Hero stood on either side: a garrison defense win pays
@@ -6731,12 +6755,15 @@ export function finalizeAdventureCombat(state: GameState): void {
       changeMorale(state, loserId, -1);
       moveDefeatedHeroHome(state, loserHero);
 
-      // Grail Hunt & Dragon Hunt: beating an enemy main hero counts toward the
-      // "defeat every enemy hero at least once" win path (only 2 of the 3 in a
-      // 4-player game). A Surrender deliberately never reaches this branch.
+      // Grail Hunt & Dragon Hunt: beating an enemy hero in a real fight (retreat
+      // or a fought-out loss) counts toward the "defeat every enemy hero at least
+      // once" win path (only 2 of the 3 in a 4-player game). House rule: a
+      // Secondary Hero fought and lost counts as "1 win against the player" too,
+      // exactly like a main hero — so this branch no longer gates on
+      // `loserHero.kind === "main"`. Neither Surrender variant reaches this branch
+      // (each is handled above), so a sacrificed 2nd hero still grants no credit.
       if (
         victoryModeCountsHeroDefeats(adventureVictoryMode(state)) &&
-        loserHero.kind === "main" &&
         winnerId !== NEUTRAL_PLAYER_ID &&
         loserId !== winnerId
       ) {
@@ -6759,8 +6786,9 @@ export function finalizeAdventureCombat(state: GameState): void {
   }
 
   // Necromancy window opens for the winner of a fought (or retreat) PvP combat —
-  // but never on a Surrender, which is not a combat victory for the opponent.
-  if (!surrendered && winnerId !== NEUTRAL_PLAYER_ID && state.players[winnerId]) {
+  // but never on a Surrender (main or Secondary-Hero), which is not a combat
+  // victory for the opponent.
+  if (!escapedWithoutDefeat && winnerId !== NEUTRAL_PLAYER_ID && state.players[winnerId]) {
     state.players[winnerId].necromancyWindow = true;
   }
 
@@ -7011,6 +7039,26 @@ function moveDefeatedHeroHome(state: GameState, hero: HeroState): void {
 
   hero.spaceId = home;
   hero.movementPoints = 0;
+}
+
+/**
+ * Secondary-Hero surrender (house rule): the sacrificed 2nd hero is removed from
+ * the game entirely (unlike a defeated hero, which merely falls back home). The
+ * player keeps their main hero, army, cards and gold, and may hire a new
+ * Secondary Hero later. Heroes live only in `state.heroes` (keyed by id; players
+ * hold no hero list and armies are per-player, not per-hero), so deleting the
+ * entry is a complete removal — `getSecondaryHero` will then report none.
+ */
+function removeSecondaryHeroFromGame(state: GameState, hero: HeroState): void {
+  hero.spaceId = null;
+  hero.movementPoints = 0;
+  delete state.heroes[hero.id];
+  appendEvent(state, {
+    type: "HERO_LOST",
+    playerId: hero.controllerId,
+    heroId: hero.id,
+    message: `${state.players[hero.controllerId]?.name ?? hero.controllerId} surrendered their Secondary Hero to escape the battle.`
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -7747,7 +7795,7 @@ export function spendMorale(state: GameState, action: Extract<GameAction, { type
     throw new Error("No positive morale token to spend.");
   }
 
-  if (state.adventure?.moraleCards) {
+  if (moraleCardsRuleEnabled(state)) {
     // Positive Morale "+1 Attack, +1 Defense, or +1 Combat Power during the
     // next Combat": played while the holder is fighting; the chosen stat buffs
     // every own unit for the rest of this Combat. The third printed option —

@@ -1,6 +1,7 @@
 import { cardLibrary } from "@/data/cards/library";
 import { MORALE_CARD_IDS } from "@/data/cards/morale";
 import { hasToken as unitHasToken } from "./tokens";
+import { moraleCardsRuleEnabled } from "./morale-cards";
 import {
   coreBuildingDefinitions,
   coreFactionDefinitions,
@@ -5629,7 +5630,7 @@ export function getLegalReactionsForTrigger(
     // (a negated buff would be misleading; +Defense is never negated). The used
     // card returns to its deck, and the window refreshes (reducer) so it is not
     // re-offered. "+1 Combat Power" is Battlefield-mode only (inert here).
-    if (triggerEvent.type === "UNIT_ATTACK_DECLARED" && state.adventure?.moraleCards) {
+    if (triggerEvent.type === "UNIT_ATTACK_DECLARED" && moraleCardsRuleEnabled(state)) {
       const held = player.moraleCards?.positive ?? [];
       if (held.includes(MORALE_CARD_IDS.combatBonus)) {
         const attacker = state.combat?.units[triggerEvent.attackerId];
@@ -7275,16 +7276,26 @@ function addPvpEscapeActions(actions: LegalAction[], state: GameState, playerId:
   // Surrender is a before-battle decision only (the prep window), and never when
   // defending your own Faction Town (rulebook p.46).
   const gold = state.players[playerId]?.resources.gold ?? 0;
+  const escapingHero = state.heroes[heroId];
   if (
     inPrep &&
-    gold >= SURRENDER_GOLD_COST &&
     !playerCannotSurrenderCombat(state, playerId) &&
     !isDefendingOwnFactionTown(state, playerId)
   ) {
-    actions.push({
-      label: `Surrender (pay ${SURRENDER_GOLD_COST} gold, keep your whole army, return home)`,
-      action: { type: "SURRENDER_COMBAT", playerId }
-    });
+    if (escapingHero?.kind === "secondary") {
+      // Secondary-Hero surrender (house rule): sacrifice ONLY the 2nd hero — no
+      // gold, keep your army — instead of paying the 10-gold toll. Same
+      // SURRENDER_COMBAT action; escapePvpCombat routes it by hero kind.
+      actions.push({
+        label: "Surrender the Secondary Hero (lose only the 2nd hero — no gold, keep your army)",
+        action: { type: "SURRENDER_COMBAT", playerId }
+      });
+    } else if (gold >= SURRENDER_GOLD_COST) {
+      actions.push({
+        label: `Surrender (pay ${SURRENDER_GOLD_COST} gold, keep your whole army, return home)`,
+        action: { type: "SURRENDER_COMBAT", playerId }
+      });
+    }
   }
 }
 
@@ -7362,7 +7373,7 @@ function addGiveUpCombatActions(actions: LegalAction[], state: GameState, player
 
 function addMoraleActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
   const player = state.players[playerId];
-  if (state.adventure?.moraleCards) {
+  if (moraleCardsRuleEnabled(state)) {
     const held = player?.moraleCards?.positive ?? [];
     if (held.includes("morale.positive.redraw_hand") && (player?.hand.length ?? 0) > 0) {
       actions.push({
