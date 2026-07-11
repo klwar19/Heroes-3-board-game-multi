@@ -23,6 +23,11 @@ export type GamePhase =
   | "game-over";
 
 export type GameMode = "combat-sandbox" | "adventure";
+export type GameSessionMode = "multiplayer" | "single-player";
+export type ComputerDifficulty = "standard";
+export type PlayerController =
+  | { kind: "human" }
+  | { kind: "computer"; difficulty: ComputerDifficulty; policyVersion: 1 };
 export type GameDifficulty = "easy" | "normal" | "hard" | "impossible";
 /**
  * Rules variant chosen in the lobby:
@@ -3351,6 +3356,11 @@ export type GameAction =
       options: Partial<GameSetupOptions>;
     }
   | {
+      type: "SET_COMPUTER_OPPONENTS";
+      playerId: PlayerId;
+      count: number;
+    }
+  | {
       /**
        * Map-setup lobby: start the adventure. On a solo/open table this builds
        * the scenario map immediately (as before). On a multiplayer HOSTED table
@@ -5514,6 +5524,9 @@ export type RoomMembershipState = {
   hosted: boolean;
   hostClientId: string | null;
   members: RoomMember[];
+  visibility?: "public" | "private";
+  ownerClientId?: string;
+  ownerUserId?: string;
   /**
    * Human-readable room name shown in the lobby and the room panel, so players
    * can tell rooms apart instead of reading the opaque room id. Optional: a room
@@ -9335,6 +9348,8 @@ export type GameState = {
   id: string;
   seed: string;
   mode: GameMode;
+  sessionMode?: GameSessionMode;
+  controllers?: Record<PlayerId, PlayerController>;
   /** Rules variant; absent on snapshots saved before modes existed (= legacy). */
   ruleset?: GameRuleset;
   /** Wake of Gods module selection; absent on older snapshots and Legacy games (= off). */

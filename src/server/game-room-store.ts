@@ -13,6 +13,7 @@ import {
   ENGINE_SIGNATURE,
   ensureUniqueArmyUnitIds,
   freshEntropy,
+  isPrivateSinglePlayer,
   MAX_ROOM_NAME_LENGTH,
   resetVoteAuthorizes,
   resetVoteRequired,
@@ -21,6 +22,7 @@ import {
   type GameAction,
   type GameDifficulty,
   type GameMode,
+  type GameSessionMode,
   type GameState
 } from "@/engine";
 import { reportFinishedMatch } from "@/server/match-report-trigger";
@@ -70,6 +72,8 @@ export type RoomResetOptions = {
   difficulty?: GameDifficulty;
   scenarioId?: string;
   players?: AdventurePlayerConfig[];
+  sessionMode?: GameSessionMode;
+  computerOpponents?: number;
 };
 
 export type RoomCreateOptions = RoomResetOptions & {
@@ -216,24 +220,29 @@ function makeRoom(roomId: string, options: RoomCreateOptions = {}): GameRoomReco
             seed,
             difficulty: options.difficulty,
             scenarioId: options.scenarioId,
-            players: options.players
+            players: options.players,
+            sessionMode: options.sessionMode,
+            computerOpponents: options.computerOpponents
           })
         : // New adventure rooms open in the map-setup lobby: players pick
           // factions and heroes, then the scenario map builds itself.
-          createAdventureLobbyState({ seed, scenarioId: options.scenarioId });
+          createAdventureLobbyState({ seed, scenarioId: options.scenarioId, sessionMode: options.sessionMode,
+            computerOpponents: options.computerOpponents });
 
   // A name and/or match type chosen at creation seeds a room membership record
   // so the lobby shows them before anyone joins; JOIN_ROOM then fills in
   // members. Hosting is applied by the creator via SET_ROOM_HOSTED after join
   // (seeding hosted:true with no hostClientId would strand the room).
   const name = options.name?.trim().slice(0, MAX_ROOM_NAME_LENGTH);
-  if (name || options.ranked !== undefined) {
+  if (name || options.ranked !== undefined || options.sessionMode === "single-player") {
+    const singlePlayer = options.sessionMode === "single-player";
     state.room = {
-      hosted: false,
+      hosted: singlePlayer,
       hostClientId: null,
       members: [],
+      ...(singlePlayer ? { visibility: "private" as const, ranked: false } : {}),
       ...(name ? { name } : {}),
-      ...(options.ranked !== undefined ? { ranked: Boolean(options.ranked) } : {})
+      ...(!singlePlayer && options.ranked !== undefined ? { ranked: Boolean(options.ranked) } : {})
     };
   }
 
@@ -731,6 +740,7 @@ export function listRooms(viewerClientId?: string): RoomDirectoryEntry[] {
 
   const entries: RoomDirectoryEntry[] = [];
   for (const record of records.values()) {
+    if (isPrivateSinglePlayer(record.state)) continue;
     if (isStaleRoom(record)) {
       // Garbage-collect the abandoned room as we list.
       roomStore.delete(record.roomId);

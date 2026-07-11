@@ -156,7 +156,7 @@ export function idleMillis(state: GameState, playerId: PlayerId, now: number): n
  * `now`, outside adventure games, and for the AFK meta-actions themselves.
  */
 export function applyAfkBookkeeping(state: GameState, action: GameAction, now: number | undefined): void {
-  if (state.mode !== "adventure" || now === undefined || isAfkMetaAction(action)) {
+  if (state.sessionMode === "single-player" || state.mode !== "adventure" || now === undefined || isAfkMetaAction(action)) {
     return;
   }
   const actorId =
@@ -200,6 +200,7 @@ export function applyAfkBookkeeping(state: GameState, action: GameAction, now: n
 
 /** Shared legality for both vote actions. */
 function assertVoteContext(state: GameState): AfkState {
+  if (state.sessionMode === "single-player") throw new Error("AFK votes do not exist in single-player games.");
   if (state.mode !== "adventure" || !state.adventure) {
     throw new Error("AFK votes exist only in adventure games.");
   }
@@ -398,7 +399,7 @@ export function forceAfkKick(
  * finished games) — the turn budget exists only where someone is kept waiting.
  */
 export function turnClockRunningSeats(state: GameState): PlayerId[] {
-  if (state.mode !== "adventure" || !state.adventure || state.setupLobby || gameIsOver(state)) {
+  if (state.sessionMode === "single-player" || state.mode !== "adventure" || !state.adventure || state.setupLobby || gameIsOver(state)) {
     return [];
   }
   // Closed (hosted) tables only — an open table carries no per-turn timer.
