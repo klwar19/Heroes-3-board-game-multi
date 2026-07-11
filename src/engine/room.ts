@@ -225,6 +225,21 @@ export function joinRoom(
   // The account id the SERVER verified (undefined for a guest). Never read from
   // the action body, which a client could forge.
   const userId = actor.userId;
+  const privateSinglePlayer = state.sessionMode === "single-player" || room.visibility === "private";
+  if (privateSinglePlayer) {
+    if ((room.ownerUserId && userId !== room.ownerUserId) ||
+        (!room.ownerUserId && room.ownerClientId && action.clientId !== room.ownerClientId)) {
+      throw new Error("This private single-player game belongs to another player.");
+    }
+    if (!room.ownerUserId && !room.ownerClientId) {
+      if (userId) room.ownerUserId = userId;
+      room.ownerClientId = action.clientId;
+    }
+    room.hosted = true;
+    room.visibility = "private";
+    room.ranked = false;
+    room.hostClientId = action.clientId;
+  }
 
   // Verified-account gate (Phase 2): a hosted room the host locked to accounts
   // refuses guests. Applied to genuinely new joins only — an existing member
@@ -293,7 +308,7 @@ export function joinRoom(
   const member: RoomMember = {
     clientId: action.clientId,
     name,
-    seat: "observer",
+    seat: privateSinglePlayer ? "p1" : "observer",
     isHost: room.hosted && room.hostClientId === action.clientId,
     ...(userId ? { userId } : {})
   };

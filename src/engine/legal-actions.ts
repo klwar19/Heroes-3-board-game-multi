@@ -107,7 +107,8 @@ import {
 } from "./parallel-turns";
 import { pvpEscapeWindowOpen } from "./combat-units";
 import { canPlaceTransformOn } from "./unit-transforms";
-import { bannableHeroesForSeat, DRAFT_FORMAT_LABELS, getDraftPhase } from "./adventure-setup";
+import { bannableHeroesForSeat, DRAFT_FORMAT_LABELS, getDraftPhase, getScenario } from "./adventure-setup";
+import { controllerOf, humanPlayerIdsByController } from "./computer/control";
 import { SHARED_DECK_IDS } from "./decks";
 import {
   abilityExpertIsCrownFree,
@@ -7254,6 +7255,16 @@ function getSetupLobbyLegalActions(state: GameState, playerId: PlayerId): LegalA
   const untakenFactions = (Object.values(coreFactionDefinitions) as { id: FactionId }[])
     .map((faction) => faction.id)
     .filter((id) => !takenFactions.has(id) && isPlayableFaction(id));
+
+  if (state.sessionMode === "single-player" && controllerOf(state, playerId).kind === "human" &&
+      humanPlayerIdsByController(state).length === 1 && !lobby.startCheck) {
+    const scenario = getScenario(lobby.options.scenarioId);
+    const max = Math.min(scenario.maxPlayers, scenario.layout.starts.length);
+    for (let count = 1; count < max; count += 1) {
+      actions.push({ label: `${count} computer opponent${count === 1 ? "" : "s"}`,
+        action: { type: "SET_COMPUTER_OPPONENTS", playerId, count } });
+    }
+  }
 
   // The setup format selector — any seated player may (re)start any format.
   for (const format of ["open", "draft", "random", "random-choice"] as const) {

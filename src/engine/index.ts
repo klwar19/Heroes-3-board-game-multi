@@ -14,6 +14,7 @@ export {
   isBattlefieldPosition
 } from "./battlefield";
 export { applyAction, findEvent, unitMatchesSpecialtyName } from "./reducer";
+export type { ReducerOptions } from "./reducer";
 export {
   AFK_AUTO_KICK_MS,
   AFK_IDLE_MS,
@@ -154,6 +155,20 @@ export {
 } from "./effects";
 export { getPlayerView, OBSERVER_VIEWER_SEAT, redactStateForSeat } from "./player-view";
 export { createSeededRandom } from "./random";
+export {
+  canonicalActionKey,
+  chooseComputerAction,
+  computerDecisionOwner,
+  computerPlayerIds,
+  controllerOf,
+  humanPlayerIdsByController,
+  isComputerPlayer,
+  isPrivateSinglePlayer,
+  observeForComputer,
+  sessionModeOf,
+  standardComputerController
+} from "./computer";
+export type { ComputerDecision, ComputerObservation } from "./computer";
 export {
   applyCombatBoardArtObstacles,
   assignCombatBoardArt,
@@ -433,6 +448,7 @@ export type {
   FactionId,
   GameAction,
   GameDifficulty,
+  GameSessionMode,
   GameEvent,
   GameMode,
   GamePhase,
@@ -450,6 +466,8 @@ export type {
   PendingTileChoice,
   PendingVisit,
   PlayerId,
+  PlayerController,
+  ComputerDifficulty,
   PlayerState,
   PlayerVisibleDeckState,
   PlayerVisiblePlayerState,
