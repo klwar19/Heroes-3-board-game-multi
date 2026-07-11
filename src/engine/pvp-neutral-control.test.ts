@@ -2,27 +2,31 @@ import { describe, expect, it } from "vitest";
 import { eliminatePlayer } from "./adventure";
 import { startNeutralEncounter } from "./adventure-reducer";
 import { nextAfkDropAction } from "./afk-drop";
-import { isAdjacent } from "./battlefield";
-import { applyAction, createAdventureGameState, createInitialGameState, NEUTRAL_PLAYER_ID } from "./index";
-import { planNeutralActivation, planNeutralActivationManual } from "./neutral-ai";
+import { turnClockPausedFor } from "./afk";
+import { applyAction, createAdventureGameState, NEUTRAL_PLAYER_ID } from "./index";
+import { getLegalActions } from "./legal-actions";
 import { neutralCombatControllerId } from "./neutral-control";
 import { parallelInteractionBlocker } from "./parallel-turns";
-import type { CombatState, CombatUnitState, GameAction, GameState, PlayerId, UnitGrade, UnitType } from "./state";
+import type { CombatState, CombatUnitState, GameAction, GameState, LegalAction, PlayerId, UnitGrade, UnitType } from "./state";
 
 /**
  * PvP Neutral Control (OPTIONAL mode, `GameSetupOptions.pvpNeutralControl`,
  * multiplayer only) — engine-enforced behaviour, every claim mutation-checked
  * with a mode-off (or wrong-seat) CONTROL:
  *
- *  - the NEXT live player clockwise from the fighter commands the Neutral
- *    units and is notified (`NEUTRAL_CONTROL_ASSIGNED`);
- *  - sorting: the guards' activation-order tie is the commander's choice;
- *  - attack: the commander picks among ALL reachable enemies (not just the
- *    AI's tie group) and the landing cell;
- *  - movement: with no reachable attack the commander moves the guard to ANY
- *    legal cell — even away from the prey — or holds it in place;
- *  - the commander's answer passes the parallel-turns bystander backstop, and
- *    the AFK driver can default-answer a commander-owned target choice;
+ *  - the NEXT live player clockwise from the fighter PLAYS the Neutral units
+ *    like a PvP side and is notified (`NEUTRAL_CONTROL_ASSIGNED`): the engine
+ *    stops on each guard's activation and that player drives it with the
+ *    normal unit actions (executed AS the neutral seat), breaks the guards'
+ *    activation-order ties and answers their ability follow-ups (activation
+ *    choices, attack-die rerolls);
+ *  - the `pvpNeutralControlMustAttack` sub-toggle (default ON) keeps the
+ *    rulebook constraint — attack when possible, never Defend, only close in
+ *    when no attack is reachable; OFF plays the guards entirely freely;
+ *  - the fighter's 10-minute clock pauses during the guards' slots, the AFK
+ *    driver can play a dropped controller's slot out, and an eliminated
+ *    controller hands the guards (and any open neutral-side choice) to the
+ *    next live seat — or back to the AI;
  *  - a solo table (or the mode off) keeps the plain Neutral AI.
  */
 
@@ -40,13 +44,14 @@ const THREE_PLAYERS = [
 
 function makeGame(
   seed: string,
-  options: { pvpNeutralControl?: boolean; players?: 2 | 3 } = {}
+  options: { pvpNeutralControl?: boolean; mustAttack?: boolean; players?: 2 | 3 } = {}
 ): GameState {
   const state = createAdventureGameState({
     seed,
     difficulty: "normal",
     rollFirstPlayer: false,
     pvpNeutralControl: options.pvpNeutralControl ?? true,
+    ...(options.mustAttack !== undefined ? { pvpNeutralControlMustAttack: options.mustAttack } : {}),
     ...(options.players === 3 ? { players: THREE_PLAYERS } : {})
   });
   for (const player of Object.values(state.players)) {
@@ -60,10 +65,14 @@ function makeGame(
  * Opens a level-1 guard fight for `fighter` through the real Combat Setup flow
  * (startNeutralEncounter → placement → guard reveal), then normalizes the
  * battlefield for deterministic scenarios: scripted zero dice, the fighter's
- * hand emptied (no Visions / Wayfarer pre-battle windows), player units frozen
- * at initiative 99 so every guard acts after them.
+ * hand emptied (no Visions / Wayfarer pre-battle windows), the fighter's units
+ * frozen at DISTINCT high initiatives (99, 98, …) so they act before every
+ * guard and never tie with each other.
  */
-function fightWithGuards(seed: string, options: { players?: 2 | 3; pvpNeutralControl?: boolean; fighter?: PlayerId } = {}): GameState {
+function fightWithGuards(
+  seed: string,
+  options: { players?: 2 | 3; pvpNeutralControl?: boolean; mustAttack?: boolean; fighter?: PlayerId } = {}
+): GameState {
   let state = makeGame(seed, options);
   const fighter = options.fighter ?? "p1";
   state.activePlayerId = fighter;
@@ -80,9 +89,6 @@ function fightWithGuards(seed: string, options: { players?: 2 | 3; pvpNeutralCon
   if (army[1]) {
     state = applyOk(state, { type: "PLACE_COMBAT_UNIT", playerId: fighter, armyUnitId: army[1].id, position: 14 });
   }
-  // Freeze the fighter's units at DISTINCT high initiatives (99, 98, …): they
-  // act before every guard and never tie with each other, so the only choices
-  // the scenarios open are the guards' own.
   let freeze = 99;
   for (const unit of Object.values(state.combat!.units)) {
     unit.initiative = freeze;
@@ -121,6 +127,15 @@ function reshape(
   return unit;
 }
 
+function onlyUnits(state: GameState, units: CombatUnitState[]): void {
+  const map: Record<string, CombatUnitState> = {};
+  for (const unit of units) {
+    map[unit.id] = unit;
+  }
+  state.combat!.units = map;
+  state.combat!.obstacles = [];
+}
+
 /** Drives defends / pauses / reaction passes until `stopWhen` (or a dead end). */
 function driveTo(state: GameState, stopWhen: (state: GameState) => boolean): GameState {
   let safety = 40;
@@ -151,28 +166,60 @@ function driveTo(state: GameState, stopWhen: (state: GameState) => boolean): Gam
   return state;
 }
 
+/** The pump has stopped on a Neutral guard's activation for its human. */
+function guardSlotOpen(state: GameState): boolean {
+  const active = state.combat?.activeUnitId ? state.combat.units[state.combat.activeUnitId] : null;
+  return Boolean(
+    active &&
+      active.controllerId === NEUTRAL_PLAYER_ID &&
+      !active.activatedThisRound &&
+      !state.pendingChoice &&
+      !state.combat?.pendingNeutralStep &&
+      !state.reactionWindow
+  );
+}
+
+/** A standard scene: one bronze guard adjacent to a bronze AND a silver prey. */
+function sceneTwoPreys(
+  seed: string,
+  options: { players?: 2 | 3; pvpNeutralControl?: boolean; mustAttack?: boolean } = {},
+  prepare?: (state: GameState) => void,
+  stopWhen: (state: GameState) => boolean = guardSlotOpen
+): GameState {
+  let state = fightWithGuards(seed, options);
+  const [guard] = guardsOf(state);
+  reshape(guard, { grade: "bronze", position: 5, initiative: 1 });
+  const [bronzePrey, silverPrey] = playerUnitsOf(state, "p1");
+  reshape(bronzePrey, { grade: "bronze", position: 1, initiative: 99 });
+  reshape(silverPrey, { grade: "silver", position: 9, initiative: 98 });
+  onlyUnits(state, [guard, bronzePrey, silverPrey]);
+  prepare?.(state);
+  state = driveTo(state, stopWhen);
+  return state;
+}
+
 // ---------------------------------------------------------------------------
-// Who commands: derivation + the notification
+// Who controls the Neutral side: derivation + the notification
 // ---------------------------------------------------------------------------
 
-describe("PvP Neutral Control — commander derivation and notice", () => {
+describe("PvP Neutral Control — controller derivation and notice", () => {
   it("assigns the NEXT live player clockwise from the fighter (p1→p2, p2→p3, p3→p1)", () => {
-    for (const [fighter, commander] of [
+    for (const [fighter, controller] of [
       ["p1", "p2"],
       ["p2", "p3"],
       ["p3", "p1"]
     ] as const) {
       const state = fightWithGuards(`pnc-rotation-${fighter}`, { players: 3, fighter });
-      expect(neutralCombatControllerId(state, state.combat!)).toBe(commander);
-      // The commander — and only the commander — is named by the notice event.
+      expect(neutralCombatControllerId(state, state.combat!)).toBe(controller);
+      // The controlling player — and only them — is named by the notice event.
       const notice = state.eventLog.find((event) => event.type === "NEUTRAL_CONTROL_ASSIGNED");
-      expect(notice?.playerId).toBe(commander);
+      expect(notice?.playerId).toBe(controller);
       expect(notice && "combatPlayerId" in notice ? notice.combatPlayerId : null).toBe(fighter);
-      expect(notice && "message" in notice ? notice.message : "").toContain("commands the Neutral units");
+      expect(notice && "message" in notice ? notice.message : "").toContain("plays the Neutral units");
     }
   });
 
-  it("skips an eliminated seat: with p2 out of turnOrder, p1's fight is commanded by p3", () => {
+  it("skips an eliminated seat: with p2 out of turnOrder, p1's fight is controlled by p3", () => {
     const state = fightWithGuards("pnc-eliminated", { players: 3 });
     state.turnOrder = state.turnOrder.filter((playerId) => playerId !== "p2");
     if (state.players.p2) {
@@ -181,7 +228,7 @@ describe("PvP Neutral Control — commander derivation and notice", () => {
     expect(neutralCombatControllerId(state, state.combat!)).toBe("p3");
   });
 
-  it("CONTROL: mode off — nobody commands, and no notice is logged", () => {
+  it("CONTROL: mode off — nobody controls the guards, and no notice is logged", () => {
     const state = fightWithGuards("pnc-off", { players: 3, pvpNeutralControl: false });
     expect(neutralCombatControllerId(state, state.combat!)).toBeNull();
     expect(state.eventLog.some((event) => event.type === "NEUTRAL_CONTROL_ASSIGNED")).toBe(false);
@@ -198,7 +245,7 @@ describe("PvP Neutral Control — commander derivation and notice", () => {
     expect(solo.adventure?.pvpNeutralControl ?? false).toBe(false);
   });
 
-  it("CONTROL: only NEUTRAL fights are commanded — a player-vs-player context gets no commander", () => {
+  it("CONTROL: only NEUTRAL fights are controlled — a player-vs-player context gets no controller", () => {
     const state = fightWithGuards("pnc-pvp-kind", { players: 3 });
     const pvpShaped = {
       ...state.combat!,
@@ -209,187 +256,62 @@ describe("PvP Neutral Control — commander derivation and notice", () => {
 });
 
 // ---------------------------------------------------------------------------
-// The manual planner (unit level): free target pick, free move, hard rules
+// The controlling player DRIVES the guards like a PvP side
 // ---------------------------------------------------------------------------
 
-function place(
-  state: GameState,
-  id: string,
-  controllerId: string,
-  grade: UnitGrade,
-  type: UnitType,
-  position: number
-): CombatUnitState {
-  const unit = state.combat!.units[id];
-  if (!unit) {
-    throw new Error(`scenario expects unit ${id} in the initial combat`);
-  }
-  unit.controllerId = controllerId;
-  unit.grade = grade;
-  unit.type = type;
-  unit.position = position;
-  unit.activatedThisRound = false;
-  unit.movedThisActivation = false;
-  unit.attackedThisActivation = false;
-  return unit;
-}
+describe("PvP Neutral Control — the next player drives the guards", () => {
+  it("stops on the guard's activation and offers the NEXT player its unit actions (fighter gets none)", () => {
+    const state = sceneTwoPreys("pnc-drive-menu", {});
+    expect(guardSlotOpen(state)).toBe(true);
+    expect(state.priorityPlayerId).toBe("p2");
 
-function onlyUnits(state: GameState, units: CombatUnitState[]): void {
-  const map: Record<string, CombatUnitState> = {};
-  for (const unit of units) {
-    map[unit.id] = unit;
-  }
-  state.combat!.units = map;
-  state.combat!.obstacles = [];
-}
-
-describe("PvP Neutral Control — manual planning (unit level)", () => {
-  it("offers ALL reachable enemies, where the AI attacks its tier favourite with no choice", () => {
-    const state = createInitialGameState("pnc-plan-targets");
-    const guard = place(state, "unit_p2_skeletons", NEUTRAL_PLAYER_ID, "bronze", "ground", 5);
-    const bronzePrey = place(state, "unit_p1_griffins", "p1", "bronze", "ground", 1);
-    const silverPrey = place(state, "unit_p1_crusaders", "p1", "silver", "ground", 9);
-    onlyUnits(state, [guard, bronzePrey, silverPrey]);
-
-    // CONTROL — the AI: same-tier priority picks the bronze outright, no pause.
-    expect(planNeutralActivation(state, state.combat!, guard)).toEqual({
-      kind: "attack",
-      defenderId: bronzePrey.id
-    });
-
-    // Manual: the commander chooses freely between BOTH reachable enemies.
-    const manual = planNeutralActivationManual(state, state.combat!, guard);
-    expect(manual.kind).toBe("choose-target");
-    if (manual.kind === "choose-target") {
-      expect([...manual.candidateIds].sort()).toEqual([bronzePrey.id, silverPrey.id].sort());
-    }
-
-    // The commander's pick commits — the AI-dispreferred SILVER target.
-    expect(planNeutralActivationManual(state, state.combat!, guard, silverPrey.id)).toEqual({
-      kind: "attack",
-      defenderId: silverPrey.id
-    });
-  });
-
-  it("with no reachable attack offers a FREE move (any legal cell) where the AI auto-advances", () => {
-    const state = createInitialGameState("pnc-plan-move");
-    // Guard bottom-left (12), prey top-right (3): Manhattan 6 — no strike this
-    // activation. Cell 16 is legal but walks AWAY from the prey.
-    const guard = place(state, "unit_p2_skeletons", NEUTRAL_PLAYER_ID, "bronze", "ground", 12);
-    const prey = place(state, "unit_p1_griffins", "p1", "bronze", "ground", 3);
-    onlyUnits(state, [guard, prey]);
-
-    // CONTROL — the AI advances on the prey (a strictly-closing single cell).
-    const ai = planNeutralActivation(state, state.combat!, guard);
-    expect(ai.kind).toBe("move");
-    if (ai.kind === "move") {
-      expect(ai.destination).not.toBe(16);
-    }
-
-    // Manual: a free-move choice that INCLUDES the non-closing cell 16.
-    const manual = planNeutralActivationManual(state, state.combat!, guard);
-    expect(manual.kind).toBe("choose-move");
-    if (manual.kind === "choose-move") {
-      expect(manual.destinations).toContain(16);
-      expect(manual.destinations).not.toContain(guard.position);
-    }
-
-    // The commander's picked cell commits as a plain move.
-    expect(planNeutralActivationManual(state, state.combat!, guard, undefined, 16)).toEqual({
-      kind: "move",
-      destination: 16
-    });
-  });
-
-  it("hard rule survives: an ENGAGED ranged guard is offered only adjacent enemies", () => {
-    const state = createInitialGameState("pnc-plan-engaged");
-    const guard = place(state, "unit_p2_skeletons", NEUTRAL_PLAYER_ID, "bronze", "ranged", 5);
-    const engaged = place(state, "unit_p1_griffins", "p1", "bronze", "ground", 6);
-    const far = place(state, "unit_p1_crusaders", "p1", "silver", "ground", 17);
-    onlyUnits(state, [guard, engaged, far]);
-
-    // One adjacent enemy → it must be struck, with no choice offered.
-    expect(planNeutralActivationManual(state, state.combat!, guard)).toEqual({
-      kind: "attack",
-      defenderId: engaged.id
-    });
-    expect(far.id).toBeTruthy();
-  });
-
-  it("a guard that already attacked passes — the commander cannot re-activate it", () => {
-    const state = createInitialGameState("pnc-plan-spent");
-    const guard = place(state, "unit_p2_skeletons", NEUTRAL_PLAYER_ID, "bronze", "ground", 5);
-    const prey = place(state, "unit_p1_griffins", "p1", "bronze", "ground", 6);
-    onlyUnits(state, [guard, prey]);
-    guard.attackedThisActivation = true;
-    expect(planNeutralActivationManual(state, state.combat!, guard)).toEqual({ kind: "pass" });
-  });
-});
-
-// ---------------------------------------------------------------------------
-// End to end: the commander owns the choices and their picks drive the guard
-// ---------------------------------------------------------------------------
-
-describe("PvP Neutral Control — end to end", () => {
-  it("routes the target pick to the NEXT player, whose pick lands the attack (mode-off CONTROL: the AI attacks alone)", () => {
-    // Mode ON: guard adjacent to a bronze AND a silver prey → p2 chooses.
-    let state = fightWithGuards("pnc-e2e-target", {});
-    const [guard] = guardsOf(state);
-    reshape(guard, { grade: "bronze", position: 5, initiative: 1 });
-    const [bronzePrey, silverPrey] = playerUnitsOf(state, "p1");
-    reshape(bronzePrey, { grade: "bronze", position: 1, initiative: 99 });
-    reshape(silverPrey, { grade: "silver", position: 9, initiative: 98 });
-    onlyUnits(state, [guard, bronzePrey, silverPrey]);
-
-    state = driveTo(
-      state,
-      (current) => current.pendingChoice?.type === "ABILITY_TARGET_CHOICE" && current.pendingChoice.kind === "neutral-target"
+    const guard = guardsOf(state)[0];
+    const controllerAttacks = getLegalActions(state, "p2").filter(
+      (offer) => offer.action.type === "ATTACK_UNIT" && offer.action.attackerId === guard.id
     );
-    const choice = state.pendingChoice;
-    expect(choice?.type).toBe("ABILITY_TARGET_CHOICE");
-    if (choice?.type !== "ABILITY_TARGET_CHOICE") {
-      return;
-    }
-    // The NEXT player commands — not the fighter.
-    expect(choice.playerId).toBe("p2");
-    expect([...choice.candidateUnitIds].sort()).toEqual([bronzePrey.id, silverPrey.id].sort());
+    expect(controllerAttacks.length).toBe(2); // BOTH adjacent enemies — no AI tier preference
 
-    // The fighter may NOT answer for the commander.
+    const fighterUnitActions = getLegalActions(state, "p1").filter(
+      (offer) =>
+        (offer.action.type === "ATTACK_UNIT" && offer.action.attackerId === guard.id) ||
+        (offer.action.type === "MOVE_UNIT" && offer.action.unitId === guard.id) ||
+        (offer.action.type === "DEFEND_UNIT" && offer.action.unitId === guard.id)
+    );
+    expect(fighterUnitActions).toEqual([]); // the FIGHTER may not drive the guards
+  });
+
+  it("executes the controller's attack AS the neutral seat — on the AI-dispreferred target (mode-off CONTROL: the AI attacks alone)", () => {
+    let state = sceneTwoPreys("pnc-drive-attack", {});
+    const guard = guardsOf(state)[0];
+    const silverPrey = playerUnitsOf(state, "p1").find((unit) => unit.grade === "silver")!;
+
+    // The fighter may NOT issue the guard's attack…
     const usurped = applyAction(state, {
-      type: "CHOOSE_ABILITY_TARGET",
+      type: "ATTACK_UNIT",
       playerId: "p1",
-      choiceId: choice.id,
-      targetUnitId: silverPrey.id
+      attackerId: guard.id,
+      defenderId: silverPrey.id
     });
     expect(usurped.errors.length).toBeGreaterThan(0);
 
-    // The commander picks the AI-dispreferred SILVER prey — and that is struck.
-    state = applyOk(state, {
-      type: "CHOOSE_ABILITY_TARGET",
-      playerId: "p2",
-      choiceId: choice.id,
-      targetUnitId: silverPrey.id
-    });
-    expect(
-      state.eventLog.some(
-        (event) => event.type === "UNIT_ATTACK_DECLARED" && event.attackerId === guard.id && event.defenderId === silverPrey.id
-      )
-    ).toBe(true);
+    // …the controlling player may — and the attack is executed by the NEUTRAL
+    // seat (asNeutralSeatCommand), against the target the AI would NOT pick.
+    state = applyOk(state, { type: "ATTACK_UNIT", playerId: "p2", attackerId: guard.id, defenderId: silverPrey.id });
+    const declared = state.eventLog.find(
+      (event) => event.type === "UNIT_ATTACK_DECLARED" && event.attackerId === guard.id
+    );
+    expect(declared && "defenderId" in declared ? declared.defenderId : null).toBe(silverPrey.id);
+    expect(declared && "playerId" in declared ? declared.playerId : null).toBe(NEUTRAL_PLAYER_ID);
 
-    // CONTROL — mode OFF, same board: the AI strikes its bronze favourite with
-    // NO choice ever opening.
-    let control = fightWithGuards("pnc-e2e-target-control", { pvpNeutralControl: false });
-    const [controlGuard] = guardsOf(control);
-    reshape(controlGuard, { grade: "bronze", position: 5, initiative: 1 });
-    const [controlBronze, controlSilver] = playerUnitsOf(control, "p1");
-    reshape(controlBronze, { grade: "bronze", position: 1, initiative: 99 });
-    reshape(controlSilver, { grade: "silver", position: 9, initiative: 98 });
-    onlyUnits(control, [controlGuard, controlBronze, controlSilver]);
+    // CONTROL — mode OFF, same board: the AI strikes its bronze favourite
+    // automatically, never stopping for a human.
+    let control = sceneTwoPreys("pnc-drive-attack-control", { pvpNeutralControl: false });
+    const controlGuard = guardsOf(control)[0];
+    const controlBronze = playerUnitsOf(control, "p1").find((unit) => unit.grade === "bronze")!;
     control = driveTo(
       control,
       (current) => current.eventLog.some((event) => event.type === "UNIT_ATTACK_DECLARED" && event.attackerId === controlGuard.id)
     );
-    expect(control.pendingChoice).toBeNull();
     expect(
       control.eventLog.some(
         (event) =>
@@ -398,41 +320,9 @@ describe("PvP Neutral Control — end to end", () => {
     ).toBe(true);
   });
 
-  it("routes the landing-cell pick to the NEXT player and lands the guard on THEIR cell", () => {
-    let state = fightWithGuards("pnc-e2e-cell", {});
-    const [guard] = guardsOf(state);
-    reshape(guard, { grade: "bronze", position: 5, initiative: 1 });
-    const [prey, spare] = playerUnitsOf(state, "p1");
-    reshape(prey, { grade: "bronze", position: 13, initiative: 99 });
-    onlyUnits(state, [guard, prey, ...(spare ? [reshape(spare, { grade: "bronze", position: 19, initiative: 98 })] : [])]);
-
-    state = driveTo(
-      state,
-      (current) => current.pendingChoice?.type === "OPTION_CHOICE" && current.pendingChoice.context === "neutral-destination"
-    );
-    const choice = state.pendingChoice;
-    expect(choice?.type).toBe("OPTION_CHOICE");
-    if (choice?.type !== "OPTION_CHOICE" || !choice.neutralDestination) {
-      return;
-    }
-    expect(choice.playerId).toBe("p2"); // the commander, not the fighter
-    expect(choice.neutralDestination.defenderId).toBe(prey.id);
-    const cells = choice.neutralDestination.positions;
-    expect(cells.length).toBeGreaterThan(1);
-
-    const chosenIndex = cells.length - 1;
-    state = applyOk(state, { type: "CHOOSE_OPTION", playerId: "p2", choiceId: choice.id, optionIndex: chosenIndex });
-    const landed = guardsOf(state)[0];
-    expect(landed.position).toBe(cells[chosenIndex]);
-    expect(isAdjacent(landed.position, prey.position)).toBe(true);
-    expect(
-      state.eventLog.some((event) => event.type === "UNIT_ATTACK_DECLARED" && event.defenderId === prey.id)
-    ).toBe(true);
-  });
-
-  it("gives the commander the activation-order tie of the guards (mode-off CONTROL: the fighter)", () => {
+  it("gives the controller the guards' activation-order tie (mode-off CONTROL: the fighter)", () => {
     const run = (pvpNeutralControl: boolean) => {
-      let state = fightWithGuards(`pnc-e2e-order-${pvpNeutralControl}`, { pvpNeutralControl });
+      let state = fightWithGuards(`pnc-order-${pvpNeutralControl}`, { pvpNeutralControl });
       const [guard] = guardsOf(state);
       reshape(guard, { grade: "bronze", position: 5, initiative: 1 });
       const twin = structuredClone(guard);
@@ -454,148 +344,260 @@ describe("PvP Neutral Control — end to end", () => {
       return choice?.type === "OPTION_CHOICE" ? choice : null;
     };
 
-    const commanded = run(true);
-    expect(commanded?.playerId).toBe("p2");
-    expect(commanded?.activationOrder?.side).toBe(NEUTRAL_PLAYER_ID);
+    const controlled = run(true);
+    expect(controlled?.playerId).toBe("p2");
+    expect(controlled?.activationOrder?.side).toBe(NEUTRAL_PLAYER_ID);
 
     const control = run(false);
     expect(control?.playerId).toBe("p1");
     expect(control?.activationOrder?.side).toBe(NEUTRAL_PLAYER_ID);
   });
+});
 
-  it("with no reachable attack, the commander moves the guard ANYWHERE legal — or holds it", () => {
-    const setup = (seed: string) => {
-      let state = fightWithGuards(seed, {});
-      const [guard] = guardsOf(state);
-      reshape(guard, { grade: "bronze", position: 12, initiative: 1 });
-      const [prey, spare] = playerUnitsOf(state, "p1");
-      reshape(prey, { grade: "bronze", position: 3, initiative: 99 });
-      onlyUnits(state, [guard, prey, ...(spare ? [reshape(spare, { grade: "bronze", position: 7, initiative: 98 })] : [])]);
-      state = driveTo(
-        state,
-        (current) => current.pendingChoice?.type === "OPTION_CHOICE" && current.pendingChoice.context === "neutral-destination"
-      );
-      return state;
-    };
+// ---------------------------------------------------------------------------
+// Ability follow-ups are the controller's too (PvP-style)
+// ---------------------------------------------------------------------------
 
-    // Free move: the commander walks the guard AWAY from the prey (cell 16).
-    let state = setup("pnc-e2e-freemove");
-    let choice = state.pendingChoice;
-    expect(choice?.type).toBe("OPTION_CHOICE");
-    if (choice?.type !== "OPTION_CHOICE" || !choice.neutralDestination) {
+describe("PvP Neutral Control — ability follow-ups go to the controlling player", () => {
+  it("re-stamps the guard's attack-die reroll window to the controller (mode-off CONTROL: auto-rerolled)", () => {
+    // Guard with the Minotaur reroll on a scripted "-1" first roll.
+    let state = sceneTwoPreys("pnc-reroll", {});
+    const guard = guardsOf(state)[0];
+    guard.abilities = ["minotaur-reroll"];
+    state.combat!.dice.scriptedRolls = [-1, 1, ...Array(30).fill(0)];
+    state.combat!.dice.rollCount = 0;
+    const bronzePrey = playerUnitsOf(state, "p1").find((unit) => unit.grade === "bronze")!;
+
+    state = applyOk(state, { type: "ATTACK_UNIT", playerId: "p2", attackerId: guard.id, defenderId: bronzePrey.id });
+    const choice = state.pendingChoice;
+    expect(choice?.type).toBe("ATTACK_DIE_REROLL");
+    expect(choice?.playerId).toBe("p2"); // the HUMAN playing the guards, not the AI
+
+    // The controller decides — keep the "-1" (a human may want exactly that).
+    if (choice?.type !== "ATTACK_DIE_REROLL") {
       return;
     }
-    expect(choice.playerId).toBe("p2");
-    expect(choice.neutralDestination.defenderId).toBeUndefined();
-    expect(choice.neutralDestination.allowHold).toBe(true);
-    const awayIndex = choice.neutralDestination.positions.indexOf(16);
-    expect(awayIndex).toBeGreaterThanOrEqual(0);
-    state = applyOk(state, { type: "CHOOSE_OPTION", playerId: "p2", choiceId: choice.id, optionIndex: awayIndex });
-    expect(guardsOf(state)[0].position).toBe(16);
-    expect(guardsOf(state)[0].activatedThisRound).toBe(true);
+    state = applyOk(state, {
+      type: "CHOOSE_PENDING_ROLL",
+      playerId: "p2",
+      choiceId: choice.id,
+      candidateIndex: choice.candidates.length - 1
+    });
+    expect(state.pendingChoice).toBeNull();
 
-    // Hold: the trailing option ends the activation in place.
-    state = setup("pnc-e2e-hold");
-    choice = state.pendingChoice;
-    if (choice?.type !== "OPTION_CHOICE" || !choice.neutralDestination) {
-      return;
-    }
-    const holdIndex = choice.neutralDestination.positions.length;
-    expect(choice.options[holdIndex]?.label).toContain("holds position");
-    state = applyOk(state, { type: "CHOOSE_OPTION", playerId: "p2", choiceId: choice.id, optionIndex: holdIndex });
-    const held = guardsOf(state)[0];
-    expect(held.position).toBe(12);
-    expect(held.activatedThisRound).toBe(true);
-    expect(state.phase).not.toBe("choice");
-    expect(
-      state.eventLog.some((event) => event.type === "UNIT_ACTIVATION_ENDED" && event.unitId === held.id)
-    ).toBe(true);
+    // CONTROL — mode OFF: the AI auto-rerolls its "-1" with no pause.
+    const control = sceneTwoPreys(
+      "pnc-reroll-control",
+      { pvpNeutralControl: false },
+      (draft) => {
+        guardsOf(draft)[0].abilities = ["minotaur-reroll"];
+        draft.combat!.dice.scriptedRolls = [-1, 1, ...Array(30).fill(0)];
+        draft.combat!.dice.rollCount = 0;
+      },
+      (current) => current.eventLog.some((event) => event.type === "ATTACK_REROLLED")
+    );
+    expect(control.pendingChoice?.type ?? null).not.toBe("ATTACK_DIE_REROLL");
+    expect(control.eventLog.some((event) => event.type === "ATTACK_REROLLED")).toBe(true);
   });
 
-  it("recovers when the commander is eliminated mid-choice: the next live seat takes over", () => {
-    let state = fightWithGuards("pnc-e2e-recover", { players: 3 });
+  it("opens a guard's [activation] ability choice for the controller (Enchanter heal pick)", () => {
+    let state = fightWithGuards("pnc-enchanter", {});
     const [guard] = guardsOf(state);
     reshape(guard, { grade: "bronze", position: 5, initiative: 1 });
-    const [bronzePrey, silverPrey] = playerUnitsOf(state, "p1");
-    reshape(bronzePrey, { grade: "bronze", position: 1, initiative: 99 });
-    reshape(silverPrey, { grade: "silver", position: 9, initiative: 98 });
-    onlyUnits(state, [guard, bronzePrey, silverPrey]);
+    guard.abilities = ["enchanter-heal-or-buff"];
+    // A wounded fellow guard: the mandatory heal has a real candidate.
+    const twin = structuredClone(guard);
+    twin.id = `${guard.id}_twin`;
+    twin.position = 6;
+    twin.abilities = [];
+    twin.initiative = 0; // acts after the enchanter — no activation-order tie
+    twin.damage = 3;
+    state.combat!.units[twin.id] = twin;
+    const [prey, spare] = playerUnitsOf(state, "p1");
+    reshape(prey, { grade: "bronze", position: 13, initiative: 99 });
+    if (spare) {
+      reshape(spare, { grade: "bronze", position: 19, initiative: 98 });
+    }
 
     state = driveTo(
       state,
-      (current) => current.pendingChoice?.type === "ABILITY_TARGET_CHOICE" && current.pendingChoice.kind === "neutral-target"
+      (current) =>
+        current.pendingChoice?.type === "ABILITY_TARGET_CHOICE" && current.pendingChoice.kind === "enchanter-activation"
     );
-    expect(state.pendingChoice?.playerId).toBe("p2");
+    const choice = state.pendingChoice;
+    expect(choice?.type).toBe("ABILITY_TARGET_CHOICE");
+    if (choice?.type !== "ABILITY_TARGET_CHOICE") {
+      return;
+    }
+    expect(choice.playerId).toBe("p2"); // the controlling player, not the AI
+    expect(choice.candidateUnitIds).toContain(twin.id);
 
-    // p2 is eliminated mid-choice (the AFK-kick backstop path): eliminatePlayer
-    // drops their orphaned choice, and the next applied action's combat pump
-    // re-plans the guard — the command choice re-opens for p3, the new next
-    // live seat clockwise.
-    eliminatePlayer(state, "p2", "kicked mid-command", false);
-    expect(state.players.p2?.eliminated).toBe(true);
-    expect(state.pendingChoice).toBeNull();
-    state = applyOk(state, { type: "JOIN_ROOM", clientId: "test-client", name: "Observer" });
-    expect(state.pendingChoice?.type).toBe("ABILITY_TARGET_CHOICE");
-    expect(state.pendingChoice?.playerId).toBe("p3");
+    const damageBefore = state.combat!.units[twin.id].damage;
+    state = applyOk(state, { type: "CHOOSE_ABILITY_TARGET", playerId: "p2", choiceId: choice.id, targetUnitId: twin.id });
+    expect(state.combat!.units[twin.id].damage).toBeLessThan(damageBefore); // the heal LANDED
+    // The fighter's pace-pause may still be up (it coexists with the choice by
+    // design); once acked, the guard's slot is open and p2 drives it.
+    state = driveTo(state, guardSlotOpen);
+    expect(guardSlotOpen(state)).toBe(true); // …and the guard still acts, driven by p2
   });
 });
 
 // ---------------------------------------------------------------------------
-// Parallel turns + AFK driver: the two cross-mode seams
+// The mustAttack sub-toggle
 // ---------------------------------------------------------------------------
 
-describe("PvP Neutral Control — parallel turns and forced resolution", () => {
-  function commanderChoiceState(seed: string): GameState {
-    let state = fightWithGuards(seed, { players: 3 });
-    const [guard] = guardsOf(state);
-    reshape(guard, { grade: "bronze", position: 5, initiative: 1 });
-    const [bronzePrey, silverPrey] = playerUnitsOf(state, "p1");
-    reshape(bronzePrey, { grade: "bronze", position: 1, initiative: 99 });
-    reshape(silverPrey, { grade: "silver", position: 9, initiative: 98 });
-    onlyUnits(state, [guard, bronzePrey, silverPrey]);
-    state = driveTo(
-      state,
-      (current) => current.pendingChoice?.type === "ABILITY_TARGET_CHOICE" && current.pendingChoice.kind === "neutral-target"
-    );
-    expect(state.pendingChoice?.playerId).toBe("p2");
-    return state;
-  }
+describe("PvP Neutral Control — the mustAttack sub-toggle", () => {
+  const unitCommandTypes = (offers: LegalAction[], guardId: string) =>
+    offers
+      .filter(
+        (offer) =>
+          ("attackerId" in offer.action && offer.action.attackerId === guardId) ||
+          ("unitId" in offer.action && offer.action.unitId === guardId)
+      )
+      .map((offer) => offer.action.type);
 
-  it("lets the commander answer inside another seat's open fight in PARALLEL mode (bystander CONTROL still blocked)", () => {
-    const state = commanderChoiceState("pnc-parallel");
+  it("DEFAULT (must attack): a guard that can strike gets ONLY attacks — no Defend, no move, no hold", () => {
+    const state = sceneTwoPreys("pnc-must-attack", {});
+    const guard = guardsOf(state)[0];
+    const types = unitCommandTypes(getLegalActions(state, "p2"), guard.id);
+    expect(types).toContain("ATTACK_UNIT");
+    expect(types).not.toContain("DEFEND_UNIT");
+    expect(types).not.toContain("MOVE_UNIT");
+    expect(types).not.toContain("END_ACTIVATION");
+  });
+
+  it("DEFAULT (must attack): with no reachable strike, only CLOSING moves are offered", () => {
+    // Guard bottom-left (12), prey top-right (3): Manhattan 6 — no strike this
+    // activation. Cell 16 is legal but walks AWAY from the prey.
+    let state = fightWithGuards("pnc-must-approach", {});
+    const [guard] = guardsOf(state);
+    reshape(guard, { grade: "bronze", position: 12, initiative: 1 });
+    const [prey, spare] = playerUnitsOf(state, "p1");
+    reshape(prey, { grade: "bronze", position: 3, initiative: 99 });
+    onlyUnits(state, [guard, prey, ...(spare ? [reshape(spare, { grade: "bronze", position: 7, initiative: 98 })] : [])]);
+    state = driveTo(state, guardSlotOpen);
+
+    const offers = getLegalActions(state, "p2");
+    const moveCells = offers.flatMap((offer) =>
+      offer.action.type === "MOVE_UNIT" && offer.action.unitId === guard.id ? [offer.action.destination] : []
+    );
+    expect(moveCells.length).toBeGreaterThan(0);
+    expect(moveCells).not.toContain(16); // never a step AWAY from every enemy
+    expect(unitCommandTypes(offers, guard.id)).not.toContain("DEFEND_UNIT");
+  });
+
+  it("toggled OFF: the controller plays the guard entirely freely — move anywhere, Defend, hold", () => {
+    let state = fightWithGuards("pnc-free", { mustAttack: false });
+    const [guard] = guardsOf(state);
+    reshape(guard, { grade: "bronze", position: 12, initiative: 1 });
+    const [prey, spare] = playerUnitsOf(state, "p1");
+    reshape(prey, { grade: "bronze", position: 3, initiative: 99 });
+    onlyUnits(state, [guard, prey, ...(spare ? [reshape(spare, { grade: "bronze", position: 7, initiative: 98 })] : [])]);
+    state = driveTo(state, guardSlotOpen);
+
+    const offers = getLegalActions(state, "p2");
+    const moveCells = offers.flatMap((offer) =>
+      offer.action.type === "MOVE_UNIT" && offer.action.unitId === guard.id ? [offer.action.destination] : []
+    );
+    expect(moveCells).toContain(16); // a non-closing cell IS offered
+    expect(unitCommandTypes(offers, guard.id)).toContain("DEFEND_UNIT");
+
+    // Walk the guard AWAY from the prey, then hold — pure stalling, allowed here.
+    state = applyOk(state, { type: "MOVE_UNIT", playerId: "p2", unitId: guard.id, destination: 16 });
+    expect(state.combat!.units[guard.id].position).toBe(16);
+    state = applyOk(state, { type: "END_ACTIVATION", playerId: "p2", unitId: guard.id });
+    expect(state.combat!.units[guard.id].activatedThisRound).toBe(true);
+  });
+
+  it("toggled OFF: Defend works and is executed by the neutral seat", () => {
+    const state = sceneTwoPreys("pnc-free-defend", { mustAttack: false });
+    const guard = guardsOf(state)[0];
+    const after = applyOk(state, { type: "DEFEND_UNIT", playerId: "p2", unitId: guard.id });
+    expect(after.combat!.units[guard.id].defenseToken).toBe(true);
+    expect(after.combat!.units[guard.id].activatedThisRound).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Cross-mode seams: parallel turns, the turn clock, AFK, elimination
+// ---------------------------------------------------------------------------
+
+describe("PvP Neutral Control — parallel turns, clock and forced resolution", () => {
+  it("treats the controller as the fight's participant in PARALLEL mode (bystander CONTROL still blocked)", () => {
+    const state = sceneTwoPreys("pnc-parallel", { players: 3 });
     state.turn.mode = "parallel";
     state.turn.completedPlayerIds = [];
 
-    // The commander answering their own command choice is the interaction's
-    // own input — not a bystander intrusion…
-    expect(parallelInteractionBlocker(state, "p2")).toBeNull();
-    // …while a third seat stays a plain bystander of p1's fight…
-    expect(parallelInteractionBlocker(state, "p3")).toBe("p1");
-    // …and the same commander WITHOUT a command choice open is one too.
-    const noChoice = structuredClone(state);
-    noChoice.pendingChoice = null;
-    expect(parallelInteractionBlocker(noChoice, "p2")).toBe("p1");
+    expect(parallelInteractionBlocker(state, "p2")).toBeNull(); // plays the guards
+    expect(parallelInteractionBlocker(state, "p3")).toBe("p1"); // plain bystander
 
-    // The full action pipeline (fingerprint backstop included) accepts the pick.
-    const choice = state.pendingChoice;
-    if (choice?.type !== "ABILITY_TARGET_CHOICE") {
-      return;
-    }
+    // The full action pipeline (fingerprint backstop included) accepts the
+    // controller's unit command mid-fight.
+    const guard = guardsOf(state)[0];
     const silverPrey = playerUnitsOf(state, "p1").find((unit) => unit.grade === "silver")!;
     const after = applyOk(state, {
-      type: "CHOOSE_ABILITY_TARGET",
+      type: "ATTACK_UNIT",
       playerId: "p2",
-      choiceId: choice.id,
-      targetUnitId: silverPrey.id
+      attackerId: guard.id,
+      defenderId: silverPrey.id
     });
     expect(
       after.eventLog.some((event) => event.type === "UNIT_ATTACK_DECLARED" && event.defenderId === silverPrey.id)
     ).toBe(true);
   });
 
-  it("the AFK driver can default-answer a commander-owned target choice (CHOOSE_ABILITY_TARGET resolves)", () => {
-    const state = commanderChoiceState("pnc-afk");
+  it("pauses the FIGHTER's 10-minute clock while the guards' slot is another human's (mode-off CONTROL: not paused)", () => {
+    const state = sceneTwoPreys("pnc-clock", {});
+    expect(guardSlotOpen(state)).toBe(true);
+    expect(turnClockPausedFor(state, "p1")).toBe(true);
+
+    const control = sceneTwoPreys("pnc-clock-control", { pvpNeutralControl: false });
+    // Mode off: the AI resolves guard slots instantly, so whenever the fighter
+    // is actually waiting for input the fight is theirs — clock runs.
+    expect(turnClockPausedFor(control, "p1")).toBe(false);
+  });
+
+  it("lets the AFK driver play a dropped controller's guard slot out with real unit commands", () => {
+    const state = sceneTwoPreys("pnc-afk-slot", { players: 3 });
+    expect(guardSlotOpen(state)).toBe(true);
     const action = nextAfkDropAction(state, "p2");
-    expect(action?.type).toBe("CHOOSE_ABILITY_TARGET");
+    expect(action && ["MOVE_UNIT", "ATTACK_UNIT", "MOVE_AND_ATTACK_UNIT", "DEFEND_UNIT", "END_ACTIVATION"].includes(action.type)).toBe(
+      true
+    );
+  });
+
+  it("default-answers a dropped controller's reroll window (CHOOSE_PENDING_ROLL keeps the roll)", () => {
+    let state = sceneTwoPreys("pnc-afk-reroll", { players: 3 });
+    const guard = guardsOf(state)[0];
+    guard.abilities = ["minotaur-reroll"];
+    state.combat!.dice.scriptedRolls = [-1, 1, ...Array(30).fill(0)];
+    state.combat!.dice.rollCount = 0;
+    const bronzePrey = playerUnitsOf(state, "p1").find((unit) => unit.grade === "bronze")!;
+    state = applyOk(state, { type: "ATTACK_UNIT", playerId: "p2", attackerId: guard.id, defenderId: bronzePrey.id });
+    expect(state.pendingChoice?.type).toBe("ATTACK_DIE_REROLL");
+    expect(state.pendingChoice?.playerId).toBe("p2");
+
+    const action = nextAfkDropAction(state, "p2");
+    expect(action?.type).toBe("CHOOSE_PENDING_ROLL");
+  });
+
+  it("hands an eliminated controller's open neutral-side choice to the NEXT live seat", () => {
+    let state = sceneTwoPreys("pnc-eliminate-choice", { players: 3 });
+    const guard = guardsOf(state)[0];
+    guard.abilities = ["minotaur-reroll"];
+    state.combat!.dice.scriptedRolls = [-1, 1, ...Array(30).fill(0)];
+    state.combat!.dice.rollCount = 0;
+    const bronzePrey = playerUnitsOf(state, "p1").find((unit) => unit.grade === "bronze")!;
+    state = applyOk(state, { type: "ATTACK_UNIT", playerId: "p2", attackerId: guard.id, defenderId: bronzePrey.id });
+    expect(state.pendingChoice?.playerId).toBe("p2");
+
+    // p2 dies mid-decision: the choice goes back to the neutral seat, and the
+    // very next action's pump re-stamps it to p3 — the new next-clockwise seat.
+    eliminatePlayer(state, "p2", "kicked mid-decision", false);
+    expect(state.players.p2?.eliminated).toBe(true);
+    expect(state.pendingChoice?.playerId).toBe(NEUTRAL_PLAYER_ID);
+    state = applyOk(state, { type: "JOIN_ROOM", clientId: "test-client", name: "Observer" });
+    expect(state.pendingChoice?.type).toBe("ATTACK_DIE_REROLL");
+    expect(state.pendingChoice?.playerId).toBe("p3");
   });
 });

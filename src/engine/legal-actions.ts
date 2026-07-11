@@ -98,6 +98,7 @@ import {
   warMachinesForSale
 } from "./permanents";
 import { getDemolishAbility, isArrowTowerUnit, parseFortificationTargetId, siegeBlockedPositions } from "./siege";
+import { neutralCombatControllerId, neutralControlMustAttack } from "./neutral-control";
 import {
   hasOpenAdventureTurn,
   isParallelActor,
@@ -3715,6 +3716,137 @@ function addBerserkUnitActions(
   }
 }
 
+/**
+ * PvP Neutral Control: the unit menu the CONTROLLING player gets for an active
+ * Neutral guard. Plays like a PvP side — the same move/attack/defend/hold set a
+ * player unit offers (the guards' printed "other actions"/abilities stay off
+ * the menu exactly as under the AI, which never uses them either; triggered
+ * and [activation] abilities still fire, their choices going to the controller).
+ *
+ * The `pvpNeutralControlMustAttack` sub-toggle (default ON) applies the
+ * rulebook constraint: a guard that can strike now may ONLY strike; one that
+ * can reach a strike by moving may only move to those cells; otherwise it may
+ * only step strictly CLOSER to some enemy — never Defend, never wander to buy
+ * time, and it holds only when nothing else is possible. A WOG Werewolf's
+ * Astrologers-round frenzy forces the same menu even with the toggle OFF.
+ * Toggled off, the controller plays the guard entirely freely.
+ */
+function addControlledNeutralUnitActions(
+  actions: LegalAction[],
+  state: GameState,
+  playerId: PlayerId,
+  activeUnit: CombatUnitState
+): void {
+  const combat = state.combat;
+  if (!combat) {
+    return;
+  }
+
+  const alreadyAttacked = Boolean(activeUnit.attackedThisActivation);
+  const mustAttack =
+    neutralControlMustAttack(state) ||
+    (state.round % 2 === 0 && getAstrologersRoundFrenzy(activeUnit) > 0 && !alreadyAttacked);
+
+  // Attacks the guard can make from where it stands (any enemy, engine-legal).
+  const attacks: LegalAction[] = [];
+  if (!alreadyAttacked) {
+    for (const defender of Object.values(combat.units)) {
+      if (!canUnitAttack(combat, activeUnit, defender, state.activeEffects)) {
+        continue;
+      }
+      attacks.push({
+        label: `${activeUnit.name} attack ${defender.name}`,
+        action: { type: "ATTACK_UNIT", playerId, attackerId: activeUnit.id, defenderId: defender.id }
+      });
+    }
+  }
+
+  const moveDestinations = getLegalMoveDestinations(combat, activeUnit, state);
+  const pushMove = (destination: number) =>
+    actions.push({
+      label: `${activeUnit.name} move to ${getBattlefieldLabel(destination)}`,
+      action: { type: "MOVE_UNIT", playerId, unitId: activeUnit.id, destination }
+    });
+  const hold: LegalAction = {
+    label: `${activeUnit.name} hold position`,
+    action: { type: "END_ACTIVATION", playerId, unitId: activeUnit.id }
+  };
+
+  // A guard that already fired keeps only the PvP tail: the optional post-shot
+  // step (the engine's move set is already reduced accordingly) and hold.
+  if (alreadyAttacked) {
+    for (const destination of moveDestinations) {
+      pushMove(destination);
+    }
+    actions.push(hold);
+    return;
+  }
+
+  if (!mustAttack) {
+    // Free play: the exact PvP menu — move anywhere legal, attack, defend, or
+    // hold once it has begun acting.
+    for (const destination of moveDestinations) {
+      pushMove(destination);
+    }
+    actions.push(...attacks);
+    if (!isArrowTowerUnit(activeUnit)) {
+      actions.push({
+        label: `${activeUnit.name} defend`,
+        action: { type: "DEFEND_UNIT", playerId, unitId: activeUnit.id }
+      });
+    }
+    if (activeUnit.movedThisActivation) {
+      actions.push(hold);
+    }
+    return;
+  }
+
+  // Must-attack: a strike from here is mandatory when one exists.
+  if (attacks.length > 0) {
+    actions.push(...attacks);
+    return;
+  }
+
+  const enemies = Object.values(combat.units).filter(
+    (candidate) => candidate.controllerId !== activeUnit.controllerId && isUnitAlive(candidate)
+  );
+
+  // No strike from here — cells from which the guard CAN strike this
+  // activation come first (the move half of a forced move-and-attack)…
+  const strikeCells = moveDestinations.filter((space) =>
+    enemies.some(
+      (target) => isAdjacent(space, target.position) && canUnitMoveAndAttack(combat, activeUnit, space, target, state)
+    )
+  );
+  if (strikeCells.length > 0) {
+    for (const destination of strikeCells) {
+      pushMove(destination);
+    }
+    return;
+  }
+
+  // …else only steps that strictly CLOSE the walked distance to some enemy
+  // (no wandering to run down the round limit). Path-aware like the AI's own
+  // approach: blockers wall a ground guard in, flyers pass over them.
+  const approaches = moveDestinations.filter((space) =>
+    enemies.some((target) => {
+      const field = getPathDistances(combat, activeUnit, target.position);
+      const here = field.get(activeUnit.position);
+      const there = field.get(space);
+      return here !== undefined && there !== undefined && there < here;
+    })
+  );
+  if (approaches.length > 0) {
+    for (const destination of approaches) {
+      pushMove(destination);
+    }
+    return;
+  }
+
+  // Boxed in (or alone): nothing to do but hold.
+  actions.push(hold);
+}
+
 function addUnitActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
   const combat = state.combat;
   if (combat && (combat.setup || combat.awaitingContinue)) {
@@ -3732,14 +3864,28 @@ function addUnitActions(actions: LegalAction[], state: GameState, playerId: Play
   }
 
   const activeUnit = combat.units[combat.activeUnitId];
-  if (!activeUnit || activeUnit.controllerId !== playerId || activeUnit.activatedThisRound) {
+  if (!activeUnit || activeUnit.activatedThisRound) {
+    return;
+  }
+  // PvP Neutral Control: the controlling player drives an active Neutral guard
+  // with the normal unit actions (the dispatch re-stamps the acting seat — see
+  // asNeutralSeatCommand in reducer.ts). Everyone else needs real ownership.
+  const controlsNeutral =
+    activeUnit.controllerId === NEUTRAL_PLAYER_ID && neutralCombatControllerId(state, combat) === playerId;
+  if (activeUnit.controllerId !== playerId && !controlsNeutral) {
     return;
   }
 
   // Berserk: the unit must attack the nearest unit (friend or foe), or move to
   // it and attack — no free move, defend, ability or hold while a target stands.
+  // Binds a PvP-Neutral-Control guard exactly like a player unit.
   if (unitIsBerserk(state.activeEffects, activeUnit)) {
     addBerserkUnitActions(actions, state, playerId, activeUnit);
+    return;
+  }
+
+  if (controlsNeutral) {
+    addControlledNeutralUnitActions(actions, state, playerId, activeUnit);
     return;
   }
 

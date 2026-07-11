@@ -1230,11 +1230,11 @@ export default function Home() {
             ({
               id: `neutral-command-${event.id}`,
               icon: "🎯",
-              title: "You command the Neutral units",
+              title: "You play the Neutral units",
               subtitle: `${nextState.players[event.combatPlayerId]?.name ?? event.combatPlayerId} fights Neutral units`,
               lines: [
-                "PvP Neutral Control: play the guards this whole fight —",
-                "break their activation ties, pick their targets, moves and landing cells."
+                "PvP Neutral Control: drive the guards this whole fight like your own units —",
+                "move and attack each one, break their activation ties, answer their ability targets and rolls."
               ]
             }) satisfies MapNoticeCue
         ),

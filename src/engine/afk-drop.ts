@@ -1,4 +1,5 @@
 import { getLegalActions } from "./legal-actions";
+import { neutralCombatControllerId } from "./neutral-control";
 import { applyAction } from "./reducer";
 import type { GameAction, GameState, LegalAction, PlayerId } from "./state";
 
@@ -51,6 +52,10 @@ const RESOLVING_ACTION_TYPES = new Set<GameAction["type"]>([
   // that is not even fighting) resolves through this; without it the driver
   // waited forever on a choice only the vanished seat could answer.
   "CHOOSE_ABILITY_TARGET",
+  // An attack-die reroll window owned by the dropped seat: keep the current
+  // roll ("Keep the attack roll …" is always the first, skip-flavoured offer)
+  // so the paused attack resolves instead of stalling the drop.
+  "CHOOSE_PENDING_ROLL",
   "RESOLVE_VISIT_STEP",
   "SET_TILE_ROTATION",
   "SKIP_NECROMANCY",
@@ -59,6 +64,15 @@ const RESOLVING_ACTION_TYPES = new Set<GameAction["type"]>([
 
 /** Prefer the do-nothing option so the drop changes as little as possible. */
 const SKIP_LABEL = /skip|decline|no thanks|keep|done|let it fall|cancel|nothing/i;
+
+/** The unit commands a PvP-Neutral-Control seat drives a guard with. */
+const NEUTRAL_UNIT_COMMAND_TYPES = new Set<GameAction["type"]>([
+  "MOVE_UNIT",
+  "ATTACK_UNIT",
+  "MOVE_AND_ATTACK_UNIT",
+  "DEFEND_UNIT",
+  "END_ACTIVATION"
+]);
 
 function pickResolvingAction(offers: LegalAction[]): GameAction | null {
   const candidates = offers.filter((offer) => RESOLVING_ACTION_TYPES.has(offer.action.type));
@@ -113,6 +127,25 @@ export function nextAfkDropAction(state: GameState, playerId: PlayerId): GameAct
     (combat.attackerPlayerId === playerId || combat.defenderPlayerId === playerId)
   ) {
     return { type: "ACKNOWLEDGE_COMBAT_END", playerId };
+  }
+
+  // PvP Neutral Control: the dropped seat is playing the guards of an OPEN
+  // fight — play the current guard action out with a default pick (prefer the
+  // do-least option) so the fight advances and the drop can proceed. Only real
+  // unit commands qualify (never a stray card offer), and once the guards'
+  // slots pass to the fighter's units the driver just waits below.
+  if (combat && !combat.outcome && neutralCombatControllerId(state, combat) === playerId) {
+    const unitCommands = getLegalActions(state, playerId).filter((offer) =>
+      NEUTRAL_UNIT_COMMAND_TYPES.has(offer.action.type)
+    );
+    const command =
+      unitCommands.find((offer) => offer.action.type === "END_ACTIVATION") ??
+      unitCommands.find((offer) => offer.action.type === "DEFEND_UNIT") ??
+      unitCommands[0];
+    if (command) {
+      return command.action;
+    }
+    return null;
   }
 
   // A combat between two OTHER players: wait for it, like any bystander.

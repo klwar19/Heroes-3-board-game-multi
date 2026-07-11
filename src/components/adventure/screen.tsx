@@ -2933,9 +2933,6 @@ export function PromptTray({
   }
   // BINH house rule: the neutral guard must move to reach its (already-fixed)
   // target and several cells work — click the empty slot it should land on.
-  // Under PvP Neutral Control a guard with NO reachable attack opens the same
-  // choice target-less instead: the commander clicks any legal cell, or the
-  // trailing "hold position" option (surfaced as a button here).
   if (
     choice?.type === "OPTION_CHOICE" &&
     choice.context === "neutral-destination" &&
@@ -2945,29 +2942,13 @@ export function PromptTray({
     const movingName = movingId ? state.combat?.units[movingId]?.name : undefined;
     const targetId = choice.neutralDestination?.defenderId;
     const targetName = targetId ? state.combat?.units[targetId]?.name : undefined;
-    const holdIndex = choice.neutralDestination?.allowHold ? (choice.neutralDestination?.positions.length ?? 0) : null;
     return (
       <div className="promptTray" role="dialog" aria-label="Neutral move destination">
         <strong>
-          {holdIndex !== null
-            ? `You command the Neutral units — click the cell ${movingName ?? "the guard"} moves to, or hold its position.`
-            : movingName && targetName
-              ? `${movingName} attacks ${targetName} — click the empty slot it should move to.`
-              : "Choose where the neutral moves to attack — click an empty battlefield slot."}
+          {movingName && targetName
+            ? `${movingName} attacks ${targetName} — click the empty slot it should move to.`
+            : "Choose where the neutral moves to attack — click an empty battlefield slot."}
         </strong>
-        {holdIndex !== null ? (
-          <div className="promptOptions">
-            <button
-              className="commandButton"
-              onClick={() =>
-                onAction({ type: "CHOOSE_OPTION", playerId: viewerPlayerId, choiceId: choice.id, optionIndex: holdIndex })
-              }
-              type="button"
-            >
-              {movingName ?? "The guard"} holds position
-            </button>
-          </div>
-        ) : null}
       </div>
     );
   }
@@ -4916,31 +4897,64 @@ function GameOptionsPanel({
 
       {(() => {
         const neutralControlOn = options.pvpNeutralControl ?? false;
+        const mustAttackOn = options.pvpNeutralControlMustAttack ?? true;
         return (
-          <div className="optionRow">
-            <small title="Optional PvP mode (OFF by default): the next player clockwise commands the Neutral units in every Neutral combat (multiplayer only)">
-              PvP Neutral Control
-            </small>
-            <div className="optionButtons">
-              {([true, false] as const).map((on) => (
-                <button
-                  aria-pressed={neutralControlOn === on}
-                  className={neutralControlOn === on ? "selected" : ""}
-                  key={String(on)}
-                  onClick={() => send({ pvpNeutralControl: on })}
-                  title={on ? "A human commands the Neutral units (next player clockwise)" : "The Neutral AI plays the guards"}
-                  type="button"
-                >
-                  {on ? "On" : "Off"}
-                </button>
-              ))}
+          <>
+            <div className="optionRow">
+              <small title="Optional PvP mode (OFF by default): the next player clockwise plays the Neutral units in every Neutral combat, like a real PvP side (multiplayer only)">
+                PvP Neutral Control
+              </small>
+              <div className="optionButtons">
+                {([true, false] as const).map((on) => (
+                  <button
+                    aria-pressed={neutralControlOn === on}
+                    className={neutralControlOn === on ? "selected" : ""}
+                    key={String(on)}
+                    onClick={() => send({ pvpNeutralControl: on })}
+                    title={on ? "A human plays the Neutral units (next player clockwise)" : "The Neutral AI plays the guards"}
+                    type="button"
+                  >
+                    {on ? "On" : "Off"}
+                  </button>
+                ))}
+              </div>
+              <small className="optionHint">
+                {neutralControlOn
+                  ? "Every Neutral combat becomes PvP-like: the NEXT player clockwise plays the guards — moving and attacking each one, breaking their activation ties, and answering their ability targets and dice rerolls. That player is notified when the fight starts. Multiplayer only — a solo game keeps the Neutral AI."
+                  : "Off by default. The Neutral AI plays the guards by the rulebook (same-tier priority, nearest target); the fighting player only breaks its ties."}
+              </small>
             </div>
-            <small className="optionHint">
-              {neutralControlOn
-                ? "In every Neutral combat the NEXT player clockwise commands the guards: they break activation-order ties, pick which reachable enemy each guard attacks, choose its landing cell, and steer its movement (or hold) when it can attack no one. Guards must still attack when they can, and Berserk still overrides. That player is notified when the fight starts. Multiplayer only — a solo game keeps the Neutral AI."
-                : "Off by default. The Neutral AI plays the guards by the rulebook (same-tier priority, nearest target); the fighting player only breaks its ties."}
-            </small>
-          </div>
+            {neutralControlOn ? (
+              <div className="optionRow">
+                <small title="Sub-rule of PvP Neutral Control: whether the guards keep the rulebook 'must attack' behaviour">
+                  Neutral Control — guards
+                </small>
+                <div className="optionButtons">
+                  {([true, false] as const).map((on) => (
+                    <button
+                      aria-pressed={mustAttackOn === on}
+                      className={mustAttackOn === on ? "selected" : ""}
+                      key={String(on)}
+                      onClick={() => send({ pvpNeutralControlMustAttack: on })}
+                      title={
+                        on
+                          ? "Guards must attack when they can — no defending or stalling"
+                          : "Guards play with no constraint, exactly like the player's own units"
+                      }
+                      type="button"
+                    >
+                      {on ? "Must attack" : "Free"}
+                    </button>
+                  ))}
+                </div>
+                <small className="optionHint">
+                  {mustAttackOn
+                    ? "Rulebook spirit: a guard that can reach an enemy must attack it (pick which), may not Defend, and may only step closer when no attack is reachable — no buying time until the round limit."
+                    : "No constraint: the controlling player moves, defends, attacks or holds each guard entirely freely, exactly like their own units in PvP."}
+                </small>
+              </div>
+            ) : null}
+          </>
         );
       })()}
 

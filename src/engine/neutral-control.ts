@@ -4,26 +4,31 @@ import type { CombatState, GameState, PendingChoice, PlayerId } from "./state";
 /**
  * PvP Neutral Control (OPTIONAL mode, multiplayer only,
  * `GameSetupOptions.pvpNeutralControl`): in every Neutral combat the NEXT live
- * player clockwise from the fighter becomes the Neutral commander — a human
- * plays the guards. They break the guards' activation-order ties, pick which
- * reachable enemy each guard attacks, choose the landing cell, and steer the
- * move (or hold) when no attack is possible. The Neutral rulebook constraints
- * still bind (a guard must attack when it can; an engaged ranged guard strikes
- * an adjacent enemy; Berserk overrides), and ability follow-ups (Lich splash
- * targets, rerolls, Magic Mirror) stay AI-resolved.
+ * player clockwise from the fighter becomes the NEUTRAL CONTROLLER — a human
+ * plays the guards like a PvP side. The engine stops on each guard's
+ * activation and the controller drives it with the normal combat actions
+ * (move, attack, defend, hold), answers the guards' ability follow-ups
+ * (activation choices, splash targets, attack-die rerolls) and breaks their
+ * activation-order ties. NOT related to the WOG Commanders module — this is
+ * purely "which SEAT plays the Neutral units".
  *
- * This module holds only the pure "who commands / what counts as a command
- * choice" reads so parallel-turns.ts, reducer.ts and adventure-reducer.ts can
- * all consume them without import cycles.
+ * The `pvpNeutralControlMustAttack` sub-toggle (default ON) keeps the rulebook
+ * spirit: a guard must attack when it can reach an enemy, may not Defend, and
+ * may only approach (never wander) when no attack is reachable. Toggled OFF,
+ * the controller plays the guards with no constraint at all.
+ *
+ * This module holds only the pure "who controls / what counts as a
+ * neutral-side decision" reads so parallel-turns.ts, afk.ts, reducer.ts and
+ * adventure-reducer.ts can all consume them without import cycles.
  */
 
 /**
- * The player commanding the Neutral side of `combat`, or null when the normal
+ * The player controlling the Neutral side of `combat`, or null when the normal
  * Neutral AI plays it: the mode is off (or the snapshot predates it), the
  * combat is not a Neutral fight, or no OTHER live seat exists (solo table, or
  * everyone else eliminated — `turnOrder` holds live seats only, so the next
- * entry clockwise from the fighter is always a live commander). Derived fresh
- * on every read so a commander eliminated mid-fight hands the guards to the
+ * entry clockwise from the fighter is always a live controller). Derived fresh
+ * on every read so a controller eliminated mid-fight hands the guards to the
  * next live seat (or back to the AI) automatically.
  */
 export function neutralCombatControllerId(state: GameState, combat: CombatState): PlayerId | null {
@@ -40,18 +45,44 @@ export function neutralCombatControllerId(state: GameState, combat: CombatState)
 }
 
 /**
- * Whether an open pending choice is one of the Neutral side's COMMAND
- * decisions (activation-order tie of the Neutral side, attack-target pick,
- * move/landing-cell pick). Used by the parallel-turns bystander guard: the
- * commanding player answering one of these inside the open Neutral fight is
- * that interaction's own input, not a bystander intrusion.
+ * The "must attack" sub-toggle of PvP Neutral Control (default ON): a
+ * controlled guard must attack whenever it can, may not Defend, and may only
+ * approach when no attack is reachable. OFF lets the controller play the
+ * guards entirely freely. Only meaningful while a controller exists.
  */
-export function isNeutralCommandChoice(choice: PendingChoice): boolean {
+export function neutralControlMustAttack(state: GameState): boolean {
+  return state.adventure?.pvpNeutralControlMustAttack ?? true;
+}
+
+/**
+ * Whether an open pending choice is one of the NEUTRAL SIDE's own combat
+ * decisions — a decision that under PvP Neutral Control belongs to the
+ * controlling player rather than a bystander:
+ *  - the guards' activation-order tie (side NEUTRAL_PLAYER_ID);
+ *  - the AI-mode fighter picks (neutral-target tie, neutral-destination);
+ *  - a neutral unit's ability follow-up (ABILITY_TARGET_CHOICE whose source
+ *    unit is neutral: splash targets, Magic Mirror redirect, activation
+ *    choices) or its attack-die reroll window (ATTACK_DIE_REROLL whose
+ *    attacker is neutral).
+ *
+ * Used by the parallel-turns bystander guard (the controller answering one of
+ * these inside the open fight is that interaction's own input) and by
+ * eliminatePlayer (a dead controller's open neutral-side choice is handed back
+ * to the NEUTRAL seat instead of being dropped, so the fight never strands).
+ */
+export function isNeutralSideCombatChoice(combat: CombatState, choice: PendingChoice): boolean {
   if (!choice) {
     return false;
   }
   if (choice.type === "ABILITY_TARGET_CHOICE") {
-    return choice.kind === "neutral-target";
+    if (choice.kind === "neutral-target") {
+      return true;
+    }
+    const source = choice.sourceUnitId ? combat.units[choice.sourceUnitId] : undefined;
+    return source?.controllerId === NEUTRAL_PLAYER_ID;
+  }
+  if (choice.type === "ATTACK_DIE_REROLL") {
+    return combat.units[choice.attackerId]?.controllerId === NEUTRAL_PLAYER_ID;
   }
   if (choice.type === "OPTION_CHOICE") {
     return (

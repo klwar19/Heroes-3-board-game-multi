@@ -4146,12 +4146,13 @@ export type GameEvent =
   | {
       /**
        * PvP Neutral Control (optional mode): a Neutral combat is starting and
-       * `playerId` — the next live player clockwise from the fighter — must
-       * command the Neutral units (activation order, moves and attacks).
+       * `playerId` — the next live player clockwise from the fighter — plays
+       * the Neutral units like a PvP side (activation order, moves, attacks,
+       * abilities and rolls).
        */
       id: string;
       type: "NEUTRAL_CONTROL_ASSIGNED";
-      /** The commanding player (NOT the one fighting). */
+      /** The player controlling the Neutral units (NOT the one fighting). */
       playerId: PlayerId;
       /** The player whose hero is fighting the Neutral units. */
       combatPlayerId: PlayerId;
@@ -7993,6 +7994,11 @@ export type AdventureState = {
    */
   pvpNeutralControl?: boolean;
   /**
+   * PvP Neutral Control "must attack" sub-toggle (default true when the mode is
+   * on). See GameSetupOptions.pvpNeutralControlMustAttack. Absent = true.
+   */
+  pvpNeutralControlMustAttack?: boolean;
+  /**
    * Individual BINH house-rule toggles, resolved to concrete booleans at setup
    * (see resolveHouseRules / houseRuleEnabled in house-rules.ts). Absent on older
    * snapshots and the combat sandbox, where the mode default is derived instead.
@@ -8079,16 +8085,23 @@ export type GameSetupOptions = {
   moraleCards?: boolean;
   /**
    * PvP Neutral Control mode (default OFF, multiplayer only). In every Neutral
-   * combat the NEXT live player clockwise from the fighter commands the Neutral
-   * units: they break activation-order ties, pick which reachable enemy each
-   * guard attacks, choose its landing cell, and steer its movement (or hold)
-   * when no attack is possible. The Neutral rulebook constraints still bind —
-   * a guard must attack when it can, an engaged ranged guard strikes an
-   * adjacent enemy, Berserk overrides — and ability follow-up rolls/targets
-   * (Lich splash, rerolls, Magic Mirror) stay AI-resolved. A solo table (or a
-   * fight with no other live player) falls back to the normal Neutral AI.
+   * combat the NEXT live player clockwise from the fighter COMMANDS the Neutral
+   * units — they drive the guards like a PvP side: move, attack, use abilities
+   * and resolve every ability follow-up (target picks, rerolls, Magic Mirror)
+   * exactly as a human fighter would. The only thing separating it from a plain
+   * PvP fight is the optional `pvpNeutralControlMustAttack` constraint below. A
+   * solo table (or a fight with no other live player) falls back to the AI.
    */
   pvpNeutralControl?: boolean;
+  /**
+   * PvP Neutral Control sub-toggle (default true = the rulebook "must attack"
+   * constraint). When true a commanded guard MUST attack whenever it can reach
+   * an enemy, may not Defend, and may not wander to stall — it may only approach
+   * when no attack is reachable. When false the commander plays the guards with
+   * NO constraint (move, defend, hold freely), exactly like their own units.
+   * Absent on older snapshots — treated as true.
+   */
+  pvpNeutralControlMustAttack?: boolean;
   /**
    * Individual BINH house-rule toggles. Each id in this map overrides the mode
    * default for that single rule, so a table can keep the split decks but drop
@@ -8608,14 +8621,10 @@ export type PendingChoice =
       /**
        * neutral-destination (BINH house rule): a neutral guard `unitId` must
        * move to reach its chosen target and several legal cells work; the
-       * chooser picks which (index-aligned with the options). It still attacks
-       * `defenderId` — only the landing cell is the chooser's choice. Under the
-       * PvP Neutral Control mode a guard with NO reachable attack instead opens
-       * this with `defenderId` absent and `allowHold` set: the commanding
-       * player picks any legal move cell, or the trailing "hold position"
-       * option (index `positions.length`) to end the activation in place.
+       * attacking player picks which (index-aligned with the options). It still
+       * attacks `defenderId` — only the landing cell is the player's choice.
        */
-      neutralDestination?: { unitId: UnitId; positions: number[]; defenderId?: UnitId; allowHold?: boolean };
+      neutralDestination?: { unitId: UnitId; positions: number[]; defenderId: UnitId };
       /**
        * place-battlefield-tokens: the caster places the rest of a Quicksand /
        * Land Mine set, one token per pick. `positions` are the empty spaces still
