@@ -161,12 +161,12 @@ describe("View Air card definition", () => {
     expect(gold.effect).toEqual({ type: "GAIN_RESOURCES", gain: { gold: 3 } });
     expect(gold.cost).toBeUndefined();
     expect(gold.mapOnly).toBe(true);
-    // Power 1: 2 building materials, discard 1 power-source.
+    // Power 1: 2 building materials, pay 1 Power value (Spells / Power cards).
     expect(materials.effect).toEqual({ type: "GAIN_RESOURCES", gain: { buildingMaterials: 2 } });
-    expect(materials.cost).toEqual({ discardCards: 1, costCardFilter: "power-source" });
-    // Power 2: 1 valuables, discard 2 power-source.
+    expect(materials.cost).toEqual({ powerCost: 1, costCardFilter: "power-source" });
+    // Power 2: 1 valuables, pay 2 Power value.
     expect(valuables.effect).toEqual({ type: "GAIN_RESOURCES", gain: { valuables: 1 } });
-    expect(valuables.cost).toEqual({ discardCards: 2, costCardFilter: "power-source" });
+    expect(valuables.cost).toEqual({ powerCost: 2, costCardFilter: "power-source" });
   });
 
   it("is reachable: in the legacy and BINH-basic Spell decks", () => {
@@ -209,9 +209,43 @@ describe("View Air resource gains", () => {
     expect(state.players.p1.hand).toHaveLength(0);
   });
 
-  it("rejects a Power 1 play that does not pay its one-card cost", () => {
+  it("Power 2 can be paid with one Expert Power card and one crown", () => {
+    let state = withHand(makeGame(), ["spell.view_air", "stat.power"]);
+    state.players.p1.limits.expertUses = 1;
+    const before = state.players.p1.resources.valuables;
+    state = applyOk(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "spell.view_air",
+      mode: "basic",
+      optionIndex: 2,
+      target: { type: "none" },
+      costCardIds: ["stat.power"],
+      costCardModes: ["expert"]
+    });
+    expect(state.players.p1.resources.valuables).toBe(before + 1);
+    expect(state.players.p1.discard).toEqual(expect.arrayContaining(["spell.view_air", "stat.power"]));
+    expect(state.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
+  });
+
+  it("CONTROL: Expert Power payment without a crown is rejected", () => {
+    const state = withHand(makeGame(), ["spell.view_air", "stat.power"]);
+    state.players.p1.limits.expertUses = 0;
+    expectError(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "spell.view_air",
+      mode: "basic",
+      optionIndex: 2,
+      target: { type: "none" },
+      costCardIds: ["stat.power"],
+      costCardModes: ["expert"]
+    });
+  });
+
+  it("rejects a Power 1 play that does not pay its Power cost", () => {
     const state = withHand(makeGame(), ["spell.view_air", "spell.haste"]);
-    // No costCardIds supplied for an option that demands exactly one discard.
+    // No costCardIds supplied for an option that demands 1 Power.
     expectError(state, {
       type: "PLAY_CARD",
       playerId: "p1",
@@ -220,6 +254,18 @@ describe("View Air resource gains", () => {
       optionIndex: 1,
       target: { type: "none" }
     });
+  });
+
+  it("Knowledge can retake View Air after a Power-paid tier (basic, no crown)", () => {
+    let state = withHand(makeGame(), ["spell.view_air", "spell.haste", "stat.knowledge"]);
+    state.players.p1.limits.expertUses = 0;
+    state = play(state, "spell.view_air", 1, ["spell.haste"]);
+    // Knowledge offer is queued after the cast.
+    expect(state.adventure?.pendingVisit?.steps[0]).toMatchObject({ type: "CHOOSE_ONE" });
+    state = applyOk(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 0 });
+    expect(state.players.p1.hand).toContain("spell.view_air");
+    expect(state.players.p1.hand).not.toContain("stat.knowledge");
+    expect(state.players.p1.combatStats.expertUsesSpentThisRound).toBe(0);
   });
 });
 
@@ -255,9 +301,9 @@ describe("View Earth card definition", () => {
     expect(r1.effect).toEqual({ type: "VIEW_EARTH", withinFields: 1 });
     expect(r1.cost).toBeUndefined();
     expect(r2.effect).toEqual({ type: "VIEW_EARTH", withinFields: 2 });
-    expect(r2.cost).toEqual({ discardCards: 1, costCardFilter: "power-source" });
+    expect(r2.cost).toEqual({ powerCost: 1, costCardFilter: "power-source" });
     expect(r3.effect).toEqual({ type: "VIEW_EARTH", withinFields: 3 });
-    expect(r3.cost).toEqual({ discardCards: 2, costCardFilter: "power-source" });
+    expect(r3.cost).toEqual({ powerCost: 2, costCardFilter: "power-source" });
   });
 
   it("is reachable: in the legacy and BINH-basic Spell decks", () => {

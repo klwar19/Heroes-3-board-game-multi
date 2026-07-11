@@ -532,3 +532,79 @@ describe("Knowledge recall of a Misfortune played into the attack", () => {
     expect(resolved.players.p2.discard).not.toContain("spell.misfortune");
   });
 });
+
+// ===========================================================================
+// Cast-window recall: Knowledge (basic OR expert) takes back ANY spell you cast
+// in combat on your own activation (the printed SPELL_CAST_STARTED trigger).
+// ===========================================================================
+
+describe("Knowledge recall of a spell cast on your own combat activation", () => {
+  function p1CanCast(hand: string[]): GameState {
+    const state = createInitialGameState("knowledge-cast-window");
+    state.players.p1.hand = [...hand];
+    state.players.p2.hand = [];
+    // Make a fresh (un-acted) p1 unit the active one so it may cast.
+    const active = state.combat!.units[state.combat!.activeUnitId!];
+    if (active.controllerId !== "p1") {
+      const p1Unit = Object.values(state.combat!.units).find(
+        (u) => u.controllerId === "p1" && u.damage < u.maxHealth
+      )!;
+      state.combat!.activeUnitId = p1Unit.id;
+    }
+    const activeUnit = state.combat!.units[state.combat!.activeUnitId!];
+    activeUnit.activatedThisRound = false;
+    activeUnit.attackedThisActivation = false;
+    activeUnit.movedThisActivation = false;
+    return state;
+  }
+
+  function castMagicArrowAtEnemy(state: GameState): GameState {
+    const target = Object.values(state.combat!.units).find(
+      (u) => u.controllerId === "p2" && u.damage < u.maxHealth
+    )!;
+    return applyOk(state, {
+      type: "CAST_SPELL",
+      playerId: "p1",
+      cardId: "spell.magic_arrow",
+      target: { type: "unit", unitId: target.id }
+    });
+  }
+
+  it("offers BOTH basic and expert Knowledge in the cast window", () => {
+    const state = p1CanCast(["spell.magic_arrow", "stat.knowledge"]);
+    const cast = castMagicArrowAtEnemy(state);
+    const offers = knowledgeOffers(cast, "p1");
+    expect(offers.some((a) => a.type === "PLAY_REACTION" && a.mode === "basic")).toBe(true);
+    expect(offers.some((a) => a.type === "PLAY_REACTION" && a.mode === "expert")).toBe(true);
+  });
+
+  it("basic Knowledge takes the cast spell back to hand (no crown spent)", () => {
+    const state = p1CanCast(["spell.magic_arrow", "stat.knowledge"]);
+    const cast = castMagicArrowAtEnemy(state);
+    const recalled = applyOk(cast, {
+      type: "PLAY_REACTION",
+      playerId: "p1",
+      cardId: "stat.knowledge",
+      mode: "basic"
+    });
+    const resolved = passAllReactions(recalled);
+    expect(resolved.players.p1.hand).toContain("spell.magic_arrow");
+    expect(resolved.players.p1.discard).toContain("stat.knowledge");
+    expect(resolved.players.p1.combatStats.expertUsesSpentThisRound).toBe(0);
+  });
+
+  it("expert Knowledge takes the spell back AND raises the spell limit (1 crown)", () => {
+    const state = p1CanCast(["spell.magic_arrow", "stat.knowledge"]);
+    const cast = castMagicArrowAtEnemy(state);
+    const recalled = applyOk(cast, {
+      type: "PLAY_REACTION",
+      playerId: "p1",
+      cardId: "stat.knowledge",
+      mode: "expert"
+    });
+    const resolved = passAllReactions(recalled);
+    expect(resolved.players.p1.hand).toContain("spell.magic_arrow");
+    expect(resolved.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
+    expect(resolved.players.p1.combatStats.spellLimitBonusThisRound).toBe(1);
+  });
+});

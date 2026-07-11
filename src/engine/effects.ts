@@ -248,18 +248,21 @@ function findAddSpellPowerEffect(
 
 /**
  * How much spell Power a card contributes when discarded as a power source for
- * a spell of `spellSchools` — the unit used by Power-value costs (Sorrow):
+ * a spell of `spellSchools` — the unit used by Power-value costs (Sorrow, map
+ * View Air / Dimension Door tiers, …):
  *  - a Spell counts as 1 (the "+1 Power" on its bottom side),
  *  - a Power statistic/artifact/ability counts as its printed Power `amount`,
+ *    or `expertAmount` when `mode === "expert"` (costs a crown at payment time),
  *    but a school-restricted source only when the empowered spell's school
  *    matches (otherwise it contributes nothing — a non-spell has no generic
  *    "+1 Power" side in this engine).
  * `perCostCard` scaling is ignored (it needs its own sub-cost); the flat
- * printed `amount` is used.
+ * printed amount (or expert amount) is used.
  */
 export function spellPowerValueOfCard(
   card: CardDefinition | undefined,
-  spellSchools: readonly SpellSchool[]
+  spellSchools: readonly SpellSchool[],
+  mode: CardPlayMode = "basic"
 ): number {
   if (!card) {
     return 0;
@@ -273,6 +276,9 @@ export function spellPowerValueOfCard(
   }
   if (add.schoolOnly && !(spellSchools.includes(add.schoolOnly) || spellSchools.includes("any"))) {
     return 0;
+  }
+  if (mode === "expert" && add.expertAmount !== undefined) {
+    return add.expertAmount;
   }
   return add.amount;
 }
