@@ -468,9 +468,24 @@ Leading with what does NOT run / deliberate limits:
 - **The War Zealot Magic Mirror still auto-USES** (the printed reflect is read
   as always-on; declining is never right) — but its redirect TARGET pick goes
   to the controller like every other follow-up.
-- **Guards' printed "other actions" stay off the controller's menu** (token
-  placements, Summon Demons, genie draws) — parity with the AI, which never
-  uses them either; passive/triggered abilities still fire normally.
+- **Token "other actions" (Ogre Bloodlust / Sorceress Weakness,
+  `PLACE_TOKEN_ACTION`) ARE offered on the controller's FREE-mode menu on a
+  normal guard FIELD** (user rule "mode free: do whatever" / "use token";
+  `addControlledNeutralTokenActions`): the offer is issued for the controlling
+  seat and re-stamped to the neutral seat (`asNeutralSeatCommand` now also wraps
+  `USE_UNIT_ABILITY`), and the target-pick choice it opens is a NEUTRAL-owned
+  choice the pump hands back to the controller — exactly like the guards'
+  [activation] follow-ups. They are NOT offered in MUST-ATTACK mode
+  ("cant … use token") nor in a Creature Bank ("not placement"). The
+  deck-digging (Genie Wish) and Summon Demons other-actions stay OFF a
+  controlled guard on every menu — they read the CONTROLLER's own deck / removed
+  units, not the neutral side, so handing them over would be a bug/exploit, and
+  the AI never used them. Passive/triggered abilities still fire normally.
+- **Creature Bank guards are "move and fight, not placement"** (user rule): the
+  guards keep their fixed corner deployment (`placeCreatureBankGuards`, no setup
+  reposition) but the controller may MOVE THEM FREELY and attack — regardless of
+  the must-attack toggle — with NO Defend and NO token placement. (A WOG
+  Werewolf's Astrologers-round frenzy never applies to a bank guard.)
 - **Berserk and the Astrologers Werewolf frenzy override both toggle modes**
   (the spell/frenzy menu binds a controlled guard exactly like a player unit).
 - The continue-or-retreat window, the pre-activation reaction pause (which no
@@ -480,14 +495,16 @@ Leading with what does NOT run / deliberate limits:
 - The mode never changes `unit.controllerId` — guards stay the NEUTRAL seat's
   for rewards, win/loss and every rules read; only the acting SEAT differs.
 
-The `pvpNeutralControlMustAttack` sub-toggle:
+The `pvpNeutralControlMustAttack` sub-toggle (normal guard FIELDS only — a
+Creature Bank ignores it and always plays free "move and fight", see above):
 - **ON (default, rulebook spirit)**: a guard that can strike now gets ONLY its
-  attacks (no Defend, no move, no hold); one that can reach a strike by moving
-  gets only those landing cells; otherwise only steps that strictly CLOSE the
-  walked distance to some enemy — no wandering to run down the neutral round
+  attacks (no Defend, no token, no move, no hold); one that can reach a strike by
+  moving gets only those landing cells; otherwise only steps that strictly CLOSE
+  the walked distance to some enemy — no wandering to run down the neutral round
   limit; hold only when boxed in.
-- **OFF**: the controller plays the guards with NO constraint — the exact PvP
-  menu (move anywhere legal, attack, defend, hold after acting).
+- **OFF**: the controller plays the guards with NO constraint — the full PvP
+  menu (move anywhere legal, attack, defend, hold after acting) PLUS the token
+  "other actions" (Bloodlust / Weakness) — "do whatever".
 
 Cross-mode seams (each pinned):
 - **Parallel turns**: the controller IS a participant of the open fight

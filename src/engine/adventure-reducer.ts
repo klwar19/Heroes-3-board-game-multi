@@ -2144,6 +2144,19 @@ function presentFarTileOffersOrFinalize(state: GameState): void {
 
   if (settlementEligible) {
     flip.offerMode = "settlement";
+    // Once a reroll has happened, the immediately-previous rolled tile is still
+    // held (`lastNonSettlement`): offer it back as a third choice so the player
+    // is never forced to accept the newest draw or gamble again — they may
+    // settle for the tile they just saw (user rule).
+    if (flip.lastNonSettlement) {
+      openFarTileFlipChoice(
+        state,
+        flip,
+        `Your 2nd Ⅱ–Ⅲ tile — ${describeFarTile(candidate)} — has no Settlement. Keep it, reroll for a Settlement, or take the previous tile — ${describeFarTile(flip.lastNonSettlement)}?`,
+        ["Keep this Ⅱ–Ⅲ tile", "Reroll for a Settlement", `Take the previous tile (${describeFarTile(flip.lastNonSettlement)})`]
+      );
+      return;
+    }
     openFarTileFlipChoice(
       state,
       flip,
@@ -2369,6 +2382,14 @@ export function resolveFarTileFlip(state: GameState, optionIndex: number): void 
   }
 
   if (flip.offerMode === "settlement") {
+    // [2] Take the previous rolled tile (offered only once a reroll has already
+    // happened, so `lastNonSettlement` is held): settle for the tile just seen
+    // instead of keeping the newest draw or gambling again. finalize returns the
+    // unchosen candidate to the pool.
+    if (optionIndex === 2 && flip.lastNonSettlement) {
+      finalizeFarTileFlip(state, flip.lastNonSettlement);
+      return;
+    }
     // Reroll for a Settlement: hold the current (non-settlement) tile as the
     // "last before reroll", returning any older held tile to the pool, then draw.
     if (flip.lastNonSettlement) {
