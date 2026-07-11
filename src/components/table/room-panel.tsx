@@ -18,7 +18,9 @@ import {
   Users
 } from "lucide-react";
 import {
+  AFK_IDLE_MS,
   getSeatIdentity,
+  idleMillis,
   NEUTRAL_PLAYER_ID,
   roomDisplayName,
   seatPickSummary,
@@ -140,6 +142,21 @@ export function RoomPanel({
     (player) => player.clientId !== clientId && player.roomId !== roomId
   );
 
+  // Who is live in THIS room right now (presence heartbeat). Seated players can
+  // stay on the roster after a disconnect; this is what tells "really here"
+  // from "ghost / closed the tab".
+  const liveInThisRoom = new Map(
+    online
+      .filter((player) => player.roomId === roomId)
+      .flatMap((player) => {
+        const keys: [string, PresenceEntry][] = [[player.clientId, player]];
+        if (player.name) {
+          keys.push([`name:${player.name.trim().toLowerCase()}`, player]);
+        }
+        return keys;
+      })
+  );
+
   // Invite = a lobby-chat ping carrying THIS room's join link (the "link +
   // lobby-chat ping" invite). Best-effort; a failure just leaves the button as-is.
   const invitePlayer = (player: PresenceEntry) => {
@@ -151,6 +168,10 @@ export function RoomPanel({
         /* best-effort — the host can retry or copy the link instead */
       });
   };
+
+  const showAuthLabels = authEnabled();
+  const gameInProgress = state.phase !== "setup" || !state.setupLobby;
+  const nowMs = Date.now();
 
   const roleLabel = isHost
     ? "Host"
@@ -208,10 +229,18 @@ export function RoomPanel({
                 {inviteCandidates.map((player) => (
                   <li className="roomInvitePlayer" key={player.clientId}>
                     <span className="roomInvitePlayerName">
-                      {player.verified ? <BadgeCheck aria-hidden="true" size={11} /> : null}
-                      {player.verified ? player.name : `guest — ${player.name}`}
+                      {showAuthLabels && player.verified ? <BadgeCheck aria-hidden="true" size={11} /> : null}
+                      {showAuthLabels && !player.verified ? `guest — ${player.name}` : player.name}
                       <small className="roomInvitePlayerWhere">
-                        {player.roomId ? "(in another room)" : "(in the lobby)"}
+                        {player.roomId
+                          ? `(in another room${
+                              player.roomStatus === "playing"
+                                ? ", game on"
+                                : player.roomStatus === "setup"
+                                  ? ", setting up"
+                                  : ""
+                            })`
+                          : "(in the lobby)"}
                       </small>
                     </span>
                     <button
@@ -333,16 +362,65 @@ export function RoomPanel({
             )}
           </div>
 
+          <p className="roomRosterStatus" aria-live="polite">
+            {gameInProgress ? "Game on" : "Setting up"}
+            {" · "}
+            {members.length} in roster
+            {online.length > 0
+              ? ` · ${members.filter((m) => liveInThisRoom.has(m.clientId) || liveInThisRoom.has(`name:${m.name.trim().toLowerCase()}`)).length} connected now`
+              : ""}
+          </p>
+
           <ul className="roomMembers">
             {members.map((member) => {
               const self = member.clientId === clientId;
               // What this member is playing (town + hero), when they hold a seat.
               const seatIdentity = member.seat !== "observer" ? getSeatIdentity(state, member.seat) : null;
               const pick = seatIdentity ? seatPickSummary(seatIdentity) : null;
+              const isGuest = showAuthLabels && !member.userId;
+              const isVerified = showAuthLabels && Boolean(member.userId);
+              // Connected = presence heartbeat in this room. Self always counts
+              // as live while this panel is open. Without a presence poll yet
+              // (empty list), only mark self — never flash everyone as away.
+              const presenceKnown = online.length > 0;
+              const isLive =
+                self ||
+                liveInThisRoom.has(member.clientId) ||
+                liveInThisRoom.has(`name:${member.name.trim().toLowerCase()}`);
+              const seated = member.seat !== "observer";
+              const isAfk =
+                gameInProgress &&
+                seated &&
+                idleMillis(state, member.seat, nowMs) >= AFK_IDLE_MS;
+              const statusLabel = self
+                ? isAfk
+                  ? "AFK"
+                  : "online"
+                : !presenceKnown
+                  ? null
+                  : isLive
+                    ? isAfk
+                      ? "AFK"
+                      : "online"
+                    : "away";
+              const showLiveDot = self || presenceKnown;
               return (
-                <li className="roomMember" key={member.clientId}>
+                <li
+                  className={`roomMember${isGuest ? " guest" : ""}${
+                    showLiveDot ? (isLive ? " live" : " away") : ""
+                  }`}
+                  key={member.clientId}
+                >
                   <span className="roomMemberName">
+                    {showLiveDot ? (
+                      <span
+                        className={`roomMemberLiveDot${isLive ? " on" : ""}${isAfk ? " afk" : ""}`}
+                        title={statusLabel ?? undefined}
+                        aria-hidden="true"
+                      />
+                    ) : null}
                     {member.isHost ? <Crown aria-hidden="true" size={12} className="hostCrown" /> : null}
+                    {isVerified ? <BadgeCheck aria-hidden="true" size={12} className="roomMemberVerified" /> : null}
                     {seatIdentity ? (
                       <span
                         className="seatFactionDot roomMemberDot"
@@ -354,8 +432,10 @@ export function RoomPanel({
                       <span className="roomMemberPerson">
                         {/* A verified member's name opens their public profile
                             (signed-in members are named by their account
-                            nickname); guests stay plain text. */}
-                        {member.userId && authEnabled() ? (
+                            nickname). Guests are labeled only when accounts are
+                            on — with accounts off everyone is a guest and the
+                            label is pure noise. */}
+                        {isVerified ? (
                           <a
                             className="roomMemberProfileLink"
                             href={`/players/${encodeURIComponent(member.name)}`}
@@ -365,10 +445,17 @@ export function RoomPanel({
                           >
                             {member.name}
                           </a>
+                        ) : isGuest ? (
+                          <span title="Guest — not signed in">{`guest — ${member.name}`}</span>
                         ) : (
                           member.name
                         )}
                         {self ? <em> (you)</em> : null}
+                        {statusLabel ? (
+                          <small className={`roomMemberPresence ${statusLabel === "AFK" ? "afk" : statusLabel}`}>
+                            {statusLabel}
+                          </small>
+                        ) : null}
                       </span>
                       {pick ? <small className="roomMemberPick">{pick}</small> : null}
                     </span>

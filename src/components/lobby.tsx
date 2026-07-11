@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { Crown, Eye, Lock, Medal, Plus, RefreshCw, Search, Swords, Trash2, Users } from "lucide-react";
+import { authEnabled } from "@/lib/auth-mode";
+import type { PresenceEntry } from "@/lib/lobby-presence-client";
 import type { RoomDirectoryEntry } from "@/lib/realtime";
 
 /** Show the room filter once the list is long enough for scanning to hurt. */
@@ -19,6 +21,24 @@ function roomMatchesFilter(room: RoomDirectoryEntry, filter: string): boolean {
     room.createdByName ?? "",
     ...(room.members ?? []).map((member) => member.name)
   ].some((field) => field.toLowerCase().includes(needle));
+}
+
+/**
+ * Members of this room who are ACTUALLY online right now (presence heartbeat),
+ * keyed by lowercase name. Presence is short-TTL, so a seated player whose tab
+ * died drops off within ~30s even though the room roster still lists them.
+ */
+function onlineNamesInRoom(roomId: string, players: PresenceEntry[] | undefined): Set<string> {
+  const names = new Set<string>();
+  if (!players) {
+    return names;
+  }
+  for (const player of players) {
+    if (player.roomId === roomId && player.name) {
+      names.add(player.name.trim().toLowerCase());
+    }
+  }
+  return names;
 }
 
 /**
@@ -40,6 +60,8 @@ export function LobbyScreen({
   onCreate,
   onClose,
   isAdmin = false,
+  /** Live presence board — used to mark which roster names are actually online. */
+  onlinePlayers,
   title = "Multiplayer Lobby",
   createLabel = "Create room",
   emptyHint = "No rooms yet — create one above to get started."
@@ -60,6 +82,7 @@ export function LobbyScreen({
   onClose: (roomId: string) => void;
   /** A signed-in platform admin: may delete ANY room (the server verifies the session). */
   isAdmin?: boolean;
+  onlinePlayers?: PresenceEntry[];
   /** Heading (default the multiplayer lobby; the battle-test arena reuses this). */
   title?: string;
   /** Label on the create button ("Create room" / "Create arena"). */
@@ -67,6 +90,7 @@ export function LobbyScreen({
   /** Empty-state hint shown when the directory has no rooms. */
   emptyHint?: string;
 }) {
+  const showAuthLabels = authEnabled();
   const [nameDraft, setNameDraft] = useState(displayName);
   const [newRoomName, setNewRoomName] = useState("");
   const [createHosted, setCreateHosted] = useState(false);
@@ -226,7 +250,10 @@ export function LobbyScreen({
           <p className="lobbyNote">No rooms match &ldquo;{roomFilter.trim()}&rdquo; — clear the filter to see all {rooms.length}.</p>
         ) : (
           <ul className="lobbyRooms" aria-label="Open rooms">
-            {visibleRooms.map((room) => (
+            {visibleRooms.map((room) => {
+              const liveNames = onlineNamesInRoom(room.roomId, onlinePlayers);
+              const liveCount = (room.members ?? []).filter((m) => liveNames.has(m.name.trim().toLowerCase())).length;
+              return (
               <li className="lobbyRoom" key={room.roomId}>
                 <button className="lobbyRoomMain" onClick={() => onJoin(room.roomId)} type="button">
                   <span className="lobbyRoomName">
@@ -238,12 +265,23 @@ export function LobbyScreen({
                     {room.name}
                   </span>
                   <span className="lobbyRoomMeta">
-                    <span className="lobbyRoomCount" title="Members in the room">
-                      <Users aria-hidden="true" size={12} /> {room.memberCount}
+                    <span
+                      className="lobbyRoomCount"
+                      title={
+                        onlinePlayers
+                          ? `${liveCount} connected now · ${room.memberCount} in roster` +
+                            (room.seatedCount > 0 ? ` · ${room.seatedCount} seated` : "")
+                          : "Members in the room roster"
+                      }
+                    >
+                      <Users aria-hidden="true" size={12} />{" "}
+                      {onlinePlayers
+                        ? `${liveCount} online${room.memberCount > liveCount ? ` / ${room.memberCount}` : ""}`
+                        : room.memberCount}
                       {room.seatedCount > 0 ? ` (${room.seatedCount} seated)` : ""}
                     </span>
                     <span className={`lobbyRoomStatus ${room.inProgress ? "playing" : "setup"}`}>
-                      {room.inProgress ? "In progress" : "Setting up"}
+                      {room.inProgress ? "Game on" : "Setting up"}
                     </span>
                     <span
                       className={`lobbyRoomRanked ${room.ranked ? "ranked" : "casual"}`}
@@ -269,22 +307,45 @@ export function LobbyScreen({
                   </span>
                   {(room.members ?? []).length > 0 ? (
                     // Who is inside: host first (crown), registered players by
-                    // nickname, guests honestly labeled "guest — name".
+                    // nickname, guests honestly labeled only when accounts are on.
+                    // A green/grey mark shows who is actually online right now.
                     <span className="lobbyRoomPeople" aria-label="Players in this room">
-                      {(room.members ?? []).map((member, index) => (
+                      {(room.members ?? []).map((member, index) => {
+                        const isGuest = showAuthLabels && member.guest;
+                        const isLive = liveNames.has(member.name.trim().toLowerCase());
+                        const statusBit = onlinePlayers
+                          ? isLive
+                            ? " · connected"
+                            : " · away (not connected)"
+                          : "";
+                        return (
                         <span
-                          className={`lobbyRoomPerson${member.guest ? " guest" : ""}${member.seated ? "" : " observer"}`}
+                          className={`lobbyRoomPerson${isGuest ? " guest" : ""}${member.seated ? "" : " observer"}${
+                            onlinePlayers ? (isLive ? " live" : " away") : ""
+                          }`}
                           key={`${member.name}-${index}`}
                           title={
                             (member.host ? "Host — " : "") +
-                            (member.guest ? "guest (no account)" : "verified account") +
-                            (member.seated ? "" : ", observer")
+                            (showAuthLabels
+                              ? member.guest
+                                ? "guest (no account)"
+                                : "verified account"
+                              : "player") +
+                            (member.seated ? "" : ", observer") +
+                            statusBit
                           }
                         >
+                          {onlinePlayers ? (
+                            <span
+                              className={`lobbyRoomLiveDot${isLive ? " on" : ""}`}
+                              aria-hidden="true"
+                            />
+                          ) : null}
                           {member.host ? <Crown aria-hidden="true" size={11} /> : null}
-                          {member.guest ? `guest — ${member.name}` : member.name}
+                          {isGuest ? `guest — ${member.name}` : member.name}
                         </span>
-                      ))}
+                        );
+                      })}
                       {room.memberCount > (room.members ?? []).length ? (
                         <span className="lobbyRoomPerson observer">+{room.memberCount - (room.members ?? []).length} more</span>
                       ) : null}
@@ -308,7 +369,8 @@ export function LobbyScreen({
                   ) : null}
                 </div>
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
       </div>

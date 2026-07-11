@@ -55,10 +55,48 @@ describe("LobbyScreen", () => {
     });
 
     expect(screen.getByText("Friday Night")).toBeTruthy();
-    expect(screen.getByText("In progress")).toBeTruthy();
+    expect(screen.getByText("Game on")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: /Watch \/ play/i }));
     expect(handlers.onJoin).toHaveBeenCalledWith("room-1");
+  });
+
+  it("labels guests only when accounts are ON, and marks who is actually connected", () => {
+    const prev = process.env.NEXT_PUBLIC_ACCOUNTS_ENABLED;
+    process.env.NEXT_PUBLIC_ACCOUNTS_ENABLED = "1";
+    try {
+      renderLobby({
+        rooms: [
+          entry({
+            roomId: "room-live",
+            name: "Live Table",
+            memberCount: 2,
+            seatedCount: 2,
+            members: [
+              { name: "Alice", host: true, guest: false, seated: true },
+              { name: "Bob", host: false, guest: true, seated: true }
+            ]
+          })
+        ],
+        onlinePlayers: [
+          { clientId: "cA", name: "Alice", verified: true, roomId: "room-live", roomName: "Live Table" }
+        ]
+      });
+      // Verified nickname plain; guest honestly labeled.
+      expect(screen.getByText("Alice")).toBeTruthy();
+      expect(screen.getByText(/guest — Bob/)).toBeTruthy();
+      // Alice is connected (presence); Bob is on the roster but not online.
+      expect(screen.getByText("Alice").closest(".lobbyRoomPerson")?.className).toMatch(/\blive\b/);
+      expect(screen.getByText(/guest — Bob/).closest(".lobbyRoomPerson")?.className).toMatch(/\baway\b/);
+      // Connected count uses presence, not the full roster.
+      expect(screen.getByText(/1 online \/ 2/)).toBeTruthy();
+    } finally {
+      if (prev === undefined) {
+        delete process.env.NEXT_PUBLIC_ACCOUNTS_ENABLED;
+      } else {
+        process.env.NEXT_PUBLIC_ACCOUNTS_ENABLED = prev;
+      }
+    }
   });
 
   it("creates an OPEN, NORMAL room with the typed name by default", () => {

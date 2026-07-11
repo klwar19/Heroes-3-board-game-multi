@@ -23,6 +23,9 @@
 
 import { sanitizeLobbyText } from "./lobby-chat";
 
+/** What a player is doing in their room, for the online list / lobby roster. */
+export type PresenceRoomStatus = "setup" | "playing";
+
 /** One online player as shown in the lobby "Players online" panel. */
 export type PresenceEntry = {
   /** The player's latest stable per-tab client id (React key + "you" styling). */
@@ -35,6 +38,11 @@ export type PresenceEntry = {
   roomId?: string;
   /** That room's display name, if known. */
   roomName?: string;
+  /**
+   * In-room activity: "setup" = still in the lobby/seating screen, "playing" =
+   * the game has started. Absent when idling in the multiplayer browser.
+   */
+  roomStatus?: PresenceRoomStatus;
 };
 
 /** What a heartbeat carries; `verified`/`userId` are supplied by the ROUTE. */
@@ -43,6 +51,7 @@ export type PresenceHeartbeat = {
   name: unknown;
   roomId?: unknown;
   roomName?: unknown;
+  roomStatus?: unknown;
   /** Server-verified account id (from the cookie). Undefined for a guest. */
   userId?: string;
 };
@@ -91,6 +100,10 @@ export class LobbyPresenceBoard {
     const roomName = roomId
       ? sanitizeLobbyText(input.roomName, MAX_PRESENCE_ROOM_NAME_LENGTH) || undefined
       : undefined;
+    const roomStatus: PresenceRoomStatus | undefined =
+      roomId && (input.roomStatus === "setup" || input.roomStatus === "playing")
+        ? input.roomStatus
+        : undefined;
 
     this.pruneStale(now);
 
@@ -108,6 +121,7 @@ export class LobbyPresenceBoard {
       ...(userId ? { userId } : {}),
       ...(roomId ? { roomId } : {}),
       ...(roomName ? { roomName } : {}),
+      ...(roomStatus ? { roomStatus } : {}),
       at: now
     };
     this.entries.set(key, entry);
@@ -184,7 +198,8 @@ export class LobbyPresenceBoard {
       name: entry.name,
       verified: entry.verified,
       ...(entry.roomId ? { roomId: entry.roomId } : {}),
-      ...(entry.roomName ? { roomName: entry.roomName } : {})
+      ...(entry.roomName ? { roomName: entry.roomName } : {}),
+      ...(entry.roomStatus ? { roomStatus: entry.roomStatus } : {})
     };
   }
 }
