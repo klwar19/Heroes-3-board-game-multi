@@ -137,4 +137,46 @@ describe("start ready check — CONTROLs that start immediately (no check)", () 
     expect(built.setupLobby).toBeNull();
     expect(built.adventure).not.toBeNull();
   });
+
+  it("single-player: one human plus computers starts the moment the human presses Start", () => {
+    let state = createAdventureLobbyState({
+      seed: "rc-single-player",
+      scenarioId: "skirmish",
+      sessionMode: "single-player",
+      computerOpponents: 2
+    });
+    // A hosted PRIVATE room with the ONE human member — computer seats have no
+    // RoomMember row, so they must never be waited on as confirmers.
+    state.room = {
+      hosted: true,
+      hostClientId: "c1",
+      visibility: "private",
+      ranked: false,
+      members: [{ clientId: "c1", name: "Owner", seat: "p1", isHost: true }]
+    };
+    state = applyOk(state, { type: "CHOOSE_FACTION", playerId: "p1", factionId: "castle", heroDefId: "catherine" });
+    for (const [playerId, factionId, heroDefId] of [
+      ["p2", "inferno", "xyron"],
+      ["p3", "necropolis", "sandro"]
+    ] as const) {
+      const picked = applyAction(
+        state,
+        { type: "CHOOSE_FACTION", playerId, factionId, heroDefId },
+        { computerActorPlayerId: playerId }
+      );
+      expect(picked.errors).toEqual([]);
+      state = picked.state;
+    }
+
+    const built = applyOk(state, { type: "START_ADVENTURE", playerId: "p1" }, T0);
+    // No ready check opened — the map built immediately…
+    expect(built.setupLobby).toBeNull();
+    expect(built.adventure).not.toBeNull();
+    // …and the built game keeps its single-player identity end to end.
+    expect(built.sessionMode).toBe("single-player");
+    expect(built.controllers?.p2?.kind).toBe("computer");
+    expect(built.controllers?.p3?.kind).toBe("computer");
+    expect(built.room?.visibility).toBe("private");
+    expect(built.room?.ranked).toBe(false);
+  });
 });

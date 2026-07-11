@@ -1,5 +1,9 @@
 import { getDraftPhase } from "../adventure-setup";
-import { roundStartEventResolver } from "../parallel-turns";
+import {
+  isRoundStartEventBarrierActive,
+  parallelInteractionBlocker,
+  roundStartEventResolver,
+} from "../parallel-turns";
 import { NEUTRAL_PLAYER_ID } from "../state";
 import type { GameState, PlayerId } from "../state";
 import { isComputerPlayer } from "./control";
@@ -18,20 +22,30 @@ function computer(
 /**
  * Returns only a seat that owns a real required/open action window. This avoids
  * treating off-turn "anytime" card offers as permission for unsolicited bot play.
+ *
+ * Wait-vs-drive rule: the exclusive interaction machinery (pending choice,
+ * reaction window, event barrier, visits, an open combat) is a table-wide
+ * singleton. When one is open, either its owner is a computer (drive it) or the
+ * function returns null so the runner WAITS for the human — it must never fall
+ * through to plain turn ownership, where the blocked seat would have no
+ * automatable action and read as a stall.
  */
 export function computerDecisionOwner(state: GameState): PlayerId | null {
   if (state.phase === "game-over") {
     return null;
   }
 
-  const choiceOwner = computer(state, state.pendingChoice?.playerId);
-  if (choiceOwner) return choiceOwner;
-
-  const reactionOwner = computer(state, state.reactionWindow?.priorityPlayerId);
-  if (reactionOwner) return reactionOwner;
-
-  const eventOwner = computer(state, roundStartEventResolver(state));
-  if (eventOwner) return eventOwner;
+  if (state.pendingChoice) {
+    return computer(state, state.pendingChoice.playerId);
+  }
+  if (state.reactionWindow) {
+    return computer(state, state.reactionWindow.priorityPlayerId);
+  }
+  // Round-start Event/Astrologers barrier: the resolver is the ONLY seat that
+  // may act at the whole table until the barrier lifts.
+  if (isRoundStartEventBarrierActive(state)) {
+    return computer(state, roundStartEventResolver(state));
+  }
 
   const adventure = state.adventure;
   const interactionOwners = [
@@ -41,10 +55,14 @@ export function computerDecisionOwner(state: GameState): PlayerId | null {
     adventure?.pendingFarTileFlip?.playerId,
     adventure?.pendingGarrison?.defenderPlayerId,
     adventure?.pendingTokenTeleport?.playerId,
-  ];
+  ].filter((owner): owner is PlayerId => Boolean(owner));
   for (const owner of interactionOwners) {
     const result = computer(state, owner);
     if (result) return result;
+  }
+  if (interactionOwners.length > 0) {
+    // A human-owned exclusive map interaction: everyone else waits.
+    return null;
   }
 
   const combat = state.combat;
@@ -83,24 +101,22 @@ export function computerDecisionOwner(state: GameState): PlayerId | null {
     const activeOwner = computer(state, activeController);
     if (activeOwner) return activeOwner;
 
+    // The neutral-combat continue-or-retreat window belongs to the attacking
+    // fighter (a neutral fight's attacker is always the player seat).
+    if (combat.awaitingContinue) {
+      return computer(state, combat.attackerPlayerId);
+    }
+
     if (combat.outcome && !combat.endAcknowledged) {
       return (
         computer(state, combat.attackerPlayerId) ??
         computer(state, combat.defenderPlayerId)
       );
     }
-  }
 
-  if (state.turn.mode === "parallel") {
-    for (const playerId of state.turnOrder) {
-      if (!state.turn.completedPlayerIds.includes(playerId)) {
-        const result = computer(state, playerId);
-        if (result) return result;
-      }
-    }
-  } else {
-    const activeOwner = computer(state, state.activePlayerId);
-    if (activeOwner) return activeOwner;
+    // An open combat is an exclusive interaction: while no computer-owned slot
+    // inside it is required, every seat (fighters and bystanders alike) waits.
+    return null;
   }
 
   const lobby = state.setupLobby;
@@ -109,14 +125,32 @@ export function computerDecisionOwner(state: GameState): PlayerId | null {
     const banner = computer(state, phase.currentBannerPlayerId);
     if (banner) return banner;
     for (const seat of lobby.seats) {
-      if (
-        (!seat.factionId || !seat.heroDefId) &&
-        seat.playerId !== NEUTRAL_PLAYER_ID
-      ) {
-        const result = computer(state, seat.playerId);
-        if (result) return result;
+      if (seat.playerId === NEUTRAL_PLAYER_ID) continue;
+      if (seat.factionId && seat.heroDefId) continue;
+      // Draft format: a seat with a locked town can only act in its own ban
+      // turn (handled above) or once the pick phase opens; in between it is
+      // waiting on the other seats and owes nothing.
+      if (phase.format === "draft" && seat.factionId && !phase.pickPhaseOpen) {
+        continue;
       }
+      const result = computer(state, seat.playerId);
+      if (result) return result;
     }
+    return null;
+  }
+
+  if (state.turn.mode === "parallel") {
+    for (const playerId of state.turnOrder) {
+      if (state.turn.completedPlayerIds.includes(playerId)) continue;
+      // A bystander blocked by another seat's exclusive interaction has only
+      // optional quiet actions — nothing a policy is required to take.
+      if (parallelInteractionBlocker(state, playerId)) continue;
+      const result = computer(state, playerId);
+      if (result) return result;
+    }
+  } else {
+    const activeOwner = computer(state, state.activePlayerId);
+    if (activeOwner) return activeOwner;
   }
 
   return null;

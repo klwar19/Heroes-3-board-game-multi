@@ -169,6 +169,7 @@ export {
   humanPlayerIdsByController,
   isComputerPlayer,
   isPrivateSinglePlayer,
+  legalityMatchKey,
   observeForComputer,
   sessionModeOf,
   standardComputerController

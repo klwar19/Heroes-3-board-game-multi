@@ -1,4 +1,5 @@
-import type { GameAction, LegalAction } from "../state";
+import { effectiveHandLimit } from "../adventure";
+import type { GameAction, GameState, LegalAction } from "../state";
 import type { ComputerDecision, ComputerObservation } from "./types";
 
 /** Stable serialization independent of object property insertion order. */
@@ -15,6 +16,19 @@ export function canonicalActionKey(value: unknown): string {
       .join(",")}}`;
   }
   return JSON.stringify(value);
+}
+
+/**
+ * Legality-match key: how a chosen action is matched back against the offered
+ * legal set. Identical to canonicalActionKey except for handler-validated
+ * actions whose offer is a bare template the policy parameterizes — currently
+ * only REFRESH_HAND, whose discardCardIds are the policy's own pick.
+ */
+export function legalityMatchKey(action: GameAction): string {
+  if (action.type === "REFRESH_HAND") {
+    return canonicalActionKey({ ...action, discardCardIds: [] });
+  }
+  return canonicalActionKey(action);
 }
 
 const NEVER_AUTOMATE = new Set<GameAction["type"]>([
@@ -47,13 +61,24 @@ function foundationScore(action: GameAction): {
       return { score: 1_100, policy: "mandatory.resolve-choice" };
     case "PASS_REACTION":
       return { score: 1_050, policy: "safe.pass-reaction" };
-    case "RANDOM_ASSIGN_SEAT":
-    case "ROLL_TOWN_OPTIONS":
-    case "ROLL_HERO_OPTIONS":
+    // Locking a town directly always beats (re)rolling town options: in draft
+    // CHOOSE_TOWN accepts any untaken town with no roll, and in random-choice
+    // it consumes the rolled pair — so the roll actions are only ever taken
+    // when the format makes them mandatory (nothing to choose yet).
     case "CHOOSE_TOWN":
+      return { score: 1_010, policy: "setup.lock-town" };
+    case "RANDOM_ASSIGN_SEAT":
     case "CHOOSE_FACTION":
     case "BAN_HERO":
       return { score: 1_000, policy: "setup.complete-seat" };
+    case "ROLL_TOWN_OPTIONS":
+    case "ROLL_HERO_OPTIONS":
+      return { score: 990, policy: "setup.roll-options" };
+    // Deploy every placeable unit before finishing placement — FINISH is only
+    // offered once at least one unit is down, and stops being the pick only
+    // when no unplaced unit remains (PLACE offers exist for unplaced units).
+    case "PLACE_COMBAT_UNIT":
+      return { score: 920, policy: "combat.place-unit" };
     case "ACKNOWLEDGE_COMBAT_END":
     case "FINISH_COMBAT_PLACEMENT":
     case "FINISH_TACTICS":
@@ -69,9 +94,17 @@ function foundationScore(action: GameAction): {
       return { score: 500, policy: "safe.defend" };
     case "END_ACTIVATION":
       return { score: 400, policy: "safe.end-activation" };
+    // Fight the neutral combat on rather than burning cards or retreating: the
+    // continue costs 1 MP and is the rulebook default for a fighter that can
+    // still win. Scored above generic card plays (0) so a +Movement card in the
+    // window is never spent by the fallback.
+    case "CONTINUE_NEUTRAL_COMBAT":
+      return { score: 350, policy: "combat.continue" };
     case "COMPLETE_SIMULTANEOUS_TURN":
     case "END_TURN":
       return { score: 300, policy: "safe.end-turn" };
+    case "UNPLACE_COMBAT_UNIT":
+      return { score: -100, policy: "safe.never-unplace" };
     case "RETREAT_FROM_COMBAT":
     case "SURRENDER_COMBAT":
     case "GIVE_UP_COMBAT":
@@ -90,6 +123,32 @@ function tieValue(seed: string, action: LegalAction): number {
     hash = Math.imul(hash, 16_777_619);
   }
   return hash >>> 0;
+}
+
+/**
+ * REFRESH_HAND is offered as a bare template (discardCardIds: []), but a hand
+ * over the limit MUST discard down in the same action (the handler rejects an
+ * insufficient list). Deterministic pick: the oldest cards in hand order.
+ * effectiveHandLimit only reads public fields plus the viewer's own hand, so
+ * the redacted view is a safe stand-in for the full state.
+ */
+function withRefreshDiscards(
+  observation: ComputerObservation,
+  action: Extract<GameAction, { type: "REFRESH_HAND" }>,
+): GameAction {
+  const player = observation.state.players[observation.playerId];
+  if (!player?.needsHandRefresh) {
+    return action;
+  }
+  const limit = effectiveHandLimit(
+    observation.state as unknown as GameState,
+    observation.playerId,
+  );
+  const overflow = Math.max(0, player.hand.length - limit);
+  if (overflow === 0) {
+    return action;
+  }
+  return { ...action, discardCardIds: player.hand.slice(0, overflow) };
 }
 
 /**
@@ -121,9 +180,13 @@ export function chooseComputerAction(
         ),
     );
   const selected = ranked[0];
+  const action =
+    selected.legal.action.type === "REFRESH_HAND"
+      ? withRefreshDiscards(observation, selected.legal.action)
+      : selected.legal.action;
   return {
     playerId: observation.playerId,
-    action: selected.legal.action,
+    action,
     policy:
       candidates.length === 1 ? "forced.only-legal-action" : selected.policy,
     score: selected.score,

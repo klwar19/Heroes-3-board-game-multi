@@ -1,8 +1,8 @@
 import {
   applyAction,
-  canonicalActionKey,
   chooseComputerAction,
   computerDecisionOwner,
+  legalityMatchKey,
   observeForComputer,
   type ComputerDecision,
   type EngineResult,
@@ -29,6 +29,7 @@ export type ComputerRunResult = {
 function progressFingerprint(state: GameState, playerId: PlayerId): string {
   const adventure = state.adventure;
   const combat = state.combat;
+  const lobby = state.setupLobby;
   const player = state.players[playerId];
   const heroes = Object.values(state.heroes)
     .filter((hero) => hero.controllerId === playerId)
@@ -41,13 +42,40 @@ function progressFingerprint(state: GameState, playerId: PlayerId): string {
     eventCounter: state.eventCounter ?? state.eventLog.length,
     choice: state.pendingChoice?.id ?? null,
     reaction: state.reactionWindow?.id ?? null,
+    // Setup progress lives in the lobby draft state: seat picks, rolled town/
+    // hero options and bans all count as measurable progress.
+    lobby: lobby
+      ? [
+          lobby.seats.map((seat) => [
+            seat.playerId,
+            seat.factionId,
+            seat.heroDefId,
+          ]),
+          lobby.draft ?? null,
+          lobby.startCheck ?? null,
+        ]
+      : null,
     combat: combat
       ? [
           combat.id,
           combat.activeUnitId,
           combat.setup?.pendingPlayerIds,
+          combat.setup?.placedUnitIds,
+          combat.pendingTacticsSwaps,
+          combat.prep?.accepted,
           combat.awaitingContinue,
           combat.outcome,
+          combat.endAcknowledged,
+          // Unit-level progress: moves, damage, defends and removals inside an
+          // activation must all count (a defend changes nothing else above).
+          Object.values(combat.units).map((unit) => [
+            unit.id,
+            unit.position,
+            unit.damage,
+            unit.activatedThisRound,
+            unit.movedThisActivation,
+            unit.attacksThisActivation ?? 0,
+          ]),
         ]
       : null,
     pending: [
@@ -56,6 +84,7 @@ function progressFingerprint(state: GameState, playerId: PlayerId): string {
       adventure?.pendingNecromancy?.playerId,
       adventure?.pendingFarTileFlip?.playerId,
       adventure?.pendingGarrison?.defenderPlayerId,
+      adventure?.pendingTokenTeleport?.playerId,
     ],
     completed: state.turn.completedPlayerIds,
     player: player
@@ -104,7 +133,7 @@ export function driveComputerPlayers(
       attemptedAtFingerprint.get(fingerprint) ?? new Set<string>();
     attemptedAtFingerprint.set(fingerprint, attempted);
     const available = observation.legalActions.filter(
-      (legal) => !attempted.has(canonicalActionKey(legal.action)),
+      (legal) => !attempted.has(legalityMatchKey(legal.action)),
     );
     const decision = chooseComputerAction({
       ...observation,
@@ -119,10 +148,10 @@ export function driveComputerPlayers(
       };
     }
 
-    const actionKey = canonicalActionKey(decision.action);
+    const actionKey = legalityMatchKey(decision.action);
     if (
       !observation.legalActions.some(
-        (legal) => canonicalActionKey(legal.action) === actionKey,
+        (legal) => legalityMatchKey(legal.action) === actionKey,
       )
     ) {
       return {
