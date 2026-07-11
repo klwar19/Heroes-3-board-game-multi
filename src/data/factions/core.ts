@@ -960,11 +960,13 @@ export const coreBuildingDefinitions: Record<string, TownBuildingDefinition> = {
     name: "City Hall",
     faction: "cove",
     cost: { gold: 10, buildingMaterials: 4 },
-    // "At the beginning of each Astrologers' round, choose: 4 gold — OR — remove
-    // 1 Artifact card from your hand to gain 1 experience." The artifact→XP
-    // option is only offered when the player actually holds an Artifact card.
+    // BINH house rule: fired at the beginning of each RESOURCE round (like every
+    // other faction's City Hall), NOT the Astrologers' round. "Choose: 4 gold —
+    // OR — remove 1 Artifact card from your hand to gain 1 experience." The
+    // artifact→XP option is only offered when the player actually holds an
+    // Artifact card.
     effect: {
-      type: "ASTROLOGERS_ROUND_CHOICE",
+      type: "RESOURCE_ROUND_CHOICE",
       options: [
         { label: "Gain 4 gold", gold: 4 },
         {

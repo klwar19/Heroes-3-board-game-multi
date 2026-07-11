@@ -327,6 +327,11 @@ function miriamMap(seed: string, hand: string[]): GameState {
   state.reactionWindow = null;
   state.players.p1.hand = [...hand];
   state.players.p1.removed = [];
+  // Isolate Miriam's Scouting searches from the first-round face-up seed on the
+  // shared discards (which would otherwise raise a deck-search-mode prompt).
+  for (const id of ["abilities", "spells", "spells-expert", "artifacts-minor", "artifacts-major"]) {
+    if (state.decks[id]) state.decks[id].discardPile = [];
+  }
   return state;
 }
 

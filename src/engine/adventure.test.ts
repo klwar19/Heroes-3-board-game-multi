@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { coreTileDefinitions } from "@/data/map/tile-defs";
 import { allTileDefinitions } from "@/data/map/tiles";
+import { isSharedDeckId } from "./decks";
 import {
   changeMorale,
   drawAstrologersCard,
@@ -353,16 +354,20 @@ describe("turns and movement", () => {
     return state;
   }
 
-  it("deals empty-discard starting hands and opens the optional draw on the first turn", () => {
+  it("deals empty personal-discard starting hands and seeds each shared discard with one card", () => {
     const state = makeGame();
     // Both players hold their starting hand from the first moment.
     expect(state.players.p1.hand).toHaveLength(4);
     expect(state.players.p2.hand).toHaveLength(4);
-    // Nothing is discarded at the start — personal and shared piles are empty.
+    // Personal discard piles start empty…
     expect(state.players.p1.discard).toHaveLength(0);
     expect(state.players.p2.discard).toHaveLength(0);
+    // …but every SHARED deck (Abilities, Spells, Artifacts + split variants) flips
+    // one card face-up onto its discard pile from round 1 (first-round rule);
+    // non-shared decks (Neutral tiers, Astrologers, Events, Morale) do not.
     for (const [deckId, deck] of Object.entries(state.decks)) {
-      expect(deck.discardPile, `${deckId} discard should start empty`).toHaveLength(0);
+      const expected = isSharedDeckId(deckId) ? 1 : 0;
+      expect(deck.discardPile, `${deckId} discard pile`).toHaveLength(expected);
     }
     // The start-of-turn draw is offered (not forced) from the very first turn,
     // and the hand is not over the limit, so no forced discard is pending.
@@ -379,7 +384,10 @@ describe("turns and movement", () => {
     state = apply(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [tossed] });
     expect(state.players.p1.hand).toHaveLength(4);
     expect(state.players.p1.hand).not.toContain(tossed);
-    expect(state.players.p1.discard).toEqual([tossed]);
+    // First-round rule: the discarded card returns to the player's own deck (its
+    // bottom), NOT to the discard pile.
+    expect(state.players.p1.discard).toEqual([]);
+    expect(state.players.p1.deck).toContain(tossed);
     // The draw is once per turn — a second one is rejected.
     expect(state.players.p1.canMulligan).toBe(false);
     const again = applyAction(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
@@ -409,7 +417,9 @@ describe("turns and movement", () => {
     expect(state.players.p2.canMulligan).toBe(true);
     const tossed = state.players.p2.hand[0];
     state = apply(state, { type: "REFRESH_HAND", playerId: "p2", discardCardIds: [tossed] });
-    expect(state.players.p2.discard).toEqual([tossed]);
+    // First-round rule: the discard returns to the player's own deck, not the pile.
+    expect(state.players.p2.discard).toEqual([]);
+    expect(state.players.p2.deck).toContain(tossed);
     expect(state.players.p2.hand).toHaveLength(4);
   });
 
@@ -1851,6 +1861,9 @@ describe("town economy", () => {
 
   it("buys spells through the Mage Guild one round after construction", () => {
     let state = refreshP1(makeGame());
+    // Isolate this Mage-Guild flow from the first-round face-up seed on the Spell
+    // discard, so the first free Search opens straight onto its reveal.
+    state.decks.spells.discardPile = [];
     state = apply(state, {
       type: "BUILD_STRUCTURE",
       playerId: "p1",

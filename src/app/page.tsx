@@ -104,6 +104,7 @@ import {
 } from "@/components/adventure/screen";
 import { SetupAmbientFx } from "@/components/adventure/setup-ambient";
 import { AzureClawChill } from "@/components/adventure/azure-claw-chill";
+import { OpponentInfoDock } from "@/components/adventure/opponent-info";
 import { TownWindow } from "@/components/adventure/town-board";
 import { isDemoTrayEnabled, seedDemoTrayCards } from "@/lib/demo-tray-seed";
 import {
@@ -4259,6 +4260,11 @@ export default function Home() {
                   viewerPlayerId={isSeated ? viewerPlayerId : seatIds[0]}
                 />
                 <MoraleCardsDock state={state} viewerPlayerId={isSeated ? viewerPlayerId : seatIds[0]} />
+                {/* A seated player can inspect any opponent's public state (resources,
+                    units, hero level, buildings) from here. */}
+                {isSeated ? (
+                  <OpponentInfoDock seatIds={seatIds} state={state} variant="map" viewerPlayerId={viewerPlayerId} />
+                ) : null}
               </div>
               {/* Observers see every seat's permanent(s) + unit deck listed here. */}
               {isSeated
@@ -4868,6 +4874,9 @@ export default function Home() {
           animations land in this strip. Heroes stay on the right rail. */}
       <div className="tableTopRow">
         <div className="combatCardStrip">
+          {isSeated ? (
+            <OpponentInfoDock seatIds={seatIds} state={state} variant="combat" viewerPlayerId={viewerPlayerId} />
+          ) : null}
           {isSeated ? <OpponentBar state={state} view={playerView} viewerPlayerId={viewerPlayerId} /> : null}
           {isSeated ? (
             <div className="tableSeatRow">

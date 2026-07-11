@@ -300,6 +300,10 @@ describe("parallel turns — one interaction at a time (quiet moves while busy)"
   it("serializes shared-deck searches strictly by arrival: whoever earns one first draws first, with no double-handling", () => {
     let state = makeGame("par-deck-order", { parallelTurns: 2 });
     const deckId = "abilities";
+    // Undo the first-round face-up seed on this deck (tuck it back under the draw
+    // pile), so the search flow starts from a full draw pile / empty discard —
+    // this test asserts exact card conservation and a two-card discard.
+    state.decks[deckId].drawPile.unshift(...state.decks[deckId].discardPile.splice(0));
     const before = state.decks[deckId].drawPile.length;
     expect(before).toBeGreaterThan(4);
     const p1HandBefore = state.players.p1.hand.length;
