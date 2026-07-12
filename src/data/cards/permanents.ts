@@ -33,7 +33,11 @@ export const WAR_MACHINE_CARD_IDS = [
  * owner's spells of one school by +1 power while in play, or discard for +3
  * power on a single matching cast (the expert effect).
  */
-function schoolOfMagic(school: SpellSchool, name: string, slug: string): CardLibrary[string] {
+function schoolOfMagic(
+  school: Exclude<SpellSchool, "any">,
+  name: string,
+  slug: string
+): CardLibrary[string] {
   return {
     id: `ability.${slug}`,
     name,
@@ -50,6 +54,8 @@ function schoolOfMagic(school: SpellSchool, name: string, slug: string): CardLib
     },
     // The expert side is also playable straight from hand during one of the
     // owner's matching casts (+3 power), through the normal reaction flow.
+    // schoolOnly is required so a hand Fire Magic expert cannot boost a Water
+    // (or other non-matching) cast — Magic Arrow (school "any") still qualifies.
     trigger: {
       event: "SPELL_CAST_STARTED",
       controller: "self"
@@ -57,7 +63,8 @@ function schoolOfMagic(school: SpellSchool, name: string, slug: string): CardLib
     effect: {
       type: "ADD_SPELL_POWER",
       amount: 0,
-      expertAmount: 3
+      expertAmount: 3,
+      schoolOnly: school
     },
     assets: {
       cardImage: `/assets/abilities-${slug}.webp`,

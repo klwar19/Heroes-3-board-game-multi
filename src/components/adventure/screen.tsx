@@ -4956,6 +4956,55 @@ function GameOptionsPanel({
       })()}
 
       {(() => {
+        // Companion to the Four/Three dragons choice: whether the Utopia's guard
+        // COUNT scales with difficulty (Easy 1 / Normal 2 / Hard 3 / Impossible
+        // 4 — the number of Neutral units its Field Difficulty would draw). The
+        // always-present azure slot (Azure/Rust/Crystal, random per game) is kept
+        // whatever the count. Flips `dragon-utopia-by-difficulty`.
+        const victoryMode = options.victoryMode ?? "conquest";
+        if (victoryMode !== "dragon-hunt" && victoryMode !== "dragon-conqueror") {
+          return null;
+        }
+        const editable = options.ruleset === "binh";
+        const byDifficulty = houseRules["dragon-utopia-by-difficulty"];
+        return (
+          <div className="optionRow">
+            <small title="Whether the Dragon Utopia's guard count scales with the game difficulty">
+              Dragon Utopia count
+            </small>
+            <div className="optionButtons">
+              <button
+                aria-pressed={byDifficulty}
+                className={byDifficulty ? "selected" : ""}
+                disabled={!editable}
+                onClick={() => setHouseRule("dragon-utopia-by-difficulty", true)}
+                title="As many dragons as the difficulty would draw (Easy 1 / Normal 2 / Hard 3 / Impossible 4)"
+                type="button"
+              >
+                By difficulty
+              </button>
+              <button
+                aria-pressed={!byDifficulty}
+                className={!byDifficulty ? "selected" : ""}
+                disabled={!editable}
+                onClick={() => setHouseRule("dragon-utopia-by-difficulty", false)}
+                title="The full fixed party (three or four dragons above)"
+                type="button"
+              >
+                Fixed party
+              </button>
+            </div>
+            <small className="optionHint">
+              {byDifficulty
+                ? "House rule: the number of dragons follows the difficulty (Easy 1 · Normal 2 · Hard 3 · Impossible 4). One is always an azure slot — Azure, Rust or Crystal, random each game."
+                : "The full fixed party stands (three or four dragons), one always the random azure slot."}
+              {editable ? "" : " Locked off in Legacy mode."}
+            </small>
+          </div>
+        );
+      })()}
+
+      {(() => {
         const pvpTroopLoss = options.pvpTroopLoss ?? "normal";
         return (
           <div className="optionRow">
