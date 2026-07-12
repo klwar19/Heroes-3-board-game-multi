@@ -223,6 +223,37 @@ describe("Ⅱ–Ⅲ tile flip — true random + keep/reroll/pick", () => {
       expect(rotateAndHasSettlement(picked)).toBe(false);
     });
 
+    it("a 2nd non-Settlement reroll STILL lets you take the PREVIOUS rolled tile (3-option offer)", () => {
+      // 1st draw F4 (no settlement) → reroll → F7 (still no settlement): the
+      // re-presented offer now carries a THIRD option to settle for the tile just
+      // seen (F4) instead of keeping F7 or gambling again (user rule). Without the
+      // wiring the offer is only keep/reroll and index 2 cannot land F4.
+      let state = apply(secondOpening([MINE_NO_SETTLEMENT, VALUABLES_MINE_NO_SETTLEMENT]), PLACE);
+      state = choose(state, 1); // Reroll for a Settlement → draws F7 (still no settlement)
+      const flip = state.adventure!.pendingFarTileFlip!;
+      expect(flip.offerMode).toBe("settlement");
+      expect(flip.candidate).toBe(VALUABLES_MINE_NO_SETTLEMENT);
+      expect(flip.lastNonSettlement).toBe(MINE_NO_SETTLEMENT);
+      // Three options now: keep F7, reroll again, OR take the previous F4.
+      expect(state.pendingChoice && "options" in state.pendingChoice ? state.pendingChoice.options.length : 0).toBe(3);
+
+      const taken = choose(state, 2); // Take the previous tile (F4)
+      const placedId = taken.adventure!.pendingTileChoice!.tileInstanceId;
+      expect(taken.adventure!.tiles[placedId].tileDefId).toBe(MINE_NO_SETTLEMENT);
+      // The newest draw (F7) returns to the pool; nothing is lost.
+      expect(taken.adventure!.farTilePool).toContain(VALUABLES_MINE_NO_SETTLEMENT);
+      expect(taken.adventure!.farTilesOpenedByPlayer!.p1).toBe(2);
+      expect(rotateAndHasSettlement(taken)).toBe(false);
+    });
+
+    it("CONTROL: the FIRST settlement offer (no reroll yet) is only keep/reroll — no take-previous", () => {
+      // Mutation control for the test above: before any reroll `lastNonSettlement`
+      // is null, so the take-previous option is absent (two options only).
+      const placed = apply(secondOpening([MINE_NO_SETTLEMENT]), PLACE);
+      expect(placed.adventure!.pendingFarTileFlip!.lastNonSettlement).toBeNull();
+      expect(placed.pendingChoice && "options" in placed.pendingChoice ? placed.pendingChoice.options.length : 0).toBe(2);
+    });
+
     it("does NOT offer the settlement reroll on the 2nd tile when the 1st tile ALREADY had a Settlement", () => {
       // The guarantee is a FLOOR (one Settlement), not a repeatable reroll: a
       // player whose 1st Ⅱ–Ⅲ tile was a Settlement must NOT be offered/forced a

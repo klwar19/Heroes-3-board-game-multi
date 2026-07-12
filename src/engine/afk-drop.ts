@@ -129,6 +129,12 @@ export function nextAfkDropAction(state: GameState, playerId: PlayerId): GameAct
     return { type: "ACKNOWLEDGE_COMBAT_END", playerId };
   }
 
+  // PvP Neutral Control: the dropped seat holds the pre-battle formation-SORT
+  // window — finish it (keep the auto-placed formation) so the battle starts.
+  if (combat && !combat.outcome && combat.pendingNeutralPlacement === playerId) {
+    return { type: "FINISH_NEUTRAL_PLACEMENT", playerId };
+  }
+
   // PvP Neutral Control: the dropped seat is playing the guards of an OPEN
   // fight — play the current guard action out with a default pick (prefer the
   // do-least option) so the fight advances and the drop can proceed. Only real

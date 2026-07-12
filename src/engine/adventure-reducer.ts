@@ -81,6 +81,7 @@ import {
   hasRecruitResources,
   hasResources,
   heroAtSpace,
+  heroFieldSealedForDiscovery,
   instantiateTile,
   isFieldGuarded,
   isOuterEdgeSealed,
@@ -1492,10 +1493,12 @@ export function revealTileForHero(
   }
 
   // Ordinary discovery needs an OPEN border: the hero's field edge toward the
-  // tile must not be a printed yellow line. (The Redwood Observatory and the
-  // Speculum artifact are the only ways to reveal across a sealed border.)
+  // tile must not be a printed yellow line. A Creature Bank draws NO border, so
+  // a hero standing on one faces open edges and CAN discover across them (see
+  // heroFieldSealedForDiscovery). The Redwood Observatory and the Speculum
+  // artifact are the only ways to reveal across a still-sealed border.
   const heroField = adventure.fields[hero.spaceId];
-  if (!heroField || isOuterEdgeSealed(adventure, heroField)) {
+  if (!heroField || heroFieldSealedForDiscovery(adventure, heroField)) {
     throw new Error(
       "A yellow border line seals this edge — move to an open border, or use a Redwood Observatory / Speculum to discover across it."
     );
@@ -2003,8 +2006,9 @@ export function canHeroDiscoverAdjacentTile(state: GameState, hero: HeroState, t
   }
   // …and the field's outer edge toward the tile must be an OPEN border. A
   // yellow-sealed arc blocks ordinary discovery (use a Redwood Observatory or
-  // Speculum to reveal across it instead).
-  return !isOuterEdgeSealed(adventure, field);
+  // Speculum to reveal across it instead) — but a border-free Creature Bank the
+  // hero stands on is open, so discovery from on top of it is allowed.
+  return !heroFieldSealedForDiscovery(adventure, field);
 }
 
 // ---------------------------------------------------------------------------
@@ -2140,6 +2144,19 @@ function presentFarTileOffersOrFinalize(state: GameState): void {
 
   if (settlementEligible) {
     flip.offerMode = "settlement";
+    // Once a reroll has happened, the immediately-previous rolled tile is still
+    // held (`lastNonSettlement`): offer it back as a third choice so the player
+    // is never forced to accept the newest draw or gamble again — they may
+    // settle for the tile they just saw (user rule).
+    if (flip.lastNonSettlement) {
+      openFarTileFlipChoice(
+        state,
+        flip,
+        `Your 2nd Ⅱ–Ⅲ tile — ${describeFarTile(candidate)} — has no Settlement. Keep it, reroll for a Settlement, or take the previous tile — ${describeFarTile(flip.lastNonSettlement)}?`,
+        ["Keep this Ⅱ–Ⅲ tile", "Reroll for a Settlement", `Take the previous tile (${describeFarTile(flip.lastNonSettlement)})`]
+      );
+      return;
+    }
     openFarTileFlipChoice(
       state,
       flip,
@@ -2365,6 +2382,14 @@ export function resolveFarTileFlip(state: GameState, optionIndex: number): void 
   }
 
   if (flip.offerMode === "settlement") {
+    // [2] Take the previous rolled tile (offered only once a reroll has already
+    // happened, so `lastNonSettlement` is held): settle for the tile just seen
+    // instead of keeping the newest draw or gambling again. finalize returns the
+    // unchosen candidate to the pool.
+    if (optionIndex === 2 && flip.lastNonSettlement) {
+      finalizeFarTileFlip(state, flip.lastNonSettlement);
+      return;
+    }
     // Reroll for a Settlement: hold the current (non-settlement) tile as the
     // "last before reroll", returning any older held tile to the pool, then draw.
     if (flip.lastNonSettlement) {
@@ -4531,9 +4556,117 @@ export function revealNeutralArmy(state: GameState, draws: NeutralDraw[]): void 
     unitDefIds: draws.map((draw) => draw.unitDefId)
   });
 
-  // The guards are on the board: a Tactics-holding attacker may now rearrange
-  // their line before round 1 (finalizeCombatStart) begins.
+  // The guards are on the board: under PvP Neutral Control the controller may
+  // first SORT the Neutral formation (a normal FIELD only — never a bank), then
+  // a Tactics-holding attacker may rearrange their own line, before round 1
+  // (finalizeCombatStart) begins.
   combat.setup = null;
+  if (openNeutralPlacementWindow(state)) {
+    return;
+  }
+  if (openTacticsSetupWindows(state)) {
+    return;
+  }
+  finalizeCombatStart(state);
+}
+
+/**
+ * PvP Neutral Control: open the pre-battle formation-SORT window for the
+ * controlling player once the Neutral army is revealed and auto-placed on a
+ * normal guard FIELD (user rule "sorting or moving neutral formation before
+ * battle, just like defender"). Returns true (and holds priority for the
+ * controller) when the window opens. Never opens for a Creature Bank (corners
+ * are fixed), with no controller (AI/solo), or with fewer than two living
+ * guards to arrange — mirroring the Tactics window's threshold.
+ */
+function openNeutralPlacementWindow(state: GameState): boolean {
+  const combat = state.combat;
+  if (!combat) {
+    return false;
+  }
+  // A Creature Bank keeps its fixed corner deployment — no sorting.
+  if (combat.context.kind === "neutral" && combat.context.bankId !== undefined) {
+    return false;
+  }
+  const controller = neutralCombatControllerId(state, combat);
+  if (!controller) {
+    return false;
+  }
+  const guards = Object.values(combat.units).filter(
+    (unit) => unit.controllerId === NEUTRAL_PLAYER_ID && unit.damage < unit.maxHealth && !isArrowTowerUnit(unit)
+  );
+  if (guards.length < 2) {
+    return false;
+  }
+
+  combat.pendingNeutralPlacement = controller;
+  state.phase = "combat-setup";
+  state.priorityPlayerId = controller;
+  appendEvent(state, {
+    type: "NEUTRAL_FORMATION_SORT_OPENED",
+    playerId: controller,
+    combatPlayerId: combat.attackerPlayerId
+  });
+  return true;
+}
+
+/**
+ * PvP Neutral Control: the controller repositions ONE Neutral guard during the
+ * pre-battle sort (PLACE_NEUTRAL_GUARD). Moves the guard to an empty defender
+ * cell, or SWAPS it with another guard already standing there. Only the
+ * controller may act, only on a living neutral guard, only within the defender
+ * zone — the formation stays on the Neutral side (no cross-zone teleport).
+ */
+export function placeNeutralGuard(state: GameState, action: Extract<GameAction, { type: "PLACE_NEUTRAL_GUARD" }>): void {
+  const combat = state.combat;
+  if (!combat || combat.pendingNeutralPlacement !== action.playerId) {
+    throw new Error("There is no Neutral formation to sort right now.");
+  }
+  const guard = combat.units[action.unitId];
+  if (!guard || guard.controllerId !== NEUTRAL_PLAYER_ID || guard.damage >= guard.maxHealth || isArrowTowerUnit(guard)) {
+    throw new Error("That unit is not a Neutral guard you can reposition.");
+  }
+  // The controller is never the attacker, so placementCellsFor is the defender zone.
+  if (!placementCellsFor(state, action.playerId).includes(action.position)) {
+    throw new Error("A Neutral guard must stay on the defender's back or front line.");
+  }
+
+  const occupant = Object.values(combat.units).find(
+    (unit) => unit.position === action.position && unit.id !== guard.id
+  );
+  if (occupant) {
+    // Only another guard may be swapped with — an Arrow Tower or a stray unit
+    // holds its cell (there are none but the neutral guards during this window).
+    if (occupant.controllerId !== NEUTRAL_PLAYER_ID || isArrowTowerUnit(occupant)) {
+      throw new Error("That space is taken.");
+    }
+    occupant.position = guard.position;
+    appendEvent(state, {
+      type: "COMBAT_UNIT_PLACED",
+      playerId: action.playerId,
+      unitId: occupant.id,
+      position: occupant.position
+    });
+  }
+  guard.position = action.position;
+  appendEvent(state, {
+    type: "COMBAT_UNIT_PLACED",
+    playerId: action.playerId,
+    unitId: guard.id,
+    position: guard.position
+  });
+}
+
+/** Finish the Neutral formation sort (FINISH_NEUTRAL_PLACEMENT) and start play. */
+export function finishNeutralPlacement(
+  state: GameState,
+  action: Extract<GameAction, { type: "FINISH_NEUTRAL_PLACEMENT" }>
+): void {
+  const combat = state.combat;
+  if (!combat || combat.pendingNeutralPlacement !== action.playerId) {
+    throw new Error("There is no Neutral formation to finish sorting.");
+  }
+  combat.pendingNeutralPlacement = null;
   if (openTacticsSetupWindows(state)) {
     return;
   }
