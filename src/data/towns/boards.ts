@@ -5,7 +5,9 @@
  * Two kinds of board ship today:
  *
  *  - SCAN boards (castle, rampart, inferno, necropolis, dungeon, tower,
- *    fortress): the real printed board photographed on en.homm3bg.wiki, as an
+ *    fortress, cove, conflux): the real printed board photographed on
+ *    en.homm3bg.wiki (or, for cove/conflux, the physical Polish board assembled
+ *    with English definitions by the assets-to-translate pipeline), as an
  *    `emptyImage` (name plates + costs in the seven bars) and a `fullImage`
  *    (all eight building tiles slotted in). The view overlays per-bar crops of
  *    the full scan onto the empty scan as buildings go up — the crop geometry
@@ -13,7 +15,7 @@
  *    shared Archon die-cut. Stronghold has a fan-made empty board scan but no
  *    fully-built scan, so its built bars use the designed tile fill instead.
  *
- *  - DESIGNED boards (stronghold's fills, conflux, cove, bulwark, factory): no
+ *  - DESIGNED boards (stronghold's fills, bulwark, factory): no
  *    printed board is published, so the view draws the same die-cut layout in
  *    CSS: bars over the empty PC townscape (built bars reveal the fully-built
  *    slice and overlay per-building tile art where a file exists — see
@@ -166,7 +168,7 @@ const STRONGHOLD_GEOMETRY: TownBoardGeometry = {
 };
 
 /**
- * DESIGNED boards (conflux, cove, bulwark, factory) borrow the Stronghold fan
+ * DESIGNED boards (bulwark, factory) borrow the Stronghold fan
  * layout wholesale and paste the AUTHENTIC printed tracks/tokens panel — a
  * crop of that very scan (scripts/crop-town-tracks-panel.py) — back at the
  * exact rectangle it was cut from, so every track/token fraction above stays
@@ -178,6 +180,70 @@ const DESIGNED_GEOMETRY: TownBoardGeometry = {
 };
 
 const DESIGNED_PANEL_IMAGE = "/assets/town-tracks-panel.webp";
+
+/**
+ * Cove and Conflux ship REAL printed English board scans (the pipeline under
+ * assets-to-translate/cove-conflux-town-boards/ assembled the physical Polish
+ * boards with English definition panels + building tiles): an `emptyImage` with
+ * the seven name/cost bars and a `fullImage` with every building tile seated, so
+ * they render like the other scan boards (castle…fortress) — the definitions,
+ * resource tracks and token wells are all PRINTED on the scan, no CSS panel.
+ *
+ * The two boards share one printed lower panel (definitions bottom-left, the
+ * three resource-gain tracks + build/population/spell-book token wells
+ * bottom-right); only the top tile-window aspect differs slightly between the
+ * two photographed boards. Fractions were measured on the shipped scans
+ * (towns-{cove,conflux}-board-{empty,full}.webp) — see the grid measurements in
+ * the commit; markers/wells use translate(-50%,-50%), so track/token x,y are
+ * CENTRES and the definitions rectangle is top-left.
+ */
+// The definitions corner and the three resource-gain tracks print at the same
+// fractions on both photographed boards (same die-cut, same tight crop); only
+// the token wells sit a few thousandths apart, so each board carries its own.
+const COVE_CONFLUX_DEFS_TRACKS: Pick<TownBoardGeometry, "definitions" | "tracks"> = {
+  definitions: { left: 0.045, top: 0.485, right: 0.545, bottom: 0.945 },
+  tracks: {
+    firstCellX: 0.598,
+    cellPitchX: 0.0426,
+    zigzagDy: 0.02,
+    iconX: 0.575,
+    rows: [
+      { resource: "gold", y: 0.512, values: TOWN_TRACK_VALUES.gold },
+      { resource: "buildingMaterials", y: 0.637, values: TOWN_TRACK_VALUES.buildingMaterials },
+      { resource: "valuables", y: 0.737, values: TOWN_TRACK_VALUES.valuables }
+    ]
+  }
+};
+
+/** Cove printed board (towns-cove-board-*.webp, 820x606). */
+const COVE_GEOMETRY: TownBoardGeometry = {
+  aspect: [820, 606],
+  window: { left: 0.045, top: 0.05, bottom: 0.42, barPitch: 0.13 },
+  ...COVE_CONFLUX_DEFS_TRACKS,
+  tokens: {
+    radius: 0.05,
+    slots: [
+      { kind: "build", x: 0.636, y: 0.855 },
+      { kind: "population", x: 0.771, y: 0.855 },
+      { kind: "spellBook", x: 0.901, y: 0.855 }
+    ]
+  }
+};
+
+/** Conflux printed board (towns-conflux-board-*.webp, 826x605). */
+const CONFLUX_GEOMETRY: TownBoardGeometry = {
+  aspect: [826, 605],
+  window: { left: 0.043, top: 0.05, bottom: 0.42, barPitch: 0.13 },
+  ...COVE_CONFLUX_DEFS_TRACKS,
+  tokens: {
+    radius: 0.05,
+    slots: [
+      { kind: "build", x: 0.631, y: 0.855 },
+      { kind: "population", x: 0.764, y: 0.855 },
+      { kind: "spellBook", x: 0.894, y: 0.855 }
+    ]
+  }
+};
 
 export const townBoardSpecs: Record<string, TownBoardSpec> = {
   castle: {
@@ -312,40 +378,44 @@ export const townBoardSpecs: Record<string, TownBoardSpec> = {
   },
   conflux: {
     factionId: "conflux",
-    // The published empty town background (thelazy.net "Conflux-in-background"):
-    // no buildings, so the designed board dims it and reveals the BUILT town
-    // (fullImage) one bar-slice at a time as each building goes up.
-    panoramaImage: "/assets/towns-conflux-background.webp",
-    fullImage: "/assets/towns-conflux-empty.webp",
-    panelImage: DESIGNED_PANEL_IMAGE,
+    // Real printed English board scan (assets-to-translate/cove-conflux-town-
+    // boards pipeline). Bars transcribe the PHYSICAL board left-to-right: City
+    // Hall, Magic University (solo), Mage Guild, Altars of Fire and Earth
+    // (silver), Magical Pyre (gold), Citadel, then the shared bar Altars of Air
+    // and Water (bronze) + Garden of Life. Built bars reveal the fully-built
+    // scan a slot at a time.
+    emptyImage: "/assets/towns-conflux-board-empty.webp",
+    fullImage: "/assets/towns-conflux-board-full.webp",
     bars: [
       ["conflux.city_hall"],
-      ["conflux.dwelling_bronze"],
-      ["conflux.dwelling_silver", "conflux.magic_university"],
-      ["conflux.citadel"],
-      ["conflux.garden_of_life"],
+      ["conflux.magic_university"],
+      ["conflux.mage_guild"],
+      ["conflux.dwelling_silver"],
       ["conflux.dwelling_gold"],
-      ["conflux.mage_guild"]
+      ["conflux.citadel"],
+      ["conflux.dwelling_bronze", "conflux.garden_of_life"]
     ],
-    geometry: DESIGNED_GEOMETRY
+    geometry: CONFLUX_GEOMETRY
   },
   cove: {
     factionId: "cove",
-    // Published empty town background (thelazy.net "Cove-in-background"); the
-    // built town (fullImage) is revealed a bar-slice at a time as you build.
-    panoramaImage: "/assets/towns-cove-background.webp",
-    fullImage: "/assets/towns-cove-town.webp",
-    panelImage: DESIGNED_PANEL_IMAGE,
+    // Real printed English board scan (assets-to-translate/cove-conflux-town-
+    // boards pipeline). Bars transcribe the PHYSICAL board left-to-right:
+    // Thieves' Guild, City Hall, the shared bar Bay (bronze) + Pub, Mage Guild,
+    // Redoubled Vortex (gold), Citadel, then Nests Towering the Seas (silver).
+    // Built bars reveal the fully-built scan a slot at a time.
+    emptyImage: "/assets/towns-cove-board-empty.webp",
+    fullImage: "/assets/towns-cove-board-full.webp",
     bars: [
-      ["cove.city_hall"],
-      ["cove.dwelling_bronze"],
-      ["cove.dwelling_silver", "cove.pub"],
-      ["cove.citadel"],
       ["cove.thieves_guild"],
+      ["cove.city_hall"],
+      ["cove.dwelling_bronze", "cove.pub"],
+      ["cove.mage_guild"],
       ["cove.dwelling_gold"],
-      ["cove.mage_guild"]
+      ["cove.citadel"],
+      ["cove.dwelling_silver"]
     ],
-    geometry: DESIGNED_GEOMETRY
+    geometry: COVE_GEOMETRY
   },
   bulwark: {
     factionId: "bulwark",

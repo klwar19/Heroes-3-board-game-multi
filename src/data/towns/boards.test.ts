@@ -2,7 +2,7 @@ import { existsSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-import { coreFactionDefinitions } from "@/data/factions/core";
+import { coreBuildingDefinitions, coreFactionDefinitions } from "@/data/factions/core";
 import { TOWN_TRACK_VALUES, townBoardBarIndex, townBoardSpecs, townBoardTileArt } from "./boards";
 
 /** Resolve an /assets path to its file on disk and assert it carries real art. */
@@ -158,5 +158,78 @@ describe("town board manifest", () => {
         expect(other.combinedTile, `${factionId} should not carry a combinedTile`).toBeUndefined();
       }
     });
+  });
+
+  describe("cove & conflux — real printed English board scans", () => {
+    // These two boards were promoted from designed boards to real printed English
+    // scans (assets-to-translate/cove-conflux-town-boards pipeline). The bars are
+    // transcribed from the PHYSICAL board left-to-right, so building X's built
+    // crop reveals X's own printed tile on the scan. These fail if a scan is
+    // unwired, mis-pointed, or a bar is reordered off the printed layout.
+    const boards = {
+      cove: {
+        empty: "/assets/towns-cove-board-empty.webp",
+        full: "/assets/towns-cove-board-full.webp",
+        // physical slot (left→right) → engine building id
+        slots: [
+          "cove.thieves_guild",
+          "cove.city_hall",
+          "cove.dwelling_bronze", // shared slot 2: Bay + Pub
+          "cove.mage_guild",
+          "cove.dwelling_gold",
+          "cove.citadel",
+          "cove.dwelling_silver"
+        ],
+        sharedBar: ["cove.dwelling_bronze", "cove.pub"]
+      },
+      conflux: {
+        empty: "/assets/towns-conflux-board-empty.webp",
+        full: "/assets/towns-conflux-board-full.webp",
+        slots: [
+          "conflux.city_hall",
+          "conflux.magic_university",
+          "conflux.mage_guild",
+          "conflux.dwelling_silver",
+          "conflux.dwelling_gold",
+          "conflux.citadel",
+          "conflux.dwelling_bronze" // shared slot 6: Altars of Air and Water + Garden of Life
+        ],
+        sharedBar: ["conflux.dwelling_bronze", "conflux.garden_of_life"]
+      }
+    } as const;
+
+    for (const [factionId, expected] of Object.entries(boards)) {
+      it(`${factionId} is a scan board wired to its English scans (real art, no CSS panel)`, () => {
+        const spec = townBoardSpecs[factionId];
+        expect(spec.emptyImage, `${factionId} empty scan`).toBe(expected.empty);
+        expect(spec.fullImage, `${factionId} full scan`).toBe(expected.full);
+        assertRealArt(spec.emptyImage!);
+        assertRealArt(spec.fullImage!);
+        // Scan boards print their own definitions/tracks/tokens: no pasted panel
+        // and no panorama-reveal backdrop.
+        expect(spec.panelImage, `${factionId} needs no panelImage`).toBeUndefined();
+        expect(spec.panoramaImage, `${factionId} needs no panoramaImage`).toBeUndefined();
+      });
+
+      it(`${factionId} bars follow the printed left-to-right slot order`, () => {
+        const spec = townBoardSpecs[factionId];
+        // Each building sits at the physical slot the scan drew its tile in, so
+        // the per-bar reveal shows the right art. A reorder fails here.
+        expected.slots.forEach((buildingId, slot) => {
+          expect(townBoardBarIndex(spec, buildingId), `${buildingId} @ slot ${slot}`).toBe(slot);
+        });
+      });
+
+      it(`${factionId} shares the printed two-in-one tile (special requires its main)`, () => {
+        const spec = townBoardSpecs[factionId];
+        const shared = spec.bars.filter((bar) => bar.length === 2);
+        expect(shared).toHaveLength(1);
+        expect([...shared[0]]).toEqual([...expected.sharedBar]);
+        // The shared-tile prerequisite injection keys off THIS pairing: the
+        // special (second slot) must require the main (first slot).
+        const [mainId, specialId] = expected.sharedBar;
+        expect(coreBuildingDefinitions[specialId].prerequisites ?? []).toContain(mainId);
+      });
+    }
   });
 });
