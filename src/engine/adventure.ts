@@ -2529,7 +2529,8 @@ function handleGrailVisit(state: GameState, hero: HeroState, field: MapFieldStat
 }
 
 /**
- * Dragon Utopia visit (after its four dragons are defeated):
+ * Dragon Utopia visit (after its dragons are defeated — four under the
+ * `dragon-utopia-four-dragons` house rule, else the rulebook three):
  *  - Dragon Hunt: defeating the Utopia wins outright (no need to hold it).
  *  - Dragon Conqueror: the victor captures and must hold it; rivals besiege it.
  *  - Grail Hunt & Conquest: a normal Lvl-VII creature bank rewarding gold and a
@@ -6509,9 +6510,9 @@ export type NeutralDraw = {
 };
 
 /**
- * Dragon Utopia guards (creature bank): one each of the four dragons, in
- * descending strength. They are minted for the fight rather than drawn, so
- * the Neutral azure deck is never touched.
+ * Dragon Utopia guards — the house-rule party of FOUR dragons, in descending
+ * strength (`dragon-utopia-four-dragons` ON, the BINH default). They are minted
+ * for the fight rather than drawn, so the Neutral azure deck is never touched.
  */
 export const DRAGON_UTOPIA_GUARD_IDS = [
   "neutral.azure_dragons",
@@ -6519,6 +6520,29 @@ export const DRAGON_UTOPIA_GUARD_IDS = [
   "neutral.crystal_dragons",
   "neutral.faerie_dragons"
 ] as const;
+
+/**
+ * Dragon Utopia guards — the rulebook party of THREE dragons (Azure, Crystal,
+ * Black), used when `dragon-utopia-four-dragons` is OFF (and always in Legacy).
+ * Minted, not drawn, exactly like the four-dragon party above.
+ */
+export const DRAGON_UTOPIA_GUARD_IDS_RULEBOOK = [
+  "neutral.azure_dragons",
+  "neutral.crystal_dragons",
+  "neutral.black_dragons"
+] as const;
+
+/**
+ * The Dragon Utopia guard list for this game: four dragons under the
+ * `dragon-utopia-four-dragons` house rule (the BINH default), else the rulebook
+ * three. The Utopia is the Dragon Hunt / Dragon Conqueror win-condition
+ * objective, so its guard strength is a win-condition tuning knob.
+ */
+export function dragonUtopiaGuardIds(state: GameState): readonly string[] {
+  return houseRuleEnabled(state, "dragon-utopia-four-dragons")
+    ? DRAGON_UTOPIA_GUARD_IDS
+    : DRAGON_UTOPIA_GUARD_IDS_RULEBOOK;
+}
 
 /** Draws the top card of one neutral tier deck, reshuffling its discard if needed. */
 export function drawFromNeutralDeck(state: GameState, tier: "bronze" | "silver" | "gold" | "azure"): string | undefined {
@@ -6994,7 +7018,7 @@ export function drawNeutralArmy(state: GameState, difficulty: number): NeutralDr
  */
 export function drawGuardArmy(state: GameState, field: MapFieldState | undefined, difficulty: number): NeutralDraw[] {
   if (field?.location === "dragon_utopia") {
-    return DRAGON_UTOPIA_GUARD_IDS.map((unitDefId) => ({ unitDefId, tier: "azure" as const, bankGuard: true }));
+    return dragonUtopiaGuardIds(state).map((unitDefId) => ({ unitDefId, tier: "azure" as const, bankGuard: true }));
   }
 
   if (field?.location === "random_town") {
