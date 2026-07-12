@@ -1,11 +1,11 @@
 # Single-player mode with computer opponents
 
 Status: phases 1–3 implemented (state/privacy, setup UX + setup policy, live
-runner wiring in both backends). The mode is PLAYABLE end to end but the
-computer plays only the conservative FALLBACK strategy — it completes every
-mandatory decision, fights back when attacked and never freezes a table, but it
-does not yet build, recruit, or move heroes with intent (phases 4–5). Describe
-Single Player as EXPERIMENTAL, not complete.
+runner wiring in both backends), with the first phase-4 map/economy policy now
+landed. The mode is PLAYABLE end to end: computers recruit/reinforce, build,
+use finite town actions, and move toward safe public objectives before ending
+their turns. Combat initiation and deeper economy/Event choices remain
+conservative (phases 4–5). Describe Single Player as EXPERIMENTAL, not complete.
 
 Implemented foundation (July 2026):
 
@@ -48,11 +48,24 @@ Implemented continuation (July 2026, phases 2–3):
 - setup screen: "Playing with computer" header, Computer/You seat badges, the
   Computer-opponents control replacing the multiplayer Players control.
 
+Implemented map/economy continuation (July 2026, initial phase 4):
+
+- deterministic strategic scoring now ranks recruitment/reinforcement and
+  implemented building effects ahead of safe exploration and ending the turn;
+- public map fields are scored for unowned towns/mines/settlements, unused
+  visitable locations, revisits, and tile discovery without reading hidden map
+  supply or opponent information;
+- repeatable market/search loops are deliberately excluded from autonomous
+  scoring, while finite once-per-round town and army actions are supported;
+- until army-strength evaluation is implemented, computers do not initiate
+  PvP or visible guarded fights blindly;
+- the live runner integration test now proves observable army/building growth,
+  safe movement/discovery, termination, and control returning to the human.
+
 Still deferred intentionally:
 
-- production-quality map, economy, Event, card, and combat strategy policies
-  (phases 4–5) — the total fallback keeps games legal and un-frozen, but
-  computers end their map turns without building/recruiting/moving with intent;
+- production-quality objective memory, market/Event/card evaluation, combat
+  strength estimation, and combat strategy policies (remaining phases 4–5);
 - thinking presentation (the settled state simply arrives with the human's
   action response), reconnect/resume integration tests, broad interaction
   coverage, and the fixed-seed soak suite (phase 6);
