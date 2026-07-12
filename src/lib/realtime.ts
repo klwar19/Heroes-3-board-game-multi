@@ -289,45 +289,61 @@ function connectPartyRoom(
   // while the socket was down no later broadcast is due — without this refetch
   // a hosted-room player's own hand/Pandora cards would stay masked until the
   // next state change (the closed-room reload bug).
-  const refetchSeatSnapshot = async (): Promise<void> => {
-    try {
-      const response = await fetch(partyHttpUrl(host, roomId, actorClientId, await actorToken()), {
-        cache: "no-store"
-      });
-      if (response.ok) {
-        const snapshot = (await response.json()) as GameRoomSnapshot;
-        lastMessageAt = Date.now();
-        knownVersion = Math.max(knownVersion, snapshot.version);
-        handlers.onSnapshot(snapshot, {
-          source: "http-recovery",
-          seatAuthoritative: true
+  let recoveryFetch: Promise<void> | null = null;
+  const refetchSeatSnapshot = (): Promise<void> => {
+    // A watchdog reconnect can open while its emergency fetch is still in
+    // flight. Share that request so one dead socket never mints/fetches the
+    // same recovery snapshot twice.
+    if (recoveryFetch) return recoveryFetch;
+    recoveryFetch = (async () => {
+      try {
+        const response = await fetch(partyHttpUrl(host, roomId, actorClientId, await actorToken()), {
+          cache: "no-store"
         });
+        if (response.ok) {
+          const snapshot = (await response.json()) as GameRoomSnapshot;
+          lastMessageAt = Date.now();
+          knownVersion = Math.max(knownVersion, snapshot.version);
+          handlers.onSnapshot(snapshot, {
+            source: "http-recovery",
+            seatAuthoritative: true
+          });
+        }
+      } catch {
+        // The reconnecting socket and the caller's own fetch paths keep trying.
       }
-    } catch {
-      // The live socket keeps trying; the caller's own fetch paths also retry.
-    }
+    })().finally(() => {
+      recoveryFetch = null;
+    });
+    return recoveryFetch;
   };
 
   let dropped = false;
+  let recoveryRequestedForDrop = false;
+  const markDropped = () => {
+    opened = false;
+    awaitingPong = false;
+    syncRequested = false;
+    if (dropped) return;
+    dropped = true;
+    handlers.onDropped?.();
+  };
   socket.addEventListener("open", () => {
     opened = true;
     lastMessageAt = Date.now();
     handlers.onStatus("live (edge)");
     if (dropped) {
       dropped = false;
-      void refetchSeatSnapshot();
+      if (!recoveryRequestedForDrop) void refetchSeatSnapshot();
+      recoveryRequestedForDrop = false;
     }
   });
   socket.addEventListener("close", () => {
-    opened = false;
-    dropped = true;
-    handlers.onDropped?.();
+    markDropped();
     handlers.onStatus("edge socket reconnecting");
   });
   socket.addEventListener("error", () => {
-    opened = false;
-    dropped = true;
-    handlers.onDropped?.();
+    markDropped();
     handlers.onStatus("edge socket reconnecting");
   });
   socket.addEventListener("message", (event) => {
@@ -403,8 +419,25 @@ function connectPartyRoom(
     syncRequested = true;
     socket.send(JSON.stringify({ type: "sync" }));
   };
+  const sendHealthPing = () => {
+    if (!opened || awaitingPong) return;
+    awaitingPong = true;
+    pingSentAt = Date.now();
+    const frame = JSON.stringify({ type: "ping", knownVersion });
+    recordPerformanceMetric({
+      name: "room.frame.out",
+      at: metricNow(),
+      fields: { type: "ping", bytes: frameBytes(frame) }
+    });
+    socket.send(frame);
+  };
   const onWake = () => {
-    if (document.visibilityState !== "hidden") requestSync();
+    if (document.visibilityState === "hidden") return;
+    requestSync();
+    // A suspended laptop/background tab can wake with a socket that still says
+    // OPEN locally although the route has died. Probe at once instead of
+    // waiting up to another health interval before starting the timeout clock.
+    if (Date.now() - lastMessageAt >= 35_000) sendHealthPing();
   };
   const canObserveWake = typeof window !== "undefined" && typeof document !== "undefined";
   if (canObserveWake) {
@@ -415,18 +448,20 @@ function connectPartyRoom(
     if (!opened || document.visibilityState === "hidden") return;
     const silentMs = Date.now() - lastMessageAt;
     if (awaitingPong && Date.now() - pingSentAt >= 5_000) {
-      awaitingPong = false;
       recordPerformanceMetric({ name: "room.health.timeout", at: metricNow(), fields: { silentMs } });
       handlers.onStatus("edge socket unhealthy; recovering");
+      // An HTTP snapshot heals the screen immediately, while a forced socket
+      // reconnect repairs the live update channel. Keeping the apparently-open
+      // socket would otherwise make later events/rewards disappear again until
+      // the player refreshed the page.
+      markDropped();
+      recoveryRequestedForDrop = true;
       void refetchSeatSnapshot();
+      socket.reconnect(4000, "health timeout");
       return;
     }
     if (!awaitingPong && silentMs >= 35_000) {
-      awaitingPong = true;
-      pingSentAt = Date.now();
-      const frame = JSON.stringify({ type: "ping", knownVersion });
-      recordPerformanceMetric({ name: "room.frame.out", at: metricNow(), fields: { type: "ping", bytes: frameBytes(frame) } });
-      socket.send(frame);
+      sendHealthPing();
     }
   }, 5_000) : null;
 
