@@ -435,9 +435,13 @@ export function distanceFromHeroTo(
  * back through its home town whenever a nearer objective fell off the list.
  *
  * When `stickySpaceId` is still among the current objectives, keep marching
- * there across turns (multi-round memory) unless a much higher-priority target
- * appears (victory / enemy-hero). That is the long-horizon commit the
- * instantaneous primary alone cannot provide after a soft mid-turn drop-out.
+ * there across turns (multi-round memory) unless a VICTORY-class target appears
+ * (priority ≥ victory − 1; see the break condition below). A merely higher
+ * instantaneous priority — e.g. a beatable enemy hero (6) over a sticky town (4)
+ * — deliberately does NOT break the commit: an enemy hero MOVES, so chasing it
+ * would reintroduce the multi-source march thrash sticky exists to stop. That is
+ * the long-horizon commit the instantaneous primary alone cannot provide after a
+ * soft mid-turn drop-out.
  */
 export function primaryMapObjective(
   state: GameState,
@@ -452,7 +456,9 @@ export function primaryMapObjective(
   if (stickySpaceId) {
     const sticky = objectives.find((objective) => objective.spaceId === stickySpaceId);
     if (sticky) {
-      // Break sticky only for a strictly higher-priority class (victory/hunt).
+      // Break sticky ONLY for a victory-class objective (priority ≥ victory − 1);
+      // a merely higher instantaneous priority (enemy-hero/guard/…) keeps the
+      // commit to avoid chase-thrash. See the header note.
       const higher = objectives.find(
         (objective) =>
           MAP_OBJECTIVE_PRIORITY[objective.kind] >
