@@ -1,5 +1,6 @@
 import { locationDefinitions } from "@/data/map/locations";
 import {
+  adventureVictoryMode,
   canCrossEdge,
   classifyHeroStep,
   getAdjacentSpaceIds,
@@ -44,6 +45,7 @@ import { shouldEngageEnemy } from "./army-strength";
 
 /** What kind of objective a field is, ordered by how much the AI wants it. */
 export type MapObjectiveKind =
+  | "victory"
   | "enemy-hero"
   | "guard"
   | "town"
@@ -58,6 +60,7 @@ export type MapObjective = {
 
 /** Higher = more important. Used by sticky primary selection. */
 export const MAP_OBJECTIVE_PRIORITY: Record<MapObjectiveKind, number> = {
+  victory: 10,
   "enemy-hero": 6,
   guard: 5,
   town: 4,
@@ -65,6 +68,72 @@ export const MAP_OBJECTIVE_PRIORITY: Record<MapObjectiveKind, number> = {
   visitable: 2,
   explore: 1,
 };
+
+/**
+ * Scenario win-condition fields the hero should march for FIRST: grail dig /
+ * grail delivery home, Dragon Utopia for hunt/conqueror modes. Public map
+ * state only — no hidden dig sites beyond grailDiggable (which is public once
+ * the obelisk/search flow marks it).
+ */
+function victoryObjectiveKind(
+  state: GameState,
+  hero: HeroState,
+  field: MapFieldState,
+): MapObjectiveKind | null {
+  const mode = adventureVictoryMode(state);
+  const playerId = hero.controllerId;
+
+  if (mode === "grail") {
+    const grail = state.adventure?.grail;
+    // Carry the grail home to own town.
+    if (
+      grail?.status === "carried" &&
+      grail.carrierHeroId === hero.id &&
+      locationDefinitions[field.location]?.category === "town" &&
+      field.flagOwnerId === playerId
+    ) {
+      return "victory";
+    }
+    // Dig the marked grail field (public once diggable).
+    if (field.grailDiggable && grail?.status === "uncollected") {
+      return "victory";
+    }
+    // Walk onto the grail location token if present and uncollected.
+    if (field.location === "grail" && grail?.status !== "delivered") {
+      return "victory";
+    }
+  }
+
+  if (mode === "dragon-hunt" || mode === "dragon-conqueror") {
+    if (field.location === "dragon_utopia") {
+      // Hunt: any utopia (defeat wins). Conqueror: unowned or own (hold wins);
+      // enemy-held utopia is a siege target worth marching for when beatable.
+      if (mode === "dragon-hunt") {
+        return "victory";
+      }
+      if (!field.flagOwnerId || field.flagOwnerId === playerId) {
+        return "victory";
+      }
+      // Enemy-held utopia — still the win object, treat as victory target.
+      return "victory";
+    }
+  }
+
+  // Conquest: capturing an enemy faction town IS the win condition — elevate
+  // unowned / enemy towns above ordinary "town" so the sticky primary commits.
+  if (mode === "conquest") {
+    const category = locationDefinitions[field.location]?.category;
+    if (
+      category === "town" &&
+      field.flagOwnerId &&
+      field.flagOwnerId !== playerId
+    ) {
+      return "victory";
+    }
+  }
+
+  return null;
+}
 
 /**
  * Whether the computer hero should be willing to walk into this guarded field's
@@ -110,6 +179,32 @@ function objectiveKind(
 ): MapObjectiveKind | null {
   const playerId = hero.controllerId;
 
+  // Win-condition targets outrank everything else.
+  const victory = victoryObjectiveKind(state, hero, field);
+  if (victory) {
+    // Still refuse to walk into an outmatched enemy hero standing on it.
+    const occupant = heroAtSpace(state, field.spaceId, hero.id);
+    if (occupant && occupant.controllerId !== playerId) {
+      if (locationDefinitions[field.location]?.passive?.protectsFromAttack) {
+        return null;
+      }
+      return shouldEngageEnemy(state, playerId, occupant.controllerId)
+        ? "victory"
+        : null;
+    }
+    // Guarded victory site (Dragon Utopia, etc.): only march if beatable, or
+    // if it is unguarded / already our flag.
+    if (isFieldGuarded(field) && !canBeatGuardedField(state, hero, field)) {
+      // Dragon Utopia has no standard difficulty — still list it so the AI
+      // walks there when the field is open / we can engage; when a hard guard
+      // blocks and we cannot read strength, skip until stronger.
+      if (field.location !== "dragon_utopia") {
+        return null;
+      }
+    }
+    return victory;
+  }
+
   const occupant = heroAtSpace(state, field.spaceId, hero.id);
   if (occupant && occupant.controllerId !== playerId) {
     // Sanctuary-protected heroes can never be attacked; an outmatched fight is
@@ -122,7 +217,8 @@ function objectiveKind(
       : null;
   }
 
-  // Never march into an enemy hero's flag / holding — no blind PvP.
+  // Never march into an enemy-flagged holding (no garrison/siege strength read
+  // yet) — except victory targets already handled above.
   if (field.flagOwnerId && field.flagOwnerId !== playerId) {
     return null;
   }

@@ -181,7 +181,28 @@ export function scoreCombatAction(
     }
     case "USE_UNIT_ABILITY":
       // Prefer spending an activation ability over a plain defend when offered.
-      return { score: 540, policy: "combat.use-ability" };
+      // Targeted abilities that name a high-threat enemy score higher.
+      if (action.target?.type === "unit") {
+        const target = combat.units[action.target.unitId];
+        if (target && target.controllerId !== observation.playerId) {
+          return {
+            score: 560 + Math.min(40, Math.round(unitThreatValue(target) / 3)),
+            policy: "combat.use-ability-enemy",
+          };
+        }
+        if (target && target.controllerId === observation.playerId) {
+          const missing = unitRemainingHealth(target) < target.maxHealth;
+          return {
+            score: missing ? 580 : 545,
+            policy: "combat.use-ability-ally",
+          };
+        }
+      }
+      return { score: 550, policy: "combat.use-ability" };
+    case "SUMMON_DEMONS":
+      return { score: 600, policy: "combat.summon-demons" };
+    case "USE_GENIE_DECK_DRAW":
+      return { score: 590, policy: "combat.genie-wish" };
     default:
       return null;
   }

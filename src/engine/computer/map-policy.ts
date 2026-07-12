@@ -18,30 +18,40 @@ export type ComputerActionScore = {
   policy: string;
 };
 
+/** Keep a small gold cushion so the AI does not spend to 0 and stall next turn. */
+const GOLD_RESERVE = 5;
+
+function playerGold(state: GameState, playerId: string): number {
+  return state.players[playerId]?.resources.gold ?? 0;
+}
+
 function buildingScore(state: GameState, playerId: string, buildingId: string): number {
   const effect = coreBuildingDefinitions[buildingId]?.effect;
   const armySize = state.players[playerId]?.army.length ?? 0;
+  const gold = playerGold(state, playerId);
   // When the army is thin, prefer recruit unlocks / reinforce over soft economy.
   const needsArmy = armySize < 4;
+  // When gold is tight, deprioritise expensive soft builds so recruit can fire.
+  const broke = gold < GOLD_RESERVE + 5;
   switch (effect?.type) {
     case "UNLOCK_RECRUIT_TIER":
       return (
         (effect.tier === "gold" ? 870 : effect.tier === "silver" ? 860 : 850) +
-        (needsArmy ? 20 : 0)
+        (needsArmy ? 25 : 0)
       );
     case "UNLOCK_REINFORCE":
-      return 865 + (needsArmy ? 20 : 0);
+      return 865 + (needsArmy ? 25 : 0);
     case "RESOURCE_ROUND_CHOICE":
     case "RESOURCE_ROUND_SEARCH_DISCARD":
-      return 820;
+      return 820 + (broke ? 15 : 0);
     case "MAGE_GUILD":
-      return needsArmy ? 760 : 810;
+      return needsArmy || broke ? 740 : 810;
     case "ROUND_START_FREE_SPRITE":
-      return 805;
+      return 805 + (needsArmy ? 10 : 0);
     case "RUNE_ALTAR":
       return 800 + effect.levelCap;
     default:
-      return 790;
+      return broke ? 760 : 790;
   }
 }
 
@@ -50,17 +60,22 @@ function populationScore(
   action: Extract<GameAction, { type: "POPULATION_ACTION" }>,
 ): number {
   const state = observation.state as unknown as GameState;
-  const armySize = state.players[observation.playerId]?.army.length ?? 0;
-  let score = 900 + (armySize < 4 ? 25 : 0);
+  const player = state.players[observation.playerId];
+  const armySize = player?.army.length ?? 0;
+  const gold = player?.resources.gold ?? 0;
+  let score = 900 + (armySize < 4 ? 30 : armySize < 6 ? 12 : 0);
+  // Prefer recruiting while gold is healthy; still recruit when thin even if
+  // broke (army is the win condition).
+  if (gold >= GOLD_RESERVE + 10) score += 8;
   for (const purchase of action.purchases) {
     if (purchase.kind === "reinforce") {
-      score += 12;
+      score += 14;
       continue;
     }
     const unit = coreUnitDefinitions[purchase.unitDefId];
-    if (unit?.tier === "gold") score += 18;
-    else if (unit?.tier === "silver") score += 12;
-    else score += 6;
+    if (unit?.tier === "gold") score += 20;
+    else if (unit?.tier === "silver") score += 14;
+    else score += 8;
   }
   return score;
 }
@@ -68,7 +83,9 @@ function populationScore(
 // Stepping directly ONTO an objective (flag it, visit it, or fight a beatable
 // guard) — kept below map develop/discover actions so the hero still builds,
 // recruits and reveals adjacent tiles first, but well above END_TURN (300).
+// Victory sites sit above recruit-adjacent movement so the AI commits to the win.
 const OBJECTIVE_ENTER_SCORE: Record<MapObjectiveKind, number> = {
+  victory: 880,
   "enemy-hero": 770,
   guard: 760,
   town: 750,
