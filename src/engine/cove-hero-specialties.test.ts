@@ -318,6 +318,35 @@ describe("Zilare's Forgetfulness specialty", () => {
     ).toBeTruthy();
   });
 
+  it("IV: playing the specialty does NOT spend the Spell — a Spell is still castable afterwards (the reported bug)", () => {
+    // Reported scenario: "Zilare's Forgetfulness IV — play it and can't cast a
+    // Spell, uses the limit of Spell?". Assert the OBSERVABLE outcome: with a real
+    // Spell in hand, playing the IV specialty (option A) leaves the one-Spell-per-
+    // round limit fully available — the Spell is still offered as a CAST_SPELL —
+    // and spellsCastThisRound never moves off 0.
+    const state = zilareCombat("zilare-iv-then-spell", "specialty.zilare.4", { type: "ranged", grade: "gold" });
+    state.players.p1.hand = ["specialty.zilare.4", "spell.magic_arrow"];
+    const spellCastableBefore = getLegalActions(state, "p1").some(
+      (legal) => legal.action.type === "CAST_SPELL" && legal.action.cardId === "spell.magic_arrow"
+    );
+    expect(spellCastableBefore, "the Spell should be castable before the specialty is used").toBe(true);
+
+    const play = findPlay(state, "specialty.zilare.4", 0, "unit_p2_skeletons");
+    expect(play, "Forgetfulness IV option A should be offered against a gold ranged enemy").toBeTruthy();
+    const after = passAllReactions(applyOk(state, play!.action));
+
+    expect(
+      after.players.p1.combatStats.spellsCastThisRound,
+      "using the specialty must not spend the one-Spell-per-round limit"
+    ).toBe(0);
+    expect(
+      getLegalActions(after, "p1").some(
+        (legal) => legal.action.type === "CAST_SPELL" && legal.action.cardId === "spell.magic_arrow"
+      ),
+      "the Spell must STILL be castable after playing the specialty (it did not eat the Spell)"
+    ).toBe(true);
+  });
+
   it("registers Zilare as a Cove Navigator with the Forgetfulness specialty", () => {
     const hero = coreHeroDefinitions.zilare;
     expect(hero.faction).toBe("cove");
