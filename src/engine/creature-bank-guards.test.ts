@@ -30,7 +30,7 @@ function fieldWith(location: string, difficulty = 7): MapFieldState {
 
 describe("Dragon Utopia guards", () => {
   // Difficulty-7 Neutral-army totals (NEUTRAL_ARMY_TABLE) — the counts the
-  // Utopia scales to when `dragon-utopia-by-difficulty` is ON (the BINH default).
+  // Utopia scales to when its guards are "by-difficulty" (the default).
   const COUNT_BY_DIFFICULTY: Record<GameDifficulty, number> = {
     easy: 1,
     normal: 2,
@@ -46,10 +46,10 @@ describe("Dragon Utopia guards", () => {
     return { state, draws, azureBefore };
   }
 
-  it("ALWAYS leads with exactly one azure slot (Azure/Rust/Crystal), minted, never touching the azure deck", () => {
+  it("ALWAYS leads with the featured azure slot (Azure/Rust), minted, never touching the azure deck", () => {
     const { state, draws, azureBefore } = utopiaDraws("utopia", "normal");
 
-    // The lead guard is the azure slot — one of Azure/Rust/Crystal, never fixed
+    // The lead guard is the featured slot — an Azure or Rust Dragon, never fixed
     // to Azure alone. (The other dragons are also azure-TIER, so this is about
     // the featured lead, not tier uniqueness.)
     expect([...DRAGON_UTOPIA_AZURE_SLOT_IDS]).toContain(draws[0]!.unitDefId);
@@ -79,30 +79,18 @@ describe("Dragon Utopia guards", () => {
     }
   });
 
-  it("CONTROL: with `dragon-utopia-by-difficulty` OFF, the full FOUR-dragon party stands on Normal", () => {
-    const { draws } = utopiaDraws("utopia-fixed", "normal", (state) => {
-      state.adventure!.houseRules!["dragon-utopia-by-difficulty"] = false;
+  it("CONTROL: with guards set to `four`, the full FOUR-dragon party stands whatever the difficulty", () => {
+    // On Easy the by-difficulty count would be 1; "four" keeps the whole party.
+    const { draws } = utopiaDraws("utopia-fixed", "easy", (state) => {
+      state.adventure!.dragonUtopiaGuards = "four";
     });
     expect(draws).toHaveLength(4);
-    // The supporting dragons remain the four-dragon set minus the azure slot's
-    // pick — Rust, Crystal and Faerie always appear alongside the lead.
+    // The four-dragon set — Azure, Rust, Crystal and Faerie — always stands, the
+    // featured lead being one of Azure/Rust after the slot swap.
     expect(draws.map((d) => d.unitDefId).sort()).toEqual(
       [...DRAGON_UTOPIA_GUARD_IDS].sort()
     );
-  });
-
-  it("CONTROL: `dragon-utopia-four-dragons` OFF → the rulebook THREE-dragon pool (Azure/Crystal/Black), still difficulty-scaled", () => {
-    // By-difficulty OFF too, so the whole rulebook party is visible.
-    const { draws } = utopiaDraws("utopia-rulebook", "normal", (state) => {
-      state.adventure!.houseRules!["dragon-utopia-four-dragons"] = false;
-      state.adventure!.houseRules!["dragon-utopia-by-difficulty"] = false;
-    });
-    expect(draws).toHaveLength(3);
-    expect(draws.map((d) => d.unitDefId)).toContain("neutral.black_dragons");
-    // The lead is still an azure slot; Black (the gold-tier dragon) never leads.
     expect([...DRAGON_UTOPIA_AZURE_SLOT_IDS]).toContain(draws[0]!.unitDefId);
-    expect(draws[0]!.unitDefId).not.toBe("neutral.black_dragons");
-    expect(new Set(draws.map((d) => d.unitDefId)).size).toBe(3);
   });
 
   it("randomises the azure slot per game — it is NOT hardcoded to the Azure Dragon", () => {

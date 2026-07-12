@@ -75,6 +75,7 @@ import type {
   GameSetupState,
   GameState,
   HouseRuleId,
+  DragonUtopiaGuards,
   MapTileState,
   PlayerId,
   PlayerController,
@@ -191,6 +192,8 @@ export type AdventureSetupOptions = {
   victoryMode?: VictoryMode;
   /** PvP Combat casualties: "normal" (lose dead units) or "none" (keep troops). */
   pvpTroopLoss?: PvpTroopLoss;
+  /** Dragon Utopia guards: "four" (full party) or "by-difficulty" (scaled count). */
+  dragonUtopiaGuards?: DragonUtopiaGuards;
   /** Naval Battles Creature Banks (default on): offer bank placement on Far/Near tile discovery. */
   creatureBanks?: boolean;
   /** Event deck (Fortress expansion, default off; multiplayer only): draw an Event each Resource Round. */
@@ -306,6 +309,7 @@ export function defaultGameSetupOptions(scenario: ScenarioDefinition): GameSetup
     wog: { ...DEFAULT_WOG_OPTIONS },
     victoryMode: "conquest",
     pvpTroopLoss: "normal",
+    dragonUtopiaGuards: "by-difficulty",
     spellBook: true,
     moraleCards: false,
     tournamentMode: false,
@@ -791,6 +795,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     ...(options.wog ? { wog: { ...DEFAULT_WOG_OPTIONS, ...options.wog } } : {}),
     ...(options.victoryMode ? { victoryMode: options.victoryMode } : {}),
     ...(options.pvpTroopLoss ? { pvpTroopLoss: options.pvpTroopLoss } : {}),
+    ...(options.dragonUtopiaGuards ? { dragonUtopiaGuards: options.dragonUtopiaGuards } : {}),
     ...(options.difficulty ? { difficulty: options.difficulty } : {}),
     ...(options.startingResources ? { startingResources: options.startingResources } : {}),
     ...(options.startingProduction ? { startingProduction: options.startingProduction } : {}),
@@ -863,6 +868,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     : { ...DEFAULT_WOG_OPTIONS, ...setupOptions.wog, enabled: false };
   const victoryMode: VictoryMode = setupOptions.victoryMode ?? "conquest";
   const pvpTroopLoss: PvpTroopLoss = setupOptions.pvpTroopLoss ?? "normal";
+  const dragonUtopiaGuards: DragonUtopiaGuards = setupOptions.dragonUtopiaGuards ?? "by-difficulty";
   const playerConfigs = (options.players?.length ? options.players : DEFAULT_PLAYERS).slice(
     0,
     Math.min(scenario.maxPlayers, scenario.layout.starts.length)
@@ -920,6 +926,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     winnerPlayerId: null,
     victoryMode,
     pvpTroopLoss,
+    dragonUtopiaGuards,
     spellBook: spellBookOn,
     moraleCards: moraleCardsOn,
     tournamentMode: tournamentRulesAllOn(setupOptions),
@@ -1721,6 +1728,16 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
     }
     lobby.options.pvpTroopLoss = next.pvpTroopLoss;
     changes.push(`PvP combat ${next.pvpTroopLoss === "none" ? "keeps troops" : "loses troops"}`);
+  }
+
+  if (next.dragonUtopiaGuards !== undefined) {
+    if (next.dragonUtopiaGuards !== "four" && next.dragonUtopiaGuards !== "by-difficulty") {
+      throw new Error("Unknown Dragon Utopia guards option.");
+    }
+    lobby.options.dragonUtopiaGuards = next.dragonUtopiaGuards;
+    changes.push(
+      `Dragon Utopia guards ${next.dragonUtopiaGuards === "four" ? "four dragons" : "scale by difficulty"}`
+    );
   }
 
   if (next.spellBook !== undefined) {
@@ -2819,6 +2836,7 @@ function buildAdventureFromLobby(state: GameState): void {
     wog: lobby.options.wog,
     victoryMode: lobby.options.victoryMode,
     pvpTroopLoss: lobby.options.pvpTroopLoss,
+    dragonUtopiaGuards: lobby.options.dragonUtopiaGuards,
     events: lobby.options.events,
     spellBook: lobby.options.spellBook,
     moraleCards: lobby.options.moraleCards,
