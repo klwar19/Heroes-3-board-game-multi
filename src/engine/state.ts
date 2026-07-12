@@ -79,7 +79,15 @@ export type HouseRuleId =
   | "pathfinding-expert"
   // Holding Visions lets the attacker cast it before a Neutral fight to swap out
   // the drawn guards. Off: Visions is only the map-turn deck scry (wiki).
-  | "vision-battle-swap";
+  | "vision-battle-swap"
+  // Dracon's Enchanters IV may ALSO upgrade the cheaper Few of Magi into the
+  // Enchanters for 6 extra gold (besides the free Pack-of-Magi trade). Off: only
+  // the rulebook options remain — trade a Pack of Magi, or draw a card.
+  | "dracon-few-magi-trade"
+  // The Dragon Utopia (the Dragon Hunt / Dragon Conqueror win-condition
+  // objective) is guarded by FOUR dragons (Azure + Rust + Crystal + Faerie). Off:
+  // the rulebook THREE dragons (Azure + Crystal + Black).
+  | "dragon-utopia-four-dragons";
 
 /** Optional Wake of Gods modules. WOG is valid only while BINH is selected. */
 export type WogModOptions = {
