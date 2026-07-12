@@ -54,7 +54,7 @@ Rules-correctness fixes applied to **both** modes (rulebook/wiki): second negati
 | Location | Status | Notes |
 | --- | --- | --- |
 | Empty / Blocked Field | ✅ | Blocked fields cannot be entered. "Pass-through if forced" edge case not modeled. |
-| Town | ✅ | Flagging an enemy town wins in Conquest mode (other modes have their own goals). Siege combat (walls/gate/arrow tower) fires when defending a Citadel town or a captured Dragon Utopia; 8-gold garrison defence when the hero is away. |
+| Town | ✅ | Flagging an enemy town is **not** an instant win: it earns a resource-gain level and starts the former owner's 2-turn elimination clock (a held Settlement keeps them alive); last faction standing wins. A capture pops a clear explainer to **both** players (conqueror + former owner). Siege combat (walls/gate/arrow tower) fires when defending a Citadel town or a captured Dragon Utopia; 8-gold garrison defence when the hero is away. |
 | Mine | ✅ | +5 gold / +2 materials / +1 valuables income; first-flag instant gain; stealing supported. |
 | Settlement | ✅ | Income choice or bronze/silver reinforcement at half cost (free on first flag). Also the fallback spawn point for a hired Secondary Hero when you hold no town. |
 | Resources / Treasure symbols | ✅ | Resource die (2/4 BM, 1/2 V, 3/6 G) and treasure die (2×XP, 2×artifact search, resource die, double resource die). |
@@ -73,7 +73,7 @@ Rules-correctness fixes applied to **both** modes (rulebook/wiki): second negati
 | Spell Scroll (Stronghold) | ✅ | Take a scroll and draw **2 Spells** into it — the visitor picks the Basic or Expert Magic deck per draw (the single Spell deck in Legacy). The scroll sits next to the hero (📜 badge, not in hand; contents hidden from opponents). Either spell may be **cast in combat at power 0** — it cannot be buffed by any Power source (Power cards, +1 discards, School of Magic, town cubes, Astrologers) and is never the expert side — through the normal cast/instant timing windows; using it removes it from the game. The spell still counts toward the one-spell-per-combat-round limit. Spells may also be **sold at the market for 2 gold** each. An emptied scroll is discarded. Tested in `spell-scroll.test.ts`. |
 | War Machine Factory | ✅ | Sells the five war machines at their lower price (shared one-copy supply; bought cards go to the buyer's hand and then live in their deck). |
 | Obelisk | 🟡 | Flaggable shell; scenario-specific effects pending. |
-| Dragon Utopia / Grail | ✅ | Win-condition aware (Grail wins in Grail Hunt; Dragon Utopia wins in Dragon Hunt / is captured in Dragon Conqueror); otherwise a Lvl-VII fight giving 10 gold + a Relic artifact. Dragon Utopia is guarded by the four dragons; Cyclops Stockpile adds 2 golden Cyclopes. |
+| Dragon Utopia / Grail | ✅ | Win-condition aware (Grail wins in Grail Hunt; Dragon Utopia wins in Dragon Hunt / is captured in Dragon Conqueror); otherwise a Lvl-VII fight giving 10 gold + a Relic artifact. Dragon Utopia is guarded by the four dragons under the `dragon-utopia-four-dragons` house rule (default; set beside the Win condition), else the rulebook three (azure + crystal + black); Cyclops Stockpile adds 2 golden Cyclopes. |
 | Star Axis | ✅ | Multi-flaggable; first visit empowers one hand Statistic card (Inferno Empowered statistics added). |
 | Library of Enlightenment | ✅ | Pay 3 gold to swap a Statistic (hand or discard) for any other, up to twice per visit. |
 | Black Market | ✅ | Buy one artifact from the discard pile by rarity (5/7/10 gold). |

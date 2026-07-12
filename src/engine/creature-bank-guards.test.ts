@@ -3,6 +3,7 @@ import type { MapFieldState } from "./state";
 import {
   beginFieldVisit,
   DRAGON_UTOPIA_GUARD_IDS,
+  DRAGON_UTOPIA_GUARD_IDS_RULEBOOK,
   drawGuardArmy,
   getMainHero,
   makeCombatUnitFromNeutral,
@@ -42,6 +43,23 @@ describe("Dragon Utopia guards", () => {
     // Minted combat units carry the bankGuard flag through to the board.
     const unit = makeCombatUnitFromNeutral(draws[0], "u1", 0);
     expect(unit?.bankGuard).toBe(true);
+  });
+
+  it("drops to the rulebook THREE dragons (Azure, Crystal, Black) when `dragon-utopia-four-dragons` is OFF", () => {
+    const state = createAdventureGameState({ seed: "utopia3", difficulty: "normal", rollFirstPlayer: false });
+    // CONTROL: the default (house rule ON) fields the four-dragon party.
+    expect(drawGuardArmy(state, fieldWith("dragon_utopia"), 7).map((draw) => draw.unitDefId)).toEqual([
+      ...DRAGON_UTOPIA_GUARD_IDS
+    ]);
+
+    state.adventure!.houseRules!["dragon-utopia-four-dragons"] = false;
+    const draws = drawGuardArmy(state, fieldWith("dragon_utopia"), 7);
+
+    expect(draws.map((draw) => draw.unitDefId)).toEqual([...DRAGON_UTOPIA_GUARD_IDS_RULEBOOK]);
+    expect(draws).toHaveLength(3);
+    expect(draws.every((draw) => draw.bankGuard === true)).toBe(true);
+    // Still minted, never drawn — the azure deck is untouched.
+    expect(state.decks[NEUTRAL_DECK_IDS.azure].discardPile.length).toBe(0);
   });
 });
 
