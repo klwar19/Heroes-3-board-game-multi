@@ -1,0 +1,66 @@
+[
+  {
+    "id": "thieves_guild",
+    "left": 47,
+    "top": 50,
+    "width": 91,
+    "height": 58,
+    "en": "Thieves' Guild"
+  },
+  {
+    "id": "city_hall",
+    "left": 155,
+    "top": 50,
+    "width": 91,
+    "height": 58,
+    "en": "City Hall"
+  },
+  {
+    "id": "dwelling_bronze",
+    "left": 264,
+    "top": 50,
+    "width": 90,
+    "height": 58,
+    "en": "Bay"
+  },
+  {
+    "id": "mage_guild",
+    "left": 372,
+    "top": 50,
+    "width": 90,
+    "height": 58,
+    "en": "Mage Guild"
+  },
+  {
+    "id": "dwelling_gold",
+    "left": 480,
+    "top": 50,
+    "width": 90,
+    "height": 58,
+    "en": "Redoubled Vortex"
+  },
+  {
+    "id": "citadel",
+    "left": 588,
+    "top": 50,
+    "width": 90,
+    "height": 58,
+    "en": "Citadel"
+  },
+  {
+    "id": "dwelling_silver",
+    "left": 697,
+    "top": 50,
+    "width": 89,
+    "height": 58,
+    "en": "Nests Towering the Seas"
+  },
+  {
+    "id": "pub",
+    "left": 263,
+    "top": 109,
+    "width": 93,
+    "height": 54,
+    "en": "Pub"
+  }
+]

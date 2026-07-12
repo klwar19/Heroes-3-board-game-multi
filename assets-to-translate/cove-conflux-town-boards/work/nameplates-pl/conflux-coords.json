@@ -1,0 +1,66 @@
+[
+  {
+    "id": "city_hall",
+    "left": 47,
+    "top": 49,
+    "width": 92,
+    "height": 59,
+    "en": "City Hall"
+  },
+  {
+    "id": "magic_university",
+    "left": 155,
+    "top": 49,
+    "width": 92,
+    "height": 59,
+    "en": "Magic University"
+  },
+  {
+    "id": "mage_guild",
+    "left": 264,
+    "top": 49,
+    "width": 91,
+    "height": 59,
+    "en": "Mage Guild"
+  },
+  {
+    "id": "dwelling_silver",
+    "left": 372,
+    "top": 49,
+    "width": 91,
+    "height": 59,
+    "en": "Altars of Fire and Earth"
+  },
+  {
+    "id": "dwelling_gold",
+    "left": 480,
+    "top": 49,
+    "width": 91,
+    "height": 59,
+    "en": "Magical Pyre"
+  },
+  {
+    "id": "citadel",
+    "left": 588,
+    "top": 49,
+    "width": 91,
+    "height": 59,
+    "en": "Citadel"
+  },
+  {
+    "id": "dwelling_bronze",
+    "left": 696,
+    "top": 49,
+    "width": 91,
+    "height": 59,
+    "en": "Altars of Air and Water"
+  },
+  {
+    "id": "garden_of_life",
+    "left": 696,
+    "top": 110,
+    "width": 91,
+    "height": 55,
+    "en": "Garden of Life"
+  }
+]
