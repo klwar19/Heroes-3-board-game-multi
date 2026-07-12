@@ -1,9 +1,29 @@
 # Multiplayer Performance and Scaling Upgrade Plan
 
-- Status: implementation-ready plan
+- Status: active implementation plan
 - Audit date: 2026-07-12
 - Scope: PartyKit room transport, browser state/rendering, Vercel APIs, Supabase, and the multiplayer lobby
 - Primary objective: remove refresh-required freezes and keep interaction smooth as concurrent players, rooms, and observers increase
+
+## 0. Implementation ledger
+
+Implemented on `codex/multiplayer-performance-scaling-plan`:
+
+- Sampled client/server timing and frame-size metrics.
+- Pure snapshot ordering arbiter, including boot changes and observer-to-seat upgrades.
+- Acknowledgement-only PartyKit action results (one authoritative broadcast snapshot).
+- PartyKit health `ping`/`pong`, wake/focus `sync`, half-dead socket replacement, and seat-aware HTTP recovery.
+- Shared recovery requests and short-lived socket-ticket caching.
+- Presentation timeout watchdog plus a manual skip path that cannot alter authoritative state.
+- Incremental presentation event window: duplicate frames produce no events, newer frames process only the unseen suffix, and a rotated-log gap primes current history and reconstructs active overlays instead of replaying stale events.
+
+Next implementation order:
+
+1. Extract the remaining cue/timeline derivation from `page.tsx` into pure classifiers and replace the category-specific seen sets with the event cursor.
+2. Add PartyKit lobby push behind a feature flag, retaining adaptive HTTP fallback.
+3. Isolate large React regions and cache legal actions by accepted version/viewer seat.
+4. Add request-id status/retry persistence before automatically retrying any action after a disconnect.
+5. Start protocol-v2 commit/delta work only after the above is measured in production.
 
 ## 1. Executive decision
 
@@ -606,6 +626,26 @@ After each change, build and calculate the referenced size of room function `.nf
 - If PartyKit is required in production, do not silently route multiplayer to the Vercel in-memory/filesystem fallback when `NEXT_PUBLIC_PARTYKIT_HOST` is missing.
 - Keep the built-in backend available for local development and explicit self-hosting.
 - Verify the app and PartyKit deployments expose matching `ENGINE_SIGNATURE` values before broad rollout.
+
+## 11.6 Paid production options and spend triggers
+
+Do not buy a second realtime platform before measuring the current one. PartyKit can deploy into the project's own Cloudflare account, so the first paid step should be Cloudflare Workers Paid while keeping the room architecture unchanged. Pricing and quotas change; verify the linked official pages before purchase.
+
+| Trigger | Recommended paid option | What it buys | What it must not replace |
+| --- | --- | --- | --- |
+| Public launch or free-tier hard limits become a reliability risk | [Cloudflare Workers Paid / Durable Objects](https://developers.cloudflare.com/durable-objects/platform/pricing/) | Higher limits, usage billing, durable room objects, and a predictable production account. Cloudflare's July 2026 documentation lists a USD 5/month Workers Paid minimum. | The server-authoritative reducer, per-seat redaction, or full-snapshot recovery. |
+| Supabase session/ticket or match APIs approach plan limits | Paid Supabase plan in the database region nearest the Vercel API region | Stable database capacity, backups, and operational headroom for identity/MMR. | Live room state or per-action synchronization. |
+| Vercel cold starts, bandwidth, or function quotas affect auth/admin/report endpoints | Paid Vercel plan with function regions aligned to Supabase | More predictable API capacity and team operations. | PartyKit WebSockets; live actions should remain off the Vercel request path. |
+| Production bugs cannot be reproduced from sampled local metrics | Paid error/performance observability (for example Sentry), with strict event sampling and field allowlists | Cross-device traces, Web Vitals/INP, long tasks, release comparison, and alerting. | Raw game snapshots, hidden cards, names, tokens, passwords, or room chat in telemetry. |
+| Lobby push becomes an operational bottleneck after PartyKit optimization and load testing | [Ably Standard](https://ably.com/docs/platform/pricing) for lobby directory/chat/presence only | Managed fan-out, presence, connection recovery, and capacity support. | Authoritative game rooms. Using Ably for game state would still require the PartyKit authority and would add another network hop. |
+
+Cost controls:
+
+- Use WebSocket hibernation-compatible APIs; Cloudflare bills active duration and states that hibernating idle objects do not incur duration charges.
+- Keep application health frames lightweight and infrequent; do not wake every idle room with global timers.
+- Budget from measured room-minutes, incoming messages, storage writes, lobby connection-minutes, and telemetry sample rate.
+- Set billing alerts at 50%, 80%, and 100% of the monthly multiplayer budget.
+- Upgrade capacity before removing fallbacks; paid infrastructure is not permission to weaken recovery or privacy tests.
 
 ## 12. Test and load matrix
 

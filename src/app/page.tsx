@@ -196,6 +196,11 @@ import {
 } from "@/lib/room-snapshot-arbiter";
 import { metricNow, observeBrowserResponsiveness, recordPerformanceMetric } from "@/lib/performance-metrics";
 import { DEFAULT_MAX_PRESENTATION_MS, presentationWatchdogDelay } from "@/lib/presentation-watchdog";
+import {
+  initialPresentationEventCursor,
+  presentationEventWindow,
+  type PresentationEventCursor
+} from "@/lib/presentation-event-window";
 import { leavePresence, sendPresence } from "@/lib/lobby-presence-client";
 import {
   takePendingRoomHosted,
@@ -729,6 +734,8 @@ export default function Home() {
   const seenRollIdsRef = useRef<Set<string> | null>(null);
   /** Server store generation last seen; a change means the host restarted. */
   const snapshotArbiterRef = useRef<SnapshotArbiterState>(initialSnapshotArbiterState());
+  /** Tail cursor for exactly-once, incremental presentation event ingestion. */
+  const presentationEventCursorRef = useRef<PresentationEventCursor>(initialPresentationEventCursor());
   /** Server boot we already tried to recover from (avoids restore loops). */
   const restoredForBootRef = useRef<string | null>(null);
   /** Stable handle to ingestSnapshot so the restore result can re-enter it. */
@@ -969,38 +976,54 @@ export default function Home() {
     maybeClaimFinishedMatch(stateRef.current ?? undefined, nextState);
     stateRef.current = nextState;
 
-    const rolls = nextState.eventLog.filter(
+    const eventWindow = presentationEventWindow(presentationEventCursorRef.current, nextState.eventLog);
+    const presentationEvents = eventWindow.events;
+    if (eventWindow.prime) {
+      // Initial join, room reset, or a log-rotation gap: seed every seen-set
+      // from current history and reconstruct only overlays that remain active
+      // in authoritative state. Never replay an unknown partial timeline.
+      seenRollIdsRef.current = null;
+    }
+    if (eventWindow.gap) {
+      recordPerformanceMetric({
+        name: "room.presentation.event-gap",
+        at: metricNow(),
+        fields: { events: nextState.eventLog.length, eventCounter: nextState.eventCounter ?? 0 }
+      });
+    }
+
+    const rolls = presentationEvents.filter(
       (event): event is Extract<GameEvent, { type: "ATTACK_ROLLED" }> => event.type === "ATTACK_ROLLED"
     );
-    const draws = nextState.eventLog.filter(
+    const draws = presentationEvents.filter(
       (event): event is Extract<GameEvent, { type: "CARDS_DRAWN" }> => event.type === "CARDS_DRAWN"
     );
-    const flips = nextState.eventLog.filter(
+    const flips = presentationEvents.filter(
       (event): event is Extract<GameEvent, { type: "UNIT_FLIPPED" }> => event.type === "UNIT_FLIPPED"
     );
-    const moves = nextState.eventLog.filter(
+    const moves = presentationEvents.filter(
       (event): event is Extract<GameEvent, { type: "HERO_MOVED" }> => event.type === "HERO_MOVED"
     );
-    const tileEvents = nextState.eventLog.filter(
+    const tileEvents = presentationEvents.filter(
       (event): event is Extract<GameEvent, { type: "TILE_REVEALED" } | { type: "TILE_PLACED" }> =>
         event.type === "TILE_REVEALED" || event.type === "TILE_PLACED"
     );
-    const structureEvents = nextState.eventLog.filter(
+    const structureEvents = presentationEvents.filter(
       (event): event is Extract<GameEvent, { type: "STRUCTURE_BUILT" }> => event.type === "STRUCTURE_BUILT"
     );
-    const mapDiceEvents = nextState.eventLog.filter(
+    const mapDiceEvents = presentationEvents.filter(
       (event): event is Extract<GameEvent, { type: "ADVENTURE_DICE_ROLLED" }> => event.type === "ADVENTURE_DICE_ROLLED"
     );
-    const astrologerDrawEvents = nextState.eventLog.filter(
+    const astrologerDrawEvents = presentationEvents.filter(
       (event): event is Extract<GameEvent, { type: "ASTROLOGERS_DRAWN" }> => event.type === "ASTROLOGERS_DRAWN"
     );
-    const turnEvents = nextState.eventLog.filter(
+    const turnEvents = presentationEvents.filter(
       (event): event is Extract<GameEvent, { type: "TURN_STARTED" }> => event.type === "TURN_STARTED"
     );
-    const visitEvents = nextState.eventLog.filter(
+    const visitEvents = presentationEvents.filter(
       (event): event is Extract<GameEvent, { type: "FIELD_VISITED" }> => event.type === "FIELD_VISITED"
     );
-    const feedEvents = nextState.eventLog.filter(
+    const feedEvents = presentationEvents.filter(
       (event) =>
         ADVENTURE_FEED_CUES[event.type] &&
         // Join toasts announce genuinely NEW members only — reconnects and
@@ -1008,8 +1031,8 @@ export default function Home() {
         // not pop "joined" on every refresh.
         (event.type !== "ROOM_MEMBER_JOINED" || event.newMember === true)
     );
-    const fxEvents = nextState.eventLog.filter((event) => FX_EVENT_TYPES.has(event.type));
-    const moraleCardEvents = nextState.eventLog.filter((event) => isMoraleCardEvent(event));
+    const fxEvents = presentationEvents.filter((event) => FX_EVENT_TYPES.has(event.type));
+    const moraleCardEvents = presentationEvents.filter((event) => isMoraleCardEvent(event));
 
     if (!seenRollIdsRef.current) {
       // Fresh room connection: forget the previous room's units.
@@ -1039,21 +1062,21 @@ export default function Home() {
       seenMoraleCueIdsRef.current = new Set(moraleCardEvents.map((event) => event.id));
       // A mid-game join must not re-pop a past Dracon level-up or buffed recruit.
       seenLevelNoticeIdsRef.current = new Set(
-        nextState.eventLog.filter((event) => event.type === "HERO_LEVEL_UP").map((event) => event.id)
+        presentationEvents.filter((event) => event.type === "HERO_LEVEL_UP").map((event) => event.id)
       );
       seenBuffRecruitIdsRef.current = new Set(
-        nextState.eventLog.filter((event) => event.type === "UNIT_RECRUITED").map((event) => event.id)
+        presentationEvents.filter((event) => event.type === "UNIT_RECRUITED").map((event) => event.id)
       );
       seenFirstRollIdsRef.current = new Set(
-        nextState.eventLog.filter((event) => event.type === "FIRST_PLAYER_ROLLED").map((event) => event.id)
+        presentationEvents.filter((event) => event.type === "FIRST_PLAYER_ROLLED").map((event) => event.id)
       );
       // ...and without re-popping a parallel-turns stop warning from the past.
       seenParallelStopIdsRef.current = new Set(
-        nextState.eventLog.filter((event) => event.type === "PARALLEL_TURNS_STOPPED").map((event) => event.id)
+        presentationEvents.filter((event) => event.type === "PARALLEL_TURNS_STOPPED").map((event) => event.id)
       );
       // ...and without re-popping a "you command the Neutral units" notice.
       seenNeutralControlIdsRef.current = new Set(
-        nextState.eventLog.filter((event) => event.type === "NEUTRAL_CONTROL_ASSIGNED").map((event) => event.id)
+        presentationEvents.filter((event) => event.type === "NEUTRAL_CONTROL_ASSIGNED").map((event) => event.id)
       );
       seenAstrologerDrawIdsRef.current = new Set(astrologerDrawEvents.map((event) => event.id));
       // A fresh connection joins mid-game without replaying every past turn's
@@ -1063,7 +1086,7 @@ export default function Home() {
       seenAstrologerRoundRef.current = nextState.round;
       // ...and without re-popping Event draws from before this connection.
       seenEventDrawIdsRef.current = new Set(
-        nextState.eventLog.filter((event) => event.type === "EVENT_CARD_DRAWN").map((event) => event.id)
+        presentationEvents.filter((event) => event.type === "EVENT_CARD_DRAWN").map((event) => event.id)
       );
       // Fresh room connection: drop any presentation state from the last room.
       setFxCues([]);
@@ -1253,7 +1276,7 @@ export default function Home() {
       // House rule (BINH) notices, queued onto the same map-notice overlay.
       //  - Dracon reaching level IV: announce his new "Few of Magi + 6 gold →
       //    Enchanters" recruit option (fires once, even off a combat-XP level-up).
-      const levelNotices = nextState.eventLog.filter(
+      const levelNotices = presentationEvents.filter(
         (event): event is Extract<GameEvent, { type: "HERO_LEVEL_UP" }> =>
           event.type === "HERO_LEVEL_UP" &&
           event.level === 4 &&
@@ -1265,7 +1288,7 @@ export default function Home() {
       }
       //  - A Gelu-recruited Sharpshooters: announce that the new unit is BUFFED
       //    with a permanent +1 Attack in every combat.
-      const buffRecruits = nextState.eventLog.filter(
+      const buffRecruits = presentationEvents.filter(
         (event): event is Extract<GameEvent, { type: "UNIT_RECRUITED" }> =>
           event.type === "UNIT_RECRUITED" && Boolean(event.attackBuff)
       );
@@ -1276,7 +1299,7 @@ export default function Home() {
       // THE parallel-turns warning: parallel play stopped (a PvP battle, a
       // serious PvP interaction, or the period ran out) — pop it into every
       // player's face, not just the log.
-      const parallelStops = nextState.eventLog.filter(
+      const parallelStops = presentationEvents.filter(
         (event): event is Extract<GameEvent, { type: "PARALLEL_TURNS_STOPPED" }> =>
           event.type === "PARALLEL_TURNS_STOPPED"
       );
@@ -1287,7 +1310,7 @@ export default function Home() {
       // PvP Neutral Control: pop the "YOU command the Neutral units" notice
       // into the commander's face when a Neutral fight assigns them the guards
       // (everyone else just gets the feed line).
-      const neutralControlAssignments = nextState.eventLog.filter(
+      const neutralControlAssignments = presentationEvents.filter(
         (event): event is Extract<GameEvent, { type: "NEUTRAL_CONTROL_ASSIGNED" }> =>
           event.type === "NEUTRAL_CONTROL_ASSIGNED"
       );
@@ -1365,7 +1388,7 @@ export default function Home() {
 
       // First-player roll: a center-screen notice listing everyone's die,
       // attempt by attempt, and who plays first.
-      const firstRolls = nextState.eventLog.filter(
+      const firstRolls = presentationEvents.filter(
         (event): event is Extract<GameEvent, { type: "FIRST_PLAYER_ROLLED" }> => event.type === "FIRST_PLAYER_ROLLED"
       );
       const freshFirstRolls = firstRolls.filter((event) => !seenFirstRollIdsRef.current.has(event.id));
@@ -1495,7 +1518,7 @@ export default function Home() {
       // player's face, once per draw, so a new Event is impossible to miss. The
       // copy names the drawer and that resolution runs clockwise from them.
       {
-        const freshEventDraws = nextState.eventLog.filter(
+        const freshEventDraws = presentationEvents.filter(
           (event): event is Extract<GameEvent, { type: "EVENT_CARD_DRAWN" }> =>
             event.type === "EVENT_CARD_DRAWN" && !seenEventDrawIdsRef.current.has(event.id)
         );
@@ -1536,7 +1559,7 @@ export default function Home() {
       // attack roll bundled together — hold the dice so the table watches the
       // guard arrive and pause before the die is thrown.
       const freshCombatMoves = nextState.combat
-        ? nextState.eventLog.filter(
+        ? presentationEvents.filter(
             (event): event is Extract<GameEvent, { type: "UNIT_MOVED" }> =>
               event.type === "UNIT_MOVED" && !seenFxIdsRef.current.has(event.id)
           )
@@ -1584,7 +1607,7 @@ export default function Home() {
       // back by `activationSpellLeadMs` to keep the order "cast → damage → move →
       // attack". `leadMs` is 0 (no shift) for every combat without such a spell.
       const freshAbilityEvents = nextState.combat
-        ? nextState.eventLog.filter(
+        ? presentationEvents.filter(
             (event): event is Extract<GameEvent, { type: "UNIT_ABILITY_TRIGGERED" }> =>
               event.type === "UNIT_ABILITY_TRIGGERED" && !seenFxIdsRef.current.has(event.id)
           )
@@ -2961,6 +2984,19 @@ export default function Home() {
       }
     }
 
+    // Advance only after every presentation delta above was derived without
+    // throwing, so a failed ingestion can be retried by the next recovery frame.
+    presentationEventCursorRef.current = eventWindow.cursor;
+    recordPerformanceMetric({
+      name: "room.presentation.event-window",
+      at: metricNow(),
+      fields: {
+        totalEvents: nextState.eventLog.length,
+        eligibleEvents: presentationEvents.length,
+        prime: eventWindow.prime,
+        gap: eventWindow.gap
+      }
+    });
     setState(nextState);
   }, [showFeedItems]);
 
@@ -2996,6 +3032,14 @@ export default function Home() {
       // animation, timer or match-claim side effect can run.
       snapshotArbiterRef.current = decision.state;
       const bootChanged = decision.reason === "new-boot";
+      if (bootChanged || decision.reason === "seat-upgrade") {
+        // Event ids/counters are scoped to one server generation. A hosted
+        // observer-to-seat upgrade also changes which pending Event/choice is
+        // visible without changing the version. Prime either viewer context
+        // from authoritative state so a reconnect overlay cannot remain hidden
+        // until F5 or the next action.
+        presentationEventCursorRef.current = initialPresentationEventCursor();
+      }
       recordPerformanceMetric({
         name: "room.snapshot.accepted",
         at: metricNow(),
@@ -3220,6 +3264,7 @@ export default function Home() {
       return;
     }
     snapshotArbiterRef.current = initialSnapshotArbiterState();
+    presentationEventCursorRef.current = initialPresentationEventCursor();
     seenRollIdsRef.current = null;
     // Each room gets its own recovery attempt, even on the same server boot.
     restoredForBootRef.current = null;
@@ -3828,6 +3873,7 @@ export default function Home() {
     // masquerade as a reset failure: a presentation hiccup here is logged, not
     // surfaced as "could not reset", and never leaves the refs half-cleared.
     seenRollIdsRef.current = null;
+    presentationEventCursorRef.current = initialPresentationEventCursor();
     // A deliberate reset discards the saved game so a later recycle can't
     // "recover" it over the new room.
     clearCachedRoom(roomId);
