@@ -14,6 +14,15 @@ export default defineConfig({
     environment: "node",
     globals: true,
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
-    restoreMocks: true
+    restoreMocks: true,
+    // The default 5s per-test timeout is too tight for the CPU-heavy suites
+    // (the single-player multi-round soak, map-render tests) that run in
+    // parallel with the lightweight `src/server/*` store tests: under CPU
+    // contention on constrained CI/containers those trivial tests get starved
+    // and spuriously time out (a bare createRoom "taking" 5s). Raising the cap
+    // absorbs the scheduling jitter without masking real hangs — a genuinely
+    // stuck test still fails at 20s, and the runner's own step caps bound the AI.
+    testTimeout: 20_000,
+    hookTimeout: 20_000
   }
 });

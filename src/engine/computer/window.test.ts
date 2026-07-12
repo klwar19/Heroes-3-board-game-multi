@@ -125,6 +125,49 @@ describe("computer decision ownership", () => {
     expect(computerDecisionOwner(state)).toBe("p2");
   });
 
+  it("WAITS during PvP pre-battle prep while only the human still owes an Accept (never claims the computer placement owner)", () => {
+    const state = createAdventureLobbyState({
+      seed: "window-pvp-prep",
+      sessionMode: "single-player",
+      computerOpponents: 1,
+    });
+    state.phase = "combat";
+    state.activePlayerId = "p2";
+    // A PvP fight: computer p2 (attacker) attacked human p1 (defender). Prep is
+    // still open — p2 has accepted, p1 has NOT. `setup.pendingPlayerIds` is
+    // already populated (p2 first), but placement is legal for NOBODY until both
+    // sides accept (legal-actions returns early on `combat.prep`).
+    state.combat = {
+      id: "cb1",
+      context: { kind: "player" },
+      attackerPlayerId: "p2",
+      defenderPlayerId: "p1",
+      prep: { accepted: ["p2"] },
+      setup: { pendingPlayerIds: ["p2", "p1"], placedUnitIds: [] },
+      units: {},
+      outcome: null,
+      endAcknowledged: false,
+    } as unknown as typeof state.combat;
+    // BUG (fixed): the prep loop only RETURNED for a computer that owed an
+    // accept; with the human still owing it, ownership fell through to the
+    // placement owner (`setup.pendingPlayerIds[0] === "p2"`) and returned the
+    // computer — which then had NO legal placement action, stalling the paced
+    // pump. It must WAIT for the human instead.
+    expect(computerDecisionOwner(state)).toBeNull();
+
+    // CONTROL: once the human accepts (prep clears) and the computer is first to
+    // deploy, the computer DOES owe the placement.
+    (state.combat as unknown as { prep: unknown }).prep = null;
+    expect(computerDecisionOwner(state)).toBe("p2");
+
+    // CONTROL: while prep is open and the COMPUTER still owes the accept, drive
+    // its Accept.
+    (state.combat as unknown as { prep: { accepted: string[] } }).prep = {
+      accepted: ["p1"],
+    };
+    expect(computerDecisionOwner(state)).toBe("p2");
+  });
+
   it("draft format: computers wait for the human's town, then lock; a locked seat waits for its ban turn", () => {
     let state = createAdventureLobbyState({
       seed: "window-draft-wait",

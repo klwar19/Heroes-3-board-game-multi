@@ -14,6 +14,7 @@ import {
 import {
   driveComputerPlayers,
   isPacedComputerAction,
+  progressFingerprint,
   settleComputerVisibleStep,
   settleComputerWork,
 } from "./computer-runner";
@@ -36,6 +37,74 @@ function humanFirst(
   expect(offer, `expected a legal ${type} for ${playerId}`).toBeDefined();
   return humanAct(state, offer!.action);
 }
+
+describe("computer runner — progress fingerprint", () => {
+  function visitState(steps: unknown): GameState {
+    return {
+      phase: "player-turn",
+      round: 1,
+      activePlayerId: "p2",
+      priorityPlayerId: "p2",
+      eventCounter: 5,
+      eventLog: [],
+      pendingChoice: null,
+      reactionWindow: null,
+      combat: null,
+      setupLobby: null,
+      turn: { completedPlayerIds: [] },
+      players: {
+        p2: {
+          resources: { gold: 0 },
+          hand: [],
+          deck: [],
+          discard: [],
+          army: [],
+          eliminated: false,
+        },
+      },
+      heroes: {},
+      adventure: { pendingVisit: { playerId: "p2", heroId: "h2", fieldId: "0,0", steps } },
+    } as unknown as GameState;
+  }
+
+  it("registers a nested visit-step CHOOSE_ONE resolution as progress (Scholar empower loop shape)", () => {
+    // Resolving one branch of a nested CHOOSE_ONE (e.g. Scholar's expert
+    // "Empower a Statistic") drops that option and re-prompts with fewer — the
+    // OUTER step keeps its type ("CHOOSE_ONE") and length (1). A coarse
+    // fingerprint that only reads steps[0].type + steps.length sees no change,
+    // so the runner's no-progress guard falsely stalls the paced pump. The
+    // fingerprint must reflect the nested option tree.
+    const before = visitState([
+      {
+        type: "CHOOSE_ONE",
+        prompt: "Empower a Statistic",
+        options: [
+          { label: "Empower Power", steps: [{ type: "GAIN_RESOURCES", gold: 1 }] },
+          { label: "Empower Knowledge", steps: [{ type: "GAIN_RESOURCES", gold: 1 }] },
+          { label: "Done", steps: [] },
+        ],
+      },
+    ]);
+    const after = visitState([
+      {
+        type: "CHOOSE_ONE",
+        prompt: "Empower a Statistic",
+        options: [
+          { label: "Empower Power", steps: [{ type: "GAIN_RESOURCES", gold: 1 }] },
+          { label: "Done", steps: [] },
+        ],
+      },
+    ]);
+    // Same outer type + length (a coarse read would call these identical), but
+    // the nested option set shrank — genuine progress.
+    expect((before.adventure!.pendingVisit!.steps as unknown[]).length).toBe(
+      (after.adventure!.pendingVisit!.steps as unknown[]).length,
+    );
+    expect(progressFingerprint(before, "p2")).not.toBe(
+      progressFingerprint(after, "p2"),
+    );
+  });
+});
 
 describe("computer runner foundation", () => {
   it("completes every computer free-pick seat through real legal actions once the human picked", () => {

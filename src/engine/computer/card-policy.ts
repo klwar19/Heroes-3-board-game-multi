@@ -450,6 +450,27 @@ function scoreEffect(
     return 650 + modeBonus(mode);
   }
 
+  // In an active combat activation, a pure map-economy / map-search play has NO
+  // combat value. Worse, TAKE_FROM_DISCARD (Scholar's basic side is
+  // `allowInCombat`) can retrieve the VERY card just played — the AI would then
+  // replay it forever, an infinite loop the runner's no-progress guard cannot
+  // catch because each half-step flips phase/eventCounter (play → discard-pick →
+  // take-it-back → play …). Score these BELOW END_ACTIVATION (400) so the AI
+  // ends its activation instead of cycling a map card mid-fight. Map turns (no
+  // combat) and reaction windows keep the normal economy/search scores; combat
+  // damage/buff/stat/save/enter-play/active families were already handled above,
+  // and MAP_MOVEMENT is deliberately left alone (CONTINUE_NEUTRAL_FREE and the
+  // continue-window movement-extend plays are genuinely useful in a fight).
+  const inCombatActivation =
+    Boolean(observation.state.combat && !observation.state.combat.outcome) &&
+    !isReaction;
+  if (
+    inCombatActivation &&
+    (MAP_ECONOMY_EFFECTS.has(effect.type) || MAP_SEARCH_EFFECTS.has(effect.type))
+  ) {
+    return 120;
+  }
+
   if (MAP_MOVEMENT_EFFECTS.has(effect.type)) {
     return scoreMapMovement(observation, effect, 600);
   }
