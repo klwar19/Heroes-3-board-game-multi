@@ -22,5 +22,5 @@ export async function GET(request: Request) {
   }
   // No save() here: the built-in store deliberately keeps tickets in memory
   // only (minutes-lived), and the Supabase backend already wrote its row.
-  return NextResponse.json({ token: ticket });
+  return NextResponse.json({ token: ticket, expiresAt: Date.now() + 10 * 60_000 });
 }

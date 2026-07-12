@@ -11,6 +11,11 @@
 import { clearAccountIdentity, setAccountIdentity } from "@/lib/identity";
 import type { AccountContact, AccountProfile, SelfProfile } from "@/server/accounts/types";
 
+const SOCKET_TICKET_MARGIN_MS = 60_000;
+let socketTicketCache: { token: string; expiresAt: number } | null = null;
+let socketTicketRequest: Promise<string | undefined> | null = null;
+let socketTicketGeneration = 0;
+
 export type { AccountContact, AccountProfile, SelfProfile };
 
 export class AuthClientError extends Error {
@@ -68,6 +73,7 @@ export async function logout(): Promise<void> {
   try {
     await post("/api/auth/logout", {});
   } finally {
+    clearSocketTokenCache();
     clearAccountIdentity();
   }
 }
@@ -79,16 +85,39 @@ export async function logout(): Promise<void> {
  * guest. The built-in backend never needs this (it reads the cookie directly).
  */
 export async function fetchSocketToken(): Promise<string | undefined> {
-  try {
-    const res = await fetch("/api/auth/socket-token", { cache: "no-store" });
-    if (!res.ok) {
+  if (socketTicketCache && socketTicketCache.expiresAt - Date.now() > SOCKET_TICKET_MARGIN_MS) {
+    return socketTicketCache.token;
+  }
+  if (socketTicketRequest) return socketTicketRequest;
+  const generation = socketTicketGeneration;
+  const request = (async () => {
+    try {
+      const res = await fetch("/api/auth/socket-token", { cache: "no-store" });
+      if (!res.ok) {
+        if (res.status === 401 || res.status === 403) clearSocketTokenCache();
+        return undefined;
+      }
+      const data = (await res.json()) as { token?: unknown; expiresAt?: unknown };
+      if (typeof data.token !== "string" || typeof data.expiresAt !== "number") return undefined;
+      if (generation !== socketTicketGeneration) return undefined;
+      socketTicketCache = { token: data.token, expiresAt: data.expiresAt };
+      return data.token;
+    } catch {
       return undefined;
     }
-    const data = (await res.json()) as { token?: unknown };
-    return typeof data.token === "string" ? data.token : undefined;
-  } catch {
-    return undefined;
+  })();
+  socketTicketRequest = request;
+  try {
+    return await request;
+  } finally {
+    if (socketTicketRequest === request) socketTicketRequest = null;
   }
+}
+
+export function clearSocketTokenCache(): void {
+  socketTicketGeneration += 1;
+  socketTicketCache = null;
+  socketTicketRequest = null;
 }
 
 export async function fetchSession(): Promise<SelfProfile | null> {

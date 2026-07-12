@@ -189,6 +189,13 @@ import {
 import { clearCachedRoom, loadCachedRoom, saveCachedRoom } from "@/lib/room-cache";
 import { getAccountIdentity, getClientId, getDisplayName, setDisplayName as persistDisplayName } from "@/lib/identity";
 import { fetchSession, fetchSocketToken } from "@/lib/auth-client";
+import {
+  decideSnapshot,
+  initialSnapshotArbiterState,
+  type SnapshotArbiterState
+} from "@/lib/room-snapshot-arbiter";
+import { metricNow, observeBrowserResponsiveness, recordPerformanceMetric } from "@/lib/performance-metrics";
+import { DEFAULT_MAX_PRESENTATION_MS, presentationWatchdogDelay } from "@/lib/presentation-watchdog";
 import { leavePresence, sendPresence } from "@/lib/lobby-presence-client";
 import {
   takePendingRoomHosted,
@@ -230,6 +237,8 @@ const FX_EVENT_TYPES = new Set<GameEvent["type"]>([
   // Bulwark: an army crossing a Rune-Level threshold rings the rune cue.
   "RUNE_LEVEL_REACHED"
 ]);
+
+const MAX_PRESENTATION_MS = DEFAULT_MAX_PRESENTATION_MS;
 
 /** Heals that need the unmistakable green-cross pulse in addition to a sprite. */
 const FIRST_AID_GRAPHIC_CARD_IDS = new Set(["war_machine.first_aid_tent", "ability.first_aid"]);
@@ -719,7 +728,7 @@ export default function Home() {
   const [combatDamageDisplay, setCombatDamageDisplay] = useState<Map<string, number>>(new Map());
   const seenRollIdsRef = useRef<Set<string> | null>(null);
   /** Server store generation last seen; a change means the host restarted. */
-  const seenBootIdRef = useRef<string | null>(null);
+  const snapshotArbiterRef = useRef<SnapshotArbiterState>(initialSnapshotArbiterState());
   /** Server boot we already tried to recover from (avoids restore loops). */
   const restoredForBootRef = useRef<string | null>(null);
   /** Stable handle to ingestSnapshot so the restore result can re-enter it. */
@@ -730,7 +739,6 @@ export default function Home() {
    * room's observer connect frame exactly once, without re-rendering on every
    * later poll of the same version.
    */
-  const seatUpgradedVersionRef = useRef(0);
   /**
    * The live connection dropped since membership was last confirmed. The server
    * reaps an unseated member on disconnect, so the join effect re-joins when the
@@ -837,6 +845,8 @@ export default function Home() {
     }
   }, []);
   /* eslint-enable react-hooks/set-state-in-effect */
+
+  useEffect(() => observeBrowserResponsiveness(), []);
 
   // Authoritative session from the httpOnly cookie. Refreshes accountUserId so
   // the guest→verified re-JOIN upgrade can fire even when localStorage was
@@ -2938,7 +2948,7 @@ export default function Home() {
         // combatPresentationEnd tracks the last effect's full tail; timeline
         // covers trailing cues.
         if (fresh.length > 0 || combatFxActive || approachMoves.length > 0) {
-          const presentationMs = Math.max(timeline, combatPresentationEnd);
+          const presentationMs = Math.min(MAX_PRESENTATION_MS, Math.max(timeline, combatPresentationEnd));
           if (combatPresentTimerRef.current) {
             window.clearTimeout(combatPresentTimerRef.current);
           }
@@ -2958,7 +2968,7 @@ export default function Home() {
     (snapshot: GameRoomSnapshot, meta?: SnapshotMeta) => {
       // No live room (lobby): ignore any straggling frame. Narrows roomId to a
       // string for the cache calls below.
-      if (!roomId) {
+      if (!roomId || snapshot.roomId !== roomId) {
         return;
       }
       // Record the room server's engine signature from every frame (even ones
@@ -2967,12 +2977,35 @@ export default function Home() {
         setServerSignature(snapshot.serverSignature);
       }
 
+      const decision = decideSnapshot(snapshotArbiterRef.current, {
+        bootId: snapshot.bootId,
+        version: snapshot.version,
+        viewerSeat: snapshot.viewerSeat,
+        source: meta?.source ?? "broadcast",
+        seatAuthoritative: meta?.seatAuthoritative
+      });
+      if (!decision.accept) {
+        recordPerformanceMetric({
+          name: "room.snapshot.rejected",
+          at: metricNow(),
+          fields: { version: snapshot.version, reason: decision.reason, source: meta?.source ?? "broadcast" }
+        });
+        return;
+      }
+      // Commit ordering synchronously before any cache, recovery, React, audio,
+      // animation, timer or match-claim side effect can run.
+      snapshotArbiterRef.current = decision.state;
+      const bootChanged = decision.reason === "new-boot";
+      recordPerformanceMetric({
+        name: "room.snapshot.accepted",
+        at: metricNow(),
+        fields: { version: snapshot.version, reason: decision.reason, source: meta?.source ?? "broadcast" }
+      });
+
       // The version gate keeps out-of-order frames from rolling the table
       // back — but when the server process restarted (new bootId) its version
       // counter starts over, and refusing those snapshots froze the table
       // ("nothing moves anymore"). A boot change always wins.
-      const bootChanged = Boolean(snapshot.bootId) && snapshot.bootId !== seenBootIdRef.current;
-
       // Recovery: the server came back (new boot) holding only a fresh setup
       // lobby while we have a saved in-progress game for this room — the room
       // was lost to a recycle. Push our cached game back instead of dropping to
@@ -2985,7 +3018,6 @@ export default function Home() {
         const cached = loadCachedRoom(roomId);
         if (cached && !isFreshLobbyState(cached.state)) {
           restoredForBootRef.current = snapshot.bootId ?? null;
-          seenBootIdRef.current = snapshot.bootId ?? null;
           connectionRef.current
             ?.restoreRoom(cached.state)
             .then((restored) => ingestSnapshotRef.current(restored, { seatAuthoritative: true }))
@@ -2998,34 +3030,27 @@ export default function Home() {
         }
       }
 
-      if (snapshot.bootId) {
-        seenBootIdRef.current = snapshot.bootId;
-      }
       // Mirror in-progress games for recovery; never cache a bare lobby (that
       // would let a later recycle overwrite a real game).
       if (!isFreshLobbyState(snapshot.state)) {
         saveCachedRoom(roomId, snapshot.version, snapshot.state);
       }
-      setRoomVersion((currentVersion) => {
-        // A SEAT-AUTHORITATIVE frame (HTTP fetch / action reply, redacted to
-        // this client's own seat) may also re-ingest the CURRENT version, once:
-        // a hosted room's socket connect frame is the zero-trust OBSERVER view
-        // at that same version, and if it wins the race the player's own hand /
-        // Pandora cards stay masked until the next state change. The
-        // seatUpgradedVersionRef latch keeps later same-version polls from
-        // re-rendering the table for nothing.
-        const seatUpgrade =
-          Boolean(meta?.seatAuthoritative) &&
-          snapshot.version === currentVersion &&
-          seatUpgradedVersionRef.current !== snapshot.version;
-        if (bootChanged || snapshot.version > currentVersion || seatUpgrade) {
-          if (meta?.seatAuthoritative) {
-            seatUpgradedVersionRef.current = snapshot.version;
-          }
-          ingestServerState(snapshot.state);
-          return snapshot.version;
-        }
-        return currentVersion;
+      const presentationStart = metricNow();
+      ingestServerState(snapshot.state);
+      recordPerformanceMetric({
+        name: "room.snapshot.presentation-derived",
+        at: presentationStart,
+        durationMs: metricNow() - presentationStart,
+        fields: { version: snapshot.version, events: snapshot.state.eventLog.length }
+      });
+      setRoomVersion(snapshot.version);
+      requestAnimationFrame(() => {
+        recordPerformanceMetric({
+          name: "room.snapshot.first-frame",
+          at: presentationStart,
+          durationMs: metricNow() - presentationStart,
+          fields: { version: snapshot.version, events: snapshot.state.eventLog.length }
+        });
       });
     },
     [ingestServerState, roomId]
@@ -3133,12 +3158,68 @@ export default function Home() {
     setFxCues((current) => current.filter((cue) => cue.id !== id));
   }, []);
 
+  const presentationStartedAtRef = useRef<number | null>(null);
+  const skipPresentation = useCallback((reason: "manual" | "watchdog") => {
+    const startedAt = presentationStartedAtRef.current;
+    recordPerformanceMetric({
+      name: "room.presentation.skipped",
+      at: metricNow(),
+      fields: {
+        reason,
+        version: snapshotArbiterRef.current.version,
+        actualMs: startedAt === null ? 0 : Math.round(metricNow() - startedAt),
+        maximumMs: MAX_PRESENTATION_MS
+      }
+    });
+    setDice({ current: null, queue: [] });
+    setMapDice({ current: null, queue: [] });
+    setMapNotice({ current: null, queue: [] });
+    setFirstRoll(null);
+    setNewDay({ current: null, queue: [] });
+    setMoraleCue({ current: null, queue: [] });
+    setAstrologerCue(null);
+    setEventCue(null);
+    setDrawCue(null);
+    setMoveCue(null);
+    setFxCues([]);
+    setCombatPresenting(false);
+    setCombatDamageDisplay(new Map());
+    setFlippedUnitIds(new Set());
+    setTintedUnits(new Map());
+    setHiddenHandTail(0);
+    deferredStartDrawRef.current = null;
+    pendingDiceFeedRef.current = { items: [], sounds: [] };
+    if (combatPresentTimerRef.current) window.clearTimeout(combatPresentTimerRef.current);
+    combatPresentTimerRef.current = null;
+    for (const timer of damageRevealTimersRef.current) window.clearTimeout(timer);
+    damageRevealTimersRef.current = [];
+    presentationStartedAtRef.current = null;
+  }, []);
+
+  const presentationActive = Boolean(
+    dice.current || mapDice.current || mapNotice.current || firstRoll || newDay.current || moraleCue.current ||
+    astrologerCue || eventCue || drawCue || moveCue || fxCues.length > 0 || combatPresenting
+  );
+  useEffect(() => {
+    if (!presentationActive) {
+      presentationStartedAtRef.current = null;
+      return;
+    }
+    presentationStartedAtRef.current ??= metricNow();
+    const timer = window.setTimeout(
+      () => skipPresentation("watchdog"),
+      presentationWatchdogDelay(presentationStartedAtRef.current, metricNow(), MAX_PRESENTATION_MS)
+    );
+    return () => window.clearTimeout(timer);
+  }, [presentationActive, skipPresentation]);
+
   // One live connection per room: PartyKit edge socket when configured,
   // otherwise the built-in API + SSE stream. No connection while in the lobby.
   useEffect(() => {
     if (!roomId) {
       return;
     }
+    snapshotArbiterRef.current = initialSnapshotArbiterState();
     seenRollIdsRef.current = null;
     // Each room gets its own recovery attempt, even on the same server boot.
     restoredForBootRef.current = null;
@@ -3195,6 +3276,8 @@ export default function Home() {
   }, [roomId, ingestSnapshot, clientId]);
 
   const submitAction = async (action: GameAction) => {
+    const inputAt = metricNow();
+    recordPerformanceMetric({ name: "room.action.input", at: inputAt, fields: { actionType: action.type } });
     // The action actually sent to the engine — a costed board-target play that
     // was armed "discard first" gets its banked payment attached here.
     let outgoing = action;
@@ -3259,31 +3342,28 @@ export default function Home() {
     }
 
     setSyncStatus("submitting");
+    recordPerformanceMetric({
+      name: "room.action.validation",
+      at: inputAt,
+      durationMs: metricNow() - inputAt,
+      fields: { actionType: outgoing.type }
+    });
     try {
       const payload = await connection.submitAction(outgoing);
       // A successful action can still carry a player-facing notice: e.g. a Clone
       // cast that could not reach the chosen unit's grade is refunded (card +
       // Power returned) rather than wasted, and says so. Surface those alongside
       // any rules errors so the player sees why nothing changed.
-      const refundNotices = payload.result.events
-        .filter(
-          (event): event is Extract<GameEvent, { type: "SPELL_CAST_REFUNDED" }> =>
-            event.type === "SPELL_CAST_REFUNDED"
-        )
-        .map((event) => event.reason);
-      setErrors([...payload.result.errors.map((error) => error.message), ...refundNotices]);
-      // The action reply is redacted to the ACTING sender's own seat, so it may
-      // also upgrade an equal-version observer frame (seatAuthoritative).
-      ingestSnapshot(payload.snapshot, { seatAuthoritative: true });
-      setSyncStatus(`synced v${payload.snapshot.version}`);
+      setErrors([...payload.errors.map((error) => error.message), ...payload.notices]);
+      setSyncStatus(`acknowledged v${payload.version}`);
 
-      if (payload.result.errors.length === 0) {
+      if (payload.errors.length === 0) {
         setSelectedCardAction(null);
         setArmedCardPayment(null);
         setHandMode(null);
         setHandDiscards([]);
         setTilePlacement(null);
-      } else {
+      } else if (payload.version !== snapshotArbiterRef.current.version) {
         // The server refused an action the local table thought was legal: the
         // local snapshot is stale (missed frames, server restart). Resync so
         // the next click works instead of staying frozen on old state.
@@ -3467,7 +3547,7 @@ export default function Home() {
         ...(joinRoomPassword ? { password: joinRoomPassword } : {})
       })
       .then((res) => {
-        const joinError = res.result.errors[0]?.message ?? null;
+        const joinError = res.errors[0]?.message ?? null;
         setRoomJoinError(joinError);
         if (!joinError) {
           applyPendingName();
@@ -3752,15 +3832,11 @@ export default function Home() {
     // "recover" it over the new room.
     clearCachedRoom(roomId);
     restoredForBootRef.current = null;
-    if (snapshot.bootId) {
-      seenBootIdRef.current = snapshot.bootId;
-    }
     try {
-      ingestServerState(snapshot.state);
+      ingestSnapshot(snapshot, { source: "reset", seatAuthoritative: true });
     } catch (ingestError) {
       console.error("Applying the reset snapshot failed.", ingestError);
     }
-    setRoomVersion(snapshot.version);
     setErrors([]);
     setSelectedCardAction(null);
     setHandMode(null);
@@ -4243,6 +4319,17 @@ export default function Home() {
     </>
   );
 
+  const presentationSkipControl = presentationActive ? (
+    <button
+      className="commandButton ghost presentationSkip"
+      onClick={() => skipPresentation("manual")}
+      title="Clear visual holds and show the current authoritative game state"
+      type="button"
+    >
+      Skip animation
+    </button>
+  ) : null;
+
   // ---- Map-setup lobby ------------------------------------------------------
   if (adventureMode && inLobby) {
     return (
@@ -4525,6 +4612,7 @@ export default function Home() {
     return (
       <CardZoomProvider>
         <main className="tableRoot adventureRoot" onClick={playTableUiClickSound}>
+          {presentationSkipControl}
           <div className="tableTopRow">
             <AdventureHud
               legalActions={legalActions}
@@ -5249,6 +5337,7 @@ export default function Home() {
     >
     <CardZoomProvider>
     <main className="tableRoot" onClick={playTableUiClickSound}>
+      {presentationSkipControl}
       {/* All card logistics live up here: every opponent's hand/deck/discard and
           the viewer's own dock + permanents + playable hand. Card-flight
           animations land in this strip. Heroes stay on the right rail. */}
