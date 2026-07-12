@@ -483,6 +483,25 @@ settle. Plan/contract: `docs/single-player-computer-opponents-plan.md`; tests:
   DEPLOY NOTE: `party/index.ts` reaches production ONLY via
   `npm run deploy:partykit` — a Vercel deploy alone leaves the old edge (and
   its frozen-AI bug) running.
+- **The pump no longer stalls on a "no measurable progress" action (the REAL
+  game-start freeze).** Distinct from the alarm-crash above: `driveComputerPlayers`
+  compares a `progressFingerprint` before/after each applied action and, if it
+  is unchanged, used to STALL the whole pump immediately — so the AI turn froze
+  ("says it's taking its turn and does nothing") whenever the policy's top pick
+  was a fingerprint no-op. Two fixes, each mutation-checked in
+  `computer-runner.test.ts`: (1) `progressFingerprint` now captures the
+  combat-pause identity (`combat.pendingNeutralStep` kind/unit/reactor,
+  `combat.pendingNeutralPlacement`, and per-unit `reactionPauseAcked`) — a
+  `CONTINUE_NEUTRAL_STEP` that resumes a "pre-activation" reaction pause only
+  clears that pause and acks the unit (activeUnitId/positions unchanged), so
+  without this the real step read as no-progress; this was hit in
+  computer-vs-computer PvP and neutral fights right at game start. (2) On a
+  no-progress-but-no-error apply the runner now DISCARDS that candidate (it is
+  already in `attempted`) and tries the next legal action instead of stalling,
+  reaching the explicit "no safe legal action" stall only when every candidate
+  is exhausted (bounded: `attempted` grows, the legal set shrinks, `maxSteps`
+  backstops). Reproduced pre-fix at ~2-3% of game starts with 1–3 opponents;
+  360+ real-game starts clean post-fix.
 
 Leading with what does NOT run (deliberate limits):
 - **Objective-seeking, fighting map play — with limits.** The policy now plays a

@@ -104,6 +104,117 @@ describe("computer runner — progress fingerprint", () => {
       progressFingerprint(after, "p2"),
     );
   });
+
+  function combatPauseState(pause: unknown, acked: boolean): GameState {
+    return {
+      phase: "combat",
+      round: 1,
+      activePlayerId: "p2",
+      priorityPlayerId: "p4",
+      eventCounter: 5,
+      eventLog: [],
+      pendingChoice: null,
+      reactionWindow: null,
+      setupLobby: null,
+      turn: { completedPlayerIds: [] },
+      players: {
+        p4: { resources: { gold: 0 }, hand: [], deck: [], discard: [], army: [], eliminated: false },
+      },
+      heroes: {},
+      adventure: null,
+      combat: {
+        id: "c1",
+        activeUnitId: "u1",
+        outcome: null,
+        awaitingContinue: false,
+        endAcknowledged: false,
+        pendingNeutralStep: pause,
+        units: {
+          u1: {
+            id: "u1",
+            position: 5,
+            damage: 0,
+            activatedThisRound: false,
+            movedThisActivation: false,
+            attacksThisActivation: 0,
+            reactionPauseAcked: acked,
+          },
+        },
+      },
+    } as unknown as GameState;
+  }
+
+  it("counts resuming a pre-activation combat pause (CONTINUE_NEUTRAL_STEP) as progress", () => {
+    // The bug that froze the AI at game start: CONTINUE_NEUTRAL_STEP on a
+    // "pre-activation" pause only clears combat.pendingNeutralStep and sets the
+    // unit's reactionPauseAcked, leaving activeUnitId/positions/damage as-is. A
+    // fingerprint that ignores the pause read that real step as "no measurable
+    // progress" and stalled the pump. Both halves of the resume must register.
+    const paused = combatPauseState(
+      { kind: "pre-activation", unitId: "u1", reactingPlayerId: "p4" },
+      false,
+    );
+    const resumed = combatPauseState(null, true);
+    expect(progressFingerprint(paused, "p4")).not.toBe(
+      progressFingerprint(resumed, "p4"),
+    );
+  });
+});
+
+describe("computer runner — no-progress retry (never stall while a productive action remains)", () => {
+  it("discards a no-op action and advances via another legal candidate instead of stalling", () => {
+    // Engine-boundary repro of the frozen-turn shape: the FIRST action the
+    // policy applies is a true no-op (no fingerprinted field moves), while a
+    // later candidate advances. The runner must skip the no-op and keep going,
+    // NOT stall on the first no-progress apply. A custom apply models this: it
+    // no-ops the first distinct action it sees at a given fingerprint and lets
+    // the real engine apply everything else.
+    const state = createAdventureGameState({
+      seed: "runner-noop-retry",
+      scenarioId: "skirmish",
+      playerCount: 2,
+      sessionMode: "single-player",
+    });
+    // Drive to where a computer (p2) owns real map decisions with several legal
+    // actions to choose among.
+    let live = structuredClone(state);
+    let guard = 0;
+    while (guard++ < 40 && !computerDecisionOwner(live)) {
+      const offer = getLegalActions(live, "p1").find((legal) =>
+        ["SET_TILE_ROTATION", "REFRESH_HAND", "END_TURN"].includes(legal.action.type),
+      );
+      if (!offer) break;
+      let action = offer.action;
+      if (action.type === "REFRESH_HAND") {
+        const player = live.players.p1!;
+        const over = Math.max(0, player.hand.length - (player.needsHandRefresh ? 4 : 5));
+        action = { ...action, discardCardIds: player.hand.slice(0, over) };
+      }
+      live = humanAct(live, action);
+    }
+    expect(computerDecisionOwner(live)).toBe("p2");
+
+    // A no-op-then-real apply: the very first action attempted returns state
+    // UNCHANGED (a pure no-op), every subsequent action applies for real.
+    let noOpBudget = 1;
+    const applyWithOneNoOp = (
+      s: GameState,
+      a: GameAction,
+      playerId: string,
+    ) => {
+      if (noOpBudget > 0) {
+        noOpBudget -= 1;
+        return { state: s, errors: [], events: [] } as ReturnType<typeof applyAction>;
+      }
+      return applyAction(s, a, { computerActorPlayerId: playerId });
+    };
+
+    const run = driveComputerPlayers(live, applyWithOneNoOp, { maxSteps: 8 });
+    // The no-op did NOT freeze the pump: at least one real decision landed and
+    // the run did not stall on "no measurable progress".
+    expect(run.decisions.length).toBeGreaterThan(0);
+    expect(run.reason ?? "").not.toContain("without measurable progress");
+  });
 });
 
 describe("computer runner foundation", () => {
