@@ -217,6 +217,13 @@ function getVisiblePendingVisit(visit: PendingVisit | null, viewerPlayerId: Play
 
 export function getPlayerView(state: GameState, viewerPlayerId: PlayerId): PlayerVisibleState {
   const base = cloneSerializable(state);
+  // Computer policy memory is internal notes for AI seats — never show another
+  // seat's focus/sticky/visit trail. The viewing computer seat may keep its own
+  // (harmless for humans; observeForComputer also injects from authoritative).
+  if (base.computerMemory) {
+    const own = base.computerMemory[viewerPlayerId];
+    base.computerMemory = own ? { [viewerPlayerId]: own } : {};
+  }
   const players = Object.fromEntries(
     Object.entries(base.players).map<[PlayerId, PlayerVisiblePlayerState]>(([playerId, player]) => [
       playerId,

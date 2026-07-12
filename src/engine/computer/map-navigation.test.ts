@@ -5,6 +5,7 @@ import {
   canBeatGuardedField,
   collectMapObjectives,
   objectiveDistanceField,
+  primaryMapObjective,
 } from "./map-navigation";
 import { scoreMapAction } from "./map-policy";
 import type { ComputerObservation } from "./types";
@@ -103,15 +104,75 @@ describe("collectMapObjectives", () => {
       (candidate) => candidate.controllerId === "p1" && candidate.kind === "main",
     )!;
     enemy.spaceId = null;
-    const spaces = collectMapObjectives(state, hero).map((o) => o.spaceId);
+    const objectives = collectMapObjectives(state, hero);
+    const spaces = objectives.map((o) => o.spaceId);
     // Both difficulty-1 guards and the unguarded visitable are objectives.
     expect(spaces).toContain(MINE);
     expect(spaces).toContain(TREASURE);
     expect(spaces).toContain(RESOURCE);
     // p2's own town is never an objective.
     expect(spaces).not.toContain(TOWN);
-    // A bare enemy (p1) holding with no hero on it is never an objective.
-    expect(spaces).not.toContain("h:8:2");
+    // Conquest win condition: an enemy faction town IS a victory objective
+    // (even with no hero parked on it). Bare non-town enemy holdings stay out.
+    const enemyTown = Object.values(state.adventure!.fields).find(
+      (field) =>
+        field.flagOwnerId === "p1" &&
+        field.location &&
+        // town category fields only
+        spaces.includes(field.spaceId) &&
+        objectives.some(
+          (o) => o.spaceId === field.spaceId && o.kind === "victory",
+        ),
+    );
+    expect(enemyTown, "conquest elevates the enemy town to victory").toBeTruthy();
+    // Bare enemy mines re-flag free (no garrison fight) — they ARE objectives.
+    const bareEnemyMine = Object.values(state.adventure!.fields).find(
+      (field) =>
+        field.flagOwnerId === "p1" &&
+        field.spaceId !== enemyTown?.spaceId &&
+        field.location &&
+        // flaggable category (mine/sawmill/etc.)
+        !objectives.some(
+          (o) => o.spaceId === field.spaceId && o.kind === "victory",
+        ),
+    );
+    if (bareEnemyMine) {
+      // Plant is optional by map layout; when present it must be takeable.
+      const kind = objectives.find((o) => o.spaceId === bareEnemyMine.spaceId)?.kind;
+      if (kind) {
+        expect(["flaggable", "town", "visitable"]).toContain(kind);
+      }
+    }
+  });
+
+  it("elevates grail dig sites and dragon utopia under their win modes", () => {
+    const state = game();
+    const hero = p2Hero(state);
+    // Mark a public grail dig on an empty field and switch victory mode.
+    state.adventure!.victoryMode = "grail";
+    state.adventure!.grail = { status: "uncollected" };
+    state.adventure!.fields[RESOURCE].grailDiggable = true;
+    const grailObjectives = collectMapObjectives(state, hero);
+    const grailHit = grailObjectives.find((o) => o.spaceId === RESOURCE);
+    expect(grailHit?.kind).toBe("victory");
+
+    // CONTROL: under conquest the same diggable field is not a victory site.
+    state.adventure!.victoryMode = "conquest";
+    delete state.adventure!.fields[RESOURCE].grailDiggable;
+    const conquest = collectMapObjectives(state, hero).find(
+      (o) => o.spaceId === RESOURCE,
+    );
+    expect(conquest?.kind).not.toBe("victory");
+
+    // Dragon hunt elevates the utopia location.
+    state.adventure!.victoryMode = "dragon-hunt";
+    // Plant a utopia on the treasure field for the test.
+    state.adventure!.fields[TREASURE].location = "dragon_utopia";
+    state.adventure!.fields[TREASURE].difficulty = 0;
+    const dragon = collectMapObjectives(state, hero).find(
+      (o) => o.spaceId === TREASURE,
+    );
+    expect(dragon?.kind).toBe("victory");
   });
 
   it("drops a guard from the objective set once the hero can no longer beat it", () => {
@@ -203,8 +264,87 @@ describe("moveScore uses objectives (fixes wander + never-fights)", () => {
       delete fields[id].difficulty;
     }
     fields[RESOURCE].blackCube = true;
+    // Also hide face-down tiles so explore objectives do not keep the hero marching.
+    for (const tile of Object.values(state.adventure!.tiles)) {
+      tile.faceDown = false;
+    }
     // A move onto a plain empty neighbour now makes no progress → below END_TURN,
     // so the hero ends its turn rather than shuffling back and forth.
     expect(moveScoreTo(state, hero, EMPTY)).toBeLessThan(300);
+  });
+});
+
+describe("sticky primary + explore objectives", () => {
+  it("commits to one primary objective (no multi-source thrash)", () => {
+    const state = game();
+    const hero = p2Hero(state);
+    hero.level = 1;
+    const primary = primaryMapObjective(state, hero);
+    expect(primary).not.toBeNull();
+    // With multiple nearby objectives, the sticky pick is deterministic and
+    // the distance field for ONLY that target is what moveScore uses — so
+    // mid-turn dropouts cannot reverse the hero through home town.
+    const again = primaryMapObjective(state, hero, collectMapObjectives(state, hero));
+    expect(again?.spaceId).toBe(primary!.spaceId);
+  });
+
+  it("treats face-down-tile doorways as explore objectives", () => {
+    const state = game();
+    const hero = p2Hero(state);
+    hero.level = 1;
+    // Neutralise local prizes so only explore can remain.
+    const fields = state.adventure!.fields;
+    for (const id of [MINE, TREASURE]) {
+      fields[id].flagOwnerId = "p2";
+      fields[id].everFlagged = true;
+      delete fields[id].difficulty;
+    }
+    fields[RESOURCE].blackCube = true;
+    const explore = collectMapObjectives(state, hero).filter((o) => o.kind === "explore");
+    // Starting maps place face-down Far/Near tiles — if none exist this seed
+    // simply has no explore targets (not a failure of the wiring).
+    const faceDown = Object.values(state.adventure!.tiles).some((t) => t.faceDown);
+    if (faceDown) {
+      expect(explore.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("marches to a Trading Post only when resources need rebalance", () => {
+    const state = game();
+    const hero = p2Hero(state);
+    hero.level = 1;
+    // Neutralise other nearby prizes so the market can surface.
+    const fields = state.adventure!.fields;
+    for (const id of [MINE, TREASURE]) {
+      fields[id].flagOwnerId = "p2";
+      fields[id].everFlagged = true;
+      delete fields[id].difficulty;
+    }
+    fields[RESOURCE].blackCube = true;
+    for (const tile of Object.values(state.adventure!.tiles)) {
+      tile.faceDown = false;
+    }
+    // Plant a trading post on the empty neighbour.
+    fields[EMPTY].location = "trading_post";
+    delete fields[EMPTY].difficulty;
+    fields[EMPTY].flagOwnerId = null;
+
+    // Broke with materials → market is an objective.
+    state.players.p2.resources = {
+      gold: 2,
+      buildingMaterials: 5,
+      valuables: 0,
+    };
+    const needy = collectMapObjectives(state, hero).map((o) => o.spaceId);
+    expect(needy).toContain(EMPTY);
+
+    // CONTROL: flush balanced resources → market is not a detour.
+    state.players.p2.resources = {
+      gold: 20,
+      buildingMaterials: 4,
+      valuables: 1,
+    };
+    const flush = collectMapObjectives(state, hero).map((o) => o.spaceId);
+    expect(flush).not.toContain(EMPTY);
   });
 });

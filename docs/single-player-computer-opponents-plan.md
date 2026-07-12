@@ -114,22 +114,59 @@ Implemented presentation continuation (July 2026, initial phase 6):
   moves excluded, paced reveal) and `hero-position-override.test.tsx` (the pawn
   draws at exactly the override cell, with an own-cell no-op control).
 
+Implemented continuation (July 2026, AI tightening):
+
+- sticky primary map objective + explore face-down tiles + doorway tile rotation;
+- combat initiation: beatable guards (Quick-Combat level), beatable enemy heroes
+  (`army-strength` / `ENEMY_ENGAGE_RATIO`), known Creature Banks
+  (`creatureBankStrength` / `canBeatCreatureBank`), free re-flag of enemy mines,
+  garrison assault of enemy towns when army-comparable;
+- market: `OPEN_MARKET` / `TRADE_RESOURCES` / Done with utility scoring (no loops),
+  first war-machine buy when gold is healthy; engine e2e in `market-policy.test.ts`;
+- cards/spells: save reactions over PASS, never burn saves as power boost, cast
+  combat damage when legal, expert nudge; live pacing of CAST/PLAY so PvP humans
+  see the same FX as a human cast;
+- hopeless neutral retreat (retreat scores above continue when clearly lost);
+- combat placement: backline ranged / frontline melee.
+
+Implemented continuation (July 2026, Event / visit anti-freeze):
+
+- `pendingCommanderFirstAid` is an exclusive interaction owner (was missing →
+  stall when First Aid opened off the active seat);
+- visit/Event/Astrologers menus scored by nested `VisitStep` utility (auction
+  modest bids, positive morale over dumping units, settlement gold-when-broke,
+  Witch Hut take, PAY_TO reserve, free war-machine grants);
+- choice contexts: place-creature-bank, far-tile-flip, garrison defend-when-
+  funded, subterranean gate, learning level-up, diplomacy recruit;
+- `SKIP_NECROMANCY` / `RESOLVE_VISIT_STEP` foundation + map scores so post-
+  combat gates never sit at score 0 under END_TURN;
+- runner progress fingerprint includes visit step type/length, event auction
+  bids, deal, First Aid, and reward-queue length (secret bids still advance).
+
+Implemented continuation (July 2026, memory / formation / soak):
+
+- **Multi-round economy memory** (`src/engine/computer/memory.ts`, persisted on
+  `GameState.computerMemory`): resource trail (8 samples), inferred focus
+  (army / income / magic / balanced), cross-turn sticky map objective, per-turn
+  visit thrash guard, last market/recruit/build round. Runner refreshes and
+  notes after every computer action; player-view redacts other seats' memory.
+  Map policy biases recruit/build/market from focus; sticky objective feeds
+  `primaryMapObjective`.
+- **Advanced multi-unit formation tactics** (`combat-policy.ts`): formation fit
+  (ranged back / melee front / flying, column diversity, screen adjacency),
+  tactics SWAP only when fit improves (else FINISH), focus-fire on wounded /
+  ally-threatened targets, ranged avoid walking into melee, melee screen moves
+  toward threatened friendly shooters. Placement reads unit TYPE from the
+  definition root (Few/Pack sides rarely re-declare it).
+- **Fixed-seed soak + reconnect** (`src/server/single-player-soak.test.ts`):
+  8 seeds × 1 computer × 5 rounds, a 2-computer short soak, mid-turn JSON
+  snapshot resume, memory survives reconnect. Invariants: no stall, non-negative
+  resources, finite counters.
+
 Still deferred intentionally:
 
-- COMBAT INITIATION on the map (a computer still avoids guarded fields and PvP —
-  the map policy scores them low pending a combat-strength evaluator), combat
-  PLACEMENT with positioning intent (the foundation still deploys every unit with
-  no formation), voluntary RETREAT/surrender (a computer fights a neutral combat
-  to the death via the always-continue fallback), and intentful ability/spell/
-  card use inside combat (the foundation passes reactions and plays nothing);
-- production-quality objective memory, market/Event/card evaluation, and combat
-  strength estimation (remaining phases 4–5);
-- deeper thinking presentation (a per-decision think delay / streamed intermediate
-  broadcasts — the movement replay above is client-side over the settled state,
-  not a server-paced stream), reconnect/resume integration tests, broad
-  interaction coverage, and the fixed-seed soak suite (phase 6);
-- hiding the remaining multiplayer-only affordances inside the room table page
-  (invite/share controls render but the engine rejects unrelated joiners).
+- hiding multiplayer-only invite/share affordances on the SP room table page;
+- optional/nightly hundreds-of-seeds soak expansion.
 
 This document is an implementation contract for an automated contributor. It is intentionally specific to this repository. Follow the phases in order, preserve the existing neutral-army rules, and do not replace engine behavior with UI-only labels.
 

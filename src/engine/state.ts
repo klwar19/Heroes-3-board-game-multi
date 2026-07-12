@@ -9434,12 +9434,45 @@ export type PendingChoice =
     }
   | null;
 
+/**
+ * Bounded per-seat notes for the single-player computer policy (sticky map
+ * objective, economy focus trail, visit thrash guard). Absent in multiplayer
+ * and legacy snapshots. Never holds opponent secrets — only that seat's own
+ * derived priorities. Redacted from other seats' player views.
+ */
+export type ComputerPolicyMemoryState = {
+  lastRound: number;
+  lastTurnKey: string;
+  resourceTrail: Array<{
+    round: number;
+    gold: number;
+    mats: number;
+    vals: number;
+    army: number;
+    buildings: number;
+  }>;
+  focus: "army" | "income" | "magic" | "balanced";
+  stickyObjectiveSpaceId: MapSpaceId | null;
+  stickyObjectiveKind: string | null;
+  stickySinceRound: number;
+  visitedThisTurn: MapSpaceId[];
+  lastMarketRound: number | null;
+  lastRecruitRound: number | null;
+  lastBuildRound: number | null;
+  stagnantArmyTurns: number;
+};
+
 export type GameState = {
   id: string;
   seed: string;
   mode: GameMode;
   sessionMode?: GameSessionMode;
   controllers?: Record<PlayerId, PlayerController>;
+  /**
+   * Single-player computer policy memory keyed by seat. Optional; missing means
+   * empty/default memory for that seat (see `src/engine/computer/memory.ts`).
+   */
+  computerMemory?: Record<PlayerId, ComputerPolicyMemoryState>;
   /** Rules variant; absent on snapshots saved before modes existed (= legacy). */
   ruleset?: GameRuleset;
   /** Wake of Gods module selection; absent on older snapshots and Legacy games (= off). */
