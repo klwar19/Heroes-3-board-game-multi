@@ -3,18 +3,17 @@ import type { GameRuleset, GameState, GameSetupOptions, HouseRuleId } from "./st
 /**
  * Individual house-rule toggles (BINH). Historically the BINH tweaks were an
  * all-or-nothing bundle switched by `ruleset: "binh" | "legacy"`. This registry
- * lifts each tweak into its OWN on/off flag so a BINH table can mix-and-match:
- * keep the split decks but drop the Estates nerf, for example. Legacy remains
- * the strict all-house-rules-off rulebook mode.
+ * lifts each tweak into its OWN on/off flag so a table can mix-and-match:
+ * keep the split decks but drop the Estates nerf, for example.
  *
- * In BINH, an explicit per-rule flag overrides that rule's default. Legacy is a
- * hard rulebook mode: every house rule is OFF, regardless of stale or crafted
- * overrides. This also keeps old persisted rooms honest after the invariant was
- * introduced.
+ * Legacy is a SOFT preset: clicking it turns every house rule off (and clears
+ * overrides), but does NOT lock the toggles — a player may re-enable any rule
+ * afterwards. Explicit per-rule flags always win over the mode default, in
+ * both BINH and Legacy.
  *
  * The resolved booleans are frozen onto `adventure.houseRules` at setup so the
  * engine reads plain booleans during play; `houseRuleEnabled` falls back to the
- * mode default for legacy snapshots / the combat sandbox (no adventure state).
+ * mode default for snapshots / the combat sandbox (no adventure state).
  *
  * IMPORTANT (CLAUDE.md #1): every id in this registry gates REAL engine
  * behaviour with a covering test that fails if the gate is removed. A toggle
@@ -188,13 +187,13 @@ export function houseRuleDefaultFor(ruleset: GameRuleset, id: HouseRuleId): bool
 /**
  * Resolve every house rule to a concrete boolean for the chosen mode + explicit
  * toggles. Called once at setup; the result is frozen onto adventure state.
+ * Explicit flags always win; Legacy only changes the default (all OFF).
  */
 export function resolveHouseRules(options: Pick<GameSetupOptions, "ruleset" | "houseRules">): Record<HouseRuleId, boolean> {
   const explicit = options.houseRules ?? {};
   const resolved = {} as Record<HouseRuleId, boolean>;
   for (const def of HOUSE_RULES) {
-    resolved[def.id] =
-      options.ruleset === "legacy" ? false : explicit[def.id] ?? houseRuleDefaultFor(options.ruleset, def.id);
+    resolved[def.id] = explicit[def.id] ?? houseRuleDefaultFor(options.ruleset, def.id);
   }
   return resolved;
 }
@@ -202,16 +201,11 @@ export function resolveHouseRules(options: Pick<GameSetupOptions, "ruleset" | "h
 /**
  * Whether house rule `id` is ON for this game. Reads the frozen
  * `adventure.houseRules` map when present (the authoritative in-play value),
- * else derives the mode default (combat sandbox / pre-adventure / legacy
- * snapshots that predate the field). Deliberately does NOT import from
- * `ruleset.ts` to keep the dependency one-way (ruleset.ts → house-rules.ts).
+ * else derives the mode default (combat sandbox / pre-adventure / snapshots
+ * that predate the field). Deliberately does NOT import from `ruleset.ts` to
+ * keep the dependency one-way (ruleset.ts → house-rules.ts).
  */
 export function houseRuleEnabled(state: Pick<GameState, "ruleset" | "adventure">, id: HouseRuleId): boolean {
-  // Legacy is the strict rulebook preset. Ignore a stale frozen `true` from an
-  // older room and never let a malformed client opt individual rules back in.
-  if ((state.ruleset ?? "legacy") === "legacy") {
-    return false;
-  }
   const frozen = state.adventure?.houseRules;
   if (frozen && frozen[id] !== undefined) {
     return frozen[id]!;

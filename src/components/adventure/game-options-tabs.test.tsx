@@ -27,9 +27,13 @@ describe("Game options — tabbed layout", () => {
     }
   });
 
-  it("renders every house-rule toggle on the Mode & Rules tab (default ON in BINH)", () => {
+  it("renders mode presets and house-rule toggles on Mode & Rules (BINH default)", () => {
     openOptions();
-    // BINH is the default mode, so each toggle shows ON.
+    expect(screen.getByRole("button", { name: /Legacy/i }).getAttribute("aria-pressed")).toBe("false");
+    expect(screen.getByRole("button", { name: /^BINH/i }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("button", { name: /^WOG/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Tournament/i })).toBeTruthy();
+
     const griffin = screen.getByRole("button", { name: /Griffin buff/ });
     expect(griffin.getAttribute("aria-pressed")).toBe("true");
     expect(screen.getByRole("button", { name: /Split Spell\/Artifact decks by tier/ })).toBeTruthy();
@@ -47,18 +51,80 @@ describe("Game options — tabbed layout", () => {
     });
   });
 
-  it("the Match tab wires the Morale Cards optional-rule toggle", () => {
+  it("Mode & Rules wires Event deck, Morale Cards, and Ban Diplomacy", () => {
     const onAction = openOptions();
-    fireEvent.click(screen.getByRole("tab", { name: /Match/ }));
-    const moraleCardsRow = screen.getByText("Morale Cards").closest(".optionRow");
-    expect(moraleCardsRow).toBeTruthy();
 
-    fireEvent.click(within(moraleCardsRow as HTMLElement).getByRole("button", { name: "On" }));
+    const eventRow = screen.getByText("Event deck").closest(".optionRow");
+    expect(eventRow).toBeTruthy();
+    fireEvent.click(within(eventRow as HTMLElement).getByRole("button", { name: "On" }));
+    expect(onAction).toHaveBeenCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { events: true }
+    });
+
+    onAction.mockClear();
+    const moraleRow = screen.getByText("Morale Cards").closest(".optionRow");
+    fireEvent.click(within(moraleRow as HTMLElement).getByRole("button", { name: "On" }));
     expect(onAction).toHaveBeenCalledWith({
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
       options: { moraleCards: true }
     });
+
+    onAction.mockClear();
+    fireEvent.click(screen.getByRole("button", { name: /Ban Diplomacy/i }));
+    expect(onAction).toHaveBeenCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { tournamentBanDiplomacy: true }
+    });
+  });
+
+  it("Legacy preset turns house rules off without locking them (notice + free toggle)", () => {
+    const onAction = openOptions();
+    fireEvent.click(screen.getByRole("button", { name: /Legacy/i }));
+    expect(onAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "SET_GAME_OPTIONS",
+        playerId: "p1",
+        options: expect.objectContaining({
+          ruleset: "legacy",
+          spellBook: false,
+          tournamentMode: false
+        })
+      })
+    );
+    expect(screen.getByRole("status").textContent).toMatch(/not locked|Nothing is locked|re-enable/i);
+
+    // House-rule chips stay clickable after the preset (soft Legacy).
+    onAction.mockClear();
+    fireEvent.click(screen.getByRole("button", { name: /Estates nerf/ }));
+    expect(onAction).toHaveBeenCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { houseRules: { "estates-nerf": false } }
+    });
+  });
+
+  it("Tournament preset applies competitive package (rules off, bans, hard, AI neutrals)", () => {
+    const onAction = openOptions();
+    fireEvent.click(screen.getByRole("button", { name: /^Tournament/i }));
+    expect(onAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "SET_GAME_OPTIONS",
+        playerId: "p1",
+        options: expect.objectContaining({
+          ruleset: "legacy",
+          tournamentMode: true,
+          tournamentBanDiplomacy: true,
+          tournamentBanHourglass: true,
+          tournamentSecondPlayerMorale: true,
+          difficulty: "hard",
+          pvpNeutralControl: false
+        })
+      })
+    );
   });
 
   it("the Army tab offers the three quick presets and a Random roll", () => {

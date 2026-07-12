@@ -8287,9 +8287,17 @@ export type AdventureState = {
   /**
    * Tournament Mode setup rules (default OFF). When on, Diplomacy and Hourglass
    * of the Evil Hour are removed from shared decks, and the second player gains
-   * 1 positive morale at game start. See GameSetupOptions.tournamentMode.
+   * 1 positive morale at game start. Prefer the granular flags below when set;
+   * this boolean is the all-on convenience / legacy snapshot flag.
+   * See GameSetupOptions.tournamentMode.
    */
   tournamentMode?: boolean;
+  /** Remove Diplomacy from the shared Ability deck (Tournament rule). */
+  tournamentBanDiplomacy?: boolean;
+  /** Remove Hourglass of the Evil Hour from the shared Artifact deck. */
+  tournamentBanHourglass?: boolean;
+  /** Second player gains +1 positive morale at game start (Tournament rule). */
+  tournamentSecondPlayerMorale?: boolean;
   /**
    * PvP Neutral Control mode (optional, multiplayer only). When on, the next
    * live player clockwise from a Neutral combat's fighter commands the Neutral
@@ -8388,15 +8396,30 @@ export type GameSetupOptions = {
    */
   moraleCards?: boolean;
   /**
-   * Tournament Mode setup rules (default OFF, rulebook p.54). When on:
-   *  - Diplomacy (Ability) and Hourglass of the Evil Hour (Artifact) are
-   *    removed from the game before their shared decks are built;
-   *  - the second player (seat after the starting player) gains 1 positive
-   *    morale at the start of the game.
-   * Does NOT implement the rest of Tournament Mode (player-built map, VP
-   * scoring, round-1 mulligan, etc.) — only these two printed setup changes.
+   * Tournament Mode convenience flag (default OFF, rulebook p.54). When on
+   * without granular overrides, enables every tournament rule below (ban
+   * Diplomacy, ban Hourglass, second-player +1 morale). The UI "Tournament
+   * mode" preset also turns off house rules, sets Hard difficulty, and keeps
+   * Neutral AI control. Does NOT implement the rest of printed Tournament Mode
+   * (player-built map, VP scoring, round-1 mulligan, etc.).
    */
   tournamentMode?: boolean;
+  /**
+   * Tournament rule: remove Diplomacy from the shared Ability deck before
+   * shuffling. Heroes who start with Diplomacy still keep their personal copy.
+   * Absent falls back to `tournamentMode`.
+   */
+  tournamentBanDiplomacy?: boolean;
+  /**
+   * Tournament rule: remove Hourglass of the Evil Hour from the shared
+   * Artifact deck before shuffling. Absent falls back to `tournamentMode`.
+   */
+  tournamentBanHourglass?: boolean;
+  /**
+   * Tournament rule: the second player (seat after the starting player) gains
+   * 1 positive morale at game start. Absent falls back to `tournamentMode`.
+   */
+  tournamentSecondPlayerMorale?: boolean;
   /**
    * PvP Neutral Control mode (default OFF, multiplayer only). In every Neutral
    * combat the NEXT live player clockwise from the fighter PLAYS the Neutral

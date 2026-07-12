@@ -21,10 +21,13 @@ const HOSTED_KEY = "homm3bg.pendingRoomHosted";
 const MODE_KEY = "homm3bg.pendingRoomMode";
 /** The match type (Ranked/Normal) chosen at create time. */
 const RANKED_KEY = "homm3bg.pendingRoomRanked";
+/** Join password typed in the lobby before navigating into a locked room. */
+const PASSWORD_KEY = "homm3bg.pendingRoomPassword";
 
 export type PendingRoomName = { roomId: string; name: string };
 export type PendingRoomMode = { roomId: string; mode: GameMode };
 export type PendingRoomRanked = { roomId: string; ranked: boolean };
+export type PendingRoomPassword = { roomId: string; password: string };
 
 export function savePendingRoomName(roomId: string, name: string): void {
   if (typeof window === "undefined" || !name) {
@@ -177,6 +180,53 @@ export function takePendingRoomMode(): PendingRoomMode | null {
       ((parsed as PendingRoomMode).mode === "adventure" || (parsed as PendingRoomMode).mode === "combat-sandbox")
     ) {
       return parsed as PendingRoomMode;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * One-shot handoff of a join password typed in the room browser BEFORE the
+ * player navigates into `/?room=…`. The game page seeds JOIN_ROOM with it so a
+ * locked room never auto-joins without a typed password. Host absence does not
+ * matter — the engine still hashes and checks. Cleared after first read.
+ */
+export function savePendingRoomPassword(roomId: string, password: string): void {
+  if (typeof window === "undefined" || !roomId || !password) {
+    return;
+  }
+  try {
+    window.sessionStorage.setItem(
+      PASSWORD_KEY,
+      JSON.stringify({ roomId, password } satisfies PendingRoomPassword)
+    );
+  } catch {
+    /* Private mode etc. — the in-room password prompt remains the fallback. */
+  }
+}
+
+/** Read AND clear the pending join password (one-shot; never re-applied). */
+export function takePendingRoomPassword(): PendingRoomPassword | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  try {
+    const raw = window.sessionStorage.getItem(PASSWORD_KEY);
+    if (!raw) {
+      return null;
+    }
+    window.sessionStorage.removeItem(PASSWORD_KEY);
+    const parsed: unknown = JSON.parse(raw);
+    if (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      typeof (parsed as PendingRoomPassword).roomId === "string" &&
+      typeof (parsed as PendingRoomPassword).password === "string" &&
+      (parsed as PendingRoomPassword).password.length > 0
+    ) {
+      return parsed as PendingRoomPassword;
     }
     return null;
   } catch {

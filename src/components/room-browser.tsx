@@ -20,6 +20,7 @@ import {
   savePendingRoomHosted,
   savePendingRoomMode,
   savePendingRoomName,
+  savePendingRoomPassword,
   savePendingRoomRanked
 } from "@/lib/pending-room-name";
 import {
@@ -176,7 +177,12 @@ export function RoomBrowser({ mode, labels }: { mode: GameMode; labels: RoomBrow
   );
 
   const goToRoom = useCallback(
-    (roomId: string) => {
+    (roomId: string, password?: string) => {
+      // Locked rooms: the lobby already required a typed password. Seed it for
+      // JOIN_ROOM on the game page so the player is never a half-joined guest.
+      if (password && password.trim()) {
+        savePendingRoomPassword(roomId, password.trim());
+      }
       router.push(`/?room=${encodeURIComponent(roomId)}`);
     },
     [router]
