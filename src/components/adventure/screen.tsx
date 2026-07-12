@@ -2897,6 +2897,20 @@ export function PromptTray({
   // this now-or-never window). This branch renders the window's own actions.
   const firstAidActions = legalActions.filter((legal) => legal.action.type === "COMMANDER_FIRST_AID");
   const firstAidOpen = state.adventure?.pendingCommanderFirstAid?.playerId === viewerPlayerId;
+  // After-combat Necromancy is its OWN adventure field (pendingNecromancy), NOT a
+  // pendingChoice/pendingVisit — exactly like the First Aid window above. Because
+  // combat is already cleared (state.combat === null) by the time the window opens,
+  // the battlefield command dock is gone, and no surface here claimed it — so the
+  // "Skip Necromancy" button never rendered on the map and the winner was forced to
+  // play the reinforce card ("after combat, no choice but to use it"). This branch
+  // renders the window's own actions: play the Necromancy reinforce, or skip it.
+  const necromancyActions = legalActions.filter(
+    (legal) =>
+      legal.action.type === "SKIP_NECROMANCY" ||
+      (legal.action.type === "PLAY_CARD" &&
+        cardLibrary[legal.action.cardId]?.effect.type === "NECROMANCY_REINFORCE")
+  );
+  const necromancyOpen = state.adventure?.pendingNecromancy?.playerId === viewerPlayerId;
   // "The combat round is over" is ONLY the neutral between-rounds gate: spend
   // 1 MP to fight another round, or retreat. RETREAT_FROM_COMBAT *also* appears
   // in the PvP start-of-combat escape window (offered to both heroes before any
@@ -3164,6 +3178,12 @@ export function PromptTray({
     // must render or the turn is stuck.
     title = "First Aid Master — restore one fallen unit";
     body = firstAidActions;
+  } else if (necromancyOpen && necromancyActions.length > 0) {
+    // Necropolis Necromancy window: reinforce a unit for half the gold cost, or
+    // skip. Skipping is a real choice — the winner is not forced to reinforce (the
+    // field reward stays withheld only until they decide, engine-gated).
+    title = "Necromancy — reinforce a unit for half the gold cost, or skip";
+    body = necromancyActions;
   } else if (visit && visit.playerId === viewerPlayerId && visitActions.length > 0) {
     const step = visit.steps[0];
     // The market panel owns the Trading Post / War Machine Factory visits.
