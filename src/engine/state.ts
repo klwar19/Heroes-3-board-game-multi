@@ -87,7 +87,13 @@ export type HouseRuleId =
   // The Dragon Utopia (the Dragon Hunt / Dragon Conqueror win-condition
   // objective) is guarded by FOUR dragons (Azure + Rust + Crystal + Faerie). Off:
   // the rulebook THREE dragons (Azure + Crystal + Black).
-  | "dragon-utopia-four-dragons";
+  | "dragon-utopia-four-dragons"
+  // The Dragon Utopia's guard COUNT scales with the game difficulty — exactly the
+  // number of Neutral units its Field Difficulty would draw (Easy 1 / Normal 2 /
+  // Hard 3 / Impossible 4). The always-present azure slot (Azure/Rust/Crystal,
+  // random per game) is kept whatever the count. Off: the full fixed party (the
+  // 3 or 4 dragons chosen by `dragon-utopia-four-dragons`).
+  | "dragon-utopia-by-difficulty";
 
 /** Optional Wake of Gods modules. WOG is valid only while BINH is selected. */
 export type WogModOptions = {

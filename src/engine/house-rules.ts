@@ -158,6 +158,14 @@ export const HOUSE_RULES: HouseRuleDef[] = [
       "The Dragon Utopia (the Dragon Hunt / Dragon Conqueror objective) is guarded by four dragons — Azure, Rust, Crystal and Faerie. Off: the rulebook three — Azure, Crystal and Black.",
     category: "combat",
     default: true
+  },
+  {
+    id: "dragon-utopia-by-difficulty",
+    label: "Dragon Utopia: scale guards by difficulty",
+    description:
+      "The Dragon Utopia's guard COUNT follows the game difficulty — as many dragons as its Field Difficulty would draw as Neutral units (Easy 1 / Normal 2 / Hard 3 / Impossible 4). The always-present azure slot (Azure, Rust or Crystal, random each game) is always among them. Off: the full fixed party (the 3 or 4 dragons above).",
+    category: "combat",
+    default: true
   }
 ];
 
