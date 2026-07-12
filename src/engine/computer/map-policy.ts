@@ -1,6 +1,10 @@
 import { coreBuildingDefinitions } from "@/data/factions/core";
-import { locationDefinitions } from "@/data/map/locations";
-import type { GameAction } from "../state";
+import type { GameAction, GameState } from "../state";
+import {
+  collectMapObjectives,
+  objectiveDistanceField,
+  type MapObjectiveKind,
+} from "./map-navigation";
 import type { ComputerObservation } from "./types";
 
 export type ComputerActionScore = {
@@ -29,30 +33,62 @@ function buildingScore(buildingId: string): number {
   }
 }
 
+// Stepping directly ONTO an objective (flag it, visit it, or fight a beatable
+// guard) — kept below map develop/discover actions so the hero still builds,
+// recruits and reveals adjacent tiles first, but well above END_TURN (300).
+const OBJECTIVE_ENTER_SCORE: Record<MapObjectiveKind, number> = {
+  "enemy-hero": 770,
+  guard: 760,
+  town: 750,
+  flaggable: 740,
+  visitable: 720,
+};
+// A step that shrinks the distance to the nearest objective without arriving
+// yet: above END_TURN so the march continues, below entering an objective.
+const OBJECTIVE_PROGRESS_BASE = 630;
+// A step that reaches no objective / makes no progress: below END_TURN (300) so
+// the hero stops instead of wandering back and forth over empty fields.
+const NO_PROGRESS_SCORE = 260;
+
 function moveScore(
   observation: ComputerObservation,
   action: Extract<GameAction, { type: "MOVE_HERO" }>,
 ): number {
-  const field = observation.state.adventure?.fields[action.to];
-  if (!field) return 650;
+  const state = observation.state as unknown as GameState;
+  const field = state.adventure?.fields[action.to];
+  const hero = state.heroes[action.heroId];
+  if (!field || !hero) return NO_PROGRESS_SCORE;
 
-  const opposingHero = Object.values(observation.state.heroes).some(
-    (hero) => hero.spaceId === action.to && hero.controllerId !== observation.playerId,
+  const objectives = collectMapObjectives(state, hero);
+  const distance = objectiveDistanceField(state, hero, objectives);
+  const here = hero.spaceId ? distance.get(hero.spaceId) ?? Infinity : Infinity;
+  const to = distance.get(action.to) ?? Infinity;
+
+  // The destination IS an objective: enter it (flag / visit / fight the guard or
+  // a beatable enemy hero). Enemy-hero engagement is gated by army strength in
+  // collectMapObjectives, so reaching this branch already means "worth the risk".
+  const arriving = objectives.find((objective) => objective.spaceId === action.to);
+  if (to === 0 && arriving) {
+    return OBJECTIVE_ENTER_SCORE[arriving.kind];
+  }
+
+  // Not a chosen objective: keep clear of a fight we did not calculate for — an
+  // enemy hero or holding we are too weak to take, and any guard we cannot beat.
+  const opposingHero = Object.values(state.heroes).some(
+    (other) => other.spaceId === action.to && other.controllerId !== observation.playerId,
   );
-  // Until the combat-strength evaluator lands, uncertainty is not treated as
-  // weakness. Do not initiate PvP or attack an enemy holding blindly.
   if (opposingHero || (field.flagOwnerId && field.flagOwnerId !== observation.playerId)) {
     return 200;
   }
-  if ((field.difficulty ?? 0) > 0) return 250;
-
-  const category = locationDefinitions[field.location]?.category;
-  let score = 650;
-  if (category === "town" && field.flagOwnerId !== observation.playerId) score += 150;
-  if (category === "flaggable" && field.flagOwnerId !== observation.playerId) score += 125;
-  if (category === "visitable" && !field.blackCube) score += 105;
-  if (category === "revisitable") score += 45;
-  return score;
+  if ((field.difficulty ?? 0) > 0) {
+    return 250;
+  }
+  // Progress toward the nearest objective: prefer the biggest step in, so the
+  // hero heads straight down the shortest path instead of drifting.
+  if (to < here) {
+    return OBJECTIVE_PROGRESS_BASE + Math.max(0, 10 - to);
+  }
+  return NO_PROGRESS_SCORE;
 }
 
 /**

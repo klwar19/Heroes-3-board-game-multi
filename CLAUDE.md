@@ -452,16 +452,40 @@ settle. Plan/contract: `docs/single-player-computer-opponents-plan.md`; tests:
 `computer-runner.test.ts`, `single-player-live.test.ts`,
 `single-player-combat-resolve.test.ts`, `single-player-privacy.test.ts`,
 `window.test.ts`, `control.test.ts`, `computer-move-replay.test.ts`,
-`hero-position-override.test.tsx`.
+`hero-position-override.test.tsx`, `map-navigation.test.ts`,
+`army-strength.test.ts`, `computer-battle-report.test.ts`,
+`opponent-turn-overlay.test.tsx`.
 
-Leading with what does NOT run (deliberate, phases 4–6 of the plan):
-- **No strategic play yet.** The policy is a total, deterministic FALLBACK: it
-  completes setup (all four formats, human-first dibs so a bot never snipes the
-  human's faction), resolves every mandatory choice/reaction/placement, attacks
-  when its combat unit can, defends otherwise, continues-or-retreats neutral
-  fights sanely — but on its map turn it does NOT build, recruit, or move
-  heroes with intent; it draws and ends the turn. The UI says so.
-- **Computer battles resolve IMMEDIATELY and off-screen; movement is REPLAYED.**
+Leading with what does NOT run (deliberate limits):
+- **Objective-seeking, fighting map play — with limits.** The policy now plays a
+  real map turn: it builds/recruits (already scored in `map-policy.ts`), and its
+  hero MARCHES toward the nearest worthwhile objective instead of wandering, via
+  an unbounded multi-source BFS distance field from the objectives
+  (`src/engine/computer/map-navigation.ts`, `objectiveDistanceField`) — a step is
+  scored by how much it shrinks that distance, so the potential strictly
+  decreases and the hero never oscillates (the old "back and forth" bug; pinned
+  in `map-navigation.test.ts` "stops wandering"). Objectives are unowned
+  towns/flaggable/visitable fields, **beatable neutral guards** and **beatable
+  enemy heroes**. Guard engagement is grounded in the engine's own Quick-Combat
+  rule — `canBeatGuardedField` engages when `neutralBattleLevel >= difficulty`
+  (a strict `>` is a guaranteed Quick-Combat win, `==` an even fight it takes);
+  a guard above the hero's level is avoided (no drawn-guard strength read yet).
+  Enemy-hero (PvP) engagement is gated by an army-strength comparison
+  (`src/engine/computer/army-strength.ts`, `shouldEngageEnemy`, ratio 0.85 — "not
+  afraid" of a roughly even trade); the real combat is still dice-resolved, so
+  luck decides the actual outcome. STILL deferred: exploration-seeking toward
+  face-down tiles (it only DISCOVER_TILEs an adjacent tile), taking a *defended*
+  enemy town/garrison or a bare enemy-flagged holding, and Creature-Bank
+  strength reads. When no objective is reachable the hero ends its turn (no
+  wandering). A critical latent bug this exposed is now fixed: a finished combat
+  parks the game in the `"game-over"` phase until it is acknowledged, and
+  `computerDecisionOwner` used to short-circuit on that phase — so the FIRST map
+  combat the AI won froze the whole game. It now falls through to drive the
+  fighter's `ACKNOWLEDGE_COMBAT_END` while a non-sandbox combat notice is still
+  open (pinned in `computer-runner.test.ts` "marches into a neutral fight … and
+  recovers", which stalls if the fix is reverted).
+- **Computer battles resolve IMMEDIATELY and off-screen; movement is REPLAYED
+  behind an accept-gate, with a battle recap.**
   The whole computer turn (movement AND its neutral/bank combats) settles inside
   the human's action transaction, so the human never watches an AI fight or waits
   on one — the settled response already carries the result. The ONE exception is
@@ -469,18 +493,27 @@ Leading with what does NOT run (deliberate, phases 4–6 of the plan):
   OPEN for the human to play (emergent from `computerDecisionOwner` returning
   null on a human-owned combat slot; pinned in
   `single-player-combat-resolve.test.ts`, AI-only-resolves vs PvP-stops-open).
-  Because the turn settles at once, the client REPLAYS each computer hero's walk
-  slowly, one cell at a time, one hero at a time, so the human can see what each
-  opponent did on the map: `src/components/table/computer-move-replay.ts`
-  (`buildComputerMoveReplay` filters to computer heroes and orders the frames;
-  `useComputerMoveReplay` paces them), rendered via a `heroPositionOverrides`
-  prop on `HexMapBoard` (the pawn draws at the replay cell) plus a "Computer N is
-  moving…" badge. It is PURE PRESENTATION over the already-authoritative state —
-  it never gates rules progression — and is cancelled the instant the human acts
-  or a combat opens. A human's own move keeps its instant path arrow. Pinned in
-  `computer-move-replay.test.ts` and `hero-position-override.test.tsx`. Deeper
-  presentation (a per-decision think delay / server-paced intermediate broadcasts)
-  is still deferred.
+  Because the turn settles at once, when it arrives the human is shown ONE
+  prompt — the `OpponentTurnOverlay` (`src/components/table/opponent-turn-overlay.tsx`)
+  — that first RECAPS each AI battle (win/loss + the reward claimed, built purely
+  from the settled event log by `buildComputerBattleReport` in
+  `src/components/table/computer-battle-report.ts`) and then, when the opponents
+  also moved, gates the map replay behind an explicit "Watch their moves →"
+  click. Only on accept does the client REPLAY each computer hero's walk SLOWLY
+  (`REPLAY_STEP_MS` = 900ms, deliberately slow), one cell at a time, one hero at
+  a time: `computer-move-replay.ts` (`buildComputerMoveReplay` filters to
+  computer heroes and orders the frames; `useComputerMoveReplay` paces them),
+  rendered via a `heroPositionOverrides` prop on `HexMapBoard` (the pawn draws at
+  the replay cell) plus a "Computer N is moving…" badge. Nothing on the map
+  animates until the human accepts, so no opponent moves behind their back. It is
+  PURE PRESENTATION over the already-authoritative state — it never gates rules
+  progression — and is cancelled the instant the human acts or a combat opens
+  (including a PvP fight the AI opens, which clears the overlay and drops the
+  human straight into the defense). A human's own move keeps its instant path
+  arrow. Pinned in `computer-move-replay.test.ts`,
+  `hero-position-override.test.tsx`, `computer-battle-report.test.ts` and
+  `opponent-turn-overlay.test.tsx`. Deeper presentation (a per-decision think
+  delay / server-paced intermediate broadcasts) is still deferred.
 - Computer actions use trusted in-process authority
   (`ReducerOptions.computerActorPlayerId`, never client-deserializable); a
   client cannot forge a computer-seat action, and `ASSIGN_SEAT` refuses
