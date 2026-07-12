@@ -1,5 +1,6 @@
 import { effectiveHandLimit } from "../adventure";
 import type { GameAction, GameState, LegalAction } from "../state";
+import { scoreCombatAction } from "./combat-policy";
 import { scoreMapAction } from "./map-policy";
 import type { ComputerDecision, ComputerObservation } from "./types";
 
@@ -168,7 +169,9 @@ export function chooseComputerAction(
   const tieSeed = `${observation.state.seed}|${observation.state.round}|${observation.state.eventCounter ?? 0}|${observation.playerId}`;
   const ranked = candidates
     .map((legal) => {
-      const strategic = scoreMapAction(observation, legal.action);
+      const strategic =
+        scoreCombatAction(observation, legal.action) ??
+        scoreMapAction(observation, legal.action);
       return {
         legal,
         ...(strategic ?? foundationScore(legal.action)),

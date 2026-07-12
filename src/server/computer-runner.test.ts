@@ -4,7 +4,9 @@ import {
   computerDecisionOwner,
   createAdventureGameState,
   createAdventureLobbyState,
+  createInitialGameState,
   getLegalActions,
+  standardComputerController,
   type ComputerDecision,
   type GameAction,
   type GameState,
@@ -322,5 +324,87 @@ describe("computer map turns", () => {
       "computer should move or discover a tile when a safe exploration action exists",
     ).toBe(true);
     expect(computerDecisionOwner(state)).toBeNull();
+  });
+});
+
+describe("computer combat activation", () => {
+  it("drives its active unit to remove the lethal target and hands control back", () => {
+    const state = createInitialGameState("computer-combat-target");
+    state.controllers = { p2: standardComputerController() };
+    const combat = state.combat!;
+    // Deterministic dice at the die's expected value (0), matching the policy's
+    // damage model; empty hands/effects so no reaction window interrupts the
+    // resolve and the attack (and removal) completes inside one applyAction.
+    combat.dice.scriptedRolls = Array(60).fill(0);
+    combat.dice.rollCount = 0;
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    state.activeEffects = [];
+
+    // Only the Dread Knights act this p2 round: the other two are done.
+    combat.units.unit_p2_skeletons.activatedThisRound = true;
+    combat.units.unit_p2_vampires.activatedThisRound = true;
+
+    const attacker = combat.units.unit_p2_dread_knights;
+    attacker.abilities = [];
+    attacker.attack = 10;
+    attacker.position = 9;
+    attacker.activatedThisRound = false;
+
+    // The UNIQUE lethal target: a fragile marksmen adjacent to the attacker.
+    const lethal = combat.units.unit_p1_marksmen;
+    lethal.abilities = [];
+    lethal.variant = "few"; // no Pack->Few flip absorbs the blow
+    lethal.defense = 0;
+    lethal.maxHealth = 4;
+    lethal.damage = 0;
+    lethal.position = 8;
+
+    // Every other enemy is durable (non-lethal), so the marksmen is the only
+    // removal the policy can score as lethal.
+    for (const id of ["unit_p1_griffins", "unit_p1_crusaders"] as const) {
+      const durable = combat.units[id];
+      durable.abilities = [];
+      durable.defense = 2;
+      durable.maxHealth = 40;
+      durable.damage = 0;
+    }
+    combat.units.unit_p1_crusaders.position = 13; // also adjacent to the attacker
+    combat.units.unit_p1_griffins.position = 12;
+
+    state.activePlayerId = "p2";
+    combat.activeUnitId = "unit_p2_dread_knights";
+
+    const run = driveComputerPlayers(state);
+    expect(run.stalled, run.reason).toBe(false);
+
+    // The first attack the policy chose was the lethal removal, not a durable one.
+    const firstAttack = run.decisions.find(
+      (decision) =>
+        decision.action.type === "ATTACK_UNIT" ||
+        decision.action.type === "MOVE_AND_ATTACK_UNIT",
+    );
+    expect(firstAttack?.policy).toBe("combat.attack-target");
+    expect((firstAttack?.action as { defenderId: string }).defenderId).toBe(
+      "unit_p1_marksmen",
+    );
+
+    // Observable outcome: the marksmen is removed, the durable enemies survive,
+    // and control returns to the human once no computer slot is owed.
+    const after = run.state.combat!.units;
+    expect(after.unit_p1_marksmen.damage).toBeGreaterThanOrEqual(
+      after.unit_p1_marksmen.maxHealth,
+    );
+    expect(after.unit_p1_crusaders.damage).toBeLessThan(
+      after.unit_p1_crusaders.maxHealth,
+    );
+    expect(
+      run.state.eventLog.some(
+        (event) =>
+          event.type === "UNIT_REMOVED" &&
+          event.unitId === "unit_p1_marksmen",
+      ),
+    ).toBe(true);
+    expect(computerDecisionOwner(run.state)).toBeNull();
   });
 });
