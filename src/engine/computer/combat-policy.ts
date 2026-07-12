@@ -1,3 +1,8 @@
+import { getUnitSide } from "../adventure";
+import {
+  ATTACKER_BACKLINE,
+  DEFENDER_BACKLINE,
+} from "../adventure-reducer";
 import { isAdjacent } from "../battlefield";
 import type { CombatState, CombatUnitState, GameAction } from "../state";
 import type { ComputerActionScore } from "./map-policy";
@@ -67,11 +72,60 @@ function attackScore(
   return Math.max(ATTACK_FLOOR, Math.min(ATTACK_CEIL, ATTACK_BASE + quality));
 }
 
+function isBacklineCell(combat: CombatState, playerId: string, position: number): boolean {
+  if (playerId === combat.attackerPlayerId) {
+    return ATTACKER_BACKLINE.includes(position);
+  }
+  return DEFENDER_BACKLINE.includes(position);
+}
+
+/**
+ * Placement: ranged units prefer the backline (like neutral AI); melee/flying
+ * prefer the frontline so they can reach enemies sooner. Base stays in the
+ * PLACE band (above FINISH = 900 foundation when units remain) via foundation
+ * PLACE_COMBAT_UNIT = 920 — we only order WITHIN that stage.
+ */
+function placeScore(
+  observation: ComputerObservation,
+  action: Extract<GameAction, { type: "PLACE_COMBAT_UNIT" }>,
+): number {
+  const combat = observation.state.combat;
+  const player = observation.state.players[observation.playerId];
+  if (!combat || !player) {
+    return 920;
+  }
+  const armyUnit = player.army.find((unit) => unit.id === action.armyUnitId);
+  const existing = Object.values(combat.units).find(
+    (unit) => unit.armyUnitId === action.armyUnitId,
+  );
+  const sideType =
+    existing?.type ??
+    (armyUnit
+      ? getUnitSide(armyUnit.unitDefId, armyUnit.side)?.type
+      : undefined);
+  const isRanged = sideType === "ranged";
+
+  const back = isBacklineCell(combat, observation.playerId, action.position);
+  let score = 920;
+  if (isRanged) {
+    score += back ? 25 : -15;
+  } else {
+    // Melee / flying: frontline first so they can reach.
+    score += back ? -10 : 20;
+  }
+  // Prefer more central columns slightly (positions 1,2 / 13,14 style).
+  const col = action.position % 4;
+  score += col === 1 || col === 2 ? 3 : 0;
+  if (armyUnit) {
+    score += Math.min(5, armyUnit.permanentAttackBonus ?? 0);
+  }
+  return score;
+}
+
 /**
  * Strategic scores for a computer's own combat activation. Returns null for any
- * action it does not specialize (placement, tactics, defend, end-activation,
- * ability plays, continue/retreat…), delegating those to the map/foundation
- * layers unchanged.
+ * action it does not specialize (tactics, defend, end-activation, ability plays,
+ * continue/retreat…), delegating those to the map/foundation layers unchanged.
  */
 export function scoreCombatAction(
   observation: ComputerObservation,
@@ -81,6 +135,11 @@ export function scoreCombatAction(
   if (!combat) return null;
 
   switch (action.type) {
+    case "PLACE_COMBAT_UNIT":
+      return {
+        score: placeScore(observation, action),
+        policy: "combat.place-formation",
+      };
     case "ATTACK_UNIT":
     case "MOVE_AND_ATTACK_UNIT": {
       const attacker = combat.units[action.attackerId];
@@ -120,6 +179,9 @@ export function scoreCombatAction(
       }
       return { score: 260, policy: "combat.hold-position" };
     }
+    case "USE_UNIT_ABILITY":
+      // Prefer spending an activation ability over a plain defend when offered.
+      return { score: 540, policy: "combat.use-ability" };
     default:
       return null;
   }

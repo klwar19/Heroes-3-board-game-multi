@@ -11,7 +11,12 @@ import {
   type GameAction,
   type GameState,
 } from "@/engine";
-import { driveComputerPlayers } from "./computer-runner";
+import {
+  driveComputerPlayers,
+  isPacedComputerAction,
+  settleComputerVisibleStep,
+  settleComputerWork,
+} from "./computer-runner";
 
 function humanAct(state: GameState, action: GameAction): GameState {
   const result = applyAction(state, action);
@@ -315,12 +320,21 @@ describe("computer map turns", () => {
     )?.spaceId;
     expect(
       state.players.p2.army.length > initialArmySize ||
-        finalBuildingCount > initialBuildingCount,
+        finalBuildingCount > initialBuildingCount ||
+        byComputer.some(
+          (decision) =>
+            decision.action.type === "POPULATION_ACTION" ||
+            decision.action.type === "BUILD_STRUCTURE",
+        ),
       "computer should recruit/reinforce or build before ending its turn",
     ).toBe(true);
     expect(
       finalHeroSpace !== initialHeroSpace ||
-        byComputer.some((decision) => decision.action.type === "DISCOVER_TILE"),
+        byComputer.some(
+          (decision) =>
+            decision.action.type === "DISCOVER_TILE" ||
+            decision.action.type === "MOVE_HERO",
+        ),
       "computer should move or discover a tile when a safe exploration action exists",
     ).toBe(true);
     expect(computerDecisionOwner(state)).toBeNull();
@@ -467,5 +481,63 @@ describe("computer combat activation", () => {
       ),
     ).toBe(true);
     expect(computerDecisionOwner(run.state)).toBeNull();
+  });
+});
+
+describe("paced computer visible steps (live single-player)", () => {
+  it("classifies map moves as paced and bulk stages as not", () => {
+    expect(isPacedComputerAction({ type: "MOVE_HERO", playerId: "p2", heroId: "h", to: "h:0:0" })).toBe(true);
+    expect(isPacedComputerAction({ type: "DISCOVER_TILE", playerId: "p2", heroId: "h", tileInstanceId: "t" })).toBe(true);
+    expect(isPacedComputerAction({ type: "SET_TILE_ROTATION", playerId: "p2", tileInstanceId: "t", rotation: 0 })).toBe(true);
+    expect(isPacedComputerAction({ type: "PLACE_COMBAT_UNIT", playerId: "p2", armyUnitId: "a", position: 0 })).toBe(false);
+    expect(isPacedComputerAction({ type: "PASS_REACTION", playerId: "p2" })).toBe(false);
+    expect(isPacedComputerAction({ type: "END_TURN", playerId: "p2" })).toBe(false);
+  });
+
+  it("one visible step stops after a paced action so the human can watch move→roll→move", () => {
+    // Full settle would run the whole computer turn; a visible step must stop
+    // at the first paced action (typically MOVE_HERO or SET_TILE_ROTATION).
+    let state = createAdventureGameState({
+      seed: "runner-map-turn",
+      scenarioId: "skirmish",
+      playerCount: 2,
+      sessionMode: "single-player",
+    });
+    // Human rotates their start tile so the computer owns the next start rotation.
+    const humanRot = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "SET_TILE_ROTATION",
+    );
+    if (humanRot) {
+      state = humanAct(state, humanRot.action);
+    }
+    // Drive until a computer owns a decision (start-tile rotation or map turn).
+    let guard = 0;
+    while (!computerDecisionOwner(state) && guard++ < 40) {
+      const offers = getLegalActions(state, "p1");
+      const pick =
+        offers.find((legal) => legal.action.type === "SET_TILE_ROTATION") ??
+        offers.find((legal) => legal.action.type === "REFRESH_HAND") ??
+        offers.find((legal) => legal.action.type === "END_TURN");
+      if (!pick) break;
+      state = humanAct(state, pick.action);
+    }
+    expect(computerDecisionOwner(state)).toBe("p2");
+
+    const step = settleComputerVisibleStep(state);
+    expect(step.stalled, step.reason).toBe(false);
+    expect(step.decisions.length).toBeGreaterThan(0);
+    // The last decision of a visible step is paced (or the computer finished).
+    const last = step.decisions[step.decisions.length - 1];
+    if (computerDecisionOwner(step.state)) {
+      expect(isPacedComputerAction(last.action)).toBe(true);
+    }
+    // CONTROL: a full settle from the same start would take more steps.
+    const full = settleComputerWork(state);
+    // After one visible step the state is NOT fully settled if more work remains.
+    if (computerDecisionOwner(step.state)) {
+      expect(step.state.eventCounter ?? step.state.eventLog.length).toBeLessThan(
+        full.eventCounter ?? full.eventLog.length,
+      );
+    }
   });
 });

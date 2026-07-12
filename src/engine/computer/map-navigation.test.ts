@@ -5,6 +5,7 @@ import {
   canBeatGuardedField,
   collectMapObjectives,
   objectiveDistanceField,
+  primaryMapObjective,
 } from "./map-navigation";
 import { scoreMapAction } from "./map-policy";
 import type { ComputerObservation } from "./types";
@@ -203,8 +204,48 @@ describe("moveScore uses objectives (fixes wander + never-fights)", () => {
       delete fields[id].difficulty;
     }
     fields[RESOURCE].blackCube = true;
+    // Also hide face-down tiles so explore objectives do not keep the hero marching.
+    for (const tile of Object.values(state.adventure!.tiles)) {
+      tile.faceDown = false;
+    }
     // A move onto a plain empty neighbour now makes no progress → below END_TURN,
     // so the hero ends its turn rather than shuffling back and forth.
     expect(moveScoreTo(state, hero, EMPTY)).toBeLessThan(300);
+  });
+});
+
+describe("sticky primary + explore objectives", () => {
+  it("commits to one primary objective (no multi-source thrash)", () => {
+    const state = game();
+    const hero = p2Hero(state);
+    hero.level = 1;
+    const primary = primaryMapObjective(state, hero);
+    expect(primary).not.toBeNull();
+    // With multiple nearby objectives, the sticky pick is deterministic and
+    // the distance field for ONLY that target is what moveScore uses — so
+    // mid-turn dropouts cannot reverse the hero through home town.
+    const again = primaryMapObjective(state, hero, collectMapObjectives(state, hero));
+    expect(again?.spaceId).toBe(primary!.spaceId);
+  });
+
+  it("treats face-down-tile doorways as explore objectives", () => {
+    const state = game();
+    const hero = p2Hero(state);
+    hero.level = 1;
+    // Neutralise local prizes so only explore can remain.
+    const fields = state.adventure!.fields;
+    for (const id of [MINE, TREASURE]) {
+      fields[id].flagOwnerId = "p2";
+      fields[id].everFlagged = true;
+      delete fields[id].difficulty;
+    }
+    fields[RESOURCE].blackCube = true;
+    const explore = collectMapObjectives(state, hero).filter((o) => o.kind === "explore");
+    // Starting maps place face-down Far/Near tiles — if none exist this seed
+    // simply has no explore targets (not a failure of the wiring).
+    const faceDown = Object.values(state.adventure!.tiles).some((t) => t.faceDown);
+    if (faceDown) {
+      expect(explore.length).toBeGreaterThan(0);
+    }
   });
 });

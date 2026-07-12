@@ -27,7 +27,12 @@ import {
   type GameSessionMode,
   type GameState
 } from "@/engine";
-import { settleComputerWork } from "@/server/computer-runner";
+import {
+  computerPumpOwed,
+  computerStepDelayMs,
+  settleComputerForLiveAction,
+  settleComputerVisibleStep,
+} from "@/server/computer-runner";
 import { reportFinishedMatch } from "@/server/match-report-trigger";
 import {
   deriveLobbyRecord,
@@ -508,11 +513,12 @@ export function submitRoomAction(
     ? driveAfkDrop(result.state, () => ({ entropy: freshEntropy(), now: Date.now() }))
     : result.state;
 
-  // Single-player: the computer seats now play until the next HUMAN decision,
-  // inside this same synchronous transaction — the persisted snapshot, the
-  // broadcast frames and the match report below all see the settled state.
-  // A no-op for every game without live computer seats.
-  const settledState = settleComputerWork(afkSettledState);
+  // Single-player: setup still bulk-settles computers (draft picks are boring
+  // to watch). Once the adventure is live, this frame only stores the human's
+  // post-action state — computers play one action at a time via the paced
+  // pump so the human watches real moves, dice rolls, and rewards step by
+  // step (not a post-hoc walk over an already-finished turn).
+  const settledState = settleComputerForLiveAction(afkSettledState);
 
   const next: GameRoomRecord = {
     roomId,
@@ -537,11 +543,126 @@ export function submitRoomAction(
   const snapshot = withBootId(cloneSerializable(next));
   notifyRoomListeners(roomId, snapshot);
 
+  // Adventure/combat: schedule the one-step computer pump if a seat still owes
+  // a decision. Each tick broadcasts, so the client sees move → roll → move.
+  if (computerPumpOwed(settledState)) {
+    scheduleComputerPump(roomId, computerStepDelayMs(settledState));
+  } else {
+    cancelComputerPump(roomId);
+  }
+
   return {
     snapshot,
     result,
     ...(pendingMatchReport ? { pendingMatchReport } : {})
   };
+}
+
+// ---------------------------------------------------------------------------
+// Single-player paced computer pump (Next.js in-process store)
+// ---------------------------------------------------------------------------
+//
+// After a human action the adventure does NOT bulk-resolve the computer turn.
+// Instead each computer decision is applied after a short delay, versioned and
+// pushed over SSE so the human sees the real map/combat step (a move, a
+// resource die, a visit reward) before the next one. Setup still bulk-settles
+// inside settleComputerForLiveAction. PartyKit mirrors this with Durable Object
+// alarms (see party/index.ts).
+
+const computerPumpTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+export function cancelComputerPump(roomId: string): void {
+  const timer = computerPumpTimers.get(roomId);
+  if (timer !== undefined) {
+    clearTimeout(timer);
+    computerPumpTimers.delete(roomId);
+  }
+}
+
+function scheduleComputerPump(roomId: string, delayMs: number): void {
+  cancelComputerPump(roomId);
+  computerPumpTimers.set(
+    roomId,
+    setTimeout(() => {
+      computerPumpTimers.delete(roomId);
+      try {
+        pumpComputerOnce(roomId);
+      } catch (error) {
+        console.warn("[computer-runner] paced pump failed", error);
+      }
+    }, Math.max(0, delayMs)),
+  );
+}
+
+function pumpComputerOnce(roomId: string): void {
+  // Only pump rooms still held in memory — never recreate a deleted room.
+  const current = roomStore.get(roomId);
+  if (!current || current.closed) {
+    return;
+  }
+  if (!computerPumpOwed(current.state)) {
+    return;
+  }
+
+  const before = current.state;
+  const run = settleComputerVisibleStep(before);
+  if (run.decisions.length === 0) {
+    // Stalled or nothing to do — stop pumping rather than spinning.
+    return;
+  }
+
+  const next: GameRoomRecord = {
+    roomId,
+    version: current.version + 1,
+    ...(current.createdAt ? { createdAt: current.createdAt } : {}),
+    ...(current.createdByName ? { createdByName: current.createdByName } : {}),
+    updatedAt: new Date().toISOString(),
+    state: run.state,
+  };
+  roomStore.set(roomId, next);
+  persistRoom(next);
+  // Match report may fire mid-computer-turn (last faction standing, etc.).
+  void reportFinishedMatch(before, run.state);
+  notifyRoomListeners(roomId, withBootId(cloneSerializable(next)));
+
+  if (computerPumpOwed(run.state)) {
+    scheduleComputerPump(roomId, computerStepDelayMs(run.state));
+  }
+}
+
+/**
+ * Test helper: cancel any pending timer and run the paced computer pump to
+ * idle synchronously (no real wall-clock delays). Live play uses the timered
+ * path so humans can watch each step.
+ */
+export function drainComputerPumpSync(roomId: string): void {
+  cancelComputerPump(roomId);
+  let guard = 0;
+  while (guard < 512) {
+    const current = roomStore.get(roomId);
+    if (!current || !computerPumpOwed(current.state)) {
+      return;
+    }
+    // Inline one tick without re-arming the timer.
+    const before = current.state;
+    const run = settleComputerVisibleStep(before);
+    if (run.decisions.length === 0) {
+      return;
+    }
+    const next: GameRoomRecord = {
+      roomId,
+      version: current.version + 1,
+      ...(current.createdAt ? { createdAt: current.createdAt } : {}),
+      ...(current.createdByName ? { createdByName: current.createdByName } : {}),
+      updatedAt: new Date().toISOString(),
+      state: run.state,
+    };
+    roomStore.set(roomId, next);
+    persistRoom(next);
+    void reportFinishedMatch(before, run.state);
+    notifyRoomListeners(roomId, withBootId(cloneSerializable(next)));
+    guard += 1;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -871,6 +992,7 @@ export function closeRoom(
   }
   // Open table: no ownership to protect — anyone may close it.
 
+  cancelComputerPump(roomId);
   roomStore.delete(roomId);
   deletePersistedRoom(roomId);
   // Tell everyone still connected that the room is gone (last frame on the

@@ -24,7 +24,12 @@ import {
   type GameSessionMode,
   type GameState
 } from "@/engine";
-import { settleComputerWork } from "@/server/computer-runner";
+import {
+  computerPumpOwed,
+  computerStepDelayMs,
+  settleComputerForLiveAction,
+  settleComputerVisibleStep,
+} from "@/server/computer-runner";
 import { deriveLobbyRecord, lobbyRecordSignature, LOBBY_SINGLETON_ID } from "@/server/lobby-registry";
 import { detectFinishedMatch } from "@/server/match-report";
 import { httpTokenVerifier, memoizeVerifier, type TokenVerifier } from "@/server/verified-actor";
@@ -583,6 +588,49 @@ export default class GameRoomServer implements Party.Server {
     }
   }
 
+  /**
+   * Single-player paced computer turns. Durable Object alarms survive
+   * hibernation (setTimeout does not with `hibernate: true`). Each alarm tick
+   * applies ONE computer action, broadcasts, and re-arms until the human owns
+   * the next decision — so the human watches move → roll → reward → move.
+   */
+  private async scheduleComputerPump(delayMs: number): Promise<void> {
+    try {
+      await this.room.storage.setAlarm(Date.now() + Math.max(0, delayMs));
+    } catch (error) {
+      console.warn("[computer-runner] failed to arm computer alarm", error);
+    }
+  }
+
+  async onAlarm(): Promise<void> {
+    const continuePump = await this.serialized(async () => {
+      const current = this.snapshot;
+      if (!current || !computerPumpOwed(current.state)) {
+        return false;
+      }
+      const before = current.state;
+      const run = settleComputerVisibleStep(before);
+      if (run.decisions.length === 0) {
+        return false;
+      }
+      this.snapshot = {
+        roomId: this.room.id,
+        version: current.version + 1,
+        updatedAt: new Date().toISOString(),
+        ...this.creationMeta(run.state),
+        state: run.state,
+      };
+      await this.persist();
+      await this.broadcastSnapshot();
+      // Match report may fire mid-computer-turn (last faction standing, etc.).
+      void this.reportFinishedMatchToApp(before, run.state);
+      return computerPumpOwed(run.state);
+    });
+    if (continuePump && this.snapshot) {
+      await this.scheduleComputerPump(computerStepDelayMs(this.snapshot.state));
+    }
+  }
+
   onConnect(connection: Party.Connection): void {
     // Single-player creation (plan §5.1): the creating browser's FIRST
     // connection carries ?singlePlayer=<count> on the socket URL. Honored only
@@ -834,14 +882,13 @@ export default class GameRoomServer implements Party.Server {
         }
         // A passed AFK kick vote or an expired 10-minute turn: drive the forced
         // resolution through the normal action pipeline until it settles (or
-        // the table must wait). Then single-player computer seats play until
-        // the next HUMAN decision — still inside this serialized transaction,
-        // so the persisted snapshot, every broadcast frame and the match
-        // report see the settled state (a no-op without computer seats).
+        // the table must wait). Setup still bulk-settles computers; adventure
+        // computers pace one step at a time via onAlarm so the human watches
+        // real moves/rolls (not a post-hoc walk over a finished turn).
         const afkSettled = forcedResolutionPending(result.state)
           ? driveAfkDrop(result.state, () => ({ entropy: freshEntropy(), now: Date.now() }))
           : result.state;
-        const settled = settleComputerWork(afkSettled);
+        const settled = settleComputerForLiveAction(afkSettled);
         this.snapshot = {
           roomId: this.room.id,
           version: current.version + 1,
@@ -851,8 +898,19 @@ export default class GameRoomServer implements Party.Server {
         };
         await this.persist();
         await this.broadcastSnapshot();
-        return { errors, applied: true, prev: current.state, replyBase: this.snapshot };
+        return {
+          errors,
+          applied: true,
+          prev: current.state,
+          replyBase: this.snapshot,
+          scheduleComputer: computerPumpOwed(settled),
+          computerDelayMs: computerStepDelayMs(settled),
+        };
       });
+
+      if (outcome.applied && "scheduleComputer" in outcome && outcome.scheduleComputer) {
+        await this.scheduleComputerPump(outcome.computerDelayMs ?? computerStepDelayMs(this.snapshot?.state as GameState));
+      }
 
       const reply: ServerMessage = {
         type: "action-result",
@@ -1029,13 +1087,12 @@ export default class GameRoomServer implements Party.Server {
           });
           if (result.errors.length === 0) {
             // A passed AFK kick vote or an expired turn: settle the forced
-            // resolution before storing/reporting. Then let single-player
-            // computer seats play until the next human decision (mirrors the
-            // WebSocket action path — the two must not drift).
+            // resolution before storing/reporting. Setup bulk-settles computers;
+            // adventure paces via alarm (mirrors the WebSocket action path).
             const afkSettled = forcedResolutionPending(result.state)
               ? driveAfkDrop(result.state, () => ({ entropy: freshEntropy(), now: Date.now() }))
               : result.state;
-            const settled = settleComputerWork(afkSettled);
+            const settled = settleComputerForLiveAction(afkSettled);
             this.snapshot = {
               roomId: this.room.id,
               version: current.version + 1,
@@ -1045,17 +1102,30 @@ export default class GameRoomServer implements Party.Server {
             };
             await this.persist();
             await this.broadcastSnapshot();
+            return {
+              result,
+              prev: current.state,
+              applied: true,
+              replyBase: this.snapshot ?? current,
+              scheduleComputer: computerPumpOwed(settled),
+              computerDelayMs: computerStepDelayMs(settled),
+            };
           }
           return {
             result,
             prev: current.state,
-            applied: result.errors.length === 0,
-            replyBase: this.snapshot ?? current
+            applied: false,
+            replyBase: this.snapshot ?? current,
+            scheduleComputer: false,
+            computerDelayMs: 0,
           };
         });
         if (outcome.applied) {
           await this.reportToLobby();
           await this.reportFinishedMatchToApp(outcome.prev, this.snapshot?.state ?? outcome.prev);
+          if (outcome.scheduleComputer) {
+            await this.scheduleComputerPump(outcome.computerDelayMs);
+          }
         }
         const redacted = this.redactSnapshotForActor(this.signed(this.snapshot ?? outcome.replyBase), {
           clientId: actorClientId,

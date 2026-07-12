@@ -8,6 +8,7 @@ import {
   isFieldGuarded,
   neutralBattleLevel,
 } from "../adventure";
+import { canHeroDiscoverAdjacentTile } from "../adventure-reducer";
 import type {
   GameState,
   HeroState,
@@ -27,6 +28,15 @@ import { shouldEngageEnemy } from "./army-strength";
  * shrinks that distance turns the wander into a march — the potential strictly
  * decreases along the chosen path, so a hero never oscillates.
  *
+ * Sticky primary objective: mid-turn, when one objective is visited and drops
+ * out of the set, multi-source BFS can reverse the hero toward a DIFFERENT
+ * objective (often via home town). `primaryMapObjective` picks ONE target for
+ * the turn — highest kind priority, then closest, then stable spaceId — so the
+ * march stays committed instead of thrashing through town.
+ *
+ * Explore objectives: face-down tiles are worth marching to (a field from which
+ * DISCOVER_TILE is legal). Without them the AI never expands the map.
+ *
  * Every read here is PUBLIC (map fields, difficulties, hero positions/levels),
  * so running it on the seat's redacted view is identical to running it on the
  * authoritative state — no hidden information reaches a decision.
@@ -38,11 +48,22 @@ export type MapObjectiveKind =
   | "guard"
   | "town"
   | "flaggable"
-  | "visitable";
+  | "visitable"
+  | "explore";
 
 export type MapObjective = {
   spaceId: MapSpaceId;
   kind: MapObjectiveKind;
+};
+
+/** Higher = more important. Used by sticky primary selection. */
+export const MAP_OBJECTIVE_PRIORITY: Record<MapObjectiveKind, number> = {
+  "enemy-hero": 6,
+  guard: 5,
+  town: 4,
+  flaggable: 3,
+  visitable: 2,
+  explore: 1,
 };
 
 /**
@@ -124,6 +145,48 @@ function objectiveKind(
   return null;
 }
 
+/**
+ * Fields from which this hero could DISCOVER a still face-down tile (same
+ * geometry/seal rules the legal-actions offer uses). Marching here then
+ * flipping the tile is how the AI expands the map.
+ */
+function collectExploreObjectives(
+  state: GameState,
+  hero: HeroState,
+): MapObjective[] {
+  const adventure = state.adventure;
+  if (!adventure || !hero.spaceId) {
+    return [];
+  }
+  const faceDown = Object.values(adventure.tiles).filter((tile) => tile.faceDown);
+  if (faceDown.length === 0) {
+    return [];
+  }
+  const found = new Map<MapSpaceId, MapObjective>();
+  for (const field of Object.values(adventure.fields)) {
+    // Skip fields already claimed as a stronger objective kind.
+    if (found.has(field.spaceId)) {
+      continue;
+    }
+    // Don't park explore objectives under enemy heroes / unbeatable guards.
+    const occupant = heroAtSpace(state, field.spaceId, hero.id);
+    if (occupant && occupant.controllerId !== hero.controllerId) {
+      continue;
+    }
+    if (isFieldGuarded(field) && !canBeatGuardedField(state, hero, field)) {
+      continue;
+    }
+    const probe: HeroState = { ...hero, spaceId: field.spaceId };
+    for (const tile of faceDown) {
+      if (canHeroDiscoverAdjacentTile(state, probe, tile)) {
+        found.set(field.spaceId, { spaceId: field.spaceId, kind: "explore" });
+        break;
+      }
+    }
+  }
+  return [...found.values()];
+}
+
 /** Every objective field on the map for this hero, in stable spaceId order. */
 export function collectMapObjectives(
   state: GameState,
@@ -131,11 +194,18 @@ export function collectMapObjectives(
 ): MapObjective[] {
   const fields = state.adventure?.fields ?? {};
   const objectives: MapObjective[] = [];
+  const claimed = new Set<MapSpaceId>();
   for (const spaceId of Object.keys(fields).sort()) {
     const field = fields[spaceId];
     const kind = objectiveKind(state, hero, field);
     if (kind) {
       objectives.push({ spaceId, kind });
+      claimed.add(spaceId);
+    }
+  }
+  for (const explore of collectExploreObjectives(state, hero)) {
+    if (!claimed.has(explore.spaceId)) {
+      objectives.push(explore);
     }
   }
   return objectives;
@@ -193,4 +263,80 @@ export function objectiveDistanceField(
   }
 
   return distance;
+}
+
+/**
+ * Distance from the hero's CURRENT cell to a single objective (undefined if
+ * unreachable). Built by running the BFS with that objective alone.
+ */
+export function distanceFromHeroTo(
+  state: GameState,
+  hero: HeroState,
+  spaceId: MapSpaceId,
+): number | undefined {
+  if (!hero.spaceId) {
+    return undefined;
+  }
+  if (hero.spaceId === spaceId) {
+    return 0;
+  }
+  const field = objectiveDistanceField(state, hero, [
+    { spaceId, kind: "visitable" },
+  ]);
+  return field.get(hero.spaceId);
+}
+
+/**
+ * The single objective this hero should march toward right now. Highest kind
+ * priority wins; among equals, the closest; among equals, stable spaceId. A
+ * sticky single target stops the multi-source thrash that walked the hero
+ * back through its home town whenever a nearer objective fell off the list.
+ */
+export function primaryMapObjective(
+  state: GameState,
+  hero: HeroState,
+  objectives: ReadonlyArray<MapObjective> = collectMapObjectives(state, hero),
+): MapObjective | null {
+  if (objectives.length === 0) {
+    return null;
+  }
+  let best: MapObjective | null = null;
+  let bestPriority = -1;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (const objective of objectives) {
+    const distance = distanceFromHeroTo(state, hero, objective.spaceId);
+    if (distance === undefined) {
+      continue;
+    }
+    const priority = MAP_OBJECTIVE_PRIORITY[objective.kind];
+    if (
+      !best ||
+      priority > bestPriority ||
+      (priority === bestPriority && distance < bestDistance) ||
+      (priority === bestPriority &&
+        distance === bestDistance &&
+        objective.spaceId.localeCompare(best.spaceId) < 0)
+    ) {
+      best = objective;
+      bestPriority = priority;
+      bestDistance = distance;
+    }
+  }
+  return best;
+}
+
+/** Own faction-town space for this hero's controller, if any. */
+export function ownTownSpaceId(
+  state: GameState,
+  playerId: string,
+): MapSpaceId | null {
+  for (const field of Object.values(state.adventure?.fields ?? {})) {
+    if (
+      locationDefinitions[field.location]?.category === "town" &&
+      field.flagOwnerId === playerId
+    ) {
+      return field.spaceId;
+    }
+  }
+  return null;
 }
