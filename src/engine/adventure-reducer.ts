@@ -6933,7 +6933,46 @@ export function finalizeAdventureCombat(state: GameState): void {
 
   state.combat = null;
 
-  // A win declared above (defeat-every-hero) ends the game; do not reopen turns.
+  // Siege defeat (house rule): a player whose MAIN Hero is defeated defending
+  // their OWN faction Town — and who has no other base (Settlement or captured
+  // Random Town) to fall back to — is eliminated IMMEDIATELY, not put on the
+  // usual 2-turn grace clock. The reasoning the user gave: with the main Hero
+  // beaten and the last Town falling, there is no Hero left to recapture a base,
+  // so the grace turns are pointless. `eliminatePlayer` then resolves both
+  // outcomes from one place: with two players the survivor wins on the spot
+  // (last faction standing); with three or more it is just this player's loss
+  // and the game continues. The winner's "1 win" toward the defeat-every-hero
+  // victory path (the faction-cube credit) was already recorded above, in the
+  // real-defeat branch's `heroDefeats` block, for the victory modes that count
+  // it. A Settlement (or Random Town) survivor is NOT eliminated — the beaten
+  // Hero simply retreats there via moveDefeatedHeroHome above. Surrenders and
+  // heroless garrison defenses never reach here (loserHero is null or the
+  // escape flags are set), matching "defend with the main hero".
+  // The defended Field must genuinely be the loser's faction Town — a Town
+  // LOCATION they still control. Checking `state.towns` alone is not enough: a
+  // captured Dragon Utopia (Dragon Conqueror mode) re-purposes a town field's
+  // location while its Town entry still points at it, so the location guard
+  // keeps a Utopia siege out of this rule.
+  const defenderFieldLocation = adventure.fields[context.fieldId]?.location;
+  const defenderOwnMainTown =
+    defenderFieldLocation != null &&
+    locationDefinitions[defenderFieldLocation]?.category === "town" &&
+    Object.values(state.towns).some(
+      (town) => town.fieldId === context.fieldId && town.controllerId === loserId
+    );
+  if (
+    !escapedWithoutDefeat &&
+    !state.adventure?.winnerPlayerId &&
+    loserId === combat.defenderPlayerId &&
+    loserHero?.kind === "main" &&
+    defenderOwnMainTown &&
+    !controlsTownOrSettlement(state, loserId, context.fieldId)
+  ) {
+    eliminatePlayer(state, loserId, "their Main Hero fell defending their last Town", false);
+  }
+
+  // A win declared above (defeat-every-hero, or the siege elimination just now
+  // taking the last enemy faction) ends the game; do not reopen turns.
   if (state.adventure?.winnerPlayerId) {
     state.priorityPlayerId = null;
     return;

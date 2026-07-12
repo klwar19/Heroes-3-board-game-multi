@@ -2160,13 +2160,25 @@ export const ELIMINATION_GRACE_TURNS = 2;
  * the rulebook says to "treat as a Settlement") counts only while the player
  * holds its flag. Flagging an enemy Town never changes its `controllerId`
  * (rulebook p.76), so map control is read from the field flags, not ownership.
+ *
+ * `exceptFieldId` skips one Field entirely — used by the siege-defeat rule to
+ * ask "will the loser still hold a base once THIS Town falls?" before the flag
+ * has actually changed hands (the conqueror flags it later, in their field
+ * visit). Without it the falling Town still counts as the loser's.
  */
-export function controlsTownOrSettlement(state: GameState, playerId: PlayerId): boolean {
+export function controlsTownOrSettlement(
+  state: GameState,
+  playerId: PlayerId,
+  exceptFieldId?: MapSpaceId
+): boolean {
   const adventure = state.adventure;
   if (!adventure) {
     return true;
   }
   for (const field of Object.values(adventure.fields)) {
+    if (exceptFieldId && field.spaceId === exceptFieldId) {
+      continue;
+    }
     if (field.location === "settlement" || field.location === "random_town") {
       if (field.flagOwnerId === playerId) {
         return true;
