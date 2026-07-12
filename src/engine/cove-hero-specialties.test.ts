@@ -288,6 +288,36 @@ describe("Zilare's Forgetfulness specialty", () => {
     }
   });
 
+  it("is NOT counted as a Spell: it never ticks the one-per-round limit and stays playable after a Spell was cast", () => {
+    // The Forgetfulness SPECIALTY shares the FORGETFULNESS effect with the
+    // Forgetfulness SPELL, but it is a hero-specialty card, not a Spell — so it
+    // must not touch the one-Spell-per-combat-round accounting. Playing it leaves
+    // spellsCastThisRound untouched...
+    const state = zilareCombat("zilare-not-a-spell", "specialty.zilare.1", { type: "ranged", grade: "silver" });
+    expect(state.players.p1.combatStats.spellsCastThisRound).toBe(0);
+    const play = findPlay(state, "specialty.zilare.1", 0, "unit_p2_skeletons");
+    expect(play).toBeTruthy();
+    const after = passAllReactions(applyOk(state, play!.action));
+    expect(
+      after.players.p1.combatStats.spellsCastThisRound,
+      "playing the specialty must not count as a Spell cast"
+    ).toBe(0);
+
+    // ...and, conversely, the one-Spell-per-round limit must not block it: even
+    // with the round's Spell already spent, the specialty is still offered. (This
+    // is what the `card.kind === "spell"` guard in addOptionPlays protects — remove
+    // it and the specialty wrongly disappears once a Spell has been cast.)
+    const limitReached = zilareCombat("zilare-limit-reached", "specialty.zilare.1", {
+      type: "ranged",
+      grade: "silver"
+    });
+    limitReached.players.p1.combatStats.spellsCastThisRound = 1;
+    expect(
+      findPlay(limitReached, "specialty.zilare.1", 0, "unit_p2_skeletons"),
+      "the specialty must stay playable even after the round's Spell is spent"
+    ).toBeTruthy();
+  });
+
   it("registers Zilare as a Cove Navigator with the Forgetfulness specialty", () => {
     const hero = coreHeroDefinitions.zilare;
     expect(hero.faction).toBe("cove");
