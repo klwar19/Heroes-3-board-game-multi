@@ -9441,7 +9441,6 @@ export type PendingChoice =
  * derived priorities. Redacted from other seats' player views.
  */
 export type ComputerPolicyMemoryState = {
-  lastRound: number;
   lastTurnKey: string;
   resourceTrail: Array<{
     round: number;
@@ -9453,12 +9452,9 @@ export type ComputerPolicyMemoryState = {
   }>;
   focus: "army" | "income" | "magic" | "balanced";
   stickyObjectiveSpaceId: MapSpaceId | null;
-  stickyObjectiveKind: string | null;
   stickySinceRound: number;
   visitedThisTurn: MapSpaceId[];
   lastMarketRound: number | null;
-  lastRecruitRound: number | null;
-  lastBuildRound: number | null;
   stagnantArmyTurns: number;
 };
 

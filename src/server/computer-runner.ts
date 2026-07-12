@@ -186,12 +186,7 @@ export function driveComputerPlayers(
         objectives,
         state.computerMemory?.[playerId]?.stickyObjectiveSpaceId,
       );
-      state = setStickyObjective(
-        state,
-        playerId,
-        primary?.spaceId ?? null,
-        primary?.kind ?? null,
-      );
+      state = setStickyObjective(state, playerId, primary?.spaceId ?? null);
     }
 
     const observation = observeForComputer(state, playerId);

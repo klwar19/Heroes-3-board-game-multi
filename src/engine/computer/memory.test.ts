@@ -83,7 +83,7 @@ describe("refreshComputerMemory / sticky / notes", () => {
     expect(mem.resourceTrail[0].army).toBe(3);
     expect(mem.focus).toBe("army");
 
-    state = setStickyObjective(state, "p2", "field-a", "guard");
+    state = setStickyObjective(state, "p2", "field-a");
     expect(getComputerMemory(state, "p2").stickyObjectiveSpaceId).toBe("field-a");
 
     // Same round refresh overwrites trail tail, does not grow forever.

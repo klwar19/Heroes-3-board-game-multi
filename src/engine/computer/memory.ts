@@ -21,18 +21,14 @@ export type ResourceTrailEntry = {
 };
 
 export type ComputerPolicyMemory = {
-  lastRound: number;
   /** `${round}|${activePlayerId}|${completedTurns signature}` — clears visit list. */
   lastTurnKey: string;
   resourceTrail: ResourceTrailEntry[];
   focus: EconomyFocus;
   stickyObjectiveSpaceId: MapSpaceId | null;
-  stickyObjectiveKind: string | null;
   stickySinceRound: number;
   visitedThisTurn: MapSpaceId[];
   lastMarketRound: number | null;
-  lastRecruitRound: number | null;
-  lastBuildRound: number | null;
   stagnantArmyTurns: number;
 };
 
@@ -43,17 +39,13 @@ export const STICKY_OBJECTIVE_MAX_ROUNDS = 4;
 
 export function emptyComputerMemory(round = 0): ComputerPolicyMemory {
   return {
-    lastRound: round,
     lastTurnKey: "",
     resourceTrail: [],
     focus: "balanced",
     stickyObjectiveSpaceId: null,
-    stickyObjectiveKind: null,
     stickySinceRound: round,
     visitedThisTurn: [],
     lastMarketRound: null,
-    lastRecruitRound: null,
-    lastBuildRound: null,
     stagnantArmyTurns: 0,
   };
 }
@@ -178,7 +170,6 @@ export function refreshComputerMemory(
     }
   }
 
-  mem.lastRound = state.round ?? 0;
   mem.focus = inferEconomyFocus(mem.resourceTrail, snap.army);
 
   // Drop sticky objective if it has aged out (re-pick next decision).
@@ -187,7 +178,6 @@ export function refreshComputerMemory(
     state.round - mem.stickySinceRound > STICKY_OBJECTIVE_MAX_ROUNDS
   ) {
     mem.stickyObjectiveSpaceId = null;
-    mem.stickyObjectiveKind = null;
   }
 
   return writeComputerMemory(state, playerId, mem);
@@ -236,10 +226,8 @@ export function noteComputerAction(
       mem = { ...mem, lastMarketRound: round };
       break;
     case "POPULATION_ACTION":
-      mem = { ...mem, lastRecruitRound: round, stagnantArmyTurns: 0 };
-      break;
-    case "BUILD_STRUCTURE":
-      mem = { ...mem, lastBuildRound: round };
+      // Recruiting resets the army-stagnation counter (read by economyFocusBias).
+      mem = { ...mem, stagnantArmyTurns: 0 };
       break;
     case "END_TURN":
     case "COMPLETE_SIMULTANEOUS_TURN":
@@ -258,7 +246,6 @@ export function setStickyObjective(
   state: GameState,
   playerId: PlayerId,
   spaceId: MapSpaceId | null,
-  kind: string | null,
 ): GameState {
   const mem = getComputerMemory(state, playerId);
   if (spaceId === mem.stickyObjectiveSpaceId) {
@@ -267,7 +254,6 @@ export function setStickyObjective(
   return writeComputerMemory(state, playerId, {
     ...mem,
     stickyObjectiveSpaceId: spaceId,
-    stickyObjectiveKind: kind,
     stickySinceRound: state.round ?? 0,
   });
 }
