@@ -240,6 +240,24 @@ export class LobbyPresenceBoard {
     return this.entries.size;
   }
 
+  /**
+   * Internal: the verified account id behind a live clientId, if any. Used by
+   * the invite route so a popup can land on every tab of a signed-in invitee,
+   * not only the tab that last heartbeated.
+   */
+  userIdForClientId(clientId: string, now: number = this.now()): string | undefined {
+    if (!clientId) {
+      return undefined;
+    }
+    this.pruneStale(now);
+    for (const entry of this.entries.values()) {
+      if (entry.clientId === clientId && entry.userId) {
+        return entry.userId;
+      }
+    }
+    return undefined;
+  }
+
   private pruneStale(now: number): void {
     for (const [key, entry] of this.entries) {
       if (now - entry.at > PRESENCE_TTL_MS) {

@@ -25,7 +25,7 @@ export type LobbyChatMessage = {
 };
 
 /** Longest lobby history kept in memory (bounds the payload). */
-export const MAX_LOBBY_CHAT_MESSAGES = 50;
+export const MAX_LOBBY_CHAT_MESSAGES = 100;
 
 /** Longest single lobby message; longer is truncated. */
 export const MAX_LOBBY_CHAT_TEXT_LENGTH = 300;
