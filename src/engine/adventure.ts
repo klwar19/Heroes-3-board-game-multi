@@ -6533,15 +6533,68 @@ export const DRAGON_UTOPIA_GUARD_IDS_RULEBOOK = [
 ] as const;
 
 /**
- * The Dragon Utopia guard list for this game: four dragons under the
- * `dragon-utopia-four-dragons` house rule (the BINH default), else the rulebook
- * three. The Utopia is the Dragon Hunt / Dragon Conqueror win-condition
- * objective, so its guard strength is a win-condition tuning knob.
+ * The Dragon Utopia's one always-present "azure" slot is randomised (per game)
+ * to one of these three — the marquee dragon the encounter is built around. This
+ * is the "always have 1 azure unit — Azure, Rust or Crystal" invariant.
  */
-export function dragonUtopiaGuardIds(state: GameState): readonly string[] {
-  return houseRuleEnabled(state, "dragon-utopia-four-dragons")
-    ? DRAGON_UTOPIA_GUARD_IDS
-    : DRAGON_UTOPIA_GUARD_IDS_RULEBOOK;
+export const DRAGON_UTOPIA_AZURE_SLOT_IDS = [
+  "neutral.azure_dragons",
+  "neutral.rust_dragons",
+  "neutral.crystal_dragons"
+] as const;
+
+/**
+ * How many dragons guard the Utopia when `dragon-utopia-by-difficulty` is ON:
+ * exactly the number of Neutral units its Field Difficulty would draw at the
+ * game difficulty (Easy 1 / Normal 2 / Hard 3 / Impossible 4 at difficulty 7),
+ * so the encounter "bases on the number of neutrals". Never below 1 — the azure
+ * slot is always present. Honours the Astrologers "Rulebook" difficulty-lower
+ * card via `neutralArmyDifficulty`, exactly like a drawn Neutral army.
+ */
+export function dragonUtopiaDifficultyGuardCount(state: GameState, difficulty: number): number {
+  const counts = NEUTRAL_ARMY_TABLE[neutralArmyDifficulty(state)][difficulty];
+  const total = counts ? counts.bronze + counts.silver + counts.gold + counts.azure : 0;
+  return Math.max(1, total);
+}
+
+/**
+ * The Dragon Utopia guard list for this game. The base party is four dragons
+ * under the `dragon-utopia-four-dragons` house rule (the BINH default), else the
+ * rulebook three. Two adjustments then apply:
+ *  1. The lead ("azure") slot is randomised per game to Azure / Rust / Crystal
+ *     (`DRAGON_UTOPIA_AZURE_SLOT_IDS`). If that pick already stands elsewhere in
+ *     the base party, the duplicate is given the vacated Azure Dragon so the
+ *     party stays the same distinct size.
+ *  2. With `dragon-utopia-by-difficulty` ON the party is trimmed to the
+ *     difficulty-scaled count (keeping the lead azure slot, index 0). Off, the
+ *     full fixed party stands.
+ * The Utopia is the Dragon Hunt / Dragon Conqueror win-condition objective, so
+ * both are win-condition tuning knobs.
+ */
+export function dragonUtopiaGuardIds(state: GameState, difficulty: number): string[] {
+  const party = houseRuleEnabled(state, "dragon-utopia-four-dragons")
+    ? [...DRAGON_UTOPIA_GUARD_IDS]
+    : [...DRAGON_UTOPIA_GUARD_IDS_RULEBOOK];
+
+  // Both base parties lead with Azure Dragon; swap that lead for the randomised
+  // azure-slot pick and, if it duplicates a later member, hand the vacated Azure
+  // Dragon to that member (keeps the party distinct and the same size).
+  const bossIndex = createSeededRandom(`${state.seed}#dragon-utopia-azure-boss`).nextInt(
+    0,
+    DRAGON_UTOPIA_AZURE_SLOT_IDS.length - 1
+  );
+  const boss = DRAGON_UTOPIA_AZURE_SLOT_IDS[bossIndex]!;
+  const duplicate = party.findIndex((id, index) => index > 0 && id === boss);
+  if (duplicate >= 0) {
+    party[duplicate] = party[0]!; // party[0] is Azure Dragon here
+  }
+  party[0] = boss;
+
+  if (!houseRuleEnabled(state, "dragon-utopia-by-difficulty")) {
+    return party;
+  }
+  const count = Math.min(party.length, dragonUtopiaDifficultyGuardCount(state, difficulty));
+  return party.slice(0, count);
 }
 
 /** Draws the top card of one neutral tier deck, reshuffling its discard if needed. */
@@ -7018,7 +7071,11 @@ export function drawNeutralArmy(state: GameState, difficulty: number): NeutralDr
  */
 export function drawGuardArmy(state: GameState, field: MapFieldState | undefined, difficulty: number): NeutralDraw[] {
   if (field?.location === "dragon_utopia") {
-    return dragonUtopiaGuardIds(state).map((unitDefId) => ({ unitDefId, tier: "azure" as const, bankGuard: true }));
+    return dragonUtopiaGuardIds(state, difficulty).map((unitDefId) => ({
+      unitDefId,
+      tier: "azure" as const,
+      bankGuard: true
+    }));
   }
 
   if (field?.location === "random_town") {
