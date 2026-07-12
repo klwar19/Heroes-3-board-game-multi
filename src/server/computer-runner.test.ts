@@ -243,6 +243,13 @@ describe("computer map turns", () => {
       playerCount: 2,
       sessionMode: "single-player",
     });
+    const initialArmySize = state.players.p2.army.length;
+    const initialBuildingCount = Object.values(state.towns).find(
+      (town) => town.controllerId === "p2",
+    )?.buildings.length ?? 0;
+    const initialHeroSpace = Object.values(state.heroes).find(
+      (hero) => hero.controllerId === "p2" && hero.kind === "main",
+    )?.spaceId;
     const decisions: ComputerDecision[] = [];
 
     // Click through the human's required steps exactly like a player would,
@@ -297,6 +304,22 @@ describe("computer map turns", () => {
     ).toBe(true);
     expect(
       byComputer.some((decision) => decision.action.type === "END_TURN"),
+    ).toBe(true);
+    const finalBuildingCount = Object.values(state.towns).find(
+      (town) => town.controllerId === "p2",
+    )?.buildings.length ?? 0;
+    const finalHeroSpace = Object.values(state.heroes).find(
+      (hero) => hero.controllerId === "p2" && hero.kind === "main",
+    )?.spaceId;
+    expect(
+      state.players.p2.army.length > initialArmySize ||
+        finalBuildingCount > initialBuildingCount,
+      "computer should recruit/reinforce or build before ending its turn",
+    ).toBe(true);
+    expect(
+      finalHeroSpace !== initialHeroSpace ||
+        byComputer.some((decision) => decision.action.type === "DISCOVER_TILE"),
+      "computer should move or discover a tile when a safe exploration action exists",
     ).toBe(true);
     expect(computerDecisionOwner(state)).toBeNull();
   });

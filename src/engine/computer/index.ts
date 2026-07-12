@@ -9,6 +9,7 @@ export {
   standardComputerController,
 } from "./control";
 export { observeForComputer } from "./observation";
+export { scoreMapAction } from "./map-policy";
 export {
   canonicalActionKey,
   chooseComputerAction,

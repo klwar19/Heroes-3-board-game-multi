@@ -1,5 +1,6 @@
 import { effectiveHandLimit } from "../adventure";
 import type { GameAction, GameState, LegalAction } from "../state";
+import { scoreMapAction } from "./map-policy";
 import type { ComputerDecision, ComputerObservation } from "./types";
 
 /** Stable serialization independent of object property insertion order. */
@@ -152,8 +153,8 @@ function withRefreshDiscards(
 }
 
 /**
- * Deliberately conservative foundation policy. It is total and terminating,
- * but map/economy/combat heuristics must replace its generic fallback before UI release.
+ * Total deterministic policy. Context policies handle strategic decisions and
+ * the foundation score remains the terminating fallback for every legal set.
  */
 export function chooseComputerAction(
   observation: ComputerObservation,
@@ -166,11 +167,14 @@ export function chooseComputerAction(
   }
   const tieSeed = `${observation.state.seed}|${observation.state.round}|${observation.state.eventCounter ?? 0}|${observation.playerId}`;
   const ranked = candidates
-    .map((legal) => ({
-      legal,
-      ...foundationScore(legal.action),
-      tie: tieValue(tieSeed, legal),
-    }))
+    .map((legal) => {
+      const strategic = scoreMapAction(observation, legal.action);
+      return {
+        legal,
+        ...(strategic ?? foundationScore(legal.action)),
+        tie: tieValue(tieSeed, legal),
+      };
+    })
     .sort(
       (a, b) =>
         b.score - a.score ||
