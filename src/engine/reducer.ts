@@ -771,7 +771,13 @@ function moveCardFromHandToDiscard(
   }
 
   player.hand.splice(cardIndex, 1);
-  if (destination === "removed") {
+  // Pandora's Box cards are strictly ONE-TIME use: they are drawn from the
+  // Pandora deck (never the player's own deck), so once resolved they must leave
+  // the GAME rather than land in the discard pile — the discard pile reshuffles
+  // back into the player's deck (drawCardsForPlayer), which would let the same
+  // Pandora card be drawn and played again.
+  const isPandoraOneTimeUse = cardLibrary[cardId]?.kind === "pandora";
+  if (destination === "removed" || isPandoraOneTimeUse) {
     // "Remove this card": it leaves the game instead of cycling back.
     player.removed.push(cardId);
   } else {

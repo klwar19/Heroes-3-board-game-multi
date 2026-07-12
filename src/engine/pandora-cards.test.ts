@@ -12,6 +12,7 @@ import {
 } from "./index";
 import { eliminatePlayer, NEUTRAL_DECK_IDS, RESOURCE_GAIN_LEVEL_AMOUNTS, startAdventureRound } from "./adventure";
 import { pandoraScryDeckId } from "./adventure-reducer";
+import { drawCardsForPlayer } from "./decks";
 import { getPlayerView } from "./player-view";
 import type { GameEvent, HeroState, PlayerId, ResourceCost, ResourceKind } from "./state";
 
@@ -885,6 +886,60 @@ describe("Pandora 183: peek the Astrologers deck, then Search(2) Artifact", () =
     expect(after.pendingChoice?.type === "DECK_SEARCH" && after.pendingChoice.deckId).toContain("artifact");
     // The astrologers deck is intact (all kept back on top).
     expect(after.decks.astrologers!.drawPile.length).toBe(drawBefore);
+  });
+});
+
+// ===========================================================================
+// One-time use — a played Pandora card leaves the GAME and can never return
+// ===========================================================================
+
+describe("Pandora cards are strictly one-time use", () => {
+  it("a played one-shot Pandora card is removed from the game, never the discard pile", () => {
+    const state = readyAdventure("pandora-one-shot-once");
+    state.players.p1.hand = ["pandora.resource_dice_or_gold"];
+    // Empty the personal deck/discard so the ONLY way a card can return to hand
+    // is through a discard→deck reshuffle (drawCardsForPlayer).
+    state.players.p1.deck = [];
+    state.players.p1.discard = [];
+
+    // Play the self-resolving "Gain 9 gold" side (no pending visit left open).
+    const after = playOption(state, "pandora.resource_dice_or_gold", 1);
+    expect(after.adventure!.pendingVisit).toBeNull();
+
+    // It left the GAME (removed pile), not the discard pile that reshuffles back
+    // into the deck.
+    expect(after.players.p1.removed).toContain("pandora.resource_dice_or_gold");
+    expect(after.players.p1.discard).not.toContain("pandora.resource_dice_or_gold");
+    expect(after.players.p1.deck).not.toContain("pandora.resource_dice_or_gold");
+
+    // EFFECT: force a reshuffle-and-draw. With the deck empty, a normal card in
+    // the discard becomes the whole draw pile; drawing every card must NOT hand
+    // the Pandora card back. (If it had gone to the discard, this returns it.)
+    after.players.p1.discard.push("stat.attack");
+    drawCardsForPlayer(after, "p1", 2);
+    expect(after.players.p1.hand).not.toContain("pandora.resource_dice_or_gold");
+  });
+
+  it("a Pandora permanent that leaves play is removed from the game, never the discard pile", () => {
+    const state = readyAdventure("pandora-perm-once");
+    // hand_size enters play; playing a second permanent evicts it at the 1-slot
+    // limit (discardPermanentFromPlay). A Pandora permanent must leave the GAME.
+    state.players.p1.hand = ["pandora.hand_size", "pandora.resource_income"];
+    state.players.p1.deck = [];
+    state.players.p1.discard = [];
+
+    let after = playCardFromHand(state, "pandora.hand_size");
+    expect(after.players.p1.permanents).toContain("pandora.hand_size");
+
+    after = playCardFromHand(after, "pandora.resource_income");
+    expect(after.players.p1.permanents).not.toContain("pandora.hand_size");
+    expect(after.players.p1.removed).toContain("pandora.hand_size");
+    expect(after.players.p1.discard).not.toContain("pandora.hand_size");
+
+    // EFFECT: it can never be drawn again through a discard reshuffle.
+    after.players.p1.discard.push("stat.attack");
+    drawCardsForPlayer(after, "p1", 2);
+    expect(after.players.p1.hand).not.toContain("pandora.hand_size");
   });
 });
 

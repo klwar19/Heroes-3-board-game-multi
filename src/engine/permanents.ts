@@ -261,7 +261,15 @@ export function discardPermanentFromPlay(
     playerId,
     inPlay.filter((candidate) => candidate !== discardId)
   );
-  player.discard.push(discardId);
+  // Pandora's Box permanents are one-time use — like the Pandora one-shots, they
+  // come from the Pandora deck, so when they leave play (replaced over the limit,
+  // discarded voluntarily, or squeezed out by a shrinking limit) they leave the
+  // GAME rather than the discard pile (which reshuffles into the player's deck).
+  if (card?.kind === "pandora") {
+    player.removed.push(discardId);
+  } else {
+    player.discard.push(discardId);
+  }
   return discardId;
 }
 

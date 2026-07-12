@@ -339,9 +339,9 @@ describe("permanent cards", () => {
 
     // A fourth permanent is over the raised limit: the oldest one leaves — and
     // the oldest IS the Pandora limit card, so the printed one-permanent rule
-    // is back the moment it hits the discard pile. The remaining extras follow
-    // it out (oldest first) instead of lingering as three permanents under a
-    // limit of one (the audited "limit survives its card" bug).
+    // is back the moment it leaves play. The remaining extras follow it out
+    // (oldest first) instead of lingering as three permanents under a limit of
+    // one (the audited "limit survives its card" bug).
     current = applyOk(current, {
       type: "PLAY_CARD",
       playerId: "p1",
@@ -349,8 +349,13 @@ describe("permanent cards", () => {
       target: { type: "none" }
     });
     expect(current.players.p1.permanents).toEqual(["war_machine.ballista"]);
+    // The Pandora limit card is ONE-TIME use: it leaves the GAME (removed pile),
+    // never the discard pile that would reshuffle it back into the deck. The
+    // ordinary permanents it dragged out still go to the discard pile.
+    expect(current.players.p1.removed).toContain("pandora.permanent_slots");
+    expect(current.players.p1.discard).not.toContain("pandora.permanent_slots");
     expect(current.players.p1.discard).toEqual(
-      expect.arrayContaining(["pandora.permanent_slots", "war_machine.first_aid_tent", "ability.fire_magic"])
+      expect.arrayContaining(["war_machine.first_aid_tent", "ability.fire_magic"])
     );
   });
 
@@ -391,11 +396,12 @@ describe("permanent cards", () => {
 
     const next = applyOk(state, discard!.action);
     // Pandora's limit card left play, so the limit is 1 again: the oldest
-    // extra permanent goes to the discard pile too.
+    // extra permanent goes to the discard pile too. The Pandora card itself is
+    // one-time use — it leaves the GAME (removed pile), not the discard pile.
     expect(next.players.p1.permanents).toEqual(["ability.fire_magic"]);
-    expect(next.players.p1.discard).toEqual(
-      expect.arrayContaining(["pandora.permanent_slots", "war_machine.first_aid_tent"])
-    );
+    expect(next.players.p1.removed).toContain("pandora.permanent_slots");
+    expect(next.players.p1.discard).not.toContain("pandora.permanent_slots");
+    expect(next.players.p1.discard).toEqual(expect.arrayContaining(["war_machine.first_aid_tent"]));
   });
 
   it("raises the hand limit while Pandora's hand-size permanent is in play", async () => {
