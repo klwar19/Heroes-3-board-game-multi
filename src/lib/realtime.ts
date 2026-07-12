@@ -207,16 +207,6 @@ function partyLobbyUrl(host: string): string {
   return `${partyProtocol(host)}://${host}/parties/lobby/${encodeURIComponent(LOBBY_SINGLETON_ID)}`;
 }
 
-/**
- * The lobby-chat Durable Object's HTTP endpoint — one fixed object in the
- * `lobby-chat` party holding the shared, ephemeral lobby feed (see
- * party/lobby-chat.ts). Used instead of the Next `/api/lobby-chat` route on the
- * PartyKit edge, where the serverless route's in-memory board would be empty.
- */
-export function partyLobbyChatUrl(host: string): string {
-  return `${partyProtocol(host)}://${host}/parties/lobby-chat/${encodeURIComponent(LOBBY_SINGLETON_ID)}`;
-}
-
 function connectPartyRoom(
   host: string,
   roomId: string,
