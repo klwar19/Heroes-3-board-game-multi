@@ -35,7 +35,7 @@ function makeFakeRoom(id = "directory") {
 }
 
 function chatRequest(method: string, body?: unknown): ChatRequest {
-  const url = new URL("https://heroes3bg-rooms.partykit.dev/parties/lobby-chat/directory");
+  const url = new URL("https://heroes3bg-rooms.partykit.dev/parties/lobbychat/directory");
   const init: RequestInit = { method };
   if (body !== undefined) {
     init.body = JSON.stringify(body);
