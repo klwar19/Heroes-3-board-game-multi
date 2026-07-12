@@ -4764,21 +4764,87 @@ button.hbSlot:disabled { cursor: default; }
 }
 
 .advDiscard {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   width: 44px;
   height: 62px;
+  padding: 0;
   border-radius: 7px;
   border: 1px dashed rgba(190, 150, 90, 0.6);
   background: rgba(20, 14, 9, 0.6);
   color: #e8d3a8;
   cursor: pointer;
+  overflow: hidden;
+}
+
+.advDiscard.hasCard {
+  border-style: solid;
+  border-color: rgba(214, 178, 104, 0.55);
+  background: rgb(12 8 4 / 85%);
+}
+
+.advDiscardTop {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 6px;
+}
+
+.advDiscardFallback {
+  position: relative;
+  z-index: 1;
+  padding: 2px 3px;
+  font-size: 8px;
+  line-height: 1.15;
+  text-align: center;
+  color: #f0e0b8;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 90%);
+}
+
+.advDiscardBadge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  z-index: 2;
+  min-width: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: rgb(8 6 3 / 82%);
+  border: 1px solid rgb(214 178 104 / 55%);
+  color: #ffe6ad;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.4;
+  text-align: center;
+  pointer-events: none;
+}
+
+.advDiscard.hasCard small {
+  position: absolute;
+  bottom: 1px;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  text-align: center;
+  font-size: 8px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #ffe6ad;
+  text-shadow: 0 1px 3px rgb(0 0 0 / 95%);
+  pointer-events: none;
 }
 
 .advDiscard:hover {
   background: rgba(60, 44, 24, 0.7);
+}
+
+.advDiscard.hasCard:hover {
+  box-shadow: 0 0 0 1px rgb(247 207 110 / 45%);
 }
 
 .advDeckRow.neutral {
@@ -5305,6 +5371,178 @@ button.hbSlot:disabled { cursor: default; }
   gap: 6px;
   max-height: 200px;
   overflow-y: auto;
+}
+
+.promptTray.withRewardCards {
+  max-width: min(920px, 96vw);
+}
+
+.promptOptions.rewardCards {
+  max-height: min(42vh, 360px);
+  gap: 10px;
+  align-items: stretch;
+}
+
+.promptRewardCard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  width: 108px;
+  padding: 6px 6px 8px;
+  border-radius: 9px;
+  border: 1px solid rgb(214 178 104 / 45%);
+  background: linear-gradient(180deg, rgb(48 36 21 / 95%), rgb(22 16 9 / 98%));
+  color: #f0dcb8;
+  cursor: pointer;
+  transition: border-color 120ms ease, transform 120ms ease, box-shadow 120ms ease;
+}
+
+.promptRewardCard:hover {
+  border-color: rgb(247 207 110 / 75%);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 18px rgb(0 0 0 / 45%);
+}
+
+.promptRewardCard img {
+  width: 92px;
+  height: auto;
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 50%);
+  object-fit: contain;
+}
+
+.promptRewardCard small {
+  font-size: 10.5px;
+  line-height: 1.25;
+  text-align: center;
+  color: #ecd7ab;
+}
+
+.auctionLotPreview,
+.eventChoicePreview {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin: 4px 0 2px;
+}
+
+.auctionLotCard,
+.eventChoiceCard {
+  max-width: min(200px, 42vw);
+  height: auto;
+  border-radius: 8px;
+  box-shadow: 0 6px 18px rgb(0 0 0 / 55%);
+  border: 1px solid rgb(214 178 104 / 40%);
+}
+
+.eventPoolPreview {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin: 4px 0 6px;
+  max-height: 180px;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.eventPoolCard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  width: 88px;
+}
+
+.eventPoolCard img {
+  width: 80px;
+  height: auto;
+  border-radius: 5px;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 45%);
+}
+
+.eventPoolCard small {
+  font-size: 10px;
+  text-align: center;
+  color: #d8c49a;
+  line-height: 1.2;
+}
+
+/* Invite popup — lands on the invitee's screen (lobby or in-game). */
+.invitePopupBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgb(6 5 3 / 62%);
+  backdrop-filter: blur(3px);
+  animation: overlayIn 160ms ease;
+}
+
+.invitePopup {
+  width: min(400px, 100%);
+  padding: 16px 18px 14px;
+  border-radius: 14px;
+  border: 1px solid rgb(213 168 79 / 50%);
+  background: linear-gradient(180deg, rgb(48 36 21 / 98%), rgb(22 16 9 / 99%));
+  box-shadow: 0 18px 48px rgb(0 0 0 / 55%);
+  color: #f0e6cd;
+}
+
+.invitePopupHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  color: var(--gold);
+}
+
+.invitePopupHeader strong {
+  flex: 1;
+  font-size: 15px;
+  letter-spacing: 0.02em;
+}
+
+.invitePopupClose {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.invitePopupClose:hover {
+  background: rgb(255 255 255 / 8%);
+  color: #f0e6cd;
+}
+
+.invitePopupBody {
+  margin: 0 0 14px;
+  font-size: 14px;
+  line-height: 1.45;
+  color: #f0e6cd;
+}
+
+.invitePopupBody em {
+  color: var(--gold);
+  font-style: normal;
+  font-weight: 700;
+}
+
+.invitePopupActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
 }
 
 /* Pile modal */
@@ -11931,21 +12169,83 @@ img.cardBack {
 }
 
 .ownDiscardSpot {
+  position: relative;
   width: 74px;
   height: 104px;
   justify-content: center;
+  padding: 0;
   border-radius: 9px;
   border: 1px dashed rgb(214 178 104 / 70%);
   background: rgb(16 11 6 / 70%);
   color: #ecd7ab;
   cursor: pointer;
   font-weight: 600;
-  transition: background 120ms ease, transform 120ms ease;
+  overflow: hidden;
+  transition: background 120ms ease, transform 120ms ease, box-shadow 120ms ease;
+}
+
+.ownDiscardSpot.hasCard {
+  border-style: solid;
+  border-color: rgb(214 178 104 / 70%);
+  background: rgb(12 8 4 / 90%);
+}
+
+.ownDiscardTop {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 8px;
+}
+
+.ownDiscardFallback {
+  position: relative;
+  z-index: 1;
+  padding: 4px 5px;
+  font-size: 10px;
+  line-height: 1.2;
+  text-align: center;
+  color: #f0e0b8;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 90%);
+}
+
+.ownDiscardBadge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 2;
+  min-width: 20px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: rgb(8 6 3 / 85%);
+  border: 1px solid rgb(214 178 104 / 60%);
+  color: #ffe6ad;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.35;
+  text-align: center;
+  pointer-events: none;
+}
+
+.ownDiscardSpot.hasCard small {
+  position: absolute;
+  bottom: 3px;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  text-align: center;
+  text-shadow: 0 1px 3px rgb(0 0 0 / 95%);
+  pointer-events: none;
 }
 
 .ownDiscardSpot:hover {
   background: rgb(70 50 26 / 80%);
   transform: translateY(-2px);
+}
+
+.ownDiscardSpot.hasCard:hover {
+  box-shadow: 0 0 0 2px rgb(247 207 110 / 40%);
 }
 
 .ownDeckCount {
@@ -12248,17 +12548,23 @@ img.cardBack {
   max-height: min(34dvh, 320px);
 }
 
-/* Chat fills the rest of the rail so the conversation is the visual anchor. */
+/* Chat fills the rest of the rail so the conversation is the visual anchor.
+   min-height keeps enough room for several full message bubbles; overflow on
+   the message list (not the panel) is what scrolls so no line is clipped. */
 .lobbySidebar .lobbyChat {
-  flex: 1;
-  min-height: 240px;
+  flex: 1 1 auto;
+  min-height: min(42dvh, 360px);
+  max-height: min(58dvh, 520px);
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .lobbySidebar .lobbyChatMessages {
-  flex: 1;
+  flex: 1 1 auto;
   max-height: none;
-  min-height: 140px;
+  min-height: 180px;
+  overflow-y: auto;
 }
 
 /* Steady status dot in the rail headers (deliberately NOT animated — the
@@ -12321,14 +12627,16 @@ img.cardBack {
 .lobbyChatMessages {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  max-height: 260px;
-  min-height: 88px;
+  gap: 8px;
+  max-height: 320px;
+  min-height: 120px;
   overflow-y: auto;
-  padding: 8px 6px 8px 2px;
+  overflow-x: hidden;
+  padding: 10px 8px;
   scrollbar-width: thin;
-  background: rgb(0 0 0 / 14%);
+  background: rgb(0 0 0 / 22%);
   border-radius: 8px;
+  border: 1px solid rgb(213 168 79 / 12%);
 }
 
 .lobbyChatEmpty {
@@ -12338,36 +12646,60 @@ img.cardBack {
   font-style: italic;
 }
 
+/* Full bubble per line so long invites / multi-sentence messages stay fully
+   readable (author + time on a header row, body wraps below — never one
+   truncated inline line). */
 .lobbyChatLine {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
   margin: 0;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: rgb(255 255 255 / 4%);
+  border: 1px solid rgb(213 168 79 / 14%);
   font-size: 13.5px;
   line-height: 1.45;
   color: #f0e6cd;
   word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .lobbyChatLine.mine {
-  padding: 3px 0 3px 8px;
-  border-left: 2px solid rgb(213 168 79 / 55%);
-  background: linear-gradient(90deg, rgb(213 168 79 / 8%), transparent);
-  border-radius: 0 6px 6px 0;
+  border-color: rgb(213 168 79 / 40%);
+  background: linear-gradient(135deg, rgb(213 168 79 / 14%), rgb(213 168 79 / 4%));
+}
+
+.lobbyChatLineHead {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
 }
 
 .lobbyChatAuthor {
   font-weight: 800;
-  margin-right: 6px;
   color: var(--gold);
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .lobbyChatText {
-  color: #f0e6cd;
+  margin: 0;
+  color: #f5ecd8;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .lobbyChatTime {
-  margin-left: 6px;
+  flex: none;
   font-size: 10.5px;
   color: var(--muted);
-  opacity: 0.85;
+  opacity: 0.9;
 }
 
 .lobbyChatError {

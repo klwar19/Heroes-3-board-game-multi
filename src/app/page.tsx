@@ -208,6 +208,7 @@ import { LoadingScreen } from "@/components/menu/loading-screen";
 import { useRouter } from "next/navigation";
 import { TableReactionsLayer } from "@/components/table/table-reactions";
 import { ChatPanel } from "@/components/table/chat-panel";
+import { InvitePopup } from "@/components/invite-popup";
 
 /** Events that move cards or play battle effects on the table. */
 const FX_EVENT_TYPES = new Set<GameEvent["type"]>([
@@ -4304,6 +4305,8 @@ export default function Home() {
         clientId={clientId}
         onSend={(text) => void submitAction({ type: "SEND_CHAT", clientId, text, at: Date.now() })}
       />
+      {/* Room invite from the lobby / another table — Join switches into that room. */}
+      <InvitePopup clientId={clientId} onJoinRoom={switchToRoom} />
       <AfkVotePanel
         state={state}
         viewerPlayerId={viewerPlayerId}

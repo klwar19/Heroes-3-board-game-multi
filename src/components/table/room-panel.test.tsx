@@ -14,6 +14,7 @@ vi.mock("@/lib/lobby-presence-client", () => ({
   fetchPresence: vi.fn(async () => presenceReturn)
 }));
 vi.mock("@/lib/lobby-chat-client", () => ({ postLobbyChat: vi.fn(async () => {}) }));
+vi.mock("@/lib/lobby-invites-client", () => ({ sendLobbyInvite: vi.fn(async () => ({ id: "inv-1" })) }));
 
 afterEach(() => {
   cleanup();

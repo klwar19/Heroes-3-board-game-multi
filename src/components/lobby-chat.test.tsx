@@ -56,4 +56,23 @@ describe("LobbyChat", () => {
     expect(screen.getByText("theirs").closest(".lobbyChatLine")?.className).not.toMatch(/\bmine\b/);
     expect(screen.getByText(/slow down/i)).toBeTruthy();
   });
+
+  it("renders every message as a full bubble (author + body), not a truncated single line", () => {
+    const long =
+      "This is a longer lobby invite line with a join link https://example.test/play?room=abc123 and more words so it must wrap fully.";
+    render(
+      <LobbyChat
+        clientId="me"
+        messages={[msg(1, { name: "Alice", text: long }), msg(2, { name: "Bob", text: "ok" })]}
+        onSend={vi.fn()}
+      />
+    );
+    // Full text is present (not clipped with an ellipsis mid-sentence).
+    expect(screen.getByText(long)).toBeTruthy();
+    expect(screen.getByText("Alice")).toBeTruthy();
+    expect(screen.getByText("Bob")).toBeTruthy();
+    expect(screen.getByText("ok")).toBeTruthy();
+    // Message count in the header so the player knows the feed is complete.
+    expect(screen.getByText(/2 messages/i)).toBeTruthy();
+  });
 });
