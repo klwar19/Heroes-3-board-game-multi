@@ -62,7 +62,7 @@ describe("/api/lobby-chat route", () => {
     expect((await POST(postRequest({ clientId: "c1", name: "Alice", text: "edge" }))).status).toBe(200);
     expect(edgeFetch).toHaveBeenCalledTimes(2);
     expect(String(edgeFetch.mock.calls[0][0])).toBe(
-      "https://rooms.example.partykit.dev/parties/lobby-chat/directory"
+      "https://rooms.example.partykit.dev/parties/lobbychat/directory"
     );
     expect(edgeFetch.mock.calls[1][1]?.method).toBe("POST");
   });

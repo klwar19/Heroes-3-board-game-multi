@@ -21,7 +21,7 @@ function edgeChatUrl(): string | null {
     : `${configured.startsWith("localhost") || configured.startsWith("127.") ? "http" : "https"}://${configured}`;
   try {
     const origin = new URL(withProtocol).origin;
-    return `${origin}/parties/lobby-chat/${encodeURIComponent(LOBBY_SINGLETON_ID)}`;
+    return `${origin}/parties/lobbychat/${encodeURIComponent(LOBBY_SINGLETON_ID)}`;
   } catch {
     return null;
   }

@@ -4,7 +4,7 @@
   "main": "party/index.ts",
   "parties": {
     "lobby": "party/lobby.ts",
-    "lobby-chat": "party/lobby-chat.ts",
+    "lobbychat": "party/lobby-chat.ts",
     "maps": "party/maps.ts"
   },
   "vars": {

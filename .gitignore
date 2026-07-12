@@ -25,3 +25,4 @@ out/
 .partykit-env.local
 scripts/redeploy-vercel.mjs
 
+.vercel
