@@ -1,4 +1,4 @@
-import { locationDefinitions } from "@/data/map/locations";
+import { isMarketLocation, locationDefinitions } from "@/data/map/locations";
 import {
   adventureVictoryMode,
   canCrossEdge,
@@ -15,8 +15,33 @@ import type {
   HeroState,
   MapFieldState,
   MapSpaceId,
+  PlayerId,
 } from "../state";
-import { shouldEngageEnemy } from "./army-strength";
+import {
+  canBeatCreatureBank,
+  shouldAssaultEnemyHolding,
+  shouldEngageEnemy,
+} from "./army-strength";
+
+/**
+ * Lightweight resource-need probe (mirrors map-policy trade deficits without a
+ * circular import). Markets become march targets only when gold is tight and
+ * the seat holds materials/valuables to convert, or vice versa.
+ */
+function needsMarketRebalance(state: GameState, playerId: PlayerId): boolean {
+  const res = state.players[playerId]?.resources;
+  if (!res) return false;
+  const gold = res.gold ?? 0;
+  const mats = res.buildingMaterials ?? 0;
+  const vals = res.valuables ?? 0;
+  // Broke with convertible stock → sell for gold.
+  if (gold < 8 && (mats >= 2 || vals >= 1)) return true;
+  // Flush gold but no materials for building → buy materials.
+  if (gold >= 12 && mats === 0) return true;
+  // Gold for a valuables build when none held.
+  if (gold >= 18 && vals === 0 && mats >= 3) return true;
+  return false;
+}
 
 /**
  * Map navigation for the computer opponent. The stock policy scored each
@@ -143,8 +168,8 @@ function victoryObjectiveKind(
  * EQUAL level is the balanced fight the AI is willing to attempt. A hero below
  * the field difficulty stays away — with no drawn-guard strength to read, a
  * lower-level attack would be a blind gamble, exactly the case the stock policy
- * refused. Creature Banks (no difficulty, never Quick-Combat-skippable) are left
- * out until a real bank-strength read exists.
+ * refused. Creature Banks use `canBeatCreatureBank` (public bank card stats +
+ * expected stacks) instead of field difficulty — they never Quick-Combat-skip.
  */
 export function canBeatGuardedField(
   state: GameState,
@@ -152,7 +177,7 @@ export function canBeatGuardedField(
   field: MapFieldState,
 ): boolean {
   if (field.location === "creature_bank") {
-    return false;
+    return canBeatCreatureBank(state, hero.controllerId, field);
   }
   const difficulty = field.difficulty ?? 0;
   if (difficulty <= 0) {
@@ -165,12 +190,12 @@ export function canBeatGuardedField(
  * Whether a field is worth marching toward for this hero. An enemy hero the
  * army-strength read says we can take is the prize the AI now hunts (see
  * `shouldEngageEnemy` — the AI is not afraid to trade a roughly even fight, and
- * the real dice still decide the outcome); a guarded field is an objective only
- * when the hero can beat it; otherwise an unowned town / flaggable / unvisited
- * visitable. An enemy-FLAGGED field with no hero stays off-limits (taking a town
- * garrison / defended holding is a separate strength read not modelled yet), and
- * a field an enemy hero we CANNOT beat stands on is never a stop — we do not
- * wander into a losing fight for the visitable underneath it.
+ * the real dice still decide the outcome); a guarded field / known bank is an
+ * objective only when the hero can beat it; otherwise an unowned town /
+ * flaggable / unvisited visitable. Enemy-flagged bare mines re-flag free (take
+ * them). Enemy towns/settlements open a garrison fight — engage when the army
+ * read says we can take the owner's unit deck. A field an enemy hero we CANNOT
+ * beat stands on is never a stop.
  */
 function objectiveKind(
   state: GameState,
@@ -217,25 +242,46 @@ function objectiveKind(
       : null;
   }
 
-  // Never march into an enemy-flagged holding (no garrison/siege strength read
-  // yet) — except victory targets already handled above.
+  const category = locationDefinitions[field.location]?.category;
+  const ownedByUs =
+    field.flagOwnerId === playerId ||
+    Boolean(field.extraFlagOwnerIds?.includes(playerId));
+
+  // Enemy-flagged holdings (no enemy hero on the hex):
+  //  - bare mines / flaggables re-flag for free → always worth taking
+  //  - towns / settlements may open a garrison fight → army-strength gate
   if (field.flagOwnerId && field.flagOwnerId !== playerId) {
+    if (category === "flaggable") {
+      return "flaggable";
+    }
+    if (
+      (category === "town" || field.location === "settlement") &&
+      shouldAssaultEnemyHolding(state, playerId, field)
+    ) {
+      return category === "town" ? "town" : "flaggable";
+    }
     return null;
   }
+
   if (isFieldGuarded(field)) {
     return canBeatGuardedField(state, hero, field) ? "guard" : null;
   }
-  const category = locationDefinitions[field.location]?.category;
-  const mine =
-    field.flagOwnerId === playerId ||
-    Boolean(field.extraFlagOwnerIds?.includes(playerId));
-  if (category === "town" && !mine) {
+  if (category === "town" && !ownedByUs) {
     return "town";
   }
-  if (category === "flaggable" && !mine) {
+  if (category === "flaggable" && !ownedByUs) {
     return "flaggable";
   }
   if (category === "visitable" && !field.blackCube) {
+    return "visitable";
+  }
+  // Markets (revisitable) are only worth a detour when resources need a trade.
+  // Opening an idle market is free while parked; marching across the map for
+  // one is only justified by a real rebalance need.
+  if (
+    isMarketLocation(field.location) &&
+    needsMarketRebalance(state, playerId)
+  ) {
     return "visitable";
   }
   return null;

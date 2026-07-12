@@ -10,10 +10,39 @@ import {
   attackIsLethal,
   distanceToNearestEnemy,
   expectedAttackDamage,
+  livingEnemyUnits,
   unitRemainingHealth,
   unitThreatValue,
 } from "./score";
 import type { ComputerObservation } from "./types";
+
+/**
+ * True when our side is clearly losing a neutral fight: no living unit can
+ * still threaten meaningful damage and enemies out-bulk us. Used to prefer
+ * RETREAT over CONTINUE when the fight is hopeless (saves MP and units).
+ */
+function combatIsHopeless(
+  observation: ComputerObservation,
+  combat: CombatState,
+): boolean {
+  const own = Object.values(combat.units).filter(
+    (unit) =>
+      unit.controllerId === observation.playerId &&
+      unitRemainingHealth(unit) > 0,
+  );
+  if (own.length === 0) return true;
+  const enemies = livingEnemyUnits(combat, observation.playerId);
+  if (enemies.length === 0) return false;
+  const ownThreat = own.reduce((sum, u) => sum + unitThreatValue(u), 0);
+  const enemyThreat = enemies.reduce((sum, u) => sum + unitThreatValue(u), 0);
+  // Hopeless when out-bulked by more than 2× and we have at most one unit left,
+  // or total threat is tiny vs the opposition.
+  if (own.length <= 1 && enemyThreat >= ownThreat * 2.5) return true;
+  if (ownThreat * 2 < enemyThreat && own.every((u) => unitRemainingHealth(u) <= 2)) {
+    return true;
+  }
+  return false;
+}
 
 // Attack scores live in a band that always outranks the passive activation
 // exits (DEFEND = 500, END_ACTIVATION = 400 in the foundation) so a computer
@@ -203,6 +232,39 @@ export function scoreCombatAction(
       return { score: 600, policy: "combat.summon-demons" };
     case "USE_GENIE_DECK_DRAW":
       return { score: 590, policy: "combat.genie-wish" };
+    case "DEFEND_UNIT": {
+      // Prefer defending a wounded unit over a healthy one (still below any
+      // real attack). A unit that already moved and cannot strike should sit
+      // in Defend rather than END_ACTIVATION when offered.
+      const defender = combat.units[action.unitId];
+      if (!defender) return { score: 500, policy: "combat.defend" };
+      const missing = defender.maxHealth - unitRemainingHealth(defender);
+      return {
+        score: 500 + Math.min(30, missing * 4),
+        policy: "combat.defend-wounded",
+      };
+    }
+    case "ATTACK_FORTIFICATION":
+      // Siege the wall when no better unit target is offered (legal set only).
+      return { score: 640, policy: "combat.attack-fortification" };
+    case "CONTINUE_NEUTRAL_COMBAT": {
+      // Keep fighting when the battle is still winnable; when hopeless, fall
+      // below RETREAT so the AI spends the continue only when it matters.
+      if (combatIsHopeless(observation, combat)) {
+        return { score: 200, policy: "combat.continue-hopeless" };
+      }
+      return { score: 360, policy: "combat.continue" };
+    }
+    case "RETREAT_FROM_COMBAT":
+    case "SURRENDER_COMBAT":
+    case "GIVE_UP_COMBAT": {
+      // Foundation scores these −900 (last resort). Promote only when the fight
+      // is clearly lost so the AI saves movement / remaining army.
+      if (combatIsHopeless(observation, combat)) {
+        return { score: 380, policy: "combat.retreat-hopeless" };
+      }
+      return { score: -900, policy: "combat.retreat-refuse" };
+    }
     default:
       return null;
   }

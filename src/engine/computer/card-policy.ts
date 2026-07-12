@@ -301,19 +301,48 @@ function scoreStatReaction(
   return 1_070 + modeBonus(mode);
 }
 
+/**
+ * How valuable the unit currently under lethal threat is (reaction window /
+ * stack target when public). Saves a high-threat ally first; still always
+ * above PASS so a legal save is never skipped for a worthless body when it is
+ * the only offered save.
+ */
+function threatenedAllyBonus(observation: ComputerObservation): number {
+  const window = observation.state.reactionWindow;
+  const combat = observation.state.combat;
+  if (!window || !combat) return 0;
+  // Attack windows name the defender on the stack item / window context when
+  // present; fall back to scanning own living units for the most damaged one.
+  const stack = observation.state.stack;
+  const top = stack?.[stack.length - 1];
+  let unitId: string | undefined;
+  if (top && "defenderId" in top.action) {
+    unitId = (top.action as { defenderId?: string }).defenderId;
+  }
+  if (!unitId && "targetUnitId" in (window as object)) {
+    unitId = (window as { targetUnitId?: string }).targetUnitId;
+  }
+  const unit = unitId ? combat.units[unitId] : null;
+  if (unit && unit.controllerId === observation.playerId) {
+    return Math.min(25, Math.round(unitThreatValue(unit) / 3));
+  }
+  return 0;
+}
+
 function scoreSaveReaction(
   observation: ComputerObservation,
   effect: EffectDefinition,
   mode: CardPlayMode | undefined,
 ): number {
-  void observation;
+  const ally = threatenedAllyBonus(observation);
   // Highest band: above PASS_REACTION (1_050). Prefer cancel-lethal slightly
-  // over cancel-spell (a unit death is permanent this combat).
+  // over cancel-spell (a unit death is permanent this combat). Always play a
+  // legal save — legal-actions only offers it when the situation applies.
   if (effect.type === "CANCEL_LETHAL_ATTACK") {
-    return 1_160 + modeBonus(mode);
+    return 1_160 + modeBonus(mode) + ally;
   }
   if (effect.type === "NEGATE_ATTACK") {
-    return 1_150 + modeBonus(mode);
+    return 1_150 + modeBonus(mode) + ally;
   }
   if (effect.type === "CANCEL_SPELL" || effect.type === "REDIRECT_SPELL") {
     return 1_140 + modeBonus(mode);
@@ -455,11 +484,35 @@ function scoreEffect(
   return 200;
 }
 
-function asPowerBoostScore(observation: ComputerObservation): number {
-  // Discarding a spell for +1 Power is only legal in a Power-paying window —
-  // take it when the cast is valuable enough that legal-actions offered it.
+/**
+ * Discarding a spell for +1 Power is only legal in a Power-paying window.
+ * NEVER burn a save / high-value combat card for +1 Power — keep those for
+ * their printed effect. Prefer junk / low-keep spells so expert damage scales
+ * without throwing away Resurrection / Implosion.
+ */
+function asPowerBoostScore(
+  observation: ComputerObservation,
+  cardId: string,
+): number {
   void observation;
-  return 1_095;
+  const card = cardLibrary[cardId];
+  if (!card) return 900;
+  const effect = primaryEffect(card);
+  if (effect && SAVE_EFFECTS.has(effect.type)) {
+    // Well below PASS_REACTION (1_050) — never power-boost with a save.
+    return 200;
+  }
+  if (effect && COMBAT_DAMAGE_EFFECTS.has(effect.type)) {
+    // Keep real damage spells for casting; mild boost only as last resort.
+    return 980;
+  }
+  const keep = cardKeepValue(cardId);
+  // High-value artifacts/spells: do not discard for +1 Power (below PASS).
+  if (keep >= 55) {
+    return 940;
+  }
+  // Junk / low-value spells: take the +1 Power over PASS so the cast scales.
+  return 1_095 - Math.min(30, Math.floor(keep / 2));
 }
 
 /**
@@ -480,14 +533,17 @@ export function scoreCardAction(
       }
 
       if (action.type === "PLAY_REACTION" && action.asPowerBoost) {
-        return { score: asPowerBoostScore(observation), policy: "card.power-boost" };
+        return {
+          score: asPowerBoostScore(observation, action.cardId),
+          policy: "card.power-boost",
+        };
       }
 
       const mode = "mode" in action ? action.mode : undefined;
       const optionIndex = "optionIndex" in action ? action.optionIndex : undefined;
       const target = "target" in action ? action.target : undefined;
       const isReaction = action.type === "PLAY_REACTION";
-      const score = scoreEffect(
+      let score = scoreEffect(
         observation,
         card,
         mode,
@@ -495,6 +551,12 @@ export function scoreCardAction(
         target,
         isReaction,
       );
+
+      // Expert mode (already crown-gated by legal-actions) is strictly better
+      // for damage / buff ladders — small nudge so expert wins over basic twin.
+      if (mode === "expert") {
+        score += 12;
+      }
 
       const policy =
         action.type === "CAST_SPELL"

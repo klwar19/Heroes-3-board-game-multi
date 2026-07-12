@@ -12,7 +12,12 @@ export { observeForComputer } from "./observation";
 export { cardKeepValue, scoreCardAction } from "./card-policy";
 export { scoreChoiceAction } from "./choice-policy";
 export { scoreCombatAction } from "./combat-policy";
-export { scoreMapAction } from "./map-policy";
+export {
+  hasUsefulMarketTrade,
+  resourceDeficits,
+  scoreMapAction,
+  tradeUtility,
+} from "./map-policy";
 export {
   canBeatGuardedField,
   collectMapObjectives,
@@ -25,8 +30,13 @@ export {
   type MapObjectiveKind,
 } from "./map-navigation";
 export {
+  BANK_ENGAGE_RATIO,
+  bankUnitStrength,
+  canBeatCreatureBank,
+  creatureBankStrength,
   ENEMY_ENGAGE_RATIO,
   playerArmyStrength,
+  shouldAssaultEnemyHolding,
   shouldEngageEnemy,
   unitSideStrength,
 } from "./army-strength";

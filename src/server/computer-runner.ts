@@ -220,9 +220,10 @@ export function computerWorkIsInstantBulk(state: GameState): boolean {
 }
 
 /**
- * Actions the human should SEE one-by-one. Everything else (pass reaction,
- * place unit, finish stage, mandatory choices without map dice, …) is bulk-
- * applied in the same frame so the pace stays on movement and combat blows.
+ * Actions the human should SEE one-by-one. Card/spell/ability plays are paced
+ * so PvP (and any open combat) shows the same FX/feed as a human play — never
+ * bulk-resolve a Magic Arrow or save into an invisible snapshot. Placement,
+ * pass-reaction, finish-stage, and pure bookkeeping still bulk-apply.
  */
 export function isPacedComputerAction(action: GameAction): boolean {
   switch (action.type) {
@@ -238,6 +239,22 @@ export function isPacedComputerAction(action: GameAction): boolean {
     case "DEFEND_UNIT":
     case "END_ACTIVATION":
     case "CONTINUE_NEUTRAL_COMBAT":
+    // Visible card / spell / ability plays (combat AND map).
+    case "CAST_SPELL":
+    case "PLAY_CARD":
+    case "PLAY_REACTION":
+    case "PLAY_REACTIONS":
+    case "USE_UNIT_ABILITY":
+    case "USE_ACTIVE_EFFECT":
+    case "USE_UNIT_RESURRECTION":
+    case "USE_COMMANDER_CAST_REACTION":
+    case "SPEND_MORALE":
+    case "SUMMON_DEMONS":
+    case "USE_GENIE_DECK_DRAW":
+    // Market trades and visit resolves the human should notice.
+    case "OPEN_MARKET":
+    case "TRADE_RESOURCES":
+    case "BUY_WAR_MACHINE":
       return true;
     default:
       return false;
