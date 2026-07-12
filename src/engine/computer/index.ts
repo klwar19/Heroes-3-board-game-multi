@@ -9,7 +9,14 @@ export {
   standardComputerController,
 } from "./control";
 export { observeForComputer } from "./observation";
+export { scoreCombatAction } from "./combat-policy";
 export { scoreMapAction } from "./map-policy";
+export {
+  attackIsLethal,
+  expectedAttackDamage,
+  unitRemainingHealth,
+  unitThreatValue,
+} from "./score";
 export {
   canonicalActionKey,
   chooseComputerAction,

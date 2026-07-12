@@ -1,11 +1,14 @@
 # Single-player mode with computer opponents
 
 Status: phases 1–3 implemented (state/privacy, setup UX + setup policy, live
-runner wiring in both backends), with the first phase-4 map/economy policy now
-landed. The mode is PLAYABLE end to end: computers recruit/reinforce, build,
-use finite town actions, and move toward safe public objectives before ending
-their turns. Combat initiation and deeper economy/Event choices remain
-conservative (phases 4–5). Describe Single Player as EXPERIMENTAL, not complete.
+runner wiring in both backends), with the first phase-4 map/economy policy and
+the first phase-5 combat-activation policy now landed. The mode is PLAYABLE end
+to end: computers recruit/reinforce, build, use finite town actions, and move
+toward safe public objectives before ending their turns, and inside a combat
+they own their units strike the best reachable target (a lethal removal first)
+and close on the enemy rather than turtling. Combat INITIATION on the map,
+placement/retreat strategy, and deeper economy/Event choices remain conservative
+(phases 4–5). Describe Single Player as EXPERIMENTAL, not complete.
 
 Implemented foundation (July 2026):
 
@@ -62,10 +65,39 @@ Implemented map/economy continuation (July 2026, initial phase 4):
 - the live runner integration test now proves observable army/building growth,
   safe movement/discovery, termination, and control returning to the human.
 
+Implemented combat continuation (July 2026, initial phase 5):
+
+- `src/engine/computer/combat-policy.ts` (`scoreCombatAction`) ranks a computer
+  unit's own activation on PUBLIC combat stats only: a lethal removal is always
+  preferred (it deletes the enemy AND dodges its retaliation), scaled by the
+  removed unit's threat; otherwise damage-as-a-fraction-of-remaining-health plus
+  a slice of the target's threat, minus a retaliation nudge (a ranged shot from
+  range and an already-retaliated defender draw none). All attacks stay in a band
+  above the passive exits, so a unit that CAN strike always does;
+- when no attack is in reach the unit CLOSES on the nearest enemy
+  (`getBattlefieldDistance` over the already-legal move destinations) instead of
+  defending in place; a move that does not reduce the distance scores below a
+  defend, so it never wanders or flees;
+- shared estimators in `src/engine/computer/score.ts` (remaining health, expected
+  `attack − defense` damage at the die's expected value 0, lethality, threat)
+  mirror the engine's `rawDamage` model conservatively — they only ORDER already
+  legal actions, so an approximation error can never produce an illegal move;
+- pinned in `combat-policy.test.ts` (lethal-over-chip, higher-threat-among-kills,
+  retaliation-avoidance and close-distance, each with a control that flips the
+  pick) and `computer-runner.test.ts` ("computer combat activation" drives the
+  activation end to end: the lethal target is removed, durable enemies survive,
+  and control returns to the human).
+
 Still deferred intentionally:
 
-- production-quality objective memory, market/Event/card evaluation, combat
-  strength estimation, and combat strategy policies (remaining phases 4–5);
+- COMBAT INITIATION on the map (a computer still avoids guarded fields and PvP —
+  the map policy scores them low pending a combat-strength evaluator), combat
+  PLACEMENT with positioning intent (the foundation still deploys every unit with
+  no formation), voluntary RETREAT/surrender (a computer fights a neutral combat
+  to the death via the always-continue fallback), and intentful ability/spell/
+  card use inside combat (the foundation passes reactions and plays nothing);
+- production-quality objective memory, market/Event/card evaluation, and combat
+  strength estimation (remaining phases 4–5);
 - thinking presentation (the settled state simply arrives with the human's
   action response), reconnect/resume integration tests, broad interaction
   coverage, and the fixed-seed soak suite (phase 6);
