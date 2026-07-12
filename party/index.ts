@@ -214,7 +214,20 @@ export default class GameRoomServer implements Party.Server {
 
   private metric(name: string, startedAt: number, fields: Record<string, string | number | boolean> = {}): void {
     if (!this.metricsEnabled) return;
-    console.info(JSON.stringify({ metric: name, durationMs: Date.now() - startedAt, roomId: this.room.id, ...fields }));
+    console.info(JSON.stringify({ metric: name, durationMs: Date.now() - startedAt, roomId: this.roomIdSafe(), ...fields }));
+  }
+
+  /**
+   * The room id, readable from ANY handler. `this.room.id` THROWS inside
+   * onAlarm (a documented PartyKit limitation), so alarm-reachable code must
+   * come through here — the persisted snapshot carries the same id.
+   */
+  private roomIdSafe(): string {
+    try {
+      return this.room.id;
+    } catch {
+      return this.snapshot?.roomId ?? "unknown";
+    }
   }
 
   private connectionCount(): number {
@@ -647,6 +660,22 @@ export default class GameRoomServer implements Party.Server {
     }
   }
 
+  /**
+   * Arm the pump only when NO alarm is already pending — the self-heal path
+   * (onConnect) must never postpone a due tick by overwriting it.
+   */
+  private async ensureComputerPump(delayMs: number): Promise<void> {
+    try {
+      const pending = await this.room.storage.getAlarm();
+      if (pending !== null && pending !== undefined) {
+        return;
+      }
+    } catch {
+      // getAlarm unavailable (old runtime/mock): fall through and arm.
+    }
+    await this.scheduleComputerPump(delayMs);
+  }
+
   async onAlarm(): Promise<void> {
     const continuePump = await this.serialized(async () => {
       const current = this.snapshot;
@@ -661,13 +690,17 @@ export default class GameRoomServer implements Party.Server {
         // rather than freezing the table silently.
         if (run.stalled) {
           console.warn(
-            `[computer-runner] alarm stall in room ${this.room.id}: ${run.reason ?? "no safe legal action"}`,
+            `[computer-runner] alarm stall in room ${current.roomId}: ${run.reason ?? "no safe legal action"}`,
           );
         }
         return false;
       }
       this.snapshot = {
-        roomId: this.room.id,
+        // PartyKit THROWS on `this.room.id` inside onAlarm ("You can not access
+        // `Party.id` in the `onAlarm` handler") — reading it here crashed every
+        // alarm tick, killing the paced computer pump after its first step and
+        // freezing the AI turn. The snapshot already carries the room id.
+        roomId: current.roomId,
         version: current.version + 1,
         updatedAt: new Date().toISOString(),
         ...this.creationMeta(run.state),
@@ -731,6 +764,13 @@ export default class GameRoomServer implements Party.Server {
     // A connection means the room exists — surface it in the lobby. The
     // JOIN_ROOM that follows re-reports reliably (awaited) once it has a member.
     void this.reportToLobby();
+    // Self-heal the paced computer pump: if a computer seat still owes a
+    // decision but no alarm is pending (a crashed alarm tick, an evicted
+    // object, a pre-fix deploy), re-arm it so a reconnecting/reloading human
+    // never finds the AI frozen mid-turn with no action able to revive it.
+    if (this.snapshot && computerPumpOwed(this.snapshot.state)) {
+      void this.ensureComputerPump(computerStepDelayMs(this.snapshot.state));
+    }
   }
 
   /** Push the current snapshot, redacted to one socket's verified seat. */

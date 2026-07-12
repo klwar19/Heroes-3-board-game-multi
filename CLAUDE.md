@@ -454,7 +454,23 @@ settle. Plan/contract: `docs/single-player-computer-opponents-plan.md`; tests:
 `window.test.ts`, `control.test.ts`, `computer-move-replay.test.ts`,
 `hero-position-override.test.tsx`, `map-navigation.test.ts`,
 `army-strength.test.ts`, `computer-battle-report.test.ts`,
-`opponent-turn-overlay.test.tsx`.
+`opponent-turn-overlay.test.tsx`, `single-player-pump.test.ts`.
+
+- **The paced pump is alarm-safe and self-healing (production freeze FIXED).**
+  On the deployed PartyKit edge the pump runs on Durable Object alarms, and
+  PartyKit THROWS on any `Party.id` read inside `onAlarm` — the old handler
+  read `this.room.id` when stamping the new snapshot, so the FIRST alarm tick
+  crashed, the alarm was never re-armed, and every deployed AI froze after its
+  first visible step ("keeps saying it's taking a turn", "sits on a tile
+  rotation forever"). `onAlarm` now uses the snapshot's own `roomId` (and
+  `metric()` goes through `roomIdSafe()`), and BOTH backends self-heal a lost
+  pump: the edge re-arms in `onConnect` via `ensureComputerPump` (only when no
+  alarm is pending — never postponing a due tick), the built-in store re-arms
+  on `subscribeToRoom` / `restoreRoom` (its setTimeout dies with the process).
+  Pinned in `single-player-pump.test.ts` with a PartyKit-faithful harness
+  whose `room.id` getter throws while `inAlarm`: the whole-AI-turn alarm-loop
+  test fails if the `this.room.id` read comes back, and the self-heal tests
+  fail if either re-arm is removed (mutation-checked both ways).
 
 Leading with what does NOT run (deliberate limits):
 - **Objective-seeking, fighting map play — with limits.** The policy now plays a

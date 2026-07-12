@@ -203,6 +203,12 @@ export function subscribeToRoom(roomId: string, listener: RoomListener): () => v
   listeners.add(listener);
   roomListeners.set(roomId, listeners);
 
+  // Self-heal the paced computer pump: a room restored after a process restart
+  // (or a pump timer lost to a crash) can be frozen mid-computer-turn, and no
+  // human action can revive it — it is not the human's turn. A live client
+  // (re)opening the stream is the natural recovery point.
+  ensureComputerPump(roomId);
+
   return () => {
     listeners.delete(listener);
   };
@@ -465,6 +471,9 @@ export function restoreRoom(roomId: string, state: GameState, actorClientId?: st
   persistRoom(next);
   const snapshot = withBootId(cloneSerializable(next));
   notifyRoomListeners(roomId, snapshot);
+  // A restored game may be mid-computer-turn: revive the paced pump, or the
+  // recovered table would sit frozen on the AI with no action able to wake it.
+  ensureComputerPump(roomId);
   return snapshot;
 }
 
@@ -577,6 +586,23 @@ export function cancelComputerPump(roomId: string): void {
     clearTimeout(timer);
     computerPumpTimers.delete(roomId);
   }
+}
+
+/**
+ * Arm the paced pump when a computer seat owes a decision but no timer is
+ * pending — the self-heal for a room restored after a restart (the timer died
+ * with the old process) or a crashed tick. Never postpones a pending timer and
+ * never recreates a room that is not already in memory.
+ */
+export function ensureComputerPump(roomId: string): void {
+  if (computerPumpTimers.has(roomId)) {
+    return;
+  }
+  const current = roomStore.get(roomId);
+  if (!current || current.closed || !computerPumpOwed(current.state)) {
+    return;
+  }
+  scheduleComputerPump(roomId, computerStepDelayMs(current.state));
 }
 
 function scheduleComputerPump(roomId: string, delayMs: number): void {
