@@ -6781,8 +6781,10 @@ export function finalizeAdventureCombat(state: GameState): void {
           returnedTo: hero.spaceId ?? context.fieldId
         });
       } else {
-        // Defeat: the hero falls back to a friendly town or settlement.
-        moveDefeatedHeroHome(state, hero);
+        // Defeat: the hero falls back to a friendly town or settlement. The
+        // fighter is always the turn-owner, so offer the town-or-settlement
+        // retreat CHOICE (interactive) when they own more than one.
+        moveDefeatedHeroHome(state, hero, true);
       }
 
       restoreStartingArmyIfEmpty(state, playerId);
@@ -6857,7 +6859,9 @@ export function finalizeAdventureCombat(state: GameState): void {
       // transfers to the opponent. The hero falls back home with its full army.
       spendResources(state, loserId, { gold: SURRENDER_GOLD_COST }, "surrendered the combat");
       gainResources(state, winnerId, { gold: SURRENDER_GOLD_COST }, "accepted the enemy's surrender");
-      moveDefeatedHeroHome(state, loserHero);
+      // Only the ATTACKER (the turn-owner) can be prompted mid-turn; a defender
+      // who surrenders auto-homes to avoid a cross-turn stall.
+      moveDefeatedHeroHome(state, loserHero, loserHero === attackerHero);
     } else if (surrenderedSecondary) {
       // No gold, no morale hit, no victory credit — the 2nd hero itself is the
       // price. Remove it from the game (the player may hire another later).
@@ -6886,7 +6890,9 @@ export function finalizeAdventureCombat(state: GameState): void {
       spendResources(state, loserId, { gold: goldToll }, "defeated by an enemy hero");
       gainResources(state, winnerId, { gold: goldToll }, "spoils of victory");
       changeMorale(state, loserId, -1);
-      moveDefeatedHeroHome(state, loserHero);
+      // A fought-out or retreat loss: the attacker (turn-owner) picks their
+      // retreat; a beaten defender auto-homes (no cross-turn prompt).
+      moveDefeatedHeroHome(state, loserHero, loserHero === attackerHero);
 
       // Grail Hunt & Dragon Hunt: beating an enemy hero in a real fight (retreat
       // or a fought-out loss) counts toward the "defeat every enemy hero at least
@@ -7150,27 +7156,89 @@ export function resolveCommanderFirstAid(
   });
 }
 
-function moveDefeatedHeroHome(state: GameState, hero: HeroState): void {
+/**
+ * The friendly fields a defeated Hero may fall back to, in default (auto-home)
+ * order: the player's OWN Town first — unless an enemy has flagged it (rulebook
+ * p.76) — then every Settlement they own. The Hero's current field (the fight
+ * site) is never a Town/Settlement, but is excluded defensively. The first entry
+ * is the auto-home default (Town preferred); with two or more entries the loser
+ * may CHOOSE between them (see `moveDefeatedHeroHome`).
+ */
+function defeatedHeroRetreatDestinations(
+  state: GameState,
+  hero: HeroState
+): { label: string; spaceId: MapSpaceId }[] {
+  const adventure = state.adventure;
+  if (!adventure) {
+    return [];
+  }
+  const playerId = hero.controllerId;
+  const destinations: { label: string; spaceId: MapSpaceId }[] = [];
+
+  const town = getTownOfPlayer(state, playerId);
+  const townField = town?.fieldId ? adventure.fields[town.fieldId] : null;
+  const townUsable = Boolean(townField && (townField.flagOwnerId == null || townField.flagOwnerId === playerId));
+  if (townUsable && town?.fieldId && town.fieldId !== hero.spaceId) {
+    destinations.push({ label: `Town (${town.factionId ?? town.id})`, spaceId: town.fieldId });
+  }
+
+  for (const field of Object.values(adventure.fields)) {
+    if (field.location === "settlement" && field.flagOwnerId === playerId && field.spaceId !== hero.spaceId) {
+      destinations.push({ label: "Settlement", spaceId: field.spaceId });
+    }
+  }
+
+  return destinations;
+}
+
+/**
+ * Relocate a defeated Hero. The rulebook lets a beaten Hero "move to a friendly
+ * Town or Settlement" — the player's CHOICE, not a fixed Town. When the defeated
+ * player is the one whose turn is open (every neutral loss, and a PvP loss taken
+ * by the ATTACKER) and their MAIN Hero owns two or more retreat fields, this
+ * opens a retreat CHOICE: a pendingVisit the loser resolves by clicking the
+ * destination Town/Settlement hex (or a button in the visit-step tray). With a
+ * single retreat field it auto-homes there; with none the Hero leaves the map.
+ *
+ * A NON-active loser (a PvP DEFENDER beaten on the attacker's turn) and a
+ * Secondary Hero always auto-home to the default (Town preferred). We never open
+ * a cross-turn prompt — mirroring how the winner's Necromancy window defers to
+ * its owner's own turn — so a defender's loss can never stall the attacker's
+ * turn, and the AFK/forced/computer resolver (which defaults a mandatory
+ * RESOLVE_VISIT_STEP to its first option, the Town) still has a valid answer.
+ */
+function moveDefeatedHeroHome(state: GameState, hero: HeroState, interactive = false): void {
   const adventure = state.adventure;
   if (!adventure) {
     return;
   }
 
-  const playerId = hero.controllerId;
-  const town = getTownOfPlayer(state, playerId);
-  // A defeated Hero "has to move to a friendly Town or Settlement" — but not to
-  // their own Town once an enemy has flagged it (rulebook p.76). Settlements
-  // are the fallback retreat point; with neither, the Hero leaves the map.
-  const townField = town?.fieldId ? adventure.fields[town.fieldId] : null;
-  const townUsable = Boolean(townField && (townField.flagOwnerId == null || townField.flagOwnerId === playerId));
-  const home =
-    (townUsable ? town?.fieldId : null) ??
-    Object.values(adventure.fields).find(
-      (field) => field.location === "settlement" && field.flagOwnerId === playerId
-    )?.spaceId ??
-    null;
+  const destinations = defeatedHeroRetreatDestinations(state, hero);
 
-  hero.spaceId = home;
+  if (interactive && hero.kind === "main" && destinations.length >= 2) {
+    // Leave the beaten Hero on the fight field (movement spent) and let its
+    // owner pick which friendly Town or Settlement to fall back to. The choice
+    // is pumped into a pendingVisit right after this action resolves, so the
+    // Hero is never left stranded between actions.
+    hero.movementPoints = 0;
+    adventure.rewardQueue.unshift({
+      playerId: hero.controllerId,
+      kind: "visit-steps",
+      steps: [
+        {
+          type: "CHOOSE_ONE",
+          prompt: "Defeated — fall back to…",
+          options: destinations.map((destination) => ({
+            label: destination.label,
+            steps: [{ type: "TELEPORT_HERO" as const, heroId: hero.id, spaceId: destination.spaceId }]
+          }))
+        }
+      ]
+    });
+    return;
+  }
+
+  hero.spaceId = destinations[0]?.spaceId ?? null;
   hero.movementPoints = 0;
 }
 
