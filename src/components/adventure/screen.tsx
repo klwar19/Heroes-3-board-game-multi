@@ -47,6 +47,8 @@ import {
   getSeatIdentity,
   HOUSE_RULES,
   resolveHouseRules,
+  resolveTournamentRules,
+  tournamentRulesAllOn,
   getTileBorderSegments,
   hasOpenAdventureTurn,
   hexDistance,
@@ -4608,12 +4610,10 @@ const HOUSE_RULE_CATEGORY_LABELS: Record<string, string> = {
  */
 function HouseRulesSection({
   houseRules,
-  setHouseRule,
-  editable
+  setHouseRule
 }: {
   houseRules: Record<HouseRuleId, boolean>;
   setHouseRule: (id: HouseRuleId, value: boolean) => void;
-  editable: boolean;
 }) {
   const categories = ["decks", "units", "abilities", "combat"] as const;
   return (
@@ -4621,9 +4621,7 @@ function HouseRulesSection({
       <div className="houseRuleHead">
         <strong>House rules</strong>
         <small>
-          {editable
-            ? "BINH starts with every tweak on; each one can then be customized."
-            : "Legacy is the strict rulebook mode: every house rule is locked off."}
+          BINH starts with every tweak on. Legacy / Tournament presets clear them — any rule can still be re-enabled.
         </small>
       </div>
       {categories.map((category) => {
@@ -4641,10 +4639,9 @@ function HouseRulesSection({
                   <button
                     aria-pressed={on}
                     className={`houseRuleToggle ${on ? "on" : "off"}`}
-                    disabled={!editable}
                     key={rule.id}
                     onClick={() => setHouseRule(rule.id, !on)}
-                    title={editable ? rule.description : `Legacy: ${rule.label} is locked off.`}
+                    title={rule.description}
                     type="button"
                   >
                     <span aria-hidden="true" className="houseRuleCheck">
@@ -4673,6 +4670,41 @@ function HouseRulesSection({
   );
 }
 
+/** High-level setup modes shown as a card row on the Mode & Rules tab. */
+type SetupModeId = "legacy" | "binh" | "wog" | "tournament";
+
+const SETUP_MODE_CARDS: {
+  id: SetupModeId;
+  label: string;
+  blurb: string;
+  hint: string;
+}[] = [
+  {
+    id: "legacy",
+    label: "Legacy",
+    blurb: "Printed rulebook",
+    hint: "Turns every house rule off. Toggles stay free — re-enable any rule you want."
+  },
+  {
+    id: "binh",
+    label: "BINH",
+    blurb: "House-rule edition",
+    hint: "Default fan edition: every house rule on, Spell Book on, WOG off."
+  },
+  {
+    id: "wog",
+    label: "WOG",
+    blurb: "Wake of Gods",
+    hint: "BINH plus the Wake of Gods modules (commanders, new neutrals, …)."
+  },
+  {
+    id: "tournament",
+    label: "Tournament",
+    blurb: "Competitive preset",
+    hint: "House rules off, tournament bans on, Hard difficulty, Neutral AI, Diplomacy banned."
+  }
+];
+
 /**
  * Adjustable setup: scenario, neutral difficulty (Impossible default),
  * starting resources, base income (10 gold / 0 / 0 default), starting unit
@@ -4689,6 +4721,7 @@ function GameOptionsPanel({
   onAction: (action: GameAction) => void;
 }) {
   const [wogOptionsOpen, setWogOptionsOpen] = useState(false);
+  const [modeNotice, setModeNotice] = useState<string | null>(null);
   const [tab, setTab] = useState<OptionsTabId>("rules");
   const lobby = state.setupLobby;
   if (!lobby) {
@@ -4704,6 +4737,86 @@ function GameOptionsPanel({
   // default). Flipping one sends just that id; the reducer merges it.
   const houseRules = resolveHouseRules(options);
   const setHouseRule = (id: HouseRuleId, value: boolean) => send({ houseRules: { [id]: value } });
+  const tournamentRules = resolveTournamentRules(options);
+  const tournamentAllOn = tournamentRulesAllOn(options);
+
+  /** Which big mode card is highlighted from the current options. */
+  const activeSetupMode: SetupModeId = (() => {
+    if (tournamentAllOn && options.ruleset === "legacy" && !wog.enabled && options.difficulty === "hard") {
+      return "tournament";
+    }
+    if (wog.enabled && options.ruleset === "binh") {
+      return "wog";
+    }
+    if (options.ruleset === "legacy") {
+      return "legacy";
+    }
+    return "binh";
+  })();
+
+  const applySetupMode = (mode: SetupModeId) => {
+    if (mode === "legacy") {
+      send({
+        ruleset: "legacy",
+        wog: { ...wog, enabled: false },
+        spellBook: false,
+        tournamentMode: false,
+        tournamentBanDiplomacy: false,
+        tournamentBanHourglass: false,
+        tournamentSecondPlayerMorale: false
+      });
+      setModeNotice(
+        "Legacy mode applied: every house rule is off (printed rulebook). " +
+          "Nothing is locked — you can re-enable any house rule, Spell Book, or tournament rule below."
+      );
+      return;
+    }
+    if (mode === "binh") {
+      send({
+        ruleset: "binh",
+        wog: { ...wog, enabled: false },
+        spellBook: true,
+        tournamentMode: false,
+        tournamentBanDiplomacy: false,
+        tournamentBanHourglass: false,
+        tournamentSecondPlayerMorale: false
+      });
+      setModeNotice(null);
+      return;
+    }
+    if (mode === "wog") {
+      send({
+        ruleset: "binh",
+        wog: { ...DEFAULT_WOG_OPTIONS, ...wog, enabled: true },
+        spellBook: true,
+        tournamentMode: false,
+        tournamentBanDiplomacy: false,
+        tournamentBanHourglass: false,
+        tournamentSecondPlayerMorale: false
+      });
+      setModeNotice(null);
+      setWogOptionsOpen(true);
+      return;
+    }
+    // Tournament competitive preset.
+    send({
+      ruleset: "legacy",
+      wog: { ...wog, enabled: false },
+      spellBook: false,
+      tournamentMode: true,
+      tournamentBanDiplomacy: true,
+      tournamentBanHourglass: true,
+      tournamentSecondPlayerMorale: true,
+      difficulty: "hard",
+      pvpNeutralControl: false,
+      events: false,
+      moraleCards: false
+    });
+    setModeNotice(
+      "Tournament mode applied: house rules off, Diplomacy + Hourglass banned, second player +1 morale, " +
+        "Hard difficulty, and Neutral units stay under the AI. Toggles below stay free if you need to adjust."
+    );
+  };
 
   return (
     <div className="gameOptions" aria-label="Game options">
@@ -4731,69 +4844,184 @@ function GameOptionsPanel({
 
       {tab === "rules" ? (
       <div className="optionTabPanel" role="tabpanel" aria-label="Rules">
-      <div className="optionRow">
-        <small title="Pick the rules variant for this game">Game mode</small>
-        <div className="optionButtons">
-          {(["binh", "legacy"] as const).map((ruleset) => (
+
+      <div className="optionRow modePresetRow">
+        <small title="One-click presets. Individual rules below stay editable after any preset.">Game mode</small>
+        <div className="modePresetGrid" role="group" aria-label="Game mode presets">
+          {SETUP_MODE_CARDS.map((card) => (
             <button
-              aria-pressed={options.ruleset === ruleset}
-              className={options.ruleset === ruleset ? "selected" : ""}
-              key={ruleset}
-              onClick={() => send({ ruleset })}
-              title={RULESET_DESCRIPTIONS[ruleset]}
+              aria-pressed={activeSetupMode === card.id}
+              className={`modePresetCard ${activeSetupMode === card.id ? "selected" : ""}`}
+              key={card.id}
+              onClick={() => applySetupMode(card.id)}
+              title={card.hint}
               type="button"
             >
-              {RULESET_LABELS[ruleset]}
+              <strong>{card.label}</strong>
+              <span>{card.blurb}</span>
+              <small>{card.hint}</small>
             </button>
           ))}
         </div>
-        <small className="optionHint">{RULESET_DESCRIPTIONS[options.ruleset]}</small>
+        <small className="optionHint">
+          {activeSetupMode === "legacy"
+            ? RULESET_DESCRIPTIONS.legacy
+            : activeSetupMode === "wog"
+            ? "Wake of Gods modules on top of BINH house rules."
+            : activeSetupMode === "tournament"
+            ? "Competitive preset: rulebook baseline + tournament deck bans + Hard difficulty + Neutral AI."
+            : RULESET_DESCRIPTIONS.binh}
+        </small>
       </div>
 
-      {options.ruleset === "binh" ? (
-        <div className={`optionRow wogOptionRow ${wog.enabled ? "enabled" : ""}`}>
-          <small title="Optional Wake of Gods modules for BINH games">WOG mod</small>
+      {modeNotice ? (
+        <div className="modeNoticeBanner" role="status">
+          <Info size={14} aria-hidden="true" />
+          <p>{modeNotice}</p>
+          <button aria-label="Dismiss notice" onClick={() => setModeNotice(null)} type="button">
+            <X size={14} />
+          </button>
+        </div>
+      ) : null}
+
+      {wog.enabled ? (
+        <div className={`optionRow wogOptionRow enabled`}>
+          <small title="Wake of Gods module options">WOG modules</small>
           <div className="wogOptionControls">
             <button
-              aria-label={`${wog.enabled ? "Disable" : "Enable"} Wake of Gods mod`}
-              aria-pressed={wog.enabled}
-              className={`wogCrestButton ${wog.enabled ? "selected" : ""}`}
-              onClick={() => send({ wog: { ...wog, enabled: !wog.enabled } })}
-              title="Click the WOG crest to enable or disable the mod"
+              aria-label="Configure Wake of Gods modules"
+              className="wogCrestButton selected"
+              onClick={() => setWogOptionsOpen(true)}
+              title="Open WOG module options"
               type="button"
             >
               <span aria-hidden="true" className="wogCrestWings">◆</span>
               <strong>WOG</strong>
-              <span>{wog.enabled ? "ON" : "OFF"}</span>
+              <span>ON</span>
             </button>
             <div className="wogOptionSummary">
               <strong>Wake of Gods</strong>
-              <small>{wog.enabled ? "Enabled for this BINH game" : "Click the crest to enable"}</small>
-              <button
-                className="wogConfigureButton"
-                disabled={!wog.enabled}
-                onClick={() => setWogOptionsOpen(true)}
-                type="button"
-              >
+              <small>Enabled — configure commanders, neutrals and objects</small>
+              <button className="wogConfigureButton" onClick={() => setWogOptionsOpen(true)} type="button">
                 Mod options
               </button>
             </div>
           </div>
-          <small className="optionHint">
-            Optional WOG modules are isolated from Legacy mode. New neutral creatures join their matching Neutral decks.
-          </small>
         </div>
       ) : null}
 
-      <HouseRulesSection
-        editable={options.ruleset === "binh"}
-        houseRules={houseRules}
-        setHouseRule={setHouseRule}
-      />
+      <div className="optionRow tournamentRulesRow">
+        <small title="Rulebook Tournament Mode setup rules (p.54), each toggleable on its own">
+          Tournament rules
+        </small>
+        <div className="tournamentRuleGrid">
+          {(
+            [
+              {
+                key: "tournamentBanDiplomacy" as const,
+                label: "Ban Diplomacy",
+                on: tournamentRules.banDiplomacy,
+                hint: "Remove Diplomacy from the shared Ability deck (heroes keep a starting copy)."
+              },
+              {
+                key: "tournamentBanHourglass" as const,
+                label: "Ban Hourglass",
+                on: tournamentRules.banHourglass,
+                hint: "Remove Hourglass of the Evil Hour from the shared Artifact deck."
+              },
+              {
+                key: "tournamentSecondPlayerMorale" as const,
+                label: "2nd player +1 morale",
+                on: tournamentRules.secondPlayerMorale,
+                hint: "The second player gains 1 positive morale at game start."
+              }
+            ] as const
+          ).map((rule) => (
+            <button
+              aria-pressed={rule.on}
+              className={`tournamentRuleToggle ${rule.on ? "on" : "off"}`}
+              key={rule.key}
+              onClick={() => send({ [rule.key]: !rule.on })}
+              title={rule.hint}
+              type="button"
+            >
+              <span aria-hidden="true" className="houseRuleCheck">
+                {rule.on ? <Check size={13} /> : null}
+              </span>
+              <span>
+                <strong>{rule.label}</strong>
+                <small>{rule.hint}</small>
+              </span>
+              <span className={`houseRuleState ${rule.on ? "on" : "off"}`}>{rule.on ? "ON" : "OFF"}</span>
+            </button>
+          ))}
+        </div>
+        <small className="optionHint">
+          Toggle each Tournament setup rule independently, or use the Tournament mode card above to apply the full competitive package.
+        </small>
+      </div>
 
       {(() => {
-        const spellBookEditable = options.ruleset === "binh";
-        const spellBookOn = spellBookEditable && (options.spellBook ?? true);
+        const eventsOn = options.events ?? false;
+        const moraleCardsOn = options.moraleCards ?? false;
+        return (
+          <>
+            <div className="optionRow">
+              <small title="Fortress expansion optional rule (OFF by default): an Event card is drawn at the start of every Resource round (multiplayer only)">
+                Event deck
+              </small>
+              <div className="optionButtons">
+                {([true, false] as const).map((on) => (
+                  <button
+                    aria-pressed={eventsOn === on}
+                    className={eventsOn === on ? "selected" : ""}
+                    key={String(on)}
+                    onClick={() => send({ events: on })}
+                    title={on ? "Event deck on (Fortress expansion)" : "Event deck off"}
+                    type="button"
+                  >
+                    {on ? "On" : "Off"}
+                  </button>
+                ))}
+              </div>
+              <small className="optionHint">
+                {eventsOn
+                  ? "Each Resource round (after income) the next Event card is drawn and resolved clockwise from its drawer; the drawing player rotates. Multiplayer only — a solo game skips the deck."
+                  : "Off by default. No Event deck — Resource rounds pay income only. Turn it On to add the Fortress-expansion Events (multiplayer only)."}
+              </small>
+            </div>
+            <div className="optionRow">
+              <small title="Optional rule: replace normal morale tokens with Positive and Negative Morale decks">
+                Morale Cards
+              </small>
+              <div className="optionButtons">
+                {([true, false] as const).map((on) => (
+                  <button
+                    aria-pressed={moraleCardsOn === on}
+                    className={moraleCardsOn === on ? "selected" : ""}
+                    key={String(on)}
+                    onClick={() => send({ moraleCards: on })}
+                    title={on ? "Morale Cards on" : "Normal morale tokens"}
+                    type="button"
+                  >
+                    {on ? "On" : "Off"}
+                  </button>
+                ))}
+              </div>
+              <small className="optionHint">
+                {moraleCardsOn
+                  ? "Morale draws cards instead of changing the morale token: positive morale clears one Negative card first, then draws Positive cards (max 2 held)."
+                  : "Normal morale tokens: positive morale can be spent for draw/redraw/reroll, and doubled negative morale discards your hand at turn end."}
+              </small>
+            </div>
+          </>
+        );
+      })()}
+
+      <HouseRulesSection houseRules={houseRules} setHouseRule={setHouseRule} />
+
+      {(() => {
+        const spellBookOn = options.spellBook ?? options.ruleset === "binh";
         return (
           <div className="optionRow">
             <small title="House rule: each player keeps a personal Spell Book to stash, cast and boost Spells from">
@@ -4804,16 +5032,9 @@ function GameOptionsPanel({
                 <button
                   aria-pressed={spellBookOn === on}
                   className={spellBookOn === on ? "selected" : ""}
-                  disabled={!spellBookEditable}
                   key={String(on)}
                   onClick={() => send({ spellBook: on })}
-                  title={
-                    spellBookEditable
-                      ? on
-                        ? "Spell Book on (house rule)"
-                        : "Spell Book off"
-                      : "Legacy locks the Spell Book house rule off"
-                  }
+                  title={on ? "Spell Book on (house rule)" : "Spell Book off"}
                   type="button"
                 >
                   {on ? "On" : "Off"}
@@ -4821,9 +5042,7 @@ function GameOptionsPanel({
               ))}
             </div>
             <small className="optionHint">
-              {!spellBookEditable
-                ? "Legacy rulebook mode locks the Spell Book house rule off."
-                : spellBookOn
+              {spellBookOn
                 ? "Each player may set Spells aside in a personal Spell Book to free hand slots, then cast or boost from it (one Book Power boost per turn)."
                 : "No Spell Book — Spells live only in hand, deck and discard."}
             </small>
@@ -5033,100 +5252,6 @@ function GameOptionsPanel({
               ))}
             </div>
             <small className="optionHint">{PVP_TROOP_LOSS_DESCRIPTIONS[pvpTroopLoss]}</small>
-          </div>
-        );
-      })()}
-
-      {(() => {
-        const eventsOn = options.events ?? false;
-        return (
-          <div className="optionRow">
-            <small title="Fortress expansion optional rule (OFF by default): an Event card is drawn at the start of every Resource round (multiplayer only)">
-              Event deck
-            </small>
-            <div className="optionButtons">
-              {([true, false] as const).map((on) => (
-                <button
-                  aria-pressed={eventsOn === on}
-                  className={eventsOn === on ? "selected" : ""}
-                  key={String(on)}
-                  onClick={() => send({ events: on })}
-                  title={on ? "Event deck on (Fortress expansion)" : "Event deck off"}
-                  type="button"
-                >
-                  {on ? "On" : "Off"}
-                </button>
-              ))}
-            </div>
-            <small className="optionHint">
-              {eventsOn
-                ? "Each Resource round (after income) the next Event card is drawn and resolved clockwise from its drawer; the drawing player rotates. Multiplayer only — a solo game skips the deck."
-                : "Off by default. No Event deck — Resource rounds pay income only. Turn it On to add the Fortress-expansion Events (multiplayer only)."}
-            </small>
-          </div>
-        );
-      })()}
-
-      {(() => {
-        const moraleCardsOn = options.moraleCards ?? false;
-        return (
-          <div className="optionRow">
-            <small title="Optional rule: replace normal morale tokens with Positive and Negative Morale decks">
-              Morale Cards
-            </small>
-            <div className="optionButtons">
-              {([true, false] as const).map((on) => (
-                <button
-                  aria-pressed={moraleCardsOn === on}
-                  className={moraleCardsOn === on ? "selected" : ""}
-                  key={String(on)}
-                  onClick={() => send({ moraleCards: on })}
-                  title={on ? "Morale Cards on" : "Normal morale tokens"}
-                  type="button"
-                >
-                  {on ? "On" : "Off"}
-                </button>
-              ))}
-            </div>
-            <small className="optionHint">
-              {moraleCardsOn
-                ? "Morale draws cards instead of changing the morale token: positive morale clears one Negative card first, then draws Positive cards (max 2 held)."
-                : "Normal morale tokens: positive morale can be spent for draw/redraw/reroll, and doubled negative morale discards your hand at turn end."}
-            </small>
-          </div>
-        );
-      })()}
-
-      {(() => {
-        const tournamentOn = options.tournamentMode ?? false;
-        return (
-          <div className="optionRow">
-            <small title="Rulebook Tournament Mode setup rules (p.54): remove Diplomacy and Hourglass of the Evil Hour from shared decks; second player gains +1 positive morale">
-              Tournament Mode
-            </small>
-            <div className="optionButtons">
-              {([true, false] as const).map((on) => (
-                <button
-                  aria-pressed={tournamentOn === on}
-                  className={tournamentOn === on ? "selected" : ""}
-                  key={String(on)}
-                  onClick={() => send({ tournamentMode: on })}
-                  title={
-                    on
-                      ? "Remove Diplomacy + Hourglass; second player +1 morale"
-                      : "Normal deck build and no second-player morale"
-                  }
-                  type="button"
-                >
-                  {on ? "On" : "Off"}
-                </button>
-              ))}
-            </div>
-            <small className="optionHint">
-              {tournamentOn
-                ? "Before building decks: remove Diplomacy (Ability) and Hourglass of the Evil Hour (Artifact) from the game. The second player gains 1 positive morale at the start. (Does not enable the full Tournament map-build / VP rules.)"
-                : "Off by default. Shared decks include Diplomacy and Hourglass of the Evil Hour; no second-player morale bonus."}
-            </small>
           </div>
         );
       })()}

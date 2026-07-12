@@ -61,29 +61,31 @@ describe("house-rule resolver", () => {
     }
   });
 
-  it("lets BINH flags override defaults but keeps Legacy hard-locked off", () => {
+  it("lets explicit flags override defaults in BINH and soft Legacy", () => {
     const binhOff = resolveHouseRules({ ruleset: "binh", houseRules: { "estates-nerf": false } });
     expect(binhOff["estates-nerf"]).toBe(false);
     expect(binhOff["griffin-buff"], "untouched rules keep the mode default").toBe(true);
 
+    // Soft Legacy: an explicit override re-enables a rule after the preset.
     const legacyOn = resolveHouseRules({ ruleset: "legacy", houseRules: { "griffin-buff": true } });
-    expect(legacyOn["griffin-buff"], "even a stale/crafted Legacy override is ignored").toBe(false);
-    expect(legacyOn["estates-nerf"], "untouched rules keep the mode default").toBe(false);
+    expect(legacyOn["griffin-buff"], "explicit Legacy override is honored").toBe(true);
+    expect(legacyOn["estates-nerf"], "untouched rules keep the mode default (off)").toBe(false);
   });
 
-  it("ignores stale frozen true flags in a Legacy game", () => {
+  it("reads frozen house-rule flags even when the ruleset label is Legacy", () => {
     const state = binhWith({ "griffin-buff": true });
     state.ruleset = "legacy";
     expect(state.adventure?.houseRules?.["griffin-buff"]).toBe(true);
-    expect(houseRuleEnabled(state, "griffin-buff")).toBe(false);
+    expect(houseRuleEnabled(state, "griffin-buff")).toBe(true);
   });
 
-  it("locks every lobby toggle off in Legacy and restores BINH defaults when switched back", () => {
-    let state = createAdventureLobbyState({ seed: "legacy-house-rule-lock" });
+  it("Legacy preset clears overrides (all off) but lets a later toggle re-enable a rule", () => {
+    let state = createAdventureLobbyState({ seed: "legacy-house-rule-soft" });
+    // Switching to Legacy alone clears overrides → every rule defaults off.
     state = applyOk(state, {
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
-      options: { ruleset: "legacy", houseRules: { "split-decks": true, "griffin-buff": true } }
+      options: { ruleset: "legacy" }
     });
     expect(state.setupLobby?.options.ruleset).toBe("legacy");
     expect(state.setupLobby?.options.houseRules).toBeUndefined();
@@ -92,14 +94,15 @@ describe("house-rule resolver", () => {
       expect(enabled).toBe(false);
     }
 
-    // A stale multiplayer toggle arriving after the mode switch is a no-op.
+    // Soft lock: a later multiplayer toggle re-enables a single rule.
     state = applyOk(state, {
       type: "SET_GAME_OPTIONS",
       playerId: "p2",
       options: { houseRules: { "split-decks": true } }
     });
-    expect(state.setupLobby?.options.houseRules).toBeUndefined();
-    expect(resolveHouseRules(state.setupLobby!.options)["split-decks"]).toBe(false);
+    expect(state.setupLobby?.options.houseRules?.["split-decks"]).toBe(true);
+    expect(resolveHouseRules(state.setupLobby!.options)["split-decks"]).toBe(true);
+    expect(resolveHouseRules(state.setupLobby!.options)["griffin-buff"]).toBe(false);
 
     state = applyOk(state, {
       type: "SET_GAME_OPTIONS",
@@ -255,7 +258,7 @@ describe("split-decks toggle", () => {
     expect(state.decks["artifacts-relic"]).toBeUndefined();
   });
 
-  it("Legacy cannot be tricked into split decks by a stale explicit override", () => {
+  it("soft Legacy honors an explicit split-decks override (and Spell Book opt-in)", () => {
     const state = createAdventureGameState({
       seed: "legacy-split-override",
       ruleset: "legacy",
@@ -263,12 +266,11 @@ describe("split-decks toggle", () => {
       houseRules: { "split-decks": true },
       spellBook: true
     });
-    expect(state.adventure?.houseRules?.["split-decks"]).toBe(false);
-    expect(state.adventure?.spellBook).toBe(false);
+    expect(state.adventure?.houseRules?.["split-decks"]).toBe(true);
+    expect(state.adventure?.spellBook).toBe(true);
     expect(state.decks.spells).toBeTruthy();
-    expect(state.decks.artifacts).toBeTruthy();
-    expect(state.decks["spells-expert"]).toBeUndefined();
-    expect(state.decks["artifacts-minor"]).toBeUndefined();
+    expect(state.decks["spells-expert"]).toBeTruthy();
+    expect(state.decks["artifacts-minor"]).toBeTruthy();
   });
 });
 

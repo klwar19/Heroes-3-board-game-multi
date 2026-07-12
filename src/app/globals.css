@@ -12035,6 +12035,7 @@ img.cardBack {
   justify-content: center;
   padding: clamp(16px, 4vw, 48px);
   overflow-y: auto;
+  position: relative;
 }
 
 .lobbyCard {
@@ -12046,6 +12047,74 @@ img.cardBack {
   border-radius: 14px;
   background: rgb(13 15 16 / 72%);
   box-shadow: 0 18px 48px rgb(0 0 0 / 45%);
+}
+
+/* Join-password gate: shown the moment Join is clicked on a locked room. */
+.lobbyPasswordBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(4, 3, 2, 0.72);
+  backdrop-filter: blur(2px);
+}
+
+.lobbyPasswordDialog {
+  width: min(380px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px 18px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(220, 175, 95, 0.45);
+  background: linear-gradient(180deg, rgba(36, 26, 14, 0.98), rgba(16, 12, 8, 0.98));
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.55);
+  color: #f0dcae;
+}
+
+.lobbyPasswordDialog header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.lobbyPasswordDialog header strong {
+  display: block;
+  font-family: var(--font-heroic);
+  font-size: 16px;
+  color: #ffe6a6;
+}
+
+.lobbyPasswordDialog header small {
+  display: block;
+  font-size: 12px;
+  color: #b39a72;
+}
+
+.lobbyPasswordDialog p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: #d2b57a;
+}
+
+.lobbyPasswordDialog input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(180, 140, 80, 0.45);
+  background: rgba(0, 0, 0, 0.35);
+  color: #ffe6a6;
+  font-size: 14px;
+}
+
+.lobbyPasswordDialog footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .lobbyHeader {
@@ -16751,6 +16820,133 @@ img.cardBack {
   gap: 12px;
   padding-top: 4px;
   animation: optionTabFade 0.16s ease;
+}
+
+/* --- Mode preset cards (Legacy / BINH / WOG / Tournament) --- */
+.modePresetGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+@media (min-width: 720px) {
+  .modePresetGrid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.modePresetCard {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  padding: 10px 11px;
+  text-align: left;
+  border-radius: 10px;
+  border: 1px solid rgba(160, 120, 70, 0.4);
+  background: linear-gradient(180deg, rgba(28, 20, 12, 0.85), rgba(16, 11, 7, 0.9));
+  color: #e8d3a8;
+  cursor: pointer;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease, transform 0.12s ease;
+}
+
+.modePresetCard:hover {
+  border-color: rgba(240, 200, 110, 0.7);
+  transform: translateY(-1px);
+}
+
+.modePresetCard.selected {
+  border-color: #ffe09a;
+  box-shadow: inset 0 0 0 1px rgba(255, 224, 154, 0.35), 0 0 14px rgba(255, 190, 70, 0.18);
+  background: linear-gradient(180deg, rgba(72, 48, 18, 0.95), rgba(36, 24, 10, 0.95));
+}
+
+.modePresetCard strong {
+  font-family: var(--font-heroic);
+  font-size: 14px;
+  letter-spacing: 0.03em;
+  color: #ffe6a6;
+}
+
+.modePresetCard > span {
+  font-size: 11px;
+  color: #d2b57a;
+}
+
+.modePresetCard small {
+  font-size: 10px;
+  line-height: 1.35;
+  color: #a89068;
+}
+
+.modeNoticeBanner {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 9px 11px;
+  border-radius: 10px;
+  border: 1px solid rgba(220, 175, 95, 0.45);
+  background: linear-gradient(180deg, rgba(70, 48, 16, 0.55), rgba(30, 20, 8, 0.7));
+  color: #f0dcae;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.modeNoticeBanner p {
+  margin: 0;
+  flex: 1 1 auto;
+}
+
+.modeNoticeBanner > button {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  border: 1px solid rgba(180, 140, 80, 0.4);
+  background: rgba(0, 0, 0, 0.25);
+  color: #e8d3a8;
+  cursor: pointer;
+}
+
+.tournamentRuleGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tournamentRuleToggle {
+  display: grid;
+  grid-template-columns: 22px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  text-align: left;
+  border-radius: 9px;
+  border: 1px solid rgba(140, 110, 65, 0.4);
+  background: rgba(12, 8, 4, 0.45);
+  color: #e0c896;
+  cursor: pointer;
+}
+
+.tournamentRuleToggle.on {
+  border-color: rgba(220, 175, 95, 0.55);
+  background: rgba(60, 42, 16, 0.45);
+}
+
+.tournamentRuleToggle strong {
+  display: block;
+  font-size: 12.5px;
+  color: #ffe6a6;
+}
+
+.tournamentRuleToggle small {
+  display: block;
+  font-size: 10.5px;
+  color: #a89068;
+  line-height: 1.3;
 }
 
 @keyframes optionTabFade {

@@ -207,10 +207,16 @@ export type AdventureSetupOptions = {
   /** Morale Cards optional rule (default off): replaces normal morale tokens with morale card decks. */
   moraleCards?: boolean;
   /**
-   * Tournament Mode setup rules (default off): remove Diplomacy + Hourglass of
-   * the Evil Hour from shared decks; second player gains +1 positive morale.
+   * Tournament Mode convenience flag (default off): when true without granular
+   * overrides, enables ban Diplomacy, ban Hourglass, and second-player morale.
    */
   tournamentMode?: boolean;
+  /** Tournament rule: ban Diplomacy from the shared Ability deck. */
+  tournamentBanDiplomacy?: boolean;
+  /** Tournament rule: ban Hourglass of the Evil Hour from shared Artifacts. */
+  tournamentBanHourglass?: boolean;
+  /** Tournament rule: second player +1 positive morale at game start. */
+  tournamentSecondPlayerMorale?: boolean;
   /**
    * PvP Neutral Control mode (default off, multiplayer only): the next live
    * player clockwise plays the Neutral units in every Neutral combat, PvP-style.
@@ -303,6 +309,8 @@ export function defaultGameSetupOptions(scenario: ScenarioDefinition): GameSetup
     spellBook: true,
     moraleCards: false,
     tournamentMode: false,
+    // Granular tournament flags stay undefined here so a lone tournamentMode:true
+    // still enables every rule via resolveTournamentRules (false would block it).
     pvpNeutralControl: false,
     pvpNeutralControlMustAttack: true,
     farTileOpening: true,
@@ -349,18 +357,62 @@ export const TOURNAMENT_REMOVED_ABILITY_ID = "ability.diplomacy";
 export const TOURNAMENT_REMOVED_ARTIFACT_ID = "artifact.hourglass_of_the_evil_hour";
 
 /**
+ * Resolve the three granular Tournament setup rules. An explicit flag wins;
+ * otherwise the legacy `tournamentMode` convenience boolean turns every rule on.
+ */
+export function resolveTournamentRules(
+  options: Pick<
+    GameSetupOptions,
+    "tournamentMode" | "tournamentBanDiplomacy" | "tournamentBanHourglass" | "tournamentSecondPlayerMorale"
+  >
+): {
+  banDiplomacy: boolean;
+  banHourglass: boolean;
+  secondPlayerMorale: boolean;
+} {
+  // Explicit granular flags win; absent flags fall back to the master convenience
+  // boolean (legacy snapshots / `tournamentMode: true` alone enable every rule).
+  const master = Boolean(options.tournamentMode);
+  return {
+    banDiplomacy:
+      options.tournamentBanDiplomacy !== undefined ? Boolean(options.tournamentBanDiplomacy) : master,
+    banHourglass:
+      options.tournamentBanHourglass !== undefined ? Boolean(options.tournamentBanHourglass) : master,
+    secondPlayerMorale:
+      options.tournamentSecondPlayerMorale !== undefined
+        ? Boolean(options.tournamentSecondPlayerMorale)
+        : master
+  };
+}
+
+/** True when every tournament setup rule is active (UI "Tournament mode" highlight). */
+export function tournamentRulesAllOn(
+  options: Pick<
+    GameSetupOptions,
+    "tournamentMode" | "tournamentBanDiplomacy" | "tournamentBanHourglass" | "tournamentSecondPlayerMorale"
+  >
+): boolean {
+  const rules = resolveTournamentRules(options);
+  return rules.banDiplomacy && rules.banHourglass && rules.secondPlayerMorale;
+}
+
+/**
  * Shared deck construction. Legacy: one mixed Spell deck, one Artifact deck.
  * BINH: the rulebook's optional "Split Artifact and Spell Decks" — Basic and
  * Expert Spell decks plus Minor/Major/Relic Artifact decks. Each deck flips
  * its top card to start the discard pile, as printed.
  *
- * Tournament Mode removes Diplomacy and Hourglass of the Evil Hour from their
- * respective decks before shuffling (rulebook p.54) — heroes who start with
- * Diplomacy as their starting Ability still keep that personal copy.
+ * Tournament rules may remove Diplomacy and/or Hourglass of the Evil Hour from
+ * their respective decks before shuffling (rulebook p.54) — heroes who start
+ * with Diplomacy as their starting Ability still keep that personal copy.
  */
-function makeSharedDecks(seed: string, splitDecks: boolean, tournamentMode: boolean): Record<string, DeckState> {
-  const withoutTournament = (cardIds: string[], removeId: string): string[] =>
-    tournamentMode ? cardIds.filter((id) => id !== removeId) : cardIds;
+function makeSharedDecks(
+  seed: string,
+  splitDecks: boolean,
+  tournament: { banDiplomacy: boolean; banHourglass: boolean }
+): Record<string, DeckState> {
+  const without = (cardIds: string[], removeId: string, ban: boolean): string[] =>
+    ban ? cardIds.filter((id) => id !== removeId) : cardIds;
 
   const make = (id: string, cardIds: string[]): DeckState => {
     // First-round rule (as printed): each shared deck flips its top card face-up
@@ -381,10 +433,13 @@ function makeSharedDecks(seed: string, splitDecks: boolean, tournamentMode: bool
     return {
       spells: make("spells", spellDeckBinhBasic),
       "spells-expert": make("spells-expert", spellDeckBinhExpert),
-      abilities: make("abilities", withoutTournament(abilityDeckBinh, TOURNAMENT_REMOVED_ABILITY_ID)),
+      abilities: make(
+        "abilities",
+        without(abilityDeckBinh, TOURNAMENT_REMOVED_ABILITY_ID, tournament.banDiplomacy)
+      ),
       "artifacts-minor": make(
         "artifacts-minor",
-        withoutTournament(artifactDeckBinhMinor, TOURNAMENT_REMOVED_ARTIFACT_ID)
+        without(artifactDeckBinhMinor, TOURNAMENT_REMOVED_ARTIFACT_ID, tournament.banHourglass)
       ),
       "artifacts-major": make("artifacts-major", artifactDeckBinhMajor),
       "artifacts-relic": make("artifacts-relic", artifactDeckBinhRelic)
@@ -393,8 +448,14 @@ function makeSharedDecks(seed: string, splitDecks: boolean, tournamentMode: bool
 
   return {
     spells: make("spells", spellDeckLegacy),
-    abilities: make("abilities", withoutTournament(abilityDeckLegacy, TOURNAMENT_REMOVED_ABILITY_ID)),
-    artifacts: make("artifacts", withoutTournament(artifactDeckLegacy, TOURNAMENT_REMOVED_ARTIFACT_ID))
+    abilities: make(
+      "abilities",
+      without(abilityDeckLegacy, TOURNAMENT_REMOVED_ABILITY_ID, tournament.banDiplomacy)
+    ),
+    artifacts: make(
+      "artifacts",
+      without(artifactDeckLegacy, TOURNAMENT_REMOVED_ARTIFACT_ID, tournament.banHourglass)
+    )
   };
 }
 
@@ -742,6 +803,15 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     ...(options.spellBook !== undefined ? { spellBook: options.spellBook } : {}),
     ...(options.moraleCards !== undefined ? { moraleCards: options.moraleCards } : {}),
     ...(options.tournamentMode !== undefined ? { tournamentMode: options.tournamentMode } : {}),
+    ...(options.tournamentBanDiplomacy !== undefined
+      ? { tournamentBanDiplomacy: options.tournamentBanDiplomacy }
+      : {}),
+    ...(options.tournamentBanHourglass !== undefined
+      ? { tournamentBanHourglass: options.tournamentBanHourglass }
+      : {}),
+    ...(options.tournamentSecondPlayerMorale !== undefined
+      ? { tournamentSecondPlayerMorale: options.tournamentSecondPlayerMorale }
+      : {}),
     ...(options.pvpNeutralControl !== undefined ? { pvpNeutralControl: options.pvpNeutralControl } : {}),
     ...(options.pvpNeutralControlMustAttack !== undefined
       ? { pvpNeutralControlMustAttack: options.pvpNeutralControlMustAttack }
@@ -756,13 +826,13 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   // Blocked Field offers the discovering player a bank token from the matching
   // pile. Off skips both the piles and the offer.
   const creatureBanksOn = setupOptions.creatureBanks ?? true;
-  // Spell Book is a house rule: BINH defaults it ON, while strict Legacy locks
-  // it OFF even if an old/crafted setup payload carries `spellBook: true`.
-  const spellBookOn = setupOptions.ruleset === "binh" && (setupOptions.spellBook ?? true);
+  // Spell Book is a house rule: BINH defaults ON, Legacy defaults OFF. Either
+  // mode may override via the explicit flag (Legacy is a soft preset).
+  const spellBookOn = setupOptions.spellBook ?? setupOptions.ruleset === "binh";
   // Morale Cards are opt-in: when on, morale draws cards instead of changing tokens.
   const moraleCardsOn = setupOptions.moraleCards ?? false;
-  // Tournament Mode setup rules (p.54): deck removals + second-player morale.
-  const tournamentModeOn = setupOptions.tournamentMode ?? false;
+  // Tournament setup rules (p.54): granular bans + second-player morale.
+  const tournamentRules = resolveTournamentRules(setupOptions);
   // Pick-on-reveal Subterranean Gate placement default ON.
   const chooseGatePlacementOn = options.chooseSubterraneanGate ?? true;
   // Far-tile opening default ON: each player drafts a Ⅱ–Ⅲ Far-tile supply they
@@ -852,7 +922,10 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     pvpTroopLoss,
     spellBook: spellBookOn,
     moraleCards: moraleCardsOn,
-    tournamentMode: tournamentModeOn,
+    tournamentMode: tournamentRulesAllOn(setupOptions),
+    tournamentBanDiplomacy: tournamentRules.banDiplomacy,
+    tournamentBanHourglass: tournamentRules.banHourglass,
+    tournamentSecondPlayerMorale: tournamentRules.secondPlayerMorale,
     pvpNeutralControl: pvpNeutralControlOn,
     pvpNeutralControlMustAttack: pvpNeutralControlMustAttackOn,
     houseRules,
@@ -922,7 +995,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     heroes: {},
     combat: null,
     decks: {
-      ...makeSharedDecks(seed, houseRules["split-decks"], tournamentModeOn),
+      ...makeSharedDecks(seed, houseRules["split-decks"], tournamentRules),
       ...makeNeutralDecks(seed, wog),
       [ASTROLOGERS_DECK_ID]: makeAstrologersDeck(seed, eventsOn),
       ...(moraleCardsOn ? makeMoraleDecks(seed) : {}),
@@ -1186,10 +1259,10 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     rollFirstPlayer(state, seed);
   }
 
-  // Tournament Mode (p.54): "The second player gains +1 positive morale at the
+  // Tournament rule (p.54): "The second player gains +1 positive morale at the
   // start of the game." Second = next seat after the starting player in the
   // (possibly reordered) turn order. Necropolis still ignores morale.
-  if (tournamentModeOn) {
+  if (tournamentRules.secondPlayerMorale) {
     const humanOrder = state.turnOrder.filter((playerId) => playerId !== NEUTRAL_PLAYER_ID);
     if (humanOrder.length >= 2) {
       changeMorale(state, humanOrder[1]!, 1);
@@ -1442,8 +1515,8 @@ export function createAdventureLobbyState(options: AdventureSetupOptions = {}): 
   }
   if (options.spellBook !== undefined) {
     setupOptions.spellBook = options.spellBook;
-  }
-  if (setupOptions.ruleset === "legacy") {
+  } else if (setupOptions.ruleset === "legacy") {
+    // Soft Legacy default: Spell Book off unless the caller opted in.
     setupOptions.spellBook = false;
   }
   if (options.moraleCards !== undefined) {
@@ -1451,6 +1524,15 @@ export function createAdventureLobbyState(options: AdventureSetupOptions = {}): 
   }
   if (options.tournamentMode !== undefined) {
     setupOptions.tournamentMode = options.tournamentMode;
+  }
+  if (options.tournamentBanDiplomacy !== undefined) {
+    setupOptions.tournamentBanDiplomacy = options.tournamentBanDiplomacy;
+  }
+  if (options.tournamentBanHourglass !== undefined) {
+    setupOptions.tournamentBanHourglass = options.tournamentBanHourglass;
+  }
+  if (options.tournamentSecondPlayerMorale !== undefined) {
+    setupOptions.tournamentSecondPlayerMorale = options.tournamentSecondPlayerMorale;
   }
   if (options.pvpNeutralControl !== undefined) {
     setupOptions.pvpNeutralControl = options.pvpNeutralControl;
@@ -1584,13 +1666,16 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
       lobby.options.wog = { ...DEFAULT_WOG_OPTIONS, ...lobby.options.wog, enabled: false };
       state.wog = lobby.options.wog;
     }
-    // The mode is a preset: switching it clears the individual house-rule
-    // overrides so every toggle reverts to the new mode's default (all ON in
-    // BINH, OFF in Legacy). Players may then re-flip individual rules.
-    lobby.options.houseRules = undefined;
-    // Spell Book is also a house rule. Mode changes are presets, so Legacy
-    // locks it off and returning to BINH restores its default-on state.
-    lobby.options.spellBook = next.ruleset === "binh";
+    // Soft preset: switching mode clears individual house-rule overrides so
+    // every toggle reverts to the new mode's default (all ON in BINH, OFF in
+    // Legacy). Players may then re-flip any rule — Legacy does NOT lock them.
+    if (next.houseRules === undefined) {
+      lobby.options.houseRules = undefined;
+    }
+    // Spell Book follows the mode default unless this same action overrides it.
+    if (next.spellBook === undefined) {
+      lobby.options.spellBook = next.ruleset === "binh";
+    }
     changes.push(`game mode ${next.ruleset === "binh" ? "House rules BINH" : "Legacy (rulebook)"}`);
   }
 
@@ -1603,8 +1688,18 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
       newObjects: Boolean(next.wog.newObjects),
       newCreatures: Boolean(next.wog.newCreatures)
     };
-    if (lobby.options.ruleset !== "binh") {
-      wog.enabled = false;
+    // WOG is a BINH-family module. Enabling it while still on Legacy flips the
+    // table to BINH so the module can actually load.
+    if (wog.enabled && lobby.options.ruleset !== "binh") {
+      lobby.options.ruleset = "binh";
+      state.ruleset = "binh";
+      if (next.houseRules === undefined && next.ruleset === undefined) {
+        lobby.options.houseRules = undefined;
+      }
+      if (next.spellBook === undefined) {
+        lobby.options.spellBook = true;
+      }
+      changes.push("game mode House rules BINH (for WOG)");
     }
     lobby.options.wog = wog;
     state.wog = wog;
@@ -1629,7 +1724,8 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
   }
 
   if (next.spellBook !== undefined) {
-    lobby.options.spellBook = lobby.options.ruleset === "binh" && Boolean(next.spellBook);
+    // Soft Legacy: Spell Book may be re-enabled after the Legacy preset.
+    lobby.options.spellBook = Boolean(next.spellBook);
     changes.push(`Spell Book ${lobby.options.spellBook ? "on" : "off"}`);
   }
 
@@ -1639,12 +1735,48 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
   }
 
   if (next.tournamentMode !== undefined) {
-    lobby.options.tournamentMode = Boolean(next.tournamentMode);
+    const on = Boolean(next.tournamentMode);
+    lobby.options.tournamentMode = on;
+    // Convenience master: turning Tournament Mode on/off sets every granular
+    // rule in lockstep (unless this same action also supplies an explicit flag).
+    if (next.tournamentBanDiplomacy === undefined) {
+      lobby.options.tournamentBanDiplomacy = on;
+    }
+    if (next.tournamentBanHourglass === undefined) {
+      lobby.options.tournamentBanHourglass = on;
+    }
+    if (next.tournamentSecondPlayerMorale === undefined) {
+      lobby.options.tournamentSecondPlayerMorale = on;
+    }
     changes.push(
-      next.tournamentMode
+      on
         ? "Tournament Mode on (remove Diplomacy + Hourglass; second player +1 morale)"
         : "Tournament Mode off"
     );
+  }
+
+  if (next.tournamentBanDiplomacy !== undefined) {
+    lobby.options.tournamentBanDiplomacy = Boolean(next.tournamentBanDiplomacy);
+    changes.push(`Ban Diplomacy ${lobby.options.tournamentBanDiplomacy ? "on" : "off"}`);
+  }
+  if (next.tournamentBanHourglass !== undefined) {
+    lobby.options.tournamentBanHourglass = Boolean(next.tournamentBanHourglass);
+    changes.push(`Ban Hourglass ${lobby.options.tournamentBanHourglass ? "on" : "off"}`);
+  }
+  if (next.tournamentSecondPlayerMorale !== undefined) {
+    lobby.options.tournamentSecondPlayerMorale = Boolean(next.tournamentSecondPlayerMorale);
+    changes.push(
+      `Tournament second-player morale ${lobby.options.tournamentSecondPlayerMorale ? "on" : "off"}`
+    );
+  }
+  // Keep the master flag in sync with the three granular rules for old readers.
+  if (
+    next.tournamentMode !== undefined ||
+    next.tournamentBanDiplomacy !== undefined ||
+    next.tournamentBanHourglass !== undefined ||
+    next.tournamentSecondPlayerMorale !== undefined
+  ) {
+    lobby.options.tournamentMode = tournamentRulesAllOn(lobby.options);
   }
 
   if (next.pvpNeutralControl !== undefined) {
@@ -1667,20 +1799,15 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
         throw new Error(`Unknown house rule "${id}".`);
       }
     }
-    // Legacy is a hard all-off preset. A stale multiplayer click that arrives
-    // after another seat switches the mode must not re-enable an override, and
-    // neither may a crafted action.
-    if (lobby.options.ruleset === "legacy") {
-      lobby.options.houseRules = undefined;
-    } else {
-      const merged: Partial<Record<HouseRuleId, boolean>> = { ...lobby.options.houseRules };
-      for (const [id, value] of Object.entries(next.houseRules)) {
-        const def = HOUSE_RULE_BY_ID[id as HouseRuleId];
-        merged[id as HouseRuleId] = Boolean(value);
-        changes.push(`${def.label} ${value ? "on" : "off"}`);
-      }
-      lobby.options.houseRules = merged;
+    // Soft Legacy: individual overrides are allowed in every mode. A crafted
+    // or multiplayer click after a Legacy preset can re-enable any rule.
+    const merged: Partial<Record<HouseRuleId, boolean>> = { ...lobby.options.houseRules };
+    for (const [id, value] of Object.entries(next.houseRules)) {
+      const def = HOUSE_RULE_BY_ID[id as HouseRuleId];
+      merged[id as HouseRuleId] = Boolean(value);
+      changes.push(`${def.label} ${value ? "on" : "off"}`);
     }
+    lobby.options.houseRules = merged;
   }
 
   if (next.events !== undefined) {
@@ -2696,6 +2823,9 @@ function buildAdventureFromLobby(state: GameState): void {
     spellBook: lobby.options.spellBook,
     moraleCards: lobby.options.moraleCards,
     tournamentMode: lobby.options.tournamentMode,
+    tournamentBanDiplomacy: lobby.options.tournamentBanDiplomacy,
+    tournamentBanHourglass: lobby.options.tournamentBanHourglass,
+    tournamentSecondPlayerMorale: lobby.options.tournamentSecondPlayerMorale,
     // Every real game takes the rulebook Scenario Difficulty starting bonus
     // (p.10); it is not a lobby toggle, so it is always on for a lobby build.
     startingBonus: true,
