@@ -656,6 +656,14 @@ export default class GameRoomServer implements Party.Server {
       const before = current.state;
       const run = settleComputerVisibleStep(before);
       if (run.decisions.length === 0) {
+        // Pump was owed (computerPumpOwed above) yet produced nothing: a genuine
+        // stall. Single-player rooms have no turn-clock/AFK recovery, so log it
+        // rather than freezing the table silently.
+        if (run.stalled) {
+          console.warn(
+            `[computer-runner] alarm stall in room ${this.room.id}: ${run.reason ?? "no safe legal action"}`,
+          );
+        }
         return false;
       }
       this.snapshot = {

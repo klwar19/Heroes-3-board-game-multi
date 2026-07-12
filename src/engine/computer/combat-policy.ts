@@ -6,7 +6,7 @@ import {
   DEFENDER_BACKLINE,
   DEFENDER_FRONTLINE,
 } from "../adventure-reducer";
-import { isAdjacent } from "../battlefield";
+import { getBattlefieldDistance, isAdjacent } from "../battlefield";
 import type { CombatState, CombatUnitState, GameAction } from "../state";
 import type { ComputerActionScore } from "./map-policy";
 import {
@@ -378,19 +378,24 @@ function moveUnitScore(
       (unit) => unit.id !== mover.id && unitRole(unit) === "ranged",
     );
     for (const ranged of friends) {
+      // Threats near THIS ranged ally. Use board distance per enemy — the old
+      // `distanceToNearestEnemy(ranged.position)` took no enemy argument, so its
+      // clause was constant across the filter (every enemy in, or none), never
+      // the intended "enemies within 2 of this ally". Distance ≤ 2 already
+      // subsumes adjacency (adjacent = distance 1).
       const enemiesNearRanged = livingEnemyUnits(combat, observation.playerId).filter(
-        (enemy) =>
-          (distanceToNearestEnemy(combat, observation.playerId, ranged.position) ?? 99) <= 2 ||
-          isAdjacent(enemy.position, ranged.position),
+        (enemy) => getBattlefieldDistance(enemy.position, ranged.position) <= 2,
       );
       if (enemiesNearRanged.length === 0) continue;
       if (isAdjacent(action.destination, ranged.position)) {
         score += 25;
       }
-      // Step closer to the threat near the ranged ally.
+      // Step closer to the threat near the ranged ally. Board distance, not the
+      // linear cell-index difference (the board is a 4-wide grid — index diff is
+      // not distance and can reward a move that increases real distance).
       for (const threat of enemiesNearRanged) {
-        const before = Math.abs(mover.position - threat.position);
-        const after = Math.abs(action.destination - threat.position);
+        const before = getBattlefieldDistance(mover.position, threat.position);
+        const after = getBattlefieldDistance(action.destination, threat.position);
         if (after < before) score += 8;
       }
     }
@@ -404,8 +409,8 @@ function moveUnitScore(
         unitRemainingHealth(a) - unitRemainingHealth(b) ||
         unitThreatValue(b) - unitThreatValue(a),
     )[0];
-    const before = Math.abs(mover.position - focus.position);
-    const after = Math.abs(action.destination - focus.position);
+    const before = getBattlefieldDistance(mover.position, focus.position);
+    const after = getBattlefieldDistance(action.destination, focus.position);
     if (after < before) score += 10;
   }
 

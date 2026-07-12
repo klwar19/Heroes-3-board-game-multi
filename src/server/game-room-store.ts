@@ -607,7 +607,15 @@ function pumpComputerOnce(roomId: string): void {
   const before = current.state;
   const run = settleComputerVisibleStep(before);
   if (run.decisions.length === 0) {
-    // Stalled or nothing to do — stop pumping rather than spinning.
+    // The pump was owed (checked above) yet produced no visible step: a genuine
+    // stall. Single-player rooms carry no turn clock / AFK recovery, so surface
+    // it loudly instead of freezing silently — a stall is now a bug to chase,
+    // not an expected quiet stop.
+    if (run.stalled) {
+      console.warn(
+        `[computer-runner] stalled in room ${roomId}: ${run.reason ?? "no safe legal action"}`,
+      );
+    }
     return;
   }
 
@@ -647,6 +655,11 @@ export function drainComputerPumpSync(roomId: string): void {
     const before = current.state;
     const run = settleComputerVisibleStep(before);
     if (run.decisions.length === 0) {
+      if (run.stalled) {
+        console.warn(
+          `[computer-runner] drain stalled in room ${roomId}: ${run.reason ?? "no safe legal action"}`,
+        );
+      }
       return;
     }
     const next: GameRoomRecord = {
