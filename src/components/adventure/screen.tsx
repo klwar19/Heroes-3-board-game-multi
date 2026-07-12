@@ -4910,6 +4910,52 @@ function GameOptionsPanel({
       })()}
 
       {(() => {
+        // The Dragon Utopia guard strength — a win-condition tuning knob, shown
+        // beside the Win condition for the two modes where the Utopia IS the
+        // objective. Flips the `dragon-utopia-four-dragons` house rule (also in
+        // the House-rules → Combat section); Legacy locks it to the rulebook three.
+        const victoryMode = options.victoryMode ?? "conquest";
+        if (victoryMode !== "dragon-hunt" && victoryMode !== "dragon-conqueror") {
+          return null;
+        }
+        const editable = options.ruleset === "binh";
+        const fourDragons = houseRules["dragon-utopia-four-dragons"];
+        return (
+          <div className="optionRow">
+            <small title="How strongly the Dragon Utopia objective is guarded">Dragon Utopia guards</small>
+            <div className="optionButtons">
+              <button
+                aria-pressed={fourDragons}
+                className={fourDragons ? "selected" : ""}
+                disabled={!editable}
+                onClick={() => setHouseRule("dragon-utopia-four-dragons", true)}
+                title="Azure + Rust + Crystal + Faerie dragons (house rule)"
+                type="button"
+              >
+                Four dragons
+              </button>
+              <button
+                aria-pressed={!fourDragons}
+                className={!fourDragons ? "selected" : ""}
+                disabled={!editable}
+                onClick={() => setHouseRule("dragon-utopia-four-dragons", false)}
+                title="Azure + Crystal + Black dragons (rulebook)"
+                type="button"
+              >
+                Three (rulebook)
+              </button>
+            </div>
+            <small className="optionHint">
+              {fourDragons
+                ? "House rule: four dragons guard the Utopia — Azure, Rust, Crystal and Faerie."
+                : "Rulebook: three dragons guard the Utopia — Azure, Crystal and Black."}
+              {editable ? "" : " Locked to the rulebook three in Legacy mode."}
+            </small>
+          </div>
+        );
+      })()}
+
+      {(() => {
         const pvpTroopLoss = options.pvpTroopLoss ?? "normal";
         return (
           <div className="optionRow">

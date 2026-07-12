@@ -313,6 +313,40 @@ describe("Tower content", () => {
     expect(next.players.p1.resources.gold, "6 gold spent (10 → 4)").toBe(4);
   });
 
+  // Toggle: with `dracon-few-magi-trade` OFF, the house-rule option vanishes and
+  // is rejected at play — only the two rulebook options (Pack trade, draw) remain.
+  it("hides & rejects the Few-of-Magi trade when the `dracon-few-magi-trade` rule is OFF (reverts to rulebook)", () => {
+    const state = draconIvState("dracon-iv-rule-off");
+    state.adventure!.houseRules!["dracon-few-magi-trade"] = false;
+    state.players.p1.army = [
+      { id: "army_magi_few", unitDefId: "tower.magi", side: "few" },
+      { id: "army_magi_pack", unitDefId: "tower.magi", side: "pack" }
+    ];
+    state.players.p1.resources.gold = 10;
+
+    // The house-rule option is not offered...
+    expect(findDraconOption(state, 2), "the Few-of-Magi option is off with the rule off").toBeFalsy();
+    // ...and is rejected even if a client forges the action directly.
+    const forged = applyAction(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "specialty.dracon.4",
+      mode: "basic",
+      optionIndex: 2,
+      target: { type: "none" }
+    });
+    expect(forged.errors.length, "forging the off option is rejected").toBeGreaterThan(0);
+    expect(
+      forged.state.players.p1.army.some((unit) => unit.unitDefId === "neutral.enchanters"),
+      "no Enchanters gained from the blocked option"
+    ).toBe(false);
+
+    // CONTROL: the two rulebook options are untouched — the free Pack trade and
+    // the draw are both still offered with the rule off.
+    expect(findDraconOption(state, 0), "the Pack-of-Magi trade (rulebook) stays offered").toBeTruthy();
+    expect(findDraconOption(state, 1), "the draw option (rulebook) stays offered").toBeTruthy();
+  });
+
   // House rule (BINH) UI driver: reaching level IV pops a notice in the client.
   // This pins down the exact engine SIGNAL the popup keys on — a HERO_LEVEL_UP
   // event with level 4 for Dracon — alongside his Enchanters IV landing in hand.

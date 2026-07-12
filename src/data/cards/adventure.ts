@@ -2323,9 +2323,12 @@ export const adventureCards: CardLibrary = {
           // House rule (BINH): recruit the Enchanters from the cheaper Few of Magi
           // for 6 extra gold (the Pack option above is free). Engine: the shared
           // CONVERT_ARMY_UNIT resolver removes the Few specifically and charges the
-          // goldCost; gating requires owning a Few of Magi AND >= 6 gold.
+          // goldCost; gating requires owning a Few of Magi AND >= 6 gold. Gated on
+          // the `dracon-few-magi-trade` toggle — off, this option is not offered
+          // (and rejected at play), leaving only the two rulebook options above.
           label: "Discard a Few of Magi + 6 gold → take the Enchanters",
           mapOnly: true,
+          requiresHouseRule: "dracon-few-magi-trade",
           effect: {
             type: "CONVERT_ARMY_UNIT",
             fromUnitDefId: "tower.magi",

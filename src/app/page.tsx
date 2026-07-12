@@ -77,6 +77,7 @@ import {
   isMoraleCardEvent,
   type MoraleCardCue
 } from "@/components/table/morale-card-cue";
+import { buildTownCaptureCue, isEnemyTownCapture } from "@/components/table/town-capture-cue";
 import { CombatMoralePanel } from "@/components/table/combat-morale-panel";
 import { CombatSandboxSetupScreen } from "@/components/table/combat-sandbox-setup";
 import { healFreezeDisplayDamage } from "@/components/table/heal-display";
@@ -769,6 +770,9 @@ export default function Home() {
   //  - A Gelu-recruited Sharpshooters joining the army with its +1 Attack BUFF.
   const seenLevelNoticeIdsRef = useRef<Set<string>>(new Set());
   const seenBuffRecruitIdsRef = useRef<Set<string>>(new Set());
+  // Enemy-town captures already popped as the "captured their town but didn't
+  // win" pop-up — one pop per capture, never replayed on reconnect.
+  const seenTownCaptureIdsRef = useRef<Set<string>>(new Set());
   // Unit id -> definition id, kept across snapshots: the death that ends a
   // combat arrives in the snapshot where the combat is already gone.
   const unitDefIdsRef = useRef<Map<string, string>>(new Map());
@@ -1034,6 +1038,10 @@ export default function Home() {
       seenBuffRecruitIdsRef.current = new Set(
         nextState.eventLog.filter((event) => event.type === "UNIT_RECRUITED").map((event) => event.id)
       );
+      // A mid-game join must not re-pop a past enemy-town-capture notice.
+      seenTownCaptureIdsRef.current = new Set(
+        nextState.eventLog.filter((event) => isEnemyTownCapture(event)).map((event) => event.id)
+      );
       seenFirstRollIdsRef.current = new Set(
         nextState.eventLog.filter((event) => event.type === "FIRST_PLAYER_ROLLED").map((event) => event.id)
       );
@@ -1288,7 +1296,22 @@ export default function Home() {
         seenNeutralControlIdsRef.current.add(event.id);
       }
 
+      // Enemy-town capture: pop the "you captured their town / your town was
+      // captured" explainer into BOTH players' faces. Flagging an enemy Town is
+      // NOT an instant win (it starts the former owner's elimination clock), a
+      // recurring point of confusion — so both the conqueror and the former owner
+      // get a clear pop-up; every other seat just gets the feed line.
+      const townCaptures = nextState.eventLog.filter(isEnemyTownCapture);
+      const freshTownCaptures = townCaptures.filter((event) => !seenTownCaptureIdsRef.current.has(event.id));
+      for (const event of townCaptures) {
+        seenTownCaptureIdsRef.current.add(event.id);
+      }
+      const freshTownCaptureCues = freshTownCaptures
+        .map((event) => buildTownCaptureCue(event, nextState, viewerRef.current))
+        .filter((cue): cue is MapNoticeCue => cue !== null);
+
       const houseRuleCues: MapNoticeCue[] = [
+        ...freshTownCaptureCues,
         ...freshNeutralCommands.map(
           (event) =>
             ({

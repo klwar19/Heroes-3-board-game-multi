@@ -88,6 +88,14 @@ export const HOUSE_RULES: HouseRuleDef[] = [
     default: true
   },
   {
+    id: "dracon-few-magi-trade",
+    label: "Dracon IV Few-of-Magi trade",
+    description:
+      "Dracon's Enchanters IV may also upgrade a Few of Magi into the Enchanters for 6 extra gold. Off: only the rulebook options remain — trade a Pack of Magi (free), or draw a card.",
+    category: "abilities",
+    default: true
+  },
+  {
     id: "combat-move-initiative",
     label: "Initiative buffs grant combat move",
     description:
@@ -140,6 +148,14 @@ export const HOUSE_RULES: HouseRuleDef[] = [
     label: "Defeat can push gold into debt",
     description:
       "The 5-gold penalty for losing a hero combat is paid in full even if it drops the loser below zero (into debt). Off: the loss is capped so gold never goes negative (the normal rule).",
+    category: "combat",
+    default: true
+  },
+  {
+    id: "dragon-utopia-four-dragons",
+    label: "Dragon Utopia: four dragons",
+    description:
+      "The Dragon Utopia (the Dragon Hunt / Dragon Conqueror objective) is guarded by four dragons — Azure, Rust, Crystal and Faerie. Off: the rulebook three — Azure, Crystal and Black.",
     category: "combat",
     default: true
   }
