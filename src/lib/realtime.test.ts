@@ -1,9 +1,11 @@
+// @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { connectRoom, requestCloseRoom } from "./realtime";
 
 const partySocketMock = vi.hoisted(() => ({
   instances: [] as {
     close: ReturnType<typeof vi.fn>;
+    reconnect: ReturnType<typeof vi.fn>;
     send: ReturnType<typeof vi.fn>;
     options: unknown;
     emit: (type: string, event?: unknown) => void;
@@ -13,6 +15,7 @@ const partySocketMock = vi.hoisted(() => ({
 vi.mock("partysocket", () => {
   class FakePartySocket {
     close = vi.fn();
+    reconnect = vi.fn();
     send = vi.fn();
     options: unknown;
     private listeners = new Map<string, ((event: unknown) => void)[]>();
@@ -187,12 +190,102 @@ describe("connectRoom — PartyKit drop/reconnect handling", () => {
     // seat-authoritative frame (accepted even at the SAME version).
     socket.emit("open");
     await vi.waitFor(() => expect(onSnapshot).toHaveBeenCalledTimes(1));
-    expect(onSnapshot.mock.calls[0][1]).toEqual({ seatAuthoritative: true });
+    expect(onSnapshot.mock.calls[0][1]).toEqual({ source: "http-recovery", seatAuthoritative: true });
     expect((onSnapshot.mock.calls[0][0] as { version: number }).version).toBe(7);
     const url = new URL(String(vi.mocked(globalThis.fetch).mock.calls[0][0]));
     expect(url.searchParams.get("clientId")).toBe("client-abc");
     expect(url.searchParams.get("token")).toBe("player-ticket");
 
+    connection.close();
+  });
+});
+
+describe("connectRoom - PartyKit acknowledgement and health protocol", () => {
+  beforeEach(() => {
+    partySocketMock.instances.length = 0;
+    process.env.NEXT_PUBLIC_PARTYKIT_HOST = "rooms.example.partykit.dev";
+  });
+
+  afterEach(() => {
+    delete process.env.NEXT_PUBLIC_PARTYKIT_HOST;
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it("accepts state only from the broadcast and resolves a small acknowledgement", async () => {
+    const onSnapshot = vi.fn();
+    const connection = connectRoom("room-42", { onSnapshot, onStatus: vi.fn() }, "client-abc");
+    const socket = partySocketMock.instances.at(-1)!;
+    socket.emit("open");
+    const resultPromise = connection.submitAction({ type: "END_TURN", playerId: "p1" } as never);
+    const actionFrame = JSON.parse(String(socket.send.mock.calls.at(-1)![0])) as { requestId: string };
+    socket.emit("message", {
+      data: JSON.stringify({ type: "snapshot", snapshot: { roomId: "room-42", version: 2, updatedAt: "now", state: {} } })
+    });
+    socket.emit("message", {
+      data: JSON.stringify({ type: "action-result", requestId: actionFrame.requestId, version: 2, errors: [], notices: ["ok"] })
+    });
+    await expect(resultPromise).resolves.toMatchObject({ version: 2, errors: [], notices: ["ok"] });
+    expect(onSnapshot).toHaveBeenCalledTimes(1);
+    connection.close();
+  });
+
+  it("pings a silent visible socket and syncs when the server is newer", () => {
+    vi.useFakeTimers();
+    const connection = connectRoom("room-42", { onSnapshot: vi.fn(), onStatus: vi.fn() }, "client-abc");
+    const socket = partySocketMock.instances.at(-1)!;
+    socket.emit("open");
+    vi.advanceTimersByTime(35_000);
+    expect(socket.send.mock.calls.map((call) => JSON.parse(String(call[0])).type)).toContain("ping");
+    socket.emit("message", { data: JSON.stringify({ type: "pong", version: 3, viewerSeat: "p1" }) });
+    expect(JSON.parse(String(socket.send.mock.calls.at(-1)![0])).type).toBe("sync");
+    connection.close();
+  });
+
+  it("probes immediately when a long-suspended tab wakes", () => {
+    vi.useFakeTimers();
+    const connection = connectRoom("room-42", { onSnapshot: vi.fn(), onStatus: vi.fn() }, "client-abc");
+    const socket = partySocketMock.instances.at(-1)!;
+    socket.emit("open");
+
+    vi.setSystemTime(Date.now() + 40_000);
+    window.dispatchEvent(new Event("focus"));
+
+    const frameTypes = socket.send.mock.calls.map((call) => JSON.parse(String(call[0])).type);
+    expect(frameTypes.slice(-2)).toEqual(["sync", "ping"]);
+    connection.close();
+  });
+
+  it("recovers the seat snapshot and replaces a half-dead socket after a pong timeout", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      roomId: "room-42", version: 4, updatedAt: "now", state: {}
+    })));
+    vi.stubGlobal("fetch", fetchMock);
+    const onSnapshot = vi.fn();
+    const onDropped = vi.fn();
+    const connection = connectRoom("room-42", { onSnapshot, onStatus: vi.fn(), onDropped }, "client-abc");
+    const socket = partySocketMock.instances.at(-1)!;
+    socket.emit("open");
+    await vi.advanceTimersByTimeAsync(40_000);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(onDropped).toHaveBeenCalledTimes(1);
+    expect(socket.reconnect).toHaveBeenCalledWith(4000, "health timeout");
+    expect(onSnapshot).toHaveBeenCalledWith(
+      expect.objectContaining({ version: 4 }),
+      { source: "http-recovery", seatAuthoritative: true }
+    );
+
+    // A close/error pair from the same failed transport is one logical drop.
+    socket.emit("close");
+    socket.emit("error");
+    expect(onDropped).toHaveBeenCalledTimes(1);
+    // The watchdog already performed recovery, so the replacement socket's
+    // open event must not issue a duplicate HTTP snapshot request.
+    socket.emit("open");
+    await Promise.resolve();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     connection.close();
   });
 });

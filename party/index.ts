@@ -83,7 +83,8 @@ export type RoomResetOptions = {
 type ClientMessage =
   | { type: "action"; requestId?: string; action: GameAction; actorClientId?: string }
   | ({ type: "reset"; requestId?: string; actorClientId?: string; adminKey?: string } & RoomResetOptions)
-  | { type: "sync" };
+  | { type: "sync"; knownVersion?: number }
+  | { type: "ping"; knownVersion: number };
 
 /** The app origin the party calls to verify a socket's session token (Phase 2). */
 function appUrlOf(room: Party.Room): string | undefined {
@@ -118,9 +119,11 @@ type ServerMessage =
   | {
       type: "action-result";
       requestId?: string;
+      version: number;
       errors: { code: string; message: string }[];
-      snapshot: RoomSnapshot;
+      notices?: string[];
     }
+  | { type: "pong"; version: number; viewerSeat?: string }
   /** Sent only to a sender whose reset was REFUSED (host-authority rule). */
   | { type: "reset-denied"; reason: string };
 
@@ -131,6 +134,7 @@ export default class GameRoomServer implements Party.Server {
   readonly options: Party.ServerOptions = { hibernate: true };
 
   private snapshot: RoomSnapshot | null = null;
+  private readonly metricsEnabled: boolean;
 
   /**
    * Verified-identity resolver (Phase 2). Built lazily from the HOMM3BG_APP_URL
@@ -157,7 +161,12 @@ export default class GameRoomServer implements Party.Server {
   private mutationQueue: Promise<unknown> = Promise.resolve();
 
   private serialized<T>(run: () => Promise<T>): Promise<T> {
-    const next = this.mutationQueue.then(run, run);
+    const queuedAt = Date.now();
+    const execute = () => {
+      this.metric("room.mutation.queue", queuedAt);
+      return run();
+    };
+    const next = this.mutationQueue.then(execute, execute);
     // Keep the chain alive whether `run` resolved or rejected.
     this.mutationQueue = next.then(
       () => undefined,
@@ -172,21 +181,41 @@ export default class GameRoomServer implements Party.Server {
    * answered from this ledger with the original outcome instead of applying
    * the same action twice. Bounded FIFO (Map keeps insertion order).
    */
-  private answeredActionRequests = new Map<string, { code: string; message: string }[]>();
+  private answeredActionRequests = new Map<
+    string,
+    { errors: { code: string; message: string }[]; notices: string[]; version: number }
+  >();
 
   private static readonly ANSWERED_REQUEST_CAP = 256;
 
-  private recordAnsweredRequest(key: string, errors: { code: string; message: string }[]): void {
+  private recordAnsweredRequest(
+    key: string,
+    outcome: { errors: { code: string; message: string }[]; notices: string[]; version: number }
+  ): void {
     if (this.answeredActionRequests.size >= GameRoomServer.ANSWERED_REQUEST_CAP) {
       const oldest = this.answeredActionRequests.keys().next().value;
       if (oldest !== undefined) {
         this.answeredActionRequests.delete(oldest);
       }
     }
-    this.answeredActionRequests.set(key, errors);
+    this.answeredActionRequests.set(key, outcome);
   }
 
-  constructor(readonly room: Party.Room) {}
+  constructor(readonly room: Party.Room) {
+    const env = (room as unknown as { env?: Record<string, unknown> }).env;
+    const rate = Math.max(0, Math.min(1, Number(env?.PERFORMANCE_METRICS_SAMPLE_RATE ?? 0)));
+    this.metricsEnabled = rate > 0 && Math.random() < rate;
+  }
+
+  private metric(name: string, startedAt: number, fields: Record<string, string | number | boolean> = {}): void {
+    if (!this.metricsEnabled) return;
+    console.info(JSON.stringify({ metric: name, durationMs: Date.now() - startedAt, roomId: this.room.id, ...fields }));
+  }
+
+  private connectionCount(): number {
+    const getConnections = (this.room as unknown as { getConnections?: () => Iterable<Party.Connection> }).getConnections;
+    return typeof getConnections === "function" ? [...getConnections.call(this.room)].length : 0;
+  }
 
   private verifier(): TokenVerifier | null {
     if (this.tokenVerifier === undefined) {
@@ -567,20 +596,36 @@ export default class GameRoomServer implements Party.Server {
   }
 
   private async broadcastSnapshot(): Promise<void> {
+    const startedAt = Date.now();
     if (!this.snapshot) {
       return;
     }
     const room = this.snapshot.state.room;
     if (!room?.hosted) {
       // Open table: one shared frame to everyone (the client redacts locally).
-      this.room.broadcast(JSON.stringify({ type: "snapshot", snapshot: this.signed(this.snapshot) }));
+      const frame = JSON.stringify({ type: "snapshot", snapshot: this.signed(this.snapshot) });
+      this.room.broadcast(frame);
+      this.metric("room.broadcast", startedAt, {
+        connections: this.connectionCount(),
+        hosted: false,
+        bytes: new TextEncoder().encode(frame).byteLength
+      });
       return;
     }
     // Hosted: each socket gets a frame redacted to its own seat.
     for (const connection of this.room.getConnections()) {
+      const redactStartedAt = Date.now();
       const snapshot = await this.snapshotForConnection(connection);
-      connection.send(JSON.stringify({ type: "snapshot", snapshot } satisfies ServerMessage));
+      this.metric("room.redaction", redactStartedAt, { version: snapshot.version });
+      const serializeStartedAt = Date.now();
+      const frame = JSON.stringify({ type: "snapshot", snapshot } satisfies ServerMessage);
+      connection.send(frame);
+      this.metric("room.serialization", serializeStartedAt, {
+        version: snapshot.version,
+        bytes: new TextEncoder().encode(frame).byteLength
+      });
     }
+    this.metric("room.broadcast", startedAt, { connections: this.connectionCount(), hosted: true });
   }
 
   onConnect(connection: Party.Connection): void {
@@ -724,10 +769,27 @@ export default class GameRoomServer implements Party.Server {
   }
 
   async onMessage(raw: string | ArrayBuffer | ArrayBufferView, sender: Party.Connection): Promise<void> {
+    const parseStartedAt = Date.now();
     let message: ClientMessage;
     try {
       message = JSON.parse(typeof raw === "string" ? raw : new TextDecoder().decode(raw)) as ClientMessage;
     } catch {
+      return;
+    }
+    this.metric("room.message.parse", parseStartedAt, { type: message.type });
+
+    if (message.type === "ping") {
+      const userId = await this.verifiedUserId(sender);
+      const snapshot = this.ensureSnapshot();
+      const viewerSeat = snapshot.state.room?.hosted
+        ? seatForViewer(snapshot.state, { clientId: this.clientIdOf(sender), userId })
+        : undefined;
+      const reply: ServerMessage = {
+        type: "pong",
+        version: snapshot.version,
+        ...(viewerSeat ? { viewerSeat } : {})
+      };
+      sender.send(JSON.stringify(reply));
       return;
     }
 
@@ -809,8 +871,9 @@ export default class GameRoomServer implements Party.Server {
         // retry / double-send): reply with the recorded outcome, apply nothing.
         const answered = dedupeKey ? this.answeredActionRequests.get(dedupeKey) : undefined;
         if (answered) {
-          return { errors: answered, applied: false, prev: null as GameState | null, replyBase: current };
+          return { ...answered, applied: false, prev: null as GameState | null };
         }
+        const applyStartedAt = Date.now();
         const result = applyAction(current.state, message.action, {
           // Fresh crypto entropy per action makes every die roll, shuffle and Ⅱ–Ⅲ
           // tile flip genuinely unpredictable and non-reproducible (true random),
@@ -825,12 +888,15 @@ export default class GameRoomServer implements Party.Server {
           ...(message.actorClientId ? { actorClientId: message.actorClientId } : {}),
           ...(actorUserId ? { actorUserId } : {})
         });
+        this.metric("room.action.apply", applyStartedAt, { actionType: message.action.type });
         const errors = result.errors.map((error) => ({ code: error.code, message: error.message }));
-        if (dedupeKey) {
-          this.recordAnsweredRequest(dedupeKey, errors);
-        }
+        const notices = result.events
+          .filter((event) => event.type === "SPELL_CAST_REFUNDED")
+          .map((event) => event.reason);
         if (result.errors.length > 0) {
-          return { errors, applied: false, prev: null as GameState | null, replyBase: current };
+          const rejected = { errors, notices, version: current.version };
+          if (dedupeKey) this.recordAnsweredRequest(dedupeKey, rejected);
+          return { ...rejected, applied: false, prev: null as GameState | null };
         }
         // A passed AFK kick vote or an expired 10-minute turn: drive the forced
         // resolution through the normal action pipeline until it settles (or
@@ -849,23 +915,23 @@ export default class GameRoomServer implements Party.Server {
           ...this.creationMeta(settled),
           state: settled
         };
+        const persistStartedAt = Date.now();
         await this.persist();
+        this.metric("room.storage.persist", persistStartedAt, { version: this.snapshot.version });
         await this.broadcastSnapshot();
-        return { errors, applied: true, prev: current.state, replyBase: this.snapshot };
+        const accepted = { errors, notices, version: this.snapshot.version };
+        if (dedupeKey) this.recordAnsweredRequest(dedupeKey, accepted);
+        return { ...accepted, applied: true, prev: current.state };
       });
 
       const reply: ServerMessage = {
         type: "action-result",
         requestId: message.requestId,
+        version: outcome.version,
         errors: outcome.errors,
-        // Redact the reply to the ACTING sender's own seat — the initiator must
-        // not receive opponents' hidden info in the action result either. Uses
-        // the snapshot captured under the lock (falling back to it if the room
-        // was closed meanwhile) so a concurrent close is never resurrected.
-        snapshot: this.redactSnapshotForActor(this.signed(this.snapshot ?? outcome.replyBase), {
-          clientId: senderClientId,
-          userId: actorUserId
-        })
+        // Actor-only notices replace the old second full snapshot. The room
+        // broadcast above remains the sole authoritative state frame.
+        ...(outcome.notices.length > 0 ? { notices: outcome.notices } : {})
       };
       sender.send(JSON.stringify(reply));
       // Do not hold the initiating browser's action-result behind a lobby
