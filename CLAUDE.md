@@ -450,7 +450,9 @@ in `src/server/computer-runner.ts`, wired into BOTH backends' action
 transactions (store `submitRoomAction`; PartyKit WS+HTTP paths) after the AFK
 settle. Plan/contract: `docs/single-player-computer-opponents-plan.md`; tests:
 `computer-runner.test.ts`, `single-player-live.test.ts`,
-`single-player-privacy.test.ts`, `window.test.ts`, `control.test.ts`.
+`single-player-combat-resolve.test.ts`, `single-player-privacy.test.ts`,
+`window.test.ts`, `control.test.ts`, `computer-move-replay.test.ts`,
+`hero-position-override.test.tsx`.
 
 Leading with what does NOT run (deliberate, phases 4–6 of the plan):
 - **No strategic play yet.** The policy is a total, deterministic FALLBACK: it
@@ -459,8 +461,26 @@ Leading with what does NOT run (deliberate, phases 4–6 of the plan):
   when its combat unit can, defends otherwise, continues-or-retreats neutral
   fights sanely — but on its map turn it does NOT build, recruit, or move
   heroes with intent; it draws and ends the turn. The UI says so.
-- **No thinking presentation** — computer turns settle synchronously inside the
-  human's action transaction; the response already carries the settled state.
+- **Computer battles resolve IMMEDIATELY and off-screen; movement is REPLAYED.**
+  The whole computer turn (movement AND its neutral/bank combats) settles inside
+  the human's action transaction, so the human never watches an AI fight or waits
+  on one — the settled response already carries the result. The ONE exception is
+  a PvP fight (a computer attacking the human): the runner leaves that combat
+  OPEN for the human to play (emergent from `computerDecisionOwner` returning
+  null on a human-owned combat slot; pinned in
+  `single-player-combat-resolve.test.ts`, AI-only-resolves vs PvP-stops-open).
+  Because the turn settles at once, the client REPLAYS each computer hero's walk
+  slowly, one cell at a time, one hero at a time, so the human can see what each
+  opponent did on the map: `src/components/table/computer-move-replay.ts`
+  (`buildComputerMoveReplay` filters to computer heroes and orders the frames;
+  `useComputerMoveReplay` paces them), rendered via a `heroPositionOverrides`
+  prop on `HexMapBoard` (the pawn draws at the replay cell) plus a "Computer N is
+  moving…" badge. It is PURE PRESENTATION over the already-authoritative state —
+  it never gates rules progression — and is cancelled the instant the human acts
+  or a combat opens. A human's own move keeps its instant path arrow. Pinned in
+  `computer-move-replay.test.ts` and `hero-position-override.test.tsx`. Deeper
+  presentation (a per-decision think delay / server-paced intermediate broadcasts)
+  is still deferred.
 - Computer actions use trusted in-process authority
   (`ReducerOptions.computerActorPlayerId`, never client-deserializable); a
   client cannot forge a computer-seat action, and `ASSIGN_SEAT` refuses

@@ -291,6 +291,7 @@ export function HexMapBoard({
   onAction,
   placement,
   moveCue,
+  heroPositionOverrides,
   readOnly = false
 }: {
   state: GameState;
@@ -300,6 +301,10 @@ export function HexMapBoard({
   onAction: (action: GameAction) => void;
   placement: TilePlacementSelection;
   moveCue: HeroMoveCue | null;
+  // Single-player computer-move replay: while a computer opponent's turn is
+  // being walked out cell by cell, its hero pawn renders at the OVERRIDE cell
+  // instead of its settled spaceId, so the human watches it move step by step.
+  heroPositionOverrides?: Record<string, MapSpaceId>;
   readOnly?: boolean;
 }) {
   const adventure = view.adventure;
@@ -687,10 +692,13 @@ export function HexMapBoard({
 
   const heroesBySpace = new Map<string, { playerId: PlayerId; heroId: string; heroDefId?: string }[]>();
   for (const hero of Object.values(state.heroes)) {
-    if (hero.spaceId) {
-      const list = heroesBySpace.get(hero.spaceId) ?? [];
+    // A replaying computer hero is drawn at its animated cell; every other hero
+    // (and every hero when no replay is running) uses its true spaceId.
+    const spaceId = heroPositionOverrides?.[hero.id] ?? hero.spaceId;
+    if (spaceId) {
+      const list = heroesBySpace.get(spaceId) ?? [];
       list.push({ playerId: hero.controllerId, heroId: hero.id, heroDefId: hero.heroDefId });
-      heroesBySpace.set(hero.spaceId, list);
+      heroesBySpace.set(spaceId, list);
     }
   }
 
@@ -1265,6 +1273,7 @@ export function HexMapBoard({
         heroPawns.push(
           <g
             className="heroPawn"
+            data-hero-id={occupant.heroId}
             key={occupant.heroId}
             onClick={
               canSelectHero
