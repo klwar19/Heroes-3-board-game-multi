@@ -504,9 +504,32 @@ Leading with what does NOT run / deliberate limits:
 - **The War Zealot Magic Mirror still auto-USES** (the printed reflect is read
   as always-on; declining is never right) — but its redirect TARGET pick goes
   to the controller like every other follow-up.
-- **Guards' printed "other actions" stay off the controller's menu** (token
-  placements, Summon Demons, genie draws) — parity with the AI, which never
-  uses them either; passive/triggered abilities still fire normally.
+- **Token "other actions" (Ogre Bloodlust / Sorceress Weakness,
+  `PLACE_TOKEN_ACTION`) ARE offered on the controller's FREE-mode menu** (user
+  rule "mode free: do whatever" / "use token"; `addControlledNeutralTokenActions`):
+  the offer is issued for the controlling seat and re-stamped to the neutral seat
+  (`asNeutralSeatCommand` now also wraps `USE_UNIT_ABILITY`), and the target-pick
+  choice it opens is a NEUTRAL-owned choice the pump hands back to the controller
+  — exactly like the guards' [activation] follow-ups. They are NOT offered in
+  MUST-ATTACK mode ("cant … use token"). The deck-digging (Genie Wish) and Summon
+  Demons other-actions stay OFF a controlled guard on every menu — they read the
+  CONTROLLER's own deck / removed units, not the neutral side, so handing them
+  over would be a bug/exploit, and the AI never used them. Passive/triggered
+  abilities still fire normally.
+- **The IN-COMBAT menu is IDENTICAL for a normal guard FIELD and a Creature
+  BANK** — both obey the `pvpNeutralControlMustAttack` toggle (must-attack: a
+  bank guard must attack too; free: "keeps its corner as start but can do
+  whatever it wants", token included). Banks differ ONLY in the pre-battle SORT
+  below.
+- **Pre-battle formation SORT** (`combat.pendingNeutralPlacement`, user rule
+  "sorting or moving neutral formation before battle, just like defender"): on a
+  normal guard FIELD, once the neutral army is revealed and auto-placed, the
+  controller gets a setup window (`PLACE_NEUTRAL_GUARD` to move a guard to an
+  empty defender cell or swap two guards within the defender zone;
+  `FINISH_NEUTRAL_PLACEMENT` to start the battle — then Tactics, then round 1) —
+  offered whenever ≥2 living guards stand (mirrors the Tactics threshold). A
+  **Creature Bank CANNOT sort** — its guards keep their fixed corner deployment
+  (`placeCreatureBankGuards`), so no sort window opens.
 - **Berserk and the Astrologers Werewolf frenzy override both toggle modes**
   (the spell/frenzy menu binds a controlled guard exactly like a player unit).
 - The continue-or-retreat window, the pre-activation reaction pause (which no
@@ -516,14 +539,16 @@ Leading with what does NOT run / deliberate limits:
 - The mode never changes `unit.controllerId` — guards stay the NEUTRAL seat's
   for rewards, win/loss and every rules read; only the acting SEAT differs.
 
-The `pvpNeutralControlMustAttack` sub-toggle:
+The `pvpNeutralControlMustAttack` sub-toggle (applies to normal guard FIELDS AND
+Creature Banks alike — the bank differs only in the no-sort setup, above):
 - **ON (default, rulebook spirit)**: a guard that can strike now gets ONLY its
-  attacks (no Defend, no move, no hold); one that can reach a strike by moving
-  gets only those landing cells; otherwise only steps that strictly CLOSE the
-  walked distance to some enemy — no wandering to run down the neutral round
+  attacks (no Defend, no token, no move, no hold); one that can reach a strike by
+  moving gets only those landing cells; otherwise only steps that strictly CLOSE
+  the walked distance to some enemy — no wandering to run down the neutral round
   limit; hold only when boxed in.
-- **OFF**: the controller plays the guards with NO constraint — the exact PvP
-  menu (move anywhere legal, attack, defend, hold after acting).
+- **OFF**: the controller plays the guards with NO constraint — the full PvP
+  menu (move anywhere legal, attack, defend, hold after acting) PLUS the token
+  "other actions" (Bloodlust / Weakness) — "do whatever".
 
 Cross-mode seams (each pinned):
 - **Parallel turns**: the controller IS a participant of the open fight
@@ -1269,6 +1294,19 @@ Six additions; each engine rule fails a named test if its wiring is removed.
   outline (outer arc only, inner open). Pure rendering — movement is unchanged
   (`canCrossEdge`). Pinned in `multi-target.test.ts` ("draws NO borders … by
   default" + a "borders toggled on … outer arc only" case).
+  - **The bank being border-free OPENS its outer edge for Tile discovery.** A
+    bank replaces a Blocked Field whose slot usually keeps a sealed `outerImpassable`
+    arc, which used to block a hero standing on the bank from flipping the
+    adjacent face-down Tile. Since a bank now reads as fully open, the discovery
+    gate takes a bank exception: `heroFieldSealedForDiscovery` (`adventure.ts`) =
+    `isOuterEdgeSealed` UNLESS the hero's field is a `creature_bank`, used by
+    `revealTileForHero` (the `DISCOVER_TILE` handler) and `canHeroDiscoverAdjacentTile`
+    (the legal-actions offer). `isOuterEdgeSealed` itself is untouched (its
+    slot-primitive invariant holds). Discovery only reveals the Tile; MOVING out
+    of a bank across a Tile edge stays blocked by the bank's own `canCrossEdge`
+    rule ("reachable only from within its own Tile"). Pinned in `adventure.test.ts`
+    ("lets a hero standing on a (border-free) Creature Bank discover across that
+    edge", with the plain-sealed-field refusal as the in-test CONTROL).
 - **Opponent info panel (map AND combat).** `OpponentInfoDock` / `OpponentInfoModal`
   (`components/adventure/opponent-info.tsx`) render a per-opponent button that
   opens a read-only panel of that opponent's PUBLIC state — resources (+income),

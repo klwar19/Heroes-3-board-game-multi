@@ -476,6 +476,62 @@ describe("BattlefieldBoard — area spells target occupied spaces", () => {
   });
 });
 
+describe("BattlefieldBoard — PvP Neutral Control pre-battle formation sort", () => {
+  // The controller sees the Neutral guards as draggable (to sort the formation),
+  // the empty defender cells as drop targets, and a "Ready for battle" command —
+  // exactly like a defender deploying. The engine wiring is pinned in
+  // pvp-neutral-control.test.ts; here we pin the board presentation.
+  function sortState(): GameState {
+    const state = createInitialGameState("pnc-sort-ui");
+    // The controller (viewer p1) is not the attacker, so placementCellsFor is the
+    // defender zone (0-7) — the sort area. Isolate a single Neutral guard on it.
+    state.combat!.attackerPlayerId = "p2";
+    state.combat!.pendingNeutralPlacement = "p1";
+    const guard = state.combat!.units.unit_p2_skeletons;
+    guard.controllerId = "neutrals";
+    guard.position = 1;
+    state.combat!.units = { [guard.id]: guard };
+    return state;
+  }
+
+  it("makes the Neutral guards draggable and empty defender cells drop targets for the controller", () => {
+    const { container } = render(
+      <CardZoomProvider>
+        <BattlefieldBoard
+          state={sortState()}
+          viewerPlayerId="p1"
+          legalActions={[]}
+          selectedCardAction={null}
+          onAction={vi.fn()}
+          onInspect={() => {}}
+        />
+      </CardZoomProvider>
+    );
+    expect(container.querySelector(".unitDraggable"), "the Neutral guard should be draggable to sort").toBeTruthy();
+    expect(
+      container.querySelectorAll(".dropTarget").length,
+      "empty defender cells should accept a drop"
+    ).toBeGreaterThan(0);
+  });
+
+  it("shows the 'Ready for battle' command that finishes the sort", () => {
+    const finish: LegalAction = {
+      label: "Ready for battle",
+      action: { type: "FINISH_NEUTRAL_PLACEMENT", playerId: "p1" }
+    };
+    const onAction = vi.fn();
+    const { container } = render(
+      <CardZoomProvider>
+        <CommandDock legalActions={[finish]} onAction={onAction} onReset={() => {}} state={sortState()} viewerPlayerId="p1" />
+      </CardZoomProvider>
+    );
+    const button = [...container.querySelectorAll("button")].find((entry) => /ready for battle/i.test(entry.textContent ?? ""));
+    expect(button, "the Ready-for-battle button should render").toBeTruthy();
+    fireEvent.click(button!);
+    expect(onAction).toHaveBeenCalledWith(finish.action);
+  });
+});
+
 describe("BattlefieldBoard — Creature Bank Stack Token badge", () => {
   function renderWithToken(seed: string, stat: "attack" | "defense" | "health" | "initiative") {
     const state = createInitialGameState(seed);

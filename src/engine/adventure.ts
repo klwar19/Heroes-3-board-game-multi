@@ -101,7 +101,7 @@ import type {
   VictoryMode,
   VisitStep
 } from "./state";
-import { isNeutralSideCombatChoice } from "./neutral-control";
+import { isNeutralSideCombatChoice, neutralCombatControllerId } from "./neutral-control";
 import { NEUTRAL_PLAYER_ID } from "./state";
 import { awardCommanderGradePoints } from "./commanders";
 
@@ -916,6 +916,24 @@ export function isTileSlotOuterSealed(tileDefId: string, slot: number): boolean 
 export function isOuterEdgeSealed(adventure: AdventureState, field: MapFieldState): boolean {
   const tile = adventure.tiles[field.tileInstanceId];
   return tile ? isTileSlotOuterSealed(tile.tileDefId, field.slot) : false;
+}
+
+/**
+ * Whether a hero STANDING on `field` is walled off by a printed yellow border
+ * from ordinarily DISCOVERING a Tile across its outer edge.
+ *
+ * This is {@link isOuterEdgeSealed} with one exception: a Creature Bank draws NO
+ * border (it "reads as fully open" — see `getTileBorderSegments`), so a hero
+ * standing on a bank faces OPEN outer edges and may flip an adjacent face-down
+ * Tile — even though the Blocked Field the bank replaced kept its slot's sealed
+ * arc in the tile definition. Discovery only reveals the Tile; moving OUT of a
+ * bank across a Tile edge is a separate question still governed by the bank's own
+ * rule in {@link canCrossEdge}. Keeping `isOuterEdgeSealed` untouched preserves
+ * its slot-primitive invariant; only the hero-vantage discovery gate takes this
+ * bank exception.
+ */
+export function heroFieldSealedForDiscovery(adventure: AdventureState, field: MapFieldState): boolean {
+  return field.location !== "creature_bank" && isOuterEdgeSealed(adventure, field);
 }
 
 export function getAdjacentSpaceIds(spaceId: MapSpaceId): MapSpaceId[] {
@@ -2346,6 +2364,19 @@ export function eliminatePlayer(
     state.pendingChoice.playerId = NEUTRAL_PLAYER_ID;
     if (state.priorityPlayerId === playerId) {
       state.priorityPlayerId = null;
+    }
+  }
+
+  // PvP Neutral Control: the pre-battle formation-SORT window is the Neutral
+  // side's, held by the eliminated controller. Hand it to the next live
+  // controller (re-derived from the shrunken turn order); with nobody left to
+  // take the guards the table is down to the fighter (the game is ending), so
+  // the window simply clears and priority returns to the fighter.
+  if (state.combat && !state.combat.outcome && state.combat.pendingNeutralPlacement === playerId) {
+    const nextController = neutralCombatControllerId(state, state.combat);
+    state.combat.pendingNeutralPlacement = nextController;
+    if (state.phase === "combat-setup") {
+      state.priorityPlayerId = nextController ?? state.combat.attackerPlayerId;
     }
   }
 

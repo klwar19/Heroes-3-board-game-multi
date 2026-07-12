@@ -68,6 +68,8 @@ import {
   hireSecondaryHero,
   placeCombatUnit,
   swapCombatUnits,
+  placeNeutralGuard,
+  finishNeutralPlacement,
   placeTile,
   placeObservatoryTile,
   populationAction,
@@ -17803,7 +17805,7 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
 function asNeutralSeatCommand<
   T extends Extract<
     GameAction,
-    { type: "MOVE_UNIT" | "ATTACK_UNIT" | "MOVE_AND_ATTACK_UNIT" | "DEFEND_UNIT" | "END_ACTIVATION" }
+    { type: "MOVE_UNIT" | "ATTACK_UNIT" | "MOVE_AND_ATTACK_UNIT" | "DEFEND_UNIT" | "END_ACTIVATION" | "USE_UNIT_ABILITY" }
   >
 >(state: GameState, action: T): T {
   const combat = state.combat;
@@ -17837,6 +17839,8 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "PLACE_COMBAT_UNIT",
   "UNPLACE_COMBAT_UNIT",
   "SWAP_COMBAT_UNITS",
+  "PLACE_NEUTRAL_GUARD",
+  "FINISH_NEUTRAL_PLACEMENT",
   "SANDBOX_ADD_CARD",
   "SANDBOX_CONFIGURE_SEAT",
   "SANDBOX_SET_OPTIONS",
@@ -18070,7 +18074,11 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         moveUnit(nextState, asNeutralSeatCommand(nextState, action));
         break;
       case "USE_UNIT_ABILITY":
-        applyUnitAbilityAction(nextState, action);
+        // PvP Neutral Control: a controlled guard's token "other action" is
+        // issued for the controlling seat, then re-stamped to the neutral seat
+        // so the ownership check (unit.controllerId === action.playerId) passes
+        // and attribution matches the AI pipeline.
+        applyUnitAbilityAction(nextState, asNeutralSeatCommand(nextState, action));
         break;
       case "SUMMON_DEMONS":
         summonDemons(nextState, action);
@@ -18323,6 +18331,12 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "FINISH_TACTICS":
         finishTactics(nextState, action);
+        break;
+      case "PLACE_NEUTRAL_GUARD":
+        placeNeutralGuard(nextState, action);
+        break;
+      case "FINISH_NEUTRAL_PLACEMENT":
+        finishNeutralPlacement(nextState, action);
         break;
       case "CONTINUE_NEUTRAL_COMBAT":
         continueNeutralCombat(nextState, action);
