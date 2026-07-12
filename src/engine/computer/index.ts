@@ -11,7 +11,7 @@ export {
 export { observeForComputer } from "./observation";
 export { cardKeepValue, scoreCardAction } from "./card-policy";
 export { scoreChoiceAction } from "./choice-policy";
-export { scoreCombatAction } from "./combat-policy";
+export { formationFitScore, scoreCombatAction } from "./combat-policy";
 export {
   hasUsefulMarketTrade,
   resourceDeficits,
@@ -29,6 +29,18 @@ export {
   type MapObjective,
   type MapObjectiveKind,
 } from "./map-navigation";
+export {
+  emptyComputerMemory,
+  economyFocusBias,
+  getComputerMemory,
+  inferEconomyFocus,
+  noteComputerAction,
+  refreshComputerMemory,
+  setStickyObjective,
+  STICKY_OBJECTIVE_MAX_ROUNDS,
+  type ComputerPolicyMemory,
+  type EconomyFocus,
+} from "./memory";
 export {
   BANK_ENGAGE_RATIO,
   bankUnitStrength,

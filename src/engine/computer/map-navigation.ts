@@ -433,15 +433,38 @@ export function distanceFromHeroTo(
  * priority wins; among equals, the closest; among equals, stable spaceId. A
  * sticky single target stops the multi-source thrash that walked the hero
  * back through its home town whenever a nearer objective fell off the list.
+ *
+ * When `stickySpaceId` is still among the current objectives, keep marching
+ * there across turns (multi-round memory) unless a much higher-priority target
+ * appears (victory / enemy-hero). That is the long-horizon commit the
+ * instantaneous primary alone cannot provide after a soft mid-turn drop-out.
  */
 export function primaryMapObjective(
   state: GameState,
   hero: HeroState,
   objectives: ReadonlyArray<MapObjective> = collectMapObjectives(state, hero),
+  stickySpaceId?: MapSpaceId | null,
 ): MapObjective | null {
   if (objectives.length === 0) {
     return null;
   }
+
+  if (stickySpaceId) {
+    const sticky = objectives.find((objective) => objective.spaceId === stickySpaceId);
+    if (sticky) {
+      // Break sticky only for a strictly higher-priority class (victory/hunt).
+      const higher = objectives.find(
+        (objective) =>
+          MAP_OBJECTIVE_PRIORITY[objective.kind] >
+            MAP_OBJECTIVE_PRIORITY[sticky.kind] &&
+          MAP_OBJECTIVE_PRIORITY[objective.kind] >= MAP_OBJECTIVE_PRIORITY.victory - 1,
+      );
+      if (!higher) {
+        return sticky;
+      }
+    }
+  }
+
   let best: MapObjective | null = null;
   let bestPriority = -1;
   let bestDistance = Number.POSITIVE_INFINITY;

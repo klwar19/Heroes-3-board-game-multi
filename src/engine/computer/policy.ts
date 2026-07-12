@@ -62,6 +62,11 @@ function foundationScore(action: GameAction): {
     case "CHOOSE_ABILITY_TARGET":
     case "RESOLVE_COMBAT_DISCARD":
     case "RESOLVE_DECK_SEARCH":
+    case "RESOLVE_VISIT_STEP":
+    // After-combat gates: answer immediately so the map never freezes with a
+    // computer-owned necromancy / first-aid window and no scored pick.
+    case "SKIP_NECROMANCY":
+    case "COMMANDER_FIRST_AID":
       return { score: 1_100, policy: "mandatory.resolve-choice" };
     case "PASS_REACTION":
       return { score: 1_050, policy: "safe.pass-reaction" };

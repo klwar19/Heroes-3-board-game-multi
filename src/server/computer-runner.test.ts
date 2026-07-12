@@ -696,3 +696,123 @@ describe("paced computer visible steps (live single-player)", () => {
     }
   });
 });
+
+describe("computer Events / exclusive visits (no freeze)", () => {
+  /** Clear exclusive map gates so an injected pendingVisit is the only block. */
+  function withComputerVisit(
+    state: GameState,
+    steps: NonNullable<NonNullable<GameState["adventure"]>["pendingVisit"]>["steps"],
+  ): GameState {
+    const hero = Object.values(state.heroes).find(
+      (h) => h.controllerId === "p2" && h.kind === "main",
+    );
+    expect(hero?.spaceId).toBeTruthy();
+    state.activePlayerId = "p1";
+    state.phase = "player-turn";
+    state.pendingChoice = null;
+    state.reactionWindow = null;
+    state.combat = null;
+    // Fresh adventures may still hold a starting-tile rotation for a seat —
+    // legal-actions returns ONLY rotation offers while that gate is up, so a
+    // synthetic visit would get zero actions and the runner would stall.
+    state.adventure!.pendingTileChoice = null;
+    state.adventure!.pendingNecromancy = null;
+    state.adventure!.pendingCommanderFirstAid = null;
+    state.adventure!.pendingFarTileFlip = null;
+    state.adventure!.pendingGarrison = null;
+    state.adventure!.pendingTokenTeleport = null;
+    state.adventure!.eventResolution = null;
+    state.adventure!.pendingVisit = {
+      playerId: "p2",
+      heroId: hero!.id,
+      fieldId: hero!.spaceId!,
+      steps,
+    };
+    return state;
+  }
+
+  it("resolves a multi-option Event-style visit for a computer seat without stalling", () => {
+    let state = createAdventureGameState({
+      seed: "runner-event-visit",
+      scenarioId: "skirmish",
+      playerCount: 2,
+      sessionMode: "single-player",
+    });
+    state = withComputerVisit(state, [
+      {
+        type: "CHOOSE_ONE",
+        prompt: "Test Event: pick a benefit",
+        options: [
+          {
+            label: "Gain 3 gold",
+            steps: [{ type: "GAIN_RESOURCES", gold: 3 }],
+          },
+          {
+            label: "Gain 1 experience",
+            steps: [{ type: "GAIN_EXPERIENCE", amount: 1 }],
+          },
+          { label: "Leave", steps: [] },
+        ],
+      },
+    ]);
+
+    expect(computerDecisionOwner(state)).toBe("p2");
+    expect(
+      getLegalActions(state, "p2").some(
+        (legal) => legal.action.type === "RESOLVE_VISIT_STEP",
+      ),
+    ).toBe(true);
+    const goldBefore = state.players.p2.resources.gold;
+    const run = driveComputerPlayers(state);
+    expect(run.stalled, run.reason).toBe(false);
+    expect(run.decisions.some((d) => d.action.type === "RESOLVE_VISIT_STEP")).toBe(
+      true,
+    );
+    expect(run.state.adventure?.pendingVisit).toBeFalsy();
+    // Took a real benefit (gold path preferred over empty leave).
+    expect(run.state.players.p2.resources.gold).toBeGreaterThanOrEqual(goldBefore);
+  });
+
+  it("auction visit: picks a modest bid option (not half the treasury)", () => {
+    let state = createAdventureGameState({
+      seed: "runner-auction-bid",
+      scenarioId: "skirmish",
+      playerCount: 2,
+      sessionMode: "single-player",
+    });
+    state.players.p2.resources.gold = 18;
+    // Nested steps use GAIN_RESOURCES as a stand-in for bid amount so the
+    // engine does not need a live Event deck (EVENT_AUCTION_SET_BID no-ops
+    // without one). Utility still ranks low gold costs above high ones.
+    const options = Array.from({ length: 19 }, (_, amount) => ({
+      label: amount === 0 ? "No bid" : `Bid ${amount} gold`,
+      steps:
+        amount === 0
+          ? ([] as { type: "GAIN_RESOURCES"; gold?: number }[])
+          : ([{ type: "EVENT_AUCTION_SET_BID" as const, amount }] as const),
+    }));
+    state = withComputerVisit(state, [
+      {
+        type: "CHOOSE_ONE",
+        prompt: "A Shady Auction",
+        options: options as {
+          label: string;
+          steps: { type: "EVENT_AUCTION_SET_BID"; amount: number }[] | [];
+        }[],
+      },
+    ]);
+
+    const run = driveComputerPlayers(state);
+    expect(run.stalled, run.reason).toBe(false);
+    const pick = run.decisions.find((d) => d.action.type === "RESOLVE_VISIT_STEP");
+    expect(pick).toBeDefined();
+    const optionIndex =
+      pick && "optionIndex" in pick.action
+        ? (pick.action.optionIndex as number | undefined)
+        : undefined;
+    // Policy utility: sweet-spot bids 1–4; never dump half of 18 (indices ≥9).
+    expect(optionIndex).toBeDefined();
+    expect(optionIndex!).toBeLessThanOrEqual(4);
+    expect(run.state.adventure?.pendingVisit).toBeFalsy();
+  });
+});

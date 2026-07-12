@@ -66,6 +66,65 @@ describe("computer decision ownership", () => {
     expect(computerDecisionOwner(state)).toBeNull();
   });
 
+  it("drives a computer-owned commander First Aid window (exclusive interaction)", () => {
+    const state = createAdventureLobbyState({
+      seed: "window-first-aid",
+      sessionMode: "single-player",
+      computerOpponents: 1,
+    });
+    // Simulate post-combat First Aid owned by the computer while the human
+    // would otherwise be the active seat — exclusive map interaction must win.
+    state.phase = "player-turn";
+    state.activePlayerId = "p1";
+    state.adventure = {
+      ...(state.adventure as object),
+      pendingCommanderFirstAid: {
+        playerId: "p2",
+        options: [
+          {
+            label: "Restore Pikemen",
+            kind: "revive",
+            unitDefId: "castle.pikemen",
+            side: "few",
+          },
+        ],
+      },
+    } as typeof state.adventure;
+    expect(computerDecisionOwner(state)).toBe("p2");
+
+    // CONTROL: human-owned First Aid freezes computers.
+    (
+      state.adventure as { pendingCommanderFirstAid: { playerId: string } }
+    ).pendingCommanderFirstAid.playerId = "p1";
+    expect(computerDecisionOwner(state)).toBeNull();
+  });
+
+  it("drives a computer-owned pending visit (Event / field reward) over turn ownership", () => {
+    const state = createAdventureLobbyState({
+      seed: "window-visit",
+      sessionMode: "single-player",
+      computerOpponents: 1,
+    });
+    state.phase = "player-turn";
+    state.activePlayerId = "p1";
+    state.adventure = {
+      ...(state.adventure as object),
+      pendingVisit: {
+        playerId: "p2",
+        heroId: "h2",
+        fieldId: "0,0",
+        steps: [
+          {
+            type: "CHOOSE_ONE",
+            prompt: "Event",
+            options: [{ label: "Gain gold", steps: [{ type: "GAIN_RESOURCES", gold: 5 }] }],
+          },
+        ],
+      },
+    } as typeof state.adventure;
+    expect(computerDecisionOwner(state)).toBe("p2");
+  });
+
   it("draft format: computers wait for the human's town, then lock; a locked seat waits for its ban turn", () => {
     let state = createAdventureLobbyState({
       seed: "window-draft-wait",

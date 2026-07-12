@@ -60,10 +60,14 @@ export function computerDecisionOwner(state: GameState): PlayerId | null {
   }
 
   const adventure = state.adventure;
+  // Exclusive map interactions: one seat at a time. Missing any of these from
+  // the list used to let the runner fall through to plain turn ownership while
+  // the real gate still blocked every automatable action → stall/freeze.
   const interactionOwners = [
     adventure?.pendingVisit?.playerId,
     adventure?.pendingTileChoice?.playerId,
     adventure?.pendingNecromancy?.playerId,
+    adventure?.pendingCommanderFirstAid?.playerId,
     adventure?.pendingFarTileFlip?.playerId,
     adventure?.pendingGarrison?.defenderPlayerId,
     adventure?.pendingTokenTeleport?.playerId,

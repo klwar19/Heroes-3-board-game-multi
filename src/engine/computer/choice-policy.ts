@@ -356,9 +356,71 @@ function scorePositionOption(
   }
 
   if (context === "garrison") {
-    // Prefer defending with army when a town is threatened — leave structured
-    // garrison options slightly preferring lower indices (engine order).
-    return CHOICE_BASE + Math.max(0, 15 - optionIndex);
+    // Option 0 = pay 8 gold and defend; option 1 = let it fall.
+    // Defend when the army can still fight and gold covers the fee + reserve;
+    // otherwise cede the holding rather than bankrupt a thin force.
+    const player = observation.state.players[observation.playerId];
+    const gold = player?.resources.gold ?? 0;
+    const army = player?.army.length ?? 0;
+    if (optionIndex === 0) {
+      if (gold >= 8 + 5 && army >= 3) return CHOICE_BASE + 40;
+      if (gold >= 8 && army >= 2) return CHOICE_BASE + 25;
+      return CHOICE_BASE + 5;
+    }
+    // Let it fall — preferred when broke or army is a husk.
+    if (gold < 8 || army < 2) return CHOICE_BASE + 35;
+    return CHOICE_BASE + 12;
+  }
+
+  if (context === "place-creature-bank") {
+    // Option 0 place the known bank; option 1 leave blocked. Placing creates
+    // a fightable (and rewardable) objective — always prefer place.
+    return optionIndex === 0 ? CHOICE_BASE + 40 : CHOICE_BASE + 10;
+  }
+
+  if (context === "place-map-token") {
+    // Any legal candidate is fine; prefer lower indices for stability.
+    return CHOICE_BASE + Math.max(0, 25 - optionIndex);
+  }
+
+  if (context === "subterranean-gate-placement") {
+    // Open a gate when offered — connectivity beats leaving the cavern sealed.
+    if (looksLikeDecline(optionLabel(choice, optionIndex))) {
+      return CHOICE_BASE + 8;
+    }
+    return CHOICE_BASE + 30 - Math.min(10, optionIndex);
+  }
+
+  if (context === "far-tile-flip") {
+    // Prefer tiles that mention Settlement / Ore Mine in the option label
+    // (engine builds those tags into the keep/reroll menu). Keep over reroll
+    // when the candidate already looks good; otherwise take the reroll offer.
+    const label = optionLabel(choice, optionIndex) ?? "";
+    const lower = label.toLowerCase();
+    if (lower.includes("settlement")) return CHOICE_BASE + 45;
+    if (lower.includes("ore") || lower.includes("mine")) return CHOICE_BASE + 38;
+    if (lower.includes("keep")) return CHOICE_BASE + 28;
+    if (lower.includes("reroll") || lower.includes("draw another")) {
+      return CHOICE_BASE + 18;
+    }
+    if (looksLikeDecline(label)) return CHOICE_BASE + 8;
+    return CHOICE_BASE + 22 - Math.min(8, optionIndex);
+  }
+
+  if (context === "learning-level-up") {
+    // Prefer taking a real level-up benefit over skipping.
+    if (looksLikeDecline(optionLabel(choice, optionIndex))) {
+      return CHOICE_BASE + 5;
+    }
+    return CHOICE_BASE + 35 - Math.min(10, optionIndex);
+  }
+
+  if (context === "diplomacy-recruit") {
+    // Free / cheap neutral recruit — take it.
+    if (looksLikeDecline(optionLabel(choice, optionIndex))) {
+      return CHOICE_BASE + 8;
+    }
+    return CHOICE_BASE + 35 - Math.min(10, optionIndex);
   }
 
   // Generic OPTION_CHOICE: slight preference for non-decline, first options.
@@ -442,6 +504,11 @@ export function scoreChoiceAction(
         policy: "choice.commander-grade",
       };
     }
+    case "SKIP_NECROMANCY":
+      // Always resolve the post-combat window (prefer playing Necromancy via
+      // PLAY_CARD when legal — that path scores higher in card-policy). Skip is
+      // the mandatory exit so the map never freezes.
+      return { score: CHOICE_BASE + 20, policy: "choice.skip-necromancy" };
     default:
       return null;
   }
