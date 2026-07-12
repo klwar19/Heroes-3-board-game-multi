@@ -1,5 +1,7 @@
 import { effectiveHandLimit } from "../adventure";
 import type { GameAction, GameState, LegalAction } from "../state";
+import { cardKeepValue, scoreCardAction } from "./card-policy";
+import { scoreChoiceAction } from "./choice-policy";
 import { scoreCombatAction } from "./combat-policy";
 import { scoreMapAction } from "./map-policy";
 import type { ComputerDecision, ComputerObservation } from "./types";
@@ -130,7 +132,8 @@ function tieValue(seed: string, action: LegalAction): number {
 /**
  * REFRESH_HAND is offered as a bare template (discardCardIds: []), but a hand
  * over the limit MUST discard down in the same action (the handler rejects an
- * insufficient list). Deterministic pick: the oldest cards in hand order.
+ * insufficient list). Deterministic pick: lowest cardKeepValue first (dump
+ * junk, keep artifacts/spells/saves), with stable hand-order ties.
  * effectiveHandLimit only reads public fields plus the viewer's own hand, so
  * the redacted view is a safe stand-in for the full state.
  */
@@ -150,7 +153,13 @@ function withRefreshDiscards(
   if (overflow === 0) {
     return action;
   }
-  return { ...action, discardCardIds: player.hand.slice(0, overflow) };
+  const ranked = player.hand
+    .map((cardId, index) => ({ cardId, index, value: cardKeepValue(cardId) }))
+    .sort((a, b) => a.value - b.value || a.index - b.index);
+  return {
+    ...action,
+    discardCardIds: ranked.slice(0, overflow).map((entry) => entry.cardId),
+  };
 }
 
 /**
@@ -169,7 +178,11 @@ export function chooseComputerAction(
   const tieSeed = `${observation.state.seed}|${observation.state.round}|${observation.state.eventCounter ?? 0}|${observation.playerId}`;
   const ranked = candidates
     .map((legal) => {
+      // Priority: mandatory choices → cards/spells/reactions → combat → map →
+      // foundation. Each scorer returns null for actions it does not handle.
       const strategic =
+        scoreChoiceAction(observation, legal.action) ??
+        scoreCardAction(observation, legal.action) ??
         scoreCombatAction(observation, legal.action) ??
         scoreMapAction(observation, legal.action);
       return {

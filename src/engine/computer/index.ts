@@ -9,6 +9,8 @@ export {
   standardComputerController,
 } from "./control";
 export { observeForComputer } from "./observation";
+export { cardKeepValue, scoreCardAction } from "./card-policy";
+export { scoreChoiceAction } from "./choice-policy";
 export { scoreCombatAction } from "./combat-policy";
 export { scoreMapAction } from "./map-policy";
 export {

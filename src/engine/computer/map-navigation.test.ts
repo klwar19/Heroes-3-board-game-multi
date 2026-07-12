@@ -104,15 +104,67 @@ describe("collectMapObjectives", () => {
       (candidate) => candidate.controllerId === "p1" && candidate.kind === "main",
     )!;
     enemy.spaceId = null;
-    const spaces = collectMapObjectives(state, hero).map((o) => o.spaceId);
+    const objectives = collectMapObjectives(state, hero);
+    const spaces = objectives.map((o) => o.spaceId);
     // Both difficulty-1 guards and the unguarded visitable are objectives.
     expect(spaces).toContain(MINE);
     expect(spaces).toContain(TREASURE);
     expect(spaces).toContain(RESOURCE);
     // p2's own town is never an objective.
     expect(spaces).not.toContain(TOWN);
-    // A bare enemy (p1) holding with no hero on it is never an objective.
-    expect(spaces).not.toContain("h:8:2");
+    // Conquest win condition: an enemy faction town IS a victory objective
+    // (even with no hero parked on it). Bare non-town enemy holdings stay out.
+    const enemyTown = Object.values(state.adventure!.fields).find(
+      (field) =>
+        field.flagOwnerId === "p1" &&
+        field.location &&
+        // town category fields only
+        spaces.includes(field.spaceId) &&
+        objectives.some(
+          (o) => o.spaceId === field.spaceId && o.kind === "victory",
+        ),
+    );
+    expect(enemyTown, "conquest elevates the enemy town to victory").toBeTruthy();
+    // A bare enemy mine/settlement (not a town) is still never an objective.
+    const bareEnemyHolding = Object.values(state.adventure!.fields).find(
+      (field) =>
+        field.flagOwnerId === "p1" &&
+        field.spaceId !== enemyTown?.spaceId &&
+        field.spaceId === "h:8:2",
+    );
+    if (bareEnemyHolding && bareEnemyHolding.spaceId !== enemyTown?.spaceId) {
+      expect(spaces).not.toContain("h:8:2");
+    }
+  });
+
+  it("elevates grail dig sites and dragon utopia under their win modes", () => {
+    const state = game();
+    const hero = p2Hero(state);
+    // Mark a public grail dig on an empty field and switch victory mode.
+    state.adventure!.victoryMode = "grail";
+    state.adventure!.grail = { status: "uncollected" };
+    state.adventure!.fields[RESOURCE].grailDiggable = true;
+    const grailObjectives = collectMapObjectives(state, hero);
+    const grailHit = grailObjectives.find((o) => o.spaceId === RESOURCE);
+    expect(grailHit?.kind).toBe("victory");
+
+    // CONTROL: under conquest the same diggable field is not a victory site.
+    state.adventure!.victoryMode = "conquest";
+    delete state.adventure!.fields[RESOURCE].grailDiggable;
+    const conquest = collectMapObjectives(state, hero).find(
+      (o) => o.spaceId === RESOURCE,
+    );
+    expect(conquest?.kind).not.toBe("victory");
+
+    // Dragon hunt elevates the utopia location.
+    state.adventure!.victoryMode = "dragon-hunt";
+    // Plant a utopia on the treasure field for the test.
+    state.adventure!.fields[TREASURE].location = "dragon_utopia";
+    state.adventure!.fields[TREASURE].difficulty = 0;
+    const dragon = collectMapObjectives(state, hero).find(
+      (o) => o.spaceId === TREASURE,
+    );
+    expect(dragon?.kind).toBe("victory");
   });
 
   it("drops a guard from the objective set once the hero can no longer beat it", () => {
