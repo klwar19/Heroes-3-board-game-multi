@@ -14,7 +14,11 @@ export { scoreMapAction } from "./map-policy";
 export {
   canBeatGuardedField,
   collectMapObjectives,
+  distanceFromHeroTo,
+  MAP_OBJECTIVE_PRIORITY,
   objectiveDistanceField,
+  ownTownSpaceId,
+  primaryMapObjective,
   type MapObjective,
   type MapObjectiveKind,
 } from "./map-navigation";
