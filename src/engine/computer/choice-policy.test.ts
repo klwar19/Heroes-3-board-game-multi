@@ -163,14 +163,14 @@ describe("choice policy — ability target", () => {
       type: "ranged",
       position: 12,
     });
-    const choice: PendingChoice = {
+    const choice = {
       id: "at1",
       type: "ABILITY_TARGET_CHOICE",
       playerId: "p2",
       unitId: "A",
       abilityId: "splash",
       candidateUnitIds: ["E1", "E2"],
-    } as PendingChoice;
+    } as unknown as PendingChoice;
 
     const hitWeak: LegalAction = {
       label: "hit weak",
@@ -219,7 +219,7 @@ describe("choice policy — ability target", () => {
 
 describe("choice policy — city hall income", () => {
   it("prefers free reinforce when the army is thin", () => {
-    const choice: PendingChoice = {
+    const choice = {
       id: "ch1",
       type: "OPTION_CHOICE",
       playerId: "p2",
@@ -232,7 +232,7 @@ describe("choice policy — city hall income", () => {
           { label: "reinforce", reinforceBronzeFree: true },
         ],
       },
-    };
+    } as unknown as PendingChoice;
 
     const gold: LegalAction = {
       label: "gold",

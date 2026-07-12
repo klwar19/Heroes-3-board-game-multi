@@ -1,18 +1,20 @@
 import { describe, expect, it } from "vitest";
 import { createAdventureGameState } from "../adventure-setup";
-import type { GameState } from "../state";
+import type { GameState, MapFieldState } from "../state";
 import {
+  BANK_ENGAGE_RATIO,
+  canBeatCreatureBank,
+  creatureBankStrength,
   ENEMY_ENGAGE_RATIO,
   playerArmyStrength,
+  shouldAssaultEnemyHolding,
   shouldEngageEnemy,
 } from "./army-strength";
 
 /**
- * The army-strength read behind the computer's "should I attack this hero?"
- * decision. It never resolves a battle (the dice do that) — it only decides
- * whether the AI is willing to start one. A comparable or larger army engages; a
- * clearly outmatched one holds off. Pinned on a real starting map (both seats
- * open with the same starting army, so strengths tie).
+ * The army-strength read behind the computer's "should I attack this hero /
+ * bank / garrison?" decision. It never resolves a battle (the dice do that) —
+ * it only decides whether the AI is willing to start one.
  */
 function game(): GameState {
   return createAdventureGameState({
@@ -53,5 +55,60 @@ describe("shouldEngageEnemy", () => {
       enemyStrength * ENEMY_ENGAGE_RATIO,
     );
     expect(shouldEngageEnemy(state, "p2", "p1")).toBe(false);
+  });
+});
+
+describe("creature bank strength", () => {
+  it("values a known bank and engages only when the army can take it", () => {
+    const state = game();
+    // Imp Cache is the weakest far bank (4× familiars). A full starting army
+    // should clear it; a gutted army must refuse.
+    const impStr = creatureBankStrength("imp_cache", "normal");
+    expect(impStr).toBeGreaterThan(0);
+    expect(Number.isFinite(impStr)).toBe(true);
+
+    const field = {
+      spaceId: "bank:1",
+      location: "creature_bank",
+      bankId: "imp_cache",
+    } as MapFieldState;
+
+    expect(canBeatCreatureBank(state, "p2", field)).toBe(true);
+
+    // CONTROL: gut the army well below the bank engage ratio.
+    state.players.p2.army = state.players.p2.army.slice(0, 1);
+    expect(playerArmyStrength(state, "p2")).toBeLessThan(
+      impStr * BANK_ENGAGE_RATIO,
+    );
+    expect(canBeatCreatureBank(state, "p2", field)).toBe(false);
+
+    // CONTROL: unknown bank id → never engage (no blind gamble).
+    expect(
+      canBeatCreatureBank(state, "p2", {
+        ...field,
+        bankId: undefined,
+      } as MapFieldState),
+    ).toBe(false);
+
+    // CONTROL: Dragon Utopia is far stronger than Imp Cache.
+    expect(creatureBankStrength("dragon_utopia", "normal")).toBeGreaterThan(
+      impStr,
+    );
+  });
+});
+
+describe("shouldAssaultEnemyHolding", () => {
+  it("assaults when armies are even; refuses when outmatched", () => {
+    const state = game();
+    const field = {
+      spaceId: "t:1",
+      location: "castle_town",
+      flagOwnerId: "p1",
+    } as MapFieldState;
+    // Equal armies → assault.
+    expect(shouldAssaultEnemyHolding(state, "p2", field)).toBe(true);
+    // CONTROL: outmatched → refuse.
+    state.players.p2.army = state.players.p2.army.slice(0, 1);
+    expect(shouldAssaultEnemyHolding(state, "p2", field)).toBe(false);
   });
 });

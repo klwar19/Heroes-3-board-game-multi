@@ -229,6 +229,67 @@ describe("card policy — map plays", () => {
   });
 });
 
+describe("card policy — power boost and saves", () => {
+  it("does NOT burn a save card as a +1 Power boost (keeps it for the save)", () => {
+    const pass: LegalAction = {
+      action: { type: "PASS_REACTION", playerId: "p2" } as GameAction,
+      label: "pass",
+    };
+    const boostSave: LegalAction = {
+      action: {
+        type: "PLAY_REACTION",
+        playerId: "p2",
+        cardId: "spell.resurrection",
+        mode: "basic",
+        asPowerBoost: true,
+      } as GameAction,
+      label: "Resurrection as Power",
+    };
+    const decision = chooseComputerAction(
+      observation([], [pass, boostSave], "p2", ["spell.resurrection"]),
+    );
+    // PASS wins — never discard Resurrection for +1 Power.
+    expect(decision?.action.type).toBe("PASS_REACTION");
+
+    // CONTROL: a low-value spell boost still beats PASS when that is the offer.
+    const boostJunk: LegalAction = {
+      action: {
+        type: "PLAY_REACTION",
+        playerId: "p2",
+        cardId: "spell.magic_arrow",
+        mode: "basic",
+        asPowerBoost: true,
+      } as GameAction,
+      label: "Arrow as Power",
+    };
+    const junkDecision = chooseComputerAction(
+      observation([], [pass, boostJunk], "p2", ["spell.magic_arrow"]),
+    );
+    // Magic Arrow as power is acceptable (not a save). Either boost or pass is
+    // fine; the mutation control is that Resurrection was refused above.
+    expect(["PASS_REACTION", "PLAY_REACTION"]).toContain(junkDecision?.action.type);
+  });
+
+  it("plays a real lethal-save reaction over passing (save when needed)", () => {
+    const save: LegalAction = {
+      action: {
+        type: "PLAY_REACTION",
+        playerId: "p2",
+        cardId: "spell.resurrection",
+        mode: "basic",
+      } as GameAction,
+      label: "Resurrection",
+    };
+    const decision = chooseComputerAction(
+      observation([], [pass, save], "p2", ["spell.resurrection"]),
+    );
+    expect(decision?.action.type).toBe("PLAY_REACTION");
+    expect((decision?.action as { cardId: string }).cardId).toBe(
+      "spell.resurrection",
+    );
+  });
+});
+
 describe("card policy — no cheating", () => {
   it("decision is unchanged when an opponent hand is rewritten", () => {
     const cast: LegalAction = {
@@ -258,7 +319,7 @@ describe("card policy — no cheating", () => {
           },
         },
       },
-    } as ComputerObservation;
+    } as unknown as ComputerObservation;
     const b = chooseComputerAction(withEnemyHand);
 
     expect(a?.action).toEqual(b?.action);

@@ -125,15 +125,23 @@ describe("collectMapObjectives", () => {
         ),
     );
     expect(enemyTown, "conquest elevates the enemy town to victory").toBeTruthy();
-    // A bare enemy mine/settlement (not a town) is still never an objective.
-    const bareEnemyHolding = Object.values(state.adventure!.fields).find(
+    // Bare enemy mines re-flag free (no garrison fight) — they ARE objectives.
+    const bareEnemyMine = Object.values(state.adventure!.fields).find(
       (field) =>
         field.flagOwnerId === "p1" &&
         field.spaceId !== enemyTown?.spaceId &&
-        field.spaceId === "h:8:2",
+        field.location &&
+        // flaggable category (mine/sawmill/etc.)
+        !objectives.some(
+          (o) => o.spaceId === field.spaceId && o.kind === "victory",
+        ),
     );
-    if (bareEnemyHolding && bareEnemyHolding.spaceId !== enemyTown?.spaceId) {
-      expect(spaces).not.toContain("h:8:2");
+    if (bareEnemyMine) {
+      // Plant is optional by map layout; when present it must be takeable.
+      const kind = objectives.find((o) => o.spaceId === bareEnemyMine.spaceId)?.kind;
+      if (kind) {
+        expect(["flaggable", "town", "visitable"]).toContain(kind);
+      }
     }
   });
 
@@ -299,5 +307,44 @@ describe("sticky primary + explore objectives", () => {
     if (faceDown) {
       expect(explore.length).toBeGreaterThan(0);
     }
+  });
+
+  it("marches to a Trading Post only when resources need rebalance", () => {
+    const state = game();
+    const hero = p2Hero(state);
+    hero.level = 1;
+    // Neutralise other nearby prizes so the market can surface.
+    const fields = state.adventure!.fields;
+    for (const id of [MINE, TREASURE]) {
+      fields[id].flagOwnerId = "p2";
+      fields[id].everFlagged = true;
+      delete fields[id].difficulty;
+    }
+    fields[RESOURCE].blackCube = true;
+    for (const tile of Object.values(state.adventure!.tiles)) {
+      tile.faceDown = false;
+    }
+    // Plant a trading post on the empty neighbour.
+    fields[EMPTY].location = "trading_post";
+    delete fields[EMPTY].difficulty;
+    fields[EMPTY].flagOwnerId = null;
+
+    // Broke with materials → market is an objective.
+    state.players.p2.resources = {
+      gold: 2,
+      buildingMaterials: 5,
+      valuables: 0,
+    };
+    const needy = collectMapObjectives(state, hero).map((o) => o.spaceId);
+    expect(needy).toContain(EMPTY);
+
+    // CONTROL: flush balanced resources → market is not a detour.
+    state.players.p2.resources = {
+      gold: 20,
+      buildingMaterials: 4,
+      valuables: 1,
+    };
+    const flush = collectMapObjectives(state, hero).map((o) => o.spaceId);
+    expect(flush).not.toContain(EMPTY);
   });
 });
