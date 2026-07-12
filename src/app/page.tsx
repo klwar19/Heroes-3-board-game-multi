@@ -736,11 +736,8 @@ export default function Home() {
   startComputerReplayRef.current = computerReplay.start;
   const cancelComputerReplayRef = useRef(computerReplay.cancel);
   cancelComputerReplayRef.current = computerReplay.cancel;
-  // Single-player: after the computer opponents' whole turn settles at once, the
-  // human is shown one prompt summarising the AI battles that resolved off-screen
-  // (win/loss + reward) and, if the AI moved, a "Watch their moves" button that
-  // starts the slow map replay. Nothing on the map animates until the human
-  // accepts, so they never miss what happened.
+  // Single-player: computers pace live (one action per broadcast). Battle recaps
+  // still use this overlay; multi-hop catch-up batches can still queue a replay.
   const [opponentTurnSummary, setOpponentTurnSummary] = useState<{
     id: string;
     cues: ComputerBattleCue[];
@@ -1763,12 +1760,12 @@ export default function Home() {
         });
       }
 
-      // Hero walks. A HUMAN's own walk chains this batch's steps into one
-      // animated arrow (as before). A COMPUTER opponent's whole turn arrives in
-      // a single settled snapshot, so its walks are replayed slowly instead —
-      // one cell at a time, one hero at a time — so the human can watch what
-      // each opponent did. (Its battles already resolved server-side and are
-      // never shown; the map is where its intent is visible.)
+      // Hero walks. With the live paced computer pump, each computer HERO_MOVED
+      // arrives in its OWN snapshot (real state already advanced) — animate it
+      // like a human step so the human sees move → roll → reward → move, not a
+      // post-hoc walk over a finished turn. A multi-step batch in one snapshot
+      // (legacy full settle / reconnect catch-up) still uses the slow replay
+      // path so nothing teleports.
       const freshMoves = moves.filter((event) => !seenMoveIdsRef.current.has(event.id));
       for (const event of moves) {
         seenMoveIdsRef.current.add(event.id);
@@ -1776,9 +1773,18 @@ export default function Home() {
       const freshHumanMoves = freshMoves.filter(
         (event) => !isComputerPlayer(nextState, event.playerId)
       );
-      if (freshHumanMoves.length > 0) {
+      const freshComputerMoves = freshMoves.filter((event) =>
+        isComputerPlayer(nextState, event.playerId)
+      );
+      const liveWalks =
+        freshHumanMoves.length > 0
+          ? freshHumanMoves
+          : freshComputerMoves.length === 1
+            ? freshComputerMoves
+            : [];
+      if (liveWalks.length > 0) {
         const byHero = new Map<string, { from: string; steps: string[] }>();
-        for (const event of freshHumanMoves) {
+        for (const event of liveWalks) {
           const entry = byHero.get(event.heroId);
           if (entry) {
             entry.steps.push(event.to);
@@ -1795,24 +1801,27 @@ export default function Home() {
         const terrain = destinationTile ? allTileDefinitions[destinationTile.tileDefId]?.terrain : undefined;
         playLibrarySound(TERRAIN_MOVE_SOUNDS[terrain ?? "grass"] ?? TERRAIN_MOVE_SOUNDS.grass, MAP_MOVE_VOLUME);
         setMoveCue({
-          id: freshHumanMoves[0].id,
+          id: liveWalks[0].id,
           heroId,
           path: [walk.from, ...walk.steps]
         });
         window.setTimeout(() => {
-          setMoveCue((current) => (current?.id === freshHumanMoves[0].id ? null : current));
+          setMoveCue((current) => (current?.id === liveWalks[0].id ? null : current));
         }, 1800);
       }
-      // Computer turn: while we are entering / holding a combat (the board is
-      // hidden), drop any pending replay so stale override cells never linger.
-      // Otherwise, summarise the opponents' off-screen battles (win/loss +
-      // reward) and hold their map walks behind an "accept" prompt — the human
-      // clicks to start the slow, cell-by-cell replay, so nothing moves unseen.
+      // Computer combat: drop any pending multi-step replay. Battle results
+      // that arrive while the human is still on the map get a short recap
+      // toast (no "watch moves" gate — moves are already live).
       if (nextState.combat) {
         cancelComputerReplayRef.current();
         setOpponentTurnSummary(null);
       } else {
-        const replay = buildComputerMoveReplay(nextState, freshMoves);
+        const batchedComputerMoves =
+          freshComputerMoves.length > 1 ? freshComputerMoves : [];
+        const replay =
+          batchedComputerMoves.length > 0
+            ? buildComputerMoveReplay(nextState, batchedComputerMoves)
+            : null;
         const freshBattleResults = nextState.eventLog.filter(
           (event) =>
             (event.type === "COMBAT_ENDED" || event.type === "QUICK_COMBAT_WON") &&
@@ -1822,12 +1831,21 @@ export default function Home() {
           seenBattleResultIdsRef.current.add(event.id);
         }
         const battleCues = buildComputerBattleReport(nextState, freshBattleResults);
-        if (replay || battleCues.length > 0) {
+        if (replay) {
+          // Catch-up / multi-hop batch: slow replay as before.
           opponentSummaryCounterRef.current += 1;
           setOpponentTurnSummary({
             id: `opp-turn-${opponentSummaryCounterRef.current}`,
             cues: battleCues,
             replay,
+          });
+        } else if (battleCues.length > 0) {
+          // Live pace: just surface the battle recap; no fake walk.
+          opponentSummaryCounterRef.current += 1;
+          setOpponentTurnSummary({
+            id: `opp-turn-${opponentSummaryCounterRef.current}`,
+            cues: battleCues,
+            replay: null,
           });
         }
       }
@@ -4864,6 +4882,14 @@ export default function Home() {
                   <div className="computerMovingBanner" role="status">
                     <span className="computerMovingDot" />
                     {state.players[computerReplay.activePlayerId]?.name ?? "Computer"} is moving…
+                  </div>
+                ) : state.activePlayerId &&
+                  isComputerPlayer(state, state.activePlayerId) &&
+                  !state.combat &&
+                  state.sessionMode === "single-player" ? (
+                  <div className="computerMovingBanner" role="status">
+                    <span className="computerMovingDot" />
+                    {state.players[state.activePlayerId]?.name ?? "Computer"} is taking their turn…
                   </div>
                 ) : null}
                 {opponentTurnSummary ? (

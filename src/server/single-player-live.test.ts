@@ -14,7 +14,14 @@ import {
   sessionModeOf,
   type GameState
 } from "@/engine";
-import { createRoom, listRooms, resetRoom, submitRoomAction } from "./game-room-store";
+import {
+  createRoom,
+  drainComputerPumpSync,
+  getRoomSnapshot,
+  listRooms,
+  resetRoom,
+  submitRoomAction,
+} from "./game-room-store";
 
 function uniqueId(name: string): string {
   return `${name}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -52,8 +59,9 @@ describe("single-player over the built-in store", () => {
     expect(seats.every((seat) => seat.factionId && seat.heroDefId)).toBe(true);
     expect(new Set(seats.map((seat) => seat.factionId)).size).toBe(3);
 
-    // Start builds immediately (no ready check) and the runner settles all
-    // computer work it owes before the response returns.
+    // Start builds immediately (no ready check). Adventure computers pace
+    // visible steps (tile rotations, moves, …) across pump ticks — drain them
+    // synchronously here so the assertion sees the idle post-setup table.
     const started = submitRoomAction(
       roomId,
       { type: "START_ADVENTURE", playerId: "p1" },
@@ -62,7 +70,9 @@ describe("single-player over the built-in store", () => {
     expect(started.result.errors).toEqual([]);
     expect(started.snapshot.state.setupLobby).toBeNull();
     expect(started.snapshot.state.adventure).not.toBeNull();
-    expect(computerDecisionOwner(started.snapshot.state)).toBeNull();
+    drainComputerPumpSync(roomId);
+    // Re-read after the paced pump finishes every computer start-tile rotation.
+    expect(computerDecisionOwner(getRoomSnapshot(roomId).state)).toBeNull();
   });
 
   it("a reset keeps the single-player session, seats and privacy (rematch)", () => {
