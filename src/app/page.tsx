@@ -15,6 +15,7 @@ import {
   hasOpenAdventureTurn,
   healLegacyPlayerFields,
   isCombatSandboxSetup,
+  isComputerPlayer,
   roomDisplayName,
   isParallelActor,
   isResetVoteApproved,
@@ -81,6 +82,10 @@ import { buildTownCaptureCue, isEnemyTownCapture } from "@/components/table/town
 import { CombatMoralePanel } from "@/components/table/combat-morale-panel";
 import { CombatSandboxSetupScreen } from "@/components/table/combat-sandbox-setup";
 import { healFreezeDisplayDamage } from "@/components/table/heal-display";
+import {
+  buildComputerMoveReplay,
+  useComputerMoveReplay,
+} from "@/components/table/computer-move-replay";
 import { TableErrorBoundary } from "@/components/error-boundary";
 import {
   ADVENTURE_FEED_CUES,
@@ -699,6 +704,14 @@ export default function Home() {
   const [eventCue, setEventCue] = useState<EventDrawnCue | null>(null);
   const [drawCue, setDrawCue] = useState<DrawCue | null>(null);
   const [moveCue, setMoveCue] = useState<HeroMoveCue | null>(null);
+  // Single-player: a computer opponent's whole map turn settles at once, so its
+  // hero walks are replayed for the human slowly, cell by cell, one hero at a
+  // time. The pawns render at these override cells until the walk finishes.
+  const computerReplay = useComputerMoveReplay();
+  const startComputerReplayRef = useRef(computerReplay.start);
+  startComputerReplayRef.current = computerReplay.start;
+  const cancelComputerReplayRef = useRef(computerReplay.cancel);
+  cancelComputerReplayRef.current = computerReplay.cancel;
   const [flippedUnitIds, setFlippedUnitIds] = useState<Set<string>>(new Set());
   const [feedItems, setFeedItems] = useState<AdventureFeedItem[]>([]);
   const [fxCues, setFxCues] = useState<FxCue[]>([]);
@@ -1688,14 +1701,22 @@ export default function Home() {
         });
       }
 
-      // Hero walks: chain this batch's steps into one animated arrow.
+      // Hero walks. A HUMAN's own walk chains this batch's steps into one
+      // animated arrow (as before). A COMPUTER opponent's whole turn arrives in
+      // a single settled snapshot, so its walks are replayed slowly instead —
+      // one cell at a time, one hero at a time — so the human can watch what
+      // each opponent did. (Its battles already resolved server-side and are
+      // never shown; the map is where its intent is visible.)
       const freshMoves = moves.filter((event) => !seenMoveIdsRef.current.has(event.id));
       for (const event of moves) {
         seenMoveIdsRef.current.add(event.id);
       }
-      if (freshMoves.length > 0) {
+      const freshHumanMoves = freshMoves.filter(
+        (event) => !isComputerPlayer(nextState, event.playerId)
+      );
+      if (freshHumanMoves.length > 0) {
         const byHero = new Map<string, { from: string; steps: string[] }>();
-        for (const event of freshMoves) {
+        for (const event of freshHumanMoves) {
           const entry = byHero.get(event.heroId);
           if (entry) {
             entry.steps.push(event.to);
@@ -1712,13 +1733,24 @@ export default function Home() {
         const terrain = destinationTile ? allTileDefinitions[destinationTile.tileDefId]?.terrain : undefined;
         playLibrarySound(TERRAIN_MOVE_SOUNDS[terrain ?? "grass"] ?? TERRAIN_MOVE_SOUNDS.grass, MAP_MOVE_VOLUME);
         setMoveCue({
-          id: freshMoves[0].id,
+          id: freshHumanMoves[0].id,
           heroId,
           path: [walk.from, ...walk.steps]
         });
         window.setTimeout(() => {
-          setMoveCue((current) => (current?.id === freshMoves[0].id ? null : current));
+          setMoveCue((current) => (current?.id === freshHumanMoves[0].id ? null : current));
         }, 1800);
+      }
+      // Computer walks: pace them out on the map — unless we are entering /
+      // holding a combat (the board is hidden), in which case drop any pending
+      // replay so stale override cells never linger under the combat screen.
+      if (nextState.combat) {
+        cancelComputerReplayRef.current();
+      } else {
+        const replay = buildComputerMoveReplay(nextState, freshMoves);
+        if (replay) {
+          startComputerReplayRef.current(replay);
+        }
       }
 
       // Pack-to-Few flips get a short card-flip animation on the board.
@@ -3218,6 +3250,10 @@ export default function Home() {
   }, [roomId, ingestSnapshot, clientId]);
 
   const submitAction = async (action: GameAction) => {
+    // The human is taking their turn: snap any in-flight computer-move replay to
+    // the settled positions so a paced pawn never lags under a fresh action.
+    cancelComputerReplayRef.current();
+
     // The action actually sent to the engine — a costed board-target play that
     // was armed "discard first" gets its banked payment attached here.
     let outgoing = action;
@@ -4616,6 +4652,7 @@ export default function Home() {
                   top-left corner. */}
               <div className="mapStage">
                 <HexMapBoard
+                  heroPositionOverrides={computerReplay.overrides ?? undefined}
                   legalActions={legalActions}
                   moveCue={moveCue}
                   onAction={submitAction}
@@ -4625,6 +4662,12 @@ export default function Home() {
                   view={playerView}
                   viewerPlayerId={isSeated ? viewerPlayerId : OBSERVER_SEAT}
                 />
+                {computerReplay.activePlayerId ? (
+                  <div className="computerMovingBanner" role="status">
+                    <span className="computerMovingDot" />
+                    {state.players[computerReplay.activePlayerId]?.name ?? "Computer"} is moving…
+                  </div>
+                ) : null}
                 {isSeated && !mapReadOnly ? (
                   <FarTileTray
                     onTogglePlacement={setTilePlacement}

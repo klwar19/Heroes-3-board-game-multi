@@ -88,6 +88,32 @@ Implemented combat continuation (July 2026, initial phase 5):
   activation end to end: the lethal target is removed, durable enemies survive,
   and control returns to the human).
 
+Implemented presentation continuation (July 2026, initial phase 6):
+
+- computer battles resolve IMMEDIATELY and off-screen — the whole computer turn
+  (movement AND its neutral/bank combats) settles inside the human's action
+  transaction, so the human never watches an AI fight or waits on it; the combat
+  screen only ever opens for a PvP fight (a computer attacking the human), which
+  the runner deliberately leaves OPEN for the human to play. That
+  resolve-immediately-except-PvP split is emergent from `computerDecisionOwner`
+  (a human-owned combat slot returns null, stopping the runner) and is now pinned
+  in `src/server/single-player-combat-resolve.test.ts` (an AI-only battle drives
+  to its `outcome` with no owed human decision; a PvP battle stops with the combat
+  open and a p1 unit active, the control that flips the pick);
+- computer MOVEMENT is replayed for the human instead of teleporting: because the
+  turn settles at once, every computer HERO_MOVED event arrives in one snapshot,
+  and the client walks each computer hero along its path slowly, one cell at a
+  time, one hero at a time — pure presentation over the already-settled state
+  (`src/components/table/computer-move-replay.ts`: `buildComputerMoveReplay`
+  filters to computer heroes and orders the frames; `useComputerMoveReplay` paces
+  them). The map pawn renders at the replay cell via a new
+  `heroPositionOverrides` prop on `HexMapBoard`, and a "Computer N is moving…"
+  badge shows while a walk plays. A human's own move keeps its instant path
+  arrow; the replay is cancelled the moment the human acts or a combat opens.
+  Pinned in `computer-move-replay.test.ts` (computer-only frames in order, human
+  moves excluded, paced reveal) and `hero-position-override.test.tsx` (the pawn
+  draws at exactly the override cell, with an own-cell no-op control).
+
 Still deferred intentionally:
 
 - COMBAT INITIATION on the map (a computer still avoids guarded fields and PvP —
@@ -98,9 +124,10 @@ Still deferred intentionally:
   card use inside combat (the foundation passes reactions and plays nothing);
 - production-quality objective memory, market/Event/card evaluation, and combat
   strength estimation (remaining phases 4–5);
-- thinking presentation (the settled state simply arrives with the human's
-  action response), reconnect/resume integration tests, broad interaction
-  coverage, and the fixed-seed soak suite (phase 6);
+- deeper thinking presentation (a per-decision think delay / streamed intermediate
+  broadcasts — the movement replay above is client-side over the settled state,
+  not a server-paced stream), reconnect/resume integration tests, broad
+  interaction coverage, and the fixed-seed soak suite (phase 6);
 - hiding the remaining multiplayer-only affordances inside the room table page
   (invite/share controls render but the engine rejects unrelated joiners).
 

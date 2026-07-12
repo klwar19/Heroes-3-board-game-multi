@@ -3687,6 +3687,50 @@ button.battleCell {
   min-height: 0;
 }
 
+/* Single-player: a quiet badge while a computer opponent's hero is walked out
+   step by step on the map. Purely informative — it never gates any input. */
+.computerMovingBanner {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(20, 26, 38, 0.86);
+  border: 1px solid rgba(159, 224, 138, 0.45);
+  color: #e8f2df;
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+}
+
+.computerMovingDot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #9fe08a;
+  box-shadow: 0 0 8px rgba(159, 224, 138, 0.9);
+  animation: computerMovingPulse 0.9s ease-in-out infinite;
+}
+
+@keyframes computerMovingPulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.8);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+}
+
 .hexMapWrap {
   flex: 1;
   min-height: min(68vh, 720px);
