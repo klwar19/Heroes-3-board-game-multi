@@ -95,6 +95,7 @@ import type {
   ResourceCost,
   ResourceKind,
   SpellSchool,
+  DragonUtopiaGuards,
   TownState,
   UnitId,
   UnitTransformState,
@@ -2097,6 +2098,14 @@ export function adventureVictoryMode(state: GameState): VictoryMode {
 }
 
 /**
+ * How the Dragon Utopia objective is guarded this game; absent on old snapshots
+ * (and the default) means "by-difficulty".
+ */
+export function adventureDragonUtopiaGuards(state: GameState): DragonUtopiaGuards {
+  return state.adventure?.dragonUtopiaGuards ?? "by-difficulty";
+}
+
+/**
  * Whether a player-vs-player Combat keeps both armies intact. Absent on old
  * snapshots means "normal" (casualties are lost, the rulebook outcome).
  */
@@ -2541,8 +2550,8 @@ function handleGrailVisit(state: GameState, hero: HeroState, field: MapFieldStat
 }
 
 /**
- * Dragon Utopia visit (after its dragons are defeated — four under the
- * `dragon-utopia-four-dragons` house rule, else the rulebook three):
+ * Dragon Utopia visit (after its dragons are defeated — the four-dragon party,
+ * trimmed to the difficulty-scaled count when guards scale by difficulty):
  *  - Dragon Hunt: defeating the Utopia wins outright (no need to hold it).
  *  - Dragon Conqueror: the victor captures and must hold it; rivals besiege it.
  *  - Grail Hunt & Conquest: a normal Lvl-VII creature bank rewarding gold and a
@@ -6522,9 +6531,11 @@ export type NeutralDraw = {
 };
 
 /**
- * Dragon Utopia guards — the house-rule party of FOUR dragons, in descending
- * strength (`dragon-utopia-four-dragons` ON, the BINH default). They are minted
- * for the fight rather than drawn, so the Neutral azure deck is never touched.
+ * Dragon Utopia guards — the party of FOUR dragons, in descending strength
+ * (Azure, Rust, Crystal, Faerie). They are minted for the fight rather than
+ * drawn, so the Neutral azure deck is never touched. The featured lead is then
+ * randomised (Azure/Rust) and, when guards scale by difficulty, the party is
+ * trimmed — see `dragonUtopiaGuardIds`.
  */
 export const DRAGON_UTOPIA_GUARD_IDS = [
   "neutral.azure_dragons",
@@ -6534,29 +6545,19 @@ export const DRAGON_UTOPIA_GUARD_IDS = [
 ] as const;
 
 /**
- * Dragon Utopia guards — the rulebook party of THREE dragons (Azure, Crystal,
- * Black), used when `dragon-utopia-four-dragons` is OFF (and always in Legacy).
- * Minted, not drawn, exactly like the four-dragon party above.
- */
-export const DRAGON_UTOPIA_GUARD_IDS_RULEBOOK = [
-  "neutral.azure_dragons",
-  "neutral.crystal_dragons",
-  "neutral.black_dragons"
-] as const;
-
-/**
- * The Dragon Utopia's one always-present "azure" slot is randomised (per game)
- * to one of these three — the marquee dragon the encounter is built around. This
- * is the "always have 1 azure unit — Azure, Rust or Crystal" invariant.
+ * The Dragon Utopia's one always-present featured ("azure") slot is randomised
+ * (per game) to Azure or Rust — the marquee dragon the encounter is built
+ * around. This is the "the difficulty-scaled party always includes either an
+ * Azure or a Rust Dragon" invariant, so even the Easy lone-dragon fight leads
+ * with one of the two.
  */
 export const DRAGON_UTOPIA_AZURE_SLOT_IDS = [
   "neutral.azure_dragons",
-  "neutral.rust_dragons",
-  "neutral.crystal_dragons"
+  "neutral.rust_dragons"
 ] as const;
 
 /**
- * How many dragons guard the Utopia when `dragon-utopia-by-difficulty` is ON:
+ * How many dragons guard the Utopia when the guards scale by difficulty:
  * exactly the number of Neutral units its Field Difficulty would draw at the
  * game difficulty (Easy 1 / Normal 2 / Hard 3 / Impossible 4 at difficulty 7),
  * so the encounter "bases on the number of neutrals". Never below 1 — the azure
@@ -6570,27 +6571,26 @@ export function dragonUtopiaDifficultyGuardCount(state: GameState, difficulty: n
 }
 
 /**
- * The Dragon Utopia guard list for this game. The base party is four dragons
- * under the `dragon-utopia-four-dragons` house rule (the BINH default), else the
- * rulebook three. Two adjustments then apply:
- *  1. The lead ("azure") slot is randomised per game to Azure / Rust / Crystal
- *     (`DRAGON_UTOPIA_AZURE_SLOT_IDS`). If that pick already stands elsewhere in
- *     the base party, the duplicate is given the vacated Azure Dragon so the
- *     party stays the same distinct size.
- *  2. With `dragon-utopia-by-difficulty` ON the party is trimmed to the
- *     difficulty-scaled count (keeping the lead azure slot, index 0). Off, the
- *     full fixed party stands.
+ * The Dragon Utopia guard list for this game. The base party is always the four
+ * dragons (`DRAGON_UTOPIA_GUARD_IDS` — Azure, Rust, Crystal, Faerie). Two
+ * adjustments then apply:
+ *  1. The featured ("azure") lead slot is randomised per game to Azure or Rust
+ *     (`DRAGON_UTOPIA_AZURE_SLOT_IDS`). Since both already stand in the party the
+ *     duplicate is given the vacated Azure Dragon, keeping the party distinct and
+ *     the same size — the net effect is which of the two leads.
+ *  2. When `adventureDragonUtopiaGuards` is "by-difficulty" the party is trimmed
+ *     to the difficulty-scaled count (keeping the lead slot at index 0). When
+ *     "four" the full four-dragon party stands.
  * The Utopia is the Dragon Hunt / Dragon Conqueror win-condition objective, so
- * both are win-condition tuning knobs.
+ * this is a win-condition tuning knob.
  */
 export function dragonUtopiaGuardIds(state: GameState, difficulty: number): string[] {
-  const party = houseRuleEnabled(state, "dragon-utopia-four-dragons")
-    ? [...DRAGON_UTOPIA_GUARD_IDS]
-    : [...DRAGON_UTOPIA_GUARD_IDS_RULEBOOK];
+  const party = [...DRAGON_UTOPIA_GUARD_IDS];
 
-  // Both base parties lead with Azure Dragon; swap that lead for the randomised
-  // azure-slot pick and, if it duplicates a later member, hand the vacated Azure
-  // Dragon to that member (keeps the party distinct and the same size).
+  // The party leads with Azure Dragon; swap that lead for the randomised
+  // azure-slot pick (Azure or Rust) and, since the pick already stands later in
+  // the party, hand the vacated Azure Dragon to that member (keeps the party
+  // distinct and the same size).
   const bossIndex = createSeededRandom(`${state.seed}#dragon-utopia-azure-boss`).nextInt(
     0,
     DRAGON_UTOPIA_AZURE_SLOT_IDS.length - 1
@@ -6602,7 +6602,7 @@ export function dragonUtopiaGuardIds(state: GameState, difficulty: number): stri
   }
   party[0] = boss;
 
-  if (!houseRuleEnabled(state, "dragon-utopia-by-difficulty")) {
+  if (adventureDragonUtopiaGuards(state) === "four") {
     return party;
   }
   const count = Math.min(party.length, dragonUtopiaDifficultyGuardCount(state, difficulty));

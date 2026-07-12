@@ -83,17 +83,7 @@ export type HouseRuleId =
   // Dracon's Enchanters IV may ALSO upgrade the cheaper Few of Magi into the
   // Enchanters for 6 extra gold (besides the free Pack-of-Magi trade). Off: only
   // the rulebook options remain — trade a Pack of Magi, or draw a card.
-  | "dracon-few-magi-trade"
-  // The Dragon Utopia (the Dragon Hunt / Dragon Conqueror win-condition
-  // objective) is guarded by FOUR dragons (Azure + Rust + Crystal + Faerie). Off:
-  // the rulebook THREE dragons (Azure + Crystal + Black).
-  | "dragon-utopia-four-dragons"
-  // The Dragon Utopia's guard COUNT scales with the game difficulty — exactly the
-  // number of Neutral units its Field Difficulty would draw (Easy 1 / Normal 2 /
-  // Hard 3 / Impossible 4). The always-present azure slot (Azure/Rust/Crystal,
-  // random per game) is kept whatever the count. Off: the full fixed party (the
-  // 3 or 4 dragons chosen by `dragon-utopia-four-dragons`).
-  | "dragon-utopia-by-difficulty";
+  | "dracon-few-magi-trade";
 
 /** Optional Wake of Gods modules. WOG is valid only while BINH is selected. */
 export type WogModOptions = {
@@ -135,6 +125,19 @@ export type VictoryMode = "conquest" | "grail" | "dragon-hunt" | "dragon-conquer
  *    only the troops are spared. Does not affect fights against Neutral guards.
  */
 export type PvpTroopLoss = "normal" | "none";
+
+/**
+ * How the Dragon Utopia (the Dragon Hunt / Dragon Conqueror win-condition
+ * objective) is guarded. The base party is always the four dragons
+ * (Azure + Rust + Crystal + Faerie), with the featured lead slot randomised
+ * per game to Azure or Rust so the encounter always has one of those two.
+ *  - "four": the full four-dragon party stands, whatever the difficulty.
+ *  - "by-difficulty": the guard COUNT follows the game difficulty — exactly the
+ *    number of Neutral units its Field Difficulty would draw (Easy 1 / Normal 2 /
+ *    Hard 3 / Impossible 4). The lead Azure/Rust slot is always kept.
+ * Absent on older snapshots; treated as "by-difficulty".
+ */
+export type DragonUtopiaGuards = "four" | "by-difficulty";
 export type FactionId =
   | "castle"
   | "rampart"
@@ -8272,6 +8275,11 @@ export type AdventureState = {
    */
   pvpTroopLoss?: PvpTroopLoss;
   /**
+   * How the Dragon Utopia objective is guarded (Dragon Hunt / Dragon Conqueror).
+   * Absent on older snapshots; treated as "by-difficulty".
+   */
+  dragonUtopiaGuards?: DragonUtopiaGuards;
+  /**
    * Spell Book house rule (default ON). When on, each player has a personal
    * Spell Book zone (PlayerState.spellBook) they may stash hand Spells into, cast
    * or boost from, and refill from the discard pile. Off hides the move-to-Book
@@ -8371,6 +8379,12 @@ export type GameSetupOptions = {
   victoryMode?: VictoryMode;
   /** PvP Combat casualties: "normal" (lose dead units) or "none" (keep troops). */
   pvpTroopLoss?: PvpTroopLoss;
+  /**
+   * How the Dragon Utopia objective is guarded (Dragon Hunt / Dragon Conqueror
+   * modes): "four" (the full four-dragon party) or "by-difficulty" (guard count
+   * scales with difficulty). Default "by-difficulty".
+   */
+  dragonUtopiaGuards?: DragonUtopiaGuards;
   /**
    * Naval Battles optional rule. When on (default), discovering a Far/Near Map
    * Tile with a Blocked Field lets the discovering player place a Creature Bank

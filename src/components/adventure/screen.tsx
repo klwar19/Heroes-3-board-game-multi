@@ -5374,95 +5374,44 @@ function GameOptionsPanel({
       })()}
 
       {(() => {
-        // The Dragon Utopia guard strength — a win-condition tuning knob, shown
-        // beside the Win condition for the two modes where the Utopia IS the
-        // objective. Flips the `dragon-utopia-four-dragons` house rule (also in
-        // the House-rules → Combat section); Legacy locks it to the rulebook three.
+        // The Dragon Utopia guards — the single win-condition tuning knob for the
+        // two modes where the Utopia IS the objective. The base party is always
+        // the four dragons (Azure, Rust, Crystal, Faerie); the only choice is
+        // whether the full party stands or the guard COUNT scales with difficulty
+        // (Easy 1 / Normal 2 / Hard 3 / Impossible 4). The featured lead is always
+        // an Azure or Rust Dragon. Stored on `options.dragonUtopiaGuards`.
         const victoryMode = options.victoryMode ?? "conquest";
         if (victoryMode !== "dragon-hunt" && victoryMode !== "dragon-conqueror") {
           return null;
         }
-        const editable = options.ruleset === "binh";
-        const fourDragons = houseRules["dragon-utopia-four-dragons"];
+        const guards = options.dragonUtopiaGuards ?? "by-difficulty";
         return (
           <div className="optionRow">
-            <small title="How strongly the Dragon Utopia objective is guarded">Dragon Utopia guards</small>
+            <small title="How the Dragon Utopia objective is guarded">Dragon Utopia guards</small>
             <div className="optionButtons">
               <button
-                aria-pressed={fourDragons}
-                className={fourDragons ? "selected" : ""}
-                disabled={!editable}
-                onClick={() => setHouseRule("dragon-utopia-four-dragons", true)}
-                title="Azure + Rust + Crystal + Faerie dragons (house rule)"
+                aria-pressed={guards === "four"}
+                className={guards === "four" ? "selected" : ""}
+                onClick={() => send({ dragonUtopiaGuards: "four" })}
+                title="The full four-dragon party — Azure, Rust, Crystal and Faerie"
                 type="button"
               >
-                Four dragons
+                4 dragons
               </button>
               <button
-                aria-pressed={!fourDragons}
-                className={!fourDragons ? "selected" : ""}
-                disabled={!editable}
-                onClick={() => setHouseRule("dragon-utopia-four-dragons", false)}
-                title="Azure + Crystal + Black dragons (rulebook)"
-                type="button"
-              >
-                Three (rulebook)
-              </button>
-            </div>
-            <small className="optionHint">
-              {fourDragons
-                ? "House rule: four dragons guard the Utopia — Azure, Rust, Crystal and Faerie."
-                : "Rulebook: three dragons guard the Utopia — Azure, Crystal and Black."}
-              {editable ? "" : " Locked to the rulebook three in Legacy mode."}
-            </small>
-          </div>
-        );
-      })()}
-
-      {(() => {
-        // Companion to the Four/Three dragons choice: whether the Utopia's guard
-        // COUNT scales with difficulty (Easy 1 / Normal 2 / Hard 3 / Impossible
-        // 4 — the number of Neutral units its Field Difficulty would draw). The
-        // always-present azure slot (Azure/Rust/Crystal, random per game) is kept
-        // whatever the count. Flips `dragon-utopia-by-difficulty`.
-        const victoryMode = options.victoryMode ?? "conquest";
-        if (victoryMode !== "dragon-hunt" && victoryMode !== "dragon-conqueror") {
-          return null;
-        }
-        const editable = options.ruleset === "binh";
-        const byDifficulty = houseRules["dragon-utopia-by-difficulty"];
-        return (
-          <div className="optionRow">
-            <small title="Whether the Dragon Utopia's guard count scales with the game difficulty">
-              Dragon Utopia count
-            </small>
-            <div className="optionButtons">
-              <button
-                aria-pressed={byDifficulty}
-                className={byDifficulty ? "selected" : ""}
-                disabled={!editable}
-                onClick={() => setHouseRule("dragon-utopia-by-difficulty", true)}
+                aria-pressed={guards === "by-difficulty"}
+                className={guards === "by-difficulty" ? "selected" : ""}
+                onClick={() => send({ dragonUtopiaGuards: "by-difficulty" })}
                 title="As many dragons as the difficulty would draw (Easy 1 / Normal 2 / Hard 3 / Impossible 4)"
                 type="button"
               >
-                By difficulty
-              </button>
-              <button
-                aria-pressed={!byDifficulty}
-                className={!byDifficulty ? "selected" : ""}
-                disabled={!editable}
-                onClick={() => setHouseRule("dragon-utopia-by-difficulty", false)}
-                title="The full fixed party (three or four dragons above)"
-                type="button"
-              >
-                Fixed party
+                Scale by difficulty
               </button>
             </div>
             <small className="optionHint">
-              {byDifficulty
-                ? "House rule: the number of dragons follows the difficulty (Easy 1 · Normal 2 · Hard 3 · Impossible 4). One is always an azure slot — Azure, Rust or Crystal, random each game."
-                : "The full fixed party stands (three or four dragons), one always the random azure slot."}
-              {editable ? "" : " Locked off in Legacy mode."}
+              {guards === "four"
+                ? "Four dragons guard the Utopia — Azure, Rust, Crystal and Faerie. The featured lead is a random Azure or Rust Dragon."
+                : "The guard count follows the difficulty (Easy 1 · Normal 2 · Hard 3 · Impossible 4). The featured lead is always an Azure or Rust Dragon."}
             </small>
           </div>
         );

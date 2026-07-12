@@ -63,8 +63,18 @@ export class LobbyChatBoard {
   private seq = 0;
   private readonly now: () => number;
 
-  constructor(options: { now?: () => number } = {}) {
+  /**
+   * `messages` seeds the board from a persisted snapshot (the PartyKit lobby-chat
+   * Durable Object reloads it after hibernation). The `seq` counter resumes past
+   * the highest restored seq so new lines never collide with — or sort before —
+   * the restored history.
+   */
+  constructor(options: { now?: () => number; messages?: LobbyChatMessage[] } = {}) {
     this.now = options.now ?? Date.now;
+    if (options.messages && options.messages.length > 0) {
+      this.messages = options.messages.slice(-MAX_LOBBY_CHAT_MESSAGES).map((message) => ({ ...message }));
+      this.seq = this.messages.reduce((max, message) => Math.max(max, message.seq), 0);
+    }
   }
 
   /** Recent messages, oldest → newest (a defensive copy). */
