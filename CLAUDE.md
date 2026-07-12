@@ -464,13 +464,25 @@ settle. Plan/contract: `docs/single-player-computer-opponents-plan.md`; tests:
   first visible step ("keeps saying it's taking a turn", "sits on a tile
   rotation forever"). `onAlarm` now uses the snapshot's own `roomId` (and
   `metric()` goes through `roomIdSafe()`), and BOTH backends self-heal a lost
-  pump: the edge re-arms in `onConnect` via `ensureComputerPump` (only when no
-  alarm is pending — never postponing a due tick), the built-in store re-arms
-  on `subscribeToRoom` / `restoreRoom` (its setTimeout dies with the process).
-  Pinned in `single-player-pump.test.ts` with a PartyKit-faithful harness
-  whose `room.id` getter throws while `inAlarm`: the whole-AI-turn alarm-loop
-  test fails if the `this.room.id` read comes back, and the self-heal tests
-  fail if either re-arm is removed (mutation-checked both ways).
+  pump: the edge re-arms in `onConnect`, on EVERY inbound socket message (the
+  client health-pings after ~35s of silence, so a frozen table revives without
+  a reload) and on the HTTP GET poll — all via `ensureComputerPump` (only when
+  no alarm is pending — never postponing a due tick); a THROWN alarm tick
+  (storage/broadcast hiccup) logs and re-arms at a 5s retry pace instead of
+  letting Cloudflare's few retries exhaust the chain; the built-in store
+  re-arms on `subscribeToRoom` / `restoreRoom` / the GET snapshot route (its
+  setTimeout dies with the process). Pinned in `single-player-pump.test.ts`
+  with a PartyKit-faithful harness whose `room.id` getter throws while
+  `inAlarm`: the whole-AI-turn alarm-loop test fails if the `this.room.id`
+  read comes back, and each self-heal / failed-tick re-arm test fails if its
+  wiring is removed (mutation-checked). `single-player-edge-start.test.ts`
+  additionally plays the WHOLE game start (room creation marker → faction pick
+  → START_ADVENTURE → round 1 → round 2) through real alarm ticks with COLD
+  wakes (a freshly-evicted object on every third tick) and both alarm-banned
+  properties (`Party.id`, `Party.context.parties`) throwing.
+  DEPLOY NOTE: `party/index.ts` reaches production ONLY via
+  `npm run deploy:partykit` — a Vercel deploy alone leaves the old edge (and
+  its frozen-AI bug) running.
 
 Leading with what does NOT run (deliberate limits):
 - **Objective-seeking, fighting map play — with limits.** The policy now plays a

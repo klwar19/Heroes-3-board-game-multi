@@ -1,6 +1,13 @@
 import { NextResponse } from "next/server";
 import type { GameState } from "@/engine";
-import { closeRoom, getRoomSnapshot, resetRoom, restoreRoom, type RoomResetOptions } from "@/server/game-room-store";
+import {
+  closeRoom,
+  ensureComputerPump,
+  getRoomSnapshot,
+  resetRoom,
+  restoreRoom,
+  type RoomResetOptions,
+} from "@/server/game-room-store";
 import { readSessionToken, sessionProfile } from "@/server/accounts/http";
 import { redactSnapshotForViewer } from "@/server/redact-snapshot";
 import { closeEdgeRoomAsAdmin, partyKitConfigured } from "@/server/edge-close";
@@ -43,6 +50,9 @@ export async function GET(request: Request, context: RoomContext) {
   // Redact the snapshot to the requester's own seat (hosted rooms only), so a
   // poll / initial load leaks no opponent hidden info — same rule as the stream.
   const snapshot = getRoomSnapshot(decodeURIComponent(roomId));
+  // A snapshot poll self-heals a lost computer pump (same rule as the SSE
+  // subscribe): re-arm only when a computer owes work and no timer is pending.
+  ensureComputerPump(decodeURIComponent(roomId));
   return NextResponse.json(redactSnapshotForViewer(snapshot, { clientId, userId: await verifiedUserId(request) }));
 }
 

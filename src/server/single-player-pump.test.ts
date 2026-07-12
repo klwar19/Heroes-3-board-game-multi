@@ -110,7 +110,7 @@ function makeAlarmEdgeRoom(roomId: string, seedState: GameState) {
     state: seedState,
   } satisfies RoomSnapshot);
   const connections = new Set<MockConnection>();
-  const flags = { inAlarm: false };
+  const flags = { inAlarm: false, failNextPut: false };
   let alarmAt: number | null = null;
   const room = {
     // PartyKit's runtime wrapper: `Party.id` THROWS while an alarm handler
@@ -124,6 +124,10 @@ function makeAlarmEdgeRoom(roomId: string, seedState: GameState) {
     storage: {
       get: async (key: string) => storage.get(key),
       put: async (key: string, value: unknown) => {
+        if (flags.failNextPut) {
+          flags.failNextPut = false;
+          throw new Error("simulated storage hiccup");
+        }
         storage.set(key, value);
       },
       delete: async (key: string) => storage.delete(key),
@@ -159,6 +163,14 @@ function makeAlarmEdgeRoom(roomId: string, seedState: GameState) {
     storage,
     fireAlarm,
     alarmPending: () => alarmAt !== null,
+    /** Drop the pending alarm, as a crashed/expired alarm chain would. */
+    clearAlarm: () => {
+      alarmAt = null;
+    },
+    /** Make the NEXT storage.put throw (a one-off persistence hiccup). */
+    failNextPut: () => {
+      flags.failNextPut = true;
+    },
   };
 }
 
@@ -245,6 +257,66 @@ describe("PartyKit alarm computer pump (Party.id is unreadable in onAlarm)", () 
     idleServer.onConnect(idleOwner as unknown as EdgeConnection);
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(idleRoom.alarmPending()).toBe(false);
+  });
+
+  it("ANY client message (health ping) and an HTTP poll re-arm a lost pump without a reload", async () => {
+    const stuck = withOwnedRoom(stateWithComputerOwed("pump-alarm-msg-heal"));
+    const { room, connections, clearAlarm, alarmPending } = makeAlarmEdgeRoom(
+      "edge-pump-msg-heal",
+      stuck,
+    );
+    const server = new GameRoomServer(room);
+    await server.onStart();
+    const owner = makeConnection("owner-conn", "clientId=owner-1");
+    connections.add(owner);
+    server.onConnect(owner as unknown as EdgeConnection);
+    await vi.waitFor(() => expect(alarmPending()).toBe(true));
+
+    // The alarm chain dies (crashed tick / runtime gave up on retries). The
+    // human does NOT reload — their socket just health-pings.
+    clearAlarm();
+    expect(alarmPending()).toBe(false);
+    await server.onMessage(
+      JSON.stringify({ type: "ping", knownVersion: 1 }),
+      owner as unknown as EdgeConnection,
+    );
+    await vi.waitFor(() => expect(alarmPending()).toBe(true));
+
+    // The client's http-recovery poll heals it the same way.
+    clearAlarm();
+    expect(alarmPending()).toBe(false);
+    await server.onRequest(
+      new Request("https://example.partykit.dev/parties/main/edge-pump-msg-heal?clientId=owner-1") as never,
+    );
+    await vi.waitFor(() => expect(alarmPending()).toBe(true));
+  });
+
+  it("a FAILED alarm tick re-arms the pump instead of killing the chain", async () => {
+    const stuck = withOwnedRoom(stateWithComputerOwed("pump-alarm-tick-fail"));
+    const { room, connections, storage, fireAlarm, alarmPending, failNextPut } = makeAlarmEdgeRoom(
+      "edge-pump-tick-fail",
+      stuck,
+    );
+    const server = new GameRoomServer(room);
+    await server.onStart();
+    const owner = makeConnection("owner-conn", "clientId=owner-1");
+    connections.add(owner);
+    server.onConnect(owner as unknown as EdgeConnection);
+    await vi.waitFor(() => expect(alarmPending()).toBe(true));
+
+    // One-off persistence hiccup: without the catch+re-arm, onAlarm throws and
+    // (once the runtime's few retries are spent) the AI freezes mid-turn.
+    failNextPut();
+    await fireAlarm(server); // must not reject
+    expect(alarmPending(), "failed tick did not re-arm the pump").toBe(true);
+
+    // The next tick recovers and makes real progress.
+    const before = storedSnapshot(storage).version;
+    await fireAlarm(server);
+    expect(storedSnapshot(storage).version).toBeGreaterThan(before);
+    if (computerPumpOwed(storedSnapshot(storage).state)) {
+      expect(alarmPending()).toBe(true);
+    }
   });
 });
 
