@@ -1,7 +1,10 @@
+import { coreUnitDefinitions } from "@/data/factions/units";
 import { getUnitSide } from "../adventure";
 import {
   ATTACKER_BACKLINE,
+  ATTACKER_FRONTLINE,
   DEFENDER_BACKLINE,
+  DEFENDER_FRONTLINE,
 } from "../adventure-reducer";
 import { isAdjacent } from "../battlefield";
 import type { CombatState, CombatUnitState, GameAction } from "../state";
@@ -78,8 +81,14 @@ function provokesRetaliation(
  * dangerous the removed unit was; otherwise reward damage as a fraction of the
  * target's remaining health plus a slice of its threat, minus a nudge for the
  * retaliation the surviving defender would deal back.
+ *
+ * Multi-unit focus-fire: prefer the same enemy allies already threaten (or the
+ * lowest-remaining high-threat target) so the army finishes units instead of
+ * spreading chips.
  */
 function attackScore(
+  combat: CombatState,
+  playerId: string,
   attacker: CombatUnitState,
   defender: CombatUnitState,
   attackFromPosition: number,
@@ -98,6 +107,19 @@ function attackScore(
       quality -= Math.min(50, retaliation * 4);
     }
   }
+
+  // Focus fire: allies already adjacent / close to this enemy — finish it.
+  const allyPressure = Object.values(combat.units).filter(
+    (unit) =>
+      unit.controllerId === playerId &&
+      unit.id !== attacker.id &&
+      unitRemainingHealth(unit) > 0 &&
+      isAdjacent(unit.position, defender.position),
+  ).length;
+  quality += allyPressure * 12;
+  // Prefer low remaining among equal threats (finish wounded).
+  if (remaining <= 2) quality += 10;
+
   return Math.max(ATTACK_FLOOR, Math.min(ATTACK_CEIL, ATTACK_BASE + quality));
 }
 
@@ -108,11 +130,106 @@ function isBacklineCell(combat: CombatState, playerId: string, position: number)
   return DEFENDER_BACKLINE.includes(position);
 }
 
+function isFrontlineCell(combat: CombatState, playerId: string, position: number): boolean {
+  if (playerId === combat.attackerPlayerId) {
+    return ATTACKER_FRONTLINE.includes(position);
+  }
+  return DEFENDER_FRONTLINE.includes(position);
+}
+
+function cellColumn(position: number): number {
+  return position % 4;
+}
+
+type UnitRole = "ranged" | "melee" | "flying";
+
+function unitRole(unit: { type?: string } | null | undefined): UnitRole {
+  if (unit?.type === "ranged") return "ranged";
+  if (unit?.type === "flying") return "flying";
+  return "melee";
+}
+
+function livingFriendlies(
+  combat: CombatState,
+  playerId: string,
+): CombatUnitState[] {
+  return Object.values(combat.units).filter(
+    (unit) =>
+      unit.controllerId === playerId && unitRemainingHealth(unit) > 0,
+  );
+}
+
 /**
- * Placement: ranged units prefer the backline (like neutral AI); melee/flying
- * prefer the frontline so they can reach enemies sooner. Base stays in the
- * PLACE band (above FINISH = 900 foundation when units remain) via foundation
- * PLACE_COMBAT_UNIT = 920 — we only order WITHIN that stage.
+ * How well a unit of the given role sits on `position` given already-placed
+ * friendlies. Higher is better. Used for placement AND tactics swaps.
+ */
+export function formationFitScore(
+  combat: CombatState,
+  playerId: string,
+  role: UnitRole,
+  position: number,
+  /** Unit being scored (excluded from "already placed" column counts). */
+  selfId?: string,
+  /** Extra bulk for tank preference on the front. */
+  bulk?: number,
+): number {
+  let score = 0;
+  const front = isFrontlineCell(combat, playerId, position);
+  const back = isBacklineCell(combat, playerId, position);
+
+  if (role === "ranged") {
+    score += back ? 30 : front ? -20 : -5;
+  } else if (role === "melee") {
+    score += front ? 28 : back ? -18 : 5;
+    // Durable tanks prefer the front more.
+    if (front && (bulk ?? 0) > 0) {
+      score += Math.min(12, bulk ?? 0);
+    }
+  } else {
+    // Flying: front preferred, mid ok, pure back mild penalty.
+    score += front ? 18 : back ? -8 : 8;
+  }
+
+  // Prefer central columns (1,2) for reach / less edge waste.
+  const col = cellColumn(position);
+  score += col === 1 || col === 2 ? 4 : 0;
+
+  const friends = livingFriendlies(combat, playerId).filter(
+    (unit) => unit.id !== selfId,
+  );
+
+  // Column diversity: avoid stacking 3+ bodies in one file.
+  const sameCol = friends.filter((unit) => cellColumn(unit.position) === col).length;
+  if (sameCol >= 2) score -= 10 * (sameCol - 1);
+
+  // Ranged wants a friendly melee adjacent in front (screen).
+  if (role === "ranged") {
+    const screened = friends.some(
+      (unit) =>
+        unitRole(unit) === "melee" &&
+        isAdjacent(unit.position, position) &&
+        isFrontlineCell(combat, playerId, unit.position),
+    );
+    if (screened) score += 14;
+  }
+
+  // Melee wants to sit in front of a friendly ranged (be the screen).
+  if (role === "melee" && front) {
+    const coversRanged = friends.some(
+      (unit) =>
+        unitRole(unit) === "ranged" &&
+        isAdjacent(unit.position, position),
+    );
+    if (coversRanged) score += 12;
+  }
+
+  return score;
+}
+
+/**
+ * Placement: multi-unit formation — tanks/frontline melee screen, ranged in
+ * back, column diversity, adjacency to complementary allies. Base stays in the
+ * PLACE band (above FINISH = 900 foundation when units remain).
  */
 function placeScore(
   observation: ComputerObservation,
@@ -127,34 +244,184 @@ function placeScore(
   const existing = Object.values(combat.units).find(
     (unit) => unit.armyUnitId === action.armyUnitId,
   );
-  const sideType =
-    existing?.type ??
-    (armyUnit
-      ? getUnitSide(armyUnit.unitDefId, armyUnit.side)?.type
-      : undefined);
-  const isRanged = sideType === "ranged";
+  const def = armyUnit ? coreUnitDefinitions[armyUnit.unitDefId] : undefined;
+  const side = armyUnit
+    ? getUnitSide(armyUnit.unitDefId, armyUnit.side)
+    : undefined;
+  // Unit TYPE lives on the definition root (Few/Pack sides rarely re-declare it).
+  const sideType = existing?.type ?? side?.type ?? def?.type;
+  const role = unitRole({ type: sideType });
+  const bulk =
+    (side?.health ?? existing?.maxHealth ?? 0) +
+    (side?.defense ?? existing?.defense ?? 0);
 
-  const back = isBacklineCell(combat, observation.playerId, action.position);
-  let score = 920;
-  if (isRanged) {
-    score += back ? 25 : -15;
-  } else {
-    // Melee / flying: frontline first so they can reach.
-    score += back ? -10 : 20;
-  }
-  // Prefer more central columns slightly (positions 1,2 / 13,14 style).
-  const col = action.position % 4;
-  score += col === 1 || col === 2 ? 3 : 0;
+  let score =
+    920 +
+    formationFitScore(
+      combat,
+      observation.playerId,
+      role,
+      action.position,
+      existing?.id,
+      bulk,
+    );
+
   if (armyUnit) {
     score += Math.min(5, armyUnit.permanentAttackBonus ?? 0);
+  }
+  // Prefer deploying higher-threat units first (better cells claimed early).
+  if (side) {
+    score += Math.min(8, Math.round((side.attack * 3 + side.health) / 8));
   }
   return score;
 }
 
 /**
+ * Tactics swap: only swap when formation quality of the pair improves. Finish
+ * when no swap is clearly better so we never thrash.
+ */
+function swapScore(
+  observation: ComputerObservation,
+  action: Extract<GameAction, { type: "SWAP_COMBAT_UNITS" }>,
+): number {
+  const combat = observation.state.combat;
+  if (!combat) return 880;
+  const a = combat.units[action.unitIdA];
+  const b = combat.units[action.unitIdB];
+  if (!a || !b) return 850;
+  if (a.controllerId !== observation.playerId || b.controllerId !== observation.playerId) {
+    return 800;
+  }
+
+  const roleA = unitRole(a);
+  const roleB = unitRole(b);
+  const bulkA = a.maxHealth + a.defense;
+  const bulkB = b.maxHealth + b.defense;
+
+  const before =
+    formationFitScore(combat, observation.playerId, roleA, a.position, a.id, bulkA) +
+    formationFitScore(combat, observation.playerId, roleB, b.position, b.id, bulkB);
+  const after =
+    formationFitScore(combat, observation.playerId, roleA, b.position, a.id, bulkA) +
+    formationFitScore(combat, observation.playerId, roleB, a.position, b.id, bulkB);
+  const gain = after - before;
+  if (gain <= 0) {
+    // No improvement — fall below FINISH_TACTICS (900) so we stop.
+    return 870;
+  }
+  // Improvement: outrank finish so the swap is taken.
+  return 905 + Math.min(40, gain);
+}
+
+/**
+ * Multi-unit movement: close on enemies, screen friendly ranged, keep ranged
+ * out of melee when they already have a shot, and cluster toward focus targets.
+ */
+function moveUnitScore(
+  observation: ComputerObservation,
+  action: Extract<GameAction, { type: "MOVE_UNIT" }>,
+): ComputerActionScore | null {
+  const combat = observation.state.combat;
+  if (!combat) return null;
+  const mover = combat.units[action.unitId];
+  if (!mover) return null;
+
+  const current = distanceToNearestEnemy(
+    combat,
+    observation.playerId,
+    mover.position,
+  );
+  const next = distanceToNearestEnemy(
+    combat,
+    observation.playerId,
+    action.destination,
+  );
+  if (current === null || next === null) return null;
+
+  const role = unitRole(mover);
+  let score: number;
+
+  if (next < current) {
+    score = 520 + Math.min(20, current - next);
+  } else if (next === current) {
+    score = 400;
+  } else {
+    // Moving away — only for ranged disengaging or screening reposition.
+    score = 260;
+  }
+
+  // Ranged: strong penalty for walking adjacent to an enemy (melee range).
+  if (role === "ranged") {
+    const enemies = livingEnemyUnits(combat, observation.playerId);
+    const wouldTouch = enemies.some((enemy) =>
+      isAdjacent(action.destination, enemy.position),
+    );
+    const alreadyTouch = enemies.some((enemy) =>
+      isAdjacent(mover.position, enemy.position),
+    );
+    if (wouldTouch && !alreadyTouch) {
+      score -= 80;
+    }
+    // Prefer staying put-ish in backline if already back and not threatened.
+    if (
+      isBacklineCell(combat, observation.playerId, action.destination) &&
+      !wouldTouch
+    ) {
+      score += 15;
+    }
+  }
+
+  // Melee tank: reward moves that put us adjacent to a friendly ranged that is
+  // threatened (screen), or between enemy and that ranged.
+  if (role === "melee" || role === "flying") {
+    const friends = livingFriendlies(combat, observation.playerId).filter(
+      (unit) => unit.id !== mover.id && unitRole(unit) === "ranged",
+    );
+    for (const ranged of friends) {
+      const enemiesNearRanged = livingEnemyUnits(combat, observation.playerId).filter(
+        (enemy) =>
+          (distanceToNearestEnemy(combat, observation.playerId, ranged.position) ?? 99) <= 2 ||
+          isAdjacent(enemy.position, ranged.position),
+      );
+      if (enemiesNearRanged.length === 0) continue;
+      if (isAdjacent(action.destination, ranged.position)) {
+        score += 25;
+      }
+      // Step closer to the threat near the ranged ally.
+      for (const threat of enemiesNearRanged) {
+        const before = Math.abs(mover.position - threat.position);
+        const after = Math.abs(action.destination - threat.position);
+        if (after < before) score += 8;
+      }
+    }
+  }
+
+  // Focus: move toward the lowest-health living enemy (finish focus).
+  const enemies = livingEnemyUnits(combat, observation.playerId);
+  if (enemies.length > 0) {
+    const focus = [...enemies].sort(
+      (a, b) =>
+        unitRemainingHealth(a) - unitRemainingHealth(b) ||
+        unitThreatValue(b) - unitThreatValue(a),
+    )[0];
+    const before = Math.abs(mover.position - focus.position);
+    const after = Math.abs(action.destination - focus.position);
+    if (after < before) score += 10;
+  }
+
+  if (next >= current && score < 400) {
+    return { score: Math.min(score, 260), policy: "combat.hold-position" };
+  }
+  if (next < current) {
+    return { score, policy: "combat.close-distance" };
+  }
+  return { score, policy: "combat.reposition-formation" };
+}
+
+/**
  * Strategic scores for a computer's own combat activation. Returns null for any
- * action it does not specialize (tactics, defend, end-activation, ability plays,
- * continue/retreat…), delegating those to the map/foundation layers unchanged.
+ * action it does not specialize (tactics finish, end-activation…), delegating
+ * those to the map/foundation layers unchanged.
  */
 export function scoreCombatAction(
   observation: ComputerObservation,
@@ -169,6 +436,15 @@ export function scoreCombatAction(
         score: placeScore(observation, action),
         policy: "combat.place-formation",
       };
+    case "SWAP_COMBAT_UNITS":
+      return {
+        score: swapScore(observation, action),
+        policy: "combat.tactics-swap",
+      };
+    case "FINISH_TACTICS":
+      // Finish once no improving swap remains (swaps score 905+ when useful,
+      // 870 when not — finish at 900 wins over no-op swaps).
+      return { score: 900, policy: "combat.finish-tactics" };
     case "ATTACK_UNIT":
     case "MOVE_AND_ATTACK_UNIT": {
       const attacker = combat.units[action.attackerId];
@@ -179,35 +455,18 @@ export function scoreCombatAction(
           ? action.destination
           : attacker.position;
       return {
-        score: attackScore(attacker, defender, attackFrom),
+        score: attackScore(
+          combat,
+          observation.playerId,
+          attacker,
+          defender,
+          attackFrom,
+        ),
         policy: "combat.attack-target",
       };
     }
-    case "MOVE_UNIT": {
-      // No attack is in reach (or the caller preferred moving): close on the
-      // nearest enemy rather than turtling in place. A destination that does not
-      // reduce the distance scores below DEFEND, so the unit never wanders/flees.
-      const mover = combat.units[action.unitId];
-      if (!mover) return null;
-      const current = distanceToNearestEnemy(
-        combat,
-        observation.playerId,
-        mover.position,
-      );
-      const next = distanceToNearestEnemy(
-        combat,
-        observation.playerId,
-        action.destination,
-      );
-      if (current === null || next === null) return null;
-      if (next < current) {
-        return {
-          score: 520 + Math.min(20, current - next),
-          policy: "combat.close-distance",
-        };
-      }
-      return { score: 260, policy: "combat.hold-position" };
-    }
+    case "MOVE_UNIT":
+      return moveUnitScore(observation, action);
     case "USE_UNIT_ABILITY":
       // Prefer spending an activation ability over a plain defend when offered.
       // Targeted abilities that name a high-threat enemy score higher.

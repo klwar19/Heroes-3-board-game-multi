@@ -129,12 +129,44 @@ Implemented continuation (July 2026, AI tightening):
 - hopeless neutral retreat (retreat scores above continue when clearly lost);
 - combat placement: backline ranged / frontline melee.
 
+Implemented continuation (July 2026, Event / visit anti-freeze):
+
+- `pendingCommanderFirstAid` is an exclusive interaction owner (was missing →
+  stall when First Aid opened off the active seat);
+- visit/Event/Astrologers menus scored by nested `VisitStep` utility (auction
+  modest bids, positive morale over dumping units, settlement gold-when-broke,
+  Witch Hut take, PAY_TO reserve, free war-machine grants);
+- choice contexts: place-creature-bank, far-tile-flip, garrison defend-when-
+  funded, subterranean gate, learning level-up, diplomacy recruit;
+- `SKIP_NECROMANCY` / `RESOLVE_VISIT_STEP` foundation + map scores so post-
+  combat gates never sit at score 0 under END_TURN;
+- runner progress fingerprint includes visit step type/length, event auction
+  bids, deal, First Aid, and reward-queue length (secret bids still advance).
+
+Implemented continuation (July 2026, memory / formation / soak):
+
+- **Multi-round economy memory** (`src/engine/computer/memory.ts`, persisted on
+  `GameState.computerMemory`): resource trail (8 samples), inferred focus
+  (army / income / magic / balanced), cross-turn sticky map objective, per-turn
+  visit thrash guard, last market/recruit/build round. Runner refreshes and
+  notes after every computer action; player-view redacts other seats' memory.
+  Map policy biases recruit/build/market from focus; sticky objective feeds
+  `primaryMapObjective`.
+- **Advanced multi-unit formation tactics** (`combat-policy.ts`): formation fit
+  (ranged back / melee front / flying, column diversity, screen adjacency),
+  tactics SWAP only when fit improves (else FINISH), focus-fire on wounded /
+  ally-threatened targets, ranged avoid walking into melee, melee screen moves
+  toward threatened friendly shooters. Placement reads unit TYPE from the
+  definition root (Few/Pack sides rarely re-declare it).
+- **Fixed-seed soak + reconnect** (`src/server/single-player-soak.test.ts`):
+  8 seeds × 1 computer × 5 rounds, a 2-computer short soak, mid-turn JSON
+  snapshot resume, memory survives reconnect. Invariants: no stall, non-negative
+  resources, finite counters.
+
 Still deferred intentionally:
 
-- deep Event multi-step evaluation and production long-horizon economy memory;
-- advanced formation / multi-unit tactics beyond backline/frontline;
-- fixed-seed multi-round soak suite and reconnect/resume integration tests;
-- hiding multiplayer-only invite/share affordances on the SP room table page.
+- hiding multiplayer-only invite/share affordances on the SP room table page;
+- optional/nightly hundreds-of-seeds soak expansion.
 
 This document is an implementation contract for an automated contributor. It is intentionally specific to this repository. Follow the phases in order, preserve the existing neutral-army rules, and do not replace engine behavior with UI-only labels.
 

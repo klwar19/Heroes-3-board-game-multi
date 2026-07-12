@@ -163,19 +163,26 @@ export { createSeededRandom } from "./random";
 export {
   canonicalActionKey,
   chooseComputerAction,
+  collectMapObjectives,
   computerDecisionOwner,
   computerPlayerIds,
   configuredComputerOpponents,
   controllerOf,
+  emptyComputerMemory,
+  getComputerMemory,
   humanPlayerIdsByController,
   isComputerPlayer,
   isPrivateSinglePlayer,
   legalityMatchKey,
+  noteComputerAction,
   observeForComputer,
+  primaryMapObjective,
+  refreshComputerMemory,
   sessionModeOf,
+  setStickyObjective,
   standardComputerController
 } from "./computer";
-export type { ComputerDecision, ComputerObservation } from "./computer";
+export type { ComputerDecision, ComputerObservation, ComputerPolicyMemory } from "./computer";
 export {
   applyCombatBoardArtObstacles,
   assignCombatBoardArt,

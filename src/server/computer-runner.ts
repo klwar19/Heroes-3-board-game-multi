@@ -1,17 +1,24 @@
 import {
   applyAction,
   chooseComputerAction,
+  collectMapObjectives,
   computerDecisionOwner,
   computerPlayerIds,
   freshEntropy,
   legalityMatchKey,
   observeForComputer,
+  primaryMapObjective,
   type ComputerDecision,
   type EngineResult,
   type GameAction,
   type GameState,
   type PlayerId,
 } from "@/engine";
+import {
+  noteComputerAction,
+  refreshComputerMemory,
+  setStickyObjective,
+} from "@/engine/computer/memory";
 
 export const DEFAULT_COMPUTER_STEP_LIMIT = 256;
 
@@ -89,11 +96,25 @@ function progressFingerprint(state: GameState, playerId: PlayerId): string {
       : null,
     pending: [
       adventure?.pendingVisit?.playerId,
+      // Visit step identity must count: auction bids / event choices that only
+      // mutate the visit queue still advance progress when the step type or
+      // remaining step list changes.
+      adventure?.pendingVisit?.steps[0]?.type ?? null,
+      adventure?.pendingVisit?.steps.length ?? 0,
       adventure?.pendingTileChoice?.playerId,
       adventure?.pendingNecromancy?.playerId,
+      adventure?.pendingCommanderFirstAid?.playerId,
       adventure?.pendingFarTileFlip?.playerId,
       adventure?.pendingGarrison?.defenderPlayerId,
       adventure?.pendingTokenTeleport?.playerId,
+      // Event barrier / auction state (secret bids change without resource
+      // deltas until resolve — still measurable progress).
+      adventure?.eventResolution?.round ?? null,
+      adventure?.events?.auction
+        ? [adventure.events.auction.lotCardId, adventure.events.auction.bids]
+        : null,
+      adventure?.events?.deal ?? null,
+      adventure?.rewardQueue?.length ?? 0,
     ],
     completed: state.turn.completedPlayerIds,
     player: player
@@ -143,6 +164,30 @@ export function driveComputerPlayers(
     const playerId = computerDecisionOwner(state);
     if (!playerId) {
       return { state, decisions, stalled: false };
+    }
+
+    // Refresh multi-round economy / sticky memory before the decision so the
+    // policy sees up-to-date focus and visit thrash guards (persists on state).
+    state = refreshComputerMemory(state, playerId);
+    // Commit the current sticky map objective for this seat's main hero so the
+    // next turn keeps the same march target when it is still valid.
+    const mainHero = Object.values(state.heroes).find(
+      (hero) => hero.controllerId === playerId && hero.kind === "main",
+    );
+    if (mainHero && state.adventure) {
+      const objectives = collectMapObjectives(state, mainHero);
+      const primary = primaryMapObjective(
+        state,
+        mainHero,
+        objectives,
+        state.computerMemory?.[playerId]?.stickyObjectiveSpaceId,
+      );
+      state = setStickyObjective(
+        state,
+        playerId,
+        primary?.spaceId ?? null,
+        primary?.kind ?? null,
+      );
     }
 
     const observation = observeForComputer(state, playerId);
@@ -196,7 +241,8 @@ export function driveComputerPlayers(
         reason: "Computer action succeeded without measurable progress.",
       };
     }
-    state = result.state;
+    // Persist action notes (visits, market, recruit) on the settled state.
+    state = noteComputerAction(result.state, playerId, decision.action);
     decisions.push(decision);
   }
 

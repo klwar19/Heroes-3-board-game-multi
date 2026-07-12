@@ -473,17 +473,27 @@ Leading with what does NOT run (deliberate limits):
   Enemy-hero (PvP) engagement is gated by an army-strength comparison
   (`src/engine/computer/army-strength.ts`, `shouldEngageEnemy`, ratio 0.85 — "not
   afraid" of a roughly even trade); the real combat is still dice-resolved, so
-  luck decides the actual outcome. STILL deferred: exploration-seeking toward
-  face-down tiles (it only DISCOVER_TILEs an adjacent tile), taking a *defended*
-  enemy town/garrison or a bare enemy-flagged holding, and Creature-Bank
-  strength reads. When no objective is reachable the hero ends its turn (no
-  wandering). A critical latent bug this exposed is now fixed: a finished combat
-  parks the game in the `"game-over"` phase until it is acknowledged, and
+  luck decides the actual outcome. Exploration toward face-down tiles, known
+  Creature-Bank strength reads (`canBeatCreatureBank`), free re-flag of enemy
+  mines, and garrison assault of enemy towns when army-comparable are all
+  wired. When no objective is reachable the hero ends its turn (no wandering).
+  Event / Astrologers visit menus and post-combat gates (Necromancy skip,
+  Commander First Aid, settlement income, auctions with modest bids, place-
+  creature-bank, garrison defend-when-funded) are scored so the runner never
+  freezes on a computer-owned exclusive window — pinned in
+  `visit-event-policy.test.ts` and `computer-runner.test.ts` ("Events /
+  exclusive visits"). A critical latent bug is fixed: a finished combat parks
+  the game in the `"game-over"` phase until it is acknowledged, and
   `computerDecisionOwner` used to short-circuit on that phase — so the FIRST map
   combat the AI won froze the whole game. It now falls through to drive the
   fighter's `ACKNOWLEDGE_COMBAT_END` while a non-sandbox combat notice is still
   open (pinned in `computer-runner.test.ts` "marches into a neutral fight … and
-  recovers", which stalls if the fix is reverted).
+  recovers", which stalls if the fix is reverted). Multi-round economy memory
+  (`GameState.computerMemory`, sticky objectives + army/income/magic focus),
+  advanced formation tactics (screen/backline placement, improving tactics
+  swaps, focus-fire), and a fixed-seed multi-round soak + reconnect suite
+  (`single-player-soak.test.ts`) are wired. STILL deferred: hide multiplayer-
+  only invite/share affordances on the SP table page; optional nightly long soak.
 - **Computer battles resolve IMMEDIATELY and off-screen; movement is REPLAYED
   behind an accept-gate, with a battle recap.**
   The whole computer turn (movement AND its neutral/bank combats) settles inside
