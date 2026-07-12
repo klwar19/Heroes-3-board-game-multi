@@ -37,7 +37,7 @@ HTTP 400. Attach a Cloudflare custom domain (recommended, for example
    by `rg 'url\\("/assets/' src/app/globals.css`; `assetUrl()` cannot rewrite
    CSS URLs. A safer first rollout keeps local assets as a fallback.
 6. Deploy PartyKit before the app whenever `partykit.json` adds a party. The
-   current worker must expose `/parties/lobby-chat/directory`; the app now
+   current worker must expose `/parties/lobbychat/directory`; the app now
    accesses it server-to-server through `/api/lobby-chat`, avoiding browser CORS
    failures.
 

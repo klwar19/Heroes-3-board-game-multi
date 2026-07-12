@@ -7,7 +7,7 @@ import { LobbyChatBoard, LobbyChatError, type LobbyChatMessage } from "@/server/
  * PartyKit edge the Next.js API routes run as short-lived serverless functions,
  * so a process-wide in-memory board is empty on most cold invocations — a posted
  * line never survives to the next poll, and the lobby chat "shows no message".
- * This one fixed object (addressed at the singleton id `/parties/lobby-chat/
+ * This one fixed object (addressed at the singleton id `/parties/lobbychat/
  * directory`, mirroring the room directory in party/lobby.ts) holds the shared
  * feed so every browser sees the same lines.
  *
