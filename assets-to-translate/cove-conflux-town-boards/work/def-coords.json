@@ -1,0 +1,76 @@
+{
+  "cove": [
+    {
+      "id": "city_hall",
+      "left": 200,
+      "top": 290,
+      "width": 140,
+      "height": 145
+    },
+    {
+      "id": "citadel",
+      "left": 340,
+      "top": 290,
+      "width": 140,
+      "height": 145
+    },
+    {
+      "id": "mage_guild",
+      "left": 475,
+      "top": 290,
+      "width": 140,
+      "height": 145
+    },
+    {
+      "id": "thieves_guild",
+      "left": 200,
+      "top": 430,
+      "width": 200,
+      "height": 150
+    },
+    {
+      "id": "pub",
+      "left": 405,
+      "top": 430,
+      "width": 210,
+      "height": 150
+    }
+  ],
+  "conflux": [
+    {
+      "id": "city_hall",
+      "left": 178,
+      "top": 288,
+      "width": 135,
+      "height": 145
+    },
+    {
+      "id": "citadel",
+      "left": 318,
+      "top": 288,
+      "width": 140,
+      "height": 145
+    },
+    {
+      "id": "mage_guild",
+      "left": 455,
+      "top": 288,
+      "width": 135,
+      "height": 145
+    },
+    {
+      "id": "magic_university",
+      "left": 178,
+      "top": 428,
+      "width": 205,
+      "height": 150
+    },
+    {
+      "id": "garden_of_life",
+      "left": 388,
+      "top": 428,
+      "width": 200,
+      "height": 150
+    }
+  ]
+}

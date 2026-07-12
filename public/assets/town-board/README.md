@@ -10,11 +10,14 @@ Stronghold (fan empty board, no fully-built scan) and the four DESIGNED boards
 (Conflux, Cove, Bulwark, Factory) overlay per-building tile art from THIS
 folder on every built bar. Stronghold and Factory ship a complete set of the
 REAL printed board-game tiles (all eight Stronghold buildings — the six single
-bars plus the shared bar's two faces, below); Conflux, Cove and Bulwark
-currently have none, so their built bars fall back to the aligned slice of the
-fully-built townscape (`fullImage`), then to a styled plaque. Dropping a
-correctly-named file in here upgrades a bar automatically — that is the whole
-integration contract, no code changes needed:
+bars plus the shared bar's two faces, below). **Cove and Conflux** now ship
+printed portrait tiles here (`cove-*.webp` / `conflux-*.webp`); full empty/full
+board scans with English definitions live at
+`/assets/towns-{cove,conflux}-board-{empty,full}.webp` (pipeline under
+`assets-to-translate/cove-conflux-town-boards/`). Bulwark still has none, so its
+built bars fall back to the townscape slice / plaque. Dropping a correctly-named
+file in here upgrades a bar automatically — that is the whole integration
+contract, no code changes needed:
 
 - **File name**: `<factionId>-<buildingKey>.webp` — the building id from
   `src/data/factions/core.ts` with its dot replaced by a dash.
