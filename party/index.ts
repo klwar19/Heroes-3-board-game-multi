@@ -676,7 +676,30 @@ export default class GameRoomServer implements Party.Server {
     await this.scheduleComputerPump(delayMs);
   }
 
+  /** Retry pace after a FAILED alarm tick — slower than a normal step so a
+   *  persistent fault (storage hiccup, throwing socket) can never hot-loop. */
+  private static readonly COMPUTER_PUMP_RETRY_MS = 5_000;
+
   async onAlarm(): Promise<void> {
+    try {
+      await this.runComputerPumpTick();
+    } catch (error) {
+      // A failed tick (a storage/broadcast hiccup) must NOT kill the pump
+      // chain: Cloudflare retries a throwing alarm only a few times before
+      // giving up, and a lost alarm used to freeze the AI turn until a page
+      // reload. Log and re-arm at a gentle retry pace instead — the
+      // onMessage/onConnect/GET self-heals remain the backstop.
+      console.warn(
+        `[computer-runner] alarm tick failed in room ${this.snapshot?.roomId ?? "unknown"}; re-arming`,
+        error,
+      );
+      if (this.snapshot && computerPumpOwed(this.snapshot.state)) {
+        await this.scheduleComputerPump(GameRoomServer.COMPUTER_PUMP_RETRY_MS);
+      }
+    }
+  }
+
+  private async runComputerPumpTick(): Promise<void> {
     const continuePump = await this.serialized(async () => {
       const current = this.snapshot;
       if (!current || !computerPumpOwed(current.state)) {
@@ -873,6 +896,15 @@ export default class GameRoomServer implements Party.Server {
       return;
     }
     this.metric("room.message.parse", parseStartedAt, { type: message.type });
+
+    // ANY client traffic (ping, sync, action…) self-heals a lost computer
+    // pump: if a computer seat owes a decision but no alarm is pending (a
+    // crashed/expired alarm chain, a pre-fix deploy), re-arm it — so a frozen
+    // AI turn revives on the next health ping instead of needing a page
+    // reload. ensureComputerPump never postpones an already-pending tick.
+    if (this.snapshot && computerPumpOwed(this.snapshot.state)) {
+      void this.ensureComputerPump(computerStepDelayMs(this.snapshot.state));
+    }
 
     if (message.type === "ping") {
       const userId = await this.verifiedUserId(sender);
@@ -1109,6 +1141,11 @@ export default class GameRoomServer implements Party.Server {
       const userId = await this.verifiedUserIdFromRequest(request);
       const snapshot = this.redactSnapshotForActor(this.signed(this.ensureSnapshot()), { clientId, userId });
       void this.reportToLobby();
+      // The client's http-recovery poll self-heals a lost computer pump too
+      // (same rule as onMessage/onConnect): re-arm only when no alarm pends.
+      if (this.snapshot && computerPumpOwed(this.snapshot.state)) {
+        void this.ensureComputerPump(computerStepDelayMs(this.snapshot.state));
+      }
       return jsonWithCors(snapshot);
     }
 
