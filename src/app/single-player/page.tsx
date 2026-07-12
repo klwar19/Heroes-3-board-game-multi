@@ -42,9 +42,11 @@ export default function SinglePlayerPage() {
         watch, and the game never appears in the multiplayer lobby or the ladder.
       </p>
       <p className="loadingTip">
-        Early version — the computer opponents play a simple game for now: they
-        finish setup on their own and fight back when attacked, but they do not
-        yet build up their towns or push across the map.
+        The computer opponents build up their towns, recruit units, march their
+        heroes toward objectives and fight — they take on the neutral guards they
+        can beat and will attack you when their army is a match. Their battles
+        resolve instantly; you get a recap of each result, then choose when to
+        watch their moves play out on the map.
       </p>
       <div className="singlePlayerOpponents" role="group" aria-label="Computer opponents">
         <span className="loadingStatus">Computer opponents</span>

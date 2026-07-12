@@ -85,7 +85,13 @@ import { healFreezeDisplayDamage } from "@/components/table/heal-display";
 import {
   buildComputerMoveReplay,
   useComputerMoveReplay,
+  type ComputerMoveReplay,
 } from "@/components/table/computer-move-replay";
+import {
+  buildComputerBattleReport,
+  type ComputerBattleCue,
+} from "@/components/table/computer-battle-report";
+import { OpponentTurnOverlay } from "@/components/table/opponent-turn-overlay";
 import { TableErrorBoundary } from "@/components/error-boundary";
 import {
   ADVENTURE_FEED_CUES,
@@ -712,6 +718,17 @@ export default function Home() {
   startComputerReplayRef.current = computerReplay.start;
   const cancelComputerReplayRef = useRef(computerReplay.cancel);
   cancelComputerReplayRef.current = computerReplay.cancel;
+  // Single-player: after the computer opponents' whole turn settles at once, the
+  // human is shown one prompt summarising the AI battles that resolved off-screen
+  // (win/loss + reward) and, if the AI moved, a "Watch their moves" button that
+  // starts the slow map replay. Nothing on the map animates until the human
+  // accepts, so they never miss what happened.
+  const [opponentTurnSummary, setOpponentTurnSummary] = useState<{
+    id: string;
+    cues: ComputerBattleCue[];
+    replay: ComputerMoveReplay | null;
+  } | null>(null);
+  const opponentSummaryCounterRef = useRef(0);
   const [flippedUnitIds, setFlippedUnitIds] = useState<Set<string>>(new Set());
   const [feedItems, setFeedItems] = useState<AdventureFeedItem[]>([]);
   const [fxCues, setFxCues] = useState<FxCue[]>([]);
@@ -769,6 +786,8 @@ export default function Home() {
   const seenDrawIdsRef = useRef<Set<string>>(new Set());
   const seenFlipIdsRef = useRef<Set<string>>(new Set());
   const seenMoveIdsRef = useRef<Set<string>>(new Set());
+  /** Battle-result events already summarised in the opponent-turn overlay. */
+  const seenBattleResultIdsRef = useRef<Set<string>>(new Set());
   const seenTileIdsRef = useRef<Set<string>>(new Set());
   // Town buildings the viewer has already seen go up — so the construction
   // burst fires once per genuine build, never on a mid-game join or a re-render.
@@ -1741,15 +1760,32 @@ export default function Home() {
           setMoveCue((current) => (current?.id === freshHumanMoves[0].id ? null : current));
         }, 1800);
       }
-      // Computer walks: pace them out on the map — unless we are entering /
-      // holding a combat (the board is hidden), in which case drop any pending
-      // replay so stale override cells never linger under the combat screen.
+      // Computer turn: while we are entering / holding a combat (the board is
+      // hidden), drop any pending replay so stale override cells never linger.
+      // Otherwise, summarise the opponents' off-screen battles (win/loss +
+      // reward) and hold their map walks behind an "accept" prompt — the human
+      // clicks to start the slow, cell-by-cell replay, so nothing moves unseen.
       if (nextState.combat) {
         cancelComputerReplayRef.current();
+        setOpponentTurnSummary(null);
       } else {
         const replay = buildComputerMoveReplay(nextState, freshMoves);
-        if (replay) {
-          startComputerReplayRef.current(replay);
+        const freshBattleResults = nextState.eventLog.filter(
+          (event) =>
+            (event.type === "COMBAT_ENDED" || event.type === "QUICK_COMBAT_WON") &&
+            !seenBattleResultIdsRef.current.has(event.id)
+        );
+        for (const event of freshBattleResults) {
+          seenBattleResultIdsRef.current.add(event.id);
+        }
+        const battleCues = buildComputerBattleReport(nextState, freshBattleResults);
+        if (replay || battleCues.length > 0) {
+          opponentSummaryCounterRef.current += 1;
+          setOpponentTurnSummary({
+            id: `opp-turn-${opponentSummaryCounterRef.current}`,
+            cues: battleCues,
+            replay,
+          });
         }
       }
 
@@ -4667,6 +4703,20 @@ export default function Home() {
                     <span className="computerMovingDot" />
                     {state.players[computerReplay.activePlayerId]?.name ?? "Computer"} is moving…
                   </div>
+                ) : null}
+                {opponentTurnSummary ? (
+                  <OpponentTurnOverlay
+                    cues={opponentTurnSummary.cues}
+                    hasReplay={Boolean(opponentTurnSummary.replay)}
+                    onWatch={() => {
+                      const replay = opponentTurnSummary.replay;
+                      setOpponentTurnSummary(null);
+                      if (replay) {
+                        startComputerReplayRef.current(replay);
+                      }
+                    }}
+                    onDismiss={() => setOpponentTurnSummary(null)}
+                  />
                 ) : null}
                 {isSeated && !mapReadOnly ? (
                   <FarTileTray

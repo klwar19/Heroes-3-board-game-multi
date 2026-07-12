@@ -79,8 +79,14 @@ export function buildComputerMoveReplay(
   return { initialPositions, frames, heroPlayerIds };
 }
 
-/** How long each single-cell step of a computer walk dwells on screen. */
-export const REPLAY_STEP_MS = 600;
+/**
+ * How long each single-cell step of a computer walk dwells on screen. Kept
+ * deliberately slow — the human explicitly asked to WATCH each opponent walk,
+ * not have it flash by — and the walk only starts once the human accepts the
+ * end-of-turn prompt (see the page's opponent-turn overlay), so nothing moves
+ * behind their back.
+ */
+export const REPLAY_STEP_MS = 900;
 
 export type ComputerMoveReplayControl = {
   /** Map override to render pawns at (heroId -> cell), or null when idle. */

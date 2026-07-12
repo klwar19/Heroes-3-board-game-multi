@@ -31,7 +31,19 @@ function computer(
  * automatable action and read as a stall.
  */
 export function computerDecisionOwner(state: GameState): PlayerId | null {
-  if (state.phase === "game-over") {
+  // A combat that just ended ALSO parks the game in the "game-over" phase until
+  // a participant acknowledges the end-of-combat notice — only then does the
+  // engine finalize XP / unit flips / the field visit and return to the map. A
+  // computer fighter must still drive that acknowledgment, so a game-over with
+  // an un-acknowledged (non-sandbox) combat notice falls through to the combat
+  // block below. A TRULY finished game (winner declared, notice already closed)
+  // owes nobody a decision.
+  const combatAwaitingAck = Boolean(
+    state.combat?.outcome &&
+      state.combat.context.kind !== "sandbox" &&
+      !state.combat.endAcknowledged,
+  );
+  if (state.phase === "game-over" && !combatAwaitingAck) {
     return null;
   }
 

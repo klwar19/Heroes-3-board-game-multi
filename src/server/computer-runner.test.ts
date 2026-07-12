@@ -327,6 +327,67 @@ describe("computer map turns", () => {
   });
 });
 
+describe("computer map fights", () => {
+  it("marches into a neutral fight, wins it, and recovers the map turn (not stuck in the combat-end phase)", () => {
+    // seed "runner-map-turn": the p2 (computer) hero has beatable difficulty-1
+    // guards near its town. With objective-seeking movement it now walks in and
+    // fights instead of shuffling in place — and the runner must drive the
+    // end-of-combat acknowledgment even though a finished combat parks the game
+    // in the "game-over" phase, or the whole game freezes after the AI's first
+    // win (the bug this pins).
+    let state = createAdventureGameState({
+      seed: "runner-map-turn",
+      scenarioId: "skirmish",
+      playerCount: 2,
+      sessionMode: "single-player",
+    });
+    const humanPriority: GameAction["type"][] = [
+      "SET_TILE_ROTATION",
+      "CHOOSE_OPTION",
+      "CHOOSE_ABILITY_TARGET",
+      "CHOOSE_PENDING_ROLL",
+      "RESOLVE_VISIT_STEP",
+      "RESOLVE_DECK_SEARCH",
+      "RESOLVE_COMBAT_DISCARD",
+      "REFRESH_HAND",
+      "END_TURN",
+    ];
+    let guard = 0;
+    for (;;) {
+      const run = driveComputerPlayers(state);
+      // The runner never stalls — including right after the AI wins its fight,
+      // when the game sits in the "game-over" combat-end phase awaiting the ack.
+      expect(run.stalled, run.reason).toBe(false);
+      state = run.state;
+      if (state.round >= 3 && state.activePlayerId === "p1" && state.players.p1.canMulligan) {
+        break;
+      }
+      expect(guard++, "did not reach round 3 — the AI likely froze the game").toBeLessThan(80);
+      const offers = getLegalActions(state, "p1");
+      const pick = humanPriority
+        .map((type) => offers.find((legal) => legal.action.type === type))
+        .find(Boolean);
+      // A frozen game leaves the human with no map step to take.
+      expect(pick, `human has no map step; phase=${state.phase}`).toBeDefined();
+      state = humanAct(state, pick!.action);
+    }
+
+    // The AI really fought a neutral battle to a win (not a bloodless Quick
+    // Combat skip) and the game moved on: control is back with the human, the
+    // phase recovered off "game-over", and nobody is stuck owing a decision.
+    const wonAFight = state.eventLog.some(
+      (event) => event.type === "COMBAT_ENDED" && event.winnerPlayerId === "p2",
+    );
+    expect(wonAFight, "expected the AI to win at least one real neutral combat").toBe(true);
+    expect(state.phase).not.toBe("game-over");
+    expect(computerDecisionOwner(state)).toBeNull();
+    // The AI claimed ground by fighting — at least one field flags to it.
+    expect(
+      Object.values(state.adventure!.fields).some((field) => field.flagOwnerId === "p2"),
+    ).toBe(true);
+  });
+});
+
 describe("computer combat activation", () => {
   it("drives its active unit to remove the lethal target and hands control back", () => {
     const state = createInitialGameState("computer-combat-target");
