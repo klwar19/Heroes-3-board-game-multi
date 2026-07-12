@@ -2,6 +2,7 @@
 
 import PartySocket from "partysocket";
 import type { AdventurePlayerConfig, EngineResult, GameAction, GameDifficulty, GameMode, GameState } from "@/engine";
+import { frameBytes, metricNow, metricsSampled, recordPerformanceMetric } from "@/lib/performance-metrics";
 import { peekPendingSinglePlayer, savePendingSinglePlayer } from "@/lib/pending-room-name";
 import { LOBBY_SINGLETON_ID, type RoomDirectoryEntry } from "@/server/lobby-registry";
 
@@ -32,6 +33,8 @@ export type GameRoomSnapshot = {
   serverSignature?: string;
   /** Set on the final frame a closed room sends, so the client returns to the lobby. */
   closed?: boolean;
+  /** Effective redaction seat on hosted PartyKit frames. */
+  viewerSeat?: string;
 };
 
 /**
@@ -53,6 +56,7 @@ export type RoomResetOptions = {
 
 /** Provenance of a delivered snapshot, for the caller's version gate. */
 export type SnapshotMeta = {
+  source?: "connect" | "broadcast" | "action-ack" | "sync" | "http-recovery" | "reset";
   /**
    * The snapshot came from a channel the server redacts to THIS client's own
    * seat (the HTTP snapshot fetch with clientId+token attached). The caller may
@@ -82,7 +86,11 @@ export type RoomConnectionHandlers = {
 export type RoomConnection = {
   /** Stops the stream/socket and releases resources. */
   close: () => void;
-  submitAction: (action: GameAction) => Promise<{ snapshot: GameRoomSnapshot; result: EngineResult }>;
+  submitAction: (action: GameAction) => Promise<{
+    version: number;
+    errors: EngineResult["errors"];
+    notices: string[];
+  }>;
   resetRoom: (options: RoomResetOptions) => Promise<GameRoomSnapshot>;
   fetchSnapshot: () => Promise<GameRoomSnapshot>;
   /**
@@ -133,9 +141,11 @@ type PartyServerMessage =
   | {
       type: "action-result";
       requestId?: string;
+      version: number;
       errors: { code: string; message: string }[];
-      snapshot: GameRoomSnapshot;
+      notices?: string[];
     }
+  | { type: "pong"; version: number; viewerSeat?: string }
   | { type: "reset-denied"; reason: string };
 
 /** Marks an Error as a server-side authority refusal (vs a network failure). */
@@ -265,6 +275,12 @@ function connectPartyRoom(
     (reply: Extract<PartyServerMessage, { type: "action-result" }>) => void
   >();
   let requestCounter = 0;
+  let lastMessageAt = Date.now();
+  let opened = false;
+  let awaitingPong = false;
+  let pingSentAt = 0;
+  let syncRequested = false;
+  let knownVersion = 0;
   // Reset travels over the socket, not HTTP: the room server is a different
   // origin than the app, so a cross-origin fetch would be blocked by CORS
   // (the WebSocket is not). The next snapshot the server broadcasts is the
@@ -283,35 +299,61 @@ function connectPartyRoom(
   // while the socket was down no later broadcast is due — without this refetch
   // a hosted-room player's own hand/Pandora cards would stay masked until the
   // next state change (the closed-room reload bug).
-  const refetchSeatSnapshot = async (): Promise<void> => {
-    try {
-      const response = await fetch(partyHttpUrl(host, roomId, actorClientId, await actorToken()), {
-        cache: "no-store"
-      });
-      if (response.ok) {
-        handlers.onSnapshot((await response.json()) as GameRoomSnapshot, { seatAuthoritative: true });
+  let recoveryFetch: Promise<void> | null = null;
+  const refetchSeatSnapshot = (): Promise<void> => {
+    // A watchdog reconnect can open while its emergency fetch is still in
+    // flight. Share that request so one dead socket never mints/fetches the
+    // same recovery snapshot twice.
+    if (recoveryFetch) return recoveryFetch;
+    recoveryFetch = (async () => {
+      try {
+        const response = await fetch(partyHttpUrl(host, roomId, actorClientId, await actorToken()), {
+          cache: "no-store"
+        });
+        if (response.ok) {
+          const snapshot = (await response.json()) as GameRoomSnapshot;
+          lastMessageAt = Date.now();
+          knownVersion = Math.max(knownVersion, snapshot.version);
+          handlers.onSnapshot(snapshot, {
+            source: "http-recovery",
+            seatAuthoritative: true
+          });
+        }
+      } catch {
+        // The reconnecting socket and the caller's own fetch paths keep trying.
       }
-    } catch {
-      // The live socket keeps trying; the caller's own fetch paths also retry.
-    }
+    })().finally(() => {
+      recoveryFetch = null;
+    });
+    return recoveryFetch;
   };
 
   let dropped = false;
+  let recoveryRequestedForDrop = false;
+  const markDropped = () => {
+    opened = false;
+    awaitingPong = false;
+    syncRequested = false;
+    if (dropped) return;
+    dropped = true;
+    handlers.onDropped?.();
+  };
   socket.addEventListener("open", () => {
+    opened = true;
+    lastMessageAt = Date.now();
     handlers.onStatus("live (edge)");
     if (dropped) {
       dropped = false;
-      void refetchSeatSnapshot();
+      if (!recoveryRequestedForDrop) void refetchSeatSnapshot();
+      recoveryRequestedForDrop = false;
     }
   });
   socket.addEventListener("close", () => {
-    dropped = true;
-    handlers.onDropped?.();
+    markDropped();
     handlers.onStatus("edge socket reconnecting");
   });
   socket.addEventListener("error", () => {
-    dropped = true;
-    handlers.onDropped?.();
+    markDropped();
     handlers.onStatus("edge socket reconnecting");
   });
   socket.addEventListener("message", (event) => {
@@ -321,19 +363,53 @@ function connectPartyRoom(
     } catch {
       return;
     }
+    lastMessageAt = Date.now();
+    awaitingPong = false;
+    // Guarded: frameBytes() TextEncoder-scans the whole frame (a ~48 KiB
+    // snapshot) on EVERY inbound message. Skip that work entirely unless metrics
+    // are actually being sampled (off by default) — recordPerformanceMetric
+    // would otherwise discard it after the payload was already built.
+    if (metricsSampled) {
+      recordPerformanceMetric({
+        name: "room.frame.in",
+        at: metricNow(),
+        fields: { type: message.type, bytes: frameBytes(event.data as string) }
+      });
+    }
+
+    if (message.type === "pong") {
+      recordPerformanceMetric({
+        name: "room.health.pong",
+        at: metricNow(),
+        durationMs: pingSentAt ? Date.now() - pingSentAt : undefined,
+        fields: { version: message.version }
+      });
+      if (message.version > knownVersion) {
+        syncRequested = true;
+        socket.send(JSON.stringify({ type: "sync" }));
+      }
+      return;
+    }
 
     if (message.type === "snapshot") {
+      knownVersion = Math.max(knownVersion, message.snapshot.version);
       if (message.snapshot.closed) {
         handlers.onClosed?.();
         return;
       }
-      handlers.onSnapshot(message.snapshot);
-      handlers.onStatus(`live (edge) v${message.snapshot.version}`);
       if (pendingReset) {
         const settle = pendingReset;
         pendingReset = null;
+        handlers.onStatus(`live (edge) v${message.snapshot.version}`);
         settle.resolve(message.snapshot);
+        return;
       }
+      handlers.onSnapshot(message.snapshot, {
+        source: syncRequested ? "sync" : "broadcast",
+        seatAuthoritative: syncRequested || (message.snapshot.viewerSeat !== undefined && message.snapshot.viewerSeat !== "observer")
+      });
+      syncRequested = false;
+      handlers.onStatus(`live (edge) v${message.snapshot.version}`);
       return;
     }
 
@@ -351,21 +427,75 @@ function connectPartyRoom(
         pending.get(message.requestId)?.(message);
         pending.delete(message.requestId);
       }
-      if (message.errors.length === 0) {
-        handlers.onSnapshot(message.snapshot);
-      }
     }
   });
+
+  const requestSync = () => {
+    if (!opened) return;
+    syncRequested = true;
+    socket.send(JSON.stringify({ type: "sync" }));
+  };
+  const sendHealthPing = () => {
+    if (!opened || awaitingPong) return;
+    awaitingPong = true;
+    pingSentAt = Date.now();
+    const frame = JSON.stringify({ type: "ping", knownVersion });
+    recordPerformanceMetric({
+      name: "room.frame.out",
+      at: metricNow(),
+      fields: { type: "ping", bytes: frameBytes(frame) }
+    });
+    socket.send(frame);
+  };
+  const onWake = () => {
+    if (document.visibilityState === "hidden") return;
+    requestSync();
+    // A suspended laptop/background tab can wake with a socket that still says
+    // OPEN locally although the route has died. Probe at once instead of
+    // waiting up to another health interval before starting the timeout clock.
+    if (Date.now() - lastMessageAt >= 35_000) sendHealthPing();
+  };
+  const canObserveWake = typeof window !== "undefined" && typeof document !== "undefined";
+  if (canObserveWake) {
+    window.addEventListener("focus", onWake);
+    document.addEventListener("visibilitychange", onWake);
+  }
+  const healthId = canObserveWake ? window.setInterval(() => {
+    if (!opened || document.visibilityState === "hidden") return;
+    const silentMs = Date.now() - lastMessageAt;
+    if (awaitingPong && Date.now() - pingSentAt >= 5_000) {
+      recordPerformanceMetric({ name: "room.health.timeout", at: metricNow(), fields: { silentMs } });
+      handlers.onStatus("edge socket unhealthy; recovering");
+      // An HTTP snapshot heals the screen immediately, while a forced socket
+      // reconnect repairs the live update channel. Keeping the apparently-open
+      // socket would otherwise make later events/rewards disappear again until
+      // the player refreshed the page.
+      markDropped();
+      recoveryRequestedForDrop = true;
+      void refetchSeatSnapshot();
+      socket.reconnect(4000, "health timeout");
+      return;
+    }
+    if (!awaitingPong && silentMs >= 35_000) {
+      sendHealthPing();
+    }
+  }, 5_000) : null;
 
   return {
     close: () => {
       socket.close();
       pending.clear();
+      if (healthId !== null) window.clearInterval(healthId);
+      if (canObserveWake) {
+        window.removeEventListener("focus", onWake);
+        document.removeEventListener("visibilitychange", onWake);
+      }
     },
     submitAction: (action) =>
       new Promise((resolve, reject) => {
         requestCounter += 1;
         const requestId = `req_${requestCounter}_${Date.now().toString(36)}`;
+        const sentAt = metricNow();
         const timeout = window.setTimeout(() => {
           pending.delete(requestId);
           reject(new Error("The room did not answer in time."));
@@ -373,22 +503,29 @@ function connectPartyRoom(
 
         pending.set(requestId, (reply) => {
           window.clearTimeout(timeout);
+          recordPerformanceMetric({
+            name: "room.action.acknowledged",
+            at: sentAt,
+            durationMs: metricNow() - sentAt,
+            fields: { requestId, actionType: action.type, version: reply.version }
+          });
           resolve({
-            snapshot: reply.snapshot,
-            result: {
-              state: reply.snapshot.state,
-              events: [],
-              errors: reply.errors.map((error) => ({
+            version: reply.version,
+            notices: reply.notices ?? [],
+            errors: reply.errors.map((error) => ({
                 code: error.code as EngineResult["errors"][number]["code"],
                 message: error.message
               }))
-            }
           });
         });
 
-        socket.send(
-          JSON.stringify({ type: "action", requestId, action, ...(actorClientId ? { actorClientId } : {}) })
-        );
+        const frame = JSON.stringify({ type: "action", requestId, action, ...(actorClientId ? { actorClientId } : {}) });
+        recordPerformanceMetric({
+          name: "room.action.sent",
+          at: metricNow(),
+          fields: { requestId, actionType: action.type, bytes: frameBytes(frame) }
+        });
+        socket.send(frame);
       }),
     resetRoom: (options) =>
       new Promise<GameRoomSnapshot>((resolve, reject) => {
@@ -549,7 +686,14 @@ function connectApiRoom(
       if (!response.ok) {
         throw new Error("Server rejected the action request.");
       }
-      return (await response.json()) as { snapshot: GameRoomSnapshot; result: EngineResult };
+      const payload = (await response.json()) as { snapshot: GameRoomSnapshot; result: EngineResult };
+      return {
+        version: payload.snapshot.version,
+        errors: payload.result.errors,
+        notices: payload.result.events
+          .filter((event) => event.type === "SPELL_CAST_REFUNDED")
+          .map((event) => (event as Extract<typeof event, { type: "SPELL_CAST_REFUNDED" }>).reason)
+      };
     },
     resetRoom: async (options) => {
       const adminKey = localAdminKey();

@@ -78,15 +78,14 @@ function latestState(conn: MockConnection): GameState {
 }
 
 /** The last action-result a client got back for its own submitted action. */
-function lastActionResult(conn: MockConnection): { errors: { message: string }[]; snapshot: RoomSnapshot } {
+function lastActionResult(conn: MockConnection): { errors: { message: string }[] } {
   for (let i = conn.received.length - 1; i >= 0; i -= 1) {
     const message = JSON.parse(conn.received[i]) as {
       type: string;
       errors?: { message: string }[];
-      snapshot: RoomSnapshot;
     };
     if (message.type === "action-result") {
-      return { errors: message.errors ?? [], snapshot: message.snapshot };
+      return { errors: message.errors ?? [] };
     }
   }
   throw new Error(`${conn.id} received no action-result`);
