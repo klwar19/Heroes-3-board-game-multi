@@ -380,4 +380,64 @@ describe("choice policy — die keep vs reroll", () => {
     const badDecision = chooseComputerAction(observation(bad, [keep, reroll]));
     expect(badDecision?.action.type).toBe("REROLL_PENDING_CHOICE");
   });
+
+  it("optimizes toward an ability roll's success window, not the highest face (Death Stare)", () => {
+    // Death Stare lands only when EVERY die is in [-1, -1] — the LOW face is the
+    // GOOD one. "Higher face is better" is exactly backwards here.
+    const base = {
+      id: "rr2",
+      type: "ATTACK_DIE_REROLL",
+      playerId: "p2",
+      stackItemId: "s1",
+      attackerId: "A",
+      defenderId: "E",
+      isRetaliation: false,
+      attackKind: "melee",
+      rollMode: "normal",
+      attackBonus: 0,
+      defenseBonus: 0,
+      remainingRerolls: 1,
+      rerollSources: [],
+      sourceEffectIds: [],
+      abilityRoll: {
+        kind: "death-stare",
+        abilityId: "gorgon-death-stare",
+        abilityName: "Death Stare",
+        diceCount: 2,
+        minRoll: -1,
+        maxRoll: -1,
+        resume: {
+          attackerId: "A",
+          defenderId: "E",
+          attackKind: "melee",
+          attackRoll: 0,
+          forceAbilityRoll: false,
+          fromStep: 0,
+          followUpIndex: 0,
+        },
+      },
+    };
+    const keep: LegalAction = {
+      label: "keep",
+      action: { type: "CHOOSE_PENDING_ROLL", playerId: "p2", choiceId: "rr2", candidateIndex: 0 } as GameAction,
+    };
+    const reroll: LegalAction = {
+      label: "reroll",
+      action: { type: "REROLL_PENDING_CHOICE", playerId: "p2", choiceId: "rr2" } as GameAction,
+    };
+
+    // A winning stare (both dice -1): KEEP it. (The old attack-oriented scorer
+    // read roll=-2 as "bad" and rerolled away a guaranteed petrify.)
+    const winning = { ...base, candidates: [{ rolls: [-1, -1], roll: -2 }] } as unknown as PendingChoice;
+    expect(
+      chooseComputerAction(observation(winning, [keep, reroll]))?.action.type,
+    ).toBe("CHOOSE_PENDING_ROLL");
+
+    // A partial roll (one die outside the window) FAILS the stare — reroll it,
+    // even though its net face-sum is higher than the winning roll's.
+    const partial = { ...base, candidates: [{ rolls: [-1, 1], roll: 0 }] } as unknown as PendingChoice;
+    expect(
+      chooseComputerAction(observation(partial, [keep, reroll]))?.action.type,
+    ).toBe("REROLL_PENDING_CHOICE");
+  });
 });

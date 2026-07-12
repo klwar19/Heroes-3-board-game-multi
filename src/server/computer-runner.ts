@@ -149,7 +149,7 @@ const liveApply: ComputerApply = (state, action, playerId) =>
  * Transport-neutral computer pump: while a computer seat owns the next
  * required decision, pick one legal action and apply it, with per-fingerprint
  * retry/no-progress guards and a hard step cap. Live rooms call it through
- * settleComputerWork / settleComputerOneStep; tests may inject their own apply.
+ * settleComputerWork / settleComputerVisibleStep; tests may inject their own apply.
  */
 export function driveComputerPlayers(
   initialState: GameState,
@@ -358,11 +358,6 @@ export function settleComputerVisibleStep(state: GameState): ComputerRunResult {
     stalled: true,
     reason: "Computer visible-step bulk cap reached.",
   };
-}
-
-/** @deprecated alias — prefer settleComputerVisibleStep for live pacing. */
-export function settleComputerOneStep(state: GameState): ComputerRunResult {
-  return settleComputerVisibleStep(state);
 }
 
 /**

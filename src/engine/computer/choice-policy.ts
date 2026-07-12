@@ -187,6 +187,32 @@ function scoreAbilityTarget(
   );
 }
 
+/**
+ * An ability-roll window (Death Stare, knockback, paralysis-extra, extra
+ * attack-die) SUCCEEDS only when EVERY die falls in `[minRoll, maxRoll]` — often
+ * the LOW / negative faces (a Death Stare wants "-1"s). "Higher face is better"
+ * is exactly backwards for these, so the die scorers must read `abilityRoll` and
+ * optimize toward the success window, not toward the biggest face.
+ */
+function candidateAllInWindow(
+  faces: number[],
+  min: number,
+  max: number,
+): boolean {
+  return faces.length > 0 && faces.every((face) => face >= min && face <= max);
+}
+
+/** True when SOME candidate already satisfies the ability roll's success window. */
+function abilityRollAlreadySucceeds(
+  choice: Extract<PendingChoice, { type: "ATTACK_DIE_REROLL" }>,
+): boolean {
+  const ctx = choice.abilityRoll;
+  if (!ctx) return false;
+  return choice.candidates.some((candidate) =>
+    candidateAllInWindow(candidate.rolls ?? [candidate.roll], ctx.minRoll, ctx.maxRoll),
+  );
+}
+
 /** Die keep: prefer the candidate with the highest attack face / best net. */
 function scorePendingRoll(
   observation: ComputerObservation,
@@ -198,8 +224,19 @@ function scorePendingRoll(
   }
   const candidate = choice.candidates[action.candidateIndex];
   if (!candidate) return CHOICE_BASE;
-  // Higher kept face / sum is better; non-negative preferred.
   const faces = candidate.rolls ?? [];
+  // Ability roll: only an all-in-window candidate is worth keeping (the effect
+  // lands only if every die is in the window); a partial roll fails, so keep it
+  // low and let the reroll win.
+  if (choice.abilityRoll) {
+    const allIn = candidateAllInWindow(
+      faces.length > 0 ? faces : [candidate.roll],
+      choice.abilityRoll.minRoll,
+      choice.abilityRoll.maxRoll,
+    );
+    return CHOICE_BASE + (allIn ? 40 : 0);
+  }
+  // Attack roll: higher kept face / sum is better; non-negative preferred.
   const faceSum = faces.reduce((sum: number, face: number) => sum + face, 0);
   return CHOICE_BASE + 20 + candidate.roll * 8 + faceSum;
 }
@@ -212,7 +249,15 @@ function scoreRerollOffer(
   if (!choice || choice.type !== "ATTACK_DIE_REROLL") {
     return CHOICE_BASE - 20;
   }
-  // Prefer set-die (+1) over a raw reroll when offered.
+  // Ability roll: (re)roll toward the success window — reroll (or set-die) only
+  // when NO current candidate already satisfies it; once it succeeds, keep.
+  if (choice.abilityRoll) {
+    const succeeds = abilityRollAlreadySucceeds(choice);
+    if (succeeds) return CHOICE_BASE - 40; // already lands — keep, don't waste a card
+    if (action.useSetDie) return CHOICE_BASE + 35; // set the worst die into window
+    return choice.remainingRerolls > 0 ? CHOICE_BASE + 25 : CHOICE_BASE - 40;
+  }
+  // Attack roll — prefer set-die (+1) over a raw reroll when offered.
   if (action.useSetDie) {
     return CHOICE_BASE + 35;
   }
@@ -228,8 +273,13 @@ function scoreRerollOffer(
 }
 
 /**
- * Dimension door / view-earth / neutral-destination: prefer destinations that
- * close on something useful when structured payload exists.
+ * Position picks (dimension-door / view-earth / neutral-destination / teleport /
+ * knockback …). Where a structured payload gives the AI something to reason
+ * about — a mine to reveal (view-earth), a landing cell's distance to the enemy
+ * (neutral-destination / teleport) — it scores by that. HONEST LIMIT: the
+ * dimension-door DESTINATION is NOT yet scored by usefulness (no objective-
+ * distance read here); it only prefers any real teleport over staying put, in
+ * the engine's listed order. Improving it needs the map objective field wired in.
  */
 function scorePositionOption(
   observation: ComputerObservation,
@@ -244,10 +294,11 @@ function scorePositionOption(
   if (context === "dimension-door" && choice.dimensionDoor) {
     const dest = choice.dimensionDoor.destinations[optionIndex];
     if (!dest) {
-      // Trailing "stay" — only if no destinations.
+      // Trailing "stay" option (no destination at this index).
       return CHOICE_BASE;
     }
-    // Prefer any real teleport over stay.
+    // Prefer any real teleport over staying. Destination usefulness is not yet
+    // modelled (see the header note), so ties fall back to the listed order.
     return CHOICE_BASE + 30 + Math.max(0, 10 - optionIndex);
   }
 
