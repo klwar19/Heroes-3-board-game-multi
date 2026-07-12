@@ -61,6 +61,61 @@ describe("LobbyScreen", () => {
     expect(handlers.onJoin).toHaveBeenCalledWith("room-1");
   });
 
+  it("a locked room asks for a password on Join; empty password never joins", () => {
+    const handlers = renderLobby({
+      rooms: [
+        entry({
+          roomId: "room-locked",
+          name: "Secret Table",
+          locked: true,
+          memberCount: 1,
+          hostName: "Host"
+        })
+      ]
+    });
+
+    // Room row Join (not the empty join-by-code control).
+    const roomJoin = screen
+      .getAllByRole("button", { name: /^Join$/i })
+      .find((btn) => !(btn as HTMLButtonElement).disabled);
+    expect(roomJoin).toBeTruthy();
+    fireEvent.click(roomJoin!);
+    // Prompt is open — no navigation yet.
+    expect(handlers.onJoin).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog", { name: /Room password/i })).toBeTruthy();
+
+    // Empty password: Join stays disabled / no-op.
+    const joinInDialog = within(screen.getByRole("dialog")).getByRole("button", { name: /^Join$/i });
+    expect((joinInDialog as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(joinInDialog);
+    expect(handlers.onJoin).not.toHaveBeenCalled();
+
+    // Typed password → join with it.
+    const dialog = screen.getByRole("dialog", { name: /Room password/i });
+    fireEvent.change(within(dialog).getByPlaceholderText("Room password"), {
+      target: { value: "swordfish" }
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: /^Join$/i }));
+    expect(handlers.onJoin).toHaveBeenCalledWith("room-locked", "swordfish");
+  });
+
+  it("admin can still delete a locked room without entering the password", () => {
+    const handlers = renderLobby({
+      isAdmin: true,
+      rooms: [
+        entry({
+          roomId: "room-admin-del",
+          name: "Admin Target",
+          locked: true,
+          canClose: false
+        })
+      ]
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Admin: delete Admin Target/i }));
+    expect(handlers.onClose).toHaveBeenCalledWith("room-admin-del");
+    expect(handlers.onJoin).not.toHaveBeenCalled();
+  });
+
   it("labels guests only when accounts are ON, and marks who is actually connected", () => {
     const prev = process.env.NEXT_PUBLIC_ACCOUNTS_ENABLED;
     process.env.NEXT_PUBLIC_ACCOUNTS_ENABLED = "1";

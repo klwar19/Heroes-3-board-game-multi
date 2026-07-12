@@ -49,3 +49,30 @@ describe("A Shady Auction — the bidder can see the artifact on the block", () 
     expect(screen.getByRole("button", { name: /No bid/i })).toBeTruthy();
   });
 });
+
+describe("Event reward choices show card graphics (not text-only)", () => {
+  it("Artifact Merchant buy options render as reward card tiles with art", () => {
+    const state = eventsGame("merchant-ui");
+    stackEventDeck(state, "event.artifact_merchant");
+    for (const id of ["p1", "p2"] as const) {
+      state.players[id].resources = { gold: 30, buildingMaterials: 10, valuables: 10 };
+    }
+    startResourceRound(state);
+
+    // Drawer (p1) is shopping the revealed Artifact pool.
+    const pool = getEventsState(state)!.pool;
+    expect(pool.length).toBeGreaterThan(0);
+    const firstWithArt = pool.find((entry) => cardLibrary[entry.cardId]?.assets?.cardImage);
+    expect(firstWithArt, "pool should include at least one artifact with art").toBeTruthy();
+
+    const legal = getLegalActions(state, "p1");
+    render(<PromptTray legalActions={legal} onAction={vi.fn()} state={state} viewerPlayerId="p1" />);
+
+    // Face-up pool preview and/or the buy button itself carry the card art.
+    const artName = cardLibrary[firstWithArt!.cardId]!.name;
+    expect(screen.getAllByRole("img", { name: artName }).length).toBeGreaterThan(0);
+    // The priced buy control is still a real button (graphic tile with the label).
+    expect(screen.getByRole("button", { name: new RegExp(artName, "i") })).toBeTruthy();
+  });
+});
+

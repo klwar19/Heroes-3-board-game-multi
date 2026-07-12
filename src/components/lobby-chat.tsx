@@ -13,6 +13,10 @@ import { MAX_LOBBY_CHAT_TEXT_LENGTH, type LobbyChatMessage } from "@/server/lobb
  *
  * Smart auto-scroll: stick to the bottom only while the user is already near it,
  * otherwise offer a "↓ new" chip so history is not yanked away mid-read.
+ *
+ * Every message is rendered as a full bubble (author · time on a header row,
+ * body on its own line) so long invites / multi-sentence lines stay readable —
+ * never clipped to a single truncated line.
  */
 const SEND_COOLDOWN_MS = 600;
 const STICK_BOTTOM_PX = 48;
@@ -118,7 +122,9 @@ export function LobbyChat({
       <header className="lobbyChatHeader">
         <MessageSquare aria-hidden="true" size={15} />
         <span>Lobby chat</span>
-        <small>while you pick a room</small>
+        <small>
+          {messages.length > 0 ? `${messages.length} message${messages.length === 1 ? "" : "s"}` : "while you pick a room"}
+        </small>
       </header>
 
       <div className="lobbyChatMessages" ref={listRef} role="log" aria-live="polite" onScroll={onListScroll}>
@@ -126,11 +132,16 @@ export function LobbyChat({
           <p className="lobbyChatEmpty">No messages yet — say hello to the lobby.</p>
         ) : (
           messages.map((message) => (
-            <p className={`lobbyChatLine ${message.clientId === clientId ? "mine" : ""}`} key={message.seq}>
-              <span className="lobbyChatAuthor">{message.name}</span>
-              <span className="lobbyChatText">{message.text}</span>
-              {now ? <span className="lobbyChatTime">{timeAgo(message.at, now)}</span> : null}
-            </p>
+            <article
+              className={`lobbyChatLine ${message.clientId === clientId ? "mine" : ""}`}
+              key={message.seq}
+            >
+              <header className="lobbyChatLineHead">
+                <span className="lobbyChatAuthor">{message.name}</span>
+                {now ? <span className="lobbyChatTime">{timeAgo(message.at, now)}</span> : null}
+              </header>
+              <p className="lobbyChatText">{message.text}</p>
+            </article>
           ))
         )}
       </div>

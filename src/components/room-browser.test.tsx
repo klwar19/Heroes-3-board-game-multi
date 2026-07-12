@@ -18,6 +18,16 @@ vi.mock("@/lib/lobby-chat-client", () => ({
   fetchLobbyChat: vi.fn().mockResolvedValue([]),
   postLobbyChat: vi.fn()
 }));
+vi.mock("@/lib/lobby-invites-client", () => ({
+  fetchLobbyInvites: vi.fn().mockResolvedValue([]),
+  sendLobbyInvite: vi.fn().mockResolvedValue({ id: "inv-1" }),
+  dismissLobbyInvite: vi.fn().mockResolvedValue(undefined)
+}));
+vi.mock("@/lib/lobby-presence-client", () => ({
+  sendPresence: vi.fn().mockResolvedValue([]),
+  leavePresence: vi.fn(),
+  fetchPresence: vi.fn().mockResolvedValue([])
+}));
 vi.mock("@/lib/realtime", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/realtime")>();
   return {

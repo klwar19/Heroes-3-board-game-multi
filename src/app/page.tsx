@@ -206,6 +206,7 @@ import {
   takePendingRoomHosted,
   takePendingRoomMode,
   takePendingRoomName,
+  takePendingRoomPassword,
   takePendingRoomRanked
 } from "@/lib/pending-room-name";
 import { RoomPanel } from "@/components/table/room-panel";
@@ -213,6 +214,7 @@ import { LoadingScreen } from "@/components/menu/loading-screen";
 import { useRouter } from "next/navigation";
 import { TableReactionsLayer } from "@/components/table/table-reactions";
 import { ChatPanel } from "@/components/table/chat-panel";
+import { InvitePopup } from "@/components/invite-popup";
 
 /** Events that move cards or play battle effects on the table. */
 const FX_EVENT_TYPES = new Set<GameEvent["type"]>([
@@ -611,6 +613,8 @@ export default function Home() {
   // Ranked/Normal chosen at /play: apply the match type once connected (PartyKit
   // seeds nothing at creation, so the first client sets it).
   const pendingRoomRankedRef = useRef<{ roomId: string; ranked: boolean } | null>(null);
+  // Password typed in the lobby Join dialog for a locked room.
+  const pendingRoomPasswordRef = useRef<{ roomId: string; password: string } | null>(null);
   const [syncStatus, setSyncStatus] = useState("connecting");
   /**
    * The room server's engine signature from the latest snapshot. When it
@@ -858,6 +862,12 @@ export default function Home() {
       const pendingRanked = takePendingRoomRanked();
       if (pendingRanked && pendingRanked.roomId === initialRoom) {
         pendingRoomRankedRef.current = pendingRanked;
+      }
+      // Password typed in the lobby before Join — seed JOIN_ROOM so a locked
+      // room never auto-joins without a typed password (host online or not).
+      const pendingPassword = takePendingRoomPassword();
+      if (pendingPassword && pendingPassword.roomId === initialRoom) {
+        pendingRoomPasswordRef.current = pendingPassword;
       }
     }
     // Prefer the signed-in nickname (localStorage cache) so a verified player
@@ -3432,7 +3442,15 @@ export default function Home() {
     roomId: "",
     value: ""
   });
-  const joinRoomPassword = joinPasswordEntry.roomId === roomId ? joinPasswordEntry.value : "";
+  // Prefer a password the player typed in the lobby (or re-typed in-room).
+  const pendingLobbyPassword =
+    pendingRoomPasswordRef.current && pendingRoomPasswordRef.current.roomId === roomId
+      ? pendingRoomPasswordRef.current.password
+      : "";
+  const joinRoomPassword =
+    joinPasswordEntry.roomId === roomId && joinPasswordEntry.value
+      ? joinPasswordEntry.value
+      : pendingLobbyPassword;
   const [joinDraftEntry, setJoinDraftEntry] = useState<{ roomId: string; value: string }>({
     roomId: "",
     value: ""
@@ -4323,6 +4341,8 @@ export default function Home() {
         clientId={clientId}
         onSend={(text) => void submitAction({ type: "SEND_CHAT", clientId, text, at: Date.now() })}
       />
+      {/* Room invite from the lobby / another table — Join switches into that room. */}
+      <InvitePopup clientId={clientId} onJoinRoom={switchToRoom} />
       <AfkVotePanel
         state={state}
         viewerPlayerId={viewerPlayerId}

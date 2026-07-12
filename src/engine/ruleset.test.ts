@@ -79,18 +79,26 @@ describe("ruleset numbers", () => {
 });
 
 describe("house-rule card notes", () => {
-  it("follows BINH overrides and keeps Legacy hard-locked off", () => {
+  it("follows the frozen house-rule flags (BINH off → no note; soft-Legacy override → note honored)", () => {
     const binhOverridesOff = makeBinhGame();
     binhOverridesOff.adventure!.houseRules!["wisdom-expert-discount"] = false;
     binhOverridesOff.adventure!.houseRules!["estates-nerf"] = false;
     expect(rulesetCardNote(binhOverridesOff, "ability.wisdom")).toBeNull();
     expect(rulesetCardNote(binhOverridesOff, "ability.estates")).toBeNull();
 
+    // Legacy DEFAULTS every house rule off, so a bare Legacy game shows no note.
+    const legacyDefault = makeLegacyGame();
+    expect(rulesetCardNote(legacyDefault, "ability.wisdom")).toBeNull();
+    expect(rulesetCardNote(legacyDefault, "ability.estates")).toBeNull();
+
+    // Soft Legacy (see house-rules.test.ts): the Legacy preset clears overrides,
+    // but a later explicit toggle re-enables a rule and IS honored — so a Legacy
+    // game whose frozen flag was toggled on does surface the house-rule note.
     const legacyOverridesOn = makeLegacyGame();
     legacyOverridesOn.adventure!.houseRules!["wisdom-expert-discount"] = true;
     legacyOverridesOn.adventure!.houseRules!["estates-nerf"] = true;
-    expect(rulesetCardNote(legacyOverridesOn, "ability.wisdom")).toBeNull();
-    expect(rulesetCardNote(legacyOverridesOn, "ability.estates")).toBeNull();
+    expect(rulesetCardNote(legacyOverridesOn, "ability.wisdom")).not.toBeNull();
+    expect(rulesetCardNote(legacyOverridesOn, "ability.estates")).not.toBeNull();
   });
 
   it("keeps the ruleset-only compatibility path on the mode defaults", () => {

@@ -269,7 +269,7 @@ describe("Astrologers — Hero (pay to empower, twice per turn)", () => {
     state.players.p1.hand = ["stat.attack", "stat.power"];
     state.players.p1.resources.gold = 20;
 
-    let s = applyHeroEmpower(state, "p1", "stat.attack");
+    const s = applyHeroEmpower(state, "p1", "stat.attack");
 
     // p1 chose the Astrologers-round turn, so the following Resource-round turn
     // is no longer available for this same face-up Hero card.

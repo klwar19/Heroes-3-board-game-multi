@@ -5,9 +5,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { LobbyScreen } from "@/components/lobby";
+import { InvitePopup } from "@/components/invite-popup";
 import { LobbyChat } from "@/components/lobby-chat";
 import { PlayersOnline } from "@/components/players-online";
 import { MenuShell } from "@/components/menu/menu-shell";
+import { sendLobbyInvite } from "@/lib/lobby-invites-client";
 import { DEFAULT_SERVER } from "@/data/servers";
 import { uiArtSlot } from "@/data/ui-art";
 import type { GameMode } from "@/engine";
@@ -20,6 +22,7 @@ import {
   savePendingRoomHosted,
   savePendingRoomMode,
   savePendingRoomName,
+  savePendingRoomPassword,
   savePendingRoomRanked
 } from "@/lib/pending-room-name";
 import {
@@ -176,21 +179,33 @@ export function RoomBrowser({ mode, labels }: { mode: GameMode; labels: RoomBrow
   );
 
   const goToRoom = useCallback(
-    (roomId: string) => {
+    (roomId: string, password?: string) => {
+      // Locked rooms: the lobby already required a typed password. Seed it for
+      // JOIN_ROOM on the game page so the player is never a half-joined guest.
+      if (password && password.trim()) {
+        savePendingRoomPassword(roomId, password.trim());
+      }
       router.push(`/?room=${encodeURIComponent(roomId)}`);
     },
     [router]
   );
 
-  // Invite an online player from the lobby: a friendly ping in the global lobby
-  // chat (the "lobby-chat ping" the user asked for). From the lobby you have no
-  // room to link yet, so this nudges them to team up; the in-room panel's Invite
-  // carries an actual join link.
+  // Invite an online player from the lobby: a POPUP on their client ("want to
+  // play?") plus a lobby-chat ping. From the lobby you have no room to link yet;
+  // the in-room panel's Invite carries an actual join link + Join button.
   const invitePlayer = useCallback(
     (player: PresenceEntry) => {
+      const from = displayName.trim() || "A player";
+      void sendLobbyInvite({
+        fromClientId: clientId,
+        fromName: from,
+        toClientId: player.clientId
+      }).catch(() => {
+        /* best-effort — chat ping still lands */
+      });
       sendChat(`👋 ${player.name} — want to play? Create or join a room and let's go!`);
     },
-    [sendChat]
+    [sendChat, clientId, displayName]
   );
 
   const handleCreate = (name: string, hosted: boolean, ranked: boolean) => {
@@ -311,6 +326,7 @@ export function RoomBrowser({ mode, labels }: { mode: GameMode; labels: RoomBrow
           <LobbyChat clientId={clientId} messages={chatMessages} error={chatError} onSend={sendChat} />
         </aside>
       </div>
+      <InvitePopup clientId={clientId} onJoinRoom={goToRoom} />
     </MenuShell>
   );
 }
