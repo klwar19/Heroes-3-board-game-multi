@@ -76,7 +76,12 @@ export function LobbyScreen({
   displayName: string;
   onRename: (name: string) => void;
   onRefresh: () => void;
-  onJoin: (roomId: string) => void;
+  /**
+   * Join a room. For password-protected rooms the lobby prompts first and only
+   * calls this with a non-empty password (or skips the call entirely on cancel).
+   * Unlocked rooms pass no password.
+   */
+  onJoin: (roomId: string, password?: string) => void;
   /**
    * Create a room; `hosted` picks Closed (host-controlled seats) vs Open (free
    * seats), `ranked` picks Ranked (counts MMR) vs Normal (casual, no MMR).
@@ -97,6 +102,12 @@ export function LobbyScreen({
   const [nameDraft, setNameDraft] = useState(displayName);
   const [newRoomName, setNewRoomName] = useState("");
   const [createHosted, setCreateHosted] = useState(false);
+  // Password gate for locked rooms: prompt at Join click, never navigate without
+  // a typed password. Host presence is irrelevant — the engine still checks.
+  const [passwordPrompt, setPasswordPrompt] = useState<{ roomId: string; roomName: string } | null>(
+    null
+  );
+  const [passwordDraft, setPasswordDraft] = useState("");
   // Default Normal (casual): a game only counts toward MMR when explicitly Ranked.
   // Ranked ALWAYS forces a Closed table — open tables store no seats, so the
   // ladder cannot attribute a win/loss (detectFinishedMatch would drop them).
@@ -113,11 +124,47 @@ export function LobbyScreen({
     onCreate(newRoomName.trim(), hosted, createRanked);
     setNewRoomName("");
   };
+
+  /** Join: locked rooms require a typed password up front (empty = no join). */
+  const requestJoin = (roomId: string, roomMeta?: Pick<RoomDirectoryEntry, "name" | "locked">) => {
+    const fromList = rooms.find((room) => room.roomId === roomId);
+    const locked = roomMeta?.locked ?? fromList?.locked ?? false;
+    const roomName = roomMeta?.name ?? fromList?.name ?? roomId;
+    if (locked) {
+      setPasswordDraft("");
+      setPasswordPrompt({ roomId, roomName });
+      return;
+    }
+    onJoin(roomId);
+  };
+
+  const submitPasswordJoin = () => {
+    if (!passwordPrompt) {
+      return;
+    }
+    const password = passwordDraft.trim();
+    if (!password) {
+      return;
+    }
+    const { roomId } = passwordPrompt;
+    setPasswordPrompt(null);
+    setPasswordDraft("");
+    onJoin(roomId, password);
+  };
+
+  const cancelPasswordJoin = () => {
+    setPasswordPrompt(null);
+    setPasswordDraft("");
+  };
+
   const joinByCode = () => {
     const code = joinCode.trim();
-    if (code) {
-      onJoin(code);
+    if (!code) {
+      return;
     }
+    // Prefer directory metadata when the code matches a listed room so a lock
+    // still prompts; unknown codes navigate and the in-room gate remains fallback.
+    requestJoin(code);
   };
 
   return (
@@ -265,7 +312,11 @@ export function LobbyScreen({
               const liveCount = (room.members ?? []).filter((m) => liveNames.has(m.name.trim().toLowerCase())).length;
               return (
               <li className="lobbyRoom" key={room.roomId}>
-                <button className="lobbyRoomMain" onClick={() => onJoin(room.roomId)} type="button">
+                <button
+                  className="lobbyRoomMain"
+                  onClick={() => requestJoin(room.roomId, { name: room.name, locked: room.locked })}
+                  type="button"
+                >
                   <span className="lobbyRoomName">
                     {room.hosted ? (
                       <Lock aria-hidden="true" size={13} className="lobbyRoomLock" />
@@ -310,7 +361,7 @@ export function LobbyScreen({
                     {room.locked ? (
                       <span
                         className="lobbyRoomLocked"
-                        title="Password-protected — you will be asked for the password to join"
+                        title="Password-protected — enter the password when you click Join"
                       >
                         <Lock aria-hidden="true" size={12} /> Password
                       </span>
@@ -371,7 +422,11 @@ export function LobbyScreen({
                   ) : null}
                 </button>
                 <div className="lobbyRoomButtons">
-                  <button className="commandButton" onClick={() => onJoin(room.roomId)} type="button">
+                  <button
+                    className="commandButton"
+                    onClick={() => requestJoin(room.roomId, { name: room.name, locked: room.locked })}
+                    type="button"
+                  >
                     {room.inProgress ? "Watch / play" : "Join"}
                   </button>
                   {room.canClose || isAdmin ? (
@@ -392,6 +447,63 @@ export function LobbyScreen({
           </ul>
         )}
       </div>
+
+      {passwordPrompt ? (
+        <div
+          className="lobbyPasswordBackdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              cancelPasswordJoin();
+            }
+          }}
+        >
+          <section
+            aria-label="Room password"
+            aria-modal="true"
+            className="lobbyPasswordDialog"
+            role="dialog"
+          >
+            <header>
+              <Lock aria-hidden="true" size={16} />
+              <div>
+                <strong>Password required</strong>
+                <small>{passwordPrompt.roomName}</small>
+              </div>
+            </header>
+            <p>Enter the room password to join. Leave it blank and you will not join.</p>
+            <input
+              aria-label="Room password"
+              autoComplete="off"
+              autoFocus
+              maxLength={32}
+              onChange={(event) => setPasswordDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  submitPasswordJoin();
+                } else if (event.key === "Escape") {
+                  cancelPasswordJoin();
+                }
+              }}
+              placeholder="Room password"
+              type="password"
+              value={passwordDraft}
+            />
+            <footer>
+              <button className="commandButton ghost" onClick={cancelPasswordJoin} type="button">
+                Cancel
+              </button>
+              <button
+                className="commandButton primary"
+                disabled={passwordDraft.trim().length === 0}
+                onClick={submitPasswordJoin}
+                type="button"
+              >
+                Join
+              </button>
+            </footer>
+          </section>
+        </div>
+      ) : null}
     </main>
   );
 }

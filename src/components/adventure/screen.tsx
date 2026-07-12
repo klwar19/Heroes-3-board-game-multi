@@ -47,6 +47,8 @@ import {
   getSeatIdentity,
   HOUSE_RULES,
   resolveHouseRules,
+  resolveTournamentRules,
+  tournamentRulesAllOn,
   getTileBorderSegments,
   hasOpenAdventureTurn,
   hexDistance,
@@ -2786,6 +2788,53 @@ export function TownPanel({
 // Prompt tray for pending visit steps / choices
 // ---------------------------------------------------------------------------
 
+/**
+ * Pull a reward card id out of a visit option's steps so the tray can show the
+ * actual card graphic (Artifact Merchant buys, spell markets, Forty Thieves
+ * Event picks, Mercenary Camp recruits, …) instead of text-only buttons.
+ */
+function rewardCardIdFromVisitSteps(steps: { type: string; [key: string]: unknown }[] | undefined): string | undefined {
+  if (!steps) {
+    return undefined;
+  }
+  for (const step of steps) {
+    if (!step || typeof step !== "object") {
+      continue;
+    }
+    if (typeof step.cardId === "string" && step.cardId) {
+      return step.cardId;
+    }
+    if (typeof step.unitDefId === "string" && step.unitDefId) {
+      return step.unitDefId;
+    }
+  }
+  return undefined;
+}
+
+/** Resolve a card / unit / event / astrologer id to display art + name. */
+function rewardArtForId(cardId: string): { image?: string; name: string } {
+  const card = cardLibrary[cardId];
+  if (card) {
+    return { image: card.assets?.cardImage, name: card.name };
+  }
+  const unit = coreUnitDefinitions[cardId];
+  if (unit) {
+    return {
+      image: unit.neutral?.cardImage ?? unit.few?.cardImage ?? unit.pack?.cardImage,
+      name: unit.name
+    };
+  }
+  const eventCard = eventCardDefinitions[cardId];
+  if (eventCard) {
+    return { image: eventCard.image, name: eventCard.name };
+  }
+  const astro = astrologersCardDefinitions[cardId];
+  if (astro) {
+    return { image: astro.image, name: astro.name };
+  }
+  return { name: cardId };
+}
+
 export function PromptTray({
   state,
   viewerPlayerId,
@@ -3077,8 +3126,12 @@ export function PromptTray({
 
   let title: string | null = null;
   let body: LegalAction[] = [];
-  // Extra card art shown above the buttons (currently the Shady Auction lot).
+  // Extra card art shown above the buttons (Shady Auction lot, active Event…).
   let preview: ReactNode = null;
+  // When the open visit step is CHOOSE_ONE, options can carry reward card ids
+  // (buy this Artifact / pick this Event / recruit this unit) — render those
+  // as graphic tiles, not text-only buttons.
+  let chooseOneOptions: { label: string; steps: { type: string; [key: string]: unknown }[] }[] | null = null;
 
   if (
     choice?.type === "OPTION_CHOICE" &&
@@ -3128,18 +3181,14 @@ export function PromptTray({
           ? step.prompt
           : `A Shady Auction: bid for ${auctionLotCard?.name ?? "the lot"}`;
       preview = (
-        <div
-          className="auctionLotPreview"
-          data-testid="auction-lot"
-          style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, margin: "6px 0" }}
-        >
+        <div className="auctionLotPreview" data-testid="auction-lot">
           {auctionLotCard?.assets?.cardImage ? (
             <img
               alt={auctionLotCard.name}
+              className="auctionLotCard"
               loading="lazy"
               referrerPolicy="no-referrer"
               src={assetUrl(auctionLotCard.assets.cardImage)}
-              style={{ maxWidth: "160px", height: "auto", borderRadius: 6 }}
             />
           ) : null}
           <span>{auctionLotCard?.name ?? "Unknown artifact"}</span>
@@ -3156,6 +3205,65 @@ export function PromptTray({
           : step?.type === "PAY_TO"
             ? step.prompt
             : `${locationDefinitions[field?.location ?? ""]?.name ?? "Field"}: choose`;
+      // Show the Event / Astrologers card itself above the choices so the
+      // player sees the printed scan, not only the title text.
+      if (roundStartEventCard?.image) {
+        preview = (
+          <div className="eventChoicePreview" data-testid="event-choice-card">
+            <img
+              alt={roundStartEventCard.name}
+              className="eventChoiceCard"
+              loading="lazy"
+              referrerPolicy="no-referrer"
+              src={assetUrl(roundStartEventCard.image)}
+            />
+          </div>
+        );
+      } else if (roundStartAstrologersCard?.image) {
+        preview = (
+          <div className="eventChoicePreview" data-testid="astrologers-choice-card">
+            <img
+              alt={roundStartAstrologersCard.name}
+              className="eventChoiceCard"
+              loading="lazy"
+              referrerPolicy="no-referrer"
+              src={assetUrl(roundStartAstrologersCard.image)}
+            />
+          </div>
+        );
+      }
+      // Face-up shared Event pool (Artifact Merchant / spell markets): show
+      // every offered card so the player can pick by art, not just by name.
+      const pool = state.adventure?.events?.pool ?? [];
+      const faceUpPool = pool.filter((entry) => entry.faceUp !== false && entry.cardId);
+      if (faceUpPool.length > 0 && !isAuctionBid) {
+        const poolPreview = (
+          <div className="eventPoolPreview" data-testid="event-pool-preview" aria-label="Cards on offer">
+            {faceUpPool.map((entry, index) => {
+              const art = rewardArtForId(entry.cardId);
+              return (
+                <div className="eventPoolCard" key={`${entry.cardId}-${index}`}>
+                  {art.image ? (
+                    <img alt={art.name} loading="lazy" referrerPolicy="no-referrer" src={assetUrl(art.image)} />
+                  ) : (
+                    <span className="marketCardFallback">{art.name}</span>
+                  )}
+                  <small>{art.name}</small>
+                </div>
+              );
+            })}
+          </div>
+        );
+        preview = (
+          <>
+            {preview}
+            {poolPreview}
+          </>
+        );
+      }
+    }
+    if (step?.type === "CHOOSE_ONE") {
+      chooseOneOptions = step.options as { label: string; steps: { type: string; [key: string]: unknown }[] }[];
     }
     body = visitActions;
   } else if (combatGate.length > 0) {
@@ -3186,16 +3294,58 @@ export function PromptTray({
     return null;
   }
 
+  // Prefer graphic reward tiles when the open CHOOSE_ONE options carry card ids
+  // (buy this Artifact, pick this Event card, recruit this unit, …).
+  const rewardOptions = chooseOneOptions
+    ? body.map((legal) => {
+        const optionIndex =
+          legal.action.type === "RESOLVE_VISIT_STEP" && legal.action.optionIndex !== undefined
+            ? legal.action.optionIndex
+            : undefined;
+        const option =
+          optionIndex !== undefined && chooseOneOptions && optionIndex < chooseOneOptions.length
+            ? chooseOneOptions[optionIndex]
+            : undefined;
+        const cardId = rewardCardIdFromVisitSteps(option?.steps);
+        const art = cardId ? rewardArtForId(cardId) : null;
+        return { legal, cardId, art };
+      })
+    : body.map((legal) => ({ legal, cardId: undefined as string | undefined, art: null as ReturnType<typeof rewardArtForId> | null }));
+  const hasAnyRewardArt = rewardOptions.some((entry) => Boolean(entry.art?.image || entry.cardId));
+
   return (
-    <div className="promptTray" role="dialog" aria-label={title}>
+    <div className={`promptTray${hasAnyRewardArt ? " withRewardCards" : ""}`} role="dialog" aria-label={title}>
       <strong>{title}</strong>
       {preview}
-      <div className="promptOptions">
-        {body.map((legal) => (
-          <button className="commandButton" key={actionKey(legal.action)} onClick={() => onAction(legal.action)} type="button">
-            {legal.label}
-          </button>
-        ))}
+      <div className={`promptOptions${hasAnyRewardArt ? " rewardCards" : ""}`}>
+        {rewardOptions.map(({ legal, art }) =>
+          art ? (
+            <button
+              aria-label={legal.label}
+              className="promptRewardCard"
+              key={actionKey(legal.action)}
+              onClick={() => onAction(legal.action)}
+              title={legal.label}
+              type="button"
+            >
+              {art.image ? (
+                <img alt="" aria-hidden="true" loading="lazy" referrerPolicy="no-referrer" src={assetUrl(art.image)} />
+              ) : (
+                <span className="marketCardFallback">{art.name}</span>
+              )}
+              <small>{legal.label}</small>
+            </button>
+          ) : (
+            <button
+              className="commandButton"
+              key={actionKey(legal.action)}
+              onClick={() => onAction(legal.action)}
+              type="button"
+            >
+              {legal.label}
+            </button>
+          )
+        )}
       </div>
     </div>
   );
@@ -3637,6 +3787,11 @@ export function AdventureOwnDeck({
     return null;
   }
 
+  // Top of the discard is face-up — show the actual card graphic (not a bare count).
+  const topDiscardId = player.discard.length > 0 ? player.discard[player.discard.length - 1] : undefined;
+  const topDiscard = topDiscardId ? cardLibrary[topDiscardId] : undefined;
+  const topImage = topDiscard?.assets?.cardImage;
+
   return (
     <div className="ownDeckPile" aria-label="Your deck and discard">
       <div
@@ -3649,13 +3804,30 @@ export function AdventureOwnDeck({
         <small>Deck</small>
       </div>
       <button
-        className="ownDiscardSpot"
+        className={`ownDiscardSpot${topDiscardId ? " hasCard" : ""}`}
         data-fx-anchor={`discard:${viewerPlayerId}`}
         onClick={() => onShowPile(`${player.name} — discard pile`, player.discard, "cards")}
-        title="Open your discard pile"
+        title={
+          topDiscard
+            ? `Discard top: ${topDiscard.name} (${player.discard.length} total) — click to browse`
+            : "Open your discard pile"
+        }
         type="button"
       >
-        <span className="ownDeckCount">{player.discard.length}</span>
+        {topImage ? (
+          <img
+            alt={topDiscard?.name ?? "Discard top"}
+            className="ownDiscardTop"
+            loading="lazy"
+            referrerPolicy="no-referrer"
+            src={assetUrl(topImage)}
+          />
+        ) : topDiscardId ? (
+          <span className="ownDiscardFallback">{topDiscard?.name ?? topDiscardId}</span>
+        ) : (
+          <span className="ownDeckCount">0</span>
+        )}
+        <span className="ownDiscardBadge">{player.discard.length}</span>
         <small>Discard</small>
       </button>
     </div>
@@ -3704,6 +3876,12 @@ export function AdventureDecksPanel({
         if (!deckState) {
           return null;
         }
+        const topId =
+          deckState.discardPile.length > 0
+            ? deckState.discardPile[deckState.discardPile.length - 1]
+            : undefined;
+        const topCard = topId ? cardLibrary[topId] : undefined;
+        const topImage = topCard?.assets?.cardImage;
         return (
           <div className="advDeckRow" key={deck.id}>
             <div className="advDeck" title={`${deck.name} deck (face down)`} data-fx-anchor={`deck:shared-${deck.id}`}>
@@ -3719,12 +3897,30 @@ export function AdventureDecksPanel({
               </small>
             </div>
             <button
-              className="advDiscard"
+              className={`advDiscard${topId ? " hasCard" : ""}`}
               data-fx-anchor={`discard:shared-${deck.id}`}
               onClick={() => onShowPile(`${deck.name} — discard pile`, deckState.discardPile, "cards")}
+              title={
+                topCard
+                  ? `${deck.name} discard top: ${topCard.name} (${deckState.discardPile.length}) — click to browse`
+                  : `${deck.name} discard pile`
+              }
               type="button"
             >
-              <span>{deckState.discardPile.length}</span>
+              {topImage ? (
+                <img
+                  alt={topCard?.name ?? "Discard top"}
+                  className="advDiscardTop"
+                  loading="lazy"
+                  referrerPolicy="no-referrer"
+                  src={assetUrl(topImage)}
+                />
+              ) : topId ? (
+                <span className="advDiscardFallback">{topCard?.name ?? "?"}</span>
+              ) : (
+                <span>{deckState.discardPile.length}</span>
+              )}
+              {topId ? <span className="advDiscardBadge">{deckState.discardPile.length}</span> : null}
               <small>Discard</small>
             </button>
             {scoutableDeckIds?.has(deck.id) ? (
@@ -3746,14 +3942,35 @@ export function AdventureDecksPanel({
             <img alt="Astrologers deck back" className="cardBack small" src={assetUrl(CARD_BACK_IMAGES.astrologers)} />
             <small>Astrologers {astrologers.drawCount}</small>
           </div>
-          <button
-            className="advDiscard"
-            onClick={() => onShowPile("Astrologers Proclaim — past rounds", astrologers.discardPile, "astrologers")}
-            type="button"
-          >
-            <span>{astrologers.discardPile.length}</span>
-            <small>Past</small>
-          </button>
+          {(() => {
+            const topId =
+              astrologers.discardPile.length > 0
+                ? astrologers.discardPile[astrologers.discardPile.length - 1]
+                : undefined;
+            const topCard = topId ? astrologersCardDefinitions[topId] : undefined;
+            return (
+              <button
+                className={`advDiscard${topId ? " hasCard" : ""}`}
+                onClick={() => onShowPile("Astrologers Proclaim — past rounds", astrologers.discardPile, "astrologers")}
+                title={topCard ? `Last proclamation: ${topCard.name}` : "Past Astrologers proclamations"}
+                type="button"
+              >
+                {topCard?.image ? (
+                  <img
+                    alt={topCard.name}
+                    className="advDiscardTop"
+                    loading="lazy"
+                    referrerPolicy="no-referrer"
+                    src={assetUrl(topCard.image)}
+                  />
+                ) : (
+                  <span>{astrologers.discardPile.length}</span>
+                )}
+                {topId ? <span className="advDiscardBadge">{astrologers.discardPile.length}</span> : null}
+                <small>Past</small>
+              </button>
+            );
+          })()}
         </div>
       ) : null}
       {eventsDeck ? (
@@ -3762,14 +3979,35 @@ export function AdventureDecksPanel({
             <img alt="Event deck back" className="cardBack small" src={assetUrl(getDeckBack("events").image)} />
             <small>Events {eventsDeck.drawCount}</small>
           </div>
-          <button
-            className="advDiscard"
-            onClick={() => onShowPile("Events — past rounds", eventsDeck.discardPile, "events")}
-            type="button"
-          >
-            <span>{eventsDeck.discardPile.length}</span>
-            <small>Past</small>
-          </button>
+          {(() => {
+            const topId =
+              eventsDeck.discardPile.length > 0
+                ? eventsDeck.discardPile[eventsDeck.discardPile.length - 1]
+                : undefined;
+            const topCard = topId ? eventCardDefinitions[topId] : undefined;
+            return (
+              <button
+                className={`advDiscard${topId ? " hasCard" : ""}`}
+                onClick={() => onShowPile("Events — past rounds", eventsDeck.discardPile, "events")}
+                title={topCard ? `Last Event: ${topCard.name}` : "Past Events"}
+                type="button"
+              >
+                {topCard?.image ? (
+                  <img
+                    alt={topCard.name}
+                    className="advDiscardTop"
+                    loading="lazy"
+                    referrerPolicy="no-referrer"
+                    src={assetUrl(topCard.image)}
+                  />
+                ) : (
+                  <span>{eventsDeck.discardPile.length}</span>
+                )}
+                {topId ? <span className="advDiscardBadge">{eventsDeck.discardPile.length}</span> : null}
+                <small>Past</small>
+              </button>
+            );
+          })()}
         </div>
       ) : null}
       <div className="advDeckRow neutral">
@@ -4608,12 +4846,10 @@ const HOUSE_RULE_CATEGORY_LABELS: Record<string, string> = {
  */
 function HouseRulesSection({
   houseRules,
-  setHouseRule,
-  editable
+  setHouseRule
 }: {
   houseRules: Record<HouseRuleId, boolean>;
   setHouseRule: (id: HouseRuleId, value: boolean) => void;
-  editable: boolean;
 }) {
   const categories = ["decks", "units", "abilities", "combat"] as const;
   return (
@@ -4621,9 +4857,7 @@ function HouseRulesSection({
       <div className="houseRuleHead">
         <strong>House rules</strong>
         <small>
-          {editable
-            ? "BINH starts with every tweak on; each one can then be customized."
-            : "Legacy is the strict rulebook mode: every house rule is locked off."}
+          BINH starts with every tweak on. Legacy / Tournament presets clear them — any rule can still be re-enabled.
         </small>
       </div>
       {categories.map((category) => {
@@ -4641,10 +4875,9 @@ function HouseRulesSection({
                   <button
                     aria-pressed={on}
                     className={`houseRuleToggle ${on ? "on" : "off"}`}
-                    disabled={!editable}
                     key={rule.id}
                     onClick={() => setHouseRule(rule.id, !on)}
-                    title={editable ? rule.description : `Legacy: ${rule.label} is locked off.`}
+                    title={rule.description}
                     type="button"
                   >
                     <span aria-hidden="true" className="houseRuleCheck">
@@ -4673,6 +4906,41 @@ function HouseRulesSection({
   );
 }
 
+/** High-level setup modes shown as a card row on the Mode & Rules tab. */
+type SetupModeId = "legacy" | "binh" | "wog" | "tournament";
+
+const SETUP_MODE_CARDS: {
+  id: SetupModeId;
+  label: string;
+  blurb: string;
+  hint: string;
+}[] = [
+  {
+    id: "legacy",
+    label: "Legacy",
+    blurb: "Printed rulebook",
+    hint: "Turns every house rule off. Toggles stay free — re-enable any rule you want."
+  },
+  {
+    id: "binh",
+    label: "BINH",
+    blurb: "House-rule edition",
+    hint: "Default fan edition: every house rule on, Spell Book on, WOG off."
+  },
+  {
+    id: "wog",
+    label: "WOG",
+    blurb: "Wake of Gods",
+    hint: "BINH plus the Wake of Gods modules (commanders, new neutrals, …)."
+  },
+  {
+    id: "tournament",
+    label: "Tournament",
+    blurb: "Competitive preset",
+    hint: "House rules off, tournament bans on, Hard difficulty, Neutral AI, Diplomacy banned."
+  }
+];
+
 /**
  * Adjustable setup: scenario, neutral difficulty (Impossible default),
  * starting resources, base income (10 gold / 0 / 0 default), starting unit
@@ -4689,6 +4957,7 @@ function GameOptionsPanel({
   onAction: (action: GameAction) => void;
 }) {
   const [wogOptionsOpen, setWogOptionsOpen] = useState(false);
+  const [modeNotice, setModeNotice] = useState<string | null>(null);
   const [tab, setTab] = useState<OptionsTabId>("rules");
   const lobby = state.setupLobby;
   if (!lobby) {
@@ -4704,6 +4973,86 @@ function GameOptionsPanel({
   // default). Flipping one sends just that id; the reducer merges it.
   const houseRules = resolveHouseRules(options);
   const setHouseRule = (id: HouseRuleId, value: boolean) => send({ houseRules: { [id]: value } });
+  const tournamentRules = resolveTournamentRules(options);
+  const tournamentAllOn = tournamentRulesAllOn(options);
+
+  /** Which big mode card is highlighted from the current options. */
+  const activeSetupMode: SetupModeId = (() => {
+    if (tournamentAllOn && options.ruleset === "legacy" && !wog.enabled && options.difficulty === "hard") {
+      return "tournament";
+    }
+    if (wog.enabled && options.ruleset === "binh") {
+      return "wog";
+    }
+    if (options.ruleset === "legacy") {
+      return "legacy";
+    }
+    return "binh";
+  })();
+
+  const applySetupMode = (mode: SetupModeId) => {
+    if (mode === "legacy") {
+      send({
+        ruleset: "legacy",
+        wog: { ...wog, enabled: false },
+        spellBook: false,
+        tournamentMode: false,
+        tournamentBanDiplomacy: false,
+        tournamentBanHourglass: false,
+        tournamentSecondPlayerMorale: false
+      });
+      setModeNotice(
+        "Legacy mode applied: every house rule is off (printed rulebook). " +
+          "Nothing is locked — you can re-enable any house rule, Spell Book, or tournament rule below."
+      );
+      return;
+    }
+    if (mode === "binh") {
+      send({
+        ruleset: "binh",
+        wog: { ...wog, enabled: false },
+        spellBook: true,
+        tournamentMode: false,
+        tournamentBanDiplomacy: false,
+        tournamentBanHourglass: false,
+        tournamentSecondPlayerMorale: false
+      });
+      setModeNotice(null);
+      return;
+    }
+    if (mode === "wog") {
+      send({
+        ruleset: "binh",
+        wog: { ...DEFAULT_WOG_OPTIONS, ...wog, enabled: true },
+        spellBook: true,
+        tournamentMode: false,
+        tournamentBanDiplomacy: false,
+        tournamentBanHourglass: false,
+        tournamentSecondPlayerMorale: false
+      });
+      setModeNotice(null);
+      setWogOptionsOpen(true);
+      return;
+    }
+    // Tournament competitive preset.
+    send({
+      ruleset: "legacy",
+      wog: { ...wog, enabled: false },
+      spellBook: false,
+      tournamentMode: true,
+      tournamentBanDiplomacy: true,
+      tournamentBanHourglass: true,
+      tournamentSecondPlayerMorale: true,
+      difficulty: "hard",
+      pvpNeutralControl: false,
+      events: false,
+      moraleCards: false
+    });
+    setModeNotice(
+      "Tournament mode applied: house rules off, Diplomacy + Hourglass banned, second player +1 morale, " +
+        "Hard difficulty, and Neutral units stay under the AI. Toggles below stay free if you need to adjust."
+    );
+  };
 
   return (
     <div className="gameOptions" aria-label="Game options">
@@ -4731,69 +5080,184 @@ function GameOptionsPanel({
 
       {tab === "rules" ? (
       <div className="optionTabPanel" role="tabpanel" aria-label="Rules">
-      <div className="optionRow">
-        <small title="Pick the rules variant for this game">Game mode</small>
-        <div className="optionButtons">
-          {(["binh", "legacy"] as const).map((ruleset) => (
+
+      <div className="optionRow modePresetRow">
+        <small title="One-click presets. Individual rules below stay editable after any preset.">Game mode</small>
+        <div className="modePresetGrid" role="group" aria-label="Game mode presets">
+          {SETUP_MODE_CARDS.map((card) => (
             <button
-              aria-pressed={options.ruleset === ruleset}
-              className={options.ruleset === ruleset ? "selected" : ""}
-              key={ruleset}
-              onClick={() => send({ ruleset })}
-              title={RULESET_DESCRIPTIONS[ruleset]}
+              aria-pressed={activeSetupMode === card.id}
+              className={`modePresetCard ${activeSetupMode === card.id ? "selected" : ""}`}
+              key={card.id}
+              onClick={() => applySetupMode(card.id)}
+              title={card.hint}
               type="button"
             >
-              {RULESET_LABELS[ruleset]}
+              <strong>{card.label}</strong>
+              <span>{card.blurb}</span>
+              <small>{card.hint}</small>
             </button>
           ))}
         </div>
-        <small className="optionHint">{RULESET_DESCRIPTIONS[options.ruleset]}</small>
+        <small className="optionHint">
+          {activeSetupMode === "legacy"
+            ? RULESET_DESCRIPTIONS.legacy
+            : activeSetupMode === "wog"
+            ? "Wake of Gods modules on top of BINH house rules."
+            : activeSetupMode === "tournament"
+            ? "Competitive preset: rulebook baseline + tournament deck bans + Hard difficulty + Neutral AI."
+            : RULESET_DESCRIPTIONS.binh}
+        </small>
       </div>
 
-      {options.ruleset === "binh" ? (
-        <div className={`optionRow wogOptionRow ${wog.enabled ? "enabled" : ""}`}>
-          <small title="Optional Wake of Gods modules for BINH games">WOG mod</small>
+      {modeNotice ? (
+        <div className="modeNoticeBanner" role="status">
+          <Info size={14} aria-hidden="true" />
+          <p>{modeNotice}</p>
+          <button aria-label="Dismiss notice" onClick={() => setModeNotice(null)} type="button">
+            <X size={14} />
+          </button>
+        </div>
+      ) : null}
+
+      {wog.enabled ? (
+        <div className={`optionRow wogOptionRow enabled`}>
+          <small title="Wake of Gods module options">WOG modules</small>
           <div className="wogOptionControls">
             <button
-              aria-label={`${wog.enabled ? "Disable" : "Enable"} Wake of Gods mod`}
-              aria-pressed={wog.enabled}
-              className={`wogCrestButton ${wog.enabled ? "selected" : ""}`}
-              onClick={() => send({ wog: { ...wog, enabled: !wog.enabled } })}
-              title="Click the WOG crest to enable or disable the mod"
+              aria-label="Configure Wake of Gods modules"
+              className="wogCrestButton selected"
+              onClick={() => setWogOptionsOpen(true)}
+              title="Open WOG module options"
               type="button"
             >
               <span aria-hidden="true" className="wogCrestWings">◆</span>
               <strong>WOG</strong>
-              <span>{wog.enabled ? "ON" : "OFF"}</span>
+              <span>ON</span>
             </button>
             <div className="wogOptionSummary">
               <strong>Wake of Gods</strong>
-              <small>{wog.enabled ? "Enabled for this BINH game" : "Click the crest to enable"}</small>
-              <button
-                className="wogConfigureButton"
-                disabled={!wog.enabled}
-                onClick={() => setWogOptionsOpen(true)}
-                type="button"
-              >
+              <small>Enabled — configure commanders, neutrals and objects</small>
+              <button className="wogConfigureButton" onClick={() => setWogOptionsOpen(true)} type="button">
                 Mod options
               </button>
             </div>
           </div>
-          <small className="optionHint">
-            Optional WOG modules are isolated from Legacy mode. New neutral creatures join their matching Neutral decks.
-          </small>
         </div>
       ) : null}
 
-      <HouseRulesSection
-        editable={options.ruleset === "binh"}
-        houseRules={houseRules}
-        setHouseRule={setHouseRule}
-      />
+      <div className="optionRow tournamentRulesRow">
+        <small title="Rulebook Tournament Mode setup rules (p.54), each toggleable on its own">
+          Tournament rules
+        </small>
+        <div className="tournamentRuleGrid">
+          {(
+            [
+              {
+                key: "tournamentBanDiplomacy" as const,
+                label: "Ban Diplomacy",
+                on: tournamentRules.banDiplomacy,
+                hint: "Remove Diplomacy from the shared Ability deck (heroes keep a starting copy)."
+              },
+              {
+                key: "tournamentBanHourglass" as const,
+                label: "Ban Hourglass",
+                on: tournamentRules.banHourglass,
+                hint: "Remove Hourglass of the Evil Hour from the shared Artifact deck."
+              },
+              {
+                key: "tournamentSecondPlayerMorale" as const,
+                label: "2nd player +1 morale",
+                on: tournamentRules.secondPlayerMorale,
+                hint: "The second player gains 1 positive morale at game start."
+              }
+            ] as const
+          ).map((rule) => (
+            <button
+              aria-pressed={rule.on}
+              className={`tournamentRuleToggle ${rule.on ? "on" : "off"}`}
+              key={rule.key}
+              onClick={() => send({ [rule.key]: !rule.on })}
+              title={rule.hint}
+              type="button"
+            >
+              <span aria-hidden="true" className="houseRuleCheck">
+                {rule.on ? <Check size={13} /> : null}
+              </span>
+              <span>
+                <strong>{rule.label}</strong>
+                <small>{rule.hint}</small>
+              </span>
+              <span className={`houseRuleState ${rule.on ? "on" : "off"}`}>{rule.on ? "ON" : "OFF"}</span>
+            </button>
+          ))}
+        </div>
+        <small className="optionHint">
+          Toggle each Tournament setup rule independently, or use the Tournament mode card above to apply the full competitive package.
+        </small>
+      </div>
 
       {(() => {
-        const spellBookEditable = options.ruleset === "binh";
-        const spellBookOn = spellBookEditable && (options.spellBook ?? true);
+        const eventsOn = options.events ?? false;
+        const moraleCardsOn = options.moraleCards ?? false;
+        return (
+          <>
+            <div className="optionRow">
+              <small title="Fortress expansion optional rule (OFF by default): an Event card is drawn at the start of every Resource round (multiplayer only)">
+                Event deck
+              </small>
+              <div className="optionButtons">
+                {([true, false] as const).map((on) => (
+                  <button
+                    aria-pressed={eventsOn === on}
+                    className={eventsOn === on ? "selected" : ""}
+                    key={String(on)}
+                    onClick={() => send({ events: on })}
+                    title={on ? "Event deck on (Fortress expansion)" : "Event deck off"}
+                    type="button"
+                  >
+                    {on ? "On" : "Off"}
+                  </button>
+                ))}
+              </div>
+              <small className="optionHint">
+                {eventsOn
+                  ? "Each Resource round (after income) the next Event card is drawn and resolved clockwise from its drawer; the drawing player rotates. Multiplayer only — a solo game skips the deck."
+                  : "Off by default. No Event deck — Resource rounds pay income only. Turn it On to add the Fortress-expansion Events (multiplayer only)."}
+              </small>
+            </div>
+            <div className="optionRow">
+              <small title="Optional rule: replace normal morale tokens with Positive and Negative Morale decks">
+                Morale Cards
+              </small>
+              <div className="optionButtons">
+                {([true, false] as const).map((on) => (
+                  <button
+                    aria-pressed={moraleCardsOn === on}
+                    className={moraleCardsOn === on ? "selected" : ""}
+                    key={String(on)}
+                    onClick={() => send({ moraleCards: on })}
+                    title={on ? "Morale Cards on" : "Normal morale tokens"}
+                    type="button"
+                  >
+                    {on ? "On" : "Off"}
+                  </button>
+                ))}
+              </div>
+              <small className="optionHint">
+                {moraleCardsOn
+                  ? "Morale draws cards instead of changing the morale token: positive morale clears one Negative card first, then draws Positive cards (max 2 held)."
+                  : "Normal morale tokens: positive morale can be spent for draw/redraw/reroll, and doubled negative morale discards your hand at turn end."}
+              </small>
+            </div>
+          </>
+        );
+      })()}
+
+      <HouseRulesSection houseRules={houseRules} setHouseRule={setHouseRule} />
+
+      {(() => {
+        const spellBookOn = options.spellBook ?? options.ruleset === "binh";
         return (
           <div className="optionRow">
             <small title="House rule: each player keeps a personal Spell Book to stash, cast and boost Spells from">
@@ -4804,16 +5268,9 @@ function GameOptionsPanel({
                 <button
                   aria-pressed={spellBookOn === on}
                   className={spellBookOn === on ? "selected" : ""}
-                  disabled={!spellBookEditable}
                   key={String(on)}
                   onClick={() => send({ spellBook: on })}
-                  title={
-                    spellBookEditable
-                      ? on
-                        ? "Spell Book on (house rule)"
-                        : "Spell Book off"
-                      : "Legacy locks the Spell Book house rule off"
-                  }
+                  title={on ? "Spell Book on (house rule)" : "Spell Book off"}
                   type="button"
                 >
                   {on ? "On" : "Off"}
@@ -4821,9 +5278,7 @@ function GameOptionsPanel({
               ))}
             </div>
             <small className="optionHint">
-              {!spellBookEditable
-                ? "Legacy rulebook mode locks the Spell Book house rule off."
-                : spellBookOn
+              {spellBookOn
                 ? "Each player may set Spells aside in a personal Spell Book to free hand slots, then cast or boost from it (one Book Power boost per turn)."
                 : "No Spell Book — Spells live only in hand, deck and discard."}
             </small>
@@ -5033,100 +5488,6 @@ function GameOptionsPanel({
               ))}
             </div>
             <small className="optionHint">{PVP_TROOP_LOSS_DESCRIPTIONS[pvpTroopLoss]}</small>
-          </div>
-        );
-      })()}
-
-      {(() => {
-        const eventsOn = options.events ?? false;
-        return (
-          <div className="optionRow">
-            <small title="Fortress expansion optional rule (OFF by default): an Event card is drawn at the start of every Resource round (multiplayer only)">
-              Event deck
-            </small>
-            <div className="optionButtons">
-              {([true, false] as const).map((on) => (
-                <button
-                  aria-pressed={eventsOn === on}
-                  className={eventsOn === on ? "selected" : ""}
-                  key={String(on)}
-                  onClick={() => send({ events: on })}
-                  title={on ? "Event deck on (Fortress expansion)" : "Event deck off"}
-                  type="button"
-                >
-                  {on ? "On" : "Off"}
-                </button>
-              ))}
-            </div>
-            <small className="optionHint">
-              {eventsOn
-                ? "Each Resource round (after income) the next Event card is drawn and resolved clockwise from its drawer; the drawing player rotates. Multiplayer only — a solo game skips the deck."
-                : "Off by default. No Event deck — Resource rounds pay income only. Turn it On to add the Fortress-expansion Events (multiplayer only)."}
-            </small>
-          </div>
-        );
-      })()}
-
-      {(() => {
-        const moraleCardsOn = options.moraleCards ?? false;
-        return (
-          <div className="optionRow">
-            <small title="Optional rule: replace normal morale tokens with Positive and Negative Morale decks">
-              Morale Cards
-            </small>
-            <div className="optionButtons">
-              {([true, false] as const).map((on) => (
-                <button
-                  aria-pressed={moraleCardsOn === on}
-                  className={moraleCardsOn === on ? "selected" : ""}
-                  key={String(on)}
-                  onClick={() => send({ moraleCards: on })}
-                  title={on ? "Morale Cards on" : "Normal morale tokens"}
-                  type="button"
-                >
-                  {on ? "On" : "Off"}
-                </button>
-              ))}
-            </div>
-            <small className="optionHint">
-              {moraleCardsOn
-                ? "Morale draws cards instead of changing the morale token: positive morale clears one Negative card first, then draws Positive cards (max 2 held)."
-                : "Normal morale tokens: positive morale can be spent for draw/redraw/reroll, and doubled negative morale discards your hand at turn end."}
-            </small>
-          </div>
-        );
-      })()}
-
-      {(() => {
-        const tournamentOn = options.tournamentMode ?? false;
-        return (
-          <div className="optionRow">
-            <small title="Rulebook Tournament Mode setup rules (p.54): remove Diplomacy and Hourglass of the Evil Hour from shared decks; second player gains +1 positive morale">
-              Tournament Mode
-            </small>
-            <div className="optionButtons">
-              {([true, false] as const).map((on) => (
-                <button
-                  aria-pressed={tournamentOn === on}
-                  className={tournamentOn === on ? "selected" : ""}
-                  key={String(on)}
-                  onClick={() => send({ tournamentMode: on })}
-                  title={
-                    on
-                      ? "Remove Diplomacy + Hourglass; second player +1 morale"
-                      : "Normal deck build and no second-player morale"
-                  }
-                  type="button"
-                >
-                  {on ? "On" : "Off"}
-                </button>
-              ))}
-            </div>
-            <small className="optionHint">
-              {tournamentOn
-                ? "Before building decks: remove Diplomacy (Ability) and Hourglass of the Evil Hour (Artifact) from the game. The second player gains 1 positive morale at the start. (Does not enable the full Tournament map-build / VP rules.)"
-                : "Off by default. Shared decks include Diplomacy and Hourglass of the Evil Hour; no second-player morale bonus."}
-            </small>
           </div>
         );
       })()}

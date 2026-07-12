@@ -254,6 +254,8 @@ export {
   tierOfLevel,
   TOURNAMENT_REMOVED_ABILITY_ID,
   TOURNAMENT_REMOVED_ARTIFACT_ID,
+  resolveTournamentRules,
+  tournamentRulesAllOn,
   UNIT_LEVELS,
   validateCustomMapPlan
 } from "./adventure-setup";

@@ -197,7 +197,7 @@ describe("Offense in an attack window refreshes the reaction list with its draw"
 // ===========================================================================
 
 function combatOwnTurn(hand: string[], deck: string[] = ["spell.bless", "stat.power"]): GameState {
-  let state = createInitialGameState(`combat-draw-${hand.join("-")}`);
+  const state = createInitialGameState(`combat-draw-${hand.join("-")}`);
   state.players.p1.hand = [...hand];
   state.players.p2.hand = [];
   state.players.p1.deck = [...deck];
@@ -241,7 +241,7 @@ describe("Combat draw-only: Sorcery / Offense / Armorer on your own activation",
   });
 
   it("CONTROL: not offered off-turn (enemy activation)", () => {
-    let state = combatOwnTurn(["ability.sorcery"]);
+    const state = combatOwnTurn(["ability.sorcery"]);
     const p2Unit = Object.values(state.combat!.units).find(
       (u) => u.controllerId === "p2" && u.damage < u.maxHealth
     );

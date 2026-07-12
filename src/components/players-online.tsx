@@ -9,9 +9,9 @@ import type { PresenceEntry } from "@/lib/lobby-presence-client";
  * browser (/play) beside the lobby chat. Purely presentational: the /play page
  * owns polling `players` (via the presence heartbeat) and the two intents:
  *  - Join  → hop into the room a player is currently in (spectate or take a seat);
- *  - Invite → ping the player in the global lobby chat (the "link + lobby-chat
- *    ping" invite the user asked for — from the lobby you have no room yet, so
- *    it is a nudge to team up; the in-room panel's Invite carries a join link).
+ *  - Invite → popup on that player's client (+ a lobby-chat ping). From the
+ *    lobby you have no room yet, so it is a "want to play?" nudge; the in-room
+ *    panel's Invite carries a join link and a Join button on the popup.
  *
  * The verified/guest badge comes straight from the server (cookie-verified), so
  * it is trustworthy and consistent with the room roster's guest labelling.
@@ -90,7 +90,7 @@ export function PlayersOnline({
                     <button
                       className="commandButton ghost"
                       onClick={() => onInvite(player)}
-                      title={`Invite ${player.name} in the lobby chat`}
+                      title={`Send ${player.name} an invite popup`}
                       type="button"
                     >
                       <UserPlus aria-hidden="true" size={13} /> Invite

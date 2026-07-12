@@ -30,6 +30,7 @@ import {
 } from "@/engine";
 import { authEnabled } from "@/lib/auth-mode";
 import { postLobbyChat } from "@/lib/lobby-chat-client";
+import { sendLobbyInvite } from "@/lib/lobby-invites-client";
 import { fetchPresence, type PresenceEntry } from "@/lib/lobby-presence-client";
 
 /**
@@ -185,13 +186,26 @@ export function RoomPanel({
   // "Take over host": offered to a member of a hosted room whose host is absent.
   const canReclaimHost = hostAbsent;
 
-  // Invite = a lobby-chat ping carrying THIS room's join link (the "link +
-  // lobby-chat ping" invite). Best-effort; a failure just leaves the button as-is.
+  // Invite = a POPUP on the invitee's client (Join room / Dismiss) plus a
+  // lobby-chat ping with the join link as a fallback for anyone who missed the
+  // modal. Best-effort; a failure just leaves the button as-is.
   const invitePlayer = (player: PresenceEntry) => {
     const from = displayName.trim() || "A player";
     const text = `🎲 ${player.name} — ${from} invites you to “${currentRoomName}”: ${inviteLink}`;
+    const markInvited = () => setInvited((prev) => ({ ...prev, [player.clientId]: true }));
+    void sendLobbyInvite({
+      fromClientId: clientId,
+      fromName: from,
+      toClientId: player.clientId,
+      roomId,
+      roomName: currentRoomName
+    })
+      .then(markInvited)
+      .catch(() => {
+        /* popup delivery best-effort — chat ping still helps */
+      });
     postLobbyChat({ clientId, name: from, text })
-      .then(() => setInvited((prev) => ({ ...prev, [player.clientId]: true })))
+      .then(markInvited)
       .catch(() => {
         /* best-effort — the host can retry or copy the link instead */
       });
@@ -282,7 +296,7 @@ export function RoomPanel({
                       className="commandButton ghost"
                       disabled={Boolean(invited[player.clientId])}
                       onClick={() => invitePlayer(player)}
-                      title={`Ping ${player.name} in the lobby chat with this room's link`}
+                      title={`Send ${player.name} a join popup for this room`}
                       type="button"
                     >
                       {invited[player.clientId] ? (

@@ -436,4 +436,31 @@ describe("Tournament Mode setup (rulebook p.54)", () => {
     // If a seat happens to start with Diplomacy it stays in hand/deck — we only
     // assert the shared-deck removal (the rule targets deck building).
   });
+
+  it("granular Ban Diplomacy works without the full tournamentMode master flag", () => {
+    const onlyDip = createAdventureGameState({
+      seed: "tourney-ban-dip-only",
+      difficulty: "impossible",
+      rollFirstPlayer: false,
+      tournamentBanDiplomacy: true,
+      tournamentBanHourglass: false,
+      tournamentSecondPlayerMorale: false,
+      players: [
+        { id: "p1", name: "A", factionId: "castle", heroDefId: "catherine" },
+        { id: "p2", name: "B", factionId: "rampart", heroDefId: "mephala" }
+      ]
+    });
+    const abilities = [...onlyDip.decks.abilities!.drawPile, ...onlyDip.decks.abilities!.discardPile];
+    expect(abilities).not.toContain(TOURNAMENT_REMOVED_ABILITY_ID);
+    // Hourglass still present (control).
+    const artifacts = [
+      ...(onlyDip.decks["artifacts-minor"]?.drawPile ?? []),
+      ...(onlyDip.decks["artifacts-minor"]?.discardPile ?? []),
+      ...(onlyDip.decks.artifacts?.drawPile ?? []),
+      ...(onlyDip.decks.artifacts?.discardPile ?? [])
+    ];
+    expect(artifacts).toContain(TOURNAMENT_REMOVED_ARTIFACT_ID);
+    // No second-player morale.
+    expect(onlyDip.players.p2!.morale).toBe(0);
+  });
 });
