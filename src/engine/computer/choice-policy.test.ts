@@ -272,6 +272,65 @@ describe("choice policy — city hall income", () => {
   });
 });
 
+describe("choice policy — discard-pick never re-loops a retriever", () => {
+  function discardPickChoice(cardIds: string[]): PendingChoice {
+    return {
+      id: "dp1",
+      type: "OPTION_CHOICE",
+      playerId: "p2",
+      prompt: "Take a card from your discard pile",
+      context: "discard-pick",
+      options: [...cardIds.map((c) => ({ label: `Take ${c}` })), { label: "Done" }],
+      discardPick: {
+        cardIds,
+        destinations: cardIds.map(() => "hand"),
+        remaining: 1,
+      },
+      returnPhase: "combat",
+    } as unknown as PendingChoice;
+  }
+
+  function optionActions(count: number): LegalAction[] {
+    return Array.from({ length: count }, (_, optionIndex) => ({
+      label: `opt${optionIndex}`,
+      action: {
+        type: "CHOOSE_OPTION",
+        playerId: "p2",
+        choiceId: "dp1",
+        optionIndex,
+      } as GameAction,
+    }));
+  }
+
+  it("prefers a real stat card over taking Scholar back (Scholar re-opens this very pick → infinite loop)", () => {
+    // Discard = [stat.attack, ability.scholar]; option 2 = Done. Playing Scholar
+    // opens THIS discard-pick, so taking it back lets the AI replay it forever.
+    const choice = discardPickChoice(["stat.attack", "ability.scholar"]);
+    const decision = chooseComputerAction(
+      observation(choice, optionActions(3)),
+    );
+    const idx = (decision?.action as { optionIndex: number }).optionIndex;
+    // Must NOT be index 1 (Take Scholar). Without the guard, Scholar's high
+    // cardKeepValue wins and the AI loops.
+    expect(idx).toBe(0);
+    // Sanity: Scholar is otherwise the higher-value card, so the guard (not a
+    // value accident) is what steers the pick.
+    expect(cardKeepValue("ability.scholar")).toBeGreaterThan(
+      cardKeepValue("stat.attack"),
+    );
+  });
+
+  it("DECLINES (Done) rather than take a lone Scholar back", () => {
+    // Discard = [ability.scholar] only; options = [Take Scholar, Done].
+    const choice = discardPickChoice(["ability.scholar"]);
+    const decision = chooseComputerAction(
+      observation(choice, optionActions(2)),
+    );
+    // Done is index 1 (no cardId) — chosen over re-looping Scholar (index 0).
+    expect((decision?.action as { optionIndex: number }).optionIndex).toBe(1);
+  });
+});
+
 describe("choice policy — die keep vs reroll", () => {
   it("keeps a strong roll rather than rerolling", () => {
     const choice: PendingChoice = {

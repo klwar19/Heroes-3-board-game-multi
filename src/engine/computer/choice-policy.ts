@@ -1,3 +1,4 @@
+import { cardLibrary } from "@/data/cards/library";
 import type { GameAction, PendingChoice } from "../state";
 import { cardKeepValue } from "./card-policy";
 import type { ComputerActionScore } from "./map-policy";
@@ -29,6 +30,28 @@ import type { ComputerObservation } from "./types";
 
 const CHOICE_BASE = 1_100;
 const CHOICE_BAND = 80; // options live in [CHOICE_BASE, CHOICE_BASE + CHOICE_BAND]
+
+/**
+ * True when PLAYING this card would (re)open a "take a card from your discard
+ * pile" choice — i.e. its basic effect is TAKE_FROM_DISCARD (Scholar's basic
+ * side). Taking such a card BACK from a discard-pick lets the AI replay it and
+ * take it again — an infinite loop the runner's no-progress guard cannot catch
+ * (each play → pick → take-it-back half-step flips phase/eventCounter, so the
+ * fingerprint always "changes"). The discard-pick scorer must therefore never
+ * PREFER retrieving one of these over any other card, or over declining.
+ */
+function reopensDiscardPick(cardId: string | undefined): boolean {
+  if (!cardId) return false;
+  const card = cardLibrary[cardId];
+  if (!card?.effect) return false;
+  if (card.effect.type === "TAKE_FROM_DISCARD") return true;
+  if (card.effect.type === "CHOOSE_ONE") {
+    return card.effect.options.some(
+      (option) => option.effect?.type === "TAKE_FROM_DISCARD",
+    );
+  }
+  return false;
+}
 
 function pendingChoiceOf(
   observation: ComputerObservation,
@@ -298,7 +321,11 @@ function scorePositionOption(
 
   if (context === "discard-pick" && choice.discardPick) {
     const cardId = choice.discardPick.cardIds[optionIndex];
-    if (!cardId) return CHOICE_BASE + 5; // skip
+    if (!cardId) return CHOICE_BASE + 5; // skip / Done
+    // Never pull a self-retriever (Scholar) back — replaying it re-opens THIS
+    // very pick, an infinite loop. Score it strictly below the Done/skip exit
+    // (and below any real card) so anything else, or declining, always wins.
+    if (reopensDiscardPick(cardId)) return CHOICE_BASE - 50;
     return CHOICE_BASE + Math.min(CHOICE_BAND, cardKeepValue(cardId));
   }
 

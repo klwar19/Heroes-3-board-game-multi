@@ -83,6 +83,25 @@ export function computerDecisionOwner(state: GameState): PlayerId | null {
 
   const combat = state.combat;
   if (combat) {
+    // PvP pre-battle prep gate. While `combat.prep` is open, legal-actions
+    // offers ONLY a not-yet-accepted participant its Accept/town actions and
+    // RETURNS EARLY (see legal-actions.ts "PvP pre-battle preparation") —
+    // deployment, tactics and activation are legal for NOBODY until both sides
+    // have accepted. So drive a computer that still owes an accept; if the only
+    // pending acceptor is the human, the whole table WAITS (return null). This
+    // must precede the placement branch: a computer already in `prep.accepted`
+    // but sitting at `setup.pendingPlayerIds[0]` has no legal action yet, so
+    // falling through to placement would falsely claim it owes a move it cannot
+    // make and hang the paced pump.
+    if (combat.prep) {
+      for (const owner of [combat.attackerPlayerId, combat.defenderPlayerId]) {
+        if (combat.prep.accepted.includes(owner)) continue;
+        const result = computer(state, owner);
+        if (result) return result;
+      }
+      return null;
+    }
+
     const pausedOwner = computer(
       state,
       combat.pendingNeutralStep?.reactingPlayerId,
@@ -96,14 +115,6 @@ export function computerDecisionOwner(state: GameState): PlayerId | null {
     for (const owner of combat.pendingShackles ?? []) {
       const result = computer(state, owner);
       if (result) return result;
-    }
-    if (combat.prep) {
-      for (const owner of [combat.attackerPlayerId, combat.defenderPlayerId]) {
-        if (!combat.prep.accepted.includes(owner)) {
-          const result = computer(state, owner);
-          if (result) return result;
-        }
-      }
     }
     const placementOwner = computer(state, combat.setup?.pendingPlayerIds[0]);
     if (placementOwner) return placementOwner;

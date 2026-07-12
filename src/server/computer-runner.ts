@@ -42,7 +42,7 @@ export type ComputerRunResult = {
   reason?: string;
 };
 
-function progressFingerprint(state: GameState, playerId: PlayerId): string {
+export function progressFingerprint(state: GameState, playerId: PlayerId): string {
   const adventure = state.adventure;
   const combat = state.combat;
   const lobby = state.setupLobby;
@@ -97,10 +97,14 @@ function progressFingerprint(state: GameState, playerId: PlayerId): string {
     pending: [
       adventure?.pendingVisit?.playerId,
       // Visit step identity must count: auction bids / event choices that only
-      // mutate the visit queue still advance progress when the step type or
-      // remaining step list changes.
-      adventure?.pendingVisit?.steps[0]?.type ?? null,
-      adventure?.pendingVisit?.steps.length ?? 0,
+      // mutate the visit queue still advance progress. The FULL step tree is
+      // fingerprinted (not just steps[0].type + length): a nested CHOOSE_ONE
+      // that resolves one branch — e.g. the Scholar "Empower a Statistic" loop,
+      // which drops the picked option and re-prompts with fewer — keeps the same
+      // outer type and length, so a coarse read misses the progress and the
+      // no-progress guard falsely stalls the paced pump. The step list is
+      // already JSON-serializable content, so nesting it here is safe.
+      adventure?.pendingVisit?.steps ?? null,
       adventure?.pendingTileChoice?.playerId,
       adventure?.pendingNecromancy?.playerId,
       adventure?.pendingCommanderFirstAid?.playerId,
