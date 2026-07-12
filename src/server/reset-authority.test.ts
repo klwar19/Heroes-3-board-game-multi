@@ -38,6 +38,14 @@ function latestVersion(conn: MockConnection): number {
   throw new Error(`${conn.id} received no snapshot`);
 }
 
+function latestSnapshot(conn: MockConnection): RoomSnapshot {
+  for (let i = conn.received.length - 1; i >= 0; i -= 1) {
+    const message = JSON.parse(conn.received[i]) as { snapshot?: RoomSnapshot };
+    if (message.snapshot) return message.snapshot;
+  }
+  throw new Error(`${conn.id} received no snapshot`);
+}
+
 function lastMessage(conn: MockConnection): { type: string; reason?: string } {
   return JSON.parse(conn.received.at(-1)!) as { type: string; reason?: string };
 }
@@ -143,22 +151,20 @@ describe("PartyKit edge server — reset authority", () => {
     const refused = JSON.parse(guest.received.at(-1)!) as {
       type: string;
       errors: { message: string }[];
-      snapshot: RoomSnapshot;
     };
     expect(refused.type).toBe("action-result");
     expect(refused.errors.length).toBeGreaterThan(0);
-    expect(refused.snapshot.state.room?.hostClientId).toBe("host-1");
+    expect(latestSnapshot(guest).state.room?.hostClientId).toBe("host-1");
 
     // The host's browser dies: its socket drops. The member may now take host.
     connections.delete(host);
     await send(guest);
     const taken = JSON.parse(guest.received.at(-1)!) as {
       errors: { message: string }[];
-      snapshot: RoomSnapshot;
     };
     expect(taken.errors).toHaveLength(0);
-    expect(taken.snapshot.state.room?.hostClientId).toBe("guest-1");
-    expect(taken.snapshot.state.room?.members.find((m) => m.clientId === "guest-1")?.isHost).toBe(true);
+    expect(latestSnapshot(guest).state.room?.hostClientId).toBe("guest-1");
+    expect(latestSnapshot(guest).state.room?.members.find((m) => m.clientId === "guest-1")?.isHost).toBe(true);
   });
 
   it("guest HTTP reset 403s while the host is connected; the host's own succeeds (the CONTROL)", async () => {
