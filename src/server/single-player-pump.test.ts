@@ -59,6 +59,14 @@ function nextHumanAction(state: GameState): GameAction {
     }
     return hit.action;
   }
+  // The human can land on a visit tile (move/discover reveal) before it owes
+  // nothing to a computer — resolve the visit step so the round-1 script never
+  // wedges on a random reveal (an entropy-dependent flake, not the code under
+  // test). Its offered action is fully formed by getLegalActions.
+  const visit = offers.find((legal) => legal.action.type === "RESOLVE_VISIT_STEP");
+  if (visit) {
+    return visit.action;
+  }
   throw new Error(
     `no scripted human action among: ${offers.map((legal) => legal.action.type).join(", ")}`,
   );

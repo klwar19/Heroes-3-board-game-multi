@@ -82,8 +82,25 @@ export function progressFingerprint(state: GameState, playerId: PlayerId): strin
           combat.awaitingContinue,
           combat.outcome,
           combat.endAcknowledged,
+          // The combat-pause identity MUST count as progress. Resuming a
+          // "pre-activation" reaction pause (CONTINUE_NEUTRAL_STEP) only sets
+          // `pendingNeutralStep = null` + the unit's `reactionPauseAcked` and
+          // leaves activeUnitId as-is, so without this the pump read that real
+          // step as "no measurable progress" and STALLED the AI turn — the
+          // frozen computer-vs-computer / neutral fight the player saw at game
+          // start. Capture the pause's kind + acting unit + who must resume.
+          combat.pendingNeutralStep
+            ? [
+                combat.pendingNeutralStep.kind ?? "guard-walk",
+                combat.pendingNeutralStep.unitId,
+                combat.pendingNeutralStep.reactingPlayerId ?? null,
+              ]
+            : null,
+          combat.pendingNeutralPlacement ?? null,
           // Unit-level progress: moves, damage, defends and removals inside an
           // activation must all count (a defend changes nothing else above).
+          // `reactionPauseAcked` is the other half of resuming a pre-activation
+          // pause, so it counts too.
           Object.values(combat.units).map((unit) => [
             unit.id,
             unit.position,
@@ -91,6 +108,7 @@ export function progressFingerprint(state: GameState, playerId: PlayerId): strin
             unit.activatedThisRound,
             unit.movedThisActivation,
             unit.attacksThisActivation ?? 0,
+            unit.reactionPauseAcked ?? false,
           ]),
         ]
       : null,
@@ -233,12 +251,18 @@ export function driveComputerPlayers(
     }
     const nextFingerprint = progressFingerprint(result.state, playerId);
     if (nextFingerprint === fingerprint) {
-      return {
-        state,
-        decisions,
-        stalled: true,
-        reason: "Computer action succeeded without measurable progress.",
-      };
+      // The action applied cleanly but moved no fingerprinted field — a no-op
+      // for progress purposes (e.g. an in-combat ability play that only sets a
+      // pending modifier, or a card whose effect the fingerprint doesn't
+      // capture). The old code stalled the WHOLE pump here, which froze the AI
+      // turn ("says it's taking its turn and does nothing") whenever such an
+      // action outscored a real one. Instead treat it exactly like a rejected
+      // attempt: it is already in `attempted`, so DISCARD it (keep the pre-
+      // action state) and try the next-best legal candidate. Only when every
+      // candidate is exhausted does the loop reach the explicit "no safe legal
+      // action" stall. `attempted` grows and the legal set shrinks each pass,
+      // so this always terminates (and the maxSteps cap backstops it).
+      continue;
     }
     // Persist action notes (visits, market, recruit) on the settled state.
     state = noteComputerAction(result.state, playerId, decision.action);

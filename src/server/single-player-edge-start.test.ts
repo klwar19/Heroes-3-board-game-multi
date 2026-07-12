@@ -18,7 +18,7 @@ import {
   type GameAction,
   type GameState,
 } from "@/engine";
-import { computerPumpOwed } from "./computer-runner";
+import { computerPumpOwed, settleComputerVisibleStep } from "./computer-runner";
 
 type EdgeRoom = ConstructorParameters<typeof GameRoomServer>[0];
 type EdgeConnection = Parameters<GameRoomServer["onConnect"]>[0];
@@ -138,7 +138,18 @@ async function runEdgeGameStart(tag: string, opponents: number, coldEvery: numbe
     const state = snapshot.state;
     if (computerPumpOwed(state)) {
       if (!alarmPending()) {
-        return `FROZEN at step ${step}: pump owed but NO alarm pending (owner=${computerDecisionOwner(state)}, round=${state.round}, active=${state.activePlayerId})`;
+        // A self-heal arms the alarm via a fire-and-forget async path
+        // (`void ensureComputerPump`), so under CPU load the arm can be one
+        // macrotask away when we observe it — exactly the transient a real
+        // client rides out (its next ping/poll/alarm arms it). Drain briefly
+        // and re-check; only a persistent no-arm is a freeze this test guards
+        // against. (A genuine policy stall would ALSO surface here — the
+        // no-progress/no-legal-action freeze this fix eliminates.)
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        if (!alarmPending()) {
+          const reason = settleComputerVisibleStep(state).reason ?? "no alarm pending";
+          return `FROZEN at step ${step}: pump owed but not advancing (owner=${computerDecisionOwner(state)}, round=${state.round}, active=${state.activePlayerId}, reason=${reason})`;
+        }
       }
       // Cold wake every `coldEvery` fires: evict the worker like hibernation.
       alarmFires += 1;
@@ -181,13 +192,17 @@ async function runEdgeGameStart(tag: string, opponents: number, coldEvery: numbe
 
 describe("single-player game start over the PartyKit edge (alarm-paced, cold wakes)", () => {
   it("plays through round 1 into round 2 without ever freezing", async () => {
+    // Integration smoke over real games (random entropy each run): confirms the
+    // whole start path never freezes end-to-end. The deterministic regression
+    // guards for the underlying stall fix live in computer-runner.test.ts (the
+    // combat-pause fingerprint + no-progress-retry tests, mutation-checked).
     const failures: string[] = [];
-    for (let i = 0; i < 3; i += 1) {
-      for (const opponents of [1, 3]) {
+    for (let i = 0; i < 5; i += 1) {
+      for (const opponents of [1, 2, 3]) {
         const failure = await runEdgeGameStart(`t${i}-o${opponents}`, opponents, 3);
         if (failure) failures.push(`[t${i} opp=${opponents}] ${failure}`);
       }
     }
     expect(failures, failures.join("\n")).toEqual([]);
-  }, 120000);
+  }, 180000);
 });
