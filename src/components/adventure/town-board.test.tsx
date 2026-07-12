@@ -114,6 +114,64 @@ describe("TownBoardView — bars", () => {
   });
 });
 
+describe("TownBoardView — cove & conflux English printed scan boards", () => {
+  function scanState(factionId: "cove" | "conflux", heroDefId: string): GameState {
+    const state = createAdventureGameState({
+      seed: `town-board-${factionId}`,
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      players: [
+        { id: "p1", name: "P1", factionId, heroDefId },
+        { id: "p2", name: "Sandro", factionId: "necropolis", heroDefId: "sandro" }
+      ]
+    });
+    state.players.p1.resources = { gold: 200, buildingMaterials: 100, valuables: 100 };
+    return state;
+  }
+  const townIdOf = (state: GameState) =>
+    Object.entries(state.towns).find(([, t]) => t.controllerId === "p1")![0];
+
+  it("renders both as SCAN boards (the printed English board, not a designed CSS board)", () => {
+    for (const [factionId, hero] of [["cove", "astra"], ["conflux", "erdamon"]] as const) {
+      cleanup();
+      const { container } = render(viewFor(scanState(factionId, hero)));
+      expect(container.querySelector(".tbBoard.scan"), `${factionId} scan board`).toBeTruthy();
+      expect(container.querySelector(".tbBoard.designed"), `${factionId} not designed`).toBeNull();
+      const base = container.querySelector("img.tbBoardBase") as HTMLImageElement;
+      expect(base.src).toContain(`towns-${factionId}-board-empty.webp`);
+      // Empty town: no filled bars.
+      expect(container.querySelectorAll(".tbFill")).toHaveLength(0);
+    }
+  });
+
+  it("reveals a built building's OWN printed slot from the full scan (correct slot mapping)", () => {
+    // Cove's Redoubled Vortex (dwelling_gold) sits at printed slot 4. Building it
+    // fills exactly bar index 4 with a crop of the cove full scan — proving the
+    // bars follow the printed layout, so the crop shows the right building.
+    const state = scanState("cove", "astra");
+    state.towns[townIdOf(state)].buildings.push("cove.dwelling_gold");
+    const { container } = render(viewFor(state));
+    const bars = Array.from(container.querySelectorAll(".tbBar"));
+    const filledIndexes = bars.flatMap((bar, i) => (bar.querySelector(".tbFill") ? [i] : []));
+    expect(filledIndexes, "only Redoubled Vortex's slot fills").toEqual([4]);
+    const crop = bars[4].querySelector(".tbFill img") as HTMLImageElement;
+    expect(crop.src).toContain("towns-cove-board-full.webp");
+    // The crop is offset to slot 4 (left = -(window.left + 4*barPitch)/barPitch).
+    expect(crop.style.left).toContain("-");
+  });
+
+  it("draws the shared Bay + Pub bar as one crop and names both halves while half-built", () => {
+    const state = scanState("cove", "astra");
+    state.towns[townIdOf(state)].buildings.push("cove.dwelling_bronze"); // Bay up, Pub not
+    const { container } = render(viewFor(state));
+    expect(container.querySelector(".tbFill.partial")).toBeTruthy();
+    const note = container.querySelector(".tbPartialNote");
+    expect(note?.textContent).toMatch(new RegExp(coreBuildingDefinitions["cove.dwelling_bronze"].name, "i"));
+    expect(note?.textContent).toMatch(/Pub/);
+    expect(note?.textContent).toMatch(/not built/i);
+  });
+});
+
 describe("TownBoardView — resource-gain markers", () => {
   it("places one marker per track at the production value and moves with it", () => {
     const state = freshState();
