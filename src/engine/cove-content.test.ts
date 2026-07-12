@@ -508,7 +508,11 @@ describe("Cove adventure setup", () => {
     const next = applyOk(state, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: choice.id, optionIndex: 1 });
     const heroAfter = Object.values(next.heroes).find((candidate) => candidate.controllerId === "p1" && candidate.kind === "main");
     expect(next.players.p1.hand).not.toContain("artifact.centaurs_axe");
-    expect(next.players.p1.discard).toContain("artifact.centaurs_axe");
+    // The Artifact is REMOVED FROM THE GAME (the "remove" keyword), NOT discarded:
+    // it lands on player.removed and must NOT reach the discard pile (where it
+    // could be searched/recovered). A discard here fails this test.
+    expect(next.players.p1.removed).toContain("artifact.centaurs_axe");
+    expect(next.players.p1.discard).not.toContain("artifact.centaurs_axe");
     expect(heroAfter!.experience).toBe(xpBefore + 1);
   });
 });

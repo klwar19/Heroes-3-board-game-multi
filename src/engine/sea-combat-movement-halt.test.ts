@@ -1,18 +1,24 @@
 /**
  * ============================================================================
- *  Fighting on the open sea ends a hero's movement for the turn.
+ *  Winning a battle at sea does NOT end a hero's movement (BINH house rule).
  * ============================================================================
  *
- * The coastline already halts a hero that wades across it (seaStepHalts /
- * map-movement-spells.test.ts). This pins the companion rule for the OTHER way a
- * hero ends up fighting at sea: it began the turn already afloat and sailed
- * (sea→sea, which does NOT halt) into a guarded sea hex. After winning that
- * battle it must not be able to keep sailing — exactly like wading would have
- * stopped it. A battle fought on LAND is the control: there the hero keeps any
- * movement points it has left.
+ * House rule (user spec): "sea to sea battle has no effect" on movement — a hero
+ * that was already afloat and sailed (sea→sea, which does NOT halt) into a
+ * guarded sea hex keeps its remaining movement and can sail on after winning,
+ * exactly like a hero that wins a battle on LAND.
+ *
+ * The COASTLINE (wading) halt is a SEPARATE rule that still stands: "land to sea,
+ * fight, still can use remaining move points but halt; sea to land same." A hero
+ * that WADED onto the guarded hex is halted by that land↔sea STEP itself
+ * (haltAfterSeaStep, set during the move) — not by the fight — so it keeps its
+ * points but cannot move further. Only the extra post-sea-combat halt is dropped;
+ * the wading halt is untouched (pinned in map-movement-spells.test.ts and by the
+ * "waded in" case below).
  *
  * Tests assert the OBSERVABLE effect — whether the engine still offers the hero
  * any click-to-move target (getReachableHeroPaths) — not just the internal flag.
+ * Reverting the fix (re-halting after a sea combat) fails the sea-win cases.
  */
 import { describe, expect, it } from "vitest";
 import { coreFactionDefinitions } from "@/data/factions/core";
@@ -89,8 +95,8 @@ function stageWin(state: GameState, hero: HeroState, fieldId: string): void {
   } as unknown as CombatState;
 }
 
-describe("fighting on the open sea ends the hero's movement", () => {
-  it("a hero that sailed in and won a sea battle can no longer move (despite points left)", () => {
+describe("winning a battle at sea does NOT end the hero's movement (sea→sea has no effect)", () => {
+  it("a hero that sailed in and won a sea battle CAN keep sailing (points remain)", () => {
     const state = seaMap();
     const seaField = fieldWithNeighbour(state, true);
     const hero = parkHero(state, seaField);
@@ -103,14 +109,15 @@ describe("fighting on the open sea ends the hero's movement", () => {
     finalizeAdventureCombat(state);
 
     const after = state.heroes[hero.id];
-    // It still has movement points — but the sea battle ended its move.
+    // It keeps its movement points AND is NOT halted — the sea battle had no
+    // effect on movement (this fails if the sea-combat halt is re-added).
     expect(after.movementPoints).toBeGreaterThan(0);
-    expect(after.movementHaltedThisTurn).toBe(true);
-    // The OBSERVABLE effect: the engine offers no click-to-move target at all.
-    expect(getReachableHeroPaths(state, after).size).toBe(0);
+    expect(after.movementHaltedThisTurn).toBeFalsy();
+    // The OBSERVABLE effect: the engine still offers click-to-move targets.
+    expect(getReachableHeroPaths(state, after).size).toBeGreaterThan(0);
   });
 
-  it("CONTROL: a hero that won the same battle on LAND keeps moving", () => {
+  it("winning the same battle on LAND likewise leaves the hero free to move", () => {
     const state = seaMap();
     const landField = fieldWithNeighbour(state, false);
     const hero = parkHero(state, landField);
@@ -122,34 +129,30 @@ describe("fighting on the open sea ends the hero's movement", () => {
     finalizeAdventureCombat(state);
 
     const after = state.heroes[hero.id];
-    // No sea halt on land: it keeps its points AND can still move.
     expect(after.movementHaltedThisTurn).toBeFalsy();
     expect(getReachableHeroPaths(state, after).size).toBeGreaterThan(0);
   });
 
-  it("a Water Walking hero is NOT halted by a sea battle (the sea is normal terrain)", () => {
+  it("COASTLINE control: a hero that WADED in stays halted through the fight (keeps points)", () => {
+    // "land to sea, fight, still can use remaining move points but halt." The
+    // wading STEP (land→sea) sets movementHaltedThisTurn during the move, before
+    // the combat; winning does not clear it. So the hero keeps its points but is
+    // still halted — the coastline rule is intact independent of the sea-combat
+    // halt removal.
     const state = seaMap();
     const seaField = fieldWithNeighbour(state, true);
     const hero = parkHero(state, seaField);
-
-    // Water Walk active for p1 (the Spell / expert Pathfinding grant).
-    state.activeEffects.push({
-      id: "ww-test",
-      source: { type: "card", cardId: "spell.water_walk", controllerId: "p1" },
-      controllerId: "p1",
-      startedRound: state.round,
-      duration: { type: "current-turn" },
-      polarity: "positive",
-      modifiers: [{ type: "HERO_WATER_WALK" }]
-    } as unknown as GameState["activeEffects"][number]);
+    // Simulate that the hero got here by wading (the move already halted it).
+    hero.movementHaltedThisTurn = true;
 
     stageWin(state, hero, seaField);
     finalizeAdventureCombat(state);
 
     const after = state.heroes[hero.id];
-    // Water Walk removes the sea-battle halt exactly as it removes the wading halt.
-    expect(after.movementHaltedThisTurn).toBeFalsy();
-    expect(getReachableHeroPaths(state, after).size).toBeGreaterThan(0);
+    // Points remain, but the wading halt still stops further movement.
+    expect(after.movementPoints).toBeGreaterThan(0);
+    expect(after.movementHaltedThisTurn).toBe(true);
+    expect(getReachableHeroPaths(state, after).size).toBe(0);
   });
 });
 
@@ -177,8 +180,8 @@ function stagePvpWin(state: GameState, fieldId: string): { attacker: HeroState }
   return { attacker };
 }
 
-describe("winning a PvP fight on the open sea also ends the attacker's movement", () => {
-  it("the attacker who took a sea hex cannot sail on", () => {
+describe("winning a PvP fight at sea also does NOT end the attacker's movement", () => {
+  it("the attacker who took a sea hex by sailing in CAN sail on", () => {
     const state = seaMap();
     const seaField = fieldWithNeighbour(state, true);
     const { attacker } = stagePvpWin(state, seaField);
@@ -187,11 +190,12 @@ describe("winning a PvP fight on the open sea also ends the attacker's movement"
     finalizeAdventureCombat(state);
 
     const after = state.heroes[attacker.id];
-    expect(after.movementHaltedThisTurn).toBe(true);
-    expect(getReachableHeroPaths(state, after).size).toBe(0);
+    // Not halted by the sea combat (fails if the sea-combat halt is re-added).
+    expect(after.movementHaltedThisTurn).toBeFalsy();
+    expect(getReachableHeroPaths(state, after).size).toBeGreaterThan(0);
   });
 
-  it("CONTROL: winning the same PvP fight on LAND leaves the attacker free to move", () => {
+  it("winning the same PvP fight on LAND likewise leaves the attacker free to move", () => {
     const state = seaMap();
     const landField = fieldWithNeighbour(state, false);
     const { attacker } = stagePvpWin(state, landField);

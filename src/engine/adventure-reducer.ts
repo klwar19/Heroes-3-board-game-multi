@@ -40,7 +40,6 @@ import {
   fieldCreatureBankId,
   grantCreatureBankReward,
   isCreatureBankId,
-  isSeaField,
   placeCreatureBank,
   eliminatePlayer,
   finalizeStartOfTurnHand,
@@ -812,29 +811,6 @@ function performHeroStep(state: GameState, hero: HeroState, to: MapSpaceId, pass
  */
 function haltAfterSeaStep(state: GameState, hero: HeroState, from: MapSpaceId, to: MapSpaceId): void {
   if (seaStepHalts(state, from, to, getHeroMovementCapabilities(state, hero))) {
-    hero.movementHaltedThisTurn = true;
-  }
-}
-
-/**
- * A battle fought on the open sea ends the victorious hero's movement for the
- * turn — the same coastline rule that {@link seaStepHalts} enforces for wading,
- * now applied to fighting at sea. A hero who already crossed the coastline to
- * reach the fight is halted by the step itself; this also catches the case where
- * the hero began the turn at sea and sailed (sea→sea, no halt) into a guarded sea
- * hex, so it cannot simply keep sailing after winning. Scoped to the sea: a land
- * battle leaves the hero free to keep moving with any points it has left.
- *
- * Only the surviving hero that remains standing on the (sea) combat field is
- * passed in — a defeated/retreating hero is relocated with its movement already
- * spent (`moveDefeatedHeroHome`), so it is never reached here.
- *
- * Water Walk (the Spell or expert Pathfinding) removes this halt exactly as it
- * removes the wading halt: the sea is normal terrain, so the hero keeps sailing
- * after the fight with any movement points it has left.
- */
-function haltHeroAfterSeaCombat(state: GameState, hero: HeroState | undefined, fieldId: MapSpaceId): void {
-  if (hero && isSeaField(state, fieldId) && !getHeroMovementCapabilities(state, hero).waterWalk) {
     hero.movementHaltedThisTurn = true;
   }
 }
@@ -6796,10 +6772,13 @@ export function finalizeAdventureCombat(state: GameState): void {
     state.priorityPlayerId = null;
 
     if (hero && playerId && outcome.winnerPlayerId === playerId && field) {
-      // Fighting on the open sea ends the hero's movement for the turn (see
-      // haltHeroAfterSeaCombat): a hero that sailed into a guarded sea hex cannot
-      // sail on after winning.
-      haltHeroAfterSeaCombat(state, hero, context.fieldId);
+      // House rule (BINH): winning a battle at sea does NOT end the hero's
+      // movement. A hero that was already sailing (sea→sea into a guarded hex,
+      // which does not halt) keeps its remaining movement and can sail on after
+      // the win, exactly like a hero that wins a battle on land. A hero that
+      // WADED onto the guard (a land→sea step) stays halted by that step itself
+      // (haltAfterSeaStep, set during the move), so the coastline rule is intact —
+      // only the extra post-sea-combat halt is dropped.
       if (context.bankId) {
         // Creature Bank win: claim the bank reward, scaled by X = the number of
         // Stacked defenders (rulebook p.66-67). Banks sit outside the BINH
@@ -6983,9 +6962,10 @@ export function finalizeAdventureCombat(state: GameState): void {
   state.priorityPlayerId = null;
 
   if (winnerHero && winnerHero.id === context.attackerHeroId) {
-    // The attacker took the contested field by winning; if that field is on the
-    // open sea, the battle ends their movement for the turn (see neutral case).
-    haltHeroAfterSeaCombat(state, winnerHero, context.fieldId);
+    // The attacker took the contested field by winning. House rule (BINH):
+    // winning at sea does NOT halt the hero (see neutral case) — a hero already
+    // sailing (sea→sea) keeps its remaining movement, while one that WADED in
+    // stays halted by that step itself. So no extra sea-combat halt here.
     // Same now-or-never Necromancy gate as a neutral win (see above): defer the
     // attacker's field visit behind the decision when they can play it now.
     const winnerPid = winnerHero.controllerId;
@@ -9175,19 +9155,22 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
         count: option.searchSpellDeck
       });
     }
-    // Cove City Hall: pay an Artifact card from hand (this option is only offered
-    // when the player holds one — see the choice presentation) to gain experience.
+    // Cove City Hall: REMOVE an Artifact card from hand (this option is only
+    // offered when the player holds one — see the choice presentation) to gain
+    // experience. The card is removed FROM THE GAME (the "remove" keyword —
+    // player.removed), NOT discarded to the player's discard pile, matching the
+    // Blacksmith's "remove an Artifact card from hand" (sellArtifactAtBlacksmith).
     if (option.removeArtifactFromHand) {
       const player = state.players[action.playerId];
       const artifactIndex = player?.hand.findIndex((cardId) => cardLibrary[cardId]?.kind === "artifact") ?? -1;
       if (player && artifactIndex >= 0) {
         const [removed] = player.hand.splice(artifactIndex, 1);
-        player.discard.push(removed);
+        player.removed.push(removed);
         appendEvent(state, {
           type: "TOWN_BUILDING_USED",
           playerId: action.playerId,
           buildingId: "cove.city_hall",
-          message: `City Hall: removed ${cardLibrary[removed]?.name ?? removed} from hand to gain experience.`
+          message: `City Hall: removed ${cardLibrary[removed]?.name ?? removed} from the game to gain experience.`
         });
       }
     }
