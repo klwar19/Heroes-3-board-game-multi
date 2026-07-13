@@ -1160,6 +1160,27 @@ export function TownWindow({
         <header className="townWindowHeader">
           <LoadedImg className="townWindowIcon" src={townIconUrl(faction.id)} />
           <strong>{faction.name} town</strong>
+          {/* Current treasury at a glance — same chips as the adventure HUD so
+              build costs on the board can be compared without leaving the window. */}
+          <div className="townWindowResources" aria-label="Your resources">
+            {(
+              [
+                { key: "gold" as const, label: "Gold" },
+                { key: "buildingMaterials" as const, label: "Building materials (ore)" },
+                { key: "valuables" as const, label: "Valuables (crystal)" }
+              ] as const
+            ).map((resource) => (
+              <span
+                className="resourceChip townWindowResourceChip"
+                key={resource.key}
+                title={`${resource.label}: ${player.resources[resource.key]} — income +${player.production[resource.key]} each resource round`}
+              >
+                <img alt={resource.label} className="resourceIcon" src={assetUrl(RESOURCE_ICONS[resource.key])} />
+                <b>{player.resources[resource.key]}</b>
+                <small className="incomeTag">+{player.production[resource.key]}</small>
+              </span>
+            ))}
+          </div>
           <small
             className="townWindowTokens"
             title="Build / Population / Spell book tokens — each once per round"

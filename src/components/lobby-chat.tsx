@@ -137,7 +137,17 @@ export function LobbyChat({
               key={message.seq}
             >
               <header className="lobbyChatLineHead">
-                <span className="lobbyChatAuthor">{message.name}</span>
+                {/* Nickname opens the public profile page (unknown guests just
+                    land on the empty "no such player" state — honest either way). */}
+                <a
+                  className="lobbyChatAuthor profileNameLink"
+                  href={`/players/${encodeURIComponent(message.name)}`}
+                  rel="noreferrer"
+                  target="_blank"
+                  title={`View ${message.name}'s profile`}
+                >
+                  {message.name}
+                </a>
                 {now ? <span className="lobbyChatTime">{timeAgo(message.at, now)}</span> : null}
               </header>
               <p className="lobbyChatText">{message.text}</p>

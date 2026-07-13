@@ -5,6 +5,9 @@
  * account" spirit, but it lives OUTSIDE the game snapshot (there is no room to
  * hang it on), so it is a small in-memory ring buffer served over REST.
  *
+ * Lines older than LOBBY_CHAT_MESSAGE_TTL_MS (one day) are dropped on every
+ * list/post, so the feed never grows stale history.
+ *
  * This module is the pure, framework-free board — a class with an injectable
  * clock so its bounds/flood/sanitise rules are unit-tested deterministically
  * (the same testability bar as AccountStore). The process-wide singleton and
@@ -35,6 +38,9 @@ export const MAX_LOBBY_CHAT_NAME_LENGTH = 24;
 
 /** A client may not own more than this many of the most-recent lines (anti-flood). */
 export const LOBBY_CHAT_FLOOD_LIMIT = 5;
+
+/** Messages older than this are dropped from the feed (list + post both prune). */
+export const LOBBY_CHAT_MESSAGE_TTL_MS = 24 * 60 * 60 * 1000;
 
 /** Strip C0 controls + DEL, collapse whitespace to one space, trim, cap. */
 export function sanitizeLobbyText(raw: unknown, cap: number): string {
@@ -74,11 +80,33 @@ export class LobbyChatBoard {
     if (options.messages && options.messages.length > 0) {
       this.messages = options.messages.slice(-MAX_LOBBY_CHAT_MESSAGES).map((message) => ({ ...message }));
       this.seq = this.messages.reduce((max, message) => Math.max(max, message.seq), 0);
+      this.pruneExpired();
     }
   }
 
-  /** Recent messages, oldest → newest (a defensive copy). */
+  /**
+   * Drop lines older than LOBBY_CHAT_MESSAGE_TTL_MS. Called from list/post so
+   * both the in-memory board and a reloaded PartyKit snapshot stay within the
+   * one-day window without a separate sweeper.
+   */
+  private pruneExpired(): void {
+    const cutoff = this.now() - LOBBY_CHAT_MESSAGE_TTL_MS;
+    if (this.messages.length === 0) {
+      return;
+    }
+    // Messages are appended oldest → newest; find the first still-fresh index.
+    let keepFrom = 0;
+    while (keepFrom < this.messages.length && this.messages[keepFrom].at < cutoff) {
+      keepFrom += 1;
+    }
+    if (keepFrom > 0) {
+      this.messages = this.messages.slice(keepFrom);
+    }
+  }
+
+  /** Recent (not yet expired) messages, oldest → newest (a defensive copy). */
   list(): LobbyChatMessage[] {
+    this.pruneExpired();
     return this.messages.map((message) => ({ ...message }));
   }
 
@@ -89,6 +117,9 @@ export class LobbyChatBoard {
    * monopolising the feed.
    */
   post(input: PostLobbyChatInput): LobbyChatMessage {
+    // Drop expired lines first so the flood window and cap only see live ones.
+    this.pruneExpired();
+
     const clientId = typeof input.clientId === "string" ? input.clientId.trim().slice(0, 80) : "";
     if (!clientId) {
       throw new LobbyChatError("A client id is required to chat.");

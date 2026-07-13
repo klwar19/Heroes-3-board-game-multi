@@ -368,7 +368,27 @@ export function LobbyScreen({
                     ) : null}
                     {room.hostName ? (
                       <span className="lobbyRoomHost" title="Host">
-                        <Crown aria-hidden="true" size={12} /> {room.hostName}
+                        <Crown aria-hidden="true" size={12} />{" "}
+                        {/* Host name → profile when accounts are on and the
+                            host is a verified roster member. */}
+                        {(() => {
+                          const hostMember =
+                            showAuthLabels && (room.members ?? []).find((m) => m.host && !m.guest);
+                          return hostMember ? (
+                            <a
+                              className="profileNameLink"
+                              href={`/players/${encodeURIComponent(room.hostName!)}`}
+                              onClick={(event) => event.stopPropagation()}
+                              rel="noreferrer"
+                              target="_blank"
+                              title={`View ${room.hostName}'s profile`}
+                            >
+                              {room.hostName}
+                            </a>
+                          ) : (
+                            room.hostName
+                          );
+                        })()}
                       </span>
                     ) : room.createdByName ? (
                       <span className="lobbyRoomHost">by {room.createdByName}</span>
@@ -411,7 +431,24 @@ export function LobbyScreen({
                             />
                           ) : null}
                           {member.host ? <Crown aria-hidden="true" size={11} /> : null}
-                          {isGuest ? `guest — ${member.name}` : member.name}
+                          {isGuest ? (
+                            `guest — ${member.name}`
+                          ) : showAuthLabels && !member.guest ? (
+                            // Verified nickname → public profile (stopPropagation
+                            // so the parent Join button does not fire).
+                            <a
+                              className="profileNameLink"
+                              href={`/players/${encodeURIComponent(member.name)}`}
+                              onClick={(event) => event.stopPropagation()}
+                              rel="noreferrer"
+                              target="_blank"
+                              title={`View ${member.name}'s profile`}
+                            >
+                              {member.name}
+                            </a>
+                          ) : (
+                            member.name
+                          )}
                         </span>
                         );
                       })}
