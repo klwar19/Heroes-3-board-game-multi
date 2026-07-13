@@ -683,6 +683,10 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       return event.message;
     case "RUNE_LEVEL_REACHED":
       return `${playerName(state, event.playerId)} reaches Rune Level ${event.level} (${event.count} Runes) — the army-wide Rune buff turns on.`;
+    case "COMPUTER_ADVANCE_REQUESTED":
+      // Single-player pacing signal only — never surfaced in the feed
+      // (ADVENTURE_FEED_CUES omits it); kept here for switch exhaustiveness.
+      return `${playerName(state, event.playerId)} advances the computer.`;
   }
 }
 

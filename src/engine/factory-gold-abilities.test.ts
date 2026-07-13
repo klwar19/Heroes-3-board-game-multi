@@ -74,6 +74,10 @@ function makeNextActive(state: GameState, starterId: string, nextId: string): Ga
   const combat = state.combat!;
   for (const unit of Object.values(combat.units)) {
     unit.activatedThisRound = unit.id !== starterId && unit.id !== nextId;
+    // The starter defends again here to cycle activation; clear the
+    // consecutive-Defend flag so this fabricated fresh activation is legal
+    // (the helper reuses one starter across several calls in a combat).
+    unit.defendedLastActivation = false;
   }
   setActive(state, combat.units[starterId].controllerId, starterId);
   return applyOk(state, { type: "DEFEND_UNIT", playerId: combat.units[starterId].controllerId, unitId: starterId });

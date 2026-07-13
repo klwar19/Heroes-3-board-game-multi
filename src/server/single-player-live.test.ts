@@ -22,6 +22,7 @@ import {
   resetRoom,
   submitRoomAction,
 } from "./game-room-store";
+import { computerNeedsHumanAdvance } from "./computer-runner";
 
 function uniqueId(name: string): string {
   return `${name}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -59,9 +60,7 @@ describe("single-player over the built-in store", () => {
     expect(seats.every((seat) => seat.factionId && seat.heroDefId)).toBe(true);
     expect(new Set(seats.map((seat) => seat.factionId)).size).toBe(3);
 
-    // Start builds immediately (no ready check). Adventure computers pace
-    // visible steps (tile rotations, moves, …) across pump ticks — drain them
-    // synchronously here so the assertion sees the idle post-setup table.
+    // Start builds immediately (no ready check).
     const started = submitRoomAction(
       roomId,
       { type: "START_ADVENTURE", playerId: "p1" },
@@ -70,9 +69,29 @@ describe("single-player over the built-in store", () => {
     expect(started.result.errors).toEqual([]);
     expect(started.snapshot.state.setupLobby).toBeNull();
     expect(started.snapshot.state.adventure).not.toBeNull();
+
+    // Adventure map work is HUMAN-GATED: the computers do NOT finish their
+    // start-tile rotations / moves inside the human's action or via the auto
+    // pump (which only paces human-involved PvP). Draining that pump leaves the
+    // computer still owing a map step the human must confirm with Next.
     drainComputerPumpSync(roomId);
-    // Re-read after the paced pump finishes every computer start-tile rotation.
-    expect(computerDecisionOwner(getRoomSnapshot(roomId).state)).toBeNull();
+    expect(computerNeedsHumanAdvance(getRoomSnapshot(roomId).state)).toBe(true);
+    expect(computerDecisionOwner(getRoomSnapshot(roomId).state)).not.toBeNull();
+
+    // Each ADVANCE_COMPUTER applies exactly one visible beat (an AI-only fight
+    // bulk-resolves inside its step) and never freezes — the action stays legal
+    // while work is owed. Driving them resolves the computers' owed map turns.
+    for (let step = 0; step < 400; step += 1) {
+      if (!computerNeedsHumanAdvance(getRoomSnapshot(roomId).state)) break;
+      const advanced = submitRoomAction(
+        roomId,
+        { type: "ADVANCE_COMPUTER", playerId: "p1" },
+        "owner-1"
+      );
+      expect(advanced.result.errors).toEqual([]);
+      drainComputerPumpSync(roomId);
+    }
+    expect(computerNeedsHumanAdvance(getRoomSnapshot(roomId).state)).toBe(false);
   });
 
   it("a reset keeps the single-player session, seats and privacy (rematch)", () => {
