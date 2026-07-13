@@ -21,6 +21,15 @@
 
 const ASSET_BASE_URL = (process.env.NEXT_PUBLIC_ASSET_BASE_URL ?? "").replace(/\/+$/, "");
 
+/**
+ * The configured external asset origin, or "" when assets are served
+ * same-origin (the default). Used for <link rel="preconnect"> hints; use
+ * assetUrl() for actual paths.
+ */
+export function assetBaseUrl(): string {
+  return ASSET_BASE_URL;
+}
+
 export function assetUrl(path: string): string;
 export function assetUrl(path: string | undefined): string | undefined;
 export function assetUrl(path: string | undefined): string | undefined {

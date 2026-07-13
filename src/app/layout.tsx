@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { AssetPreconnect } from "@/components/asset-preconnect";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -16,6 +17,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
+        <AssetPreconnect />
         <div className="appShell">
           <header className="topBar">
             <Link className="brand" href="/menu">

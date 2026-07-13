@@ -13,7 +13,8 @@
     "test:e2e": "playwright test",
     "typecheck": "tsc --noEmit",
     "render:maps": "vitest run --config vitest.render.config.ts",
-    "deploy:partykit": "partykit deploy"
+    "deploy:partykit": "partykit deploy",
+    "sync:assets": "scripts/sync-assets-to-r2.sh"
   },
   "dependencies": {
     "lucide-react": "1.17.0",
