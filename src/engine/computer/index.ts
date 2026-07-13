@@ -60,6 +60,15 @@ export {
   unitThreatValue,
 } from "./score";
 export {
+  armyDevelopmentProfile,
+  armyReadyForContestedFight,
+  CORE_PACK_TARGET,
+  developmentResourceTargets,
+  nextDevelopmentBuildingCost,
+  type ArmyDevelopmentPhase,
+  type ArmyDevelopmentProfile,
+} from "./development";
+export {
   canonicalActionKey,
   chooseComputerAction,
   legalityMatchKey,

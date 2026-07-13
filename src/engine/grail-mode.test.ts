@@ -428,14 +428,15 @@ describe("Match W/L detection after combat-end notice", () => {
     prev.room = {
       id: "room-1",
       hosted: true,
+      hostClientId: "c1",
       ranked: true,
       members: [
-        { clientId: "c1", name: "Alice", seat: "p1", userId: "u1" },
-        { clientId: "c2", name: "Bob", seat: "p2", userId: "u2" }
+        { clientId: "c1", name: "Alice", seat: "p1", isHost: true, userId: "u1" },
+        { clientId: "c2", name: "Bob", seat: "p2", isHost: false, userId: "u2" }
       ],
       matchSeats: {
-        p1: { userId: "u1", nickname: "Alice" },
-        p2: { userId: "u2", nickname: "Bob" }
+        p1: { userId: "u1", name: "Alice" },
+        p2: { userId: "u2", name: "Bob" }
       }
     } as typeof prev.room;
 

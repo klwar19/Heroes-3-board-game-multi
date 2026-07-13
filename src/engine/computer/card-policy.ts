@@ -8,6 +8,11 @@ import type {
   TargetRef,
 } from "../state";
 import type { ComputerActionScore } from "./map-policy";
+import {
+  armyDevelopmentProfile,
+  developmentResourceTargets,
+} from "./development";
+import { collectMapObjectives } from "./map-navigation";
 import { unitRemainingHealth, unitThreatValue } from "./score";
 import type { ComputerObservation } from "./types";
 
@@ -353,13 +358,45 @@ function scoreSaveReaction(
   return 1_110 + modeBonus(mode);
 }
 
-function scoreMapEconomy(effect: EffectDefinition, base: number): number {
+function scoreMapEconomy(
+  observation: ComputerObservation,
+  effect: EffectDefinition,
+  base: number,
+): number {
   if (effect.type === "GAIN_RESOURCES") {
     const gain = effect.gain ?? {};
     const gold = gain.gold ?? 0;
     const mats = gain.buildingMaterials ?? 0;
     const vals = gain.valuables ?? 0;
-    return base + gold * 3 + mats * 4 + vals * 8;
+    const state = observation.state as unknown as GameState;
+    const resources = state.players[observation.playerId]?.resources;
+    const target = developmentResourceTargets(state, observation.playerId);
+    const usefulGold = Math.min(gold, Math.max(0, target.gold - (resources?.gold ?? 0)));
+    const usefulMats = Math.min(
+      mats,
+      Math.max(0, target.buildingMaterials - (resources?.buildingMaterials ?? 0)),
+    );
+    const usefulVals = Math.min(
+      vals,
+      Math.max(0, target.valuables - (resources?.valuables ?? 0)),
+    );
+    const planProgress = usefulGold * 8 + usefulMats * 28 + usefulVals * 45;
+    const closesDevelopmentGoal =
+      armyDevelopmentProfile(state, observation.playerId).phase !==
+        "improve-army" &&
+      (resources?.gold ?? 0) + gold >= target.gold &&
+      (resources?.buildingMaterials ?? 0) + mats >= target.buildingMaterials &&
+      (resources?.valuables ?? 0) + vals >= target.valuables;
+    const goldCost = "goldCost" in effect ? (effect.goldCost ?? 0) : 0;
+    return (
+      base +
+      gold * 3 +
+      mats * 4 +
+      vals * 8 +
+      planProgress +
+      (closesDevelopmentGoal ? 260 : 0) -
+      goldCost * 5
+    );
   }
   if (effect.type === "DRAW_CARDS") {
     return base + 15;
@@ -369,6 +406,13 @@ function scoreMapEconomy(effect: EffectDefinition, base: number): number {
   }
   if (effect.type === "DIPLOMACY_SKIP_COMBAT" || effect.type === "DIPLOMACY_RECRUIT") {
     return base + 30;
+  }
+  if (effect.type === "GAIN_RECRUIT_DISCOUNT") {
+    const phase = armyDevelopmentProfile(
+      observation.state as unknown as GameState,
+      observation.playerId,
+    ).phase;
+    return phase === "establish-core" ? 930 + effect.amount : base + 35;
   }
   return base + 10;
 }
@@ -383,15 +427,19 @@ function scoreMapMovement(
     (h) => h.controllerId === observation.playerId && h.kind === "main",
   );
   const mp = hero?.movementPoints ?? 0;
+  const hasObjective = hero
+    ? collectMapObjectives(state, hero).length > 0
+    : false;
   // Movement cards matter most when the hero is out (or nearly out) of MP but
   // still has work to do — never dump them while flush with movement.
   if (effect.type === "GAIN_HERO_MOVEMENT") {
     if (mp >= 3) return 280; // keep for later
-    if (mp === 0) return base + 40;
+    if (!hasObjective) return 280;
+    if (mp === 0) return base + 165;
     return base + 20;
   }
   if (effect.type === "DIMENSION_DOOR" || effect.type === "TELEPORT_HERO_TO_TOWN") {
-    return base + 25;
+    return hasObjective && mp <= 1 ? base + 120 : 480;
   }
   if (effect.type === "VIEW_EARTH") {
     return base + 15;
@@ -480,7 +528,7 @@ function scoreEffect(
   }
 
   if (MAP_ECONOMY_EFFECTS.has(effect.type)) {
-    return scoreMapEconomy(effect, 590 + modeBonus(mode));
+    return scoreMapEconomy(observation, effect, 590 + modeBonus(mode));
   }
 
   if (effect.type === "CREATE_ACTIVE_EFFECT") {
@@ -536,6 +584,66 @@ function asPowerBoostScore(
   return 1_095 - Math.min(30, Math.floor(keep / 2));
 }
 
+function discardCostPenalty(cardIds: readonly string[] | undefined): number {
+  if (!cardIds?.length) return 0;
+  return Math.min(
+    150,
+    Math.round(
+      [...new Set(cardIds)].reduce(
+        (sum, cardId) => sum + cardKeepValue(cardId) * 0.45,
+        0,
+      ),
+    ),
+  );
+}
+
+function pendingAttackValues(observation: ComputerObservation) {
+  const combat = observation.state.combat;
+  const item = observation.state.stack?.at(-1);
+  if (
+    !combat ||
+    !item ||
+    (item.action.type !== "ATTACK_UNIT" &&
+      item.action.type !== "MOVE_AND_ATTACK_UNIT")
+  ) {
+    return null;
+  }
+  const attacker = combat.units[item.action.attackerId];
+  const defender = combat.units[item.action.defenderId];
+  if (!attacker || !defender) return null;
+  const attackValue = attacker.attack + (item.modifiers.attackBonus ?? 0);
+  const defenseValue = defender.defense + (item.modifiers.defenseBonus ?? 0);
+  return {
+    attacker,
+    defender,
+    damage: Math.max(0, attackValue - defenseValue),
+  };
+}
+
+function marginalAttackModifierScore(
+  observation: ComputerObservation,
+  boost: "attack" | "defense",
+  free: boolean,
+): number {
+  const pending = pendingAttackValues(observation);
+  if (!pending) return 1_020;
+  const { attacker, defender, damage } = pending;
+  if (boost === "attack") {
+    if (attacker.controllerId !== observation.playerId) return 900;
+    const remaining = unitRemainingHealth(defender);
+    if (damage < remaining && damage + 1 >= remaining) return 1_155;
+    if (damage === 0) return 1_105;
+    if (unitThreatValue(defender) >= 30) return free ? 1_080 : 1_060;
+    return free ? 1_060 : 1_030;
+  }
+  if (defender.controllerId !== observation.playerId) return 900;
+  const remaining = unitRemainingHealth(defender);
+  const nextDamage = Math.max(0, damage - 1);
+  if (damage >= remaining && nextDamage < remaining) return 1_165;
+  if (damage > 0 && unitThreatValue(defender) >= 25) return free ? 1_095 : 1_075;
+  return free ? 1_060 : 1_030;
+}
+
 /**
  * Strategic score for card / spell / reaction plays. Returns null for actions
  * this module does not handle.
@@ -579,6 +687,10 @@ export function scoreCardAction(
         score += 12;
       }
 
+      score -= discardCostPenalty(
+        "costCardIds" in action ? action.costCardIds : undefined,
+      );
+
       const policy =
         action.type === "CAST_SPELL"
           ? "card.cast-spell"
@@ -611,7 +723,15 @@ export function scoreCardAction(
           policy: "card.batch-stat",
         };
       }
-      return { score: 1_080, policy: "card.batch-reaction" };
+      return {
+        score:
+          1_080 -
+          action.plays.reduce(
+            (sum, play) => sum + discardCostPenalty(play.costCardIds),
+            0,
+          ),
+        policy: "card.batch-reaction",
+      };
     }
     case "USE_ACTIVE_EFFECT": {
       const target = combatUnitFromTarget(observation, action.target);
@@ -665,6 +785,58 @@ export function scoreCardAction(
     case "USE_COMMANDER_CAST_REACTION":
       // Shield / Stone Skin reaction — buff defense before the hit.
       return { score: 1_130, policy: "card.commander-defense-reaction" };
+    case "USE_UNIT_MAGIC_MIRROR":
+      return { score: 1_155, policy: "combat.use-innate-magic-mirror" };
+    case "USE_UNIT_DIE_IGNORE": {
+      const defender = observation.state.combat?.units[action.defenderUnitId];
+      const hand = observation.state.players[observation.playerId]?.hand ?? [];
+      const averageKeep = hand.length
+        ? hand.reduce((sum, cardId) => sum + cardKeepValue(cardId), 0) /
+          hand.length
+        : 100;
+      const pending = pendingAttackValues(observation);
+      const trigger = observation.state.reactionWindow?.triggerEvent;
+      const roll = trigger?.type === "ATTACK_DIE_SETTLED" ? trigger.roll : 0;
+      let marginal = 1_015;
+      if (pending && defender) {
+        const withoutDie = pending.damage;
+        const withDie = withoutDie + Math.max(0, roll);
+        const remaining = unitRemainingHealth(defender);
+        if (withDie >= remaining && withoutDie < remaining) {
+          // The discarded card preserves an entire stack.
+          marginal = 1_190;
+        } else if (withDie > withoutDie && unitThreatValue(defender) >= 25) {
+          marginal = 1_115;
+        } else if (withDie > withoutDie) {
+          marginal = 1_060;
+        }
+      }
+      const score = marginal - Math.round(averageKeep * 0.35);
+      return { score, policy: "combat.discard-to-ignore-positive-die" };
+    }
+    case "USE_SCHOOL_FETCH_EXPERT":
+      return { score: 1_125, policy: "card.use-school-expert-power" };
+    case "HALL_OF_VALHALLA_BOOST":
+      return {
+        score: marginalAttackModifierScore(observation, "attack", true),
+        policy: "town.use-free-attack-boost",
+      };
+    case "SPEND_TOWN_CUBE":
+      return {
+        score: action.boost
+          ? marginalAttackModifierScore(observation, action.boost, false)
+          : 1_085,
+        policy: action.boost
+          ? "town.spend-cube-for-decisive-combat-point"
+          : "town.spend-cube-for-spell-power",
+      };
+    case "CONVERT_CARD_TO_ATTACK":
+      return {
+        score:
+          marginalAttackModifierScore(observation, "attack", false) -
+          Math.round(cardKeepValue(action.cardId) * 0.65),
+        policy: "card.convert-low-value-card-to-attack",
+      };
     default:
       return null;
   }
