@@ -9,6 +9,13 @@ export {
   sessionModeOf,
   standardComputerController,
 } from "./control";
+export {
+  applyComputerGuaranteedWin,
+  combatQualifiesForComputerGuaranteedWin,
+  COMPUTER_GUARANTEED_WIN_LIMIT,
+  COMPUTER_GUARANTEED_WIN_MAX_DIFFICULTY,
+  computerGuaranteedWinsUsed,
+} from "./guaranteed-wins";
 export { observeForComputer } from "./observation";
 export { cardKeepValue, scoreCardAction } from "./card-policy";
 export { scoreChoiceAction } from "./choice-policy";

@@ -4897,6 +4897,22 @@ export type GameEvent =
     }
   | {
       id: string;
+      /**
+       * Single-player smoothing: a computer seat's guaranteed first-battle win
+       * fired — every guard fell before any unit acted (see
+       * `src/engine/computer/guaranteed-wins.ts`). The matching COMBAT_ENDED
+       * follows immediately; rewards resolve through the normal victory path.
+       */
+      type: "COMPUTER_GUARANTEED_WIN";
+      playerId: PlayerId;
+      heroId: HeroId;
+      fieldId: MapSpaceId;
+      difficulty: number;
+      /** 1-based: which of the seat's guaranteed battles this was (1 or 2). */
+      battleNumber: number;
+    }
+  | {
+      id: string;
       type: "COMBAT_CONTINUED";
       playerId: PlayerId;
       movementLeft: number;
@@ -9514,6 +9530,14 @@ export type GameState = {
    * empty/default memory for that seat (see `src/engine/computer/memory.ts`).
    */
   computerMemory?: Record<PlayerId, ComputerPolicyMemoryState>;
+  /**
+   * Single-player smoothing (house rule): how many guaranteed first-battle
+   * wins each computer seat has consumed — see
+   * `src/engine/computer/guaranteed-wins.ts` (capped at
+   * COMPUTER_GUARANTEED_WIN_LIMIT = 2). Optional; absent on multiplayer games
+   * and legacy snapshots (= none used yet).
+   */
+  computerGuaranteedWins?: Record<PlayerId, number>;
   /** Rules variant; absent on snapshots saved before modes existed (= legacy). */
   ruleset?: GameRuleset;
   /** Wake of Gods module selection; absent on older snapshots and Legacy games (= off). */

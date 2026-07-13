@@ -6938,6 +6938,7 @@ export const ADVENTURE_FEED_CUES: Partial<Record<GameEventType, { icon: string; 
   MORALE_CARD_DISCARDED: { icon: "🎺", cue: "morale" },
   MORALE_CARD_USED: { icon: "🎺", cue: "morale" },
   QUICK_COMBAT_WON: { icon: "⚡", cue: "quick-combat" },
+  COMPUTER_GUARANTEED_WIN: { icon: "⚡", cue: "quick-combat" },
   NEUTRAL_COMBAT_STARTED: { icon: "⚔️", cue: "battle-begin" },
   NEUTRAL_ARMY_REVEALED: { icon: "👁", cue: "reveal" },
   PLAYER_COMBAT_STARTED: { icon: "⚔️", cue: "battle-begin" },

@@ -549,6 +549,8 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       return `${playerName(state, event.attackerPlayerId)} attacks ${playerName(state, event.defenderPlayerId)}!`;
     case "QUICK_COMBAT_WON":
       return `${playerName(state, event.playerId)} sweeps aside the level ${event.difficulty} guards (quick combat).`;
+    case "COMPUTER_GUARANTEED_WIN":
+      return `${playerName(state, event.playerId)} overruns the level ${event.difficulty} guards without losses.`;
     case "COMBAT_CONTINUED":
       return `${playerName(state, event.playerId)} spends 1 movement point to fight on (${event.movementLeft} left).`;
     case "COMBAT_RETREATED":
