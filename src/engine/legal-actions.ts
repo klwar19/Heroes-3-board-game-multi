@@ -307,18 +307,18 @@ export function standingSpellPower(state: GameState, playerId: PlayerId, card: C
 /**
  * Whether the player can pay an option's card cost from hand right now.
  *
- * `allowSpellBookPower` (the lethal-save window) also lets the Spell Book's
- * once-per-turn +1 Power source count toward a value/discard cost — one stashed
- * Book Spell may be spent for Power exactly like the "+1 Power" discard budget.
- * Without it a silver/gold save was unaffordable whenever the missing Power sat
- * in the Book instead of the hand (Magic Arrow in hand, a Spell in the Book).
+ * Spell Book (house rule): one stashed Book Spell may count toward a value /
+ * discard Power cost (the same once-per-turn budget as the "+1 Power" discard).
+ * Any Spell works — map Spells like Fly, combat Spells, reaction Spells — so a
+ * Book-stashed Fly can pay Magic Mirror / Sorrow / View Air / a lethal save.
+ * Without this a silver/gold cost was unaffordable whenever the missing Power
+ * sat in the Book instead of the hand.
  */
 function canAffordCardCost(
   state: GameState,
   playerId: PlayerId,
   cardId: string,
-  cost?: CardPlayCost,
-  allowSpellBookPower = false
+  cost?: CardPlayCost
 ): boolean {
   const player = state.players[playerId];
   if (!player) {
@@ -337,7 +337,7 @@ function canAffordCardCost(
     return true;
   }
 
-  // The played card itself cannot pay its own cost.
+  // The played card itself cannot pay its own cost (hand or Book).
   const rest = [...player.hand];
   const selfIndex = rest.indexOf(cardId);
   if (selfIndex !== -1) {
@@ -357,7 +357,7 @@ function canAffordCardCost(
   // the once-per-turn Book Power budget. A Book Spell is always a valid power
   // source (a Spell counts as +1), and never the very card being played.
   const bookPowerSourceId =
-    allowSpellBookPower && spellBookRuleEnabled(state) && spellBookPowerAvailable(player)
+    spellBookRuleEnabled(state) && spellBookPowerAvailable(player)
       ? (player.spellBook ?? []).find((id) => id !== cardId && passesFilter(id)) ?? null
       : null;
 
@@ -1769,7 +1769,7 @@ function addSpellActions(
         // targeting gates. (The Book's separate once-per-round budget is only its
         // +1-Power discard, spellBookPowerUsedThisTurn — see the reaction path.)
         ...(spellBookRuleEnabled(state)
-          ? [...new Set(player.spellBook)].map((cardId) => ({ cardId, fromSpellBook: true }))
+          ? [...new Set(player.spellBook ?? [])].map((cardId) => ({ cardId, fromSpellBook: true }))
           : []),
         ...(player.scrolls ?? []).flatMap((scroll) =>
           [...new Set(scroll.spellCardIds)].map((cardId) => ({ cardId, fromScroll: scroll.id }))
@@ -3058,7 +3058,7 @@ function addTurnCardActions(
   const turnCardSources: { cardId: CardId; fromSpellBook?: true }[] = [
     ...[...new Set(player.hand)].map((cardId) => ({ cardId })),
     ...(spellBookRuleEnabled(state)
-      ? [...new Set(player.spellBook)].map((cardId) => ({ cardId, fromSpellBook: true as const }))
+      ? [...new Set(player.spellBook ?? [])].map((cardId) => ({ cardId, fromSpellBook: true as const }))
       : [])
   ];
 
@@ -4926,8 +4926,18 @@ function getMisfortunePreWindowReactions(
     return {};
   }
 
+  // Spell Book (house rule): a Misfortune stashed in the Book fires the same
+  // pre-buff window as a hand copy (flagged `fromSpellBook`). Without this the
+  // dedicated pass only scanned the hand, so a Book Misfortune never opened.
+  const sources: { cardId: CardId; fromSpellBook?: true }[] = [
+    ...[...new Set(player.hand)].map((cardId) => ({ cardId })),
+    ...(spellBookRuleEnabled(state)
+      ? [...new Set(player.spellBook ?? [])].map((cardId) => ({ cardId, fromSpellBook: true as const }))
+      : [])
+  ];
+
   const reactions: LegalAction[] = [];
-  for (const cardId of new Set(player.hand)) {
+  for (const { cardId, fromSpellBook } of sources) {
     const card = cards[cardId];
     if (
       !card ||
@@ -4949,12 +4959,13 @@ function getMisfortunePreWindowReactions(
         continue;
       }
       reactions.push(
-        makeReactionAction(`${card.name}: ${option.label}`, {
+        makeReactionAction(`${card.name}: ${option.label}${fromSpellBook ? " (Spell Book)" : ""}`, {
           type: "PLAY_REACTION",
           playerId,
           cardId,
           mode: "basic",
-          optionIndex
+          optionIndex,
+          ...(fromSpellBook ? { fromSpellBook: true } : {})
         })
       );
     }
@@ -5085,7 +5096,7 @@ function getLethalSaveReactions(
     const saveSources: { cardId: CardId; fromSpellBook?: true }[] = [
       ...[...new Set(player.hand)].map((cardId) => ({ cardId })),
       ...(spellBookRuleEnabled(state)
-        ? [...new Set(player.spellBook)].map((cardId) => ({ cardId, fromSpellBook: true as const }))
+        ? [...new Set(player.spellBook ?? [])].map((cardId) => ({ cardId, fromSpellBook: true as const }))
         : [])
     ];
 
@@ -5106,7 +5117,7 @@ function getLethalSaveReactions(
           continue;
         }
         // The Spell Book's once-per-turn +1 Power may help pay a lethal save.
-        if (!canAffordCardCost(state, playerId, cardId, option.cost, true)) {
+        if (!canAffordCardCost(state, playerId, cardId, option.cost)) {
           continue;
         }
         reactions.push(
@@ -5202,6 +5213,11 @@ function magicMirrorRedirectContext(
  * window the card can fire in (cast-on-your-unit, area-damage-on-your-unit,
  * attack-instant-on-your-unit) so the offer, the spell-limit gate and the cost
  * picker all behave identically regardless of what is being reflected.
+ *
+ * Spell Book (house rule): a Magic Mirror stashed in the Book is offered the
+ * same way as a hand copy (flagged `fromSpellBook` so it cycles Book → discard).
+ * Without this the dedicated pass only scanned the hand, so a Book Mirror never
+ * opened a reaction window and never redirected anything.
  */
 function getMagicMirrorReactions(
   state: GameState,
@@ -5218,8 +5234,15 @@ function getMagicMirrorReactions(
     return [];
   }
 
+  const sources: { cardId: CardId; fromSpellBook?: true }[] = [
+    ...[...new Set(player.hand)].map((cardId) => ({ cardId })),
+    ...(spellBookRuleEnabled(state)
+      ? [...new Set(player.spellBook ?? [])].map((cardId) => ({ cardId, fromSpellBook: true as const }))
+      : [])
+  ];
+
   const offers: LegalAction[] = [];
-  for (const cardId of new Set(player.hand)) {
+  for (const { cardId, fromSpellBook } of sources) {
     const card = cards[cardId];
     if (!card || card.kind !== "spell" || card.implementationStatus !== "implemented") {
       continue;
@@ -5237,14 +5260,17 @@ function getMagicMirrorReactions(
       if (spellRedirectTargets(state, context.excludeUnitId, variant.effect.grade).length === 0) {
         continue;
       }
-      const variantName = variant.optionLabel ? `${card.name}: ${variant.optionLabel}` : card.name;
+      const variantName = variant.optionLabel
+        ? `${card.name}: ${variant.optionLabel}${fromSpellBook ? " (Spell Book)" : ""}`
+        : `${card.name}${fromSpellBook ? " (Spell Book)" : ""}`;
       offers.push(
         makeReactionAction(variantName, {
           type: "PLAY_REACTION",
           playerId: player.id,
           cardId,
           mode: "basic",
-          ...(variant.optionIndex !== undefined ? { optionIndex: variant.optionIndex } : {})
+          ...(variant.optionIndex !== undefined ? { optionIndex: variant.optionIndex } : {}),
+          ...(fromSpellBook ? { fromSpellBook: true } : {})
         })
       );
     }
@@ -5397,7 +5423,7 @@ export function getLegalReactionsForTrigger(
     const reactionSources: { cardId: CardId; fromSpellBook?: true }[] = [
       ...[...new Set(player.hand)].map((cardId) => ({ cardId })),
       ...(spellBookRuleEnabled(state)
-        ? [...new Set(player.spellBook)].map((cardId) => ({ cardId, fromSpellBook: true as const }))
+        ? [...new Set(player.spellBook ?? [])].map((cardId) => ({ cardId, fromSpellBook: true as const }))
         : [])
     ];
 
@@ -5619,7 +5645,15 @@ export function getLegalReactionsForTrigger(
         // other's spell above a cap that should still be cancellable. (In a
         // two-player attack every enemy instant shares the one opposing caster.)
         const spellPower = attackItem?.modifiers.attackPowerByPlayer?.[enemyInstants[0]!.playerId] ?? 0;
-        for (const cardId of new Set(player.hand)) {
+        // Spell Book (house rule): Protection / Resistance Spells stashed in the
+        // Book cancel an enemy attack-instant the same way a hand copy does.
+        const cancelSources: { cardId: CardId; fromSpellBook?: true }[] = [
+          ...[...new Set(player.hand)].map((cardId) => ({ cardId })),
+          ...(spellBookRuleEnabled(state)
+            ? [...new Set(player.spellBook ?? [])].map((cardId) => ({ cardId, fromSpellBook: true as const }))
+            : [])
+        ];
+        for (const { cardId, fromSpellBook } of cancelSources) {
           const card = cards[cardId];
           if (
             !card ||
@@ -5643,7 +5677,15 @@ export function getLegalReactionsForTrigger(
             );
           // Basic still respects Resistance's power cap (Protection has none).
           if ((cancel.maxPower === undefined || spellPower <= cancel.maxPower) && matchesAt("basic")) {
-            reactions.push(makeReactionAction(card.name, { type: "PLAY_REACTION", playerId: player.id, cardId, mode: "basic" }));
+            reactions.push(
+              makeReactionAction(`${card.name}${fromSpellBook ? " (Spell Book)" : ""}`, {
+                type: "PLAY_REACTION",
+                playerId: player.id,
+                cardId,
+                mode: "basic",
+                ...(fromSpellBook ? { fromSpellBook: true } : {})
+              })
+            );
           }
           if (
             (cancel.expertIgnoresMaxPower || cancel.expertIgnoresMaxSpellLevel) &&
@@ -5651,7 +5693,13 @@ export function getLegalReactionsForTrigger(
             matchesAt("expert")
           ) {
             reactions.push(
-              makeReactionAction(`${card.name} expert`, { type: "PLAY_REACTION", playerId: player.id, cardId, mode: "expert" })
+              makeReactionAction(`${card.name} expert${fromSpellBook ? " (Spell Book)" : ""}`, {
+                type: "PLAY_REACTION",
+                playerId: player.id,
+                cardId,
+                mode: "expert",
+                ...(fromSpellBook ? { fromSpellBook: true } : {})
+              })
             );
           }
         }
@@ -5823,7 +5871,7 @@ export function getLegalReactionsForTrigger(
       // spent (spellBookPowerUsedThisTurn) no Book Power boost is offered; hand
       // boosts above are unaffected.
       if (spellBookRuleEnabled(state) && spellBookPowerAvailable(player)) {
-        for (const cardId of new Set(player.spellBook)) {
+        for (const cardId of new Set(player.spellBook ?? [])) {
           const card = cards[cardId];
           if (card?.kind === "spell") {
             const boost = makeReactionAction(`Discard ${card.name}: +1 Power (Spell Book)`, {

@@ -210,15 +210,22 @@ function SpellBookSaveTile({
   const [payIndexes, setPayIndexes] = useState<number[]>([]);
   // Parallel to payIndexes: the chosen Power-value mode of each picked source.
   const [payModes, setPayModes] = useState<CardPlayMode[]>([]);
+  // Spell Book (house rule): ONE other Book Spell may help pay this Book play's
+  // Power cost (once-per-turn budget). Not the played card itself.
+  const [bookPayCardId, setBookPayCardId] = useState<string | undefined>(undefined);
   const hand = view.players[viewerPlayerId]?.hand ?? [];
+  const spellBook = view.players[viewerPlayerId]?.spellBook ?? [];
   const playedSchools = cardLibrary[action.cardId]?.spellSchools ?? [];
   const isPowerCost = cost.powerCost !== undefined;
   const standing = cardLibrary[action.cardId]
     ? standingSpellPower(state, viewerPlayerId, cardLibrary[action.cardId])
     : 0;
-  const chosenValues = payIndexes.map((index, position) =>
-    spellPowerValueOfCard(cardLibrary[hand[index]], playedSchools, payModes[position] ?? "basic")
-  );
+  const chosenValues = [
+    ...payIndexes.map((index, position) =>
+      spellPowerValueOfCard(cardLibrary[hand[index]], playedSchools, payModes[position] ?? "basic")
+    ),
+    ...(bookPayCardId ? [spellPowerValueOfCard(cardLibrary[bookPayCardId], playedSchools)] : [])
+  ];
   const powerTotal = standing + chosenValues.reduce((sum, value) => sum + value, 0);
 
   const player = state.players[viewerPlayerId];
@@ -229,14 +236,19 @@ function SpellBookSaveTile({
     : 0;
   const crownsSelected = payModes.filter((mode) => mode === "expert").length;
   const crownsOver = crownsSelected > crownsAvailable;
+  const bookPowerUsable = Boolean(
+    spellBookRuleEnabled(state) && player && spellBookPowerAvailable(player)
+  );
 
   const satisfied =
     !crownsOver &&
     (isPowerCost
       ? powerTotal >= (cost.powerCost ?? 0) && !chosenValues.some((value) => powerTotal - value >= (cost.powerCost ?? 0))
-      : payIndexes.length === (cost.discardCards ?? 0));
+      : payIndexes.length + (bookPayCardId ? 1 : 0) === (cost.discardCards ?? 0));
 
-  const targetReached = isPowerCost ? powerTotal >= (cost.powerCost ?? 0) : payIndexes.length >= (cost.discardCards ?? 0);
+  const targetReached = isPowerCost
+    ? powerTotal >= (cost.powerCost ?? 0)
+    : payIndexes.length + (bookPayCardId ? 1 : 0) >= (cost.discardCards ?? 0);
 
   const playedCard = cardLibrary[action.cardId];
   const optionLabel =
@@ -331,18 +343,55 @@ function SpellBookSaveTile({
                 </span>
               );
             })}
+            {bookPowerUsable
+              ? [...new Set(spellBook)]
+                  .filter((id) => id !== action.cardId)
+                  .map((bookCardId) => {
+                    const wrongKind =
+                      cost.costCardFilter !== undefined && !costCardEligible(bookCardId, cost.costCardFilter);
+                    const powerValue = isPowerCost
+                      ? spellPowerValueOfCard(cardLibrary[bookCardId], playedSchools)
+                      : 0;
+                    if (wrongKind || (isPowerCost && powerValue <= 0)) {
+                      return null;
+                    }
+                    const picked = bookPayCardId === bookCardId;
+                    return (
+                      <button
+                        aria-pressed={picked}
+                        className={`trayChip bookChip ${picked ? "picked" : ""}`}
+                        disabled={!picked && targetReached}
+                        key={`book-pay-${bookCardId}`}
+                        onClick={() => setBookPayCardId(picked ? undefined : bookCardId)}
+                        title="Spend a Spell Book Spell for Power (once per turn)"
+                        type="button"
+                      >
+                        📖 {cardName(bookCardId)}
+                        {isPowerCost ? ` (+${powerValue})` : ""}
+                      </button>
+                    );
+                  })
+              : null}
           </div>
         </div>
         <button
           className="trayInstant"
           disabled={!satisfied}
-          onClick={() =>
+          onClick={() => {
+            const costCardIds = [
+              ...payIndexes.map((index) => hand[index]),
+              ...(bookPayCardId ? [bookPayCardId] : [])
+            ];
+            const costCardModes: CardPlayMode[] = [
+              ...payModes,
+              ...(bookPayCardId ? (["basic"] as CardPlayMode[]) : [])
+            ];
             onAction({
               ...action,
-              costCardIds: payIndexes.map((index) => hand[index]),
-              ...(payModes.some((mode) => mode === "expert") ? { costCardModes: payModes } : {})
-            })
-          }
+              costCardIds,
+              ...(costCardModes.some((mode) => mode === "expert") ? { costCardModes } : {})
+            });
+          }}
           type="button"
         >
           {optionLabel ?? "Play from Spell Book"}
@@ -555,12 +604,12 @@ export function ReactionTray({
       0
     );
 
-  // Spell Book (house rule): in the lethal-save window the Book's once-per-turn
-  // +1 Power may help pay a save (e.g. a silver save fuelled by a hand Magic
-  // Arrow + a Book Spell). Offered only there, only while the budget is unspent.
-  const isLethalSaveWindow = window.triggerEvent.type === "UNIT_LETHAL_HIT";
+  // Spell Book (house rule): the Book's once-per-turn +1 Power may help pay ANY
+  // reaction Power cost (lethal save, Magic Mirror silver/gold, Sorrow, …) —
+  // including a map Spell like Fly stashed in the Book. Offered while the budget
+  // is unspent.
   const bookPowerUsable = Boolean(
-    isLethalSaveWindow && spellBookRuleEnabled(state) && player && spellBookPowerAvailable(player)
+    spellBookRuleEnabled(state) && player && spellBookPowerAvailable(player)
   );
   const viewerSpellBook = view.players[viewerPlayerId]?.spellBook ?? [];
 
@@ -660,7 +709,7 @@ export function ReactionTray({
   };
 
   // Spell Book (house rule): pick / clear the ONE Book Spell that may help pay a
-  // lethal save's Power cost. Picking a different Book Spell replaces the prior one.
+  // reaction Power cost. Picking a different Book Spell replaces the prior one.
   const toggleBookPayment = (selectionHandIndex: number, bookCardId: string) => {
     setSelections((current) =>
       current.map((selection) =>
@@ -1102,7 +1151,8 @@ export function ReactionTray({
                               );
                             })}
                             {/* Spell Book (house rule): one stashed Book Spell may help
-                                pay a lethal save — the once-per-turn Book Power budget. */}
+                                pay any reaction Power cost — the once-per-turn Book
+                                Power budget (Fly, Haste, … all count as +1). */}
                             {bookPowerUsable &&
                               [...new Set(viewerSpellBook)].map((bookCardId) => {
                                 if (bookCardId === tile.cardId) {

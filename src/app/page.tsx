@@ -23,6 +23,7 @@ import {
   isResetVoteApproved,
   resetVoteRequired,
   rulesetCardNote,
+  spellBookPowerAvailable,
   spellPowerValueOfCard,
   NEUTRAL_PLAYER_ID,
   type GameAction,
@@ -673,6 +674,12 @@ export default function Home() {
      * spends a crown (map Power tiers). Index-aligned with `picks`.
      */
     pickModes: ("basic" | "expert")[];
+    /**
+     * Spell Book (house rule): ONE Book Spell may help pay a Power cost (the
+     * once-per-turn Book Power budget). Held by card id — a Book Spell has no
+     * hand index. Map Spells like Fly count as +1 Power when stashed here.
+     */
+    bookCardId?: string;
     /**
      * "Discard first to use": when set, confirming the picker does NOT submit the
      * play — it banks the payment (see `armedCardPayment`) and arms this selection
@@ -3870,10 +3877,20 @@ export default function Home() {
     pending: NonNullable<typeof pendingCostPlay>,
     picks: number[],
     pickModes: ("basic" | "expert")[],
-    hand: string[]
+    hand: string[],
+    bookCardId?: string
   ) => {
-    const costCardIds = picks.map((index) => hand[index]);
-    const costCardModes = pickModes.some((mode) => mode === "expert") ? pickModes : undefined;
+    const costCardIds = [
+      ...picks.map((index) => hand[index]),
+      ...(bookCardId ? [bookCardId] : [])
+    ];
+    // Index-aligned modes: hand sources by their chosen mode, then the Book
+    // Spell (always basic — a Spell has no expert Power side).
+    const fullModes: ("basic" | "expert")[] = [
+      ...pickModes,
+      ...(bookCardId ? (["basic"] as ("basic" | "expert")[]) : [])
+    ];
+    const costCardModes = fullModes.some((mode) => mode === "expert") ? fullModes : undefined;
     const armSelection = pending.armSelection;
     if (armSelection) {
       setArmedCardPayment({
@@ -3923,8 +3940,9 @@ export default function Home() {
     // separate "Discard, then aim" click (Frost Ring's one-card discard is the
     // common case). An up-to cost still confirms explicitly (fewer may be meant).
     // Power-value costs never auto-arm (exact count is undefined).
-    if (shouldAutoArmOnPick(pending, nextPicks.length)) {
-      resolveCostPlay(pending, nextPicks, nextModes, hand);
+    const bookCount = pending.bookCardId ? 1 : 0;
+    if (shouldAutoArmOnPick(pending, nextPicks.length + bookCount)) {
+      resolveCostPlay(pending, nextPicks, nextModes, hand, pending.bookCardId);
       return;
     }
 
@@ -3940,7 +3958,13 @@ export default function Home() {
     if (!pendingCostPlay) {
       return;
     }
-    resolveCostPlay(pendingCostPlay, pendingCostPlay.picks, pendingCostPlay.pickModes, hand);
+    resolveCostPlay(
+      pendingCostPlay,
+      pendingCostPlay.picks,
+      pendingCostPlay.pickModes,
+      hand,
+      pendingCostPlay.bookCardId
+    );
   };
 
   /**
@@ -4762,52 +4786,52 @@ export default function Home() {
       if (!pendingCostPlay) {
         return;
       }
-      const costCardIds = pendingCostPlay.picks.map((index) => handCards[index]);
-      const costCardModes = pendingCostPlay.pickModes.some((mode) => mode === "expert")
-        ? pendingCostPlay.pickModes
-        : undefined;
-      const armSelection = pendingCostPlay.armSelection;
-      if (armSelection) {
-        // "Discard first": bank the payment and arm targeting (never submit here).
-        setArmedCardPayment({
-          cardId: armSelection.cardId,
-          optionIndex: armSelection.type === "PLAY_CARD" ? armSelection.optionIndex : undefined,
-          costCardIds
-        });
-        setSelectedCardAction(armSelection);
-        setPendingCostPlay(null);
-        return;
-      }
-      void submitAction({
-        ...pendingCostPlay.action,
-        costCardIds,
-        ...(costCardModes ? { costCardModes } : {})
-      });
-      setPendingCostPlay(null);
+      resolveCostPlay(
+        pendingCostPlay,
+        pendingCostPlay.picks,
+        pendingCostPlay.pickModes,
+        handCards,
+        pendingCostPlay.bookCardId
+      );
     };
 
-    // Live Power total for the map cost picker (View Air / Dimension Door tiers).
+    // Live Power total for the map cost picker (View Air / Dimension Door tiers),
+    // including one optional Spell Book payment (once-per-turn Book Power budget).
     const pendingPowerTotal = (() => {
       if (!pendingCostPlay?.powerCost) {
         return 0;
       }
       const schools = cardLibrary[pendingCostPlay.action.cardId]?.spellSchools ?? [];
-      return pendingCostPlay.picks.reduce((sum, handIndex, pickIndex) => {
+      const fromHand = pendingCostPlay.picks.reduce((sum, handIndex, pickIndex) => {
         const payId = handCards[handIndex];
         const mode = pendingCostPlay.pickModes[pickIndex] ?? "basic";
         return sum + spellPowerValueOfCard(cardLibrary[payId], schools, mode);
       }, 0);
+      const fromBook = pendingCostPlay.bookCardId
+        ? spellPowerValueOfCard(cardLibrary[pendingCostPlay.bookCardId], schools)
+        : 0;
+      return fromHand + fromBook;
     })();
     const pendingPowerOk =
       pendingCostPlay?.powerCost === undefined ||
       (pendingPowerTotal >= pendingCostPlay.powerCost &&
         // No wasteful over-payment: every picked card must be necessary.
-        pendingCostPlay.picks.every((_, pickIndex) => {
+        (() => {
           const schools = cardLibrary[pendingCostPlay.action.cardId]?.spellSchools ?? [];
-          const mode = pendingCostPlay.pickModes[pickIndex] ?? "basic";
-          const value = spellPowerValueOfCard(cardLibrary[handCards[pendingCostPlay.picks[pickIndex]]], schools, mode);
-          return pendingPowerTotal - value < (pendingCostPlay.powerCost ?? 0);
-        }));
+          const values = [
+            ...pendingCostPlay.picks.map((handIndex, pickIndex) =>
+              spellPowerValueOfCard(
+                cardLibrary[handCards[handIndex]],
+                schools,
+                pendingCostPlay.pickModes[pickIndex] ?? "basic"
+              )
+            ),
+            ...(pendingCostPlay.bookCardId
+              ? [spellPowerValueOfCard(cardLibrary[pendingCostPlay.bookCardId], schools)]
+              : [])
+          ];
+          return values.every((value) => pendingPowerTotal - value < (pendingCostPlay.powerCost ?? 0));
+        })());
     const viewerCrownsLeft = viewer
       ? viewer.limits.expertUses +
         (viewer.combatStats.expertUseBonusThisRound ?? 0) -
@@ -5291,13 +5315,66 @@ export default function Home() {
                       })}
                     </div>
                   ) : null}
+                  {/* Spell Book (house rule): one stashed Book Spell may pay map
+                      Power costs (View Air / Fly tiers, …) — once per turn. */}
+                  {spellBookOn &&
+                  viewer &&
+                  spellBookPowerAvailable(viewer) &&
+                  (pendingCostPlay.powerCost !== undefined ||
+                    pendingCostPlay.exact !== undefined ||
+                    pendingCostPlay.upTo !== undefined) ? (
+                    <div className="costPickerModes" aria-label="Spell Book Power payments">
+                      {[...new Set(spellBookCards)]
+                        .filter((id) => id !== pendingCostPlay.action.cardId)
+                        .filter((id) => {
+                          if (!pendingCostPlay.filter) {
+                            return cardLibrary[id]?.kind === "spell";
+                          }
+                          if (pendingCostPlay.filter === "spell") {
+                            return cardLibrary[id]?.kind === "spell";
+                          }
+                          // power-source: any Spell counts as +1
+                          return cardLibrary[id]?.kind === "spell";
+                        })
+                        .map((bookId) => {
+                          const picked = pendingCostPlay.bookCardId === bookId;
+                          const schools = cardLibrary[pendingCostPlay.action.cardId]?.spellSchools ?? [];
+                          const powerValue =
+                            pendingCostPlay.powerCost !== undefined
+                              ? spellPowerValueOfCard(cardLibrary[bookId], schools)
+                              : 0;
+                          return (
+                            <button
+                              className={`commandButton ${picked ? "primary" : "ghost"}`}
+                              key={`book-pay-${bookId}`}
+                              onClick={() => {
+                                setPendingCostPlay((current) =>
+                                  current
+                                    ? {
+                                        ...current,
+                                        bookCardId: current.bookCardId === bookId ? undefined : bookId
+                                      }
+                                    : current
+                                );
+                              }}
+                              title="Spend a Spell Book Spell for Power (once per turn)"
+                              type="button"
+                            >
+                              📖 {cardName(bookId)}
+                              {pendingCostPlay.powerCost !== undefined ? ` (+${powerValue})` : ""}
+                            </button>
+                          );
+                        })}
+                    </div>
+                  ) : null}
                   <button
                     className="commandButton primary"
                     disabled={
                       pendingCostPlay.powerCost !== undefined
                         ? !pendingPowerOk || !pendingCrownsOk
                         : pendingCostPlay.exact !== undefined &&
-                          pendingCostPlay.picks.length !== pendingCostPlay.exact
+                          pendingCostPlay.picks.length + (pendingCostPlay.bookCardId ? 1 : 0) !==
+                            pendingCostPlay.exact
                     }
                     onClick={confirmCostPlay}
                     type="button"

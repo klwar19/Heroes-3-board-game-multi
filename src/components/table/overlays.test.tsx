@@ -979,6 +979,75 @@ describe("ReactionTray — Magic Mirror's paid redirect can pay its cost in the 
   });
 });
 
+describe("ReactionTray — Magic Mirror from the Spell Book is clickable", () => {
+  function trayFor(state: GameState, onAction: (action: GameAction) => void) {
+    return (
+      <CardZoomProvider>
+        <ReactionTray
+          legalActions={getLegalActions(state, "p1")}
+          onAction={onAction}
+          state={state}
+          view={getPlayerView(state, "p1")}
+          viewerPlayerId="p1"
+        />
+      </CardZoomProvider>
+    );
+  }
+
+  it("shows a Spell Book tile for Book-only Magic Mirror and plays it with fromSpellBook", () => {
+    // Mirror lives ONLY in the Book — empty hand. The tray must surface it as a
+    // Book reaction (not a hand tile) and emit PLAY_REACTION with fromSpellBook.
+    const state = createInitialGameState("mirror-book-tray");
+    state.players.p1.hand = [];
+    state.players.p1.spellBook = ["spell.magic_mirror"];
+    state.players.p2.hand = ["spell.magic_arrow"];
+    state.activePlayerId = "p2";
+    state.combat!.activeUnitId = "unit_p2_skeletons";
+    state.combat!.units.unit_p2_skeletons.activatedThisRound = false;
+    const cast = applyAction(state, {
+      type: "CAST_SPELL",
+      playerId: "p2",
+      cardId: "spell.magic_arrow",
+      target: { type: "unit", unitId: "unit_p1_griffins" }
+    });
+    expect(cast.errors).toEqual([]);
+    expect(cast.state.reactionWindow?.priorityPlayerId).toBe("p1");
+
+    // Engine offers the Book Mirror.
+    const offered = getLegalActions(cast.state, "p1").some(
+      (legal) =>
+        legal.action.type === "PLAY_REACTION" &&
+        legal.action.cardId === "spell.magic_mirror" &&
+        legal.action.fromSpellBook === true
+    );
+    expect(offered, "engine must offer Book Magic Mirror").toBe(true);
+
+    const onAction = vi.fn();
+    render(trayFor(cast.state, onAction));
+
+    // Spell Book tile: "Play from Spell Book" for the free bronze grade.
+    const playBook = screen.getByRole("button", { name: /play from spell book/i });
+    expect(playBook).toBeTruthy();
+    act(() => fireEvent.click(playBook));
+
+    expect(onAction).toHaveBeenCalledTimes(1);
+    const played = onAction.mock.calls[0][0] as Extract<GameAction, { type: "PLAY_REACTION" }>;
+    expect(played).toMatchObject({
+      type: "PLAY_REACTION",
+      cardId: "spell.magic_mirror",
+      fromSpellBook: true,
+      optionIndex: 0
+    });
+
+    // Engine accepts the Book play and opens the redirect target choice.
+    const applied = applyAction(cast.state, played);
+    expect(applied.errors, applied.errors.map((e) => e.message).join("; ")).toEqual([]);
+    expect(applied.state.pendingChoice?.type).toBe("ABILITY_TARGET_CHOICE");
+    expect(applied.state.players.p1.spellBook).not.toContain("spell.magic_mirror");
+    expect(applied.state.players.p1.discard).toContain("spell.magic_mirror");
+  });
+});
+
 describe("ReactionTray — Bowstring carries its chosen ranged unit through the play", () => {
   function trayFor(state: GameState, onAction: (action: GameAction) => void) {
     return (

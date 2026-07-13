@@ -804,9 +804,21 @@ function moveSpellFromSpellBookToDiscard(
   destination: "discard" | "removed" = "discard"
 ): RulesError | null {
   const player = state.players[playerId];
-  const cardIndex = player?.spellBook.indexOf(cardId) ?? -1;
+  // Defensive: legacy snapshots may lack spellBook until healLegacyPlayerFields
+  // runs; never throw on undefined (PartyKit edge crash).
+  if (!player) {
+    return {
+      code: "CARD_NOT_IN_SPELL_BOOK",
+      message: "The selected Spell is not in that player's Spell Book.",
+      path: `players.${playerId}.spellBook`
+    };
+  }
+  if (!Array.isArray(player.spellBook)) {
+    player.spellBook = [];
+  }
+  const cardIndex = player.spellBook.indexOf(cardId);
 
-  if (!player || cardIndex === -1) {
+  if (cardIndex === -1) {
     return {
       code: "CARD_NOT_IN_SPELL_BOOK",
       message: "The selected Spell is not in that player's Spell Book.",
@@ -10026,6 +10038,11 @@ function effectSupportsExpertPlay(effect: NonNullable<ReturnType<typeof getEffec
 /**
  * Pays a card option's printed extra price (discard/remove other cards) and
  * returns how many cost cards were paid. Throws when the payment is illegal.
+ *
+ * Spell Book (house rule): ONE stashed Book Spell may pay toward a Power /
+ * discard cost (the same once-per-turn budget as the "+1 Power" discard) —
+ * Magic Mirror silver/gold, Sorrow, map View Air / Fly / Dimension Door tiers,
+ * lethal saves, etc. Any Spell counts (including map Spells like Fly).
  */
 function payOptionCardCost(
   state: GameState,
@@ -10034,7 +10051,6 @@ function payOptionCardCost(
   cost: CardPlayCost | undefined,
   costCardIds: CardId[] | undefined,
   cards: CardLibrary,
-  allowSpellBookPower = false,
   /** Index-aligned with costCardIds: "expert" values a Power source at expertAmount and spends a crown. */
   costCardModes?: CardPlayMode[]
 ): number {
@@ -10084,10 +10100,10 @@ function payOptionCardCost(
   for (const cardId of player.hand) {
     handCounts.set(cardId, (handCounts.get(cardId) ?? 0) + 1);
   }
-  // Spell Book (house rule): in the lethal-save window, ONE stashed Book Spell
-  // may pay for Power — the once-per-turn Book Power budget, the same limit as
-  // the "+1 Power" discard. Every other cost card must come from the hand.
-  const bookRuleOn = allowSpellBookPower && spellBookRuleEnabled(state) && spellBookPowerAvailable(player);
+  // Spell Book (house rule): ONE stashed Book Spell may pay for Power — the
+  // once-per-turn Book Power budget, the same limit as the "+1 Power" discard.
+  // Every other cost card must come from the hand.
+  const bookRuleOn = spellBookRuleEnabled(state) && spellBookPowerAvailable(player);
   const bookCounts = new Map<string, number>();
   if (bookRuleOn) {
     for (const cardId of player.spellBook ?? []) {
@@ -10455,18 +10471,10 @@ function applyReactionPlayCore(
 
   const costCardsPaid = play.fromScroll
     ? 0
-    : // A lethal save (Resurrection Spell / specialty) may draw one of its Power
-      // cost cards from the Spell Book — the once-per-turn Book Power budget.
-      payOptionCardCost(
-        state,
-        playerId,
-        card,
-        option?.cost,
-        play.costCardIds,
-        cards,
-        effect.type === "CANCEL_LETHAL_ATTACK",
-        play.costCardModes
-      );
+    : // Power costs (Magic Mirror silver/gold, Sorrow, lethal saves, …) may draw
+      // ONE of their Power cost cards from the Spell Book — the once-per-turn
+      // Book Power budget (shared with the "+1 Power" discard).
+      payOptionCardCost(state, playerId, card, option?.cost, play.costCardIds, cards, play.costCardModes);
 
   let effectAmount = getEffectAmount(effect, mode);
   // An Empowered ability's Expert side spends no crown.
@@ -12489,16 +12497,9 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     throw new Error(moveError.message);
   }
 
-  payOptionCardCost(
-    state,
-    action.playerId,
-    card,
-    option?.cost,
-    action.costCardIds,
-    cards,
-    false,
-    action.costCardModes
-  );
+  // Map Power tiers (View Air / Fly / Dimension Door, …) may also spend ONE
+  // Book Spell toward the Power cost — same once-per-turn Book Power budget.
+  payOptionCardCost(state, action.playerId, card, option?.cost, action.costCardIds, cards, action.costCardModes);
 
   // An Empowered ability's Expert side spends no crown.
   if (mode === "expert" && !abilityExpertIsCrownFree(state.players[action.playerId], action.cardId)) {
