@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
+import { allTileDefinitions } from "@/data/map/tiles";
 import { createAdventureGameState } from "../adventure-setup";
-import { farTilePlacementCenters, playerHasPlaceableFarTile } from "../adventure";
+import {
+  canHeroReachPlacedTile,
+  farTilePlacementCenters,
+  getAdjacentSpaceIds,
+  playerHasPlaceableFarTile,
+} from "../adventure";
+import { hexSpaceId, tileFootprint } from "../hex";
 import { getLegalActions } from "../legal-actions";
 import type { GameState, HeroState, MapSpaceId } from "../state";
 import { UNOPENED_FAR_TILE } from "../state";
@@ -451,5 +458,96 @@ describe("sticky primary + explore objectives", () => {
     };
     const flush = collectMapObjectives(state, hero).map((o) => o.spaceId);
     expect(flush).not.toContain(EMPTY);
+  });
+});
+
+describe("computer Far-tile rotation prefers the easiest entrance", () => {
+  it("rotates the new tile toward the hero's easy field, not a hard guard", () => {
+    const state = game();
+    const hero = p2Hero(state);
+    hero.level = 1;
+
+    // Park the hero on a real placeable notch and take its legal center.
+    let center: { row: number; col: number } | undefined;
+    for (const field of Object.values(state.adventure!.fields)) {
+      hero.spaceId = field.spaceId;
+      center = farTilePlacementCenters(state, hero)[0];
+      if (center) {
+        break;
+      }
+    }
+    expect(center, "the starting map exposes a placeable outer notch").toBeDefined();
+    expect(hero.spaceId).toBeTruthy();
+
+    // A test tile whose ring slot 1 is a safe empty field and every other ring
+    // slot is an avoidable level-V guard — so the "easiest entrance" is the one
+    // rotation that puts slot 1 against the hero.
+    const testDefId = "TEST_AI_EASY_ROTATION";
+    allTileDefinitions[testDefId] = {
+      id: testDefId,
+      group: "far",
+      content: "core_game",
+      terrain: "grass",
+      fields: [
+        { location: "empty_field" },
+        { location: "empty_field" },
+        ...Array.from({ length: 5 }, () => ({ location: "mine", difficulty: 5 })),
+      ],
+      outerImpassable: [false, false, false, false, false, false],
+      source: { product: "test", credit: "test" },
+    };
+
+    try {
+      const tile = {
+        id: "ai-easy-rotation-tile",
+        tileDefId: testDefId,
+        centerRow: center!.row,
+        centerCol: center!.col,
+        rotation: 0,
+        faceDown: false,
+        group: "far" as const,
+        awaitingRotation: true,
+      };
+      state.adventure!.tiles[tile.id] = tile;
+      state.adventure!.pendingTileChoice = {
+        tileInstanceId: tile.id,
+        playerId: "p2",
+        kind: "place",
+        heroId: hero.id,
+      };
+
+      const heroNeighbors = new Set(getAdjacentSpaceIds(hero.spaceId!));
+      const rotations = [0, 1, 2, 3, 4, 5].filter((rotation) =>
+        canHeroReachPlacedTile(state, hero, testDefId, center!, rotation),
+      );
+      // Slot 1 (the safe field) faces the hero on the "easy" rotation; a "hard"
+      // rotation reaches the tile but only exposes a level-V guard to the hero.
+      const easyRotation = rotations.find((rotation) =>
+        heroNeighbors.has(hexSpaceId(tileFootprint(center!, rotation)[1])),
+      );
+      const hardRotation = rotations.find(
+        (rotation) => !heroNeighbors.has(hexSpaceId(tileFootprint(center!, rotation)[1])),
+      );
+      expect(easyRotation).toBeDefined();
+      expect(hardRotation).toBeDefined();
+
+      const easy = scoreMapAction(observe(state), {
+        type: "SET_TILE_ROTATION",
+        playerId: "p2",
+        tileInstanceId: tile.id,
+        rotation: easyRotation!,
+      });
+      const hard = scoreMapAction(observe(state), {
+        type: "SET_TILE_ROTATION",
+        playerId: "p2",
+        tileInstanceId: tile.id,
+        rotation: hardRotation!,
+      });
+      // The entrance-grading term (tileHeroEntryScore) is what separates them —
+      // remove it and both rotations tie on the binary reachability reward.
+      expect(easy!.score).toBeGreaterThan(hard!.score);
+    } finally {
+      delete allTileDefinitions[testDefId];
+    }
   });
 });
