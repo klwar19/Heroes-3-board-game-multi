@@ -1024,6 +1024,43 @@ describe("Creature Bank guards are gradeless and target the nearest enemy", () =
     expect(pickNeutralTarget(state.combat!, state.combat!.units.unit_p2_skeletons)?.id).toBe("unit_p1_griffins");
   });
 
+  it("a bank guard still attacks a CLOSE commander first (commanders are not buried as no-tier)", () => {
+    // Bank guard at 0; far graded unit at 19; adjacent WOG commander at 1.
+    // Pure distance: the commander is nearest, so the bank hits them first.
+    // CONTROL: a graded neutral still prefers the far same-tier graded unit
+    // over the no-tier commander.
+    const bankState = createInitialGameState("bank-commander-close");
+    const bankGuard = place(bankState, "unit_p2_skeletons", NEUTRAL_PLAYER_ID, "bronze", "ground", 0);
+    bankGuard.bankUnit = true;
+    place(bankState, "unit_p1_crusaders", "p1", "bronze", "ground", 19);
+    const commander = place(bankState, "unit_p1_griffins", "p1", "bronze", "ground", 1);
+    commander.commanderSlug = "paladin";
+    onlyUnits(bankState, [
+      bankState.combat!.units.unit_p2_skeletons,
+      bankState.combat!.units.unit_p1_crusaders,
+      bankState.combat!.units.unit_p1_griffins
+    ]);
+    expect(
+      pickNeutralTarget(bankState.combat!, bankState.combat!.units.unit_p2_skeletons)?.id,
+      "bank hits the adjacent commander, not the far graded unit"
+    ).toBe("unit_p1_griffins");
+
+    const gradedState = createInitialGameState("graded-commander-last");
+    place(gradedState, "unit_p2_skeletons", NEUTRAL_PLAYER_ID, "bronze", "ground", 0);
+    place(gradedState, "unit_p1_crusaders", "p1", "bronze", "ground", 19);
+    const gradedCommander = place(gradedState, "unit_p1_griffins", "p1", "bronze", "ground", 1);
+    gradedCommander.commanderSlug = "paladin";
+    onlyUnits(gradedState, [
+      gradedState.combat!.units.unit_p2_skeletons,
+      gradedState.combat!.units.unit_p1_crusaders,
+      gradedState.combat!.units.unit_p1_griffins
+    ]);
+    expect(
+      pickNeutralTarget(gradedState.combat!, gradedState.combat!.units.unit_p2_skeletons)?.id,
+      "CONTROL: graded neutral still hits the far graded unit, not the close commander"
+    ).toBe("unit_p1_crusaders");
+  });
+
   // A GRADED neutral attacker (bronze melee) facing two bronze melee enemies: a
   // graded one far away (pos 19) and a bank-guard card adjacent (pos 1). Same
   // tier and same type, so only distance and the no-tier rule differ. A bank

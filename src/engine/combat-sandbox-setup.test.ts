@@ -70,6 +70,45 @@ describe("Battle Test free setup", () => {
     expect(state.wog?.commanders).toBe(true);
   });
 
+  it("lets the tester pick BINH or Tournament mode before Begin", () => {
+    let state = createCombatSandboxLobbyState("sandbox-play-mode");
+    expect(state.combatSandboxSetup!.playMode ?? "binh").toBe("binh");
+    expect(state.ruleset).toBe("binh");
+    expect(state.decks["spells-expert"], "BINH ships a split Expert spell deck").toBeTruthy();
+
+    state = applyOk(state, {
+      type: "SANDBOX_SET_OPTIONS",
+      playerId: "p1",
+      options: { playMode: "tournament" }
+    });
+    expect(state.combatSandboxSetup!.playMode).toBe("tournament");
+    expect(state.ruleset, "Tournament uses the legacy ruleset").toBe("legacy");
+    expect(state.decks["spells-expert"], "Tournament drops the BINH split Expert deck").toBeUndefined();
+    expect(state.decks.artifacts, "Tournament uses a single Artifact deck").toBeTruthy();
+    expect(state.decks.abilities?.drawPile ?? [], "Diplomacy is banned in Tournament").not.toContain(
+      "ability.diplomacy"
+    );
+
+    // CONTROL: switching back restores BINH split decks + ruleset.
+    state = applyOk(state, {
+      type: "SANDBOX_SET_OPTIONS",
+      playerId: "p1",
+      options: { playMode: "binh" }
+    });
+    expect(state.ruleset).toBe("binh");
+    expect(state.decks["spells-expert"]).toBeTruthy();
+
+    // Begin materialises the chosen mode onto the live fight state.
+    state = applyOk(state, {
+      type: "SANDBOX_SET_OPTIONS",
+      playerId: "p1",
+      options: { playMode: "tournament" }
+    });
+    state = applyOk(state, { type: "SANDBOX_BEGIN_COMBAT", playerId: "p1" });
+    expect(state.ruleset).toBe("legacy");
+    expect(state.decks.artifacts).toBeTruthy();
+  });
+
   it("Begin battle opens PvP-style unit deployment (combat-setup), not an auto-started fight", () => {
     let state = createCombatSandboxLobbyState("sandbox-begin");
     state = applyOk(state, {

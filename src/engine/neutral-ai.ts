@@ -101,12 +101,23 @@ function isGradelessNeutralAttacker(unit: CombatUnitState): boolean {
  * graded enemy: a graded attacker strikes it LAST, only once no graded enemy is
  * left. (Whether the ATTACKER itself is gradeless is a separate question — see
  * isGradelessNeutralAttacker.)
+ *
+ * WOG commanders also fight without a printed tier, so GRADED neutrals hit them
+ * last. A Creature Bank guard, however, ranks purely by distance — a commander
+ * standing close is a valid first target (it is still a real body on the field,
+ * not a conjured no-tier token). Pass the attacker so bank guards do not bury
+ * the commander behind far graded units.
  */
-function isNoTierTarget(unit: CombatUnitState): boolean {
-  // Summons, bank defenders and WOG commanders all fight without a printed
-  // tier, so the same-tier priority never applies to them — a graded neutral
-  // attacker turns on them last.
-  return Boolean(unit.summoned || unit.bankUnit || unit.commanderSlug);
+function isNoTierTarget(unit: CombatUnitState, attacker?: CombatUnitState): boolean {
+  if (unit.summoned || unit.bankUnit) {
+    return true;
+  }
+  // Commanders: deprioritised only for graded attackers. Bank guards keep pure
+  // distance order so a close commander is still attacked first.
+  if (unit.commanderSlug) {
+    return !attacker || !isGradelessNeutralAttacker(attacker);
+  }
+  return false;
 }
 
 /**
@@ -226,12 +237,12 @@ function leadingTieGroup(
   const gradeless = isGradelessNeutralAttacker(attacker);
   const distanceTo = neutralTargetDistances(combat, attacker, sortedPool);
   const best = sortedPool[0];
-  const bestNoTier = isNoTierTarget(best);
+  const bestNoTier = isNoTierTarget(best, attacker);
   const bestPriority = gradeless || bestNoTier ? 0 : tierPriority(attacker.grade, best.grade);
   const bestDistance = distanceTo.get(best.id);
   return sortedPool.filter(
     (unit) =>
-      isNoTierTarget(unit) === bestNoTier &&
+      isNoTierTarget(unit, attacker) === bestNoTier &&
       (gradeless || bestNoTier || tierPriority(attacker.grade, unit.grade) === bestPriority) &&
       distanceTo.get(unit.id) === bestDistance
   );
@@ -294,8 +305,10 @@ export function sortNeutralTargetCandidates(
     // No-tier targets (summoned units OR gradeless bank-guard cards) always sort
     // behind graded ones, whatever their tier or distance — the AI exhausts real
     // graded targets first (true even for a bank guard attacker: it hits real
-    // units before any conjured Elemental).
-    const noTierDelta = (isNoTierTarget(left) ? 1 : 0) - (isNoTierTarget(right) ? 1 : 0);
+    // units before any conjured Elemental). Commanders are only "no-tier" for
+    // graded attackers; bank guards may still pick a close commander first.
+    const noTierDelta =
+      (isNoTierTarget(left, attacker) ? 1 : 0) - (isNoTierTarget(right, attacker) ? 1 : 0);
     if (noTierDelta !== 0) {
       return noTierDelta;
     }
@@ -303,7 +316,7 @@ export function sortNeutralTargetCandidates(
     // Tier priority needs a graded attacker AND graded targets; a gradeless bank
     // guard attacker or a no-tier target has no grade to compare, so it falls
     // straight through to distance.
-    if (!gradeless && !isNoTierTarget(left)) {
+    if (!gradeless && !isNoTierTarget(left, attacker)) {
       const priority = tierPriority(attacker.grade, left.grade) - tierPriority(attacker.grade, right.grade);
       if (priority !== 0) {
         return priority;

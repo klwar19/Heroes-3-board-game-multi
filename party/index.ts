@@ -1104,6 +1104,11 @@ export default class GameRoomServer implements Party.Server {
         `[match-report] game ${match.matchId} finished but HOMM3BG_APP_URL / HOMM3BG_MATCH_REPORT_KEY ` +
           "are not configured on the party — the result was NOT recorded."
       );
+      // Still close a RANKED room even when the report key is missing — staying
+      // open is what lets a rematch double-claim / skip MMR accounting.
+      if (match.ranked) {
+        await this.forceCloseAfterRankedMatch();
+      }
       return;
     }
     try {
@@ -1118,6 +1123,37 @@ export default class GameRoomServer implements Party.Server {
     } catch (error) {
       console.error(`[match-report] failed to deliver match ${match.matchId}:`, error);
     }
+    // RANKED only: close the table after a real attributed win/loss so rematch
+    // cannot reuse seed/matchSeats. Casual / single-player / sandbox stay open.
+    if (match.ranked) {
+      await this.forceCloseAfterRankedMatch();
+    }
+  }
+
+  /**
+   * System force-close after a ranked match (no host gate). Broadcasts a final
+   * closed snapshot, wipes storage, and deregisters from the lobby directory.
+   */
+  private async forceCloseAfterRankedMatch(): Promise<void> {
+    await this.serialized(async () => {
+      const closing = this.snapshot;
+      if (closing) {
+        const message: ServerMessage = {
+          type: "snapshot",
+          snapshot: this.signed({ ...closing, closed: true })
+        };
+        this.room.broadcast(JSON.stringify(message));
+      }
+      this.snapshot = null;
+      try {
+        await this.room.storage.delete(SNAPSHOT_KEY);
+        await this.room.storage.deleteAlarm();
+      } catch (error) {
+        console.error(`[room] ranked force-close storage wipe failed:`, error);
+      }
+    });
+    await this.deregisterFromLobby();
+    console.log(`[room] force-closed ${this.room.id}: ranked match finished`);
   }
 
   /**

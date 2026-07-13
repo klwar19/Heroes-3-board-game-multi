@@ -515,7 +515,10 @@ export function CombatSandboxSetupScreen({
     obstacles?: number[];
     moraleCards?: boolean;
     wog?: Partial<WogModOptions>;
+    playMode?: "binh" | "tournament";
   }) => onAction({ type: "SANDBOX_SET_OPTIONS", playerId: actorId, options });
+
+  const playMode = setup.playMode === "tournament" ? "tournament" : "binh";
 
   const boardPreview =
     setup.boardArtId === "random"
@@ -543,6 +546,21 @@ export function CombatSandboxSetupScreen({
       </header>
 
       <section className="sandboxOptions" aria-label="Battle options">
+        <div className="sandboxField">
+          <label htmlFor="sandbox-play-mode">Rules mode</label>
+          <select
+            id="sandbox-play-mode"
+            value={playMode}
+            onChange={(event) =>
+              setOptions({
+                playMode: event.target.value === "tournament" ? "tournament" : "binh"
+              })
+            }
+          >
+            <option value="binh">BINH (house-rule edition)</option>
+            <option value="tournament">Tournament (competitive / legacy)</option>
+          </select>
+        </div>
         <div className="sandboxField">
           <label htmlFor="sandbox-board">Battlefield</label>
           <select
@@ -606,6 +624,9 @@ export function CombatSandboxSetupScreen({
           </label>
         </div>
         <p className="sandboxHint">
+          {playMode === "tournament"
+            ? "Tournament: legacy decks, Diplomacy and Hourglass banned, printed unit values. "
+            : "BINH: split Spell/Artifact decks and house-rule unit tweaks. "}
           With Commanders on, each side deploys at most {unitLimit} army units (the commander is the
           extra body). Default armies are Catherine (Castle) vs Sandro (Necropolis).
         </p>

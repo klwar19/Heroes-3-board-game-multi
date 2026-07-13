@@ -17733,14 +17733,24 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
 
         // All units acted: neutral combats hit their one-round time limit,
         // player combats roll straight into the next round. Azure guards have NO
-        // Round limit and roll into the next round automatically. House rule
-        // ("bank-move-points"): Creature Banks DO obey the Round limit and the
-        // spend-MP-to-extend rule, exactly like an ordinary neutral fight — so
-        // they are NOT exempted here. When that rule is off a bank reverts to the
-        // rulebook (no Round limit) and rolls straight on like an azure guard.
+        // Round limit and roll into the next round automatically. The Dragon
+        // Utopia objective (dragon-hunt / dragon-conqueror) is ALSO unlimited —
+        // both win modes — even if a future guard list drops the azure tier tag;
+        // only the Utopia field itself is exempt (other banks / guards still
+        // obey the house rule below). House rule ("bank-move-points"): Creature
+        // Banks DO obey the Round limit and the spend-MP-to-extend rule, exactly
+        // like an ordinary neutral fight — so they are NOT exempted here. When
+        // that rule is off a bank reverts to the rulebook (no Round limit) and
+        // rolls straight on like an azure guard.
+        const utopiaField =
+          combat.context.kind === "neutral"
+            ? state.adventure?.fields[combat.context.fieldId]
+            : undefined;
+        const isDragonUtopiaFight = utopiaField?.location === "dragon_utopia";
         if (
           combat.context.kind === "neutral" &&
           !combat.context.hasAzure &&
+          !isDragonUtopiaFight &&
           (combat.context.bankId === undefined || houseRuleEnabled(state, "bank-move-points"))
         ) {
           combat.awaitingContinue = true;

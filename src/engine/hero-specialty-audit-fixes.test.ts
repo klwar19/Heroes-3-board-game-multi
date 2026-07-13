@@ -208,6 +208,26 @@ describe("Crag Hack's Offense VI aura (audit fix, new mechanic)", () => {
     expect(convertReaction(declared, "stat.attack"), "no conversion without the aura").toBeFalsy();
     expect(lastAttackBonus(passAllReactions(declared), "unit_p1_griffins"), "plain attack, no bonus").toBe(0);
   });
+
+  it("is an ONGOING combat aura: any held card is offered as an instant +1 attack reaction", () => {
+    const card = adventureCards["specialty.crag_hack.6"];
+    expect(card.timing, "VI is played as a combat-long ongoing, not an instant").toBe("combat");
+    expect(card.effect.type).toBe("CREATE_ACTIVE_EFFECT");
+    const declared = declareGriffinAttack(withAura("crag-6-instant-window"));
+    // Every held card becomes a convert offer in the reaction window (the
+    // "instead of its regular effect" path).
+    expect(convertReaction(declared, "stat.attack")).toBeTruthy();
+    expect(convertReaction(declared, "stat.defense")).toBeTruthy();
+    // Specialty itself is already spent; the aura stays up for the whole Combat.
+    expect(
+      declared.activeEffects.some(
+        (eff) =>
+          eff.controllerId === "p1" &&
+          eff.duration.type === "combat" &&
+          eff.modifiers.some((m) => m.type === "CARDS_AS_ATTACK_BONUS" && m.amount === 1)
+      )
+    ).toBe(true);
+  });
 });
 
 // ===========================================================================

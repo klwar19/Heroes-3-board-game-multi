@@ -1265,6 +1265,68 @@ describe("ReactionTray — First Aid Tent heal is reachable as an instant reacti
   });
 });
 
+describe("ReactionTray — Crag Hack Offense VI convert is reachable", () => {
+  /**
+   * Offense VI is a combat-long aura: every held card may be discarded for an
+   * instant +1 attack. The engine offers CONVERT_CARD_TO_ATTACK (not PLAY_REACTION),
+   * so without a dedicated tile the specialty is invisible in the reaction tray.
+   */
+  it("renders one-click tiles that fire CONVERT_CARD_TO_ATTACK for each held card", () => {
+    const state = createInitialGameState("tray-offense-vi");
+    state.players.p1.hand = ["specialty.crag_hack.6", "stat.attack", "stat.defense"];
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    const attacker = state.combat!.units.unit_p1_griffins;
+    attacker.abilities = [];
+    attacker.type = "ground";
+    attacker.position = 9;
+    const defender = state.combat!.units.unit_p2_skeletons;
+    defender.abilities = [];
+    defender.position = 13;
+
+    // Play the ongoing VI aura first (via legal-actions, not a forged PLAY_CARD).
+    const playVi = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "specialty.crag_hack.6"
+    );
+    expect(playVi, "Offense VI is a combat play").toBeTruthy();
+    const played = applyAction(state, playVi!.action);
+    expect(played.errors).toEqual([]);
+    const declared = applyAction(played.state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_griffins",
+      defenderId: "unit_p2_skeletons"
+    });
+    expect(declared.errors).toEqual([]);
+    expect(
+      getLegalActions(declared.state, "p1").some((legal) => legal.action.type === "CONVERT_CARD_TO_ATTACK")
+    ).toBe(true);
+
+    const onAction = vi.fn();
+    render(
+      <CardZoomProvider>
+        <ReactionTray
+          legalActions={getLegalActions(declared.state, "p1")}
+          onAction={onAction}
+          state={declared.state}
+          view={getPlayerView(declared.state, "p1")}
+          viewerPlayerId="p1"
+        />
+      </CardZoomProvider>
+    );
+
+    // At least one Offense VI convert button is visible and fires the action.
+    const convert = screen.getAllByRole("button", { name: /offense vi: discard/i })[0];
+    act(() => fireEvent.click(convert));
+    expect(onAction).toHaveBeenCalledTimes(1);
+    expect(onAction.mock.calls[0][0]).toMatchObject({
+      type: "CONVERT_CARD_TO_ATTACK",
+      playerId: "p1"
+    });
+  });
+});
+
 describe("RerollModal — the die rolls before the keep/reroll choice", () => {
   /** Minimal state carrying an open attack-die reroll choice for `playerId`. */
   function rerollState(playerId: PlayerId = "p1"): GameState {
