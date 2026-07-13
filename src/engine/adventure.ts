@@ -29,6 +29,7 @@ import {
   consumeIgnoreFieldNegativeMorale,
   expireEffectsForGameRoundEnd,
   expireEffectsForTurnEnd,
+  makeActiveEffect,
   releaseEndedOngoingCards
 } from "./active-effects";
 import { drawCardsForPlayer, shuffleCards } from "./decks";
@@ -1943,6 +1944,10 @@ function interactionToSteps(interaction: LocationInteraction, extraLocationDice 
       return [{ type: "SPELL_SCROLL", remaining: 2 }];
     case "DIG_ARTIFACT":
       return [{ type: "DIG_ARTIFACT" }];
+    case "GRANT_MOVE_THROUGH":
+      return [{ type: "GRANT_MOVE_THROUGH" }];
+    case "WATERING_HOLE":
+      return [{ type: "WATERING_HOLE" }];
   }
 }
 
@@ -3940,6 +3945,35 @@ export function processPendingVisit(state: GameState): void {
       case "DIG_ARTIFACT_DISCARD": {
         state.decks[step.deckId]?.discardPile.push(step.cardId);
         appendEvent(state, { type: "ARTIFACT_DUG", playerId: visit.playerId, cardId: step.cardId, kept: false });
+        break;
+      }
+      case "GRANT_MOVE_THROUGH": {
+        // Airship Yard: Fly-style pass over blocked fields for the rest of this
+        // turn (never stop on a blocked hex). Same flag Fly / Angel Wings set.
+        state.activeEffects.push(
+          makeActiveEffect(
+            state,
+            {
+              name: "Airship Yard",
+              scope: "player",
+              duration: { type: "current-turn" },
+              polarity: "positive",
+              removable: false,
+              modifiers: [{ type: "HERO_MOVE_THROUGH" }]
+            },
+            { type: "system" },
+            visit.playerId
+          )
+        );
+        break;
+      }
+      case "WATERING_HOLE": {
+        // Factory rulebook: end movement now; next turn this hero gains +1 MP.
+        const holeHero = state.heroes[visit.heroId];
+        if (holeHero) {
+          holeHero.movementPoints = 0;
+          holeHero.wateringHoleBonusPending = true;
+        }
         break;
       }
       case "NEUTRAL_RECRUIT_RESOLVE": {
@@ -8349,6 +8383,15 @@ export function startPlayerTurn(state: GameState, playerId: PlayerId): void {
   }
 
   appendEvent(state, { type: "TURN_STARTED", playerId, round: state.round });
+
+  // Watering Hole (Factory): a hero that visited last turn gains +1 movement
+  // for this turn only (the flag is set when movement is zeroed on visit).
+  for (const hero of Object.values(state.heroes)) {
+    if (hero.controllerId === playerId && hero.wateringHoleBonusPending) {
+      hero.movementPoints += 1;
+      hero.wateringHoleBonusPending = false;
+    }
+  }
 
   // The start-of-turn hand step is offered on EVERY turn, including the first:
   // the player MAY discard any number of cards and then draw back up to the

@@ -957,39 +957,35 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
   // --- Factory "&" tile set (near/far/center) -----------------------------
   // Fields transcribed from the physical Factory tile SCANS (the "&"-prefixed
   // desert tiles). These tiles are NOT on the fan wiki, so the field TYPES are
-  // assigned from the printed art: the anchor "&"-label hex = blocked_field, a
-  // cart of resources = mine (colour picks gold / buildingMaterials / valuables,
-  // "loop N" = amount, the adjacent Roman numeral = guard difficulty), a shovel =
-  // artifact_dig (the Factory Excavation), an obelisk = obelisk, a gazebo "pay
-  // 3 gold -> Spell" = shrine_of_magic, a "+3 gold" derrick = water_wheel, a "?"
-  // reward token = treasure_symbol, and the &C1 centre airship+steamer = the
-  // War Machine Factory field. tileImage is the real scan, flower-masked to alpha.
-  // Guard difficulties come straight from the Roman numerals; the ring rotation /
-  // outerImpassable are a best-fit from the art (see per-tile note).
+  // Factory "&" tiles — field types re-verified against the Factory rulebook
+  // (p.7–8 location art: Derrick, Prospector, Warlock's Lab, Grave, Watering
+  // Hole, Trailblazer, Airship Yard) and each tile's scan (nf/ff/cf/sf). Slot
+  // order is centre + NE,E,SE,SW,W,NW matching the art orientation (same as
+  // core tiles). Guard difficulties are the printed Roman numerals.
   "&N1": {
     id: "&N1",
     group: "near",
     content: "regular_stretch_goals",
     terrain: "rough",
-    // &N1 scan: centre turquoise Obelisk; ring = Excavation (shovel), a "+3 gold"
-    // derrick (water_wheel), a IV gazebo "pay 3 gold -> Spell" (shrine), the
-    // &N1 tar-pit anchor (blocked), a "?" cabin (treasure), a V manor mine
-    // "loop 1 valuables". Guards IV-V.
+    // &N1 (nf1.webp) vs Factory rulebook art, slots 1-6 = NE,E,SE,SW,W,NW:
+    // centre turquoise Obelisk; NE Derrick +3 gold; E blocked (&N1 tar-pit);
+    // SE mine ↻1 valuables V; SW "?" cabin treasure; W shrine IV "pay 3 gold →
+    // Spell"; NW Excavation shovel. Guards IV-V.
     fields: [
       { location: "obelisk" },
-      { location: "artifact_dig" },
-      { location: "water_wheel" },
-      { location: "shrine_of_magic_gesture", difficulty: 4 },
+      { location: "derrick" },
       { location: "blocked_field" },
-      { location: "treasure_symbol" },
       { location: "mine", difficulty: 5, resource: "valuables", amount: 1 },
+      { location: "treasure_symbol" },
+      { location: "shrine_of_magic_gesture", difficulty: 4 },
+      { location: "artifact_dig" },
     ],
-    outerImpassable: [false, false, false, true, false, false],
+    outerImpassable: [false, true, false, false, false, false],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
       credit:
-        "Factory near tile &N1 — fields transcribed from the physical tile scan (not on the wiki; field types assigned from the printed art). tileImage is the real scan, flower-masked to alpha.",
-      url: "https://heroes.thelazy.net/index.php/Factory"
+        "Factory near tile &N1 — fields matched to nf1.webp + Factory rulebook location art (Derrick, Excavation). Verify against physical tiles before final release.",
+      url: "https://raw.githubusercontent.com/qwrtln/Homm3BG-FactoryRulebook-build-artifacts/en/main_en.pdf"
     },
     assets: {
       tileImage: "/assets/board/tiles/nf1.webp"
@@ -1000,25 +996,25 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
     group: "near",
     content: "regular_stretch_goals",
     terrain: "rough",
-    // &N2 scan: centre Tree-spirit (tree_of_knowledge); ring = a waterfall face
-    // (magic_spring), a "?" treehouse (treasure), a V mine "loop 5 gold", a IV
-    // alchemist tower "?" (mystical_garden), the &N2 chasm anchor (blocked), open
-    // ground. Guards IV-V.
+    // &N2 (nf2.webp) vs Factory rulebook: centre Tree of Knowledge; NE "?" treehouse
+    // treasure; E empty; SE Warlock's Lab IV (golden planetarium — NOT Mystical
+    // Garden); SW blocked (&N2 chasm); W mine ↻5 gold V; NW Fountain of Youth
+    // (waterfall with bird+horse icons — NOT Magic Spring). Guards IV-V.
     fields: [
       { location: "tree_of_knowledge" },
-      { location: "magic_spring" },
       { location: "treasure_symbol" },
-      { location: "mine", difficulty: 5, resource: "gold", amount: 5 },
-      { location: "mystical_garden", difficulty: 4 },
-      { location: "blocked_field" },
       { location: "empty_field" },
+      { location: "warlock_lab", difficulty: 4 },
+      { location: "blocked_field" },
+      { location: "mine", difficulty: 5, resource: "gold", amount: 5 },
+      { location: "fountain_of_youth" },
     ],
-    outerImpassable: [false, false, false, false, true, false],
+    outerImpassable: [false, false, false, true, false, false],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
       credit:
-        "Factory near tile &N2 — fields transcribed from the physical tile scan (not on the wiki; field types assigned from the printed art). tileImage is the real scan, flower-masked to alpha.",
-      url: "https://heroes.thelazy.net/index.php/Factory"
+        "Factory near tile &N2 — fields matched to nf2.webp + Factory rulebook (Warlock's Lab art). Fountain of Youth by bird+horse icons. Verify against physical tiles before final release.",
+      url: "https://raw.githubusercontent.com/qwrtln/Homm3BG-FactoryRulebook-build-artifacts/en/main_en.pdf"
     },
     assets: {
       tileImage: "/assets/board/tiles/nf2.webp"
@@ -1029,25 +1025,24 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
     group: "far",
     content: "regular_stretch_goals",
     terrain: "rough",
-    // &F1 scan: the &F1 rock+tar anchor sits centre (blocked); ring = an Obelisk
-    // (with the star banner), a Teepee+horse (stables), a III cathedral "?"
-    // (temple), a "+3 gold" derrick (water_wheel), a II stilt-hut "?" (treasure),
-    // open ground. Guards II-III.
+    // &F1 (ff1.webp) vs Factory rulebook: centre blocked rocks; NE empty; E Temple
+    // III; SE stilt-hut treasure II; SW Derrick +3 gold; W Trailblazer teepee
+    // (NOT Stables — rulebook p.8 Trailblazer art); NW Obelisk. Guards II-III.
     fields: [
       { location: "blocked_field" },
-      { location: "obelisk" },
-      { location: "stables" },
-      { location: "temple", difficulty: 3 },
-      { location: "water_wheel" },
-      { location: "treasure_symbol", difficulty: 2 },
       { location: "empty_field" },
+      { location: "temple", difficulty: 3 },
+      { location: "treasure_symbol", difficulty: 2 },
+      { location: "derrick" },
+      { location: "trailblazer" },
+      { location: "obelisk" },
     ],
     outerImpassable: [false, false, false, false, false, false],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
       credit:
-        "Factory far tile &F1 — fields transcribed from the physical tile scan (not on the wiki; field types assigned from the printed art). tileImage is the real scan, flower-masked to alpha.",
-      url: "https://heroes.thelazy.net/index.php/Factory"
+        "Factory far tile &F1 — fields matched to ff1.webp + Factory rulebook (Derrick, Trailblazer teepee). Verify against physical tiles before final release.",
+      url: "https://raw.githubusercontent.com/qwrtln/Homm3BG-FactoryRulebook-build-artifacts/en/main_en.pdf"
     },
     assets: {
       tileImage: "/assets/board/tiles/ff1.webp"
@@ -1058,25 +1053,25 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
     group: "far",
     content: "regular_stretch_goals",
     terrain: "rough",
-    // &F2 scan: centre Prospector by the river "+1 valuables" (resource_symbol);
-    // ring = a III mine "loop 5 gold", a "?" treehouse (treasure), a "?" cabin
-    // (treasure), a II skeleton (grave), the &F2 river+scrub anchor (blocked),
-    // open ground. Guards II-III.
+    // &F2 (ff2.webp) vs Factory rulebook: centre Prospector +1 valuables (NOT
+    // resource-die); NE "?" treehouse treasure; E "?" cabin treasure; SE blocked
+    // scrub (&F2 anchor); SW Factory Grave II (skeleton — Factory rulebook
+    // Grave, not the Cove Grave); W empty; NW mine ↻5 gold III. Guards II-III.
     fields: [
-      { location: "resource_symbol" },
-      { location: "mine", difficulty: 3, resource: "gold", amount: 5 },
+      { location: "prospector" },
       { location: "treasure_symbol" },
       { location: "treasure_symbol" },
-      { location: "grave", difficulty: 2 },
       { location: "blocked_field" },
+      { location: "factory_grave", difficulty: 2 },
       { location: "empty_field" },
+      { location: "mine", difficulty: 3, resource: "gold", amount: 5 },
     ],
-    outerImpassable: [false, false, false, false, true, false],
+    outerImpassable: [false, false, true, false, false, false],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
       credit:
-        "Factory far tile &F2 — fields transcribed from the physical tile scan (not on the wiki; field types assigned from the printed art). tileImage is the real scan, flower-masked to alpha.",
-      url: "https://heroes.thelazy.net/index.php/Factory"
+        "Factory far tile &F2 — fields matched to ff2.webp + Factory rulebook (Prospector, Factory Grave). Verify against physical tiles before final release.",
+      url: "https://raw.githubusercontent.com/qwrtln/Homm3BG-FactoryRulebook-build-artifacts/en/main_en.pdf"
     },
     assets: {
       tileImage: "/assets/board/tiles/ff2.webp"
@@ -1087,25 +1082,25 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
     group: "far",
     content: "regular_stretch_goals",
     terrain: "rough",
-    // &F3 scan: centre white Church (temple); ring = the &F3 canyon+river anchor
-    // (blocked), a sand-pit shovel (Excavation / artifact_dig), a III gem-pond mine
-    // "loop 1 valuables", a II red chest "2 chest -> 1" (treasure), a "?" well
-    // (magic_spring), open ground. Guards II-III.
+    // &F3 (ff3.webp) vs Factory rulebook: centre Temple; NE Excavation shovel;
+    // E empty; SE Watering Hole (well pool — NOT Magic Spring; rulebook p.8 art);
+    // SW treasure chest II "2→1"; W mine ↻1 valuables III; NW blocked canyon
+    // (&F3 anchor). Guards II-III.
     fields: [
       { location: "temple" },
-      { location: "blocked_field" },
       { location: "artifact_dig" },
-      { location: "mine", difficulty: 3, resource: "valuables", amount: 1 },
-      { location: "treasure_symbol", difficulty: 2 },
-      { location: "magic_spring" },
       { location: "empty_field" },
+      { location: "watering_hole" },
+      { location: "treasure_symbol", difficulty: 2 },
+      { location: "mine", difficulty: 3, resource: "valuables", amount: 1 },
+      { location: "blocked_field" },
     ],
-    outerImpassable: [false, true, false, false, false, false],
+    outerImpassable: [false, false, false, false, false, true],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
       credit:
-        "Factory far tile &F3 — fields transcribed from the physical tile scan (not on the wiki; field types assigned from the printed art). tileImage is the real scan, flower-masked to alpha.",
-      url: "https://heroes.thelazy.net/index.php/Factory"
+        "Factory far tile &F3 — fields matched to ff3.webp + Factory rulebook (Watering Hole well, Excavation). Verify against physical tiles before final release.",
+      url: "https://raw.githubusercontent.com/qwrtln/Homm3BG-FactoryRulebook-build-artifacts/en/main_en.pdf"
     },
     assets: {
       tileImage: "/assets/board/tiles/ff3.webp"
@@ -1116,26 +1111,25 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
     group: "center",
     content: "regular_stretch_goals",
     terrain: "rough",
-    // &C1 scan (a CENTER tile, guards VI-VII): centre airship + paddle-steamer =
-    // the Factory War Machine Factory (buy a war machine cheaply), guarded VII;
-    // ring = a VI Tree-spirit (tree_of_knowledge), a temple, a "?" waterfall
-    // (magic_spring), a Prospector "+1 valuables" (resource_symbol), a VI gazebo
-    // "-> Spell" (shrine), the &C1 crag anchor (blocked).
+    // &C1 (cf1.webp) vs Factory rulebook p.8: centre Airship Yard VII (airship +
+    // steamer — NOT War Machine Factory); NE Temple; E Shrine of Magic Incantation
+    // VI; SE blocked crag (&C1 anchor); SW Prospector +1 valuables; W Magic Spring
+    // (waterfall face); NW Tree of Knowledge VI. Guards VI-VII.
     fields: [
-      { location: "war_machine_factory", difficulty: 7 },
-      { location: "tree_of_knowledge", difficulty: 6 },
+      { location: "airship_yard", difficulty: 7 },
       { location: "temple" },
-      { location: "magic_spring" },
-      { location: "resource_symbol" },
       { location: "shrine_of_magic_incantation", difficulty: 6 },
       { location: "blocked_field" },
+      { location: "prospector" },
+      { location: "magic_spring" },
+      { location: "tree_of_knowledge", difficulty: 6 },
     ],
-    outerImpassable: [false, false, false, false, false, true],
+    outerImpassable: [false, false, true, false, false, false],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
       credit:
-        "Factory center tile &C1 — fields transcribed from the physical tile scan (not on the wiki; field types assigned from the printed art). tileImage is the real scan, flower-masked to alpha.",
-      url: "https://heroes.thelazy.net/index.php/Factory"
+        "Factory center tile &C1 — fields matched to cf1.webp + Factory rulebook p.8 Airship Yard art (was wrongly War Machine Factory). Verify against physical tiles before final release.",
+      url: "https://raw.githubusercontent.com/qwrtln/Homm3BG-FactoryRulebook-build-artifacts/en/main_en.pdf"
     },
     assets: {
       tileImage: "/assets/board/tiles/cf1.webp"
