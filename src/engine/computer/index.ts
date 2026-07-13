@@ -1,4 +1,5 @@
 export {
+  combatHasHumanParticipant,
   computerPlayerIds,
   configuredComputerOpponents,
   controllerOf,

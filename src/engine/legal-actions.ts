@@ -112,7 +112,14 @@ import {
 import { pvpEscapeWindowOpen } from "./combat-units";
 import { canPlaceTransformOn } from "./unit-transforms";
 import { bannableHeroesForSeat, DRAFT_FORMAT_LABELS, getDraftPhase, getScenario } from "./adventure-setup";
-import { controllerOf, humanPlayerIdsByController } from "./computer/control";
+import {
+  combatHasHumanParticipant,
+  controllerOf,
+  humanPlayerIdsByController,
+  isComputerPlayer,
+  sessionModeOf,
+} from "./computer/control";
+import { computerDecisionOwner } from "./computer/window";
 import { SHARED_DECK_IDS } from "./decks";
 import {
   abilityExpertIsCrownFree,
@@ -4357,6 +4364,51 @@ function addTownBuildActions(
 }
 
 export function getLegalActions(
+  state: GameState,
+  playerId: PlayerId,
+  cards: CardLibrary = cardLibrary,
+  buildings: BuildingLibrary = sampleBuildings
+): LegalAction[] {
+  return withComputerAdvanceOffer(
+    state,
+    playerId,
+    getLegalActionsCore(state, playerId, cards, buildings),
+  );
+}
+
+/**
+ * Single-player: while a computer seat owns the next decision on the map (or
+ * an AI-only fight), the human always has ADVANCE_COMPUTER — even when the
+ * computer is the active player / owns a pending choice. PvP with the human
+ * auto-pumps and does not offer this. Prepended so the UI can always find it.
+ */
+function withComputerAdvanceOffer(
+  state: GameState,
+  playerId: PlayerId,
+  actions: LegalAction[],
+): LegalAction[] {
+  if (sessionModeOf(state) !== "single-player") {
+    return actions;
+  }
+  if (isComputerPlayer(state, playerId) || state.players[playerId]?.eliminated) {
+    return actions;
+  }
+  if (!computerDecisionOwner(state) || combatHasHumanParticipant(state)) {
+    return actions;
+  }
+  if (actions.some((legal) => legal.action.type === "ADVANCE_COMPUTER")) {
+    return actions;
+  }
+  return [
+    {
+      label: "Next computer step",
+      action: { type: "ADVANCE_COMPUTER", playerId },
+    },
+    ...actions,
+  ];
+}
+
+function getLegalActionsCore(
   state: GameState,
   playerId: PlayerId,
   cards: CardLibrary = cardLibrary,

@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { applyAction, createAdventureLobbyState } from "../index";
+import { createInitialGameState } from "../setup";
 import {
+  combatHasHumanParticipant,
   computerPlayerIds,
   controllerOf,
   humanPlayerIdsByController,
+  standardComputerController,
 } from "./control";
 
 describe("computer controller foundation", () => {
@@ -74,6 +77,25 @@ describe("computer controller foundation", () => {
     expect(computerPlayerIds(state)).toEqual(["p2", "p3", "p4"]);
     expect(humanPlayerIdsByController(state)).toEqual(["p1"]);
     expect(state.players.p4?.name).toBe("Computer 3");
+  });
+
+  it("combatHasHumanParticipant is true only when a living human seat is in the fight", () => {
+    // AI-only (both seats computer): bulk-resolve off-screen.
+    const aiOnly = createInitialGameState("human-participant-ai");
+    aiOnly.controllers = {
+      p1: standardComputerController(),
+      p2: standardComputerController(),
+    };
+    expect(combatHasHumanParticipant(aiOnly)).toBe(false);
+
+    // PvP: human p1 vs computer p2 — pace the fight.
+    const pvp = createInitialGameState("human-participant-pvp");
+    pvp.controllers = { p2: standardComputerController() };
+    expect(combatHasHumanParticipant(pvp)).toBe(true);
+
+    // CONTROL: no open combat → false.
+    pvp.combat = null;
+    expect(combatHasHumanParticipant(pvp)).toBe(false);
   });
 
   it("requires explicit trusted computer authority in a hosted room", () => {

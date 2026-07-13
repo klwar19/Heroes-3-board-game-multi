@@ -2,6 +2,7 @@ import {
   applyAction,
   chooseComputerAction,
   collectMapObjectives,
+  combatHasHumanParticipant,
   computerDecisionOwner,
   computerPlayerIds,
   freshEntropy,
@@ -24,8 +25,12 @@ export const DEFAULT_COMPUTER_STEP_LIMIT = 256;
 
 /** Delay between live map steps (move → roll → move) so the human can watch. */
 export const COMPUTER_MAP_STEP_MS = 900;
-/** Combat activations pace faster — still one action at a time, not bulk. */
-export const COMPUTER_COMBAT_STEP_MS = 320;
+/**
+ * PvP (human vs computer) combat pace — one activation beat at a time so the
+ * human sees the fight. AI-only / neutral fights NEVER use this: they bulk-
+ * resolve off-screen in the same tick that opened them.
+ */
+export const COMPUTER_COMBAT_STEP_MS = 450;
 /** Lobby/setup picks can be snappy; nobody wants to watch draft micro-steps. */
 export const COMPUTER_SETUP_STEP_MS = 80;
 
@@ -278,23 +283,21 @@ export function driveComputerPlayers(
 }
 
 /**
- * Whether live rooms should FULLY settle computers in one transaction (setup
- * lobby only). Once the adventure is live, visible map/combat steps are paced
- * with intermediate broadcasts so the human watches real moves, rolls, and
- * rewards as they happen — not a post-hoc fake walk over an already-finished
- * turn.
+ * Whether live rooms should FULLY settle computers in one transaction.
+ * Setup lobby always bulk-settles (nobody wants to watch draft micro-steps).
+ * Adventure work is paced: map moves one-by-one; AI-only fights bulk-resolve
+ * inside a single tick so the human never sees them; PvP is paced normally.
  */
 export function computerWorkIsInstantBulk(state: GameState): boolean {
   return state.phase === "setup";
 }
 
 /**
- * Actions the human should SEE one-by-one. Card/spell/ability plays are paced
- * so PvP (and any open combat) shows the same FX/feed as a human play — never
- * bulk-resolve a Magic Arrow or save into an invisible snapshot. Placement,
- * pass-reaction, finish-stage, and pure bookkeeping still bulk-apply.
+ * Map actions the human should SEE one-by-one on the adventure map.
+ * Combat actions are NOT listed here — AI-only fights bulk-resolve off-screen;
+ * human-involving PvP uses {@link isPvpPacedComputerAction} instead.
  */
-export function isPacedComputerAction(action: GameAction): boolean {
+export function isMapPacedComputerAction(action: GameAction): boolean {
   switch (action.type) {
     case "MOVE_HERO":
     case "DISCOVER_TILE":
@@ -302,13 +305,29 @@ export function isPacedComputerAction(action: GameAction): boolean {
     case "REVISIT_FIELD":
     case "SET_TILE_ROTATION":
     case "CHOOSE_PENDING_ROLL":
+    // Market trades and visit resolves the human should notice on the map.
+    case "OPEN_MARKET":
+    case "TRADE_RESOURCES":
+    case "BUY_WAR_MACHINE":
+      return true;
+    default:
+      return false;
+  }
+}
+
+/**
+ * Combat (and combat-adjacent card) actions paced only when a HUMAN is in the
+ * fight — so computer units act at a watchable pace during PvP. Never used for
+ * AI-only / neutral fights (those bulk-resolve).
+ */
+export function isPvpPacedComputerAction(action: GameAction): boolean {
+  switch (action.type) {
     case "ATTACK_UNIT":
     case "MOVE_AND_ATTACK_UNIT":
     case "MOVE_UNIT":
     case "DEFEND_UNIT":
     case "END_ACTIVATION":
     case "CONTINUE_NEUTRAL_COMBAT":
-    // Visible card / spell / ability plays (combat AND map).
     case "CAST_SPELL":
     case "PLAY_CARD":
     case "PLAY_REACTION":
@@ -320,14 +339,47 @@ export function isPacedComputerAction(action: GameAction): boolean {
     case "SPEND_MORALE":
     case "SUMMON_DEMONS":
     case "USE_GENIE_DECK_DRAW":
-    // Market trades and visit resolves the human should notice.
-    case "OPEN_MARKET":
-    case "TRADE_RESOURCES":
-    case "BUY_WAR_MACHINE":
       return true;
     default:
+      // Placement / prep / ack / pass-reaction stay bulk so the human is not
+      // stuck watching the computer click through setup frames.
       return false;
   }
+}
+
+/**
+ * Whether this action should end a visible pump tick AFTER it is applied.
+ *
+ * Rules (user-facing contract):
+ * - Map: pace MOVE_HERO / discover / place so the human sees clear 1-by-1 map
+ *   movement.
+ * - AI-only combat (computer vs neutrals / computer vs computer): NEVER pace —
+ *   the whole fight bulk-resolves off-screen in the same tick that opened it.
+ * - PvP (human is a participant): pace combat actions at normal watchable pace.
+ *
+ * Optional `stateAfter` is the post-apply state. When omitted (classification
+ * tests), map + PvP combat action kinds are both treated as paced.
+ */
+export function isPacedComputerAction(
+  action: GameAction,
+  stateAfter?: GameState,
+): boolean {
+  if (stateAfter) {
+    // Mid AI-only fight: keep bulk-resolving; never broadcast a combat frame.
+    if (stateAfter.combat && !combatHasHumanParticipant(stateAfter)) {
+      return false;
+    }
+    // Human is in this fight — pace combat so it plays like normal PvP.
+    if (stateAfter.combat && combatHasHumanParticipant(stateAfter)) {
+      return (
+        isPvpPacedComputerAction(action) || isMapPacedComputerAction(action)
+      );
+    }
+    // On the map (no open combat, or combat just closed): pace map beats only.
+    return isMapPacedComputerAction(action);
+  }
+  // No state: classify by action kind alone (tests / static checks).
+  return isMapPacedComputerAction(action) || isPvpPacedComputerAction(action);
 }
 
 /** Delay before the next live computer step, by context. */
@@ -335,7 +387,13 @@ export function computerStepDelayMs(state: GameState): number {
   if (state.phase === "setup") {
     return COMPUTER_SETUP_STEP_MS;
   }
-  if (state.combat && !state.combat.endAcknowledged) {
+  // Only PvP (human in the fight) uses combat pacing. AI-only fights bulk-
+  // resolve and should never schedule a combat delay.
+  if (
+    state.combat &&
+    !state.combat.endAcknowledged &&
+    combatHasHumanParticipant(state)
+  ) {
     return COMPUTER_COMBAT_STEP_MS;
   }
   return COMPUTER_MAP_STEP_MS;
@@ -343,8 +401,12 @@ export function computerStepDelayMs(state: GameState): number {
 
 /**
  * Apply bulk non-paced computer work, then at most ONE paced (visible) action.
- * Used by the live pump so the human sees move → (optional roll) → move, while
- * placement/pass-reaction/finish-stage still resolve without a delay each.
+ *
+ * Critical: walking onto a neutral guard opens combat. That fight is AI-only
+ * for a computer hero, so this tick MUST keep resolving until the combat is
+ * gone (ack'd) — never broadcast a mid-neutral-battle snapshot. Map movement
+ * still stops after each MOVE_HERO so the human sees 1-by-1 steps. PvP combat
+ * stops after each combat beat so the human watches the fight normally.
  */
 export function settleComputerVisibleStep(state: GameState): ComputerRunResult {
   if (computerPlayerIds(state).length === 0) {
@@ -353,8 +415,9 @@ export function settleComputerVisibleStep(state: GameState): ComputerRunResult {
 
   const decisions: ComputerDecision[] = [];
   let current = state;
-  // Cap bulk non-paced work so a bug cannot spin forever inside one tick.
-  const bulkCap = 64;
+  // Soft cap for bookkeeping; AI-only combat extends this so a long fight
+  // never leaks a mid-battle frame for want of steps.
+  let bulkCap = 96;
   for (let i = 0; i < bulkCap; i += 1) {
     if (!computerDecisionOwner(current)) {
       return { state: current, decisions, stalled: false };
@@ -371,8 +434,15 @@ export function settleComputerVisibleStep(state: GameState): ComputerRunResult {
     const step = peek.decisions[0];
     current = peek.state;
     decisions.push(step);
-    if (isPacedComputerAction(step.action)) {
-      // One visible action per broadcast frame.
+
+    // AI-only fight open: keep going (extend the cap) — never return mid-fight.
+    if (current.combat && !combatHasHumanParticipant(current)) {
+      bulkCap = Math.max(bulkCap, i + DEFAULT_COMPUTER_STEP_LIMIT);
+      continue;
+    }
+
+    if (isPacedComputerAction(step.action, current)) {
+      // One visible map/PvP beat per broadcast frame.
       return { state: current, decisions, stalled: false };
     }
   }
@@ -405,10 +475,14 @@ export function settleComputerWork(state: GameState): GameState {
 }
 
 /**
- * Live room entry: bulk-settle setup seats; on adventure, apply the first
- * visible step immediately (so the human's END_TURN is answered with the
- * computer's first real action in the same response) and leave remaining
- * paced work for the scheduled pump.
+ * Live room entry after a normal human action (not ADVANCE_COMPUTER):
+ * - Setup: bulk-settle computers (draft is boring to watch).
+ * - Human-involved PvP combat: one visible combat beat now; further beats via
+ *   the auto timer (normal PvP pace).
+ * - Map / AI-only work: DO NOTHING. The human must press ADVANCE_COMPUTER for
+ *   each map beat so the computer never finishes its turn during first-player
+ *   dice, END_TURN, or any other human action. Policy/AI logic is unchanged —
+ *   only WHEN a map step is applied is gated.
  */
 export function settleComputerForLiveAction(state: GameState): GameState {
   if (computerPlayerIds(state).length === 0) {
@@ -417,15 +491,68 @@ export function settleComputerForLiveAction(state: GameState): GameState {
   if (computerWorkIsInstantBulk(state)) {
     return settleComputerWork(state);
   }
-  // First visible beat lands in this frame; further beats are pumped.
-  return settleComputerVisibleStep(state).state;
+  // PvP only: answer the human's combat action with one computer beat.
+  if (computerAutoPumpOwed(state)) {
+    return settleComputerVisibleStep(state).state;
+  }
+  // Map: wait for ADVANCE_COMPUTER. Leaving state untouched is intentional.
+  return state;
 }
 
-/** True when a live room still has computer work that the paced pump must run. */
-export function computerPumpOwed(state: GameState): boolean {
+/**
+ * True when a computer seat still owns a required decision (map or combat).
+ * Includes human-gated map work — NOT the same as auto-timer owed.
+ */
+export function computerWorkPending(state: GameState): boolean {
   return (
     computerPlayerIds(state).length > 0 &&
     !computerWorkIsInstantBulk(state) &&
     computerDecisionOwner(state) !== null
   );
+}
+
+/**
+ * Map / AI-only: the human must press ADVANCE_COMPUTER before the next beat.
+ * False during human-involved PvP (auto-pumped) and when no computer work is
+ * pending. Used by legal-actions + the client Next button.
+ */
+export function computerNeedsHumanAdvance(state: GameState): boolean {
+  return computerWorkPending(state) && !combatHasHumanParticipant(state);
+}
+
+/**
+ * Auto timer / alarm pump — ONLY for human-involved PvP combat. Map turns
+ * never auto-fire (that was the "computer already finished their move during
+ * first-player dice" bug). PartyKit alarms and the in-process setTimeout both
+ * key off this; map freezes are impossible because ADVANCE_COMPUTER is always
+ * legal for the human while computerNeedsHumanAdvance is true.
+ */
+export function computerAutoPumpOwed(state: GameState): boolean {
+  return computerWorkPending(state) && combatHasHumanParticipant(state);
+}
+
+/**
+ * @deprecated Prefer computerAutoPumpOwed (auto timer) or computerNeedsHumanAdvance
+ * (map Next). Kept as the auto-timer predicate so existing call sites keep the
+ * same name without re-arming map pumps.
+ */
+export function computerPumpOwed(state: GameState): boolean {
+  return computerAutoPumpOwed(state);
+}
+
+/**
+ * After a validated ADVANCE_COMPUTER action: run exactly one visible step
+ * (map MOVE_HERO / discover / …, or bulk AI-only combat if a walk opened one).
+ * Never schedules more work — the human presses again for the next beat.
+ */
+export function applyHumanComputerAdvance(state: GameState): ComputerRunResult {
+  if (!computerNeedsHumanAdvance(state)) {
+    return {
+      state,
+      decisions: [],
+      stalled: false,
+      reason: "No computer map step is waiting on human advance.",
+    };
+  }
+  return settleComputerVisibleStep(state);
 }

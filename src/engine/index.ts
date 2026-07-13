@@ -170,6 +170,7 @@ export {
   controllerOf,
   emptyComputerMemory,
   getComputerMemory,
+  combatHasHumanParticipant,
   humanPlayerIdsByController,
   isComputerPlayer,
   isPrivateSinglePlayer,

@@ -3649,6 +3649,17 @@ export type GameAction =
   | { type: "END_TURN"; playerId: PlayerId }
   | {
       /**
+       * Single-player only: the human confirms the next computer map beat.
+       * Server runs exactly one settleComputerVisibleStep after this validates
+       * (AI-only combat bulk-resolves inside that step; map MOVE_HERO stops at
+       * one cell). Not used for human-involved PvP (that auto-pumps). Does not
+       * change engine rules of the computer seat — only gates WHEN it acts.
+       */
+      type: "ADVANCE_COMPUTER";
+      playerId: PlayerId;
+    }
+  | {
+      /**
        * Concede the game: the player is removed from the turn order and becomes
        * an observer (rulebook p.11 elimination). Legal only on the player's own
        * map turn — never while defending in Combat ("you cannot surrender when
@@ -4213,6 +4224,18 @@ export type GameEvent =
       from: MapSpaceId;
       to: MapSpaceId;
       movementLeft: number;
+    }
+  | {
+      /**
+       * Single-player: the human confirmed the next computer map beat. The
+       * server then applies one settleComputerVisibleStep (same snapshot).
+       * Feed-safe; pure presentation signal — rules progress is the computer
+       * actions that follow in that same transaction.
+       */
+      id: string;
+      type: "COMPUTER_ADVANCE_REQUESTED";
+      playerId: PlayerId;
+      computerPlayerId: PlayerId;
     }
   | {
       id: string;

@@ -177,7 +177,12 @@ import {
   startWarMachineRound
 } from "./permanents";
 import { createSeededRandom, setActiveEntropy } from "./random";
-import { isComputerPlayer } from "./computer/control";
+import {
+  combatHasHumanParticipant,
+  isComputerPlayer,
+  sessionModeOf,
+} from "./computer/control";
+import { computerDecisionOwner } from "./computer/window";
 import { hexDistance, parseHexSpaceId } from "./hex";
 import {
   abilityExpertIsCrownFree,
@@ -17931,7 +17936,10 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "RESOLVE_TURN_TIMEOUT",
   "REQUEST_ROOM_RESET",
   "CONFIRM_ROOM_RESET",
-  "CANCEL_ROOM_RESET"
+  "CANCEL_ROOM_RESET",
+  // Single-player: human may confirm the next computer map beat while the
+  // computer owns the active seat (not the human's map turn).
+  "ADVANCE_COMPUTER",
 ]);
 
 function isHandlerValidated(state: GameState, action: GameAction): boolean {
@@ -17943,6 +17951,44 @@ function isHandlerValidated(state: GameState, action: GameAction): boolean {
     state.mode === "adventure" &&
     (action.type === "MOVE_HERO" || action.type === "BUILD_STRUCTURE" || action.type === "END_TURN")
   );
+}
+
+/**
+ * Single-player human gate: validates that a computer map beat is waiting, then
+ * stamps COMPUTER_ADVANCE_REQUESTED. The live server applies exactly one
+ * settleComputerVisibleStep after this action (same transaction) — the engine
+ * does not drive the computer seat itself, so policy/AI logic stays in the
+ * runner and this never freezes a table that forgot to wire the server step.
+ */
+function advanceComputerStep(
+  state: GameState,
+  action: Extract<GameAction, { type: "ADVANCE_COMPUTER" }>,
+): void {
+  if (sessionModeOf(state) !== "single-player") {
+    throw new Error("ADVANCE_COMPUTER is only legal in single-player.");
+  }
+  if (state.mode !== "adventure") {
+    throw new Error("ADVANCE_COMPUTER is only legal on the adventure map.");
+  }
+  if (isComputerPlayer(state, action.playerId)) {
+    throw new Error("Only the human may confirm a computer map step.");
+  }
+  if (state.players[action.playerId]?.eliminated) {
+    throw new Error("An eliminated player cannot advance the computer.");
+  }
+  const owner = computerDecisionOwner(state);
+  if (!owner) {
+    throw new Error("No computer seat currently needs a map step.");
+  }
+  // Human-involved PvP auto-pumps — advancing by hand would double-fire.
+  if (combatHasHumanParticipant(state)) {
+    throw new Error("PvP combat paces itself — no manual computer advance.");
+  }
+  appendEvent(state, {
+    type: "COMPUTER_ADVANCE_REQUESTED",
+    playerId: action.playerId,
+    computerPlayerId: owner,
+  });
 }
 
 export function applyAction(state: GameState, action: GameAction, options: ReducerOptions = {}): EngineResult {
@@ -18043,7 +18089,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
     action.type === "RESOLVE_TURN_TIMEOUT" ||
     action.type === "REQUEST_ROOM_RESET" ||
     action.type === "CONFIRM_ROOM_RESET" ||
-    action.type === "CANCEL_ROOM_RESET";
+    action.type === "CANCEL_ROOM_RESET" ||
+    // Human may ADVANCE_COMPUTER while a computer seat owns the map turn.
+    action.type === "ADVANCE_COMPUTER";
   const parallelBystanderBlocker =
     actorPlayerId && !isTableMetaAction ? parallelInteractionBlocker(nextState, actorPlayerId) : null;
   const parallelSlotBefore = parallelBystanderBlocker ? parallelSlotSignature(nextState) : null;
@@ -18498,6 +18546,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         } else {
           endTurn(nextState, action);
         }
+        break;
+      case "ADVANCE_COMPUTER":
+        advanceComputerStep(nextState, action);
         break;
       case "GIVE_UP":
         giveUpAdventure(nextState, action);

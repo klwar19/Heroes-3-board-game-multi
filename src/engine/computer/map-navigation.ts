@@ -294,6 +294,11 @@ function objectiveKind(
  * Far (Ⅱ–Ⅲ) supply tile (same geometry/seal rules legal-actions uses).
  * Marching here then flipping/placing is how the AI expands the map.
  *
+ * Yellow (sealed) outer borders NEVER open a tile — `canHeroDiscoverAdjacentTile`
+ * and `farTilePlacementCenters` both refuse a hero standing on a sealed edge.
+ * Explore objectives therefore only include real open doorways; a face-down
+ * tile sitting behind a yellow wall is not a march target from the sealed side.
+ *
  * Without PLACE-capable doorways the AI only walked toward already-laid
  * face-down Near/center tiles (IV–VII). When those sit behind a sealed yellow
  * border — or the hero cannot spend the last MP to flip them — it parked and
@@ -322,16 +327,21 @@ function collectExploreObjectives(
     if (isFieldGuarded(field) && !canBeatGuardedField(state, hero, field)) {
       continue;
     }
+    // Probe as if the hero already stands here — the discover/place gates read
+    // the hero field's sealed yellow arc. A sealed ring slot is never useful.
     const probe: HeroState = { ...hero, spaceId: field.spaceId };
     let useful = false;
     for (const tile of faceDown) {
+      // Engine gate: geometric adjacency + NOT heroFieldSealedForDiscovery
+      // (yellow outer border blocks ordinary discovery; Creature Bank exception).
       if (canHeroDiscoverAdjacentTile(state, probe, tile)) {
         useful = true;
         break;
       }
     }
     // A field where the hero could DROP a Ⅱ–Ⅲ tile is an expand objective even
-    // when every laid face-down tile is sealed off from here.
+    // when every laid face-down tile is sealed off from here. Placement also
+    // refuses sealed hero edges (canHeroReachPlacementCenter).
     if (!useful && canPlaceFar && farTilePlacementCenters(state, probe).length > 0) {
       useful = true;
     }
@@ -478,7 +488,13 @@ export function primaryMapObjective(
             MAP_OBJECTIVE_PRIORITY[sticky.kind] &&
           MAP_OBJECTIVE_PRIORITY[objective.kind] >= MAP_OBJECTIVE_PRIORITY.victory - 1,
       );
-      if (!higher) {
+      // Unreachable sticky (e.g. explore doorway sealed behind a yellow border
+      // the hero cannot cross without Pathfinding, or a fight we can no longer
+      // reach) must drop — otherwise the AI parks forever on an END_TURN with a
+      // dead commit. Reachability uses the same walk graph as the march BFS.
+      const stickyReachable =
+        distanceFromHeroTo(state, hero, sticky.spaceId) !== undefined;
+      if (!higher && stickyReachable) {
         return sticky;
       }
     }

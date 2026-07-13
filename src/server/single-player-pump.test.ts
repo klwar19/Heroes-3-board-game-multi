@@ -24,7 +24,11 @@ import {
   type GameAction,
   type GameState,
 } from "@/engine";
-import { computerPumpOwed, driveComputerPlayers } from "./computer-runner";
+import {
+  computerNeedsHumanAdvance,
+  computerPumpOwed,
+  driveComputerPlayers,
+} from "./computer-runner";
 import {
   cancelComputerPump,
   createRoom,
@@ -200,9 +204,15 @@ function withOwnedRoom(state: GameState): GameState {
 }
 
 describe("PartyKit alarm computer pump (Party.id is unreadable in onAlarm)", () => {
-  it("alarm ticks play the WHOLE computer turn to completion and re-arm themselves", async () => {
+  it("map computer work does NOT arm the auto-alarm — human ADVANCE_COMPUTER drives it", async () => {
+    // Map turns are human-gated. Auto alarms are only for human-involved PvP.
+    // A map computer-owed room must NOT arm an alarm (that raced moves past
+    // first-player dice). ADVANCE_COMPUTER still advances one step without freeze.
     const seed = withOwnedRoom(stateWithComputerOwed("pump-alarm-turn"));
-    const { room, connections, storage, fireAlarm, alarmPending } = makeAlarmEdgeRoom(
+    expect(computerNeedsHumanAdvance(seed)).toBe(true);
+    expect(computerPumpOwed(seed)).toBe(false);
+
+    const { room, connections, storage, alarmPending } = makeAlarmEdgeRoom(
       "edge-pump-alarm",
       seed,
     );
@@ -211,33 +221,35 @@ describe("PartyKit alarm computer pump (Party.id is unreadable in onAlarm)", () 
     const owner = makeConnection("owner-conn", "clientId=owner-1");
     connections.add(owner);
     server.onConnect(owner as unknown as EdgeConnection);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    // Map work: no auto alarm.
+    expect(alarmPending()).toBe(false);
 
-    expect(computerPumpOwed(storedSnapshot(storage).state)).toBe(true);
-
-    let lastVersion = storedSnapshot(storage).version;
-    let ticks = 0;
-    while (computerPumpOwed(storedSnapshot(storage).state) && ticks < 400) {
-      ticks += 1;
-      // The old code threw here ("You can not access `Party.id` …"), so the
-      // pump died on its FIRST tick and the AI froze mid-turn forever.
-      await fireAlarm(server);
-      const now = storedSnapshot(storage);
-      expect(now.version, `tick ${ticks} made no progress`).toBeGreaterThan(lastVersion);
-      lastVersion = now.version;
-      if (computerPumpOwed(now.state)) {
-        expect(alarmPending(), `tick ${ticks} did not re-arm the alarm`).toBe(true);
-      }
-    }
-
-    // The computer's whole turn resolved: nobody owes an automated decision.
-    expect(computerDecisionOwner(storedSnapshot(storage).state)).toBeNull();
-    expect(ticks).toBeGreaterThan(0);
+    const versionBefore = storedSnapshot(storage).version;
+    // Human presses Next via the real WS action path.
+    await server.onMessage(
+      JSON.stringify({
+        type: "action",
+        action: { type: "ADVANCE_COMPUTER", playerId: "p1" },
+        actorClientId: "owner-1",
+      }),
+      owner as unknown as EdgeConnection,
+    );
+    const after = storedSnapshot(storage);
+    expect(after.version).toBeGreaterThan(versionBefore);
+    // Feed still works: advance event is present.
+    expect(
+      after.state.eventLog.some((e) => e.type === "COMPUTER_ADVANCE_REQUESTED"),
+    ).toBe(true);
+    // Still no auto-alarm for remaining map work.
+    expect(computerPumpOwed(after.state)).toBe(false);
   });
 
-  it("onConnect re-arms a LOST pump (self-heal), and not when no computer owes work (CONTROL)", async () => {
-    // A room stuck mid-computer-turn with NO alarm pending (crashed tick /
-    // pre-fix deploy): the human reloading the page must revive it.
+  it("onConnect does NOT arm an alarm for map computer work (CONTROL: no false auto-pump)", async () => {
+    // Map computer-owed is human-gated — connect must not re-arm a phantom map pump.
     const stuck = withOwnedRoom(stateWithComputerOwed("pump-alarm-heal"));
+    expect(computerNeedsHumanAdvance(stuck)).toBe(true);
+    expect(computerPumpOwed(stuck)).toBe(false);
     const stuckRoom = makeAlarmEdgeRoom("edge-pump-heal", stuck);
     const stuckServer = new GameRoomServer(stuckRoom.room);
     await stuckServer.onStart();
@@ -245,10 +257,10 @@ describe("PartyKit alarm computer pump (Party.id is unreadable in onAlarm)", () 
     const owner = makeConnection("owner-conn", "clientId=owner-1");
     stuckRoom.connections.add(owner);
     stuckServer.onConnect(owner as unknown as EdgeConnection);
-    await vi.waitFor(() => expect(stuckRoom.alarmPending()).toBe(true));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(stuckRoom.alarmPending()).toBe(false);
 
     // CONTROL: the human owns the next decision — a connect arms nothing.
-    // (Settle any computer work a random seat order may open at game start.)
     const fresh = createAdventureGameState({
       seed: "pump-alarm-heal-idle",
       scenarioId: "skirmish",
@@ -267,9 +279,10 @@ describe("PartyKit alarm computer pump (Party.id is unreadable in onAlarm)", () 
     expect(idleRoom.alarmPending()).toBe(false);
   });
 
-  it("ANY client message (health ping) and an HTTP poll re-arm a lost pump without a reload", async () => {
+  it("map computer work: health ping does NOT arm a phantom map alarm", async () => {
     const stuck = withOwnedRoom(stateWithComputerOwed("pump-alarm-msg-heal"));
-    const { room, connections, clearAlarm, alarmPending } = makeAlarmEdgeRoom(
+    expect(computerPumpOwed(stuck)).toBe(false);
+    const { room, connections, alarmPending } = makeAlarmEdgeRoom(
       "edge-pump-msg-heal",
       stuck,
     );
@@ -278,30 +291,28 @@ describe("PartyKit alarm computer pump (Party.id is unreadable in onAlarm)", () 
     const owner = makeConnection("owner-conn", "clientId=owner-1");
     connections.add(owner);
     server.onConnect(owner as unknown as EdgeConnection);
-    await vi.waitFor(() => expect(alarmPending()).toBe(true));
-
-    // The alarm chain dies (crashed tick / runtime gave up on retries). The
-    // human does NOT reload — their socket just health-pings.
-    clearAlarm();
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(alarmPending()).toBe(false);
+
     await server.onMessage(
       JSON.stringify({ type: "ping", knownVersion: 1 }),
       owner as unknown as EdgeConnection,
     );
-    await vi.waitFor(() => expect(alarmPending()).toBe(true));
-
-    // The client's http-recovery poll heals it the same way.
-    clearAlarm();
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(alarmPending()).toBe(false);
+
     await server.onRequest(
       new Request("https://example.partykit.dev/parties/main/edge-pump-msg-heal?clientId=owner-1") as never,
     );
-    await vi.waitFor(() => expect(alarmPending()).toBe(true));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(alarmPending()).toBe(false);
   });
 
-  it("a FAILED alarm tick re-arms the pump instead of killing the chain", async () => {
+  it("repeated ADVANCE_COMPUTER drains a full map turn without auto-alarm (no freeze)", async () => {
+    // Map path has no alarm chain. Human Next is the only advance; after
+    // enough presses the computer no longer owns a decision.
     const stuck = withOwnedRoom(stateWithComputerOwed("pump-alarm-tick-fail"));
-    const { room, connections, storage, fireAlarm, alarmPending, failNextPut } = makeAlarmEdgeRoom(
+    const { room, connections, storage, alarmPending } = makeAlarmEdgeRoom(
       "edge-pump-tick-fail",
       stuck,
     );
@@ -310,21 +321,28 @@ describe("PartyKit alarm computer pump (Party.id is unreadable in onAlarm)", () 
     const owner = makeConnection("owner-conn", "clientId=owner-1");
     connections.add(owner);
     server.onConnect(owner as unknown as EdgeConnection);
-    await vi.waitFor(() => expect(alarmPending()).toBe(true));
 
-    // One-off persistence hiccup: without the catch+re-arm, onAlarm throws and
-    // (once the runtime's few retries are spent) the AI freezes mid-turn.
-    failNextPut();
-    await fireAlarm(server); // must not reject
-    expect(alarmPending(), "failed tick did not re-arm the pump").toBe(true);
-
-    // The next tick recovers and makes real progress.
-    const before = storedSnapshot(storage).version;
-    await fireAlarm(server);
-    expect(storedSnapshot(storage).version).toBeGreaterThan(before);
-    if (computerPumpOwed(storedSnapshot(storage).state)) {
-      expect(alarmPending()).toBe(true);
+    let steps = 0;
+    while (
+      computerNeedsHumanAdvance(storedSnapshot(storage).state) &&
+      steps++ < 256
+    ) {
+      const versionBefore = storedSnapshot(storage).version;
+      await server.onMessage(
+        JSON.stringify({
+          type: "action",
+          action: { type: "ADVANCE_COMPUTER", playerId: "p1" },
+          actorClientId: "owner-1",
+        }),
+        owner as unknown as EdgeConnection,
+      );
+      expect(storedSnapshot(storage).version).toBeGreaterThan(versionBefore);
+      // Map work never arms the auto-alarm.
+      expect(alarmPending()).toBe(false);
     }
+    expect(steps).toBeGreaterThan(0);
+    expect(computerDecisionOwner(storedSnapshot(storage).state)).toBeNull();
+    expect(computerNeedsHumanAdvance(storedSnapshot(storage).state)).toBe(false);
   });
 });
 
@@ -337,7 +355,7 @@ describe("built-in store computer pump self-heal", () => {
     vi.useRealTimers();
   });
 
-  it("subscribeToRoom revives a room frozen mid-computer-turn after the pump timer was lost", () => {
+  it("map computer turn waits for ADVANCE_COMPUTER — timers alone never finish it", () => {
     vi.useFakeTimers();
     const roomId = `sp-pump-${Math.random().toString(36).slice(2, 10)}`;
     createRoom({ roomId, sessionMode: "single-player", computerOpponents: 1 });
@@ -350,30 +368,49 @@ describe("built-in store computer pump self-heal", () => {
     submitRoomAction(roomId, { type: "START_ADVENTURE", playerId: "p1" }, "owner-1");
     drainComputerPumpSync(roomId);
 
-    // Human plays its round-1 turn through the real action route.
+    // Human plays until the computer owns the next decision.
     let guard = 0;
-    while (guard++ < 40 && !computerPumpOwed(getRoomSnapshot(roomId).state)) {
-      const action = nextHumanAction(getRoomSnapshot(roomId).state);
+    while (guard++ < 40 && !computerNeedsHumanAdvance(getRoomSnapshot(roomId).state)) {
+      const offers = getLegalActions(getRoomSnapshot(roomId).state, "p1");
+      // Prefer non-advance human actions while building to computer turn.
+      const action =
+        offers.find((l) => l.action.type !== "ADVANCE_COMPUTER")?.action ??
+        nextHumanAction(getRoomSnapshot(roomId).state);
       const outcome = submitRoomAction(roomId, action, "owner-1");
       expect(outcome.result.errors, outcome.result.errors.map((error) => error.message).join("; ")).toEqual([]);
     }
-    expect(computerPumpOwed(getRoomSnapshot(roomId).state)).toBe(true);
+    expect(computerNeedsHumanAdvance(getRoomSnapshot(roomId).state)).toBe(true);
+    expect(computerPumpOwed(getRoomSnapshot(roomId).state)).toBe(false);
 
-    // Simulate the restart/crash: the pending pump timer is gone.
+    // Timers / subscribe self-heal must NOT auto-run the map turn.
     cancelComputerPump(roomId);
     const stuckVersion = getRoomSnapshot(roomId).version;
+    const unsubscribe = subscribeToRoom(roomId, () => {});
     vi.advanceTimersByTime(30_000);
-    expect(getRoomSnapshot(roomId).version).toBe(stuckVersion); // frozen without the fix's revival
+    expect(getRoomSnapshot(roomId).version).toBe(stuckVersion);
+    expect(computerDecisionOwner(getRoomSnapshot(roomId).state)).toBe("p2");
 
-    // A client (re)opens the SSE stream — the subscribe self-heal re-arms it.
-    const versions: number[] = [];
-    const unsubscribe = subscribeToRoom(roomId, (snapshot) => versions.push(snapshot.version));
-    vi.advanceTimersByTime(30_000);
-    expect(versions.length).toBeGreaterThan(0);
+    // Human Next advances exactly one beat (version bumps).
+    const one = submitRoomAction(
+      roomId,
+      { type: "ADVANCE_COMPUTER", playerId: "p1" },
+      "owner-1",
+    );
+    expect(one.result.errors).toEqual([]);
     expect(getRoomSnapshot(roomId).version).toBeGreaterThan(stuckVersion);
-    // The pump ran the computer turn to completion, not just one step.
-    expect(computerPumpOwed(getRoomSnapshot(roomId).state)).toBe(false);
+
+    // Drain remaining map beats by human confirm until the computer is done.
+    let steps = 0;
+    while (computerNeedsHumanAdvance(getRoomSnapshot(roomId).state) && steps++ < 256) {
+      const r = submitRoomAction(
+        roomId,
+        { type: "ADVANCE_COMPUTER", playerId: "p1" },
+        "owner-1",
+      );
+      expect(r.result.errors, r.result.errors.map((e) => e.message).join("; ")).toEqual([]);
+    }
     expect(computerDecisionOwner(getRoomSnapshot(roomId).state)).toBeNull();
+    expect(computerNeedsHumanAdvance(getRoomSnapshot(roomId).state)).toBe(false);
 
     unsubscribe();
     cancelComputerPump(roomId);

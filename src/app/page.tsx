@@ -14,9 +14,11 @@ import {
   getPlayerView,
   hasOpenAdventureTurn,
   healLegacyPlayerFields,
+  combatHasHumanParticipant,
   isCombatSandboxSetup,
   isComputerPlayer,
   roomDisplayName,
+  computerDecisionOwner,
   isParallelActor,
   isResetVoteApproved,
   resetVoteRequired,
@@ -1762,12 +1764,16 @@ export default function Home() {
         });
       }
 
-      // Hero walks. With the live paced computer pump, each computer HERO_MOVED
-      // arrives in its OWN snapshot (real state already advanced) — animate it
-      // like a human step so the human sees move → roll → reward → move, not a
-      // post-hoc walk over a finished turn. A multi-step batch in one snapshot
-      // (legacy full settle / reconnect catch-up) still uses the slow replay
-      // path so nothing teleports.
+      // Hero walks.
+      // - Human moves: instant path arrow (own click).
+      // - Computer map steps: the pump sends ONE HERO_MOVED per tick — path
+      //   arrow on the map only. AI-only/neutral fights bulk-resolve server-
+      //   side in that same tick, so the human NEVER enters a dumb AI battle
+      //   screen; only a short battle recap toast may appear after.
+      // - Catch-up batches (reconnect / multi-hop in one snapshot): stepped
+      //   Next/Confirm replay so nothing teleports.
+      // - PvP combat (human is a participant): cancel map replay; fight plays
+      //   on the normal combat board at normal pace.
       const freshMoves = moves.filter((event) => !seenMoveIdsRef.current.has(event.id));
       for (const event of moves) {
         seenMoveIdsRef.current.add(event.id);
@@ -1778,10 +1784,14 @@ export default function Home() {
       const freshComputerMoves = freshMoves.filter((event) =>
         isComputerPlayer(nextState, event.playerId)
       );
+      const humanInOpenCombat =
+        Boolean(nextState.combat) && combatHasHumanParticipant(nextState);
+      // Live path arrow: human always; computer only for a single paced step
+      // while NOT mid-PvP (map view). Multi-hop computer batches use the overlay.
       const liveWalks =
         freshHumanMoves.length > 0
           ? freshHumanMoves
-          : freshComputerMoves.length === 1
+          : !humanInOpenCombat && freshComputerMoves.length === 1
             ? freshComputerMoves
             : [];
       if (liveWalks.length > 0) {
@@ -1811,17 +1821,15 @@ export default function Home() {
           setMoveCue((current) => (current?.id === liveWalks[0].id ? null : current));
         }, 1800);
       }
-      // Computer combat: drop any pending multi-step replay. Battle results
-      // that arrive while the human is still on the map get a short recap
-      // toast (no "watch moves" gate — moves are already live).
-      if (nextState.combat) {
+      if (humanInOpenCombat) {
+        // PvP: human fights on the combat board; drop any map replay/recap.
         cancelComputerReplayRef.current();
         setOpponentTurnSummary(null);
       } else {
-        // Prefer a confirmation-gated step replay whenever ≥1 computer walk
-        // lands in this snapshot (full settle / catch-up / multi-hop). A lone
-        // live-paced step still uses the path arrow above so the pump stays
-        // freeze-safe; the overlay is only for batches the human must confirm.
+        // Map view: recap any AI-only battles that bulk-resolved off-screen,
+        // and gate multi-hop catch-up walks behind Next / Confirm.
+        // NEVER open a combat board for AI-only fights (server bulk-resolves
+        // them; if a mid-fight frame ever leaked, combat is absent here).
         const batchedComputerMoves =
           freshComputerMoves.length > 1 ? freshComputerMoves : [];
         const replay =
@@ -1838,7 +1846,6 @@ export default function Home() {
         }
         const battleCues = buildComputerBattleReport(nextState, freshBattleResults);
         if (replay) {
-          // Multi-hop batch: hold pawns and wait for Next / Confirm presses.
           opponentSummaryCounterRef.current += 1;
           setOpponentTurnSummary({
             id: `opp-turn-${opponentSummaryCounterRef.current}`,
@@ -1846,7 +1853,7 @@ export default function Home() {
             replay,
           });
         } else if (battleCues.length > 0) {
-          // Live pace: battle recap only — AI fights stay off-screen.
+          // Off-screen AI fight finished: short recap only, stay on the map.
           opponentSummaryCounterRef.current += 1;
           setOpponentTurnSummary({
             id: `opp-turn-${opponentSummaryCounterRef.current}`,
@@ -4179,8 +4186,13 @@ export default function Home() {
       : state.mode === "combat-sandbox" && state.phase === "setup"
         ? "menu"
         : // PvP pre-battle preparation happens on the map, so keep the map theme
-          // playing until the fight actually begins (deployment).
-          state.mode === "adventure" && (!state.combat || combatTab === "map" || Boolean(state.combat.prep))
+          // playing until the fight actually begins (deployment). AI-only SP
+          // fights stay on the map theme (they never open the battle board).
+          state.mode === "adventure" &&
+          (!state.combat ||
+            combatTab === "map" ||
+            Boolean(state.combat.prep) ||
+            (state.sessionMode === "single-player" && !combatHasHumanParticipant(state)))
           ? "map"
           : "combat";
   useBackgroundMusic(musicScene);
@@ -4231,11 +4243,20 @@ export default function Home() {
 
   const trayActive = Boolean(state.reactionWindow && state.reactionWindow.priorityPlayerId === viewerPlayerId);
   const seatIds = state.turnOrder.filter((playerId) => playerId !== NEUTRAL_PLAYER_ID);
-  const combatVisible = Boolean(state.combat);
+  // Single-player: AI-only / neutral fights bulk-resolve off-screen. Never open
+  // the battle board for them (even if a mid-tick frame briefly still has
+  // combat). PvP — human is a participant — always shows at normal pace.
+  const combatVisible = Boolean(
+    state.combat &&
+      (state.sessionMode !== "single-player" || combatHasHumanParticipant(state)),
+  );
   // PvP pre-battle preparation is done on the adventure map, not the battlefield.
   // Once the fight is decided (e.g. a Retreat straight out of prep) the result
   // belongs on the battle screen, so the forced-map override lifts.
-  const inBattlePrep = Boolean(state.combat?.prep) && !state.combat?.outcome;
+  const inBattlePrep =
+    Boolean(state.combat?.prep) &&
+    !state.combat?.outcome &&
+    combatVisible;
   const adventureMode = state.mode === "adventure";
   const inLobby = Boolean(state.setupLobby) && state.phase === "setup";
   const inCombatSandboxSetup = isCombatSandboxSetup(state);
@@ -4889,15 +4910,59 @@ export default function Home() {
                     <span className="computerMovingDot" />
                     {state.players[computerReplay.activePlayerId]?.name ?? "Computer"} is moving…
                   </div>
-                ) : state.activePlayerId &&
-                  isComputerPlayer(state, state.activePlayerId) &&
-                  !state.combat &&
-                  state.sessionMode === "single-player" ? (
-                  <div className="computerMovingBanner" role="status">
-                    <span className="computerMovingDot" />
-                    {state.players[state.activePlayerId]?.name ?? "Computer"} is taking their turn…
-                  </div>
                 ) : null}
+                {/*
+                  Single-player map: computer never auto-moves. While a computer
+                  seat owns the next decision the human must press Next
+                  (ADVANCE_COMPUTER). Hidden during first-player dice so the
+                  ceremony finishes before any computer step is offered.
+                */}
+                {(() => {
+                  const advanceLegal = legalActions.find(
+                    (legal) => legal.action.type === "ADVANCE_COMPUTER",
+                  );
+                  const computerOwner = computerDecisionOwner(state);
+                  // combatVisible is false for AI-only SP fights; PvP opens the
+                  // board (combatVisible true) and auto-pumps — no Next gate.
+                  const showGate =
+                    Boolean(advanceLegal) &&
+                    !firstRoll &&
+                    !opponentTurnSummary &&
+                    !computerReplay.active &&
+                    !combatVisible &&
+                    state.sessionMode === "single-player";
+                  if (!showGate || !advanceLegal) return null;
+                  const name =
+                    (computerOwner && state.players[computerOwner]?.name) ||
+                    "Computer";
+                  return (
+                    <div
+                      className="opponentTurnBackdrop"
+                      role="dialog"
+                      aria-modal="true"
+                      aria-label="Computer's turn — confirm next step"
+                    >
+                      <div className="opponentTurnCard">
+                        <h2 className="opponentTurnTitle">{name}&apos;s turn</h2>
+                        <p className="opponentTurnNoBattles">
+                          Press Next for each map step. Neutral battles resolve
+                          off-screen. PvP fights still play normally.
+                        </p>
+                        <div className="opponentTurnActions">
+                          <button
+                            type="button"
+                            className="opponentTurnWatch"
+                            onClick={() => {
+                              void submitAction(advanceLegal.action);
+                            }}
+                          >
+                            Next step →
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
                 {opponentTurnSummary || computerReplay.active ? (
                   <OpponentTurnOverlay
                     cues={opponentTurnSummary?.cues ?? []}
