@@ -20,7 +20,7 @@ import {
 } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { WOG_UNIT_IDS_BY_TIER } from "@/data/wog";
-import { allTileDefinitions, ALL_TILE_CONTENT, DEFAULT_TILE_CONTENT, tilePoolIds } from "@/data/map/tiles";
+import { allTileDefinitions, DEFAULT_TILE_CONTENT, tilePoolIds } from "@/data/map/tiles";
 import { CREATURE_BANK_IDS, CREATURE_BANKS } from "@/data/map/creature-banks";
 import type { TileContent } from "@/data/map/types";
 import {
@@ -253,7 +253,7 @@ export type AdventureSetupOptions = {
   startingBuildings?: string[];
   /** Map designer: replaces the scenario's face-down Near/Center layout. */
   customMap?: CustomMapTilePlan[] | null;
-  /** Content sets whose tiles fill the supply pools (default: the four boxed sets). */
+  /** Content sets whose tiles fill the supply pools (default: every published set). */
   tileContent?: TileContent[];
   /**
    * Roll the Attack die for the starting player (official setup step 22).
@@ -965,18 +965,19 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
       : {})
   };
 
-  // Tile pools (face-down draws are secret until revealed). Pools only mix
-  // the enabled content sets; the default keeps the original four boxed
-  // sets, so existing games are unchanged. Random Town tiles (C5 and the
-  // expansion ones) never enter pools - tilePoolIds filters them out.
+  // Tile pools (face-down draws are secret until revealed). Default mixes
+  // every published content set so no expansion tile is locked out of random
+  // draws. Callers may still pass a narrower `tileContent` for tests.
   const tileContent = options.tileContent ?? DEFAULT_TILE_CONTENT;
   const nearPool = shuffleCards(tilePoolIds("near", tileContent), `${seed}#pool#near`);
   const centerPool = shuffleCards(tilePoolIds("center", tileContent), `${seed}#pool#center`);
   const farPool = shuffleCards(tilePoolIds("far", tileContent), `${seed}#pool#far`);
-  // Sea and Subterranean tiles ship in later boxes; designer maps may place
-  // them regardless of the active content sets, so draw from every set.
-  const seaPool = shuffleCards(tilePoolIds("sea", ALL_TILE_CONTENT), `${seed}#pool#sea`);
-  const subterraneanPool = shuffleCards(tilePoolIds("subterranean", ALL_TILE_CONTENT), `${seed}#pool#subterranean`);
+  // Sea / Subterranean also respect the active content filter (default = all).
+  const seaPool = shuffleCards(tilePoolIds("sea", tileContent), `${seed}#pool#sea`);
+  const subterraneanPool = shuffleCards(
+    tilePoolIds("subterranean", tileContent),
+    `${seed}#pool#subterranean`
+  );
 
   const state: GameState = {
     id: "adventure-game",

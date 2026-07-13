@@ -102,25 +102,68 @@ describe("expansion tile data", () => {
     expect(Object.keys(allTileDefinitions)).toHaveLength(115);
   });
 
-  it("keeps the default pools exactly as before the expansion data landed", () => {
-    expect(new Set(tilePoolIds("far", DEFAULT_TILE_CONTENT))).toEqual(
-      new Set(Object.values(coreTileDefinitions).filter((tile) => tile.group === "far").map((tile) => tile.id))
+  it("default pools include every tile of that group (all content sets + Random Town)", () => {
+    // DEFAULT is the full catalog — expansion / stretch-goal land tiles are not
+    // gated behind a lobby toggle. Starting (Ⅰ) tiles stay faction-fixed.
+    expect(DEFAULT_TILE_CONTENT).toEqual(ALL_TILE_CONTENT);
+
+    for (const group of ["far", "near", "center", "sea", "subterranean"] as const) {
+      const expected = new Set(
+        Object.values(allTileDefinitions)
+          .filter((tile) => tile.group === group)
+          .map((tile) => tile.id)
+      );
+      expect(new Set(tilePoolIds(group, DEFAULT_TILE_CONTENT)), `${group} pool`).toEqual(expected);
+    }
+
+    // Random Town tiles are pool-eligible; the engine assigns the defending
+    // faction when the field is fought (ensureRandomTownFaction).
+    expect(tilePoolIds("center", DEFAULT_TILE_CONTENT)).toContain("C5");
+    expect(tilePoolIds("subterranean", DEFAULT_TILE_CONTENT)).toContain("#C3");
+    expect(tilePoolIds("sea", DEFAULT_TILE_CONTENT)).toContain("#C4");
+
+    // Group isolation: a far pool never contains a sea/near/… id.
+    expect(tilePoolIds("far", DEFAULT_TILE_CONTENT).every((id) => allTileDefinitions[id].group === "far")).toBe(
+      true
     );
-    expect(new Set(tilePoolIds("near", DEFAULT_TILE_CONTENT))).toEqual(
-      new Set(Object.values(coreTileDefinitions).filter((tile) => tile.group === "near").map((tile) => tile.id))
-    );
-    // C5 (Random Town) stays out of the default center pool.
-    expect(new Set(tilePoolIds("center", DEFAULT_TILE_CONTENT))).toEqual(new Set(["C1", "C2", "C3", "C4"]));
+    expect(tilePoolIds("sea", DEFAULT_TILE_CONTENT).length).toBeGreaterThan(0);
   });
 
-  it("excludes Random Town tiles from pools even with everything enabled", () => {
-    const center = tilePoolIds("center", ALL_TILE_CONTENT);
-    expect(center).not.toContain("C5");
-    expect(center).not.toContain("#C3");
-    expect(center).not.toContain("#C4");
-    // Sea and subterranean tiles only come through their own groups.
-    expect(tilePoolIds("far", ALL_TILE_CONTENT).every((id) => allTileDefinitions[id].group === "far")).toBe(true);
-    expect(tilePoolIds("sea", ALL_TILE_CONTENT).length).toBeGreaterThan(0);
+  it("a live default adventure draws far/near/center from the full catalog", () => {
+    const state = createAdventureGameState({
+      seed: "full-tile-catalog",
+      difficulty: "normal",
+      scenarioId: "land-2p",
+      rollFirstPlayer: false,
+      players: [
+        { id: "p1", name: "A", factionId: "castle" },
+        { id: "p2", name: "B", factionId: "necropolis" }
+      ]
+    });
+    // Remaining far pool + every face-down far already on the layout together
+    // must be exactly the full far catalog (no expansion tile dropped).
+    const onMapFar = Object.values(state.adventure!.tiles)
+      .map((tile) => tile.tileDefId)
+      .filter((id) => allTileDefinitions[id]?.group === "far");
+    const remainingFar = state.adventure!.farTilePool ?? [];
+    const farInPlay = new Set([...onMapFar, ...remainingFar]);
+    const allFar = new Set(tilePoolIds("far", DEFAULT_TILE_CONTENT));
+    expect(farInPlay).toEqual(allFar);
+
+    const allNear = new Set(tilePoolIds("near", DEFAULT_TILE_CONTENT));
+    const onMapNear = Object.values(state.adventure!.tiles)
+      .map((tile) => tile.tileDefId)
+      .filter((id) => allTileDefinitions[id]?.group === "near");
+    // land-2p places 6 of the full near pool — every placed id must be a pool member.
+    expect(onMapNear.length).toBe(6);
+    expect(onMapNear.every((id) => allNear.has(id))).toBe(true);
+    expect(allNear.size).toBeGreaterThan(12);
+    expect(allFar.size).toBeGreaterThan(18);
+
+    // Control: expansion far tiles are actually present in the shuffled pool
+    // (proves DEFAULT is not still the old core-only filter).
+    const expansionFar = ["#F1", "F19", "F22", "F25", "&F1"];
+    expect(expansionFar.some((id) => farInPlay.has(id))).toBe(true);
   });
 
   it("derives sea-tile groups and water terrain from the wiki data", () => {
