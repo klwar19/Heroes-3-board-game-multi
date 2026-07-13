@@ -2803,9 +2803,10 @@ function rewardArtFromVisitSteps(
         const degrees = typeof step.rotation === "number" ? `${rotation * 60}°` : undefined;
         return {
           image: def?.assets?.tileImage,
-          name: tile.tileDefId,
+          // TileDefinition has id (no display name); fall back to the instance's def id.
+          name: def?.id ?? tile.tileDefId,
           tileRotation: rotation,
-          caption: degrees ?? tile.tileDefId
+          caption: degrees ?? def?.id ?? tile.tileDefId
         };
       }
     }
@@ -7028,7 +7029,6 @@ export const ADVENTURE_FEED_CUES: Partial<Record<GameEventType, { icon: string; 
   MORALE_CARD_DISCARDED: { icon: "🎺", cue: "morale" },
   MORALE_CARD_USED: { icon: "🎺", cue: "morale" },
   QUICK_COMBAT_WON: { icon: "⚡", cue: "quick-combat" },
-  COMPUTER_GUARANTEED_WIN: { icon: "⚡", cue: "quick-combat" },
   NEUTRAL_COMBAT_STARTED: { icon: "⚔️", cue: "battle-begin" },
   NEUTRAL_ARMY_REVEALED: { icon: "👁", cue: "reveal" },
   PLAYER_COMBAT_STARTED: { icon: "⚔️", cue: "battle-begin" },

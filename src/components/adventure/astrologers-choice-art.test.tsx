@@ -184,6 +184,7 @@ describe("Astrologers choice tray — relevant option art, not the proclamation 
     // prove the scan only appears when options have no art of their own.
     const state = drawProclamation("astrologers.dead_silence", "astro-text-only");
     state.adventure!.pendingVisit = {
+      heroId: "hero_p1",
       playerId: "p1",
       fieldId: state.heroes.hero_p1.spaceId ?? Object.keys(state.adventure!.fields)[0],
       location: "astrologers",
@@ -194,7 +195,7 @@ describe("Astrologers choice tray — relevant option art, not the proclamation 
           options: [{ label: "Acknowledge", steps: [] }]
         }
       ]
-    } as unknown as NonNullable<GameState["adventure"]>["pendingVisit"];
+    } as NonNullable<GameState["adventure"]>["pendingVisit"];
 
     renderTray(state);
 
@@ -299,6 +300,7 @@ describe("Disruption rotate-tile tray — tile art, not a wall of text", () => {
     tile.rotation = 0;
 
     state.adventure!.pendingVisit = {
+      heroId: "hero_p1",
       playerId: "p1",
       fieldId: Object.keys(state.adventure!.fields)[0],
       location: "astrologers",
@@ -306,14 +308,16 @@ describe("Disruption rotate-tile tray — tile art, not a wall of text", () => {
         {
           type: "CHOOSE_ONE",
           prompt: `Disruption: rotate tile ${tile.tileDefId} by how much?`,
-          options: ([1, 2, 3, 4, 5].map((turns) => ({
-            label: `Turn ${turns * 60}° clockwise`,
-            steps: [{ type: "DISRUPTION_SET_ROTATION", tileInstanceId: tile.id, rotation: turns }]
-          })) as { label: string; steps: { type: string; [key: string]: unknown }[] }[])
-            .concat([{ label: "Pick a different tile", steps: [{ type: "DISRUPTION_ROTATE_OFFER" }] }])
+          options: [
+            ...[1, 2, 3, 4, 5].map((turns) => ({
+              label: `Turn ${turns * 60}° clockwise`,
+              steps: [{ type: "DISRUPTION_SET_ROTATION" as const, tileInstanceId: tile.id, rotation: turns }]
+            })),
+            { label: "Pick a different tile", steps: [{ type: "DISRUPTION_ROTATE_OFFER" as const }] }
+          ]
         }
       ]
-    } as unknown as NonNullable<GameState["adventure"]>["pendingVisit"];
+    } as NonNullable<GameState["adventure"]>["pendingVisit"];
 
     renderTray(state);
 
@@ -336,6 +340,7 @@ describe("Disruption rotate-tile tray — tile art, not a wall of text", () => {
     const { state, tile } = disruptionTrayState("astro-disruption-click");
     tile.rotation = 0;
     state.adventure!.pendingVisit = {
+      heroId: "hero_p1",
       playerId: "p1",
       fieldId: Object.keys(state.adventure!.fields)[0],
       location: "astrologers",
@@ -352,7 +357,7 @@ describe("Disruption rotate-tile tray — tile art, not a wall of text", () => {
           ]
         }
       ]
-    } as unknown as NonNullable<GameState["adventure"]>["pendingVisit"];
+    } as NonNullable<GameState["adventure"]>["pendingVisit"];
 
     const onAction = renderTray(state);
     fireEvent.click(screen.getByRole("button", { name: /Turn 60° clockwise/i }));

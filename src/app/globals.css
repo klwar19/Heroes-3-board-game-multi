@@ -741,14 +741,17 @@ button {
 
 /* Verified members' names (and Hall of Fame rows) open the public profile. */
 .roomMemberProfileLink,
-.hallOfFameName {
+.hallOfFameName,
+.profileNameLink {
   color: inherit;
   text-decoration: underline dotted rgba(214, 168, 96, 0.6);
   text-underline-offset: 2px;
+  cursor: pointer;
 }
 
 .roomMemberProfileLink:hover,
-.hallOfFameName:hover {
+.hallOfFameName:hover,
+.profileNameLink:hover {
   color: var(--gold);
   text-decoration-style: solid;
 }
@@ -13795,6 +13798,19 @@ img.cardBack {
   color: var(--gold);
 }
 
+/* Current gold / materials / valuables strip in the town window header. */
+.townWindowResources {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.townWindowResourceChip {
+  padding: 2px 7px;
+  font-size: 12px;
+}
+
 .townWindowTokens {
   display: inline-flex;
   align-items: center;
@@ -15795,11 +15811,13 @@ img.cardBack {
    the two social overlays read as one system. See components/table/chat-panel.
 --------------------------------------------------------------------------- */
 
+/* Above event/dice/notice overlays (90–130) so table chat stays usable while
+   proclamations, cards, and dice play out. Below the welcome splash (1200). */
 .chatDock {
   position: fixed;
   left: 16px;
   bottom: 16px;
-  z-index: 55;
+  z-index: 200;
   pointer-events: none;
 }
 

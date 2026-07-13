@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { MessageSquare, Send, X } from "lucide-react";
+import { MessageSquare, Minimize2, Send } from "lucide-react";
 import { MAX_CHAT_TEXT_LENGTH, type ChatMessage, type GameState, type PlayerVisibleState, type RoomSeat } from "@/engine";
 import { coreFactionDefinitions } from "@/data/factions/core";
 import { playTableChatMessage } from "@/lib/sound";
@@ -15,11 +15,16 @@ import { playTableChatMessage } from "@/lib/sound";
  * (membership, flood cap, length) is enforced by the engine, which this UI only
  * mirrors (disabled Send when empty, a soft client-side cooldown).
  *
+ * Starts OPEN so the table can talk during events / overlays; the minimize
+ * button (or Escape) collapses to a FAB. The dock sits above event/modal
+ * layers so chat is never covered by proclamations, dice, or notice cards.
+ *
  * Visibility extras (presentation only):
- *  - unread badge + last-line preview on the collapsed FAB;
- *  - a short toast + soft chime when a new line arrives while collapsed;
+ *  - unread badge + last-line preview on the minimized FAB;
+ *  - a short toast + soft chime when a new line arrives while minimized;
  *  - a "New messages" divider when reopening with unread;
- *  - smart auto-scroll (stick only when already near the bottom).
+ *  - smart auto-scroll (stick only when already near the bottom);
+ *  - verified authors' names link to their public profile.
  */
 
 type ChatState = Pick<GameState, "room"> | Pick<PlayerVisibleState, "room">;
@@ -85,9 +90,12 @@ export function ChatPanel({
   const messages = useMemo<ChatMessage[]>(() => room?.chat ?? [], [room?.chat]);
   const memberCount = room?.members.length ?? 0;
 
-  const [open, setOpen] = useState(false);
+  // Default open: the table chat should be visible during events and other
+  // overlays so players can talk without hunting for the FAB first.
+  const [open, setOpen] = useState(true);
   const [draft, setDraft] = useState("");
-  const [now, setNow] = useState(0);
+  // Seeded immediately because the panel starts open (time-ago labels ready).
+  const [now, setNow] = useState(() => Date.now());
   const listRef = useRef<HTMLDivElement | null>(null);
   /** Highest seq marked as read (only advances on open / while open). */
   const lastReadSeqRef = useRef(0);
@@ -111,9 +119,7 @@ export function ChatPanel({
   const latestMessage = messages.length > 0 ? messages[messages.length - 1] : null;
 
   // Tick a clock only while the panel is open, so the "time ago" labels stay
-  // fresh without spinning a timer on every table forever. `now` is seeded in
-  // the open handler (an event, not the effect), so the effect only owns the
-  // interval — the async tick never trips the no-setState-in-effect rule.
+  // fresh without spinning a timer on every table forever.
   useEffect(() => {
     if (!open) {
       return;
@@ -252,6 +258,15 @@ export function ChatPanel({
     return null;
   }
 
+  /** Verified nickname for a chat author (undefined for guests / system). */
+  const verifiedNameFor = (message: ChatMessage): string | undefined => {
+    if (message.kind === "system") {
+      return undefined;
+    }
+    const member = room.members.find((entry) => entry.clientId === message.clientId);
+    return member?.userId ? member.name : undefined;
+  };
+
   const submit = () => {
     const text = draft.trim();
     if (!text) {
@@ -294,8 +309,14 @@ export function ChatPanel({
             <MessageSquare aria-hidden="true" size={15} />
             <span className="chatHeaderTitle">Table chat</span>
             <span className="chatHeaderMeta">{memberCount} here</span>
-            <button aria-label="Close chat" className="chatIconButton" onClick={closePanel} type="button">
-              <X aria-hidden="true" size={14} />
+            <button
+              aria-label="Minimize chat"
+              className="chatIconButton"
+              onClick={closePanel}
+              title="Minimize chat"
+              type="button"
+            >
+              <Minimize2 aria-hidden="true" size={14} />
             </button>
           </div>
 
@@ -319,9 +340,26 @@ export function ChatPanel({
                       <p className="chatSystemLine">{message.text}</p>
                     ) : (
                       <p className={`chatLine ${message.clientId === clientId ? "mine" : ""}`}>
-                        <span className="chatAuthor" style={{ color: seatColor(state, message.seat) }}>
-                          {message.name}
-                        </span>
+                        {(() => {
+                          const profileName = verifiedNameFor(message);
+                          const authorStyle = { color: seatColor(state, message.seat) };
+                          return profileName ? (
+                            <a
+                              className="chatAuthor profileNameLink"
+                              href={`/players/${encodeURIComponent(profileName)}`}
+                              rel="noreferrer"
+                              style={authorStyle}
+                              target="_blank"
+                              title={`View ${profileName}'s profile`}
+                            >
+                              {message.name}
+                            </a>
+                          ) : (
+                            <span className="chatAuthor" style={authorStyle}>
+                              {message.name}
+                            </span>
+                          );
+                        })()}
                         <span className="chatText">{message.text}</span>
                         {message.at && now ? <span className="chatTime">{timeAgo(message.at, now)}</span> : null}
                       </p>
