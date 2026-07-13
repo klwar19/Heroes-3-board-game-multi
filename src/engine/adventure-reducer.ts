@@ -33,6 +33,7 @@ import {
   createSecondaryHero,
   secondaryHeroPlacementFields,
   secondaryHeroPlacementStep,
+  adventureSeatCount,
   declareAdventureWinner,
   drawFromNeutralDeck,
   drawGuardArmy,
@@ -6767,7 +6768,6 @@ export function finalizeAdventureCombat(state: GameState): void {
     }
 
     state.combat = null;
-    state.phase = "player-turn";
     state.activePlayerId = playerId ?? state.activePlayerId;
     state.priorityPlayerId = null;
 
@@ -6779,6 +6779,15 @@ export function finalizeAdventureCombat(state: GameState): void {
       // WADED onto the guard (a land→sea step) stays halted by that step itself
       // (haltAfterSeaStep, set during the move), so the coastline rule is intact —
       // only the extra post-sea-combat halt is dropped.
+
+      // Dragon Hunt: defeating the Utopia wins the Scenario IMMEDIATELY — never
+      // defer behind Necromancy / First Aid / field-reward timing. (The visit
+      // handler also declares the win for Quick Combat / Diplomacy paths.)
+      if (field.location === "dragon_utopia" && adventureVictoryMode(state) === "dragon-hunt") {
+        declareAdventureWinner(state, playerId, "defeated the Dragon Utopia");
+        return;
+      }
+
       if (context.bankId) {
         // Creature Bank win: claim the bank reward, scaled by X = the number of
         // Stacked defenders (rulebook p.66-67). Banks sit outside the BINH
@@ -6806,6 +6815,14 @@ export function finalizeAdventureCombat(state: GameState): void {
         beginFieldVisit(state, hero.id, context.fieldId, false);
       }
     }
+
+    // A field visit (or the Utopia check above) may have just ended the game —
+    // do not reopen the map turn.
+    if (state.adventure?.winnerPlayerId) {
+      return;
+    }
+
+    state.phase = "player-turn";
     return;
   }
 
@@ -6890,7 +6907,10 @@ export function finalizeAdventureCombat(state: GameState): void {
         if (!beaten.includes(loserId)) {
           beaten.push(loserId);
         }
-        if (beaten.length >= requiredHeroDefeats(humanPlayerIds(state).length)) {
+        // Seat count includes eliminated observers so a mid-game elimination
+        // never lowers the threshold (3-player still needs 2 defeats; 4-player
+        // still needs 2 of 3).
+        if (beaten.length >= requiredHeroDefeats(adventureSeatCount(state))) {
           declareAdventureWinner(state, winnerId, "defeated the required enemy heroes");
         }
       }

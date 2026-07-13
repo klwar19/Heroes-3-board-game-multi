@@ -78,7 +78,12 @@ function liveSeats(state: GameState): PlayerId[] {
 }
 
 function gameIsOver(state: GameState): boolean {
-  return state.phase === "game-over" || Boolean(state.adventure?.winnerPlayerId);
+  // Combat end temporarily parks phase at "game-over" while the notice is up;
+  // only a declared adventure winner (or a cleared combat) is a real end.
+  if (state.adventure?.winnerPlayerId) {
+    return true;
+  }
+  return state.phase === "game-over" && !state.combat;
 }
 
 /** The AFK/timeout meta-actions themselves never count as "activity". */
