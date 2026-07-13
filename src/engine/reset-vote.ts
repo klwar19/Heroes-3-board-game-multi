@@ -29,7 +29,12 @@ function liveSeats(state: GameState): PlayerId[] {
 }
 
 function gameIsOver(state: GameState): boolean {
-  return state.phase === "game-over" || Boolean(state.adventure?.winnerPlayerId);
+  // Combat end reuses phase "game-over" for the notice; only a declared winner
+  // (or a game-over with no combat left) is a finished adventure.
+  if (state.adventure?.winnerPlayerId) {
+    return true;
+  }
+  return state.phase === "game-over" && !state.combat;
 }
 
 /**

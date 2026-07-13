@@ -52,9 +52,23 @@ export type FinishedMatch = {
   participants: (MatchParticipantInput & { nickname: string })[];
 };
 
-/** Terminal-state test shared by every reporter. */
+/**
+ * Terminal-state test shared by every reporter.
+ *
+ * Adventure combat reuses `phase === "game-over"` while the end-of-combat
+ * notice is up (combat still present, no `winnerPlayerId` yet). That is NOT a
+ * finished match — treating it as one made `detectFinishedMatch` ignore a real
+ * win that lands in the same ACKNOWLEDGE action (prev already "over"), so W/L
+ * was never recorded for Utopia / hero-defeat / last-faction wins that closed
+ * out of combat finalization.
+ */
 export function gameIsOver(state: GameState): boolean {
-  return state.phase === "game-over" || Boolean(state.adventure?.winnerPlayerId);
+  if (state.adventure?.winnerPlayerId) {
+    return true;
+  }
+  // Non-adventure terminals (sandbox) and a true adventure game-over with the
+  // combat already cleared. An open combat end-notice does not count.
+  return state.phase === "game-over" && !state.combat;
 }
 
 /**

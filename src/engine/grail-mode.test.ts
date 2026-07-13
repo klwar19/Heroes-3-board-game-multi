@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { CombatState, CombatUnitState, GameState, MapFieldState, PlayerId } from "./state";
 import { NEUTRAL_PLAYER_ID } from "./state";
 import {
+  adventureSeatCount,
   beginFieldVisit,
   checkDragonConquerorHold,
   getMainHero,
@@ -12,11 +13,23 @@ import {
 import { finalizeAdventureCombat, startPlayerCombat } from "./adventure-reducer";
 import { createAdventureGameState } from "./index";
 import { ATTACK_DIE_FACES } from "./battlefield";
+import { gameIsOver, detectFinishedMatch } from "@/server/match-report";
+import type { AdventurePlayerConfig } from "./adventure-setup";
 
 type Mode = "conquest" | "grail" | "dragon-hunt" | "dragon-conqueror";
 
 function makeGame(victoryMode: Mode): GameState {
   return createAdventureGameState({ seed: `wc-${victoryMode}`, difficulty: "normal", rollFirstPlayer: false, victoryMode });
+}
+
+function makeGameWithPlayers(victoryMode: Mode, players: AdventurePlayerConfig[]): GameState {
+  return createAdventureGameState({
+    seed: `wc-${victoryMode}-${players.length}p`,
+    difficulty: "normal",
+    rollFirstPlayer: false,
+    victoryMode,
+    players
+  });
 }
 
 function injectField(state: GameState, location: string, spaceId = "99,99"): MapFieldState {
@@ -118,6 +131,33 @@ describe("Grail capture", () => {
   });
 });
 
+/** Stages a finished neutral combat the hero just won on `field`. */
+function stageNeutralWin(state: GameState, heroId: string, fieldId: string): void {
+  state.combat = {
+    id: "c-neutral",
+    round: 1,
+    attackerPlayerId: "p1",
+    defenderPlayerId: NEUTRAL_PLAYER_ID,
+    activeUnitId: null,
+    context: {
+      kind: "neutral",
+      heroId,
+      fieldId,
+      difficulty: 7,
+      hasAzure: true
+    },
+    setup: null,
+    awaitingContinue: false,
+    outcome: {
+      winnerPlayerId: "p1",
+      defeatedPlayerId: NEUTRAL_PLAYER_ID,
+      reason: "all-enemy-units-defeated"
+    },
+    dice: { faces: [...ATTACK_DIE_FACES], seed: "s", rollCount: 0 },
+    units: {}
+  } as CombatState;
+}
+
 describe("Dragon Utopia objective", () => {
   it("wins outright in Dragon Hunt — no need to hold it", () => {
     const state = makeGame("dragon-hunt");
@@ -126,6 +166,40 @@ describe("Dragon Utopia objective", () => {
     beginFieldVisit(state, heroId, field.spaceId, false);
     expect(state.phase).toBe("game-over");
     expect(state.adventure!.winnerPlayerId).toBe("p1");
+  });
+
+  it("wins IMMEDIATELY via combat finalization in Dragon Hunt (real post-fight path)", () => {
+    const state = makeGame("dragon-hunt");
+    const field = injectField(state, "dragon_utopia");
+    const heroId = placeHeroOn(state, "p1", field.spaceId);
+    stageNeutralWin(state, heroId, field.spaceId);
+
+    finalizeAdventureCombat(state);
+
+    expect(state.combat).toBeNull();
+    expect(state.phase).toBe("game-over");
+    expect(state.adventure!.winnerPlayerId).toBe("p1");
+    expect(state.eventLog.some((e) => e.type === "GAME_WON" && e.reason === "defeated the Dragon Utopia")).toBe(
+      true
+    );
+  });
+
+  it("wins IMMEDIATELY even when Necromancy would otherwise defer the field visit", () => {
+    const state = makeGame("dragon-hunt");
+    // Necropolis + printed Necromancy in hand would open the after-combat window
+    // and withhold a normal field reward — Utopia must NOT wait on that.
+    state.players.p1.factionId = "necropolis";
+    state.players.p1.hand = ["ability.necromancy"];
+    const field = injectField(state, "dragon_utopia");
+    const heroId = placeHeroOn(state, "p1", field.spaceId);
+    stageNeutralWin(state, heroId, field.spaceId);
+
+    finalizeAdventureCombat(state);
+
+    expect(state.adventure!.winnerPlayerId).toBe("p1");
+    expect(state.phase).toBe("game-over");
+    expect(state.adventure!.pendingNecromancy ?? null).toBeNull();
+    expect(state.players.p1.necromancyWindow).toBe(false);
   });
 
   it("is only a creature bank in Grail Hunt — defeating it does NOT win", () => {
@@ -184,33 +258,45 @@ describe("Creature-bank consolation (Conquest)", () => {
 });
 
 describe("Defeat every enemy hero", () => {
-  it("scales the requirement: all enemies, but only 2 in a 4-player game", () => {
+  it("scales the requirement: 2p→1, 3p→2, 4p→2", () => {
     expect(requiredHeroDefeats(2)).toBe(1);
     expect(requiredHeroDefeats(3)).toBe(2);
     expect(requiredHeroDefeats(4)).toBe(2);
   });
 
+  function stagePvpWin(state: GameState, winnerId: PlayerId, loserId: PlayerId): void {
+    const winnerHero = getMainHero(state, winnerId)!;
+    const loserHero = getMainHero(state, loserId)!;
+    const field = injectField(state, "empty_field", `pvp-${winnerId}-${loserId}`);
+    state.combat = {
+      id: `c-${winnerId}-${loserId}`,
+      round: 1,
+      attackerPlayerId: winnerId,
+      defenderPlayerId: loserId,
+      activeUnitId: null,
+      context: {
+        kind: "player",
+        attackerHeroId: winnerHero.id,
+        defenderHeroId: loserHero.id,
+        fieldId: field.spaceId
+      },
+      setup: null,
+      awaitingContinue: false,
+      outcome: {
+        winnerPlayerId: winnerId,
+        defeatedPlayerId: loserId,
+        reason: "all-enemy-units-defeated"
+      },
+      dice: { faces: [...ATTACK_DIE_FACES], seed: "s", rollCount: 0 },
+      units: {}
+    } as CombatState;
+  }
+
   // Both objective modes also allow winning by military dominance.
   for (const mode of ["grail", "dragon-hunt"] as const) {
-    it(`wins once the required enemy heroes are beaten (2-player, ${mode})`, () => {
+    it(`wins IMMEDIATELY once the required enemy heroes are beaten (2-player, ${mode})`, () => {
       const state = makeGame(mode);
-      const attacker = getMainHero(state, "p1")!;
-      const defender = getMainHero(state, "p2")!;
-      const field = injectField(state, "empty_field");
-
-      state.combat = {
-        id: "c1",
-        round: 1,
-        attackerPlayerId: "p1",
-        defenderPlayerId: "p2",
-        activeUnitId: null,
-        context: { kind: "player", attackerHeroId: attacker.id, defenderHeroId: defender.id, fieldId: field.spaceId },
-        setup: null,
-        awaitingContinue: false,
-        outcome: { winnerPlayerId: "p1", defeatedPlayerId: "p2", reason: "all-enemy-units-defeated" },
-        dice: { faces: [...ATTACK_DIE_FACES], seed: "s", rollCount: 0 },
-        units: {}
-      } as CombatState;
+      stagePvpWin(state, "p1", "p2");
 
       finalizeAdventureCombat(state);
 
@@ -218,7 +304,153 @@ describe("Defeat every enemy hero", () => {
       expect(state.phase).toBe("game-over");
       expect(state.adventure!.winnerPlayerId).toBe("p1");
     });
+
+    it(`needs 2 distinct hero defeats in a 3-player ${mode} game (1 is not enough)`, () => {
+      const state = makeGameWithPlayers(mode, [
+        { id: "p1", name: "A", factionId: "castle", heroDefId: "catherine" },
+        { id: "p2", name: "B", factionId: "dungeon", heroDefId: "alamar" },
+        { id: "p3", name: "C", factionId: "necropolis", heroDefId: "sandro" }
+      ]);
+      expect(adventureSeatCount(state)).toBe(3);
+      expect(requiredHeroDefeats(adventureSeatCount(state))).toBe(2);
+
+      stagePvpWin(state, "p1", "p2");
+      finalizeAdventureCombat(state);
+      expect(state.adventure!.heroDefeats?.p1).toEqual(["p2"]);
+      expect(state.adventure!.winnerPlayerId).toBeNull();
+      expect(state.phase).not.toBe("game-over");
+
+      stagePvpWin(state, "p1", "p3");
+      finalizeAdventureCombat(state);
+      expect(state.adventure!.heroDefeats?.p1).toEqual(["p2", "p3"]);
+      expect(state.adventure!.winnerPlayerId).toBe("p1");
+      expect(state.phase).toBe("game-over");
+    });
+
+    it(`needs only 2 of 3 hero defeats in a 4-player ${mode} game`, () => {
+      const state = makeGameWithPlayers(mode, [
+        { id: "p1", name: "A", factionId: "castle", heroDefId: "catherine" },
+        { id: "p2", name: "B", factionId: "dungeon", heroDefId: "alamar" },
+        { id: "p3", name: "C", factionId: "necropolis", heroDefId: "sandro" },
+        { id: "p4", name: "D", factionId: "tower", heroDefId: "solmyr" }
+      ]);
+      expect(requiredHeroDefeats(adventureSeatCount(state))).toBe(2);
+
+      stagePvpWin(state, "p1", "p2");
+      finalizeAdventureCombat(state);
+      expect(state.adventure!.winnerPlayerId).toBeNull();
+
+      stagePvpWin(state, "p1", "p3");
+      finalizeAdventureCombat(state);
+      expect(state.adventure!.heroDefeats?.p1).toEqual(["p2", "p3"]);
+      expect(state.adventure!.winnerPlayerId).toBe("p1");
+      // The third enemy was never beaten — still a win at 2/3.
+      expect(state.adventure!.heroDefeats?.p1).not.toContain("p4");
+    });
+
+    it(`does not lower the 3-player threshold when one seat is eliminated (${mode})`, () => {
+      const state = makeGameWithPlayers(mode, [
+        { id: "p1", name: "A", factionId: "castle", heroDefId: "catherine" },
+        { id: "p2", name: "B", factionId: "dungeon", heroDefId: "alamar" },
+        { id: "p3", name: "C", factionId: "necropolis", heroDefId: "sandro" }
+      ]);
+      // p3 leaves the turn order (eliminated) but remains a seat for counting.
+      state.players.p3.eliminated = true;
+      state.turnOrder = state.turnOrder.filter((id) => id !== "p3");
+      expect(adventureSeatCount(state)).toBe(3);
+      expect(requiredHeroDefeats(adventureSeatCount(state))).toBe(2);
+
+      stagePvpWin(state, "p1", "p2");
+      finalizeAdventureCombat(state);
+      // Live turn order is only 2, but the scenario still needs 2 defeats.
+      expect(state.adventure!.heroDefeats?.p1).toEqual(["p2"]);
+      expect(state.adventure!.winnerPlayerId).toBeNull();
+    });
   }
+
+  it("does not count a Surrender toward the hero-defeat win path", () => {
+    const state = makeGame("dragon-hunt");
+    const attacker = getMainHero(state, "p1")!;
+    const defender = getMainHero(state, "p2")!;
+    const field = injectField(state, "empty_field");
+    state.players.p2.resources.gold = 20;
+    state.combat = {
+      id: "c-surrender",
+      round: 1,
+      attackerPlayerId: "p1",
+      defenderPlayerId: "p2",
+      activeUnitId: null,
+      context: {
+        kind: "player",
+        attackerHeroId: attacker.id,
+        defenderHeroId: defender.id,
+        fieldId: field.spaceId
+      },
+      setup: null,
+      awaitingContinue: false,
+      outcome: { winnerPlayerId: "p1", defeatedPlayerId: "p2", reason: "surrender" },
+      dice: { faces: [...ATTACK_DIE_FACES], seed: "s", rollCount: 0 },
+      units: {}
+    } as CombatState;
+
+    finalizeAdventureCombat(state);
+
+    expect(state.adventure!.heroDefeats?.p1 ?? []).toEqual([]);
+    expect(state.adventure!.winnerPlayerId).toBeNull();
+  });
+});
+
+describe("Match W/L detection after combat-end notice", () => {
+  it("does not treat the combat-end notice as a finished match", () => {
+    const state = makeGame("dragon-hunt");
+    const field = injectField(state, "dragon_utopia");
+    const heroId = placeHeroOn(state, "p1", field.spaceId);
+    stageNeutralWin(state, heroId, field.spaceId);
+    // finishCombatIfNeeded parks phase at game-over while combat is still open.
+    state.phase = "game-over";
+
+    expect(gameIsOver(state)).toBe(false);
+    expect(detectFinishedMatch(state, state)).toBeNull();
+  });
+
+  it("detects a finished match when Utopia win lands from combat finalization", () => {
+    const prev = makeGame("dragon-hunt");
+    prev.phase = "game-over"; // combat-end notice (no winner yet)
+    prev.combat = {
+      id: "c",
+      outcome: {
+        winnerPlayerId: "p1",
+        defeatedPlayerId: NEUTRAL_PLAYER_ID,
+        reason: "all-enemy-units-defeated"
+      }
+    } as CombatState;
+    // Stamp a hosted room so the detector can attribute seats.
+    prev.room = {
+      id: "room-1",
+      hosted: true,
+      ranked: true,
+      members: [
+        { clientId: "c1", name: "Alice", seat: "p1", userId: "u1" },
+        { clientId: "c2", name: "Bob", seat: "p2", userId: "u2" }
+      ],
+      matchSeats: {
+        p1: { userId: "u1", nickname: "Alice" },
+        p2: { userId: "u2", nickname: "Bob" }
+      }
+    } as typeof prev.room;
+
+    const next = structuredClone(prev);
+    next.combat = null;
+    next.adventure!.winnerPlayerId = "p1";
+    next.phase = "game-over";
+
+    expect(gameIsOver(prev)).toBe(false);
+    expect(gameIsOver(next)).toBe(true);
+    const match = detectFinishedMatch(prev, next);
+    expect(match).not.toBeNull();
+    expect(match!.participants.find((p) => p.accountId === "u1")?.result).toBe("win");
+    expect(match!.participants.find((p) => p.accountId === "u2")?.result).toBe("loss");
+  });
 });
 
 describe("Dragon Conqueror siege", () => {

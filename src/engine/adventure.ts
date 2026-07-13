@@ -2138,14 +2138,38 @@ export function declareAdventureWinner(state: GameState, playerId: PlayerId, rea
   if (!state.adventure) {
     return;
   }
+  // Idempotent: the first declared winner sticks. A later call (e.g. last-faction
+  // standing after a siege that already granted a hero-defeat win) must not
+  // overwrite the reason or re-emit GAME_WON.
+  if (state.adventure.winnerPlayerId) {
+    return;
+  }
   state.adventure.winnerPlayerId = playerId;
   state.phase = "game-over";
+  // Close every post-combat gate so nothing can re-open map play after a win
+  // (Necromancy / First Aid would otherwise keep offering actions on a finished
+  // table, and a deferred field visit must not run after the objective win).
+  state.adventure.pendingNecromancy = null;
+  state.adventure.pendingCommanderFirstAid = null;
+  for (const player of Object.values(state.players)) {
+    player.necromancyWindow = false;
+  }
   appendEvent(state, { type: "GAME_WON", playerId, reason });
 }
 
 /** Human seats in turn order (the neutral seat never counts). */
 export function humanPlayerIds(state: GameState): PlayerId[] {
   return state.turnOrder.filter((id) => id !== NEUTRAL_PLAYER_ID);
+}
+
+/**
+ * Seats that started the scenario, INCLUDING eliminated observers. Used for
+ * the "defeat N enemy heroes" threshold so eliminating a rival does not lower
+ * the requirement mid-game (a 3-player table still needs 2 hero defeats even
+ * after one seat is removed from turn order).
+ */
+export function adventureSeatCount(state: GameState): number {
+  return Object.keys(state.players).filter((id) => id !== NEUTRAL_PLAYER_ID).length;
 }
 
 /**
@@ -2473,8 +2497,11 @@ export function eliminatePlayer(
 }
 
 /**
- * Enemy heroes a player must beat to win by conquest of heroes: every enemy
- * in a 2- or 3-player game, but only 2 of the 3 in a 4-player game.
+ * Enemy heroes a player must beat to win by military dominance (Grail Hunt /
+ * Dragon Hunt): every enemy in a 2- or 3-player game (1 / 2), but only 2 of
+ * the 3 in a 4-player game. `playerCount` is the scenario seat count at setup
+ * (use `adventureSeatCount`, not the live turn order — eliminations must not
+ * lower the threshold).
  */
 export function requiredHeroDefeats(playerCount: number): number {
   return playerCount >= 4 ? 2 : Math.max(1, playerCount - 1);

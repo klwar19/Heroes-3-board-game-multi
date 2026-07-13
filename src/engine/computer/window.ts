@@ -36,8 +36,10 @@ export function computerDecisionOwner(state: GameState): PlayerId | null {
   // engine finalize XP / unit flips / the field visit and return to the map. A
   // computer fighter must still drive that acknowledgment, so a game-over with
   // an un-acknowledged (non-sandbox) combat notice falls through to the combat
-  // block below. A TRULY finished game (winner declared, notice already closed)
-  // owes nobody a decision.
+  // block below. A TRULY finished game (winner declared) owes nobody a decision.
+  if (state.adventure?.winnerPlayerId) {
+    return null;
+  }
   const combatAwaitingAck = Boolean(
     state.combat?.outcome &&
       state.combat.context.kind !== "sandbox" &&
