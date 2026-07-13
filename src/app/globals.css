@@ -13690,6 +13690,12 @@ img.cardBack {
   object-fit: contain;
 }
 
+/* Second negative morale token: hand dump is deferred until End Turn. */
+.statChip.moraleDiscardPending b,
+.statChip.moraleDiscardPending small {
+  color: #f0a0a0;
+}
+
 .advHudButtons .townButton {
   display: inline-flex;
   align-items: center;

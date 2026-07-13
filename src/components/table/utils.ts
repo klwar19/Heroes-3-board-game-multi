@@ -455,6 +455,11 @@ export function formatEvent(event: GameEvent, state: GameState): string {
     case "TURN_STARTED":
       return `${playerName(state, event.playerId)} starts their turn.`;
     case "HAND_REFRESHED":
+      if (event.reason === "morale-double-negative") {
+        return `${playerName(state, event.playerId)} discards their hand of ${event.discarded} card${
+          event.discarded === 1 ? "" : "s"
+        } (double negative morale).`;
+      }
       return `${playerName(state, event.playerId)} refreshes their hand (discarded ${event.discarded}, drew ${event.drawn}).`;
     case "TILE_REVEALED":
       return `${playerName(state, event.playerId)} discovers map tile ${event.tileDefId}.`;
@@ -490,8 +495,14 @@ export function formatEvent(event: GameEvent, state: GameState): string {
     case "COMMANDER_FIRST_AID_USED":
     case "COMMANDER_SPECIALTY_TRIGGERED":
       return `${playerName(state, event.playerId)} — ${event.message}`;
-    case "MORALE_CHANGED":
-      return `${playerName(state, event.playerId)} morale ${event.amount > 0 ? "+" : ""}${event.amount} (now ${event.total}).`;
+    case "MORALE_CHANGED": {
+      const delta = `${event.amount > 0 ? "+" : ""}${event.amount}`;
+      const total = event.total > 0 ? `+${event.total}` : `${event.total}`;
+      if (event.total <= -2) {
+        return `${playerName(state, event.playerId)} morale ${delta} (now ${total}) — if still −2 at end of turn, hand is discarded.`;
+      }
+      return `${playerName(state, event.playerId)} morale ${delta} (now ${total}).`;
+    }
     case "MORALE_CARD_DRAWN":
       return `${playerName(state, event.playerId)} draws ${cardName(event.cardId)}${
         event.reshuffledDiscard ? " after reshuffling the morale discard pile" : ""

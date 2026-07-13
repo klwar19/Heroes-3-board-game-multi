@@ -4453,6 +4453,8 @@ export type GameEvent =
       playerId: PlayerId;
       discarded: number;
       drawn: number;
+      /** Set when the double-negative-morale penalty empties the hand at turn end. */
+      reason?: "morale-double-negative";
     }
   | {
       id: string;
@@ -4710,8 +4712,14 @@ export type GameEvent =
       id: string;
       type: "MORALE_CHANGED";
       playerId: PlayerId;
+      /** Token delta for this step (always ±1 for token-mode multi-token sources). */
       amount: number;
       total: number;
+      /**
+       * @deprecated Unused. Hand dump is checked at END_TURN via morale <= -2.
+       * Optional field kept so older event-log entries still type-check.
+       */
+      handDiscardAtTurnEnd?: boolean;
     }
   | {
       id: string;
@@ -5872,7 +5880,11 @@ export type PlayerState = {
    * player takes their first map/exploration action of the turn.
    */
   canMulligan?: boolean;
-  /** Second negative morale token: the hand is discarded when the turn ends. */
+  /**
+   * @deprecated Legacy sticky flag. Hand dump is now decided at END_TURN by
+   * `morale <= -2` only (recover during the turn → keep hand). Kept so old
+   * snapshots still deserialize; never re-armed by changeMorale.
+   */
   discardHandAtTurnEnd?: boolean;
   /**
    * Pandora's Bargain: Power — set once its end-of-turn upkeep has been paid
