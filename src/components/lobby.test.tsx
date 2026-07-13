@@ -137,8 +137,9 @@ describe("LobbyScreen", () => {
           { clientId: "cA", name: "Alice", verified: true, roomId: "room-live", roomName: "Live Table" }
         ]
       });
-      // Verified nickname plain; guest honestly labeled.
+      // Verified nickname plain (and linked to their profile); guest honestly labeled.
       expect(screen.getByText("Alice")).toBeTruthy();
+      expect(screen.getByRole("link", { name: "Alice" }).getAttribute("href")).toBe("/players/Alice");
       expect(screen.getByText(/guest — Bob/)).toBeTruthy();
       // Alice is connected (presence); Bob is on the roster but not online.
       expect(screen.getByText("Alice").closest(".lobbyRoomPerson")?.className).toMatch(/\blive\b/);

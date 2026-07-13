@@ -17,8 +17,11 @@ import { roomDisplayName, type GameMode, type GameState, type RoomMembershipStat
  * behaves identically whether the app runs on the built-in store or on the edge.
  */
 
-/** Empty rooms idle past this are pruned from the directory (store + edge). */
-export const STALE_ROOM_TTL_MS = 6 * 60 * 60 * 1000;
+/**
+ * Empty rooms idle past this are pruned from the directory (store + edge).
+ * One day of no members + no directory activity → gone from multiplayer lobby.
+ */
+export const STALE_ROOM_TTL_MS = 24 * 60 * 60 * 1000;
 
 /**
  * The fixed Durable Object id of the single lobby/registry instance. Game rooms

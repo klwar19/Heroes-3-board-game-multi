@@ -280,6 +280,30 @@ describe("TownWindow — view toggle", () => {
     window.localStorage.removeItem("h3bg-town-view");
   });
 
+  it("shows the player's current resources (and income) in the town header", () => {
+    const state = freshState();
+    state.players.p1.resources = { gold: 42, buildingMaterials: 7, valuables: 3 };
+    state.players.p1.production = { gold: 10, buildingMaterials: 2, valuables: 1 };
+    const { container } = render(
+      <TownWindow
+        legalActions={getLegalActions(state, "p1")}
+        onAction={vi.fn()}
+        onClose={vi.fn()}
+        open
+        state={state}
+        viewerPlayerId="p1"
+      />
+    );
+    const strip = container.querySelector(".townWindowResources");
+    expect(strip).toBeTruthy();
+    expect(strip?.textContent).toMatch(/42/);
+    expect(strip?.textContent).toMatch(/7/);
+    expect(strip?.textContent).toMatch(/3/);
+    // Income tags so build costs can be weighed against upcoming income.
+    expect(strip?.textContent).toMatch(/\+10/);
+    expect(strip?.getAttribute("aria-label")).toMatch(/resources/i);
+  });
+
   it("renders nothing while closed and closes via the ✕ button", () => {
     const state = freshState();
     const onClose = vi.fn();

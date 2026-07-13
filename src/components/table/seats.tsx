@@ -811,12 +811,28 @@ export function SeatNameplate({ state, playerId }: { state: GameState; playerId:
   const summary = seatPickSummary(identity);
   const primary = person ?? identity.seatName;
   const title = summary ? `${primary} — ${summary}` : primary;
+  // A verified account's nickname opens their public profile in a new tab.
+  const primaryNode =
+    identity.verified && person ? (
+      <a
+        className="profileNameLink"
+        href={`/players/${encodeURIComponent(person)}`}
+        onClick={(event) => event.stopPropagation()}
+        rel="noreferrer"
+        target="_blank"
+        title={`View ${person}'s profile`}
+      >
+        {primary}
+      </a>
+    ) : (
+      primary
+    );
   return (
     <span className="seatWho" title={title}>
       <span className="seatFactionDot" style={{ background: identity.factionColor ?? "#b08d2f" }} aria-hidden="true" />
       <span className="seatWhoText">
         <strong>
-          {primary}
+          {primaryNode}
           {identity.role === "host" ? <Crown aria-hidden="true" size={11} className="seatHostCrown" /> : null}
         </strong>
         {person && summary ? <small className="seatPick">{summary}</small> : null}

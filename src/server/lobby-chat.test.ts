@@ -3,6 +3,7 @@ import {
   LobbyChatBoard,
   LobbyChatError,
   LOBBY_CHAT_FLOOD_LIMIT,
+  LOBBY_CHAT_MESSAGE_TTL_MS,
   MAX_LOBBY_CHAT_MESSAGES,
   MAX_LOBBY_CHAT_NAME_LENGTH,
   MAX_LOBBY_CHAT_TEXT_LENGTH,
@@ -89,6 +90,40 @@ describe("LobbyChatBoard", () => {
     copy[0].text = "tampered";
     expect(board.list()).toHaveLength(1);
     expect(board.list()[0].text).toBe("one");
+  });
+
+  it("drops messages older than one day on list and post (fresh lines stay)", () => {
+    let t = 1_000_000;
+    const board = new LobbyChatBoard({ now: () => t });
+    board.post({ clientId: "c1", name: "A", text: "old" });
+    t += 60_000;
+    board.post({ clientId: "c2", name: "B", text: "mid" });
+    // Still within the TTL — both present.
+    expect(board.list().map((m) => m.text)).toEqual(["old", "mid"]);
+
+    // Advance past one day from "old" (but not yet past "mid").
+    t = 1_000_000 + LOBBY_CHAT_MESSAGE_TTL_MS + 1;
+    expect(board.list().map((m) => m.text)).toEqual(["mid"]);
+
+    // A brand-new post after the prune keeps the still-fresh mid line.
+    board.post({ clientId: "c3", name: "C", text: "new" });
+    expect(board.list().map((m) => m.text)).toEqual(["mid", "new"]);
+
+    // Advance past mid as well — only "new" remains (control: fresh survives).
+    t = 1_000_000 + 60_000 + LOBBY_CHAT_MESSAGE_TTL_MS + 1;
+    expect(board.list().map((m) => m.text)).toEqual(["new"]);
+  });
+
+  it("prunes expired lines when reloading a persisted snapshot", () => {
+    const now = Date.now();
+    const board = new LobbyChatBoard({
+      now: () => now,
+      messages: [
+        { seq: 1, clientId: "c1", name: "A", text: "ancient", at: now - LOBBY_CHAT_MESSAGE_TTL_MS - 5_000 },
+        { seq: 2, clientId: "c2", name: "B", text: "fresh", at: now - 1_000 }
+      ]
+    });
+    expect(board.list().map((m) => m.text)).toEqual(["fresh"]);
   });
 });
 
