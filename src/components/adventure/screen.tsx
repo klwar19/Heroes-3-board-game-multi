@@ -7,6 +7,8 @@ import { assetUrl } from "@/lib/asset-url";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Ban, Castle, Check, ChevronsUp, Crown, Dices, Fence, Hammer, Hourglass, Image as ImageIcon, Info, Layers, Lock, Minus, Plus, RotateCcw, RotateCw, Sparkles, Swords, Unlock, X } from "lucide-react";
+import { HelperCoachLobbyPrompt } from "@/components/table/helper-coach-ui";
+import { useHelperCoachPreference } from "@/lib/helper-coach-preference";
 import { cardLibrary } from "@/data/cards/library";
 import { MORALE_NEGATIVE_DECK_ID, MORALE_POSITIVE_DECK_ID } from "@/data/cards/morale";
 import { MORALE_CARD_HINTS, moraleCardRulesText } from "@/components/table/morale-card-cue";
@@ -6857,6 +6859,9 @@ export function SetupLobbyScreen({
   const [tab, setTab] = useState<SetupTab>("heroes");
   // The hero info popup (replaces the old inline detail panel). Null = closed.
   const [infoHeroId, setInfoHeroId] = useState<string | null>(null);
+  // Re-open the helper-tips prompt after the player already chose (optional).
+  const [forceHelperPrompt, setForceHelperPrompt] = useState(false);
+  const helperCoach = useHelperCoachPreference();
   if (!lobby) {
     return null;
   }
@@ -6873,6 +6878,8 @@ export function SetupLobbyScreen({
 
   return (
     <section className="setupLobby" aria-label="Map setup">
+      {/* First-visit opt-in: next-step coach + card reasons (local browser pref). */}
+      <HelperCoachLobbyPrompt force={forceHelperPrompt} onClose={() => setForceHelperPrompt(false)} />
       <header>
         <h2>Map setup — {scenarioName}</h2>
         {singlePlayer ? (
@@ -6888,6 +6895,14 @@ export function SetupLobbyScreen({
             table also sets the game options on the second tab.
           </p>
         )}
+        {helperCoach.ready && helperCoach.preference !== null ? (
+          <p className="helperCoachLobbyNote">
+            Helper tips are <strong>{helperCoach.enabled ? "on" : "off"}</strong>.{" "}
+            <button className="helperCoachLobbyLink" onClick={() => setForceHelperPrompt(true)} type="button">
+              Change
+            </button>
+          </p>
+        ) : null}
       </header>
 
       <SetupCheatWarning state={state} viewerPlayerId={viewerPlayerId} />
