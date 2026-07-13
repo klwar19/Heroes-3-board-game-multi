@@ -23,6 +23,21 @@ describe("CombatSandboxSetupScreen", () => {
     expect(onAction).toHaveBeenCalledWith({ type: "SANDBOX_BEGIN_COMBAT", playerId: "p1" });
   });
 
+  it("offers BINH and Tournament rules mode before Begin", () => {
+    const state = createCombatSandboxLobbyState("ui-mode");
+    const onAction = vi.fn();
+    render(<CombatSandboxSetupScreen onAction={onAction} state={state} viewerPlayerId="p1" />);
+    const modeSelect = screen.getByLabelText(/rules mode/i) as HTMLSelectElement;
+    expect(modeSelect.value).toBe("binh");
+    fireEvent.change(modeSelect, { target: { value: "tournament" } });
+    expect(onAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "SANDBOX_SET_OPTIONS",
+        options: expect.objectContaining({ playMode: "tournament" })
+      })
+    );
+  });
+
   it("dispatches SANDBOX_SET_OPTIONS when WOG Commanders is toggled", () => {
     const state = createCombatSandboxLobbyState("ui-wog");
     const onAction = vi.fn();

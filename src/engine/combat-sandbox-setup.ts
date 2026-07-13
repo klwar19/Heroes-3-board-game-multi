@@ -17,10 +17,19 @@ import {
 import { coreUnitDefinitions } from "@/data/factions/units";
 import type { FactionId } from "@/data/factions/types";
 import { COMMANDER_STAT_KEYS } from "@/data/commanders";
-import { abilityDeckBinh } from "@/data/cards/abilities-extra";
-import { artifactDeckBinhMajor, artifactDeckBinhMinor, artifactDeckBinhRelic } from "@/data/cards/artifacts";
-import { spellDeckBinhBasic, spellDeckBinhExpert } from "@/data/cards/spells";
+import { abilityDeckBinh, abilityDeckLegacy } from "@/data/cards/abilities-extra";
+import {
+  artifactDeckBinhMajor,
+  artifactDeckBinhMinor,
+  artifactDeckBinhRelic,
+  artifactDeckLegacy
+} from "@/data/cards/artifacts";
+import { spellDeckBinhBasic, spellDeckBinhExpert, spellDeckLegacy } from "@/data/cards/spells";
 import { EXPERT_USES_BY_LEVEL, HAND_LIMIT_BY_LEVEL } from "./adventure";
+import {
+  TOURNAMENT_REMOVED_ABILITY_ID,
+  TOURNAMENT_REMOVED_ARTIFACT_ID
+} from "./adventure-setup";
 import { ATTACK_DIE_FACES } from "./battlefield";
 import { makeInitialCommanderState } from "./commanders";
 import { shuffleCards } from "./decks";
@@ -31,6 +40,7 @@ import {
   DEFAULT_WOG_OPTIONS,
   type CardId,
   type CombatBoardArtId,
+  type CombatSandboxPlayMode,
   type CombatSandboxSeatConfig,
   type CombatSandboxSetupState,
   type CombatSandboxUnitPick,
@@ -44,8 +54,17 @@ import {
   type WogModOptions
 } from "./state";
 
-const SIM_RULESET: GameRuleset = "binh";
 const DEFAULT_HERO_LEVEL = 5;
+
+/** Resolve the sandbox play-mode preset (default BINH for legacy snapshots). */
+export function sandboxPlayMode(setup: CombatSandboxSetupState | null | undefined): CombatSandboxPlayMode {
+  return setup?.playMode === "tournament" ? "tournament" : "binh";
+}
+
+/** Ruleset used by the fight: BINH house rules vs legacy (tournament). */
+export function sandboxRulesetForMode(mode: CombatSandboxPlayMode): GameRuleset {
+  return mode === "tournament" ? "legacy" : "binh";
+}
 
 const COMBAT_UNIT_LIMIT = 5;
 const COMMANDER_COMBAT_UNIT_LIMIT = 4;
@@ -73,7 +92,22 @@ function makeSharedDeck(id: string, cardIds: string[], seed: string): DeckState 
   };
 }
 
-function makeSandboxDecks(seed: string): Record<string, DeckState> {
+function without(cardIds: string[], bannedId: string, ban: boolean): string[] {
+  return ban ? cardIds.filter((id) => id !== bannedId) : cardIds;
+}
+
+function makeSandboxDecks(seed: string, mode: CombatSandboxPlayMode): Record<string, DeckState> {
+  if (mode === "tournament") {
+    // Legacy single decks + tournament Diplomacy / Hourglass bans.
+    const lists: Record<string, string[]> = {
+      spells: spellDeckLegacy,
+      abilities: without(abilityDeckLegacy, TOURNAMENT_REMOVED_ABILITY_ID, true),
+      artifacts: without(artifactDeckLegacy, TOURNAMENT_REMOVED_ARTIFACT_ID, true)
+    };
+    return Object.fromEntries(
+      Object.entries(lists).map(([id, cardIds]) => [id, makeSharedDeck(id, cardIds, seed)])
+    );
+  }
   const lists: Record<string, string[]> = {
     spells: spellDeckBinhBasic,
     "spells-expert": spellDeckBinhExpert,
@@ -263,7 +297,8 @@ function classicDefaultSetup(): CombatSandboxSetupState {
     boardArtId: "classic",
     obstacles: [8, 11],
     moraleCards: false,
-    wog: { ...DEFAULT_WOG_OPTIONS }
+    wog: { ...DEFAULT_WOG_OPTIONS },
+    playMode: "binh"
   };
 }
 
@@ -303,11 +338,12 @@ function emptyLobbyPlayer(id: PlayerId, name: string): PlayerState {
  */
 export function createCombatSandboxLobbyState(seed = freshSeed("homm3bg-battle")): GameState {
   const setup = classicDefaultSetup();
+  const playMode = sandboxPlayMode(setup);
   return {
     id: "combat-sandbox-lobby",
     seed,
     mode: "combat-sandbox",
-    ruleset: SIM_RULESET,
+    ruleset: sandboxRulesetForMode(playMode),
     wog: { ...setup.wog },
     round: 0,
     phase: "setup",
@@ -330,7 +366,7 @@ export function createCombatSandboxLobbyState(seed = freshSeed("homm3bg-battle")
     towns: {},
     heroes: {},
     combat: null,
-    decks: makeSandboxDecks(seed),
+    decks: makeSandboxDecks(seed, playMode),
     stack: [],
     reactionWindow: null,
     activeEffects: [],
@@ -524,6 +560,21 @@ export function sandboxSetOptions(
   if (opts.moraleCards !== undefined) {
     setup.moraleCards = Boolean(opts.moraleCards);
   }
+  if (opts.playMode !== undefined) {
+    if (opts.playMode !== "binh" && opts.playMode !== "tournament") {
+      throw new Error(`Unknown battle play mode ${String(opts.playMode)}.`);
+    }
+    setup.playMode = opts.playMode;
+    state.ruleset = sandboxRulesetForMode(opts.playMode);
+    // Rebuild shared decks for the chosen mode (BINH split vs tournament legacy).
+    state.decks = makeSandboxDecks(state.seed, opts.playMode);
+    // Tournament is competitive — WOG modules stay off with the preset
+    // (tester can still re-enable WOG after switching modes if they want).
+    if (opts.playMode === "tournament" && setup.wog.enabled) {
+      setup.wog = { ...setup.wog, enabled: false, commanders: false, newObjects: false };
+      state.wog = { ...setup.wog };
+    }
+  }
   if (opts.wog !== undefined) {
     const nextWog: WogModOptions = {
       ...DEFAULT_WOG_OPTIONS,
@@ -641,8 +692,12 @@ export function sandboxBeginCombat(
   };
   const unitLimit = unitLimitForWog(wog);
 
+  const playMode = sandboxPlayMode(setup);
   state.wog = wog;
-  state.ruleset = SIM_RULESET;
+  state.ruleset = sandboxRulesetForMode(playMode);
+  // Ensure decks match the chosen mode at fight start (covers a mode switch
+  // that ran before decks were rebuilt, and legacy snapshots without playMode).
+  state.decks = makeSandboxDecks(state.seed, playMode);
   state.sandboxRules = { moraleCards: moraleCardsOn };
   state.players = {
     p1: buildPlayerFromSeat(p1, moraleCardsOn),

@@ -246,7 +246,9 @@ export {
   createCombatSandboxLobbyState,
   isCombatSandboxSetup,
   makeDefaultSandboxSeat,
-  sandboxBattlefieldChoices
+  sandboxBattlefieldChoices,
+  sandboxPlayMode,
+  sandboxRulesetForMode
 } from "./combat-sandbox-setup";
 export { freshEntropy, freshSeed } from "./seed";
 export {

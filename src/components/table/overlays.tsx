@@ -483,6 +483,15 @@ export function ReactionTray({
     (legal) => legal.action.type === "SPEND_TOWN_CUBE" || legal.action.type === "HALL_OF_VALHALLA_BOOST"
   );
 
+  // Crag Hack's Offense VI: while the combat-long aura is up, every held card
+  // may be discarded for an instant +1 attack instead of its printed effect.
+  // Engine offers CONVERT_CARD_TO_ATTACK (not PLAY_REACTION), so without these
+  // tiles the specialty is invisible in the reaction tray even though it is
+  // engine-wired and tested.
+  const offenseViConverts = legalActions.filter(
+    (legal) => legal.action.type === "CONVERT_CARD_TO_ATTACK"
+  );
+
   // Free unit "lethal save" reactions — the Archangels' once-per-combat
   // Resurrection that cancels a killing blow on another friendly unit. It is a
   // standalone legal action (no hand card behind it), so the card-tile path
@@ -884,6 +893,7 @@ export function ReactionTray({
       <div className="trayTiles">
         {tiles.length === 0 &&
         buildingBoosts.length === 0 &&
+        offenseViConverts.length === 0 &&
         scrollReactions.length === 0 &&
         spellBookReactions.length === 0 &&
         resurrectionActions.length === 0 &&
@@ -924,6 +934,21 @@ export function ReactionTray({
             </div>
           </div>
         ))}
+        {offenseViConverts.map((legal) => {
+          const cardId =
+            legal.action.type === "CONVERT_CARD_TO_ATTACK" ? legal.action.cardId : "";
+          return (
+            <div className="trayTile permanentTile" key={JSON.stringify(legal.action)}>
+              {cardId ? <CardFrame cardId={cardId} className="trayCardImage" /> : null}
+              <div className="trayTileBody">
+                <strong>Offense VI</strong>
+                <button className="trayInstant" onClick={() => onAction(legal.action)} type="button">
+                  {legal.label}
+                </button>
+              </div>
+            </div>
+          );
+        })}
         {scrollReactions.map((action) => (
           <div className="trayTile scrollTile" key={JSON.stringify(action)}>
             <CardFrame cardId={action.cardId} className="trayCardImage" />

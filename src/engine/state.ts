@@ -2927,7 +2927,7 @@ export type GameAction =
     }
   /**
    * Battle Test free setup: battlefield art, obstacle cells, morale-cards rule,
-   * WOG modules.
+   * WOG modules, BINH vs Tournament play mode.
    */
   | {
       type: "SANDBOX_SET_OPTIONS";
@@ -2937,6 +2937,7 @@ export type GameAction =
         obstacles?: number[];
         moraleCards?: boolean;
         wog?: Partial<WogModOptions>;
+        playMode?: CombatSandboxPlayMode;
       };
     }
   /** Battle Test free setup: materialise the setup into a live sandbox fight. */
@@ -8747,6 +8748,13 @@ export type CombatSandboxSeatConfig = {
  * Battle Test free-setup lobby: both seats, battlefield, morale and WOG options.
  * Present only while phase is "setup"; cleared when Begin materialises the fight.
  */
+/**
+ * Battle Test play mode chosen before Begin:
+ *  - "binh": house-rule edition (split decks, BINH unit/stat tweaks).
+ *  - "tournament": competitive preset (legacy decks + Diplomacy/Hourglass bans).
+ */
+export type CombatSandboxPlayMode = "binh" | "tournament";
+
 export type CombatSandboxSetupState = {
   seats: Record<PlayerId, CombatSandboxSeatConfig>;
   /** Forced board art, or "random" (currently resolves to classic). */
@@ -8757,6 +8765,11 @@ export type CombatSandboxSetupState = {
   moraleCards: boolean;
   /** Wake of Gods modules (commanders etc.). */
   wog: WogModOptions;
+  /**
+   * Rules preset for the fight (BINH vs Tournament). Defaults to "binh" when
+   * absent on legacy snapshots so older Battle Test rooms keep working.
+   */
+  playMode?: CombatSandboxPlayMode;
 };
 
 export type TownState = {

@@ -34,6 +34,7 @@ import {
   settleComputerForLiveAction,
   settleComputerVisibleStep,
 } from "@/server/computer-runner";
+import { detectFinishedMatch } from "@/server/match-report";
 import { reportFinishedMatch } from "@/server/match-report-trigger";
 import {
   deriveLobbyRecord,
@@ -561,7 +562,24 @@ export function submitRoomAction(
   // are caught + logged inside, never breaking the winning action.
   // Read the SETTLED state — an AFK kick driven right after this action may
   // itself have ended the game (last faction standing).
+  const finishedMatch = detectFinishedMatch(current.state, settledState);
   const pendingMatchReport = reportFinishedMatch(current.state, settledState) ?? undefined;
+  // RANKED multiplayer only: once a real win/loss is attributed, CLOSE the room
+  // so a rematch cannot reuse the same table (same seed / matchSeats edge cases
+  // that leave MMR unaccounted). Casual (ranked:false), single-player, sandbox,
+  // and unfinished tables are untouched — "New adventure" / rematch still work
+  // there. System force-close (no host gate).
+  if (finishedMatch?.ranked) {
+    forceCloseRoom(roomId, "ranked match finished");
+    return {
+      snapshot: withBootId({
+        ...cloneSerializable(next),
+        closed: true
+      }),
+      result,
+      ...(pendingMatchReport ? { pendingMatchReport } : {})
+    };
+  }
   const snapshot = withBootId(cloneSerializable(next));
   notifyRoomListeners(roomId, snapshot);
 
@@ -670,7 +688,12 @@ function pumpComputerOnce(roomId: string): void {
   roomStore.set(roomId, next);
   persistRoom(next);
   // Match report may fire mid-computer-turn (last faction standing, etc.).
+  const finishedMatch = detectFinishedMatch(before, run.state);
   void reportFinishedMatch(before, run.state);
+  if (finishedMatch?.ranked) {
+    forceCloseRoom(roomId, "ranked match finished");
+    return;
+  }
   notifyRoomListeners(roomId, withBootId(cloneSerializable(next)));
 
   if (computerPumpOwed(run.state)) {
@@ -712,7 +735,12 @@ export function drainComputerPumpSync(roomId: string): void {
     };
     roomStore.set(roomId, next);
     persistRoom(next);
+    const finishedMatch = detectFinishedMatch(before, run.state);
     void reportFinishedMatch(before, run.state);
+    if (finishedMatch?.ranked) {
+      forceCloseRoom(roomId, "ranked match finished");
+      return;
+    }
     notifyRoomListeners(roomId, withBootId(cloneSerializable(next)));
     guard += 1;
   }
@@ -1015,6 +1043,26 @@ export function createRoom(options: RoomCreateOptions & { roomId?: string } = {}
 export type CloseRoomResult = { closed: boolean; reason?: string };
 
 /**
+ * System force-close (no host / member authority check). Used after a RANKED
+ * match is recorded so the finished table cannot be rematched in place.
+ * Idempotent. Connected clients receive a final `closed` snapshot.
+ */
+export function forceCloseRoom(roomId: string, reason?: string): CloseRoomResult {
+  const record = roomStore.get(roomId) ?? loadPersistedRoom(roomId);
+  if (!record) {
+    return { closed: true };
+  }
+  cancelComputerPump(roomId);
+  roomStore.delete(roomId);
+  deletePersistedRoom(roomId);
+  notifyRoomListeners(roomId, withBootId({ ...cloneSerializable(record), closed: true }));
+  if (reason) {
+    console.log(`[room] force-closed ${roomId}: ${reason}`);
+  }
+  return { closed: true };
+}
+
+/**
  * Deletes a room for everyone. A HOSTED room follows authorizeHostedWipe (the
  * host always; any member once the host holds no live stream — a restarted
  * host's per-tab id is gone and must not strand the table; strangers never).
@@ -1044,12 +1092,5 @@ export function closeRoom(
     }
   }
   // Open table: no ownership to protect — anyone may close it.
-
-  cancelComputerPump(roomId);
-  roomStore.delete(roomId);
-  deletePersistedRoom(roomId);
-  // Tell everyone still connected that the room is gone (last frame on the
-  // stream), then they unsubscribe and return to the lobby.
-  notifyRoomListeners(roomId, withBootId({ ...cloneSerializable(record), closed: true }));
-  return { closed: true };
+  return forceCloseRoom(roomId);
 }
