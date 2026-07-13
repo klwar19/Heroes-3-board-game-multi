@@ -7529,6 +7529,14 @@ export type VisitStep =
       deckId: string;
     }
   | {
+      /** Airship Yard: grant HERO_MOVE_THROUGH for the rest of this turn. */
+      type: "GRANT_MOVE_THROUGH";
+    }
+  | {
+      /** Watering Hole: zero remaining movement; flag +1 MP next turn. */
+      type: "WATERING_HOLE";
+    }
+  | {
       /**
        * Pandora's Gift: Recruits — resolve the draw-3 offer. `drawn` are all the
        * units revealed; when `recruit` is set that one is recruited at half its
@@ -8807,6 +8815,11 @@ export type HeroState = {
    * it (the hero keeps moving across the sea).
    */
   movementHaltedThisTurn?: boolean;
+  /**
+   * Watering Hole (Factory): set when the hero visits the field this turn.
+   * Cleared and spent as +1 movement at the start of the owner's next turn.
+   */
+  wateringHoleBonusPending?: boolean;
 };
 
 export type AttackRollCandidate = {

@@ -463,9 +463,10 @@ describe("Factory faction — art wired and playable (&S1 starting tile)", () =>
       expect(t[id].fields, `${id} has 7 fields`).toHaveLength(7);
       expect(t[id].assets?.tileImage, `${id} art`).toMatch(/^\/assets\/board\/tiles\/[a-z0-9]+\.webp$/);
     }
-    // &S1 centre carries the Factory town; &C1 centre is the War Machine Factory.
+    // &S1 centre carries the Factory town; &C1 centre is the Airship Yard
+    // (Factory rulebook p.8 — NOT a War Machine Factory).
     expect(t["&S1"].fields[0]).toMatchObject({ location: "town", faction: "factory" });
-    expect(t["&C1"].fields[0]).toMatchObject({ location: "war_machine_factory" });
+    expect(t["&C1"].fields[0]).toMatchObject({ location: "airship_yard", difficulty: 7 });
     // Every resource-bearing Factory tile has a mine with a real resource + amount.
     for (const id of ["&N1", "&N2", "&F2", "&F3"]) {
       const mine = t[id].fields.find((f) => f.location === "mine");
@@ -473,5 +474,44 @@ describe("Factory faction — art wired and playable (&S1 starting tile)", () =>
       expect(mine!.resource, `${id} mine resource`).toBeTruthy();
       expect(mine!.amount ?? 0, `${id} mine amount`).toBeGreaterThan(0);
     }
+  });
+
+  it("Factory tile objects match the rulebook art (not the old misreads)", () => {
+    const t = allTileDefinitions;
+    // &C1: Airship Yard centre; Prospector SW; Tree of Knowledge NW (VI).
+    expect(t["&C1"].fields.map((f) => f.location)).toEqual([
+      "airship_yard",
+      "temple",
+      "shrine_of_magic_incantation",
+      "blocked_field",
+      "prospector",
+      "magic_spring",
+      "tree_of_knowledge"
+    ]);
+    // &F1: Trailblazer teepee (not Stables); Derrick (not generic water_wheel id).
+    expect(t["&F1"].fields.map((f) => f.location)).toEqual([
+      "blocked_field",
+      "empty_field",
+      "temple",
+      "treasure_symbol",
+      "derrick",
+      "trailblazer",
+      "obelisk"
+    ]);
+    // &F2: Prospector centre; Factory Grave (not Cove grave).
+    expect(t["&F2"].fields[0].location).toBe("prospector");
+    expect(t["&F2"].fields.some((f) => f.location === "factory_grave")).toBe(true);
+    expect(t["&F2"].fields.some((f) => f.location === "grave")).toBe(false);
+    // &F3: Watering Hole well (not Magic Spring).
+    expect(t["&F3"].fields.some((f) => f.location === "watering_hole")).toBe(true);
+    expect(t["&F3"].fields.some((f) => f.location === "magic_spring")).toBe(false);
+    // &N2: Warlock's Lab (not Mystical Garden); Fountain of Youth (not Magic Spring).
+    expect(t["&N2"].fields.some((f) => f.location === "warlock_lab")).toBe(true);
+    expect(t["&N2"].fields.some((f) => f.location === "mystical_garden")).toBe(false);
+    expect(t["&N2"].fields.some((f) => f.location === "fountain_of_youth")).toBe(true);
+    expect(t["&N2"].fields.some((f) => f.location === "magic_spring")).toBe(false);
+    // &N1: Derrick + Excavation present.
+    expect(t["&N1"].fields.some((f) => f.location === "derrick")).toBe(true);
+    expect(t["&N1"].fields.some((f) => f.location === "artifact_dig")).toBe(true);
   });
 });
