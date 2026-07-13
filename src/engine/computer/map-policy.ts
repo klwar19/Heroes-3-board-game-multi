@@ -2,12 +2,21 @@ import { coreBuildingDefinitions } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { cardLibrary } from "@/data/cards/library";
 import { locationDefinitions, TRADE_RATES } from "@/data/map/locations";
-import { canHeroReachPlacedTile, playerHasPlaceableFarTile } from "../adventure";
+import { allTileDefinitions } from "@/data/map/tiles";
+import {
+  canHeroReachPlacedTile,
+  getAdjacentSpaceIds,
+  neutralBattleLevel,
+  playerHasPlaceableFarTile,
+} from "../adventure";
 import { isTileRotationConnected } from "../adventure-reducer";
+import { hexSpaceId, tileFootprint } from "../hex";
 import type {
   GameAction,
   GameState,
+  HeroState,
   MapSpaceId,
+  MapTileState,
   PlayerId,
   ResourceCost,
   VisitStep,
@@ -336,6 +345,83 @@ function moveScore(
 }
 
 /**
+ * Grade how good a tile rotation is as an ENTRANCE for the placing/revealing
+ * hero. `tileRotationScore` already prefers any rotation the hero can reach; this
+ * refines the choice so the AI rotates the *easiest usable* field toward the hero
+ * (an open field, or a guard it can beat) instead of walling a hard guard in
+ * front of its own doorway. Returns a large positive band when a hero-facing
+ * entrance exists — higher for an easier entrance — and a small fallback
+ * otherwise so a plain reveal that only connects elsewhere stays legal but ranks
+ * below every hero-facing orientation.
+ */
+function tileHeroEntryScore(
+  observation: ComputerObservation,
+  state: GameState,
+  tile: MapTileState,
+  rotation: number,
+): number {
+  const pending = state.adventure?.pendingTileChoice;
+  const heroes: Array<HeroState | undefined> = pending?.heroId
+    ? [state.heroes[pending.heroId]]
+    : Object.values(state.heroes).filter(
+        (hero) => hero.controllerId === observation.playerId,
+      );
+  const center = { row: tile.centerRow, col: tile.centerCol };
+  const def = allTileDefinitions[tile.tileDefId];
+  const slotByCell = new Map(
+    tileFootprint(center, rotation).map(
+      (cell, slot) => [hexSpaceId(cell), slot] as const,
+    ),
+  );
+  let bestEntry = Number.NEGATIVE_INFINITY;
+
+  for (const hero of heroes) {
+    if (
+      !hero?.spaceId ||
+      !canHeroReachPlacedTile(state, hero, tile.tileDefId, center, rotation)
+    ) {
+      continue;
+    }
+
+    const battleLevel = neutralBattleLevel(state, hero);
+    for (const neighborId of getAdjacentSpaceIds(hero.spaceId)) {
+      const slot = slotByCell.get(neighborId);
+      if (slot === undefined) {
+        continue;
+      }
+      const field = def?.fields[slot];
+      if (
+        !field ||
+        locationDefinitions[field.location]?.category === "blocked" ||
+        (slot > 0 && Boolean(def?.outerImpassable[slot - 1]))
+      ) {
+        continue;
+      }
+
+      const difficulty = field.difficulty ?? 0;
+      let entry = difficulty === 0 ? 130 : 70 - difficulty * 8;
+      if (difficulty > 0 && battleLevel > difficulty) {
+        entry += 35;
+      } else if (difficulty > 0 && battleLevel === difficulty) {
+        entry += 15;
+      } else if (difficulty > battleLevel) {
+        entry -= 80 + (difficulty - battleLevel) * 15;
+      }
+      bestEntry = Math.max(bestEntry, entry);
+    }
+  }
+
+  if (Number.isFinite(bestEntry)) {
+    // Own-hero access dominates a generic connection; difficulty then chooses
+    // the easiest usable entrance instead of rotating a hard guard in front.
+    return 120 + bestEntry;
+  }
+  // A plain reveal can be connected somewhere other than the revealing hero.
+  // Keep it as a legal fallback, below every hero-facing orientation.
+  return pending?.heroId ? 0 : -40;
+}
+
+/**
  * Score a tile rotation so the AI opens a doorway onto the new land instead of
  * sealing itself off with a random hash pick among equal foundation scores.
  */
@@ -378,6 +464,8 @@ function tileRotationScore(
     // after confirm; the connected gate is the practical "can walk in" proxy.
     score += 10;
   }
+
+  score += tileHeroEntryScore(observation, state, tile, action.rotation);
 
   // Stable preference among equal scores (lower rotation when all equal).
   score += (6 - action.rotation) * 0.01;
