@@ -1,6 +1,11 @@
 import { cardLibrary } from "@/data/cards/library";
-import type { GameAction, PendingChoice } from "../state";
+import type { GameAction, GameState, PendingChoice } from "../state";
 import { cardKeepValue } from "./card-policy";
+import {
+  collectMapObjectives,
+  objectiveDistanceField,
+  primaryMapObjective,
+} from "./map-navigation";
 import type { ComputerActionScore } from "./map-policy";
 import {
   distanceToNearestEnemy,
@@ -277,9 +282,9 @@ function scoreRerollOffer(
  * knockback …). Where a structured payload gives the AI something to reason
  * about — a mine to reveal (view-earth), a landing cell's distance to the enemy
  * (neutral-destination / teleport) — it scores by that. HONEST LIMIT: the
- * dimension-door DESTINATION is NOT yet scored by usefulness (no objective-
- * distance read here); it only prefers any real teleport over staying put, in
- * the engine's listed order. Improving it needs the map objective field wired in.
+ * Dimension Door destinations use the same public objective-distance field as
+ * normal movement, so the spell advances a real plan instead of picking the
+ * engine's first listed cell.
  */
 function scorePositionOption(
   observation: ComputerObservation,
@@ -297,9 +302,38 @@ function scorePositionOption(
       // Trailing "stay" option (no destination at this index).
       return CHOICE_BASE;
     }
-    // Prefer any real teleport over staying. Destination usefulness is not yet
-    // modelled (see the header note), so ties fall back to the listed order.
-    return CHOICE_BASE + 30 + Math.max(0, 10 - optionIndex);
+    const state = observation.state as unknown as GameState;
+    const hero = state.heroes[choice.dimensionDoor.heroId];
+    if (!hero?.spaceId) {
+      return CHOICE_BASE + 10;
+    }
+    const objectives = collectMapObjectives(state, hero);
+    const primary = primaryMapObjective(
+      state,
+      hero,
+      objectives,
+      observation.memory?.stickyObjectiveSpaceId,
+    );
+    if (!primary) {
+      return CHOICE_BASE + 10;
+    }
+    const distance = objectiveDistanceField(state, hero, [primary]);
+    const currentDistance = distance.get(hero.spaceId);
+    const destinationDistance = distance.get(dest);
+    if (currentDistance === undefined || destinationDistance === undefined) {
+      return CHOICE_BASE - 10;
+    }
+    const improvement = currentDistance - destinationDistance;
+    if (improvement <= 0) {
+      // Staying is smarter than consuming the spell on a sideways/backward hop.
+      return CHOICE_BASE - 10 + improvement;
+    }
+    return (
+      CHOICE_BASE +
+      25 +
+      Math.min(55, improvement * 10) +
+      (destinationDistance === 0 ? 20 : 0)
+    );
   }
 
   if (context === "view-earth" && choice.viewEarth) {

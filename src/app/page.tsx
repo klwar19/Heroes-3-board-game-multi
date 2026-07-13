@@ -87,6 +87,7 @@ import { CombatSandboxSetupScreen } from "@/components/table/combat-sandbox-setu
 import { healFreezeDisplayDamage } from "@/components/table/heal-display";
 import {
   buildComputerMoveReplay,
+  REPLAY_STEP_MS,
   useComputerMoveReplay,
   type ComputerMoveReplay,
 } from "@/components/table/computer-move-replay";
@@ -95,6 +96,7 @@ import {
   type ComputerBattleCue,
 } from "@/components/table/computer-battle-report";
 import { OpponentTurnOverlay } from "@/components/table/opponent-turn-overlay";
+import { usePacedComputerAdvance } from "@/components/table/computer-auto-advance";
 import { TableErrorBoundary } from "@/components/error-boundary";
 import {
   ADVENTURE_FEED_CUES,
@@ -548,6 +550,27 @@ function makeAbilityDiceCue(
  */
 const ABILITY_DICE_AFTER_STRIKE_MS = ATTACK_IMPACT_MS + 450;
 
+/** Deliberate single-player auto pace: visible, but without a click per AI beat. */
+const COMPUTER_AUTO_RECAP_MS = 700;
+const COMPUTER_AUTO_MATCH_STORAGE_KEY = "homm3bg.singlePlayerAutoMatch";
+
+function storedComputerAutoMatchSeed(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.sessionStorage.getItem(COMPUTER_AUTO_MATCH_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function storeComputerAutoMatchSeed(seed: string): void {
+  try {
+    window.sessionStorage.setItem(COMPUTER_AUTO_MATCH_STORAGE_KEY, seed);
+  } catch {
+    // Auto mode still works in-memory when session storage is unavailable.
+  }
+}
+
 /**
  * The dice a Spell rolls to size its own effect (Inferno): shown in the same
  * attack-die overlay, but headed with the spell's name and a "N hits" read-out
@@ -585,6 +608,10 @@ type HandMode = null | "mulligan" | "morale-redraw";
 
 export default function Home() {
   const [state, setState] = useState<GameState | null>(null);
+  /** Match seed whose computer confirmations were skipped in this tab. */
+  const [autoAdvanceMatchSeed, setAutoAdvanceMatchSeed] = useState<string | null>(
+    storedComputerAutoMatchSeed,
+  );
   /** Latest ingested state — used as `prev` for ladder dual-claim detection. */
   const stateRef = useRef<GameState | null>(null);
   const [viewerPlayerId, setViewerPlayerId] = useState<PlayerId>("p1");
@@ -741,6 +768,9 @@ export default function Home() {
   // hero walks are replayed for the human slowly, cell by cell, one hero at a
   // time. The pawns render at these override cells until the walk finishes.
   const computerReplay = useComputerMoveReplay();
+  const autoAdvanceEnabled = Boolean(
+    state?.sessionMode === "single-player" && autoAdvanceMatchSeed === state.seed,
+  );
   const startComputerReplayRef = useRef(computerReplay.start);
   startComputerReplayRef.current = computerReplay.start;
   const cancelComputerReplayRef = useRef(computerReplay.cancel);
@@ -3534,7 +3564,7 @@ export default function Home() {
 
     const connection = connectionRef.current;
     if (!connection) {
-      return;
+      return false;
     }
 
     setSyncStatus("submitting");
@@ -3570,6 +3600,7 @@ export default function Home() {
             /* the live stream keeps trying */
           });
       }
+      return payload.errors.length === 0;
     } catch (error) {
       setErrors([error instanceof Error ? error.message : "The action could not be submitted."]);
       setSyncStatus("submit failed");
@@ -3581,6 +3612,7 @@ export default function Home() {
         .catch(() => {
           /* the live stream keeps trying */
         });
+      return false;
     }
   };
 
@@ -4198,6 +4230,65 @@ export default function Home() {
     () => (uiState && isSeated ? getLegalActions(uiState, viewerPlayerId) : []),
     [viewerPlayerId, uiState, isSeated]
   );
+
+  const enableComputerAutoAdvance = useCallback(() => {
+    const current = stateRef.current;
+    if (current?.sessionMode !== "single-player") {
+      return;
+    }
+    storeComputerAutoMatchSeed(current.seed);
+    setAutoAdvanceMatchSeed(current.seed);
+    cancelComputerReplayRef.current();
+    setOpponentTurnSummary(null);
+  }, []);
+
+  // Catch-up snapshots may contain several computer moves. In auto mode, start
+  // their visual replay without opening a blocking confirmation dialog.
+  useEffect(() => {
+    if (!autoAdvanceEnabled || !opponentTurnSummary || computerReplay.active) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      const replay = opponentTurnSummary.replay;
+      setOpponentTurnSummary(null);
+      if (replay) {
+        startComputerReplayRef.current(replay);
+      }
+    }, COMPUTER_AUTO_RECAP_MS);
+    return () => window.clearTimeout(timer);
+  }, [autoAdvanceEnabled, opponentTurnSummary, computerReplay.active]);
+
+  // Auto-replayed catch-up walks still reveal one cell at a readable cadence.
+  useEffect(() => {
+    if (!autoAdvanceEnabled || !computerReplay.active) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      if (computerReplay.finished) {
+        cancelComputerReplayRef.current();
+      } else {
+        stepComputerReplayRef.current();
+      }
+    }, REPLAY_STEP_MS);
+    return () => window.clearTimeout(timer);
+  }, [autoAdvanceEnabled, computerReplay.active, computerReplay.finished, computerReplay.remainingSteps]);
+
+  // The server still applies exactly one authoritative AI decision per action.
+  // The hook only submits the already-legal advance when visual pacing is idle.
+  usePacedComputerAdvance({
+    enabled: autoAdvanceEnabled,
+    roomKey: `${roomId ?? ""}:${state?.seed ?? ""}`,
+    version: roomVersion,
+    blocked: Boolean(
+      firstRoll ||
+        presentationActive ||
+        opponentTurnSummary ||
+        computerReplay.active ||
+        syncStatus === "submitting",
+    ),
+    legalActions,
+    submit: submitAction,
+  });
 
   // Background-music scene, mirroring the three render branches below: the
   // map-setup lobby (menu theme), the adventure map (grass theme) and the
@@ -4936,10 +5027,10 @@ export default function Home() {
                   </div>
                 ) : null}
                 {/*
-                  Single-player map: computer never auto-moves. While a computer
-                  seat owns the next decision the human must press Next
-                  (ADVANCE_COMPUTER). Hidden during first-player dice so the
-                  ceremony finishes before any computer step is offered.
+                  Single-player map: manual pacing asks for Next while a computer
+                  owns the decision. Skip confirmations switches only this match
+                  to the paced auto-submit hook above. Hidden during first-player
+                  dice so the ceremony finishes before any step is offered.
                 */}
                 {(() => {
                   const advanceLegal = legalActions.find(
@@ -4950,6 +5041,7 @@ export default function Home() {
                   // board (combatVisible true) and auto-pumps — no Next gate.
                   const showGate =
                     Boolean(advanceLegal) &&
+                    !autoAdvanceEnabled &&
                     !firstRoll &&
                     !opponentTurnSummary &&
                     !computerReplay.active &&
@@ -4982,12 +5074,19 @@ export default function Home() {
                           >
                             Next step →
                           </button>
+                          <button
+                            type="button"
+                            className="opponentTurnSkip"
+                            onClick={enableComputerAutoAdvance}
+                          >
+                            Skip confirmations
+                          </button>
                         </div>
                       </div>
                     </div>
                   );
                 })()}
-                {opponentTurnSummary || computerReplay.active ? (
+                {!autoAdvanceEnabled && (opponentTurnSummary || computerReplay.active) ? (
                   <OpponentTurnOverlay
                     cues={opponentTurnSummary?.cues ?? []}
                     hasReplay={Boolean(
@@ -5021,6 +5120,7 @@ export default function Home() {
                       cancelComputerReplayRef.current();
                       setOpponentTurnSummary(null);
                     }}
+                    onSkipConfirmations={enableComputerAutoAdvance}
                   />
                 ) : null}
                 {isSeated && !mapReadOnly ? (

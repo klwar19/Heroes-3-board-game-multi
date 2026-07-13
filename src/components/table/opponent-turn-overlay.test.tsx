@@ -92,4 +92,23 @@ describe("OpponentTurnOverlay", () => {
     expect(onDismiss).toHaveBeenCalledTimes(1);
     expect(onWatch).not.toHaveBeenCalled();
   });
+
+  it("turns Skip confirmations into a per-match auto-play choice", () => {
+    const onDismiss = vi.fn();
+    const onSkipConfirmations = vi.fn();
+    render(
+      <OpponentTurnOverlay
+        cues={[]}
+        hasReplay
+        replayPhase="idle"
+        onWatch={() => {}}
+        onDismiss={onDismiss}
+        onSkipConfirmations={onSkipConfirmations}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("Skip confirmations"));
+    expect(onSkipConfirmations).toHaveBeenCalledTimes(1);
+    expect(onDismiss).not.toHaveBeenCalled();
+  });
 });

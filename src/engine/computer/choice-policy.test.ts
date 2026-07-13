@@ -3,10 +3,12 @@ import type {
   CombatState,
   CombatUnitState,
   GameAction,
+  GameState,
   LegalAction,
   PendingChoice,
   PlayerVisibleState,
 } from "../state";
+import { createAdventureGameState } from "../adventure-setup";
 import { cardKeepValue } from "./card-policy";
 import { chooseComputerAction } from "./policy";
 import type { ComputerObservation } from "./types";
@@ -269,6 +271,85 @@ describe("choice policy — city hall income", () => {
     expect([0, 1]).toContain(
       (fat?.action as { optionIndex: number }).optionIndex,
     );
+  });
+});
+
+describe("choice policy — objective-aware map choices", () => {
+  it("uses Dimension Door toward a known payoff instead of the first listed cell", () => {
+    const state = createAdventureGameState({
+      seed: "dimension-door-ai",
+      rollFirstPlayer: false,
+      events: false,
+    });
+    const hero = Object.values(state.heroes).find(
+      (candidate) => candidate.controllerId === "p2" && candidate.kind === "main",
+    )!;
+    const target = "h:10:8";
+    const sideways = "h:9:7";
+
+    // Leave one public, unvisited payoff on the map so destination quality has
+    // one unambiguous objective. Remove exploration/enemy noise from the fixture.
+    for (const field of Object.values(state.adventure!.fields)) {
+      field.flagOwnerId = "p2";
+      field.blackCube = true;
+      delete field.difficulty;
+    }
+    state.adventure!.fields[target].flagOwnerId = null;
+    state.adventure!.fields[target].blackCube = false;
+    for (const tile of Object.values(state.adventure!.tiles)) {
+      tile.faceDown = false;
+    }
+    state.adventure!.playerFarTiles = { p1: [], p2: [] };
+    for (const other of Object.values(state.heroes)) {
+      if (other.id !== hero.id) other.spaceId = null;
+    }
+
+    const choice = {
+      id: "dd-ai",
+      type: "OPTION_CHOICE",
+      playerId: "p2",
+      prompt: "Dimension Door",
+      context: "dimension-door",
+      options: [
+        { label: "sideways" },
+        { label: "resource" },
+        { label: "stay" },
+      ],
+      dimensionDoor: {
+        heroId: hero.id,
+        destinations: [sideways, target],
+      },
+    } as unknown as PendingChoice;
+    state.pendingChoice = choice;
+    const actions: LegalAction[] = [0, 1, 2].map((optionIndex) => ({
+      label: `option ${optionIndex}`,
+      action: {
+        type: "CHOOSE_OPTION",
+        playerId: "p2",
+        choiceId: "dd-ai",
+        optionIndex,
+      } as GameAction,
+    }));
+    const observed: ComputerObservation = {
+      playerId: "p2",
+      state: state as unknown as ComputerObservation["state"],
+      legalActions: actions,
+    };
+
+    const decision = chooseComputerAction(observed);
+    expect((decision?.action as { optionIndex: number }).optionIndex).toBe(1);
+
+    // CONTROL: if only the sideways hop and Stay remain, do not waste the spell.
+    const controlChoice = {
+      ...choice,
+      options: [{ label: "sideways" }, { label: "stay" }],
+      dimensionDoor: { heroId: hero.id, destinations: [sideways] },
+    } as unknown as PendingChoice;
+    (observed.state as unknown as GameState).pendingChoice = controlChoice;
+    observed.legalActions = actions.slice(0, 2);
+    expect(
+      (chooseComputerAction(observed)?.action as { optionIndex: number }).optionIndex,
+    ).toBe(1);
   });
 });
 

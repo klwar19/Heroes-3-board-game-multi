@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { allTileDefinitions } from "@/data/map/tiles";
+import { coreFactionDefinitions } from "@/data/factions/core";
+import { coreUnitDefinitions } from "@/data/factions/units";
 import { createAdventureGameState } from "../adventure-setup";
 import {
   canHeroReachPlacedTile,
@@ -9,7 +11,7 @@ import {
 } from "../adventure";
 import { hexSpaceId, tileFootprint } from "../hex";
 import { getLegalActions } from "../legal-actions";
-import type { GameState, HeroState, MapSpaceId } from "../state";
+import type { GameAction, GameState, HeroState, MapSpaceId } from "../state";
 import { UNOPENED_FAR_TILE } from "../state";
 import {
   canBeatGuardedField,
@@ -18,6 +20,7 @@ import {
   primaryMapObjective,
 } from "./map-navigation";
 import { scoreMapAction } from "./map-policy";
+import { chooseComputerAction } from "./policy";
 import type { ComputerObservation } from "./types";
 
 /**
@@ -212,6 +215,91 @@ describe("objectiveDistanceField", () => {
 });
 
 describe("moveScore uses objectives (fixes wander + never-fights)", () => {
+  it("spends Population on the same-tier unit with the larger combat gain", () => {
+    const state = game();
+    const faction = coreFactionDefinitions[state.players.p2.factionId!];
+    const bronze = faction.units.filter(
+      (unitDefId) => coreUnitDefinitions[unitDefId]?.tier === "bronze",
+    );
+    expect(bronze.length).toBeGreaterThanOrEqual(2);
+    const value = (unitDefId: string) => {
+      const side = coreUnitDefinitions[unitDefId]!.few!;
+      return (
+        side.attack * 3 +
+        side.health * 2 +
+        side.defense +
+        Math.round(side.initiative / 2)
+      );
+    };
+    const candidates = bronze
+      .map((unitDefId) => ({ unitDefId, value: value(unitDefId) }))
+      .sort((a, b) => b.value - a.value);
+    expect(candidates[0].value).toBeGreaterThan(candidates.at(-1)!.value);
+    const weaker = candidates.at(-1)!.unitDefId;
+    const stronger = candidates[0].unitDefId;
+    const actions = [weaker, stronger].map((unitDefId) => ({
+      label: `recruit ${unitDefId}`,
+      action: {
+        type: "POPULATION_ACTION" as const,
+        playerId: "p2",
+        purchases: [{ kind: "recruit" as const, unitDefId }],
+      },
+    }));
+
+    const decision = chooseComputerAction({
+      ...observe(state),
+      legalActions: actions,
+    });
+    expect(decision?.action.type).toBe("POPULATION_ACTION");
+    expect(
+      (decision?.action as Extract<GameAction, { type: "POPULATION_ACTION" }>)
+        .purchases[0].unitDefId,
+    ).toBe(stronger);
+  });
+
+  it("collects a known payoff before spending more movement on exploration", () => {
+    const state = game();
+    const hero = p2Hero(state);
+    hero.level = 1;
+    // Remove the distant conquest-town override so the adjacent guarded mine is
+    // the concrete primary payoff for this policy comparison.
+    state.adventure!.victoryMode = "dragon-hunt";
+    const discoverTile = Object.values(state.adventure!.tiles).find(
+      (tile) => tile.faceDown,
+    );
+    expect(discoverTile).toBeDefined();
+    const actions = [
+      {
+        label: "open more map",
+        action: {
+          type: "DISCOVER_TILE",
+          playerId: "p2",
+          heroId: hero.id,
+          tileInstanceId: discoverTile!.id,
+        } as const,
+      },
+      {
+        label: "claim guarded mine",
+        action: {
+          type: "MOVE_HERO",
+          playerId: "p2",
+          heroId: hero.id,
+          to: MINE,
+        } as const,
+      },
+      {
+        label: "end",
+        action: { type: "END_TURN", playerId: "p2" } as const,
+      },
+    ];
+    const decision = chooseComputerAction({
+      ...observe(state),
+      legalActions: actions,
+    });
+    expect(decision?.action.type).toBe("MOVE_HERO");
+    expect(decision?.policy).toBe("map.move-to-objective");
+  });
+
   it("steps ONTO a beatable guard well above ending the turn", () => {
     const state = game();
     const hero = p2Hero(state);

@@ -6,6 +6,7 @@ import { allTileDefinitions } from "@/data/map/tiles";
 import {
   canHeroReachPlacedTile,
   getAdjacentSpaceIds,
+  getUnitSide,
   neutralBattleLevel,
   playerHasPlaceableFarTile,
 } from "../adventure";
@@ -231,13 +232,38 @@ function populationScore(
   // broke (army is the win condition).
   if (gold >= GOLD_RESERVE + 10) score += 8;
   for (const purchase of action.purchases) {
+    const definition = coreUnitDefinitions[purchase.unitDefId];
+    const gainedSide = getUnitSide(
+      purchase.unitDefId,
+      purchase.kind === "reinforce" ? "pack" : "few",
+    );
+    const previousSide =
+      purchase.kind === "reinforce"
+        ? getUnitSide(purchase.unitDefId, "few")
+        : null;
+    // Spend the once-per-round Population token on the largest real combat
+    // gain, not a hash-random unit among same-tier offers. Reinforcement is
+    // valued by the Pack's improvement over Few; recruitment gains the whole
+    // Few body. These are public printed stats only.
+    const sideValue = gainedSide
+      ? gainedSide.attack * 3 +
+        gainedSide.health * 2 +
+        gainedSide.defense +
+        Math.round(gainedSide.initiative / 2)
+      : 0;
+    const previousValue = previousSide
+      ? previousSide.attack * 3 +
+        previousSide.health * 2 +
+        previousSide.defense +
+        Math.round(previousSide.initiative / 2)
+      : 0;
+    score += Math.min(65, Math.max(0, sideValue - previousValue));
     if (purchase.kind === "reinforce") {
       score += 14;
       continue;
     }
-    const unit = coreUnitDefinitions[purchase.unitDefId];
-    if (unit?.tier === "gold") score += 20;
-    else if (unit?.tier === "silver") score += 14;
+    if (definition?.tier === "gold") score += 20;
+    else if (definition?.tier === "silver") score += 14;
     else score += 8;
   }
   score += economyFocusBias(memory, "recruit");
@@ -245,21 +271,20 @@ function populationScore(
 }
 
 // Stepping directly ONTO an objective (flag it, visit it, or fight a beatable
-// guard) — kept below map develop/discover actions so the hero still builds,
-// recruits and reveals adjacent tiles first, but well above END_TURN (300).
-// Victory sites sit above recruit-adjacent movement so the AI commits to the win.
+// guard) outranks opening more land. Recruitment remains higher when it yields
+// a meaningful combat gain, while victory sites override ordinary development.
 const OBJECTIVE_ENTER_SCORE: Record<MapObjectiveKind, number> = {
-  victory: 880,
-  "enemy-hero": 770,
-  guard: 760,
-  town: 750,
-  flaggable: 740,
-  visitable: 720,
-  explore: 735,
+  victory: 980,
+  "enemy-hero": 890,
+  guard: 870,
+  town: 850,
+  flaggable: 830,
+  visitable: 810,
+  explore: 720,
 };
 // A step that shrinks the distance to the sticky primary objective without
 // arriving yet: above END_TURN so the march continues, below entering.
-const OBJECTIVE_PROGRESS_BASE = 630;
+const OBJECTIVE_PROGRESS_BASE = 700;
 // A step that reaches no objective / makes no progress: below END_TURN (300) so
 // the hero stops instead of wandering back and forth over empty fields.
 const NO_PROGRESS_SCORE = 260;
@@ -342,6 +367,33 @@ function moveScore(
     return OWN_TOWN_DETOUR_SCORE;
   }
   return NO_PROGRESS_SCORE;
+}
+
+/**
+ * Revealing land is useful only until it competes with a known, reachable map
+ * payoff. Once a mine, reward, beatable guard, town, enemy, or victory site is
+ * visible, marching toward it must beat spending every movement point opening
+ * more tiles. This is the conversion loop the old fixed 830 discovery score
+ * lacked: explore -> identify value -> collect it -> develop the army.
+ */
+function explorationActionScore(
+  observation: ComputerObservation,
+  heroId: string,
+  noKnownPayoffScore: number,
+): number {
+  const state = observation.state as unknown as GameState;
+  const hero = state.heroes[heroId];
+  if (!hero) return 650;
+  const knownPayoffs = collectMapObjectives(state, hero).filter(
+    (objective) => objective.kind !== "explore",
+  );
+  if (knownPayoffs.length === 0) {
+    return noKnownPayoffScore;
+  }
+  // Keep discovery legal and attractive over END_TURN, but below build/recruit
+  // and below objective progress/entry. A weak army especially needs to convert
+  // known rewards into development before opening another frontier.
+  return armyNeedsReinforcement(state, observation.playerId) ? 640 : 670;
 }
 
 /**
@@ -924,9 +976,10 @@ export function scoreMapAction(
       };
     }
     case "DISCOVER_TILE":
-      // Opening laid face-down land always beats end-turn parking. Slightly
-      // above PLACE so a free adjacent flip is preferred when both exist.
-      return { score: 830, policy: "map.discover-tile" };
+      return {
+        score: explorationActionScore(observation, action.heroId, 830),
+        policy: "map.discover-tile",
+      };
     case "PLACE_TILE": {
       // Ⅱ–Ⅲ placement is the escape hatch when the hero is boxed by sealed
       // Near/center faces (the "stare at VI–VII" stall). Boost further when no
@@ -949,7 +1002,11 @@ export function scoreMapAction(
             ? 15
             : 25;
       return {
-        score: 800 + expandUrgency,
+        score: explorationActionScore(
+          observation,
+          action.heroId,
+          780 + expandUrgency,
+        ),
         policy: "map.place-far-tile",
       };
     }
