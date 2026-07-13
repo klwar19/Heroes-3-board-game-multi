@@ -1,5 +1,11 @@
 # Cloudflare R2 plan (`heroes3` bucket)
 
+> **The step-by-step custom-domain rollout now lives in
+> `docs/cloudflare-custom-domain-cdn-plan.md`** (Nhân Hòa domain → Cloudflare
+> zone → `cdn.<domain>` on this bucket → `npm run sync:assets` →
+> `NEXT_PUBLIC_ASSET_BASE_URL`). This file remains the architecture note for
+> why R2 only carries static media and never the multiplayer server.
+
 The existing `heroes3` R2 bucket is useful for static game art and audio. It is
 not the multiplayer server: live rooms and lobby chat need PartyKit/Cloudflare
 Durable Objects because R2 provides object storage, not WebSockets or atomic
@@ -33,9 +39,11 @@ HTTP 400. Attach a Cloudflare custom domain (recommended, for example
 4. Set `NEXT_PUBLIC_ASSET_BASE_URL=https://<public-r2-domain>` in the Next.js
    deployment and rebuild. Keep `NEXT_PUBLIC_PARTYKIT_HOST` set only to the
    hostname printed by `partykit deploy` (no R2 URL).
-5. Before removing local public assets, migrate the five CSS-only URLs listed
-   by `rg 'url\\("/assets/' src/app/globals.css`; `assetUrl()` cannot rewrite
-   CSS URLs. A safer first rollout keeps local assets as a fallback.
+5. Do NOT remove local public assets: the `url()` references in
+   `src/app/globals.css` (backgrounds + `@font-face` fonts — list them with
+   `rg 'url\\("/(assets|fonts)/' src/app/globals.css`) cannot go through
+   `assetUrl()` and stay same-origin by design, and keeping `public/` deployed
+   makes unsetting the env var an instant, total rollback.
 6. Deploy PartyKit before the app whenever `partykit.json` adds a party. The
    current worker must expose `/parties/lobbychat/directory`; the app now
    accesses it server-to-server through `/api/lobby-chat`, avoiding browser CORS

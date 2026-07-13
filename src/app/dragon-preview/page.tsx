@@ -5,6 +5,7 @@
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { AzureClawChill } from "@/components/adventure/azure-claw-chill";
+import { assetUrl } from "@/lib/asset-url";
 
 function MockCard({ label, w = 108, h = 148 }: { label: string; w?: number; h?: number }) {
   return (
@@ -182,7 +183,7 @@ function MapScreenPreview() {
         <AzureClawChill />
         <div aria-hidden className="trayFootFrost">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img alt="" draggable={false} src="/assets/ui/ornate/tray-foot-frost.webp" />
+          <img alt="" draggable={false} src={assetUrl("/assets/ui/ornate/tray-foot-frost.webp")} />
         </div>
       </div>
 
