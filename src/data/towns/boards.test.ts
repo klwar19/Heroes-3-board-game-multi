@@ -160,6 +160,45 @@ describe("town board manifest", () => {
     });
   });
 
+  describe("cove & conflux — resource-track marker geometry", () => {
+    // These two scans are a tighter crop than the wiki 2265×1651 die-cut, so
+    // they MUST NOT reuse WIKI_GEOMETRY tracks. Markers are centres of the
+    // printed cells (translate -50%/-50%); a left/low regression puts the
+    // production cube on the wrong number (the bug that shipped firstCellX
+    // 0.598 / materials y 0.637 / zigzagDy 0.02).
+    it("pins track centres to the printed cells on both empty scans", () => {
+      for (const factionId of ["cove", "conflux"] as const) {
+        const { tracks } = townBoardSpecs[factionId].geometry;
+        expect(tracks.firstCellX, `${factionId} firstCellX`).toBeCloseTo(0.64, 3);
+        expect(tracks.cellPitchX, `${factionId} cellPitchX`).toBeCloseTo(0.042, 3);
+        // Last cell (index 7) must still sit on the board, near the right edge
+        // of the track panel — not short of the "45"/"14"/"7" cells.
+        const lastX = tracks.firstCellX + 7 * tracks.cellPitchX;
+        expect(lastX, `${factionId} last cell x`).toBeGreaterThan(0.92);
+        expect(lastX, `${factionId} last cell x`).toBeLessThan(0.96);
+        // Zigzag is a small notch, not a full row drop.
+        expect(tracks.zigzagDy, `${factionId} zigzagDy`).toBeGreaterThan(0.008);
+        expect(tracks.zigzagDy, `${factionId} zigzagDy`).toBeLessThan(0.015);
+        const byResource = Object.fromEntries(tracks.rows.map((row) => [row.resource, row.y]));
+        expect(byResource.gold, `${factionId} gold y`).toBeCloseTo(0.514, 3);
+        expect(byResource.buildingMaterials, `${factionId} materials y`).toBeCloseTo(0.612, 3);
+        expect(byResource.valuables, `${factionId} valuables y`).toBeCloseTo(0.713, 3);
+        // Materials sits between gold and valuables with ~0.1 gaps (not the
+        // old 0.637/0.737 packing that dragged both rows low).
+        expect(byResource.buildingMaterials - byResource.gold).toBeGreaterThan(0.08);
+        expect(byResource.buildingMaterials - byResource.gold).toBeLessThan(0.12);
+        expect(byResource.valuables - byResource.buildingMaterials).toBeGreaterThan(0.08);
+        expect(byResource.valuables - byResource.buildingMaterials).toBeLessThan(0.12);
+      }
+    });
+
+    it("CONTROL: wiki scan boards keep the Archon die-cut track fractions", () => {
+      const { tracks } = townBoardSpecs.castle.geometry;
+      expect(tracks.firstCellX).toBeCloseTo(0.6322, 4);
+      expect(tracks.rows.find((row) => row.resource === "buildingMaterials")!.y).toBeCloseTo(0.6196, 4);
+    });
+  });
+
   describe("cove & conflux — real printed English board scans", () => {
     // These two boards were promoted from designed boards to real printed English
     // scans (assets-to-translate/cove-conflux-town-boards pipeline). The bars are

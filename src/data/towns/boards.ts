@@ -192,10 +192,15 @@ const DESIGNED_PANEL_IMAGE = "/assets/town-tracks-panel.webp";
  * The two boards share one printed lower panel (definitions bottom-left, the
  * three resource-gain tracks + build/population/spell-book token wells
  * bottom-right); only the top tile-window aspect differs slightly between the
- * two photographed boards. Fractions were measured on the shipped scans
- * (towns-{cove,conflux}-board-{empty,full}.webp) — see the grid measurements in
- * the commit; markers/wells use translate(-50%,-50%), so track/token x,y are
- * CENTRES and the definitions rectangle is top-left.
+ * two photographed boards. Track fractions are CENTRES of the printed cells on
+ * the shipped scans (towns-{cove,conflux}-board-*.webp, ~820×606) — NOT the
+ * wiki 2265×1651 die-cut (`WIKI_GEOMETRY`). Markers/wells use
+ * translate(-50%,-50%), so track/token x,y are cell centres.
+ *
+ * Recalibrated against the printed number centres on both empty scans (the
+ * earlier firstCellX 0.598 / materials y 0.637 / zigzagDy 0.02 sat ~half a cell
+ * left and a full cell low of the gold/ore/valuable tracks). Token wells were
+ * already correct and are left per-board below.
  */
 // The definitions corner and the three resource-gain tracks print at the same
 // fractions on both photographed boards (same die-cut, same tight crop); only
@@ -203,14 +208,17 @@ const DESIGNED_PANEL_IMAGE = "/assets/town-tracks-panel.webp";
 const COVE_CONFLUX_DEFS_TRACKS: Pick<TownBoardGeometry, "definitions" | "tracks"> = {
   definitions: { left: 0.045, top: 0.485, right: 0.545, bottom: 0.945 },
   tracks: {
-    firstCellX: 0.598,
-    cellPitchX: 0.0426,
-    zigzagDy: 0.02,
+    // Cell 0 centre ≈ 0.640; cell 7 centre ≈ 0.934 → pitch 0.042.
+    firstCellX: 0.64,
+    cellPitchX: 0.042,
+    // Odd cells sit one notch lower than even ones (same order of magnitude as
+    // the wiki board's 0.0097, scaled to this tighter crop).
+    zigzagDy: 0.0105,
     iconX: 0.575,
     rows: [
-      { resource: "gold", y: 0.512, values: TOWN_TRACK_VALUES.gold },
-      { resource: "buildingMaterials", y: 0.637, values: TOWN_TRACK_VALUES.buildingMaterials },
-      { resource: "valuables", y: 0.737, values: TOWN_TRACK_VALUES.valuables }
+      { resource: "gold", y: 0.514, values: TOWN_TRACK_VALUES.gold },
+      { resource: "buildingMaterials", y: 0.612, values: TOWN_TRACK_VALUES.buildingMaterials },
+      { resource: "valuables", y: 0.713, values: TOWN_TRACK_VALUES.valuables }
     ]
   }
 };
