@@ -34,8 +34,6 @@ import {
   VICTORY_MODE_LABELS,
   applyUnitSideRules,
   bannableHeroesForSeat,
-  canHeroReachPlacedTile,
-  canHeroReachPlacementCenter,
   deckDisplayName,
   describeCardEffect,
   DRAFT_FORMAT_LABELS,
@@ -69,10 +67,7 @@ import {
   reservedTownIdsForOtherSeats,
   scenarioDefinitions,
   startingBonusDescription,
-  tileCentersAdjacent,
-  tileCentersOverlap,
   tileFootprint,
-  tileLatticeNeighbors,
   tierOfLevel,
   UNIT_LEVELS,
   unitAbilities,
@@ -223,8 +218,10 @@ export type HeroMoveCue = { id: string; heroId: string; path: MapSpaceId[] };
  * Re-export of the engine placement lattice helper so UI call sites keep a
  * stable import path. Implementation lives in `adventure.ts` (also used by
  * legal-actions so the computer can PLACE_TILE the same slots a human clicks).
+ * Must also be imported (not only re-exported) so this module can call it.
  */
-export { farTilePlacementCenters } from "@/engine/adventure";
+import { farTilePlacementCenters } from "@/engine/adventure";
+export { farTilePlacementCenters };
 
 // ---------------------------------------------------------------------------
 // Hex map board: pan/zoom, click-to-move with path arrows, tile art layer,
