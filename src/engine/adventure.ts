@@ -63,6 +63,7 @@ import {
   tileCentersOverlap,
   tileFootprint,
   tileFootprintsTouch,
+  tileLatticeNeighbors,
   type HexCoord
 } from "./hex";
 import { createSeededRandom } from "./random";
@@ -103,7 +104,7 @@ import type {
   VisitStep
 } from "./state";
 import { isNeutralSideCombatChoice, neutralCombatControllerId } from "./neutral-control";
-import { NEUTRAL_PLAYER_ID } from "./state";
+import { NEUTRAL_PLAYER_ID, UNOPENED_FAR_TILE } from "./state";
 import { awardCommanderGradePoints } from "./commanders";
 
 /** Hero level track: hand limit and expert-effect uses by level (hero board). */
@@ -1294,6 +1295,84 @@ export function canHeroReachPlacementCenter(
   }
   const footprintCells = new Set<MapSpaceId>(tileFootprint(center, 0).map(hexSpaceId));
   return getAdjacentSpaceIds(hero.spaceId).some((neighborId) => footprintCells.has(neighborId));
+}
+
+/**
+ * Empty lattice slots where {@link hero} may drop a Far (Ⅱ–Ⅲ) supply tile.
+ * Mirrors the PLACE_TILE guard (`canPlaceTileAt` + reachability): the slot must
+ * nest against ≥2 existing tiles, sit next to the hero, not overlap, and the
+ * hero must be able to open across an unsealed outer edge. Geometry only — the
+ * 1-MP cost and active-turn gate live with the caller.
+ *
+ * When `tileDefId` is a known definition (Observatory-style), every rotation is
+ * checked; for an UNOPENED supply tile (def unknown until the flip) only the
+ * hero-side seal + footprint adjacency is checked — same as the handler.
+ */
+export function farTilePlacementCenters(
+  state: GameState,
+  hero: HeroState,
+  tileDefId?: string,
+): HexCoord[] {
+  const adventure = state.adventure;
+  if (!adventure || !hero.spaceId) {
+    return [];
+  }
+  const heroCoord = parseHexSpaceId(hero.spaceId);
+  if (!heroCoord) {
+    return [];
+  }
+  const existing = Object.values(adventure.tiles).map((tile) => ({
+    row: tile.centerRow,
+    col: tile.centerCol,
+  }));
+  const seen = new Map<string, HexCoord>();
+  const centers: HexCoord[] = [];
+  for (const center of existing) {
+    for (const candidate of tileLatticeNeighbors(center)) {
+      const key = `${candidate.row}:${candidate.col}`;
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.set(key, candidate);
+      if (existing.some((tile) => tileCentersOverlap(tile, candidate))) {
+        continue;
+      }
+      if (existing.filter((tile) => tileCentersAdjacent(tile, candidate)).length < 2) {
+        continue;
+      }
+      if (!canPlaceTileAt(state, hero, candidate, 0)) {
+        continue;
+      }
+      // Known def → full rotation-aware doorway check; unopened supply → hero
+      // side seal only (tile def is drawn later).
+      if (tileDefId && allTileDefinitions[tileDefId]) {
+        if (
+          ![0, 1, 2, 3, 4, 5].some((rotation) =>
+            canHeroReachPlacedTile(state, hero, tileDefId, candidate, rotation),
+          )
+        ) {
+          continue;
+        }
+      } else if (!canHeroReachPlacementCenter(state, hero, candidate)) {
+        continue;
+      }
+      centers.push(candidate);
+    }
+  }
+  return centers;
+}
+
+/** True when the seat still holds at least one unopened Ⅱ–Ⅲ supply tile and the pool is not empty. */
+export function playerHasPlaceableFarTile(
+  state: GameState,
+  playerId: PlayerId,
+): boolean {
+  const adventure = state.adventure;
+  if (!adventure || (adventure.farTilePool?.length ?? 0) === 0) {
+    return false;
+  }
+  const supply = adventure.playerFarTiles[playerId] ?? [];
+  return supply.includes(UNOPENED_FAR_TILE);
 }
 
 // ---------------------------------------------------------------------------

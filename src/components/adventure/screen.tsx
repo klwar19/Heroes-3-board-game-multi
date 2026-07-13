@@ -220,65 +220,11 @@ export type TilePlacementSelection = { supplyIndex: number } | null;
 export type HeroMoveCue = { id: string; heroId: string; path: MapSpaceId[] };
 
 /**
- * Empty lattice slots where {@link hero} may drop the Far (Ⅱ–Ⅲ) tile `tileDefId`
- * from their supply. Mirrors the engine's PLACE_TILE guard (`canPlaceTileAt` +
- * `canHeroReachPlacedTile`): the slot must be a gapless neighbour of the tiling
- * that nests against ≥2 existing tiles, sit next to the hero, not overlap, and
- * the hero must be able to cross onto it in some rotation. Geometry only — the
- * 1-MP cost and active-turn gate live with the caller. Uses the FULL game state
- * (`state.adventure`), since the player-view masks Far-tile def ids to "hidden".
+ * Re-export of the engine placement lattice helper so UI call sites keep a
+ * stable import path. Implementation lives in `adventure.ts` (also used by
+ * legal-actions so the computer can PLACE_TILE the same slots a human clicks).
  */
-export function farTilePlacementCenters(
-  state: GameState,
-  hero: HeroState,
-  tileDefId: string | undefined
-): { row: number; col: number }[] {
-  const rawAdventure = state.adventure;
-  if (!rawAdventure || !hero.spaceId || !tileDefId) {
-    return [];
-  }
-  const heroCoord = parseHexSpaceId(hero.spaceId);
-  if (!heroCoord) {
-    return [];
-  }
-  const existing = Object.values(rawAdventure.tiles).map((tile) => ({ row: tile.centerRow, col: tile.centerCol }));
-  const seen = new Map<string, { row: number; col: number }>();
-  const centers: { row: number; col: number }[] = [];
-  for (const center of existing) {
-    for (const candidate of tileLatticeNeighbors(center)) {
-      const key = `${candidate.row}:${candidate.col}`;
-      if (seen.has(key)) {
-        continue;
-      }
-      seen.set(key, candidate);
-      if (existing.some((tile) => tileCentersOverlap(tile, candidate))) {
-        continue;
-      }
-      if (existing.filter((tile) => tileCentersAdjacent(tile, candidate)).length < 2) {
-        continue;
-      }
-      const footprint = tileFootprint(candidate, 0);
-      const nextToHero = footprint.some((cell) => hexDistance(cell, heroCoord) === 1);
-      if (!nextToHero) {
-        continue;
-      }
-      // Pre-filter spots the hero can never cross onto regardless of rotation.
-      // For a KNOWN tile def we run the full rotation-aware check; for an
-      // UNOPENED supply tile (def unknown until the flip) we check only that
-      // the hero's reachable region touches any footprint cell through an
-      // unsealed outer arc — the same gate the PLACE_TILE handler enforces.
-      if (allTileDefinitions[tileDefId]) {
-        if (![0, 1, 2, 3, 4, 5].some((rotation) => canHeroReachPlacedTile(state, hero, tileDefId, candidate, rotation))) {
-          continue;
-        }
-      } else if (!canHeroReachPlacementCenter(state, hero, candidate)) {
-        continue;
-      }
-      centers.push(candidate);
-    }
-  }
-  return centers;
-}
+export { farTilePlacementCenters } from "@/engine/adventure";
 
 // ---------------------------------------------------------------------------
 // Hex map board: pan/zoom, click-to-move with path arrows, tile art layer,

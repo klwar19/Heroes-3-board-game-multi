@@ -3,11 +3,13 @@ import {
   adventureVictoryMode,
   canCrossEdge,
   classifyHeroStep,
+  farTilePlacementCenters,
   getAdjacentSpaceIds,
   getHeroMovementCapabilities,
   heroAtSpace,
   isFieldGuarded,
   neutralBattleLevel,
+  playerHasPlaceableFarTile,
 } from "../adventure";
 import { canHeroDiscoverAdjacentTile } from "../adventure-reducer";
 import type {
@@ -288,9 +290,14 @@ function objectiveKind(
 }
 
 /**
- * Fields from which this hero could DISCOVER a still face-down tile (same
- * geometry/seal rules the legal-actions offer uses). Marching here then
- * flipping the tile is how the AI expands the map.
+ * Fields from which this hero could DISCOVER a still face-down tile OR place a
+ * Far (Ⅱ–Ⅲ) supply tile (same geometry/seal rules legal-actions uses).
+ * Marching here then flipping/placing is how the AI expands the map.
+ *
+ * Without PLACE-capable doorways the AI only walked toward already-laid
+ * face-down Near/center tiles (IV–VII). When those sit behind a sealed yellow
+ * border — or the hero cannot spend the last MP to flip them — it parked and
+ * stared. Ⅱ–Ⅲ supply placements open a new notch and unstick that dead-end.
  */
 function collectExploreObjectives(
   state: GameState,
@@ -301,15 +308,12 @@ function collectExploreObjectives(
     return [];
   }
   const faceDown = Object.values(adventure.tiles).filter((tile) => tile.faceDown);
-  if (faceDown.length === 0) {
+  const canPlaceFar = playerHasPlaceableFarTile(state, hero.controllerId);
+  if (faceDown.length === 0 && !canPlaceFar) {
     return [];
   }
   const found = new Map<MapSpaceId, MapObjective>();
   for (const field of Object.values(adventure.fields)) {
-    // Skip fields already claimed as a stronger objective kind.
-    if (found.has(field.spaceId)) {
-      continue;
-    }
     // Don't park explore objectives under enemy heroes / unbeatable guards.
     const occupant = heroAtSpace(state, field.spaceId, hero.id);
     if (occupant && occupant.controllerId !== hero.controllerId) {
@@ -319,11 +323,20 @@ function collectExploreObjectives(
       continue;
     }
     const probe: HeroState = { ...hero, spaceId: field.spaceId };
+    let useful = false;
     for (const tile of faceDown) {
       if (canHeroDiscoverAdjacentTile(state, probe, tile)) {
-        found.set(field.spaceId, { spaceId: field.spaceId, kind: "explore" });
+        useful = true;
         break;
       }
+    }
+    // A field where the hero could DROP a Ⅱ–Ⅲ tile is an expand objective even
+    // when every laid face-down tile is sealed off from here.
+    if (!useful && canPlaceFar && farTilePlacementCenters(state, probe).length > 0) {
+      useful = true;
+    }
+    if (useful) {
+      found.set(field.spaceId, { spaceId: field.spaceId, kind: "explore" });
     }
   }
   return [...found.values()];

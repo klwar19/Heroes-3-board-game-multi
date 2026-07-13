@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { createAdventureGameState } from "../adventure-setup";
+import { farTilePlacementCenters, playerHasPlaceableFarTile } from "../adventure";
+import { getLegalActions } from "../legal-actions";
 import type { GameState, HeroState, MapSpaceId } from "../state";
+import { UNOPENED_FAR_TILE } from "../state";
 import {
   canBeatGuardedField,
   collectMapObjectives,
@@ -309,11 +312,113 @@ describe("sticky primary + explore objectives", () => {
     }
   });
 
+  it("offers PLACE_TILE in legal actions and scores it above END_TURN (Ⅱ–Ⅲ expand)", () => {
+    // The "stare at VI–VII" stall: face-down high-tier tiles stay sealed, and
+    // without PLACE_TILE in the legal set the AI never opens a new Ⅱ–Ⅲ notch.
+    const state = game();
+    state.activePlayerId = "p2";
+    state.players.p2.needsHandRefresh = false;
+    state.players.p2.canMulligan = false;
+    state.adventure!.pendingTileChoice = null;
+    state.adventure!.pendingVisit = null;
+    const hero = p2Hero(state);
+    hero.level = 1;
+    hero.movementPoints = 3;
+    // Give p2 an unopened Far supply tile and a non-empty pool.
+    state.adventure!.playerFarTiles = {
+      ...(state.adventure!.playerFarTiles ?? {}),
+      p2: [UNOPENED_FAR_TILE],
+    };
+    if ((state.adventure!.farTilePool?.length ?? 0) === 0) {
+      state.adventure!.farTilePool = ["F1", "F2", "F3"];
+    }
+    expect(playerHasPlaceableFarTile(state, "p2")).toBe(true);
+
+    // Park the hero on a cell that actually has a legal place slot (reuse the
+    // same lattice helper legal-actions uses).
+    let parked = false;
+    for (const field of Object.values(state.adventure!.fields)) {
+      hero.spaceId = field.spaceId;
+      if (farTilePlacementCenters(state, hero).length > 0) {
+        parked = true;
+        break;
+      }
+    }
+    expect(parked, "fixture map should expose at least one placeable Far slot").toBe(
+      true,
+    );
+
+    const placeOffers = getLegalActions(state, "p2").filter(
+      (legal) => legal.action.type === "PLACE_TILE",
+    );
+    expect(
+      placeOffers.length,
+      "PLACE_TILE must be engine-offered so the computer can expand",
+    ).toBeGreaterThan(0);
+
+    const placeAction = placeOffers[0].action;
+    const scored = scoreMapAction(observe(state), placeAction);
+    expect(scored?.policy).toBe("map.place-far-tile");
+    // END_TURN foundation is 300; place must win or the hero parks forever.
+    expect(scored!.score).toBeGreaterThan(300);
+
+    // Explore objectives include place-capable doorways (not only face-down
+    // discovery cells), so the march still seeks a notch when high-tier faces
+    // are sealed.
+    const fields = state.adventure!.fields;
+    for (const id of [MINE, TREASURE]) {
+      fields[id].flagOwnerId = "p2";
+      fields[id].everFlagged = true;
+      delete fields[id].difficulty;
+    }
+    fields[RESOURCE].blackCube = true;
+    for (const tile of Object.values(state.adventure!.tiles)) {
+      tile.faceDown = false;
+    }
+    const explore = collectMapObjectives(state, hero).filter((o) => o.kind === "explore");
+    expect(
+      explore.length,
+      "place-capable fields remain explore objectives when supply is held",
+    ).toBeGreaterThan(0);
+  });
+
+  it("CONTROL: no PLACE_TILE offer when the seat has no Far supply", () => {
+    const state = game();
+    state.activePlayerId = "p2";
+    state.players.p2.needsHandRefresh = false;
+    state.players.p2.canMulligan = false;
+    state.adventure!.pendingTileChoice = null;
+    state.adventure!.pendingVisit = null;
+    const hero = p2Hero(state);
+    hero.movementPoints = 3;
+    state.adventure!.playerFarTiles = {
+      ...(state.adventure!.playerFarTiles ?? {}),
+      p2: [],
+    };
+    // Even if the hero sits on a geometric notch, empty supply → no offer.
+    for (const field of Object.values(state.adventure!.fields)) {
+      hero.spaceId = field.spaceId;
+      if (farTilePlacementCenters(state, hero).length > 0) {
+        break;
+      }
+    }
+    const placeOffers = getLegalActions(state, "p2").filter(
+      (legal) => legal.action.type === "PLACE_TILE",
+    );
+    expect(placeOffers).toHaveLength(0);
+  });
+
   it("marches to a Trading Post only when resources need rebalance", () => {
     const state = game();
     const hero = p2Hero(state);
     hero.level = 1;
-    // Neutralise other nearby prizes so the market can surface.
+    // Neutralise other nearby prizes so the market can surface. Empty Far
+    // supply + face-up tiles so place/discover explore doorways do not claim
+    // EMPTY and mask the market-only CONTROL.
+    state.adventure!.playerFarTiles = {
+      ...(state.adventure!.playerFarTiles ?? {}),
+      p2: [],
+    };
     const fields = state.adventure!.fields;
     for (const id of [MINE, TREASURE]) {
       fields[id].flagOwnerId = "p2";

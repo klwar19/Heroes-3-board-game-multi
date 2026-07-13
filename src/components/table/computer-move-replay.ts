@@ -1,18 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { isComputerPlayer } from "@/engine";
 import type { GameState, MapSpaceId, PlayerId } from "@/engine";
 
 /**
  * Single-player presentation: a computer opponent's whole map turn settles
- * server-side inside ONE action transaction (see settleComputerWork), so every
- * one of its hero walks arrives in a single snapshot. Rather than teleporting
- * the pawns to their final cells, the human should be able to WATCH each
- * computer hero walk its path slowly, one cell at a time, one hero at a time —
- * their battles already resolved off-screen and are never shown. This module is
- * the pure, testable core of that replay: it turns the fresh HERO_MOVED events
- * into an ordered list of pawn-position frames (computer heroes only), and the
- * hook paces them out over time. Nothing here gates rules progression — the
- * settled state is already authoritative; the pawns merely lag behind it.
+ * server-side (possibly many HERO_MOVED events in one snapshot). Rather than
+ * teleporting the pawns, the human advances the walk one cell at a time with
+ * an explicit Next press — battles already resolved off-screen and are never
+ * shown. Nothing here gates rules progression: the settled state is already
+ * authoritative; the pawns merely lag behind it until Confirm releases them.
  */
 
 /** The subset of a HERO_MOVED event the replay needs. */
@@ -51,7 +47,7 @@ export type ComputerMoveReplay = {
 /**
  * Build the replay for the COMPUTER hero walks among `freshMoves` (moves not
  * yet animated this session). Human heroes are excluded — their own moves keep
- * the instant path-arrow; only opponents the human cannot control get the slow,
+ * the instant path-arrow; only opponents the human cannot control get the
  * step-by-step walk. Returns null when no fresh move belongs to a computer seat
  * (every ordinary multiplayer game, and any snapshot with only human moves), so
  * the caller can cheaply skip.
@@ -80,11 +76,8 @@ export function buildComputerMoveReplay(
 }
 
 /**
- * How long each single-cell step of a computer walk dwells on screen. Kept
- * deliberately slow — the human explicitly asked to WATCH each opponent walk,
- * not have it flash by — and the walk only starts once the human accepts the
- * end-of-turn prompt (see the page's opponent-turn overlay), so nothing moves
- * behind their back.
+ * Legacy auto-pace interval (ms). Kept for tests that still pass a step timer;
+ * live UI uses manual Next instead so nothing races past confirmation.
  */
 export const REPLAY_STEP_MS = 900;
 
@@ -93,70 +86,89 @@ export type ComputerMoveReplayControl = {
   overrides: Record<string, MapSpaceId> | null;
   /** The seat whose hero is walking right now, for the on-screen indicator. */
   activePlayerId: PlayerId | null;
-  /** Begin (or restart) a replay. Cancels any in-flight one first. */
+  /** True while a replay is loaded and not yet confirmed through the last step. */
+  active: boolean;
+  /** True when every frame has been revealed and Confirm should finish. */
+  finished: boolean;
+  /** Remaining frames after the current position (0 when finished). */
+  remainingSteps: number;
+  /** Begin (or restart) a replay. Holds pawns at start cells until stepNext. */
   start: (replay: ComputerMoveReplay) => void;
+  /** Advance one cell. No-op when idle or already finished. */
+  stepNext: () => void;
   /** Snap the pawns back to the settled positions immediately. */
   cancel: () => void;
+  /** Alias of cancel — release overrides after the human confirms the walk. */
+  confirm: () => void;
 };
 
 /**
- * Paces a ComputerMoveReplay out over real time. Holds every replaying hero at
- * its start cell, then advances one frame every `stepMs`, and finally releases
- * the override (a no-op visual — the last frame equals the settled position).
- * The map pawn glides between cells via its own CSS transition, so this only has
- * to move the target one hop at a time. Timers are the only side effect and are
- * cleared on cancel / unmount, so a torn-down table never fires a stray tick.
+ * Manual, confirmation-gated pacing of a ComputerMoveReplay. Holds every
+ * replaying hero at its start cell, then advances ONE frame per `stepNext`
+ * call (player presses Next), and releases the override on `confirm` after the
+ * last cell (or on cancel). No timers — the human never has moves flash by
+ * without a press, and the engine never waits on this hook (pure presentation).
  */
 export function useComputerMoveReplay(
-  stepMs: number = REPLAY_STEP_MS,
+  _stepMs: number = REPLAY_STEP_MS,
 ): ComputerMoveReplayControl {
   const [overrides, setOverrides] = useState<Record<string, MapSpaceId> | null>(
     null,
   );
   const [activePlayerId, setActivePlayerId] = useState<PlayerId | null>(null);
-  const timerRef = useRef<number | null>(null);
-
-  const clearTimer = useCallback(() => {
-    if (timerRef.current !== null) {
-      window.clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-  }, []);
+  const [index, setIndex] = useState(0);
+  const [frameCount, setFrameCount] = useState(0);
+  const [active, setActive] = useState(false);
+  const framesRef = useRef<ComputerReplayFrame[]>([]);
+  const indexRef = useRef(0);
 
   const cancel = useCallback(() => {
-    clearTimer();
+    framesRef.current = [];
+    indexRef.current = 0;
     setOverrides(null);
     setActivePlayerId(null);
-  }, [clearTimer]);
+    setIndex(0);
+    setFrameCount(0);
+    setActive(false);
+  }, []);
 
-  const start = useCallback(
-    (replay: ComputerMoveReplay) => {
-      clearTimer();
-      // Hold every hero at its first pre-move cell before the first step.
-      setOverrides({ ...replay.initialPositions });
-      setActivePlayerId(replay.frames[0]?.playerId ?? null);
-      let index = 0;
-      const advance = () => {
-        const frame = replay.frames[index];
-        if (!frame) {
-          // Trailing dwell elapsed: release the pawns to the settled state.
-          timerRef.current = null;
-          setOverrides(null);
-          setActivePlayerId(null);
-          return;
-        }
-        setOverrides((current) => ({ ...(current ?? {}), [frame.heroId]: frame.cell }));
-        setActivePlayerId(frame.playerId);
-        index += 1;
-        timerRef.current = window.setTimeout(advance, stepMs);
-      };
-      // First step fires after the initial hold has rendered for one interval.
-      timerRef.current = window.setTimeout(advance, stepMs);
-    },
-    [clearTimer, stepMs],
-  );
+  const start = useCallback((replay: ComputerMoveReplay) => {
+    // Hold every hero at its first pre-move cell before the first step.
+    framesRef.current = replay.frames;
+    indexRef.current = 0;
+    setOverrides({ ...replay.initialPositions });
+    setActivePlayerId(replay.frames[0]?.playerId ?? null);
+    setIndex(0);
+    setFrameCount(replay.frames.length);
+    setActive(true);
+  }, []);
 
-  useEffect(() => clearTimer, [clearTimer]);
+  const stepNext = useCallback(() => {
+    const frame = framesRef.current[indexRef.current];
+    if (!frame) {
+      return;
+    }
+    indexRef.current += 1;
+    setOverrides((current) => ({
+      ...(current ?? {}),
+      [frame.heroId]: frame.cell,
+    }));
+    setActivePlayerId(frame.playerId);
+    setIndex(indexRef.current);
+  }, []);
 
-  return { overrides, activePlayerId, start, cancel };
+  const finished = active && index >= frameCount && frameCount > 0;
+  const remainingSteps = active ? Math.max(0, frameCount - index) : 0;
+
+  return {
+    overrides,
+    activePlayerId,
+    active,
+    finished,
+    remainingSteps,
+    start,
+    stepNext,
+    cancel,
+    confirm: cancel,
+  };
 }

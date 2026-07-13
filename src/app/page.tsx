@@ -736,6 +736,8 @@ export default function Home() {
   startComputerReplayRef.current = computerReplay.start;
   const cancelComputerReplayRef = useRef(computerReplay.cancel);
   cancelComputerReplayRef.current = computerReplay.cancel;
+  const stepComputerReplayRef = useRef(computerReplay.stepNext);
+  stepComputerReplayRef.current = computerReplay.stepNext;
   // Single-player: computers pace live (one action per broadcast). Battle recaps
   // still use this overlay; multi-hop catch-up batches can still queue a replay.
   const [opponentTurnSummary, setOpponentTurnSummary] = useState<{
@@ -1816,6 +1818,10 @@ export default function Home() {
         cancelComputerReplayRef.current();
         setOpponentTurnSummary(null);
       } else {
+        // Prefer a confirmation-gated step replay whenever ≥1 computer walk
+        // lands in this snapshot (full settle / catch-up / multi-hop). A lone
+        // live-paced step still uses the path arrow above so the pump stays
+        // freeze-safe; the overlay is only for batches the human must confirm.
         const batchedComputerMoves =
           freshComputerMoves.length > 1 ? freshComputerMoves : [];
         const replay =
@@ -1832,7 +1838,7 @@ export default function Home() {
         }
         const battleCues = buildComputerBattleReport(nextState, freshBattleResults);
         if (replay) {
-          // Catch-up / multi-hop batch: slow replay as before.
+          // Multi-hop batch: hold pawns and wait for Next / Confirm presses.
           opponentSummaryCounterRef.current += 1;
           setOpponentTurnSummary({
             id: `opp-turn-${opponentSummaryCounterRef.current}`,
@@ -1840,7 +1846,7 @@ export default function Home() {
             replay,
           });
         } else if (battleCues.length > 0) {
-          // Live pace: just surface the battle recap; no fake walk.
+          // Live pace: battle recap only — AI fights stay off-screen.
           opponentSummaryCounterRef.current += 1;
           setOpponentTurnSummary({
             id: `opp-turn-${opponentSummaryCounterRef.current}`,
@@ -4892,18 +4898,40 @@ export default function Home() {
                     {state.players[state.activePlayerId]?.name ?? "Computer"} is taking their turn…
                   </div>
                 ) : null}
-                {opponentTurnSummary ? (
+                {opponentTurnSummary || computerReplay.active ? (
                   <OpponentTurnOverlay
-                    cues={opponentTurnSummary.cues}
-                    hasReplay={Boolean(opponentTurnSummary.replay)}
+                    cues={opponentTurnSummary?.cues ?? []}
+                    hasReplay={Boolean(
+                      opponentTurnSummary?.replay || computerReplay.active,
+                    )}
+                    replayPhase={
+                      computerReplay.active
+                        ? computerReplay.finished
+                          ? "done"
+                          : "stepping"
+                        : "idle"
+                    }
+                    remainingSteps={computerReplay.remainingSteps}
                     onWatch={() => {
-                      const replay = opponentTurnSummary.replay;
-                      setOpponentTurnSummary(null);
+                      const replay = opponentTurnSummary?.replay;
                       if (replay) {
+                        // Keep the overlay; only clear the queued payload once
+                        // the walk starts so battle lines stay visible while stepping.
+                        setOpponentTurnSummary((current) =>
+                          current
+                            ? { ...current, replay: null, cues: current.cues }
+                            : current,
+                        );
                         startComputerReplayRef.current(replay);
                       }
                     }}
-                    onDismiss={() => setOpponentTurnSummary(null)}
+                    onStepNext={() => {
+                      stepComputerReplayRef.current();
+                    }}
+                    onDismiss={() => {
+                      cancelComputerReplayRef.current();
+                      setOpponentTurnSummary(null);
+                    }}
                   />
                 ) : null}
                 {isSeated && !mapReadOnly ? (

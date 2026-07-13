@@ -2,7 +2,7 @@ import { coreBuildingDefinitions } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { cardLibrary } from "@/data/cards/library";
 import { locationDefinitions, TRADE_RATES } from "@/data/map/locations";
-import { canHeroReachPlacedTile } from "../adventure";
+import { canHeroReachPlacedTile, playerHasPlaceableFarTile } from "../adventure";
 import { isTileRotationConnected } from "../adventure-reducer";
 import type {
   GameAction,
@@ -836,8 +836,35 @@ export function scoreMapAction(
       };
     }
     case "DISCOVER_TILE":
-    case "PLACE_TILE":
-      return { score: 785, policy: "map.explore-tile" };
+      // Opening laid face-down land always beats end-turn parking. Slightly
+      // above PLACE so a free adjacent flip is preferred when both exist.
+      return { score: 830, policy: "map.discover-tile" };
+    case "PLACE_TILE": {
+      // Ⅱ–Ⅲ placement is the escape hatch when the hero is boxed by sealed
+      // Near/center faces (the "stare at VI–VII" stall). Boost further when no
+      // fightable prize remains so expand-or-recruit wins over END_TURN.
+      const hero = state.heroes[action.heroId];
+      const objectives = hero ? collectMapObjectives(state, hero) : [];
+      const hasFight = objectives.some(
+        (objective) =>
+          objective.kind === "guard" ||
+          objective.kind === "enemy-hero" ||
+          objective.kind === "victory",
+      );
+      const hasExplore = objectives.some((objective) => objective.kind === "explore");
+      // Prefer place when boxed (no fight + only expand left) or when the seat
+      // still holds supply and nothing better is on the board.
+      const expandUrgency =
+        !hasFight && playerHasPlaceableFarTile(state, observation.playerId)
+          ? 40
+          : hasExplore
+            ? 15
+            : 25;
+      return {
+        score: 800 + expandUrgency,
+        policy: "map.place-far-tile",
+      };
+    }
     case "MOVE_HERO":
       return { score: moveScore(observation, action), policy: "map.move-to-objective" };
     case "REVISIT_FIELD": {
