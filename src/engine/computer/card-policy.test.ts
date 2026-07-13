@@ -76,6 +76,44 @@ const endTurn: LegalAction = {
 };
 
 describe("card policy — combat reactions", () => {
+  it("uses a First Aid active effect before passing and heals the best target", () => {
+    const scratched = unit({
+      id: "A",
+      controllerId: "p2",
+      maxHealth: 6,
+      damage: 1,
+    });
+    const wounded = unit({
+      id: "B",
+      controllerId: "p2",
+      attack: 7,
+      maxHealth: 7,
+      damage: 4,
+    });
+    const heal = (unitId: string): LegalAction => ({
+      label: `heal ${unitId}`,
+      action: {
+        type: "USE_ACTIVE_EFFECT",
+        playerId: "p2",
+        effectId: "tent",
+        target: { type: "unit", unitId },
+      } as GameAction,
+    });
+    const observed = observation(
+      [scratched, wounded],
+      [pass, heal("A"), heal("B")],
+    );
+    (observed.state as unknown as { reactionWindow: object }).reactionWindow = {};
+    (observed.state as unknown as { activeEffects: unknown[] }).activeEffects = [];
+
+    const decision = chooseComputerAction(observed);
+    expect(decision?.action.type).toBe("USE_ACTIVE_EFFECT");
+    expect(
+      (decision?.action as Extract<GameAction, { type: "USE_ACTIVE_EFFECT" }>).target,
+    ).toEqual({ type: "unit", unitId: "B" });
+    expect(decision?.policy).toBe("card.use-active-effect-smart-target");
+  });
+
   it("plays a lethal-save reaction instead of passing", () => {
     // Resurrection is offered as PLAY_REACTION with CANCEL_LETHAL_ATTACK; PASS
     // is the foundation exit at 1_050 — the save must outrank it.

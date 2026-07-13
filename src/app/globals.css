@@ -3739,7 +3739,6 @@ button.battleCell {
   align-items: center;
   justify-content: center;
   background: rgba(6, 10, 18, 0.62);
-  backdrop-filter: blur(2px);
   animation: overlayIn 0.18s ease-out;
 }
 

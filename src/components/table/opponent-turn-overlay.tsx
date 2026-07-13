@@ -28,6 +28,8 @@ export type OpponentTurnOverlayProps = {
   onStepNext?: () => void;
   /** Finish / dismiss (confirm after walk, or skip). */
   onDismiss: () => void;
+  /** Disable computer-step confirmations for the rest of this match. */
+  onSkipConfirmations?: () => void;
 };
 
 function battleLine(cue: ComputerBattleCue): string {
@@ -46,6 +48,7 @@ export function OpponentTurnOverlay({
   onWatch,
   onStepNext,
   onDismiss,
+  onSkipConfirmations,
 }: OpponentTurnOverlayProps) {
   const phase = hasReplay ? replayPhase : "idle";
 
@@ -81,16 +84,27 @@ export function OpponentTurnOverlay({
         )}
         <div className="opponentTurnActions">
           {!hasReplay ? (
-            <button type="button" className="opponentTurnWatch" onClick={onDismiss}>
-              Continue
-            </button>
+            <>
+              <button type="button" className="opponentTurnWatch" onClick={onDismiss}>
+                Continue
+              </button>
+              {onSkipConfirmations ? (
+                <button type="button" className="opponentTurnSkip" onClick={onSkipConfirmations}>
+                  Auto-play this game
+                </button>
+              ) : null}
+            </>
           ) : phase === "idle" ? (
             <>
               <button type="button" className="opponentTurnWatch" onClick={onWatch}>
                 Watch moves (step by step) →
               </button>
-              <button type="button" className="opponentTurnSkip" onClick={onDismiss}>
-                Skip
+              <button
+                type="button"
+                className="opponentTurnSkip"
+                onClick={onSkipConfirmations ?? onDismiss}
+              >
+                Skip confirmations
               </button>
             </>
           ) : phase === "stepping" ? (
@@ -103,14 +117,25 @@ export function OpponentTurnOverlay({
                 Next step
                 {remainingSteps > 0 ? ` (${remainingSteps} left)` : ""} →
               </button>
-              <button type="button" className="opponentTurnSkip" onClick={onDismiss}>
-                Skip to end
+              <button
+                type="button"
+                className="opponentTurnSkip"
+                onClick={onSkipConfirmations ?? onDismiss}
+              >
+                Skip confirmations
               </button>
             </>
           ) : (
-            <button type="button" className="opponentTurnWatch" onClick={onDismiss}>
-              Confirm
-            </button>
+            <>
+              <button type="button" className="opponentTurnWatch" onClick={onDismiss}>
+                Confirm
+              </button>
+              {onSkipConfirmations ? (
+                <button type="button" className="opponentTurnSkip" onClick={onSkipConfirmations}>
+                  Auto-play this game
+                </button>
+              ) : null}
+            </>
           )}
         </div>
       </div>

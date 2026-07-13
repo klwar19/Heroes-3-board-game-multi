@@ -614,8 +614,39 @@ export function scoreCardAction(
       return { score: 1_080, policy: "card.batch-reaction" };
     }
     case "USE_ACTIVE_EFFECT": {
-      // Active effects (First Aid Tent heal, etc.) — positive when legal.
-      return { score: 640, policy: "card.use-active-effect" };
+      const target = combatUnitFromTarget(observation, action.target);
+      if (!target) {
+        return { score: 620, policy: "card.use-active-effect" };
+      }
+      const missingHealth = Math.max(
+        0,
+        target.maxHealth - unitRemainingHealth(target),
+      );
+      const threat = unitThreatValue(target);
+      const effect = observation.state.activeEffects?.find(
+        (candidate) => candidate.id === action.effectId,
+      );
+      const expertContinuation = Boolean(
+        effect?.healRound?.expert &&
+          effect.healRound.round === observation.state.combat?.round,
+      );
+      const inReactionWindow = Boolean(observation.state.reactionWindow);
+
+      // A legal First Aid-style reaction happens before incoming damage. The
+      // old flat score lost to PASS_REACTION, so the AI owned the Tent but never
+      // used it at the moment it could save a unit. Heal the most wounded,
+      // highest-value ally and finish an already-paid expert volley.
+      let score =
+        (inReactionWindow ? 1_080 : 640) +
+        Math.min(45, missingHealth * 10) +
+        Math.min(20, Math.round(threat / 5));
+      if (expertContinuation) {
+        score += 25;
+      } else if (action.mode === "expert") {
+        // Do not spend a crown to heal a single scratch; basic wins that tie.
+        score += missingHealth >= 2 ? 18 : -25;
+      }
+      return { score, policy: "card.use-active-effect-smart-target" };
     }
     case "SPEND_MORALE": {
       // Combat morale spends (bonus / remove-token) beat PASS; redraw is map/soft.
