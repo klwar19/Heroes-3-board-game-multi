@@ -28,6 +28,7 @@ import {
   type GameState
 } from "@/engine";
 import {
+  applyHumanComputerAdvance,
   computerPumpOwed,
   computerStepDelayMs,
   settleComputerForLiveAction,
@@ -522,12 +523,24 @@ export function submitRoomAction(
     ? driveAfkDrop(result.state, () => ({ entropy: freshEntropy(), now: Date.now() }))
     : result.state;
 
-  // Single-player: setup still bulk-settles computers (draft picks are boring
-  // to watch). Once the adventure is live, this frame only stores the human's
-  // post-action state — computers play one action at a time via the paced
-  // pump so the human watches real moves, dice rolls, and rewards step by
-  // step (not a post-hoc walk over an already-finished turn).
-  const settledState = settleComputerForLiveAction(afkSettledState);
+  // Single-player settle rules:
+  // - ADVANCE_COMPUTER: human confirmed one map beat → apply exactly one
+  //   settleComputerVisibleStep (AI-only combat bulk-resolves inside it).
+  // - Other actions: setup bulk; PvP combat one auto beat; map does NOT move
+  //   the computer (waits for ADVANCE_COMPUTER). Never races past first-player
+  //   dice or END_TURN.
+  let settledState = afkSettledState;
+  if (action.type === "ADVANCE_COMPUTER") {
+    const advanced = applyHumanComputerAdvance(afkSettledState);
+    if (advanced.stalled && advanced.decisions.length === 0) {
+      console.warn(
+        `[computer-runner] ADVANCE_COMPUTER produced no step: ${advanced.reason ?? "unknown"}`,
+      );
+    }
+    settledState = advanced.state;
+  } else {
+    settledState = settleComputerForLiveAction(afkSettledState);
+  }
 
   const next: GameRoomRecord = {
     roomId,
@@ -552,8 +565,9 @@ export function submitRoomAction(
   const snapshot = withBootId(cloneSerializable(next));
   notifyRoomListeners(roomId, snapshot);
 
-  // Adventure/combat: schedule the one-step computer pump if a seat still owes
-  // a decision. Each tick broadcasts, so the client sees move → roll → move.
+  // Auto timer ONLY for human-involved PvP. Map turns never schedule a pump —
+  // the human presses ADVANCE_COMPUTER for each beat (no freeze: that action
+  // stays legal while computerNeedsHumanAdvance).
   if (computerPumpOwed(settledState)) {
     scheduleComputerPump(roomId, computerStepDelayMs(settledState));
   } else {

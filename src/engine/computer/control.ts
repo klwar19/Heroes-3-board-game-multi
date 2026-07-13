@@ -72,6 +72,35 @@ export function humanPlayerIdsByController(state: GameState): PlayerId[] {
   );
 }
 
+/**
+ * True when a living human seat is a participant of the open combat (attacker,
+ * defender, or a unit controller). Used by the live computer pump: AI-only
+ * fights (computer vs neutrals / computer vs computer) bulk-resolve off-screen;
+ * a fight that involves the human is paced like normal PvP.
+ */
+export function combatHasHumanParticipant(state: GameState): boolean {
+  const combat = state.combat;
+  if (!combat) {
+    return false;
+  }
+  const seats = new Set<PlayerId>();
+  if (combat.attackerPlayerId) seats.add(combat.attackerPlayerId);
+  if (combat.defenderPlayerId) seats.add(combat.defenderPlayerId);
+  for (const unit of Object.values(combat.units)) {
+    if (unit.controllerId) seats.add(unit.controllerId);
+  }
+  for (const playerId of seats) {
+    if (
+      playerId !== NEUTRAL_PLAYER_ID &&
+      !state.players[playerId]?.eliminated &&
+      controllerOf(state, playerId).kind === "human"
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /** A room is private if either persisted marker says so; useful during migrations/recovery. */
 export function isPrivateSinglePlayer(state: GameState): boolean {
   return (

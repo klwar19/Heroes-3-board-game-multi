@@ -18,7 +18,11 @@ import {
   type GameAction,
   type GameState,
 } from "@/engine";
-import { computerPumpOwed, settleComputerVisibleStep } from "./computer-runner";
+import {
+  computerNeedsHumanAdvance,
+  computerPumpOwed,
+  settleComputerVisibleStep,
+} from "./computer-runner";
 
 type EdgeRoom = ConstructorParameters<typeof GameRoomServer>[0];
 type EdgeConnection = Parameters<GameRoomServer["onConnect"]>[0];
@@ -136,26 +140,29 @@ async function runEdgeGameStart(tag: string, opponents: number, coldEvery: numbe
     const snapshot = storedSnapshot(storage);
     if (!snapshot) return "no snapshot persisted";
     const state = snapshot.state;
+    // Map: human-gated Next (ADVANCE_COMPUTER). PvP combat: auto-alarm only.
+    if (computerNeedsHumanAdvance(state)) {
+      const advance = getLegalActions(state, "p1").find(
+        (legal) => legal.action.type === "ADVANCE_COMPUTER",
+      );
+      if (!advance) {
+        return `FROZEN at step ${step}: computer needs advance but ADVANCE_COMPUTER not legal (owner=${computerDecisionOwner(state)}, round=${state.round})`;
+      }
+      await act(advance.action);
+      continue;
+    }
     if (computerPumpOwed(state)) {
       if (!alarmPending()) {
-        // A self-heal arms the alarm via a fire-and-forget async path
-        // (`void ensureComputerPump`), so under CPU load the arm can be one
-        // macrotask away when we observe it — exactly the transient a real
-        // client rides out (its next ping/poll/alarm arms it). Drain briefly
-        // and re-check; only a persistent no-arm is a freeze this test guards
-        // against. (A genuine policy stall would ALSO surface here — the
-        // no-progress/no-legal-action freeze this fix eliminates.)
         await new Promise((resolve) => setTimeout(resolve, 10));
         if (!alarmPending()) {
           const reason = settleComputerVisibleStep(state).reason ?? "no alarm pending";
-          return `FROZEN at step ${step}: pump owed but not advancing (owner=${computerDecisionOwner(state)}, round=${state.round}, active=${state.activePlayerId}, reason=${reason})`;
+          return `FROZEN at step ${step}: PvP pump owed but not advancing (owner=${computerDecisionOwner(state)}, round=${state.round}, active=${state.activePlayerId}, reason=${reason})`;
         }
       }
-      // Cold wake every `coldEvery` fires: evict the worker like hibernation.
       alarmFires += 1;
       if (coldEvery > 0 && alarmFires % coldEvery === 0) {
         server = new GameRoomServer(room);
-        await server.onStart(); // partykit's alarm() initializes the worker first
+        await server.onStart();
       }
       clearAlarm();
       flags.inAlarm = true;
@@ -169,14 +176,13 @@ async function runEdgeGameStart(tag: string, opponents: number, coldEvery: numbe
       continue;
     }
     if (computerDecisionOwner(state)) {
-      return `owner=${computerDecisionOwner(state)} but pump not owed (phase=${state.phase})`;
+      return `owner=${computerDecisionOwner(state)} but neither human-advance nor auto-pump (phase=${state.phase})`;
     }
     if (state.round >= 2 && state.activePlayerId === "p1" && !state.adventure?.pendingTileChoice) {
       return null; // survived the beginning of the game
     }
     const action = nextHumanAction(state);
     if (!action) {
-      // e.g. a round-2 visit prompt for the human — the table is alive; done.
       const offers = getLegalActions(state, "p1").map((legal) => legal.action.type);
       if (offers.length > 0) return null;
       return `human has NO legal actions (round=${state.round})`;
@@ -184,7 +190,7 @@ async function runEdgeGameStart(tag: string, opponents: number, coldEvery: numbe
     await act(action);
     const after = storedSnapshot(storage).state;
     if (computerPumpOwed(after) && !alarmPending()) {
-      return `action ${action.type} left pump owed WITHOUT arming the alarm (round=${after.round})`;
+      return `action ${action.type} left PvP pump owed WITHOUT arming the alarm (round=${after.round})`;
     }
   }
   return "did not finish within 700 steps";

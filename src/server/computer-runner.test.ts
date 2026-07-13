@@ -1,20 +1,25 @@
 import { describe, expect, it } from "vitest";
 import {
   applyAction,
+  combatHasHumanParticipant,
   computerDecisionOwner,
   createAdventureGameState,
   createAdventureLobbyState,
   createInitialGameState,
   getLegalActions,
   standardComputerController,
-  type ComputerDecision,
   type GameAction,
   type GameState,
 } from "@/engine";
 import {
+  applyHumanComputerAdvance,
+  computerAutoPumpOwed,
+  computerNeedsHumanAdvance,
+  computerPumpOwed,
   driveComputerPlayers,
   isPacedComputerAction,
   progressFingerprint,
+  settleComputerForLiveAction,
   settleComputerVisibleStep,
   settleComputerWork,
 } from "./computer-runner";
@@ -784,20 +789,170 @@ describe("computer combat activation", () => {
   });
 });
 
+describe("human-gated computer map steps (ADVANCE_COMPUTER)", () => {
+  /** Drive human until p2 (computer) owns a decision — map turn or rotation. */
+  function stateWithComputerMapWork(seed: string): GameState {
+    let state = createAdventureGameState({
+      seed,
+      scenarioId: "skirmish",
+      playerCount: 2,
+      sessionMode: "single-player",
+    });
+    let guard = 0;
+    while (!computerDecisionOwner(state) && guard++ < 50) {
+      const offers = getLegalActions(state, "p1");
+      const pick =
+        offers.find((legal) => legal.action.type === "SET_TILE_ROTATION") ??
+        offers.find((legal) => legal.action.type === "REFRESH_HAND") ??
+        offers.find((legal) => legal.action.type === "END_TURN") ??
+        offers.find((legal) => legal.action.type === "RESOLVE_VISIT_STEP");
+      if (!pick) break;
+      let action = pick.action;
+      if (action.type === "REFRESH_HAND") {
+        const player = state.players.p1!;
+        const limit = player.needsHandRefresh ? 4 : 5;
+        const over = Math.max(0, player.hand.length - limit);
+        action = { ...action, discardCardIds: player.hand.slice(0, over) };
+      }
+      state = humanAct(state, action);
+    }
+    // CRITICAL: live settle after a human action must NOT run computer map work.
+    state = settleComputerForLiveAction(state);
+    expect(computerDecisionOwner(state)).toBe("p2");
+    return state;
+  }
+
+  it("does NOT auto-run computer map work after END_TURN / live settle", () => {
+    const state = stateWithComputerMapWork("gate-no-auto");
+    const heroBefore = Object.values(state.heroes).find(
+      (h) => h.controllerId === "p2" && h.kind === "main",
+    )!;
+    const spaceBefore = heroBefore.spaceId;
+    const eventLenBefore = state.eventLog.length;
+
+    // settleComputerForLiveAction again must be a no-op for map.
+    const settled = settleComputerForLiveAction(state);
+    expect(settled.heroes[heroBefore.id]?.spaceId).toBe(spaceBefore);
+    expect(computerDecisionOwner(settled)).toBe("p2");
+    // No HERO_MOVED for the computer sneaked in.
+    const newMoves = settled.eventLog
+      .slice(eventLenBefore)
+      .filter(
+        (e) => e.type === "HERO_MOVED" && e.playerId === "p2",
+      );
+    expect(newMoves).toHaveLength(0);
+
+    // Auto timer must NOT arm for map work (only PvP).
+    expect(computerPumpOwed(settled)).toBe(false);
+    expect(computerAutoPumpOwed(settled)).toBe(false);
+    expect(computerNeedsHumanAdvance(settled)).toBe(true);
+  });
+
+  it("offers ADVANCE_COMPUTER to the human and rejects computer / multiplayer", () => {
+    const state = stateWithComputerMapWork("gate-legal");
+    const humanOffers = getLegalActions(state, "p1");
+    expect(
+      humanOffers.some((legal) => legal.action.type === "ADVANCE_COMPUTER"),
+      `legal types: ${humanOffers.map((l) => l.action.type).join(", ")}`,
+    ).toBe(true);
+
+    // Computer seat never offers it.
+    const botOffers = getLegalActions(state, "p2");
+    expect(botOffers.some((legal) => legal.action.type === "ADVANCE_COMPUTER")).toBe(
+      false,
+    );
+
+    // CONTROL: multiplayer has no ADVANCE_COMPUTER.
+    const mp = createAdventureGameState({
+      seed: "gate-mp",
+      scenarioId: "skirmish",
+      playerCount: 2,
+    });
+    expect(
+      getLegalActions(mp, "p1").some((legal) => legal.action.type === "ADVANCE_COMPUTER"),
+    ).toBe(false);
+  });
+
+  it("one ADVANCE_COMPUTER applies exactly one visible map beat — not the whole turn", () => {
+    const state = stateWithComputerMapWork("gate-one-step");
+    const heroId = Object.values(state.heroes).find(
+      (h) => h.controllerId === "p2" && h.kind === "main",
+    )!.id;
+    const spaceBefore = state.heroes[heroId]!.spaceId;
+
+    // Engine validates the request (feed event) then server applies one step.
+    const requested = applyAction(state, {
+      type: "ADVANCE_COMPUTER",
+      playerId: "p1",
+    });
+    expect(requested.errors, requested.errors.map((e) => e.message).join("; ")).toEqual(
+      [],
+    );
+    expect(
+      requested.state.eventLog.some((e) => e.type === "COMPUTER_ADVANCE_REQUESTED"),
+    ).toBe(true);
+    // Engine alone does NOT move the computer hero.
+    expect(requested.state.heroes[heroId]?.spaceId).toBe(spaceBefore);
+
+    const step = applyHumanComputerAdvance(requested.state);
+    expect(step.stalled, step.reason).toBe(false);
+    expect(step.decisions.length).toBeGreaterThan(0);
+    // Last decision of a map step is paced (MOVE_HERO / rotation / …).
+    const last = step.decisions[step.decisions.length - 1];
+    if (computerDecisionOwner(step.state)) {
+      expect(isPacedComputerAction(last.action, step.state)).toBe(true);
+    }
+
+    // Full settle from the same pre-advance state would run MORE decisions.
+    const full = settleComputerWork(requested.state);
+    if (computerDecisionOwner(step.state)) {
+      expect(step.decisions.length).toBeLessThan(
+        driveComputerPlayers(requested.state).decisions.length,
+      );
+      // Still waiting on the human for the rest of the turn.
+      expect(computerNeedsHumanAdvance(step.state)).toBe(true);
+      expect(computerPumpOwed(step.state)).toBe(false);
+    }
+    // Full work eventually clears the computer owner (or human's turn).
+    expect(full).toBeDefined();
+  });
+
+  it("CONTROL: human-involved PvP still auto-pumps (no ADVANCE_COMPUTER gate)", () => {
+    const state = createInitialGameState("gate-pvp-auto");
+    state.controllers = { p2: standardComputerController() };
+    state.sessionMode = "single-player";
+    expect(combatHasHumanParticipant(state)).toBe(true);
+    expect(computerNeedsHumanAdvance(state)).toBe(false);
+    // When computer owns the unit, auto pump is owed.
+    const combat = state.combat!;
+    combat.units.unit_p2_skeletons.activatedThisRound = true;
+    combat.units.unit_p2_vampires.activatedThisRound = true;
+    combat.units.unit_p2_dread_knights.activatedThisRound = false;
+    combat.activeUnitId = "unit_p2_dread_knights";
+    state.activePlayerId = "p2";
+    if (computerDecisionOwner(state) === "p2") {
+      expect(computerAutoPumpOwed(state)).toBe(true);
+      expect(computerPumpOwed(state)).toBe(true);
+      expect(
+        getLegalActions(state, "p1").some((l) => l.action.type === "ADVANCE_COMPUTER"),
+      ).toBe(false);
+    }
+  });
+});
+
 describe("paced computer visible steps (live single-player)", () => {
-  it("classifies map moves as paced and bulk stages as not", () => {
+  it("classifies map moves as paced; setup bookkeeping as not", () => {
     expect(isPacedComputerAction({ type: "MOVE_HERO", playerId: "p2", heroId: "h", to: "h:0:0" })).toBe(true);
     expect(isPacedComputerAction({ type: "DISCOVER_TILE", playerId: "p2", heroId: "h", tileInstanceId: "t" })).toBe(true);
     expect(isPacedComputerAction({ type: "SET_TILE_ROTATION", playerId: "p2", tileInstanceId: "t", rotation: 0 })).toBe(true);
+    // Placement / pass / end-turn are bulk (not map-visible beats alone).
     expect(isPacedComputerAction({ type: "PLACE_COMBAT_UNIT", playerId: "p2", armyUnitId: "a", position: 0 })).toBe(false);
     expect(isPacedComputerAction({ type: "PASS_REACTION", playerId: "p2" })).toBe(false);
     expect(isPacedComputerAction({ type: "END_TURN", playerId: "p2" })).toBe(false);
   });
 
-  it("paces card/spell/ability plays so PvP humans see them like a normal cast", () => {
-    // CONTROL: bulk bookkeeping stays unpaced.
-    expect(isPacedComputerAction({ type: "FINISH_COMBAT_PLACEMENT", playerId: "p2" })).toBe(false);
-    // Card plays must be one-per-broadcast so the combat FX/feed fires.
+  it("paces PvP combat card plays; never paces AI-only combat actions", () => {
+    // Without state: combat action kinds are still classified as paced (PvP path).
     expect(
       isPacedComputerAction({
         type: "CAST_SPELL",
@@ -807,17 +962,10 @@ describe("paced computer visible steps (live single-player)", () => {
     ).toBe(true);
     expect(
       isPacedComputerAction({
-        type: "PLAY_REACTION",
+        type: "ATTACK_UNIT",
         playerId: "p2",
-        cardId: "spell.resurrection",
-        mode: "basic",
-      } as Parameters<typeof isPacedComputerAction>[0]),
-    ).toBe(true);
-    expect(
-      isPacedComputerAction({
-        type: "PLAY_CARD",
-        playerId: "p2",
-        cardId: "ability.offense",
+        attackerId: "a",
+        defenderId: "d",
       } as Parameters<typeof isPacedComputerAction>[0]),
     ).toBe(true);
     expect(
@@ -827,11 +975,46 @@ describe("paced computer visible steps (live single-player)", () => {
         rateIndex: 0,
       }),
     ).toBe(true);
+
+    // With post-state = AI-only combat: NOTHING is paced (bulk off-screen).
+    const aiOnly = createInitialGameState("pace-ai-only");
+    aiOnly.controllers = {
+      p1: standardComputerController(),
+      p2: standardComputerController(),
+    };
+    expect(aiOnly.combat).not.toBeNull();
+    expect(
+      isPacedComputerAction(
+        {
+          type: "ATTACK_UNIT",
+          playerId: "p1",
+          attackerId: "a",
+          defenderId: "d",
+        } as Parameters<typeof isPacedComputerAction>[0],
+        aiOnly,
+      ),
+    ).toBe(false);
+
+    // CONTROL: human in the fight → combat actions pace normally.
+    const pvp = createInitialGameState("pace-pvp");
+    pvp.controllers = { p2: standardComputerController() };
+    expect(pvp.combat).not.toBeNull();
+    expect(
+      isPacedComputerAction(
+        {
+          type: "ATTACK_UNIT",
+          playerId: "p2",
+          attackerId: "a",
+          defenderId: "d",
+        } as Parameters<typeof isPacedComputerAction>[0],
+        pvp,
+      ),
+    ).toBe(true);
   });
 
-  it("one visible step stops after a paced action so the human can watch move→roll→move", () => {
+  it("one visible step stops after a paced map action so the human can watch move→move", () => {
     // Full settle would run the whole computer turn; a visible step must stop
-    // at the first paced action (typically MOVE_HERO or SET_TILE_ROTATION).
+    // at the first paced map action (typically MOVE_HERO or SET_TILE_ROTATION).
     let state = createAdventureGameState({
       seed: "runner-map-turn",
       scenarioId: "skirmish",
@@ -864,7 +1047,7 @@ describe("paced computer visible steps (live single-player)", () => {
     // The last decision of a visible step is paced (or the computer finished).
     const last = step.decisions[step.decisions.length - 1];
     if (computerDecisionOwner(step.state)) {
-      expect(isPacedComputerAction(last.action)).toBe(true);
+      expect(isPacedComputerAction(last.action, step.state)).toBe(true);
     }
     // CONTROL: a full settle from the same start would take more steps.
     const full = settleComputerWork(state);
@@ -874,6 +1057,114 @@ describe("paced computer visible steps (live single-player)", () => {
         full.eventCounter ?? full.eventLog.length,
       );
     }
+  });
+
+  it("bulk-resolves an AI-only multi-activation battle in one visible step", () => {
+    // User contract: AI-only fights bulk-resolve off-screen. A durable enemy
+    // that needs several activations must still finish inside ONE visible
+    // step — never broadcast a mid-fight frame between attacks.
+    const state = createInitialGameState("visible-ai-bulk");
+    state.controllers = {
+      p1: standardComputerController(),
+      p2: standardComputerController(),
+    };
+    const combat = state.combat!;
+    combat.dice.scriptedRolls = Array(120).fill(0);
+    combat.dice.rollCount = 0;
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    state.activeEffects = [];
+
+    // One durable enemy (not one-shot) so the fight spans multiple activations.
+    delete combat.units.unit_p2_vampires;
+    delete combat.units.unit_p2_dread_knights;
+    const skeletons = combat.units.unit_p2_skeletons;
+    skeletons.abilities = [];
+    skeletons.defense = 0;
+    skeletons.maxHealth = 20;
+    skeletons.damage = 0;
+    skeletons.attack = 0; // no counter-pressure
+    skeletons.position = 8;
+
+    // All three p1 units act; each hits for a chunk until the skeleton dies.
+    for (const id of ["unit_p1_marksmen", "unit_p1_griffins", "unit_p1_crusaders"] as const) {
+      const unit = combat.units[id];
+      unit.abilities = [];
+      unit.attack = 8;
+      unit.activatedThisRound = false;
+      unit.defense = 4;
+      unit.maxHealth = 40;
+      unit.damage = 0;
+    }
+    combat.units.unit_p1_griffins.position = 9; // adjacent
+    combat.units.unit_p1_marksmen.position = 5;
+    combat.units.unit_p1_crusaders.position = 6;
+
+    state.activePlayerId = "p1";
+    combat.activeUnitId = "unit_p1_griffins";
+    expect(combatHasHumanParticipant(state)).toBe(false);
+
+    const step = settleComputerVisibleStep(state);
+    expect(step.stalled, step.reason).toBe(false);
+    // Fight decided; runner owes nothing more for this combat.
+    expect(step.state.combat?.outcome?.winnerPlayerId).toBe("p1");
+    expect(computerDecisionOwner(step.state)).toBeNull();
+    // Multiple combat beats in ONE step proves we did not stop after the first
+    // attack the way a paced PvP tick would.
+    const combatBeats = step.decisions.filter((d) =>
+      ["ATTACK_UNIT", "MOVE_AND_ATTACK_UNIT", "DEFEND_UNIT", "END_ACTIVATION"].includes(
+        d.action.type,
+      ),
+    );
+    expect(combatBeats.length).toBeGreaterThan(1);
+  });
+
+  it("CONTROL: a human-involved PvP fight still paces one combat beat per step", () => {
+    const state = createInitialGameState("visible-pvp-pace");
+    state.controllers = { p2: standardComputerController() };
+    const combat = state.combat!;
+    combat.dice.scriptedRolls = Array(60).fill(0);
+    combat.dice.rollCount = 0;
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    state.activeEffects = [];
+
+    const attacker = combat.units.unit_p2_dread_knights;
+    attacker.abilities = [];
+    attacker.attack = 4;
+    attacker.position = 9;
+    attacker.activatedThisRound = false;
+    combat.units.unit_p2_skeletons.activatedThisRound = true;
+    combat.units.unit_p2_vampires.activatedThisRound = true;
+    for (const id of ["unit_p1_marksmen", "unit_p1_griffins", "unit_p1_crusaders"] as const) {
+      const durable = combat.units[id];
+      durable.abilities = [];
+      durable.defense = 4;
+      durable.maxHealth = 40;
+      durable.damage = 0;
+    }
+    combat.units.unit_p1_marksmen.position = 8;
+
+    state.activePlayerId = "p2";
+    combat.activeUnitId = "unit_p2_dread_knights";
+    expect(combatHasHumanParticipant(state)).toBe(true);
+
+    const step = settleComputerVisibleStep(state);
+    expect(step.stalled, step.reason).toBe(false);
+    // Still open — human has not taken their turn; combat board stays up.
+    expect(step.state.combat).not.toBeNull();
+    expect(step.state.combat?.outcome).toBeNull();
+    // One (or a short bulk of placement then one) paced combat beat, not the
+    // whole fight: computer unit spent, human still owns a later decision.
+    expect(
+      step.decisions.some(
+        (d) =>
+          d.action.type === "ATTACK_UNIT" ||
+          d.action.type === "MOVE_AND_ATTACK_UNIT" ||
+          d.action.type === "DEFEND_UNIT" ||
+          d.action.type === "END_ACTIVATION",
+      ),
+    ).toBe(true);
   });
 });
 

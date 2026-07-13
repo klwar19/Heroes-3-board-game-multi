@@ -25,6 +25,7 @@ import {
   type GameState
 } from "@/engine";
 import {
+  applyHumanComputerAdvance,
   computerPumpOwed,
   computerStepDelayMs,
   settleComputerForLiveAction,
@@ -1028,13 +1029,15 @@ export default class GameRoomServer implements Party.Server {
         }
         // A passed AFK kick vote or an expired 10-minute turn: drive the forced
         // resolution through the normal action pipeline until it settles (or
-        // the table must wait). Setup still bulk-settles computers; adventure
-        // computers pace one step at a time via onAlarm so the human watches
-        // real moves/rolls (not a post-hoc walk over a finished turn).
+        // the table must wait). ADVANCE_COMPUTER = one human-confirmed map beat;
+        // other actions: setup bulk / PvP one auto beat; map never races ahead.
         const afkSettled = forcedResolutionPending(result.state)
           ? driveAfkDrop(result.state, () => ({ entropy: freshEntropy(), now: Date.now() }))
           : result.state;
-        const settled = settleComputerForLiveAction(afkSettled);
+        const settled =
+          message.action.type === "ADVANCE_COMPUTER"
+            ? applyHumanComputerAdvance(afkSettled).state
+            : settleComputerForLiveAction(afkSettled);
         this.snapshot = {
           roomId: this.room.id,
           version: current.version + 1,
@@ -1236,13 +1239,15 @@ export default class GameRoomServer implements Party.Server {
             ...(actorUserId ? { actorUserId } : {})
           });
           if (result.errors.length === 0) {
-            // A passed AFK kick vote or an expired turn: settle the forced
-            // resolution before storing/reporting. Setup bulk-settles computers;
-            // adventure paces via alarm (mirrors the WebSocket action path).
+            // Mirrors the WebSocket path: ADVANCE_COMPUTER = one map beat;
+            // otherwise setup bulk / PvP auto beat; map never races ahead.
             const afkSettled = forcedResolutionPending(result.state)
               ? driveAfkDrop(result.state, () => ({ entropy: freshEntropy(), now: Date.now() }))
               : result.state;
-            const settled = settleComputerForLiveAction(afkSettled);
+            const settled =
+              action.type === "ADVANCE_COMPUTER"
+                ? applyHumanComputerAdvance(afkSettled).state
+                : settleComputerForLiveAction(afkSettled);
             this.snapshot = {
               roomId: this.room.id,
               version: current.version + 1,
