@@ -162,6 +162,7 @@ import {
 } from "./morale-cards";
 import { MORALE_CARD_IDS } from "@/data/cards/morale";
 import { placeCombatToken, removeToken } from "./tokens";
+import { applyComputerGuaranteedWin } from "./computer/guaranteed-wins";
 import { neutralCombatControllerId } from "./neutral-control";
 import {
   assertParallelInteractionFree,
@@ -5807,6 +5808,18 @@ export function resolveWayfarerParalysisChoice(state: GameState, playerId: Playe
 function finalizeCombatStart(state: GameState): void {
   const combat = state.combat;
   if (!combat) {
+    return;
+  }
+
+  // Single-player smoothing (house rule): a computer seat's first TWO eligible
+  // neutral-guard battles are guaranteed flawless one-round wins — the guards
+  // fall before any unit acts and the outcome resolves through the normal
+  // victory path (rewards, XP, card recycling all real). Strictly scoped so it
+  // cannot leak or be abused: guard FIELDS at difficulty I/II the hero's level
+  // already covers, single-player sessions only, never a Creature Bank, never
+  // a fight with a human participant or guard controller — see
+  // `computer/guaranteed-wins.ts` and its `guaranteed-wins.test.ts`.
+  if (applyComputerGuaranteedWin(state)) {
     return;
   }
 

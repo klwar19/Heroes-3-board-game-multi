@@ -541,6 +541,26 @@ Leading with what does NOT run (deliberate limits):
   swaps, focus-fire), and a fixed-seed multi-round soak + reconnect suite
   (`single-player-soak.test.ts`) are wired. STILL deferred: hide multiplayer-
   only invite/share affordances on the SP table page; optional nightly long soak.
+- **Guaranteed first-battle wins (smoothing house rule)**: a computer seat's
+  first TWO eligible neutral-guard battles are guaranteed flawless one-round
+  wins — at the combat-start chokepoint (`finalizeCombatStart` →
+  `applyComputerGuaranteedWin`, `src/engine/computer/guaranteed-wins.ts`) every
+  guard falls before any unit acts, the AI army takes zero damage/losses, and
+  the outcome resolves through the NORMAL victory path (XP by difficulty,
+  Freelancer's Guild gold, guard-card recycling, field visit — all real; the
+  human's battle recap shows a normal won fight plus the explicit
+  `COMPUTER_GUARANTEED_WIN` event/feed line). Leading with what it does NOT do
+  (the abuse guards — the map policy never reads the feature, so the AI cannot
+  seek fights to exploit it): guard FIELDS only at difficulty I/II that the
+  hero's own `neutralBattleLevel` already covers (the AI keeps its natural
+  level-I-then-level-II ladder — level-II guards come from the II–III tiles it
+  explores/places); Creature Banks, PvP fights, human seats, multiplayer
+  sessions and PvP-Neutral-Control fights never qualify; Quick Combat
+  (level > difficulty) resolves before combat opens and never consumes a slot;
+  from the third eligible battle on the seat fights every battle normally. The
+  per-seat counter persists on `GameState.computerGuaranteedWins`. Each claim
+  (both wins, the limit, and every scope CONTROL) is mutation-checked in
+  `src/engine/computer/guaranteed-wins.test.ts`.
 - **Computer battles resolve IMMEDIATELY and off-screen; movement is REPLAYED
   behind an accept-gate, with a battle recap.**
   The whole computer turn (movement AND its neutral/bank combats) settles inside
