@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { act, renderHook } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { standardComputerController, type GameState } from "@/engine";
 import {
   buildComputerMoveReplay,
@@ -72,13 +72,8 @@ describe("buildComputerMoveReplay", () => {
 });
 
 describe("useComputerMoveReplay", () => {
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  it("reveals one cell per step, then releases the override", () => {
-    vi.useFakeTimers();
-    const { result } = renderHook(() => useComputerMoveReplay(100));
+  it("reveals one cell per Next press, then Confirm releases the override", () => {
+    const { result } = renderHook(() => useComputerMoveReplay());
 
     const replay = buildComputerMoveReplay(stateWithComputers(["p2"]), [
       move("m1", "p2", "hero_p2", "b1", "b2"),
@@ -88,31 +83,38 @@ describe("useComputerMoveReplay", () => {
     act(() => {
       result.current.start(replay);
     });
-    // Held at the start cell before any step fires.
+    // Held at the start cell — nothing advances without a press.
     expect(result.current.overrides).toEqual({ hero_p2: "b1" });
     expect(result.current.activePlayerId).toBe("p2");
+    expect(result.current.active).toBe(true);
+    expect(result.current.finished).toBe(false);
+    expect(result.current.remainingSteps).toBe(2);
 
     act(() => {
-      vi.advanceTimersByTime(100);
+      result.current.stepNext();
     });
     expect(result.current.overrides).toEqual({ hero_p2: "b2" });
+    expect(result.current.remainingSteps).toBe(1);
+    expect(result.current.finished).toBe(false);
 
     act(() => {
-      vi.advanceTimersByTime(100);
+      result.current.stepNext();
     });
     expect(result.current.overrides).toEqual({ hero_p2: "b3" });
+    expect(result.current.remainingSteps).toBe(0);
+    expect(result.current.finished).toBe(true);
 
-    // Trailing dwell releases the pawns back to the settled positions.
+    // Confirm (or cancel) releases the pawns back to the settled positions.
     act(() => {
-      vi.advanceTimersByTime(100);
+      result.current.confirm();
     });
     expect(result.current.overrides).toBeNull();
     expect(result.current.activePlayerId).toBeNull();
+    expect(result.current.active).toBe(false);
   });
 
-  it("cancel snaps the override away immediately", () => {
-    vi.useFakeTimers();
-    const { result } = renderHook(() => useComputerMoveReplay(100));
+  it("cancel snaps the override away immediately (Skip to end)", () => {
+    const { result } = renderHook(() => useComputerMoveReplay());
     const replay = buildComputerMoveReplay(stateWithComputers(["p2"]), [
       move("m1", "p2", "hero_p2", "b1", "b2"),
     ])!;
@@ -126,11 +128,21 @@ describe("useComputerMoveReplay", () => {
       result.current.cancel();
     });
     expect(result.current.overrides).toBeNull();
+    expect(result.current.active).toBe(false);
+  });
 
-    // No frame fires after cancel (the timer was cleared).
+  it("CONTROL: timers alone never advance a frame (no auto-flash)", () => {
+    // Mutation control for the old REPLAY_STEP_MS auto-advance path.
+    const { result } = renderHook(() => useComputerMoveReplay(1));
+    const replay = buildComputerMoveReplay(stateWithComputers(["p2"]), [
+      move("m1", "p2", "hero_p2", "b1", "b2"),
+    ])!;
     act(() => {
-      vi.advanceTimersByTime(500);
+      result.current.start(replay);
     });
-    expect(result.current.overrides).toBeNull();
+    expect(result.current.overrides).toEqual({ hero_p2: "b1" });
+    // Without stepNext the pawn stays at the hold cell forever.
+    expect(result.current.remainingSteps).toBe(1);
+    expect(result.current.finished).toBe(false);
   });
 });

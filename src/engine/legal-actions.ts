@@ -19,8 +19,10 @@ import {
   canUseAstrologersHeroEmpower,
   canHeroReachPlacedTile,
   capturableEnemyMinesWithin,
+  farTilePlacementCenters,
   freeSpellBookActive,
   legionDiscountTargets,
+  playerHasPlaceableFarTile,
   reinforceCostFor,
   getActiveAstrologersCard,
   getMainHero,
@@ -164,7 +166,7 @@ import type {
   TriggerDefinition,
   UnitId
 } from "./state";
-import { NEUTRAL_PLAYER_ID } from "./state";
+import { NEUTRAL_PLAYER_ID, UNOPENED_FAR_TILE } from "./state";
 import {
   getActivationSpellPowerBoost,
   getAstrologersRoundFrenzy,
@@ -8253,6 +8255,30 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
             label: `Discover the face-down tile at (${tile.centerRow}, ${tile.centerCol})`,
             action: { type: "DISCOVER_TILE", playerId, heroId: hero.id, tileInstanceId: tile.id }
           });
+        }
+      }
+
+      // Place a Far (Ⅱ–Ⅲ) supply tile into a legal empty lattice slot next to
+      // the hero. Same slots the human UI ghosts; without this offer the
+      // computer can never expand the map when face-down Near/center tiles
+      // are sealed off and only a new Ⅱ–Ⅲ notch opens a path.
+      if (playerHasPlaceableFarTile(state, playerId)) {
+        const supply = adventure.playerFarTiles[playerId] ?? [];
+        const supplyIndex = supply.findIndex((entry) => entry === UNOPENED_FAR_TILE);
+        if (supplyIndex >= 0) {
+          for (const center of farTilePlacementCenters(state, hero)) {
+            actions.push({
+              label: `Place a Far (Ⅱ–Ⅲ) tile at (${center.row}, ${center.col})`,
+              action: {
+                type: "PLACE_TILE",
+                playerId,
+                heroId: hero.id,
+                supplyIndex,
+                centerRow: center.row,
+                centerCol: center.col
+              }
+            });
+          }
         }
       }
     }

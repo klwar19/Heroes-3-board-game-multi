@@ -4,19 +4,29 @@ import type { ComputerBattleCue } from "./computer-battle-report";
 
 /**
  * The single-player "opponents finished their turn" prompt. Their battles
- * already resolved off-screen (see settleComputerWork); this overlay reports
- * each win/loss and its reward, and — when they also moved on the map — gates
- * the slow, cell-by-cell movement replay behind an explicit "Watch their moves"
- * click, so nothing on the board animates before the human is ready. Pure
- * presentation: every value comes from the already-authoritative state.
+ * already resolved off-screen; this overlay reports each win/loss and its
+ * reward, and gates the cell-by-cell movement replay behind explicit Next /
+ * Confirm presses so nothing on the board animates before the human is ready.
+ * Pure presentation: every value comes from the already-authoritative state.
  */
 export type OpponentTurnOverlayProps = {
   cues: ComputerBattleCue[];
-  /** True when the opponents also walked and a replay is queued. */
+  /** True when the opponents also walked and a replay is queued / in progress. */
   hasReplay: boolean;
-  /** Start the movement replay (only meaningful when hasReplay). */
+  /**
+   * Replay phase:
+   * - idle: not started (Watch / Start)
+   * - stepping: frames remain (Next)
+   * - done: last cell shown (Confirm)
+   */
+  replayPhase?: "idle" | "stepping" | "done";
+  /** Remaining map steps after the current pawn position. */
+  remainingSteps?: number;
+  /** Start the movement replay (idle → first hold). */
   onWatch: () => void;
-  /** Dismiss without watching (or when there is nothing to watch). */
+  /** Advance one cell of the walk. */
+  onStepNext?: () => void;
+  /** Finish / dismiss (confirm after walk, or skip). */
   onDismiss: () => void;
 };
 
@@ -31,9 +41,14 @@ function battleLine(cue: ComputerBattleCue): string {
 export function OpponentTurnOverlay({
   cues,
   hasReplay,
+  replayPhase = "idle",
+  remainingSteps = 0,
   onWatch,
+  onStepNext,
   onDismiss,
 }: OpponentTurnOverlayProps) {
+  const phase = hasReplay ? replayPhase : "idle";
+
   return (
     <div className="opponentTurnBackdrop" role="dialog" aria-modal="true" aria-label="Opponents' turn">
       <div className="opponentTurnCard">
@@ -58,21 +73,43 @@ export function OpponentTurnOverlay({
             ))}
           </ul>
         ) : (
-          <p className="opponentTurnNoBattles">Your opponents made their moves.</p>
+          <p className="opponentTurnNoBattles">
+            {phase === "stepping" || phase === "done"
+              ? "Watching opponent moves…"
+              : "Your opponents made their moves."}
+          </p>
         )}
         <div className="opponentTurnActions">
-          {hasReplay ? (
+          {!hasReplay ? (
+            <button type="button" className="opponentTurnWatch" onClick={onDismiss}>
+              Continue
+            </button>
+          ) : phase === "idle" ? (
             <>
               <button type="button" className="opponentTurnWatch" onClick={onWatch}>
-                Watch their moves →
+                Watch moves (step by step) →
               </button>
               <button type="button" className="opponentTurnSkip" onClick={onDismiss}>
                 Skip
               </button>
             </>
+          ) : phase === "stepping" ? (
+            <>
+              <button
+                type="button"
+                className="opponentTurnWatch"
+                onClick={onStepNext}
+              >
+                Next step
+                {remainingSteps > 0 ? ` (${remainingSteps} left)` : ""} →
+              </button>
+              <button type="button" className="opponentTurnSkip" onClick={onDismiss}>
+                Skip to end
+              </button>
+            </>
           ) : (
             <button type="button" className="opponentTurnWatch" onClick={onDismiss}>
-              Continue
+              Confirm
             </button>
           )}
         </div>
