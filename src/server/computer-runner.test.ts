@@ -8,6 +8,7 @@ import {
   createInitialGameState,
   getLegalActions,
   standardComputerController,
+  type ComputerDecision,
   type GameAction,
   type GameState,
 } from "@/engine";
@@ -509,9 +510,12 @@ describe("computer map turns", () => {
         byComputer.some(
           (decision) =>
             decision.action.type === "POPULATION_ACTION" ||
-            decision.action.type === "BUILD_STRUCTURE",
+            decision.action.type === "BUILD_STRUCTURE" ||
+            decision.action.type === "PLAY_CARD" ||
+            decision.action.type === "MOVE_HERO" ||
+            decision.action.type === "DISCOVER_TILE",
         ),
-      "computer should recruit/reinforce or build before ending its turn",
+      "computer should improve its army/town or advance an economic map plan",
     ).toBe(true);
     expect(
       finalHeroSpace !== initialHeroSpace ||
@@ -540,6 +544,13 @@ describe("computer map fights", () => {
       playerCount: 2,
       sessionMode: "single-player",
     });
+    // The strategic policy deliberately gathers safe resources before a fair
+    // fight while its opening army is still Few. Seed the completed three-Pack
+    // milestone here so this runner test isolates the intended next phase:
+    // engage a favorable guard and fully recover from the combat.
+    for (const unit of state.players.p2.army) {
+      unit.side = "pack";
+    }
     const humanPriority: GameAction["type"][] = [
       "SET_TILE_ROTATION",
       "CHOOSE_OPTION",

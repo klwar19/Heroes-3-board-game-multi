@@ -76,6 +76,124 @@ const endTurn: LegalAction = {
 };
 
 describe("card policy — combat reactions", () => {
+  it("uses free innate/building reactions when they prevent a loss or secure a kill", () => {
+    const attacker = unit({
+      id: "A",
+      controllerId: "p2",
+      attack: 4,
+      position: 8,
+    });
+    const enemy = unit({
+      id: "E",
+      controllerId: "p1",
+      defense: 2,
+      maxHealth: 5,
+      damage: 2,
+      position: 9,
+    });
+    const hall: LegalAction = {
+      label: "Hall +1",
+      action: {
+        type: "HALL_OF_VALHALLA_BOOST",
+        playerId: "p2",
+        buildingId: "stronghold.hall_of_valhalla",
+      } as GameAction,
+    };
+    const observed = observation([attacker, enemy], [pass, hall]);
+    (observed.state as unknown as { stack: unknown[] }).stack = [
+      {
+        action: {
+          type: "ATTACK_UNIT",
+          playerId: "p2",
+          attackerId: "A",
+          defenderId: "E",
+        },
+        modifiers: { attackBonus: 0, defenseBonus: 0 },
+      },
+    ];
+    expect(chooseComputerAction(observed)?.action.type).toBe(
+      "HALL_OF_VALHALLA_BOOST",
+    );
+
+    const mirror: LegalAction = {
+      label: "Magic Mirror",
+      action: {
+        type: "USE_UNIT_MAGIC_MIRROR",
+        playerId: "p2",
+        unitId: "A",
+      } as GameAction,
+    };
+    expect(
+      chooseComputerAction({ ...observed, legalActions: [pass, mirror] })?.action
+        .type,
+    ).toBe("USE_UNIT_MAGIC_MIRROR");
+  });
+
+  it("discards to cancel a positive attack die only when the card buys real survival", () => {
+    const attacker = unit({
+      id: "A",
+      controllerId: "p1",
+      attack: 3,
+      position: 8,
+    });
+    const defender = unit({
+      id: "D",
+      controllerId: "p2",
+      defense: 2,
+      maxHealth: 5,
+      damage: 3,
+      position: 9,
+    });
+    const ignoreDie: LegalAction = {
+      label: "Parry",
+      action: {
+        type: "USE_UNIT_DIE_IGNORE",
+        playerId: "p2",
+        defenderUnitId: "D",
+      } as GameAction,
+    };
+    const observed = observation(
+      [attacker, defender],
+      [pass, ignoreDie],
+      "p2",
+      ["stat.attack"],
+    );
+    (observed.state as unknown as { stack: unknown[] }).stack = [
+      {
+        action: {
+          type: "ATTACK_UNIT",
+          playerId: "p1",
+          attackerId: "A",
+          defenderId: "D",
+        },
+        modifiers: { attackBonus: 0, defenseBonus: 0 },
+      },
+    ];
+    (
+      observed.state as unknown as {
+        reactionWindow: { triggerEvent: object };
+      }
+    ).reactionWindow = {
+      triggerEvent: {
+        id: "die-settled",
+        type: "ATTACK_DIE_SETTLED",
+        attackerId: "A",
+        defenderId: "D",
+        roll: 1,
+      },
+    };
+
+    // Base damage is 1; the +1 face would deal the remaining 2 HP. Preserve
+    // the unit even though doing so costs a hand card.
+    expect(chooseComputerAction(observed)?.action.type).toBe(
+      "USE_UNIT_DIE_IGNORE",
+    );
+
+    // With a healthy defender, one prevented damage is not worth discarding.
+    defender.damage = 0;
+    expect(chooseComputerAction(observed)?.action.type).toBe("PASS_REACTION");
+  });
+
   it("uses a First Aid active effect before passing and heals the best target", () => {
     const scratched = unit({
       id: "A",

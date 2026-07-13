@@ -24,6 +24,10 @@ import {
   shouldAssaultEnemyHolding,
   shouldEngageEnemy,
 } from "./army-strength";
+import {
+  armyReadyForContestedFight,
+  developmentResourceTargets,
+} from "./development";
 
 /**
  * Lightweight resource-need probe (mirrors map-policy trade deficits without a
@@ -36,12 +40,16 @@ function needsMarketRebalance(state: GameState, playerId: PlayerId): boolean {
   const gold = res.gold ?? 0;
   const mats = res.buildingMaterials ?? 0;
   const vals = res.valuables ?? 0;
+  const target = developmentResourceTargets(state, playerId);
   // Broke with convertible stock → sell for gold.
-  if (gold < 8 && (mats >= 2 || vals >= 1)) return true;
+  if (
+    gold < target.gold &&
+    (mats > target.buildingMaterials + 1 || vals > target.valuables)
+  ) return true;
   // Flush gold but no materials for building → buy materials.
-  if (gold >= 12 && mats === 0) return true;
+  if (mats < target.buildingMaterials && gold >= 10) return true;
   // Gold for a valuables build when none held.
-  if (gold >= 18 && vals === 0 && mats >= 3) return true;
+  if (vals < target.valuables && (gold >= 14 || mats > target.buildingMaterials)) return true;
   return false;
 }
 
@@ -59,7 +67,7 @@ function needsMarketRebalance(state: GameState, playerId: PlayerId): boolean {
  * Sticky primary objective: mid-turn, when one objective is visited and drops
  * out of the set, multi-source BFS can reverse the hero toward a DIFFERENT
  * objective (often via home town). `primaryMapObjective` picks ONE target for
- * the turn — highest kind priority, then closest, then stable spaceId — so the
+ * the turn by strategic value, army readiness, and travel distance, so the
  * march stays committed instead of thrashing through town.
  *
  * Explore objectives: face-down tiles are worth marching to (a field from which
@@ -85,7 +93,7 @@ export type MapObjective = {
   kind: MapObjectiveKind;
 };
 
-/** Higher = more important. Used by sticky primary selection. */
+/** Broad objective importance retained for callers and deterministic tooling. */
 export const MAP_OBJECTIVE_PRIORITY: Record<MapObjectiveKind, number> = {
   victory: 10,
   "enemy-hero": 6,
@@ -312,7 +320,7 @@ function collectExploreObjectives(
   if (!adventure || !hero.spaceId) {
     return [];
   }
-  const faceDown = Object.values(adventure.tiles).filter((tile) => tile.faceDown);
+  const faceDown = Object.values(adventure.tiles ?? {}).filter((tile) => tile.faceDown);
   const canPlaceFar = playerHasPlaceableFarTile(state, hero.controllerId);
   if (faceDown.length === 0 && !canPlaceFar) {
     return [];
@@ -452,20 +460,69 @@ export function distanceFromHeroTo(
 }
 
 /**
- * The single objective this hero should march toward right now. Highest kind
- * priority wins; among equals, the closest; among equals, stable spaceId. A
- * sticky single target stops the multi-source thrash that walked the hero
- * back through its home town whenever a nearer objective fell off the list.
+ * The single objective this hero should march toward right now. Strategic
+ * value accounts for army readiness, scenario stakes, and travel distance; a
+ * stable spaceId breaks exact ties. A sticky single target stops the
+ * multi-source thrash that walked the hero back through its home town whenever
+ * a nearer objective fell off the list.
  *
  * When `stickySpaceId` is still among the current objectives, keep marching
- * there across turns (multi-round memory) unless a VICTORY-class target appears
- * (priority ≥ victory − 1; see the break condition below). A merely higher
- * instantaneous priority — e.g. a beatable enemy hero (6) over a sticky town (4)
- * — deliberately does NOT break the commit: an enemy hero MOVES, so chasing it
- * would reintroduce the multi-source march thrash sticky exists to stop. That is
- * the long-horizon commit the instantaneous primary alone cannot provide after a
- * soft mid-turn drop-out.
+ * there across turns unless another reachable objective is materially better.
+ * The margin avoids chase-thrash while still allowing the AI to abandon a weak
+ * or premature commitment for a nearby win, safe reward, or newly ready fight.
  */
+function objectiveStrategicValue(
+  state: GameState,
+  hero: HeroState,
+  objective: MapObjective,
+  distance: number,
+): number {
+  const ready = armyReadyForContestedFight(state, hero.controllerId);
+  const mode = adventureVictoryMode(state);
+  const field = state.adventure?.fields[objective.spaceId];
+  let value: number;
+  switch (objective.kind) {
+    case "victory": {
+      const carryingGrailHome = Boolean(
+        mode === "grail" &&
+          state.adventure?.grail?.status === "carried" &&
+          state.adventure.grail.carrierHeroId === hero.id &&
+          field?.flagOwnerId === hero.controllerId,
+      );
+      if (carryingGrailHome) value = 1_250;
+      else if (mode === "conquest") value = ready ? 790 : 360;
+      else if (mode === "dragon-hunt" || mode === "dragon-conqueror") {
+        value = ready ? 900 : 390;
+      } else value = 950;
+      break;
+    }
+    case "enemy-hero":
+      value = ready ? 760 : 390;
+      break;
+    case "guard": {
+      const difficulty = field?.difficulty ?? 0;
+      const guaranteedQuickWin =
+        difficulty > 0 && neutralBattleLevel(state, hero) > difficulty;
+      value = guaranteedQuickWin ? 800 : ready ? 710 : 410;
+      break;
+    }
+    case "town":
+      value = 660;
+      break;
+    case "flaggable":
+      value = 625;
+      break;
+    case "visitable":
+      value = 600;
+      break;
+    case "explore":
+    default:
+      value = 430;
+      break;
+  }
+  return value - distance * 18;
+}
+
 export function primaryMapObjective(
   state: GameState,
   hero: HeroState,
@@ -479,15 +536,20 @@ export function primaryMapObjective(
   if (stickySpaceId) {
     const sticky = objectives.find((objective) => objective.spaceId === stickySpaceId);
     if (sticky) {
-      // Break sticky ONLY for a victory-class objective (priority ≥ victory − 1);
-      // a merely higher instantaneous priority (enemy-hero/guard/…) keeps the
-      // commit to avoid chase-thrash. See the header note.
-      const higher = objectives.find(
-        (objective) =>
-          MAP_OBJECTIVE_PRIORITY[objective.kind] >
-            MAP_OBJECTIVE_PRIORITY[sticky.kind] &&
-          MAP_OBJECTIVE_PRIORITY[objective.kind] >= MAP_OBJECTIVE_PRIORITY.victory - 1,
-      );
+      // Change plans only for a materially better reachable objective; small
+      // value fluctuations keep the existing march stable across turns.
+      const stickyDistance = distanceFromHeroTo(state, hero, sticky.spaceId);
+      const stickyValue = stickyDistance === undefined
+        ? Number.NEGATIVE_INFINITY
+        : objectiveStrategicValue(state, hero, sticky, stickyDistance);
+      const higher = objectives.find((objective) => {
+        const distance = distanceFromHeroTo(state, hero, objective.spaceId);
+        return (
+          distance !== undefined &&
+          objectiveStrategicValue(state, hero, objective, distance) >
+            stickyValue + 90
+        );
+      });
       // Unreachable sticky (e.g. explore doorway sealed behind a yellow border
       // the hero cannot cross without Pathfinding, or a fight we can no longer
       // reach) must drop — otherwise the AI parks forever on an END_TURN with a
@@ -501,24 +563,24 @@ export function primaryMapObjective(
   }
 
   let best: MapObjective | null = null;
-  let bestPriority = -1;
+  let bestValue = Number.NEGATIVE_INFINITY;
   let bestDistance = Number.POSITIVE_INFINITY;
   for (const objective of objectives) {
     const distance = distanceFromHeroTo(state, hero, objective.spaceId);
     if (distance === undefined) {
       continue;
     }
-    const priority = MAP_OBJECTIVE_PRIORITY[objective.kind];
+    const value = objectiveStrategicValue(state, hero, objective, distance);
     if (
       !best ||
-      priority > bestPriority ||
-      (priority === bestPriority && distance < bestDistance) ||
-      (priority === bestPriority &&
+      value > bestValue ||
+      (value === bestValue && distance < bestDistance) ||
+      (value === bestValue &&
         distance === bestDistance &&
         objective.spaceId.localeCompare(best.spaceId) < 0)
     ) {
       best = objective;
-      bestPriority = priority;
+      bestValue = value;
       bestDistance = distance;
     }
   }

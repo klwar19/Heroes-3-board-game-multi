@@ -25,6 +25,10 @@ import type {
 import { cardKeepValue } from "./card-policy";
 import { playerArmyStrength } from "./army-strength";
 import {
+  armyDevelopmentProfile,
+  developmentResourceTargets,
+} from "./development";
+import {
   collectMapObjectives,
   objectiveDistanceField,
   ownTownSpaceId,
@@ -83,17 +87,23 @@ export function resourceDeficits(
 ): Record<ResourceKey, number> {
   const res = playerResources(state, playerId);
   const army = state.players[playerId]?.army.length ?? 0;
-  // Target stocks: enough gold to recruit, a small mat pile, one valuable.
-  // Positive = want more; zero/negative = surplus (do not buy more of it).
-  const goldTarget = (army < 5 ? 14 : 10) + (res.gold < GOLD_RESERVE ? 6 : 0);
+  // Preserve the ACTUAL next dwelling cost. The old fixed 3 materials / one
+  // valuable target made the market sell the Silver/Gold savings as "surplus",
+  // leaving the computer permanently stuck on Bronze units.
+  const target = developmentResourceTargets(state, playerId);
+  const goldTarget = Math.max(target.gold, army < 5 ? 14 : 10) +
+    (res.gold < GOLD_RESERVE ? 6 : 0);
   const wantGold = goldTarget - res.gold;
-  const wantMats = Math.max(0, 3 - res.buildingMaterials) > 0
-    ? 3 - res.buildingMaterials
-    : res.buildingMaterials >= 5
-      ? -(res.buildingMaterials - 4)
+  const wantMats = Math.max(0, target.buildingMaterials - res.buildingMaterials) > 0
+    ? target.buildingMaterials - res.buildingMaterials
+    : res.buildingMaterials >= target.buildingMaterials + 2
+      ? -(res.buildingMaterials - target.buildingMaterials - 1)
       : 0;
-  const wantVals =
-    res.valuables <= 0 ? 1 : res.valuables >= 2 ? -(res.valuables - 1) : 0;
+  const wantVals = target.valuables - res.valuables > 0
+    ? target.valuables - res.valuables
+    : res.valuables >= target.valuables + 2
+      ? -(res.valuables - target.valuables - 1)
+      : 0;
   return {
     gold: wantGold,
     buildingMaterials: wantMats,
@@ -163,11 +173,12 @@ function wantsMarketVisit(state: GameState, playerId: PlayerId): boolean {
 
 function buildingScore(
   state: GameState,
-  playerId: string,
+  playerId: PlayerId,
   buildingId: string,
   memory: ComputerPolicyMemory,
 ): number {
   const effect = coreBuildingDefinitions[buildingId]?.effect;
+  const development = armyDevelopmentProfile(state, playerId);
   const armySize = state.players[playerId]?.army.length ?? 0;
   const gold = playerGold(state, playerId);
   // When the army is thin, prefer recruit unlocks / reinforce over soft economy.
@@ -213,8 +224,61 @@ function buildingScore(
       focusKind = "build-other";
       break;
   }
+  // Coherent development ladder: secure three Pack stacks, then unlock Silver,
+  // then Gold. An immediately winning map step still scores above these bands,
+  // but ordinary movement/fights wait until the round's key build is made.
+  if (development.phase === "establish-core") {
+    if (effect?.type === "UNLOCK_REINFORCE") {
+      score = Math.max(score, 955);
+    } else if (
+      effect?.type === "UNLOCK_RECRUIT_TIER" &&
+      effect.tier === "bronze"
+    ) {
+      score = Math.max(score, 950);
+    } else if (
+      !development.reinforceUnlocked ||
+      !development.bronzeUnlocked
+    ) {
+      // Do not burn the Pack treasury on Mage Guild/economy/advanced buildings
+      // before the two structures that make the starting army upgradeable.
+      score = Math.min(score, 280);
+    } else if (
+      effect?.type === "UNLOCK_RECRUIT_TIER" &&
+      (effect.tier === "silver" || effect.tier === "gold")
+    ) {
+      score = Math.min(score, 720);
+    }
+  } else if (
+    development.phase === "unlock-silver" &&
+    effect?.type === "UNLOCK_RECRUIT_TIER" &&
+    effect.tier === "silver"
+  ) {
+    score = 955;
+  } else if (
+    development.phase === "unlock-gold" &&
+    effect?.type === "UNLOCK_RECRUIT_TIER" &&
+    effect.tier === "gold"
+  ) {
+    score = 950;
+  }
   // Multi-round focus: nudge toward the remembered economy priority.
   score += economyFocusBias(memory, focusKind);
+  const developmentMilestone =
+    (development.phase === "establish-core" &&
+      (effect?.type === "UNLOCK_REINFORCE" ||
+        (effect?.type === "UNLOCK_RECRUIT_TIER" &&
+          effect.tier === "bronze"))) ||
+    (development.phase === "unlock-silver" &&
+      effect?.type === "UNLOCK_RECRUIT_TIER" &&
+      effect.tier === "silver") ||
+    (development.phase === "unlock-gold" &&
+      effect?.type === "UNLOCK_RECRUIT_TIER" &&
+      effect.tier === "gold");
+  if (developmentMilestone) {
+    // A development focus may break a close tie, but must never outscore a
+    // legal step that completes the scenario immediately (980).
+    return Math.min(score, 975);
+  }
   return score;
 }
 
@@ -225,12 +289,14 @@ function populationScore(
   const state = observation.state as unknown as GameState;
   const memory = memoryOf(observation);
   const player = state.players[observation.playerId];
-  const armySize = player?.army.length ?? 0;
+  const development = armyDevelopmentProfile(state, observation.playerId);
   const gold = player?.resources.gold ?? 0;
-  let score = 900 + (armySize < 4 ? 30 : armySize < 6 ? 12 : 0);
-  // Prefer recruiting while gold is healthy; still recruit when thin even if
-  // broke (army is the win condition).
-  if (gold >= GOLD_RESERVE + 10) score += 8;
+  let score = 860;
+  let totalGain = 0;
+  let totalCostWeight = 0;
+  let spentGold = 0;
+  let spentMaterials = 0;
+  let spentValuables = 0;
   for (const purchase of action.purchases) {
     const definition = coreUnitDefinitions[purchase.unitDefId];
     const gainedSide = getUnitSide(
@@ -257,16 +323,73 @@ function populationScore(
         previousSide.defense +
         Math.round(previousSide.initiative / 2)
       : 0;
-    score += Math.min(65, Math.max(0, sideValue - previousValue));
-    if (purchase.kind === "reinforce") {
-      score += 14;
+    const gain = Math.max(0, sideValue - previousValue);
+    totalGain += gain;
+    const printedCost = gainedSide?.cost ?? {};
+    spentGold += printedCost.gold ?? 0;
+    spentMaterials += printedCost.buildingMaterials ?? 0;
+    spentValuables += printedCost.valuables ?? 0;
+    totalCostWeight +=
+      (printedCost.gold ?? 0) +
+      (printedCost.buildingMaterials ?? 0) * 3 +
+      (printedCost.valuables ?? 0) * 7;
+
+    if (development.phase === "establish-core") {
+      if (purchase.kind === "reinforce") {
+        // The primary opening: turn the three starting Few cards into Packs.
+        score = Math.max(score, 955);
+      } else if (development.totalUnits < 3) {
+        score = Math.max(score, 960);
+      } else {
+        score = Math.max(score, 830);
+      }
       continue;
     }
-    if (definition?.tier === "gold") score += 20;
-    else if (definition?.tier === "silver") score += 14;
-    else score += 8;
+
+    // Once the core is ready, higher-tier bodies and their upgrades are the
+    // efficient way to scale. While saving for the next dwelling, buying stray
+    // Bronze cards must not consume that treasury.
+    if (development.phase === "unlock-silver" || development.phase === "unlock-gold") {
+      if (definition?.tier === "gold") score = Math.max(score, 940);
+      else if (definition?.tier === "silver") score = Math.max(score, 915);
+      else score = Math.min(score, 820);
+    } else if (definition?.tier === "gold") {
+      score = Math.max(score, purchase.kind === "reinforce" ? 950 : 955);
+    } else if (definition?.tier === "silver") {
+      score = Math.max(score, purchase.kind === "reinforce" ? 935 : 940);
+    } else if (purchase.kind === "reinforce") {
+      score = Math.max(score, 900);
+    }
   }
+  // Combat gain per weighted resource breaks same-stage ties intelligently.
+  const efficiency = totalCostWeight > 0 ? totalGain / totalCostWeight : totalGain;
+  score += Math.min(40, Math.round(totalGain * 1.5 + efficiency));
+  if (gold >= GOLD_RESERVE + 10) score += 5;
   score += economyFocusBias(memory, "recruit");
+  if (development.phase === "establish-core") {
+    // Never postpone an adjacent scenario-winning capture just to buy a Pack,
+    // while still beating ordinary fights, exploration, and END_TURN.
+    return Math.min(score, 970 + Math.min(5, Math.round(efficiency)));
+  }
+  if (
+    development.phase === "unlock-silver" ||
+    development.phase === "unlock-gold"
+  ) {
+    const resources = player?.resources ?? {
+      gold: 0,
+      buildingMaterials: 0,
+      valuables: 0,
+    };
+    const target = developmentResourceTargets(state, observation.playerId);
+    const protectsNextDwelling =
+      resources.gold - spentGold >= target.gold &&
+      resources.buildingMaterials - spentMaterials >=
+        target.buildingMaterials &&
+      resources.valuables - spentValuables >= target.valuables;
+    // Build the next dwelling before buying intermediate troops. Population
+    // may still use genuine surplus without touching the saved Silver/Gold fund.
+    return Math.min(score, protectsNextDwelling ? 940 : 820);
+  }
   return score;
 }
 
@@ -1010,6 +1133,11 @@ export function scoreMapAction(
         policy: "map.place-far-tile",
       };
     }
+    case "PLACE_OBSERVATORY_TILE":
+      return {
+        score: 1_130,
+        policy: "map.observatory-place-expansion-tile",
+      };
     case "MOVE_HERO":
       return { score: moveScore(observation, action), policy: "map.move-to-objective" };
     case "REVISIT_FIELD": {
@@ -1033,7 +1161,7 @@ export function scoreMapAction(
       // Already used the market this round — avoid open/close thrash.
       if (memory.lastMarketRound === state.round) {
         return {
-          score: 300 + economyFocusBias(memory, "market"),
+          score: 240,
           policy: "map.market-already-used",
         };
       }
@@ -1058,18 +1186,109 @@ export function scoreMapAction(
         score: playerGold(state, observation.playerId) < GOLD_RESERVE + 4 ? 550 : 300,
         policy: "map.sell-scroll-spell",
       };
+    case "MOVE_SPELL_TO_SPELL_BOOK": {
+      const hand = state.players[observation.playerId]?.hand ?? [];
+      const crowded = hand.length >= 4;
+      return {
+        score: crowded ? 690 + Math.min(35, cardKeepValue(action.cardId)) : 260,
+        policy: crowded ? "card.store-spell-free-hand-slot" : "card.keep-spell-ready",
+      };
+    }
+    case "ASTROLOGERS_HERO_EMPOWER":
+      return { score: 735, policy: "card.empower-statistic" };
+    case "CRACK_PERMANENT": {
+      const card = cardLibrary[action.cardId];
+      const option = card?.effect.type === "CHOOSE_ONE"
+        ? card.effect.options.find(
+            (candidate) =>
+              candidate.cost?.removeSelf &&
+              candidate.effect.type === "GAIN_RESOURCES",
+          )
+        : undefined;
+      const gain = option?.effect.type === "GAIN_RESOURCES"
+        ? option.effect.gain
+        : {};
+      const deficit = resourceDeficits(state, observation.playerId);
+      const useful =
+        Math.min(Math.max(0, deficit.gold), gain.gold ?? 0) * 5 +
+        Math.min(
+          Math.max(0, deficit.buildingMaterials),
+          gain.buildingMaterials ?? 0,
+        ) * 15 +
+        Math.min(Math.max(0, deficit.valuables), gain.valuables ?? 0) * 25;
+      return {
+        score: useful > 0 ? 650 + Math.min(120, useful) : 220,
+        policy: useful > 0
+          ? "card.crack-income-to-fund-plan"
+          : "card.keep-income-permanent",
+      };
+    }
+    case "DISCARD_PERMANENT":
+      return { score: 100, policy: "card.keep-useful-permanent" };
+    case "COMMANDER_GRADE_UP": {
+      const priorities = {
+        attack: 760,
+        damage: 750,
+        defense: 735,
+        health: 725,
+        speed: 715,
+        magic: 705,
+      } as const;
+      return {
+        score: priorities[action.stat],
+        policy: "commander.grade-combat-impact",
+      };
+    }
+    case "REVIVE_COMMANDER": {
+      const hero = Object.values(state.heroes).find(
+        (candidate) =>
+          candidate.controllerId === observation.playerId &&
+          candidate.kind === "main",
+      );
+      const cost = 2 + 2 * (hero?.level ?? 1);
+      const gold = playerGold(state, observation.playerId);
+      return {
+        score: gold - cost >= GOLD_RESERVE ? 740 : 290,
+        policy: "commander.revive-with-reserve",
+      };
+    }
+    case "COMMANDER_SET_STANCE":
+      return {
+        score: action.stance === "attack" ? 720 : 710,
+        policy: "commander.set-pressure-stance",
+      };
     case "RESOLVE_VISIT_STEP":
       return {
         score: resolveVisitStepScore(observation, action),
         policy: "map.resolve-visit",
       };
     case "SPELL_BOOK_ACTION":
-      return { score: 620, policy: "town.buy-spells" };
+      return {
+        score:
+          armyDevelopmentProfile(state, observation.playerId).phase ===
+          "improve-army"
+            ? 620
+            : 250,
+        policy: "town.buy-spells-after-army-core",
+      };
     case "MAGIC_UNIVERSITY_ACTION":
-      return { score: 615, policy: "town.use-magic-university" };
+      return {
+        score:
+          armyDevelopmentProfile(state, observation.playerId).phase ===
+          "improve-army"
+            ? 615
+            : 290,
+        policy: "town.use-magic-university-after-core",
+      };
     case "BLACKSMITH_ACTION":
       return {
-        score: action.option === "sell" ? 640 : 590,
+        score:
+          action.option === "sell"
+            ? 640
+            : armyDevelopmentProfile(state, observation.playerId).phase ===
+                "improve-army"
+              ? 590
+              : 260,
         policy: action.option === "sell" ? "town.sell-artifact" : "town.search-artifact",
       };
     case "USE_TOWN_BUILDING":

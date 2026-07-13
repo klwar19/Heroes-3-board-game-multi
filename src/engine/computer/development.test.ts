@@ -1,0 +1,229 @@
+import { describe, expect, it } from "vitest";
+import { coreBuildingDefinitions, coreFactionDefinitions } from "@/data/factions/core";
+import type { TownBuildingEffect } from "@/data/factions/types";
+import { createAdventureGameState } from "../adventure-setup";
+import type { GameAction, GameState, PlayerVisibleState } from "../state";
+import { scoreCardAction } from "./card-policy";
+import {
+  armyDevelopmentProfile,
+  developmentResourceTargets,
+} from "./development";
+import { resourceDeficits, scoreMapAction } from "./map-policy";
+import { observeForComputer } from "./observation";
+import { chooseComputerAction } from "./policy";
+import type { ComputerObservation } from "./types";
+
+function game(): GameState {
+  return createAdventureGameState({
+    seed: "computer-development",
+    scenarioId: "skirmish",
+    playerCount: 2,
+    events: false,
+    rollFirstPlayer: false,
+  });
+}
+
+function observation(state: GameState): ComputerObservation {
+  return {
+    playerId: "p2",
+    state: state as unknown as PlayerVisibleState,
+    legalActions: [],
+  };
+}
+
+function buildingWith(
+  state: GameState,
+  predicate: (effect: TownBuildingEffect) => boolean,
+): string {
+  const factionId = state.players.p2.factionId!;
+  const buildingId = coreFactionDefinitions[factionId].buildings.find((id) => {
+    const effect = coreBuildingDefinitions[id]?.effect;
+    return effect ? predicate(effect) : false;
+  });
+  if (!buildingId) throw new Error("fixture faction is missing a required building");
+  return buildingId;
+}
+
+function establishPacks(state: GameState): void {
+  for (const unit of state.players.p2.army) unit.side = "pack";
+}
+
+describe("computer long-horizon development plan", () => {
+  it("chooses the real legal sequence: reinforcement unlock, Packs, Silver, then Gold", () => {
+    const state = game();
+    state.phase = "player-turn";
+    state.activePlayerId = "p2";
+    state.priorityPlayerId = "p2";
+    state.players.p2.canMulligan = false;
+    state.players.p2.needsHandRefresh = false;
+    state.players.p2.resources = {
+      gold: 99,
+      buildingMaterials: 99,
+      valuables: 99,
+    };
+    const citadel = buildingWith(
+      state,
+      (effect) => effect.type === "UNLOCK_REINFORCE",
+    );
+    const bronze = buildingWith(
+      state,
+      (effect) =>
+        effect.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "bronze",
+    );
+    const silver = buildingWith(
+      state,
+      (effect) =>
+        effect.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "silver",
+    );
+    const gold = buildingWith(
+      state,
+      (effect) =>
+        effect.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "gold",
+    );
+    const town = Object.values(state.towns).find(
+      (candidate) => candidate.controllerId === "p2",
+    )!;
+
+    town.buildings = [];
+    const unlock = chooseComputerAction(observeForComputer(state, "p2"));
+    expect(unlock?.action).toMatchObject({
+      type: "BUILD_STRUCTURE",
+      buildingId: citadel,
+    });
+
+    town.buildings = [citadel, bronze];
+    const pack = chooseComputerAction(observeForComputer(state, "p2"));
+    expect(pack?.action.type).toBe("POPULATION_ACTION");
+    const packAction = pack?.action as
+      | Extract<GameAction, { type: "POPULATION_ACTION" }>
+      | undefined;
+    expect(packAction?.purchases[0]?.kind).toBe("reinforce");
+
+    establishPacks(state);
+    const unlockSilver = chooseComputerAction(observeForComputer(state, "p2"));
+    expect(unlockSilver?.action).toMatchObject({
+      type: "BUILD_STRUCTURE",
+      buildingId: silver,
+    });
+
+    town.buildings.push(silver);
+    const unlockGold = chooseComputerAction(observeForComputer(state, "p2"));
+    expect(unlockGold?.action).toMatchObject({
+      type: "BUILD_STRUCTURE",
+      buildingId: gold,
+    });
+  });
+
+  it("prioritizes reinforcing the three-unit core above an ordinary map march", () => {
+    const state = game();
+    const citadel = buildingWith(state, (effect) => effect.type === "UNLOCK_REINFORCE");
+    const bronze = buildingWith(
+      state,
+      (effect) => effect.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "bronze",
+    );
+    const town = Object.values(state.towns).find((candidate) => candidate.controllerId === "p2")!;
+    town.buildings = [citadel, bronze];
+    const unit = state.players.p2.army[0];
+    const score = scoreMapAction(observation(state), {
+      type: "POPULATION_ACTION",
+      playerId: "p2",
+      purchases: [
+        {
+          kind: "reinforce",
+          unitDefId: unit.unitDefId,
+          armyUnitId: unit.id,
+        },
+      ],
+    });
+    expect(score?.score).toBeGreaterThan(900);
+    expect(score?.policy).toBe("map.recruit-army");
+  });
+
+  it("unlocks Silver after three Packs, then Gold after Silver", () => {
+    const state = game();
+    establishPacks(state);
+    const citadel = buildingWith(state, (effect) => effect.type === "UNLOCK_REINFORCE");
+    const bronze = buildingWith(
+      state,
+      (effect) => effect.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "bronze",
+    );
+    const silver = buildingWith(
+      state,
+      (effect) => effect.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "silver",
+    );
+    const gold = buildingWith(
+      state,
+      (effect) => effect.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "gold",
+    );
+    const town = Object.values(state.towns).find((candidate) => candidate.controllerId === "p2")!;
+    town.buildings = [citadel, bronze];
+
+    expect(armyDevelopmentProfile(state, "p2").phase).toBe("unlock-silver");
+    const silverScore = scoreMapAction(observation(state), {
+      type: "BUILD_STRUCTURE",
+      playerId: "p2",
+      townId: town.id,
+      buildingId: silver,
+    });
+    expect(silverScore?.score).toBe(955);
+
+    town.buildings.push(silver);
+    expect(armyDevelopmentProfile(state, "p2").phase).toBe("unlock-gold");
+    const goldScore = scoreMapAction(observation(state), {
+      type: "BUILD_STRUCTURE",
+      playerId: "p2",
+      townId: town.id,
+      buildingId: gold,
+    });
+    expect(goldScore?.score).toBe(950);
+  });
+
+  it("saves the exact materials and valuables required by the next dwelling", () => {
+    const state = game();
+    establishPacks(state);
+    const citadel = buildingWith(state, (effect) => effect.type === "UNLOCK_REINFORCE");
+    const bronze = buildingWith(
+      state,
+      (effect) => effect.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "bronze",
+    );
+    const town = Object.values(state.towns).find((candidate) => candidate.controllerId === "p2")!;
+    town.buildings = [citadel, bronze];
+    const target = developmentResourceTargets(state, "p2");
+    state.players.p2.resources = {
+      gold: target.gold,
+      buildingMaterials: Math.max(0, target.buildingMaterials - 1),
+      valuables: target.valuables,
+    };
+    const deficit = resourceDeficits(state, "p2");
+    expect(deficit.buildingMaterials).toBe(1);
+    expect(deficit.valuables).toBe(0);
+  });
+
+  it("plays a resource card before moving when it completes the next build fund", () => {
+    const state = game();
+    establishPacks(state);
+    const citadel = buildingWith(state, (effect) => effect.type === "UNLOCK_REINFORCE");
+    const bronze = buildingWith(
+      state,
+      (effect) => effect.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "bronze",
+    );
+    const town = Object.values(state.towns).find((candidate) => candidate.controllerId === "p2")!;
+    town.buildings = [citadel, bronze];
+    const target = developmentResourceTargets(state, "p2");
+    state.players.p2.resources = {
+      gold: target.gold,
+      buildingMaterials: Math.max(0, target.buildingMaterials - 2),
+      valuables: target.valuables,
+    };
+    state.players.p2.hand = ["artifact.inexhaustible_cart_of_lumber"];
+    const scored = scoreCardAction(observation(state), {
+      type: "PLAY_CARD",
+      playerId: "p2",
+      cardId: "artifact.inexhaustible_cart_of_lumber",
+      optionIndex: 0,
+      target: { type: "none" },
+    });
+    expect(scored?.score).toBeGreaterThan(800);
+    expect(scored?.policy).toBe("card.play-artifact");
+  });
+});

@@ -58,6 +58,12 @@ function p2Hero(state: GameState): HeroState {
   return hero;
 }
 
+function establishP2PackCore(state: GameState): void {
+  for (const unit of state.players.p2.army) {
+    unit.side = "pack";
+  }
+}
+
 /** scoreMapAction only reads observation.state + observation.playerId. */
 function observe(state: GameState): ComputerObservation {
   return {
@@ -261,6 +267,7 @@ describe("moveScore uses objectives (fixes wander + never-fights)", () => {
     const state = game();
     const hero = p2Hero(state);
     hero.level = 1;
+    establishP2PackCore(state);
     // Remove the distant conquest-town override so the adjacent guarded mine is
     // the concrete primary payoff for this policy comparison.
     state.adventure!.victoryMode = "dragon-hunt";
@@ -304,6 +311,7 @@ describe("moveScore uses objectives (fixes wander + never-fights)", () => {
     const state = game();
     const hero = p2Hero(state);
     hero.level = 1;
+    establishP2PackCore(state);
     // Entering the beatable guard outranks END_TURN (300) by a wide margin, so
     // the AI walks into the fight instead of turtling.
     expect(moveScoreTo(state, hero, MINE)).toBeGreaterThan(700);
@@ -322,6 +330,7 @@ describe("moveScore uses objectives (fixes wander + never-fights)", () => {
     const state = game();
     const hero = p2Hero(state);
     hero.level = 1;
+    establishP2PackCore(state);
     // Park the human's hero on a field adjacent to the AI's hero. Equal starting
     // armies → the AI engages.
     const enemy = Object.values(state.heroes).find(
@@ -373,6 +382,21 @@ describe("moveScore uses objectives (fixes wander + never-fights)", () => {
 });
 
 describe("sticky primary + explore objectives", () => {
+  it("collects a safe income hex before fair fights, then attacks after three Packs", () => {
+    const state = game();
+    const hero = p2Hero(state);
+    state.adventure!.victoryMode = "dragon-hunt";
+
+    const developing = primaryMapObjective(state, hero);
+    expect(developing?.spaceId).toBe(RESOURCE);
+    expect(developing?.kind).toBe("visitable");
+
+    establishP2PackCore(state);
+    const battleReady = primaryMapObjective(state, hero);
+    expect(battleReady?.kind).toBe("guard");
+    expect([MINE, TREASURE]).toContain(battleReady?.spaceId);
+  });
+
   it("commits to one primary objective (no multi-source thrash)", () => {
     const state = game();
     const hero = p2Hero(state);
@@ -532,7 +556,7 @@ describe("sticky primary + explore objectives", () => {
     // Broke with materials → market is an objective.
     state.players.p2.resources = {
       gold: 2,
-      buildingMaterials: 5,
+      buildingMaterials: 7,
       valuables: 0,
     };
     const needy = collectMapObjectives(state, hero).map((o) => o.spaceId);
@@ -541,8 +565,8 @@ describe("sticky primary + explore objectives", () => {
     // CONTROL: flush balanced resources → market is not a detour.
     state.players.p2.resources = {
       gold: 20,
-      buildingMaterials: 4,
-      valuables: 1,
+      buildingMaterials: 6,
+      valuables: 2,
     };
     const flush = collectMapObjectives(state, hero).map((o) => o.spaceId);
     expect(flush).not.toContain(EMPTY);

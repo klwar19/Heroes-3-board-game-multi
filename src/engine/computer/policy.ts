@@ -67,6 +67,7 @@ function foundationScore(action: GameAction): {
     // computer-owned necromancy / first-aid window and no scored pick.
     case "SKIP_NECROMANCY":
     case "COMMANDER_FIRST_AID":
+    case "CONTINUE_NEUTRAL_STEP":
       return { score: 1_100, policy: "mandatory.resolve-choice" };
     case "PASS_REACTION":
       return { score: 1_050, policy: "safe.pass-reaction" };
@@ -90,9 +91,12 @@ function foundationScore(action: GameAction): {
       return { score: 920, policy: "combat.place-unit" };
     case "ACKNOWLEDGE_COMBAT_END":
     case "FINISH_COMBAT_PLACEMENT":
+    case "FINISH_NEUTRAL_PLACEMENT":
     case "FINISH_TACTICS":
     case "ACCEPT_COMBAT":
       return { score: 900, policy: "mandatory.finish-stage" };
+    case "END_COMBAT_ROUND":
+      return { score: 890, policy: "mandatory.finish-combat-round" };
     case "REFRESH_HAND":
       return { score: 850, policy: "mandatory.start-turn" };
     case "ATTACK_UNIT":

@@ -211,7 +211,7 @@ describe("market e2e — real engine + computer runner", () => {
   it("opens the Trading Post, sells valuables for gold, and exits Done (no loop)", () => {
     // Full engine path: park the computer hero on a trading_post, give it
     // convertible stock, drive the runner. Observable: gold rises, visit closes.
-    let state = createAdventureGameState({
+    const state = createAdventureGameState({
       seed: "market-e2e",
       difficulty: "normal",
       rollFirstPlayer: false,
@@ -273,7 +273,7 @@ describe("market e2e — real engine + computer runner", () => {
   });
 
   it("CONTROL: balanced resources on a market never opens a trade loop", () => {
-    let state = createAdventureGameState({
+    const state = createAdventureGameState({
       seed: "market-e2e-balanced",
       difficulty: "normal",
       rollFirstPlayer: false,
@@ -303,8 +303,8 @@ describe("market e2e — real engine + computer runner", () => {
     hero.movementPoints = 2;
     state.players.p2.resources = {
       gold: 20,
-      buildingMaterials: 4,
-      valuables: 1,
+      buildingMaterials: 6,
+      valuables: 2,
     };
     state.players.p2.permanents = [
       "war_machine.ballista",
