@@ -411,7 +411,7 @@ export function redactStateForSeat(state: GameState, viewerPlayerId: PlayerId): 
           // including the owner (getPlayerView already emptied it for all).
           hand: isViewer ? [...player.hand] : hiddenCards(handCount),
           deck: hiddenCards(deckCount),
-          spellBook: isViewer ? [...player.spellBook] : hiddenCards(spellBookCount)
+          spellBook: isViewer ? [...(player.spellBook ?? [])] : hiddenCards(spellBookCount)
         }
       ];
     })
