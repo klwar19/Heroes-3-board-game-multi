@@ -50,7 +50,14 @@ export default class LobbyChatServer implements Party.Server {
     }
 
     if (request.method === "GET") {
-      return jsonWithCors({ messages: this.board.list() });
+      // list() drops lines older than one day; re-persist so hibernation does
+      // not revive expired messages on the next cold start.
+      const before = (await this.room.storage.get<LobbyChatMessage[]>(STORAGE_KEY))?.length ?? 0;
+      const messages = this.board.list();
+      if (messages.length !== before) {
+        await this.persist();
+      }
+      return jsonWithCors({ messages });
     }
 
     if (request.method === "POST") {
@@ -63,6 +70,7 @@ export default class LobbyChatServer implements Party.Server {
           name: body?.name,
           text: body?.text
         });
+        // post() also prunes expired lines; persist the whole feed.
         await this.persist();
         return jsonWithCors({ message });
       } catch (error) {

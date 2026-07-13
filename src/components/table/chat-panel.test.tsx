@@ -34,24 +34,27 @@ describe("ChatPanel", () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it("starts collapsed as a FAB and opens the panel on click", () => {
+  it("starts open so chat is visible during events, and minimizes to a FAB", () => {
     render(<ChatPanel state={tableWith()} clientId="me" onSend={vi.fn()} />);
-    // Collapsed: no composer input yet.
+    // Open by default: the composer is already there.
+    expect(screen.getByLabelText(/chat message/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /minimize chat/i }));
+    // Minimized: composer gone, FAB is back.
     expect(screen.queryByLabelText(/chat message/i)).toBeNull();
+    expect(screen.getByRole("button", { name: /chat/i })).toBeTruthy();
+    // Re-open from the FAB.
     fireEvent.click(screen.getByRole("button", { name: /chat/i }));
-    // Open: the composer appears.
     expect(screen.getByLabelText(/chat message/i)).toBeTruthy();
   });
 
-  it("closes on Escape from anywhere in the panel (e.g. the composer input)", () => {
+  it("minimizes on Escape from anywhere in the panel (e.g. the composer input)", () => {
     render(<ChatPanel state={tableWith()} clientId="me" onSend={vi.fn()} />);
-    fireEvent.click(screen.getByRole("button", { name: /chat/i }));
     const input = screen.getByLabelText(/chat message/i);
     // A non-Escape key leaves it open (the control).
     fireEvent.keyDown(input, { key: "a" });
     expect(screen.getByLabelText(/chat message/i)).toBeTruthy();
     fireEvent.keyDown(input, { key: "Escape" });
-    // Collapsed again: the composer is gone, the FAB is back.
+    // Minimized: the composer is gone, the FAB is back.
     expect(screen.queryByLabelText(/chat message/i)).toBeNull();
     expect(screen.getByRole("button", { name: /chat/i })).toBeTruthy();
   });
@@ -62,7 +65,6 @@ describe("ChatPanel", () => {
       { clientId: "me", text: "Likewise." }
     ]);
     render(<ChatPanel state={state} clientId="me" onSend={vi.fn()} />);
-    fireEvent.click(screen.getByRole("button", { name: /chat/i }));
     expect(screen.getByText("Well met.")).toBeTruthy();
     expect(screen.getByText("Likewise.")).toBeTruthy();
     expect(screen.getByText("Bob")).toBeTruthy();
@@ -71,7 +73,6 @@ describe("ChatPanel", () => {
   it("dispatches the typed message and clears the input (control: empty is not sendable)", () => {
     const onSend = vi.fn();
     render(<ChatPanel state={tableWith()} clientId="me" onSend={onSend} />);
-    fireEvent.click(screen.getByRole("button", { name: /chat/i }));
 
     const input = screen.getByLabelText(/chat message/i) as HTMLInputElement;
     const send = screen.getByRole("button", { name: /send message/i }) as HTMLButtonElement;
@@ -97,7 +98,6 @@ describe("ChatPanel", () => {
       { clientId: "c2", text: "theirs here" }
     ]);
     render(<ChatPanel state={state} clientId="me" onSend={vi.fn()} />);
-    fireEvent.click(screen.getByRole("button", { name: /chat/i }));
     expect(screen.getByText("mine here").closest(".chatLine")?.className).toMatch(/\bmine\b/);
     expect(screen.getByText("theirs here").closest(".chatLine")?.className).not.toMatch(/\bmine\b/);
   });
@@ -106,18 +106,18 @@ describe("ChatPanel", () => {
     const state = tableWith([{ clientId: "c2", text: "hi" }]);
     appendSystemChat(state, "Bob left the table", { force: true });
     render(<ChatPanel state={state} clientId="me" onSend={vi.fn()} />);
-    fireEvent.click(screen.getByRole("button", { name: /chat/i }));
     const systemLine = screen.getByText("Bob left the table");
     expect(systemLine.className).toMatch(/chatSystemLine/);
   });
 
-  it("badges unread lines from others while collapsed, but adopts history silently", () => {
-    // Mount collapsed with history — no badge for what was said before arrival.
+  it("badges unread lines from others while minimized, but adopts history silently", () => {
+    // Mount open with history, then minimize — no badge for what was already seen.
     const initial = tableWith([{ clientId: "c2", text: "before you arrived" }]);
     const { rerender, container } = render(<ChatPanel state={initial} clientId="me" onSend={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: /minimize chat/i }));
     expect(container.querySelector(".chatBadge")).toBeNull();
 
-    // A new line from another client while collapsed → a badge appears.
+    // A new line from another client while minimized → a badge appears.
     const withNew = ok(initial, { type: "SEND_CHAT", clientId: "c2", text: "psst, new" });
     rerender(<ChatPanel state={withNew} clientId="me" onSend={vi.fn()} />);
     expect(container.querySelector(".chatBadge")?.textContent).toBe("1");
@@ -128,9 +128,10 @@ describe("ChatPanel", () => {
     expect(container.querySelector(".chatBadge")?.textContent).toBe("1");
   });
 
-  it("shows a preview toast and FAB snippet for a new line while collapsed", () => {
+  it("shows a preview toast and FAB snippet for a new line while minimized", () => {
     const initial = tableWith([{ clientId: "c2", text: "old" }]);
     const { rerender, container } = render(<ChatPanel state={initial} clientId="me" onSend={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: /minimize chat/i }));
 
     const withNew = ok(initial, { type: "SEND_CHAT", clientId: "c2", text: "Hello from Bob" });
     rerender(<ChatPanel state={withNew} clientId="me" onSend={vi.fn()} />);
@@ -141,9 +142,10 @@ describe("ChatPanel", () => {
     expect(container.querySelector(".chatFabSnippet")?.textContent).toMatch(/Hello from Bob/i);
   });
 
-  it("shows a New messages divider when opening with unread", () => {
+  it("shows a New messages divider when reopening with unread", () => {
     const initial = tableWith([{ clientId: "c2", text: "already seen" }]);
     const { rerender } = render(<ChatPanel state={initial} clientId="me" onSend={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: /minimize chat/i }));
 
     const withNew = ok(initial, { type: "SEND_CHAT", clientId: "c2", text: "fresh line" });
     rerender(<ChatPanel state={withNew} clientId="me" onSend={vi.fn()} />);
@@ -153,9 +155,10 @@ describe("ChatPanel", () => {
     expect(screen.getByText("fresh line")).toBeTruthy();
   });
 
-  it("opens from the preview toast click", () => {
+  it("reopens from the preview toast click", () => {
     const initial = tableWith();
     const { rerender } = render(<ChatPanel state={initial} clientId="me" onSend={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: /minimize chat/i }));
     const withNew = ok(initial, { type: "SEND_CHAT", clientId: "c2", text: "open me" });
     rerender(<ChatPanel state={withNew} clientId="me" onSend={vi.fn()} />);
 

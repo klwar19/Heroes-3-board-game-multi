@@ -70,7 +70,21 @@ export function PlayersOnline({
                     {showAuthLabels && player.verified ? (
                       <BadgeCheck aria-hidden="true" size={12} className="playerOnlineBadge" />
                     ) : null}
-                    {showAsGuest ? `guest — ${player.name}` : player.name}
+                    {showAsGuest ? (
+                      `guest — ${player.name}`
+                    ) : showAuthLabels && player.verified ? (
+                      <a
+                        className="profileNameLink"
+                        href={`/players/${encodeURIComponent(player.name)}`}
+                        rel="noreferrer"
+                        target="_blank"
+                        title={`View ${player.name}'s profile`}
+                      >
+                        {player.name}
+                      </a>
+                    ) : (
+                      player.name
+                    )}
                     {self ? <em> (you)</em> : null}
                   </span>
                   <small className="playerOnlineWhere">{where}</small>

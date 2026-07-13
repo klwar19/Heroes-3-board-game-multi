@@ -27,9 +27,12 @@ describe("PlayersOnline", () => {
       expect(screen.getByText("Alice")).toBeTruthy();
       // …and its row is flagged verified, not guest — the mislabel bug's control.
       expect(screen.getByText("Alice").closest(".playerOnline")?.className).toMatch(/\bverified\b/);
-      // The guest is honestly labelled.
+      // …and the nickname opens the public profile page.
+      expect(screen.getByRole("link", { name: "Alice" }).getAttribute("href")).toBe("/players/Alice");
+      // The guest is honestly labelled (no profile link).
       expect(screen.getByText(/guest — Bob/)).toBeTruthy();
       expect(screen.getByText(/guest — Bob/).closest(".playerOnline")?.className).toMatch(/\bguest\b/);
+      expect(screen.queryByRole("link", { name: /Bob/ })).toBeNull();
     } finally {
       if (prev === undefined) {
         delete process.env.NEXT_PUBLIC_ACCOUNTS_ENABLED;
