@@ -2803,9 +2803,10 @@ function rewardArtFromVisitSteps(
         const degrees = typeof step.rotation === "number" ? `${rotation * 60}°` : undefined;
         return {
           image: def?.assets?.tileImage,
-          name: def?.name ?? tile.tileDefId,
+          // TileDefinition has id (no display name); fall back to the instance's def id.
+          name: def?.id ?? tile.tileDefId,
           tileRotation: rotation,
-          caption: degrees ?? def?.name ?? tile.tileDefId
+          caption: degrees ?? def?.id ?? tile.tileDefId
         };
       }
     }
