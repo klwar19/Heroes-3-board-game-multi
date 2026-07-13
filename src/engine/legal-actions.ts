@@ -1708,9 +1708,10 @@ function addSpellActions(
   if (!player) {
     return;
   }
-  // The one-Spell-per-combat-round limit blocks hand and Scroll casts. The Helm
-  // of the Alabaster Unicorn cast is a free bonus that does not count toward the
-  // limit, so it is still offered (and added) even once the limit is reached.
+  // The one-Spell-per-combat-round limit blocks hand / Book casts. Spell Scroll
+  // casts and the Helm of the Alabaster Unicorn cast are free bonuses that do
+  // not count toward the limit, so they are still offered even once the limit
+  // is reached.
   const spellLimitReached = player.combatStats.spellsCastThisRound >= spellLimitFor(state, player);
 
   // Recanter's Cloak (option B): "no Hero can use Spells" this Combat — a global
@@ -1750,9 +1751,10 @@ function addSpellActions(
   // from) so the limit-reached gate cannot block them.
   const tarnumFlagged = new Set(player.combatStats.tarnumOverlimitCards ?? []);
 
-  // Hand spells plus every Spell Scroll spell (scroll spells are not in hand;
-  // they cast at power 0 and are removed once used). Both share the timing and
-  // targeting rules below, and both are blocked once the spell limit is reached.
+  // Hand / Book spells (blocked once the spell limit is reached) plus every
+  // Spell Scroll spell (scroll spells are not in hand; they cast at power 0,
+  // are removed once used, and do NOT count toward / are not blocked by the
+  // per-round spell limit).
   const castCandidates: {
     cardId: string;
     fromScroll?: string;
@@ -1760,21 +1762,24 @@ function addSpellActions(
     fromOwnDiscard?: boolean;
     fromSpellBook?: boolean;
     tarnumReturn?: "deck-top" | "discard";
-  }[] = spellLimitReached
-    ? []
-    : [
-        ...[...new Set(player.hand)].filter((cardId) => !tarnumFlagged.has(cardId)).map((cardId) => ({ cardId })),
-        // Spell Book (house rule): a Book Spell casts like a hand Spell and SHARES
-        // the same one-Spell-per-round cast limit — full Power, same timing/
-        // targeting gates. (The Book's separate once-per-round budget is only its
-        // +1-Power discard, spellBookPowerUsedThisTurn — see the reaction path.)
-        ...(spellBookRuleEnabled(state)
-          ? [...new Set(player.spellBook ?? [])].map((cardId) => ({ cardId, fromSpellBook: true }))
-          : []),
-        ...(player.scrolls ?? []).flatMap((scroll) =>
-          [...new Set(scroll.spellCardIds)].map((cardId) => ({ cardId, fromScroll: scroll.id }))
-        )
-      ];
+  }[] = [
+    ...(spellLimitReached
+      ? []
+      : [
+          ...[...new Set(player.hand)].filter((cardId) => !tarnumFlagged.has(cardId)).map((cardId) => ({ cardId })),
+          // Spell Book (house rule): a Book Spell casts like a hand Spell and SHARES
+          // the same one-Spell-per-round cast limit — full Power, same timing/
+          // targeting gates. (The Book's separate once-per-round budget is only its
+          // +1-Power discard, spellBookPowerUsedThisTurn — see the reaction path.)
+          ...(spellBookRuleEnabled(state)
+            ? [...new Set(player.spellBook ?? [])].map((cardId) => ({ cardId, fromSpellBook: true }))
+            : [])
+        ]),
+    // Scrolls stay available after the hand/Book limit is spent.
+    ...(player.scrolls ?? []).flatMap((scroll) =>
+      [...new Set(scroll.spellCardIds)].map((cardId) => ({ cardId, fromScroll: scroll.id }))
+    )
+  ];
 
   // Tarnum over-limit casts: each flagged hand spell, offered with both
   // placements ("on the top of the Spell deck or on its discard pile").
@@ -5553,9 +5558,10 @@ export function getLegalReactionsForTrigger(
     }
 
     // Spell Scroll spells played as reactions: basic side only, power-locked
-    // to 0, removed once used. They respect the same spell-per-round limit, and
-    // Recanter's Cloak (option B) locks them out along with every other Spell.
-    if (spellLimitLeft > 0 && !castLocked) {
+    // to 0, removed once used. They do NOT count toward / are not blocked by
+    // the one-Spell-per-round limit (unlike hand/Book instants). Recanter's
+    // Cloak (option B) still locks them out along with every other Spell.
+    if (!castLocked) {
       for (const scroll of player.scrolls ?? []) {
         for (const cardId of new Set(scroll.spellCardIds)) {
           const card = cards[cardId];

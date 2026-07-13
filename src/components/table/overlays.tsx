@@ -22,6 +22,7 @@ import {
   getEffectiveCardEffect,
   getPendingReactionPower,
   getSpellDamageAmount,
+  getSpellDiceRollCount,
   RESOURCE_DIE_FACES,
   spellBookPowerAvailable,
   spellBookRuleEnabled,
@@ -140,14 +141,21 @@ function PendingPowerReadout({ state }: { state: GameState }) {
   const spell = power.spellCardId ? cardLibrary[power.spellCardId] : undefined;
   const subject = power.kind === "spell" ? cardName(power.spellCardId ?? "") : "This attack";
   // Damage spells (Magic Arrow, Lightning Bolt, …) read more clearly with the
-  // damage their CURRENT Power deals beside the number; non-damage spells just
-  // show the Power level. This is the spell's value before the target's own
-  // spell-damage reduction, so it is labelled as the spell's damage, not a
-  // promised final hit.
+  // damage their CURRENT Power deals beside the number; die-roll spells (Inferno
+  // on a cast, Slayer on an attack) show how many Attack dice the current Power
+  // will throw — climbing live as Power is fuelled, just like the damage line.
   const damage =
     power.kind === "spell" && spell && spell.effect.type === "DEAL_DAMAGE"
       ? getSpellDamageAmount(spell, power.totalPower)
       : null;
+  // Slayer's live die count rides the attack stack (recomputed whenever Power
+  // is added); Inferno reads from the spell card + total Power.
+  const slayerDice =
+    power.kind === "attack" ? (state.stack.at(-1)?.modifiers.slayerRolls ?? null) : null;
+  const diceRolls =
+    power.kind === "spell" && spell
+      ? getSpellDiceRollCount(spell, power.totalPower)
+      : slayerDice;
 
   return (
     <span
@@ -159,6 +167,9 @@ function PendingPowerReadout({ state }: { state: GameState }) {
       <small>
         {subject}
         {damage !== null ? ` · ${damage} damage` : ""}
+        {diceRolls !== null
+          ? ` · ${diceRolls} Attack ${diceRolls === 1 ? "die" : "dice"}`
+          : ""}
         {power.fueledPower > 0
           ? ` · ${power.basePower} base + ${power.fueledPower} fuelled`
           : " · no Power added yet"}

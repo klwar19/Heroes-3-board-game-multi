@@ -276,8 +276,10 @@ export function moraleIcon(morale: number): string {
  * (github.com/Heegu-sama/Homm3BG) — the four land backs from the 2x2
  * `assets/images/maptiles.png` sheet (starry night with the printed roman
  * numerals Ⅰ / Ⅱ–Ⅲ / Ⅳ–Ⅴ / Ⅵ–Ⅶ), plus the golden-wave sea back
- * (`map-tile-sea.png`, Ⅳ–Ⅴ) and the cavern-teeth subterranean back
- * (`map-tile-sub.png`, Ⅳ–Ⅴ). Each printed seven-hex flower is cropped to its
+ * (`map-tile-sea.png`) and the cavern-teeth subterranean back
+ * (`map-tile-sub.png`). Sea and underground each ship TWO band backs
+ * (Ⅳ–Ⅴ and Ⅵ–Ⅶ) so a boss tile never wears the weaker numeral — VII fights
+ * only sit under a Ⅵ–Ⅶ back. Each printed seven-hex flower is cropped to its
  * tight bounding box and installed by scripts/fetch-map-tile-backs.py.
  */
 export const TILE_BACK_IMAGES: Record<string, string> = {
@@ -286,7 +288,9 @@ export const TILE_BACK_IMAGES: Record<string, string> = {
   near: "/assets/board/backs/back-near.webp",
   center: "/assets/board/backs/back-center.webp",
   sea: "/assets/board/backs/back-sea.webp",
-  subterranean: "/assets/board/backs/back-subterranean.webp"
+  "sea-vi-vii": "/assets/board/backs/back-sea-vi-vii.webp",
+  subterranean: "/assets/board/backs/back-subterranean.webp",
+  "subterranean-vi-vii": "/assets/board/backs/back-subterranean-vi-vii.webp"
 };
 
 /**
@@ -388,8 +392,23 @@ export function creatureBankFieldImage(bankId?: string): string {
   return CREATURE_BANK_FIELD_IMAGE;
 }
 
-/** Back image for a tile, from its group or its printed back label. */
+/**
+ * Back image for a face-down tile. The printed band numeral on the back MUST
+ * match the tile's guard band (`backLabel`): a Ⅵ–Ⅶ underground/sea tile must
+ * NEVER show the Ⅳ–Ⅴ cavern/wave art (that was the bug — open "IV-V" back,
+ * fight VII). Land groups are uniform; sea/subterranean pick the band-specific
+ * asset from `backLabel`.
+ */
 export function tileBackImage(group: string | undefined, backLabel: string | undefined): string {
+  // Band first for the two dual-band groups (sea + underground).
+  if (group === "subterranean") {
+    return backLabel === "Ⅵ–Ⅶ"
+      ? TILE_BACK_IMAGES["subterranean-vi-vii"]
+      : TILE_BACK_IMAGES.subterranean;
+  }
+  if (group === "sea") {
+    return backLabel === "Ⅵ–Ⅶ" ? TILE_BACK_IMAGES["sea-vi-vii"] : TILE_BACK_IMAGES.sea;
+  }
   if (group && TILE_BACK_IMAGES[group]) {
     return TILE_BACK_IMAGES[group];
   }

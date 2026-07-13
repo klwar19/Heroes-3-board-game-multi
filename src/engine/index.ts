@@ -154,6 +154,7 @@ export {
   getEffectDamageAmount,
   getEffectiveCardEffect,
   getSpellDamageAmount,
+  getSpellDiceRollCount,
   implementedCardEffectTypes,
   isImplementedCardEffect,
   spellPowerValueOfCard

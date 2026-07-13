@@ -2612,8 +2612,9 @@ export type GameAction =
       optionIndex?: number;
       /**
        * Spell Scroll cast: the spell comes from this scroll (not the hand),
-       * resolves at power 0, cannot be boosted by any Power source, and is
-       * removed from the game once it resolves.
+       * resolves at power 0, cannot be boosted by any Power source, is removed
+       * from the game once it resolves, and does NOT count toward the
+       * one-Spell-per-combat-round limit.
        */
       fromScroll?: string;
       /**
@@ -2829,8 +2830,9 @@ export type GameAction =
       fromSpellBook?: boolean;
       /**
        * Spell Scroll reaction: the spell instant comes from this scroll, not
-       * the hand. It resolves at power 0 (no boosts, no expert side) and is
-       * removed from the game once played.
+       * the hand. It resolves at power 0 (no boosts, no expert side), is removed
+       * from the game once played, and does NOT count toward the one-Spell-per-
+       * combat-round limit.
        */
       fromScroll?: string;
       /**

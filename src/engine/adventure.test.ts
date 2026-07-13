@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { tileBackImage } from "@/data/assets/homm-assets";
 import { coreTileDefinitions } from "@/data/map/tile-defs";
 import { allTileDefinitions } from "@/data/map/tiles";
 import { isSharedDeckId } from "./decks";
@@ -272,12 +273,12 @@ describe("adventure setup", () => {
   });
 
   it("labels underground tiles by their Ⅳ–Ⅴ / Ⅵ–Ⅶ guard band (boss tier = U7/#C2/#C3)", () => {
-    // The underground pool ships a regular Ⅳ–Ⅴ tier (its fields are guarded Ⅳ/Ⅴ)
-    // and a Ⅵ–Ⅶ boss tier (the three tiles centred on a VII guardian) behind one
-    // underground back — exactly the Ⅳ–Ⅴ / Ⅵ–Ⅶ split the sea pool uses. The band
-    // follows each tile's strongest guarded field, so a revealed boss tile reports
-    // Ⅵ–Ⅶ and feeds the Center-tier deck rules (heroTileGroup /
-    // anyNearOrCenterTileRevealed) instead of masquerading as a regular tile.
+    // The underground pool ships a regular Ⅳ–Ⅴ tier (fields guarded Ⅳ/Ⅴ) and a
+    // Ⅵ–Ⅶ boss tier (U7 / #C2 / #C3, centred on a VII guardian). The band
+    // follows each tile's strongest guarded field, so a revealed boss reports
+    // Ⅵ–Ⅶ and feeds Center-tier deck rules — and its FACE-DOWN back art must
+    // show Ⅵ–Ⅶ, never the Ⅳ–Ⅴ cavern numeral (that was the "open IV-V, fight
+    // VII" bug).
     const adventure = makeGame().adventure!;
     const regular = instantiateTile(adventure, "U1", { row: -8, col: -8 }, 0, true);
     const bossU = instantiateTile(adventure, "U7", { row: -8, col: -9 }, 0, true);
@@ -290,12 +291,29 @@ describe("adventure setup", () => {
     expect(bossC2.backLabel).toBe("Ⅵ–Ⅶ");
     expect(bossC3.backLabel).toBe("Ⅵ–Ⅶ");
 
+    // Face-down art must match the band: boss back ≠ regular IV-V back.
+    const regularBack = tileBackImage(regular.group, regular.backLabel);
+    const bossBack = tileBackImage(bossU.group, bossU.backLabel);
+    expect(regularBack).toContain("back-subterranean.webp");
+    expect(bossBack).toContain("back-subterranean-vi-vii.webp");
+    expect(bossBack).not.toBe(regularBack);
+    // CONTROL: a VI-VII sea tile likewise does not wear the IV-V wave back.
+    expect(tileBackImage("sea", "Ⅵ–Ⅶ")).toContain("back-sea-vi-vii.webp");
+    expect(tileBackImage("sea", "Ⅳ–Ⅴ")).toContain("back-sea.webp");
+
     // Mutation control: the classifier splits exactly the three VII-centre tiles
     // into the boss band and every other underground tile into the regular band.
+    // No IV-V tile may carry a VI+ field (VII must never appear under an IV-V band).
     const sub = Object.values(allTileDefinitions).filter((tile) => tile.group === "subterranean");
     const boss = sub.filter((tile) => subterraneanTileBand(tile) === "vi-vii").map((tile) => tile.id).sort();
     expect(boss).toEqual(["#C2", "#C3", "U7"]);
     expect(sub.filter((tile) => subterraneanTileBand(tile) === "iv-v")).toHaveLength(sub.length - 3);
+    for (const tile of sub) {
+      if (subterraneanTileBand(tile) === "iv-v") {
+        const max = tile.fields.reduce((m, f) => Math.max(m, f.difficulty ?? 0), 0);
+        expect(max, `${tile.id} is IV-V but has difficulty ${max}`).toBeLessThan(6);
+      }
+    }
   });
 
   it("gives each player a face-down Ⅱ–Ⅲ supply of UNOPENED markers, drawn at the flip", () => {
