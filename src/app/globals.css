@@ -5498,10 +5498,20 @@ button.hbSlot:disabled { cursor: default; }
   max-width: min(920px, 96vw);
 }
 
+.promptTray.withTileCards {
+  max-width: min(980px, 98vw);
+}
+
 .promptOptions.rewardCards {
   max-height: min(42vh, 360px);
   gap: 10px;
   align-items: stretch;
+  justify-content: center;
+}
+
+.promptOptions.tileCards {
+  max-height: min(48vh, 420px);
+  gap: 12px;
 }
 
 .promptRewardCard {
@@ -5531,6 +5541,40 @@ button.hbSlot:disabled { cursor: default; }
   border-radius: 6px;
   box-shadow: 0 2px 8px rgb(0 0 0 / 50%);
   object-fit: contain;
+}
+
+.promptRewardArtWrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 92px;
+  min-height: 92px;
+  overflow: hidden;
+  border-radius: 6px;
+}
+
+/* Disruption (and any other map-tile pick): square crop of the tile scan,
+   rotated to the proposed orientation so the player sees the result, not a
+   wall of "Turn 60° / 120° / …" text buttons. */
+.promptRewardCard.tileThumb {
+  width: 120px;
+}
+
+.promptRewardCard.tileThumb .promptRewardArtWrap {
+  width: 104px;
+  height: 104px;
+  background: rgb(12 10 6 / 55%);
+  border: 1px solid rgb(214 178 104 / 30%);
+}
+
+.promptRewardCard.tileThumb img {
+  width: 96px;
+  height: 96px;
+  object-fit: contain;
+  transform: rotate(var(--tile-rot, 0deg));
+  transform-origin: center center;
+  box-shadow: none;
+  border-radius: 0;
 }
 
 .promptRewardCard small {

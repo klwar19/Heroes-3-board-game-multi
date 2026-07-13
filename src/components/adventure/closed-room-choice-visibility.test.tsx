@@ -327,7 +327,8 @@ describe("Astrologers Proclaim visibility: every seat can see and resolve its pr
     const onAction = vi.fn();
     render(<PromptTray legalActions={legalActions} onAction={onAction} state={frame} viewerPlayerId="p1" />);
 
-    expect(screen.getByRole("dialog", { name: /Astrologers Proclaim: Dancing Imp/i })).toBeTruthy();
+    // Title uses the step prompt (names the card + the choice), not a bare card scan.
+    expect(screen.getByRole("dialog", { name: /Dancing Imp/i })).toBeTruthy();
     const resolve = screen.getByRole("button", { name: /Empower Attack \(hand\)/i });
     fireEvent.click(resolve);
     expect(onAction).toHaveBeenCalledTimes(1);
@@ -365,7 +366,10 @@ describe("Event deck visibility: rotated starter still shows the Event to every 
     const onAction = vi.fn();
     render(<PromptTray legalActions={legalActions} onAction={onAction} state={frame} viewerPlayerId="p2" />);
 
-    expect(screen.getByRole("dialog", { name: /Event: Stables/i })).toBeTruthy();
+    // Title uses the step prompt ("Stables: choose one option"); text-only options
+    // still surface the Event card scan as the preview (no per-option art).
+    expect(screen.getByRole("dialog", { name: /Stables/i })).toBeTruthy();
+    expect(screen.getByTestId("event-choice-card")).toBeTruthy();
     const resolve = screen.getByRole("button", { name: /Main hero gains \+1 movement/i });
     fireEvent.click(resolve);
     expect(onAction).toHaveBeenCalledTimes(1);

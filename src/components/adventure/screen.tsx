@@ -2734,51 +2734,107 @@ export function TownPanel({
 // Prompt tray for pending visit steps / choices
 // ---------------------------------------------------------------------------
 
+type VisitRewardArt = {
+  image?: string;
+  name: string;
+  /** Map-tile options (Disruption): rotation in 60° turns, for the thumb. */
+  tileRotation?: number;
+  /** Short caption under the thumb (degrees, unit side, …) when the full legal label is long. */
+  caption?: string;
+};
+
 /**
- * Pull a reward card id out of a visit option's steps so the tray can show the
- * actual card graphic (Artifact Merchant buys, spell markets, Forty Thieves
- * Event picks, Mercenary Camp recruits, …) instead of text-only buttons.
+ * Pull the reward identity out of a visit option's steps so the tray can show
+ * the actual graphic (Artifact / Spell / Statistic / War Machine / unit / map
+ * tile) instead of the Astrologers/Event card scan or a text-only button.
+ *
+ * Reads every step shape the engine uses for pick-a-reward offers:
+ *   - cardId (spells, artifacts, stats, war machines, ability empower)
+ *   - unitDefId (Unexpected Reinforcements free recruit)
+ *   - recruit.unitDefId (Charlie and his Circus drawn neutral)
+ *   - armyUnitId (Isra's Friends reinforce, Terrible Plague flip, Crag Hack, …)
+ *   - tileInstanceId (+ optional rotation) (Disruption rotate-tile)
  */
-function rewardCardIdFromVisitSteps(steps: { type: string; [key: string]: unknown }[] | undefined): string | undefined {
+function rewardArtFromVisitSteps(
+  state: GameState,
+  playerId: PlayerId,
+  steps: { type: string; [key: string]: unknown }[] | undefined
+): VisitRewardArt | null {
   if (!steps) {
-    return undefined;
+    return null;
   }
   for (const step of steps) {
     if (!step || typeof step !== "object") {
       continue;
     }
     if (typeof step.cardId === "string" && step.cardId) {
-      return step.cardId;
+      return rewardArtForId(step.cardId);
     }
     if (typeof step.unitDefId === "string" && step.unitDefId) {
-      return step.unitDefId;
+      return rewardArtForId(step.unitDefId);
+    }
+    const recruit = step.recruit;
+    if (recruit && typeof recruit === "object") {
+      const unitDefId = (recruit as { unitDefId?: unknown }).unitDefId;
+      if (typeof unitDefId === "string" && unitDefId) {
+        return rewardArtForId(unitDefId);
+      }
+    }
+    if (typeof step.armyUnitId === "string" && step.armyUnitId) {
+      const armyUnit = state.players[playerId]?.army.find((unit) => unit.id === step.armyUnitId);
+      if (armyUnit) {
+        const def = coreUnitDefinitions[armyUnit.unitDefId];
+        const side = def?.[armyUnit.side];
+        return {
+          image: side?.cardImage ?? def?.few?.cardImage ?? def?.pack?.cardImage ?? def?.neutral?.cardImage,
+          name: def?.name ?? armyUnit.unitDefId,
+          caption: def?.name ?? armyUnit.unitDefId
+        };
+      }
+    }
+    if (typeof step.tileInstanceId === "string" && step.tileInstanceId) {
+      const tile = state.adventure?.tiles[step.tileInstanceId];
+      if (tile) {
+        const def = allTileDefinitions[tile.tileDefId];
+        const rotation =
+          typeof step.rotation === "number" && Number.isFinite(step.rotation)
+            ? ((step.rotation % 6) + 6) % 6
+            : tile.rotation;
+        const degrees = typeof step.rotation === "number" ? `${rotation * 60}°` : undefined;
+        return {
+          image: def?.assets?.tileImage,
+          name: tile.tileDefId,
+          tileRotation: rotation,
+          caption: degrees ?? tile.tileDefId
+        };
+      }
     }
   }
-  return undefined;
+  return null;
 }
 
-/** Resolve a card / unit / event / astrologer id to display art + name. */
-function rewardArtForId(cardId: string): { image?: string; name: string } {
+/** Resolve a card / unit / event id to display art + name. Never the Astrologers card. */
+function rewardArtForId(cardId: string): VisitRewardArt {
   const card = cardLibrary[cardId];
   if (card) {
-    return { image: card.assets?.cardImage, name: card.name };
+    return { image: card.assets?.cardImage, name: card.name, caption: card.name };
   }
   const unit = coreUnitDefinitions[cardId];
   if (unit) {
     return {
       image: unit.neutral?.cardImage ?? unit.few?.cardImage ?? unit.pack?.cardImage,
-      name: unit.name
+      name: unit.name,
+      caption: unit.name
     };
   }
   const eventCard = eventCardDefinitions[cardId];
   if (eventCard) {
-    return { image: eventCard.image, name: eventCard.name };
+    return { image: eventCard.image, name: eventCard.name, caption: eventCard.name };
   }
-  const astro = astrologersCardDefinitions[cardId];
-  if (astro) {
-    return { image: astro.image, name: astro.name };
-  }
-  return { name: cardId };
+  // Deliberately NOT falling through to astrologersCardDefinitions: a pick option
+  // should never render as the proclamation card itself (that is what this tray
+  // used to wrongly show for reinforce / recruit / war-machine offers).
+  return { name: cardId, caption: cardId };
 }
 
 export function PromptTray({
@@ -3161,49 +3217,32 @@ export function PromptTray({
         </div>
       );
     } else {
+      // Prefer the step's own prompt when it names the choice (e.g. "Dancing Imp:
+      // empower…", "Disruption: rotate…") — fall back to the card name only when
+      // the step has no prompt of its own.
+      const stepPrompt =
+        step?.type === "CHOOSE_ONE" || step?.type === "PAY_TO"
+          ? typeof step.prompt === "string"
+            ? step.prompt
+            : null
+          : null;
       title =
-        roundStartEventCard
+        stepPrompt ??
+        (roundStartEventCard
           ? `Event: ${roundStartEventCard.name}`
           : roundStartAstrologersCard
             ? `Astrologers Proclaim: ${roundStartAstrologersCard.name}`
-          : step?.type === "CHOOSE_ONE"
-          ? step.prompt
-          : step?.type === "PAY_TO"
-            ? step.prompt
-            : `${locationDefinitions[field?.location ?? ""]?.name ?? "Field"}: choose`;
-      // Show the Event / Astrologers card itself above the choices so the
-      // player sees the printed scan, not only the title text.
-      if (roundStartEventCard?.image) {
-        preview = (
-          <div className="eventChoicePreview" data-testid="event-choice-card">
-            <img
-              alt={roundStartEventCard.name}
-              className="eventChoiceCard"
-              loading="lazy"
-              referrerPolicy="no-referrer"
-              src={assetUrl(roundStartEventCard.image)}
-            />
-          </div>
-        );
-      } else if (roundStartAstrologersCard?.image) {
-        preview = (
-          <div className="eventChoicePreview" data-testid="astrologers-choice-card">
-            <img
-              alt={roundStartAstrologersCard.name}
-              className="eventChoiceCard"
-              loading="lazy"
-              referrerPolicy="no-referrer"
-              src={assetUrl(roundStartAstrologersCard.image)}
-            />
-          </div>
-        );
-      }
+            : `${locationDefinitions[field?.location ?? ""]?.name ?? "Field"}: choose`);
       // Face-up shared Event pool (Artifact Merchant / spell markets): show
       // every offered card so the player can pick by art, not just by name.
+      // The proclamation/Event card scan itself is deferred until we know whether
+      // the options carry their own reward art (unit / artifact / tile / …) —
+      // those replace the card scan so the tray shows what you pick, not the
+      // trigger card (see hasAnyRewardArt below).
       const pool = state.adventure?.events?.pool ?? [];
       const faceUpPool = pool.filter((entry) => entry.faceUp !== false && entry.cardId);
       if (faceUpPool.length > 0 && !isAuctionBid) {
-        const poolPreview = (
+        preview = (
           <div className="eventPoolPreview" data-testid="event-pool-preview" aria-label="Cards on offer">
             {faceUpPool.map((entry, index) => {
               const art = rewardArtForId(entry.cardId);
@@ -3219,12 +3258,6 @@ export function PromptTray({
               );
             })}
           </div>
-        );
-        preview = (
-          <>
-            {preview}
-            {poolPreview}
-          </>
         );
       }
     }
@@ -3260,8 +3293,8 @@ export function PromptTray({
     return null;
   }
 
-  // Prefer graphic reward tiles when the open CHOOSE_ONE options carry card ids
-  // (buy this Artifact, pick this Event card, recruit this unit, …).
+  // Prefer graphic reward tiles when the open CHOOSE_ONE options carry a real
+  // pick (unit, artifact, spell, statistic, war machine, map tile, …).
   const rewardOptions = chooseOneOptions
     ? body.map((legal) => {
         const optionIndex =
@@ -3272,34 +3305,91 @@ export function PromptTray({
           optionIndex !== undefined && chooseOneOptions && optionIndex < chooseOneOptions.length
             ? chooseOneOptions[optionIndex]
             : undefined;
-        const cardId = rewardCardIdFromVisitSteps(option?.steps);
-        const art = cardId ? rewardArtForId(cardId) : null;
-        return { legal, cardId, art };
+        const art = rewardArtFromVisitSteps(state, viewerPlayerId, option?.steps);
+        return { legal, art };
       })
-    : body.map((legal) => ({ legal, cardId: undefined as string | undefined, art: null as ReturnType<typeof rewardArtForId> | null }));
-  const hasAnyRewardArt = rewardOptions.some((entry) => Boolean(entry.art?.image || entry.cardId));
+    : body.map((legal) => ({ legal, art: null as VisitRewardArt | null }));
+  const hasAnyRewardArt = rewardOptions.some((entry) => Boolean(entry.art?.image || entry.art?.name));
+  const hasTileRewardArt = rewardOptions.some((entry) => entry.art?.tileRotation !== undefined);
+
+  // Only show the Event / Astrologers card scan when the options themselves have
+  // no graphic identity (pure text picks like Stables +1 movement). When the
+  // player is picking a unit / reinforce target / war machine / tile, the option
+  // tiles ARE the relevant images — the trigger card must not steal the preview.
+  if (!hasAnyRewardArt && visit && visit.playerId === viewerPlayerId) {
+    const step = visit.steps[0];
+    const isAuctionBid = Boolean(auctionLot) && step?.type === "CHOOSE_ONE";
+    if (!isAuctionBid) {
+      if (roundStartEventCard?.image) {
+        preview = (
+          <>
+            <div className="eventChoicePreview" data-testid="event-choice-card">
+              <img
+                alt={roundStartEventCard.name}
+                className="eventChoiceCard"
+                loading="lazy"
+                referrerPolicy="no-referrer"
+                src={assetUrl(roundStartEventCard.image)}
+              />
+            </div>
+            {preview}
+          </>
+        );
+      } else if (roundStartAstrologersCard?.image) {
+        preview = (
+          <>
+            <div className="eventChoicePreview" data-testid="astrologers-choice-card">
+              <img
+                alt={roundStartAstrologersCard.name}
+                className="eventChoiceCard"
+                loading="lazy"
+                referrerPolicy="no-referrer"
+                src={assetUrl(roundStartAstrologersCard.image)}
+              />
+            </div>
+            {preview}
+          </>
+        );
+      }
+    }
+  }
 
   return (
-    <div className={`promptTray${hasAnyRewardArt ? " withRewardCards" : ""}`} role="dialog" aria-label={title}>
+    <div
+      className={`promptTray${hasAnyRewardArt ? " withRewardCards" : ""}${hasTileRewardArt ? " withTileCards" : ""}`}
+      role="dialog"
+      aria-label={title}
+    >
       <strong>{title}</strong>
       {preview}
-      <div className={`promptOptions${hasAnyRewardArt ? " rewardCards" : ""}`}>
+      <div className={`promptOptions${hasAnyRewardArt ? " rewardCards" : ""}${hasTileRewardArt ? " tileCards" : ""}`}>
         {rewardOptions.map(({ legal, art }) =>
           art ? (
             <button
               aria-label={legal.label}
-              className="promptRewardCard"
+              className={`promptRewardCard${art.tileRotation !== undefined ? " tileThumb" : ""}`}
               key={actionKey(legal.action)}
               onClick={() => onAction(legal.action)}
               title={legal.label}
               type="button"
             >
               {art.image ? (
-                <img alt="" aria-hidden="true" loading="lazy" referrerPolicy="no-referrer" src={assetUrl(art.image)} />
+                <span
+                  className="promptRewardArtWrap"
+                  style={
+                    art.tileRotation !== undefined
+                      ? ({ ["--tile-rot" as string]: `${art.tileRotation * 60}deg` } as CSSProperties)
+                      : undefined
+                  }
+                >
+                  <img alt="" aria-hidden="true" loading="lazy" referrerPolicy="no-referrer" src={assetUrl(art.image)} />
+                </span>
               ) : (
                 <span className="marketCardFallback">{art.name}</span>
               )}
-              <small>{legal.label}</small>
+              <small>
+                {art.caption && art.caption.endsWith("°") ? art.caption : legal.label}
+              </small>
             </button>
           ) : (
             <button
