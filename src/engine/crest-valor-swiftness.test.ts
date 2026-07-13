@@ -171,6 +171,28 @@ describe("Crest of Valor", () => {
     expect(consumeIgnoreFieldNegativeMorale(positive, "p1")).toBe(true);
     expect(consumeIgnoreFieldNegativeMorale(positive, "p1")).toBe(false);
   });
+
+  it("Warrior's Tomb (-2): the shield cancels only ONE of the two negative tokens", () => {
+    // Previously a single GAIN_MORALE amount:-2 step let Crest ignore the whole
+    // field effect (both tokens). Token-by-token application leaves the second
+    // negative to land — from neutral that is 0 → (ignore first) stay 0 → -1.
+    const state = valorAdventure("valor-tomb");
+    const play = findPlay(state, "p1", "artifact.crest_of_valor", 1);
+    const armed = applyOk(state, play!);
+    expect(armed.players.p1.morale).toBe(0);
+
+    queueFieldMorale(armed, -2);
+    processPendingVisit(armed);
+
+    expect(armed.players.p1.morale).toBe(-1);
+    expect(armed.players.p1.discardHandAtTurnEnd ?? false).toBe(false);
+    expect(armed.eventLog.filter((event) => event.type === "FIELD_MORALE_IGNORED")).toHaveLength(1);
+    expect(
+      armed.activeEffects.some((effect) =>
+        effect.modifiers.some((modifier) => modifier.type === "IGNORE_FIELD_NEGATIVE_MORALE")
+      )
+    ).toBe(false);
+  });
 });
 
 // ---------------------------------------------------------------------------

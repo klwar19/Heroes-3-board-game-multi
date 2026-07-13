@@ -175,34 +175,52 @@ describe("split decks (BINH) vs single decks (legacy)", () => {
 });
 
 describe("morale by the book", () => {
-  it("walks the printed morale table, resetting to neutral on a double negative", () => {
+  it("walks the morale ladder: −2 floors mid-turn; hand dump only if still −2 at end turn", () => {
     const state = makeLegacyGame();
     const player = state.players.p1;
 
-    // neutral + negative → negative
+    // neutral + negative → −1 (no dump flag)
     changeMorale(state, "p1", -1);
     expect(player.morale).toBe(-1);
     expect(player.discardHandAtTurnEnd ?? false).toBe(false);
 
-    // negative + negative → NEUTRAL, and the hand is discarded at turn end.
+    // −1 + negative → −2 (stays −2 mid-turn; dump is end-turn only)
     changeMorale(state, "p1", -1);
-    expect(player.morale).toBe(0);
-    expect(player.discardHandAtTurnEnd).toBe(true);
+    expect(player.morale).toBe(-2);
+    expect(player.discardHandAtTurnEnd ?? false).toBe(false);
 
-    // negative + positive → neutral; positive caps at one token.
-    player.discardHandAtTurnEnd = false;
-    changeMorale(state, "p1", -1);
+    // −2 + positive → −1; recovery during the turn keeps the hand
+    changeMorale(state, "p1", 1);
+    expect(player.morale).toBe(-1);
     changeMorale(state, "p1", 1);
     expect(player.morale).toBe(0);
     changeMorale(state, "p1", 1);
     changeMorale(state, "p1", 1);
-    expect(player.morale).toBe(1);
+    expect(player.morale).toBe(1); // positive caps at +1
 
     // Necropolis ignores morale entirely.
     const necro = state.players.p2;
     expect(necro.factionId).toBe("necropolis");
     changeMorale(state, "p2", -1);
     expect(necro.morale).toBe(0);
+  });
+
+  it("applies multi-token gains one step at a time (Warrior's Tomb lands at −2)", () => {
+    const state = makeLegacyGame();
+    const player = state.players.p1;
+    player.morale = 0;
+    const before = state.eventLog.length;
+
+    // amount −2 = two steps: 0 → −1 → −2 (never a batch "−2 (now 0)")
+    changeMorale(state, "p1", -2);
+    expect(player.morale).toBe(-2);
+    expect(player.discardHandAtTurnEnd ?? false).toBe(false);
+
+    const moraleEvents = state.eventLog.slice(before).filter((event) => event.type === "MORALE_CHANGED");
+    expect(moraleEvents).toEqual([
+      expect.objectContaining({ amount: -1, total: -1 }),
+      expect.objectContaining({ amount: -1, total: -2 })
+    ]);
   });
 });
 

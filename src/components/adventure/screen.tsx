@@ -1920,8 +1920,12 @@ export function AdventureHud({
             <small>move</small>
           </span>
           <span
-            className="statChip"
-            title={`Morale ${(player?.morale ?? 0) > 0 ? "+" : ""}${player?.morale ?? 0}`}
+            className={`statChip${(player?.morale ?? 0) <= -2 ? " moraleDiscardPending" : ""}`}
+            title={
+              (player?.morale ?? 0) <= -2
+                ? "Morale −2: if still −2 when you end the turn, your hand is discarded. Gain positive morale this turn to keep your cards."
+                : `Morale ${(player?.morale ?? 0) > 0 ? "+" : ""}${player?.morale ?? 0}`
+            }
           >
             <img
               alt=""
@@ -1933,7 +1937,7 @@ export function AdventureHud({
               {(player?.morale ?? 0) > 0 ? "+" : ""}
               {player?.morale ?? 0}
             </b>
-            <small>morale</small>
+            <small>{(player?.morale ?? 0) <= -2 ? "fix or dump" : "morale"}</small>
           </span>
         </div>
       ) : null}

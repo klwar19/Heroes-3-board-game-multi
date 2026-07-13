@@ -3,7 +3,7 @@ import type { GameState, MapFieldState, PlayerId, VisitStep } from "./state";
 import { addArmyUnit, beginFieldVisit, getMainHero, RESOURCE_DIE_FACES } from "./adventure";
 import { resolveVisitStep } from "./adventure-reducer";
 import { getLegalActions } from "./legal-actions";
-import { createAdventureGameState } from "./index";
+import { applyAction, createAdventureGameState } from "./index";
 import { locationDefinitions } from "@/data/map/locations";
 
 /**
@@ -350,17 +350,79 @@ describe("Morale tokens and this-turn movement", () => {
     expect(field.blackCube).toBe(false); // revisitable, never cubed
   });
 
-  it("Warrior's Tomb: two Artifact searches, then two negative tokens force a hand discard", () => {
-    // Two negative morale tokens net to 0 (the second cancels the first) but set
-    // the discard-hand-at-turn-end penalty — that flag is the observable outcome,
-    // not morale === -2.
+  it("Warrior's Tomb: two Artifact searches, then morale lands at −2 (no mid-turn dump)", () => {
+    // Tomb = Search(2)×2 then two negatives: 0 → −1 → −2. Hand dump is NOT
+    // armed mid-turn — only END_TURN while still at −2 discards the hand.
     const state = makeGame();
     const player = state.players.p1;
     expect(player.morale).toBe(0);
+    const beforeEvents = state.eventLog.length;
     visit(state, "p1", injectField(state, "warriors_tomb"));
     expect(queuedSearches(state, "artifacts")).toBe(2); // Search(2) twice
-    expect(player.morale).toBe(0);
-    expect(player.discardHandAtTurnEnd).toBe(true); // the -2 penalty actually bites
+    expect(player.morale).toBe(-2);
+    expect(player.discardHandAtTurnEnd ?? false).toBe(false);
+    expect(player.hand.length).toBeGreaterThan(0); // hand untouched mid-turn
+
+    // Feed: two steps (−1 then −2), never a batch "morale −2 (now 0)".
+    const moraleEvents = state.eventLog
+      .slice(beforeEvents)
+      .filter((event) => event.type === "MORALE_CHANGED") as Array<{
+      type: "MORALE_CHANGED";
+      amount: number;
+      total: number;
+    }>;
+    expect(moraleEvents).toHaveLength(2);
+    expect(moraleEvents[0]).toMatchObject({ amount: -1, total: -1 });
+    expect(moraleEvents[1]).toMatchObject({ amount: -1, total: -2 });
+  });
+
+  it("Warrior's Tomb then Mermaid (W6 path): −2 then +1 → −1, hand kept at end of turn", () => {
+    // Tomb: 0 → −1 → −2. Mermaid: −2 → −1. End turn at −1 → KEEP hand.
+    // CONTROL: ending still at −2 WOULD dump (covered by end-turn at −2 case).
+    const state = makeGame("w6-tomb-mermaid");
+    const player = state.players.p1;
+    const keptHand = ["ability.attack", "ability.defence", "spell.magic_arrow"];
+    player.hand = [...keptHand];
+    player.morale = 0;
+
+    visit(state, "p1", injectField(state, "warriors_tomb", { spaceId: "tomb-hex" }));
+    expect(player.morale).toBe(-2);
+
+    visit(state, "p1", injectField(state, "mermaid", { spaceId: "mermaid-hex" }));
+    expect(player.morale).toBe(-1);
+
+    const ended = applyAction(state, { type: "END_TURN", playerId: "p1" });
+    expect(ended.errors, ended.errors.map((e) => e.message).join("; ")).toEqual([]);
+    expect(ended.state.players.p1.hand).toEqual(keptHand);
+    expect(ended.state.players.p1.morale).toBe(-1);
+    expect(
+      ended.state.eventLog.some(
+        (event) => event.type === "HAND_REFRESHED" && event.reason === "morale-double-negative"
+      )
+    ).toBe(false);
+  });
+
+  it("ending the turn still at −2 discards the hand and clears morale to 0", () => {
+    const state = makeGame("w6-tomb-end-at-minus-2");
+    const player = state.players.p1;
+    player.hand = ["ability.attack", "ability.defence", "spell.magic_arrow"];
+    player.morale = 0;
+
+    visit(state, "p1", injectField(state, "warriors_tomb", { spaceId: "tomb-hex" }));
+    expect(player.morale).toBe(-2);
+
+    const ended = applyAction(state, { type: "END_TURN", playerId: "p1" });
+    expect(ended.errors, ended.errors.map((e) => e.message).join("; ")).toEqual([]);
+    expect(ended.state.players.p1.hand).toEqual([]);
+    expect(ended.state.players.p1.morale).toBe(0);
+    expect(
+      ended.state.eventLog.some(
+        (event) =>
+          event.type === "HAND_REFRESHED" &&
+          event.reason === "morale-double-negative" &&
+          event.discarded === 3
+      )
+    ).toBe(true);
   });
 });
 

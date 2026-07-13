@@ -1461,11 +1461,16 @@ export function spendResources(state: GameState, playerId: PlayerId, cost: Resou
 }
 
 /**
- * Morale tokens by the book (rulebook Morale Actions + wiki morale table):
- * at most one positive token (+1) and one negative token (-1); gaining the
- * opposite token cancels back to neutral. Gaining a second negative token
- * resets morale to neutral AND discards the hand the next time the player
- * ends their turn. Necropolis ignores morale entirely.
+ * Morale (token mode, morale-cards rule OFF):
+ * - Range is −2 … +1. Positive caps at +1 (further gains → moraleOverflow spend).
+ * - Negative floors at −2 (a second negative lands as −2; it does NOT reset to 0
+ *   mid-turn and does NOT arm a sticky hand-dump flag).
+ * - Hand discard is checked ONLY at END_TURN: if morale is still −2 then, dump
+ *   the hand and clear back to 0. Recover during the turn (−2 → −1 via a Temple
+ *   / Mermaid / etc.) and the hand is kept.
+ * - Multi-token sources (Warrior's Tomb amount −2) apply one step at a time so
+ *   the feed shows −1 (now −1) then −1 (now −2), never a batch "−2 (now 0)".
+ * - Necropolis ignores morale entirely.
  */
 export function changeMorale(state: GameState, playerId: PlayerId, amount: number): void {
   const player = state.players[playerId];
@@ -1483,31 +1488,37 @@ export function changeMorale(state: GameState, playerId: PlayerId, amount: numbe
     return;
   }
 
-  let next = player.morale;
+  // Legacy sticky flag from older snapshots — never re-arm it; recovery and the
+  // end-turn morale===-2 check are the only sources of truth now.
+  player.discardHandAtTurnEnd = false;
+
   let overflow = 0;
+  const stepDelta = amount > 0 ? 1 : -1;
   for (let step = 0; step < Math.abs(amount); step += 1) {
     if (amount > 0) {
       // The positive token caps at +1; any further gain does not stack but
       // must be spent right away (draw / discard-redraw) — tracked as overflow.
-      if (next >= 1) {
+      if (player.morale >= 1) {
         overflow += 1;
-      } else {
-        next += 1;
+        continue;
       }
-    } else if (next <= -1) {
-      // Negative + negative → neutral, and the hand is discarded at turn end.
-      next = 0;
-      player.discardHandAtTurnEnd = true;
+      player.morale += 1;
+    } else if (player.morale <= -2) {
+      // Already at the floor — further negatives do nothing this step.
+      continue;
     } else {
-      next -= 1;
+      player.morale -= 1;
     }
+    appendEvent(state, {
+      type: "MORALE_CHANGED",
+      playerId,
+      amount: stepDelta,
+      total: player.morale
+    });
   }
-  player.morale = next;
   if (overflow > 0) {
     player.moraleOverflow = (player.moraleOverflow ?? 0) + overflow;
   }
-
-  appendEvent(state, { type: "MORALE_CHANGED", playerId, amount, total: player.morale });
 }
 
 export function getMainHero(state: GameState, playerId: PlayerId): HeroState | null {
@@ -3221,20 +3232,26 @@ export function processPendingVisit(state: GameState): void {
         }
         break;
       }
-      case "GAIN_MORALE":
-        // Crest of Valor (map side): a held shield negates one negative-morale
-        // token handed out by a Field. Positive morale and combat-loss morale
+      case "GAIN_MORALE": {
+        // Crest of Valor (map side): a held shield negates ONE negative-morale
+        // token from a Field. Multi-token fields (Warrior's Tomb = two negatives)
+        // must apply token-by-token so the shield only cancels a single token
+        // and the second still lands. Positive morale and combat-loss morale
         // are untouched — only a Field's own negative token is ignored here.
-        if (step.amount < 0 && consumeIgnoreFieldNegativeMorale(state, visit.playerId)) {
-          appendEvent(state, {
-            type: "FIELD_MORALE_IGNORED",
-            playerId: visit.playerId,
-            fieldId: visit.fieldId
-          });
-        } else {
-          changeMorale(state, visit.playerId, step.amount);
+        const tokenDelta = step.amount > 0 ? 1 : -1;
+        for (let i = 0; i < Math.abs(step.amount); i += 1) {
+          if (tokenDelta < 0 && consumeIgnoreFieldNegativeMorale(state, visit.playerId)) {
+            appendEvent(state, {
+              type: "FIELD_MORALE_IGNORED",
+              playerId: visit.playerId,
+              fieldId: visit.fieldId
+            });
+          } else {
+            changeMorale(state, visit.playerId, tokenDelta);
+          }
         }
         break;
+      }
       case "ROLL_RESOURCE_DICE":
         rollResourceDice(state, visit, step.count);
         break;

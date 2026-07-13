@@ -9409,17 +9409,27 @@ export function endTurnAdventure(state: GameState, action: Extract<GameAction, {
   if (player) {
     // The after-combat Necromancy window closes when the turn ends.
     player.necromancyWindow = false;
-    // The second negative morale token: the hand is discarded at turn end.
-    if (player.discardHandAtTurnEnd) {
+    // Double-negative morale: dump the hand ONLY if still at −2 when the turn
+    // ends. Recovering during the turn (−2 → −1 via Mermaid/Temple/etc.) keeps
+    // the hand. After the dump, clear back to neutral so the penalty is paid once.
+    player.discardHandAtTurnEnd = false; // legacy field; end-turn check is morale value
+    if (player.morale <= -2) {
       const discarded = player.hand.length;
       player.discard.push(...player.hand);
       player.hand = [];
-      player.discardHandAtTurnEnd = false;
+      player.morale = 0;
       appendEvent(state, {
         type: "HAND_REFRESHED",
         playerId: action.playerId,
         discarded,
-        drawn: 0
+        drawn: 0,
+        reason: "morale-double-negative"
+      });
+      appendEvent(state, {
+        type: "MORALE_CHANGED",
+        playerId: action.playerId,
+        amount: 2,
+        total: 0
       });
     }
   }
