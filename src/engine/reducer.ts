@@ -3639,7 +3639,7 @@ function concludeAttackerActivation(state: GameState, attacker: CombatUnitState)
     return;
   }
 
-  attacker.activatedThisRound = true;
+  markActivatedThisRound(attacker);
   // Activation-bound effects on the attacker end with its activation (Berserk's
   // "in its activation" forced attack, any "this Activation" buff).
   appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, attacker.id), "activation-ended");
@@ -3752,7 +3752,7 @@ function resolveCombatReposition(
   });
 
   state.pendingChoice = null;
-  unit.activatedThisRound = true;
+  markActivatedThisRound(unit);
   advanceActiveUnit(state);
   if (!state.pendingChoice) {
     state.phase = "combat";
@@ -7045,7 +7045,7 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
   // its activation and remove the Token instead."
   if (hasToken(activeUnit, "paralysis")) {
     removeToken(state, activeUnit, "paralysis", "activation-skipped");
-    activeUnit.activatedThisRound = true;
+    markActivatedThisRound(activeUnit);
     appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, activeUnit.id), "activation-ended");
     appendEvent(state, {
       type: "UNIT_ACTIVATION_ENDED",
@@ -7092,7 +7092,7 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
     });
     if (skips) {
       consumeHeldMoraleCard(state, activeUnit.controllerId, MORALE_CARD_IDS.skipActivation);
-      activeUnit.activatedThisRound = true;
+      markActivatedThisRound(activeUnit);
       appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, activeUnit.id), "activation-ended");
       appendEvent(state, {
         type: "UNIT_ACTIVATION_ENDED",
@@ -7136,7 +7136,7 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
     if (finishCombatIfNeeded(state)) {
       return;
     }
-    activeUnit.activatedThisRound = true;
+    markActivatedThisRound(activeUnit);
     appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, activeUnit.id), "activation-ended");
     appendEvent(state, {
       type: "UNIT_ACTIVATION_ENDED",
@@ -7154,7 +7154,7 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
     if (finishCombatIfNeeded(state)) {
       return;
     }
-    activeUnit.activatedThisRound = true;
+    markActivatedThisRound(activeUnit);
     appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, activeUnit.id), "activation-ended");
     appendEvent(state, {
       type: "UNIT_ACTIVATION_ENDED",
@@ -7464,7 +7464,7 @@ function skipUnitActivation(state: GameState, unit: CombatUnitState): void {
     return;
   }
 
-  unit.activatedThisRound = true;
+  markActivatedThisRound(unit);
   appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, unit.id), "activation-ended");
   appendEvent(state, {
     type: "UNIT_ACTIVATION_ENDED",
@@ -8036,7 +8036,18 @@ function resetCombatRound(combat: CombatState): void {
     unit.retaliatedThisRound = false;
     // Defense tokens persist into the next round: they are discarded at the
     // start of the unit's next activation, not at the end of the round.
+    // defendedLastActivation also persists — consecutive-Defend ban spans rounds.
   }
+}
+
+/**
+ * Marks a unit's activation finished for this combat round.
+ * `defended` is true only for the Defend action: a unit that Defended may not
+ * Defend again on its next activation (it must do something else first).
+ */
+function markActivatedThisRound(unit: CombatUnitState, defended = false): void {
+  unit.activatedThisRound = true;
+  unit.defendedLastActivation = defended;
 }
 
 function refreshReactionWindowLegalReactions(state: GameState, cards: CardLibrary): void {
@@ -14470,7 +14481,7 @@ function applyUnitAbilityAction(
   });
 
   if (ability.effect.endsActivation) {
-    unit.activatedThisRound = true;
+    markActivatedThisRound(unit);
     advanceActiveUnit(state);
   }
 
@@ -14870,7 +14881,7 @@ function applyGenieDeckDraw(
 
   // The Wish is the unit's whole activation.
   const paused = runGenieDeckDraw(state, unit, ability, "other-action");
-  unit.activatedThisRound = true;
+  markActivatedThisRound(unit);
   if (paused) {
     // The spell-pick choice resolver advances to the next unit afterwards.
     return;
@@ -15032,7 +15043,7 @@ function summonDemons(state: GameState, action: Extract<GameAction, { type: "SUM
 
   // The Pit Lords used their action instead of moving or attacking.
   unit.summonedThisCombat = true;
-  unit.activatedThisRound = true;
+  markActivatedThisRound(unit);
   advanceActiveUnit(state);
   state.phase = "combat";
   state.priorityPlayerId = null;
@@ -15845,7 +15856,7 @@ function chooseAbilityTarget(
         targetUnitId: target.id,
         message: `${placer.cardName} places a ${choice.abilityName} on ${target.cardName}.`
       });
-      placer.activatedThisRound = true;
+      markActivatedThisRound(placer);
       advanceActiveUnit(state);
     }
     return;
@@ -15927,7 +15938,7 @@ function chooseAbilityTarget(
         message: `${source.cardName} coils into invulnerability — it ignores all damage and spell effects until its next activation.`
       });
       if (ward.endsActivation) {
-        source.activatedThisRound = true;
+        markActivatedThisRound(source);
         advanceActiveUnit(state);
       }
     }
@@ -15964,7 +15975,7 @@ function chooseAbilityTarget(
 
     if (isSkip) {
       if (committed) {
-        source.activatedThisRound = true;
+        markActivatedThisRound(source);
         advanceActiveUnit(state);
       }
       // else: cancelled before any damage — the Dreadnought is free to act.
@@ -15988,7 +15999,7 @@ function chooseAbilityTarget(
       return;
     }
     // All values spent (or no more adjacent units): the splash ends the turn.
-    source.activatedThisRound = true;
+    markActivatedThisRound(source);
     advanceActiveUnit(state);
     return;
   }
@@ -16300,7 +16311,7 @@ function moveAndAttackUnit(
   // attack — the unit never arrives adjacent to its quarry.
   if (!isUnitAlive(attacker) || haltedByQuicksand || finalPosition !== destination) {
     if (isUnitAlive(attacker)) {
-      attacker.activatedThisRound = true;
+      markActivatedThisRound(attacker);
     }
     if (combat.activeUnitId === attacker.id) {
       appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, attacker.id), "activation-ended");
@@ -16696,7 +16707,7 @@ function moveUnit(state: GameState, action: Extract<GameAction, { type: "MOVE_UN
   // never attack after moving. Ground and flying units stay active to attack
   // an adjacent enemy or hold.
   if (haltedByQuicksand || unit.type === "ranged") {
-    unit.activatedThisRound = true;
+    markActivatedThisRound(unit);
     appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, unit.id), "activation-ended");
     advanceActiveUnit(state);
   }
@@ -16711,9 +16722,13 @@ function defendUnit(state: GameState, action: Extract<GameAction, { type: "DEFEN
   if (!combat || !unit || unit.controllerId !== action.playerId) {
     throw new Error("That unit cannot defend now.");
   }
+  // Rule: no consecutive Defend activations — must do something else in between.
+  if (unit.defendedLastActivation) {
+    throw new Error("That unit cannot Defend again until it takes another action first.");
+  }
 
   unit.defenseToken = true;
-  unit.activatedThisRound = true;
+  markActivatedThisRound(unit, true);
   // Bulwark "Runes" (Gamefound Update #3): taking the Defend action earns a
   // Bulwark unit's controller +2 Runes (RUNE_GAIN_DEFEND) — the richest Rune
   // source.
@@ -16736,7 +16751,7 @@ function endActivation(state: GameState, action: Extract<GameAction, { type: "EN
     throw new Error("That unit cannot end its activation now.");
   }
 
-  unit.activatedThisRound = true;
+  markActivatedThisRound(unit);
   appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, unit.id), "activation-ended");
 
   appendEvent(state, {
@@ -17295,7 +17310,7 @@ function endTurn(state: GameState, action: Extract<GameAction, { type: "END_TURN
  * activation-end effects and advances to the next unit.
  */
 function passNeutralActivation(state: GameState, unit: CombatUnitState): void {
-  unit.activatedThisRound = true;
+  markActivatedThisRound(unit);
   appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, unit.id), "activation-ended");
   appendEvent(state, {
     type: "UNIT_ACTIVATION_ENDED",
@@ -17412,7 +17427,7 @@ function executeNeutralActivation(
     const walked = planNeutralTokenWalk(state, combat, unit, intent.destination);
     unit.position = walked.finalPosition;
     unit.movedThisActivation = true;
-    unit.activatedThisRound = true;
+    markActivatedThisRound(unit);
     appendEvent(state, {
       type: "UNIT_MOVED",
       playerId: unit.controllerId,
@@ -17451,7 +17466,7 @@ function executeNeutralActivation(
     // it short, ends the activation with no attack — it never reaches its quarry.
     if (!isUnitAlive(unit) || walked.haltedByQuicksand || walked.finalPosition !== intent.destination) {
       if (isUnitAlive(unit)) {
-        unit.activatedThisRound = true;
+        markActivatedThisRound(unit);
       }
       appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, unit.id), "activation-ended");
       if (finishCombatIfNeeded(state)) {

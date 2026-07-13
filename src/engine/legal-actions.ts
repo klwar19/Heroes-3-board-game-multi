@@ -3927,7 +3927,9 @@ function addControlledNeutralUnitActions(
       pushMove(destination);
     }
     actions.push(...attacks);
-    if (!isArrowTowerUnit(activeUnit)) {
+    // Consecutive-Defend ban: a guard that Defended last activation must do
+    // something else before it may Defend again.
+    if (!isArrowTowerUnit(activeUnit) && !activeUnit.defendedLastActivation) {
       actions.push({
         label: `${activeUnit.name} defend`,
         action: { type: "DEFEND_UNIT", playerId, unitId: activeUnit.id }
@@ -4152,9 +4154,11 @@ function addUnitActions(actions: LegalAction[], state: GameState, playerId: Play
     }
   }
 
-  if (!alreadyAttacked && !isArrowTowerUnit(activeUnit)) {
+  if (!alreadyAttacked && !isArrowTowerUnit(activeUnit) && !activeUnit.defendedLastActivation) {
     // Defend replaces the attack, so a unit that already moved may still
     // defend. The Arrow Tower never defends — it only shoots or holds.
+    // Consecutive-Defend ban: after Defending, the next activation must do
+    // something else; only then may the unit Defend again.
     actions.push({
       label: `${activeUnit.name} defend`,
       action: {

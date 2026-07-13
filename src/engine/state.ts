@@ -6199,6 +6199,14 @@ export type CombatUnitState = {
   retaliatedThisRound: boolean;
   defenseToken: boolean;
   /**
+   * Rule: a unit may not Defend on two consecutive activations. Set true when
+   * the unit takes the Defend action; cleared when it finishes any other
+   * activation (attack, move, hold, skip, ability). While true, Defend is
+   * illegal on its next activation. Survives combat-round resets the same way
+   * Defense tokens do (discarded only when the unit acts without Defending).
+   */
+  defendedLastActivation?: boolean;
+  /**
    * Set once the pre-activation reaction pause has been resolved for this
    * unit's current activation, so the pump does not re-open it after the
    * reacting player casts/plays during the pause. Reset every time the unit
