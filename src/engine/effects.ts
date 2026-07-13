@@ -364,6 +364,29 @@ export function getSpellDamageAmount(card: CardDefinition, power: number): numbe
   return card.effect.type === "CHOOSE_ONE" ? 0 : getEffectDamageAmount(card.effect, power);
 }
 
+/**
+ * How many Attack dice a power-scaled die-roll spell (Inferno, Slayer) throws
+ * at the given Power. Shared by the cast-window Power meter (so Inferno shows
+ * "N dice" the same way damage spells show "N damage") and the resolve path.
+ * Returns null when the card does not roll dice by Power.
+ */
+export function getSpellDiceRollCount(card: CardDefinition, power: number): number | null {
+  const effect = card.effect;
+  if (effect.type !== "INFERNO" && effect.type !== "SLAYER_ATTACK") {
+    return null;
+  }
+  const byPower = effect.rollsByPower;
+  const powerBreakpoints = Object.keys(byPower)
+    .map(Number)
+    .filter((value) => Number.isFinite(value))
+    .sort((left, right) => left - right);
+  const matchingPower = powerBreakpoints.filter((value) => value <= power).at(-1) ?? powerBreakpoints[0];
+  if (matchingPower === undefined) {
+    return null;
+  }
+  return byPower[matchingPower] ?? null;
+}
+
 export function getEffectAmount(effect: EffectDefinition, mode: CardPlayMode): number {
   // Interference carries an explicit expert amount (the Defense / spell-damage
   // reduction it grants), so it reads it the same way the stat cards do. An

@@ -9,8 +9,8 @@ asset repo publishes the actual printed backs:
 
   assets/images/maptiles.png     -> a 2x2 sheet of the four land backs
                                      (I, II-III, IV-V, VI-VII)
-  assets/images/map-tile-sea.png -> the golden-wave sea back  (IV-V band)
-  assets/images/map-tile-sub.png -> the cavern-teeth underground back (IV-V band)
+  assets/images/map-tile-sea.png -> the golden-wave sea back  (IV-V band; VI-VII variant is board-edited)
+  assets/images/map-tile-sub.png -> the cavern-teeth underground back (IV-V band; VI-VII variant is board-edited)
 
 Every printed back is a seven-hex "flower". The board renders each face-down
 tile by stretching its back image across the flower's bounding box
@@ -25,9 +25,11 @@ The four sheet quadrants map to the four land groups:
   bottom-left  IV-V     -> near
   bottom-right VI-VII   -> center
 
-Sea and Subterranean tiles ship both the IV-V and VI-VII bands behind one back
-(the engine hides the exact band until the tile is revealed), so their single
-IV-V printed back is reused for both — matching how the game already draws them.
+Sea and Subterranean each ship TWO band backs (IV-V + VI-VII). A boss tile's
+face-down art MUST show VI-VII — never the IV-V numeral — so opening a face-down
+tile never surprises the player with VII guards under an IV-V back. The VI-VII
+variants live as back-sea-vi-vii.webp / back-subterranean-vi-vii.webp (edited
+from the printed IV-V art); re-install them if the IV-V sources are re-fetched.
 
 Like the other fetch scripts, every download is validated (HTTP 200 + a
 decodable image) and the script aborts loudly on any miss. This is a non-profit

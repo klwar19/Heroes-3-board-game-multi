@@ -158,8 +158,9 @@ describe("Spell Scroll — casting in combat", () => {
     state = passAllReactions(state);
 
     // Power 0 → 1 damage; the spell left the scroll for good (never discard).
+    // Scroll casts do NOT count toward the one-Spell-per-round limit.
     expect(state.combat!.units[TARGET].damage).toBe(1);
-    expect(state.players.p1.combatStats.spellsCastThisRound).toBe(1);
+    expect(state.players.p1.combatStats.spellsCastThisRound).toBe(0);
     expect(state.players.p1.scrolls![0].spellCardIds).toEqual(["spell.magic_arrow"]);
     expect(state.players.p1.discard).not.toContain("spell.magic_arrow");
     expect(state.players.p1.removed).toContain("spell.magic_arrow");
@@ -168,18 +169,54 @@ describe("Spell Scroll — casting in combat", () => {
     expect(resolved && resolved.type === "SPELL_CAST_RESOLVED" ? resolved.power : -1).toBe(0);
   });
 
+  it("does not count toward the spell limit and stays castable after a hand Spell", () => {
+    let state = scrollCombatState(["spell.magic_arrow"]);
+    // Spend the one-Spell-per-round limit with a hand Magic Arrow first.
+    state.players.p1.hand = ["spell.magic_arrow"];
+    state.players.p1.combatStats.spellsCastThisRound = 0;
+    const handCast = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "CAST_SPELL" &&
+        legal.action.cardId === "spell.magic_arrow" &&
+        !legal.action.fromScroll &&
+        legal.action.target.type === "unit" &&
+        legal.action.target.unitId === TARGET
+    );
+    expect(handCast, "hand Magic Arrow should be castable").toBeTruthy();
+    state = passAllReactions(applyOk(state, handCast!.action));
+    expect(state.players.p1.combatStats.spellsCastThisRound).toBe(1);
+
+    // CONTROL: a second hand Spell is blocked at the limit.
+    state.players.p1.hand = ["spell.magic_arrow"];
+    const blockedHand = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "CAST_SPELL" &&
+        legal.action.cardId === "spell.magic_arrow" &&
+        !legal.action.fromScroll
+    );
+    expect(blockedHand, "hand Spell must stay blocked at the limit").toBeUndefined();
+
+    // Scroll cast is still offered and does not bump the counter.
+    const scrollCast = scrollCastAt(state, TARGET);
+    expect(scrollCast, "scroll cast must remain legal after the limit is spent").toBeTruthy();
+    state = passAllReactions(applyOk(state, scrollCast!.action));
+    expect(state.players.p1.combatStats.spellsCastThisRound).toBe(1);
+    expect(state.players.p1.scrolls ?? []).toHaveLength(0);
+    expect(state.combat!.units[TARGET].damage).toBe(2); // hand 1 + scroll 1
+  });
+
   it("removes the whole scroll once both spells are used", () => {
     let state = scrollCombatState();
 
     for (let cast = 0; cast < 2; cast += 1) {
-      // A fresh combat round resets the one-spell-per-round limit.
-      state.players.p1.combatStats.spellsCastThisRound = 0;
+      // Scrolls ignore the limit — both can fire in the same round.
       const action = scrollCastAt(state, TARGET);
       expect(action).toBeTruthy();
       state = passAllReactions(applyOk(state, action!.action));
     }
 
     expect(state.players.p1.scrolls ?? []).toHaveLength(0);
+    expect(state.players.p1.combatStats.spellsCastThisRound).toBe(0);
     expect(state.combat!.units[TARGET].damage).toBe(2);
   });
 

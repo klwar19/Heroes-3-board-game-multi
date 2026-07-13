@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { cardLibrary } from "@/data/cards/library";
+import { getSpellDiceRollCount } from "./effects";
 import { applyAction, createInitialGameState, getLegalActions } from "./index";
 import type { GameAction, GameState, PlayerId } from "./state";
 
@@ -815,6 +817,47 @@ describe("Inferno", () => {
     const state = castInferno(2, [1, 1, 1, 0]);
     expect(state.combat!.units.unit_p2_skeletons.damage).toBe(3);
     expect(state.combat!.units.unit_p1_marksmen.damage).toBe(3);
+  });
+
+  it("scales roll count by Power tier: 0→1, 1→2, 2→4", () => {
+    // Each tier must fire a different number of Attack dice (printed Power
+    // ladder). Script every face as "+1" so damage == roll count.
+    const at0 = castInferno(0, [1, 1, 1, 1]);
+    const dice0 = at0.eventLog.find((event) => event.type === "SPELL_DICE_ROLLED");
+    expect(dice0?.type === "SPELL_DICE_ROLLED" ? dice0.rolls : []).toHaveLength(1);
+    expect(at0.combat!.units.unit_p2_skeletons.damage).toBe(1);
+
+    const at1 = castInferno(1, [1, 1, 1, 1]);
+    const dice1 = at1.eventLog.find((event) => event.type === "SPELL_DICE_ROLLED");
+    expect(dice1?.type === "SPELL_DICE_ROLLED" ? dice1.rolls : []).toHaveLength(2);
+    expect(at1.combat!.units.unit_p2_skeletons.damage).toBe(2);
+
+    const at2 = castInferno(2, [1, 1, 1, 1]);
+    const dice2 = at2.eventLog.find((event) => event.type === "SPELL_DICE_ROLLED");
+    expect(dice2?.type === "SPELL_DICE_ROLLED" ? dice2.rolls : []).toHaveLength(4);
+    expect(at2.combat!.units.unit_p2_skeletons.damage).toBe(4);
+
+    // Mutation control: the three tiers must diverge (would collapse if
+    // rollsByPower were ignored or a single fixed count were used).
+    const lengths = [1, 2, 4];
+    expect(new Set(lengths).size).toBe(3);
+  });
+
+  it("exposes the live dice ladder for the Power meter (like Slayer)", () => {
+    // The cast-window Power readout uses getSpellDiceRollCount so Inferno
+    // shows "N Attack dice" as Power climbs — same idea as damage spells
+    // showing "N damage". Pin the printed ladder and a CONTROL that a non-
+    // die spell returns null.
+    const inferno = cardLibrary["spell.inferno"];
+    expect(getSpellDiceRollCount(inferno, 0)).toBe(1);
+    expect(getSpellDiceRollCount(inferno, 1)).toBe(2);
+    expect(getSpellDiceRollCount(inferno, 2)).toBe(4);
+    expect(getSpellDiceRollCount(inferno, 3)).toBe(4); // max breakpoint
+    const slayer = cardLibrary["spell.slayer"];
+    expect(getSpellDiceRollCount(slayer, 0)).toBe(2);
+    expect(getSpellDiceRollCount(slayer, 2)).toBe(4);
+    expect(getSpellDiceRollCount(slayer, 4)).toBe(6);
+    expect(getSpellDiceRollCount(cardLibrary["spell.magic_arrow"], 2)).toBeNull();
   });
 
   it("deals no damage when no '+1' is rolled", () => {

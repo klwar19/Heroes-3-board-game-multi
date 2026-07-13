@@ -688,12 +688,11 @@ export function HexMapBoard({
       const normalDiscover = discoverByTile.get(tile.id);
       const observatoryDiscover = observatoryTargets.revealByTile.get(tile.id);
       const discover = normalDiscover ?? observatoryDiscover;
-      // Sea tiles ship both Ⅳ–Ⅴ and Ⅵ–Ⅶ behind one wave back, and the
-      // underground pool likewise ships its Ⅳ–Ⅴ and Ⅵ–Ⅶ bands behind one
-      // underground back — so the face-down hint shows the whole Ⅳ–Ⅶ range and
-      // the exact band stays secret until the tile is revealed.
-      const backLabelDisplay =
-        tile.group === "sea" || tile.group === "subterranean" ? "Ⅳ–Ⅶ" : tile.backLabel ?? "";
+      // Face-down numeral is the tile's REAL guard band (Ⅳ–Ⅴ vs Ⅵ–Ⅶ). Sea and
+      // underground used to hide the band behind a single Ⅳ–Ⅴ back + a combined
+      // "Ⅳ–Ⅶ" hint — so a boss tile looked IV-V until opened, then sprung VII
+      // fights. The back art and this label now match `tile.backLabel`.
+      const backLabelDisplay = tile.backLabel ?? "";
       const footprint = tileFootprint(center, 0);
       const centerPixel = hexToPixel(center, HEX_SIZE);
       const backWidth = 3 * HEX_WIDTH;

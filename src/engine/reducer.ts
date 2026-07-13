@@ -1606,10 +1606,11 @@ function doubleAmountForUnitName(amount: number, unit: CombatUnitState | undefin
  * draw N cards" effects (Zydar's Sorcery VI).
  */
 function noteSpellCast(state: GameState, player: PlayerState, countsTowardLimit = true): void {
-  // Helm of the Alabaster Unicorn's Spell-deck cast is a free bonus cast: it does
-  // not consume the one-Spell-per-combat-round limit (spellsCastThisRound), so a
-  // later normal Spell is still allowed. It still counts as a Spell cast this turn
-  // and fires "on Spell cast" draw effects.
+  // Free bonus casts (Helm of the Alabaster Unicorn Spell-deck cast, Spell Scroll
+  // cast/instant, Tarnum VI over-limit) pass countsTowardLimit=false: they do not
+  // consume the one-Spell-per-combat-round limit (spellsCastThisRound), so a later
+  // normal Spell is still allowed. They still count as a Spell cast this turn and
+  // fire "on Spell cast" draw effects.
   if (countsTowardLimit) {
     player.combatStats.spellsCastThisRound += 1;
 
@@ -9833,11 +9834,16 @@ function performSpellCast(state: GameState, action: Extract<GameAction, { type: 
   // Tower Magi Pack Power bonus lands on whichever spell is cast first — never on
   // both a free Helm cast and a later normal cast.
   const isFirstSpellThisRound = !caster.combatStats.anySpellCastThisRound;
-  // Neither a Helm of the Alabaster Unicorn cast nor a Tarnum (Conflux) VI
-  // over-limit cast counts toward the spell limit (noteSpellCast still closes
-  // the first-spell-this-round gate for them). A Book cast DOES count — it casts
-  // like a hand Spell and shares the one-Spell-per-round limit.
-  noteSpellCast(state, caster, !action.fromSpellDeck && !action.tarnumReturn);
+  // Neither a Helm of the Alabaster Unicorn cast, a Spell Scroll cast, nor a
+  // Tarnum (Conflux) VI over-limit cast counts toward the spell limit
+  // (noteSpellCast still closes the first-spell-this-round gate for them). A
+  // Book cast DOES count — it casts like a hand Spell and shares the
+  // one-Spell-per-round limit.
+  noteSpellCast(
+    state,
+    caster,
+    !action.fromSpellDeck && !action.tarnumReturn && !action.fromScroll
+  );
 
   const stackItem = makeStackItem(state, action);
 
@@ -10359,8 +10365,9 @@ function applyReactionPlayCore(
 
   // Spell cards played as instants count toward the printed limit of one
   // Spell card per combat round (Knowledge/Necklace raise it). A Tarnum VI
-  // over-limit reaction is a free bonus — it ignores the limit.
-  if (card.kind === "spell" && state.combat && player && !play.tarnumReturn) {
+  // over-limit reaction and a Spell Scroll cast are free bonuses — they ignore
+  // the limit (scrolls never consume it either).
+  if (card.kind === "spell" && state.combat && player && !play.tarnumReturn && !play.fromScroll) {
     if (player.combatStats.spellsCastThisRound >= spellLimitFor(state, player)) {
       throw new Error("Spell limit reached for this combat round.");
     }
@@ -10510,10 +10517,11 @@ function applyReactionPlayCore(
   }
 
   if (card.kind === "spell" && state.combat && player) {
-    // A Tarnum VI over-limit reaction is free: it does not bump the per-round
-    // limit (noteSpellCast still closes the first-spell-this-round gate for it).
-    // A Book instant DOES count — it casts like a hand Spell and shares the limit.
-    noteSpellCast(state, player, !play.tarnumReturn);
+    // A Tarnum VI over-limit reaction and a Spell Scroll instant are free: they
+    // do not bump the per-round limit (noteSpellCast still closes the
+    // first-spell-this-round gate for them). A Book instant DOES count — it
+    // casts like a hand Spell and shares the limit.
+    noteSpellCast(state, player, !play.tarnumReturn && !play.fromScroll);
   }
 
   // A spell instant played into a pending ATTACK may be taken back by a
