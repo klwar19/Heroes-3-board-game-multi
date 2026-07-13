@@ -11,7 +11,9 @@ import GameRoomServer, { type RoomSnapshot } from "../../party/index";
 import {
   computerDecisionOwner,
   createAdventureLobbyState,
+  getLegalActions,
   sessionModeOf,
+  type GameAction,
   type GameState
 } from "@/engine";
 import {
@@ -26,6 +28,27 @@ import { computerNeedsHumanAdvance } from "./computer-runner";
 
 function uniqueId(name: string): string {
   return `${name}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/** Minimal human round-1 script until a computer seat owes the next decision. */
+function nextHumanMapAction(state: GameState): GameAction {
+  const offers = getLegalActions(state, "p1");
+  for (const type of ["SET_TILE_ROTATION", "REFRESH_HAND", "END_TURN"] as const) {
+    const hit = offers.find((legal) => legal.action.type === type);
+    if (!hit) continue;
+    if (hit.action.type === "REFRESH_HAND") {
+      const player = state.players.p1!;
+      const limit = player.needsHandRefresh ? 4 : 5;
+      const over = Math.max(0, player.hand.length - limit);
+      return { ...hit.action, discardCardIds: player.hand.slice(0, over) };
+    }
+    return hit.action;
+  }
+  const visit = offers.find((legal) => legal.action.type === "RESOLVE_VISIT_STEP");
+  if (visit) return visit.action;
+  throw new Error(
+    `no scripted human action among: ${offers.map((legal) => legal.action.type).join(", ")}`,
+  );
 }
 
 describe("single-player over the built-in store", () => {
@@ -70,11 +93,27 @@ describe("single-player over the built-in store", () => {
     expect(started.snapshot.state.setupLobby).toBeNull();
     expect(started.snapshot.state.adventure).not.toBeNull();
 
-    // Adventure map work is HUMAN-GATED: the computers do NOT finish their
-    // start-tile rotations / moves inside the human's action or via the auto
-    // pump (which only paces human-involved PvP). Draining that pump leaves the
-    // computer still owing a map step the human must confirm with Next.
+    // Adventure map work is HUMAN-GATED: computers do NOT finish start-tile
+    // rotations / moves inside the human's action or via the auto pump (PvP
+    // only). First-player order is seeded, so the human may go first — drive
+    // their minimal round-1 script until a computer owns the next decision.
+    // Flake history: asserting computerNeedsHumanAdvance immediately after
+    // START failed ~half the time when p1 was first (needs stayed false).
     drainComputerPumpSync(roomId);
+    let guard = 0;
+    while (
+      guard++ < 40 &&
+      !computerNeedsHumanAdvance(getRoomSnapshot(roomId).state)
+    ) {
+      const action = nextHumanMapAction(getRoomSnapshot(roomId).state);
+      const outcome = submitRoomAction(roomId, action, "owner-1");
+      expect(
+        outcome.result.errors,
+        outcome.result.errors.map((error) => error.message).join("; "),
+      ).toEqual([]);
+      // Live settle after a human action must NOT auto-run computer map work.
+      drainComputerPumpSync(roomId);
+    }
     expect(computerNeedsHumanAdvance(getRoomSnapshot(roomId).state)).toBe(true);
     expect(computerDecisionOwner(getRoomSnapshot(roomId).state)).not.toBeNull();
 
