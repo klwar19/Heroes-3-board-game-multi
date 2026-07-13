@@ -329,9 +329,9 @@ describe("adventure setup", () => {
       expect(state.adventure?.farTilesOpenedByPlayer?.[playerId]).toBe(0);
     }
     expect((state.adventure?.farTilePool ?? []).length).toBeGreaterThan(0);
-    // Every pooled tile is a real Far (Ⅱ–Ⅲ) definition.
+    // Every pooled tile is a real Far (Ⅱ–Ⅲ) definition (full catalog, all sets).
     for (const tileDefId of state.adventure?.farTilePool ?? []) {
-      expect(coreTileDefinitions[tileDefId]?.group).toBe("far");
+      expect(allTileDefinitions[tileDefId]?.group).toBe("far");
     }
   });
 
