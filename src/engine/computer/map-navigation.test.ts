@@ -13,7 +13,13 @@ import {
 } from "../adventure";
 import { hexSpaceId, tileFootprint } from "../hex";
 import { getLegalActions } from "../legal-actions";
-import type { GameAction, GameState, HeroState, MapSpaceId } from "../state";
+import type {
+  GameAction,
+  GameState,
+  HeroState,
+  MapFieldState,
+  MapSpaceId,
+} from "../state";
 import { UNOPENED_FAR_TILE } from "../state";
 import {
   canBeatGuardedField,
@@ -975,6 +981,234 @@ describe("expansion push — open/place Ⅱ–Ⅲ before a long march to a lefto
     ]);
     expect(primary?.spaceId).toBe(RESOURCE);
     expect(primary?.kind).toBe("visitable");
+  });
+});
+
+describe("computer tile rotation never blocks itself in", () => {
+  it("avoids an entrance the tile's interior walls into a pocket", () => {
+    const state = game();
+    const hero = p2Hero(state);
+    hero.level = 1;
+
+    // Park the hero on a real placeable notch and take its legal center.
+    let center: { row: number; col: number } | undefined;
+    for (const field of Object.values(state.adventure!.fields)) {
+      hero.spaceId = field.spaceId;
+      center = farTilePlacementCenters(state, hero)[0];
+      if (center) {
+        break;
+      }
+    }
+    expect(center, "the starting map exposes a placeable outer notch").toBeDefined();
+
+    // Every ring field is an identical open empty field (so the plain
+    // entrance grade ties across rotations and the doorway counts are
+    // rotation-invariant), but printed internal borders isolate slots 4/5/6
+    // into one-cell pockets while slots 1-2-3 + center form an open cluster.
+    const testDefId = "TEST_AI_POCKET_ROTATION";
+    allTileDefinitions[testDefId] = {
+      id: testDefId,
+      group: "far",
+      content: "core_game",
+      terrain: "grass",
+      fields: Array.from({ length: 7 }, () => ({ location: "empty_field" })),
+      outerImpassable: [false, false, false, false, false, false],
+      internalBorders: [
+        [3, 4], [4, 5], [0, 4],
+        [5, 6], [0, 5],
+        [6, 1], [0, 6],
+      ],
+      source: { product: "test", credit: "test" },
+    };
+
+    try {
+      const tile = {
+        id: "ai-pocket-rotation-tile",
+        tileDefId: testDefId,
+        centerRow: center!.row,
+        centerCol: center!.col,
+        rotation: 0,
+        faceDown: false,
+        group: "far" as const,
+        awaitingRotation: true,
+      };
+      state.adventure!.tiles[tile.id] = tile;
+      state.adventure!.pendingTileChoice = {
+        tileInstanceId: tile.id,
+        playerId: "p2",
+        kind: "place",
+        heroId: hero.id,
+      };
+
+      const heroNeighbors = new Set(getAdjacentSpaceIds(hero.spaceId!));
+      const adjacentSlots = (rotation: number): number[] =>
+        tileFootprint(center!, rotation)
+          .map((cell, slot) => ({ id: hexSpaceId(cell), slot }))
+          .filter((entry) => heroNeighbors.has(entry.id))
+          .map((entry) => entry.slot);
+      const rotations = [0, 1, 2, 3, 4, 5].filter((rotation) =>
+        canHeroReachPlacedTile(state, hero, testDefId, center!, rotation),
+      );
+      // A rotation whose every hero-facing slot is a walled pocket, and one
+      // that offers a cluster entrance the hero can keep walking from.
+      const pocketRotation = rotations.find((rotation) =>
+        adjacentSlots(rotation).every((slot) => slot >= 4),
+      );
+      const openRotation = rotations.find((rotation) =>
+        adjacentSlots(rotation).some((slot) => slot >= 1 && slot <= 3),
+      );
+      expect(pocketRotation).toBeDefined();
+      expect(openRotation).toBeDefined();
+
+      const scoreOf = (rotation: number) =>
+        scoreMapAction(observe(state), {
+          type: "SET_TILE_ROTATION",
+          playerId: "p2",
+          tileInstanceId: tile.id,
+          rotation,
+        })!.score;
+      // The onward-reach term is what separates them (pocket −60 vs cluster
+      // +9); remove it and the two identical empty entrances tie within the
+      // ±0.06 rotation tiebreak.
+      expect(scoreOf(openRotation!) - scoreOf(pocketRotation!)).toBeGreaterThan(50);
+    } finally {
+      delete allTileDefinitions[testDefId];
+    }
+  });
+
+  it("points its one open arc at future land instead of dead rock", () => {
+    const state = game();
+    // A tile with a SINGLE open outer arc (slot 1), revealed on foot far from
+    // everything; one synthetic face-down tile sits nearby. The rotation that
+    // faces the open arc at the face-down footprint keeps expanding; facing
+    // empty off-map lattice is the self-blocking pick.
+    const testDefId = "TEST_AI_DOORWAY_ROTATION";
+    allTileDefinitions[testDefId] = {
+      id: testDefId,
+      group: "far",
+      content: "core_game",
+      terrain: "grass",
+      fields: Array.from({ length: 7 }, () => ({ location: "empty_field" })),
+      outerImpassable: [false, true, true, true, true, true],
+      source: { product: "test", credit: "test" },
+    };
+
+    try {
+      const center = { row: 30, col: 30 };
+      const footprint = new Set(
+        tileFootprint(center, 0).map((cell) => hexSpaceId(cell)),
+      );
+      // Find a face-down neighbor center whose footprint touches ours without
+      // overlapping it.
+      let fdCenter: { row: number; col: number } | undefined;
+      outer: for (let dRow = -4; dRow <= 4; dRow += 1) {
+        for (let dCol = -4; dCol <= 4; dCol += 1) {
+          const candidate = { row: 30 + dRow, col: 30 + dCol };
+          const cells = tileFootprint(candidate, 0).map((cell) => hexSpaceId(cell));
+          if (cells.some((cell) => footprint.has(cell))) continue;
+          const touches = cells.some((cell) =>
+            getAdjacentSpaceIds(cell).some((id) => footprint.has(id)),
+          );
+          if (touches) {
+            fdCenter = candidate;
+            break outer;
+          }
+        }
+      }
+      expect(fdCenter, "an adjacent non-overlapping center exists").toBeDefined();
+
+      const tile = {
+        id: "ai-doorway-rotation-tile",
+        tileDefId: testDefId,
+        centerRow: center.row,
+        centerCol: center.col,
+        rotation: 0,
+        faceDown: false,
+        group: "far" as const,
+        awaitingRotation: true,
+      };
+      state.adventure!.tiles[tile.id] = tile;
+      state.adventure!.tiles["ai-fd-neighbor"] = {
+        id: "ai-fd-neighbor",
+        tileDefId: "N1",
+        centerRow: fdCenter!.row,
+        centerCol: fdCenter!.col,
+        rotation: 0,
+        faceDown: true,
+        group: "near" as const,
+      };
+      state.adventure!.pendingTileChoice = {
+        tileInstanceId: tile.id,
+        playerId: "p2",
+        kind: "reveal",
+      };
+
+      const fdCells = new Set(
+        tileFootprint(fdCenter!, 0).map((cell) => hexSpaceId(cell)),
+      );
+      const arcCell = (rotation: number) =>
+        hexSpaceId(tileFootprint(center, rotation)[1]);
+      const facesFrontier = (rotation: number) =>
+        getAdjacentSpaceIds(arcCell(rotation)).some(
+          (id) => fdCells.has(id) && !footprint.has(id),
+        );
+      const facesNothing = (rotation: number) =>
+        getAdjacentSpaceIds(arcCell(rotation)).every(
+          (id) =>
+            footprint.has(id) ||
+            (!fdCells.has(id) && !state.adventure!.fields[id]),
+        );
+      const rotations = [0, 1, 2, 3, 4, 5];
+      const frontierRotation = rotations.find(facesFrontier);
+      const blankRotation = rotations.find(facesNothing);
+      expect(frontierRotation).toBeDefined();
+      expect(blankRotation).toBeDefined();
+
+      const scoreOf = (rotation: number) =>
+        scoreMapAction(observe(state), {
+          type: "SET_TILE_ROTATION",
+          playerId: "p2",
+          tileInstanceId: tile.id,
+          rotation,
+        })!.score;
+      // Only the frontier-doorway term separates them (+6 vs 0, within the
+      // ±0.06 rotation tiebreak) — remove it and this fails.
+      expect(scoreOf(frontierRotation!) - scoreOf(blankRotation!)).toBeGreaterThan(5);
+
+      // Revealed land counts even harder: drop a walkable field beside a
+      // third (initially blank) rotation's arc, away from the blank control's
+      // arc. Its margin over blank is the +30 connectivity reward PLUS the +9
+      // revealed-doorway term — the ≥35 bound fails when the doorway term
+      // alone is removed.
+      const revealedRotation = rotations.find(
+        (rotation) =>
+          rotation !== frontierRotation &&
+          rotation !== blankRotation &&
+          facesNothing(rotation),
+      );
+      if (revealedRotation !== undefined) {
+        const blankArcNeighbors = new Set(
+          getAdjacentSpaceIds(arcCell(blankRotation!)),
+        );
+        const beside = getAdjacentSpaceIds(arcCell(revealedRotation)).find(
+          (id) =>
+            !footprint.has(id) &&
+            !fdCells.has(id) &&
+            !blankArcNeighbors.has(id) &&
+            !state.adventure!.fields[id],
+        );
+        expect(beside).toBeDefined();
+        state.adventure!.fields[beside!] = {
+          spaceId: beside!,
+          tileInstanceId: "tile_ghost_revealed",
+          slot: 1,
+          location: "empty_field",
+        } as MapFieldState;
+        expect(scoreOf(revealedRotation) - scoreOf(blankRotation!)).toBeGreaterThan(35);
+      }
+    } finally {
+      delete allTileDefinitions[testDefId];
+    }
   });
 });
 

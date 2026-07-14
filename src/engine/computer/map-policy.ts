@@ -3,10 +3,12 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 import { cardLibrary } from "@/data/cards/library";
 import { locationDefinitions, TRADE_RATES } from "@/data/map/locations";
 import { allTileDefinitions } from "@/data/map/tiles";
+import { hasInternalBorder } from "@/data/map/borders";
 import {
   canHeroReachPlacedTile,
   getAdjacentSpaceIds,
   getUnitSide,
+  isOuterEdgeSealed,
   neutralBattleLevel,
   playerHasPlaceableFarTile,
 } from "../adventure";
@@ -557,6 +559,124 @@ function explorationActionScore(
 }
 
 /**
+ * How many other slots of the tile a hero ENTERING at `entrySlot` can go on to
+ * reach walking only inside the tile: blocked fields are walls, printed
+ * internal borders block their edge, guards are fought through (a payoff, not
+ * a wall). Pure def geometry — the slot adjacency of the 7-hex flower is the
+ * same under every rotation — so it is computed once per candidate entrance.
+ */
+function tileSlotOnwardReach(tileDefId: string, entrySlot: number): number {
+  const def = allTileDefinitions[tileDefId];
+  if (!def) {
+    return 0;
+  }
+  const cells = tileFootprint({ row: 8, col: 8 }, 0).map((cell) =>
+    hexSpaceId(cell),
+  );
+  const passable = (slot: number): boolean => {
+    const field = def.fields[slot];
+    return Boolean(
+      field && locationDefinitions[field.location]?.category !== "blocked",
+    );
+  };
+  if (!passable(entrySlot)) {
+    return 0;
+  }
+  const reached = new Set<number>([entrySlot]);
+  const queue = [entrySlot];
+  while (queue.length > 0) {
+    const slot = queue.pop()!;
+    const neighbors = new Set(getAdjacentSpaceIds(cells[slot]));
+    for (let other = 0; other < cells.length; other += 1) {
+      if (
+        reached.has(other) ||
+        !neighbors.has(cells[other]) ||
+        !passable(other) ||
+        hasInternalBorder(def, slot, other)
+      ) {
+        continue;
+      }
+      reached.add(other);
+      queue.push(other);
+    }
+  }
+  return reached.size;
+}
+
+/**
+ * How many DOORWAYS a rotation leaves open around the new tile: non-blocked
+ * ring slots whose printed outer arc is open, facing (a) already-revealed
+ * walkable land — connections that keep the route alive — and (b) a
+ * still-face-down tile's footprint — future expansion (a face-down tile
+ * covers the same 7 cells at every rotation, so its ground is known before it
+ * flips). A rotation that turns every remaining open arc against rock or
+ * blocked neighbors makes the tile a dead end even when its own entrance is
+ * fine — the classic "the AI walled itself in" pick. Also the ONLY
+ * rotation-sensitive signal for the round-1 home-tile rotation (the hero
+ * stands on the rotation-invariant center, so entrance grading cancels out).
+ */
+function tileRotationDoorwayScore(
+  state: GameState,
+  tile: MapTileState,
+  rotation: number,
+): number {
+  const adventure = state.adventure;
+  const def = allTileDefinitions[tile.tileDefId];
+  if (!adventure || !def) {
+    return 0;
+  }
+  const center = { row: tile.centerRow, col: tile.centerCol };
+  const cells = tileFootprint(center, rotation).map((cell) => hexSpaceId(cell));
+  const inTile = new Set(cells);
+  const faceDownCells = new Set<string>();
+  for (const other of Object.values(adventure.tiles)) {
+    if (!other.faceDown || other.id === tile.id) {
+      continue;
+    }
+    for (const cell of tileFootprint(
+      { row: other.centerRow, col: other.centerCol },
+      0,
+    )) {
+      faceDownCells.add(hexSpaceId(cell));
+    }
+  }
+
+  let revealedDoorways = 0;
+  let frontierDoorways = 0;
+  for (let slot = 1; slot <= 6; slot += 1) {
+    const field = def.fields[slot];
+    if (
+      !field ||
+      locationDefinitions[field.location]?.category === "blocked" ||
+      def.outerImpassable[slot - 1]
+    ) {
+      continue;
+    }
+    let revealed = false;
+    let frontier = false;
+    for (const neighborId of getAdjacentSpaceIds(cells[slot])) {
+      if (inTile.has(neighborId)) {
+        continue;
+      }
+      const neighborField = adventure.fields[neighborId];
+      if (neighborField) {
+        if (
+          locationDefinitions[neighborField.location]?.category !== "blocked" &&
+          !isOuterEdgeSealed(adventure, neighborField)
+        ) {
+          revealed = true;
+        }
+      } else if (faceDownCells.has(neighborId)) {
+        frontier = true;
+      }
+    }
+    if (revealed) revealedDoorways += 1;
+    if (frontier) frontierDoorways += 1;
+  }
+  return Math.min(3, revealedDoorways) * 9 + Math.min(3, frontierDoorways) * 6;
+}
+
+/**
  * Grade how good a tile rotation is as an ENTRANCE for the placing/revealing
  * hero. `tileRotationScore` already prefers any rotation the hero can reach; this
  * refines the choice so the AI rotates the *easiest usable* field toward the hero
@@ -619,6 +739,15 @@ function tileHeroEntryScore(
       } else if (difficulty > battleLevel) {
         entry -= 80 + (difficulty - battleLevel) * 15;
       }
+      // Onward mobility THROUGH this entrance: an entrance walled into a
+      // pocket (blocked fields / printed internal borders isolate it) strands
+      // the hero on arrival — sink it below every connected entrance, even a
+      // beatable-guard one. A broader open interior wins close calls.
+      const onward = tileSlotOnwardReach(tile.tileDefId, slot);
+      entry += Math.min(12, (onward - 1) * 3);
+      if (onward <= 1) {
+        entry -= 60;
+      }
       bestEntry = Math.max(bestEntry, entry);
     }
   }
@@ -678,6 +807,10 @@ function tileRotationScore(
   }
 
   score += tileHeroEntryScore(observation, state, tile, action.rotation);
+  // Keep the tile's OTHER arcs useful too: more open doorways onto revealed
+  // land / future tiles means the hero can leave again and keep expanding —
+  // never rotate yourself into a dead end when an equal entrance avoids it.
+  score += tileRotationDoorwayScore(state, tile, action.rotation);
 
   // Stable preference among equal scores (lower rotation when all equal).
   score += (6 - action.rotation) * 0.01;
