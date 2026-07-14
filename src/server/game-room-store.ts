@@ -15,6 +15,7 @@ import {
   ensureUniqueArmyUnitIds,
   freshEntropy,
   isPrivateSinglePlayer,
+  isSinglePlayerRoomId,
   MAX_ROOM_NAME_LENGTH,
   resetVoteAuthorizes,
   resetVoteRequired,
@@ -228,6 +229,16 @@ function makeRoom(roomId: string, options: RoomCreateOptions = {}): GameRoomReco
   const seed = `room-${roomId}-${nonce}`;
   const mode = options.mode ?? "adventure";
 
+  // An `sp-` room id is minted ONLY for single-player, so default a room with
+  // that id to single-player even when the caller passed no sessionMode (a bare
+  // snapshot/action request that auto-creates the room). Without this such a
+  // room would be born as a public, listed multiplayer lobby — flooding the
+  // directory with what should be an invisible private game.
+  const sessionMode =
+    options.sessionMode ?? (isSinglePlayerRoomId(roomId) ? "single-player" : undefined);
+  const computerOpponents =
+    options.computerOpponents ?? (sessionMode === "single-player" ? 1 : undefined);
+
   const now = new Date().toISOString();
   const state =
     mode === "combat-sandbox"
@@ -238,21 +249,21 @@ function makeRoom(roomId: string, options: RoomCreateOptions = {}): GameRoomReco
             difficulty: options.difficulty,
             scenarioId: options.scenarioId,
             players: options.players,
-            sessionMode: options.sessionMode,
-            computerOpponents: options.computerOpponents
+            sessionMode,
+            computerOpponents
           })
         : // New adventure rooms open in the map-setup lobby: players pick
           // factions and heroes, then the scenario map builds itself.
-          createAdventureLobbyState({ seed, scenarioId: options.scenarioId, sessionMode: options.sessionMode,
-            computerOpponents: options.computerOpponents });
+          createAdventureLobbyState({ seed, scenarioId: options.scenarioId, sessionMode,
+            computerOpponents });
 
   // A name and/or match type chosen at creation seeds a room membership record
   // so the lobby shows them before anyone joins; JOIN_ROOM then fills in
   // members. Hosting is applied by the creator via SET_ROOM_HOSTED after join
   // (seeding hosted:true with no hostClientId would strand the room).
   const name = options.name?.trim().slice(0, MAX_ROOM_NAME_LENGTH);
-  if (name || options.ranked !== undefined || options.sessionMode === "single-player") {
-    const singlePlayer = options.sessionMode === "single-player";
+  if (name || options.ranked !== undefined || sessionMode === "single-player") {
+    const singlePlayer = sessionMode === "single-player";
     state.room = {
       hosted: singlePlayer,
       hostClientId: null,
@@ -1013,7 +1024,17 @@ export function listRooms(viewerClientId?: string): RoomDirectoryEntry[] {
 
   const entries: RoomDirectoryEntry[] = [];
   for (const record of records.values()) {
-    if (isPrivateSinglePlayer(record.state)) continue;
+    if (isPrivateSinglePlayer(record.state)) {
+      // Private single-player rooms are never listed, but they must still be
+      // garbage-collected when abandoned — otherwise a client that spins up many
+      // single-player games leaks room records that the cap deliberately never
+      // touches. Prune them on the same idle-TTL as public rooms.
+      if (isStaleRoom(record)) {
+        roomStore.delete(record.roomId);
+        deletePersistedRoom(record.roomId);
+      }
+      continue;
+    }
     if (isStaleRoom(record)) {
       // Garbage-collect the abandoned room as we list.
       roomStore.delete(record.roomId);

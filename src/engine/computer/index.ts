@@ -6,6 +6,7 @@ export {
   humanPlayerIdsByController,
   isComputerPlayer,
   isPrivateSinglePlayer,
+  isSinglePlayerRoomId,
   sessionModeOf,
   standardComputerController,
 } from "./control";

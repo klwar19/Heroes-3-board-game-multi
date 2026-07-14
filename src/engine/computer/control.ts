@@ -108,3 +108,23 @@ export function isPrivateSinglePlayer(state: GameState): boolean {
     state.room?.visibility === "private"
   );
 }
+
+/**
+ * The id prefix minted for a private single-player game (see
+ * `createSinglePlayerRoom` in src/lib/realtime.ts). It is produced ONLY there,
+ * so the prefix is a reliable single-player signal in its own right.
+ */
+export const SINGLE_PLAYER_ROOM_PREFIX = "sp-";
+
+/**
+ * True when a roomId was minted for a single-player game. Used as a FALLBACK
+ * single-player signal so a room that comes into being WITHOUT the
+ * `?singlePlayer=` creation marker — the marker is read from `localStorage`, so
+ * it is absent when storage is blocked/cleared, when an `sp-` link is opened in
+ * a fresh browser, or when the room is auto-created by a bare snapshot/action
+ * request — still becomes a PRIVATE single-player room rather than a public,
+ * listed multiplayer lobby room that would flood the directory.
+ */
+export function isSinglePlayerRoomId(roomId: string | undefined | null): boolean {
+  return typeof roomId === "string" && roomId.startsWith(SINGLE_PLAYER_ROOM_PREFIX);
+}

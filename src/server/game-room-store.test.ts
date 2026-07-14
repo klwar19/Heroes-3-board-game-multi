@@ -1178,3 +1178,68 @@ describe("per-account room cap (auto-delete surplus)", () => {
     expect(survivors).toHaveLength(MAX_ROOMS_PER_ACCOUNT + 2);
   });
 });
+
+describe("single-player rooms cannot flood the public lobby", () => {
+  const spId = (name: string) => `sp-${name}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+
+  it("an sp- room id auto-creates PRIVATE single-player, even with no sessionMode passed", () => {
+    // Gap B: a bare snapshot/action request for an sp- id auto-creates the room
+    // via makeRoom with no options. Without the id-prefix default it would be
+    // born as a PUBLIC listed lobby; it must instead be private single-player.
+    const roomId = spId("autocreate");
+    const snapshot = getRoomSnapshot(roomId); // triggers getRoomRecord → makeRoom(roomId)
+    expect(snapshot.state.sessionMode).toBe("single-player");
+    expect(snapshot.state.room?.visibility).toBe("private");
+    // CONTROL: a normal room id auto-creates a public multiplayer lobby (no mode).
+    const normal = getRoomSnapshot(uniqueRoom("normalauto"));
+    expect(normal.state.sessionMode).not.toBe("single-player");
+  });
+
+  it("many single-player rooms never appear in the directory and are never capped", () => {
+    const ids: string[] = [];
+    for (let index = 0; index < MAX_ROOMS_PER_ACCOUNT + 5; index += 1) {
+      const roomId = spId(`flood${index}`);
+      createRoom({ roomId, sessionMode: "single-player", computerOpponents: 2 });
+      ids.push(roomId);
+    }
+    enforceRoomCaps();
+    // None list (private), and none was force-closed by the cap (all still exist).
+    expect(listRooms().filter((entry) => ids.includes(entry.roomId))).toHaveLength(0);
+    for (const roomId of ids) {
+      expect(getRoomSnapshot(roomId).state.sessionMode).toBe("single-player");
+    }
+  });
+
+  it("an ABANDONED single-player room is garbage-collected on the idle TTL (Gap A)", () => {
+    if (!existsSync(persistDir)) {
+      mkdirSync(persistDir, { recursive: true });
+    }
+    // A stale single-player room persisted long ago — the cap never touches it,
+    // so without the SP idle-prune it would linger forever as a leaked record.
+    const staleId = spId("stale");
+    const staleState = createAdventureLobbyState({ seed: `sp-stale-${staleId}` });
+    staleState.sessionMode = "single-player";
+    staleState.room = { hosted: true, hostClientId: null, members: [], visibility: "private", ranked: false };
+    const staleAgeMs = Date.now() - (STALE_ROOM_TTL_MS + 60_000);
+    writeFileSync(
+      join(persistDir, `${staleId}.json`),
+      JSON.stringify({
+        roomId: staleId,
+        version: 3,
+        createdAt: new Date(staleAgeMs).toISOString(),
+        updatedAt: new Date(staleAgeMs).toISOString(),
+        state: staleState
+      })
+    );
+    // A CONTROL fresh single-player room persisted just now must survive.
+    const freshId = spId("fresh");
+    createRoom({ roomId: freshId, sessionMode: "single-player", computerOpponents: 1 });
+
+    listRooms(); // the sweep runs here
+
+    // The stale SP room's record is gone from disk; the fresh one remains.
+    expect(existsSync(join(persistDir, `${staleId}.json`))).toBe(false);
+    expect(existsSync(join(persistDir, `${freshId}.json`))).toBe(true);
+    unlinkSync(join(persistDir, `${freshId}.json`));
+  });
+});

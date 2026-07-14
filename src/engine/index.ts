@@ -178,6 +178,7 @@ export {
   humanPlayerIdsByController,
   isComputerPlayer,
   isPrivateSinglePlayer,
+  isSinglePlayerRoomId,
   legalityMatchKey,
   noteComputerAction,
   observeForComputer,
