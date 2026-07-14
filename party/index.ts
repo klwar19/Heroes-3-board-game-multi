@@ -31,7 +31,7 @@ import {
   settleComputerForLiveAction,
   settleComputerVisibleStep,
 } from "@/server/computer-runner";
-import { deriveLobbyRecord, lobbyRecordSignature, LOBBY_SINGLETON_ID } from "@/server/lobby-registry";
+import { deriveLobbyRecord, lobbyRecordSignature, lobbyReportIsDue, LOBBY_SINGLETON_ID } from "@/server/lobby-registry";
 import { detectFinishedMatch } from "@/server/match-report";
 import { httpTokenVerifier, memoizeVerifier, type TokenVerifier } from "@/server/verified-actor";
 
@@ -397,13 +397,18 @@ export default class GameRoomServer implements Party.Server {
 
   /** Directory-record signature last reported to the lobby (skip-if-unchanged). */
   private lastReportedSignature: string | null = null;
+  /** `updatedAt` of the last record reported (for the throttled activity refresh). */
+  private lastReportedAt: string | null = null;
 
   /**
    * Report this room to the lobby Durable Object so it shows up in (and updates
-   * within) the room browser. Only fires when a directory-relevant field
-   * changed since the last report, so ordinary game actions don't spam the
-   * lobby. Best-effort: a failed report is retried on the next change, and a
-   * missing lobby party (e.g. local single-room dev) is simply a no-op.
+   * within) the room browser. Fires when a directory-relevant field changed OR
+   * — while the room is still being played — when the last report's stamp has
+   * aged past the activity-refresh interval (see {@link lobbyReportIsDue}), so
+   * ordinary game actions don't spam the lobby yet an active game keeps a fresh
+   * `updatedAt` and is never idle-pruned mid-game. Best-effort: a failed report
+   * is retried on the next change, and a missing lobby party (e.g. local
+   * single-room dev) is simply a no-op.
    */
   private async reportToLobby(): Promise<void> {
     const snapshot = this.snapshot;
@@ -423,10 +428,11 @@ export default class GameRoomServer implements Party.Server {
       createdByName: snapshot.createdByName ?? null
     });
     const signature = lobbyRecordSignature(record);
-    if (signature === this.lastReportedSignature) {
+    if (!lobbyReportIsDue(this.lastReportedSignature, signature, this.lastReportedAt, snapshot.updatedAt)) {
       return;
     }
     this.lastReportedSignature = signature;
+    this.lastReportedAt = snapshot.updatedAt;
     try {
       await lobby.get(LOBBY_SINGLETON_ID).fetch({
         method: "POST",
@@ -436,6 +442,7 @@ export default class GameRoomServer implements Party.Server {
     } catch {
       // Let the next change retry rather than going permanently silent.
       this.lastReportedSignature = null;
+      this.lastReportedAt = null;
     }
   }
 
@@ -443,6 +450,7 @@ export default class GameRoomServer implements Party.Server {
   private async deregisterFromLobby(): Promise<void> {
     const lobby = this.room.context?.parties?.lobby;
     this.lastReportedSignature = null;
+    this.lastReportedAt = null;
     if (!lobby) {
       return;
     }
