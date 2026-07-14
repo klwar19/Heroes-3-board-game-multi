@@ -78,8 +78,11 @@ describe("Visitable fields: every visit drops a black cube", () => {
     expect(genericVisitable.length).toBeGreaterThan(20);
     // Incantation is the paid shrine (3 gold); Gesture is free. (Gesture must
     // NOT appear here — that was the bug where the costs were swapped.)
+    // factory_grave is the Factory rulebook Grave (optional pay 1 valuables →
+    // Search(2) Artifacts + morale), a one-time pay-to visitable that still
+    // drops its cube on visit.
     expect(payToVisitable.map((loc) => loc.id).sort()).toEqual(
-      ["shrine_of_magic_incantation", "tree_of_knowledge", "university"].sort()
+      ["factory_grave", "shrine_of_magic_incantation", "tree_of_knowledge", "university"].sort()
     );
   });
 

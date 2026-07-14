@@ -602,6 +602,133 @@ export const locationDefinitions: Record<string, LocationDefinition> = {
     implementationStatus: "implemented",
     source: source("artifact_dig")
   },
+
+  // --- Factory expansion (locations from the Factory rulebook p.7–8) ---------
+  // Cross-checked against the Factory rulebook art: Derrick / Prospector /
+  // Warlock's Lab / Grave / Watering Hole / Trailblazer / Airship Yard. Timed-
+  // event aliases (Derrick≡Water Wheel, Prospector≡Windmill) are documented
+  // in the definitions; the engine effects match those equivalents.
+  derrick: {
+    id: "derrick",
+    name: "Derrick",
+    category: "visitable",
+    // Factory rulebook: Gain 3 gold. For timed events, treat as a Water Wheel.
+    interaction: { type: "GAIN_RESOURCES", gold: 3 },
+    implementationStatus: "implemented",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
+      credit: "Factory rulebook p.7 — Gain 3 gold; treat as Water Wheel for timed events.",
+      url: "https://raw.githubusercontent.com/qwrtln/Homm3BG-FactoryRulebook-build-artifacts/en/main_en.pdf"
+    }
+  },
+  prospector: {
+    id: "prospector",
+    name: "Prospector",
+    category: "visitable",
+    // Factory rulebook: Gain 1 valuables. For timed events, treat as a Windmill.
+    interaction: { type: "GAIN_RESOURCES", valuables: 1 },
+    implementationStatus: "implemented",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
+      credit: "Factory rulebook p.7 — Gain 1 valuables; treat as Windmill for timed events.",
+      url: "https://raw.githubusercontent.com/qwrtln/Homm3BG-FactoryRulebook-build-artifacts/en/main_en.pdf"
+    }
+  },
+  warlock_lab: {
+    id: "warlock_lab",
+    name: "Warlock's Lab",
+    category: "visitable",
+    // Factory rulebook: Remove 1 card from your hand to gain 1 valuables.
+    interaction: {
+      type: "REMOVE_HAND_CARD",
+      prompt: "Warlock's Lab: remove a card from hand to gain 1 valuables",
+      filter: "any",
+      then: "gain-valuables"
+    },
+    implementationStatus: "implemented",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
+      credit: "Factory rulebook p.7 — Remove 1 card from hand to gain 1 valuables.",
+      url: "https://raw.githubusercontent.com/qwrtln/Homm3BG-FactoryRulebook-build-artifacts/en/main_en.pdf"
+    }
+  },
+  factory_grave: {
+    id: "factory_grave",
+    name: "Grave",
+    category: "visitable",
+    // Factory rulebook p.7 (distinct from the Cove/wiki Grave): optional pay 1
+    // valuables → Search(2) Artifacts and gain positive morale. Cove tiles keep
+    // the separate `grave` id (negative morale + 3 gold + Search(1)).
+    interaction: {
+      type: "PAY_TO",
+      costOptions: [{ valuables: 1 }],
+      interaction: {
+        type: "SEQUENCE",
+        interactions: [
+          { type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: 2 },
+          { type: "GAIN_MORALE", amount: 1 }
+        ]
+      }
+    },
+    implementationStatus: "implemented",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
+      credit: "Factory rulebook p.7 — You may pay 1 valuables to Search(2) Artifacts and gain positive morale.",
+      url: "https://raw.githubusercontent.com/qwrtln/Homm3BG-FactoryRulebook-build-artifacts/en/main_en.pdf"
+    }
+  },
+  watering_hole: {
+    id: "watering_hole",
+    name: "Watering Hole",
+    category: "revisitable",
+    // Factory rulebook p.8: end movement this turn; next turn gain +1 movement
+    // for that turn only.
+    interaction: { type: "WATERING_HOLE" },
+    implementationStatus: "implemented",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
+      credit: "Factory rulebook p.8 — Immediately end your turn upon landing; next turn gain +1 movement for one turn.",
+      url: "https://raw.githubusercontent.com/qwrtln/Homm3BG-FactoryRulebook-build-artifacts/en/main_en.pdf"
+    }
+  },
+  trailblazer: {
+    id: "trailblazer",
+    name: "Trailblazer",
+    category: "revisitable",
+    // Factory rulebook p.8: Gain 1 movement. It lasts for only one Turn.
+    // (Same mechanical effect as Stables; the teepee art is Trailblazer, not Stables.)
+    interaction: { type: "GAIN_MOVEMENT", amount: 1 },
+    implementationStatus: "implemented",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
+      credit: "Factory rulebook p.8 — Gain 1 movement for one turn (teepee art).",
+      url: "https://raw.githubusercontent.com/qwrtln/Homm3BG-FactoryRulebook-build-artifacts/en/main_en.pdf"
+    }
+  },
+  airship_yard: {
+    id: "airship_yard",
+    name: "Airship Yard",
+    category: "revisitable",
+    // Factory rulebook p.8: pay 3 gold → gain 2 movement; this turn may move
+    // through blocked fields (never end movement on them).
+    interaction: {
+      type: "PAY_TO",
+      costOptions: [{ gold: 3 }],
+      interaction: {
+        type: "SEQUENCE",
+        interactions: [
+          { type: "GAIN_MOVEMENT", amount: 2 },
+          { type: "GRANT_MOVE_THROUGH" }
+        ]
+      }
+    },
+    implementationStatus: "implemented",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
+      credit: "Factory rulebook p.8 — Pay 3 gold to gain 2 movement and move through blocked fields this turn.",
+      url: "https://raw.githubusercontent.com/qwrtln/Homm3BG-FactoryRulebook-build-artifacts/en/main_en.pdf"
+    }
+  },
   tavern: {
     id: "tavern",
     name: "Tavern",
