@@ -72,6 +72,10 @@ export function useHelperCoachPreference(): {
   const [preference, setPreferenceState] = useState<HelperCoachPreference | null>(null);
   const [ready, setReady] = useState(false);
 
+  // Hydrate from localStorage on mount (SSR renders the default, the client
+  // adopts the stored preference), mirroring the other browser-preference
+  // hooks in this repo (chat-panel, welcome-notice, room-browser).
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     setPreferenceState(readRaw());
     setReady(true);
@@ -90,6 +94,7 @@ export function useHelperCoachPreference(): {
       window.removeEventListener(CHANGE_EVENT, onLocal);
     };
   }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const setPreference = useCallback((value: HelperCoachPreference) => {
     setHelperCoachPreference(value);
