@@ -105,6 +105,24 @@ default branch (`main`) takes effect there.** Keep this file committed on `main`
 Nested `CLAUDE.md` files in subdirectories are also loaded when working in those
 folders; per-user `~/.claude/CLAUDE.md` does **not** persist on the web.
 
+## Static media & CDN (how art/sound/font files ship)
+
+`public/` in git is the source of truth; production serves media from the
+Cloudflare R2 CDN at `https://cdn.hamthefirt.xyz` (runbook + live status:
+`docs/cloudflare-custom-domain-cdn-plan.md`). What an AI contributor must know:
+
+- **Adding/replacing a file under `public/assets|sounds|fonts` is enough** —
+  `.github/workflows/sync-media-r2.yml` auto-uploads on every push (branches:
+  new keys only, so previews work; `main`: full sync + cache purge). Never
+  hand-edit the bucket; manual fallback is `npm run sync:assets`.
+- Code referencing media MUST go through `assetUrl()` (`src/lib/asset-url.ts`)
+  — a raw `/assets/…` literal in a consumption position fails
+  `src/lib/asset-url-coverage.test.ts`. `globals.css` url() refs are covered
+  by the `next.config.ts` CDN redirects instead (`src/lib/asset-cdn.ts`).
+- `partykit.json`'s `HOMM3BG_APP_URL` (canonical: `https://hamthefirt.xyz`)
+  must stay in lockstep with the `HOMM3BG_APP_URL` GitHub Actions secret —
+  the secret OVERRIDES the json at deploy time.
+
 ## Current known stubs (display-only, NOT implemented)
 
 Most items this list previously named (the Tower hold-outs) have since been

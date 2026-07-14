@@ -14,7 +14,8 @@
     "typecheck": "tsc --noEmit",
     "render:maps": "vitest run --config vitest.render.config.ts",
     "deploy:partykit": "partykit deploy",
-    "sync:assets": "scripts/sync-assets-to-r2.sh"
+    "sync:assets": "scripts/sync-assets-to-r2.sh",
+    "setup:r2-cors": "node scripts/setup-r2-cors.mjs"
   },
   "dependencies": {
     "lucide-react": "1.17.0",

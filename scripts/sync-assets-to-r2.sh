@@ -4,7 +4,13 @@
 #
 #   public/assets  ->  <bucket>/assets/**
 #   public/sounds  ->  <bucket>/sounds/**
+#   public/fonts   ->  <bucket>/fonts/**   (fonts need bucket CORS: run
+#                                           `npm run setup:r2-cors` once)
 #   plus a tiny /cdn-check.txt health object for the smoke test.
+#
+# Runs automatically on every push to main that touches public/ media
+# (.github/workflows/sync-media-r2.yml), so merged art/sounds/fonts appear on
+# the CDN with no manual step; this script stays the manual/local path.
 #
 # Copy-only (never deletes remote objects), idempotent (re-runs transfer only
 # changed files), stamps Cache-Control on every object, and lets rclone detect
@@ -67,6 +73,9 @@ rclone copy public/assets "r2:${BUCKET}/assets" "${COMMON_FLAGS[@]}"
 echo "== Syncing public/sounds -> r2:${BUCKET}/sounds"
 rclone copy public/sounds "r2:${BUCKET}/sounds" "${COMMON_FLAGS[@]}"
 
+echo "== Syncing public/fonts -> r2:${BUCKET}/fonts (CORS-mode loads — see setup-r2-cors.mjs)"
+rclone copy public/fonts "r2:${BUCKET}/fonts" "${COMMON_FLAGS[@]}"
+
 echo "== Uploading /cdn-check.txt health object"
 printf 'heroes3 cdn ok — synced %s from %s\n' \
   "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
@@ -77,8 +86,9 @@ printf 'heroes3 cdn ok — synced %s from %s\n' \
 
 echo
 echo "Done. Verify from the CDN domain (Phase 7.4 of the plan doc):"
-HOST="${R2_PUBLIC_DOMAIN:-cdn.<your-domain>}"
+HOST="${R2_PUBLIC_DOMAIN:-cdn.hamthefirt.xyz}"
 echo "  curl -sI https://${HOST}/cdn-check.txt"
 echo "  curl -sI https://${HOST}/assets/ui/map-backdrop.jpg     # 200 + image/jpeg + cache-control"
 echo "  curl -sI https://${HOST}/assets/ui/map-backdrop.jpg | grep -i cf-cache-status   # 2nd hit: HIT"
 echo "  curl -sI https://${HOST}/sounds/manifest.json"
+echo "  curl -sI -H 'Origin: https://hamthefirt.xyz' https://${HOST}/fonts/LiberationSerif-Regular.ttf | grep -i access-control   # CORS for @font-face"

@@ -1,6 +1,26 @@
 import type { NextConfig } from "next";
 
+import { assetRedirects, resolveAssetBaseUrl } from "./src/lib/asset-cdn";
+
+// One resolved value feeds BOTH the client bundle (env below) and the
+// redirect table, so they can never disagree. Explicit env var wins;
+// Vercel previews default to the canonical CDN; everything else is
+// same-origin. See src/lib/asset-cdn.ts.
+const assetBaseUrl = resolveAssetBaseUrl(process.env);
+
 const nextConfig: NextConfig = {
+  env: {
+    NEXT_PUBLIC_ASSET_BASE_URL: assetBaseUrl
+  },
+  // Send same-origin /assets|/sounds(/fonts) requests to the CDN. Next matches
+  // redirects before the public/ filesystem, so this covers globals.css url()
+  // refs and any stray raw literal; assetUrl() call sites already emit
+  // absolute CDN URLs and never take this hop. Empty when assets are
+  // same-origin (env var unset / "same-origin"), i.e. zero behaviour change
+  // for local dev and CI.
+  async redirects() {
+    return assetRedirects(assetBaseUrl);
+  },
   // The room API routes import src/server/game-room-store.ts, which persists rooms
   // with runtime fs reads/writes against a dynamic path (HOMM3BG_ROOM_DIR env var,
   // falling back to the OS temp dir). Next.js's file tracer cannot statically resolve

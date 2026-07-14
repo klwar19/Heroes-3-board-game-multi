@@ -12,31 +12,90 @@ R2 behind **your own domain**, so that
   `*.vercel.app`, and
 - live multiplayer (PartyKit WebSockets) is untouched.
 
-Honest status first — what is already done vs. NOT done:
+## Live rollout status — `hamthefirt.xyz` (verified 2026-07-14)
 
-- **DONE (in repo)**: every JS/TS-rendered image, sprite sheet, CSS-in-JS
-  background and sound routes through `assetUrl()`
-  (`src/lib/asset-url.ts`) — 182 call sites. Flipping ONE env var
-  (`NEXT_PUBLIC_ASSET_BASE_URL`) redirects all of it. Covered by
-  `src/lib/asset-url.test.ts` and the raw-literal regression guard in
+The domain is live: `hamthefirt.xyz` + `cdn.hamthefirt.xyz`. Leading with what
+does **NOT** work / still needs a hand in a dashboard:
+
+- **Always Use HTTPS is OFF** (Phase 4.2 was skipped after the zone went
+  Active): `curl -sv http://cdn.hamthefirt.xyz/cdn-check.txt` returns `200 OK`
+  from Cloudflare (`server: cloudflare`, a `cf-ray`) instead of a 301 to
+  https. Fix (dashboard, 1 min): zone → SSL/TLS → Edge Certificates →
+  **Always Use HTTPS: On**; while there confirm SSL/TLS mode is
+  **Full (strict)** — the mode is origin-side and cannot be probed from
+  outside, so it must be eyeballed once.
+- **The edge cache rule is NOT taking effect**: every request to
+  `cdn.hamthefirt.xyz` answers `cf-cache-status: DYNAMIC` (files serve fine,
+  but every hit goes back to R2 — no `MISS`→`HIT`). R2 custom-domain traffic
+  is only edge-cached once a Cache Rule marks it *Eligible for cache*. Fix
+  (dashboard, Phase 6.1): zone → Caching → Cache Rules → Create — When
+  `Hostname equals cdn.hamthefirt.xyz` → **Eligible for cache**, Edge TTL
+  *Override origin* 30 days, Browser TTL *Respect origin*. Verify with two
+  `curl -sI https://cdn.hamthefirt.xyz/assets/ui/map-backdrop.jpg | grep -i
+  cf-cache-status` — first `MISS`, second `HIT`.
+- **The `HOMM3BG_APP_URL` repository secret must be updated to
+  `https://hamthefirt.xyz`** (GitHub → Settings → Secrets → Actions). The
+  deploy workflow passes that secret as `--var`, which OVERRIDES
+  `partykit.json` — with the secret still on the old vercel.app URL, the next
+  push to `main` would silently point the production edge back at it.
+  (`partykit.json` itself is now canonicalized to `https://hamthefirt.xyz` in
+  git, so `npm run deploy:partykit` from a laptop deploys the right value.)
+- **R2 sync secrets for the auto-upload workflow** (one-time): add
+  `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` repo secrets
+  (same values `npm run sync:assets` uses locally) so
+  `.github/workflows/sync-media-r2.yml` can upload merged media
+  automatically. Optional extras `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ZONE_ID`
+  enable its purge-replaced-URLs step.
+
+Verified working (probed live from this repo):
+
+- `dig NS` → `nero.ns.cloudflare.com` / `selah.ns.cloudflare.com`; zone Active.
+- Apex `hamthefirt.xyz` serves the app from Vercel over grey-cloud (DNS-only)
+  records (A 64.29.17.1 / 216.198.79.1 — Vercel's anycast IPs, not proxied).
+- `cdn.hamthefirt.xyz` serves `/assets/**` + `/sounds/**` + `cdn-check.txt`
+  with the right content types and `cache-control: public, max-age=604800`;
+  HTTP/2 + HTTP/3 (`alt-svc: h3`) enabled.
+- Production is flipped: `NEXT_PUBLIC_ASSET_BASE_URL` is inlined in the live
+  deployment (the page's preconnect tag names the CDN origin).
+
+What is DONE in the repo (each with tests where testable):
+
+- every JS/TS-rendered image, sprite sheet, CSS-in-JS background and sound
+  routes through `assetUrl()` (`src/lib/asset-url.ts`) — 182 call sites,
+  guarded by `src/lib/asset-url.test.ts` + the raw-literal scan in
   `src/lib/asset-url-coverage.test.ts`.
-- **DONE (in repo)**: upload tooling — `npm run sync:assets`
-  (`scripts/sync-assets-to-r2.sh`) uploads `public/assets` + `public/sounds`
-  to the `heroes3` bucket with correct content types and cache headers.
-- **DONE (in repo)**: when the env var is set, the app emits
-  `<link rel="preconnect">` / `dns-prefetch` for the CDN origin
-  (`src/components/asset-preconnect.tsx`), shaving the TLS handshake off the
-  first asset fetch.
-- **NOT done by code and cannot be**: the manual dashboard/registrar steps in
-  Phases 1–6 below (buying the domain, nameserver change, R2 custom domain,
-  Cloudflare cache rule, Vercel env). This document is the runbook for them.
-- **Deliberately NOT migrated**: 23 `url("/assets/…")` backgrounds + 4
-  `@font-face` fonts hard-coded in `src/app/globals.css`. CSS cannot call JS,
-  so these stay on the app origin — which keeps working because `public/`
-  stays deployed to Vercel as a full fallback. They are small UI chrome
-  (leather textures, backdrops, fonts), not the 56 MB of board art. Fonts
-  staying same-origin also sidesteps the `@font-face` cross-origin CORS
-  requirement entirely.
+- **same-origin `/assets`+`/sounds` requests now 307-redirect to the CDN**
+  (`src/lib/asset-cdn.ts` wired into `next.config.ts`; Next matches redirects
+  before the `public/` filesystem). This covers what `assetUrl()` cannot
+  reach: the 23 `url("/assets/…")` backgrounds in `src/app/globals.css` and
+  any future stray literal. `assetUrl()` call sites emit absolute CDN URLs
+  and never pay the hop. Tests: `src/lib/asset-cdn.test.ts`.
+- **Vercel preview deployments default to the CDN** when the env var is unset
+  (`resolveAssetBaseUrl`), closing the previews-stay-same-origin gap;
+  Production remains dashboard-driven so the delete-the-var rollback story is
+  unchanged. The literal value `same-origin` opts any environment back out.
+- **Fonts are staged for the CDN but still same-origin by default**
+  (`CDN_SERVES_FONTS = false` in `src/lib/asset-cdn.ts`): `@font-face` is the
+  one CORS-mode asset load, so `/fonts` joins the redirect list only after
+  the bucket serves fonts WITH a CORS policy — `npm run sync:assets` now
+  uploads `public/fonts`, `npm run setup:r2-cors` (dependency-free SigV4
+  script) writes the bucket CORS policy, and the flag documents the exact
+  verification curl. Until then fonts keep working from the app origin.
+- **Merged media auto-uploads to R2** — `.github/workflows/sync-media-r2.yml`
+  runs on every push that touches `public/assets|sounds|fonts/**`: full
+  checksum sync on `main` (+ optional purge of replaced URLs), new-keys-only
+  (`--ignore-existing`) on branches so previews can see brand-new art while a
+  live production object can never be overwritten from an unmerged branch.
+  No human (or AI) has to remember `npm run sync:assets` again; the script
+  stays as the manual path.
+- when the env var is set, the app emits `<link rel="preconnect">` /
+  `dns-prefetch` for the CDN origin (`src/components/asset-preconnect.tsx`),
+  plus a second `crossorigin` preconnect once fonts move (CORS connection
+  pool is separate).
+
+Still manual by nature: the dashboard/registrar steps in Phases 1–6 below.
+The runbook below keeps the generic `your-domain` placeholders — substitute
+`hamthefirt.xyz`.
 
 ## Target architecture
 
@@ -238,17 +297,20 @@ not a CDN (see `docs/cloudflare-r2-setup.md`).
 
 ## Operations after rollout
 
-- **Art/sound changed in the repo** → run `npm run sync:assets`, then purge:
-  Cloudflare zone → Caching → Purge Cache → *Custom purge* by URL or the
-  `cdn.your-domain.com` hostname (free plan allows hostname/URL purge).
-  Browsers refresh within the 7-day `max-age` on their own; purge only
-  matters when a replaced file must show up immediately.
-- **New assets in a feature branch**: merge first, sync after — the app
-  falls back to nothing if a data file references a key that is not in R2
-  yet and the env var is set, because the browser only asks the CDN. Simple
-  rule: **sync R2 before (or with) every production deploy that adds art.**
-  (Until then the old deploy keeps working — keys are only added, never
-  removed, by the sync script; it does not `--delete` by default.)
+- **Art/sound/font changed in the repo** → nothing to do:
+  `.github/workflows/sync-media-r2.yml` syncs every push touching
+  `public/assets|sounds|fonts/**` and (on `main`, when the Cloudflare API
+  secrets are set) purges the replaced URLs from the edge cache. Manual
+  fallback: `npm run sync:assets`, then Cloudflare zone → Caching → Purge
+  Cache → *Custom purge* by URL (free plan allows URL purge). Browsers
+  refresh within the 7-day `max-age` on their own; purge only matters when a
+  replaced file must show up immediately.
+- **New assets in a feature branch**: the same workflow uploads a branch's
+  NEW keys (`--ignore-existing`) the moment the branch is pushed, so preview
+  deployments — which default to the CDN — see brand-new art immediately. A
+  branch can never overwrite an existing production object; replaced files go
+  live only via the full sync on merge to `main`. (The sync never deletes
+  remote keys.)
 - **Cost watch**: R2 dashboard → usage. Expected: storage ~0.25 GB, ops well
   inside free tier, egress $0 forever.
 - **Source of truth stays `public/` in git.** R2 is a mirror; never hand-edit
