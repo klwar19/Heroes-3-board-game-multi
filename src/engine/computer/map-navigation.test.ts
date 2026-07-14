@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { allTileDefinitions } from "@/data/map/tiles";
+import { locationDefinitions } from "@/data/map/locations";
 import { coreFactionDefinitions } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { createAdventureGameState } from "../adventure-setup";
@@ -7,6 +8,7 @@ import {
   canHeroReachPlacedTile,
   farTilePlacementCenters,
   getAdjacentSpaceIds,
+  isOuterEdgeSealed,
   playerHasPlaceableFarTile,
 } from "../adventure";
 import { hexSpaceId, tileFootprint } from "../hex";
@@ -595,6 +597,136 @@ describe("sticky primary + explore objectives", () => {
   });
 });
 
+describe("current-tile sweep — drain the tile's payoffs before marching on", () => {
+  /**
+   * A walkable off-tile arm: plain fields cloned outward from `root`, then
+   * re-stamped onto a ghost tile instance. An unknown tileInstanceId reads as
+   * unsealed everywhere (isOuterEdgeSealed → false), so as long as the root's
+   * own outer arc is open the whole corridor stays walkable while genuinely
+   * being a DIFFERENT tile from the hero's.
+   */
+  function buildOffTileArm(
+    state: GameState,
+    root: MapSpaceId,
+    length: number,
+  ): MapSpaceId[] {
+    const fields = state.adventure!.fields;
+    const template = fields[root];
+    let cursor: MapSpaceId = root;
+    const arm: MapSpaceId[] = [];
+    while (arm.length < length) {
+      const next = getAdjacentSpaceIds(cursor).find(
+        (id) => !fields[id] && !arm.includes(id),
+      );
+      expect(next, "arm should keep extending into open lattice").toBeDefined();
+      fields[next!] = {
+        ...template,
+        spaceId: next!,
+        location: "empty_field",
+        tileInstanceId: "tile_ghost_offmap",
+        flagOwnerId: null,
+        blackCube: false,
+      };
+      delete fields[next!].difficulty;
+      arm.push(next!);
+      cursor = next!;
+    }
+    return arm;
+  }
+
+  function sweepFixture(): {
+    state: GameState;
+    hero: HeroState;
+    localPayoff: MapSpaceId;
+    distantPrize: MapSpaceId;
+    arm: MapSpaceId[];
+  } {
+    const state = game();
+    const hero = p2Hero(state);
+    hero.level = 1;
+    // Silence the fixture's own payoffs and the enemy hero so the two
+    // hand-placed visitables are the only reachable objectives.
+    state.adventure!.fields[MINE].flagOwnerId = "p2";
+    state.adventure!.fields[MINE].everFlagged = true;
+    delete state.adventure!.fields[MINE].difficulty;
+    // The treasure/resource symbols are VISITABLES — a black cube (already
+    // visited) is what takes them off the objective list.
+    state.adventure!.fields[TREASURE].blackCube = true;
+    delete state.adventure!.fields[TREASURE].difficulty;
+    state.adventure!.fields[RESOURCE].blackCube = true;
+    const enemy = Object.values(state.heroes).find(
+      (candidate) => candidate.controllerId === "p1" && candidate.kind === "main",
+    )!;
+    enemy.spaceId = null;
+
+    // The home tile is rotated at setup, so pick a ring field whose OUTER arc
+    // is genuinely open (S1 seals 4 of its 6 arcs) — the arm must be walkable.
+    // It stays a plain corridor field: a visitable is a "stop" the march BFS
+    // never routes THROUGH, so the payoff goes on a DIFFERENT ring field.
+    const homeTileId = state.adventure!.fields[TOWN].tileInstanceId;
+    const doorway = Object.values(state.adventure!.fields).find(
+      (field) =>
+        field.tileInstanceId === homeTileId &&
+        field.slot !== 0 &&
+        field.location === "empty_field" &&
+        !isOuterEdgeSealed(state.adventure!, field),
+    );
+    expect(doorway, "home tile should have an open empty arc").toBeDefined();
+    const payoffField = Object.values(state.adventure!.fields).find(
+      (field) =>
+        field.tileInstanceId === homeTileId &&
+        field.slot !== 0 &&
+        field.spaceId !== doorway!.spaceId &&
+        field.location === "empty_field",
+    );
+    expect(payoffField, "home tile should have a second empty ring field").toBeDefined();
+
+    const arm = buildOffTileArm(state, doorway!.spaceId, 4);
+    // Local trinket ON the hero's tile (distance 1): plain temple, base 600.
+    // Distant prize OFF the tile (distance 4): Hill Fort, base 670 — the
+    // globally better pick without the sweep bonus (670-72=598 > 600-18=582).
+    payoffField!.location = "temple";
+    state.adventure!.fields[arm[2]].location = "hill_fort";
+    expect(distanceFromHeroTo(state, hero, arm[2])).toBe(4);
+    expect(distanceFromHeroTo(state, hero, payoffField!.spaceId)).toBe(1);
+    return {
+      state,
+      hero,
+      localPayoff: payoffField!.spaceId,
+      distantPrize: arm[2],
+      arm,
+    };
+  }
+
+  it("a same-tile payoff outranks a better prize on another tile", () => {
+    const { state, hero, localPayoff } = sweepFixture();
+    const primary = primaryMapObjective(state, hero);
+    expect(primary?.spaceId).toBe(localPayoff);
+  });
+
+  it("the sweep also overrides a sticky commit to the distant prize", () => {
+    const { state, hero, localPayoff, distantPrize } = sweepFixture();
+    const primary = primaryMapObjective(
+      state,
+      hero,
+      collectMapObjectives(state, hero),
+      distantPrize,
+    );
+    // Without the same-tile bonus the sticky +90 hysteresis would keep the
+    // Hill Fort march (598 + 90 > 582) — the sweep must break the commit.
+    expect(primary?.spaceId).toBe(localPayoff);
+  });
+
+  it("CONTROL: standing on the OTHER tile, the bonus follows the hero", () => {
+    const { state, hero, distantPrize, arm } = sweepFixture();
+    // Same map, hero now stands on the ghost tile: the Hill Fort is the
+    // same-tile payoff and the temple is the off-tile one.
+    hero.spaceId = arm[0];
+    const primary = primaryMapObjective(state, hero);
+    expect(primary?.spaceId).toBe(distantPrize);
+  });
+});
+
 describe("expansion push — open/place Ⅱ–Ⅲ before a long march to a leftover", () => {
   /** Neutralise the home-tile prizes so the fixture controls the payoff set. */
   function clearLocalPrizes(state: GameState): void {
@@ -795,6 +927,13 @@ describe("expansion push — open/place Ⅱ–Ⅲ before a long march to a lefto
       p2: [],
     };
     const corridor = buildCorridor(state, EMPTY, 7);
+    // The leftover payoff lives on ANOTHER arm of the map: re-stamp the
+    // synthetic corridor onto its own tile so the hero-tile sweep bonus (which
+    // rightly favors SAME-tile pickups) stays out of this off-tile comparison.
+    // An unknown tileInstanceId reads as unsealed, so the arm stays walkable.
+    for (const id of corridor) {
+      state.adventure!.fields[id].tileInstanceId = "tile_ghost_leftover_arm";
+    }
     const nearVisitable = corridor[2]; // 4 steps out
     const farGuardField = corridor[6]; // 8 steps out
 
