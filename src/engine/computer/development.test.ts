@@ -139,6 +139,110 @@ describe("computer long-horizon development plan", () => {
     expect(score?.policy).toBe("map.recruit-army");
   });
 
+  it("dwelling-first: a side build that would eat the Silver fund waits", () => {
+    const state = game();
+    establishPacks(state);
+    const citadel = buildingWith(state, (effect) => effect.type === "UNLOCK_REINFORCE");
+    const bronze = buildingWith(
+      state,
+      (effect) => effect.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "bronze",
+    );
+    const town = Object.values(state.towns).find((candidate) => candidate.controllerId === "p2")!;
+    town.buildings = [citadel, bronze];
+    expect(armyDevelopmentProfile(state, "p2").phase).toBe("unlock-silver");
+
+    const side = buildingWith(
+      state,
+      (effect) =>
+        effect.type === "MAGE_GUILD" ||
+        effect.type === "RESOURCE_ROUND_CHOICE" ||
+        effect.type === "RESOURCE_ROUND_SEARCH_DISCARD",
+    );
+    const sideCost = coreBuildingDefinitions[side].cost ?? {};
+    expect(
+      (sideCost.gold ?? 0) +
+        (sideCost.buildingMaterials ?? 0) +
+        (sideCost.valuables ?? 0),
+      "fixture side building must actually cost something",
+    ).toBeGreaterThan(0);
+    const target = developmentResourceTargets(state, "p2");
+    // Treasury EXACTLY covers the dwelling plan — any side spend breaks it.
+    state.players.p2.resources = {
+      gold: target.gold,
+      buildingMaterials: target.buildingMaterials,
+      valuables: target.valuables,
+    };
+    const buildSide: GameAction = {
+      type: "BUILD_STRUCTURE",
+      playerId: "p2",
+      townId: town.id,
+      buildingId: side,
+    } as GameAction;
+    const starved = scoreMapAction(observation(state), buildSide);
+    expect(starved!.score).toBeLessThanOrEqual(280);
+
+    // CONTROL: genuine surplus (fund + the side cost) keeps the build allowed.
+    state.players.p2.resources = {
+      gold: target.gold + (sideCost.gold ?? 0),
+      buildingMaterials: target.buildingMaterials + (sideCost.buildingMaterials ?? 0),
+      valuables: target.valuables + (sideCost.valuables ?? 0),
+    };
+    const flush = scoreMapAction(observation(state), buildSide);
+    expect(flush!.score).toBeGreaterThan(700);
+  });
+
+  it("buys spells only with Wisdom in hand or surplus gold (army funds first)", () => {
+    const state = game();
+    establishPacks(state);
+    const town = Object.values(state.towns).find((candidate) => candidate.controllerId === "p2")!;
+    town.buildings = [
+      buildingWith(state, (effect) => effect.type === "UNLOCK_REINFORCE"),
+      buildingWith(
+        state,
+        (effect) => effect.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "bronze",
+      ),
+      buildingWith(
+        state,
+        (effect) => effect.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "silver",
+      ),
+      buildingWith(
+        state,
+        (effect) => effect.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "gold",
+      ),
+    ];
+    expect(armyDevelopmentProfile(state, "p2").phase).toBe("improve-army");
+    const target = developmentResourceTargets(state, "p2");
+    const buySpells: GameAction = {
+      type: "SPELL_BOOK_ACTION",
+      playerId: "p2",
+    } as GameAction;
+
+    // Gold at the development target, no Wisdom — the purchase waits.
+    state.players.p2.resources = {
+      gold: target.gold,
+      buildingMaterials: 1,
+      valuables: 0,
+    };
+    state.players.p2.hand = [];
+    const tight = scoreMapAction(observation(state), buySpells);
+    expect(tight?.policy).toBe("town.skip-spell-buy-fund-army");
+    expect(tight!.score).toBeLessThan(300);
+
+    // CONTROL: surplus gold funds the Spell Book.
+    state.players.p2.resources.gold = target.gold + 4;
+    const flush = scoreMapAction(observation(state), buySpells);
+    expect(flush?.policy).toBe("town.buy-spells-after-army-core");
+    expect(flush!.score).toBe(620);
+
+    // CONTROL: Wisdom rides along (cheaper buy, bigger Search) — worth it even
+    // on a tight budget.
+    state.players.p2.resources.gold = target.gold;
+    state.players.p2.hand = ["ability.wisdom"];
+    const wise = scoreMapAction(observation(state), buySpells);
+    expect(wise?.policy).toBe("town.buy-spells-after-army-core");
+    expect(wise!.score).toBe(620);
+  });
+
   it("unlocks Silver after three Packs, then Gold after Silver", () => {
     const state = game();
     establishPacks(state);

@@ -117,4 +117,31 @@ describe("refreshComputerMemory / sticky / notes", () => {
     expect(mem.resourceTrail).toEqual([]);
     expect(mem.focus).toBe("balanced");
   });
+
+  it("clears the sticky objective when a combat end is acknowledged", () => {
+    // A LOST fight otherwise leaves the seat committed to the guard that just
+    // beat it — the hero parks beside (or re-enters) the same field instead of
+    // re-planning. Won fights consume their objective anyway, so clearing on
+    // every acknowledge costs only one deterministic re-pick.
+    let state = baseState(3, 12, 4);
+    state = setStickyObjective(state, "p2", "field-guard");
+    state = noteComputerAction(state, "p2", {
+      type: "ACKNOWLEDGE_COMBAT_END",
+      playerId: "p2",
+    } as never);
+    expect(getComputerMemory(state, "p2").stickyObjectiveSpaceId).toBeNull();
+
+    // CONTROL: an ordinary map action keeps the march commitment.
+    state = setStickyObjective(state, "p2", "field-guard");
+    state = noteComputerAction(state, "p2", {
+      type: "MOVE_HERO",
+      playerId: "p2",
+      heroId: "h2",
+      to: "1,3",
+      path: [],
+    } as never);
+    expect(getComputerMemory(state, "p2").stickyObjectiveSpaceId).toBe(
+      "field-guard",
+    );
+  });
 });

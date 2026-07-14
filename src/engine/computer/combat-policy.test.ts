@@ -135,6 +135,61 @@ describe("combat policy — attack target selection", () => {
   });
 });
 
+describe("combat policy — defend the high-value threatened unit", () => {
+  // A (att 5 vs def 6 → 0 damage) pokes for nothing while E's retaliation
+  // (9 − 2 = 7) kills it outright; A's threat value (26) is worth keeping.
+  const highValue = () =>
+    unit({ id: "A", controllerId: "p2", attack: 5, defense: 2, maxHealth: 6, position: 8 });
+  const executioner = () =>
+    unit({ id: "E", attack: 9, defense: 6, maxHealth: 8, position: 9 });
+
+  it("defends a high-value unit instead of a suicidal 0-damage poke", () => {
+    const decision = chooseComputerAction(
+      observation([highValue(), executioner()], [attackOn("A", "E"), defend("A")]),
+    );
+    expect(decision?.action.type).toBe("DEFEND_UNIT");
+    expect(decision?.policy).toBe("combat.defend-high-value");
+  });
+
+  it("CONTROL: a real strike still beats defending", () => {
+    // Same mortal danger, but the attack now lands 2 damage — strike.
+    const hitter = unit({
+      id: "A", controllerId: "p2", attack: 8, defense: 2, maxHealth: 6, position: 8,
+    });
+    const decision = chooseComputerAction(
+      observation([hitter, executioner()], [attackOn("A", "E"), defend("A")]),
+    );
+    expect(decision?.action.type).toBe("ATTACK_UNIT");
+  });
+
+  it("CONTROL: a low-value unit keeps trading rather than turtling", () => {
+    // Same suicidal poke, but the chaff body (threat 17) is not worth a Defend.
+    const chaff = unit({
+      id: "A", controllerId: "p2", attack: 2, defense: 2, maxHealth: 6, position: 8,
+    });
+    const decision = chooseComputerAction(
+      observation([chaff, executioner()], [attackOn("A", "E"), defend("A")]),
+    );
+    expect(decision?.action.type).toBe("ATTACK_UNIT");
+  });
+
+  it("CONTROL: out of reach, the high-value unit is not defense-locked", () => {
+    // The executioner is far away and not ranged — no incoming threat, so the
+    // plain wounded-defend baseline applies (attack at 545+ would still win,
+    // but here only MOVE/DEFEND are offered and closing distance wins).
+    const distantExecutioner = unit({
+      id: "E", attack: 9, defense: 6, maxHealth: 8, position: 3,
+    });
+    const decision = chooseComputerAction(
+      observation(
+        [highValue(), distantExecutioner],
+        [moveTo("A", 9), defend("A")],
+      ),
+    );
+    expect(decision?.action.type).toBe("MOVE_UNIT");
+  });
+});
+
 describe("combat policy — closing distance", () => {
   it("advances toward the enemy when no attack is in reach, but never below a defend", () => {
     // Mover at A1(0), enemy at D1(3), Manhattan distance 3. B1(1) is distance 2

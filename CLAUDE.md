@@ -541,6 +541,33 @@ Leading with what does NOT run (deliberate limits):
   swaps, focus-fire), and a fixed-seed multi-round soak + reconnect suite
   (`single-player-soak.test.ts`) are wired. STILL deferred: hide multiplayer-
   only invite/share affordances on the SP table page; optional nightly long soak.
+- **Expansion tempo, dwelling-first economy, crown & Power discipline,
+  high-value combat trades** — all score-layer heuristics over already-legal
+  actions (the engine rules are untouched, so nothing here can produce an
+  illegal move). Map: the hero collects payoffs within this turn's walking
+  reach first, but when every known payoff is out of reach it flips the
+  face-down tile / places a held Ⅱ–Ⅲ supply tile instead of trekking
+  (`explorationActionScore`); an adjacent doorway also out-values a distant
+  leftover as the MARCH target, harder still when no beatable fight exists
+  anywhere (post-loss recovery — the boost keeps a beaten army expanding
+  instead of parking), and the sticky march objective is cleared on every
+  `ACKNOWLEDGE_COMBAT_END` so a LOST fight forces a fresh plan (pinned in
+  `map-navigation.test.ts` "expansion push …" + `memory.test.ts`). Economy:
+  while saving for the Silver/Gold dwelling, side buildings that would eat the
+  dwelling fund wait (mirror of the recruit treasury guard), and Spell-Book /
+  Magic-University purchases wait for the army core plus Wisdom-in-hand or
+  surplus gold (`development.test.ts`). Cards: the round's LAST crown is never
+  spent on a map convenience (basic twin wins; combat saves/stats/damage still
+  spend it — `expertCrownNudge`); a +1-Power discard on a pending damage cast
+  is paid only when it moves the printed ladder, stops once the hit is lethal,
+  and pays up eagerly when one more Power converts the cast into a removal
+  (`pendingSpellBoostImpact`); damage spells aim by the PRINTED ladder — spell
+  damage is not reduced by Defense — so casts hunt the high-value unit and
+  still finish a dying one (`card-policy.test.ts`, each with CONTROLs).
+  Combat: a high-value unit in lethal reach Defends instead of a suicidal
+  0-damage poke that invites a lethal retaliation (real strikes still always
+  win; chaff keeps trading — `combat-policy.test.ts`). Every claim above is
+  mutation-checked: removing the wiring fails the named test.
 - **Guaranteed first-battle wins (smoothing house rule)**: a computer seat's
   first TWO eligible neutral-guard battles are guaranteed flawless one-round
   wins — at the combat-start chokepoint (`finalizeCombatStart` →
