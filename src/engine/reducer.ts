@@ -165,6 +165,7 @@ import {
   discardPermanentFromPlay,
   discardPermanentVoluntarily,
   discardSchoolPermanentForExpert,
+  elementalTileSpellPowerBonus,
   firstAidVolleyHeals,
   getPermanentCardIds,
   getPermanentSchoolBonus,
@@ -173,6 +174,7 @@ import {
   playerOwnsWarMachine,
   putPermanentIntoPlay,
   resolveWarMachineTarget,
+  schoolScopedStandingPower,
   spendFirstAidExpert,
   startWarMachineRound
 } from "./permanents";
@@ -9903,18 +9905,25 @@ function performSpellCast(state: GameState, action: Extract<GameAction, { type: 
     // basic bonus (+1) for free. If the caster chose, as part of this cast, to
     // discard the permanent for its expert bonus, take +3 instead — decided here
     // up front, so a plain cast just applies the +1 and resolves without popping
-    // a separate expert prompt.
+    // a separate expert prompt. Conflux Elemental terrain (N14–N21) also adds +1
+    // for the SAME school only — baked into schoolPowerBonus so Magic Arrow
+    // (wiki: one school at a time) never stacks Water Magic with a Fire tile.
     if (action.useSchoolExpert) {
       const expert = discardSchoolPermanentForExpert(state, action.playerId, card);
       if (!expert) {
         throw new Error("That spell cannot discard a School of Magic for its expert bonus right now.");
       }
-      stackItem.modifiers.schoolPowerBonus = expert.expertPower;
+      const expertSchool = cardLibrary[expert.cardId]?.permanentEffect?.schoolBonus?.school;
+      const tileBonus =
+        expertSchool && expertSchool !== "any" ? elementalTileSpellPowerBonus(state, expertSchool) : 0;
+      stackItem.modifiers.schoolPowerBonus = expert.expertPower + tileBonus;
       stackItem.modifiers.playedCardIds.push(expert.cardId);
     } else {
-      const schoolBonus = getPermanentSchoolBonus(state, action.playerId, card);
-      if (schoolBonus) {
-        stackItem.modifiers.schoolPowerBonus = schoolBonus.basicPower;
+      // Permanent basic + Elemental tile for the auto-picked school (Magic Arrow)
+      // or the spell's printed school.
+      const standing = schoolScopedStandingPower(state, action.playerId, card);
+      if (standing > 0) {
+        stackItem.modifiers.schoolPowerBonus = standing;
       }
     }
   }

@@ -702,7 +702,13 @@ export function getActivationSpellPowerBoost(unit: CombatUnitState, spellSchools
       return total;
     }
     const { amount, school } = ability.effect;
-    if (school && !(spellSchools ?? []).includes(school)) {
+    // Magic Arrow (spellSchools includes "any") may use any school's Power
+    // bonus (wiki: one school at a time — a single active unit only grants one).
+    if (
+      school &&
+      !(spellSchools ?? []).includes(school) &&
+      !(spellSchools ?? []).includes("any")
+    ) {
       return total;
     }
     return total + amount;

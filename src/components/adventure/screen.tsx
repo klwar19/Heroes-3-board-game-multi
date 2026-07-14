@@ -137,7 +137,12 @@ const TERRAIN_COLORS: Record<string, string> = {
   lava: "#73392c",
   rough: "#977a4e",
   highlands: "#7c8a4e",
-  water: "#2e5d8a"
+  water: "#2e5d8a",
+  // Conflux Elemental Near tiles (N14–N21) — fallback fill when art is off.
+  elemental_fire: "#a04a2a",
+  elemental_water: "#2a6a9a",
+  elemental_air: "#7a9ab8",
+  elemental_earth: "#6a5a3a"
 };
 
 export const LOCATION_GLYPHS: Record<string, string> = {

@@ -430,11 +430,15 @@ export {
   hasUnitAbilityEffect
 } from "./unit-abilities";
 export {
+  combatElementalSchool,
+  elementalTileSpellPowerBonus,
   getPermanentCardIds,
   getPermanentDefinitions,
   getPermanentSchoolBonus,
   permanentHandLimitBonus,
   permanentLimitFor,
+  pickSpellSchoolForPower,
+  schoolScopedStandingPower,
   warMachinesForSale
 } from "./permanents";
 export { describePermanentEffect } from "./effects";
