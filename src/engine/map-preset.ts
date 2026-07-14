@@ -14,6 +14,7 @@
 import { allTileDefinitions } from "@/data/map/tiles";
 import { locationDefinitions } from "@/data/map/locations";
 import type { TileDefinition } from "@/data/map/types";
+import { seaTileBand, subterraneanTileBand } from "./adventure";
 import type {
   CustomMapPreset,
   CustomMapTilePlan,
@@ -26,8 +27,12 @@ import type {
 
 export type { CustomMapPreset };
 
-/** Local match (mirrors adventure-setup) to avoid a circular import. */
-function tileMatchesSecretFeature(def: TileDefinition, feature: SecretTileFeature): boolean {
+/**
+ * CANONICAL Secret-landmark matcher — the single copy the designer counts,
+ * the demand warnings AND the setup draw all share (adventure-setup imports
+ * it from here, so the three consumers can never diverge).
+ */
+export function tileMatchesSecretFeature(def: TileDefinition, feature: SecretTileFeature): boolean {
   switch (feature) {
     case "gold_mine":
       return def.fields.some((field) => field.location === "mine" && field.resource === "gold");
@@ -229,9 +234,15 @@ export function sanitizeCustomMapPreset(input: unknown): CustomMapPreset | undef
     preset.startingProduction = production;
   }
   if (Array.isArray(raw.startingBuildings)) {
-    preset.startingBuildings = raw.startingBuildings
+    // An empty list means "nothing forced", not "force zero buildings" — the
+    // editor deletes empties and applyCustomMapPresetToOptions skips them, so
+    // sanitize keeps the three layers consistent by dropping [] here too.
+    const buildings = raw.startingBuildings
       .filter((id): id is string => typeof id === "string" && BUILDING_SUFFIXES.has(id))
       .slice(0, 12);
+    if (buildings.length > 0) {
+      preset.startingBuildings = buildings;
+    }
   }
   if (raw.startingUnits !== undefined) {
     preset.startingUnits = sanitizeStartingUnits(raw.startingUnits);
@@ -357,81 +368,138 @@ function describeTimedEffect(effect: CustomMapTimedEffect): string {
   return effect.text;
 }
 
-/** Short bullet lines for lobby / designer summary. */
-export function describeCustomMapPreset(preset: CustomMapPreset | null | undefined): string[] {
+/** One condition line with a UI icon tag (designer summary + lobby banner). */
+export type CustomMapPresetEntry = { icon: string; text: string };
+
+/** Icon-tagged bullet entries for lobby / designer summary. */
+export function describeCustomMapPresetEntries(
+  preset: CustomMapPreset | null | undefined
+): CustomMapPresetEntry[] {
   if (!preset || !customMapPresetIsActive(preset)) {
     return [];
   }
-  const lines: string[] = [];
+  const entries: CustomMapPresetEntry[] = [];
   if (preset.victoryMode) {
-    lines.push(`Victory: ${VICTORY_LABELS[preset.victoryMode] ?? preset.victoryMode}`);
+    entries.push({
+      icon: "🏆",
+      text: `Victory: ${VICTORY_LABELS[preset.victoryMode] ?? preset.victoryMode}`
+    });
   }
   if (preset.startingResources) {
-    lines.push(`Starting resources: ${formatResources(preset.startingResources)}`);
+    entries.push({
+      icon: "🪙",
+      text: `Starting resources: ${formatResources(preset.startingResources)}`
+    });
   }
   if (preset.startingProduction) {
-    lines.push(`Income: ${formatResources(preset.startingProduction)}`);
+    entries.push({ icon: "🏭", text: `Income: ${formatResources(preset.startingProduction)}` });
   }
   if (preset.startingBuildings && preset.startingBuildings.length > 0) {
-    lines.push(`Buildings: ${preset.startingBuildings.map((id) => id.replace(/_/g, " ")).join(", ")}`);
+    entries.push({
+      icon: "🏗️",
+      text: `Buildings: ${preset.startingBuildings.map((id) => id.replace(/_/g, " ")).join(", ")}`
+    });
   }
   if (preset.startingUnits) {
-    if (preset.startingUnits.length === 0) {
-      lines.push("Starting army: none");
-    } else {
-      lines.push(
-        `Starting army: ${preset.startingUnits
-          .map((u) => `lv${u.level} ${u.side}`)
-          .join(", ")}`
-      );
-    }
+    entries.push({
+      icon: "⚔️",
+      text:
+        preset.startingUnits.length === 0
+          ? "Starting army: none"
+          : `Starting army: ${preset.startingUnits.map((u) => `lv${u.level} ${u.side}`).join(", ")}`
+    });
   }
   if (preset.startingBonuses && preset.startingBonuses.length > 0) {
-    lines.push(`Start bonus: ${preset.startingBonuses.map(describeBonus).join("; ")}`);
+    entries.push({
+      icon: "🎁",
+      text: `Start bonus: ${preset.startingBonuses.map(describeBonus).join("; ")}`
+    });
   }
   if (preset.timedEvents && preset.timedEvents.length > 0) {
     for (const event of preset.timedEvents) {
-      lines.push(`Round ${event.round}: ${describeTimedEffect(event.effect)}`);
+      entries.push({ icon: "⏳", text: `Round ${event.round}: ${describeTimedEffect(event.effect)}` });
     }
   }
   if (preset.roundLimit) {
-    lines.push(`Suggested length: ${preset.roundLimit} rounds`);
+    entries.push({ icon: "🕰️", text: `Suggested length: ${preset.roundLimit} rounds` });
   }
   if (preset.notes) {
-    lines.push(preset.notes);
+    entries.push({ icon: "📜", text: preset.notes });
   }
-  return lines;
+  return entries;
+}
+
+/** Short bullet lines for lobby / designer summary (plain-text form). */
+export function describeCustomMapPreset(preset: CustomMapPreset | null | undefined): string[] {
+  return describeCustomMapPresetEntries(preset).map((entry) => entry.text);
+}
+
+/** GameSetupOptions keys a map preset may force. */
+export type PresetForcedOptionKey =
+  | "victoryMode"
+  | "startingResources"
+  | "startingProduction"
+  | "startingBuildings"
+  | "startingUnits";
+
+/** Which lobby option fields THIS preset forces (for apply / restore symmetry). */
+export function presetForcedOptionKeys(
+  preset: CustomMapPreset | null | undefined
+): PresetForcedOptionKey[] {
+  if (!preset) {
+    return [];
+  }
+  const keys: PresetForcedOptionKey[] = [];
+  if (preset.victoryMode) {
+    keys.push("victoryMode");
+  }
+  if (preset.startingResources) {
+    keys.push("startingResources");
+  }
+  if (preset.startingProduction) {
+    keys.push("startingProduction");
+  }
+  if (preset.startingBuildings && preset.startingBuildings.length > 0) {
+    keys.push("startingBuildings");
+  }
+  if (preset.startingUnits) {
+    keys.push("startingUnits");
+  }
+  return keys;
 }
 
 /**
  * Merge a map preset into lobby game options (resources, army, buildings,
  * victory). Does not touch the tile plan — caller sets customMap separately.
+ * `skip` withholds fields the caller set explicitly (apply-once semantics:
+ * the preset seeds the lobby on pick; later lobby edits win at build time).
  */
 export function applyCustomMapPresetToOptions(
   options: GameSetupOptions,
-  preset: CustomMapPreset | null | undefined
+  preset: CustomMapPreset | null | undefined,
+  skip?: ReadonlySet<PresetForcedOptionKey>
 ): string[] {
   if (!preset || !customMapPresetIsActive(preset)) {
     return [];
   }
   const changes: string[] = [];
-  if (preset.victoryMode) {
+  if (preset.victoryMode && !skip?.has("victoryMode")) {
     options.victoryMode = preset.victoryMode;
     changes.push(`victory ${VICTORY_LABELS[preset.victoryMode] ?? preset.victoryMode}`);
   }
-  if (preset.startingResources) {
+  if (preset.startingResources && !skip?.has("startingResources")) {
     options.startingResources = { ...preset.startingResources };
     changes.push(`resources ${formatResources(preset.startingResources)}`);
   }
-  if (preset.startingProduction) {
+  if (preset.startingProduction && !skip?.has("startingProduction")) {
     options.startingProduction = { ...preset.startingProduction };
     changes.push(`income ${formatResources(preset.startingProduction)}`);
   }
-  if (preset.startingBuildings) {
+  if (preset.startingBuildings && preset.startingBuildings.length > 0 && !skip?.has("startingBuildings")) {
     options.startingBuildings = [...preset.startingBuildings];
-    changes.push(`buildings ${preset.startingBuildings.join(", ") || "none"}`);
+    changes.push(`buildings ${preset.startingBuildings.join(", ")}`);
   }
-  if (preset.startingUnits) {
+  if (preset.startingUnits && !skip?.has("startingUnits")) {
     options.startingUnits = preset.startingUnits.map((u) => ({ ...u }));
     changes.push(
       preset.startingUnits.length === 0
@@ -442,29 +510,102 @@ export function applyCustomMapPresetToOptions(
   return changes;
 }
 
-/** How many pool tiles of a group match a secret feature (designer demand check). */
+/**
+ * Undo a previously-applied preset: every option field the OLD preset forced
+ * — and the NEW preset does not force — is restored to the scenario default,
+ * so switching maps (or going back to the scenario layout) never leaks one
+ * map's resources/army/victory into the next game.
+ */
+export function revertCustomMapPresetOptions(
+  options: GameSetupOptions,
+  previousPreset: CustomMapPreset | null | undefined,
+  nextPreset: CustomMapPreset | null | undefined,
+  defaults: GameSetupOptions
+): string[] {
+  const nextForced = new Set(presetForcedOptionKeys(nextPreset));
+  const changes: string[] = [];
+  for (const key of presetForcedOptionKeys(previousPreset)) {
+    if (nextForced.has(key)) {
+      continue;
+    }
+    switch (key) {
+      case "victoryMode":
+        options.victoryMode = defaults.victoryMode;
+        changes.push(`victory back to ${VICTORY_LABELS[defaults.victoryMode ?? "conquest"] ?? "Conquest"}`);
+        break;
+      case "startingResources":
+        options.startingResources = { ...defaults.startingResources };
+        changes.push("resources back to the scenario default");
+        break;
+      case "startingProduction":
+        options.startingProduction = { ...defaults.startingProduction };
+        changes.push("income back to the scenario default");
+        break;
+      case "startingBuildings":
+        options.startingBuildings = [...defaults.startingBuildings];
+        changes.push("buildings back to the scenario default");
+        break;
+      case "startingUnits":
+        options.startingUnits = defaults.startingUnits?.map((u) => ({ ...u })) ?? null;
+        changes.push("army back to the scenario default");
+        break;
+    }
+  }
+  return changes;
+}
+
+/**
+ * How many pool tiles of a group match a secret feature (designer demand
+ * check). Band filters mirror the setup draw exactly, and `excludeTileIds`
+ * subtracts tiles the designer already pinned elsewhere — a pinned tile is
+ * spliced out of the random pool at setup, so it can never satisfy a secret.
+ */
 export function countPoolTilesMatchingFeature(
   group: CustomMapTilePlan["group"],
   feature: SecretTileFeature,
-  options?: { seaBand?: CustomMapTilePlan["seaBand"]; subBand?: CustomMapTilePlan["subBand"] }
+  options?: {
+    seaBand?: CustomMapTilePlan["seaBand"];
+    subBand?: CustomMapTilePlan["subBand"];
+    excludeTileIds?: ReadonlySet<string>;
+  }
 ): number {
   return Object.values(allTileDefinitions).filter((def) => {
     if (def.group !== group) {
       return false;
     }
-    // Band filters are applied at setup via seaTileBand/subterraneanTileBand;
-    // count is a soft designer hint — exact band filtering happens in setup.
-    void options;
+    if (options?.excludeTileIds?.has(def.id)) {
+      return false;
+    }
+    if (group === "sea" && options?.seaBand && seaTileBand(def) !== options.seaBand) {
+      return false;
+    }
+    if (group === "subterranean" && options?.subBand && subterraneanTileBand(def) !== options.subBand) {
+      return false;
+    }
     return tileMatchesSecretFeature(def, feature);
   }).length;
 }
 
 /**
  * Designer warnings: secret feature demand exceeds remaining pool supply, or a
- * feature has zero matches (will fall back to pure random in game).
+ * feature has zero matches (will fall back to pure random in game). Supply is
+ * counted the way SETUP will see it: same band filters, minus every tile the
+ * plan pins by exact id (face-up or exact secret).
  */
 export function secretFeatureDemandWarnings(plans: CustomMapTilePlan[]): string[] {
-  const demand = new Map<string, { feature: SecretTileFeature; group: string; count: number }>();
+  const pinnedIds = new Set(
+    plans.filter((plan) => plan.tileDefId).map((plan) => plan.tileDefId as string)
+  );
+  const demand = new Map<
+    string,
+    {
+      feature: SecretTileFeature;
+      group: CustomMapTilePlan["group"];
+      seaBand?: CustomMapTilePlan["seaBand"];
+      subBand?: CustomMapTilePlan["subBand"];
+      count: number;
+    }
+  >();
   for (const plan of plans) {
     if (!plan.faceDown || !plan.secretFeature || plan.tileDefId) {
       continue;
@@ -473,6 +614,8 @@ export function secretFeatureDemandWarnings(plans: CustomMapTilePlan[]): string[
     const current = demand.get(key) ?? {
       feature: plan.secretFeature,
       group: plan.group,
+      seaBand: plan.seaBand,
+      subBand: plan.subBand,
       count: 0
     };
     current.count += 1;
@@ -480,7 +623,11 @@ export function secretFeatureDemandWarnings(plans: CustomMapTilePlan[]): string[
   }
   const warnings: string[] = [];
   for (const entry of demand.values()) {
-    const supply = countPoolTilesMatchingFeature(entry.group as CustomMapTilePlan["group"], entry.feature);
+    const supply = countPoolTilesMatchingFeature(entry.group, entry.feature, {
+      seaBand: entry.seaBand,
+      subBand: entry.subBand,
+      excludeTileIds: pinnedIds
+    });
     if (supply === 0) {
       warnings.push(
         `Secret “${FEATURE_LABELS[entry.feature] ?? entry.feature}” on ${entry.group}: no tiles in that pool have it — in game the slot becomes pure random.`

@@ -589,7 +589,10 @@ export function MapDesigner({
   const selectedMode = selected && selected.group !== "starting" ? tileSlotMode(selected) : null;
   const selectedToken = selected?.token;
 
-  // Landmark chips that match at least one tile in this slot's pool.
+  // Landmark chips that match at least one tile in this slot's pool. Tiles the
+  // designer pinned by exact id on OTHER slots are spliced out of the random
+  // pool at setup, so they can never satisfy this slot's secret — subtract them
+  // (the selected slot's own pin would be freed by switching to a feature).
   const availablePickFilters =
     selected && PICKABLE_GROUPS.has(selected.group)
       ? TILE_PICK_FILTERS.filter(
@@ -601,9 +604,16 @@ export function MapDesigner({
   const filteredPickableTiles = pickableTiles.filter((tile) => activePickFilter.match(tile));
 
   // Secret-feature cards that have at least one match in this slot's pool.
+  const pinnedElsewhere = new Set(
+    customMap
+      .filter((plan, index) => plan.tileDefId && index !== selectedIndex)
+      .map((plan) => plan.tileDefId as string)
+  );
   const availableSecretFeatures = SECRET_TILE_FEATURES.map((feature) => ({
     ...feature,
-    matchCount: pickableTiles.filter((tile) => tileMatchesSecretFeature(tile, feature.id)).length
+    matchCount: pickableTiles.filter(
+      (tile) => !pinnedElsewhere.has(tile.id) && tileMatchesSecretFeature(tile, feature.id)
+    ).length
   })).filter((feature) => feature.matchCount > 0);
 
   /** Apply Random / Secret / Face-up in one click. */

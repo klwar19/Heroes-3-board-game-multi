@@ -1,4 +1,5 @@
 import {
+  isSecretTileFeature,
   sanitizeCustomMapPreset,
   scenarioDefinitions,
   type CustomMapPreset,
@@ -127,20 +128,10 @@ function sanitizeTile(tile: unknown): CustomMapTilePlan | null {
       : undefined;
   // Secret landmark filter (face-down only). Exact tileDefId pin still wins
   // at setup if both are present; sanitize keeps both so old maps round-trip.
-  const SECRET_FEATURES = new Set([
-    "gold_mine",
-    "valuables_mine",
-    "materials_mine",
-    "any_mine",
-    "obelisk",
-    "settlement",
-    "town",
-    "objective"
-  ]);
-  const secretFeature =
-    typeof candidate.secretFeature === "string" && SECRET_FEATURES.has(candidate.secretFeature)
-      ? (candidate.secretFeature as CustomMapTilePlan["secretFeature"])
-      : undefined;
+  // The engine's isSecretTileFeature guard is the single feature-id allow-list.
+  const secretFeature = isSecretTileFeature(candidate.secretFeature)
+    ? candidate.secretFeature
+    : undefined;
 
   return {
     row: candidate.row as number,

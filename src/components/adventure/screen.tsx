@@ -38,7 +38,7 @@ import {
   bannableHeroesForSeat,
   deckDisplayName,
   describeCardEffect,
-  describeCustomMapPreset,
+  describeCustomMapPresetEntries,
   DRAFT_FORMAT_LABELS,
   getDraftPhase,
   getActiveAstrologersCard,
@@ -4858,12 +4858,20 @@ function MapPicker({
           </small>
           {options.customMapPreset ? (
             <div className="mapPresetLobbyBanner" role="status">
-              <strong>This map has special conditions</strong>
-              <ul>
-                {describeCustomMapPreset(options.customMapPreset).map((line) => (
-                  <li key={line}>{line}</li>
+              <strong>📜 This map has special conditions</strong>
+              <ul className="mapPresetEntryList">
+                {describeCustomMapPresetEntries(options.customMapPreset).map((entry) => (
+                  <li key={entry.text}>
+                    <span className="mapPresetEntryIcon" aria-hidden="true">
+                      {entry.icon}
+                    </span>
+                    {entry.text}
+                  </li>
                 ))}
               </ul>
+              <small className="mapPresetLobbyHint">
+                Seeded into the game options — the host can still adjust them before the game starts.
+              </small>
             </div>
           ) : null}
         </div>

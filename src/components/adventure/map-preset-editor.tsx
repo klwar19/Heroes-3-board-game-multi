@@ -1,7 +1,8 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import {
-  describeCustomMapPreset,
+  describeCustomMapPresetEntries,
   MAP_PRESET_BUILDING_OPTIONS,
   MAP_PRESET_VICTORY_OPTIONS,
   type CustomMapPreset,
@@ -24,7 +25,18 @@ export function MapPresetEditor({
   onChange: (next: CustomMapPreset | undefined) => void;
 }) {
   const value = preset ?? {};
-  const summary = describeCustomMapPreset(value);
+  const summary = describeCustomMapPresetEntries(value);
+  // Collapsed by default on a fresh/plain map so the tile board stays the
+  // page's focus; opens itself when a map WITH conditions is loaded (0 → some),
+  // and never fights the designer's own toggle otherwise.
+  const [open, setOpen] = useState(summary.length > 0);
+  const hadConditions = useRef(summary.length > 0);
+  useEffect(() => {
+    if (summary.length > 0 && !hadConditions.current) {
+      setOpen(true);
+    }
+    hadConditions.current = summary.length > 0;
+  }, [summary.length]);
 
   const patch = (partial: Partial<CustomMapPreset> | null) => {
     if (partial === null) {
@@ -73,21 +85,36 @@ export function MapPresetEditor({
   const timed = value.timedEvents ?? [];
 
   return (
-    <div className="mapPresetEditor" aria-label="Map scenario conditions">
-      <header className="mapPresetHeader">
+    <details
+      className="mapPresetEditor"
+      aria-label="Map scenario conditions"
+      onToggle={(event) => setOpen((event.target as HTMLDetailsElement).open)}
+      open={open}
+    >
+      <summary className="mapPresetSummaryBar">
+        <span className="mapPresetSummaryChevron" aria-hidden="true">
+          ▸
+        </span>
         <strong>Map conditions</strong>
-        <small>
-          Mission-book style setup for this map only (resources, army, buildings, timed events). Players see a note
-          when they pick the map.
-        </small>
-      </header>
+        <span className={`mapPresetCountBadge${summary.length > 0 ? " active" : ""}`}>
+          {summary.length > 0
+            ? `${summary.length} active`
+            : "optional"}
+        </span>
+        <small>Mission-book style setup for this map only — players see it when the map is picked.</small>
+      </summary>
 
       {summary.length > 0 ? (
         <div className="mapPresetSummary" role="status">
           <div className="mapPresetSummaryTitle">Active conditions</div>
-          <ul>
-            {summary.map((line) => (
-              <li key={line}>{line}</li>
+          <ul className="mapPresetEntryList">
+            {summary.map((entry) => (
+              <li key={entry.text}>
+                <span className="mapPresetEntryIcon" aria-hidden="true">
+                  {entry.icon}
+                </span>
+                {entry.text}
+              </li>
             ))}
           </ul>
           <button className="mapPresetClear" onClick={() => patch(null)} type="button">
@@ -117,7 +144,10 @@ export function MapPresetEditor({
             </button>
           ))}
         </div>
-        <small className="mapPresetHint">Applied when the map is picked. Lobby victory control can still change later.</small>
+        <small className="mapPresetHint">
+          Seeds the lobby when the map is picked — the host can still change it there (their choice wins), and
+          switching maps restores the scenario default.
+        </small>
       </section>
 
       <section className="mapPresetSection">
@@ -462,7 +492,7 @@ export function MapPresetEditor({
           value={value.notes ?? ""}
         />
       </section>
-    </div>
+    </details>
   );
 }
 
