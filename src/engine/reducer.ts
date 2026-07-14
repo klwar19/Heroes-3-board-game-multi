@@ -168,7 +168,6 @@ import {
   elementalTileSpellPowerBonus,
   firstAidVolleyHeals,
   getPermanentCardIds,
-  getPermanentSchoolBonus,
   isLowestInitiativeEnemy,
   playerCanUseFirstAidVolley,
   playerOwnsWarMachine,

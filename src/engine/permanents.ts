@@ -315,21 +315,6 @@ export function schoolScopedStandingPower(
   return (permanent?.basicPower ?? 0) + elementalTileSpellPowerBonus(state, chosen);
 }
 
-/**
- * Elemental-tile +1 for a cast that already committed to `school` (e.g. after an
- * expert permanent discard of that school). 0 when the combat tile is a different
- * school or not Elemental terrain.
- */
-export function elementalTileSpellPowerBonusForSchool(
-  state: GameState,
-  school: ElementalSchool | SpellSchool | undefined
-): number {
-  if (!school || school === "any") {
-    return 0;
-  }
-  return elementalTileSpellPowerBonus(state, school);
-}
-
 function playerIsInCombat(state: GameState, playerId: PlayerId): boolean {
   return Boolean(
     state.combat &&
