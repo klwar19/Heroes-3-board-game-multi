@@ -147,6 +147,17 @@ if (current.status === 200) {
   console.log(`Current CORS origins on ${BUCKET}: ${originsInXml(current.text).join(", ") || "(none)"}`);
 } else if (current.text.includes("NoSuchCORSConfiguration") || current.status === 404) {
   console.log(`Bucket ${BUCKET} has no CORS configuration yet.`);
+} else if (current.status === 403 || current.text.includes("AccessDenied")) {
+  // Object Read & Write tokens can sync media but cannot Get/PutBucketCors —
+  // that needs Admin Read & Write on the bucket. Fonts stay same-origin until
+  // CORS is set (CDN_SERVES_FONTS = false), so do not fail the media workflow.
+  console.warn(
+    `warning: GetBucketCors denied (${current.status}) — this R2 token lacks Admin ` +
+      `permission for bucket config. Media upload still works. To enable CDN fonts ` +
+      `later: create an R2 token with Admin Read & Write (or set CORS once in the ` +
+      `dashboard: R2 → heroes3 → Settings → CORS), then re-run npm run setup:r2-cors.`
+  );
+  process.exit(0);
 } else {
   console.error(`error: GetBucketCors failed (${current.status}): ${current.text.slice(0, 300)}`);
   process.exit(1);
@@ -163,6 +174,13 @@ for (const o of origins) console.log(`  - ${o}`);
 if (DRY_RUN) process.exit(0);
 
 const put = await corsRequest("PUT", corsXml);
+if (put.status === 403 || put.text.includes("AccessDenied")) {
+  console.warn(
+    `warning: PutBucketCors denied (${put.status}) — token needs Admin Read & Write ` +
+      `for bucket config. Skipping CORS write (fonts stay same-origin until fixed).`
+  );
+  process.exit(0);
+}
 if (put.status !== 200) {
   console.error(`error: PutBucketCors failed (${put.status}): ${put.text.slice(0, 300)}`);
   process.exit(1);
