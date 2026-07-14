@@ -8,7 +8,7 @@
     "maps": "party/maps.ts"
   },
   "vars": {
-    "HOMM3BG_APP_URL": "https://heroes-3-board-game-multi.vercel.app"
+    "HOMM3BG_APP_URL": "https://hamthefirt.xyz"
   },
   "compatibilityDate": "2025-06-01"
 }
