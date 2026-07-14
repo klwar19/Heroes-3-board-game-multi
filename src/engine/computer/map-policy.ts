@@ -28,6 +28,7 @@ import { cardKeepValue } from "./card-policy";
 import { playerArmyStrength } from "./army-strength";
 import {
   armyDevelopmentProfile,
+  armyReadyForContestedFight,
   developmentResourceTargets,
 } from "./development";
 import {
@@ -1260,11 +1261,23 @@ export function scoreMapAction(
         policy: "map.rotate-tile-for-path",
       };
     case "HIRE_SECONDARY_HERO": {
-      // A secondary hero early drains gold that should go into the army/town.
-      // Only worth it once the main force is already decent.
+      // A second pair of boots to sweep leftover pickups and flag mines while
+      // the main hero pushes on. But the hire spends the round's Population
+      // Token PLUS 10 gold: before the fighting core exists (3 Packs) or when
+      // it would eat the treasury cushion, holding the token for
+      // recruit/reinforce is strictly better — score below END_TURN so the
+      // offer waits for a developed, funded turn (the old flat 420 hired a
+      // hero while the army was still thin whenever recruiting didn't fire).
+      const gold = playerGold(state, observation.playerId);
+      if (
+        !armyReadyForContestedFight(state, observation.playerId) ||
+        gold < 10 + GOLD_RESERVE
+      ) {
+        return { score: 150, policy: "map.hire-secondary-hold" };
+      }
       const army = state.players[observation.playerId]?.army.length ?? 0;
       return {
-        score: army >= 5 ? 700 : 420,
+        score: army >= 5 ? 700 : 640,
         policy: "map.hire-secondary-hero",
       };
     }
