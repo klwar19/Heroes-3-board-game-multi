@@ -96,13 +96,15 @@ jobs:
           echo "== health object (uploaded fresh by every sync)"
           curl -sfI "https://${R2_PUBLIC_DOMAIN}/cdn-check.txt" | head -3
           curl -sf "https://${R2_PUBLIC_DOMAIN}/cdn-check.txt"
-          echo "== a font object + CORS header (needed by @font-face)"
-          out=$(curl -sfI -H "Origin: https://hamthefirt.xyz" "https://${R2_PUBLIC_DOMAIN}/fonts/LiberationSerif-Regular.ttf")
+          echo "== a font object (optional CORS — needs Admin R2 token or dashboard CORS)"
+          out=$(curl -sI -H "Origin: https://hamthefirt.xyz" "https://${R2_PUBLIC_DOMAIN}/fonts/LiberationSerif-Regular.ttf" || true)
           echo "$out" | grep -iE '^(HTTP|content-type|access-control-allow-origin)' || true
-          echo "$out" | grep -qi '^access-control-allow-origin' || {
-            echo "::error::Font object is missing the Access-Control-Allow-Origin header — @font-face loads from the CDN would be blocked. Check the bucket CORS policy (npm run setup:r2-cors)."
-            exit 1
-          }
+          if ! echo "$out" | grep -qiE '^HTTP/.* (200|304)'; then
+            echo "::warning::Font object not reachable yet — will appear after the fonts/ upload finishes."
+          fi
+          if ! echo "$out" | grep -qi '^access-control-allow-origin'; then
+            echo "::notice::No Access-Control-Allow-Origin on fonts yet. App keeps fonts same-origin (CDN_SERVES_FONTS=false) until CORS is set with an Admin R2 token or dashboard CORS policy."
+          fi
 
       # Replaced files keep their URL, so the edge cache holds the OLD bytes
       # for up to the 30-day edge TTL. Purge exactly the changed URLs (free
