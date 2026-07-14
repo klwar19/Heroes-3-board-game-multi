@@ -2589,10 +2589,9 @@ export const adventureCards: CardLibrary = {
   // the Magma Elementals unit"). I = instant +1 attack OR +1 defence (doubled
   // for Magma Elementals); IV = +1 initiative for the combat (doubled for Magma
   // Elementals); VI = instant +2 attack OR ongoing +3 initiative (no doubling).
-  // Art-less (the Conflux specialty scans were never shipped) — the native
-  // renderer draws these with the Magma Elemental portrait (SPECIALTY_ICON_BY_HERO).
-  "specialty.erdamon.1": withoutArt(towerAttackOrDefenseSpecialty("erdamon", "Magma Elementals", 1, "Magma Elementals")),
-  "specialty.erdamon.4": withoutArt(unitInitiativeSpecialty("erdamon", "Magma Elementals", 4, 1, "Magma Elementals")),
+  // Conflux specialty card scans assigned under /assets/hero_specialties-*.
+  "specialty.erdamon.1": towerAttackOrDefenseSpecialty("erdamon", "Magma Elementals", 1, "Magma Elementals"),
+  "specialty.erdamon.4": unitInitiativeSpecialty("erdamon", "Magma Elementals", 4, 1, "Magma Elementals"),
   "specialty.erdamon.6": {
     id: "specialty.erdamon.6",
     name: "Magma Elementals VI",
@@ -2631,16 +2630,18 @@ export const adventureCards: CardLibrary = {
         }
       ]
     },
-    // Art-less (no shipped scan) — rendered natively, like .1/.4 above.
+    assets: {
+      cardImage: specialtyCardImage("erdamon", 6),
+      imageAlt: "Magma Elementals level VI specialty card"
+    },
     implementationStatus: "implemented",
     source: heroSource("erdamon")
   },
   // Monere (Magic Elementals): I = +1 attack/defence; IV = +1 initiative for
   // the combat — both doubled for the Magic Elementals unit; VI = +2 attack OR
   // +2 power (both one-shot instants, no doubling).
-  // Art-less (no shipped scan) — native renderer + Magic Elemental portrait.
-  "specialty.monere.1": withoutArt(towerAttackOrDefenseSpecialty("monere", "Magic Elementals", 1, "Magic Elementals")),
-  "specialty.monere.4": withoutArt(unitInitiativeSpecialty("monere", "Magic Elementals", 4, 1, "Magic Elementals")),
+  "specialty.monere.1": towerAttackOrDefenseSpecialty("monere", "Magic Elementals", 1, "Magic Elementals"),
+  "specialty.monere.4": unitInitiativeSpecialty("monere", "Magic Elementals", 4, 1, "Magic Elementals"),
   "specialty.monere.6": {
     id: "specialty.monere.6",
     name: "Magic Elementals VI",
@@ -2668,17 +2669,19 @@ export const adventureCards: CardLibrary = {
         }
       ]
     },
-    // Art-less (no shipped scan) — rendered natively, like .1/.4 above.
+    assets: {
+      cardImage: specialtyCardImage("monere", 6),
+      imageAlt: "Magic Elementals level VI specialty card"
+    },
     implementationStatus: "implemented",
     source: heroSource("monere")
   },
   // Pasis (Elementals generalist): every bonus doubles for any "… Elementals"
   // unit (the "an Elementals unit" family descriptor). I = +1 initiative for
   // the combat; IV = +1 attack/defence; VI = +1 HP for the combat.
-  // Art-less (no shipped scan) — native renderer + Energy Elemental portrait.
-  "specialty.pasis.1": withoutArt(unitInitiativeSpecialty("pasis", "Elementals", 1, 1, "an Elementals unit")),
-  "specialty.pasis.4": withoutArt(towerAttackOrDefenseSpecialty("pasis", "Elementals", 4, "an Elementals unit")),
-  "specialty.pasis.6": withoutArt(towerHealthSpecialty("pasis", "Elementals", 6, 1, "an Elementals unit")),
+  "specialty.pasis.1": unitInitiativeSpecialty("pasis", "Elementals", 1, 1, "an Elementals unit"),
+  "specialty.pasis.4": towerAttackOrDefenseSpecialty("pasis", "Elementals", 4, "an Elementals unit"),
+  "specialty.pasis.6": towerHealthSpecialty("pasis", "Elementals", 6, 1, "an Elementals unit"),
 
   // ---- Conflux Elementalist (Luna — the Fire Wall specialist) -------------
   // I/VI place a Fire Wall token (this card or a token) on an empty space for
@@ -2705,7 +2708,10 @@ export const adventureCards: CardLibrary = {
     ],
     target: { type: "empty-space" },
     effect: { type: "PLACE_FIRE_WALL_FIXED", damage: 1 },
-    // Art-less (no shipped scan) — rendered natively with the Fire Wall symbol.
+    assets: {
+      cardImage: specialtyCardImage("luna", 1),
+      imageAlt: "Fire Wall level I specialty card"
+    },
     implementationStatus: "implemented",
     source: heroSource("luna")
   },
@@ -2736,7 +2742,10 @@ export const adventureCards: CardLibrary = {
         }
       ]
     },
-    // Art-less (no shipped scan) — rendered natively with the Fire Wall symbol.
+    assets: {
+      cardImage: specialtyCardImage("luna", 4),
+      imageAlt: "Fire Wall level IV specialty card"
+    },
     implementationStatus: "implemented",
     source: heroSource("luna")
   },
@@ -2755,7 +2764,10 @@ export const adventureCards: CardLibrary = {
     ],
     target: { type: "empty-space" },
     effect: { type: "PLACE_FIRE_WALL_FIXED", damage: 3 },
-    // Art-less (no shipped scan) — rendered natively with the Fire Wall symbol.
+    assets: {
+      cardImage: specialtyCardImage("luna", 6),
+      imageAlt: "Fire Wall level VI specialty card"
+    },
     implementationStatus: "implemented",
     source: heroSource("luna")
   },
@@ -2775,7 +2787,7 @@ export const adventureCards: CardLibrary = {
   // the limit), but `spellId`-filtered to Magic Arrow and consuming the specialty
   // to the discard (not removed). VI reuses DAMAGE_CHOSEN_ENEMIES (1 enemy, 2). The
   // +Power sides are SPELL_CAST_STARTED reactions, like Monere VI / Luna IV.
-  "specialty.ciele.1": withoutArt({
+  "specialty.ciele.1": {
     id: "specialty.ciele.1",
     name: "Magic Arrow I",
     kind: "hero-specialty",
@@ -2805,10 +2817,14 @@ export const adventureCards: CardLibrary = {
         }
       ]
     },
+    assets: {
+      cardImage: specialtyCardImage("ciele", 1),
+      imageAlt: "Magic Arrow level I specialty card"
+    },
     implementationStatus: "implemented",
     source: heroSource("ciele")
-  }),
-  "specialty.ciele.4": withoutArt({
+  },
+  "specialty.ciele.4": {
     id: "specialty.ciele.4",
     name: "Magic Arrow IV",
     kind: "hero-specialty",
@@ -2840,10 +2856,14 @@ export const adventureCards: CardLibrary = {
         }
       ]
     },
+    assets: {
+      cardImage: specialtyCardImage("ciele", 4),
+      imageAlt: "Magic Arrow level IV specialty card"
+    },
     implementationStatus: "implemented",
     source: heroSource("ciele")
-  }),
-  "specialty.ciele.6": withoutArt({
+  },
+  "specialty.ciele.6": {
     id: "specialty.ciele.6",
     name: "Magic Arrow VI",
     kind: "hero-specialty",
@@ -2871,9 +2891,13 @@ export const adventureCards: CardLibrary = {
         }
       ]
     },
+    assets: {
+      cardImage: specialtyCardImage("ciele", 6),
+      imageAlt: "Magic Arrow level VI specialty card"
+    },
     implementationStatus: "implemented",
     source: heroSource("ciele")
-  }),
+  },
 
   // ---- Conflux Elementalist (Tarnum — the Enchanters specialist) ---------
   // Wiki (en.homm3bg.wiki/heroes/tarnum_conflux): Elementalist, A0 D0 P2 K3,
@@ -2887,7 +2911,7 @@ export const adventureCards: CardLibrary = {
   // I reuses CARD_DECK_SEARCH with the new allowRemove flag; IV reuses
   // CONVERT_ARMY_UNIT with goldCost (no unit traded in); VI is the dedicated
   // TARNUM_OVERLIMIT_SEARCH over-limit multi-cast effect.
-  "specialty.tarnum_conflux.1": withoutArt({
+  "specialty.tarnum_conflux.1": {
     id: "specialty.tarnum_conflux.1",
     name: "Enchanters I",
     kind: "hero-specialty",
@@ -2901,10 +2925,14 @@ export const adventureCards: CardLibrary = {
     ],
     target: { type: "none" },
     effect: { type: "CARD_DECK_SEARCH", deck: "spells", count: 1, allowRemove: true },
+    assets: {
+      cardImage: specialtyCardImage("tarnum_conflux", 1),
+      imageAlt: "Enchanters level I specialty card"
+    },
     implementationStatus: "implemented",
     source: heroSource("tarnum_conflux")
-  }),
-  "specialty.tarnum_conflux.4": withoutArt({
+  },
+  "specialty.tarnum_conflux.4": {
     id: "specialty.tarnum_conflux.4",
     name: "Enchanters IV",
     kind: "hero-specialty",
@@ -2937,9 +2965,13 @@ export const adventureCards: CardLibrary = {
         }
       ]
     },
+    assets: {
+      cardImage: specialtyCardImage("tarnum_conflux", 4),
+      imageAlt: "Enchanters level IV specialty card"
+    },
     implementationStatus: "implemented",
     source: heroSource("tarnum_conflux")
-  }),
+  },
   // VI is an Instant: it may be played on your own turn, off-turn in an instant
   // window, OR as a reaction inside an open attack window (search-and-cast in the
   // same window — playing it re-derives that window's offers). Each of the two
@@ -2951,7 +2983,7 @@ export const adventureCards: CardLibrary = {
   // instant/reaction window when an attack is declared. One that does not fit the
   // open window just stays in hand. Each cast spell returns to the shared Spell
   // deck top OR its discard pile (the caster's choice, so the order is yours).
-  "specialty.tarnum_conflux.6": withoutArt({
+  "specialty.tarnum_conflux.6": {
     id: "specialty.tarnum_conflux.6",
     name: "Enchanters VI",
     kind: "hero-specialty",
@@ -2966,9 +2998,13 @@ export const adventureCards: CardLibrary = {
     ],
     target: { type: "none" },
     effect: { type: "TARNUM_OVERLIMIT_SEARCH", count: 2 },
+    assets: {
+      cardImage: specialtyCardImage("tarnum_conflux", 6),
+      imageAlt: "Enchanters level VI specialty card"
+    },
     implementationStatus: "implemented",
     source: heroSource("tarnum_conflux")
-  }),
+  },
 
   // ---- Additional heroes (fan-wiki "Regular Stretch Goals 2024") ---------
   // Fiona (Inferno, Demoniac): the Cerberi specialist — the standard might
