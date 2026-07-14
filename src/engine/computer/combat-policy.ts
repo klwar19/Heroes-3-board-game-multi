@@ -60,6 +60,14 @@ const ATTACK_CEIL = 880;
 // away, while still beating the plain defend/end exits (≤530/400): a unit with
 // nothing to protect keeps trading rather than turtling.
 const SUICIDAL_ATTACK_SCORE = 545;
+// A value-losing trade — the retaliation kills our MORE valuable attacker for
+// only a small chip on the defender. Sits just below the high-value Defend
+// save (550) so a threatened key unit turtles instead, while plain-defend
+// chaff (≤530) still takes the trade.
+const BAD_TRADE_ATTACK_SCORE = 548;
+// Enemy shooters strike every round without exposing themselves to melee
+// retaliation — removing (or pressuring) them first is the classic opening.
+const RANGED_TARGET_BONUS = 18;
 
 /** Whether this attack would let the defender retaliate for damage back. */
 function provokesRetaliation(
@@ -113,7 +121,23 @@ function attackScore(
       if (damage === 0 && retaliation >= unitRemainingHealth(attacker)) {
         return SUICIDAL_ATTACK_SCORE;
       }
+      // Value-losing trade: the counter-hit kills our attacker, we chip less
+      // than half the defender's remaining health, and the unit we lose is
+      // worth more than the one we're poking. Let a high-value Defend win.
+      if (
+        retaliation >= unitRemainingHealth(attacker) &&
+        damageFraction < 0.5 &&
+        unitThreatValue(attacker) > threat
+      ) {
+        return BAD_TRADE_ATTACK_SCORE;
+      }
     }
+  }
+
+  // Kill (or pressure) enemy shooters first: they deal full damage every round
+  // from safety, so removing them beats an equal-stat melee target.
+  if (defender.type === "ranged") {
+    quality += RANGED_TARGET_BONUS;
   }
 
   // Focus fire: allies already adjacent / close to this enemy — finish it.
