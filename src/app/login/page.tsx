@@ -4,30 +4,51 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
 import { AccountAuth } from "@/components/menu/account-auth";
 import { MenuShell } from "@/components/menu/menu-shell";
-import { authEnabled } from "@/lib/auth-mode";
+import { authEnabled, GUEST_LOGIN_DISABLED } from "@/lib/auth-mode";
 import { clearAccountIdentity, getDisplayName, setDisplayName, setGuestMode } from "@/lib/identity";
 
 /**
  * Entry screen.
  *
  * With the accounts flag ON it shows real sign-in / registration (AccountAuth,
- * Phase 1) as the primary path, with a clearly-secondary "Continue as guest"
- * choice beside it — a temporary bridge while accounts roll out (it is one
- * self-contained <GuestChoice/> block, easy to remove later).
+ * Phase 1) as the primary path. A clearly-secondary "Continue as guest" choice
+ * normally sits beside it — but while `GUEST_LOGIN_DISABLED` is set guest login
+ * is TEMPORARILY off, so that block is replaced by a short notice asking the
+ * player to register or sign in. Account login is untouched either way.
  *
  * With the flag OFF — CI / e2e and any guest-only deployment — it is the guest
- * name screen, byte-for-byte as before accounts existed.
+ * name screen, byte-for-byte as before accounts existed (guest is the only way
+ * in there, so it is never disabled).
  */
 export default function LoginPage() {
   if (authEnabled()) {
     return (
       <MenuShell backdrop="login-backdrop" title="Welcome to Erathia">
         <AccountAuth />
-        <GuestChoice />
+        {GUEST_LOGIN_DISABLED ? <GuestDisabledNotice /> : <GuestChoice />}
       </MenuShell>
     );
   }
   return <GuestLogin />;
+}
+
+/**
+ * Shown in place of the guest bridge while guest login is temporarily disabled.
+ * No entry point — the player must register or sign in above (account login is
+ * unaffected). Kept beside <GuestChoice/> so restoring guests is a one-line flip
+ * of GUEST_LOGIN_DISABLED.
+ */
+function GuestDisabledNotice() {
+  return (
+    <div className="guestChoice">
+      <div className="guestChoiceDivider" role="separator" aria-label="or">
+        <span>or</span>
+      </div>
+      <p className="guestChoiceHint">
+        Guest login is temporarily disabled. Please register or sign in above to play.
+      </p>
+    </div>
+  );
 }
 
 /** Read + prefill the stored display name (shared by both guest entry points). */

@@ -19,6 +19,7 @@ import { pumpAdventureQueues } from "@/engine/adventure-reducer";
 import {
   closeRoom,
   createRoom,
+  enforceRoomCaps,
   getRoomSnapshot,
   handleRoomDisconnect,
   listRooms,
@@ -29,6 +30,7 @@ import {
   STALE_ROOM_TTL_MS,
   submitRoomAction
 } from "./game-room-store";
+import { MAX_ROOMS_PER_ACCOUNT } from "./lobby-registry";
 
 /** A fresh id per case so disk-persisted rooms from earlier runs never bleed in. */
 function uniqueRoom(name: string): string {
@@ -1113,5 +1115,55 @@ describe("AFK vote-kick through the store (transport wiring)", () => {
       targetPlayerId: "p1"
     });
     expect(result.errors[0]?.message).toContain("has not been away");
+  });
+});
+
+describe("per-account room cap (auto-delete surplus)", () => {
+  it("auto-deletes an account's rooms beyond the cap, keeping the newest", () => {
+    const userId = `u-${Math.random().toString(36).slice(2, 8)}`;
+    const roomIds: string[] = [];
+    for (let index = 0; index < MAX_ROOMS_PER_ACCOUNT + 1; index += 1) {
+      const roomId = uniqueRoom(`cap${index}`);
+      createRoom({ roomId, name: `Room ${index}`, mode: "adventure" });
+      // Join AS a verified account (server-stamped userId), which makes this
+      // account the room's owner — the key the cap counts by.
+      const joined = submitRoomAction(
+        roomId,
+        { type: "JOIN_ROOM", clientId: `client-${index}`, name: "Owner" },
+        `client-${index}`,
+        userId
+      );
+      // Sanity: the owner really is bound to the verified account.
+      expect(joined.snapshot.state.room?.members.some((member) => member.userId === userId)).toBe(true);
+      roomIds.push(roomId);
+    }
+
+    // Enforcement runs on every directory list (and on create). After it, the
+    // account holds exactly the cap — the surplus room was really deleted.
+    enforceRoomCaps();
+    const survivors = roomIds.filter((roomId) => listRooms().some((entry) => entry.roomId === roomId));
+    expect(survivors).toHaveLength(MAX_ROOMS_PER_ACCOUNT);
+
+    // The evicted room is gone from the store: fetching it now mints a FRESH,
+    // memberless lobby (version 1), proving the owner's game was really deleted.
+    const evicted = roomIds.find((roomId) => !survivors.includes(roomId))!;
+    const evictedSnapshot = getRoomSnapshot(evicted);
+    expect(evictedSnapshot.version).toBe(1);
+    expect(evictedSnapshot.state.room?.members ?? []).toEqual([]);
+  });
+
+  it("CONTROL: GUEST rooms (no verified account) are never capped", () => {
+    const roomIds: string[] = [];
+    for (let index = 0; index < MAX_ROOMS_PER_ACCOUNT + 2; index += 1) {
+      const roomId = uniqueRoom(`guestcap${index}`);
+      createRoom({ roomId, name: `Guest Room ${index}`, mode: "adventure" });
+      // Join with NO userId → a guest member → an ownerless room.
+      submitRoomAction(roomId, { type: "JOIN_ROOM", clientId: `guest-${index}`, name: "Guest" });
+      roomIds.push(roomId);
+    }
+    enforceRoomCaps();
+    const survivors = roomIds.filter((roomId) => listRooms().some((entry) => entry.roomId === roomId));
+    // All survive — a per-tab guest is not an account, so the cap never binds.
+    expect(survivors).toHaveLength(MAX_ROOMS_PER_ACCOUNT + 2);
   });
 });

@@ -63,38 +63,28 @@ describe("/login (guest mode)", () => {
   });
 });
 
-describe("/login (accounts enabled) — guest is a choice beside accounts", () => {
+describe("/login (accounts enabled) — guest login temporarily disabled", () => {
   beforeEach(() => {
     process.env.NEXT_PUBLIC_ACCOUNTS_ENABLED = "1";
   });
 
-  it("shows the account Sign in / Register tabs AND a Continue-as-guest option", () => {
+  it("shows the account Sign in / Register tabs but NO guest option — just a disabled notice", () => {
     render(<LoginPage />);
-    // Primary path: real accounts.
+    // Primary path: real accounts, untouched by the guest change.
     expect(screen.getByRole("tab", { name: /Sign in/i })).toBeTruthy();
     expect(screen.getByRole("tab", { name: /Register/i })).toBeTruthy();
-    // Secondary path, right beside it.
-    expect(screen.getByRole("button", { name: /Continue as guest/i })).toBeTruthy();
+    // The guest bridge is gone (GUEST_LOGIN_DISABLED); a notice explains why and
+    // there is no "Continue as guest" button to click.
+    expect(screen.queryByRole("button", { name: /Continue as guest/i })).toBeNull();
+    expect(screen.getByText(/Guest login is temporarily disabled/i)).toBeTruthy();
   });
 
-  it("continuing as guest stores the name, clears a cached account, and forwards to /menu", () => {
-    // Simulate a previously signed-in identity cached in this browser.
-    window.localStorage.setItem(
-      "homm3bg.account",
-      JSON.stringify({ userId: "u1", nickname: "Old", role: "player" })
-    );
+  it("does not set the guest flag or forward to /menu (there is no guest entry point)", () => {
     render(<LoginPage />);
-
-    fireEvent.change(screen.getByLabelText(/Guest name other players will see/i), {
-      target: { value: " Binh " }
-    });
-    fireEvent.click(screen.getByRole("button", { name: /Continue as guest/i }));
-
-    expect(window.localStorage.getItem("homm3bg.displayName")).toBe("Binh");
-    // The stale signed-in identity is dropped so the player is a true guest.
-    expect(window.localStorage.getItem("homm3bg.account")).toBeNull();
-    // The guest choice is recorded so the menu lets them through (not bounced to /login).
-    expect(window.localStorage.getItem("homm3bg.guest")).toBe("1");
-    expect(push).toHaveBeenCalledWith("/menu");
+    expect(screen.queryByRole("button", { name: /Continue as guest/i })).toBeNull();
+    // Nothing records a guest choice and nothing navigates — the player must use
+    // the account form above.
+    expect(window.localStorage.getItem("homm3bg.guest")).toBeNull();
+    expect(push).not.toHaveBeenCalled();
   });
 });
