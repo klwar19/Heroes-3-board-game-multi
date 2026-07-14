@@ -1773,7 +1773,10 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
       4: "specialty.erdamon.4",
       6: "specialty.erdamon.6"
     },
-    portrait: "/assets/hero_portraits-erdamon.webp",
+    // Portrait crop from the English board scan (same pattern as Catherine:
+    // hero_boardart-* for UI portrait, heroes-conflux-* for the full board).
+    portrait: "/assets/hero_boardart-erdamon.webp",
+    boardScan: "/assets/heroes-conflux-might-erdamon.webp",
     source: confluxHeroSource("erdamon")
   },
   monere: {
@@ -1789,7 +1792,8 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
       4: "specialty.monere.4",
       6: "specialty.monere.6"
     },
-    portrait: "/assets/hero_portraits-monere.webp",
+    portrait: "/assets/hero_boardart-monere.webp",
+    boardScan: "/assets/heroes-conflux-might-monere.webp",
     source: confluxHeroSource("monere")
   },
   pasis: {
@@ -1805,7 +1809,8 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
       4: "specialty.pasis.4",
       6: "specialty.pasis.6"
     },
-    portrait: "/assets/hero_portraits-pasis.webp",
+    portrait: "/assets/hero_boardart-pasis.webp",
+    boardScan: "/assets/heroes-conflux-might-pasis.webp",
     source: confluxHeroSource("pasis")
   },
   // Luna — Conflux Elementalist, the Fire Wall specialist (wiki: A0 D0 P2 K3,
@@ -1824,7 +1829,8 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
       4: "specialty.luna.4",
       6: "specialty.luna.6"
     },
-    portrait: "/assets/hero_portraits-luna.webp",
+    portrait: "/assets/hero_boardart-luna.webp",
+    boardScan: "/assets/heroes-conflux-magic-luna.webp",
     source: confluxHeroSource("luna")
   },
   // Ciele — Conflux Elementalist, the Magic Arrow specialist (wiki: A0 D0 P2 K3,
@@ -1844,7 +1850,8 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
       4: "specialty.ciele.4",
       6: "specialty.ciele.6"
     },
-    portrait: "/assets/hero_portraits-ciele.webp",
+    portrait: "/assets/hero_boardart-ciele.webp",
+    boardScan: "/assets/heroes-conflux-magic-ciele.webp",
     source: confluxHeroSource("ciele")
   },
   // Tarnum — Conflux Elementalist, the Enchanters specialist (wiki: A0 D0 P2 K3,
@@ -1866,7 +1873,8 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
       4: "specialty.tarnum_conflux.4",
       6: "specialty.tarnum_conflux.6"
     },
-    portrait: "/assets/hero_portraits-tarnum_conflux.webp",
+    portrait: "/assets/hero_boardart-tarnum_conflux.webp",
+    boardScan: "/assets/heroes-conflux-magic-tarnum_conflux.webp",
     source: confluxHeroSource("tarnum_conflux")
   },
   bron: {
