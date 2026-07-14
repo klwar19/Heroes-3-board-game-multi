@@ -1056,12 +1056,23 @@ describe("stale-room expiry", () => {
     expect(existsSync(join(persistDir, `${oldEmpty}.json`))).toBe(false);
   });
 
-  it("never prunes an idle room that still has members", () => {
+  it("prunes an idle room even with members (24h from last activity, not emptiness)", () => {
+    // BINH rule: the clock is inactivity. An abandoned game whose seated players
+    // never return ages out one day after its last action, members or not.
     const oldOccupied = uniqueRoom("oldoccupied");
     const oldStamp = new Date(Date.now() - STALE_ROOM_TTL_MS - 60_000).toISOString();
     seedDiskRoom(oldOccupied, oldStamp, [{ clientId: "c1", name: "Stayed" }]);
 
-    expect(listRooms().map((entry) => entry.roomId)).toContain(oldOccupied);
+    expect(listRooms().map((entry) => entry.roomId)).not.toContain(oldOccupied);
+    expect(existsSync(join(persistDir, `${oldOccupied}.json`))).toBe(false);
+  });
+
+  it("keeps a recently-active room with members (activity resets the clock — the control)", () => {
+    const freshOccupied = uniqueRoom("freshoccupied");
+    const freshStamp = new Date(Date.now() - 60_000).toISOString();
+    seedDiskRoom(freshOccupied, freshStamp, [{ clientId: "c1", name: "Playing" }]);
+
+    expect(listRooms().map((entry) => entry.roomId)).toContain(freshOccupied);
   });
 });
 
