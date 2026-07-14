@@ -447,7 +447,9 @@ describe("Conflux elemental school spell-power boost", () => {
     // The Storm Elemental boost lands only on an Air spell.
     expect(getActivationSpellPowerBoost(unitWith(["storm-elemental-air-power"]), ["air"])).toBe(1);
     expect(getActivationSpellPowerBoost(unitWith(["storm-elemental-air-power"]), ["fire"])).toBe(0);
-    expect(getActivationSpellPowerBoost(unitWith(["storm-elemental-air-power"]), ["any"])).toBe(0);
+    // Magic Arrow (school "any") may take a school-scoped activation boost —
+    // wiki: benefits from any school, one school at a time.
+    expect(getActivationSpellPowerBoost(unitWith(["storm-elemental-air-power"]), ["any"])).toBe(1);
     expect(getActivationSpellPowerBoost(unitWith(["storm-elemental-air-power"]))).toBe(0);
     // The Magma Elemental boost lands only on an Earth spell.
     expect(getActivationSpellPowerBoost(unitWith(["magma-elemental-earth-power"]), ["earth"])).toBe(1);

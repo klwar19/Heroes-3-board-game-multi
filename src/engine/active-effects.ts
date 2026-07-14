@@ -145,12 +145,14 @@ export function consumeIgnoreFieldNegativeMorale(state: GameState, playerId: Pla
   return true;
 }
 
+const ELEMENTAL_SCHOOLS_FOR_POWER = ["air", "earth", "fire", "water"] as const;
+
 /**
  * Elemental Orbs (Driving Rain / Silt / Tempestuous Fire / the Firmament),
  * option A: the multiplier applied to the effective Power of a Spell `playerId`
- * is casting. Every in-play SPELL_POWER_DOUBLE effect whose school matches the
- * spell — or any of them when the spell is school-agnostic ("any", e.g. Magic
- * Arrow), mirroring how the school-locked +Power boosts qualify — doubles it.
+ * is casting. A matching-school Orb doubles. Magic Arrow (school "any") may use
+ * only ONE school at a time (wiki), so at most one Orb doubles it — never the
+ * product of every Orb in play.
  * Returns 1 when no orb applies (so a non-matching school is never touched).
  */
 export function getSchoolPowerMultiplier(
@@ -159,16 +161,27 @@ export function getSchoolPowerMultiplier(
   spellCard: CardDefinition | undefined
 ): number {
   const schools = spellCard?.spellSchools ?? [];
+  // Magic Arrow: one school only — any single matching Orb is enough (×2), not ×2^n.
+  if (schools.includes("any")) {
+    for (const effect of state.activeEffects) {
+      if (effect.controllerId !== playerId) {
+        continue;
+      }
+      for (const modifier of effect.modifiers) {
+        if (modifier.type === "SPELL_POWER_DOUBLE") {
+          return 2;
+        }
+      }
+    }
+    return 1;
+  }
   let multiplier = 1;
   for (const effect of state.activeEffects) {
     if (effect.controllerId !== playerId) {
       continue;
     }
     for (const modifier of effect.modifiers) {
-      if (
-        modifier.type === "SPELL_POWER_DOUBLE" &&
-        (schools.includes(modifier.school) || schools.includes("any"))
-      ) {
+      if (modifier.type === "SPELL_POWER_DOUBLE" && schools.includes(modifier.school)) {
         multiplier *= 2;
       }
     }
@@ -179,10 +192,10 @@ export function getSchoolPowerMultiplier(
 /**
  * Adrienne's Fire Magic specialty: the extra Power `playerId` adds to a Spell of
  * the matching School. Sums every in-play SPELL_SCHOOL_POWER_BONUS the caster
- * controls whose school matches the spell — or any of them for a school-agnostic
- * ("any") spell, mirroring how the school-locked +Power boosts and the Orb
- * multiplier qualify. Returns 0 when none apply (a non-matching school is never
- * touched). Added to the cast's base Power in getCurrentSpellPower.
+ * controls whose school matches the spell. Magic Arrow (school "any") may use
+ * only ONE school at a time (wiki), so different-school bonuses do NOT sum —
+ * the highest single-school total wins. Returns 0 when none apply.
+ * Added to the cast's base Power in getCurrentSpellPower.
  */
 export function getSchoolPowerBonus(
   state: GameState,
@@ -190,16 +203,33 @@ export function getSchoolPowerBonus(
   spellCard: CardDefinition | undefined
 ): number {
   const schools = spellCard?.spellSchools ?? [];
+  if (schools.includes("any")) {
+    let best = 0;
+    for (const school of ELEMENTAL_SCHOOLS_FOR_POWER) {
+      let forSchool = 0;
+      for (const effect of state.activeEffects) {
+        if (effect.controllerId !== playerId) {
+          continue;
+        }
+        for (const modifier of effect.modifiers) {
+          if (modifier.type === "SPELL_SCHOOL_POWER_BONUS" && modifier.school === school) {
+            forSchool += modifier.amount;
+          }
+        }
+      }
+      if (forSchool > best) {
+        best = forSchool;
+      }
+    }
+    return best;
+  }
   let bonus = 0;
   for (const effect of state.activeEffects) {
     if (effect.controllerId !== playerId) {
       continue;
     }
     for (const modifier of effect.modifiers) {
-      if (
-        modifier.type === "SPELL_SCHOOL_POWER_BONUS" &&
-        (schools.includes(modifier.school) || schools.includes("any"))
-      ) {
+      if (modifier.type === "SPELL_SCHOOL_POWER_BONUS" && schools.includes(modifier.school)) {
         bonus += modifier.amount;
       }
     }

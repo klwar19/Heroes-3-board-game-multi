@@ -1,4 +1,5 @@
 import { cardLibrary } from "@/data/cards/library";
+import { allTileDefinitions } from "@/data/map/tiles";
 import { countExtraBallistas, effectiveInitiative, hasBallistaChooseTarget, makeActiveEffect } from "./active-effects";
 import {
   gainResources,
@@ -21,9 +22,15 @@ import type {
   GameAction,
   GameState,
   PlayerId,
+  SpellSchool,
   UnitId,
   WarMachineRoundStartDefinition
 } from "./state";
+
+/** The four elemental Magic schools (Magic Arrow's "any" picks among these). */
+export type ElementalSchool = Exclude<SpellSchool, "any">;
+
+export const ELEMENTAL_SCHOOLS: readonly ElementalSchool[] = ["air", "earth", "fire", "water"];
 
 // Local liveness check, so this module never pulls in legal-actions (which
 // imports the reducers that import this module).
@@ -102,9 +109,151 @@ function setPermanentCardIds(state: GameState, playerId: PlayerId, cardIds: Card
 }
 
 /**
- * The School of Magic bonus an in-play permanent grants a spell, with the
- * granting card — or null when no in-play permanent matches the spell's
- * school. Spells of the "any" school (Magic Arrow) belong to every school.
+ * Conflux Elemental terrain (N14–N21): the Magic school a combat field's TILE
+ * boosts, or null. Combat on ANY hex of an Elemental tile grants +1 Power to
+ * Spells of that school (wiki tile terrain: Elemental Fire/Water/Air/Earth).
+ * Sandbox fights and missing map context never grant a bonus.
+ */
+export function combatElementalSchool(state: GameState): ElementalSchool | null {
+  const combat = state.combat;
+  if (!combat || combat.context.kind === "sandbox") {
+    return null;
+  }
+  const field = state.adventure?.fields[combat.context.fieldId];
+  if (!field) {
+    return null;
+  }
+  const tile = state.adventure?.tiles[field.tileInstanceId];
+  if (!tile) {
+    return null;
+  }
+  const terrain = allTileDefinitions[tile.tileDefId]?.terrain;
+  if (terrain === "elemental_fire") {
+    return "fire";
+  }
+  if (terrain === "elemental_water") {
+    return "water";
+  }
+  if (terrain === "elemental_air") {
+    return "air";
+  }
+  if (terrain === "elemental_earth") {
+    return "earth";
+  }
+  return null;
+}
+
+/** +1 Power when the open combat sits on a matching Elemental terrain tile. */
+export function elementalTileSpellPowerBonus(state: GameState, school: ElementalSchool): number {
+  return combatElementalSchool(state) === school ? 1 : 0;
+}
+
+/**
+ * School-scoped specialty Power (e.g. Adrienne's Fire Magic SPELL_SCHOOL_POWER_BONUS)
+ * for ONE named school — never for Magic Arrow's "any" catch-all (callers pick a
+ * school first). Sums every matching active-effect amount for that school.
+ */
+export function specialtySchoolPowerBonus(
+  state: GameState,
+  playerId: PlayerId,
+  school: ElementalSchool
+): number {
+  let bonus = 0;
+  for (const effect of state.activeEffects) {
+    if (effect.controllerId !== playerId) {
+      continue;
+    }
+    for (const modifier of effect.modifiers) {
+      if (modifier.type === "SPELL_SCHOOL_POWER_BONUS" && modifier.school === school) {
+        bonus += modifier.amount;
+      }
+    }
+  }
+  return bonus;
+}
+
+/**
+ * School-scoped Orb double (SPELL_POWER_DOUBLE) for ONE school. Returns 2 when an
+ * orb of that school is in play for the caster, else 1.
+ */
+export function schoolPowerMultiplierForSchool(
+  state: GameState,
+  playerId: PlayerId,
+  school: ElementalSchool
+): number {
+  for (const effect of state.activeEffects) {
+    if (effect.controllerId !== playerId) {
+      continue;
+    }
+    for (const modifier of effect.modifiers) {
+      if (modifier.type === "SPELL_POWER_DOUBLE" && modifier.school === school) {
+        return 2;
+      }
+    }
+  }
+  return 1;
+}
+
+function permanentSchoolBonusForSchool(
+  state: GameState,
+  playerId: PlayerId,
+  school: ElementalSchool
+): { card: CardDefinition; basicPower: number; expertPower: number } | null {
+  for (const card of getPermanentDefinitions(state, playerId)) {
+    const bonus = card.permanentEffect?.schoolBonus;
+    if (bonus && bonus.school === school) {
+      return { card, basicPower: bonus.basicPower, expertPower: bonus.expertPower };
+    }
+  }
+  return null;
+}
+
+/**
+ * Magic Arrow wiki: "can benefit from spell power bonus to any school of magic,
+ * but it can only be affected by a single school of magic at a time." Pick the
+ * school whose permanent + Elemental-tile + specialty (and Orb double preference)
+ * package is strongest. Fixed-school spells return their printed school.
+ */
+export function pickSpellSchoolForPower(
+  state: GameState,
+  playerId: PlayerId,
+  spellCard: CardDefinition | undefined
+): ElementalSchool | null {
+  if (!spellCard || spellCard.kind !== "spell") {
+    return null;
+  }
+  const schools = spellCard.spellSchools ?? [];
+  if (!schools.includes("any")) {
+    return ELEMENTAL_SCHOOLS.find((school) => schools.includes(school)) ?? null;
+  }
+
+  // Magic Arrow: auto-select the school with the highest Power package.
+  let bestSchool: ElementalSchool | null = null;
+  let bestScore = Number.NEGATIVE_INFINITY;
+  for (const school of ELEMENTAL_SCHOOLS) {
+    const permanent = permanentSchoolBonusForSchool(state, playerId, school);
+    const additive =
+      (permanent?.basicPower ?? 0) +
+      elementalTileSpellPowerBonus(state, school) +
+      specialtySchoolPowerBonus(state, playerId, school);
+    // Prefer a school that also doubles (Orb) when additive totals tie — the
+    // double multiplies the whole cast, so it is always the stronger package.
+    const mult = schoolPowerMultiplierForSchool(state, playerId, school);
+    const score = additive * 10 + (mult > 1 ? 1 : 0);
+    if (score > bestScore) {
+      bestScore = score;
+      bestSchool = school;
+    }
+  }
+  return bestSchool;
+}
+
+/**
+ * The School of Magic permanent that can boost this spell (for the basic +1
+ * while in play, and for the expert discard +3). Fixed-school spells need a
+ * matching permanent. Magic Arrow (school "any") may use ANY school permanent
+ * (wiki: any school, one at a time) — when several exist, prefer the permanent
+ * in the strongest package so expert discards the best option.
  */
 export function getPermanentSchoolBonus(
   state: GameState,
@@ -116,14 +265,69 @@ export function getPermanentSchoolBonus(
   }
 
   const schools = spellCard.spellSchools ?? [];
-  for (const card of getPermanentDefinitions(state, playerId)) {
-    const bonus = card.permanentEffect?.schoolBonus;
-    if (bonus && (schools.includes(bonus.school) || schools.includes("any"))) {
-      return { card, basicPower: bonus.basicPower, expertPower: bonus.expertPower };
+  if (schools.includes("any")) {
+    let best: { card: CardDefinition; basicPower: number; expertPower: number } | null = null;
+    let bestScore = Number.NEGATIVE_INFINITY;
+    for (const school of ELEMENTAL_SCHOOLS) {
+      const permanent = permanentSchoolBonusForSchool(state, playerId, school);
+      if (!permanent) {
+        continue;
+      }
+      const score =
+        permanent.basicPower +
+        elementalTileSpellPowerBonus(state, school) +
+        specialtySchoolPowerBonus(state, playerId, school);
+      if (score > bestScore) {
+        bestScore = score;
+        best = permanent;
+      }
     }
+    return best;
   }
 
-  return null;
+  const chosen = ELEMENTAL_SCHOOLS.find((school) => schools.includes(school));
+  if (!chosen) {
+    return null;
+  }
+  return permanentSchoolBonusForSchool(state, playerId, chosen);
+}
+
+/**
+ * Standing / cast-time school-scoped additive Power from (a) the matching
+ * School-of-Magic permanent's basic +1 and (b) the Conflux Elemental terrain
+ * tile +1. Magic Arrow auto-picks the single school with the highest package
+ * (wiki: one school at a time), so Water Magic never stacks with a Fire tile.
+ * Expert (+3) is applied separately at cast (and replaces the permanent basic).
+ */
+export function schoolScopedStandingPower(
+  state: GameState,
+  playerId: PlayerId,
+  spellCard: CardDefinition
+): number {
+  if (spellCard.kind !== "spell") {
+    return 0;
+  }
+  const chosen = pickSpellSchoolForPower(state, playerId, spellCard);
+  if (!chosen) {
+    return 0;
+  }
+  const permanent = permanentSchoolBonusForSchool(state, playerId, chosen);
+  return (permanent?.basicPower ?? 0) + elementalTileSpellPowerBonus(state, chosen);
+}
+
+/**
+ * Elemental-tile +1 for a cast that already committed to `school` (e.g. after an
+ * expert permanent discard of that school). 0 when the combat tile is a different
+ * school or not Elemental terrain.
+ */
+export function elementalTileSpellPowerBonusForSchool(
+  state: GameState,
+  school: ElementalSchool | SpellSchool | undefined
+): number {
+  if (!school || school === "any") {
+    return 0;
+  }
+  return elementalTileSpellPowerBonus(state, school);
 }
 
 function playerIsInCombat(state: GameState, playerId: PlayerId): boolean {

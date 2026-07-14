@@ -98,6 +98,7 @@ import {
   permanentCrackOpenGain,
   permanentSpellPowerBonus,
   playerCanUseFirstAidVolley,
+  schoolScopedStandingPower,
   warMachinesForSale
 } from "./permanents";
 import { getDemolishAbility, isArrowTowerUnit, parseFortificationTargetId, siegeBlockedPositions } from "./siege";
@@ -283,9 +284,11 @@ export function standingSpellPower(state: GameState, playerId: PlayerId, card: C
       bonus += getActivationSpellPowerBoost(activeUnit, card.spellSchools);
     }
   }
-  const school = getPermanentSchoolBonus(state, playerId, card);
-  if (school) {
-    bonus += school.basicPower;
+  // School-of-Magic permanent basic + Conflux Elemental-tile +1 for the spell's
+  // school. Magic Arrow auto-picks the single strongest school (wiki: one school
+  // at a time) so Water Magic does not stack with a Fire elemental tile.
+  if (card.kind === "spell") {
+    bonus += schoolScopedStandingPower(state, playerId, card);
   }
   // Astrologers Blue Sky / Scorched Ground: "all Spells from the X Magic
   // Schools are cast at +1 Power". A matching-school spell played as an

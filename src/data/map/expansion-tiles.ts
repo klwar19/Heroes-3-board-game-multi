@@ -738,11 +738,14 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
       tileImage: "/assets/board/tiles/n13.webp"
     }
   },
+  // Conflux Near tiles N14–N21 are Elemental terrain (wiki): combat on ANY hex
+  // of the tile grants +1 Power to Spells of the matching School. See
+  // combatElementalSchool / elementalTileSpellPowerBonus in engine/permanents.ts.
   N14: {
     id: "N14",
     group: "near",
     content: "conflux_expansion",
-    terrain: "dirt",
+    terrain: "elemental_fire",
     fields: [
       { location: "blocked_field" },
       { location: "treasure_symbol" },
@@ -766,7 +769,7 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
     id: "N15",
     group: "near",
     content: "conflux_expansion",
-    terrain: "dirt",
+    terrain: "elemental_fire",
     fields: [
       { location: "obelisk" },
       { location: "warriors_tomb" },
@@ -790,7 +793,7 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
     id: "N16",
     group: "near",
     content: "conflux_expansion",
-    terrain: "dirt",
+    terrain: "elemental_water",
     fields: [
       { location: "stables" },
       { location: "elemental_conflux", difficulty: 4 },
@@ -814,7 +817,7 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
     id: "N17",
     group: "near",
     content: "conflux_expansion",
-    terrain: "dirt",
+    terrain: "elemental_water",
     fields: [
       { location: "obelisk" },
       { location: "blocked_field" },
@@ -838,7 +841,7 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
     id: "N18",
     group: "near",
     content: "conflux_expansion",
-    terrain: "dirt",
+    terrain: "elemental_air",
     fields: [
       { location: "stables" },
       { location: "magic_spring" },
@@ -862,7 +865,7 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
     id: "N19",
     group: "near",
     content: "conflux_expansion",
-    terrain: "dirt",
+    terrain: "elemental_air",
     fields: [
       { location: "obelisk" },
       { location: "mine", difficulty: 5, resource: "valuables", amount: 1 },
@@ -886,7 +889,7 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
     id: "N20",
     group: "near",
     content: "conflux_expansion",
-    terrain: "dirt",
+    terrain: "elemental_earth",
     fields: [
       { location: "warriors_tomb" },
       { location: "blocked_field" },
@@ -910,7 +913,7 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
     id: "N21",
     group: "near",
     content: "conflux_expansion",
-    terrain: "dirt",
+    terrain: "elemental_earth",
     fields: [
       { location: "obelisk" },
       { location: "temple" },
