@@ -105,6 +105,63 @@ export const MAP_OBJECTIVE_PRIORITY: Record<MapObjectiveKind, number> = {
 };
 
 /**
+ * What a visitable location is actually WORTH, as a delta on the flat
+ * "visitable" strategic value (600). Previously every visitable collapsed to
+ * the same number, so a Hill Fort (upgrade a unit on the cheap) ranked exactly
+ * like a lone morale flag — the march planner could not tell a prize from a
+ * trinket. Deltas stay within ±70 so the shared -18/step distance decay still
+ * matters (a top location ~4 steps out loses to an equal-value one next door).
+ * Unknown / unlisted locations keep the flat base. Effects per
+ * `src/data/map/locations.ts`.
+ */
+export const VISITABLE_LOCATION_VALUE: Record<string, number> = {
+  // Army / card advantage — the payoffs that compound.
+  hill_fort: 70, // reinforce a Few unit at reduced cost (army power)
+  university: 60, // pick an Ability card from the discard pile
+  witch_hut: 50, // take the top Ability card (or clean a junk card)
+  artifact_symbol: 50, // Search (2) the Artifact deck
+  temple_of_the_sea: 55, // 10 gold + two Artifact searches
+  prison: 45, // a free Secondary Hero (or 3 gold when already fielded)
+  shrine_of_magic_gesture: 45, // free Search (2) Spells
+  tree_of_knowledge: 45, // +2 experience (levels gate which guards we beat)
+  cyclops_stockpile: 45, // roll 4 Resource dice
+  elemental_conflux: 40, // recruit an Elementals card per Dwelling
+  learning_stone: 40, // +1 experience, free
+  spell_scroll: 40, // scroll with 2 Spell draws
+  derelict_ship: 35, // Search (2) Artifacts + 2 gold
+  shipwreck_survivor: 35, // Search (2) Artifacts
+  redwood_observatory: 30, // reveal/place an adjacent tile (expansion tempo)
+  shrine_of_magic_incantation: 30, // paid Search (2) Spells
+  shipwreck: 25, // roll 2 Resource dice
+  pandoras_box: 25, // gamble: dice or a Pandora card
+  // Plain resource pickups — worth a stop, not a march.
+  treasure_symbol: 20, // 1 Treasure die
+  warriors_tomb: 20, // two Artifact searches at a morale price
+  grave: 15, // 3 gold + Search (1) Artifact at a morale price
+  factory_grave: 15,
+  scholar: 15, // retake a card from a discard pile
+  water_wheel: 15, // 3 gold
+  derrick: 15, // 3 gold
+  windmill: 12, // 1 valuables
+  prospector: 12, // 1 valuables
+  mystical_garden: 12, // 3 gold or 1 valuables
+  flotsam: 12, // 2 building materials
+  resource_symbol: 10, // 1 Resource die
+  sea_barrel: 10,
+  jetsam: 10,
+  sea_chest: 10,
+  magic_spring: 10,
+  // Morale / movement one-shots — take them in passing, never chase them.
+  fountain_of_youth: 5,
+  mermaid: 5,
+  temple: 0,
+  buoy: 0,
+  market_of_time: 0, // remove a hand card
+  warlock_lab: 0,
+  faerie_ring: 0,
+};
+
+/**
  * Scenario win-condition fields the hero should march for FIRST: grail dig /
  * grail delivery home, Dragon Utopia for hunt/conqueror modes. Public map
  * state only — no hidden dig sites beyond grailDiggable (which is public once
@@ -515,7 +572,7 @@ function objectiveStrategicValue(
       value = 625;
       break;
     case "visitable":
-      value = 600;
+      value = 600 + (VISITABLE_LOCATION_VALUE[field?.location ?? ""] ?? 0);
       break;
     case "explore":
     default:

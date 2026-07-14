@@ -165,6 +165,27 @@ describe("collectMapObjectives", () => {
     }
   });
 
+  it("values visitable locations by their actual effect (Hill Fort > trinket)", () => {
+    const state = game();
+    const hero = p2Hero(state);
+    // Silence the home-tile guards so the two visitables compete on value.
+    state.adventure!.fields[MINE].difficulty = 5;
+    state.adventure!.fields[TREASURE].difficulty = 5;
+    // Both candidate fields sit adjacent to the town (distance 1 from the
+    // hero). The HIGH-value location goes on the LARGER spaceId (h:9:7 sorts
+    // after h:10:8): with the value table removed both tie at the flat 600 and
+    // the smaller-spaceId tie-break flips the pick — the assertion fails.
+    state.adventure!.fields[EMPTY].location = "hill_fort";
+    state.adventure!.fields[RESOURCE].location = "temple";
+    expect(primaryMapObjective(state, hero)?.spaceId).toBe(EMPTY);
+
+    // CONTROL: swap the two locations and the march target follows the
+    // LOCATION, not the field id.
+    state.adventure!.fields[EMPTY].location = "temple";
+    state.adventure!.fields[RESOURCE].location = "hill_fort";
+    expect(primaryMapObjective(state, hero)?.spaceId).toBe(RESOURCE);
+  });
+
   it("elevates grail dig sites and dragon utopia under their win modes", () => {
     const state = game();
     const hero = p2Hero(state);

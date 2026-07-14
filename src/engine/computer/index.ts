@@ -34,6 +34,7 @@ export {
   objectiveDistanceField,
   ownTownSpaceId,
   primaryMapObjective,
+  VISITABLE_LOCATION_VALUE,
   type MapObjective,
   type MapObjectiveKind,
 } from "./map-navigation";
