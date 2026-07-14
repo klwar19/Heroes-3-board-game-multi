@@ -91,9 +91,9 @@ describe("MapDesigner — face-down secret pins", () => {
   const town = { row: 10, col: 10 };
   const spots = tileLatticeNeighbors(town);
 
-  it("shows a secret pin's tile id on a face-down plan (designer-only)", () => {
-    // A face-down slot with tileDefId is a predetermined secret — the designer
-    // sees the pin (🔒 + id); players never use this view.
+  it("shows an exact secret pin's tile id on a face-down plan (designer-only)", () => {
+    // A face-down slot with tileDefId is a predetermined exact secret — the
+    // designer sees the pin (🔒 + id); players never use this view.
     const container = renderDesigner([
       { row: town.row, col: town.col, group: "starting", faceDown: false },
       {
@@ -122,6 +122,30 @@ describe("MapDesigner — face-down secret pins", () => {
     expect(container.querySelector(".designerHexPlan.secret"), "secret class on hexes").toBeTruthy();
   });
 
+  it("shows a feature secret as 🔒 + landmark on the board (not a specific tile id)", () => {
+    const container = renderDesigner([
+      { row: town.row, col: town.col, group: "starting", faceDown: false },
+      {
+        row: spots[0].row,
+        col: spots[0].col,
+        group: "near",
+        faceDown: true,
+        secretFeature: "gold_mine"
+      }
+    ]);
+    const labels = [...container.querySelectorAll(".designerTileLabel")].map(
+      (node) => node.textContent ?? ""
+    );
+    expect(
+      labels.some((text) => text.includes("🔒") && /gold/i.test(text)),
+      `feature secret label shown, got: ${labels.join(" | ")}`
+    ).toBe(true);
+    expect(container.querySelector(".designerHexPlan.secret"), "secret class").toBeTruthy();
+    expect(container.querySelector(".designerHexPlan.featureSecret"), "feature secret class").toBeTruthy();
+    // Feature secrets keep the face-down back — no specific tile art yet.
+    expect(container.querySelector('image[href*="N3"]')).toBeNull();
+  });
+
   it("leaves a pure-random face-down slot labelled by pool, without a secret badge", () => {
     const container = renderDesigner([
       { row: town.row, col: town.col, group: "starting", faceDown: false },
@@ -135,11 +159,15 @@ describe("MapDesigner — face-down secret pins", () => {
     expect(labels.some((text) => /Ⅳ–Ⅴ|IV–V|Near/i.test(text) || text.includes("Ⅳ"))).toBe(true);
   });
 
-  it("opens a click-to-select mode row + tile grid on a face-down slot", () => {
-    const container = renderDesigner([
+  it("opens mode cards; Secret mode shows landmark feature cards", () => {
+    let latest: CustomMapTilePlan[] = [
       { row: town.row, col: town.col, group: "starting", faceDown: false },
       { row: spots[0].row, col: spots[0].col, group: "near", faceDown: true }
-    ]);
+    ];
+    const onChange = vi.fn((next: CustomMapTilePlan[]) => {
+      latest = next;
+    });
+    const container = renderDesigner(latest, onChange);
     const popover = openTilePopover(container, 1);
     const scope = within(popover);
 
@@ -149,14 +177,27 @@ describe("MapDesigner — face-down secret pins", () => {
     expect(scope.getByRole("button", { name: /Face-up/i })).toBeTruthy();
     expect(popover.querySelector(".popoverModeCard.active")?.textContent).toMatch(/Random/i);
 
-    // Landmark filter chips + a clickable tile grid (not a bare <select>).
-    expect(scope.getByRole("button", { name: "All" })).toBeTruthy();
-    expect(scope.getByRole("button", { name: "Obelisk" })).toBeTruthy();
-    expect(popover.querySelectorAll(".popoverTileCard").length).toBeGreaterThan(0);
-    expect(popover.querySelector("select[aria-label='Secret tile']")).toBeNull();
+    // Switch to Secret → mode handler sets a feature; re-render to see cards.
+    fireEvent.click(scope.getByRole("button", { name: /Secret/i }));
+    expect(latest[1]?.secretFeature, "Secret mode sets a default landmark").toBeTruthy();
+
+    cleanup();
+    const secretMap: CustomMapTilePlan[] = [
+      latest[0],
+      { ...latest[1], faceDown: true, secretFeature: latest[1].secretFeature }
+    ];
+    const container2 = renderDesigner(secretMap);
+    const popover2 = openTilePopover(container2, 1);
+    const featureCards = popover2.querySelectorAll(".popoverFeatureCard");
+    expect(featureCards.length).toBeGreaterThan(0);
+    expect(
+      [...featureCards].some((card) => /Gold mine/i.test(card.textContent ?? "")),
+      "Gold mine feature card listed"
+    ).toBe(true);
+    expect(popover2.querySelector(".popoverFeatureCard.selected")).toBeTruthy();
   });
 
-  it("clicking a tile card pins it as Secret; clicking Face-up then a tile reveals it", () => {
+  it("clicking Secret then a landmark stores secretFeature (not a specific tile)", () => {
     let latest: CustomMapTilePlan[] = [];
     const onChange = vi.fn((next: CustomMapTilePlan[]) => {
       latest = next;
@@ -168,36 +209,89 @@ describe("MapDesigner — face-down secret pins", () => {
     const container = renderDesigner(map, onChange);
     const popover = openTilePopover(container, 1);
 
-    // One click on a tile card while Random → Secret pin of that tile.
-    // Prefer exact id "N3" (not expansion "#N3") via the card id label.
-    const n3 = popover.querySelector(".popoverTileCardId")
-      ? ([...popover.querySelectorAll(".popoverTileCard")].find(
-          (card) => card.querySelector(".popoverTileCardId")?.textContent === "N3"
-        ) as HTMLElement | undefined)
-      : undefined;
+    fireEvent.click(within(popover).getByRole("button", { name: /Secret/i }));
+    // setSelectedSlotMode already sets a default feature; re-render if needed.
+    const afterMode = latest[1] ?? onChange.mock.calls.at(-1)?.[0]?.[1];
+    expect(afterMode?.faceDown).toBe(true);
+    expect(afterMode?.secretFeature, "default feature set on Secret mode").toBeTruthy();
+    expect(afterMode?.tileDefId).toBeUndefined();
+
+    // Explicitly pick Obelisk if available (re-open with current state).
+    cleanup();
+    const withFeature: CustomMapTilePlan[] = [
+      map[0],
+      { ...map[1], faceDown: true, secretFeature: afterMode!.secretFeature }
+    ];
+    let featureLatest: CustomMapTilePlan[] = withFeature;
+    const onFeature = vi.fn((next: CustomMapTilePlan[]) => {
+      featureLatest = next;
+    });
+    const container2 = renderDesigner(withFeature, onFeature);
+    const popover2 = openTilePopover(container2, 1);
+    const obelisk = [...popover2.querySelectorAll(".popoverFeatureCard")].find((card) =>
+      /obelisk/i.test(card.textContent ?? "")
+    ) as HTMLElement | undefined;
+    expect(obelisk, "Obelisk feature card present for near pool").toBeTruthy();
+    fireEvent.click(obelisk!);
+    expect(featureLatest[1]?.faceDown).toBe(true);
+    expect(featureLatest[1]?.secretFeature).toBe("obelisk");
+    expect(featureLatest[1]?.tileDefId).toBeUndefined();
+  });
+
+  it("clicking an exact tile under Secret pins tileDefId (advanced) and clears feature", () => {
+    let latest: CustomMapTilePlan[] = [];
+    const onChange = vi.fn((next: CustomMapTilePlan[]) => {
+      latest = next;
+    });
+    const map: CustomMapTilePlan[] = [
+      { row: town.row, col: town.col, group: "starting", faceDown: false },
+      {
+        row: spots[0].row,
+        col: spots[0].col,
+        group: "near",
+        faceDown: true,
+        secretFeature: "gold_mine"
+      }
+    ];
+    const container = renderDesigner(map, onChange);
+    const popover = openTilePopover(container, 1);
+
+    const n3 = [...popover.querySelectorAll(".popoverTileCard")].find(
+      (card) => card.querySelector(".popoverTileCardId")?.textContent === "N3"
+    ) as HTMLElement | undefined;
     expect(n3, "N3 tile card present").toBeTruthy();
     fireEvent.click(n3!);
     expect(onChange).toHaveBeenCalled();
     const afterPin = latest[1] ?? onChange.mock.calls.at(-1)?.[0]?.[1];
     expect(afterPin).toMatchObject({ faceDown: true, tileDefId: "N3" });
+    expect(afterPin.secretFeature).toBeUndefined();
+  });
 
-    // Re-render with the pin and switch mode to Face-up via the mode card.
-    cleanup();
-    const pinned: CustomMapTilePlan[] = [
-      map[0],
-      { ...map[1], faceDown: true, tileDefId: "N3" }
-    ];
-    let faceUpLatest: CustomMapTilePlan[] = pinned;
+  it("clicking Face-up then a tile reveals that exact tile", () => {
+    let faceUpLatest: CustomMapTilePlan[] = [];
     const onFaceUp = vi.fn((next: CustomMapTilePlan[]) => {
       faceUpLatest = next;
     });
-    const container2 = renderDesigner(pinned, onFaceUp);
-    const popover2 = openTilePopover(container2, 1);
-    fireEvent.click(within(popover2).getByRole("button", { name: /Face-up/i }));
-    expect(faceUpLatest[1]).toMatchObject({ faceDown: false, tileDefId: "N3" });
+    const pinned: CustomMapTilePlan[] = [
+      { row: town.row, col: town.col, group: "starting", faceDown: false },
+      {
+        row: spots[0].row,
+        col: spots[0].col,
+        group: "near",
+        faceDown: true,
+        secretFeature: "gold_mine"
+      }
+    ];
+    const container = renderDesigner(pinned, onFaceUp);
+    const popover = openTilePopover(container, 1);
+    fireEvent.click(within(popover).getByRole("button", { name: /Face-up/i }));
+    // Face-up mode needs a concrete tile — falls back to a free pickable id.
+    expect(faceUpLatest[1]?.faceDown).toBe(false);
+    expect(faceUpLatest[1]?.tileDefId).toBeTruthy();
+    expect(faceUpLatest[1]?.secretFeature).toBeUndefined();
   });
 
-  it("filter chip Obelisk narrows the clickable grid to tiles with an obelisk", () => {
+  it("filter chip Obelisk narrows the exact-tile grid to tiles with an obelisk", () => {
     const container = renderDesigner([
       { row: town.row, col: town.col, group: "starting", faceDown: false },
       { row: spots[0].row, col: spots[0].col, group: "near", faceDown: true }

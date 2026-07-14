@@ -42,12 +42,19 @@ import {
   seaTileBand,
   subterraneanTileBand,
   changeMorale,
+  applyCustomMapStartingBonuses,
   startAdventureRound,
   startingBonusVisitSteps,
   startPlayerTurn,
   tokenMayCoverFieldDef,
   victoryModeCountsHeroDefeats
 } from "./adventure";
+import {
+  applyCustomMapPresetToOptions,
+  customMapPresetIsActive,
+  sanitizeCustomMapPreset,
+  type CustomMapPreset
+} from "./map-preset";
 import { pumpAdventureQueues } from "./adventure-reducer";
 import { makeInitialCommanderState } from "./commanders";
 import { controllerOf, standardComputerController } from "./computer/control";
@@ -82,12 +89,147 @@ import type {
   PlayerState,
   PvpTroopLoss,
   RoomMembershipState,
+  SecretTileFeature,
   StartCheckState,
   UnitLevel,
   VictoryMode,
   WogModOptions
 } from "./state";
 import { DEFAULT_WOG_OPTIONS, MAX_FAR_TILES_PER_PLAYER, NEUTRAL_PLAYER_ID, UNOPENED_FAR_TILE } from "./state";
+import type { TileDefinition } from "@/data/map/types";
+
+/** Known designer Secret-feature ids (the allow-list for sanitize + validation). */
+export const SECRET_TILE_FEATURE_IDS: readonly SecretTileFeature[] = [
+  "gold_mine",
+  "valuables_mine",
+  "materials_mine",
+  "any_mine",
+  "obelisk",
+  "settlement",
+  "town",
+  "objective"
+] as const;
+
+const SECRET_TILE_FEATURE_SET = new Set<string>(SECRET_TILE_FEATURE_IDS);
+
+/**
+ * Designer + UI catalogue for Secret slots: pick a landmark, the engine later
+ * draws ANY remaining tile in the slot's pool that carries it.
+ */
+export const SECRET_TILE_FEATURES: readonly {
+  id: SecretTileFeature;
+  label: string;
+  shortLabel: string;
+  icon: string;
+  description: string;
+}[] = [
+  {
+    id: "gold_mine",
+    label: "Gold mine",
+    shortLabel: "Gold",
+    icon: "🪙",
+    description: "A random tile from this pool that has a Gold mine."
+  },
+  {
+    id: "valuables_mine",
+    label: "Valuables mine",
+    shortLabel: "Valuables",
+    icon: "💎",
+    description: "A random tile from this pool that has a Valuables mine."
+  },
+  {
+    id: "materials_mine",
+    label: "Materials mine",
+    shortLabel: "Materials",
+    icon: "🪵",
+    description: "A random tile from this pool that has a Building Materials mine."
+  },
+  {
+    id: "any_mine",
+    label: "Any mine",
+    shortLabel: "Mine",
+    icon: "⛏️",
+    description: "A random tile from this pool that has any mine (gold, valuables, or materials)."
+  },
+  {
+    id: "obelisk",
+    label: "Obelisk",
+    shortLabel: "Obelisk",
+    icon: "🗿",
+    description: "A random tile from this pool that has an Obelisk."
+  },
+  {
+    id: "settlement",
+    label: "Settlement",
+    shortLabel: "Settlement",
+    icon: "🏘️",
+    description: "A random tile from this pool that has a Settlement."
+  },
+  {
+    id: "town",
+    label: "Town",
+    shortLabel: "Town",
+    icon: "🏰",
+    description: "A random tile from this pool that has a Town (or Random Town)."
+  },
+  {
+    id: "objective",
+    label: "Grail / Dragons",
+    shortLabel: "Objective",
+    icon: "🏆",
+    description: "A random tile from this pool that has the Grail or a Dragon Utopia."
+  }
+];
+
+/** True when the tile definition carries the Secret landmark. */
+export function tileMatchesSecretFeature(def: TileDefinition, feature: SecretTileFeature): boolean {
+  switch (feature) {
+    case "gold_mine":
+      return def.fields.some((field) => field.location === "mine" && field.resource === "gold");
+    case "valuables_mine":
+      return def.fields.some((field) => field.location === "mine" && field.resource === "valuables");
+    case "materials_mine":
+      return def.fields.some(
+        (field) => field.location === "mine" && field.resource === "buildingMaterials"
+      );
+    case "any_mine":
+      return def.fields.some((field) => field.location === "mine");
+    case "obelisk":
+      return def.fields.some((field) => field.location === "obelisk");
+    case "settlement":
+      return def.fields.some((field) => field.location === "settlement");
+    case "town":
+      return def.fields.some(
+        (field) => field.location === "town" || field.location === "random_town"
+      );
+    case "objective":
+      return def.fields.some(
+        (field) => field.location === "grail" || field.location === "dragon_utopia"
+      );
+    default:
+      return false;
+  }
+}
+
+/** Short label for a Secret feature (board badge / popover). */
+export function secretFeatureLabel(feature: SecretTileFeature | undefined): string {
+  if (!feature) {
+    return "Secret";
+  }
+  return SECRET_TILE_FEATURES.find((entry) => entry.id === feature)?.shortLabel ?? feature;
+}
+
+/** Full label for a Secret feature. */
+export function secretFeatureFullLabel(feature: SecretTileFeature | undefined): string {
+  if (!feature) {
+    return "Secret landmark";
+  }
+  return SECRET_TILE_FEATURES.find((entry) => entry.id === feature)?.label ?? feature;
+}
+
+export function isSecretTileFeature(value: unknown): value is SecretTileFeature {
+  return typeof value === "string" && SECRET_TILE_FEATURE_SET.has(value);
+}
 import { HOUSE_RULE_BY_ID, resolveHouseRules } from "./house-rules";
 
 /**
@@ -253,6 +395,8 @@ export type AdventureSetupOptions = {
   startingBuildings?: string[];
   /** Map designer: replaces the scenario's face-down Near/Center layout. */
   customMap?: CustomMapTilePlan[] | null;
+  /** Map designer scenario conditions (resources, timed events, victory preset…). */
+  customMapPreset?: CustomMapPreset | null;
   /** Content sets whose tiles fill the supply pools (default: every published set). */
   tileContent?: TileContent[];
   /**
@@ -327,7 +471,8 @@ export function defaultGameSetupOptions(scenario: ScenarioDefinition): GameSetup
     startingUnits: scenarioStartingUnitLevels(scenario),
     startingBuildings: [...scenario.startingBuildings],
     customMap: null,
-    customMapName: null
+    customMapName: null,
+    customMapPreset: null
   };
 }
 
@@ -667,8 +812,8 @@ export function validateCustomMapPlan(
     }
     // Starting (Ⅰ) tiles only carry a seat position; the tile art is the
     // faction's, so they never need a chosen tile id. Every other slot may pin
-    // a specific tile — required face-up, optional face-down (a designer-only
-    // secret that stays hidden until discovery).
+    // a specific tile — required face-up, optional face-down (exact secret) —
+    // or name a secretFeature (face-down landmark filter).
     if (plan.group !== "starting" && plan.tileDefId) {
       const def = allTileDefinitions[plan.tileDefId];
       if (!def) {
@@ -686,6 +831,20 @@ export function validateCustomMapPlan(
     } else if (plan.group !== "starting" && !plan.faceDown) {
       problems.push(`Tile ${index + 1}: pick a tile for the face-up slot.`);
       return false;
+    }
+    if (plan.secretFeature !== undefined) {
+      if (!isSecretTileFeature(plan.secretFeature)) {
+        problems.push(`Tile ${index + 1}: unknown secret feature "${String(plan.secretFeature)}".`);
+        return false;
+      }
+      if (!plan.faceDown) {
+        problems.push(`Tile ${index + 1}: a secret landmark only applies to face-down slots.`);
+        return false;
+      }
+      if (plan.group === "starting") {
+        problems.push(`Tile ${index + 1}: starting towns cannot carry a secret landmark.`);
+        return false;
+      }
     }
     return true;
   });
@@ -774,6 +933,47 @@ function takeCenterTileWith(pool: string[], location: string): string | undefine
 }
 
 /**
+ * Pops a tile matching a designer Secret feature from a shuffled pool.
+ * Walks from the top of the remaining supply (end of the array) so the draw
+ * is seed-deterministic after the pool was shuffled. Optional sea/sub band
+ * filters keep the pick inside the slot's guard band.
+ */
+function popTileMatchingFeature(
+  pool: string[],
+  feature: SecretTileFeature,
+  options?: {
+    group?: CustomMapTilePlan["group"];
+    seaBand?: CustomMapTilePlan["seaBand"];
+    subBand?: CustomMapTilePlan["subBand"];
+  }
+): string | undefined {
+  for (let index = pool.length - 1; index >= 0; index -= 1) {
+    const tileDefId = pool[index];
+    const def = allTileDefinitions[tileDefId];
+    if (!def) {
+      continue;
+    }
+    if (options?.group && def.group !== options.group) {
+      continue;
+    }
+    if (options?.group === "sea" && options.seaBand && seaTileBand(def) !== options.seaBand) {
+      continue;
+    }
+    if (
+      options?.group === "subterranean" &&
+      options.subBand &&
+      subterraneanTileBand(def) !== options.subBand
+    ) {
+      continue;
+    }
+    if (tileMatchesSecretFeature(def, feature)) {
+      return pool.splice(index, 1)[0];
+    }
+  }
+  return undefined;
+}
+
+/**
  * Center (VI–VII) tiles forced by the win condition: Grail Hunt guarantees a
  * Grail; Dragon Hunt and Dragon Conqueror guarantee a Dragon Utopia. The array
  * is index-aligned with the scenario's Center positions; undefined entries fall
@@ -833,8 +1033,15 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     ...(options.houseRules !== undefined ? { houseRules: options.houseRules } : {}),
     ...(options.farTileOpening !== undefined ? { farTileOpening: options.farTileOpening } : {}),
     ...(options.farTilesPerPlayer !== undefined ? { farTilesPerPlayer: options.farTilesPerPlayer } : {}),
-    ...(options.customMap !== undefined ? { customMap: options.customMap } : {})
+    ...(options.customMap !== undefined ? { customMap: options.customMap } : {}),
+    ...(options.customMapPreset !== undefined ? { customMapPreset: options.customMapPreset } : {})
   };
+  // Map preset forces resources/army/buildings/victory when present (same as
+  // picking the map in the lobby). Explicit AdventureSetupOptions fields above
+  // win only when the preset does not set them.
+  if (setupOptions.customMapPreset) {
+    applyCustomMapPresetToOptions(setupOptions, sanitizeCustomMapPreset(setupOptions.customMapPreset));
+  }
   const difficulty = setupOptions.difficulty;
   // Naval Battles Creature Banks default ON: discovering a Far/Near tile with a
   // Blocked Field offers the discovering player a bank token from the matching
@@ -901,9 +1108,12 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   const pvpNeutralControlOn = (setupOptions.pvpNeutralControl ?? false) && playerConfigs.length >= 2;
   const pvpNeutralControlMustAttackOn = setupOptions.pvpNeutralControlMustAttack ?? true;
 
+  const mapPreset = sanitizeCustomMapPreset(setupOptions.customMapPreset ?? null) ?? null;
+
   const adventure: AdventureState = {
     difficulty,
     scenarioId: scenario.id,
+    ...(mapPreset ? { mapPreset } : {}),
     tiles: {},
     fields: {},
     playerFarTiles: {},
@@ -1119,9 +1329,9 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   if (customMap) {
     // Map designer: hand-placed tiles instead of the scenario layout.
     // Face-up plans place their chosen tile revealed; face-down plans either
-    // pin a secret `tileDefId` (designer-only until discovery) or draw a random
-    // tile from their group's pool ("down means random"). Starting (Ⅰ) tiles
-    // were already placed by faction in the seat loop above.
+    // pin an exact `tileDefId`, filter by `secretFeature` (random matching
+    // landmark from the pool), or draw fully at random ("down means random").
+    // Starting (Ⅰ) tiles were already placed by faction in the seat loop above.
     const pools: Record<string, string[]> = {
       far: farPool,
       near: nearPool,
@@ -1142,8 +1352,8 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     const popSubTile = (band?: "iv-v" | "vi-vii"): string | undefined =>
       band ? popSubBandTile(subterraneanPool, band) : subterraneanPool.pop();
 
-    // Designed tiles that pin a specific id (face-up OR secret face-down) never
-    // also hide in a random face-down pool draw.
+    // Designed tiles that pin a specific id (face-up OR exact secret face-down)
+    // never also hide in a random / feature face-down pool draw.
     for (const plan of customMap) {
       if (plan.tileDefId) {
         for (const pool of Object.values(pools)) {
@@ -1158,9 +1368,11 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     // Center (VI–VII) tiles forced by the win condition (Grail Hunt → a Grail,
     // Dragon Hunt/Conqueror → a Dragon Utopia) apply to unpinned face-down
     // Center slots here too, exactly like the scenario layout — a designer who
-    // already pinned a specific Center tile keeps that choice instead.
+    // already pinned a specific Center tile or named a secretFeature keeps that
+    // choice instead.
     const unpinnedFaceDownCenterSlots = customMap.filter(
-      (plan) => plan.faceDown && plan.group === "center" && !plan.tileDefId
+      (plan) =>
+        plan.faceDown && plan.group === "center" && !plan.tileDefId && !plan.secretFeature
     ).length;
     const forcedCenters = forcedObjectiveCenterTiles(centerPool, unpinnedFaceDownCenterSlots, victoryMode);
     let forcedCenterIndex = 0;
@@ -1176,10 +1388,39 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
       const center = { row: plan.row, col: plan.col };
       if (plan.faceDown) {
         let tileDefId: string | undefined;
-        // A designer-pinned id is a secret predetermined tile: still face-down
-        // for players, but fixed content (mine, obelisk, …) at discovery.
+        // Exact pin wins over a feature filter (legacy / advanced).
         if (plan.tileDefId && allTileDefinitions[plan.tileDefId]) {
           tileDefId = plan.tileDefId;
+        } else if (plan.secretFeature && isSecretTileFeature(plan.secretFeature)) {
+          // Feature secret: random remaining tile that has the landmark.
+          // Prefer the slot's own pool; fall back to an unfiltered draw so a
+          // starved pool never leaves an empty hole on the board — and note the
+          // table so players know the designer guarantee soft-failed.
+          const pool = pools[plan.group];
+          if (pool) {
+            tileDefId = popTileMatchingFeature(pool, plan.secretFeature, {
+              group: plan.group,
+              seaBand: plan.seaBand,
+              subBand: plan.subBand
+            });
+          }
+          if (!tileDefId) {
+            if (plan.group === "sea") {
+              tileDefId = popSeaTile(plan.seaBand);
+            } else if (plan.group === "subterranean") {
+              tileDefId = popSubTile(plan.subBand);
+            } else {
+              tileDefId = pools[plan.group]?.pop();
+            }
+            if (tileDefId) {
+              appendEvent(state, {
+                type: "MAP_SECRET_FEATURE_FALLBACK",
+                feature: plan.secretFeature,
+                group: plan.group,
+                message: `Secret “${secretFeatureFullLabel(plan.secretFeature)}” could not be fulfilled on a ${plan.group} slot — no matching tile left in the pool. Drew a random tile instead.`
+              });
+            }
+          }
         } else if (plan.group === "sea") {
           tileDefId = popSeaTile(plan.seaBand);
         } else if (plan.group === "subterranean") {
@@ -1320,6 +1561,16 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
         steps: bonusSteps.map((step) => structuredClone(step))
       });
     }
+  }
+
+  // Map designer starting bonuses (resources / morale / Search) — after the
+  // difficulty bonus is queued so both appear in the opening reward stream.
+  applyCustomMapStartingBonuses(state);
+  if (mapPreset && customMapPresetIsActive(mapPreset) && mapPreset.notes) {
+    appendEvent(state, {
+      type: "MAP_PRESET_TRIGGERED",
+      message: `Map note: ${mapPreset.notes}`
+    });
   }
 
   if (parallelRounds > 0) {
@@ -1988,6 +2239,7 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
     if (next.customMap === null) {
       lobby.options.customMap = null;
       lobby.options.customMapName = null;
+      lobby.options.customMapPreset = null;
       changes.push("map back to the scenario layout");
     } else {
       if (next.customMap.length > MAX_CUSTOM_MAP_TILES) {
@@ -2003,6 +2255,35 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
       changes.push(
         `designed map ${mapName ? `"${mapName}" ` : ""}(${accepted.length} tile${accepted.length === 1 ? "" : "s"})`
       );
+      // Apply map-only conditions (resources, army, buildings, victory) when the
+      // client sends a preset alongside the tile plan.
+      if (next.customMapPreset !== undefined) {
+        const preset = sanitizeCustomMapPreset(next.customMapPreset);
+        lobby.options.customMapPreset = preset ?? null;
+        if (preset) {
+          const presetChanges = applyCustomMapPresetToOptions(lobby.options, preset);
+          if (presetChanges.length > 0) {
+            changes.push(`map conditions: ${presetChanges.join(", ")}`);
+          }
+          if (preset.notes) {
+            changes.push(`map note: ${preset.notes}`);
+          }
+        }
+      }
+    }
+  } else if (next.customMapPreset !== undefined && lobby.options.customMap) {
+    // Preset-only update while a designed map stays selected.
+    const preset = sanitizeCustomMapPreset(next.customMapPreset);
+    lobby.options.customMapPreset = preset ?? null;
+    if (preset) {
+      const presetChanges = applyCustomMapPresetToOptions(lobby.options, preset);
+      changes.push(
+        presetChanges.length > 0
+          ? `map conditions: ${presetChanges.join(", ")}`
+          : "map conditions updated"
+      );
+    } else {
+      changes.push("map conditions cleared");
     }
   }
 
@@ -2876,6 +3157,7 @@ function buildAdventureFromLobby(state: GameState): void {
     startingUnits: lobby.options.startingUnits ?? null,
     startingBuildings: lobby.options.startingBuildings,
     customMap: lobby.options.customMap ?? null,
+    customMapPreset: lobby.options.customMapPreset ?? null,
     players: lobby.seats.map((seat) => ({
       id: seat.playerId,
       name: state.players[seat.playerId]?.name ?? seat.name,

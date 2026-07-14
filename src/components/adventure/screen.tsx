@@ -38,6 +38,7 @@ import {
   bannableHeroesForSeat,
   deckDisplayName,
   describeCardEffect,
+  describeCustomMapPreset,
   DRAFT_FORMAT_LABELS,
   getDraftPhase,
   getActiveAstrologersCard,
@@ -4822,7 +4823,8 @@ function MapPicker({
                       ...(record.scenarioId !== options.scenarioId ? { scenarioId: record.scenarioId } : {}),
                       playerCount: record.players,
                       customMap: record.tiles,
-                      customMapName: record.name
+                      customMapName: record.name,
+                      customMapPreset: record.preset ?? null
                     })
                   }
                   title={
@@ -4830,12 +4832,16 @@ function MapPicker({
                       ? `Needs fixing in the designer: ${problems[0]}`
                       : `${record.tiles.length} tiles on ${scenario?.name ?? record.scenarioId}${
                           author ? ` · made by ${author}` : ""
-                        }`
+                        }${record.preset ? " · has map conditions" : ""}`
                   }
                   type="button"
                 >
                   🗺 {record.name}
-                  <small className="mapAuthor"> {author ? `by ${author}` : "by a player"}</small>
+                  <small className="mapAuthor">
+                    {" "}
+                    {author ? `by ${author}` : "by a player"}
+                    {record.preset ? " · conditions" : ""}
+                  </small>
                 </button>
               );
             })
@@ -4844,11 +4850,23 @@ function MapPicker({
       </div>
 
       {options.customMap ? (
-        <small className="optionHint">
-          Playing the designed map {options.customMapName ? `“${options.customMapName}” ` : ""}with{" "}
-          {options.customMap.length} tile{options.customMap.length === 1 ? "" : "s"} — face-down tiles still draw
-          randomly from their pool.
-        </small>
+        <div className="mapPresetLobbyNote">
+          <small className="optionHint">
+            Playing the designed map {options.customMapName ? `“${options.customMapName}” ` : ""}with{" "}
+            {options.customMap.length} tile{options.customMap.length === 1 ? "" : "s"} — face-down Secret landmarks draw
+            a random matching tile from their pool.
+          </small>
+          {options.customMapPreset ? (
+            <div className="mapPresetLobbyBanner" role="status">
+              <strong>This map has special conditions</strong>
+              <ul>
+                {describeCustomMapPreset(options.customMapPreset).map((line) => (
+                  <li key={line}>{line}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </div>
       ) : null}
       <small className="optionHint designerLink">
         <Link href="/designer" target="_blank">

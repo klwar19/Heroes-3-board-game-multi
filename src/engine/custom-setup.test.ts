@@ -252,6 +252,202 @@ describe("map designer", () => {
     // a Grail and a Dragon Utopia, so dropping the fix fails one assertion above.
   });
 
+  it("secretFeature draws a random face-down tile that carries that landmark", () => {
+    // Designer picks "gold mine", not a specific tile id — at setup any
+    // remaining Near tile with a gold mine may land on the slot (still face-down).
+    const state = createAdventureGameState({
+      seed: "feature-secret-gold",
+      customMap: [
+        {
+          row: 9,
+          col: 4,
+          group: "near",
+          faceDown: true,
+          secretFeature: "gold_mine"
+        }
+      ]
+    });
+    const near = Object.values(state.adventure!.tiles).find(
+      (tile) => tile.centerRow === 9 && tile.centerCol === 4
+    );
+    expect(near, "feature-secret slot placed").toBeDefined();
+    expect(near!.faceDown).toBe(true);
+    expect(near!.tileDefId).toBeTruthy();
+    const def = allTileDefinitions[near!.tileDefId];
+    expect(def?.group).toBe("near");
+    expect(
+      def?.fields.some((field) => field.location === "mine" && field.resource === "gold"),
+      `expected a gold mine on ${near!.tileDefId}, fields=${JSON.stringify(def?.fields)}`
+    ).toBe(true);
+
+    // CONTROL: an exact pin still wins over the feature when both are set.
+    const exactWins = createAdventureGameState({
+      seed: "feature-secret-exact-wins",
+      customMap: [
+        {
+          row: 9,
+          col: 4,
+          group: "near",
+          faceDown: true,
+          tileDefId: "N3",
+          secretFeature: "gold_mine"
+        }
+      ]
+    });
+    const exactTile = Object.values(exactWins.adventure!.tiles).find(
+      (tile) => tile.centerRow === 9 && tile.centerCol === 4
+    );
+    expect(exactTile?.tileDefId).toBe("N3");
+  });
+
+  it("secretFeature obelisk / settlement resolve from the matching pool", () => {
+    const make = (feature: "obelisk" | "settlement" | "any_mine", seed: string) => {
+      // Settlements are rare on Near tiles — use Far for settlement, Near for
+      // the rest (Far has many settlement fields in the core pool).
+      const group = feature === "settlement" ? "far" : "near";
+      const state = createAdventureGameState({
+        seed,
+        customMap: [{ row: 9, col: 4, group, faceDown: true, secretFeature: feature }]
+      });
+      const tile = Object.values(state.adventure!.tiles).find(
+        (entry) => entry.centerRow === 9 && entry.centerCol === 4
+      );
+      expect(tile?.faceDown).toBe(true);
+      expect(tile?.tileDefId).toBeTruthy();
+      return allTileDefinitions[tile!.tileDefId];
+    };
+
+    const withObelisk = make("obelisk", "feature-secret-obelisk");
+    expect(withObelisk.fields.some((field) => field.location === "obelisk")).toBe(true);
+
+    // Settlement may not exist on every pool; use any_mine as a guaranteed
+    // second control when settlement is sparse — still assert settlement when found.
+    const withSettlement = make("settlement", "feature-secret-settlement");
+    expect(withSettlement.fields.some((field) => field.location === "settlement")).toBe(true);
+  });
+
+  it("secretFeature falls back to random and notes the table when the pool is empty", () => {
+    // Flood the near pool with more gold-mine secrets than matching tiles —
+    // extras fall back to pure random and emit a public note.
+    const goldNear = Object.values(allTileDefinitions).filter(
+      (def) =>
+        def.group === "near" &&
+        def.fields.some((field) => field.location === "mine" && field.resource === "gold")
+    );
+    expect(goldNear.length).toBeGreaterThan(0);
+
+    const customMap: import("./state").CustomMapTilePlan[] = [
+      { row: 9, col: 4, group: "near", faceDown: true, secretFeature: "gold_mine" },
+      ...goldNear.map((_, index) => ({
+        row: 20 + index * 3,
+        col: 20 + index * 3,
+        group: "near" as const,
+        faceDown: true as const,
+        secretFeature: "gold_mine" as const
+      }))
+    ];
+    const state = createAdventureGameState({
+      seed: "feature-fallback",
+      customMap
+    });
+    const fallbacks = state.eventLog.filter((e) => e.type === "MAP_SECRET_FEATURE_FALLBACK");
+    expect(fallbacks.length, "at least one soft-fail note").toBeGreaterThan(0);
+    expect(fallbacks[0]).toMatchObject({
+      type: "MAP_SECRET_FEATURE_FALLBACK",
+      feature: "gold_mine",
+      group: "near"
+    });
+    // CONTROL: every near tile is still placed (no empty hole).
+    const nearTiles = Object.values(state.adventure!.tiles).filter((t) => t.group === "near");
+    expect(nearTiles.length).toBe(1 + goldNear.length);
+  });
+
+  it("map preset applies starting resources, victory mode, and timed events", () => {
+    const state = createAdventureGameState({
+      seed: "map-preset-core",
+      customMap: [{ row: 9, col: 4, group: "near", faceDown: true }],
+      customMapPreset: {
+        victoryMode: "grail",
+        startingResources: { gold: 17, buildingMaterials: 3, valuables: 2 },
+        startingProduction: { gold: 12, buildingMaterials: 1, valuables: 0 },
+        startingBuildings: ["citadel", "city_hall"],
+        startingBonuses: [{ kind: "resources", gold: 5, buildingMaterials: 0, valuables: 0 }],
+        timedEvents: [
+          { round: 1, effect: { kind: "note", text: "The war begins." } },
+          {
+            round: 2,
+            effect: {
+              kind: "clear_visitable_cubes",
+              locations: ["windmill", "water_wheel", "mystical_garden"]
+            }
+          }
+        ],
+        notes: "Test map conditions"
+      }
+    });
+
+    expect(state.adventure?.victoryMode).toBe("grail");
+    expect(state.players.p1.resources.gold).toBe(17 + 5); // start + bonus
+    expect(state.players.p1.resources.buildingMaterials).toBe(3);
+    expect(state.players.p1.resources.valuables).toBe(2);
+    expect(state.players.p1.production.gold).toBe(12);
+
+    const p1Town = state.towns[`town_p1`] ?? Object.values(state.towns).find((t) => t.controllerId === "p1");
+    expect(p1Town, "p1 town exists").toBeDefined();
+    // Buildings are faction-prefixed on the town.
+    expect(p1Town!.buildings.some((b) => b.endsWith("citadel"))).toBe(true);
+    expect(p1Town!.buildings.some((b) => b.endsWith("city_hall"))).toBe(true);
+
+    expect(state.adventure?.mapPreset?.notes).toBe("Test map conditions");
+    expect(
+      state.eventLog.some(
+        (e) => e.type === "MAP_PRESET_TRIGGERED" && e.message.includes("The war begins")
+      )
+    ).toBe(true);
+    expect(
+      state.eventLog.some(
+        (e) => e.type === "MAP_PRESET_TRIGGERED" && e.message.includes("Map note")
+      )
+    ).toBe(true);
+
+    // CONTROL: without the preset, default gold is not 17.
+    const plain = createAdventureGameState({
+      seed: "map-preset-core",
+      customMap: [{ row: 9, col: 4, group: "near", faceDown: true }]
+    });
+    expect(plain.players.p1.resources.gold).not.toBe(17 + 5);
+  });
+
+  it("two secretFeature slots of the same kind never share one physical tile", () => {
+    // Each feature draw splices from the pool, so two "gold mine" secrets get
+    // two distinct tiles (when the pool has at least two).
+    const goldNearIds = Object.values(allTileDefinitions)
+      .filter(
+        (def) =>
+          def.group === "near" &&
+          def.fields.some((field) => field.location === "mine" && field.resource === "gold")
+      )
+      .map((def) => def.id);
+    expect(goldNearIds.length, "need ≥2 near gold mines for this control").toBeGreaterThanOrEqual(2);
+
+    const state = createAdventureGameState({
+      seed: "feature-secret-two-golds",
+      customMap: [
+        { row: 9, col: 4, group: "near", faceDown: true, secretFeature: "gold_mine" },
+        { row: 11, col: 2, group: "near", faceDown: true, secretFeature: "gold_mine" }
+      ]
+    });
+    const placed = Object.values(state.adventure!.tiles).filter((tile) => tile.group === "near");
+    expect(placed).toHaveLength(2);
+    expect(placed[0].tileDefId).not.toBe(placed[1].tileDefId);
+    for (const tile of placed) {
+      const def = allTileDefinitions[tile.tileDefId!];
+      expect(
+        def?.fields.some((field) => field.location === "mine" && field.resource === "gold")
+      ).toBe(true);
+    }
+  });
+
   it("accepts free-form tiles that leave gaps or float disconnected from the board", () => {
     const scenario = getScenario("skirmish");
     const { accepted, problems } = validateCustomMapPlan(

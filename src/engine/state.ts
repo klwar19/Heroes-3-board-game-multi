@@ -4868,6 +4868,28 @@ export type GameEvent =
       message: string;
     }
   | {
+      /**
+       * Map designer scenario condition fired (starting bonus or timed event)
+       * or a designer note for the table. Public feed line.
+       */
+      id: string;
+      type: "MAP_PRESET_TRIGGERED";
+      round?: number;
+      message: string;
+    }
+  | {
+      /**
+       * A Secret landmark filter could not be fulfilled from the remaining
+       * pool, so the slot fell back to a pure random draw. Public note so
+       * players know the designer guarantee was soft-failed.
+       */
+      id: string;
+      type: "MAP_SECRET_FEATURE_FALLBACK";
+      feature: string;
+      group: string;
+      message: string;
+    }
+  | {
       id: string;
       type: "SETUP_SEAT_RESET";
       playerId: PlayerId;
@@ -8194,6 +8216,11 @@ export type AdventureState = {
   difficulty: GameDifficulty;
   /** Scenario this map was built from (data/map/scenarios). */
   scenarioId?: string;
+  /**
+   * Map designer scenario conditions active for this adventure (timed events,
+   * notes). Copied from GameSetupOptions.customMapPreset at build time.
+   */
+  mapPreset?: CustomMapPreset | null;
   tiles: Record<string, MapTileState>;
   fields: Record<MapSpaceId, MapFieldState>;
   /**
@@ -8577,6 +8604,12 @@ export type GameSetupOptions = {
   customMap?: CustomMapTilePlan[] | null;
   /** Display name of the saved map design the lobby picked. */
   customMapName?: string | null;
+  /**
+   * Map-only scenario conditions from the designer (resources, army, buildings,
+   * timed events, victory preset, notes). Applied when the map is picked and
+   * stored on the adventure for timed events. Absent on pure scenario sheets.
+   */
+  customMapPreset?: CustomMapPreset | null;
 };
 
 /** PC unit level (1-7): levels 1-3 are bronze, 4-5 silver, 6-7 gold. */
@@ -8599,13 +8632,61 @@ export type CustomStartingUnit = {
 };
 
 /**
+ * Map-only scenario conditions (mission-book style). Structural type for
+ * GameSetupOptions / AdventureState; helpers live in `map-preset.ts`.
+ */
+export type CustomMapPreset = {
+  victoryMode?: VictoryMode;
+  startingResources?: { gold: number; buildingMaterials: number; valuables: number };
+  startingProduction?: { gold: number; buildingMaterials: number; valuables: number };
+  startingBuildings?: string[];
+  startingUnits?: CustomStartingUnit[];
+  startingBonuses?: Array<
+    | { kind: "resources"; gold?: number; buildingMaterials?: number; valuables?: number }
+    | { kind: "search"; deck: "artifacts" | "spells" | "abilities"; count: number }
+    | { kind: "morale"; amount: 1 | -1 }
+  >;
+  timedEvents?: Array<{
+    round: number;
+    effect:
+      | { kind: "resources"; gold?: number; buildingMaterials?: number; valuables?: number }
+      | { kind: "search"; deck: "artifacts" | "spells" | "abilities"; count: number }
+      | {
+          kind: "clear_visitable_cubes";
+          locations: ("windmill" | "water_wheel" | "mystical_garden")[];
+        }
+      | { kind: "note"; text: string };
+  }>;
+  roundLimit?: number;
+  notes?: string;
+};
+
+/**
+ * Landmark a face-down "Secret" slot guarantees at game start. The engine
+ * draws a random tile from that slot's pool that carries the feature (not a
+ * specific tile id) — so "Gold mine" means any Ⅱ–Ⅲ/Ⅳ–Ⅴ/… tile with a gold
+ * mine, chosen from the remaining supply when the adventure is built.
+ */
+export type SecretTileFeature =
+  | "gold_mine"
+  | "valuables_mine"
+  | "materials_mine"
+  | "any_mine"
+  | "obelisk"
+  | "settlement"
+  | "town"
+  | "objective";
+
+/**
  * One designed map tile.
  * - Face-up + `tileDefId`: places that exact tile, already revealed.
- * - Face-down without `tileDefId`: draws randomly from the group's pool
- *   ("down means random").
+ * - Face-down without `tileDefId` / `secretFeature`: draws randomly from the
+ *   group's pool ("down means random").
+ * - Face-down + `secretFeature`: draws a random tile FROM THE POOL that has
+ *   that landmark (gold mine, obelisk, …) — still face-down until discovery.
  * - Face-down + `tileDefId`: places that exact tile still face-down — a
- *   designer-only secret (mines, obelisks, … on that tile stay hidden from
- *   players until discovery). Player views redact `tileDefId` while face-down.
+ *   designer-only exact pin (legacy / advanced). Player views redact
+ *   `tileDefId` while face-down. Prefer `secretFeature` for new maps.
  */
 export type CustomMapTilePlan = {
   row: number;
@@ -8616,16 +8697,23 @@ export type CustomMapTilePlan = {
    *   starting tile (the tile art itself comes from the faction, never random).
    * - "far" (Ⅱ–Ⅲ), "near" (Ⅳ–Ⅴ), "center" (Ⅵ–Ⅶ), "sea", "subterranean":
    *   face-down draws a random tile from that supply unless `tileDefId` pins
-   *   one; face-up always places a chosen one.
+   *   one or `secretFeature` filters the draw; face-up always places a chosen one.
    */
   group: "starting" | "far" | "near" | "center" | "sea" | "subterranean";
   faceDown: boolean;
   /**
    * Exact tile to place. Required while face-up (non-starting). Optional while
    * face-down: when set, the tile is predetermined but stays face-down until
-   * discovered (designer-only secret). Ignored on starting tiles.
+   * discovered (exact secret pin). Ignored on starting tiles. Mutually exclusive
+   * with `secretFeature` at runtime (exact pin wins if both are present).
    */
   tileDefId?: string;
+  /**
+   * Face-down only: guarantee a landmark, not a specific tile. At setup the
+   * engine pops a random remaining tile from this slot's pool that carries the
+   * feature. Cleared for face-up and pure-random slots.
+   */
+  secretFeature?: SecretTileFeature;
   /** Clockwise 60° steps (0-5, default 0). Honoured face-up and face-down. */
   rotation?: number;
   /**

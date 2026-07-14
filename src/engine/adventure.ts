@@ -7944,6 +7944,9 @@ export function startAdventureRound(state: GameState): void {
 
   refreshRoundTokens(state);
   appendEvent(state, { type: "ROUND_STARTED", round: state.round, kind });
+  // Map designer timed events fire for every round kind (first / resource /
+  // astrologers), right after the round-start feed line.
+  applyCustomMapTimedEvents(state);
 
   if (kind === "astrologers") {
     // Draw + resolve the proclamation FIRST, then raise the whole-table barrier
@@ -8157,6 +8160,163 @@ export function startAdventureRound(state: GameState): void {
 
   if (astrologers) {
     astrologers.nextResourceModifiers = { gold: 0, valuables: 0 };
+  }
+}
+
+/**
+ * Fire map-preset timed events for the current round. Pure side-effect on the
+ * adventure; no-ops when the active map has no preset timed events.
+ */
+export function applyCustomMapTimedEvents(state: GameState): void {
+  const preset = state.adventure?.mapPreset;
+  if (!preset?.timedEvents?.length) {
+    return;
+  }
+  const round = state.round;
+  const due = preset.timedEvents.filter((event) => event.round === round);
+  if (due.length === 0) {
+    return;
+  }
+  const adventure = state.adventure!;
+  const players = state.turnOrder.filter(
+    (playerId) => playerId !== NEUTRAL_PLAYER_ID && state.players[playerId]
+  );
+
+  for (const event of due) {
+    const effect = event.effect;
+    if (effect.kind === "note") {
+      appendEvent(state, {
+        type: "MAP_PRESET_TRIGGERED",
+        round,
+        message: `Map event (round ${round}): ${effect.text}`
+      });
+      continue;
+    }
+    if (effect.kind === "resources") {
+      for (const playerId of players) {
+        gainResources(state, playerId, effect, `map event round ${round}`);
+      }
+      const parts: string[] = [];
+      if (effect.gold) {
+        parts.push(`${effect.gold} gold`);
+      }
+      if (effect.buildingMaterials) {
+        parts.push(`${effect.buildingMaterials} materials`);
+      }
+      if (effect.valuables) {
+        parts.push(`${effect.valuables} valuables`);
+      }
+      appendEvent(state, {
+        type: "MAP_PRESET_TRIGGERED",
+        round,
+        message: `Map event (round ${round}): every player gains ${parts.join(", ") || "nothing"}.`
+      });
+      continue;
+    }
+    if (effect.kind === "search") {
+      for (const playerId of players) {
+        adventure.rewardQueue.push({
+          playerId,
+          kind: "visit-steps",
+          steps: [
+            {
+              type: "SEARCH_SHARED_DECK",
+              deckId: effect.deck,
+              count: effect.count
+            }
+          ]
+        });
+      }
+      appendEvent(state, {
+        type: "MAP_PRESET_TRIGGERED",
+        round,
+        message: `Map event (round ${round}): every player may Search(${effect.count}) the ${effect.deck} deck.`
+      });
+      continue;
+    }
+    if (effect.kind === "clear_visitable_cubes") {
+      const targets = new Set(effect.locations);
+      let cleared = 0;
+      for (const field of Object.values(adventure.fields)) {
+        if (!field.blackCube) {
+          continue;
+        }
+        if (targets.has(field.location as "windmill" | "water_wheel" | "mystical_garden")) {
+          field.blackCube = false;
+          cleared += 1;
+        }
+      }
+      appendEvent(state, {
+        type: "MAP_PRESET_TRIGGERED",
+        round,
+        message: `Map event (round ${round}): cleared black cubes on ${effect.locations.join(
+          ", "
+        )} (${cleared} field${cleared === 1 ? "" : "s"}).`
+      });
+    }
+  }
+}
+
+/**
+ * Apply map-preset starting bonuses once when the adventure opens.
+ */
+export function applyCustomMapStartingBonuses(state: GameState): void {
+  const preset = state.adventure?.mapPreset;
+  if (!preset?.startingBonuses?.length) {
+    return;
+  }
+  const adventure = state.adventure!;
+  const players = state.turnOrder.filter(
+    (playerId) => playerId !== NEUTRAL_PLAYER_ID && state.players[playerId]
+  );
+  for (const bonus of preset.startingBonuses) {
+    if (bonus.kind === "resources") {
+      for (const playerId of players) {
+        gainResources(state, playerId, bonus, "map starting bonus");
+      }
+      const parts: string[] = [];
+      if (bonus.gold) {
+        parts.push(`${bonus.gold} gold`);
+      }
+      if (bonus.buildingMaterials) {
+        parts.push(`${bonus.buildingMaterials} materials`);
+      }
+      if (bonus.valuables) {
+        parts.push(`${bonus.valuables} valuables`);
+      }
+      appendEvent(state, {
+        type: "MAP_PRESET_TRIGGERED",
+        message: `Map starting bonus: every player gains ${parts.join(", ") || "nothing"}.`
+      });
+      continue;
+    }
+    if (bonus.kind === "morale") {
+      for (const playerId of players) {
+        changeMorale(state, playerId, bonus.amount);
+      }
+      appendEvent(state, {
+        type: "MAP_PRESET_TRIGGERED",
+        message: `Map starting bonus: every player ${bonus.amount > 0 ? "gains +1" : "loses 1"} morale.`
+      });
+      continue;
+    }
+    for (const playerId of players) {
+      adventure.rewardQueue.push({
+        playerId,
+        kind: "visit-steps",
+        steps: [
+          {
+            type: "SEARCH_SHARED_DECK",
+            deckId: bonus.deck,
+            count: bonus.count
+          }
+        ]
+      });
+    }
+    appendEvent(state, {
+      type: "MAP_PRESET_TRIGGERED",
+      message: `Map starting bonus: every player may Search(${bonus.count}) the ${bonus.deck} deck.`
+    });
   }
 }
 
