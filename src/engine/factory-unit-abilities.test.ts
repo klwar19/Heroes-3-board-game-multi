@@ -380,11 +380,12 @@ describe("Factory Halflings — advantage overrides the ranged Combat penalty", 
  * follow-up can resolve. All dice scripted to 0.
  */
 function sandwormMelee(abilities: string[]): GameState {
+  // Flying melee (printed wing); tests still place it adjacent for the strike.
   const state = createInitialGameState("factory-sandworm");
   Object.assign(state.combat!.units.unit_p1_griffins, {
     name: "Sandworms",
     cardName: "Sandworms",
-    type: "ground",
+    type: "flying",
     variant: "neutral",
     attack: 3,
     defense: 0,

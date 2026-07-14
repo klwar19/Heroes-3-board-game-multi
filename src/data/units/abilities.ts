@@ -1333,11 +1333,11 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     implementationStatus: "implemented"
   },
   // Factory Sandworms (Neutral guard): "If a target is an adjacent unit, attack
-  // this target again." A ground (melee) Sandworm only ever attacks adjacent
-  // targets, so this is a same-target second strike — the wired
-  // SECOND_ATTACK_SAME_TARGET_AFTER_RETALIATION (Wolf Raiders): after the target
-  // retaliates (if it still can) the Sandworm strikes it once more, and that
-  // follow-up never provokes another retaliation.
+  // this target again." Sandworms are flying melee (printed wing icon) and only
+  // ever attack adjacent targets, so this is a same-target second strike — the
+  // wired SECOND_ATTACK_SAME_TARGET_AFTER_RETALIATION (Wolf Raiders): after the
+  // target retaliates (if it still can) the Sandworm strikes it once more, and
+  // that follow-up never provokes another retaliation.
   "sandworm-strike-again": {
     id: "sandworm-strike-again",
     name: "Relentless Burrow",
