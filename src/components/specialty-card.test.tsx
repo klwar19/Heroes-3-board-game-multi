@@ -25,10 +25,11 @@ describe("canRenderSpecialtyCard", () => {
     // portrait, name and effect draw; the icon slot is just empty).
     expect(canRenderSpecialtyCard("specialty.ash.1")).toBe(true); // inferno, no scan, no icon
     expect(canRenderSpecialtyCard("specialty.torosar.6")).toBe(true); // tower, no scan, no icon
-    expect(canRenderSpecialtyCard("specialty.cassiopeia.4")).toBe(true); // cove, no scan
+    expect(canRenderSpecialtyCard("specialty.jeremy.1")).toBe(true); // cove — Cannon I scan not in the art pack
     // A baked-art specialty keeps its scan and is NOT drawn natively.
     expect(canRenderSpecialtyCard("specialty.sandro.1")).toBe(false); // has a printed cardImage
     expect(canRenderSpecialtyCard("specialty.catherine.6")).toBe(false); // has a printed cardImage
+    expect(canRenderSpecialtyCard("specialty.cassiopeia.4")).toBe(false); // cove — now ships a board-game scan
     expect(canRenderSpecialtyCard("spell.teleport")).toBe(false);
     expect(canRenderSpecialtyCard(undefined)).toBe(false);
   });
