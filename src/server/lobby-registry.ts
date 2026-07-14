@@ -39,6 +39,18 @@ export const LOBBY_SINGLETON_ID = "directory";
 export const MAX_DIRECTORY_MEMBERS = 12;
 
 /**
+ * How many public lobby rooms ONE account may have at once. Creating/holding
+ * more auto-deletes the surplus (see `surplusRoomIds`): the lobby was getting
+ * flooded with rooms, so a signed-in player is capped at this many. The cap
+ * binds only to VERIFIED accounts (a room's owner userId) — a guest has no
+ * stable account identity (its per-tab clientId resets), so guest / not-yet-
+ * joined rooms are never counted or evicted; they age out via the stale TTL.
+ * Single-player and private rooms never enter the directory, so they never
+ * count against this.
+ */
+export const MAX_ROOMS_PER_ACCOUNT = 3;
+
+/**
  * One member of a room as shown in the lobby directory — who is in which room,
  * marked host / seated, and whether they are a verified account or a guest
  * (guests render as "guest — name", so nobody is mistaken for a registered
@@ -114,6 +126,14 @@ export type LobbyRoomRecord = {
   /** Whether the room is password-protected (a boolean only — never the hash). */
   locked?: boolean;
   createdByName: string | null;
+  /**
+   * The VERIFIED account id that owns this room (its host, else its first
+   * member) — the key the per-account room cap counts by. Null for a room with
+   * no signed-in owner (a guest table, or one nobody has joined yet), which the
+   * cap deliberately never counts. Never a guessable/forgeable value: it comes
+   * from the server-stamped member `userId`.
+   */
+  ownerUserId?: string | null;
   createdAt: string;
   updatedAt: string;
   visibility?: "public" | "private";
@@ -134,6 +154,11 @@ export function deriveLobbyRecord(input: DeriveLobbyRecordInput): LobbyRoomRecor
   const room: RoomMembershipState | null = state.room ?? null;
   const members = room?.members ?? [];
   const host = room?.hostClientId ? (members.find((member) => member.clientId === room.hostClientId) ?? null) : null;
+  // Who "owns" the room for the per-account cap: the explicit owner userId
+  // (set for private rooms, never listed), else the host, else the first member
+  // — whichever is a VERIFIED account. A room nobody signed-in holds yet is
+  // ownerless (null) and never counts against the cap.
+  const ownerUserId = room?.ownerUserId ?? host?.userId ?? members[0]?.userId ?? null;
   const isFreshLobby =
     state.phase === "setup" && (Boolean(state.setupLobby) || Boolean(state.combatSandboxSetup));
   // The visible roster: who is in this room — host first, then seated players,
@@ -169,6 +194,7 @@ export function deriveLobbyRecord(input: DeriveLobbyRecordInput): LobbyRoomRecor
     ranked: room?.ranked !== false,
     locked: Boolean(room?.passwordHash),
     createdByName: input.createdByName ?? null,
+    ownerUserId,
     createdAt,
     updatedAt,
     ...(room?.visibility === "private" ? { visibility: "private" as const } : {}),
@@ -258,10 +284,70 @@ export function lobbyRecordSignature(record: LobbyRoomRecord): string {
     ranked: record.ranked,
     locked: Boolean(record.locked),
     createdByName: record.createdByName,
+    // The owner drives the per-account cap; a change (a guest host signing in,
+    // a host transfer) must re-report so the cap re-evaluates.
+    ownerUserId: record.ownerUserId ?? null,
     createdAt: record.createdAt,
     visibility: record.visibility ?? "public",
     sessionMode: record.sessionMode ?? "multiplayer"
   });
+}
+
+/**
+ * The roomIds to EVICT so no account holds more than `cap` public rooms — the
+ * "auto-delete surplus" half of the per-account room limit. Groups the given
+ * records by owner account and, for any account over the cap, returns its
+ * surplus rooms (the ones NOT kept). Which rooms are kept, best → worst:
+ * in-progress GAMES are kept ahead of idle setup lobbies (never wipe a live
+ * game to preserve a fresh empty room), then more-recently-created ahead of
+ * older. So a fourth room deletes the account's oldest idle lobby, not its
+ * running game.
+ *
+ * Ownerless rooms (guest / not-yet-joined, `ownerUserId` null) are never
+ * counted or returned — the cap can only bind a stable signed-in account.
+ * Pure and deterministic (no wall-clock), so both backends and the unit tests
+ * agree on exactly which rooms are surplus.
+ */
+export function surplusRoomIds(
+  records: Iterable<LobbyRoomRecord>,
+  cap: number = MAX_ROOMS_PER_ACCOUNT
+): string[] {
+  const byOwner = new Map<string, LobbyRoomRecord[]>();
+  for (const record of records) {
+    const owner = record.ownerUserId;
+    if (!owner) {
+      continue;
+    }
+    const list = byOwner.get(owner);
+    if (list) {
+      list.push(record);
+    } else {
+      byOwner.set(owner, [record]);
+    }
+  }
+  const surplus: string[] = [];
+  for (const rooms of byOwner.values()) {
+    if (rooms.length <= cap) {
+      continue;
+    }
+    const keepOrder = [...rooms].sort((a, b) => {
+      // Keep in-progress games ahead of idle setup lobbies.
+      if (a.inProgress !== b.inProgress) {
+        return a.inProgress ? -1 : 1;
+      }
+      // Then keep the most recently created (older rooms are evicted first).
+      const created = Date.parse(b.createdAt) - Date.parse(a.createdAt);
+      if (created !== 0) {
+        return created;
+      }
+      // Stable tie-break so the result is deterministic regardless of input order.
+      return a.roomId < b.roomId ? -1 : a.roomId > b.roomId ? 1 : 0;
+    });
+    for (const record of keepOrder.slice(cap)) {
+      surplus.push(record.roomId);
+    }
+  }
+  return surplus;
 }
 
 /**
@@ -325,10 +411,33 @@ export class LobbyRegistry {
    */
   list(viewerClientId?: string, now: number = Date.now()): RoomDirectoryEntry[] {
     this.prune(now);
-    return [...this.rooms.values()]
-      .filter((record) => record.visibility !== "private" && record.sessionMode !== "single-player")
+    const visible = [...this.rooms.values()].filter(
+      (record) => record.visibility !== "private" && record.sessionMode !== "single-player"
+    );
+    // Hide any room beyond an account's cap so a flooded directory is bounded on
+    // sight, even before the backend's real "auto-delete surplus" pass removes
+    // it. Backend-agnostic: both the built-in store and the edge lobby list
+    // through here. (The record itself stays until the backend force-closes it,
+    // so this is a view filter, not a mutation.)
+    const surplus = new Set(surplusRoomIds(visible));
+    return visible
+      .filter((record) => !surplus.has(record.roomId))
       .map((record) => toDirectoryEntry(record, viewerClientId))
       .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
+  }
+
+  /**
+   * Drop every room beyond an account's cap from the registry, returning the
+   * evicted roomIds so the caller can force-close the real rooms. Mirrors
+   * `prune`. Used by the edge lobby on each report so surplus records don't
+   * linger in Durable Object storage.
+   */
+  enforceOwnerCaps(cap: number = MAX_ROOMS_PER_ACCOUNT): string[] {
+    const evicted = surplusRoomIds(this.rooms.values(), cap);
+    for (const roomId of evicted) {
+      this.rooms.delete(roomId);
+    }
+    return evicted;
   }
 
   /** The raw records, for persistence to Durable Object storage. */

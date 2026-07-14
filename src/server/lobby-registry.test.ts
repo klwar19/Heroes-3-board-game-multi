@@ -11,7 +11,9 @@ import {
   isStaleRecord,
   LobbyRegistry,
   lobbyRecordSignature,
+  MAX_ROOMS_PER_ACCOUNT,
   STALE_ROOM_TTL_MS,
+  surplusRoomIds,
   toDirectoryEntry,
   viewerCanClose,
   type LobbyRoomRecord
@@ -152,6 +154,110 @@ describe("deriveLobbyRecord", () => {
   });
 });
 
+describe("deriveLobbyRecord — owner (per-account cap key)", () => {
+  it("keys the owner off the HOST's verified account", () => {
+    const state = createAdventureLobbyState({ seed: "owner-host" });
+    state.room = {
+      hosted: true,
+      hostClientId: "c2",
+      members: [
+        { clientId: "c1", name: "Lan", seat: "p2", isHost: false, userId: "u_lan" },
+        { clientId: "c2", name: "Binh", seat: "p1", isHost: true, userId: "u_binh" }
+      ]
+    };
+    expect(deriveLobbyRecord({ roomId: "r", state, ...META }).ownerUserId).toBe("u_binh");
+  });
+
+  it("falls back to the first member when there is no host, and is null for a guest table", () => {
+    const openAccount = createAdventureLobbyState({ seed: "owner-open" });
+    openAccount.room = {
+      hosted: false,
+      hostClientId: null,
+      members: [{ clientId: "c1", name: "Solo", seat: "p1", isHost: false, userId: "u_solo" }]
+    };
+    expect(deriveLobbyRecord({ roomId: "r", state: openAccount, ...META }).ownerUserId).toBe("u_solo");
+
+    // A guest (no verified userId) yields a null owner — the cap never counts it.
+    const guest = createAdventureLobbyState({ seed: "owner-guest" });
+    guest.room = {
+      hosted: false,
+      hostClientId: null,
+      members: [{ clientId: "c1", name: "Ghost", seat: "p1", isHost: false }]
+    };
+    expect(deriveLobbyRecord({ roomId: "r", state: guest, ...META }).ownerUserId).toBeNull();
+  });
+
+  it("moves the report signature when the owner changes (a guest host signing in)", () => {
+    const base = record({ roomId: "s", ownerUserId: null, memberCount: 1, memberClientIds: ["c1"] });
+    const signedIn = { ...base, ownerUserId: "u_new" };
+    expect(lobbyRecordSignature(signedIn)).not.toBe(lobbyRecordSignature(base));
+  });
+});
+
+describe("surplusRoomIds (per-account cap)", () => {
+  it("returns nothing when every account is within the cap", () => {
+    const records = [
+      record({ roomId: "a", ownerUserId: "u", memberCount: 1, memberClientIds: ["1"] }),
+      record({ roomId: "b", ownerUserId: "u", memberCount: 1, memberClientIds: ["2"] }),
+      record({ roomId: "c", ownerUserId: "v", memberCount: 1, memberClientIds: ["3"] })
+    ];
+    expect(surplusRoomIds(records, 3)).toEqual([]);
+  });
+
+  it("evicts idle setup lobbies before in-progress GAMES, then the oldest", () => {
+    // cap 2. Owner has a live game + 2 idle lobbies. The game must survive; the
+    // two idle lobbies are the surplus (older one is not spared over the game).
+    const records = [
+      record({
+        roomId: "game",
+        ownerUserId: "u",
+        inProgress: true,
+        memberCount: 2,
+        memberClientIds: ["a", "b"],
+        createdAt: "2026-01-01T00:00:00.000Z"
+      }),
+      record({
+        roomId: "lobby-old",
+        ownerUserId: "u",
+        inProgress: false,
+        memberCount: 1,
+        memberClientIds: ["c"],
+        createdAt: "2026-02-01T00:00:00.000Z"
+      }),
+      record({
+        roomId: "lobby-new",
+        ownerUserId: "u",
+        inProgress: false,
+        memberCount: 1,
+        memberClientIds: ["d"],
+        createdAt: "2026-03-01T00:00:00.000Z"
+      })
+    ];
+    // Keeps the in-progress game + the newest idle lobby; evicts the older lobby.
+    expect(surplusRoomIds(records, 2)).toEqual(["lobby-old"]);
+  });
+
+  it("NEVER counts or evicts an ownerless (guest / not-yet-joined) room", () => {
+    // Ten guest rooms, cap 3: none is evicted, because none has an account owner.
+    const guests = Array.from({ length: 10 }, (_unused, index) =>
+      record({ roomId: `g${index}`, ownerUserId: null, memberCount: 1, memberClientIds: [`c${index}`] })
+    );
+    expect(surplusRoomIds(guests, 3)).toEqual([]);
+  });
+
+  it("is deterministic regardless of input order (stable tie-break)", () => {
+    const mk = () => [
+      record({ roomId: "z", ownerUserId: "u", createdAt: "2026-01-01T00:00:00.000Z", memberCount: 1, memberClientIds: ["z"] }),
+      record({ roomId: "a", ownerUserId: "u", createdAt: "2026-01-01T00:00:00.000Z", memberCount: 1, memberClientIds: ["a"] }),
+      record({ roomId: "m", ownerUserId: "u", createdAt: "2026-01-01T00:00:00.000Z", memberCount: 1, memberClientIds: ["m"] })
+    ];
+    const forward = surplusRoomIds(mk(), 2);
+    const reversed = surplusRoomIds([...mk()].reverse(), 2);
+    expect(forward).toEqual(reversed);
+    expect(forward).toHaveLength(1);
+  });
+});
+
 describe("viewerCanClose", () => {
   it("lets only the host close a HOSTED room", () => {
     const hosted = record({ roomId: "h", hosted: true, hostClientId: "host", memberClientIds: ["host", "guest"], memberCount: 2 });
@@ -283,6 +389,57 @@ describe("LobbyRegistry", () => {
     expect(registry.list("host")[0].canClose).toBe(true);
     expect(registry.list("guest")[0].canClose).toBe(false);
     expect(registry.list("stranger")[0].canClose).toBe(false);
+  });
+
+  it("hides an account's rooms beyond the per-account cap from the directory", () => {
+    // One owner opens cap+2 rooms; the directory shows only `cap`, newest first.
+    const owner = "u_flood";
+    const many = Array.from({ length: MAX_ROOMS_PER_ACCOUNT + 2 }, (_unused, index) =>
+      record({
+        roomId: `r${index}`,
+        ownerUserId: owner,
+        memberCount: 1,
+        memberClientIds: [`c${index}`],
+        // Older index = older createdAt, so the newest survive.
+        createdAt: new Date(2026, 0, index + 1).toISOString(),
+        updatedAt: new Date(2026, 0, index + 1).toISOString()
+      })
+    );
+    const registry = new LobbyRegistry(many);
+    const listed = registry.list().filter((entry) => entry.roomId.startsWith("r"));
+    expect(listed).toHaveLength(MAX_ROOMS_PER_ACCOUNT);
+    // The two OLDEST (r0, r1) are the ones hidden.
+    expect(listed.map((entry) => entry.roomId).sort()).toEqual(["r2", "r3", "r4"]);
+
+    // CONTROL: two DIFFERENT accounts each under the cap are all shown — the
+    // limit is per-account, not global.
+    const twoOwners = new LobbyRegistry([
+      record({ roomId: "a1", ownerUserId: "u_a", memberCount: 1, memberClientIds: ["a"] }),
+      record({ roomId: "a2", ownerUserId: "u_a", memberCount: 1, memberClientIds: ["b"] }),
+      record({ roomId: "b1", ownerUserId: "u_b", memberCount: 1, memberClientIds: ["c"] }),
+      record({ roomId: "b2", ownerUserId: "u_b", memberCount: 1, memberClientIds: ["d"] })
+    ]);
+    expect(twoOwners.list()).toHaveLength(4);
+  });
+
+  it("enforceOwnerCaps removes surplus rooms and returns the evicted ids", () => {
+    const owner = "u_x";
+    const registry = new LobbyRegistry(
+      Array.from({ length: MAX_ROOMS_PER_ACCOUNT + 1 }, (_unused, index) =>
+        record({
+          roomId: `k${index}`,
+          ownerUserId: owner,
+          memberCount: 1,
+          memberClientIds: [`c${index}`],
+          createdAt: new Date(2026, 0, index + 1).toISOString()
+        })
+      )
+    );
+    const evicted = registry.enforceOwnerCaps();
+    // Exactly one over the cap → exactly one evicted (the oldest, k0).
+    expect(evicted).toEqual(["k0"]);
+    expect(registry.has("k0")).toBe(false);
+    expect(registry.size).toBe(MAX_ROOMS_PER_ACCOUNT);
   });
 
   it("round-trips its records for Durable Object persistence", () => {

@@ -40,6 +40,50 @@ export default class LobbyServer implements Party.Server {
     await this.room.storage.put(STORAGE_KEY, this.registry.records());
   }
 
+  /** The deployment's admin key, used to authorize a system close of a room. */
+  private adminKey(): string {
+    const env = (this.room as unknown as { env?: Record<string, unknown> }).env;
+    return typeof env?.HOMM3BG_ADMIN_KEY === "string" ? env.HOMM3BG_ADMIN_KEY : "";
+  }
+
+  /**
+   * Force-close every room over an account's cap (the "auto-delete surplus"
+   * half of the per-account room limit). A single room Durable Object can't see
+   * its siblings, so this cross-room deletion lives here in the one lobby
+   * singleton that holds every room's record. Each surplus room is closed via
+   * its own DELETE endpoint using the deployment admin key (the same authority
+   * the built-in backend's force-close uses); the room then deregisters itself.
+   * Best-effort: with no admin key configured the room stays hidden by list()
+   * and ages out via the stale TTL instead. Never throws — a failed close is
+   * retried on the next report.
+   */
+  private async enforceRoomCaps(): Promise<void> {
+    // Drop every over-cap room from the directory immediately (so it stops being
+    // listed/joined even if the real close lags or no admin key is set)...
+    const evicted = this.registry.enforceOwnerCaps();
+    if (evicted.length === 0) {
+      return;
+    }
+    await this.persist();
+    // ...then force-close the real rooms with the deployment admin key.
+    const adminKey = this.adminKey();
+    const main = this.room.context?.parties?.main;
+    if (!main || !adminKey) {
+      return;
+    }
+    for (const roomId of evicted) {
+      try {
+        await main.get(roomId).fetch({
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ adminKey })
+        });
+      } catch {
+        // Best effort; the next report re-attempts and list() keeps it hidden.
+      }
+    }
+  }
+
   /**
    * Plain HTTP, mirroring the built-in `/api/rooms` surface so the client uses
    * one shape on both backends:
@@ -74,6 +118,12 @@ export default class LobbyServer implements Party.Server {
       }
       this.registry.upsert(record);
       await this.persist();
+      // Auto-delete surplus: whenever a room reports itself, re-check the
+      // per-account cap and force-close every room over it. list() already
+      // hides surplus from the directory; this actually deletes the extra
+      // rooms so they don't linger as running Durable Objects. Best-effort and
+      // fire-and-forget so a slow/failed close never blocks the report.
+      void this.enforceRoomCaps();
       return jsonWithCors({ ok: true });
     }
 

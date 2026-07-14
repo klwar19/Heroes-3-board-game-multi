@@ -57,29 +57,27 @@ describe("/menu (main menu, guest-only build)", () => {
   });
 });
 
-describe("/menu (accounts enabled) — guest is let through, not bounced to login", () => {
+describe("/menu (accounts enabled) — guest login temporarily disabled", () => {
   beforeEach(() => {
     process.env.NEXT_PUBLIC_ACCOUNTS_ENABLED = "1";
   });
 
-  it("a chosen guest (guest flag set, no session) stays on the menu and plays", async () => {
+  it("a stale guest flag is NO LONGER let through — it is bounced to /login", async () => {
+    // Even a previously-chosen guest (flag set, no session) is now redirected,
+    // because guest login is disabled. This is the behaviour that changed.
     window.localStorage.setItem("homm3bg.displayName", "Binh");
     window.localStorage.setItem("homm3bg.guest", "1");
     render(<MenuPage />);
 
-    // Multiplayer is reachable and the footer greets the guest.
-    await waitFor(() => expect(screen.getByText(/Playing as guest: Binh/)).toBeTruthy());
-    expect(screen.getByRole("link", { name: /Multiplayer/i }).getAttribute("href")).toBe("/play");
-    // Crucially, it did NOT bounce back to /login.
-    expect(replace).not.toHaveBeenCalled();
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/login"));
   });
 
-  it("CONTROL: no session AND no guest choice → redirected to /login", async () => {
+  it("no session AND no guest choice → redirected to /login", async () => {
     render(<MenuPage />);
     await waitFor(() => expect(replace).toHaveBeenCalledWith("/login"));
   });
 
-  it("a signed-in account is shown by nickname with a Logout button", async () => {
+  it("CONTROL: a signed-in account is UNAFFECTED — shown by nickname with a Logout button", async () => {
     vi.mocked(authClient.fetchSession).mockResolvedValue({ id: "u1", nickname: "Boss", role: "player" } as never);
     render(<MenuPage />);
     await waitFor(() => expect(screen.getByText(/Signed in as Boss/)).toBeTruthy());

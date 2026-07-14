@@ -39,6 +39,7 @@ import { reportFinishedMatch } from "@/server/match-report-trigger";
 import {
   deriveLobbyRecord,
   isStaleRecord,
+  surplusRoomIds,
   toDirectoryEntry as toLobbyDirectoryEntry,
   type LobbyRoomRecord,
   type RoomDirectoryEntry
@@ -963,12 +964,8 @@ function toDirectoryEntry(record: GameRoomRecord, viewerClientId?: string): Room
   return toLobbyDirectoryEntry(lobbyRecordOf(record), viewerClientId);
 }
 
-/**
- * The lobby room list. Merges in-memory rooms with any only on disk (after a
- * host recycle), prunes empty rooms idle past the TTL, and returns the rest
- * newest-activity first.
- */
-export function listRooms(viewerClientId?: string): RoomDirectoryEntry[] {
+/** All rooms known to this backend (in-memory first, then disk-only). */
+function allRoomRecords(): Map<string, GameRoomRecord> {
   const records = new Map<string, GameRoomRecord>();
   for (const [roomId, record] of roomStore) {
     records.set(roomId, record);
@@ -978,6 +975,41 @@ export function listRooms(viewerClientId?: string): RoomDirectoryEntry[] {
       records.set(record.roomId, record);
     }
   }
+  return records;
+}
+
+/**
+ * Auto-delete surplus rooms so no account holds more than MAX_ROOMS_PER_ACCOUNT
+ * (the "flooded lobby" fix). Force-closes the surplus (real delete + a `closed`
+ * broadcast so anyone connected drops back to the lobby), keeping each owner's
+ * in-progress games and newest rooms (see `surplusRoomIds`). Guest / ownerless
+ * rooms are never touched. Runs on create and on every directory list, so an
+ * existing flood is cleaned up on the next poll without any manual step.
+ */
+export function enforceRoomCaps(): void {
+  const lobbyRecords: LobbyRoomRecord[] = [];
+  for (const record of allRoomRecords().values()) {
+    if (isPrivateSinglePlayer(record.state)) {
+      continue;
+    }
+    lobbyRecords.push(lobbyRecordOf(record));
+  }
+  for (const roomId of surplusRoomIds(lobbyRecords)) {
+    forceCloseRoom(roomId, "per-account room limit");
+  }
+}
+
+/**
+ * The lobby room list. Merges in-memory rooms with any only on disk (after a
+ * host recycle), prunes empty rooms idle past the TTL, auto-deletes rooms over
+ * the per-account cap, and returns the rest newest-activity first.
+ */
+export function listRooms(viewerClientId?: string): RoomDirectoryEntry[] {
+  // Auto-delete surplus first so the list never shows (or lets anyone join) a
+  // room that is about to be force-closed for exceeding the per-account cap.
+  enforceRoomCaps();
+
+  const records = allRoomRecords();
 
   const entries: RoomDirectoryEntry[] = [];
   for (const record of records.values()) {
@@ -1037,6 +1069,10 @@ export function createRoom(options: RoomCreateOptions & { roomId?: string } = {}
   const record = makeRoom(roomId, options);
   roomStore.set(roomId, record);
   persistRoom(record);
+  // Keep the lobby bounded: auto-delete any account's rooms over the cap. The
+  // just-created room has no owner yet (nobody has joined), so it is never the
+  // one evicted here — this cleans up a caller who already sits at the limit.
+  enforceRoomCaps();
   return withBootId(cloneSerializable(record));
 }
 
