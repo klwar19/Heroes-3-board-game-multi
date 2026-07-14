@@ -9,8 +9,10 @@ import {
 import {
   deriveLobbyRecord,
   isStaleRecord,
+  LOBBY_ACTIVITY_REFRESH_MS,
   LobbyRegistry,
   lobbyRecordSignature,
+  lobbyReportIsDue,
   MAX_ROOMS_PER_ACCOUNT,
   STALE_ROOM_TTL_MS,
   surplusRoomIds,
@@ -289,21 +291,58 @@ describe("viewerCanClose", () => {
 describe("isStaleRecord", () => {
   const now = Date.now();
 
-  it("prunes an EMPTY room idle past the TTL but keeps a recent one", () => {
+  it("prunes a room idle past the TTL but keeps a recently-active one", () => {
     const old = record({ roomId: "old", memberCount: 0, updatedAt: new Date(now - STALE_ROOM_TTL_MS - 60_000).toISOString() });
     const fresh = record({ roomId: "fresh", memberCount: 0, updatedAt: new Date(now).toISOString() });
     expect(isStaleRecord(old, now)).toBe(true);
     expect(isStaleRecord(fresh, now)).toBe(false);
   });
 
-  it("never prunes an idle room that still has members (the control)", () => {
-    const occupied = record({
-      roomId: "occ",
-      memberCount: 1,
-      memberClientIds: ["c1"],
+  it("prunes an idle room EVEN WITH members (24h from last activity, not from emptiness)", () => {
+    // The clock is inactivity, not emptiness: an abandoned game whose seated
+    // players never return still ages out one day after its last action.
+    const abandoned = record({
+      roomId: "abandoned",
+      memberCount: 2,
+      memberClientIds: ["c1", "c2"],
       updatedAt: new Date(now - STALE_ROOM_TTL_MS - 60_000).toISOString()
     });
-    expect(isStaleRecord(occupied, now)).toBe(false);
+    expect(isStaleRecord(abandoned, now)).toBe(true);
+  });
+
+  it("does NOT prune an idle-but-recently-touched room with members (the reset control)", () => {
+    // Fresh activity (a move / a rejoin bumped updatedAt) resets the clock, so a
+    // room that came back to life within the TTL is kept.
+    const active = record({
+      roomId: "active",
+      memberCount: 2,
+      memberClientIds: ["c1", "c2"],
+      updatedAt: new Date(now - 60_000).toISOString()
+    });
+    expect(isStaleRecord(active, now)).toBe(false);
+  });
+});
+
+describe("lobbyReportIsDue (activity refresh)", () => {
+  const now = Date.now();
+  const iso = (ms: number) => new Date(ms).toISOString();
+
+  it("reports on a signature change and on the first-ever report", () => {
+    expect(lobbyReportIsDue("sig-a", "sig-b", iso(now), iso(now), now)).toBe(true);
+    expect(lobbyReportIsDue(null, "sig-a", null, iso(now), now)).toBe(true);
+  });
+
+  it("does NOT re-report an unchanged room that was reported recently (no spam)", () => {
+    const reportedAt = iso(now - 60_000); // 1 minute ago
+    expect(lobbyReportIsDue("sig", "sig", reportedAt, iso(now), now)).toBe(false);
+  });
+
+  it("re-reports an active room whose stamp aged past the refresh interval (keeps it un-prunable)", () => {
+    const reportedAt = iso(now - LOBBY_ACTIVITY_REFRESH_MS - 60_000);
+    const freshActivity = iso(now); // a recent action advanced updatedAt
+    expect(lobbyReportIsDue("sig", "sig", reportedAt, freshActivity, now)).toBe(true);
+    // CONTROL: same age gap but the stamp did NOT advance (no activity) → no report.
+    expect(lobbyReportIsDue("sig", "sig", reportedAt, reportedAt, now)).toBe(false);
   });
 });
 
@@ -359,27 +398,32 @@ describe("LobbyRegistry", () => {
   });
 
   it("lists rooms newest-activity first", () => {
+    // All recent (within the TTL) so none is idle-pruned; only the ORDER matters.
+    const base = Date.now();
     const registry = new LobbyRegistry([
-      record({ roomId: "older", updatedAt: "2026-01-01T00:00:00.000Z", memberCount: 1, memberClientIds: ["x"] }),
-      record({ roomId: "newer", updatedAt: "2026-03-01T00:00:00.000Z", memberCount: 1, memberClientIds: ["y"] }),
-      record({ roomId: "middle", updatedAt: "2026-02-01T00:00:00.000Z", memberCount: 1, memberClientIds: ["z"] })
+      record({ roomId: "older", updatedAt: new Date(base - 3000).toISOString(), memberCount: 1, memberClientIds: ["x"] }),
+      record({ roomId: "newer", updatedAt: new Date(base - 1000).toISOString(), memberCount: 1, memberClientIds: ["y"] }),
+      record({ roomId: "middle", updatedAt: new Date(base - 2000).toISOString(), memberCount: 1, memberClientIds: ["z"] })
     ]);
     expect(registry.list().map((entry) => entry.roomId)).toEqual(["newer", "middle", "older"]);
   });
 
-  it("prunes stale empty rooms when listing, but keeps occupied ones", () => {
+  it("prunes stale rooms when listing (empty OR occupied), keeping only recently-active ones", () => {
     const now = Date.now();
     const stale = new Date(now - STALE_ROOM_TTL_MS - 60_000).toISOString();
     const registry = new LobbyRegistry([
       record({ roomId: "ghost", memberCount: 0, updatedAt: stale }),
+      // An occupied-but-idle room is pruned too: the clock is inactivity, not
+      // emptiness (24h since the last action, whoever still lingers).
       record({ roomId: "occupied", memberCount: 1, memberClientIds: ["c1"], updatedAt: stale }),
       record({ roomId: "live", memberCount: 0, updatedAt: new Date(now).toISOString() })
     ]);
     const ids = registry.list(undefined, now).map((entry) => entry.roomId).sort();
-    expect(ids).toEqual(["live", "occupied"]);
-    // The ghost is gone from the registry itself, not just this view.
+    expect(ids).toEqual(["live"]);
+    // Both idle rooms are gone from the registry itself, not just this view.
     expect(registry.has("ghost")).toBe(false);
-    expect(registry.size).toBe(2);
+    expect(registry.has("occupied")).toBe(false);
+    expect(registry.size).toBe(1);
   });
 
   it("computes canClose per viewer at list time (the directory's close gate)", () => {
@@ -400,9 +444,11 @@ describe("LobbyRegistry", () => {
         ownerUserId: owner,
         memberCount: 1,
         memberClientIds: [`c${index}`],
-        // Older index = older createdAt, so the newest survive.
+        // Older index = older createdAt, so the newest survive. `updatedAt` is
+        // kept recent for all so the idle-prune never fires — this test is about
+        // the per-account cap, not staleness.
         createdAt: new Date(2026, 0, index + 1).toISOString(),
-        updatedAt: new Date(2026, 0, index + 1).toISOString()
+        updatedAt: new Date(Date.now() - (MAX_ROOMS_PER_ACCOUNT + 2 - index) * 1000).toISOString()
       })
     );
     const registry = new LobbyRegistry(many);

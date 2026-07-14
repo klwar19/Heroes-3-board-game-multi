@@ -20071,6 +20071,36 @@ body {
   gap: 10px;
 }
 
+/* Faction / Hero picker row: the select stretches, the 🎲 Random button sits
+   beside it and rolls a random faction (+hero) or a random hero of the faction. */
+.sandboxRandomRow {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.sandboxRandomRow select {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.sandboxRandomButton {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  border-radius: 8px;
+  border: 1px solid rgba(140, 110, 65, 0.6);
+  background: rgba(60, 44, 20, 0.9);
+  color: #f0dfb4;
+  padding: 6px 10px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.sandboxRandomButton:hover {
+  background: rgba(92, 68, 30, 0.95);
+  border-color: rgba(200, 165, 95, 0.8);
+}
+
 .sandboxBlock {
   display: flex;
   flex-direction: column;
