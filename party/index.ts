@@ -11,6 +11,7 @@ import {
   ENGINE_SIGNATURE,
   freshEntropy,
   isPrivateSinglePlayer,
+  isSinglePlayerRoomId,
   OBSERVER_VIEWER_SEAT,
   redactStateForSeat,
   resetVoteAuthorizes,
@@ -31,7 +32,7 @@ import {
   settleComputerForLiveAction,
   settleComputerVisibleStep,
 } from "@/server/computer-runner";
-import { deriveLobbyRecord, lobbyRecordSignature, lobbyReportIsDue, LOBBY_SINGLETON_ID } from "@/server/lobby-registry";
+import { deriveLobbyRecord, lobbyRecordSignature, lobbyReportIsDue, LOBBY_SINGLETON_ID, STALE_ROOM_TTL_MS } from "@/server/lobby-registry";
 import { detectFinishedMatch } from "@/server/match-report";
 import { httpTokenVerifier, memoizeVerifier, type TokenVerifier } from "@/server/verified-actor";
 
@@ -290,7 +291,35 @@ export default class GameRoomServer implements Party.Server {
   }
 
   async onStart(): Promise<void> {
-    this.snapshot = (await this.room.storage.get<RoomSnapshot>(SNAPSHOT_KEY)) ?? null;
+    const stored = (await this.room.storage.get<RoomSnapshot>(SNAPSHOT_KEY)) ?? null;
+    // Reclaim an abandoned single-player game. Its room is a private, isolated
+    // Durable Object that no lobby sweeper can reach (it never enters the
+    // directory and the per-account cap deliberately never counts it), so if it
+    // wakes idle past the stale TTL, drop its persisted snapshot instead of
+    // resurrecting a dead game. A reconnect to a long-dead sp- id then starts
+    // fresh and its storage is reclaimed on this touch. (A never-revisited sp-
+    // object is reclaimed by the platform's Durable Object lifecycle — nothing
+    // in-process can reach one that never wakes.)
+    if (stored && isPrivateSinglePlayer(stored.state) && this.isIdlePastStaleTtl(stored.updatedAt)) {
+      await this.room.storage.delete(SNAPSHOT_KEY);
+      this.snapshot = null;
+      return;
+    }
+    this.snapshot = stored;
+  }
+
+  /**
+   * True when a stamp is older than the stale-room TTL. A NaN/absent stamp is
+   * treated as fresh (never purge on bad data), and a frozen/behind edge clock
+   * only ever under-reports the age, so this can never wrongly discard a live
+   * game — it only reclaims one that is unambiguously abandoned.
+   */
+  private isIdlePastStaleTtl(updatedAt: string): boolean {
+    const updatedMs = Date.parse(updatedAt);
+    if (Number.isNaN(updatedMs)) {
+      return false;
+    }
+    return Date.now() - updatedMs > STALE_ROOM_TTL_MS;
   }
 
   private makeState(options: RoomResetOptions = {}): GameState {
@@ -306,17 +335,29 @@ export default class GameRoomServer implements Party.Server {
       return createCombatSandboxLobbyState(seed);
     }
 
+    // An `sp-` room id is minted ONLY for single-player. Default such a room to
+    // single-player even when no `?singlePlayer=` marker reached this creation
+    // (marker read from localStorage — absent when storage is blocked/cleared or
+    // an sp- link is opened fresh, and on the bare `ensureSnapshot` fallthrough
+    // from an HTTP action/snapshot request). Without this the room would be born
+    // as a PUBLIC, listed multiplayer lobby, flooding the directory with what
+    // must stay an invisible private game.
+    const sessionMode =
+      options.sessionMode ?? (isSinglePlayerRoomId(this.room.id) ? "single-player" : undefined);
+    const computerOpponents =
+      options.computerOpponents ?? (sessionMode === "single-player" ? 1 : undefined);
+
     return options.players?.length
       ? createAdventureGameState({
           seed,
           difficulty: options.difficulty,
           scenarioId: options.scenarioId,
           players: options.players,
-          sessionMode: options.sessionMode,
-          computerOpponents: options.computerOpponents
+          sessionMode,
+          computerOpponents
         })
-      : createAdventureLobbyState({ seed, scenarioId: options.scenarioId, sessionMode: options.sessionMode,
-          computerOpponents: options.computerOpponents });
+      : createAdventureLobbyState({ seed, scenarioId: options.scenarioId, sessionMode,
+          computerOpponents });
   }
 
   private ensureSnapshot(): RoomSnapshot {

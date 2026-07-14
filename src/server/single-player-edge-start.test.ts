@@ -15,6 +15,7 @@ import GameRoomServer, { type RoomSnapshot } from "../../party/index";
 import {
   computerDecisionOwner,
   getLegalActions,
+  isPrivateSinglePlayer,
   type GameAction,
   type GameState,
 } from "@/engine";
@@ -23,6 +24,7 @@ import {
   computerPumpOwed,
   settleComputerVisibleStep,
 } from "./computer-runner";
+import { STALE_ROOM_TTL_MS } from "./lobby-registry";
 
 type EdgeRoom = ConstructorParameters<typeof GameRoomServer>[0];
 type EdgeConnection = Parameters<GameRoomServer["onConnect"]>[0];
@@ -211,4 +213,63 @@ describe("single-player game start over the PartyKit edge (alarm-paced, cold wak
     }
     expect(failures, failures.join("\n")).toEqual([]);
   }, 180000);
+});
+
+describe("single-player rooms never leak into the public lobby (edge)", () => {
+  function storageOf(roomId: string) {
+    return makeRealisticEdgeRoom(roomId);
+  }
+
+  it("a marker-LESS first connection to an sp- room still creates a PRIVATE single-player room", async () => {
+    // The ?singlePlayer= marker is read from localStorage, so it can be absent
+    // on first connect (storage blocked/cleared, an sp- link opened fresh). With
+    // no marker the only thing that keeps this from becoming a PUBLIC listed
+    // lobby is the sp- id prefix default.
+    const { room, storage } = storageOf("sp-deadbeefcafe0001");
+    const server = new GameRoomServer(room);
+    await server.onStart();
+    const conn = makeConnection("owner-1", "clientId=owner-1"); // NO singlePlayer marker
+    server.onConnect(conn as unknown as EdgeConnection);
+    const snap = storedSnapshot(storage);
+    expect(snap.state.sessionMode).toBe("single-player");
+    // Private for every reporting/listing read (reportToLobby deregisters it).
+    expect(isPrivateSinglePlayer(snap.state)).toBe(true);
+  });
+
+  it("CONTROL: a marker-less connection to a NORMAL room id creates a public multiplayer lobby", async () => {
+    const { room, storage } = storageOf("room-public-0001");
+    const server = new GameRoomServer(room);
+    await server.onStart();
+    const conn = makeConnection("owner-1", "clientId=owner-1");
+    server.onConnect(conn as unknown as EdgeConnection);
+    const snap = storedSnapshot(storage);
+    expect(snap.state.sessionMode).not.toBe("single-player");
+    expect(isPrivateSinglePlayer(snap.state)).toBe(false);
+  });
+
+  it("onStart discards an ABANDONED single-player snapshot past the idle TTL (Gap A)", async () => {
+    const { room, storage } = storageOf("sp-abandoned000001");
+    // Create a real single-player room first.
+    const server0 = new GameRoomServer(room);
+    await server0.onStart();
+    server0.onConnect(makeConnection("owner-1", "clientId=owner-1&singlePlayer=1") as unknown as EdgeConnection);
+    const live = storedSnapshot(storage);
+    expect(live.state.sessionMode).toBe("single-player"); // sanity
+
+    // Backdate the persisted snapshot beyond the stale TTL, then wake a FRESH DO
+    // (hibernation eviction): onStart must reclaim the dead game's storage.
+    storage.set("snapshot", {
+      ...live,
+      updatedAt: new Date(Date.now() - (STALE_ROOM_TTL_MS + 60_000)).toISOString()
+    });
+    const woken = new GameRoomServer(room);
+    await woken.onStart();
+    expect(storage.has("snapshot")).toBe(false);
+
+    // CONTROL: a FRESH single-player snapshot survives the same wake.
+    storage.set("snapshot", { ...live, updatedAt: new Date().toISOString() });
+    const woken2 = new GameRoomServer(room);
+    await woken2.onStart();
+    expect(storage.has("snapshot")).toBe(true);
+  });
 });
