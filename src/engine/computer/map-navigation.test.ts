@@ -984,6 +984,56 @@ describe("expansion push — open/place Ⅱ–Ⅲ before a long march to a lefto
   });
 });
 
+describe("hiring a second hero waits for a developed, funded army", () => {
+  const hireAction = (): { label: string; action: GameAction } => ({
+    label: "Hire Secondary Hero (10 gold)",
+    action: {
+      type: "HIRE_SECONDARY_HERO",
+      playerId: "p2",
+      heroDefId: "any-faction-hero",
+    } as GameAction,
+  });
+  const endTurn = (): { label: string; action: GameAction } => ({
+    label: "end",
+    action: { type: "END_TURN", playerId: "p2" } as GameAction,
+  });
+
+  it("hires once the Pack core stands and gold keeps its cushion", () => {
+    const state = game();
+    establishP2PackCore(state);
+    state.players.p2.resources = { gold: 20, buildingMaterials: 0, valuables: 0 };
+    const decision = chooseComputerAction({
+      ...observe(state),
+      legalActions: [hireAction(), endTurn()],
+    });
+    expect(decision?.action.type).toBe("HIRE_SECONDARY_HERO");
+    expect(decision?.policy).toBe("map.hire-secondary-hero");
+  });
+
+  it("CONTROL: a thin (pre-core) army keeps the Population Token instead", () => {
+    const state = game();
+    // Army still on Few sides — the fighting core is not established.
+    state.players.p2.resources = { gold: 20, buildingMaterials: 0, valuables: 0 };
+    const decision = chooseComputerAction({
+      ...observe(state),
+      legalActions: [hireAction(), endTurn()],
+    });
+    expect(decision?.action.type).toBe("END_TURN");
+  });
+
+  it("CONTROL: hiring never eats the last gold cushion", () => {
+    const state = game();
+    establishP2PackCore(state);
+    // 10-gold hire would leave only 2 — below the reserve; hold the offer.
+    state.players.p2.resources = { gold: 12, buildingMaterials: 0, valuables: 0 };
+    const decision = chooseComputerAction({
+      ...observe(state),
+      legalActions: [hireAction(), endTurn()],
+    });
+    expect(decision?.action.type).toBe("END_TURN");
+  });
+});
+
 describe("computer tile rotation never blocks itself in", () => {
   it("avoids an entrance the tile's interior walls into a pocket", () => {
     const state = game();
