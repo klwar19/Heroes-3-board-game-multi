@@ -476,6 +476,8 @@ function objectiveStrategicValue(
   hero: HeroState,
   objective: MapObjective,
   distance: number,
+  /** Whether ANY fight (guard / enemy hero) is on the current objective list. */
+  fightAvailable = true,
 ): number {
   const ready = armyReadyForContestedFight(state, hero.controllerId);
   const mode = adventureVictoryMode(state);
@@ -517,7 +519,17 @@ function objectiveStrategicValue(
       break;
     case "explore":
     default:
-      value = 430;
+      // Expansion tempo: a doorway NEXT DOOR usually out-values a multi-turn
+      // march to a distant leftover payoff — the shared -18/step decay makes
+      // the comparison (a visitable ~5+ steps out loses to an adjacent
+      // doorway; anything closer still wins). Unspent Ⅱ–Ⅲ supply pushes
+      // harder: placing it opens a fresh notch of new land ("open/place Ⅱ–Ⅲ
+      // once the home tile is milked"). And when NO fight is on the board at
+      // all (nothing beatable — e.g. right after a lost battle), opening new
+      // land is the productive move: the boost lets a doorway outrank even a
+      // moderately-distant leftover so the hero keeps expanding, not parking.
+      value = playerHasPlaceableFarTile(state, hero.controllerId) ? 530 : 500;
+      if (!fightAvailable) value += 60;
       break;
   }
   return value - distance * 18;
@@ -532,6 +544,12 @@ export function primaryMapObjective(
   if (objectives.length === 0) {
     return null;
   }
+  // "Can we fight anything at all?" — when no beatable guard / enemy hero is
+  // listed, explore objectives get a boost so the hero opens new land instead
+  // of idling (see objectiveStrategicValue).
+  const fightAvailable = objectives.some(
+    (objective) => objective.kind === "guard" || objective.kind === "enemy-hero",
+  );
 
   if (stickySpaceId) {
     const sticky = objectives.find((objective) => objective.spaceId === stickySpaceId);
@@ -541,12 +559,12 @@ export function primaryMapObjective(
       const stickyDistance = distanceFromHeroTo(state, hero, sticky.spaceId);
       const stickyValue = stickyDistance === undefined
         ? Number.NEGATIVE_INFINITY
-        : objectiveStrategicValue(state, hero, sticky, stickyDistance);
+        : objectiveStrategicValue(state, hero, sticky, stickyDistance, fightAvailable);
       const higher = objectives.find((objective) => {
         const distance = distanceFromHeroTo(state, hero, objective.spaceId);
         return (
           distance !== undefined &&
-          objectiveStrategicValue(state, hero, objective, distance) >
+          objectiveStrategicValue(state, hero, objective, distance, fightAvailable) >
             stickyValue + 90
         );
       });
@@ -570,7 +588,7 @@ export function primaryMapObjective(
     if (distance === undefined) {
       continue;
     }
-    const value = objectiveStrategicValue(state, hero, objective, distance);
+    const value = objectiveStrategicValue(state, hero, objective, distance, fightAvailable);
     if (
       !best ||
       value > bestValue ||

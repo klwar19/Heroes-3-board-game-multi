@@ -1,4 +1,5 @@
 import { cardLibrary } from "@/data/cards/library";
+import { getSpellDamageAmount, getSpellDiceRollCount } from "../effects";
 import type {
   CardDefinition,
   CardPlayMode,
@@ -233,6 +234,7 @@ function modeBonus(mode: CardPlayMode | undefined): number {
 
 function scoreDamageEffect(
   observation: ComputerObservation,
+  card: CardDefinition,
   target: TargetRef | undefined,
   base: number,
 ): number {
@@ -246,11 +248,17 @@ function scoreDamageEffect(
     return 200;
   }
   const threat = unitThreatValue(defender);
-  // Approximate with mid Power so we still rank targets without reading the
-  // cast's exact power ladder (legal-actions already gated the cast).
   const remaining = unitRemainingHealth(defender);
-  const damage = Math.max(1, Math.min(remaining, Math.max(1, 4 - defender.defense + 2)));
-  let quality = Math.min(60, threat) + Math.round((damage / Math.max(1, remaining)) * 40);
+  // Spell/card damage is NOT reduced by Defense (see the DEAL_DAMAGE resolution
+  // in reducer.ts — only dedicated spell-ward abilities shave it), so estimate
+  // with the card's PRINTED base-Power damage. The old attack-style
+  // `attack − defense` guess made armoured high-value units look unhittable and
+  // steered every cast at the cheapest chaff instead of the real threat.
+  const printed = getSpellDamageAmount(card, card.power ?? 0);
+  const damage = Math.max(1, printed);
+  let quality =
+    Math.min(60, threat) +
+    Math.round((Math.min(damage, remaining) / Math.max(1, remaining)) * 40);
   if (damage >= remaining) quality += 50;
   return Math.min(860, base + quality);
 }
@@ -471,7 +479,7 @@ function scoreEffect(
   }
 
   if (COMBAT_DAMAGE_EFFECTS.has(effect.type)) {
-    return scoreDamageEffect(observation, target, 680 + modeBonus(mode));
+    return scoreDamageEffect(observation, card, target, 680 + modeBonus(mode));
   }
 
   if (COMBAT_BUFF_EFFECTS.has(effect.type)) {
@@ -554,16 +562,62 @@ function scoreEffect(
 }
 
 /**
+ * What one more +1 Power actually buys on the pending damage cast (the stack
+ * top). Read from the SAME public inputs the engine resolves with: the spell's
+ * printed ladder (amountByPower / dice rollsByPower) and the stack item's
+ * accumulated Power modifiers. Returns null when the pending item is not a
+ * damage cast at an enemy unit (buff ladders etc. keep the generic heuristic).
+ */
+function pendingSpellBoostImpact(
+  observation: ComputerObservation,
+): "lethal-already" | "no-ladder-step" | "kills" | "chips" | null {
+  const combat = observation.state.combat;
+  const top = observation.state.stack?.at(-1);
+  if (!combat || !top || top.action.type !== "CAST_SPELL") return null;
+  const spell = cardLibrary[top.action.cardId];
+  const target = top.action.target;
+  if (!spell || !target || target.type !== "unit") return null;
+  if (!COMBAT_DAMAGE_EFFECTS.has(spell.effect.type)) return null;
+  const defender = combat.units[target.unitId];
+  if (!defender || defender.controllerId === observation.playerId) return null;
+  const modifiers = top.modifiers as
+    | {
+        spellPowerBonus?: number;
+        schoolPowerBonus?: number;
+        townCubePowerBonus?: number;
+      }
+    | undefined;
+  const power =
+    (spell.power ?? 0) +
+    (modifiers?.spellPowerBonus ?? 0) +
+    (modifiers?.schoolPowerBonus ?? 0) +
+    (modifiers?.townCubePowerBonus ?? 0);
+  // Dice-roll spells (Inferno, Slayer): the ladder is the DICE count.
+  const diceNow = getSpellDiceRollCount(spell, power);
+  if (diceNow !== null) {
+    const diceBoosted = getSpellDiceRollCount(spell, power + 1) ?? diceNow;
+    return diceBoosted > diceNow ? "chips" : "no-ladder-step";
+  }
+  const now = getSpellDamageAmount(spell, power);
+  const boosted = getSpellDamageAmount(spell, power + 1);
+  const remaining = unitRemainingHealth(defender);
+  if (now > 0 && now >= remaining) return "lethal-already";
+  if (boosted <= now) return "no-ladder-step";
+  return boosted >= remaining ? "kills" : "chips";
+}
+
+/**
  * Discarding a spell for +1 Power is only legal in a Power-paying window.
  * NEVER burn a save / high-value combat card for +1 Power — keep those for
- * their printed effect. Prefer junk / low-keep spells so expert damage scales
- * without throwing away Resurrection / Implosion.
+ * their printed effect. "Correct Power" discipline: when the pending cast is a
+ * damage spell, pay only Power that changes the outcome — stop once the hit is
+ * already lethal, refuse a +1 that does not move the printed ladder, and pay
+ * up eagerly when one more Power turns the cast into a removal.
  */
 function asPowerBoostScore(
   observation: ComputerObservation,
   cardId: string,
 ): number {
-  void observation;
   const card = cardLibrary[cardId];
   if (!card) return 900;
   const effect = primaryEffect(card);
@@ -571,11 +625,21 @@ function asPowerBoostScore(
     // Well below PASS_REACTION (1_050) — never power-boost with a save.
     return 200;
   }
+  const impact = pendingSpellBoostImpact(observation);
+  if (impact === "lethal-already" || impact === "no-ladder-step") {
+    // Below PASS — the card buys nothing on this cast; hold it.
+    return 320;
+  }
+  const keep = cardKeepValue(cardId);
+  if (impact === "kills") {
+    // One more Power converts the cast into a removal: worth any low/mid-value
+    // card. High-value artifacts/expert spells still stay in hand (940 < PASS).
+    return keep >= 55 ? 940 : 1_150 - Math.min(30, Math.floor(keep / 2));
+  }
   if (effect && COMBAT_DAMAGE_EFFECTS.has(effect.type)) {
     // Keep real damage spells for casting; mild boost only as last resort.
     return 980;
   }
-  const keep = cardKeepValue(cardId);
   // High-value artifacts/spells: do not discard for +1 Power (below PASS).
   if (keep >= 55) {
     return 940;
@@ -595,6 +659,43 @@ function discardCostPenalty(cardIds: readonly string[] | undefined): number {
       ),
     ),
   );
+}
+
+/** Crowns (expert uses) this seat still has this round — own-seat fields only. */
+function crownsAvailable(observation: ComputerObservation): number {
+  const player = observation.state.players[observation.playerId];
+  if (!player?.limits) return 2;
+  return (
+    player.limits.expertUses +
+    (player.combatStats?.expertUseBonusThisRound ?? 0) -
+    (player.combatStats?.expertUsesSpentThisRound ?? 0)
+  );
+}
+
+/**
+ * Whether spending a crown on this expert play is worth it. Combat-impact
+ * families always are — the expert side is only offered when legal and the
+ * open window IS the moment. Map conveniences (a bigger search, +gold) are not
+ * worth the LAST crown of the round: a fight later this round wants an expert
+ * save/stat reaction far more than a map search wants its bonus card, so with
+ * one crown left the basic twin wins. (Crown-free Empowered expert plays lose
+ * nothing either way — the nudge only orders basic vs expert twins.)
+ */
+function expertCrownNudge(
+  observation: ComputerObservation,
+  card: CardDefinition,
+  optionIndex: number | undefined,
+): number {
+  const effect = primaryEffect(card, optionIndex);
+  const combatImpact =
+    effect &&
+    (SAVE_EFFECTS.has(effect.type) ||
+      COMBAT_DAMAGE_EFFECTS.has(effect.type) ||
+      COMBAT_BUFF_EFFECTS.has(effect.type) ||
+      COMBAT_DEBUFF_EFFECTS.has(effect.type) ||
+      STAT_COMBAT_EFFECTS.has(effect.type));
+  if (combatImpact) return 12;
+  return crownsAvailable(observation) >= 2 ? 12 : -30;
 }
 
 function pendingAttackValues(observation: ComputerObservation) {
@@ -682,9 +783,10 @@ export function scoreCardAction(
       );
 
       // Expert mode (already crown-gated by legal-actions) is strictly better
-      // for damage / buff ladders — small nudge so expert wins over basic twin.
+      // for damage / buff ladders — nudge so expert wins over its basic twin,
+      // EXCEPT when it would burn the round's last crown on a map convenience.
       if (mode === "expert") {
-        score += 12;
+        score += expertCrownNudge(observation, card, optionIndex);
       }
 
       score -= discardCostPenalty(
