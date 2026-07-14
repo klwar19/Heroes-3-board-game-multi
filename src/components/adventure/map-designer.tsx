@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { assetUrl } from "@/lib/asset-url";
-import { Eye, Minus, Plus, RotateCcw, RotateCw, Shuffle, Trash2 } from "lucide-react";
+import { Dices, Eye, EyeOff, Minus, Plus, RotateCcw, RotateCw, Trash2 } from "lucide-react";
 import { allTileDefinitions } from "@/data/map/tiles";
 import { locationDefinitions } from "@/data/map/locations";
 import { mapTokenImage, TILE_BACK_IMAGES, subterraneanGateTokenImage } from "@/data/assets/homm-assets";
+import type { TileDefinition } from "@/data/map/types";
 import {
   hexNeighbors,
   hexToPixel,
@@ -115,6 +116,77 @@ function tokenSlotLabel(defId: string | undefined, slot: number, rotation: numbe
   return `${where} — ${location}`;
 }
 
+/** Short landmark chips shown on a clickable tile card in the designer picker. */
+function tileFeatureTags(def: TileDefinition): string[] {
+  const tags: string[] = [];
+  for (const field of def.fields) {
+    if (field.location === "empty_field" || field.location === "blocked_field") {
+      continue;
+    }
+    if (field.location === "mine") {
+      const resource =
+        field.resource === "gold"
+          ? "Gold mine"
+          : field.resource === "valuables"
+            ? "Valuables mine"
+            : field.resource === "buildingMaterials"
+              ? "Materials mine"
+              : "Mine";
+      tags.push(resource);
+      continue;
+    }
+    const name = locationDefinitions[field.location]?.name ?? field.location;
+    tags.push(name);
+  }
+  return tags.length > 0 ? tags : [titleCase(def.terrain)];
+}
+
+/**
+ * Landmark filters for the clickable tile picker — pick a chip, then click a
+ * tile. "all" shows every tile in the slot's pool.
+ */
+const TILE_PICK_FILTERS: { id: string; label: string; match: (def: TileDefinition) => boolean }[] = [
+  { id: "all", label: "All", match: () => true },
+  { id: "mine", label: "Mine", match: (def) => def.fields.some((field) => field.location === "mine") },
+  {
+    id: "gold",
+    label: "Gold",
+    match: (def) => def.fields.some((field) => field.location === "mine" && field.resource === "gold")
+  },
+  {
+    id: "valuables",
+    label: "Valuables",
+    match: (def) => def.fields.some((field) => field.location === "mine" && field.resource === "valuables")
+  },
+  { id: "obelisk", label: "Obelisk", match: (def) => def.fields.some((field) => field.location === "obelisk") },
+  {
+    id: "settlement",
+    label: "Settlement",
+    match: (def) => def.fields.some((field) => field.location === "settlement")
+  },
+  {
+    id: "town",
+    label: "Town",
+    match: (def) => def.fields.some((field) => field.location === "town" || field.location === "random_town")
+  },
+  {
+    id: "objective",
+    label: "Grail / Dragons",
+    match: (def) =>
+      def.fields.some((field) => field.location === "grail" || field.location === "dragon_utopia")
+  }
+];
+
+/** How a non-starting designed tile is configured for players. */
+type TileSlotMode = "random" | "secret" | "faceup";
+
+function tileSlotMode(plan: CustomMapTilePlan): TileSlotMode {
+  if (!plan.faceDown) {
+    return "faceup";
+  }
+  return plan.tileDefId ? "secret" : "random";
+}
+
 /**
  * Revalidates a plan's token against a new face-up tile definition: the slot is
  * kept when still legal, else moved to the first legal slot, else the token is
@@ -206,6 +278,8 @@ export function MapDesigner({
   const [camera, setCamera] = useState({ x: 0, y: 0, scale: 1 });
   const [drag, setDrag] = useState<DesignDrag | null>(null);
   const [hoverSlot, setHoverSlot] = useState<HexCoord | null>(null);
+  /** Landmark chip filter for the clickable tile picker (All / Mine / …). */
+  const [tilePickFilter, setTilePickFilter] = useState("all");
 
   const panRef = useRef<{ pointerId: number; startX: number; startY: number; originX: number; originY: number; moved: boolean } | null>(null);
   const suppressClickRef = useRef(false);
@@ -352,6 +426,7 @@ export function MapDesigner({
   const closePopover = useCallback(() => {
     setSelectedIndex(null);
     setPopoverAt(null);
+    setTilePickFilter("all");
   }, []);
 
   const addTile = useCallback(
@@ -381,7 +456,22 @@ export function MapDesigner({
 
   const updateTile = useCallback(
     (index: number, changes: Partial<CustomMapTilePlan>) => {
-      onChange(customMap.map((plan, planIndex) => (planIndex === index ? { ...plan, ...changes } : plan)));
+      onChange(
+        customMap.map((plan, planIndex) => {
+          if (planIndex !== index) {
+            return plan;
+          }
+          const next = { ...plan, ...changes };
+          // Explicit `undefined` clears an optional field (secret pin / token).
+          if (changes.tileDefId === undefined && "tileDefId" in changes) {
+            delete next.tileDefId;
+          }
+          if (changes.token === undefined && "token" in changes) {
+            delete next.token;
+          }
+          return next;
+        })
+      );
     },
     [customMap, onChange]
   );
@@ -457,8 +547,9 @@ export function MapDesigner({
   }
 
   const selected = selectedIndex !== null ? customMap[selectedIndex] : null;
-  const usedFaceUpIds = new Set(
-    customMap.filter((plan) => !plan.faceDown && plan.tileDefId).map((plan) => plan.tileDefId as string)
+  // A tile id may only be used once — face-up OR secret face-down pin.
+  const usedPinnedIds = new Set(
+    customMap.filter((plan) => plan.tileDefId).map((plan) => plan.tileDefId as string)
   );
   const pickableTiles = selected
     ? Object.values(allTileDefinitions)
@@ -475,7 +566,84 @@ export function MapDesigner({
         .sort((left, right) => left.id.localeCompare(right.id))
     : [];
   const selectedTileDef = selected?.tileDefId ? allTileDefinitions[selected.tileDefId] : undefined;
+  const selectedMode = selected && selected.group !== "starting" ? tileSlotMode(selected) : null;
   const selectedToken = selected?.token;
+
+  // Landmark chips that match at least one tile in this slot's pool.
+  const availablePickFilters =
+    selected && PICKABLE_GROUPS.has(selected.group)
+      ? TILE_PICK_FILTERS.filter(
+          (filter) => filter.id === "all" || pickableTiles.some((tile) => filter.match(tile))
+        )
+      : TILE_PICK_FILTERS.slice(0, 1);
+  const activePickFilter =
+    availablePickFilters.find((entry) => entry.id === tilePickFilter) ?? availablePickFilters[0] ?? TILE_PICK_FILTERS[0];
+  const filteredPickableTiles = pickableTiles.filter((tile) => activePickFilter.match(tile));
+
+  /** Apply Random / Secret / Face-up in one click; picks a free tile when needed. */
+  const setSelectedSlotMode = (mode: TileSlotMode) => {
+    if (selectedIndex === null || !selected || selected.group === "starting") {
+      return;
+    }
+    const fallbackId =
+      selected.tileDefId ??
+      pickableTiles.find((tile) => !usedPinnedIds.has(tile.id))?.id ??
+      pickableTiles[0]?.id;
+
+    if (mode === "random") {
+      updateTile(selectedIndex, {
+        faceDown: true,
+        tileDefId: undefined,
+        token:
+          selected.token && faceDownTokenKinds(selected.group).includes(selected.token.kind)
+            ? { kind: selected.token.kind }
+            : undefined
+      });
+      return;
+    }
+    if (!fallbackId) {
+      return;
+    }
+    if (mode === "secret") {
+      updateTile(selectedIndex, {
+        faceDown: true,
+        tileDefId: fallbackId,
+        token:
+          selected.token && faceDownTokenKinds(selected.group).includes(selected.token.kind)
+            ? { kind: selected.token.kind }
+            : undefined
+      });
+      return;
+    }
+    updateTile(selectedIndex, {
+      faceDown: false,
+      tileDefId: fallbackId,
+      token: retargetTokenForDef(selected.token, fallbackId)
+    });
+  };
+
+  /**
+   * Click a tile card. Face-up stays face-up; Random or Secret becomes/stays a
+   * secret pin — one click both chooses content and keeps it hidden.
+   */
+  const pickTileForSelected = (tileDefId: string) => {
+    if (selectedIndex === null || !selected || selected.group === "starting") {
+      return;
+    }
+    if (usedPinnedIds.has(tileDefId) && selected.tileDefId !== tileDefId) {
+      return;
+    }
+    const nextFaceDown = selectedMode !== "faceup";
+    updateTile(selectedIndex, {
+      faceDown: nextFaceDown,
+      tileDefId,
+      token: nextFaceDown
+        ? selected.token && faceDownTokenKinds(selected.group).includes(selected.token.kind)
+          ? { kind: selected.token.kind }
+          : undefined
+        : retargetTokenForDef(selected.token, tileDefId)
+    });
+  };
   // Token kinds this tile may carry: a face-down tile hides its group's kind
   // (sea → Whirlpool, land groups → Monolith); a revealed tile offers whichever
   // kinds still have a legal printed field on it (an island hex on a sea tile
@@ -572,9 +740,12 @@ export function MapDesigner({
     const isSelected = selectedIndex === index;
     const isDragging = drag?.kind === "move" && drag.index === index;
     const isStart = plan.group === "starting";
+    // Designer-only: a face-down pin still shows the real tile art so the
+    // designer can see the secret mine/obelisk/…; players never see this view.
+    const secretPin = plan.faceDown && Boolean(plan.tileDefId);
     const art = isStart
       ? TILE_BACK_IMAGES.starting
-      : !plan.faceDown && plan.tileDefId
+      : plan.tileDefId
         ? allTileDefinitions[plan.tileDefId]?.assets?.tileImage
         : plan.faceDown
           ? TILE_BACK_IMAGES[plan.group]
@@ -588,7 +759,7 @@ export function MapDesigner({
           height={height}
           href={assetUrl(art)}
           key={`plan-art-${index}`}
-          opacity={isDragging ? 0.3 : 1}
+          opacity={isDragging ? 0.3 : secretPin ? 0.72 : 1}
           preserveAspectRatio="none"
           transform={!isStart ? `rotate(${(plan.rotation ?? 0) * 60} ${centerPixel.x} ${centerPixel.y})` : undefined}
           width={width}
@@ -619,22 +790,24 @@ export function MapDesigner({
 
     renderFlowerCells(
       center,
-      `designerHexPlan ${isStart ? "starting" : plan.faceDown ? "down" : "up"} ${isSelected ? "selected" : ""} ${isDragging ? "dragging" : ""}`,
+      `designerHexPlan ${isStart ? "starting" : plan.faceDown ? "down" : "up"} ${secretPin ? "secret" : ""} ${isSelected ? "selected" : ""} ${isDragging ? "dragging" : ""}`,
       `plan-${index}`,
       { onPointerDown },
       isStart
         ? `Town — seat ${seatNumberOf(index)}. Drag to move, click for options.`
-        : plan.faceDown
-          ? `Face-down ${planGroupLabel(plan)} tile (random). Drag to move, click to reveal / rotate / remove.`
-          : `${plan.tileDefId ?? "?"} rotated ${(plan.rotation ?? 0) * 60}°. Drag to move, click for options.`
+        : plan.faceDown && plan.tileDefId
+          ? `Face-down secret ${plan.tileDefId} (${planGroupLabel(plan)}) — players see only the tile back until discovery. Drag to move, click for options.`
+          : plan.faceDown
+            ? `Face-down ${planGroupLabel(plan)} tile (random). Drag to move, click to pin a secret tile / reveal / rotate / remove.`
+            : `${plan.tileDefId ?? "?"} rotated ${(plan.rotation ?? 0) * 60}°. Drag to move, click for options.`
     );
 
     outlineLayer.push(
       <path
-        className={`designerFlowerOutline ${isSelected ? "selected" : ""}`}
+        className={`designerFlowerOutline ${isSelected ? "selected" : ""} ${secretPin ? "secret" : ""}`}
         d={flowerOutline(center, size)}
         key={`plan-outline-${index}`}
-        style={{ stroke: isSelected ? "#ffd766" : GROUP_COLORS[plan.group] }}
+        style={{ stroke: isSelected ? "#ffd766" : secretPin ? "#9ad0ff" : GROUP_COLORS[plan.group] }}
       />
     );
 
@@ -647,7 +820,11 @@ export function MapDesigner({
     } else if (plan.faceDown || !art) {
       labelLayer.push(
         <text className="designerTileLabel" key={`plan-label-${index}`} textAnchor="middle" x={centerPixel.x} y={centerPixel.y + 4}>
-          {plan.faceDown ? planGroupLabel(plan) : (plan.tileDefId ?? "?")}
+          {plan.faceDown && plan.tileDefId
+            ? `🔒 ${plan.tileDefId}`
+            : plan.faceDown
+              ? planGroupLabel(plan)
+              : (plan.tileDefId ?? "?")}
         </text>
       );
     }
@@ -884,6 +1061,7 @@ export function MapDesigner({
               pressRef.current = null;
               const rect = wrapRef.current?.getBoundingClientRect();
               setSelectedIndex(press.index);
+              setTilePickFilter("all");
               // Clamp the popover into the board here (refs are fine in handlers)
               // rather than reading the ref width back during render.
               setPopoverAt(
@@ -927,7 +1105,7 @@ export function MapDesigner({
         {/* Per-tile options popover, anchored where the tile was clicked. */}
         {selected && popoverAt ? (
           <div
-            className="designerPopover"
+            className={`designerPopover${selected.group !== "starting" && PICKABLE_GROUPS.has(selected.group) ? " wide" : ""}`}
             style={{ left: popoverAt.x, top: popoverAt.y }}
           >
             <header>
@@ -942,46 +1120,135 @@ export function MapDesigner({
               <small className="popoverHint">A player&apos;s starting town. Drag it to move; its tile art comes from each player&apos;s faction.</small>
             ) : (
               <>
+                {/* Step 1 — click a mode */}
+                <div className="popoverSectionLabel">What is on this slot?</div>
+                <div className="popoverModeRow" role="group" aria-label="Tile slot mode">
+                  <button
+                    aria-pressed={selectedMode === "random"}
+                    className={`popoverModeCard${selectedMode === "random" ? " active" : ""}`}
+                    onClick={() => setSelectedSlotMode("random")}
+                    title="Draw a random tile from this pool when the game starts. Players see a face-down back."
+                    type="button"
+                  >
+                    <Dices size={16} />
+                    <span className="popoverModeTitle">Random</span>
+                    <span className="popoverModeSub">Face-down pool</span>
+                  </button>
+                  <button
+                    aria-pressed={selectedMode === "secret"}
+                    className={`popoverModeCard${selectedMode === "secret" ? " active" : ""}`}
+                    onClick={() => setSelectedSlotMode("secret")}
+                    title="You pick the exact tile, but players only see the face-down back until they discover it."
+                    type="button"
+                  >
+                    <EyeOff size={16} />
+                    <span className="popoverModeTitle">Secret</span>
+                    <span className="popoverModeSub">Hidden until found</span>
+                  </button>
+                  <button
+                    aria-pressed={selectedMode === "faceup"}
+                    className={`popoverModeCard${selectedMode === "faceup" ? " active" : ""}`}
+                    onClick={() => setSelectedSlotMode("faceup")}
+                    title="You pick the exact tile and it is visible on the board from the start."
+                    type="button"
+                  >
+                    <Eye size={16} />
+                    <span className="popoverModeTitle">Face-up</span>
+                    <span className="popoverModeSub">Visible now</span>
+                  </button>
+                </div>
+
+                <small className="popoverHint">
+                  {selectedMode === "random"
+                    ? "Random: a tile from this pool is drawn at game start. Click Secret or Face-up, then click a tile below to pick one."
+                    : selectedMode === "secret"
+                      ? "Secret: click a tile below. Players see only the back until discovery — only you see the choice."
+                      : "Face-up: click a tile below. Everyone sees it from the start of the game."}
+                </small>
+
+                {/* Step 2 — click a tile (Secret / Face-up). Random can also click to promote to Secret. */}
+                {PICKABLE_GROUPS.has(selected.group) ? (
+                  <div className="popoverTilePicker">
+                    <div className="popoverSectionLabel">
+                      {selectedMode === "random"
+                        ? "Or pick a specific tile (becomes Secret)"
+                        : selectedMode === "secret"
+                          ? "Click the secret tile"
+                          : "Click the face-up tile"}
+                    </div>
+                    <div className="popoverFilterRow" role="group" aria-label="Filter tiles by landmark">
+                      {availablePickFilters.map((filter) => (
+                        <button
+                          aria-pressed={activePickFilter.id === filter.id}
+                          className={`popoverFilterChip${activePickFilter.id === filter.id ? " active" : ""}`}
+                          key={filter.id}
+                          onClick={() => setTilePickFilter(filter.id)}
+                          type="button"
+                        >
+                          {filter.label}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="popoverTileGrid" role="listbox" aria-label="Tiles in this pool">
+                      {filteredPickableTiles.map((tile) => {
+                        const taken = usedPinnedIds.has(tile.id) && selected.tileDefId !== tile.id;
+                        const isPicked = selected.tileDefId === tile.id;
+                        const tags = tileFeatureTags(tile);
+                        const art = tile.assets?.tileImage;
+                        return (
+                          <button
+                            aria-selected={isPicked}
+                            className={`popoverTileCard${isPicked ? " selected" : ""}${taken ? " taken" : ""}`}
+                            disabled={taken}
+                            key={tile.id}
+                            onClick={() => pickTileForSelected(tile.id)}
+                            role="option"
+                            title={
+                              taken
+                                ? `${tile.id} is already used on another slot`
+                                : `${tile.id}: ${tags.join(", ")}`
+                            }
+                            type="button"
+                          >
+                            {art ? (
+                              /* eslint-disable-next-line @next/next/no-img-element */
+                              <img
+                                alt=""
+                                className="popoverTileCardArt"
+                                src={assetUrl(art)}
+                                style={{ transform: `rotate(${(selected.rotation ?? 0) * 60}deg)` }}
+                              />
+                            ) : (
+                              <span className="popoverTileCardArt placeholder">{tile.id}</span>
+                            )}
+                            <span className="popoverTileCardId">{tile.id}</span>
+                            <span className="popoverTileCardTags">
+                              {tags.slice(0, 3).map((tag) => (
+                                <span className="popoverTileTag" key={tag}>
+                                  {tag}
+                                </span>
+                              ))}
+                              {tags.length > 3 ? (
+                                <span className="popoverTileTag more">+{tags.length - 3}</span>
+                              ) : null}
+                            </span>
+                            {isPicked ? (
+                              <span className="popoverTileCardBadge">
+                                {selectedMode === "faceup" ? "Face-up" : "Secret"}
+                              </span>
+                            ) : null}
+                            {taken ? <span className="popoverTileCardBadge taken">Used</span> : null}
+                          </button>
+                        );
+                      })}
+                      {filteredPickableTiles.length === 0 ? (
+                        <small className="popoverHint">No tiles match this filter.</small>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
+
                 <div className="popoverActions">
-                  {selected.faceDown ? (
-                    <button
-                      onClick={() => {
-                        const tileDefId =
-                          selected.tileDefId ?? pickableTiles.find((tile) => !usedFaceUpIds.has(tile.id))?.id ?? pickableTiles[0]?.id;
-                        updateTile(selectedIndex as number, {
-                          faceDown: false,
-                          tileDefId,
-                          // A pending token becomes a fixed placement: it moves to
-                          // the first legal field of the revealed tile (or is
-                          // dropped when the tile has none).
-                          token: retargetTokenForDef(selected.token, tileDefId)
-                        });
-                      }}
-                      title="Show a specific tile, face up"
-                      type="button"
-                    >
-                      <Eye size={13} /> Reveal
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() =>
-                        updateTile(selectedIndex as number, {
-                          faceDown: true,
-                          tileDefId: undefined,
-                          // A fixed token turns back into a pending one (placed on
-                          // discovery) when its kind fits the face-down group.
-                          token:
-                            selected.token && faceDownTokenKinds(selected.group).includes(selected.token.kind)
-                              ? { kind: selected.token.kind }
-                              : undefined
-                        })
-                      }
-                      title="Flip face-down so a random tile of this pool is drawn when the game starts"
-                      type="button"
-                    >
-                      <Shuffle size={13} /> Flip back
-                    </button>
-                  )}
                   <button onClick={() => rotateSelected(-1)} title="Rotate 60° counterclockwise" type="button">
                     <RotateCcw size={13} />
                   </button>
@@ -989,41 +1256,6 @@ export function MapDesigner({
                     <RotateCw size={13} /> {(selected.rotation ?? 0) * 60}°
                   </button>
                 </div>
-
-                {!selected.faceDown && PICKABLE_GROUPS.has(selected.group) ? (
-                  <>
-                    <select
-                      aria-label="Tile"
-                      className="popoverSelect"
-                      onChange={(event) =>
-                        updateTile(selectedIndex as number, {
-                          tileDefId: event.target.value,
-                          token: retargetTokenForDef(selected.token, event.target.value)
-                        })
-                      }
-                      value={selected.tileDefId ?? ""}
-                    >
-                      {pickableTiles.map((tile) => (
-                        <option
-                          disabled={usedFaceUpIds.has(tile.id) && tile.id !== selected.tileDefId}
-                          key={tile.id}
-                          value={tile.id}
-                        >
-                          {tile.id} — {titleCase(tile.terrain)}
-                        </option>
-                      ))}
-                    </select>
-                    {selectedTileDef?.assets?.tileImage ? (
-                      /* eslint-disable-next-line @next/next/no-img-element */
-                      <img
-                        alt={`Tile ${selectedTileDef.id}`}
-                        className="designerTilePreview"
-                        src={assetUrl(selectedTileDef.assets.tileImage)}
-                        style={{ transform: `rotate(${(selected.rotation ?? 0) * 60}deg)` }}
-                      />
-                    ) : null}
-                  </>
-                ) : null}
 
                 {/* Monolith/Whirlpool Location Token on this tile. */}
                 {selectedToken ? (
@@ -1128,18 +1360,12 @@ export function MapDesigner({
       ) : null}
 
       <small className="optionHint">
-        Drag a tile from the palette and drop it anywhere — tiles can interlock, leave gaps, touch at just a corner or
-        float on their own (room for teleport gates later); green guides mark where a tile nests with no hole. Drag a
-        placed tile to move it; click it to reveal a specific tile, flip it back to random, rotate it or remove it.
-        <strong> Underground (⛰) tiles</strong> live on the subterranean layer: drop one touching a Surface tile and a
-        <strong> Subterranean Gate</strong> token appears on the shared edge — that gate is the ONLY way heroes cross
-        between the Surface and the Underground (they can&apos;t even discover an Underground tile from the Surface
-        without one). Click a placed tile to add a <strong>Monolith</strong> (land) or <strong>Whirlpool</strong> (sea)
-        token: it replaces a field of the tile, and a hero entering it teleports to another token of the same kind
-        (each Whirlpool travel also costs 1 unit card). A token on a face-down tile is placed on a field of the
-        discoverer&apos;s choosing; travelling to it reveals the tile for free. <strong>At least 2 tokens of a kind are
-        needed for them to work</strong> — a lone one leads nowhere. The Town (Ⅰ) tiles become the player seats; drag
-        the empty background to pan and scroll to zoom.
+        Drag a tile from the palette onto the board, then <strong>click it</strong> to configure: choose{" "}
+        <strong>Random</strong> (pool draw), <strong>Secret</strong> (you pick the tile — mines, obelisks, … stay
+        hidden until discovery), or <strong>Face-up</strong> (visible from the start), then click a tile card. Filter
+        chips (Mine, Obelisk, …) narrow the grid. <strong>Underground (⛰)</strong> tiles need a Subterranean Gate
+        (auto when touching Surface). Add <strong>Monolith</strong> / <strong>Whirlpool</strong> tokens from the same
+        panel — at least 2 of a kind to work. Town (Ⅰ) tiles are seats; drag empty background to pan, scroll to zoom.
       </small>
 
       {/* Floating drag ghost follows the pointer. */}

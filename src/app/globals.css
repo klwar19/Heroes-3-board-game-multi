@@ -11134,6 +11134,13 @@ img.cardBack {
   transition: transform 0.25s ease;
 }
 
+.designerTilePreview.secret {
+  opacity: 0.85;
+  outline: 2px dashed rgba(154, 208, 255, 0.7);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
 .designerLink a {
   display: inline-flex;
   align-items: center;
@@ -11828,6 +11835,11 @@ img.cardBack {
   fill: rgba(28, 22, 40, 0.25);
 }
 
+/* Designer-only secret pin: face-down for players, art still visible here. */
+.designerHexPlan.down.secret {
+  fill: rgba(40, 70, 110, 0.22);
+}
+
 .designerHexPlan:hover {
   fill: rgba(255, 215, 102, 0.18);
 }
@@ -11858,6 +11870,10 @@ img.cardBack {
   stroke: rgba(243, 231, 200, 0.25);
   stroke-dasharray: 6 5;
   stroke-width: 1.6;
+}
+
+.designerFlowerOutline.secret {
+  stroke-dasharray: 5 3;
 }
 
 .designerFlowerOutline.selected {
@@ -12061,8 +12077,12 @@ img.cardBack {
   position: absolute;
   z-index: 40;
   display: grid;
-  gap: 7px;
-  width: 224px;
+  gap: 8px;
+  width: 248px;
+  max-width: min(248px, calc(100% - 16px));
+  max-height: min(78vh, 640px);
+  overflow-x: hidden;
+  overflow-y: auto;
   padding: 10px;
   border-radius: 12px;
   border: 1px solid var(--gold);
@@ -12071,14 +12091,28 @@ img.cardBack {
   transform: translate(-50%, 10px);
 }
 
+.designerPopover.wide {
+  width: 340px;
+  max-width: min(340px, calc(100% - 16px));
+}
+
 .designerPopover header strong {
   font-size: 12px;
   color: #f3e7c8;
 }
 
+.designerPopover .popoverSectionLabel {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(240, 220, 184, 0.72);
+}
+
 .designerPopover .popoverHint {
   color: var(--muted);
   line-height: 1.4;
+  font-size: 11px;
 }
 
 .designerPopover .popoverActions {
@@ -12113,6 +12147,204 @@ img.cardBack {
   background: rgba(28, 22, 12, 0.95);
   color: #f0dcb8;
   font-size: 11px;
+}
+
+/* Three big mode cards: Random / Secret / Face-up */
+.designerPopover .popoverModeRow {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.designerPopover .popoverModeCard {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  padding: 8px 4px 7px;
+  border-radius: 10px;
+  border: 1px solid rgba(214, 178, 94, 0.35);
+  background: rgba(36, 28, 16, 0.9);
+  color: #e8d6b0;
+  cursor: pointer;
+  text-align: center;
+  transition: border-color 0.1s ease, background 0.1s ease, box-shadow 0.1s ease;
+}
+
+.designerPopover .popoverModeCard:hover {
+  border-color: rgba(255, 215, 102, 0.75);
+  background: rgba(56, 44, 24, 0.95);
+}
+
+.designerPopover .popoverModeCard.active {
+  border-color: var(--gold);
+  background: linear-gradient(180deg, rgba(90, 68, 28, 0.95), rgba(48, 36, 16, 0.98));
+  box-shadow: 0 0 0 1px rgba(255, 215, 102, 0.35), inset 0 0 12px rgba(255, 200, 80, 0.08);
+  color: #fff3d0;
+}
+
+.designerPopover .popoverModeTitle {
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.designerPopover .popoverModeSub {
+  font-size: 9px;
+  line-height: 1.2;
+  color: rgba(230, 210, 170, 0.72);
+}
+
+.designerPopover .popoverModeCard.active .popoverModeSub {
+  color: rgba(255, 230, 180, 0.85);
+}
+
+/* Landmark filter chips + clickable tile grid */
+.designerPopover .popoverTilePicker {
+  display: grid;
+  gap: 6px;
+}
+
+.designerPopover .popoverFilterRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.designerPopover .popoverFilterChip {
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(214, 178, 94, 0.35);
+  background: rgba(32, 26, 16, 0.9);
+  color: #e4d2aa;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.designerPopover .popoverFilterChip:hover {
+  border-color: rgba(255, 215, 102, 0.7);
+}
+
+.designerPopover .popoverFilterChip.active {
+  border-color: var(--gold);
+  background: rgba(90, 68, 28, 0.95);
+  color: #fff3d0;
+}
+
+.designerPopover .popoverTileGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 2px;
+  margin: 0 -2px;
+}
+
+.designerPopover.wide .popoverTileGrid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  max-height: 260px;
+}
+
+.designerPopover .popoverTileCard {
+  position: relative;
+  display: grid;
+  gap: 3px;
+  justify-items: stretch;
+  padding: 5px;
+  border-radius: 9px;
+  border: 1px solid rgba(214, 178, 94, 0.3);
+  background: rgba(28, 22, 12, 0.95);
+  color: #f0dcb8;
+  cursor: pointer;
+  text-align: left;
+  min-width: 0;
+}
+
+.designerPopover .popoverTileCard:hover:not(:disabled) {
+  border-color: rgba(255, 215, 102, 0.8);
+  background: rgba(48, 38, 20, 0.98);
+}
+
+.designerPopover .popoverTileCard.selected {
+  border-color: #9ad0ff;
+  box-shadow: 0 0 0 1px rgba(154, 208, 255, 0.45);
+  background: rgba(30, 42, 58, 0.95);
+}
+
+.designerPopover .popoverTileCard.taken,
+.designerPopover .popoverTileCard:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.designerPopover .popoverTileCardArt {
+  width: 100%;
+  aspect-ratio: 1.05;
+  object-fit: cover;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+
+.designerPopover .popoverTileCardArt.placeholder {
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: rgba(240, 220, 184, 0.7);
+}
+
+.designerPopover .popoverTileCardId {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.designerPopover .popoverTileCardTags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+
+.designerPopover .popoverTileTag {
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: rgba(214, 178, 94, 0.15);
+  border: 1px solid rgba(214, 178, 94, 0.25);
+  color: rgba(240, 220, 184, 0.88);
+  font-size: 8px;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.designerPopover .popoverTileTag.more {
+  background: transparent;
+  border-color: transparent;
+  color: var(--muted);
+}
+
+.designerPopover .popoverTileCardBadge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(40, 90, 140, 0.92);
+  border: 1px solid rgba(154, 208, 255, 0.7);
+  color: #e8f4ff;
+  font-size: 9px;
+  font-weight: 700;
+  pointer-events: none;
+}
+
+.designerPopover .popoverTileCardBadge.taken {
+  background: rgba(60, 50, 40, 0.9);
+  border-color: rgba(160, 140, 110, 0.5);
+  color: #cfc0a0;
 }
 
 .designerPopover .popoverRemove {

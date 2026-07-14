@@ -666,17 +666,26 @@ export function validateCustomMapPlan(
       return false;
     }
     // Starting (Ⅰ) tiles only carry a seat position; the tile art is the
-    // faction's, so they never need a chosen tile id.
-    if (plan.group !== "starting" && !plan.faceDown) {
-      const def = plan.tileDefId ? allTileDefinitions[plan.tileDefId] : undefined;
+    // faction's, so they never need a chosen tile id. Every other slot may pin
+    // a specific tile — required face-up, optional face-down (a designer-only
+    // secret that stays hidden until discovery).
+    if (plan.group !== "starting" && plan.tileDefId) {
+      const def = allTileDefinitions[plan.tileDefId];
       if (!def) {
-        problems.push(`Tile ${index + 1}: pick a tile for the face-up slot.`);
+        problems.push(`Tile ${index + 1}: unknown tile "${plan.tileDefId}".`);
         return false;
       }
       if (def.group === "starting") {
         problems.push(`Tile ${index + 1}: starting tiles are placed by faction, not by the designer.`);
         return false;
       }
+      if (def.group !== plan.group) {
+        problems.push(`Tile ${index + 1}: ${plan.tileDefId} belongs to the ${def.group} pool, not ${plan.group}.`);
+        return false;
+      }
+    } else if (plan.group !== "starting" && !plan.faceDown) {
+      problems.push(`Tile ${index + 1}: pick a tile for the face-up slot.`);
+      return false;
     }
     return true;
   });
@@ -1109,9 +1118,10 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
 
   if (customMap) {
     // Map designer: hand-placed tiles instead of the scenario layout.
-    // Face-up plans place their chosen tile revealed; face-down plans draw a
-    // random tile from their group's pool ("down means random"). Starting (Ⅰ)
-    // tiles were already placed by faction in the seat loop above.
+    // Face-up plans place their chosen tile revealed; face-down plans either
+    // pin a secret `tileDefId` (designer-only until discovery) or draw a random
+    // tile from their group's pool ("down means random"). Starting (Ⅰ) tiles
+    // were already placed by faction in the seat loop above.
     const pools: Record<string, string[]> = {
       far: farPool,
       near: nearPool,
@@ -1132,9 +1142,10 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     const popSubTile = (band?: "iv-v" | "vi-vii"): string | undefined =>
       band ? popSubBandTile(subterraneanPool, band) : subterraneanPool.pop();
 
-    // Designed face-up tiles never also hide in a face-down pool draw.
+    // Designed tiles that pin a specific id (face-up OR secret face-down) never
+    // also hide in a random face-down pool draw.
     for (const plan of customMap) {
-      if (!plan.faceDown && plan.tileDefId) {
+      if (plan.tileDefId) {
         for (const pool of Object.values(pools)) {
           const index = pool.indexOf(plan.tileDefId);
           if (index !== -1) {
@@ -1145,13 +1156,13 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     }
 
     // Center (VI–VII) tiles forced by the win condition (Grail Hunt → a Grail,
-    // Dragon Hunt/Conqueror → a Dragon Utopia) apply to face-down Center slots
-    // here too, exactly like the scenario layout — otherwise a designed map could
-    // never guarantee the objective tile its victory mode needs.
-    const faceDownCenterSlots = customMap.filter(
-      (plan) => plan.faceDown && plan.group === "center"
+    // Dragon Hunt/Conqueror → a Dragon Utopia) apply to unpinned face-down
+    // Center slots here too, exactly like the scenario layout — a designer who
+    // already pinned a specific Center tile keeps that choice instead.
+    const unpinnedFaceDownCenterSlots = customMap.filter(
+      (plan) => plan.faceDown && plan.group === "center" && !plan.tileDefId
     ).length;
-    const forcedCenters = forcedObjectiveCenterTiles(centerPool, faceDownCenterSlots, victoryMode);
+    const forcedCenters = forcedObjectiveCenterTiles(centerPool, unpinnedFaceDownCenterSlots, victoryMode);
     let forcedCenterIndex = 0;
 
     // Designed Monolith/Whirlpool Location Tokens, applied once every planned
@@ -1165,20 +1176,24 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
       const center = { row: plan.row, col: plan.col };
       if (plan.faceDown) {
         let tileDefId: string | undefined;
-        if (plan.group === "sea") {
+        // A designer-pinned id is a secret predetermined tile: still face-down
+        // for players, but fixed content (mine, obelisk, …) at discovery.
+        if (plan.tileDefId && allTileDefinitions[plan.tileDefId]) {
+          tileDefId = plan.tileDefId;
+        } else if (plan.group === "sea") {
           tileDefId = popSeaTile(plan.seaBand);
         } else if (plan.group === "subterranean") {
           tileDefId = popSubTile(plan.subBand);
         } else if (plan.group === "center") {
-          // The win-condition objective fills the first face-down Center slot;
-          // any further Center slots stay a random draw.
+          // The win-condition objective fills the first unpinned face-down
+          // Center slot; any further Center slots stay a random draw.
           tileDefId = forcedCenters[forcedCenterIndex++] ?? centerPool.pop();
         } else {
           tileDefId = pools[plan.group]?.pop();
         }
         if (tileDefId) {
-          // "Down means random", but the designer's chosen orientation still
-          // rides along — the random tile is revealed at the slot's rotation.
+          // Orientation rides along for both secret pins and random draws —
+          // the tile is revealed at the slot's rotation.
           const tile = instantiateTile(adventure, tileDefId, center, plan.rotation ?? 0, true);
           if (plan.token) {
             plannedTokens.push({ plan, tile });

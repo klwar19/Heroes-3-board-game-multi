@@ -8599,9 +8599,13 @@ export type CustomStartingUnit = {
 };
 
 /**
- * One designed map tile. Face-down tiles draw randomly from their group's
- * pool when the adventure starts ("down means random"); face-up tiles place
- * the chosen tile, already revealed, at the chosen rotation.
+ * One designed map tile.
+ * - Face-up + `tileDefId`: places that exact tile, already revealed.
+ * - Face-down without `tileDefId`: draws randomly from the group's pool
+ *   ("down means random").
+ * - Face-down + `tileDefId`: places that exact tile still face-down — a
+ *   designer-only secret (mines, obelisks, … on that tile stay hidden from
+ *   players until discovery). Player views redact `tileDefId` while face-down.
  */
 export type CustomMapTilePlan = {
   row: number;
@@ -8611,13 +8615,18 @@ export type CustomMapTilePlan = {
    * - "starting" (Ⅰ): a seat's town — the position of player N's faction
    *   starting tile (the tile art itself comes from the faction, never random).
    * - "far" (Ⅱ–Ⅲ), "near" (Ⅳ–Ⅴ), "center" (Ⅵ–Ⅶ), "sea", "subterranean":
-   *   face-down draws a random tile from that supply; face-up places a chosen one.
+   *   face-down draws a random tile from that supply unless `tileDefId` pins
+   *   one; face-up always places a chosen one.
    */
   group: "starting" | "far" | "near" | "center" | "sea" | "subterranean";
   faceDown: boolean;
-  /** Face-up tiles: the exact tile to place. Ignored while face-down or starting. */
+  /**
+   * Exact tile to place. Required while face-up (non-starting). Optional while
+   * face-down: when set, the tile is predetermined but stays face-down until
+   * discovered (designer-only secret). Ignored on starting tiles.
+   */
   tileDefId?: string;
-  /** Face-up tiles: clockwise 60° steps (0-5, default 0). */
+  /** Clockwise 60° steps (0-5, default 0). Honoured face-up and face-down. */
   rotation?: number;
   /**
    * Sea tiles only: which guard band this slot belongs to. The Cove sea pool
