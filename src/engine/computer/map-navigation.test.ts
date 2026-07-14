@@ -16,6 +16,7 @@ import { UNOPENED_FAR_TILE } from "../state";
 import {
   canBeatGuardedField,
   collectMapObjectives,
+  distanceFromHeroTo,
   objectiveDistanceField,
   primaryMapObjective,
 } from "./map-navigation";
@@ -570,6 +571,250 @@ describe("sticky primary + explore objectives", () => {
     };
     const flush = collectMapObjectives(state, hero).map((o) => o.spaceId);
     expect(flush).not.toContain(EMPTY);
+  });
+});
+
+describe("expansion push — open/place Ⅱ–Ⅲ before a long march to a leftover", () => {
+  /** Neutralise the home-tile prizes so the fixture controls the payoff set. */
+  function clearLocalPrizes(state: GameState): void {
+    const fields = state.adventure!.fields;
+    for (const id of [MINE, TREASURE]) {
+      fields[id].flagOwnerId = "p2";
+      fields[id].everFlagged = true;
+      delete fields[id].difficulty;
+    }
+    fields[RESOURCE].blackCube = true;
+  }
+
+  /**
+   * Extend a walkable corridor of plain fields outward from `from` so a
+   * genuinely long distance exists on the fixture map (the starting tiles
+   * alone max out at 2 steps). Returns the added fields nearest-first.
+   */
+  function buildCorridor(
+    state: GameState,
+    from: MapSpaceId,
+    length: number,
+  ): MapSpaceId[] {
+    const fields = state.adventure!.fields;
+    const template = fields[from];
+    let cursor: MapSpaceId = from;
+    const corridor: MapSpaceId[] = [];
+    while (corridor.length < length) {
+      const next = getAdjacentSpaceIds(cursor).find(
+        (id) => !fields[id] && !corridor.includes(id),
+      );
+      expect(next, "corridor should keep extending into open lattice").toBeDefined();
+      fields[next!] = { ...template, spaceId: next!, flagOwnerId: null, blackCube: false };
+      delete fields[next!].difficulty;
+      corridor.push(next!);
+      cursor = next!;
+    }
+    return corridor;
+  }
+
+  it("flips the tile when the only known payoff sits behind unexplored land", () => {
+    const state = game();
+    const hero = p2Hero(state);
+    hero.level = 1;
+    hero.movementPoints = 3;
+    establishP2PackCore(state);
+    state.adventure!.victoryMode = "dragon-hunt";
+    clearLocalPrizes(state);
+    // Neutralise every remaining REACHABLE payoff so only out-of-reach ones stay.
+    for (const objective of collectMapObjectives(state, hero)) {
+      if (
+        objective.kind === "explore" ||
+        distanceFromHeroTo(state, hero, objective.spaceId) === undefined
+      ) {
+        continue;
+      }
+      const field = state.adventure!.fields[objective.spaceId];
+      field.flagOwnerId = "p2";
+      field.everFlagged = true;
+      field.blackCube = true;
+      delete field.difficulty;
+    }
+
+    // Every known payoff sits on a field the hero cannot reach yet (locked
+    // behind still-face-down tiles) — the realistic "leftover prize on another
+    // arm of the map" situation. Add a beatable level-1 guard there too.
+    const unreachable = Object.values(state.adventure!.fields).find(
+      (field) =>
+        !field.flagOwnerId &&
+        !field.difficulty &&
+        !field.blackCube &&
+        distanceFromHeroTo(state, hero, field.spaceId) === undefined,
+    );
+    expect(unreachable, "fixture map should have an unreachable field").toBeDefined();
+    unreachable!.difficulty = 1;
+    const payoffs = collectMapObjectives(state, hero).filter(
+      (objective) => objective.kind !== "explore",
+    );
+    expect(payoffs.length).toBeGreaterThan(0);
+    for (const payoff of payoffs) {
+      expect(distanceFromHeroTo(state, hero, payoff.spaceId)).toBeUndefined();
+    }
+
+    const discoverTile = Object.values(state.adventure!.tiles).find(
+      (tile) => tile.faceDown,
+    );
+    expect(discoverTile).toBeDefined();
+    const scored = scoreMapAction(observe(state), {
+      type: "DISCOVER_TILE",
+      playerId: "p2",
+      heroId: hero.id,
+      tileInstanceId: discoverTile!.id,
+    });
+    // Above every march-progress score (OBJECTIVE_PROGRESS_BASE 700 + ≤10):
+    // the AI opens new land instead of parking on an unreachable commitment.
+    expect(scored?.policy).toBe("map.discover-tile");
+    expect(scored!.score).toBeGreaterThan(710);
+  });
+
+  it("flips the tile when the known payoff is beyond this turn's walking reach", () => {
+    const state = game();
+    const hero = p2Hero(state);
+    hero.level = 1;
+    establishP2PackCore(state);
+    state.adventure!.victoryMode = "dragon-hunt";
+    clearLocalPrizes(state);
+
+    // Park the hero on a ring field and guard another ring field 2 steps away;
+    // with 1 movement point left the payoff is out of reach this turn.
+    hero.spaceId = EMPTY; // h:9:7, ring field beside the town
+    hero.movementPoints = 1;
+    const twoSteps = Object.values(state.adventure!.fields).find(
+      (field) =>
+        !field.flagOwnerId &&
+        !field.difficulty &&
+        !field.blackCube &&
+        distanceFromHeroTo(state, hero, field.spaceId) === 2,
+    );
+    expect(twoSteps, "fixture map should have a field 2 steps out").toBeDefined();
+    twoSteps!.difficulty = 1;
+
+    const discoverTile = Object.values(state.adventure!.tiles).find(
+      (tile) => tile.faceDown,
+    );
+    expect(discoverTile).toBeDefined();
+    const action = {
+      type: "DISCOVER_TILE",
+      playerId: "p2",
+      heroId: hero.id,
+      tileInstanceId: discoverTile!.id,
+    } as const;
+    const scored = scoreMapAction(observe(state), action);
+    expect(scored!.score).toBeGreaterThan(710);
+
+    // CONTROL within the same fixture: with the movement to actually get
+    // there this turn, the close prize is collected before exploring.
+    hero.movementPoints = 3;
+    const flush = scoreMapAction(observe(state), action);
+    expect(flush!.score).toBeLessThan(700);
+  });
+
+  it("CONTROL: a payoff within this turn's reach is collected before exploring", () => {
+    const state = game();
+    const hero = p2Hero(state);
+    hero.level = 1;
+    hero.movementPoints = 3;
+    establishP2PackCore(state);
+    state.adventure!.victoryMode = "dragon-hunt";
+    // The adjacent guarded MINE stays live — a close, beatable payoff.
+    const discoverTile = Object.values(state.adventure!.tiles).find(
+      (tile) => tile.faceDown,
+    );
+    expect(discoverTile).toBeDefined();
+    const scored = scoreMapAction(observe(state), {
+      type: "DISCOVER_TILE",
+      playerId: "p2",
+      heroId: hero.id,
+      tileInstanceId: discoverTile!.id,
+    });
+    // Below OBJECTIVE_PROGRESS_BASE (700): the close prize is banked first.
+    expect(scored!.score).toBeLessThan(700);
+  });
+
+  it("prefers an adjacent doorway over a distant leftover as the march target", () => {
+    const state = game();
+    const hero = p2Hero(state);
+    hero.level = 1;
+    clearLocalPrizes(state);
+    // No Ⅱ–Ⅲ supply → the plain explore value (500) is what must win here.
+    state.adventure!.playerFarTiles = {
+      ...(state.adventure!.playerFarTiles ?? {}),
+      p2: [],
+    };
+    const corridor = buildCorridor(state, EMPTY, 7);
+    const farField = corridor[corridor.length - 1];
+    expect(distanceFromHeroTo(state, hero, farField)).toBeGreaterThanOrEqual(7);
+    // A (weak-army) fight is also listed so the no-fight explore boost stays
+    // out of this comparison — the PLAIN explore value is what must win.
+    const farGuard = corridor[corridor.length - 2];
+    state.adventure!.fields[farGuard].difficulty = 1;
+    const primary = primaryMapObjective(state, hero, [
+      { spaceId: farField, kind: "visitable" },
+      { spaceId: farGuard, kind: "guard" },
+      { spaceId: EMPTY, kind: "explore" },
+    ]);
+    // 500 - 18·1 (adjacent doorway) beats 600 - 18·8 (distant leftover); with
+    // the old 430 explore value the leftover would still win the march.
+    expect(primary?.spaceId).toBe(EMPTY);
+    expect(primary?.kind).toBe("explore");
+  });
+
+  it("explores harder when nothing on the board is beatable (post-loss recovery)", () => {
+    const state = game();
+    const hero = p2Hero(state);
+    hero.level = 1;
+    clearLocalPrizes(state);
+    state.adventure!.playerFarTiles = {
+      ...(state.adventure!.playerFarTiles ?? {}),
+      p2: [],
+    };
+    const corridor = buildCorridor(state, EMPTY, 7);
+    const nearVisitable = corridor[2]; // 4 steps out
+    const farGuardField = corridor[6]; // 8 steps out
+
+    // NO fight anywhere (the just-lost-army situation): open new land next
+    // door instead of trekking 4 fields to a leftover.
+    const noFight = primaryMapObjective(state, hero, [
+      { spaceId: nearVisitable, kind: "visitable" },
+      { spaceId: EMPTY, kind: "explore" },
+    ]);
+    expect(noFight?.kind).toBe("explore");
+    expect(noFight?.spaceId).toBe(EMPTY);
+
+    // CONTROL: with a beatable fight anywhere on the list, the plain explore
+    // value applies and the closer real payoff wins again.
+    state.adventure!.fields[farGuardField].difficulty = 1;
+    const withFight = primaryMapObjective(state, hero, [
+      { spaceId: nearVisitable, kind: "visitable" },
+      { spaceId: EMPTY, kind: "explore" },
+      { spaceId: farGuardField, kind: "guard" },
+    ]);
+    expect(withFight?.kind).toBe("visitable");
+    expect(withFight?.spaceId).toBe(nearVisitable);
+  });
+
+  it("CONTROL: a nearby real payoff still outranks the doorway (home objects first)", () => {
+    const state = game();
+    const hero = p2Hero(state);
+    hero.level = 1;
+    clearLocalPrizes(state);
+    state.adventure!.playerFarTiles = {
+      ...(state.adventure!.playerFarTiles ?? {}),
+      p2: [UNOPENED_FAR_TILE],
+    };
+    // RESOURCE sits 1 step out: even with held Ⅱ–Ⅲ supply (explore 530) the
+    // close visitable (600 - 18·1) wins — the home-tile objects are hit first.
+    const primary = primaryMapObjective(state, hero, [
+      { spaceId: RESOURCE, kind: "visitable" },
+      { spaceId: EMPTY, kind: "explore" },
+    ]);
+    expect(primary?.spaceId).toBe(RESOURCE);
+    expect(primary?.kind).toBe("visitable");
   });
 });
 

@@ -55,6 +55,11 @@ function combatIsHopeless(
 const ATTACK_BASE = 620;
 const ATTACK_FLOOR = 560;
 const ATTACK_CEIL = 880;
+// A pure suicide — zero expected damage AND a lethal retaliation invited —
+// drops below the high-value Defend band (550+) so the unit is not thrown
+// away, while still beating the plain defend/end exits (≤530/400): a unit with
+// nothing to protect keeps trading rather than turtling.
+const SUICIDAL_ATTACK_SCORE = 545;
 
 /** Whether this attack would let the defender retaliate for damage back. */
 function provokesRetaliation(
@@ -105,6 +110,9 @@ function attackScore(
     if (provokesRetaliation(attacker, defender, attackFromPosition)) {
       const retaliation = expectedAttackDamage(defender, attacker);
       quality -= Math.min(50, retaliation * 4);
+      if (damage === 0 && retaliation >= unitRemainingHealth(attacker)) {
+        return SUICIDAL_ATTACK_SCORE;
+      }
     }
   }
 
@@ -503,10 +511,25 @@ export function scoreCombatAction(
       const defender = combat.units[action.unitId];
       if (!defender) return { score: 500, policy: "combat.defend" };
       const missing = defender.maxHealth - unitRemainingHealth(defender);
-      return {
-        score: 500 + Math.min(30, missing * 4),
-        policy: "combat.defend-wounded",
-      };
+      const score = 500 + Math.min(30, missing * 4);
+      // Save the high-value body: when the enemies in reach (adjacent melee +
+      // any ranged) can finish this unit and it is worth keeping, Defend
+      // outranks a suicidal 0-damage poke (545) — a real strike (620+) still
+      // always wins, so this never turns a fighting unit passive.
+      const incoming = livingEnemyUnits(combat, observation.playerId).reduce(
+        (sum, enemy) =>
+          enemy.type === "ranged" || isAdjacent(enemy.position, defender.position)
+            ? sum + expectedAttackDamage(enemy, defender)
+            : sum,
+        0,
+      );
+      if (
+        unitThreatValue(defender) >= 25 &&
+        incoming >= unitRemainingHealth(defender)
+      ) {
+        return { score: score + 50, policy: "combat.defend-high-value" };
+      }
+      return { score, policy: "combat.defend-wounded" };
     }
     case "ATTACK_FORTIFICATION":
       // Siege the wall when no better unit target is offered (legal set only).
