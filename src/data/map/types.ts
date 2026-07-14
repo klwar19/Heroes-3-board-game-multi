@@ -263,6 +263,21 @@ export type LocationInteraction =
        */
       type: "DIG_ARTIFACT";
     }
+  | {
+      /**
+       * Airship Yard (Factory): grant HERO_MOVE_THROUGH for the rest of this
+       * turn (Fly-style: may pass over blocked fields, never stop on them).
+       * Composed with GAIN_MOVEMENT via SEQUENCE on the paid option.
+       */
+      type: "GRANT_MOVE_THROUGH";
+    }
+  | {
+      /**
+       * Watering Hole (Factory): immediately end movement this turn; next turn
+       * the hero gains +1 movement for that turn only.
+       */
+      type: "WATERING_HOLE";
+    }
   | { type: "NOT_IMPLEMENTED"; note: string };
 
 export type LocationDefinition = {
