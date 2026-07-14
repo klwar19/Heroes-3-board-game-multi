@@ -528,6 +528,24 @@ export function distanceFromHeroTo(
  * The margin avoids chase-thrash while still allowing the AI to abandon a weak
  * or premature commitment for a nearby win, safe reward, or newly ready fight.
  */
+/**
+ * Sweep the current tile first: a collectible payoff (guard / flag / visit) on
+ * the tile the hero is STANDING ON outranks a marginally better prize tiles
+ * away, and beats the sticky-march +90 hysteresis — so the AI drains the local
+ * pickups before marching off and leaving them behind. A beatable enemy hero
+ * on the tile counts too (it is about to take those same local payoffs, and
+ * unlike a static guard it will not wait). Victory sites, towns and explore
+ * doorways stay globally ranked (a win condition is never postponed for a
+ * windmill).
+ */
+const SAME_TILE_SWEEP_BONUS = 130;
+const SWEEPABLE_KINDS: ReadonlySet<MapObjectiveKind> = new Set([
+  "guard",
+  "flaggable",
+  "visitable",
+  "enemy-hero",
+]);
+
 function objectiveStrategicValue(
   state: GameState,
   hero: HeroState,
@@ -588,6 +606,14 @@ function objectiveStrategicValue(
       value = playerHasPlaceableFarTile(state, hero.controllerId) ? 530 : 500;
       if (!fightAvailable) value += 60;
       break;
+  }
+  if (SWEEPABLE_KINDS.has(objective.kind)) {
+    const heroTile = hero.spaceId
+      ? state.adventure?.fields[hero.spaceId]?.tileInstanceId
+      : undefined;
+    if (heroTile && field?.tileInstanceId === heroTile) {
+      value += SAME_TILE_SWEEP_BONUS;
+    }
   }
   return value - distance * 18;
 }
