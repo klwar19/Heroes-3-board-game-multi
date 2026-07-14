@@ -57,4 +57,10 @@ describe("assetUrl", () => {
     const { assetUrl } = await loadAssetUrl("https://cdn.example.com");
     expect(assetUrl(undefined)).toBeUndefined();
   });
+
+  it('treats the "same-origin" sentinel as unset so it can never leak into a URL prefix', async () => {
+    const { assetUrl, assetBaseUrl } = await loadAssetUrl("same-origin");
+    expect(assetUrl("/assets/ui/map-backdrop.jpg")).toBe("/assets/ui/map-backdrop.jpg");
+    expect(assetBaseUrl()).toBe("");
+  });
 });

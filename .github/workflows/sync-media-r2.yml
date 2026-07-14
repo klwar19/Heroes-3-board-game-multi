@@ -1,0 +1,143 @@
+# Auto-sync game media (public/assets, public/sounds, public/fonts) to the
+# Cloudflare R2 bucket behind https://cdn.hamthefirt.xyz
+# (docs/cloudflare-custom-domain-cdn-plan.md).
+#
+# Why this exists: NEXT_PUBLIC_ASSET_BASE_URL points players at the CDN, so a
+# media file that reaches git but not the bucket 404s in production. This
+# workflow closes that gap with ZERO manual steps — any push that adds or
+# changes media (human or AI session alike) uploads it:
+#
+#   - push to MAIN        → full checksum sync: new files uploaded, replaced
+#                           files overwritten, then their CDN URLs cache-purged
+#                           (when the optional Cloudflare API secrets are set).
+#   - push to ANY BRANCH  → new-keys-only upload (--ignore-existing): brand-new
+#                           art becomes visible to Vercel PREVIEW deployments
+#                           (which default to the CDN — src/lib/asset-cdn.ts)
+#                           while a live production object can NEVER be
+#                           overwritten from an unmerged branch.
+#
+# One-time setup — repository secrets (Settings → Secrets and variables →
+# Actions), the same values scripts/sync-assets-to-r2.sh uses locally:
+#   R2_ACCOUNT_ID         — Cloudflare account id (dashboard URL / R2 overview)
+#   R2_ACCESS_KEY_ID      — R2 API token key   (Object Read & Write, bucket heroes3)
+#   R2_SECRET_ACCESS_KEY  — R2 API token secret
+# Optional (enables the purge-replaced-files step):
+#   CLOUDFLARE_API_TOKEN  — zone token with Cache Purge permission
+#   CLOUDFLARE_ZONE_ID    — the hamthefirt.xyz zone id (dashboard Overview)
+
+name: Sync media to R2
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "public/assets/**"
+      - "public/sounds/**"
+      - "public/fonts/**"
+      - "scripts/sync-assets-to-r2.sh"
+      - "scripts/setup-r2-cors.mjs"
+      - ".github/workflows/sync-media-r2.yml"
+  workflow_dispatch: {}
+
+# The bucket is shared state — never run two syncs at once, and never cancel a
+# half-finished upload; queue instead.
+concurrency:
+  group: sync-media-r2
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    # Skip on forks: they lack the R2 secrets and must not touch the bucket.
+    if: github.repository_owner == 'klwar19'
+    runs-on: ubuntu-latest
+    env:
+      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_PUBLIC_DOMAIN: cdn.hamthefirt.xyz
+    steps:
+      - name: Check R2 secrets
+        run: |
+          missing=()
+          for v in R2_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY; do
+            [ -n "${!v}" ] || missing+=("$v")
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::Missing repository secret(s): ${missing[*]} — add them under Settings → Secrets and variables → Actions (values from R2 → Manage R2 API Tokens, see the header of scripts/sync-assets-to-r2.sh). Until then, merged media does NOT reach the CDN automatically; run 'npm run sync:assets' locally instead."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - name: Install rclone
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq rclone
+
+      # Idempotent — exits "already up to date" on every run after the first.
+      # Fonts are CORS-mode loads, so the bucket policy must exist before (or
+      # with) the first fonts sync.
+      - name: Ensure bucket CORS policy (fonts/@font-face)
+        run: node scripts/setup-r2-cors.mjs
+
+      # --checksum: CI checkouts have fresh mtimes on every file, so rclone's
+      # default size+modtime comparison would re-upload the whole 225 MB tree
+      # each run; comparing MD5 against the R2 ETag uploads only real changes.
+      - name: Sync media (main = full sync; branches = new keys only)
+        run: |
+          if [ "${GITHUB_REF_NAME}" = "main" ]; then
+            scripts/sync-assets-to-r2.sh --checksum
+          else
+            echo "Branch push: uploading NEW media keys only (existing production objects are never overwritten from a branch)."
+            scripts/sync-assets-to-r2.sh --checksum --ignore-existing
+          fi
+
+      - name: Verify CDN serves the sync
+        run: |
+          set -euo pipefail
+          echo "== health object (uploaded fresh by every sync)"
+          curl -sfI "https://${R2_PUBLIC_DOMAIN}/cdn-check.txt" | head -3
+          curl -sf "https://${R2_PUBLIC_DOMAIN}/cdn-check.txt"
+          echo "== a font object + CORS header (needed by @font-face)"
+          out=$(curl -sfI -H "Origin: https://hamthefirt.xyz" "https://${R2_PUBLIC_DOMAIN}/fonts/LiberationSerif-Regular.ttf")
+          echo "$out" | grep -iE '^(HTTP|content-type|access-control-allow-origin)' || true
+          echo "$out" | grep -qi '^access-control-allow-origin' || {
+            echo "::error::Font object is missing the Access-Control-Allow-Origin header — @font-face loads from the CDN would be blocked. Check the bucket CORS policy (npm run setup:r2-cors)."
+            exit 1
+          }
+
+      # Replaced files keep their URL, so the edge cache holds the OLD bytes
+      # for up to the 30-day edge TTL. Purge exactly the changed URLs (free
+      # plan allows purge-by-URL). Best-effort: new files need no purge, and a
+      # missing token just logs a notice. The push payload lists per-commit
+      # changes (capped at 20 commits) — a giant or force push skips the purge
+      # and the 7-day browser TTL takes over.
+      - name: Purge replaced files from the edge cache (main only, optional)
+        if: github.ref_name == 'main'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CLOUDFLARE_API_TOKEN}" ] || [ -z "${CLOUDFLARE_ZONE_ID}" ]; then
+            echo "::notice::CLOUDFLARE_API_TOKEN / CLOUDFLARE_ZONE_ID not set — skipping cache purge (replaced files refresh within the browser/edge TTLs)."
+            exit 0
+          fi
+          files=$(jq -r '[.commits[]?.modified[]?] | unique | .[]' "$GITHUB_EVENT_PATH" \
+            | grep -E '^public/(assets|sounds|fonts)/' | sed 's|^public|https://cdn.hamthefirt.xyz|' || true)
+          count=$(printf '%s' "$files" | grep -c . || true)
+          if [ "$count" -eq 0 ]; then
+            echo "No replaced media files in this push — nothing to purge."
+            exit 0
+          fi
+          if [ "$count" -gt 200 ]; then
+            echo "::notice::$count replaced files — too many for URL purge; letting the TTLs handle it."
+            exit 0
+          fi
+          echo "Purging $count replaced URL(s) from the edge cache…"
+          printf '%s\n' "$files" | xargs -n 30 | while read -r batch; do
+            payload=$(printf '%s\n' $batch | jq -R . | jq -s '{files: .}')
+            ok=$(curl -sS -X POST "https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_ZONE_ID}/purge_cache" \
+              -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+              -H "Content-Type: application/json" \
+              --data "$payload" | jq -r '.success' || echo "false")
+            [ "$ok" = "true" ] || echo "::warning::A purge batch failed — those files refresh via TTL instead."
+          done
