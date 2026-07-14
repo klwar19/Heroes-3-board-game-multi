@@ -9,18 +9,10 @@ export const allTileDefinitions: Record<string, TileDefinition> = {
 };
 
 /**
- * The content sets whose tiles enter the setup pools when a game does not
- * say otherwise: exactly the four boxed sets the original 41-tile pools
- * mixed, so default games play out the same as before the expansion data
- * landed.
+ * Every content set whose tiles exist in `allTileDefinitions`. Default games
+ * mix the full catalog into the supply pools so no expansion / stretch-goal
+ * tile is permanently locked out of random draws.
  */
-export const DEFAULT_TILE_CONTENT: TileContent[] = [
-  "core_game",
-  "rampart_expansion",
-  "fortress_expansion",
-  "inferno_expansion"
-];
-
 export const ALL_TILE_CONTENT: TileContent[] = [
   "core_game",
   "rampart_expansion",
@@ -34,19 +26,20 @@ export const ALL_TILE_CONTENT: TileContent[] = [
 ];
 
 /**
- * Tile ids of one supply pool. Random Town tiles stay out of the random
- * face-down pools (the printed reveal asks every player to roll for the
- * defending faction, which the lobby cannot stage) — the engine resolves the
- * fight and capture when a designed map places one. Sea and Subterranean tiles
- * only come in through scenarios that ask for them by group.
+ * Content sets that fill face-down supply pools when a game does not override
+ * `tileContent`. Same as {@link ALL_TILE_CONTENT}: every published tile set.
+ */
+export const DEFAULT_TILE_CONTENT: TileContent[] = [...ALL_TILE_CONTENT];
+
+/**
+ * Tile ids of one supply pool for the given content sets. Every tile of that
+ * group is eligible — including Random Town (C5 / #C3 / #C4); the engine
+ * assigns the defending faction when the field is fought (`ensureRandomTownFaction`).
+ * Sea and Subterranean tiles only come in through scenarios / custom maps that
+ * place those groups; starting (Ⅰ) tiles are faction-fixed and never pool.
  */
 export function tilePoolIds(group: TileGroup, content: readonly TileContent[]): string[] {
   return Object.values(allTileDefinitions)
-    .filter(
-      (tile) =>
-        tile.group === group &&
-        content.includes(tile.content) &&
-        !tile.fields.some((field) => field.location === "random_town")
-    )
+    .filter((tile) => tile.group === group && content.includes(tile.content))
     .map((tile) => tile.id);
 }
