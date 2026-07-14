@@ -99,6 +99,32 @@ describe("sanitizeSharedMap", () => {
     expect(record!.tiles[2]).toMatchObject({ group: "subterranean", subBand: "iv-v" });
   });
 
+  it("preserves a face-down secret tile pin through sanitization", () => {
+    // A face-down plan with tileDefId is a designer-only secret predetermined
+    // tile — sanitize must keep the id or the pin silently becomes a random
+    // pool draw on reload.
+    const record = sanitizeSharedMap(
+      {
+        id: "m",
+        tiles: [
+          { row: 1, col: 1, group: "near", faceDown: true, tileDefId: "N3", rotation: 2 },
+          { row: 2, col: 2, group: "far", faceDown: true }, // random — no id
+          { row: 3, col: 3, group: "far", faceDown: false, tileDefId: "F1" }
+        ]
+      },
+      1
+    );
+    expect(record!.tiles[0]).toMatchObject({
+      group: "near",
+      faceDown: true,
+      tileDefId: "N3",
+      rotation: 2
+    });
+    expect(record!.tiles[1].tileDefId).toBeUndefined();
+    expect(record!.tiles[1].faceDown).toBe(true);
+    expect(record!.tiles[2]).toMatchObject({ faceDown: false, tileDefId: "F1" });
+  });
+
   it("preserves a tile's Monolith/Whirlpool token through sanitization (malformed tokens dropped)", () => {
     // sanitizeTile rebuilds each plan from an allow-list, so the designed token
     // must be carried explicitly or a saved map silently loses its Monoliths/

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { processPendingVisit } from "./adventure";
+import { materializeTileFields, processPendingVisit } from "./adventure";
 import { createAdventureGameState, validateCustomMapPlan } from "./adventure-setup";
 import { getScenario } from "./adventure-setup";
 import { getPlayerView } from "./player-view";
@@ -115,6 +115,92 @@ describe("map designer", () => {
     expect(faceDown!.backLabel).toBe("Ⅳ–Ⅴ");
     // Random pool draw, never the hand-picked face-up tile.
     expect(faceDown!.tileDefId).not.toBe("F1");
+  });
+
+  it("places a face-down pin as a secret predetermined tile (designer-only until discovery)", () => {
+    // A face-down slot with tileDefId keeps that exact tile face-down — e.g. the
+    // designer pins N3 (obelisk + valuables mine) so discovery always yields it,
+    // while players only ever see the Ⅳ–Ⅴ back until then.
+    const state = createAdventureGameState({
+      seed: "designed-secret-pin",
+      customMap: [
+        { row: 9, col: 4, group: "near", faceDown: true, tileDefId: "N3", rotation: 1 },
+        // CONTROL: a pure-random far slot still draws; the pin must not leak
+        // into the face-up path or materialize fields early.
+        { row: 11, col: 2, group: "far", faceDown: true }
+      ]
+    });
+
+    const secret = Object.values(state.adventure!.tiles).find(
+      (tile) => tile.faceDown && tile.group === "near"
+    );
+    expect(secret, "secret near tile was placed").toBeDefined();
+    expect(secret!.tileDefId).toBe("N3");
+    expect(secret!.faceDown).toBe(true);
+    expect(secret!.rotation).toBe(1);
+    // Still face-down: no fields until discovery.
+    expect(
+      Object.values(state.adventure!.fields).filter((field) => field.tileInstanceId === secret!.id)
+    ).toHaveLength(0);
+    // The pinned tile carries the designed landmarks (mutation control: wrong
+    // id would not both have an obelisk and a valuables mine).
+    const def = allTileDefinitions["N3"];
+    expect(def.fields.some((field) => field.location === "obelisk")).toBe(true);
+    expect(
+      def.fields.some((field) => field.location === "mine" && field.resource === "valuables")
+    ).toBe(true);
+
+    // Player views must not leak the secret id — only the band/back shows.
+    const view = getPlayerView(state, "p1");
+    const viewed = view.adventure!.tiles[secret!.id];
+    expect(viewed.faceDown).toBe(true);
+    expect(viewed.tileDefId).toBe("hidden");
+    expect(viewed.backLabel).toBe("Ⅳ–Ⅴ");
+  });
+
+  it("removes a face-down pin from the random pool so it is never also drawn elsewhere", () => {
+    // Two face-down near slots: one pins N3, the other draws random — the random
+    // draw must never be N3 (the pin already consumed it).
+    const state = createAdventureGameState({
+      seed: "designed-secret-pool",
+      customMap: [
+        { row: 9, col: 4, group: "near", faceDown: true, tileDefId: "N3" },
+        { row: 11, col: 2, group: "near", faceDown: true }
+      ]
+    });
+    const nearTiles = Object.values(state.adventure!.tiles).filter((tile) => tile.group === "near");
+    expect(nearTiles).toHaveLength(2);
+    const pinned = nearTiles.find((tile) => tile.tileDefId === "N3");
+    const random = nearTiles.find((tile) => tile.tileDefId !== "N3");
+    expect(pinned, "pinned N3 present").toBeDefined();
+    expect(pinned!.faceDown).toBe(true);
+    expect(random, "random near slot present").toBeDefined();
+    expect(random!.tileDefId).not.toBe("N3");
+  });
+
+  it("materializes the secret pin's landmarks when the tile is revealed", () => {
+    // Discovery path: fields come from the pinned tileDefId, so an N3 pin
+    // always yields its obelisk + valuables mine — never a random Near draw.
+    const state = createAdventureGameState({
+      seed: "designed-secret-reveal",
+      customMap: [{ row: 9, col: 4, group: "near", faceDown: true, tileDefId: "N3" }]
+    });
+    const secret = Object.values(state.adventure!.tiles).find((tile) => tile.tileDefId === "N3")!;
+    expect(secret.faceDown).toBe(true);
+
+    secret.faceDown = false;
+    materializeTileFields(state.adventure!, secret);
+
+    const fields = Object.values(state.adventure!.fields).filter(
+      (field) => field.tileInstanceId === secret.id
+    );
+    expect(fields).toHaveLength(7);
+    expect(fields.some((field) => field.location === "obelisk")).toBe(true);
+    expect(
+      fields.some((field) => field.location === "mine" && field.resource === "valuables")
+    ).toBe(true);
+    // CONTROL: a wrong pin (e.g. if setup ignored tileDefId and drew randomly)
+    // would only rarely include both; asserting both landmarks pins the id.
   });
 
   it("draws a face-down underground slot only from its own guard band (Ⅳ–Ⅴ vs the Ⅵ–Ⅶ boss tier)", () => {
