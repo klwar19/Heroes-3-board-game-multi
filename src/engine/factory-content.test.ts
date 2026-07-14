@@ -244,7 +244,8 @@ describe("Factory faction — art wired and playable (&S1 starting tile)", () =>
     // is not yet wired — display-only, pinned by the next test.)
     expect(u["factory.automatons"].pack?.abilities, "automatons pack").toEqual(["ignores-retaliation"]);
     expect(u["factory.automatons"].neutral?.abilities, "automatons neutral").toEqual(["automaton-detonate-1"]);
-    // Sandworms NEUTRAL guard strikes an adjacent target a second time.
+    // Sandworms: printed wing icon → flying; NEUTRAL guard strikes adjacent again.
+    expect(u["factory.sandworms"].type, "sandworms flying").toBe("flying");
     expect(u["factory.sandworms"].neutral?.abilities, "sandworms neutral").toEqual(["sandworm-strike-again"]);
     // Armadillos PACK amplifies any Initiative increase by +1 (Few/Neutral bare).
     expect(u["factory.armadillos"].pack?.abilities, "armadillos pack").toEqual(["armadillo-initiative-amplify"]);
@@ -498,9 +499,17 @@ describe("Factory faction — art wired and playable (&S1 starting tile)", () =>
       "trailblazer",
       "obelisk"
     ]);
-    // &F2: Prospector centre; Factory Grave (not Cove grave).
-    expect(t["&F2"].fields[0].location).toBe("prospector");
-    expect(t["&F2"].fields.some((f) => f.location === "factory_grave")).toBe(true);
+    // &F2: Prospector centre; Factory Grave (not Cove grave); E cabin is Trading
+    // Post (not treasure — the old treasure_symbol made visits roll for experience).
+    expect(t["&F2"].fields.map((f) => f.location)).toEqual([
+      "prospector",
+      "treasure_symbol",
+      "trading_post",
+      "blocked_field",
+      "factory_grave",
+      "empty_field",
+      "mine"
+    ]);
     expect(t["&F2"].fields.some((f) => f.location === "grave")).toBe(false);
     // &F3: Watering Hole well (not Magic Spring).
     expect(t["&F3"].fields.some((f) => f.location === "watering_hole")).toBe(true);

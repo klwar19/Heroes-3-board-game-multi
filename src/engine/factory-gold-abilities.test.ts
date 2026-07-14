@@ -476,7 +476,7 @@ describe("Factory Sandworm (Pack) — cube-fuelled extra attack", () => {
       name: "Sandworms",
       cardName: "Sandworms",
       unitDefId: "factory.sandworms",
-      type: "ground",
+      type: "flying",
       variant: "pack",
       attack: 5,
       defense: 0,
