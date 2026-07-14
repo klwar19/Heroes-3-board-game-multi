@@ -59,9 +59,14 @@ export RCLONE_CONFIG_R2_ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.
 # The scoped token cannot create buckets; don't let rclone try.
 export RCLONE_CONFIG_R2_NO_CHECK_BUCKET=true
 
+# R2 returns intermittent 501 NotImplemented on some multipart/streaming
+# uploads; single-part PutObject + retries is reliable with Object R/W tokens.
 COMMON_FLAGS=(
   --header-upload "Cache-Control: ${CACHE_CONTROL}"
-  --transfers 16
+  --s3-upload-cutoff 5G
+  --retries 5
+  --low-level-retries 10
+  --transfers 8
   --stats-one-line
   --stats 15s
   "$@"
@@ -77,13 +82,20 @@ echo "== Syncing public/fonts -> r2:${BUCKET}/fonts (CORS-mode loads — see set
 rclone copy public/fonts "r2:${BUCKET}/fonts" "${COMMON_FLAGS[@]}"
 
 echo "== Uploading /cdn-check.txt health object"
+# Prefer a real file + copyto over `rclone rcat` — streaming rcat hits R2
+# NotImplemented (501) under current Object-token / API combinations.
+CHECK_TMP="$(mktemp)"
+trap 'rm -f "$CHECK_TMP"' EXIT
 printf 'heroes3 cdn ok — synced %s from %s\n' \
   "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  "$(git rev-parse --short HEAD 2>/dev/null || echo 'unknown rev')" |
-  rclone rcat "r2:${BUCKET}/cdn-check.txt" \
-    --header-upload "Cache-Control: no-store" \
-    --header-upload "Content-Type: text/plain; charset=utf-8" "$@"
-
+  "$(git rev-parse --short HEAD 2>/dev/null || echo 'unknown rev')" \
+  >"$CHECK_TMP"
+rclone copyto "$CHECK_TMP" "r2:${BUCKET}/cdn-check.txt" \
+  --header-upload "Cache-Control: no-store" \
+  --header-upload "Content-Type: text/plain; charset=utf-8" \
+  --s3-upload-cutoff 5G \
+  --retries 5 \
+  "$@"
 echo
 echo "Done. Verify from the CDN domain (Phase 7.4 of the plan doc):"
 HOST="${R2_PUBLIC_DOMAIN:-cdn.hamthefirt.xyz}"
