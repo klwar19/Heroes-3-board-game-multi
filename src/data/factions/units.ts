@@ -1382,7 +1382,9 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     name: "Sandworms",
     faction: "factory",
     tier: "silver",
-    type: "ground",
+    // Printed wing icon on the physical Factory card (Few/Pack/Neutral) — flying,
+    // not ground (burrow treated as flying for combat movement).
+    type: "flying",
     // engine: the Few has NO printed ability. The Neutral guard's "if the target
     // is an adjacent unit, attack it again" is wired (sandworm-strike-again, the
     // SECOND_ATTACK_SAME_TARGET_AFTER_RETALIATION path — a melee Sandworm always
@@ -1396,7 +1398,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     wikiUrl: "https://heroes.thelazy.net/index.php/Sandworm",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
-      credit: "Stats/cost/ability from the physical Factory unit card (Few/Pack + single-cost Neutral scan). Few has no ability; Pack cube-fuelled extra attack (gain-on-kill + spend-to-attack-again) and Neutral extra-attack all wired.",
+      credit: "Stats/cost/ability from the physical Factory unit card (Few/Pack + single-cost Neutral scan). Printed wing icon → flying. Few has no ability; Pack cube-fuelled extra attack and Neutral extra-attack all wired.",
       url: "https://heroes.thelazy.net/index.php/Sandworm"
     }
   },

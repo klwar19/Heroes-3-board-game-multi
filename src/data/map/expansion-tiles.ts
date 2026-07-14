@@ -1054,13 +1054,15 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
     content: "regular_stretch_goals",
     terrain: "rough",
     // &F2 (ff2.webp) vs Factory rulebook: centre Prospector +1 valuables (NOT
-    // resource-die); NE "?" treehouse treasure; E "?" cabin treasure; SE blocked
+    // resource-die); NE "?" treehouse treasure; E cabin Trading Post (same cabin
+    // art as core trading posts — was wrongly treasure_symbol, so visits rolled
+    // the treasure die / experience instead of opening the market); SE blocked
     // scrub (&F2 anchor); SW Factory Grave II (skeleton — Factory rulebook
     // Grave, not the Cove Grave); W empty; NW mine ↻5 gold III. Guards II-III.
     fields: [
       { location: "prospector" },
       { location: "treasure_symbol" },
-      { location: "treasure_symbol" },
+      { location: "trading_post" },
       { location: "blocked_field" },
       { location: "factory_grave", difficulty: 2 },
       { location: "empty_field" },
