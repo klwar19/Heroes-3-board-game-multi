@@ -24,7 +24,9 @@ function spellSource(slug: string) {
  * downloaded with scripts/fetch-missing-spell-card-art.py. Enforced in
  * src/data/cards/spell-card-art.test.ts.
  */
-export const SCANLESS_SPELLS: ReadonlySet<string> = new Set<string>(["sacrifice"]);
+// Empty: every spell that ships now has a committed card face (Sacrifice got a
+// board-game scan translation in assets-to-translate/new art).
+export const SCANLESS_SPELLS: ReadonlySet<string> = new Set<string>([]);
 
 /** Deck-back placeholder shared by every scanless card. */
 const DECK_BACK_IMAGE = "/assets/player-deck-back.webp";
@@ -1738,8 +1740,7 @@ export const spellCards: CardLibrary = {
       gradeByPower: { 0: "bronze", 2: "silver", 4: "gold" }
     },
     assets: {
-      // No wiki scan for this spell — see SCANLESS_SPELLS above.
-      cardImage: DECK_BACK_IMAGE,
+      cardImage: "/assets/spells-sacrifice.webp",
       imageAlt: "Sacrifice card"
     },
     implementationStatus: "implemented",

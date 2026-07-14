@@ -65,6 +65,7 @@ describe("spell card art is committed", () => {
       "spell.force_field",
       "spell.air_shield",
       "spell.clone",
+      "spell.sacrifice",
       "spell.protection_from_air",
       "spell.protection_from_earth",
       "spell.protection_from_fire",
@@ -82,8 +83,9 @@ describe("spell card art is committed", () => {
       expect(card, `spell.${slug} exists`).toBeTruthy();
       expect(card!.assets?.cardImage, `spell.${slug} routes to the deck back`).toBe(DECK_BACK);
     }
-    // Sacrifice is the only remaining deck-back placeholder.
-    expect(SCANLESS_SPELLS.has("sacrifice")).toBe(true);
+    // No scanless spells remain once Sacrifice has a committed face.
+    expect(SCANLESS_SPELLS.size).toBe(0);
+    expect(SCANLESS_SPELLS.has("sacrifice")).toBe(false);
     // The generated original faces are no longer scanless.
     for (const slug of [
       "magic_mirror",
@@ -93,7 +95,8 @@ describe("spell card art is committed", () => {
       "protection_from_earth",
       "protection_from_fire",
       "protection_from_water",
-      "summon_air_elemental"
+      "summon_air_elemental",
+      "sacrifice"
     ]) {
       expect(SCANLESS_SPELLS.has(slug), `${slug} is no longer scanless`).toBe(false);
     }

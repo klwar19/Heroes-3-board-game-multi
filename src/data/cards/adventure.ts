@@ -732,7 +732,7 @@ const ROMAN: Record<1 | 4 | 6, string> = { 1: "I", 4: "IV", 6: "VI" };
  * Astra's Cure specialty (Cove). Reuses the implemented Cure cleanse
  * (HEAL_DAMAGE_AND_REMOVE_EFFECTS): I removes any effect or paralysis then draws
  * 1; IV removes any effect or paralysis and heals up to 2; VI heals up to 3 (no
- * cleanse). Face-less — the wiki has no Cove specialty card art yet.
+ * cleanse). Board-game specialty faces assigned under /assets/hero_specialties-astra-*.
  */
 function cureSpecialty(level: 1 | 4 | 6): CardLibrary[string] {
   const base = {
@@ -742,7 +742,11 @@ function cureSpecialty(level: 1 | 4 | 6): CardLibrary[string] {
     timing: "instant" as const,
     phaseLimit: ["combat" as const],
     implementationStatus: "implemented" as const,
-    source: heroSource("astra")
+    source: heroSource("astra"),
+    assets: {
+      cardImage: specialtyCardImage("astra", level),
+      imageAlt: `Cure ${ROMAN[level]} specialty card`
+    }
   };
   if (level === 6) {
     return {
@@ -785,7 +789,7 @@ function cureSpecialty(level: 1 | 4 | 6): CardLibrary[string] {
 function scoutingSpecialty(level: 1 | 4 | 6, filter: "ability" | "removable", count: number): CardLibrary[string] {
   const what = filter === "ability" ? "an Ability card" : "an Ability, Artifact, or Spell card";
   const deck = filter === "ability" ? "the Ability deck" : "its deck";
-  return withoutArt({
+  return {
     id: `specialty.miriam.${level}`,
     name: `Scouting ${towerRoman(level)}`,
     kind: "hero-specialty",
@@ -815,9 +819,13 @@ function scoutingSpecialty(level: 1 | 4 | 6, filter: "ability" | "removable", co
         }
       ]
     },
+    assets: {
+      cardImage: specialtyCardImage("miriam", level),
+      imageAlt: `Scouting ${towerRoman(level)} specialty card`
+    },
     implementationStatus: "implemented",
     source: heroSource("miriam")
-  });
+  };
 }
 
 
@@ -4609,9 +4617,9 @@ export const adventureCards: CardLibrary = {
   // reusing HEAL_DAMAGE_AND_REMOVE_EFFECTS). The other four Cove heroes are
   // deferred (not registered) until their signature mechanic is built — see the
   // deferral note in coreHeroDefinitions and cove-content.test.ts.
-  "specialty.cassiopeia.1": withoutArt(towerAttackOrDefenseSpecialty("cassiopeia", "Oceanids", 1, "Oceanids")),
-  "specialty.cassiopeia.4": withoutArt(unitInitiativeSpecialty("cassiopeia", "Oceanids", 4, 1, "Oceanids")),
-  "specialty.cassiopeia.6": withoutArt(towerStatBoostSpecialty("cassiopeia", "Oceanids", 6, "attack", 2, "Oceanids")),
+  "specialty.cassiopeia.1": towerAttackOrDefenseSpecialty("cassiopeia", "Oceanids", 1, "Oceanids"),
+  "specialty.cassiopeia.4": unitInitiativeSpecialty("cassiopeia", "Oceanids", 4, 1, "Oceanids"),
+  "specialty.cassiopeia.6": towerStatBoostSpecialty("cassiopeia", "Oceanids", 6, "attack", 2, "Oceanids"),
   "specialty.astra.1": cureSpecialty(1),
   "specialty.astra.4": cureSpecialty(4),
   "specialty.astra.6": cureSpecialty(6),
@@ -4623,6 +4631,8 @@ export const adventureCards: CardLibrary = {
   // Cannon (requiresWarMachine) so it can never fire without one, and never
   // spending an expert use because it is a separate specialty play (so it does
   // not count against the Cannon's once-per-round limit).
+  // Jeremy I specialty face was not in the new-art pack (only IV/VI + board) —
+  // remains withoutArt until that scan is uploaded.
   "specialty.jeremy.1": withoutArt({
     id: "specialty.jeremy.1",
     name: "Cannon I",
@@ -4654,7 +4664,7 @@ export const adventureCards: CardLibrary = {
     implementationStatus: "implemented",
     source: heroSource("jeremy")
   }),
-  "specialty.jeremy.4": withoutArt({
+  "specialty.jeremy.4": {
     id: "specialty.jeremy.4",
     name: "Cannon IV",
     kind: "hero-specialty",
@@ -4683,10 +4693,14 @@ export const adventureCards: CardLibrary = {
         }
       ]
     },
+    assets: {
+      cardImage: specialtyCardImage("jeremy", 4),
+      imageAlt: "Cannon level IV specialty card"
+    },
     implementationStatus: "implemented",
     source: heroSource("jeremy")
-  }),
-  "specialty.jeremy.6": withoutArt({
+  },
+  "specialty.jeremy.6": {
     id: "specialty.jeremy.6",
     name: "Cannon VI",
     kind: "hero-specialty",
@@ -4715,9 +4729,13 @@ export const adventureCards: CardLibrary = {
         }
       ]
     },
+    assets: {
+      cardImage: specialtyCardImage("jeremy", 6),
+      imageAlt: "Cannon level VI specialty card"
+    },
     implementationStatus: "implemented",
     source: heroSource("jeremy")
-  }),
+  },
 
   // Zilare (Navigator, magic, A2 D0 P1 K2, Interference): the Forgetfulness
   // specialist. The "cannot attack next activation" option reuses the engine's
@@ -4726,7 +4744,7 @@ export const adventureCards: CardLibrary = {
   // IV/VI -> gold) and type-gated by the option's target (ranged for I/IV, any
   // unit for VI). The alternative draws a card (I) or, like Septienna's Death
   // Ripple, adds +2 Power to a Spell you are casting (IV/VI).
-  "specialty.zilare.1": withoutArt({
+  "specialty.zilare.1": {
     id: "specialty.zilare.1",
     name: "Forgetfulness I",
     kind: "hero-specialty",
@@ -4755,10 +4773,14 @@ export const adventureCards: CardLibrary = {
         }
       ]
     },
+    assets: {
+      cardImage: specialtyCardImage("zilare", 1),
+      imageAlt: "Forgetfulness level I specialty card"
+    },
     implementationStatus: "implemented",
     source: heroSource("zilare")
-  }),
-  "specialty.zilare.4": withoutArt({
+  },
+  "specialty.zilare.4": {
     id: "specialty.zilare.4",
     name: "Forgetfulness IV",
     kind: "hero-specialty",
@@ -4788,10 +4810,14 @@ export const adventureCards: CardLibrary = {
         }
       ]
     },
+    assets: {
+      cardImage: specialtyCardImage("zilare", 4),
+      imageAlt: "Forgetfulness level IV specialty card"
+    },
     implementationStatus: "implemented",
     source: heroSource("zilare")
-  }),
-  "specialty.zilare.6": withoutArt({
+  },
+  "specialty.zilare.6": {
     id: "specialty.zilare.6",
     name: "Forgetfulness VI",
     kind: "hero-specialty",
@@ -4821,9 +4847,13 @@ export const adventureCards: CardLibrary = {
         }
       ]
     },
+    assets: {
+      cardImage: specialtyCardImage("zilare", 6),
+      imageAlt: "Forgetfulness level VI specialty card"
+    },
     implementationStatus: "implemented",
     source: heroSource("zilare")
-  }),
+  },
 
   // Miriam (Captain, might, A3 D0 P2 K1, Logistics): the Scouting specialist —
   // a map turn action reusing REMOVE_HAND_CARD_THEN_SEARCH (the Spellbinder's
@@ -4840,12 +4870,12 @@ export const adventureCards: CardLibrary = {
   // CHOICE: place the Cove Sorceresses' −2 Weakness token on any unit for 2 rounds
   // (new PLACE_WEAKNESS_TOKEN effect), OR an instant +2 attack on your unit's next
   // attack — the +2 is FLAT (it does NOT double for Sorceresses).
-  "specialty.casmetra.1": withoutArt(towerAttackOrDefenseSpecialty("casmetra", "Sorceresses", 1, "Sorceresses")),
-  "specialty.casmetra.4": withoutArt(unitInitiativeSpecialty("casmetra", "Sorceresses", 4, 1, "Sorceresses")),
+  "specialty.casmetra.1": towerAttackOrDefenseSpecialty("casmetra", "Sorceresses", 1, "Sorceresses"),
+  "specialty.casmetra.4": unitInitiativeSpecialty("casmetra", "Sorceresses", 4, 1, "Sorceresses"),
   // Casmetra VI is a CHOICE (— OR —), re-confirmed against the owner's physical
   // card 2026-06 (like Moandor VI): the fan wiki renders the two clauses with no
   // "OR" (looking like a combined AND), but the printed card is choose-one.
-  "specialty.casmetra.6": withoutArt({
+  "specialty.casmetra.6": {
     id: "specialty.casmetra.6",
     name: "Sorceresses VI",
     kind: "hero-specialty",
@@ -4877,7 +4907,11 @@ export const adventureCards: CardLibrary = {
         }
       ]
     },
+    assets: {
+      cardImage: specialtyCardImage("casmetra", 6),
+      imageAlt: "Sorceresses level VI specialty card"
+    },
     implementationStatus: "implemented",
     source: heroSource("casmetra")
-  })
+  }
 };
