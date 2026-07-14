@@ -7944,9 +7944,14 @@ export function startAdventureRound(state: GameState): void {
 
   refreshRoundTokens(state);
   appendEvent(state, { type: "ROUND_STARTED", round: state.round, kind });
-  // Map designer timed events fire for every round kind (first / resource /
-  // astrologers), right after the round-start feed line.
-  applyCustomMapTimedEvents(state);
+  // Map designer timed events fire for every round kind. On first / resource
+  // rounds they queue right after the round-start feed line; on an Astrologers
+  // round they wait until AFTER the proclamation is drawn (below), so the
+  // documented "resolve the Astrologers card before ANY other trigger" order
+  // holds for map events too.
+  if (kind !== "astrologers") {
+    applyCustomMapTimedEvents(state);
+  }
 
   if (kind === "astrologers") {
     // Draw + resolve the proclamation FIRST, then raise the whole-table barrier
@@ -7959,6 +7964,9 @@ export function startAdventureRound(state: GameState): void {
     if ((state.adventure?.rewardQueue.length ?? 0) > astroQueueBefore) {
       beginRoundStartEventBarrier(state);
     }
+    // Map timed events queue behind the proclamation (and its barrier
+    // sentinel), so the table finishes the Astrologers card first.
+    applyCustomMapTimedEvents(state);
 
     // "At the beginning of each Astrologers' round" building triggers.
     for (const playerId of state.turnOrder) {

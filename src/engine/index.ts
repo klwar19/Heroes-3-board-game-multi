@@ -277,7 +277,6 @@ export {
   SECRET_TILE_FEATURES,
   secretFeatureFullLabel,
   secretFeatureLabel,
-  tileMatchesSecretFeature,
   validateCustomMapPlan
 } from "./adventure-setup";
 export type { AdventurePlayerConfig, AdventureSetupOptions, DraftPhaseInfo } from "./adventure-setup";
@@ -285,15 +284,21 @@ export {
   applyCustomMapPresetToOptions,
   customMapPresetIsActive,
   describeCustomMapPreset,
+  describeCustomMapPresetEntries,
   MAP_PRESET_BUILDING_OPTIONS,
   MAP_PRESET_VICTORY_OPTIONS,
+  presetForcedOptionKeys,
+  revertCustomMapPresetOptions,
   sanitizeCustomMapPreset,
-  secretFeatureDemandWarnings
+  secretFeatureDemandWarnings,
+  tileMatchesSecretFeature
 } from "./map-preset";
 export type {
+  CustomMapPresetEntry,
   CustomMapStartingBonus,
   CustomMapTimedEffect,
-  CustomMapTimedEvent
+  CustomMapTimedEvent,
+  PresetForcedOptionKey
 } from "./map-preset";
 export { getTileBorderSegments, hasInternalBorder } from "@/data/map/borders";
 export type { TileBorderSegment } from "@/data/map/borders";

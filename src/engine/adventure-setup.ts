@@ -52,8 +52,11 @@ import {
 import {
   applyCustomMapPresetToOptions,
   customMapPresetIsActive,
+  revertCustomMapPresetOptions,
   sanitizeCustomMapPreset,
-  type CustomMapPreset
+  tileMatchesSecretFeature,
+  type CustomMapPreset,
+  type PresetForcedOptionKey
 } from "./map-preset";
 import { pumpAdventureQueues } from "./adventure-reducer";
 import { makeInitialCommanderState } from "./commanders";
@@ -96,7 +99,6 @@ import type {
   WogModOptions
 } from "./state";
 import { DEFAULT_WOG_OPTIONS, MAX_FAR_TILES_PER_PLAYER, NEUTRAL_PLAYER_ID, UNOPENED_FAR_TILE } from "./state";
-import type { TileDefinition } from "@/data/map/types";
 
 /** Known designer Secret-feature ids (the allow-list for sanitize + validation). */
 export const SECRET_TILE_FEATURE_IDS: readonly SecretTileFeature[] = [
@@ -180,36 +182,6 @@ export const SECRET_TILE_FEATURES: readonly {
     description: "A random tile from this pool that has the Grail or a Dragon Utopia."
   }
 ];
-
-/** True when the tile definition carries the Secret landmark. */
-export function tileMatchesSecretFeature(def: TileDefinition, feature: SecretTileFeature): boolean {
-  switch (feature) {
-    case "gold_mine":
-      return def.fields.some((field) => field.location === "mine" && field.resource === "gold");
-    case "valuables_mine":
-      return def.fields.some((field) => field.location === "mine" && field.resource === "valuables");
-    case "materials_mine":
-      return def.fields.some(
-        (field) => field.location === "mine" && field.resource === "buildingMaterials"
-      );
-    case "any_mine":
-      return def.fields.some((field) => field.location === "mine");
-    case "obelisk":
-      return def.fields.some((field) => field.location === "obelisk");
-    case "settlement":
-      return def.fields.some((field) => field.location === "settlement");
-    case "town":
-      return def.fields.some(
-        (field) => field.location === "town" || field.location === "random_town"
-      );
-    case "objective":
-      return def.fields.some(
-        (field) => field.location === "grail" || field.location === "dragon_utopia"
-      );
-    default:
-      return false;
-  }
-}
 
 /** Short label for a Secret feature (board badge / popover). */
 export function secretFeatureLabel(feature: SecretTileFeature | undefined): string {
@@ -1036,11 +1008,24 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     ...(options.customMap !== undefined ? { customMap: options.customMap } : {}),
     ...(options.customMapPreset !== undefined ? { customMapPreset: options.customMapPreset } : {})
   };
-  // Map preset forces resources/army/buildings/victory when present (same as
-  // picking the map in the lobby). Explicit AdventureSetupOptions fields above
-  // win only when the preset does not set them.
+  // Map preset APPLY-ONCE semantics: the preset seeds these fields when the
+  // map is PICKED (setGameOptions). At build time it only fills fields the
+  // caller did NOT pass explicitly — so a host's later lobby edit (e.g.
+  // switching the victory mode after picking the map) is honoured, and the
+  // lobby path (which always passes every field) is never silently reverted.
   if (setupOptions.customMapPreset) {
-    applyCustomMapPresetToOptions(setupOptions, sanitizeCustomMapPreset(setupOptions.customMapPreset));
+    const explicit = new Set<PresetForcedOptionKey>([
+      ...(options.victoryMode !== undefined ? (["victoryMode"] as const) : []),
+      ...(options.startingResources !== undefined ? (["startingResources"] as const) : []),
+      ...(options.startingProduction !== undefined ? (["startingProduction"] as const) : []),
+      ...(options.startingBuildings !== undefined ? (["startingBuildings"] as const) : []),
+      ...(options.startingUnits !== undefined ? (["startingUnits"] as const) : [])
+    ]);
+    applyCustomMapPresetToOptions(
+      setupOptions,
+      sanitizeCustomMapPreset(setupOptions.customMapPreset),
+      explicit
+    );
   }
   const difficulty = setupOptions.difficulty;
   // Naval Battles Creature Banks default ON: discovering a Far/Near tile with a
@@ -2138,9 +2123,21 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
     // (seat anchors, tile overlap); leaving a stale one attached to a different
     // scenario is the "strange interaction" the merge removes.
     if (scenarioChanged && next.customMap === undefined && lobby.options.customMap) {
+      const previousPreset = lobby.options.customMapPreset ?? null;
       lobby.options.customMap = null;
       lobby.options.customMapName = null;
+      lobby.options.customMapPreset = null;
       changes.push("map back to the scenario layout");
+      // The dropped map's conditions must not leak into the scenario game.
+      const reverted = revertCustomMapPresetOptions(
+        lobby.options,
+        previousPreset,
+        null,
+        defaultGameSetupOptions(scenarioDefinitions[next.scenarioId])
+      );
+      if (reverted.length > 0) {
+        changes.push(`map conditions removed: ${reverted.join(", ")}`);
+      }
     }
     // A new scenario may allow fewer seats — trim the lobby to fit.
     const before = lobby.seats.length;
@@ -2236,11 +2233,24 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
   if (next.customMap !== undefined) {
     const mapName =
       typeof next.customMapName === "string" ? next.customMapName.trim().slice(0, 48) : null;
+    // Conditions the OUTGOING map forced are restored to scenario defaults
+    // when the map (or its preset) goes away — one map's resources/army/victory
+    // must never leak into the next game.
+    const previousPreset = lobby.options.customMapPreset ?? null;
     if (next.customMap === null) {
       lobby.options.customMap = null;
       lobby.options.customMapName = null;
       lobby.options.customMapPreset = null;
+      const reverted = revertCustomMapPresetOptions(
+        lobby.options,
+        previousPreset,
+        null,
+        defaultGameSetupOptions(getScenario(lobby.options.scenarioId))
+      );
       changes.push("map back to the scenario layout");
+      if (reverted.length > 0) {
+        changes.push(`map conditions removed: ${reverted.join(", ")}`);
+      }
     } else {
       if (next.customMap.length > MAX_CUSTOM_MAP_TILES) {
         throw new Error(`A designed map holds at most ${MAX_CUSTOM_MAP_TILES} tiles.`);
@@ -2256,10 +2266,20 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
         `designed map ${mapName ? `"${mapName}" ` : ""}(${accepted.length} tile${accepted.length === 1 ? "" : "s"})`
       );
       // Apply map-only conditions (resources, army, buildings, victory) when the
-      // client sends a preset alongside the tile plan.
+      // client sends a preset alongside the tile plan — restoring first anything
+      // the outgoing map's preset had forced that the new one does not.
       if (next.customMapPreset !== undefined) {
         const preset = sanitizeCustomMapPreset(next.customMapPreset);
         lobby.options.customMapPreset = preset ?? null;
+        const reverted = revertCustomMapPresetOptions(
+          lobby.options,
+          previousPreset,
+          preset ?? null,
+          defaultGameSetupOptions(scenario)
+        );
+        if (reverted.length > 0) {
+          changes.push(`map conditions removed: ${reverted.join(", ")}`);
+        }
         if (preset) {
           const presetChanges = applyCustomMapPresetToOptions(lobby.options, preset);
           if (presetChanges.length > 0) {
@@ -2273,8 +2293,18 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
     }
   } else if (next.customMapPreset !== undefined && lobby.options.customMap) {
     // Preset-only update while a designed map stays selected.
+    const previousPreset = lobby.options.customMapPreset ?? null;
     const preset = sanitizeCustomMapPreset(next.customMapPreset);
     lobby.options.customMapPreset = preset ?? null;
+    const reverted = revertCustomMapPresetOptions(
+      lobby.options,
+      previousPreset,
+      preset ?? null,
+      defaultGameSetupOptions(getScenario(lobby.options.scenarioId))
+    );
+    if (reverted.length > 0) {
+      changes.push(`map conditions removed: ${reverted.join(", ")}`);
+    }
     if (preset) {
       const presetChanges = applyCustomMapPresetToOptions(lobby.options, preset);
       changes.push(

@@ -21325,6 +21325,92 @@ body {
   min-height: 64px;
 }
 
+/* Collapsible editor shell: the summary bar is the always-visible header. */
+details.mapPresetEditor > summary::-webkit-details-marker {
+  display: none;
+}
+
+.mapPresetSummaryBar {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  user-select: none;
+}
+
+.mapPresetSummaryBar:hover strong {
+  color: #ffffff;
+}
+
+.mapPresetSummaryBar strong {
+  color: #e8f0ff;
+  font-size: 13px;
+}
+
+.mapPresetSummaryBar small {
+  flex-basis: 100%;
+  color: rgba(190, 210, 235, 0.75);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.mapPresetSummaryChevron {
+  color: rgba(154, 208, 255, 0.85);
+  font-size: 12px;
+  transition: transform 0.15s ease;
+}
+
+details.mapPresetEditor[open] .mapPresetSummaryChevron {
+  transform: rotate(90deg);
+}
+
+.mapPresetCountBadge {
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  border: 1px solid rgba(154, 208, 255, 0.3);
+  color: rgba(190, 210, 235, 0.7);
+  background: rgba(24, 34, 50, 0.8);
+}
+
+.mapPresetCountBadge.active {
+  border-color: rgba(255, 214, 130, 0.55);
+  color: #ffd682;
+  background: rgba(64, 50, 22, 0.75);
+}
+
+/* Icon-tagged condition lines (designer summary + lobby banner). */
+.mapPresetEntryList {
+  list-style: none;
+  margin: 0;
+  padding-left: 0 !important;
+  display: grid;
+  gap: 3px;
+}
+
+.mapPresetEntryList li {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.mapPresetEntryIcon {
+  flex: 0 0 auto;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.mapPresetLobbyHint {
+  display: block;
+  margin-top: 6px;
+  color: rgba(190, 210, 235, 0.65);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
 .mapPresetUnitGrid {
   display: grid;
   gap: 4px;

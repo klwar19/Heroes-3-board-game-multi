@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { materializeTileFields, processPendingVisit } from "./adventure";
+import { materializeTileFields, processPendingVisit, startAdventureRound } from "./adventure";
+import { pumpAdventureQueues } from "./adventure-reducer";
 import { createAdventureGameState, validateCustomMapPlan } from "./adventure-setup";
 import { getScenario } from "./adventure-setup";
+import { applyAction, createAdventureLobbyState } from "./index";
 import { getPlayerView } from "./player-view";
 import { allTileDefinitions } from "@/data/map/tiles";
 
@@ -501,5 +503,223 @@ describe("Pandora's Box deck", () => {
 
     expect(state.players.p1.hand).toContain(top);
     expect(state.eventLog.some((event) => event.type === "PANDORA_CARD_DRAWN")).toBe(true);
+  });
+});
+
+describe("map preset conditions — effects and apply-once semantics", () => {
+  const NEAR_SLOT: import("./state").CustomMapTilePlan[] = [
+    { row: 9, col: 4, group: "near", faceDown: true }
+  ];
+
+  /** Plant a visitable field with a black cube (mirrors visitable-fields-cube.test). */
+  function injectCubeField(
+    state: import("./state").GameState,
+    spaceId: string,
+    location: string
+  ): import("./state").MapFieldState {
+    const field: import("./state").MapFieldState = {
+      spaceId,
+      tileInstanceId: "preset-cube-tile",
+      slot: 0,
+      location,
+      blackCube: true,
+      flagOwnerId: null,
+      everFlagged: false,
+      settlementResource: null
+    };
+    state.adventure!.fields[spaceId] = field;
+    return field;
+  }
+
+  it("an explicit victory choice OVERRIDES the preset at build (apply-once), while unset fields still fill", () => {
+    // The lobby path always passes every option explicitly (the preset was
+    // already applied on pick), so a host's later victory edit must win.
+    const state = createAdventureGameState({
+      seed: "preset-apply-once",
+      victoryMode: "conquest",
+      customMap: NEAR_SLOT,
+      customMapPreset: {
+        victoryMode: "grail",
+        startingResources: { gold: 17, buildingMaterials: 3, valuables: 2 }
+      }
+    });
+    expect(state.adventure?.victoryMode).toBe("conquest");
+    // Fields the caller did NOT pass are still seeded by the preset.
+    expect(state.players.p1.resources.gold).toBe(17);
+
+    // CONTROL: without the explicit choice the preset decides the victory mode.
+    const implicit = createAdventureGameState({
+      seed: "preset-apply-once",
+      customMap: NEAR_SLOT,
+      customMapPreset: {
+        victoryMode: "grail",
+        startingResources: { gold: 17, buildingMaterials: 3, valuables: 2 }
+      }
+    });
+    expect(implicit.adventure?.victoryMode).toBe("grail");
+  });
+
+  it("switching away from a preset map restores the scenario defaults (no condition leaks)", () => {
+    let state = createAdventureLobbyState({ seed: "preset-restore", scenarioId: "skirmish" });
+    const lobby = () => state.setupLobby!;
+    const baseVictory = lobby().options.victoryMode;
+    const baseResources = { ...lobby().options.startingResources };
+
+    const apply = (options: Record<string, unknown>) => {
+      const result = applyAction(state, { type: "SET_GAME_OPTIONS", playerId: "p1", options });
+      expect(result.errors, result.errors.map((e) => e.message).join("; ")).toHaveLength(0);
+      state = result.state;
+    };
+
+    // Pick a designed map WITH conditions: they seed the lobby options.
+    apply({
+      customMap: NEAR_SLOT,
+      customMapName: "Conditions",
+      customMapPreset: {
+        victoryMode: "grail",
+        startingResources: { gold: 17, buildingMaterials: 3, valuables: 2 }
+      }
+    });
+    expect(lobby().options.victoryMode).toBe("grail");
+    expect(lobby().options.startingResources.gold).toBe(17);
+    expect(lobby().options.customMapPreset?.victoryMode).toBe("grail");
+
+    // Switch to a preset-LESS designed map: the old map's conditions revert.
+    apply({ customMap: NEAR_SLOT, customMapName: "Plain", customMapPreset: null });
+    expect(lobby().options.customMapPreset).toBeNull();
+    expect(lobby().options.victoryMode).toBe(baseVictory);
+    expect(lobby().options.startingResources).toEqual(baseResources);
+    // The waiting seats' resource preview follows the restore.
+    expect(state.players.p1.resources.gold).toBe(baseResources.gold);
+
+    // Re-pick the conditions map, then go back to the plain scenario layout.
+    apply({
+      customMap: NEAR_SLOT,
+      customMapName: "Conditions",
+      customMapPreset: { victoryMode: "grail", startingResources: { gold: 17, buildingMaterials: 3, valuables: 2 } }
+    });
+    expect(lobby().options.victoryMode).toBe("grail");
+    apply({ customMap: null });
+    expect(lobby().options.customMapPreset).toBeNull();
+    expect(lobby().options.victoryMode).toBe(baseVictory);
+    expect(lobby().options.startingResources).toEqual(baseResources);
+
+    // And a BARE scenario switch (drops the designed map) reverts too.
+    apply({
+      customMap: NEAR_SLOT,
+      customMapName: "Conditions",
+      customMapPreset: { victoryMode: "grail", startingResources: { gold: 17, buildingMaterials: 3, valuables: 2 } }
+    });
+    apply({ scenarioId: "land-2p" });
+    expect(lobby().options.customMap).toBeNull();
+    expect(lobby().options.customMapPreset).toBeNull();
+    expect(lobby().options.victoryMode).toBe(baseVictory);
+  });
+
+  it("a round-N timed event fires when THAT round starts: cubes clear, resources land (with controls)", () => {
+    const build = (withPreset: boolean) =>
+      createAdventureGameState({
+        seed: "preset-timed-round",
+        customMap: NEAR_SLOT,
+        ...(withPreset
+          ? {
+              customMapPreset: {
+                timedEvents: [
+                  {
+                    round: 3,
+                    effect: { kind: "clear_visitable_cubes" as const, locations: ["windmill" as const] }
+                  },
+                  {
+                    round: 3,
+                    effect: { kind: "resources" as const, gold: 4, buildingMaterials: 0, valuables: 0 }
+                  }
+                ]
+              }
+            }
+          : {})
+      });
+
+    const state = build(true);
+    const control = build(false);
+    const windmill = injectCubeField(state, "60,60", "windmill");
+    // CONTROL location: a cubed Mystical Garden is NOT in the event's list.
+    const garden = injectCubeField(state, "61,61", "mystical_garden");
+
+    // Round 2 (Astrologers): the round-3 event must NOT fire early.
+    state.round = 2;
+    startAdventureRound(state);
+    control.round = 2;
+    startAdventureRound(control);
+    expect(windmill.blackCube).toBe(true);
+    expect(state.eventLog.some((e) => e.type === "MAP_PRESET_TRIGGERED" && e.round === 3)).toBe(false);
+
+    // Round 3 (Resource): cube cleared, control cube stays, +4 gold vs the
+    // identical-seed control state (isolates the event from round income).
+    state.round = 3;
+    startAdventureRound(state);
+    control.round = 3;
+    startAdventureRound(control);
+    expect(windmill.blackCube).toBe(false);
+    expect(garden.blackCube).toBe(true);
+    expect(state.players.p1.resources.gold - control.players.p1.resources.gold).toBe(4);
+    expect(state.players.p2.resources.gold - control.players.p2.resources.gold).toBe(4);
+    expect(
+      state.eventLog.some(
+        (e) => e.type === "MAP_PRESET_TRIGGERED" && e.round === 3 && e.message.includes("windmill")
+      )
+    ).toBe(true);
+  });
+
+  it("a Search starting bonus opens a REAL shared-deck search for each player", () => {
+    const state = createAdventureGameState({
+      seed: "preset-search-bonus",
+      customMap: NEAR_SLOT,
+      customMapPreset: { startingBonuses: [{ kind: "search", deck: "spells", count: 2 }] }
+    });
+    // One queued search per player…
+    const queued = state.adventure!.rewardQueue.filter(
+      (reward) =>
+        reward.kind === "visit-steps" &&
+        reward.steps.some((step) => step.type === "SEARCH_SHARED_DECK" && step.deckId === "spells")
+    );
+    expect(new Set(queued.map((reward) => reward.playerId))).toEqual(new Set(["p1", "p2"]));
+
+    // …and pumping past the opening home-tile rotation opens the real
+    // deck-search choice (the same pipeline every Search reward uses).
+    state.adventure!.pendingTileChoice = null;
+    pumpAdventureQueues(state);
+    const choice = state.pendingChoice;
+    expect(choice?.type).toBe("OPTION_CHOICE");
+    if (choice?.type !== "OPTION_CHOICE") {
+      throw new Error("expected an OPTION_CHOICE");
+    }
+    expect(choice.context).toBe("deck-search-mode");
+    expect(choice.deckSearchMode).toMatchObject({ deckId: "spells", count: 2 });
+
+    // CONTROL: without the preset no search reward is queued at setup.
+    const control = createAdventureGameState({ seed: "preset-search-bonus", customMap: NEAR_SLOT });
+    expect(
+      control.adventure!.rewardQueue.some(
+        (reward) =>
+          reward.kind === "visit-steps" &&
+          reward.steps.some((step) => step.type === "SEARCH_SHARED_DECK")
+      )
+    ).toBe(false);
+  });
+
+  it("a morale starting bonus moves the morale token — and undead factions still ignore it", () => {
+    const state = createAdventureGameState({
+      seed: "preset-morale-bonus",
+      customMap: NEAR_SLOT,
+      customMapPreset: { startingBonuses: [{ kind: "morale", amount: 1 }] }
+    });
+    // Default seats: p1 Castle, p2 Necropolis. The bonus routes through
+    // changeMorale, so Necropolis's ignoresMorale rule still applies — the
+    // undead seat is the built-in control that this is the REAL morale path.
+    expect(state.players.p1.morale).toBe(1);
+    expect(state.players.p2.morale).toBe(0);
+
+    const control = createAdventureGameState({ seed: "preset-morale-bonus", customMap: NEAR_SLOT });
+    expect(control.players.p1.morale).toBe(0);
   });
 });
