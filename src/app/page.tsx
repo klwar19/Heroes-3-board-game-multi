@@ -84,6 +84,9 @@ import {
 import { buildTownCaptureCue, isEnemyTownCapture } from "@/components/table/town-capture-cue";
 import { CombatMoralePanel } from "@/components/table/combat-morale-panel";
 import { CombatSandboxSetupScreen } from "@/components/table/combat-sandbox-setup";
+import { HelperCoachLobbyPrompt, HelperCoachStrip } from "@/components/table/helper-coach-ui";
+import { cardUnplayableReason } from "@/components/table/helper-coach";
+import { useHelperCoachPreference } from "@/lib/helper-coach-preference";
 import { healFreezeDisplayDamage } from "@/components/table/heal-display";
 import {
   buildComputerMoveReplay,
@@ -671,6 +674,8 @@ export default function Home() {
   const [inspectedUnitId, setInspectedUnitId] = useState<string | null>(null);
   const [handMode, setHandMode] = useState<HandMode>(null);
   const [handDiscards, setHandDiscards] = useState<number[]>([]);
+  /** On-screen next-step coach + card reasons (local browser preference). */
+  const helperCoach = useHelperCoachPreference();
   /** Adventure hand: which card slot has its play menu open. */
   const [openHandIndex, setOpenHandIndex] = useState<number | null>(null);
   /** Spell Book (house rule): whether the map Spell Book window is open. */
@@ -4703,6 +4708,8 @@ export default function Home() {
             {tableMenu}
           </div>
           {errorBanner}
+          {/* Same helper-tips opt-in as the map-setup lobby (Battle Test has no map lobby). */}
+          <HelperCoachLobbyPrompt />
           <CombatSandboxSetupScreen
             onAction={submitAction}
             state={state}
@@ -4953,6 +4960,17 @@ export default function Home() {
           </div>
 
           {errorBanner}
+
+          {/* Mid-game join / skipped lobby: still ask once if no preference yet. */}
+          <HelperCoachLobbyPrompt />
+
+          {isSeated ? (
+            <HelperCoachStrip
+              legalActions={legalActions}
+              state={state}
+              viewerPlayerId={viewerPlayerId}
+            />
+          ) : null}
 
           {inBattlePrep ? (
             <PreBattlePanel
@@ -5527,6 +5545,13 @@ export default function Home() {
                     handCards[index] !== undefined &&
                     index !== handCards.indexOf(pendingCostPlay!.action.cardId) &&
                     costCardEligible(cardId, pendingCostPlay!.filter);
+                  const whyBlocked =
+                    !actionable && helperCoach.enabled && !selecting && !isPayingSource
+                      ? cardUnplayableReason(state, viewerPlayerId, cardId)
+                      : null;
+                  // Helper tips: always allow opening a non-playable card to read
+                  // why; otherwise keep the old gate (playable / start-of-turn draw).
+                  const canOpenMenu = actionable || canDraw || Boolean(whyBlocked);
 
                   return (
                     <div
@@ -5536,7 +5561,9 @@ export default function Home() {
                       <button
                         className={`adventureHandCard ${handDiscards.includes(index) ? "discarding" : ""} ${
                           pickedForCost ? "discarding" : ""
-                        } ${!selecting && !isPayingSource && actionable ? "playable" : ""}`}
+                        } ${!selecting && !isPayingSource && actionable ? "playable" : ""} ${
+                          whyBlocked ? "helperBlocked" : ""
+                        }`}
                         onClick={() => {
                           // Paying a card cost: clicks toggle the payment.
                           if (isPayingSource) {
@@ -5591,7 +5618,7 @@ export default function Home() {
                           // appeared to "select cards for you" with no way out.)
                           // Drop any staged play so a stale confirm bar never
                           // lingers from another card.
-                          if (actionable || canDraw) {
+                          if (canOpenMenu) {
                             setArmedHandPlay(null);
                             setOpenHandIndex((current) => (current === index ? null : index));
                           }
@@ -5603,24 +5630,32 @@ export default function Home() {
                               ? eligibleForCost
                                 ? `Toggle ${cardName(cardId)} as payment`
                                 : cardName(cardId)
-                              : plays.length > 0
-                                ? `Play ${cardName(cardId)}`
-                                : stashAction
-                                  ? `Move ${cardName(cardId)} to your Spell Book`
-                                  : canDraw
-                                    ? `Open ${cardName(cardId)} — read it, or mark it for discard`
-                                    : cardName(cardId)
+                              : whyBlocked
+                                ? `${cardName(cardId)} — ${whyBlocked}`
+                                : plays.length > 0
+                                  ? `Play ${cardName(cardId)}`
+                                  : stashAction
+                                    ? `Move ${cardName(cardId)} to your Spell Book`
+                                    : canDraw
+                                      ? `Open ${cardName(cardId)} — read it, or mark it for discard`
+                                      : cardName(cardId)
                         }
                         type="button"
                       >
                         <CardFrame cardId={cardId} className="handCardImage" />
+                        {whyBlocked ? (
+                          <span className="helperBlockedBadge" aria-hidden="true" title={whyBlocked}>
+                            ?
+                          </span>
+                        ) : null}
                       </button>
-                      {openHandIndex === index && !selecting && !isPayingSource && (actionable || canDraw) ? (
+                      {openHandIndex === index && !selecting && !isPayingSource && canOpenMenu ? (
                         <div className="handPlayMenu" role="menu" aria-label={`${cardName(cardId)} plays`}>
                           <strong>{cardName(cardId)}</strong>
                           {rulesetCardNote(state, cardId) ? (
                             <small className="rulesetNote">{rulesetCardNote(state, cardId)}</small>
                           ) : null}
+                          {whyBlocked ? <small className="rulesetNote helperWhy">{whyBlocked}</small> : null}
                           {canDraw && plays.length === 0 ? (
                             <small className="rulesetNote">
                               Take your start-of-turn draw first to play cards — or mark this one for discard below.
@@ -5876,6 +5911,17 @@ export default function Home() {
       </div>
 
       {errorBanner}
+
+      {/* Mid-game join / Battle Test: ask once if no preference yet. */}
+      <HelperCoachLobbyPrompt />
+
+      {isSeated ? (
+        <HelperCoachStrip
+          legalActions={legalActions}
+          state={state}
+          viewerPlayerId={viewerPlayerId}
+        />
+      ) : null}
 
       {isSeated && handMode === null ? (
         <MoraleOverflowPrompt

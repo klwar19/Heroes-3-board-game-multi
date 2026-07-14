@@ -41,6 +41,8 @@ import { useCardZoom, ZoomButton } from "./zoom";
 import { SpecialtyCard } from "@/components/specialty-card";
 import { canRenderSpecialtyCard } from "@/components/specialty-card-data";
 import { SpellBookModal } from "@/components/adventure/spell-book-modal";
+import { cardUnplayableReason } from "./helper-coach";
+import { useHelperCoachPreference } from "@/lib/helper-coach-preference";
 
 export function CardFrame({
   cardId,
@@ -370,6 +372,7 @@ export function HandFan({
   // engine until then, so this holds for multiplayer too.
   const [armed, setArmed] = useState<{ handIndex: number; action: CardBoardAction; label: string } | null>(null);
   const { zoomCard } = useCardZoom();
+  const helperCoach = useHelperCoachPreference();
   const player = view.players[viewerPlayerId];
   if (!player) {
     return null;
@@ -380,48 +383,9 @@ export function HandFan({
       legal.action.type === "CAST_SPELL" || legal.action.type === "PLAY_CARD"
   );
 
-  const playerState = state.players[viewerPlayerId];
-  const ignoreSpellLimit = Boolean(playerState) && playerSpellCastsIgnoreLimit(state, viewerPlayerId);
-  const spellLimit = 1 + (playerState?.combatStats.spellLimitBonusThisRound ?? 0);
-  const spellLimitReached = !ignoreSpellLimit && (playerState?.combatStats.spellsCastThisRound ?? 0) >= spellLimit;
-  const activeUnit = state.combat?.activeUnitId ? state.combat.units[state.combat.activeUnitId] : undefined;
-  const ownActivationOpen = Boolean(
-    activeUnit &&
-      activeUnit.controllerId === viewerPlayerId &&
-      !activeUnit.activatedThisRound &&
-      !activeUnit.attackedThisActivation
-  );
-
   /** Why a card has no buttons right now, in table terms. */
-  const timingHint = (cardId: string): string => {
-    const card = cardLibrary[cardId];
-    if (!card) {
-      return "Unknown card";
-    }
-    if (card.implementationStatus === "not-implemented") {
-      return "Resolve this card manually — automation coming soon";
-    }
-    if (card.kind === "spell") {
-      if (spellLimitReached) {
-        return `Spell limit reached (${spellLimit} per combat round)`;
-      }
-      return card.trigger || card.timing === "instant"
-        ? "Instant spell: play it into an attack or spell window (Power cards empower it)"
-        : "Activation spell: cast while one of your units is active, before it attacks";
-    }
-    if (card.trigger || card.timing === "instant") {
-      return "Instant: waits for its timing window (attack or spell)";
-    }
-    if (card.timing === "ongoing" || card.timing === "combat" || card.timing === "action") {
-      return ownActivationOpen
-        ? "Playable now"
-        : "Play during your own unit's activation, before it attacks";
-    }
-    if (card.timing === "map") {
-      return "Map effect: play on the adventure map during your turn";
-    }
-    return "No legal timing right now";
-  };
+  const timingHint = (cardId: string): string =>
+    cardUnplayableReason(state, viewerPlayerId, cardId, { trayActive });
 
   const entries: HandCardEntry[] = player.hand.map((cardId, handIndex) => {
     // Only true hand casts belong on the hand card — Spell Scroll (fromScroll)
@@ -660,7 +624,11 @@ export function HandFan({
                         </button>
                       );
                     })}
-                    {!playable ? <small className="noTiming">{timingHint(entry.cardId)}</small> : null}
+                    {!playable ? (
+                      <small className={`noTiming ${helperCoach.enabled ? "helperWhy" : ""}`}>
+                        {timingHint(entry.cardId)}
+                      </small>
+                    ) : null}
                     <button
                       className="ghost"
                       onClick={() => {
@@ -677,7 +645,9 @@ export function HandFan({
             ) : null}
             <button
               aria-pressed={open || selected}
-              className={`fanCard ${playable ? "playable" : ""} ${selected ? "selected" : ""}`}
+              className={`fanCard ${playable ? "playable" : ""} ${selected ? "selected" : ""} ${
+                !playable && helperCoach.enabled ? "helperBlocked" : ""
+              }`}
               onClick={() => {
                 setArmed(null);
                 // Clear click-to-target: a card whose only play is a single
@@ -695,14 +665,21 @@ export function HandFan({
                 setOpenIndex(open ? null : entry.handIndex);
               }}
               title={
-                card
-                  ? `${empowered ? "Empowered — " : ""}${card.name} — ${describeCardEffect(card)}`
-                  : entry.cardId
+                !playable && helperCoach.enabled
+                  ? `${card?.name ?? entry.cardId} — ${timingHint(entry.cardId)}`
+                  : card
+                    ? `${empowered ? "Empowered — " : ""}${card.name} — ${describeCardEffect(card)}`
+                    : entry.cardId
               }
               type="button"
             >
               <CardFrame cardId={entry.cardId} className="fanCardImage" empowered={empowered} />
               {playable ? <span className="playGlow" aria-hidden="true" /> : null}
+              {!playable && helperCoach.enabled ? (
+                <span className="helperBlockedBadge" aria-hidden="true" title={timingHint(entry.cardId)}>
+                  ?
+                </span>
+              ) : null}
               {empowered ? (
                 <span className="empoweredBadge empoweredBadgeOverlay">
                   <Sparkles aria-hidden="true" size={9} /> Empowered
