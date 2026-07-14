@@ -229,6 +229,14 @@ export function noteComputerAction(
       // Recruiting resets the army-stagnation counter (read by economyFocusBias).
       mem = { ...mem, stagnantArmyTurns: 0 };
       break;
+    case "ACKNOWLEDGE_COMBAT_END":
+      // Fresh objective pick after EVERY fight. A WON fight consumed its
+      // objective anyway; after a LOST one the stale sticky would keep the
+      // hero committed to (or parked beside) the guard that just beat it —
+      // the observed "stops moving after a loss" stall. Clearing costs one
+      // deterministic re-pick on the next decision.
+      mem = { ...mem, stickyObjectiveSpaceId: null };
+      break;
     case "END_TURN":
     case "COMPLETE_SIMULTANEOUS_TURN":
       // Clear per-turn visit thrash list at end of turn.

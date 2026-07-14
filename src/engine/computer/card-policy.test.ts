@@ -446,6 +446,240 @@ describe("card policy — power boost and saves", () => {
   });
 });
 
+describe("card policy — correct Power on a pending damage cast", () => {
+  /** Magic Arrow's printed ladder: Power 0 → 1, 1 → 2, 2 → 3 damage. */
+  function pendingArrowObservation(
+    enemyRemaining: number,
+    standingPowerBonus: number,
+  ): ComputerObservation {
+    const enemy = unit({
+      id: "E",
+      controllerId: "p1",
+      maxHealth: enemyRemaining,
+      damage: 0,
+      position: 9,
+    });
+    const boost: LegalAction = {
+      action: {
+        type: "PLAY_REACTION",
+        playerId: "p2",
+        cardId: "spell.haste",
+        mode: "basic",
+        asPowerBoost: true,
+      } as GameAction,
+      label: "Haste as Power",
+    };
+    const observed = observation([enemy], [pass, boost], "p2", ["spell.haste"]);
+    (observed.state as unknown as { stack: unknown[] }).stack = [
+      {
+        action: {
+          type: "CAST_SPELL",
+          playerId: "p2",
+          cardId: "spell.magic_arrow",
+          target: { type: "unit", unitId: "E" },
+        },
+        modifiers: {
+          spellPowerBonus: standingPowerBonus,
+          attackBonus: 0,
+          defenseBonus: 0,
+        },
+      },
+    ];
+    return observed;
+  }
+
+  it("pays the +1 Power that turns the cast into a removal", () => {
+    // Power 0 deals 1 into 2 remaining health; +1 Power (2 damage) kills.
+    const decision = chooseComputerAction(pendingArrowObservation(2, 0));
+    expect(decision?.action.type).toBe("PLAY_REACTION");
+  });
+
+  it("CONTROL: stops paying once the cast is already lethal", () => {
+    // Power 0 already deals 1 into 1 remaining health — the boost buys nothing.
+    const decision = chooseComputerAction(pendingArrowObservation(1, 0));
+    expect(decision?.action.type).toBe("PASS_REACTION");
+  });
+
+  it("CONTROL: refuses a +1 that does not move the printed ladder", () => {
+    // At Power 2 the arrow tops out at 3 damage; Power 3 is still 3 into a
+    // 5-health target — a discarded card would be pure waste.
+    const decision = chooseComputerAction(pendingArrowObservation(5, 2));
+    expect(decision?.action.type).toBe("PASS_REACTION");
+  });
+});
+
+describe("card policy — crown (expert use) discipline", () => {
+  function mapObservation(
+    crowns: number,
+    legalActions: LegalAction[],
+  ): ComputerObservation {
+    const state = {
+      seed: "card-policy-test",
+      round: 2,
+      eventCounter: 0,
+      combat: null,
+      players: {
+        p2: {
+          id: "p2",
+          hand: ["ability.estates"],
+          resources: { gold: 10, buildingMaterials: 2, valuables: 0 },
+          army: [],
+          limits: { hand: 5, expertUses: crowns },
+          combatStats: {
+            spellsCastThisRound: 0,
+            spellLimitBonusThisRound: 0,
+            expertUsesSpentThisRound: 0,
+          },
+        },
+      },
+    } as unknown as PlayerVisibleState;
+    return { playerId: "p2", state, legalActions };
+  }
+
+  const estates = (mode: "basic" | "expert"): LegalAction => ({
+    action: {
+      type: "PLAY_CARD",
+      playerId: "p2",
+      cardId: "ability.estates",
+      mode,
+    } as GameAction,
+    label: `Estates ${mode}`,
+  });
+
+  it("saves the round's last crown: basic map play beats its expert twin", () => {
+    const decision = chooseComputerAction(
+      mapObservation(1, [estates("basic"), estates("expert")]),
+    );
+    expect(decision?.action.type).toBe("PLAY_CARD");
+    expect((decision?.action as { mode?: string }).mode).toBe("basic");
+  });
+
+  it("CONTROL: with crowns to spare the expert map play wins", () => {
+    const decision = chooseComputerAction(
+      mapObservation(2, [estates("basic"), estates("expert")]),
+    );
+    expect((decision?.action as { mode?: string }).mode).toBe("expert");
+  });
+
+  it("CONTROL: a combat-impact expert reaction still spends the last crown", () => {
+    const attacker = unit({ id: "A", controllerId: "p2", attack: 4, position: 8 });
+    const enemy = unit({ id: "E", controllerId: "p1", maxHealth: 8, position: 9 });
+    const statPlay = (mode: "basic" | "expert"): LegalAction => ({
+      action: {
+        type: "PLAY_REACTION",
+        playerId: "p2",
+        cardId: "stat.attack",
+        mode,
+      } as GameAction,
+      label: `Attack stat ${mode}`,
+    });
+    const observed = observation(
+      [attacker, enemy],
+      [pass, statPlay("basic"), statPlay("expert")],
+      "p2",
+      ["stat.attack"],
+    );
+    (
+      observed.state.players as unknown as Record<string, { limits: unknown; combatStats: unknown }>
+    ).p2.limits = { hand: 5, expertUses: 1 };
+    (
+      observed.state.players as unknown as Record<string, { limits: unknown; combatStats: unknown }>
+    ).p2.combatStats = {
+      spellsCastThisRound: 0,
+      spellLimitBonusThisRound: 0,
+      expertUsesSpentThisRound: 0,
+    };
+    const decision = chooseComputerAction(observed);
+    expect(decision?.action.type).toBe("PLAY_REACTION");
+    expect((decision?.action as { mode?: string }).mode).toBe("expert");
+  });
+});
+
+describe("card policy — damage spells hunt high value (Defense does not shield)", () => {
+  it("aims the arrow at the high-value armoured unit, not the cheapest chaff", () => {
+    // Spell damage ignores Defense in the engine; the old attack-style guess
+    // (attack − defense) made the armoured threat look unhittable and dumped
+    // every cast on zero-defense chaff instead.
+    const bigThreat = unit({
+      id: "BIG",
+      controllerId: "p1",
+      attack: 8,
+      defense: 5,
+      maxHealth: 6,
+      position: 9,
+    });
+    const chaff = unit({
+      id: "CHAFF",
+      controllerId: "p1",
+      attack: 1,
+      defense: 0,
+      maxHealth: 6,
+      position: 12,
+    });
+    const castAt = (unitId: string): LegalAction => ({
+      action: {
+        type: "CAST_SPELL",
+        playerId: "p2",
+        cardId: "spell.magic_arrow",
+        target: { type: "unit", unitId },
+      } as GameAction,
+      label: `arrow ${unitId}`,
+    });
+    const decision = chooseComputerAction(
+      observation(
+        [bigThreat, chaff],
+        [castAt("BIG"), castAt("CHAFF")],
+        "p2",
+        ["spell.magic_arrow"],
+      ),
+    );
+    expect(decision?.action.type).toBe("CAST_SPELL");
+    expect(
+      (decision?.action as { target: { unitId: string } }).target.unitId,
+    ).toBe("BIG");
+  });
+
+  it("CONTROL: still finishes a unit the printed damage actually removes", () => {
+    const bigThreat = unit({
+      id: "BIG",
+      controllerId: "p1",
+      attack: 8,
+      defense: 5,
+      maxHealth: 6,
+      position: 9,
+    });
+    const dying = unit({
+      id: "DYING",
+      controllerId: "p1",
+      attack: 1,
+      defense: 0,
+      maxHealth: 3,
+      damage: 2,
+      position: 12,
+    });
+    const castAt = (unitId: string): LegalAction => ({
+      action: {
+        type: "CAST_SPELL",
+        playerId: "p2",
+        cardId: "spell.magic_arrow",
+        target: { type: "unit", unitId },
+      } as GameAction,
+      label: `arrow ${unitId}`,
+    });
+    const decision = chooseComputerAction(
+      observation(
+        [bigThreat, dying],
+        [castAt("BIG"), castAt("DYING")],
+        "p2",
+        ["spell.magic_arrow"],
+      ),
+    );
+    expect(
+      (decision?.action as { target: { unitId: string } }).target.unitId,
+    ).toBe("DYING");
+  });
+});
+
 describe("card policy — no cheating", () => {
   it("decision is unchanged when an opponent hand is rewritten", () => {
     const cast: LegalAction = {

@@ -279,6 +279,27 @@ function buildingScore(
     // legal step that completes the scenario immediately (980).
     return Math.min(score, 975);
   }
+  // Dwelling-first: while saving for the Silver/Gold dwelling, a side building
+  // (Mage Guild, economy, anything non-milestone) that would eat into the
+  // dwelling fund waits — only genuine surplus may buy extras. Mirrors the
+  // populationScore treasury guard so building and recruiting cannot each
+  // spend the same savings.
+  if (
+    development.phase === "unlock-silver" ||
+    development.phase === "unlock-gold"
+  ) {
+    const cost = coreBuildingDefinitions[buildingId]?.cost ?? {};
+    const resources = playerResources(state, playerId);
+    const target = developmentResourceTargets(state, playerId);
+    const protectsDwellingFund =
+      resources.gold - (cost.gold ?? 0) >= target.gold &&
+      resources.buildingMaterials - (cost.buildingMaterials ?? 0) >=
+        target.buildingMaterials &&
+      resources.valuables - (cost.valuables ?? 0) >= target.valuables;
+    if (!protectsDwellingFund) {
+      return Math.min(score, 280);
+    }
+  }
   return score;
 }
 
@@ -493,11 +514,15 @@ function moveScore(
 }
 
 /**
- * Revealing land is useful only until it competes with a known, reachable map
+ * Revealing land is useful only until it competes with a known, NEARBY map
  * payoff. Once a mine, reward, beatable guard, town, enemy, or victory site is
- * visible, marching toward it must beat spending every movement point opening
- * more tiles. This is the conversion loop the old fixed 830 discovery score
- * lacked: explore -> identify value -> collect it -> develop the army.
+ * within this turn's marching reach, collecting it beats spending movement on
+ * opening more tiles ("hit the home-tile objects first"). But when every known
+ * payoff is a long trek away, flipping the adjacent face-down tile or dropping
+ * a fresh Ⅱ–Ⅲ supply tile is the better tempo play — new land next door beats
+ * a multi-turn march to a distant leftover. This is the conversion loop the
+ * old fixed 830 discovery score lacked: explore -> identify value -> collect
+ * it -> develop the army -> expand again.
  */
 function explorationActionScore(
   observation: ComputerObservation,
@@ -511,6 +536,18 @@ function explorationActionScore(
     (objective) => objective.kind !== "explore",
   );
   if (knownPayoffs.length === 0) {
+    return noKnownPayoffScore;
+  }
+  // One multi-source BFS over every known payoff: how far is the NEAREST one?
+  // When it sits beyond what the hero can still walk this turn (or is outright
+  // unreachable), expanding the frontier NOW wins over the march (the frontier
+  // score outranks OBJECTIVE_PROGRESS_BASE); a close payoff keeps the old
+  // collect-first ordering.
+  const nearest = hero.spaceId
+    ? objectiveDistanceField(state, hero, knownPayoffs).get(hero.spaceId)
+    : undefined;
+  const reach = Math.max(1, hero.movementPoints ?? 0);
+  if (nearest === undefined || nearest > reach) {
     return noKnownPayoffScore;
   }
   // Keep discovery legal and attractive over END_TURN, but below build/recruit
@@ -1262,24 +1299,34 @@ export function scoreMapAction(
         score: resolveVisitStepScore(observation, action),
         policy: "map.resolve-visit",
       };
-    case "SPELL_BOOK_ACTION":
+    case "SPELL_BOOK_ACTION": {
+      // Spells are a luxury: buy only once the army core + dwellings are done
+      // AND the purchase is actually a good deal — Wisdom in hand makes it one
+      // (cheaper buy + a bigger Search), otherwise only genuine surplus gold
+      // may fund it. A spell bought out of the dwelling/recruit fund does not
+      // help the next fight the way a stronger army does.
+      const phase = armyDevelopmentProfile(state, observation.playerId).phase;
+      const holdsWisdom = (
+        state.players[observation.playerId]?.hand ?? []
+      ).includes("ability.wisdom");
+      const target = developmentResourceTargets(state, observation.playerId);
+      const flushGold =
+        playerGold(state, observation.playerId) >= target.gold + 4;
+      if (phase === "improve-army" && (holdsWisdom || flushGold)) {
+        return { score: 620, policy: "town.buy-spells-after-army-core" };
+      }
+      return { score: 250, policy: "town.skip-spell-buy-fund-army" };
+    }
+    case "MAGIC_UNIVERSITY_ACTION": {
+      const phase = armyDevelopmentProfile(state, observation.playerId).phase;
+      const target = developmentResourceTargets(state, observation.playerId);
+      const flushGold =
+        playerGold(state, observation.playerId) >= target.gold + 4;
       return {
-        score:
-          armyDevelopmentProfile(state, observation.playerId).phase ===
-          "improve-army"
-            ? 620
-            : 250,
-        policy: "town.buy-spells-after-army-core",
-      };
-    case "MAGIC_UNIVERSITY_ACTION":
-      return {
-        score:
-          armyDevelopmentProfile(state, observation.playerId).phase ===
-          "improve-army"
-            ? 615
-            : 290,
+        score: phase === "improve-army" && flushGold ? 615 : 290,
         policy: "town.use-magic-university-after-core",
       };
+    }
     case "BLACKSMITH_ACTION":
       return {
         score:
