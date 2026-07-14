@@ -14,7 +14,11 @@ import {
   developmentResourceTargets,
 } from "./development";
 import { collectMapObjectives } from "./map-navigation";
-import { unitRemainingHealth, unitThreatValue } from "./score";
+import {
+  livingEnemyUnits,
+  unitRemainingHealth,
+  unitThreatValue,
+} from "./score";
 import type { ComputerObservation } from "./types";
 
 /**
@@ -101,6 +105,13 @@ const COMBAT_DEBUFF_EFFECTS = new Set<EffectDefinition["type"]>([
   "TELEPORT_UNIT",
   "MOVE_UNIT_ADJACENT",
   "REMOVE_OBSTACLE",
+]);
+
+/** Debuffs that deny a whole activation (or worse) — tempo, not a stat shave. */
+const TEMPO_DENIAL_EFFECTS = new Set<EffectDefinition["type"]>([
+  "PLACE_PARALYSIS",
+  "SKIP_ACTIVATION",
+  "BERSERK",
 ]);
 
 const SAVE_EFFECTS = new Set<EffectDefinition["type"]>([
@@ -240,8 +251,15 @@ function scoreDamageEffect(
 ): number {
   const defender = combatUnitFromTarget(observation, target);
   if (!defender) {
-    // Untargeted area damage still useful in combat.
-    return base + 20;
+    // Untargeted / space-targeted AREA damage hits several bodies at once:
+    // scale by how many living enemies are actually on the field so a crowded
+    // Inferno / Chain Lightning outranks a single-target chip, while a lone
+    // straggler keeps the old mild nudge.
+    const combat = observation.state.combat;
+    const enemies = combat
+      ? livingEnemyUnits(combat, observation.playerId).length
+      : 0;
+    return Math.min(860, base + 20 + Math.max(0, enemies - 1) * 15);
   }
   if (defender.controllerId === observation.playerId) {
     // Never prefer self-damage.
@@ -487,6 +505,22 @@ function scoreEffect(
   }
 
   if (COMBAT_DEBUFF_EFFECTS.has(effect.type)) {
+    // Action-denial is tempo, not just a stat shave: stealing a whole
+    // activation (Blind's Paralysis, activation skips) or turning a unit on
+    // its own side (Berserk) is worth far more against a scary enemy than a
+    // generic debuff — scale hard with the victim's threat so the most
+    // dangerous unit is shut down first. Removal (lethal damage ≥ 780) still
+    // outranks denial.
+    if (TEMPO_DENIAL_EFFECTS.has(effect.type)) {
+      const victim = combatUnitFromTarget(observation, target);
+      if (victim && victim.controllerId !== observation.playerId) {
+        return (
+          700 +
+          modeBonus(mode) +
+          Math.min(80, Math.round((unitThreatValue(victim) * 2) / 3))
+        );
+      }
+    }
     return scoreBuffTarget(observation, target, 650 + modeBonus(mode));
   }
 

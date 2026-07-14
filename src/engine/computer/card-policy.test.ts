@@ -6,6 +6,7 @@ import type {
   LegalAction,
   PlayerVisibleState,
 } from "../state";
+import { scoreCardAction } from "./card-policy";
 import { chooseComputerAction } from "./policy";
 import type { ComputerObservation } from "./types";
 
@@ -592,6 +593,77 @@ describe("card policy — crown (expert use) discipline", () => {
     const decision = chooseComputerAction(observed);
     expect(decision?.action.type).toBe("PLAY_REACTION");
     expect((decision?.action as { mode?: string }).mode).toBe("expert");
+  });
+});
+
+describe("card policy — area damage scales with the crowd", () => {
+  const caster = () => unit({ id: "A", controllerId: "p2", position: 8 });
+  const infernoCast = (): GameAction =>
+    ({
+      type: "CAST_SPELL",
+      playerId: "p2",
+      cardId: "spell.inferno",
+      target: { type: "space", position: 10 },
+    }) as GameAction;
+
+  it("a crowded field makes the AoE cast worth more than a lone straggler", () => {
+    const crowd = observation(
+      [
+        caster(),
+        unit({ id: "E1", position: 9 }),
+        unit({ id: "E2", position: 10 }),
+        unit({ id: "E3", position: 13 }),
+      ],
+      [],
+    );
+    const lone = observation([caster(), unit({ id: "E1", position: 9 })], []);
+    const crowded = scoreCardAction(crowd, infernoCast());
+    const single = scoreCardAction(lone, infernoCast());
+    // +15 per extra living enemy — remove the crowd scaling and the two
+    // scores tie at the flat area nudge.
+    expect(crowded!.score).toBeGreaterThan(single!.score);
+
+    // CONTROL: dead enemies do not count as crowd.
+    const corpses = observation(
+      [
+        caster(),
+        unit({ id: "E1", position: 9 }),
+        unit({ id: "E2", position: 10, damage: 5 }),
+        unit({ id: "E3", position: 13, damage: 5 }),
+      ],
+      [],
+    );
+    expect(scoreCardAction(corpses, infernoCast())!.score).toBe(single!.score);
+  });
+});
+
+describe("card policy — action-denial debuffs are tempo, not stat shaves", () => {
+  const caster = () => unit({ id: "A", controllerId: "p2", position: 8 });
+  const scary = () =>
+    unit({ id: "E1", attack: 9, maxHealth: 12, initiative: 8, position: 9 });
+  const castOn = (cardId: string, unitId: string): GameAction =>
+    ({
+      type: "CAST_SPELL",
+      playerId: "p2",
+      cardId,
+      target: { type: "unit", unitId },
+    }) as GameAction;
+
+  it("Blind's stolen activation outranks a plain stat shave on the same unit", () => {
+    const observed = observation([caster(), scary()], []);
+    const blind = scoreCardAction(observed, castOn("spell.blind", "E1"));
+    const curse = scoreCardAction(observed, castOn("spell.curse", "E1"));
+    // Without the tempo band Blind scores as a generic debuff (≈665) and
+    // loses to the stat play (≈690) — the denial must win on a scary target.
+    expect(blind!.score).toBeGreaterThan(curse!.score);
+  });
+
+  it("CONTROL: the denial hunts the scariest enemy, not chaff", () => {
+    const chaff = unit({ id: "E2", attack: 1, maxHealth: 2, initiative: 2, position: 12 });
+    const observed = observation([caster(), scary(), chaff], []);
+    const onScary = scoreCardAction(observed, castOn("spell.blind", "E1"));
+    const onChaff = scoreCardAction(observed, castOn("spell.blind", "E2"));
+    expect(onScary!.score).toBeGreaterThan(onChaff!.score);
   });
 });
 
