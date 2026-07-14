@@ -543,6 +543,10 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       }.`;
     case "GAME_OPTIONS_CHANGED":
       return event.message;
+    case "MAP_PRESET_TRIGGERED":
+      return event.message;
+    case "MAP_SECRET_FEATURE_FALLBACK":
+      return event.message;
     case "SETUP_SEAT_RESET":
       return event.message;
     case "PLAYER_COMBAT_STARTED":

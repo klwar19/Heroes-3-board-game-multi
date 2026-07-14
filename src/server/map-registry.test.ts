@@ -125,6 +125,65 @@ describe("sanitizeSharedMap", () => {
     expect(record!.tiles[2]).toMatchObject({ faceDown: false, tileDefId: "F1" });
   });
 
+  it("preserves a map preset (resources, timed events, victory) through sanitization", () => {
+    const record = sanitizeSharedMap(
+      {
+        id: "m",
+        tiles: [{ row: 1, col: 1, group: "near", faceDown: true }],
+        preset: {
+          victoryMode: "grail",
+          startingResources: { gold: 15, buildingMaterials: 2, valuables: 1 },
+          timedEvents: [
+            { round: 6, effect: { kind: "clear_visitable_cubes", locations: ["windmill"] } }
+          ],
+          notes: "Bring the Grail home",
+          // junk dropped:
+          badField: true
+        }
+      },
+      1
+    );
+    expect(record!.preset).toMatchObject({
+      victoryMode: "grail",
+      startingResources: { gold: 15, buildingMaterials: 2, valuables: 1 },
+      notes: "Bring the Grail home"
+    });
+    expect(record!.preset!.timedEvents).toHaveLength(1);
+    expect(record!.preset!.timedEvents![0]).toMatchObject({
+      round: 6,
+      effect: { kind: "clear_visitable_cubes", locations: ["windmill"] }
+    });
+  });
+
+  it("preserves a face-down secretFeature landmark filter through sanitization", () => {
+    // Feature secrets are the primary designer Secret UX — losing them on save
+    // would silently demote the slot to a pure random draw.
+    const record = sanitizeSharedMap(
+      {
+        id: "m",
+        tiles: [
+          { row: 1, col: 1, group: "near", faceDown: true, secretFeature: "gold_mine", rotation: 1 },
+          { row: 2, col: 2, group: "far", faceDown: true, secretFeature: "obelisk" },
+          // Face-up must never keep a secretFeature.
+          { row: 3, col: 3, group: "far", faceDown: false, tileDefId: "F1", secretFeature: "settlement" },
+          // Unknown feature ids are dropped.
+          { row: 4, col: 4, group: "near", faceDown: true, secretFeature: "unicorn_ranch" }
+        ]
+      },
+      1
+    );
+    expect(record!.tiles[0]).toMatchObject({
+      faceDown: true,
+      secretFeature: "gold_mine",
+      rotation: 1
+    });
+    expect(record!.tiles[1]).toMatchObject({ faceDown: true, secretFeature: "obelisk" });
+    expect(record!.tiles[2].secretFeature).toBeUndefined();
+    expect(record!.tiles[2]).toMatchObject({ faceDown: false, tileDefId: "F1" });
+    expect(record!.tiles[3].secretFeature).toBeUndefined();
+    expect(record!.tiles[3].faceDown).toBe(true);
+  });
+
   it("preserves a tile's Monolith/Whirlpool token through sanitization (malformed tokens dropped)", () => {
     // sanitizeTile rebuilds each plan from an allow-list, so the designed token
     // must be carried explicitly or a saved map silently loses its Monoliths/

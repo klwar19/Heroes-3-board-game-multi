@@ -272,9 +272,29 @@ export {
   resolveTournamentRules,
   tournamentRulesAllOn,
   UNIT_LEVELS,
+  isSecretTileFeature,
+  SECRET_TILE_FEATURE_IDS,
+  SECRET_TILE_FEATURES,
+  secretFeatureFullLabel,
+  secretFeatureLabel,
+  tileMatchesSecretFeature,
   validateCustomMapPlan
 } from "./adventure-setup";
 export type { AdventurePlayerConfig, AdventureSetupOptions, DraftPhaseInfo } from "./adventure-setup";
+export {
+  applyCustomMapPresetToOptions,
+  customMapPresetIsActive,
+  describeCustomMapPreset,
+  MAP_PRESET_BUILDING_OPTIONS,
+  MAP_PRESET_VICTORY_OPTIONS,
+  sanitizeCustomMapPreset,
+  secretFeatureDemandWarnings
+} from "./map-preset";
+export type {
+  CustomMapStartingBonus,
+  CustomMapTimedEffect,
+  CustomMapTimedEvent
+} from "./map-preset";
 export { getTileBorderSegments, hasInternalBorder } from "@/data/map/borders";
 export type { TileBorderSegment } from "@/data/map/borders";
 export { astrologersCardDefinitions, astrologersDeckCardIds } from "@/data/cards/astrologers";
@@ -482,8 +502,11 @@ export type {
   CombatStat,
   CombatState,
   CombatUnitState,
+  CustomMapPreset,
   CustomMapTilePlan,
   CustomStartingUnit,
+  SecretTileFeature,
+  VictoryMode,
   DamageKind,
   DeckState,
   DraftFormat,

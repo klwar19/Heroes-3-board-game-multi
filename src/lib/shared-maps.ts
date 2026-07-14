@@ -51,6 +51,8 @@ export type SaveSharedMapInput = {
   scenarioId: string;
   players: number;
   tiles: SharedMapRecord["tiles"];
+  /** Optional map-only scenario conditions. */
+  preset?: SharedMapRecord["preset"];
   createdByClientId?: string | null;
   createdByName?: string | null;
 };

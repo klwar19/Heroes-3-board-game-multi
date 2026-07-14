@@ -4,9 +4,12 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowLeft, FilePlus2, Save, Trash2 } from "lucide-react";
 import { MapDesigner } from "@/components/adventure/map-designer";
+import { MapPresetEditor } from "@/components/adventure/map-preset-editor";
 import {
   scenarioDefinitions,
+  secretFeatureDemandWarnings,
   validateCustomMapPlan,
+  type CustomMapPreset,
   type CustomMapTilePlan
 } from "@/engine";
 import { clampMapPlayers, MAX_MAP_PLAYERS, MIN_MAP_PLAYERS, newSharedMapId } from "@/server/map-registry";
@@ -29,6 +32,7 @@ export default function MapDesignerPage() {
   const [saved, setSaved] = useState<SharedMapRecord[]>([]);
   const [scenarioId, setScenarioId] = useState("skirmish");
   const [tiles, setTiles] = useState<CustomMapTilePlan[]>([]);
+  const [preset, setPreset] = useState<CustomMapPreset | undefined>(undefined);
   const [name, setName] = useState("My map");
   const [players, setPlayers] = useState(2);
   const [currentId, setCurrentId] = useState<string | null>(null);
@@ -58,6 +62,7 @@ export default function MapDesignerPage() {
     () => (scenario ? validateCustomMapPlan(tiles, scenario).problems : []),
     [tiles, scenario]
   );
+  const secretWarnings = useMemo(() => secretFeatureDemandWarnings(tiles), [tiles]);
 
   // Seat counts this scenario can open (skirmish 2–4, the symmetric duels 2).
   const playerCounts = useMemo(() => {
@@ -82,6 +87,7 @@ export default function MapDesignerPage() {
   const startNew = () => {
     setCurrentId(null);
     setTiles([]);
+    setPreset(undefined);
     setName("My map");
     setPlayers(clampMapPlayers(scenarioId, players));
     setSaveError(null);
@@ -91,6 +97,7 @@ export default function MapDesignerPage() {
     setCurrentId(record.id);
     setScenarioId(scenarioDefinitions[record.scenarioId] ? record.scenarioId : "skirmish");
     setTiles(record.tiles);
+    setPreset(record.preset);
     setName(record.name);
     setPlayers(clampMapPlayers(record.scenarioId, record.players));
     setSaveError(null);
@@ -107,6 +114,7 @@ export default function MapDesignerPage() {
       scenarioId,
       players: clampMapPlayers(scenarioId, players),
       tiles,
+      ...(preset ? { preset } : {}),
       createdByClientId: getClientId(),
       createdByName: getDisplayName() || null
     });
@@ -218,11 +226,23 @@ export default function MapDesignerPage() {
             </div>
           ) : null}
 
+          {secretWarnings.length > 0 ? (
+            <div className="designerProblems designerWarnings" aria-label="Secret feature warnings" role="status">
+              <strong>Secret landmarks may fall back to random in game:</strong>
+              {secretWarnings.map((warning) => (
+                <small key={warning}>{warning}</small>
+              ))}
+            </div>
+          ) : null}
+
           <MapDesigner customMap={tiles} onChange={setTiles} scenarioId={scenarioId} />
           <small className="optionHint">
             {tiles.length} tile{tiles.length === 1 ? "" : "s"} placed · opens {players} seat{players === 1 ? "" : "s"} ·
-            face-down tiles draw randomly from their Far/Near/Center pool when the adventure starts.
+            face-down Secret landmarks draw a random matching tile from their pool when the adventure starts (if none
+            match, pure random — players are notified).
           </small>
+
+          <MapPresetEditor onChange={setPreset} preset={preset} />
         </section>
 
         <aside className="designerSaved" aria-label="Saved maps">
@@ -239,6 +259,7 @@ export default function MapDesignerPage() {
                   <small>
                     {scenarioDefinitions[record.scenarioId]?.name ?? record.scenarioId} · {record.players}P ·{" "}
                     {record.tiles.length} tile{record.tiles.length === 1 ? "" : "s"}
+                    {record.preset ? " · has conditions" : ""}
                     {record.createdByName ? ` · by ${record.createdByName}` : ""}
                   </small>
                 </button>

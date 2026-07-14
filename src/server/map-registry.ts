@@ -1,4 +1,9 @@
-import { scenarioDefinitions, type CustomMapTilePlan } from "@/engine";
+import {
+  sanitizeCustomMapPreset,
+  scenarioDefinitions,
+  type CustomMapPreset,
+  type CustomMapTilePlan
+} from "@/engine";
 
 /**
  * Pure, isomorphic shared-map catalog logic — the single source of truth for the
@@ -46,6 +51,12 @@ export type SharedMapRecord = {
   scenarioId: string;
   players: number;
   tiles: CustomMapTilePlan[];
+  /**
+   * Optional map-only scenario conditions (resources, army, buildings, timed
+   * events, victory preset, designer notes). Applied when the lobby picks this
+   * map. Absent on older saves = pure tile layout.
+   */
+  preset?: CustomMapPreset;
   /** Stable client id of whoever last saved it (attribution only). */
   createdByClientId: string | null;
   /** Display name of whoever last saved it (attribution only). */
@@ -114,12 +125,30 @@ function sanitizeTile(tile: unknown): CustomMapTilePlan | null {
             : {})
         }
       : undefined;
+  // Secret landmark filter (face-down only). Exact tileDefId pin still wins
+  // at setup if both are present; sanitize keeps both so old maps round-trip.
+  const SECRET_FEATURES = new Set([
+    "gold_mine",
+    "valuables_mine",
+    "materials_mine",
+    "any_mine",
+    "obelisk",
+    "settlement",
+    "town",
+    "objective"
+  ]);
+  const secretFeature =
+    typeof candidate.secretFeature === "string" && SECRET_FEATURES.has(candidate.secretFeature)
+      ? (candidate.secretFeature as CustomMapTilePlan["secretFeature"])
+      : undefined;
+
   return {
     row: candidate.row as number,
     col: candidate.col as number,
     group: candidate.group as CustomMapTilePlan["group"],
     faceDown: Boolean(candidate.faceDown),
     ...(typeof candidate.tileDefId === "string" ? { tileDefId: candidate.tileDefId } : {}),
+    ...(secretFeature && Boolean(candidate.faceDown) ? { secretFeature } : {}),
     ...(Number.isInteger(candidate.rotation) ? { rotation: (((candidate.rotation as number) % 6) + 6) % 6 } : {}),
     ...(candidate.seaBand === "iv-v" || candidate.seaBand === "vi-vii" ? { seaBand: candidate.seaBand } : {}),
     ...(candidate.subBand === "iv-v" || candidate.subBand === "vi-vii" ? { subBand: candidate.subBand } : {}),
@@ -151,12 +180,14 @@ export function sanitizeSharedMap(input: unknown, now: number = Date.now()): Sha
     .filter((tile): tile is CustomMapTilePlan => tile !== null);
   const name = (typeof candidate.name === "string" ? candidate.name : "").trim().slice(0, MAX_MAP_NAME_LENGTH);
   const id = typeof candidate.id === "string" && candidate.id.length > 0 ? candidate.id : newSharedMapId();
+  const preset = sanitizeCustomMapPreset(candidate.preset);
   return {
     id,
     name: name.length > 0 ? name : "Unnamed map",
     scenarioId,
     players: clampMapPlayers(scenarioId, candidate.players),
     tiles,
+    ...(preset ? { preset } : {}),
     createdByClientId:
       typeof candidate.createdByClientId === "string" ? candidate.createdByClientId.slice(0, 64) : null,
     createdByName: typeof candidate.createdByName === "string" ? candidate.createdByName.slice(0, 40) : null,
