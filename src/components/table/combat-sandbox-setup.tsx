@@ -137,6 +137,28 @@ function SeatEditor({
   const patch = (next: Partial<CombatSandboxSeatConfig>) =>
     onAction({ type: "SANDBOX_CONFIGURE_SEAT", playerId: actorId, seatId, ...next });
 
+  const pickRandom = <T,>(items: readonly T[]): T | undefined =>
+    items.length ? items[Math.floor(Math.random() * items.length)] : undefined;
+
+  // Roll a random faction AND a random hero of that faction together (the engine
+  // would otherwise pick that faction's FIRST hero — this makes both random).
+  const randomizeFaction = () => {
+    const faction = pickRandom(PLAYABLE_FACTIONS);
+    if (!faction) {
+      return;
+    }
+    const hero = pickRandom(heroesForFaction(faction.id));
+    patch({ factionId: faction.id, ...(hero ? { heroDefId: hero.id } : {}) });
+  };
+
+  // Roll a random hero within the seat's CURRENT faction.
+  const randomizeHero = () => {
+    const hero = pickRandom(heroesForFaction(seat.factionId));
+    if (hero) {
+      patch({ heroDefId: hero.id });
+    }
+  };
+
   const addUnit = (unitDefId: string, side: CombatSandboxUnitPick["side"]) => {
     if (seat.units.length >= unitLimit) {
       return;
@@ -173,32 +195,54 @@ function SeatEditor({
 
       <div className="sandboxField">
         <label htmlFor={`${seatId}-faction`}>Faction</label>
-        <select
-          id={`${seatId}-faction`}
-          value={seat.factionId}
-          onChange={(event) => patch({ factionId: event.target.value as FactionId })}
-        >
-          {PLAYABLE_FACTIONS.map((faction) => (
-            <option key={faction.id} value={faction.id}>
-              {faction.name}
-            </option>
-          ))}
-        </select>
+        <div className="sandboxRandomRow">
+          <select
+            id={`${seatId}-faction`}
+            value={seat.factionId}
+            onChange={(event) => patch({ factionId: event.target.value as FactionId })}
+          >
+            {PLAYABLE_FACTIONS.map((faction) => (
+              <option key={faction.id} value={faction.id}>
+                {faction.name}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className="sandboxRandomButton"
+            onClick={randomizeFaction}
+            title="Pick a random faction and hero"
+            aria-label={`Random faction and hero for ${seatId === "p1" ? "attacker" : "defender"}`}
+          >
+            🎲 Random
+          </button>
+        </div>
       </div>
 
       <div className="sandboxField">
         <label htmlFor={`${seatId}-hero`}>Hero</label>
-        <select
-          id={`${seatId}-hero`}
-          value={seat.heroDefId}
-          onChange={(event) => patch({ heroDefId: event.target.value })}
-        >
-          {heroes.map((hero) => (
-            <option key={hero.id} value={hero.id}>
-              {hero.name} ({hero.class})
-            </option>
-          ))}
-        </select>
+        <div className="sandboxRandomRow">
+          <select
+            id={`${seatId}-hero`}
+            value={seat.heroDefId}
+            onChange={(event) => patch({ heroDefId: event.target.value })}
+          >
+            {heroes.map((hero) => (
+              <option key={hero.id} value={hero.id}>
+                {hero.name} ({hero.class})
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className="sandboxRandomButton"
+            onClick={randomizeHero}
+            title="Pick a random hero of this faction"
+            aria-label={`Random hero for ${seatId === "p1" ? "attacker" : "defender"}`}
+          >
+            🎲 Random
+          </button>
+        </div>
       </div>
 
       <div className="sandboxFieldRow">

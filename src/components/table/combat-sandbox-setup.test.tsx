@@ -68,6 +68,44 @@ describe("CombatSandboxSetupScreen", () => {
     );
   });
 
+  it("rolls a random faction AND hero (both set, hero belongs to that faction)", async () => {
+    const { coreHeroDefinitions } = await import("@/data/factions/core");
+    const state = createCombatSandboxLobbyState("ui-random-faction");
+    const onAction = vi.fn();
+    render(<CombatSandboxSetupScreen onAction={onAction} state={state} viewerPlayerId="p1" />);
+
+    fireEvent.click(screen.getByRole("button", { name: /random faction and hero for attacker/i }));
+
+    const call = onAction.mock.calls.find(
+      ([action]) => action.type === "SANDBOX_CONFIGURE_SEAT" && action.seatId === "p1" && action.factionId
+    );
+    expect(call, "a faction+hero configure action fired").toBeTruthy();
+    const action = call![0];
+    // Both faction and hero are set, and the hero really belongs to that faction
+    // (so the engine's default-first-hero pick is genuinely overridden at random).
+    expect(action.factionId).toBeTruthy();
+    expect(action.heroDefId).toBeTruthy();
+    expect(coreHeroDefinitions[action.heroDefId].faction).toBe(action.factionId);
+  });
+
+  it("rolls a random hero within the seat's current faction", async () => {
+    const { coreHeroDefinitions } = await import("@/data/factions/core");
+    const state = createCombatSandboxLobbyState("ui-random-hero");
+    const currentFaction = state.combatSandboxSetup!.seats.p1.factionId;
+    const onAction = vi.fn();
+    render(<CombatSandboxSetupScreen onAction={onAction} state={state} viewerPlayerId="p1" />);
+
+    fireEvent.click(screen.getByRole("button", { name: /random hero for attacker/i }));
+
+    const call = onAction.mock.calls.find(
+      ([action]) => action.type === "SANDBOX_CONFIGURE_SEAT" && action.seatId === "p1" && action.heroDefId
+    );
+    expect(call, "a hero configure action fired").toBeTruthy();
+    const action = call![0];
+    expect(action.factionId).toBeUndefined(); // faction unchanged — hero only
+    expect(coreHeroDefinitions[action.heroDefId].faction).toBe(currentFaction);
+  });
+
   it("engine begin after UI-shaped options opens combat-setup deployment", () => {
     let state = createCombatSandboxLobbyState("ui-roundtrip");
     // Mimic the actions the screen fires.

@@ -18,10 +18,25 @@ import { roomDisplayName, type GameMode, type GameState, type RoomMembershipStat
  */
 
 /**
- * Empty rooms idle past this are pruned from the directory (store + edge).
- * One day of no members + no directory activity → gone from multiplayer lobby.
+ * A room idle past this (no activity of any kind) is pruned from the directory
+ * (store + edge). The clock runs on `updatedAt`, which every action refreshes,
+ * so the 24h counts from the LAST activity — NOT from when the room was created
+ * — and any fresh activity resets it (a room can come back to life). Applies
+ * whether or not seated players linger: an abandoned game with members who never
+ * return still ages out one day after its last action.
  */
 export const STALE_ROOM_TTL_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * How stale the lobby's `updatedAt` for a still-active room may get before the
+ * room re-reports itself. The room party's report is otherwise gated on the
+ * directory SIGNATURE (which excludes `updatedAt`, so ordinary gameplay does not
+ * re-report), but with the idle-prune above keyed on `updatedAt` an actively-
+ * played game must keep its stamp fresh or it would be pruned mid-game. Re-
+ * reporting at most once per this interval keeps the stamp within an hour of
+ * real activity — far inside the 24h TTL — without hammering the lobby.
+ */
+export const LOBBY_ACTIVITY_REFRESH_MS = 60 * 60 * 1000;
 
 /**
  * The fixed Durable Object id of the single lobby/registry instance. Game rooms
@@ -224,16 +239,50 @@ export function viewerCanClose(record: LobbyRoomRecord, viewerClientId?: string)
   return true;
 }
 
-/** True when nobody is a member AND the room has been idle past the TTL. */
+/**
+ * True when the room has been idle (no activity) past the TTL — whether or not
+ * seated players still linger. `updatedAt` is refreshed by every action (and,
+ * on the edge, by the throttled activity re-report), so this counts from the
+ * LAST activity, not from creation, and any fresh action resets it. An
+ * unparseable stamp is treated as fresh (never prune on bad data).
+ */
 export function isStaleRecord(record: LobbyRoomRecord, now: number = Date.now()): boolean {
-  if (record.memberCount > 0) {
-    return false;
-  }
   const updatedMs = Date.parse(record.updatedAt);
   if (Number.isNaN(updatedMs)) {
     return false;
   }
   return now - updatedMs > STALE_ROOM_TTL_MS;
+}
+
+/**
+ * Whether the room party should (re-)report itself to the lobby directory now.
+ * Reports when a directory-relevant field changed (`signature`) OR when the
+ * last report's `updatedAt` stamp has aged past {@link LOBBY_ACTIVITY_REFRESH_MS}
+ * while the room is still active — so an actively-played game keeps a fresh
+ * stamp (never idle-pruned mid-game) without re-reporting on every action.
+ * `lastReportedAt` is the ISO stamp last sent (null = never reported yet).
+ */
+export function lobbyReportIsDue(
+  lastSignature: string | null,
+  currentSignature: string,
+  lastReportedAt: string | null,
+  currentUpdatedAt: string,
+  now: number = Date.now()
+): boolean {
+  if (lastSignature !== currentSignature) {
+    return true;
+  }
+  if (!lastReportedAt) {
+    return true;
+  }
+  const lastMs = Date.parse(lastReportedAt);
+  const currentMs = Date.parse(currentUpdatedAt);
+  if (Number.isNaN(lastMs) || Number.isNaN(currentMs)) {
+    return false;
+  }
+  // Refresh only while the room is genuinely being used (its stamp advanced)
+  // and that advance has crossed the refresh interval.
+  return currentMs - lastMs >= LOBBY_ACTIVITY_REFRESH_MS && currentMs <= now;
 }
 
 /** Projects a stored record into the per-viewer directory row (adds canClose). */
