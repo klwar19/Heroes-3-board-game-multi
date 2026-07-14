@@ -135,6 +135,107 @@ describe("combat policy — attack target selection", () => {
   });
 });
 
+describe("combat policy — kill enemy shooters first", () => {
+  it("removes the lower-threat SHOOTER over a scarier melee target", () => {
+    // Attacker (att 10) kills either. The ground E1 is the bigger raw threat
+    // (att 7 → threat 29) than the ranged E2 (att 4 → threat 26+6): without the
+    // explicit shooter bonus the threat-scaled lethal quality picks E1; the
+    // shooter-first rule flips the removal onto the ranged unit.
+    const attacker = unit({ id: "A", controllerId: "p2", attack: 10, position: 8 });
+    const melee = unit({ id: "E1", attack: 7, defense: 0, maxHealth: 3, position: 9 });
+    const shooter = unit({
+      id: "E2", type: "ranged", attack: 4, defense: 0, maxHealth: 3, position: 12,
+    });
+
+    const decision = chooseComputerAction(
+      observation([attacker, melee, shooter], [attackOn("A", "E1"), attackOn("A", "E2")]),
+    );
+    expect((decision?.action as { defenderId: string }).defenderId).toBe("E2");
+
+    // CONTROL: swap which unit is the shooter and the pick follows the TYPE,
+    // not the unit id or stats.
+    const meleeSwapped = unit({
+      id: "E1", type: "ranged", attack: 7, defense: 0, maxHealth: 3, position: 9,
+    });
+    const shooterSwapped = unit({
+      id: "E2", attack: 4, defense: 0, maxHealth: 3, position: 12,
+    });
+    const swapped = chooseComputerAction(
+      observation(
+        [attacker, meleeSwapped, shooterSwapped],
+        [attackOn("A", "E1"), attackOn("A", "E2")],
+      ),
+    );
+    expect((swapped?.action as { defenderId: string }).defenderId).toBe("E1");
+  });
+
+  it("prefers chipping the shooter when neither hit is lethal", () => {
+    // Neither enemy dies (both def 2, hp 10) and neither can retaliate this
+    // round. The ground E1 carries the higher threat (att 8 vs att 4), yet the
+    // ranged E2 is the better chip target under the shooter-first rule.
+    const attacker = unit({ id: "A", controllerId: "p2", attack: 5, defense: 2, position: 8 });
+    const melee = unit({
+      id: "E1", attack: 8, defense: 2, maxHealth: 10, position: 9, retaliatedThisRound: true,
+    });
+    const shooter = unit({
+      id: "E2", type: "ranged", attack: 4, defense: 2, maxHealth: 10, position: 7,
+      retaliatedThisRound: true,
+    });
+
+    const decision = chooseComputerAction(
+      observation([attacker, melee, shooter], [attackOn("A", "E1"), attackOn("A", "E2")]),
+    );
+    expect((decision?.action as { defenderId: string }).defenderId).toBe("E2");
+  });
+});
+
+describe("combat policy — refuse a value-losing trade", () => {
+  // A fragile high-value attacker (att 7, hp 3, threat 32) can only chip the
+  // durable defender (att 5/def 5/hp 14, threat 31) for 2 of 14 while the
+  // retaliation (5) kills it outright — a losing trade for the better unit.
+  const keyUnit = () =>
+    unit({
+      id: "A", controllerId: "p2", attack: 7, defense: 0, maxHealth: 3,
+      initiative: 8, position: 8,
+    });
+  const wall = () =>
+    unit({
+      id: "E", attack: 5, defense: 5, maxHealth: 14, initiative: 2, position: 9,
+    });
+
+  it("defends the more valuable unit instead of dying for a chip", () => {
+    const decision = chooseComputerAction(
+      observation([keyUnit(), wall()], [attackOn("A", "E"), defend("A")]),
+    );
+    expect(decision?.action.type).toBe("DEFEND_UNIT");
+  });
+
+  it("CONTROL: survivable retaliation keeps the strike", () => {
+    // Same chip, but the attacker survives the counter (hp 6 > 5) — trade on.
+    const sturdy = unit({
+      id: "A", controllerId: "p2", attack: 7, defense: 0, maxHealth: 6,
+      initiative: 8, position: 8,
+    });
+    const decision = chooseComputerAction(
+      observation([sturdy, wall()], [attackOn("A", "E"), defend("A")]),
+    );
+    expect(decision?.action.type).toBe("ATTACK_UNIT");
+  });
+
+  it("CONTROL: a unit NOT worth more than its target still trades", () => {
+    // Identical lethal retaliation + small chip, but the attacker (init 1 →
+    // threat 25) is no longer more valuable than the defender (31) — trade on.
+    const chaff = unit({
+      id: "A", controllerId: "p2", attack: 7, defense: 0, maxHealth: 3,
+      initiative: 1, position: 8,
+    });
+    const decision = chooseComputerAction(
+      observation([chaff, wall()], [attackOn("A", "E"), defend("A")]),
+    );
+    expect(decision?.action.type).toBe("ATTACK_UNIT");
+  });
+});
+
 describe("combat policy — defend the high-value threatened unit", () => {
   // A (att 5 vs def 6 → 0 damage) pokes for nothing while E's retaliation
   // (9 − 2 = 7) kills it outright; A's threat value (26) is worth keeping.
