@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { allTileDefinitions } from "@/data/map/tiles";
-import { locationDefinitions } from "@/data/map/locations";
 import { coreFactionDefinitions } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { createAdventureGameState } from "../adventure-setup";
