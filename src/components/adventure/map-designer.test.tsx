@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, within } from "@testing-library/react";
-import { MapDesigner } from "./map-designer";
+import { MapDesigner, planBackArt, planBackLabel } from "./map-designer";
 import { tileLatticeNeighbors, type CustomMapTilePlan } from "@/engine";
 
 afterEach(cleanup);
@@ -93,7 +93,7 @@ describe("MapDesigner — face-down secret pins", () => {
 
   it("shows an exact secret pin's tile id on a face-down plan (designer-only)", () => {
     // A face-down slot with tileDefId is a predetermined exact secret — the
-    // designer sees the pin (🔒 + id); players never use this view.
+    // designer sees the pin (🔒 + id) on the printed BACK (same art players see).
     const container = renderDesigner([
       { row: town.row, col: town.col, group: "starting", faceDown: false },
       {
@@ -113,12 +113,8 @@ describe("MapDesigner — face-down secret pins", () => {
       labels.some((text) => text.includes("N3") && text.includes("🔒")),
       `secret pin label shown, got: ${labels.join(" | ")}`
     ).toBe(true);
-    // The real tile art is drawn for the designer (not only the face-down back).
-    expect(
-      container.querySelector('image[href*="N3"], image[href*="n3"]') ||
-        container.querySelector(".designerHexPlan.secret"),
-      "secret pin marked on the board"
-    ).toBeTruthy();
+    // Face-down always uses the printed near back, not the face-up tile scan.
+    expect(container.querySelector('image[href*="back-near"]'), "near back art").toBeTruthy();
     expect(container.querySelector(".designerHexPlan.secret"), "secret class on hexes").toBeTruthy();
   });
 
@@ -143,10 +139,10 @@ describe("MapDesigner — face-down secret pins", () => {
     expect(container.querySelector(".designerHexPlan.secret"), "secret class").toBeTruthy();
     expect(container.querySelector(".designerHexPlan.featureSecret"), "feature secret class").toBeTruthy();
     // Feature secrets keep the face-down back — no specific tile art yet.
-    expect(container.querySelector('image[href*="N3"]')).toBeNull();
+    expect(container.querySelector('image[href*="back-near"]'), "near back art").toBeTruthy();
   });
 
-  it("leaves a pure-random face-down slot labelled by pool, without a secret badge", () => {
+  it("draws pure-random face-down slots with the printed back only — no II–III text overlay", () => {
     const container = renderDesigner([
       { row: town.row, col: town.col, group: "starting", faceDown: false },
       { row: spots[0].row, col: spots[0].col, group: "near", faceDown: true }
@@ -156,7 +152,73 @@ describe("MapDesigner — face-down secret pins", () => {
     );
     expect(labels.some((text) => text.includes("🔒"))).toBe(false);
     expect(container.querySelector(".designerHexPlan.secret")).toBeNull();
-    expect(labels.some((text) => /Ⅳ–Ⅴ|IV–V|Near/i.test(text) || text.includes("Ⅳ"))).toBe(true);
+    // Numeral lives ON the printed back graphic — no redundant text box.
+    expect(labels.some((text) => /Ⅳ–Ⅴ|II–III|Ⅱ–Ⅲ|Near|Sea|Underground/i.test(text))).toBe(false);
+    expect(container.querySelector('image[href*="back-near"]'), "near back art on board").toBeTruthy();
+  });
+
+  it("assigns the real Ⅵ–Ⅶ sea and underground backs (not the Ⅳ–Ⅴ art)", () => {
+    const seaSpot = spots[0];
+    const subSpot = spots[1] ?? tileLatticeNeighbors(town)[1];
+    const container = renderDesigner([
+      { row: town.row, col: town.col, group: "starting", faceDown: false },
+      {
+        row: seaSpot.row,
+        col: seaSpot.col,
+        group: "sea",
+        faceDown: true,
+        seaBand: "vi-vii"
+      },
+      {
+        row: subSpot.row,
+        col: subSpot.col,
+        group: "subterranean",
+        faceDown: true,
+        subBand: "vi-vii"
+      }
+    ]);
+    expect(
+      container.querySelector('image[href*="back-sea-vi-vii"]'),
+      "sea Ⅵ–Ⅶ printed back"
+    ).toBeTruthy();
+    expect(
+      container.querySelector('image[href*="back-subterranean-vi-vii"]'),
+      "underground Ⅵ–Ⅶ printed back"
+    ).toBeTruthy();
+    // CONTROL: the weaker band backs must not be used for these Ⅵ–Ⅶ plans.
+    // (There is still a starting back, so we only assert the VI-VII keys exist.)
+    expect(planBackArt({ group: "sea", seaBand: "vi-vii" })).toContain("back-sea-vi-vii");
+    expect(planBackArt({ group: "subterranean", subBand: "vi-vii" })).toContain(
+      "back-subterranean-vi-vii"
+    );
+    expect(planBackArt({ group: "sea", seaBand: "iv-v" })).toContain("back-sea.webp");
+    expect(planBackLabel({ group: "center" })).toBe("Ⅵ–Ⅶ");
+  });
+
+  it("palette thumbs use band-correct backs for every supply type", () => {
+    const container = renderDesigner([]);
+    const thumbs = [...container.querySelectorAll(".paletteThumb")].map((node) =>
+      (node as HTMLElement).style.backgroundImage
+    );
+    // Eight palette entries: Town, Far, Near, Center, Sea×2, Underground×2.
+    expect(thumbs.length).toBe(8);
+    expect(thumbs.some((bg) => bg.includes("back-starting"))).toBe(true);
+    expect(thumbs.some((bg) => bg.includes("back-far"))).toBe(true);
+    expect(thumbs.some((bg) => bg.includes("back-near"))).toBe(true);
+    expect(thumbs.some((bg) => bg.includes("back-center"))).toBe(true);
+    expect(thumbs.some((bg) => bg.includes("back-sea-vi-vii"))).toBe(true);
+    expect(thumbs.some((bg) => bg.includes("back-subterranean-vi-vii"))).toBe(true);
+    // Sea/underground Ⅳ–Ⅴ use the un-suffixed backs (not the vi-vii ones only).
+    expect(thumbs.some((bg) => /back-sea\.webp|back-sea"/i.test(bg) || bg.includes("back-sea.webp"))).toBe(
+      true
+    );
+    expect(
+      thumbs.some(
+        (bg) =>
+          bg.includes("back-subterranean.webp") ||
+          (bg.includes("back-subterranean") && !bg.includes("vi-vii"))
+      )
+    ).toBe(true);
   });
 
   it("opens mode cards; Secret mode shows landmark feature cards", () => {

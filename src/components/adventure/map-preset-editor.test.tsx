@@ -41,4 +41,84 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Clear all conditions" }));
     expect(onChange).toHaveBeenLastCalledWith(undefined);
   });
+
+  it("timed events let the designer free-edit round, effect kind, and numeric params", () => {
+    const onChange = vi.fn();
+    const base: CustomMapPreset = {
+      timedEvents: [
+        {
+          round: 6,
+          effect: {
+            kind: "clear_visitable_cubes",
+            locations: ["windmill", "water_wheel", "mystical_garden"]
+          }
+        }
+      ]
+    };
+    const { rerender } = render(<MapPresetEditor preset={base} onChange={onChange} />);
+
+    // Round number is free-form.
+    fireEvent.change(screen.getByLabelText("Timed event 1 round"), { target: { value: "12" } });
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        timedEvents: [expect.objectContaining({ round: 12 })]
+      })
+    );
+
+    // Controlled component — re-render with the new round, then change kind.
+    const afterRound: CustomMapPreset = {
+      timedEvents: [{ round: 12, effect: base.timedEvents![0].effect }]
+    };
+    rerender(<MapPresetEditor preset={afterRound} onChange={onChange} />);
+    fireEvent.change(screen.getByLabelText("Timed event 1 effect type"), {
+      target: { value: "resources" }
+    });
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        timedEvents: [
+          expect.objectContaining({
+            round: 12,
+            effect: expect.objectContaining({ kind: "resources", gold: 3 })
+          })
+        ]
+      })
+    );
+
+    // Re-render with resources so the gold amount can be edited.
+    onChange.mockClear();
+    const withResources: CustomMapPreset = {
+      timedEvents: [
+        { round: 12, effect: { kind: "resources", gold: 3, buildingMaterials: 0, valuables: 0 } }
+      ]
+    };
+    rerender(<MapPresetEditor preset={withResources} onChange={onChange} />);
+    // Several "Gold" labels exist (start resources / income / timed); the timed
+    // one is prefilled with the event's amount (3).
+    const goldInput = screen
+      .getAllByLabelText("Gold")
+      .find((el) => (el as HTMLInputElement).value === "3") as HTMLInputElement;
+    expect(goldInput, "timed-event gold input").toBeTruthy();
+    fireEvent.change(goldInput, { target: { value: "9" } });
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        timedEvents: [
+          expect.objectContaining({
+            effect: expect.objectContaining({ kind: "resources", gold: 9 })
+          })
+        ]
+      })
+    );
+
+    // Add-event creates a freeform card (not a fixed template).
+    fireEvent.click(screen.getByRole("button", { name: "+ Add event" }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        timedEvents: expect.arrayContaining([
+          expect.objectContaining({ round: expect.any(Number), effect: expect.any(Object) })
+        ])
+      })
+    );
+    const last = onChange.mock.calls.at(-1)?.[0] as CustomMapPreset;
+    expect(last.timedEvents!.length).toBe(2);
+  });
 });

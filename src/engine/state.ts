@@ -8646,6 +8646,12 @@ export type CustomMapPreset = {
     | { kind: "search"; deck: "artifacts" | "spells" | "abilities"; count: number }
     | { kind: "morale"; amount: 1 | -1 }
   >;
+  /**
+   * One-shot (or multi-entry) events fired at the start of a given round.
+   * Mission-book style: designer picks the round AND the effect freely —
+   * resource amounts, search size/deck, which locations to re-open, morale,
+   * bonus movement, treasure/resource dice, or a plain announcement.
+   */
   timedEvents?: Array<{
     round: number;
     effect:
@@ -8653,8 +8659,13 @@ export type CustomMapPreset = {
       | { kind: "search"; deck: "artifacts" | "spells" | "abilities"; count: number }
       | {
           kind: "clear_visitable_cubes";
+          /** Windmill also clears Prospector; Water Wheel also clears Derrick (Factory). */
           locations: ("windmill" | "water_wheel" | "mystical_garden")[];
         }
+      | { kind: "morale"; amount: 1 | -1 }
+      | { kind: "movement"; amount: number }
+      | { kind: "treasure_roll"; count: number }
+      | { kind: "resource_roll"; count: number }
       | { kind: "note"; text: string };
   }>;
   roundLimit?: number;
