@@ -166,6 +166,15 @@ export const HOUSE_RULES: HouseRuleDef[] = [
     category: "polish",
     default: false,
     legacyDefault: false
+  },
+  {
+    id: "polish-unit-stacks",
+    label: "Purchasable Unit Stacks",
+    description:
+      "Polish tournament variant: at a Citadel, Pack units may buy tier-capped Stack layers. Stacked Groups gain +1 Attack and each layer absorbs one full Pack health bar.",
+    category: "polish",
+    default: false,
+    legacyDefault: false
   }
 ];
 

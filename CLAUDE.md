@@ -1278,12 +1278,26 @@ Added in `src/data/map/creature-banks.ts` (data, tested in
 is NOT done:
 
 **Implemented and engine-enforced (a test fails if removed):**
-- **Polish house-rules rollout — current limit:** only
-  `polish-bank-sizes` is implemented. `polish-spell-book` and
-  `polish-unit-stacks` remain plan-only and are intentionally absent from the
-  house-rule registry (no decorative toggles). Rolled bank sizes are default
-  OFF in both BINH and Legacy and are inert when the base `creatureBanks`
-  option is off; the lobby greys the toggle out in that case.
+- **Polish house-rules rollout — current limit:** `polish-bank-sizes` and
+  `polish-unit-stacks` are implemented. `polish-spell-book` remains plan-only
+  and is intentionally absent from the house-rule registry (no decorative
+  toggle). Both implemented Polish variants are default OFF in both BINH and
+  Legacy. Rolled bank sizes specifically are inert when the base
+  `creatureBanks` option is off; the lobby greys that toggle out in that case.
+- With `polish-unit-stacks` ON, a faction Pack card at its own Citadel may buy
+  persistent Stack layers with the Population flow. One Stack costs the sum of
+  that card's Few + Pack printed resources plus its tier number in gold; normal
+  recruit/reinforce discounts and the Freelancer's Guild substitution do not
+  apply. Caps are bronze 3 / silver 2 / gold 1. While at least one layer
+  remains the Group has exactly +1 Attack; lethal damage removes one full Pack
+  health layer and carries every excess point through additional layers. Rebirth
+  fires first, Creature Bank `stackToken` abilities remain isolated, Pack→Few
+  drops the layers, survivors sync back after combat, and keep-troops PvP keeps
+  the pre-combat investment. The town row, army panel, and combat card share the
+  generated `public/assets/ui/polish-unit-stacks-coin.webp` count badge. Covered
+  by `polish-unit-stacks.test.ts`, `town-recruit-shortcut.test.tsx`, and
+  `board.test.tsx`. Proactive computer economy scoring remains Phase 6; the
+  purchase is optional and opens no mandatory AI window.
 - With `polish-bank-sizes` ON, a bank-eligible reveal peeks the top TWO tokens
   (or one when the pile has one), rolls each candidate's size with seeded Attack
   dice, and offers A / B / leave. A player's first II-III opening rolls one die

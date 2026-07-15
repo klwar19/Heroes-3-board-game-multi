@@ -60,6 +60,7 @@ describe("house-rule resolver", () => {
       expect(houseRuleDefaultFor("legacy", def.id)).toBe(false);
     }
     expect(binh["polish-bank-sizes"], "Polish variants are opt-in under BINH too").toBe(false);
+    expect(binh["polish-unit-stacks"], "Polish variants are opt-in under BINH too").toBe(false);
   });
 
   it("lets explicit flags override defaults in BINH and soft Legacy", () => {

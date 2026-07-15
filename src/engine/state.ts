@@ -93,7 +93,10 @@ export type HouseRuleId =
   // Polish tournament variant: a bank-eligible tile reveals two face-up bank
   // candidates with independently rolled sizes I-IV. The discovering player
   // chooses one; its size replaces scenario difficulty for Stack-token rolls.
-  | "polish-bank-sizes";
+  | "polish-bank-sizes"
+  // Polish tournament variant: Pack army cards may buy persistent Stack layers
+  // at a Citadel. A Stack grants +1 Attack and absorbs one full Pack health bar.
+  | "polish-unit-stacks";
 
 /** Optional Wake of Gods modules. WOG is a BINH-family mod (not a game mode). */
 export type WogModOptions = {
@@ -3210,10 +3213,10 @@ export type GameAction =
       playerId: PlayerId;
     }
   | {
-      /** Population token: recruit and/or reinforce any number of units at once. */
+      /** Population token: recruit, reinforce, or buy Pack Stack layers. */
       type: "POPULATION_ACTION";
       playerId: PlayerId;
-      purchases: { kind: "recruit" | "reinforce"; unitDefId: string; armyUnitId?: string }[];
+      purchases: { kind: "recruit" | "reinforce" | "stack"; unitDefId: string; armyUnitId?: string }[];
     }
   | {
       /**
@@ -4903,6 +4906,26 @@ export type GameEvent =
       excessDamage: number;
     }
   | {
+      /** A player bought one persistent Polish Stack layer for a Pack card. */
+      id: string;
+      type: "ARMY_STACK_PURCHASED";
+      playerId: PlayerId;
+      armyUnitId: string;
+      unitDefId: string;
+      stacks: number;
+      cost: ResourceCost;
+    }
+  | {
+      /** A Polish Stack layer absorbed lethal damage in combat. */
+      id: string;
+      type: "ARMY_STACK_LOST";
+      unitId: UnitId;
+      playerId: PlayerId;
+      unitName: string;
+      remainingStacks: number;
+      excessDamage: number;
+    }
+  | {
       id: string;
       type: "GAME_OPTIONS_CHANGED";
       playerId: PlayerId;
@@ -5805,6 +5828,12 @@ export type ArmyUnitState = {
   permanentAttackBonus?: number;
   /** WOG Ghost: permanent Health gained from Soul Harvest, capped at +2. */
   permanentHealthBonus?: number;
+  /**
+   * Polish Unit Stacks: paid extra Group layers carried by a Pack card between
+   * combats. Bronze/Silver/Gold caps are 3/2/1. Absent on Few/Neutral cards and
+   * in games where the rule is off.
+   */
+  stacks?: number;
 };
 
 export type TownTokenState = {
@@ -6376,6 +6405,12 @@ export type CombatUnitState = {
   permanentAttackBonus?: number;
   /** WOG Ghost: persistent Soul Harvest Health mirrored from its army card. */
   permanentHealthBonus?: number;
+  /**
+   * Polish Unit Stacks mirrored from the backing Pack army card. Each remaining
+   * layer absorbs one full Pack health bar; deliberately separate from the
+   * Creature Bank defender's `stackToken`.
+   */
+  armyStacks?: number;
   /**
    * Fixed creature-bank guard (Dragon Utopia's dragons, the Cyclops
    * Stockpile's 2 golden Cyclopes): minted for this fight only, so it must

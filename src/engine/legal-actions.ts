@@ -143,6 +143,7 @@ import {
   wisdomSearchCount
 } from "./ruleset";
 import { houseRuleEnabled } from "./house-rules";
+import { polishArmyUnitCanBuyStack, polishUnitStackCost } from "./polish-unit-stacks";
 import type {
   AttackRerollSource,
   AttackRollMode,
@@ -7595,6 +7596,30 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
             }
           });
         }
+      }
+    }
+
+    // Polish Unit Stacks are an optional Population purchase at the player's
+    // own Citadel. They do not require a dwelling and use their exact printed
+    // Few + Pack + tier cost (no recruit discounts or resource substitution).
+    if (houseRuleEnabled(state, "polish-unit-stacks") && canReinforce) {
+      for (const target of player.army) {
+        if (!polishArmyUnitCanBuyStack(target)) {
+          continue;
+        }
+        const cost = polishUnitStackCost(target.unitDefId);
+        if (!cost || !playerHasResources(player, cost)) {
+          continue;
+        }
+        const unitName = coreUnitDefinitions[target.unitDefId]?.name ?? target.unitDefId;
+        actions.push({
+          label: `Add Stack to ${unitName}`,
+          action: {
+            type: "POPULATION_ACTION",
+            playerId,
+            purchases: [{ kind: "stack", unitDefId: target.unitDefId, armyUnitId: target.id }]
+          }
+        });
       }
     }
   }

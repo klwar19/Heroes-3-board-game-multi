@@ -365,6 +365,12 @@ function populationScore(
   observation: ComputerObservation,
   action: Extract<GameAction, { type: "POPULATION_ACTION" }>,
 ): number {
+  // Polish Unit Stack purchases are optional and never block play. Phase 6 owns
+  // their surplus-economy valuation; until then keep them below END_TURN so the
+  // generic recruit scorer cannot misread a Stack as a fresh Few body.
+  if (action.purchases.some((purchase) => purchase.kind === "stack")) {
+    return 275;
+  }
   const state = observation.state as unknown as GameState;
   const memory = memoryOf(observation);
   const player = state.players[observation.playerId];

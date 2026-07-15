@@ -3454,6 +3454,7 @@ export function processPendingVisit(state: GameState): void {
         const armyUnit = player?.army.find((candidate) => candidate.id === step.armyUnitId);
         if (player && armyUnit && armyUnit.side === "pack") {
           armyUnit.side = "few";
+          delete armyUnit.stacks;
           appendEvent(state, {
             type: "ARMY_UNIT_FLIPPED",
             playerId: visit.playerId,
@@ -7643,13 +7644,14 @@ export function makeCombatUnitFromArmy(
     transforms?: UnitTransformState[];
     permanentAttackBonus?: number;
     permanentHealthBonus?: number;
+    stacks?: number;
   },
   controllerId: PlayerId,
   unitId: UnitId,
   position: number,
   ruleset: GameRuleset = "legacy",
   /** Griffin/Marksman toggle overrides; falls back to the bundled mode default. */
-  overrides?: { griffinBuff?: boolean; marksmanBuff?: boolean }
+  overrides?: { griffinBuff?: boolean; marksmanBuff?: boolean; polishUnitStacks?: boolean }
 ): CombatUnitState | null {
   const def = coreUnitDefinitions[armyUnit.unitDefId];
   const printed = armyUnit.side === "few" ? def?.few : armyUnit.side === "pack" ? def?.pack : def?.neutral;
@@ -7662,6 +7664,8 @@ export function makeCombatUnitFromArmy(
   // folded into the unit's printed Attack every combat (start to end).
   const permanentAttackBonus = armyUnit.permanentAttackBonus ?? 0;
   const permanentHealthBonus = armyUnit.permanentHealthBonus ?? 0;
+  const armyStacks =
+    overrides?.polishUnitStacks && armyUnit.side === "pack" ? Math.max(0, Math.trunc(armyUnit.stacks ?? 0)) : 0;
 
   const unit: CombatUnitState = {
     id: unitId,
@@ -7671,7 +7675,7 @@ export function makeCombatUnitFromArmy(
     variant: armyUnit.side,
     grade: def.tier,
     type: side.type ?? def.type,
-    attack: side.attack + permanentAttackBonus,
+    attack: side.attack + permanentAttackBonus + (armyStacks > 0 ? 1 : 0),
     defense: side.defense,
     maxHealth: side.health + permanentHealthBonus,
     damage: 0,
@@ -7686,6 +7690,7 @@ export function makeCombatUnitFromArmy(
     armyUnitId: armyUnit.id,
     ...(permanentAttackBonus ? { permanentAttackBonus } : {}),
     ...(permanentHealthBonus ? { permanentHealthBonus } : {}),
+    ...(armyStacks ? { armyStacks } : {}),
     assets: {
       cardImage: side.cardImage,
       imageAlt: `${def.name} unit card`,
@@ -9401,6 +9406,7 @@ function queuePlagueFlip(state: GameState, playerId: PlayerId): void {
 
   if (packs.length === 1) {
     packs[0].side = "few";
+    delete packs[0].stacks;
     appendEvent(state, {
       type: "ARMY_UNIT_FLIPPED",
       playerId,

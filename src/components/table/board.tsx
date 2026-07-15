@@ -1302,6 +1302,15 @@ export function BattlefieldBoard({
                   {STACK_TOKEN_LABELS[unit.stackToken]}
                 </span>
               ) : null}
+              {(unit?.armyStacks ?? 0) > 0 ? (
+                <span
+                  className={`armyStackBadge combat tier-${unit?.grade ?? "bronze"} active`}
+                  title={`${unit!.armyStacks} Polish Unit Stack${unit!.armyStacks === 1 ? "" : "s"}: +1 Attack; each Stack absorbs one full Pack health bar.`}
+                >
+                  <img alt="" aria-hidden="true" src={assetUrl("/assets/ui/polish-unit-stacks-coin.webp")} />
+                  ×{unit!.armyStacks}
+                </span>
+              ) : null}
               {retaliationSpent ? (
                 <span
                   className="retaliationSpentBadge"
