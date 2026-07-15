@@ -1,5 +1,6 @@
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { getUnitSide } from "../adventure";
+import { commanderCastOf } from "../commanders";
 import {
   ATTACKER_BACKLINE,
   ATTACKER_FRONTLINE,
@@ -522,6 +523,79 @@ function moveUnitScore(
 }
 
 /**
+ * Score a WOG commander's activation cast (a `USE_UNIT_ABILITY` with the cast's
+ * ability and no board target yet — the target picker opens after and is scored
+ * by choice-policy's ability-target handler). The cast is FREE (the commander may
+ * still ATTACK afterwards) but LOCKS its MOVEMENT for the activation (engine
+ * rule): a marginal cast that strands a melee commander from a target it still
+ * needs to WALK to should lose to MOVE_AND_ATTACK, while a cast that swings the
+ * fight — a real heal, or an attack buff the commander can follow with an in-place
+ * strike — is preferred. `commanderCastAvailable` already guarantees a legal
+ * target exists, so no cast reaching here is wholly wasted.
+ */
+function commanderCastScore(
+  observation: ComputerObservation,
+  combat: CombatState,
+  unit: CombatUnitState,
+  cast: NonNullable<ReturnType<typeof commanderCastOf>>,
+): number {
+  const playerId = observation.playerId;
+  const enemies = livingEnemyUnits(combat, playerId);
+  const hasAdjacentEnemy = enemies.some((enemy) =>
+    isAdjacent(unit.position, enemy.position),
+  );
+  // A melee commander with no adjacent enemy must still WALK to fight; casting
+  // now forfeits that walk. A ranged commander, one already engaged, or one with
+  // nothing to reach pays no such price.
+  const strandsFromTarget =
+    enemies.length > 0 && !hasAdjacentEnemy && unit.type !== "ranged";
+
+  let base: number;
+  let swing = false;
+  switch (cast.effect.kind) {
+    case "heal":
+    case "heal-cleanse": {
+      // Offered only with a damaged friendly present (damagedOnly targeting).
+      // Value by the most-wounded ally — a big heal genuinely swings the fight.
+      const maxMissing = Object.values(combat.units).reduce(
+        (worst, other) =>
+          other.controllerId === playerId && unitRemainingHealth(other) > 0
+            ? Math.max(worst, other.maxHealth - unitRemainingHealth(other))
+            : worst,
+        0,
+      );
+      base = 600 + Math.min(60, maxMissing * 15);
+      swing = maxMissing >= 2;
+      break;
+    }
+    case "attack-buff":
+    case "precision":
+      // A pre-attack buff pays off when the commander can strike THIS activation
+      // (buff, then attack in place): with an adjacent enemy it is a clear swing.
+      base = hasAdjacentEnemy ? 640 : 560;
+      swing = hasAdjacentEnemy;
+      break;
+    case "initiative-shift":
+      // Haste an ally / slow an enemy — a solid tempo buff.
+      base = 575;
+      break;
+    case "fire-shield":
+    case "unlimited-retaliation":
+      // Defensive buffs — worth casting while the fight continues.
+      base = 560;
+      break;
+    default:
+      base = 550;
+  }
+  // Movement lock: a marginal cast that costs a NEEDED walk loses to a real
+  // strike / move-and-attack (620+). A swing cast still fires.
+  if (strandsFromTarget && !swing) {
+    base -= 130;
+  }
+  return base;
+}
+
+/**
  * Strategic scores for a computer's own combat activation. Returns null for any
  * action it does not specialize (tactics finish, end-activation…), delegating
  * those to the map/foundation layers unchanged.
@@ -570,7 +644,22 @@ export function scoreCombatAction(
     }
     case "MOVE_UNIT":
       return moveUnitScore(observation, action);
-    case "USE_UNIT_ABILITY":
+    case "USE_UNIT_ABILITY": {
+      // WOG commander activation cast (target picked after, no board target yet):
+      // score by whether the cast swings the fight, factoring the movement lock.
+      const actor = combat.units[action.unitId];
+      const cast = actor ? commanderCastOf(actor) : null;
+      if (
+        actor &&
+        cast &&
+        cast.abilityId === action.abilityId &&
+        action.target?.type === "none"
+      ) {
+        return {
+          score: commanderCastScore(observation, combat, actor, cast),
+          policy: "combat.commander-cast",
+        };
+      }
       // Prefer spending an activation ability over a plain defend when offered.
       // Targeted abilities that name a high-threat enemy score higher.
       if (action.target?.type === "unit") {
@@ -590,6 +679,7 @@ export function scoreCombatAction(
         }
       }
       return { score: 550, policy: "combat.use-ability" };
+    }
     case "SUMMON_DEMONS":
       return { score: 600, policy: "combat.summon-demons" };
     case "USE_GENIE_DECK_DRAW":

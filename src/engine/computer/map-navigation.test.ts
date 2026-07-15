@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { allTileDefinitions } from "@/data/map/tiles";
+import { locationDefinitions } from "@/data/map/locations";
 import { coreFactionDefinitions } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { createAdventureGameState } from "../adventure-setup";
@@ -1672,5 +1673,307 @@ describe("computer Far-tile rotation prefers the easiest entrance", () => {
     } finally {
       delete allTileDefinitions[testDefId];
     }
+  });
+});
+
+/**
+ * Navigation across TERRAIN the engine gates through `canCrossEdge` /
+ * `classifyHeroStep` — open water and the Surface↔Subterranean divide — plus the
+ * Monolith/Whirlpool teleport destination router and the Spell-Book stash. The
+ * AI delegates every crossing rule to the engine, so the objective-distance BFS
+ * already reaches sea and underground objectives; these pin that it does (and
+ * that a teleport/stash advances the plan), each with a CONTROL that fails if the
+ * wiring is removed.
+ */
+describe("navigation across sea / underground, teleport routing, Spell-Book stash", () => {
+  /** Clear every OTHER objective so a single hand-placed one is the primary. */
+  function neutralizeObjectives(state: GameState): void {
+    for (const field of Object.values(state.adventure!.fields)) {
+      if (field.difficulty) {
+        field.blackCube = true;
+        field.everFlagged = true;
+        delete field.difficulty;
+      }
+      // Bare mines / settlements → flag ours so they are not flaggable targets.
+      if (locationDefinitions[field.location]?.category === "flaggable") {
+        field.flagOwnerId = "p2";
+      }
+      // Visited visitables drop off the objective list.
+      if (locationDefinitions[field.location]?.category === "visitable") {
+        field.blackCube = true;
+      }
+    }
+    // No face-down tiles / far-tile supply ⇒ no "explore" doorways compete.
+    for (const tile of Object.values(state.adventure!.tiles)) {
+      tile.faceDown = false;
+    }
+    state.adventure!.farTilePool = [];
+    // Remove the enemy hero so no enemy-hero objective competes.
+    for (const other of Object.values(state.heroes)) {
+      if (other.controllerId !== "p2") other.spaceId = null;
+    }
+  }
+
+  /** Extend a corridor of fresh fields into open lattice, optionally water. */
+  function buildArm(
+    state: GameState,
+    root: MapSpaceId,
+    length: number,
+    water: boolean,
+  ): MapSpaceId[] {
+    const fields = state.adventure!.fields;
+    const template = fields[root];
+    let cursor = root;
+    const arm: MapSpaceId[] = [];
+    while (arm.length < length) {
+      const next = getAdjacentSpaceIds(cursor).find(
+        (id) => !fields[id] && !arm.includes(id),
+      );
+      expect(next, "arm should extend into open lattice").toBeDefined();
+      fields[next!] = {
+        ...template,
+        spaceId: next!,
+        location: "empty_field",
+        tileInstanceId: "tile_ghost_offmap",
+        flagOwnerId: null,
+        blackCube: false,
+        ...(water ? { terrain: "water" as const } : {}),
+      };
+      delete fields[next!].difficulty;
+      arm.push(next!);
+      cursor = next!;
+    }
+    return arm;
+  }
+
+  /** An open (unsealed) empty ring field on the hero's home tile. */
+  function homeDoorway(state: GameState, hero: HeroState): MapSpaceId {
+    const homeTileId = state.adventure!.fields[hero.spaceId!].tileInstanceId;
+    const doorway = Object.values(state.adventure!.fields).find(
+      (field) =>
+        field.tileInstanceId === homeTileId &&
+        field.slot !== 0 &&
+        field.location === "empty_field" &&
+        !isOuterEdgeSealed(state.adventure!, field),
+    );
+    expect(doorway, "home tile should have an open empty arc").toBeDefined();
+    return doorway!.spaceId;
+  }
+
+  it("routes the objective-distance field THROUGH open water to a sea objective", () => {
+    const state = game();
+    const hero = p2Hero(state);
+    hero.level = 1;
+    neutralizeObjectives(state);
+    const doorway = homeDoorway(state, hero);
+    // A water corridor off the land doorway, with a sea visitable at its end.
+    const arm = buildArm(state, doorway, 4, true);
+    const seaObj = arm[arm.length - 1];
+    state.adventure!.fields[seaObj].location = "hill_fort";
+    state.adventure!.fields[seaObj].blackCube = false;
+
+    // The BFS crosses the coastline with a clean decreasing gradient over water.
+    const df = objectiveDistanceField(state, hero, [
+      { spaceId: seaObj, kind: "visitable" },
+    ]);
+    expect(df.get(seaObj)).toBe(0);
+    expect(df.get(arm[arm.length - 2])).toBe(1);
+    expect(df.get(doorway)).toBe(arm.length); // land shore reaches across the sea
+    // The sea site is a real objective, and it is the primary the hero marches to.
+    expect(
+      collectMapObjectives(state, hero).some((o) => o.spaceId === seaObj),
+    ).toBe(true);
+    expect(primaryMapObjective(state, hero)?.spaceId).toBe(seaObj);
+  });
+
+  it("marches toward a sea objective — embarking scores as progress; CONTROL: a visited sea site does not", () => {
+    const state = game();
+    const hero = p2Hero(state);
+    hero.level = 1;
+    hero.movementPoints = 5;
+    neutralizeObjectives(state);
+    const doorway = homeDoorway(state, hero);
+    const arm = buildArm(state, doorway, 4, true);
+    const seaObj = arm[arm.length - 1];
+    state.adventure!.fields[seaObj].location = "hill_fort";
+    state.adventure!.fields[seaObj].blackCube = false;
+
+    // Stand the hero on the land shore; the step onto the first sea hex (embark)
+    // shrinks the walk to the sea objective, so it scores as real march progress.
+    hero.spaceId = doorway;
+    const embark = moveScoreTo(state, hero, arm[0]);
+    expect(embark).toBeGreaterThan(500);
+
+    // CONTROL: the sea site is already visited (black cube) → no objective across
+    // the water, so the identical embark step is no longer progress.
+    state.adventure!.fields[seaObj].blackCube = true;
+    const embarkNoObjective = moveScoreTo(state, hero, arm[0]);
+    expect(embark).toBeGreaterThan(embarkNoObjective + 100);
+  });
+
+  it("marches to an underground objective THROUGH a Subterranean Gate; CONTROL: an unlinked gate is unreachable", () => {
+    const state = game();
+    const hero = p2Hero(state);
+    hero.level = 1;
+    neutralizeObjectives(state);
+    const fields = state.adventure!.fields;
+    const tiles = state.adventure!.tiles;
+    const doorway = homeDoorway(state, hero);
+    // Surface gate on the home (surface) tile, at an open outward cell.
+    const surfaceGate = getAdjacentSpaceIds(doorway).find((id) => !fields[id])!;
+    fields[surfaceGate] = {
+      ...fields[doorway],
+      spaceId: surfaceGate,
+      location: "subterranean_gate",
+      tileInstanceId: fields[doorway].tileInstanceId,
+      flagOwnerId: null,
+      blackCube: false,
+    };
+    delete fields[surfaceGate].difficulty;
+    // A subterranean tile, with its gate half EDGE-ADJACENT to the surface gate
+    // (hexDistance 1 — the engine's own linkage rule).
+    tiles["tile_under"] = {
+      ...tiles[fields[doorway].tileInstanceId],
+      id: "tile_under",
+      group: "subterranean",
+      faceDown: false,
+    } as (typeof tiles)[string];
+    const uGate = getAdjacentSpaceIds(surfaceGate).find((id) => !fields[id])!;
+    fields[uGate] = {
+      ...fields[doorway],
+      spaceId: uGate,
+      location: "subterranean_gate",
+      tileInstanceId: "tile_under",
+      flagOwnerId: null,
+      blackCube: false,
+    };
+    delete fields[uGate].difficulty;
+    fields[surfaceGate].gateLinkSpaceId = uGate;
+    fields[uGate].gateLinkSpaceId = surfaceGate;
+    // Underground objective adjacent to the underground gate.
+    const uObj = getAdjacentSpaceIds(uGate).find((id) => !fields[id])!;
+    fields[uObj] = {
+      ...fields[doorway],
+      spaceId: uObj,
+      location: "hill_fort",
+      tileInstanceId: "tile_under",
+      flagOwnerId: null,
+      blackCube: false,
+    };
+    delete fields[uObj].difficulty;
+
+    // The BFS crosses the Surface↔Subterranean divide via the linked gate.
+    expect(distanceFromHeroTo(state, hero, uObj)).toBeDefined();
+    const df = objectiveDistanceField(state, hero, [
+      { spaceId: uObj, kind: "visitable" },
+    ]);
+    expect(df.get(uGate)).toBe(1);
+    expect(df.get(surfaceGate)).toBe(2); // the surface side reaches across the gate
+    expect(
+      collectMapObjectives(state, hero).some((o) => o.spaceId === uObj),
+    ).toBe(true);
+
+    // CONTROL: break the gate link. The two layers can only be crossed through a
+    // linked gate, so the underground objective becomes unreachable and the BFS
+    // no longer routes there.
+    delete fields[surfaceGate].gateLinkSpaceId;
+    delete fields[uGate].gateLinkSpaceId;
+    expect(distanceFromHeroTo(state, hero, uObj)).toBeUndefined();
+  });
+
+  it("routes a Monolith/Whirlpool teleport to the destination NEAREST the march objective; CONTROL: no objective ⇒ first-index tie", () => {
+    const state = game();
+    const hero = p2Hero(state);
+    hero.level = 1;
+    neutralizeObjectives(state);
+    const doorway = homeDoorway(state, hero);
+    // A corridor with the objective at the FAR end; a token near it, one far.
+    const arm = buildArm(state, doorway, 6, false);
+    const objField = arm[arm.length - 1];
+    state.adventure!.fields[objField].location = "hill_fort";
+    state.adventure!.fields[objField].blackCube = false;
+    const nearToken = arm[arm.length - 2]; // distance 1 from the objective
+    const farToken = arm[0]; // distance 5 from the objective
+
+    // The token-travel CHOOSE_ONE the engine opens: option 0 = far, option 1 = near.
+    state.adventure!.pendingVisit = {
+      playerId: "p2",
+      heroId: hero.id,
+      fieldId: hero.spaceId!,
+      steps: [
+        {
+          type: "CHOOSE_ONE",
+          prompt: "Monolith — choose where to travel",
+          options: [
+            {
+              label: "far",
+              steps: [
+                { type: "TELEPORT_HERO", heroId: hero.id, spaceId: farToken },
+              ],
+            },
+            {
+              label: "near",
+              steps: [
+                { type: "TELEPORT_HERO", heroId: hero.id, spaceId: nearToken },
+              ],
+            },
+          ],
+        },
+      ],
+    } as NonNullable<GameState["adventure"]>["pendingVisit"];
+
+    const scoreOpt = (optionIndex: number): number => {
+      const scored = scoreMapAction(observe(state), {
+        type: "RESOLVE_VISIT_STEP",
+        playerId: "p2",
+        optionIndex,
+      });
+      if (!scored) throw new Error("teleport option should be scored");
+      return scored.score;
+    };
+    // The near token lands closer to the objective, so it outranks the far one —
+    // NOT the engine's first-listed (far) option.
+    expect(scoreOpt(1)).toBeGreaterThan(scoreOpt(0));
+
+    // CONTROL: remove the objective. With no plan to advance, both destinations
+    // score identically, so the engine's first-index token wins by order alone —
+    // proving objective proximity, not the fix's presence, ordered the picks.
+    state.adventure!.fields[objField].blackCube = true;
+    state.adventure!.fields[objField].location = "empty_field";
+    expect(scoreOpt(0)).toBe(scoreOpt(1));
+  });
+
+  it("stashes a high-tier combat Spell into the Spell Book; CONTROL: junk (D-tier) and map Spells are not", () => {
+    const state = game();
+    const hero = p2Hero(state);
+    hero.level = 1;
+    // Uncrowded hand: isolate the tier/combat-only signal from hand-slot relief,
+    // so a map Spell falls to the plain "keep ready" path (not crowded relief).
+    state.players.p2.hand = [];
+    const stash = (cardId: string) => {
+      const scored = scoreMapAction(observe(state), {
+        type: "MOVE_SPELL_TO_SPELL_BOOK",
+        playerId: "p2",
+        cardId,
+      });
+      if (!scored) throw new Error("stash should be scored");
+      return scored;
+    };
+    // An S-tier combat-only Spell (Berserk) is the prime Book candidate — bank it
+    // crown-free for the next fight.
+    const berserk = stash("spell.berserk");
+    expect(berserk.policy).toBe("card.stash-high-tier-spell-crown-free");
+
+    // CONTROL 1: a D-tier junk Spell (Inferno) the AI would never cast is NOT
+    // stashed — kept out of the Book, scored far below the high-tier stash.
+    const inferno = stash("spell.inferno");
+    expect(inferno.policy).toBe("card.dont-stash-junk-spell");
+    expect(berserk.score).toBeGreaterThan(inferno.score + 100);
+
+    // CONTROL 2: an S-tier MAP Spell (Town Portal) the AI could cast THIS turn is
+    // left ready in hand (an uncrowded hand), not buried in the Book.
+    const townPortal = stash("spell.town_portal");
+    expect(townPortal.policy).toBe("card.keep-spell-ready");
+    expect(berserk.score).toBeGreaterThan(townPortal.score);
   });
 });

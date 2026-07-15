@@ -1130,6 +1130,84 @@ function resourceIncomeOptionScore(
 }
 
 /**
+ * The single teleport destination a Monolith/Whirlpool travel option carries the
+ * hero to: a known token field (its `spaceId`), or a still-face-down destination
+ * tile (`reveal`, no materialized cell yet). Both live inside the CHOOSE_ONE
+ * `resolveTokenTeleport` opens (see mapTokenTravelSteps); a Town-Portal /
+ * Logistics destination menu (also TELEPORT_HERO options) routes the same way.
+ */
+function teleportOptionDestination(
+  steps: ReadonlyArray<VisitStep>,
+): { kind: "field"; spaceId: MapSpaceId } | { kind: "reveal" } | null {
+  for (const step of steps) {
+    if (step.type === "TELEPORT_HERO") {
+      return { kind: "field", spaceId: step.spaceId };
+    }
+    if (step.type === "TOKEN_TELEPORT_REVEAL") {
+      return { kind: "reveal" };
+    }
+  }
+  return null;
+}
+
+/**
+ * Score one Monolith/Whirlpool (or Town-Portal) destination by how close it
+ * lands the hero to the CURRENT primary march objective. `visitStepsUtility`
+ * scores every TELEPORT_HERO identically (0), so without this the AI takes the
+ * engine's FIRST-listed token by hash tie-break and a teleport advances no plan.
+ * Routing to the destination nearest the objective (the same public
+ * objective-distance field normal marching uses) turns the free jump into real
+ * progress — the Dimension-Door router applied to token travel. Returns null for
+ * a non-teleport option so the caller falls back to the utility scorer.
+ */
+function teleportDestinationScore(
+  observation: ComputerObservation,
+  steps: ReadonlyArray<VisitStep>,
+): number | null {
+  const dest = teleportOptionDestination(steps);
+  if (!dest) {
+    return null;
+  }
+  const state = observation.state as unknown as GameState;
+  const visit = state.adventure?.pendingVisit;
+  const hero = visit ? state.heroes[visit.heroId] : undefined;
+  if (!hero?.spaceId) {
+    return 1_100;
+  }
+  // A face-down destination reveals fresh land — a solid pick, but a known field
+  // that lands ON/near the objective should still win, so keep it mid-band.
+  if (dest.kind === "reveal") {
+    return 1_105;
+  }
+  const objectives = collectMapObjectives(state, hero);
+  const primary = primaryMapObjective(
+    state,
+    hero,
+    objectives,
+    memoryOf(observation).stickyObjectiveSpaceId,
+  );
+  if (!primary) {
+    // No plan to advance — every destination is equal; stay deterministic.
+    return 1_100;
+  }
+  const distanceField = objectiveDistanceField(state, hero, [primary]);
+  const destinationDistance = distanceField.get(dest.spaceId);
+  if (destinationDistance === undefined) {
+    // The destination cannot walk to the objective at all — a poor exit, but a
+    // legal one; keep it above decline so a mandatory travel never stalls.
+    return 1_060;
+  }
+  // Lower distance-to-objective is better; landing ON it is best. The band stays
+  // within [1_080, 1_180] so every destination outranks a plain decline (1_050)
+  // and the nearest one is the clear pick.
+  return (
+    1_100 +
+    Math.max(-20, 60 - destinationDistance * 6) +
+    (destinationDistance === 0 ? 20 : 0)
+  );
+}
+
+/**
  * Visit-step resolution: market "Done", Event/Astrologers menus, settlement
  * income, Witch Hut / Magic Spring / Hill Fort / Tavern, and generic picks.
  * Decline must outrank wasteful trades so an open market always exits cleanly;
@@ -1174,6 +1252,12 @@ function resolveVisitStepScore(
   if (step.type === "CHOOSE_ONE") {
     const option = step.options[optionIndex];
     if (!option) return 1_000;
+    // Monolith/Whirlpool (or Town-Portal) travel: route to the destination
+    // nearest the march plan instead of the engine's first-listed token.
+    const teleportScore = teleportDestinationScore(observation, option.steps);
+    if (teleportScore !== null) {
+      return teleportScore;
+    }
     const utility = visitStepsUtility(state, playerId, option.steps);
     // Empty steps = "leave / cancel / decline" branch.
     if (option.steps.length === 0) {
@@ -1441,10 +1525,32 @@ export function scoreMapAction(
     case "MOVE_SPELL_TO_SPELL_BOOK": {
       const hand = state.players[observation.playerId]?.hand ?? [];
       const crowded = hand.length >= 4;
+      const value = cardKeepValue(action.cardId, observation);
+      // Hand-slot relief (the original driver): stash to unclog a crowded hand,
+      // otherwise keep the Spell ready in hand.
+      const crowdedRelief = crowded ? 690 + Math.min(35, value) : 260;
+      const tier = cardTier(action.cardId);
+      // Junk Spells (D-tier: Earthquake, Inferno, Remove Obstacle) never belong
+      // in the Book — the AI would never cast them, so burying one wastes the
+      // stash (better left in hand to pay a cost / be discarded). Kept below every
+      // real play so it is never chosen. CONTROL: an S/A Spell scores far above.
+      if (tier === "D") {
+        return { score: 205, policy: "card.dont-stash-junk-spell" };
+      }
+      // A combat-only Spell (timing != "map") cannot be cast on this map turn, so
+      // a high-tier one is the prime Book candidate: stashing banks it for a
+      // crown-free cast in the next fight AND frees a hand slot — worth doing even
+      // from an uncrowded hand. A high-tier MAP Spell (Town Portal, View Air) the
+      // AI might want to cast NOW is left ready unless the hand is crowded.
+      const combatOnly = cardLibrary[action.cardId]?.timing !== "map";
+      if ((tier === "S" || tier === "A") && combatOnly) {
+        return {
+          score: Math.max(crowdedRelief, 600 + Math.min(30, value)),
+          policy: "card.stash-high-tier-spell-crown-free",
+        };
+      }
       return {
-        score: crowded
-          ? 690 + Math.min(35, cardKeepValue(action.cardId, observation))
-          : 260,
+        score: crowdedRelief,
         policy: crowded ? "card.store-spell-free-hand-slot" : "card.keep-spell-ready",
       };
     }
