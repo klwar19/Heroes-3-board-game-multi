@@ -101,7 +101,7 @@ export function applyUnitCurrentSide(
   unit: CombatUnitState,
   ruleset: GameRuleset,
   /** Griffin/Marksman toggle overrides; falls back to the bundled mode default. */
-  overrides?: { griffinBuff?: boolean; marksmanBuff?: boolean }
+  overrides?: { griffinBuff?: boolean; marksmanBuff?: boolean; polishUnitStacks?: boolean }
 ): void {
   const top = topTransform(unit);
   if (top) {
@@ -156,7 +156,12 @@ export function applyUnitCurrentSide(
   // side so a Gelu-recruited Sharpshooters keeps its buff across any recompute
   // (e.g. a Pack→Few flip). A specialty cover (top branch) or a bank card (above)
   // replaces stats wholesale and intentionally drops the bonus while covered.
-  unit.attack = side.attack + (unit.permanentAttackBonus ?? 0);
+  // Polish Unit Stacks: a Group (Pack) gets one flat +1 Attack while at least
+  // one paid layer remains. It never scales with the number of layers and never
+  // applies to Few/Neutral cards or specialty covers.
+  const armyStackAttack =
+    overrides?.polishUnitStacks && unit.variant === "pack" && (unit.armyStacks ?? 0) > 0 ? 1 : 0;
+  unit.attack = side.attack + (unit.permanentAttackBonus ?? 0) + armyStackAttack;
   unit.defense = side.defense;
   unit.maxHealth = side.health + (unit.permanentHealthBonus ?? 0);
   unit.initiative = side.initiative;

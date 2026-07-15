@@ -2708,6 +2708,8 @@ export function ArmyPanel({ state, playerId }: { state: GameState; playerId: Pla
           const printed = unit.side === "few" ? def?.few : def?.pack;
           // BINH stat tweaks (Griffins, Marksmen) show live values.
           const side = printed ? applyUnitSideRules(ruleset, unit.unitDefId, unit.side, printed, sideOverrides) : printed;
+          const stackAttack = sideOverrides.polishUnitStacks && unit.side === "pack" && (unit.stacks ?? 0) > 0 ? 1 : 0;
+          const shownAttack = side ? side.attack + (unit.permanentAttackBonus ?? 0) + stackAttack : 0;
           const engineLines = implementedAbilityLines(side?.abilities);
           const hoverTitle = [side?.abilityText, ...engineLines].filter(Boolean).join("\n") || `Read ${def?.name ?? unit.unitDefId}`;
           return (
@@ -2720,7 +2722,10 @@ export function ArmyPanel({ state, playerId }: { state: GameState; playerId: Pla
                     image: side?.cardImage,
                     subtitle: def ? `${def.tier} ${def.type}` : undefined,
                     lines: [
-                      side ? `Attack ${side.attack} · Defense ${side.defense} · HP ${side.health} · Initiative ${side.initiative}` : "",
+                      side ? `Attack ${shownAttack} · Defense ${side.defense} · HP ${side.health} · Initiative ${side.initiative}` : "",
+                      (unit.stacks ?? 0) > 0
+                        ? `${unit.stacks} Polish Unit Stack${unit.stacks === 1 ? "" : "s"}: +1 Attack and ${unit.stacks} extra Pack health layer${unit.stacks === 1 ? "" : "s"}.`
+                        : "",
                       side?.abilityText ?? "",
                       ...engineLines
                     ].filter(Boolean)
@@ -2738,9 +2743,18 @@ export function ArmyPanel({ state, playerId }: { state: GameState; playerId: Pla
                 <strong>
                   {unit.side === "few" ? "Few" : "Pack"} {def?.name ?? unit.unitDefId}
                 </strong>
+                {(unit.stacks ?? 0) > 0 ? (
+                  <span
+                    className={`armyStackBadge tier-${def?.tier ?? "bronze"} active`}
+                    title={`${unit.stacks} Unit Stack${unit.stacks === 1 ? "" : "s"} · +1 Attack`}
+                  >
+                    <img alt="" aria-hidden="true" src={assetUrl("/assets/ui/polish-unit-stacks-coin.webp")} />
+                    ×{unit.stacks}
+                  </span>
+                ) : null}
                 {side ? (
                   <small>
-                    A{side.attack} D{side.defense} HP{side.health} I{side.initiative}
+                    A{shownAttack} D{side.defense} HP{side.health} I{side.initiative}
                   </small>
                 ) : null}
               </button>

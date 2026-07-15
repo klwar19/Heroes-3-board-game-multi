@@ -1,9 +1,9 @@
 # Polish house rules — Spell Book, Bank Sizes, Unit Stacks (implementation plan)
 
-**STATUS: PHASES 1-2 IMPLEMENTED (2026-07-16).** The shared Polish lobby
-category and `polish-bank-sizes` are engine-wired and mutation-covered.
-`polish-spell-book` and `polish-unit-stacks` remain PLAN ONLY and deliberately
-do not exist in the registry yet. Per CLAUDE.md #1, no later phase may be
+**STATUS: PHASES 1-3 IMPLEMENTED (2026-07-16).** The shared Polish lobby
+category, `polish-bank-sizes`, and `polish-unit-stacks` are engine-wired and
+mutation-covered. `polish-spell-book` remains PLAN ONLY and deliberately does
+not exist in the registry yet. Per CLAUDE.md #1, no later phase may be
 reported as done until the engine executes it AND a test fails when the logic
 is removed. This document remains the design + wiring map for those phases.
 
@@ -378,6 +378,12 @@ AI picks the beatable candidate (control: unbeatable pair → leave).
 
 ## 6. Feature: Unit Stacks (`polish-unit-stacks`)
 
+**IMPLEMENTED 2026-07-16.** Purchase, combat-layer carryover, post-combat
+persistence, rule-off controls, town/army/combat UI, and the generated coin
+badge are covered by `polish-unit-stacks.test.ts` plus focused DOM tests.
+Phase 6 still owns proactive computer-economy scoring; the purchase remains
+optional and creates no mandatory AI window.
+
 ### 6.1 Spec (engine reading)
 
 - Eligible: an army card on its **pack** side ("Group"), tiers bronze/silver/
@@ -545,7 +551,8 @@ gate exists (registry honesty rule).
   validates the category):
   §5 complete incl. AI choice branch. Gate: `polish-bank-sizes.test.ts` suite
   + an AI single-player smoke with the rule on.
-- **Phase 3 — Unit Stacks**: §6 complete (purchase, combat, sync, UI).
+- **Phase 3 — Unit Stacks — IMPLEMENTED 2026-07-16**: §6 complete (purchase,
+  combat, sync, UI).
   Gate: `polish-unit-stacks.test.ts` suite incl. the isolation controls.
 - **Phase 4 — Spell Book core**: zone lifecycle (used/refreshed + round
   refresh), Cast-a-Spell card + casting paths, starting-deck swap, merged

@@ -123,10 +123,11 @@ export function applyUnitSideRules(
  */
 export function unitSideRuleOverrides(
   state: Pick<GameState, "ruleset" | "adventure">
-): { griffinBuff: boolean; marksmanBuff: boolean } {
+): { griffinBuff: boolean; marksmanBuff: boolean; polishUnitStacks: boolean } {
   return {
     griffinBuff: houseRuleEnabled(state, "griffin-buff"),
-    marksmanBuff: houseRuleEnabled(state, "marksman-buff")
+    marksmanBuff: houseRuleEnabled(state, "marksman-buff"),
+    polishUnitStacks: houseRuleEnabled(state, "polish-unit-stacks")
   };
 }
 

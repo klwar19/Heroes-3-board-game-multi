@@ -206,6 +206,7 @@ import {
   wisdomSearchCount
 } from "./ruleset";
 import { houseRuleEnabled } from "./house-rules";
+import { polishArmyUnitCanBuyStack, polishUnitStackCost } from "./polish-unit-stacks";
 import {
   HEX_DIRECTIONS,
   hexDistance,
@@ -6725,6 +6726,13 @@ export function finalizeAdventureCombat(state: GameState): void {
       discardDefeatedArmyUnit(state, player, armyUnit);
     } else if (armyUnit.side !== "neutral") {
       armyUnit.side = unit.variant === "pack" ? "pack" : "few";
+      if (unit.variant === "pack" && (unit.armyStacks ?? 0) > 0) {
+        armyUnit.stacks = unit.armyStacks;
+      } else {
+        // A Pack casualty that flipped to Few is no longer a Group; every
+        // remaining Polish Stack token is lost with that side change.
+        delete armyUnit.stacks;
+      }
       // Carry the surviving specialty stack (Sandro's Cloak) back to the
       // unit card so it stays on across combats; a defeated Cloak already
       // peeled off into the discard pile mid-combat.
@@ -7542,7 +7550,16 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
   }
 
   if (action.purchases.length === 0) {
-    throw new Error("Choose at least one recruit or reinforcement.");
+    throw new Error("Choose at least one recruit, reinforcement, or Stack.");
+  }
+
+  // Stack costs deliberately ignore every recruit/reinforce discount and the
+  // Freelancer's Guild substitution. Keep Stack batches separate so a mixed
+  // action cannot accidentally route a Stack through those discounts.
+  const buysStacks = action.purchases.some((purchase) => purchase.kind === "stack");
+  const buysUnits = action.purchases.some((purchase) => purchase.kind !== "stack");
+  if (buysStacks && buysUnits) {
+    throw new Error("Buy Unit Stacks separately from recruits and reinforcements.");
   }
 
   const tiers = unlockedRecruitTiers(state, action.playerId);
@@ -7558,7 +7575,7 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
 
   // Each purchase's actual (per-unit, non-stacking) discounted cost, kept so the
   // affordability check, the spend and the per-unit log all agree.
-  const priced: { ref: RecruitPurchaseRef; finalCost: ResourceCost }[] = [];
+  const priced: { ref?: RecruitPurchaseRef; finalCost: ResourceCost }[] = [];
 
   // Validate before mutating: simulate against a copy of the army.
   const armyCopy = player.army.map((unit) => ({ ...unit }));
@@ -7598,7 +7615,7 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
       addCost(finalCost);
       priced.push({ ref, finalCost });
       armyCopy.push({ id: `pending_${armyCopy.length}`, unitDefId: purchase.unitDefId, side: "few" });
-    } else {
+    } else if (purchase.kind === "reinforce") {
       if (!canReinforce) {
         throw new Error("Reinforcing needs a Citadel.");
       }
@@ -7628,14 +7645,36 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
       addCost(finalCost);
       priced.push({ ref, finalCost });
       target.side = "pack";
+    } else {
+      if (!houseRuleEnabled(state, "polish-unit-stacks")) {
+        throw new Error("The Polish Unit Stacks rule is not enabled.");
+      }
+      if (!canReinforce) {
+        throw new Error("Buying a Unit Stack needs a Citadel.");
+      }
+      const target = armyCopy.find((unit) => unit.id === purchase.armyUnitId);
+      if (!target || target.unitDefId !== purchase.unitDefId || !polishArmyUnitCanBuyStack(target)) {
+        throw new Error("Choose an eligible Pack unit below its Stack cap.");
+      }
+      const finalCost = polishUnitStackCost(purchase.unitDefId);
+      if (!finalCost) {
+        throw new Error("That unit cannot buy Stacks.");
+      }
+      addCost(finalCost);
+      priced.push({ finalCost });
+      target.stacks = (target.stacks ?? 0) + 1;
     }
   }
 
-  if (!hasRecruitResources(state, action.playerId, totalCost)) {
-    throw new Error("Not enough resources for those units.");
+  if (buysStacks ? !hasResources(player, totalCost) : !hasRecruitResources(state, action.playerId, totalCost)) {
+    throw new Error(buysStacks ? "Not enough resources for those Unit Stacks." : "Not enough resources for those units.");
   }
 
-  spendRecruitResources(state, action.playerId, totalCost, "population action");
+  if (buysStacks) {
+    spendResources(state, action.playerId, totalCost, "Polish Unit Stacks");
+  } else {
+    spendRecruitResources(state, action.playerId, totalCost, "population action");
+  }
   // The token is NOT consumed by a purchase: the player may keep recruiting and
   // reinforcing this round (BINH house rule). Marking the round "purchased" arms
   // the movement lock — the next time one of this player's heroes moves, the
@@ -7654,7 +7693,7 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
         kind: "recruit",
         cost: finalCost
       });
-    } else {
+    } else if (purchase.kind === "reinforce") {
       const target = player.army.find((unit) => unit.id === purchase.armyUnitId);
       if (target) {
         target.side = "pack";
@@ -7666,9 +7705,25 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
           cost: finalCost
         });
       }
+    } else {
+      const target = player.army.find((unit) => unit.id === purchase.armyUnitId);
+      if (target) {
+        target.stacks = (target.stacks ?? 0) + 1;
+        appendEvent(state, {
+          type: "ARMY_STACK_PURCHASED",
+          playerId: action.playerId,
+          armyUnitId: target.id,
+          unitDefId: target.unitDefId,
+          stacks: target.stacks,
+          cost: finalCost
+        });
+      }
     }
     // Spend the Legion voucher reserved for this exact unit (single-use).
-    consumeRecruitVoucherFor(state, action.playerId, priced[index]!.ref);
+    const recruitRef = priced[index]?.ref;
+    if (recruitRef) {
+      consumeRecruitVoucherFor(state, action.playerId, recruitRef);
+    }
   }
 }
 

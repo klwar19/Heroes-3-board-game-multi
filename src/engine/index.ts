@@ -239,6 +239,12 @@ export {
 } from "./house-rules";
 export type { HouseRuleCategory, HouseRuleDef } from "./house-rules";
 export {
+  POLISH_UNIT_STACK_RULES,
+  polishArmyUnitCanBuyStack,
+  polishUnitStackCap,
+  polishUnitStackCost
+} from "./polish-unit-stacks";
+export {
   applyUnitCurrentSide,
   canPlaceTransformOn,
   insertUnitTransform,

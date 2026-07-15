@@ -541,6 +541,14 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       return `${event.unitName} discards a Stack Token and survives the blow${
         event.excessDamage > 0 ? ` (${event.excessDamage} damage carries over)` : ""
       }.`;
+    case "ARMY_STACK_PURCHASED":
+      return `${playerName(state, event.playerId)} adds Stack ${event.stacks} to ${
+        event.unitDefId.split(".")[1] ?? event.unitDefId
+      } (${formatCost(event.cost)}).`;
+    case "ARMY_STACK_LOST":
+      return `${event.unitName} loses a Unit Stack and survives the blow${
+        event.excessDamage > 0 ? ` (${event.excessDamage} damage carries over)` : ""
+      } — ${event.remainingStacks} Stack${event.remainingStacks === 1 ? "" : "s"} left.`;
     case "GAME_OPTIONS_CHANGED":
       return event.message;
     case "MAP_PRESET_TRIGGERED":
