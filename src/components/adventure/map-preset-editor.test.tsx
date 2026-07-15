@@ -25,7 +25,9 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
     expect((container.querySelector("details.mapPresetEditor") as HTMLDetailsElement).open).toBe(true);
     expect(screen.getByText("2 active")).toBeTruthy();
     // Icon-tagged entries from describeCustomMapPresetEntries.
-    expect(screen.getByText("Victory: Grail Hunt")).toBeTruthy();
+    // (The mode was renamed "Grail Hunt" -> "Holy Grail"; the designer label
+    //  reuses VICTORY_MODE_LABELS so it can never drift from the options UI.)
+    expect(screen.getByText("Victory: Holy Grail")).toBeTruthy();
     expect(screen.getByText(/17 gold, 3 materials, 2 valuables/)).toBeTruthy();
     expect(container.querySelectorAll(".mapPresetEntryIcon").length).toBeGreaterThanOrEqual(2);
   });
