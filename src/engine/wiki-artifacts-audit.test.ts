@@ -365,6 +365,24 @@ describe("Lion's Shield of Courage — discard X / remove for defense", () => {
     expect(lastHitBy(resolved, "unit_p1_griffins")?.defenseValue).toBe(5);
     expect(resolved.players.p2.removed).toContain("artifact.lions_shield_of_courage");
   });
+
+  it("option 1 is THIS attack only — no combat-long DEFENSE_BONUS after the hit", () => {
+    // Control twin of the Plate-of-the-Dying-Light Instant bar: remove for +4
+    // softens the triggering hit, then leaves no lasting unit buff.
+    const state = duel("lion-no-persist");
+    state.players.p2.hand = ["artifact.lions_shield_of_courage"];
+    state.players.p2.removed = [];
+    const declared = passUntil(declareGriffinsAttack(state), "p2");
+    const play = reactionAction(declared, "p2", "artifact.lions_shield_of_courage", 1);
+    const resolved = passAllReactions(applyOk(declared, play!));
+    expect(lastHitBy(resolved, "unit_p1_griffins")?.defenseValue).toBe(5);
+    expect(resolved.players.p2.removed).toContain("artifact.lions_shield_of_courage");
+    expect(
+      resolved.activeEffects.filter((entry) =>
+        entry.modifiers.some((modifier) => modifier.type === "DEFENSE_BONUS")
+      )
+    ).toEqual([]);
+  });
 });
 
 describe("Shield of the Damned — +defense paid in self-damage", () => {
@@ -1074,20 +1092,26 @@ describe("Interference (ability) as a defense reaction vs a physical attack", ()
     expect(lastHitBy(resolved, "unit_p1_griffins")).toMatchObject({ defenseValue: 3, damage: 0 });
   });
 
-  it("the +defense lands on the reacting defender's OWN attacked unit, for the Combat", () => {
+  it("the +defense is THIS attack only — no combat-long DEFENSE_BONUS active effect", () => {
     const state = duel("interf-target");
     state.players.p2.hand = ["ability.interference"];
     const declared = passUntil(declareGriffinsAttack(state), "p2");
     const play = attackReaction(declared, "p2", "ability.interference");
     expect(play).toBeTruthy();
-    const after = applyOk(declared, play!);
-    const effect = after.activeEffects.find((entry) =>
-      entry.modifiers.some((modifier) => modifier.type === "DEFENSE_BONUS")
-    );
-    // Buffs the defender's own unit (the Vampires being attacked), never the enemy,
-    // and lasts the whole Combat (so it also softens later hits on that unit).
-    expect(effect?.target).toEqual({ type: "unit", unitId: "unit_p2_vampires" });
-    expect(effect?.duration).toEqual({ type: "combat" });
+    const mid = applyOk(declared, play!);
+    // Instant: stack modifier only while the attack is open; no lasting unit buff.
+    expect(
+      mid.activeEffects.filter((entry) =>
+        entry.modifiers.some((modifier) => modifier.type === "DEFENSE_BONUS")
+      )
+    ).toEqual([]);
+    const resolved = passAllReactions(mid);
+    expect(lastHitBy(resolved, "unit_p1_griffins")).toMatchObject({ defenseValue: 2, damage: 1 });
+    expect(
+      resolved.activeEffects.filter((entry) =>
+        entry.modifiers.some((modifier) => modifier.type === "DEFENSE_BONUS")
+      )
+    ).toEqual([]);
   });
 });
 
@@ -1114,21 +1138,22 @@ describe("Plate of the Dying Light as a defense reaction vs a physical attack", 
     expect(resolved.players.p2.removed).toContain("artifact.plate_of_the_dying_light");
   });
 
-  it("the +defense is a Combat-long effect on the attacked unit (persists past the hit)", () => {
+  it("the +defense is THIS attack only — no combat-long DEFENSE_BONUS after the hit", () => {
     const state = duel("plate-atk-persist");
     state.players.p2.hand = ["artifact.plate_of_the_dying_light"];
     const declared = passUntil(declareGriffinsAttack(state), "p2");
     const play = attackReaction(declared, "p2", "artifact.plate_of_the_dying_light", { optionIndex: 0 });
     const afterFirst = passAllReactions(applyOk(declared, play!));
-    // A combat-duration DEFENSE_BONUS (+ inert spell-reduction) remains on the
-    // attacked unit, so later hits on it are softened too.
-    const effect = afterFirst.activeEffects.find(
-      (entry) =>
-        entry.target?.type === "unit" &&
-        entry.target.unitId === "unit_p2_vampires" &&
-        entry.modifiers.some((modifier) => modifier.type === "DEFENSE_BONUS")
-    );
-    expect(effect?.duration).toEqual({ type: "combat" });
-    expect(effect!.modifiers.some((modifier) => modifier.type === "SPELL_DAMAGE_REDUCTION")).toBe(true);
+    // Wiki `<instant>`: softens the triggering hit, then is gone (no lasting
+    // unit buff for later attacks — same bar as Lion's Shield / Armorer).
+    expect(lastHitBy(afterFirst, "unit_p1_griffins")).toMatchObject({ defenseValue: 2, damage: 1 });
+    expect(
+      afterFirst.activeEffects.filter(
+        (entry) =>
+          entry.target?.type === "unit" &&
+          entry.target.unitId === "unit_p2_vampires" &&
+          entry.modifiers.some((modifier) => modifier.type === "DEFENSE_BONUS")
+      )
+    ).toEqual([]);
   });
 });

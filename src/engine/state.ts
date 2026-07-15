@@ -615,12 +615,11 @@ export type ActiveEffectModifier =
     }
   | {
       /**
-       * Interference ability: the affected unit reduces the damage it takes
-       * from Spells by this much — a Defense bonus that, unusually, also blunts
-       * Spell damage. Summed into totalSpellDamageReduction alongside the
-       * Golems'/Black Dragons' printed "reduce Spell damage" passives. The same
-       * Interference play also grants a plain DEFENSE_BONUS (vs attacks), so a
-       * unit carrying it gets the bonus against both attacks and spells.
+       * Lasting Spell-damage ward (Clancy's Unicorns specialty, CREATE_SPELL_WARD,
+       * …). Summed into totalSpellDamageReduction alongside the Golems'/Black
+       * Dragons' printed "reduce Spell damage" passives. NOTE: Interference /
+       * Plate of the Dying Light are wiki `<instant>` and no longer create this
+       * lasting modifier — they reduce THIS cast via stack interfereSpellReductions.
        */
       type: "SPELL_DAMAGE_REDUCTION";
       amount: number;
@@ -1833,12 +1832,17 @@ export type EffectDefinition =
     }
   | {
       /**
-       * Interference: an instant reaction to an enemy damaging Spell that
-       * targets one of your units. Grants that unit +amount Defense for the
-       * rest of the Combat — a Defense bonus that, unusually, also reduces the
-       * incoming Spell's damage (and any later Spell damage to that unit). Basic
-       * +1 / expert +2. Modelled as a unit-scoped effect carrying both a
-       * DEFENSE_BONUS and a SPELL_DAMAGE_REDUCTION modifier.
+       * Interference / Plate of the Dying Light: wiki `<instant>` +X defense that
+       * can ALSO blunt Spell damage. NOT combat-long (that was a prior misread —
+       * Shield had the same bug and was fixed to this-attack only).
+       *
+       *   • Played into UNIT_ATTACK_DECLARED → +X defense on THIS attack only
+       *     (stackItem.modifiers.defenseBonus), same as Armorer / Lion's Shield.
+       *   • Played into SPELL_CAST_STARTED → −X Spell damage on THIS cast only
+       *     against the targeted unit (stackItem.modifiers.interfereSpellReductions).
+       *
+       * Basic +1 / expert +2. Plate reuses the same effect via CHOOSE_ONE (+1 /
+       * +4 removeSelf) and omits expertAmount so no expert reaction is offered.
        */
       type: "INTERFERE_SPELL";
       amount: number;
@@ -5261,6 +5265,13 @@ export type ResolutionStackItem = {
     schoolPowerBonus?: number;
     attackBonus: number;
     defenseBonus: number;
+    /**
+     * Interference / Plate of the Dying Light played as an INSTANT reaction to
+     * THIS cast: reduce Spell damage dealt to `unitId` by `amount` for the
+     * duration of this stack item only (vanishes with the cast). Multiple
+     * plays (basic then expert, or Interference + Plate) stack by summing.
+     */
+    interfereSpellReductions?: { unitId: UnitId; amount: number }[];
     /** Centaur's Axe: multiplies the rolled attack-die outcome (default 1). */
     attackDieMultiplier?: number;
     /** Brimstone Stormclouds: faction cubes spent on this cast (max 1). */

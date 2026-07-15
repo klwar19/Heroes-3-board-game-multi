@@ -282,10 +282,12 @@ import { drawCardsForPlayer, isSharedDeckId, shuffleCards } from "./decks";
 import {
   cancelSpellAllowsSchoolAndLevel,
   cardCanBoostPower,
+  collectPowerBreakpoints,
   getEffectAmount,
   getEffectDamageAmount,
   getEffectiveCardEffect,
   getSpellDamageAmount,
+  spellMinUsefulPower,
   spellPowerSourceDrawCards,
   spellPowerValueOfCard
 } from "./effects";
@@ -1973,10 +1975,10 @@ function totalSpellDamageReduction(state: GameState, target: CombatUnitState): n
   }
   let total = getSpellDamageReduction(target);
 
-  // Interference: a unit-scoped Defense bonus that also blunts Spell damage.
-  // Sum every SPELL_DAMAGE_REDUCTION modifier on an effect that applies to the
-  // target (Titans/Gargoyles' ignore-ongoing-effects passives are honoured by
-  // effectAppliesToUnit, exactly as they are for any other ongoing effect).
+  // Lasting SPELL_DAMAGE_REDUCTION active effects (Clancy's Unicorns ward,
+  // CREATE_SPELL_WARD specialties, …). Sum every such modifier on an effect
+  // that applies to the target (Titans/Gargoyles' ignore-ongoing-effects
+  // passives are honoured by effectAppliesToUnit).
   for (const effect of state.activeEffects) {
     if (!effectAppliesToUnit(effect, target)) {
       continue;
@@ -1984,6 +1986,18 @@ function totalSpellDamageReduction(state: GameState, target: CombatUnitState): n
     for (const modifier of effect.modifiers) {
       if (modifier.type === "SPELL_DAMAGE_REDUCTION") {
         total += modifier.amount;
+      }
+    }
+  }
+
+  // Interference / Plate of the Dying Light: INSTANT reactions to THIS cast
+  // (stack-scoped, not combat-long — wiki `<instant>`). Stack while the cast is
+  // still resolving so area/chain paths that call reducedSpellDamage mid-resolve
+  // also see the reduction; the entries vanish with the stack item.
+  for (const item of state.stack) {
+    for (const entry of item.modifiers.interfereSpellReductions ?? []) {
+      if (entry.unitId === target.id) {
+        total += entry.amount;
       }
     }
   }
@@ -8304,40 +8318,11 @@ function resumeAttackWindowAfterRedirect(
  * floors the resulting Power at 0.
  */
 /**
- * Recursively harvest every Power breakpoint a card's effect scales on — the
- * numeric keys of every `*ByPower` table (amountByPower, gradeByPower,
- * durationByPower, damagesByPower, countByPower, …), including those nested in a
- * CHOOSE_ONE's options. Used to find the top Power tier a spell can reach.
- */
-function collectPowerBreakpoints(value: unknown, acc: number[]): void {
-  if (!value || typeof value !== "object") {
-    return;
-  }
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      collectPowerBreakpoints(item, acc);
-    }
-    return;
-  }
-  for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
-    if (key.endsWith("ByPower") && nested && typeof nested === "object" && !Array.isArray(nested)) {
-      for (const breakpoint of Object.keys(nested)) {
-        const numeric = Number(breakpoint);
-        if (Number.isFinite(numeric)) {
-          acc.push(numeric);
-        }
-      }
-    } else {
-      collectPowerBreakpoints(nested, acc);
-    }
-  }
-}
-
-/**
  * The highest Power level a spell's effect scales to. The Tome artifacts force a
  * cast to this tier "without paying the Power cost". Spells whose top tier needs
  * Power 4 or 5 (e.g. Animate Dead, Implosion) are honoured, not capped at 2;
  * spells with no Power scaling fall back to the game's standard Expert cap (2).
+ * Breakpoint walk lives in effects.ts (shared with the cast-window Power UI).
  */
 function spellMaxPowerBreakpoint(card: CardDefinition | undefined): number {
   if (!card) {
@@ -8346,6 +8331,39 @@ function spellMaxPowerBreakpoint(card: CardDefinition | undefined): number {
   const breakpoints: number[] = [];
   collectPowerBreakpoints(card.effect, breakpoints);
   return breakpoints.length > 0 ? Math.max(...breakpoints) : 2;
+}
+
+/**
+ * Whether the caster can still fuel the open spell cast (discard a Spell for
+ * +1 Power, play a Power statistic, or spend a Spell Book Power). Approximate
+ * — avoids importing getLegalActions into the reducer (cycle risk). Used only
+ * as the escape hatch for the under-min Power pass guard.
+ */
+function casterCanFuelPendingSpell(state: GameState, playerId: PlayerId, cards: CardLibrary): boolean {
+  const player = state.players[playerId];
+  if (!player) {
+    return false;
+  }
+  for (const cardId of player.hand) {
+    const held = cards[cardId];
+    if (!held) {
+      continue;
+    }
+    if (held.kind === "spell") {
+      return true;
+    }
+    if (cardCanBoostPower(held)) {
+      return true;
+    }
+  }
+  if (
+    spellBookRuleEnabled(state) &&
+    spellBookPowerAvailable(player) &&
+    (player.spellBook ?? []).some((cardId) => cards[cardId]?.kind === "spell")
+  ) {
+    return true;
+  }
+  return false;
 }
 
 function getCurrentSpellPower(state: GameState, stackItem: ResolutionStackItem, cards: CardLibrary): number {
@@ -10158,6 +10176,29 @@ function passReaction(state: GameState, action: Extract<GameAction, { type: "PAS
     throw new Error("No reaction window is open.");
   }
 
+  // Under-min Power guard: the CASTER of a pending cast may not pass while the
+  // spell is still below its useful Power floor AND they can still fuel it
+  // (Implosion needs ≥1, etc.). Prevents a silent 0-damage resolve. Escape
+  // hatch: if they have nothing left to fuel with, pass is allowed (spell
+  // fizzles) so the table cannot soft-lock. Scroll-locked casts stay free at 0.
+  const pending = state.stack.at(-1);
+  if (
+    pending?.action.type === "CAST_SPELL" &&
+    pending.action.playerId === action.playerId &&
+    !pending.modifiers.scrollLocked
+  ) {
+    const spell = cards[pending.action.cardId];
+    const minUseful = spellMinUsefulPower(spell);
+    if (minUseful > 0) {
+      const power = getCurrentSpellPower(state, pending, cards);
+      if (power < minUseful && casterCanFuelPendingSpell(state, action.playerId, cards)) {
+        throw new Error(
+          `${spell?.name ?? "This spell"} needs at least Power ${minUseful} (currently ${power}). Add Power before resolving.`
+        );
+      }
+    }
+  }
+
   const window = state.reactionWindow;
   appendEvent(state, {
     type: "REACTION_PASSED",
@@ -11594,11 +11635,10 @@ function applyReactionPlayCore(
   }
 
   // Interference: react to an enemy damaging Spell aimed at one of your units
-  // by granting that unit +1 (expert +2) Defense for the rest of the Combat —
-  // a bonus that also reduces Spell damage (DEFENSE_BONUS for attacks,
-  // SPELL_DAMAGE_REDUCTION for spells). Created here, before the pending Spell
-  // resolves (the reaction window closes first), so it softens the very Spell
-  // that triggered it and every later Spell that hits the same unit.
+  // Interference / Plate of the Dying Light vs an enemy damaging Spell:
+  // wiki `<instant>` — reduce THIS cast's Spell damage against the targeted
+  // unit by +X (basic 1 / expert 2 / Plate option 4). Stack-scoped only; no
+  // combat-long active effect (matches Shield's Instant fix and Lion's Shield).
   if (effect.type === "INTERFERE_SPELL" && stackItem?.action.type === "CAST_SPELL") {
     const targetRef = stackItem.action.target;
     const targetUnit = targetRef.type === "unit" ? state.combat?.units[targetRef.unitId] : undefined;
@@ -11606,58 +11646,25 @@ function applyReactionPlayCore(
     // own targeted unit; re-checked here so a stale window can never buff an
     // enemy unit or a dead one.
     if (targetUnit && targetUnit.controllerId === playerId && isUnitAlive(targetUnit)) {
-      createActiveEffect(
-        state,
-        {
-          // Interference → "Interference"/"Expert Interference"; Plate of the
-          // Dying Light reuses this effect and names it after the artifact.
-          name: mode === "expert" ? `Expert ${card.name}` : card.name,
-          scope: "unit",
-          duration: { type: "combat" },
-          polarity: "positive",
-          removable: true,
-          modifiers: [
-            { type: "DEFENSE_BONUS", amount: effectAmount },
-            { type: "SPELL_DAMAGE_REDUCTION", amount: effectAmount }
-          ]
-        },
-        { type: "card", cardId: card.id, controllerId: playerId },
-        playerId,
-        { type: "unit", unitId: targetUnit.id }
-      );
+      (stackItem.modifiers.interfereSpellReductions ??= []).push({
+        unitId: targetUnit.id,
+        amount: effectAmount
+      });
     }
     stackItem.modifiers.playedCardIds.push(play.cardId);
   }
 
-  // Interference / Plate of the Dying Light played as a plain DEFENSE reaction to
-  // a physical attack (their "+X defense" base mirrors Armorer). Grant the unit
-  // being attacked the same Combat-long +Defense; its SPELL_DAMAGE_REDUCTION half
-  // is simply inert against an attack. Created before the attack resolves, so
-  // getActiveDefenseBonus folds it into the very hit that triggered it and every
-  // later hit on that unit.
+  // Interference / Plate of the Dying Light as a plain DEFENSE reaction to a
+  // physical attack (their "+X defense" base mirrors Armorer / Lion's Shield).
+  // Instant: +X defense on THIS attack only via the stack modifier — no lasting
+  // unit buff. The spell-damage half is inert against a physical hit.
   if (
     effect.type === "INTERFERE_SPELL" &&
     (stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
   ) {
     const defendingUnit = state.combat?.units[stackItem.action.defenderId];
     if (defendingUnit && defendingUnit.controllerId === playerId && isUnitAlive(defendingUnit)) {
-      createActiveEffect(
-        state,
-        {
-          name: mode === "expert" ? `Expert ${card.name}` : card.name,
-          scope: "unit",
-          duration: { type: "combat" },
-          polarity: "positive",
-          removable: true,
-          modifiers: [
-            { type: "DEFENSE_BONUS", amount: effectAmount },
-            { type: "SPELL_DAMAGE_REDUCTION", amount: effectAmount }
-          ]
-        },
-        { type: "card", cardId: card.id, controllerId: playerId },
-        playerId,
-        { type: "unit", unitId: defendingUnit.id }
-      );
+      stackItem.modifiers.defenseBonus += effectAmount;
     }
     stackItem.modifiers.playedCardIds.push(play.cardId);
   }

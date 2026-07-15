@@ -1360,6 +1360,11 @@ export const spellCards: CardLibrary = {
   // 0 there (the explicit `0: 0` floors getAmountByPower, which would otherwise
   // round up to the lowest listed tier). Reuses the DEAL_DAMAGE path (spell
   // damage → spell immunity and damage-reduction abilities apply, like any bolt).
+  // Implosion (Expert Earth). Wiki: ladder starts at Power 1 (no Power-0 tier)
+  // and a printed note "at least one spell power needs to also be played" —
+  // so amountByPower seeds 0:0 (deals nothing unless Power ≥ 1 is paid into the
+  // cast window). The "OR Instant: +1 Power" side is the universal power-source
+  // discard (any Spell can be discarded for +1 Power), not a separate option.
   "spell.implosion": {
     id: "spell.implosion",
     name: "Implosion",
@@ -1374,7 +1379,7 @@ export const spellCards: CardLibrary = {
       "spell",
       "expert",
       "earth",
-      "Activation: The selected unit suffers: Power 1: 2 damage; Power 3: 4 damage; Power 5: 6 damage. — OR — Instant: +1 Power."
+      "Activation: The selected unit suffers: Power 1: 2 damage; Power 3: 4 damage; Power 5: 6 damage (needs at least Power 1). — OR — Instant: +1 Power."
     ],
     effect: { type: "DEAL_DAMAGE", amountByPower: { 0: 0, 1: 2, 3: 4, 5: 6 }, damageKind: "spell" },
     assets: {

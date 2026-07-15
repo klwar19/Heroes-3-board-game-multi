@@ -26,6 +26,7 @@ import {
   RESOURCE_DIE_FACES,
   spellBookPowerAvailable,
   spellBookRuleEnabled,
+  spellCastPowerBounds,
   spellPowerValueOfCard,
   standingSpellPower,
   SURRENDER_GOLD_COST,
@@ -128,9 +129,8 @@ function selectionPreview(selections: TraySelection[]): string[] {
  * CURRENT Power (printed base + Power fuelled so far) so the caster can see how
  * much Power they have committed and the defender can read the final Power
  * before choosing Resistance (which only cancels Power ≤ 1) or Magic Mirror.
- * The number is the engine's, recomputed every render, so it climbs in step
- * with each Power card played. Shown to both the active player and the one
- * waiting on them.
+ * Also surfaces min/max useful tiers (Implosion needs ≥1, tops at 5) so the
+ * caster knows when under-fuelled or past the printed ladder.
  */
 function PendingPowerReadout({ state }: { state: GameState }) {
   const power = getPendingReactionPower(state);
@@ -140,6 +140,7 @@ function PendingPowerReadout({ state }: { state: GameState }) {
 
   const spell = power.spellCardId ? cardLibrary[power.spellCardId] : undefined;
   const subject = power.kind === "spell" ? cardName(power.spellCardId ?? "") : "This attack";
+  const bounds = power.kind === "spell" ? spellCastPowerBounds(spell) : { minUseful: 0, maxUseful: null };
   // Damage spells (Magic Arrow, Lightning Bolt, …) read more clearly with the
   // damage their CURRENT Power deals beside the number; die-roll spells (Inferno
   // on a cast, Slayer on an attack) show how many Attack dice the current Power
@@ -157,9 +158,13 @@ function PendingPowerReadout({ state }: { state: GameState }) {
       ? getSpellDiceRollCount(spell, power.totalPower)
       : slayerDice;
 
+  const underMin = bounds.minUseful > 0 && power.totalPower < bounds.minUseful;
+  const overMax = bounds.maxUseful !== null && power.totalPower > bounds.maxUseful;
+  const meterClass = underMin ? "trayPowerMeter under" : overMax ? "trayPowerMeter over" : "trayPowerMeter";
+
   return (
     <span
-      className="trayPowerMeter"
+      className={meterClass}
       title="Power fuels the spell's effect. Resistance only cancels a spell cast at Power 1 or less; Magic Mirror redirects it at whatever Power you used."
     >
       <Zap aria-hidden="true" size={13} />
@@ -170,9 +175,13 @@ function PendingPowerReadout({ state }: { state: GameState }) {
         {diceRolls !== null
           ? ` · ${diceRolls} Attack ${diceRolls === 1 ? "die" : "dice"}`
           : ""}
+        {bounds.minUseful > 0 ? ` · needs ≥${bounds.minUseful}` : ""}
+        {bounds.maxUseful !== null ? ` · top tier ${bounds.maxUseful}` : ""}
         {power.fueledPower > 0
           ? ` · ${power.basePower} base + ${power.fueledPower} fuelled`
           : " · no Power added yet"}
+        {underMin ? " · too low" : ""}
+        {overMax ? " · past top tier" : ""}
       </small>
     </span>
   );
@@ -429,6 +438,18 @@ export function ReactionTray({
   // selection naturally resets whenever the timing window changes hands.
   const window = state.reactionWindow;
   const [selections, setSelections] = useState<TraySelection[]>([]);
+  /**
+   * Cast-window Power gate dialog: when the caster tries to Pass while under
+   * the spell's min useful Power, or over the top tier, show a modal so they
+   * can go back and re-fuel (or, for overboard only, confirm anyway).
+   */
+  const [powerPassDialog, setPowerPassDialog] = useState<null | {
+    kind: "under" | "over";
+    spellName: string;
+    totalPower: number;
+    minUseful: number;
+    maxUseful: number | null;
+  }>(null);
   const { zoomCard } = useCardZoom();
 
   const reactionActions = useMemo(
@@ -882,6 +903,73 @@ export function ReactionTray({
       : "Pass";
   const crownsOver = crownsSelected > crownsAvailable;
 
+  // Pending CAST_SPELL Power bounds for the viewing caster (Pass gating).
+  const pendingCast =
+    !isAttackWindow && state.stack.at(-1)?.action.type === "CAST_SPELL"
+      ? state.stack.at(-1)!
+      : null;
+  const pendingCastAction =
+    pendingCast?.action.type === "CAST_SPELL" ? pendingCast.action : null;
+  const isSpellCaster =
+    Boolean(pendingCastAction) && pendingCastAction!.playerId === viewerPlayerId;
+  const pendingSpellCard = pendingCastAction ? cardLibrary[pendingCastAction.cardId] : undefined;
+  const castPowerBounds = spellCastPowerBounds(pendingSpellCard);
+  const livePower = getPendingReactionPower(state);
+  const castTotalPower = livePower?.kind === "spell" ? livePower.totalPower : 0;
+  const scrollLocked = Boolean(pendingCast?.modifiers.scrollLocked);
+  const underMinPower =
+    isSpellCaster &&
+    !scrollLocked &&
+    castPowerBounds.minUseful > 0 &&
+    castTotalPower < castPowerBounds.minUseful;
+  const overMaxPower =
+    isSpellCaster &&
+    !scrollLocked &&
+    castPowerBounds.maxUseful !== null &&
+    castTotalPower > castPowerBounds.maxUseful;
+  // Any legal way to raise Power on this cast: discard a Spell for +1, play a
+  // Power statistic (ADD_SPELL_POWER), or a Book Power discard.
+  const canFuelPower =
+    reactionActions.some((action) => {
+      if (action.asPowerBoost) {
+        return true;
+      }
+      const effect = getEffectiveCardEffect(cardLibrary[action.cardId], action.optionIndex);
+      return effect?.type === "ADD_SPELL_POWER";
+    }) || spellBookReactions.some((action) => action.asPowerBoost);
+  // Hard-block Pass only when under the floor AND more Power can still be added.
+  // If the hand is empty of Power sources, Pass is allowed so the table never soft-locks.
+  const passBlockedUnderMin = underMinPower && canFuelPower;
+
+  const tryPassReaction = () => {
+    if (passBlockedUnderMin) {
+      setPowerPassDialog({
+        kind: "under",
+        spellName: pendingSpellCard?.name ?? "This spell",
+        totalPower: castTotalPower,
+        minUseful: castPowerBounds.minUseful,
+        maxUseful: castPowerBounds.maxUseful
+      });
+      return;
+    }
+    if (overMaxPower) {
+      setPowerPassDialog({
+        kind: "over",
+        spellName: pendingSpellCard?.name ?? "This spell",
+        totalPower: castTotalPower,
+        minUseful: castPowerBounds.minUseful,
+        maxUseful: castPowerBounds.maxUseful
+      });
+      return;
+    }
+    onAction({ type: "PASS_REACTION", playerId: viewerPlayerId });
+  };
+
+  const confirmPassAnyway = () => {
+    setPowerPassDialog(null);
+    onAction({ type: "PASS_REACTION", playerId: viewerPlayerId });
+  };
+
   return (
     <div className="reactionTray" role="dialog" aria-label="Instant window">
       <header>
@@ -1241,6 +1329,18 @@ export function ReactionTray({
           {powerNeedsSpell ? (
             <span className="trayWarning">Power only counts with a Spell played into this attack — add the spell.</span>
           ) : null}
+          {passBlockedUnderMin ? (
+            <span className="trayWarning" role="alert">
+              {pendingSpellCard?.name ?? "This spell"} needs at least Power {castPowerBounds.minUseful}{" "}
+              (currently {castTotalPower}). Add Power, then resolve.
+            </span>
+          ) : null}
+          {overMaxPower && !passBlockedUnderMin ? (
+            <span className="trayWarning">
+              Power {castTotalPower} is past the top tier ({castPowerBounds.maxUseful}). Extra Power will not improve
+              this spell.
+            </span>
+          ) : null}
           {crownsOver ? (
             <span className="trayWarning" role="alert">
               {crownsAvailable === 0
@@ -1264,14 +1364,59 @@ export function ReactionTray({
           </span>
         </button>
         <button
-          className="trayPass"
-          onClick={() => onAction({ type: "PASS_REACTION", playerId: viewerPlayerId })}
+          className={`trayPass${passBlockedUnderMin ? " blocked" : ""}${overMaxPower ? " caution" : ""}`}
+          onClick={tryPassReaction}
+          title={
+            passBlockedUnderMin
+              ? `Needs Power ≥ ${castPowerBounds.minUseful} before resolving`
+              : overMaxPower
+                ? `Past top tier (${castPowerBounds.maxUseful}) — confirm to resolve anyway`
+                : undefined
+          }
           type="button"
         >
           <CircleOff aria-hidden="true" size={15} />
           <span>{passLabel}</span>
         </button>
       </footer>
+      {powerPassDialog ? (
+        <div className="modalBackdrop trayPowerBackdrop" role="dialog" aria-modal="true" aria-label="Spell Power check">
+          <div className="confirmModal">
+            {powerPassDialog.kind === "under" ? (
+              <>
+                <strong>Not enough Power</strong>
+                <p>
+                  <em>{powerPassDialog.spellName}</em> needs at least{" "}
+                  <strong>Power {powerPassDialog.minUseful}</strong> (currently{" "}
+                  {powerPassDialog.totalPower}). Add Power cards first, then resolve.
+                </p>
+                <div className="confirmModalButtons">
+                  <button className="commandButton primary" onClick={() => setPowerPassDialog(null)} type="button">
+                    Go back — add Power
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <strong>Power past the top tier</strong>
+                <p>
+                  <em>{powerPassDialog.spellName}</em> tops out at{" "}
+                  <strong>Power {powerPassDialog.maxUseful}</strong>. You have{" "}
+                  {powerPassDialog.totalPower} — the extra will not improve this cast.
+                </p>
+                <div className="confirmModalButtons">
+                  <button className="commandButton ghost" onClick={() => setPowerPassDialog(null)} type="button">
+                    Go back — adjust Power
+                  </button>
+                  <button className="commandButton primary" onClick={confirmPassAnyway} type="button">
+                    Resolve anyway
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

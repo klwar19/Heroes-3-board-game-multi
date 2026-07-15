@@ -147,6 +147,7 @@ export {
 export type { CommanderFirstAidOption } from "./commanders";
 export {
   cardCanBoostPower,
+  collectPowerBreakpoints,
   describeCardEffect,
   getCardEffectAmount,
   getCardOptions,
@@ -157,6 +158,10 @@ export {
   getSpellDiceRollCount,
   implementedCardEffectTypes,
   isImplementedCardEffect,
+  spellCastPowerBounds,
+  spellMaxUsefulPower,
+  spellMinUsefulPower,
+  spellPowerBreakpoints,
   spellPowerValueOfCard
 } from "./effects";
 export { getPlayerView, OBSERVER_VIEWER_SEAT, PASSWORD_REDACTED, redactStateForSeat } from "./player-view";

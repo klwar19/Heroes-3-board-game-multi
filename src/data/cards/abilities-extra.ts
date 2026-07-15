@@ -271,17 +271,15 @@ export const extraAbilityCards: CardLibrary = {
   },
   // Interference shares Armorer's identical "+X defense" base, so it is BOTH a
   // normal defense reaction to a physical attack AND a spell-damage reduction:
-  //   • Played as one of your units is attacked → that unit gains +X Defense,
-  //     softening the hit exactly like Armorer.
+  //   • Played as one of your units is attacked → that unit gains +X Defense on
+  //     THIS attack only (stack defenseBonus), exactly like Armorer / Lion's Shield.
   //   • Played as an enemy casts a damaging Spell at your unit → the same +X
-  //     Defense also reduces that Spell's damage.
-  // engine: INTERFERE_SPELL grants the attacked/targeted unit a Combat-long
-  // effect carrying BOTH a DEFENSE_BONUS (vs attacks) and a SPELL_DAMAGE_REDUCTION
-  // (vs spells) — +1 basic / +2 expert. The printed `trigger` is the SPELL_CAST
-  // window; legal-actions ALSO cross-offers it to the DEFENDER in the
-  // UNIT_ATTACK_DECLARED window (variantMatchesTrigger + isEffectLegalForTrigger),
-  // and the reducer applies the same effect to the unit being attacked — so the
-  // bonus softens the triggering hit/Spell and every later one on that unit.
+  //     reduces THAT Spell's damage only (stack interfereSpellReductions).
+  // Wiki marks both sides `<instant>` — never combat-long (that was a prior
+  // misread; Shield had the same bug and was fixed). engine: INTERFERE_SPELL
+  // basic +1 / expert +2. The printed `trigger` is the SPELL_CAST window;
+  // legal-actions ALSO cross-offers it to the DEFENDER in the UNIT_ATTACK_DECLARED
+  // window (variantMatchesTrigger + isEffectLegalForTrigger).
   "ability.interference": {
     id: "ability.interference",
     name: "Interference",
@@ -297,7 +295,7 @@ export const extraAbilityCards: CardLibrary = {
       "ability",
       "magic",
       "defense",
-      "Basic: +1 defense — a reaction to an attack on your unit OR to an enemy damaging Spell on your unit, where the same +1 defense also reduces the Spell's damage (lasts the Combat). Expert: +2 defense."
+      "Basic: Instant +1 defense — a reaction to an attack on your unit OR to an enemy damaging Spell on your unit (the same +1 also reduces that Spell's damage). Expert: Instant +2 defense."
     ],
     effect: { type: "INTERFERE_SPELL", amount: 1, expertAmount: 2 },
     // Real printed-card scan (user-provided) at /assets/abilities-interference.webp,
