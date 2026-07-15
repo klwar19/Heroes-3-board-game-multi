@@ -28,6 +28,12 @@ import {
   objectiveDistanceField,
   primaryMapObjective,
 } from "./map-navigation";
+import {
+  armyEngagementTier,
+  armyTierCoversGuardField,
+  armyTierGuardCap,
+} from "./army-strength";
+import type { UnitTier } from "@/data/factions/types";
 import { scoreMapAction } from "./map-policy";
 import { chooseComputerAction } from "./policy";
 import type { ComputerObservation } from "./types";
@@ -119,6 +125,147 @@ describe("canBeatGuardedField (Quick-Combat grounded engagement)", () => {
     expect(canBeatGuardedField(state, hero, state.adventure!.fields[MINE])).toBe(
       false,
     );
+  });
+});
+
+describe("army-tier guard engagement reference (Step 5)", () => {
+  function unitDefOfTier(tier: UnitTier): string {
+    const id = Object.keys(coreUnitDefinitions).find(
+      (key) => coreUnitDefinitions[key]?.tier === tier,
+    );
+    if (!id) throw new Error(`fixture has no ${tier}-tier unit`);
+    return id;
+  }
+  function setArmyTiers(state: GameState, tiers: UnitTier[]): void {
+    state.players.p2.army = tiers.map((tier, index) => ({
+      id: `au-${index}`,
+      unitDefId: unitDefOfTier(tier),
+      side: "few" as const,
+    }));
+  }
+
+  it("derives the whole table from the real guard-draw table (anchors: silver→3, gold→5 @ impossible)", () => {
+    // Anchors (user's hard requirements) at Impossible — the worst case, since a
+    // guard field draws strictly stronger parties as the scenario difficulty rises.
+    expect(armyTierGuardCap("impossible", "silver")).toBe(3);
+    expect(armyTierGuardCap("impossible", "gold")).toBe(5);
+    // Easier scenario difficulties draw weaker parties, so the same army tier
+    // safely takes an equal-or-higher field difficulty.
+    expect(armyTierGuardCap("easy", "silver")).toBe(4);
+    expect(armyTierGuardCap("normal", "silver")).toBe(4);
+    expect(armyTierGuardCap("hard", "silver")).toBe(4);
+    expect(armyTierGuardCap("easy", "gold")).toBe(6);
+    expect(armyTierGuardCap("normal", "gold")).toBe(6);
+    expect(armyTierGuardCap("hard", "gold")).toBe(6);
+    // Bronze caps (derived, though the wiring keeps bronze on the level gate).
+    expect(armyTierGuardCap("impossible", "bronze")).toBe(1);
+    expect(armyTierGuardCap("normal", "bronze")).toBe(2);
+    // Azure outranks every guard tier — the apex army takes any field.
+    expect(armyTierGuardCap("impossible", "azure")).toBe(7);
+    expect(armyTierGuardCap("easy", "azure")).toBe(7);
+  });
+
+  it("a silver-bearing army engages difficulty-3 at Impossible; a bronze-only army does NOT (CONTROL)", () => {
+    const state = game();
+    state.adventure!.difficulty = "impossible";
+    const hero = p2Hero(state);
+    hero.level = 1; // level does NOT cover difficulty 3 — army tier is the only lever
+    state.adventure!.fields[MINE].difficulty = 3;
+
+    // CONTROL: a bronze-only army stays on the level gate — no extension.
+    setArmyTiers(state, ["bronze", "bronze", "bronze"]);
+    expect(armyEngagementTier(state, "p2")).toBe("bronze");
+    expect(
+      canBeatGuardedField(state, hero, state.adventure!.fields[MINE]),
+    ).toBe(false);
+
+    // Two silver bodies unlock the silver cap (3 @ Impossible).
+    setArmyTiers(state, ["silver", "silver", "bronze"]);
+    expect(armyEngagementTier(state, "p2")).toBe("silver");
+    expect(
+      canBeatGuardedField(state, hero, state.adventure!.fields[MINE]),
+    ).toBe(true);
+    // ...and the guard becomes a march objective for the qualifying army.
+    expect(
+      collectMapObjectives(state, hero).some(
+        (o) => o.spaceId === MINE && o.kind === "guard",
+      ),
+    ).toBe(true);
+  });
+
+  it("silver stops at 3 while a gold-bearing army reaches difficulty-5 @ Impossible", () => {
+    const state = game();
+    state.adventure!.difficulty = "impossible";
+    const hero = p2Hero(state);
+    hero.level = 1;
+    state.adventure!.fields[MINE].difficulty = 5;
+
+    // A silver army does NOT over-reach to difficulty 5 (CONTROL for the cap).
+    setArmyTiers(state, ["silver", "silver", "silver"]);
+    expect(
+      canBeatGuardedField(state, hero, state.adventure!.fields[MINE]),
+    ).toBe(false);
+
+    // Two gold bodies unlock the gold cap (5 @ Impossible).
+    setArmyTiers(state, ["gold", "gold", "silver"]);
+    expect(armyEngagementTier(state, "p2")).toBe("gold");
+    expect(
+      canBeatGuardedField(state, hero, state.adventure!.fields[MINE]),
+    ).toBe(true);
+  });
+
+  it("guard rail: one lone silver unit does NOT charge a difficulty-3 camp; two do", () => {
+    const state = game();
+    state.adventure!.difficulty = "impossible";
+    const hero = p2Hero(state);
+    hero.level = 1;
+    state.adventure!.fields[MINE].difficulty = 3;
+
+    // A single silver body (rest bronze) falls short of MIN_TIER_UNITS_FOR_ENGAGE.
+    setArmyTiers(state, ["silver", "bronze", "bronze"]);
+    expect(armyEngagementTier(state, "p2")).toBe("bronze");
+    expect(armyTierCoversGuardField(state, "p2", 3)).toBe(false);
+
+    setArmyTiers(state, ["silver", "silver", "bronze"]);
+    expect(armyTierCoversGuardField(state, "p2", 3)).toBe(true);
+  });
+
+  it("seizes an Astrologers 'Rulebook' window: guards draw one level easier, so the caps stretch", () => {
+    const state = game();
+    state.adventure!.difficulty = "impossible";
+    const hero = p2Hero(state);
+    hero.level = 1;
+    state.adventure!.fields[MINE].difficulty = 4;
+    setArmyTiers(state, ["silver", "silver", "bronze"]);
+
+    // CONTROL: at plain Impossible a silver army stops at the cap of 3.
+    expect(armyTierCoversGuardField(state, "p2", 4)).toBe(false);
+
+    // With the Rulebook proclamation face-up the guard army is DRAWN as if the
+    // difficulty were one lower (engine neutralArmyDifficulty), so the same
+    // army correctly takes the difficulty-4 camp during that window.
+    state.adventure!.astrologers = {
+      ...(state.adventure!.astrologers ?? {}),
+      activeCardId: "astrologers.rulebook",
+    } as NonNullable<GameState["adventure"]>["astrologers"];
+    expect(armyTierCoversGuardField(state, "p2", 4)).toBe(true);
+    expect(
+      canBeatGuardedField(state, hero, state.adventure!.fields[MINE]),
+    ).toBe(true);
+  });
+
+  it("REGRESSION: a fight the hero level already covers still engages with no qualifying army", () => {
+    const state = game();
+    state.adventure!.difficulty = "impossible";
+    const hero = p2Hero(state);
+    hero.level = 5; // level >= difficulty 3 → Quick-Combat reference alone suffices
+    state.adventure!.fields[MINE].difficulty = 3;
+    setArmyTiers(state, ["bronze", "bronze", "bronze"]);
+    // No silver/gold to extend engagement, yet the level gate still engages.
+    expect(armyTierCoversGuardField(state, "p2", 3)).toBe(false);
+    expect(
+      canBeatGuardedField(state, hero, state.adventure!.fields[MINE]),
+    ).toBe(true);
   });
 });
 

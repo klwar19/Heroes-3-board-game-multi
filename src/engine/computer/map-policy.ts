@@ -30,6 +30,7 @@ import { playerArmyStrength } from "./army-strength";
 import {
   armyDevelopmentProfile,
   armyReadyForContestedFight,
+  assessDwellingRush,
   developmentResourceTargets,
 } from "./development";
 import {
@@ -61,6 +62,19 @@ export type ComputerActionScore = {
 
 /** Keep a small gold cushion so the AI does not spend to 0 and stall next turn. */
 const GOLD_RESERVE = 5;
+
+// Dwelling-rush trade planner (see development.assessDwellingRush).
+/** A trade that converts genuine surplus into the missing dwelling input — above
+ *  Done (520) and every generic trade (<=700) so the conversion runs to completion. */
+const DWELLING_RUSH_TRADE_SCORE = 720;
+/** A dwelling-input purchase the rush deems INFEASIBLE (would eat the recruit
+ *  reserve) — below Done (520) so the seat leaves the market without stripping it. */
+const DWELLING_RUSH_SUPPRESS_SCORE = 280;
+/** Opening the market to run a feasible dwelling rush: decisive economy play. Set
+ *  above the unlock-phase recruit ceiling (940) so the AI rushes the dwelling
+ *  before spending its gold on stray troops, yet below the dwelling BUILD (950/955)
+ *  and any scenario-winning map step (victory enter 980). */
+const DWELLING_RUSH_OPEN_MARKET_SCORE = 945;
 
 type ResourceKey = "gold" | "buildingMaterials" | "valuables";
 
@@ -828,6 +842,14 @@ function tradeResourceScore(
   action: Extract<GameAction, { type: "TRADE_RESOURCES" }>,
 ): number {
   const state = observation.state as unknown as GameState;
+  // Dwelling rush: a trade that buys a missing dwelling input is either the
+  // decisive enabler (feasible surplus) or actively SUPPRESSED (would strip the
+  // recruit reserve). This overrides the generic heuristic, which would happily
+  // over-trade gold down to zero to complete the dwelling and destroy potential.
+  const rush = assessDwellingRush(state, observation.playerId);
+  if (rush && rush.inputRateIndices.includes(action.rateIndex)) {
+    return rush.feasible ? DWELLING_RUSH_TRADE_SCORE : DWELLING_RUSH_SUPPRESS_SCORE;
+  }
   const utility = tradeUtility(state, observation.playerId, action.rateIndex);
   if (utility <= 0) {
     // Below "Done trading" (520) so a useless exchange never loops.
@@ -1358,18 +1380,28 @@ export function scoreMapAction(
       return { score: 480, policy: "map.revisit-location" };
     }
     case "OPEN_MARKET": {
-      // Free while parked on a market. Only open when a useful trade or shop
-      // buy exists — otherwise the hero would open/close forever (score 0 was
-      // below END_TURN so it never opened; a high unconditional score loops).
-      if (!wantsMarketVisit(state, observation.playerId)) {
-        return { score: 250, policy: "map.market-skip-balanced" };
-      }
-      // Already used the market this round — avoid open/close thrash.
+      // Already used the market this round — avoid open/close thrash (applies to
+      // the dwelling rush too: it completes in the first open of the round).
       if (memory.lastMarketRound === state.round) {
         return {
           score: 240,
           policy: "map.market-already-used",
         };
+      }
+      // Dwelling rush: convert genuine gold surplus into the missing dwelling
+      // input and build THIS turn. Decisive so the AI does not fritter the gold
+      // on stray troops / idle away instead of reaching Silver/Gold.
+      if (assessDwellingRush(state, observation.playerId)?.feasible) {
+        return {
+          score: DWELLING_RUSH_OPEN_MARKET_SCORE,
+          policy: "map.open-market-dwelling-rush",
+        };
+      }
+      // Free while parked on a market. Only open when a useful trade or shop
+      // buy exists — otherwise the hero would open/close forever (score 0 was
+      // below END_TURN so it never opened; a high unconditional score loops).
+      if (!wantsMarketVisit(state, observation.playerId)) {
+        return { score: 250, policy: "map.market-skip-balanced" };
       }
       return {
         score: 680 + economyFocusBias(memory, "market"),
