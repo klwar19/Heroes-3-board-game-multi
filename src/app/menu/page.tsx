@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { MenuShell } from "@/components/menu/menu-shell";
 import { WelcomeNotice } from "@/components/menu/welcome-notice";
+import { UiModePrompt } from "@/components/table/ui-mode-prompt";
 import { SKILL_ICONS } from "@/data/assets/homm-assets";
 import { DEFAULT_SERVER } from "@/data/servers";
 import { assetUrl } from "@/lib/asset-url";
@@ -74,6 +75,9 @@ export default function MenuPage() {
 
   return (
     <>
+    {/* Ask the per-browser Computer/Phone layout question at the very start of
+        the app flow (renders only while the preference is unset). */}
+    <UiModePrompt />
     <WelcomeNotice />
     <MenuShell
       logo

@@ -55,6 +55,20 @@ describe("/menu (main menu, guest-only build)", () => {
     expect(screen.getByText(/No player name set/)).toBeTruthy();
     expect(screen.getByRole("link", { name: /Choose a name/i }).getAttribute("href")).toBe("/login");
   });
+
+  it("asks the Computer/Phone layout question at the very start (preference unset)", () => {
+    // localStorage is cleared in beforeEach, so the per-browser mode is unset:
+    // the entry-page mount must show the pre-game prompt straight away. Fails if
+    // the <UiModePrompt /> mount is removed from the menu page.
+    render(<MenuPage />);
+    expect(screen.getByRole("dialog", { name: /choose your screen layout/i })).toBeTruthy();
+  });
+
+  it("does NOT ask the layout question once the mode is already chosen (CONTROL)", () => {
+    window.localStorage.setItem("binh-ui-mode", "computer");
+    render(<MenuPage />);
+    expect(screen.queryByRole("dialog", { name: /choose your screen layout/i })).toBeNull();
+  });
 });
 
 describe("/menu (accounts enabled) — guest login temporarily disabled", () => {

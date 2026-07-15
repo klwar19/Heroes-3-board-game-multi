@@ -3,10 +3,12 @@
 /**
  * Pre-game UI-mode chooser + the table-menu toggle.
  *
- * `UiModePrompt` is mounted on every table branch (setup lobby, Battle-Test
- * setup, adventure map, combat), so the question is asked BEFORE the game
- * begins in the normal flow, and a mid-game joiner still gets asked once. It
- * renders only while the per-browser preference is unset; answering it is a
+ * `UiModePrompt` is mounted on the app's entry pages (the main menu at /menu
+ * and the multiplayer lobby at /play) so the question is asked at the VERY
+ * START of the app flow, and on every table branch (setup lobby, Battle-Test
+ * setup, adventure map, combat) so a direct-link / mid-game joiner who never
+ * passed through the menu still gets asked once. It renders only while the
+ * per-browser preference is unset (so it can never double-ask); answering it is a
  * forced pick (no dismiss-without-choice), exactly like the helper-coach
  * lobby prompt it is modeled on. The device-detected mode is only a
  * "Recommended" badge — the player always decides.
