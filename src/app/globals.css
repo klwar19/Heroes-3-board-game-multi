@@ -22674,6 +22674,806 @@ details.mapPresetEditor[open] .mapPresetSummaryChevron {
   padding-left: 16px;
 }
 
+/* ==== ORNATE ART SKIN III — kit v2 (frame / columns / rails / plaques) ==== */
+/*                                                                          */
+/* Elevates the plainest chrome of the ADVENTURE MAP screen to match the    */
+/* leather-and-gold family already used elsewhere, using the v2 art kit in  */
+/* /assets/ui/ornate: a carved gem frame (frame-ornate), gold pilaster      */
+/* columns (column-gold), a filigree section rail (rail-divider) and a      */
+/* title cartouche (plaque-title). VISUAL-ONLY: overrides background /      */
+/* border / box-shadow on existing classes; every decorative pseudo-element */
+/* is pointer-events:none, sits behind or clear of interactive content, and */
+/* makes no layout hit-area moves. Sits LAST (before the phone block) so it  */
+/* wins. Phone-mode disables for anything that would crowd the tab bar live  */
+/* in the PHONE UI MODE block below, per that block's convention.           */
+/* ======================================================================== */
+:root {
+  --orn-frame: url("/assets/ui/ornate/frame-ornate.webp");
+  --orn-column: url("/assets/ui/ornate/column-gold.webp");
+  --orn-rail: url("/assets/ui/ornate/rail-divider.webp");
+  --orn-plaque: url("/assets/ui/ornate/plaque-title.webp");
+}
+
+/* ---- 1. Top HUD status ribbon → carved gold-banded leather bar --------- */
+/* The single most visible plain element: was a flat marble strip. Leather   */
+/* fill + a hard gold hairline banding reads as tooled game chrome. No corner */
+/* flourishes here — the ribbon is dense and wraps, so ornaments would ride  */
+/* over the status text; the banding alone carries the carve.               */
+.adventureRoot > .tableTopRow > .advHud {
+  position: relative;
+  border: 1px solid var(--cmp-gold-deep);
+  background:
+    radial-gradient(130% 120% at 50% -30%, rgb(217 178 90 / 13%), transparent 60%),
+    linear-gradient(180deg, rgb(32 23 12 / 94%) 0%, rgb(17 12 7 / 96%) 100%),
+    var(--cmp-leather) center / 340px repeat;
+  box-shadow:
+    inset 0 0 0 1px rgb(217 178 90 / 44%),
+    inset 0 1px 0 rgb(246 226 168 / 22%),
+    inset 0 -2px 7px rgb(0 0 0 / 42%),
+    0 8px 22px rgb(0 0 0 / 48%);
+}
+
+.adventureRoot > .tableTopRow > .advHud .advHudCell {
+  border-right-color: rgb(217 178 90 / 30%);
+}
+
+/* ---- 2. Section-title rails: rail-divider filigree under headers ------- */
+/* A subtle, centred gold rail beneath "Permanents & Ongoing" and the hand   */
+/* header — a section rule, not a heavy backplate. Decorative, click-safe.  */
+.playerCardBar .trayBoxHeader,
+.playerCardBar .handTopBar {
+  position: relative;
+  padding-bottom: 9px;
+}
+
+.playerCardBar .trayBoxHeader::after,
+.playerCardBar .handTopBar::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  bottom: 0;
+  height: 12px;
+  background: var(--orn-rail) center bottom / 100% 12px no-repeat;
+  opacity: 0.8;
+  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 55%));
+  pointer-events: none;
+}
+
+/* Behind each section title ("Permanents & Ongoing", "Hand X/X"): a slim
+   tooled cartouche so the panel's lead title reads as an engraved plaque.
+   Sized to hug the words; sits behind the text, click-safe. The full-width
+   rail above rules the section beneath the plaqued title. */
+.playerCardBar .permanentEffectsPanel .trayBoxHeader strong,
+.playerCardBar .handArea .handTopBar > small:first-child {
+  position: relative;
+  padding: 5px 30px 6px;
+  color: var(--cmp-gold-bright);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 75%);
+}
+
+.playerCardBar .permanentEffectsPanel .trayBoxHeader strong::before,
+.playerCardBar .handArea .handTopBar > small:first-child::before {
+  content: "";
+  position: absolute;
+  inset: -3px -2px -2px;
+  z-index: -1;
+  background: var(--orn-plaque) center / 100% 100% no-repeat;
+  filter: drop-shadow(0 2px 4px rgb(0 0 0 / 55%));
+  pointer-events: none;
+}
+
+/* ---- 3. Room / seat panel → framed leather box ------------------------- */
+/* The plain dark box at top-right becomes a carved leather panel inside the  */
+/* frame-ornate gem frame. The frame is a real (transparent) layout border,  */
+/* so no content can ever be overlapped by the ornament. Scoped to `.tableRoot`*/
+/* (not just `.adventureRoot`) so the SAME room panel is framed on the battle  */
+/* screen too — the map render is byte-identical, the combat table gains it.  */
+.tableRoot > .tableTopRow > .tableMenu {
+  border: 19px solid transparent;
+  border-image-source: var(--orn-frame);
+  border-image-slice: 185;
+  border-image-width: 19px;
+  border-image-repeat: round;
+  border-radius: 4px;
+  padding: 5px 7px;
+  background:
+    linear-gradient(180deg, rgb(22 16 9 / 86%), rgb(12 9 6 / 92%)),
+    var(--cmp-leather) center / 300px repeat;
+  background-clip: padding-box;
+  box-shadow: 0 10px 26px rgb(0 0 0 / 46%);
+}
+
+/* Seat chips → small carved gold-hairline plates (selected stays solid gold). */
+.tableRoot > .tableTopRow > .tableMenu .seatSwitch button {
+  border: 1px solid var(--cmp-gold-deep);
+  color: #f0dcb8;
+  background:
+    linear-gradient(180deg, rgb(38 28 15 / 92%), rgb(22 15 8 / 94%)),
+    var(--cmp-leather) center / 220px repeat;
+  box-shadow: inset 0 1px 0 rgb(246 226 168 / 12%);
+}
+
+.tableRoot > .tableTopRow > .tableMenu .seatSwitch button.selected {
+  color: #2c1d08;
+  background: linear-gradient(180deg, #f4d78c 0%, var(--cmp-gold) 50%, #b98f3f 100%);
+  border-color: var(--cmp-gold-deep);
+  box-shadow: inset 0 1px 0 rgb(255 247 218 / 70%);
+}
+
+/* The Room toggle → the same quiet leather plate so the box reads as one. */
+.tableRoot > .tableTopRow > .tableMenu .roomToggle {
+  border: 1px solid var(--cmp-gold-deep);
+  background:
+    linear-gradient(180deg, rgb(34 25 14 / 90%), rgb(20 14 8 / 93%)),
+    var(--cmp-leather) center / 220px repeat;
+  color: #f0dcb8;
+}
+
+/* ---- 4. Hand / permanents tray → flanking gold pilasters --------------- */
+/* Two carved columns hug the tray's left & right edges, BEHIND the content   */
+/* (z-index:-1), so the whole "your cards" block reads as a framed shelf. The */
+/* griffin watermark already lives on ::before, so the columns ride ::after.  */
+/* Hidden below 1100px so they never crowd a narrow tray.                    */
+.playerCardBar::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  top: 5px;
+  bottom: 5px;
+  left: 1px;
+  right: 1px;
+  background:
+    var(--orn-column) left center / auto 100% no-repeat,
+    var(--orn-column) right center / auto 100% no-repeat;
+  opacity: 0.5;
+  filter: drop-shadow(0 4px 9px rgb(0 0 0 / 45%));
+  pointer-events: none;
+}
+
+@media (max-width: 1100px) {
+  .playerCardBar::after {
+    display: none;
+  }
+}
+
+/* ---- 5. Top game-log banner → quiet leather strip with a gold rule ----- */
+.adventureRoot > .logDrawer {
+  border: 1px solid var(--cmp-gold-deep);
+  border-radius: 9px;
+  background:
+    linear-gradient(180deg, rgb(26 19 11 / 90%), rgb(15 11 7 / 93%)),
+    var(--cmp-leather) center / 320px repeat;
+  box-shadow:
+    inset 0 1px 0 rgb(246 226 168 / 10%),
+    0 4px 14px rgb(0 0 0 / 34%);
+}
+
+.adventureRoot > .logDrawer .logToggle {
+  border-bottom: 1px solid rgb(217 178 90 / 26%);
+  color: #cdb488;
+}
+
+.adventureRoot > .logDrawer .logToggle span {
+  color: #f0dcb8;
+}
+
+/* ======================================================================== */
+/* ---- BATTLE (combat) SCREEN — same kit v2, same treatments ------------- */
+/*                                                                          */
+/* The combat table (`.tableRoot` WITHOUT `.adventureRoot`; battle-test AND  */
+/* real adventure fights alike) reuses the leather-and-gold family above so  */
+/* the two screens read as one game. Same discipline: overrides on existing  */
+/* classes only; every decorative pseudo-element is pointer-events:none and  */
+/* sits BEHIND or CLEAR of the battlefield cells / unit cards / buttons; no  */
+/* hit-area is moved. The room panel (.tableMenu) is already framed for      */
+/* every root by §3 above. Phone fall-backs (a wide frame would eat a narrow */
+/* panel) live at the end of the PHONE UI MODE block, per its convention.    */
+/* ======================================================================== */
+
+/* ---- B1. Battlefield surround → framed war-table ----------------------- */
+/* The board sat in a thin gold band (skin II). Mount the carved gem frame   */
+/* as a REAL transparent layout border (so a cell / unit can never be        */
+/* covered — the border only insets the board) with a thin gold + royal-blue */
+/* banding hugging the board just inside it: the same frame-ornate treatment */
+/* the map's room panel wears, sized for the larger board. */
+.battlefieldFrame {
+  border: 18px solid transparent;
+  border-image-source: var(--orn-frame);
+  border-image-slice: 185;
+  border-image-width: 18px;
+  border-image-repeat: round;
+  border-radius: 5px;
+  box-shadow:
+    inset 0 0 0 2px rgb(217 178 90 / 74%),
+    inset 0 0 0 3px rgb(33 64 111 / 55%),
+    inset 0 0 40px rgb(0 0 0 / 44%),
+    0 24px 30px rgb(0 0 0 / 46%);
+}
+
+/* ---- B2. ORDER (initiative) rail → gold banding + bright-gold label ----- */
+/* Leather + a gold hairline already come from skin II. The rail is a dark,  */
+/* dense, wrapping strip — exactly like the map's HUD ribbon — so it takes    */
+/* the SAME treatment that ribbon consciously chose: hard gold banding +      */
+/* a bright-gold lead label, NO plaque (a leather cartouche would vanish on   */
+/* the dark leather and a flourish would ride over the unit-card thumbnails). */
+.initiativeRail {
+  box-shadow:
+    inset 0 0 0 1px rgb(217 178 90 / 34%),
+    inset 0 1px 0 rgb(246 226 168 / 12%),
+    inset 0 -2px 7px rgb(0 0 0 / 34%),
+    0 6px 16px rgb(0 0 0 / 40%);
+}
+
+.initiativeRail .initLabel {
+  padding: 2px 6px 2px 2px;
+  color: var(--cmp-gold-bright);
+  font-weight: 800;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 78%);
+}
+
+/* ---- B3. Deploy sidebar → framed leather box, rail under its title ------ */
+/* The plain dark "Deploy up to N units" box becomes a carved leather panel  */
+/* inside a thinner (sidebar-sized) gem frame — the same room-panel look —   */
+/* with a filigree rail ruling under its lead title. Deploy-only (the column */
+/* renders only during setup), so the in-fight reaction / morale trays are   */
+/* untouched. */
+.placementPanel {
+  border: 13px solid transparent;
+  border-image-source: var(--orn-frame);
+  border-image-slice: 185;
+  border-image-width: 13px;
+  border-image-repeat: round;
+  border-radius: 4px;
+  padding: 10px 12px 12px;
+  background:
+    linear-gradient(180deg, rgb(30 22 13 / 93%), rgb(17 12 7 / 95%)),
+    var(--cmp-leather) center / 300px repeat;
+  background-clip: padding-box;
+  box-shadow: 0 12px 26px rgb(0 0 0 / 46%);
+}
+
+.placementPanel > strong:first-child {
+  position: relative;
+  padding-bottom: 11px;
+  color: var(--cmp-gold-bright);
+  letter-spacing: 0.04em;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 72%);
+}
+
+.placementPanel > strong:first-child::after {
+  content: "";
+  position: absolute;
+  left: -2px;
+  right: -2px;
+  bottom: 0;
+  height: 12px;
+  background: var(--orn-rail) center bottom / 100% 12px no-repeat;
+  opacity: 0.82;
+  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 55%));
+  pointer-events: none;
+}
+
+/* ---- B4. Opponent nameplate → quiet leather (matches the map HUD) ------- */
+/* The top opponents strip's seat plates take the same tooled-leather fill + */
+/* gold hairline banding as the map's status ribbon, so the combat top strip */
+/* reads as the same chrome. Scoped to `.combatCardStrip` (combat-only).    */
+.combatCardStrip .opponentSeat {
+  border-color: var(--cmp-gold-deep);
+  background:
+    linear-gradient(180deg, rgb(32 25 15 / 92%), rgb(18 14 9 / 94%)),
+    var(--cmp-leather) center / 320px repeat;
+  box-shadow:
+    inset 0 0 0 1px rgb(217 178 90 / 26%),
+    inset 0 1px 0 rgb(246 226 168 / 10%),
+    0 10px 26px rgb(0 0 0 / 32%);
+}
+
+/* ======================================================================== */
+/* ---- TOWN WINDOW — the showcase modal, same kit v2 --------------------- */
+/*                                                                          */
+/* The Town board window (`.townWindow`) is the biggest modal in the game   */
+/* and its natural showcase, so it gets the FULL carved treatment — a hair  */
+/* WIDER than the map/battle panels: the frame-ornate gem frame as a REAL   */
+/* transparent layout border (so no cell/text/the scanned board art can     */
+/* ever be overlapped — the border only insets the window), a tooled-       */
+/* leather header with hard gold banding, carved gold-plate tabs + close    */
+/* button, a spotlight backdrop vignette so the window reads floodlit over  */
+/* the dimmed map, and a quiet leather backing under the Buildings tab.     */
+/* Same discipline as §1–4 / B1–B4: overrides on existing classes only,     */
+/* every decorative pseudo-element pointer-events:none and BEHIND/CLEAR of  */
+/* text, the board art and every control; NO hit-area moves. The frame      */
+/* carries its OWN ruby gem corners (see frame-ornate.webp), so no extra    */
+/* corner flourishes are mounted — they would only collide with them. Phone */
+/* falls back to a plain gold hairline (a fat frame would eat the narrow    */
+/* window, exactly like .tableMenu) in the PHONE UI MODE block below.       */
+/* ======================================================================== */
+
+/* ---- TW1. Backdrop → spotlight vignette (window reads floodlit) -------- */
+/* A soft warm pool over where the window sits, darkening to the edges so   */
+/* the modal reads spotlit over the dimmed map. Pure backdrop paint — the   */
+/* base blur + click-to-close behaviour is untouched.                       */
+.townWindowBackdrop {
+  background:
+    radial-gradient(115% 78% at 50% 24%, rgb(48 35 18 / 34%), transparent 55%),
+    radial-gradient(150% 135% at 50% 30%, transparent 26%, rgb(5 4 3 / 62%) 80%),
+    rgb(8 8 7 / 60%);
+}
+
+/* ---- TW2. The modal container → carved gem frame + deep float shadow --- */
+.townWindow {
+  border: 26px solid transparent;
+  border-image-source: var(--orn-frame);
+  border-image-slice: 185;
+  border-image-width: 26px;
+  border-image-repeat: round;
+  border-radius: 6px;
+  background:
+    radial-gradient(120% 90% at 20% 0%, rgb(255 240 200 / 6%), transparent 50%),
+    linear-gradient(180deg, rgb(26 19 11 / 99%), rgb(15 11 7 / 99%)),
+    var(--cmp-leather) center / 340px repeat;
+  background-clip: padding-box;
+  box-shadow:
+    inset 0 0 0 2px rgb(217 178 90 / 38%),
+    inset 0 0 34px rgb(0 0 0 / 55%),
+    0 36px 92px rgb(0 0 0 / 80%);
+}
+
+/* ---- TW3. Header bar → tooled leather with hard gold banding ----------- */
+/* The town name gets a bright-gold + engraved treatment (NO plaque: the    */
+/* header packs icon + name + resources + tokens + tabs + close, so a       */
+/* cartouche would crowd them — the banding alone carries the carve, like   */
+/* the map HUD ribbon consciously chose).                                   */
+.townWindowHeader {
+  border-bottom: 1px solid var(--cmp-gold-deep);
+  background:
+    radial-gradient(130% 150% at 50% -50%, rgb(217 178 90 / 13%), transparent 60%),
+    linear-gradient(180deg, rgb(45 33 19 / 98%), rgb(25 18 10 / 98%)),
+    var(--cmp-leather) center / 300px repeat;
+  box-shadow:
+    inset 0 0 0 1px rgb(217 178 90 / 28%),
+    inset 0 1px 0 rgb(246 226 168 / 18%),
+    inset 0 -3px 8px rgb(0 0 0 / 40%);
+}
+
+.townWindowHeader > strong {
+  color: var(--cmp-gold-bright);
+  letter-spacing: 0.03em;
+  text-shadow: 0 1px 3px rgb(0 0 0 / 80%);
+}
+
+/* ---- TW4. Board / Buildings tab toggle → carved gold plates ------------ */
+/* The unselected pair reads as a quiet leather plate; the SELECTED tab is a */
+/* solid gold plate exactly like the room panel's selected seat chip / the   */
+/* .commandButton family.                                                    */
+.townWindowViews {
+  border-color: var(--cmp-gold-deep);
+  background: linear-gradient(180deg, rgb(30 22 12 / 82%), rgb(18 13 7 / 86%));
+  box-shadow:
+    inset 0 1px 0 rgb(246 226 168 / 12%),
+    0 3px 8px rgb(0 0 0 / 30%);
+}
+
+.townWindowViews button {
+  color: #e6cf9f;
+}
+
+.townWindowViews button + button {
+  border-left-color: var(--cmp-gold-deep);
+}
+
+.townWindowViews button.selected {
+  background: linear-gradient(180deg, #f4d78c 0%, var(--cmp-gold) 52%, #b98f3f 100%);
+  color: #2c1d08;
+  box-shadow: inset 0 1px 0 rgb(255 247 218 / 65%);
+}
+
+/* ---- TW5. Close button → carved gold-hairline plate ------------------- */
+.townWindowClose {
+  border-color: var(--cmp-gold-deep);
+  background:
+    linear-gradient(180deg, rgb(38 28 15 / 92%), rgb(22 15 8 / 94%)),
+    var(--cmp-leather) center / 160px repeat;
+  color: #f0dcb8;
+  box-shadow: inset 0 1px 0 rgb(246 226 168 / 12%);
+}
+
+.townWindowClose:hover {
+  border-color: var(--cmp-gold);
+  background: linear-gradient(180deg, rgb(54 39 20 / 95%), rgb(31 22 11 / 96%));
+  color: var(--cmp-gold-bright);
+}
+
+/* ---- TW6. Buildings tab → quiet leather backing + gold hairline -------- */
+/* Scoped to `.townWindowBody` so ONLY the town window's Buildings view is   */
+/* touched (the map-rail TownPanel keeps its own look). Conservative: a      */
+/* leather fill + gold hairline over the existing dark cards, nothing that   */
+/* hurts legibility; the built-building green ring is re-asserted on top.    */
+.townWindowBody .townPanel {
+  border-color: var(--cmp-gold-deep);
+  background:
+    linear-gradient(180deg, rgb(30 22 13 / 93%), rgb(18 13 8 / 95%)),
+    var(--cmp-leather) center / 300px repeat;
+  box-shadow:
+    inset 0 1px 0 rgb(246 226 168 / 8%),
+    0 8px 20px rgb(0 0 0 / 30%);
+}
+
+.townWindowBody .townBuilding {
+  border-color: var(--cmp-gold-deep);
+  background:
+    linear-gradient(180deg, rgb(26 19 11 / 90%), rgb(15 11 7 / 92%)),
+    var(--cmp-leather) center / 220px repeat;
+}
+
+.townWindowBody .townBuilding.built {
+  border-color: rgba(120, 200, 120, 0.5);
+}
+
+/* ======================================================================== */
+/* ---- MAP DESIGNER — the level editor, same kit v2 --------------------- */
+/*                                                                          */
+/* The standalone Map-designer page (`.designerRoot`, page.tsx) is the      */
+/* PLAINEST screen in the app and has the most dead space, so it takes the  */
+/* fullest carved treatment: a dim epic-vista backdrop behind a floating    */
+/* framed working surface, a tooled title cartouche, leather field plates,  */
+/* a leather palette shelf, the frame-ornate gem frame around the canvas    */
+/* and a leather Shared-maps rail. Same discipline as §1–4 / B / TW: every  */
+/* rule is scoped under `.designerRoot` so the LOBBY-embedded designer       */
+/* (`.setupCard .designerBoardWrap`, shared component, NOT inside the page)  */
+/* is untouched; every decorative pseudo-element is pointer-events:none and  */
+/* sits BEHIND or CLEAR of the canvas, tiles, inputs and buttons; no         */
+/* hit-area is moved and the drag / drop / zoom interactions are unchanged.  */
+/* The designer has no phone-tab layout, so no phone fall-back is needed;    */
+/* the frame lives on the full-width canvas (never crowded) and a narrow     */
+/* fall-back trims the fattest ornaments below 1100px, per the convention.   */
+/* ======================================================================== */
+
+/* ---- D1. Page backdrop → a dim, vignetted epic vista ------------------- */
+/* Replaces the flat near-black with the map-backdrop scene heavily          */
+/* darkened + a leather grain base and a strong edge vignette, so the        */
+/* working area reads as a lit war-table floating over a distant kingdom.    */
+/* Fixed + z-index:-1 + pointer-events:none: it sits behind all content and  */
+/* only shows through the page's own transparent margins — the canvas, the   */
+/* panels and their own dark fills keep full contrast on top.                */
+.designerRoot::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(120% 95% at 50% -6%, rgb(66 50 26 / 34%), transparent 52%),
+    linear-gradient(90deg, rgb(4 3 2 / 58%) 0%, transparent 24%, transparent 76%, rgb(4 3 2 / 58%) 100%),
+    radial-gradient(145% 130% at 50% 42%, transparent 24%, rgb(4 3 2 / 90%) 82%),
+    linear-gradient(180deg, rgb(11 9 6 / 86%), rgb(6 5 4 / 92%)),
+    url("/assets/ui/map-backdrop.jpg") center / cover no-repeat,
+    var(--cmp-leather) center top / 480px repeat;
+}
+
+/* ---- D2. Title → tooled-leather cartouche + a filigree header rail ------ */
+/* The page title sits in the plaque-title cartouche and turns bright        */
+/* engraved gold; a full-width rail-divider rules under the whole header     */
+/* block (title + intro), separating it from the controls. Click-safe.      */
+.designerRoot .designerTitle {
+  position: relative;
+  padding: 9px 34px 11px;
+  color: var(--cmp-gold-bright);
+  letter-spacing: 0.04em;
+  text-shadow: 0 2px 4px rgb(0 0 0 / 80%);
+}
+
+.designerRoot .designerTitle::before {
+  content: "";
+  position: absolute;
+  inset: -6px -12px -8px;
+  z-index: -1;
+  background: var(--orn-plaque) center / 100% 100% no-repeat;
+  filter: drop-shadow(0 3px 7px rgb(0 0 0 / 55%));
+  pointer-events: none;
+}
+
+.designerRoot .designerHeader {
+  position: relative;
+  padding-bottom: 17px;
+}
+
+.designerRoot .designerHeader::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 14px;
+  background: var(--orn-rail) center bottom / 100% 14px no-repeat;
+  opacity: 0.85;
+  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 55%));
+  pointer-events: none;
+}
+
+/* ---- D3. Controls row → tooled-leather field plates -------------------- */
+/* The Map-name / Scenario / Players fields become carved leather plates     */
+/* with a gold hairline; their little labels read bright gold. The Save /    */
+/* New buttons already wear the .commandButton gold-plate skin, so they are  */
+/* left untouched and read as a matched set.                                 */
+.designerRoot .designerToolbar input,
+.designerRoot .designerToolbar select {
+  border: 1px solid var(--cmp-gold-deep);
+  background:
+    linear-gradient(180deg, rgb(30 22 13 / 92%), rgb(18 13 8 / 94%)),
+    var(--cmp-leather) center / 200px repeat;
+  color: #f3e3bd;
+  box-shadow:
+    inset 0 1px 0 rgb(246 226 168 / 12%),
+    inset 0 -2px 5px rgb(0 0 0 / 34%);
+}
+
+.designerRoot .designerToolbar > label > small {
+  color: var(--cmp-gold-bright);
+  letter-spacing: 0.03em;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 60%);
+}
+
+/* ---- D4. Tile palette → a leather shelf with gold banding -------------- */
+/* The draggable strip gets a tooled-leather backing + gold hairline so it   */
+/* reads as a supply shelf; the tile buttons themselves are left exactly as  */
+/* they are (their drag hit-area and thumbs are untouched).                  */
+.designerRoot .designerPalette {
+  position: relative;
+  padding: 9px 12px 11px;
+  border: 1px solid var(--cmp-gold-deep);
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, rgb(28 20 12 / 88%), rgb(16 12 7 / 92%)),
+    var(--cmp-leather) center / 260px repeat;
+  box-shadow:
+    inset 0 0 0 1px rgb(217 178 90 / 22%),
+    inset 0 1px 0 rgb(246 226 168 / 10%),
+    0 6px 16px rgb(0 0 0 / 34%);
+}
+
+.designerRoot .designerPalette .palettePrompt {
+  color: var(--cmp-gold-bright);
+  text-shadow: 0 1px 2px rgb(0 0 0 / 60%);
+}
+
+/* ---- D5. Canvas → the frame-ornate gem frame + inner vignette ---------- */
+/* The main working surface is mounted inside the carved gem frame as a      */
+/* REAL (transparent) layout border, so no tile / label / the zoom toolbar   */
+/* can ever be overlapped — the border only insets the board a moderate      */
+/* 18px. A gold hairline + a soft inner vignette hug the canvas just inside  */
+/* the frame; background-clip:padding-box keeps the dark fill off the frame. */
+.designerRoot .designerBoardWrap {
+  border: 18px solid transparent;
+  border-image-source: var(--orn-frame);
+  border-image-slice: 185;
+  border-image-width: 18px;
+  border-image-repeat: round;
+  border-radius: 6px;
+  background:
+    radial-gradient(120% 110% at 50% 0%, rgb(54 44 26 / 85%), rgb(20 16 10 / 95%)),
+    #14100a;
+  background-clip: padding-box;
+  box-shadow:
+    inset 0 0 0 2px rgb(217 178 90 / 55%),
+    inset 0 0 46px rgb(0 0 0 / 50%),
+    0 20px 32px rgb(0 0 0 / 46%);
+}
+
+/* The floating zoom toolbar → a quiet gold-hairline leather plate so it     */
+/* reads as part of the same chrome sitting on the framed board.            */
+.designerRoot .designerToolbarFloat {
+  border-color: var(--cmp-gold-deep);
+  background:
+    linear-gradient(180deg, rgb(38 28 15 / 94%), rgb(20 14 8 / 94%)),
+    var(--cmp-leather) center / 180px repeat;
+  box-shadow:
+    inset 0 1px 0 rgb(246 226 168 / 12%),
+    0 6px 16px rgb(0 0 0 / 46%);
+}
+
+/* Below 1100px the fat gem frame would eat too much of a narrowed board —   */
+/* trim it to a thinner mount (the canvas stays the main surface).          */
+@media (max-width: 1100px) {
+  .designerRoot .designerBoardWrap {
+    border-width: 11px;
+    border-image-width: 11px;
+  }
+}
+
+/* ---- D6. Shared-maps sidebar → leather rail with an engraved header ----- */
+/* The plain dark list box becomes a carved leather panel; its header turns  */
+/* engraved gold with a filigree rail beneath it, and each saved-map row     */
+/* takes a leather fill + gold hairline. The delete buttons keep their own   */
+/* hover behaviour untouched.                                                */
+.designerRoot .designerSaved {
+  border: 1px solid var(--cmp-gold-deep);
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, rgb(28 20 12 / 90%), rgb(15 11 7 / 94%)),
+    var(--cmp-leather) center / 240px repeat;
+  box-shadow:
+    inset 0 0 0 1px rgb(217 178 90 / 20%),
+    inset 0 1px 0 rgb(246 226 168 / 10%),
+    0 10px 24px rgb(0 0 0 / 38%);
+}
+
+.designerRoot .designerSaved h2 {
+  position: relative;
+  padding-bottom: 11px;
+  color: var(--cmp-gold-bright);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 75%);
+}
+
+.designerRoot .designerSaved h2::after {
+  content: "";
+  position: absolute;
+  left: -2px;
+  right: -2px;
+  bottom: 0;
+  height: 12px;
+  background: var(--orn-rail) center bottom / 100% 12px no-repeat;
+  opacity: 0.82;
+  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 55%));
+  pointer-events: none;
+}
+
+.designerRoot .savedMapLoad {
+  border-color: var(--cmp-gold-deep);
+  background:
+    linear-gradient(180deg, rgb(34 25 15 / 92%), rgb(20 14 8 / 94%)),
+    var(--cmp-leather) center / 180px repeat;
+}
+
+.designerRoot .savedMapLoad strong {
+  color: var(--cmp-gold-bright);
+}
+
+.designerRoot .designerSaved li.current .savedMapLoad {
+  outline-color: var(--cmp-gold-bright);
+}
+
+.designerRoot .savedMapDelete {
+  border-color: var(--cmp-gold-deep);
+  background:
+    linear-gradient(180deg, rgb(30 21 12 / 90%), rgb(18 13 8 / 92%)),
+    var(--cmp-leather) center / 140px repeat;
+}
+
+/* ======================================================================== */
+/* ---- SINGLE PLAYER SETUP — the /single-player creation panel ----------- */
+/*                                                                          */
+/* The LEAST plain pre-game screen: it already wears the shared MenuShell    */
+/* compendium panel (leather fill + ruby corner flourishes, "Ornate panels" */
+/* above) and the dragon-flanked title banner over a scenic lobby backdrop,  */
+/* so this is a LIGHT touch-up, not a rebuild. Three precise moves in the    */
+/* same kit v2 leather-and-gold family: (1) the plain outlined 1/2/3         */
+/* opponent selector becomes carved leather plates with a SOLID-GOLD         */
+/* selected state (exactly the town Board/Buildings tab + room seat chip);   */
+/* (2) a filigree rail-divider hung in the panel's existing gap ABOVE the    */
+/* actions so "Create game" reads as the deliberate step; (3) "Create game"  */
+/* gains a raised gilded plate and "Back" a quiet leather one. VISUAL-ONLY:  */
+/* paint lands on the buttons' OWN surfaces (no size/padding/geometry or     */
+/* hit-area change), and the lone rail pseudo-element is pointer-events:none */
+/* and hangs in the 14px grid gap (adds no layout). The banner, backdrop and */
+/* panel frame are left exactly as they are. Every rule is scoped to the     */
+/* single-player hooks (`.singlePlayerOpponents`, the nav's aria-label) so   */
+/* no other MenuShell screen is touched. Specificity is deliberately raised  */
+/* past the boxless main-menu override that forces `.menuNavButton`          */
+/* transparent on base AND :hover. Menu pages never carry `.phoneMode`, so   */
+/* no phone fall-back is needed.                                            */
+/* ======================================================================== */
+
+/* ---- SP1. Opponent-count 1/2/3 → carved leather plates ----------------- */
+/* Was three transparent boxes with a thin gold outline only on the selected */
+/* one. Now each reads as a tooled leather tablet with a gold hairline, and   */
+/* the SELECTED count is a solid gold plate with a dark engraved number. The  */
+/* number is enlarged to fill the tall plate.                                 */
+.singlePlayerOpponents .singlePlayerOpponentChoice {
+  border: 1px solid var(--cmp-gold-deep);
+  border-radius: 11px;
+  background:
+    linear-gradient(180deg, rgb(38 28 15 / 92%), rgb(22 15 8 / 94%)),
+    var(--cmp-leather) center / 200px repeat;
+  color: #f0dcb8;
+  font-size: 30px;
+  text-shadow: 0 1px 3px rgb(0 0 0 / 78%);
+  box-shadow:
+    inset 0 1px 0 rgb(246 226 168 / 14%),
+    inset 0 -3px 8px rgb(0 0 0 / 34%),
+    0 5px 14px rgb(0 0 0 / 36%);
+}
+
+.singlePlayerOpponents .singlePlayerOpponentChoice:hover:not(:disabled) {
+  border-color: var(--cmp-gold);
+  background:
+    linear-gradient(180deg, rgb(52 38 20 / 94%), rgb(30 21 11 / 95%)),
+    var(--cmp-leather) center / 200px repeat;
+  color: var(--cmp-gold-bright);
+}
+
+.singlePlayerOpponents .singlePlayerOpponentChoice.selected {
+  border-color: var(--cmp-gold-deep);
+  color: #2c1d08;
+  background: linear-gradient(180deg, #f4d78c 0%, var(--cmp-gold) 52%, #b98f3f 100%);
+  text-shadow: 0 1px 0 rgb(255 247 218 / 55%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 247 218 / 70%),
+    inset 0 -3px 8px rgb(120 82 24 / 45%),
+    0 5px 14px rgb(0 0 0 / 40%);
+}
+
+/* ---- SP2. A filigree rail above the actions --------------------------- */
+/* Hung in the panel's existing 14px grid gap above the action nav (absolute, */
+/* so it consumes no layout and moves no button), it rules the "choose your    */
+/* opponents" block off from the deliberate Create/Back actions — the same     */
+/* rail-divider that rules the Deploy title and the designer header.           */
+.menuNav[aria-label="Single player"] {
+  position: relative;
+}
+
+.menuNav[aria-label="Single player"]::before {
+  content: "";
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  top: -13px;
+  height: 12px;
+  background: var(--orn-rail) center / 100% 12px no-repeat;
+  opacity: 0.78;
+  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 55%));
+  pointer-events: none;
+}
+
+/* ---- SP3. Create game → raised gilded plate; Back → quiet leather ------ */
+/* The boxless main-menu skin renders both as bare engraved-gold labels. Here */
+/* the primary CTA gets its OWN surface back — a warm gilded leather plate     */
+/* with a strong gold hairline and a float shadow — so it reads as THE action, */
+/* while "Back" (the <a>) takes the room panel's quiet leather-plate.          */
+.menuNav[aria-label="Single player"] > .menuNavButton {
+  border-radius: 12px;
+  border: 1px solid var(--cmp-gold-deep);
+  background:
+    linear-gradient(180deg, rgb(34 25 14 / 90%), rgb(20 14 8 / 93%)),
+    var(--cmp-leather) center / 240px repeat;
+  box-shadow:
+    inset 0 1px 0 rgb(246 226 168 / 12%),
+    0 6px 16px rgb(0 0 0 / 40%);
+}
+
+.menuNav[aria-label="Single player"] > .menuNavButton:hover:not(:disabled) {
+  border-color: var(--cmp-gold);
+}
+
+/* The CTA (the <button>) is warmer + gilded so it out-reads the quiet Back. */
+.menuNav[aria-label="Single player"] > button.menuNavButton {
+  background:
+    radial-gradient(120% 135% at 50% -22%, rgb(244 215 140 / 20%), transparent 58%),
+    linear-gradient(180deg, rgb(50 37 19 / 94%), rgb(28 19 10 / 96%)),
+    var(--cmp-leather) center / 240px repeat;
+  box-shadow:
+    inset 0 0 0 1px rgb(217 178 90 / 40%),
+    inset 0 1px 0 rgb(255 240 200 / 22%),
+    inset 0 -14px 26px rgb(0 0 0 / 32%),
+    0 8px 20px rgb(0 0 0 / 46%);
+}
+
+.menuNav[aria-label="Single player"] > button.menuNavButton:hover:not(:disabled) {
+  border-color: var(--cmp-gold);
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+}
+
+.menuNav[aria-label="Single player"] > button.menuNavButton:disabled {
+  filter: grayscale(0.5) brightness(0.72);
+  opacity: 0.72;
+}
+
 /* ======================================================================== */
 /* PHONE UI MODE                                                            */
 /*                                                                          */
@@ -23349,4 +24149,44 @@ details.mapPresetEditor[open] .mapPresetSummaryChevron {
   .phoneMode .battlefieldFrame {
     max-width: min(100%, calc((100dvh - 190px) * 1.25));
   }
+}
+
+/* Ornate skin III (kit v2): the 19px frame-ornate layout border would eat a
+   narrow phone room panel's width, so fall back to a plain gold hairline in
+   phone mode. Scoped to `.tableRoot` so the same fall-back covers the battle
+   screen's room panel too (its frame now comes from §3). The tray columns are
+   already display:none below 1100px, and the section rails / title plaque are
+   small enough to keep. */
+.phoneMode.tableRoot > .tableTopRow > .tableMenu {
+  border: 1px solid var(--cmp-gold-deep);
+  border-image: none;
+  border-radius: 9px;
+  padding: 8px;
+}
+
+/* Battle-screen skin III fall-backs: the 18px / 13px gem frames would eat a
+   narrow phone battlefield / deploy sidebar, so drop them to a plain gold
+   hairline. The ORDER plaque and opponent-leather touches are small enough to
+   keep (they add no width). Mirrors the map step's .tableMenu hairline above. */
+.phoneMode .battlefieldFrame {
+  border: 2px solid var(--cmp-gold-deep);
+  border-image: none;
+  border-radius: 8px;
+}
+
+.phoneMode .placementPanel {
+  border: 1px solid var(--cmp-gold-deep);
+  border-image: none;
+  border-radius: 10px;
+  padding: 12px;
+}
+
+/* Town-window skin III fall-back: the 26px gem frame would eat the narrow
+   phone window's width, so drop it to a plain gold hairline — exactly like
+   the .tableMenu / .battlefieldFrame fall-backs above. The header banding,
+   gold tabs and Buildings-tab leather add no width and are kept. */
+.phoneMode .townWindow {
+  border: 1px solid var(--cmp-gold-deep);
+  border-image: none;
+  border-radius: 12px;
 }

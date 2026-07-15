@@ -31,6 +31,7 @@ import {
   parseFortificationTargetId,
   pickCombatBoardArtId,
   placementCellsFor,
+  neutralFormationCellsFor,
   playerSpellCastsIgnoreLimit,
   unitHasUnlimitedRetaliationEffect,
   unitIsBerserk,
@@ -845,10 +846,16 @@ export function BattlefieldBoard({
   const setup = combat?.setup;
   const placing = Boolean(setup && !combat?.prep && setup.pendingPlayerIds[0] === viewerPlayerId);
   // PvP Neutral Control: the controller SORTS the revealed Neutral formation
-  // before battle — the guards are draggable within the defender zone, exactly
-  // like a defender repositioning their own line (pendingNeutralPlacement).
+  // before battle — the guards are draggable within their formation zone
+  // (any cell on the defender's two rows on a field, four corners on a Creature
+  // Bank), exactly like a defender repositioning their own line.
+
   const sorting = Boolean(combat && combat.pendingNeutralPlacement === viewerPlayerId);
-  const ownRows = placing || sorting ? new Set(placementCellsFor(state, viewerPlayerId)) : new Set<number>();
+  const ownRows = placing
+    ? new Set(placementCellsFor(state, viewerPlayerId))
+    : sorting
+      ? new Set(neutralFormationCellsFor(state))
+      : new Set<number>();
 
   // Tactics swap: a click-to-select board interaction for BOTH the start-of-combat
   // setup window (Basic) and the mid-combat expert swap (Expert). Basic is always
@@ -1128,7 +1135,18 @@ export function BattlefieldBoard({
           const healAction = unit && !selectedCardAction ? healActionsByTarget.get(unit.id) : undefined;
           const isActive = Boolean(unit && combat?.activeUnitId === unit.id);
           const isFlipping = Boolean(unit && flippedUnitIds?.has(unit.id));
-          const dropTarget = (placing || sorting) && ownRows.has(index) && !unit && !isObstacle;
+          // Deployment: empty own-row cells only. Formation sort: empty cells OR
+          // a fellow Neutral guard (drop-to-swap) — without the swap targets,
+          // drag-sorting two guards could only move into empty spaces and swaps
+          // silently failed (PLACE_NEUTRAL_GUARD is board-only, not a command).
+          const dropTarget =
+            (placing || sorting) &&
+            ownRows.has(index) &&
+            !isObstacle &&
+            (!unit ||
+              (sorting &&
+                unit.controllerId === NEUTRAL_PLAYER_ID &&
+                !isArrowTowerUnit(unit)));
           // Tactics swap roles for this cell's unit (only during the setup window).
           const isSwapSelected = Boolean(unit && activeSwapSelection === unit.id);
           const isSwapTarget = Boolean(unit && swapPartners.has(unit.id));

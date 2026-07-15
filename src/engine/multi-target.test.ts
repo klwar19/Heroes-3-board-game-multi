@@ -279,7 +279,7 @@ describe("magog fireball splash", () => {
     expect(abilityChoices).toHaveLength(0);
   });
 
-  it("must splash a lone adjacent friendly unit", () => {
+  it("opens a splash CHOICE even for a lone adjacent friendly unit (human must pick)", () => {
     let state = magogState();
     state.combat!.units.unit_p2_vampires.position = 3;
     state.combat!.units.unit_p2_dread_knights.position = 19;
@@ -294,8 +294,21 @@ describe("magog fireball splash", () => {
     });
     state = keepRollsAndPassWindows(state);
 
+    // Human Magogs always get a pick UI (even when only one unit can take the
+    // splash) — silent auto-hit made the ability look broken.
+    const choice = state.pendingChoice;
+    expect(choice?.type).toBe("ABILITY_TARGET_CHOICE");
+    if (choice?.type !== "ABILITY_TARGET_CHOICE") {
+      return;
+    }
+    expect(choice.candidateUnitIds).toEqual(["unit_p1_griffins"]);
+    state = applyOk(state, {
+      type: "CHOOSE_ABILITY_TARGET",
+      playerId: "p1",
+      choiceId: choice.id,
+      targetUnitId: "unit_p1_griffins"
+    });
     expect(state.combat!.units.unit_p1_griffins.damage).toBe(1);
-    expect(state.pendingChoice).toBeNull();
   });
 });
 
@@ -325,8 +338,19 @@ describe("cerberi second head", () => {
     });
     next = keepRollsAndPassWindows(next);
 
-    // One enemy adjacent to the cerberi (the vampires): the hit lands
-    // without a choice and the target itself is never the extra victim.
+    // One enemy adjacent to the cerberi (the vampires): human still gets a pick
+    // UI (same as Magog splash) — the target itself is never a candidate.
+    const choice = next.pendingChoice;
+    expect(choice?.type).toBe("ABILITY_TARGET_CHOICE");
+    if (choice?.type === "ABILITY_TARGET_CHOICE") {
+      expect(choice.candidateUnitIds).toEqual(["unit_p2_vampires"]);
+      next = applyOk(next, {
+        type: "CHOOSE_ABILITY_TARGET",
+        playerId: "p1",
+        choiceId: choice.id,
+        targetUnitId: "unit_p2_vampires"
+      });
+    }
     expect(next.combat!.units.unit_p2_vampires.damage).toBe(1);
     expect(attackRolls(next)).toHaveLength(1);
     // Ignores retaliation: the skeletons never strike back.

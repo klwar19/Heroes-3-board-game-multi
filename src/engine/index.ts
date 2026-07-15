@@ -463,6 +463,7 @@ export {
   observatoryPlacementCenters,
   observatoryRevealTargets,
   placementCellsFor,
+  neutralFormationCellsFor,
   pumpAdventureQueues
 } from "./adventure-reducer";
 export {
