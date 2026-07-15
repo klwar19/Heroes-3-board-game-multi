@@ -2342,6 +2342,65 @@ export function AstrologersProclamationOverlay({
   );
 }
 
+export type MapEventCue = {
+  /** Unique per firing (the first MAP_PRESET_TRIGGERED event id of the batch). */
+  id: string;
+  round: number;
+  /** One line per timed effect that fired this round (several can share a round). */
+  messages: string[];
+};
+
+/**
+ * Designed-map timed event(s) firing at the start of a round (map-designer
+ * "Timed events"): pops an ornate scroll-framed announcement into every
+ * player's face so a "+3 gold each" or "the mills re-open" is never just a
+ * feed line nobody notices. Several effects sharing the round stack into one
+ * card. Dismissed by click / Enter / Escape, once per firing per client.
+ */
+export function MapEventOverlay({ cue, onDone }: { cue: MapEventCue; onDone: () => void }) {
+  const onDoneRef = useRef(onDone);
+
+  useEffect(() => {
+    onDoneRef.current = onDone;
+  }, [onDone]);
+
+  useEffect(() => {
+    playLibrarySound("adventure/new-week", 0.4);
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" || event.key === "Enter") {
+        onDoneRef.current();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  return (
+    <div
+      className="astrologersProclaimBackdrop mapEventBackdrop"
+      role="dialog"
+      aria-label={`Map event — round ${cue.round}`}
+      onClick={onDone}
+    >
+      <div className="mapEventCard" onClick={(event) => event.stopPropagation()}>
+        <header className="mapEventHead">
+          <span aria-hidden="true">🗺️</span>
+          <strong>Map event!</strong>
+          <span className="mapEventRound">round {cue.round}</span>
+        </header>
+        <ul className="mapEventLines">
+          {cue.messages.map((message, index) => (
+            <li key={index}>{message}</li>
+          ))}
+        </ul>
+        <button className="commandButton primary" onClick={onDone} type="button">
+          Understood
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export type EventDrawnCue = {
   /** Unique per draw so the overlay re-mounts for each new Event card. */
   id: string;

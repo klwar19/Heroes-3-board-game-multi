@@ -6207,6 +6207,92 @@ button.hbSlot:disabled { cursor: default; }
   color: #eec37a;
 }
 
+/* Designed-map timed event announcement: the same ornate scroll frame the
+   map-designer's timed-event cards wear, so the in-game pop visually matches
+   the editor where the event was authored. */
+.mapEventCard {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(480px, 92vw);
+  max-height: 88vh;
+  padding: 10px 16px 14px;
+  border: 22px solid transparent;
+  border-image-source: url("/assets/ui/ornate/timed-event-frame.webp");
+  border-image-slice: 100 128 fill;
+  border-image-width: 20px 30px;
+  border-image-repeat: stretch;
+  background: #101923;
+  box-shadow:
+    0 26px 70px rgba(0, 0, 0, 0.7),
+    0 0 26px rgba(232, 200, 120, 0.22);
+  cursor: default;
+  overflow-y: auto;
+  animation: mapEventSlam 260ms ease-out;
+}
+
+@keyframes mapEventSlam {
+  from {
+    opacity: 0;
+    transform: scale(1.06);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.mapEventHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  letter-spacing: 0.03em;
+}
+
+.mapEventHead strong {
+  color: #e8c878;
+  text-transform: uppercase;
+  font-size: 12.5px;
+  letter-spacing: 0.06em;
+}
+
+.mapEventRound {
+  margin-left: auto;
+  padding: 3px 9px;
+  border: 1px solid rgba(210, 168, 82, 0.42);
+  border-radius: 999px;
+  background: rgba(46, 34, 16, 0.78);
+  color: #efd58f;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-variant-numeric: tabular-nums;
+}
+
+.mapEventLines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.mapEventLines li {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(210, 168, 82, 0.22);
+  background: rgba(30, 48, 70, 0.45);
+  color: #e8f0ff;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.mapEventCard .commandButton {
+  align-self: center;
+  min-width: 150px;
+}
+
 .astrologersProclaimHead {
   display: flex;
   align-items: center;
