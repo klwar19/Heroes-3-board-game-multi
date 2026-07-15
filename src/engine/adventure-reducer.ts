@@ -9,6 +9,7 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 import { unitAbilities } from "@/data/units/abilities";
 import { CREATURE_BANKS, type CreatureBankId } from "@/data/map/creature-banks";
 import { isMarketLocation, locationDefinitions, TRADE_RATES } from "@/data/map/locations";
+import { recordVpHeroDefeat, recordVpSurrender, recordVpUtopiaDefeat } from "./victory-points";
 import { allTileDefinitions } from "@/data/map/tiles";
 import {
   addArmyUnit,
@@ -6821,7 +6822,12 @@ export function finalizeAdventureCombat(state: GameState): void {
       // defer behind Necromancy / First Aid / field-reward timing. (The visit
       // handler also declares the win for Quick Combat / Diplomacy paths.)
       if (field.location === "dragon_utopia" && adventureVictoryMode(state) === "dragon-hunt") {
-        declareAdventureWinner(state, playerId, "defeated the Dragon Utopia");
+        // Victory Points: record the defeater (this fast path bypasses the visit
+        // handler where it is normally logged) before the win → scoring seam.
+        recordVpUtopiaDefeat(state, playerId);
+        declareAdventureWinner(state, playerId, "defeated the Dragon Utopia", {
+          viaVictoryCondition: true
+        });
         return;
       }
 
@@ -6895,11 +6901,23 @@ export function finalizeAdventureCombat(state: GameState): void {
       // Only the ATTACKER (the turn-owner) can be prompted mid-turn; a defender
       // who surrenders auto-homes to avoid a cross-turn stall.
       moveDefeatedHeroHome(state, loserHero, loserHero === attackerHero);
+      // Victory Points: a surrendered (escaped) enemy hero grants the opponent 1
+      // VP. Tracked unconditionally; read only when VP mode is scored.
+      recordVpSurrender(state, winnerId);
     } else if (surrenderedSecondary) {
       // No gold, no morale hit, no victory credit — the 2nd hero itself is the
       // price. Remove it from the game (the player may hire another later).
       removeSecondaryHeroFromGame(state, loserHero);
+      // Victory Points: a surrendered Secondary Hero is still a surrendered hero
+      // (1 VP to the opponent).
+      recordVpSurrender(state, winnerId);
     } else {
+      // Victory Points: a REAL combat defeat (retreat or fought-out) — a Main
+      // hero grants 3 VP once per opponent, a Secondary hero 1 VP each. Mirrors
+      // how the engine already treats retreat and army-destruction identically
+      // as "a win against the player" for the conquest hero-defeat credit above.
+      recordVpHeroDefeat(state, winnerId, loserId, loserHero.kind);
+
       // Winner gains experience by the defeated main hero's level. No experience
       // when no Main Hero stood on either side: a garrison defense win pays
       // nothing, and a Secondary Hero never gains experience from its fights.
@@ -6948,7 +6966,9 @@ export function finalizeAdventureCombat(state: GameState): void {
         // never lowers the threshold (3-player still needs 2 defeats; 4-player
         // still needs 2 of 3).
         if (beaten.length >= requiredHeroDefeats(adventureSeatCount(state))) {
-          declareAdventureWinner(state, winnerId, "defeated the required enemy heroes");
+          declareAdventureWinner(state, winnerId, "defeated the required enemy heroes", {
+            viaVictoryCondition: true
+          });
         }
       }
     }

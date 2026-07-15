@@ -43,6 +43,12 @@ import {
 import { MORALE_CARD_IDS } from "@/data/cards/morale";
 import { parallelInteractionBlocker, stopParallelTurns } from "./parallel-turns";
 import { clearResetVote } from "./reset-vote";
+import {
+  computeVictoryPoints,
+  recordVpUtopiaDefeat,
+  victoryPointsConfig,
+  victoryPointsModeActive
+} from "./victory-points";
 import { playerOwnsWarMachine, removePermanentFromPlayToRemoved } from "./permanents";
 import {
   applyUnitSideRules,
@@ -2343,8 +2349,24 @@ export function victoryModeCountsHeroDefeats(mode: VictoryMode): boolean {
   return mode === "grail" || mode === "dragon-hunt";
 }
 
-/** Ends the game with a winner and the reason shown in the log. */
-export function declareAdventureWinner(state: GameState, playerId: PlayerId, reason: string): void {
+/**
+ * Ends the game with a winner and the reason shown in the log.
+ *
+ * `viaVictoryCondition` marks a call that COMPLETES the Scenario's victory
+ * condition (Grail delivered, Dragon Utopia defeated/held, the required enemy
+ * heroes beaten). In Victory Points mode such a completion does NOT win
+ * outright: it ends the game by SCORING (the completer earns the completion VP,
+ * the most-VP seat wins) via {@link endGameByVictoryPoints}. Last-faction-standing
+ * (the flag omitted) always wins instantly — a table of one live seat is
+ * meaningless to score — and the internal VP re-declaration also omits the flag
+ * so it never re-intercepts.
+ */
+export function declareAdventureWinner(
+  state: GameState,
+  playerId: PlayerId,
+  reason: string,
+  options?: { viaVictoryCondition?: boolean }
+): void {
   if (!state.adventure) {
     return;
   }
@@ -2352,6 +2374,12 @@ export function declareAdventureWinner(state: GameState, playerId: PlayerId, rea
   // standing after a siege that already granted a hero-defeat win) must not
   // overwrite the reason or re-emit GAME_WON.
   if (state.adventure.winnerPlayerId) {
+    return;
+  }
+  // Victory Points mode: a victory-condition COMPLETION scores the table instead
+  // of winning outright. (Last-faction-standing keeps the flag off → instant.)
+  if (options?.viaVictoryCondition && victoryPointsModeActive(state)) {
+    endGameByVictoryPoints(state, { completerId: playerId, completionReason: reason });
     return;
   }
   state.adventure.winnerPlayerId = playerId;
@@ -2365,6 +2393,46 @@ export function declareAdventureWinner(state: GameState, playerId: PlayerId, rea
     player.necromancyWindow = false;
   }
   appendEvent(state, { type: "GAME_WON", playerId, reason });
+}
+
+/**
+ * End the game by Victory Points scoring (VP mode only). Runs the pure scorer,
+ * emits `VP_SCORING` with the full per-player breakdown, then declares the
+ * most-VP seat through the SAME {@link declareAdventureWinner} machinery (with
+ * the flag OFF, so it takes the instant-win path and match-report / overlays
+ * read the VP winner as THE winner). `completerId` is the player who completed
+ * the victory condition (earning the completion VP), or null on a round-limit
+ * end.
+ */
+export function endGameByVictoryPoints(
+  state: GameState,
+  options: { completerId: PlayerId | null; completionReason: string }
+): void {
+  if (!state.adventure || state.adventure.winnerPlayerId) {
+    return;
+  }
+  const { completerId, completionReason } = options;
+  const result = computeVictoryPoints(state, { completerId });
+  if (!result.winnerId) {
+    return;
+  }
+  const winnerRow = result.breakdown.find((row) => row.playerId === result.winnerId);
+  appendEvent(state, {
+    type: "VP_SCORING",
+    completerPlayerId: completerId,
+    reason: completionReason,
+    winnerPlayerId: result.winnerId,
+    breakdown: result.breakdown.map((row) => ({
+      playerId: row.playerId,
+      total: row.total,
+      rows: row.rows.map((entry) => ({ label: entry.label, vp: entry.vp }))
+    }))
+  });
+  declareAdventureWinner(
+    state,
+    result.winnerId,
+    `the most Victory Points (${winnerRow?.total ?? 0})`
+  );
 }
 
 /** Human seats in turn order (the neutral seat never counts). */
@@ -2884,8 +2952,16 @@ function handleGrailVisit(state: GameState, hero: HeroState, field: MapFieldStat
 function handleDragonUtopiaVisit(state: GameState, hero: HeroState, field: MapFieldState): void {
   const mode = adventureVictoryMode(state);
 
+  // Victory Points: record the defeater for the defeat-dragon-utopia objective.
+  // A defeated Utopia otherwise leaves only an owner-less black cube, so this is
+  // the only durable trace of WHO cleared it. Runs in every mode (the objective
+  // is meaningful outside Dragon Hunt, where the Utopia is a plain bank).
+  recordVpUtopiaDefeat(state, hero.controllerId);
+
   if (mode === "dragon-hunt") {
-    declareAdventureWinner(state, hero.controllerId, "defeated the Dragon Utopia");
+    declareAdventureWinner(state, hero.controllerId, "defeated the Dragon Utopia", {
+      viaVictoryCondition: true
+    });
     return;
   }
 
@@ -3166,7 +3242,9 @@ export function tryDeliverGrail(state: GameState, hero: HeroState): boolean {
   }
 
   grail.status = "delivered";
-  declareAdventureWinner(state, hero.controllerId, "carried the Grail home");
+  declareAdventureWinner(state, hero.controllerId, "carried the Grail home", {
+    viaVictoryCondition: true
+  });
   return true;
 }
 
@@ -3184,7 +3262,7 @@ export function checkDragonConquerorHold(state: GameState, playerId: PlayerId): 
     (field) => field.location === "dragon_utopia" && field.flagOwnerId === playerId
   );
   if (holdsUtopia) {
-    declareAdventureWinner(state, playerId, "held the Dragon Utopia");
+    declareAdventureWinner(state, playerId, "held the Dragon Utopia", { viaVictoryCondition: true });
   }
 }
 
@@ -8541,6 +8619,22 @@ function beginRoundStartEventBarrier(state: GameState): void {
  * odd rounds after the first pay Resource Round income.
  */
 export function startAdventureRound(state: GameState): void {
+  // Victory Points mode: the round limit is the HARD end trigger. Both round
+  // wraps (ordered `endTurnAdventure`, parallel `endParallelTurn`) call this
+  // right after `state.round += 1`, so when the counter passes the limit the
+  // game ends by scoring here — for BOTH modes — before any round-start
+  // machinery runs. With VP off, `roundLimit` stays a mere suggested length and
+  // this never fires (the callers guard the resulting game-over and return).
+  const vpConfig = victoryPointsConfig(state);
+  const roundLimit = state.adventure?.mapPreset?.roundLimit;
+  if (vpConfig && roundLimit && state.round > roundLimit && !state.adventure?.winnerPlayerId) {
+    endGameByVictoryPoints(state, {
+      completerId: null,
+      completionReason: `the ${roundLimit}-round limit was reached`
+    });
+    return;
+  }
+
   const kind = state.round === 1 ? "first" : state.round % 2 === 1 ? "resource" : "astrologers";
 
   // Torosar's Ballista IV grant ("until the end of the round") ends here.

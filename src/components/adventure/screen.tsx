@@ -7573,6 +7573,7 @@ export const ADVENTURE_FEED_CUES: Partial<Record<GameEventType, { icon: string; 
   GAME_OPTIONS_CHANGED: { icon: "⚙️", cue: "options" },
   SETUP_SEAT_RESET: { icon: "⚠️", cue: "warning" },
   GAME_WON: { icon: "👑", cue: "victory" },
+  VP_SCORING: { icon: "🎖️", cue: "victory" },
   PLAYER_ELIMINATED: { icon: "💀", cue: "defeat" },
   PLAYER_ELIMINATION_CLOCK: { icon: "⏳", cue: "warning" },
   FIRST_PLAYER_ROLLED: { icon: "🎲", cue: "dice" },

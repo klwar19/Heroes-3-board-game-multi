@@ -2166,6 +2166,16 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
       message: `Map note: ${mapPreset.notes}`
     });
   }
+  // Victory Points scenario: announce the two end triggers + the goal up front.
+  if (mapPreset?.victoryPoints?.enabled) {
+    const roundLimit = mapPreset.roundLimit;
+    appendEvent(state, {
+      type: "MAP_PRESET_TRIGGERED",
+      message: roundLimit
+        ? `Victory Points scenario: the game ends at round ${roundLimit} or when a player completes the victory condition — the most Victory Points wins.`
+        : "Victory Points scenario: the game ends when a player completes the victory condition — the most Victory Points wins."
+    });
+  }
 
   if (parallelRounds > 0) {
     appendEvent(state, { type: "PARALLEL_TURNS_STARTED", rounds: parallelRounds });

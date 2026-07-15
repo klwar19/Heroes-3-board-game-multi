@@ -133,6 +133,7 @@ import {
 import { SetupAmbientFx } from "@/components/adventure/setup-ambient";
 import { AzureClawChill } from "@/components/adventure/azure-claw-chill";
 import { OpponentInfoDock } from "@/components/adventure/opponent-info";
+import { VictoryPointsDock, VictoryPointsScoringOverlay } from "@/components/adventure/victory-points-panel";
 import { TownWindow } from "@/components/adventure/town-board";
 import { isDemoTrayEnabled, seedDemoTrayCards } from "@/lib/demo-tray-seed";
 import {
@@ -5231,7 +5232,14 @@ export default function Home() {
                 {isSeated ? (
                   <OpponentInfoDock seatIds={seatIds} state={state} variant="map" viewerPlayerId={viewerPlayerId} />
                 ) : null}
+                {/* Live "if scored now" Victory-Points standings — visible to
+                    everyone when the designed map turns VP mode on. */}
+                <VictoryPointsDock state={state} viewerPlayerId={isSeated ? viewerPlayerId : seatIds[0]} />
               </div>
+              {/* Game-over VP scoring breakdown (reads the VP_SCORING event). */}
+              {state.phase === "game-over" ? (
+                <VictoryPointsScoringOverlay state={state} viewerPlayerId={isSeated ? viewerPlayerId : seatIds[0]} />
+              ) : null}
               {/* Observers see every seat's permanent(s) + unit deck listed here. */}
               {isSeated
                 ? null
