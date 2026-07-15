@@ -1,6 +1,7 @@
 import { effectiveHandLimit } from "../adventure";
 import type { GameAction, GameState, LegalAction } from "../state";
 import { cardKeepValue, scoreCardAction } from "./card-policy";
+import { heroPickBias } from "./card-values";
 import { scoreChoiceAction } from "./choice-policy";
 import { scoreCombatAction } from "./combat-policy";
 import { scoreMapAction } from "./map-policy";
@@ -81,9 +82,20 @@ function foundationScore(action: GameAction): {
     case "CHOOSE_TOWN":
       return { score: 1_010, policy: "setup.lock-town" };
     case "RANDOM_ASSIGN_SEAT":
-    case "CHOOSE_FACTION":
     case "BAN_HERO":
       return { score: 1_000, policy: "setup.complete-seat" };
+    // Free/draft hero claims are biased by the community hero tier list, in a
+    // band (±8) that stays strictly inside the 990 (roll) … 1010 (lock-town)
+    // neighbors. Equal-tier heroes remain exact ties, so the seeded tie hash
+    // still varies picks between games; a seat pinned by the human via
+    // SET_COMPUTER_SEAT_FACTION never reaches this scorer at all
+    // (computerDecisionOwner skips fully-picked seats, and the pin action
+    // itself is NEVER_AUTOMATE).
+    case "CHOOSE_FACTION":
+      return {
+        score: 1_000 + heroPickBias(action.heroDefId),
+        policy: "setup.complete-seat",
+      };
     case "ROLL_TOWN_OPTIONS":
     case "ROLL_HERO_OPTIONS":
       return { score: 990, policy: "setup.roll-options" };
@@ -166,7 +178,11 @@ function withRefreshDiscards(
     return action;
   }
   const ranked = player.hand
-    .map((cardId, index) => ({ cardId, index, value: cardKeepValue(cardId) }))
+    .map((cardId, index) => ({
+      cardId,
+      index,
+      value: cardKeepValue(cardId, observation),
+    }))
     .sort((a, b) => a.value - b.value || a.index - b.index);
   return {
     ...action,

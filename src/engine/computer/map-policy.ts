@@ -25,6 +25,7 @@ import type {
   VisitStep,
 } from "../state";
 import { cardKeepValue } from "./card-policy";
+import { cardTier } from "./card-values";
 import { playerArmyStrength } from "./army-strength";
 import {
   armyDevelopmentProfile,
@@ -859,16 +860,24 @@ function buyWarMachineScore(
     return 400;
   }
   const card = cardLibrary[action.cardId];
-  // Ballista / First Aid / Ammo Cart are all useful; slight preference order.
+  // Ballista / First Aid / Ammo Cart are all useful; preference order grounded
+  // in the community ability tier list (Artillery C — "how often are you
+  // purchasing the First Aid Tent over the Ballista?" — vs First Aid D): the
+  // Ballista is the default first buy by a clear margin. The ONE healing-
+  // specialist context the list names — Gem, whose First Aid VI specialty
+  // reads the Tent — flips the order (context detection is exactly that
+  // heroDefId check, nothing fuzzier).
   // Keep below recruit/build (~850+) and above Done (520) only for the first buy.
+  const healingSpecialist =
+    state.players[observation.playerId]?.heroDefId === "gem";
   let score = 600;
   if (action.cardId.includes("ballista") || card?.name?.toLowerCase().includes("ballista")) {
-    score += 20;
+    score += healingSpecialist ? 12 : 20;
   } else if (
     action.cardId.includes("first_aid") ||
     card?.name?.toLowerCase().includes("first aid")
   ) {
-    score += 15;
+    score += healingSpecialist ? 24 : 8;
   } else if (action.cardId.includes("ammo")) {
     score += 10;
   }
@@ -1177,7 +1186,7 @@ function resolveVisitStepScore(
     const topThree = player?.discard.slice(-3).reverse() ?? [];
     const cardId = topThree[optionIndex];
     if (!cardId) return 1_050;
-    return 1_100 + Math.min(40, cardKeepValue(cardId));
+    return 1_100 + Math.min(40, cardKeepValue(cardId, { state, playerId }));
   }
 
   // --- Search discard top: take best card -----------------------------------
@@ -1186,7 +1195,7 @@ function resolveVisitStepScore(
     const topCards = deck ? deck.discardPile.slice(-step.count).reverse() : [];
     const cardId = topCards[optionIndex];
     if (!cardId) return 1_050;
-    return 1_100 + Math.min(40, cardKeepValue(cardId));
+    return 1_100 + Math.min(40, cardKeepValue(cardId, { state, playerId }));
   }
 
   // --- Remove hand card: dump lowest keep value -----------------------------
@@ -1197,7 +1206,10 @@ function resolveVisitStepScore(
     // when the index lands on the raw hand (common for unfiltered removes).
     const cardId = hand[optionIndex];
     if (!cardId) return 1_100;
-    return 1_100 + Math.max(0, 40 - Math.min(40, cardKeepValue(cardId)));
+    return (
+      1_100 +
+      Math.max(0, 40 - Math.min(40, cardKeepValue(cardId, { state, playerId })))
+    );
   }
 
   // --- Hill Fort: reinforce when offered (legal-actions already gates cost) -
@@ -1363,17 +1375,33 @@ export function scoreMapAction(
         score: buyWarMachineScore(observation, action),
         policy: "map.buy-war-machine",
       };
-    case "SELL_SCROLL_SPELL":
-      // Selling scroll spells for 2 gold — only when gold is tight.
+    case "SELL_SCROLL_SPELL": {
+      // Tier-aware scroll economics: a C/D-tier spell (Earthquake, Inferno …)
+      // is 2 gold the AI would never cast — sell it whenever the shop is open.
+      // An S/A-tier spell (Fly, Resurrection …) is worth far more cast from
+      // the scroll than sold, even broke — keep it below END_TURN (300).
+      // B-tier and unmapped spells keep the legacy only-when-tight behavior.
+      const tight =
+        playerGold(state, observation.playerId) < GOLD_RESERVE + 4;
+      const tier = cardTier(action.cardId);
+      if (tier === "S" || tier === "A") {
+        return { score: 220, policy: "map.keep-scroll-spell" };
+      }
+      if (tier === "C" || tier === "D") {
+        return { score: tight ? 560 : 540, policy: "map.sell-scroll-spell" };
+      }
       return {
-        score: playerGold(state, observation.playerId) < GOLD_RESERVE + 4 ? 550 : 300,
+        score: tight ? 550 : 300,
         policy: "map.sell-scroll-spell",
       };
+    }
     case "MOVE_SPELL_TO_SPELL_BOOK": {
       const hand = state.players[observation.playerId]?.hand ?? [];
       const crowded = hand.length >= 4;
       return {
-        score: crowded ? 690 + Math.min(35, cardKeepValue(action.cardId)) : 260,
+        score: crowded
+          ? 690 + Math.min(35, cardKeepValue(action.cardId, observation))
+          : 260,
         policy: crowded ? "card.store-spell-free-hand-slot" : "card.keep-spell-ready",
       };
     }

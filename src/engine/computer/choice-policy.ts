@@ -141,7 +141,7 @@ function scoreDeckSearchKeep(
   if (action.pick?.kind === "revealed") {
     const cardId = choice.revealedCardIds[action.pick.index];
     if (!cardId) return CHOICE_BASE;
-    const value = cardKeepValue(cardId);
+    const value = cardKeepValue(cardId, observation);
     if (action.pick.remove) {
       // Removing is rarely better than taking — only for trash.
       return CHOICE_BASE + Math.max(0, 15 - value);
@@ -160,7 +160,7 @@ function scoreCombatDiscard(
     return CHOICE_BASE + 5;
   }
   // Prefer discarding the LEAST valuable named card (invert keep value).
-  const value = cardKeepValue(action.cardId);
+  const value = cardKeepValue(action.cardId, observation);
   return CHOICE_BASE + Math.max(0, 50 - Math.min(50, value));
 }
 
@@ -411,25 +411,28 @@ function scorePositionOption(
     // very pick, an infinite loop. Score it strictly below the Done/skip exit
     // (and below any real card) so anything else, or declining, always wins.
     if (reopensDiscardPick(cardId)) return CHOICE_BASE - 50;
-    return CHOICE_BASE + Math.min(CHOICE_BAND, cardKeepValue(cardId));
+    return CHOICE_BASE + Math.min(CHOICE_BAND, cardKeepValue(cardId, observation));
   }
 
   if (context === "hand-discard" && choice.handDiscard) {
     const cardId = choice.handDiscard.cardIds[optionIndex];
     if (!cardId) return CHOICE_BASE;
     // Discard lowest value.
-    return CHOICE_BASE + Math.max(0, 50 - Math.min(50, cardKeepValue(cardId)));
+    return (
+      CHOICE_BASE +
+      Math.max(0, 50 - Math.min(50, cardKeepValue(cardId, observation)))
+    );
   }
 
   if (context === "own-deck-pick" && choice.ownDeckPick) {
     const cardId = choice.ownDeckPick.cardIds[optionIndex];
     if (!cardId) return CHOICE_BASE;
-    return CHOICE_BASE + Math.min(CHOICE_BAND, cardKeepValue(cardId));
+    return CHOICE_BASE + Math.min(CHOICE_BAND, cardKeepValue(cardId, observation));
   }
 
   if (context === "eagle-eye" && choice.eagleEye) {
     // Take a real spell; discard only if somehow junk (still take).
-    const value = cardKeepValue(choice.eagleEye.cardId);
+    const value = cardKeepValue(choice.eagleEye.cardId, observation);
     // Option 0 is usually take; prefer high value on take index 0.
     if (optionIndex === 0) return CHOICE_BASE + Math.min(40, value);
     return CHOICE_BASE + 5;
@@ -439,20 +442,26 @@ function scorePositionOption(
     // Discard the weaker of the two peeked cards (leave the better on top).
     const cardId = choice.thievesGuild.cardIds[optionIndex];
     if (!cardId) return CHOICE_BASE;
-    return CHOICE_BASE + Math.max(0, 40 - Math.min(40, cardKeepValue(cardId)));
+    return (
+      CHOICE_BASE +
+      Math.max(0, 40 - Math.min(40, cardKeepValue(cardId, observation)))
+    );
   }
 
   if (context === "genie-take-spell" && choice.genieTakeSpell) {
     const cardId = choice.genieTakeSpell.spellCardIds[optionIndex];
     if (!cardId) return CHOICE_BASE;
-    return CHOICE_BASE + Math.min(CHOICE_BAND, cardKeepValue(cardId));
+    return CHOICE_BASE + Math.min(CHOICE_BAND, cardKeepValue(cardId, observation));
   }
 
   if (context === "morale-positive-limit" && choice.moralePositiveLimit) {
     // Must discard down — dump lowest value held card.
     const cardId = choice.moralePositiveLimit.cardIds[optionIndex];
     if (!cardId) return CHOICE_BASE;
-    return CHOICE_BASE + Math.max(0, 40 - Math.min(40, cardKeepValue(cardId)));
+    return (
+      CHOICE_BASE +
+      Math.max(0, 40 - Math.min(40, cardKeepValue(cardId, observation)))
+    );
   }
 
   if (context === "skeleton-reinforce" && choice.skeletonReinforce) {

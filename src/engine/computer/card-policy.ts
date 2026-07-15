@@ -10,6 +10,11 @@ import type {
 } from "../state";
 import type { ComputerActionScore } from "./map-policy";
 import {
+  cardTierValue,
+  cardValueContext,
+  type CardValueStateView,
+} from "./card-values";
+import {
   armyDevelopmentProfile,
   developmentResourceTargets,
 } from "./development";
@@ -197,10 +202,26 @@ function combatUnitFromTarget(
 }
 
 /**
- * Value of keeping/playing a card type for search/discard ranking. Higher =
- * more worth holding. Public card definitions only.
+ * Seat view for context-aware keep values — any ComputerObservation (or a
+ * bare `{ state, playerId }` pair) satisfies it structurally.
  */
-export function cardKeepValue(cardId: string): number {
+export type CardKeepView = {
+  state: CardValueStateView;
+  playerId: string;
+};
+
+/**
+ * Value of keeping/playing a card type for search/discard ranking. Higher =
+ * more worth holding. Public card definitions only, refined by the community
+ * tier list (card-values.ts) — pass the observing seat's `view` so the tier
+ * contribution adjusts to the live context (PvP threat, morale rule,
+ * Necropolis matchup, Mage-Guild access); without a view the printed tier
+ * applies as-is, and an unmapped card keeps the pure kind/family heuristic.
+ */
+export function cardKeepValue(
+  cardId: string,
+  view?: CardKeepView | null,
+): number {
   const card = cardLibrary[cardId];
   if (!card || card.implementationStatus !== "implemented") return 0;
   let value = 10;
@@ -236,6 +257,10 @@ export function cardKeepValue(cardId: string): number {
   if (SAVE_EFFECTS.has(card.effect.type)) value += 20;
   if (COMBAT_DAMAGE_EFFECTS.has(card.effect.type)) value += 10;
   if (MAP_ECONOMY_EFFECTS.has(card.effect.type)) value += 8;
+  value += cardTierValue(
+    cardId,
+    view ? cardValueContext(view.state, view.playerId) : null,
+  );
   return value;
 }
 
@@ -664,11 +689,21 @@ function asPowerBoostScore(
     // Below PASS — the card buys nothing on this cast; hold it.
     return 320;
   }
-  const keep = cardKeepValue(cardId);
+  const keep = cardKeepValue(cardId, observation);
   if (impact === "kills") {
-    // One more Power converts the cast into a removal: worth any low/mid-value
+    // One more Power converts the cast into a removal: worth any low/mid-CLASS
     // card. High-value artifacts/expert spells still stay in hand (940 < PASS).
-    return keep >= 55 ? 940 : 1_150 - Math.min(30, Math.floor(keep / 2));
+    // The hold-gate deliberately ignores the tier layer (class value only): an
+    // S-tier staple such as Magic Arrow must still buy the kill when it is the
+    // only fuel — the list itself calls the arrow the fuel of choice. The tier
+    // still orders WHICH burnable card goes first (D burns before S below).
+    const classKeep =
+      keep -
+      cardTierValue(
+        cardId,
+        cardValueContext(observation.state, observation.playerId),
+      );
+    return classKeep >= 55 ? 940 : 1_150 - Math.min(30, Math.floor(keep / 2));
   }
   if (effect && COMBAT_DAMAGE_EFFECTS.has(effect.type)) {
     // Keep real damage spells for casting; mild boost only as last resort.
@@ -682,13 +717,19 @@ function asPowerBoostScore(
   return 1_095 - Math.min(30, Math.floor(keep / 2));
 }
 
-function discardCostPenalty(cardIds: readonly string[] | undefined): number {
+function discardCostPenalty(
+  observation: ComputerObservation,
+  cardIds: readonly string[] | undefined,
+): number {
   if (!cardIds?.length) return 0;
   return Math.min(
     150,
     Math.round(
       [...new Set(cardIds)].reduce(
-        (sum, cardId) => sum + cardKeepValue(cardId) * 0.45,
+        // Tier-aware: paying a cost with a D-tier situational (Earthquake)
+        // penalizes less than burning an S-tier staple, so the cheaper-fuel
+        // action variant wins.
+        (sum, cardId) => sum + cardKeepValue(cardId, observation) * 0.45,
         0,
       ),
     ),
@@ -824,6 +865,7 @@ export function scoreCardAction(
       }
 
       score -= discardCostPenalty(
+        observation,
         "costCardIds" in action ? action.costCardIds : undefined,
       );
 
@@ -863,7 +905,7 @@ export function scoreCardAction(
         score:
           1_080 -
           action.plays.reduce(
-            (sum, play) => sum + discardCostPenalty(play.costCardIds),
+            (sum, play) => sum + discardCostPenalty(observation, play.costCardIds),
             0,
           ),
         policy: "card.batch-reaction",
@@ -927,8 +969,10 @@ export function scoreCardAction(
       const defender = observation.state.combat?.units[action.defenderUnitId];
       const hand = observation.state.players[observation.playerId]?.hand ?? [];
       const averageKeep = hand.length
-        ? hand.reduce((sum, cardId) => sum + cardKeepValue(cardId), 0) /
-          hand.length
+        ? hand.reduce(
+            (sum, cardId) => sum + cardKeepValue(cardId, observation),
+            0,
+          ) / hand.length
         : 100;
       const pending = pendingAttackValues(observation);
       const trigger = observation.state.reactionWindow?.triggerEvent;
@@ -970,7 +1014,7 @@ export function scoreCardAction(
       return {
         score:
           marginalAttackModifierScore(observation, "attack", false) -
-          Math.round(cardKeepValue(action.cardId) * 0.65),
+          Math.round(cardKeepValue(action.cardId, observation) * 0.65),
         policy: "card.convert-low-value-card-to-attack",
       };
     default:
