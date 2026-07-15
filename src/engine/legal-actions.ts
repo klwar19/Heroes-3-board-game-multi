@@ -66,6 +66,7 @@ import {
 import {
   cancelSpellAllowsSchoolAndLevel,
   cardCanBoostPower,
+  getEffectiveCardEffect,
   heroMovementGrantOption,
   spellPowerValueOfCard
 } from "./effects";
@@ -3486,6 +3487,264 @@ export function firstAidCardHealReactions(state: GameState, playerId: PlayerId):
   return out;
 }
 
+/**
+ * Instant heal spells (Cure) and similar hand heals playable as a reaction the
+ * moment damage is about to land — either from a declared attack OR from a
+ * pending damaging Spell / specialty on the stack. One offer per wounded
+ * friendly unit; the target rides on the reaction. Spell-limit and cast-lock
+ * gates match other instant spell reactions.
+ */
+export function instantHealSpellReactions(
+  state: GameState,
+  playerId: PlayerId,
+  cards: CardLibrary = cardLibrary
+): LegalAction[] {
+  const combat = state.combat;
+  const player = state.players[playerId];
+  if (!combat || !player || isHandLockedInCombat(state, playerId)) {
+    return [];
+  }
+  if (getSpellCastRestriction(state).lockAll) {
+    return [];
+  }
+  const spellLimitLeft = spellLimitFor(state, player) - player.combatStats.spellsCastThisRound;
+  if (spellLimitLeft <= 0) {
+    return [];
+  }
+
+  const sources: { cardId: CardId; fromSpellBook?: true }[] = [
+    ...[...new Set(player.hand)].map((cardId) => ({ cardId })),
+    ...(spellBookRuleEnabled(state)
+      ? [...new Set(player.spellBook ?? [])].map((cardId) => ({ cardId, fromSpellBook: true as const }))
+      : [])
+  ];
+
+  const out: LegalAction[] = [];
+  for (const { cardId, fromSpellBook } of sources) {
+    const card = cards[cardId];
+    if (
+      !card ||
+      card.implementationStatus !== "implemented" ||
+      (card.timing !== "instant" && card.timing !== "reaction")
+    ) {
+      continue;
+    }
+    // Only Spells count against the spell limit here; a non-Spell heal instant
+    // (if any) would still be offerable without burning the Spell slot.
+    if (card.kind === "spell" && spellLimitLeft <= 0) {
+      continue;
+    }
+
+    for (const variant of getCardPlayVariants(card)) {
+      if (
+        variant.mapOnly ||
+        variant.expertOnly ||
+        (variant.effect.type !== "HEAL_DAMAGE" && variant.effect.type !== "HEAL_DAMAGE_AND_REMOVE_EFFECTS") ||
+        !canAffordCardCost(state, playerId, cardId, variant.cost)
+      ) {
+        continue;
+      }
+      // Cure and kin need a wounded friendly unit to target.
+      for (const unit of Object.values(combat.units)) {
+        if (unit.controllerId !== playerId || !isUnitAlive(unit) || unit.damage <= 0) {
+          continue;
+        }
+        const variantName = variant.optionLabel ? `${card.name}: ${variant.optionLabel}` : card.name;
+        out.push(
+          makeReactionAction(`${variantName} heal ${unit.name}${fromSpellBook ? " (Spell Book)" : ""}`, {
+            type: "PLAY_REACTION",
+            playerId,
+            cardId,
+            mode: "basic",
+            ...(variant.optionIndex !== undefined ? { optionIndex: variant.optionIndex } : {}),
+            ...(fromSpellBook ? { fromSpellBook: true } : {}),
+            target: { type: "unit", unitId: unit.id }
+          })
+        );
+      }
+    }
+  }
+  return out;
+}
+
+type ConcreteEffectDef = Exclude<EffectDefinition, { type: "CHOOSE_ONE" }>;
+
+/** Concrete effects that assign combat damage to units when resolved. */
+function effectDealsCombatDamage(effect: ConcreteEffectDef | null | undefined): boolean {
+  if (!effect) {
+    return false;
+  }
+  return (
+    effect.type === "DEAL_DAMAGE" ||
+    effect.type === "AREA_DAMAGE_ADJACENT" ||
+    effect.type === "AREA_DAMAGE_ALL_ADJACENT" ||
+    effect.type === "AREA_DAMAGE_PICK_ADJACENT" ||
+    effect.type === "INFERNO" ||
+    effect.type === "CHAIN_LIGHTNING" ||
+    effect.type === "DISCARD_WAR_MACHINE_DAMAGE" ||
+    effect.type === "DAMAGE_CHOSEN_ENEMIES"
+  );
+}
+
+/**
+ * Whether `playerId` controls at least one living unit that a pending
+ * SPELL_CAST_STARTED damage effect would (or could) hit — primary target,
+ * area blast, or specialty damage on the stack. Used to offer pre-hit heals
+ * (Cure / First Aid) only when damage is actually coming, so a Haste or Cure
+ * cast never opens a forced heal window.
+ */
+export function playerThreatenedByPendingDamage(
+  state: GameState,
+  triggerEvent: Extract<GameEvent, { type: "SPELL_CAST_STARTED" }>,
+  playerId: PlayerId,
+  cards: CardLibrary = cardLibrary
+): boolean {
+  const combat = state.combat;
+  const stackItem = getPendingStackItem(state, triggerEvent);
+  if (!combat || !stackItem) {
+    return false;
+  }
+
+  if (stackItem.action.type === "CAST_SPELL") {
+    const card = cards[stackItem.action.cardId];
+    if (!card || card.kind !== "spell") {
+      return false;
+    }
+    const effect =
+      getEffectiveCardEffect(card, stackItem.action.optionIndex) ??
+      (card.effect.type !== "CHOOSE_ONE" ? card.effect : null);
+    // Area / multi-target: any of our units in the predicted blast.
+    if (
+      spellPotentialBlastUnitIds(state, stackItem, cards).some(
+        (unitId) => combat.units[unitId]?.controllerId === playerId
+      )
+    ) {
+      return true;
+    }
+    // Single-target damaging Spell aimed at one of our units.
+    if (effectDealsCombatDamage(effect) && pendingSpellTargetForPlayer(state, triggerEvent, playerId)) {
+      return true;
+    }
+    // CHAIN_LIGHTNING and other unit-primary damages that are not in the blast
+    // helper still hit the primary target.
+    if (
+      effect &&
+      (effect.type === "CHAIN_LIGHTNING" || effect.type === "DEAL_DAMAGE") &&
+      stackItem.action.target.type === "unit"
+    ) {
+      const primary = combat.units[stackItem.action.target.unitId];
+      if (primary && primary.controllerId === playerId && isUnitAlive(primary)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // Specialty (or other) damage card deferred onto the stack so heals can fire
+  // before the hit — Frost Ring / Meteor Shower area specialties, Ballista discard.
+  if (stackItem.action.type === "PLAY_CARD") {
+    const card = cards[stackItem.action.cardId];
+    if (!card) {
+      return false;
+    }
+    const effect = getEffectiveCardEffect(card, stackItem.action.optionIndex);
+    if (!effectDealsCombatDamage(effect)) {
+      return false;
+    }
+    return unitIdsThreatenedByDamageEffect(state, effect!, stackItem.action.target).some(
+      (unitId) => combat.units[unitId]?.controllerId === playerId
+    );
+  }
+
+  return false;
+}
+
+/**
+ * Living unit ids a damage effect would (or could) hit from its chosen target.
+ * Used for specialty pre-hit heal windows and the threat gate above.
+ */
+export function unitIdsThreatenedByDamageEffect(
+  state: GameState,
+  effect: ConcreteEffectDef,
+  target: TargetRef | undefined
+): UnitId[] {
+  const combat = state.combat;
+  if (!combat || !target) {
+    return [];
+  }
+
+  if (
+    (effect.type === "DEAL_DAMAGE" ||
+      effect.type === "DISCARD_WAR_MACHINE_DAMAGE" ||
+      effect.type === "DAMAGE_CHOSEN_ENEMIES") &&
+    target.type === "unit"
+  ) {
+    const unit = combat.units[target.unitId];
+    return unit && isUnitAlive(unit) ? [unit.id] : [];
+  }
+
+  if (effect.type === "AREA_DAMAGE_ADJACENT" && target.type === "unit") {
+    const primary = combat.units[target.unitId];
+    if (!primary || !isUnitAlive(primary)) {
+      return [];
+    }
+    return Object.values(combat.units)
+      .filter(
+        (unit) => isUnitAlive(unit) && (unit.id === primary.id || isAdjacent(unit.position, primary.position))
+      )
+      .map((unit) => unit.id);
+  }
+
+  if (effect.type === "AREA_DAMAGE_ALL_ADJACENT" || effect.type === "INFERNO") {
+    const center =
+      target.type === "space"
+        ? target.position
+        : target.type === "unit"
+          ? combat.units[target.unitId]?.position
+          : undefined;
+    if (center === undefined) {
+      return [];
+    }
+    return unitsOnPositions(combat, new Set([center, ...getOrthogonalNeighbors(center)]));
+  }
+
+  if (effect.type === "AREA_DAMAGE_PICK_ADJACENT") {
+    const center =
+      target.type === "space"
+        ? target.position
+        : target.type === "unit"
+          ? combat.units[target.unitId]?.position
+          : undefined;
+    if (center === undefined) {
+      return [];
+    }
+    const blast = new Set<number>(getOrthogonalNeighbors(center));
+    if (effect.includeCenter) {
+      blast.add(center);
+    }
+    return unitsOnPositions(combat, blast);
+  }
+
+  return [];
+}
+
+/**
+ * First Aid Tent + First Aid ability + Cure (and kin) offered to a player whose
+ * units are about to take damage — the shared pre-hit heal package for both
+ * attack windows and damaging Spell/specialty windows.
+ */
+export function preHitHealReactions(
+  state: GameState,
+  playerId: PlayerId,
+  cards: CardLibrary = cardLibrary
+): LegalAction[] {
+  return [
+    ...firstAidHealActions(state, playerId),
+    ...firstAidCardHealReactions(state, playerId),
+    ...instantHealSpellReactions(state, playerId, cards)
+  ];
+}
+
 function addUnitAbilityActions(actions: LegalAction[], state: GameState, playerId: PlayerId, activeUnit: CombatUnitState): void {
   const combat = state.combat;
   if (!combat || activeUnit.movedThisActivation) {
@@ -6005,23 +6264,20 @@ export function getLegalReactionsForTrigger(
     }
   }
 
-  // First Aid (instant): the moment one of your units is attacked, its
-  // controller may mend an existing wound on one of their units BEFORE the
-  // incoming attack's damage is calculated — First Aid is "usable at any time
-  // during the round, like an instant". A healed unit therefore enters the hit
-  // with more health, which can let it survive a blow that would otherwise
-  // defeat it. Optional: the defender may simply pass and take the attack. Two
-  // sources are offered to the defender: the First Aid Tent's per-round heal
-  // (and its expert volley — both via firstAidHealActions), and the First Aid
-  // ability card's basic heal played straight from hand (firstAidCardHealReactions,
-  // which needs no Tent).
+  // Pre-hit heals (First Aid Tent, First Aid ability, Cure and kin): mend an
+  // existing wound BEFORE the incoming damage is calculated — usable as an
+  // instant against BOTH a declared unit attack AND a pending damaging Spell /
+  // specialty on the stack (not only Resistance / Magic Mirror / Protection).
+  // A healed unit therefore enters the hit with more health. Optional: pass
+  // and take the hit. Offered only to the side(s) about to be damaged so a
+  // non-damaging cast (Haste, buff) never forces a heal window.
   if (triggerEvent.type === "UNIT_ATTACK_DECLARED") {
     const defenderId = state.combat?.units[triggerEvent.defenderId]?.controllerId;
-    const heals = defenderId
-      ? [...firstAidHealActions(state, defenderId), ...firstAidCardHealReactions(state, defenderId)]
-      : [];
-    if (defenderId && heals.length > 0) {
-      result[defenderId] = [...(result[defenderId] ?? []), ...heals];
+    if (defenderId) {
+      const heals = preHitHealReactions(state, defenderId, cards);
+      if (heals.length > 0) {
+        result[defenderId] = [...(result[defenderId] ?? []), ...heals];
+      }
     }
 
     // WOG Commanders: the defend buffs (Hierophant's Shield, Ogre Leader's Stone
@@ -6047,6 +6303,21 @@ export function getLegalReactionsForTrigger(
             }
           }
         ];
+      }
+    }
+  }
+
+  if (triggerEvent.type === "SPELL_CAST_STARTED") {
+    for (const player of Object.values(state.players)) {
+      if (state.combat && !isCombatParticipant(state, player.id)) {
+        continue;
+      }
+      if (!playerThreatenedByPendingDamage(state, triggerEvent, player.id, cards)) {
+        continue;
+      }
+      const heals = preHitHealReactions(state, player.id, cards);
+      if (heals.length > 0) {
+        result[player.id] = [...(result[player.id] ?? []), ...heals];
       }
     }
   }
@@ -6460,12 +6731,16 @@ export function isEffectLegalForTrigger(
       if (triggerEvent.playerId !== playerId) {
         return false;
       }
+      // Power only empowers a real Spell cast — never a specialty damage card
+      // that reuses the SPELL_CAST_STARTED window so pre-hit heals can fire.
+      const stackItemForPower = getPendingStackItem(state, triggerEvent);
+      if (stackItemForPower?.action.type !== "CAST_SPELL") {
+        return false;
+      }
 
       // Elemental Magic boosts only empower their own school.
       if (effect.schoolOnly) {
-        const stackItem = getPendingStackItem(state, triggerEvent);
-        const pendingSpell =
-          stackItem?.action.type === "CAST_SPELL" ? cardLibrary[stackItem.action.cardId] : undefined;
+        const pendingSpell = cardLibrary[stackItemForPower.action.cardId];
         const schools = pendingSpell?.spellSchools ?? [];
         return schools.includes(effect.schoolOnly) || schools.includes("any");
       }
