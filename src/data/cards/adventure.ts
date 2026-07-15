@@ -4664,18 +4664,21 @@ export const adventureCards: CardLibrary = {
     implementationStatus: "implemented",
     source: heroSource("jeremy")
   }),
+  // Wiki: both sides are `<instant>` (not activation-only). Timed "instant" so
+  // the free Cannon shot and the draw are playable anytime in combat (including
+  // off-turn), and the specialty always cycles to discard on play.
   "specialty.jeremy.4": {
     id: "specialty.jeremy.4",
     name: "Cannon IV",
     kind: "hero-specialty",
-    timing: "combat",
+    timing: "instant",
     phaseLimit: ["combat"],
     tags: [
       "hero-specialty",
-      "combat",
+      "instant",
       "jeremy",
       "cannon",
-      "Use the Cannon once (2 damage to a chosen enemy) without spending the expert; it does not count against the Cannon's round limit. — OR — Draw 1 card."
+      "Instant: Use the Cannon once (2 damage to a chosen enemy) without spending the expert; it does not count against the Cannon's round limit. — OR — Instant: Draw 1 card."
     ],
     target: { type: "none" },
     effect: {
@@ -4700,18 +4703,19 @@ export const adventureCards: CardLibrary = {
     implementationStatus: "implemented",
     source: heroSource("jeremy")
   },
+  // Wiki: both sides are `<instant>` (same as IV).
   "specialty.jeremy.6": {
     id: "specialty.jeremy.6",
     name: "Cannon VI",
     kind: "hero-specialty",
-    timing: "combat",
+    timing: "instant",
     phaseLimit: ["combat"],
     tags: [
       "hero-specialty",
-      "combat",
+      "instant",
       "jeremy",
       "cannon",
-      "Use the Cannon once (2 damage to a chosen enemy) without spending the expert; it does not count against the Cannon's round limit. — OR — Draw 2 cards."
+      "Instant: Use the Cannon once (2 damage to a chosen enemy) without spending the expert; it does not count against the Cannon's round limit. — OR — Instant: Draw 2 cards."
     ],
     target: { type: "none" },
     effect: {

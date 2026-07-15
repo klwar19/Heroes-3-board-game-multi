@@ -365,6 +365,120 @@ export function getSpellDamageAmount(card: CardDefinition, power: number): numbe
 }
 
 /**
+ * Walk a card effect tree and collect every numeric key of a `*ByPower` table
+ * (amountByPower, gradeByPower, durationByPower, damagesByPower, rollsByPower…).
+ * Shared by the live cast-window UI and the Tome "max tier" helper.
+ */
+export function collectPowerBreakpoints(value: unknown, acc: number[]): void {
+  if (!value || typeof value !== "object") {
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectPowerBreakpoints(item, acc);
+    }
+    return;
+  }
+  for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+    if (key.endsWith("ByPower") && nested && typeof nested === "object" && !Array.isArray(nested)) {
+      for (const breakpoint of Object.keys(nested as Record<string, unknown>)) {
+        const numeric = Number(breakpoint);
+        if (Number.isFinite(numeric)) {
+          acc.push(numeric);
+        }
+      }
+    } else {
+      collectPowerBreakpoints(nested, acc);
+    }
+  }
+}
+
+/** Sorted unique Power tiers a spell's effect scales across. Empty = no Power ladder. */
+export function spellPowerBreakpoints(card: CardDefinition | undefined): number[] {
+  if (!card) {
+    return [];
+  }
+  const acc: number[] = [];
+  collectPowerBreakpoints(card.effect, acc);
+  return [...new Set(acc)].sort((left, right) => left - right);
+}
+
+/**
+ * Highest Power tier that still changes the spell's effect. Null when the spell
+ * has no `*ByPower` ladder (no "overboard" warning). Spells that scale to Power
+ * 4/5 (Implosion, Animate Dead) return that top key, not a hard-coded 2.
+ */
+export function spellMaxUsefulPower(card: CardDefinition | undefined): number | null {
+  const breakpoints = spellPowerBreakpoints(card);
+  return breakpoints.length > 0 ? breakpoints[breakpoints.length - 1]! : null;
+}
+
+/**
+ * Lowest Power needed for a damaging Power-ladder spell to deal any damage.
+ * Walks DEAL_DAMAGE `amountByPower` and CHAIN_LIGHTNING `damagesByPower` tables:
+ * the minimum key whose value is positive. Implosion `{0:0,1:2,3:4,5:6}` → 1;
+ * Lightning Bolt `{0:2,1:3,2:4}` → 0. Non-damage / non-ladder spells → 0.
+ *
+ * Used by the cast-window UI and the engine pass-reaction guard so a player
+ * cannot resolve Implosion (and kin) at Power 0 for a silent no-op.
+ */
+export function spellMinUsefulPower(card: CardDefinition | undefined): number {
+  if (!card) {
+    return 0;
+  }
+  let floor = 0;
+  const visit = (value: unknown): void => {
+    if (!value || typeof value !== "object") {
+      return;
+    }
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        visit(item);
+      }
+      return;
+    }
+    const record = value as Record<string, unknown>;
+    if (record.type === "DEAL_DAMAGE" && record.amountByPower && typeof record.amountByPower === "object") {
+      const table = record.amountByPower as Record<string, number>;
+      const positive = Object.entries(table)
+        .map(([power, amount]) => [Number(power), Number(amount)] as const)
+        .filter(([power, amount]) => Number.isFinite(power) && Number.isFinite(amount) && amount > 0)
+        .map(([power]) => power);
+      if (positive.length > 0) {
+        floor = Math.max(floor, Math.min(...positive));
+      }
+    }
+    if (record.type === "CHAIN_LIGHTNING" && record.damagesByPower && typeof record.damagesByPower === "object") {
+      const table = record.damagesByPower as Record<string, number[]>;
+      const positive = Object.entries(table)
+        .filter(([, damages]) => Array.isArray(damages) && damages.some((amount) => Number(amount) > 0))
+        .map(([power]) => Number(power))
+        .filter((power) => Number.isFinite(power));
+      if (positive.length > 0) {
+        floor = Math.max(floor, Math.min(...positive));
+      }
+    }
+    for (const nested of Object.values(record)) {
+      visit(nested);
+    }
+  };
+  visit(card.effect);
+  return floor;
+}
+
+/**
+ * Cast-window Power bounds for UI + engine guards.
+ *  - minUseful: must reach before the caster may resolve (when they can still fuel)
+ *  - maxUseful: past this, extra Power does not change the printed ladder (warn)
+ */
+export function spellCastPowerBounds(card: CardDefinition | undefined): {
+  minUseful: number;
+  maxUseful: number | null;
+} {
+  return { minUseful: spellMinUsefulPower(card), maxUseful: spellMaxUsefulPower(card) };
+}
+
+/**
  * How many Attack dice a power-scaled die-roll spell (Inferno, Slayer) throws
  * at the given Power. Shared by the cast-window Power meter (so Inferno shows
  * "N dice" the same way damage spells show "N damage") and the resolve path.

@@ -65,11 +65,17 @@ describe("Implosion spell", () => {
     const casted = applyOk(state, cast!.action);
     // Stand in for paying N Power into the cast (Empower / Power statistics).
     casted.stack[0]!.modifiers.spellPowerBonus = power;
+    // Clear leftover Power sources so the under-min Pass guard (which blocks
+    // resolve while fuel is still available) does not fire — this harness is
+    // testing the damage ladder, not the cast-window UI.
+    casted.players.p1.hand = [];
     const result = passAllReactions(casted);
     return result.combat!.units.unit_p2_skeletons.damage;
   }
 
-  it("deals nothing at Power 0 (the card has no tier below Power 1)", () => {
+  it("deals nothing at Power 0 when nothing is left to fuel (fizzle escape hatch)", () => {
+    // With fuel still in hand the caster cannot Pass under Power 1 (engine + UI).
+    // With an empty hand, Pass is allowed so the table never soft-locks — damage 0.
     expect(castImplosionAt(0)).toBe(0);
   });
 

@@ -2768,11 +2768,11 @@ export const artifactCards: CardLibrary = {
   // INTERFERE_SPELL, so (like the Interference ability) it is offered BOTH as a
   // plain defense reaction to a physical attack on one of your units AND as a
   // reaction to an enemy single-target damaging Spell aimed at one of your units.
-  // Either way it grants that unit a Combat-long DEFENSE_BONUS (vs attacks) AND a
-  // SPELL_DAMAGE_REDUCTION (vs spells) — so it blunts the triggering hit/Spell and
-  // any later Spell or attack on that unit. Option A grants +1 (kept/discarded);
-  // option B grants +4 and removes the card. (Cross-offered to the attack window
-  // by variantMatchesTrigger / isEffectLegalForTrigger; resolved in the reducer.)
+  // Wiki marks both sides `<instant>` — THIS attack / THIS spell only, never
+  // combat-long (prior misread; same fix as Shield / Lion's Shield). Option A
+  // grants +1 (discarded); option B grants +4 and removes the card.
+  // (Cross-offered to the attack window by variantMatchesTrigger /
+  // isEffectLegalForTrigger; resolved in the reducer.)
   "artifact.plate_of_the_dying_light": {
     id: "artifact.plate_of_the_dying_light",
     name: "Plate of the Dying Light",
@@ -2783,18 +2783,18 @@ export const artifactCards: CardLibrary = {
     tags: [
       "artifact",
       "relic",
-      "+1 defense, which can also reduce damage from spells. — OR — +4 defense, which can also reduce damage from spells. Then remove this card."
+      "Instant: +1 defense, which can also reduce damage from spells. — OR — Instant: +4 defense, which can also reduce damage from spells. Then remove this card."
     ],
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "+1 defense for the Combat, which also reduces spell damage",
+          label: "Instant: +1 defense (also reduces this spell's damage)",
           trigger: { event: "SPELL_CAST_STARTED", controller: "opponent" },
           effect: { type: "INTERFERE_SPELL", amount: 1 }
         },
         {
-          label: "+4 defense for the Combat, which also reduces spell damage (remove this card)",
+          label: "Instant: +4 defense (also reduces this spell's damage); remove this card",
           trigger: { event: "SPELL_CAST_STARTED", controller: "opponent" },
           cost: { removeSelf: true },
           effect: { type: "INTERFERE_SPELL", amount: 4 }

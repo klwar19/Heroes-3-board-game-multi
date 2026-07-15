@@ -101,14 +101,35 @@ describe("Jeremy's Cannon specialty", () => {
     expect(findPlay(state, "specialty.jeremy.4", 0)).toBeFalsy();
   });
 
-  it("IV option A fires the Cannon (2 damage) once a Cannon is in play", () => {
+  it("IV option A fires the Cannon (2 damage) once a Cannon is in play and discards the specialty", () => {
     const state = loneEnemyCombat("jeremy-iv-fire");
     state.players.p1.hand = ["specialty.jeremy.4"];
     state.players.p1.permanents = ["war_machine.cannon"];
+    state.players.p1.discard = [];
     const play = findPlay(state, "specialty.jeremy.4", 0);
     expect(play, "the use-the-Cannon option needs a Cannon in play").toBeTruthy();
     const after = applyOk(state, play!.action);
     expect(after.combat!.units.unit_p2_skeletons.damage).toBe(2);
+    // Specialty is a normal hand play: it cycles to the discard (not removed,
+    // not held as ongoing). Regression for "Jeremy IV not discarded after use".
+    expect(after.players.p1.hand).not.toContain("specialty.jeremy.4");
+    expect(after.players.p1.discard).toContain("specialty.jeremy.4");
+    expect(after.players.p1.removed).not.toContain("specialty.jeremy.4");
+    expect(after.players.p1.ongoingCards ?? []).toEqual([]);
+  });
+
+  it("IV is Instant (wiki): free Cannon shot is offered off-turn, not only on own activation", () => {
+    const state = loneEnemyCombat("jeremy-iv-instant");
+    state.players.p1.hand = ["specialty.jeremy.4"];
+    state.players.p1.permanents = ["war_machine.cannon"];
+    // Enemy unit is active — not p1's activation.
+    state.combat!.activeUnitId = "unit_p2_skeletons";
+    state.activePlayerId = "p2";
+    const play = findPlay(state, "specialty.jeremy.4", 0);
+    expect(play, "Jeremy IV free-cannon Instant should be playable off-turn").toBeTruthy();
+    const after = applyOk(state, play!.action);
+    expect(after.combat!.units.unit_p2_skeletons.damage).toBe(2);
+    expect(after.players.p1.discard).toContain("specialty.jeremy.4");
   });
 
   it("IV option A is rejected by the reducer if forced without a Cannon", () => {

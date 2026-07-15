@@ -6972,9 +6972,9 @@ export function isEffectLegalForTrigger(
     }
 
     // Interference / Plate of the Dying Light: the "+X defense" base is a plain
-    // defense reaction, so it is offered to the controller of the unit being
-    // attacked. Only the DEFENSE_BONUS half applies to an attack; the paired
-    // SPELL_DAMAGE_REDUCTION rider is inert here. (basic +X / expert +X.)
+    // Instant defense reaction (this attack only, like Armorer), offered to the
+    // controller of the unit being attacked. The spell-damage half is inert on a
+    // physical hit. (basic +X / expert +X.)
     if (effect.type === "INTERFERE_SPELL") {
       return defender.controllerId === playerId;
     }

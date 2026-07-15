@@ -85,31 +85,23 @@ describe("Interference — reducing spell damage", () => {
     expect(basic, "basic Interference should be offered to the targeted side").toBeTruthy();
     state = applyOk(state, basic!.action);
 
-    // The +1 Defense / spell-damage reduction lands on the targeted unit for
-    // the rest of the Combat (a unit-scoped effect carrying both modifiers).
-    const effect = state.activeEffects.find(
-      (candidate) =>
-        candidate.controllerId === "p1" &&
-        candidate.target?.type === "unit" &&
-        candidate.target.unitId === "unit_p1_griffins" &&
-        candidate.modifiers.some((modifier) => modifier.type === "SPELL_DAMAGE_REDUCTION")
-    );
-    expect(effect, "Interference creates a unit-scoped reduction effect").toBeTruthy();
-    expect(effect!.modifiers).toEqual(
-      expect.arrayContaining([
-        { type: "DEFENSE_BONUS", amount: 1 },
-        { type: "SPELL_DAMAGE_REDUCTION", amount: 1 }
-      ])
-    );
-    expect(effect!.duration).toEqual({ type: "combat" });
-
     // Playing the ability does not cost a Spell for the round (it is not a Spell).
     expect(state.players.p1.combatStats.spellsCastThisRound).toBe(0);
     expect(state.players.p1.discard).toContain("ability.interference");
 
-    // Resolve the spell: its 1 damage is fully blunted.
+    // The reaction may auto-settle the cast (only reactor acted). Magic Arrow's
+    // 1 damage is fully blunted; wiki `<instant>` leaves no combat-long ward.
     state = passAllReactions(state);
     expect(state.combat!.units.unit_p1_griffins.damage).toBe(0);
+    expect(state.stack).toEqual([]);
+    expect(
+      state.activeEffects.filter((candidate) =>
+        candidate.modifiers.some(
+          (modifier) =>
+            modifier.type === "SPELL_DAMAGE_REDUCTION" || modifier.type === "DEFENSE_BONUS"
+        )
+      )
+    ).toEqual([]);
   });
 
   it("control: without Interference the same Magic Arrow deals its full 1 damage", () => {
@@ -139,14 +131,14 @@ describe("Interference — reducing spell damage", () => {
     expect(state.combat!.units.unit_p1_griffins.damage).toBe(1);
   });
 
-  it("the bonus lasts the Combat: a LATER enemy spell on the same unit is also reduced", () => {
+  it("CONTROL: a LATER enemy spell is NOT reduced (Interference is Instant, not combat-long)", () => {
     let state = setup(["ability.interference"]);
     const basic = interferenceReaction(state, "p1", "basic");
     state = passAllReactions(applyOk(state, basic!.action));
     expect(state.combat!.units.unit_p1_griffins.damage).toBe(0);
 
-    // A second Magic Arrow, later in the Combat, is still blunted by the
-    // standing Interference effect (it was not consumed by the first spell).
+    // A second Magic Arrow later in the Combat hits for full damage — the first
+    // Interference was this-cast only and is gone with that stack item.
     state.players.p2.hand = ["spell.magic_arrow"];
     state.players.p2.combatStats.spellsCastThisRound = 0;
     state.activePlayerId = "p2";
@@ -158,7 +150,7 @@ describe("Interference — reducing spell damage", () => {
       target: { type: "unit", unitId: "unit_p1_griffins" }
     });
     state = passAllReactions(state);
-    expect(state.combat!.units.unit_p1_griffins.damage).toBe(0);
+    expect(state.combat!.units.unit_p1_griffins.damage).toBe(1);
   });
 });
 

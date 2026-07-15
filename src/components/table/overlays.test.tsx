@@ -705,8 +705,10 @@ describe("ReactionTray — live Power readout", () => {
     expect(empowered.errors).toEqual([]);
     render(trayFor(empowered.state, "p1"));
     // Magic Arrow at Power 1 reads "Power 1" and "2 damage", with the fuel split.
+    // (Meter also shows top-tier / needs-min chips when relevant — match loosely.)
     expect(screen.getByText("Power 1")).toBeTruthy();
-    expect(screen.getByText(/2 damage · 0 base \+ 1 fuelled/)).toBeTruthy();
+    expect(screen.getByText(/2 damage/)).toBeTruthy();
+    expect(screen.getByText(/0 base \+ 1 fuelled/)).toBeTruthy();
   });
 
   it("shows the waiting opponent the same live Power so they can judge Resistance vs Magic Mirror", () => {
@@ -1651,5 +1653,105 @@ describe("ResetVotePanel — the New-adventure confirmation UI", () => {
     // canForceReset defaults to false — the override button is host-only.
     render(<ResetVotePanel onAction={vi.fn()} state={state} viewerPlayerId={"p2" as PlayerId} />);
     expect(screen.queryByRole("button", { name: /start now/i })).toBeNull();
+  });
+});
+
+describe("ReactionTray — spell cast Power floor / ceiling", () => {
+  function castImplosionOpen(seed: string, hand: string[]): GameState {
+    const state = createInitialGameState(seed);
+    state.players.p1.hand = hand;
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_marksmen";
+    state.combat!.units.unit_p2_skeletons.abilities = [];
+    state.combat!.units.unit_p2_skeletons.maxHealth = 30;
+    const cast = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "CAST_SPELL" && legal.action.cardId === "spell.implosion"
+    );
+    expect(cast).toBeTruthy();
+    const next = applyAction(state, cast!.action);
+    expect(next.errors).toEqual([]);
+    return next.state;
+  }
+
+  it("shows under-min warning and a Go-back dialog when Pass is clicked at Power 0 with fuel left", () => {
+    const onAction = vi.fn();
+    const state = castImplosionOpen("tray-impl-under", ["spell.implosion", "stat.power"]);
+    render(
+      <CardZoomProvider>
+        <ReactionTray
+          legalActions={getLegalActions(state, "p1")}
+          onAction={onAction}
+          state={state}
+          view={getPlayerView(state, "p1")}
+          viewerPlayerId="p1"
+        />
+      </CardZoomProvider>
+    );
+
+    expect(screen.getByText(/needs ≥1/i)).toBeTruthy();
+    expect(screen.getByText(/needs at least Power 1/i)).toBeTruthy();
+
+    act(() => {
+      fireEvent.click(screen.getByRole("button", { name: /^pass$/i }));
+    });
+    // Modal: go back only — no resolve path while under min with fuel available.
+    expect(screen.getByRole("dialog", { name: /spell power check/i })).toBeTruthy();
+    expect(screen.getByText(/not enough power/i)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /go back — add power/i })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /resolve anyway/i })).toBeNull();
+    expect(onAction).not.toHaveBeenCalled();
+
+    act(() => {
+      fireEvent.click(screen.getByRole("button", { name: /go back — add power/i }));
+    });
+    expect(screen.queryByRole("dialog", { name: /spell power check/i })).toBeNull();
+    expect(onAction).not.toHaveBeenCalled();
+  });
+
+  it("warns when Power is past the top tier and offers Go back or Resolve anyway", () => {
+    const onAction = vi.fn();
+    // Seed high Power on the cast stack so the meter reads over Implosion's top tier (5).
+    const state = castImplosionOpen("tray-impl-over", ["spell.implosion", "stat.power"]);
+    const stack = state.stack.at(-1);
+    expect(stack?.action.type).toBe("CAST_SPELL");
+    if (stack) {
+      stack.modifiers.spellPowerBonus = 7; // 0 printed + 7 fuelled → past 5
+    }
+
+    render(
+      <CardZoomProvider>
+        <ReactionTray
+          legalActions={getLegalActions(state, "p1")}
+          onAction={onAction}
+          state={state}
+          view={getPlayerView(state, "p1")}
+          viewerPlayerId="p1"
+        />
+      </CardZoomProvider>
+    );
+
+    expect(screen.getByText(/past top tier|top tier 5/i)).toBeTruthy();
+
+    act(() => {
+      fireEvent.click(screen.getByRole("button", { name: /^pass$/i }));
+    });
+    expect(screen.getByRole("dialog", { name: /spell power check/i })).toBeTruthy();
+    expect(screen.getByText(/power past the top tier/i)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /go back — adjust power/i })).toBeTruthy();
+
+    // Go back does not submit.
+    act(() => {
+      fireEvent.click(screen.getByRole("button", { name: /go back — adjust power/i }));
+    });
+    expect(onAction).not.toHaveBeenCalled();
+
+    act(() => {
+      fireEvent.click(screen.getByRole("button", { name: /^pass$/i }));
+    });
+    act(() => {
+      fireEvent.click(screen.getByRole("button", { name: /resolve anyway/i }));
+    });
+    expect(onAction).toHaveBeenCalledWith({ type: "PASS_REACTION", playerId: "p1" });
   });
 });

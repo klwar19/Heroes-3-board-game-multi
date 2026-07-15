@@ -10574,6 +10574,35 @@ span.recruitThumb {
   font-style: italic;
 }
 
+/* Cast-window Power meter: under the useful floor / past the top tier. */
+.trayPowerMeter.under {
+  color: #f0a060;
+  border-color: rgb(224 140 60 / 55%);
+}
+
+.trayPowerMeter.under strong {
+  color: #ffb070;
+}
+
+.trayPowerMeter.over {
+  color: #c8c070;
+  border-color: rgb(200 180 70 / 45%);
+}
+
+.trayPass.blocked {
+  opacity: 0.72;
+  border-color: rgb(224 140 60 / 50%);
+}
+
+.trayPass.caution {
+  border-color: rgb(200 180 70 / 55%);
+}
+
+/* Power-check dialog sits above the reaction tray (tray is already high). */
+.trayPowerBackdrop {
+  z-index: 120;
+}
+
 /* ------------------------------------------------------------------ */
 /* Lobby: custom starting army picker                                  */
 /* ------------------------------------------------------------------ */

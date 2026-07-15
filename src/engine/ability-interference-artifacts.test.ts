@@ -18,8 +18,9 @@ import type { ActiveEffectState, GameAction, GameState, PlayerId, UnitId } from 
  *     locks every Hero out of casting any Spell this Combat (removing the card).
  *   • Boots of Polarity (Relic) — option A rolls 2 Attack dice to (maybe) ignore
  *     an enemy spell; option B removes one ongoing effect from a chosen unit.
- *   • Plate of the Dying Light (Relic) — a Defense bonus that also reduces Spell
- *     damage (the Interference mechanic): +1 (kept) or +4 (removed).
+ *   • Plate of the Dying Light (Relic) — Instant +defense that also reduces
+ *     THIS Spell's damage (the Interference mechanic): +1 (discarded) or +4
+ *     (removed). Wiki `<instant>` — never combat-long.
  */
 
 const RECANTERS = "artifact.recanters_cloak";
@@ -499,53 +500,45 @@ describe("Plate of the Dying Light — defense that also blunts spell damage", (
     expect(griffinDamage(settle(onP1))).toBe(2);
   });
 
-  it("option A grants +1 defense AND -1 spell damage for the Combat", () => {
+  it("option A Instant: -1 spell damage on THIS cast only, then card discarded", () => {
     const onP1 = enemySpellOnGriffins("plate-a", [PLATE], "spell.lightning_bolt");
     const play = reactionAction(onP1, "p1", PLATE, 0);
     expect(play, "the +1 side should be a legal reaction to a damaging spell").toBeTruthy();
-    const played = applyOk(onP1, play!);
+    const settled = settle(applyOk(onP1, play!));
 
-    const effect = played.activeEffects.find(
-      (candidate) =>
-        candidate.target?.type === "unit" &&
-        candidate.target.unitId === "unit_p1_griffins" &&
-        candidate.modifiers.some((modifier) => modifier.type === "SPELL_DAMAGE_REDUCTION")
-    );
-    expect(effect, "the Plate should create a unit-scoped reduction effect").toBeTruthy();
-    expect(effect!.modifiers).toEqual(
-      expect.arrayContaining([
-        { type: "DEFENSE_BONUS", amount: 1 },
-        { type: "SPELL_DAMAGE_REDUCTION", amount: 1 }
-      ])
-    );
-    expect(effect!.name).toBe("Plate of the Dying Light");
-
-    // The triggering 2-damage bolt is blunted to 1, and the card is discarded.
-    expect(griffinDamage(settle(played))).toBe(1);
-    expect(played.players.p1.discard).toContain(PLATE);
+    // The triggering 2-damage bolt is blunted to 1; wiki `<instant>` leaves no
+    // combat-long ward; the card is discarded (not removed).
+    expect(griffinDamage(settled)).toBe(1);
+    expect(settled.players.p1.discard).toContain(PLATE);
+    expect(
+      settled.activeEffects.filter((candidate) =>
+        candidate.modifiers.some(
+          (modifier) =>
+            modifier.type === "SPELL_DAMAGE_REDUCTION" || modifier.type === "DEFENSE_BONUS"
+        )
+      )
+    ).toEqual([]);
   });
 
-  it("option B grants +4 (bolt fully absorbed) and removes the card", () => {
+  it("option B Instant: +4 blunts the bolt fully and removes the card (no lasting buff)", () => {
     const onP1 = enemySpellOnGriffins("plate-b", [PLATE], "spell.lightning_bolt");
     const play = reactionAction(onP1, "p1", PLATE, 1);
     expect(play, "the +4 side should be a legal reaction").toBeTruthy();
-    const played = applyOk(onP1, play!);
-
-    const effect = played.activeEffects.find(
-      (candidate) =>
-        candidate.target?.type === "unit" && candidate.target.unitId === "unit_p1_griffins"
-    );
-    expect(effect!.modifiers).toEqual(
-      expect.arrayContaining([
-        { type: "DEFENSE_BONUS", amount: 4 },
-        { type: "SPELL_DAMAGE_REDUCTION", amount: 4 }
-      ])
-    );
+    const settled = settle(applyOk(onP1, play!));
 
     // 2 damage minus 4 reduction floors at 0; the relic is removed (not discarded).
-    expect(griffinDamage(settle(played))).toBe(0);
-    expect(played.players.p1.removed).toContain(PLATE);
-    expect(played.players.p1.discard).not.toContain(PLATE);
+    expect(griffinDamage(settled)).toBe(0);
+    expect(settled.players.p1.removed).toContain(PLATE);
+    expect(settled.players.p1.discard).not.toContain(PLATE);
+    // Instant: no leftover combat-long ward after the cast resolves.
+    expect(
+      settled.activeEffects.filter((candidate) =>
+        candidate.modifiers.some(
+          (modifier) =>
+            modifier.type === "SPELL_DAMAGE_REDUCTION" || modifier.type === "DEFENSE_BONUS"
+        )
+      )
+    ).toEqual([]);
   });
 
   it("does not offer an expert side (the artifact has no expertAmount)", () => {
