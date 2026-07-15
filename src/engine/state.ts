@@ -89,7 +89,13 @@ export type HouseRuleId =
   // +1 Treasure+Resource dice). Off: Obelisks are still multi-flaggable but
   // grant no die reward. Independent of Holy Grail dig unlock (which always
   // counts visits while victoryMode is "grail").
-  | "obelisk-rewards";
+  | "obelisk-rewards"
+  // Pit Lords' Summon Demons: while ON, a Pit Lords may summon a new Few even
+  // when Demons are already on the field (multiple Demon units). Off (official):
+  // only ONE Demons unit may stand on the field (Few or Pack) — summon is
+  // blocked while any living Demons of the controller are already present;
+  // reinforce Few→Pack stays legal.
+  | "multi-demon-summon";
 
 /** Optional Wake of Gods modules. WOG is a BINH-family mod (not a game mode). */
 export type WogModOptions = {

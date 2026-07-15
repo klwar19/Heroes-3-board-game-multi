@@ -15278,6 +15278,19 @@ function summonDemons(state: GameState, action: Extract<GameAction, { type: "SUM
   const ruleset = getRuleset(state);
 
   if (action.mode === "summon") {
+    // Official: only one Demons unit on the field. House rule multi-demon-summon
+    // (BINH default) allows additional stacks.
+    if (!houseRuleEnabled(state, "multi-demon-summon")) {
+      const alreadyHasDemons = Object.values(combat.units).some(
+        (candidate) =>
+          candidate.controllerId === action.playerId &&
+          isUnitAlive(candidate) &&
+          candidate.unitDefId === demonDefId
+      );
+      if (alreadyHasDemons) {
+        throw new Error("Only one Demons unit may stand on the field (official rule). Reinforce a Few instead, or enable the multi-demon house rule.");
+      }
+    }
     const position = action.position;
     if (
       position === undefined ||
