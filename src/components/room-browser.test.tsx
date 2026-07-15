@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { RoomBrowser, type RoomBrowserLabels } from "./room-browser";
+import { LOBBY_POLL_MS, RoomBrowser, type RoomBrowserLabels } from "./room-browser";
 import * as authClient from "@/lib/auth-client";
 import * as realtime from "@/lib/realtime";
 import type { RoomDirectoryEntry } from "@/lib/realtime";
@@ -74,6 +74,51 @@ beforeEach(() => {
 });
 
 afterEach(cleanup);
+
+describe("lobby polling — hidden tabs stop spending edge requests", () => {
+  // Every lobby tick fires same-origin /api requests (billed edge requests on
+  // the production host); browsers throttle hidden-tab timers but never stop
+  // them, so a forgotten tab kept spending around the clock. The gate skips
+  // hidden ticks entirely — the visibilitychange refresh restores freshness
+  // the instant the tab is looked at again.
+  function setVisibility(value: DocumentVisibilityState) {
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => value });
+  }
+
+  afterEach(() => {
+    setVisibility("visible");
+    vi.useRealTimers();
+  });
+
+  it("skips interval ticks while hidden and refreshes instantly on tab focus", async () => {
+    vi.useFakeTimers();
+    render(<RoomBrowser labels={LABELS} mode="adventure" />);
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    const baseline = vi.mocked(realtime.fetchRoomList).mock.calls.length;
+    expect(baseline).toBeGreaterThan(0);
+
+    setVisibility("hidden");
+    await act(() => vi.advanceTimersByTimeAsync(LOBBY_POLL_MS * 3));
+    expect(vi.mocked(realtime.fetchRoomList).mock.calls.length).toBe(baseline);
+
+    setVisibility("visible");
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    expect(vi.mocked(realtime.fetchRoomList).mock.calls.length).toBe(baseline + 1);
+  });
+
+  it("CONTROL: a visible tab keeps polling on the interval", async () => {
+    vi.useFakeTimers();
+    render(<RoomBrowser labels={LABELS} mode="adventure" />);
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    const baseline = vi.mocked(realtime.fetchRoomList).mock.calls.length;
+
+    await act(() => vi.advanceTimersByTimeAsync(LOBBY_POLL_MS));
+    expect(vi.mocked(realtime.fetchRoomList).mock.calls.length).toBe(baseline + 1);
+  });
+});
 
 describe("lobby room browser — admin delete goes through the reliable same-origin path", () => {
   it("an admin deletes via requestAdminCloseRoom (cookie-verified, NOT the cross-origin edge)", async () => {

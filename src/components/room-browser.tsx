@@ -16,6 +16,7 @@ import type { GameMode } from "@/engine";
 import { assetUrl } from "@/lib/asset-url";
 import { fetchSession, fetchSocketToken } from "@/lib/auth-client";
 import { getClientId, getDisplayName, setDisplayName } from "@/lib/identity";
+import { pollTickAllowed } from "@/lib/hidden-tab-poll";
 import { fetchLobbyChat, postLobbyChat, type LobbyChatMessage } from "@/lib/lobby-chat-client";
 import { leavePresence, sendPresence, type PresenceEntry } from "@/lib/lobby-presence-client";
 import {
@@ -41,6 +42,15 @@ import {
  * table. Everything is shared for all players: the directory, the global lobby
  * chat, and every created room live on the server.
  */
+/**
+ * Lobby poll cadence. Each tick fires the room list plus two same-origin /api
+ * requests (lobby chat + presence heartbeat) — billed edge requests on the
+ * production host — so this is deliberately 8 s, not the old 3 s, and hidden
+ * tabs skip ticks entirely (see the polling effect). The presence TTL (120 s)
+ * and invite TTL (5 min) sit far above this cadence.
+ */
+export const LOBBY_POLL_MS = 8_000;
+
 export type RoomBrowserLabels = {
   /** Server-badge subtitle (what this front door is for). */
   badgeNote: string;
@@ -133,13 +143,20 @@ export function RoomBrowser({ mode, labels }: { mode: GameMode; labels: RoomBrow
       });
   }, [clientId, mode, accountName]);
 
-  // Poll the directory (and lobby chat) every 3s while the browser is open —
-  // chat feels fresher without hammering the server (best-effort ephemeral).
-  // Background tabs get their timers throttled to >= 60s, so also refresh the
-  // moment the tab becomes visible again instead of waiting out a stale tick.
+  // Poll the directory (and lobby chat) while the browser is open. Every tick
+  // costs same-origin /api requests (billed edge requests on the production
+  // host), so the cadence is 8 s — still lobby-fresh — and a HIDDEN tab skips
+  // ticks entirely (pollTickAllowed): the visibilitychange handler refreshes
+  // the instant the tab is looked at again, so nothing is lost while a
+  // forgotten tab stops spending requests around the clock.
   useEffect(() => {
     refresh();
-    const intervalId = window.setInterval(refresh, 3000);
+    const intervalId = window.setInterval(() => {
+      if (!pollTickAllowed()) {
+        return;
+      }
+      refresh();
+    }, LOBBY_POLL_MS);
     const onVisible = () => {
       if (document.visibilityState === "visible") {
         refresh();

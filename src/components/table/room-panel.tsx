@@ -29,6 +29,7 @@ import {
   type RoomSeat
 } from "@/engine";
 import { authEnabled } from "@/lib/auth-mode";
+import { pollTickAllowed } from "@/lib/hidden-tab-poll";
 import { postLobbyChat } from "@/lib/lobby-chat-client";
 import { sendLobbyInvite } from "@/lib/lobby-invites-client";
 import { fetchPresence, type PresenceEntry } from "@/lib/lobby-presence-client";
@@ -139,7 +140,14 @@ export function RoomPanel({
         });
     };
     load();
-    const id = window.setInterval(load, 5000);
+    // 10 s is fresh enough for an invite list; hidden tabs skip ticks (each
+    // tick is a billed same-origin edge request on the production host).
+    const id = window.setInterval(() => {
+      if (!pollTickAllowed()) {
+        return;
+      }
+      load();
+    }, 10_000);
     return () => {
       live = false;
       window.clearInterval(id);
