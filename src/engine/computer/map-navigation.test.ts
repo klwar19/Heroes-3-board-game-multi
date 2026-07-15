@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { allTileDefinitions } from "@/data/map/tiles";
 import { coreFactionDefinitions } from "@/data/factions/core";
@@ -411,19 +412,45 @@ describe("moveScore uses objectives (fixes wander + never-fights)", () => {
 });
 
 describe("sticky primary + explore objectives", () => {
-  it("collects a safe income hex before fair fights, then attacks after three Packs", () => {
+  it("opening home-tile sweep: a fresh army still takes the income mine / guarded treasure", () => {
+    // NEW opening philosophy (a strong human's tempo): the difficulty-1 guarded
+    // MINE (permanent income) and TREASURE on the OWN starting tile are opening
+    // plays, not fair fights to postpone for army development. The old policy
+    // grabbed only the unguarded RESOURCE here and marched off, abandoning both
+    // guards; the home-tile sweep lifts the readiness gate on tile Ⅰ so they win.
     const state = game();
     const hero = p2Hero(state);
-    state.adventure!.victoryMode = "dragon-hunt";
+    hero.level = 1;
+    state.adventure!.victoryMode = "dragon-hunt"; // drop the distant conquest-town override
 
     const developing = primaryMapObjective(state, hero);
-    expect(developing?.spaceId).toBe(RESOURCE);
-    expect(developing?.kind).toBe("visitable");
+    expect(developing?.kind).toBe("guard");
+    expect([MINE, TREASURE]).toContain(developing?.spaceId);
+    // All three home payoffs remain objectives — the resource is still swept,
+    // just after the income mine — so the whole tile drains, not just one hex.
+    const objectives = collectMapObjectives(state, hero).map((o) => o.spaceId);
+    expect(objectives).toEqual(expect.arrayContaining([MINE, TREASURE, RESOURCE]));
 
+    // A ready army only reinforces the same pick.
     establishP2PackCore(state);
     const battleReady = primaryMapObjective(state, hero);
     expect(battleReady?.kind).toBe("guard");
     expect([MINE, TREASURE]).toContain(battleReady?.spaceId);
+  });
+
+  it("CONTROL: past the opening window the home guard waits for the army core", () => {
+    // The sweep exemption is scoped to the first rounds. From round 4 the same
+    // difficulty-1 home guard is a fair fight again: a weak army prefers the
+    // safe visitable (development discipline) — proving the round gate, not the
+    // seed, is what drives the opening aggression.
+    const state = game();
+    const hero = p2Hero(state);
+    hero.level = 1;
+    state.adventure!.victoryMode = "dragon-hunt";
+    state.round = 4; // past HOME_TILE_SWEEP_MAX_ROUND
+    const developing = primaryMapObjective(state, hero);
+    expect(developing?.spaceId).toBe(RESOURCE);
+    expect(developing?.kind).toBe("visitable");
   });
 
   it("commits to one primary objective (no multi-source thrash)", () => {
@@ -599,6 +626,146 @@ describe("sticky primary + explore objectives", () => {
     };
     const flush = collectMapObjectives(state, hero).map((o) => o.spaceId);
     expect(flush).not.toContain(EMPTY);
+  });
+});
+
+describe("opening home-tile sweep — development gate scoped to tile Ⅰ", () => {
+  /** A walkable ghost arm on its OWN tile (never the hero's home tile). */
+  function buildGhostArm(state: GameState, length: number): MapSpaceId[] {
+    const fields = state.adventure!.fields;
+    let root: MapSpaceId | undefined;
+    for (const field of Object.values(fields)) {
+      if (getAdjacentSpaceIds(field.spaceId).some((id) => !fields[id])) {
+        root = field.spaceId;
+        break;
+      }
+    }
+    expect(root, "fixture map should expose an open frontier").toBeDefined();
+    const template = fields[root!];
+    let cursor = root!;
+    const arm: MapSpaceId[] = [];
+    while (arm.length < length) {
+      const next = getAdjacentSpaceIds(cursor).find(
+        (id) => !fields[id] && !arm.includes(id),
+      );
+      expect(next, "ghost arm should keep extending").toBeDefined();
+      fields[next!] = {
+        ...template,
+        spaceId: next!,
+        location: "empty_field",
+        tileInstanceId: "tile_ghost_ctrl_arm",
+        flagOwnerId: null,
+        blackCube: false,
+      };
+      delete fields[next!].difficulty;
+      arm.push(next!);
+      cursor = next!;
+    }
+    return arm;
+  }
+
+  it("home tile: a fresh Few army marches ONTO the difficulty-1 income mine", () => {
+    const state = game();
+    const hero = p2Hero(state);
+    hero.level = 1;
+    state.adventure!.victoryMode = "dragon-hunt";
+    // Weak Few-only army, hero on its home town (tile Ⅰ), opening round: stepping
+    // onto the guarded mine (a fight the level covers) scores as an objective
+    // ENTER, well above END_TURN (300). The stock policy left this fight to the
+    // Pack core and never walked in with a fresh army.
+    expect(moveScoreTo(state, hero, MINE)).toBeGreaterThan(700);
+  });
+
+  it("sweeps the home guards even with the guaranteed-win house rule EXHAUSTED", () => {
+    // The opening aggression is justified by the level-vs-difficulty reference
+    // alone, NOT the guaranteed-win smoothing rule. Even with both guaranteed
+    // slots already spent (the AI would have to win the fight on the dice), the
+    // fresh hero still picks a home guard — the sweep decision never reads the
+    // house-rule counter.
+    const state = game();
+    const hero = p2Hero(state);
+    hero.level = 1;
+    state.adventure!.victoryMode = "dragon-hunt";
+    state.computerGuaranteedWins = { p2: 2 }; // both slots used up (limit is 2)
+    const primary = primaryMapObjective(state, hero);
+    expect(primary?.kind).toBe("guard");
+    expect([MINE, TREASURE]).toContain(primary?.spaceId);
+  });
+
+  it("CONTROL: the same difficulty-1 guard OFF the home tile still waits (gate holds)", () => {
+    const state = game();
+    const hero = p2Hero(state);
+    hero.level = 1;
+    // Move the hero out onto a different tile: the readiness gate applies again,
+    // so a weak army prefers a safe visitable over the equally-close fair fight
+    // — the exemption is the HOME tile, not "any difficulty-1 guard".
+    const arm = buildGhostArm(state, 3);
+    // Hero in the middle of the ghost arm: a visitable and a difficulty-1 guard
+    // sit one step out on either side (a guard is a march "stop", so keeping
+    // both a single hop from the hero keeps both genuinely reachable).
+    hero.spaceId = arm[1];
+    state.adventure!.fields[arm[0]].location = "windmill"; // visitable, 1 step
+    state.adventure!.fields[arm[2]].difficulty = 1; // guard, 1 step
+    const primary = primaryMapObjective(state, hero, [
+      { spaceId: arm[2], kind: "guard" },
+      { spaceId: arm[0], kind: "visitable" },
+    ]);
+    // At EQUAL distance the safe visitable wins — off the home tile the
+    // weak-army guard keeps its 410 (not the 710 the home sweep would grant).
+    expect(primary?.spaceId).toBe(arm[0]);
+    expect(primary?.kind).toBe("visitable");
+  });
+
+  it("values a Settlement distinctly above a generic flaggable (economy rush)", () => {
+    const state = game();
+    const hero = p2Hero(state);
+    hero.level = 1;
+    state.adventure!.victoryMode = "dragon-hunt";
+    // Past the opening window so the Settlement's own premium — not the home
+    // sweep bonus — is what ranks it above a bare mine at the same distance.
+    state.round = 4;
+    const fields = state.adventure!.fields;
+    for (const id of [MINE, TREASURE]) {
+      fields[id].flagOwnerId = "p2";
+      fields[id].everFlagged = true;
+      delete fields[id].difficulty;
+    }
+    fields[RESOURCE].location = "settlement";
+    fields[RESOURCE].flagOwnerId = null;
+    delete fields[RESOURCE].difficulty;
+    fields[EMPTY].location = "mine";
+    fields[EMPTY].flagOwnerId = null;
+    delete fields[EMPTY].difficulty;
+    expect(primaryMapObjective(state, hero)?.spaceId).toBe(RESOURCE);
+
+    // CONTROL: the premium follows the Settlement LOCATION, not the field id.
+    fields[RESOURCE].location = "mine";
+    fields[EMPTY].location = "settlement";
+    expect(primaryMapObjective(state, hero)?.spaceId).toBe(EMPTY);
+  });
+
+  it("HARD INVARIANT: the map policy never reads the guaranteed-win house rule", () => {
+    // The AI must justify a fight ONLY by the level-vs-difficulty reference, so
+    // the map objective/scoring layer must never read state.computerGuaranteedWins
+    // nor import guaranteed-wins.ts (CLAUDE.md: it must not seek fights to exploit
+    // the guaranteed-win smoothing rule).
+    const layer = [
+      "map-navigation.ts",
+      "map-policy.ts",
+      "development.ts",
+      "army-strength.ts",
+      "memory.ts",
+    ];
+    for (const file of layer) {
+      const src = readFileSync(`src/engine/computer/${file}`, "utf8");
+      expect(src, `${file} must not read computerGuaranteedWins`).not.toContain(
+        "computerGuaranteedWins",
+      );
+      // The module path (guaranteed-wins.ts) — matches any import of the rule.
+      expect(src, `${file} must not import guaranteed-wins`).not.toContain(
+        "guaranteed-wins",
+      );
+    }
   });
 });
 
@@ -905,6 +1072,15 @@ describe("expansion push — open/place Ⅱ–Ⅲ before a long march to a lefto
       p2: [],
     };
     const corridor = buildCorridor(state, EMPTY, 7);
+    // The leftover lives on ANOTHER arm of the map: re-stamp the synthetic
+    // corridor onto its own tile so the opening home-tile sweep (which rightly
+    // favours SAME-tile pickups, and lifts a home guard's readiness gate) stays
+    // out of this off-tile comparison. buildCorridor clones EMPTY's fields, so
+    // the corridor otherwise inherits the home tile id and the sweep would leak.
+    // An unknown tileInstanceId reads as unsealed, so the arm stays walkable.
+    for (const id of corridor) {
+      state.adventure!.fields[id].tileInstanceId = "tile_ghost_leftover_arm";
+    }
     const farField = corridor[corridor.length - 1];
     expect(distanceFromHeroTo(state, hero, farField)).toBeGreaterThanOrEqual(7);
     // A (weak-army) fight is also listed so the no-fight explore boost stays
