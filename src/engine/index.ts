@@ -282,7 +282,8 @@ export {
   SECRET_TILE_FEATURES,
   secretFeatureFullLabel,
   secretFeatureLabel,
-  validateCustomMapPlan
+  validateCustomMapPlan,
+  MAX_DESIGNED_GATE_LINKS
 } from "./adventure-setup";
 export type { AdventurePlayerConfig, AdventureSetupOptions, DraftPhaseInfo } from "./adventure-setup";
 export {
@@ -380,6 +381,7 @@ export {
   mapTokenLabel,
   tokenMayCoverFieldDef,
   planSubterraneanGates,
+  legalGateHexPairs,
   planGateChoiceForReveal,
   upsertGatePlan,
   recomputeSubterraneanGates,
@@ -397,7 +399,7 @@ export {
   subterraneanTileBand,
   tileLayer
 } from "./adventure";
-export type { HeroMovementCapabilities, HeroPathTarget, HeroStepKind, MapLayer, MapTokenKind, PlannedSubterraneanGate, RecruitPurchaseRef, TilePlacementLike } from "./adventure";
+export type { DesignedGateLinkLike, HeroMovementCapabilities, HeroPathTarget, HeroStepKind, MapLayer, MapTokenKind, PlannedSubterraneanGate, RecruitPurchaseRef, TilePlacementLike } from "./adventure";
 export {
   ATTACKER_BACKLINE,
   ATTACKER_FRONTLINE,
@@ -521,6 +523,7 @@ export type {
   CombatUnitState,
   CustomMapPreset,
   CustomMapTilePlan,
+  CustomMapGateLink,
   CustomStartingUnit,
   SecretTileFeature,
   VictoryMode,

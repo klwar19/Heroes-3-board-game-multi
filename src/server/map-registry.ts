@@ -1,7 +1,10 @@
 import {
   isSecretTileFeature,
+  parseHexSpaceId,
   sanitizeCustomMapPreset,
   scenarioDefinitions,
+  MAX_DESIGNED_GATE_LINKS,
+  type CustomMapGateLink,
   type CustomMapPreset,
   type CustomMapTilePlan
 } from "@/engine";
@@ -132,6 +135,17 @@ function sanitizeTile(tile: unknown): CustomMapTilePlan | null {
   const secretFeature = isSecretTileFeature(candidate.secretFeature)
     ? candidate.secretFeature
     : undefined;
+  // Designer Subterranean Gate links (cavern tiles only): keep well-formed
+  // entries — a Surface partner named by whole-grid centre plus optionally a
+  // valid absolute hex id per half — dropping malformed ones and capping the
+  // count so untrusted input can't balloon. Non-cavern groups carry none.
+  const gateLinks =
+    candidate.group === "subterranean" && Array.isArray(candidate.gateLinks)
+      ? candidate.gateLinks
+          .map(sanitizeGateLink)
+          .filter((link): link is CustomMapGateLink => link !== null)
+          .slice(0, MAX_DESIGNED_GATE_LINKS)
+      : [];
 
   return {
     row: candidate.row as number,
@@ -143,7 +157,26 @@ function sanitizeTile(tile: unknown): CustomMapTilePlan | null {
     ...(Number.isInteger(candidate.rotation) ? { rotation: (((candidate.rotation as number) % 6) + 6) % 6 } : {}),
     ...(candidate.seaBand === "iv-v" || candidate.seaBand === "vi-vii" ? { seaBand: candidate.seaBand } : {}),
     ...(candidate.subBand === "iv-v" || candidate.subBand === "vi-vii" ? { subBand: candidate.subBand } : {}),
-    ...(token ? { token } : {})
+    ...(token ? { token } : {}),
+    ...(gateLinks.length > 0 ? { gateLinks } : {})
+  };
+}
+
+/** Keeps a well-formed designer gate link, or null. Pinned hexes must be valid absolute ids. */
+function sanitizeGateLink(link: unknown): CustomMapGateLink | null {
+  if (!link || typeof link !== "object") {
+    return null;
+  }
+  const candidate = link as { surface?: { row?: unknown; col?: unknown }; gateHex?: unknown; entranceHex?: unknown };
+  const surface = candidate.surface;
+  if (!surface || !Number.isInteger(surface.row) || !Number.isInteger(surface.col)) {
+    return null;
+  }
+  const validHex = (value: unknown): value is string => typeof value === "string" && parseHexSpaceId(value) !== null;
+  return {
+    surface: { row: surface.row as number, col: surface.col as number },
+    ...(validHex(candidate.gateHex) ? { gateHex: candidate.gateHex } : {}),
+    ...(validHex(candidate.entranceHex) ? { entranceHex: candidate.entranceHex } : {})
   };
 }
 

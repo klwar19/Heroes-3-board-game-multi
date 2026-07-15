@@ -68,10 +68,11 @@ import { createSeededRandom, type SeededRandom } from "./random";
 import { freshSeed } from "./seed";
 import { appendEvent, eventSeedNumber } from "./events";
 import { VICTORY_MODE_LABELS } from "./ruleset";
-import { hexEquals, tileCentersOverlap, type HexCoord } from "./hex";
+import { hexEquals, tileCentersOverlap, tileFootprintsTouch, type HexCoord } from "./hex";
 import type {
   AdventureState,
   CustomMapTilePlan,
+  CustomMapGateLink,
   CustomStartingUnit,
   DeckState,
   DraftFormat,
@@ -94,6 +95,7 @@ import type {
   RoomMembershipState,
   SecretTileFeature,
   StartCheckState,
+  SubterraneanGatePlan,
   UnitLevel,
   VictoryMode,
   WogModOptions
@@ -872,8 +874,71 @@ export function validateCustomMapPlan(
     placedCenters.push(center);
   }
 
+  // Designer Subterranean Gate links (cavern → Surface): each must name a Surface
+  // tile that is actually placed AND physically touches the cavern, else it is
+  // dropped with a human-readable reason. Duplicate links to the same Surface tile
+  // merge; a cavern keeps at most MAX_DESIGNED_GATE_LINKS distinct partners. The
+  // pinned hexes are left as-is — they are preferences the carve validates later.
+  const surfaceCenterKeys = new Set<string>(
+    startingPlans.length > 0
+      ? accepted.filter((plan) => plan.group === "starting").map((plan) => `${plan.row}:${plan.col}`)
+      : scenario.layout.starts.map((start) => `${start.row}:${start.col}`)
+  );
+  for (const plan of accepted) {
+    if (plan.group !== "starting" && plan.group !== "subterranean") {
+      surfaceCenterKeys.add(`${plan.row}:${plan.col}`);
+    }
+  }
+  for (let index = 0; index < accepted.length; index += 1) {
+    const plan = accepted[index];
+    if (plan.group !== "subterranean" || !plan.gateLinks || plan.gateLinks.length === 0) {
+      continue;
+    }
+    const cavernCenter = { row: plan.row, col: plan.col };
+    const seenSurfaces = new Set<string>();
+    const keptLinks: CustomMapGateLink[] = [];
+    for (const link of plan.gateLinks) {
+      const surfaceCenter = { row: link.surface.row, col: link.surface.col };
+      const surfaceKey = `${surfaceCenter.row}:${surfaceCenter.col}`;
+      if (!Number.isInteger(surfaceCenter.row) || !Number.isInteger(surfaceCenter.col) || !surfaceCenterKeys.has(surfaceKey)) {
+        problems.push(
+          `Cavern at ${plan.row},${plan.col}: gate link to ${link.surface.row},${link.surface.col} — no Surface tile is placed there.`
+        );
+        continue;
+      }
+      if (!tileFootprintsTouch(cavernCenter, surfaceCenter)) {
+        problems.push(
+          `Cavern at ${plan.row},${plan.col}: gate link to ${link.surface.row},${link.surface.col} — the tiles do not touch.`
+        );
+        continue;
+      }
+      if (seenSurfaces.has(surfaceKey)) {
+        continue; // one link per Surface partner
+      }
+      if (keptLinks.length >= MAX_DESIGNED_GATE_LINKS) {
+        problems.push(`Cavern at ${plan.row},${plan.col}: too many gate links (max ${MAX_DESIGNED_GATE_LINKS}).`);
+        continue;
+      }
+      seenSurfaces.add(surfaceKey);
+      keptLinks.push(link);
+    }
+    if (keptLinks.length === plan.gateLinks.length) {
+      continue; // every link was valid — keep the plan untouched
+    }
+    if (keptLinks.length > 0) {
+      accepted[index] = { ...plan, gateLinks: keptLinks };
+    } else {
+      const next = { ...plan };
+      delete next.gateLinks;
+      accepted[index] = next;
+    }
+  }
+
   return { accepted, problems };
 }
+
+/** A designer cavern hosts at most this many Subterranean Gate links (distinct partners). */
+export const MAX_DESIGNED_GATE_LINKS = 4;
 
 /**
  * Pops the topmost sea tile of a given wave band (Ⅳ–Ⅴ or Ⅵ–Ⅶ) from a single
@@ -1547,6 +1612,42 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     }
 
     applyCustomMapTokens(adventure, plannedTokens);
+
+    // Designer Subterranean Gate links → seed the gate plans that the carve below
+    // (recomputeSubterraneanGates) honours. Each cavern link resolves to the two
+    // tile instance ids by their placed centres; a `designed` plan bypasses
+    // one-gate-per-tile so a cavern linked to several Surface tiles hosts one gate
+    // per link. Links to a tile that never instantiated (a starved pool) drop out.
+    const tileIdByCenter = new Map<string, string>();
+    for (const tile of Object.values(adventure.tiles)) {
+      tileIdByCenter.set(`${tile.centerRow}:${tile.centerCol}`, tile.id);
+    }
+    const designedGatePlans: SubterraneanGatePlan[] = [];
+    for (const plan of customMap) {
+      if (plan.group !== "subterranean" || !plan.gateLinks) {
+        continue;
+      }
+      const cavernId = tileIdByCenter.get(`${plan.row}:${plan.col}`);
+      if (!cavernId) {
+        continue;
+      }
+      for (const link of plan.gateLinks) {
+        const surfaceId = tileIdByCenter.get(`${link.surface.row}:${link.surface.col}`);
+        if (!surfaceId || surfaceId === cavernId) {
+          continue;
+        }
+        designedGatePlans.push({
+          surfaceTileId: surfaceId,
+          undergroundTileId: cavernId,
+          designed: true,
+          ...(link.gateHex ? { gateHex: link.gateHex } : {}),
+          ...(link.entranceHex ? { entranceHex: link.entranceHex } : {})
+        });
+      }
+    }
+    if (designedGatePlans.length > 0) {
+      adventure.gatePlans = [...(adventure.gatePlans ?? []), ...designedGatePlans];
+    }
   } else {
     // Holy Grail: force leftover Grail tiles (2 dig sites total) and at least
     // 2 Obelisks onto Near/Far draws when the layout's Center slots alone cannot

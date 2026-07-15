@@ -12200,6 +12200,82 @@ img.cardBack {
   pointer-events: none;
 }
 
+/* A DESIGNER-committed gate reads brighter, solid and clickable, so it stands
+   apart from an automatic one; its lock pin marks the fixed connection. */
+.designerGateLink.designed {
+  stroke: #8fe6ff;
+  stroke-width: 2.6;
+  stroke-dasharray: none;
+  opacity: 1;
+  filter: drop-shadow(0 0 4px rgba(143, 230, 255, 0.7));
+}
+
+.designerGateToken {
+  pointer-events: none;
+}
+
+.designerGateToken.designed {
+  pointer-events: auto;
+  cursor: pointer;
+  filter: drop-shadow(0 0 4px rgba(143, 230, 255, 0.85));
+}
+
+.designerGatePin {
+  fill: #8fe6ff;
+  stroke: rgba(6, 30, 44, 0.9);
+  stroke-width: 1.4px;
+  pointer-events: none;
+}
+
+/* Cavern gate-link controls in the per-tile popover. */
+.popoverGateLinks {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.popoverGateLinkList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.popoverGateLinkRow {
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+}
+
+.popoverGateLinkToggle {
+  flex: 1;
+  text-align: left;
+  padding: 5px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(143, 230, 255, 0.4);
+  background: rgba(20, 40, 54, 0.5);
+  color: #cfe9f5;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.popoverGateLinkToggle.linked {
+  border-color: #8fe6ff;
+  background: rgba(30, 78, 102, 0.65);
+  color: #eaffff;
+}
+
+.popoverGateLinkCycle {
+  padding: 5px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(143, 230, 255, 0.4);
+  background: rgba(20, 40, 54, 0.5);
+  color: #cfe9f5;
+  font-size: 11px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
 /* Banner shown under the board when caverns are left unreachable. */
 .designerCavernAlert {
   margin-top: 8px;
