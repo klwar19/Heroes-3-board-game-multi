@@ -168,6 +168,63 @@ describe("computer decision ownership", () => {
     expect(computerDecisionOwner(state)).toBe("p2");
   });
 
+  it("WAITS on a HUMAN pre-activation reaction pause even when the paused-on unit is the COMPUTER's", () => {
+    const state = createAdventureLobbyState({
+      seed: "window-pvp-pre-activation",
+      sessionMode: "single-player",
+      computerOpponents: 1,
+    });
+    state.phase = "combat";
+    state.activePlayerId = "p2";
+    // PvP fight: computer p2 (attacker) attacked human p1 (defender). p2's unit
+    // is about to activate, but a PRE-ACTIVATION reaction pause gives the HUMAN
+    // (p1) the chance to react first — p1 holds priority (reactingPlayerId).
+    state.combat = {
+      id: "cb-pause",
+      context: { kind: "player" },
+      attackerPlayerId: "p2",
+      defenderPlayerId: "p1",
+      prep: null,
+      setup: { pendingPlayerIds: [], placedUnitIds: [] },
+      activeUnitId: "unit_p2_dread_knights",
+      units: {
+        unit_p2_dread_knights: {
+          id: "unit_p2_dread_knights",
+          controllerId: "p2",
+          position: 9,
+        },
+      },
+      pendingNeutralStep: {
+        kind: "pre-activation",
+        unitId: "unit_p2_dread_knights",
+        name: "Dread Knights",
+        reactingPlayerId: "p1",
+      },
+      outcome: null,
+      endAcknowledged: false,
+    } as unknown as typeof state.combat;
+
+    // BUG (fixed): ownership fell through the human reactor to the ACTIVE unit's
+    // owner (p2, a computer), which then had ZERO legal actions while the pause
+    // held → the paced pump stalled. The reactor owns the gate: a human reactor
+    // makes the table WAIT.
+    expect(computerDecisionOwner(state)).toBeNull();
+
+    // CONTROL A: a COMPUTER reactor (an AI-only fight's pre-activation pause) is
+    // still driven — the reactor, not the active unit's owner, is returned.
+    (
+      state.combat as unknown as { pendingNeutralStep: { reactingPlayerId: string } }
+    ).pendingNeutralStep.reactingPlayerId = "p2";
+    expect(computerDecisionOwner(state)).toBe("p2");
+
+    // CONTROL B: with NO pause open, the active unit's owner (p2) legitimately
+    // owns the activation — proving the pause is exactly what shifts ownership
+    // (this is the pre-fix fall-through, correct only when no pause is up).
+    (state.combat as unknown as { pendingNeutralStep: unknown }).pendingNeutralStep =
+      undefined;
+    expect(computerDecisionOwner(state)).toBe("p2");
+  });
+
   it("draft format: computers wait for the human's town, then lock; a locked seat waits for its ban turn", () => {
     let state = createAdventureLobbyState({
       seed: "window-draft-wait",

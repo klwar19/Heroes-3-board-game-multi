@@ -4187,7 +4187,21 @@ function addUnitActions(actions: LegalAction[], state: GameState, playerId: Play
   // Once a unit has begun acting (moved or fired), it may finish its activation
   // without forcing an attack or defend — e.g. a ranged unit holding after a
   // shot. The Arrow Tower may always hold instead of shooting.
-  if (alreadyAttacked || activeUnit.movedThisActivation || isArrowTowerUnit(activeUnit)) {
+  //
+  // A WOG commander that CAST a command ability this activation is
+  // `movementLockedThisActivation` (reducer.ts sets it on the cast: "may still
+  // attack, but no longer move"). Casting is that unit's action — so it too may
+  // hold. Without this a commander that cast, cannot reach any enemy to attack,
+  // AND defended last activation (the consecutive-Defend ban blocks Defend) was
+  // offered NO legal action at all, deadlocking the whole combat and stalling
+  // the computer pump (seen in the all-options soak: 3 opponents + Impossible +
+  // Morale + Events + WOG Commanders). See wog-commander-cast-hold coverage.
+  if (
+    alreadyAttacked ||
+    activeUnit.movedThisActivation ||
+    activeUnit.movementLockedThisActivation ||
+    isArrowTowerUnit(activeUnit)
+  ) {
     actions.push({
       label: `${activeUnit.name} hold position`,
       action: {

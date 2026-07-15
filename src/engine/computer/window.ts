@@ -104,11 +104,19 @@ export function computerDecisionOwner(state: GameState): PlayerId | null {
       return null;
     }
 
-    const pausedOwner = computer(
-      state,
-      combat.pendingNeutralStep?.reactingPlayerId,
-    );
-    if (pausedOwner) return pausedOwner;
+    // Pre-activation reaction pause: the reacting player owns the continue-or-
+    // react decision that gates the (possibly computer-owned) active unit. Drive
+    // a computer reactor; a HUMAN reactor makes the whole table WAIT (null).
+    // Crucially, do NOT fall through to the active unit's owner while the pause
+    // holds — that unit has no legal action yet. When a computer attacks the
+    // HUMAN in single-player, the human holds this pre-activation pause while the
+    // active unit belongs to the COMPUTER: the old fall-through claimed the
+    // computer owed a move it could not make, so the paced pump stalled (seen in
+    // a 4-player Impossible single-player soak). Whoever the reactor is, they —
+    // not the active unit's owner — own the decision while the pause is open.
+    if (combat.pendingNeutralStep?.reactingPlayerId) {
+      return computer(state, combat.pendingNeutralStep.reactingPlayerId);
+    }
 
     for (const owner of combat.pendingCoverOfDarkness ?? []) {
       const result = computer(state, owner);

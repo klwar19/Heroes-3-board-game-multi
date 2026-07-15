@@ -1,14 +1,7 @@
 import { describe, expect, it } from "vitest";
-import {
-  applyAction,
-  computerDecisionOwner,
-  createAdventureGameState,
-  getLegalActions,
-  type GameAction,
-  type GameState,
-} from "@/engine";
+import { createAdventureGameState, type GameState } from "@/engine";
 import { locationDefinitions } from "@/data/map/locations";
-import { driveComputerPlayers } from "./computer-runner";
+import { playUntilRound } from "./single-player-soak-helpers";
 
 /**
  * Opening-play end-to-end for the single-player computer: the AI should sweep
@@ -19,81 +12,10 @@ import { driveComputerPlayers } from "./computer-runner";
  * treasure. These drive REAL seeded games (driveComputerPlayers) and assert the
  * observable board outcome. If the home-tile sweep wiring in map-navigation.ts
  * is removed, the guarded mine stays unflagged and these fail.
+ *
+ * The scripted-human + settle-computers driver lives in
+ * single-player-soak-helpers.ts (shared with the soak-matrix / tempo suites).
  */
-
-const HUMAN_PRIORITY: GameAction["type"][] = [
-  "SET_TILE_ROTATION",
-  "CHOOSE_OPTION",
-  "CHOOSE_ABILITY_TARGET",
-  "CHOOSE_PENDING_ROLL",
-  "RESOLVE_VISIT_STEP",
-  "RESOLVE_DECK_SEARCH",
-  "RESOLVE_COMBAT_DISCARD",
-  "COMMANDER_FIRST_AID",
-  "SKIP_NECROMANCY",
-  "REFRESH_HAND",
-  "ACKNOWLEDGE_COMBAT_END",
-  "FINISH_COMBAT_PLACEMENT",
-  "FINISH_TACTICS",
-  "ACCEPT_COMBAT",
-  "END_TURN",
-];
-
-function pickHumanAction(state: GameState): GameAction | null {
-  const offers = getLegalActions(state, "p1");
-  if (offers.length === 0) return null;
-  for (const type of HUMAN_PRIORITY) {
-    const hit = offers.find((legal) => legal.action.type === type);
-    if (hit) {
-      if (hit.action.type === "REFRESH_HAND") {
-        const player = state.players.p1;
-        const limit = player.needsHandRefresh ? 4 : 5;
-        const discardCount = Math.max(0, player.hand.length - limit);
-        return { ...hit.action, discardCardIds: player.hand.slice(0, discardCount) };
-      }
-      return hit.action;
-    }
-  }
-  const safe = offers.find(
-    (legal) =>
-      legal.action.type !== "GIVE_UP" && legal.action.type !== "GIVE_UP_COMBAT",
-  );
-  return safe?.action ?? offers[0]?.action ?? null;
-}
-
-function playUntilRound(
-  initial: GameState,
-  targetRound: number,
-  maxLoops = 400,
-): { state: GameState; stalled: boolean; reason?: string } {
-  let state = initial;
-  let loops = 0;
-  while (loops < maxLoops) {
-    loops += 1;
-    const run = driveComputerPlayers(state);
-    if (run.stalled) return { state: run.state, stalled: true, reason: run.reason };
-    state = run.state;
-    if (state.phase === "game-over" && !state.combat) return { state, stalled: false };
-    if (
-      state.round >= targetRound &&
-      state.activePlayerId === "p1" &&
-      !computerDecisionOwner(state)
-    ) {
-      return { state, stalled: false };
-    }
-    if (computerDecisionOwner(state)) {
-      return { state, stalled: true, reason: "computer still owns after drive" };
-    }
-    const action = pickHumanAction(state);
-    if (!action) return { state, stalled: true, reason: "human has no legal actions" };
-    const result = applyAction(state, action);
-    if (result.errors.length > 0) {
-      return { state, stalled: true, reason: result.errors.join("; ") };
-    }
-    state = result.state;
-  }
-  return { state, stalled: true, reason: `exceeded ${maxLoops} loops` };
-}
 
 type Payoff = { spaceId: string; location: string; collected: boolean };
 
