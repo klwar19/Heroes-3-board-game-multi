@@ -8172,8 +8172,19 @@ export function startAdventureRound(state: GameState): void {
 }
 
 /**
+ * Locations a clear_visitable_cubes entry actually matches on the board.
+ * Factory aliases (rulebook p.7): Derrick ≡ Water Wheel, Prospector ≡ Windmill.
+ */
+const CUBE_CLEAR_MATCHES: Record<"windmill" | "water_wheel" | "mystical_garden", string[]> = {
+  windmill: ["windmill", "prospector"],
+  water_wheel: ["water_wheel", "derrick"],
+  mystical_garden: ["mystical_garden"]
+};
+
+/**
  * Fire map-preset timed events for the current round. Pure side-effect on the
  * adventure; no-ops when the active map has no preset timed events.
+ * Runs AFTER refreshRoundTokens, so a movement grant stacks on refreshed MPs.
  */
 export function applyCustomMapTimedEvents(state: GameState): void {
   const preset = state.adventure?.mapPreset;
@@ -8187,8 +8198,12 @@ export function applyCustomMapTimedEvents(state: GameState): void {
   }
   const adventure = state.adventure!;
   const players = state.turnOrder.filter(
-    (playerId) => playerId !== NEUTRAL_PLAYER_ID && state.players[playerId]
+    (playerId) =>
+      playerId !== NEUTRAL_PLAYER_ID &&
+      state.players[playerId] &&
+      !state.players[playerId]?.eliminated
   );
+  const livePlayers = new Set(players);
 
   for (const event of due) {
     const effect = event.effect;
@@ -8243,13 +8258,18 @@ export function applyCustomMapTimedEvents(state: GameState): void {
       continue;
     }
     if (effect.kind === "clear_visitable_cubes") {
-      const targets = new Set(effect.locations);
+      const targets = new Set<string>();
+      for (const loc of effect.locations) {
+        for (const match of CUBE_CLEAR_MATCHES[loc] ?? [loc]) {
+          targets.add(match);
+        }
+      }
       let cleared = 0;
       for (const field of Object.values(adventure.fields)) {
         if (!field.blackCube) {
           continue;
         }
-        if (targets.has(field.location as "windmill" | "water_wheel" | "mystical_garden")) {
+        if (targets.has(field.location)) {
           field.blackCube = false;
           cleared += 1;
         }
@@ -8260,6 +8280,71 @@ export function applyCustomMapTimedEvents(state: GameState): void {
         message: `Map event (round ${round}): cleared black cubes on ${effect.locations.join(
           ", "
         )} (${cleared} field${cleared === 1 ? "" : "s"}).`
+      });
+      continue;
+    }
+    if (effect.kind === "morale") {
+      for (const playerId of players) {
+        changeMorale(state, playerId, effect.amount);
+      }
+      appendEvent(state, {
+        type: "MAP_PRESET_TRIGGERED",
+        round,
+        message: `Map event (round ${round}): every player ${
+          effect.amount > 0 ? "gains +1" : "loses 1"
+        } morale.`
+      });
+      continue;
+    }
+    if (effect.kind === "movement") {
+      let heroesBuffed = 0;
+      for (const hero of Object.values(state.heroes)) {
+        if (!livePlayers.has(hero.controllerId)) {
+          continue;
+        }
+        hero.movementPoints += effect.amount;
+        heroesBuffed += 1;
+      }
+      appendEvent(state, {
+        type: "MAP_PRESET_TRIGGERED",
+        round,
+        message: `Map event (round ${round}): every hero gains +${effect.amount} movement (${heroesBuffed} hero${
+          heroesBuffed === 1 ? "" : "es"
+        }).`
+      });
+      continue;
+    }
+    if (effect.kind === "treasure_roll") {
+      for (const playerId of players) {
+        adventure.rewardQueue.push({
+          playerId,
+          kind: "visit-steps",
+          steps: [{ type: "ROLL_TREASURE_DICE", count: effect.count }]
+        });
+      }
+      appendEvent(state, {
+        type: "MAP_PRESET_TRIGGERED",
+        round,
+        message: `Map event (round ${round}): every player rolls ${
+          effect.count === 1 ? "a Treasure die" : `${effect.count} Treasure dice`
+        }.`
+      });
+      continue;
+    }
+    if (effect.kind === "resource_roll") {
+      for (const playerId of players) {
+        adventure.rewardQueue.push({
+          playerId,
+          kind: "visit-steps",
+          steps: [{ type: "ROLL_RESOURCE_DICE", count: effect.count }]
+        });
+      }
+      appendEvent(state, {
+        type: "MAP_PRESET_TRIGGERED",
+        round,
+        message: `Map event (round ${round}): every player rolls ${
+          effect.count === 1 ? "a Resource die" : `${effect.count} Resource dice`
+        }.`
       });
     }
   }

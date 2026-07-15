@@ -5,7 +5,12 @@ import { assetUrl } from "@/lib/asset-url";
 import { Dices, Eye, EyeOff, Minus, Plus, RotateCcw, RotateCw, Trash2 } from "lucide-react";
 import { allTileDefinitions } from "@/data/map/tiles";
 import { locationDefinitions } from "@/data/map/locations";
-import { mapTokenImage, TILE_BACK_IMAGES, subterraneanGateTokenImage } from "@/data/assets/homm-assets";
+import {
+  mapTokenImage,
+  TILE_BACK_IMAGES,
+  tileBackImage,
+  subterraneanGateTokenImage
+} from "@/data/assets/homm-assets";
 import type { TileDefinition } from "@/data/map/types";
 import {
   hexNeighbors,
@@ -57,6 +62,43 @@ const SEA_BAND_NUMERAL: Record<SeaBand, string> = { "iv-v": "Ⅳ–Ⅴ", "vi-vii
 /** The printed numerals for an underground tile's guard band. */
 const SUB_BAND_NUMERAL: Record<SubBand, string> = { "iv-v": "Ⅳ–Ⅴ", "vi-vii": "Ⅵ–Ⅶ" };
 
+/**
+ * Printed roman band on the physical tile BACK (matches `tile.backLabel` in play).
+ * Sea / underground MUST pass their band so Ⅵ–Ⅶ never wears the Ⅳ–Ⅴ back art.
+ */
+export function planBackLabel(plan: {
+  group: DesignGroup;
+  seaBand?: SeaBand;
+  subBand?: SubBand;
+}): string {
+  if (plan.group === "sea") {
+    return SEA_BAND_NUMERAL[plan.seaBand ?? "iv-v"];
+  }
+  if (plan.group === "subterranean") {
+    return SUB_BAND_NUMERAL[plan.subBand ?? "iv-v"];
+  }
+  switch (plan.group) {
+    case "starting":
+      return "Ⅰ";
+    case "far":
+      return "Ⅱ–Ⅲ";
+    case "center":
+      return "Ⅵ–Ⅶ";
+    case "near":
+    default:
+      return "Ⅳ–Ⅴ";
+  }
+}
+
+/** Correct printed back art for a designed plan (band-aware for sea / underground). */
+export function planBackArt(plan: {
+  group: DesignGroup;
+  seaBand?: SeaBand;
+  subBand?: SubBand;
+}): string {
+  return tileBackImage(plan.group, planBackLabel(plan));
+}
+
 /** Label for a placed/dragged plan — sea/underground read their band, every other group its numeral. */
 function planGroupLabel(plan: { group: DesignGroup; seaBand?: SeaBand; subBand?: SubBand }): string {
   if (plan.group === "sea") {
@@ -78,15 +120,66 @@ const GROUP_COLORS: Record<DesignGroup, string> = {
 };
 
 /** The draggable palette: one entry per tile type the designer can place. */
-const PALETTE: { key: string; group: DesignGroup; seaBand?: SeaBand; subBand?: SubBand; label: string; numeral: string; hint: string }[] = [
-  { key: "starting", group: "starting", label: "Town", numeral: "Ⅰ", hint: "A player's starting town. The first one placed is seat 1, the next seat 2, and so on — the tile art comes from each player's faction." },
-  { key: "far", group: "far", label: "Far", numeral: "Ⅱ–Ⅲ", hint: "Weak outer tile. Placed face-down (random from the Far pool) — click it to reveal a specific tile." },
-  { key: "near", group: "near", label: "Near", numeral: "Ⅳ–Ⅴ", hint: "Mid-strength tile. Placed face-down (random from the Near pool)." },
-  { key: "center", group: "center", label: "Center", numeral: "Ⅵ–Ⅶ", hint: "Strong central tile. Placed face-down (random from the Center pool)." },
-  { key: "sea-iv-v", group: "sea", seaBand: "iv-v", label: "Sea Ⅳ–Ⅴ", numeral: "🌊", hint: "Weaker sea tile (Ⅳ–Ⅴ guard band). Placed face-down — draws a random Ⅳ–Ⅴ tile from the wave pool." },
-  { key: "sea-vi-vii", group: "sea", seaBand: "vi-vii", label: "Sea Ⅵ–Ⅶ", numeral: "🌊", hint: "Stronger sea tile (Ⅵ–Ⅶ guard band). Placed face-down — draws a random Ⅵ–Ⅶ tile from the wave pool." },
-  { key: "sub-iv-v", group: "subterranean", subBand: "iv-v", label: "Underground Ⅳ–Ⅴ", numeral: "⛰", hint: "Regular underground tile (Ⅳ–Ⅴ guard band). Placed face-down — draws a random Ⅳ–Ⅴ tile from the underground pool." },
-  { key: "sub-vi-vii", group: "subterranean", subBand: "vi-vii", label: "Underground Ⅵ–Ⅶ", numeral: "⛰", hint: "Boss underground tile (Ⅵ–Ⅶ guard band — Cyclops Stockpile or Random Town). Placed face-down — draws a random Ⅵ–Ⅶ tile from the underground pool." }
+const PALETTE: {
+  key: string;
+  group: DesignGroup;
+  seaBand?: SeaBand;
+  subBand?: SubBand;
+  label: string;
+  hint: string;
+}[] = [
+  {
+    key: "starting",
+    group: "starting",
+    label: "Town",
+    hint: "A player's starting town. The first one placed is seat 1, the next seat 2, and so on — the tile art comes from each player's faction."
+  },
+  {
+    key: "far",
+    group: "far",
+    label: "Far",
+    hint: "Weak outer tile. Placed face-down (random from the Far pool) — click it to reveal a specific tile."
+  },
+  {
+    key: "near",
+    group: "near",
+    label: "Near",
+    hint: "Mid-strength tile. Placed face-down (random from the Near pool)."
+  },
+  {
+    key: "center",
+    group: "center",
+    label: "Center",
+    hint: "Strong central tile. Placed face-down (random from the Center pool)."
+  },
+  {
+    key: "sea-iv-v",
+    group: "sea",
+    seaBand: "iv-v",
+    label: "Sea Ⅳ–Ⅴ",
+    hint: "Weaker sea tile (Ⅳ–Ⅴ guard band). Placed face-down — draws a random Ⅳ–Ⅴ tile from the wave pool."
+  },
+  {
+    key: "sea-vi-vii",
+    group: "sea",
+    seaBand: "vi-vii",
+    label: "Sea Ⅵ–Ⅶ",
+    hint: "Stronger sea tile (Ⅵ–Ⅶ guard band). Placed face-down — draws a random Ⅵ–Ⅶ tile from the wave pool."
+  },
+  {
+    key: "sub-iv-v",
+    group: "subterranean",
+    subBand: "iv-v",
+    label: "Underground Ⅳ–Ⅴ",
+    hint: "Regular underground tile (Ⅳ–Ⅴ guard band). Placed face-down — draws a random Ⅳ–Ⅴ tile from the underground pool."
+  },
+  {
+    key: "sub-vi-vii",
+    group: "subterranean",
+    subBand: "vi-vii",
+    label: "Underground Ⅵ–Ⅶ",
+    hint: "Boss underground tile (Ⅵ–Ⅶ guard band — Cyclops Stockpile or Random Town). Placed face-down — draws a random Ⅵ–Ⅶ tile from the underground pool."
+  }
 ];
 
 /** Groups whose tiles can be flipped face up and chosen exactly. */
@@ -804,16 +897,17 @@ export function MapDesigner({
     const isSelected = selectedIndex === index;
     const isDragging = drag?.kind === "move" && drag.index === index;
     const isStart = plan.group === "starting";
-    // Designer-only secret markers. Feature secrets keep the face-down back
-    // (the exact tile is not known yet); exact pins still show real art.
+    // Designer-only secret markers. All face-down slots use the printed BACK
+    // (band-correct for sea / underground Ⅵ–Ⅶ) — the numeral is ON the art,
+    // so we never overlay a second "Ⅱ–Ⅲ" text box. Secrets keep a 🔒 badge.
     const secretPin = plan.faceDown && Boolean(plan.tileDefId || plan.secretFeature);
     const featureSecret = plan.faceDown && Boolean(plan.secretFeature) && !plan.tileDefId;
     const art = isStart
       ? TILE_BACK_IMAGES.starting
-      : plan.tileDefId
-        ? allTileDefinitions[plan.tileDefId]?.assets?.tileImage
-        : plan.faceDown
-          ? TILE_BACK_IMAGES[plan.group]
+      : plan.faceDown
+        ? planBackArt(plan)
+        : plan.tileDefId
+          ? allTileDefinitions[plan.tileDefId]?.assets?.tileImage
           : undefined;
     const width = 3 * hexWidth;
     const height = 5 * size;
@@ -824,9 +918,15 @@ export function MapDesigner({
           height={height}
           href={assetUrl(art)}
           key={`plan-art-${index}`}
-          opacity={isDragging ? 0.3 : secretPin ? 0.72 : 1}
+          opacity={isDragging ? 0.3 : secretPin ? 0.88 : 1}
           preserveAspectRatio="none"
-          transform={!isStart ? `rotate(${(plan.rotation ?? 0) * 60} ${centerPixel.x} ${centerPixel.y})` : undefined}
+          // Face-down backs are orientation-independent (printed numeral sits
+          // upright on the physical back); only face-up scans rotate.
+          transform={
+            !isStart && !plan.faceDown
+              ? `rotate(${(plan.rotation ?? 0) * 60} ${centerPixel.x} ${centerPixel.y})`
+              : undefined
+          }
           width={width}
           x={centerPixel.x - width / 2}
           y={centerPixel.y - height / 2}
@@ -884,17 +984,14 @@ export function MapDesigner({
           S{seatNumberOf(index)}
         </text>
       );
-    } else if (plan.faceDown || !art) {
+    } else if (plan.faceDown && secretPin) {
+      // Only secret badges stay as text — random face-down slots rely on the
+      // printed back graphic alone (no redundant Ⅱ–Ⅲ / Sea / Underground box).
       labelLayer.push(
         <text className="designerTileLabel" key={`plan-label-${index}`} textAnchor="middle" x={centerPixel.x} y={centerPixel.y + 4}>
-          {plan.faceDown && (plan.secretFeature || plan.tileDefId)
-            ? secretBoardLabel(plan)
-            : plan.faceDown
-              ? planGroupLabel(plan)
-              : (plan.tileDefId ?? "?")}
+          {secretBoardLabel(plan)}
         </text>
       );
-      // Feature secrets get a second line with the icon for a clearer board read.
       if (featureSecret && plan.secretFeature) {
         const featureMeta = SECRET_TILE_FEATURES.find((entry) => entry.id === plan.secretFeature);
         if (featureMeta) {
@@ -911,6 +1008,13 @@ export function MapDesigner({
           );
         }
       }
+    } else if (!plan.faceDown && !art) {
+      // Face-up with no art yet (shouldn't happen after pick) — show id fallback.
+      labelLayer.push(
+        <text className="designerTileLabel" key={`plan-label-${index}`} textAnchor="middle" x={centerPixel.x} y={centerPixel.y + 4}>
+          {plan.tileDefId ?? "?"}
+        </text>
+      );
     }
   }
 
@@ -1076,9 +1180,12 @@ export function MapDesigner({
             <span
               aria-hidden="true"
               className="paletteThumb"
-              style={{ backgroundImage: `url(${assetUrl(TILE_BACK_IMAGES[entry.group])})` }}
+              style={{
+                backgroundImage: `url(${assetUrl(
+                  planBackArt({ group: entry.group, seaBand: entry.seaBand, subBand: entry.subBand })
+                )})`
+              }}
             />
-            <span className="paletteNumeral">{entry.numeral}</span>
             <span className="paletteLabel">{entry.label}</span>
           </button>
         ))}
@@ -1514,14 +1621,17 @@ export function MapDesigner({
         panel — at least 2 of a kind to work. Town (Ⅰ) tiles are seats; drag empty background to pan, scroll to zoom.
       </small>
 
-      {/* Floating drag ghost follows the pointer. */}
+      {/* Floating drag ghost follows the pointer — band-correct printed back. */}
       {drag ? (
         <div className="designerDragGhost" style={{ left: drag.clientX, top: drag.clientY }}>
           <span
-            className="paletteThumb"
-            style={{ backgroundImage: `url(${assetUrl(TILE_BACK_IMAGES[drag.group])})` }}
+            className="paletteThumb large"
+            style={{
+              backgroundImage: `url(${assetUrl(
+                planBackArt({ group: drag.group, seaBand: drag.seaBand, subBand: drag.subBand })
+              )})`
+            }}
           />
-          <span>{planGroupLabel(drag)}</span>
         </div>
       ) : null}
     </div>
