@@ -365,7 +365,7 @@ describe("Creature Bank movement", () => {
     return state;
   }
 
-  it("is reachable from a same-tile field but never across a tile edge", () => {
+  it("is reachable from a same-tile field AND from an adjacent Tile (open bank edges)", () => {
     const state = twoTileState();
     // Control: two ordinary fields on different tiles ARE crossable.
     expect(canCrossEdge(state, "C", "A")).toBe(true);
@@ -374,11 +374,11 @@ describe("Creature Bank movement", () => {
     expect(canCrossEdge(state, "A", "B")).toBe(true);
     expect(canCrossEdge(state, "B", "A")).toBe(true);
 
-    // Across a tile edge -> the bank is sealed off: no entry from outside, no
-    // exit to outside, even for a Pathfinding hero (crossSealedBorders).
-    expect(canCrossEdge(state, "C", "B")).toBe(false);
-    expect(canCrossEdge(state, "B", "C")).toBe(false);
-    expect(canCrossEdge(state, "B", "C", { moveThrough: true, crossSealedBorders: true } as never)).toBe(false);
+    // Across a tile edge: Creature Banks draw no borders, so a hero may enter
+    // the bank from outside its Tile and leave the same way. A guarded bank
+    // still forces a combat stop (classifyHeroStep), so it is not a free bridge.
+    expect(canCrossEdge(state, "C", "B")).toBe(true);
+    expect(canCrossEdge(state, "B", "C")).toBe(true);
   });
 
   it("offers a bank carved from a real tile's Blocked Field as a move destination", () => {

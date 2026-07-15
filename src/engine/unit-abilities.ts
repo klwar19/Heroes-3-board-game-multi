@@ -543,9 +543,14 @@ export function getFlatDamageFollowUps(
       continue;
     }
 
-    // "When Magogs attack a target that is not adjacent to them": melee-kind
-    // attacks (adjacent shots) never splash.
-    if (ability.effect.requiresNonAdjacentTarget && context.attackKind !== "ranged") {
+    // Magogs: "When Magogs attack a target that is not adjacent to them". Gate
+    // on geometry (not attackKind) so a ranged Magog that somehow lands a
+    // melee-kind strike at range still splashes, and an adjacent shot never does
+    // — attackKind alone used to miss the splash if the unit's type drifted.
+    if (
+      ability.effect.requiresNonAdjacentTarget &&
+      isAdjacent(attacker.position, defender.position)
+    ) {
       continue;
     }
 
