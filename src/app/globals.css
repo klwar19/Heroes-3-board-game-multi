@@ -20662,6 +20662,75 @@ body {
   background: rgb(70 58 26 / 60%);
   color: #ecd9a4;
 }
+
+/* Single-player: the human owner's per-opponent faction/hero picker blocks. */
+.computerSeatPickers {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid rgb(170 130 70 / 30%);
+}
+
+.computerSeatPicker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid rgb(140 150 190 / 40%);
+  border-radius: 10px;
+  background: rgb(30 34 52 / 30%);
+}
+
+.computerSeatPickerHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.computerSeatPickerName {
+  font-weight: 700;
+  color: #c7d0ec;
+  text-shadow: 0 1px 4px rgb(0 0 0 / 85%);
+}
+
+.computerSeatPickerPick {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.computerSeatPickerNames {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+}
+
+.computerSeatPickerNames strong {
+  text-shadow: 0 1px 4px rgb(0 0 0 / 85%);
+}
+
+.computerSeatPickerNames small {
+  color: #b89f78;
+}
+
+.computerSeatPickerAuto {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #b9c4e8;
+  font-size: 12px;
+  font-style: italic;
+}
+
+.computerSeatPickerButtons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
 .presentationSkip {
   position: fixed;
   right: 1rem;

@@ -7720,6 +7720,52 @@ function getSetupLobbyLegalActions(state: GameState, playerId: PlayerId): LegalA
       actions.push({ label: `${count} computer opponent${count === 1 ? "" : "s"}`,
         action: { type: "SET_COMPUTER_OPPONENTS", playerId, count } });
     }
+
+    // The human owner may hand-pick, roll, or clear each COMPUTER seat's faction
+    // + hero (single-player Free-pick only). Mirrors how CHOOSE_FACTION enumerates
+    // untaken factions × heroes, but targets a computer seat via seatPlayerId.
+    if (phase.format === "open") {
+      for (const computerSeat of lobby.seats) {
+        if (controllerOf(state, computerSeat.playerId).kind !== "computer") {
+          continue;
+        }
+        const takenForSeat = new Set(
+          lobby.seats
+            .filter((candidate) => candidate.playerId !== computerSeat.playerId)
+            .map((candidate) => candidate.factionId)
+            .filter((id): id is FactionId => Boolean(id))
+        );
+        for (const factionId of (Object.values(coreFactionDefinitions) as { id: FactionId }[])
+          .map((faction) => faction.id)
+          .filter((id) => !takenForSeat.has(id) && isPlayableFaction(id))) {
+          const faction = coreFactionDefinitions[factionId];
+          for (const heroDefId of faction.heroes) {
+            if (computerSeat.factionId === factionId && computerSeat.heroDefId === heroDefId) {
+              continue;
+            }
+            actions.push({
+              label: `Set ${computerSeat.name}: ${faction.name} — ${heroDefId}`,
+              action: {
+                type: "SET_COMPUTER_SEAT_FACTION",
+                playerId,
+                seatPlayerId: computerSeat.playerId,
+                choice: { factionId, heroDefId }
+              }
+            });
+          }
+        }
+        actions.push({
+          label: `Roll a random town & hero for ${computerSeat.name}`,
+          action: { type: "SET_COMPUTER_SEAT_FACTION", playerId, seatPlayerId: computerSeat.playerId, choice: "roll" }
+        });
+        if (computerSeat.factionId || computerSeat.heroDefId) {
+          actions.push({
+            label: `Set ${computerSeat.name} back to auto`,
+            action: { type: "SET_COMPUTER_SEAT_FACTION", playerId, seatPlayerId: computerSeat.playerId, choice: "clear" }
+          });
+        }
+      }
+    }
   }
 
   // The setup format selector — any seated player may (re)start any format.

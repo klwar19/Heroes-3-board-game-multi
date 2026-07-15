@@ -5746,7 +5746,7 @@ function GameOptionsPanel({
           }
           return counts.length > 1 ? (
             <div className="optionRow">
-              <small title="How many computer opponents this game seats — they pick their own factions after you pick yours">
+              <small title="How many computer opponents this game seats — leave them on auto and they pick their own factions after you, or hand-pick / roll each one's town & hero in the Heroes & draft tab">
                 Computer opponents
               </small>
               <div className="optionButtons">
@@ -6721,6 +6721,138 @@ function DraftFlowPanel({ state, viewerPlayerId, onAction, onInspect }: DraftFlo
   );
 }
 
+/**
+ * Single-player only: the human owner's per-opponent faction/hero picker. Each
+ * COMPUTER seat gets a block showing its current pick (faction crest colour +
+ * hero portrait + names) or a "Random at start" badge, plus controls to
+ * hand-pick a town & hero (reusing FactionPickGrid — no second grid), roll a
+ * random one now, or clear back to auto. Hidden outside single-player, for a
+ * non-human viewer, and in any non-"open" format (the draft/random flows own the
+ * picks there). Every button dispatches SET_COMPUTER_SEAT_FACTION, so the engine
+ * validates and shares the result (a bot never re-picks a seat already set).
+ */
+function ComputerOpponentPickers({ state, viewerPlayerId, onAction, onInspect }: DraftFlowProps) {
+  const [openSeatId, setOpenSeatId] = useState<PlayerId | null>(null);
+  const lobby = state.setupLobby;
+  const format = lobby?.draft?.format ?? "open";
+  if (
+    !lobby ||
+    state.sessionMode !== "single-player" ||
+    state.controllers?.[viewerPlayerId]?.kind !== "human" ||
+    format !== "open"
+  ) {
+    return null;
+  }
+  const computerSeats = lobby.seats.filter((seat) => state.controllers?.[seat.playerId]?.kind === "computer");
+  if (computerSeats.length === 0) {
+    return null;
+  }
+  const takenByOthersFor = (seatPlayerId: PlayerId) =>
+    new Set(
+      lobby.seats
+        .filter((candidate) => candidate.playerId !== seatPlayerId)
+        .map((candidate) => candidate.factionId)
+        .filter((id): id is FactionId => Boolean(id))
+    );
+  const playableFactions = (Object.keys(coreFactionDefinitions) as FactionId[]).filter(isPlayableFaction);
+
+  return (
+    <section className="computerSeatPickers" aria-label="Computer opponents setup">
+      <div className="draftPhaseHead">
+        <strong>Your computer opponents</strong>
+        <small>Hand-pick each one’s town &amp; hero, roll one at random, or leave it on auto (picked at game start).</small>
+      </div>
+      {computerSeats.map((seat) => {
+        const faction = seat.factionId ? coreFactionDefinitions[seat.factionId] : null;
+        const hero = seat.heroDefId ? coreHeroDefinitions[seat.heroDefId] : null;
+        const expanded = openSeatId === seat.playerId;
+        const picked = Boolean(seat.factionId || seat.heroDefId);
+        return (
+          <div className="computerSeatPicker" key={seat.playerId} aria-label={`Set up ${seat.name}`}>
+            <div className="computerSeatPickerHead">
+              <span className="computerSeatPickerName">{seat.name}</span>
+              {faction && hero ? (
+                <span className="computerSeatPickerPick">
+                  <HeroPortrait name={hero.name} portrait={hero.portrait} size={28} />
+                  <span className="computerSeatPickerNames">
+                    <strong style={{ color: faction.color }}>{hero.name}</strong>
+                    <small>{faction.name}</small>
+                  </span>
+                </span>
+              ) : (
+                <span className="computerSeatPickerAuto">
+                  <Dices aria-hidden="true" size={13} /> Random at start
+                </span>
+              )}
+            </div>
+            <div className="computerSeatPickerButtons">
+              <button
+                aria-expanded={expanded}
+                className="draftResetBtn"
+                onClick={() => setOpenSeatId(expanded ? null : seat.playerId)}
+                type="button"
+              >
+                <Castle aria-hidden="true" size={14} /> {expanded ? "Close" : "Pick faction & hero"}
+              </button>
+              <button
+                className="draftResetBtn"
+                onClick={() =>
+                  onAction({
+                    type: "SET_COMPUTER_SEAT_FACTION",
+                    playerId: viewerPlayerId,
+                    seatPlayerId: seat.playerId,
+                    choice: "roll"
+                  })
+                }
+                type="button"
+              >
+                <Dices aria-hidden="true" size={14} /> Roll random now
+              </button>
+              {picked ? (
+                <button
+                  className="draftResetBtn"
+                  onClick={() =>
+                    onAction({
+                      type: "SET_COMPUTER_SEAT_FACTION",
+                      playerId: viewerPlayerId,
+                      seatPlayerId: seat.playerId,
+                      choice: "clear"
+                    })
+                  }
+                  type="button"
+                >
+                  <RotateCcw aria-hidden="true" size={14} /> Back to auto
+                </button>
+              ) : null}
+            </div>
+            {expanded ? (
+              <FactionPickGrid
+                factionIds={playableFactions}
+                heroStateFor={(factionId, heroDefId) => ({
+                  selected: seat.factionId === factionId && seat.heroDefId === heroDefId,
+                  banned: false,
+                  disabled: false
+                })}
+                onInspect={onInspect}
+                onPick={(factionId, heroDefId) => {
+                  onAction({
+                    type: "SET_COMPUTER_SEAT_FACTION",
+                    playerId: viewerPlayerId,
+                    seatPlayerId: seat.playerId,
+                    choice: { factionId, heroDefId }
+                  });
+                  setOpenSeatId(null);
+                }}
+                takenByOthers={takenByOthersFor(seat.playerId)}
+              />
+            ) : null}
+          </div>
+        );
+      })}
+    </section>
+  );
+}
+
 type SetupTab = "heroes" | "options";
 
 /**
@@ -6915,9 +7047,9 @@ export function SetupLobbyScreen({
         <h2>Map setup — {scenarioName}</h2>
         {singlePlayer ? (
           <p>
-            <strong>Playing with computer.</strong> Pick a setup format, then claim your town and hero — the
-            computer opponents complete their own picks right after yours. Click any hero’s{" "}
-            <Info aria-hidden="true" size={12} /> for its stats; the game options live on the second tab.
+            <strong>Playing with computer.</strong> Claim your own town and hero — and, below, hand-pick or roll each
+            computer opponent’s town &amp; hero too, or leave it on auto (the computer picks at game start). Click any
+            hero’s <Info aria-hidden="true" size={12} /> for its stats; the game options live on the second tab.
           </p>
         ) : (
           <p>
@@ -6986,12 +7118,20 @@ export function SetupLobbyScreen({
           {tab === "options" ? (
             <GameOptionsPanel onAction={onAction} state={state} viewerPlayerId={viewerPlayerId} />
           ) : (
-            <DraftFlowPanel
-              onAction={onAction}
-              onInspect={setInfoHeroId}
-              state={state}
-              viewerPlayerId={viewerPlayerId}
-            />
+            <>
+              <DraftFlowPanel
+                onAction={onAction}
+                onInspect={setInfoHeroId}
+                state={state}
+                viewerPlayerId={viewerPlayerId}
+              />
+              <ComputerOpponentPickers
+                onAction={onAction}
+                onInspect={setInfoHeroId}
+                state={state}
+                viewerPlayerId={viewerPlayerId}
+              />
+            </>
           )}
         </>
       ) : (

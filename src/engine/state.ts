@@ -3501,6 +3501,27 @@ export type GameAction =
     }
   | {
       /**
+       * Single-player map-setup ONLY: the human owner sets, rolls, or clears the
+       * faction + main hero of a COMPUTER seat, so the opponents can be
+       * hand-picked instead of every one being left on "auto". Legal only in a
+       * single-player lobby in the "open" (Free pick) format; `playerId` (the
+       * issuer) must be the one human owner seat and `seatPlayerId` a
+       * computer-controlled seat. This never reassigns a SEAT (no
+       * ASSIGN_SEAT-style takeover) — it only writes that seat's faction/hero.
+       * `choice`:
+       *  - `{ factionId, heroDefId }` — set the seat to that town + hero (the
+       *    faction must be untaken and the hero must belong to it);
+       *  - `"roll"` — seeded-random untaken faction × one of its heroes;
+       *  - `"clear"` — unset the pick so the computer picks a town at game start
+       *    (today's default behaviour).
+       */
+      type: "SET_COMPUTER_SEAT_FACTION";
+      playerId: PlayerId;
+      seatPlayerId: PlayerId;
+      choice: { factionId: FactionId; heroDefId: string } | "roll" | "clear";
+    }
+  | {
+      /**
        * Register (or refresh) this client in the room as an observer. Carries a
        * stable per-browser `clientId` and a display `name`. Idempotent: a
        * re-join updates the name and keeps the existing seat/host. Membership

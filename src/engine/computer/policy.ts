@@ -38,6 +38,9 @@ export function legalityMatchKey(action: GameAction): string {
 const NEVER_AUTOMATE = new Set<GameAction["type"]>([
   "SET_GAME_OPTIONS",
   "SET_COMPUTER_OPPONENTS",
+  // Human-only single-player control: a bot must never set its own (or a
+  // sibling's) faction through the owner's hand-pick action.
+  "SET_COMPUTER_SEAT_FACTION",
   "SET_DRAFT_FORMAT",
   "RESET_SEAT_DRAFT",
   "START_ADVENTURE",

@@ -1718,7 +1718,14 @@ function resizeLobbySeats(state: GameState, scenario: ScenarioDefinition, target
       state.controllers![seat.playerId] = index === 0 ? { kind: "human" } : standardComputerController();
       if (index > 0) {
         seat.name = `Computer ${index}`;
-        state.players[seat.playerId].name = seat.name;
+        // A SURVIVING computer seat may carry a hand-picked faction+hero
+        // (SET_COMPUTER_SEAT_FACTION); keep its display name in sync with the
+        // pick rather than reverting to the bare "Computer N" label. Trimmed
+        // seats have already been sliced out above (their picks go with them),
+        // so a resize never leaves a stale pick behind.
+        const faction = seat.factionId ? coreFactionDefinitions[seat.factionId] : null;
+        const hero = seat.heroDefId ? coreHeroDefinitions[seat.heroDefId] : null;
+        state.players[seat.playerId].name = faction && hero ? `${hero.name} of ${faction.name}` : seat.name;
       }
     });
   }
@@ -2933,6 +2940,130 @@ export function randomAssignSeat(state: GameState, action: Extract<GameAction, {
   appendEvent(state, {
     type: "FACTION_CHOSEN",
     playerId: action.playerId,
+    factionId,
+    heroDefId
+  });
+}
+
+/**
+ * Single-player map-setup: the human owner sets/rolls/clears a COMPUTER seat's
+ * faction + main hero, so the opponents can be hand-picked instead of every one
+ * being left on "auto". Self-validating (a HANDLER_VALIDATED action): the game
+ * must be single-player, the format "open", the issuer the ONE human owner seat,
+ * and the target a computer seat. A set/roll writes the SAME fields chooseFaction
+ * does — so the lobby shows it at once and the AI setup pump (which skips a seat
+ * that already has a faction+hero) never re-picks it — while a clear returns the
+ * seat to undefined, so the computer chooses a town at game start as before. It
+ * never reassigns a seat (no ASSIGN_SEAT-style takeover), preserving the
+ * one-human single-player invariant.
+ */
+export function setComputerSeatFaction(
+  state: GameState,
+  action: Extract<GameAction, { type: "SET_COMPUTER_SEAT_FACTION" }>
+): void {
+  const lobby = state.setupLobby;
+  if (!lobby || state.phase !== "setup") {
+    throw new Error("Computer seats can only be set during map setup.");
+  }
+  if (state.sessionMode !== "single-player") {
+    throw new Error("A computer's faction can only be set in a single-player game.");
+  }
+  if (lobby.startCheck) {
+    throw new Error("The setup is locked while the start check is open.");
+  }
+  if (lobbyDraft(lobby).format !== "open") {
+    throw new Error("A computer's town and hero can only be hand-picked in the Free pick format.");
+  }
+
+  // Issuer must be the ONE human owner seat (never a seat takeover — this only
+  // writes the faction/hero fields of a computer seat).
+  const humans = lobby.seats.filter((candidate) => controllerOf(state, candidate.playerId).kind === "human");
+  if (humans.length !== 1 || humans[0].playerId !== action.playerId) {
+    throw new Error("Only the single-player human seat may pick a computer's faction.");
+  }
+
+  const seat = lobby.seats.find((candidate) => candidate.playerId === action.seatPlayerId);
+  if (!seat) {
+    throw new Error("That seat does not exist in this scenario.");
+  }
+  if (controllerOf(state, action.seatPlayerId).kind !== "computer") {
+    throw new Error("Only a computer opponent's faction can be picked this way.");
+  }
+
+  if (action.choice === "clear") {
+    if (!seat.factionId && !seat.heroDefId) {
+      return; // Already on auto — nothing to clear.
+    }
+    seat.factionId = null;
+    seat.heroDefId = null;
+    const clearedPlayer = state.players[action.seatPlayerId];
+    if (clearedPlayer) {
+      clearedPlayer.name = seat.name;
+    }
+    appendEvent(state, {
+      type: "GAME_OPTIONS_CHANGED",
+      playerId: action.playerId,
+      message: `${state.players[action.playerId]?.name ?? action.playerId} set ${seat.name} back to auto (picks a town at game start).`
+    });
+    return;
+  }
+
+  const takenFactions = new Set(
+    lobby.seats
+      .filter((candidate) => candidate.playerId !== action.seatPlayerId)
+      .map((candidate) => candidate.factionId)
+      .filter((id): id is FactionId => Boolean(id))
+  );
+
+  let factionId: FactionId;
+  let heroDefId: string;
+  if (action.choice === "roll") {
+    // Seed with the event counter so two consecutive rolls differ and every
+    // client computing the same action lands on the same pick (mirrors
+    // randomAssignSeat's convention).
+    const random = createSeededRandom(`${state.seed}#computer-seat#${action.seatPlayerId}#${eventSeedNumber(state)}`);
+    const candidateFactions = (Object.values(coreFactionDefinitions) as { id: FactionId }[])
+      .map((faction) => faction.id)
+      .filter((id) => !takenFactions.has(id) && isPlayableFaction(id) && coreFactionDefinitions[id].heroes.length > 0);
+    if (candidateFactions.length === 0) {
+      throw new Error("No town is available to roll for this computer.");
+    }
+    factionId = random.pick(candidateFactions);
+    const heroPool = [...coreFactionDefinitions[factionId].heroes];
+    // Re-rolling the same town avoids the current hero when another is available,
+    // so a re-roll visibly changes the pick.
+    const choices = heroPool.length > 1 ? heroPool.filter((id) => id !== seat.heroDefId) : heroPool;
+    heroDefId = random.pick(choices.length > 0 ? choices : heroPool);
+  } else {
+    factionId = action.choice.factionId;
+    heroDefId = action.choice.heroDefId;
+    const faction = coreFactionDefinitions[factionId];
+    if (!faction) {
+      throw new Error("Unknown faction.");
+    }
+    if (!isPlayableFaction(factionId)) {
+      throw new Error("That faction is not playable yet.");
+    }
+    if (!faction.heroes.includes(heroDefId)) {
+      throw new Error("That hero does not lead this faction.");
+    }
+    if (takenFactions.has(factionId)) {
+      throw new Error("Another seat already picked that faction.");
+    }
+  }
+
+  seat.factionId = factionId;
+  seat.heroDefId = heroDefId;
+  const faction = coreFactionDefinitions[factionId];
+  const hero = coreHeroDefinitions[heroDefId];
+  const player = state.players[action.seatPlayerId];
+  if (player && hero && faction) {
+    player.name = `${hero.name} of ${faction.name}`;
+  }
+
+  appendEvent(state, {
+    type: "FACTION_CHOSEN",
+    playerId: action.seatPlayerId,
     factionId,
     heroDefId
   });

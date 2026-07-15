@@ -64,3 +64,82 @@ describe("SetupLobbyScreen — single-player", () => {
     });
   });
 });
+
+/**
+ * The per-opponent faction/hero picker: in single-player Free-pick, each computer
+ * seat gets a block that shows its pick (or "Random at start") and dispatches
+ * SET_COMPUTER_SEAT_FACTION for a roll, a hand-picked town+hero, or a clear.
+ * Hidden in a multiplayer lobby (the CONTROL).
+ */
+describe("SetupLobbyScreen — single-player computer opponent pickers", () => {
+  it("renders one picker per computer seat (Random at start) and dispatches a roll", () => {
+    const onAction = renderSinglePlayer();
+    const section = screen.getByLabelText("Computer opponents setup");
+    // Two computer seats (computerOpponents: 2): "Computer 1" (p2), "Computer 2" (p3).
+    expect(within(section).getByLabelText("Set up Computer 1")).toBeTruthy();
+    expect(within(section).getByLabelText("Set up Computer 2")).toBeTruthy();
+    expect(within(section).getAllByText("Random at start")).toHaveLength(2);
+
+    const seatBlock = screen.getByLabelText("Set up Computer 1");
+    fireEvent.click(within(seatBlock).getByRole("button", { name: /Roll random now/ }));
+    expect(onAction).toHaveBeenCalledWith({
+      type: "SET_COMPUTER_SEAT_FACTION",
+      playerId: "p1",
+      seatPlayerId: "p2",
+      choice: "roll"
+    });
+  });
+
+  it("expands the faction grid and dispatches a hand-picked town + hero", () => {
+    const onAction = renderSinglePlayer();
+    const seatBlock = screen.getByLabelText("Set up Computer 1");
+    // No grid until expanded.
+    expect(within(seatBlock).queryByLabelText("Pick a faction and hero")).toBeNull();
+    fireEvent.click(within(seatBlock).getByRole("button", { name: /Pick faction/ }));
+
+    const grid = within(seatBlock).getByLabelText("Pick a faction and hero");
+    const catherine = within(grid).getByText("Catherine", { selector: ".lobbyHero span" }).closest("button");
+    fireEvent.click(catherine as HTMLElement);
+    expect(onAction).toHaveBeenCalledWith({
+      type: "SET_COMPUTER_SEAT_FACTION",
+      playerId: "p1",
+      seatPlayerId: "p2",
+      choice: { factionId: "castle", heroDefId: "catherine" }
+    });
+  });
+
+  it("shows a set seat's pick and dispatches clear (Back to auto)", () => {
+    const onAction = vi.fn();
+    const state = createAdventureLobbyState({
+      seed: "sp-clear-ui",
+      scenarioId: "skirmish",
+      sessionMode: "single-player",
+      computerOpponents: 2
+    });
+    const seat = state.setupLobby!.seats.find((candidate) => candidate.playerId === "p2")!;
+    seat.factionId = "castle";
+    seat.heroDefId = "catherine";
+    state.players.p2.name = "Catherine of Castle";
+    render(<SetupLobbyScreen onAction={onAction} state={state} viewerPlayerId="p1" />);
+
+    const seatBlock = screen.getByLabelText("Set up Computer 1");
+    // Shows the pick, not the auto badge.
+    expect(within(seatBlock).queryByText("Random at start")).toBeNull();
+    expect(within(seatBlock).getByText("Catherine")).toBeTruthy();
+
+    fireEvent.click(within(seatBlock).getByRole("button", { name: /Back to auto/ }));
+    expect(onAction).toHaveBeenCalledWith({
+      type: "SET_COMPUTER_SEAT_FACTION",
+      playerId: "p1",
+      seatPlayerId: "p2",
+      choice: "clear"
+    });
+  });
+
+  it("CONTROL: a multiplayer lobby renders no computer opponent pickers", () => {
+    const onAction = vi.fn();
+    const state = createAdventureLobbyState({ seed: "mp-pickers", scenarioId: "skirmish", playerCount: 3 });
+    render(<SetupLobbyScreen onAction={onAction} state={state} viewerPlayerId="p1" />);
+    expect(screen.queryByLabelText("Computer opponents setup")).toBeNull();
+  });
+});
