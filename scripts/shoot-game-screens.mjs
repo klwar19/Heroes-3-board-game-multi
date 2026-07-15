@@ -35,6 +35,8 @@ const context = await browser.newContext({
 const page = await context.newPage();
 
 const shoot = async (name) => {
+  await page.evaluate(() => window.scrollTo(0, 0)).catch(() => {});
+  await page.waitForTimeout(250);
   await page.screenshot({ path: path.join(outDir, `${name}.png`), fullPage: false });
   console.log(`OK ${name}`);
 };
