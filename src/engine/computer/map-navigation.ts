@@ -546,6 +546,68 @@ const SWEEPABLE_KINDS: ReadonlySet<MapObjectiveKind> = new Set([
   "enemy-hero",
 ]);
 
+/**
+ * OPENING HOME-TILE SWEEP (a strong human's tempo). While the hero still stands
+ * on its OWN starting tile (tile Ⅰ) in the first rounds, every remaining local
+ * payoff — the free resource symbol, the guarded (difficulty 1) treasure, and
+ * the guarded (difficulty 1) income MINE — should be drained before the hero
+ * marches off the tile. Measurement of the stock policy showed the fresh hero
+ * grabbing only the unguarded symbol and abandoning the mine + treasure: the
+ * army-readiness gate (`armyReadyForContestedFight`) dropped a level-coverable
+ * home guard to 410, which any nearby off-tile prize outranked.
+ *
+ * Two levers fix that, both scoped to the home tile + the opening rounds so the
+ * general "collect a safe hex before FAIR fights" discipline is untouched
+ * elsewhere:
+ *  1. the not-ready guard penalty is LIFTED for a level-coverable difficulty-1/2
+ *     guard on the home tile (a deliberate opening play, not a fair fight to
+ *     postpone — the Quick-Combat reference already proved it takeable), and
+ *  2. a decisive sweep bonus keeps every home payoff above anything off the tile
+ *     until the tile is drained.
+ * Both switch off once the hero leaves the tile or the opening window closes.
+ */
+const HOME_TILE_SWEEP_MAX_ROUND = 3;
+const HOME_TILE_SWEEP_MAX_DIFFICULTY = 2;
+const HOME_TILE_SWEEP_BONUS = 220;
+
+/** The tile instance carrying this player's own faction town, if any. */
+export function homeTileInstanceId(
+  state: GameState,
+  playerId: string,
+): string | null {
+  for (const field of Object.values(state.adventure?.fields ?? {})) {
+    if (
+      locationDefinitions[field.location]?.category === "town" &&
+      field.flagOwnerId === playerId
+    ) {
+      return field.tileInstanceId ?? null;
+    }
+  }
+  return null;
+}
+
+/**
+ * Whether this objective qualifies for the opening home-tile sweep: a sweepable
+ * payoff on the hero's OWN starting tile, while the hero still stands on that
+ * tile, in the first rounds. Pure public-state reads (town flag, tile ids,
+ * round) — never touches the guaranteed-win house rule.
+ */
+function isHomeTileSweepObjective(
+  state: GameState,
+  hero: HeroState,
+  objective: MapObjective,
+  field: MapFieldState | undefined,
+): boolean {
+  if ((state.round ?? 0) > HOME_TILE_SWEEP_MAX_ROUND) return false;
+  if (!SWEEPABLE_KINDS.has(objective.kind)) return false;
+  const homeTile = homeTileInstanceId(state, hero.controllerId);
+  if (!homeTile) return false;
+  const heroTile = hero.spaceId
+    ? state.adventure?.fields[hero.spaceId]?.tileInstanceId
+    : undefined;
+  return heroTile === homeTile && field?.tileInstanceId === homeTile;
+}
+
 function objectiveStrategicValue(
   state: GameState,
   hero: HeroState,
@@ -557,6 +619,7 @@ function objectiveStrategicValue(
   const ready = armyReadyForContestedFight(state, hero.controllerId);
   const mode = adventureVictoryMode(state);
   const field = state.adventure?.fields[objective.spaceId];
+  const homeSweep = isHomeTileSweepObjective(state, hero, objective, field);
   let value: number;
   switch (objective.kind) {
     case "victory": {
@@ -580,14 +643,25 @@ function objectiveStrategicValue(
       const difficulty = field?.difficulty ?? 0;
       const guaranteedQuickWin =
         difficulty > 0 && neutralBattleLevel(state, hero) > difficulty;
-      value = guaranteedQuickWin ? 800 : ready ? 710 : 410;
+      // Home-tile opening sweep lifts the not-ready penalty for a level-
+      // coverable difficulty-1/2 guard (the income mine / the guarded treasure
+      // are opening plays, not fair fights to postpone for army development).
+      const homeGuardTakeable =
+        homeSweep &&
+        difficulty > 0 &&
+        difficulty <= HOME_TILE_SWEEP_MAX_DIFFICULTY;
+      value = guaranteedQuickWin ? 800 : ready || homeGuardTakeable ? 710 : 410;
       break;
     }
     case "town":
       value = 660;
       break;
     case "flaggable":
-      value = 625;
+      // A Settlement is a top early economy objective (per-round income +
+      // reinforce it flags for free) — value it distinctly above a generic
+      // flaggable (bare mine / sawmill) so a discovered one becomes the march
+      // target over a leftover mine. Stays just under a full town (660).
+      value = field?.location === "settlement" ? 658 : 625;
       break;
     case "visitable":
       value = 600 + (VISITABLE_LOCATION_VALUE[field?.location ?? ""] ?? 0);
@@ -612,7 +686,10 @@ function objectiveStrategicValue(
       ? state.adventure?.fields[hero.spaceId]?.tileInstanceId
       : undefined;
     if (heroTile && field?.tileInstanceId === heroTile) {
-      value += SAME_TILE_SWEEP_BONUS;
+      // Own starting tile in the opening rounds: a decisive bonus keeps every
+      // local payoff above anything off the tile until it is drained. Any other
+      // tile keeps the ordinary same-tile sweep nudge.
+      value += homeSweep ? HOME_TILE_SWEEP_BONUS : SAME_TILE_SWEEP_BONUS;
     }
   }
   return value - distance * 18;

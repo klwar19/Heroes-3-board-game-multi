@@ -522,3 +522,47 @@ describe("choice policy — die keep vs reroll", () => {
     ).toBe("REROLL_PENDING_CHOICE");
   });
 });
+
+describe("choice policy — far-tile flip prefers the Settlement arm", () => {
+  function flipChoice(labels: string[]): PendingChoice {
+    return {
+      id: "ft1",
+      type: "OPTION_CHOICE",
+      playerId: "p2",
+      prompt: "Keep this Far tile or draw another?",
+      context: "far-tile-flip",
+      options: labels.map((label) => ({ label })),
+    } as unknown as PendingChoice;
+  }
+  function flipActions(count: number): LegalAction[] {
+    return Array.from({ length: count }, (_, optionIndex) => ({
+      label: `option ${optionIndex}`,
+      action: {
+        type: "CHOOSE_OPTION",
+        playerId: "p2",
+        choiceId: "ft1",
+        optionIndex,
+      } as GameAction,
+    }));
+  }
+
+  it("keeps the Settlement over an Ore Mine keep or a plain reroll", () => {
+    const choice = flipChoice([
+      "Keep — Ore Mine + Treasure",
+      "Keep — Settlement + Resource",
+      "Draw another (reroll)",
+    ]);
+    const decision = chooseComputerAction(observation(choice, flipActions(3)));
+    expect((decision?.action as { optionIndex: number }).optionIndex).toBe(1);
+    expect(decision?.policy).toBe("choice.far-tile-flip");
+  });
+
+  it("CONTROL: with no Settlement arm, the Ore Mine keep beats a reroll", () => {
+    const choice = flipChoice(["Keep — Ore Mine", "Draw another (reroll)"]);
+    const decision = chooseComputerAction(observation(choice, flipActions(2)));
+    // The Ore Mine keep (+38) outranks the plain reroll (+18): the AI does not
+    // gamble away a real economy tile when no Settlement is on offer.
+    expect((decision?.action as { optionIndex: number }).optionIndex).toBe(0);
+    expect(decision?.policy).toBe("choice.far-tile-flip");
+  });
+});
