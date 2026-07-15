@@ -3504,13 +3504,11 @@ export function instantHealSpellReactions(
   if (!combat || !player || isHandLockedInCombat(state, playerId)) {
     return [];
   }
-  if (getSpellCastRestriction(state).lockAll) {
-    return [];
-  }
+  // Recanter's Cloak ("no Hero can use Spells") and the per-round Spell limit
+  // gate SPELL-kind heals only; a non-Spell heal instant (if any) would still be
+  // offerable without burning the Spell slot.
+  const spellsLocked = getSpellCastRestriction(state).lockAll;
   const spellLimitLeft = spellLimitFor(state, player) - player.combatStats.spellsCastThisRound;
-  if (spellLimitLeft <= 0) {
-    return [];
-  }
 
   const sources: { cardId: CardId; fromSpellBook?: true }[] = [
     ...[...new Set(player.hand)].map((cardId) => ({ cardId })),
@@ -3529,9 +3527,7 @@ export function instantHealSpellReactions(
     ) {
       continue;
     }
-    // Only Spells count against the spell limit here; a non-Spell heal instant
-    // (if any) would still be offerable without burning the Spell slot.
-    if (card.kind === "spell" && spellLimitLeft <= 0) {
+    if (card.kind === "spell" && (spellsLocked || spellLimitLeft <= 0)) {
       continue;
     }
 
@@ -5892,7 +5888,13 @@ export function getLegalReactionsForTrigger(
     }
 
     // Brimstone Stormclouds: a stored faction cube powers the owner's cast.
-    if (triggerEvent.type === "SPELL_CAST_STARTED" && triggerEvent.playerId === player.id) {
+    // Gated on a REAL Spell cast pending — the synthetic specialty-damage window
+    // is not a cast, and spendTownCube would reject the spend anyway.
+    if (
+      triggerEvent.type === "SPELL_CAST_STARTED" &&
+      triggerEvent.playerId === player.id &&
+      state.stack.at(-1)?.action.type === "CAST_SPELL"
+    ) {
       const town = Object.values(state.towns).find((candidate) => candidate.controllerId === player.id);
       for (const buildingId of town?.buildings ?? []) {
         const building = coreBuildingDefinitions[buildingId];
@@ -6780,11 +6782,18 @@ export function isEffectLegalForTrigger(
         return false;
       }
 
+      // Only a real Spell cast can be cancelled. A specialty damage card that
+      // reuses the SPELL_CAST_STARTED window (so pre-hit heals can fire) is not
+      // a Spell — offering Resistance there would spend the card for nothing
+      // (the reducer's cancel branch is gated on CAST_SPELL and never fires).
+      const pendingStackItem = getPendingStackItem(state, triggerEvent);
+      if (pendingStackItem?.action.type !== "CAST_SPELL") {
+        return false;
+      }
+
       // Protection-from-X: the pending spell must belong to the card's School,
       // and (basic play) be a Basic spell. Resistance leaves both gates open.
-      const pendingStackItem = getPendingStackItem(state, triggerEvent);
-      const pendingSpell =
-        pendingStackItem?.action.type === "CAST_SPELL" ? cardLibrary[pendingStackItem.action.cardId] : undefined;
+      const pendingSpell = cardLibrary[pendingStackItem.action.cardId];
       if (
         !cancelSpellAllowsSchoolAndLevel(
           effect,
@@ -6810,7 +6819,13 @@ export function isEffectLegalForTrigger(
     }
 
     if (effect.type === "RECALL_SPELL") {
-      return triggerEvent.playerId === playerId;
+      // Only a real Spell cast can be taken back. The synthetic specialty-damage
+      // window (a PLAY_CARD on the stack) must not offer Knowledge/Mysticism —
+      // the reducer's recall branch is gated on CAST_SPELL and would eat the card.
+      return (
+        triggerEvent.playerId === playerId &&
+        getPendingStackItem(state, triggerEvent)?.action.type === "CAST_SPELL"
+      );
     }
 
     // Interference: offered to the targeted side only (never the caster) when
