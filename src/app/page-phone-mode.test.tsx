@@ -1,0 +1,260 @@
+// @vitest-environment jsdom
+/**
+ * Phone UI mode — the PAGE wiring (the part CSS cannot test in jsdom):
+ *  - the pre-game prompt appears on the setup lobby BEFORE the game begins,
+ *    takes precedence over the helper-coach prompt, and choosing Computer
+ *    leaves the desktop DOM untouched;
+ *  - with the per-browser preference on "phone", the adventure map and the
+ *    combat table render the `.phoneMode` root + `data-phone-tab` attribute +
+ *    the bottom tab bar, and tapping tabs flips the attribute the phone CSS
+ *    keys on;
+ *  - CONTROL: in computer mode none of that exists — the desktop-unchanged
+ *    guarantee.
+ * The visual effect of the attribute (panels actually hiding/showing) is a
+ * real-browser concern, pinned by tests/e2e/phone-ui-mode.spec.ts.
+ */
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import Home from "./page";
+import {
+  createAdventureGameState,
+  createAdventureLobbyState,
+  createInitialGameState,
+  type GameState
+} from "@/engine";
+import type { GameRoomSnapshot, RoomConnectionHandlers } from "@/lib/realtime";
+import { UI_MODE_STORAGE_KEY } from "@/lib/ui-mode-preference";
+import { HELPER_COACH_STORAGE_KEY } from "@/lib/helper-coach-preference";
+
+const { connectRoomMock, routerPush } = vi.hoisted(() => ({
+  connectRoomMock: vi.fn(),
+  routerPush: vi.fn()
+}));
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: routerPush, replace: vi.fn(), prefetch: vi.fn() })
+}));
+vi.mock("@/lib/music", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/lib/music")>();
+  // Only the looping-audio hook is stubbed (jsdom has no real <audio>); the
+  // mute store stays real for the MusicToggle in the table menu.
+  return { ...original, useBackgroundMusic: vi.fn() };
+});
+vi.mock("@/lib/lobby-presence-client", () => ({
+  sendPresence: vi.fn(async () => undefined),
+  leavePresence: vi.fn()
+}));
+vi.mock("@/lib/auth-client", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/lib/auth-client")>();
+  return {
+    ...original,
+    fetchSession: vi.fn(async () => null),
+    fetchSocketToken: vi.fn(async () => undefined)
+  };
+});
+vi.mock("@/lib/match-claim-client", () => ({ maybeClaimFinishedMatch: vi.fn() }));
+vi.mock("@/lib/performance-metrics", () => ({
+  metricNow: () => Date.now(),
+  observeBrowserResponsiveness: () => () => {},
+  recordPerformanceMetric: vi.fn()
+}));
+vi.mock("@/lib/realtime", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/lib/realtime")>();
+  return { ...original, connectRoom: connectRoomMock };
+});
+
+function snapshotFor(state: GameState): GameRoomSnapshot {
+  return {
+    roomId: "phone-mode-test",
+    version: 1,
+    updatedAt: new Date().toISOString(),
+    state
+  };
+}
+
+/** Wire the fake room transport to serve `state` to the page. */
+function serveRoom(state: GameState) {
+  const snapshot = snapshotFor(state);
+  connectRoomMock.mockReset().mockImplementation((_roomId: string, _handlers: RoomConnectionHandlers) => ({
+    close: vi.fn(),
+    submitAction: vi.fn(async () => ({ version: snapshot.version, errors: [], notices: [] })),
+    resetRoom: vi.fn(async () => snapshot),
+    fetchSnapshot: vi.fn(async () => snapshot),
+    restoreRoom: vi.fn(async () => snapshot)
+  }));
+}
+
+/**
+ * Deterministically drive the page past its async boot: roomId effect →
+ * connect → fetchSnapshot → state → surface mount → the surface's own passive
+ * effects (e.g. the prompt's `ready` flip). A real-timer macrotask inside act
+ * flushes the promise chain AND the cascaded effects; two rounds cover mounts
+ * that themselves schedule work. (findBy* alone races here: an effect queued
+ * from an update that lands inside waitFor's act scope only flushes when that
+ * scope exits — after the timeout.)
+ */
+async function settle(rounds = 2) {
+  for (let i = 0; i < rounds; i += 1) {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+  }
+}
+
+function mainEl(): HTMLElement {
+  const main = document.querySelector("main");
+  expect(main, "the table <main>").toBeTruthy();
+  return main as HTMLElement;
+}
+
+beforeEach(() => {
+  window.localStorage.clear();
+  window.sessionStorage.clear();
+  window.history.replaceState(null, "", "/?room=phone-mode-test");
+  window.localStorage.setItem("homm3bg.displayName", "Tester");
+  // Keep the coach quiet unless a test is specifically about it.
+  window.localStorage.setItem(HELPER_COACH_STORAGE_KEY, "off");
+});
+
+afterEach(cleanup);
+
+describe("phone UI mode — adventure map surface", () => {
+  it("phone preference: .phoneMode root, data-phone-tab, tab bar; taps flip the attribute", async () => {
+    window.localStorage.setItem(UI_MODE_STORAGE_KEY, "phone");
+    serveRoom(createAdventureGameState({ seed: "phone-map", rollFirstPlayer: false }));
+    render(<Home />);
+    await settle();
+
+    const tablist = screen.getByRole("tablist", { name: /screen panels/i });
+    const main = mainEl();
+    expect(main.className).toContain("phoneMode");
+    expect(main.className).toContain("adventureRoot");
+    expect(main.getAttribute("data-phone-tab")).toBe("map");
+
+    // The full adventure tab set for a seated player (no open combat → no Battle tab).
+    const tabLabels = Array.from(tablist.querySelectorAll(".phoneTabLabel")).map((el) => el.textContent);
+    expect(tabLabels).toEqual(["Map", "Hand", "Army", "Decks", "Menu"]);
+
+    fireEvent.click(screen.getByRole("tab", { name: /hand/i }));
+    expect(main.getAttribute("data-phone-tab")).toBe("hand");
+    fireEvent.click(screen.getByRole("tab", { name: /menu/i }));
+    expect(main.getAttribute("data-phone-tab")).toBe("menu");
+    // The Menu panel's content exists (CSS shows it on this tab): the mode
+    // toggle lives there, currently reading "Phone UI".
+    expect(screen.getByRole("button", { name: /phone ui/i })).toBeTruthy();
+    fireEvent.click(screen.getByRole("tab", { name: /map/i }));
+    expect(main.getAttribute("data-phone-tab")).toBe("map");
+  });
+
+  it("the Hand tab pulses with the mandatory start-of-turn hand step", async () => {
+    window.localStorage.setItem(UI_MODE_STORAGE_KEY, "phone");
+    const state = createAdventureGameState({ seed: "phone-draw", rollFirstPlayer: false });
+    // The active seat owes the mandatory hand step — precisely what must pulse.
+    expect(state.players[state.activePlayerId]?.canMulligan).toBe(true);
+    serveRoom(state);
+    render(<Home />);
+    await settle();
+
+    screen.getByRole("tablist", { name: /screen panels/i });
+    // The default local viewer is p1; only pin the pulse when p1 IS the active
+    // seat (the seat that owes the draw). Otherwise pin its absence — the tab
+    // must not cry wolf on someone else's turn.
+    const handTab = screen.getByRole("tab", { name: /hand/i });
+    if (state.activePlayerId === "p1") {
+      expect(handTab.className).toContain("attention");
+      expect(handTab.querySelector(".phoneTabAttention")?.textContent).toBe("Draw!");
+    } else {
+      expect(handTab.className).not.toContain("attention");
+    }
+    // The badge always shows the hand size.
+    expect(handTab.querySelector(".phoneTabBadge")?.textContent).toBe(
+      String(state.players.p1!.hand.length)
+    );
+  });
+
+  it("CONTROL — computer preference: no phoneMode class, no tab bar, no data attribute", async () => {
+    window.localStorage.setItem(UI_MODE_STORAGE_KEY, "computer");
+    serveRoom(createAdventureGameState({ seed: "phone-map", rollFirstPlayer: false }));
+    render(<Home />);
+    await settle();
+
+    const main = mainEl();
+    expect(main.className).toContain("adventureRoot");
+    expect(main.className).not.toContain("phoneMode");
+    expect(main.getAttribute("data-phone-tab")).toBeNull();
+    expect(screen.queryByRole("tablist", { name: /screen panels/i })).toBeNull();
+  });
+});
+
+describe("phone UI mode — the pre-game prompt on the setup lobby", () => {
+  it("asks BEFORE the game begins, ahead of the coach prompt; Computer keeps the desktop DOM", async () => {
+    // Both preferences unanswered — the mode question must come first.
+    window.localStorage.removeItem(HELPER_COACH_STORAGE_KEY);
+    serveRoom(createAdventureLobbyState({ seed: "phone-lobby" }));
+    render(<Home />);
+    await settle();
+
+    expect(screen.getByRole("dialog", { name: /choose your screen layout/i })).toBeTruthy();
+    // The lobby (not the game) is on screen — this IS "before the game begins".
+    expect(mainEl().className).toContain("setupPhase");
+    // Precedence: the helper-coach prompt waits its turn.
+    expect(screen.queryByRole("dialog", { name: /on-screen helper tips/i })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /computer mode/i }));
+    await settle();
+    expect(screen.queryByRole("dialog", { name: /choose your screen layout/i })).toBeNull();
+    // Desktop stays desktop…
+    expect(mainEl().className).not.toContain("phoneMode");
+    // …and only now may the coach ask its own question.
+    expect(screen.getByRole("dialog", { name: /on-screen helper tips/i })).toBeTruthy();
+  });
+
+  it("choosing Phone in the lobby applies immediately (the lobby gets the phone shell too)", async () => {
+    serveRoom(createAdventureLobbyState({ seed: "phone-lobby-2" }));
+    render(<Home />);
+    await settle();
+
+    fireEvent.click(screen.getByRole("button", { name: /phone mode/i }));
+    await settle();
+    expect(mainEl().className).toContain("phoneMode");
+    // The lobby is a single scrolling column — no tabs until the game begins.
+    expect(screen.queryByRole("tablist", { name: /screen panels/i })).toBeNull();
+  });
+});
+
+describe("phone UI mode — combat surface", () => {
+  it("phone preference: Board/Hand/Menu tabs on the combat root; taps flip the attribute", async () => {
+    window.localStorage.setItem(UI_MODE_STORAGE_KEY, "phone");
+    serveRoom(createInitialGameState("phone-combat"));
+    render(<Home />);
+    await settle();
+
+    const tablist = screen.getByRole("tablist", { name: /screen panels/i });
+    const main = mainEl();
+    expect(main.className).toContain("phoneMode");
+    // The combat surface, not the adventure one.
+    expect(main.className).not.toContain("adventureRoot");
+    expect(main.getAttribute("data-phone-tab")).toBe("board");
+
+    const tabLabels = Array.from(tablist.querySelectorAll(".phoneTabLabel")).map((el) => el.textContent);
+    expect(tabLabels).toEqual(["Board", "Hand", "Menu"]);
+
+    fireEvent.click(screen.getByRole("tab", { name: /hand/i }));
+    expect(main.getAttribute("data-phone-tab")).toBe("hand");
+    fireEvent.click(screen.getByRole("tab", { name: /board/i }));
+    expect(main.getAttribute("data-phone-tab")).toBe("board");
+  });
+
+  it("CONTROL — computer preference: the combat table renders without any phone chrome", async () => {
+    window.localStorage.setItem(UI_MODE_STORAGE_KEY, "computer");
+    serveRoom(createInitialGameState("phone-combat"));
+    render(<Home />);
+    await settle();
+
+    expect(document.querySelector(".battlefield")).toBeTruthy();
+    const main = mainEl();
+    expect(main.className).not.toContain("phoneMode");
+    expect(main.getAttribute("data-phone-tab")).toBeNull();
+    expect(screen.queryByRole("tablist", { name: /screen panels/i })).toBeNull();
+  });
+});

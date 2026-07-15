@@ -11,6 +11,25 @@ export default defineConfig({
   use: {
     baseURL,
     trace: "on-first-retry",
+    // Pre-answer the per-browser FIRST-VISIT prompts (UI mode + helper tips):
+    // a fresh Playwright context opens every room under their blocking
+    // backdrops otherwise, so lobby clicks time out ("helperCoachBackdrop
+    // intercepts pointer events" — this predates the UI-mode prompt). Specs
+    // that TEST those prompts opt back into a clean slate with
+    // `test.use({ storageState: { cookies: [], origins: [] } })`
+    // (see tests/e2e/phone-ui-mode.spec.ts).
+    storageState: {
+      cookies: [],
+      origins: [
+        {
+          origin: baseURL,
+          localStorage: [
+            { name: "binh-ui-mode", value: "computer" },
+            { name: "binh-helper-coach", value: "off" }
+          ]
+        }
+      ]
+    },
     // Sandboxed CI images often pre-install one Chromium and block downloads
     // (PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1). Point PW_CHROMIUM_PATH at that
     // binary (e.g. /opt/pw-browsers/chromium) to run the suite there; with the

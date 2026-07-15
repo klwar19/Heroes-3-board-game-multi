@@ -108,7 +108,7 @@ async function startTwoPlayerAdventure(page: Page, roomId: string): Promise<void
   await page.getByRole("button", { name: /Sandro/ }).click();
   await expect(page.getByText("Necropolis — Sandro", { exact: false })).toBeVisible();
 
-  await page.getByRole("button", { name: "Start the adventure" }).click();
+  await page.getByRole("button", { name: "New Game" }).click();
   await expect(page.locator(".hexMapSvg")).toBeVisible({ timeout: 20000 });
 }
 

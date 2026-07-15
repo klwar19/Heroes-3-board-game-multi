@@ -123,6 +123,52 @@ Cloudflare R2 CDN at `https://cdn.hamthefirt.xyz` (runbook + live status:
   must stay in lockstep with the `HOMM3BG_APP_URL` GitHub Actions secret —
   the secret OVERRIDES the json at deploy time.
 
+## Phone UI mode (per-device layout choice) — what runs vs. limits
+
+Before the game begins (and once per browser, mid-game join included) the table
+asks **"How are you playing?" — Computer mode or Phone mode** (`UiModePrompt`,
+device detection only pre-highlights the recommendation). The choice lives in
+`localStorage["binh-ui-mode"]` (`src/lib/ui-mode-preference.ts`, helper-coach
+pattern; never in GameState, never sent to the server) and is switchable any
+time via the 📱/💻 toggle in the table menu. Phone mode = `.phoneMode` class +
+`data-phone-tab` on the branch `<main>` (page.tsx) + a bottom `PhoneTabBar`;
+ALL phone rules live in one delimited block at the end of `globals.css`, every
+selector prefixed `.phoneMode` — with the preference unset or "computer" not
+one rule can match, which is the engine of the "desktop unchanged" guarantee
+(pinned by CONTROL tests). Tabs show ONE full-screen panel at a time over the
+SAME DOM the desktop lays out side by side: adventure = Map · (Battle) · Hand
+(count badge + a pulsing "Draw!/Discard!" chip while the mandatory hand step
+is pending) · Army · Decks · Menu; combat = Board · (Map) · Hand · Menu.
+Fixed overlays (prompts, reaction tray, dice, chat, feed) stay reachable from
+every tab and are re-anchored above the tab bar. The hex map gained real
+two-finger pinch zoom/pan (`map-pinch.ts` pure math + `HexMapBoard` pointer
+wiring; mouse/single-finger paths byte-identical). The chat dock starts
+collapsed in phone mode (and collapses once when the mode flips to phone);
+`layout.tsx` exports the default viewport plus `viewportFit: "cover"` for
+safe-area insets; the site header/footer collapse under `.phoneMode` via
+`:has` (graceful no-op on old browsers).
+
+Leading with what does NOT run / deliberate limits:
+- **jsdom cannot compute CSS**, so the wiring (class/attribute/tab bar, prompt
+  precedence, pinch camera) is pinned in `src/app/page-phone-mode.test.tsx`,
+  `src/lib/ui-mode-preference.test.ts`, `ui-mode-prompt.test.tsx`,
+  `phone-tab-bar.test.tsx`, `map-pinch.test.ts`, `map-pinch-gesture.test.tsx` —
+  and the VISIBLE effect (panels actually swapping, desktop control) is pinned
+  in the real browser by `tests/e2e/phone-ui-mode.spec.ts`. Both halves are
+  the feature's test bar; keep both.
+- Card-flight FX that land in a hidden panel (e.g. a draw while the Hand tab
+  is closed) play to an off-screen anchor — cosmetic only, state is right.
+- No phone-specific Town window / map designer / menu-page layouts yet
+  (generic modal + column CSS only), no PWA/fullscreen/orientation lock, no
+  landscape-specific rearrangement (the battlefield/map simply fit both
+  orientations via dvh caps), no hand peek strip on the Map tab.
+- The e2e config seeds `binh-ui-mode`/`binh-helper-coach` as ANSWERED for all
+  other specs (playwright.config.ts storageState) — the first-visit prompts
+  otherwise block every lobby click (the coach prompt already did before this
+  feature); `phone-ui-mode.spec.ts` opts back into a clean slate because the
+  prompt itself is under test. The Next dev-tools badge is pinned top-right
+  (`devIndicators` in next.config.ts) so its portal cannot swallow tab taps.
+
 ## Current known stubs (display-only, NOT implemented)
 
 Most items this list previously named (the Tower hold-outs) have since been

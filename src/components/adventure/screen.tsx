@@ -113,6 +113,7 @@ import { commanderDefinitions, commanderReviveCost, type CommanderSlug } from "@
 import { CARD_BACK_IMAGES, getDeckBack } from "@/data/decks";
 import { actionKey, cardName, formatCost, isEmpoweredStatisticCard, titleCase } from "@/components/table/utils";
 import { beginUnitPointerDrag } from "@/components/table/pointer-drag";
+import { MAP_SCALE_MAX, MAP_SCALE_MIN, pinchCamera, type PinchStart } from "@/components/adventure/map-pinch";
 import { HeroBoard } from "@/components/hero-board";
 import { useCardZoom } from "@/components/table/zoom";
 import {
@@ -276,6 +277,12 @@ export function HexMapBoard({
   const svgRef = useRef<SVGSVGElement>(null);
   const dragRef = useRef<{ pointerId: number; startX: number; startY: number; originX: number; originY: number; moved: boolean } | null>(null);
   const suppressClickRef = useRef(false);
+  // Touch pinch (zoom + two-finger pan). Every pressed pointer is tracked; the
+  // moment a SECOND one lands the single-pointer pan is cancelled and the two
+  // fingers drive the camera through the pure pinch math in map-pinch.ts. A
+  // mouse only ever has one pointer, so none of this can affect mouse play.
+  const pointersRef = useRef(new Map<number, { x: number; y: number }>());
+  const pinchRef = useRef<{ aId: number; bId: number; start: PinchStart } | null>(null);
 
   // Only surface the bank-border toggle once a Creature Bank is actually on the
   // map (otherwise it toggles nothing).
@@ -342,7 +349,7 @@ export function HexMapBoard({
     const onWheel = (event: WheelEvent) => {
       event.preventDefault();
       const factor = event.deltaY < 0 ? 1.15 : 1 / 1.15;
-      setCamera((current) => ({ ...current, scale: Math.min(2.6, Math.max(0.45, current.scale * factor)) }));
+      setCamera((current) => ({ ...current, scale: Math.min(MAP_SCALE_MAX, Math.max(MAP_SCALE_MIN, current.scale * factor)) }));
     };
     svg.addEventListener("wheel", onWheel, { passive: false });
     return () => svg.removeEventListener("wheel", onWheel);
@@ -1397,6 +1404,31 @@ export function HexMapBoard({
     return null;
   }
 
+  // Shared teardown for pointerup / pointercancel / lostpointercapture. Ends
+  // whichever gesture (pan or pinch) the lifted pointer belonged to; the click
+  // suppressor is only re-armed once the LAST pointer lifts, so the tap the
+  // browser synthesizes when the second pinch finger releases can never fall
+  // through onto a hex (it could move the hero).
+  const releaseMapPointer = (pointerId: number) => {
+    pointersRef.current.delete(pointerId);
+    const pinch = pinchRef.current;
+    if (pinch && (pointerId === pinch.aId || pointerId === pinch.bId)) {
+      // Lifting either pinch finger ends the gesture; the survivor does NOT
+      // resume panning (that would make the camera jump) — a fresh press does.
+      pinchRef.current = null;
+    }
+    if (dragRef.current?.pointerId === pointerId) {
+      dragRef.current = null;
+      setIsDragging(false);
+    }
+    if (pointersRef.current.size === 0) {
+      // Let the click event after this pointerup know it was a drag/pinch.
+      window.setTimeout(() => {
+        suppressClickRef.current = false;
+      }, 0);
+    }
+  };
+
   const rotationConnected =
     rotatingTile && iAmRotating ? legalRotations.size === 0 || legalRotations.has(previewRotation) : true;
 
@@ -1636,20 +1668,67 @@ export function HexMapBoard({
           if (event.button !== 0) {
             return;
           }
-          // A fresh press always re-arms clicking: if a previous gesture was
-          // cancelled mid-drag (tab switch, touch scroll), the suppress flag
-          // must not keep eating every later click on the map.
-          suppressClickRef.current = false;
-          dragRef.current = {
-            pointerId: event.pointerId,
-            startX: event.clientX,
-            startY: event.clientY,
-            originX: camera.x,
-            originY: camera.y,
-            moved: false
-          };
+          pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+          if (pointersRef.current.size === 1) {
+            // A fresh press always re-arms clicking: if a previous gesture was
+            // cancelled mid-drag (tab switch, touch scroll), the suppress flag
+            // must not keep eating every later click on the map.
+            suppressClickRef.current = false;
+            dragRef.current = {
+              pointerId: event.pointerId,
+              startX: event.clientX,
+              startY: event.clientY,
+              originX: camera.x,
+              originY: camera.y,
+              moved: false
+            };
+            return;
+          }
+          // A second (or later) finger: this is a multi-touch gesture, never a
+          // click — and the single-pointer pan hands over to the pinch.
+          suppressClickRef.current = true;
+          if (pointersRef.current.size === 2) {
+            dragRef.current = null;
+            setIsDragging(false);
+            const [[aId, a], [bId, b]] = [...pointersRef.current.entries()];
+            pinchRef.current = { aId, bId, start: { camera, a: { ...a }, b: { ...b } } };
+            const svg = event.currentTarget as Element;
+            try {
+              svg.setPointerCapture(aId);
+              svg.setPointerCapture(bId);
+            } catch {
+              // jsdom / detached element — the gesture still works uncaptured.
+            }
+          }
         }}
         onPointerMove={(event) => {
+          const tracked = pointersRef.current.get(event.pointerId);
+          if (tracked) {
+            tracked.x = event.clientX;
+            tracked.y = event.clientY;
+          }
+          const pinch = pinchRef.current;
+          if (pinch) {
+            if (event.pointerId !== pinch.aId && event.pointerId !== pinch.bId) {
+              return;
+            }
+            const a = pointersRef.current.get(pinch.aId);
+            const b = pointersRef.current.get(pinch.bId);
+            const svg = svgRef.current;
+            if (!a || !b || !svg) {
+              return;
+            }
+            const rect = svg.getBoundingClientRect();
+            setCamera(
+              pinchCamera(pinch.start, a, b, rect, {
+                minX,
+                minY,
+                width: maxX - minX,
+                height: maxY - minY
+              })
+            );
+            return;
+          }
           const drag = dragRef.current;
           if (!drag || drag.pointerId !== event.pointerId) {
             return;
@@ -1668,35 +1747,13 @@ export function HexMapBoard({
             setCamera((current) => ({ ...current, x: drag.originX + dx, y: drag.originY + dy }));
           }
         }}
-        onPointerUp={(event) => {
-          const drag = dragRef.current;
-          if (drag?.pointerId === event.pointerId) {
-            dragRef.current = null;
-            setIsDragging(false);
-            // Let the click event after this pointerup know it was a drag.
-            window.setTimeout(() => {
-              suppressClickRef.current = false;
-            }, 0);
-          }
-        }}
+        onPointerUp={(event) => releaseMapPointer(event.pointerId)}
         onPointerCancel={(event) => {
           // Browsers cancel pointers on touch-scroll or focus loss; without
           // this the drag state lingered and the map stopped taking clicks.
-          if (dragRef.current?.pointerId === event.pointerId) {
-            dragRef.current = null;
-            setIsDragging(false);
-            window.setTimeout(() => {
-              suppressClickRef.current = false;
-            }, 0);
-          }
+          releaseMapPointer(event.pointerId);
         }}
-        onLostPointerCapture={() => {
-          dragRef.current = null;
-          setIsDragging(false);
-          window.setTimeout(() => {
-            suppressClickRef.current = false;
-          }, 0);
-        }}
+        onLostPointerCapture={(event) => releaseMapPointer(event.pointerId)}
         viewBox={`${minX} ${minY} ${maxX - minX} ${maxY - minY}`}
       >
         <defs>
@@ -1715,10 +1772,10 @@ export function HexMapBoard({
       </svg>
 
       <div className="mapToolbar" aria-label="Map controls">
-        <button onClick={() => setCamera((c) => ({ ...c, scale: Math.min(2.6, c.scale * 1.2) }))} title="Zoom in" type="button">
+        <button onClick={() => setCamera((c) => ({ ...c, scale: Math.min(MAP_SCALE_MAX, c.scale * 1.2) }))} title="Zoom in" type="button">
           <Plus size={13} />
         </button>
-        <button onClick={() => setCamera((c) => ({ ...c, scale: Math.max(0.45, c.scale / 1.2) }))} title="Zoom out" type="button">
+        <button onClick={() => setCamera((c) => ({ ...c, scale: Math.max(MAP_SCALE_MIN, c.scale / 1.2) }))} title="Zoom out" type="button">
           <Minus size={13} />
         </button>
         <button

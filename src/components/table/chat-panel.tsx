@@ -5,6 +5,7 @@ import { MessageSquare, Minimize2, Send } from "lucide-react";
 import { MAX_CHAT_TEXT_LENGTH, type ChatMessage, type GameState, type PlayerVisibleState, type RoomSeat } from "@/engine";
 import { coreFactionDefinitions } from "@/data/factions/core";
 import { playTableChatMessage } from "@/lib/sound";
+import { getUiModePreference, useUiModePreference } from "@/lib/ui-mode-preference";
 
 /**
  * Table chat — the in-room, ephemeral live feed (see src/engine/chat.ts). A
@@ -91,8 +92,24 @@ export function ChatPanel({
   const memberCount = room?.members.length ?? 0;
 
   // Default open: the table chat should be visible during events and other
-  // overlays so players can talk without hunting for the FAB first.
-  const [open, setOpen] = useState(true);
+  // overlays so players can talk without hunting for the FAB first. On the
+  // PHONE layout it starts collapsed instead — an open dock eats half a phone
+  // screen and floats over the panels/dialogs. (Initializer-only read: the
+  // panel first mounts client-side once room state exists, so this never runs
+  // during prerender; "computer"/unset keep the desktop default exactly.)
+  const [open, setOpen] = useState(() => getUiModePreference() !== "phone");
+  // The pre-game prompt can flip the mode AFTER this panel mounted (first-ever
+  // session: chat mounts with the lobby, THEN the player picks Phone). Collapse
+  // once on the computer→phone edge; the player may reopen freely afterwards,
+  // and a desktop session (mode never flips) is untouched.
+  const uiModePref = useUiModePreference();
+  const prevUiModeRef = useRef(uiModePref.uiMode);
+  useEffect(() => {
+    if (prevUiModeRef.current !== "phone" && uiModePref.uiMode === "phone") {
+      setOpen(false);
+    }
+    prevUiModeRef.current = uiModePref.uiMode;
+  }, [uiModePref.uiMode]);
   const [draft, setDraft] = useState("");
   // Seeded immediately because the panel starts open (time-ago labels ready).
   const [now, setNow] = useState(() => Date.now());
