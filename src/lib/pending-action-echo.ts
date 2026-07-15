@@ -49,6 +49,15 @@ export function initialPendingEchoState(): PendingEchoState {
   return { nextId: 1, entries: [] };
 }
 
+/**
+ * Wall-clock for echo timestamps — the same indirection metricNow() uses, so
+ * call sites in component scope stay clean under the react-hooks purity lint
+ * (an inline Date.now() in the component body is flagged as render-impure).
+ */
+export function echoNow(): number {
+  return Date.now();
+}
+
 /** Stable fingerprint: identical resubmits of the SAME action collide. */
 export function pendingEchoKey(action: GameAction): string {
   return JSON.stringify(action);

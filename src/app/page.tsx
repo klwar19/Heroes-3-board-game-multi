@@ -215,12 +215,14 @@ import {
 import { ConnectionQualityChip, retainQualitySample } from "@/components/table/connection-quality";
 import {
   beginPendingEcho,
+  echoNow,
   initialPendingEchoState,
   pendingEchoCardIds,
   prunePendingEchoes,
   resolvePendingEcho,
   type PendingEchoState
 } from "@/lib/pending-action-echo";
+import { pollTickAllowed } from "@/lib/hidden-tab-poll";
 import { clearCachedRoom, loadCachedRoom, saveCachedRoom } from "@/lib/room-cache";
 import { getAccountIdentity, getClientId, getDisplayName, setDisplayName as persistDisplayName } from "@/lib/identity";
 import { fetchSession, fetchSocketToken } from "@/lib/auth-client";
@@ -697,7 +699,7 @@ export default function Home() {
   // must read synchronously — two rapid clicks land before any re-render); the
   // state mirror only drives rendering (the hand panels' in-flight dim).
   const pendingEchoesRef = useRef<PendingEchoState>(initialPendingEchoState());
-  const [pendingEchoView, setPendingEchoView] = useState<PendingEchoState>(pendingEchoesRef.current);
+  const [pendingEchoView, setPendingEchoView] = useState<PendingEchoState>(initialPendingEchoState);
   /**
    * The room server's engine signature from the latest snapshot. When it
    * disagrees with this frontend's ENGINE_SIGNATURE the room server is running
@@ -3344,7 +3346,7 @@ export default function Home() {
       snapshotArbiterRef.current = decision.state;
       // Pending-action echo TTL sweep (plan N2): a submit whose promise never
       // settles (hung fetch) still un-dims once the authoritative state flows.
-      const prunedEchoes = prunePendingEchoes(pendingEchoesRef.current, Date.now());
+      const prunedEchoes = prunePendingEchoes(pendingEchoesRef.current, echoNow());
       if (prunedEchoes !== pendingEchoesRef.current) {
         pendingEchoesRef.current = prunedEchoes;
         setPendingEchoView(prunedEchoes);
@@ -3594,10 +3596,10 @@ export default function Home() {
     seenRollIdsRef.current = null;
     // Each room gets its own recovery attempt, even on the same server boot.
     restoredForBootRef.current = null;
-    // A fresh connection starts with no RTT measurement and no in-flight echo.
-    setConnectionQuality(null);
-    pendingEchoesRef.current = initialPendingEchoState();
-    setPendingEchoView(pendingEchoesRef.current);
+    // No eager reset of the RTT sample / pending echoes on a room switch: the
+    // RTT measures the transport host (same for every room, refreshed by the
+    // first ack), and echo entries self-clear via their submit's settle path
+    // plus the TTL sweeps. A synchronous setState here would cascade renders.
 
     const connection = connectRoom(
       roomId,
@@ -3729,7 +3731,7 @@ export default function Home() {
     // client-side (the double-click latch); the entry also drives the hand
     // panels' in-flight dim. Presentation + latch only — GameState is never
     // predicted, and the entry self-clears in the finally below.
-    const echoBegin = beginPendingEcho(pendingEchoesRef.current, outgoing, Date.now());
+    const echoBegin = beginPendingEcho(pendingEchoesRef.current, outgoing, echoNow());
     pendingEchoesRef.current = echoBegin.state;
     setPendingEchoView(echoBegin.state);
     if (!echoBegin.accepted) {
@@ -4009,10 +4011,16 @@ export default function Home() {
       });
     };
     beat();
-    const intervalId = window.setInterval(beat, 12000);
-    // Background tabs throttle setInterval to >= 60s; the presence TTL absorbs
-    // that, and beating again the moment the tab is visible snaps the board
-    // back to fresh data instead of waiting for the next stale tick.
+    // 30 s cadence against the 120 s presence TTL (was 12 s — 10× the need),
+    // and hidden tabs skip beats entirely: every same-origin /api request is a
+    // billed edge request on the production host, and beating again the moment
+    // the tab is visible snaps the board back to fresh data anyway.
+    const intervalId = window.setInterval(() => {
+      if (!pollTickAllowed()) {
+        return;
+      }
+      beat();
+    }, 30_000);
     const onVisible = () => {
       if (document.visibilityState === "visible") {
         beat();
