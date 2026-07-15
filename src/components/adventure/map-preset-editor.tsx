@@ -3,15 +3,20 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowUpDown, Clock3, Copy, Plus, Trash2 } from "lucide-react";
 import {
+  defaultObeliskBonusForKind,
   defaultTimedEffect,
   defaultTimedEvent,
   describeCustomMapPresetEntries,
   describeTimedMapEffect,
   MAX_TIMED_EVENTS,
   MAP_PRESET_BUILDING_OPTIONS,
+  MAP_PRESET_OBELISK_BONUS_KINDS,
+  MAP_PRESET_OBELISK_ROLE_OPTIONS,
   MAP_PRESET_VICTORY_OPTIONS,
   TIMED_EFFECT_KIND_LABELS,
   TIMED_EFFECT_KINDS,
+  type CustomMapObeliskBonus,
+  type CustomMapObeliskConfig,
   type CustomMapPreset,
   type CustomMapStartingBonus,
   type CustomMapTimedEffect,
@@ -72,6 +77,10 @@ export function MapPresetEditor({
     if (partial.roundLimit === 0) {
       delete next.roundLimit;
     }
+    if ("obelisks" in partial && partial.obelisks === undefined) {
+      // "Classic" is the ABSENCE of a config — remove the key entirely.
+      delete next.obelisks;
+    }
     // Collapse to undefined when nothing is set.
     const keys = Object.keys(next).filter((key) => {
       const v = next[key as keyof CustomMapPreset];
@@ -92,6 +101,22 @@ export function MapPresetEditor({
   const units = value.startingUnits ?? null;
   const bonuses = value.startingBonuses ?? [];
   const timed = value.timedEvents ?? [];
+  const obeliskRole: CustomMapObeliskConfig["role"] | "classic" = value.obelisks?.role ?? "classic";
+  const obeliskBonus: CustomMapObeliskBonus =
+    value.obelisks?.bonus ?? defaultObeliskBonusForKind("morale");
+
+  const setObeliskRole = (role: CustomMapObeliskConfig["role"] | "classic") => {
+    if (role === "classic") {
+      patch({ obelisks: undefined });
+    } else if (role === "bonus") {
+      patch({ obelisks: { role: "bonus", bonus: value.obelisks?.bonus ?? defaultObeliskBonusForKind("morale") } });
+    } else {
+      patch({ obelisks: { role } });
+    }
+  };
+  const setObeliskBonus = (bonus: CustomMapObeliskBonus) => {
+    patch({ obelisks: { role: "bonus", bonus } });
+  };
 
   const setTimed = (next: CustomMapTimedEvent[]) => {
     patch({ timedEvents: next });
@@ -389,6 +414,47 @@ export function MapPresetEditor({
               </li>
             ))}
           </ul>
+        ) : null}
+      </section>
+
+      <section className="mapPresetSection" aria-label="Obelisks">
+        <div className="mapPresetSectionLabel">Obelisks (map-wide)</div>
+        <small className="mapPresetHint">
+          What visiting an Obelisk does. Applies to every Obelisk on the map — per-Obelisk setup is
+          not possible (face-down tiles hide which is which). Each role still counts toward the Holy-Grail dig.
+        </small>
+        <div className="mapPresetChipRow" role="group" aria-label="Obelisk role">
+          {MAP_PRESET_OBELISK_ROLE_OPTIONS.map((opt) => (
+            <button
+              aria-pressed={obeliskRole === opt.id}
+              className={`mapPresetChip${obeliskRole === opt.id ? " active" : ""}`}
+              key={opt.id}
+              onClick={() => setObeliskRole(opt.id)}
+              title={opt.hint}
+              type="button"
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        {obeliskRole === "bonus" ? (
+          <div className="mapPresetObeliskBonus">
+            <label className="mapPresetTimedKind">
+              Bonus
+              <select
+                aria-label="Obelisk bonus kind"
+                onChange={(e) => setObeliskBonus(defaultObeliskBonusForKind(e.target.value as CustomMapObeliskBonus["kind"]))}
+                value={obeliskBonus.kind}
+              >
+                {MAP_PRESET_OBELISK_BONUS_KINDS.map((kind) => (
+                  <option key={kind.id} value={kind.id}>
+                    {kind.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <ObeliskBonusFields bonus={obeliskBonus} onChange={setObeliskBonus} />
+          </div>
         ) : null}
       </section>
 
@@ -784,6 +850,98 @@ function TimedEffectFields({
       value={effect.text}
     />
   );
+}
+
+/** Amount controls for the "bonus" Obelisk role (morale is a fixed +1, no fields). */
+function ObeliskBonusFields({
+  bonus,
+  onChange
+}: {
+  bonus: CustomMapObeliskBonus;
+  onChange: (bonus: CustomMapObeliskBonus) => void;
+}) {
+  if (bonus.kind === "search") {
+    return (
+      <div className="mapPresetResourceRow">
+        <label className="mapPresetResourceField">
+          <span>Deck</span>
+          <select
+            aria-label="Obelisk bonus search deck"
+            onChange={(e) => onChange({ ...bonus, deck: e.target.value as "artifacts" | "spells" | "abilities" })}
+            value={bonus.deck}
+          >
+            <option value="artifacts">Artifacts</option>
+            <option value="spells">Spells</option>
+            <option value="abilities">Abilities</option>
+          </select>
+        </label>
+        <ResourceField
+          label="Search size"
+          max={3}
+          min={1}
+          value={bonus.count}
+          onChange={(count) => onChange({ ...bonus, count: Math.max(1, Math.min(3, count)) })}
+        />
+      </div>
+    );
+  }
+  if (bonus.kind === "resources") {
+    return (
+      <div className="mapPresetResourceRow">
+        <ResourceField
+          label="Gold"
+          max={5}
+          value={bonus.gold ?? 0}
+          onChange={(gold) => onChange({ ...bonus, gold })}
+        />
+        <ResourceField
+          label="Materials"
+          max={5}
+          value={bonus.buildingMaterials ?? 0}
+          onChange={(buildingMaterials) => onChange({ ...bonus, buildingMaterials })}
+        />
+        <ResourceField
+          label="Valuables"
+          max={5}
+          value={bonus.valuables ?? 0}
+          onChange={(valuables) => onChange({ ...bonus, valuables })}
+        />
+      </div>
+    );
+  }
+  if (bonus.kind === "movement") {
+    return (
+      <div className="mapPresetResourceRow">
+        <ResourceField
+          label="Movement +"
+          max={3}
+          min={1}
+          value={bonus.amount}
+          onChange={(amount) => onChange({ kind: "movement", amount: Math.max(1, Math.min(3, amount)) })}
+        />
+      </div>
+    );
+  }
+  if (bonus.kind === "dice") {
+    return (
+      <div className="mapPresetResourceRow">
+        <ResourceField
+          label="Treasure dice"
+          max={2}
+          value={bonus.treasure}
+          onChange={(treasure) => onChange({ ...bonus, treasure: Math.max(0, Math.min(2, treasure)) })}
+        />
+        <ResourceField
+          label="Resource dice"
+          max={2}
+          value={bonus.resource}
+          onChange={(resource) => onChange({ ...bonus, resource: Math.max(0, Math.min(2, resource)) })}
+        />
+      </div>
+    );
+  }
+  // morale: a fixed single positive token — nothing to configure.
+  return <small className="mapPresetHint">Each visitor gains a single positive morale token.</small>;
 }
 
 function ResourceField({

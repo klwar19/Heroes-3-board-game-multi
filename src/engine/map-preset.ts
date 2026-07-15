@@ -16,7 +16,10 @@ import { locationDefinitions } from "@/data/map/locations";
 import type { TileDefinition } from "@/data/map/types";
 import { seaTileBand, subterraneanTileBand } from "./adventure";
 import { VICTORY_MODE_LABELS } from "./ruleset";
+import { DEFAULT_OBELISK_BONUS } from "./state";
 import type {
+  CustomMapObeliskBonus,
+  CustomMapObeliskConfig,
   CustomMapPreset,
   CustomMapTilePlan,
   CustomStartingUnit,
@@ -103,6 +106,9 @@ const BUILDING_SUFFIXES = new Set([
 
 const SEARCH_DECKS = new Set(["artifacts", "spells", "abilities"]);
 const CUBE_LOCATIONS = new Set(["windmill", "water_wheel", "mystical_garden"]);
+const OBELISK_ROLES = new Set<CustomMapObeliskConfig["role"]>(["monolith", "bonus", "victory-only"]);
+
+export type { CustomMapObeliskBonus, CustomMapObeliskConfig };
 
 /** Storage/editor limit for one designed map. Keep UI and sanitization in lock-step. */
 export const MAX_TIMED_EVENTS = 32;
@@ -235,6 +241,70 @@ function sanitizeStartingBonus(input: unknown): CustomMapStartingBonus | null {
   return null;
 }
 
+/** Sanitize one Obelisk "bonus" reward. Clamps amounts; degenerate → null. */
+function sanitizeObeliskBonus(input: unknown): CustomMapObeliskBonus | null {
+  if (!input || typeof input !== "object") {
+    return null;
+  }
+  const raw = input as { kind?: string } & Record<string, unknown>;
+  if (raw.kind === "morale") {
+    // The card always grants a single positive morale token (amount is fixed).
+    return { kind: "morale", amount: 1 };
+  }
+  if (raw.kind === "search" && typeof raw.deck === "string" && SEARCH_DECKS.has(raw.deck)) {
+    return {
+      kind: "search",
+      deck: raw.deck as "artifacts" | "spells" | "abilities",
+      count: clampInt(raw.count, 1, 3, 1)
+    };
+  }
+  if (raw.kind === "resources") {
+    const gold = clampInt(raw.gold, 0, 5, 0);
+    const buildingMaterials = clampInt(raw.buildingMaterials, 0, 5, 0);
+    const valuables = clampInt(raw.valuables, 0, 5, 0);
+    // All-zero is a no-op reward — drop it (the role falls back to the default).
+    if (gold + buildingMaterials + valuables <= 0) {
+      return null;
+    }
+    return { kind: "resources", gold, buildingMaterials, valuables };
+  }
+  if (raw.kind === "movement") {
+    return { kind: "movement", amount: clampInt(raw.amount, 1, 3, 1) };
+  }
+  if (raw.kind === "dice") {
+    const treasure = clampInt(raw.treasure, 0, 2, 0);
+    const resource = clampInt(raw.resource, 0, 2, 0);
+    // No dice at all is a no-op — drop it (the role falls back to the default).
+    if (treasure + resource <= 0) {
+      return null;
+    }
+    return { kind: "dice", treasure, resource };
+  }
+  return null;
+}
+
+/**
+ * Sanitize the map-wide Obelisk role. Unknown role → undefined (treated as
+ * ABSENT = classic locked-die). Only "bonus" carries a reward; a stray bonus on
+ * "monolith"/"victory-only" is dropped, and a "bonus" role with no/degenerate
+ * bonus falls back to {@link DEFAULT_OBELISK_BONUS} (so the stored config always
+ * spells out the reward the engine will grant).
+ */
+function sanitizeObeliskConfig(input: unknown): CustomMapObeliskConfig | undefined {
+  if (!input || typeof input !== "object") {
+    return undefined;
+  }
+  const raw = input as { role?: unknown; bonus?: unknown };
+  if (typeof raw.role !== "string" || !OBELISK_ROLES.has(raw.role as CustomMapObeliskConfig["role"])) {
+    return undefined;
+  }
+  const role = raw.role as CustomMapObeliskConfig["role"];
+  if (role !== "bonus") {
+    return { role };
+  }
+  return { role, bonus: sanitizeObeliskBonus(raw.bonus) ?? DEFAULT_OBELISK_BONUS };
+}
+
 function sanitizeTimedEffect(input: unknown): CustomMapTimedEffect | null {
   if (!input || typeof input !== "object") {
     return null;
@@ -358,6 +428,12 @@ export function sanitizeCustomMapPreset(input: unknown): CustomMapPreset | undef
       preset.notes = notes;
     }
   }
+  if (raw.obelisks !== undefined) {
+    const obelisks = sanitizeObeliskConfig(raw.obelisks);
+    if (obelisks) {
+      preset.obelisks = obelisks;
+    }
+  }
 
   return customMapPresetIsActive(preset) ? preset : undefined;
 }
@@ -376,7 +452,8 @@ export function customMapPresetIsActive(preset: CustomMapPreset | null | undefin
       (preset.startingBonuses && preset.startingBonuses.length > 0) ||
       (preset.timedEvents && preset.timedEvents.length > 0) ||
       preset.roundLimit ||
-      (preset.notes && preset.notes.length > 0)
+      (preset.notes && preset.notes.length > 0) ||
+      preset.obelisks
   );
 }
 
@@ -420,6 +497,41 @@ function describeBonus(bonus: CustomMapStartingBonus): string {
     return `Search(${bonus.count}) ${bonus.deck}`;
   }
   return bonus.amount > 0 ? "+1 morale" : "−1 morale";
+}
+
+/** Plain-words description of one Obelisk "bonus" reward (designer + summary). */
+export function describeObeliskBonus(bonus: CustomMapObeliskBonus): string {
+  switch (bonus.kind) {
+    case "morale":
+      return "+1 morale";
+    case "search":
+      return `Search(${bonus.count}) ${bonus.deck}`;
+    case "resources":
+      return `+${formatPresetResources(bonus)}`;
+    case "movement":
+      return `+${bonus.amount} movement`;
+    case "dice": {
+      const parts: string[] = [];
+      if (bonus.treasure) {
+        parts.push(`${bonus.treasure} Treasure`);
+      }
+      if (bonus.resource) {
+        parts.push(`${bonus.resource} Resource`);
+      }
+      return `roll ${parts.join(" + ")} ${bonus.treasure + bonus.resource === 1 ? "die" : "dice"}`;
+    }
+  }
+}
+
+/** Plain-words line for the map-wide Obelisk role (lobby banner + designer). */
+export function describeObeliskRole(config: CustomMapObeliskConfig): string {
+  if (config.role === "monolith") {
+    return "Obelisks: Monolith teleport network";
+  }
+  if (config.role === "victory-only") {
+    return "Obelisks: victory marker only (no reward)";
+  }
+  return `Obelisks: fixed bonus — ${describeObeliskBonus(config.bonus ?? DEFAULT_OBELISK_BONUS)}`;
 }
 
 function describeTimedEffect(effect: CustomMapTimedEffect): string {
@@ -508,6 +620,9 @@ export function describeCustomMapPresetEntries(
   }
   if (preset.roundLimit) {
     entries.push({ icon: "🕰️", text: `Suggested length: ${preset.roundLimit} rounds` });
+  }
+  if (preset.obelisks) {
+    entries.push({ icon: "🗿", text: describeObeliskRole(preset.obelisks) });
   }
   if (preset.notes) {
     entries.push({ icon: "📜", text: preset.notes });
@@ -744,3 +859,56 @@ export const MAP_PRESET_BUILDING_OPTIONS: { id: string; label: string }[] = [
 export const MAP_PRESET_VICTORY_OPTIONS: { id: VictoryMode; label: string }[] = (
   Object.keys(VICTORY_MODE_LABELS) as VictoryMode[]
 ).map((id) => ({ id, label: VICTORY_MODE_LABELS[id] }));
+
+/**
+ * Obelisk role picker for the designer. "classic" is the ABSENCE of a config
+ * (the locked-die house rule) — it is NOT a stored enum value; the editor maps
+ * it to `obelisks: undefined`.
+ */
+export const MAP_PRESET_OBELISK_ROLE_OPTIONS: {
+  id: CustomMapObeliskConfig["role"] | "classic";
+  label: string;
+  hint: string;
+}[] = [
+  {
+    id: "classic",
+    label: "Classic (locked die)",
+    hint: "First visitor rolls the Attack die; every visitor then gets that same fixed reward."
+  },
+  {
+    id: "monolith",
+    label: "Monolith teleport",
+    hint: "Every Obelisk joins one shared teleport network with designer Monolith tokens."
+  },
+  { id: "bonus", label: "Fixed bonus", hint: "Each visitor gets the same designer-chosen reward." },
+  {
+    id: "victory-only",
+    label: "Victory marker only",
+    hint: "No reward at all — an Obelisk still counts toward the Holy-Grail dig."
+  }
+];
+
+/** Bonus-kind picker for the "bonus" Obelisk role (editor dropdown order). */
+export const MAP_PRESET_OBELISK_BONUS_KINDS: { id: CustomMapObeliskBonus["kind"]; label: string }[] = [
+  { id: "morale", label: "+1 morale" },
+  { id: "search", label: "Search a deck" },
+  { id: "resources", label: "Resources" },
+  { id: "movement", label: "Movement" },
+  { id: "dice", label: "Treasure / Resource dice" }
+];
+
+/** Fresh default reward when the designer switches the "bonus" role's kind. */
+export function defaultObeliskBonusForKind(kind: CustomMapObeliskBonus["kind"]): CustomMapObeliskBonus {
+  switch (kind) {
+    case "morale":
+      return { kind: "morale", amount: 1 };
+    case "search":
+      return { kind: "search", deck: "artifacts", count: 1 };
+    case "resources":
+      return { kind: "resources", gold: 3, buildingMaterials: 0, valuables: 0 };
+    case "movement":
+      return { kind: "movement", amount: 1 };
+    case "dice":
+      return { kind: "dice", treasure: 1, resource: 0 };
+  }
+}

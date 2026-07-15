@@ -156,4 +156,54 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
 
     expect(screen.getByText(/fires after the suggested 6-round map length/)).toBeTruthy();
   });
+
+  it("Obelisks: selecting a role writes the preset; bonus controls show only for 'bonus'", () => {
+    const onChange = vi.fn();
+    const { rerender } = render(<MapPresetEditor preset={undefined} onChange={onChange} />);
+
+    // Default = Classic → no bonus controls, no obelisks config.
+    expect(screen.queryByLabelText("Obelisk bonus kind")).toBeNull();
+
+    // Monolith teleport → obelisks: { role: "monolith" }.
+    fireEvent.click(screen.getByRole("button", { name: "Monolith teleport" }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ obelisks: { role: "monolith" } })
+    );
+
+    // Fixed bonus → obelisks role "bonus" with the default +1 morale bonus.
+    fireEvent.click(screen.getByRole("button", { name: "Fixed bonus" }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ obelisks: { role: "bonus", bonus: { kind: "morale", amount: 1 } } })
+    );
+
+    // Re-render as a bonus preset: the kind dropdown appears and switching to
+    // resources writes a resources bonus.
+    rerender(
+      <MapPresetEditor
+        preset={{ obelisks: { role: "bonus", bonus: { kind: "morale", amount: 1 } } }}
+        onChange={onChange}
+      />
+    );
+    const kind = screen.getByLabelText("Obelisk bonus kind") as HTMLSelectElement;
+    expect(kind).toBeTruthy();
+    fireEvent.change(kind, { target: { value: "resources" } });
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        obelisks: { role: "bonus", bonus: expect.objectContaining({ kind: "resources" }) }
+      })
+    );
+  });
+
+  it("Obelisks: choosing Classic removes the obelisks config", () => {
+    const onChange = vi.fn();
+    render(<MapPresetEditor preset={{ obelisks: { role: "monolith" } }} onChange={onChange} />);
+    // The only condition was the obelisks role — clearing it collapses to undefined.
+    fireEvent.click(screen.getByRole("button", { name: "Classic (locked die)" }));
+    expect(onChange).toHaveBeenLastCalledWith(undefined);
+  });
+
+  it("Obelisks: the role line shows in the active-conditions summary", () => {
+    render(<MapPresetEditor preset={{ obelisks: { role: "monolith" } }} onChange={() => {}} />);
+    expect(screen.getByText("Obelisks: Monolith teleport network")).toBeTruthy();
+  });
 });
