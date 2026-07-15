@@ -226,6 +226,76 @@ describe("commander casts — shared rules", () => {
     expect(state.combat!.units.unit_p2_skeletons.damage).toBe(2);
   });
 
+  it("a cast that leaves NO reachable attack still lets the commander HOLD (no combat deadlock)", () => {
+    // Regression: a commander that CAST (movement-locked, "may still attack, but
+    // no longer move"), cannot reach any enemy to attack, AND Defended last
+    // activation (the consecutive-Defend ban blocks Defend) was offered ZERO
+    // legal actions — deadlocking the whole combat and stalling the single-player
+    // computer pump (the all-options soak: 3 opp + Impossible + Morale + Events +
+    // WOG Commanders). END_ACTIVATION (hold) must always remain available to a
+    // cast-locked unit, since casting IS its action for the activation.
+    let state = castState("brute");
+    const commanderId = commanderUnitId("p1");
+
+    // Cast first (a friendly target is adjacent at the default layout) — this is
+    // what locks the commander's movement for the activation.
+    state = castOn(state, "brute", "unit_p1_griffins");
+    expect(state.combat!.units[commanderId].movementLockedThisActivation).toBe(true);
+
+    // Now ISOLATE the commander: park every other unit far from cell 9 (its
+    // orthogonal neighbours are 5/8/10/13) so NO melee attack line exists, and
+    // mark it as having Defended last activation so Defend is banned this one.
+    const farCells = [12, 15, 16, 17, 18, 19];
+    let idx = 0;
+    for (const unit of Object.values(state.combat!.units)) {
+      if (unit.id === commanderId) continue;
+      unit.position = farCells[idx % farCells.length];
+      idx += 1;
+    }
+    state.combat!.units[commanderId].defendedLastActivation = true;
+    state.combat!.activeUnitId = commanderId;
+    state.activePlayerId = "p1";
+
+    const commanderActions = getLegalActions(state, "p1").filter((legal) => {
+      const action = legal.action;
+      return (
+        ("unitId" in action && action.unitId === commanderId) ||
+        ("attackerId" in action && action.attackerId === commanderId)
+      );
+    });
+    const types = commanderActions.map((legal) => legal.action.type);
+
+    // The deadlock precondition is real: NO move, NO attack, NO defend…
+    expect(types).not.toContain("MOVE_UNIT");
+    expect(types).not.toContain("MOVE_AND_ATTACK_UNIT");
+    expect(types).not.toContain("ATTACK_UNIT");
+    expect(types).not.toContain("DEFEND_UNIT");
+    // …but the commander can still HOLD — this is the fix (fails without it: the
+    // menu would be empty and the pump would stall).
+    expect(types).toContain("END_ACTIVATION");
+
+    // And the hold really resolves — the activation ends and combat advances.
+    const held = applyAction(state, {
+      type: "END_ACTIVATION",
+      playerId: "p1",
+      unitId: commanderId,
+    });
+    expect(held.errors).toEqual([]);
+    expect(held.state.combat!.units[commanderId].activatedThisRound).toBe(true);
+
+    // CONTROL: the same isolated, cast-locked commander that did NOT Defend last
+    // activation is offered Defend (its ordinary escape) — so the empty menu bit
+    // only when every other option was independently unavailable.
+    state.combat!.units[commanderId].defendedLastActivation = false;
+    const withDefend = getLegalActions(state, "p1")
+      .filter(
+        (legal) =>
+          "unitId" in legal.action && legal.action.unitId === commanderId,
+      )
+      .map((legal) => legal.action.type);
+    expect(withDefend).toContain("DEFEND_UNIT");
+  });
+
   it("is offered only during the commander's OWN activation", () => {
     const state = castState("brute");
     state.combat!.activeUnitId = "unit_p1_marksmen";
