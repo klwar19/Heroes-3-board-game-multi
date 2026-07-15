@@ -15,9 +15,12 @@ import {
 import type { TileDefinition } from "@/data/map/types";
 import {
   hexNeighbors,
+  hexSpaceId,
   hexToPixel,
+  legalGateHexPairs,
   legalTokenSlotsForTileDef,
   mapTokenLabel,
+  parseHexSpaceId,
   pixelToHex,
   planSubterraneanGates,
   scenarioDefinitions,
@@ -28,10 +31,13 @@ import {
   subterraneanTileBand,
   tileCentersOverlap,
   tileFootprint,
+  tileFootprintsTouch,
   tileLatticeNeighbors,
   tileMatchesSecretFeature,
   unreachableUndergroundCenters,
+  type CustomMapGateLink,
   type CustomMapTilePlan,
+  type DesignedGateLinkLike,
   type HexCoord,
   type MapTokenKind,
   type SecretTileFeature
@@ -542,9 +548,35 @@ export function MapDesigner({
     return numbers;
   }, [customMap]);
 
+  // Designer-chosen gate links, decoded from the cavern plans, so the preview
+  // draws the designer's connections (and pinned hexes) exactly as the engine
+  // will carve them — including one cavern linked to several Surface tiles.
+  const designedLinks = useMemo<DesignedGateLinkLike[]>(() => {
+    const links: DesignedGateLinkLike[] = [];
+    for (const plan of customMap) {
+      if (plan.group !== "subterranean" || !plan.gateLinks) {
+        continue;
+      }
+      for (const link of plan.gateLinks) {
+        links.push({
+          surfaceCenter: { row: link.surface.row, col: link.surface.col },
+          cavernCenter: { row: plan.row, col: plan.col },
+          gateHex: link.gateHex ? parseHexSpaceId(link.gateHex) ?? undefined : undefined,
+          entranceHex: link.entranceHex ? parseHexSpaceId(link.entranceHex) ?? undefined : undefined
+        });
+      }
+    }
+    return links;
+  }, [customMap]);
+
   // The Subterranean Gates this layout will carve (same touch rule + one-gate-
-  // per-tile as the engine) and the caverns it leaves with no way in.
-  const plannedGates = useMemo(() => planSubterraneanGates(gatePlacements), [gatePlacements]);
+  // per-tile + designer links as the engine) and the caverns it leaves with no
+  // way in (designer links only ever ADD reachability, so the touch-graph warning
+  // never wrongly fires on a linked cavern).
+  const plannedGates = useMemo(
+    () => planSubterraneanGates(gatePlacements, designedLinks),
+    [gatePlacements, designedLinks]
+  );
   const unreachableCaverns = useMemo(() => unreachableUndergroundCenters(gatePlacements), [gatePlacements]);
   const unreachableKeys = useMemo(
     () => new Set(unreachableCaverns.map((center) => `${center.row}:${center.col}`)),
@@ -654,7 +686,7 @@ export function MapDesigner({
             return plan;
           }
           const next = { ...plan, ...changes };
-          // Explicit `undefined` clears an optional field (secret pin / feature / token).
+          // Explicit `undefined` clears an optional field (secret pin / feature / token / gate links).
           if (changes.tileDefId === undefined && "tileDefId" in changes) {
             delete next.tileDefId;
           }
@@ -663,6 +695,9 @@ export function MapDesigner({
           }
           if (changes.token === undefined && "token" in changes) {
             delete next.token;
+          }
+          if (changes.gateLinks === undefined && "gateLinks" in changes) {
+            delete next.gateLinks;
           }
           return next;
         })
@@ -909,6 +944,96 @@ export function MapDesigner({
 
   const seatNumberOf = (index: number) => startingPlanIndexes.indexOf(index) + 1;
 
+  // --- Designer Subterranean Gate links ------------------------------------
+  // Every Surface tile (or seat) the selected cavern physically touches, so the
+  // designer can toggle a link to any of them (and connect one cavern to several).
+  const selectedCavernSurfaces =
+    selected && selected.group === "subterranean"
+      ? gatePlacements.filter(
+          (tile) =>
+            tile.group !== "subterranean" &&
+            tileFootprintsTouch({ row: selected.row, col: selected.col }, { row: tile.row, col: tile.col })
+        )
+      : [];
+  const isGateLinked = (surface: { row: number; col: number }): boolean =>
+    Boolean(selected?.gateLinks?.some((link) => link.surface.row === surface.row && link.surface.col === surface.col));
+
+  /** Toggle a designer gate link between the selected cavern and a touching Surface tile. */
+  const toggleGateLink = (surface: { row: number; col: number }) => {
+    if (selectedIndex === null || !selected || selected.group !== "subterranean") {
+      return;
+    }
+    const links = selected.gateLinks ?? [];
+    const nextLinks = isGateLinked(surface)
+      ? links.filter((link) => !(link.surface.row === surface.row && link.surface.col === surface.col))
+      : [...links, { surface: { row: surface.row, col: surface.col } }];
+    updateTile(selectedIndex, { gateLinks: nextLinks.length > 0 ? nextLinks : undefined });
+  };
+
+  /**
+   * Slide a designed gate to the next legal boundary hex pair (the non-drag
+   * affordance): pins the link to the pair after its current one — pinned pair,
+   * else the automatic nearest default — so each click walks the gate along the
+   * shared edge.
+   */
+  const cycleGateLinkPosition = (surface: { row: number; col: number }) => {
+    if (selectedIndex === null || !selected || selected.group !== "subterranean") {
+      return;
+    }
+    const cavernCenter = { row: selected.row, col: selected.col };
+    const pairs = legalGateHexPairs(surface, cavernCenter);
+    if (pairs.length === 0) {
+      return;
+    }
+    const link = selected.gateLinks?.find(
+      (candidate) => candidate.surface.row === surface.row && candidate.surface.col === surface.col
+    );
+    const pinnedIndex =
+      link?.gateHex && link?.entranceHex
+        ? pairs.findIndex((pair) => hexSpaceId(pair.gateHex) === link.gateHex && hexSpaceId(pair.entranceHex) === link.entranceHex)
+        : -1;
+    // Unpinned: start from the nearest default the preview shows, so the first
+    // click still visibly MOVES the gate.
+    let currentIndex = pinnedIndex;
+    if (currentIndex < 0) {
+      const [defaultGate] = planSubterraneanGates(
+        [
+          { row: surface.row, col: surface.col, group: "starting" },
+          { row: cavernCenter.row, col: cavernCenter.col, group: "subterranean" }
+        ],
+        []
+      );
+      currentIndex = defaultGate
+        ? Math.max(
+            0,
+            pairs.findIndex(
+              (pair) =>
+                hexSpaceId(pair.gateHex) === hexSpaceId(defaultGate.gateHex) &&
+                hexSpaceId(pair.entranceHex) === hexSpaceId(defaultGate.entranceHex)
+            )
+          )
+        : 0;
+    }
+    const nextPair = pairs[(currentIndex + 1) % pairs.length];
+    const nextLinks: CustomMapGateLink[] = (selected.gateLinks ?? []).map((candidate) =>
+      candidate.surface.row === surface.row && candidate.surface.col === surface.col
+        ? { surface: candidate.surface, gateHex: hexSpaceId(nextPair.gateHex), entranceHex: hexSpaceId(nextPair.entranceHex) }
+        : candidate
+    );
+    updateTile(selectedIndex, { gateLinks: nextLinks });
+  };
+
+  /** Select the cavern that owns a designed gate and open its options popover. */
+  const selectCavernForGate = (cavernCenter: HexCoord, clientX: number, clientY: number) => {
+    const index = customMap.findIndex(
+      (plan) => plan.group === "subterranean" && plan.row === cavernCenter.row && plan.col === cavernCenter.col
+    );
+    if (index >= 0) {
+      setSelectedIndex(index);
+      setPopoverAt({ x: clientX, y: clientY });
+    }
+  };
+
   // --- SVG layers ----------------------------------------------------------
   const artLayer: React.ReactNode[] = [];
   const cellLayer: React.ReactNode[] = [];
@@ -1126,9 +1251,22 @@ export function MapDesigner({
     const entrancePixel = hexToPixel(gate.entranceHex, size);
     const tokenWidth = hexWidth;
     const tokenHeight = 2 * size;
+    // A DESIGNER-chosen gate is drawn distinct from an automatic one — a brighter
+    // link + a pin glyph — and clicking either half selects the cavern that owns
+    // it (so the connect controls / slide button are one click away).
+    const designedClass = gate.designed ? " designed" : "";
+    const gateTitle = gate.designed
+      ? "Designer Subterranean Gate — click to edit its links or slide it along the edge."
+      : "Automatic Subterranean Gate — heroes descend here from the Surface tile.";
+    const onGateClick = gate.designed
+      ? (event: React.MouseEvent) => {
+          event.stopPropagation();
+          selectCavernForGate(gate.cavernCenter, event.clientX, event.clientY);
+        }
+      : undefined;
     gateLayer.push(
       <line
-        className="designerGateLink"
+        className={`designerGateLink${designedClass}`}
         key={`gate-link-${index}`}
         x1={gatePixel.x}
         x2={entrancePixel.x}
@@ -1138,23 +1276,29 @@ export function MapDesigner({
     );
     gateLayer.push(
       <image
+        className={`designerGateToken${designedClass}`}
         height={tokenHeight}
         href={assetUrl(subterraneanGateTokenImage("surface"))}
         key={`gate-surface-${index}`}
+        onClick={onGateClick}
         preserveAspectRatio="none"
+        style={gate.designed ? { cursor: "pointer" } : undefined}
         width={tokenWidth}
         x={gatePixel.x - tokenWidth / 2}
         y={gatePixel.y - size}
       >
-        <title>Subterranean Gate — heroes descend here from the Surface tile.</title>
+        <title>{gateTitle}</title>
       </image>
     );
     gateLayer.push(
       <image
+        className={`designerGateToken${designedClass}`}
         height={tokenHeight}
         href={assetUrl(subterraneanGateTokenImage("subterranean"))}
         key={`gate-entrance-${index}`}
+        onClick={onGateClick}
         preserveAspectRatio="none"
+        style={gate.designed ? { cursor: "pointer" } : undefined}
         width={tokenWidth}
         x={entrancePixel.x - tokenWidth / 2}
         y={entrancePixel.y - size}
@@ -1162,6 +1306,20 @@ export function MapDesigner({
         <title>Subterranean Gate entrance — the cavern side of the crossing.</title>
       </image>
     );
+    if (gate.designed) {
+      // A small lock pin at the link midpoint marks the designer-committed gate.
+      gateLayer.push(
+        <circle
+          className="designerGatePin"
+          cx={(gatePixel.x + entrancePixel.x) / 2}
+          cy={(gatePixel.y + entrancePixel.y) / 2}
+          key={`gate-pin-${index}`}
+          r={Math.max(2, size * 0.3)}
+        >
+          <title>Designer-locked gate</title>
+        </circle>
+      );
+    }
   }
 
   // Monolith/Whirlpool tokens: a face-up tile shows the token on the exact hex
@@ -1789,6 +1947,58 @@ export function MapDesigner({
                         </button>
                       );
                     })}
+                  </div>
+                ) : null}
+
+                {/* Designer Subterranean Gate links — cavern tiles only. */}
+                {selected.group === "subterranean" ? (
+                  <div className="popoverGateLinks">
+                    <div className="popoverSectionLabel">Subterranean gate links</div>
+                    {selectedCavernSurfaces.length === 0 ? (
+                      <small className="popoverHint">
+                        Move this cavern so it touches a Surface tile, then link it here to place a Subterranean Gate.
+                      </small>
+                    ) : (
+                      <>
+                        <small className="popoverHint">
+                          Connect this cavern to any touching Surface tile — link several to give the cavern several gates.
+                          Use ↻ to slide a gate along the shared edge.
+                        </small>
+                        <div className="popoverGateLinkList">
+                          {selectedCavernSurfaces.map((surface) => {
+                            const linked = isGateLinked(surface);
+                            return (
+                              <div className="popoverGateLinkRow" key={`${surface.row}:${surface.col}`}>
+                                <button
+                                  aria-pressed={linked}
+                                  className={`popoverGateLinkToggle${linked ? " linked" : ""}`}
+                                  onClick={() => toggleGateLink(surface)}
+                                  title={
+                                    linked
+                                      ? "Remove this designer gate link"
+                                      : "Connect a Subterranean Gate to this Surface tile"
+                                  }
+                                  type="button"
+                                >
+                                  {linked ? "🔗 Linked" : "Link"} · {TILE_GROUP_LABELS[surface.group]} @ {surface.row},
+                                  {surface.col}
+                                </button>
+                                {linked ? (
+                                  <button
+                                    className="popoverGateLinkCycle"
+                                    onClick={() => cycleGateLinkPosition(surface)}
+                                    title="Slide the gate to the next legal position along the shared edge"
+                                    type="button"
+                                  >
+                                    ↻ Move
+                                  </button>
+                                ) : null}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </>
+                    )}
                   </div>
                 ) : null}
               </>

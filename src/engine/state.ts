@@ -6930,6 +6930,14 @@ export type SubterraneanGatePlan = {
   undergroundTileId: string;
   gateHex?: MapSpaceId;
   entranceHex?: MapSpaceId;
+  /**
+   * A map DESIGNER-committed link (from a cavern's {@link CustomMapGateLink}),
+   * as opposed to a player's pick-on-reveal plan. A designed plan BYPASSES the
+   * one-gate-per-tile guard (so one cavern may host several designer gates), and
+   * the automatic touch-pairing pass never adds another gate to a tile the
+   * designer committed. Absent = a player pick-on-reveal plan (or none).
+   */
+  designed?: boolean;
 };
 
 /**
@@ -8803,6 +8811,35 @@ export type CustomMapTilePlan = {
    * anywhere; Whirlpool numbers (-1/0/+1) are assigned in plan order at setup.
    */
   token?: { kind: "monolith" | "whirlpool"; slot?: number };
+  /**
+   * Designer-chosen Subterranean Gate links — subterranean (cavern) tiles only.
+   * Each entry connects THIS cavern to one touching SURFACE tile (named by its
+   * plan centre row/col) and optionally pins the exact hex each half sacrifices
+   * (absolute board {@link MapSpaceId}, "h:row:col"). Unlike the automatic
+   * one-gate-per-tile pairing, a cavern may carry SEVERAL links — it then hosts
+   * one gate half per linked Surface tile. Where no link is designed the engine's
+   * automatic touch pairing applies unchanged (the compatibility default).
+   *
+   * Pinned hexes are PREFERENCES, honoured at carve time only when legal on the
+   * actually-drawn tiles (else the nearest hex wins). Non-touching / dangling
+   * links are dropped at {@link validateCustomMapPlan}; sanitisation caps the
+   * count and drops malformed entries.
+   */
+  gateLinks?: CustomMapGateLink[];
+};
+
+/**
+ * One designer-committed Subterranean Gate link on a cavern tile: which Surface
+ * tile it connects to (by plan centre) and, optionally, the exact hex each half
+ * sacrifices. See {@link CustomMapTilePlan.gateLinks}.
+ */
+export type CustomMapGateLink = {
+  /** Plan centre (row/col) of the linked Surface tile. */
+  surface: { row: number; col: number };
+  /** Pinned Surface-half ("gate down") hex — absolute id. Omit for the nearest. */
+  gateHex?: MapSpaceId;
+  /** Pinned cavern-half ("path up") hex — absolute id. Omit for the nearest adjacent. */
+  entranceHex?: MapSpaceId;
 };
 
 /**

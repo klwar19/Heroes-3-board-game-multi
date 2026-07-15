@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { MAX_DESIGNED_GATE_LINKS } from "@/engine";
 import {
   clampMapPlayers,
   MAX_STORED_MAPS,
@@ -206,6 +207,53 @@ describe("sanitizeSharedMap", () => {
     expect(record!.tiles[3].token).toEqual({ kind: "monolith" });
     // A malformed band is stripped, not stored.
     expect(record!.tiles[3]).not.toHaveProperty("subBand");
+  });
+
+  it("preserves designer Subterranean Gate links (malformed / non-cavern dropped)", () => {
+    // sanitizeTile rebuilds each plan from an allow-list, so the designed gate
+    // links must be carried explicitly or a saved map silently loses its
+    // designer-chosen underground connections on reload.
+    const record = sanitizeSharedMap(
+      {
+        id: "m",
+        tiles: [
+          {
+            row: 5,
+            col: 5,
+            group: "subterranean",
+            faceDown: true,
+            subBand: "iv-v",
+            gateLinks: [
+              { surface: { row: 4, col: 4 }, gateHex: "h:4:5", entranceHex: "h:5:5" }, // full pin
+              { surface: { row: 6, col: 6 } }, // pairing only
+              { surface: { row: 1.5, col: 2 } }, // non-integer centre → dropped whole
+              { surface: { row: 7, col: 7 }, gateHex: "not-a-hex" }, // bad hex → hex stripped, link kept
+              "junk" // not an object → dropped
+            ]
+          },
+          // gateLinks on a non-cavern tile are meaningless and dropped entirely.
+          { row: 9, col: 9, group: "near", faceDown: true, gateLinks: [{ surface: { row: 8, col: 8 } }] }
+        ]
+      },
+      1
+    );
+    const cavern = record!.tiles[0];
+    expect(cavern.gateLinks).toHaveLength(3);
+    expect(cavern.gateLinks![0]).toEqual({ surface: { row: 4, col: 4 }, gateHex: "h:4:5", entranceHex: "h:5:5" });
+    expect(cavern.gateLinks![1]).toEqual({ surface: { row: 6, col: 6 } });
+    // The malformed hex is stripped but the pairing survives.
+    expect(cavern.gateLinks![2]).toEqual({ surface: { row: 7, col: 7 } });
+    // A near tile keeps no gate links.
+    expect(record!.tiles[1]).not.toHaveProperty("gateLinks");
+  });
+
+  it("caps designer gate links so untrusted input can't balloon", () => {
+    const oversized = Array.from({ length: 12 }, (_, index) => ({ surface: { row: index, col: index } }));
+    const record = sanitizeSharedMap(
+      { id: "m", tiles: [{ row: 5, col: 5, group: "subterranean", faceDown: true, gateLinks: oversized }] },
+      1
+    );
+    expect(record!.tiles[0].gateLinks).toHaveLength(MAX_DESIGNED_GATE_LINKS);
   });
 
   it("falls back to the default scenario when the id is unknown", () => {

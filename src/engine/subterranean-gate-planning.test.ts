@@ -1,12 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
   createAdventureGameState,
+  hexSpaceId,
+  legalGateHexPairs,
   planSubterraneanGates,
   tileCentersAdjacent,
+  tileCentersOverlap,
   tileFootprintsTouch,
   tileLatticeNeighbors,
   unreachableUndergroundCenters,
+  type CustomMapGateLink,
   type CustomMapTilePlan,
+  type DesignedGateLinkLike,
   type GameState,
   type HexCoord,
   type TilePlacementLike
@@ -141,6 +146,158 @@ describe("planSubterraneanGates matches the engine when a Surface tile touches T
       { center: touchingCavern!, group: "subterranean", tileDefId: "U2" }
     ]);
     expect(previewHexes).toEqual(engineHexes);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Designer-chosen gate links: the pure `planSubterraneanGates` preview must
+// match the engine's carve when the design pins pairings / hexes, so the
+// designer draws exactly what the game builds — INCLUDING the 1-cavern↔2-surface
+// case that the automatic one-gate-per-tile pass never produces.
+// ---------------------------------------------------------------------------
+
+type GateLinkTile = { center: HexCoord; group: CustomMapTilePlan["group"]; tileDefId: string; gateLinks?: CustomMapGateLink[] };
+
+/** Build a face-up custom map (with designer gate links) and read the carved gate hexes. */
+function engineGateHexesLinked(tiles: GateLinkTile[]): Set<string> {
+  const customMap: CustomMapTilePlan[] = [
+    { row: 24, col: 12, group: "starting", faceDown: false },
+    ...tiles.map((tile) => ({
+      row: tile.center.row,
+      col: tile.center.col,
+      group: tile.group,
+      faceDown: false,
+      tileDefId: tile.tileDefId,
+      rotation: 0,
+      ...(tile.gateLinks ? { gateLinks: tile.gateLinks } : {})
+    }))
+  ];
+  const state = createAdventureGameState({
+    seed: "gate-plan-designed",
+    difficulty: "normal",
+    rollFirstPlayer: false,
+    customMap,
+    players: [
+      { id: "p1", name: "P1", factionId: "castle", heroDefId: "catherine" },
+      { id: "p2", name: "P2", factionId: "necropolis", heroDefId: "sandro" }
+    ]
+  });
+  if (!state.adventure) {
+    throw new Error("no adventure");
+  }
+  return new Set(
+    Object.values(state.adventure.fields)
+      .filter((field) => field.location === "subterranean_gate")
+      .map((field) => field.spaceId)
+  );
+}
+
+function previewHexes(placements: TilePlacementLike[], links: DesignedGateLinkLike[]): Set<string> {
+  return new Set(
+    planSubterraneanGates(placements, links).flatMap((gate) => [hexSpaceId(gate.gateHex), hexSpaceId(gate.entranceHex)])
+  );
+}
+
+/** A cavern next to `far`, clear of the town, with ≥2 legal boundary pairs. */
+function cavernNextTo(far: HexCoord): HexCoord {
+  const town = { row: 24, col: 12 };
+  const scan: HexCoord[] = [];
+  for (let dRow = -4; dRow <= 4; dRow += 1) {
+    for (let dCol = -4; dCol <= 4; dCol += 1) {
+      const cand = { row: far.row + dRow, col: far.col + dCol };
+      if (tileFootprintsTouch(far, cand) && !tileCentersAdjacent(far, cand)) {
+        scan.push(cand);
+      }
+    }
+  }
+  for (const cand of [...tileLatticeNeighbors(far), ...scan]) {
+    if (cand.row === town.row && cand.col === town.col) {
+      continue;
+    }
+    if (tileCentersOverlap(cand, town) || tileCentersOverlap(cand, far) || tileFootprintsTouch(cand, town)) {
+      continue;
+    }
+    if (legalGateHexPairs(far, cand).length >= 2) {
+      return cand;
+    }
+  }
+  throw new Error("no suitable cavern");
+}
+
+describe("planSubterraneanGates matches the engine with DESIGNER gate links", () => {
+  it("a pinned link carves at the DESIGNED (non-default) hex — preview == engine", () => {
+    const far = tileLatticeNeighbors({ row: 24, col: 12 })[0];
+    const cavern = cavernNextTo(far);
+
+    // The auto default hex (no link), and a legal boundary pair that differs.
+    const autoGateId = hexSpaceId(
+      planSubterraneanGates([
+        { row: 24, col: 12, group: "starting" },
+        { row: far.row, col: far.col, group: "far" },
+        { row: cavern.row, col: cavern.col, group: "subterranean" }
+      ])[0].gateHex
+    );
+    const pinned = legalGateHexPairs(far, cavern).find((pair) => hexSpaceId(pair.gateHex) !== autoGateId)!;
+    const gateHexId = hexSpaceId(pinned.gateHex);
+    const entranceHexId = hexSpaceId(pinned.entranceHex);
+
+    const links: DesignedGateLinkLike[] = [
+      { surfaceCenter: far, cavernCenter: cavern, gateHex: pinned.gateHex, entranceHex: pinned.entranceHex }
+    ];
+    const preview = previewHexes(
+      [
+        { row: 24, col: 12, group: "starting" },
+        { row: far.row, col: far.col, group: "far" },
+        { row: cavern.row, col: cavern.col, group: "subterranean" }
+      ],
+      links
+    );
+    const engine = engineGateHexesLinked([
+      { center: far, group: "far", tileDefId: "F1" },
+      {
+        center: cavern,
+        group: "subterranean",
+        tileDefId: "U1",
+        gateLinks: [{ surface: { row: far.row, col: far.col }, gateHex: gateHexId, entranceHex: entranceHexId }]
+      }
+    ]);
+    expect(engine.size).toBe(2);
+    expect(preview).toEqual(engine);
+    // The pin actually moved the gate off the auto default (mutation check).
+    expect(preview.has(gateHexId)).toBe(true);
+    expect(preview.has(autoGateId)).toBe(false);
+  });
+
+  it("one cavern linked to TWO Surface tiles: both gates — preview == engine (4 hexes)", () => {
+    // Anchor the cluster clear of the helper's fixed starting tile at 24,12.
+    const cavern = { row: 34, col: 20 };
+    const [surfA, surfB] = tileLatticeNeighbors(cavern);
+    expect(tileFootprintsTouch(cavern, { row: 24, col: 12 })).toBe(false);
+    expect(tileFootprintsTouch(cavern, surfA) && tileFootprintsTouch(cavern, surfB)).toBe(true);
+
+    const links: DesignedGateLinkLike[] = [
+      { surfaceCenter: surfA, cavernCenter: cavern },
+      { surfaceCenter: surfB, cavernCenter: cavern }
+    ];
+    const placements: TilePlacementLike[] = [
+      { row: surfA.row, col: surfA.col, group: "far" },
+      { row: surfB.row, col: surfB.col, group: "far" },
+      { row: cavern.row, col: cavern.col, group: "subterranean" }
+    ];
+    const preview = previewHexes(placements, links);
+
+    const cavernGateLinks: CustomMapGateLink[] = [
+      { surface: { row: surfA.row, col: surfA.col } },
+      { surface: { row: surfB.row, col: surfB.col } }
+    ];
+    const engine = engineGateHexesLinked([
+      { center: surfA, group: "far", tileDefId: "F1" },
+      { center: surfB, group: "far", tileDefId: "F2" },
+      { center: cavern, group: "subterranean", tileDefId: "U1", gateLinks: cavernGateLinks }
+    ]);
+    // Two full gates → four distinct sacrificed hexes.
+    expect(engine.size).toBe(4);
+    expect(preview).toEqual(engine);
   });
 });
 

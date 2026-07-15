@@ -5861,9 +5861,15 @@ function ensureSubterraneanGate(
   // further underground neighbours just stay sealed behind the impassable layer
   // divide. (Skipping the whole pair, not just one half, avoids leaving a dead
   // gate field with no crossable partner.)
+  //
+  // A DESIGNER-committed link BYPASSES the cap: the designer explicitly owns this
+  // tile's gating, so a cavern linked to several Surface tiles hosts one half per
+  // link (each on a distinct hex — `gateMayCoverField` refuses an already-carved
+  // gate hex, so a collision just drops the extra half rather than double-booking).
   if (
-    (!surfaceHalf && tileHasGateTowardOther(adventure, surface, subterranean.id)) ||
-    (!undergroundHalf && tileHasGateTowardOther(adventure, subterranean, surface.id))
+    !plan?.designed &&
+    ((!surfaceHalf && tileHasGateTowardOther(adventure, surface, subterranean.id)) ||
+      (!undergroundHalf && tileHasGateTowardOther(adventure, subterranean, surface.id)))
   ) {
     return;
   }
@@ -5919,16 +5925,23 @@ function ensureSubterraneanGate(
  */
 export function recomputeSubterraneanGates(adventure: AdventureState): void {
   const plans = adventure.gatePlans ?? [];
-  // A tile named in a plan is COMMITTED to its plan partner: it can gate with
-  // that partner alone, so the auto pass never pairs it with anyone else.
-  const committedPartner = new Map<string, string>();
+  // A tile named in a plan is COMMITTED to its plan partner(s): it can gate with
+  // those partners alone, so the auto pass never pairs it with anyone else. A
+  // player pick-on-reveal plan commits a tile to exactly one partner; a DESIGNER
+  // link may commit one cavern to SEVERAL Surface tiles, so the commitment is a
+  // Set, not a single partner.
+  const committedPartner = new Map<string, Set<string>>();
+  const commit = (tileId: string, partnerId: string): void => {
+    (committedPartner.get(tileId) ?? committedPartner.set(tileId, new Set()).get(tileId)!).add(partnerId);
+  };
   for (const plan of plans) {
-    committedPartner.set(plan.surfaceTileId, plan.undergroundTileId);
-    committedPartner.set(plan.undergroundTileId, plan.surfaceTileId);
+    commit(plan.surfaceTileId, plan.undergroundTileId);
+    commit(plan.undergroundTileId, plan.surfaceTileId);
   }
 
-  // 1) Carve the player-chosen (planned) pairs first, at their chosen hexes, so a
-  //    committed pairing always wins the one-gate-per-tile race.
+  // 1) Carve the committed (planned) pairs first, at their chosen hexes, so a
+  //    committed pairing always wins the one-gate-per-tile race — and a designed
+  //    link's extra halves are carved before the auto pass touches anything.
   for (const plan of plans) {
     const surface = adventure.tiles[plan.surfaceTileId];
     const subterranean = adventure.tiles[plan.undergroundTileId];
@@ -5937,7 +5950,9 @@ export function recomputeSubterraneanGates(adventure: AdventureState): void {
     }
   }
 
-  // 2) Auto pass for every uncommitted touching pair.
+  // 2) Auto pass for every uncommitted touching pair. A tile with ANY commitment
+  //    (player OR designer) is skipped — the designer who links a cavern owns its
+  //    gating, and a player who chose a pairing keeps it.
   const tiles = Object.values(adventure.tiles);
   const surfaces = tiles.filter((tile) => tileLayer(tile) === "surface");
   const caverns = tiles.filter((tile) => tileLayer(tile) === "subterranean");
@@ -5987,13 +6002,16 @@ export function recomputeSubterraneanGates(adventure: AdventureState): void {
  * never touched. Used after the plan/auto passes so a player who re-routes a
  * cavern's connection to another Surface tile leaves no orphan gate behind.
  */
-function removeOrphanGateHalves(adventure: AdventureState, committedPartner: Map<string, string>): void {
+function removeOrphanGateHalves(adventure: AdventureState, committedPartner: Map<string, Set<string>>): void {
   for (const field of Object.values(adventure.fields)) {
     if (field.location !== "subterranean_gate" || field.gateLinkSpaceId || !field.gateToTileId) {
       continue;
     }
+    // The partner tile this half points at has committed to a set of partners; if
+    // that set is non-empty and does NOT include this half's own tile, the half
+    // leads nowhere (the partner picked other connections) — revert it to land.
     const partnerCommittedTo = committedPartner.get(field.gateToTileId);
-    if (partnerCommittedTo && partnerCommittedTo !== field.tileInstanceId) {
+    if (partnerCommittedTo && partnerCommittedTo.size > 0 && !partnerCommittedTo.has(field.tileInstanceId)) {
       field.location = "empty_field";
       delete field.gateToTileId;
       delete field.gateLinkSpaceId;
@@ -6037,10 +6055,17 @@ export function planGateChoiceForReveal(
   // the surface layer), matching how recomputeSubterraneanGates pairs them, so a
   // choice is only ever offered for what the carve would actually produce.
   const revealedLayer = tileLayer(revealedTile);
-  const committedPartner = new Map<string, string>();
-  for (const plan of adventure.gatePlans ?? []) {
-    committedPartner.set(plan.surfaceTileId, plan.undergroundTileId);
-    committedPartner.set(plan.undergroundTileId, plan.surfaceTileId);
+  const plans = adventure.gatePlans ?? [];
+  // A tile may be committed to SEVERAL partners (a designer cavern linked to two
+  // Surface tiles); the commitment is a Set, so a reveal is restricted to any of
+  // its designed partners rather than a single one.
+  const committedPartner = new Map<string, Set<string>>();
+  const commit = (tileId: string, partnerId: string): void => {
+    (committedPartner.get(tileId) ?? committedPartner.set(tileId, new Set()).get(tileId)!).add(partnerId);
+  };
+  for (const plan of plans) {
+    commit(plan.surfaceTileId, plan.undergroundTileId);
+    commit(plan.undergroundTileId, plan.surfaceTileId);
   }
   const revealedCommittedTo = committedPartner.get(revealedTile.id);
 
@@ -6053,12 +6078,27 @@ export function planGateChoiceForReveal(
     if (!tileFootprintsTouch(revealedCenter, { row: other.centerRow, col: other.centerCol })) {
       continue;
     }
-    // Respect existing commitments: a committed tile only pairs with its partner.
-    if (revealedCommittedTo && revealedCommittedTo !== other.id) {
+    // Respect existing commitments: a committed tile only pairs with a partner it
+    // is committed to.
+    if (revealedCommittedTo && !revealedCommittedTo.has(other.id)) {
       continue;
     }
     const otherCommittedTo = committedPartner.get(other.id);
-    if (otherCommittedTo && otherCommittedTo !== revealedTile.id) {
+    if (otherCommittedTo && !otherCommittedTo.has(revealedTile.id)) {
+      continue;
+    }
+    const surfaceTileId = revealedLayer === "surface" ? revealedTile.id : other.id;
+    const undergroundTileId = revealedLayer === "surface" ? other.id : revealedTile.id;
+    const role: "gate" | "entrance" = revealedLayer === "surface" ? "gate" : "entrance";
+    // A DESIGNER link that already pins THIS half's hex is the designer's decision,
+    // not a player choice: skip it so no pick-on-reveal choice opens — the auto
+    // carve then honours the pinned hex (`recomputeSubterraneanGates` reads the
+    // plan). A designed pairing whose hex is UNPINNED still offers the hexes below,
+    // but the commitment filter above already constrains it to the designed partner.
+    const designedPlan = plans.find(
+      (plan) => plan.designed && plan.surfaceTileId === surfaceTileId && plan.undergroundTileId === undergroundTileId
+    );
+    if (designedPlan && (role === "gate" ? designedPlan.gateHex : designedPlan.entranceHex)) {
       continue;
     }
     // The partner's own half toward us, if it already exists (auto or chosen).
@@ -6066,9 +6106,6 @@ export function planGateChoiceForReveal(
     const hexes = otherHalf
       ? adjacentGateHexCandidates(adventure, revealedTile, otherHalf.spaceId)
       : anchorGateHexCandidates(adventure, revealedTile, other);
-    const surfaceTileId = revealedLayer === "surface" ? revealedTile.id : other.id;
-    const undergroundTileId = revealedLayer === "surface" ? other.id : revealedTile.id;
-    const role: "gate" | "entrance" = revealedLayer === "surface" ? "gate" : "entrance";
     for (const hex of hexes) {
       candidates.push({ surfaceTileId, undergroundTileId, hex, role });
     }
@@ -6112,6 +6149,25 @@ export type PlannedSubterraneanGate = {
   gateHex: HexCoord;
   /** The sacrificed hex on the Subterranean tile (the entrance half), edge-adjacent to `gateHex`. */
   entranceHex: HexCoord;
+  /**
+   * True when this gate comes from a DESIGNER link (a {@link CustomMapGateLink}),
+   * false when it is the automatic touch pairing. Lets the designer render the
+   * two visually distinct. Never affects the carved hexes.
+   */
+  designed: boolean;
+};
+
+/**
+ * A designer-chosen gate link expressed in bare coordinates (what the pure
+ * {@link planSubterraneanGates} preview consumes): which Surface / cavern centres
+ * it joins, and optionally the exact hex each half sacrifices. Mirrors a cavern's
+ * {@link CustomMapGateLink} with the hexes decoded to {@link HexCoord}s.
+ */
+export type DesignedGateLinkLike = {
+  surfaceCenter: HexCoord;
+  cavernCenter: HexCoord;
+  gateHex?: HexCoord;
+  entranceHex?: HexCoord;
 };
 
 const isCavernPlacement = (tile: TilePlacementLike): boolean => tile.group === "subterranean";
@@ -6125,12 +6181,15 @@ const isCavernPlacement = (tile: TilePlacementLike): boolean => tile.group === "
 function pickTouchingRingHex(
   center: HexCoord,
   towardCenter: HexCoord,
-  predicate: (hex: HexCoord) => boolean
+  predicate: (hex: HexCoord) => boolean,
+  forbidden?: ReadonlySet<string>
 ): HexCoord | null {
   let best: HexCoord | null = null;
   let bestDistance = Number.POSITIVE_INFINITY;
   for (const hex of tileFootprint(center, 0).slice(1)) {
-    if (!predicate(hex)) {
+    // Each gate half needs its own hex: a hex already carved by another half (a
+    // multi-link cavern) is off-limits, mirroring the engine's `gateMayCoverField`.
+    if (forbidden?.has(hexSpaceId(hex)) || !predicate(hex)) {
       continue;
     }
     const distance = hexDistance(hex, towardCenter);
@@ -6142,20 +6201,81 @@ function pickTouchingRingHex(
   return best;
 }
 
-/** The gate + entrance hexes for a touching Surface/Subterranean pair, or null. */
-function planGateHexes(surfaceCenter: HexCoord, cavernCenter: HexCoord): { gateHex: HexCoord; entranceHex: HexCoord } | null {
+/**
+ * The gate + entrance hexes for a touching Surface/Subterranean pair, or null.
+ * `pinned` hexes are honoured when legal (a touching gate hex / an adjacent
+ * entrance hex not already used) — the same "preference, else nearest" rule the
+ * engine's `chooseAnchorGateHex` / `chooseAdjacentGateHex` apply; `forbidden`
+ * holds hexes earlier halves already claimed.
+ */
+function planGateHexes(
+  surfaceCenter: HexCoord,
+  cavernCenter: HexCoord,
+  options: { pinnedGate?: HexCoord; pinnedEntrance?: HexCoord; forbidden?: ReadonlySet<string> } = {}
+): { gateHex: HexCoord; entranceHex: HexCoord } | null {
+  const { pinnedGate, pinnedEntrance, forbidden } = options;
   const cavernHexes = new Set(tileFootprint(cavernCenter, 0).map(hexSpaceId));
-  const gateHex = pickTouchingRingHex(surfaceCenter, cavernCenter, (hex) =>
-    hexNeighbors(hex).some((neighbor) => cavernHexes.has(hexSpaceId(neighbor)))
-  );
+  const surfaceRing = new Set(tileFootprint(surfaceCenter, 0).slice(1).map(hexSpaceId));
+  const cavernRing = new Set(tileFootprint(cavernCenter, 0).slice(1).map(hexSpaceId));
+  // A pinned gate hex is honoured only when it is a genuine ring hex of the
+  // Surface tile that touches the cavern and is still free — else the nearest
+  // legal hex wins (the engine's chooseAnchorGateHex fallback).
+  const pinnedGateLegal =
+    pinnedGate &&
+    surfaceRing.has(hexSpaceId(pinnedGate)) &&
+    !forbidden?.has(hexSpaceId(pinnedGate)) &&
+    hexNeighbors(pinnedGate).some((neighbor) => cavernHexes.has(hexSpaceId(neighbor)));
+  const gateHex = pinnedGateLegal
+    ? pinnedGate
+    : pickTouchingRingHex(
+        surfaceCenter,
+        cavernCenter,
+        (hex) => hexNeighbors(hex).some((neighbor) => cavernHexes.has(hexSpaceId(neighbor))),
+        forbidden
+      );
   if (!gateHex) {
     return null;
   }
-  const entranceHex = pickTouchingRingHex(cavernCenter, gateHex, (hex) => hexDistance(hex, gateHex) === 1);
+  const pinnedEntranceLegal =
+    pinnedEntrance &&
+    cavernRing.has(hexSpaceId(pinnedEntrance)) &&
+    !forbidden?.has(hexSpaceId(pinnedEntrance)) &&
+    hexDistance(pinnedEntrance, gateHex) === 1;
+  const entranceHex = pinnedEntranceLegal
+    ? pinnedEntrance
+    : pickTouchingRingHex(cavernCenter, gateHex, (hex) => hexDistance(hex, gateHex) === 1, forbidden);
   if (!entranceHex) {
     return null;
   }
   return { gateHex, entranceHex };
+}
+
+/**
+ * Every legal (surface gate hex ↔ adjacent cavern entrance hex) pair along the
+ * shared boundary of a touching Surface/cavern pair — the positions a designer
+ * may slide a gate token through. Deterministically ordered (gate hex id, then
+ * entrance hex id) so a "cycle to the next position" affordance is stable.
+ */
+export function legalGateHexPairs(surfaceCenter: HexCoord, cavernCenter: HexCoord): { gateHex: HexCoord; entranceHex: HexCoord }[] {
+  const cavernHexes = tileFootprint(cavernCenter, 0).slice(1);
+  const cavernHexIds = new Set(tileFootprint(cavernCenter, 0).map(hexSpaceId));
+  const pairs: { gateHex: HexCoord; entranceHex: HexCoord }[] = [];
+  for (const gateHex of tileFootprint(surfaceCenter, 0).slice(1)) {
+    if (!hexNeighbors(gateHex).some((neighbor) => cavernHexIds.has(hexSpaceId(neighbor)))) {
+      continue;
+    }
+    for (const entranceHex of cavernHexes) {
+      if (hexDistance(entranceHex, gateHex) === 1) {
+        pairs.push({ gateHex, entranceHex });
+      }
+    }
+  }
+  pairs.sort(
+    (left, right) =>
+      hexSpaceId(left.gateHex).localeCompare(hexSpaceId(right.gateHex)) ||
+      hexSpaceId(left.entranceHex).localeCompare(hexSpaceId(right.entranceHex))
+  );
+  return pairs;
 }
 
 /**
@@ -6166,13 +6286,61 @@ function planGateHexes(surfaceCenter: HexCoord, cavernCenter: HexCoord): { gateH
  * caverns before any AdventureState exists. A Surface tile and a Subterranean
  * tile each host at most one gate; gapless interlocking pairs are matched first.
  */
-export function planSubterraneanGates(tiles: ReadonlyArray<TilePlacementLike>): PlannedSubterraneanGate[] {
+export function planSubterraneanGates(
+  tiles: ReadonlyArray<TilePlacementLike>,
+  designedLinks: ReadonlyArray<DesignedGateLinkLike> = []
+): PlannedSubterraneanGate[] {
   const surfaces = tiles.filter((tile) => !isCavernPlacement(tile));
   const caverns = tiles.filter(isCavernPlacement);
+  const key = (coord: { row: number; col: number }): string => `${coord.row}:${coord.col}`;
+  const findAt = (list: TilePlacementLike[], coord: HexCoord): TilePlacementLike | undefined =>
+    list.find((tile) => tile.row === coord.row && tile.col === coord.col);
+
+  // Each gate half needs its own hex, so a multi-link cavern's second entrance
+  // must dodge the first — mirrors the engine's global `gateMayCoverField`.
+  const usedHexes = new Set<string>();
+  // A tile named by a designer link is committed and skipped by the auto pass.
+  const committed = new Set<string>();
+  const gates: PlannedSubterraneanGate[] = [];
+
+  // 1) Designer links first — in order, at their pinned (or nearest) hexes, so a
+  //    cavern linked to several Surface tiles hosts one half per link, bypassing
+  //    one-gate-per-tile. Same order/assignment as `recomputeSubterraneanGates`.
+  for (const link of designedLinks) {
+    const surface = findAt(surfaces, link.surfaceCenter);
+    const cavern = findAt(caverns, link.cavernCenter);
+    if (!surface || !cavern || !tileFootprintsTouch(surface, cavern)) {
+      continue;
+    }
+    committed.add(key(surface));
+    committed.add(key(cavern));
+    const hexes = planGateHexes(surface, cavern, {
+      pinnedGate: link.gateHex,
+      pinnedEntrance: link.entranceHex,
+      forbidden: usedHexes
+    });
+    if (!hexes) {
+      continue;
+    }
+    usedHexes.add(hexSpaceId(hexes.gateHex));
+    usedHexes.add(hexSpaceId(hexes.entranceHex));
+    gates.push({
+      surfaceCenter: { row: surface.row, col: surface.col },
+      cavernCenter: { row: cavern.row, col: cavern.col },
+      designed: true,
+      ...hexes
+    });
+  }
+
+  // 2) Auto pass for every uncommitted touching pair (a committed tile is fully
+  //    the designer's).
   const pairs: { surface: TilePlacementLike; cavern: TilePlacementLike; interlocking: boolean }[] = [];
   for (const surface of surfaces) {
+    if (committed.has(key(surface))) {
+      continue;
+    }
     for (const cavern of caverns) {
-      if (!tileFootprintsTouch(surface, cavern)) {
+      if (committed.has(key(cavern)) || !tileFootprintsTouch(surface, cavern)) {
         continue;
       }
       pairs.push({ surface, cavern, interlocking: tileCentersAdjacent(surface, cavern) });
@@ -6187,23 +6355,24 @@ export function planSubterraneanGates(tiles: ReadonlyArray<TilePlacementLike>): 
       left.cavern.col - right.cavern.col
   );
 
-  const key = (tile: TilePlacementLike): string => `${tile.row}:${tile.col}`;
   const usedSurface = new Set<string>();
   const usedCavern = new Set<string>();
-  const gates: PlannedSubterraneanGate[] = [];
   for (const pair of pairs) {
     if (usedSurface.has(key(pair.surface)) || usedCavern.has(key(pair.cavern))) {
       continue;
     }
-    const hexes = planGateHexes(pair.surface, pair.cavern);
+    const hexes = planGateHexes(pair.surface, pair.cavern, { forbidden: usedHexes });
     if (!hexes) {
       continue;
     }
     usedSurface.add(key(pair.surface));
     usedCavern.add(key(pair.cavern));
+    usedHexes.add(hexSpaceId(hexes.gateHex));
+    usedHexes.add(hexSpaceId(hexes.entranceHex));
     gates.push({
       surfaceCenter: { row: pair.surface.row, col: pair.surface.col },
       cavernCenter: { row: pair.cavern.row, col: pair.cavern.col },
+      designed: false,
       ...hexes
     });
   }
