@@ -191,6 +191,18 @@ export type LocationInteraction =
       token: "monolith" | "whirlpool";
     }
   | {
+      /**
+       * Colored Gate (map-designer objects, rulebook p.83 two-way monoliths):
+       * entering the field moves the hero to THE OTHER gate of the SAME colored
+       * pair (1 = red, 2 = blue, 3 = green, 4 = yellow). Always that exact
+       * partner — never a choice, never another pair, and never joining the
+       * Monolith/Whirlpool network. The pair is stored on the field
+       * (`MapFieldState.gatePair`), so the one location serves all four pairs. A
+       * pair with only one gate placed does nothing.
+       */
+      type: "GATE_TELEPORT";
+    }
+  | {
       /** Pandora's Box: draw the top card of the Pandora deck into hand. */
       type: "DRAW_PANDORA_CARD";
     }

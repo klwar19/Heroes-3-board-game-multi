@@ -12353,6 +12353,121 @@ img.cardBack {
   font-size: 12px;
   line-height: 1.45;
 }
+.designerObjectAlert[role="status"] {
+  border-color: rgba(224, 185, 60, 0.7);
+  background: rgba(120, 92, 20, 0.24);
+  color: #ffe9b8;
+}
+
+/* --- Map designer: one-hex objects (Monolith/Whirlpool + colored Gates) ----- */
+.designerObjectPalette {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+.designerObjectPaletteRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.designerObjectButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 9px;
+  border: 2px solid rgba(201, 162, 75, 0.55);
+  border-radius: 8px;
+  background: rgba(24, 18, 10, 0.6);
+  color: #f3e7c8;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.designerObjectButton.armed {
+  outline: 2px solid #ffe9a8;
+  box-shadow: 0 0 10px rgba(255, 233, 168, 0.55);
+}
+.designerObjectSwatch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  color: #120c06;
+  font-size: 11px;
+  font-weight: 800;
+}
+.designerObjectCount {
+  opacity: 0.85;
+  font-size: 11px;
+}
+/* Glowing candidate cells while an object is armed. */
+.designerObjectSlot {
+  fill: rgba(255, 233, 168, 0.28);
+  stroke: #ffe9a8;
+  stroke-width: 1.5px;
+  cursor: pointer;
+}
+.designerObjectSlot:hover {
+  fill: rgba(255, 233, 168, 0.5);
+}
+.designerObjectSlot.standalone {
+  fill: rgba(120, 200, 255, 0.24);
+  stroke: #8fd0ff;
+  stroke-dasharray: 3 2;
+}
+/* Placed object tokens. */
+.designerObjectToken {
+  cursor: pointer;
+}
+.designerObjectRing {
+  fill: rgba(12, 8, 4, 0.5);
+  stroke-width: 3px;
+}
+.designerObjectToken.selected .designerObjectRing {
+  stroke-width: 4px;
+  filter: drop-shadow(0 0 4px currentColor);
+}
+.designerObjectPair {
+  font-size: 20px;
+  font-weight: 800;
+  paint-order: stroke;
+  stroke: rgba(0, 0, 0, 0.75);
+  stroke-width: 2.6px;
+  pointer-events: none;
+}
+.designerObjectGuard {
+  fill: #ffd2cc;
+  font-size: 11px;
+  font-weight: 700;
+  paint-order: stroke;
+  stroke: rgba(0, 0, 0, 0.8);
+  stroke-width: 2.4px;
+  pointer-events: none;
+}
+.popoverObjectGuards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 4px 0 8px;
+}
+.popoverGuardChip {
+  min-width: 30px;
+  padding: 3px 6px;
+  border: 1px solid rgba(201, 162, 75, 0.5);
+  border-radius: 6px;
+  background: rgba(24, 18, 10, 0.55);
+  color: #f3e7c8;
+  font-size: 11px;
+  cursor: pointer;
+}
+.popoverGuardChip.active {
+  border-color: #ffe9a8;
+  background: rgba(120, 92, 20, 0.5);
+  color: #ffe9b8;
+}
 
 .designerStartLabel {
   fill: #f3e7c8;

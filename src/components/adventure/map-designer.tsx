@@ -14,6 +14,7 @@ import {
 } from "@/data/assets/homm-assets";
 import type { TileDefinition } from "@/data/map/types";
 import {
+  gatePairColor,
   hexNeighbors,
   hexSpaceId,
   hexToPixel,
@@ -35,7 +36,10 @@ import {
   tileLatticeNeighbors,
   tileMatchesSecretFeature,
   unreachableUndergroundCenters,
+  validateCustomMapObjects,
   type CustomMapGateLink,
+  type CustomMapObject,
+  type CustomMapObjectKind,
   type CustomMapTilePlan,
   type DesignedGateLinkLike,
   type HexCoord,
@@ -437,6 +441,25 @@ type DesignDrag =
   | { kind: "palette"; group: DesignGroup; seaBand?: SeaBand; subBand?: SubBand; clientX: number; clientY: number }
   | { kind: "move"; index: number; group: DesignGroup; seaBand?: SeaBand; subBand?: SubBand; clientX: number; clientY: number };
 
+/** Stable empty default so the `objects` prop never re-mounts on every render. */
+const EMPTY_OBJECTS: CustomMapObject[] = [];
+
+/** The four colored Gate pairs offered in the Objects palette (1 = red … 4 = yellow). */
+const GATE_PAIRS: (1 | 2 | 3 | 4)[] = [1, 2, 3, 4];
+
+/** Guard-difficulty picks for a placed object (0 = no guard, 1-7 = Ⅰ-Ⅶ). */
+const OBJECT_GUARD_LEVELS = [0, 1, 2, 3, 4, 5, 6, 7] as const;
+
+const ROMAN_NUMERALS = ["", "Ⅰ", "Ⅱ", "Ⅲ", "Ⅳ", "Ⅴ", "Ⅵ", "Ⅶ"];
+
+/** A CSS colour for each Gate pair (matches {@link gatePairColor}). */
+const GATE_PAIR_CSS: Record<1 | 2 | 3 | 4, string> = {
+  1: "#e0483c",
+  2: "#3d7fe0",
+  3: "#3caf52",
+  4: "#e0b93c"
+};
+
 /**
  * Map designer board: a real hex-grid view of the scenario. Pan by dragging the
  * empty background, zoom with the wheel (when unlocked), pinch, or toolbar —
@@ -449,11 +472,17 @@ export function MapDesigner({
   scenarioId,
   customMap,
   onChange,
+  objects = EMPTY_OBJECTS,
+  onObjectsChange,
   hexSize = DESIGN_HEX
 }: {
   scenarioId: string;
   customMap: CustomMapTilePlan[];
   onChange: (next: CustomMapTilePlan[]) => void;
+  /** Designer one-hex objects (Monolith/Whirlpool tokens + colored Gate pairs). */
+  objects?: CustomMapObject[];
+  /** Persist an edited object list (lives on the map PRESET, held by the page). */
+  onObjectsChange?: (next: CustomMapObject[]) => void;
   hexSize?: number;
 }) {
   const scenario = scenarioDefinitions[scenarioId];
@@ -500,6 +529,14 @@ export function MapDesigner({
   // Touch pinch (zoom + two-finger pan) — same pure math as the adventure map.
   const pointersRef = useRef(new Map<number, { x: number; y: number }>());
   const pinchRef = useRef<{ aId: number; bId: number; start: PinchStart } | null>(null);
+
+  // --- Designer objects (Monolith/Whirlpool tokens + colored Gate pairs) ------
+  // Click-to-arm placement: arm a kind from the Objects palette, then click a
+  // legal candidate cell (a face-up tile slot → tile-slot object, an off-tile
+  // empty hex → standalone). A placed object opens its own popover (guard/delete).
+  const [armedObject, setArmedObject] = useState<{ kind: CustomMapObjectKind; pair?: 1 | 2 | 3 | 4 } | null>(null);
+  const [selectedObjectIndex, setSelectedObjectIndex] = useState<number | null>(null);
+  const [objectPopoverAt, setObjectPopoverAt] = useState<{ x: number; y: number } | null>(null);
 
   const starts = useMemo<HexCoord[]>(
     () => (scenario ? scenario.layout.starts.map((start) => ({ ...start })) : []),
@@ -764,6 +801,142 @@ export function MapDesigner({
       closePopover();
     },
     [customMap, onChange, closePopover]
+  );
+
+  // --- Designer object geometry + edit helpers -------------------------------
+  /** The board hex a placed object sits on (tile-slot honours the tile rotation). */
+  const objectHexOf = useCallback(
+    (object: CustomMapObject): string => {
+      if (object.placement.type === "standalone") {
+        return hexSpaceId({ row: object.placement.row, col: object.placement.col });
+      }
+      const plan = customMap.find((p) => p.row === object.placement.row && p.col === object.placement.col);
+      const footprint = tileFootprint({ row: object.placement.row, col: object.placement.col }, plan?.rotation ?? 0);
+      return hexSpaceId(footprint[object.placement.slot] ?? footprint[0]);
+    },
+    [customMap]
+  );
+  const objectHexSet = useMemo(() => new Set(objects.map(objectHexOf)), [objects, objectHexOf]);
+  const objectValidation = useMemo(
+    () => validateCustomMapObjects(customMap, objects, starts),
+    [customMap, objects, starts]
+  );
+  const gatePairPlaced = useMemo(() => {
+    const counts: Record<number, number> = {};
+    for (const object of objects) {
+      if (object.kind === "gate" && object.pair !== undefined) {
+        counts[object.pair] = (counts[object.pair] ?? 0) + 1;
+      }
+    }
+    return counts;
+  }, [objects]);
+  /** Every tile footprint hex (rotation-invariant) — for standalone candidates. */
+  const occupiedTileHexes = useMemo(() => {
+    const set = new Set<string>();
+    for (const plan of customMap) {
+      for (const cell of tileFootprint({ row: plan.row, col: plan.col }, 0)) {
+        set.add(hexSpaceId(cell));
+      }
+    }
+    return set;
+  }, [customMap]);
+  /** Legal FACE-UP tile-slot cells for the armed kind (a Gate uses land legality). */
+  const tileSlotCandidates = useMemo(() => {
+    if (!armedObject) {
+      return [] as { hex: HexCoord; row: number; col: number; slot: number }[];
+    }
+    const legalKind: MapTokenKind = armedObject.kind === "gate" ? "monolith" : armedObject.kind;
+    const out: { hex: HexCoord; row: number; col: number; slot: number }[] = [];
+    for (const plan of customMap) {
+      if (plan.faceDown || !plan.tileDefId) {
+        continue;
+      }
+      const def = allTileDefinitions[plan.tileDefId];
+      if (!def) {
+        continue;
+      }
+      for (const slot of legalTokenSlotsForTileDef(def, legalKind)) {
+        const hex = tileFootprint({ row: plan.row, col: plan.col }, plan.rotation ?? 0)[slot];
+        if (objectHexSet.has(hexSpaceId(hex))) {
+          continue;
+        }
+        out.push({ hex, row: plan.row, col: plan.col, slot });
+      }
+    }
+    return out;
+  }, [armedObject, customMap, objectHexSet]);
+  /** Empty OFF-tile hexes adjacent to a tile — standalone candidates (land only). */
+  const standaloneCandidates = useMemo<HexCoord[]>(() => {
+    if (!armedObject || armedObject.kind === "whirlpool") {
+      return [];
+    }
+    const out: HexCoord[] = [];
+    const seen = new Set<string>();
+    for (const hexId of occupiedTileHexes) {
+      const coord = parseHexSpaceId(hexId);
+      if (!coord) {
+        continue;
+      }
+      for (const neighbor of hexNeighbors(coord)) {
+        const id = hexSpaceId(neighbor);
+        if (occupiedTileHexes.has(id) || objectHexSet.has(id) || seen.has(id)) {
+          continue;
+        }
+        seen.add(id);
+        out.push(neighbor);
+      }
+    }
+    return out;
+  }, [armedObject, occupiedTileHexes, objectHexSet]);
+
+  const armObject = useCallback((kind: CustomMapObjectKind, pair?: 1 | 2 | 3 | 4) => {
+    setSelectedObjectIndex(null);
+    setObjectPopoverAt(null);
+    setArmedObject((current) => (current && current.kind === kind && current.pair === pair ? null : { kind, pair }));
+  }, []);
+  const placeArmedObject = useCallback(
+    (placement: CustomMapObject["placement"]) => {
+      if (!armedObject) {
+        return;
+      }
+      if (placement.type === "standalone" && armedObject.kind === "whirlpool") {
+        return; // a standalone Whirlpool is out of scope (sea-slots only)
+      }
+      const object: CustomMapObject = {
+        kind: armedObject.kind,
+        ...(armedObject.kind === "gate" && armedObject.pair ? { pair: armedObject.pair } : {}),
+        placement
+      };
+      onObjectsChange?.([...objects, object]);
+    },
+    [armedObject, objects, onObjectsChange]
+  );
+  const setObjectGuard = useCallback(
+    (index: number, guard: number) => {
+      onObjectsChange?.(
+        objects.map((object, i) => {
+          if (i !== index) {
+            return object;
+          }
+          const next = { ...object };
+          if (guard > 0) {
+            next.guard = guard;
+          } else {
+            delete next.guard;
+          }
+          return next;
+        })
+      );
+    },
+    [objects, onObjectsChange]
+  );
+  const removeObject = useCallback(
+    (index: number) => {
+      onObjectsChange?.(objects.filter((_, i) => i !== index));
+      setSelectedObjectIndex(null);
+      setObjectPopoverAt(null);
+    },
+    [objects, onObjectsChange]
   );
 
   /**
@@ -1666,6 +1839,97 @@ export function MapDesigner({
     setHoverSlot(slotAt(event.clientX, event.clientY));
   };
 
+  // --- Designer objects overlay: candidate placement cells + placed tokens ----
+  const selectedObject = selectedObjectIndex !== null ? objects[selectedObjectIndex] : undefined;
+  const objectLayer: React.ReactNode[] = [];
+  const armedLabel = armedObject
+    ? armedObject.kind === "gate"
+      ? `${gatePairColor(armedObject.pair ?? 1)} gate`
+      : mapTokenLabel(armedObject.kind as MapTokenKind)
+    : "";
+  if (armedObject) {
+    for (const candidate of tileSlotCandidates) {
+      const { x, y } = hexToPixel(candidate.hex, size);
+      objectLayer.push(
+        <polygon
+          className="designerObjectSlot tileSlot"
+          key={`obj-slot-${candidate.row}-${candidate.col}-${candidate.slot}`}
+          onClick={() =>
+            placeArmedObject({ type: "tile-slot", row: candidate.row, col: candidate.col, slot: candidate.slot })
+          }
+          points={hexCorners(x, y, size - 1.6)}
+        >
+          <title>Place the {armedLabel} on this tile hex</title>
+        </polygon>
+      );
+    }
+    if (armedObject.kind !== "whirlpool") {
+      for (const candidate of standaloneCandidates) {
+        const { x, y } = hexToPixel(candidate, size);
+        objectLayer.push(
+          <polygon
+            className="designerObjectSlot standalone"
+            key={`obj-standalone-${candidate.row}-${candidate.col}`}
+            onClick={() => placeArmedObject({ type: "standalone", row: candidate.row, col: candidate.col })}
+            points={hexCorners(x, y, size - 1.6)}
+          >
+            <title>Place a standalone {armedLabel} hex here</title>
+          </polygon>
+        );
+      }
+    }
+  }
+  for (const [index, object] of objects.entries()) {
+    const coord = parseHexSpaceId(objectHexOf(object));
+    if (!coord) {
+      continue;
+    }
+    const { x, y } = hexToPixel(coord, size);
+    const isGate = object.kind === "gate";
+    const color = isGate && object.pair ? GATE_PAIR_CSS[object.pair] : "#c9a24b";
+    objectLayer.push(
+      <g
+        className={`designerObjectToken${isGate ? " gate" : ""}${object.placement.type === "standalone" ? " standalone" : ""}${
+          selectedObjectIndex === index ? " selected" : ""
+        }`}
+        data-object-index={index}
+        key={`obj-token-${index}`}
+        onClick={(event) => {
+          const rect = wrapRef.current?.getBoundingClientRect();
+          setSelectedIndex(null);
+          setSelectedObjectIndex(index);
+          setObjectPopoverAt(
+            rect
+              ? { x: Math.max(8, Math.min(event.clientX - rect.left, rect.width - 8)), y: event.clientY - rect.top }
+              : { x: 8, y: 0 }
+          );
+        }}
+      >
+        <circle className="designerObjectRing" cx={x} cy={y} r={size * 0.62} stroke={color} />
+        {isGate ? (
+          <text className="designerObjectPair" fill={color} textAnchor="middle" x={x} y={y + size * 0.28}>
+            {object.pair}
+          </text>
+        ) : (
+          <image
+            height={size}
+            href={assetUrl(mapTokenImage(object.kind as MapTokenKind, object.kind === "whirlpool" ? 0 : undefined))}
+            preserveAspectRatio="xMidYMid meet"
+            style={{ pointerEvents: "none" }}
+            width={size}
+            x={x - size * 0.5}
+            y={y - size * 0.5}
+          />
+        )}
+        {object.guard ? (
+          <text className="designerObjectGuard" textAnchor="middle" x={x} y={y - size * 0.6}>
+            {ROMAN_NUMERALS[object.guard]}
+          </text>
+        ) : null}
+      </g>
+    );
+  }
+
   return (
     <div className="mapDesigner" aria-label="Map designer">
       <div className="designerPalette" aria-label="Tile palette">
@@ -1691,6 +1955,56 @@ export function MapDesigner({
             <span className="paletteLabel">{entry.label}</span>
           </button>
         ))}
+      </div>
+
+      <div className="designerObjectPalette" aria-label="Objects palette">
+        <small className="palettePrompt">
+          {armedObject
+            ? `Placing a ${armedLabel} — click a glowing cell (tile hex or off-tile), or the button again to stop`
+            : "Click an object, then click a board cell to place it"}
+        </small>
+        <div className="designerObjectPaletteRow">
+          {GATE_PAIRS.map((pair) => {
+            const placed = gatePairPlaced[pair] ?? 0;
+            const armed = armedObject?.kind === "gate" && armedObject.pair === pair;
+            return (
+              <button
+                aria-label={`${gatePairColor(pair)} gate pair`}
+                aria-pressed={armed}
+                className={`designerObjectButton gate${armed ? " armed" : ""}`}
+                data-gate-pair={pair}
+                key={`gate-${pair}`}
+                onClick={() => armObject("gate", pair)}
+                style={{ borderColor: GATE_PAIR_CSS[pair] }}
+                title={`${gatePairColor(pair)} Gate pair — two-way teleport (${placed}/2 placed)`}
+                type="button"
+              >
+                <span className="designerObjectSwatch" style={{ background: GATE_PAIR_CSS[pair] }}>
+                  {pair}
+                </span>
+                <span className="designerObjectCount">{placed}/2</span>
+              </button>
+            );
+          })}
+          <button
+            aria-pressed={armedObject?.kind === "monolith"}
+            className={`designerObjectButton${armedObject?.kind === "monolith" ? " armed" : ""}`}
+            onClick={() => armObject("monolith")}
+            title="Monolith token — two-way teleport network (needs at least 2)"
+            type="button"
+          >
+            ⛩ Monolith
+          </button>
+          <button
+            aria-pressed={armedObject?.kind === "whirlpool"}
+            className={`designerObjectButton${armedObject?.kind === "whirlpool" ? " armed" : ""}`}
+            onClick={() => armObject("whirlpool")}
+            title="Whirlpool token — sea-tile slots only (needs at least 2)"
+            type="button"
+          >
+            🌀 Whirlpool
+          </button>
+        </div>
       </div>
 
       <div className="designerBoardWrap" ref={wrapRef}>
@@ -1847,6 +2161,7 @@ export function MapDesigner({
             {labelLayer}
             {gateLayer}
             {borderLayer}
+            {objectLayer}
           </g>
         </svg>
 
@@ -2325,7 +2640,51 @@ export function MapDesigner({
             </button>
           </div>
         ) : null}
+
+        {/* Placed-object popover: guard picker + delete. */}
+        {selectedObject && objectPopoverAt ? (
+          <div className="designerPopover designerObjectPopover" style={{ left: objectPopoverAt.x, top: objectPopoverAt.y }}>
+            <header>
+              <strong>
+                {selectedObject.kind === "gate"
+                  ? `${titleCase(gatePairColor(selectedObject.pair ?? 1))} Gate`
+                  : mapTokenLabel(selectedObject.kind as MapTokenKind)}
+                {selectedObject.placement.type === "standalone" ? " · standalone" : ""}
+              </strong>
+            </header>
+            <div className="popoverSectionLabel">Neutral guard</div>
+            <div className="popoverObjectGuards">
+              {OBJECT_GUARD_LEVELS.map((level) => (
+                <button
+                  aria-pressed={(selectedObject.guard ?? 0) === level}
+                  className={`popoverGuardChip${(selectedObject.guard ?? 0) === level ? " active" : ""}`}
+                  data-guard={level}
+                  key={level}
+                  onClick={() => setObjectGuard(selectedObjectIndex as number, level)}
+                  title={level === 0 ? "No guard" : `Guard ${ROMAN_NUMERALS[level]}`}
+                  type="button"
+                >
+                  {level === 0 ? "None" : ROMAN_NUMERALS[level]}
+                </button>
+              ))}
+            </div>
+            <button className="popoverRemove" onClick={() => removeObject(selectedObjectIndex as number)} type="button">
+              <Trash2 size={13} /> Remove
+            </button>
+          </div>
+        ) : null}
       </div>
+
+      {objectValidation.problems.map((problem, index) => (
+        <div className="designerCavernAlert designerObjectAlert" key={`obj-problem-${index}`} role="alert">
+          ⚠ {problem}
+        </div>
+      ))}
+      {objectValidation.warnings.map((warning, index) => (
+        <div className="designerCavernAlert designerObjectAlert" key={`obj-warning-${index}`} role="status">
+          ⚠ {warning}
+        </div>
+      ))}
 
       {unreachableCaverns.length > 0 ? (
         <div className="designerCavernAlert" role="alert">

@@ -6,9 +6,11 @@ import { ArrowLeft, FilePlus2, Save, Trash2 } from "lucide-react";
 import { MapDesigner } from "@/components/adventure/map-designer";
 import { MapPresetEditor } from "@/components/adventure/map-preset-editor";
 import {
+  customMapPresetIsActive,
   scenarioDefinitions,
   secretFeatureDemandWarnings,
   validateCustomMapPlan,
+  type CustomMapObject,
   type CustomMapPreset,
   type CustomMapTilePlan
 } from "@/engine";
@@ -247,7 +249,23 @@ export default function MapDesignerPage() {
             </div>
           ) : null}
 
-          <MapDesigner customMap={tiles} onChange={setTiles} scenarioId={scenarioId} />
+          <MapDesigner
+            customMap={tiles}
+            objects={preset?.objects ?? []}
+            onChange={setTiles}
+            onObjectsChange={(objects: CustomMapObject[]) =>
+              setPreset((current) => {
+                const next: CustomMapPreset = { ...(current ?? {}) };
+                if (objects.length > 0) {
+                  next.objects = objects;
+                } else {
+                  delete next.objects;
+                }
+                return customMapPresetIsActive(next) ? next : undefined;
+              })
+            }
+            scenarioId={scenarioId}
+          />
           <small className="optionHint">
             {tiles.length} tile{tiles.length === 1 ? "" : "s"} placed · opens {players} seat{players === 1 ? "" : "s"} ·
             face-down Secret landmarks draw a random matching tile from their pool when the adventure starts (if none

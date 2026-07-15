@@ -32,8 +32,10 @@ import {
 import {
   addArmyUnit,
   ASTROLOGERS_DECK_ID,
+  carveColoredGateField,
   carveMapTokenField,
   EVENTS_DECK_ID,
+  gatePairColor,
   getTileFootprintSpaceIds,
   getUnitSide,
   instantiateTile,
@@ -47,6 +49,7 @@ import {
   startAdventureRound,
   startingBonusVisitSteps,
   startPlayerTurn,
+  tileLayer,
   tokenMayCoverFieldDef,
   victoryModeCountsHeroDefeats
 } from "./adventure";
@@ -69,12 +72,24 @@ import { createSeededRandom, type SeededRandom } from "./random";
 import { freshSeed } from "./seed";
 import { appendEvent, eventSeedNumber } from "./events";
 import { VICTORY_MODE_LABELS } from "./ruleset";
-import { hexEquals, tileCentersOverlap, tileFootprintsTouch, type HexCoord } from "./hex";
+import {
+  hexEquals,
+  hexNeighbors,
+  hexSpaceId,
+  parseHexSpaceId,
+  tileCentersOverlap,
+  tileFootprint,
+  tileFootprintsTouch,
+  type HexCoord
+} from "./hex";
 import type {
   AdventureState,
+  CustomMapObject,
   CustomMapTilePlan,
   CustomMapGateLink,
   CustomStartingUnit,
+  MapFieldState,
+  MapSpaceId,
   DeckState,
   DraftFormat,
   FactionId,
@@ -972,6 +987,242 @@ export function validateCustomMapPlan(
 /** A designer cavern hosts at most this many Subterranean Gate links (distinct partners). */
 export const MAX_DESIGNED_GATE_LINKS = 4;
 
+/** Reserved `tileInstanceId` marker prefix for a designer STANDALONE object hex (no backing tile). */
+const STANDALONE_OBJECT_TILE_PREFIX = "standalone-object:";
+
+/**
+ * Validate the designer's one-hex map objects against the tile plans (geometry +
+ * layer), returning the objects to MATERIALIZE plus human-readable `problems`
+ * (dropped objects) and `warnings` (kept-but-noted). Shared by SETUP (which
+ * drops the invalid ones) and the designer (live feedback), so the two never
+ * diverge. `startingCenters` (the scenario seats) are used as Surface anchors
+ * only when the designer placed no starting plan — mirroring the tile-plan
+ * validator's seat-anchor fallback.
+ *
+ * Rules:
+ *  - tile-slot: must name a FACE-UP pinned tile plan (so the slot's legality is
+ *    known at design time) and a slot that legally hosts the kind
+ *    (`tokenMayCoverFieldDef`; a Gate uses the land "monolith" legality). A
+ *    face-down / random / starting plan cannot host one.
+ *  - standalone: LAND kinds only (no standalone Whirlpool); must not fall inside
+ *    any tile footprint, must not collide with another object's hex, and must not
+ *    touch BOTH layers (an implicit Surface↔Underground bridge — rejected).
+ *    Touching no tile is a WARNING (unreachable), not a problem.
+ *  - a colored gate pair with exactly ONE gate placed is a WARNING (incomplete).
+ */
+export function validateCustomMapObjects(
+  plans: CustomMapTilePlan[],
+  objects: CustomMapObject[],
+  startingCenters: HexCoord[] = []
+): { accepted: CustomMapObject[]; problems: string[]; warnings: string[] } {
+  const problems: string[] = [];
+  const warnings: string[] = [];
+  const accepted: CustomMapObject[] = [];
+
+  // Effective tile anchors: every supply/starting plan, plus the scenario seats
+  // when the designer placed no starting plan of its own.
+  const startingPlans = plans.filter((plan) => plan.group === "starting");
+  const anchors: { center: HexCoord; layer: "surface" | "subterranean" }[] = plans.map((plan) => ({
+    center: { row: plan.row, col: plan.col },
+    layer: plan.group === "subterranean" ? "subterranean" : "surface"
+  }));
+  if (startingPlans.length === 0) {
+    for (const center of startingCenters) {
+      anchors.push({ center, layer: "surface" });
+    }
+  }
+  // Every tile footprint hex → its layer (footprint hexes are rotation-invariant).
+  const hexLayer = new Map<string, "surface" | "subterranean">();
+  for (const anchor of anchors) {
+    for (const cell of tileFootprint(anchor.center, 0)) {
+      hexLayer.set(hexSpaceId(cell), anchor.layer);
+    }
+  }
+  const faceUpPlanAt = new Map<string, CustomMapTilePlan>();
+  for (const plan of plans) {
+    if (!plan.faceDown && plan.tileDefId) {
+      faceUpPlanAt.set(`${plan.row}:${plan.col}`, plan);
+    }
+  }
+
+  const objectHexes = new Set<string>();
+  const gatesPerPair = new Map<number, number>();
+
+  objects.forEach((object, index) => {
+    const label = `Object ${index + 1}`;
+    if (object.placement.type === "tile-slot") {
+      const { row, col, slot } = object.placement;
+      const plan = faceUpPlanAt.get(`${row}:${col}`);
+      if (!plan || !plan.tileDefId) {
+        problems.push(`${label}: must sit on a face-up tile — no face-up tile is placed at ${row},${col}.`);
+        return;
+      }
+      const def = allTileDefinitions[plan.tileDefId];
+      // A Gate is a land structure, so it reuses the Monolith slot legality.
+      const slotKind = object.kind === "gate" ? "monolith" : object.kind;
+      if (!def || !tokenMayCoverFieldDef(def, slot, slotKind)) {
+        problems.push(`${label}: slot ${slot} of ${plan.tileDefId} cannot host a ${object.kind}.`);
+        return;
+      }
+      const hex = hexSpaceId(tileFootprint({ row, col }, plan.rotation ?? 0)[slot]);
+      if (objectHexes.has(hex)) {
+        problems.push(`${label}: another object already occupies that hex.`);
+        return;
+      }
+      objectHexes.add(hex);
+      if (object.kind === "gate" && object.pair !== undefined) {
+        gatesPerPair.set(object.pair, (gatesPerPair.get(object.pair) ?? 0) + 1);
+      }
+      accepted.push(object);
+      return;
+    }
+
+    // Standalone: LAND kinds only, off every tile.
+    const { row, col } = object.placement;
+    if (object.kind === "whirlpool") {
+      problems.push(`${label}: a standalone Whirlpool is not supported — Whirlpools sit on sea-tile slots.`);
+      return;
+    }
+    const hex = hexSpaceId({ row, col });
+    if (hexLayer.has(hex)) {
+      problems.push(`${label}: a standalone hex may not fall inside a tile (${row},${col} is a tile hex).`);
+      return;
+    }
+    if (objectHexes.has(hex)) {
+      problems.push(`${label}: another object already occupies that hex.`);
+      return;
+    }
+    const coord = parseHexSpaceId(hex);
+    let touchesSurface = false;
+    let touchesSub = false;
+    if (coord) {
+      for (const neighbor of hexNeighbors(coord)) {
+        const layer = hexLayer.get(hexSpaceId(neighbor));
+        if (layer === "surface") {
+          touchesSurface = true;
+        } else if (layer === "subterranean") {
+          touchesSub = true;
+        }
+      }
+    }
+    if (touchesSurface && touchesSub) {
+      problems.push(
+        `${label}: a standalone hex may not touch BOTH a Surface and an Underground tile (implicit layer bridge).`
+      );
+      return;
+    }
+    if (!touchesSurface && !touchesSub) {
+      warnings.push(`${label}: a standalone hex at ${row},${col} touches no tile — it is unreachable in game.`);
+    }
+    objectHexes.add(hex);
+    if (object.kind === "gate" && object.pair !== undefined) {
+      gatesPerPair.set(object.pair, (gatesPerPair.get(object.pair) ?? 0) + 1);
+    }
+    accepted.push(object);
+  });
+
+  for (const [pair, count] of gatesPerPair) {
+    if (count === 1) {
+      warnings.push(
+        `The ${gatePairColor(pair as 1 | 2 | 3 | 4)} Gate pair has only one gate placed — a pair needs both to teleport.`
+      );
+    }
+  }
+
+  return { accepted, problems, warnings };
+}
+
+/** The layer a standalone hex sits on, from the ACTUAL tiles it neighbours (setup). */
+function standaloneLayerFromLiveState(adventure: AdventureState, spaceId: MapSpaceId): "surface" | "subterranean" {
+  const coord = parseHexSpaceId(spaceId);
+  if (coord) {
+    for (const neighbor of hexNeighbors(coord)) {
+      const neighborField = adventure.fields[hexSpaceId(neighbor)];
+      const tile = neighborField ? adventure.tiles[neighborField.tileInstanceId] : undefined;
+      if (tile && tileLayer(tile) === "subterranean") {
+        return "subterranean";
+      }
+    }
+  }
+  return "surface";
+}
+
+/**
+ * Materialize the designer's accepted one-hex objects onto the freshly-laid map.
+ * A tile-slot object carves the tile hex (exactly like the legacy token carve); a
+ * standalone object materializes a NEW field OFF every tile with a reserved
+ * `tileInstanceId` marker (never a key of `adventure.tiles`) and a layer inferred
+ * from the tiles it touches. A DESIGNED guard difficulty, if any, is set on the
+ * object's field AFTER the carve (the carve clears difficulty), so the standard
+ * neutral-guard flow runs: stepping on → battle at that difficulty → only a WIN
+ * resolves the teleport. Runs BEFORE recomputeSubterraneanGates (which now
+ * refuses a gate object's hex too — {@link gateMayCoverField}).
+ */
+function applyCustomMapObjects(adventure: AdventureState, objects: CustomMapObject[]): void {
+  const WHIRLPOOL_NUMBERS: (-1 | 0 | 1)[] = [1, 0, -1];
+  const tileAtCenter = (row: number, col: number): MapTileState | undefined =>
+    Object.values(adventure.tiles).find((tile) => tile.centerRow === row && tile.centerCol === col);
+
+  for (const object of objects) {
+    if (object.placement.type === "tile-slot") {
+      const tile = tileAtCenter(object.placement.row, object.placement.col);
+      if (!tile) {
+        continue;
+      }
+      const spaceId = getTileFootprintSpaceIds(tile)[object.placement.slot];
+      const field = spaceId ? adventure.fields[spaceId] : undefined;
+      if (!spaceId || !field || field.tileInstanceId !== tile.id) {
+        continue;
+      }
+      if (object.kind === "gate" && object.pair !== undefined) {
+        carveColoredGateField(adventure, spaceId, object.pair);
+      } else if (object.kind === "monolith" || object.kind === "whirlpool") {
+        // Continue the +1/0/-1 numbering across every whirlpool already carved
+        // (the legacy `token` carve runs first).
+        const whirlpoolCount = Object.values(adventure.fields).filter((f) => f.location === "whirlpool").length;
+        const number = object.kind === "whirlpool" ? WHIRLPOOL_NUMBERS[whirlpoolCount] : undefined;
+        carveMapTokenField(adventure, spaceId, object.kind, number);
+      }
+      if (object.guard) {
+        const carved = adventure.fields[spaceId];
+        if (carved) {
+          carved.difficulty = object.guard;
+        }
+      }
+      continue;
+    }
+
+    // Standalone — LAND objects only (gate or monolith; a standalone whirlpool
+    // never reaches here, validation drops it).
+    if (object.kind === "whirlpool") {
+      continue;
+    }
+    const spaceId = hexSpaceId({ row: object.placement.row, col: object.placement.col });
+    if (adventure.fields[spaceId]) {
+      continue; // never clobber an existing field (validation guards this)
+    }
+    const field: MapFieldState = {
+      spaceId,
+      tileInstanceId: `${STANDALONE_OBJECT_TILE_PREFIX}${spaceId}`,
+      slot: 0,
+      location: object.kind === "gate" ? "gate" : object.kind,
+      blackCube: false,
+      flagOwnerId: null,
+      everFlagged: false,
+      settlementResource: null,
+      standalone: true,
+      standaloneLayer: standaloneLayerFromLiveState(adventure, spaceId)
+    };
+    if (object.kind === "gate" && object.pair !== undefined) {
+      field.gatePair = object.pair;
+    }
+    if (object.guard) {
+      field.difficulty = object.guard;
+    }
+    adventure.fields[spaceId] = field;
+  }
+}
+
 /**
  * Copies a designer plan's yellow borders (absolute directions 0–5) onto the
  * freshly-placed tile instance, so the seal holds from the moment the tile is
@@ -1682,6 +1933,20 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     }
 
     applyCustomMapTokens(adventure, plannedTokens);
+
+    // Designer one-hex objects (Monolith/Whirlpool tokens on face-up slots +
+    // colored Gate pairs + standalone hexes). Validated against the tile plans
+    // (geometry/layer); the accepted set materializes here, BEFORE the
+    // Subterranean Gate carve (which refuses a gate object's hex too). Standalone
+    // hexes are new fields OFF every tile.
+    if (mapPreset?.objects && mapPreset.objects.length > 0) {
+      const { accepted } = validateCustomMapObjects(
+        customMap,
+        mapPreset.objects,
+        scenario.layout.starts.map((start) => ({ ...start }))
+      );
+      applyCustomMapObjects(adventure, accepted);
+    }
 
     // Designer Subterranean Gate links → seed the gate plans that the carve below
     // (recomputeSubterraneanGates) honours. Each cavern link resolves to the two
