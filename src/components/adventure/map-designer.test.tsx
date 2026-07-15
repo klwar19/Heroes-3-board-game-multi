@@ -877,6 +877,184 @@ describe("MapDesigner — designed gate token drag (pointer slide)", () => {
   });
 });
 
+describe("MapDesigner — AUTOMATIC gate token interactivity", () => {
+  // No gateLinks on the cavern → the gate is the AUTOMATIC touch pairing. This
+  // used to be inert (pointer-events: none, no handlers): a click fell through to
+  // the tile and the token could not be dragged. Now every gate token is
+  // clickable + draggable, and dragging an automatic gate CONVERTS it to a pinned
+  // designer link at the dropped spot. Mirrors the designed-drag describe above.
+  const town = { row: 10, col: 10 };
+  const cavern = tileLatticeNeighbors(town)[0];
+  const HEX = 24;
+
+  /** jsdom has no getScreenCTM / DOMPoint — identity polyfills (client == board). */
+  function installSvgPolyfills(): () => void {
+    const svgProto = SVGElement.prototype as unknown as Record<string, unknown>;
+    const hadCTM = Object.prototype.hasOwnProperty.call(svgProto, "getScreenCTM");
+    Object.defineProperty(SVGElement.prototype, "getScreenCTM", {
+      configurable: true,
+      value: () => ({ inverse: () => ({ a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 }) })
+    });
+    const globals = globalThis as { DOMPoint?: unknown };
+    const previousDOMPoint = globals.DOMPoint;
+    globals.DOMPoint = class {
+      x: number;
+      y: number;
+      constructor(x = 0, y = 0) {
+        this.x = x;
+        this.y = y;
+      }
+      matrixTransform(m: { a: number; b: number; c: number; d: number; e: number; f: number }) {
+        return { x: m.a * this.x + m.c * this.y + m.e, y: m.b * this.x + m.d * this.y + m.f };
+      }
+    };
+    return () => {
+      if (!hadCTM) {
+        delete svgProto.getScreenCTM;
+      }
+      if (previousDOMPoint === undefined) {
+        delete globals.DOMPoint;
+      } else {
+        globals.DOMPoint = previousDOMPoint;
+      }
+    };
+  }
+
+  const midpointOf = (pair: GateHexPair) => {
+    const gate = hexToPixel(pair.gateHex, HEX);
+    const entrance = hexToPixel(pair.entranceHex, HEX);
+    return { x: (gate.x + entrance.x) / 2, y: (gate.y + entrance.y) / 2 };
+  };
+
+  /** A cavern touching the town but carrying NO gateLinks → an automatic gate. */
+  const autoMap = (): CustomMapTilePlan[] => [
+    { row: town.row, col: town.col, group: "starting", faceDown: false },
+    { row: cavern.row, col: cavern.col, group: "subterranean", faceDown: true, subBand: "iv-v" }
+  ];
+
+  /** The automatic gate renders at the nearest-default boundary pair. */
+  function defaultPair(): GateHexPair {
+    const [defaultGate] = planSubterraneanGates(
+      [
+        { row: town.row, col: town.col, group: "starting" },
+        { row: cavern.row, col: cavern.col, group: "subterranean" }
+      ],
+      []
+    );
+    return { gateHex: defaultGate.gateHex, entranceHex: defaultGate.entranceHex };
+  }
+
+  it("clicking an AUTOMATIC gate token opens the owning cavern's panel (used to be impossible)", () => {
+    const container = renderDesigner(autoMap());
+    // Precondition: an automatic gate renders, WITHOUT the designed marker/pin.
+    const token = container.querySelector(".designerGateToken");
+    expect(token, "an automatic gate token renders").toBeTruthy();
+    expect(token!.classList.contains("designed"), "the gate is automatic, not designer-pinned").toBe(false);
+    expect(container.querySelector(".designerGatePin"), "no pin on an automatic gate").toBeNull();
+    // No popover yet — the flip under test is that clicking now opens one.
+    expect(container.querySelector(".designerPopover")).toBeNull();
+
+    fireEvent.click(token!);
+    const popover = container.querySelector(".designerPopover");
+    expect(popover, "clicking the automatic gate opened the cavern popover").toBeTruthy();
+    // …the cavern panel, with its gate-link section (Link toggle, not yet linked).
+    expect(popover!.querySelector(".popoverGateLinks"), "the gate-link section is shown").toBeTruthy();
+    expect(popover!.querySelector(".popoverGateLinkToggle.linked"), "not linked yet").toBeNull();
+  });
+
+  it("dragging an AUTOMATIC gate token COMMITS a designer link, then renders it pinned", () => {
+    const restore = installSvgPolyfills();
+    try {
+      const pairs = legalGateHexPairs(town, cavern);
+      const start = defaultPair();
+      const target = pairs.find(
+        (pair) =>
+          hexSpaceId(pair.gateHex) !== hexSpaceId(start.gateHex) ||
+          hexSpaceId(pair.entranceHex) !== hexSpaceId(start.entranceHex)
+      )!;
+      expect(target, "a different legal boundary pair to drop on").toBeTruthy();
+      const grabAt = midpointOf(start);
+      const dropAt = midpointOf(target);
+      // The drop point snaps to exactly the target pair (pinned in gate-drag.test.ts).
+      const snapped = nearestGateHexPair(dropAt, pairs, HEX)!;
+      expect(hexSpaceId(snapped.gateHex)).toBe(hexSpaceId(target.gateHex));
+
+      let latest = autoMap();
+      const onChange = vi.fn((next: CustomMapTilePlan[]) => {
+        latest = next;
+      });
+      const { container } = render(
+        <MapDesigner scenarioId="skirmish" customMap={latest} onChange={onChange} hexSize={HEX} />
+      );
+      const token = container.querySelector(".designerGateToken");
+      expect(token!.classList.contains("designed"), "starts as an automatic gate").toBe(false);
+
+      fireEvent.pointerDown(token!, { button: 0, pointerId: 9, clientX: grabAt.x, clientY: grabAt.y });
+      fireEvent.pointerMove(window, { pointerId: 9, clientX: dropAt.x, clientY: dropAt.y });
+      // The automatic token carries the live drag class mid-slide (no `.designed`).
+      expect(container.querySelector(".designerGateToken.dragging"), "live drag preview").toBeTruthy();
+      fireEvent.pointerUp(window, { pointerId: 9 });
+
+      // Release ADDED a gateLinks entry (the automatic gate had none) at the
+      // snapped pair — a member of legalGateHexPairs, the same shape ↻/designed
+      // drags write.
+      expect(onChange).toHaveBeenCalled();
+      expect(latest[1].gateLinks).toEqual([
+        {
+          surface: { row: town.row, col: town.col },
+          gateHex: hexSpaceId(target.gateHex),
+          entranceHex: hexSpaceId(target.entranceHex)
+        }
+      ]);
+      const committed = latest[1].gateLinks![0];
+      expect(
+        pairs.some(
+          (pair) =>
+            hexSpaceId(pair.gateHex) === committed.gateHex && hexSpaceId(pair.entranceHex) === committed.entranceHex
+        ),
+        "the pinned pair is a legal boundary pair"
+      ).toBe(true);
+
+      // Re-render with the committed plan: the gate now reads as DESIGNER-pinned
+      // (the designed marker + the lock pin), proving the automatic → pinned flip.
+      cleanup();
+      const pinned = render(
+        <MapDesigner scenarioId="skirmish" customMap={latest} onChange={() => {}} hexSize={HEX} />
+      );
+      expect(pinned.container.querySelector(".designerGateToken.designed"), "now a designed token").toBeTruthy();
+      expect(pinned.container.querySelector(".designerGatePin"), "now carries the lock pin").toBeTruthy();
+    } finally {
+      restore();
+    }
+  });
+
+  it("Escape mid-drag on an AUTOMATIC gate commits nothing (control)", () => {
+    const restore = installSvgPolyfills();
+    try {
+      const pairs = legalGateHexPairs(town, cavern);
+      const start = defaultPair();
+      const target = pairs.find((pair) => hexSpaceId(pair.gateHex) !== hexSpaceId(start.gateHex))!;
+      const onChange = vi.fn();
+      const { container } = render(
+        <MapDesigner scenarioId="skirmish" customMap={autoMap()} onChange={onChange} hexSize={HEX} />
+      );
+      const token = container.querySelector(".designerGateToken")!;
+      const grabAt = midpointOf(start);
+      const dropAt = midpointOf(target);
+      fireEvent.pointerDown(token, { button: 0, pointerId: 9, clientX: grabAt.x, clientY: grabAt.y });
+      fireEvent.pointerMove(window, { pointerId: 9, clientX: dropAt.x, clientY: dropAt.y });
+      expect(container.querySelector(".designerGateToken.dragging"), "preview while dragging").toBeTruthy();
+
+      fireEvent.keyDown(window, { key: "Escape" });
+      expect(container.querySelector(".designerGateToken.dragging")).toBeNull();
+      fireEvent.pointerUp(window, { pointerId: 9 });
+      expect(onChange).not.toHaveBeenCalled();
+    } finally {
+      restore();
+    }
+  });
+});
+
 describe("MapDesigner — Monolith/Whirlpool tokens", () => {
   const town = { row: 10, col: 10 };
   const spots = tileLatticeNeighbors(town);

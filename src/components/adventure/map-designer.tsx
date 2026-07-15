@@ -1026,8 +1026,12 @@ export function MapDesigner({
 
   /**
    * Pin a designed gate link (cavern ↔ Surface) to an exact boundary pair — the
-   * ONE commit path shared by the ↻ cycle button and the gate-token drag, so
-   * both always write the same plan shape.
+   * ONE commit path shared by the ↻ cycle button and BOTH gate-token drags, so
+   * they always write the same plan shape. When the cavern already links this
+   * Surface, the pin is updated in place; when it does NOT (the gate was the
+   * AUTOMATIC touch pairing, which carries no `gateLinks` entry), one is ADDED —
+   * so dragging an automatic gate CONVERTS it into a designer-pinned link at the
+   * dropped spot, exactly the "take control by touching it" the designer wants.
    */
   const pinGateLink = useCallback(
     (cavernCenter: HexCoord, surface: { row: number; col: number }, pair: GateHexPair) => {
@@ -1038,11 +1042,19 @@ export function MapDesigner({
       if (!plan) {
         return;
       }
-      const nextLinks: CustomMapGateLink[] = (plan.gateLinks ?? []).map((candidate) =>
-        candidate.surface.row === surface.row && candidate.surface.col === surface.col
-          ? { surface: candidate.surface, gateHex: hexSpaceId(pair.gateHex), entranceHex: hexSpaceId(pair.entranceHex) }
-          : candidate
+      const gateHex = hexSpaceId(pair.gateHex);
+      const entranceHex = hexSpaceId(pair.entranceHex);
+      const existing = plan.gateLinks ?? [];
+      const hasLink = existing.some(
+        (candidate) => candidate.surface.row === surface.row && candidate.surface.col === surface.col
       );
+      const nextLinks: CustomMapGateLink[] = hasLink
+        ? existing.map((candidate) =>
+            candidate.surface.row === surface.row && candidate.surface.col === surface.col
+              ? { surface: candidate.surface, gateHex, entranceHex }
+              : candidate
+          )
+        : [...existing, { surface: { row: surface.row, col: surface.col }, gateHex, entranceHex }];
       updateTile(index, { gateLinks: nextLinks });
     },
     [customMap, updateTile]
@@ -1771,25 +1783,25 @@ export function MapDesigner({
     const entrancePixel = hexToPixel(drawEntranceHex, size);
     const tokenWidth = hexWidth;
     const tokenHeight = 2 * size;
-    // A DESIGNER-chosen gate is drawn distinct from an automatic one — a brighter
-    // link + a pin glyph — draggable along the shared edge, and clicking either
-    // half selects the cavern that owns it (connect controls one click away).
+    // EVERY gate token — the AUTOMATIC touch pairing as well as a designer-pinned
+    // one — is draggable along the shared edge and clickable for options. A
+    // designer-chosen gate is still drawn distinct (a brighter link + a pin
+    // glyph); an automatic one gets no pin but the same direct manipulation, and
+    // dragging it CONVERTS it into a pinned link at the dropped spot (pinGateLink).
     const designedClass = `${gate.designed ? " designed" : ""}${draggingThis ? " dragging" : ""}`;
     const gateTitle = gate.designed
       ? "Designer Subterranean Gate — drag it along the shared edge, or click to edit its links."
-      : "Automatic Subterranean Gate — heroes descend here from the Surface tile.";
-    const onGatePointerDown = gate.designed ? beginGateDrag(gate) : undefined;
-    const onGateClick = gate.designed
-      ? (event: React.MouseEvent) => {
-          event.stopPropagation();
-          // A finished slide fires a trailing click — that one never opens the popover.
-          if (gateClickSuppressRef.current) {
-            gateClickSuppressRef.current = false;
-            return;
-          }
-          selectCavernForGate(gate.cavernCenter, event.clientX, event.clientY);
-        }
-      : undefined;
+      : "Automatic Subterranean Gate — heroes descend here from the Surface tile. Drag it along the shared edge to pin its exact spot, or click for gate options.";
+    const onGatePointerDown = beginGateDrag(gate);
+    const onGateClick = (event: React.MouseEvent) => {
+      event.stopPropagation();
+      // A finished slide fires a trailing click — that one never opens the popover.
+      if (gateClickSuppressRef.current) {
+        gateClickSuppressRef.current = false;
+        return;
+      }
+      selectCavernForGate(gate.cavernCenter, event.clientX, event.clientY);
+    };
     gateLayer.push(
       <line
         className={`designerGateLink${designedClass}`}
@@ -1809,7 +1821,6 @@ export function MapDesigner({
         onClick={onGateClick}
         onPointerDown={onGatePointerDown}
         preserveAspectRatio="none"
-        style={gate.designed ? { cursor: "grab" } : undefined}
         width={tokenWidth}
         x={gatePixel.x - tokenWidth / 2}
         y={gatePixel.y - size}
@@ -1826,12 +1837,11 @@ export function MapDesigner({
         onClick={onGateClick}
         onPointerDown={onGatePointerDown}
         preserveAspectRatio="none"
-        style={gate.designed ? { cursor: "grab" } : undefined}
         width={tokenWidth}
         x={entrancePixel.x - tokenWidth / 2}
         y={entrancePixel.y - size}
       >
-        <title>Subterranean Gate entrance — the cavern side of the crossing.</title>
+        <title>Subterranean Gate entrance — the cavern side of the crossing. Drag it along the shared edge to place the gate, or click for options.</title>
       </image>
     );
     if (gate.designed) {
@@ -2938,8 +2948,9 @@ export function MapDesigner({
         touching Surface). Add <strong>Monolith</strong> / <strong>Whirlpool</strong> tokens from the same panel — at
         least 2 of a kind to work. A centre tile can force its <strong>Ⅶ objective field</strong> (Town / Grail /
         Utopia, shown as a badge). Drag a cavern to touch a Surface tile and its <strong>Subterranean Gate</strong>{" "}
-        appears — or link and pin the pair in the popover and use <strong>↻</strong> to slide the gate along the shared
-        edge. Arm <strong>🖌 Yellow border</strong> in the Objects palette, then click a tile&apos;s{" "}
+        appears — then <strong>drag any gate token</strong> along the shared edge to pin its exact spot (or click it for
+        link options, and use <strong>↻</strong> to slide it). Arm <strong>🖌 Yellow border</strong> in the Objects
+        palette, then click a tile&apos;s{" "}
         <strong>edge hexes</strong> to paint impassable borders (or use the edge chips in the tile panel), and{" "}
         <strong>lock</strong> a starting tile&apos;s orientation so it never opens with a rotation. The{" "}
         <strong>Objects</strong> palette drops
