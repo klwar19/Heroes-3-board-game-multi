@@ -547,6 +547,10 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       return event.message;
     case "MAP_SECRET_FEATURE_FALLBACK":
       return event.message;
+    case "START_TILE_ORIENTATION_FIXED":
+      return `The map fixes ${playerName(state, event.playerId)}'s starting tile orientation (${
+        event.rotation * 60
+      }°) — no opening rotation.`;
     case "SETUP_SEAT_RESET":
       return event.message;
     case "PLAYER_COMBAT_STARTED":

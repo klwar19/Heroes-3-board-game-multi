@@ -809,3 +809,58 @@ describe("MapDesigner — Monolith/Whirlpool tokens", () => {
     expect(pairedWarnings.some((text) => /Monolith/i.test(text))).toBe(false);
   });
 });
+
+describe("MapDesigner — fixed starting-tile orientation (lockRotation)", () => {
+  const town = { row: 10, col: 10 };
+  const far = tileLatticeNeighbors(town)[1];
+
+  it("rotates + locks a starting tile (onChange carries rotation + lockRotation), draws the lock badge, and offers no toggle on a non-starting tile", () => {
+    let latest: CustomMapTilePlan[] = [
+      { row: town.row, col: town.col, group: "starting", faceDown: false },
+      { row: far.row, col: far.col, group: "far", faceDown: true }
+    ];
+    const onChange = vi.fn((next: CustomMapTilePlan[]) => {
+      latest = next;
+    });
+    let container = renderDesigner(latest, onChange);
+    // No lock badge on an unlocked starting tile.
+    expect(container.querySelector(".designerStartLockBadge")).toBeNull();
+
+    // The starting popover offers the Fix-orientation toggle (unpressed) + rotate.
+    const popover = openTilePopover(container, 0);
+    const toggle = popover.querySelector(".popoverLockToggle");
+    expect(toggle, "starting popover offers the fix-orientation toggle").toBeTruthy();
+    expect(toggle!.getAttribute("aria-pressed")).toBe("false");
+
+    // Rotate clockwise → onChange carries rotation 1 on the starting plan.
+    fireEvent.click(popover.querySelector('[title="Rotate 60° clockwise"]')!);
+    expect(latest[0].rotation).toBe(1);
+    expect(latest[0].lockRotation, "rotating alone does not lock").toBeUndefined();
+
+    // Re-render with the rotated plan, then toggle the lock ON → the plan now
+    // carries BOTH rotation 1 and lockRotation, and the toggle reads pressed.
+    cleanup();
+    container = renderDesigner(latest, onChange);
+    const popover2 = openTilePopover(container, 0);
+    expect(popover2.querySelector(".popoverLockToggle")!.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(popover2.querySelector(".popoverLockToggle")!);
+    expect(latest[0]).toMatchObject({ group: "starting", rotation: 1, lockRotation: true });
+
+    // Re-render: the board now draws the lock badge on the fixed starting tile.
+    cleanup();
+    container = renderDesigner(latest, onChange);
+    expect(container.querySelector(".designerStartLockBadge"), "lock badge renders").toBeTruthy();
+
+    // Toggling it OFF again round-trips back to no lockRotation.
+    const popover3 = openTilePopover(container, 0);
+    expect(popover3.querySelector(".popoverLockToggle")!.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(popover3.querySelector(".popoverLockToggle")!);
+    expect(latest[0].lockRotation).toBeUndefined();
+
+    // A NON-starting tile's popover offers NO fix-orientation toggle.
+    cleanup();
+    container = renderDesigner(latest, onChange);
+    const farPopover = openTilePopover(container, 1);
+    expect(farPopover.querySelector(".popoverLockToggle")).toBeNull();
+  });
+});

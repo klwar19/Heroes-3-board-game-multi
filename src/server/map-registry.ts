@@ -159,6 +159,10 @@ function sanitizeTile(tile: unknown): CustomMapTilePlan | null {
     ...(typeof candidate.tileDefId === "string" ? { tileDefId: candidate.tileDefId } : {}),
     ...(secretFeature && Boolean(candidate.faceDown) ? { secretFeature } : {}),
     ...(Number.isInteger(candidate.rotation) ? { rotation: (((candidate.rotation as number) % 6) + 6) % 6 } : {}),
+    // `lockRotation` fixes a starting seat's home-tile orientation (no opening
+    // rotation). Meaningful only on a starting plan — kept there, dropped on any
+    // other group; only a literal `true` survives so garbage can't set it.
+    ...(candidate.group === "starting" && candidate.lockRotation === true ? { lockRotation: true } : {}),
     ...(candidate.seaBand === "iv-v" || candidate.seaBand === "vi-vii" ? { seaBand: candidate.seaBand } : {}),
     ...(candidate.subBand === "iv-v" || candidate.subBand === "vi-vii" ? { subBand: candidate.subBand } : {}),
     ...(token ? { token } : {}),

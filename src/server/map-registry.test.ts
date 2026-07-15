@@ -126,6 +126,28 @@ describe("sanitizeSharedMap", () => {
     expect(record!.tiles[2]).toMatchObject({ faceDown: false, tileDefId: "F1" });
   });
 
+  it("round-trips lockRotation on a STARTING plan, strips it off non-starting groups, and drops garbage", () => {
+    // lockRotation FIXES a seat's home-tile orientation (no opening rotation) — a
+    // starting-only flag. It must survive a save on a starting plan, never on any
+    // other group, and only a literal `true` may set it.
+    const record = sanitizeSharedMap(
+      {
+        id: "m",
+        tiles: [
+          { row: 1, col: 1, group: "starting", faceDown: false, lockRotation: true, rotation: 3 },
+          { row: 2, col: 2, group: "near", faceDown: true, lockRotation: true }, // non-starting → stripped
+          { row: 3, col: 3, group: "starting", faceDown: false, lockRotation: "yes" }, // garbage → dropped
+          { row: 4, col: 4, group: "starting", faceDown: false } // no flag → stays absent
+        ]
+      },
+      1
+    );
+    expect(record!.tiles[0]).toMatchObject({ group: "starting", lockRotation: true, rotation: 3 });
+    expect(record!.tiles[1].lockRotation, "stripped off a near plan").toBeUndefined();
+    expect(record!.tiles[2].lockRotation, "non-boolean garbage dropped").toBeUndefined();
+    expect(record!.tiles[3].lockRotation, "absent when unset").toBeUndefined();
+  });
+
   it("preserves a map preset (resources, timed events, victory) through sanitization", () => {
     const record = sanitizeSharedMap(
       {

@@ -4926,6 +4926,19 @@ export type GameEvent =
       message: string;
     }
   | {
+      /**
+       * The map designer FIXED a seat's starting-tile orientation
+       * (`lockRotation`): the home tile is placed at the designed rotation and
+       * this seat owes no opening free-rotation. Emitted once per locked seat at
+       * game start (whether or not the opening ceremony is on) so the whole table
+       * sees the map forced this seat's home-tile orientation. Public feed line.
+       */
+      id: string;
+      type: "START_TILE_ORIENTATION_FIXED";
+      playerId: PlayerId;
+      rotation: number;
+    }
+  | {
       id: string;
       type: "SETUP_SEAT_RESET";
       playerId: PlayerId;
@@ -8796,6 +8809,19 @@ export type CustomMapTilePlan = {
   secretFeature?: SecretTileFeature;
   /** Clockwise 60° steps (0-5, default 0). Honoured face-up and face-down. */
   rotation?: number;
+  /**
+   * Starting (Ⅰ) tiles only: FIX this seat's home-tile orientation. When set, the
+   * faction tile is instantiated at the designed {@link rotation} (default 0) and
+   * the seat owes NO opening free-rotation — the ceremony prompt never opens for
+   * them and the seat-order rotation chain skips them (even mid-chain in a mixed
+   * map). Meaningful ONLY on a `starting` plan (like `gateLinks` are cavern-only):
+   * stripped on every other group at {@link validateCustomMapPlan} and the
+   * persistence sanitiser. BACKWARD COMPATIBILITY: `rotation` is honoured for a
+   * starting tile ONLY when this flag is set — an UNLOCKED starting plan (incl. a
+   * legacy map that happened to store a `rotation`) keeps the classic rotation-0 +
+   * opening-ceremony flow byte-identically.
+   */
+  lockRotation?: boolean;
   /**
    * Sea tiles only: which guard band this slot belongs to. The Cove sea pool
    * ships both Ⅳ–Ⅴ and Ⅵ–Ⅶ tiles behind one wave back, so the designer offers

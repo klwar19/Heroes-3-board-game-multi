@@ -953,6 +953,19 @@ export function validateCustomMapPlan(
     }
   }
 
+  // `lockRotation` FIXES a starting tile's orientation (no opening rotation). It
+  // is meaningful only on a starting plan — strip it on every other group, like
+  // gateLinks are cavern-only. (The rotation value 0-5 is already validated
+  // globally above, so nothing else about a stripped plan changes.)
+  for (let index = 0; index < accepted.length; index += 1) {
+    const plan = accepted[index];
+    if (plan.lockRotation && plan.group !== "starting") {
+      const next = { ...plan };
+      delete next.lockRotation;
+      accepted[index] = next;
+    }
+  }
+
   return { accepted, problems };
 }
 
@@ -1455,10 +1468,17 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   playerConfigs.forEach((config, index) => {
     const startTileId = startingTileByFaction[config.factionId] ?? "S1";
     const center = startCenterFor(index);
-    const tile = instantiateTile(adventure, startTileId, center, 0, false);
+    const startPlan = designerStartPlans[index];
+    // A designer may FIX this seat's home-tile orientation. Honour plan.rotation
+    // ONLY when it is locked — an unlocked starting plan (or a legacy map that
+    // happened to store a rotation) keeps the classic rotation-0 + opening-ceremony
+    // flow byte-identically.
+    const orientationLocked = startPlan?.lockRotation === true;
+    const startRotation = orientationLocked ? (((startPlan!.rotation ?? 0) % 6) + 6) % 6 : 0;
+    const tile = instantiateTile(adventure, startTileId, center, startRotation, false);
     // A designer may draw yellow borders on a starting Town tile too.
-    if (designerStartPlans[index]) {
-      applyDesignedBorders(tile, designerStartPlans[index]);
+    if (startPlan) {
+      applyDesignedBorders(tile, startPlan);
     }
     const townFieldId = Object.values(adventure.fields).find(
       (field) => field.tileInstanceId === tile.id && field.slot === 0
@@ -1497,9 +1517,21 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
       adventure.lastVisitedField[heroId] = townFieldId;
 
       // Opening home-tile rotation owed (tri-state): false = pending (forced at
-      // this player's first turn), left undefined = feature off for this game.
-      if (rotateStartTilesOn) {
+      // this player's first turn), left undefined = feature off for this game OR
+      // this seat's orientation is map-LOCKED (already fixed, so it owes none even
+      // when the ceremony is on — the prompt never opens and the chain skips it).
+      if (rotateStartTilesOn && !orientationLocked) {
         state.players[config.id].startTileRotated = false;
+      }
+      // Announce a designer-fixed orientation at game start (whether or not the
+      // ceremony is on) so the whole table sees the map forced this seat's home
+      // tile. The feed line names the seat (see START_TILE_ORIENTATION_FIXED).
+      if (orientationLocked) {
+        appendEvent(state, {
+          type: "START_TILE_ORIENTATION_FIXED",
+          playerId: config.id,
+          rotation: startRotation
+        });
       }
     }
   });
