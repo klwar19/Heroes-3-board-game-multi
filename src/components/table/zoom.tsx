@@ -172,6 +172,7 @@ export function CardZoomProvider({ children }: { children: ReactNode }) {
               <img
                 alt={content.empowered ? `${content.title} (empowered)` : content.title}
                 className={`zoomCardImage${content.empowered ? " empoweredCard" : ""}`}
+                decoding="async"
                 loading="eager"
                 onError={() => setFailedImageSrc(content.image ?? null)}
                 referrerPolicy="no-referrer"

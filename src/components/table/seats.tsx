@@ -97,6 +97,9 @@ export function CardFrame({
       alt={showEmpowered ? `${alt} (empowered)` : alt}
       className={frameClass}
       data-empowered={showEmpowered ? "true" : undefined}
+      // Eager on purpose (hand/tray cards are on-screen the moment they
+      // mount); async decode keeps a burst of card art off the main thread.
+      decoding="async"
       loading="eager"
       onError={() => setFailedSrc(src)}
       referrerPolicy="no-referrer"
@@ -239,7 +242,16 @@ export function PermanentSlot({
 export function CardBack({ className, deckId }: { className?: string; deckId?: string }) {
   const back = getDeckBack(deckId);
   if (back.image) {
-    return <img alt={back.label} aria-hidden="true" className={`cardBack ${className ?? ""}`} src={assetUrl(back.image)} />;
+    return (
+      <img
+        alt={back.label}
+        aria-hidden="true"
+        className={`cardBack ${className ?? ""}`}
+        decoding="async"
+        loading="lazy"
+        src={assetUrl(back.image)}
+      />
+    );
   }
   return (
     <div className={`cardBack back-${back.styleKey} ${className ?? ""}`} aria-hidden="true" title={back.label}>
@@ -473,7 +485,7 @@ export function HandFan({
                 }
                 type="button"
               >
-                <img alt="Spell Book" className="shelfGlyph" src={assetUrl("/assets/ui/spell-book-button.png")} />
+                <img alt="Spell Book" className="shelfGlyph" decoding="async" loading="lazy" src={assetUrl("/assets/ui/spell-book-button.png")} />
                 <span className="shelfCount">{spellBook.length}</span>
               </button>
               {shelfOpen === "book" ? (
