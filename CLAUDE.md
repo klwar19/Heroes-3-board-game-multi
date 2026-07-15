@@ -1772,7 +1772,17 @@ What runs (each pinned by a test that fails if the wiring is removed):
   settlements, artifacts, + up to 4 designer objectives + completion VP),
   tie-broken by completer then turn order; a live "if scored now" standings dock
   + a game-over scoring overlay (`victory-points-panel.tsx`) read the same pure
-  `computeVictoryPoints`. `victory-points.test.ts`.
+  `computeVictoryPoints`. `victory-points.test.ts`. VP can ALSO be enabled from
+  the lobby Game options (Mode & Rules tab, directly below Game mode, default
+  OFF) via `GameSetupOptions.victoryPoints` + an optional
+  `victoryPointsRoundLimit` round-limit select — `applyLobbyVictoryPoints`
+  (`adventure-setup.ts`) injects an `{ enabled: true }` block (and the clamped
+  round limit) into the EFFECTIVE preset at build time, so the same downstream
+  system lights up on ANY map. A designed preset that already enables VP stays
+  authoritative (its config/round-limit win; an explicit lobby
+  `victoryPoints: false`/absent never disables it). Lobby wiring is pinned in
+  `victory-points.test.ts` (lobby build path + setGameOptions) and the UI row in
+  `game-options-tabs.test.tsx`.
 
 Glyph polish (Task 7): the Obelisk fixed-bonus kind, the VP objective rows, the
 live VP breakdown rows (experience/gold/artifact/attack-defense by label) and the

@@ -3,6 +3,7 @@ import {
   applyAction,
   computeVictoryPoints,
   createAdventureGameState,
+  createAdventureLobbyState,
   declareAdventureWinner,
   describeCustomMapPresetEntries,
   describeVictoryPointObjective,
@@ -12,6 +13,7 @@ import {
   MAX_VICTORY_POINT_OBJECTIVES,
   sanitizeCustomMapPreset,
   victoryPointsConfig,
+  victoryPointsModeActive,
   type CustomMapPreset,
   type GameAction,
   type GameState,
@@ -54,6 +56,12 @@ function makeGame(
     victoryMode?: "conquest" | "grail" | "dragon-hunt" | "dragon-conqueror";
     players?: SeatCfg[];
     parallelTurns?: number;
+    /** Lobby Victory-Points toggle (default absent = off). */
+    victoryPoints?: boolean;
+    /** Lobby Victory-Points round limit (only meaningful with victoryPoints on). */
+    victoryPointsRoundLimit?: number;
+    /** A designed map preset carried into the build (for preset-authoritative cases). */
+    customMapPreset?: CustomMapPreset | null;
   } = {}
 ): GameState {
   const state = createAdventureGameState({
@@ -63,7 +71,12 @@ function makeGame(
     events: false,
     victoryMode: opts.victoryMode ?? "conquest",
     parallelTurns: opts.parallelTurns ?? 0,
-    players: opts.players ?? TWO_PLAYERS
+    players: opts.players ?? TWO_PLAYERS,
+    ...(opts.victoryPoints !== undefined ? { victoryPoints: opts.victoryPoints } : {}),
+    ...(opts.victoryPointsRoundLimit !== undefined
+      ? { victoryPointsRoundLimit: opts.victoryPointsRoundLimit }
+      : {}),
+    ...(opts.customMapPreset !== undefined ? { customMapPreset: opts.customMapPreset } : {})
   });
   for (const player of Object.values(state.players)) {
     player.canMulligan = false;
@@ -670,5 +683,143 @@ describe("Sanitize + describe", () => {
     expect(victoryPointsConfig(state)).toBeNull();
     setVictoryPoints(state, VP_ON);
     expect(victoryPointsConfig(state)?.victoryConditionVp).toBe(3);
+  });
+});
+
+// ===========================================================================
+// 10. Lobby Victory-Points game option (turn VP on from normal setup, on ANY
+//     map — no designed preset needed). The lobby toggle injects an
+//     `{ enabled: true }` block into the EFFECTIVE map preset at build time, so
+//     the same downstream scoring system lights up. Each claim asserts an
+//     observable outcome (mode active / a scored round-limit end) with a CONTROL.
+// ===========================================================================
+
+describe("Lobby Victory-Points game option", () => {
+  it("the lobby toggle ON activates VP and its round limit ends the game by scoring", () => {
+    const state = makeGame({ victoryPoints: true, victoryPointsRoundLimit: 1 });
+    // The toggle lit up the whole VP system with no designed preset.
+    expect(victoryPointsModeActive(state)).toBe(true);
+    expect(state.adventure?.mapPreset?.victoryPoints?.enabled).toBe(true);
+    expect(state.adventure?.mapPreset?.roundLimit).toBe(1);
+
+    zeroBaseVp(state);
+    getMainHero(state, "p1")!.level = 4; // p1 out-scores p2 at the round limit
+
+    // Round 1 wraps after both seats end → round 2 → the round-limit scored end.
+    let next = apply(state, { type: "END_TURN", playerId: "p1" });
+    next = apply(next, { type: "END_TURN", playerId: "p2" });
+
+    expect(next.adventure?.winnerPlayerId).toBe("p1");
+    expect(next.phase).toBe("game-over");
+    expect(next.eventLog.some((event) => event.type === "VP_SCORING")).toBe(true);
+    expect(next.eventLog.some((event) => event.type === "GAME_WON" && event.playerId === "p1")).toBe(true);
+  });
+
+  it("CONTROL: the toggle absent leaves VP inactive — the SAME round-limit value never ends the game", () => {
+    // victoryPointsRoundLimit is passed but the toggle is OFF: the number alone
+    // must not arm anything (the injection is gated on victoryPoints === true).
+    const state = makeGame({ victoryPointsRoundLimit: 1 });
+    expect(victoryPointsModeActive(state)).toBe(false);
+    expect(state.adventure?.mapPreset?.roundLimit).toBeUndefined();
+
+    let next = apply(state, { type: "END_TURN", playerId: "p1" });
+    next = apply(next, { type: "END_TURN", playerId: "p2" });
+
+    expect(next.adventure?.winnerPlayerId ?? null).toBeNull();
+    expect(next.round).toBe(2);
+    expect(next.eventLog.some((event) => event.type === "VP_SCORING")).toBe(false);
+  });
+
+  it("a designed preset that enables VP stays authoritative when the lobby toggle is OFF/absent", () => {
+    const state = makeGame({
+      customMapPreset: { victoryPoints: { enabled: true, victoryConditionVp: 7 } },
+      victoryPoints: false
+    });
+    // An explicit lobby OFF does NOT disable a preset's VP.
+    expect(victoryPointsModeActive(state)).toBe(true);
+    expect(victoryPointsConfig(state)?.victoryConditionVp).toBe(7);
+  });
+
+  it("with BOTH the preset AND the lobby on, the PRESET's config wins (never a lobby default-overwrite)", () => {
+    const objectives: VictoryPointObjective[] = [{ kind: "hero-level", vp: 5, level: 3 }];
+    const state = makeGame({
+      customMapPreset: { victoryPoints: { enabled: true, victoryConditionVp: 7, objectives }, roundLimit: 12 },
+      victoryPoints: true,
+      victoryPointsRoundLimit: 3
+    });
+    // The preset's completion VP + objectives survive (not overwritten by the
+    // lobby's `{ enabled: true }` default), and the preset's roundLimit wins over
+    // the lobby's 3.
+    expect(victoryPointsConfig(state)?.victoryConditionVp).toBe(7);
+    expect(victoryPointsConfig(state)?.objectives).toEqual(objectives);
+    expect(state.adventure?.mapPreset?.roundLimit).toBe(12);
+  });
+
+  it("the full lobby → build path arms VP scoring (buildAdventureFromLobby wiring)", () => {
+    let lobby = createAdventureLobbyState({ seed: "vp-lobby" });
+    lobby = apply(lobby, {
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { victoryPoints: true, victoryPointsRoundLimit: 15 }
+    });
+    expect(lobby.setupLobby?.options.victoryPoints).toBe(true);
+    expect(lobby.setupLobby?.options.victoryPointsRoundLimit).toBe(15);
+
+    let built = apply(lobby, { type: "CHOOSE_FACTION", playerId: "p1", factionId: "castle", heroDefId: "catherine" });
+    built = apply(built, { type: "CHOOSE_FACTION", playerId: "p2", factionId: "dungeon", heroDefId: "alamar" });
+    built = apply(built, { type: "START_ADVENTURE", playerId: "p1" });
+
+    // The lobby fields reached the build (cherry-picked in buildAdventureFromLobby).
+    expect(victoryPointsModeActive(built)).toBe(true);
+    expect(built.adventure?.mapPreset?.victoryPoints?.enabled).toBe(true);
+    expect(built.adventure?.mapPreset?.roundLimit).toBe(15);
+  });
+
+  it("CONTROL: a lobby built WITHOUT the toggle is inactive (proves the toggle is what arms it)", () => {
+    let lobby = createAdventureLobbyState({ seed: "vp-lobby-off" });
+    lobby = apply(lobby, { type: "CHOOSE_FACTION", playerId: "p1", factionId: "castle", heroDefId: "catherine" });
+    lobby = apply(lobby, { type: "CHOOSE_FACTION", playerId: "p2", factionId: "dungeon", heroDefId: "alamar" });
+    const built = apply(lobby, { type: "START_ADVENTURE", playerId: "p1" });
+
+    expect(victoryPointsModeActive(built)).toBe(false);
+    expect(built.adventure?.mapPreset?.victoryPoints).toBeUndefined();
+  });
+
+  it("setGameOptions sets, clears and clamps both fields and emits GAME_OPTIONS_CHANGED", () => {
+    let lobby = createAdventureLobbyState({ seed: "vp-set-options" });
+
+    // Turn VP on.
+    lobby = apply(lobby, { type: "SET_GAME_OPTIONS", playerId: "p1", options: { victoryPoints: true } });
+    expect(lobby.setupLobby?.options.victoryPoints).toBe(true);
+    expect(
+      lobby.eventLog.some(
+        (event) => event.type === "GAME_OPTIONS_CHANGED" && event.message.includes("Victory points on")
+      )
+    ).toBe(true);
+
+    // A garbage-but-finite round limit clamps to the 30 ceiling (mirrors the preset bounds).
+    lobby = apply(lobby, { type: "SET_GAME_OPTIONS", playerId: "p1", options: { victoryPointsRoundLimit: 999 } });
+    expect(lobby.setupLobby?.options.victoryPointsRoundLimit).toBe(30);
+
+    // 0 clears it.
+    lobby = apply(lobby, { type: "SET_GAME_OPTIONS", playerId: "p1", options: { victoryPointsRoundLimit: 0 } });
+    expect(lobby.setupLobby?.options.victoryPointsRoundLimit).toBeUndefined();
+
+    // Turn VP back off.
+    lobby = apply(lobby, { type: "SET_GAME_OPTIONS", playerId: "p1", options: { victoryPoints: false } });
+    expect(lobby.setupLobby?.options.victoryPoints).toBe(false);
+    expect(
+      lobby.eventLog.some(
+        (event) => event.type === "GAME_OPTIONS_CHANGED" && event.message.includes("Victory points off")
+      )
+    ).toBe(true);
+
+    // A non-finite round limit is rejected (untrusted client value).
+    const rejected = applyAction(lobby, {
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { victoryPointsRoundLimit: Number.NaN }
+    });
+    expect(rejected.errors.length).toBeGreaterThan(0);
   });
 });

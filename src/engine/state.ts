@@ -8655,6 +8655,29 @@ export type GameSetupOptions = {
    */
   events?: boolean;
   /**
+   * OPTIONAL Victory Points scoring mode (default OFF/absent). When on, the game
+   * ends by SCORING — the player with the MOST Victory Points wins — at the
+   * `victoryPointsRoundLimit` round (if set) OR the moment a player completes the
+   * Scenario's victory condition; the full rulebook VP table lives in
+   * `src/engine/victory-points.ts`. Enabling it from the lobby injects a
+   * `victoryPoints: { enabled: true }` block into the EFFECTIVE map preset at
+   * build time (`victoryPointsConfig` reads `adventure.mapPreset.victoryPoints`,
+   * so the whole downstream VP system then lights up). A designed map preset that
+   * ALREADY enables VP stays AUTHORITATIVE — its config/round-limit win and an
+   * explicit lobby `victoryPoints: false`/absent never disables it. Without a
+   * round limit a conquest-style game ends ONLY by completion / last-faction-
+   * standing (the same caveat `victory-points.test.ts` pins for presets).
+   */
+  victoryPoints?: boolean;
+  /**
+   * OPTIONAL hard end-of-game round for lobby Victory Points scoring (only
+   * meaningful with `victoryPoints` on; ignored otherwise). Injected as the
+   * effective preset's `roundLimit` when the preset sets none of its own. 0 /
+   * absent = no round limit (completion is then the only end trigger). Clamped
+   * to the same 1–30 range as a designed preset's round limit.
+   */
+  victoryPointsRoundLimit?: number;
+  /**
    * Spell Book house rule (default ON). Gives every player a personal Spell Book
    * zone they may stash hand Spells into to free slots, then cast or boost from.
    * Off disables the move-to-Book action and the discard→Book pickup entirely.

@@ -5505,6 +5505,54 @@ function GameOptionsPanel({
         </small>
       </div>
 
+      {(() => {
+        const vpOn = options.victoryPoints === true;
+        const vpRoundLimit = options.victoryPointsRoundLimit ?? 0;
+        // A designed map preset that already enables VP is authoritative — the
+        // lobby toggle does not govern its scoring (see applyLobbyVictoryPoints).
+        const presetVpEnabled = options.customMapPreset?.victoryPoints?.enabled === true;
+        return (
+          <div className="optionRow">
+            <small title="Optional Victory Points scoring: at the round limit (or on victory completion) the player with the most Victory Points wins — the full rulebook scoring table.">
+              Victory points
+            </small>
+            <div className="optionButtons">
+              {([false, true] as const).map((on) => (
+                <button
+                  aria-pressed={vpOn === on}
+                  className={vpOn === on ? "selected" : ""}
+                  key={on ? "on" : "off"}
+                  onClick={() => send({ victoryPoints: on })}
+                  title={on ? "Victory Points scoring on" : "Victory Points scoring off"}
+                  type="button"
+                >
+                  {on ? "On" : "Off"}
+                </button>
+              ))}
+              {vpOn ? (
+                <select
+                  aria-label="Victory points round limit"
+                  onChange={(event) => send({ victoryPointsRoundLimit: Number(event.target.value) })}
+                  value={vpRoundLimit}
+                >
+                  <option value={0}>No round limit</option>
+                  {[10, 15, 20, 25, 30].map((rounds) => (
+                    <option key={rounds} value={rounds}>
+                      {rounds} rounds
+                    </option>
+                  ))}
+                </select>
+              ) : null}
+            </div>
+            <small className="optionHint">
+              {presetVpEnabled
+                ? "The designed map already enables Victory Points — its own scoring settings and round limit apply, so this toggle does not govern them."
+                : "The game ends at the round limit (or when a player completes the victory condition), and the player with the most Victory Points wins — the full rulebook scoring table (heroes defeated, buildings, hero levels, flagged mines/settlements, artifacts). Without a round limit a conquest-style game ends only by completion or last-faction-standing."}
+            </small>
+          </div>
+        );
+      })()}
+
       {modeNotice ? (
         <div className="modeNoticeBanner" role="status">
           <Info size={14} aria-hidden="true" />

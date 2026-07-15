@@ -9317,6 +9317,19 @@ span.recruitThumb {
   color: #ffe9b0;
 }
 
+/* Inline dropdown inside an option row (e.g. the Victory Points round limit) —
+   matches the option buttons on the dark setup panel. */
+.optionButtons select {
+  padding: 5px 10px;
+  font: inherit;
+  font-size: 11.5px;
+  border-radius: 8px;
+  border: 1px solid rgba(140, 110, 65, 0.55);
+  background: rgba(20, 14, 9, 0.8);
+  color: #e8d3a8;
+  cursor: pointer;
+}
+
 /* Wake of Gods is a BINH-only submodule. The crest is the on/off switch; its
    compact options window stays inside setup instead of becoming another tab. */
 .wogOptionRow {

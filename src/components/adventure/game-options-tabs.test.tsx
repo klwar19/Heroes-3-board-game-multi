@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { SetupLobbyScreen } from "./screen";
-import { createAdventureLobbyState } from "@/engine";
+import { createAdventureLobbyState, type GameState } from "@/engine";
 
 afterEach(cleanup);
 
@@ -14,6 +14,15 @@ afterEach(cleanup);
  */
 function openOptions(onAction = vi.fn()) {
   const state = createAdventureLobbyState({ seed: "options-tabs" });
+  render(<SetupLobbyScreen onAction={onAction} state={state} viewerPlayerId="p1" />);
+  fireEvent.click(screen.getByRole("tab", { name: "Game options" }));
+  return onAction;
+}
+
+/** Open the options with a chance to mutate the seeded lobby state first. */
+function openOptionsWith(mutate: (state: GameState) => void, onAction = vi.fn()) {
+  const state = createAdventureLobbyState({ seed: "options-tabs-vp" });
+  mutate(state);
   render(<SetupLobbyScreen onAction={onAction} state={state} viewerPlayerId="p1" />);
   fireEvent.click(screen.getByRole("tab", { name: "Game options" }));
   return onAction;
@@ -168,5 +177,65 @@ describe("Game options — tabbed layout", () => {
       .sort()
       .join(",");
     expect(["1pack,2pack", "3pack", "4few"]).toContain(signature);
+  });
+});
+
+/**
+ * The lobby Victory-Points toggle (Mode & Rules tab, directly below Game mode,
+ * default Off). These assert the row is WIRED — clicking On / picking a round
+ * limit dispatches the exact SET_GAME_OPTIONS the engine reads — and that a
+ * designed preset which already enables VP is surfaced as authoritative. (The
+ * engine half is pinned by victory-points.test.ts.)
+ */
+describe("Game options — Victory points", () => {
+  it("renders the Victory points row DIRECTLY BELOW the Game mode row, default Off", () => {
+    openOptions();
+    const gameMode = screen.getByText("Game mode");
+    const victoryPoints = screen.getByText("Victory points");
+    // DOM order: the Victory points label follows the Game mode label.
+    expect(gameMode.compareDocumentPosition(victoryPoints) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    const row = victoryPoints.closest(".optionRow") as HTMLElement;
+    expect(within(row).getByRole("button", { name: "Off" }).getAttribute("aria-pressed")).toBe("true");
+    expect(within(row).getByRole("button", { name: "On" }).getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("clicking On dispatches victoryPoints: true", () => {
+    const onAction = openOptions();
+    const row = screen.getByText("Victory points").closest(".optionRow") as HTMLElement;
+    fireEvent.click(within(row).getByRole("button", { name: "On" }));
+    expect(onAction).toHaveBeenCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { victoryPoints: true }
+    });
+  });
+
+  it("the round-limit select appears only when ON and dispatches the chosen number", () => {
+    // Default (Off): no round-limit select.
+    openOptions();
+    expect(screen.queryByLabelText("Victory points round limit")).toBeNull();
+    cleanup();
+
+    // With the toggle ON in state, the select shows and dispatches the number.
+    const onAction = openOptionsWith((state) => {
+      state.setupLobby!.options.victoryPoints = true;
+    });
+    const select = screen.getByLabelText("Victory points round limit");
+    expect(select).toBeTruthy();
+    fireEvent.change(select, { target: { value: "20" } });
+    expect(onAction).toHaveBeenCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { victoryPointsRoundLimit: 20 }
+    });
+  });
+
+  it("shows the preset-authoritative note when the selected map preset already enables VP", () => {
+    openOptionsWith((state) => {
+      state.setupLobby!.options.customMapPreset = { victoryPoints: { enabled: true } };
+    });
+    const row = screen.getByText("Victory points").closest(".optionRow") as HTMLElement;
+    expect(row.textContent).toMatch(/designed map already enables Victory Points/i);
   });
 });
