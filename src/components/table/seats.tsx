@@ -350,6 +350,7 @@ export function HandFan({
   selectedCardAction,
   trayActive,
   hiddenTailCount = 0,
+  inFlightCardIds,
   onSelectCardAction,
   onAction
 }: {
@@ -361,6 +362,12 @@ export function HandFan({
   trayActive: boolean;
   /** Freshly drawn cards stay hidden while their draw flight is in the air. */
   hiddenTailCount?: number;
+  /**
+   * Pending-action echo (plan N2): hand cards whose play is submitted but not
+   * yet acknowledged — dimmed via .cardInFlight. Presentation only: nothing
+   * here gates offers, and the set self-clears on ack/error/snapshot.
+   */
+  inFlightCardIds?: ReadonlySet<string>;
   onSelectCardAction: (action: CardBoardAction | null) => void;
   onAction: (action: GameAction) => void;
 }) {
@@ -647,7 +654,7 @@ export function HandFan({
               aria-pressed={open || selected}
               className={`fanCard ${playable ? "playable" : ""} ${selected ? "selected" : ""} ${
                 !playable && helperCoach.enabled ? "helperBlocked" : ""
-              }`}
+              } ${inFlightCardIds?.has(entry.cardId) ? "cardInFlight" : ""}`}
               onClick={() => {
                 setArmed(null);
                 // Clear click-to-target: a card whose only play is a single

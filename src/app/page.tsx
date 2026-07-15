@@ -213,6 +213,14 @@ import {
   type SnapshotMeta
 } from "@/lib/realtime";
 import { ConnectionQualityChip, retainQualitySample } from "@/components/table/connection-quality";
+import {
+  beginPendingEcho,
+  initialPendingEchoState,
+  pendingEchoCardIds,
+  prunePendingEchoes,
+  resolvePendingEcho,
+  type PendingEchoState
+} from "@/lib/pending-action-echo";
 import { clearCachedRoom, loadCachedRoom, saveCachedRoom } from "@/lib/room-cache";
 import { getAccountIdentity, getClientId, getDisplayName, setDisplayName as persistDisplayName } from "@/lib/identity";
 import { fetchSession, fetchSocketToken } from "@/lib/auth-client";
@@ -684,6 +692,12 @@ export default function Home() {
   // Presentation-only; retainQualitySample keeps the reference stable when the
   // displayed value would not change, so per-ack jitter never re-renders.
   const [connectionQuality, setConnectionQuality] = useState<ConnectionQualitySample | null>(null);
+  // Pending-action echo (plan N2): presentation-only in-flight entries, keyed
+  // per submit. The REF is the source of truth (submitAction's duplicate latch
+  // must read synchronously — two rapid clicks land before any re-render); the
+  // state mirror only drives rendering (the hand panels' in-flight dim).
+  const pendingEchoesRef = useRef<PendingEchoState>(initialPendingEchoState());
+  const [pendingEchoView, setPendingEchoView] = useState<PendingEchoState>(pendingEchoesRef.current);
   /**
    * The room server's engine signature from the latest snapshot. When it
    * disagrees with this frontend's ENGINE_SIGNATURE the room server is running
@@ -3328,6 +3342,13 @@ export default function Home() {
       // Commit ordering synchronously before any cache, recovery, React, audio,
       // animation, timer or match-claim side effect can run.
       snapshotArbiterRef.current = decision.state;
+      // Pending-action echo TTL sweep (plan N2): a submit whose promise never
+      // settles (hung fetch) still un-dims once the authoritative state flows.
+      const prunedEchoes = prunePendingEchoes(pendingEchoesRef.current, Date.now());
+      if (prunedEchoes !== pendingEchoesRef.current) {
+        pendingEchoesRef.current = prunedEchoes;
+        setPendingEchoView(prunedEchoes);
+      }
       const bootChanged = decision.reason === "new-boot";
       // A fresh mount (arbiter at version -1) reconnecting to a room the server
       // recycled to a bare setup lobby must still restore the cached in-progress
@@ -3573,8 +3594,10 @@ export default function Home() {
     seenRollIdsRef.current = null;
     // Each room gets its own recovery attempt, even on the same server boot.
     restoredForBootRef.current = null;
-    // A fresh connection starts with no RTT measurement.
+    // A fresh connection starts with no RTT measurement and no in-flight echo.
     setConnectionQuality(null);
+    pendingEchoesRef.current = initialPendingEchoState();
+    setPendingEchoView(pendingEchoesRef.current);
 
     const connection = connectRoom(
       roomId,
@@ -3701,6 +3724,18 @@ export default function Home() {
       return false;
     }
 
+    // Pending-action echo (plan N2): register the submit. A duplicate of the
+    // SAME action while its first copy is still unacknowledged is refused
+    // client-side (the double-click latch); the entry also drives the hand
+    // panels' in-flight dim. Presentation + latch only — GameState is never
+    // predicted, and the entry self-clears in the finally below.
+    const echoBegin = beginPendingEcho(pendingEchoesRef.current, outgoing, Date.now());
+    pendingEchoesRef.current = echoBegin.state;
+    setPendingEchoView(echoBegin.state);
+    if (!echoBegin.accepted) {
+      return false;
+    }
+
     setSyncStatus("submitting");
     recordPerformanceMetric({
       name: "room.action.validation",
@@ -3747,6 +3782,12 @@ export default function Home() {
           /* the live stream keeps trying */
         });
       return false;
+    } finally {
+      // Echo settle (ack, error result, or thrown submit/timeout alike):
+      // dropping the entry restores the card's normal presentation.
+      const settled = resolvePendingEcho(pendingEchoesRef.current, echoBegin.id);
+      pendingEchoesRef.current = settled;
+      setPendingEchoView(settled);
     }
   };
 
@@ -4858,6 +4899,10 @@ export default function Home() {
     );
   }
 
+  // Pending-action echo (plan N2): hand cards with a play in flight — dimmed
+  // in BOTH hand panels (map + combat) until the ack/snapshot settles.
+  const inFlightCardIds = pendingEchoCardIds(pendingEchoView);
+
   // ---- Adventure map screen -------------------------------------------------
   // Force the map in front during pre-battle prep so both sides plan with their
   // towns and resources in view, not on the empty battlefield.
@@ -5731,7 +5776,7 @@ export default function Home() {
                           pickedForCost ? "discarding" : ""
                         } ${!selecting && !isPayingSource && actionable ? "playable" : ""} ${
                           whyBlocked ? "helperBlocked" : ""
-                        }`}
+                        } ${inFlightCardIds.has(cardId) ? "cardInFlight" : ""}`}
                         onClick={() => {
                           // Paying a card cost: clicks toggle the payment.
                           if (isPayingSource) {
@@ -6092,6 +6137,7 @@ export default function Home() {
                     read. */}
                 <HandFan
                   hiddenTailCount={hiddenHandTail}
+                  inFlightCardIds={inFlightCardIds}
                   legalActions={legalActions}
                   onAction={submitAction}
                   onSelectCardAction={selectBoardCardAction}
