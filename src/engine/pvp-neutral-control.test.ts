@@ -622,7 +622,7 @@ describe("PvP Neutral Control — pre-battle formation sort", () => {
     expect(modeOff.combat!.pendingNeutralPlacement ?? null).toBeNull();
   });
 
-  it("swaps two guards, allows ANY empty board cell, and REJECTS a non-controller", () => {
+  it("swaps two guards, allows any defender-row cell, and REJECTS off-side / non-controller", () => {
     let state = fightWithGuards("pnc-sort-swap", { players: 3, difficulty: 2 });
     const [a, b] = guardsOf(state);
     const posA = a.position;
@@ -633,18 +633,25 @@ describe("PvP Neutral Control — pre-battle formation sort", () => {
     expect(state.combat!.units[a.id].position).toBe(posB);
     expect(state.combat!.units[b.id].position).toBe(posA);
 
-    // Field sort is free-placement: attacker-zone cell 12 is legal when empty.
-    const freeCell = 12;
-    expect(Object.values(state.combat!.units).some((unit) => unit.position === freeCell)).toBe(false);
-    state = applyOk(state, { type: "PLACE_NEUTRAL_GUARD", playerId: "p2", unitId: a.id, position: freeCell });
-    expect(state.combat!.units[a.id].position).toBe(freeCell);
+    // Any empty cell on the defender's two rows is legal (front or back).
+    const defenderRows = [0, 1, 2, 3, 4, 5, 6, 7];
+    const freeDefenderCell = defenderRows.find(
+      (cell) => !Object.values(state.combat!.units).some((unit) => unit.position === cell)
+    )!;
+    state = applyOk(state, {
+      type: "PLACE_NEUTRAL_GUARD",
+      playerId: "p2",
+      unitId: a.id,
+      position: freeDefenderCell
+    });
+    expect(state.combat!.units[a.id].position).toBe(freeDefenderCell);
 
-    // An off-board index is still rejected.
-    const offBoard = applyAction(state, { type: "PLACE_NEUTRAL_GUARD", playerId: "p2", unitId: a.id, position: 99 });
-    expect(offBoard.errors.length).toBeGreaterThan(0);
+    // Attacker-side cell 12 is outside the defender's two rows — rejected.
+    const outOfZone = applyAction(state, { type: "PLACE_NEUTRAL_GUARD", playerId: "p2", unitId: a.id, position: 12 });
+    expect(outOfZone.errors.length).toBeGreaterThan(0);
 
-    // The FIGHTER may not sort — rejected even for a legal cell/guard.
-    const emptyCell = [0, 1, 2, 3, 4, 5, 6, 7].find(
+    // The FIGHTER may not sort — rejected even for a legal defender cell/guard.
+    const emptyCell = defenderRows.find(
       (cell) => !Object.values(state.combat!.units).some((unit) => unit.position === cell)
     )!;
     const byFighter = applyAction(state, { type: "PLACE_NEUTRAL_GUARD", playerId: "p1", unitId: a.id, position: emptyCell });

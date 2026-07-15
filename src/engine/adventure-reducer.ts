@@ -122,7 +122,7 @@ import {
   victoryModeCountsHeroDefeats,
   type NeutralDraw
 } from "./adventure";
-import { ATTACK_DIE_FACES, BATTLEFIELD_CELL_COUNT } from "./battlefield";
+import { ATTACK_DIE_FACES } from "./battlefield";
 import { appendExpiredEffectEvents, pvpEscapeWindowOpen } from "./combat-units";
 import {
   COMMANDER_MASTERY_MIN_HERO_LEVEL,
@@ -4563,10 +4563,11 @@ export function revealNeutralArmy(state: GameState, draws: NeutralDraw[]): void 
  * controlling player once the Neutral army is revealed and auto-placed —
  * normal guard FIELDS and Creature Banks alike (user rule: "sorting or moving
  * neutral formation before battle, just like defender"). Field guards may sit
- * on ANY empty battlefield square; banks rearrange within their four corner
- * cells. Returns true (and holds priority for the controller) when the window
- * opens. Never opens with no controller (AI/solo), or with fewer than two
- * living guards to arrange — mirroring the Tactics window's threshold.
+ * on ANY cell of the defender's two rows (back + front); banks rearrange within
+ * their four corner cells. Returns true (and holds priority for the controller)
+ * when the window opens. Never opens with no controller (AI/solo), or with
+ * fewer than two living guards to arrange — mirroring the Tactics window's
+ * threshold.
  */
 function openNeutralPlacementWindow(state: GameState): boolean {
   const combat = state.combat;
@@ -4597,8 +4598,8 @@ function openNeutralPlacementWindow(state: GameState): boolean {
 
 /**
  * Cells the Neutral formation may occupy during the pre-battle sort.
- * Normal fields = the WHOLE battlefield (any unit, any empty square); Creature
- * Banks = the four corner cells the guards deploy on.
+ * Normal fields = the defender's two rows (backline + frontline) — any unit on
+ * any of those cells; Creature Banks = the four corner cells.
  */
 export function neutralFormationCellsFor(state: GameState): number[] {
   const combat = state.combat;
@@ -4608,15 +4609,15 @@ export function neutralFormationCellsFor(state: GameState): number[] {
   if (combat.context.kind === "neutral" && isCreatureBankId(combat.context.bankId)) {
     return [...CREATURE_BANK_GUARD_CORNERS];
   }
-  // Field fight: free placement — every board cell is legal.
-  return Array.from({ length: BATTLEFIELD_CELL_COUNT }, (_, index) => index);
+  // Field fight: any cell on the defender side (both rows).
+  return [...DEFENDER_BACKLINE, ...DEFENDER_FRONTLINE];
 }
 
 /**
  * PvP Neutral Control: the controller repositions ONE Neutral guard during the
  * pre-battle sort (PLACE_NEUTRAL_GUARD). Moves the guard to an empty cell in the
  * formation zone, or SWAPS it with another guard already standing there. Field
- * fights allow ANY square; banks stay in the four corners.
+ * fights: any cell on the defender's two rows; banks: the four corners.
  */
 export function placeNeutralGuard(state: GameState, action: Extract<GameAction, { type: "PLACE_NEUTRAL_GUARD" }>): void {
   const combat = state.combat;
@@ -4627,12 +4628,12 @@ export function placeNeutralGuard(state: GameState, action: Extract<GameAction, 
   if (!guard || guard.controllerId !== NEUTRAL_PLAYER_ID || guard.damage >= guard.maxHealth || isArrowTowerUnit(guard)) {
     throw new Error("That unit is not a Neutral guard you can reposition.");
   }
-  // Field = any board cell; bank = the four corners only.
+  // Field = any defender-row cell; bank = the four corners only.
   if (!neutralFormationCellsFor(state).includes(action.position)) {
     throw new Error(
       combat.context.kind === "neutral" && isCreatureBankId(combat.context.bankId)
         ? "A Creature Bank guard must stay on one of the four corner cells."
-        : "That is not a legal battlefield cell."
+        : "A Neutral guard must stay on the defender's back or front line."
     );
   }
   // Combat obstacles (walls, force fields, …) are never landable.
