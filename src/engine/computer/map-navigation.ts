@@ -20,6 +20,7 @@ import type {
   PlayerId,
 } from "../state";
 import {
+  armyTierCoversGuardField,
   canBeatCreatureBank,
   shouldAssaultEnemyHolding,
   shouldEngageEnemy,
@@ -237,6 +238,13 @@ function victoryObjectiveKind(
  * lower-level attack would be a blind gamble, exactly the case the stock policy
  * refused. Creature Banks use `canBeatCreatureBank` (public bank card stats +
  * expected stacks) instead of field difficulty — they never Quick-Combat-skip.
+ *
+ * Step 5 EXTENSION (army-tier reference): the level gate below is OR-ed with the
+ * army-COMPOSITION reference (`armyTierCoversGuardField`) — a silver-bearing army
+ * takes difficulty-3 guards, a gold-bearing one difficulty-5, at Impossible (and
+ * proportionally more at easier scenario difficulties, where the same field draws
+ * a weaker party). This only ever ADDS engageable fields; a fight the hero level
+ * already covers is never newly refused.
  */
 export function canBeatGuardedField(
   state: GameState,
@@ -250,7 +258,10 @@ export function canBeatGuardedField(
   if (difficulty <= 0) {
     return false;
   }
-  return neutralBattleLevel(state, hero) >= difficulty;
+  if (neutralBattleLevel(state, hero) >= difficulty) {
+    return true;
+  }
+  return armyTierCoversGuardField(state, hero.controllerId, difficulty);
 }
 
 /**
