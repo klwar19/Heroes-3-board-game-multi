@@ -13,7 +13,10 @@ import {
   attackIsLethal,
   distanceToNearestEnemy,
   expectedAttackDamage,
+  hasThreatAbility,
+  isParalyzed,
   livingEnemyUnits,
+  targetPriority,
   unitRemainingHealth,
   unitThreatValue,
 } from "./score";
@@ -68,6 +71,26 @@ const BAD_TRADE_ATTACK_SCORE = 548;
 // Enemy shooters strike every round without exposing themselves to melee
 // retaliation — removing (or pressuring) them first is the classic opening.
 const RANGED_TARGET_BONUS = 18;
+// Reaching an enemy caster / activation-threat (Enchanter heal, Faerie Bolt,
+// Genie, splash…) with our melee this activation is the same "deny the backline"
+// hunt as pressuring a shooter — a strong humans-deny-shooters bonus.
+const CASTER_TARGET_BONUS = 14;
+// Focus fire: reward stacking damage onto a body reachable allies can also hit,
+// capped so it orders WITHIN the attack band without swamping the lethal/chip
+// signal, and a larger bonus when this hit plus those allies can FINISH it now.
+const FOCUS_PRESSURE_CAP = 24;
+const FOCUS_FINISH_BONUS = 24;
+// A non-lethal poke that the army cannot finish this round, thrown at a
+// safely-skippable PARALYZED enemy, would only wake it (any damage removes the
+// Paralysis token, cancelling the activation it was going to skip). Score it
+// below the passive exits (END_ACTIVATION = 400) so the unit holds / does
+// something real instead of trading its strike to wake a sleeper. A lethal hit
+// (or one the army can finish) never reaches this — those remove the unit.
+const PARALYSIS_WAKE_POKE_SCORE = 360;
+// Focus march: how strongly a MOVE toward the highest value-adjusted target is
+// preferred (and the mild penalty for stepping away from it).
+const FOCUS_MARCH_BONUS = 14;
+const FOCUS_MARCH_AWAY_PENALTY = 6;
 
 /** Whether this attack would let the defender retaliate for damage back. */
 function provokesRetaliation(
@@ -108,47 +131,85 @@ function attackScore(
 ): number {
   const remaining = unitRemainingHealth(defender);
   const threat = unitThreatValue(defender);
-  let quality: number;
-  if (attackIsLethal(attacker, defender)) {
-    quality = 160 + Math.min(80, threat);
-  } else {
-    const damage = expectedAttackDamage(attacker, defender);
-    const damageFraction = remaining > 0 ? damage / remaining : 0;
-    quality = Math.round(damageFraction * 80) + Math.min(40, Math.round(threat / 4));
-    if (provokesRetaliation(attacker, defender, attackFromPosition)) {
-      const retaliation = expectedAttackDamage(defender, attacker);
-      quality -= Math.min(50, retaliation * 4);
-      if (damage === 0 && retaliation >= unitRemainingHealth(attacker)) {
-        return SUICIDAL_ATTACK_SCORE;
-      }
-      // Value-losing trade: the counter-hit kills our attacker, we chip less
-      // than half the defender's remaining health, and the unit we lose is
-      // worth more than the one we're poking. Let a high-value Defend win.
-      if (
-        retaliation >= unitRemainingHealth(attacker) &&
-        damageFraction < 0.5 &&
-        unitThreatValue(attacker) > threat
-      ) {
-        return BAD_TRADE_ATTACK_SCORE;
-      }
-    }
-  }
+  const damage = expectedAttackDamage(attacker, defender);
+  const damageFraction = remaining > 0 ? damage / remaining : 0;
+  const lethal = attackIsLethal(attacker, defender);
+  const ownRemaining = unitRemainingHealth(attacker);
 
-  // Kill (or pressure) enemy shooters first: they deal full damage every round
-  // from safety, so removing them beats an equal-stat melee target.
-  if (defender.type === "ranged") {
-    quality += RANGED_TARGET_BONUS;
-  }
-
-  // Focus fire: allies already adjacent / close to this enemy — finish it.
-  const allyPressure = Object.values(combat.units).filter(
+  // Allies that have NOT acted yet this round and can reach this same enemy
+  // (adjacent melee, or any ranged): the bodies that can still add damage to
+  // this target this round. Drives both focus-fire and the paralysis guard.
+  const reachingAllies = Object.values(combat.units).filter(
     (unit) =>
       unit.controllerId === playerId &&
       unit.id !== attacker.id &&
       unitRemainingHealth(unit) > 0 &&
-      isAdjacent(unit.position, defender.position),
-  ).length;
-  quality += allyPressure * 12;
+      !unit.activatedThisRound &&
+      (unit.type === "ranged" || isAdjacent(unit.position, defender.position)),
+  );
+  const allyFollowUpDamage = reachingAllies.reduce(
+    (sum, unit) => sum + expectedAttackDamage(unit, defender),
+    0,
+  );
+  const armyCanFinish = damage + allyFollowUpDamage >= remaining;
+
+  // Don't wake a safely-skippable paralyzed enemy for chip: any damage removes
+  // its Paralysis token, cancelling the activation it would have skipped. Only a
+  // kill — or a hit the army can finish this round (the wake-up is then moot) —
+  // is worth it; otherwise leave the sleeper be.
+  if (
+    !lethal &&
+    !armyCanFinish &&
+    isParalyzed(defender) &&
+    !defender.activatedThisRound
+  ) {
+    return PARALYSIS_WAKE_POKE_SCORE;
+  }
+
+  let quality: number;
+  if (lethal) {
+    quality = 160 + Math.min(80, threat);
+  } else {
+    quality = Math.round(damageFraction * 80) + Math.min(40, Math.round(threat / 4));
+    if (provokesRetaliation(attacker, defender, attackFromPosition)) {
+      const retaliation = expectedAttackDamage(defender, attacker);
+      quality -= Math.min(50, retaliation * 4);
+      if (damage === 0 && retaliation >= ownRemaining) {
+        return SUICIDAL_ATTACK_SCORE;
+      }
+      // Expected-value trade: refuse ONLY when the counter-hit KILLS our
+      // attacker (we lose its whole value), we would be trading DOWN (our unit
+      // is worth more than the target), and the value we remove now
+      // (damage-fraction × the target's value) is less than half the value we
+      // lose. A big chip — or trading a cheaper body UP into a pricier one —
+      // still strikes; a high-value Defend wins here instead.
+      if (retaliation >= ownRemaining) {
+        const removedValue = damageFraction * threat;
+        const ownValue = unitThreatValue(attacker);
+        if (ownValue > threat && removedValue < ownValue * 0.5) {
+          return BAD_TRADE_ATTACK_SCORE;
+        }
+      }
+    }
+  }
+
+  // Hunt shooters AND casters in reach: a shooter deals full damage every round
+  // from safety, a caster warps the fight from the backline — removing either
+  // beats an equal-stat melee body. (Additive: a ranged caster is top priority.)
+  if (defender.type === "ranged") {
+    quality += RANGED_TARGET_BONUS;
+  }
+  if (hasThreatAbility(defender)) {
+    quality += CASTER_TARGET_BONUS;
+  }
+
+  // Focus fire: stack onto a body reachable allies can also hit, and especially
+  // one this hit plus those allies can FINISH this round — the army removes a
+  // unit instead of spreading chips.
+  quality += Math.min(FOCUS_PRESSURE_CAP, reachingAllies.length * 8);
+  if (!lethal && armyCanFinish) {
+    quality += FOCUS_FINISH_BONUS;
+  }
   // Prefer low remaining among equal threats (finish wounded).
   if (remaining <= 2) quality += 10;
 
@@ -433,17 +494,22 @@ function moveUnitScore(
     }
   }
 
-  // Focus: move toward the lowest-health living enemy (finish focus).
+  // Focus march: converge on the highest VALUE-adjusted target we can threaten
+  // (tier / ranged / caster via `targetPriority`, a wounded body a premium),
+  // not merely the nearest — so the army collapses onto one worthwhile unit
+  // instead of chasing whatever chaff is closest. Value primary, wounds break
+  // ties. Stepping toward it is rewarded; stepping away is mildly penalised.
   const enemies = livingEnemyUnits(combat, observation.playerId);
   if (enemies.length > 0) {
     const focus = [...enemies].sort(
       (a, b) =>
-        unitRemainingHealth(a) - unitRemainingHealth(b) ||
-        unitThreatValue(b) - unitThreatValue(a),
+        targetPriority(b) - targetPriority(a) ||
+        unitRemainingHealth(a) - unitRemainingHealth(b),
     )[0];
     const before = getBattlefieldDistance(mover.position, focus.position);
     const after = getBattlefieldDistance(action.destination, focus.position);
-    if (after < before) score += 10;
+    if (after < before) score += FOCUS_MARCH_BONUS;
+    else if (after > before) score -= FOCUS_MARCH_AWAY_PENALTY;
   }
 
   if (next >= current && score < 400) {

@@ -291,6 +291,208 @@ describe("combat policy — defend the high-value threatened unit", () => {
   });
 });
 
+describe("combat policy — target value (tier / caster)", () => {
+  it("finishes the higher-VALUE (tier) kill among two lethal removals", () => {
+    // A (att 8) kills either fragile enemy. BR is the bigger RAW threat
+    // (att 6 → base 26) than SV (att 5 → base 23), but SV is a silver-tier body:
+    // its tier weight (23+8=31) makes it the better prize, so the removal lands
+    // on the silver.
+    const attacker = unit({ id: "A", controllerId: "p2", attack: 8, position: 8 });
+    const silver = unit({
+      id: "SV", grade: "silver", attack: 5, defense: 0, maxHealth: 3,
+      initiative: 5, position: 9,
+    });
+    const bronze = unit({
+      id: "BR", grade: "bronze", attack: 6, defense: 0, maxHealth: 3,
+      initiative: 5, position: 12,
+    });
+    const decision = chooseComputerAction(
+      observation([attacker, silver, bronze], [attackOn("A", "SV"), attackOn("A", "BR")]),
+    );
+    expect((decision?.action as { defenderId: string }).defenderId).toBe("SV");
+
+    // CONTROL: neutralize the value layer — make SV bronze too. Its base threat
+    // (23) now trails BR's (26), so the choice follows raw threat to the bronze,
+    // proving the tier weight drove the first pick.
+    const silverAsBronze = unit({
+      id: "SV", grade: "bronze", attack: 5, defense: 0, maxHealth: 3,
+      initiative: 5, position: 9,
+    });
+    const control = chooseComputerAction(
+      observation([attacker, silverAsBronze, bronze], [attackOn("A", "SV"), attackOn("A", "BR")]),
+    );
+    expect((control?.action as { defenderId: string }).defenderId).toBe("BR");
+  });
+
+  it("hunts the reachable enemy CASTER over an equal-stat plain melee", () => {
+    // A (att 10) kills either. CAST carries an activation caster ability
+    // (Enchanter heal); PLN is an identical-stat plain body. Reaching the caster
+    // with melee this activation earns the hunt bonus, so the removal lands on it.
+    const attacker = unit({ id: "A", controllerId: "p2", attack: 10, position: 8 });
+    const caster = unit({
+      id: "CAST", attack: 5, defense: 0, maxHealth: 3, position: 9,
+      abilities: ["enchanter-heal-or-buff"],
+    });
+    const plain = unit({
+      id: "PLN", attack: 5, defense: 0, maxHealth: 3, position: 12, abilities: [],
+    });
+    const decision = chooseComputerAction(
+      observation([attacker, caster, plain], [attackOn("A", "CAST"), attackOn("A", "PLN")]),
+    );
+    expect((decision?.action as { defenderId: string }).defenderId).toBe("CAST");
+
+    // CONTROL: move the caster ability onto the other body — the pick follows
+    // the ABILITY, not the id or stats.
+    const casterPlain = unit({
+      id: "CAST", attack: 5, defense: 0, maxHealth: 3, position: 9, abilities: [],
+    });
+    const plainCaster = unit({
+      id: "PLN", attack: 5, defense: 0, maxHealth: 3, position: 12,
+      abilities: ["enchanter-heal-or-buff"],
+    });
+    const control = chooseComputerAction(
+      observation([attacker, casterPlain, plainCaster], [attackOn("A", "CAST"), attackOn("A", "PLN")]),
+    );
+    expect((control?.action as { defenderId: string }).defenderId).toBe("PLN");
+  });
+});
+
+describe("combat policy — focus fire", () => {
+  it("chips the enemy the army can FINISH this round, not an unfinishable spread", () => {
+    // A chips either identical enemy for 5 of 10 (non-lethal alone). Un-acted
+    // ally B (att 7) is adjacent to E1 only — A+B together finish E1 (5+5≥10) —
+    // so the damage stacks onto E1 rather than spreading onto E2.
+    const attacker = unit({
+      id: "A", controllerId: "p2", attack: 7, defense: 2, maxHealth: 10, position: 5,
+    });
+    const ally = unit({
+      id: "B", controllerId: "p2", attack: 7, defense: 2, maxHealth: 10, position: 10,
+    });
+    const e1 = unit({ id: "E1", attack: 7, defense: 2, maxHealth: 10, position: 6 });
+    const e2 = unit({ id: "E2", attack: 7, defense: 2, maxHealth: 10, position: 4 });
+    const decision = chooseComputerAction(
+      observation([attacker, ally, e1, e2], [attackOn("A", "E1"), attackOn("A", "E2")]),
+    );
+    expect((decision?.action as { defenderId: string }).defenderId).toBe("E1");
+
+    // CONTROL: move the ally adjacent to E2 instead — now the army can finish E2
+    // this round, so the focus-fire flips there.
+    const allyAtE2 = unit({
+      id: "B", controllerId: "p2", attack: 7, defense: 2, maxHealth: 10, position: 8,
+    });
+    const control = chooseComputerAction(
+      observation([attacker, allyAtE2, e1, e2], [attackOn("A", "E1"), attackOn("A", "E2")]),
+    );
+    expect((control?.action as { defenderId: string }).defenderId).toBe("E2");
+  });
+});
+
+describe("combat policy — value-adjusted march", () => {
+  it("walks toward the reachable gold target over a nearer, more-wounded low body", () => {
+    // Mover M(9). E_HIGH(12, gold) and E_LOW(1, bronze) are both distance 2. Both
+    // candidate steps close the nearest-enemy distance equally (2→1), so the
+    // focus march decides: it converges on the gold body (value primary) even
+    // though the bronze is slightly more wounded.
+    const mover = unit({ id: "M", controllerId: "p2", position: 9 });
+    const high = unit({
+      id: "HI", grade: "gold", attack: 6, defense: 0, maxHealth: 6, damage: 0,
+      initiative: 4, position: 12,
+    });
+    const low = unit({
+      id: "LO", grade: "bronze", attack: 6, defense: 0, maxHealth: 10, damage: 6,
+      initiative: 6, position: 1,
+    });
+    const decision = chooseComputerAction(
+      observation([mover, high, low], [moveTo("M", 8), moveTo("M", 5)]),
+    );
+    expect(decision?.action.type).toBe("MOVE_UNIT");
+    expect((decision?.action as { destination: number }).destination).toBe(8);
+
+    // CONTROL: neutralize the value layer — make HI bronze too. Now the wounded
+    // LO is the higher-priority focus, so the march flips toward it (step to 5).
+    const highAsBronze = unit({
+      id: "HI", grade: "bronze", attack: 6, defense: 0, maxHealth: 6, damage: 0,
+      initiative: 4, position: 12,
+    });
+    const control = chooseComputerAction(
+      observation([mover, highAsBronze, low], [moveTo("M", 8), moveTo("M", 5)]),
+    );
+    expect((control?.action as { destination: number }).destination).toBe(5);
+  });
+});
+
+describe("combat policy — EV trade guard (1-damage into lethal retaliation)", () => {
+  const wall = () =>
+    unit({ id: "E", attack: 5, defense: 4, maxHealth: 14, initiative: 2, position: 9 });
+
+  it("a valuable unit declines a 1-damage poke that invites a lethal retaliation", () => {
+    // V (threat 33) chips the wall (threat 31) for 1 of 14 while the counter (5)
+    // kills it — value removed (≈2) far below value lost (33). Defend instead.
+    const valuable = unit({
+      id: "A", controllerId: "p2", attack: 5, defense: 0, maxHealth: 3,
+      initiative: 15, position: 8,
+    });
+    const decision = chooseComputerAction(
+      observation([valuable, wall()], [attackOn("A", "E"), defend("A")]),
+    );
+    expect(decision?.action.type).toBe("DEFEND_UNIT");
+
+    // CONTROL: same 1-damage lethal-retaliation poke, but the attacker (init 1 →
+    // threat 19) is no longer worth more than the target — chaff keeps trading.
+    const chaff = unit({
+      id: "A", controllerId: "p2", attack: 5, defense: 0, maxHealth: 3,
+      initiative: 1, position: 8,
+    });
+    const control = chooseComputerAction(
+      observation([chaff, wall()], [attackOn("A", "E"), defend("A")]),
+    );
+    expect(control?.action.type).toBe("ATTACK_UNIT");
+  });
+});
+
+describe("combat policy — do not wake a skippable paralyzed enemy", () => {
+  const paralyzed = (tokens: boolean) =>
+    unit({
+      id: "E", attack: 4, defense: 2, maxHealth: 10, position: 9,
+      activatedThisRound: false,
+      tokens: tokens
+        ? [{ id: "t", kind: "paralysis", amount: 0, sourceName: "Blind" }]
+        : [],
+    });
+
+  it("does not spend a non-lethal chip to wake a paralyzed, still-skippable enemy", () => {
+    // A can only chip E (3 of 10) — not kill it, and no ally can finish it. E is
+    // paralyzed and has not acted, so leaving it lets it skip its activation.
+    const attacker = unit({
+      id: "A", controllerId: "p2", attack: 5, defense: 3, maxHealth: 8, position: 8,
+    });
+    const decision = chooseComputerAction(
+      observation([attacker, paralyzed(true)], [attackOn("A", "E"), defend("A")]),
+    );
+    expect(decision?.action.type).toBe("DEFEND_UNIT");
+
+    // CONTROL: a LETHAL hit removes the unit entirely — the wake-up is moot, so
+    // the kill is taken.
+    const executioner = unit({
+      id: "A", controllerId: "p2", attack: 12, defense: 3, maxHealth: 8, position: 8,
+    });
+    const lethal = chooseComputerAction(
+      observation([executioner, paralyzed(true)], [attackOn("A", "E"), defend("A")]),
+    );
+    expect(lethal?.action.type).toBe("ATTACK_UNIT");
+
+    // CONTROL: the same non-lethal chip on a NON-paralyzed enemy is taken — the
+    // Paralysis token is exactly what suppresses the poke.
+    const attacker2 = unit({
+      id: "A", controllerId: "p2", attack: 5, defense: 3, maxHealth: 8, position: 8,
+    });
+    const noToken = chooseComputerAction(
+      observation([attacker2, paralyzed(false)], [attackOn("A", "E"), defend("A")]),
+    );
+    expect(noToken?.action.type).toBe("ATTACK_UNIT");
+  });
+});
+
 describe("combat policy — closing distance", () => {
   it("advances toward the enemy when no attack is in reach, but never below a defend", () => {
     // Mover at A1(0), enemy at D1(3), Manhattan distance 3. B1(1) is distance 2
