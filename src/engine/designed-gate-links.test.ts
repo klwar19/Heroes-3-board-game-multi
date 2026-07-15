@@ -177,6 +177,97 @@ describe("designed gate links — pinned hexes carve where the designer chose", 
   });
 });
 
+// A designer that has placed NO Town tiles keeps the scenario's DEFAULT SEATS as
+// the Surface tiles (`hasDesignerStarts` false in the UI). Dragging the AUTOMATIC
+// gate on such a seat writes a gate link whose `surface` IS the seat centre. The
+// whole chain must accept that: validation keys off `scenario.layout.starts` when
+// no starting plan is placed, and setup resolves the seat's own home tile so the
+// designed gate carves at the pinned hexes — exactly like a link to a placed
+// Surface tile. This case has no prior coverage (every other test places a Town).
+
+/** A cavern touching `seat` with ≥2 legal boundary pairs, clear of the `avoid` seats. */
+function cavernNextToSeat(seat: HexCoord, avoid: HexCoord[]): HexCoord {
+  const touchingScan: HexCoord[] = [];
+  for (let dRow = -4; dRow <= 4; dRow += 1) {
+    for (let dCol = -4; dCol <= 4; dCol += 1) {
+      const cand = { row: seat.row + dRow, col: seat.col + dCol };
+      if (tileFootprintsTouch(seat, cand) && !tileCentersAdjacent(seat, cand)) {
+        touchingScan.push(cand);
+      }
+    }
+  }
+  for (const cand of [...tileLatticeNeighbors(seat), ...touchingScan]) {
+    if (tileCentersOverlap(cand, seat)) {
+      continue;
+    }
+    // Steer clear of the other live seat so no competing auto-gate / overlap forms.
+    if (avoid.some((other) => tileCentersOverlap(cand, other) || tileFootprintsTouch(cand, other))) {
+      continue;
+    }
+    if (legalGateHexPairs(seat, cand).length >= 2) {
+      return cand;
+    }
+  }
+  throw new Error("no suitable cavern next to the seat");
+}
+
+describe("designed gate links — a scenario SEAT surface (no designer Town tiles)", () => {
+  it("carves a seat↔cavern gate at the DESIGNED hexes when the surface is a default seat", () => {
+    // Two players → seats 0 and 1 instantiate; link the cavern to seat 1 and keep
+    // it clear of seat 0.
+    const seats = getScenario("skirmish").layout.starts;
+    const seat = seats[1];
+    const cavern = cavernNextToSeat(seat, [seats[0]]);
+
+    // The automatic seat↔cavern pairing WOULD carve here (no designed link) — the
+    // control the pinned hexes must diverge from.
+    const autoGates = planSubterraneanGates([
+      { row: seat.row, col: seat.col, group: "starting" },
+      { row: cavern.row, col: cavern.col, group: "subterranean" }
+    ]);
+    expect(autoGates).toHaveLength(1);
+    const autoGateHexId = hexSpaceId(autoGates[0].gateHex);
+
+    // A legal boundary pair whose gate hex DIFFERS from the auto default (the
+    // mutation check: the assertions fail if the pinned seat link is ignored).
+    const pinned = legalGateHexPairs(seat, cavern).find((pair) => hexSpaceId(pair.gateHex) !== autoGateHexId);
+    expect(pinned, "a non-default legal boundary pair exists").toBeTruthy();
+    const pinnedGateId = hexSpaceId(pinned!.gateHex);
+    const pinnedEntranceId = hexSpaceId(pinned!.entranceHex);
+
+    // NO starting plan — the seats come from scenario.layout.starts (the exact
+    // state the designer is in before dragging any Town tile in). The cavern's
+    // gate link names the SEAT centre as its Surface partner.
+    const customMap: CustomMapTilePlan[] = [
+      {
+        row: cavern.row,
+        col: cavern.col,
+        group: "subterranean",
+        faceDown: false,
+        tileDefId: "U1",
+        gateLinks: [{ surface: { row: seat.row, col: seat.col }, gateHex: pinnedGateId, entranceHex: pinnedEntranceId }]
+      }
+    ];
+    const state = twoPlayerGame(customMap);
+    const surfaceId = tileIdAt(state, seat); // the seat's own home tile
+    const cavernId = tileIdAt(state, cavern);
+
+    const gate = gateHalfTo(state, cavernId); // seat (surface) half → cavern
+    const entrance = gateHalfTo(state, surfaceId); // cavern half → seat
+    expect(gate, "seat-surface gate carved").toBeDefined();
+    expect(entrance, "cavern entrance carved").toBeDefined();
+    // The DESIGNER's pinned hexes, not the automatic nearest.
+    expect(gate!.spaceId).toBe(pinnedGateId);
+    expect(entrance!.spaceId).toBe(pinnedEntranceId);
+    expect(gate!.spaceId).not.toBe(autoGateHexId);
+
+    // One Field, crossable both ways — the seat truly opens onto the cavern.
+    expect(gateFieldsLinked(gate, entrance)).toBe(true);
+    expect(canCrossEdge(state, gate!.spaceId, entrance!.spaceId)).toBe(true);
+    expect(canCrossEdge(state, entrance!.spaceId, gate!.spaceId)).toBe(true);
+  });
+});
+
 describe("designed gate links — one cavern to TWO Surface tiles", () => {
   it("carves BOTH gates (crossable); CONTROL: the same layout without links carves only ONE", () => {
     const cavernCenter = { row: 24, col: 12 };

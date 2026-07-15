@@ -12460,23 +12460,36 @@ img.cardBack {
   filter: drop-shadow(0 0 4px rgba(143, 230, 255, 0.7));
 }
 
+/* EVERY gate token — the automatic touch pairing AND a designer-pinned one — is
+   grabbable: pointer-events on, a grab cursor, and a subtle hover lift so it
+   reads as draggable (the automatic one has no glow to distinguish it otherwise). */
 .designerGateToken {
-  pointer-events: none;
-}
-
-.designerGateToken.designed {
   pointer-events: auto;
   cursor: grab;
+}
+
+.designerGateToken:hover {
+  filter: brightness(1.15) drop-shadow(0 0 4px rgba(255, 235, 150, 0.7));
+}
+
+/* A designer-committed gate keeps its brighter blue glow as the pinned-vs-automatic
+   signal (its lock pin is the other half of that distinction). */
+.designerGateToken.designed {
   filter: drop-shadow(0 0 4px rgba(143, 230, 255, 0.85));
 }
 
-/* Mid-drag snap preview: the token pair glows brighter at its would-be spot. */
-.designerGateToken.designed.dragging {
+.designerGateToken.designed:hover {
+  filter: brightness(1.1) drop-shadow(0 0 6px rgba(143, 230, 255, 0.95));
+}
+
+/* Mid-drag snap preview: the token pair glows brighter at its would-be spot
+   (both gate kinds carry `.dragging` while sliding). */
+.designerGateToken.dragging {
   cursor: grabbing;
   filter: drop-shadow(0 0 7px rgba(255, 235, 150, 0.95));
 }
 
-.designerGateLink.designed.dragging {
+.designerGateLink.dragging {
   stroke: #ffeb96;
 }
 
