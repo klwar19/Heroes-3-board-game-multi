@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { materializeTileFields, processPendingVisit, startAdventureRound } from "./adventure";
+import {
+  applyCustomMapTimedEvents,
+  materializeTileFields,
+  processPendingVisit,
+  startAdventureRound
+} from "./adventure";
 import { pumpAdventureQueues } from "./adventure-reducer";
 import { createAdventureGameState, validateCustomMapPlan } from "./adventure-setup";
 import { getScenario } from "./adventure-setup";
@@ -668,6 +673,165 @@ describe("map preset conditions — effects and apply-once semantics", () => {
         (e) => e.type === "MAP_PRESET_TRIGGERED" && e.round === 3 && e.message.includes("windmill")
       )
     ).toBe(true);
+  });
+
+  it("clear_visitable_cubes also re-opens Factory Derrick/Prospector aliases (rulebook p.7)", () => {
+    const state = createAdventureGameState({
+      seed: "preset-factory-cubes",
+      customMap: NEAR_SLOT,
+      customMapPreset: {
+        timedEvents: [
+          {
+            round: 2,
+            effect: {
+              kind: "clear_visitable_cubes",
+              locations: ["windmill", "water_wheel"]
+            }
+          }
+        ]
+      }
+    });
+    const derrick = injectCubeField(state, "70,70", "derrick");
+    const prospector = injectCubeField(state, "71,71", "prospector");
+    // CONTROL: garden is not targeted and must stay cubed.
+    const garden = injectCubeField(state, "72,72", "mystical_garden");
+    state.round = 2;
+    startAdventureRound(state);
+    expect(derrick.blackCube).toBe(false);
+    expect(prospector.blackCube).toBe(false);
+    expect(garden.blackCube).toBe(true);
+  });
+
+  it("timed morale / movement / treasure-roll / resource-roll fire with observable outcomes (and controls)", () => {
+    const build = (withPreset: boolean) =>
+      createAdventureGameState({
+        seed: "preset-timed-freedom",
+        customMap: NEAR_SLOT,
+        ...(withPreset
+          ? {
+              customMapPreset: {
+                timedEvents: [
+                  { round: 3, effect: { kind: "morale" as const, amount: 1 as const } },
+                  { round: 3, effect: { kind: "movement" as const, amount: 2 } },
+                  { round: 3, effect: { kind: "treasure_roll" as const, count: 1 } },
+                  { round: 3, effect: { kind: "resource_roll" as const, count: 2 } }
+                ]
+              }
+            }
+          : {})
+      });
+
+    const state = build(true);
+    const control = build(false);
+
+    // Snapshot MPs after round-2 refresh so the control isolates the timed grant.
+    state.round = 2;
+    startAdventureRound(state);
+    control.round = 2;
+    startAdventureRound(control);
+    const p1Hero = Object.values(state.heroes).find((h) => h.controllerId === "p1")!;
+    const controlHero = Object.values(control.heroes).find((h) => h.controllerId === "p1")!;
+    const mpBefore = p1Hero.movementPoints;
+    const controlMpBefore = controlHero.movementPoints;
+    expect(mpBefore).toBe(controlMpBefore);
+
+    state.round = 3;
+    startAdventureRound(state);
+    control.round = 3;
+    startAdventureRound(control);
+
+    // Morale: Castle gains, Necropolis still ignores (real changeMorale path).
+    expect(state.players.p1.morale).toBe(control.players.p1.morale + 1);
+    expect(state.players.p2.morale).toBe(control.players.p2.morale);
+
+    // Movement stacks on the round's refreshed MP.
+    expect(p1Hero.movementPoints).toBe(controlHero.movementPoints + 2);
+
+    // Dice queues: one treasure + one resource roll per live player.
+    const treasureQueued = state.adventure!.rewardQueue.filter(
+      (reward) =>
+        reward.kind === "visit-steps" &&
+        reward.steps.some((step) => step.type === "ROLL_TREASURE_DICE" && step.count === 1)
+    );
+    const resourceQueued = state.adventure!.rewardQueue.filter(
+      (reward) =>
+        reward.kind === "visit-steps" &&
+        reward.steps.some((step) => step.type === "ROLL_RESOURCE_DICE" && step.count === 2)
+    );
+    expect(new Set(treasureQueued.map((r) => r.playerId))).toEqual(new Set(["p1", "p2"]));
+    expect(new Set(resourceQueued.map((r) => r.playerId))).toEqual(new Set(["p1", "p2"]));
+
+    // CONTROL: plain map never queues those rolls or bumps morale/MP.
+    expect(
+      control.adventure!.rewardQueue.some(
+        (reward) =>
+          reward.kind === "visit-steps" &&
+          reward.steps.some(
+            (step) => step.type === "ROLL_TREASURE_DICE" || step.type === "ROLL_RESOURCE_DICE"
+          )
+      )
+    ).toBe(false);
+    expect(control.players.p1.morale).toBe(0);
+
+    // Feed lines exist for every effect (mutation-check the event appends).
+    for (const snippet of ["morale", "movement", "Treasure", "Resource"]) {
+      expect(
+        state.eventLog.some(
+          (e) => e.type === "MAP_PRESET_TRIGGERED" && e.round === 3 && e.message.includes(snippet)
+        ),
+        `expected MAP_PRESET_TRIGGERED mentioning ${snippet}`
+      ).toBe(true);
+    }
+  });
+
+  it("timed events skip eliminated seats and their heroes", () => {
+    const state = createAdventureGameState({
+      seed: "preset-timed-live-seats",
+      customMap: NEAR_SLOT,
+      customMapPreset: {
+        timedEvents: [
+          { round: 3, effect: { kind: "movement", amount: 2 } },
+          { round: 3, effect: { kind: "treasure_roll", count: 1 } }
+        ]
+      }
+    });
+    const eliminatedHero = Object.values(state.heroes).find(
+      (hero) => hero.controllerId === "p2"
+    )!;
+    const movementBefore = eliminatedHero.movementPoints;
+    state.players.p2.eliminated = true;
+    state.round = 3;
+    applyCustomMapTimedEvents(state);
+
+    expect(eliminatedHero.movementPoints).toBe(movementBefore);
+    const timedRollOwners = state.adventure!.rewardQueue
+      .filter(
+        (reward) =>
+          reward.kind === "visit-steps" &&
+          reward.steps.some((step) => step.type === "ROLL_TREASURE_DICE")
+      )
+      .map((reward) => reward.playerId);
+    expect(timedRollOwners).toEqual(["p1"]);
+  });
+
+  it("sanitizeCustomMapPreset keeps freer timed-effect kinds and clamps amounts", async () => {
+    const { sanitizeCustomMapPreset } = await import("./map-preset");
+    const cleaned = sanitizeCustomMapPreset({
+      timedEvents: [
+        { round: 99, effect: { kind: "movement", amount: 99 } }, // round→30, amount→5
+        { round: "nope", effect: { kind: "morale", amount: 1 } }, // non-number round dropped
+        { round: 5, effect: { kind: "treasure_roll", count: 0 } }, // count clamps to 1
+        { round: 5, effect: { kind: "resource_roll", count: 2 } },
+        { round: 7, effect: { kind: "note", text: "  Boss wave  " } },
+        { round: 8, effect: { kind: "bogus" } } // unknown kind dropped
+      ]
+    });
+    expect(cleaned?.timedEvents).toEqual([
+      { round: 5, effect: { kind: "treasure_roll", count: 1 } },
+      { round: 5, effect: { kind: "resource_roll", count: 2 } },
+      { round: 7, effect: { kind: "note", text: "Boss wave" } },
+      { round: 30, effect: { kind: "movement", amount: 5 } }
+    ]);
   });
 
   it("a Search starting bonus opens a REAL shared-deck search for each player", () => {

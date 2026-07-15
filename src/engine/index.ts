@@ -283,22 +283,29 @@ export type { AdventurePlayerConfig, AdventureSetupOptions, DraftPhaseInfo } fro
 export {
   applyCustomMapPresetToOptions,
   customMapPresetIsActive,
+  defaultTimedEffect,
+  defaultTimedEvent,
   describeCustomMapPreset,
   describeCustomMapPresetEntries,
+  describeTimedMapEffect,
+  MAX_TIMED_EVENTS,
   MAP_PRESET_BUILDING_OPTIONS,
   MAP_PRESET_VICTORY_OPTIONS,
   presetForcedOptionKeys,
   revertCustomMapPresetOptions,
   sanitizeCustomMapPreset,
   secretFeatureDemandWarnings,
-  tileMatchesSecretFeature
+  tileMatchesSecretFeature,
+  TIMED_EFFECT_KIND_LABELS,
+  TIMED_EFFECT_KINDS
 } from "./map-preset";
 export type {
   CustomMapPresetEntry,
   CustomMapStartingBonus,
   CustomMapTimedEffect,
   CustomMapTimedEvent,
-  PresetForcedOptionKey
+  PresetForcedOptionKey,
+  TimedEffectKind
 } from "./map-preset";
 export { getTileBorderSegments, hasInternalBorder } from "@/data/map/borders";
 export type { TileBorderSegment } from "@/data/map/borders";

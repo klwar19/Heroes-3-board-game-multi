@@ -103,6 +103,64 @@ const BUILDING_SUFFIXES = new Set([
 const SEARCH_DECKS = new Set(["artifacts", "spells", "abilities"]);
 const CUBE_LOCATIONS = new Set(["windmill", "water_wheel", "mystical_garden"]);
 
+/** Storage/editor limit for one designed map. Keep UI and sanitization in lock-step. */
+export const MAX_TIMED_EVENTS = 32;
+
+/** Designer effect kinds (order = editor dropdown order). */
+export const TIMED_EFFECT_KINDS = [
+  "clear_visitable_cubes",
+  "resources",
+  "search",
+  "morale",
+  "movement",
+  "treasure_roll",
+  "resource_roll",
+  "note"
+] as const;
+
+export type TimedEffectKind = (typeof TIMED_EFFECT_KINDS)[number];
+
+export const TIMED_EFFECT_KIND_LABELS: Record<TimedEffectKind, string> = {
+  clear_visitable_cubes: "Clear black cubes (revisit sites)",
+  resources: "All players gain resources",
+  search: "All players Search a deck",
+  morale: "All players gain/lose morale",
+  movement: "All heroes gain movement",
+  treasure_roll: "All players roll Treasure die",
+  resource_roll: "All players roll Resource die",
+  note: "Announcement (feed note only)"
+};
+
+/** Default effect when the designer picks a kind (or adds a blank event). */
+export function defaultTimedEffect(kind: TimedEffectKind): CustomMapTimedEffect {
+  switch (kind) {
+    case "clear_visitable_cubes":
+      return {
+        kind: "clear_visitable_cubes",
+        locations: ["windmill", "water_wheel", "mystical_garden"]
+      };
+    case "resources":
+      return { kind: "resources", gold: 3, buildingMaterials: 0, valuables: 0 };
+    case "search":
+      return { kind: "search", deck: "artifacts", count: 1 };
+    case "morale":
+      return { kind: "morale", amount: 1 };
+    case "movement":
+      return { kind: "movement", amount: 1 };
+    case "treasure_roll":
+      return { kind: "treasure_roll", count: 1 };
+    case "resource_roll":
+      return { kind: "resource_roll", count: 1 };
+    case "note":
+      return { kind: "note", text: "Something stirs across the land…" };
+  }
+}
+
+/** Fresh timed event for the designer "Add event" button. */
+export function defaultTimedEvent(round = 6): CustomMapTimedEvent {
+  return { round, effect: defaultTimedEffect("clear_visitable_cubes") };
+}
+
 function clampInt(value: unknown, min: number, max: number, fallback: number): number {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     return fallback;
@@ -207,6 +265,19 @@ function sanitizeTimedEffect(input: unknown): CustomMapTimedEffect | null {
     }
     return { kind: "clear_visitable_cubes", locations: [...new Set(locations)] };
   }
+  if (raw.kind === "morale" && (raw.amount === 1 || raw.amount === -1)) {
+    return { kind: "morale", amount: raw.amount };
+  }
+  if (raw.kind === "movement") {
+    const amount = clampInt(raw.amount, 1, 5, 1);
+    return { kind: "movement", amount };
+  }
+  if (raw.kind === "treasure_roll") {
+    return { kind: "treasure_roll", count: clampInt(raw.count, 1, 3, 1) };
+  }
+  if (raw.kind === "resource_roll") {
+    return { kind: "resource_roll", count: clampInt(raw.count, 1, 3, 1) };
+  }
   if (raw.kind === "note" && typeof raw.text === "string") {
     const text = raw.text.trim().slice(0, 200);
     return text.length > 0 ? { kind: "note", text } : null;
@@ -258,7 +329,8 @@ export function sanitizeCustomMapPreset(input: unknown): CustomMapPreset | undef
   }
   if (Array.isArray(raw.timedEvents)) {
     const events: CustomMapTimedEvent[] = [];
-    for (const entry of raw.timedEvents.slice(0, 16)) {
+    // Cap high enough for mission-book style maps (many rounds × multi-effects).
+    for (const entry of raw.timedEvents.slice(0, MAX_TIMED_EVENTS)) {
       if (!entry || typeof entry !== "object") {
         continue;
       }
@@ -364,6 +436,22 @@ function describeTimedEffect(effect: CustomMapTimedEffect): string {
       (id) => locationDefinitions[id]?.name ?? id.replace(/_/g, " ")
     );
     return `clear black cubes on ${names.join(", ")}`;
+  }
+  if (effect.kind === "morale") {
+    return effect.amount > 0 ? "all players gain +1 morale" : "all players lose 1 morale";
+  }
+  if (effect.kind === "movement") {
+    return `all heroes gain +${effect.amount} movement`;
+  }
+  if (effect.kind === "treasure_roll") {
+    return effect.count === 1
+      ? "all players roll a Treasure die"
+      : `all players roll ${effect.count} Treasure dice`;
+  }
+  if (effect.kind === "resource_roll") {
+    return effect.count === 1
+      ? "all players roll a Resource die"
+      : `all players roll ${effect.count} Resource dice`;
   }
   return effect.text;
 }
