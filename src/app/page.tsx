@@ -764,6 +764,25 @@ export default function Home() {
   /** Phone mode: the active full-screen panel per surface (local, never sent). */
   const [phoneMapTab, setPhoneMapTab] = useState<PhoneMapTab>("map");
   const [phoneCombatTab, setPhoneCombatTab] = useState<PhoneCombatTab>("board");
+  /**
+   * Phone mode auto-switch: when the viewer OWES a tile rotation (the round-1
+   * forced home-tile rotation, or a mid-round reveal/placement landing while they
+   * sit on another tab) the rotate card lives on the map, so a non-map tab would
+   * hide it entirely — the reported "map rotate on phone shows nothing". Snap to
+   * the Map tab on the transition INTO the pending state, keyed on the pending
+   * choice's identity so it fires once and never fights a later re-tab.
+   */
+  const owedTileRotationId =
+    state?.adventure?.pendingTileChoice && state.adventure.pendingTileChoice.playerId === viewerPlayerId
+      ? state.adventure.pendingTileChoice.tileInstanceId
+      : null;
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    if (phoneUi && owedTileRotationId) {
+      setPhoneMapTab("map");
+    }
+  }, [phoneUi, owedTileRotationId]);
+  /* eslint-enable react-hooks/set-state-in-effect */
   /** The Town window popup (board / buildings views) over the adventure map. */
   const [townOpen, setTownOpen] = useState(false);
   const [pile, setPile] = useState<{ title: string; cardIds: string[]; kind: "cards" | "units" | "astrologers" | "events" } | null>(null);

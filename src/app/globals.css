@@ -7125,29 +7125,17 @@ button.hbSlot:disabled { cursor: default; }
 /* Floating map controls anchored at the destination hex / rotating tile.
    These live inside the SVG (foreignObject) so they pan and zoom with the map
    and sit right on the tile, rather than in a bar pinned to the bottom edge. */
-.mapFloatFO {
-  overflow: visible;
-  /* The foreignObject rect itself never eats pointer events; only the card
-     inside does, so transparent space around it stays click-through to the
-     hexes underneath. */
-  pointer-events: none;
-}
-
+/* The floating map controls are plain HTML overlays absolutely positioned inside
+   `.hexMapWrap` (NOT SVG foreignObject — mobile WebKit fails to paint that under
+   the map's camera transform). The wrapper is placed at the pre-computed CSS
+   left/top and is click-through; only the card inside eats taps, so transparent
+   space stays clickable through to the hexes underneath. */
 .mapFloatOuter {
+  position: absolute;
   display: flex;
   justify-content: center;
-  width: 100%;
-  height: 100%;
   pointer-events: none;
-}
-
-/* Hug the card to the edge nearest its hex so it points at the tile. */
-.mapFloatOuter.above {
-  align-items: flex-end;
-}
-
-.mapFloatOuter.below {
-  align-items: flex-start;
+  z-index: 5;
 }
 
 .mapFloatCard {
