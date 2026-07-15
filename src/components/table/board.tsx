@@ -847,8 +847,9 @@ export function BattlefieldBoard({
   const placing = Boolean(setup && !combat?.prep && setup.pendingPlayerIds[0] === viewerPlayerId);
   // PvP Neutral Control: the controller SORTS the revealed Neutral formation
   // before battle — the guards are draggable within their formation zone
-  // (any board cell on a field, four corners on a Creature Bank), exactly like a
-  // defender repositioning their own line (pendingNeutralPlacement).
+  // (any cell on the defender's two rows on a field, four corners on a Creature
+  // Bank), exactly like a defender repositioning their own line.
+
   const sorting = Boolean(combat && combat.pendingNeutralPlacement === viewerPlayerId);
   const ownRows = placing
     ? new Set(placementCellsFor(state, viewerPlayerId))

@@ -7445,7 +7445,7 @@ function addNeutralPlacementActions(actions: LegalAction[], state: GameState, pl
   const guards = Object.values(combat.units).filter(
     (unit) => unit.controllerId === NEUTRAL_PLAYER_ID && isUnitAlive(unit) && !isArrowTowerUnit(unit)
   );
-  // Field = whole board; Creature Bank = the four corner cells.
+  // Field = defender's two rows (any cell); Creature Bank = the four corners.
   const cells = neutralFormationCellsFor(state);
   const occupantAt = new Map<number, CombatUnitState>();
   for (const unit of Object.values(combat.units)) {
