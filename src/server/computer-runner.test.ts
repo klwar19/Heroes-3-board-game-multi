@@ -429,6 +429,64 @@ describe("computer setup formats", () => {
 });
 
 describe("computer map turns", () => {
+  it("resolves a Polish two-bank size offer without stalling single-player", () => {
+    const state = createAdventureGameState({
+      seed: "runner-polish-bank-sizes",
+      scenarioId: "skirmish",
+      playerCount: 2,
+      sessionMode: "single-player",
+      houseRules: { "polish-bank-sizes": true },
+    });
+    const baseArmy = [...state.players.p2.army];
+    state.players.p2.army = Array.from({ length: 5 }, (_, copy) =>
+      baseArmy.map((unit, index) => ({ ...unit, id: `${unit.id}_bank_${copy}_${index}` })),
+    ).flat();
+    const tileInstanceId = Object.keys(state.adventure!.tiles)[0];
+    state.adventure!.fields["bank-ai-smoke"] = {
+      spaceId: "bank-ai-smoke",
+      tileInstanceId,
+      slot: 1,
+      location: "blocked_field",
+      blackCube: false,
+      flagOwnerId: null,
+      everFlagged: false,
+      settlementResource: null,
+    };
+    state.adventure!.creatureBankTokensFar = ["crypt", "imp_cache"];
+    state.activePlayerId = "p2";
+    state.priorityPlayerId = "p2";
+    state.phase = "choice";
+    state.pendingChoice = {
+      id: "choice_polish_bank_ai",
+      type: "OPTION_CHOICE",
+      playerId: "p2",
+      prompt: "Choose a rolled Creature Bank",
+      options: [
+        { label: "A · Place Imp Cache · size II" },
+        { label: "B · Place Crypt · size IV" },
+        { label: "Leave it blocked" },
+      ],
+      context: "place-creature-bank",
+      creatureBank: {
+        fieldId: "bank-ai-smoke",
+        tier: "far",
+        tileInstanceId,
+        candidates: [
+          { bankId: "imp_cache", size: 2 },
+          { bankId: "crypt", size: 4 },
+        ],
+      },
+      returnPhase: "player-turn",
+    };
+
+    const run = settleComputerVisibleStep(state);
+    expect(run.stalled, run.reason).toBe(false);
+    expect(run.decisions.some((decision) => decision.action.type === "CHOOSE_OPTION")).toBe(true);
+    expect(run.state.pendingChoice?.id).not.toBe("choice_polish_bank_ai");
+    expect(run.state.adventure!.fields["bank-ai-smoke"].location).toBe("creature_bank");
+    expect(run.state.adventure!.fields["bank-ai-smoke"].bankSize).toBeGreaterThanOrEqual(1);
+  });
+
   it("plays the computer's whole map turn after the human ends theirs and hands control back", () => {
     let state = createAdventureGameState({
       seed: "runner-map-turn",

@@ -1,10 +1,11 @@
 # Polish house rules — Spell Book, Bank Sizes, Unit Stacks (implementation plan)
 
-**STATUS: PLAN ONLY. Nothing in this document is implemented.** No engine code,
-no data, no options exist yet for any of the three variants below. Per
-CLAUDE.md #1, none of this may be reported as done until the engine executes it
-AND a test fails when the logic is removed. This document is the design +
-wiring map to get there.
+**STATUS: PHASES 1-2 IMPLEMENTED (2026-07-16).** The shared Polish lobby
+category and `polish-bank-sizes` are engine-wired and mutation-covered.
+`polish-spell-book` and `polish-unit-stacks` remain PLAN ONLY and deliberately
+do not exist in the registry yet. Per CLAUDE.md #1, no later phase may be
+reported as done until the engine executes it AND a test fails when the logic
+is removed. This document remains the design + wiring map for those phases.
 
 Source of truth for the rules: the 2-page **"H3 BG Rules v1.2" Polish
 tournament reference sheet** (provided by the user; decoded below — the sheet
@@ -536,10 +537,12 @@ Each phase lands green (typecheck, lint, full test suite) and independently
 shippable; a phase's toggle stays out of the registry until its first real
 gate exists (registry honesty rule).
 
-- **Phase 1 — plumbing**: `HouseRuleId`s + registry entries + `"polish"`
+- **Phase 1 — plumbing — IMPLEMENTED 2026-07-16**: `polish-bank-sizes` joins
+  `HouseRuleId` + the registry with the `"polish"`
   category UI block, landing together with the first Phase-2 gate.
   Gate: `house-rules.test.ts` round-trip + lobby render.
-- **Phase 2 — Bank Sizes** (smallest engine delta, validates the category):
+- **Phase 2 — Bank Sizes — IMPLEMENTED 2026-07-16** (smallest engine delta,
+  validates the category):
   §5 complete incl. AI choice branch. Gate: `polish-bank-sizes.test.ts` suite
   + an AI single-player smoke with the rule on.
 - **Phase 3 — Unit Stacks**: §6 complete (purchase, combat, sync, UI).

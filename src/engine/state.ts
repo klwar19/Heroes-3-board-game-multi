@@ -89,7 +89,11 @@ export type HouseRuleId =
   // +1 Treasure+Resource dice). Off: Obelisks are still multi-flaggable but
   // grant no die reward. Independent of Holy Grail dig unlock (which always
   // counts visits while victoryMode is "grail").
-  | "obelisk-rewards";
+  | "obelisk-rewards"
+  // Polish tournament variant: a bank-eligible tile reveals two face-up bank
+  // candidates with independently rolled sizes I-IV. The discovering player
+  // chooses one; its size replaces scenario difficulty for Stack-token rolls.
+  | "polish-bank-sizes";
 
 /** Optional Wake of Gods modules. WOG is a BINH-family mod (not a game mode). */
 export type WogModOptions = {
@@ -4846,6 +4850,7 @@ export type GameEvent =
       type: "CREATURE_BANK_PLACED";
       fieldId: MapSpaceId;
       bankId: string;
+      bankSize?: BankSize;
     }
   | {
       /**
@@ -6804,6 +6809,15 @@ export type MapState = {
   spaces: Record<MapSpaceId, { id: MapSpaceId; adjacent: MapSpaceId[] }>;
 };
 
+/** Polish bank-size marker: I-IV, also used as the number of Stack-token rolls. */
+export type BankSize = 1 | 2 | 3 | 4;
+
+/** One face-up Creature Bank candidate reserved while its tile is rotated. */
+export type ReservedBankOption = {
+  bankId: string;
+  size: BankSize;
+};
+
 export type MapTileState = {
   id: string;
   tileDefId: string;
@@ -6840,6 +6854,12 @@ export type MapTileState = {
    * lost). Public info — the token is drawn face-up.
    */
   reservedBankId?: string;
+  /**
+   * Polish Bank Sizes: up to two face-up candidates, including their seeded
+   * Attack-die size rolls. `reservedBankId` remains option A for compatibility
+   * with old rotation-preview readers and pre-feature snapshots.
+   */
+  reservedBankOptions?: ReservedBankOption[];
 };
 
 export type MapFieldState = {
@@ -6855,6 +6875,8 @@ export type MapFieldState = {
    * data-layer imports. The bank's defenders and reward are looked up from it.
    */
   bankId?: string;
+  /** Polish Bank Sizes: I-IV; replaces scenario difficulty for this bank. */
+  bankSize?: BankSize;
   resource?: ResourceKind;
   amount?: number;
   faction?: string;
@@ -9520,7 +9542,14 @@ export type PendingChoice =
        * `tier` pile. Option 0 places it, option 1 declines. `tileInstanceId` lets
        * the decline path clear the tile's reservation.
        */
-      creatureBank?: { fieldId: MapSpaceId; tier: "far" | "near"; bankId?: string; tileInstanceId?: string };
+      creatureBank?: {
+        fieldId: MapSpaceId;
+        tier: "far" | "near";
+        bankId?: string;
+        tileInstanceId?: string;
+        /** Polish mode candidates, index-aligned with the placement options. */
+        candidates?: ReservedBankOption[];
+      };
       /**
        * subterranean-gate-placement: the revealing player picks which touching
        * hex becomes the Subterranean Gate half on the just-revealed tile (and,

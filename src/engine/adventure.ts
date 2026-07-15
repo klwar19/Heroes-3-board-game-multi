@@ -75,6 +75,7 @@ import type {
   AdventureState,
   ArtifactTier,
   AstrologersState,
+  BankSize,
   CardId,
   CombatUnitState,
   EventDiePoolEntry,
@@ -7362,6 +7363,18 @@ export function buildCreatureBankDraws(bankId: CreatureBankId): NeutralDraw[] {
 }
 
 /**
+ * Converts the Polish tournament Attack-die roll into bank size I-IV.
+ * One die can only reach I-III; two dice can reach the full range.
+ */
+export function polishBankSizeForAttackRolls(rolls: readonly number[]): BankSize {
+  const sum = rolls.reduce((total, roll) => total + roll, 0);
+  if (sum <= -1) return 1;
+  if (sum === 0) return 2;
+  if (sum === 1) return 3;
+  return 4;
+}
+
+/**
  * Builds the Creature Bank defenders for a combat and places the Stack Tokens
  * (rulebook p.66-67). The Scenario Difficulty (Easy 1 / Normal 2 / Hard 3 /
  * Impossible 4) sets how many token ROLLS are made, NOT a guaranteed count:
@@ -7373,7 +7386,8 @@ export function buildCreatureBankDraws(bankId: CreatureBankId): NeutralDraw[] {
  */
 export function buildCreatureBankCombatUnits(
   state: GameState,
-  bankId: CreatureBankId
+  bankId: CreatureBankId,
+  bankSize?: BankSize
 ): { units: CombatUnitState[]; stackedCount: number } {
   const ruleset = getRuleset(state);
   const sideOverrides = unitSideRuleOverrides(state);
@@ -7385,7 +7399,7 @@ export function buildCreatureBankCombatUnits(
 
   const difficulty = state.adventure?.difficulty ?? "normal";
   // The difficulty caps how many DISTINCT defenders are candidates for a token.
-  const tokenRolls = Math.min(STACK_TOKENS_BY_DIFFICULTY[difficulty], units.length, 4);
+  const tokenRolls = Math.min(bankSize ?? STACK_TOKENS_BY_DIFFICULTY[difficulty], units.length, 4);
 
   const random = adventureRandom(state, `creature-bank-stack-${bankId}`);
   // Partial Fisher-Yates: pick `tokenRolls` DISTINCT candidate defenders.
@@ -7421,7 +7435,8 @@ export function buildCreatureBankCombatUnits(
 export function placeCreatureBank(
   state: GameState,
   spaceId: MapSpaceId,
-  bankId: CreatureBankId
+  bankId: CreatureBankId,
+  bankSize?: BankSize
 ): MapFieldState | null {
   const adventure = state.adventure;
   const field = adventure?.fields[spaceId];
@@ -7430,6 +7445,11 @@ export function placeCreatureBank(
   }
   field.location = "creature_bank";
   field.bankId = bankId;
+  if (bankSize !== undefined) {
+    field.bankSize = bankSize;
+  } else {
+    delete field.bankSize;
+  }
   delete field.difficulty;
   delete field.resource;
   delete field.amount;
@@ -7445,7 +7465,8 @@ export function placeCreatureBank(
   appendEvent(state, {
     type: "CREATURE_BANK_PLACED",
     fieldId: spaceId,
-    bankId
+    bankId,
+    ...(bankSize !== undefined ? { bankSize } : {})
   });
   return field;
 }

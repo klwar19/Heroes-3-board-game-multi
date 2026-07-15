@@ -1278,6 +1278,23 @@ Added in `src/data/map/creature-banks.ts` (data, tested in
 is NOT done:
 
 **Implemented and engine-enforced (a test fails if removed):**
+- **Polish house-rules rollout — current limit:** only
+  `polish-bank-sizes` is implemented. `polish-spell-book` and
+  `polish-unit-stacks` remain plan-only and are intentionally absent from the
+  house-rule registry (no decorative toggles). Rolled bank sizes are default
+  OFF in both BINH and Legacy and are inert when the base `creatureBanks`
+  option is off; the lobby greys the toggle out in that case.
+- With `polish-bank-sizes` ON, a bank-eligible reveal peeks the top TWO tokens
+  (or one when the pile has one), rolls each candidate's size with seeded Attack
+  dice, and offers A / B / leave. A player's first II-III opening rolls one die
+  (therefore max size III); later Far, Near and Subterranean offers roll two.
+  Only the chosen token is removed by id; the unchosen peek stays exactly where
+  it was. The placed field persists `bankSize` I-IV, which replaces scenario
+  difficulty for that bank's 77%-landing Stack-token rolls and therefore feeds
+  the existing reward scale. The computer prefers the larger beatable option
+  and leaves an unbeatable pair. Covered by `polish-bank-sizes.test.ts`, the
+  single-player runner smoke in `computer-runner.test.ts`, and the dual-preview /
+  permanent-badge DOM cases in `creature-bank-board.test.tsx`.
 - The 12 banks' defenders, bank-card stats (their OWN stats, no tier — distinct
   from Few/Pack/Neutral), and resource/morale/search rewards scaled by the
   number of Stacked defenders (X). The two sea banks (Shipwreck, Derelict Ship)
@@ -1500,12 +1517,15 @@ Six additions; each engine rule fails a named test if its wiring is removed.
   stays silent) and `describe.test.ts`.
 - **A tile's Creature Bank is drawn (known) BEFORE the tile is rotated.** On
   reveal, `beginTileRotation` (`adventure-reducer.ts`) calls
-  `reserveCreatureBankForTile`, which PEEKS the top token of the matching tier
-  pile and stashes it on `tile.reservedBankId` (a peek, never a pop — the pile is
+  `reserveCreatureBankForTile`, which normally PEEKS the top token of the
+  matching tier pile and stashes it on `tile.reservedBankId`; Polish Bank Sizes
+  instead stores both rolled peeks in `tile.reservedBankOptions` while keeping
+  `reservedBankId` aimed at option A for compatibility (a peek, never a pop — the pile is
   consumed only when the placement is accepted, so a decline or a Blocked Field
   lost to a Subterranean Gate leaves the pile intact and nothing is stranded on an
   elimination). The rotation-preview UI (`screen.tsx`) shows the reserved bank's
-  art + name on its Blocked Field, and the placement choice names it. Pinned in
+  art + name on its Blocked Field (both art/name/size candidates in Polish mode),
+  and the placement choice names it. Pinned in
   `creature-bank-combat.test.ts` ("reserved (known) before the tile is rotated":
   reservedBankId set before rotation with the pile intact; the placed bank EQUALS
   the reserved one on accept; decline leaves the pile intact; both clear the
