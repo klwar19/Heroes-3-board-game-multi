@@ -507,12 +507,43 @@ export default class GameRoomServer implements Party.Server {
   }
 
   /**
+   * Wire-only event-log tail (flagged experiment, plan N4): with the
+   * HOMM3BG_BROADCAST_EVENT_TAIL env var set to a positive integer K, every
+   * OUTGOING snapshot carries only the last K eventLog entries — the log is
+   * ~45% of a late-game frame, re-sent to every connection on every action.
+   * STORAGE always keeps the engine's full log (the trim runs in signed(),
+   * which never touches this.snapshot); absent/0 = off = full log, exactly
+   * today's behaviour. Safe because client presentation is cursor-based
+   * (src/lib/presentation-event-window.ts): a tail starting past the cursor
+   * reads as log rotation — history primes from state, nothing replays. The
+   * known trade-off is feed scrollback depth after a reload. Delete this flag
+   * when protocol v2 (scaling-plan Phase 4 deltas) ships.
+   */
+  private broadcastEventTail(): number {
+    const env = (this.room as unknown as { env?: Record<string, unknown> }).env;
+    const raw = Number(env?.HOMM3BG_BROADCAST_EVENT_TAIL ?? 0);
+    return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 0;
+  }
+
+  /**
    * Stamp this server's engine signature onto an outgoing snapshot. Done at
    * send time (not persisted) so a snapshot stored by an older deploy is
-   * always re-broadcast with the *running* server's signature.
+   * always re-broadcast with the *running* server's signature. This is the
+   * ONE shared spot every outgoing frame flows through (broadcast, connect
+   * frame, sync reply, HTTP GET), so the N4 wire-only event tail is applied
+   * here too — callers must derive any further redaction from the returned
+   * copy, never from this.snapshot.state again.
    */
   private signed(snapshot: RoomSnapshot): RoomSnapshot {
-    return { ...snapshot, serverSignature: ENGINE_SIGNATURE };
+    const stamped = { ...snapshot, serverSignature: ENGINE_SIGNATURE };
+    const tail = this.broadcastEventTail();
+    if (!tail || !Array.isArray(stamped.state?.eventLog) || stamped.state.eventLog.length <= tail) {
+      return stamped;
+    }
+    return {
+      ...stamped,
+      state: { ...stamped.state, eventLog: stamped.state.eventLog.slice(-tail) }
+    };
   }
 
   /**
@@ -818,13 +849,16 @@ export default class GameRoomServer implements Party.Server {
     // nothing); the client's JOIN then triggers a broadcast redacted to its
     // VERIFIED seat. An open table sends the full shared frame as before.
     const room = this.snapshot!.state.room;
+    // Redact FROM the signed copy (not this.snapshot.state) so the send-time
+    // transforms in signed() — signature stamp + N4 event tail — survive.
+    const outgoing = this.signed(this.snapshot!);
     const snapshot = room?.hosted
       ? {
-          ...this.signed(this.snapshot!),
+          ...outgoing,
           viewerSeat: OBSERVER_VIEWER_SEAT,
-          state: redactStateForSeat(this.snapshot!.state, OBSERVER_VIEWER_SEAT)
+          state: redactStateForSeat(outgoing.state, OBSERVER_VIEWER_SEAT)
         }
-      : this.signed(this.snapshot!);
+      : outgoing;
     connection.send(JSON.stringify({ type: "snapshot", snapshot } satisfies ServerMessage));
     if (room?.hosted) {
       // Follow up with the frame redacted to the socket's ACTUAL seat once its
