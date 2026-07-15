@@ -1,8 +1,30 @@
 # PartyKit Network Upgrade — Advice Evaluation & Implementation Plan
 
-- Status: **PLAN ONLY — nothing in this document is implemented.** It exists so a
-  later agent can implement the slices below one at a time. Every "already done"
-  claim cites the file that proves it; re-verify citations before building on them.
+- Status: **N1–N5 IMPLEMENTED** (2026-07-15, branch
+  `claude/partykit-network-upgrade-4vhemj`). Where each slice landed:
+  - **N1** — `src/components/party-preconnect.tsx` rendered from `layout.tsx`,
+    origin helper in `src/lib/party-origin.ts` (extracted so the server layout
+    never pulls the socket transport); `party-preconnect.test.tsx`.
+  - **N2** — `src/lib/pending-action-echo.ts` (+`.test.ts`), wired in
+    `page.tsx` `submitAction` (duplicate latch + settle) and both hand panels
+    (`.cardInFlight` dim, 400 ms slow pulse in pure CSS); HandFan CONTROL in
+    `seats.test.tsx`.
+  - **N3** — `RoomConnectionHandlers.onQuality` (pong + action ack, both
+    backends, decoupled from metric sampling) + `ConnectionQualityChip` in the
+    statusRow; `realtime.test.ts` + `connection-quality.test.tsx`.
+  - **N4** — wire-only event tail behind the party env flag
+    `HOMM3BG_BROADCAST_EVENT_TAIL`, applied in `party/index.ts` `signed()` (the
+    one send-time spot; the onConnect observer frame now redacts FROM the
+    signed copy); storage keeps the full log; `broadcast-event-tail.test.ts`
+    (last-K + flag-off CONTROL + privacy compose). **Default OFF — not live
+    until `npm run deploy:partykit`, and rollout still requires the §5
+    measurement pass before defaulting on.**
+  - **N5** — the 3 oversized board PNGs converted to WebP (16.6 MB → 3.2 MB,
+    measured <1% mean pixel deviation; refs updated same-commit) and the
+    decode/lazy attribute audit on the image-dense panels (presence pinned in
+    `seats.test.tsx`).
+  - The §1 verdicts and §3 rejected register below remain the standing
+    reference; re-verify citations before building further on them.
 - Audit date: 2026-07-15 (repository state on branch
   `claude/partykit-network-upgrade-plan-q064db`, forked from `main`).
 - Input: an external 9-point advice list (partysocket, optimistic UI, throttling,

@@ -2331,7 +2331,7 @@ export function TownHeroDock({
               const def = coreUnitDefinitions[unit.unitDefId];
               const side = unit.side === "few" ? def?.few : def?.pack;
               return side?.cardImage ? (
-                <img alt="" className="dockUnitThumb" key={unit.id} src={assetUrl(side.cardImage)} style={{ zIndex: 3 - index }} />
+                <img alt="" className="dockUnitThumb" decoding="async" key={unit.id} loading="lazy" src={assetUrl(side.cardImage)} style={{ zIndex: 3 - index }} />
               ) : (
                 <span className={`dockUnitThumb fallback tier-${def?.tier ?? "bronze"}`} key={unit.id} style={{ zIndex: 3 - index }} />
               );
@@ -2517,7 +2517,7 @@ export function MoraleCardsDock({ state, viewerPlayerId }: { state: GameState; v
     const back = getDeckBack(deckId);
     return (
       <div className="moraleDeckTile" title={`${label}: ${count} in deck, ${discardCount} discarded`}>
-        {back.image ? <img alt="" aria-hidden="true" src={assetUrl(back.image)} /> : null}
+        {back.image ? <img alt="" aria-hidden="true" decoding="async" loading="lazy" src={assetUrl(back.image)} /> : null}
         <span>
           <strong>{count}</strong>
           <small>{label}</small>
@@ -2543,7 +2543,7 @@ export function MoraleCardsDock({ state, viewerPlayerId }: { state: GameState; v
               title={hint ? `${card?.name ?? cardId} — ${hint}` : card?.name ?? cardId}
               type="button"
             >
-              {card?.assets?.cardImage ? <img alt="" src={assetUrl(card.assets.cardImage)} /> : <span>{polarity[0].toUpperCase()}</span>}
+              {card?.assets?.cardImage ? <img alt="" decoding="async" loading="lazy" src={assetUrl(card.assets.cardImage)} /> : <span>{polarity[0].toUpperCase()}</span>}
             </button>
           );
         })}
@@ -2586,7 +2586,7 @@ export function MoraleCardsDock({ state, viewerPlayerId }: { state: GameState; v
                 title={card?.name ?? cardId}
                 type="button"
               >
-                {card?.assets?.cardImage ? <img alt="" src={assetUrl(card.assets.cardImage)} /> : <span>{negative ? "N" : "P"}</span>}
+                {card?.assets?.cardImage ? <img alt="" decoding="async" loading="lazy" src={assetUrl(card.assets.cardImage)} /> : <span>{negative ? "N" : "P"}</span>}
               </button>
             );
           })}

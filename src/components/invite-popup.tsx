@@ -2,11 +2,22 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { DoorOpen, UserPlus, X } from "lucide-react";
+import { pollTickAllowed } from "@/lib/hidden-tab-poll";
 import {
   dismissLobbyInvite,
   fetchLobbyInvites,
   type LobbyInvite
 } from "@/lib/lobby-invites-client";
+
+/**
+ * Invite poll cadence. This popup is mounted in the lobby AND on the in-game
+ * page, so its poll runs for whole play sessions; at the old 3 s that was
+ * ~1,200 same-origin /api requests per hour per tab (billed edge requests on
+ * the production host). Invites live 5 minutes server-side and arrive with a
+ * lobby-chat ping too, so a popup within 15 s stays plenty prompt — and the
+ * visibilitychange refresh below delivers instantly on tab focus.
+ */
+export const INVITE_POLL_MS = 15_000;
 
 /**
  * Global invite modal — polls pending invites for this tab and pops the newest
@@ -40,7 +51,14 @@ export function InvitePopup({
 
   useEffect(() => {
     refresh();
-    const id = window.setInterval(refresh, 3000);
+    // Hidden tabs skip ticks entirely (edge-request leak fix); the
+    // visibility handler below refreshes the moment the tab is looked at.
+    const id = window.setInterval(() => {
+      if (!pollTickAllowed()) {
+        return;
+      }
+      refresh();
+    }, INVITE_POLL_MS);
     const onVisible = () => {
       if (document.visibilityState === "visible") {
         refresh();

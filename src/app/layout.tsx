@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { AssetPreconnect } from "@/components/asset-preconnect";
+import { PartyPreconnect } from "@/components/party-preconnect";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -28,6 +29,7 @@ export default function RootLayout({
     <html lang="en">
       <body>
         <AssetPreconnect />
+        <PartyPreconnect />
         <div className="appShell">
           <header className="topBar">
             <Link className="brand" href="/menu">

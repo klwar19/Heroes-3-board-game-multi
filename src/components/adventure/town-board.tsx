@@ -89,7 +89,9 @@ function FullScanCrop({ spec, index }: { spec: TownBoardSpec; index: number }) {
     top: `${(-rect.top / rect.height) * 100}%`,
     maxWidth: "none"
   };
-  return <img alt="" aria-hidden="true" draggable={false} src={assetUrl(spec.fullImage!)} style={style} />;
+  // The town-full scans are the heaviest art (~800 KB webp); async decode
+  // keeps opening the window from blocking the main thread on decode.
+  return <img alt="" aria-hidden="true" decoding="async" draggable={false} src={assetUrl(spec.fullImage!)} style={style} />;
 }
 
 /** Compact printed-style cost line: resource icon + amount pairs. */
@@ -734,7 +736,7 @@ export function TownBoardView({
         style={{ aspectRatio: `${geometry.aspect[0]} / ${geometry.aspect[1]}`, "--tb-faction": faction.color } as CSSProperties}
       >
         {isScan ? (
-          <img alt={`${faction.name} town board`} className="tbBoardBase" draggable={false} src={assetUrl(spec.emptyImage!)} />
+          <img alt={`${faction.name} town board`} className="tbBoardBase" decoding="async" draggable={false} src={assetUrl(spec.emptyImage!)} />
         ) : (
           <div className="tbBoardBase tbDesignedBase">
             <div
@@ -747,7 +749,7 @@ export function TownBoardView({
               }}
             >
               {spec.panoramaImage ? (
-                <img alt="" aria-hidden="true" draggable={false} src={assetUrl(spec.panoramaImage)} />
+                <img alt="" aria-hidden="true" decoding="async" draggable={false} src={assetUrl(spec.panoramaImage)} />
               ) : null}
             </div>
             {/* The authentic printed tracks/tokens panel, pasted back at the
