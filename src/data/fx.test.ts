@@ -142,15 +142,21 @@ describe("healFxPlans", () => {
 
 describe("paralysis abilities animate (the freeze glyph + sound)", () => {
   // The table draws abilityFxPlans[event.abilityId] when a unit ability fires.
-  // Every paralysis ability whose id is logged ONLY on the actual paralysis (a
-  // single event) must answer with the paralyze sprite + sound, or the token
-  // lands in silence — the user's Azure Dragon complaint. The extra-die variants
-  // are excluded on purpose (they reuse the id for a "rolls X" announce).
+  // Every paralysis ability whose id is logged ONLY on the actual paralysis must
+  // answer with the paralyze sprite + sound, or the token lands in silence.
+  // Extra-die variants (basilisk-paralysis, medusa-paralyze-retaliation-die,
+  // commander-paralyze) now use the Death-Stare id split: bare id on land,
+  // `${id}-roll` on a miss — so they are safe to key here too.
   it.each([
     "azure-dragon-paralysis",
     "fortress-basilisk-paralysis",
+    "basilisk-paralysis",
     "medusa-paralyze-retaliation",
-    "bank-medusa-paralyze-stacked"
+    "medusa-paralyze-retaliation-die",
+    "unicorn-paralyze-retaliation",
+    "bank-medusa-paralyze-stacked",
+    "commander-fearsome",
+    "commander-paralyze"
   ])("wires %s with the paralyze freeze glyph + sound", (abilityId) => {
     const plan = abilityFxPlans[abilityId];
     expect(plan, `${abilityId} needs an ability FX plan`).toBeTruthy();
@@ -161,12 +167,19 @@ describe("paralysis abilities animate (the freeze glyph + sound)", () => {
     expect(spellPresentationMs(plan)).toBeGreaterThan(0);
   });
 
-  it("does not key the extra-die paralysis variants (they share their id with a roll announce)", () => {
-    // basilisk-paralysis (extra roll) and medusa-paralyze-retaliation-die emit a
-    // "rolls X" event under the same id, so a plan there would flash the freeze
-    // before any paralysis lands. Left unwired until the engine splits that id.
-    expect(abilityFxPlans["basilisk-paralysis"]).toBeUndefined();
-    expect(abilityFxPlans["medusa-paralyze-retaliation-die"]).toBeUndefined();
+  it("does not key the roll-announce ids (a missed gaze must not freeze)", () => {
+    expect(abilityFxPlans["basilisk-paralysis-roll"]).toBeUndefined();
+    expect(abilityFxPlans["medusa-paralyze-retaliation-die-roll"]).toBeUndefined();
+    expect(abilityFxPlans["commander-paralyze-roll"]).toBeUndefined();
+  });
+
+  it("wards ignore-paralysis with the anti-magic shimmer + resist cue", () => {
+    const plan = abilityFxPlans["ignore-paralysis"];
+    expect(plan, "ignore-paralysis needs an ability FX plan").toBeTruthy();
+    expect(plan.affect?.[0]?.key).toBe("anti-magic");
+    expect(spriteDurationMs(plan.affect?.[0]?.key)).toBeGreaterThan(0);
+    expect(plan.sound).toBe("effects/magic-resist");
+    expect(soundDurationMs(plan.sound)).toBeGreaterThan(0);
   });
 });
 
@@ -539,9 +552,10 @@ describe("more spells wired with SFX + animation (no silent resolves)", () => {
 
   // Spells with no dedicated sprite (the board result is the visual) carry just
   // their measured cast sound — but a real, non-zero one with a real gate.
+  // Sacrifice is NOT here: it shares the Resurrection sheet (C01SPE0) and is
+  // pinned in "resurrection family uses the Resurrection sheet".
   const SOUND_ONLY_SPELLS: Record<string, string> = {
     "spell.earthquake": "spells/earthquake",
-    "spell.sacrifice": "spells/sacrifice",
     "spell.remove_obstacle": "spells/remove-obstacle",
     "spell.view_air": "spells/view",
     "spell.view_earth": "spells/view"
@@ -659,5 +673,89 @@ describe("Factory expansion gold/cube abilities carry their SFX + animation", ()
     expect(plan.affect).toBeUndefined();
     expect(plan.hit).toBeUndefined();
     expect(spellPresentationMs(plan)).toBeGreaterThan(0);
+  });
+});
+
+describe("resurrection family uses the Resurrection sheet (never Prayer)", () => {
+  // The converted library has a dedicated Resurrection sheet (C01SPE0, shared
+  // with Animate Dead / Sacrifice). An earlier mapping wrongly used the Prayer
+  // column (C10SPW). Every resurrection-family cue must use the real sheet.
+  it.each([
+    ["resurrection", "spells/resurrection"],
+    ["phoenix-rebirth", "spells/resurrection"],
+    ["archangel-lethal-save", "spells/resurrection"]
+  ] as const)("ability %s plays the resurrection sheet + %s", (abilityId, sound) => {
+    const plan = abilityFxPlans[abilityId];
+    expect(plan, `${abilityId} needs an ability FX plan`).toBeTruthy();
+    expect(plan.affect?.[0]?.key).toBe("resurrection");
+    expect(plan.affect?.[0]?.key).not.toBe("prayer");
+    expect(spriteDurationMs(plan.affect?.[0]?.key)).toBeGreaterThan(0);
+    expect(plan.sound).toBe(sound);
+    expect(soundDurationMs(plan.sound)).toBeGreaterThan(0);
+    expect(spellPresentationMs(plan)).toBeGreaterThan(0);
+  });
+
+  it.each([
+    ["spell.resurrection", "spells/resurrection"],
+    ["spell.animate_dead", "spells/animate-dead"],
+    ["spell.sacrifice", "spells/sacrifice"]
+  ] as const)("spell %s plays the resurrection sheet + %s", (spellId, sound) => {
+    const plan = spellFxPlans[spellId];
+    expect(plan, `${spellId} needs a spell FX plan`).toBeTruthy();
+    expect(plan.affect?.[0]?.key).toBe("resurrection");
+    expect(plan.affect?.[0]?.key).not.toBe("prayer");
+    expect(spriteDurationMs(plan.affect?.[0]?.key)).toBeGreaterThan(0);
+    expect(plan.sound).toBe(sound);
+    expect(soundDurationMs(plan.sound)).toBeGreaterThan(0);
+    expect(spellPresentationMs(plan)).toBeGreaterThan(0);
+  });
+
+  it("keeps the Prayer spell on the Prayer sheet (control — different effect)", () => {
+    const plan = spellFxPlans["spell.prayer"];
+    expect(plan.affect?.[0]?.key).toBe("prayer");
+    expect(plan.sound).toBe("spells/prayer");
+  });
+});
+
+describe("additional monster ability cues (SFX + animation)", () => {
+  // Each id is emitted by the engine as a UNIT_ABILITY_TRIGGERED under that exact
+  // id ONLY when the effect lands (misses use `${id}-roll` or `${id}-buff`). The
+  // cue dies if the plan, its sprite or its sound is dropped.
+  it.each([
+    ["sorceress-weakness-few", "weakness", "spells/weakness"],
+    ["sorceress-weakness-on-attack", "weakness", "spells/weakness"],
+    ["bulwark-freezing-shot", "slow", "spells/slow"],
+    ["behemoth-defense-crush-few", "disrupting-ray", "spells/disrupting-ray"],
+    ["behemoth-defense-crush-pack", "disrupting-ray", "spells/disrupting-ray"],
+    ["commander-defense-crush", "disrupting-ray", "spells/disrupting-ray"],
+    ["manticore-ignore-defense", "disrupting-ray", "spells/disrupting-ray"],
+    ["ghost-dragon-knockback", "fear", "effects/fear"],
+    ["ghost-dragon-morale-drain", "age", "effects/age"],
+    ["mechanics-repair-1", "cure", "spells/repair"],
+    ["mechanics-repair-2", "cure", "spells/repair"],
+    ["enchanter-heal-or-buff", "cure", "spells/cure"],
+    ["commander-regeneration", "cure", "spells/cure"]
+  ] as const)("%s plays the %s sprite + sound", (abilityId, sheetKey, sound) => {
+    const plan = abilityFxPlans[abilityId];
+    expect(plan, `${abilityId} needs an ability FX plan`).toBeTruthy();
+    expect(plan.affect?.[0]?.key).toBe(sheetKey);
+    expect(spriteDurationMs(plan.affect?.[0]?.key)).toBeGreaterThan(0);
+    expect(plan.sound).toBe(sound);
+    expect(soundDurationMs(plan.sound)).toBeGreaterThan(0);
+    expect(spellPresentationMs(plan)).toBeGreaterThan(0);
+  });
+
+  it("does not key Nix damage-cap or Halfling Precise Shot (removed cues)", () => {
+    expect(abilityFxPlans["nix-damage-cap"]).toBeUndefined();
+    expect(abilityFxPlans["nix-damage-cap-neutral"]).toBeUndefined();
+    expect(abilityFxPlans["halfling-precise-shot"]).toBeUndefined();
+  });
+
+  it("does not key roll-announce / buff-fallback ids (misses must stay silent)", () => {
+    expect(abilityFxPlans["ghost-dragon-knockback-roll"]).toBeUndefined();
+    expect(abilityFxPlans["thunderbirds-lightning-roll"]).toBeUndefined();
+    expect(abilityFxPlans["wyvern-sting-roll"]).toBeUndefined();
+    expect(abilityFxPlans["enchanter-heal-or-buff-buff"]).toBeUndefined();
+    expect(abilityFxPlans["mechanics-repair-2-buff"]).toBeUndefined();
   });
 });

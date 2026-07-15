@@ -46,9 +46,11 @@ describe("commander ability presentation (fx + sfx)", () => {
     expect(commanderCastFxPlan("brute").tint).toBe("bloodlust");
     // Paladin's Cure reuses the cure shimmer.
     expect(commanderCastFxPlan("paladin")).toBe(spellFxPlans["spell.cure"]);
-    // Soul Eater's Animate Dead has NO converted sheet → the shimmer fallback.
-    expect(spellFxPlans["spell.animate_dead"]).toBeUndefined();
-    expect(commanderCastFxPlan("soul_eater")).toBe(COMMANDER_CAST_FALLBACK_FX);
+    // Soul Eater's Animate Dead uses the real Resurrection/Animate Dead sheet
+    // (C01SPE0) — never the Prayer column — with the animate-dead cast sound.
+    expect(spellFxPlans["spell.animate_dead"]).toBeTruthy();
+    expect(commanderCastFxPlan("soul_eater")).toBe(spellFxPlans["spell.animate_dead"]);
+    expect(commanderCastFxPlan("soul_eater").affect?.[0]?.key).toBe("resurrection");
     expect(commanderCastFxPlan("soul_eater").sound).toBe("spells/animate-dead");
   });
 

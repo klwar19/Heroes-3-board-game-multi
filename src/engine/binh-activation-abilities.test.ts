@@ -424,7 +424,10 @@ describe("neutral Enchanters heal a wounded ally when possible", () => {
     script(state, [0, 0, 0, 0, 0, 0]);
     state = defendThrough(state);
 
-    expect(abilityEvents(state, "enchanter-heal-or-buff").length).toBeGreaterThanOrEqual(1);
+    // Buff fallback announces under `${id}-buff` so the heal FX plan never
+    // flashes the Cure shimmer on a pure Attack buff.
+    expect(abilityEvents(state, "enchanter-heal-or-buff-buff").length).toBeGreaterThanOrEqual(1);
+    expect(abilityEvents(state, "enchanter-heal-or-buff")).toHaveLength(0);
     expect(state.eventLog.some((event) => event.type === "DAMAGE_HEALED")).toBe(false);
   });
 });

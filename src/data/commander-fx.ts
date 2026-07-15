@@ -20,7 +20,7 @@ export const COMMANDER_CAST_FX_KEY: Record<CommanderSlug, string> = {
   temple_guardian: "spell.precision", // Precision
   succubus: "spell.fire_shield", // Fire Shield
   brute: "spell.bloodlust", // Bloodlust (red battle-rage tint)
-  soul_eater: "spell.animate_dead", // Animate Dead (no sheet → fallback below)
+  soul_eater: "spell.animate_dead", // Animate Dead (resurrection sheet + animate-dead sound)
   ogre_leader: "spell.stone_skin", // Stone Skin (instant reaction)
   shaman: "spell.haste", // Haste
   astral_spirit: "spell.counterstrike", // Counterstrike
@@ -30,12 +30,13 @@ export const COMMANDER_CAST_FX_KEY: Record<CommanderSlug, string> = {
 };
 
 /**
- * Fallback shimmer for a commander cast whose spell has no converted sprite
- * sheet (Animate Dead): the prayer/heal glow + the animate-dead cast sound,
- * so the cast is still seen AND heard.
+ * Fallback for a commander cast whose spell has no plan yet. Animate Dead now
+ * has its own spellFxPlans entry (resurrection sheet + animate-dead sound), so
+ * this is only a safety net for future unmapped casts — still the real
+ * Resurrection/Animate Dead sheet, never the Prayer column.
  */
 export const COMMANDER_CAST_FALLBACK_FX: SpellFxPlan = {
-  affect: [{ key: "prayer" }],
+  affect: [{ key: "resurrection" }],
   sound: "spells/animate-dead"
 };
 

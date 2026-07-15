@@ -195,6 +195,8 @@ describe("paralysis-inflicting abilities", () => {
 
   it("Basilisk rolls an extra die and paralyses on a '0'", () => {
     // First roll resolves the attack (+1), the second is the Stone Gaze die (0).
+    // The landed stare logs under the bare ability id (Death-Stare style split)
+    // so abilityFxPlans can freeze the target without flashing on a miss.
     const next = settle(
       applyOk(paralysisState(["basilisk-paralysis"], [1, 0, 0]), {
         type: "ATTACK_UNIT",
@@ -204,6 +206,42 @@ describe("paralysis-inflicting abilities", () => {
       })
     );
     expect(hasParalysis(next, "unit_p2_skeletons")).toBe(true);
+    const paralysisEvent = next.eventLog.find(
+      (event): event is Extract<GameEvent, { type: "UNIT_ABILITY_TRIGGERED" }> =>
+        event.type === "UNIT_ABILITY_TRIGGERED" &&
+        event.abilityId === "basilisk-paralysis" &&
+        event.targetUnitId === "unit_p2_skeletons"
+    );
+    expect(paralysisEvent, "neutral Basilisk must log its paralysis under its ability id").toBeTruthy();
+    expect(paralysisEvent!.dice?.success).toBe(true);
+    const plan = abilityFxPlans[paralysisEvent!.abilityId];
+    expect(plan, "abilityFxPlans must answer the basilisk-paralysis land event").toBeTruthy();
+    expect(plan.affect?.[0]?.key).toBe("paralyze");
+    expect(plan.sound).toBe("spells/paralyze");
+  });
+
+  it("a missed Basilisk Stone Gaze announces under basilisk-paralysis-roll (no freeze FX)", () => {
+    // Attack +1, gaze die +1 → miss. The bare ability id must NOT fire.
+    const next = settle(
+      applyOk(paralysisState(["basilisk-paralysis"], [1, 1, 0]), {
+        type: "ATTACK_UNIT",
+        playerId: "p1",
+        attackerId: "unit_p1_marksmen",
+        defenderId: "unit_p2_skeletons"
+      })
+    );
+    expect(hasParalysis(next, "unit_p2_skeletons")).toBe(false);
+    expect(
+      next.eventLog.some(
+        (event) => event.type === "UNIT_ABILITY_TRIGGERED" && event.abilityId === "basilisk-paralysis"
+      )
+    ).toBe(false);
+    const miss = next.eventLog.find(
+      (event): event is Extract<GameEvent, { type: "UNIT_ABILITY_TRIGGERED" }> =>
+        event.type === "UNIT_ABILITY_TRIGGERED" && event.abilityId === "basilisk-paralysis-roll"
+    );
+    expect(miss?.dice?.success).toBe(false);
+    expect(abilityFxPlans["basilisk-paralysis-roll"]).toBeUndefined();
   });
 });
 

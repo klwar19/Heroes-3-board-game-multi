@@ -180,10 +180,17 @@ export const spellFxPlans: Record<string, SpellFxPlan> = {
   // glyph flares at centre stage over the played card with the cast cue — the
   // same CARD_PLAYED path as Weakness / Slayer.
   "spell.frenzy": { affect: [{ key: "frenzy" }], sound: "spells/frenzy" },
-  // Sacrifice: a unit perishes to mend another — the perishing/heal is the
-  // visual, so only the H3 sacrifice cast cue is wired (no converted sprite),
-  // played over the healed unit. queueBoardFx plays this sound-only plan there.
-  "spell.sacrifice": { sound: "spells/sacrifice" },
+  // Sacrifice shares the H3 Resurrection/Animate Dead sheet (C01SPE0 — same
+  // def as Resurrection in the converted library) over the healed unit, with
+  // its own sacrifice cast cue.
+  "spell.sacrifice": { affect: [{ key: "resurrection" }], sound: "spells/sacrifice" },
+  // Resurrection spell cast (lethal-save reaction): the real Resurrection
+  // sheet + cast cue. The killing-blow cancel also fires the ability-id
+  // "resurrection" plan below (same sheet) when the blow is actually stopped.
+  "spell.resurrection": { affect: [{ key: "resurrection" }], sound: "spells/resurrection" },
+  // Animate Dead: same H3 resurrection/reanimation sheet (C01SPE0), with the
+  // Animate Dead cast sound. Also what the Soul Eater commander cast reuses.
+  "spell.animate_dead": { affect: [{ key: "resurrection" }], sound: "spells/animate-dead" },
   // Earthquake: a siege-only blast with no single unit to anchor on, so it
   // carries just the H3 earthquake rumble (Walls coming down animate off
   // FORTIFICATION_DESTROYED). Plays at centre stage off SPELL_CAST_RESOLVED.
@@ -272,10 +279,12 @@ export const abilityFxPlans: Record<string, SpellFxPlan> = {
   // Lethal-save sources (Alamar's specialty, the Resurrection spell and the
   // Archangels' once-per-combat cancel) all emit the "resurrection" ability
   // event when the killing blow is cancelled, so one plan covers all three.
-  resurrection: { affect: [{ key: "prayer" }], sound: "spells/resurrection" },
-  // Phoenixes' Rebirth reuses the resurrection cue when the killing blow is
-  // shrugged off and the bird clings to life at 1 Health.
-  "phoenix-rebirth": { affect: [{ key: "prayer" }], sound: "spells/resurrection" },
+  // MUST use the dedicated Resurrection sheet (C01SPE0) — never the Prayer
+  // column (C10SPW), which is a different spell.
+  resurrection: { affect: [{ key: "resurrection" }], sound: "spells/resurrection" },
+  // Phoenixes' Rebirth reuses the same Resurrection sheet when the killing blow
+  // is shrugged off and the bird clings to life at 1 Health.
+  "phoenix-rebirth": { affect: [{ key: "resurrection" }], sound: "spells/resurrection" },
   // Jotunn Warlord's start-of-activation Teleport: a sound-only plan, exactly
   // like the Teleport Spell (spell.teleport) — the relocated unit's card-glide
   // (UNIT_MOVED) is the visual, and this carries the same H3 teleport sound,
@@ -290,21 +299,28 @@ export const abilityFxPlans: Record<string, SpellFxPlan> = {
   // plan or its stare lands silently while the neutral guard's animates. Parity
   // with the neutral `gorgon-death-stare` above.
   "fortress-gorgon-death-stare": { affect: [{ key: "death-stare" }], sound: "spells/death-stare" },
-  // Paralysis: the H3 "paralyze" freeze glyph + paralyze sound flash over the
-  // unit that gains the Paralysis token (the same sheet the Blind spell uses).
-  // Keyed by every paralysis ability whose id is emitted ONLY when the token
-  // actually lands (a single event): the Azure Dragon's Paralyzing Breath (the
-  // requested one), the identical Fortress Basilisk Stone Gaze, the Medusas'
-  // Paralyzing Gaze on retaliation, and the Stacked Medusa Stores bank guard.
-  // The extra-die variants (basilisk-paralysis, medusa-paralyze-retaliation-die)
-  // are deliberately NOT keyed here: each reuses the SAME ability id for a
-  // "rolls X" announce event that fires whether or not the target is paralysed,
-  // so mapping it would flash the freeze before any paralysis lands. Wiring
-  // those needs an engine change that splits the announce onto its own id.
+  // Paralysis / Stone Gaze / Paralyzing Gaze: the H3 "paralyze" freeze glyph +
+  // paralyze sound flash over the unit that gains the Paralysis token (the same
+  // sheet the Blind spell uses). Every id below is emitted ONLY when the token
+  // actually lands — own-die variants (Azure Dragon, Fortress Basilisk, the
+  // commander's Fearsome) fire once on a matching attack face; automatic
+  // retaliation gazes (Medusa Pack/Neutral, Unicorn) fire on the land event;
+  // extra-die variants (neutral Basilisk Stone Gaze, Medusa Few die gaze, the
+  // commander's Paralyzing Touch) use the Death-Stare id split in reducer.ts
+  // (bare id on land, `${id}-roll` on a miss — left unmapped below). The
+  // Stacked Medusa Stores bank guard fires on its melee attack.
   "azure-dragon-paralysis": { affect: [{ key: "paralyze" }], sound: "spells/paralyze" },
   "fortress-basilisk-paralysis": { affect: [{ key: "paralyze" }], sound: "spells/paralyze" },
+  "basilisk-paralysis": { affect: [{ key: "paralyze" }], sound: "spells/paralyze" },
   "medusa-paralyze-retaliation": { affect: [{ key: "paralyze" }], sound: "spells/paralyze" },
+  "medusa-paralyze-retaliation-die": { affect: [{ key: "paralyze" }], sound: "spells/paralyze" },
+  "unicorn-paralyze-retaliation": { affect: [{ key: "paralyze" }], sound: "spells/paralyze" },
   "bank-medusa-paralyze-stacked": { affect: [{ key: "paralyze" }], sound: "spells/paralyze" },
+  "commander-fearsome": { affect: [{ key: "paralyze" }], sound: "spells/paralyze" },
+  "commander-paralyze": { affect: [{ key: "paralyze" }], sound: "spells/paralyze" },
+  // A unit that shrugs off Paralysis (ignore-paralysis / Soul Eater undead…)
+  // wards with the same anti-magic shimmer the resistance roll uses.
+  "ignore-paralysis": { affect: [{ key: "anti-magic" }], sound: "effects/magic-resist" },
   "dread-knight-death-blow": { affect: [{ key: "death-ripple" }], sound: "effects/death-blow" },
   // Fortress Wyverns' poison cubes: the poison cloud both when the cubes are
   // planted (on the attack) and when one bleeds the unit at its activation.
@@ -393,11 +409,49 @@ export const abilityFxPlans: Record<string, SpellFxPlan> = {
   // shimmer over the guard as it fires back FIRST (the retaliation attack itself
   // is the shot animation/sound; this cues the special pre-emptive timing).
   "bounty-hunter-preemptive": { affect: [{ key: "counterstrike" }], sound: "units/gunslinger-special" },
+  // --- Additional monster ability cues (only ids that fire on the real effect) -
+  // Cove Sorceresses' Weakness token (activation place OR on-attack): the same
+  // Weakness glyph + cry the Weakness spell uses.
+  "sorceress-weakness-few": { affect: [{ key: "weakness" }], sound: "spells/weakness" },
+  "sorceress-weakness-on-attack": { affect: [{ key: "weakness" }], sound: "spells/weakness" },
+  // Bulwark Freezing Shot: Initiative debuff after the attack — the Slow wash
+  // is the closest H3 "you're slowed" presentation (no dedicated freeze sheet
+  // for unit abilities; spells/freeze is an uncertain identification).
+  "bulwark-freezing-shot": { affect: [{ key: "slow" }], sound: "spells/slow" },
+  // Behemoths' Crushing Blow / Corrosive Crush (and the WOG commander twin):
+  // Defense is shredded for this attack — Disrupting Ray's beam is the H3
+  // "armor stripped" cue.
+  "behemoth-defense-crush-few": { affect: [{ key: "disrupting-ray" }], sound: "spells/disrupting-ray" },
+  "behemoth-defense-crush-pack": { affect: [{ key: "disrupting-ray" }], sound: "spells/disrupting-ray" },
+  "commander-defense-crush": { affect: [{ key: "disrupting-ray" }], sound: "spells/disrupting-ray" },
+  // Manticore Piercing Strike: ignore the target's printed Defense — same
+  // "armor stripped" read as the Behemoth crush.
+  "manticore-ignore-defense": { affect: [{ key: "disrupting-ray" }], sound: "spells/disrupting-ray" },
+  // Ghost Dragon Knock Back: the shove itself (applyKnockback) fires the bare
+  // ability id — the roll announce is `${id}-roll` and stays unmapped. Fear is
+  // the H3 "shoved by terror" glyph.
+  "ghost-dragon-knockback": { affect: [{ key: "fear" }], sound: "effects/fear" },
+  // Ghost Dragon Aging (activation morale drain): the dedicated Age sheet.
+  "ghost-dragon-morale-drain": { affect: [{ key: "age" }], sound: "effects/age" },
+  // Factory Mechanics' Repair: mend an adjacent mechanical unit — the H3 repair
+  // chime + the green Cure shimmer (same heal presentation as Enchanters).
+  "mechanics-repair-1": { affect: [{ key: "cure" }], sound: "spells/repair" },
+  "mechanics-repair-2": { affect: [{ key: "cure" }], sound: "spells/repair" },
+  // Enchanters' activation heal. The +Attack fallback announces under
+  // `${id}-buff` (unmapped) so this Cure shimmer only plays on a real heal.
+  "enchanter-heal-or-buff": { affect: [{ key: "cure" }], sound: "spells/cure" },
+  // WOG commander Regeneration (activation heal-self): same Cure shimmer as
+  // Wraith/Troll Regeneration.
+  "commander-regeneration": { affect: [{ key: "cure" }], sound: "spells/cure" },
+  // Archangel lethal-save readiness: the real Resurrection sheet (not Prayer)
+  // when the Archangel commits to cancel a killing blow. The cancel itself
+  // also fires the shared "resurrection" ability plan with the same sheet.
+  "archangel-lethal-save": { affect: [{ key: "resurrection" }], sound: "spells/resurrection" },
   // Future abilities (cards not implemented yet, assets ready):
   poison: { affect: [{ key: "poison" }], sound: "spells/poison" },
   paralyze: { affect: [{ key: "paralyze" }], sound: "spells/paralyze" },
   age: { affect: [{ key: "age" }], sound: "effects/age" },
-  disease: { affect: [{ key: "disease" }], sound: "effects/disease" },
+  disease: { affect: [{ key: "disease" }], sound: "spells/disease" },
   bind: { affect: [{ key: "bind" }], sound: "effects/bind" },
   fear: { affect: [{ key: "fear" }], sound: "effects/fear" },
   "acid-breath": { hit: "acid-breath", hitSound: "effects/acid-breath" }
