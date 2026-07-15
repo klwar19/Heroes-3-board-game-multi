@@ -5,6 +5,7 @@ import { locationDefinitions, TRADE_RATES } from "@/data/map/locations";
 import { allTileDefinitions } from "@/data/map/tiles";
 import { hasInternalBorder } from "@/data/map/borders";
 import {
+  adventureVictoryMode,
   canHeroReachPlacedTile,
   getAdjacentSpaceIds,
   getUnitSide,
@@ -32,6 +33,9 @@ import {
   armyReadyForContestedFight,
   assessDwellingRush,
   developmentResourceTargets,
+  shouldPrioritizeFirstAidTent,
+  shouldSeekLateWarMachineShop,
+  shouldLaunchBronzeRush,
 } from "./development";
 import {
   collectMapObjectives,
@@ -62,6 +66,8 @@ export type ComputerActionScore = {
 
 /** Keep a small gold cushion so the AI does not spend to 0 and stall next turn. */
 const GOLD_RESERVE = 5;
+/** The opening four rounds avoid markets except a well-funded First Aid Tent. */
+export const MARKET_MIN_ROUND = 5;
 
 // Dwelling-rush trade planner (see development.assessDwellingRush).
 /** A trade that converts genuine surplus into the missing dwelling input — above
@@ -148,6 +154,16 @@ export function tradeUtility(
 ): number {
   const rate = TRADE_RATES[rateIndex];
   if (!rate) return -99;
+  // Valuables are the Gold-dwelling bottleneck. Never liquidate them into gold
+  // before that dwelling is built, even when the generic deficit model calls
+  // one of them surplus.
+  if (
+    (rate.sell.valuables ?? 0) > 0 &&
+    (rate.buy.gold ?? 0) > 0 &&
+    !armyDevelopmentProfile(state, playerId).goldUnlocked
+  ) {
+    return -99;
+  }
   const res = playerResources(state, playerId);
   // Must be able to pay (legal-actions already gates, but score still ranks).
   for (const key of Object.keys(rate.sell) as ResourceKey[]) {
@@ -180,13 +196,37 @@ export function tradeUtility(
   return utility;
 }
 
-/** Whether the seat should bother opening a market this turn. */
-function wantsMarketVisit(state: GameState, playerId: PlayerId): boolean {
-  if (hasUsefulMarketTrade(state, playerId)) return true;
-  // Healthy gold + thin permanents → consider a war machine purchase.
-  const gold = playerGold(state, playerId);
-  const permanents = state.players[playerId]?.permanents?.length ?? 0;
-  return gold >= GOLD_RESERVE + 12 && permanents < 2;
+function heroMarketLocation(state: GameState, heroId: string): string | undefined {
+  const spaceId = state.heroes[heroId]?.spaceId;
+  return spaceId ? state.adventure?.fields[spaceId]?.location : undefined;
+}
+
+/** Whether the seat should bother opening this particular market this turn. */
+function wantsMarketVisit(
+  state: GameState,
+  playerId: PlayerId,
+  location?: string,
+): boolean {
+  if (
+    location === "war_machine_factory" &&
+    shouldPrioritizeFirstAidTent(state, playerId)
+  ) {
+    return true;
+  }
+  if ((state.round ?? 0) < MARKET_MIN_ROUND) return false;
+  if (
+    TRADE_RATES.some(
+      (_, index) => tradeUtility(state, playerId, index) >= 4,
+    )
+  ) {
+    return true;
+  }
+  // War-machine detours are specific to the Factory and use the shared
+  // late-development/surplus gate.
+  return (
+    location === "war_machine_factory" &&
+    shouldSeekLateWarMachineShop(state, playerId)
+  );
 }
 
 function buildingScore(
@@ -574,6 +614,53 @@ function explorationActionScore(
   return armyNeedsReinforcement(state, observation.playerId) ? 640 : 670;
 }
 
+function hasReachableBronzeRushTarget(
+  state: GameState,
+  hero: HeroState,
+): boolean {
+  if (
+    hero.kind !== "main" ||
+    adventureVictoryMode(state) !== "conquest" ||
+    !shouldLaunchBronzeRush(state, hero.controllerId) ||
+    !hero.spaceId
+  ) {
+    return false;
+  }
+  const targets = collectMapObjectives(state, hero).filter(
+    (objective) =>
+      objective.kind === "victory" || objective.kind === "enemy-hero",
+  );
+  return (
+    targets.length > 0 &&
+    objectiveDistanceField(state, hero, targets).has(hero.spaceId)
+  );
+}
+
+/**
+ * Far (II-III) openings get explicit tempo priority, especially until the
+ * player's second opening has had its Settlement chance. Once a reachable
+ * three-Pack conquest rush is live, the main hero commits instead.
+ */
+function expansionPriorityScore(
+  observation: ComputerObservation,
+  heroId: string,
+  base: number,
+  farTile: boolean,
+): number {
+  const state = observation.state as unknown as GameState;
+  const hero = state.heroes[heroId];
+  const score = explorationActionScore(observation, heroId, base);
+  if (!hero || !farTile) return score;
+  if (hasReachableBronzeRushTarget(state, hero)) return Math.min(score, 675);
+  const opened =
+    state.adventure?.farTilesOpenedByPlayer?.[observation.playerId] ?? 0;
+  const hasSettlement = Boolean(
+    state.adventure?.farSettlementOpenedByPlayer?.[observation.playerId],
+  );
+  const bonus = opened < 2 && !hasSettlement ? 80 : 45;
+  return Math.min(930, score + bonus);
+}
+
 /**
  * How many other slots of the tile a hero ENTERING at `entrySlot` can go on to
  * reach walking only inside the tile: blocked fields are walls, printed
@@ -842,6 +929,7 @@ function tradeResourceScore(
   action: Extract<GameAction, { type: "TRADE_RESOURCES" }>,
 ): number {
   const state = observation.state as unknown as GameState;
+  if ((state.round ?? 0) < MARKET_MIN_ROUND) return 180;
   // Dwelling rush: a trade that buys a missing dwelling input is either the
   // decisive enabler (feasible surplus) or actively SUPPRESSED (would strip the
   // recruit reserve). This overrides the generic heuristic, which would happily
@@ -869,19 +957,36 @@ function buyWarMachineScore(
   const player = state.players[observation.playerId];
   const gold = player?.resources.gold ?? 0;
   const owned = player?.permanents ?? [];
+  const ownedMachines = owned.filter((cardId) =>
+    cardId.startsWith("war_machine."),
+  );
+  const card = cardLibrary[action.cardId];
+  const isFirstAid =
+    action.cardId.includes("first_aid") ||
+    Boolean(card?.name?.toLowerCase().includes("first aid"));
   if (owned.includes(action.cardId)) {
     return 200;
   }
-  // One machine is enough early; do not dump gold on a second/third while
-  // coffers should fund recruits and builds.
-  if (owned.length >= 1) {
-    return gold >= GOLD_RESERVE + 30 ? 480 : 300;
+  if (
+    isFirstAid &&
+    shouldPrioritizeFirstAidTent(state, observation.playerId)
+  ) {
+    return 640;
   }
-  if (gold < GOLD_RESERVE + 12) {
+  if (
+    (state.round ?? 0) < MARKET_MIN_ROUND ||
+    armyDevelopmentProfile(state, observation.playerId).phase !== "improve-army"
+  ) {
+    return 220;
+  }
+  const target = developmentResourceTargets(state, observation.playerId);
+  if (ownedMachines.length >= 2) return 260;
+  const repeatPurchase = ownedMachines.length === 1;
+  if (repeatPurchase && gold < target.gold + 24) return 300;
+  if (!repeatPurchase && gold < target.gold + 12) {
     // Prefer holding gold for recruits.
     return 400;
   }
-  const card = cardLibrary[action.cardId];
   // Ballista / First Aid Tent / Ammo Cart / Cannon are all useful and kept in a
   // CLOSE band (base 600, +8..+22) so different contexts buy different machines
   // (variety), rather than one machine always winning. The First Aid Tent is
@@ -899,9 +1004,6 @@ function buyWarMachineScore(
   const isBallista =
     action.cardId.includes("ballista") ||
     Boolean(card?.name?.toLowerCase().includes("ballista"));
-  const isFirstAid =
-    action.cardId.includes("first_aid") ||
-    Boolean(card?.name?.toLowerCase().includes("first aid"));
   if (isBallista) {
     score += healingSpecialist ? 12 : 18;
   } else if (isFirstAid) {
@@ -914,7 +1016,7 @@ function buyWarMachineScore(
     // Cannon / Catapult and any other purchasable machine: in-band variety.
     score += 10;
   }
-  return score;
+  return repeatPurchase ? score - 60 : score;
 }
 
 /**
@@ -1222,6 +1324,13 @@ function resolveVisitStepScore(
   const step = state.adventure?.pendingVisit?.steps[0];
   const optionIndex = action.optionIndex ?? 0;
 
+  if (
+    (state.round ?? 0) < MARKET_MIN_ROUND &&
+    (step?.type === "TRADING_POST" || step?.type === "WAR_MACHINE_SHOP")
+  ) {
+    return action.decline ? 520 : 180;
+  }
+
   // Explicit Done / Leave (decline: true) — safe exit from any open visit.
   if (action.decline) {
     if (step?.type === "TRADING_POST" || step?.type === "WAR_MACHINE_SHOP") {
@@ -1412,7 +1521,12 @@ export function scoreMapAction(
     }
     case "DISCOVER_TILE":
       return {
-        score: explorationActionScore(observation, action.heroId, 830),
+        score: expansionPriorityScore(
+          observation,
+          action.heroId,
+          830,
+          state.adventure?.tiles[action.tileInstanceId]?.group === "far",
+        ),
         policy: "map.discover-tile",
       };
     case "PLACE_TILE": {
@@ -1437,10 +1551,11 @@ export function scoreMapAction(
             ? 15
             : 25;
       return {
-        score: explorationActionScore(
+        score: expansionPriorityScore(
           observation,
           action.heroId,
           780 + expandUrgency,
+          true,
         ),
         policy: "map.place-far-tile",
       };
@@ -1464,6 +1579,13 @@ export function scoreMapAction(
       return { score: 480, policy: "map.revisit-location" };
     }
     case "OPEN_MARKET": {
+      const marketLocation = heroMarketLocation(state, action.heroId);
+      const earlyTentVisit =
+        marketLocation === "war_machine_factory" &&
+        shouldPrioritizeFirstAidTent(state, observation.playerId);
+      if ((state.round ?? 0) < MARKET_MIN_ROUND && !earlyTentVisit) {
+        return { score: 180, policy: "map.market-wait-until-round-five" };
+      }
       // Already used the market this round — avoid open/close thrash (applies to
       // the dwelling rush too: it completes in the first open of the round).
       if (memory.lastMarketRound === state.round) {
@@ -1484,8 +1606,11 @@ export function scoreMapAction(
       // Free while parked on a market. Only open when a useful trade or shop
       // buy exists — otherwise the hero would open/close forever (score 0 was
       // below END_TURN so it never opened; a high unconditional score loops).
-      if (!wantsMarketVisit(state, observation.playerId)) {
+      if (!wantsMarketVisit(state, observation.playerId, marketLocation)) {
         return { score: 250, policy: "map.market-skip-balanced" };
+      }
+      if (earlyTentVisit) {
+        return { score: 700, policy: "map.open-war-machine-first-aid" };
       }
       return {
         score: 680 + economyFocusBias(memory, "market"),
@@ -1503,6 +1628,9 @@ export function scoreMapAction(
         policy: "map.buy-war-machine",
       };
     case "SELL_SCROLL_SPELL": {
+      if ((state.round ?? 0) < MARKET_MIN_ROUND) {
+        return { score: 180, policy: "map.market-wait-until-round-five" };
+      }
       // Tier-aware scroll economics: a C/D-tier spell (Earthquake, Inferno …)
       // is 2 gold the AI would never cast — sell it whenever the shop is open.
       // An S/A-tier spell (Fly, Resurrection …) is worth far more cast from

@@ -80,6 +80,7 @@ function marketRushState(options: {
     playerCount: 2,
   });
   state.phase = "player-turn";
+  state.round = 5;
   state.activePlayerId = "p2";
   state.priorityPlayerId = "p2";
   for (const player of Object.values(state.players)) {

@@ -40,6 +40,7 @@ describe("single-player tempo benchmarks — opening economy floors", () => {
     // floor: the establish-core phase targets 3 Pack stacks
     // (CORE_PACK_TARGET), and later rounds fluctuate as combat trims the army,
     // so a >=3 floor at round 3 is robust while a later-round army floor is not.
+    // Far-tile priority and the round-3 conquest fallback must preserve this core.
     const seeds = ["tempo-a", "tempo-b", "tempo-c", "tempo-d", "tempo-e", "tempo-f", "tempo-g", "tempo-h", "tempo-i", "tempo-j"];
     for (const seed of seeds) {
       const result = playUntilRound(newGame(seed), 4);

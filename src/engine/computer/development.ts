@@ -107,6 +107,107 @@ export function armyReadyForContestedFight(
   );
 }
 
+const FIRST_AID_TENT_ID = "war_machine.first_aid_tent";
+
+function ownedWarMachineCount(state: GameState, playerId: PlayerId): number {
+  return (state.players[playerId]?.permanents ?? []).filter((cardId) =>
+    cardId.startsWith("war_machine."),
+  ).length;
+}
+
+/**
+ * The one opening shop exception: a Tent is worth the detour when there is a
+ * real army to preserve and buying it leaves the dwelling/recruit reserve.
+ */
+export function shouldPrioritizeFirstAidTent(
+  state: GameState,
+  playerId: PlayerId,
+): boolean {
+  if ((state.round ?? 0) >= 5) return false;
+  const player = state.players[playerId];
+  if (
+    !player ||
+    player.permanents?.includes(FIRST_AID_TENT_ID) ||
+    ownedWarMachineCount(state, playerId) > 0
+  ) return false;
+  const profile = armyDevelopmentProfile(state, playerId);
+  const hasPremiumUnit = player.army.some((unit) => {
+    const tier = coreUnitDefinitions[unit.unitDefId]?.tier;
+    return tier === "silver" || tier === "gold" || tier === "azure";
+  });
+  const hasArmyWorthPreserving =
+    hasPremiumUnit ||
+    profile.packUnits >= CORE_PACK_TARGET ||
+    player.heroDefId === "gem";
+  const target = developmentResourceTargets(state, playerId);
+  return (
+    hasArmyWorthPreserving &&
+    (player.resources.gold ?? 0) >= target.gold + 9
+  );
+}
+
+/** Late-development machine shopping: at most two machines, with a much
+ * larger surplus required for the second so it cannot drain army plans. */
+export function shouldSeekLateWarMachineShop(
+  state: GameState,
+  playerId: PlayerId,
+): boolean {
+  if ((state.round ?? 0) < 5) return false;
+  if (armyDevelopmentProfile(state, playerId).phase !== "improve-army") return false;
+  const machineCount = ownedWarMachineCount(state, playerId);
+  if (machineCount >= 2) return false;
+  const target = developmentResourceTargets(state, playerId);
+  const surplusNeeded = machineCount === 0 ? 12 : 24;
+  return (
+    (state.players[playerId]?.resources.gold ?? 0) >=
+    target.gold + surplusNeeded
+  );
+}
+
+/**
+ * Whether an opened Far (II-III) tile has supplied the opening economy the
+ * computer is looking for: a Settlement, Gold Mine, or Valuables Mine.
+ * Presence on a revealed tile is enough; if it is not flagged yet the map
+ * policy should collect it rather than abandon it for an all-in attack.
+ */
+export function hasOpenedFarEconomy(
+  state: GameState,
+  playerId: PlayerId,
+): boolean {
+  const adventure = state.adventure;
+  if (!adventure || !state.players[playerId]) return false;
+  return Object.values(adventure.fields).some((field) => {
+    const tile = field.tileInstanceId
+      ? adventure.tiles[field.tileInstanceId]
+      : undefined;
+    if (tile?.group !== "far" || tile.faceDown) return false;
+    if (field.location === "settlement") return true;
+    return (
+      field.location === "mine" &&
+      (field.resource === "gold" || field.resource === "valuables")
+    );
+  });
+}
+
+/**
+ * Opening fallback used by conquest navigation. From round 3 onward, three
+ * Bronze Packs are a real rush force when the first Far tiles failed to yield
+ * a Settlement / premium mine. The caller still checks the scenario victory
+ * mode so non-conquest games continue pursuing their actual win condition.
+ */
+export function shouldLaunchBronzeRush(
+  state: GameState,
+  playerId: PlayerId,
+): boolean {
+  if ((state.round ?? 0) < 3) return false;
+  const profile = armyDevelopmentProfile(state, playerId);
+  return (
+    profile.totalUnits >= CORE_PACK_TARGET &&
+    profile.bronzePacks >= CORE_PACK_TARGET &&
+    !hasOpenedFarEconomy(state, playerId)
+  );
+}
+
 export function factionBuildingForEffect(
   state: GameState,
   playerId: PlayerId,

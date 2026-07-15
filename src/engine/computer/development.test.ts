@@ -7,6 +7,8 @@ import { scoreCardAction } from "./card-policy";
 import {
   armyDevelopmentProfile,
   developmentResourceTargets,
+  hasOpenedFarEconomy,
+  shouldLaunchBronzeRush,
 } from "./development";
 import { resourceDeficits, scoreMapAction } from "./map-policy";
 import { observeForComputer } from "./observation";
@@ -49,6 +51,36 @@ function establishPacks(state: GameState): void {
 }
 
 describe("computer long-horizon development plan", () => {
+  it("launches the round-3 three-Bronze-Pack fallback only without Far economy", () => {
+    const state = game();
+    establishPacks(state);
+    state.round = 2;
+    expect(shouldLaunchBronzeRush(state, "p2")).toBe(false);
+
+    state.round = 3;
+    expect(hasOpenedFarEconomy(state, "p2")).toBe(false);
+    expect(shouldLaunchBronzeRush(state, "p2")).toBe(true);
+
+    const sourceTile = Object.values(state.adventure!.tiles)[0];
+    const sourceField = Object.values(state.adventure!.fields)[0];
+    state.adventure!.tiles["rush-far"] = {
+      ...sourceTile,
+      id: "rush-far",
+      group: "far",
+      faceDown: false,
+    };
+    state.adventure!.fields["h:99:99"] = {
+      ...sourceField,
+      spaceId: "h:99:99",
+      tileInstanceId: "rush-far",
+      location: "mine",
+      resource: "gold",
+      difficulty: undefined,
+    };
+    expect(hasOpenedFarEconomy(state, "p2")).toBe(true);
+    expect(shouldLaunchBronzeRush(state, "p2")).toBe(false);
+  });
+
   it("chooses the real legal sequence: reinforcement unlock, Packs, Silver, then Gold", () => {
     const state = game();
     state.phase = "player-turn";

@@ -1,4 +1,5 @@
 import { coreUnitDefinitions } from "@/data/factions/units";
+import { unitAbilities } from "@/data/units/abilities";
 import { getUnitSide } from "../adventure";
 import { commanderCastOf } from "../commanders";
 import {
@@ -7,7 +8,11 @@ import {
   DEFENDER_BACKLINE,
   DEFENDER_FRONTLINE,
 } from "../adventure-reducer";
-import { getBattlefieldDistance, isAdjacent } from "../battlefield";
+import {
+  getBattlefieldDistance,
+  getOrthogonalNeighbors,
+  isAdjacent,
+} from "../battlefield";
 import type { CombatState, CombatUnitState, GameAction } from "../state";
 import type { ComputerActionScore } from "./map-policy";
 import {
@@ -17,6 +22,7 @@ import {
   hasThreatAbility,
   isParalyzed,
   livingEnemyUnits,
+  pendingIncomingDamage,
   targetPriority,
   unitRemainingHealth,
   unitThreatValue,
@@ -88,10 +94,98 @@ const FOCUS_FINISH_BONUS = 24;
 // something real instead of trading its strike to wake a sleeper. A lethal hit
 // (or one the army can finish) never reaches this — those remove the unit.
 const PARALYSIS_WAKE_POKE_SCORE = 360;
+// A PvP chip whose retaliation plus the opponents' remaining activations are
+// projected to remove the attacker. Below Defend / useful movement, but above
+// END_ACTIVATION so the unit still trades when no safer action exists.
+const PVP_OVEREXTENSION_ATTACK_SCORE = 495;
 // Focus march: how strongly a MOVE toward the highest value-adjusted target is
 // preferred (and the mild penalty for stepping away from it).
 const FOCUS_MARCH_BONUS = 14;
 const FOCUS_MARCH_AWAY_PENALTY = 6;
+
+/**
+ * Hydra/Cerberi-style value from having at least one OTHER adjacent enemy when
+ * attacking. Read from the actual ability effect so Pack-only abilities apply
+ * automatically and Few sides without the printed head do not get the bonus.
+ */
+function surroundOpportunityBonus(
+  combat: CombatState,
+  playerId: string,
+  unit: CombatUnitState,
+  position: number,
+): number {
+  const adjacentEnemies = livingEnemyUnits(combat, playerId).filter((enemy) =>
+    isAdjacent(position, enemy.position),
+  ).length;
+  if (adjacentEnemies < 2) return 0;
+
+  let bonus = 0;
+  for (const abilityId of unit.abilities ?? []) {
+    const effect = unitAbilities[abilityId]?.effect;
+    if (effect?.type === "FLAT_DAMAGE_ADJACENT_TO_SELF") {
+      bonus = Math.max(bonus, 28);
+    } else if (effect?.type === "SECOND_ATTACK_ONE_ADJACENT_TO_SELF") {
+      bonus = Math.max(bonus, 42);
+    } else if (effect?.type === "SECOND_ATTACK_ALL_ADJACENT_TO_SELF") {
+      bonus = Math.max(bonus, Math.min(70, (adjacentEnemies - 1) * 30));
+    }
+  }
+  return bonus;
+}
+
+function pendingIncomingDamageAtPosition(
+  combat: CombatState,
+  playerId: string,
+  unit: CombatUnitState,
+  position: number,
+  removedEnemyId?: string,
+): number {
+  return livingEnemyUnits(combat, playerId).reduce((total, enemy) => {
+    if (enemy.id === removedEnemyId || enemy.activatedThisRound) return total;
+    const reaches = enemy.type === "ranged" || isAdjacent(position, enemy.position);
+    return reaches ? total + expectedAttackDamage(enemy, unit) : total;
+  }, 0);
+}
+
+/**
+ * Risk of ending an action on a square multiple enemies can collapse onto.
+ * Friendly adjacency represents a supported line; unsupported extra enemies
+ * and lethal projected damage make a surrounded destination unattractive.
+ */
+function positionalExposurePenalty(
+  combat: CombatState,
+  playerId: string,
+  unit: CombatUnitState,
+  position: number,
+  removedEnemyId?: string,
+): number {
+  const enemies = livingEnemyUnits(combat, playerId).filter(
+    (enemy) =>
+      enemy.id !== removedEnemyId && isAdjacent(position, enemy.position),
+  );
+  const support = livingFriendlies(combat, playerId).filter(
+    (friend) => friend.id !== unit.id && isAdjacent(position, friend.position),
+  ).length;
+  // Multi-headed attackers deliberately accept one extra adjacent enemy: it is
+  // a second target, not merely exposure. A third/fourth body remains danger.
+  const multiHeadCoverage =
+    surroundOpportunityBonus(combat, playerId, unit, position) > 0 ? 1 : 0;
+  const unsupported = Math.max(
+    0,
+    enemies.length - Math.max(1, support) - multiHeadCoverage,
+  );
+  const incoming = enemies.reduce(
+    (sum, enemy) =>
+      enemy.activatedThisRound
+        ? sum
+        : sum + expectedAttackDamage(enemy, unit),
+    0,
+  );
+  return (
+    unsupported * 28 +
+    (incoming >= unitRemainingHealth(unit) && enemies.length > 1 ? 30 : 0)
+  );
+}
 
 /** Whether this attack would let the defender retaliate for damage back. */
 function provokesRetaliation(
@@ -136,10 +230,12 @@ function attackScore(
   const damageFraction = remaining > 0 ? damage / remaining : 0;
   const lethal = attackIsLethal(attacker, defender);
   const ownRemaining = unitRemainingHealth(attacker);
+  let retaliationDamage = 0;
 
-  // Allies that have NOT acted yet this round and can reach this same enemy
-  // (adjacent melee, or any ranged): the bodies that can still add damage to
-  // this target this round. Drives both focus-fire and the paralysis guard.
+  // Allies that have NOT acted yet this round and can hit this same enemy now
+  // (adjacent melee, or any ranged). Movement has its own focus-march signal;
+  // keeping this estimate immediate avoids claiming two different targets can
+  // both be finished by the same walking unit.
   const reachingAllies = Object.values(combat.units).filter(
     (unit) =>
       unit.controllerId === playerId &&
@@ -172,8 +268,14 @@ function attackScore(
     quality = 160 + Math.min(80, threat);
   } else {
     quality = Math.round(damageFraction * 80) + Math.min(40, Math.round(threat / 4));
+    // Physical attackers should work through low-Defense targets and leave a
+    // heavily armoured body to Defense-ignoring spells when available.
+    quality += Math.min(18, damage * 3);
+    if (damage === 0) quality -= 35;
+    else quality -= Math.min(18, Math.max(0, defender.defense - attacker.attack) * 3);
     if (provokesRetaliation(attacker, defender, attackFromPosition)) {
       const retaliation = expectedAttackDamage(defender, attacker);
+      retaliationDamage = retaliation;
       quality -= Math.min(50, retaliation * 4);
       if (damage === 0 && retaliation >= ownRemaining) {
         return SUICIDAL_ATTACK_SCORE;
@@ -211,8 +313,50 @@ function attackScore(
   if (!lethal && armyCanFinish) {
     quality += FOCUS_FINISH_BONUS;
   }
-  // Prefer low remaining among equal threats (finish wounded).
-  if (remaining <= 2) quality += 10;
+  const multiHeadOpportunity = surroundOpportunityBonus(
+    combat,
+    playerId,
+    attacker,
+    attackFromPosition,
+  );
+  quality += multiHeadOpportunity;
+  // Prefer wounded targets among equal threats so damage is concentrated into
+  // removals rather than spread across fresh stacks.
+  const missing = Math.max(0, defender.maxHealth - remaining);
+  quality += Math.min(18, missing * 4);
+
+  // Do not step into an unsupported surround for a marginal strike. A lethal
+  // attack discounts the body it removes before measuring the resulting line.
+  quality -= positionalExposurePenalty(
+    combat,
+    playerId,
+    attacker,
+    attackFromPosition,
+    lethal ? defender.id : undefined,
+  );
+
+  // PvP opponents coordinate their remaining activations. Occasionally hold
+  // or reposition instead of taking a small chip when retaliation plus the
+  // enemies that can still act are projected to remove this valuable unit.
+  // Lethals, same-round focus finishes and multi-head attacks stay aggressive.
+  const followUpIncoming = pendingIncomingDamageAtPosition(
+    combat,
+    playerId,
+    attacker,
+    attackFromPosition,
+    lethal ? defender.id : undefined,
+  );
+  if (
+    combat.context?.kind === "player" &&
+    !lethal &&
+    !armyCanFinish &&
+    multiHeadOpportunity === 0 &&
+    retaliationDamage + followUpIncoming >= ownRemaining &&
+    damageFraction < 0.5 &&
+    unitThreatValue(attacker) >= threat * 0.8
+  ) {
+    return PVP_OVEREXTENSION_ATTACK_SCORE;
+  }
 
   return Math.max(ATTACK_FLOOR, Math.min(ATTACK_CEIL, ATTACK_BASE + quality));
 }
@@ -484,6 +628,17 @@ function moveUnitScore(
       if (isAdjacent(action.destination, ranged.position)) {
         score += 25;
       }
+      // An occupied orthogonal landing square physically screens a shooter
+      // from a flying unit, which may cross blockers but may not land on one.
+      const flyingThreat = enemiesNearRanged.some(
+        (enemy) => unitRole(enemy) === "flying",
+      );
+      if (
+        flyingThreat &&
+        getOrthogonalNeighbors(ranged.position).includes(action.destination)
+      ) {
+        score += 18;
+      }
       // Step closer to the threat near the ranged ally. Board distance, not the
       // linear cell-index difference (the board is a 4-wide grid — index diff is
       // not distance and can reward a move that increases real distance).
@@ -512,6 +667,20 @@ function moveUnitScore(
     if (after < before) score += FOCUS_MARCH_BONUS;
     else if (after > before) score -= FOCUS_MARCH_AWAY_PENALTY;
   }
+
+  score += surroundOpportunityBonus(
+    combat,
+    observation.playerId,
+    mover,
+    action.destination,
+  );
+
+  score -= positionalExposurePenalty(
+    combat,
+    observation.playerId,
+    mover,
+    action.destination,
+  );
 
   if (next >= current && score < 400) {
     return { score: Math.min(score, 260), policy: "combat.hold-position" };
@@ -690,26 +859,51 @@ export function scoreCombatAction(
       // in Defend rather than END_ACTIVATION when offered.
       const defender = combat.units[action.unitId];
       if (!defender) return { score: 500, policy: "combat.defend" };
+      // Legal-actions already suppresses this, but keep the policy invariant
+      // explicit so a synthetic or future action source cannot defend twice.
+      if (defender.defendedLastActivation) {
+        return { score: -1_000, policy: "combat.defend-consecutive-refuse" };
+      }
       const missing = defender.maxHealth - unitRemainingHealth(defender);
-      const score = 500 + Math.min(30, missing * 4);
+      let score = 500 + Math.min(30, missing * 4);
       // Save the high-value body: when the enemies in reach (adjacent melee +
       // any ranged) can finish this unit and it is worth keeping, Defend
       // outranks a suicidal 0-damage poke (545) — a real strike (620+) still
       // always wins, so this never turns a fighting unit passive.
-      const incoming = livingEnemyUnits(combat, observation.playerId).reduce(
-        (sum, enemy) =>
-          enemy.type === "ranged" || isAdjacent(enemy.position, defender.position)
-            ? sum + expectedAttackDamage(enemy, defender)
-            : sum,
-        0,
+      const incoming = pendingIncomingDamage(
+        combat,
+        observation.playerId,
+        defender,
       );
+      const adjacentEnemies = livingEnemyUnits(
+        combat,
+        observation.playerId,
+      ).filter((enemy) => isAdjacent(enemy.position, defender.position)).length;
+      const adjacentSupport = livingFriendlies(
+        combat,
+        observation.playerId,
+      ).filter(
+        (friend) =>
+          friend.id !== defender.id &&
+          isAdjacent(friend.position, defender.position),
+      ).length;
+      if (incoming > 0 && adjacentEnemies > adjacentSupport + 1) {
+        score += 45 + Math.min(30, (adjacentEnemies - adjacentSupport - 1) * 15);
+      }
       if (
         unitThreatValue(defender) >= 25 &&
         incoming >= unitRemainingHealth(defender)
       ) {
-        return { score: score + 50, policy: "combat.defend-high-value" };
+        score += 50;
+        return { score, policy: "combat.defend-high-value" };
       }
-      return { score, policy: "combat.defend-wounded" };
+      return {
+        score,
+        policy:
+          adjacentEnemies > adjacentSupport + 1
+            ? "combat.defend-surrounded"
+            : "combat.defend-wounded",
+      };
     }
     case "ATTACK_FORTIFICATION":
       // Siege the wall when no better unit target is offered (legal set only).
