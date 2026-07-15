@@ -105,7 +105,7 @@ import type {
   VisitStep
 } from "./state";
 import { isNeutralSideCombatChoice, neutralCombatControllerId } from "./neutral-control";
-import { NEUTRAL_PLAYER_ID, UNOPENED_FAR_TILE } from "./state";
+import { GRAIL_OBELISKS_REQUIRED, NEUTRAL_PLAYER_ID, UNOPENED_FAR_TILE } from "./state";
 import { awardCommanderGradePoints } from "./commanders";
 
 /** Hero level track: hand limit and expert-effect uses by level (hero board). */
@@ -2625,10 +2625,45 @@ function giveCreatureBankConsolation(state: GameState, playerId: PlayerId, field
 }
 
 /**
- * Grail field visit. In Grail Hunt the first visit (after the guards fall)
- * arms the dig; a later revisit for 1 MP collects the single Grail Token,
- * which must then be carried home. In every other mode it is a normal
- * Lvl-VII fight rewarding gold and a Relic artifact.
+ * Holy Grail: how many distinct Obelisks this player has visited (flagged).
+ */
+export function grailObelisksVisitedCount(state: GameState, playerId: PlayerId): number {
+  return state.adventure?.grail?.obelisksVisited?.[playerId]?.length ?? 0;
+}
+
+/**
+ * Holy Grail: whether this player has visited enough Obelisks to dig.
+ */
+export function canDigGrail(state: GameState, playerId: PlayerId): boolean {
+  if (adventureVictoryMode(state) !== "grail") {
+    return false;
+  }
+  return grailObelisksVisitedCount(state, playerId) >= GRAIL_OBELISKS_REQUIRED;
+}
+
+/**
+ * Record that a player has visited a distinct Obelisk (Holy Grail dig progress).
+ * No-op outside grail mode or when the field is already on their list.
+ */
+function recordGrailObeliskVisit(state: GameState, playerId: PlayerId, fieldId: MapSpaceId): void {
+  const adventure = state.adventure;
+  if (!adventure || adventureVictoryMode(state) !== "grail") {
+    return;
+  }
+  const grail = adventure.grail ?? (adventure.grail = { status: "uncollected" });
+  const visited = grail.obelisksVisited ?? (grail.obelisksVisited = {});
+  const list = visited[playerId] ?? (visited[playerId] = []);
+  if (!list.includes(fieldId)) {
+    list.push(fieldId);
+  }
+}
+
+/**
+ * Grail field visit. In Holy Grail the first visit (after the guards fall)
+ * arms the dig; a later revisit for 1 MP collects the single Grail Token
+ * once the digger has visited {@link GRAIL_OBELISKS_REQUIRED} Obelisks, which
+ * must then be carried home. In every other mode it is a normal Lvl-VII fight
+ * rewarding gold and a Relic artifact.
  */
 function handleGrailVisit(state: GameState, hero: HeroState, field: MapFieldState, revisit: boolean): void {
   const adventure = state.adventure;
@@ -2648,7 +2683,8 @@ function handleGrailVisit(state: GameState, hero: HeroState, field: MapFieldStat
 
   if (!revisit) {
     // The guards have just fallen. Stop the field re-fighting and arm the dig;
-    // the Grail itself is not collected until the hero spends another MP.
+    // the Grail itself is not collected until the hero spends another MP (and
+    // has visited enough Obelisks — see canDigGrail).
     field.blackCube = true;
     if (grail.status === "uncollected") {
       field.grailDiggable = true;
@@ -2656,8 +2692,10 @@ function handleGrailVisit(state: GameState, hero: HeroState, field: MapFieldStat
     return;
   }
 
-  // Revisit = the dig. Only the first dig mints the one Grail Token.
-  if (field.grailDiggable && grail.status === "uncollected") {
+  // Revisit = the dig. Only the first dig mints the one Grail Token, and only
+  // after the digger has discovered enough Obelisks (legal-actions / revisitField
+  // gate this; this is the resolution backstop).
+  if (field.grailDiggable && grail.status === "uncollected" && canDigGrail(state, hero.controllerId)) {
     field.grailDiggable = false;
     grail.status = "carried";
     grail.carrierHeroId = hero.id;
@@ -2765,16 +2803,24 @@ function obeliskRewardSteps(roll: -1 | 0 | 1): VisitStep[] {
 }
 
 /**
- * Obelisk house rule. Obelisks are flaggable (every visitor keeps a cube). The
- * FIRST hero to visit a given Obelisk rolls one Attack die and the face is
- * locked on the Field (`field.obeliskRoll`) for the rest of the game. Each
- * player's first visit flags the Field and grants that locked reward — the
- * Attack die is never rerolled, so every visitor gets the same category:
+ * Obelisk visit. Obelisks are flaggable (every visitor keeps a cube).
+ *
+ * House rule (`obelisk-rewards`, BINH default ON): the FIRST hero to visit a
+ * given Obelisk rolls one Attack die and the face is locked on the Field
+ * (`field.obeliskRoll`) for the rest of the game. Each player's first visit
+ * flags the Field and grants that locked reward — the Attack die is never
+ * rerolled, so every visitor gets the same category:
  *   -1 -> +1 positive morale
  *    0 -> Search (2) the Artifact deck
  *   +1 -> roll one Treasure die and one Resource die
  * Only the Attack-die category is fixed; each visitor still rolls their own
  * Treasure/Resource dice (or searches their own Artifacts) for the +1/0 faces.
+ * When the house rule is OFF the Field still multi-flags, but no die reward
+ * is granted.
+ *
+ * Holy Grail: every first visit by a player also counts that Obelisk toward
+ * their dig unlock ({@link GRAIL_OBELISKS_REQUIRED}), independent of the
+ * house-rule reward toggle.
  */
 function handleObeliskVisit(state: GameState, hero: HeroState, field: MapFieldState): void {
   const adventure = state.adventure;
@@ -2801,8 +2847,17 @@ function handleObeliskVisit(state: GameState, hero: HeroState, field: MapFieldSt
     });
   }
 
-  // A player who already holds a cube here just walks through — no second reward.
+  // A player who already holds a cube here just walks through — no second reward
+  // and no second grail-obelisk credit.
   if (alreadyHere) {
+    return;
+  }
+
+  // Holy Grail: first visit to this Obelisk counts toward dig unlock.
+  recordGrailObeliskVisit(state, playerId, field.spaceId);
+
+  // Die-reward house rule (independent of Holy Grail tracking).
+  if (!houseRuleEnabled(state, "obelisk-rewards")) {
     return;
   }
 

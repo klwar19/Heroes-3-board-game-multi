@@ -149,6 +149,14 @@ export const HOUSE_RULES: HouseRuleDef[] = [
       "The 5-gold penalty for losing a hero combat is paid in full even if it drops the loser below zero (into debt). Off: the loss is capped so gold never goes negative (the normal rule).",
     category: "combat",
     default: true
+  },
+  {
+    id: "obelisk-rewards",
+    label: "Obelisk die rewards",
+    description:
+      "House rule: the first visitor to an Obelisk locks an Attack-die face (−1: +1 morale, 0: Search (2) Artifact, +1: Treasure + Resource dice); later visitors get the same reward without re-rolling. Off: Obelisks stay multi-flaggable but grant no die reward. Holy Grail still counts visits toward dig unlock either way.",
+    category: "combat",
+    default: true
   }
 ];
 

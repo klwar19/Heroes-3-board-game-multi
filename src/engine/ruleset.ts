@@ -41,7 +41,7 @@ export const RULESET_DESCRIPTIONS: Record<GameRuleset, string> = {
 
 export const VICTORY_MODE_LABELS: Record<VictoryMode, string> = {
   conquest: "Conquest",
-  grail: "Grail Hunt",
+  grail: "Holy Grail",
   "dragon-hunt": "Dragon Hunt",
   "dragon-conqueror": "Dragon Conqueror"
 };
@@ -52,9 +52,10 @@ export const VICTORY_MODE_DESCRIPTIONS: Record<VictoryMode, string> = {
     "level (+5 gold, +2 materials, or +1 valuables) and starts their clock — a player with no Town and no " +
     "Settlement lasts 2 more turns before being removed. A held Settlement keeps them fighting. Last faction standing wins.",
   grail:
-    "Win either way: capture the Grail (defeat its Lvl-VII guard, dig it for 1 movement point, then carry it " +
-    "home to your town), or beat every enemy hero in combat at least once (only 2 of the 3 in a 4-player game). " +
-    "A Grail is guaranteed on a Center tile; the Dragon Utopia is just a creature bank here.",
+    "Win either way: capture the Holy Grail (defeat its Lvl-VII guard, visit 2 distinct Obelisks, dig for 1 " +
+    "movement point, then carry it home to your town), or beat every enemy hero in combat at least once " +
+    "(only 2 of the 3 in a 4-player game). The map seeds at least 2 Obelisks (designer presets count) and " +
+    "up to 2 Grail dig sites when layout space allows. The Dragon Utopia is just a creature bank here.",
   "dragon-hunt":
     "Win either way: defeat the Dragon Utopia (no need to hold it afterwards), or beat every enemy hero in combat " +
     "at least once (only 2 of the 3 in a 4-player game). A Dragon Utopia is guaranteed on a Center tile.",

@@ -27,18 +27,35 @@ describe("Game options — tabbed layout", () => {
     }
   });
 
-  it("renders mode presets and house-rule toggles on Mode & Rules (BINH default)", () => {
+  it("renders mode presets, Mod (WOG), and house-rule toggles on Mode & Rules (BINH default)", () => {
     openOptions();
     expect(screen.getByRole("button", { name: /Legacy/i }).getAttribute("aria-pressed")).toBe("false");
     expect(screen.getByRole("button", { name: /^BINH/i }).getAttribute("aria-pressed")).toBe("true");
-    expect(screen.getByRole("button", { name: /^WOG/i })).toBeTruthy();
+    // WOG is a Mod line, not a game-mode card.
+    expect(screen.queryByRole("button", { name: /^WOG$/i })).toBeNull();
+    expect(screen.getByRole("button", { name: /Enable Wake of Gods mod|Disable Wake of Gods mod/i })).toBeTruthy();
     expect(screen.getByRole("button", { name: /Tournament/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Obelisk die rewards/i })).toBeTruthy();
 
     const griffin = screen.getByRole("button", { name: /Griffin buff/ });
     expect(griffin.getAttribute("aria-pressed")).toBe("true");
     expect(screen.getByRole("button", { name: /Split Spell\/Artifact decks by tier/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: /Estates nerf/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: /Gelu IV Sharpshooter buff/ })).toBeTruthy();
+  });
+
+  it("toggling WOG on the Mod line dispatches SET_GAME_OPTIONS with wog.enabled", () => {
+    const onAction = openOptions();
+    fireEvent.click(screen.getByRole("button", { name: /Enable Wake of Gods mod/i }));
+    expect(onAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "SET_GAME_OPTIONS",
+        playerId: "p1",
+        options: expect.objectContaining({
+          wog: expect.objectContaining({ enabled: true })
+        })
+      })
+    );
   });
 
   it("clicking a house-rule toggle dispatches just that rule's flag", () => {

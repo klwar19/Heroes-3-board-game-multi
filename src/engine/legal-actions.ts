@@ -16,6 +16,7 @@ import {
   adventurePvpTroopLoss,
   applyRecruitGoldDiscount,
   armyHasMapEffect,
+  canDigGrail,
   canUseAstrologersHeroEmpower,
   canHeroReachPlacedTile,
   capturableEnemyMinesWithin,
@@ -8692,7 +8693,7 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
         });
       }
 
-      if (field?.grailDiggable) {
+      if (field?.grailDiggable && canDigGrail(state, playerId)) {
         actions.push({
           label: "Dig the Grail (1 movement point)",
           action: { type: "REVISIT_FIELD", playerId, heroId: hero.id }

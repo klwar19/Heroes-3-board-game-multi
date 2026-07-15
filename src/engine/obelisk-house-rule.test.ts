@@ -5,16 +5,18 @@ import { pumpAdventureQueues, resolveVisitStep } from "./adventure-reducer";
 import { createAdventureGameState } from "./index";
 
 /**
- * Obelisk house rule (engine: handleObeliskVisit). The first Hero to visit an
- * Obelisk rolls one Attack die; the face is LOCKED on the Field for the rest of
- * the game. Every visitor (any player) flags the Field and gets the same fixed
- * reward — without rerolling the Attack die:
+ * Obelisk house rule `obelisk-rewards` (engine: handleObeliskVisit; BINH default
+ * ON). The first Hero to visit an Obelisk rolls one Attack die; the face is
+ * LOCKED on the Field for the rest of the game. Every visitor (any player)
+ * flags the Field and gets the same fixed reward — without rerolling the
+ * Attack die:
  *   -1 -> +1 positive morale
  *    0 -> Search (2) the Artifact deck
  *   +1 -> roll one Treasure die and one Resource die
  *
  * These tests fail if the Obelisk routing, the die-lock, the per-face reward
- * mapping, or the multi-flag/no-revisit behavior is removed.
+ * mapping, or the multi-flag/no-revisit behavior is removed. The OFF path and
+ * Holy Grail visit counting live in holy-grail.test.ts.
  */
 
 function makeGame(): GameState {

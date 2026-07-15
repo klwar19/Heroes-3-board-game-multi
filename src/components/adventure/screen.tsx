@@ -2066,10 +2066,16 @@ export function AdventureHud({
         let status = "flag an enemy town";
         if (mode === "grail") {
           const grail = state.adventure?.grail;
-          status =
-            grail?.status === "carried" && grail.carrierHeroId
-              ? `Grail carried by ${state.players[state.heroes[grail.carrierHeroId]?.controllerId ?? ""]?.name ?? "a hero"}`
-              : "capture the Grail / beat all heroes";
+          if (grail?.status === "carried" && grail.carrierHeroId) {
+            status = `Grail carried by ${state.players[state.heroes[grail.carrierHeroId]?.controllerId ?? ""]?.name ?? "a hero"}`;
+          } else {
+            const viewerId = viewerPlayerId;
+            const visited = grail?.obelisksVisited?.[viewerId]?.length ?? 0;
+            status =
+              visited >= 2
+                ? "dig the Grail / beat all heroes"
+                : `Obelisks ${visited}/2 · dig the Grail / beat all heroes`;
+          }
         } else if (mode === "dragon-hunt") {
           status = "defeat the Dragon Utopia / beat all heroes";
         } else if (mode === "dragon-conqueror") {
@@ -5106,7 +5112,7 @@ function HouseRulesSection({
 }
 
 /** High-level setup modes shown as a card row on the Mode & Rules tab. */
-type SetupModeId = "legacy" | "binh" | "wog" | "tournament";
+type SetupModeId = "legacy" | "binh" | "tournament";
 
 const SETUP_MODE_CARDS: {
   id: SetupModeId;
@@ -5124,13 +5130,7 @@ const SETUP_MODE_CARDS: {
     id: "binh",
     label: "BINH",
     blurb: "House-rule edition",
-    hint: "Default fan edition: every house rule on, Spell Book on, WOG off."
-  },
-  {
-    id: "wog",
-    label: "WOG",
-    blurb: "Wake of Gods",
-    hint: "BINH plus the Wake of Gods modules (commanders, new neutrals, …)."
+    hint: "Default fan edition: every house rule on, Spell Book on. Mods (WOG) stay free to toggle."
   },
   {
     id: "tournament",
@@ -5177,11 +5177,8 @@ function GameOptionsPanel({
 
   /** Which big mode card is highlighted from the current options. */
   const activeSetupMode: SetupModeId = (() => {
-    if (tournamentAllOn && options.ruleset === "legacy" && !wog.enabled && options.difficulty === "hard") {
+    if (tournamentAllOn && options.ruleset === "legacy" && options.difficulty === "hard") {
       return "tournament";
-    }
-    if (wog.enabled && options.ruleset === "binh") {
-      return "wog";
     }
     if (options.ruleset === "legacy") {
       return "legacy";
@@ -5202,14 +5199,15 @@ function GameOptionsPanel({
       });
       setModeNotice(
         "Legacy mode applied: every house rule is off (printed rulebook). " +
-          "Nothing is locked — you can re-enable any house rule, Spell Book, or tournament rule below."
+          "Nothing is locked — you can re-enable any house rule, Spell Book, or tournament rule below. " +
+          "WOG (Mod) is off under Legacy."
       );
       return;
     }
     if (mode === "binh") {
+      // BINH does not force WOG off — the Mod row is independent.
       send({
         ruleset: "binh",
-        wog: { ...wog, enabled: false },
         spellBook: true,
         tournamentMode: false,
         tournamentBanDiplomacy: false,
@@ -5219,21 +5217,7 @@ function GameOptionsPanel({
       setModeNotice(null);
       return;
     }
-    if (mode === "wog") {
-      send({
-        ruleset: "binh",
-        wog: { ...DEFAULT_WOG_OPTIONS, ...wog, enabled: true },
-        spellBook: true,
-        tournamentMode: false,
-        tournamentBanDiplomacy: false,
-        tournamentBanHourglass: false,
-        tournamentSecondPlayerMorale: false
-      });
-      setModeNotice(null);
-      setWogOptionsOpen(true);
-      return;
-    }
-    // Tournament competitive preset.
+    // Tournament competitive preset — turns WOG off with the competitive package.
     send({
       ruleset: "legacy",
       wog: { ...wog, enabled: false },
@@ -5301,8 +5285,6 @@ function GameOptionsPanel({
         <small className="optionHint">
           {activeSetupMode === "legacy"
             ? RULESET_DESCRIPTIONS.legacy
-            : activeSetupMode === "wog"
-            ? "Wake of Gods modules on top of BINH house rules."
             : activeSetupMode === "tournament"
             ? "Competitive preset: rulebook baseline + tournament deck bans + Hard difficulty + Neutral AI."
             : RULESET_DESCRIPTIONS.binh}
@@ -5319,31 +5301,60 @@ function GameOptionsPanel({
         </div>
       ) : null}
 
-      {wog.enabled ? (
-        <div className={`optionRow wogOptionRow enabled`}>
-          <small title="Wake of Gods module options">WOG modules</small>
-          <div className="wogOptionControls">
-            <button
-              aria-label="Configure Wake of Gods modules"
-              className="wogCrestButton selected"
-              onClick={() => setWogOptionsOpen(true)}
-              title="Open WOG module options"
-              type="button"
-            >
-              <span aria-hidden="true" className="wogCrestWings">◆</span>
-              <strong>WOG</strong>
-              <span>ON</span>
-            </button>
-            <div className="wogOptionSummary">
-              <strong>Wake of Gods</strong>
-              <small>Enabled — configure commanders, neutrals and objects</small>
+      <div className={`optionRow wogOptionRow ${wog.enabled ? "enabled" : ""}`}>
+        <small title="Optional modules you can stack on a game mode (not a separate mode)">Mod</small>
+        <div className="wogOptionControls">
+          <button
+            aria-label={wog.enabled ? "Disable Wake of Gods mod" : "Enable Wake of Gods mod"}
+            aria-pressed={wog.enabled}
+            className={`wogCrestButton ${wog.enabled ? "selected" : ""}`}
+            onClick={() => {
+              const nextEnabled = !wog.enabled;
+              send({
+                wog: {
+                  ...DEFAULT_WOG_OPTIONS,
+                  ...wog,
+                  enabled: nextEnabled,
+                  // Keep module choices when re-enabling; default newCreatures on first enable.
+                  ...(nextEnabled && !wog.enabled ? {} : {})
+                }
+              });
+              if (nextEnabled) {
+                setWogOptionsOpen(true);
+              }
+            }}
+            title={
+              wog.enabled
+                ? "WOG on — click to turn off. Configure commanders / neutrals / objects."
+                : "Enable the Wake of Gods mod (works with BINH; turning it on while Legacy switches to BINH)."
+            }
+            type="button"
+          >
+            <span aria-hidden="true" className="wogCrestWings">
+              ◆
+            </span>
+            <strong>WOG</strong>
+            <span>{wog.enabled ? "ON" : "OFF"}</span>
+          </button>
+          <div className="wogOptionSummary">
+            <strong>Wake of Gods</strong>
+            <small>
+              {wog.enabled
+                ? "Enabled — configure commanders, neutrals and objects"
+                : "Optional mod — stack with BINH house rules, Event deck, Morale Cards, …"}
+            </small>
+            {wog.enabled ? (
               <button className="wogConfigureButton" onClick={() => setWogOptionsOpen(true)} type="button">
                 Mod options
               </button>
-            </div>
+            ) : null}
           </div>
         </div>
-      ) : null}
+        <small className="optionHint">
+          WOG is a mod, not a game mode — toggle it on alongside house rules and other optional rules. Enabling it
+          under Legacy switches the table to BINH so the modules can load.
+        </small>
+      </div>
 
       <div className="optionRow tournamentRulesRow">
         <small title="Rulebook Tournament Mode setup rules (p.54), each toggleable on its own">
@@ -5487,7 +5498,7 @@ function GameOptionsPanel({
       </div>
       ) : null}
 
-      {options.ruleset === "binh" && wog.enabled && wogOptionsOpen && typeof document !== "undefined"
+      {wog.enabled && wogOptionsOpen && typeof document !== "undefined"
         ? createPortal((
           <div className="wogWindowBackdrop" onMouseDown={() => setWogOptionsOpen(false)}>
           <section
@@ -5499,7 +5510,7 @@ function GameOptionsPanel({
           >
             <header>
               <div>
-                <span className="wogWindowEyebrow">BINH optional module</span>
+                <span className="wogWindowEyebrow">Optional mod</span>
                 <h4>Wake of Gods</h4>
               </div>
               <button aria-label="Close WOG options" onClick={() => setWogOptionsOpen(false)} type="button">
