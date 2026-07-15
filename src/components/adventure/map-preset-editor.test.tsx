@@ -189,6 +189,11 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
     );
     const kind = screen.getByLabelText("Obelisk bonus kind") as HTMLSelectElement;
     expect(kind).toBeTruthy();
+    // The bonus row is tagged with the board glyph for the current kind (+1 morale).
+    expect(
+      document.querySelector('.mapPresetRowGlyph[src*="morale_positive"]'),
+      "morale glyph on the bonus row"
+    ).toBeTruthy();
     fireEvent.change(kind, { target: { value: "resources" } });
     expect(onChange).toHaveBeenLastCalledWith(
       expect.objectContaining({
@@ -288,6 +293,12 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
         onChange={onChange}
       />
     );
+    // The objective row is tagged with the board glyph for its kind (Control
+    // Towns → the materials/buildings glyph).
+    expect(
+      document.querySelector('.mapPresetVpObjectiveRow .mapPresetRowGlyph[src*="building_materials"]'),
+      "objective glyph on the VP row"
+    ).toBeTruthy();
     fireEvent.change(screen.getByLabelText("Objective 1 kind"), { target: { value: "hero-level" } });
     expect(onChange).toHaveBeenLastCalledWith(
       expect.objectContaining({

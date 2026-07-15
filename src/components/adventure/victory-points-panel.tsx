@@ -4,6 +4,25 @@ import { useState } from "react";
 import { Award, Trophy, X } from "lucide-react";
 import { computeVictoryPoints, victoryPointsModeActive, type GameState, type PlayerId } from "@/engine";
 import { getSeatIdentity } from "@/engine/player-identity";
+import { assetUrl } from "@/lib/asset-url";
+import { REWARD_GLYPH_ICONS } from "@/data/assets/homm-assets";
+
+/**
+ * The board-game reward glyph (Heegu-sama/Homm3BG print-and-play set) for a VP
+ * breakdown row, matched by the engine's row label. Purely decorative — the row
+ * text still carries the meaning — so unmatched rows (extra objectives) simply
+ * render without one.
+ */
+function vpRowGlyph(label: string): string | undefined {
+  if (/Experience Level/i.test(label)) return REWARD_GLYPH_ICONS.experience;
+  if (/Artifact/i.test(label)) return REWARD_GLYPH_ICONS.artifact;
+  if (/Flagged Mines|Settlement/i.test(label)) return REWARD_GLYPH_ICONS.gold;
+  if (/Building/i.test(label)) return REWARD_GLYPH_ICONS.materials;
+  if (/surrender/i.test(label)) return REWARD_GLYPH_ICONS.defense;
+  if (/defeated|Heroes/i.test(label)) return REWARD_GLYPH_ICONS.attack;
+  if (/Completed the victory/i.test(label)) return REWARD_GLYPH_ICONS.ok;
+  return undefined;
+}
 
 // ---------------------------------------------------------------------------
 // Victory Points UI — pure presentation over the engine's `computeVictoryPoints`
@@ -41,12 +60,27 @@ function BreakdownCard({
       </header>
       {row.rows.length > 0 ? (
         <ul className="vpBreakdownRows">
-          {row.rows.map((entry, index) => (
-            <li key={`${entry.label}-${index}`}>
-              <span>{entry.label}</span>
-              <b>+{entry.vp}</b>
-            </li>
-          ))}
+          {row.rows.map((entry, index) => {
+            const glyph = vpRowGlyph(entry.label);
+            return (
+              <li key={`${entry.label}-${index}`}>
+                <span className="vpRowLabel">
+                  {glyph ? (
+                    // eslint-disable-next-line @next/next/no-img-element -- assetUrl CDN path; decorative
+                    <img
+                      alt=""
+                      aria-hidden="true"
+                      className={`vpRowGlyph${glyph === REWARD_GLYPH_ICONS.ok ? " status" : ""}`}
+                      draggable={false}
+                      src={assetUrl(glyph)}
+                    />
+                  ) : null}
+                  {entry.label}
+                </span>
+                <b>+{entry.vp}</b>
+              </li>
+            );
+          })}
         </ul>
       ) : (
         <p className="vpBreakdownEmpty">No Victory Points yet.</p>

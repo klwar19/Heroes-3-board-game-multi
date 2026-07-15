@@ -8,6 +8,7 @@ import { locationDefinitions } from "@/data/map/locations";
 import {
   DESIGNER_UI_ICONS,
   mapTokenImage,
+  REWARD_GLYPH_ICONS,
   TILE_BACK_IMAGES,
   tileBackImage,
   subterraneanGateTokenImage
@@ -848,6 +849,13 @@ export function MapDesigner({
     () => victoryDesignConflicts(customMap, victoryMode),
     [customMap, victoryMode]
   );
+  // The Grail / Dragon victory modes need supporting tiles; when one is chosen
+  // and the design already provides them (no conflicts), show an all-clear so
+  // the designer knows the win condition is satisfied, not merely un-warned.
+  const victoryModeNeedsDesign =
+    victoryMode === "grail" || victoryMode === "dragon-hunt" || victoryMode === "dragon-conqueror";
+  const showVictoryAllClear =
+    victoryModeNeedsDesign && victoryConflicts.length === 0 && customMap.length > 0;
   const gatePairPlaced = useMemo(() => {
     const counts: Record<number, number> = {};
     for (const object of objects) {
@@ -2759,9 +2767,15 @@ export function MapDesigner({
 
       {victoryConflicts.map((conflict, index) => (
         <div className="designerCavernAlert designerVictoryConflict" key={`victory-conflict-${index}`} role="alert">
-          ⚠ {conflict}
+          <DesignerGlyph className="designerAlertGlyph" src={REWARD_GLYPH_ICONS.conflict} /> {conflict}
         </div>
       ))}
+      {showVictoryAllClear ? (
+        <div className="designerCavernAlert designerVictoryOk" role="status">
+          <DesignerGlyph className="designerAlertGlyph" src={REWARD_GLYPH_ICONS.ok} /> This design supports the chosen
+          win condition — its objective tiles are all in place.
+        </div>
+      ) : null}
       {objectValidation.problems.map((problem, index) => (
         <div className="designerCavernAlert designerObjectAlert" key={`obj-problem-${index}`} role="alert">
           ⚠ {problem}
@@ -2800,8 +2814,13 @@ export function MapDesigner({
         until discovery), or <strong>Face-up</strong> (visible from the start), then click a tile card. Filter chips
         (Mine, Obelisk, …) narrow the grid. <strong>Underground</strong> tiles need a Subterranean Gate (auto when
         touching Surface). Add <strong>Monolith</strong> / <strong>Whirlpool</strong> tokens from the same panel — at
-        least 2 of a kind to work. Town (Ⅰ) tiles are seats; drag empty background to pan, pinch or use the toolbar
-        to zoom (wheel zoom when unlocked).
+        least 2 of a kind to work. A centre tile can force its <strong>Ⅶ objective field</strong> (Town / Grail /
+        Utopia, shown as a badge). Drag a cavern to touch a Surface tile and its <strong>Subterranean Gate</strong>{" "}
+        appears — or link and pin the pair in the popover and use <strong>↻</strong> to slide the gate along the shared
+        edge. Click a tile&apos;s <strong>edges</strong> to paint yellow borders (impassable), and <strong>lock</strong>{" "}
+        a starting tile&apos;s orientation so it never opens with a rotation. The <strong>Objects</strong> palette drops
+        standalone one-hex pieces — four colored <strong>Gate</strong> pairs and designer-guarded objects. Town (Ⅰ)
+        tiles are seats; drag empty background to pan, pinch or use the toolbar to zoom (wheel zoom when unlocked).
       </small>
 
       {/* Floating drag ghost follows the pointer — band-correct printed back. */}

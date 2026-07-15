@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ArrowUpDown, Clock3, Copy, Plus, Trash2 } from "lucide-react";
+import { assetUrl } from "@/lib/asset-url";
+import { REWARD_GLYPH_ICONS } from "@/data/assets/homm-assets";
 import {
   DEFAULT_VICTORY_CONDITION_VP,
   defaultObeliskBonusForKind,
@@ -526,6 +528,7 @@ export function MapPresetEditor({
         </div>
         {obeliskRole === "bonus" ? (
           <div className="mapPresetObeliskBonus">
+            <RewardGlyph src={obeliskBonusGlyph(obeliskBonus.kind)} title="Selected Obelisk bonus" />
             <label className="mapPresetTimedKind">
               Bonus
               <select
@@ -891,6 +894,7 @@ export function MapPresetEditor({
               </div>
               {vpObjectives.map((objective, index) => (
                 <div className="mapPresetVpObjectiveRow" key={index}>
+                  <RewardGlyph src={vpObjectiveGlyph(objective.kind)} title={`Objective ${index + 1}`} />
                   <select
                     aria-label={`Objective ${index + 1} kind`}
                     className="mapPresetSelect"
@@ -1261,6 +1265,55 @@ function ResourceField({
       />
     </label>
   );
+}
+
+/**
+ * A small board-game reward glyph (Heegu-sama/Homm3BG print-and-play set) that
+ * labels a preset row — decorative, so it is aria-hidden and the row text still
+ * carries the meaning for screen readers.
+ */
+function RewardGlyph({ src, title }: { src: string; title?: string }) {
+  return (
+    // eslint-disable-next-line @next/next/no-img-element -- assetUrl CDN path; decorative
+    <img
+      alt=""
+      aria-hidden="true"
+      className="mapPresetRowGlyph"
+      draggable={false}
+      src={assetUrl(src)}
+      title={title}
+    />
+  );
+}
+
+/** The reward glyph for an Obelisk fixed-bonus kind. */
+function obeliskBonusGlyph(kind: CustomMapObeliskBonus["kind"]): string {
+  switch (kind) {
+    case "morale":
+      return REWARD_GLYPH_ICONS.moralePositive;
+    case "search":
+      return REWARD_GLYPH_ICONS.treasure;
+    case "resources":
+      return REWARD_GLYPH_ICONS.gold;
+    case "movement":
+      return REWARD_GLYPH_ICONS.movement;
+    case "dice":
+      return REWARD_GLYPH_ICONS.resourceDie;
+  }
+}
+
+/** The reward glyph for a Victory-Point objective kind. */
+function vpObjectiveGlyph(kind: VictoryPointObjective["kind"]): string {
+  switch (kind) {
+    case "control-towns":
+      return REWARD_GLYPH_ICONS.materials;
+    case "flag-mines":
+      return REWARD_GLYPH_ICONS.gold;
+    case "hero-level":
+      return REWARD_GLYPH_ICONS.experience;
+    case "defeat-dragon-utopia":
+      return REWARD_GLYPH_ICONS.attack;
+  }
 }
 
 function setUnit(

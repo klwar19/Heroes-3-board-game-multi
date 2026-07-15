@@ -289,6 +289,35 @@ export const SECRET_FEATURE_ICONS = {
 } as const;
 
 /**
+ * Board-game reward / status glyphs used to label the map-designer preset
+ * surfaces (Obelisk fixed-bonus kinds, Victory-Point objective rows) and the
+ * live Victory-Points dock / scoring overlay, plus the designer's win-condition
+ * warning (red cross) and all-clear (green tick). The monochrome symbol glyphs
+ * (`fill="currentColor"`) match the designer's existing `DESIGNER_UI_ICONS`
+ * chrome; the tick/cross carry their own green/red fills so they read as status
+ * regardless of context. Paths only — render through `assetUrl()`.
+ *
+ * Source/credit: the print-and-play glyph set from the Heegu-sama/Homm3BG
+ * community rulebook project (`assets/glyphs`), the same source as the town/
+ * resource/stat art above. https://github.com/Heegu-sama/Homm3BG
+ */
+export const REWARD_GLYPH_ICONS = {
+  moralePositive: "/assets/glyphs/morale_positive.svg",
+  moraleNegative: "/assets/glyphs/morale_negative.svg",
+  movement: "/assets/glyphs/movement.svg",
+  experience: "/assets/glyphs/experience.svg",
+  artifact: "/assets/glyphs/artifact.svg",
+  gold: "/assets/glyphs/gold.svg",
+  materials: "/assets/glyphs/building_materials.svg",
+  treasure: "/assets/glyphs/treasure.svg",
+  resourceDie: "/assets/glyphs/resource_die.svg",
+  attack: "/assets/glyphs/attack.svg",
+  defense: "/assets/glyphs/defense.svg",
+  ok: "/assets/glyphs/green_tick.svg",
+  conflict: "/assets/glyphs/red_cross.svg"
+} as const;
+
+/**
  * Morale birds, the classic Heroes III IMRL42 sprite set (one frame per track
  * step, −3 … +3): the gold bird soaring with wings spread for high morale down
  * through the tarnished, grounded bird for low morale, with the stone bird at
