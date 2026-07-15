@@ -287,6 +287,7 @@ import {
   getEffectDamageAmount,
   getEffectiveCardEffect,
   getSpellDamageAmount,
+  heroMovementGrantOption,
   spellMinUsefulPower,
   spellPowerSourceDrawCards,
   spellPowerValueOfCard
@@ -937,8 +938,14 @@ function nextPlayerId(state: GameState, playerId: PlayerId): PlayerId {
 }
 
 function makeStackItem(state: GameState, action: GameAction): ResolutionStackItem {
+  // IDs must be unique for the whole game — NOT `stack_${state.stack.length + 1}`.
+  // The stack is empty between attacks, so length-based ids always reuse
+  // `stack_1`. Expert Luck (and any other consumeEffectOnUse: false Attack-die
+  // reroll) records the spent stackItemId in usedChoiceIds; the next attack
+  // then filtered itself out forever ("Luck only works once"). nextEventNumber
+  // is monotonic, so each stack item is a fresh key.
   return {
-    id: `stack_${state.stack.length + 1}`,
+    id: `stack_${nextEventNumber(state)}`,
     source:
       action.type === "CAST_SPELL"
         ? { type: "card", cardId: action.cardId, controllerId: action.playerId }
@@ -5462,9 +5469,11 @@ function resumeAttackSequence(state: GameState, cards: CardLibrary): void {
 
 /**
  * Applies the mandatory flat-damage follow-ups of an attack (Magog splash,
- * Cerberi second head). A single candidate is hit immediately; several open
- * an ABILITY_TARGET_CHOICE for the attacker. Returns true when the attack
- * sequence is paused on a choice.
+ * Cerberi second head). A human controller ALWAYS gets an ABILITY_TARGET_CHOICE
+ * so they can pick (even with a single candidate — auto-hitting silently made
+ * the splash look broken). The Neutral AI still auto-resolves a lone candidate
+ * and only pauses when several qualify. Returns true when the attack sequence
+ * is paused on a choice.
  */
 function openFlatDamageFollowUps(
   state: GameState,
@@ -5478,6 +5487,11 @@ function openFlatDamageFollowUps(
   }
 
   const followUps = getFlatDamageFollowUps(combat, { attacker, defender, attackKind });
+  // Under PvP Neutral Control the human controller answers Magog/Cerberi
+  // picks — treat them like a human so the choice opens instead of auto-AI.
+  const humanPicks =
+    attacker.controllerId !== NEUTRAL_PLAYER_ID || Boolean(neutralCombatControllerId(state, combat));
+
   for (const followUp of followUps) {
     const living = followUp.candidateUnitIds.filter((unitId) => {
       const unit = combat.units[unitId];
@@ -5487,7 +5501,8 @@ function openFlatDamageFollowUps(
       continue;
     }
 
-    if (living.length === 1) {
+    // AI-only: a single candidate is mandatory and needs no prompt.
+    if (!humanPicks && living.length === 1) {
       applyFlatAbilityDamage(state, attacker, living[0], followUp.abilityId, followUp.abilityName, followUp.amount);
       if (finishCombatIfNeeded(state)) {
         return true;
@@ -10542,6 +10557,11 @@ function applyReactionPlayCore(
     throw new Error("No reaction window is open.");
   }
 
+  // Garrison / Secondary-Hero hand lock (same backstop as playCard).
+  if (isHandLockedInCombat(state, playerId)) {
+    throw new Error("You cannot use your Deck during this Combat (no Main Hero present).");
+  }
+
   const card = cards[play.cardId];
   if (!card) {
     throw new Error(`Unknown reaction card ${play.cardId}.`);
@@ -12556,6 +12576,25 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     throw new Error(`Unknown card ${action.cardId}.`);
   }
 
+  // Garrison / Secondary-Hero combat: "you cannot use your Deck during this
+  // Combat" — legal-actions already withholds offers; this is the resolution
+  // backstop so a forged PLAY_CARD cannot bypass the hand lock (settlement /
+  // town garrison defense, or a Secondary Hero leading the fight).
+  if (state.combat && isHandLockedInCombat(state, action.playerId)) {
+    // Neutral-combat movement top-up is the lone exception: Boots / Logistics
+    // may still buy another round from the continue-or-retreat window even when
+    // a Secondary Hero leads (the hero is present; only cards-as-combat-tools
+    // are locked). That path is re-checked below via continueMovementTopUp.
+    const continueTopUp =
+      Boolean(state.combat.awaitingContinue) &&
+      state.combat.context.kind === "neutral" &&
+      state.combat.attackerPlayerId === action.playerId &&
+      heroMovementGrantOption(card) !== null;
+    if (!continueTopUp) {
+      throw new Error("You cannot use your Deck during this Combat (no Main Hero present).");
+    }
+  }
+
   // BINH house rule: while the after-combat Necromancy window is open, the ONLY
   // legal card play is that Necromancy itself — the field reward is withheld
   // until the player commits, so no other card may resolve and bank value first.
@@ -13394,11 +13433,42 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   }
 
   if (effect.type === "GAIN_HERO_MOVEMENT") {
-    // Buffs reach every hero the player commands, the Secondary Hero included.
+    // Wiki Logistics note: "+1 Movement may also be granted to the secondary
+    // hero." When both Main and Secondary stand on the map, the player picks
+    // which hero gains the points (one of them — not both). A lone hero gets
+    // it without a prompt.
     const amount = mode === "expert" ? (effect.expertAmount ?? effect.amount) : effect.amount;
-    for (const hero of Object.values(state.heroes)) {
-      if (hero.controllerId === action.playerId) {
+    const heroes = Object.values(state.heroes).filter(
+      (hero) => hero.controllerId === action.playerId && hero.spaceId !== null
+    );
+    if (heroes.length <= 1) {
+      const hero = heroes[0];
+      if (hero) {
         hero.movementPoints += amount;
+      }
+    } else if (state.adventure) {
+      // Open a visit-style pick so the player can put the MP on the Secondary.
+      state.adventure.rewardQueue.unshift({
+        playerId: action.playerId,
+        kind: "visit-steps",
+        steps: [
+          {
+            type: "CHOOSE_ONE",
+            prompt: `Which Hero gains +${amount} movement?`,
+            options: heroes.map((hero) => ({
+              label: hero.kind === "main" ? "Main Hero" : "Secondary Hero",
+              steps: [{ type: "GAIN_MOVEMENT_FOR_HERO", heroId: hero.id, amount }]
+            }))
+          }
+        ]
+      });
+      // pumpAdventureQueues is adventure-reducer only; the queue is drained at
+      // the end of this action by applyAction's adventure post-pass. If the
+      // map path is not open, grant to Main as a safe fallback.
+    } else {
+      const main = heroes.find((hero) => hero.kind === "main") ?? heroes[0];
+      if (main) {
+        main.movementPoints += amount;
       }
     }
     if (effect.moveThroughThisTurn) {
@@ -17954,24 +18024,28 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
 
         // All units acted: neutral combats hit their one-round time limit,
         // player combats roll straight into the next round. Azure guards have NO
-        // Round limit and roll into the next round automatically. The Dragon
-        // Utopia objective (dragon-hunt / dragon-conqueror) is ALSO unlimited —
-        // both win modes — even if a future guard list drops the azure tier tag;
-        // only the Utopia field itself is exempt (other banks / guards still
-        // obey the house rule below). House rule ("bank-move-points"): Creature
-        // Banks DO obey the Round limit and the spend-MP-to-extend rule, exactly
-        // like an ordinary neutral fight — so they are NOT exempted here. When
-        // that rule is off a bank reverts to the rulebook (no Round limit) and
-        // rolls straight on like an azure guard.
+        // Round limit and roll into the next round automatically. Field Difficulty
+        // Ⅶ is also unlimited (it always fields azure, and winning it jumps the
+        // hero to level 7). The Dragon Utopia objective (dragon-hunt /
+        // dragon-conqueror) is ALSO unlimited — both win modes — even if a future
+        // guard list drops the azure tier tag; only the Utopia field itself is
+        // exempt (other banks / guards still obey the house rule below). House
+        // rule ("bank-move-points"): Creature Banks DO obey the Round limit and
+        // the spend-MP-to-extend rule, exactly like an ordinary neutral fight —
+        // so they are NOT exempted here. When that rule is off a bank reverts to
+        // the rulebook (no Round limit) and rolls straight on like an azure guard.
         const utopiaField =
           combat.context.kind === "neutral"
             ? state.adventure?.fields[combat.context.fieldId]
             : undefined;
         const isDragonUtopiaFight = utopiaField?.location === "dragon_utopia";
+        const isLevelSevenField =
+          combat.context.kind === "neutral" && combat.context.difficulty >= 7;
         if (
           combat.context.kind === "neutral" &&
           !combat.context.hasAzure &&
           !isDragonUtopiaFight &&
+          !isLevelSevenField &&
           (combat.context.bankId === undefined || houseRuleEnabled(state, "bank-move-points"))
         ) {
           combat.awaitingContinue = true;

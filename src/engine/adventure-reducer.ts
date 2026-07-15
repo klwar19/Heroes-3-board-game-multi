@@ -122,7 +122,7 @@ import {
   victoryModeCountsHeroDefeats,
   type NeutralDraw
 } from "./adventure";
-import { ATTACK_DIE_FACES } from "./battlefield";
+import { ATTACK_DIE_FACES, BATTLEFIELD_CELL_COUNT } from "./battlefield";
 import { appendExpiredEffectEvents, pvpEscapeWindowOpen } from "./combat-units";
 import {
   COMMANDER_MASTERY_MIN_HERO_LEVEL,
@@ -4545,8 +4545,8 @@ export function revealNeutralArmy(state: GameState, draws: NeutralDraw[]): void 
   });
 
   // The guards are on the board: under PvP Neutral Control the controller may
-  // first SORT the Neutral formation (a normal FIELD only — never a bank), then
-  // a Tactics-holding attacker may rearrange their own line, before round 1
+  // first SORT the Neutral formation (field OR Creature Bank), then a
+  // Tactics-holding attacker may rearrange their own line, before round 1
   // (finalizeCombatStart) begins.
   combat.setup = null;
   if (openNeutralPlacementWindow(state)) {
@@ -4560,20 +4560,17 @@ export function revealNeutralArmy(state: GameState, draws: NeutralDraw[]): void 
 
 /**
  * PvP Neutral Control: open the pre-battle formation-SORT window for the
- * controlling player once the Neutral army is revealed and auto-placed on a
- * normal guard FIELD (user rule "sorting or moving neutral formation before
- * battle, just like defender"). Returns true (and holds priority for the
- * controller) when the window opens. Never opens for a Creature Bank (corners
- * are fixed), with no controller (AI/solo), or with fewer than two living
- * guards to arrange — mirroring the Tactics window's threshold.
+ * controlling player once the Neutral army is revealed and auto-placed —
+ * normal guard FIELDS and Creature Banks alike (user rule: "sorting or moving
+ * neutral formation before battle, just like defender"). Field guards may sit
+ * on ANY empty battlefield square; banks rearrange within their four corner
+ * cells. Returns true (and holds priority for the controller) when the window
+ * opens. Never opens with no controller (AI/solo), or with fewer than two
+ * living guards to arrange — mirroring the Tactics window's threshold.
  */
 function openNeutralPlacementWindow(state: GameState): boolean {
   const combat = state.combat;
   if (!combat) {
-    return false;
-  }
-  // A Creature Bank keeps its fixed corner deployment — no sorting.
-  if (combat.context.kind === "neutral" && combat.context.bankId !== undefined) {
     return false;
   }
   const controller = neutralCombatControllerId(state, combat);
@@ -4599,11 +4596,27 @@ function openNeutralPlacementWindow(state: GameState): boolean {
 }
 
 /**
+ * Cells the Neutral formation may occupy during the pre-battle sort.
+ * Normal fields = the WHOLE battlefield (any unit, any empty square); Creature
+ * Banks = the four corner cells the guards deploy on.
+ */
+export function neutralFormationCellsFor(state: GameState): number[] {
+  const combat = state.combat;
+  if (!combat) {
+    return [];
+  }
+  if (combat.context.kind === "neutral" && isCreatureBankId(combat.context.bankId)) {
+    return [...CREATURE_BANK_GUARD_CORNERS];
+  }
+  // Field fight: free placement — every board cell is legal.
+  return Array.from({ length: BATTLEFIELD_CELL_COUNT }, (_, index) => index);
+}
+
+/**
  * PvP Neutral Control: the controller repositions ONE Neutral guard during the
- * pre-battle sort (PLACE_NEUTRAL_GUARD). Moves the guard to an empty defender
- * cell, or SWAPS it with another guard already standing there. Only the
- * controller may act, only on a living neutral guard, only within the defender
- * zone — the formation stays on the Neutral side (no cross-zone teleport).
+ * pre-battle sort (PLACE_NEUTRAL_GUARD). Moves the guard to an empty cell in the
+ * formation zone, or SWAPS it with another guard already standing there. Field
+ * fights allow ANY square; banks stay in the four corners.
  */
 export function placeNeutralGuard(state: GameState, action: Extract<GameAction, { type: "PLACE_NEUTRAL_GUARD" }>): void {
   const combat = state.combat;
@@ -4614,9 +4627,17 @@ export function placeNeutralGuard(state: GameState, action: Extract<GameAction, 
   if (!guard || guard.controllerId !== NEUTRAL_PLAYER_ID || guard.damage >= guard.maxHealth || isArrowTowerUnit(guard)) {
     throw new Error("That unit is not a Neutral guard you can reposition.");
   }
-  // The controller is never the attacker, so placementCellsFor is the defender zone.
-  if (!placementCellsFor(state, action.playerId).includes(action.position)) {
-    throw new Error("A Neutral guard must stay on the defender's back or front line.");
+  // Field = any board cell; bank = the four corners only.
+  if (!neutralFormationCellsFor(state).includes(action.position)) {
+    throw new Error(
+      combat.context.kind === "neutral" && isCreatureBankId(combat.context.bankId)
+        ? "A Creature Bank guard must stay on one of the four corner cells."
+        : "That is not a legal battlefield cell."
+    );
+  }
+  // Combat obstacles (walls, force fields, …) are never landable.
+  if ((combat.obstacles ?? []).includes(action.position)) {
+    throw new Error("That space is blocked.");
   }
 
   const occupant = Object.values(combat.units).find(
@@ -4720,7 +4741,12 @@ function revealCreatureBankArmy(state: GameState, bankId: CreatureBankId): void 
     stackedCount
   });
 
+  // Same as a normal guard reveal: under PvP Neutral Control the controller
+  // may SORT the four corner guards before Tactics / round 1.
   combat.setup = null;
+  if (openNeutralPlacementWindow(state)) {
+    return;
+  }
   if (openTacticsSetupWindows(state)) {
     return;
   }
@@ -6714,7 +6740,11 @@ export function finalizeAdventureCombat(state: GameState): void {
         // player-level and still apply.
         if (hero.kind === "main" && !context.bankId) {
           const level = hero.level;
-          if (context.hasAzure) {
+          // Field Difficulty Ⅶ (and any azure guard fight): winning jumps the
+          // Main Hero straight to level 7 (fills remaining experience). Diff 7
+          // always fields azure guards in the army table, but key off difficulty
+          // too so a stripped/empty azure draw cannot deny the level-up.
+          if (context.hasAzure || context.difficulty >= 7) {
             gainExperience(state, playerId, MAX_EXPERIENCE_GAIN_TO_SEVEN(hero));
           } else if (context.difficulty > level) {
             gainExperience(state, playerId, 2);
@@ -6881,6 +6911,7 @@ export function finalizeAdventureCombat(state: GameState): void {
       // Only the ATTACKER (the turn-owner) can be prompted mid-turn; a defender
       // who surrenders auto-homes to avoid a cross-turn stall.
       moveDefeatedHeroHome(state, loserHero, loserHero === attackerHero);
+      forceOtherHeroesHomeFromField(state, loserId, context.fieldId, loserHero.id);
     } else if (surrenderedSecondary) {
       // No gold, no morale hit, no victory credit — the 2nd hero itself is the
       // price. Remove it from the game (the player may hire another later).
@@ -6912,6 +6943,12 @@ export function finalizeAdventureCombat(state: GameState): void {
       // A fought-out or retreat loss: the attacker (turn-owner) picks their
       // retreat; a beaten defender auto-homes (no cross-turn prompt).
       moveDefeatedHeroHome(state, loserHero, loserHero === attackerHero);
+      // Any OTHER heroes of the loser still standing on the contested field
+      // (typically a Secondary Hero that shared the Town with the Main Hero)
+      // also fall back home. Without this, the secondary stays on the captured
+      // field — unattackable, still "alive" for the opponent, and both can end
+      // up stacked on the same Town hex after the main retreats home.
+      forceOtherHeroesHomeFromField(state, loserId, context.fieldId, loserHero.id);
 
       // Grail Hunt & Dragon Hunt: beating an enemy hero in a real fight (retreat
       // or a fought-out loss) counts toward the "defeat every enemy hero at least
@@ -7302,6 +7339,26 @@ function moveDefeatedHeroHome(state: GameState, hero: HeroState, interactive = f
 
   hero.spaceId = destinations[0]?.spaceId ?? null;
   hero.movementPoints = 0;
+}
+
+/**
+ * After a PvP loss on `fieldId`, auto-home every other hero of `playerId` still
+ * standing on that field (the Secondary sharing a Town with the Main, etc.).
+ * Always non-interactive — these companions never opened the fight, so they
+ * never get a retreat picker of their own.
+ */
+function forceOtherHeroesHomeFromField(
+  state: GameState,
+  playerId: PlayerId,
+  fieldId: MapSpaceId,
+  exceptHeroId: string
+): void {
+  for (const hero of Object.values(state.heroes)) {
+    if (hero.controllerId !== playerId || hero.id === exceptHeroId || hero.spaceId !== fieldId) {
+      continue;
+    }
+    moveDefeatedHeroHome(state, hero, false);
+  }
 }
 
 /**
@@ -9263,12 +9320,13 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
  * enemy mine/town, undefeated guards — is NOT empty. Blocked and occupied
  * fields, and edges the hero cannot cross, are excluded too.
  */
-export function getEndTurnMoveDestinations(state: GameState, playerId: PlayerId): MapSpaceId[] {
+/** Empty-field destinations an end-of-turn step (Logistics / Nomads) may land on. */
+export function getEndTurnMoveDestinationsForHero(state: GameState, hero: HeroState): MapSpaceId[] {
   const adventure = state.adventure;
-  const hero = getMainHero(state, playerId);
-  if (!adventure || !hero?.spaceId) {
+  if (!adventure || !hero.spaceId) {
     return [];
   }
+  const playerId = hero.controllerId;
 
   return getAdjacentSpaceIds(hero.spaceId).filter((spaceId) => {
     if (!canCrossEdge(state, hero.spaceId as MapSpaceId, spaceId)) {
@@ -9300,16 +9358,37 @@ export function getEndTurnMoveDestinations(state: GameState, playerId: PlayerId)
   });
 }
 
+/** @deprecated Prefer {@link getEndTurnMoveDestinationsForHero} — Main Hero only. */
+export function getEndTurnMoveDestinations(state: GameState, playerId: PlayerId): MapSpaceId[] {
+  const hero = getMainHero(state, playerId);
+  return hero ? getEndTurnMoveDestinationsForHero(state, hero) : [];
+}
+
 /** Queues the "move to an adjacent empty field, or stay" end-turn choice. */
 function offerEndTurnAdjacentMove(state: GameState, playerId: PlayerId, prompt: string): boolean {
   const adventure = state.adventure;
-  const hero = getMainHero(state, playerId);
-  if (!adventure || !hero) {
+  if (!adventure) {
     return false;
   }
 
-  const destinations = getEndTurnMoveDestinations(state, playerId);
-  if (destinations.length === 0) {
+  // Logistics / Nomads: either hero the player commands may take the free step
+  // (wiki Logistics: secondary may receive the movement too). List every legal
+  // landing for every on-map hero, labeled by which hero steps.
+  const heroes = Object.values(state.heroes).filter(
+    (hero) => hero.controllerId === playerId && hero.spaceId !== null
+  );
+  const moveOptions: { label: string; steps: VisitStep[] }[] = [];
+  for (const hero of heroes) {
+    const destinations = getEndTurnMoveDestinationsForHero(state, hero);
+    const heroLabel = hero.kind === "main" ? "Main Hero" : "Secondary Hero";
+    for (const spaceId of destinations) {
+      moveOptions.push({
+        label: heroes.length > 1 ? `${heroLabel}: move to ${spaceId}` : `Move to ${spaceId}`,
+        steps: [{ type: "TELEPORT_HERO" as const, heroId: hero.id, spaceId }]
+      });
+    }
+  }
+  if (moveOptions.length === 0) {
     return false;
   }
 
@@ -9320,13 +9399,7 @@ function offerEndTurnAdjacentMove(state: GameState, playerId: PlayerId, prompt: 
       {
         type: "CHOOSE_ONE",
         prompt,
-        options: [
-          ...destinations.map((spaceId) => ({
-            label: `Move to ${spaceId}`,
-            steps: [{ type: "TELEPORT_HERO" as const, heroId: hero.id, spaceId }]
-          })),
-          { label: "Stay", steps: [] }
-        ]
+        options: [...moveOptions, { label: "Stay", steps: [] }]
       }
     ]
   });

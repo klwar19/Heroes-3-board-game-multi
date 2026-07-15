@@ -622,7 +622,7 @@ describe("PvP Neutral Control — pre-battle formation sort", () => {
     expect(modeOff.combat!.pendingNeutralPlacement ?? null).toBeNull();
   });
 
-  it("swaps two guards, and REJECTS an out-of-zone cell and a non-controller", () => {
+  it("swaps two guards, allows ANY empty board cell, and REJECTS a non-controller", () => {
     let state = fightWithGuards("pnc-sort-swap", { players: 3, difficulty: 2 });
     const [a, b] = guardsOf(state);
     const posA = a.position;
@@ -633,9 +633,16 @@ describe("PvP Neutral Control — pre-battle formation sort", () => {
     expect(state.combat!.units[a.id].position).toBe(posB);
     expect(state.combat!.units[b.id].position).toBe(posA);
 
-    // An attacker-zone cell (12) is out of the defender formation zone — rejected.
-    const outOfZone = applyAction(state, { type: "PLACE_NEUTRAL_GUARD", playerId: "p2", unitId: a.id, position: 12 });
-    expect(outOfZone.errors.length).toBeGreaterThan(0);
+    // Field sort is free-placement: attacker-zone cell 12 is legal when empty.
+    const freeCell = 12;
+    expect(Object.values(state.combat!.units).some((unit) => unit.position === freeCell)).toBe(false);
+    state = applyOk(state, { type: "PLACE_NEUTRAL_GUARD", playerId: "p2", unitId: a.id, position: freeCell });
+    expect(state.combat!.units[a.id].position).toBe(freeCell);
+
+    // An off-board index is still rejected.
+    const offBoard = applyAction(state, { type: "PLACE_NEUTRAL_GUARD", playerId: "p2", unitId: a.id, position: 99 });
+    expect(offBoard.errors.length).toBeGreaterThan(0);
+
     // The FIGHTER may not sort — rejected even for a legal cell/guard.
     const emptyCell = [0, 1, 2, 3, 4, 5, 6, 7].find(
       (cell) => !Object.values(state.combat!.units).some((unit) => unit.position === cell)
@@ -644,8 +651,8 @@ describe("PvP Neutral Control — pre-battle formation sort", () => {
     expect(byFighter.errors.length).toBeGreaterThan(0);
   });
 
-  it("CONTROL: a Creature Bank opens NO sort window (corners kept) and starts the fight directly", () => {
-    let state = makeGame("pnc-bank-nosort", { players: 3 });
+  it("opens the sort window on a Creature Bank too (rearrange within the four corners)", () => {
+    let state = makeGame("pnc-bank-sort", { players: 3 });
     state.activePlayerId = "p1";
     state.players.p1.hand = [];
     const hero = getMainHero(state, "p1")!;
@@ -669,11 +676,37 @@ describe("PvP Neutral Control — pre-battle formation sort", () => {
     state = applyOk(state, place.action);
     state = applyOk(state, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
 
-    // Four bank guards revealed at their corners — but NO sort window opened, and
-    // no PLACE_NEUTRAL_GUARD is ever offered to the controller.
+    // Four bank guards revealed at their corners — the controller MAY sort them
+    // (swap/rearrange within the four corner cells) before the fight starts.
     expect(guardsOf(state).length).toBe(4);
-    expect(state.combat!.pendingNeutralPlacement ?? null).toBeNull();
-    expect(getLegalActions(state, "p2").some((offer) => offer.action.type === "PLACE_NEUTRAL_GUARD")).toBe(false);
+    expect(sortWindowOpenFor(state, "p2")).toBe(true);
+    expect(getLegalActions(state, "p2").some((offer) => offer.action.type === "PLACE_NEUTRAL_GUARD")).toBe(true);
+    expect(getLegalActions(state, "p2").some((offer) => offer.action.type === "FINISH_NEUTRAL_PLACEMENT")).toBe(
+      true
+    );
+    // CONTROL: mode off never opens a bank sort window.
+    let off = makeGame("pnc-bank-sort-off", { players: 3, pvpNeutralControl: false });
+    off.activePlayerId = "p1";
+    off.players.p1.hand = [];
+    const offHero = getMainHero(off, "p1")!;
+    offHero.level = 7;
+    offHero.spaceId = "bank-field";
+    off.adventure!.fields["bank-field"] = {
+      spaceId: "bank-field",
+      tileInstanceId: "t",
+      slot: 0,
+      location: "blocked_field",
+      blackCube: false,
+      flagOwnerId: null,
+      everFlagged: false,
+      settlementResource: null
+    };
+    placeCreatureBank(off, "bank-field", "naga_bank");
+    startNeutralEncounter(off, offHero, off.adventure!.fields["bank-field"]);
+    const offPlace = getLegalActions(off, "p1").find((offer) => offer.action.type === "PLACE_COMBAT_UNIT")!;
+    off = applyOk(off, offPlace.action);
+    off = applyOk(off, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
+    expect(off.combat!.pendingNeutralPlacement ?? null).toBeNull();
   });
 
   it("hands the sort window to the NEXT controller when the current one is eliminated", () => {
