@@ -22563,6 +22563,238 @@ details.mapPresetEditor[open] .mapPresetSummaryChevron {
 }
 
 /* ======================================================================== */
+/* ---- MAP DESIGNER — the level editor, same kit v2 --------------------- */
+/*                                                                          */
+/* The standalone Map-designer page (`.designerRoot`, page.tsx) is the      */
+/* PLAINEST screen in the app and has the most dead space, so it takes the  */
+/* fullest carved treatment: a dim epic-vista backdrop behind a floating    */
+/* framed working surface, a tooled title cartouche, leather field plates,  */
+/* a leather palette shelf, the frame-ornate gem frame around the canvas    */
+/* and a leather Shared-maps rail. Same discipline as §1–4 / B / TW: every  */
+/* rule is scoped under `.designerRoot` so the LOBBY-embedded designer       */
+/* (`.setupCard .designerBoardWrap`, shared component, NOT inside the page)  */
+/* is untouched; every decorative pseudo-element is pointer-events:none and  */
+/* sits BEHIND or CLEAR of the canvas, tiles, inputs and buttons; no         */
+/* hit-area is moved and the drag / drop / zoom interactions are unchanged.  */
+/* The designer has no phone-tab layout, so no phone fall-back is needed;    */
+/* the frame lives on the full-width canvas (never crowded) and a narrow     */
+/* fall-back trims the fattest ornaments below 1100px, per the convention.   */
+/* ======================================================================== */
+
+/* ---- D1. Page backdrop → a dim, vignetted epic vista ------------------- */
+/* Replaces the flat near-black with the map-backdrop scene heavily          */
+/* darkened + a leather grain base and a strong edge vignette, so the        */
+/* working area reads as a lit war-table floating over a distant kingdom.    */
+/* Fixed + z-index:-1 + pointer-events:none: it sits behind all content and  */
+/* only shows through the page's own transparent margins — the canvas, the   */
+/* panels and their own dark fills keep full contrast on top.                */
+.designerRoot::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(120% 95% at 50% -6%, rgb(66 50 26 / 34%), transparent 52%),
+    linear-gradient(90deg, rgb(4 3 2 / 58%) 0%, transparent 24%, transparent 76%, rgb(4 3 2 / 58%) 100%),
+    radial-gradient(145% 130% at 50% 42%, transparent 24%, rgb(4 3 2 / 90%) 82%),
+    linear-gradient(180deg, rgb(11 9 6 / 86%), rgb(6 5 4 / 92%)),
+    url("/assets/ui/map-backdrop.jpg") center / cover no-repeat,
+    var(--cmp-leather) center top / 480px repeat;
+}
+
+/* ---- D2. Title → tooled-leather cartouche + a filigree header rail ------ */
+/* The page title sits in the plaque-title cartouche and turns bright        */
+/* engraved gold; a full-width rail-divider rules under the whole header     */
+/* block (title + intro), separating it from the controls. Click-safe.      */
+.designerRoot .designerTitle {
+  position: relative;
+  padding: 9px 34px 11px;
+  color: var(--cmp-gold-bright);
+  letter-spacing: 0.04em;
+  text-shadow: 0 2px 4px rgb(0 0 0 / 80%);
+}
+
+.designerRoot .designerTitle::before {
+  content: "";
+  position: absolute;
+  inset: -6px -12px -8px;
+  z-index: -1;
+  background: var(--orn-plaque) center / 100% 100% no-repeat;
+  filter: drop-shadow(0 3px 7px rgb(0 0 0 / 55%));
+  pointer-events: none;
+}
+
+.designerRoot .designerHeader {
+  position: relative;
+  padding-bottom: 17px;
+}
+
+.designerRoot .designerHeader::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 14px;
+  background: var(--orn-rail) center bottom / 100% 14px no-repeat;
+  opacity: 0.85;
+  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 55%));
+  pointer-events: none;
+}
+
+/* ---- D3. Controls row → tooled-leather field plates -------------------- */
+/* The Map-name / Scenario / Players fields become carved leather plates     */
+/* with a gold hairline; their little labels read bright gold. The Save /    */
+/* New buttons already wear the .commandButton gold-plate skin, so they are  */
+/* left untouched and read as a matched set.                                 */
+.designerRoot .designerToolbar input,
+.designerRoot .designerToolbar select {
+  border: 1px solid var(--cmp-gold-deep);
+  background:
+    linear-gradient(180deg, rgb(30 22 13 / 92%), rgb(18 13 8 / 94%)),
+    var(--cmp-leather) center / 200px repeat;
+  color: #f3e3bd;
+  box-shadow:
+    inset 0 1px 0 rgb(246 226 168 / 12%),
+    inset 0 -2px 5px rgb(0 0 0 / 34%);
+}
+
+.designerRoot .designerToolbar > label > small {
+  color: var(--cmp-gold-bright);
+  letter-spacing: 0.03em;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 60%);
+}
+
+/* ---- D4. Tile palette → a leather shelf with gold banding -------------- */
+/* The draggable strip gets a tooled-leather backing + gold hairline so it   */
+/* reads as a supply shelf; the tile buttons themselves are left exactly as  */
+/* they are (their drag hit-area and thumbs are untouched).                  */
+.designerRoot .designerPalette {
+  position: relative;
+  padding: 9px 12px 11px;
+  border: 1px solid var(--cmp-gold-deep);
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, rgb(28 20 12 / 88%), rgb(16 12 7 / 92%)),
+    var(--cmp-leather) center / 260px repeat;
+  box-shadow:
+    inset 0 0 0 1px rgb(217 178 90 / 22%),
+    inset 0 1px 0 rgb(246 226 168 / 10%),
+    0 6px 16px rgb(0 0 0 / 34%);
+}
+
+.designerRoot .designerPalette .palettePrompt {
+  color: var(--cmp-gold-bright);
+  text-shadow: 0 1px 2px rgb(0 0 0 / 60%);
+}
+
+/* ---- D5. Canvas → the frame-ornate gem frame + inner vignette ---------- */
+/* The main working surface is mounted inside the carved gem frame as a      */
+/* REAL (transparent) layout border, so no tile / label / the zoom toolbar   */
+/* can ever be overlapped — the border only insets the board a moderate      */
+/* 18px. A gold hairline + a soft inner vignette hug the canvas just inside  */
+/* the frame; background-clip:padding-box keeps the dark fill off the frame. */
+.designerRoot .designerBoardWrap {
+  border: 18px solid transparent;
+  border-image-source: var(--orn-frame);
+  border-image-slice: 185;
+  border-image-width: 18px;
+  border-image-repeat: round;
+  border-radius: 6px;
+  background:
+    radial-gradient(120% 110% at 50% 0%, rgb(54 44 26 / 85%), rgb(20 16 10 / 95%)),
+    #14100a;
+  background-clip: padding-box;
+  box-shadow:
+    inset 0 0 0 2px rgb(217 178 90 / 55%),
+    inset 0 0 46px rgb(0 0 0 / 50%),
+    0 20px 32px rgb(0 0 0 / 46%);
+}
+
+/* The floating zoom toolbar → a quiet gold-hairline leather plate so it     */
+/* reads as part of the same chrome sitting on the framed board.            */
+.designerRoot .designerToolbarFloat {
+  border-color: var(--cmp-gold-deep);
+  background:
+    linear-gradient(180deg, rgb(38 28 15 / 94%), rgb(20 14 8 / 94%)),
+    var(--cmp-leather) center / 180px repeat;
+  box-shadow:
+    inset 0 1px 0 rgb(246 226 168 / 12%),
+    0 6px 16px rgb(0 0 0 / 46%);
+}
+
+/* Below 1100px the fat gem frame would eat too much of a narrowed board —   */
+/* trim it to a thinner mount (the canvas stays the main surface).          */
+@media (max-width: 1100px) {
+  .designerRoot .designerBoardWrap {
+    border-width: 11px;
+    border-image-width: 11px;
+  }
+}
+
+/* ---- D6. Shared-maps sidebar → leather rail with an engraved header ----- */
+/* The plain dark list box becomes a carved leather panel; its header turns  */
+/* engraved gold with a filigree rail beneath it, and each saved-map row     */
+/* takes a leather fill + gold hairline. The delete buttons keep their own   */
+/* hover behaviour untouched.                                                */
+.designerRoot .designerSaved {
+  border: 1px solid var(--cmp-gold-deep);
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, rgb(28 20 12 / 90%), rgb(15 11 7 / 94%)),
+    var(--cmp-leather) center / 240px repeat;
+  box-shadow:
+    inset 0 0 0 1px rgb(217 178 90 / 20%),
+    inset 0 1px 0 rgb(246 226 168 / 10%),
+    0 10px 24px rgb(0 0 0 / 38%);
+}
+
+.designerRoot .designerSaved h2 {
+  position: relative;
+  padding-bottom: 11px;
+  color: var(--cmp-gold-bright);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 75%);
+}
+
+.designerRoot .designerSaved h2::after {
+  content: "";
+  position: absolute;
+  left: -2px;
+  right: -2px;
+  bottom: 0;
+  height: 12px;
+  background: var(--orn-rail) center bottom / 100% 12px no-repeat;
+  opacity: 0.82;
+  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 55%));
+  pointer-events: none;
+}
+
+.designerRoot .savedMapLoad {
+  border-color: var(--cmp-gold-deep);
+  background:
+    linear-gradient(180deg, rgb(34 25 15 / 92%), rgb(20 14 8 / 94%)),
+    var(--cmp-leather) center / 180px repeat;
+}
+
+.designerRoot .savedMapLoad strong {
+  color: var(--cmp-gold-bright);
+}
+
+.designerRoot .designerSaved li.current .savedMapLoad {
+  outline-color: var(--cmp-gold-bright);
+}
+
+.designerRoot .savedMapDelete {
+  border-color: var(--cmp-gold-deep);
+  background:
+    linear-gradient(180deg, rgb(30 21 12 / 90%), rgb(18 13 8 / 92%)),
+    var(--cmp-leather) center / 140px repeat;
+}
+
+/* ======================================================================== */
 /* PHONE UI MODE                                                            */
 /*                                                                          */
 /* Everything below only applies inside `main.phoneMode` (plus the mode     */
