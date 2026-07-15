@@ -2,8 +2,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, within } from "@testing-library/react";
 import { MapDesigner, planBackArt, planBackLabel } from "./map-designer";
+import { nearestGateHexPair, type GateHexPair } from "./gate-drag";
 import {
   hexSpaceId,
+  hexToPixel,
   legalGateHexPairs,
   planSubterraneanGates,
   tileLatticeNeighbors,
@@ -574,6 +576,156 @@ describe("MapDesigner — designer-chosen gate links", () => {
     expect(auto.querySelector('image[href*="subterranean-gate-surface"]'), "the automatic gate still renders").toBeTruthy();
     expect(auto.querySelector(".designerGatePin"), "no pin on an automatic gate").toBeNull();
     expect(auto.querySelector(".designerGateToken.designed"), "no designed class on an automatic gate").toBeNull();
+  });
+});
+
+describe("MapDesigner — designed gate token drag (pointer slide)", () => {
+  const town = { row: 10, col: 10 };
+  const cavern = tileLatticeNeighbors(town)[0];
+  const HEX = 24; // passed explicitly so the test's pixel math matches the render
+
+  /**
+   * jsdom implements neither getScreenCTM nor DOMPoint, so the drag's client →
+   * board mapping needs identity polyfills (client coords == board coords).
+   * Returns the restore function; always call it in finally.
+   */
+  function installSvgPolyfills(): () => void {
+    const svgProto = SVGElement.prototype as unknown as Record<string, unknown>;
+    const hadCTM = Object.prototype.hasOwnProperty.call(svgProto, "getScreenCTM");
+    Object.defineProperty(SVGElement.prototype, "getScreenCTM", {
+      configurable: true,
+      value: () => ({ inverse: () => ({ a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 }) })
+    });
+    const globals = globalThis as { DOMPoint?: unknown };
+    const previousDOMPoint = globals.DOMPoint;
+    globals.DOMPoint = class {
+      x: number;
+      y: number;
+      constructor(x = 0, y = 0) {
+        this.x = x;
+        this.y = y;
+      }
+      matrixTransform(m: { a: number; b: number; c: number; d: number; e: number; f: number }) {
+        return { x: m.a * this.x + m.c * this.y + m.e, y: m.b * this.x + m.d * this.y + m.f };
+      }
+    };
+    return () => {
+      if (!hadCTM) {
+        delete svgProto.getScreenCTM;
+      }
+      if (previousDOMPoint === undefined) {
+        delete globals.DOMPoint;
+      } else {
+        globals.DOMPoint = previousDOMPoint;
+      }
+    };
+  }
+
+  const midpointOf = (pair: GateHexPair) => {
+    const gate = hexToPixel(pair.gateHex, HEX);
+    const entrance = hexToPixel(pair.entranceHex, HEX);
+    return { x: (gate.x + entrance.x) / 2, y: (gate.y + entrance.y) / 2 };
+  };
+
+  const linkedMap = (): CustomMapTilePlan[] => [
+    { row: town.row, col: town.col, group: "starting", faceDown: false },
+    {
+      row: cavern.row,
+      col: cavern.col,
+      group: "subterranean",
+      faceDown: true,
+      subBand: "iv-v",
+      gateLinks: [{ surface: { row: town.row, col: town.col } }] // linked, unpinned
+    }
+  ];
+
+  /** The unpinned link renders at the automatic nearest default. */
+  function defaultPair(): GateHexPair {
+    const [defaultGate] = planSubterraneanGates(
+      [
+        { row: town.row, col: town.col, group: "starting" },
+        { row: cavern.row, col: cavern.col, group: "subterranean" }
+      ],
+      []
+    );
+    return { gateHex: defaultGate.gateHex, entranceHex: defaultGate.entranceHex };
+  }
+
+  it("dragging the designed gate token pins the link to the snapped boundary pair", () => {
+    const restore = installSvgPolyfills();
+    try {
+      const pairs = legalGateHexPairs(town, cavern);
+      const start = defaultPair();
+      // A DIFFERENT legal boundary pair to drop the token on; a pointer at its
+      // midpoint snaps to exactly it (pinned by gate-drag.test.ts).
+      const target = pairs.find(
+        (pair) =>
+          hexSpaceId(pair.gateHex) !== hexSpaceId(start.gateHex) ||
+          hexSpaceId(pair.entranceHex) !== hexSpaceId(start.entranceHex)
+      )!;
+      expect(target).toBeTruthy();
+      const grabAt = midpointOf(start);
+      const dropAt = midpointOf(target);
+      // Sanity: the pointer genuinely travels (beyond the 3px click threshold),
+      // and the drop point snaps to the target pair.
+      expect(Math.abs(dropAt.x - grabAt.x) + Math.abs(dropAt.y - grabAt.y)).toBeGreaterThan(3);
+      const snapped = nearestGateHexPair(dropAt, pairs, HEX)!;
+      expect(hexSpaceId(snapped.gateHex)).toBe(hexSpaceId(target.gateHex));
+
+      let latest = linkedMap();
+      const onChange = vi.fn((next: CustomMapTilePlan[]) => {
+        latest = next;
+      });
+      const { container } = render(
+        <MapDesigner scenarioId="skirmish" customMap={latest} onChange={onChange} hexSize={HEX} />
+      );
+      const token = container.querySelector(".designerGateToken.designed");
+      expect(token, "a draggable designed gate token").toBeTruthy();
+
+      fireEvent.pointerDown(token!, { button: 0, pointerId: 7, clientX: grabAt.x, clientY: grabAt.y });
+      fireEvent.pointerMove(window, { pointerId: 7, clientX: dropAt.x, clientY: dropAt.y });
+      // Mid-drag: the live snap preview marks the token pair as dragging.
+      expect(container.querySelector(".designerGateToken.designed.dragging"), "live drag preview").toBeTruthy();
+      fireEvent.pointerUp(window, { pointerId: 7 });
+
+      // Release committed the pin — the SAME plan shape the ↻ cycle writes.
+      expect(onChange).toHaveBeenCalled();
+      expect(latest[1].gateLinks![0]).toEqual({
+        surface: { row: town.row, col: town.col },
+        gateHex: hexSpaceId(target.gateHex),
+        entranceHex: hexSpaceId(target.entranceHex)
+      });
+    } finally {
+      restore();
+    }
+  });
+
+  it("Escape cancels the drag — no commit, the plan keeps its previous pin", () => {
+    const restore = installSvgPolyfills();
+    try {
+      const pairs = legalGateHexPairs(town, cavern);
+      const start = defaultPair();
+      const target = pairs.find((pair) => hexSpaceId(pair.gateHex) !== hexSpaceId(start.gateHex))!;
+
+      const onChange = vi.fn();
+      const { container } = render(
+        <MapDesigner scenarioId="skirmish" customMap={linkedMap()} onChange={onChange} hexSize={HEX} />
+      );
+      const token = container.querySelector(".designerGateToken.designed")!;
+      const grabAt = midpointOf(start);
+      const dropAt = midpointOf(target);
+      fireEvent.pointerDown(token, { button: 0, pointerId: 7, clientX: grabAt.x, clientY: grabAt.y });
+      fireEvent.pointerMove(window, { pointerId: 7, clientX: dropAt.x, clientY: dropAt.y });
+      expect(container.querySelector(".designerGateToken.designed.dragging"), "preview while dragging").toBeTruthy();
+
+      fireEvent.keyDown(window, { key: "Escape" });
+      // The preview is gone and a later release commits nothing.
+      expect(container.querySelector(".designerGateToken.designed.dragging")).toBeNull();
+      fireEvent.pointerUp(window, { pointerId: 7 });
+      expect(onChange).not.toHaveBeenCalled();
+    } finally {
+      restore();
+    }
   });
 });
 

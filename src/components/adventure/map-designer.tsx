@@ -40,8 +40,10 @@ import {
   type DesignedGateLinkLike,
   type HexCoord,
   type MapTokenKind,
+  type PlannedSubterraneanGate,
   type SecretTileFeature
 } from "@/engine";
+import { nearestGateHexPair, type GateHexPair } from "@/components/adventure/gate-drag";
 import { titleCase } from "@/components/table/utils";
 import {
   MAP_SCALE_MAX,
@@ -442,6 +444,27 @@ export function MapDesigner({
   const [hoverSlot, setHoverSlot] = useState<HexCoord | null>(null);
   /** Landmark chip filter for the clickable tile picker (All / Mine / …). */
   const [tilePickFilter, setTilePickFilter] = useState("all");
+  /**
+   * A live drag of a DESIGNED gate token along its two tiles' shared boundary:
+   * pointermove snaps the token pair to the nearest legal boundary position
+   * (pure math in gate-drag.ts) as a preview; pointerup commits the pin through
+   * the same update path as the ↻ cycle button; pointercancel/Escape discards
+   * (the plan is never touched mid-drag, so cancel restores the previous pin by
+   * construction). `moved` gates commit AND the click-suppression, so a plain
+   * click on the token still opens the cavern popover.
+   */
+  const [gateDrag, setGateDrag] = useState<{
+    cavernCenter: HexCoord;
+    surfaceCenter: HexCoord;
+    pairs: GateHexPair[];
+    hover: GateHexPair | null;
+    startX: number;
+    startY: number;
+    moved: boolean;
+  } | null>(null);
+  // Set when a gate drag actually moved, so the trailing click never also
+  // opens the popover.
+  const gateClickSuppressRef = useRef(false);
 
   const panRef = useRef<{ pointerId: number; startX: number; startY: number; originX: number; originY: number; moved: boolean } | null>(null);
   const suppressClickRef = useRef(false);
@@ -714,6 +737,30 @@ export function MapDesigner({
     [customMap, onChange, closePopover]
   );
 
+  /**
+   * Pin a designed gate link (cavern ↔ Surface) to an exact boundary pair — the
+   * ONE commit path shared by the ↻ cycle button and the gate-token drag, so
+   * both always write the same plan shape.
+   */
+  const pinGateLink = useCallback(
+    (cavernCenter: HexCoord, surface: { row: number; col: number }, pair: GateHexPair) => {
+      const index = customMap.findIndex(
+        (plan) => plan.group === "subterranean" && plan.row === cavernCenter.row && plan.col === cavernCenter.col
+      );
+      const plan = index >= 0 ? customMap[index] : null;
+      if (!plan) {
+        return;
+      }
+      const nextLinks: CustomMapGateLink[] = (plan.gateLinks ?? []).map((candidate) =>
+        candidate.surface.row === surface.row && candidate.surface.col === surface.col
+          ? { surface: candidate.surface, gateHex: hexSpaceId(pair.gateHex), entranceHex: hexSpaceId(pair.entranceHex) }
+          : candidate
+      );
+      updateTile(index, { gateLinks: nextLinks });
+    },
+    [customMap, updateTile]
+  );
+
   // Drag lifecycle: a palette press or a promoted tile press registers window
   // listeners so the ghost follows the pointer anywhere and the drop lands even
   // if it ends outside the board.
@@ -746,6 +793,60 @@ export function MapDesigner({
       window.removeEventListener("pointercancel", onUp);
     };
   }, [drag, slotAt, addTile, moveTile]);
+
+  // Designed-gate token drag lifecycle: pointermove maps the pointer into board
+  // space and snap-previews the token pair at the nearest legal boundary
+  // position; pointerup commits the pin (same path as the ↻ cycle button);
+  // pointercancel/Escape discards — the plan is never touched mid-drag, so
+  // cancelling restores the previous pin by construction.
+  useEffect(() => {
+    if (!gateDrag) {
+      return;
+    }
+    const onMove = (event: PointerEvent) => {
+      const local = clientToLocal(event.clientX, event.clientY);
+      const snapped = local ? nearestGateHexPair(local, gateDrag.pairs, hexSize) : null;
+      setGateDrag((current) =>
+        current
+          ? {
+              ...current,
+              // A small threshold keeps a plain click (open the popover) from
+              // registering as a slide, mirroring the tile-press promotion.
+              moved:
+                current.moved ||
+                Math.abs(event.clientX - current.startX) > 3 ||
+                Math.abs(event.clientY - current.startY) > 3,
+              hover: snapped ?? current.hover
+            }
+          : current
+      );
+    };
+    const onUp = () => {
+      if (gateDrag.moved && gateDrag.hover) {
+        pinGateLink(gateDrag.cavernCenter, gateDrag.surfaceCenter, gateDrag.hover);
+        // The browser still fires a click after the release — swallow it so a
+        // finished slide does not also pop the cavern's options.
+        gateClickSuppressRef.current = true;
+      }
+      setGateDrag(null);
+    };
+    const onCancel = () => setGateDrag(null);
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setGateDrag(null);
+      }
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onCancel);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onCancel);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [gateDrag, clientToLocal, hexSize, pinGateLink]);
 
   if (!scenario) {
     return null;
@@ -1015,12 +1116,7 @@ export function MapDesigner({
         : 0;
     }
     const nextPair = pairs[(currentIndex + 1) % pairs.length];
-    const nextLinks: CustomMapGateLink[] = (selected.gateLinks ?? []).map((candidate) =>
-      candidate.surface.row === surface.row && candidate.surface.col === surface.col
-        ? { surface: candidate.surface, gateHex: hexSpaceId(nextPair.gateHex), entranceHex: hexSpaceId(nextPair.entranceHex) }
-        : candidate
-    );
-    updateTile(selectedIndex, { gateLinks: nextLinks });
+    pinGateLink(cavernCenter, surface, nextPair);
   };
 
   /** Select the cavern that owns a designed gate and open its options popover. */
@@ -1032,6 +1128,31 @@ export function MapDesigner({
       setSelectedIndex(index);
       setPopoverAt({ x: clientX, y: clientY });
     }
+  };
+
+  /** Start dragging a designed gate token along its two tiles' shared boundary. */
+  const beginGateDrag = (gate: PlannedSubterraneanGate) => (event: React.PointerEvent) => {
+    if (event.button !== 0) {
+      return;
+    }
+    // Take the press for the gate so neither a board pan nor a tile press starts.
+    event.stopPropagation();
+    // Keep mid-drag moves flowing even when the pointer leaves the token; jsdom
+    // has no pointer-capture implementation, hence the optional call.
+    (event.currentTarget as Element).setPointerCapture?.(event.pointerId);
+    const pairs = legalGateHexPairs(gate.surfaceCenter, gate.cavernCenter);
+    if (pairs.length === 0) {
+      return;
+    }
+    setGateDrag({
+      cavernCenter: gate.cavernCenter,
+      surfaceCenter: gate.surfaceCenter,
+      pairs,
+      hover: null,
+      startX: event.clientX,
+      startY: event.clientY,
+      moved: false
+    });
   };
 
   // --- SVG layers ----------------------------------------------------------
@@ -1247,20 +1368,39 @@ export function MapDesigner({
   // crossing each cavern gets. (The gate hex is hidden until the Surface tile is
   // revealed in play, but the designer shows the whole connection up front.)
   for (const [index, gate] of plannedGates.entries()) {
-    const gatePixel = hexToPixel(gate.gateHex, size);
-    const entrancePixel = hexToPixel(gate.entranceHex, size);
+    // While THIS designed gate is being dragged, draw its token pair at the
+    // snapped hover position instead of the committed one (live preview; the
+    // plan itself only changes on release).
+    const draggingThis = Boolean(
+      gateDrag?.moved &&
+        gateDrag.hover &&
+        gateDrag.cavernCenter.row === gate.cavernCenter.row &&
+        gateDrag.cavernCenter.col === gate.cavernCenter.col &&
+        gateDrag.surfaceCenter.row === gate.surfaceCenter.row &&
+        gateDrag.surfaceCenter.col === gate.surfaceCenter.col
+    );
+    const drawGateHex = draggingThis ? gateDrag!.hover!.gateHex : gate.gateHex;
+    const drawEntranceHex = draggingThis ? gateDrag!.hover!.entranceHex : gate.entranceHex;
+    const gatePixel = hexToPixel(drawGateHex, size);
+    const entrancePixel = hexToPixel(drawEntranceHex, size);
     const tokenWidth = hexWidth;
     const tokenHeight = 2 * size;
     // A DESIGNER-chosen gate is drawn distinct from an automatic one — a brighter
-    // link + a pin glyph — and clicking either half selects the cavern that owns
-    // it (so the connect controls / slide button are one click away).
-    const designedClass = gate.designed ? " designed" : "";
+    // link + a pin glyph — draggable along the shared edge, and clicking either
+    // half selects the cavern that owns it (connect controls one click away).
+    const designedClass = `${gate.designed ? " designed" : ""}${draggingThis ? " dragging" : ""}`;
     const gateTitle = gate.designed
-      ? "Designer Subterranean Gate — click to edit its links or slide it along the edge."
+      ? "Designer Subterranean Gate — drag it along the shared edge, or click to edit its links."
       : "Automatic Subterranean Gate — heroes descend here from the Surface tile.";
+    const onGatePointerDown = gate.designed ? beginGateDrag(gate) : undefined;
     const onGateClick = gate.designed
       ? (event: React.MouseEvent) => {
           event.stopPropagation();
+          // A finished slide fires a trailing click — that one never opens the popover.
+          if (gateClickSuppressRef.current) {
+            gateClickSuppressRef.current = false;
+            return;
+          }
           selectCavernForGate(gate.cavernCenter, event.clientX, event.clientY);
         }
       : undefined;
@@ -1281,8 +1421,9 @@ export function MapDesigner({
         href={assetUrl(subterraneanGateTokenImage("surface"))}
         key={`gate-surface-${index}`}
         onClick={onGateClick}
+        onPointerDown={onGatePointerDown}
         preserveAspectRatio="none"
-        style={gate.designed ? { cursor: "pointer" } : undefined}
+        style={gate.designed ? { cursor: "grab" } : undefined}
         width={tokenWidth}
         x={gatePixel.x - tokenWidth / 2}
         y={gatePixel.y - size}
@@ -1297,8 +1438,9 @@ export function MapDesigner({
         href={assetUrl(subterraneanGateTokenImage("subterranean"))}
         key={`gate-entrance-${index}`}
         onClick={onGateClick}
+        onPointerDown={onGatePointerDown}
         preserveAspectRatio="none"
-        style={gate.designed ? { cursor: "pointer" } : undefined}
+        style={gate.designed ? { cursor: "grab" } : undefined}
         width={tokenWidth}
         x={entrancePixel.x - tokenWidth / 2}
         y={entrancePixel.y - size}
@@ -1962,7 +2104,7 @@ export function MapDesigner({
                       <>
                         <small className="popoverHint">
                           Connect this cavern to any touching Surface tile — link several to give the cavern several gates.
-                          Use ↻ to slide a gate along the shared edge.
+                          Drag a gate token along the shared edge (or use ↻ Move) to place it exactly.
                         </small>
                         <div className="popoverGateLinkList">
                           {selectedCavernSurfaces.map((surface) => {
