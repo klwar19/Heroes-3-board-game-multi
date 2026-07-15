@@ -1,5 +1,6 @@
 import {
   isSecretTileFeature,
+  normalizeDesignedBorders,
   parseHexSpaceId,
   sanitizeCustomMapPreset,
   scenarioDefinitions,
@@ -146,6 +147,9 @@ function sanitizeTile(tile: unknown): CustomMapTilePlan | null {
           .filter((link): link is CustomMapGateLink => link !== null)
           .slice(0, MAX_DESIGNED_GATE_LINKS)
       : [];
+  // Designer yellow borders (any group): keep unique absolute directions 0–5,
+  // drop garbage, cap at 6. The engine helper is the single normalisation rule.
+  const extraBorders = normalizeDesignedBorders(candidate.extraBorders);
 
   return {
     row: candidate.row as number,
@@ -158,7 +162,8 @@ function sanitizeTile(tile: unknown): CustomMapTilePlan | null {
     ...(candidate.seaBand === "iv-v" || candidate.seaBand === "vi-vii" ? { seaBand: candidate.seaBand } : {}),
     ...(candidate.subBand === "iv-v" || candidate.subBand === "vi-vii" ? { subBand: candidate.subBand } : {}),
     ...(token ? { token } : {}),
-    ...(gateLinks.length > 0 ? { gateLinks } : {})
+    ...(gateLinks.length > 0 ? { gateLinks } : {}),
+    ...(extraBorders.length > 0 ? { extraBorders } : {})
   };
 }
 

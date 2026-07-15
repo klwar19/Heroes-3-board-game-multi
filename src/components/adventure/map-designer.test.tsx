@@ -454,6 +454,42 @@ describe("MapDesigner — designer-chosen gate links", () => {
     expect(latest[1].gateLinks).toEqual([{ surface: { row: town.row, col: town.col } }]);
   });
 
+  it("adds a yellow border on a direction chip (onChange carries extraBorders), draws it, then removes it", () => {
+    const town = { row: 10, col: 10 };
+    const far = tileLatticeNeighbors(town)[1];
+    let latest: CustomMapTilePlan[] = [
+      { row: town.row, col: town.col, group: "starting", faceDown: false },
+      { row: far.row, col: far.col, group: "far", faceDown: true }
+    ];
+    const onChange = vi.fn((next: CustomMapTilePlan[]) => {
+      latest = next;
+    });
+    let container = renderDesigner(latest, onChange);
+    // No border drawn yet.
+    expect(container.querySelector(".designerBorderLine")).toBeNull();
+
+    const popover = openTilePopover(container, 1);
+    const chip = popover.querySelector('.popoverBorderChip[data-direction="1"]'); // E edge
+    expect(chip, "yellow-border direction chip present").toBeTruthy();
+    fireEvent.click(chip!);
+    expect(onChange).toHaveBeenCalled();
+    // The far plan now carries the absolute direction 1 (E).
+    expect(latest[1].extraBorders).toEqual([1]);
+
+    // Re-render with the updated plan: the preview now draws the designed border
+    // (a full three-edge arc) and the chip reads pressed.
+    cleanup();
+    container = renderDesigner(latest, onChange);
+    expect(container.querySelectorAll(".designerBorderLine").length).toBe(3);
+
+    // Toggling the same chip off round-trips back to no extraBorders.
+    const popover2 = openTilePopover(container, 1);
+    const chipOn = popover2.querySelector('.popoverBorderChip[data-direction="1"]');
+    expect(chipOn!.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(chipOn!);
+    expect(latest[1].extraBorders).toBeUndefined();
+  });
+
   it("un-links on a second toggle (round-trips back to no gateLinks)", () => {
     let latest: CustomMapTilePlan[] = [
       { row: town.row, col: town.col, group: "starting", faceDown: false },

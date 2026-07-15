@@ -36,7 +36,8 @@ const NO_BANK_SLOTS: ReadonlySet<number> = new Set();
 export function getTileBorderSegments(
   def: TileDefinition,
   bankSlots: ReadonlySet<number> = NO_BANK_SLOTS,
-  showBankBorders = false
+  showBankBorders = false,
+  options: { extraBorders?: readonly number[]; rotation?: number } = {}
 ): TileBorderSegment[] {
   const segments = new Map<string, TileBorderSegment>();
   const add = (slot: number, edge: number) => {
@@ -105,6 +106,26 @@ export function getTileBorderSegments(
     if (segment) {
       add(segment.slot, segment.edge);
     }
+  }
+
+  // Designer-placed yellow borders: ABSOLUTE board directions (0-5) that seal a
+  // ring slot's outer arc independent of the printed art. Segments are emitted
+  // in the tile's LOCAL frame (like every other arc above), so the consumer that
+  // re-applies `rotation` at draw time lands the arc back on the absolute
+  // direction — meaning a designed border stays put while the tile is rotated.
+  // Converting absolute → local: local = absolute − rotation, and the ring slot
+  // facing local direction d is d+1, exposing edges d-1, d, d+1 (identical shape
+  // to an `outerImpassable` arc, so it renders with the same styling class).
+  const rotation = options.rotation ?? 0;
+  for (const absolute of options.extraBorders ?? []) {
+    if (!Number.isInteger(absolute) || absolute < 0 || absolute > 5) {
+      continue;
+    }
+    const local = (((absolute - rotation) % 6) + 6) % 6;
+    const slot = local + 1;
+    add(slot, local - 1);
+    add(slot, local);
+    add(slot, local + 1);
   }
 
   return [...segments.values()];

@@ -38,6 +38,7 @@ import {
   getUnitSide,
   instantiateTile,
   NEUTRAL_DECK_IDS,
+  normalizeDesignedBorders,
   recomputeSubterraneanGates,
   seaTileBand,
   subterraneanTileBand,
@@ -934,11 +935,43 @@ export function validateCustomMapPlan(
     }
   }
 
+  // Designer yellow borders: normalise every accepted plan's `extraBorders` to
+  // unique absolute directions 0–5 (garbage dropped). Legal on ANY group —
+  // starting, supply, sea, subterranean — so this runs over the whole list.
+  for (let index = 0; index < accepted.length; index += 1) {
+    const plan = accepted[index];
+    if (plan.extraBorders === undefined) {
+      continue;
+    }
+    const borders = normalizeDesignedBorders(plan.extraBorders);
+    if (borders.length > 0) {
+      accepted[index] = { ...plan, extraBorders: borders };
+    } else {
+      const next = { ...plan };
+      delete next.extraBorders;
+      accepted[index] = next;
+    }
+  }
+
   return { accepted, problems };
 }
 
 /** A designer cavern hosts at most this many Subterranean Gate links (distinct partners). */
 export const MAX_DESIGNED_GATE_LINKS = 4;
+
+/**
+ * Copies a designer plan's yellow borders (absolute directions 0–5) onto the
+ * freshly-placed tile instance, so the seal holds from the moment the tile is
+ * placed — including while it is face-down and after any later rotation.
+ * Normalised again here so the placed instance is always canonical regardless of
+ * the plan's provenance.
+ */
+function applyDesignedBorders(tile: MapTileState, plan: CustomMapTilePlan): void {
+  const borders = normalizeDesignedBorders(plan.extraBorders);
+  if (borders.length > 0) {
+    tile.extraBorders = borders;
+  }
+}
 
 /**
  * Pops the topmost sea tile of a given wave band (Ⅳ–Ⅴ or Ⅵ–Ⅶ) from a single
@@ -1411,9 +1444,8 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   // Seat positions: the designer's own Ⅰ tiles in placement order when it
   // drew any, otherwise the scenario sheet's fixed seats. Each seat falls back
   // to the scenario seat if the design left it unplaced.
-  const designerStartCenters = (customMap ?? [])
-    .filter((plan) => plan.group === "starting")
-    .map((plan) => ({ row: plan.row, col: plan.col }));
+  const designerStartPlans = (customMap ?? []).filter((plan) => plan.group === "starting");
+  const designerStartCenters = designerStartPlans.map((plan) => ({ row: plan.row, col: plan.col }));
   const startCenterFor = (index: number): HexCoord =>
     designerStartCenters[index] ?? scenario.layout.starts[index];
 
@@ -1424,6 +1456,10 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     const startTileId = startingTileByFaction[config.factionId] ?? "S1";
     const center = startCenterFor(index);
     const tile = instantiateTile(adventure, startTileId, center, 0, false);
+    // A designer may draw yellow borders on a starting Town tile too.
+    if (designerStartPlans[index]) {
+      applyDesignedBorders(tile, designerStartPlans[index]);
+    }
     const townFieldId = Object.values(adventure.fields).find(
       (field) => field.tileInstanceId === tile.id && field.slot === 0
     )?.spaceId;
@@ -1599,12 +1635,14 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
           // Orientation rides along for both secret pins and random draws —
           // the tile is revealed at the slot's rotation.
           const tile = instantiateTile(adventure, tileDefId, center, plan.rotation ?? 0, true);
+          applyDesignedBorders(tile, plan);
           if (plan.token) {
             plannedTokens.push({ plan, tile });
           }
         }
       } else if (plan.tileDefId) {
         const tile = instantiateTile(adventure, plan.tileDefId, center, plan.rotation ?? 0, false);
+        applyDesignedBorders(tile, plan);
         if (plan.token) {
           plannedTokens.push({ plan, tile });
         }

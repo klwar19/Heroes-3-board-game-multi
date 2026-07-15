@@ -60,6 +60,7 @@ import {
   hexNeighbors,
   hexSpaceId,
   parseHexSpaceId,
+  slotDirection,
   tileCentersAdjacent,
   tileCentersOverlap,
   tileFootprint,
@@ -916,9 +917,58 @@ export function isTileSlotOuterSealed(tileDefId: string, slot: number): boolean 
   return def ? Boolean(def.outerImpassable[slot - 1]) : false;
 }
 
+/** A designer `extraBorders` list holds at most this many entries (one per board direction). */
+export const MAX_DESIGNED_BORDERS = 6;
+
+/**
+ * Normalises a designer-placed border list to the canonical shape the whole
+ * engine assumes: UNIQUE integer board directions 0–5, ascending, capped at
+ * {@link MAX_DESIGNED_BORDERS}. Garbage — non-integers, out-of-range, duplicates
+ * — is dropped. Shared by the persistence sanitiser (`sanitizeTile`) and the
+ * setup validator ({@link validateCustomMapPlan}) so a stored map and a
+ * freshly-designed one seal identically.
+ */
+export function normalizeDesignedBorders(value: unknown): number[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const seen = new Set<number>();
+  for (const raw of value) {
+    if (Number.isInteger(raw) && (raw as number) >= 0 && (raw as number) <= 5) {
+      seen.add(raw as number);
+    }
+  }
+  return [...seen].sort((a, b) => a - b).slice(0, MAX_DESIGNED_BORDERS);
+}
+
+/**
+ * Whether ring `slot` of a PLACED tile is sealed by a DESIGNER-placed yellow
+ * border (`tile.extraBorders`, absolute board directions 0–5) rather than by
+ * the printed art. Unlike {@link isTileSlotOuterSealed} (a def-level, tile-frame
+ * lookup) this reads the placed instance's live rotation: the field in slot `s`
+ * of a tile rotated by `r` faces absolute direction `slotDirection(s, r) =
+ * (s − 1 + r) % 6`, so a designed border on that absolute direction seals this
+ * slot no matter how the tile was rotated or which def a face-down slot drew.
+ * The centre (slot 0) is never sealed.
+ */
+export function isTileSlotDesignedSealed(tile: MapTileState, slot: number): boolean {
+  if (slot === 0 || !tile.extraBorders || tile.extraBorders.length === 0) {
+    return false;
+  }
+  const direction = slotDirection(slot, tile.rotation);
+  return direction !== null && tile.extraBorders.includes(direction);
+}
+
 export function isOuterEdgeSealed(adventure: AdventureState, field: MapFieldState): boolean {
   const tile = adventure.tiles[field.tileInstanceId];
-  return tile ? isTileSlotOuterSealed(tile.tileDefId, field.slot) : false;
+  if (!tile) {
+    return false;
+  }
+  // A slot's outer arc is sealed by the PRINTED tile line (`outerImpassable`,
+  // tile-frame) OR by a DESIGNER-placed yellow border (`extraBorders`, absolute
+  // frame). Both feed the single source of truth so every crossing / discovery /
+  // placement read treats a deliberate designed line exactly like a printed one.
+  return isTileSlotOuterSealed(tile.tileDefId, field.slot) || isTileSlotDesignedSealed(tile, field.slot);
 }
 
 /**

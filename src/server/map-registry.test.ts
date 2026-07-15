@@ -256,6 +256,34 @@ describe("sanitizeSharedMap", () => {
     expect(record!.tiles[0].gateLinks).toHaveLength(MAX_DESIGNED_GATE_LINKS);
   });
 
+  it("preserves designer yellow borders round-trip; drops garbage, dedupes, caps at 6", () => {
+    // sanitizeTile rebuilds each plan from an allow-list, so `extraBorders` must
+    // be carried explicitly or a saved map silently loses its designer walls on
+    // reload. Legal on ANY tile group (a starting town too).
+    const record = sanitizeSharedMap(
+      {
+        id: "m",
+        tiles: [
+          // Well-formed borders on a starting town: garbage (7, -1, "x", 2.5) is
+          // dropped, the duplicate 0 deduped, and the survivors kept ascending.
+          { row: 5, col: 5, group: "starting", faceDown: false, extraBorders: [0, 3, 0, 7, -1, "x", 2.5] },
+          // Every direction 0-5 (with dupes) → capped/deduped to the six distinct.
+          { row: 9, col: 9, group: "far", faceDown: true, extraBorders: [0, 1, 2, 3, 4, 5, 5, 4, 3] },
+          // Not an array → no extraBorders on the plan at all.
+          { row: 12, col: 12, group: "near", faceDown: true, extraBorders: "nope" },
+          // All-garbage list → property absent entirely.
+          { row: 15, col: 15, group: "sea", faceDown: true, extraBorders: [9, -2, 3.3] }
+        ]
+      },
+      1
+    );
+    expect(record!.tiles[0].extraBorders).toEqual([0, 3]);
+    expect(record!.tiles[1].extraBorders).toEqual([0, 1, 2, 3, 4, 5]);
+    expect(record!.tiles[1].extraBorders!.length).toBeLessThanOrEqual(6);
+    expect(record!.tiles[2]).not.toHaveProperty("extraBorders");
+    expect(record!.tiles[3]).not.toHaveProperty("extraBorders");
+  });
+
   it("falls back to the default scenario when the id is unknown", () => {
     const record = sanitizeSharedMap({ id: "m", scenarioId: "ghost", tiles: [] }, 1);
     expect(record!.scenarioId).toBe("skirmish");

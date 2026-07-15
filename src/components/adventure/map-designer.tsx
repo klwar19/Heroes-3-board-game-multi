@@ -383,6 +383,29 @@ function hexCorners(cx: number, cy: number, size: number): string {
   return points.join(" ");
 }
 
+/** Board-direction labels (0-5) for the designer's yellow-border rose. */
+const BORDER_DIRECTION_LABELS = ["NE", "E", "SE", "SW", "W", "NW"] as const;
+
+/**
+ * The two endpoints of a hex's edge facing `direction` (0-5), matching the
+ * {@link hexCorners} / {@link flowerOutline} corner convention, so a drawn
+ * border line sits exactly on the flower's outer edge.
+ */
+function hexEdgePoints(
+  cx: number,
+  cy: number,
+  size: number,
+  direction: number
+): { x1: number; y1: number; x2: number; y2: number } {
+  const corner = (index: number) => {
+    const angle = (Math.PI / 180) * (60 * index - 30);
+    return { x: cx + size * Math.cos(angle), y: cy + size * Math.sin(angle) };
+  };
+  const a = corner((direction + 5) % 6);
+  const b = corner(direction % 6);
+  return { x1: a.x, y1: a.y, x2: b.x, y2: b.y };
+}
+
 /** The outline of a 7-hex flower as one SVG path (outer edges only). */
 function flowerOutline(center: HexCoord, size: number): string {
   const cells = tileFootprint(center, 0);
@@ -722,6 +745,9 @@ export function MapDesigner({
           if (changes.gateLinks === undefined && "gateLinks" in changes) {
             delete next.gateLinks;
           }
+          if (changes.extraBorders === undefined && "extraBorders" in changes) {
+            delete next.extraBorders;
+          }
           return next;
         })
       );
@@ -1059,6 +1085,23 @@ export function MapDesigner({
   const isGateLinked = (surface: { row: number; col: number }): boolean =>
     Boolean(selected?.gateLinks?.some((link) => link.surface.row === surface.row && link.surface.col === surface.col));
 
+  /**
+   * Toggle a designer-placed yellow border on the selected tile at an ABSOLUTE
+   * board direction (0-5). The border seals that outer arc in game — identical
+   * to a printed one — regardless of any face-down draw or later rotation.
+   * Legal on every tile group, so no group gate here.
+   */
+  const toggleBorder = (direction: number) => {
+    if (selectedIndex === null || !selected) {
+      return;
+    }
+    const current = selected.extraBorders ?? [];
+    const next = current.includes(direction)
+      ? current.filter((entry) => entry !== direction)
+      : [...current, direction].sort((a, b) => a - b);
+    updateTile(selectedIndex, { extraBorders: next.length > 0 ? next : undefined });
+  };
+
   /** Toggle a designer gate link between the selected cavern and a touching Surface tile. */
   const toggleGateLink = (surface: { row: number; col: number }) => {
     if (selectedIndex === null || !selected || selected.group !== "subterranean") {
@@ -1162,6 +1205,9 @@ export function MapDesigner({
   const labelLayer: React.ReactNode[] = [];
   // Subterranean Gate tokens + the "no way in" warnings, drawn above the tiles.
   const gateLayer: React.ReactNode[] = [];
+  // Designer-placed yellow borders, drawn above the tiles so the designer sees
+  // exactly the impassable edges players will see.
+  const borderLayer: React.ReactNode[] = [];
 
   const renderFlowerCells = (
     center: HexCoord,
@@ -1317,6 +1363,30 @@ export function MapDesigner({
         style={{ stroke: isSelected ? "#ffd766" : secretPin ? "#9ad0ff" : GROUP_COLORS[plan.group] }}
       />
     );
+
+    // Designer-placed yellow borders — drawn at their ABSOLUTE board direction
+    // (independent of rotation), so the designer sees exactly the impassable
+    // edge players will get. `tileFootprint(center, 0)[d+1]` is the ring hex
+    // facing absolute direction d; each border seals its three outward edges.
+    if (plan.extraBorders && plan.extraBorders.length > 0) {
+      const flower = tileFootprint(center, 0);
+      for (const absolute of plan.extraBorders) {
+        if (!Number.isInteger(absolute) || absolute < 0 || absolute > 5) {
+          continue;
+        }
+        const { x, y } = hexToPixel(flower[absolute + 1], size);
+        for (const edge of [absolute - 1, absolute, absolute + 1]) {
+          const direction = ((edge % 6) + 6) % 6;
+          borderLayer.push(
+            <line
+              className="designerBorderLine"
+              key={`plan-border-${index}-${absolute}-${direction}`}
+              {...hexEdgePoints(x, y, size - 0.8, direction)}
+            />
+          );
+        }
+      }
+    }
 
     if (isStart) {
       labelLayer.push(
@@ -1742,6 +1812,7 @@ export function MapDesigner({
             {outlineLayer}
             {labelLayer}
             {gateLayer}
+            {borderLayer}
           </g>
         </svg>
 
@@ -2145,6 +2216,37 @@ export function MapDesigner({
                 ) : null}
               </>
             )}
+
+            {/* Designer yellow borders — deliberate impassable edges. Legal on
+                any tile group, so this shows for starting towns and supply tiles
+                alike. Each chip toggles an ABSOLUTE board direction (0-5). */}
+            <div className="popoverBorders">
+              <div className="popoverSectionLabel">Yellow borders (impassable edges)</div>
+              <small className="popoverHint">
+                Seal an outer edge of this tile — heroes can&apos;t cross, discover or place across it (only Expert
+                Pathfinding does), exactly like a printed yellow line. Borders are drawn on the board, so they stay put
+                when the tile is rotated or a face-down slot draws its tile.
+              </small>
+              <div className="popoverBorderRose" role="group" aria-label="Tile edge yellow borders">
+                {BORDER_DIRECTION_LABELS.map((label, direction) => {
+                  const on = Boolean(selected.extraBorders?.includes(direction));
+                  return (
+                    <button
+                      aria-label={`${on ? "Remove" : "Add"} yellow border on the ${label} edge`}
+                      aria-pressed={on}
+                      className={`popoverBorderChip${on ? " active" : ""}`}
+                      data-direction={direction}
+                      key={direction}
+                      onClick={() => toggleBorder(direction)}
+                      title={`${label} edge`}
+                      type="button"
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
 
             <button className="popoverRemove" onClick={() => removeTile(selectedIndex as number)} type="button">
               <Trash2 size={13} /> Remove
