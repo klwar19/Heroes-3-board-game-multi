@@ -58,6 +58,7 @@ import {
   NewDayOverlay,
   AstrologersProclamationOverlay,
   EventDrawnOverlay,
+  MapEventOverlay,
   AfkVotePanel,
   ResetVotePanel,
   ReactionTray,
@@ -73,7 +74,8 @@ import {
   type MapNoticeCue,
   type NewDayCue,
   type AstrologersProclamationCue,
-  type EventDrawnCue
+  type EventDrawnCue,
+  type MapEventCue
 } from "@/components/table/overlays";
 import { CardZoomProvider, useCardZoom, ZoomButton } from "@/components/table/zoom";
 import {
@@ -767,6 +769,7 @@ export default function Home() {
   });
   const [astrologerCue, setAstrologerCue] = useState<AstrologersProclamationCue | null>(null);
   const [eventCue, setEventCue] = useState<EventDrawnCue | null>(null);
+  const [mapEventCue, setMapEventCue] = useState<MapEventCue | null>(null);
   const [drawCue, setDrawCue] = useState<DrawCue | null>(null);
   const [moveCue, setMoveCue] = useState<HeroMoveCue | null>(null);
   // Single-player: a computer opponent's whole map turn settles at once, so its
@@ -842,6 +845,9 @@ export default function Home() {
   // Event draws (Fortress deck) already popped as the big EventDrawnOverlay —
   // one pop per draw, never replayed on reconnect.
   const seenEventDrawIdsRef = useRef<Set<string>>(new Set());
+  // Designed-map timed events already popped as the MapEventOverlay —
+  // one pop per firing, never replayed on reconnect.
+  const seenMapEventIdsRef = useRef<Set<string>>(new Set());
   // Parallel-turn stop warnings already popped (never replayed on reconnect).
   const seenParallelStopIdsRef = useRef<Set<string>>(new Set());
   const seenNeutralControlIdsRef = useRef<Set<string>>(new Set());
@@ -1181,6 +1187,10 @@ export default function Home() {
       seenEventDrawIdsRef.current = new Set(
         presentationEvents.filter((event) => event.type === "EVENT_CARD_DRAWN").map((event) => event.id)
       );
+      // ...and without re-popping past designed-map timed events.
+      seenMapEventIdsRef.current = new Set(
+        presentationEvents.filter((event) => event.type === "MAP_PRESET_TRIGGERED").map((event) => event.id)
+      );
       // Fresh room connection: drop any presentation state from the last room.
       setFxCues([]);
       setHiddenHandTail(0);
@@ -1202,6 +1212,7 @@ export default function Home() {
       setNewDay({ current: null, queue: [] });
       setAstrologerCue(null);
       setEventCue(null);
+      setMapEventCue(null);
       deferredStartDrawRef.current = null;
       pendingDiceFeedRef.current = { items: [], sounds: [] };
       // Mid-barrier (re)connect: the table is still resolving this round's
@@ -1649,6 +1660,29 @@ export default function Home() {
               viewerIsDrawer: latest.drawerId === viewerRef.current
             });
           }
+        }
+      }
+
+      // Designed-map timed events (map-designer "Timed events"): pop the ornate
+      // announcement card once per firing. All effects due the same round fire
+      // in one action, so the batch stacks into a single card.
+      {
+        const freshMapEvents = presentationEvents.filter(
+          (event): event is Extract<GameEvent, { type: "MAP_PRESET_TRIGGERED" }> =>
+            event.type === "MAP_PRESET_TRIGGERED" && !seenMapEventIdsRef.current.has(event.id)
+        );
+        for (const event of freshMapEvents) {
+          seenMapEventIdsRef.current.add(event.id);
+        }
+        const first = freshMapEvents[0];
+        if (first) {
+          const messages = freshMapEvents.map((event) => {
+            // The engine line reads "Map event (round N): every player …" — the
+            // card's own header already says that, so show just the effect.
+            const stripped = event.message.replace(/^Map event \(round \d+\):\s*/i, "");
+            return stripped.charAt(0).toUpperCase() + stripped.slice(1);
+          });
+          setMapEventCue({ id: first.id, round: first.round ?? nextState.round, messages });
         }
       }
 
@@ -3405,6 +3439,7 @@ export default function Home() {
     setMoraleCue({ current: null, queue: [] });
     setAstrologerCue(null);
     setEventCue(null);
+    setMapEventCue(null);
     setDrawCue(null);
     setMoveCue(null);
     setFxCues([]);
@@ -3424,7 +3459,7 @@ export default function Home() {
 
   const presentationActive = Boolean(
     dice.current || mapDice.current || mapNotice.current || firstRoll || newDay.current || moraleCue.current ||
-    astrologerCue || eventCue || drawCue || moveCue || fxCues.length > 0 || combatPresenting
+    astrologerCue || eventCue || mapEventCue || drawCue || moveCue || fxCues.length > 0 || combatPresenting
   );
   useEffect(() => {
     if (!presentationActive) {
@@ -5832,9 +5867,12 @@ export default function Home() {
           {!firstRoll && !newDay.current && !astrologerCue && eventCue ? (
             <EventDrawnOverlay cue={eventCue} key={eventCue.id} onDone={() => setEventCue(null)} />
           ) : null}
+          {!firstRoll && !newDay.current && !astrologerCue && !eventCue && mapEventCue ? (
+            <MapEventOverlay cue={mapEventCue} key={mapEventCue.id} onDone={() => setMapEventCue(null)} />
+          ) : null}
           {/* Morale-card moment: waits out dice and the bigger round ceremonies,
               then pops the card with its good/bad-morale sting. */}
-          {!firstRoll && !newDay.current && !astrologerCue && !eventCue && !mapDice.current && moraleCue.current ? (
+          {!firstRoll && !newDay.current && !astrologerCue && !eventCue && !mapEventCue && !mapDice.current && moraleCue.current ? (
             <MoraleCardOverlay cue={moraleCue.current} key={moraleCue.current.id} onDone={dismissMoraleCue} />
           ) : null}
           <FxStage cues={fxCues} onDone={handleFxDone} />
@@ -6118,11 +6156,14 @@ export default function Home() {
       {!firstRoll && !dice.current && !newDay.current && !astrologerCue && eventCue ? (
         <EventDrawnOverlay cue={eventCue} key={eventCue.id} onDone={() => setEventCue(null)} />
       ) : null}
+      {!firstRoll && !dice.current && !newDay.current && !astrologerCue && !eventCue && mapEventCue ? (
+        <MapEventOverlay cue={mapEventCue} key={mapEventCue.id} onDone={() => setMapEventCue(null)} />
+      ) : null}
       {/* Morale-card moment over the battlefield: a Negative card striking
           mid-fight (skipped activation, forced −1 die…) or a Positive card
           being used pops with its art and sting — but only once the dice and
           the strike animation they gate have fully played out. */}
-      {!firstRoll && !dice.current && !combatPresenting && !newDay.current && !astrologerCue && !eventCue && moraleCue.current ? (
+      {!firstRoll && !dice.current && !combatPresenting && !newDay.current && !astrologerCue && !eventCue && !mapEventCue && moraleCue.current ? (
         <MoraleCardOverlay cue={moraleCue.current} key={moraleCue.current.id} onDone={dismissMoraleCue} />
       ) : null}
       <FxStage cues={fxCues} onDone={handleFxDone} />
