@@ -145,4 +145,34 @@ describe("PASS_REACTION under-min Power guard", () => {
     expect(next.stack.length).toBe(0);
     expect(next.combat!.units.unit_p2_skeletons.damage).toBe(0);
   });
+
+  it("a FORCED-resolution pass (AFK drop / turn timeout) is never blocked — the cast just fizzles", () => {
+    // The AFK-drop and turn-timeout drivers hard-code PASS_REACTION and cannot
+    // fuel; if the under-min guard blocked their pass the driver would soft-lock
+    // (driveAfkDrop bails on error and re-runs the same blocked pass forever).
+    // While a force-drop/timeout is armed for the caster, the pass must go
+    // through even though they still hold fuel.
+    for (const armed of ["droppingPlayerId", "turnTimeoutPlayerId"] as const) {
+      const casted = castImplosionWithPowerCards(`impl-forced-${armed}`);
+      // Sanity: without the force flag the caster's own pass is rejected.
+      const control = applyAction(casted, { type: "PASS_REACTION", playerId: "p1" });
+      expect(control.errors.length, `${armed}: control pass should still be blocked`).toBeGreaterThan(0);
+
+      // Arm the force-resolution for p1, then the same pass must succeed.
+      casted.afk = { lastActionAt: {}, vote: null, ...(casted.afk ?? {}), [armed]: "p1" };
+      let next = applyAction(casted, { type: "PASS_REACTION", playerId: "p1" });
+      expect(next.errors, `${armed}: forced pass must not error`).toEqual([]);
+      let state = next.state;
+      let safety = 12;
+      while (state.reactionWindow && safety-- > 0) {
+        const passer = state.reactionWindow.priorityPlayerId;
+        next = applyAction(state, { type: "PASS_REACTION", playerId: passer });
+        expect(next.errors, next.errors.map((e) => e.message).join("; ")).toEqual([]);
+        state = next.state;
+      }
+      // Implosion resolved at Power 0 → 0 damage (fizzle), and the stack cleared.
+      expect(state.stack.length, `${armed}: stack should clear`).toBe(0);
+      expect(state.combat!.units.unit_p2_skeletons.damage, `${armed}: 0-damage fizzle`).toBe(0);
+    }
+  });
 });

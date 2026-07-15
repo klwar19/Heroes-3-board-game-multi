@@ -126,21 +126,25 @@ describe("Spell Book — casting in combat", () => {
     expect(afterHand.players.p1.combatStats.spellsCastThisRound).toBe(1);
 
     // The Book cast is STILL offered — the raised limit (2) is not yet reached.
+    // Cast the Book Lightning Bolt (it deals damage at Power 0, so the cast
+    // resolves on a plain Pass — Implosion stays in the Book untouched, so the
+    // third-cast block below proves the LIMIT, not an emptied Book, caps casts).
     const bookCast = legal(afterHand, "p1").find(
       (l) =>
         l.action.type === "CAST_SPELL" &&
-        l.action.cardId === "spell.implosion" &&
+        l.action.cardId === "spell.lightning_bolt" &&
         l.action.fromSpellBook === true &&
         l.action.target?.type === "unit" &&
         l.action.target.unitId === SKELETONS
     );
     expect(bookCast, "the raised limit still allows a Book cast after a hand cast").toBeTruthy();
 
-    // Second cast: the Book Implosion (2 of 2) — it counts toward the same limit.
+    // Second cast: the Book Lightning Bolt (2 of 2) — it counts toward the same limit.
     const afterBook = passAll(applyOk(afterHand, bookCast!.action));
     expect(afterBook.players.p1.combatStats.spellsCastThisRound).toBe(2);
 
-    // Now the raised limit is reached: no third cast (hand OR Book) is offered.
+    // Now the raised limit is reached: no third cast (hand OR Book — Implosion is
+    // still in the Book) is offered.
     const thirdOffered = legal(afterBook, "p1").some((l) => l.action.type === "CAST_SPELL");
     expect(thirdOffered, "the shared limit caps total casts at the raised value").toBe(false);
   });
