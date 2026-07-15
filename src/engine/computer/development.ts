@@ -165,10 +165,15 @@ export function shouldSeekLateWarMachineShop(
 }
 
 /**
- * Whether an opened Far (II-III) tile has supplied the opening economy the
- * computer is looking for: a Settlement, Gold Mine, or Valuables Mine.
- * Presence on a revealed tile is enough; if it is not flagged yet the map
- * policy should collect it rather than abandon it for an all-in attack.
+ * Whether THIS player has secured the opening Far (II-III) economy the computer
+ * is looking for: a Settlement, Gold Mine, or Valuables Mine.
+ *
+ * Scoped strictly to the player's OWN holdings — a Far Settlement they opened
+ * (tracked per player at flip time in `farSettlementOpenedByPlayer`) or a Far
+ * Settlement / premium mine they have FLAGGED. A previous version scanned every
+ * revealed Far field globally, so an OPPONENT opening a Far mine wrongly flipped
+ * this player's rush decisions (turned off the bronze rush, re-opened
+ * side-neutral fights) purely because a rival had expanded.
  */
 export function hasOpenedFarEconomy(
   state: GameState,
@@ -176,7 +181,9 @@ export function hasOpenedFarEconomy(
 ): boolean {
   const adventure = state.adventure;
   if (!adventure || !state.players[playerId]) return false;
+  if (adventure.farSettlementOpenedByPlayer?.[playerId]) return true;
   return Object.values(adventure.fields).some((field) => {
+    if (field.flagOwnerId !== playerId) return false;
     const tile = field.tileInstanceId
       ? adventure.tiles[field.tileInstanceId]
       : undefined;

@@ -69,6 +69,7 @@ describe("computer long-horizon development plan", () => {
       group: "far",
       faceDown: false,
     };
+    // A Far (II-III) gold mine THIS player (p2) has FLAGGED = secured economy.
     state.adventure!.fields["h:99:99"] = {
       ...sourceField,
       spaceId: "h:99:99",
@@ -76,9 +77,17 @@ describe("computer long-horizon development plan", () => {
       location: "mine",
       resource: "gold",
       difficulty: undefined,
+      flagOwnerId: "p2",
     };
     expect(hasOpenedFarEconomy(state, "p2")).toBe(true);
     expect(shouldLaunchBronzeRush(state, "p2")).toBe(false);
+
+    // CONTROL: the SAME Far gold mine flagged by the OPPONENT must NOT count as
+    // p2's economy — a rival opening Far economy can never flip p2's rush plan
+    // (the previous global field scan wrongly did).
+    state.adventure!.fields["h:99:99"].flagOwnerId = "p1";
+    expect(hasOpenedFarEconomy(state, "p2")).toBe(false);
+    expect(shouldLaunchBronzeRush(state, "p2")).toBe(true);
   });
 
   it("chooses the real legal sequence: reinforcement unlock, Packs, Silver, then Gold", () => {

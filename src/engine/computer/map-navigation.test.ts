@@ -259,15 +259,24 @@ describe("Far-tile opening and Bronze-rush tempo", () => {
     const guard = state.adventure!.fields[MINE];
     guard.flagOwnerId = null;
     guard.difficulty = 1;
+    // No Far economy opened yet → the bronze rush refuses the side neutral.
     expect(canBeatGuardedField(state, hero, guard)).toBe(false);
 
-    const farTile = Object.values(state.adventure!.tiles)[0];
-    farTile.group = "far";
-    farTile.faceDown = false;
-    guard.tileInstanceId = farTile.id;
-    guard.resource = "gold";
+    // Once THIS player has opened its own Far (II-III) economy (the scenario's
+    // guaranteed Far Settlement), it is no longer in desperation-rush mode and
+    // will take a coverable difficulty-1 field.
+    state.adventure!.farSettlementOpenedByPlayer = { p2: true };
     expect(canBeatGuardedField(state, hero, guard)).toBe(true);
 
+    // CONTROL (finding #1): a RIVAL (p1) opening Far economy must NOT lift p2's
+    // rush refusal — the previous global field scan wrongly counted any player's
+    // Far economy as our own.
+    state.adventure!.farSettlementOpenedByPlayer = { p1: true };
+    expect(canBeatGuardedField(state, hero, guard)).toBe(false);
+
+    // With our own economy opened, a difficulty-3 field still exceeds the bronze
+    // core (the tier gate, not the rush gate, refuses it).
+    state.adventure!.farSettlementOpenedByPlayer = { p2: true };
     guard.difficulty = 3;
     expect(canBeatGuardedField(state, hero, guard)).toBe(false);
   });
