@@ -1,5 +1,10 @@
 import { isMarketLocation, locationDefinitions } from "@/data/map/locations";
 import {
+  CREATURE_BANKS,
+  type CreatureBankId,
+} from "@/data/map/creature-banks";
+import { coreUnitDefinitions } from "@/data/factions/units";
+import {
   adventureVictoryMode,
   canCrossEdge,
   classifyHeroStep,
@@ -26,8 +31,14 @@ import {
   shouldEngageEnemy,
 } from "./army-strength";
 import {
+  armyDevelopmentProfile,
   armyReadyForContestedFight,
+  assessDwellingRush,
   developmentResourceTargets,
+  hasOpenedFarEconomy,
+  shouldPrioritizeFirstAidTent,
+  shouldSeekLateWarMachineShop,
+  shouldLaunchBronzeRush,
 } from "./development";
 
 /**
@@ -36,16 +47,20 @@ import {
  * the seat holds materials/valuables to convert, or vice versa.
  */
 function needsMarketRebalance(state: GameState, playerId: PlayerId): boolean {
+  if ((state.round ?? 0) < 5) return false;
   const res = state.players[playerId]?.resources;
   if (!res) return false;
   const gold = res.gold ?? 0;
   const mats = res.buildingMaterials ?? 0;
   const vals = res.valuables ?? 0;
   const target = developmentResourceTargets(state, playerId);
+  if (assessDwellingRush(state, playerId)?.feasible) return true;
+  const goldDwellingBuilt = armyDevelopmentProfile(state, playerId).goldUnlocked;
   // Broke with convertible stock → sell for gold.
   if (
     gold < target.gold &&
-    (mats > target.buildingMaterials + 1 || vals > target.valuables)
+    (mats > target.buildingMaterials + 1 ||
+      (goldDwellingBuilt && vals > target.valuables))
   ) return true;
   // Flush gold but no materials for building → buy materials.
   if (mats < target.buildingMaterials && gold >= 10) return true;
@@ -243,18 +258,81 @@ function victoryObjectiveKind(
  * army-COMPOSITION reference (`armyTierCoversGuardField`) — a silver-bearing army
  * takes difficulty-3 guards, a gold-bearing one difficulty-5, at Impossible (and
  * proportionally more at easier scenario difficulties, where the same field draws
- * a weaker party). This only ever ADDS engageable fields; a fight the hero level
- * already covers is never newly refused.
+ * a weaker party). Developed armies still receive that additive allowance. The
+ * opening safety gates below may deliberately defer an equal-risk neutral while
+ * the core is rebuilding or being preserved for the conquest timing window.
  */
 export function canBeatGuardedField(
   state: GameState,
   hero: HeroState,
   field: MapFieldState,
 ): boolean {
+  // Once the three-Pack conquest fallback is live, the main army must convert
+  // that timing window into pressure on the opponent, not bleed units into a
+  // side neutral on the way. Enemy-held/victory fields are deliberately not
+  // covered by this neutral-only gate.
+  const rushProfile = armyDevelopmentProfile(state, hero.controllerId);
+  const fieldDifficulty = field.difficulty ?? 0;
+  // A strict level advantage resolves before a battle opens. Secondary heroes
+  // should collect these free cleanups even without a Silver unit.
+  const guaranteedQuickWin =
+    field.location !== "creature_bank" &&
+    fieldDifficulty > 0 &&
+    neutralBattleLevel(state, hero) > fieldDifficulty;
+  if (hero.kind === "secondary" && guaranteedQuickWin) return true;
+  const rebuildingCoreCannotRiskNeutral =
+    hero.kind === "main" &&
+    !field.flagOwnerId &&
+    (state.round ?? 0) >= 2 &&
+    rushProfile.phase === "establish-core" &&
+    neutralBattleLevel(state, hero) <= fieldDifficulty;
+  if (rebuildingCoreCannotRiskNeutral) return false;
+  const bronzeCoreCannotMatchGuard =
+    hero.kind === "main" &&
+    !field.flagOwnerId &&
+    fieldDifficulty >= 2 &&
+    neutralBattleLevel(state, hero) <= fieldDifficulty &&
+    rushProfile.bronzePacks >= 3 &&
+    rushProfile.silverUnits === 0 &&
+    rushProfile.goldUnits === 0;
+  if (bronzeCoreCannotMatchGuard) return false;
+  const preservingNextRoundRush =
+    (state.round ?? 0) >= 2 &&
+    rushProfile.totalUnits >= 3 &&
+    rushProfile.bronzePacks >= 3 &&
+    !hasOpenedFarEconomy(state, hero.controllerId);
+  if (
+    hero.kind === "main" &&
+    !field.flagOwnerId &&
+    adventureVictoryMode(state) === "conquest" &&
+    (shouldLaunchBronzeRush(state, hero.controllerId) ||
+      preservingNextRoundRush)
+  ) {
+    return false;
+  }
+  if (hero.kind === "secondary") {
+    const hasPremiumUnit = (state.players[hero.controllerId]?.army ?? []).some(
+      (unit) => {
+        const tier = coreUnitDefinitions[unit.unitDefId]?.tier;
+        return tier === "silver" || tier === "gold" || tier === "azure";
+      },
+    );
+    if (!hasPremiumUnit) return false;
+    if (field.location === "creature_bank") {
+      const bank = field.bankId
+        ? CREATURE_BANKS[field.bankId as CreatureBankId]
+        : undefined;
+      return (
+        bank?.tier === "far" &&
+        canBeatCreatureBank(state, hero.controllerId, field)
+      );
+    }
+    if (fieldDifficulty > 2) return false;
+  }
   if (field.location === "creature_bank") {
     return canBeatCreatureBank(state, hero.controllerId, field);
   }
-  const difficulty = field.difficulty ?? 0;
+  const difficulty = fieldDifficulty;
   if (difficulty <= 0) {
     return false;
   }
@@ -358,7 +436,10 @@ function objectiveKind(
   // one is only justified by a real rebalance need.
   if (
     isMarketLocation(field.location) &&
-    needsMarketRebalance(state, playerId)
+    (needsMarketRebalance(state, playerId) ||
+      (field.location === "war_machine_factory" &&
+        (shouldPrioritizeFirstAidTent(state, playerId) ||
+          shouldSeekLateWarMachineShop(state, playerId))))
   ) {
     return "visitable";
   }
@@ -629,6 +710,10 @@ function objectiveStrategicValue(
 ): number {
   const ready = armyReadyForContestedFight(state, hero.controllerId);
   const mode = adventureVictoryMode(state);
+  const bronzeRush =
+    hero.kind === "main" &&
+    mode === "conquest" &&
+    shouldLaunchBronzeRush(state, hero.controllerId);
   const field = state.adventure?.fields[objective.spaceId];
   const homeSweep = isHomeTileSweepObjective(state, hero, objective, field);
   let value: number;
@@ -641,14 +726,14 @@ function objectiveStrategicValue(
           field?.flagOwnerId === hero.controllerId,
       );
       if (carryingGrailHome) value = 1_250;
-      else if (mode === "conquest") value = ready ? 790 : 360;
+      else if (mode === "conquest") value = bronzeRush ? 1_080 : ready ? 790 : 360;
       else if (mode === "dragon-hunt" || mode === "dragon-conqueror") {
         value = ready ? 900 : 390;
       } else value = 950;
       break;
     }
     case "enemy-hero":
-      value = ready ? 760 : 390;
+      value = bronzeRush ? 970 : ready ? 760 : 390;
       break;
     case "guard": {
       const difficulty = field?.difficulty ?? 0;
@@ -662,6 +747,9 @@ function objectiveStrategicValue(
         difficulty > 0 &&
         difficulty <= HOME_TILE_SWEEP_MAX_DIFFICULTY;
       value = guaranteedQuickWin ? 800 : ready || homeGuardTakeable ? 710 : 410;
+      // Secondary heroes receive no combat Experience. Keep a useful premium-
+      // army cleanup possible, but rank that real fight below a free pickup.
+      if (hero.kind === "secondary" && !guaranteedQuickWin) value -= 140;
       break;
     }
     case "town":
@@ -690,6 +778,7 @@ function objectiveStrategicValue(
       // moderately-distant leftover so the hero keeps expanding, not parking.
       value = playerHasPlaceableFarTile(state, hero.controllerId) ? 530 : 500;
       if (!fightAvailable) value += 60;
+      if (bronzeRush) value = Math.min(value, 390);
       break;
   }
   if (SWEEPABLE_KINDS.has(objective.kind)) {

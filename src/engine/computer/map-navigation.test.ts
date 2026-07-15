@@ -127,6 +127,150 @@ describe("canBeatGuardedField (Quick-Combat grounded engagement)", () => {
       false,
     );
   });
+
+  it("lets a secondary take free Quick Combat, but requires Silver for a real cleanup fight", () => {
+    const state = game();
+    const main = p2Hero(state);
+    main.level = 1;
+    const secondary = {
+      ...main,
+      id: "p2-secondary",
+      kind: "secondary" as const,
+    };
+    state.heroes[secondary.id] = secondary;
+
+    const lowGuard = state.adventure!.fields[MINE];
+    lowGuard.difficulty = 1;
+    expect(canBeatGuardedField(state, main, lowGuard)).toBe(true);
+    expect(canBeatGuardedField(state, secondary, lowGuard)).toBe(false);
+
+    // The Secondary borrows the Main Hero's neutral-battle level. A strict
+    // advantage is a no-battle Quick Combat and needs no premium unit.
+    main.level = 2;
+    expect(canBeatGuardedField(state, secondary, lowGuard)).toBe(true);
+    main.level = 1;
+
+    const silver = Object.values(coreUnitDefinitions).find(
+      (definition) => definition.tier === "silver",
+    )!;
+    state.players.p2.army.push({
+      id: "cleanup-silver",
+      unitDefId: silver.id,
+      side: "few",
+    });
+    expect(canBeatGuardedField(state, secondary, lowGuard)).toBe(true);
+
+    lowGuard.difficulty = 3;
+    expect(canBeatGuardedField(state, secondary, lowGuard)).toBe(false);
+  });
+
+  it("lets a strong secondary clean a low Far bank, never a Near bank", () => {
+    const state = game();
+    const main = p2Hero(state);
+    const secondary = {
+      ...main,
+      id: "p2-bank-cleaner",
+      kind: "secondary" as const,
+    };
+    const azure = Object.values(coreUnitDefinitions).find(
+      (definition) => definition.tier === "azure",
+    )!;
+    state.players.p2.army = Array.from({ length: 12 }, (_, index) => ({
+      id: `azure-${index}`,
+      unitDefId: azure.id,
+      side: "neutral" as const,
+    }));
+    const farBank = {
+      ...state.adventure!.fields[MINE],
+      location: "creature_bank",
+      bankId: "imp_cache",
+      difficulty: undefined,
+    };
+    const nearBank = { ...farBank, bankId: "derelict_ship" };
+    expect(canBeatGuardedField(state, secondary, farBank)).toBe(true);
+    expect(canBeatGuardedField(state, secondary, nearBank)).toBe(false);
+  });
+});
+
+describe("Far-tile opening and Bronze-rush tempo", () => {
+  it("scores opening a II–III tile above an otherwise identical later tile", () => {
+    const state = game();
+    const hero = p2Hero(state);
+    const tile = Object.values(state.adventure!.tiles).find(
+      (candidate) => candidate.faceDown,
+    )!;
+    tile.group = "near";
+    const later = scoreMapAction(observe(state), {
+      type: "DISCOVER_TILE",
+      playerId: "p2",
+      heroId: hero.id,
+      tileInstanceId: tile.id,
+    })!;
+    tile.group = "far";
+    const far = scoreMapAction(observe(state), {
+      type: "DISCOVER_TILE",
+      playerId: "p2",
+      heroId: hero.id,
+      tileInstanceId: tile.id,
+    })!;
+    expect(far.score).toBeGreaterThan(later.score);
+  });
+
+  it("commits the main hero to a reachable conquest win from round 3", () => {
+    const state = game();
+    const hero = p2Hero(state);
+    establishP2PackCore(state);
+    hero.movementPoints = 3;
+    const target = state.adventure!.fields[EMPTY];
+    target.location = state.adventure!.fields[TOWN].location;
+    target.flagOwnerId = "p1";
+    target.difficulty = undefined;
+    for (const enemy of Object.values(state.heroes)) {
+      if (enemy.controllerId === "p1") enemy.spaceId = null;
+    }
+    const tile = Object.values(state.adventure!.tiles).find(
+      (candidate) => candidate.faceDown,
+    )!;
+    tile.group = "far";
+    const discover = {
+      type: "DISCOVER_TILE" as const,
+      playerId: "p2",
+      heroId: hero.id,
+      tileInstanceId: tile.id,
+    };
+
+    state.round = 2;
+    const developFirst = scoreMapAction(observe(state), discover)!;
+    expect(developFirst.score).toBeGreaterThan(700);
+
+    state.round = 3;
+    const rush = scoreMapAction(observe(state), discover)!;
+    expect(primaryMapObjective(state, hero)?.spaceId).toBe(EMPTY);
+    expect(primaryMapObjective(state, hero)?.kind).toBe("victory");
+    expect(rush.score).toBeLessThan(700);
+  });
+
+  it("does not bleed the three-Pack rush into a side neutral", () => {
+    const state = game();
+    const hero = p2Hero(state);
+    establishP2PackCore(state);
+    hero.level = 3;
+    state.round = 2;
+    const guard = state.adventure!.fields[MINE];
+    guard.flagOwnerId = null;
+    guard.difficulty = 1;
+    expect(canBeatGuardedField(state, hero, guard)).toBe(false);
+
+    const farTile = Object.values(state.adventure!.tiles)[0];
+    farTile.group = "far";
+    farTile.faceDown = false;
+    guard.tileInstanceId = farTile.id;
+    guard.resource = "gold";
+    expect(canBeatGuardedField(state, hero, guard)).toBe(true);
+
+    guard.difficulty = 3;
+    expect(canBeatGuardedField(state, hero, guard)).toBe(false);
+  });
 });
 
 describe("army-tier guard engagement reference (Step 5)", () => {
@@ -340,6 +484,33 @@ describe("collectMapObjectives", () => {
     state.adventure!.fields[EMPTY].location = "temple";
     state.adventure!.fields[RESOURCE].location = "hill_fort";
     expect(primaryMapObjective(state, hero)?.spaceId).toBe(RESOURCE);
+  });
+
+  it("discounts fought guards for a secondary because it cannot gain Experience", () => {
+    const state = game();
+    const main = p2Hero(state);
+    main.level = 1;
+    const secondary: HeroState = {
+      ...main,
+      id: "p2-xp-aware-secondary",
+      kind: "secondary",
+    };
+    const silver = Object.values(coreUnitDefinitions).find(
+      (definition) => definition.tier === "silver",
+    )!;
+    state.players.p2.army.push({
+      id: "xp-aware-silver",
+      unitDefId: silver.id,
+      side: "few",
+    });
+    state.adventure!.fields[MINE].difficulty = 1;
+    const choices = [
+      { spaceId: MINE, kind: "guard" as const },
+      { spaceId: RESOURCE, kind: "visitable" as const },
+    ];
+
+    expect(primaryMapObjective(state, main, choices)?.spaceId).toBe(MINE);
+    expect(primaryMapObjective(state, secondary, choices)?.spaceId).toBe(RESOURCE);
   });
 
   it("elevates grail dig sites and dragon utopia under their win modes", () => {
@@ -733,6 +904,7 @@ describe("sticky primary + explore objectives", () => {
 
   it("marches to a Trading Post only when resources need rebalance", () => {
     const state = game();
+    state.round = 5;
     const hero = p2Hero(state);
     hero.level = 1;
     // Neutralise other nearby prizes so the market can surface. Empty Far
@@ -774,6 +946,38 @@ describe("sticky primary + explore objectives", () => {
     };
     const flush = collectMapObjectives(state, hero).map((o) => o.spaceId);
     expect(flush).not.toContain(EMPTY);
+  });
+
+  it("takes an early Factory detour only for a funded First Aid Tent", () => {
+    const state = game();
+    state.round = 3;
+    const hero = p2Hero(state);
+    establishP2PackCore(state);
+    state.adventure!.playerFarTiles = {
+      ...(state.adventure!.playerFarTiles ?? {}),
+      p2: [],
+    };
+    const fields = state.adventure!.fields;
+    for (const id of [MINE, TREASURE]) {
+      fields[id].flagOwnerId = "p2";
+      delete fields[id].difficulty;
+    }
+    fields[RESOURCE].blackCube = true;
+    for (const tile of Object.values(state.adventure!.tiles)) {
+      tile.faceDown = false;
+    }
+    fields[EMPTY].location = "war_machine_factory";
+    delete fields[EMPTY].difficulty;
+
+    state.players.p2.resources.gold = 50;
+    expect(collectMapObjectives(state, hero).map((o) => o.spaceId)).toContain(
+      EMPTY,
+    );
+
+    state.players.p2.resources.gold = 20;
+    expect(
+      collectMapObjectives(state, hero).map((o) => o.spaceId),
+    ).not.toContain(EMPTY);
   });
 });
 

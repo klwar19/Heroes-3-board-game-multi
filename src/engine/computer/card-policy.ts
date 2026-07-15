@@ -1,8 +1,13 @@
 import { cardLibrary } from "@/data/cards/library";
+import {
+  getBattlefieldCoordinates,
+  getOrthogonalNeighbors,
+} from "../battlefield";
 import { getSpellDamageAmount, getSpellDiceRollCount } from "../effects";
 import type {
   CardDefinition,
   CardPlayMode,
+  CombatUnitState,
   EffectDefinition,
   GameAction,
   GameState,
@@ -20,6 +25,7 @@ import {
 } from "./development";
 import { collectMapObjectives } from "./map-navigation";
 import {
+  expectedAttackDamage,
   livingEnemyUnits,
   pendingIncomingDamage,
   unitRemainingHealth,
@@ -275,12 +281,95 @@ function modeBonus(mode: CardPlayMode | undefined): number {
   return mode === "expert" ? 8 : 0;
 }
 
+function areaDamageAmount(
+  card: CardDefinition,
+  effect: EffectDefinition,
+): number {
+  if ("amount" in effect && typeof effect.amount === "number") {
+    return Math.max(1, effect.amount);
+  }
+  return Math.max(1, getSpellDamageAmount(card, card.power ?? 0));
+}
+
+/** Units the selected centre/line would actually hit, including friendly fire. */
+function areaDamageUnits(
+  observation: ComputerObservation,
+  effect: EffectDefinition,
+  target: TargetRef | undefined,
+): CombatUnitState[] | null {
+  const combat = observation.state.combat;
+  if (!combat || !target) return null;
+  const living = Object.values(combat.units).filter(
+    (unit) => unitRemainingHealth(unit) > 0,
+  );
+  const center =
+    target.type === "space"
+      ? target.position
+      : target.type === "unit"
+        ? combat.units[target.unitId]?.position
+        : undefined;
+  if (center === undefined) return null;
+
+  if (effect.type === "DAMAGE_BATTLEFIELD_LINE") {
+    const column = getBattlefieldCoordinates(center).column;
+    return living.filter(
+      (unit) => getBattlefieldCoordinates(unit.position).column === column,
+    );
+  }
+  if (
+    effect.type === "AREA_DAMAGE_ADJACENT" ||
+    effect.type === "AREA_DAMAGE_ALL_ADJACENT" ||
+    effect.type === "INFERNO"
+  ) {
+    const positions = new Set([center, ...getOrthogonalNeighbors(center)]);
+    return living.filter((unit) => positions.has(unit.position));
+  }
+  if (effect.type === "AREA_DAMAGE_PICK_ADJACENT") {
+    const adjacent = new Set(getOrthogonalNeighbors(center));
+    const picked = living
+      .filter(
+        (unit) =>
+          adjacent.has(unit.position) &&
+          unit.controllerId !== observation.playerId,
+      )
+      .sort((a, b) => unitThreatValue(b) - unitThreatValue(a))
+      .slice(0, effect.adjacentPicks);
+    if (effect.includeCenter) {
+      const centerUnit = living.find((unit) => unit.position === center);
+      if (centerUnit) picked.push(centerUnit);
+    }
+    return picked;
+  }
+  return null;
+}
+
 function scoreDamageEffect(
   observation: ComputerObservation,
   card: CardDefinition,
+  effect: EffectDefinition,
   target: TargetRef | undefined,
   base: number,
 ): number {
+  const affected = areaDamageUnits(observation, effect, target);
+  if (affected) {
+    const damage = areaDamageAmount(card, effect);
+    const swing = affected.reduce((total, unit) => {
+      const remaining = unitRemainingHealth(unit);
+      const threat = unitThreatValue(unit);
+      const lethal = damage >= remaining;
+      if (unit.controllerId === observation.playerId) {
+        return total - (55 + Math.min(35, threat) + (lethal ? 55 : 0));
+      }
+      return (
+        total +
+        24 +
+        Math.min(35, Math.round(threat / 2)) +
+        (lethal ? 45 : 0)
+      );
+    }, 0);
+    return Math.max(180, Math.min(900, base + swing));
+  }
+
   const defender = combatUnitFromTarget(observation, target);
   if (!defender) {
     // Untargeted / space-targeted AREA damage hits several bodies at once:
@@ -306,9 +395,23 @@ function scoreDamageEffect(
   // steered every cast at the cheapest chaff instead of the real threat.
   const printed = getSpellDamageAmount(card, card.power ?? 0);
   const damage = Math.max(1, printed);
+  const combat = observation.state.combat;
+  const bestPhysicalDamage = combat
+    ? Object.values(combat.units).reduce(
+        (best, unit) =>
+          unit.controllerId === observation.playerId &&
+          unitRemainingHealth(unit) > 0
+            ? Math.max(best, expectedAttackDamage(unit, defender))
+            : best,
+        0,
+      )
+    : 0;
+  const armorLeverage =
+    Math.min(30, defender.defense * 3) + (bestPhysicalDamage === 0 ? 28 : 0);
   let quality =
     Math.min(60, threat) +
-    Math.round((Math.min(damage, remaining) / Math.max(1, remaining)) * 40);
+    Math.round((Math.min(damage, remaining) / Math.max(1, remaining)) * 40) +
+    armorLeverage;
   if (damage >= remaining) quality += 50;
   return Math.min(860, base + quality);
 }
@@ -529,7 +632,13 @@ function scoreEffect(
   }
 
   if (COMBAT_DAMAGE_EFFECTS.has(effect.type)) {
-    return scoreDamageEffect(observation, card, target, 680 + modeBonus(mode));
+    return scoreDamageEffect(
+      observation,
+      card,
+      effect,
+      target,
+      680 + modeBonus(mode),
+    );
   }
 
   if (COMBAT_BUFF_EFFECTS.has(effect.type)) {

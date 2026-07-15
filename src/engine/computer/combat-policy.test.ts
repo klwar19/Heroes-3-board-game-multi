@@ -69,6 +69,36 @@ const defend = (unitId: string): LegalAction => ({
 });
 
 describe("combat policy — attack target selection", () => {
+  it("uses physical damage on the lower-Defense target", () => {
+    const attacker = unit({
+      id: "A",
+      controllerId: "p2",
+      attack: 6,
+      position: 5,
+    });
+    const armoured = unit({
+      id: "ARMOUR",
+      attack: 4,
+      defense: 7,
+      maxHealth: 10,
+      position: 6,
+    });
+    const exposed = unit({
+      id: "OPEN",
+      attack: 4,
+      defense: 1,
+      maxHealth: 10,
+      position: 4,
+    });
+    const decision = chooseComputerAction(
+      observation(
+        [attacker, armoured, exposed],
+        [attackOn("A", "ARMOUR"), attackOn("A", "OPEN")],
+      ),
+    );
+    expect((decision?.action as { defenderId: string }).defenderId).toBe("OPEN");
+  });
+
   it("takes a lethal removal over a bigger but non-lethal hit", () => {
     // Attacker (att 6). E1 is the better CHIP target (6-0=6 of 8 HP) but cannot
     // be killed this hit; E2 is fragile and dies (6-2=4 >= 3 HP). The lethal
@@ -514,6 +544,153 @@ describe("combat policy — closing distance", () => {
       observation([mover, enemy], [moveTo("M", 4), defend("M")]),
     );
     expect(hold?.action.type).toBe("DEFEND_UNIT");
+  });
+
+  it("takes the safe approach instead of stepping into an unsupported surround", () => {
+    const mover = unit({ id: "M", controllerId: "p2", position: 18 });
+    const first = unit({ id: "E1", attack: 6, position: 9 });
+    const second = unit({ id: "E2", attack: 6, position: 12 });
+    const decision = chooseComputerAction(
+      observation(
+        [mover, first, second],
+        [moveTo("M", 13), moveTo("M", 14)],
+      ),
+    );
+    expect((decision?.action as { destination: number }).destination).toBe(14);
+  });
+
+  it.each([
+    ["Hydras", "hydra-multi-attack"],
+    ["Cerberi", "cerberi-second-head"],
+  ])("lets Pack %s occupy a two-target surround", (_name, abilityId) => {
+    const mover = unit({
+      id: "M",
+      controllerId: "p2",
+      defense: 2,
+      maxHealth: 10,
+      position: 18,
+      abilities: ["ignores-retaliation", abilityId],
+    });
+    const first = unit({ id: "E1", attack: 6, position: 9 });
+    const second = unit({ id: "E2", attack: 6, position: 12 });
+    const decision = chooseComputerAction(
+      observation(
+        [mover, first, second],
+        [moveTo("M", 13), moveTo("M", 14)],
+      ),
+    );
+    expect((decision?.action as { destination: number }).destination).toBe(13);
+  });
+
+  it("occupies a flying landing lane to screen a threatened shooter", () => {
+    const mover = unit({ id: "M", controllerId: "p2", position: 13 });
+    const shooter = unit({
+      id: "R",
+      controllerId: "p2",
+      type: "ranged",
+      position: 18,
+    });
+    const flyer = unit({ id: "F", type: "flying", attack: 7, position: 10 });
+    const decision = chooseComputerAction(
+      observation(
+        [mover, shooter, flyer],
+        [moveTo("M", 14), moveTo("M", 9)],
+      ),
+    );
+    expect((decision?.action as { destination: number }).destination).toBe(14);
+  });
+});
+
+describe("combat policy — strategic Defend invariant", () => {
+  it("sometimes holds a PvP chip when retaliation plus follow-up is fatal", () => {
+    const attacker = unit({
+      id: "A",
+      controllerId: "p2",
+      attack: 5,
+      defense: 0,
+      maxHealth: 12,
+      initiative: 8,
+      position: 5,
+    });
+    const defender = unit({
+      id: "E1",
+      attack: 5,
+      defense: 3,
+      maxHealth: 10,
+      position: 6,
+    });
+    const follower = unit({
+      id: "E2",
+      type: "ranged",
+      attack: 8,
+      maxHealth: 8,
+      position: 15,
+    });
+    const observed = observation(
+      [attacker, defender, follower],
+      [attackOn("A", "E1"), defend("A")],
+    );
+    observed.state.combat!.context = {
+      kind: "player",
+      attackerHeroId: "hero-p2",
+      defenderHeroId: "hero-p1",
+      fieldId: "h:0:0",
+    };
+    observed.state.combat!.attackerPlayerId = "p2";
+    observed.state.combat!.defenderPlayerId = "p1";
+    expect(chooseComputerAction(observed)?.action.type).toBe("DEFEND_UNIT");
+
+    // CONTROL: once the ranged follower has already acted, the same attacker
+    // survives the retaliation/next-activation estimate and takes its strike.
+    const spentFollower = unit({
+      ...follower,
+      id: "E2",
+      activatedThisRound: true,
+    });
+    const control = observation(
+      [attacker, defender, spentFollower],
+      [attackOn("A", "E1"), defend("A")],
+    );
+    control.state.combat!.context = observed.state.combat!.context;
+    control.state.combat!.attackerPlayerId = "p2";
+    control.state.combat!.defenderPlayerId = "p1";
+    expect(chooseComputerAction(control)?.action.type).toBe("ATTACK_UNIT");
+  });
+
+  it("defends when outnumbered by two live attackers", () => {
+    const defender = unit({
+      id: "A",
+      controllerId: "p2",
+      grade: "gold",
+      attack: 4,
+      defense: 2,
+      maxHealth: 8,
+      position: 5,
+    });
+    const left = unit({ id: "E1", attack: 8, defense: 7, position: 4 });
+    const right = unit({ id: "E2", attack: 8, defense: 7, position: 6 });
+    const decision = chooseComputerAction(
+      observation(
+        [defender, left, right],
+        [attackOn("A", "E1"), defend("A")],
+      ),
+    );
+    expect(decision?.action.type).toBe("DEFEND_UNIT");
+  });
+
+  it("hard-rejects consecutive Defend even if it is offered synthetically", () => {
+    const defender = unit({
+      id: "A",
+      controllerId: "p2",
+      defendedLastActivation: true,
+    });
+    const score = scoreCombatAction(observation([defender], []), {
+      type: "DEFEND_UNIT",
+      playerId: "p2",
+      unitId: "A",
+    } as GameAction);
+    expect(score?.score).toBe(-1_000);
+    expect(score?.policy).toBe("combat.defend-consecutive-refuse");
   });
 });
 

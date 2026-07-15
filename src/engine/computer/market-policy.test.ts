@@ -30,7 +30,7 @@ function stateWithResources(
 ): GameState {
   return {
     seed: "market-policy",
-    round: 2,
+    round: 5,
     eventCounter: 0,
     combat: null,
     heroes: {},
@@ -77,9 +77,20 @@ describe("resource deficits and trade utility", () => {
     const state = stateWithResources(2, 5, 1);
     const deficit = resourceDeficits(state, "p2");
     expect(deficit.gold).toBeGreaterThan(0);
-    // Selling materials/valuables for gold is useful.
+    // Materials may fund gold, but valuables are protected until the Gold
+    // dwelling has actually been established.
     expect(hasUsefulMarketTrade(state, "p2")).toBe(true);
     // rateIndex 4 = 1 materials → 1 gold; rateIndex 2 = 1 valuables → 3 gold.
+    expect(tradeUtility(state, "p2", 4)).toBeGreaterThan(0);
+    expect(tradeUtility(state, "p2", 2)).toBeLessThan(0);
+
+    state.towns = {
+      t2: {
+        id: "t2",
+        controllerId: "p2",
+        buildings: ["castle.dwelling_gold"],
+      },
+    } as GameState["towns"];
     expect(tradeUtility(state, "p2", 2)).toBeGreaterThan(0);
   });
 
@@ -130,12 +141,12 @@ describe("scoreMapAction — market open / trade / done", () => {
   });
 
   it("ranks a useful trade above Done, and a wasteful trade below Done", () => {
-    // Broke with valuables: selling valuables for gold is useful.
-    const state = stateWithResources(1, 0, 2);
+    // Broke with spare materials: selling one for gold is useful.
+    const state = stateWithResources(1, 3, 0);
     const useful = scoreMapAction(observe(state), {
       type: "TRADE_RESOURCES",
       playerId: "p2",
-      rateIndex: 2, // 1 valuables → 3 gold
+      rateIndex: 4, // 1 materials → 1 gold
     });
     const done = scoreMapAction(observe(state), {
       type: "RESOLVE_VISIT_STEP",
@@ -184,12 +195,12 @@ describe("scoreMapAction — market open / trade / done", () => {
   });
 
   it("chooseComputerAction takes a useful gold trade over Done", () => {
-    const state = stateWithResources(1, 0, 2);
+    const state = stateWithResources(1, 3, 0);
     const trade: LegalAction = {
       action: {
         type: "TRADE_RESOURCES",
         playerId: "p2",
-        rateIndex: 2,
+        rateIndex: 4,
       } as GameAction,
       label: "1 valuables for 3 gold",
     };
@@ -203,7 +214,99 @@ describe("scoreMapAction — market open / trade / done", () => {
     };
     const decision = chooseComputerAction(observe(state, [trade, done]));
     expect(decision?.action.type).toBe("TRADE_RESOURCES");
-    expect((decision?.action as { rateIndex: number }).rateIndex).toBe(2);
+    expect((decision?.action as { rateIndex: number }).rateIndex).toBe(4);
+  });
+
+  it("refuses every marketplace action before round 5", () => {
+    const state = stateWithResources(1, 6, 2);
+    state.round = 4;
+    state.towns = {
+      t2: {
+        id: "t2",
+        controllerId: "p2",
+        buildings: ["castle.dwelling_gold"],
+      },
+    } as GameState["towns"];
+    if (state.adventure) state.adventure.pendingVisit = null;
+    const open = scoreMapAction(observe(state), {
+      type: "OPEN_MARKET",
+      playerId: "p2",
+      heroId: "h2",
+    });
+    expect(open?.policy).toBe("map.market-wait-until-round-five");
+    expect(open!.score).toBeLessThan(300);
+
+    if (state.adventure) {
+      state.adventure.pendingVisit = {
+        playerId: "p2",
+        heroId: "h2",
+        fieldId: "h:0:0",
+        steps: [{ type: "TRADING_POST" }],
+      };
+    }
+    const trade = scoreMapAction(observe(state), {
+      type: "TRADE_RESOURCES",
+      playerId: "p2",
+      rateIndex: 4,
+    });
+    const done = scoreMapAction(observe(state), {
+      type: "RESOLVE_VISIT_STEP",
+      playerId: "p2",
+      decline: true,
+    });
+    expect(trade!.score).toBeLessThan(done!.score);
+  });
+
+  it("allows only a well-funded First Aid Tent as the early shop exception", () => {
+    const state = stateWithResources(50, 6, 2);
+    state.round = 3;
+    state.players.p2.army = ["a1", "a2", "a3"].map((id) => ({
+      id,
+      unitDefId: "castle.pikemen",
+      side: "pack" as const,
+    }));
+    state.heroes.h2 = {
+      id: "h2",
+      controllerId: "p2",
+      kind: "main",
+      spaceId: "h:0:0",
+    } as GameState["heroes"][string];
+    state.adventure!.fields["h:0:0"] = {
+      spaceId: "h:0:0",
+      tileInstanceId: "early-tent-tile",
+      slot: 0,
+      location: "war_machine_factory",
+    } as MapFieldState;
+    state.adventure!.pendingVisit = null;
+
+    const open = scoreMapAction(observe(state), {
+      type: "OPEN_MARKET",
+      playerId: "p2",
+      heroId: "h2",
+    });
+    const tent = scoreMapAction(observe(state), {
+      type: "BUY_WAR_MACHINE",
+      playerId: "p2",
+      cardId: "war_machine.first_aid_tent",
+    });
+    const ballista = scoreMapAction(observe(state), {
+      type: "BUY_WAR_MACHINE",
+      playerId: "p2",
+      cardId: "war_machine.ballista",
+    });
+    expect(open?.policy).toBe("map.open-war-machine-first-aid");
+    expect(open!.score).toBeGreaterThan(520);
+    expect(tent!.score).toBeGreaterThan(520);
+    expect(ballista!.score).toBeLessThan(520);
+
+    state.players.p2.resources.gold = 20;
+    expect(
+      scoreMapAction(observe(state), {
+        type: "BUY_WAR_MACHINE",
+        playerId: "p2",
+        cardId: "war_machine.first_aid_tent",
+      })!.score,
+    ).toBeLessThan(520);
   });
 });
 
@@ -222,6 +325,7 @@ describe("market e2e — real engine + computer runner", () => {
     // Computer seat is p2 on single-player adventure builds.
     state.activePlayerId = "p2";
     state.priorityPlayerId = "p2";
+    state.round = 5;
     for (const pl of Object.values(state.players)) {
       pl.canMulligan = false;
       pl.needsHandRefresh = false;
@@ -248,6 +352,9 @@ describe("market e2e — real engine + computer runner", () => {
       buildingMaterials: 0,
       valuables: 2,
     };
+    Object.values(state.towns).find(
+      (town) => town.controllerId === "p2",
+    )!.buildings.push("castle.dwelling_gold");
     const goldBefore = state.players.p2.resources.gold;
 
     // Legal OPEN_MARKET must exist for the computer.
@@ -282,6 +389,7 @@ describe("market e2e — real engine + computer runner", () => {
       playerCount: 2,
     });
     state.activePlayerId = "p2";
+    state.round = 5;
     for (const pl of Object.values(state.players)) {
       pl.canMulligan = false;
       pl.needsHandRefresh = false;

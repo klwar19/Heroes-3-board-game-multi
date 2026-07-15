@@ -771,6 +771,65 @@ describe("card policy — action-denial debuffs are tempo, not stat shaves", () 
 });
 
 describe("card policy — damage spells hunt high value (Defense does not shield)", () => {
+  it("uses a Defense-ignoring spell on armor when enemy offense is equal", () => {
+    const attacker = unit({
+      id: "A",
+      controllerId: "p2",
+      attack: 4,
+      position: 8,
+    });
+    const armoured = unit({
+      id: "ARMOUR",
+      attack: 4,
+      defense: 8,
+      maxHealth: 8,
+      position: 9,
+    });
+    const exposed = unit({
+      id: "OPEN",
+      attack: 4,
+      defense: 0,
+      maxHealth: 8,
+      position: 12,
+    });
+    const castAt = (unitId: string): GameAction => ({
+      type: "CAST_SPELL",
+      playerId: "p2",
+      cardId: "spell.magic_arrow",
+      target: { type: "unit", unitId },
+    } as GameAction);
+    const observed = observation([attacker, armoured, exposed], []);
+    expect(scoreCardAction(observed, castAt("ARMOUR"))!.score).toBeGreaterThan(
+      scoreCardAction(observed, castAt("OPEN"))!.score,
+    );
+  });
+
+  it("centres area damage away from friendly fire", () => {
+    const ally = unit({
+      id: "ALLY",
+      controllerId: "p2",
+      grade: "gold",
+      position: 9,
+    });
+    const first = unit({ id: "E1", position: 5 });
+    const second = unit({ id: "E2", position: 6 });
+    const castAt = (position: number): GameAction => ({
+      type: "CAST_SPELL",
+      playerId: "p2",
+      cardId: "spell.inferno",
+      target: { type: "space", position },
+    } as GameAction);
+    const observed = observation(
+      [ally, first, second],
+      [],
+      "p2",
+      ["spell.inferno"],
+    );
+    const unsafe = scoreCardAction(observed, castAt(5))!;
+    const safe = scoreCardAction(observed, castAt(6))!;
+    expect(safe.score).toBeGreaterThan(unsafe.score);
+  });
+
   it("aims the arrow at the high-value armoured unit, not the cheapest chaff", () => {
     // Spell damage ignores Defense in the engine; the old attack-style guess
     // (attack − defense) made the armoured threat look unhittable and dumped

@@ -45,6 +45,7 @@ type PlayerOverrides = {
   handLimit?: number;
   gold?: number;
   army?: { unitDefId: string; side?: string }[];
+  permanents?: string[];
 };
 
 function makeState(
@@ -70,7 +71,7 @@ function makeState(
       discard: [],
       needsHandRefresh: over.needsHandRefresh,
       limits: { hand: over.handLimit ?? 5 },
-      permanents: [],
+      permanents: over.permanents ?? [],
       resources: {
         gold: over.gold ?? 10,
         buildingMaterials: 2,
@@ -562,6 +563,25 @@ describe("card-values — hero auto-pick prefers the community top tier", () => 
 // --- war machines ---------------------------------------------------------------
 
 describe("card-values — war-machine shop order", () => {
+  function lateMarketObservation(self: PlayerOverrides): ComputerObservation {
+    const army = self.army ?? [
+      { unitDefId: "castle.halberdiers", side: "pack" },
+      { unitDefId: "castle.marksmen", side: "pack" },
+      { unitDefId: "castle.halberdiers", side: "pack" },
+    ];
+    const obs = duelObservation({
+      self: { ...self, army },
+      towns: {
+        t2: {
+          controllerId: "p2",
+          buildings: ["castle.dwelling_silver", "castle.dwelling_gold"],
+        },
+      },
+    });
+    (obs.state as { round: number }).round = 5;
+    return obs;
+  }
+
   function buy(cardId: string): GameAction {
     return {
       type: "BUY_WAR_MACHINE",
@@ -576,7 +596,7 @@ describe("card-values — war-machine shop order", () => {
     // tight band so different contexts buy different machines (variety). (Revised
     // from the Step-3 "Ballista clearly over Tent" order: the Tent is now
     // competitive by default and wins the contexts below.)
-    const obs = duelObservation({ self: { gold: 30 } });
+    const obs = lateMarketObservation({ gold: 30 });
     const ballista = scoreMapAction(obs, buy("war_machine.ballista"))?.score ?? 0;
     const tent = scoreMapAction(obs, buy("war_machine.first_aid_tent"))?.score ?? 0;
     const ammo = scoreMapAction(obs, buy("war_machine.ammo_cart"))?.score ?? 0;
@@ -590,8 +610,13 @@ describe("card-values — war-machine shop order", () => {
   it("PREFERS the First Aid Tent when the army holds a silver/gold unit to save", () => {
     // A gold-tier body in the army (a unit worth keeping alive) flips the first
     // buy to the Tent.
-    const obs = duelObservation({
-      self: { gold: 30, army: [{ unitDefId: "castle.champions" }] }, // gold tier
+    const obs = lateMarketObservation({
+      gold: 30,
+      army: [
+        { unitDefId: "castle.champions", side: "pack" },
+        { unitDefId: "castle.halberdiers", side: "pack" },
+        { unitDefId: "castle.marksmen", side: "pack" },
+      ], // gold tier
     });
     const ballista = scoreMapAction(obs, buy("war_machine.ballista"))?.score ?? 0;
     const tent = scoreMapAction(obs, buy("war_machine.first_aid_tent"))?.score ?? 0;
@@ -600,8 +625,13 @@ describe("card-values — war-machine shop order", () => {
     // CONTROL: a bronze-only army has no premium unit to save — the Tent is not
     // preferred (default Ballista order returns), proving the tier signal drove
     // the flip.
-    const bronzeArmy = duelObservation({
-      self: { gold: 30, army: [{ unitDefId: "castle.halberdiers" }] }, // bronze tier
+    const bronzeArmy = lateMarketObservation({
+      gold: 30,
+      army: [
+        { unitDefId: "castle.halberdiers", side: "pack" },
+        { unitDefId: "castle.marksmen", side: "pack" },
+        { unitDefId: "castle.halberdiers", side: "pack" },
+      ], // bronze tier
     });
     const ballistaB = scoreMapAction(bronzeArmy, buy("war_machine.ballista"))?.score ?? 0;
     const tentB = scoreMapAction(bronzeArmy, buy("war_machine.first_aid_tent"))?.score ?? 0;
@@ -609,10 +639,39 @@ describe("card-values — war-machine shop order", () => {
   });
 
   it("Gem — the healing specialist — keeps the STRONGEST Tent preference (even chaff army)", () => {
-    const obs = duelObservation({ self: { gold: 30, heroDefId: "gem" } });
+    const obs = lateMarketObservation({ gold: 30, heroDefId: "gem" });
     const ballista = scoreMapAction(obs, buy("war_machine.ballista"))?.score ?? 0;
     const tent = scoreMapAction(obs, buy("war_machine.first_aid_tent"))?.score ?? 0;
     expect(tent).toBeGreaterThan(ballista);
+  });
+
+  it("buys one additional machine only in late development with a large surplus", () => {
+    const rich = lateMarketObservation({
+      gold: 50,
+      permanents: ["war_machine.first_aid_tent"],
+    });
+    expect(
+      scoreMapAction(rich, buy("war_machine.ballista"))?.score ?? 0,
+    ).toBeGreaterThan(520);
+
+    const reserved = lateMarketObservation({
+      gold: 40,
+      permanents: ["war_machine.first_aid_tent"],
+    });
+    expect(
+      scoreMapAction(reserved, buy("war_machine.ballista"))?.score ?? 0,
+    ).toBeLessThan(520);
+
+    const alreadyEquipped = lateMarketObservation({
+      gold: 60,
+      permanents: [
+        "war_machine.first_aid_tent",
+        "war_machine.ammo_cart",
+      ],
+    });
+    expect(
+      scoreMapAction(alreadyEquipped, buy("war_machine.ballista"))?.score ?? 0,
+    ).toBeLessThan(520);
   });
 });
 
@@ -630,6 +689,7 @@ describe("card-values — scroll spells sell by tier", () => {
 
   it("sells a D/C-tier scroll spell even with full coffers, keeps S/A below END_TURN", () => {
     const rich = duelObservation({ self: { gold: 30 } });
+    (rich.state as { round: number }).round = 5;
     const sellQuake = scoreMapAction(rich, sell("spell.earthquake"));
     const sellVisions = scoreMapAction(rich, sell("spell.visions"));
     const sellFly = scoreMapAction(rich, sell("spell.fly"));
@@ -643,6 +703,7 @@ describe("card-values — scroll spells sell by tier", () => {
     expect(sellFly?.policy).toBe("map.keep-scroll-spell");
     // Even gold-starved, an S-tier scroll spell stays.
     const broke = duelObservation({ self: { gold: 2 } });
+    (broke.state as { round: number }).round = 5;
     expect(scoreMapAction(broke, sell("spell.fly"))?.score ?? 0).toBeLessThan(
       300,
     );
@@ -655,6 +716,8 @@ describe("card-values — scroll spells sell by tier", () => {
     expect(cardTier("spell.clone")).toBeUndefined();
     const rich = duelObservation({ self: { gold: 30 } });
     const broke = duelObservation({ self: { gold: 2 } });
+    (rich.state as { round: number }).round = 5;
+    (broke.state as { round: number }).round = 5;
     expect(scoreMapAction(rich, sell("spell.clone"))?.score).toBe(300);
     expect(scoreMapAction(broke, sell("spell.clone"))?.score).toBe(550);
   });
