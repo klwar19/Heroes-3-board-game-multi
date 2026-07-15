@@ -783,6 +783,46 @@ export default function Home() {
     }
   }, [phoneUi, owedTileRotationId]);
   /* eslint-enable react-hooks/set-state-in-effect */
+  /**
+   * Phone mode auto-switch (combat surface): a fresh fight must open on the
+   * Board tab. `phoneCombatTab` is component state that PERSISTS across fights,
+   * so a player who ended the previous battle reading their Hand tab would open
+   * the NEXT one still on Hand — the battlefield hidden, the reported "combat
+   * shows nothing but my cards". Snap to Board on each new combat id.
+   */
+  const activeCombatId = state?.combat?.id ?? null;
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    if (phoneUi && activeCombatId) {
+      setPhoneCombatTab("board");
+    }
+  }, [phoneUi, activeCombatId]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+  /**
+   * Phone mode auto-switch (combat surface): selecting a hand card that must be
+   * aimed at a board target (Magic Arrow, Bloodlust, Inferno…) arms
+   * `selectedCardAction` and then expects a tap on a GLOWING unit/space on the
+   * battlefield. That board lives on the Board tab; a player who picked the card
+   * from the Hand tab would see the "click a glowing unit" banner but no board —
+   * the reported "many options when click, see nothing". Snap to the Board tab
+   * on the transition into targeting, keyed on the armed selection's identity so
+   * it fires once and never fights a later manual re-tab. (No fixed-overlay
+   * fallback exists for a board target the way the PromptTray backs map-spell
+   * choices, so the tab MUST move.)
+   */
+  const combatBoardTargetKey =
+    phoneUi && selectedCardAction
+      ? `${selectedCardAction.type}:${selectedCardAction.cardId}:${JSON.stringify(
+          (selectedCardAction as { target?: unknown }).target ?? null,
+        )}`
+      : null;
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    if (combatBoardTargetKey) {
+      setPhoneCombatTab("board");
+    }
+  }, [combatBoardTargetKey]);
+  /* eslint-enable react-hooks/set-state-in-effect */
   /** The Town window popup (board / buildings views) over the adventure map. */
   const [townOpen, setTownOpen] = useState(false);
   const [pile, setPile] = useState<{ title: string; cardIds: string[]; kind: "cards" | "units" | "astrologers" | "events" } | null>(null);

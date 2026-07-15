@@ -308,6 +308,62 @@ describe("phone UI mode — combat surface", () => {
     expect(main.getAttribute("data-phone-tab")).toBe("board");
   });
 
+  it("a fresh combat id snaps the surface back to the Board tab (not another fight's leftover tab)", async () => {
+    window.localStorage.setItem(UI_MODE_STORAGE_KEY, "phone");
+    const first = createInitialGameState("phone-combat");
+    const room = serveRoomCapturing(first);
+    render(<Home />);
+    await settle();
+
+    const main = mainEl();
+    expect(main.getAttribute("data-phone-tab")).toBe("board");
+    // The player wanders to the Hand tab (reading cards) and leaves it there as
+    // the previous fight ends.
+    fireEvent.click(screen.getByRole("tab", { name: /hand/i }));
+    expect(main.getAttribute("data-phone-tab")).toBe("hand");
+
+    // CONTROL: the SAME combat re-broadcast (same id) must NOT drag the tab —
+    // the player is free to keep reading their hand mid-fight.
+    const sameFight = createInitialGameState("phone-combat");
+    await act(async () => room.push(sameFight, 2));
+    await settle();
+    expect(main.getAttribute("data-phone-tab")).toBe("hand");
+
+    // A brand-new fight arrives (new combat id) — the surface snaps to the board
+    // so the battlefield is what opens, not the leftover Hand tab.
+    const nextFight = createInitialGameState("phone-combat");
+    nextFight.combat = { ...nextFight.combat!, id: "combat_2" };
+    await act(async () => room.push(nextFight, 3));
+    await settle();
+    expect(main.getAttribute("data-phone-tab")).toBe("board");
+  });
+
+  it("arming a board-target card from the Hand tab snaps to the Board tab so the target is clickable", async () => {
+    window.localStorage.setItem(UI_MODE_STORAGE_KEY, "phone");
+    // The sandbox seats p1 with Magic Arrow (three enemy targets) castable now.
+    serveRoom(createInitialGameState("phone-combat"));
+    render(<Home />);
+    await settle();
+
+    const main = mainEl();
+    expect(main.getAttribute("data-phone-tab")).toBe("board");
+    // Go to the Hand tab to pick the spell (jsdom ignores the CSS that hides the
+    // board there — the point is the wiring, not the paint).
+    fireEvent.click(screen.getByRole("tab", { name: /hand/i }));
+    expect(main.getAttribute("data-phone-tab")).toBe("hand");
+
+    // Tapping Magic Arrow arms selectedCardAction (its only completion is a tap
+    // on a glowing board target). The card shows as selected…
+    const magicArrow = screen.getByTitle(/^Magic Arrow —/i);
+    fireEvent.click(magicArrow);
+    expect(magicArrow.className).toContain("selected");
+
+    // …and the surface flips to the Board tab so that glowing target is reachable
+    // (without the wiring the player would sit on the Hand tab, banner up, board
+    // hidden — the reported "click, see nothing").
+    expect(main.getAttribute("data-phone-tab")).toBe("board");
+  });
+
   it("CONTROL — computer preference: the combat table renders without any phone chrome", async () => {
     window.localStorage.setItem(UI_MODE_STORAGE_KEY, "computer");
     serveRoom(createInitialGameState("phone-combat"));
