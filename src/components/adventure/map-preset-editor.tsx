@@ -3,18 +3,22 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowUpDown, Clock3, Copy, Plus, Trash2 } from "lucide-react";
 import {
+  DEFAULT_VICTORY_CONDITION_VP,
   defaultObeliskBonusForKind,
   defaultTimedEffect,
   defaultTimedEvent,
+  defaultVictoryPointObjective,
   describeCustomMapPresetEntries,
   describeTimedMapEffect,
   MAX_TIMED_EVENTS,
+  MAX_VICTORY_POINT_OBJECTIVES,
   MAP_PRESET_BUILDING_OPTIONS,
   MAP_PRESET_OBELISK_BONUS_KINDS,
   MAP_PRESET_OBELISK_ROLE_OPTIONS,
   MAP_PRESET_VICTORY_OPTIONS,
   TIMED_EFFECT_KIND_LABELS,
   TIMED_EFFECT_KINDS,
+  VICTORY_POINT_OBJECTIVE_OPTIONS,
   type CustomMapObeliskBonus,
   type CustomMapObeliskConfig,
   type CustomMapPreset,
@@ -24,7 +28,8 @@ import {
   type CustomStartingUnit,
   type TimedEffectKind,
   type UnitLevel,
-  type VictoryMode
+  type VictoryMode,
+  type VictoryPointObjective
 } from "@/engine";
 
 /**
@@ -88,6 +93,10 @@ export function MapPresetEditor({
       // An empty objectives block means "nothing forced" — drop the key so the
       // preset collapses to undefined when it was the only condition.
       delete next.objectives;
+    }
+    if ("victoryPoints" in partial && partial.victoryPoints === undefined) {
+      // Toggling Victory Points off removes the block entirely.
+      delete next.victoryPoints;
     }
     // Collapse to undefined when nothing is set.
     const keys = Object.keys(next).filter((key) => {
@@ -156,6 +165,44 @@ export function MapPresetEditor({
       next.utopiaBonusSearch = count;
     }
     patchObjectives(next);
+  };
+
+  const victoryPoints = value.victoryPoints;
+  const vpOn = Boolean(victoryPoints?.enabled);
+  const vpObjectives = victoryPoints?.objectives ?? [];
+  const writeVictoryPoints = (patchVp: {
+    victoryConditionVp?: number;
+    objectives?: VictoryPointObjective[];
+  }) => {
+    const next: NonNullable<CustomMapPreset["victoryPoints"]> = {
+      enabled: true,
+      victoryConditionVp:
+        patchVp.victoryConditionVp ?? victoryPoints?.victoryConditionVp ?? DEFAULT_VICTORY_CONDITION_VP
+    };
+    const objectives = patchVp.objectives ?? victoryPoints?.objectives;
+    if (objectives && objectives.length > 0) {
+      next.objectives = objectives;
+    }
+    patch({ victoryPoints: next });
+  };
+  const toggleVictoryPoints = () => {
+    if (vpOn) {
+      patch({ victoryPoints: undefined });
+    } else {
+      writeVictoryPoints({});
+    }
+  };
+  const addVpObjective = () => {
+    if (vpObjectives.length >= MAX_VICTORY_POINT_OBJECTIVES) {
+      return;
+    }
+    writeVictoryPoints({ objectives: [...vpObjectives, defaultVictoryPointObjective("control-towns")] });
+  };
+  const updateVpObjective = (index: number, objective: VictoryPointObjective) => {
+    writeVictoryPoints({ objectives: vpObjectives.map((entry, i) => (i === index ? objective : entry)) });
+  };
+  const removeVpObjective = (index: number) => {
+    writeVictoryPoints({ objectives: vpObjectives.filter((_, i) => i !== index) });
   };
 
   const setTimed = (next: CustomMapTimedEvent[]) => {
@@ -792,7 +839,9 @@ export function MapPresetEditor({
       </section>
 
       <section className="mapPresetSection">
-        <div className="mapPresetSectionLabel">Suggested length (rounds)</div>
+        <div className="mapPresetSectionLabel">
+          {vpOn ? "Round limit (hard end)" : "Suggested length (rounds)"}
+        </div>
         <div className="mapPresetResourceRow">
           <ResourceField
             label="Rounds"
@@ -800,7 +849,113 @@ export function MapPresetEditor({
             onChange={(roundLimit) => patch({ roundLimit: roundLimit || undefined })}
           />
         </div>
-        <small className="mapPresetHint">Display note for now — hard end is left for a later victory extension.</small>
+        <small className="mapPresetHint">
+          {vpOn
+            ? "With Victory Points on, the game ENDS when this round wraps (then VPs are scored)."
+            : "A display-only note today — a suggested length, not a hard end."}
+        </small>
+      </section>
+
+      <section className="mapPresetSection mapPresetVpSection" aria-label="Victory Points">
+        <div className="mapPresetSectionLabel">🎖️ Victory Points</div>
+        <label className="mapPresetToggle">
+          <input
+            aria-label="Victory Points scoring"
+            checked={vpOn}
+            onChange={toggleVictoryPoints}
+            type="checkbox"
+          />
+          <span>Score Victory Points (rulebook scenario scoring)</span>
+        </label>
+        {vpOn ? (
+          <>
+            <small className="mapPresetHint">
+              The game ends at the round limit above OR when a player completes the victory condition —
+              the most VPs wins. Set a round limit above for a hard cap.
+              {value.roundLimit ? "" : " ⚠ No round limit set — completion is the only end trigger."}
+            </small>
+            <div className="mapPresetResourceRow">
+              <ResourceField
+                label="Completion VP"
+                value={victoryPoints?.victoryConditionVp ?? DEFAULT_VICTORY_CONDITION_VP}
+                onChange={(vp) => writeVictoryPoints({ victoryConditionVp: Math.max(0, Math.min(10, vp ?? 0)) })}
+              />
+            </div>
+
+            <div className="mapPresetVpObjectives" role="group" aria-label="Victory Point objectives">
+              <div className="mapPresetTimedSectionHeading">
+                <div className="mapPresetSectionLabel">Extra objectives</div>
+                <span className={`mapPresetTimedCount${vpObjectives.length >= MAX_VICTORY_POINT_OBJECTIVES ? " full" : ""}`}>
+                  {vpObjectives.length}/{MAX_VICTORY_POINT_OBJECTIVES}
+                </span>
+              </div>
+              {vpObjectives.map((objective, index) => (
+                <div className="mapPresetVpObjectiveRow" key={index}>
+                  <select
+                    aria-label={`Objective ${index + 1} kind`}
+                    className="mapPresetSelect"
+                    onChange={(e) =>
+                      updateVpObjective(index, {
+                        ...defaultVictoryPointObjective(e.target.value as VictoryPointObjective["kind"]),
+                        vp: objective.vp
+                      })
+                    }
+                    value={objective.kind}
+                  >
+                    {VICTORY_POINT_OBJECTIVE_OPTIONS.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  {objective.kind === "control-towns" || objective.kind === "flag-mines" ? (
+                    <ResourceField
+                      label="N"
+                      value={objective.count}
+                      onChange={(count) =>
+                        updateVpObjective(index, { ...objective, count: Math.max(1, count ?? 1) })
+                      }
+                    />
+                  ) : null}
+                  {objective.kind === "hero-level" ? (
+                    <ResourceField
+                      label="Level"
+                      value={objective.level}
+                      onChange={(level) =>
+                        updateVpObjective(index, { ...objective, level: Math.max(2, Math.min(7, level ?? 2)) })
+                      }
+                    />
+                  ) : null}
+                  <ResourceField
+                    label="VP"
+                    value={objective.vp}
+                    onChange={(vp) => updateVpObjective(index, { ...objective, vp: Math.max(1, Math.min(10, vp ?? 1)) })}
+                  />
+                  <button
+                    aria-label={`Remove objective ${index + 1}`}
+                    className="mapPresetTimedRemove"
+                    onClick={() => removeVpObjective(index)}
+                    type="button"
+                  >
+                    <Trash2 aria-hidden="true" size={13} />
+                  </button>
+                </div>
+              ))}
+              <button
+                className="mapPresetTimedAdd"
+                disabled={vpObjectives.length >= MAX_VICTORY_POINT_OBJECTIVES}
+                onClick={addVpObjective}
+                type="button"
+              >
+                <Plus aria-hidden="true" size={13} /> Add objective
+              </button>
+            </div>
+          </>
+        ) : (
+          <small className="mapPresetHint">
+            Off — the round limit above stays a mere suggested length.
+          </small>
+        )}
       </section>
 
       <section className="mapPresetSection">

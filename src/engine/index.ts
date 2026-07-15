@@ -293,6 +293,7 @@ export {
   defaultObeliskBonusForKind,
   defaultTimedEffect,
   defaultTimedEvent,
+  defaultVictoryPointObjective,
   describeCustomMapPreset,
   describeCustomMapPresetEntries,
   describeMapObjects,
@@ -301,10 +302,12 @@ export {
   describeObjectivesConfig,
   describeUtopiaGuards,
   describeTimedMapEffect,
+  describeVictoryPointsConfig,
   isViiFieldDesignation,
   MAX_CUSTOM_MAP_OBJECTS,
   MAX_GATES_PER_PAIR,
   MAX_TIMED_EVENTS,
+  MAX_VICTORY_POINT_OBJECTIVES,
   MAP_PRESET_BUILDING_OPTIONS,
   MAP_PRESET_OBELISK_BONUS_KINDS,
   MAP_PRESET_OBELISK_ROLE_OPTIONS,
@@ -317,9 +320,27 @@ export {
   tileMatchesSecretFeature,
   TIMED_EFFECT_KIND_LABELS,
   TIMED_EFFECT_KINDS,
+  VICTORY_POINT_OBJECTIVE_OPTIONS,
   victoryDesignConflicts,
   VII_FIELD_DESIGNATIONS
 } from "./map-preset";
+export {
+  computeVictoryPoints,
+  DEFAULT_VICTORY_CONDITION_VP,
+  describeVictoryPointObjective,
+  recordVpHeroDefeat,
+  recordVpSurrender,
+  recordVpUtopiaDefeat,
+  victoryConditionVp,
+  victoryPointsConfig,
+  victoryPointsModeActive
+} from "./victory-points";
+export type {
+  VictoryPointBreakdown,
+  VictoryPointRow,
+  VictoryPointsConfig,
+  VictoryPointsResult
+} from "./victory-points";
 export type {
   CustomMapPresetEntry,
   CustomMapStartingBonus,
@@ -366,6 +387,7 @@ export {
   changeMorale,
   classifyHeroStep,
   declareAdventureWinner,
+  endGameByVictoryPoints,
   effectiveHandLimit,
   ensureUniqueArmyUnitIds,
   fieldLayer,
@@ -618,7 +640,9 @@ export type {
   UnitType,
   UnitId,
   UnitTransformState,
+  VictoryPointObjective,
   VisitStep,
+  VpLedgerEntry,
   CombatTokenKind,
   CombatTokenState,
   FirstPlayerRollState,

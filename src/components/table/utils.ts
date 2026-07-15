@@ -605,6 +605,14 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       return event.message;
     case "GAME_WON":
       return `${playerName(state, event.playerId)} wins the game: ${event.reason}!`;
+    case "VP_SCORING": {
+      const winnerTotal =
+        event.breakdown.find((row) => row.playerId === event.winnerPlayerId)?.total ?? 0;
+      const standings = event.breakdown
+        .map((row) => `${playerName(state, row.playerId)} ${row.total}`)
+        .join(", ");
+      return `Victory Points scored (${event.reason}): ${playerName(state, event.winnerPlayerId)} leads with ${winnerTotal} VP — ${standings}.`;
+    }
     case "PLAYER_ELIMINATED":
       return `${playerName(state, event.playerId)} is eliminated — ${event.reason}. They become an observer.`;
     case "AFK_VOTE_STARTED":

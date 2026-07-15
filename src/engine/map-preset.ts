@@ -17,6 +17,7 @@ import type { TileDefinition } from "@/data/map/types";
 import { seaTileBand, subterraneanTileBand, VII_FIELD_LOCATION } from "./adventure";
 import { VICTORY_MODE_LABELS } from "./ruleset";
 import { DEFAULT_OBELISK_BONUS } from "./state";
+import { DEFAULT_VICTORY_CONDITION_VP, describeVictoryPointObjective } from "./victory-points";
 import type {
   CustomMapObeliskBonus,
   CustomMapObeliskConfig,
@@ -31,7 +32,8 @@ import type {
   GameSetupOptions,
   SecretTileFeature,
   UnitLevel,
-  VictoryMode
+  VictoryMode,
+  VictoryPointObjective
 } from "./state";
 
 export type { CustomMapPreset };
@@ -130,6 +132,15 @@ const BUILDING_SUFFIXES = new Set([
 const SEARCH_DECKS = new Set(["artifacts", "spells", "abilities"]);
 const CUBE_LOCATIONS = new Set(["windmill", "water_wheel", "mystical_garden"]);
 const OBELISK_ROLES = new Set<CustomMapObeliskConfig["role"]>(["monolith", "bonus", "victory-only"]);
+const VICTORY_POINT_OBJECTIVE_KINDS = new Set<VictoryPointObjective["kind"]>([
+  "control-towns",
+  "flag-mines",
+  "hero-level",
+  "defeat-dragon-utopia"
+]);
+
+/** Max designer-chosen VP objectives per map (sanitisation cap). */
+export const MAX_VICTORY_POINT_OBJECTIVES = 4;
 
 export type { CustomMapObeliskBonus, CustomMapObeliskConfig };
 
@@ -364,6 +375,68 @@ function sanitizeObjectivesConfig(input: unknown): CustomMapObjectivesConfig | u
 }
 
 /**
+ * Sanitize ONE Victory-Points objective (untrusted). Drops unknown kinds and a
+ * zero/degenerate `vp`; clamps each kind's threshold to its legal band. Returns
+ * null for anything unusable so the array filter removes it.
+ */
+function sanitizeVictoryPointObjective(input: unknown): VictoryPointObjective | null {
+  if (!input || typeof input !== "object") {
+    return null;
+  }
+  const raw = input as { kind?: unknown; vp?: unknown; count?: unknown; level?: unknown };
+  if (typeof raw.kind !== "string" || !VICTORY_POINT_OBJECTIVE_KINDS.has(raw.kind as VictoryPointObjective["kind"])) {
+    return null;
+  }
+  // A degenerate `vp` (0, negative, non-numeric) is a no-op objective — drop it
+  // (min 0 so a real 0 falls through the < 1 guard instead of clamping up to 1).
+  const vp = clampInt(raw.vp, 0, 10, 0);
+  if (vp < 1) {
+    return null;
+  }
+  switch (raw.kind as VictoryPointObjective["kind"]) {
+    case "control-towns":
+      return { kind: "control-towns", vp, count: clampInt(raw.count, 1, 4, 1) };
+    case "flag-mines":
+      return { kind: "flag-mines", vp, count: clampInt(raw.count, 1, 8, 1) };
+    case "hero-level":
+      return { kind: "hero-level", vp, level: clampInt(raw.level, 2, 7, 2) };
+    case "defeat-dragon-utopia":
+      return { kind: "defeat-dragon-utopia", vp };
+  }
+}
+
+/**
+ * Sanitize the Victory-Points block (untrusted). `enabled` must be LITERALLY
+ * true; `victoryConditionVp` clamps to 0-10 (default {@link
+ * DEFAULT_VICTORY_CONDITION_VP}); up to {@link MAX_VICTORY_POINT_OBJECTIVES}
+ * objectives survive (unknown kinds / degenerate ones dropped). Returns
+ * undefined when not enabled — so a `{ enabled: false }` block collapses away.
+ */
+function sanitizeVictoryPoints(input: unknown): CustomMapPreset["victoryPoints"] | undefined {
+  if (!input || typeof input !== "object") {
+    return undefined;
+  }
+  const raw = input as { enabled?: unknown; victoryConditionVp?: unknown; objectives?: unknown };
+  if (raw.enabled !== true) {
+    return undefined;
+  }
+  const victoryPoints: NonNullable<CustomMapPreset["victoryPoints"]> = {
+    enabled: true,
+    victoryConditionVp: clampInt(raw.victoryConditionVp, 0, 10, DEFAULT_VICTORY_CONDITION_VP)
+  };
+  if (Array.isArray(raw.objectives)) {
+    const objectives = raw.objectives
+      .map(sanitizeVictoryPointObjective)
+      .filter((objective): objective is VictoryPointObjective => objective !== null)
+      .slice(0, MAX_VICTORY_POINT_OBJECTIVES);
+    if (objectives.length > 0) {
+      victoryPoints.objectives = objectives;
+    }
+  }
+  return victoryPoints;
+}
+
+/**
  * Sanitize ONE designer-placed map object (untrusted input). Keeps only a
  * well-formed shape: a known kind, a valid placement (tile-slot with a 0-6 slot,
  * or standalone), a colored pair 1-4 REQUIRED for a gate (and never on another
@@ -589,6 +662,12 @@ export function sanitizeCustomMapPreset(input: unknown): CustomMapPreset | undef
       preset.objectives = objectives;
     }
   }
+  if (raw.victoryPoints !== undefined) {
+    const victoryPoints = sanitizeVictoryPoints(raw.victoryPoints);
+    if (victoryPoints) {
+      preset.victoryPoints = victoryPoints;
+    }
+  }
 
   return customMapPresetIsActive(preset) ? preset : undefined;
 }
@@ -610,7 +689,8 @@ export function customMapPresetIsActive(preset: CustomMapPreset | null | undefin
       (preset.notes && preset.notes.length > 0) ||
       preset.obelisks ||
       (preset.objects && preset.objects.length > 0) ||
-      Boolean(preset.objectives)
+      Boolean(preset.objectives) ||
+      Boolean(preset.victoryPoints?.enabled)
   );
 }
 
@@ -746,6 +826,34 @@ export function describeObjectivesConfig(config: CustomMapObjectivesConfig): Cus
   return entries;
 }
 
+/**
+ * Icon-tagged lines for the Victory-Points block (lobby banner + designer
+ * summary). 🎖️ for the mode headline (naming the two end triggers and the
+ * completion VP) and one 🎖️ line per extra objective.
+ */
+export function describeVictoryPointsConfig(
+  config: NonNullable<CustomMapPreset["victoryPoints"]>,
+  roundLimit?: number
+): CustomMapPresetEntry[] {
+  const completionVp = config.victoryConditionVp ?? DEFAULT_VICTORY_CONDITION_VP;
+  const trigger = roundLimit
+    ? `game ends at round ${roundLimit} or on the victory condition`
+    : "game ends on the victory condition (set a round limit for a hard cap)";
+  const entries: CustomMapPresetEntry[] = [
+    {
+      icon: "🎖️",
+      text: `Victory Points: ${trigger}; most VPs wins (completion +${completionVp} VP)`
+    }
+  ];
+  for (const objective of config.objectives ?? []) {
+    entries.push({
+      icon: "🎖️",
+      text: `Objective: ${describeVictoryPointObjective(objective)} — +${objective.vp} VP`
+    });
+  }
+  return entries;
+}
+
 /** Plain-words line for the map-wide Obelisk role (lobby banner + designer). */
 export function describeObeliskRole(config: CustomMapObeliskConfig): string {
   if (config.role === "monolith") {
@@ -842,13 +950,25 @@ export function describeCustomMapPresetEntries(
     }
   }
   if (preset.roundLimit) {
-    entries.push({ icon: "🕰️", text: `Suggested length: ${preset.roundLimit} rounds` });
+    // With Victory Points on, the round limit is the HARD end trigger — not a
+    // mere suggestion. The wording changes so a designer knows which it is.
+    entries.push({
+      icon: "🕰️",
+      text: preset.victoryPoints?.enabled
+        ? `Game ends at round ${preset.roundLimit} (then Victory Points are scored)`
+        : `Suggested length: ${preset.roundLimit} rounds`
+    });
   }
   if (preset.obelisks) {
     entries.push({ icon: "🗿", text: describeObeliskRole(preset.obelisks) });
   }
   if (preset.objectives) {
     for (const line of describeObjectivesConfig(preset.objectives)) {
+      entries.push(line);
+    }
+  }
+  if (preset.victoryPoints?.enabled) {
+    for (const line of describeVictoryPointsConfig(preset.victoryPoints, preset.roundLimit)) {
       entries.push(line);
     }
   }
@@ -1241,5 +1361,47 @@ export function defaultObeliskBonusForKind(kind: CustomMapObeliskBonus["kind"]):
       return { kind: "movement", amount: 1 };
     case "dice":
       return { kind: "dice", treasure: 1, resource: 0 };
+  }
+}
+
+/** Victory-Points objective kinds the designer may add (editor dropdown order). */
+export const VICTORY_POINT_OBJECTIVE_OPTIONS: {
+  id: VictoryPointObjective["kind"];
+  label: string;
+  hint: string;
+}[] = [
+  {
+    id: "control-towns",
+    label: "Control N Towns",
+    hint: "Award VP to every player controlling at least N Towns when the game is scored."
+  },
+  {
+    id: "flag-mines",
+    label: "Flag N Mines / Settlements",
+    hint: "Award VP to every player holding at least N flagged Mines + Settlements at scoring."
+  },
+  {
+    id: "hero-level",
+    label: "Reach Hero level N",
+    hint: "Award VP to every player whose main Hero is at least level N at scoring."
+  },
+  {
+    id: "defeat-dragon-utopia",
+    label: "Defeat a Dragon Utopia",
+    hint: "Award VP to each player who defeated a Dragon Utopia at any point in the game."
+  }
+];
+
+/** Fresh default objective when the designer adds one / switches its kind. */
+export function defaultVictoryPointObjective(kind: VictoryPointObjective["kind"]): VictoryPointObjective {
+  switch (kind) {
+    case "control-towns":
+      return { kind: "control-towns", vp: 3, count: 2 };
+    case "flag-mines":
+      return { kind: "flag-mines", vp: 3, count: 3 };
+    case "hero-level":
+      return { kind: "hero-level", vp: 3, level: 5 };
+    case "defeat-dragon-utopia":
+      return { kind: "defeat-dragon-utopia", vp: 5 };
   }
 }

@@ -258,4 +258,60 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
     expect(screen.getByText("Dragon Utopia guards: always four dragons")).toBeTruthy();
     expect(screen.getByText("Dragon Utopia bonus: Search(2) Artifacts")).toBeTruthy();
   });
+
+  it("Victory Points: the toggle writes the enabled block, adding/retyping an objective writes it, and off clears it", () => {
+    const onChange = vi.fn();
+    const { rerender } = render(<MapPresetEditor preset={undefined} onChange={onChange} />);
+
+    // Toggle VP on → the enabled block with the default completion VP.
+    fireEvent.click(screen.getByLabelText("Victory Points scoring"));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ victoryPoints: { enabled: true, victoryConditionVp: 3 } })
+    );
+
+    // Add an objective → the default control-towns objective.
+    rerender(<MapPresetEditor preset={{ victoryPoints: { enabled: true, victoryConditionVp: 3 } }} onChange={onChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "Add objective" }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        victoryPoints: expect.objectContaining({
+          enabled: true,
+          objectives: [{ kind: "control-towns", vp: 3, count: 2 }]
+        })
+      })
+    );
+
+    // Retype the objective kind → keeps its VP, swaps the kind's params.
+    rerender(
+      <MapPresetEditor
+        preset={{ victoryPoints: { enabled: true, victoryConditionVp: 3, objectives: [{ kind: "control-towns", vp: 3, count: 2 }] } }}
+        onChange={onChange}
+      />
+    );
+    fireEvent.change(screen.getByLabelText("Objective 1 kind"), { target: { value: "hero-level" } });
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        victoryPoints: expect.objectContaining({ objectives: [{ kind: "hero-level", vp: 3, level: 5 }] })
+      })
+    );
+
+    // Toggling VP off (its only condition) collapses the whole preset.
+    rerender(<MapPresetEditor preset={{ victoryPoints: { enabled: true, victoryConditionVp: 3 } }} onChange={onChange} />);
+    fireEvent.click(screen.getByLabelText("Victory Points scoring"));
+    expect(onChange).toHaveBeenLastCalledWith(undefined);
+  });
+
+  it("Victory Points: the 🎖️ summary line + the hard round-limit relabel appear when on", () => {
+    render(
+      <MapPresetEditor
+        preset={{ roundLimit: 8, victoryPoints: { enabled: true, victoryConditionVp: 4, objectives: [{ kind: "control-towns", vp: 2, count: 3 }] } }}
+        onChange={() => {}}
+      />
+    );
+    // Summary headline + objective line (describeVictoryPointsConfig).
+    expect(screen.getByText(/most VPs wins \(completion \+4 VP\)/)).toBeTruthy();
+    expect(screen.getByText("Objective: Control 3 Towns — +2 VP")).toBeTruthy();
+    // The round-limit section relabels to the hard meaning.
+    expect(screen.getByText("Round limit (hard end)")).toBeTruthy();
+  });
 });

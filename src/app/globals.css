@@ -8934,6 +8934,195 @@ span.recruitThumb {
   padding: 16px;
 }
 
+/* ---- Victory Points (live dock + game-over scoring overlay) -------------- */
+.vpDock {
+  display: grid;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 1px solid rgba(214, 178, 94, 0.5);
+  border-radius: 10px;
+  background: rgba(30, 24, 12, 0.72);
+}
+
+.vpDockButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 7px;
+  border: 1px solid rgba(214, 178, 94, 0.55);
+  border-radius: 8px;
+  background: rgba(44, 34, 16, 0.9);
+  color: #f2e2b6;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.vpDockButton:hover {
+  border-color: rgba(240, 206, 120, 0.9);
+  color: #ffe9bd;
+}
+
+.vpDockList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.vpDockList li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #e6d6ac;
+}
+
+.vpDockList li.viewer {
+  background: rgba(214, 178, 94, 0.16);
+  color: #ffe6bb;
+}
+
+.vpDockScore {
+  font-variant-numeric: tabular-nums;
+  color: #ffe08a;
+}
+
+.vpStandingsBackdrop {
+  z-index: 120;
+  padding: 16px;
+}
+
+.vpStandingsModal,
+.vpScoringPanel {
+  position: relative;
+  width: min(560px, 96vw);
+  max-height: 90vh;
+  overflow-y: auto;
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 2px solid var(--gold);
+  border-radius: 14px;
+  background: rgb(24 21 15 / 98%);
+  box-shadow: 0 24px 60px rgb(0 0 0 / 60%);
+}
+
+.vpStandingsHead,
+.vpScoringHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #ffdf9b;
+}
+
+.vpScoringHead div {
+  display: grid;
+}
+
+.vpScoringHead small {
+  color: #c8b789;
+  font-size: 12px;
+}
+
+.vpScoringOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 130;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgb(0 0 0 / 55%);
+}
+
+.vpBreakdownList {
+  display: grid;
+  gap: 10px;
+}
+
+.vpBreakdownCard {
+  border: 1px solid rgba(170, 130, 70, 0.4);
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: rgba(20, 16, 10, 0.7);
+}
+
+.vpBreakdownCard.winner {
+  border-color: rgba(240, 206, 120, 0.9);
+  background: rgba(50, 40, 16, 0.7);
+}
+
+.vpBreakdownCard.viewer {
+  box-shadow: inset 0 0 0 1px rgba(214, 178, 94, 0.35);
+}
+
+.vpBreakdownHead {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #f1e2b8;
+}
+
+.vpBreakdownTotal {
+  margin-left: auto;
+  font-weight: 800;
+  color: #ffe08a;
+  font-variant-numeric: tabular-nums;
+}
+
+.vpBreakdownRows {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.vpBreakdownRows li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+  color: #d7c69a;
+}
+
+.vpBreakdownRows b {
+  color: #ffe08a;
+}
+
+.vpBreakdownEmpty {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: #9c8c66;
+}
+
+/* Victory Points designer section. */
+.mapPresetToggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #e6d6ac;
+  cursor: pointer;
+}
+
+.mapPresetVpObjectiveRow {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px 0;
+  border-top: 1px dashed rgba(170, 130, 70, 0.3);
+}
+
 .opponentInfoModal {
   position: relative;
   width: min(560px, 96vw);

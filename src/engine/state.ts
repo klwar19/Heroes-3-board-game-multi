@@ -5124,6 +5124,27 @@ export type GameEvent =
       reason: string;
     }
   | {
+      /**
+       * Victory Points scoring at game end (VP mode). Carries the full per-player
+       * breakdown so the feed + scoring overlay can show every line. Emitted
+       * immediately BEFORE the GAME_WON event that names the VP winner.
+       */
+      id: string;
+      type: "VP_SCORING";
+      /** Player who completed the victory condition (earning the completion VP), or null on a round-limit end. */
+      completerPlayerId: PlayerId | null;
+      /** Why scoring ran (round limit reached / the completed victory condition). */
+      reason: string;
+      /** Winning seat: most VP; ties broken by the completer, then earliest turn order. */
+      winnerPlayerId: PlayerId;
+      /** Per-player VP breakdown, winner first. */
+      breakdown: {
+        playerId: PlayerId;
+        total: number;
+        rows: { label: string; vp: number }[];
+      }[];
+    }
+  | {
       id: string;
       type: "PLAYER_ELIMINATED";
       playerId: PlayerId;
@@ -8565,6 +8586,13 @@ export type AdventureState = {
    * hero combat at least once (the "defeat every enemy hero" win path).
    */
   heroDefeats?: Record<PlayerId, PlayerId[]>;
+  /**
+   * Victory Points ledger (see {@link VpLedgerEntry}). Event-sourced VP
+   * components captured at the moment they happen — tracked unconditionally at
+   * the combat/visit seams regardless of whether VP mode is on (inert until
+   * scored). Absent on legacy snapshots (treated as empty).
+   */
+  vpLedger?: Record<PlayerId, VpLedgerEntry>;
   /** Tile awaiting its rotation choice after a reveal or placement. */
   pendingTileChoice?: PendingTileChoice | null;
   /** Astrologers Proclaim deck state (even rounds). */
@@ -8852,6 +8880,69 @@ export type CustomMapPreset = {
     utopiaGuards?: DragonUtopiaGuards;
     utopiaBonusSearch?: 1 | 2 | 3;
   };
+  /**
+   * Victory Points mode (rulebook scenario scoring). Absent = OFF (today's
+   * behaviour, byte-identical — `roundLimit` stays a mere "suggested length").
+   * When `enabled`, the game ENDS at the round limit (`roundLimit` becomes the
+   * HARD end trigger) OR the moment any player completes the Scenario's victory
+   * condition, and the player with the MOST Victory Points wins (scoring lives in
+   * `src/engine/victory-points.ts`).
+   *   - `victoryConditionVp` (0-10, default 3): VP the player who COMPLETES the
+   *     victory condition earns. Completion no longer wins outright — it ends the
+   *     game by SCORING. `last-faction-standing` is the deliberate EXCEPTION (a
+   *     table of one live seat is meaningless to score) and stays an instant win.
+   *   - `objectives` (cap 4): extra scenario objectives, each worth `vp` (1-10)
+   *     to EVERY player meeting it at scoring time. Only engine-checkable kinds
+   *     ship — a state read at scoring time (control-towns / flag-mines /
+   *     hero-level) or an event-sourced marker on the VP ledger (defeat-dragon-
+   *     utopia). `dig-grail` is deliberately NOT a kind: outside Holy-Grail mode
+   *     the engine never arms a Grail dig, and inside it digging is already the
+   *     victory condition (`victoryConditionVp`).
+   */
+  victoryPoints?: {
+    enabled: true;
+    victoryConditionVp?: number;
+    objectives?: VictoryPointObjective[];
+  };
+};
+
+/**
+ * One extra Victory-Points scenario objective ({@link CustomMapPreset.victoryPoints}).
+ * Only kinds the engine can actually verify at scoring time ship:
+ *  - `control-towns`: own ≥ `count` (1-4) Towns at scoring time.
+ *  - `flag-mines`: hold ≥ `count` (1-8) flagged Mines + Settlements at scoring.
+ *  - `hero-level`: the player's MAIN hero is level ≥ `level` (2-7) at scoring.
+ *  - `defeat-dragon-utopia`: the player has defeated a Dragon Utopia at any point
+ *    (event-sourced on {@link VpLedgerEntry.utopiaDefeated}, since a defeated
+ *    Utopia otherwise leaves only an owner-less black cube).
+ * Each objective is scored for EVERY player who meets it (the event-based one for
+ * its recorded player).
+ */
+export type VictoryPointObjective =
+  | { kind: "control-towns"; vp: number; count: number }
+  | { kind: "flag-mines"; vp: number; count: number }
+  | { kind: "hero-level"; vp: number; level: number }
+  | { kind: "defeat-dragon-utopia"; vp: number };
+
+/**
+ * Per-player Victory-Points ledger entry — the event-sourced VP components that
+ * can ONLY be captured at the instant they happen (a defeated hero leaves no
+ * lasting mark, a surrendered one escapes, a defeated Utopia leaves an owner-less
+ * cube). Tracked UNCONDITIONALLY at the combat/visit seams (cheap and
+ * side-effect-free: nothing reads it unless VP mode is on), so a mid-game preset
+ * toggle can never retroactively change a score. Legacy snapshots default to an
+ * empty ledger. The AT-SCORING-TIME components (buildings, hero level, flagged
+ * mines, controlled towns, artifacts) are computed from live state, never stored.
+ */
+export type VpLedgerEntry = {
+  /** Opponent playerIds whose MAIN hero this player defeated (3 VP each; once per opponent). */
+  mainHeroDefeats?: PlayerId[];
+  /** Enemy SECONDARY heroes this player defeated in combat (1 VP each). */
+  secondaryHeroDefeats?: number;
+  /** Enemy heroes that surrendered / escaped from this player (1 VP each). */
+  surrenders?: number;
+  /** Whether this player has defeated a Dragon Utopia (the defeat-dragon-utopia objective). */
+  utopiaDefeated?: boolean;
 };
 
 /** A designer-placed one-hex map object's kind. Open for future kinds. */
