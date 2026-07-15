@@ -4219,12 +4219,96 @@ button.battleCell {
    player rotates (so they know the bank before committing the rotation). */
 .hexBankLabel {
   fill: #ffe1a6;
-  font-size: 8.5px;
+  font-size: 7.2px;
   font-weight: 800;
   paint-order: stroke;
   stroke: rgba(18, 10, 3, 0.92);
   stroke-width: 2.4;
   pointer-events: none;
+}
+
+.bankSizeCombatChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: 0 0 auto;
+  padding: 4px 8px 4px 6px;
+  border: 1px solid rgba(28, 15, 6, 0.9);
+  border-radius: 999px;
+  color: #1b1008;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.03em;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.48), inset 0 1px rgba(255, 255, 255, 0.32);
+}
+
+.bankSizeCombatChip > span {
+  font-size: 15px;
+  line-height: 0.8;
+}
+
+.bankSizeCombatChip.size-1 {
+  background: linear-gradient(180deg, #e5d4ad, #bda36f);
+}
+
+.bankSizeCombatChip.size-2 {
+  background: linear-gradient(180deg, #c8793d, #874018);
+  color: #fff1d7;
+}
+
+.bankSizeCombatChip.size-3 {
+  background: linear-gradient(180deg, #f0f0f0, #aaa);
+}
+
+.bankSizeCombatChip.size-4 {
+  background: linear-gradient(180deg, #f4db6a, #b9901f);
+}
+
+.bankPreviewSecondRing {
+  fill: rgba(10, 7, 4, 0.92);
+  stroke: #ffe39a;
+  stroke-width: 2.4px;
+  pointer-events: none;
+}
+
+/* Polish tournament bank-size markers. The star silhouette and tier colours
+   follow the Homm3BG bronze/silver/golden glyph vocabulary. */
+.bankSizeSvgBadge {
+  pointer-events: none;
+  filter: drop-shadow(0 1.5px 1px rgba(0, 0, 0, 0.92));
+}
+
+.bankSizeSvgBadge path {
+  stroke: #1b1008;
+  stroke-width: 1.3px;
+  paint-order: stroke fill;
+}
+
+.bankSizeSvgBadge text {
+  fill: #170d05;
+  font-size: 6.5px;
+  font-weight: 950;
+  pointer-events: none;
+}
+
+.bankSizeSvgBadge.size-1 path {
+  fill: #d5bd89;
+}
+
+.bankSizeSvgBadge.size-2 path {
+  fill: #a85b24;
+}
+
+.bankSizeSvgBadge.size-3 path {
+  fill: #dadada;
+}
+
+.bankSizeSvgBadge.size-4 path {
+  fill: #e1bb3a;
+}
+
+.bankSizeSvgBadge.placed {
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.96));
 }
 
 .hexProduction {
@@ -18170,12 +18254,38 @@ img.cardBack {
 }
 
 .houseRuleGroupLabel {
+  display: flex;
+  align-items: center;
+  gap: 5px;
   font-size: 9.5px;
   letter-spacing: 0.15em;
   text-transform: uppercase;
   color: #a8894f;
   border-bottom: 1px solid rgba(168, 137, 79, 0.2);
   padding-bottom: 3px;
+}
+
+.houseRuleGroup.polish {
+  margin-top: 3px;
+  padding: 9px;
+  border: 1px solid rgba(210, 62, 55, 0.42);
+  border-radius: 10px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(232, 197, 94, 0.1), transparent 45%),
+    linear-gradient(135deg, rgba(92, 19, 18, 0.22), rgba(23, 12, 8, 0.42));
+}
+
+.houseRuleGroup.polish .houseRuleGroupLabel {
+  color: #f2cf75;
+  border-bottom-color: rgba(210, 62, 55, 0.42);
+}
+
+.polishRuleCrest {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  margin: -5px 1px -4px -2px;
+  filter: drop-shadow(0 2px 2px rgba(10, 5, 3, 0.9));
 }
 
 .houseRuleGrid {
@@ -18211,6 +18321,20 @@ img.cardBack {
 
 .houseRuleToggle.off {
   opacity: 0.72;
+}
+
+.houseRuleToggle.disabled,
+.houseRuleToggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+  filter: grayscale(0.65);
+  transform: none;
+}
+
+.houseRuleToggle.disabled:hover,
+.houseRuleToggle:disabled:hover {
+  border-color: rgba(140, 110, 65, 0.45);
+  transform: none;
 }
 
 .houseRuleCheck {

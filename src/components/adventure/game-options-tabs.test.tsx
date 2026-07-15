@@ -12,8 +12,9 @@ afterEach(cleanup);
  * the engine reads — not merely that the label renders. (The engine half is
  * pinned by house-rules.test.ts.)
  */
-function openOptions(onAction = vi.fn()) {
+function openOptions(onAction = vi.fn(), optionOverrides: { creatureBanks?: boolean } = {}) {
   const state = createAdventureLobbyState({ seed: "options-tabs" });
+  Object.assign(state.setupLobby!.options, optionOverrides);
   render(<SetupLobbyScreen onAction={onAction} state={state} viewerPlayerId="p1" />);
   fireEvent.click(screen.getByRole("tab", { name: "Game options" }));
   return onAction;
@@ -34,7 +35,7 @@ describe("Game options — tabbed layout", () => {
     // WOG is a Mod line, not a game-mode card.
     expect(screen.queryByRole("button", { name: /^WOG$/i })).toBeNull();
     expect(screen.getByRole("button", { name: /Enable Wake of Gods mod|Disable Wake of Gods mod/i })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /Tournament/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^Tournament/i })).toBeTruthy();
     expect(screen.getByRole("button", { name: /Obelisk die rewards/i })).toBeTruthy();
 
     const griffin = screen.getByRole("button", { name: /Griffin buff/ });
@@ -42,6 +43,10 @@ describe("Game options — tabbed layout", () => {
     expect(screen.getByRole("button", { name: /Split Spell\/Artifact decks by tier/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: /Estates nerf/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: /Gelu IV Sharpshooter buff/ })).toBeTruthy();
+    expect(screen.getByText(/Polish house rules · tournament variants/i)).toBeTruthy();
+    const bankSizes = screen.getByRole("button", { name: /Rolled Creature Bank sizes/ });
+    expect(bankSizes.getAttribute("aria-pressed")).toBe("false");
+    expect((bankSizes as HTMLButtonElement).disabled).toBe(false);
   });
 
   it("toggling WOG on the Mod line dispatches SET_GAME_OPTIONS with wog.enabled", () => {
@@ -66,6 +71,23 @@ describe("Game options — tabbed layout", () => {
       playerId: "p1",
       options: { houseRules: { "estates-nerf": false } }
     });
+  });
+
+  it("wires the opt-in Polish bank-size variant through the shared registry UI", () => {
+    const onAction = openOptions();
+    fireEvent.click(screen.getByRole("button", { name: /Rolled Creature Bank sizes/ }));
+    expect(onAction).toHaveBeenCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { houseRules: { "polish-bank-sizes": true } }
+    });
+  });
+
+  it("greys out Polish bank sizes while the base Creature Banks option is off", () => {
+    openOptions(vi.fn(), { creatureBanks: false });
+    const toggle = screen.getByRole("button", { name: /Rolled Creature Bank sizes/ }) as HTMLButtonElement;
+    expect(toggle.disabled).toBe(true);
+    expect(toggle.textContent).toContain("BANKS OFF");
   });
 
   it("Mode & Rules wires Event deck, Morale Cards, and Ban Diplomacy", () => {

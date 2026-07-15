@@ -104,4 +104,34 @@ describe("Creature Bank hex art — per-bank field tile on the board", () => {
     // Non-interactive: the click falls through to the hex cell beneath it.
     expect(token.style.pointerEvents).toBe("none");
   });
+
+  it("shows the permanent bronze/silver/gold-style size marker on a placed bank", () => {
+    const { state, tile } = boardWithTile();
+    const [bankSpace] = getTileFootprintSpaceIds(tile);
+    const field = adv(state).fields[bankSpace]!;
+    field.location = "creature_bank";
+    field.bankId = "crypt";
+    field.bankSize = 4;
+
+    const container = renderBoard(state);
+    const badge = container.querySelector(`.bankSizeSvgBadge.placed.size-4`);
+    expect(badge).toBeTruthy();
+    expect(badge?.textContent).toContain("Ⅳ");
+  });
+
+  it("previews both rolled candidates with distinct size badges before rotation", () => {
+    const { state, tile } = boardWithTile();
+    tile.awaitingRotation = true;
+    tile.reservedBankId = "crypt";
+    tile.reservedBankOptions = [
+      { bankId: "crypt", size: 2 },
+      { bankId: "pyramid", size: 3 }
+    ];
+
+    const container = renderBoard(state);
+    const badges = container.querySelectorAll(`.bankSizeSvgBadge:not(.placed)`);
+    expect(badges).toHaveLength(2);
+    expect(container.textContent).toContain("A · Crypt · Ⅱ");
+    expect(container.textContent).toContain("B · Pyramid · Ⅲ");
+  });
 });

@@ -50,15 +50,16 @@ function binhWith(houseRules: Partial<Record<HouseRuleId, boolean>>, seed = "hou
 // ===========================================================================
 
 describe("house-rule resolver", () => {
-  it("defaults every rule ON in BINH and OFF in Legacy", () => {
+  it("uses each registry default in BINH and keeps every rule OFF in Legacy", () => {
     const binh = resolveHouseRules({ ruleset: "binh" });
     const legacy = resolveHouseRules({ ruleset: "legacy" });
     for (const def of HOUSE_RULES) {
-      expect(binh[def.id], `${def.id} defaults ON in BINH`).toBe(true);
+      expect(binh[def.id], `${def.id} uses its declared BINH default`).toBe(def.default);
       expect(legacy[def.id], `${def.id} defaults OFF in Legacy`).toBe(false);
-      expect(houseRuleDefaultFor("binh", def.id)).toBe(true);
+      expect(houseRuleDefaultFor("binh", def.id)).toBe(def.default);
       expect(houseRuleDefaultFor("legacy", def.id)).toBe(false);
     }
+    expect(binh["polish-bank-sizes"], "Polish variants are opt-in under BINH too").toBe(false);
   });
 
   it("lets explicit flags override defaults in BINH and soft Legacy", () => {
@@ -109,8 +110,9 @@ describe("house-rule resolver", () => {
       playerId: "p2",
       options: { ruleset: "binh" }
     });
-    for (const enabled of Object.values(resolveHouseRules(state.setupLobby!.options))) {
-      expect(enabled).toBe(true);
+    const binhRules = resolveHouseRules(state.setupLobby!.options);
+    for (const def of HOUSE_RULES) {
+      expect(binhRules[def.id]).toBe(def.default);
     }
     expect(state.setupLobby?.options.spellBook).toBe(true);
   });

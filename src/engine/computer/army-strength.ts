@@ -9,6 +9,7 @@ import type { UnitTier } from "@/data/factions/types";
 import { getUnitSide, NEUTRAL_ARMY_TABLE, neutralArmyDifficulty } from "../adventure";
 import type {
   ArmyUnitState,
+  BankSize,
   GameDifficulty,
   GameState,
   MapFieldState,
@@ -98,7 +99,7 @@ export function bankUnitStrength(unitDefId: string): number {
  */
 export function creatureBankStrength(
   bankId: string,
-  difficulty: keyof typeof STACK_TOKENS_BY_DIFFICULTY = "normal",
+  difficultyOrSize: keyof typeof STACK_TOKENS_BY_DIFFICULTY | BankSize = "normal",
 ): number {
   const bank = CREATURE_BANKS[bankId as CreatureBankId];
   if (!bank) return Number.POSITIVE_INFINITY;
@@ -106,7 +107,10 @@ export function creatureBankStrength(
     (sum, unitDefId) => sum + bankUnitStrength(unitDefId),
     0,
   );
-  const rolls = STACK_TOKENS_BY_DIFFICULTY[difficulty] ?? 2;
+  const rolls =
+    typeof difficultyOrSize === "number"
+      ? difficultyOrSize
+      : STACK_TOKENS_BY_DIFFICULTY[difficultyOrSize] ?? 2;
   // Stack tokens add a mild bulk/soak bonus, not a full extra unit each.
   // Calibrated so a full starting army (~45) clears Imp Cache on Normal but
   // refuses Dragon Utopia and refuses when gutted to one card.
@@ -126,10 +130,11 @@ export function canBeatCreatureBank(
   if (field.location !== "creature_bank") return false;
   const bankId = field.bankId;
   if (!bankId) return false;
-  const difficulty =
-    (state.adventure?.difficulty as keyof typeof STACK_TOKENS_BY_DIFFICULTY) ??
-    "normal";
-  const bankStr = creatureBankStrength(bankId, difficulty);
+  const difficultyOrSize =
+    field.bankSize ??
+    ((state.adventure?.difficulty as keyof typeof STACK_TOKENS_BY_DIFFICULTY) ??
+      "normal");
+  const bankStr = creatureBankStrength(bankId, difficultyOrSize);
   if (!Number.isFinite(bankStr) || bankStr <= 0) return false;
   return playerArmyStrength(state, playerId) >= bankStr * BANK_ENGAGE_RATIO;
 }

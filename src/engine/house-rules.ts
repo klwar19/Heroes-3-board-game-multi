@@ -22,7 +22,7 @@ import type { GameRuleset, GameState, GameSetupOptions, HouseRuleId } from "./st
  */
 export type { HouseRuleId };
 
-export type HouseRuleCategory = "decks" | "units" | "abilities" | "combat";
+export type HouseRuleCategory = "decks" | "units" | "abilities" | "combat" | "polish";
 
 export type HouseRuleDef = {
   id: HouseRuleId;
@@ -157,6 +157,15 @@ export const HOUSE_RULES: HouseRuleDef[] = [
       "House rule: the first visitor to an Obelisk locks an Attack-die face (−1: +1 morale, 0: Search (2) Artifact, +1: Treasure + Resource dice); later visitors get the same reward without re-rolling. Off: Obelisks stay multi-flaggable but grant no die reward. Holy Grail still counts visits toward dig unlock either way.",
     category: "combat",
     default: true
+  },
+  {
+    id: "polish-bank-sizes",
+    label: "Rolled Creature Bank sizes",
+    description:
+      "Polish tournament variant: reveal up to two Creature Banks, roll each size I-IV, then place one. The chosen size sets its Stack-token rolls. Requires Creature Banks.",
+    category: "polish",
+    default: false,
+    legacyDefault: false
   }
 ];
 

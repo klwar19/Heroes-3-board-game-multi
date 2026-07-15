@@ -44,6 +44,7 @@ import {
   grantCreatureBankReward,
   isCreatureBankId,
   placeCreatureBank,
+  polishBankSizeForAttackRolls,
   eliminatePlayer,
   finalizeStartOfTurnHand,
   fieldLayer,
@@ -220,6 +221,7 @@ import {
 } from "./hex";
 import type {
   ArmyUnitState,
+  BankSize,
   CardDefinition,
   CardId,
   CombatState,
@@ -1534,7 +1536,13 @@ function beginTileRotation(
   // Naval Battles: draw (face-up) the Creature Bank token this tile's Blocked
   // Field would host NOW, before the rotation is chosen, so the player rotates
   // knowing which bank they are about to carve.
-  reserveCreatureBankForTile(state, tile);
+  reserveCreatureBankForTile(state, tile, playerId);
+}
+
+const BANK_SIZE_ROMAN: Record<BankSize, string> = { 1: "I", 2: "II", 3: "III", 4: "IV" };
+
+function attackRollLabel(roll: number): string {
+  return roll > 0 ? `+${roll}` : String(roll);
 }
 
 /**
@@ -1546,7 +1554,7 @@ function beginTileRotation(
  * intact. No-op when the rule is off (no piles), the tile can't host a bank
  * (wrong group / no Blocked Field in its definition), or the pile is empty.
  */
-function reserveCreatureBankForTile(state: GameState, tile: MapTileState): void {
+function reserveCreatureBankForTile(state: GameState, tile: MapTileState, playerId: PlayerId): void {
   const adventure = state.adventure;
   if (!adventure) {
     return;
@@ -1564,8 +1572,46 @@ function reserveCreatureBankForTile(state: GameState, tile: MapTileState): void 
     return;
   }
   const bankId = pile[pile.length - 1];
-  if (isCreatureBankId(bankId)) {
-    tile.reservedBankId = bankId;
+  if (!isCreatureBankId(bankId)) {
+    return;
+  }
+
+  tile.reservedBankId = bankId;
+  if (!houseRuleEnabled(state, "polish-bank-sizes")) {
+    tile.reservedBankOptions = undefined;
+    return;
+  }
+
+  const bankIds = [pile[pile.length - 1], pile[pile.length - 2]].filter(isCreatureBankId);
+  const isFirstFarOpening =
+    tile.group === "far" && (adventure.farTilesOpenedByPlayer?.[playerId] ?? 0) === 1;
+  const diceCount = isFirstFarOpening ? 1 : 2;
+  const random = createSeededRandom(
+    `${state.seed}#adventure#bank-size-${tile.id}#${eventSeedNumber(state)}`
+  );
+
+  tile.reservedBankOptions = bankIds.map((candidateId, index) => {
+    const rolls = Array.from(
+      { length: diceCount },
+      () => ATTACK_DIE_FACES[random.nextInt(0, ATTACK_DIE_FACES.length - 1)] ?? 0
+    );
+    const size = polishBankSizeForAttackRolls(rolls);
+    const optionLetter = String.fromCharCode(65 + index);
+    appendEvent(state, {
+      type: "ADVENTURE_DICE_ROLLED",
+      playerId,
+      dice: "attack",
+      results: [
+        `Bank ${optionLetter}: ${rolls.map(attackRollLabel).join(" + ")} → size ${BANK_SIZE_ROMAN[size]}`
+      ],
+      attackRolls: rolls
+    });
+    return { bankId: candidateId, size };
+  });
+
+  if (tile.reservedBankOptions[0]) {
+    // Keep the legacy preview pointer aimed at candidate A.
+    tile.reservedBankId = tile.reservedBankOptions[0].bankId;
   }
 }
 
@@ -1870,7 +1916,14 @@ function offerCreatureBankPlacement(state: GameState, tile: MapTileState, player
     // this tile reserved at reveal is not placed. The pile was only peeked, so
     // nothing is consumed — just drop the reservation.
     tile.reservedBankId = undefined;
+    tile.reservedBankOptions = undefined;
     return;
+  }
+
+  if (houseRuleEnabled(state, "polish-bank-sizes") && !tile.reservedBankOptions?.length) {
+    // Recovery for an in-progress snapshot created before sized reservations
+    // existed: roll the offer now so it remains resolvable after loading.
+    reserveCreatureBankForTile(state, tile, playerId);
   }
 
   // The bank was drawn face-up when the tile was revealed (so the player already
@@ -1881,18 +1934,34 @@ function offerCreatureBankPlacement(state: GameState, tile: MapTileState, player
   tile.reservedBankId = isCreatureBankId(reservedBankId) ? reservedBankId : undefined;
   const bankName = isCreatureBankId(reservedBankId) ? CREATURE_BANKS[reservedBankId]?.name ?? "Creature Bank" : "Creature Bank";
   const tierLabel = tile.group === "subterranean" ? "cavern" : tier === "far" ? "Far tile" : "Near tile";
+  const sizedCandidates = houseRuleEnabled(state, "polish-bank-sizes")
+    ? (tile.reservedBankOptions ?? []).filter((candidate) => pile.includes(candidate.bankId))
+    : [];
+  const options =
+    sizedCandidates.length > 0
+      ? [
+          ...sizedCandidates.map((candidate, index) => ({
+            label: `${String.fromCharCode(65 + index)} · Place ${CREATURE_BANKS[candidate.bankId as CreatureBankId]?.name ?? "Creature Bank"} · size ${BANK_SIZE_ROMAN[candidate.size]}`
+          })),
+          { label: "Leave it blocked" }
+        ]
+      : [{ label: `Place the ${bankName} Creature Bank` }, { label: "Leave it blocked" }];
 
   state.pendingChoice = {
     id: `choice_${nextEventNumber(state)}`,
     type: "OPTION_CHOICE",
     playerId,
-    prompt: `This ${tierLabel} has a Blocked Field — place the ${bankName} Creature Bank here?`,
-    options: [{ label: `Place the ${bankName} Creature Bank` }, { label: "Leave it blocked" }],
+    prompt:
+      sizedCandidates.length > 0
+        ? `This ${tierLabel} has a Blocked Field — choose a rolled Creature Bank, or leave it blocked.`
+        : `This ${tierLabel} has a Blocked Field — place the ${bankName} Creature Bank here?`,
+    options,
     context: "place-creature-bank",
     creatureBank: {
       fieldId: blockedSpaceId,
       tier,
       ...(tile.reservedBankId ? { bankId: tile.reservedBankId } : {}),
+      ...(sizedCandidates.length > 0 ? { candidates: sizedCandidates } : {}),
       tileInstanceId: tile.id
     },
     returnPhase: state.phase
@@ -4688,7 +4757,8 @@ function revealCreatureBankArmy(state: GameState, bankId: CreatureBankId): void 
     return;
   }
 
-  const { units, stackedCount } = buildCreatureBankCombatUnits(state, bankId);
+  const bankField = state.adventure?.fields[combat.context.fieldId];
+  const { units, stackedCount } = buildCreatureBankCombatUnits(state, bankId, bankField?.bankSize);
   combat.context.bankStackCount = stackedCount;
   // Bank defenders carry no tier, so the azure "no time limit" rule never fires.
   combat.context.hasAzure = false;
@@ -8529,12 +8599,22 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     const bankTile = data
       ? adventure?.tiles[data.tileInstanceId ?? adventure.fields[data.fieldId]?.tileInstanceId ?? ""]
       : undefined;
-    // Option 0 places the bank the tile drew (face-up) at reveal — consume the
-    // top token of the matching pile (it IS the reserved one) and carve it onto
-    // the Blocked Field; option 1 (or any other) leaves the field blocked and the
-    // peeked token stays in the pile for the next tile. Either way the tile's
-    // reservation is now spent.
-    if (data && adventure && action.optionIndex === 0) {
+    const sizedCandidates = data?.candidates ?? [];
+    if (data && adventure && sizedCandidates.length > 0) {
+      const pile = data.tier === "far" ? adventure.creatureBankTokensFar : adventure.creatureBankTokensNear;
+      const selected = sizedCandidates[action.optionIndex];
+      if (selected) {
+        const tokenIndex = pile?.lastIndexOf(selected.bankId) ?? -1;
+        if (!pile || tokenIndex < 0 || !isCreatureBankId(selected.bankId)) {
+          throw new Error("That rolled Creature Bank is no longer available.");
+        }
+        pile.splice(tokenIndex, 1);
+        placeCreatureBank(state, data.fieldId, selected.bankId, selected.size);
+      } else if (action.optionIndex !== sizedCandidates.length) {
+        throw new Error("Choose one of the offered Creature Banks or leave the field blocked.");
+      }
+    } else if (data && adventure && action.optionIndex === 0) {
+      // Rule-off control: preserve the original single top-token flow exactly.
       const pile = data.tier === "far" ? adventure.creatureBankTokensFar : adventure.creatureBankTokensNear;
       const bankId = pile?.pop();
       if (bankId && isCreatureBankId(bankId)) {
@@ -8543,6 +8623,7 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     }
     if (bankTile) {
       bankTile.reservedBankId = undefined;
+      bankTile.reservedBankOptions = undefined;
     }
     state.pendingChoice = null;
     state.phase = choice.returnPhase;

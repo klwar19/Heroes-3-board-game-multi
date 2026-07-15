@@ -1569,6 +1569,11 @@ export function InitiativeRail({ state }: { state: GameState }) {
   const { zoomUnit } = useCardZoom();
   const units = state.combat ? getActivationOrder(state.combat, state.activeEffects) : [];
   const inSetup = Boolean(state.combat?.setup);
+  const bankField =
+    state.combat?.context.kind === "neutral"
+      ? state.adventure?.fields[state.combat.context.fieldId]
+      : undefined;
+  const bankSize = bankField?.location === "creature_bank" ? bankField.bankSize : undefined;
 
   return (
     <div className="initiativeRail" aria-label="Initiative order">
@@ -1576,6 +1581,15 @@ export function InitiativeRail({ state }: { state: GameState }) {
         <Swords aria-hidden="true" size={14} />
         {inSetup ? "Order" : "Order"}
       </span>
+      {bankSize ? (
+        <span
+          className={`bankSizeCombatChip size-${bankSize}`}
+          title={`Polish Creature Bank size ${["", "I", "II", "III", "IV"][bankSize]}: ${bankSize} Stack-token rolls`}
+        >
+          <span aria-hidden="true">★</span>
+          Bank size {["", "I", "II", "III", "IV"][bankSize]}
+        </span>
+      ) : null}
       {units.length === 0 && inSetup ? <small className="initHint">Deploy units — they sort by initiative here.</small> : null}
       {units.map((unit, index) => {
         // Haste/Slow and other lasting effects shift activation order, so the
