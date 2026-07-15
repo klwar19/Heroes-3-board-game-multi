@@ -3,11 +3,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, within } from "@testing-library/react";
 import { MapDesigner, planBackArt, planBackLabel } from "./map-designer";
 import { nearestGateHexPair, type GateHexPair } from "./gate-drag";
+import { allTileDefinitions } from "@/data/map/tiles";
 import {
+  hexNeighbors,
   hexSpaceId,
   hexToPixel,
   legalGateHexPairs,
+  legalTokenSlotsForTileDef,
   planSubterraneanGates,
+  tileFootprint,
   tileLatticeNeighbors,
   type CustomMapObject,
   type CustomMapTilePlan
@@ -42,6 +46,43 @@ function openTilePopover(container: HTMLElement, planIndex: number): HTMLElement
     throw new Error("popover did not open");
   }
   return popover as HTMLElement;
+}
+
+/**
+ * jsdom implements neither getScreenCTM nor DOMPoint, so any drag's client →
+ * board mapping needs identity polyfills (client coords == board coords).
+ * Returns the restore function; always call it in a finally.
+ */
+function installIdentitySvgPolyfills(): () => void {
+  const svgProto = SVGElement.prototype as unknown as Record<string, unknown>;
+  const hadCTM = Object.prototype.hasOwnProperty.call(svgProto, "getScreenCTM");
+  Object.defineProperty(SVGElement.prototype, "getScreenCTM", {
+    configurable: true,
+    value: () => ({ inverse: () => ({ a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 }) })
+  });
+  const globals = globalThis as { DOMPoint?: unknown };
+  const previousDOMPoint = globals.DOMPoint;
+  globals.DOMPoint = class {
+    x: number;
+    y: number;
+    constructor(x = 0, y = 0) {
+      this.x = x;
+      this.y = y;
+    }
+    matrixTransform(m: { a: number; b: number; c: number; d: number; e: number; f: number }) {
+      return { x: m.a * this.x + m.c * this.y + m.e, y: m.b * this.x + m.d * this.y + m.f };
+    }
+  };
+  return () => {
+    if (!hadCTM) {
+      delete svgProto.getScreenCTM;
+    }
+    if (previousDOMPoint === undefined) {
+      delete globals.DOMPoint;
+    } else {
+      globals.DOMPoint = previousDOMPoint;
+    }
+  };
 }
 
 describe("MapDesigner — center Ⅶ-field designation", () => {
@@ -1223,6 +1264,417 @@ describe("MapDesigner — objects palette (gates / monolith / standalone)", () =
       [...container.querySelectorAll(".designerObjectButton")].some((btn) => /Monolith/i.test(btn.textContent ?? "")),
       "objects palette present alongside the legacy token"
     ).toBe(true);
+  });
+});
+
+describe("MapDesigner — placed object drag-to-move (direct manipulation)", () => {
+  const town = { row: 10, col: 10 };
+  const HEX = 24;
+  const townMap: CustomMapTilePlan[] = [{ row: town.row, col: town.col, group: "starting", faceDown: false }];
+
+  /** The off-tile hexes adjacent to the town flower — its standalone-candidate ring. */
+  function offTileRing(): { row: number; col: number }[] {
+    const footprint = tileFootprint(town, 0);
+    const ids = new Set(footprint.map((cell) => hexSpaceId(cell)));
+    const out: { row: number; col: number }[] = [];
+    const seen = new Set<string>();
+    for (const cell of footprint) {
+      for (const nb of hexNeighbors(cell)) {
+        const id = hexSpaceId(nb);
+        if (ids.has(id) || seen.has(id)) {
+          continue;
+        }
+        seen.add(id);
+        out.push(nb);
+      }
+    }
+    return out;
+  }
+
+  function renderObjects(objects: CustomMapObject[], onObjectsChange: (next: CustomMapObject[]) => void = () => {}) {
+    return render(
+      <MapDesigner
+        scenarioId="skirmish"
+        customMap={townMap}
+        onChange={() => {}}
+        objects={objects}
+        onObjectsChange={onObjectsChange}
+        hexSize={HEX}
+      />
+    );
+  }
+
+  it("dragging a placed standalone Monolith onto a candidate moves it (kind + guard intact)", () => {
+    const restore = installIdentitySvgPolyfills();
+    try {
+      const ring = offTileRing();
+      const origin = ring[0];
+      const target = ring[1];
+      let latest: CustomMapObject[] = [
+        { kind: "monolith", guard: 2, placement: { type: "standalone", row: origin.row, col: origin.col } }
+      ];
+      const onObjectsChange = vi.fn((next: CustomMapObject[]) => {
+        latest = next;
+      });
+      const { container } = renderObjects(latest, onObjectsChange);
+
+      const token = container.querySelector(".designerObjectToken")!;
+      const grabAt = hexToPixel(origin, HEX);
+      const dropAt = hexToPixel(target, HEX);
+      fireEvent.pointerDown(token, { button: 0, pointerId: 5, clientX: grabAt.x, clientY: grabAt.y });
+      fireEvent.pointerMove(window, { pointerId: 5, clientX: dropAt.x, clientY: dropAt.y });
+      // Mid-drag: the token carries `.dragging` and a candidate glows under it.
+      expect(container.querySelector(".designerObjectToken.dragging"), "live drag preview").toBeTruthy();
+      expect(container.querySelector(".designerObjectSlot.standalone.hover"), "drop target highlighted").toBeTruthy();
+      fireEvent.pointerUp(window, { pointerId: 5 });
+
+      expect(onObjectsChange).toHaveBeenCalled();
+      expect(latest).toHaveLength(1);
+      expect(latest[0].kind).toBe("monolith");
+      expect(latest[0].guard, "guard preserved").toBe(2);
+      expect(latest[0].placement).toEqual({ type: "standalone", row: target.row, col: target.col });
+    } finally {
+      restore();
+    }
+  });
+
+  it("releasing on a NON-candidate hex makes no change (control)", () => {
+    const restore = installIdentitySvgPolyfills();
+    try {
+      const ring = offTileRing();
+      const origin = ring[0];
+      const objects: CustomMapObject[] = [
+        { kind: "monolith", placement: { type: "standalone", row: origin.row, col: origin.col } }
+      ];
+      const onObjectsChange = vi.fn();
+      const { container } = renderObjects(objects, onObjectsChange);
+
+      const token = container.querySelector(".designerObjectToken")!;
+      const grabAt = hexToPixel(origin, HEX);
+      // A hex far from every tile is no candidate → the release is a no-op.
+      const farAt = hexToPixel({ row: town.row + 40, col: town.col + 40 }, HEX);
+      fireEvent.pointerDown(token, { button: 0, pointerId: 5, clientX: grabAt.x, clientY: grabAt.y });
+      fireEvent.pointerMove(window, { pointerId: 5, clientX: farAt.x, clientY: farAt.y });
+      fireEvent.pointerUp(window, { pointerId: 5 });
+
+      expect(onObjectsChange).not.toHaveBeenCalled();
+    } finally {
+      restore();
+    }
+  });
+
+  it("a plain click (no move) still opens the object panel — unchanged behaviour", () => {
+    const ring = offTileRing();
+    const origin = ring[0];
+    const { container } = renderObjects([
+      { kind: "monolith", placement: { type: "standalone", row: origin.row, col: origin.col } }
+    ]);
+    fireEvent.click(container.querySelector(".designerObjectToken")!);
+    expect(container.querySelector(".designerObjectPopover"), "object panel opened by a plain click").toBeTruthy();
+  });
+
+  it("dragging ONE half of a Gate pair moves only that entry; `pair` + the other half untouched", () => {
+    const restore = installIdentitySvgPolyfills();
+    try {
+      const ring = offTileRing();
+      const [a, b, c] = ring;
+      let latest: CustomMapObject[] = [
+        { kind: "gate", pair: 1, placement: { type: "standalone", row: a.row, col: a.col } },
+        { kind: "gate", pair: 1, placement: { type: "standalone", row: b.row, col: b.col } }
+      ];
+      const onObjectsChange = vi.fn((next: CustomMapObject[]) => {
+        latest = next;
+      });
+      const { container } = renderObjects(latest, onObjectsChange);
+
+      const tokens = container.querySelectorAll(".designerObjectToken");
+      expect(tokens.length, "both gate halves rendered").toBe(2);
+      const grabAt = hexToPixel(a, HEX);
+      const dropAt = hexToPixel(c, HEX);
+      fireEvent.pointerDown(tokens[0], { button: 0, pointerId: 8, clientX: grabAt.x, clientY: grabAt.y });
+      fireEvent.pointerMove(window, { pointerId: 8, clientX: dropAt.x, clientY: dropAt.y });
+      fireEvent.pointerUp(window, { pointerId: 8 });
+
+      expect(latest[0]).toEqual({ kind: "gate", pair: 1, placement: { type: "standalone", row: c.row, col: c.col } });
+      // The OTHER half is byte-for-byte unchanged.
+      expect(latest[1]).toEqual({ kind: "gate", pair: 1, placement: { type: "standalone", row: b.row, col: b.col } });
+    } finally {
+      restore();
+    }
+  });
+
+  it("Escape mid-drag commits nothing", () => {
+    const restore = installIdentitySvgPolyfills();
+    try {
+      const ring = offTileRing();
+      const origin = ring[0];
+      const target = ring[1];
+      const onObjectsChange = vi.fn();
+      const { container } = renderObjects(
+        [{ kind: "monolith", placement: { type: "standalone", row: origin.row, col: origin.col } }],
+        onObjectsChange
+      );
+
+      const token = container.querySelector(".designerObjectToken")!;
+      const grabAt = hexToPixel(origin, HEX);
+      const dropAt = hexToPixel(target, HEX);
+      fireEvent.pointerDown(token, { button: 0, pointerId: 5, clientX: grabAt.x, clientY: grabAt.y });
+      fireEvent.pointerMove(window, { pointerId: 5, clientX: dropAt.x, clientY: dropAt.y });
+      expect(container.querySelector(".designerObjectToken.dragging"), "preview while dragging").toBeTruthy();
+      fireEvent.keyDown(window, { key: "Escape" });
+      // The preview is gone and a later release commits nothing.
+      expect(container.querySelector(".designerObjectToken.dragging")).toBeNull();
+      fireEvent.pointerUp(window, { pointerId: 5 });
+      expect(onObjectsChange).not.toHaveBeenCalled();
+    } finally {
+      restore();
+    }
+  });
+});
+
+describe("MapDesigner — tile-carried token direct manipulation (click + drag)", () => {
+  const town = { row: 10, col: 10 };
+  const spots = tileLatticeNeighbors(town);
+  const HEX = 24;
+
+  /** A face-up F1 tile carrying a Monolith token on slot 0 (a legal monolith slot). */
+  function faceUpTokenMap(): CustomMapTilePlan[] {
+    return [
+      { row: town.row, col: town.col, group: "starting", faceDown: false },
+      {
+        row: spots[0].row,
+        col: spots[0].col,
+        group: "far",
+        faceDown: false,
+        tileDefId: "F1",
+        token: { kind: "monolith", slot: 0 }
+      }
+    ];
+  }
+
+  it("clicking a face-up tile token opens the compact TOKEN panel, not the giant tile panel", () => {
+    const { container } = render(
+      <MapDesigner scenarioId="skirmish" customMap={faceUpTokenMap()} onChange={() => {}} hexSize={HEX} />
+    );
+    const tokenImg = container.querySelector(".designerMapToken.draggable")!;
+    expect(tokenImg, "the face-up token is a draggable image").toBeTruthy();
+    fireEvent.click(tokenImg);
+
+    const panel = container.querySelector(".designerTokenPopover") as HTMLElement;
+    expect(panel, "token panel opened").toBeTruthy();
+    expect(panel.querySelector("header strong")?.textContent, "token panel header").toMatch(/Monolith token/i);
+    // The behaviour-flip control: the old bug fell through and opened the WIDE
+    // tile panel (mode cards). None of that shows now.
+    expect(container.querySelector(".popoverModeRow"), "no tile mode cards").toBeNull();
+    expect(container.querySelectorAll(".designerPopover").length, "exactly one panel").toBe(1);
+  });
+
+  it("the token panel's slot select + Remove edit plan.token; ✕ closes it", () => {
+    let latest: CustomMapTilePlan[] = faceUpTokenMap();
+    const onChange = vi.fn((next: CustomMapTilePlan[]) => {
+      latest = next;
+    });
+    const { container } = render(
+      <MapDesigner scenarioId="skirmish" customMap={latest} onChange={onChange} hexSize={HEX} />
+    );
+    fireEvent.click(container.querySelector(".designerMapToken.draggable")!);
+    const panel = container.querySelector(".designerTokenPopover") as HTMLElement;
+
+    // The slot select offers F1's legal monolith slots and re-picking writes the plan.
+    const select = within(panel).getByLabelText("Token field") as HTMLSelectElement;
+    const monoSlots = legalTokenSlotsForTileDef(allTileDefinitions["F1"], "monolith");
+    expect(monoSlots.length, "F1 has >1 monolith slot").toBeGreaterThan(1);
+    fireEvent.change(select, { target: { value: String(monoSlots[1]) } });
+    expect(latest[1].token).toEqual({ kind: "monolith", slot: monoSlots[1] });
+
+    // Remove clears the token AND closes the panel.
+    fireEvent.click(within(panel).getByRole("button", { name: /Remove the Monolith token/i }));
+    expect(latest[1].token, "token removed").toBeUndefined();
+    expect(container.querySelector(".designerTokenPopover"), "panel closed after remove").toBeNull();
+  });
+
+  it("the ✕ button closes the token panel", () => {
+    const { container } = render(
+      <MapDesigner scenarioId="skirmish" customMap={faceUpTokenMap()} onChange={() => {}} hexSize={HEX} />
+    );
+    fireEvent.click(container.querySelector(".designerMapToken.draggable")!);
+    const panel = container.querySelector(".designerTokenPopover") as HTMLElement;
+    fireEvent.click(within(panel).getByRole("button", { name: "Close token options" }));
+    expect(container.querySelector(".designerTokenPopover"), "panel closed by ✕").toBeNull();
+  });
+
+  it("opening the tile panel closes the token panel (mutual exclusivity)", () => {
+    const { container } = render(
+      <MapDesigner scenarioId="skirmish" customMap={faceUpTokenMap()} onChange={() => {}} hexSize={HEX} />
+    );
+    // Open the token panel first.
+    fireEvent.click(container.querySelector(".designerMapToken.draggable")!);
+    expect(container.querySelector(".designerTokenPopover"), "token panel open").toBeTruthy();
+    // Click the tile → the tile panel opens and the token panel closes (never both).
+    openTilePopover(container, 1);
+    expect(container.querySelector(".designerTokenPopover"), "token panel now closed").toBeNull();
+    expect(container.querySelectorAll(".designerPopover").length, "exactly one panel").toBe(1);
+  });
+
+  it("dragging a token to another slot on the SAME tile updates plan.token.slot", () => {
+    const restore = installIdentitySvgPolyfills();
+    try {
+      const monoSlots = legalTokenSlotsForTileDef(allTileDefinitions["F1"], "monolith");
+      const fromSlot = monoSlots[0];
+      const toSlot = monoSlots[1];
+      let latest: CustomMapTilePlan[] = [
+        { row: town.row, col: town.col, group: "starting", faceDown: false },
+        {
+          row: spots[0].row,
+          col: spots[0].col,
+          group: "far",
+          faceDown: false,
+          tileDefId: "F1",
+          token: { kind: "monolith", slot: fromSlot }
+        }
+      ];
+      const onChange = vi.fn((next: CustomMapTilePlan[]) => {
+        latest = next;
+      });
+      const { container } = render(
+        <MapDesigner scenarioId="skirmish" customMap={latest} onChange={onChange} hexSize={HEX} />
+      );
+
+      const token = container.querySelector(".designerMapToken.draggable")!;
+      const grabAt = hexToPixel(tileFootprint(spots[0], 0)[fromSlot], HEX);
+      const dropAt = hexToPixel(tileFootprint(spots[0], 0)[toSlot], HEX);
+      fireEvent.pointerDown(token, { button: 0, pointerId: 6, clientX: grabAt.x, clientY: grabAt.y });
+      fireEvent.pointerMove(window, { pointerId: 6, clientX: dropAt.x, clientY: dropAt.y });
+      fireEvent.pointerUp(window, { pointerId: 6 });
+
+      expect(latest[1].token).toEqual({ kind: "monolith", slot: toSlot });
+    } finally {
+      restore();
+    }
+  });
+
+  it("dragging a token to ANOTHER face-up tile is ONE atomic onChange (source clears, target gains)", () => {
+    const restore = installIdentitySvgPolyfills();
+    try {
+      // town + F1 (token slot 0) + F2 (no token), F1/F2 on opposite lattice spots.
+      let latest: CustomMapTilePlan[] = [
+        { row: town.row, col: town.col, group: "starting", faceDown: false },
+        {
+          row: spots[0].row,
+          col: spots[0].col,
+          group: "far",
+          faceDown: false,
+          tileDefId: "F1",
+          token: { kind: "monolith", slot: 0 }
+        },
+        { row: spots[3].row, col: spots[3].col, group: "far", faceDown: false, tileDefId: "F2" }
+      ];
+      const onChange = vi.fn((next: CustomMapTilePlan[]) => {
+        latest = next;
+      });
+      const { container } = render(
+        <MapDesigner scenarioId="skirmish" customMap={latest} onChange={onChange} hexSize={HEX} />
+      );
+
+      const token = container.querySelectorAll(".designerMapToken")[0]; // F1's token
+      const grabAt = hexToPixel(spots[0], HEX); // F1 slot 0 = its centre
+      const dropAt = hexToPixel(spots[3], HEX); // F2 slot 0 = its centre (a legal monolith slot)
+      const callsBefore = onChange.mock.calls.length;
+      fireEvent.pointerDown(token, { button: 0, pointerId: 7, clientX: grabAt.x, clientY: grabAt.y });
+      fireEvent.pointerMove(window, { pointerId: 7, clientX: dropAt.x, clientY: dropAt.y });
+      fireEvent.pointerUp(window, { pointerId: 7 });
+
+      expect(onChange.mock.calls.length - callsBefore, "exactly one atomic emission").toBe(1);
+      expect(latest[1].token, "source tile lost its token").toBeUndefined();
+      expect(latest[2].token, "target tile gained it").toEqual({ kind: "monolith", slot: 0 });
+    } finally {
+      restore();
+    }
+  });
+
+  it("a target tile that already carries a token is refused — no move (control)", () => {
+    const restore = installIdentitySvgPolyfills();
+    try {
+      const onChange = vi.fn();
+      // Both F1 and F2 carry a token → F2 is never a drop candidate.
+      const { container } = render(
+        <MapDesigner
+          scenarioId="skirmish"
+          customMap={[
+            { row: town.row, col: town.col, group: "starting", faceDown: false },
+            {
+              row: spots[0].row,
+              col: spots[0].col,
+              group: "far",
+              faceDown: false,
+              tileDefId: "F1",
+              token: { kind: "monolith", slot: 0 }
+            },
+            {
+              row: spots[3].row,
+              col: spots[3].col,
+              group: "far",
+              faceDown: false,
+              tileDefId: "F2",
+              token: { kind: "monolith", slot: 0 }
+            }
+          ]}
+          onChange={onChange}
+          hexSize={HEX}
+        />
+      );
+
+      const token = container.querySelectorAll(".designerMapToken")[0]; // F1's token
+      const grabAt = hexToPixel(spots[0], HEX);
+      const dropAt = hexToPixel(spots[3], HEX); // over F2, which already has a token
+      fireEvent.pointerDown(token, { button: 0, pointerId: 9, clientX: grabAt.x, clientY: grabAt.y });
+      fireEvent.pointerMove(window, { pointerId: 9, clientX: dropAt.x, clientY: dropAt.y });
+      fireEvent.pointerUp(window, { pointerId: 9 });
+
+      expect(onChange, "occupied target refused").not.toHaveBeenCalled();
+    } finally {
+      restore();
+    }
+  });
+
+  it("a FACE-DOWN badge token: click opens the panel, pointer-move does NOT start a drag, Remove works", () => {
+    const restore = installIdentitySvgPolyfills();
+    try {
+      let latest: CustomMapTilePlan[] = [
+        { row: town.row, col: town.col, group: "starting", faceDown: false },
+        { row: spots[0].row, col: spots[0].col, group: "far", faceDown: true, token: { kind: "monolith" } }
+      ];
+      const onChange = vi.fn((next: CustomMapTilePlan[]) => {
+        latest = next;
+      });
+      const { container } = render(
+        <MapDesigner scenarioId="skirmish" customMap={latest} onChange={onChange} hexSize={HEX} />
+      );
+
+      const token = container.querySelector(".designerMapToken")!;
+      expect(token.classList.contains("draggable"), "face-down badge is not draggable").toBe(false);
+
+      // A press + move must NOT start a drag (no candidate slots, no `.dragging`).
+      fireEvent.pointerDown(token, { button: 0, pointerId: 3, clientX: 40, clientY: 40 });
+      fireEvent.pointerMove(window, { pointerId: 3, clientX: 160, clientY: 160 });
+      expect(container.querySelector(".designerMapToken.dragging"), "no drag from a face-down badge").toBeNull();
+      expect(container.querySelectorAll(".designerObjectSlot").length, "no candidate slots").toBe(0);
+      fireEvent.pointerUp(window, { pointerId: 3 });
+      expect(onChange, "no move committed").not.toHaveBeenCalled();
+
+      // Click opens the panel with the discoverer hint (the hex is picked at reveal).
+      fireEvent.click(token);
+      const panel = container.querySelector(".designerTokenPopover") as HTMLElement;
+      expect(panel, "token panel opens for a face-down badge").toBeTruthy();
+      expect(within(panel).getByText(/discover/i), "discoverer hint shown").toBeTruthy();
+      expect(within(panel).queryByLabelText("Token field"), "no slot select for a face-down badge").toBeNull();
+
+      // Remove still clears the token.
+      fireEvent.click(within(panel).getByRole("button", { name: /Remove the Monolith token/i }));
+      expect(latest[1].token, "face-down token removed").toBeUndefined();
+    } finally {
+      restore();
+    }
   });
 });
 

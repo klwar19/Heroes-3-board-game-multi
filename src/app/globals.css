@@ -12691,7 +12691,7 @@ img.cardBack {
   opacity: 0.85;
   font-size: 11px;
 }
-/* Glowing candidate cells while an object is armed. */
+/* Glowing candidate cells while an object (or tile token) is armed / dragged. */
 .designerObjectSlot {
   fill: rgba(255, 233, 168, 0.28);
   stroke: #ffe9a8;
@@ -12706,9 +12706,27 @@ img.cardBack {
   stroke: #8fd0ff;
   stroke-dasharray: 3 2;
 }
-/* Placed object tokens. */
+/* The candidate under the dragged token — a brighter drop target. */
+.designerObjectSlot.hover {
+  fill: rgba(255, 233, 168, 0.62);
+  stroke-width: 2.4px;
+  filter: drop-shadow(0 0 5px rgba(255, 235, 150, 0.85));
+}
+.designerObjectSlot.standalone.hover {
+  fill: rgba(120, 200, 255, 0.56);
+}
+/* Placed object tokens are grabbable (drag to move, click for options). */
 .designerObjectToken {
-  cursor: pointer;
+  cursor: grab;
+}
+.designerObjectToken:hover .designerObjectRing {
+  filter: brightness(1.15) drop-shadow(0 0 4px rgba(255, 235, 150, 0.7));
+}
+.designerObjectToken.dragging {
+  cursor: grabbing;
+}
+.designerObjectToken.dragging .designerObjectRing {
+  filter: drop-shadow(0 0 7px rgba(255, 235, 150, 0.95));
 }
 .designerObjectRing {
   fill: rgba(12, 8, 4, 0.5);
@@ -12717,6 +12735,25 @@ img.cardBack {
 .designerObjectToken.selected .designerObjectRing {
   stroke-width: 4px;
   filter: drop-shadow(0 0 4px currentColor);
+}
+/* Tile-carried Monolith/Whirlpool tokens: face-up ones drag (grab), face-down
+   badges are click-only (pointer). Both lift on hover so they read interactive. */
+.designerMapToken {
+  cursor: pointer;
+}
+.designerMapToken.draggable {
+  cursor: grab;
+}
+.designerMapToken:hover {
+  filter: brightness(1.12) drop-shadow(0 0 4px rgba(255, 235, 150, 0.7));
+}
+.designerMapToken.dragging {
+  cursor: grabbing;
+  filter: drop-shadow(0 0 7px rgba(255, 235, 150, 0.95));
+}
+/* The compact token panel is narrower than the tile panel (few controls). */
+.designerTokenPopover {
+  width: 220px;
 }
 .designerObjectPair {
   font-size: 20px;
