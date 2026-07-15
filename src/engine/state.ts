@@ -6940,6 +6940,33 @@ export type MapFieldState = {
    * when `location` is "whirlpool"; Monolith tokens carry no number.
    */
   whirlpoolNumber?: -1 | 0 | 1;
+  /**
+   * Colored Gate pair (map-designer objects, rulebook p.83 two-way monoliths):
+   * which of the four gate pairs (1 = red, 2 = blue, 3 = green, 4 = yellow) this
+   * `location: "gate"` field belongs to. Entering a gate teleports to THE OTHER
+   * gate of the SAME pair — never a choice, never another pair, and never joining
+   * the generic Monolith/Whirlpool network. Set only when `location` is "gate".
+   */
+  gatePair?: 1 | 2 | 3 | 4;
+  /**
+   * A map-designer STANDALONE object hex — a one-hex field materialized OFF every
+   * tile (no backing {@link MapTileState}: `tileInstanceId` is a reserved marker
+   * that is never a key of `adventure.tiles`). Set only on such fields; a normal
+   * tile field never carries it. Consumers that look up the backing tile already
+   * guard for its absence (isOuterEdgeSealed → not sealed, the elemental-terrain
+   * and hero-tile-group reads → no bonus). Its layer is fixed at setup — see
+   * {@link standaloneLayer} — since there is no tile to read it from.
+   */
+  standalone?: boolean;
+  /**
+   * The map layer a STANDALONE object hex sits on ("surface" or "subterranean"),
+   * inferred at setup from the tiles its hex touches (any subterranean neighbour ⇒
+   * subterranean, else surface; a hex touching BOTH layers is rejected at
+   * validation). Read INSTEAD of the (absent) backing tile by the layer helpers
+   * so the Surface↔Subterranean divide holds for standalone hexes exactly like
+   * tile hexes. Set only when {@link standalone} is true.
+   */
+  standaloneLayer?: "surface" | "subterranean";
 };
 
 /**
@@ -7458,6 +7485,16 @@ export type VisitStep =
        */
       type: "TOKEN_TELEPORT";
       token: "monolith" | "whirlpool";
+    }
+  | {
+      /**
+       * Colored Gate travel (map-designer objects): entering (or Revisiting) a
+       * gate moves the hero to THE OTHER gate of the SAME colored pair — always
+       * that exact partner, never a choice and never the Monolith network. A pair
+       * with only one gate placed, or a partner a hero occupies, fizzles with a
+       * note. The pair is read from the origin field's {@link MapFieldState.gatePair}.
+       */
+      type: "GATE_TELEPORT";
     }
   | {
       /**
@@ -8775,6 +8812,49 @@ export type CustomMapPreset = {
       | { kind: "movement"; amount: number }
       | { kind: "dice"; treasure: number; resource: number };
   };
+  /**
+   * Designer-placed one-hex map objects — a flexible list riding the preset (it
+   * already flows designer → registry → lobby → setup with sanitisation). LAYOUT
+   * lives HERE, on the preset, not on the tile plan: each object carries its own
+   * board position, so the tile plan (`customMap`) stays purely about tiles.
+   * Materialized at setup after the tiles are laid out. Kinds: teleport tokens
+   * (Monolith, Whirlpool) and the four colored two-way Gate pairs; more kinds may
+   * be added later, so the model is deliberately open. See {@link CustomMapObject}.
+   */
+  objects?: CustomMapObject[];
+};
+
+/** A designer-placed one-hex map object's kind. Open for future kinds. */
+export type CustomMapObjectKind = "monolith" | "whirlpool" | "gate";
+
+/**
+ * Where a {@link CustomMapObject} sits on the board:
+ * - "tile-slot": REPLACES hex `slot` (0-6, unrotated) of the FACE-UP pinned tile
+ *   plan centred at (`row`,`col`) — like the legacy per-tile `token`, so the
+ *   slot's legality is known at design time. A face-down tile cannot host one.
+ * - "standalone": a NEW hex materialized OFF every tile at the absolute hex
+ *   (`row`,`col`). LAND objects only (Monolith, Gate — no standalone Whirlpool).
+ *   Must not fall inside a tile footprint, must not collide with another object,
+ *   and should touch ≥1 tile footprint to be reachable (a detached one is a
+ *   designer warning; in game it is simply unreachable, never an error).
+ */
+export type CustomMapObjectPlacement =
+  | { type: "tile-slot"; row: number; col: number; slot: number }
+  | { type: "standalone"; row: number; col: number };
+
+/**
+ * One designer-placed one-hex map object.
+ * - `pair` (gates only): which colored pair (1 = red, 2 = blue, 3 = green, 4 =
+ *   yellow) the gate belongs to; entering teleports to the OTHER gate of the pair.
+ * - `guard` (any object): a deliberate neutral guard difficulty (1-7) on the
+ *   object's hex — stepping on opens the standard neutral battle at that
+ *   difficulty, and only a WIN resolves the object's teleport.
+ */
+export type CustomMapObject = {
+  kind: CustomMapObjectKind;
+  pair?: 1 | 2 | 3 | 4;
+  placement: CustomMapObjectPlacement;
+  guard?: number;
 };
 
 /** The Obelisk-role config block of a {@link CustomMapPreset}. */

@@ -9,6 +9,7 @@ import {
   legalGateHexPairs,
   planSubterraneanGates,
   tileLatticeNeighbors,
+  type CustomMapObject,
   type CustomMapTilePlan
 } from "@/engine";
 
@@ -807,6 +808,132 @@ describe("MapDesigner — Monolith/Whirlpool tokens", () => {
     ]);
     const pairedWarnings = [...paired.querySelectorAll(".designerCavernAlert")].map((node) => node.textContent ?? "");
     expect(pairedWarnings.some((text) => /Monolith/i.test(text))).toBe(false);
+  });
+});
+
+describe("MapDesigner — objects palette (gates / monolith / standalone)", () => {
+  const town = { row: 10, col: 10 };
+  const far = tileLatticeNeighbors(town)[1];
+
+  function renderWithObjects(
+    customMap: CustomMapTilePlan[],
+    objects: CustomMapObject[],
+    onObjectsChange: (next: CustomMapObject[]) => void = () => {}
+  ): HTMLElement {
+    const { container } = render(
+      <MapDesigner
+        scenarioId="skirmish"
+        customMap={customMap}
+        onChange={() => {}}
+        objects={objects}
+        onObjectsChange={onObjectsChange}
+      />
+    );
+    return container;
+  }
+
+  const faceUpMap: CustomMapTilePlan[] = [
+    { row: town.row, col: town.col, group: "starting", faceDown: false },
+    { row: far.row, col: far.col, group: "far", faceDown: false, tileDefId: "F1" }
+  ];
+
+  it("arms a Gate pair and places a TILE-SLOT object on a face-up tile hex", () => {
+    let latest: CustomMapObject[] = [];
+    const onObjectsChange = vi.fn((next: CustomMapObject[]) => {
+      latest = next;
+    });
+    const container = renderWithObjects(faceUpMap, [], onObjectsChange);
+
+    // Arm the red gate pair (badge shows 0/2).
+    const redButton = container.querySelector('.designerObjectButton[data-gate-pair="1"]');
+    expect(redButton?.textContent).toMatch(/0\/2/);
+    fireEvent.click(redButton!);
+    expect(redButton!.getAttribute("aria-pressed")).toBe("true");
+
+    // A legal tile-slot candidate now glows on the face-up F1 tile; click it.
+    const slot = container.querySelector(".designerObjectSlot.tileSlot");
+    expect(slot, "a legal tile-slot candidate is offered").toBeTruthy();
+    fireEvent.click(slot!);
+
+    expect(onObjectsChange).toHaveBeenCalled();
+    expect(latest).toHaveLength(1);
+    expect(latest[0].kind).toBe("gate");
+    expect(latest[0].pair).toBe(1);
+    expect(latest[0].placement.type).toBe("tile-slot");
+    expect(latest[0].placement).toMatchObject({ row: far.row, col: far.col });
+  });
+
+  it("arms a Monolith and places a STANDALONE object on an off-tile hex", () => {
+    let latest: CustomMapObject[] = [];
+    const onObjectsChange = vi.fn((next: CustomMapObject[]) => {
+      latest = next;
+    });
+    const container = renderWithObjects(faceUpMap, [], onObjectsChange);
+
+    const monolithButton = [...container.querySelectorAll(".designerObjectButton")].find((btn) =>
+      /Monolith/i.test(btn.textContent ?? "")
+    );
+    fireEvent.click(monolithButton!);
+
+    const standalone = container.querySelector(".designerObjectSlot.standalone");
+    expect(standalone, "an off-tile standalone candidate is offered").toBeTruthy();
+    fireEvent.click(standalone!);
+
+    expect(latest).toHaveLength(1);
+    expect(latest[0].kind).toBe("monolith");
+    expect(latest[0].placement.type).toBe("standalone");
+  });
+
+  it("the guard picker writes the guard onto a placed object; the pair badge shows its number", () => {
+    let latest: CustomMapObject[] = [
+      { kind: "gate", pair: 2, placement: { type: "tile-slot", row: far.row, col: far.col, slot: 0 } }
+    ];
+    const onObjectsChange = vi.fn((next: CustomMapObject[]) => {
+      latest = next;
+    });
+    const container = renderWithObjects(faceUpMap, latest, onObjectsChange);
+
+    // The board token shows the pair number (colour-blind-safe label).
+    expect(container.querySelector(".designerObjectPair")?.textContent).toBe("2");
+
+    // Click the token → its popover opens with a guard picker.
+    fireEvent.click(container.querySelector(".designerObjectToken")!);
+    const guardChip = container.querySelector('.popoverGuardChip[data-guard="3"]');
+    expect(guardChip, "guard Ⅲ chip present").toBeTruthy();
+    fireEvent.click(guardChip!);
+    expect(latest[0].guard).toBe(3);
+  });
+
+  it("renders incomplete-pair and detached-hex warnings", () => {
+    const objects: CustomMapObject[] = [
+      // A lone red gate → an incomplete colored pair.
+      { kind: "gate", pair: 1, placement: { type: "tile-slot", row: far.row, col: far.col, slot: 0 } },
+      // A detached standalone Monolith far from every tile → unreachable.
+      { kind: "monolith", placement: { type: "standalone", row: town.row + 40, col: town.col + 40 } }
+    ];
+    const container = renderWithObjects(faceUpMap, objects);
+    const alerts = [...container.querySelectorAll(".designerObjectAlert")].map((node) => node.textContent ?? "");
+    expect(alerts.some((text) => /red Gate pair/i.test(text) && /one gate/i.test(text)), "incomplete-pair warning").toBe(
+      true
+    );
+    expect(alerts.some((text) => /touches no tile|unreachable/i.test(text)), "detached warning").toBe(true);
+  });
+
+  it("legacy per-tile Monolith token UI is untouched (both systems coexist)", () => {
+    // A legacy `token` on the tile plan still renders its art…
+    const container = renderWithObjects(
+      [
+        { row: town.row, col: town.col, group: "starting", faceDown: false },
+        { row: far.row, col: far.col, group: "far", faceDown: false, tileDefId: "F1", token: { kind: "monolith", slot: 0 } }
+      ],
+      []
+    );
+    expect(container.querySelector('image[href*="tokens/monolith"]'), "legacy token art still renders").toBeTruthy();
+    // …while the Objects palette also offers its own Monolith button.
+    expect(
+      [...container.querySelectorAll(".designerObjectButton")].some((btn) => /Monolith/i.test(btn.textContent ?? "")),
+      "objects palette present alongside the legacy token"
+    ).toBe(true);
   });
 });
 

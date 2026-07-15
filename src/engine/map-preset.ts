@@ -20,6 +20,9 @@ import { DEFAULT_OBELISK_BONUS } from "./state";
 import type {
   CustomMapObeliskBonus,
   CustomMapObeliskConfig,
+  CustomMapObject,
+  CustomMapObjectKind,
+  CustomMapObjectPlacement,
   CustomMapPreset,
   CustomMapTilePlan,
   CustomStartingUnit,
@@ -112,6 +115,14 @@ export type { CustomMapObeliskBonus, CustomMapObeliskConfig };
 
 /** Storage/editor limit for one designed map. Keep UI and sanitization in lock-step. */
 export const MAX_TIMED_EVENTS = 32;
+
+/** How many designer-placed one-hex objects a map may carry (sanitisation cap). */
+export const MAX_CUSTOM_MAP_OBJECTS = 16;
+
+/** How many gates a single colored pair may carry (a two-way pair — extras dropped). */
+export const MAX_GATES_PER_PAIR = 2;
+
+const CUSTOM_MAP_OBJECT_KINDS = new Set<CustomMapObjectKind>(["monolith", "whirlpool", "gate"]);
 
 /** Designer effect kinds (order = editor dropdown order). */
 export const TIMED_EFFECT_KINDS = [
@@ -305,6 +316,91 @@ function sanitizeObeliskConfig(input: unknown): CustomMapObeliskConfig | undefin
   return { role, bonus: sanitizeObeliskBonus(raw.bonus) ?? DEFAULT_OBELISK_BONUS };
 }
 
+/**
+ * Sanitize ONE designer-placed map object (untrusted input). Keeps only a
+ * well-formed shape: a known kind, a valid placement (tile-slot with a 0-6 slot,
+ * or standalone), a colored pair 1-4 REQUIRED for a gate (and never on another
+ * kind), and an optional guard clamped to 1-7. Geometry consistency (inside a
+ * tile, colliding hexes, illegal tile slot, both-layers/standalone-whirlpool) is
+ * a separate concern handled by {@link validateCustomMapObjects} at setup —
+ * sanitisation is only structural hygiene so untrusted input can't crash setup.
+ */
+export function sanitizeCustomMapObject(input: unknown): CustomMapObject | null {
+  if (!input || typeof input !== "object") {
+    return null;
+  }
+  const raw = input as { kind?: unknown; pair?: unknown; guard?: unknown; placement?: unknown };
+  if (typeof raw.kind !== "string" || !CUSTOM_MAP_OBJECT_KINDS.has(raw.kind as CustomMapObjectKind)) {
+    return null;
+  }
+  const kind = raw.kind as CustomMapObjectKind;
+  const placementRaw = raw.placement as { type?: unknown; row?: unknown; col?: unknown; slot?: unknown } | null;
+  if (!placementRaw || typeof placementRaw !== "object") {
+    return null;
+  }
+  if (!Number.isInteger(placementRaw.row) || !Number.isInteger(placementRaw.col)) {
+    return null;
+  }
+  const row = placementRaw.row as number;
+  const col = placementRaw.col as number;
+  let placement: CustomMapObjectPlacement;
+  if (placementRaw.type === "tile-slot") {
+    const slot = placementRaw.slot;
+    if (!Number.isInteger(slot) || (slot as number) < 0 || (slot as number) > 6) {
+      return null;
+    }
+    placement = { type: "tile-slot", row, col, slot: slot as number };
+  } else if (placementRaw.type === "standalone") {
+    placement = { type: "standalone", row, col };
+  } else {
+    return null;
+  }
+  const object: CustomMapObject = { kind, placement };
+  // A gate carries a colored pair 1-4 (required); any other kind never does.
+  if (kind === "gate") {
+    if (raw.pair !== 1 && raw.pair !== 2 && raw.pair !== 3 && raw.pair !== 4) {
+      return null;
+    }
+    object.pair = raw.pair;
+  }
+  // A deliberate neutral guard difficulty 1-7 (optional; clamped).
+  if (raw.guard !== undefined) {
+    const guard = clampInt(raw.guard, 1, 7, 0);
+    if (guard > 0) {
+      object.guard = guard;
+    }
+  }
+  return object;
+}
+
+function sanitizeCustomMapObjects(input: unknown): CustomMapObject[] {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+  const objects: CustomMapObject[] = [];
+  const gatesPerPair = new Map<number, number>();
+  for (const entry of input) {
+    if (objects.length >= MAX_CUSTOM_MAP_OBJECTS) {
+      break;
+    }
+    const object = sanitizeCustomMapObject(entry);
+    if (!object) {
+      continue;
+    }
+    // At most two gates per colored pair (a two-way pair) — the 3rd+ is dropped
+    // deterministically, keeping the first two in list order.
+    if (object.kind === "gate" && object.pair !== undefined) {
+      const count = gatesPerPair.get(object.pair) ?? 0;
+      if (count >= MAX_GATES_PER_PAIR) {
+        continue;
+      }
+      gatesPerPair.set(object.pair, count + 1);
+    }
+    objects.push(object);
+  }
+  return objects;
+}
+
 function sanitizeTimedEffect(input: unknown): CustomMapTimedEffect | null {
   if (!input || typeof input !== "object") {
     return null;
@@ -434,6 +530,12 @@ export function sanitizeCustomMapPreset(input: unknown): CustomMapPreset | undef
       preset.obelisks = obelisks;
     }
   }
+  if (raw.objects !== undefined) {
+    const objects = sanitizeCustomMapObjects(raw.objects);
+    if (objects.length > 0) {
+      preset.objects = objects;
+    }
+  }
 
   return customMapPresetIsActive(preset) ? preset : undefined;
 }
@@ -453,8 +555,48 @@ export function customMapPresetIsActive(preset: CustomMapPreset | null | undefin
       (preset.timedEvents && preset.timedEvents.length > 0) ||
       preset.roundLimit ||
       (preset.notes && preset.notes.length > 0) ||
-      preset.obelisks
+      preset.obelisks ||
+      (preset.objects && preset.objects.length > 0)
   );
+}
+
+/**
+ * Plain-words one-line summary of a map's designer objects (lobby banner +
+ * designer summary): "2 gate pairs, 1 monolith, 1 guarded". Counts a colored
+ * pair once (regardless of whether one or both gates are placed), monoliths and
+ * whirlpools by count, and how many objects carry a neutral guard.
+ */
+export function describeMapObjects(objects: CustomMapObject[]): string {
+  const gatePairs = new Set<number>();
+  let monoliths = 0;
+  let whirlpools = 0;
+  let guarded = 0;
+  for (const object of objects) {
+    if (object.guard) {
+      guarded += 1;
+    }
+    if (object.kind === "gate" && object.pair !== undefined) {
+      gatePairs.add(object.pair);
+    } else if (object.kind === "monolith") {
+      monoliths += 1;
+    } else if (object.kind === "whirlpool") {
+      whirlpools += 1;
+    }
+  }
+  const parts: string[] = [];
+  if (gatePairs.size > 0) {
+    parts.push(`${gatePairs.size} gate pair${gatePairs.size === 1 ? "" : "s"}`);
+  }
+  if (monoliths > 0) {
+    parts.push(`${monoliths} monolith${monoliths === 1 ? "" : "s"}`);
+  }
+  if (whirlpools > 0) {
+    parts.push(`${whirlpools} whirlpool${whirlpools === 1 ? "" : "s"}`);
+  }
+  if (guarded > 0) {
+    parts.push(`${guarded} guarded`);
+  }
+  return parts.join(", ");
 }
 
 // Single source of truth for victory-mode names (renamed "Grail Hunt" ->
@@ -623,6 +765,12 @@ export function describeCustomMapPresetEntries(
   }
   if (preset.obelisks) {
     entries.push({ icon: "🗿", text: describeObeliskRole(preset.obelisks) });
+  }
+  if (preset.objects && preset.objects.length > 0) {
+    const summary = describeMapObjects(preset.objects);
+    if (summary.length > 0) {
+      entries.push({ icon: "⛩️", text: `Objects: ${summary}` });
+    }
   }
   if (preset.notes) {
     entries.push({ icon: "📜", text: preset.notes });

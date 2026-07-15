@@ -749,12 +749,28 @@ export function tileLayer(tile: MapTileState | undefined): MapLayer {
   return tile?.group === "subterranean" ? "subterranean" : "surface";
 }
 
+/**
+ * The map layer a materialized field sits on. A designer STANDALONE object hex
+ * has no backing tile, so it carries its layer directly
+ * ({@link MapFieldState.standaloneLayer}, fixed at setup from the tiles it
+ * touches); every other field reads it from the tile it was materialized from.
+ * This is what keeps the Surface↔Subterranean divide holding for standalone hexes
+ * exactly like tile hexes in {@link canCrossEdge}.
+ */
+export function mapFieldLayer(state: GameState, field: MapFieldState | undefined): MapLayer {
+  if (!field) {
+    return "surface";
+  }
+  if (field.standalone && field.standaloneLayer) {
+    return field.standaloneLayer;
+  }
+  return tileLayer(state.adventure?.tiles[field.tileInstanceId]);
+}
+
 /** Which layer a field sits on, taken from the tile it was materialized from. */
 export function fieldLayer(state: GameState, spaceId: MapSpaceId | null | undefined): MapLayer {
-  const adventure = state.adventure;
-  const field = spaceId ? adventure?.fields[spaceId] : undefined;
-  const tile = field ? adventure?.tiles[field.tileInstanceId] : undefined;
-  return tileLayer(tile);
+  const field = spaceId ? state.adventure?.fields[spaceId] : undefined;
+  return mapFieldLayer(state, field);
 }
 
 /**
@@ -846,10 +862,10 @@ export function canCrossEdge(
   // the far layer either. Expert Pathfinding is the sole exception (its
   // `crossLayers`): it lets the Hero step directly between the layers anywhere
   // they touch, falling through to the blocked-field rule so it still cannot
-  // STOP on a blocked far-layer hex.
-  const fromTile = adventure.tiles[fromField.tileInstanceId];
-  const toTile = adventure.tiles[toField.tileInstanceId];
-  if (tileLayer(fromTile) !== tileLayer(toTile) && !movement.crossLayers) {
+  // STOP on a blocked far-layer hex. A designer STANDALONE object hex has no
+  // backing tile, so its layer comes from {@link mapFieldLayer} (fixed at setup):
+  // a surface standalone hex never connects to an underground tile hex, and back.
+  if (mapFieldLayer(state, fromField) !== mapFieldLayer(state, toField) && !movement.crossLayers) {
     return false;
   }
 
@@ -1981,6 +1997,8 @@ function interactionToSteps(interaction: LocationInteraction, extraLocationDice 
       return [{ type: "SUBTERRANEAN_GATE" }];
     case "TOKEN_TELEPORT":
       return [{ type: "TOKEN_TELEPORT", token: interaction.token }];
+    case "GATE_TELEPORT":
+      return [{ type: "GATE_TELEPORT" }];
     case "DRAW_PANDORA_CARD":
       return [{ type: "DRAW_PANDORA_CARD" }];
     case "LIBRARY_OF_ENLIGHTENMENT":
@@ -3222,6 +3240,16 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
     return;
   }
 
+  // A DESIGNED guard on a map-object teleport field (Monolith / Whirlpool / Gate)
+  // is defeated the moment this visit runs: beginFieldVisit is reached only on a
+  // WIN, a Quick-Combat win, or a Diplomacy skip — a retreat never calls it. A
+  // revisitable teleport field takes no Black Cube / flag, so clear the leftover
+  // Field Difficulty here; otherwise the beaten guard would respawn on the hero's
+  // next entry. (Retreat leaves it intact — the guard stands for next time.)
+  if (isMapObjectLocation(location.id) && field.difficulty) {
+    delete field.difficulty;
+  }
+
   if (location.category === "visitable") {
     // "Treat it as an Empty Field as long as it has a Black Cube": a field
     // that already carries its cube does nothing on re-entry. The cube goes
@@ -3939,6 +3967,9 @@ export function processPendingVisit(state: GameState): void {
         break;
       case "TOKEN_TELEPORT":
         resolveTokenTeleport(state, visit, step.token);
+        break;
+      case "GATE_TELEPORT":
+        resolveGateTeleport(state, visit);
         break;
       case "TOKEN_TELEPORT_REVEAL":
         resolveTokenTeleportReveal(state, visit, step);
@@ -5353,6 +5384,23 @@ export function isMapTokenLocation(locationId: string): boolean {
 }
 
 /**
+ * Whether a field's location is ANY designer teleport object — a Monolith or
+ * Whirlpool Location Token OR a colored Gate. Used where "this hex is already a
+ * teleport object" is what matters: no other token may be dropped on top of it
+ * (see {@link gateMayCoverField} / {@link TOKEN_FORBIDDEN_LOCATIONS}), a defeated
+ * DESIGNED guard on it is cleared on the win visit, and the board draws the
+ * "⇄ teleport" doorway cue.
+ */
+export function isMapObjectLocation(locationId: string): boolean {
+  return isMapTokenLocation(locationId) || locationId === "gate";
+}
+
+/** Colored Gate pair (1-4) → its display colour name (red/blue/green/yellow). */
+export function gatePairColor(pair: 1 | 2 | 3 | 4): string {
+  return { 1: "red", 2: "blue", 3: "green", 4: "yellow" }[pair];
+}
+
+/**
  * Whether `field` is a member of the `kind` teleport network. A carved token
  * field always is; additionally, under the map-wide Obelisk role "monolith",
  * EVERY Obelisk field joins the MONOLITH network (designer Monolith tokens and
@@ -5385,7 +5433,8 @@ const TOKEN_FORBIDDEN_LOCATIONS = new Set([
   "subterranean_gate",
   "creature_bank",
   "monolith",
-  "whirlpool"
+  "whirlpool",
+  "gate"
 ]);
 
 /**
@@ -5640,6 +5689,85 @@ function resolveTokenTeleport(state: GameState, visit: PendingVisit, kind: MapTo
 }
 
 /**
+ * Colored Gate travel (map-designer objects, rulebook p.83). Entering (or
+ * Revisiting) a gate moves the hero to THE OTHER gate of the SAME colored pair —
+ * always that exact partner, never a choice and never the Monolith network:
+ * - the pair has only this gate on the map → nothing (noted, needs both);
+ * - the partner is occupied by a hero → fizzles (noted, mirroring the Monolith
+ *   "skip the movement" reading);
+ * - otherwise → straight to the partner. Arrival does NOT re-trigger (a bare
+ *   TELEPORT_HERO step), so there is no ping-pong; the hero may Revisit (1 MP) to
+ *   travel back. Gates are placed only on face-up tile slots or standalone hexes,
+ *   so a partner is always already materialized — no face-down reveal path here.
+ */
+function resolveGateTeleport(state: GameState, visit: PendingVisit): void {
+  const adventure = state.adventure;
+  const field = adventure?.fields[visit.fieldId];
+  if (!adventure || !field || field.location !== "gate" || field.gatePair === undefined) {
+    return;
+  }
+  const pair = field.gatePair;
+  const color = gatePairColor(pair);
+  // Every OTHER gate of the SAME colored pair. Gates never join the Monolith
+  // network (and Monoliths/Obelisks never join a gate pair), so this is a strict
+  // location === "gate" AND same-pair match — the separation is deliberate.
+  const partners = Object.values(adventure.fields).filter(
+    (candidate) => candidate.location === "gate" && candidate.gatePair === pair && candidate.spaceId !== field.spaceId
+  );
+  if (partners.length === 0) {
+    eventNote(
+      state,
+      `The ${color} Gate leads nowhere — both ${color} Gates must be on the map for it to work.`,
+      visit.playerId
+    );
+    return;
+  }
+  const free = partners.filter((partner) => !heroAtSpace(state, partner.spaceId));
+  if (free.length === 0) {
+    eventNote(state, `The ${color} Gate fizzles — its partner is occupied by a hero.`, visit.playerId);
+    return;
+  }
+  // A designed pair holds exactly two gates, so there is exactly one partner; a
+  // hand-edited save with extra gates of one colour travels to the first free one
+  // (deterministic by hex id).
+  const destination = [...free].sort((a, b) => (a.spaceId < b.spaceId ? -1 : 1))[0];
+  visit.steps.unshift({ type: "TELEPORT_HERO", heroId: visit.heroId, spaceId: destination.spaceId });
+}
+
+/** Carves a colored Gate object (a tile-slot placement) onto a materialized field. */
+export function carveColoredGateField(
+  adventure: AdventureState,
+  spaceId: MapSpaceId,
+  pair: 1 | 2 | 3 | 4
+): MapFieldState | null {
+  const field = adventure.fields[spaceId];
+  if (!field) {
+    return null;
+  }
+  // The gate overwrites whatever printed Location was here (like a Monolith); a
+  // clean land field remains. Its DESIGNED guard difficulty, if any, is set by
+  // the caller AFTER this carve.
+  field.location = "gate";
+  field.gatePair = pair;
+  delete field.difficulty;
+  delete field.resource;
+  delete field.amount;
+  delete field.faction;
+  field.blackCube = false;
+  field.flagOwnerId = null;
+  delete field.extraFlagOwnerIds;
+  field.everFlagged = false;
+  field.settlementResource = null;
+  delete field.grailDiggable;
+  delete field.gateToTileId;
+  delete field.gateLinkSpaceId;
+  delete field.bankId;
+  delete field.terrain;
+  delete field.whirlpoolNumber;
+  return field;
+}
+
+/**
  * Monolith/Whirlpool travel into a still-face-down tile: flip it for free and
  * hand its rotation to the traveller, exactly like the Subterranean Gate's
  * reveal-on-entry. The in-flight travel is parked on
@@ -5846,7 +5974,7 @@ function completeMapTokenTeleport(
  * touching hex instead).
  */
 function gateMayCoverField(field: MapFieldState | undefined): boolean {
-  return field !== undefined && field.location !== "subterranean_gate" && !isMapTokenLocation(field.location);
+  return field !== undefined && field.location !== "subterranean_gate" && !isMapObjectLocation(field.location);
 }
 
 /** A tile is "materialized" once its rotation is locked and its 7 fields exist. */

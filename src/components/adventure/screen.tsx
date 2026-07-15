@@ -56,6 +56,7 @@ import {
   hexSpaceId,
   hexToPixel,
   inCombatPrep,
+  isMapObjectLocation,
   isMapTokenLocation,
   isParallelActor,
   isRoundStartEventBarrierActive,
@@ -183,10 +184,32 @@ export const LOCATION_GLYPHS: Record<string, string> = {
   subterranean_gate: "🕳",
   creature_bank: "🏦",
   monolith: "⛩",
-  whirlpool: "🌀"
+  whirlpool: "🌀",
+  gate: "⛩"
 };
 
 const ROMAN = ["", "Ⅰ", "Ⅱ", "Ⅲ", "Ⅳ", "Ⅴ", "Ⅵ", "Ⅶ"];
+
+/** Colored Gate pair (1-4) → its colour-blind-safe tint (matches gatePairColor). */
+const GATE_PAIR_COLORS: Record<number, string> = {
+  1: "#e0483c",
+  2: "#3d7fe0",
+  3: "#3caf52",
+  4: "#e0b93c"
+};
+
+/** SVG ring + pair number marking a colored Gate hex (tile-slot AND standalone). */
+function gateHexMark(spaceId: string, x: number, y: number, pair: number): ReactNode {
+  const color = GATE_PAIR_COLORS[pair] ?? "#c9a24b";
+  return (
+    <g key={`${spaceId}-gate-mark`} style={{ pointerEvents: "none" }}>
+      <circle cx={x} cy={y} fill="rgba(12,8,4,0.55)" r={HEX_SIZE * 0.62} stroke={color} strokeWidth={3} />
+      <text fill={color} fontSize={HEX_SIZE * 0.9} fontWeight={700} textAnchor="middle" x={x} y={y + HEX_SIZE * 0.32}>
+        {pair}
+      </text>
+    </g>
+  );
+}
 
 function hexCornerPoints(cx: number, cy: number, size: number): { x: number; y: number }[] {
   const corners: { x: number; y: number }[] = [];
@@ -1101,14 +1124,19 @@ export function HexMapBoard({
         );
       }
 
-      // A reachable Monolith/Whirlpool is a doorway too: cue the teleport so
+      // A reachable Monolith/Whirlpool/Gate is a doorway too: cue the teleport so
       // players realise stepping on moves them across the map.
-      if (isMapTokenLocation(field.location) && (target || remindMove)) {
+      if (isMapObjectLocation(field.location) && (target || remindMove)) {
         overlays.push(
           <text className="hexGateCue" key={`${spaceId}-token-cue`} textAnchor="middle" x={x} y={y + HEX_SIZE * 0.92}>
             ⇄ teleport
           </text>
         );
+      }
+      // A colored Gate hex: a tinted ring + its pair number (colour-blind-safe),
+      // so the hex is visibly a gate of its pair (tile-slot gates render here).
+      if (field.location === "gate" && field.gatePair) {
+        overlays.push(gateHexMark(spaceId, x, y, field.gatePair));
       }
 
       // Pick-a-field Monolith/Whirlpool token placement: label each candidate
@@ -1343,6 +1371,151 @@ export function HexMapBoard({
           </g>
         );
       }
+    }
+  }
+
+  // --- Standalone map-object hexes: designer objects OFF every tile ----------
+  // These are real fields with a reserved (tile-less) instance id, so the tile
+  // loop above never draws them. They are public and always visible.
+  for (const field of Object.values(adventure.fields)) {
+    if (!field.standalone) {
+      continue;
+    }
+    const spaceId = field.spaceId;
+    const coord = parseHexSpaceId(spaceId);
+    if (!coord) {
+      continue;
+    }
+    const { x, y } = hexToPixel(coord, HEX_SIZE);
+    track(x, y);
+    const target = reachable.get(spaceId);
+    const remindMove = drawReminderTargets.get(spaceId);
+    const endTurnMove = endTurnMoveTargets.get(spaceId);
+    const mapChoice = pendingMapChoiceTargets.get(spaceId);
+    const guarded = Boolean(field.difficulty) && !field.blackCube && !field.everFlagged;
+    const isSelected = selectedTarget?.spaceId === spaceId;
+    cells.push(
+      <polygon
+        className={[
+          "hexCell",
+          "standaloneObjectHex",
+          target ? "moveTarget" : "",
+          remindMove ? "moveTargetLocked" : "",
+          endTurnMove ? "endTurnMoveTarget" : "",
+          mapChoice ? "mapChoiceTarget" : "",
+          isSelected ? "selectedTarget" : ""
+        ].join(" ")}
+        data-space-id={spaceId}
+        fill={TERRAIN_COLORS.dirt}
+        key={`standalone-${spaceId}`}
+        onClick={
+          readOnly
+            ? undefined
+            : mapChoice
+              ? () => {
+                  if (!suppressClickRef.current) {
+                    onAction(mapChoice);
+                  }
+                }
+              : endTurnMove
+                ? () => {
+                    if (!suppressClickRef.current) {
+                      onAction(endTurnMove);
+                    }
+                  }
+                : target
+                  ? () => {
+                      if (!suppressClickRef.current) {
+                        setSelectedTarget(selectedTarget?.spaceId === spaceId ? null : target);
+                      }
+                    }
+                  : remindMove
+                    ? () => {
+                        if (!suppressClickRef.current) {
+                          remindToDraw(spaceId);
+                        }
+                      }
+                    : undefined
+        }
+        points={hexCorners(x, y, HEX_SIZE - 1.2)}
+      >
+        <title>
+          {`${
+            field.location === "gate" ? `Gate (pair ${field.gatePair})` : locationDefinitions[field.location]?.name ?? field.location
+          }${guarded && field.difficulty ? ` (guard ${ROMAN[field.difficulty]})` : ""} — a standalone object hex${
+            target ? ` — ${target.cost} movement point${target.cost === 1 ? "" : "s"}` : ""
+          }`}
+        </title>
+      </polygon>
+    );
+    if (field.location === "gate" && field.gatePair) {
+      overlays.push(gateHexMark(spaceId, x, y, field.gatePair));
+    } else if (field.location === "monolith") {
+      overlays.push(
+        <image
+          className="locationToken"
+          height={2 * HEX_SIZE}
+          href={assetUrl(monolithTokenImage())}
+          key={`standalone-${spaceId}-mono`}
+          preserveAspectRatio="none"
+          style={{ pointerEvents: "none" }}
+          width={HEX_WIDTH}
+          x={x - HEX_WIDTH / 2}
+          y={y - HEX_SIZE}
+        />
+      );
+    }
+    if (guarded && field.difficulty) {
+      overlays.push(
+        <text className="hexDifficulty" key={`standalone-${spaceId}-diff`} textAnchor="middle" x={x} y={y - HEX_SIZE * 0.45}>
+          {ROMAN[field.difficulty]}
+        </text>
+      );
+    }
+    if (isMapObjectLocation(field.location) && (target || remindMove)) {
+      overlays.push(
+        <text className="hexGateCue" key={`standalone-${spaceId}-cue`} textAnchor="middle" x={x} y={y + HEX_SIZE * 0.92}>
+          ⇄ teleport
+        </text>
+      );
+    }
+    // Compact hero pawn(s) standing on the standalone hex (non-interactive: map
+    // clicks fall through, exactly like a plain main-hero pawn).
+    for (const [index, occupant] of (heroesBySpace.get(spaceId) ?? []).entries()) {
+      const heroDef = occupant.heroDefId ? coreHeroDefinitions[occupant.heroDefId] : undefined;
+      const portrait = heroDef?.portrait;
+      heroPawns.push(
+        <g
+          className="heroPawn"
+          data-hero-id={occupant.heroId}
+          key={`standalone-pawn-${occupant.heroId}`}
+          style={{ transform: `translate(${x + index * 10 - 5}px, ${y - 4}px)`, pointerEvents: "none" }}
+        >
+          <circle className="heroPawnBase" r={12} />
+          {portrait ? (
+            <>
+              <clipPath id={`heroClip-sa-${occupant.heroId}`}>
+                <circle r={10} />
+              </clipPath>
+              <image
+                className="heroSprite"
+                clipPath={`url(#heroClip-sa-${occupant.heroId})`}
+                height={22}
+                href={assetUrl(portrait)}
+                preserveAspectRatio="xMidYMid slice"
+                width={22}
+                x={-11}
+                y={-11}
+              />
+            </>
+          ) : (
+            <circle fill={playerColor(state, occupant.playerId)} r={9} />
+          )}
+          <circle className="heroPawnRing" r={11} stroke={playerColor(state, occupant.playerId)} />
+          <line className="heroFlagPole" x1={0} x2={0} y1={-9} y2={-24} />
+          <path d="M0 -23 L13 -19 L0 -15 Z" fill={playerColor(state, occupant.playerId)} stroke="#160d04" strokeWidth={0.8} />
+        </g>
+      );
     }
   }
 

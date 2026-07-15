@@ -828,6 +828,23 @@ export const locationDefinitions: Record<string, LocationDefinition> = {
     implementationStatus: "implemented",
     source: source("two-way_monolith")
   },
+  gate: {
+    id: "gate",
+    name: "Colored Gate",
+    // Map-designer object (rulebook p.83, "corresponding Two-Way Monolith" read
+    // as EXACT colored pairs). Entering (or Revisiting for 1 MP, like a Monolith)
+    // teleports the hero to THE OTHER gate of the same colored pair — never a
+    // choice, never another pair. The pair (1 red / 2 blue / 3 green / 4 yellow)
+    // lives on the field (`MapFieldState.gatePair`), so one location serves all
+    // four pairs. "revisitable" gives the always-STOP + pay-1-MP-to-re-travel
+    // behaviour; the travel itself resolves in the GATE_TELEPORT visit step, a
+    // no-op ("pair leads nowhere") until the pair's second gate is on the map.
+    // Gates do NOT join the generic Monolith/Whirlpool network.
+    category: "revisitable",
+    interaction: { type: "GATE_TELEPORT" },
+    implementationStatus: "implemented",
+    source: source("two-way_monolith")
+  },
   whirlpool: {
     id: "whirlpool",
     name: "Whirlpool",
