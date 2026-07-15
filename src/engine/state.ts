@@ -83,9 +83,15 @@ export type HouseRuleId =
   // Dracon's Enchanters IV may ALSO upgrade the cheaper Few of Magi into the
   // Enchanters for 6 extra gold (besides the free Pack-of-Magi trade). Off: only
   // the rulebook options remain — trade a Pack of Magi, or draw a card.
-  | "dracon-few-magi-trade";
+  | "dracon-few-magi-trade"
+  // Obelisk house-rule die rewards: first visitor locks an Attack-die face on the
+  // Field; every visitor gets that reward (−1 morale / 0 Search(2) Artifact /
+  // +1 Treasure+Resource dice). Off: Obelisks are still multi-flaggable but
+  // grant no die reward. Independent of Holy Grail dig unlock (which always
+  // counts visits while victoryMode is "grail").
+  | "obelisk-rewards";
 
-/** Optional Wake of Gods modules. WOG is valid only while BINH is selected. */
+/** Optional Wake of Gods modules. WOG is a BINH-family mod (not a game mode). */
 export type WogModOptions = {
   enabled: boolean;
   commanders: boolean;
@@ -102,10 +108,12 @@ export const DEFAULT_WOG_OPTIONS: WogModOptions = {
 /**
  * How the scenario is won:
  *  - "conquest": flag an enemy faction Town (the classic skirmish goal).
- *  - "grail": the Grail hunt — win by capturing the Grail (defeat its guard,
- *    dig it, then carry it home) or by beating every enemy hero in combat at
- *    least once (only 2 of them in a 4-player game). The Dragon Utopia is NOT
- *    an objective here; it is just a creature bank.
+ *  - "grail" (Holy Grail): win by capturing the Grail — defeat a Lvl-VII guard,
+ *    visit 2 distinct Obelisks, dig for 1 movement point, then carry it home —
+ *    or by beating every enemy hero in combat at least once (only 2 of them in
+ *    a 4-player game). The map seeds up to 2 Grail tiles and at least 2
+ *    Obelisks (designer presets count). The Dragon Utopia is NOT an objective
+ *    here; it is just a creature bank.
  *  - "dragon-hunt": win by defeating the Dragon Utopia (no need to hold it) or
  *    by beating every enemy hero in combat at least once (only 2 in a 4-player
  *    game).
@@ -114,6 +122,9 @@ export const DEFAULT_WOG_OPTIONS: WogModOptions = {
  *    Tower) to take it. Controlling the Utopia at the start of your turn wins.
  */
 export type VictoryMode = "conquest" | "grail" | "dragon-hunt" | "dragon-conqueror";
+
+/** Holy Grail: distinct Obelisks a player must visit before they may dig. */
+export const GRAIL_OBELISKS_REQUIRED = 2;
 
 /**
  * Whether a player-vs-player Combat costs the fighters their dead units:
@@ -8454,13 +8465,20 @@ export type AdventureState = {
    */
   houseRules?: Partial<Record<HouseRuleId, boolean>>;
   /**
-   * Grail Hunt: the single Grail Token's progress. Only one token exists in
-   * the game even when several Grail fields are on the map.
+   * Holy Grail: the single Grail Token's progress. Only one token exists in
+   * the game even when several Grail fields are on the map. Digging requires
+   * the digger to have visited {@link GRAIL_OBELISKS_REQUIRED} distinct Obelisks
+   * (tracked per player in `obelisksVisited`).
    */
   grail?: {
     status: "uncollected" | "carried" | "delivered";
     /** Hero physically carrying the dug Grail back toward their town. */
     carrierHeroId?: HeroId;
+    /**
+     * Distinct Obelisk field ids each player has visited (flagged). Dig is
+     * locked until a player has {@link GRAIL_OBELISKS_REQUIRED} entries.
+     */
+    obelisksVisited?: Record<PlayerId, MapSpaceId[]>;
   };
   /**
    * Grail Hunt / Dragon Hunt: distinct enemy players each player has beaten in
@@ -8504,7 +8522,7 @@ export type GameSetupOptions = {
   ruleset: GameRuleset;
   /** Wake of Gods modules. Enabled only in BINH mode; absent means fully off. */
   wog?: WogModOptions;
-  /** Win condition: "conquest" (flag enemy town), "grail", "dragon-hunt" or "dragon-conqueror". */
+  /** Win condition: "conquest", "grail" (Holy Grail), "dragon-hunt" or "dragon-conqueror". */
   victoryMode?: VictoryMode;
   /** PvP Combat casualties: "normal" (lose dead units) or "none" (keep troops). */
   pvpTroopLoss?: PvpTroopLoss;

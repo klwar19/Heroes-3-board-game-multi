@@ -18,6 +18,8 @@ import {
   armyHasMapEffect,
   beginFieldVisit,
   beginNextPendingStartTileRotation,
+  canDigGrail,
+  grailObelisksVisitedCount,
   buildCreatureBankCombatUnits,
   canCrossEdge,
   canHeroReachPlacedTile,
@@ -240,7 +242,7 @@ import type {
   ThievesGuildTarget,
   VisitStep
 } from "./state";
-import { NEUTRAL_PLAYER_ID, UNOPENED_FAR_TILE } from "./state";
+import { GRAIL_OBELISKS_REQUIRED, NEUTRAL_PLAYER_ID, UNOPENED_FAR_TILE } from "./state";
 
 
 /** First built town building of this player carrying the given effect type. */
@@ -1396,6 +1398,14 @@ export function revisitField(state: GameState, action: Extract<GameAction, { typ
   // Revisitable fields and a cleared Grail field (which is dug for 1 MP).
   if (locationDefinitions[field.location]?.category !== "revisitable" && !field.grailDiggable) {
     throw new Error("Only revisitable fields can be visited again.");
+  }
+
+  // Holy Grail: dig only after the digger has visited enough Obelisks.
+  if (field.grailDiggable && !canDigGrail(state, action.playerId)) {
+    const have = grailObelisksVisitedCount(state, action.playerId);
+    throw new Error(
+      `Holy Grail: visit ${GRAIL_OBELISKS_REQUIRED} Obelisks before digging (you have ${have}/${GRAIL_OBELISKS_REQUIRED}).`
+    );
   }
 
   hero.movementPoints -= 1;

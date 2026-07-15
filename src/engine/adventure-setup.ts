@@ -909,12 +909,81 @@ function popSubBandTile(pool: string[], band: "iv-v" | "vi-vii"): string | undef
   return undefined;
 }
 
-/** Removes and returns a Center tile from the pool that carries `location`. */
-function takeCenterTileWith(pool: string[], location: string): string | undefined {
+/** Removes and returns a tile from the pool that carries `location`. */
+function takeTileWith(pool: string[], location: string): string | undefined {
   const index = pool.findIndex((tileDefId) =>
     (allTileDefinitions[tileDefId]?.fields ?? []).some((field) => field.location === location)
   );
   return index >= 0 ? pool.splice(index, 1)[0] : undefined;
+}
+
+/** Removes and returns a Center tile from the pool that carries `location`. */
+function takeCenterTileWith(pool: string[], location: string): string | undefined {
+  return takeTileWith(pool, location);
+}
+
+/**
+ * Holy Grail seeding: how many Obelisks the map design already guarantees
+ * (face-up/exact pins that carry an Obelisk, or secretFeature "obelisk").
+ * Random face-down slots do NOT count until drawn.
+ */
+function countGuaranteedObelisks(plans: CustomMapTilePlan[] | undefined): number {
+  if (!plans?.length) {
+    return 0;
+  }
+  let count = 0;
+  for (const plan of plans) {
+    if (plan.secretFeature === "obelisk") {
+      count += 1;
+      continue;
+    }
+    if (plan.tileDefId) {
+      const def = allTileDefinitions[plan.tileDefId];
+      if (def?.fields.some((field) => field.location === "obelisk")) {
+        count += 1;
+      }
+    }
+  }
+  return count;
+}
+
+/**
+ * Holy Grail: pull up to `count` remaining Obelisk-bearing tiles from the given
+ * pools (near preferred, then far). Used after designer presets are counted so
+ * the map always has at least 2 Obelisks to discover.
+ */
+function takeObeliskTiles(pools: { near?: string[]; far?: string[] }, count: number): string[] {
+  const taken: string[] = [];
+  for (const pool of [pools.near, pools.far]) {
+    if (!pool || taken.length >= count) {
+      break;
+    }
+    while (taken.length < count) {
+      const tile = takeTileWith(pool, "obelisk");
+      if (!tile) {
+        break;
+      }
+      taken.push(tile);
+    }
+  }
+  return taken;
+}
+
+/**
+ * Holy Grail: pull remaining Grail tiles still in the center pool (after the
+ * Center slots have taken their share) so a second Grail can land on a Near /
+ * Far overflow slot when the layout only has one Center.
+ */
+function takeRemainingGrailTiles(centerPool: string[], max: number): string[] {
+  const taken: string[] = [];
+  while (taken.length < max) {
+    const tile = takeCenterTileWith(centerPool, "grail");
+    if (!tile) {
+      break;
+    }
+    taken.push(tile);
+  }
+  return taken;
 }
 
 /**
@@ -959,18 +1028,28 @@ function popTileMatchingFeature(
 }
 
 /**
- * Center (VI–VII) tiles forced by the win condition: Grail Hunt guarantees a
- * Grail; Dragon Hunt and Dragon Conqueror guarantee a Dragon Utopia. The array
- * is index-aligned with the scenario's Center positions; undefined entries fall
- * back to a random draw. Grail Hunt no longer forces a Dragon Utopia — it is
- * not an objective there, so any second Center tile is drawn at random.
+ * Center (VI–VII) tiles forced by the win condition. Holy Grail guarantees up
+ * to TWO Grail tiles across available Center slots (the dig sites); leftover
+ * Grail tiles may still overflow onto Near/Far via {@link takeRemainingGrailTiles}.
+ * Dragon Hunt / Dragon Conqueror guarantee a Dragon Utopia. The array is
+ * index-aligned with the scenario's Center positions; undefined entries fall
+ * back to a random draw. Holy Grail no longer forces a Dragon Utopia.
  */
 function forcedObjectiveCenterTiles(pool: string[], slots: number, mode: VictoryMode): (string | undefined)[] {
   if (slots <= 0) {
     return [];
   }
   if (mode === "grail") {
-    return [takeCenterTileWith(pool, "grail")];
+    // Prefer a Grail on every Center slot, capped at 2 dig sites.
+    const result: (string | undefined)[] = [];
+    const grailSlots = Math.min(slots, 2);
+    for (let index = 0; index < grailSlots; index += 1) {
+      result.push(takeCenterTileWith(pool, "grail"));
+    }
+    while (result.length < slots) {
+      result.push(undefined);
+    }
+    return result;
   }
   if (mode === "dragon-hunt" || mode === "dragon-conqueror") {
     return [takeCenterTileWith(pool, "dragon_utopia")];
@@ -1363,17 +1442,31 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
       }
     }
 
-    // Center (VI–VII) tiles forced by the win condition (Grail Hunt → a Grail,
-    // Dragon Hunt/Conqueror → a Dragon Utopia) apply to unpinned face-down
-    // Center slots here too, exactly like the scenario layout — a designer who
-    // already pinned a specific Center tile or named a secretFeature keeps that
-    // choice instead.
+    // Center (VI–VII) tiles forced by the win condition (Holy Grail → up to 2
+    // Grail dig sites; Dragon Hunt/Conqueror → a Dragon Utopia) apply to
+    // unpinned face-down Center slots here too — a designer who already pinned
+    // a specific Center tile or named a secretFeature keeps that choice.
     const unpinnedFaceDownCenterSlots = customMap.filter(
       (plan) =>
         plan.faceDown && plan.group === "center" && !plan.tileDefId && !plan.secretFeature
     ).length;
     const forcedCenters = forcedObjectiveCenterTiles(centerPool, unpinnedFaceDownCenterSlots, victoryMode);
     let forcedCenterIndex = 0;
+
+    // Holy Grail: also force leftover Grail tiles (when fewer than 2 Center
+    // slots took them) and enough Obelisks (designer presets count) onto
+    // unpinned face-down Near/Far draws.
+    const grailOverflow: string[] =
+      victoryMode === "grail" ? takeRemainingGrailTiles(centerPool, 2 - forcedCenters.filter(Boolean).length) : [];
+    // Count designer-guaranteed Obelisks; pull the shortfall from Near/Far pools.
+    const obelisksStillNeeded =
+      victoryMode === "grail" ? Math.max(0, 2 - countGuaranteedObelisks(customMap)) : 0;
+    const forcedObelisks: string[] =
+      obelisksStillNeeded > 0 ? takeObeliskTiles({ near: nearPool, far: farPool }, obelisksStillNeeded) : [];
+    // Obelisks first so dig unlock is completable on tight layouts (e.g. skirmish
+    // has only 2 Near slots); the second Grail fills any leftover Near/Far slots.
+    const grailNearFarOverflow = [...forcedObelisks, ...grailOverflow];
+    let grailNearFarIndex = 0;
 
     // Designed Monolith/Whirlpool Location Tokens, applied once every planned
     // tile is down (whirlpool numbering spans all of them, in plan order).
@@ -1424,9 +1517,16 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
         } else if (plan.group === "subterranean") {
           tileDefId = popSubTile(plan.subBand);
         } else if (plan.group === "center") {
-          // The win-condition objective fills the first unpinned face-down
-          // Center slot; any further Center slots stay a random draw.
+          // Holy Grail fills up to two unpinned face-down Center slots with
+          // Grail dig sites; further Center slots stay a random draw.
           tileDefId = forcedCenters[forcedCenterIndex++] ?? centerPool.pop();
+        } else if (
+          (plan.group === "near" || plan.group === "far") &&
+          grailNearFarIndex < grailNearFarOverflow.length
+        ) {
+          // Holy Grail overflow: second Grail and/or forced Obelisks land on
+          // unpinned Near/Far slots before ordinary random draws.
+          tileDefId = grailNearFarOverflow[grailNearFarIndex++];
         } else {
           tileDefId = pools[plan.group]?.pop();
         }
@@ -1448,24 +1548,41 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
 
     applyCustomMapTokens(adventure, plannedTokens);
   } else {
+    // Holy Grail: force leftover Grail tiles (2 dig sites total) and at least
+    // 2 Obelisks onto Near/Far draws when the layout's Center slots alone cannot
+    // host them.
+    const forcedCenters = forcedObjectiveCenterTiles(centerPool, scenario.layout.center.length, victoryMode);
+    const grailOverflow: string[] =
+      victoryMode === "grail" ? takeRemainingGrailTiles(centerPool, 2 - forcedCenters.filter(Boolean).length) : [];
+    const forcedObelisks: string[] =
+      victoryMode === "grail" ? takeObeliskTiles({ near: nearPool, far: farPool }, 2) : [];
+    // Obelisks first (dig unlock needs 2); second Grail uses leftover Near/Far slots.
+    const grailNearFarOverflow = [...forcedObelisks, ...grailOverflow];
+    let grailNearFarIndex = 0;
+
     // Face-down Far (II–III) tiles fixed in the layout (symmetric clash maps use
     // these as the outer ring between the starts and the Ⅳ–Ⅴ ring).
     for (const center of scenario.layout.far ?? []) {
-      const tileDefId = farPool.pop();
+      const tileDefId =
+        grailNearFarIndex < grailNearFarOverflow.length
+          ? grailNearFarOverflow[grailNearFarIndex++]
+          : farPool.pop();
       if (tileDefId) {
         instantiateTile(adventure, tileDefId, center, 0, true);
       }
     }
     // Face-down Near (IV–V) and Center (VI–VII) tiles per the scenario layout.
     for (const center of scenario.layout.near) {
-      const tileDefId = nearPool.pop();
+      const tileDefId =
+        grailNearFarIndex < grailNearFarOverflow.length
+          ? grailNearFarOverflow[grailNearFarIndex++]
+          : nearPool.pop();
       if (tileDefId) {
         instantiateTile(adventure, tileDefId, center, 0, true);
       }
     }
-    // Grail Hunt / Dragon Conqueror force their objective onto the VI–VII
-    // Center tiles; any remaining Center tiles stay random.
-    const forcedCenters = forcedObjectiveCenterTiles(centerPool, scenario.layout.center.length, victoryMode);
+    // Holy Grail / Dragon modes force their objective onto the VI–VII Center
+    // tiles; any remaining Center tiles stay random.
     scenario.layout.center.forEach((center, index) => {
       const tileDefId = forcedCenters[index] ?? centerPool.pop();
       if (tileDefId) {
