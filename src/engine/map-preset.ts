@@ -14,7 +14,7 @@
 import { allTileDefinitions } from "@/data/map/tiles";
 import { locationDefinitions } from "@/data/map/locations";
 import type { TileDefinition } from "@/data/map/types";
-import { seaTileBand, subterraneanTileBand } from "./adventure";
+import { seaTileBand, subterraneanTileBand, VII_FIELD_LOCATION } from "./adventure";
 import { VICTORY_MODE_LABELS } from "./ruleset";
 import { DEFAULT_OBELISK_BONUS } from "./state";
 import type {
@@ -23,9 +23,11 @@ import type {
   CustomMapObject,
   CustomMapObjectKind,
   CustomMapObjectPlacement,
+  CustomMapObjectivesConfig,
   CustomMapPreset,
   CustomMapTilePlan,
   CustomStartingUnit,
+  DragonUtopiaGuards,
   GameSetupOptions,
   SecretTileFeature,
   UnitLevel,
@@ -67,6 +69,24 @@ export function tileMatchesSecretFeature(def: TileDefinition, feature: SecretTil
       return false;
   }
 }
+
+/** The three legal center-tile Ⅶ-field designations (allow-list for sanitize). */
+export const VII_FIELD_DESIGNATIONS = new Set<NonNullable<CustomMapTilePlan["viiField"]>>([
+  "town",
+  "dragon_utopia",
+  "grail"
+]);
+
+/** True when `value` is a legal {@link CustomMapTilePlan.viiField} designation. */
+export function isViiFieldDesignation(
+  value: unknown
+): value is NonNullable<CustomMapTilePlan["viiField"]> {
+  return typeof value === "string" && VII_FIELD_DESIGNATIONS.has(value as never);
+}
+
+// The location a Ⅶ-field designation resolves to ("town" → the neutral Random
+// Town) is the shared VII_FIELD_LOCATION from ./adventure (single source of
+// truth — the materialization override and the conflict helper read the same map).
 
 const FEATURE_LABELS: Record<SecretTileFeature, string> = {
   gold_mine: "Gold mine",
@@ -317,6 +337,33 @@ function sanitizeObeliskConfig(input: unknown): CustomMapObeliskConfig | undefin
 }
 
 /**
+ * Sanitize the Grail / Dragon Utopia options block. Each field surfaces an
+ * EXISTING engine knob; garbage → the field is dropped (treated as absent =
+ * today's default). An all-empty block collapses to undefined.
+ */
+function sanitizeObjectivesConfig(input: unknown): CustomMapObjectivesConfig | undefined {
+  if (!input || typeof input !== "object") {
+    return undefined;
+  }
+  const raw = input as {
+    grailObelisksRequired?: unknown;
+    utopiaGuards?: unknown;
+    utopiaBonusSearch?: unknown;
+  };
+  const config: CustomMapObjectivesConfig = {};
+  if (raw.grailObelisksRequired === 1 || raw.grailObelisksRequired === 2 || raw.grailObelisksRequired === 3 || raw.grailObelisksRequired === 4) {
+    config.grailObelisksRequired = raw.grailObelisksRequired;
+  }
+  if (raw.utopiaGuards === "four" || raw.utopiaGuards === "by-difficulty") {
+    config.utopiaGuards = raw.utopiaGuards as DragonUtopiaGuards;
+  }
+  if (raw.utopiaBonusSearch === 1 || raw.utopiaBonusSearch === 2 || raw.utopiaBonusSearch === 3) {
+    config.utopiaBonusSearch = raw.utopiaBonusSearch;
+  }
+  return Object.keys(config).length > 0 ? config : undefined;
+}
+
+/**
  * Sanitize ONE designer-placed map object (untrusted input). Keeps only a
  * well-formed shape: a known kind, a valid placement (tile-slot with a 0-6 slot,
  * or standalone), a colored pair 1-4 REQUIRED for a gate (and never on another
@@ -536,6 +583,12 @@ export function sanitizeCustomMapPreset(input: unknown): CustomMapPreset | undef
       preset.objects = objects;
     }
   }
+  if (raw.objectives !== undefined) {
+    const objectives = sanitizeObjectivesConfig(raw.objectives);
+    if (objectives) {
+      preset.objectives = objectives;
+    }
+  }
 
   return customMapPresetIsActive(preset) ? preset : undefined;
 }
@@ -556,7 +609,8 @@ export function customMapPresetIsActive(preset: CustomMapPreset | null | undefin
       preset.roundLimit ||
       (preset.notes && preset.notes.length > 0) ||
       preset.obelisks ||
-      (preset.objects && preset.objects.length > 0)
+      (preset.objects && preset.objects.length > 0) ||
+      Boolean(preset.objectives)
   );
 }
 
@@ -665,6 +719,33 @@ export function describeObeliskBonus(bonus: CustomMapObeliskBonus): string {
   }
 }
 
+/** Plain-words label for a Dragon Utopia guard mode. */
+export function describeUtopiaGuards(guards: DragonUtopiaGuards): string {
+  return guards === "four" ? "always four dragons" : "scale by difficulty";
+}
+
+/**
+ * Icon-tagged lines for the Grail / Dragon Utopia options block (lobby banner +
+ * designer summary). One entry per set field; 🏆 for the Grail knob, 🐉 for the
+ * Utopia knobs.
+ */
+export function describeObjectivesConfig(config: CustomMapObjectivesConfig): CustomMapPresetEntry[] {
+  const entries: CustomMapPresetEntry[] = [];
+  if (config.grailObelisksRequired) {
+    entries.push({
+      icon: "🏆",
+      text: `Grail dig needs ${config.grailObelisksRequired} Obelisk${config.grailObelisksRequired === 1 ? "" : "s"}`
+    });
+  }
+  if (config.utopiaGuards) {
+    entries.push({ icon: "🐉", text: `Dragon Utopia guards: ${describeUtopiaGuards(config.utopiaGuards)}` });
+  }
+  if (config.utopiaBonusSearch) {
+    entries.push({ icon: "🐉", text: `Dragon Utopia bonus: Search(${config.utopiaBonusSearch}) Artifacts` });
+  }
+  return entries;
+}
+
 /** Plain-words line for the map-wide Obelisk role (lobby banner + designer). */
 export function describeObeliskRole(config: CustomMapObeliskConfig): string {
   if (config.role === "monolith") {
@@ -765,6 +846,11 @@ export function describeCustomMapPresetEntries(
   }
   if (preset.obelisks) {
     entries.push({ icon: "🗿", text: describeObeliskRole(preset.obelisks) });
+  }
+  if (preset.objectives) {
+    for (const line of describeObjectivesConfig(preset.objectives)) {
+      entries.push(line);
+    }
   }
   if (preset.objects && preset.objects.length > 0) {
     const summary = describeMapObjects(preset.objects);
@@ -988,6 +1074,103 @@ export function secretFeatureDemandWarnings(plans: CustomMapTilePlan[]): string[
     }
   }
   return warnings;
+}
+
+/** The location a center tile def's printed difficulty-7 field carries, if any. */
+function tileViiLocation(tileDefId: string | undefined): string | undefined {
+  if (!tileDefId) {
+    return undefined;
+  }
+  return allTileDefinitions[tileDefId]?.fields.find((field) => field.difficulty === 7)?.location;
+}
+
+/** How many center-group tiles carry `location` on their difficulty-7 field. */
+function centerObjectiveTileCount(location: string): number {
+  return Object.values(allTileDefinitions).filter(
+    (def) =>
+      def.group === "center" &&
+      def.fields.some((field) => field.location === location && field.difficulty === 7)
+  ).length;
+}
+
+/**
+ * Whether a center plan's Ⅶ field CAN end up as `designation` (Grail or Dragon
+ * Utopia) after setup + the designer override. A viiField designation forces the
+ * answer; otherwise a pinned tile is read from its printed Ⅶ field, an
+ * "objective" secret could draw either, and a plain random/forced draw could
+ * become it (or is forced to it by the win condition).
+ */
+function centerCanYield(plan: CustomMapTilePlan, designation: "grail" | "dragon_utopia"): boolean {
+  const location = VII_FIELD_LOCATION[designation];
+  if (plan.viiField) {
+    return plan.viiField === designation;
+  }
+  if (plan.tileDefId) {
+    return tileViiLocation(plan.tileDefId) === location;
+  }
+  if (plan.secretFeature) {
+    return plan.secretFeature === "objective";
+  }
+  return true;
+}
+
+/**
+ * Victory-vs-design conflicts: a hand-placed (designer) tile set whose layout
+ * makes the chosen win condition's objective IMPOSSIBLE. Returns human-readable
+ * messages (empty = compatible). Used live in the designer / lobby summaries AND
+ * as the hard BLOCK at game start (startAdventureFromLobby throws the first one).
+ *
+ * A scenario-driven map (no `customMap`) never conflicts — its objectives come
+ * from the normal setup forcing. The checks mirror the real machinery
+ * (forcedObjectiveCenterTiles + takeRemainingGrailTiles) and are deliberately
+ * CONSERVATIVE: they flag only genuine impossibility, never a merely-tight
+ * layout that setup would soft-fill from the pool.
+ */
+export function victoryDesignConflicts(
+  plans: CustomMapTilePlan[],
+  victoryMode: VictoryMode | undefined
+): string[] {
+  if (!plans.length) {
+    return [];
+  }
+  const mode = victoryMode ?? "conquest";
+  const centerPlans = plans.filter((plan) => plan.group === "center");
+
+  if (mode === "dragon-hunt" || mode === "dragon-conqueror") {
+    // The Dragon Utopia is a CENTER-tile field, so it can only come from a
+    // center slot. Compatible when at least one center slot can host one.
+    if (centerPlans.some((plan) => centerCanYield(plan, "dragon_utopia"))) {
+      return [];
+    }
+    return [
+      `${VICTORY_LABELS[mode]} needs a Dragon Utopia, but this design leaves no centre slot that can host one — every centre Ⅶ field is designated away from a Utopia (or there is no centre slot). Set a centre slot's Ⅶ field to Dragon Utopia, or leave one as a random draw.`
+    ];
+  }
+
+  if (mode === "grail") {
+    // A viiField "grail" designation forces a Grail even onto a non-Grail tile
+    // (no pool tile spent). Every other Grail dig site needs a pool Grail tile,
+    // placed on a Grail-capable center slot OR overflowed onto a face-down
+    // Near/Far slot (takeRemainingGrailTiles). Cap the tile-fed hosts by the
+    // pool's Grail-tile count. Near/Far hosts are counted optimistically (setup
+    // shares them with forced Obelisks — a very tight layout soft-fills from the
+    // random pool, never a hard failure), keeping this conservative.
+    const forcedGrail = centerPlans.filter((plan) => plan.viiField === "grail").length;
+    const grailHostSlots =
+      centerPlans.filter((plan) => plan.viiField !== "grail" && centerCanYield(plan, "grail")).length +
+      plans.filter(
+        (plan) => (plan.group === "near" || plan.group === "far") && plan.faceDown && !plan.tileDefId
+      ).length;
+    const capacity = forcedGrail + Math.min(grailHostSlots, centerObjectiveTileCount("grail"));
+    if (capacity < 2) {
+      return [
+        `${VICTORY_LABELS.grail} seeds 2 Grail dig sites, but this design can host only ${capacity}. Free up a centre slot (set its Ⅶ field to Grail or leave it a random draw), or add face-down Near/Far slots for the Grail overflow.`
+      ];
+    }
+    return [];
+  }
+
+  return [];
 }
 
 /** Building suffixes the designer may pre-build (shared across factions). */

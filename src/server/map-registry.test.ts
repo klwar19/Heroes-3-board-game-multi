@@ -148,6 +148,44 @@ describe("sanitizeSharedMap", () => {
     expect(record!.tiles[3].lockRotation, "absent when unset").toBeUndefined();
   });
 
+  it("round-trips viiField on a CENTER plan, strips it off non-center groups, and drops garbage", () => {
+    // viiField FORCES a center slot's Ⅶ objective field (Grail / Dragon Utopia /
+    // town) — a center-only designation. It must survive on a center plan, never
+    // on any other group, and only a known value may set it.
+    const record = sanitizeSharedMap(
+      {
+        id: "m",
+        tiles: [
+          { row: 1, col: 1, group: "center", faceDown: true, viiField: "dragon_utopia" },
+          { row: 2, col: 2, group: "near", faceDown: true, viiField: "grail" }, // non-center → stripped
+          { row: 3, col: 3, group: "center", faceDown: true, viiField: "castle" }, // garbage → dropped
+          { row: 4, col: 4, group: "center", faceDown: true } // no designation → stays absent
+        ]
+      },
+      1
+    );
+    expect(record!.tiles[0]).toMatchObject({ group: "center", viiField: "dragon_utopia" });
+    expect(record!.tiles[1].viiField, "stripped off a near plan").toBeUndefined();
+    expect(record!.tiles[2].viiField, "unknown value dropped").toBeUndefined();
+    expect(record!.tiles[3].viiField, "absent when unset").toBeUndefined();
+  });
+
+  it("round-trips a preset objectives block through save/load", () => {
+    const record = sanitizeSharedMap(
+      {
+        id: "m",
+        tiles: [{ row: 1, col: 1, group: "near", faceDown: true }],
+        preset: { objectives: { grailObelisksRequired: 3, utopiaGuards: "four", utopiaBonusSearch: 2 } }
+      },
+      1
+    );
+    expect(record!.preset?.objectives).toEqual({
+      grailObelisksRequired: 3,
+      utopiaGuards: "four",
+      utopiaBonusSearch: 2
+    });
+  });
+
   it("preserves a map preset (resources, timed events, victory) through sanitization", () => {
     const record = sanitizeSharedMap(
       {

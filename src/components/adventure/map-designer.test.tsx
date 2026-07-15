@@ -44,6 +44,82 @@ function openTilePopover(container: HTMLElement, planIndex: number): HTMLElement
   return popover as HTMLElement;
 }
 
+describe("MapDesigner — center Ⅶ-field designation", () => {
+  it("the center-tile popover Ⅶ picker writes the plan's viiField", () => {
+    const onChange = vi.fn();
+    const container = renderDesigner(
+      [
+        { row: 8, col: 2, group: "starting", faceDown: false },
+        { row: 9, col: 4, group: "center", faceDown: true }
+      ],
+      onChange
+    );
+    const popover = openTilePopover(container, 1); // plan 1 = the center tile
+    const picker = popover.querySelector(".popoverViiField");
+    expect(picker, "Ⅶ-field picker shown for a center tile").toBeTruthy();
+
+    fireEvent.click(within(picker as HTMLElement).getByRole("button", { name: "Grail" }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.arrayContaining([expect.objectContaining({ group: "center", viiField: "grail" })])
+    );
+  });
+
+  it("does NOT show the Ⅶ picker for a non-center tile", () => {
+    const container = renderDesigner([
+      { row: 8, col: 2, group: "starting", faceDown: false },
+      { row: 9, col: 4, group: "far", faceDown: true }
+    ]);
+    const popover = openTilePopover(container, 1);
+    expect(popover.querySelector(".popoverViiField")).toBeNull();
+  });
+
+  it("stamps a badge on a center slot with a Ⅶ designation", () => {
+    const container = renderDesigner([
+      { row: 8, col: 2, group: "starting", faceDown: false },
+      { row: 9, col: 4, group: "center", faceDown: true, viiField: "dragon_utopia" }
+    ]);
+    const badge = container.querySelector(".designerViiBadge");
+    expect(badge, "Ⅶ badge rendered").toBeTruthy();
+    expect(badge!.textContent).toMatch(/Utopia/);
+  });
+
+  it("renders a win-condition conflict warning when the design fights the victory mode", () => {
+    // Grail victory + a centre slot designated away from a Grail, no Near/Far
+    // overflow → no Grail dig capacity → the same message the start will BLOCK.
+    const { container } = render(
+      <MapDesigner
+        scenarioId="skirmish"
+        victoryMode="grail"
+        customMap={[
+          { row: 8, col: 2, group: "starting", faceDown: false },
+          { row: 10, col: 7, group: "starting", faceDown: false },
+          { row: 9, col: 4, group: "center", faceDown: false, tileDefId: "C1", viiField: "town" }
+        ]}
+        onChange={() => {}}
+      />
+    );
+    const conflict = container.querySelector(".designerVictoryConflict");
+    expect(conflict, "victory conflict warning shown").toBeTruthy();
+    expect(conflict!.textContent).toMatch(/Grail dig sites/i);
+
+    // CONTROL: the same map under Conquest raises no conflict.
+    cleanup();
+    const { container: ok } = render(
+      <MapDesigner
+        scenarioId="skirmish"
+        victoryMode="conquest"
+        customMap={[
+          { row: 8, col: 2, group: "starting", faceDown: false },
+          { row: 10, col: 7, group: "starting", faceDown: false },
+          { row: 9, col: 4, group: "center", faceDown: false, tileDefId: "C1", viiField: "town" }
+        ]}
+        onChange={() => {}}
+      />
+    );
+    expect(ok.querySelector(".designerVictoryConflict")).toBeNull();
+  });
+});
+
 describe("MapDesigner — Subterranean Gates", () => {
   it("draws a gate token + link between a Surface tile and an adjacent cavern", () => {
     const town = { row: 10, col: 10 };

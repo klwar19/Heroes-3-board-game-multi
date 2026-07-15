@@ -298,7 +298,10 @@ export {
   describeMapObjects,
   describeObeliskBonus,
   describeObeliskRole,
+  describeObjectivesConfig,
+  describeUtopiaGuards,
   describeTimedMapEffect,
+  isViiFieldDesignation,
   MAX_CUSTOM_MAP_OBJECTS,
   MAX_GATES_PER_PAIR,
   MAX_TIMED_EVENTS,
@@ -313,7 +316,9 @@ export {
   secretFeatureDemandWarnings,
   tileMatchesSecretFeature,
   TIMED_EFFECT_KIND_LABELS,
-  TIMED_EFFECT_KINDS
+  TIMED_EFFECT_KINDS,
+  victoryDesignConflicts,
+  VII_FIELD_DESIGNATIONS
 } from "./map-preset";
 export type {
   CustomMapPresetEntry,
@@ -540,6 +545,7 @@ export type {
   CombatUnitState,
   CustomMapObeliskBonus,
   CustomMapObeliskConfig,
+  CustomMapObjectivesConfig,
   CustomMapObject,
   CustomMapObjectKind,
   CustomMapObjectPlacement,

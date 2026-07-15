@@ -19,6 +19,7 @@ import {
   beginFieldVisit,
   beginNextPendingStartTileRotation,
   canDigGrail,
+  grailObelisksRequired,
   grailObelisksVisitedCount,
   obeliskRoleIsMonolith,
   buildCreatureBankCombatUnits,
@@ -1408,11 +1409,14 @@ export function revisitField(state: GameState, action: Extract<GameAction, { typ
     throw new Error("Only revisitable fields can be visited again.");
   }
 
-  // Holy Grail: dig only after the digger has visited enough Obelisks.
+  // Holy Grail: dig only after the digger has visited enough Obelisks (the
+  // designer preset may lower/raise the count — grailObelisksRequired is the
+  // single reader, defaulting to GRAIL_OBELISKS_REQUIRED).
   if (field.grailDiggable && !canDigGrail(state, action.playerId)) {
     const have = grailObelisksVisitedCount(state, action.playerId);
+    const need = grailObelisksRequired(state);
     throw new Error(
-      `Holy Grail: visit ${GRAIL_OBELISKS_REQUIRED} Obelisks before digging (you have ${have}/${GRAIL_OBELISKS_REQUIRED}).`
+      `Holy Grail: visit ${need} Obelisks before digging (you have ${have}/${need}).`
     );
   }
 

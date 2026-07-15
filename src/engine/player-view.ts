@@ -2,6 +2,7 @@ import type {
   CardId,
   DeckId,
   GameState,
+  MapTileState,
   PendingChoice,
   PendingVisit,
   PlayerId,
@@ -13,6 +14,19 @@ import type {
 
 function cloneSerializable<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
+}
+
+/**
+ * Redact a FACE-DOWN tile for a player view: hide its identity (`tileDefId`) AND
+ * its designer Ⅶ-field designation (`viiField`), so a hidden center slot's forced
+ * objective (Grail / Dragon Utopia / town) is not leaked before discovery. Every
+ * other field (band label, borders, pending token) stays — the printed BACK is
+ * public. Face-up tiles are never passed here.
+ */
+function maskFaceDownTile(tile: MapTileState): MapTileState {
+  const masked: MapTileState = { ...tile, tileDefId: "hidden" };
+  delete masked.viiField;
+  return masked;
 }
 
 function getVisibleReactionWindow(window: ReactionWindow | null, viewerPlayerId: PlayerId): ReactionWindow | null {
@@ -276,7 +290,7 @@ export function getPlayerView(state: GameState, viewerPlayerId: PlayerId): Playe
         tiles: Object.fromEntries(
           Object.entries(base.adventure.tiles).map(([tileId, tile]) => [
             tileId,
-            tile.faceDown ? { ...tile, tileDefId: "hidden" } : tile
+            tile.faceDown ? maskFaceDownTile(tile) : tile
           ])
         ),
         playerFarTiles: Object.fromEntries(

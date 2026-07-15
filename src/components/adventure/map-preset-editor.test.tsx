@@ -1,10 +1,13 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { MapPresetEditor } from "./map-preset-editor";
 import { MAX_TIMED_EVENTS, type CustomMapPreset } from "@/engine";
 
 afterEach(cleanup);
+
+/** The labelled control group for one Objectives knob (aria-label). */
+const section = (label: string): HTMLElement => screen.getByRole("group", { name: label });
 
 describe("MapPresetEditor (collapsible map-conditions panel)", () => {
   it("renders collapsed with an 'optional' badge when the map has no conditions", () => {
@@ -205,5 +208,54 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
   it("Obelisks: the role line shows in the active-conditions summary", () => {
     render(<MapPresetEditor preset={{ obelisks: { role: "monolith" } }} onChange={() => {}} />);
     expect(screen.getByText("Obelisks: Monolith teleport network")).toBeTruthy();
+  });
+
+  it("Objectives: the chips write the objectives block; a default clears its field", () => {
+    const onChange = vi.fn();
+    const { rerender } = render(<MapPresetEditor preset={undefined} onChange={onChange} />);
+
+    // Grail Obelisks → objectives.grailObelisksRequired.
+    fireEvent.click(within(section("Grail Obelisks required")).getByRole("button", { name: "1" }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ objectives: { grailObelisksRequired: 1 } })
+    );
+
+    // Utopia guards → objectives.utopiaGuards.
+    rerender(<MapPresetEditor preset={{ objectives: { grailObelisksRequired: 1 } }} onChange={onChange} />);
+    fireEvent.click(within(section("Dragon Utopia guards")).getByRole("button", { name: "Four dragons" }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ objectives: { grailObelisksRequired: 1, utopiaGuards: "four" } })
+    );
+
+    // Utopia bonus search → objectives.utopiaBonusSearch.
+    rerender(
+      <MapPresetEditor
+        preset={{ objectives: { grailObelisksRequired: 1, utopiaGuards: "four" } }}
+        onChange={onChange}
+      />
+    );
+    fireEvent.click(within(section("Dragon Utopia bonus search")).getByRole("button", { name: "Search(2)" }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        objectives: { grailObelisksRequired: 1, utopiaGuards: "four", utopiaBonusSearch: 2 }
+      })
+    );
+
+    // Clearing the only-remaining field collapses the whole preset to undefined.
+    rerender(<MapPresetEditor preset={{ objectives: { utopiaBonusSearch: 2 } }} onChange={onChange} />);
+    fireEvent.click(within(section("Dragon Utopia bonus search")).getByRole("button", { name: "None" }));
+    expect(onChange).toHaveBeenLastCalledWith(undefined);
+  });
+
+  it("Objectives: lines show in the active-conditions summary", () => {
+    render(
+      <MapPresetEditor
+        preset={{ objectives: { grailObelisksRequired: 1, utopiaGuards: "four", utopiaBonusSearch: 2 } }}
+        onChange={() => {}}
+      />
+    );
+    expect(screen.getByText("Grail dig needs 1 Obelisk")).toBeTruthy();
+    expect(screen.getByText("Dragon Utopia guards: always four dragons")).toBeTruthy();
+    expect(screen.getByText("Dragon Utopia bonus: Search(2) Artifacts")).toBeTruthy();
   });
 });

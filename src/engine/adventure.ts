@@ -426,12 +426,32 @@ export function instantiateTile(
 }
 
 /**
+ * The map location a designer {@link MapTileState.viiField} designation forces
+ * onto a center tile's difficulty-7 objective field. "town" resolves to the
+ * printed `random_town` field (the neutral conquerable town); the other two map
+ * one-to-one. Single source of truth for the override in `materializeTileFields`.
+ */
+export const VII_FIELD_LOCATION: Record<"town" | "dragon_utopia" | "grail", string> = {
+  town: "random_town",
+  dragon_utopia: "dragon_utopia",
+  grail: "grail"
+};
+
+/**
  * Creates the 7 field states for a revealed tile. With `onlyRing`, slot 0 (the
  * centre) is left untouched — used when RE-materializing a tile whose rotation
  * changed after its centre was already placed (the opening home-tile rotation:
  * the town and main hero sit on the centre, which is rotation-invariant, so only
  * the six ring fields turn). The ring hexes are the same six map hexes at every
  * rotation; only WHICH slot's contents land on each is what changes.
+ *
+ * A center-tile {@link MapTileState.viiField} designation FORCES the tile's
+ * difficulty-7 objective field to the designated location (Grail / Dragon Utopia
+ * / Random Town), whatever the printed tile carries there — the difficulty-7
+ * guard is kept and every other property (resource / faction / amount) of the
+ * original objective is dropped, since a Grail/Utopia/town field has none. A
+ * designation that already matches the printed field is a no-op (the field is
+ * left untouched, so a CONTROL deep-equals the undesignated field).
  */
 export function materializeTileFields(
   adventure: AdventureState,
@@ -443,9 +463,20 @@ export function materializeTileFields(
     return;
   }
 
+  const viiOverride = tile.viiField ? VII_FIELD_LOCATION[tile.viiField] : undefined;
   const cells = tileFootprint({ row: tile.centerRow, col: tile.centerCol }, tile.rotation);
   for (let slot = options.onlyRing ? 1 : 0; slot < cells.length; slot += 1) {
-    const fieldDef = def.fields[slot];
+    let fieldDef = def.fields[slot];
+    // Designer Ⅶ-field override: the difficulty-7 objective field becomes the
+    // designated location (a clean objective field, terrain preserved). Only the
+    // difficulty-7 field is touched, and only when the location actually changes.
+    if (viiOverride && fieldDef.difficulty === 7 && fieldDef.location !== viiOverride) {
+      fieldDef = {
+        location: viiOverride,
+        difficulty: 7,
+        ...(fieldDef.terrain ? { terrain: fieldDef.terrain } : {})
+      };
+    }
     const spaceId = hexSpaceId(cells[slot]);
     const field: MapFieldState = {
       spaceId,
@@ -2270,11 +2301,18 @@ export function adventureVictoryMode(state: GameState): VictoryMode {
 }
 
 /**
- * How the Dragon Utopia objective is guarded this game; absent on old snapshots
- * (and the default) means "by-difficulty".
+ * How the Dragon Utopia objective is guarded this game. The map-designer preset
+ * (`objectives.utopiaGuards`) wins when set — the designer's choice for THIS map
+ * — else the lobby-level `dragonUtopiaGuards`, else "by-difficulty" (the default
+ * and old-snapshot value). Both stored values are the EXISTING
+ * {@link DragonUtopiaGuards} modes; the preset surfaces them, it invents nothing.
  */
 export function adventureDragonUtopiaGuards(state: GameState): DragonUtopiaGuards {
-  return state.adventure?.dragonUtopiaGuards ?? "by-difficulty";
+  return (
+    state.adventure?.mapPreset?.objectives?.utopiaGuards ??
+    state.adventure?.dragonUtopiaGuards ??
+    "by-difficulty"
+  );
 }
 
 /**
@@ -2702,10 +2740,40 @@ function giveCreatureBankConsolation(state: GameState, playerId: PlayerId, field
 }
 
 /**
+ * Dragon Utopia bonus Search — the designer option (`objectives.utopiaBonusSearch`,
+ * 1-3) grants the defeater an EXTRA Artifact-deck Search ON TOP of the printed
+ * reward, reusing the same reward-queue plumbing every field search uses. No-op
+ * unless the option is set. NOT called in Dragon Hunt (defeating the Utopia wins
+ * the game outright, so there is no later turn to spend a search).
+ */
+function grantUtopiaBonusSearch(state: GameState, playerId: PlayerId): void {
+  const count = state.adventure?.mapPreset?.objectives?.utopiaBonusSearch;
+  if (!count) {
+    return;
+  }
+  state.adventure?.rewardQueue.push({
+    playerId,
+    kind: "shared-deck-search",
+    deckId: "artifacts",
+    count
+  });
+}
+
+/**
  * Holy Grail: how many distinct Obelisks this player has visited (flagged).
  */
 export function grailObelisksVisitedCount(state: GameState, playerId: PlayerId): number {
   return state.adventure?.grail?.obelisksVisited?.[playerId]?.length ?? 0;
+}
+
+/**
+ * Holy Grail: how many distinct Obelisks a hero must visit before the dig
+ * unlocks. Reads the map-designer preset (`objectives.grailObelisksRequired`,
+ * 1-4) with {@link GRAIL_OBELISKS_REQUIRED} (2) as the fallback — the SINGLE
+ * consumer point so no reader drifts. Absent preset = today's constant.
+ */
+export function grailObelisksRequired(state: GameState): number {
+  return state.adventure?.mapPreset?.objectives?.grailObelisksRequired ?? GRAIL_OBELISKS_REQUIRED;
 }
 
 /**
@@ -2715,7 +2783,7 @@ export function canDigGrail(state: GameState, playerId: PlayerId): boolean {
   if (adventureVictoryMode(state) !== "grail") {
     return false;
   }
-  return grailObelisksVisitedCount(state, playerId) >= GRAIL_OBELISKS_REQUIRED;
+  return grailObelisksVisitedCount(state, playerId) >= grailObelisksRequired(state);
 }
 
 /**
@@ -2824,10 +2892,16 @@ function handleDragonUtopiaVisit(state: GameState, hero: HeroState, field: MapFi
   if (mode === "dragon-conqueror") {
     // Capture: flag the Utopia for the victor and keep neutrals from
     // respawning. Holding it at the start of a later turn wins.
+    const firstCapture = !field.everFlagged;
     const previousOwnerId = field.flagOwnerId;
     field.flagOwnerId = hero.controllerId;
     field.everFlagged = true;
     field.blackCube = false;
+    // Bonus Search on the FIRST defeat only (a later re-capture is not a fresh
+    // Utopia clear).
+    if (firstCapture) {
+      grantUtopiaBonusSearch(state, hero.controllerId);
+    }
     appendEvent(state, {
       type: "FIELD_FLAGGED",
       playerId: hero.controllerId,
@@ -2841,6 +2915,7 @@ function handleDragonUtopiaVisit(state: GameState, hero: HeroState, field: MapFi
   if (!field.blackCube) {
     field.blackCube = true;
     giveCreatureBankConsolation(state, hero.controllerId, "Dragon Utopia");
+    grantUtopiaBonusSearch(state, hero.controllerId);
   }
 }
 

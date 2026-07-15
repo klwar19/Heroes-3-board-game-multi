@@ -265,6 +265,7 @@ export default function MapDesignerPage() {
               })
             }
             scenarioId={scenarioId}
+            victoryMode={preset?.victoryMode}
           />
           <small className="optionHint">
             {tiles.length} tile{tiles.length === 1 ? "" : "s"} placed · opens {players} seat{players === 1 ? "" : "s"} ·
