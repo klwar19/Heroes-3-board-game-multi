@@ -494,6 +494,39 @@ button {
   color: var(--text);
 }
 
+/* Connection-quality chip (RTT to the room server), beside the sync status. */
+.connectionQualityChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  border: 1px solid rgb(243 239 228 / 14%);
+  border-radius: 99px;
+  background: rgb(13 15 16 / 40%);
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--muted);
+  cursor: help;
+}
+
+.connectionQualityChip .qualityDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.connectionQualityChip.quality-good .qualityDot {
+  background: #4f9a5c;
+}
+
+.connectionQualityChip.quality-fair .qualityDot {
+  background: #c9a23a;
+}
+
+.connectionQualityChip.quality-poor .qualityDot {
+  background: #b0503f;
+}
+
 /* ------------------------------------------------------------------ */
 /* Room membership panel (host / seats / observers)                    */
 /* ------------------------------------------------------------------ */
@@ -2277,6 +2310,41 @@ button.battleCell {
 .fanSlot.open .fanCard {
   z-index: 30;
   transform: translateY(-34px) scale(1.5);
+}
+
+/* Pending-action echo (plan N2): a hand card whose play is submitted but not
+   yet acknowledged dims at once, and after PENDING_ECHO_SLOW_MS (400 ms — see
+   src/lib/pending-action-echo.ts) a pulsing ring appears: the "slow network"
+   styling, pure CSS so it needs no timer or re-render. Presentation only —
+   the class is removed on ack/error/snapshot and everything snaps back. */
+.fanCard.cardInFlight,
+.adventureHandCard.cardInFlight {
+  /* relative anchors the ::after ring; a visual no-op without offsets. */
+  position: relative;
+  opacity: 0.55;
+  filter: saturate(0.6);
+}
+
+.fanCard.cardInFlight::after,
+.adventureHandCard.cardInFlight::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: 8px;
+  border: 2px solid rgb(213 168 79 / 0%);
+  pointer-events: none;
+  animation: cardInFlightSlow 1.1s ease-in-out 400ms infinite;
+}
+
+@keyframes cardInFlightSlow {
+  0%,
+  100% {
+    border-color: rgb(213 168 79 / 0%);
+  }
+
+  50% {
+    border-color: rgb(213 168 79 / 75%);
+  }
 }
 
 .fanCard.playable .playGlow {

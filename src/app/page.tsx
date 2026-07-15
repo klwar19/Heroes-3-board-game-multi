@@ -207,10 +207,22 @@ import {
   isResetDenied,
   requestAdminCloseRoom,
   requestCloseRoom,
+  type ConnectionQualitySample,
   type GameRoomSnapshot,
   type RoomConnection,
   type SnapshotMeta
 } from "@/lib/realtime";
+import { ConnectionQualityChip, retainQualitySample } from "@/components/table/connection-quality";
+import {
+  beginPendingEcho,
+  echoNow,
+  initialPendingEchoState,
+  pendingEchoCardIds,
+  prunePendingEchoes,
+  resolvePendingEcho,
+  type PendingEchoState
+} from "@/lib/pending-action-echo";
+import { pollTickAllowed } from "@/lib/hidden-tab-poll";
 import { clearCachedRoom, loadCachedRoom, saveCachedRoom } from "@/lib/room-cache";
 import { getAccountIdentity, getClientId, getDisplayName, setDisplayName as persistDisplayName } from "@/lib/identity";
 import { fetchSession, fetchSocketToken } from "@/lib/auth-client";
@@ -678,6 +690,16 @@ export default function Home() {
   // Password typed in the lobby Join dialog for a locked room.
   const pendingRoomPasswordRef = useRef<{ roomId: string; password: string } | null>(null);
   const [syncStatus, setSyncStatus] = useState("connecting");
+  // Latest transport round-trip sample (pong / action ack) for the RTT chip.
+  // Presentation-only; retainQualitySample keeps the reference stable when the
+  // displayed value would not change, so per-ack jitter never re-renders.
+  const [connectionQuality, setConnectionQuality] = useState<ConnectionQualitySample | null>(null);
+  // Pending-action echo (plan N2): presentation-only in-flight entries, keyed
+  // per submit. The REF is the source of truth (submitAction's duplicate latch
+  // must read synchronously — two rapid clicks land before any re-render); the
+  // state mirror only drives rendering (the hand panels' in-flight dim).
+  const pendingEchoesRef = useRef<PendingEchoState>(initialPendingEchoState());
+  const [pendingEchoView, setPendingEchoView] = useState<PendingEchoState>(initialPendingEchoState);
   /**
    * The room server's engine signature from the latest snapshot. When it
    * disagrees with this frontend's ENGINE_SIGNATURE the room server is running
@@ -3322,6 +3344,13 @@ export default function Home() {
       // Commit ordering synchronously before any cache, recovery, React, audio,
       // animation, timer or match-claim side effect can run.
       snapshotArbiterRef.current = decision.state;
+      // Pending-action echo TTL sweep (plan N2): a submit whose promise never
+      // settles (hung fetch) still un-dims once the authoritative state flows.
+      const prunedEchoes = prunePendingEchoes(pendingEchoesRef.current, echoNow());
+      if (prunedEchoes !== pendingEchoesRef.current) {
+        pendingEchoesRef.current = prunedEchoes;
+        setPendingEchoView(prunedEchoes);
+      }
       const bootChanged = decision.reason === "new-boot";
       // A fresh mount (arbiter at version -1) reconnecting to a room the server
       // recycled to a bare setup lobby must still restore the cached in-progress
@@ -3567,12 +3596,20 @@ export default function Home() {
     seenRollIdsRef.current = null;
     // Each room gets its own recovery attempt, even on the same server boot.
     restoredForBootRef.current = null;
+    // No eager reset of the RTT sample / pending echoes on a room switch: the
+    // RTT measures the transport host (same for every room, refreshed by the
+    // first ack), and echo entries self-clear via their submit's settle path
+    // plus the TTL sweeps. A synchronous setState here would cascade renders.
 
     const connection = connectRoom(
       roomId,
       {
         onSnapshot: ingestSnapshot,
         onStatus: setSyncStatus,
+        // Round-trip samples (pong / action ack) feed the RTT chip. The
+        // functional update returns the SAME reference when the displayed
+        // value is unchanged, so React skips the re-render.
+        onQuality: (quality) => setConnectionQuality((prev) => retainQualitySample(prev, quality)),
         // A transient drop may have let the server reap this client's unseated
         // membership — arm the join effect's re-join (see connectionDroppedRef).
         onDropped: () => {
@@ -3689,6 +3726,18 @@ export default function Home() {
       return false;
     }
 
+    // Pending-action echo (plan N2): register the submit. A duplicate of the
+    // SAME action while its first copy is still unacknowledged is refused
+    // client-side (the double-click latch); the entry also drives the hand
+    // panels' in-flight dim. Presentation + latch only — GameState is never
+    // predicted, and the entry self-clears in the finally below.
+    const echoBegin = beginPendingEcho(pendingEchoesRef.current, outgoing, echoNow());
+    pendingEchoesRef.current = echoBegin.state;
+    setPendingEchoView(echoBegin.state);
+    if (!echoBegin.accepted) {
+      return false;
+    }
+
     setSyncStatus("submitting");
     recordPerformanceMetric({
       name: "room.action.validation",
@@ -3735,6 +3784,12 @@ export default function Home() {
           /* the live stream keeps trying */
         });
       return false;
+    } finally {
+      // Echo settle (ack, error result, or thrown submit/timeout alike):
+      // dropping the entry restores the card's normal presentation.
+      const settled = resolvePendingEcho(pendingEchoesRef.current, echoBegin.id);
+      pendingEchoesRef.current = settled;
+      setPendingEchoView(settled);
     }
   };
 
@@ -3956,10 +4011,16 @@ export default function Home() {
       });
     };
     beat();
-    const intervalId = window.setInterval(beat, 12000);
-    // Background tabs throttle setInterval to >= 60s; the presence TTL absorbs
-    // that, and beating again the moment the tab is visible snaps the board
-    // back to fresh data instead of waiting for the next stale tick.
+    // 30 s cadence against the 120 s presence TTL (was 12 s — 10× the need),
+    // and hidden tabs skip beats entirely: every same-origin /api request is a
+    // billed edge request on the production host, and beating again the moment
+    // the tab is visible snaps the board back to fresh data anyway.
+    const intervalId = window.setInterval(() => {
+      if (!pollTickAllowed()) {
+        return;
+      }
+      beat();
+    }, 30_000);
     const onVisible = () => {
       if (document.visibilityState === "visible") {
         beat();
@@ -4676,6 +4737,7 @@ export default function Home() {
         <small suppressHydrationWarning>
           v{roomVersion} · {syncStatus} · {state.phase}
         </small>
+        <ConnectionQualityChip sample={connectionQuality} />
         <MusicToggle />
         {/* Per-browser layout switch (also the escape hatch out of phone mode). */}
         <UiModeToggle />
@@ -4844,6 +4906,10 @@ export default function Home() {
       </CardZoomProvider>
     );
   }
+
+  // Pending-action echo (plan N2): hand cards with a play in flight — dimmed
+  // in BOTH hand panels (map + combat) until the ack/snapshot settles.
+  const inFlightCardIds = pendingEchoCardIds(pendingEchoView);
 
   // ---- Adventure map screen -------------------------------------------------
   // Force the map in front during pre-battle prep so both sides plan with their
@@ -5718,7 +5784,7 @@ export default function Home() {
                           pickedForCost ? "discarding" : ""
                         } ${!selecting && !isPayingSource && actionable ? "playable" : ""} ${
                           whyBlocked ? "helperBlocked" : ""
-                        }`}
+                        } ${inFlightCardIds.has(cardId) ? "cardInFlight" : ""}`}
                         onClick={() => {
                           // Paying a card cost: clicks toggle the payment.
                           if (isPayingSource) {
@@ -6079,6 +6145,7 @@ export default function Home() {
                     read. */}
                 <HandFan
                   hiddenTailCount={hiddenHandTail}
+                  inFlightCardIds={inFlightCardIds}
                   legalActions={legalActions}
                   onAction={submitAction}
                   onSelectCardAction={selectBoardCardAction}

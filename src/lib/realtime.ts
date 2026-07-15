@@ -2,11 +2,13 @@
 
 import PartySocket from "partysocket";
 import type { AdventurePlayerConfig, EngineResult, GameAction, GameDifficulty, GameMode, GameState } from "@/engine";
+import { getPartyKitHost, partyProtocol } from "@/lib/party-origin";
 import { frameBytes, metricNow, metricsSampled, recordPerformanceMetric } from "@/lib/performance-metrics";
 import { peekPendingSinglePlayer, savePendingSinglePlayer } from "@/lib/pending-room-name";
 import { LOBBY_SINGLETON_ID, type RoomDirectoryEntry } from "@/server/lobby-registry";
 
 export type { RoomDirectoryEntry };
+export { getPartyKitHost };
 
 /**
  * Room transport layer. Two backends share one interface:
@@ -69,9 +71,24 @@ export type SnapshotMeta = {
   seatAuthoritative?: boolean;
 };
 
+/**
+ * A connection-quality sample: the measured round-trip to the room server, in
+ * milliseconds. Sampled from the health ping→pong exchange and from every
+ * action submit→acknowledgment — the latter is the primary source during
+ * active play (pings only flow after 35 s of silence, by design; do NOT
+ * shorten the ping interval to feed this). Presentation-only: nothing may
+ * gate behaviour on it.
+ */
+export type ConnectionQualitySample = { rttMs?: number; at: number };
+
 export type RoomConnectionHandlers = {
   onSnapshot: (snapshot: GameRoomSnapshot, meta?: SnapshotMeta) => void;
   onStatus: (status: string) => void;
+  /**
+   * Round-trip measurement, delivered on every pong and every action ack.
+   * Works with metric sampling OFF — never couple it to metricsSampled.
+   */
+  onQuality?: (quality: ConnectionQualitySample) => void;
   /** The room was closed (deleted) by its host — drop back to the lobby. */
   onClosed?: () => void;
   /**
@@ -99,11 +116,6 @@ export type RoomConnection = {
    */
   restoreRoom: (state: GameState) => Promise<GameRoomSnapshot>;
 };
-
-export function getPartyKitHost(): string | null {
-  const host = process.env.NEXT_PUBLIC_PARTYKIT_HOST;
-  return host && host.trim().length > 0 ? host.trim() : null;
-}
 
 /**
  * Provides a short-lived socket ticket for the cross-origin PartyKit edge
@@ -174,10 +186,6 @@ function localAdminKey(): string | undefined {
   } catch {
     return undefined;
   }
-}
-
-function partyProtocol(host: string): string {
-  return host.startsWith("localhost") || host.startsWith("127.") ? "http" : "https";
 }
 
 function partyHttpUrl(host: string, roomId: string, clientId?: string, token?: string): string {
@@ -368,12 +376,14 @@ function connectPartyRoom(
     }
 
     if (message.type === "pong") {
+      const rttMs = pingSentAt ? Date.now() - pingSentAt : undefined;
       recordPerformanceMetric({
         name: "room.health.pong",
         at: metricNow(),
-        durationMs: pingSentAt ? Date.now() - pingSentAt : undefined,
+        durationMs: rttMs,
         fields: { version: message.version }
       });
+      handlers.onQuality?.({ rttMs, at: Date.now() });
       if (message.version > knownVersion) {
         syncRequested = true;
         socket.send(JSON.stringify({ type: "sync" }));
@@ -486,6 +496,7 @@ function connectPartyRoom(
         requestCounter += 1;
         const requestId = `req_${requestCounter}_${Date.now().toString(36)}`;
         const sentAt = metricNow();
+        const sentAtWall = Date.now();
         const timeout = window.setTimeout(() => {
           pending.delete(requestId);
           reject(new Error("The room did not answer in time."));
@@ -499,6 +510,10 @@ function connectPartyRoom(
             durationMs: metricNow() - sentAt,
             fields: { requestId, actionType: action.type, version: reply.version }
           });
+          // The ack round-trip is the "felt" latency of active play — feed the
+          // quality surface from it (pongs alone are too rare while playing).
+          // Wall-clock, like the pong sample.
+          handlers.onQuality?.({ rttMs: Date.now() - sentAtWall, at: Date.now() });
           resolve({
             version: reply.version,
             notices: reply.notices ?? [],
@@ -668,6 +683,7 @@ function connectApiRoom(
       document.removeEventListener("visibilitychange", onWake);
     },
     submitAction: async (action) => {
+      const sentAt = Date.now();
       const response = await fetch(`/api/rooms/${encodeURIComponent(roomId)}/actions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -676,6 +692,9 @@ function connectApiRoom(
       if (!response.ok) {
         throw new Error("Server rejected the action request.");
       }
+      // Same "felt latency" sample the PartyKit ack path delivers, so the
+      // quality surface works on both backends.
+      handlers.onQuality?.({ rttMs: Date.now() - sentAt, at: Date.now() });
       const payload = (await response.json()) as { snapshot: GameRoomSnapshot; result: EngineResult };
       return {
         version: payload.snapshot.version,

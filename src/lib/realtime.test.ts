@@ -257,6 +257,50 @@ describe("connectRoom - PartyKit acknowledgement and health protocol", () => {
     connection.close();
   });
 
+  it("delivers RTT quality samples on pong and on action ack (metrics sampling stays off)", async () => {
+    vi.useFakeTimers();
+    const onQuality = vi.fn();
+    const connection = connectRoom("room-42", { onSnapshot: vi.fn(), onStatus: vi.fn(), onQuality }, "client-abc");
+    const socket = partySocketMock.instances.at(-1)!;
+    socket.emit("open");
+
+    // Health ping → pong: the sample carries the measured round-trip.
+    vi.advanceTimersByTime(35_000);
+    vi.advanceTimersByTime(120); // network delay before the pong lands
+    socket.emit("message", { data: JSON.stringify({ type: "pong", version: 0 }) });
+    expect(onQuality).toHaveBeenCalledTimes(1);
+    expect(onQuality.mock.calls[0][0]).toMatchObject({ rttMs: 120 });
+
+    // Action submit → ack: the felt-latency sample of active play.
+    const resultPromise = connection.submitAction({ type: "END_TURN", playerId: "p1" } as never);
+    const actionFrame = JSON.parse(String(socket.send.mock.calls.at(-1)![0])) as { requestId: string };
+    vi.advanceTimersByTime(80);
+    socket.emit("message", {
+      data: JSON.stringify({ type: "action-result", requestId: actionFrame.requestId, version: 1, errors: [] })
+    });
+    await expect(resultPromise).resolves.toMatchObject({ version: 1 });
+    expect(onQuality).toHaveBeenCalledTimes(2);
+    const ackSample = onQuality.mock.calls[1][0] as { rttMs?: number };
+    expect(ackSample.rttMs).toBeGreaterThanOrEqual(80);
+    connection.close();
+  });
+
+  it("survives pong and ack without an onQuality handler (optional callback)", async () => {
+    vi.useFakeTimers();
+    const connection = connectRoom("room-42", { onSnapshot: vi.fn(), onStatus: vi.fn() }, "client-abc");
+    const socket = partySocketMock.instances.at(-1)!;
+    socket.emit("open");
+    vi.advanceTimersByTime(35_000);
+    socket.emit("message", { data: JSON.stringify({ type: "pong", version: 0 }) });
+    const resultPromise = connection.submitAction({ type: "END_TURN", playerId: "p1" } as never);
+    const actionFrame = JSON.parse(String(socket.send.mock.calls.at(-1)![0])) as { requestId: string };
+    socket.emit("message", {
+      data: JSON.stringify({ type: "action-result", requestId: actionFrame.requestId, version: 1, errors: [] })
+    });
+    await expect(resultPromise).resolves.toMatchObject({ version: 1 });
+    connection.close();
+  });
+
   it("recovers the seat snapshot and replaces a half-dead socket after a pong timeout", async () => {
     vi.useFakeTimers();
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({

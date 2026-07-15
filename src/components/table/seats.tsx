@@ -97,6 +97,9 @@ export function CardFrame({
       alt={showEmpowered ? `${alt} (empowered)` : alt}
       className={frameClass}
       data-empowered={showEmpowered ? "true" : undefined}
+      // Eager on purpose (hand/tray cards are on-screen the moment they
+      // mount); async decode keeps a burst of card art off the main thread.
+      decoding="async"
       loading="eager"
       onError={() => setFailedSrc(src)}
       referrerPolicy="no-referrer"
@@ -239,7 +242,16 @@ export function PermanentSlot({
 export function CardBack({ className, deckId }: { className?: string; deckId?: string }) {
   const back = getDeckBack(deckId);
   if (back.image) {
-    return <img alt={back.label} aria-hidden="true" className={`cardBack ${className ?? ""}`} src={assetUrl(back.image)} />;
+    return (
+      <img
+        alt={back.label}
+        aria-hidden="true"
+        className={`cardBack ${className ?? ""}`}
+        decoding="async"
+        loading="lazy"
+        src={assetUrl(back.image)}
+      />
+    );
   }
   return (
     <div className={`cardBack back-${back.styleKey} ${className ?? ""}`} aria-hidden="true" title={back.label}>
@@ -350,6 +362,7 @@ export function HandFan({
   selectedCardAction,
   trayActive,
   hiddenTailCount = 0,
+  inFlightCardIds,
   onSelectCardAction,
   onAction
 }: {
@@ -361,6 +374,12 @@ export function HandFan({
   trayActive: boolean;
   /** Freshly drawn cards stay hidden while their draw flight is in the air. */
   hiddenTailCount?: number;
+  /**
+   * Pending-action echo (plan N2): hand cards whose play is submitted but not
+   * yet acknowledged — dimmed via .cardInFlight. Presentation only: nothing
+   * here gates offers, and the set self-clears on ack/error/snapshot.
+   */
+  inFlightCardIds?: ReadonlySet<string>;
   onSelectCardAction: (action: CardBoardAction | null) => void;
   onAction: (action: GameAction) => void;
 }) {
@@ -466,7 +485,7 @@ export function HandFan({
                 }
                 type="button"
               >
-                <img alt="Spell Book" className="shelfGlyph" src={assetUrl("/assets/ui/spell-book-button.png")} />
+                <img alt="Spell Book" className="shelfGlyph" decoding="async" loading="lazy" src={assetUrl("/assets/ui/spell-book-button.png")} />
                 <span className="shelfCount">{spellBook.length}</span>
               </button>
               {shelfOpen === "book" ? (
@@ -647,7 +666,7 @@ export function HandFan({
               aria-pressed={open || selected}
               className={`fanCard ${playable ? "playable" : ""} ${selected ? "selected" : ""} ${
                 !playable && helperCoach.enabled ? "helperBlocked" : ""
-              }`}
+              } ${inFlightCardIds?.has(entry.cardId) ? "cardInFlight" : ""}`}
               onClick={() => {
                 setArmed(null);
                 // Clear click-to-target: a card whose only play is a single

@@ -187,6 +187,79 @@ describe("HandFan — freshly-drawn cards are HIDDEN, never removed (the disappe
   });
 });
 
+describe("HandFan — pending-action echo marks a submitted card in flight (plan N2)", () => {
+  function twoCardHandState(): GameState {
+    const state = createInitialGameState("hand-in-flight");
+    state.players.p1.hand = ["spell.magic_arrow", "spell.haste"];
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    return state;
+  }
+
+  function renderHand(inFlightCardIds?: ReadonlySet<string>) {
+    const state = twoCardHandState();
+    return render(
+      <CardZoomProvider>
+        <HandFan
+          view={getPlayerView(state, "p1")}
+          state={state}
+          viewerPlayerId="p1"
+          legalActions={getLegalActions(state, "p1")}
+          selectedCardAction={null}
+          trayActive={false}
+          inFlightCardIds={inFlightCardIds}
+          onSelectCardAction={() => {}}
+          onAction={() => {}}
+        />
+      </CardZoomProvider>
+    );
+  }
+
+  it("dims exactly the in-flight card, and dropping the entry restores it (rollback = remove a CSS state)", () => {
+    const { container, rerender } = renderHand(new Set(["spell.haste"]));
+    const inFlight = container.querySelectorAll(".fanCard.cardInFlight");
+    expect(inFlight).toHaveLength(1);
+    expect(inFlight[0].getAttribute("title")).toContain("Haste");
+    // Both cards stay MOUNTED — the echo never removes a card from the DOM.
+    expect(container.querySelectorAll(".fanCard")).toHaveLength(2);
+
+    // The submit settled with an error: the echo entry is dropped and the same
+    // render shows the card fully restored.
+    const state = twoCardHandState();
+    rerender(
+      <CardZoomProvider>
+        <HandFan
+          view={getPlayerView(state, "p1")}
+          state={state}
+          viewerPlayerId="p1"
+          legalActions={getLegalActions(state, "p1")}
+          selectedCardAction={null}
+          trayActive={false}
+          inFlightCardIds={new Set()}
+          onSelectCardAction={() => {}}
+          onAction={() => {}}
+        />
+      </CardZoomProvider>
+    );
+    expect(container.querySelectorAll(".fanCard.cardInFlight")).toHaveLength(0);
+    expect(container.querySelectorAll(".fanCard")).toHaveLength(2);
+  });
+
+  it("CONTROL: with the echo not wired (no prop), hand rendering is unchanged", () => {
+    const { container } = renderHand(undefined);
+    expect(container.querySelectorAll(".fanCard")).toHaveLength(2);
+    expect(container.querySelectorAll(".fanCard.cardInFlight")).toHaveLength(0);
+  });
+
+  it("card art decodes off the main thread (N5 audit — attributes are inert in jsdom, assert presence)", () => {
+    const { container } = renderHand(undefined);
+    const art = container.querySelector("img.fanCardImage");
+    expect(art?.getAttribute("decoding")).toBe("async");
+    // Hand cards are on-screen the moment they mount — eager on purpose.
+    expect(art?.getAttribute("loading")).toBe("eager");
+  });
+});
+
 describe("HandFan — an instant artifact's 'take a card from discard' is usable in COMBAT", () => {
   // The reported bug: clicking Skull Helmet (or the Helm of the Alabaster
   // Unicorn) in battle offered no usable option. Its "take a card from your

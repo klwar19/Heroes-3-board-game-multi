@@ -94,7 +94,7 @@ describe("combat board art variants", () => {
       "ship-battle"
     ]);
     expect(COMBAT_BOARD_ART_VARIANTS.map((variant) => variant.terrain)).toEqual([
-      "/assets/board/battlefield-4x5-pro.png",
+      "/assets/board/battlefield-4x5-pro.webp",
       "/assets/board/battlefield-4x5-frozen.webp",
       "/assets/board/battlefield-4x5-hell-necro.webp",
       "/assets/board/battlefield-4x5-jungle-fortress.webp",
