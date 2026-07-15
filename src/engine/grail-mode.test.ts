@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { CombatState, CombatUnitState, GameState, MapFieldState, PlayerId } from "./state";
-import { NEUTRAL_PLAYER_ID } from "./state";
+import { GRAIL_OBELISKS_REQUIRED, NEUTRAL_PLAYER_ID } from "./state";
 import {
   adventureSeatCount,
   beginFieldVisit,
   checkDragonConquerorHold,
   getMainHero,
   getTownOfPlayer,
+  grailObelisksVisitedCount,
   requiredHeroDefeats,
   tryDeliverGrail
 } from "./adventure";
@@ -91,6 +92,29 @@ describe("Dragon Hunt setup", () => {
   });
 });
 
+/** Injects an (ungarded) Obelisk field for the Holy Grail dig prerequisite. */
+function injectObelisk(state: GameState, spaceId: string): MapFieldState {
+  const field = injectField(state, "obelisk", spaceId);
+  field.difficulty = undefined;
+  return field;
+}
+
+/**
+ * Holy Grail: a hero must visit {@link GRAIL_OBELISKS_REQUIRED} distinct
+ * Obelisks before the dig unlocks. Visits them (die-reward house rule off so
+ * they don't queue a pendingVisit) to satisfy the gate.
+ */
+function visitTwoObelisks(state: GameState, heroId: string): void {
+  state.adventure!.houseRules = { ...(state.adventure!.houseRules ?? {}), "obelisk-rewards": false };
+  const o1 = injectObelisk(state, "60,60");
+  const o2 = injectObelisk(state, "61,61");
+  const hero = state.heroes[heroId]!;
+  hero.spaceId = o1.spaceId;
+  beginFieldVisit(state, heroId, o1.spaceId, false);
+  hero.spaceId = o2.spaceId;
+  beginFieldVisit(state, heroId, o2.spaceId, false);
+}
+
 describe("Grail capture", () => {
   it("arms the dig after the guard falls, then carries and delivers home to win", () => {
     const state = makeGame("grail");
@@ -103,7 +127,17 @@ describe("Grail capture", () => {
     expect(field.blackCube).toBe(true);
     expect(state.adventure!.grail).toEqual({ status: "uncollected" });
 
-    // Digging (a revisit for 1 MP) mints the single Grail Token.
+    // Holy Grail: digging before visiting 2 Obelisks does NOT mint the Grail.
+    beginFieldVisit(state, heroId, field.spaceId, true);
+    expect(state.adventure!.grail).toEqual({ status: "uncollected" });
+    expect(field.grailDiggable).toBe(true);
+
+    // After visiting 2 distinct Obelisks the dig unlocks.
+    visitTwoObelisks(state, heroId);
+    expect(grailObelisksVisitedCount(state, "p1")).toBe(GRAIL_OBELISKS_REQUIRED);
+
+    // Digging (a revisit for 1 MP) now mints the single Grail Token.
+    placeHeroOn(state, "p1", field.spaceId);
     beginFieldVisit(state, heroId, field.spaceId, true);
     expect(state.adventure!.grail).toMatchObject({ status: "carried", carrierHeroId: heroId });
     expect(field.grailDiggable).toBe(false);
@@ -122,7 +156,11 @@ describe("Grail capture", () => {
     const field = injectField(state, "grail");
     const heroId = placeHeroOn(state, "p1", field.spaceId);
     beginFieldVisit(state, heroId, field.spaceId, false);
+    // Satisfy the 2-Obelisk dig gate, then dig so the Grail is actually carried.
+    visitTwoObelisks(state, heroId);
+    placeHeroOn(state, "p1", field.spaceId);
     beginFieldVisit(state, heroId, field.spaceId, true);
+    expect(state.adventure!.grail).toMatchObject({ status: "carried", carrierHeroId: heroId });
 
     const hero = getMainHero(state, "p1")!;
     hero.spaceId = getTownOfPlayer(state, "p2")!.fieldId!; // enemy town
