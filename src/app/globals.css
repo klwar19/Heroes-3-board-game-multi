@@ -12577,6 +12577,25 @@ img.cardBack {
   opacity: 0.95;
 }
 
+/* On-board yellow-border paint zones (armed 🖌 tool): one clickable ring hex per
+   outer edge. Un-bordered zones show a faint dashed gold affordance so all six
+   click targets are visible; a painted edge tints solid yellow. */
+.designerBorderPaintZone {
+  fill: rgba(232, 197, 84, 0.08);
+  stroke: #e8c554;
+  stroke-width: 1.4px;
+  stroke-dasharray: 3 2;
+  cursor: pointer;
+}
+.designerBorderPaintZone:hover {
+  fill: rgba(232, 197, 84, 0.3);
+}
+.designerBorderPaintZone.active {
+  fill: rgba(232, 197, 84, 0.42);
+  stroke-width: 2.4px;
+  stroke-dasharray: none;
+}
+
 /* Banner shown under the board when caverns are left unreachable. */
 .designerCavernAlert {
   margin-top: 8px;
@@ -12639,6 +12658,10 @@ img.cardBack {
 .designerObjectButton.armed {
   outline: 2px solid #ffe9a8;
   box-shadow: 0 0 10px rgba(255, 233, 168, 0.55);
+}
+/* The 🖌 border-paint tool shares the Objects palette row, with a gold accent. */
+.designerObjectButton.borderPaint {
+  border-color: rgba(232, 197, 84, 0.7);
 }
 .designerObjectSwatch {
   display: inline-flex;

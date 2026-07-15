@@ -555,6 +555,10 @@ export function MapDesigner({
   const [armedObject, setArmedObject] = useState<{ kind: CustomMapObjectKind; pair?: 1 | 2 | 3 | 4 } | null>(null);
   const [selectedObjectIndex, setSelectedObjectIndex] = useState<number | null>(null);
   const [objectPopoverAt, setObjectPopoverAt] = useState<{ x: number; y: number } | null>(null);
+  // Border paint mode: armed from the Objects palette, it turns every placed
+  // tile's six outer-edge ring hexes into clickable zones that seal/unseal a
+  // designer yellow border directly on the board (one armed mode at a time).
+  const [borderPaint, setBorderPaint] = useState(false);
 
   const starts = useMemo<HexCoord[]>(
     () => (scenario ? scenario.layout.starts.map((start) => ({ ...start })) : []),
@@ -833,6 +837,41 @@ export function MapDesigner({
     [customMap, onChange, closePopover]
   );
 
+  /**
+   * The ONE write path for a designer yellow border on any plan at an ABSOLUTE
+   * board direction (0-5): add/remove + sort, dropping the field when empty.
+   * Both the tile-panel edge rose and the on-board paint zones call this, so
+   * both always write the identical plan shape (a stable callback so the paint
+   * zones' hook chain stays memoizable).
+   */
+  const toggleBorderAt = useCallback(
+    (index: number, direction: number) => {
+      const plan = customMap[index];
+      if (!plan) {
+        return;
+      }
+      const current = plan.extraBorders ?? [];
+      const next = current.includes(direction)
+        ? current.filter((entry) => entry !== direction)
+        : [...current, direction].sort((a, b) => a - b);
+      updateTile(index, { extraBorders: next.length > 0 ? next : undefined });
+    },
+    [customMap, updateTile]
+  );
+
+  /**
+   * Arm / disarm the on-board border paint tool. Only one interaction mode runs
+   * at a time, so arming it clears any armed object and closes the docked panels
+   * (mirrored by `armObject`, which clears border paint). Disarming just leaves
+   * those already-clear.
+   */
+  const toggleBorderPaint = useCallback(() => {
+    setArmedObject(null);
+    closePopover();
+    closeObjectPopover();
+    setBorderPaint((current) => !current);
+  }, [closePopover, closeObjectPopover]);
+
   // --- Designer object geometry + edit helpers -------------------------------
   /** The board hex a placed object sits on (tile-slot honours the tile rotation). */
   const objectHexOf = useCallback(
@@ -936,6 +975,8 @@ export function MapDesigner({
   const armObject = useCallback((kind: CustomMapObjectKind, pair?: 1 | 2 | 3 | 4) => {
     setSelectedObjectIndex(null);
     setObjectPopoverAt(null);
+    // One armed mode at a time: arming an object disarms border paint.
+    setBorderPaint(false);
     setArmedObject((current) => (current && current.kind === kind && current.pair === pair ? null : { kind, pair }));
   }, []);
   const placeArmedObject = useCallback(
@@ -1321,20 +1362,18 @@ export function MapDesigner({
     Boolean(selected?.gateLinks?.some((link) => link.surface.row === surface.row && link.surface.col === surface.col));
 
   /**
-   * Toggle a designer-placed yellow border on the selected tile at an ABSOLUTE
+   * Toggle a designer-placed yellow border on the SELECTED tile at an ABSOLUTE
    * board direction (0-5). The border seals that outer arc in game — identical
    * to a printed one — regardless of any face-down draw or later rotation.
-   * Legal on every tile group, so no group gate here.
+   * Legal on every tile group, so no group gate here. Delegates to the shared
+   * `toggleBorderAt` write path so the panel rose and the on-board paint zones
+   * always produce the identical plan shape.
    */
   const toggleBorder = (direction: number) => {
     if (selectedIndex === null || !selected) {
       return;
     }
-    const current = selected.extraBorders ?? [];
-    const next = current.includes(direction)
-      ? current.filter((entry) => entry !== direction)
-      : [...current, direction].sort((a, b) => a - b);
-    updateTile(selectedIndex, { extraBorders: next.length > 0 ? next : undefined });
+    toggleBorderAt(selectedIndex, direction);
   };
 
   /** Toggle a designer gate link between the selected cavern and a touching Surface tile. */
@@ -2000,6 +2039,48 @@ export function MapDesigner({
     );
   }
 
+  // --- Designer yellow-border paint zones -------------------------------------
+  // While the paint tool is armed (and no tile is being dragged), every placed
+  // plan shows six clickable ring hexes — one per ABSOLUTE board direction 0-5.
+  // Clicking one seals/unseals that tile's yellow border on that edge through
+  // the SAME `toggleBorderAt` path as the panel rose. `tileFootprint(center,0)
+  // [d+1]` is exactly the ring hex whose three outward edges the border draws
+  // (see the border DRAWING loop above), so the click target sits on the sealed
+  // edge. Drawn on top of the objects so the zones stay clickable while armed.
+  const borderPaintLayer: React.ReactNode[] = [];
+  if (borderPaint && !drag) {
+    for (const [index, plan] of customMap.entries()) {
+      const flower = tileFootprint({ row: plan.row, col: plan.col }, 0);
+      const tileName =
+        plan.group === "starting" ? `Town seat ${seatNumberOf(index)}` : `${planGroupLabel(plan)} tile`;
+      // `.entries()` gives a fresh per-iteration direction const (no mutated
+      // loop counter captured in the JSX closures — the React Compiler forbids
+      // that). Direction d's ring hex is flower[d+1], per the border DRAW loop.
+      for (const [direction, label] of BORDER_DIRECTION_LABELS.entries()) {
+        const { x, y } = hexToPixel(flower[direction + 1], size);
+        const on = Boolean(plan.extraBorders?.includes(direction));
+        borderPaintLayer.push(
+          <polygon
+            className={`designerBorderPaintZone${on ? " active" : ""}`}
+            data-border-index={index}
+            data-direction={direction}
+            key={`border-paint-${index}-${direction}`}
+            // Take the press so the tile press/drag and board pan never start.
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={() => toggleBorderAt(index, direction)}
+            points={hexCorners(x, y, size - 1.6)}
+          >
+            <title>
+              {on
+                ? `Remove the ${label} edge's yellow border — ${tileName}`
+                : `Seal the ${label} edge (yellow border) — ${tileName}`}
+            </title>
+          </polygon>
+        );
+      }
+    }
+  }
+
   return (
     <div className="mapDesigner" aria-label="Map designer">
       <div className="designerPalette" aria-label="Tile palette">
@@ -2029,9 +2110,11 @@ export function MapDesigner({
 
       <div className="designerObjectPalette" aria-label="Objects palette">
         <small className="palettePrompt">
-          {armedObject
-            ? `Placing a ${armedLabel} — click a glowing cell (tile hex or off-tile), or the button again to stop`
-            : "Click an object, then click a board cell to place it"}
+          {borderPaint
+            ? "Painting yellow borders — click a tile's edge hex to seal or unseal that edge"
+            : armedObject
+              ? `Placing a ${armedLabel} — click a glowing cell (tile hex or off-tile), or the button again to stop`
+              : "Click an object, then click a board cell to place it"}
         </small>
         <div className="designerObjectPaletteRow">
           {GATE_PAIRS.map((pair) => {
@@ -2073,6 +2156,15 @@ export function MapDesigner({
             type="button"
           >
             🌀 Whirlpool
+          </button>
+          <button
+            aria-pressed={borderPaint}
+            className={`designerObjectButton borderPaint${borderPaint ? " armed" : ""}`}
+            onClick={toggleBorderPaint}
+            title="Yellow border — click a tile's edge hex on the board to seal (or unseal) that impassable edge, exactly like the tile panel's edge chips"
+            type="button"
+          >
+            🖌 Yellow border
           </button>
         </div>
       </div>
@@ -2231,6 +2323,7 @@ export function MapDesigner({
             {gateLayer}
             {borderLayer}
             {objectLayer}
+            {borderPaintLayer}
           </g>
         </svg>
 
@@ -2846,8 +2939,10 @@ export function MapDesigner({
         least 2 of a kind to work. A centre tile can force its <strong>Ⅶ objective field</strong> (Town / Grail /
         Utopia, shown as a badge). Drag a cavern to touch a Surface tile and its <strong>Subterranean Gate</strong>{" "}
         appears — or link and pin the pair in the popover and use <strong>↻</strong> to slide the gate along the shared
-        edge. Click a tile&apos;s <strong>edges</strong> to paint yellow borders (impassable), and <strong>lock</strong>{" "}
-        a starting tile&apos;s orientation so it never opens with a rotation. The <strong>Objects</strong> palette drops
+        edge. Arm <strong>🖌 Yellow border</strong> in the Objects palette, then click a tile&apos;s{" "}
+        <strong>edge hexes</strong> to paint impassable borders (or use the edge chips in the tile panel), and{" "}
+        <strong>lock</strong> a starting tile&apos;s orientation so it never opens with a rotation. The{" "}
+        <strong>Objects</strong> palette drops
         standalone one-hex pieces — four colored <strong>Gate</strong> pairs and designer-guarded objects. Town (Ⅰ)
         tiles are seats; drag empty background to pan, pinch or use the toolbar to zoom (wheel zoom when unlocked).
       </small>

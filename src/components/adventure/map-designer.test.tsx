@@ -1195,3 +1195,197 @@ describe("MapDesigner — docked inspector panel", () => {
     expect(latest[1].extraBorders, "far-away tile's SW border toggled").toEqual([3]);
   });
 });
+
+describe("MapDesigner — on-board yellow border painting", () => {
+  const town = { row: 10, col: 10 };
+  const far = tileLatticeNeighbors(town)[1];
+  const near = tileLatticeNeighbors(town)[0];
+
+  /** The 🖌 Yellow-border arm/disarm button in the Objects palette. */
+  function paintButton(container: HTMLElement): HTMLElement {
+    const btn = container.querySelector(".designerObjectButton.borderPaint");
+    if (!btn) {
+      throw new Error("border-paint button not found");
+    }
+    return btn as HTMLElement;
+  }
+
+  it("arming shows six paint zones per placed tile; disarmed (default) renders none", () => {
+    const container = renderDesigner([
+      { row: town.row, col: town.col, group: "starting", faceDown: false },
+      { row: far.row, col: far.col, group: "far", faceDown: true }
+    ]);
+    // CONTROL: with the tool disarmed (default) not a single zone is drawn.
+    expect(container.querySelectorAll(".designerBorderPaintZone").length).toBe(0);
+
+    fireEvent.click(paintButton(container));
+    expect(paintButton(container).getAttribute("aria-pressed")).toBe("true");
+    // Two placed plans × six absolute directions = twelve zones.
+    expect(container.querySelectorAll(".designerBorderPaintZone").length).toBe(12);
+    for (const index of [0, 1]) {
+      for (let direction = 0; direction < 6; direction += 1) {
+        expect(
+          container.querySelector(
+            `.designerBorderPaintZone[data-border-index="${index}"][data-direction="${direction}"]`
+          ),
+          `zone for plan ${index} direction ${direction}`
+        ).toBeTruthy();
+      }
+    }
+  });
+
+  it("clicking a zone adds exactly that absolute direction; clicking it again removes it", () => {
+    let latest: CustomMapTilePlan[] = [
+      { row: town.row, col: town.col, group: "starting", faceDown: false },
+      { row: far.row, col: far.col, group: "far", faceDown: true }
+    ];
+    const onChange = vi.fn((next: CustomMapTilePlan[]) => {
+      latest = next;
+    });
+    let container = renderDesigner(latest, onChange);
+    fireEvent.click(paintButton(container));
+
+    // Paint the far tile's E edge (absolute direction 1).
+    fireEvent.click(
+      container.querySelector('.designerBorderPaintZone[data-border-index="1"][data-direction="1"]')!
+    );
+    expect(onChange).toHaveBeenCalled();
+    expect(latest[1].extraBorders).toEqual([1]);
+
+    // Re-render with the updated plan (paint mode is local, so re-arm), then
+    // toggle the same edge off — round-trips back to no extraBorders.
+    cleanup();
+    container = renderDesigner(latest, onChange);
+    fireEvent.click(paintButton(container));
+    const painted = container.querySelector(
+      '.designerBorderPaintZone[data-border-index="1"][data-direction="1"]'
+    )!;
+    expect(painted.classList.contains("active"), "painted edge marked active").toBe(true);
+    fireEvent.click(painted);
+    expect(latest[1].extraBorders).toBeUndefined();
+  });
+
+  it("paints on a STARTING tile and a FACE-DOWN tile alike (parity with the edge rose)", () => {
+    let latest: CustomMapTilePlan[] = [
+      { row: town.row, col: town.col, group: "starting", faceDown: false },
+      { row: near.row, col: near.col, group: "near", faceDown: true }
+    ];
+    const onChange = vi.fn((next: CustomMapTilePlan[]) => {
+      latest = next;
+    });
+    const container = renderDesigner(latest, onChange);
+    fireEvent.click(paintButton(container));
+
+    // Starting tile (index 0): seal its NW edge (direction 5).
+    fireEvent.click(
+      container.querySelector('.designerBorderPaintZone[data-border-index="0"][data-direction="5"]')!
+    );
+    expect(latest[0].group).toBe("starting");
+    expect(latest[0].extraBorders, "starting tile border painted").toEqual([5]);
+
+    // Face-down near tile (index 1): seal its SE edge (direction 2). Each click
+    // rebuilds from the original prop, so assert plan 1 right after its click.
+    fireEvent.click(
+      container.querySelector('.designerBorderPaintZone[data-border-index="1"][data-direction="2"]')!
+    );
+    expect(latest[1].faceDown).toBe(true);
+    expect(latest[1].extraBorders, "face-down tile border painted").toEqual([2]);
+  });
+
+  it("a paint-zone press does not pan the board or open the tile panel (stopPropagation), and still paints", () => {
+    // The board pan path calls setPointerCapture, which jsdom does not implement;
+    // stub a no-op (restored after) so the CAMERA assertion — not an incidental
+    // throw — is what signals a regression if stopPropagation is ever removed.
+    const proto = Element.prototype as unknown as Record<string, unknown>;
+    const hadCapture = Object.prototype.hasOwnProperty.call(proto, "setPointerCapture");
+    const prevCapture = proto.setPointerCapture;
+    proto.setPointerCapture = function () {};
+    try {
+      let latest: CustomMapTilePlan[] = [
+        { row: town.row, col: town.col, group: "starting", faceDown: false },
+        { row: far.row, col: far.col, group: "far", faceDown: true }
+      ];
+      const onChange = vi.fn((next: CustomMapTilePlan[]) => {
+        latest = next;
+      });
+      const container = renderDesigner(latest, onChange);
+      fireEvent.click(paintButton(container));
+      const cameraGroup = container.querySelector(".designerSvg > g")!;
+      const transformBefore = cameraGroup.getAttribute("transform");
+      const zone = container.querySelector(
+        '.designerBorderPaintZone[data-border-index="1"][data-direction="0"]'
+      )!;
+      // Press on the zone, then move the pointer far enough to pan a BACKGROUND
+      // press. `stopPropagation` on the zone's pointerdown keeps that press off
+      // the board, so the SVG pan handler never arms — the camera transform is
+      // unchanged. Without it, the press reaches the SVG and the move starts a
+      // pan, moving the transform; this assertion then fails.
+      fireEvent.pointerDown(zone, { button: 0, pointerId: 1, clientX: 40, clientY: 40 });
+      fireEvent.pointerMove(zone, { pointerId: 1, clientX: 120, clientY: 120 });
+      expect(cameraGroup.getAttribute("transform"), "board did not pan from the paint press").toBe(
+        transformBefore
+      );
+      fireEvent.pointerUp(zone, { pointerId: 1 });
+      // And a plain click paints the edge without opening the per-tile panel.
+      fireEvent.click(zone);
+      expect(container.querySelector(".designerPopover"), "no tile panel opened").toBeNull();
+      expect(latest[1].extraBorders, "the edge was still painted").toEqual([0]);
+    } finally {
+      if (hadCapture) {
+        proto.setPointerCapture = prevCapture;
+      } else {
+        delete proto.setPointerCapture;
+      }
+    }
+  });
+
+  it("arming border paint disarms an armed object — and arming an object disarms border paint", () => {
+    const container = renderDesigner([
+      { row: town.row, col: town.col, group: "starting", faceDown: false },
+      { row: far.row, col: far.col, group: "far", faceDown: false, tileDefId: "F1" }
+    ]);
+    const monolith = [...container.querySelectorAll(".designerObjectButton")].find((btn) =>
+      /Monolith/i.test(btn.textContent ?? "")
+    ) as HTMLElement;
+    const paint = paintButton(container);
+
+    // Arm the Monolith → its candidate cells glow, no paint zones yet.
+    fireEvent.click(monolith);
+    expect(monolith.getAttribute("aria-pressed")).toBe("true");
+    expect(container.querySelectorAll(".designerObjectSlot").length).toBeGreaterThan(0);
+    expect(container.querySelectorAll(".designerBorderPaintZone").length).toBe(0);
+
+    // Arm border paint → the Monolith disarms (no candidate cells), zones appear.
+    fireEvent.click(paint);
+    expect(paint.getAttribute("aria-pressed")).toBe("true");
+    expect(monolith.getAttribute("aria-pressed"), "monolith disarmed").toBe("false");
+    expect(container.querySelectorAll(".designerObjectSlot").length, "no object candidates").toBe(0);
+    expect(container.querySelectorAll(".designerBorderPaintZone").length).toBeGreaterThan(0);
+
+    // Arm the Monolith again → border paint disarms, zones vanish.
+    fireEvent.click(monolith);
+    expect(monolith.getAttribute("aria-pressed")).toBe("true");
+    expect(paint.getAttribute("aria-pressed"), "border paint disarmed").toBe("false");
+    expect(container.querySelectorAll(".designerBorderPaintZone").length).toBe(0);
+  });
+
+  it("a zone whose edge already has a border carries the active class", () => {
+    const container = renderDesigner([
+      { row: town.row, col: town.col, group: "starting", faceDown: false },
+      { row: far.row, col: far.col, group: "far", faceDown: true, extraBorders: [2] }
+    ]);
+    fireEvent.click(paintButton(container));
+    expect(
+      container
+        .querySelector('.designerBorderPaintZone[data-border-index="1"][data-direction="2"]')!
+        .classList.contains("active"),
+      "SE zone active for extraBorders [2]"
+    ).toBe(true);
+    // CONTROL: a different edge on the same tile is not active.
+    expect(
+      container
+        .querySelector('.designerBorderPaintZone[data-border-index="1"][data-direction="0"]')!
+        .classList.contains("active")
+    ).toBe(false);
+  });
+});
