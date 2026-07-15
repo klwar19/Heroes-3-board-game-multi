@@ -2312,6 +2312,41 @@ button.battleCell {
   transform: translateY(-34px) scale(1.5);
 }
 
+/* Pending-action echo (plan N2): a hand card whose play is submitted but not
+   yet acknowledged dims at once, and after PENDING_ECHO_SLOW_MS (400 ms — see
+   src/lib/pending-action-echo.ts) a pulsing ring appears: the "slow network"
+   styling, pure CSS so it needs no timer or re-render. Presentation only —
+   the class is removed on ack/error/snapshot and everything snaps back. */
+.fanCard.cardInFlight,
+.adventureHandCard.cardInFlight {
+  /* relative anchors the ::after ring; a visual no-op without offsets. */
+  position: relative;
+  opacity: 0.55;
+  filter: saturate(0.6);
+}
+
+.fanCard.cardInFlight::after,
+.adventureHandCard.cardInFlight::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: 8px;
+  border: 2px solid rgb(213 168 79 / 0%);
+  pointer-events: none;
+  animation: cardInFlightSlow 1.1s ease-in-out 400ms infinite;
+}
+
+@keyframes cardInFlightSlow {
+  0%,
+  100% {
+    border-color: rgb(213 168 79 / 0%);
+  }
+
+  50% {
+    border-color: rgb(213 168 79 / 75%);
+  }
+}
+
 .fanCard.playable .playGlow {
   position: absolute;
   inset: -2px;
