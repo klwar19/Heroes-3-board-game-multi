@@ -347,6 +347,18 @@ export type AdventureSetupOptions = {
   /** Event deck (Fortress expansion, default off; multiplayer only): draw an Event each Resource Round. */
   events?: boolean;
   /**
+   * OPTIONAL Victory Points scoring mode (default off/absent): injects an
+   * `{ enabled: true }` VP block into the effective map preset at build time. A
+   * designed preset that already enables VP stays authoritative.
+   */
+  victoryPoints?: boolean;
+  /**
+   * OPTIONAL hard end-of-game round for lobby Victory Points scoring (only
+   * meaningful with `victoryPoints` on): injected as the effective preset's
+   * `roundLimit` when the preset sets none. 0/absent = no round limit.
+   */
+  victoryPointsRoundLimit?: number;
+  /**
    * Pick-on-reveal Subterranean Gate placement (default on): when a revealed tile
    * could host its Gate half in more than one spot, ask the revealing player which
    * hex (and which Surface tile a cavern joins) instead of auto-picking the
@@ -1460,6 +1472,39 @@ function forcedObjectiveCenterTiles(pool: string[], slots: number, mode: Victory
   return [];
 }
 
+/**
+ * Fold the lobby Victory-Points toggle into the (already-sanitized) effective map
+ * preset. Off/absent → the preset is returned unchanged (byte-identical). On → a
+ * `victoryPoints: { enabled: true }` block is injected, creating a minimal preset
+ * when none exists. A designed preset that ALREADY enables VP stays
+ * AUTHORITATIVE: its own config is kept verbatim and an explicit lobby
+ * `victoryPoints: false`/absent NEVER disables it. The round limit follows the
+ * same rule — the preset's own `roundLimit` wins; else the clamped lobby
+ * `victoryPointsRoundLimit` (mirroring the designed-preset 1–30 bounds, 0 clears)
+ * is injected as the preset `roundLimit`, which is the HARD scored-end trigger.
+ */
+function applyLobbyVictoryPoints(
+  preset: CustomMapPreset | null,
+  setupOptions: GameSetupOptions
+): CustomMapPreset | null {
+  if (setupOptions.victoryPoints !== true) {
+    return preset;
+  }
+  // The map author's VP config is final — never overwrite it from the lobby.
+  if (preset?.victoryPoints?.enabled) {
+    return preset;
+  }
+  const next: CustomMapPreset = { ...(preset ?? {}), victoryPoints: { enabled: true } };
+  // The preset's own round limit wins; else inject the clamped lobby one.
+  if (next.roundLimit === undefined && setupOptions.victoryPointsRoundLimit !== undefined) {
+    const limit = Math.max(0, Math.min(30, Math.floor(setupOptions.victoryPointsRoundLimit)));
+    if (limit > 0) {
+      next.roundLimit = limit;
+    }
+  }
+  return next;
+}
+
 export function createAdventureGameState(options: AdventureSetupOptions = {}): GameState {
   // A missing seed must NOT collapse to a constant — that is what made every
   // fresh game open on the same map and Creature Bank order. Mint fresh entropy.
@@ -1480,6 +1525,10 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     ...(options.startingBuildings ? { startingBuildings: options.startingBuildings } : {}),
     ...(options.creatureBanks !== undefined ? { creatureBanks: options.creatureBanks } : {}),
     ...(options.events !== undefined ? { events: options.events } : {}),
+    ...(options.victoryPoints !== undefined ? { victoryPoints: options.victoryPoints } : {}),
+    ...(options.victoryPointsRoundLimit !== undefined
+      ? { victoryPointsRoundLimit: options.victoryPointsRoundLimit }
+      : {}),
     ...(options.parallelTurns !== undefined ? { parallelTurns: options.parallelTurns } : {}),
     ...(options.spellBook !== undefined ? { spellBook: options.spellBook } : {}),
     ...(options.moraleCards !== undefined ? { moraleCards: options.moraleCards } : {}),
@@ -1588,7 +1637,17 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   const pvpNeutralControlOn = (setupOptions.pvpNeutralControl ?? false) && playerConfigs.length >= 2;
   const pvpNeutralControlMustAttackOn = setupOptions.pvpNeutralControlMustAttack ?? true;
 
-  const mapPreset = sanitizeCustomMapPreset(setupOptions.customMapPreset ?? null) ?? null;
+  // Lobby Victory Points toggle: fold the game-options VP switch into the
+  // EFFECTIVE map preset. `victoryPointsConfig`/`victoryPointsModeActive` read
+  // `adventure.mapPreset.victoryPoints`, so injecting an `{ enabled: true }` block
+  // here lights up the whole downstream VP system (ledger already tracked, the
+  // round-limit scored end in `startAdventureRound`, the standings dock + the
+  // game-over overlay) with no further wiring. A designed preset that ALREADY
+  // enables VP stays authoritative (see `applyLobbyVictoryPoints`).
+  const mapPreset = applyLobbyVictoryPoints(
+    sanitizeCustomMapPreset(setupOptions.customMapPreset ?? null) ?? null,
+    setupOptions
+  );
 
   const adventure: AdventureState = {
     difficulty,
@@ -2708,6 +2767,26 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
   if (next.events !== undefined) {
     lobby.options.events = Boolean(next.events);
     changes.push(`Event deck ${next.events ? "on" : "off"}`);
+  }
+
+  if (next.victoryPoints !== undefined) {
+    lobby.options.victoryPoints = Boolean(next.victoryPoints);
+    changes.push(`Victory points ${lobby.options.victoryPoints ? "on" : "off"}`);
+  }
+
+  if (next.victoryPointsRoundLimit !== undefined) {
+    if (!Number.isFinite(next.victoryPointsRoundLimit)) {
+      throw new Error("Victory points round limit must be a number.");
+    }
+    // Mirror the designed-preset round-limit bounds (map-preset.ts: 1–30; 0 clears).
+    const limit = Math.max(0, Math.min(30, Math.floor(next.victoryPointsRoundLimit)));
+    if (limit > 0) {
+      lobby.options.victoryPointsRoundLimit = limit;
+      changes.push(`Victory points round limit ${limit}`);
+    } else {
+      delete lobby.options.victoryPointsRoundLimit;
+      changes.push("Victory points round limit cleared");
+    }
   }
 
   if (next.parallelTurns !== undefined) {
@@ -3929,6 +4008,8 @@ function buildAdventureFromLobby(state: GameState): void {
     pvpTroopLoss: lobby.options.pvpTroopLoss,
     dragonUtopiaGuards: lobby.options.dragonUtopiaGuards,
     events: lobby.options.events,
+    victoryPoints: lobby.options.victoryPoints,
+    victoryPointsRoundLimit: lobby.options.victoryPointsRoundLimit,
     spellBook: lobby.options.spellBook,
     moraleCards: lobby.options.moraleCards,
     tournamentMode: lobby.options.tournamentMode,
