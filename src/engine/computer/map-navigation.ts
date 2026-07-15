@@ -7,6 +7,7 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 import {
   adventureVictoryMode,
   canCrossEdge,
+  canDigGrail,
   classifyHeroStep,
   farTilePlacementCenters,
   getAdjacentSpaceIds,
@@ -202,13 +203,35 @@ function victoryObjectiveKind(
     ) {
       return "victory";
     }
-    // Dig the marked grail field (public once diggable).
-    if (field.grailDiggable && grail?.status === "uncollected") {
-      return "victory";
-    }
-    // Walk onto the grail location token if present and uncollected.
-    if (field.location === "grail" && grail?.status !== "delivered") {
-      return "victory";
+
+    // Holy Grail: the dig is LOCKED until the digger has visited
+    // GRAIL_OBELISKS_REQUIRED (2) distinct Obelisks. While it is still uncollected:
+    //  - dig-ready  -> march to the Grail (fight its guard, then dig for 1 MP);
+    //  - not ready  -> seek distinct unvisited Obelisks (they ARE the win path).
+    // A locked Grail is deliberately NOT a march target — marching to an armed
+    // but un-diggable Grail would camp the hero on it with no legal dig action.
+    const grailUncollected = grail?.status !== "carried" && grail?.status !== "delivered";
+    if (grailUncollected) {
+      if (canDigGrail(state, playerId)) {
+        // Dig the marked grail field (public once diggable).
+        if (field.grailDiggable && grail?.status === "uncollected") {
+          return "victory";
+        }
+        // Walk onto the grail location token to fight its guard, then dig.
+        if (field.location === "grail" && grail?.status !== "delivered") {
+          return "victory";
+        }
+      } else if (field.location === "obelisk") {
+        // Seek a distinct Obelisk this hero has not visited (flagged) yet.
+        const visited = grail?.obelisksVisited?.[playerId] ?? [];
+        const alreadyVisited =
+          visited.includes(field.spaceId) ||
+          field.flagOwnerId === playerId ||
+          Boolean(field.extraFlagOwnerIds?.includes(playerId));
+        if (!alreadyVisited) {
+          return "victory";
+        }
+      }
     }
   }
 
