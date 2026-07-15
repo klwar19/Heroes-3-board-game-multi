@@ -2,11 +2,13 @@
 
 import PartySocket from "partysocket";
 import type { AdventurePlayerConfig, EngineResult, GameAction, GameDifficulty, GameMode, GameState } from "@/engine";
+import { getPartyKitHost, partyProtocol } from "@/lib/party-origin";
 import { frameBytes, metricNow, metricsSampled, recordPerformanceMetric } from "@/lib/performance-metrics";
 import { peekPendingSinglePlayer, savePendingSinglePlayer } from "@/lib/pending-room-name";
 import { LOBBY_SINGLETON_ID, type RoomDirectoryEntry } from "@/server/lobby-registry";
 
 export type { RoomDirectoryEntry };
+export { getPartyKitHost };
 
 /**
  * Room transport layer. Two backends share one interface:
@@ -100,11 +102,6 @@ export type RoomConnection = {
   restoreRoom: (state: GameState) => Promise<GameRoomSnapshot>;
 };
 
-export function getPartyKitHost(): string | null {
-  const host = process.env.NEXT_PUBLIC_PARTYKIT_HOST;
-  return host && host.trim().length > 0 ? host.trim() : null;
-}
-
 /**
  * Provides a short-lived socket ticket for the cross-origin PartyKit edge
  * (Phase 2). Resolves the current signed-in player's ticket, or undefined for a
@@ -174,10 +171,6 @@ function localAdminKey(): string | undefined {
   } catch {
     return undefined;
   }
-}
-
-function partyProtocol(host: string): string {
-  return host.startsWith("localhost") || host.startsWith("127.") ? "http" : "https";
 }
 
 function partyHttpUrl(host: string, roomId: string, clientId?: string, token?: string): string {

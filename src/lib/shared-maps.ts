@@ -1,6 +1,6 @@
 "use client";
 
-import { getPartyKitHost } from "@/lib/realtime";
+import { getPartyKitHost, partyProtocol } from "@/lib/party-origin";
 import { MAPS_SINGLETON_ID, type SharedMapRecord } from "@/server/map-registry";
 
 export type { SharedMapRecord };
@@ -18,10 +18,6 @@ export type { SharedMapRecord };
  * library: anyone can open, edit (save over an id), play, or delete any map.
  * `clientId` / `displayName` are stamped on a save for attribution only.
  */
-
-function partyProtocol(host: string): string {
-  return host.startsWith("localhost") || host.startsWith("127.") ? "http" : "https";
-}
 
 /** The endpoint for the current backend: the PartyKit maps party, else /api/maps. */
 function mapsEndpoint(): string {
