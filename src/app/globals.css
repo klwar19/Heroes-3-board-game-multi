@@ -21285,8 +21285,13 @@ body {
   cursor: pointer;
 }
 
-.mapPresetChip:hover {
+.mapPresetChip:hover:not(:disabled) {
   border-color: rgba(154, 208, 255, 0.7);
+}
+
+.mapPresetChip:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
 }
 
 .mapPresetChip.active {
@@ -21333,21 +21338,146 @@ body {
 }
 
 /* Timed-event freeform cards (round + effect + parameters). */
-.mapPresetTimedList {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
+.mapPresetTimedSection {
+  margin-top: 4px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(210, 168, 82, 0.22);
+}
+
+.mapPresetTimedSectionHeading,
+.mapPresetTimedTools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 10px;
 }
 
+.mapPresetTimedSectionHeading .mapPresetSectionLabel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #e8c878;
+}
+
+.mapPresetTimedCount {
+  padding: 3px 8px;
+  border: 1px solid rgba(210, 168, 82, 0.42);
+  border-radius: 999px;
+  background: rgba(46, 34, 16, 0.78);
+  color: #efd58f;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.mapPresetTimedCount.full {
+  border-color: rgba(255, 132, 112, 0.65);
+  color: #ffb1a4;
+}
+
+.mapPresetTimedAdd,
+.mapPresetTimedSort {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 28px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(210, 168, 82, 0.48);
+  background: linear-gradient(180deg, rgba(82, 62, 27, 0.96), rgba(48, 34, 16, 0.96));
+  color: #f4dfaa;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.mapPresetTimedSort {
+  margin-left: auto;
+  border-color: rgba(154, 208, 255, 0.28);
+  background: rgba(24, 36, 52, 0.82);
+  color: #c8dcff;
+}
+
+.mapPresetTimedAdd:hover:not(:disabled),
+.mapPresetTimedSort:hover {
+  border-color: #e8c878;
+}
+
+.mapPresetTimedAdd:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+.mapPresetTemplates {
+  border-radius: 8px;
+  border: 1px solid rgba(154, 208, 255, 0.16);
+  background: rgba(13, 20, 31, 0.54);
+}
+
+.mapPresetTemplates > summary {
+  padding: 6px 8px;
+  color: rgba(190, 210, 235, 0.78);
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.mapPresetTemplates .mapPresetChipRow {
+  padding: 0 8px 8px;
+}
+
+.mapPresetTimedList {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 22px;
+  display: grid;
+  gap: 12px;
+}
+
 .mapPresetTimedCard {
+  position: relative;
   display: grid;
   gap: 8px;
-  padding: 10px;
-  border-radius: 10px;
-  border: 1px solid rgba(154, 208, 255, 0.28);
-  background: rgba(18, 26, 40, 0.9);
+  padding: 5px 10px 7px;
+  border: 14px solid transparent;
+  border-image-source: url("/assets/ui/ornate/timed-event-frame.webp");
+  border-image-slice: 100 128 fill;
+  border-image-width: 12px 18px;
+  border-image-repeat: stretch;
+  background: #101923;
+  box-shadow: 0 7px 16px rgba(0, 0, 0, 0.28);
+}
+
+.mapPresetTimedCard::before {
+  content: "";
+  position: absolute;
+  left: -26px;
+  top: 36px;
+  bottom: -28px;
+  width: 1px;
+  background: linear-gradient(rgba(76, 181, 189, 0.62), rgba(76, 181, 189, 0.08));
+}
+
+.mapPresetTimedCard:last-child::before {
+  display: none;
+}
+
+.mapPresetTimedRail {
+  position: absolute;
+  z-index: 1;
+  left: -37px;
+  top: 5px;
+  display: grid;
+  place-items: center;
+  min-width: 25px;
+  height: 25px;
+  padding: 0 4px;
+  border: 1px solid rgba(85, 207, 210, 0.62);
+  border-radius: 50%;
+  background: #10272c;
+  color: #a7f2ed;
+  box-shadow: 0 0 0 3px rgba(9, 15, 23, 0.92), 0 0 10px rgba(73, 191, 197, 0.25);
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
 
 .mapPresetTimedHeader {
@@ -21386,19 +21516,41 @@ body {
   font-size: 12px;
 }
 
-.mapPresetTimedRemove {
+.mapPresetTimedIconButton {
+  display: inline-grid;
+  place-items: center;
   margin-left: auto;
-  padding: 5px 9px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
   border-radius: 8px;
-  border: 1px solid rgba(255, 140, 140, 0.35);
-  background: rgba(48, 24, 28, 0.85);
-  color: #ffd0d0;
-  font-size: 11px;
+  border: 1px solid rgba(154, 208, 255, 0.28);
+  background: rgba(18, 30, 44, 0.88);
+  color: #d2e6ff;
   cursor: pointer;
 }
 
-.mapPresetTimedRemove:hover {
+.mapPresetTimedIconButton + .mapPresetTimedIconButton {
+  margin-left: -4px;
+}
+
+.mapPresetTimedIconButton.danger {
+  border-color: rgba(255, 140, 140, 0.35);
+  background: rgba(48, 24, 28, 0.85);
+  color: #ffd0d0;
+}
+
+.mapPresetTimedIconButton:hover:not(:disabled) {
+  border-color: rgba(154, 208, 255, 0.72);
+}
+
+.mapPresetTimedIconButton.danger:hover {
   border-color: rgba(255, 160, 160, 0.7);
+}
+
+.mapPresetTimedIconButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.38;
 }
 
 .mapPresetTimedPreview {
@@ -21411,6 +21563,28 @@ body {
 
 .mapPresetTimedNote {
   min-height: 48px;
+}
+
+.mapPresetTimedWarning {
+  color: #ffbd9e;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+@media (max-width: 620px) {
+  .mapPresetTimedKind {
+    flex: 1 1 180px;
+  }
+
+  .mapPresetTimedKind select {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .mapPresetTimedCard {
+    border-image-width: 9px 12px;
+    padding-inline: 5px;
+  }
 }
 
 /* Collapsible editor shell: the summary bar is the always-visible header. */

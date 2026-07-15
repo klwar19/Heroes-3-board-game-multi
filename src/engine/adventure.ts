@@ -8198,8 +8198,12 @@ export function applyCustomMapTimedEvents(state: GameState): void {
   }
   const adventure = state.adventure!;
   const players = state.turnOrder.filter(
-    (playerId) => playerId !== NEUTRAL_PLAYER_ID && state.players[playerId]
+    (playerId) =>
+      playerId !== NEUTRAL_PLAYER_ID &&
+      state.players[playerId] &&
+      !state.players[playerId]?.eliminated
   );
+  const livePlayers = new Set(players);
 
   for (const event of due) {
     const effect = event.effect;
@@ -8295,7 +8299,7 @@ export function applyCustomMapTimedEvents(state: GameState): void {
     if (effect.kind === "movement") {
       let heroesBuffed = 0;
       for (const hero of Object.values(state.heroes)) {
-        if (hero.controllerId === NEUTRAL_PLAYER_ID || !state.players[hero.controllerId]) {
+        if (!livePlayers.has(hero.controllerId)) {
           continue;
         }
         hero.movementPoints += effect.amount;

@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MapPresetEditor } from "./map-preset-editor";
-import type { CustomMapPreset } from "@/engine";
+import { MAX_TIMED_EVENTS, type CustomMapPreset } from "@/engine";
 
 afterEach(cleanup);
 
@@ -110,7 +110,7 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
     );
 
     // Add-event creates a freeform card (not a fixed template).
-    fireEvent.click(screen.getByRole("button", { name: "+ Add event" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add event" }));
     expect(onChange).toHaveBeenLastCalledWith(
       expect.objectContaining({
         timedEvents: expect.arrayContaining([
@@ -120,5 +120,38 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
     );
     const last = onChange.mock.calls.at(-1)?.[0] as CustomMapPreset;
     expect(last.timedEvents!.length).toBe(2);
+  });
+
+  it("exposes the storage cap instead of silently adding events that will be discarded", () => {
+    const timedEvents: NonNullable<CustomMapPreset["timedEvents"]> = Array.from(
+      { length: MAX_TIMED_EVENTS },
+      (_, index) => ({
+        round: (index % 30) + 1,
+        effect: { kind: "note", text: `Event ${index + 1}` }
+      })
+    );
+    const onChange = vi.fn();
+    render(<MapPresetEditor preset={{ timedEvents }} onChange={onChange} />);
+
+    expect(screen.getByText(`${MAX_TIMED_EVENTS}/${MAX_TIMED_EVENTS}`)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Add event" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByText(/Event limit reached/)).toBeTruthy();
+    expect(
+      screen.getAllByRole("button", { name: /Duplicate timed event/ })[0]?.hasAttribute("disabled")
+    ).toBe(true);
+  });
+
+  it("warns when an event falls after the map's suggested length", () => {
+    render(
+      <MapPresetEditor
+        preset={{
+          roundLimit: 6,
+          timedEvents: [{ round: 8, effect: { kind: "movement", amount: 1 } }]
+        }}
+        onChange={() => {}}
+      />
+    );
+
+    expect(screen.getByText(/fires after the suggested 6-round map length/)).toBeTruthy();
   });
 });
