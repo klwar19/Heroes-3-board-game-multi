@@ -513,16 +513,35 @@ describe("collectMapObjectives", () => {
     expect(primaryMapObjective(state, secondary, choices)?.spaceId).toBe(RESOURCE);
   });
 
-  it("elevates grail dig sites and dragon utopia under their win modes", () => {
+  it("seeks Obelisks first, then elevates the grail dig site once 2 are visited (Holy Grail)", () => {
     const state = game();
     const hero = p2Hero(state);
     // Mark a public grail dig on an empty field and switch victory mode.
     state.adventure!.victoryMode = "grail";
-    state.adventure!.grail = { status: "uncollected" };
+    state.adventure!.grail = { status: "uncollected", obelisksVisited: {} };
     state.adventure!.fields[RESOURCE].grailDiggable = true;
-    const grailObjectives = collectMapObjectives(state, hero);
-    const grailHit = grailObjectives.find((o) => o.spaceId === RESOURCE);
-    expect(grailHit?.kind).toBe("victory");
+    // Two distinct, unvisited Obelisks (the Holy Grail dig prerequisite).
+    for (const id of [MINE, TREASURE]) {
+      state.adventure!.fields[id].location = "obelisk";
+      state.adventure!.fields[id].difficulty = undefined;
+      state.adventure!.fields[id].flagOwnerId = null;
+    }
+
+    // Dig LOCKED (0 Obelisks visited): the Grail dig site is NOT a march target,
+    // but the unvisited Obelisks ARE the victory objectives to seek first.
+    let objectives = collectMapObjectives(state, hero);
+    expect(objectives.find((o) => o.spaceId === RESOURCE)?.kind).not.toBe("victory");
+    expect(objectives.find((o) => o.spaceId === MINE)?.kind).toBe("victory");
+    expect(objectives.find((o) => o.spaceId === TREASURE)?.kind).toBe("victory");
+
+    // Visit both Obelisks -> the dig UNLOCKS: the Grail becomes the victory
+    // objective and the already-visited Obelisks are no longer elevated.
+    state.adventure!.grail!.obelisksVisited = { p2: [MINE, TREASURE] };
+    state.adventure!.fields[MINE].flagOwnerId = "p2";
+    state.adventure!.fields[TREASURE].flagOwnerId = "p2";
+    objectives = collectMapObjectives(state, hero);
+    expect(objectives.find((o) => o.spaceId === RESOURCE)?.kind).toBe("victory");
+    expect(objectives.find((o) => o.spaceId === MINE)?.kind).not.toBe("victory");
 
     // CONTROL: under conquest the same diggable field is not a victory site.
     state.adventure!.victoryMode = "conquest";
