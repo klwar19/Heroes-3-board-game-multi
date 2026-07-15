@@ -125,9 +125,12 @@ Cloudflare R2 CDN at `https://cdn.hamthefirt.xyz` (runbook + live status:
 
 ## Phone UI mode (per-device layout choice) — what runs vs. limits
 
-Before the game begins (and once per browser, mid-game join included) the table
-asks **"How are you playing?" — Computer mode or Phone mode** (`UiModePrompt`,
-device detection only pre-highlights the recommendation). The choice lives in
+At the very start of the app flow (the main menu `/menu` and the multiplayer
+lobby `/play`) — and, for a direct-link / mid-game joiner who skips the menu,
+once per browser on every table branch too — the game asks **"How are you
+playing?" — Computer mode or Phone mode** (`UiModePrompt`, device detection
+only pre-highlights the recommendation; it renders only while the preference is
+unset so it never double-asks). The choice lives in
 `localStorage["binh-ui-mode"]` (`src/lib/ui-mode-preference.ts`, helper-coach
 pattern; never in GameState, never sent to the server) and is switchable any
 time via the 📱/💻 toggle in the table menu. Phone mode = `.phoneMode` class +

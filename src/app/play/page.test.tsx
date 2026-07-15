@@ -119,4 +119,18 @@ describe("/play (multiplayer room browser)", () => {
     render(<PlayPage />);
     expect(await screen.findByText(/Could not load the room list/i)).toBeTruthy();
   });
+
+  it("asks the Computer/Phone layout question at the very start (preference unset)", () => {
+    // localStorage is cleared in beforeEach, so the per-browser mode is unset:
+    // the lobby entry-page mount must show the pre-game prompt. Fails if the
+    // <UiModePrompt /> mount is removed from the play page.
+    render(<PlayPage />);
+    expect(screen.getByRole("dialog", { name: /choose your screen layout/i })).toBeTruthy();
+  });
+
+  it("does NOT ask the layout question once the mode is already chosen (CONTROL)", () => {
+    window.localStorage.setItem("binh-ui-mode", "computer");
+    render(<PlayPage />);
+    expect(screen.queryByRole("dialog", { name: /choose your screen layout/i })).toBeNull();
+  });
 });
