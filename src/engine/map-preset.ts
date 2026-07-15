@@ -15,6 +15,7 @@ import { allTileDefinitions } from "@/data/map/tiles";
 import { locationDefinitions } from "@/data/map/locations";
 import type { TileDefinition } from "@/data/map/types";
 import { seaTileBand, subterraneanTileBand } from "./adventure";
+import { VICTORY_MODE_LABELS } from "./ruleset";
 import type {
   CustomMapPreset,
   CustomMapTilePlan,
@@ -379,12 +380,9 @@ export function customMapPresetIsActive(preset: CustomMapPreset | null | undefin
   );
 }
 
-const VICTORY_LABELS: Record<VictoryMode, string> = {
-  conquest: "Conquest",
-  grail: "Grail Hunt",
-  "dragon-hunt": "Dragon Hunt",
-  "dragon-conqueror": "Dragon Conqueror"
-};
+// Single source of truth for victory-mode names (renamed "Grail Hunt" ->
+// "Holy Grail" there) — the designer must never drift from the game-options UI.
+const VICTORY_LABELS: Record<VictoryMode, string> = VICTORY_MODE_LABELS;
 
 /** Shared resource line for UI + feed messages. */
 export function formatPresetResources(r: {
@@ -743,9 +741,6 @@ export const MAP_PRESET_BUILDING_OPTIONS: { id: string; label: string }[] = [
   { id: "tavern", label: "Tavern" }
 ];
 
-export const MAP_PRESET_VICTORY_OPTIONS: { id: VictoryMode; label: string }[] = [
-  { id: "conquest", label: "Conquest" },
-  { id: "grail", label: "Grail Hunt" },
-  { id: "dragon-hunt", label: "Dragon Hunt" },
-  { id: "dragon-conqueror", label: "Dragon Conqueror" }
-];
+export const MAP_PRESET_VICTORY_OPTIONS: { id: VictoryMode; label: string }[] = (
+  Object.keys(VICTORY_MODE_LABELS) as VictoryMode[]
+).map((id) => ({ id, label: VICTORY_MODE_LABELS[id] }));
