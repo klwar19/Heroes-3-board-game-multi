@@ -101,6 +101,8 @@ describe("MapDesigner — center Ⅶ-field designation", () => {
     const conflict = container.querySelector(".designerVictoryConflict");
     expect(conflict, "victory conflict warning shown").toBeTruthy();
     expect(conflict!.textContent).toMatch(/Grail dig sites/i);
+    // The warning is tagged with the red-cross board glyph.
+    expect(conflict!.querySelector('img[src*="red_cross"]'), "red-cross glyph on the conflict").toBeTruthy();
 
     // CONTROL: the same map under Conquest raises no conflict.
     cleanup();
@@ -117,6 +119,39 @@ describe("MapDesigner — center Ⅶ-field designation", () => {
       />
     );
     expect(ok.querySelector(".designerVictoryConflict")).toBeNull();
+  });
+
+  it("shows a green all-clear (tick glyph) when a Grail design already supports the win condition", () => {
+    // A forced-Grail centre plus a face-down Far overflow slot → capacity ≥ 2 →
+    // no conflict → the all-clear appears for the design-requiring victory mode.
+    const { container } = render(
+      <MapDesigner
+        scenarioId="skirmish"
+        victoryMode="grail"
+        customMap={[
+          { row: 8, col: 2, group: "starting", faceDown: false },
+          { row: 9, col: 4, group: "center", faceDown: false, tileDefId: "C1", viiField: "grail" },
+          { row: 6, col: 4, group: "far", faceDown: true }
+        ]}
+        onChange={() => {}}
+      />
+    );
+    expect(container.querySelector(".designerVictoryConflict"), "no conflict").toBeNull();
+    const allClear = container.querySelector(".designerVictoryOk");
+    expect(allClear, "victory all-clear shown").toBeTruthy();
+    expect(allClear!.querySelector('img[src*="green_tick"]'), "green-tick glyph on the all-clear").toBeTruthy();
+
+    // CONTROL: Conquest needs no supporting tiles, so no all-clear is shown.
+    cleanup();
+    const { container: plain } = render(
+      <MapDesigner
+        scenarioId="skirmish"
+        victoryMode="conquest"
+        customMap={[{ row: 8, col: 2, group: "starting", faceDown: false }]}
+        onChange={() => {}}
+      />
+    );
+    expect(plain.querySelector(".designerVictoryOk"), "no all-clear under Conquest").toBeNull();
   });
 });
 

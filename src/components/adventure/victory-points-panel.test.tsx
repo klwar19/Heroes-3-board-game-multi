@@ -54,6 +54,8 @@ describe("VictoryPointsDock (live standings)", () => {
     // Both seat cards carry the hero-level row (levels 4 and 2).
     expect(within(dialog).getAllByText("Hero Experience Levels").length).toBe(2);
     expect(within(dialog).getByText("Victory Points — if scored now")).toBeTruthy();
+    // The hero-level rows are tagged with the experience board glyph.
+    expect(dialog.querySelectorAll('.vpRowGlyph[src*="experience"]').length, "experience glyphs").toBe(2);
   });
 
   it("CONTROL: renders nothing when VP mode is OFF", () => {
@@ -88,6 +90,9 @@ describe("VictoryPointsScoringOverlay (game-over breakdown)", () => {
     expect(within(dialog).getByText("Completed the victory condition")).toBeTruthy();
     expect(within(dialog).getByText("9 VP")).toBeTruthy();
     expect(within(dialog).getByText("4 VP")).toBeTruthy();
+    // The "completed" row shows the green-tick status glyph (colour kept — the
+    // .status class opts it out of the monochrome invert).
+    expect(dialog.querySelector('.vpRowGlyph.status[src*="green_tick"]'), "completed tick glyph").toBeTruthy();
   });
 
   it("CONTROL: renders nothing without a VP_SCORING event", () => {

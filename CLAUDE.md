@@ -1684,3 +1684,100 @@ Five additions; each engine rule fails a named test if its wiring is removed.
   save paid with one Expert Power + crown; a no-crown CONTROL rejects it) and
   `overlays.test.tsx` (the Crown toggle emits `costCardModes` and the engine
   accepts it, with a no-crown CONTROL that hides the toggle).
+
+## Map designer upgrade (designed gates/borders/locks/obelisks/objects/Ⅶ/VP) — what runs vs. limits
+
+Seven map-only features on `CustomMapPreset` / `CustomMapTilePlan` (applied when
+the map is picked). Preset-editor + tile-popover UI in `map-designer.tsx` /
+`map-preset-editor.tsx`; the new rows/warnings carry Heegu-sama/Homm3BG board
+glyphs via `REWARD_GLYPH_ICONS` (`homm-assets.ts`) through `assetUrl()`.
+
+Leading with what does NOT run / deliberate limits:
+- **Standalone (off-tile) Whirlpool tokens are REFUSED** — a Whirlpool must sit
+  on a tile slot; only Monoliths and colored Gates may be standalone. A
+  standalone hex touching BOTH layers is also rejected (`map-objects.test.ts`).
+- **Colored Gates carve only on a FACE-UP tile slot OR as a standalone hex** — a
+  face-down / forbidden-slot tile Gate is dropped with a problem (`map-objects.test.ts`).
+- **The map AI never routes THROUGH a teleport** (Monolith / Gate / monolith-role
+  Obelisk): it treats a teleport/guarded object hex as an ordinary field — it can
+  walk onto and fight a guarded Gate, but never plans a path across the link
+  (`map-objects.test.ts` "computer AI treats object hexes as ordinary guarded
+  fields" runs a whole SP turn with a guarded Gate + Monolith, no stall/crash).
+- **Obelisk role is MAP-WIDE, never per-Obelisk** (face-down tiles hide which is
+  which); every role still credits the Holy-Grail dig identically
+  (`obelisk-roles.test.ts` "dig progress is role-independent").
+- **A monolith-role Obelisk / Monolith does NOT re-trigger on ARRIVAL** — the dig
+  credit + reward fire only on deliberate ENTRY, before the teleport; landing on
+  one via a teleport is inert (no ping-pong, no re-credit).
+- **A Ⅶ-field override drops the printed field's trappings** — forcing a centre
+  slot's difficulty-7 field to Town/Grail/Utopia keeps the difficulty-7 guard and
+  the terrain but discards the printed objective's resource/faction/amount
+  (`materializeTileFields`, `vii-field-designation.test.ts`).
+- **The Grail-capacity conflict check is CONSERVATIVE about Near/Far overflow** —
+  it counts face-down Near/Far slots optimistically as Grail hosts (setup
+  soft-fills a tight layout from the pool rather than hard-failing), so it only
+  BLOCKS a design that truly cannot host 2 dig sites (`vii-field-designation.test.ts`
+  "Near/Far overflow rescues it").
+- **VP with a conquest-style victory + NO round limit effectively ends only by
+  last-faction-standing** (which wins INSTANTLY, no scoring); set a round limit
+  for a scored end (`victory-points.test.ts` "with no round limit … does NOT end"
+  + "Last-faction-standing … NO scoring").
+- **No "dig the Grail" VP objective** — deliberately omitted from the four kinds
+  (control N towns / flag N mines-settlements / reach hero level N / defeat a
+  Dragon Utopia): the base table's "Completed the victory condition" row already
+  credits a Grail win, so a dig objective would double-count.
+- **The fixed-orientation feed line is presentation-only** — the real lock is the
+  engine placing the home tile at its designed `rotation` and refusing every
+  opening rotation for that seat; `START_TILE_ORIENTATION_FIXED` is just the
+  notice (`start-tile-rotation.test.ts` cases 1/3/5).
+
+What runs (each pinned by a test that fails if the wiring is removed):
+- **1. Designed gate links** (`CustomMapTilePlan.gateLinks`): pin a cavern↔Surface
+  pairing (1 cavern → up to 4 Surfaces) at chosen hexes; the engine carves BOTH
+  halves at the DESIGNED hexes (not the auto-nearest), a pinned link opens NO
+  pick-on-reveal choice, and a link to a non-touching Surface is dropped with a
+  problem. Pointer-drag + ↻ cycle. `designed-gate-links.test.ts`,
+  `subterranean-gate-planning.test.ts` (preview == engine, incl.
+  `unreachableUndergroundCenters`).
+- **2. Yellow borders** (`CustomMapTilePlan.extraBorders`, absolute dirs 0-5):
+  seals an outer edge for movement / discovery / new-tile placement / AI —
+  everything but Expert Pathfinding — like a printed arc; stored ABSOLUTE so it
+  survives rotation + a face-down random draw, and a LINKED gate crossing beats a
+  border on the same arc. `designed-borders.test.ts`.
+- **3. Fixed starting-tile orientation** (`lockRotation` + `rotation`): a locked
+  seat's home tile is placed at the designed rotation and owes NO opening
+  rotation; the opening chain skips it in seat order (no stall), the reducer
+  rejects a rotation targeting it, and the lock holds with the ceremony off.
+  `start-tile-rotation.test.ts`.
+- **4. Obelisk roles** (`CustomMapPreset.obelisks`, absent = classic locked die):
+  `monolith` (all Obelisks + Monolith tokens = one teleport network, always STOPS
+  the hero, Revisit 1 MP, lone = inert), `bonus` (a fixed reward —
+  morale/search/resources/movement/dice, never farmable on re-entry), or
+  `victory-only` (no reward, still a dig marker). `obelisk-roles.test.ts`.
+- **5. One-hex objects** (`CustomMapPreset.objects`): tile-slot replacement OR
+  standalone off-tile hexes (layer inferred from the touched tile); 4 colored
+  Gate PAIRS (exact-pair teleport, a separate network from Monoliths), optional
+  guards 1-7 on any object running the real neutral-battle flow (a
+  level>difficulty Quick-Combat win teleports + clears; a loss/retreat leaves the
+  guard). `map-objects.test.ts`.
+- **6. Ⅶ-field designation** (a centre plan's `viiField` town/dragon_utopia/grail):
+  forces the difficulty-7 objective field whatever tile lands there (face-up at
+  setup, face-down on reveal, masked in other views until then); a victory-vs-
+  design conflict BLOCKS the start (lobby intact) with live warnings; the knobs
+  `grailObelisksRequired` / `utopiaGuards` / `utopiaBonusSearch` tune the dig /
+  Utopia. `vii-field-designation.test.ts`.
+- **7. Victory Points** (`CustomMapPreset.victoryPoints`): a round-limit OR
+  victory-completion end trigger scores the full rulebook VP table via an
+  event-sourced ledger (heroes defeated, buildings, hero levels, flagged mines/
+  settlements, artifacts, + up to 4 designer objectives + completion VP),
+  tie-broken by completer then turn order; a live "if scored now" standings dock
+  + a game-over scoring overlay (`victory-points-panel.tsx`) read the same pure
+  `computeVictoryPoints`. `victory-points.test.ts`.
+
+Glyph polish (Task 7): the Obelisk fixed-bonus kind, the VP objective rows, the
+live VP breakdown rows (experience/gold/artifact/attack-defense by label) and the
+designer warnings' red-cross conflict / green-tick all-clear are tagged with
+Homm3BG glyphs. Monochrome symbol glyphs are lightened in CSS to read on the dark
+panels; the tick/cross keep their own colour. Icon presence is pinned in
+`map-preset-editor.test.tsx`, `victory-points-panel.test.tsx`,
+`map-designer.test.tsx`.

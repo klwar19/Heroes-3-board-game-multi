@@ -9098,6 +9098,29 @@ span.recruitThumb {
   color: #ffe08a;
 }
 
+/* Board-game reward glyph beside a VP breakdown row's label. The monochrome
+   symbol glyphs (fill="currentColor" → black via <img>) are lightened to read
+   on the dark card; the green-tick "completed" status glyph keeps its own
+   colour (.status opts out of the invert). */
+.vpRowLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+.vpRowGlyph {
+  width: 14px;
+  height: 14px;
+  object-fit: contain;
+  flex-shrink: 0;
+  pointer-events: none;
+  user-select: none;
+  filter: invert(0.82) brightness(1.05);
+}
+.vpRowGlyph.status {
+  filter: none;
+}
+
 .vpBreakdownEmpty {
   margin: 4px 0 0;
   font-size: 12px;
@@ -9121,6 +9144,29 @@ span.recruitThumb {
   gap: 8px;
   padding: 6px 0;
   border-top: 1px dashed rgba(170, 130, 70, 0.3);
+}
+
+/* Fixed-bonus Obelisk row: glyph + kind select + fields on one line. */
+.mapPresetObeliskBonus {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+/* Board-game reward glyph tagging a preset row (Obelisk bonus kind, VP
+   objective kind). Monochrome symbol glyphs, lightened to read on the dark
+   editor panel. */
+.mapPresetRowGlyph {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+  flex-shrink: 0;
+  align-self: center;
+  pointer-events: none;
+  user-select: none;
+  filter: invert(0.82) brightness(1.05);
 }
 
 .opponentInfoModal {
@@ -12546,6 +12592,23 @@ img.cardBack {
   border-color: rgba(224, 185, 60, 0.7);
   background: rgba(120, 92, 20, 0.24);
   color: #ffe9b8;
+}
+/* Win-condition all-clear (green) — the design supports the chosen victory. */
+.designerVictoryOk[role="status"] {
+  border-color: rgba(63, 165, 53, 0.65);
+  background: rgba(30, 92, 26, 0.26);
+  color: #cdeebf;
+}
+/* The red-cross / green-tick status glyph inline with an alert's text. These
+   carry their own colour, so they are NOT inverted like the symbol glyphs. */
+.designerAlertGlyph {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  vertical-align: -2px;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
 }
 
 /* --- Map designer: one-hex objects (Monolith/Whirlpool + colored Gates) ----- */
