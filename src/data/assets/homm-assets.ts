@@ -249,6 +249,46 @@ export const SKILL_ICONS = {
 } as const;
 
 /**
+ * Map-designer chrome: toolbar medallions (zoom / wheel lock / reset) plus the
+ * official Homm3BG glyphs used as mode & landmark chips. Glyphs come from
+ * github.com/Heegu-sama/Homm3BG `assets/glyphs`; location chips reuse the board
+ * resource tokens and small generated landmark icons where Homm3BG has no
+ * dedicated glyph (obelisk, settlement).
+ */
+export const DESIGNER_UI_ICONS = {
+  zoomIn: "/assets/icons/ui-zoom-in.webp",
+  zoomOut: "/assets/icons/ui-zoom-out.webp",
+  zoomReset: "/assets/icons/ui-zoom-reset.webp",
+  wheelLock: "/assets/icons/ui-wheel-lock.webp",
+  wheelUnlock: "/assets/icons/ui-wheel-unlock.webp",
+  /** Random tile-pool mode — treasure dice glyph. */
+  modeRandom: "/assets/glyphs/2_treasure_die.svg",
+  /** Secret landmark mode — permanent/hidden glyph. */
+  modeSecret: "/assets/glyphs/permanent.svg",
+  /** Face-up exact tile — yellow map glyph. */
+  modeFaceUp: "/assets/glyphs/map-yellow.svg",
+  /** Rotate tile. */
+  rotate: "/assets/glyphs/movement.svg",
+  /** Map glyph (header / branding). */
+  map: "/assets/glyphs/map.svg"
+} as const;
+
+/**
+ * Secret-landmark chip art for the designer (and any UI that lists
+ * `SECRET_TILE_FEATURES`). Paths only — render through `assetUrl()`.
+ */
+export const SECRET_FEATURE_ICONS = {
+  gold_mine: RESOURCE_ICONS.gold,
+  valuables_mine: RESOURCE_ICONS.valuables,
+  materials_mine: RESOURCE_ICONS.buildingMaterials,
+  any_mine: "/assets/glyphs/treasure.svg",
+  obelisk: "/assets/icons/location-obelisk.webp",
+  settlement: "/assets/icons/location-settlement.webp",
+  town: "/assets/glyphs/building_citadel.svg",
+  objective: "/assets/icons/location-grail.webp"
+} as const;
+
+/**
  * Morale birds, the classic Heroes III IMRL42 sprite set (one frame per track
  * step, −3 … +3): the gold bird soaring with wings spread for high morale down
  * through the tarnished, grounded bird for low morale, with the stone bird at

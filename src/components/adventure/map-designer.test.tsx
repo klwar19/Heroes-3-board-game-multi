@@ -87,6 +87,35 @@ describe("MapDesigner — Subterranean Gates", () => {
   });
 });
 
+describe("MapDesigner — zoom toolbar (map-style)", () => {
+  it("exposes zoom in/out, wheel-lock and reset with board-game icons + a scale readout", () => {
+    const container = renderDesigner([]);
+    const toolbar = container.querySelector('.mapToolbar[aria-label="Designer view controls"]');
+    expect(toolbar, "designer toolbar present").toBeTruthy();
+    const buttons = toolbar!.querySelectorAll("button");
+    expect(buttons.length).toBeGreaterThanOrEqual(4);
+    // Ornate medallions / glyphs — not bare lucide SVGs as the only affordance.
+    expect(toolbar!.querySelectorAll("img.designerToolIcon").length).toBeGreaterThanOrEqual(4);
+    expect(toolbar!.querySelector(".designerZoomReadout")?.textContent).toMatch(/%/);
+    // Wheel-zoom toggle is pressed by default (designer board is the main surface).
+    const wheelBtn = [...buttons].find((btn) => /wheel zoom/i.test(btn.getAttribute("title") ?? ""));
+    expect(wheelBtn, "wheel zoom toggle").toBeTruthy();
+    expect(wheelBtn!.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(wheelBtn!);
+    expect(wheelBtn!.getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("zoom-in button raises the scale readout above 100%", () => {
+    const container = renderDesigner([]);
+    const toolbar = container.querySelector('.mapToolbar[aria-label="Designer view controls"]')!;
+    const zoomIn = [...toolbar.querySelectorAll("button")].find((btn) => btn.getAttribute("title") === "Zoom in");
+    expect(zoomIn).toBeTruthy();
+    fireEvent.click(zoomIn!);
+    const readout = toolbar.querySelector(".designerZoomReadout")?.textContent ?? "";
+    expect(Number.parseInt(readout, 10)).toBeGreaterThan(100);
+  });
+});
+
 describe("MapDesigner — face-down secret pins", () => {
   const town = { row: 10, col: 10 };
   const spots = tileLatticeNeighbors(town);
@@ -257,6 +286,29 @@ describe("MapDesigner — face-down secret pins", () => {
       "Gold mine feature card listed"
     ).toBe(true);
     expect(popover2.querySelector(".popoverFeatureCard.selected")).toBeTruthy();
+  });
+
+  it("secret landmark cards render board-game icon art (not emoji-only)", () => {
+    const map: CustomMapTilePlan[] = [
+      { row: town.row, col: town.col, group: "starting", faceDown: false },
+      {
+        row: spots[0].row,
+        col: spots[0].col,
+        group: "near",
+        faceDown: true,
+        secretFeature: "gold_mine"
+      }
+    ];
+    const container = renderDesigner(map);
+    const popover = openTilePopover(container, 1);
+    const featureGlyphs = popover.querySelectorAll(".popoverFeatureGlyph");
+    expect(featureGlyphs.length, "landmark chips show art").toBeGreaterThan(0);
+    for (const img of featureGlyphs) {
+      const src = (img as HTMLImageElement).getAttribute("src") ?? "";
+      expect(src, "feature art path").toMatch(/\/assets\//);
+    }
+    // Mode cards use Homm3BG glyphs too.
+    expect(popover.querySelectorAll(".popoverModeGlyph").length).toBe(3);
   });
 
   it("clicking Secret then a landmark stores secretFeature (not a specific tile)", () => {

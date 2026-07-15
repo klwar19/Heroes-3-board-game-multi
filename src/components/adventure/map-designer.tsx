@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { assetUrl } from "@/lib/asset-url";
-import { Dices, Eye, EyeOff, Minus, Plus, RotateCcw, RotateCw, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import { allTileDefinitions } from "@/data/map/tiles";
 import { locationDefinitions } from "@/data/map/locations";
 import {
+  DESIGNER_UI_ICONS,
   mapTokenImage,
   TILE_BACK_IMAGES,
   tileBackImage,
@@ -36,6 +37,26 @@ import {
   type SecretTileFeature
 } from "@/engine";
 import { titleCase } from "@/components/table/utils";
+import {
+  MAP_SCALE_MAX,
+  MAP_SCALE_MIN,
+  pinchCamera,
+  type PinchStart
+} from "@/components/adventure/map-pinch";
+
+/** Board-game glyph / medallion for designer toolbar and mode cards. */
+function DesignerGlyph({
+  src,
+  className = "designerGlyph"
+}: {
+  src: string;
+  className?: string;
+}) {
+  return (
+    // eslint-disable-next-line @next/next/no-img-element -- assetUrl CDN path; decorative
+    <img alt="" aria-hidden="true" className={className} draggable={false} src={assetUrl(src)} />
+  );
+}
 
 /** Tile group of a designed plan. */
 type DesignGroup = CustomMapTilePlan["group"];
@@ -241,35 +262,56 @@ function tileFeatureTags(def: TileDefinition): string[] {
 
 /**
  * Landmark filters for the clickable tile picker — pick a chip, then click a
- * tile. "all" shows every tile in the slot's pool.
+ * tile. "all" shows every tile in the slot's pool. Optional `iconSrc` is
+ * board-game art for the chip face.
  */
-const TILE_PICK_FILTERS: { id: string; label: string; match: (def: TileDefinition) => boolean }[] = [
+const TILE_PICK_FILTERS: {
+  id: string;
+  label: string;
+  iconSrc?: string;
+  match: (def: TileDefinition) => boolean;
+}[] = [
   { id: "all", label: "All", match: () => true },
-  { id: "mine", label: "Mine", match: (def) => def.fields.some((field) => field.location === "mine") },
+  {
+    id: "mine",
+    label: "Mine",
+    iconSrc: "/assets/glyphs/treasure.svg",
+    match: (def) => def.fields.some((field) => field.location === "mine")
+  },
   {
     id: "gold",
     label: "Gold",
+    iconSrc: "/assets/icons/resource-gold.webp",
     match: (def) => def.fields.some((field) => field.location === "mine" && field.resource === "gold")
   },
   {
     id: "valuables",
     label: "Valuables",
+    iconSrc: "/assets/icons/resource-valuables.webp",
     match: (def) => def.fields.some((field) => field.location === "mine" && field.resource === "valuables")
   },
-  { id: "obelisk", label: "Obelisk", match: (def) => def.fields.some((field) => field.location === "obelisk") },
+  {
+    id: "obelisk",
+    label: "Obelisk",
+    iconSrc: "/assets/icons/location-obelisk.webp",
+    match: (def) => def.fields.some((field) => field.location === "obelisk")
+  },
   {
     id: "settlement",
     label: "Settlement",
+    iconSrc: "/assets/icons/location-settlement.webp",
     match: (def) => def.fields.some((field) => field.location === "settlement")
   },
   {
     id: "town",
     label: "Town",
+    iconSrc: "/assets/glyphs/building_citadel.svg",
     match: (def) => def.fields.some((field) => field.location === "town" || field.location === "random_town")
   },
   {
     id: "objective",
     label: "Grail / Dragons",
+    iconSrc: "/assets/icons/location-grail.webp",
     match: (def) =>
       def.fields.some((field) => field.location === "grail" || field.location === "dragon_utopia")
   }
@@ -366,10 +408,11 @@ type DesignDrag =
 
 /**
  * Map designer board: a real hex-grid view of the scenario. Pan by dragging the
- * empty background, zoom with the wheel or buttons. Drag a tile type from the
- * palette onto the board to place it; drag a placed tile to move it; click a
- * placed tile to reveal it (face up), flip it back to random, rotate it or
- * remove it. The first Town (Ⅰ) tiles become the player seats.
+ * empty background, zoom with the wheel (when unlocked), pinch, or toolbar —
+ * same camera model as the adventure map (`map-pinch.ts`). Drag a tile type
+ * from the palette onto the board to place it; drag a placed tile to move it;
+ * click a placed tile to reveal it (face up), flip it back to random, rotate it
+ * or remove it. The first Town (Ⅰ) tiles become the player seats.
  */
 export function MapDesigner({
   scenarioId,
@@ -386,6 +429,9 @@ export function MapDesigner({
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [popoverAt, setPopoverAt] = useState<{ x: number; y: number } | null>(null);
   const [camera, setCamera] = useState({ x: 0, y: 0, scale: 1 });
+  // Wheel-zoom defaults ON here (the designer board is the main surface). The
+  // lock button matches the adventure map: when locked, the wheel scrolls the page.
+  const [wheelZoomEnabled, setWheelZoomEnabled] = useState(true);
   const [drag, setDrag] = useState<DesignDrag | null>(null);
   const [hoverSlot, setHoverSlot] = useState<HexCoord | null>(null);
   /** Landmark chip filter for the clickable tile picker (All / Mine / …). */
@@ -397,7 +443,11 @@ export function MapDesigner({
   // release in place opens its popover.
   const pressRef = useRef<{ pointerId: number; index: number; group: DesignGroup; seaBand?: SeaBand; subBand?: SubBand; startX: number; startY: number; promoted: boolean } | null>(null);
   const gRef = useRef<SVGGElement | null>(null);
+  const svgRef = useRef<SVGSVGElement | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
+  // Touch pinch (zoom + two-finger pan) — same pure math as the adventure map.
+  const pointersRef = useRef(new Map<number, { x: number; y: number }>());
+  const pinchRef = useRef<{ aId: number; bId: number; start: PinchStart } | null>(null);
 
   const starts = useMemo<HexCoord[]>(
     () => (scenario ? scenario.layout.starts.map((start) => ({ ...start })) : []),
@@ -512,6 +562,38 @@ export function MapDesigner({
     const point = new DOMPoint(clientX, clientY).matrixTransform(ctm.inverse());
     return { x: point.x, y: point.y };
   }, []);
+
+  const clampScale = useCallback(
+    (scale: number) => Math.min(MAP_SCALE_MAX, Math.max(MAP_SCALE_MIN, scale)),
+    []
+  );
+
+  const zoomBy = useCallback(
+    (factor: number) => {
+      setCamera((current) => ({ ...current, scale: clampScale(current.scale * factor) }));
+    },
+    [clampScale]
+  );
+
+  // Wheel-to-zoom as a native non-passive listener (React's root wheel is
+  // passive — preventDefault from onWheel is ignored and the page would scroll).
+  // Only attached while unlocked, matching HexMapBoard.
+  useEffect(() => {
+    if (!wheelZoomEnabled) {
+      return;
+    }
+    const svg = svgRef.current;
+    if (!svg) {
+      return;
+    }
+    const onWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      const factor = event.deltaY < 0 ? 1.15 : 1 / 1.15;
+      setCamera((current) => ({ ...current, scale: clampScale(current.scale * factor) }));
+    };
+    svg.addEventListener("wheel", onWheel, { passive: false });
+    return () => svg.removeEventListener("wheel", onWheel);
+  }, [wheelZoomEnabled, clampScale]);
 
   // The hex a drop would land on: simply the one under the pointer, free to be
   // any hex on the grid. Only a position whose flower would overlap an existing
@@ -940,6 +1022,18 @@ export function MapDesigner({
       }
       // Take this press for the tile so the background pan does not start.
       event.stopPropagation();
+      // Still track the pointer so a second finger can pinch-zoom the board.
+      pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (pointersRef.current.size >= 2) {
+        suppressClickRef.current = true;
+        pressRef.current = null;
+        panRef.current = null;
+        if (pointersRef.current.size === 2) {
+          const [[aId, a], [bId, b]] = [...pointersRef.current.entries()];
+          pinchRef.current = { aId, bId, start: { camera, a: { ...a }, b: { ...b } } };
+        }
+        return;
+      }
       suppressClickRef.current = false;
       pressRef.current = {
         pointerId: event.pointerId,
@@ -995,16 +1089,20 @@ export function MapDesigner({
       if (featureSecret && plan.secretFeature) {
         const featureMeta = SECRET_TILE_FEATURES.find((entry) => entry.id === plan.secretFeature);
         if (featureMeta) {
+          const iconSize = size * 0.95;
           labelLayer.push(
-            <text
+            <image
               className="designerTileFeatureIcon"
+              height={iconSize}
+              href={assetUrl(featureMeta.iconSrc)}
               key={`plan-feature-icon-${index}`}
-              textAnchor="middle"
-              x={centerPixel.x}
-              y={centerPixel.y - 10}
+              preserveAspectRatio="xMidYMid meet"
+              width={iconSize}
+              x={centerPixel.x - iconSize / 2}
+              y={centerPixel.y - iconSize - 4}
             >
-              {featureMeta.icon}
-            </text>
+              <title>{featureMeta.label}</title>
+            </image>
           );
         }
       }
@@ -1194,14 +1292,40 @@ export function MapDesigner({
       <div className="designerBoardWrap" ref={wrapRef}>
         <svg
           className={`designerSvg ${drag ? "dragging" : ""}`}
+          ref={svgRef}
           onPointerCancel={(event) => {
+            pointersRef.current.delete(event.pointerId);
+            if (pinchRef.current && (pinchRef.current.aId === event.pointerId || pinchRef.current.bId === event.pointerId)) {
+              pinchRef.current = null;
+            }
             if (panRef.current?.pointerId === event.pointerId) {
               panRef.current = null;
+            }
+            if (pressRef.current?.pointerId === event.pointerId) {
+              pressRef.current = null;
             }
           }}
           onPointerDown={(event) => {
             // Background press → pan. Tile presses stopPropagation above.
             if (event.button !== 0 || drag) {
+              return;
+            }
+            pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+            if (pointersRef.current.size >= 2) {
+              // Multi-touch: cancel pan / tile press and hand off to pinch.
+              suppressClickRef.current = true;
+              pressRef.current = null;
+              panRef.current = null;
+              if (pointersRef.current.size === 2) {
+                const [[aId, a], [bId, b]] = [...pointersRef.current.entries()];
+                pinchRef.current = { aId, bId, start: { camera, a: { ...a }, b: { ...b } } };
+                try {
+                  (event.currentTarget as Element).setPointerCapture(aId);
+                  (event.currentTarget as Element).setPointerCapture(bId);
+                } catch {
+                  // jsdom / detached — gesture still works uncaptured.
+                }
+              }
               return;
             }
             if (popoverAt) {
@@ -1218,6 +1342,33 @@ export function MapDesigner({
             };
           }}
           onPointerMove={(event) => {
+            const tracked = pointersRef.current.get(event.pointerId);
+            if (tracked) {
+              tracked.x = event.clientX;
+              tracked.y = event.clientY;
+            }
+            const pinch = pinchRef.current;
+            if (pinch) {
+              if (event.pointerId !== pinch.aId && event.pointerId !== pinch.bId) {
+                return;
+              }
+              const a = pointersRef.current.get(pinch.aId);
+              const b = pointersRef.current.get(pinch.bId);
+              const svg = svgRef.current;
+              if (!a || !b || !svg) {
+                return;
+              }
+              const rect = svg.getBoundingClientRect();
+              setCamera(
+                pinchCamera(pinch.start, a, b, rect, {
+                  minX,
+                  minY,
+                  width: maxX - minX,
+                  height: maxY - minY
+                })
+              );
+              return;
+            }
             // Promote a tile press into a move-drag once it travels far enough.
             const press = pressRef.current;
             if (press && press.pointerId === event.pointerId && !press.promoted) {
@@ -1246,6 +1397,23 @@ export function MapDesigner({
             }
           }}
           onPointerUp={(event) => {
+            pointersRef.current.delete(event.pointerId);
+            if (pinchRef.current && (pinchRef.current.aId === event.pointerId || pinchRef.current.bId === event.pointerId)) {
+              pinchRef.current = null;
+              // Remaining finger can resume pan if still down.
+              if (pointersRef.current.size === 1) {
+                const [[id, pt]] = [...pointersRef.current.entries()];
+                panRef.current = {
+                  pointerId: id,
+                  startX: pt.x,
+                  startY: pt.y,
+                  originX: camera.x,
+                  originY: camera.y,
+                  moved: false
+                };
+              }
+              return;
+            }
             // A tile press that never became a drag is a click → open options.
             const press = pressRef.current;
             if (press && press.pointerId === event.pointerId && !press.promoted) {
@@ -1266,10 +1434,6 @@ export function MapDesigner({
               panRef.current = null;
             }
           }}
-          onWheel={(event) => {
-            const factor = event.deltaY < 0 ? 1.15 : 1 / 1.15;
-            setCamera((current) => ({ ...current, scale: Math.min(3, Math.max(0.4, current.scale * factor)) }));
-          }}
           viewBox={`${minX} ${minY} ${maxX - minX} ${maxY - minY}`}
         >
           <g ref={gRef} transform={`translate(${camera.x} ${camera.y}) scale(${camera.scale})`} style={{ transformOrigin: "center" }}>
@@ -1282,15 +1446,34 @@ export function MapDesigner({
         </svg>
 
         <div className="mapToolbar designerToolbarFloat" aria-label="Designer view controls">
-          <button onClick={() => setCamera((c) => ({ ...c, scale: Math.min(3, c.scale * 1.2) }))} title="Zoom in" type="button">
-            <Plus size={13} />
+          <button onClick={() => zoomBy(1.2)} title="Zoom in" type="button">
+            <DesignerGlyph className="designerToolIcon" src={DESIGNER_UI_ICONS.zoomIn} />
           </button>
-          <button onClick={() => setCamera((c) => ({ ...c, scale: Math.max(0.4, c.scale / 1.2) }))} title="Zoom out" type="button">
-            <Minus size={13} />
+          <button onClick={() => zoomBy(1 / 1.2)} title="Zoom out" type="button">
+            <DesignerGlyph className="designerToolIcon" src={DESIGNER_UI_ICONS.zoomOut} />
+          </button>
+          <button
+            aria-pressed={wheelZoomEnabled}
+            className={wheelZoomEnabled ? "selected" : ""}
+            onClick={() => setWheelZoomEnabled((value) => !value)}
+            title={
+              wheelZoomEnabled
+                ? "Mouse-wheel zoom is ON — scroll over the board to zoom. Click to lock it (wheel scrolls the page)."
+                : "Mouse-wheel zoom is locked. Click to unlock and zoom with the scroll wheel."
+            }
+            type="button"
+          >
+            <DesignerGlyph
+              className="designerToolIcon"
+              src={wheelZoomEnabled ? DESIGNER_UI_ICONS.wheelUnlock : DESIGNER_UI_ICONS.wheelLock}
+            />
           </button>
           <button onClick={() => setCamera({ x: 0, y: 0, scale: 1 })} title="Reset the view" type="button">
-            ⤾
+            <DesignerGlyph className="designerToolIcon" src={DESIGNER_UI_ICONS.zoomReset} />
           </button>
+          <span className="designerZoomReadout" title="Current zoom">
+            {Math.round(camera.scale * 100)}%
+          </span>
         </div>
 
         {/* Per-tile options popover, anchored where the tile was clicked. */}
@@ -1321,7 +1504,7 @@ export function MapDesigner({
                     title="Draw a random tile from this pool when the game starts. Players see a face-down back."
                     type="button"
                   >
-                    <Dices size={16} />
+                    <DesignerGlyph className="popoverModeGlyph" src={DESIGNER_UI_ICONS.modeRandom} />
                     <span className="popoverModeTitle">Random</span>
                     <span className="popoverModeSub">Any tile</span>
                   </button>
@@ -1332,7 +1515,7 @@ export function MapDesigner({
                     title="Guarantee a landmark (gold mine, obelisk, …). At game start a random tile with that feature is drawn face-down."
                     type="button"
                   >
-                    <EyeOff size={16} />
+                    <DesignerGlyph className="popoverModeGlyph" src={DESIGNER_UI_ICONS.modeSecret} />
                     <span className="popoverModeTitle">Secret</span>
                     <span className="popoverModeSub">Landmark filter</span>
                   </button>
@@ -1343,7 +1526,7 @@ export function MapDesigner({
                     title="You pick the exact tile and it is visible on the board from the start."
                     type="button"
                   >
-                    <Eye size={16} />
+                    <DesignerGlyph className="popoverModeGlyph" src={DESIGNER_UI_ICONS.modeFaceUp} />
                     <span className="popoverModeTitle">Face-up</span>
                     <span className="popoverModeSub">Visible now</span>
                   </button>
@@ -1380,7 +1563,7 @@ export function MapDesigner({
                               type="button"
                             >
                               <span className="popoverFeatureIcon" aria-hidden="true">
-                                {feature.icon}
+                                <DesignerGlyph className="popoverFeatureGlyph" src={feature.iconSrc} />
                               </span>
                               <span className="popoverFeatureTitle">{feature.label}</span>
                               <span className="popoverFeatureCount">
@@ -1399,7 +1582,14 @@ export function MapDesigner({
                     {selected.secretFeature && !selected.tileDefId ? (
                       <div className="popoverSecretSummary" role="status">
                         <span className="popoverSecretSummaryIcon" aria-hidden="true">
-                          {SECRET_TILE_FEATURES.find((entry) => entry.id === selected.secretFeature)?.icon ?? "🔒"}
+                          {(() => {
+                            const meta = SECRET_TILE_FEATURES.find((entry) => entry.id === selected.secretFeature);
+                            return meta ? (
+                              <DesignerGlyph className="popoverFeatureGlyph" src={meta.iconSrc} />
+                            ) : (
+                              "🔒"
+                            );
+                          })()}
                         </span>
                         <div>
                           <strong>In game:</strong> opens as a face-down {planGroupLabel(selected)} tile, then
@@ -1438,6 +1628,9 @@ export function MapDesigner({
                           onClick={() => setTilePickFilter(filter.id)}
                           type="button"
                         >
+                          {filter.iconSrc ? (
+                            <DesignerGlyph className="popoverFilterGlyph" src={filter.iconSrc} />
+                          ) : null}
                           {filter.label}
                         </button>
                       ))}
@@ -1502,11 +1695,23 @@ export function MapDesigner({
                 ) : null}
 
                 <div className="popoverActions">
-                  <button onClick={() => rotateSelected(-1)} title="Rotate 60° counterclockwise" type="button">
-                    <RotateCcw size={13} />
+                  <button
+                    className="popoverIconButton"
+                    onClick={() => rotateSelected(-1)}
+                    title="Rotate 60° counterclockwise"
+                    type="button"
+                  >
+                    <DesignerGlyph className="popoverActionGlyph flipH" src={DESIGNER_UI_ICONS.rotate} />
+                    <span>−60°</span>
                   </button>
-                  <button onClick={() => rotateSelected(1)} title="Rotate 60° clockwise" type="button">
-                    <RotateCw size={13} /> {(selected.rotation ?? 0) * 60}°
+                  <button
+                    className="popoverIconButton"
+                    onClick={() => rotateSelected(1)}
+                    title="Rotate 60° clockwise"
+                    type="button"
+                  >
+                    <DesignerGlyph className="popoverActionGlyph" src={DESIGNER_UI_ICONS.rotate} />
+                    <span>{(selected.rotation ?? 0) * 60}°</span>
                   </button>
                 </div>
 
@@ -1553,6 +1758,7 @@ export function MapDesigner({
                       const capped = kind === "whirlpool" && tokenCounts.whirlpool >= MAX_WHIRLPOOL_TOKENS;
                       return (
                         <button
+                          className="popoverTokenButton"
                           disabled={capped}
                           key={kind}
                           onClick={() => {
@@ -1575,7 +1781,11 @@ export function MapDesigner({
                           }
                           type="button"
                         >
-                          {kind === "monolith" ? "⛩" : "🌀"} Add a {mapTokenLabel(kind)} token
+                          <DesignerGlyph
+                            className="popoverTokenGlyph"
+                            src={mapTokenImage(kind, kind === "whirlpool" ? 0 : undefined)}
+                          />
+                          Add a {mapTokenLabel(kind)} token
                         </button>
                       );
                     })}
@@ -1614,11 +1824,12 @@ export function MapDesigner({
 
       <small className="optionHint">
         Drag a tile from the palette onto the board, then <strong>click it</strong> to configure: choose{" "}
-        <strong>Random</strong> (pool draw), <strong>Secret</strong> (you pick the tile — mines, obelisks, … stay
-        hidden until discovery), or <strong>Face-up</strong> (visible from the start), then click a tile card. Filter
-        chips (Mine, Obelisk, …) narrow the grid. <strong>Underground (⛰)</strong> tiles need a Subterranean Gate
-        (auto when touching Surface). Add <strong>Monolith</strong> / <strong>Whirlpool</strong> tokens from the same
-        panel — at least 2 of a kind to work. Town (Ⅰ) tiles are seats; drag empty background to pan, scroll to zoom.
+        <strong>Random</strong> (pool draw), <strong>Secret</strong> (landmark filter — mines, obelisks, … stay hidden
+        until discovery), or <strong>Face-up</strong> (visible from the start), then click a tile card. Filter chips
+        (Mine, Obelisk, …) narrow the grid. <strong>Underground</strong> tiles need a Subterranean Gate (auto when
+        touching Surface). Add <strong>Monolith</strong> / <strong>Whirlpool</strong> tokens from the same panel — at
+        least 2 of a kind to work. Town (Ⅰ) tiles are seats; drag empty background to pan, pinch or use the toolbar
+        to zoom (wheel zoom when unlocked).
       </small>
 
       {/* Floating drag ghost follows the pointer — band-correct printed back. */}

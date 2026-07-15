@@ -117,68 +117,81 @@ const SECRET_TILE_FEATURE_SET = new Set<string>(SECRET_TILE_FEATURE_IDS);
 /**
  * Designer + UI catalogue for Secret slots: pick a landmark, the engine later
  * draws ANY remaining tile in the slot's pool that carries it.
+ *
+ * `iconSrc` is the board-game art path (Homm3BG glyphs / resource tokens /
+ * location chips) — render through `assetUrl()`. `icon` is a short text
+ * fallback only (accessibility / plain-text feeds).
  */
 export const SECRET_TILE_FEATURES: readonly {
   id: SecretTileFeature;
   label: string;
   shortLabel: string;
   icon: string;
+  iconSrc: string;
   description: string;
 }[] = [
   {
     id: "gold_mine",
     label: "Gold mine",
     shortLabel: "Gold",
-    icon: "🪙",
+    icon: "Gold",
+    iconSrc: "/assets/icons/resource-gold.webp",
     description: "A random tile from this pool that has a Gold mine."
   },
   {
     id: "valuables_mine",
     label: "Valuables mine",
     shortLabel: "Valuables",
-    icon: "💎",
+    icon: "Valuables",
+    iconSrc: "/assets/icons/resource-valuables.webp",
     description: "A random tile from this pool that has a Valuables mine."
   },
   {
     id: "materials_mine",
     label: "Materials mine",
     shortLabel: "Materials",
-    icon: "🪵",
+    icon: "Materials",
+    iconSrc: "/assets/icons/resource-building_materials.webp",
     description: "A random tile from this pool that has a Building Materials mine."
   },
   {
     id: "any_mine",
     label: "Any mine",
     shortLabel: "Mine",
-    icon: "⛏️",
+    icon: "Mine",
+    iconSrc: "/assets/glyphs/treasure.svg",
     description: "A random tile from this pool that has any mine (gold, valuables, or materials)."
   },
   {
     id: "obelisk",
     label: "Obelisk",
     shortLabel: "Obelisk",
-    icon: "🗿",
+    icon: "Obelisk",
+    iconSrc: "/assets/icons/location-obelisk.webp",
     description: "A random tile from this pool that has an Obelisk."
   },
   {
     id: "settlement",
     label: "Settlement",
     shortLabel: "Settlement",
-    icon: "🏘️",
+    icon: "Settlement",
+    iconSrc: "/assets/icons/location-settlement.webp",
     description: "A random tile from this pool that has a Settlement."
   },
   {
     id: "town",
     label: "Town",
     shortLabel: "Town",
-    icon: "🏰",
+    icon: "Town",
+    iconSrc: "/assets/glyphs/building_citadel.svg",
     description: "A random tile from this pool that has a Town (or Random Town)."
   },
   {
     id: "objective",
     label: "Grail / Dragons",
     shortLabel: "Objective",
-    icon: "🏆",
+    icon: "Grail",
+    iconSrc: "/assets/icons/location-grail.webp",
     description: "A random tile from this pool that has the Grail or a Dragon Utopia."
   }
 ];
