@@ -1,6 +1,6 @@
 "use client";
 
-import { Crosshair, Eye, Lock, Map as MapIcon, StepForward, Swords } from "lucide-react";
+import { Castle, Crosshair, Eye, Hand as HandIcon, Layers, Lock, Map as MapIcon, Menu as MenuIcon, StepForward, Swords } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   astrologersCardDefinitions,
@@ -87,6 +87,9 @@ import { buildTownCaptureCue, isEnemyTownCapture } from "@/components/table/town
 import { CombatMoralePanel } from "@/components/table/combat-morale-panel";
 import { CombatSandboxSetupScreen } from "@/components/table/combat-sandbox-setup";
 import { HelperCoachLobbyPrompt, HelperCoachStrip } from "@/components/table/helper-coach-ui";
+import { PhoneTabBar, type PhoneTab } from "@/components/table/phone-tab-bar";
+import { UiModePrompt, UiModeToggle } from "@/components/table/ui-mode-prompt";
+import { useUiModePreference } from "@/lib/ui-mode-preference";
 import { cardUnplayableReason } from "@/components/table/helper-coach";
 import { useHelperCoachPreference } from "@/lib/helper-coach-preference";
 import { healFreezeDisplayDamage } from "@/components/table/heal-display";
@@ -296,6 +299,16 @@ const HIDDEN_HAND_REVEAL_BACKSTOP_MS = 4000;
 const LEADING_ACTIVATION_SPELL_ABILITIES = new Set<string>(["faerie-dragon-spell"]);
 
 const OBSERVER_SEAT = "observer";
+
+/**
+ * Phone UI mode: which full-screen panel each surface shows. Pure
+ * presentation — the panels are the SAME regions the desktop lays out side by
+ * side; `.phoneMode[data-phone-tab="…"]` CSS decides visibility. "battle" /
+ * "map" are NOT phone tabs: those entries flip the existing `combatTab`
+ * surface switch instead.
+ */
+type PhoneMapTab = "map" | "hand" | "army" | "decks" | "menu";
+type PhoneCombatTab = "board" | "hand" | "menu";
 
 /** Magnifier for the adventure hand; lives inside the CardZoomProvider. */
 function AdventureHandZoom({ cardId }: { cardId: string }) {
@@ -741,6 +754,16 @@ export default function Home() {
   const battleTroopConfirmedRef = useRef(false);
   const [tilePlacement, setTilePlacement] = useState<TilePlacementSelection>(null);
   const [combatTab, setCombatTab] = useState<"battle" | "map">("battle");
+  /**
+   * Phone UI mode (per-browser preference, asked before the game begins).
+   * `uiMode` stays "computer" until the player explicitly picks "phone", so an
+   * unanswered prompt renders the classic desktop table untouched.
+   */
+  const uiModePref = useUiModePreference();
+  const phoneUi = uiModePref.uiMode === "phone";
+  /** Phone mode: the active full-screen panel per surface (local, never sent). */
+  const [phoneMapTab, setPhoneMapTab] = useState<PhoneMapTab>("map");
+  const [phoneCombatTab, setPhoneCombatTab] = useState<PhoneCombatTab>("board");
   /** The Town window popup (board / buildings views) over the adventure map. */
   const [townOpen, setTownOpen] = useState(false);
   const [pile, setPile] = useState<{ title: string; cardIds: string[]; kind: "cards" | "units" | "astrologers" | "events" } | null>(null);
@@ -4595,6 +4618,8 @@ export default function Home() {
           v{roomVersion} · {syncStatus} · {state.phase}
         </small>
         <MusicToggle />
+        {/* Per-browser layout switch (also the escape hatch out of phone mode). */}
+        <UiModeToggle />
       </div>
       {/* Restart THIS table in its own mode. The combat sandbox and the map
           designer are their own destinations on the main menu now (Battle Test /
@@ -4703,7 +4728,7 @@ export default function Home() {
   if (adventureMode && inLobby) {
     return (
       <CardZoomProvider>
-        <main className="tableRoot adventureRoot setupPhase" onClick={playTableUiClickSound}>
+        <main className={`tableRoot adventureRoot setupPhase${phoneUi ? " phoneMode" : ""}`} onClick={playTableUiClickSound}>
           {/* Green spirit wisps + gold-dragon shimmer over the setup backdrop. */}
           <SetupAmbientFx />
           <div className="tableTopRow">
@@ -4716,6 +4741,8 @@ export default function Home() {
             {tableMenu}
           </div>
           {errorBanner}
+          {/* Before the game begins: pick Computer vs Phone layout (per browser). */}
+          <UiModePrompt />
           <SetupLobbyScreen
             onAction={submitAction}
             state={state}
@@ -4732,7 +4759,7 @@ export default function Home() {
   if (inCombatSandboxSetup) {
     return (
       <CardZoomProvider>
-        <main className="tableRoot adventureRoot setupPhase sandboxSetupPhase" onClick={playTableUiClickSound}>
+        <main className={`tableRoot adventureRoot setupPhase sandboxSetupPhase${phoneUi ? " phoneMode" : ""}`} onClick={playTableUiClickSound}>
           <div className="tableTopRow">
             <div className="advHud">
               <div className="advHudCell">
@@ -4743,6 +4770,8 @@ export default function Home() {
             {tableMenu}
           </div>
           {errorBanner}
+          {/* Before the game begins: pick Computer vs Phone layout (per browser). */}
+          <UiModePrompt />
           {/* Same helper-tips opt-in as the map-setup lobby (Battle Test has no map lobby). */}
           <HelperCoachLobbyPrompt />
           <CombatSandboxSetupScreen
@@ -4980,9 +5009,39 @@ export default function Home() {
       ? Object.values(state.towns).find((candidate) => candidate.controllerId === viewerPlayerId)
       : undefined;
 
+    // Phone mode: the bottom tab bar's entries for this surface. The Hand tab
+    // pulses while the MANDATORY start-of-turn hand step (or a forced discard)
+    // is pending, so the gate that blocks the whole turn is never hidden
+    // behind an inactive tab.
+    const phoneMapTabs: PhoneTab[] = [
+      { id: "map", label: "Map", icon: <MapIcon size={17} /> },
+      ...(combatVisible && !inBattlePrep
+        ? [{ id: "battle", label: "Battle", icon: <Swords size={17} /> }]
+        : []),
+      ...(isSeated
+        ? [
+            {
+              id: "hand",
+              label: "Hand",
+              icon: <HandIcon size={17} />,
+              badge: handCards.length,
+              attention: canDraw || forcedDiscard,
+              attentionLabel: forcedDiscard ? "Discard!" : "Draw!"
+            }
+          ]
+        : []),
+      { id: "army", label: "Army", icon: <Castle size={17} /> },
+      { id: "decks", label: "Decks", icon: <Layers size={17} /> },
+      { id: "menu", label: "Menu", icon: <MenuIcon size={17} /> }
+    ];
+
     return (
       <CardZoomProvider>
-        <main className="tableRoot adventureRoot" onClick={playTableUiClickSound}>
+        <main
+          className={`tableRoot adventureRoot${phoneUi ? " phoneMode" : ""}`}
+          data-phone-tab={phoneUi ? phoneMapTab : undefined}
+          onClick={playTableUiClickSound}
+        >
           {presentationSkipControl}
           <div className="tableTopRow">
             <AdventureHud
@@ -4996,6 +5055,8 @@ export default function Home() {
 
           {errorBanner}
 
+          {/* Mid-game join: still ask the layout question once per browser. */}
+          <UiModePrompt />
           {/* Mid-game join / skipped lobby: still ask once if no preference yet. */}
           <HelperCoachLobbyPrompt />
 
@@ -5877,12 +5938,44 @@ export default function Home() {
           ) : null}
           <FxStage cues={fxCues} onDone={handleFxDone} />
           {reactionsLayer}
+          {phoneUi ? (
+            <PhoneTabBar
+              active={phoneMapTab}
+              onSelect={(id) => {
+                if (id === "battle") {
+                  // Surface switch, not a phone panel: back to the open fight.
+                  setCombatTab("battle");
+                  return;
+                }
+                setPhoneMapTab(id as PhoneMapTab);
+              }}
+              tabs={phoneMapTabs}
+            />
+          ) : null}
         </main>
       </CardZoomProvider>
     );
   }
 
   // ---- Combat table (sandbox games and adventure combats) ------------------
+  // Phone mode: this surface's tab-bar entries ("map" flips the existing
+  // combatTab surface switch, exactly like the banner button).
+  const phoneCombatTabs: PhoneTab[] = [
+    { id: "board", label: "Board", icon: <Swords size={17} /> },
+    ...(adventureMode && state.combat ? [{ id: "map", label: "Map", icon: <MapIcon size={17} /> }] : []),
+    ...(isSeated
+      ? [
+          {
+            id: "hand",
+            label: "Hand",
+            icon: <HandIcon size={17} />,
+            badge: (playerView.players[viewerPlayerId]?.hand ?? []).length
+          }
+        ]
+      : []),
+    { id: "menu", label: "Menu", icon: <MenuIcon size={17} /> }
+  ];
+
   return (
     <TableErrorBoundary
       resetKey={roomVersion}
@@ -5895,7 +5988,11 @@ export default function Home() {
       }}
     >
     <CardZoomProvider>
-    <main className="tableRoot" onClick={playTableUiClickSound}>
+    <main
+      className={`tableRoot${phoneUi ? " phoneMode" : ""}`}
+      data-phone-tab={phoneUi ? phoneCombatTab : undefined}
+      onClick={playTableUiClickSound}
+    >
       {presentationSkipControl}
       {/* All card logistics live up here: every opponent's hand/deck/discard and
           the viewer's own dock + permanents + playable hand. Card-flight
@@ -5950,6 +6047,8 @@ export default function Home() {
 
       {errorBanner}
 
+      {/* Mid-game join: still ask the layout question once per browser. */}
+      <UiModePrompt />
       {/* Mid-game join / Battle Test: ask once if no preference yet. */}
       <HelperCoachLobbyPrompt />
 
@@ -6168,6 +6267,20 @@ export default function Home() {
       ) : null}
       <FxStage cues={fxCues} onDone={handleFxDone} />
       {reactionsLayer}
+      {phoneUi ? (
+        <PhoneTabBar
+          active={phoneCombatTab}
+          onSelect={(id) => {
+            if (id === "map") {
+              // Surface switch, not a phone panel: view the adventure map.
+              setCombatTab("map");
+              return;
+            }
+            setPhoneCombatTab(id as PhoneCombatTab);
+          }}
+          tabs={phoneCombatTabs}
+        />
+      ) : null}
     </main>
     </CardZoomProvider>
     </TableErrorBoundary>

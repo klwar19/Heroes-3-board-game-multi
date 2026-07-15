@@ -103,6 +103,6 @@ test("TYPE 1 draft: lock towns, go around the ban phase, pick, and start", async
   await page.locator(".factionGrid .lobbyHero:not([disabled])").first().click();
 
   // Both picked → start the adventure and land on the map.
-  await page.getByRole("button", { name: "Start the adventure" }).click();
+  await page.getByRole("button", { name: "New Game" }).click();
   await expect(page.locator(".hexMapSvg")).toBeVisible({ timeout: 30000 });
 });

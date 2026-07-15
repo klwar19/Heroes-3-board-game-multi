@@ -39,7 +39,14 @@ const nextConfig: NextConfig = {
   // The Playwright e2e suite drives the app at http://127.0.0.1:3000, which Next
   // treats as a different origin from the canonical `localhost`, so without this
   // the app never hydrates under test. Dev-only; ignored by `next build`/start.
-  allowedDevOrigins: ["127.0.0.1"]
+  allowedDevOrigins: ["127.0.0.1"],
+  // The dev-tools badge floats bottom-left by default — on a phone viewport
+  // that is exactly the phone UI mode's Map tab, and its portal swallows the
+  // tap (breaks the e2e suite; annoying in real dev too). Dev-only chrome;
+  // production builds render no indicator either way.
+  devIndicators: {
+    position: "top-right"
+  }
 };
 
 export default nextConfig;

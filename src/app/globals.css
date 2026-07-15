@@ -21905,3 +21905,617 @@ details.mapPresetEditor[open] .mapPresetSummaryChevron {
   margin: 0;
   padding-left: 16px;
 }
+
+/* ======================================================================== */
+/* PHONE UI MODE                                                            */
+/*                                                                          */
+/* Everything below only applies inside `main.phoneMode` (plus the mode     */
+/* prompt / toggle / tab-bar components themselves, which only exist        */
+/* because of this feature). The class is added exclusively when the        */
+/* per-browser "binh-ui-mode" preference is "phone" (see                    */
+/* src/lib/ui-mode-preference.ts) — in Computer mode not one rule in this   */
+/* section can match, which is the "never affect the desktop layout"       */
+/* guarantee. The phone layout shows ONE full-screen panel at a time,       */
+/* picked by `data-phone-tab` on the same DOM the desktop lays out side by  */
+/* side; fixed overlays (prompts, dice, chat, feed) stay visible on every   */
+/* tab.                                                                     */
+/* ======================================================================== */
+
+/* ---------- the pre-game mode prompt (renders in BOTH modes) ---------- */
+
+.uiModeBackdrop {
+  position: fixed;
+  inset: 0;
+  /* Above the helper-coach prompt (1250) — the mode question comes first. */
+  z-index: 1300;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: radial-gradient(circle at 50% 28%, rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.84));
+  animation: welcomeFade 0.2s ease;
+}
+
+.uiModeCard {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+  max-width: 560px;
+  max-height: 92dvh;
+  overflow-y: auto;
+  padding: 18px 20px 14px;
+  border-radius: 16px;
+  color: #ecd9b0;
+  background:
+    radial-gradient(circle at 12% 6%, rgba(255, 214, 120, 0.1), transparent 42%),
+    linear-gradient(160deg, #2c2013 0%, #1c140b 60%, #120d07 100%);
+  border: 1px solid rgba(220, 175, 95, 0.55);
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.6);
+}
+
+.uiModeEyebrow {
+  color: #c9a35c;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.uiModeTitle {
+  margin: 0;
+  color: #ffe9bd;
+  font-size: 20px;
+}
+
+.uiModeLede {
+  margin: 0;
+  color: #d8c49a;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.uiModeOptions {
+  display: grid;
+  gap: 8px;
+}
+
+.uiModeOption {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 12px 12px 14px;
+  border: 1px solid rgba(220, 175, 95, 0.4);
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.28);
+  color: #ecd9b0;
+  cursor: pointer;
+  text-align: left;
+  touch-action: manipulation;
+}
+
+.uiModeOption:hover,
+.uiModeOption:focus-visible {
+  border-color: rgba(255, 215, 118, 0.85);
+  background: rgba(213, 168, 79, 0.12);
+}
+
+.uiModeOption.recommended {
+  border-color: rgba(255, 215, 118, 0.9);
+  box-shadow: 0 0 0 1px rgba(255, 215, 118, 0.35), 0 0 18px rgba(213, 168, 79, 0.25);
+}
+
+.uiModeOptionIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  flex: 0 0 auto;
+  border-radius: 10px;
+  border: 1px solid rgba(220, 175, 95, 0.45);
+  background: rgba(213, 168, 79, 0.12);
+  color: #ffd76a;
+}
+
+.uiModeOptionText {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.uiModeOptionText strong {
+  color: #ffe9bd;
+  font-size: 14px;
+}
+
+.uiModeOptionText small {
+  color: #c7b088;
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
+.uiModeRecommended {
+  position: absolute;
+  top: -9px;
+  right: 10px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 215, 118, 0.8);
+  background: #2c2013;
+  color: #ffd76a;
+  font-size: 10px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.uiModeFoot {
+  color: #a68d63;
+  font-size: 11px;
+}
+
+/* The table-menu 📱/💻 switch — matches the MusicToggle button family. */
+.uiModeToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 28px;
+  padding: 3px 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--muted);
+  background: var(--surface-2);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  touch-action: manipulation;
+}
+
+.uiModeToggle.phone {
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
+/* ---------- bottom tab bar ---------- */
+
+.phoneTabBar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 90;
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  padding: 4px max(6px, env(safe-area-inset-right, 0px)) calc(4px + env(safe-area-inset-bottom, 0px))
+    max(6px, env(safe-area-inset-left, 0px));
+  border-top: 1px solid rgba(213, 168, 79, 0.4);
+  background: rgba(16, 13, 9, 0.97);
+  backdrop-filter: blur(8px);
+}
+
+.phoneTab {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 52px;
+  min-width: 0;
+  padding: 6px 2px 4px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: #b89f78;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  touch-action: manipulation;
+}
+
+.phoneTab.active {
+  background: rgba(213, 168, 79, 0.16);
+  color: #ffd76a;
+}
+
+.phoneTabIcon {
+  display: inline-flex;
+}
+
+.phoneTabLabel {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.phoneTabBadge {
+  position: absolute;
+  top: 2px;
+  left: calc(50% + 6px);
+  min-width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--gold);
+  color: var(--ink);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.phoneTabAttention {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 130, 110, 0.8);
+  background: #8c1f1f;
+  color: #ffe4dc;
+  font-size: 9px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.phoneTab.attention .phoneTabIcon {
+  color: #ffd76a;
+  animation: phoneTabPulse 1.1s ease-in-out infinite;
+}
+
+@keyframes phoneTabPulse {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(-3px) scale(1.15);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .phoneTab.attention .phoneTabIcon {
+    animation: none;
+  }
+}
+
+/* ---------- global chrome: reclaim vertical space ---------- */
+
+/* Collapse the site header/footer while a phone-mode table is on screen.
+   `:has` is supported by every current mobile browser; without it the header
+   simply stays — nothing breaks. */
+.appShell:has(main.phoneMode) .topBar,
+.appShell:has(main.phoneMode) .footerNotice {
+  display: none;
+}
+
+/* ---------- shared phone shell (all table branches) ---------- */
+
+.phoneMode {
+  padding: 6px 6px calc(74px + env(safe-area-inset-bottom, 0px));
+  gap: 6px;
+}
+
+/* Faster taps: game buttons never need double-tap-to-zoom. */
+.phoneMode button {
+  touch-action: manipulation;
+}
+
+/* One column up top — the table menu leaves the top row (it becomes the
+   "Menu" tab's panel below). */
+.phoneMode .tableTopRow {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* Region visibility: hidden by default in a tabbed surface, re-shown by the
+   active tab below. Mains WITHOUT data-phone-tab (setup lobby / Battle-Test
+   setup) keep everything visible — they are single scrolling columns. */
+.phoneMode[data-phone-tab] .tableMenu,
+.phoneMode[data-phone-tab] .playerCardBar,
+.phoneMode[data-phone-tab] .advDecksBottom,
+.phoneMode[data-phone-tab] .leftRail,
+.phoneMode[data-phone-tab] .combatCardStrip {
+  display: none;
+}
+
+.phoneMode[data-phone-tab="menu"] .tableMenu {
+  display: grid;
+}
+
+/* ---------- adventure surface ---------- */
+
+/* Flex column so the map tab can hand ALL leftover height to the map. The
+   `order` rules written for the desktop grid apply identically to flex. */
+.phoneMode.adventureRoot {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+/* The HUD ribbon stays pinned while panels scroll under it… */
+.phoneMode.adventureRoot > .tableTopRow {
+  position: sticky;
+  top: 0;
+  z-index: 45;
+  background: rgba(13, 15, 16, 0.96);
+  border-radius: 0 0 10px 10px;
+}
+
+/* …except on the Menu tab, whose (tall) panel lives inside the same row and
+   must be free to scroll with the page. */
+.phoneMode.adventureRoot[data-phone-tab="menu"] > .tableTopRow {
+  position: static;
+  background: transparent;
+}
+
+/* Compact one-line HUD: swipe sideways instead of wrapping into a tall block. */
+.phoneMode .advHud {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  min-height: 46px;
+  gap: 10px;
+  padding: 6px 10px;
+  scrollbar-width: thin;
+}
+
+.phoneMode .advHud .advHudCell {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.phoneMode .advHudButtons {
+  flex: 0 0 auto;
+}
+
+.phoneMode.adventureRoot > .adventureMidRow {
+  grid-template-columns: minmax(0, 1fr);
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* Map tab: the hex map takes every leftover pixel between HUD and tab bar. */
+.phoneMode .mapColumn {
+  min-height: 0;
+}
+
+.phoneMode .hexMapWrap {
+  min-height: min(52vh, 520px);
+}
+
+.phoneMode.adventureRoot[data-phone-tab="map"] .hexMapWrap {
+  min-height: calc(100vh - 210px);
+  min-height: calc(100dvh - 210px);
+}
+
+/* Army tab shows the command rail full-width in place of the map. */
+.phoneMode.adventureRoot[data-phone-tab="hand"] .adventureMidRow,
+.phoneMode.adventureRoot[data-phone-tab="decks"] .adventureMidRow,
+.phoneMode.adventureRoot[data-phone-tab="menu"] .adventureMidRow {
+  display: none;
+}
+
+.phoneMode.adventureRoot[data-phone-tab="army"] .leftRail {
+  display: grid;
+}
+
+.phoneMode.adventureRoot[data-phone-tab="army"] .mapColumn {
+  display: none;
+}
+
+/* The rail's fly-out boards (hero, army, town) open to the RIGHT on desktop —
+   off-screen on a full-width phone panel. Re-anchor them as a fixed sheet. */
+.phoneMode .leftRailDock .heroDrop {
+  position: fixed;
+  left: 8px;
+  right: 8px;
+  top: 64px;
+  max-height: calc(100vh - 150px);
+  max-height: calc(100dvh - 150px);
+  z-index: 70;
+}
+
+.phoneMode.adventureRoot[data-phone-tab="hand"] .playerCardBar {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.phoneMode .playerCardBar .ownDeckColumn {
+  align-self: center;
+}
+
+.phoneMode .adventureHandCards {
+  justify-content: center;
+}
+
+.phoneMode.adventureRoot[data-phone-tab="decks"] .advDecksBottom {
+  display: block;
+}
+
+/* Keep the collapsed game-log bar at the bottom, under the shown panel (it
+   defaults to order 0, which would put it ABOVE the sticky HUD in a column). */
+.phoneMode.adventureRoot > .logDrawer {
+  order: 6;
+}
+
+/* ---------- combat surface ---------- */
+
+.phoneMode[data-phone-tab="hand"] .combatCardStrip {
+  display: grid;
+}
+
+.phoneMode[data-phone-tab="hand"] .tableMidRow,
+.phoneMode[data-phone-tab="menu"] .tableMidRow {
+  display: none;
+}
+
+/* Board tab: one column — initiative rail, board, then commands / effects /
+   inspector / placement stacked beneath (scroll for the tail). */
+.phoneMode .tableMidRow,
+.phoneMode .tableMidRow.withPlacement {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* Fit the 5:4 battlefield to BOTH axes: full width portrait, height-capped in
+   landscape so the board never pushes the commands off screen. */
+.phoneMode .battlefieldFrame {
+  max-width: min(100%, calc((100vh - 168px) * 1.25));
+  max-width: min(100%, calc((100dvh - 168px) * 1.25));
+  margin: 0 auto;
+  width: 100%;
+}
+
+.phoneMode .initiativeRail {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.phoneMode .initiativeRail .initChip {
+  flex: 0 0 auto;
+}
+
+/* The right rail stacks under the board; commands first — they are the
+   actions of the current activation. */
+.phoneMode .rightRail > .commandDock {
+  order: -1;
+}
+
+/* Hand tab: the seat row stacks instead of docking side by side, and the card
+   fan becomes a wrapping grid (no negative-margin overlap — every card must
+   be individually tappable). */
+.phoneMode .tableSeatRow {
+  grid-template-columns: minmax(0, 1fr);
+  min-height: 0;
+  align-items: start;
+}
+
+.phoneMode .handFan {
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  min-height: 0;
+  padding: 10px 6px;
+}
+
+.phoneMode .fanCard {
+  margin-right: 0;
+}
+
+.phoneMode .fanCard:hover,
+.phoneMode .fanCard:focus-visible,
+.phoneMode .fanSlot.open .fanCard {
+  transform: translateY(-10px) scale(1.18);
+}
+
+/* ---------- fixed overlays: clear the tab bar, fit the width ---------- */
+
+.phoneMode .promptTray {
+  left: 8px;
+  right: 8px;
+  bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+  transform: none;
+  min-width: 0;
+  max-width: none;
+  max-height: 58vh;
+  max-height: 58dvh;
+  overflow-y: auto;
+}
+
+.phoneMode .reactionTray {
+  left: 8px;
+  right: 8px;
+  bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+  transform: none;
+  min-width: 0;
+  max-width: none;
+  width: auto;
+  max-height: 58vh;
+  max-height: 58dvh;
+  overflow-y: auto;
+}
+
+.phoneMode .chatDock {
+  left: 8px;
+  bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+}
+
+.phoneMode .adventureFeed {
+  top: 58px;
+  right: 8px;
+  max-width: min(300px, 62vw);
+}
+
+.phoneMode .afkVotePanel {
+  left: 8px;
+  right: 8px;
+  width: auto;
+}
+
+/* Deep windows (town, morale panels, market…) already use viewport-relative
+   maxima; give the big town window the full phone width. */
+.phoneMode .townWindow {
+  width: min(1180px, 98vw);
+  max-height: 92vh;
+  max-height: 92dvh;
+}
+
+/* The setup lobby mounts its own helper-coach prompt INSIDE .setupLobby, whose
+   `z-index: 1` stacking context traps the prompt's fullscreen backdrop below
+   the chat dock (z-index 200) — on a phone the dock then swallows the
+   dialog's taps. While that prompt is open in phone mode, lift the lobby
+   above the dock; the fullscreen backdrop covers everything anyway. */
+.phoneMode .setupLobby:has(.helperCoachBackdrop) {
+  z-index: 210;
+}
+
+/* The floating "Skip animation" control docks bottom-right on desktop — on a
+   phone that is exactly where the tab bar lives (z 10020 swallows tab taps).
+   Ride it just above the bar instead. */
+.phoneMode .presentationSkip {
+  right: 8px;
+  bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+}
+
+/* Every other bottom-anchored floater must clear the fixed tab bar too —
+   anything left at bottom:~16px sits exactly on the tabs and swallows their
+   taps (the coach chip and emote bar did). One consolidated lift. */
+.phoneMode .helperCoachChip,
+.phoneMode .tableReactionBar,
+.phoneMode .reactionStrip {
+  bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+}
+
+.phoneMode .tableReactionOverlay {
+  bottom: calc(130px + env(safe-area-inset-bottom, 0px));
+}
+
+.phoneMode .marketPanel {
+  bottom: calc(128px + env(safe-area-inset-bottom, 0px));
+}
+
+.phoneMode .marketChip,
+.phoneMode .marketTab {
+  bottom: calc(144px + env(safe-area-inset-bottom, 0px));
+}
+
+/* Landscape phones have ~220px of height for the whole battlefield frame —
+   the decorative scenery band alone eats ~100px of it. Drop the band and cap
+   the frame so the full 5×4 grid fits between the HUD and the tab bar without
+   scrolling; portrait keeps the full art. */
+@media (orientation: landscape) {
+  .phoneMode .battlefieldScenery {
+    display: none;
+  }
+
+  .phoneMode .battlefieldFrame {
+    max-width: min(100%, calc((100dvh - 190px) * 1.25));
+  }
+}

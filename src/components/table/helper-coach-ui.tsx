@@ -12,6 +12,7 @@ import {
   useHelperCoachPreference,
   type HelperCoachPreference
 } from "@/lib/helper-coach-preference";
+import { useUiModePreference } from "@/lib/ui-mode-preference";
 import { buildCoachTip, type CoachTip } from "./helper-coach";
 import type { GameState, LegalAction, PlayerId } from "@/engine";
 
@@ -81,11 +82,16 @@ export function HelperCoachLobbyPrompt({
   onClose?: () => void;
 }) {
   const { preference, setPreference, ready } = useHelperCoachPreference();
+  // The pre-game UI-mode prompt (Computer vs Phone) takes precedence: while
+  // THAT choice is unanswered, the automatic coach prompt waits so two
+  // blocking dialogs never stack. A forced open (from the lobby button) still
+  // shows immediately — the player explicitly asked for it.
+  const uiModePref = useUiModePreference();
 
-  if (!ready) {
+  if (!ready || !uiModePref.ready) {
     return null;
   }
-  if (!force && preference !== null) {
+  if (!force && (preference !== null || uiModePref.preference === null)) {
     return null;
   }
 

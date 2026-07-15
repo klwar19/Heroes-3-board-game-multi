@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { AssetPreconnect } from "@/components/asset-preconnect";
@@ -7,6 +7,16 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Heroes 3 Board Game Multi",
   description: "Non-profit fan multiplayer tool foundation for Heroes 3: The Board Game."
+};
+
+// width/initialScale are Next's defaults made explicit; viewportFit "cover"
+// additionally exposes env(safe-area-inset-*) so the phone UI mode's bottom
+// tab bar can clear the home-indicator area on notched phones. No effect on
+// desktop rendering.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover"
 };
 
 export default function RootLayout({

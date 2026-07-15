@@ -19,7 +19,7 @@ test("the active Astrologers proclamation pops up on the round-2 turn", async ({
   await page.getByRole("button", { name: /Sandro/ }).click();
   await expect(page.getByText("Necropolis — Sandro", { exact: false })).toBeVisible();
 
-  await page.getByRole("button", { name: "Start the adventure" }).click();
+  await page.getByRole("button", { name: "New Game" }).click();
   await expect(page.locator(".hexMapSvg")).toBeVisible({ timeout: 20000 });
 
   // Dismiss the one-time "who goes first" ceremony (it auto-plays, then offers
