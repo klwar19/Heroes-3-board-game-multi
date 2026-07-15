@@ -298,6 +298,79 @@ describe("pre-hit heals against Frost Ring / Meteor Shower specialty", () => {
     expect(damage(resolved, "unit_p2_skeletons")).toBe(3);
   });
 
+  it("the synthetic specialty window offers NO spell-hate reactions (Resistance / Knowledge recall)", () => {
+    // A specialty is not a Spell: the SPELL_CAST_STARTED window it borrows so
+    // heals can fire must NOT offer Resistance (the reducer's cancel branch is
+    // gated on CAST_SPELL — playing it would eat the card for nothing) nor a
+    // Knowledge/Mysticism recall to the specialty's owner.
+    const state = createInitialGameState("pre-hit-no-spellhate");
+    state.players.p1.hand = ["specialty.deemer.1", "stat.knowledge"];
+    state.players.p2.hand = ["spell.cure", "ability.resistance"];
+
+    for (const id of Object.keys(state.combat!.units)) {
+      state.combat!.units[id].maxHealth = 20;
+      state.combat!.units[id].damage = 0;
+    }
+    state.combat!.units.unit_p2_skeletons.position = 9;
+    state.combat!.units.unit_p2_skeletons.damage = 2;
+    state.combat!.units.unit_p2_vampires.position = 0;
+    state.combat!.units.unit_p1_griffins.position = 4;
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_griffins";
+
+    const played = applyOk(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "specialty.deemer.1",
+      mode: "basic",
+      optionIndex: 0,
+      target: { type: "unit", unitId: "unit_p2_skeletons" }
+    });
+    expect(played.reactionWindow, "the Cure offer still pauses the specialty").toBeTruthy();
+
+    // Read the window's stored per-player offers (priority passes one player at
+    // a time, so getLegalActions would hide the non-priority side's offers).
+    const offeredCards = (playerId: "p1" | "p2", window: GameState["reactionWindow"]) =>
+      (window?.legalReactions[playerId] ?? [])
+        .filter((legal) => legal.action.type === "PLAY_REACTION")
+        .map((legal) => (legal.action as Extract<GameAction, { type: "PLAY_REACTION" }>).cardId);
+
+    expect(offeredCards("p2", played.reactionWindow), "Cure is offered").toContain("spell.cure");
+    expect(
+      offeredCards("p2", played.reactionWindow),
+      "Resistance must NOT be offered against a specialty"
+    ).not.toContain("ability.resistance");
+    expect(
+      offeredCards("p1", played.reactionWindow),
+      "Knowledge recall must NOT be offered on a specialty"
+    ).not.toContain("stat.knowledge");
+
+    // CONTROL: on a REAL damaging Spell the same cards ARE offered.
+    const control = createInitialGameState("pre-hit-spellhate-ctrl");
+    control.players.p1.hand = ["spell.magic_arrow", "stat.knowledge"];
+    control.players.p2.hand = ["ability.resistance"];
+    control.combat!.units.unit_p2_skeletons.maxHealth = 10;
+    control.combat!.units.unit_p2_skeletons.position = 13;
+    control.combat!.units.unit_p1_griffins.position = 14;
+    control.activePlayerId = "p1";
+    control.combat!.activeUnitId = "unit_p1_griffins";
+    const casted = applyOk(control, {
+      type: "CAST_SPELL",
+      playerId: "p1",
+      cardId: "spell.magic_arrow",
+      target: { type: "unit", unitId: "unit_p2_skeletons" }
+    });
+    expect(casted.reactionWindow).toBeTruthy();
+    expect(
+      offeredCards("p2", casted.reactionWindow),
+      "CONTROL: Resistance offered against a real Spell"
+    ).toContain("ability.resistance");
+    expect(
+      offeredCards("p1", casted.reactionWindow),
+      "CONTROL: Knowledge recall offered on the caster's own Spell"
+    ).toContain("stat.knowledge");
+  });
+
   it("CONTROL: specialty still deals damage immediately when nobody can heal", () => {
     const state = createInitialGameState("pre-hit-noheal-ctrl");
     state.players.p1.hand = ["specialty.deemer.1"];
