@@ -288,6 +288,7 @@ export {
   describeCustomMapPreset,
   describeCustomMapPresetEntries,
   describeTimedMapEffect,
+  MAX_TIMED_EVENTS,
   MAP_PRESET_BUILDING_OPTIONS,
   MAP_PRESET_VICTORY_OPTIONS,
   presetForcedOptionKeys,

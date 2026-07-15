@@ -103,6 +103,9 @@ const BUILDING_SUFFIXES = new Set([
 const SEARCH_DECKS = new Set(["artifacts", "spells", "abilities"]);
 const CUBE_LOCATIONS = new Set(["windmill", "water_wheel", "mystical_garden"]);
 
+/** Storage/editor limit for one designed map. Keep UI and sanitization in lock-step. */
+export const MAX_TIMED_EVENTS = 32;
+
 /** Designer effect kinds (order = editor dropdown order). */
 export const TIMED_EFFECT_KINDS = [
   "clear_visitable_cubes",
@@ -327,7 +330,7 @@ export function sanitizeCustomMapPreset(input: unknown): CustomMapPreset | undef
   if (Array.isArray(raw.timedEvents)) {
     const events: CustomMapTimedEvent[] = [];
     // Cap high enough for mission-book style maps (many rounds × multi-effects).
-    for (const entry of raw.timedEvents.slice(0, 32)) {
+    for (const entry of raw.timedEvents.slice(0, MAX_TIMED_EVENTS)) {
       if (!entry || typeof entry !== "object") {
         continue;
       }

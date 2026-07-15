@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { ArrowUpDown, Clock3, Copy, Plus, Trash2 } from "lucide-react";
 import {
   defaultTimedEffect,
   defaultTimedEvent,
   describeCustomMapPresetEntries,
   describeTimedMapEffect,
+  MAX_TIMED_EVENTS,
   MAP_PRESET_BUILDING_OPTIONS,
   MAP_PRESET_VICTORY_OPTIONS,
   TIMED_EFFECT_KIND_LABELS,
@@ -97,6 +99,13 @@ export function MapPresetEditor({
 
   const updateTimed = (index: number, next: CustomMapTimedEvent) => {
     setTimed(timed.map((entry, i) => (i === index ? next : entry)));
+  };
+
+  const appendTimed = (event: CustomMapTimedEvent) => {
+    if (timed.length >= MAX_TIMED_EVENTS) {
+      return;
+    }
+    setTimed([...timed, event]);
   };
 
   return (
@@ -383,26 +392,57 @@ export function MapPresetEditor({
         ) : null}
       </section>
 
-      <section className="mapPresetSection" aria-label="Timed events">
-        <div className="mapPresetSectionLabel">Timed events (which round → what happens)</div>
+      <section className="mapPresetSection mapPresetTimedSection" aria-label="Timed events">
+        <div className="mapPresetTimedSectionHeading">
+          <div>
+            <div className="mapPresetSectionLabel">
+              <Clock3 aria-hidden="true" size={14} /> Timed events
+            </div>
+            <small className="mapPresetHint">Which round → what happens</small>
+          </div>
+          <span className={`mapPresetTimedCount${timed.length >= MAX_TIMED_EVENTS ? " full" : ""}`}>
+            {timed.length}/{MAX_TIMED_EVENTS}
+          </span>
+        </div>
         <small className="mapPresetHint">
           Mission-book style: pick any round (1–30) and any effect, then tweak the numbers. Multiple
           events can share a round. Fires at the start of that round for every player.
         </small>
 
-        <div className="mapPresetChipRow">
+        <div className="mapPresetTimedTools">
           <button
-            className="mapPresetChip"
-            onClick={() => setTimed([...timed, defaultTimedEvent(suggestNextRound(timed))])}
+            className="mapPresetTimedAdd"
+            disabled={timed.length >= MAX_TIMED_EVENTS}
+            onClick={() => appendTimed(defaultTimedEvent(suggestNextRound(timed, value.roundLimit)))}
             type="button"
           >
-            + Add event
+            <Plus aria-hidden="true" size={13} /> Add event
           </button>
+          {timed.length > 1 ? (
+            <button
+              className="mapPresetTimedSort"
+              onClick={() =>
+                setTimed(
+                  timed
+                    .map((event, index) => ({ event, index }))
+                    .sort((a, b) => a.event.round - b.event.round || a.index - b.index)
+                    .map(({ event }) => event)
+                )
+              }
+              type="button"
+            >
+              <ArrowUpDown aria-hidden="true" size={12} /> Sort by round
+            </button>
+          ) : null}
+        </div>
+        <details className="mapPresetTemplates">
+          <summary>Quick templates</summary>
+          <div className="mapPresetChipRow">
           <button
             className="mapPresetChip"
+            disabled={timed.length >= MAX_TIMED_EVENTS}
             onClick={() =>
-              setTimed([
-                ...timed,
+              appendTimed(
                 {
                   round: 6,
                   effect: {
@@ -410,7 +450,7 @@ export function MapPresetEditor({
                     locations: ["windmill", "water_wheel", "mystical_garden"]
                   }
                 }
-              ])
+              )
             }
             type="button"
           >
@@ -418,11 +458,11 @@ export function MapPresetEditor({
           </button>
           <button
             className="mapPresetChip"
+            disabled={timed.length >= MAX_TIMED_EVENTS}
             onClick={() =>
-              setTimed([
-                ...timed,
+              appendTimed(
                 { round: 4, effect: { kind: "resources", gold: 3, buildingMaterials: 0, valuables: 0 } }
-              ])
+              )
             }
             type="button"
           >
@@ -430,11 +470,11 @@ export function MapPresetEditor({
           </button>
           <button
             className="mapPresetChip"
+            disabled={timed.length >= MAX_TIMED_EVENTS}
             onClick={() =>
-              setTimed([
-                ...timed,
+              appendTimed(
                 { round: 8, effect: { kind: "search", deck: "artifacts", count: 1 } }
-              ])
+              )
             }
             type="button"
           >
@@ -442,8 +482,9 @@ export function MapPresetEditor({
           </button>
           <button
             className="mapPresetChip"
+            disabled={timed.length >= MAX_TIMED_EVENTS}
             onClick={() =>
-              setTimed([...timed, { round: 4, effect: { kind: "movement", amount: 1 } }])
+              appendTimed({ round: 4, effect: { kind: "movement", amount: 1 } })
             }
             type="button"
           >
@@ -451,19 +492,29 @@ export function MapPresetEditor({
           </button>
           <button
             className="mapPresetChip"
+            disabled={timed.length >= MAX_TIMED_EVENTS}
             onClick={() =>
-              setTimed([...timed, { round: 4, effect: { kind: "treasure_roll", count: 1 } }])
+              appendTimed({ round: 4, effect: { kind: "treasure_roll", count: 1 } })
             }
             type="button"
           >
             Template: Treasure die (r4)
           </button>
-        </div>
+          </div>
+        </details>
+        {timed.length >= MAX_TIMED_EVENTS ? (
+          <small className="mapPresetTimedWarning" role="status">
+            Event limit reached. Remove an event before adding another.
+          </small>
+        ) : null}
 
         {timed.length > 0 ? (
           <ul className="mapPresetTimedList">
             {timed.map((event, index) => (
               <li className="mapPresetTimedCard" key={`timed-${index}`}>
+                <span className="mapPresetTimedRail" aria-hidden="true">
+                  {event.round}
+                </span>
                 <div className="mapPresetTimedHeader">
                   <label className="mapPresetTimedRound">
                     Round
@@ -500,11 +551,23 @@ export function MapPresetEditor({
                     </select>
                   </label>
                   <button
-                    className="mapPresetTimedRemove"
-                    onClick={() => setTimed(timed.filter((_, i) => i !== index))}
+                    aria-label={`Duplicate timed event ${index + 1}`}
+                    className="mapPresetTimedIconButton"
+                    disabled={timed.length >= MAX_TIMED_EVENTS}
+                    onClick={() => appendTimed(cloneTimedEvent(event))}
+                    title="Duplicate this event"
                     type="button"
                   >
-                    Remove
+                    <Copy aria-hidden="true" size={13} />
+                  </button>
+                  <button
+                    aria-label={`Remove timed event ${index + 1}`}
+                    className="mapPresetTimedIconButton danger"
+                    onClick={() => setTimed(timed.filter((_, i) => i !== index))}
+                    title="Remove this event"
+                    type="button"
+                  >
+                    <Trash2 aria-hidden="true" size={13} />
                   </button>
                 </div>
                 <TimedEffectFields
@@ -515,6 +578,11 @@ export function MapPresetEditor({
                 <div className="mapPresetTimedPreview" aria-live="polite">
                   Round {event.round}: {describeTimedMapEffect(event.effect)}
                 </div>
+                {timedEventWarning(event, value.roundLimit) ? (
+                  <small className="mapPresetTimedWarning" role="status">
+                    {timedEventWarning(event, value.roundLimit)}
+                  </small>
+                ) : null}
               </li>
             ))}
           </ul>
@@ -781,10 +849,38 @@ function describeBonusLine(bonus: CustomMapStartingBonus): string {
 }
 
 /** Suggest a sensible next round when adding a blank timed event. */
-function suggestNextRound(existing: CustomMapTimedEvent[]): number {
+function suggestNextRound(existing: CustomMapTimedEvent[], roundLimit?: number): number {
   if (existing.length === 0) {
-    return 6;
+    return Math.min(6, roundLimit ?? 30);
   }
   const max = Math.max(...existing.map((e) => e.round));
-  return Math.min(30, max + 2);
+  return Math.min(roundLimit ?? 30, 30, max + 2);
+}
+
+function cloneTimedEvent(event: CustomMapTimedEvent): CustomMapTimedEvent {
+  return {
+    round: event.round,
+    effect:
+      event.effect.kind === "clear_visitable_cubes"
+        ? { ...event.effect, locations: [...event.effect.locations] }
+        : { ...event.effect }
+  };
+}
+
+function timedEventWarning(event: CustomMapTimedEvent, roundLimit?: number): string | null {
+  if (roundLimit && event.round > roundLimit) {
+    return `This fires after the suggested ${roundLimit}-round map length.`;
+  }
+  if (
+    event.effect.kind === "resources" &&
+    !event.effect.gold &&
+    !event.effect.buildingMaterials &&
+    !event.effect.valuables
+  ) {
+    return "Set at least one resource above 0 or this event will be removed when saved.";
+  }
+  if (event.effect.kind === "note" && event.effect.text.trim().length === 0) {
+    return "Write an announcement or this event will be removed when saved.";
+  }
+  return null;
 }

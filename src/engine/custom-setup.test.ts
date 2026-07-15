@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { materializeTileFields, processPendingVisit, startAdventureRound } from "./adventure";
+import {
+  applyCustomMapTimedEvents,
+  materializeTileFields,
+  processPendingVisit,
+  startAdventureRound
+} from "./adventure";
 import { pumpAdventureQueues } from "./adventure-reducer";
 import { createAdventureGameState, validateCustomMapPlan } from "./adventure-setup";
 import { getScenario } from "./adventure-setup";
@@ -777,6 +782,36 @@ describe("map preset conditions — effects and apply-once semantics", () => {
         `expected MAP_PRESET_TRIGGERED mentioning ${snippet}`
       ).toBe(true);
     }
+  });
+
+  it("timed events skip eliminated seats and their heroes", () => {
+    const state = createAdventureGameState({
+      seed: "preset-timed-live-seats",
+      customMap: NEAR_SLOT,
+      customMapPreset: {
+        timedEvents: [
+          { round: 3, effect: { kind: "movement", amount: 2 } },
+          { round: 3, effect: { kind: "treasure_roll", count: 1 } }
+        ]
+      }
+    });
+    const eliminatedHero = Object.values(state.heroes).find(
+      (hero) => hero.controllerId === "p2"
+    )!;
+    const movementBefore = eliminatedHero.movementPoints;
+    state.players.p2.eliminated = true;
+    state.round = 3;
+    applyCustomMapTimedEvents(state);
+
+    expect(eliminatedHero.movementPoints).toBe(movementBefore);
+    const timedRollOwners = state.adventure!.rewardQueue
+      .filter(
+        (reward) =>
+          reward.kind === "visit-steps" &&
+          reward.steps.some((step) => step.type === "ROLL_TREASURE_DICE")
+      )
+      .map((reward) => reward.playerId);
+    expect(timedRollOwners).toEqual(["p1"]);
   });
 
   it("sanitizeCustomMapPreset keeps freer timed-effect kinds and clamps amounts", async () => {
