@@ -87,6 +87,7 @@ import {
   instantiateTile,
   isFieldGuarded,
   isOuterEdgeSealed,
+  isTileSlotDesignedSealed,
   isSharedEventBookkeepingReward,
   seaStepHalts,
   makeCombatUnitFromArmy,
@@ -1592,8 +1593,10 @@ export function isTileRotationConnected(state: GameState, tile: MapTileState, ro
       continue;
     }
 
-    // The slot's own outer border must be open…
-    if (def.outerImpassable[slot - 1]) {
+    // The slot's own outer border must be open — printed (tile-frame) OR a
+    // designer-placed yellow border (absolute frame, evaluated at the candidate
+    // rotation so it stays put as the tile turns).
+    if (def.outerImpassable[slot - 1] || isTileSlotDesignedSealed({ ...tile, rotation }, slot)) {
       continue;
     }
 

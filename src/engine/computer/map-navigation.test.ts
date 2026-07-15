@@ -9,10 +9,11 @@ import {
   canHeroReachPlacedTile,
   farTilePlacementCenters,
   getAdjacentSpaceIds,
+  instantiateTile,
   isOuterEdgeSealed,
   playerHasPlaceableFarTile,
 } from "../adventure";
-import { hexSpaceId, tileFootprint } from "../hex";
+import { hexNeighbor, hexSpaceId, parseHexSpaceId, slotDirection, tileFootprint, tileLatticeNeighbors } from "../hex";
 import { getLegalActions } from "../legal-actions";
 import type {
   GameAction,
@@ -2207,5 +2208,80 @@ describe("navigation across sea / underground, teleport routing, Spell-Book stas
     const townPortal = stash("spell.town_portal");
     expect(townPortal.policy).toBe("card.keep-spell-ready");
     expect(berserk.score).toBeGreaterThan(townPortal.score);
+  });
+});
+
+describe("computer pathing respects designer-placed yellow borders", () => {
+  // The march / distance field walks via canCrossEdge, so a designed border it
+  // inherits automatically — this pins it: the AI cannot route a step across a
+  // designer-placed yellow border (CONTROL: the same layout without the border
+  // is a direct one-step reach).
+  const OPEN = "F23"; // fully-open tile (no printed seals / blocked / internal)
+
+  function twoTileField(): {
+    state: GameState;
+    hero: HeroState;
+    from: MapFieldState;
+    to: MapFieldState;
+    a: ReturnType<typeof instantiateTile>;
+  } {
+    const state = createAdventureGameState({
+      seed: "nav-designed-border",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      events: false,
+    });
+    const adventure = state.adventure!;
+    const O = { row: 40, col: 30 };
+    const a = instantiateTile(adventure, OPEN, O, 0, false);
+    const neighbor = tileLatticeNeighbors(O).find(
+      (candidate) =>
+        !Object.values(adventure.tiles).some(
+          (t) => t.centerRow === candidate.row && t.centerCol === candidate.col,
+        ),
+    )!;
+    const b = instantiateTile(adventure, OPEN, neighbor, 0, false);
+    // Find a field of A adjacent to a field of B — the shared doorway.
+    let from: MapFieldState | undefined;
+    let to: MapFieldState | undefined;
+    for (const candidate of Object.values(adventure.fields)) {
+      if (candidate.tileInstanceId !== a.id) {
+        continue;
+      }
+      const coord = parseHexSpaceId(candidate.spaceId)!;
+      for (let direction = 0; direction < 6; direction += 1) {
+        const other = adventure.fields[hexSpaceId(hexNeighbor(coord, direction))];
+        if (other && other.tileInstanceId === b.id) {
+          from = candidate;
+          to = other;
+          break;
+        }
+      }
+      if (from) {
+        break;
+      }
+    }
+    const hero: HeroState = { ...Object.values(state.heroes)[0], spaceId: from!.spaceId, controllerId: "p1" };
+    return { state, hero, from: from!, to: to!, a };
+  }
+
+  it("the distance field does not route the march across a designed border", () => {
+    // CONTROL: with both arcs open the objective is one step from the hero.
+    const control = twoTileField();
+    expect(distanceFromHeroTo(control.state, control.hero, control.to.spaceId)).toBe(1);
+
+    // With a designed border sealing the hero's outgoing arc, the direct step is
+    // gone — the objective is no longer a 1-step reach (here fully cut off).
+    const blocked = twoTileField();
+    blocked.a.extraBorders = [slotDirection(blocked.from.slot, blocked.a.rotation)!];
+    expect(distanceFromHeroTo(blocked.state, blocked.hero, blocked.to.spaceId)).not.toBe(1);
+
+    // And the objective cell itself is still a valid source (distance 0), so the
+    // change is the SEVERED edge, not a broken objective set.
+    const field = objectiveDistanceField(blocked.state, blocked.hero, [
+      { spaceId: blocked.to.spaceId, kind: "visitable" },
+    ]);
+    expect(field.get(blocked.to.spaceId)).toBe(0);
+    expect(field.get(blocked.from.spaceId)).not.toBe(1);
   });
 });

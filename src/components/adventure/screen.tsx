@@ -839,6 +839,27 @@ export function HexMapBoard({
           );
         }
       }
+      // Designer yellow borders are public info (a printed line is visible to
+      // everyone), so draw them on the tile BACK too — at their ABSOLUTE board
+      // direction, so a player sees exactly where the wall will be. `footprint`
+      // is rotation-0, so index d+1 is the ring hex facing absolute direction d.
+      for (const absolute of tile.extraBorders ?? []) {
+        if (!Number.isInteger(absolute) || absolute < 0 || absolute > 5) {
+          continue;
+        }
+        const ringCell = footprint[absolute + 1];
+        const ringPixel = hexToPixel(ringCell, HEX_SIZE);
+        for (const edge of [absolute - 1, absolute, absolute + 1]) {
+          const direction = ((edge % 6) + 6) % 6;
+          overlays.push(
+            <line
+              className="tileBorderLine"
+              key={`${tile.id}-back-border-${absolute}-${direction}`}
+              {...hexEdgeForDirection(ringPixel.x, ringPixel.y, HEX_SIZE - 1.2, direction)}
+            />
+          );
+        }
+      }
       continue;
     }
 
@@ -859,7 +880,11 @@ export function HexMapBoard({
       const bankPreviewSlot =
         reservedBankId && tileDef ? tileDef.fields.findIndex((field) => field.location === "blocked_field") : -1;
       const previewBankSlots = bankPreviewSlot >= 0 ? new Set([bankPreviewSlot]) : undefined;
-      const borderSegments = tileDef ? getTileBorderSegments(tileDef, previewBankSlots, showBankBorders) : [];
+      // Designer yellow borders are absolute: pass the SAME `rotation` the draw
+      // below re-applies so they stay put on the board as the preview spins.
+      const borderSegments = tileDef
+        ? getTileBorderSegments(tileDef, previewBankSlots, showBankBorders, { extraBorders: tile.extraBorders, rotation })
+        : [];
       const footprint = tileFootprint(center, rotation);
       for (const [slot, coord] of footprint.entries()) {
         const fieldDef = tileDef?.fields[slot];
@@ -959,7 +984,12 @@ export function HexMapBoard({
         bankSlots.add(slot);
       }
     });
-    const borderSegments = tileDef ? getTileBorderSegments(tileDef, bankSlots, showBankBorders) : [];
+    const borderSegments = tileDef
+      ? getTileBorderSegments(tileDef, bankSlots, showBankBorders, {
+          extraBorders: tile.extraBorders,
+          rotation: tile.rotation
+        })
+      : [];
     for (const [slot, coord] of footprint.entries()) {
       const spaceId = `h:${coord.row}:${coord.col}`;
       const field = adventure.fields[spaceId];

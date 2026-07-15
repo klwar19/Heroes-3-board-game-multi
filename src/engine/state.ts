@@ -6840,6 +6840,17 @@ export type MapTileState = {
    * lost). Public info — the token is drawn face-up.
    */
   reservedBankId?: string;
+  /**
+   * Designer-placed yellow borders carried onto this PLACED tile instance —
+   * ABSOLUTE board directions (0–5), independent of `tileDefId` and `rotation`.
+   * Each seals the outer arc of the ring field that faces that absolute
+   * direction (see `isTileSlotDesignedSealed`), so it reads exactly like a
+   * printed `outerImpassable` arc at every crossing / discovery / placement
+   * gate. Set from {@link CustomMapTilePlan.extraBorders} the moment the tile is
+   * placed and present even while the tile is face-down. Public info — a printed
+   * yellow line is visible to everyone.
+   */
+  extraBorders?: number[];
 };
 
 export type MapFieldState = {
@@ -8826,6 +8837,20 @@ export type CustomMapTilePlan = {
    * count and drops malformed entries.
    */
   gateLinks?: CustomMapGateLink[];
+  /**
+   * Designer-placed yellow border lines — ABSOLUTE board directions (0–5 =
+   * NE, E, SE, SW, W, NW, the SAME indexing the engine uses for ring slots and
+   * {@link TileDefinition.outerImpassable}). Each entry seals the OUTER ARC of
+   * whichever ring field ends up facing that absolute direction — all three
+   * outward hex edges together, mechanically identical to a printed
+   * `outerImpassable` arc but INDEPENDENT of the tile art. Because the frame is
+   * absolute, the seal does NOT move when a face-down slot draws its random
+   * tile or the player rotates a revealed tile: the designer draws on the board
+   * and the border stays put. Legal on ANY tile group — starting, supply, sea,
+   * subterranean. Normalised to unique ints 0–5 (dedupe, cap 6) at
+   * {@link validateCustomMapPlan} and the persistence sanitiser.
+   */
+  extraBorders?: number[];
 };
 
 /**
