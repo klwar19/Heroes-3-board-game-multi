@@ -555,6 +555,42 @@ export function MapDesigner({
   const [armedObject, setArmedObject] = useState<{ kind: CustomMapObjectKind; pair?: 1 | 2 | 3 | 4 } | null>(null);
   const [selectedObjectIndex, setSelectedObjectIndex] = useState<number | null>(null);
   const [objectPopoverAt, setObjectPopoverAt] = useState<{ x: number; y: number } | null>(null);
+  // A live drag of an ALREADY-PLACED object (a Gate half / standalone or
+  // tile-slot Monolith / Whirlpool) to a new placement. Set on the token's
+  // pointerdown; `moved` promotes past the click threshold (a release in place
+  // is still a plain click that opens the object panel); release on a candidate
+  // commits the new `placement` (kind / pair / guard preserved). Escape /
+  // pointercancel aborts — the object list is untouched until release, so
+  // cancelling restores the previous placement by construction.
+  const [objectDrag, setObjectDrag] = useState<{
+    index: number;
+    kind: CustomMapObjectKind;
+    startX: number;
+    startY: number;
+    moved: boolean;
+    hover: CustomMapObject["placement"] | null;
+  } | null>(null);
+  // Set when an object drag actually moved, so the trailing click never also
+  // opens the object panel.
+  const objectClickSuppressRef = useRef(false);
+  // The compact docked panel for a tile-carried Monolith/Whirlpool token
+  // (`plan.token`) — separate from the giant per-tile panel, so clicking a token
+  // edits the TOKEN, not the tile underneath it.
+  const [selectedTokenIndex, setSelectedTokenIndex] = useState<number | null>(null);
+  const [tokenPopoverAt, setTokenPopoverAt] = useState<{ x: number; y: number } | null>(null);
+  // A live drag of a FACE-UP tile's token to another legal slot (its own tile or
+  // another face-up tile that carries no token yet). Face-down badge tokens are
+  // never draggable (the discoverer picks the hex at reveal). Same lifecycle as
+  // the gate/object token drags.
+  const [tokenDrag, setTokenDrag] = useState<{
+    index: number;
+    kind: MapTokenKind;
+    startX: number;
+    startY: number;
+    moved: boolean;
+    hover: { planIndex: number; slot: number } | null;
+  } | null>(null);
+  const tokenClickSuppressRef = useRef(false);
   // Border paint mode: armed from the Objects palette, it turns every placed
   // tile's six outer-edge ring hexes into clickable zones that seal/unseal a
   // designer yellow border directly on the board (one armed mode at a time).
@@ -767,6 +803,24 @@ export function MapDesigner({
     setObjectPopoverAt(null);
   }, []);
 
+  // Close the compact tile-token panel. A stable callback (like `closePopover` /
+  // `closeObjectPopover`) so `closeAllPanels` and `toggleBorderPaint` keep a
+  // stable dependency for the React Compiler.
+  const closeTokenPopover = useCallback(() => {
+    setSelectedTokenIndex(null);
+    setTokenPopoverAt(null);
+  }, []);
+
+  // The three docked panels (tile / object / token) are mutually exclusive: one
+  // shared clear that every opener calls first, then sets its own state. Factored
+  // into a single stable callback so the "which two to close" bookkeeping never
+  // becomes a fresh inline closure in the hook chains.
+  const closeAllPanels = useCallback(() => {
+    closePopover();
+    closeObjectPopover();
+    closeTokenPopover();
+  }, [closePopover, closeObjectPopover, closeTokenPopover]);
+
   const addTile = useCallback(
     (group: DesignGroup, center: HexCoord, seaBand?: SeaBand, subBand?: SubBand) => {
       const plan: CustomMapTilePlan =
@@ -867,25 +921,50 @@ export function MapDesigner({
    */
   const toggleBorderPaint = useCallback(() => {
     setArmedObject(null);
-    closePopover();
-    closeObjectPopover();
+    closeAllPanels();
     setBorderPaint((current) => !current);
-  }, [closePopover, closeObjectPopover]);
+  }, [closeAllPanels]);
 
   // --- Designer object geometry + edit helpers -------------------------------
-  /** The board hex a placed object sits on (tile-slot honours the tile rotation). */
-  const objectHexOf = useCallback(
-    (object: CustomMapObject): string => {
-      if (object.placement.type === "standalone") {
-        return hexSpaceId({ row: object.placement.row, col: object.placement.col });
+  /** The board hex a placement resolves to (tile-slot honours the tile rotation). */
+  const placementToHex = useCallback(
+    (placement: CustomMapObject["placement"]): HexCoord => {
+      if (placement.type === "standalone") {
+        return { row: placement.row, col: placement.col };
       }
-      const plan = customMap.find((p) => p.row === object.placement.row && p.col === object.placement.col);
-      const footprint = tileFootprint({ row: object.placement.row, col: object.placement.col }, plan?.rotation ?? 0);
-      return hexSpaceId(footprint[object.placement.slot] ?? footprint[0]);
+      const plan = customMap.find((p) => p.row === placement.row && p.col === placement.col);
+      const footprint = tileFootprint({ row: placement.row, col: placement.col }, plan?.rotation ?? 0);
+      return footprint[placement.slot] ?? footprint[0];
     },
     [customMap]
   );
-  const objectHexSet = useMemo(() => new Set(objects.map(objectHexOf)), [objects, objectHexOf]);
+  /** The board hex a placed object sits on (tile-slot honours the tile rotation). */
+  const objectHexOf = useCallback(
+    (object: CustomMapObject): string => hexSpaceId(placementToHex(object.placement)),
+    [placementToHex]
+  );
+  // Which kind's candidate cells light up: the armed palette kind, or (while a
+  // placed object is being dragged) the dragged object's kind. The two are
+  // mutually exclusive — starting a drag disarms the palette — so a plain
+  // precedence is unambiguous.
+  const placementKind: CustomMapObjectKind | null = armedObject
+    ? armedObject.kind
+    : objectDrag
+      ? objectDrag.kind
+      : null;
+  // While dragging a placed object, its OWN hex must not count as occupied so its
+  // current neighbourhood stays a legal drop target.
+  const draggedObjectIndex = objectDrag ? objectDrag.index : null;
+  const objectHexSet = useMemo(() => {
+    const set = new Set<string>();
+    objects.forEach((object, index) => {
+      if (index === draggedObjectIndex) {
+        return;
+      }
+      set.add(objectHexOf(object));
+    });
+    return set;
+  }, [objects, objectHexOf, draggedObjectIndex]);
   const objectValidation = useMemo(
     () => validateCustomMapObjects(customMap, objects, starts),
     [customMap, objects, starts]
@@ -923,12 +1002,12 @@ export function MapDesigner({
     }
     return set;
   }, [customMap]);
-  /** Legal FACE-UP tile-slot cells for the armed kind (a Gate uses land legality). */
+  /** Legal FACE-UP tile-slot cells for the active kind (a Gate uses land legality). */
   const tileSlotCandidates = useMemo(() => {
-    if (!armedObject) {
+    if (!placementKind) {
       return [] as { hex: HexCoord; row: number; col: number; slot: number }[];
     }
-    const legalKind: MapTokenKind = armedObject.kind === "gate" ? "monolith" : armedObject.kind;
+    const legalKind: MapTokenKind = placementKind === "gate" ? "monolith" : placementKind;
     const out: { hex: HexCoord; row: number; col: number; slot: number }[] = [];
     for (const plan of customMap) {
       if (plan.faceDown || !plan.tileDefId) {
@@ -947,10 +1026,10 @@ export function MapDesigner({
       }
     }
     return out;
-  }, [armedObject, customMap, objectHexSet]);
+  }, [placementKind, customMap, objectHexSet]);
   /** Empty OFF-tile hexes adjacent to a tile — standalone candidates (land only). */
   const standaloneCandidates = useMemo<HexCoord[]>(() => {
-    if (!armedObject || armedObject.kind === "whirlpool") {
+    if (!placementKind || placementKind === "whirlpool") {
       return [];
     }
     const out: HexCoord[] = [];
@@ -970,7 +1049,72 @@ export function MapDesigner({
       }
     }
     return out;
-  }, [armedObject, occupiedTileHexes, objectHexSet]);
+  }, [placementKind, occupiedTileHexes, objectHexSet]);
+  /**
+   * The placement an object drag would land on if released over `hex`: a legal
+   * face-up tile slot, else a standalone candidate, else null (release = no-op).
+   * Stable so the object-drag lifecycle effect keeps a fixed dependency.
+   */
+  const objectPlacementAtHex = useCallback(
+    (hex: HexCoord): CustomMapObject["placement"] | null => {
+      const id = hexSpaceId(hex);
+      const tileSlot = tileSlotCandidates.find((candidate) => hexSpaceId(candidate.hex) === id);
+      if (tileSlot) {
+        return { type: "tile-slot", row: tileSlot.row, col: tileSlot.col, slot: tileSlot.slot };
+      }
+      const standalone = standaloneCandidates.find((candidate) => hexSpaceId(candidate) === id);
+      if (standalone) {
+        return { type: "standalone", row: standalone.row, col: standalone.col };
+      }
+      return null;
+    },
+    [tileSlotCandidates, standaloneCandidates]
+  );
+  /**
+   * Legal drop slots for the tile-token drag: every legal slot (for the dragged
+   * token's kind) on every FACE-UP tile, EXCLUDING tiles that already carry a
+   * token (one token per tile) but INCLUDING every legal slot of the dragged
+   * token's OWN tile. Whirlpool slots are sea-only by the legality rule, and a
+   * move never changes the token count, so the Whirlpool supply cap is safe.
+   */
+  const tokenSlotCandidates = useMemo(() => {
+    if (!tokenDrag) {
+      return [] as { planIndex: number; slot: number; hex: HexCoord }[];
+    }
+    const { kind, index: sourceIndex } = tokenDrag;
+    const out: { planIndex: number; slot: number; hex: HexCoord }[] = [];
+    customMap.forEach((plan, planIndex) => {
+      if (plan.faceDown || !plan.tileDefId) {
+        return;
+      }
+      // One token per tile: a tile that already carries a token is off-limits,
+      // except the dragged token's own tile (moving within its own slots).
+      if (plan.token && planIndex !== sourceIndex) {
+        return;
+      }
+      const def = allTileDefinitions[plan.tileDefId];
+      if (!def) {
+        return;
+      }
+      for (const slot of legalTokenSlotsForTileDef(def, kind)) {
+        out.push({
+          planIndex,
+          slot,
+          hex: tileFootprint({ row: plan.row, col: plan.col }, plan.rotation ?? 0)[slot]
+        });
+      }
+    });
+    return out;
+  }, [tokenDrag, customMap]);
+  /** The tile+slot a token drag would land on if released over `hex` (else null). */
+  const tokenSlotAtHex = useCallback(
+    (hex: HexCoord): { planIndex: number; slot: number } | null => {
+      const id = hexSpaceId(hex);
+      const match = tokenSlotCandidates.find((candidate) => hexSpaceId(candidate.hex) === id);
+      return match ? { planIndex: match.planIndex, slot: match.slot } : null;
+    },
+    [tokenSlotCandidates]
+  );
 
   const armObject = useCallback((kind: CustomMapObjectKind, pair?: 1 | 2 | 3 | 4) => {
     setSelectedObjectIndex(null);
@@ -1022,6 +1166,46 @@ export function MapDesigner({
       setObjectPopoverAt(null);
     },
     [objects, onObjectsChange]
+  );
+  /** Move a placed object to a new placement, preserving kind / pair / guard. */
+  const moveObject = useCallback(
+    (index: number, placement: CustomMapObject["placement"]) => {
+      onObjectsChange?.(objects.map((object, i) => (i === index ? { ...object, placement } : object)));
+    },
+    [objects, onObjectsChange]
+  );
+  /**
+   * Move a tile-carried token to a target tile+slot. A same-tile move is one
+   * `updateTile`; a cross-tile move is ONE atomic array update (clear the source
+   * plan's token, set the target's) — never two `onChange` calls, whose second
+   * would clobber the first since the parent holds the array.
+   */
+  const commitTokenMove = useCallback(
+    (sourceIndex: number, target: { planIndex: number; slot: number }) => {
+      const source = customMap[sourceIndex];
+      if (!source?.token) {
+        return;
+      }
+      const kind = source.token.kind;
+      if (target.planIndex === sourceIndex) {
+        updateTile(sourceIndex, { token: { kind, slot: target.slot } });
+        return;
+      }
+      onChange(
+        customMap.map((plan, planIndex) => {
+          if (planIndex === sourceIndex) {
+            const next = { ...plan };
+            delete next.token;
+            return next;
+          }
+          if (planIndex === target.planIndex) {
+            return { ...plan, token: { kind, slot: target.slot } };
+          }
+          return plan;
+        })
+      );
+    },
+    [customMap, onChange, updateTile]
   );
 
   /**
@@ -1147,6 +1331,104 @@ export function MapDesigner({
     };
   }, [gateDrag, clientToLocal, hexSize, pinGateLink]);
 
+  // Placed-object drag lifecycle: pointermove maps the pointer into board space,
+  // finds the candidate placement under it (tile-slot or standalone) as a live
+  // preview, and promotes past the 6px click threshold; pointerup commits the
+  // move (kind / pair / guard preserved) and suppresses the trailing click;
+  // pointercancel/Escape aborts — the object list is untouched until release.
+  useEffect(() => {
+    if (!objectDrag) {
+      return;
+    }
+    const onMove = (event: PointerEvent) => {
+      const local = clientToLocal(event.clientX, event.clientY);
+      const hex = local ? pixelToHex(local.x, local.y, hexSize) : null;
+      const placement = hex ? objectPlacementAtHex(hex) : null;
+      setObjectDrag((current) =>
+        current
+          ? {
+              ...current,
+              moved:
+                current.moved ||
+                Math.abs(event.clientX - current.startX) + Math.abs(event.clientY - current.startY) > 6,
+              hover: placement
+            }
+          : current
+      );
+    };
+    const onUp = () => {
+      if (objectDrag.moved && objectDrag.hover) {
+        moveObject(objectDrag.index, objectDrag.hover);
+        objectClickSuppressRef.current = true;
+      }
+      setObjectDrag(null);
+    };
+    const onCancel = () => setObjectDrag(null);
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setObjectDrag(null);
+      }
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onCancel);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onCancel);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [objectDrag, clientToLocal, hexSize, objectPlacementAtHex, moveObject]);
+
+  // Tile-token drag lifecycle: same shape as the object drag — preview the
+  // target tile+slot under the pointer, promote past 6px, commit on release
+  // (same-tile or the atomic cross-tile move), abort on Escape / pointercancel.
+  useEffect(() => {
+    if (!tokenDrag) {
+      return;
+    }
+    const onMove = (event: PointerEvent) => {
+      const local = clientToLocal(event.clientX, event.clientY);
+      const hex = local ? pixelToHex(local.x, local.y, hexSize) : null;
+      const target = hex ? tokenSlotAtHex(hex) : null;
+      setTokenDrag((current) =>
+        current
+          ? {
+              ...current,
+              moved:
+                current.moved ||
+                Math.abs(event.clientX - current.startX) + Math.abs(event.clientY - current.startY) > 6,
+              hover: target
+            }
+          : current
+      );
+    };
+    const onUp = () => {
+      if (tokenDrag.moved && tokenDrag.hover) {
+        commitTokenMove(tokenDrag.index, tokenDrag.hover);
+        tokenClickSuppressRef.current = true;
+      }
+      setTokenDrag(null);
+    };
+    const onCancel = () => setTokenDrag(null);
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setTokenDrag(null);
+      }
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onCancel);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onCancel);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [tokenDrag, clientToLocal, hexSize, tokenSlotAtHex, commitTokenMove]);
+
   if (!scenario) {
     return null;
   }
@@ -1198,6 +1480,15 @@ export function MapDesigner({
   const selectedTileDef = selected?.tileDefId ? allTileDefinitions[selected.tileDefId] : undefined;
   const selectedMode = selected && selected.group !== "starting" ? tileSlotMode(selected) : null;
   const selectedToken = selected?.token;
+
+  // The tile-carried token whose compact TOKEN panel is open (D2 direct edit).
+  // A face-up tile lets its slot be re-picked; a face-down badge is discover-only.
+  const tokenPanelPlan = selectedTokenIndex !== null ? customMap[selectedTokenIndex] ?? null : null;
+  const tokenPanelToken = tokenPanelPlan?.token;
+  const tokenPanelDef =
+    tokenPanelPlan && !tokenPanelPlan.faceDown && tokenPanelPlan.tileDefId
+      ? allTileDefinitions[tokenPanelPlan.tileDefId]
+      : undefined;
 
   // Landmark chips that match at least one tile in this slot's pool. Tiles the
   // designer pinned by exact id on OTHER slots are spliced out of the random
@@ -1454,11 +1745,67 @@ export function MapDesigner({
       (plan) => plan.group === "subterranean" && plan.row === cavernCenter.row && plan.col === cavernCenter.col
     );
     if (index >= 0) {
-      // Opening the docked tile panel closes any open object panel (never both).
-      closeObjectPopover();
+      // Opening the docked tile panel closes any open object / token panel.
+      closeAllPanels();
       setSelectedIndex(index);
       setPopoverAt({ x: clientX, y: clientY });
     }
+  };
+
+  /**
+   * Start dragging an ALREADY-PLACED object to a new placement. Disarms the
+   * palette / border paint (one interaction at a time, so the candidate cells
+   * shown are the DRAGGED object's kind). A release in place is still a plain
+   * click that opens the object panel (the drag effect only commits on `moved`).
+   */
+  const beginObjectDrag = (index: number, kind: CustomMapObjectKind) => (event: React.PointerEvent) => {
+    if (event.button !== 0) {
+      return;
+    }
+    event.stopPropagation();
+    (event.currentTarget as Element).setPointerCapture?.(event.pointerId);
+    setArmedObject(null);
+    setBorderPaint(false);
+    setObjectDrag({ index, kind, startX: event.clientX, startY: event.clientY, moved: false, hover: null });
+  };
+
+  /**
+   * Press a tile-carried token. Always takes the press (stopPropagation) so the
+   * board never pans and the tile panel never opens underneath it. A FACE-UP
+   * token starts a drag; a FACE-DOWN badge is click-only (the discoverer picks
+   * its hex at reveal), so it merely blocks the fall-through and lets the click
+   * open the token panel.
+   */
+  const beginTokenPress =
+    (index: number, kind: MapTokenKind, draggable: boolean) => (event: React.PointerEvent) => {
+      if (event.button !== 0) {
+        return;
+      }
+      event.stopPropagation();
+      if (!draggable) {
+        return;
+      }
+      (event.currentTarget as Element).setPointerCapture?.(event.pointerId);
+      setArmedObject(null);
+      setBorderPaint(false);
+      setTokenDrag({ index, kind, startX: event.clientX, startY: event.clientY, moved: false, hover: null });
+    };
+
+  /** Open the compact token panel for a tile-carried token (drag suppresses the click). */
+  const onMapTokenClick = (index: number) => (event: React.MouseEvent) => {
+    event.stopPropagation();
+    if (tokenClickSuppressRef.current) {
+      tokenClickSuppressRef.current = false;
+      return;
+    }
+    const rect = wrapRef.current?.getBoundingClientRect();
+    closeAllPanels();
+    setSelectedTokenIndex(index);
+    setTokenPopoverAt(
+      rect
+        ? { x: Math.max(8, Math.min(event.clientX - rect.left, rect.width - 8)), y: event.clientY - rect.top }
+        : { x: 8, y: 0 }
+    );
   };
 
   /** Start dragging a designed gate token along its two tiles' shared boundary. */
@@ -1871,26 +2218,38 @@ export function MapDesigner({
     }
     const center = { row: plan.row, col: plan.col };
     const fixedSlot = !plan.faceDown && plan.tileDefId && token.slot !== undefined;
-    const cell = fixedSlot ? tileFootprint(center, plan.rotation ?? 0)[token.slot as number] : center;
+    // A face-up token sits on an exact slot and CAN be dragged to another legal
+    // slot; a face-down badge cannot (its hex is picked when the tile is found).
+    const draggable = Boolean(!plan.faceDown && plan.tileDefId);
+    const draggingThis = Boolean(tokenDrag && tokenDrag.index === index && tokenDrag.moved);
+    // While dragging, draw the token following the hovered target slot's hex.
+    const hoverPlan = draggingThis && tokenDrag!.hover ? customMap[tokenDrag!.hover.planIndex] : null;
+    const cell = hoverPlan
+      ? tileFootprint({ row: hoverPlan.row, col: hoverPlan.col }, hoverPlan.rotation ?? 0)[tokenDrag!.hover!.slot]
+      : fixedSlot
+        ? tileFootprint(center, plan.rotation ?? 0)[token.slot as number]
+        : center;
     const pixel = hexToPixel(cell ?? center, size);
     const tokenWidth = hexWidth * (fixedSlot ? 1 : 0.9);
     const tokenHeight = 2 * size * (fixedSlot ? 1 : 0.9);
     gateLayer.push(
       <image
+        className={`designerMapToken${draggable ? " draggable" : ""}${draggingThis ? " dragging" : ""}`}
         height={tokenHeight}
         href={assetUrl(mapTokenImage(token.kind, whirlpoolNumberByIndex.get(index)))}
         key={`map-token-${index}`}
+        onClick={onMapTokenClick(index)}
+        onPointerDown={beginTokenPress(index, token.kind, draggable)}
         opacity={plan.faceDown ? 0.9 : 1}
         preserveAspectRatio="xMidYMid meet"
-        style={{ pointerEvents: "none" }}
         width={tokenWidth}
         x={pixel.x - tokenWidth / 2}
         y={pixel.y - tokenHeight / 2}
       >
         <title>
           {plan.faceDown
-            ? `${mapTokenLabel(token.kind)} token — placed on a field of the discoverer's choosing when this tile is revealed.`
-            : `${mapTokenLabel(token.kind)} token — overwrites this field.`}
+            ? `${mapTokenLabel(token.kind)} token — placed on a field of the discoverer's choosing when this tile is revealed. Click for options (the hex is picked at discovery, so it can't be dragged).`
+            : `${mapTokenLabel(token.kind)} token — overwrites this field. Drag to another legal slot, or click for options.`}
         </title>
       </image>
     );
@@ -1966,40 +2325,85 @@ export function MapDesigner({
       ? `${gatePairColor(armedObject.pair ?? 1)} gate`
       : mapTokenLabel(armedObject.kind as MapTokenKind)
     : "";
-  if (armedObject) {
+  // The object whose candidate cells show while dragging (its own kind lights up).
+  const draggedObject = objectDrag ? objects[objectDrag.index] : undefined;
+  const draggedLabel = draggedObject
+    ? draggedObject.kind === "gate"
+      ? `${gatePairColor(draggedObject.pair ?? 1)} gate`
+      : mapTokenLabel(draggedObject.kind as MapTokenKind)
+    : "";
+  // Candidate cells glow while an object is armed (click to place) OR while a
+  // placed object is being dragged (release to move — no per-cell click).
+  const showObjectCandidates = Boolean(armedObject) || Boolean(objectDrag?.moved);
+  const objectHoverId = objectDrag?.hover ? hexSpaceId(placementToHex(objectDrag.hover)) : null;
+  if (showObjectCandidates) {
+    const candidateLabel = armedObject ? armedLabel : draggedLabel;
     for (const candidate of tileSlotCandidates) {
       const { x, y } = hexToPixel(candidate.hex, size);
+      const isHover = hexSpaceId(candidate.hex) === objectHoverId;
       objectLayer.push(
         <polygon
-          className="designerObjectSlot tileSlot"
+          className={`designerObjectSlot tileSlot${isHover ? " hover" : ""}`}
           key={`obj-slot-${candidate.row}-${candidate.col}-${candidate.slot}`}
-          onClick={() =>
-            placeArmedObject({ type: "tile-slot", row: candidate.row, col: candidate.col, slot: candidate.slot })
+          onClick={
+            armedObject
+              ? () =>
+                  placeArmedObject({ type: "tile-slot", row: candidate.row, col: candidate.col, slot: candidate.slot })
+              : undefined
           }
           points={hexCorners(x, y, size - 1.6)}
         >
-          <title>Place the {armedLabel} on this tile hex</title>
+          <title>
+            {armedObject ? `Place the ${candidateLabel} on this tile hex` : `Move the ${candidateLabel} here`}
+          </title>
         </polygon>
       );
     }
-    if (armedObject.kind !== "whirlpool") {
+    if (placementKind !== "whirlpool") {
       for (const candidate of standaloneCandidates) {
         const { x, y } = hexToPixel(candidate, size);
+        const isHover = hexSpaceId(candidate) === objectHoverId;
         objectLayer.push(
           <polygon
-            className="designerObjectSlot standalone"
+            className={`designerObjectSlot standalone${isHover ? " hover" : ""}`}
             key={`obj-standalone-${candidate.row}-${candidate.col}`}
-            onClick={() => placeArmedObject({ type: "standalone", row: candidate.row, col: candidate.col })}
+            onClick={
+              armedObject
+                ? () => placeArmedObject({ type: "standalone", row: candidate.row, col: candidate.col })
+                : undefined
+            }
             points={hexCorners(x, y, size - 1.6)}
           >
-            <title>Place a standalone {armedLabel} hex here</title>
+            <title>
+              {armedObject ? `Place a standalone ${candidateLabel} hex here` : `Move the ${candidateLabel} here`}
+            </title>
           </polygon>
         );
       }
     }
   }
+  // Token-drag candidate slots (every legal slot on a face-up tile, one-token cap).
+  if (tokenDrag?.moved) {
+    const hoverKey = tokenDrag.hover ? `${tokenDrag.hover.planIndex}:${tokenDrag.hover.slot}` : null;
+    for (const candidate of tokenSlotCandidates) {
+      const { x, y } = hexToPixel(candidate.hex, size);
+      const isHover = `${candidate.planIndex}:${candidate.slot}` === hoverKey;
+      objectLayer.push(
+        <polygon
+          className={`designerObjectSlot tileSlot${isHover ? " hover" : ""}`}
+          key={`token-slot-${candidate.planIndex}-${candidate.slot}`}
+          points={hexCorners(x, y, size - 1.6)}
+        >
+          <title>Move the {mapTokenLabel(tokenDrag.kind)} token to this slot</title>
+        </polygon>
+      );
+    }
+  }
   for (const [index, object] of objects.entries()) {
-    const coord = parseHexSpaceId(objectHexOf(object));
+    const draggingThis = Boolean(objectDrag && objectDrag.index === index && objectDrag.moved);
+    // Follow the hovered candidate while dragging; otherwise sit at the placement.
+    const coord =
+      draggingThis && objectDrag!.hover ? placementToHex(objectDrag!.hover) : placementToHex(object.placement);
     if (!coord) {
       continue;
     }
@@ -2010,12 +2414,16 @@ export function MapDesigner({
       <g
         className={`designerObjectToken${isGate ? " gate" : ""}${object.placement.type === "standalone" ? " standalone" : ""}${
           selectedObjectIndex === index ? " selected" : ""
-        }`}
+        }${draggingThis ? " dragging" : ""}`}
         data-object-index={index}
         key={`obj-token-${index}`}
         onClick={(event) => {
+          if (objectClickSuppressRef.current) {
+            objectClickSuppressRef.current = false;
+            return;
+          }
           const rect = wrapRef.current?.getBoundingClientRect();
-          setSelectedIndex(null);
+          closeAllPanels();
           setSelectedObjectIndex(index);
           setObjectPopoverAt(
             rect
@@ -2023,6 +2431,7 @@ export function MapDesigner({
               : { x: 8, y: 0 }
           );
         }}
+        onPointerDown={beginObjectDrag(index, object.kind)}
       >
         <circle className="designerObjectRing" cx={x} cy={y} r={size * 0.62} stroke={color} />
         {isGate ? (
@@ -2308,11 +2717,11 @@ export function MapDesigner({
             const press = pressRef.current;
             if (press && press.pointerId === event.pointerId && !press.promoted) {
               pressRef.current = null;
+              // Opening the docked tile panel closes any open object / token panel
+              // so at most one of the three is ever shown (mutual exclusivity).
+              closeAllPanels();
               setSelectedIndex(press.index);
               setTilePickFilter("all");
-              // Opening the docked tile panel closes any open object panel so the
-              // two are never shown at once (mutual exclusivity).
-              closeObjectPopover();
               // `popoverAt` is now just an OPEN flag — the panel docks top-right
               // via CSS, so the click coords no longer drive layout. Kept as an
               // object to avoid churning every open/close call site.
@@ -2895,6 +3304,69 @@ export function MapDesigner({
             </button>
           </div>
         ) : null}
+
+        {/* Tile-carried token panel: which tile, slot picker (face-up), remove —
+            docked like the tile / object panels. Clicking a token opens THIS,
+            not the giant tile panel underneath it. */}
+        {tokenPanelToken && tokenPopoverAt ? (
+          <div className="designerPopover designerTokenPopover">
+            <header>
+              <strong>{mapTokenLabel(tokenPanelToken.kind)} token</strong>
+              <button
+                aria-label="Close token options"
+                className="popoverClose"
+                onClick={closeTokenPopover}
+                title="Close"
+                type="button"
+              >
+                ✕
+              </button>
+            </header>
+            <small className="popoverHint">
+              On the {tokenPanelPlan ? planGroupLabel(tokenPanelPlan) : ""} tile
+              {tokenPanelPlan?.tileDefId ? ` (${tokenPanelPlan.tileDefId})` : ""}.
+            </small>
+            {tokenPanelPlan && !tokenPanelPlan.faceDown && tokenPanelDef ? (
+              <>
+                <div className="popoverSectionLabel">Field</div>
+                <select
+                  aria-label="Token field"
+                  className="popoverSelect"
+                  onChange={(event) =>
+                    updateTile(selectedTokenIndex as number, {
+                      token: { kind: tokenPanelToken.kind, slot: Number(event.target.value) }
+                    })
+                  }
+                  value={tokenPanelToken.slot ?? ""}
+                >
+                  {legalTokenSlotsForTileDef(tokenPanelDef, tokenPanelToken.kind).map((slot) => (
+                    <option key={slot} value={slot}>
+                      {tokenSlotLabel(tokenPanelPlan.tileDefId, slot, tokenPanelPlan.rotation ?? 0)}
+                    </option>
+                  ))}
+                </select>
+                <small className="popoverHint">
+                  Drag the token on the board to move it to another slot — or another face-up tile.
+                </small>
+              </>
+            ) : (
+              <small className="popoverHint">
+                Face-down tile — whoever discovers it places the token on a field of their choosing, so its hex
+                can&apos;t be set here (or dragged on the board).
+              </small>
+            )}
+            <button
+              className="popoverRemove"
+              onClick={() => {
+                updateTile(selectedTokenIndex as number, { token: undefined });
+                closeTokenPopover();
+              }}
+              type="button"
+            >
+              <Trash2 size={13} /> Remove the {mapTokenLabel(tokenPanelToken.kind)} token
+            </button>
+          </div>
+        ) : null}
       </div>
 
       {victoryConflicts.map((conflict, index) => (
@@ -2946,7 +3418,9 @@ export function MapDesigner({
         until discovery), or <strong>Face-up</strong> (visible from the start), then click a tile card. Filter chips
         (Mine, Obelisk, …) narrow the grid. <strong>Underground</strong> tiles need a Subterranean Gate (auto when
         touching Surface). Add <strong>Monolith</strong> / <strong>Whirlpool</strong> tokens from the same panel — at
-        least 2 of a kind to work. A centre tile can force its <strong>Ⅶ objective field</strong> (Town / Grail /
+        least 2 of a kind to work; once placed, <strong>drag a token to move it</strong> (to another slot or face-up
+        tile) or <strong>click it</strong> for its slot / remove options (a face-down badge is click-only — its hex is
+        picked at discovery). A centre tile can force its <strong>Ⅶ objective field</strong> (Town / Grail /
         Utopia, shown as a badge). Drag a cavern to touch a Surface tile and its <strong>Subterranean Gate</strong>{" "}
         appears — then <strong>drag any gate token</strong> along the shared edge to pin its exact spot (or click it for
         link options, and use <strong>↻</strong> to slide it). Arm <strong>🖌 Yellow border</strong> in the Objects
@@ -2954,8 +3428,10 @@ export function MapDesigner({
         <strong>edge hexes</strong> to paint impassable borders (or use the edge chips in the tile panel), and{" "}
         <strong>lock</strong> a starting tile&apos;s orientation so it never opens with a rotation. The{" "}
         <strong>Objects</strong> palette drops
-        standalone one-hex pieces — four colored <strong>Gate</strong> pairs and designer-guarded objects. Town (Ⅰ)
-        tiles are seats; drag empty background to pan, pinch or use the toolbar to zoom (wheel zoom when unlocked).
+        standalone one-hex pieces — four colored <strong>Gate</strong> pairs and designer-guarded objects;{" "}
+        <strong>drag a placed object</strong> (either half of a Gate pair) to move it, or click it for guard / remove.
+        Town (Ⅰ) tiles are seats; drag empty background to pan, pinch or use the toolbar to zoom (wheel zoom when
+        unlocked).
       </small>
 
       {/* Floating drag ghost follows the pointer — band-correct printed back. */}
