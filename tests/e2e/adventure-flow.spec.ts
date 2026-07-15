@@ -121,7 +121,7 @@ test("the hero walks by clicking the map with the confirm card on the hex", asyn
   await expect(page.locator(".adventureHandCard")).toHaveCount(4);
 
   // Click a reachable hex: the move-confirm card opens anchored on the map
-  // (foreignObject inside the SVG), not in a bar pinned to the bottom edge.
+  // (an HTML overlay positioned over the SVG), not in a bar pinned to the bottom.
   const target = page.locator(".hexCell.moveTarget").first();
   await expect(target).toBeVisible();
   await target.click();
@@ -266,8 +266,8 @@ test("discovering a face-down tile opens the rotation card on the tile", async (
 
   await discoverable.click();
 
-  // The rotation card opens anchored on the tile (foreignObject) with rotate
-  // buttons and a confirm. Rotations that border lines seal off disable the
+  // The rotation card opens anchored on the tile (an HTML overlay over the SVG)
+  // with rotate buttons and a confirm. Rotations that border lines seal off disable the
   // confirm — keep turning until legal.
   await expect(page.locator(".rotateFloat")).toBeVisible();
   const confirm = page.getByRole("button", { name: /Confirm/ });

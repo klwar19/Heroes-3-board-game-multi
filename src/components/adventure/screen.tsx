@@ -114,6 +114,7 @@ import { CARD_BACK_IMAGES, getDeckBack } from "@/data/decks";
 import { actionKey, cardName, formatCost, isEmpoweredStatisticCard, titleCase } from "@/components/table/utils";
 import { beginUnitPointerDrag } from "@/components/table/pointer-drag";
 import { MAP_SCALE_MAX, MAP_SCALE_MIN, pinchCamera, type PinchStart } from "@/components/adventure/map-pinch";
+import { computeMapFloatPosition } from "@/components/adventure/map-float-position";
 import { HeroBoard } from "@/components/hero-board";
 import { useCardZoom } from "@/components/table/zoom";
 import {
@@ -354,6 +355,29 @@ export function HexMapBoard({
     svg.addEventListener("wheel", onWheel, { passive: false });
     return () => svg.removeEventListener("wheel", onWheel);
   }, [wheelZoomEnabled]);
+
+  // The rendered CSS size of the <svg> element, tracked so the floating control
+  // cards (rendered as plain HTML overlays, not SVG foreignObject — mobile WebKit
+  // silently fails to paint foreignObject under transforms) can be positioned in
+  // real screen pixels. The camera is already React state, so overlays reposition
+  // on pan/zoom for free; only the element's own size needs observing.
+  const [svgSize, setSvgSize] = useState({ width: 0, height: 0 });
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg || typeof ResizeObserver === "undefined") {
+      return;
+    }
+    const measure = () => {
+      const rect = svg.getBoundingClientRect();
+      setSvgSize((prev) =>
+        prev.width === rect.width && prev.height === rect.height ? prev : { width: rect.width, height: rect.height }
+      );
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(svg);
+    return () => observer.disconnect();
+  }, []);
 
   const isSeated = Boolean(state.players[viewerPlayerId]) && viewerPlayerId !== "observer";
   // A player may field a Main Hero and (via Tavern / Prison) one Secondary
@@ -1477,62 +1501,69 @@ export function HexMapBoard({
   // --- Floating controls anchored at the relevant hex/tile ------------------
   // Move-confirm and rotate controls live *on the map*, right at the clicked
   // destination hex / the tile being rotated, instead of a bar pinned to the
-  // bottom of the board. They sit inside the camera-transformed group so they
-  // pan with the map, and counter-scale (scale(1/camera.scale)) so they keep a
-  // constant on-screen size at any zoom level.
-  const floatingControls: ReactNode[] = [];
-
-  // How much vertical room (in screen px) sits above an anchor before it would
-  // be clipped by the top of the viewBox — used to flip a card below its hex.
-  const screenRoomAbove = (mapY: number) => camera.y + camera.scale * mapY - minY;
+  // bottom of the board. They are rendered as plain HTML overlays absolutely
+  // positioned inside `.hexMapWrap` — NOT SVG `<foreignObject>`. Mobile WebKit
+  // (every iPhone browser) silently fails to paint foreignObject nested under an
+  // ancestor SVG/CSS transform, so under the map's camera transform these cards
+  // showed NOTHING on phones. As HTML siblings of the `<svg>` they paint
+  // reliably everywhere; their pixel position is derived from the SAME
+  // camera/viewBox math the SVG uses (`map-float-position.ts`), so placement is
+  // identical on desktop and phones. Being HTML they keep a constant on-screen
+  // size at any zoom (no counter-scale needed) and are clamped fully on-screen so
+  // a card whose hex hugs a screen edge is never cut off.
+  type MapFloat = {
+    key: string;
+    mapPoint: { x: number; y: number };
+    cardWidth: number;
+    cardHeight: number;
+    gap: number;
+    render: () => ReactNode;
+  };
+  const mapFloats: MapFloat[] = [];
 
   if (selectedTarget && myHero && !readOnly) {
     const coord = parseHexSpaceId(selectedTarget.spaceId);
     if (coord) {
-      const { x, y } = hexToPixel(coord, HEX_SIZE);
-      const cardW = 230;
-      const cardH = 104;
-      const gap = HEX_SIZE * 0.62;
-      const above = screenRoomAbove(y) >= cardH + gap;
       const cost = selectedTarget.cost;
-      floatingControls.push(
-        <g key="move-confirm-float" transform={`translate(${x} ${y}) scale(${1 / camera.scale})`}>
-          <foreignObject className="mapFloatFO" height={cardH} width={cardW} x={-cardW / 2} y={above ? -cardH - gap : gap}>
-            <div className={`mapFloatOuter ${above ? "above" : "below"}`}>
-              <div
-                aria-label="Confirm movement"
-                className="mapFloatCard moveConfirmFloat"
-                onPointerDown={(event) => event.stopPropagation()}
-                role="dialog"
+      mapFloats.push({
+        key: "move-confirm-float",
+        mapPoint: hexToPixel(coord, HEX_SIZE),
+        cardWidth: 230,
+        cardHeight: 104,
+        gap: HEX_SIZE * 0.62,
+        render: () => (
+          <div
+            aria-label="Confirm movement"
+            className="mapFloatCard moveConfirmFloat"
+            onPointerDown={(event) => event.stopPropagation()}
+            role="dialog"
+          >
+            <span className="mapFloatLabel">
+              <span aria-hidden="true">🐎</span> Move {cost} field{cost === 1 ? "" : "s"} ({cost} MP)
+            </span>
+            <div className="mapFloatButtons">
+              <button
+                className="commandButton primary"
+                onClick={() => {
+                  onAction({
+                    type: "MOVE_HERO_PATH",
+                    playerId: viewerPlayerId,
+                    heroId: myHero.id,
+                    path: selectedTarget.path
+                  });
+                  setSelectedTarget(null);
+                }}
+                type="button"
               >
-                <span className="mapFloatLabel">
-                  <span aria-hidden="true">🐎</span> Move {cost} field{cost === 1 ? "" : "s"} ({cost} MP)
-                </span>
-                <div className="mapFloatButtons">
-                  <button
-                    className="commandButton primary"
-                    onClick={() => {
-                      onAction({
-                        type: "MOVE_HERO_PATH",
-                        playerId: viewerPlayerId,
-                        heroId: myHero.id,
-                        path: selectedTarget.path
-                      });
-                      setSelectedTarget(null);
-                    }}
-                    type="button"
-                  >
-                    <Check size={13} /> Move there
-                  </button>
-                  <button className="commandButton ghost" onClick={() => setSelectedTarget(null)} type="button">
-                    <X size={13} /> Cancel
-                  </button>
-                </div>
-              </div>
+                <Check size={13} /> Move there
+              </button>
+              <button className="commandButton ghost" onClick={() => setSelectedTarget(null)} type="button">
+                <X size={13} /> Cancel
+              </button>
             </div>
-          </foreignObject>
-        </g>
-      );
+          </div>
+        )
+      });
     }
   }
 
@@ -1541,22 +1572,18 @@ export function HexMapBoard({
   if (drawReminderAt && drawPending) {
     const coord = parseHexSpaceId(drawReminderAt);
     if (coord) {
-      const { x, y } = hexToPixel(coord, HEX_SIZE);
-      const cardW = 224;
-      const cardH = 60;
-      const gap = HEX_SIZE * 0.62;
-      const above = screenRoomAbove(y) >= cardH + gap;
-      floatingControls.push(
-        <g key="draw-reminder-float" transform={`translate(${x} ${y}) scale(${1 / camera.scale})`}>
-          <foreignObject className="mapFloatFO" height={cardH} width={cardW} x={-cardW / 2} y={above ? -cardH - gap : gap}>
-            <div className={`mapFloatOuter ${above ? "above" : "below"}`}>
-              <div className="mapFloatCard drawReminderFloat" role="status">
-                <span className="mapFloatLabel">⚠ Take your start-of-turn draw first</span>
-              </div>
-            </div>
-          </foreignObject>
-        </g>
-      );
+      mapFloats.push({
+        key: "draw-reminder-float",
+        mapPoint: hexToPixel(coord, HEX_SIZE),
+        cardWidth: 224,
+        cardHeight: 60,
+        gap: HEX_SIZE * 0.62,
+        render: () => (
+          <div className="mapFloatCard drawReminderFloat" role="status">
+            <span className="mapFloatLabel">⚠ Take your start-of-turn draw first</span>
+          </div>
+        )
+      });
     }
   }
 
@@ -1565,98 +1592,89 @@ export function HexMapBoard({
   if (gateHintAt) {
     const coord = parseHexSpaceId(gateHintAt);
     if (coord) {
-      const { x, y } = hexToPixel(coord, HEX_SIZE);
-      const cardW = 268;
-      const cardH = 78;
-      const gap = HEX_SIZE * 0.62;
-      const above = screenRoomAbove(y) >= cardH + gap;
-      floatingControls.push(
-        <g key="gate-hint-float" transform={`translate(${x} ${y}) scale(${1 / camera.scale})`}>
-          <foreignObject className="mapFloatFO" height={cardH} width={cardW} x={-cardW / 2} y={above ? -cardH - gap : gap}>
-            <div className={`mapFloatOuter ${above ? "above" : "below"}`}>
-              <div className="mapFloatCard gateHintFloat" role="status">
-                <span className="mapFloatLabel">
-                  ⛰ You can&apos;t discover an Underground tile from the Surface. Reach a Subterranean Gate (the cave-mouth
-                  hex on a revealed tile) and step onto it — the tile beyond opens for free.
-                </span>
-              </div>
-            </div>
-          </foreignObject>
-        </g>
-      );
+      mapFloats.push({
+        key: "gate-hint-float",
+        mapPoint: hexToPixel(coord, HEX_SIZE),
+        cardWidth: 268,
+        cardHeight: 78,
+        gap: HEX_SIZE * 0.62,
+        render: () => (
+          <div className="mapFloatCard gateHintFloat" role="status">
+            <span className="mapFloatLabel">
+              ⛰ You can&apos;t discover an Underground tile from the Surface. Reach a Subterranean Gate (the cave-mouth
+              hex on a revealed tile) and step onto it — the tile beyond opens for free.
+            </span>
+          </div>
+        )
+      });
     }
   }
 
   if (pendingTileChoice && rotatingTile) {
-    const tileCenter = hexToPixel({ row: rotatingTile.centerRow, col: rotatingTile.centerCol }, HEX_SIZE);
-    const cardW = iAmRotating ? 272 : 230;
-    const cardH = iAmRotating ? 158 : 70;
-    // The rotating tile spans a 5-hex-tall flower; clear its top edge so the
-    // card never covers the art it is acting on.
-    const gap = HEX_SIZE * 2.9;
-    const above = screenRoomAbove(tileCenter.y) >= cardH + gap;
-    floatingControls.push(
-      <g key="rotate-float" transform={`translate(${tileCenter.x} ${tileCenter.y}) scale(${1 / camera.scale})`}>
-        <foreignObject className="mapFloatFO" height={cardH} width={cardW} x={-cardW / 2} y={above ? -cardH - gap : gap}>
-          <div className={`mapFloatOuter ${above ? "above" : "below"}`}>
-            {iAmRotating ? (
-              <div
-                aria-label="Rotate the new tile"
-                className="mapFloatCard rotateFloat"
-                onPointerDown={(event) => event.stopPropagation()}
-                role="dialog"
+    mapFloats.push({
+      key: "rotate-float",
+      mapPoint: hexToPixel({ row: rotatingTile.centerRow, col: rotatingTile.centerCol }, HEX_SIZE),
+      cardWidth: iAmRotating ? 272 : 230,
+      cardHeight: iAmRotating ? 158 : 70,
+      // The rotating tile spans a 5-hex-tall flower; clear its top edge so the
+      // card never covers the art it is acting on.
+      gap: HEX_SIZE * 2.9,
+      render: () =>
+        iAmRotating ? (
+          <div
+            aria-label="Rotate the new tile"
+            className="mapFloatCard rotateFloat"
+            onPointerDown={(event) => event.stopPropagation()}
+            role="dialog"
+          >
+            <span className="mapFloatTitle">
+              Rotate your{" "}
+              {pendingTileChoice.kind === "starting"
+                ? "home tile (free, before you move)"
+                : `${pendingTileChoice.kind === "place" ? "placed" : "revealed"} tile`}
+            </span>
+            <div className="rotateFloatRow">
+              <button
+                className="commandButton"
+                onClick={() => setPreviewRotation((value) => (value + 5) % 6)}
+                title="Rotate counter-clockwise"
+                type="button"
               >
-                <span className="mapFloatTitle">
-                  Rotate your{" "}
-                  {pendingTileChoice.kind === "starting"
-                    ? "home tile (free, before you move)"
-                    : `${pendingTileChoice.kind === "place" ? "placed" : "revealed"} tile`}
-                </span>
-                <div className="rotateFloatRow">
-                  <button
-                    className="commandButton"
-                    onClick={() => setPreviewRotation((value) => (value + 5) % 6)}
-                    title="Rotate counter-clockwise"
-                    type="button"
-                  >
-                    <RotateCcw size={14} />
-                  </button>
-                  <span className="rotateDegrees">{previewRotation * 60}°</span>
-                  <button
-                    className="commandButton"
-                    onClick={() => setPreviewRotation((value) => (value + 1) % 6)}
-                    title="Rotate clockwise"
-                    type="button"
-                  >
-                    <RotateCw size={14} />
-                  </button>
-                  <button
-                    className="commandButton primary"
-                    disabled={!rotationConnected}
-                    onClick={() =>
-                      onAction({
-                        type: "SET_TILE_ROTATION",
-                        playerId: viewerPlayerId,
-                        tileInstanceId: rotatingTile.id,
-                        rotation: previewRotation
-                      })
-                    }
-                    type="button"
-                  >
-                    <Check size={13} /> Confirm
-                  </button>
-                </div>
-                {!rotationConnected ? <small className="mapFloatWarn">Border lines seal the tile off — keep rotating.</small> : null}
-              </div>
-            ) : (
-              <div className="mapFloatCard passive">
-                <small>{state.players[pendingTileChoice.playerId]?.name ?? "A player"} is rotating the new tile…</small>
-              </div>
-            )}
+                <RotateCcw size={14} />
+              </button>
+              <span className="rotateDegrees">{previewRotation * 60}°</span>
+              <button
+                className="commandButton"
+                onClick={() => setPreviewRotation((value) => (value + 1) % 6)}
+                title="Rotate clockwise"
+                type="button"
+              >
+                <RotateCw size={14} />
+              </button>
+              <button
+                className="commandButton primary"
+                disabled={!rotationConnected}
+                onClick={() =>
+                  onAction({
+                    type: "SET_TILE_ROTATION",
+                    playerId: viewerPlayerId,
+                    tileInstanceId: rotatingTile.id,
+                    rotation: previewRotation
+                  })
+                }
+                type="button"
+              >
+                <Check size={13} /> Confirm
+              </button>
+            </div>
+            {!rotationConnected ? <small className="mapFloatWarn">Border lines seal the tile off — keep rotating.</small> : null}
           </div>
-        </foreignObject>
-      </g>
-    );
+        ) : (
+          <div className="mapFloatCard passive">
+            <small>{state.players[pendingTileChoice.playerId]?.name ?? "A player"} is rotating the new tile…</small>
+          </div>
+        )
+    });
   }
 
   return (
@@ -1767,9 +1785,35 @@ export function HexMapBoard({
           {overlays}
           {pathOverlay}
           {heroPawns}
-          {floatingControls}
         </g>
       </svg>
+
+      {/* Floating map controls as HTML overlays (see the MapFloat note above):
+          positioned in real screen pixels via the shared camera/viewBox math, so
+          they paint on phones where SVG foreignObject does not, and are clamped
+          fully on-screen. The wrapper is click-through (pointer-events:none); only
+          the card inside takes taps (pointer-events:auto). */}
+      {mapFloats.map((float) => {
+        const { left, top, above } = computeMapFloatPosition({
+          viewBox: { minX, minY, width: maxX - minX, height: maxY - minY },
+          elementWidth: svgSize.width,
+          elementHeight: svgSize.height,
+          camera,
+          mapPoint: float.mapPoint,
+          cardWidth: float.cardWidth,
+          cardHeight: float.cardHeight,
+          gap: float.gap
+        });
+        return (
+          <div
+            key={float.key}
+            className={`mapFloatOuter ${above ? "above" : "below"}`}
+            style={{ left, top, width: float.cardWidth }}
+          >
+            {float.render()}
+          </div>
+        );
+      })}
 
       <div className="mapToolbar" aria-label="Map controls">
         <button onClick={() => setCamera((c) => ({ ...c, scale: Math.min(MAP_SCALE_MAX, c.scale * 1.2) }))} title="Zoom in" type="button">

@@ -85,6 +85,31 @@ function serveRoom(state: GameState) {
 }
 
 /**
+ * Like serveRoom but captures the live handlers so a test can push later
+ * snapshots into the page (higher versions the arbiter accepts), simulating a
+ * mid-game state change arriving from the server.
+ */
+function serveRoomCapturing(state: GameState) {
+  const snapshot = snapshotFor(state);
+  let handlers: RoomConnectionHandlers | null = null;
+  connectRoomMock.mockReset().mockImplementation((_roomId: string, given: RoomConnectionHandlers) => {
+    handlers = given;
+    return {
+      close: vi.fn(),
+      submitAction: vi.fn(async () => ({ version: snapshot.version, errors: [], notices: [] })),
+      resetRoom: vi.fn(async () => snapshot),
+      fetchSnapshot: vi.fn(async () => snapshot),
+      restoreRoom: vi.fn(async () => snapshot)
+    };
+  });
+  return {
+    push(next: GameState, version: number) {
+      handlers?.onSnapshot({ ...snapshotFor(next), version });
+    }
+  };
+}
+
+/**
  * Deterministically drive the page past its async boot: roomId effect →
  * connect → fetchSnapshot → state → surface mount → the surface's own passive
  * effects (e.g. the prompt's `ready` flip). A real-timer macrotask inside act
@@ -143,6 +168,44 @@ describe("phone UI mode — adventure map surface", () => {
     // toggle lives there, currently reading "Phone UI".
     expect(screen.getByRole("button", { name: /phone ui/i })).toBeTruthy();
     fireEvent.click(screen.getByRole("tab", { name: /map/i }));
+    expect(main.getAttribute("data-phone-tab")).toBe("map");
+  });
+
+  it("auto-switches to the Map tab when the viewer owes a tile rotation (and not for another seat)", async () => {
+    window.localStorage.setItem(UI_MODE_STORAGE_KEY, "phone");
+    const room = serveRoomCapturing(createAdventureGameState({ seed: "phone-rotate", rollFirstPlayer: false }));
+    render(<Home />);
+    await settle();
+
+    const main = mainEl();
+    // Start on the map, then the player wanders off to another tab.
+    expect(main.getAttribute("data-phone-tab")).toBe("map");
+    fireEvent.click(screen.getByRole("tab", { name: /hand/i }));
+    expect(main.getAttribute("data-phone-tab")).toBe("hand");
+
+    const tileId = (state: GameState) => Object.keys(state.adventure!.tiles)[0]!;
+
+    // CONTROL: a rotation owed by ANOTHER seat must NOT drag the viewer's tab.
+    const othersRotation = createAdventureGameState({ seed: "phone-rotate", rollFirstPlayer: false });
+    othersRotation.adventure!.pendingTileChoice = {
+      tileInstanceId: tileId(othersRotation),
+      playerId: "p2",
+      kind: "reveal"
+    };
+    await act(async () => room.push(othersRotation, 2));
+    await settle();
+    expect(main.getAttribute("data-phone-tab")).toBe("hand");
+
+    // The viewer (p1) now owes a rotation — the tab snaps back to the map so the
+    // on-map rotate card is actually visible (the reported "shows nothing" bug).
+    const myRotation = createAdventureGameState({ seed: "phone-rotate", rollFirstPlayer: false });
+    myRotation.adventure!.pendingTileChoice = {
+      tileInstanceId: tileId(myRotation),
+      playerId: "p1",
+      kind: "starting"
+    };
+    await act(async () => room.push(myRotation, 3));
+    await settle();
     expect(main.getAttribute("data-phone-tab")).toBe("map");
   });
 
