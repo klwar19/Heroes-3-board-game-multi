@@ -112,6 +112,7 @@ import {
   rollTownOptions,
   setDraftFormat,
   setComputerOpponents,
+  setComputerSeatFaction,
   setGameOptions,
   startAdventureFromLobby
 } from "./adventure-setup";
@@ -17916,6 +17917,7 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "CHOOSE_FACTION",
   "SET_GAME_OPTIONS",
   "SET_COMPUTER_OPPONENTS",
+  "SET_COMPUTER_SEAT_FACTION",
   "START_ADVENTURE",
   "CONFIRM_START_ADVENTURE",
   "CANCEL_START_ADVENTURE",
@@ -18566,6 +18568,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "SET_COMPUTER_OPPONENTS":
         setComputerOpponents(nextState, action);
+        break;
+      case "SET_COMPUTER_SEAT_FACTION":
+        setComputerSeatFaction(nextState, action);
         break;
       case "END_TURN":
         if (nextState.mode === "adventure") {
