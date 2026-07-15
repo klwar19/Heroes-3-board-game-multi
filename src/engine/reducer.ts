@@ -10224,8 +10224,18 @@ function passReaction(state: GameState, action: Extract<GameAction, { type: "PAS
   // (Implosion needs ≥1, etc.). Prevents a silent 0-damage resolve. Escape
   // hatch: if they have nothing left to fuel with, pass is allowed (spell
   // fizzles) so the table cannot soft-lock. Scroll-locked casts stay free at 0.
+  //
+  // A FORCED-resolution pass (the passing seat is being AFK-dropped or turn-
+  // timed-out) always goes through: those drivers hard-code PASS_REACTION and
+  // cannot fuel, so blocking here would soft-lock the drop — an abandoned cast
+  // should simply fizzle. Mirrors afkDropPending / turnTimeoutPending, inlined
+  // to avoid an afk-drop → reducer import cycle.
+  const forcedResolutionPass =
+    state.afk?.droppingPlayerId === action.playerId ||
+    state.afk?.turnTimeoutPlayerId === action.playerId;
   const pending = state.stack.at(-1);
   if (
+    !forcedResolutionPass &&
     pending?.action.type === "CAST_SPELL" &&
     pending.action.playerId === action.playerId &&
     !pending.modifiers.scrollLocked
