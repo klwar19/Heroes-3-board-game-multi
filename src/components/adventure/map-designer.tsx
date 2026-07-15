@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { assetUrl } from "@/lib/asset-url";
-import { Trash2 } from "lucide-react";
+import { Lock, Trash2 } from "lucide-react";
 import { allTileDefinitions } from "@/data/map/tiles";
 import { locationDefinitions } from "@/data/map/locations";
 import {
@@ -748,6 +748,9 @@ export function MapDesigner({
           if (changes.extraBorders === undefined && "extraBorders" in changes) {
             delete next.extraBorders;
           }
+          if (changes.lockRotation === undefined && "lockRotation" in changes) {
+            delete next.lockRotation;
+          }
           return next;
         })
       );
@@ -1061,12 +1064,27 @@ export function MapDesigner({
           : [];
 
   const rotateSelected = (steps: number) => {
-    // Starting tiles take their faction art at a fixed orientation; every other
-    // tile rotates freely, whether face up or face down.
-    if (selectedIndex === null || !selected || selected.group === "starting") {
+    // Every tile rotates freely in the designer, whether face up or face down.
+    // For a STARTING tile the stored rotation only takes effect in game when its
+    // orientation is Fixed (locked, below); otherwise the faction art is placed at
+    // the classic rotation 0 and the seat rotates it in the opening ceremony.
+    if (selectedIndex === null || !selected) {
       return;
     }
     updateTile(selectedIndex, { rotation: ((((selected.rotation ?? 0) + steps) % 6) + 6) % 6 });
+  };
+
+  /**
+   * Toggle a STARTING tile's Fixed orientation: when on, its home tile is placed
+   * at the chosen rotation in game and the seat owes NO opening free-rotation.
+   * Off restores the classic rotation-0 + opening-ceremony flow. Starting-only,
+   * exactly like the engine honours `lockRotation` only on a starting plan.
+   */
+  const toggleLockRotation = () => {
+    if (selectedIndex === null || !selected || selected.group !== "starting") {
+      return;
+    }
+    updateTile(selectedIndex, { lockRotation: selected.lockRotation ? undefined : true });
   };
 
   const seatNumberOf = (index: number) => startingPlanIndexes.indexOf(index) + 1;
@@ -1394,6 +1412,22 @@ export function MapDesigner({
           S{seatNumberOf(index)}
         </text>
       );
+      // Fixed-orientation seats wear a small lock badge naming the forced angle —
+      // the faction art is unknown at design time, so the degrees are the signal.
+      if (plan.lockRotation) {
+        labelLayer.push(
+          <text
+            className="designerStartLockBadge"
+            key={`plan-lock-${index}`}
+            textAnchor="middle"
+            x={centerPixel.x}
+            y={centerPixel.y - size * 0.7}
+          >
+            <title>{`Fixed orientation ${(plan.rotation ?? 0) * 60}° — no opening rotation`}</title>
+            {`🔒 ${(plan.rotation ?? 0) * 60}°`}
+          </text>
+        );
+      }
     } else if (plan.faceDown && secretPin) {
       // Only secret badges stay as text — random face-down slots rely on the
       // printed back graphic alone (no redundant Ⅱ–Ⅲ / Sea / Underground box).
@@ -1862,7 +1896,45 @@ export function MapDesigner({
             </header>
 
             {selected.group === "starting" ? (
-              <small className="popoverHint">A player&apos;s starting town. Drag it to move; its tile art comes from each player&apos;s faction.</small>
+              <>
+                <small className="popoverHint">A player&apos;s starting town. Drag it to move; its tile art comes from each player&apos;s faction.</small>
+                {/* Rotation + Fix-orientation: the faction art is unknown at design
+                    time, so the preview shows the orientation as a badge/degrees. */}
+                <div className="popoverActions">
+                  <button
+                    className="popoverIconButton"
+                    onClick={() => rotateSelected(-1)}
+                    title="Rotate 60° counterclockwise"
+                    type="button"
+                  >
+                    <DesignerGlyph className="popoverActionGlyph flipH" src={DESIGNER_UI_ICONS.rotate} />
+                    <span>−60°</span>
+                  </button>
+                  <button
+                    className="popoverIconButton"
+                    onClick={() => rotateSelected(1)}
+                    title="Rotate 60° clockwise"
+                    type="button"
+                  >
+                    <DesignerGlyph className="popoverActionGlyph" src={DESIGNER_UI_ICONS.rotate} />
+                    <span>{(selected.rotation ?? 0) * 60}°</span>
+                  </button>
+                </div>
+                <button
+                  aria-pressed={Boolean(selected.lockRotation)}
+                  className={`popoverLockToggle${selected.lockRotation ? " active" : ""}`}
+                  onClick={toggleLockRotation}
+                  type="button"
+                >
+                  <Lock size={13} />
+                  Fix orientation (no opening rotation)
+                </button>
+                <small className="popoverHint">
+                  {selected.lockRotation
+                    ? `Locked at ${(selected.rotation ?? 0) * 60}° — this seat's home tile keeps this orientation and skips the opening free-rotation.`
+                    : "Unlocked: the tile starts at 0° and this seat rotates it once at the start of their first turn (opening ceremony)."}
+                </small>
+              </>
             ) : (
               <>
                 {/* Step 1 — click a mode */}

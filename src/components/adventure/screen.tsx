@@ -5001,6 +5001,17 @@ function MapPicker({
             {options.customMap.length} tile{options.customMap.length === 1 ? "" : "s"} — face-down Secret landmarks draw
             a random matching tile from their pool.
           </small>
+          {(() => {
+            const fixedSeats = options.customMap!.filter(
+              (plan) => plan.group === "starting" && plan.lockRotation
+            ).length;
+            return fixedSeats > 0 ? (
+              <small className="optionHint">
+                🔒 {fixedSeats} starting tile{fixedSeats === 1 ? "" : "s"} {fixedSeats === 1 ? "has" : "have"} a fixed
+                orientation — {fixedSeats === 1 ? "that seat skips" : "those seats skip"} the opening free-rotation.
+              </small>
+            ) : null;
+          })()}
           {options.customMapPreset ? (
             <div className="mapPresetLobbyBanner" role="status">
               <strong>📜 This map has special conditions</strong>

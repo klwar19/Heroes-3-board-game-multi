@@ -470,6 +470,26 @@ describe("map designer", () => {
     expect(problems).toHaveLength(0);
   });
 
+  it("keeps lockRotation on a starting plan but strips it off non-starting groups", () => {
+    const scenario = getScenario("skirmish");
+    const { accepted } = validateCustomMapPlan(
+      [
+        // Starting plan: lockRotation is meaningful here — it stays.
+        { row: 8, col: 2, group: "starting", faceDown: false, lockRotation: true, rotation: 3 },
+        // Non-starting plan carrying lockRotation — stripped (like gateLinks are
+        // cavern-only), leaving everything else about the plan intact.
+        { row: 9, col: 4, group: "near", faceDown: true, lockRotation: true, rotation: 2 }
+      ],
+      scenario
+    );
+    const start = accepted.find((plan) => plan.group === "starting");
+    const near = accepted.find((plan) => plan.group === "near");
+    expect(start?.lockRotation, "starting plan keeps its lock").toBe(true);
+    expect(near?.lockRotation, "non-starting plan is stripped of lockRotation").toBeUndefined();
+    // The stripped plan is otherwise unchanged (rotation 0-5 is validated globally).
+    expect(near).toMatchObject({ group: "near", faceDown: true, rotation: 2 });
+  });
+
   it("rejects overlapping and duplicate positions", () => {
     const scenario = getScenario("skirmish");
     const overlapping = validateCustomMapPlan([{ row: 8, col: 3, group: "near", faceDown: true }], scenario);

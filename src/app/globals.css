@@ -12108,6 +12108,21 @@ img.cardBack {
   justify-content: flex-start;
 }
 
+/* Fix-orientation toggle on a starting-tile popover. */
+.popoverLockToggle {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  justify-content: flex-start;
+}
+
+.popoverLockToggle.active {
+  background: rgba(255, 215, 102, 0.18);
+  border-color: rgba(255, 215, 102, 0.55);
+  color: #ffe9a8;
+}
+
 .designerHexFixed {
   fill: rgba(20, 16, 10, 0.05);
   stroke: rgba(243, 231, 200, 0.25);
@@ -12346,6 +12361,17 @@ img.cardBack {
   paint-order: stroke;
   stroke: rgba(0, 0, 0, 0.7);
   stroke-width: 3px;
+  pointer-events: none;
+}
+
+/* Lock badge on a fixed-orientation starting tile (rotation forced by the map). */
+.designerStartLockBadge {
+  fill: #ffe9a8;
+  font-size: 9px;
+  font-weight: 700;
+  paint-order: stroke;
+  stroke: rgba(0, 0, 0, 0.8);
+  stroke-width: 2.4px;
   pointer-events: none;
 }
 
