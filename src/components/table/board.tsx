@@ -118,8 +118,8 @@ export const COMBAT_BOARD_ART_VARIANTS: readonly CombatBoardArtVariant[] = [
   {
     id: "classic",
     label: "Classic grass and dirt battlefield",
-    terrain: "/assets/board/battlefield-4x5-pro.png",
-    scenery: "/assets/board/battlefield-4x5-pro-scenery.png"
+    terrain: "/assets/board/battlefield-4x5-pro.webp",
+    scenery: "/assets/board/battlefield-4x5-pro-scenery.webp"
   },
   {
     id: "frozen",

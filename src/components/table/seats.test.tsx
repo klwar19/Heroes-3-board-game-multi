@@ -250,6 +250,14 @@ describe("HandFan — pending-action echo marks a submitted card in flight (plan
     expect(container.querySelectorAll(".fanCard")).toHaveLength(2);
     expect(container.querySelectorAll(".fanCard.cardInFlight")).toHaveLength(0);
   });
+
+  it("card art decodes off the main thread (N5 audit — attributes are inert in jsdom, assert presence)", () => {
+    const { container } = renderHand(undefined);
+    const art = container.querySelector("img.fanCardImage");
+    expect(art?.getAttribute("decoding")).toBe("async");
+    // Hand cards are on-screen the moment they mount — eager on purpose.
+    expect(art?.getAttribute("loading")).toBe("eager");
+  });
 });
 
 describe("HandFan — an instant artifact's 'take a card from discard' is usable in COMBAT", () => {
