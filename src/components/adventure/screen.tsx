@@ -5310,13 +5310,13 @@ function GameOptionsPanel({
             className={`wogCrestButton ${wog.enabled ? "selected" : ""}`}
             onClick={() => {
               const nextEnabled = !wog.enabled;
+              // Keep any module choices already made; the reducer flips a Legacy
+              // table to BINH when WOG is enabled so the modules can load.
               send({
                 wog: {
                   ...DEFAULT_WOG_OPTIONS,
                   ...wog,
-                  enabled: nextEnabled,
-                  // Keep module choices when re-enabling; default newCreatures on first enable.
-                  ...(nextEnabled && !wog.enabled ? {} : {})
+                  enabled: nextEnabled
                 }
               });
               if (nextEnabled) {
