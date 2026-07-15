@@ -494,6 +494,39 @@ button {
   color: var(--text);
 }
 
+/* Connection-quality chip (RTT to the room server), beside the sync status. */
+.connectionQualityChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  border: 1px solid rgb(243 239 228 / 14%);
+  border-radius: 99px;
+  background: rgb(13 15 16 / 40%);
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--muted);
+  cursor: help;
+}
+
+.connectionQualityChip .qualityDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.connectionQualityChip.quality-good .qualityDot {
+  background: #4f9a5c;
+}
+
+.connectionQualityChip.quality-fair .qualityDot {
+  background: #c9a23a;
+}
+
+.connectionQualityChip.quality-poor .qualityDot {
+  background: #b0503f;
+}
+
 /* ------------------------------------------------------------------ */
 /* Room membership panel (host / seats / observers)                    */
 /* ------------------------------------------------------------------ */
