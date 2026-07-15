@@ -22218,8 +22218,10 @@ details.mapPresetEditor[open] .mapPresetSummaryChevron {
 /* ---- 3. Room / seat panel → framed leather box ------------------------- */
 /* The plain dark box at top-right becomes a carved leather panel inside the  */
 /* frame-ornate gem frame. The frame is a real (transparent) layout border,  */
-/* so no content can ever be overlapped by the ornament.                    */
-.adventureRoot > .tableTopRow > .tableMenu {
+/* so no content can ever be overlapped by the ornament. Scoped to `.tableRoot`*/
+/* (not just `.adventureRoot`) so the SAME room panel is framed on the battle  */
+/* screen too — the map render is byte-identical, the combat table gains it.  */
+.tableRoot > .tableTopRow > .tableMenu {
   border: 19px solid transparent;
   border-image-source: var(--orn-frame);
   border-image-slice: 185;
@@ -22235,7 +22237,7 @@ details.mapPresetEditor[open] .mapPresetSummaryChevron {
 }
 
 /* Seat chips → small carved gold-hairline plates (selected stays solid gold). */
-.adventureRoot > .tableTopRow > .tableMenu .seatSwitch button {
+.tableRoot > .tableTopRow > .tableMenu .seatSwitch button {
   border: 1px solid var(--cmp-gold-deep);
   color: #f0dcb8;
   background:
@@ -22244,7 +22246,7 @@ details.mapPresetEditor[open] .mapPresetSummaryChevron {
   box-shadow: inset 0 1px 0 rgb(246 226 168 / 12%);
 }
 
-.adventureRoot > .tableTopRow > .tableMenu .seatSwitch button.selected {
+.tableRoot > .tableTopRow > .tableMenu .seatSwitch button.selected {
   color: #2c1d08;
   background: linear-gradient(180deg, #f4d78c 0%, var(--cmp-gold) 50%, #b98f3f 100%);
   border-color: var(--cmp-gold-deep);
@@ -22252,7 +22254,7 @@ details.mapPresetEditor[open] .mapPresetSummaryChevron {
 }
 
 /* The Room toggle → the same quiet leather plate so the box reads as one. */
-.adventureRoot > .tableTopRow > .tableMenu .roomToggle {
+.tableRoot > .tableTopRow > .tableMenu .roomToggle {
   border: 1px solid var(--cmp-gold-deep);
   background:
     linear-gradient(180deg, rgb(34 25 14 / 90%), rgb(20 14 8 / 93%)),
@@ -22306,6 +22308,117 @@ details.mapPresetEditor[open] .mapPresetSummaryChevron {
 
 .adventureRoot > .logDrawer .logToggle span {
   color: #f0dcb8;
+}
+
+/* ======================================================================== */
+/* ---- BATTLE (combat) SCREEN — same kit v2, same treatments ------------- */
+/*                                                                          */
+/* The combat table (`.tableRoot` WITHOUT `.adventureRoot`; battle-test AND  */
+/* real adventure fights alike) reuses the leather-and-gold family above so  */
+/* the two screens read as one game. Same discipline: overrides on existing  */
+/* classes only; every decorative pseudo-element is pointer-events:none and  */
+/* sits BEHIND or CLEAR of the battlefield cells / unit cards / buttons; no  */
+/* hit-area is moved. The room panel (.tableMenu) is already framed for      */
+/* every root by §3 above. Phone fall-backs (a wide frame would eat a narrow */
+/* panel) live at the end of the PHONE UI MODE block, per its convention.    */
+/* ======================================================================== */
+
+/* ---- B1. Battlefield surround → framed war-table ----------------------- */
+/* The board sat in a thin gold band (skin II). Mount the carved gem frame   */
+/* as a REAL transparent layout border (so a cell / unit can never be        */
+/* covered — the border only insets the board) with a thin gold + royal-blue */
+/* banding hugging the board just inside it: the same frame-ornate treatment */
+/* the map's room panel wears, sized for the larger board. */
+.battlefieldFrame {
+  border: 18px solid transparent;
+  border-image-source: var(--orn-frame);
+  border-image-slice: 185;
+  border-image-width: 18px;
+  border-image-repeat: round;
+  border-radius: 5px;
+  box-shadow:
+    inset 0 0 0 2px rgb(217 178 90 / 74%),
+    inset 0 0 0 3px rgb(33 64 111 / 55%),
+    inset 0 0 40px rgb(0 0 0 / 44%),
+    0 24px 30px rgb(0 0 0 / 46%);
+}
+
+/* ---- B2. ORDER (initiative) rail → gold banding + bright-gold label ----- */
+/* Leather + a gold hairline already come from skin II. The rail is a dark,  */
+/* dense, wrapping strip — exactly like the map's HUD ribbon — so it takes    */
+/* the SAME treatment that ribbon consciously chose: hard gold banding +      */
+/* a bright-gold lead label, NO plaque (a leather cartouche would vanish on   */
+/* the dark leather and a flourish would ride over the unit-card thumbnails). */
+.initiativeRail {
+  box-shadow:
+    inset 0 0 0 1px rgb(217 178 90 / 34%),
+    inset 0 1px 0 rgb(246 226 168 / 12%),
+    inset 0 -2px 7px rgb(0 0 0 / 34%),
+    0 6px 16px rgb(0 0 0 / 40%);
+}
+
+.initiativeRail .initLabel {
+  padding: 2px 6px 2px 2px;
+  color: var(--cmp-gold-bright);
+  font-weight: 800;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 78%);
+}
+
+/* ---- B3. Deploy sidebar → framed leather box, rail under its title ------ */
+/* The plain dark "Deploy up to N units" box becomes a carved leather panel  */
+/* inside a thinner (sidebar-sized) gem frame — the same room-panel look —   */
+/* with a filigree rail ruling under its lead title. Deploy-only (the column */
+/* renders only during setup), so the in-fight reaction / morale trays are   */
+/* untouched. */
+.placementPanel {
+  border: 13px solid transparent;
+  border-image-source: var(--orn-frame);
+  border-image-slice: 185;
+  border-image-width: 13px;
+  border-image-repeat: round;
+  border-radius: 4px;
+  padding: 10px 12px 12px;
+  background:
+    linear-gradient(180deg, rgb(30 22 13 / 93%), rgb(17 12 7 / 95%)),
+    var(--cmp-leather) center / 300px repeat;
+  background-clip: padding-box;
+  box-shadow: 0 12px 26px rgb(0 0 0 / 46%);
+}
+
+.placementPanel > strong:first-child {
+  position: relative;
+  padding-bottom: 11px;
+  color: var(--cmp-gold-bright);
+  letter-spacing: 0.04em;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 72%);
+}
+
+.placementPanel > strong:first-child::after {
+  content: "";
+  position: absolute;
+  left: -2px;
+  right: -2px;
+  bottom: 0;
+  height: 12px;
+  background: var(--orn-rail) center bottom / 100% 12px no-repeat;
+  opacity: 0.82;
+  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 55%));
+  pointer-events: none;
+}
+
+/* ---- B4. Opponent nameplate → quiet leather (matches the map HUD) ------- */
+/* The top opponents strip's seat plates take the same tooled-leather fill + */
+/* gold hairline banding as the map's status ribbon, so the combat top strip */
+/* reads as the same chrome. Scoped to `.combatCardStrip` (combat-only).    */
+.combatCardStrip .opponentSeat {
+  border-color: var(--cmp-gold-deep);
+  background:
+    linear-gradient(180deg, rgb(32 25 15 / 92%), rgb(18 14 9 / 94%)),
+    var(--cmp-leather) center / 320px repeat;
+  box-shadow:
+    inset 0 0 0 1px rgb(217 178 90 / 26%),
+    inset 0 1px 0 rgb(246 226 168 / 10%),
+    0 10px 26px rgb(0 0 0 / 32%);
 }
 
 /* ======================================================================== */
@@ -22987,11 +23100,30 @@ details.mapPresetEditor[open] .mapPresetSummaryChevron {
 
 /* Ornate skin III (kit v2): the 19px frame-ornate layout border would eat a
    narrow phone room panel's width, so fall back to a plain gold hairline in
-   phone mode. The tray columns are already display:none below 1100px, and the
-   section rails / title plaque are small enough to keep. */
-.phoneMode.adventureRoot > .tableTopRow > .tableMenu {
+   phone mode. Scoped to `.tableRoot` so the same fall-back covers the battle
+   screen's room panel too (its frame now comes from §3). The tray columns are
+   already display:none below 1100px, and the section rails / title plaque are
+   small enough to keep. */
+.phoneMode.tableRoot > .tableTopRow > .tableMenu {
   border: 1px solid var(--cmp-gold-deep);
   border-image: none;
   border-radius: 9px;
   padding: 8px;
+}
+
+/* Battle-screen skin III fall-backs: the 18px / 13px gem frames would eat a
+   narrow phone battlefield / deploy sidebar, so drop them to a plain gold
+   hairline. The ORDER plaque and opponent-leather touches are small enough to
+   keep (they add no width). Mirrors the map step's .tableMenu hairline above. */
+.phoneMode .battlefieldFrame {
+  border: 2px solid var(--cmp-gold-deep);
+  border-image: none;
+  border-radius: 8px;
+}
+
+.phoneMode .placementPanel {
+  border: 1px solid var(--cmp-gold-deep);
+  border-image: none;
+  border-radius: 10px;
+  padding: 12px;
 }
