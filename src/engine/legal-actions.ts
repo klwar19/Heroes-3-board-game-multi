@@ -42,6 +42,7 @@ import {
 } from "./adventure";
 import {
   placementCellsFor,
+  neutralFormationCellsFor,
   getHeroMoveDestinations,
   hillFortCost,
   inCombatPrep,
@@ -4137,7 +4138,7 @@ function addControlledNeutralTokenActions(
  *
  * A WOG Werewolf's Astrologers-round frenzy forces the must-attack menu even
  * with the toggle OFF. (The pre-battle formation SORT is a separate window —
- * `pendingNeutralPlacement` — offered on a field but NOT a bank.)
+ * `pendingNeutralPlacement` — offered on both normal fields and Creature Banks.)
  */
 function addControlledNeutralUnitActions(
   actions: LegalAction[],
@@ -7444,17 +7445,17 @@ function addNeutralPlacementActions(actions: LegalAction[], state: GameState, pl
   const guards = Object.values(combat.units).filter(
     (unit) => unit.controllerId === NEUTRAL_PLAYER_ID && isUnitAlive(unit) && !isArrowTowerUnit(unit)
   );
-  // The controller is never the attacker, so placementCellsFor returns the
-  // defender back+front line — the zone the Neutral formation sorts within.
-  const cells = placementCellsFor(state, playerId);
+  // Field = whole board; Creature Bank = the four corner cells.
+  const cells = neutralFormationCellsFor(state);
   const occupantAt = new Map<number, CombatUnitState>();
   for (const unit of Object.values(combat.units)) {
     occupantAt.set(unit.position, unit);
   }
 
+  const obstacles = new Set(combat.obstacles ?? []);
   for (const guard of guards) {
     for (const position of cells) {
-      if (position === guard.position) {
+      if (position === guard.position || obstacles.has(position)) {
         continue;
       }
       const occupant = occupantAt.get(position);

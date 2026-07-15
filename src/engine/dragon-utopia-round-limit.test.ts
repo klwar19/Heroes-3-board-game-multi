@@ -28,10 +28,18 @@ function refreshP1(state: GameState): GameState {
 }
 
 /** Place the main hero on a field and open a real neutral combat, then finish placement. */
-function openNeutralFight(state: GameState, fieldId: string, forceNoAzure: boolean): GameState {
+function openNeutralFight(
+  state: GameState,
+  fieldId: string,
+  forceNoAzure: boolean,
+  /** Hero level — default 7 so QC does not auto-win vs difficulty-6/7 guards. */
+  heroLevel = 7
+): GameState {
   state = refreshP1(state);
   const hero = getMainHero(state, "p1")!;
-  hero.level = 7;
+  hero.level = heroLevel;
+  // Keep experience in band with the level so nothing re-derives it later.
+  hero.experience = Math.max(0, (heroLevel - 1) * 2);
   hero.spaceId = fieldId;
   hero.movementPoints = 5;
   startNeutralEncounter(state, hero, state.adventure!.fields[fieldId]!);
@@ -41,7 +49,19 @@ function openNeutralFight(state: GameState, fieldId: string, forceNoAzure: boole
   expect(place, "placement is offered").toBeTruthy();
   state = apply(state, place!.action);
   state = apply(state, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
-  expect(state.phase).toBe("combat");
+  // Drain optional post-placement choices (Visions swap, Tactics, etc.) so the
+  // fight is fully under way for the round-limit probe.
+  let drain = 20;
+  while (state.phase === "choice" && state.pendingChoice && drain-- > 0) {
+    const actions = getLegalActions(state, "p1");
+    const pick =
+      actions.find((a) => a.action.type === "CHOOSE_OPTION" || a.action.type === "CHOOSE_PENDING_ROLL") ??
+      actions.find((a) => a.action.type === "FINISH_TACTICS") ??
+      actions[0];
+    if (!pick) break;
+    state = apply(state, pick.action);
+  }
+  expect(state.phase === "combat" || state.combat).toBeTruthy();
   expect(state.combat?.context.kind).toBe("neutral");
 
   if (forceNoAzure && state.combat?.context.kind === "neutral") {
@@ -128,23 +148,26 @@ describe("Dragon Utopia — unlimited combat rounds", () => {
       ]
     });
 
-    // Mint a plain guarded field at difficulty 7 (matches hero level so Quick
-    // Combat does not auto-win) that is NOT the Utopia.
+    // Mint a plain guarded field at difficulty 6 (matches openNeutralFight's
+    // hero level 7 so Quick Combat does not auto-win, but BELOW the difficulty-7
+    // unlimited-rounds exemption). Not Utopia.
     const fieldId = "plain-guard";
     state.adventure!.fields[fieldId] = {
       spaceId: fieldId,
       tileInstanceId: "t",
       slot: 0,
       location: "nothing",
-      difficulty: 7,
+      difficulty: 6,
       blackCube: false,
       flagOwnerId: null,
       everFlagged: false,
       settlementResource: null
     };
 
-    state = openNeutralFight(state, fieldId, true);
-    // hasAzure forced false; location is not utopia → must pause.
+    // Hero level 6 = difficulty 6 so Quick Combat does not auto-win, and the
+    // fight is below the difficulty-7 unlimited-rounds exemption.
+    state = openNeutralFight(state, fieldId, true, 6);
+    // hasAzure forced false; location is not utopia; difficulty < 7 → must pause.
     state = driveUntilRoundGateOrTwo(state);
 
     expect(state.combat?.awaitingContinue, "ordinary neutral fight pauses after round 1").toBe(true);

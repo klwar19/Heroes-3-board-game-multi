@@ -6749,8 +6749,9 @@ export type CombatState = {
    * controller id after the guards are revealed and auto-placed on a normal
    * guard FIELD (never a Creature Bank, whose corners are fixed); the head holds
    * priority (phase "combat-setup", `setup` already null, exactly like the
-   * Tactics window). `PLACE_NEUTRAL_GUARD` moves/swaps a guard within the
-   * defender zone; `FINISH_NEUTRAL_PLACEMENT` starts the battle (→ Tactics →
+   * Tactics window). `PLACE_NEUTRAL_GUARD` moves/swaps a guard on any board
+   * cell (field) or the four bank corners; `FINISH_NEUTRAL_PLACEMENT` starts
+   * the battle (→ Tactics →
    * round 1). Absent when no controller exists or for a bank.
    */
   pendingNeutralPlacement?: PlayerId | null;
