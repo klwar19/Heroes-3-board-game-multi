@@ -860,25 +860,36 @@ function buyWarMachineScore(
     return 400;
   }
   const card = cardLibrary[action.cardId];
-  // Ballista / First Aid / Ammo Cart are all useful; preference order grounded
-  // in the community ability tier list (Artillery C — "how often are you
-  // purchasing the First Aid Tent over the Ballista?" — vs First Aid D): the
-  // Ballista is the default first buy by a clear margin. The ONE healing-
-  // specialist context the list names — Gem, whose First Aid VI specialty
-  // reads the Tent — flips the order (context detection is exactly that
-  // heroDefId check, nothing fuzzier).
+  // Ballista / First Aid Tent / Ammo Cart / Cannon are all useful and kept in a
+  // CLOSE band (base 600, +8..+22) so different contexts buy different machines
+  // (variety), rather than one machine always winning. The First Aid Tent is
+  // competitive by DEFAULT and PREFERRED when the army holds a unit worth saving
+  // — any silver/gold/azure-tier card is the signal (mirrors the in-combat
+  // value layer: the Tent earns its slot by keeping a premium body alive). Gem,
+  // whose First Aid VI specialty reads the Tent, keeps the strongest preference.
   // Keep below recruit/build (~850+) and above Done (520) only for the first buy.
-  const healingSpecialist =
-    state.players[observation.playerId]?.heroDefId === "gem";
+  const healingSpecialist = player?.heroDefId === "gem";
+  const hasValuableUnit = (player?.army ?? []).some((unit) => {
+    const tier = coreUnitDefinitions[unit.unitDefId]?.tier;
+    return tier === "silver" || tier === "gold" || tier === "azure";
+  });
   let score = 600;
-  if (action.cardId.includes("ballista") || card?.name?.toLowerCase().includes("ballista")) {
-    score += healingSpecialist ? 12 : 20;
-  } else if (
+  const isBallista =
+    action.cardId.includes("ballista") ||
+    Boolean(card?.name?.toLowerCase().includes("ballista"));
+  const isFirstAid =
     action.cardId.includes("first_aid") ||
-    card?.name?.toLowerCase().includes("first aid")
-  ) {
-    score += healingSpecialist ? 24 : 8;
+    Boolean(card?.name?.toLowerCase().includes("first aid"));
+  if (isBallista) {
+    score += healingSpecialist ? 12 : 18;
+  } else if (isFirstAid) {
+    score += 12;
+    if (hasValuableUnit) score += 10;
+    if (healingSpecialist) score += 16;
   } else if (action.cardId.includes("ammo")) {
+    score += 14;
+  } else {
+    // Cannon / Catapult and any other purchasable machine: in-band variety.
     score += 10;
   }
   return score;

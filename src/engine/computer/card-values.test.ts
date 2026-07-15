@@ -44,6 +44,7 @@ type PlayerOverrides = {
   needsHandRefresh?: boolean;
   handLimit?: number;
   gold?: number;
+  army?: { unitDefId: string; side?: string }[];
 };
 
 function makeState(
@@ -75,7 +76,11 @@ function makeState(
         buildingMaterials: 2,
         valuables: 1,
       },
-      army: [],
+      army: (over.army ?? []).map((entry, index) => ({
+        id: `army_${id}_${index}`,
+        unitDefId: entry.unitDefId,
+        side: entry.side ?? "few",
+      })),
     };
   }
   return {
@@ -565,18 +570,49 @@ describe("card-values — war-machine shop order", () => {
     } as GameAction;
   }
 
-  it("prefers the Ballista over the First Aid Tent (Artillery C vs First Aid D)", () => {
+  it("keeps the machines in a CLOSE band, defaulting to the Ballista with no unit worth saving", () => {
+    // Chaff/empty army, no healing specialist: the Ballista is still the default
+    // first buy — but only by a close margin, and every machine stays inside a
+    // tight band so different contexts buy different machines (variety). (Revised
+    // from the Step-3 "Ballista clearly over Tent" order: the Tent is now
+    // competitive by default and wins the contexts below.)
     const obs = duelObservation({ self: { gold: 30 } });
-    const ballista = scoreMapAction(obs, buy("war_machine.ballista"));
-    const tent = scoreMapAction(obs, buy("war_machine.first_aid_tent"));
-    expect(ballista?.score ?? 0).toBeGreaterThan(tent?.score ?? 0);
+    const ballista = scoreMapAction(obs, buy("war_machine.ballista"))?.score ?? 0;
+    const tent = scoreMapAction(obs, buy("war_machine.first_aid_tent"))?.score ?? 0;
+    const ammo = scoreMapAction(obs, buy("war_machine.ammo_cart"))?.score ?? 0;
+    expect(ballista).toBeGreaterThan(tent);
+    // Close band: no machine is more than 10 points off the top (keeps variety).
+    for (const score of [ballista, tent, ammo]) {
+      expect(Math.max(ballista, tent, ammo) - score).toBeLessThanOrEqual(10);
+    }
   });
 
-  it("CONTROL: Gem — the list's named healing specialist — flips to the Tent", () => {
+  it("PREFERS the First Aid Tent when the army holds a silver/gold unit to save", () => {
+    // A gold-tier body in the army (a unit worth keeping alive) flips the first
+    // buy to the Tent.
+    const obs = duelObservation({
+      self: { gold: 30, army: [{ unitDefId: "castle.champions" }] }, // gold tier
+    });
+    const ballista = scoreMapAction(obs, buy("war_machine.ballista"))?.score ?? 0;
+    const tent = scoreMapAction(obs, buy("war_machine.first_aid_tent"))?.score ?? 0;
+    expect(tent).toBeGreaterThan(ballista);
+
+    // CONTROL: a bronze-only army has no premium unit to save — the Tent is not
+    // preferred (default Ballista order returns), proving the tier signal drove
+    // the flip.
+    const bronzeArmy = duelObservation({
+      self: { gold: 30, army: [{ unitDefId: "castle.halberdiers" }] }, // bronze tier
+    });
+    const ballistaB = scoreMapAction(bronzeArmy, buy("war_machine.ballista"))?.score ?? 0;
+    const tentB = scoreMapAction(bronzeArmy, buy("war_machine.first_aid_tent"))?.score ?? 0;
+    expect(ballistaB).toBeGreaterThan(tentB);
+  });
+
+  it("Gem — the healing specialist — keeps the STRONGEST Tent preference (even chaff army)", () => {
     const obs = duelObservation({ self: { gold: 30, heroDefId: "gem" } });
-    const ballista = scoreMapAction(obs, buy("war_machine.ballista"));
-    const tent = scoreMapAction(obs, buy("war_machine.first_aid_tent"));
-    expect(tent?.score ?? 0).toBeGreaterThan(ballista?.score ?? 0);
+    const ballista = scoreMapAction(obs, buy("war_machine.ballista"))?.score ?? 0;
+    const tent = scoreMapAction(obs, buy("war_machine.first_aid_tent"))?.score ?? 0;
+    expect(tent).toBeGreaterThan(ballista);
   });
 });
 

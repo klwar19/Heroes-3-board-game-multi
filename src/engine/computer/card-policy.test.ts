@@ -233,6 +233,109 @@ describe("card policy — combat reactions", () => {
     expect(decision?.policy).toBe("card.use-active-effect-smart-target");
   });
 
+  const healOf = (unitId: string): LegalAction => ({
+    label: `heal ${unitId}`,
+    action: {
+      type: "USE_ACTIVE_EFFECT",
+      playerId: "p2",
+      effectId: "tent",
+      target: { type: "unit", unitId },
+    } as GameAction,
+  });
+  const defendOf = (unitId: string): LegalAction => ({
+    label: `defend ${unitId}`,
+    action: { type: "DEFEND_UNIT", playerId: "p2", unitId } as GameAction,
+  });
+
+  it("First Aid: heals the wounded GOLD unit over an equally-wounded bronze", () => {
+    // Both own units are missing 5. G is gold (tier value 42) though its raw
+    // stats trail the bronze (31); the tier-weighted target value sends the heal
+    // to the gold body.
+    const gold = unit({
+      id: "G", controllerId: "p2", grade: "gold", attack: 4, maxHealth: 10, damage: 5,
+    });
+    const bronze = unit({
+      id: "BR", controllerId: "p2", grade: "bronze", attack: 7, maxHealth: 10, damage: 5,
+    });
+    const decision = chooseComputerAction(
+      observation([gold, bronze], [healOf("G"), healOf("BR")]),
+    );
+    expect(decision?.action.type).toBe("USE_ACTIVE_EFFECT");
+    expect(
+      (decision?.action as Extract<GameAction, { type: "USE_ACTIVE_EFFECT" }>).target,
+    ).toEqual({ type: "unit", unitId: "G" });
+
+    // CONTROL: neutralize the value layer — make G bronze too. Its lower raw
+    // threat now loses to the bronze, so the heal flips there.
+    const goldAsBronze = unit({
+      id: "G", controllerId: "p2", grade: "bronze", attack: 4, maxHealth: 10, damage: 5,
+    });
+    const control = chooseComputerAction(
+      observation([goldAsBronze, bronze], [healOf("G"), healOf("BR")]),
+    );
+    expect(
+      (control?.action as Extract<GameAction, { type: "USE_ACTIVE_EFFECT" }>).target,
+    ).toEqual({ type: "unit", unitId: "BR" });
+  });
+
+  it("First Aid: saves the threatened valuable unit over topping up safe chaff", () => {
+    // V (gold, remaining 6) is under a lethal incoming hit from an adjacent
+    // un-acted enemy; C is safe chaff, more wounded (remaining 4) but in no
+    // danger. The heal goes to the unit actually about to die.
+    const valuable = unit({
+      id: "V", controllerId: "p2", grade: "gold", attack: 5, defense: 2,
+      maxHealth: 8, damage: 2, position: 5,
+    });
+    const chaff = unit({
+      id: "C", controllerId: "p2", grade: "bronze", attack: 5, defense: 2,
+      maxHealth: 14, damage: 10, position: 0,
+    });
+    const nearThreat = unit({
+      id: "E", controllerId: "p1", attack: 10, position: 6, activatedThisRound: false,
+    });
+    const decision = chooseComputerAction(
+      observation([valuable, chaff, nearThreat], [healOf("V"), healOf("C")]),
+    );
+    expect(
+      (decision?.action as Extract<GameAction, { type: "USE_ACTIVE_EFFECT" }>).target,
+    ).toEqual({ type: "unit", unitId: "V" });
+
+    // CONTROL: with the enemy out of reach, V is no longer in danger — the heal
+    // tops up the more-wounded chaff instead, proving the danger layer flipped it.
+    const farThreat = unit({
+      id: "E", controllerId: "p1", attack: 10, position: 19, activatedThisRound: false,
+    });
+    const control = chooseComputerAction(
+      observation([valuable, chaff, farThreat], [healOf("V"), healOf("C")]),
+    );
+    expect(
+      (control?.action as Extract<GameAction, { type: "USE_ACTIVE_EFFECT" }>).target,
+    ).toEqual({ type: "unit", unitId: "C" });
+  });
+
+  it("First Aid: HOLDS the charge on a safe trivial scratch, heals a real wound", () => {
+    // Only wounded body is safe low-value chaff missing 1 — not worth the Tent's
+    // once-per-round charge. Defending (504) outranks the held heal, so the
+    // charge is kept.
+    const scratch = unit({
+      id: "S", controllerId: "p2", attack: 2, maxHealth: 8, damage: 1, position: 5,
+    });
+    const decision = chooseComputerAction(
+      observation([scratch], [healOf("S"), defendOf("S")]),
+    );
+    expect(decision?.action.type).toBe("DEFEND_UNIT");
+
+    // CONTROL: a meaningful wound (missing 4) clears the worthwhile gate — now
+    // the heal is taken over defending.
+    const wounded = unit({
+      id: "S", controllerId: "p2", attack: 2, maxHealth: 8, damage: 4, position: 5,
+    });
+    const control = chooseComputerAction(
+      observation([wounded], [healOf("S"), defendOf("S")]),
+    );
+    expect(control?.action.type).toBe("USE_ACTIVE_EFFECT");
+  });
+
   it("plays a lethal-save reaction instead of passing", () => {
     // Resurrection is offered as PLAY_REACTION with CANCEL_LETHAL_ATTACK; PASS
     // is the foundation exit at 1_050 — the save must outrank it.

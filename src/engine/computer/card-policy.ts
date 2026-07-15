@@ -21,6 +21,7 @@ import {
 import { collectMapObjectives } from "./map-navigation";
 import {
   livingEnemyUnits,
+  pendingIncomingDamage,
   unitRemainingHealth,
   unitThreatValue,
 } from "./score";
@@ -43,6 +44,12 @@ import type { ComputerObservation } from "./types";
  * Only already-legal actions are scored; an approximation error can never
  * produce an illegal move.
  */
+
+// The First Aid Tent's once-per-round heal is a scarce charge. When the only
+// wounded body is safe low-value chaff with a trivial scratch, hold it — score
+// below END_ACTIVATION (400) / DEFEND (500) / PASS_REACTION (1_050) so the AI
+// does something real (or PASSes) and keeps the charge for a unit worth saving.
+const HOLD_FIRST_AID_SCORE = 360;
 
 // --- effect family tables ----------------------------------------------------
 
@@ -913,13 +920,12 @@ export function scoreCardAction(
     }
     case "USE_ACTIVE_EFFECT": {
       const target = combatUnitFromTarget(observation, action.target);
-      if (!target) {
+      const combat = observation.state.combat;
+      if (!target || !combat) {
         return { score: 620, policy: "card.use-active-effect" };
       }
-      const missingHealth = Math.max(
-        0,
-        target.maxHealth - unitRemainingHealth(target),
-      );
+      const remaining = unitRemainingHealth(target);
+      const missingHealth = Math.max(0, target.maxHealth - remaining);
       const threat = unitThreatValue(target);
       const effect = observation.state.activeEffects?.find(
         (candidate) => candidate.id === action.effectId,
@@ -930,14 +936,33 @@ export function scoreCardAction(
       );
       const inReactionWindow = Boolean(observation.state.reactionWindow);
 
-      // A legal First Aid-style reaction happens before incoming damage. The
-      // old flat score lost to PASS_REACTION, so the AI owned the Tent but never
-      // used it at the moment it could save a unit. Heal the most wounded,
-      // highest-value ally and finish an already-paid expert volley.
+      // Danger: damage the enemies still to act this round could land on this
+      // unit (adjacent melee + any ranged). A wounded body under a LETHAL threat
+      // is the whole point of the Tent — save it; one merely under some threat
+      // is worth mending; a safe unit is not urgent.
+      const incoming = pendingIncomingDamage(combat, observation.playerId, target);
+
+      // Efficiency (the First Aid Tent's once-per-round heal is a scarce charge):
+      // a safe, barely-scratched, low-value body is NOT worth spending it on.
+      // Hold the charge — score below the passive exits (END_ACTIVATION = 400 /
+      // PASS_REACTION) so the AI does something real, or PASSes, instead. An
+      // already-paid expert volley always continues.
+      const worthwhile =
+        missingHealth >= 2 || incoming > 0 || threat >= 25;
+      if (!expertContinuation && action.mode !== "expert" && !worthwhile) {
+        return { score: HOLD_FIRST_AID_SCORE, policy: "card.hold-first-aid" };
+      }
+
+      // Value-first target ranking (tier-weighted via `unitThreatValue`), with a
+      // danger bonus so a threatened valuable unit outranks topping up safe
+      // chaff. The old score lost to PASS_REACTION, so the AI owned the Tent but
+      // never used it at the moment it could save a unit.
+      const dangerBonus = incoming >= remaining ? 60 : incoming > 0 ? 25 : 0;
       let score =
         (inReactionWindow ? 1_080 : 640) +
-        Math.min(45, missingHealth * 10) +
-        Math.min(20, Math.round(threat / 5));
+        Math.min(30, missingHealth * 8) +
+        Math.min(40, Math.round(threat / 3)) +
+        dangerBonus;
       if (expertContinuation) {
         score += 25;
       } else if (action.mode === "expert") {
