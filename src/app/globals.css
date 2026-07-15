@@ -12216,8 +12216,18 @@ img.cardBack {
 
 .designerGateToken.designed {
   pointer-events: auto;
-  cursor: pointer;
+  cursor: grab;
   filter: drop-shadow(0 0 4px rgba(143, 230, 255, 0.85));
+}
+
+/* Mid-drag snap preview: the token pair glows brighter at its would-be spot. */
+.designerGateToken.designed.dragging {
+  cursor: grabbing;
+  filter: drop-shadow(0 0 7px rgba(255, 235, 150, 0.95));
+}
+
+.designerGateLink.designed.dragging {
+  stroke: #ffeb96;
 }
 
 .designerGatePin {
