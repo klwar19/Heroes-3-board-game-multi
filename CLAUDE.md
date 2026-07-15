@@ -1490,6 +1490,43 @@ Six additions; each engine rule fails a named test if its wiring is removed.
   pure presentation layer with no engine change. Rendered in the map left rail and
   the combat card strip (`page.tsx`). Render-tested in `opponent-info.test.tsx`.
 
+## Pre-hit heals vs Spells/specialties & map-designer timed events — what runs
+
+Two additions; each engine claim fails a named test if its wiring is removed.
+
+- **Pre-hit heals (First Aid Tent, First Aid ability, Cure) fire against
+  damaging Spells AND specialty blasts, not only declared attacks.** A
+  `SPELL_CAST_STARTED` window whose pending cast would damage a player's units
+  (primary target, predicted blast, or Chain Lightning primary —
+  `playerThreatenedByPendingDamage`) offers that player the shared heal package
+  (`preHitHealReactions`); a non-damaging cast (Haste) never opens a forced heal
+  window. Frost Ring / Meteor Shower specialties (`AREA_DAMAGE_PICK_ADJACENT` /
+  `AREA_DAMAGE_ALL_ADJACENT` card plays) are DEFERRED onto the resolution stack
+  (`tryDeferSpecialtyDamageForHeals`) with a synthetic `SPELL_CAST_STARTED`
+  window ONLY when a threatened player can actually heal — otherwise damage
+  lands immediately as before. Cure as a reaction scales off standing spell
+  Power and runs its cleanse; it counts against the per-round Spell limit.
+  LIMITS: the synthetic specialty window is NOT a Spell cast — Resistance,
+  Knowledge/Mysticism recall, Power boosts and the Brimstone cube are all gated
+  to a real `CAST_SPELL` stack item (their reducer branches would no-op, eating
+  the card). War-machine discard damage keeps its immediate path. Pinned in
+  `pre-hit-heal-reactions.test.ts` (heal-before-damage event order, the
+  no-heal/no-pause CONTROL, and the spell-hate gate with a real-Spell CONTROL).
+- **Map-designer timed events are freeform** (`CustomMapPreset.timedEvents`, cap
+  `MAX_TIMED_EVENTS` = 32): any round 1–30 × any effect — resources, deck
+  Search, clear-cubes (Windmill also re-opens Factory Prospector, Water Wheel
+  also Derrick), ±1 morale, +movement (stacks on the round's refreshed MPs),
+  Treasure/Resource dice (queued per live player), or a feed note. Eliminated
+  seats and their heroes are skipped. Fired by `applyCustomMapTimedEvents` at
+  round start; sanitization clamps amounts and drops unknown kinds
+  (`custom-setup.test.ts`, `map-preset.ts`). Each firing pops the ornate
+  `MapEventOverlay` on every client (one card per batch, once per event id,
+  never replayed on reconnect — `map-event-overlay.test.tsx`); the editor's
+  per-event cards (round rail, kind dropdown, params, live preview, warnings)
+  are pinned in `map-preset-editor.test.tsx`. The designer's face-down tiles
+  draw band-correct printed BACKS (sea/underground Ⅵ–Ⅶ never wear Ⅳ–Ⅴ art;
+  `planBackArt`, `map-designer.test.tsx`).
+
 ## Neutral-combat & Sorrow refinements (BINH house rules) — what runs
 
 Three engine-enforced additions; each fails a named test if its wiring is removed.
