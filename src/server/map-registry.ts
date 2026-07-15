@@ -1,5 +1,6 @@
 import {
   isSecretTileFeature,
+  isViiFieldDesignation,
   normalizeDesignedBorders,
   parseHexSpaceId,
   sanitizeCustomMapPreset,
@@ -163,6 +164,12 @@ function sanitizeTile(tile: unknown): CustomMapTilePlan | null {
     // rotation). Meaningful only on a starting plan — kept there, dropped on any
     // other group; only a literal `true` survives so garbage can't set it.
     ...(candidate.group === "starting" && candidate.lockRotation === true ? { lockRotation: true } : {}),
+    // `viiField` forces a center slot's Ⅶ objective field (Grail / Dragon Utopia
+    // / town). Meaningful only on a center plan — kept there, dropped elsewhere;
+    // only a known designation survives so garbage can't set it.
+    ...(candidate.group === "center" && isViiFieldDesignation(candidate.viiField)
+      ? { viiField: candidate.viiField }
+      : {}),
     ...(candidate.seaBand === "iv-v" || candidate.seaBand === "vi-vii" ? { seaBand: candidate.seaBand } : {}),
     ...(candidate.subBand === "iv-v" || candidate.subBand === "vi-vii" ? { subBand: candidate.subBand } : {}),
     ...(token ? { token } : {}),

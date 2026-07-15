@@ -37,6 +37,7 @@ import {
   tileMatchesSecretFeature,
   unreachableUndergroundCenters,
   validateCustomMapObjects,
+  victoryDesignConflicts,
   type CustomMapGateLink,
   type CustomMapObject,
   type CustomMapObjectKind,
@@ -45,7 +46,8 @@ import {
   type HexCoord,
   type MapTokenKind,
   type PlannedSubterraneanGate,
-  type SecretTileFeature
+  type SecretTileFeature,
+  type VictoryMode
 } from "@/engine";
 import { nearestGateHexPair, type GateHexPair } from "@/components/adventure/gate-drag";
 import { titleCase } from "@/components/table/utils";
@@ -220,6 +222,18 @@ const PICKABLE_GROUPS = new Set<DesignGroup>(["far", "near", "center", "sea", "s
 
 /** The physical supply of numbered Whirlpool tokens (+1 / 0 / -1). */
 const MAX_WHIRLPOOL_TOKENS = 3;
+
+/**
+ * Center-tile Ⅶ-field designations for the popover picker. `undefined` = Default
+ * (keep the drawn/chosen tile's printed objective); the others FORCE the
+ * difficulty-7 field. Order = picker order.
+ */
+const VII_FIELD_OPTIONS: { id: CustomMapTilePlan["viiField"]; label: string; hint: string }[] = [
+  { id: undefined, label: "Default", hint: "Keep whatever objective the drawn / chosen tile prints." },
+  { id: "grail", label: "Grail", hint: "Force the Grail dig site on this slot's Ⅶ field." },
+  { id: "dragon_utopia", label: "Dragon Utopia", hint: "Force the Dragon Utopia on this slot's Ⅶ field." },
+  { id: "town", label: "Town", hint: "Force a neutral conquerable Random Town on this slot's Ⅶ field." }
+];
 
 /**
  * Which token kinds a FACE-DOWN plan of this group may carry (the discovering
@@ -474,6 +488,7 @@ export function MapDesigner({
   onChange,
   objects = EMPTY_OBJECTS,
   onObjectsChange,
+  victoryMode,
   hexSize = DESIGN_HEX
 }: {
   scenarioId: string;
@@ -483,6 +498,8 @@ export function MapDesigner({
   objects?: CustomMapObject[];
   /** Persist an edited object list (lives on the map PRESET, held by the page). */
   onObjectsChange?: (next: CustomMapObject[]) => void;
+  /** The map's victory mode (from the preset) — drives the win-condition conflict warning. */
+  victoryMode?: VictoryMode;
   hexSize?: number;
 }) {
   const scenario = scenarioDefinitions[scenarioId];
@@ -788,6 +805,9 @@ export function MapDesigner({
           if (changes.lockRotation === undefined && "lockRotation" in changes) {
             delete next.lockRotation;
           }
+          if (changes.viiField === undefined && "viiField" in changes) {
+            delete next.viiField;
+          }
           return next;
         })
       );
@@ -820,6 +840,13 @@ export function MapDesigner({
   const objectValidation = useMemo(
     () => validateCustomMapObjects(customMap, objects, starts),
     [customMap, objects, starts]
+  );
+  // Win-condition conflicts: a design whose tiles make the chosen victory mode's
+  // objective (Grail dig sites / a Dragon Utopia) impossible. Shown live here so
+  // the designer sees exactly what the game start will BLOCK.
+  const victoryConflicts = useMemo(
+    () => victoryDesignConflicts(customMap, victoryMode),
+    [customMap, victoryMode]
   );
   const gatePairPlaced = useMemo(() => {
     const counts: Record<number, number> = {};
@@ -1577,6 +1604,30 @@ export function MapDesigner({
           );
         }
       }
+    }
+
+    // Center Ⅶ-field designation badge — the forced objective is public info.
+    if (plan.group === "center" && plan.viiField) {
+      const viiBadge =
+        plan.viiField === "grail" ? "🏆 Grail" : plan.viiField === "dragon_utopia" ? "🐉 Utopia" : "🏰 Town";
+      const viiFull =
+        plan.viiField === "dragon_utopia"
+          ? "Dragon Utopia"
+          : plan.viiField === "grail"
+            ? "Grail dig site"
+            : "Random Town";
+      labelLayer.push(
+        <text
+          className="designerViiBadge"
+          key={`plan-vii-${index}`}
+          textAnchor="middle"
+          x={centerPixel.x}
+          y={centerPixel.y - size * 0.7}
+        >
+          <title>{`Ⅶ field forced to ${viiFull}`}</title>
+          {viiBadge}
+        </text>
+      );
     }
 
     if (isStart) {
@@ -2473,6 +2524,37 @@ export function MapDesigner({
                   </button>
                 </div>
 
+                {/* Center (Ⅵ–Ⅶ) tiles: force this slot's difficulty-7 objective
+                    field, whatever tile lands here. */}
+                {selected.group === "center" ? (
+                  <div className="popoverViiField">
+                    <div className="popoverSectionLabel">Ⅶ objective field</div>
+                    <small className="popoverHint">
+                      Force this centre slot&apos;s big (difficulty 7) field to a specific objective — whatever tile
+                      lands here. Default keeps whatever the drawn / chosen tile prints.
+                    </small>
+                    <div className="popoverModeRow" role="group" aria-label="Center Ⅶ field">
+                      {VII_FIELD_OPTIONS.map((option) => {
+                        const active = (selected.viiField ?? undefined) === option.id;
+                        return (
+                          <button
+                            aria-pressed={active}
+                            className={`popoverFilterChip${active ? " active" : ""}`}
+                            key={String(option.id)}
+                            onClick={() =>
+                              updateTile(selectedIndex as number, { viiField: option.id })
+                            }
+                            title={option.hint}
+                            type="button"
+                          >
+                            {option.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
+
                 {/* Monolith/Whirlpool Location Token on this tile. */}
                 {selectedToken ? (
                   <>
@@ -2675,6 +2757,11 @@ export function MapDesigner({
         ) : null}
       </div>
 
+      {victoryConflicts.map((conflict, index) => (
+        <div className="designerCavernAlert designerVictoryConflict" key={`victory-conflict-${index}`} role="alert">
+          ⚠ {conflict}
+        </div>
+      ))}
       {objectValidation.problems.map((problem, index) => (
         <div className="designerCavernAlert designerObjectAlert" key={`obj-problem-${index}`} role="alert">
           ⚠ {problem}

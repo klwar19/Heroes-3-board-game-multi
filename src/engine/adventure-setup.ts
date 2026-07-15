@@ -39,6 +39,7 @@ import {
   getTileFootprintSpaceIds,
   getUnitSide,
   instantiateTile,
+  materializeTileFields,
   NEUTRAL_DECK_IDS,
   normalizeDesignedBorders,
   recomputeSubterraneanGates,
@@ -59,6 +60,8 @@ import {
   revertCustomMapPresetOptions,
   sanitizeCustomMapPreset,
   tileMatchesSecretFeature,
+  victoryDesignConflicts,
+  VII_FIELD_DESIGNATIONS,
   type CustomMapPreset,
   type PresetForcedOptionKey
 } from "./map-preset";
@@ -981,6 +984,22 @@ export function validateCustomMapPlan(
     }
   }
 
+  // `viiField` FORCES a center slot's difficulty-7 objective field (Grail /
+  // Dragon Utopia / Random Town). Meaningful only on a `center` plan — strip it
+  // on every other group (like lockRotation is starting-only) AND drop an unknown
+  // value, so a garbage designation can never reach setup.
+  for (let index = 0; index < accepted.length; index += 1) {
+    const plan = accepted[index];
+    if (plan.viiField === undefined) {
+      continue;
+    }
+    if (plan.group !== "center" || !VII_FIELD_DESIGNATIONS.has(plan.viiField)) {
+      const next = { ...plan };
+      delete next.viiField;
+      accepted[index] = next;
+    }
+  }
+
   return { accepted, problems };
 }
 
@@ -1234,6 +1253,28 @@ function applyDesignedBorders(tile: MapTileState, plan: CustomMapTilePlan): void
   const borders = normalizeDesignedBorders(plan.extraBorders);
   if (borders.length > 0) {
     tile.extraBorders = borders;
+  }
+}
+
+/**
+ * Center-tile Ⅶ-field designation (plan → instance): store the override on the
+ * placed tile so its difficulty-7 objective field materializes as the designated
+ * location. Meaningful only on a `center` plan (stripped elsewhere at
+ * validation). A FACE-UP center tile already materialized its fields inside
+ * `instantiateTile`, so re-run the materialization now that the override is set;
+ * a FACE-DOWN tile materializes on reveal and reads the override then.
+ */
+function applyDesignedViiField(
+  adventure: AdventureState,
+  tile: MapTileState,
+  plan: CustomMapTilePlan
+): void {
+  if (plan.group !== "center" || !plan.viiField) {
+    return;
+  }
+  tile.viiField = plan.viiField;
+  if (!tile.faceDown) {
+    materializeTileFields(adventure, tile);
   }
 }
 
@@ -1919,6 +1960,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
           // the tile is revealed at the slot's rotation.
           const tile = instantiateTile(adventure, tileDefId, center, plan.rotation ?? 0, true);
           applyDesignedBorders(tile, plan);
+          applyDesignedViiField(adventure, tile, plan);
           if (plan.token) {
             plannedTokens.push({ plan, tile });
           }
@@ -1926,6 +1968,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
       } else if (plan.tileDefId) {
         const tile = instantiateTile(adventure, plan.tileDefId, center, plan.rotation ?? 0, false);
         applyDesignedBorders(tile, plan);
+        applyDesignedViiField(adventure, tile, plan);
         if (plan.token) {
           plannedTokens.push({ plan, tile });
         }
@@ -3740,6 +3783,20 @@ export function startAdventureFromLobby(
 
   if (lobby.seats.some((seat) => !seat.factionId || !seat.heroDefId)) {
     throw new Error("Every seat needs a faction and hero before the adventure starts.");
+  }
+
+  // A designed map whose tile layout makes the chosen win condition's objective
+  // IMPOSSIBLE (no Grail dig capacity / no Dragon Utopia) is BLOCKED here with a
+  // clear message rather than silently building an unwinnable game. Compatible
+  // designs (and every scenario-driven map) pass straight through. The designer
+  // + lobby show the same warnings live, so this is never a surprise at start.
+  if (lobby.options.customMap && lobby.options.customMap.length > 0) {
+    const scenario = getScenario(lobby.options.scenarioId);
+    const acceptedPlan = validateCustomMapPlan(lobby.options.customMap, scenario).accepted;
+    const conflicts = victoryDesignConflicts(acceptedPlan, lobby.options.victoryMode);
+    if (conflicts.length > 0) {
+      throw new Error(conflicts[0]);
+    }
   }
 
   // An already-open check whose window has elapsed aborts here rather than

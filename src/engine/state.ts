@@ -6864,6 +6864,17 @@ export type MapTileState = {
    * yellow line is visible to everyone.
    */
   extraBorders?: number[];
+  /**
+   * Center-tile Ⅶ-field designation carried onto this PLACED instance (from
+   * {@link CustomMapTilePlan.viiField}) — FORCE this tile's difficulty-7 objective
+   * field to the Grail dig site ("grail"), the Dragon Utopia ("dragon_utopia") or
+   * the neutral Random Town ("town" → the printed `random_town` field), whatever
+   * center tile actually landed here. Applied when the tile's fields materialize
+   * (`materializeTileFields`), so a face-down center slot picks it up on reveal.
+   * SECRET like `tileDefId`: player views MASK it while the tile is face-down so a
+   * hidden slot's objective is not leaked before discovery (see player-view.ts).
+   */
+  viiField?: "town" | "dragon_utopia" | "grail";
 };
 
 export type MapFieldState = {
@@ -8822,6 +8833,25 @@ export type CustomMapPreset = {
    * be added later, so the model is deliberately open. See {@link CustomMapObject}.
    */
   objects?: CustomMapObject[];
+  /**
+   * Grail / Dragon Utopia special-effect options (MAP-WIDE). Absent = today's
+   * defaults, byte-identical. Each surfaces an EXISTING engine knob to the
+   * designer; none invents new math.
+   *   - `grailObelisksRequired`: how many visited Obelisks unlock the Holy-Grail
+   *     dig (default {@link GRAIL_OBELISKS_REQUIRED}). The engine reads this via
+   *     `grailObelisksRequired(state)` with the constant as fallback.
+   *   - `utopiaGuards`: the EXISTING {@link DragonUtopiaGuards} modes ("four" =
+   *     the full four-dragon party always; "by-difficulty" = trim to the
+   *     difficulty-scaled count). Absent falls back to the lobby / default.
+   *   - `utopiaBonusSearch`: an EXTRA Artifact-deck Search(N) granted to the
+   *     Utopia's defeater ON TOP of the printed reward (1-3). Not granted in
+   *     Dragon Hunt (defeating the Utopia wins outright).
+   */
+  objectives?: {
+    grailObelisksRequired?: 1 | 2 | 3 | 4;
+    utopiaGuards?: DragonUtopiaGuards;
+    utopiaBonusSearch?: 1 | 2 | 3;
+  };
 };
 
 /** A designer-placed one-hex map object's kind. Open for future kinds. */
@@ -8859,6 +8889,9 @@ export type CustomMapObject = {
 
 /** The Obelisk-role config block of a {@link CustomMapPreset}. */
 export type CustomMapObeliskConfig = NonNullable<CustomMapPreset["obelisks"]>;
+
+/** The Grail / Dragon Utopia options block of a {@link CustomMapPreset}. */
+export type CustomMapObjectivesConfig = NonNullable<CustomMapPreset["objectives"]>;
 
 /** One designer-chosen Obelisk visit bonus (role "bonus"). */
 export type CustomMapObeliskBonus = NonNullable<CustomMapObeliskConfig["bonus"]>;
@@ -8994,6 +9027,24 @@ export type CustomMapTilePlan = {
    * {@link validateCustomMapPlan} and the persistence sanitiser.
    */
   extraBorders?: number[];
+  /**
+   * Center (Ⅵ–Ⅶ) slots ONLY: FORCE this slot's difficulty-7 objective field to a
+   * specific location, whatever center tile lands here (exact pin OR random draw,
+   * face-up or face-down). Meaningful only on a `center` plan — stripped on every
+   * other group (like `lockRotation` is starting-only) at
+   * {@link validateCustomMapPlan} and the persistence sanitiser.
+   *   - "grail": the Grail dig site (with grail dig bookkeeping — `grailDiggable`
+   *     — in a Holy Grail game, exactly like a printed Grail field).
+   *   - "dragon_utopia": the Dragon Utopia (guards + reward identical to printed).
+   *   - "town": the neutral conquerable Random Town (the printed `random_town`
+   *     field; the defending faction is assigned at the fight).
+   * The difficulty-7 guard is preserved. If the drawn/pinned tile's printed Ⅶ
+   * field ALREADY matches the designation it is a no-op. Every center tile has a
+   * difficulty-7 field, so a center designation always applies (invariant pinned
+   * in vii-field-designation.test.ts). SECRET on a face-down slot: masked in
+   * player views until reveal (see the {@link MapTileState.viiField} it seeds).
+   */
+  viiField?: "town" | "dragon_utopia" | "grail";
 };
 
 /**

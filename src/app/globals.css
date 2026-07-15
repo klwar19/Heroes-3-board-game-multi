@@ -12490,6 +12490,25 @@ img.cardBack {
   pointer-events: none;
 }
 
+/* Center-tile Ⅶ objective designation badge (Grail / Utopia / Town). */
+.designerViiBadge {
+  fill: #ffe1a8;
+  font-size: 9px;
+  font-weight: 700;
+  paint-order: stroke;
+  stroke: rgba(0, 0, 0, 0.85);
+  stroke-width: 2.4px;
+  pointer-events: none;
+}
+
+/* Popover: center Ⅶ objective-field picker. */
+.popoverViiField {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+}
+
 .designerTileLabel {
   fill: #f3e7c8;
   font-size: 9px;
@@ -21913,6 +21932,18 @@ body {
   display: flex;
   flex-wrap: wrap;
   gap: 5px;
+}
+
+/* Objectives section: one labelled row per knob (Grail Obelisks / Utopia …). */
+.mapPresetObjectiveRow {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+}
+.mapPresetObjectiveLabel {
+  font-size: 11px;
+  color: rgba(210, 224, 240, 0.86);
 }
 
 .mapPresetChip {

@@ -81,6 +81,14 @@ export function MapPresetEditor({
       // "Classic" is the ABSENCE of a config — remove the key entirely.
       delete next.obelisks;
     }
+    if (
+      "objectives" in partial &&
+      (partial.objectives === undefined || Object.keys(partial.objectives).length === 0)
+    ) {
+      // An empty objectives block means "nothing forced" — drop the key so the
+      // preset collapses to undefined when it was the only condition.
+      delete next.objectives;
+    }
     // Collapse to undefined when nothing is set.
     const keys = Object.keys(next).filter((key) => {
       const v = next[key as keyof CustomMapPreset];
@@ -116,6 +124,38 @@ export function MapPresetEditor({
   };
   const setObeliskBonus = (bonus: CustomMapObeliskBonus) => {
     patch({ obelisks: { role: "bonus", bonus } });
+  };
+
+  const objectives = value.objectives ?? {};
+  const patchObjectives = (next: NonNullable<CustomMapPreset["objectives"]>) => {
+    patch({ objectives: Object.keys(next).length > 0 ? next : undefined });
+  };
+  const setGrailObelisks = (count: 1 | 2 | 3 | 4 | undefined) => {
+    const next = { ...objectives };
+    if (count === undefined) {
+      delete next.grailObelisksRequired;
+    } else {
+      next.grailObelisksRequired = count;
+    }
+    patchObjectives(next);
+  };
+  const setUtopiaGuards = (guards: "four" | "by-difficulty" | undefined) => {
+    const next = { ...objectives };
+    if (guards === undefined) {
+      delete next.utopiaGuards;
+    } else {
+      next.utopiaGuards = guards;
+    }
+    patchObjectives(next);
+  };
+  const setUtopiaBonusSearch = (count: 1 | 2 | 3 | undefined) => {
+    const next = { ...objectives };
+    if (count === undefined) {
+      delete next.utopiaBonusSearch;
+    } else {
+      next.utopiaBonusSearch = count;
+    }
+    patchObjectives(next);
   };
 
   const setTimed = (next: CustomMapTimedEvent[]) => {
@@ -456,6 +496,100 @@ export function MapPresetEditor({
             <ObeliskBonusFields bonus={obeliskBonus} onChange={setObeliskBonus} />
           </div>
         ) : null}
+      </section>
+
+      <section className="mapPresetSection" aria-label="Objectives">
+        <div className="mapPresetSectionLabel">Objectives (Grail / Dragon Utopia)</div>
+        <small className="mapPresetHint">
+          Tuning knobs for the victory objectives. Absent = the game defaults. These apply to whichever
+          objective fields the map carries (set a centre tile&apos;s Ⅶ field in the tile popover).
+        </small>
+
+        <div className="mapPresetObjectiveRow" role="group" aria-label="Grail Obelisks required">
+          <span className="mapPresetObjectiveLabel">🏆 Grail dig — Obelisks needed</span>
+          <div className="mapPresetChipRow">
+            <button
+              aria-pressed={objectives.grailObelisksRequired === undefined}
+              className={`mapPresetChip${objectives.grailObelisksRequired === undefined ? " active" : ""}`}
+              onClick={() => setGrailObelisks(undefined)}
+              title="Use the default (2 Obelisks)."
+              type="button"
+            >
+              Default (2)
+            </button>
+            {([1, 2, 3, 4] as const).map((count) => (
+              <button
+                aria-pressed={objectives.grailObelisksRequired === count}
+                className={`mapPresetChip${objectives.grailObelisksRequired === count ? " active" : ""}`}
+                key={count}
+                onClick={() => setGrailObelisks(count)}
+                type="button"
+              >
+                {count}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="mapPresetObjectiveRow" role="group" aria-label="Dragon Utopia guards">
+          <span className="mapPresetObjectiveLabel">🐉 Dragon Utopia guards</span>
+          <div className="mapPresetChipRow">
+            <button
+              aria-pressed={objectives.utopiaGuards === undefined}
+              className={`mapPresetChip${objectives.utopiaGuards === undefined ? " active" : ""}`}
+              onClick={() => setUtopiaGuards(undefined)}
+              title="Use the lobby / game default."
+              type="button"
+            >
+              Default
+            </button>
+            <button
+              aria-pressed={objectives.utopiaGuards === "by-difficulty"}
+              className={`mapPresetChip${objectives.utopiaGuards === "by-difficulty" ? " active" : ""}`}
+              onClick={() => setUtopiaGuards("by-difficulty")}
+              title="Trim the dragon party to the difficulty-scaled count (Easy 1 … Impossible 4)."
+              type="button"
+            >
+              Scale by difficulty
+            </button>
+            <button
+              aria-pressed={objectives.utopiaGuards === "four"}
+              className={`mapPresetChip${objectives.utopiaGuards === "four" ? " active" : ""}`}
+              onClick={() => setUtopiaGuards("four")}
+              title="The full four-dragon party always stands."
+              type="button"
+            >
+              Four dragons
+            </button>
+          </div>
+        </div>
+
+        <div className="mapPresetObjectiveRow" role="group" aria-label="Dragon Utopia bonus search">
+          <span className="mapPresetObjectiveLabel">🐉 Dragon Utopia bonus Search</span>
+          <div className="mapPresetChipRow">
+            <button
+              aria-pressed={objectives.utopiaBonusSearch === undefined}
+              className={`mapPresetChip${objectives.utopiaBonusSearch === undefined ? " active" : ""}`}
+              onClick={() => setUtopiaBonusSearch(undefined)}
+              title="No extra Search on top of the printed reward."
+              type="button"
+            >
+              None
+            </button>
+            {([1, 2, 3] as const).map((count) => (
+              <button
+                aria-pressed={objectives.utopiaBonusSearch === count}
+                className={`mapPresetChip${objectives.utopiaBonusSearch === count ? " active" : ""}`}
+                key={count}
+                onClick={() => setUtopiaBonusSearch(count)}
+                title={`Grant the defeater an extra Search(${count}) of the Artifact deck.`}
+                type="button"
+              >
+                Search({count})
+              </button>
+            ))}
+          </div>
+        </div>
       </section>
 
       <section className="mapPresetSection mapPresetTimedSection" aria-label="Timed events">
