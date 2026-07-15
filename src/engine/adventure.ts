@@ -106,7 +106,8 @@ import type {
   VisitStep
 } from "./state";
 import { isNeutralSideCombatChoice, neutralCombatControllerId } from "./neutral-control";
-import { GRAIL_OBELISKS_REQUIRED, NEUTRAL_PLAYER_ID, UNOPENED_FAR_TILE } from "./state";
+import { DEFAULT_OBELISK_BONUS, GRAIL_OBELISKS_REQUIRED, NEUTRAL_PLAYER_ID, UNOPENED_FAR_TILE } from "./state";
+import type { CustomMapObeliskBonus } from "./state";
 import { awardCommanderGradePoints } from "./commanders";
 
 /** Hero level track: hand limit and expert-effect uses by level (hero board). */
@@ -1076,6 +1077,14 @@ export function classifyHeroStep(
   // walks on and off freely, everyone else must stop to besiege it.
   if (field.location === "dragon_utopia" && field.flagOwnerId && adventureVictoryMode(state) === "dragon-conqueror") {
     return field.flagOwnerId === playerId ? "open" : "stop";
+  }
+
+  // Obelisk role "monolith": the field is a Monolith network member, so entering
+  // it teleports — it can NEVER be walked through, even after it is flagged
+  // (unlike its classic flaggable "open once mine" behaviour below). Mirrors a
+  // real Monolith token (category "revisitable" → always "stop").
+  if (field.location === "obelisk" && obeliskRoleIsMonolith(state)) {
+    return "stop";
   }
 
   if (!location || location.category === "empty") {
@@ -2709,6 +2718,25 @@ function recordGrailObeliskVisit(state: GameState, playerId: PlayerId, fieldId: 
 }
 
 /**
+ * The map-wide Obelisk role a designed map forces, or `undefined` for the
+ * classic locked-die house rule. ABSENCE is classic — there is no stored
+ * "classic" value that could drift. Rides on `adventure.mapPreset.obelisks`
+ * (public; passes through player views / reconnects untouched). The
+ * winning-condition role (Holy-Grail dig progress) is identical in every mode;
+ * only the visit reward/behaviour changes. See CustomMapPreset.obelisks.
+ */
+export function obeliskPresetRole(
+  state: GameState
+): "monolith" | "bonus" | "victory-only" | undefined {
+  return state.adventure?.mapPreset?.obelisks?.role;
+}
+
+/** Whether Obelisk fields join the Monolith teleport network (role "monolith"). */
+export function obeliskRoleIsMonolith(state: GameState): boolean {
+  return obeliskPresetRole(state) === "monolith";
+}
+
+/**
  * Grail field visit. In Holy Grail the first visit (after the guards fall)
  * arms the dig; a later revisit for 1 MP collects the single Grail Token
  * once the digger has visited {@link GRAIL_OBELISKS_REQUIRED} Obelisks, which
@@ -2853,6 +2881,37 @@ function obeliskRewardSteps(roll: -1 | 0 | 1): VisitStep[] {
 }
 
 /**
+ * The visit steps a designer-configured Obelisk "bonus" role grants — reusing
+ * the same interaction plumbing every field visit uses (no new reward
+ * machinery). A "dice" bonus resolves EACH die (a step per die, like the
+ * Cyclops Stockpile), not the pick-one Pandora form.
+ */
+function obeliskBonusVisitSteps(bonus: CustomMapObeliskBonus): VisitStep[] {
+  switch (bonus.kind) {
+    case "morale":
+      return [{ type: "GAIN_MORALE", amount: bonus.amount }];
+    case "search":
+      return [{ type: "SEARCH_SHARED_DECK", deckId: bonus.deck, count: bonus.count }];
+    case "resources":
+      return [
+        {
+          type: "GAIN_RESOURCES",
+          gold: bonus.gold,
+          buildingMaterials: bonus.buildingMaterials,
+          valuables: bonus.valuables
+        }
+      ];
+    case "movement":
+      return [{ type: "GAIN_MOVEMENT", amount: bonus.amount }];
+    case "dice":
+      return [
+        ...Array.from({ length: bonus.treasure }, () => ({ type: "ROLL_TREASURE_DICE", count: 1 }) as const),
+        ...Array.from({ length: bonus.resource }, () => ({ type: "ROLL_RESOURCE_DICE", count: 1 }) as const)
+      ];
+  }
+}
+
+/**
  * Obelisk visit. Obelisks are flaggable (every visitor keeps a cube).
  *
  * House rule (`obelisk-rewards`, BINH default ON): the FIRST hero to visit a
@@ -2870,7 +2929,10 @@ function obeliskRewardSteps(roll: -1 | 0 | 1): VisitStep[] {
  *
  * Holy Grail: every first visit by a player also counts that Obelisk toward
  * their dig unlock ({@link GRAIL_OBELISKS_REQUIRED}), independent of the
- * house-rule reward toggle.
+ * house-rule reward toggle AND of the map-wide Obelisk role — the
+ * winning-condition role is identical in classic / monolith / bonus /
+ * victory-only ({@link obeliskPresetRole}). Only the visit reward/behaviour
+ * changes.
  */
 function handleObeliskVisit(state: GameState, hero: HeroState, field: MapFieldState): void {
   const adventure = state.adventure;
@@ -2897,17 +2959,70 @@ function handleObeliskVisit(state: GameState, hero: HeroState, field: MapFieldSt
     });
   }
 
-  // A player who already holds a cube here just walks through — no second reward
-  // and no second grail-obelisk credit.
-  if (alreadyHere) {
-    return;
+  const role = obeliskPresetRole(state);
+
+  // First visit by this player: register Holy-Grail progress (BEFORE any
+  // teleport — the winning-condition role is identical in every mode) and grant
+  // the role's one-time reward. A player who already holds a cube here gets no
+  // second reward and no second grail credit — EXCEPT the Monolith role, whose
+  // teleport fires on EVERY entry/Revisit (below), like a real Monolith token.
+  if (!alreadyHere) {
+    // Holy Grail: first visit to this Obelisk counts toward dig unlock,
+    // independent of the role and the die-reward house rule.
+    recordGrailObeliskVisit(state, playerId, field.spaceId);
+
+    if (role === undefined) {
+      grantClassicObeliskReward(state, hero, field, playerId);
+    } else if (role === "bonus") {
+      const bonus = adventure.mapPreset?.obelisks?.bonus ?? DEFAULT_OBELISK_BONUS;
+      adventure.pendingVisit = {
+        heroId: hero.id,
+        playerId,
+        fieldId: field.spaceId,
+        steps: obeliskBonusVisitSteps(bonus)
+      };
+      processPendingVisit(state);
+    } else if (role === "victory-only") {
+      eventNote(
+        state,
+        `${eventPlayerName(state, playerId)} studies the Obelisk — a marker on the road to the Grail.`,
+        playerId
+      );
+    }
+    // role === "monolith": no visit reward; the teleport below IS the effect.
   }
 
-  // Holy Grail: first visit to this Obelisk counts toward dig unlock.
-  recordGrailObeliskVisit(state, playerId, field.spaceId);
+  // Monolith role: entering (or Revisiting) teleports through the shared
+  // Monolith network — every entry, even one that grants no fresh grail credit
+  // — via the same TOKEN_TELEPORT step a Monolith token uses. The grail credit
+  // above already fired on the first visit, matching the documented
+  // "register grail progress before the teleport" order.
+  if (role === "monolith") {
+    adventure.pendingVisit = {
+      heroId: hero.id,
+      playerId,
+      fieldId: field.spaceId,
+      steps: [{ type: "TOKEN_TELEPORT", token: "monolith" }]
+    };
+    processPendingVisit(state);
+  }
+}
 
-  // Die-reward house rule (independent of Holy Grail tracking).
-  if (!houseRuleEnabled(state, "obelisk-rewards")) {
+/**
+ * The classic BINH Obelisk die reward (`obelisk-rewards` house rule, default
+ * ON). The FIRST hero to visit any given Obelisk rolls one Attack die and the
+ * face is LOCKED on the Field for the rest of the game; every later visitor
+ * reuses it (no reroll). Only runs for the classic role (absent preset); the
+ * designer roles replace it entirely.
+ */
+function grantClassicObeliskReward(
+  state: GameState,
+  hero: HeroState,
+  field: MapFieldState,
+  playerId: PlayerId
+): void {
+  const adventure = state.adventure;
+  if (!adventure || !houseRuleEnabled(state, "obelisk-rewards")) {
     return;
   }
 
@@ -5238,6 +5353,20 @@ export function isMapTokenLocation(locationId: string): boolean {
 }
 
 /**
+ * Whether `field` is a member of the `kind` teleport network. A carved token
+ * field always is; additionally, under the map-wide Obelisk role "monolith",
+ * EVERY Obelisk field joins the MONOLITH network (designer Monolith tokens and
+ * Obelisks form one shared network). Obelisks never join the Whirlpool network
+ * (they are land structures and the role only names Monoliths).
+ */
+function fieldIsTokenNetworkMember(state: GameState, field: MapFieldState, kind: MapTokenKind): boolean {
+  if (field.location === kind) {
+    return true;
+  }
+  return kind === "monolith" && field.location === "obelisk" && obeliskRoleIsMonolith(state);
+}
+
+/**
  * Locations a Monolith/Whirlpool token may never overwrite. Rulebook p.35:
  * "Tokens cannot be placed on other Location Tokens, Blocked Fields, or Fields
  * containing Locations required to meet any of the Scenario's victory
@@ -5333,7 +5462,9 @@ function countMapTokens(state: GameState, kind: MapTokenKind): number {
   if (!adventure) {
     return 0;
   }
-  const placed = Object.values(adventure.fields).filter((field) => field.location === kind).length;
+  // Carved token fields PLUS Obelisk fields under the monolith role (network
+  // members) — {@link fieldIsTokenNetworkMember}.
+  const placed = Object.values(adventure.fields).filter((field) => fieldIsTokenNetworkMember(state, field, kind)).length;
   const pending = Object.values(adventure.tiles).filter(
     (tile) => tile.faceDown && tile.pendingToken?.kind === kind
   ).length;
@@ -5358,11 +5489,13 @@ function mapTokenDestinations(state: GameState, kind: MapTokenKind, fromSpaceId:
   }
   const destinations: MapTokenDestination[] = [];
   for (const field of Object.values(adventure.fields)) {
-    if (field.location !== kind || field.spaceId === fromSpaceId || heroAtSpace(state, field.spaceId)) {
+    if (!fieldIsTokenNetworkMember(state, field, kind) || field.spaceId === fromSpaceId || heroAtSpace(state, field.spaceId)) {
       continue;
     }
     const tile = adventure.tiles[field.tileInstanceId];
     const where = tile ? ` on the ${tile.backLabel ?? tile.group ?? "map"} tile at (${tile.centerRow}, ${tile.centerCol})` : "";
+    // An Obelisk acting as a Monolith network member is labelled as an Obelisk.
+    const memberLabel = field.location === "obelisk" ? "Obelisk" : mapTokenLabel(kind);
     destinations.push({
       type: "field",
       spaceId: field.spaceId,
@@ -5370,7 +5503,7 @@ function mapTokenDestinations(state: GameState, kind: MapTokenKind, fromSpaceId:
       label:
         kind === "whirlpool" && field.whirlpoolNumber !== undefined
           ? `Whirlpool ${field.whirlpoolNumber >= 0 ? "+" : ""}${field.whirlpoolNumber}${where}`
-          : `${mapTokenLabel(kind)}${where}`
+          : `${memberLabel}${where}`
     });
   }
   for (const tile of Object.values(adventure.tiles)) {
@@ -5423,7 +5556,9 @@ function mapTokenTravelSteps(visit: PendingVisit, kind: MapTokenKind, destinatio
 function resolveTokenTeleport(state: GameState, visit: PendingVisit, kind: MapTokenKind): void {
   const adventure = state.adventure;
   const field = adventure?.fields[visit.fieldId];
-  if (!adventure || !field || field.location !== kind) {
+  // The origin may be a carved token OR an Obelisk under the monolith role
+  // ({@link fieldIsTokenNetworkMember}) — both drive the same travel.
+  if (!adventure || !field || !fieldIsTokenNetworkMember(state, field, kind)) {
     return;
   }
 

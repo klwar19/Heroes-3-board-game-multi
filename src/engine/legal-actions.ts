@@ -35,6 +35,7 @@ import {
   humanPlayerIds,
   isSeaField,
   NEUTRAL_DECK_IDS,
+  obeliskRoleIsMonolith,
   RESOURCE_GAIN_LEVEL_AMOUNTS,
   SURRENDER_GOLD_COST,
   townHasBuildingEffect,
@@ -8700,12 +8701,18 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
         });
       } else if (
         field &&
-        locationDefinitions[field.location]?.category === "revisitable" &&
+        (locationDefinitions[field.location]?.category === "revisitable" ||
+          // Obelisk role "monolith": Revisit (1 MP) travels the network again,
+          // like a Monolith token (which is category "revisitable").
+          (field.location === "obelisk" && obeliskRoleIsMonolith(state))) &&
         // Markets use the free OPEN_MARKET path above, not the 1-MP revisit.
         !isMarketLocation(field.location)
       ) {
         actions.push({
-          label: `Revisit ${locationDefinitions[field.location]?.name ?? field.location}`,
+          label:
+            field.location === "obelisk"
+              ? "Revisit the Obelisk (Monolith travel)"
+              : `Revisit ${locationDefinitions[field.location]?.name ?? field.location}`,
           action: { type: "REVISIT_FIELD", playerId, heroId: hero.id }
         });
       }

@@ -20,6 +20,7 @@ import {
   beginNextPendingStartTileRotation,
   canDigGrail,
   grailObelisksVisitedCount,
+  obeliskRoleIsMonolith,
   buildCreatureBankCombatUnits,
   canCrossEdge,
   canHeroReachPlacedTile,
@@ -1396,8 +1397,14 @@ export function revisitField(state: GameState, action: Extract<GameAction, { typ
     throw new Error(field.grailDiggable ? "Digging the Grail costs 1 movement point." : "Revisiting costs 1 movement point.");
   }
 
-  // Revisitable fields and a cleared Grail field (which is dug for 1 MP).
-  if (locationDefinitions[field.location]?.category !== "revisitable" && !field.grailDiggable) {
+  // Revisitable fields, a cleared Grail field (dug for 1 MP), and an Obelisk
+  // acting as a Monolith network member (role "monolith" — Revisit travels
+  // again, mirroring a Monolith token).
+  if (
+    locationDefinitions[field.location]?.category !== "revisitable" &&
+    !field.grailDiggable &&
+    !(field.location === "obelisk" && obeliskRoleIsMonolith(state))
+  ) {
     throw new Error("Only revisitable fields can be visited again.");
   }
 

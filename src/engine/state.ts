@@ -8752,7 +8752,44 @@ export type CustomMapPreset = {
   }>;
   roundLimit?: number;
   notes?: string;
+  /**
+   * Designer-configurable Obelisk role (MAP-WIDE). ABSENT = classic locked-die
+   * house rule (today's behaviour, byte-identical — there is deliberately NO
+   * "classic" enum value that could drift from absence). Per-Obelisk config is
+   * out of scope: face-down random tiles make individual Obelisks unidentifiable
+   * at design time. The WINNING-CONDITION role is UNCHANGED in every mode — an
+   * Obelisk always registers Holy-Grail dig progress; only the visit reward /
+   * behaviour changes (engine: handleObeliskVisit / obeliskPresetRole).
+   *   - "monolith": the Obelisk field joins the shared Monolith teleport network
+   *     (designer Monolith tokens + every Obelisk); entering/Revisiting teleports.
+   *   - "bonus": a fixed designer-chosen reward instead of the locked-die table
+   *     (default {@link DEFAULT_OBELISK_BONUS} when `bonus` is unset).
+   *   - "victory-only": no reward at all (a quiet note); grail progress still runs.
+   */
+  obelisks?: {
+    role: "monolith" | "bonus" | "victory-only";
+    bonus?:
+      | { kind: "morale"; amount: 1 }
+      | { kind: "search"; deck: "artifacts" | "spells" | "abilities"; count: number }
+      | { kind: "resources"; gold?: number; buildingMaterials?: number; valuables?: number }
+      | { kind: "movement"; amount: number }
+      | { kind: "dice"; treasure: number; resource: number };
+  };
 };
+
+/** The Obelisk-role config block of a {@link CustomMapPreset}. */
+export type CustomMapObeliskConfig = NonNullable<CustomMapPreset["obelisks"]>;
+
+/** One designer-chosen Obelisk visit bonus (role "bonus"). */
+export type CustomMapObeliskBonus = NonNullable<CustomMapObeliskConfig["bonus"]>;
+
+/**
+ * The Obelisk "bonus" role's default reward when the designer leaves it unset —
+ * a single positive morale token (the friendliest neutral default). Shared by
+ * the engine (handleObeliskVisit fallback) AND the config layer (sanitize /
+ * describe / editor) so the default can never drift between them.
+ */
+export const DEFAULT_OBELISK_BONUS: CustomMapObeliskBonus = { kind: "morale", amount: 1 };
 
 /**
  * Landmark a face-down "Secret" slot guarantees at game start. The engine

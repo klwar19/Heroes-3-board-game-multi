@@ -289,13 +289,18 @@ export type { AdventurePlayerConfig, AdventureSetupOptions, DraftPhaseInfo } fro
 export {
   applyCustomMapPresetToOptions,
   customMapPresetIsActive,
+  defaultObeliskBonusForKind,
   defaultTimedEffect,
   defaultTimedEvent,
   describeCustomMapPreset,
   describeCustomMapPresetEntries,
+  describeObeliskBonus,
+  describeObeliskRole,
   describeTimedMapEffect,
   MAX_TIMED_EVENTS,
   MAP_PRESET_BUILDING_OPTIONS,
+  MAP_PRESET_OBELISK_BONUS_KINDS,
+  MAP_PRESET_OBELISK_ROLE_OPTIONS,
   MAP_PRESET_VICTORY_OPTIONS,
   presetForcedOptionKeys,
   revertCustomMapPresetOptions,
@@ -487,7 +492,7 @@ export {
 export { describePermanentEffect } from "./effects";
 export { WAR_MACHINE_CARD_IDS } from "@/data/cards/permanents";
 export type { BattlefieldCoordinates, BattlefieldTerrain } from "./battlefield";
-export { DEFAULT_WOG_OPTIONS, NEUTRAL_PLAYER_ID } from "./state";
+export { DEFAULT_OBELISK_BONUS, DEFAULT_WOG_OPTIONS, NEUTRAL_PLAYER_ID } from "./state";
 export type {
   AbilityDiceRoll,
   ActiveEffectDefinition,
@@ -524,6 +529,8 @@ export type {
   CombatStat,
   CombatState,
   CombatUnitState,
+  CustomMapObeliskBonus,
+  CustomMapObeliskConfig,
   CustomMapPreset,
   CustomMapTilePlan,
   CustomMapGateLink,
