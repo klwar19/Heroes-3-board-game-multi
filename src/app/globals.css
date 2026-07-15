@@ -22123,6 +22123,191 @@ details.mapPresetEditor[open] .mapPresetSummaryChevron {
   padding-left: 16px;
 }
 
+/* ==== ORNATE ART SKIN III — kit v2 (frame / columns / rails / plaques) ==== */
+/*                                                                          */
+/* Elevates the plainest chrome of the ADVENTURE MAP screen to match the    */
+/* leather-and-gold family already used elsewhere, using the v2 art kit in  */
+/* /assets/ui/ornate: a carved gem frame (frame-ornate), gold pilaster      */
+/* columns (column-gold), a filigree section rail (rail-divider) and a      */
+/* title cartouche (plaque-title). VISUAL-ONLY: overrides background /      */
+/* border / box-shadow on existing classes; every decorative pseudo-element */
+/* is pointer-events:none, sits behind or clear of interactive content, and */
+/* makes no layout hit-area moves. Sits LAST (before the phone block) so it  */
+/* wins. Phone-mode disables for anything that would crowd the tab bar live  */
+/* in the PHONE UI MODE block below, per that block's convention.           */
+/* ======================================================================== */
+:root {
+  --orn-frame: url("/assets/ui/ornate/frame-ornate.webp");
+  --orn-column: url("/assets/ui/ornate/column-gold.webp");
+  --orn-rail: url("/assets/ui/ornate/rail-divider.webp");
+  --orn-plaque: url("/assets/ui/ornate/plaque-title.webp");
+}
+
+/* ---- 1. Top HUD status ribbon → carved gold-banded leather bar --------- */
+/* The single most visible plain element: was a flat marble strip. Leather   */
+/* fill + a hard gold hairline banding reads as tooled game chrome. No corner */
+/* flourishes here — the ribbon is dense and wraps, so ornaments would ride  */
+/* over the status text; the banding alone carries the carve.               */
+.adventureRoot > .tableTopRow > .advHud {
+  position: relative;
+  border: 1px solid var(--cmp-gold-deep);
+  background:
+    radial-gradient(130% 120% at 50% -30%, rgb(217 178 90 / 13%), transparent 60%),
+    linear-gradient(180deg, rgb(32 23 12 / 94%) 0%, rgb(17 12 7 / 96%) 100%),
+    var(--cmp-leather) center / 340px repeat;
+  box-shadow:
+    inset 0 0 0 1px rgb(217 178 90 / 44%),
+    inset 0 1px 0 rgb(246 226 168 / 22%),
+    inset 0 -2px 7px rgb(0 0 0 / 42%),
+    0 8px 22px rgb(0 0 0 / 48%);
+}
+
+.adventureRoot > .tableTopRow > .advHud .advHudCell {
+  border-right-color: rgb(217 178 90 / 30%);
+}
+
+/* ---- 2. Section-title rails: rail-divider filigree under headers ------- */
+/* A subtle, centred gold rail beneath "Permanents & Ongoing" and the hand   */
+/* header — a section rule, not a heavy backplate. Decorative, click-safe.  */
+.playerCardBar .trayBoxHeader,
+.playerCardBar .handTopBar {
+  position: relative;
+  padding-bottom: 9px;
+}
+
+.playerCardBar .trayBoxHeader::after,
+.playerCardBar .handTopBar::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  bottom: 0;
+  height: 12px;
+  background: var(--orn-rail) center bottom / 100% 12px no-repeat;
+  opacity: 0.8;
+  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 55%));
+  pointer-events: none;
+}
+
+/* Behind each section title ("Permanents & Ongoing", "Hand X/X"): a slim
+   tooled cartouche so the panel's lead title reads as an engraved plaque.
+   Sized to hug the words; sits behind the text, click-safe. The full-width
+   rail above rules the section beneath the plaqued title. */
+.playerCardBar .permanentEffectsPanel .trayBoxHeader strong,
+.playerCardBar .handArea .handTopBar > small:first-child {
+  position: relative;
+  padding: 5px 30px 6px;
+  color: var(--cmp-gold-bright);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 75%);
+}
+
+.playerCardBar .permanentEffectsPanel .trayBoxHeader strong::before,
+.playerCardBar .handArea .handTopBar > small:first-child::before {
+  content: "";
+  position: absolute;
+  inset: -3px -2px -2px;
+  z-index: -1;
+  background: var(--orn-plaque) center / 100% 100% no-repeat;
+  filter: drop-shadow(0 2px 4px rgb(0 0 0 / 55%));
+  pointer-events: none;
+}
+
+/* ---- 3. Room / seat panel → framed leather box ------------------------- */
+/* The plain dark box at top-right becomes a carved leather panel inside the  */
+/* frame-ornate gem frame. The frame is a real (transparent) layout border,  */
+/* so no content can ever be overlapped by the ornament.                    */
+.adventureRoot > .tableTopRow > .tableMenu {
+  border: 19px solid transparent;
+  border-image-source: var(--orn-frame);
+  border-image-slice: 185;
+  border-image-width: 19px;
+  border-image-repeat: round;
+  border-radius: 4px;
+  padding: 5px 7px;
+  background:
+    linear-gradient(180deg, rgb(22 16 9 / 86%), rgb(12 9 6 / 92%)),
+    var(--cmp-leather) center / 300px repeat;
+  background-clip: padding-box;
+  box-shadow: 0 10px 26px rgb(0 0 0 / 46%);
+}
+
+/* Seat chips → small carved gold-hairline plates (selected stays solid gold). */
+.adventureRoot > .tableTopRow > .tableMenu .seatSwitch button {
+  border: 1px solid var(--cmp-gold-deep);
+  color: #f0dcb8;
+  background:
+    linear-gradient(180deg, rgb(38 28 15 / 92%), rgb(22 15 8 / 94%)),
+    var(--cmp-leather) center / 220px repeat;
+  box-shadow: inset 0 1px 0 rgb(246 226 168 / 12%);
+}
+
+.adventureRoot > .tableTopRow > .tableMenu .seatSwitch button.selected {
+  color: #2c1d08;
+  background: linear-gradient(180deg, #f4d78c 0%, var(--cmp-gold) 50%, #b98f3f 100%);
+  border-color: var(--cmp-gold-deep);
+  box-shadow: inset 0 1px 0 rgb(255 247 218 / 70%);
+}
+
+/* The Room toggle → the same quiet leather plate so the box reads as one. */
+.adventureRoot > .tableTopRow > .tableMenu .roomToggle {
+  border: 1px solid var(--cmp-gold-deep);
+  background:
+    linear-gradient(180deg, rgb(34 25 14 / 90%), rgb(20 14 8 / 93%)),
+    var(--cmp-leather) center / 220px repeat;
+  color: #f0dcb8;
+}
+
+/* ---- 4. Hand / permanents tray → flanking gold pilasters --------------- */
+/* Two carved columns hug the tray's left & right edges, BEHIND the content   */
+/* (z-index:-1), so the whole "your cards" block reads as a framed shelf. The */
+/* griffin watermark already lives on ::before, so the columns ride ::after.  */
+/* Hidden below 1100px so they never crowd a narrow tray.                    */
+.playerCardBar::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  top: 5px;
+  bottom: 5px;
+  left: 1px;
+  right: 1px;
+  background:
+    var(--orn-column) left center / auto 100% no-repeat,
+    var(--orn-column) right center / auto 100% no-repeat;
+  opacity: 0.5;
+  filter: drop-shadow(0 4px 9px rgb(0 0 0 / 45%));
+  pointer-events: none;
+}
+
+@media (max-width: 1100px) {
+  .playerCardBar::after {
+    display: none;
+  }
+}
+
+/* ---- 5. Top game-log banner → quiet leather strip with a gold rule ----- */
+.adventureRoot > .logDrawer {
+  border: 1px solid var(--cmp-gold-deep);
+  border-radius: 9px;
+  background:
+    linear-gradient(180deg, rgb(26 19 11 / 90%), rgb(15 11 7 / 93%)),
+    var(--cmp-leather) center / 320px repeat;
+  box-shadow:
+    inset 0 1px 0 rgb(246 226 168 / 10%),
+    0 4px 14px rgb(0 0 0 / 34%);
+}
+
+.adventureRoot > .logDrawer .logToggle {
+  border-bottom: 1px solid rgb(217 178 90 / 26%);
+  color: #cdb488;
+}
+
+.adventureRoot > .logDrawer .logToggle span {
+  color: #f0dcb8;
+}
+
 /* ======================================================================== */
 /* PHONE UI MODE                                                            */
 /*                                                                          */
@@ -22798,4 +22983,15 @@ details.mapPresetEditor[open] .mapPresetSummaryChevron {
   .phoneMode .battlefieldFrame {
     max-width: min(100%, calc((100dvh - 190px) * 1.25));
   }
+}
+
+/* Ornate skin III (kit v2): the 19px frame-ornate layout border would eat a
+   narrow phone room panel's width, so fall back to a plain gold hairline in
+   phone mode. The tray columns are already display:none below 1100px, and the
+   section rails / title plaque are small enough to keep. */
+.phoneMode.adventureRoot > .tableTopRow > .tableMenu {
+  border: 1px solid var(--cmp-gold-deep);
+  border-image: none;
+  border-radius: 9px;
+  padding: 8px;
 }
