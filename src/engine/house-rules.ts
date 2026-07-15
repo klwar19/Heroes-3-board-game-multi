@@ -157,6 +157,14 @@ export const HOUSE_RULES: HouseRuleDef[] = [
       "House rule: the first visitor to an Obelisk locks an Attack-die face (−1: +1 morale, 0: Search (2) Artifact, +1: Treasure + Resource dice); later visitors get the same reward without re-rolling. Off: Obelisks stay multi-flaggable but grant no die reward. Holy Grail still counts visits toward dig unlock either way.",
     category: "combat",
     default: true
+  },
+  {
+    id: "multi-demon-summon",
+    label: "Pit Lords: multiple Demons",
+    description:
+      "On (house rule): Pit Lords may summon a new Few of Demons even when Demons are already on the field (multiple Demon units, still once per Pit Lords per combat). Off (official): only ONE Demons unit may stand on the field — either a Few or a Pack. With Demons already present you may only Reinforce a Few up to a Pack, never summon a second stack.",
+    category: "combat",
+    default: true
   }
 ];
 

@@ -3781,6 +3781,8 @@ function addUnitAbilityActions(actions: LegalAction[], state: GameState, playerI
     // Pit Lords' "Summon Demons" other action: only after a friendly unit has
     // been removed this combat, and once per combat per Pit Lords unit. Used
     // instead of moving or attacking (the caller already gated on those).
+    // Official: only ONE Demons unit on the field (Few or Pack). House rule
+    // `multi-demon-summon` allows summoning additional stacks.
     if (
       ability.effect?.type === "SUMMON_OR_REINFORCE_DEMONS" &&
       combat.unitRemovedControllerIds?.includes(playerId) &&
@@ -3788,9 +3790,17 @@ function addUnitAbilityActions(actions: LegalAction[], state: GameState, playerI
     ) {
       const demonDefId = ability.effect.demonUnitDefId;
       const demonName = coreUnitDefinitions[demonDefId]?.name ?? "Demons";
+      const livingDemons = Object.values(combat.units).filter(
+        (candidate) =>
+          candidate.controllerId === playerId &&
+          isUnitAlive(candidate) &&
+          candidate.unitDefId === demonDefId
+      );
+      const multiDemonOk = houseRuleEnabled(state, "multi-demon-summon");
+      const canSummonNew = multiDemonOk || livingDemons.length === 0;
 
       // Summon: place a Few of Demons on an empty adjacent space.
-      if (getUnitSide(demonDefId, "few")) {
+      if (canSummonNew && getUnitSide(demonDefId, "few")) {
         const occupied = new Set<number>(
           Object.values(combat.units)
             .filter(isUnitAlive)
@@ -3812,13 +3822,8 @@ function addUnitAbilityActions(actions: LegalAction[], state: GameState, playerI
 
       // Reinforce: flip a friendly Few of Demons up to a Pack at no cost.
       if (getUnitSide(demonDefId, "pack")) {
-        for (const candidate of Object.values(combat.units)) {
-          if (
-            candidate.controllerId === playerId &&
-            isUnitAlive(candidate) &&
-            candidate.unitDefId === demonDefId &&
-            candidate.variant === "few"
-          ) {
+        for (const candidate of livingDemons) {
+          if (candidate.variant === "few") {
             actions.push({
               label: `${activeUnit.name}: Reinforce ${candidate.cardName} to a Pack`,
               action: {

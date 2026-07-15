@@ -1930,7 +1930,11 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "summon-demons": {
     id: "summon-demons",
     name: "Summon Demons",
-    text: "[unit_other] If one of your units has been removed from the board during this Combat, Summon a Few of Demons on an adjacent space or Reinforce a Few of Demons up to a Pack (once per Combat, instead of moving or attacking).",
+    // Official: only ONE Demons unit on the field (Few or Pack) — summon is
+    // blocked while any living Demons already stand for that player; reinforce
+    // Few→Pack stays legal. House rule `multi-demon-summon` (BINH default ON)
+    // allows summoning a new Few even when Demons are already present.
+    text: "[unit_other] If one of your units has been removed from the board during this Combat, Summon a Few of Demons on an adjacent space or Reinforce a Few of Demons up to a Pack (once per Combat, instead of moving or attacking). Official: only 1 Demons unit on the field (Few or Pack). House rule (multi-demon-summon): may summon additional Demons stacks.",
     effect: { type: "SUMMON_OR_REINFORCE_DEMONS", demonUnitDefId: "inferno.demons" },
     implementationStatus: "implemented"
   },
