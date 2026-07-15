@@ -310,12 +310,14 @@ import {
   isUnitAlive,
   payablePowerCardIds,
   playerHasAttackInstantOfSchool,
+  preHitHealReactions,
   reflectableAttackInstantForPlayer,
   resolvedSpellPowerForStackItem,
   rerollSourceAvailableFor,
   spellAbilitiesSuppressed,
   spellRedirectTargets,
-  standingSpellPower
+  standingSpellPower,
+  unitIdsThreatenedByDamageEffect
 } from "./legal-actions";
 import {
   getActivationAbilities,
@@ -2288,6 +2290,147 @@ function dealAreaCardDamage(
     damageKind: "spell"
   });
   markUnitRemovedIfNeeded(state, unit);
+}
+
+/**
+ * When a damaging specialty (Frost Ring / Meteor Shower / …) is about to hit
+ * units and a threatened player can still heal (Cure / First Aid Tent / First
+ * Aid ability), park the play on the resolution stack and open a SPELL_CAST_
+ * STARTED reaction window so those heals resolve BEFORE the damage. Returns
+ * true when the window opened (caller must return — damage applies later via
+ * resolveTopStack). Returns false when nobody can heal, so the caller applies
+ * damage immediately as before.
+ */
+function tryDeferSpecialtyDamageForHeals(
+  state: GameState,
+  action: Extract<GameAction, { type: "PLAY_CARD" }>,
+  card: CardDefinition,
+  effect: ConcreteEffect,
+  cards: CardLibrary
+): boolean {
+  const combat = state.combat;
+  if (!combat || !action.target) {
+    return false;
+  }
+  // Only first-play deferral — never re-park while resolving the stacked play.
+  if (state.stack.some((item) => item.action.type === "PLAY_CARD" && item.status === "resolving")) {
+    return false;
+  }
+  // Frost Ring / Meteor Shower (and Xyron-style full blasts). War-machine
+  // discard damage keeps its own path (discard + damage are one step).
+  if (effect.type !== "AREA_DAMAGE_PICK_ADJACENT" && effect.type !== "AREA_DAMAGE_ALL_ADJACENT") {
+    return false;
+  }
+
+  const threatened = unitIdsThreatenedByDamageEffect(state, effect, action.target);
+  if (threatened.length === 0) {
+    return false;
+  }
+  const threatenedPlayers = new Set<PlayerId>();
+  for (const unitId of threatened) {
+    const controllerId = combat.units[unitId]?.controllerId;
+    if (controllerId) {
+      threatenedPlayers.add(controllerId);
+    }
+  }
+  // Anyone about to take damage who still has a pre-hit heal to play.
+  let someoneCanHeal = false;
+  for (const playerId of threatenedPlayers) {
+    if (preHitHealReactions(state, playerId, cards).length > 0) {
+      someoneCanHeal = true;
+      break;
+    }
+  }
+  if (!someoneCanHeal) {
+    return false;
+  }
+
+  const stackItem = makeStackItem(state, action);
+  stackItem.source = { type: "card", cardId: action.cardId, controllerId: action.playerId };
+  state.stack.push(stackItem);
+
+  const spellStarted = appendEvent(state, {
+    type: "SPELL_CAST_STARTED",
+    playerId: action.playerId,
+    spellCardId: action.cardId,
+    target: action.target,
+    power: 0
+  });
+  stackItem.triggerEventIds.push(spellStarted.id);
+
+  if (!openReactionWindowForTrigger(state, stackItem, spellStarted, cards)) {
+    // Offers evaporated between the probe and the open (rare) — fall through to
+    // immediate damage without leaving a stranded stack item.
+    state.stack.pop();
+    return false;
+  }
+  return true;
+}
+
+/** Resolve AREA_DAMAGE_ALL_ADJACENT for a direct PLAY_CARD (or deferred stack). */
+function applyAreaAllAdjacentPlay(
+  state: GameState,
+  action: Extract<GameAction, { type: "PLAY_CARD" }>,
+  card: CardDefinition,
+  effect: Extract<ConcreteEffect, { type: "AREA_DAMAGE_ALL_ADJACENT" }>
+): void {
+  if (!state.combat || !action.target) {
+    return;
+  }
+  const center =
+    action.target.type === "space"
+      ? action.target.position
+      : action.target.type === "unit"
+        ? state.combat.units[action.target.unitId]?.position
+        : undefined;
+  if (center === undefined) {
+    return;
+  }
+  const blastArea = new Set<number>([center, ...getOrthogonalNeighbors(center)]);
+  const inBlast = Object.values(state.combat.units).filter(
+    (unit) => isUnitAlive(unit) && blastArea.has(unit.position)
+  );
+  for (const unit of inBlast) {
+    dealAreaCardDamage(state, action.playerId, card, unit, effect.amount);
+  }
+}
+
+/** Resolve AREA_DAMAGE_PICK_ADJACENT for a direct PLAY_CARD (or deferred stack). */
+function applyAreaPickAdjacentPlay(
+  state: GameState,
+  action: Extract<GameAction, { type: "PLAY_CARD" }>,
+  card: CardDefinition,
+  effect: Extract<ConcreteEffect, { type: "AREA_DAMAGE_PICK_ADJACENT" }>,
+  cards: CardLibrary
+): void {
+  if (!state.combat || !action.target) {
+    return;
+  }
+  const amount =
+    effect.amount ??
+    getAmountByPower(
+      effect.amountByPower ?? {},
+      1,
+      playCardSpellPower(state, action.playerId, card, action.costCardIds, cards)
+    );
+  const center =
+    action.target.type === "space"
+      ? action.target.position
+      : action.target.type === "unit"
+        ? state.combat.units[action.target.unitId]?.position
+        : undefined;
+  if (center === undefined) {
+    return;
+  }
+  resolveAreaPickDamage(
+    state,
+    action.playerId,
+    card,
+    center,
+    amount,
+    effect.includeCenter,
+    effect.adjacentPicks
+  );
 }
 
 /**
@@ -8696,6 +8839,35 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
 
   stackItem.status = "resolving";
 
+  // Deferred specialty (or other PLAY_CARD) damage: the card was already paid
+  // and discarded when played; only the damage application was parked so Cure /
+  // First Aid could fire first. Apply the effect now and clear the stack.
+  if (stackItem.action.type === "PLAY_CARD") {
+    const action = stackItem.action;
+    const card = cards[action.cardId];
+    const effect = card ? getEffectiveCardEffect(card, action.optionIndex) : null;
+    if (card && effect) {
+      if (effect.type === "AREA_DAMAGE_PICK_ADJACENT") {
+        applyAreaPickAdjacentPlay(state, action, card, effect, cards);
+      } else if (effect.type === "AREA_DAMAGE_ALL_ADJACENT") {
+        applyAreaAllAdjacentPlay(state, action, card, effect);
+      }
+    }
+    stackItem.status = "resolved";
+    state.stack.pop();
+    if (finishCombatIfNeeded(state)) {
+      return;
+    }
+    if (state.pendingChoice) {
+      state.phase = "choice";
+      state.priorityPlayerId = state.pendingChoice.playerId;
+      return;
+    }
+    state.phase = "combat";
+    state.priorityPlayerId = null;
+    return;
+  }
+
   if (stackItem.action.type === "CAST_SPELL") {
     const card = cards[stackItem.action.cardId];
     // Snapshot for the ongoing rule: effects created below mark this card as
@@ -11502,24 +11674,33 @@ function applyReactionPlayCore(
     stackItem.modifiers.playedCardIds.push(play.cardId);
   }
 
-  // First Aid (basic) played as an instant reaction the moment your unit is
-  // attacked (firstAidCardHealReactions): mend `amount` existing damage on the
-  // chosen friendly unit BEFORE the hit is calculated, then leave the window
-  // open so the paused attack resumes — the healed unit may now survive a blow
-  // that would otherwise defeat it. The chosen unit rides on play.target (one
-  // offer per wounded friendly). The card's expert side never reaches here — it
-  // rides the First Aid Tent (USE_ACTIVE_EFFECT, mode "expert"), not a card play.
-  // Naming the card as the heal's source keeps the cure FX/sound firing.
-  if (effect.type === "HEAL_DAMAGE" && play.target?.type === "unit") {
+  // Pre-hit heals played as an instant reaction the moment damage is about to
+  // land (attack window OR damaging Spell/specialty window): mend existing
+  // damage on the chosen friendly unit BEFORE the hit is calculated, then leave
+  // the window open so the paused hit resumes — the healed unit may now survive
+  // a blow that would otherwise defeat it. Covers:
+  //   - First Aid ability (HEAL_DAMAGE, fixed amount)
+  //   - Cure and kin (HEAL_DAMAGE_AND_REMOVE_EFFECTS, Power-scaled + cleanse)
+  // The First Aid Tent uses USE_ACTIVE_EFFECT (mode "expert" for the volley), not
+  // a card play. Naming the card as the heal's source keeps the heal FX/sound.
+  if (
+    (effect.type === "HEAL_DAMAGE" || effect.type === "HEAL_DAMAGE_AND_REMOVE_EFFECTS") &&
+    play.target?.type === "unit"
+  ) {
     const unit = state.combat?.units[play.target.unitId];
     if (unit && unit.controllerId === playerId && isUnitAlive(unit)) {
-      healUnitDamage(
-        state,
-        { type: "card", cardId: card.id, controllerId: playerId },
-        play.target,
-        getEffectDamageAmount(effect, card.power ?? 0)
-      );
-      // Rion's Battlefield Medic shares this effect: also clear paralysis / draw.
+      // Standing spell Power (statistics, Magi, school permanent, …) scales Cure
+      // when it is played as a reaction into someone else's damage window — there
+      // is no nested cast window to pay further Power into.
+      const healPower =
+        effect.type === "HEAL_DAMAGE_AND_REMOVE_EFFECTS"
+          ? standingSpellPower(state, playerId, card)
+          : (card.power ?? 0);
+      const source = { type: "card" as const, cardId: card.id, controllerId: playerId };
+      healUnitDamage(state, source, play.target, getEffectDamageAmount(effect, healPower));
+      if (effect.type === "HEAL_DAMAGE_AND_REMOVE_EFFECTS") {
+        removeEffectsFromTarget(state, source, play.target, effect.removePolarity);
+      }
       if (effect.removeParalysis && hasToken(unit, "paralysis")) {
         removeToken(state, unit, "paralysis", "dispelled");
       }
@@ -13507,21 +13688,10 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   // space). A Dwarf centre that shrugged the Specialty off (negatedByDwarf) is a
   // no-op, like the other unit-targeted branches.
   if (effect.type === "AREA_DAMAGE_ALL_ADJACENT" && state.combat && action.target && !negatedByDwarf) {
-    const center =
-      action.target.type === "space"
-        ? action.target.position
-        : action.target.type === "unit"
-          ? state.combat.units[action.target.unitId]?.position
-          : undefined;
-    if (center !== undefined) {
-      const blastArea = new Set<number>([center, ...getOrthogonalNeighbors(center)]);
-      const inBlast = Object.values(state.combat.units).filter(
-        (unit) => isUnitAlive(unit) && blastArea.has(unit.position)
-      );
-      for (const unit of inBlast) {
-        dealAreaCardDamage(state, action.playerId, card, unit, effect.amount);
-      }
+    if (tryDeferSpecialtyDamageForHeals(state, action, card, effect, cards)) {
+      return;
     }
+    applyAreaAllAdjacentPlay(state, action, card, effect);
   }
 
   // Deemer's Meteor Shower I (target + 1 adjacent) and VI (target + 2 adjacent):
@@ -13532,31 +13702,13 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   // cards discarded to play it, so it scales like the Frost Ring Spell and is
   // buffable by spell power. Adelaide's Frost Ring specialty keeps a fixed
   // `amount` and ignores the Power computation (short-circuited below).
+  // When a threatened player holds a pre-hit heal (Cure / First Aid), the blast
+  // is deferred onto the stack so they can mend before the damage lands.
   if (effect.type === "AREA_DAMAGE_PICK_ADJACENT" && state.combat && action.target && !negatedByDwarf) {
-    const amount =
-      effect.amount ??
-      getAmountByPower(
-        effect.amountByPower ?? {},
-        1,
-        playCardSpellPower(state, action.playerId, card, action.costCardIds, cards)
-      );
-    const center =
-      action.target.type === "space"
-        ? action.target.position
-        : action.target.type === "unit"
-          ? state.combat.units[action.target.unitId]?.position
-          : undefined;
-    if (center !== undefined) {
-      resolveAreaPickDamage(
-        state,
-        action.playerId,
-        card,
-        center,
-        amount,
-        effect.includeCenter,
-        effect.adjacentPicks
-      );
+    if (tryDeferSpecialtyDamageForHeals(state, action, card, effect, cards)) {
+      return;
     }
+    applyAreaPickAdjacentPlay(state, action, card, effect, cards);
   }
 
   // Luna's Fire Wall specialty (I = 1 damage, VI = 3): place a Fire Wall token
