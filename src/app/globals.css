@@ -22795,6 +22795,135 @@ details.mapPresetEditor[open] .mapPresetSummaryChevron {
 }
 
 /* ======================================================================== */
+/* ---- SINGLE PLAYER SETUP — the /single-player creation panel ----------- */
+/*                                                                          */
+/* The LEAST plain pre-game screen: it already wears the shared MenuShell    */
+/* compendium panel (leather fill + ruby corner flourishes, "Ornate panels" */
+/* above) and the dragon-flanked title banner over a scenic lobby backdrop,  */
+/* so this is a LIGHT touch-up, not a rebuild. Three precise moves in the    */
+/* same kit v2 leather-and-gold family: (1) the plain outlined 1/2/3         */
+/* opponent selector becomes carved leather plates with a SOLID-GOLD         */
+/* selected state (exactly the town Board/Buildings tab + room seat chip);   */
+/* (2) a filigree rail-divider hung in the panel's existing gap ABOVE the    */
+/* actions so "Create game" reads as the deliberate step; (3) "Create game"  */
+/* gains a raised gilded plate and "Back" a quiet leather one. VISUAL-ONLY:  */
+/* paint lands on the buttons' OWN surfaces (no size/padding/geometry or     */
+/* hit-area change), and the lone rail pseudo-element is pointer-events:none */
+/* and hangs in the 14px grid gap (adds no layout). The banner, backdrop and */
+/* panel frame are left exactly as they are. Every rule is scoped to the     */
+/* single-player hooks (`.singlePlayerOpponents`, the nav's aria-label) so   */
+/* no other MenuShell screen is touched. Specificity is deliberately raised  */
+/* past the boxless main-menu override that forces `.menuNavButton`          */
+/* transparent on base AND :hover. Menu pages never carry `.phoneMode`, so   */
+/* no phone fall-back is needed.                                            */
+/* ======================================================================== */
+
+/* ---- SP1. Opponent-count 1/2/3 → carved leather plates ----------------- */
+/* Was three transparent boxes with a thin gold outline only on the selected */
+/* one. Now each reads as a tooled leather tablet with a gold hairline, and   */
+/* the SELECTED count is a solid gold plate with a dark engraved number. The  */
+/* number is enlarged to fill the tall plate.                                 */
+.singlePlayerOpponents .singlePlayerOpponentChoice {
+  border: 1px solid var(--cmp-gold-deep);
+  border-radius: 11px;
+  background:
+    linear-gradient(180deg, rgb(38 28 15 / 92%), rgb(22 15 8 / 94%)),
+    var(--cmp-leather) center / 200px repeat;
+  color: #f0dcb8;
+  font-size: 30px;
+  text-shadow: 0 1px 3px rgb(0 0 0 / 78%);
+  box-shadow:
+    inset 0 1px 0 rgb(246 226 168 / 14%),
+    inset 0 -3px 8px rgb(0 0 0 / 34%),
+    0 5px 14px rgb(0 0 0 / 36%);
+}
+
+.singlePlayerOpponents .singlePlayerOpponentChoice:hover:not(:disabled) {
+  border-color: var(--cmp-gold);
+  background:
+    linear-gradient(180deg, rgb(52 38 20 / 94%), rgb(30 21 11 / 95%)),
+    var(--cmp-leather) center / 200px repeat;
+  color: var(--cmp-gold-bright);
+}
+
+.singlePlayerOpponents .singlePlayerOpponentChoice.selected {
+  border-color: var(--cmp-gold-deep);
+  color: #2c1d08;
+  background: linear-gradient(180deg, #f4d78c 0%, var(--cmp-gold) 52%, #b98f3f 100%);
+  text-shadow: 0 1px 0 rgb(255 247 218 / 55%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 247 218 / 70%),
+    inset 0 -3px 8px rgb(120 82 24 / 45%),
+    0 5px 14px rgb(0 0 0 / 40%);
+}
+
+/* ---- SP2. A filigree rail above the actions --------------------------- */
+/* Hung in the panel's existing 14px grid gap above the action nav (absolute, */
+/* so it consumes no layout and moves no button), it rules the "choose your    */
+/* opponents" block off from the deliberate Create/Back actions — the same     */
+/* rail-divider that rules the Deploy title and the designer header.           */
+.menuNav[aria-label="Single player"] {
+  position: relative;
+}
+
+.menuNav[aria-label="Single player"]::before {
+  content: "";
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  top: -13px;
+  height: 12px;
+  background: var(--orn-rail) center / 100% 12px no-repeat;
+  opacity: 0.78;
+  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 55%));
+  pointer-events: none;
+}
+
+/* ---- SP3. Create game → raised gilded plate; Back → quiet leather ------ */
+/* The boxless main-menu skin renders both as bare engraved-gold labels. Here */
+/* the primary CTA gets its OWN surface back — a warm gilded leather plate     */
+/* with a strong gold hairline and a float shadow — so it reads as THE action, */
+/* while "Back" (the <a>) takes the room panel's quiet leather-plate.          */
+.menuNav[aria-label="Single player"] > .menuNavButton {
+  border-radius: 12px;
+  border: 1px solid var(--cmp-gold-deep);
+  background:
+    linear-gradient(180deg, rgb(34 25 14 / 90%), rgb(20 14 8 / 93%)),
+    var(--cmp-leather) center / 240px repeat;
+  box-shadow:
+    inset 0 1px 0 rgb(246 226 168 / 12%),
+    0 6px 16px rgb(0 0 0 / 40%);
+}
+
+.menuNav[aria-label="Single player"] > .menuNavButton:hover:not(:disabled) {
+  border-color: var(--cmp-gold);
+}
+
+/* The CTA (the <button>) is warmer + gilded so it out-reads the quiet Back. */
+.menuNav[aria-label="Single player"] > button.menuNavButton {
+  background:
+    radial-gradient(120% 135% at 50% -22%, rgb(244 215 140 / 20%), transparent 58%),
+    linear-gradient(180deg, rgb(50 37 19 / 94%), rgb(28 19 10 / 96%)),
+    var(--cmp-leather) center / 240px repeat;
+  box-shadow:
+    inset 0 0 0 1px rgb(217 178 90 / 40%),
+    inset 0 1px 0 rgb(255 240 200 / 22%),
+    inset 0 -14px 26px rgb(0 0 0 / 32%),
+    0 8px 20px rgb(0 0 0 / 46%);
+}
+
+.menuNav[aria-label="Single player"] > button.menuNavButton:hover:not(:disabled) {
+  border-color: var(--cmp-gold);
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+}
+
+.menuNav[aria-label="Single player"] > button.menuNavButton:disabled {
+  filter: grayscale(0.5) brightness(0.72);
+  opacity: 0.72;
+}
+
+/* ======================================================================== */
 /* PHONE UI MODE                                                            */
 /*                                                                          */
 /* Everything below only applies inside `main.phoneMode` (plus the mode     */
