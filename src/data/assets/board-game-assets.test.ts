@@ -5,8 +5,11 @@ import {
   RESOURCE_ICONS,
   COMBAT_TOKEN_IMAGES,
   STAT_SYMBOL_ICONS,
-  SKILL_ICONS
+  SKILL_ICONS,
+  DESIGNER_UI_ICONS,
+  SECRET_FEATURE_ICONS
 } from "@/data/assets/homm-assets";
+import { SECRET_TILE_FEATURES } from "@/engine";
 import { CARD_BACK_IMAGES, deckBacks } from "@/data/decks";
 import { TOWN_TOKEN_ICONS } from "@/data/towns/boards";
 
@@ -63,6 +66,25 @@ describe("main-menu skill emblems", () => {
     expect(new Set(values).size).toBe(9); // one distinct emblem per button
     for (const path of values) {
       assertRealArt(path);
+    }
+  });
+});
+
+describe("map designer UI icons", () => {
+  it("ships toolbar medallions and Homm3BG mode glyphs on disk", () => {
+    for (const path of Object.values(DESIGNER_UI_ICONS)) {
+      // Glyphs (svg) can be small; medallions (webp) are larger.
+      assertRealArt(path, path.endsWith(".svg") ? 200 : 1200);
+    }
+  });
+
+  it("wires every secret landmark to real board-game art (not emoji)", () => {
+    for (const feature of SECRET_TILE_FEATURES) {
+      expect(feature.iconSrc, `${feature.id} needs iconSrc`).toMatch(/^\/assets\//);
+      expect(feature.iconSrc).toBe(SECRET_FEATURE_ICONS[feature.id]);
+      assertRealArt(feature.iconSrc, feature.iconSrc.endsWith(".svg") ? 200 : 1200);
+      // No emoji in the icon field — plain short label only.
+      expect(feature.icon).not.toMatch(/[\u{1F300}-\u{1FAFF}]/u);
     }
   });
 });

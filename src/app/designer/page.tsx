@@ -20,6 +20,8 @@ import {
   type SharedMapRecord
 } from "@/lib/shared-maps";
 import { getClientId, getDisplayName } from "@/lib/identity";
+import { assetUrl } from "@/lib/asset-url";
+import { DESIGNER_UI_ICONS } from "@/data/assets/homm-assets";
 
 /**
  * Standalone map designer: build a map around the scenario's fixed starting
@@ -146,7 +148,17 @@ export default function MapDesignerPage() {
         <Link className="commandButton ghost" href="/menu">
           <ArrowLeft aria-hidden="true" size={13} /> Back to the menu
         </Link>
-        <h1>Map designer</h1>
+        <h1 className="designerTitle">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            alt=""
+            aria-hidden="true"
+            className="designerTitleGlyph"
+            draggable={false}
+            src={assetUrl(DESIGNER_UI_ICONS.map)}
+          />
+          Map designer
+        </h1>
         <p>
           Build a map around the starting tiles, dropping tiles wherever you like — they can interlock, leave gaps,
           touch at a corner or sit apart on their own. Pick how many players it opens for (2–4), flip a tile face up

@@ -11256,10 +11256,21 @@ img.cardBack {
   margin-bottom: 14px;
 }
 
-.designerHeader h1 {
+.designerHeader h1,
+.designerHeader .designerTitle {
   margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
   font-size: 24px;
   color: var(--gold);
+}
+
+.designerTitleGlyph {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
 }
 
 .designerHeader p {
@@ -11909,6 +11920,95 @@ img.cardBack {
   position: absolute;
   top: 10px;
   right: 10px;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 6px;
+  background: linear-gradient(180deg, rgba(42, 30, 16, 0.94), rgba(22, 16, 10, 0.92));
+  border: 1px solid rgba(210, 168, 88, 0.55);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45), inset 0 0 0 1px rgba(255, 220, 140, 0.08);
+}
+
+.designerToolbarFloat button {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: rgba(60, 42, 20, 0.45);
+}
+
+.designerToolbarFloat button:hover {
+  background: rgba(120, 88, 36, 0.45);
+}
+
+.designerToolbarFloat .designerToolIcon {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  display: block;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.55));
+  pointer-events: none;
+}
+
+.designerZoomReadout {
+  min-width: 42px;
+  padding: 0 4px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: #f0d48a;
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+
+.designerGlyph,
+.popoverModeGlyph,
+.popoverFeatureGlyph,
+.popoverActionGlyph,
+.popoverTokenGlyph {
+  display: block;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+}
+
+.popoverModeGlyph {
+  width: 28px;
+  height: 28px;
+  margin: 0 auto 2px;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
+}
+
+.popoverFeatureGlyph {
+  width: 28px;
+  height: 28px;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4));
+}
+
+.popoverActionGlyph {
+  width: 16px;
+  height: 16px;
+}
+
+.popoverActionGlyph.flipH {
+  transform: scaleX(-1);
+}
+
+.popoverTokenGlyph {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+}
+
+.popoverIconButton,
+.popoverTokenButton {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 6px;
+}
+
+.popoverTokenButton {
+  width: 100%;
+  justify-content: flex-start;
 }
 
 .designerHexFixed {
@@ -12340,9 +12440,19 @@ img.cardBack {
 
 .designerPopover .popoverFeatureIcon {
   grid-row: 1 / span 2;
-  font-size: 20px;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
   line-height: 1;
-  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
+}
+
+.designerPopover .popoverSecretSummaryIcon {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
 }
 
 .designerPopover .popoverFeatureTitle {
@@ -12396,15 +12506,8 @@ img.cardBack {
   font-weight: 700;
 }
 
-.designerPopover .popoverSecretSummaryIcon {
-  font-size: 18px;
-  line-height: 1.2;
-}
-
-.designerSvg text.designerTileFeatureIcon {
-  font-size: 14px;
+.designerSvg image.designerTileFeatureIcon {
   pointer-events: none;
-  user-select: none;
 }
 
 /* Landmark filter chips + clickable tile grid */
@@ -12420,6 +12523,9 @@ img.cardBack {
 }
 
 .designerPopover .popoverFilterChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   padding: 3px 8px;
   border-radius: 999px;
   border: 1px solid rgba(214, 178, 94, 0.35);
@@ -12428,6 +12534,13 @@ img.cardBack {
   font-size: 10px;
   font-weight: 600;
   cursor: pointer;
+}
+
+.designerPopover .popoverFilterGlyph {
+  width: 14px;
+  height: 14px;
+  object-fit: contain;
+  flex-shrink: 0;
 }
 
 .designerPopover .popoverFilterChip:hover {
