@@ -353,6 +353,7 @@ function scoreDamageEffect(
   const affected = areaDamageUnits(observation, effect, target);
   if (affected) {
     const damage = areaDamageAmount(card, effect);
+    let enemyHits = 0;
     const swing = affected.reduce((total, unit) => {
       const remaining = unitRemainingHealth(unit);
       const threat = unitThreatValue(unit);
@@ -360,6 +361,7 @@ function scoreDamageEffect(
       if (unit.controllerId === observation.playerId) {
         return total - (55 + Math.min(35, threat) + (lethal ? 55 : 0));
       }
+      enemyHits += 1;
       return (
         total +
         24 +
@@ -367,6 +369,13 @@ function scoreDamageEffect(
         (lethal ? 45 : 0)
       );
     }, 0);
+    // A blast that catches NO enemy — an empty center (areaDamageUnits returns
+    // [], which is still truthy) or a friendlies-only splash — is a wasted cast.
+    // Score it below END_ACTIVATION (400) so the AI ends its activation instead
+    // of dumping the spell on empty space (legal-actions offers every board cell).
+    if (enemyHits === 0) {
+      return 200;
+    }
     return Math.max(180, Math.min(900, base + swing));
   }
 

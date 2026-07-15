@@ -738,6 +738,28 @@ describe("card policy — area damage scales with the crowd", () => {
     );
     expect(scoreCardAction(corpses, infernoCast())!.score).toBe(single!.score);
   });
+
+  it("an AoE cast that catches NO enemy is a wasted cast (below a real hit and END_ACTIVATION)", () => {
+    // legal-actions offers a space-target spell on EVERY board cell; a blast on
+    // an empty corner catches nothing (areaDamageUnits returns [], still truthy).
+    const field = observation(
+      [caster(), unit({ id: "E1", position: 9 }), unit({ id: "E2", position: 10 })],
+      [],
+    );
+    const emptyCast = (): GameAction =>
+      ({
+        type: "CAST_SPELL",
+        playerId: "p2",
+        cardId: "spell.inferno",
+        target: { type: "space", position: 0 },
+      }) as GameAction;
+    const onEnemies = scoreCardAction(field, infernoCast())!.score; // hits E1/E2
+    const onEmpty = scoreCardAction(field, emptyCast())!.score;
+    // The empty blast must not outrank a real two-enemy hit and must stay below
+    // END_ACTIVATION (400) so the AI ends its turn instead of wasting Inferno.
+    expect(onEmpty).toBeLessThan(onEnemies);
+    expect(onEmpty).toBeLessThan(400);
+  });
 });
 
 describe("card policy — action-denial debuffs are tempo, not stat shaves", () => {

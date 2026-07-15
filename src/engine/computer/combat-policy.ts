@@ -868,8 +868,11 @@ export function scoreCombatAction(
       let score = 500 + Math.min(30, missing * 4);
       // Save the high-value body: when the enemies in reach (adjacent melee +
       // any ranged) can finish this unit and it is worth keeping, Defend
-      // outranks a suicidal 0-damage poke (545) — a real strike (620+) still
-      // always wins, so this never turns a fighting unit passive.
+      // outranks a suicidal 0-damage poke (545). The surround (+45..75) and
+      // high-value (+50) bumps below can lift Defend to ~655 for a wounded,
+      // surrounded, valuable unit the enemy would otherwise kill — a deliberate
+      // save, so a marginal strike just under that yields to preserving it;
+      // stronger real strikes (well above ~655) still win and chaff keeps trading.
       const incoming = pendingIncomingDamage(
         combat,
         observation.playerId,
