@@ -3855,6 +3855,20 @@ button.battleCell {
   background: rgba(255, 255, 255, 0.12);
 }
 
+/* Positioning host for the map's floating control cards: the cards must sit
+   OUTSIDE .hexMapWrap (whose `isolation: isolate` would trap their z-index
+   below the Far-tile tray overlay, z-index 6) while anchoring to the exact
+   same box. Takes over the wrap's flex role in the map column; the wrap keeps
+   its own sizing inside. Creates NO stacking context (z-index: auto) so the
+   float cards compete with the tray in the .mapStage context and win. */
+.hexMapOuter {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
 .hexMapWrap {
   flex: 1;
   min-height: min(68vh, 720px);
@@ -7126,16 +7140,21 @@ button.hbSlot:disabled { cursor: default; }
    These live inside the SVG (foreignObject) so they pan and zoom with the map
    and sit right on the tile, rather than in a bar pinned to the bottom edge. */
 /* The floating map controls are plain HTML overlays absolutely positioned inside
-   `.hexMapWrap` (NOT SVG foreignObject — mobile WebKit fails to paint that under
-   the map's camera transform). The wrapper is placed at the pre-computed CSS
-   left/top and is click-through; only the card inside eats taps, so transparent
-   space stays clickable through to the hexes underneath. */
+   `.hexMapOuter` (NOT SVG foreignObject — mobile WebKit fails to paint that under
+   the map's camera transform; and NOT inside `.hexMapWrap`, whose isolation
+   would trap them below the Far-tile tray). The wrapper is placed at the
+   pre-computed CSS left/top and is click-through; only the card inside eats
+   taps, so transparent space stays clickable through to the hexes underneath. */
 .mapFloatOuter {
   position: absolute;
   display: flex;
   justify-content: center;
   pointer-events: none;
-  z-index: 5;
+  /* Above the Far-tile tray (.farTileTray, z-index 6): a float is a transient
+     action prompt (move confirm / rotate) and must win the tap when the
+     on-screen clamp lands it under the tray corner — but below the left rail's
+     fly-out boards (.leftRailDock, z-index 20). */
+  z-index: 8;
 }
 
 .mapFloatCard {

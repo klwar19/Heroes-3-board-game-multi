@@ -1678,6 +1678,11 @@ export function HexMapBoard({
   }
 
   return (
+    // The outer div is the positioning host for the floating control cards:
+    // they must live OUTSIDE .hexMapWrap (whose `isolation: isolate` traps any
+    // inner z-index below the Far-tile tray overlay, z-index 6) while anchoring
+    // to the exact same box.
+    <div className="hexMapOuter">
     <div className="hexMapWrap" aria-label="Adventure map">
       <svg
         ref={svgRef}
@@ -1788,33 +1793,6 @@ export function HexMapBoard({
         </g>
       </svg>
 
-      {/* Floating map controls as HTML overlays (see the MapFloat note above):
-          positioned in real screen pixels via the shared camera/viewBox math, so
-          they paint on phones where SVG foreignObject does not, and are clamped
-          fully on-screen. The wrapper is click-through (pointer-events:none); only
-          the card inside takes taps (pointer-events:auto). */}
-      {mapFloats.map((float) => {
-        const { left, top, above } = computeMapFloatPosition({
-          viewBox: { minX, minY, width: maxX - minX, height: maxY - minY },
-          elementWidth: svgSize.width,
-          elementHeight: svgSize.height,
-          camera,
-          mapPoint: float.mapPoint,
-          cardWidth: float.cardWidth,
-          cardHeight: float.cardHeight,
-          gap: float.gap
-        });
-        return (
-          <div
-            key={float.key}
-            className={`mapFloatOuter ${above ? "above" : "below"}`}
-            style={{ left, top, width: float.cardWidth }}
-          >
-            {float.render()}
-          </div>
-        );
-      })}
-
       <div className="mapToolbar" aria-label="Map controls">
         <button onClick={() => setCamera((c) => ({ ...c, scale: Math.min(MAP_SCALE_MAX, c.scale * 1.2) }))} title="Zoom in" type="button">
           <Plus size={13} />
@@ -1877,6 +1855,36 @@ export function HexMapBoard({
         </div>
       ) : null}
 
+    </div>
+
+      {/* Floating map controls as HTML overlays (see the MapFloat note above):
+          positioned in real screen pixels via the shared camera/viewBox math, so
+          they paint on phones where SVG foreignObject does not, and are clamped
+          fully on-screen. They render as SIBLINGS of .hexMapWrap (inside the
+          unisolated .hexMapOuter) so their z-index can beat the Far-tile tray's.
+          The wrapper is click-through (pointer-events:none); only the card
+          inside takes taps (pointer-events:auto). */}
+      {mapFloats.map((float) => {
+        const { left, top, above } = computeMapFloatPosition({
+          viewBox: { minX, minY, width: maxX - minX, height: maxY - minY },
+          elementWidth: svgSize.width,
+          elementHeight: svgSize.height,
+          camera,
+          mapPoint: float.mapPoint,
+          cardWidth: float.cardWidth,
+          cardHeight: float.cardHeight,
+          gap: float.gap
+        });
+        return (
+          <div
+            key={float.key}
+            className={`mapFloatOuter ${above ? "above" : "below"}`}
+            style={{ left, top, width: float.cardWidth }}
+          >
+            {float.render()}
+          </div>
+        );
+      })}
     </div>
   );
 }

@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 /**
  * The map's floating control cards (move-confirm, rotate, passive "is rotating")
- * are rendered as plain HTML overlays inside `.hexMapWrap` — NOT as SVG
+ * are rendered as plain HTML overlays inside `.hexMapOuter` (siblings of the
+ * isolated `.hexMapWrap`, so their z-index can beat the Far-tile tray) — NOT as SVG
  * `<foreignObject>` (mobile WebKit silently fails to paint foreignObject under
  * the map's camera transform, so on phones these cards showed nothing). These
  * tests pin the NEW DOM and the behaviour that must survive the move:
@@ -102,7 +103,8 @@ describe("map floating cards — rendered as HTML overlays, not SVG foreignObjec
     expect(card, "the move-confirm float").toBeTruthy();
     // The fix: HTML in the map wrap, and NOTHING lives in an SVG foreignObject.
     expect(container.querySelector("foreignObject")).toBeNull();
-    expect(card!.closest(".hexMapWrap")).toBeTruthy();
+    expect(card!.closest(".hexMapOuter")).toBeTruthy();
+    expect(card!.closest(".hexMapWrap")).toBeNull(); // outside the isolated wrap so z-index beats the Far-tile tray
     expect(card!.closest("svg")).toBeNull();
 
     clickButton(container, /Move there/i);
@@ -122,7 +124,8 @@ describe("map floating cards — rendered as HTML overlays, not SVG foreignObjec
     const card = container.querySelector(".rotateFloat");
     expect(card, "the rotate float for the rotating viewer").toBeTruthy();
     expect(container.querySelector("foreignObject")).toBeNull();
-    expect(card!.closest(".hexMapWrap")).toBeTruthy();
+    expect(card!.closest(".hexMapOuter")).toBeTruthy();
+    expect(card!.closest(".hexMapWrap")).toBeNull(); // outside the isolated wrap so z-index beats the Far-tile tray
     expect(within(card as HTMLElement).getByText(/Rotate your/i)).toBeTruthy();
 
     const degrees = () => (card!.querySelector(".rotateDegrees") as HTMLElement).textContent;
@@ -151,7 +154,8 @@ describe("map floating cards — rendered as HTML overlays, not SVG foreignObjec
     const passive = container.querySelector(".mapFloatCard.passive");
     expect(passive, "the passive watching card").toBeTruthy();
     expect(passive!.textContent).toMatch(/is rotating the new tile/i);
-    expect(passive!.closest(".hexMapWrap")).toBeTruthy();
+    expect(passive!.closest(".hexMapOuter")).toBeTruthy();
+    expect(passive!.closest(".hexMapWrap")).toBeNull(); // outside the isolated wrap so z-index beats the Far-tile tray
     expect(container.querySelector("foreignObject")).toBeNull();
   });
 });

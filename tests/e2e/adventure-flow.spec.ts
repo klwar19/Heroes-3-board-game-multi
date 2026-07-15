@@ -149,6 +149,7 @@ test("turn 1 discard-one redraw keeps the replacement card visible and in hand",
   const hand = page.locator(".adventureHand");
   const cards = hand.locator(".adventureHandCard");
   await expect(cards).toHaveCount(4);
+  const deckCountBefore = await hand.locator(".ownDeckSpot .ownDeckCount").innerText();
 
   await page.getByRole("button", { name: "Discard and draw new" }).click();
   await cards.first().click();
@@ -163,10 +164,15 @@ test("turn 1 discard-one redraw keeps the replacement card visible and in hand",
   await expect(hand).toContainText("Hand 4/4");
 
   // Wait through the full draw-flight/backstop window and prove the replacement
-  // is still mounted and visible, with exactly the selected card in discard.
+  // is still mounted and visible. Round-1 house rule (pinned in
+  // src/engine/first-round-hand-discard.test.ts): a first-round hand discard
+  // returns to the BOTTOM of the player's own deck, never the discard pile —
+  // so the discard stays empty and the deck count is unchanged (drew 1, got 1
+  // back).
   await expect(hand.locator(".adventureHandSlot.incoming")).toHaveCount(0, { timeout: 8000 });
   await expect(cards).toHaveCount(4);
-  await expect(hand.locator(".ownDiscardSpot .ownDeckCount")).toHaveText("1");
+  await expect(hand.locator(".ownDiscardSpot .ownDeckCount")).toHaveText("0");
+  await expect(hand.locator(".ownDeckSpot .ownDeckCount")).toHaveText(deckCountBefore);
 });
 
 test("discovering a face-down tile opens the rotation card on the tile", async ({ page }) => {
