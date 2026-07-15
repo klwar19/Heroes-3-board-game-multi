@@ -207,10 +207,12 @@ import {
   isResetDenied,
   requestAdminCloseRoom,
   requestCloseRoom,
+  type ConnectionQualitySample,
   type GameRoomSnapshot,
   type RoomConnection,
   type SnapshotMeta
 } from "@/lib/realtime";
+import { ConnectionQualityChip, retainQualitySample } from "@/components/table/connection-quality";
 import { clearCachedRoom, loadCachedRoom, saveCachedRoom } from "@/lib/room-cache";
 import { getAccountIdentity, getClientId, getDisplayName, setDisplayName as persistDisplayName } from "@/lib/identity";
 import { fetchSession, fetchSocketToken } from "@/lib/auth-client";
@@ -678,6 +680,10 @@ export default function Home() {
   // Password typed in the lobby Join dialog for a locked room.
   const pendingRoomPasswordRef = useRef<{ roomId: string; password: string } | null>(null);
   const [syncStatus, setSyncStatus] = useState("connecting");
+  // Latest transport round-trip sample (pong / action ack) for the RTT chip.
+  // Presentation-only; retainQualitySample keeps the reference stable when the
+  // displayed value would not change, so per-ack jitter never re-renders.
+  const [connectionQuality, setConnectionQuality] = useState<ConnectionQualitySample | null>(null);
   /**
    * The room server's engine signature from the latest snapshot. When it
    * disagrees with this frontend's ENGINE_SIGNATURE the room server is running
@@ -3567,12 +3573,18 @@ export default function Home() {
     seenRollIdsRef.current = null;
     // Each room gets its own recovery attempt, even on the same server boot.
     restoredForBootRef.current = null;
+    // A fresh connection starts with no RTT measurement.
+    setConnectionQuality(null);
 
     const connection = connectRoom(
       roomId,
       {
         onSnapshot: ingestSnapshot,
         onStatus: setSyncStatus,
+        // Round-trip samples (pong / action ack) feed the RTT chip. The
+        // functional update returns the SAME reference when the displayed
+        // value is unchanged, so React skips the re-render.
+        onQuality: (quality) => setConnectionQuality((prev) => retainQualitySample(prev, quality)),
         // A transient drop may have let the server reap this client's unseated
         // membership — arm the join effect's re-join (see connectionDroppedRef).
         onDropped: () => {
@@ -4676,6 +4688,7 @@ export default function Home() {
         <small suppressHydrationWarning>
           v{roomVersion} · {syncStatus} · {state.phase}
         </small>
+        <ConnectionQualityChip sample={connectionQuality} />
         <MusicToggle />
         {/* Per-browser layout switch (also the escape hatch out of phone mode). */}
         <UiModeToggle />
