@@ -754,6 +754,15 @@ export function MapDesigner({
     setTilePickFilter("all");
   }, []);
 
+  // Close the docked object panel. A single stable callback (mirroring
+  // `closePopover`) keeps every clear site — the ✕ button, the mutual-exclusivity
+  // clears — a stable ref rather than a fresh inline closure (which the React
+  // Compiler otherwise can't reconcile with the object hooks' manual deps).
+  const closeObjectPopover = useCallback(() => {
+    setSelectedObjectIndex(null);
+    setObjectPopoverAt(null);
+  }, []);
+
   const addTile = useCallback(
     (group: DesignGroup, center: HexCoord, seaBand?: SeaBand, subBand?: SubBand) => {
       const plan: CustomMapTilePlan =
@@ -1394,6 +1403,8 @@ export function MapDesigner({
       (plan) => plan.group === "subterranean" && plan.row === cavernCenter.row && plan.col === cavernCenter.col
     );
     if (index >= 0) {
+      // Opening the docked tile panel closes any open object panel (never both).
+      closeObjectPopover();
       setSelectedIndex(index);
       setPopoverAt({ x: clientX, y: clientY });
     }
@@ -2195,16 +2206,15 @@ export function MapDesigner({
             const press = pressRef.current;
             if (press && press.pointerId === event.pointerId && !press.promoted) {
               pressRef.current = null;
-              const rect = wrapRef.current?.getBoundingClientRect();
               setSelectedIndex(press.index);
               setTilePickFilter("all");
-              // Clamp the popover into the board here (refs are fine in handlers)
-              // rather than reading the ref width back during render.
-              setPopoverAt(
-                rect
-                  ? { x: Math.max(8, Math.min(event.clientX - rect.left, rect.width - 8)), y: event.clientY - rect.top }
-                  : { x: 8, y: 0 }
-              );
+              // Opening the docked tile panel closes any open object panel so the
+              // two are never shown at once (mutual exclusivity).
+              closeObjectPopover();
+              // `popoverAt` is now just an OPEN flag — the panel docks top-right
+              // via CSS, so the click coords no longer drive layout. Kept as an
+              // object to avoid churning every open/close call site.
+              setPopoverAt({ x: event.clientX, y: event.clientY });
               return;
             }
             if (panRef.current?.pointerId === event.pointerId) {
@@ -2255,11 +2265,12 @@ export function MapDesigner({
           </span>
         </div>
 
-        {/* Per-tile options popover, anchored where the tile was clicked. */}
+        {/* Per-tile options panel — docked top-right of the board (always fully
+            visible + internally scrollable), so no content is clipped by the
+            wrap's overflow no matter where the tile sits. */}
         {selected && popoverAt ? (
           <div
             className={`designerPopover${selected.group !== "starting" && PICKABLE_GROUPS.has(selected.group) ? " wide" : ""}`}
-            style={{ left: popoverAt.x, top: popoverAt.y }}
           >
             <header>
               <strong>
@@ -2267,6 +2278,15 @@ export function MapDesigner({
                   ? `Town — seat ${seatNumberOf(selectedIndex as number)}`
                   : `${planGroupLabel(selected)} tile`}
               </strong>
+              <button
+                aria-label="Close tile options"
+                className="popoverClose"
+                onClick={closePopover}
+                title="Close"
+                type="button"
+              >
+                ✕
+              </button>
             </header>
 
             {selected.group === "starting" ? (
@@ -2731,9 +2751,9 @@ export function MapDesigner({
           </div>
         ) : null}
 
-        {/* Placed-object popover: guard picker + delete. */}
+        {/* Placed-object panel: guard picker + delete — docked like the tile panel. */}
         {selectedObject && objectPopoverAt ? (
-          <div className="designerPopover designerObjectPopover" style={{ left: objectPopoverAt.x, top: objectPopoverAt.y }}>
+          <div className="designerPopover designerObjectPopover">
             <header>
               <strong>
                 {selectedObject.kind === "gate"
@@ -2741,6 +2761,15 @@ export function MapDesigner({
                   : mapTokenLabel(selectedObject.kind as MapTokenKind)}
                 {selectedObject.placement.type === "standalone" ? " · standalone" : ""}
               </strong>
+              <button
+                aria-label="Close object options"
+                className="popoverClose"
+                onClick={closeObjectPopover}
+                title="Close"
+                type="button"
+              >
+                ✕
+              </button>
             </header>
             <div className="popoverSectionLabel">Neutral guard</div>
             <div className="popoverObjectGuards">

@@ -1102,3 +1102,96 @@ describe("MapDesigner — fixed starting-tile orientation (lockRotation)", () =>
     expect(farPopover.querySelector(".popoverLockToggle")).toBeNull();
   });
 });
+
+describe("MapDesigner — docked inspector panel", () => {
+  const town = { row: 10, col: 10 };
+  const far = tileLatticeNeighbors(town)[1];
+
+  /** A face-up map + one placed Gate object, so both panel kinds are reachable. */
+  function renderTileAndObject(): HTMLElement {
+    const { container } = render(
+      <MapDesigner
+        scenarioId="skirmish"
+        customMap={[
+          { row: town.row, col: town.col, group: "starting", faceDown: false },
+          { row: far.row, col: far.col, group: "far", faceDown: false, tileDefId: "F1" }
+        ]}
+        onChange={() => {}}
+        objects={[{ kind: "gate", pair: 1, placement: { type: "tile-slot", row: far.row, col: far.col, slot: 0 } }]}
+        onObjectsChange={() => {}}
+      />
+    );
+    return container;
+  }
+
+  it("docks the tile panel (no inline click-point left/top) and the ✕ button closes it", () => {
+    const container = renderDesigner([
+      { row: town.row, col: town.col, group: "starting", faceDown: false },
+      { row: far.row, col: far.col, group: "far", faceDown: true }
+    ]);
+    const popover = openTilePopover(container, 1);
+    // Docked via CSS — NO inline positioning, so nothing anchors the panel to
+    // the click point (the old clipping bug's root cause).
+    expect((popover as HTMLElement).style.left, "no inline left").toBe("");
+    expect((popover as HTMLElement).style.top, "no inline top").toBe("");
+    // The header ✕ dismisses the panel.
+    fireEvent.click(within(popover).getByRole("button", { name: "Close tile options" }));
+    expect(container.querySelector(".designerPopover"), "panel closed").toBeNull();
+  });
+
+  it("docks the object panel (no inline left/top) and its ✕ closes it", () => {
+    const container = renderTileAndObject();
+    fireEvent.click(container.querySelector(".designerObjectToken")!);
+    const panel = container.querySelector(".designerObjectPopover") as HTMLElement;
+    expect(panel, "object panel open").toBeTruthy();
+    expect(panel.style.left, "no inline left on the object panel").toBe("");
+    expect(panel.style.top, "no inline top on the object panel").toBe("");
+    fireEvent.click(within(panel).getByRole("button", { name: "Close object options" }));
+    expect(container.querySelector(".designerObjectPopover"), "object panel closed").toBeNull();
+  });
+
+  it("never opens the tile and object panels at once (mutual exclusivity, both ways)", () => {
+    const container = renderTileAndObject();
+
+    // Open the OBJECT panel first — no tile panel is open.
+    fireEvent.click(container.querySelector(".designerObjectToken")!);
+    expect(container.querySelector(".designerObjectPopover"), "object panel open").toBeTruthy();
+    expect(container.querySelector(".designerPopover:not(.designerObjectPopover)"), "no tile panel yet").toBeNull();
+
+    // Click a TILE → the tile panel opens and the object panel closes (never both).
+    openTilePopover(container, 0);
+    expect(container.querySelector(".designerObjectPopover"), "object panel now closed").toBeNull();
+    expect(container.querySelector(".designerPopover:not(.designerObjectPopover)"), "tile panel open").toBeTruthy();
+    expect(container.querySelectorAll(".designerPopover").length, "exactly one panel").toBe(1);
+
+    // Click the OBJECT again → the object panel re-opens and the tile panel closes.
+    fireEvent.click(container.querySelector(".designerObjectToken")!);
+    expect(container.querySelector(".designerObjectPopover"), "object panel re-open").toBeTruthy();
+    expect(container.querySelector(".designerPopover:not(.designerObjectPopover)"), "tile panel closed").toBeNull();
+    expect(container.querySelectorAll(".designerPopover").length, "still exactly one panel").toBe(1);
+  });
+
+  it("exposes the yellow-border rose with clickable chips for a tile FAR from the board origin", () => {
+    // The clipping bug hid the border rose (and everything below the tile grid)
+    // for any tile in the lower/right half of the board. jsdom can't compute the
+    // clip, so this pins the WIRING — the rose + its chips work for a far-away
+    // tile exactly like a near-origin one — while the docked-panel CSS fixes the
+    // visible half in the browser.
+    const farAway = { row: town.row + 22, col: town.col + 16 };
+    let latest: CustomMapTilePlan[] = [
+      { row: town.row, col: town.col, group: "starting", faceDown: false },
+      { row: farAway.row, col: farAway.col, group: "far", faceDown: true }
+    ];
+    const onChange = vi.fn((next: CustomMapTilePlan[]) => {
+      latest = next;
+    });
+    const container = renderDesigner(latest, onChange);
+    const popover = openTilePopover(container, 1);
+    const rose = within(popover).getByRole("group", { name: "Tile edge yellow borders" });
+    expect(rose, "border rose present for a far-away tile").toBeTruthy();
+    const chip = popover.querySelector('.popoverBorderChip[data-direction="3"]'); // SW edge
+    expect(chip, "SW border chip present").toBeTruthy();
+    fireEvent.click(chip!);
+    expect(latest[1].extraBorders, "far-away tile's SW border toggled").toEqual([3]);
+  });
+});
