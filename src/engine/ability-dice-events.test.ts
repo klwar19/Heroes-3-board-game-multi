@@ -158,9 +158,10 @@ describe("ability-roll dice payloads (UNIT_ABILITY_TRIGGERED.dice)", () => {
     expect(hitDice!.success).toBe(true);
     expect(hitDice!.caption).toContain("1 extra damage");
 
-    // CONTROL: a "-1" extra die misses the window — same event, success=false.
+    // CONTROL: a "-1" extra die misses the window — announce under `${id}-roll`
+    // so the lightning FX plan never flashes on a miss (Death-Stare style).
     const miss = rangedDuel({ attackerAbilities: ["thunderbirds-lightning"], rolls: [1, -1] });
-    const missDice = abilityEvent(miss, "thunderbirds-lightning").dice;
+    const missDice = abilityEvent(miss, "thunderbirds-lightning-roll").dice;
     expect(missDice).toBeTruthy();
     expect(missDice!.rolls).toEqual([-1]);
     expect(missDice!.success).toBe(false);
@@ -626,7 +627,8 @@ describe("morale curses ride ability rolls like attack rolls", () => {
 
     state = attack(state);
 
-    const gaze = abilityDiceEvent(state, "medusa-paralyze-retaliation-die");
+    // Miss announces under `${id}-roll` so the paralyze FX plan never freezes.
+    const gaze = abilityDiceEvent(state, "medusa-paralyze-retaliation-die-roll");
     expect(gaze.dice?.rolls).toEqual([1]);
     expect(gaze.dice?.success).toBe(false);
     expect((state.combat!.units.a1.tokens ?? []).some((token) => token.kind === "paralysis")).toBe(false);

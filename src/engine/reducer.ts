@@ -4983,10 +4983,12 @@ function resolveAttackDieDamageOutcome(
   forceRoll: boolean
 ): void {
   const lands = forceRoll || (candidate !== null && abilityRollSucceeds(candidate.rolls, attackDieDamageWindow(followUp)));
+  // Death-Stare style: bare ability id only on a landed hit (abilityFxPlans keys
+  // thunderbirds-lightning / wyvern-sting), miss announces under `${id}-roll`.
   appendEvent(state, {
     type: "UNIT_ABILITY_TRIGGERED",
     unitId: attacker.id,
-    abilityId: followUp.abilityId,
+    abilityId: lands ? followUp.abilityId : `${followUp.abilityId}-roll`,
     targetUnitId: defender.id,
     message: forceRoll
       ? `${attacker.name} uses ${followUp.abilityName} regardless of the roll (Basilisks VI).`
@@ -5786,18 +5788,25 @@ function resolveParalysisExtraOutcome(
   candidate: AttackRollCandidate,
   forceRoll: boolean
 ): void {
+  // Death-Stare style id split: the bare ability id fires ONLY when Paralysis
+  // actually lands (so abilityFxPlans[id] never freezes a miss), and a failed
+  // or shrugged-off roll announces under `${id}-roll` (left unmapped in the FX
+  // table, same as gorgon-death-stare-roll).
   const paralyses =
     forceRoll || abilityRollSucceeds(candidate.rolls, { minRoll: followUp.onRoll, maxRoll: followUp.onRoll });
   const gazeImmune = paralyses && unitImmuneToParalysis(state, defender);
+  const lands = paralyses && !gazeImmune;
   appendEvent(state, {
     type: "UNIT_ABILITY_TRIGGERED",
     unitId: attacker.id,
-    abilityId: followUp.abilityId,
+    abilityId: lands ? followUp.abilityId : `${followUp.abilityId}-roll`,
     targetUnitId: defender.id,
-    message: `${attacker.name} rolls ${candidate.rolls.join(", ")} for ${followUp.abilityName}.`,
+    message: lands
+      ? `${attacker.name}'s ${followUp.abilityName} (rolled ${candidate.rolls.join(", ")}) paralyses ${defender.cardName}.`
+      : `${attacker.name} rolls ${candidate.rolls.join(", ")} for ${followUp.abilityName}.`,
     dice: {
       rolls: [...candidate.rolls],
-      success: paralyses && !gazeImmune,
+      success: lands,
       label: followUp.abilityName,
       caption: paralyses
         ? gazeImmune
@@ -5807,9 +5816,21 @@ function resolveParalysisExtraOutcome(
       ...(candidate.modifierNotes?.length ? { modifiers: candidate.modifierNotes } : {})
     }
   });
-  if (paralyses) {
-    applyParalysisToTarget(state, attacker, defender, followUp);
+  if (!paralyses) {
+    return;
   }
+  if (gazeImmune) {
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: defender.id,
+      abilityId: "ignore-paralysis",
+      targetUnitId: defender.id,
+      message: `${defender.cardName} is immune to Paralysis.`
+    });
+    return;
+  }
+  // Token only — the ability event above already carries the ability id for FX.
+  placeCombatToken(state, defender, "paralysis", 0, followUp.abilityName);
 }
 
 /**
@@ -5968,17 +5989,22 @@ function applyRetaliationParalysis(
       });
       candidate = rollAbilityCandidate(state, combat, retaliator.controllerId, 1, window, false);
     }
+    // Death-Stare style id split (same as resolveParalysisExtraOutcome): bare
+    // ability id only when Paralysis lands, so abilityFxPlans never freezes a miss.
     const lands = abilityRollSucceeds(candidate.rolls, window);
     const gazeImmune = lands && unitImmuneToParalysis(state, target);
+    const petrifies = lands && !gazeImmune;
     appendEvent(state, {
       type: "UNIT_ABILITY_TRIGGERED",
       unitId: retaliator.id,
-      abilityId: ability.abilityId,
+      abilityId: petrifies ? ability.abilityId : `${ability.abilityId}-roll`,
       targetUnitId: target.id,
-      message: `${retaliator.name} rolls ${candidate.roll} for ${ability.abilityName}.`,
+      message: petrifies
+        ? `${retaliator.name}'s ${ability.abilityName} (rolled ${candidate.roll}) paralyses ${target.cardName}.`
+        : `${retaliator.name} rolls ${candidate.roll} for ${ability.abilityName}.`,
       dice: {
         rolls: [...candidate.rolls],
-        success: lands && !gazeImmune,
+        success: petrifies,
         label: ability.abilityName,
         caption: lands
           ? gazeImmune
@@ -5991,6 +6017,18 @@ function applyRetaliationParalysis(
     if (!lands) {
       return;
     }
+    if (gazeImmune) {
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: target.id,
+        abilityId: "ignore-paralysis",
+        targetUnitId: target.id,
+        message: `${target.cardName} is immune to Paralysis.`
+      });
+      return;
+    }
+    placeCombatToken(state, target, "paralysis", 0, ability.abilityName);
+    return;
   }
 
   if (unitImmuneToParalysis(state, target)) {
@@ -6344,10 +6382,12 @@ function resolveKnockbackOutcome(
     return false;
   }
   const pushes = abilityRollSucceeds(candidate.rolls, { minRoll: ability.onRoll, maxRoll: ability.onRoll });
+  // Roll announce always uses `${id}-roll` so a miss never triggers the knockback
+  // FX plan; the actual shove (applyKnockback) fires the bare ability id.
   appendEvent(state, {
     type: "UNIT_ABILITY_TRIGGERED",
     unitId: attacker.id,
-    abilityId: ability.abilityId,
+    abilityId: `${ability.abilityId}-roll`,
     targetUnitId: defender.id,
     message: `${attacker.name} rolls ${candidate.rolls.join(", ")} for ${ability.abilityName}.`,
     dice: {
@@ -6368,7 +6408,7 @@ function resolveKnockbackOutcome(
     appendEvent(state, {
       type: "UNIT_ABILITY_TRIGGERED",
       unitId: attacker.id,
-      abilityId: ability.abilityId,
+      abilityId: `${ability.abilityId}-roll`,
       targetUnitId: defender.id,
       message: `${defender.cardName} has nowhere to be pushed and holds its ground.`
     });
@@ -7735,10 +7775,13 @@ function applyEnchanterBuffSelf(
     unit.controllerId,
     { type: "unit", unitId: unit.id }
   );
+  // Buff path uses `${id}-buff` so abilityFxPlans keyed on the bare id only fire
+  // for a real heal/repair (Enchanters / Mechanics Field Repair), never for the
+  // +Attack fallback when no wounded ally is available.
   appendEvent(state, {
     type: "UNIT_ABILITY_TRIGGERED",
     unitId: unit.id,
-    abilityId: ability.abilityId,
+    abilityId: `${ability.abilityId}-buff`,
     targetUnitId: unit.id,
     message: `${unit.name} gains +${ability.attackBonus} Attack from ${ability.abilityName}.`
   });
