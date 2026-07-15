@@ -22494,6 +22494,69 @@ details.mapPresetEditor[open] .mapPresetSummaryChevron {
   bottom: calc(144px + env(safe-area-inset-bottom, 0px));
 }
 
+/* ---------- less scrolling + scroll containment (performance) ---------- */
+
+/* Rubber-banding a scrollable phone panel must NOT drag the whole page (and its
+   fixed tab bar) with it: `overscroll-behavior: contain` keeps the scroll chain
+   inside each panel, which also lets the browser skip the costly root-scroll
+   bounce. Applied to every phone scroll surface (the sideways HUD/initiative
+   ribbons, the fixed prompt/reaction trays, the big town window, and the
+   Decks/Army panels capped below). */
+.phoneMode .advHud,
+.phoneMode .initiativeRail,
+.phoneMode .promptTray,
+.phoneMode .reactionTray,
+.phoneMode .townWindow,
+.phoneMode .marketPanel,
+.phoneMode.adventureRoot[data-phone-tab="decks"] .advDecksBottom,
+.phoneMode.adventureRoot[data-phone-tab="army"] .leftRail,
+.phoneMode .rightRail > .commandDock {
+  overscroll-behavior: contain;
+}
+
+/* Decks tab: the shared-deck shelf is a tall block that used to grow the page
+   past the tab bar (long slide to reach the bottom decks). Cap it to the panel
+   height and scroll WITHIN itself instead. */
+.phoneMode.adventureRoot[data-phone-tab="decks"] .advDecksBottom {
+  max-height: calc(100dvh - 150px);
+  overflow-y: auto;
+}
+
+/* Army tab: the left command rail (town/hero/unit deck + opponent info +
+   morale) scrolls inside the panel, keeping its primary buttons above the fold
+   rather than pushing the page taller than the screen. */
+.phoneMode.adventureRoot[data-phone-tab="army"] .leftRail {
+  max-height: calc(100dvh - 120px);
+  overflow-y: auto;
+}
+
+/* Combat Board tab: the battlefield is height-capped (below), so the command
+   dock — the CURRENT activation's actions — must be reachable right under it.
+   Cap the dock and let ITS list scroll, so the first (most-used) actions always
+   sit on-screen without a long page slide past the board. */
+.phoneMode .rightRail > .commandDock {
+  max-height: 42dvh;
+  overflow-y: auto;
+}
+
+/* Tighter hand grids: the generous 10px gaps meant fewer cards per screen and
+   more vertical hunting. 6px keeps every card individually tappable while
+   fitting more into view. */
+.phoneMode .handFan {
+  gap: 6px;
+  padding: 8px 4px;
+}
+
+.phoneMode .adventureHandCards {
+  gap: 6px;
+}
+
+/* The permanents/ongoing tray above the hand rarely has content on a phone;
+   drop its min-height so it does not reserve a dead band above the cards. */
+.phoneMode .playerCardBar .permanentEffectsPanel {
+  min-height: 0;
+}
+
 /* Landscape phones have ~220px of height for the whole battlefield frame —
    the decorative scenery band alone eats ~100px of it. Drop the band and cap
    the frame so the full 5×4 grid fits between the HUD and the tab bar without
