@@ -7,6 +7,7 @@ import type {
   PlayerVisibleState,
 } from "../state";
 import { chooseComputerAction } from "./policy";
+import { scoreCombatAction } from "./combat-policy";
 import type { ComputerObservation } from "./types";
 
 /** Minimal combat unit; only the fields the policy reads matter, the rest are
@@ -513,5 +514,94 @@ describe("combat policy — closing distance", () => {
       observation([mover, enemy], [moveTo("M", 4), defend("M")]),
     );
     expect(hold?.action.type).toBe("DEFEND_UNIT");
+  });
+});
+
+const commanderCast = (unitId: string, abilityId: string): GameAction =>
+  ({
+    type: "USE_UNIT_ABILITY",
+    playerId: "p2",
+    unitId,
+    abilityId,
+    target: { type: "none" },
+  }) as GameAction;
+
+describe("combat policy — WOG commander activation cast (gap 4)", () => {
+  it("prefers a heal that swings the fight; a healthy-ally cast is a marginal skip", () => {
+    // soul_eater commander carries a heal cast. A badly wounded ally is on the
+    // board and the only enemy is far, so this melee commander would have to WALK
+    // to attack — but the big heal is worth more than the walk, so it still casts
+    // (the movement-lock penalty is waived for a swing cast).
+    const cmdr = unit({
+      id: "C",
+      controllerId: "p2",
+      commanderSlug: "soul_eater",
+      position: 8,
+      type: "ground",
+    } as Partial<CombatUnitState> & { id: string });
+    const woundedAlly = unit({
+      id: "ALLY",
+      controllerId: "p2",
+      maxHealth: 6,
+      damage: 4,
+      position: 5,
+    });
+    const farEnemy = unit({ id: "E", controllerId: "p1", position: 19 });
+
+    const heal = scoreCombatAction(
+      observation([cmdr, woundedAlly, farEnemy], []),
+      commanderCast("C", "commander-cast-soul_eater"),
+    );
+    expect(heal?.policy).toBe("combat.commander-cast");
+    expect(heal!.score).toBeGreaterThan(640); // a real heal — swings the fight
+
+    // CONTROL: same board, HEALTHY ally. The cast now heals nothing, and the
+    // melee commander with no adjacent enemy is stranded from its walk, so the
+    // movement-lock penalty drops the cast far below — proving the heal size +
+    // swing gate, not the cast itself, drove the first score.
+    const healthyAlly = unit({
+      id: "ALLY",
+      controllerId: "p2",
+      maxHealth: 6,
+      damage: 0,
+      position: 5,
+    });
+    const marginal = scoreCombatAction(
+      observation([cmdr, healthyAlly, farEnemy], []),
+      commanderCast("C", "commander-cast-soul_eater"),
+    );
+    expect(marginal!.score).toBeLessThan(500);
+    expect(marginal!.score).toBeLessThan(heal!.score - 100);
+  });
+
+  it("buffs before an in-place strike, but not when the buff would strand a needed walk", () => {
+    // brute commander carries an attack-buff cast. With an ADJACENT enemy the
+    // commander can buff and then strike this same activation — a clear swing.
+    const cmdr = unit({
+      id: "C",
+      controllerId: "p2",
+      commanderSlug: "brute",
+      position: 8,
+      type: "ground",
+    } as Partial<CombatUnitState> & { id: string });
+    const adjacentEnemy = unit({ id: "E", controllerId: "p1", position: 9 });
+
+    const buffThenStrike = scoreCombatAction(
+      observation([cmdr, adjacentEnemy], []),
+      commanderCast("C", "commander-cast-brute"),
+    );
+    expect(buffThenStrike?.policy).toBe("combat.commander-cast");
+    expect(buffThenStrike!.score).toBeGreaterThan(620); // buff, then attack in place
+
+    // CONTROL: the only enemy is now far. A melee commander must WALK to fight,
+    // and the cast LOCKS movement — so buffing loses to MOVE_AND_ATTACK (620+) and
+    // the score drops below a real strike so the runner walks in instead.
+    const farEnemy = unit({ id: "E", controllerId: "p1", position: 19 });
+    const strandedBuff = scoreCombatAction(
+      observation([cmdr, farEnemy], []),
+      commanderCast("C", "commander-cast-brute"),
+    );
+    expect(strandedBuff!.score).toBeLessThan(500);
+    expect(strandedBuff!.score).toBeLessThan(buffThenStrike!.score - 100);
   });
 });
