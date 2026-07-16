@@ -576,7 +576,8 @@ export function tournamentRulesAllOn(
 function makeSharedDecks(
   seed: string,
   splitDecks: boolean,
-  tournament: { banDiplomacy: boolean; banHourglass: boolean }
+  tournament: { banDiplomacy: boolean; banHourglass: boolean },
+  polishSpellBook = false
 ): Record<string, DeckState> {
   const without = (cardIds: string[], removeId: string, ban: boolean): string[] =>
     ban ? cardIds.filter((id) => id !== removeId) : cardIds;
@@ -598,8 +599,10 @@ function makeSharedDecks(
 
   if (splitDecks) {
     return {
-      spells: make("spells", spellDeckBinhBasic),
-      "spells-expert": make("spells-expert", spellDeckBinhExpert),
+      // Polish tournaments deliberately use one combined Spell deck even when
+      // split Artifact decks remain enabled.
+      spells: make("spells", polishSpellBook ? spellDeckLegacy : spellDeckBinhBasic),
+      ...(polishSpellBook ? {} : { "spells-expert": make("spells-expert", spellDeckBinhExpert) }),
       abilities: make(
         "abilities",
         without(abilityDeckBinh, TOURNAMENT_REMOVED_ABILITY_ID, tournament.banDiplomacy)
@@ -649,7 +652,7 @@ function makeEventsDeck(seed: string): DeckState {
   };
 }
 
-function makeStartingDeck(heroDefId: string): string[] {
+function makeStartingDeck(heroDefId: string, polishSpellBook = false): string[] {
   const hero = coreHeroDefinitions[heroDefId];
   if (!hero) {
     return [];
@@ -669,10 +672,11 @@ function makeStartingDeck(heroDefId: string): string[] {
     deck.push("stat.knowledge");
   }
 
-  // Might heroes start with one Magic Arrow, magic heroes with two.
-  deck.push("spell.magic_arrow");
+  // Polish Spell Book replaces each starting Magic Arrow in the M&M deck with
+  // a generic Cast-a-Spell card; the matching Arrows are seeded into the Book.
+  deck.push(polishSpellBook ? "spell.cast_a_spell" : "spell.magic_arrow");
   if (hero.type === "magic") {
-    deck.push("spell.magic_arrow");
+    deck.push(polishSpellBook ? "spell.cast_a_spell" : "spell.magic_arrow");
   }
 
   deck.push(hero.startingAbilityCardId);
@@ -683,9 +687,16 @@ function makeStartingDeck(heroDefId: string): string[] {
   return deck;
 }
 
-function makePlayer(config: AdventurePlayerConfig, seed: string, options: GameSetupOptions): PlayerState {
+function makePlayer(
+  config: AdventurePlayerConfig,
+  seed: string,
+  options: GameSetupOptions,
+  polishSpellBook = false
+): PlayerState {
   const heroDefId = config.heroDefId ?? coreFactionDefinitions[config.factionId].heroes[0];
-  const deck = shuffleCards(makeStartingDeck(heroDefId), `${seed}#starting-deck#${config.id}`);
+  const hero = coreHeroDefinitions[heroDefId];
+  const deck = shuffleCards(makeStartingDeck(heroDefId, polishSpellBook), `${seed}#starting-deck#${config.id}`);
+  const startingSpellCount = hero?.type === "magic" ? 2 : 1;
 
   const player: PlayerState = {
     id: config.id,
@@ -695,7 +706,8 @@ function makePlayer(config: AdventurePlayerConfig, seed: string, options: GameSe
     deck,
     hand: [],
     discard: [],
-    spellBook: [],
+    spellBook: polishSpellBook ? Array.from({ length: startingSpellCount }, () => "spell.magic_arrow") : [],
+    spellBookUsed: [],
     removed: [],
     army: [],
     startingArmy: [],
@@ -776,6 +788,7 @@ function makeNeutralSeatPlayer(): PlayerState {
     hand: [],
     discard: [],
     spellBook: [],
+    spellBookUsed: [],
     removed: [],
     army: [],
     startingArmy: [],
@@ -1576,9 +1589,6 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   // Blocked Field offers the discovering player a bank token from the matching
   // pile. Off skips both the piles and the offer.
   const creatureBanksOn = setupOptions.creatureBanks ?? true;
-  // Spell Book is a house rule: BINH defaults ON, Legacy defaults OFF. Either
-  // mode may override via the explicit flag (Legacy is a soft preset).
-  const spellBookOn = setupOptions.spellBook ?? setupOptions.ruleset === "binh";
   // Morale Cards are opt-in: when on, morale draws cards instead of changing tokens.
   const moraleCardsOn = setupOptions.moraleCards ?? false;
   // Tournament setup rules (p.54): granular bans + second-player morale.
@@ -1608,6 +1618,13 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   // game (explicit flag if set, else the chosen mode's default). Frozen onto
   // adventure state so the engine reads plain booleans during play.
   const houseRules = resolveHouseRules(setupOptions);
+  const polishSpellBookOn = houseRules["polish-spell-book"];
+  // The two Spell Book lifecycles can never coexist. A direct setup payload
+  // that asks for both resolves in favour of the explicit Polish variant; the
+  // lobby UI also switches the other toggle off immediately.
+  const spellBookOn = polishSpellBookOn
+    ? false
+    : setupOptions.spellBook ?? setupOptions.ruleset === "binh";
   const wog: WogModOptions = ruleset === "binh"
     ? { ...DEFAULT_WOG_OPTIONS, ...setupOptions.wog }
     : { ...DEFAULT_WOG_OPTIONS, ...setupOptions.wog, enabled: false };
@@ -1751,7 +1768,10 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     priorityPlayerId: null,
     turnOrder: playerConfigs.map((config) => config.id),
     players: Object.fromEntries([
-      ...playerConfigs.map((config) => [config.id, makePlayer(config, seed, setupOptions)] as const),
+      ...playerConfigs.map((config) => [
+        config.id,
+        makePlayer(config, seed, setupOptions, polishSpellBookOn)
+      ] as const),
       [NEUTRAL_PLAYER_ID, makeNeutralSeatPlayer()] as const
     ]),
     map: { spaces: {} },
@@ -1761,7 +1781,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     heroes: {},
     combat: null,
     decks: {
-      ...makeSharedDecks(seed, houseRules["split-decks"], tournamentRules),
+      ...makeSharedDecks(seed, houseRules["split-decks"], tournamentRules, polishSpellBookOn),
       ...makeNeutralDecks(seed, wog),
       [ASTROLOGERS_DECK_ID]: makeAstrologersDeck(seed, eventsOn),
       ...(moraleCardsOn ? makeMoraleDecks(seed) : {}),
@@ -2332,6 +2352,7 @@ function makeLobbySeatPlayer(playerId: PlayerId, name: string, options: GameSetu
     hand: [],
     discard: [],
     spellBook: [],
+    spellBookUsed: [],
     removed: [],
     army: [],
     startingArmy: [],

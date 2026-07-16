@@ -123,10 +123,11 @@ export function applyUnitSideRules(
  */
 export function unitSideRuleOverrides(
   state: Pick<GameState, "ruleset" | "adventure">
-): { griffinBuff: boolean; marksmanBuff: boolean } {
+): { griffinBuff: boolean; marksmanBuff: boolean; polishUnitStacks: boolean } {
   return {
     griffinBuff: houseRuleEnabled(state, "griffin-buff"),
-    marksmanBuff: houseRuleEnabled(state, "marksman-buff")
+    marksmanBuff: houseRuleEnabled(state, "marksman-buff"),
+    polishUnitStacks: houseRuleEnabled(state, "polish-unit-stacks")
   };
 }
 
@@ -295,7 +296,13 @@ function playerHeldCardIds(state: GameState, playerId: PlayerId): Set<CardId> {
     return new Set();
   }
 
-  const held = new Set<CardId>([...player.hand, ...player.deck, ...player.discard, ...(player.spellBook ?? [])]);
+  const held = new Set<CardId>([
+    ...player.hand,
+    ...player.deck,
+    ...player.discard,
+    ...(player.spellBook ?? []),
+    ...(player.spellBookUsed ?? [])
+  ]);
   for (const ongoing of player.ongoingCards ?? []) {
     held.add(ongoing.cardId);
   }

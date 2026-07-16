@@ -101,7 +101,7 @@ export function applyUnitCurrentSide(
   unit: CombatUnitState,
   ruleset: GameRuleset,
   /** Griffin/Marksman toggle overrides; falls back to the bundled mode default. */
-  overrides?: { griffinBuff?: boolean; marksmanBuff?: boolean }
+  overrides?: { griffinBuff?: boolean; marksmanBuff?: boolean; polishUnitStacks?: boolean }
 ): void {
   const top = topTransform(unit);
   if (top) {
@@ -117,8 +117,10 @@ export function applyUnitCurrentSide(
     return;
   }
 
-  // Creature Bank defenders fight from their own card; their current statistics
-  // are the bank card plus the bonus of any Stack Token currently on them.
+  // Creature Bank defenders fight from their own card. Standard banks may add
+  // one random-stat Stack Token; Polish sized banks instead add deterministic
+  // full-health layers to every card and a flat +1 Attack while any layer is
+  // left. The two representations are mutually exclusive at construction.
   if (unit.bankUnit && unit.unitDefId) {
     const bankSide = CREATURE_BANK_UNIT_SIDES[unit.unitDefId];
     if (!bankSide) {
@@ -126,7 +128,8 @@ export function applyUnitCurrentSide(
     }
     const bonus = (stat: "attack" | "defense" | "health" | "initiative") =>
       unit.stackToken === stat ? stackTokenDelta(stat) : 0;
-    unit.attack = bankSide.attack + bonus("attack");
+    const polishStackAttack = (unit.bankStacks ?? 0) > 0 ? 1 : 0;
+    unit.attack = bankSide.attack + bonus("attack") + polishStackAttack;
     unit.defense = bankSide.defense + bonus("defense");
     unit.maxHealth = bankSide.health + bonus("health");
     unit.initiative = bankSide.initiative + bonus("initiative");
@@ -156,7 +159,12 @@ export function applyUnitCurrentSide(
   // side so a Gelu-recruited Sharpshooters keeps its buff across any recompute
   // (e.g. a Pack→Few flip). A specialty cover (top branch) or a bank card (above)
   // replaces stats wholesale and intentionally drops the bonus while covered.
-  unit.attack = side.attack + (unit.permanentAttackBonus ?? 0);
+  // Polish Unit Stacks: a Group (Pack) gets one flat +1 Attack while at least
+  // one paid layer remains. It never scales with the number of layers and never
+  // applies to Few/Neutral cards or specialty covers.
+  const armyStackAttack =
+    overrides?.polishUnitStacks && unit.variant === "pack" && (unit.armyStacks ?? 0) > 0 ? 1 : 0;
+  unit.attack = side.attack + (unit.permanentAttackBonus ?? 0) + armyStackAttack;
   unit.defense = side.defense;
   unit.maxHealth = side.health + (unit.permanentHealthBonus ?? 0);
   unit.initiative = side.initiative;

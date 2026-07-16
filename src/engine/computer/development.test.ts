@@ -14,6 +14,7 @@ import { resourceDeficits, scoreMapAction } from "./map-policy";
 import { observeForComputer } from "./observation";
 import { chooseComputerAction } from "./policy";
 import type { ComputerObservation } from "./types";
+import { polishUnitStackCost } from "../polish-unit-stacks";
 
 function game(): GameState {
   return createAdventureGameState({
@@ -282,6 +283,74 @@ describe("computer long-horizon development plan", () => {
     const wise = scoreMapAction(observation(state), buySpells);
     expect(wise?.policy).toBe("town.buy-spells-after-army-core");
     expect(wise!.score).toBe(620);
+  });
+
+  it("buys Polish Stack layers only from surplus after the full army core", () => {
+    const state = game();
+    establishPacks(state);
+    const town = Object.values(state.towns).find((candidate) => candidate.controllerId === "p2")!;
+    town.buildings = [
+      buildingWith(state, (effect) => effect.type === "UNLOCK_REINFORCE"),
+      buildingWith(state, (effect) => effect.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "bronze"),
+      buildingWith(state, (effect) => effect.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "silver"),
+      buildingWith(state, (effect) => effect.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "gold"),
+    ];
+    expect(armyDevelopmentProfile(state, "p2").phase).toBe("improve-army");
+    const unit = state.players.p2.army[0];
+    const cost = polishUnitStackCost(unit.unitDefId)?.gold ?? 0;
+    const target = developmentResourceTargets(state, "p2");
+    const buyStack: GameAction = {
+      type: "POPULATION_ACTION",
+      playerId: "p2",
+      purchases: [{ kind: "stack", unitDefId: unit.unitDefId, armyUnitId: unit.id }]
+    };
+
+    state.players.p2.resources.gold = Math.max(5, target.gold) + cost - 1;
+    expect(scoreMapAction(observation(state), buyStack)!.score).toBeLessThan(300);
+
+    state.players.p2.resources.gold = Math.max(5, target.gold) + cost;
+    const first = scoreMapAction(observation(state), buyStack)!;
+    expect(first.score).toBeGreaterThan(300);
+    unit.stacks = 1;
+    const later = scoreMapAction(observation(state), buyStack)!;
+    expect(first.score).toBeGreaterThan(later.score);
+  });
+
+  it("buys Polish Cast supply when the Book outgrows it and rolls only weak Spells", () => {
+    const state = game();
+    establishPacks(state);
+    const town = Object.values(state.towns).find((candidate) => candidate.controllerId === "p2")!;
+    town.buildings = [
+      buildingWith(state, (effect) => effect.type === "UNLOCK_REINFORCE"),
+      buildingWith(state, (effect) => effect.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "bronze"),
+      buildingWith(state, (effect) => effect.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "silver"),
+      buildingWith(state, (effect) => effect.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "gold"),
+    ];
+    const target = developmentResourceTargets(state, "p2");
+    state.players.p2.resources.gold = target.gold + 10;
+    state.players.p2.hand = [];
+    state.players.p2.deck = ["spell.cast_a_spell"];
+    state.players.p2.discard = [];
+    state.players.p2.spellBook = ["spell.haste", "spell.slow"];
+    state.players.p2.spellBookUsed = [];
+
+    const buyCast: GameAction = { type: "SPELL_BOOK_ACTION", playerId: "p2", takeCastCard: true };
+    expect(scoreMapAction(observation(state), buyCast)?.policy).toBe("town.buy-polish-cast-enabler");
+    state.players.p2.deck.push("spell.cast_a_spell");
+    expect(scoreMapAction(observation(state), buyCast)?.policy).toBe("town.cast-supply-sufficient");
+
+    const rollWeak: GameAction = {
+      type: "SPELL_BOOK_ACTION",
+      playerId: "p2",
+      rollSpell: { cardId: "spell.earthquake", source: "refreshed" }
+    };
+    const rollStrong: GameAction = {
+      type: "SPELL_BOOK_ACTION",
+      playerId: "p2",
+      rollSpell: { cardId: "spell.fly", source: "refreshed" }
+    };
+    expect(scoreMapAction(observation(state), rollWeak)?.policy).toBe("town.roll-weak-polish-spell");
+    expect(scoreMapAction(observation(state), rollStrong)?.policy).toBe("town.keep-useful-polish-spell");
   });
 
   it("unlocks Silver after three Packs, then Gold after Silver", () => {

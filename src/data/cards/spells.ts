@@ -32,6 +32,30 @@ export const SCANLESS_SPELLS: ReadonlySet<string> = new Set<string>([]);
 const DECK_BACK_IMAGE = "/assets/player-deck-back.webp";
 
 export const spellCards: CardLibrary = {
+  "spell.cast_a_spell": {
+    id: "spell.cast_a_spell",
+    name: "Cast a Spell",
+    // Physically a Spell/M&M card so its printed alternative "+1 Power" works
+    // through the engine's universal Spell-as-power-source path. It is excluded
+    // from every actual Spell acquisition/cast list by polish-spell-book.ts.
+    kind: "spell",
+    timing: "instant",
+    spellLevel: "basic",
+    spellSchools: [],
+    tags: ["spell", "polish", "Cast one refreshed Spell from your Spell Book. — OR — Instant: +1 Power."],
+    power: 0,
+    target: { type: "none" },
+    effect: { type: "CAST_FROM_SPELL_BOOK" },
+    assets: {
+      cardImage: "/assets/spells-cast_a_spell.webp",
+      imageAlt: "Cast a Spell card"
+    },
+    implementationStatus: "implemented",
+    source: {
+      product: "Polish tournament house rules v1.2",
+      credit: "User-supplied Cast a Spell card art; Archon Studio / Ubisoft component frame."
+    }
+  },
   "spell.haste": {
     id: "spell.haste",
     name: "Haste",
