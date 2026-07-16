@@ -1480,7 +1480,23 @@ describe("neutral combat", () => {
     return state;
   }
 
-  it("auto-resolves a neutral magog's splash target by the AI priority", () => {
+  /** Passes every open reaction window (no defends) so a paused attack resolves. */
+  function passReactions(state: GameState): GameState {
+    let safety = 20;
+    while (safety > 0 && state.reactionWindow) {
+      safety -= 1;
+      state = apply(state, { type: "PASS_REACTION", playerId: state.reactionWindow.priorityPlayerId });
+    }
+    return state;
+  }
+
+  // BINH house rule ("the player can choose who will get hit when an enemy
+  // neutral attacks"): in a PLAIN neutral fight (the AI plays the guards — no
+  // PvP Neutral Control) the FIGHTER picks the VICTIM of a neutral splash /
+  // spread second-attack. Each pick is mutation-checked by picking the OTHER
+  // candidate as the CONTROL — if the pump branch is removed, the choice never
+  // reaches p1 (a NEUTRAL-owned choice p1 may not resolve), so `apply` throws.
+  it("lets the FIGHTER pick a neutral Magog's fireball splash victim (2 candidates)", () => {
     let state = threeUnitFight(moveOntoGuardedMine(refreshP1(makeGame())));
 
     // Reshape the revealed guard into a pack of Magogs aiming down the board.
@@ -1493,21 +1509,139 @@ describe("neutral combat", () => {
     guard.position = 1;
     guard.initiative = 1;
 
-    // The player units all defend; the guard then shoots the ranged
-    // marksmen (AI: ranged hunts ranged) and the splash choice auto-resolves
-    // onto the closer griffins (both flanks are bronze; distance breaks it).
+    // The player units defend; the guard shoots the ranged marksmen (AI: ranged
+    // hunts ranged), and its fireball splash — a unit adjacent to the target —
+    // now STOPS for the fighter with BOTH flanks (griffins @13, halberdiers @16)
+    // offered, instead of the AI auto-picking the closer griffins.
+    const atChoice = defendThrough(state);
+    const choice = atChoice.pendingChoice;
+    expect(choice?.type).toBe("ABILITY_TARGET_CHOICE");
+    if (choice?.type !== "ABILITY_TARGET_CHOICE") {
+      return;
+    }
+    expect(choice.kind).toBe("flat-damage");
+    expect(choice.playerId).toBe("p1"); // the FIGHTER, not the neutral AI
+    const griffins = Object.values(atChoice.combat!.units).find((unit) => unit.name === "Griffins")!;
+    const halberdiers = Object.values(atChoice.combat!.units).find((unit) => unit.name === "Halberdiers")!;
+    expect(new Set(choice.candidateUnitIds)).toEqual(new Set([griffins.id, halberdiers.id]));
+    // The fighter alone may resolve it — the neutral seat is refused.
+    const usurped = applyAction(atChoice, {
+      type: "CHOOSE_ABILITY_TARGET",
+      playerId: NEUTRAL_PLAYER_ID,
+      choiceId: choice.id,
+      targetUnitId: griffins.id
+    });
+    expect(usurped.errors.length).toBeGreaterThan(0);
+
+    // The fighter dumps the splash on the halberdiers — the flank the old AI
+    // would NOT have hit (it favoured the closer griffins).
+    const hitB = apply(atChoice, {
+      type: "CHOOSE_ABILITY_TARGET",
+      playerId: "p1",
+      choiceId: choice.id,
+      targetUnitId: halberdiers.id
+    });
+    expect(hitB.combat!.units[halberdiers.id].damage).toBe(1);
+    expect(hitB.combat!.units[griffins.id].damage).toBe(0);
+
+    // CONTROL — the OTHER pick from the same open choice hits the OTHER flank.
+    const hitA = apply(atChoice, {
+      type: "CHOOSE_ABILITY_TARGET",
+      playerId: "p1",
+      choiceId: choice.id,
+      targetUnitId: griffins.id
+    });
+    expect(hitA.combat!.units[griffins.id].damage).toBe(1);
+    expect(hitA.combat!.units[halberdiers.id].damage).toBe(0);
+  });
+
+  it("lets the FIGHTER pick a neutral Lich's Death Cloud victim (2 candidates)", () => {
+    let state = threeUnitFight(moveOntoGuardedMine(refreshP1(makeGame())));
+
+    const guard = Object.values(state.combat!.units).find((unit) => unit.controllerId === NEUTRAL_PLAYER_ID)!;
+    guard.name = "Liches";
+    guard.type = "ranged";
+    guard.abilities = ["lich-death-cloud"];
+    guard.attack = 1;
+    guard.grade = "silver";
+    guard.position = 1;
+    guard.initiative = 1;
+
+    // The Death Cloud is a full ATTACK (attack 2) at a unit adjacent to the
+    // target; give the flanks 0 Defense and high Health so it lands a clean,
+    // survivable hit. Dice stay at 0 so the +2 attack reads through.
+    const griffins = Object.values(state.combat!.units).find((unit) => unit.name === "Griffins")!;
+    const halberdiers = Object.values(state.combat!.units).find((unit) => unit.name === "Halberdiers")!;
+    for (const flank of [griffins, halberdiers]) {
+      flank.defense = 0;
+      flank.maxHealth = 20;
+      flank.damage = 0;
+    }
+    state.combat!.dice.scriptedRolls = Array(40).fill(0);
+    state.combat!.dice.rollCount = 0;
+
+    const atChoice = defendThrough(state);
+    const choice = atChoice.pendingChoice;
+    expect(choice?.type).toBe("ABILITY_TARGET_CHOICE");
+    if (choice?.type !== "ABILITY_TARGET_CHOICE") {
+      return;
+    }
+    expect(choice.kind).toBe("second-attack");
+    expect(choice.playerId).toBe("p1"); // the FIGHTER picks the spread target
+    expect(new Set(choice.candidateUnitIds)).toEqual(new Set([griffins.id, halberdiers.id]));
+
+    // Pick the halberdiers: the Death Cloud attacks THEM (event) and only they
+    // take damage; the griffins the fighter did NOT pick are untouched.
+    const hitB = passReactions(
+      apply(atChoice, { type: "CHOOSE_ABILITY_TARGET", playerId: "p1", choiceId: choice.id, targetUnitId: halberdiers.id })
+    );
+    const cloudB = hitB.eventLog.filter(
+      (event) => event.type === "UNIT_ATTACK_DECLARED" && event.abilityAttack?.abilityId === "lich-death-cloud"
+    );
+    expect(cloudB.map((event) => (event.type === "UNIT_ATTACK_DECLARED" ? event.defenderId : null))).toEqual([halberdiers.id]);
+    expect(hitB.combat!.units[halberdiers.id].damage).toBeGreaterThan(0);
+    expect(hitB.combat!.units[griffins.id].damage).toBe(0);
+
+    // CONTROL — picking the griffins aims the Death Cloud at them instead.
+    const hitA = passReactions(
+      apply(atChoice, { type: "CHOOSE_ABILITY_TARGET", playerId: "p1", choiceId: choice.id, targetUnitId: griffins.id })
+    );
+    const cloudA = hitA.eventLog.filter(
+      (event) => event.type === "UNIT_ATTACK_DECLARED" && event.abilityAttack?.abilityId === "lich-death-cloud"
+    );
+    expect(cloudA.map((event) => (event.type === "UNIT_ATTACK_DECLARED" ? event.defenderId : null))).toEqual([griffins.id]);
+    expect(hitA.combat!.units[griffins.id].damage).toBeGreaterThan(0);
+    expect(hitA.combat!.units[halberdiers.id].damage).toBe(0);
+  });
+
+  it("CONTROL: a single splash candidate auto-resolves with NO prompt (engine convention)", () => {
+    let state = threeUnitFight(moveOntoGuardedMine(refreshP1(makeGame())));
+
+    const guard = Object.values(state.combat!.units).find((unit) => unit.controllerId === NEUTRAL_PLAYER_ID)!;
+    guard.name = "Magogs";
+    guard.type = "ranged";
+    guard.abilities = ["magog-fireball-splash"];
+    guard.attack = 1;
+    guard.grade = "bronze";
+    guard.position = 1;
+    guard.initiative = 1;
+
+    // Pull the halberdiers away from the marksmen so ONLY the griffins remain
+    // adjacent to the target: a lone candidate is mandatory and needs no prompt.
+    const griffins = Object.values(state.combat!.units).find((unit) => unit.name === "Griffins")!;
+    const halberdiers = Object.values(state.combat!.units).find((unit) => unit.name === "Halberdiers")!;
+    halberdiers.position = 8; // row 2, col 0 — adjacent to neither marksmen@17 nor magog@1
+
     state = defendThrough(state);
 
-    expect(state.pendingChoice).toBeNull();
+    expect(state.pendingChoice).toBeNull(); // the AI auto-applied the lone splash
     expect(
       state.eventLog.some(
         (event) => event.type === "UNIT_ABILITY_TRIGGERED" && event.abilityId === "magog-fireball-splash"
       )
     ).toBe(true);
-    const griffins = Object.values(state.combat!.units).find((unit) => unit.name === "Griffins")!;
-    const halberdiers = Object.values(state.combat!.units).find((unit) => unit.name === "Halberdiers")!;
-    expect(griffins.damage).toBe(1);
-    expect(halberdiers.damage).toBe(0);
+    expect(state.combat!.units[griffins.id].damage).toBe(1);
+    expect(state.combat!.units[halberdiers.id].damage).toBe(0);
   });
 
   it("lets the player break a neutral target tie, then the guard commits to the pick", () => {

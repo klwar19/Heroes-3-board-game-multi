@@ -92,3 +92,26 @@ export function isNeutralSideCombatChoice(combat: CombatState, choice: PendingCh
   }
   return false;
 }
+
+/**
+ * Whether an open choice is a neutral unit's SPLASH / SPREAD second-attack
+ * VICTIM pick — the Magog/Cerberi fireball splash (`flat-damage`) or the Lich
+ * Death Cloud / Hydra pick-one second attack (`second-attack`). In a PLAIN
+ * neutral fight (the AI plays the guards — no PvP Neutral Control seat) the
+ * FIGHTER picks this victim instead of the AI auto-resolving it (BINH house
+ * rule: "the player can choose who will get hit when an enemy neutral attacks").
+ *
+ * Deliberately NARROWER than `isNeutralSideCombatChoice`: the neutral's OWN
+ * offense picks (Magic Mirror `spell-redirect`, Faerie `faerie-damage`, its
+ * `[activation]` choices, the neutral-target/destination ties) are NOT included
+ * — those are the AI's own aim, not a "who gets hit" the victim should steer, so
+ * they keep auto-resolving. Only used by the reducer pump to re-stamp the choice
+ * to the fighter; the choice is created NEUTRAL-owned exactly as before, so a
+ * PvP Neutral Control seat (checked first) still wins ownership of it.
+ */
+export function isNeutralSplashVictimChoice(choice: PendingChoice): boolean {
+  if (!choice || choice.type !== "ABILITY_TARGET_CHOICE") {
+    return false;
+  }
+  return choice.kind === "flat-damage" || choice.kind === "second-attack";
+}

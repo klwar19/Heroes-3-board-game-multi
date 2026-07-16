@@ -155,7 +155,7 @@ import {
 } from "./battlefield";
 import { appendExpiredEffectEvents, finishCombatIfNeeded, markUnitRemovedIfNeeded } from "./combat-units";
 import { isNeutralUnit, pickNeutralTarget, planNeutralActivation, sortNeutralTargetCandidates } from "./neutral-ai";
-import { neutralCombatControllerId } from "./neutral-control";
+import { isNeutralSplashVictimChoice, neutralCombatControllerId } from "./neutral-control";
 import {
   activateBallistas,
   applyPermanentCombatEffectsForPlayer,
@@ -16801,10 +16801,16 @@ function chooseAbilityTarget(
 }
 
 /**
- * Auto-resolves ability target choices owned by the neutral seat (neutral
- * Liches, Magogs, Cerberi): player units are preferred by the AI target
- * priority; only when none qualifies does the mandatory hit fall on a
- * friendly neutral (or the Liches themselves).
+ * Auto-resolves ability target choices owned by the neutral seat: player units
+ * are preferred by the AI target priority; only when none qualifies does the
+ * mandatory hit fall on a friendly neutral (or the Liches themselves).
+ *
+ * NOTE: the Magog/Cerberi splash (`flat-damage`) and Lich/Hydra second attack
+ * (`second-attack`) VICTIM picks no longer normally reach here — the pump hands
+ * a 2+-candidate one to the FIGHTER (plain fight) or the CONTROLLER (PvP Neutral
+ * Control) first. This still runs for the neutral's OWN offense picks (Magic
+ * Mirror redirect, Faerie zap) and as the splash/second-attack fallback when no
+ * live fighter remains to steer it.
  */
 /**
  * A neutral attacker (Minotaurs, Champions) auto-resolves its own attack-die
@@ -18406,7 +18412,34 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
       break;
     }
 
-    // Neutral Liches/Magogs/Cerberi resolve their own ability targets.
+    // BINH house rule ("the player can choose who will get hit when an enemy
+    // neutral attacks"): in a PLAIN neutral fight — the AI plays the guards, no
+    // PvP Neutral Control seat — the FIGHTER picks the VICTIM of a neutral
+    // SPLASH / SPREAD second-attack (Magog/Cerberi fireball splash, Lich Death
+    // Cloud, Hydra) instead of the AI auto-resolving it. Re-stamp the
+    // neutral-owned choice to the LIVE fighter and stop for their click; the
+    // fighter may be a computer seat, which resolves it through its choice
+    // policy exactly like the AI-mode target tie (never a stall). A single
+    // candidate never opens a choice (the opener auto-applies it), so this only
+    // fires on a genuine 2+-candidate pick. The neutral's OWN offense picks
+    // (Magic Mirror redirect, Faerie zap) stay AI-resolved below — the victim of
+    // a "who gets hit" splash is the fighter's to steer, an attack redirect is
+    // not. An eliminated fighter falls through to the AI (safety net).
+    if (
+      combat &&
+      state.pendingChoice?.type === "ABILITY_TARGET_CHOICE" &&
+      state.pendingChoice.playerId === NEUTRAL_PLAYER_ID &&
+      isNeutralSplashVictimChoice(state.pendingChoice) &&
+      !state.players[combat.attackerPlayerId]?.eliminated
+    ) {
+      state.pendingChoice.playerId = combat.attackerPlayerId;
+      state.priorityPlayerId = combat.attackerPlayerId;
+      break;
+    }
+
+    // Neutral Liches/Magogs/Cerberi resolve their own ability targets (the
+    // neutral's own offense picks, plus the splash/second-attack fallback when
+    // no live fighter remains to steer it).
     if (
       state.pendingChoice?.type === "ABILITY_TARGET_CHOICE" &&
       state.pendingChoice.playerId === NEUTRAL_PLAYER_ID
