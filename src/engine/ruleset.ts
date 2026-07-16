@@ -626,9 +626,16 @@ export function spellLimitFor(state: GameState, player: PlayerState): number {
       effect.controllerId === player.id &&
       effect.modifiers.some((modifier) => modifier.type === "SPELL_CAST_ANYTIME" && modifier.ignoreSpellLimit === true)
   );
-  if (ignoresLimit) {
+  // Polish Spell Book reading of Intelligence (reference sheet): the ability is
+  // "Start of Combat: Cast a Spell" (the SPELL_CAST_ANYTIME timing freedom stays)
+  // and its EXPERT side reads "+1 Limit" — the per-round cap rises by exactly 1
+  // instead of the base game's unlimited casting. So under the Polish rule the
+  // Expert Intelligence effect grants +1 here rather than Infinity.
+  const polishBook = houseRuleEnabled(state, "polish-spell-book");
+  if (ignoresLimit && !polishBook) {
     return Number.POSITIVE_INFINITY;
   }
+  const intelligenceExpertBonus = ignoresLimit && polishBook ? 1 : 0;
 
   const effectBonus = state.activeEffects.reduce((total, effect) => {
     if (effect.controllerId !== player.id) {
@@ -649,7 +656,7 @@ export function spellLimitFor(state: GameState, player: PlayerState): number {
   // twice per COMBAT (charges are seeded once at combat start), not per round.
   const manaCharges = state.combat ? (player.combatStats.commanderManaCharges ?? 0) : 0;
 
-  return 1 + player.combatStats.spellLimitBonusThisRound + effectBonus + manaCharges;
+  return 1 + player.combatStats.spellLimitBonusThisRound + effectBonus + manaCharges + intelligenceExpertBonus;
 }
 
 /** Expert uses available this round, including one-shot bonuses. */
