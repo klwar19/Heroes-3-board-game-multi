@@ -56,6 +56,11 @@ const RESOLVING_ACTION_TYPES = new Set<GameAction["type"]>([
   // roll ("Keep the attack roll …" is always the first, skip-flavoured offer)
   // so the paused attack resolves instead of stalling the drop.
   "CHOOSE_PENDING_ROLL",
+  // A combat hand-discard owned by the dropped seat (Neutral Magi Power Drain,
+  // Creature Bank Wraith "Soul Siphon"): resolve it so the parked attack is not
+  // stranded on a choice only the vanished seat could answer. No "skip"-labelled
+  // offer exists, so the driver just discards the first offered card.
+  "RESOLVE_COMBAT_DISCARD",
   "RESOLVE_VISIT_STEP",
   "SET_TILE_ROTATION",
   "SKIP_NECROMANCY",

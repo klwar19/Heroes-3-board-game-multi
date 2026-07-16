@@ -10218,7 +10218,7 @@ export type PendingChoice =
     }
   | {
       /**
-       * A combat hand-discard prompt with two kinds:
+       * A combat hand-discard prompt with three kinds:
        *  - "magi-power-or-random": Neutral Magi "Power Drain" — after the Magi
        *    attack the defending player discards a Power-contributing card (a
        *    Power statistic or any Spell) of their choice, or lets a random card
@@ -10226,17 +10226,27 @@ export type PendingChoice =
        *  - "pegasi-toll": Neutral Pegasi "Mystic Toll" — the caster must pay a
        *    Power card of their choice BEFORE a Spell is cast. The cast is held in
        *    `tollSpell` and replayed once the toll is paid (no random option).
+       *  - "wraith-choose-discard": Creature Bank Crypt/Shipwreck Wraiths "Soul
+       *    Siphon" — after the Wraiths' attack the attacked player discards a
+       *    card of THEIR choice (any card in hand; no random option). Combat
+       *    parks until resolved; `remaining` counts cards still owed.
        */
       id: string;
       type: "COMBAT_HAND_DISCARD";
       playerId: PlayerId;
-      kind: "magi-power-or-random" | "pegasi-toll";
+      kind: "magi-power-or-random" | "pegasi-toll" | "wraith-choose-discard";
       abilityId: string;
       abilityName: string;
       sourceUnitId: UnitId;
       prompt: string;
-      /** Cards in the chooser's hand that can contribute Power. */
+      /**
+       * Cards the chooser may pick from: the hand's Power cards for
+       * "magi-power-or-random"/"pegasi-toll", the WHOLE hand for
+       * "wraith-choose-discard".
+       */
       powerCardIds: CardId[];
+      /** "wraith-choose-discard" only: cards still owed after this pick (>= 1). */
+      remaining?: number;
       /** "pegasi-toll" only: the Spell cast deferred until the toll is paid. */
       tollSpell?: {
         cardId: CardId;
