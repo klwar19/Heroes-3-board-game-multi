@@ -256,6 +256,9 @@ export function getPlayerView(state: GameState, viewerPlayerId: PlayerId): Playe
         // player on the crash screen. healLegacyPlayerFields backfills it too.
         spellBook: playerId === viewerPlayerId ? [...(player.spellBook ?? [])] : [],
         spellBookCount: (player.spellBook ?? []).length,
+        // Polish used Spells sit face up on the table and are public to every
+        // seat, unlike the refreshed Book contents above.
+        spellBookUsed: [...(player.spellBookUsed ?? [])],
         removed: [...player.removed],
         // Spell Scrolls show their symbol to everyone, but only the owner sees
         // which spells they hold (the cards sit face down near the hero).
@@ -425,7 +428,8 @@ export function redactStateForSeat(state: GameState, viewerPlayerId: PlayerId): 
           // including the owner (getPlayerView already emptied it for all).
           hand: isViewer ? [...player.hand] : hiddenCards(handCount),
           deck: hiddenCards(deckCount),
-          spellBook: isViewer ? [...(player.spellBook ?? [])] : hiddenCards(spellBookCount)
+          spellBook: isViewer ? [...(player.spellBook ?? [])] : hiddenCards(spellBookCount),
+          spellBookUsed: [...(player.spellBookUsed ?? [])]
         }
       ];
     })

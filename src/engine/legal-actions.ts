@@ -127,6 +127,11 @@ import {
 import { computerDecisionOwner } from "./computer/window";
 import { SHARED_DECK_IDS } from "./decks";
 import {
+  CAST_A_SPELL_CARD_ID,
+  isCastASpellCard,
+  polishSpellBookEnabled
+} from "./polish-spell-book";
+import {
   abilityExpertIsCrownFree,
   activeSchoolFetches,
   canPlayExpertMode,
@@ -145,6 +150,7 @@ import {
   wisdomSearchCount
 } from "./ruleset";
 import { houseRuleEnabled } from "./house-rules";
+import { polishArmyUnitCanBuyStack, polishUnitStackCost } from "./polish-unit-stacks";
 import type {
   AttackRerollSource,
   AttackRollMode,
@@ -342,6 +348,21 @@ function canAffordCardCost(
     (cost.discardCards === undefined && cost.discardCardsUpTo === undefined && cost.powerCost === undefined)
   ) {
     return true;
+  }
+
+  // Polish Crown of Dragontooth (option B): owned Spells never sit in hand in
+  // this mode, so its printed "remove 1 Spell" cost is paid from either side
+  // of the Book. This is a real removal/replacement, not the old Spell Book's
+  // once-per-turn Power burn, and a Cast-a-Spell enabler is not an owned Spell.
+  if (
+    polishSpellBookEnabled(state) &&
+    cardId === "artifact.crown_of_dragontooth" &&
+    cost.costCardFilter === "spell" &&
+    cost.removeCostCards
+  ) {
+    return [...(player.spellBook ?? []), ...(player.spellBookUsed ?? [])].some(
+      (id) => cardLibrary[id]?.kind === "spell" && !isCastASpellCard(id)
+    );
   }
 
   // The played card itself cannot pay its own cost (hand or Book).
@@ -1778,7 +1799,7 @@ function addSpellActions(
           // the same one-Spell-per-round cast limit — full Power, same timing/
           // targeting gates. (The Book's separate once-per-round budget is only its
           // +1-Power discard, spellBookPowerUsedThisTurn — see the reaction path.)
-          ...(spellBookRuleEnabled(state)
+          ...(bookCastSourcesEnabled(state)
             ? [...new Set(player.spellBook ?? [])].map((cardId) => ({ cardId, fromSpellBook: true }))
             : [])
         ]),
@@ -1821,7 +1842,11 @@ function addSpellActions(
     // a cast Magic Arrow actually lands), not the shared Spell-deck discard the
     // Helm draws from. Search it for the filtered spell id.
     const fromOwnDiscard = castOption?.effect.type === "CAST_FROM_SPELL_DISCARD" && castOption.effect.ownDiscard === true;
-    const sourcePile = fromOwnDiscard ? player.discard : state.decks.spells?.discardPile ?? [];
+    const sourcePile = fromOwnDiscard
+      ? polishSpellBookEnabled(state)
+        ? player.spellBook
+        : player.discard
+      : state.decks.spells?.discardPile ?? [];
     const sourceSpell = spellIdFilter
       ? [...sourcePile].reverse().find((id) => id === spellIdFilter)
       : sourcePile.at(-1);
@@ -2344,6 +2369,24 @@ function isOptionEffectPlayable(
       }
       const player = state.players[playerId];
       const pool = effect.fromTop ? (player?.discard.slice(-effect.fromTop) ?? []) : (player?.discard ?? []);
+      // Polish recovery effects read the face-up used side of the Book instead
+      // of a discard pile that can no longer contain owned Spells. Preserve any
+      // non-Spell half of a mixed filter (Scholar's specialty recovery).
+      if (polishSpellBookEnabled(state)) {
+        const used = player?.spellBookUsed ?? [];
+        if (effect.filter === "spell" && used.length > 0) {
+          return true;
+        }
+        if (effect.filter === "magic-arrow" && used.includes("spell.magic_arrow")) {
+          return true;
+        }
+        if (
+          effect.filter === "spell-or-specialty" &&
+          (used.length > 0 || pool.some((cardId) => cardLibrary[cardId]?.kind === "hero-specialty"))
+        ) {
+          return true;
+        }
+      }
       return pool.some((cardId) => {
         const kind = cardLibrary[cardId]?.kind;
         if (effect.filter === "spell") {
@@ -3069,7 +3112,7 @@ function addTurnCardActions(
   // below drop anything that is not a Map-playable Spell.
   const turnCardSources: { cardId: CardId; fromSpellBook?: true }[] = [
     ...[...new Set(player.hand)].map((cardId) => ({ cardId })),
-    ...(spellBookRuleEnabled(state)
+    ...(bookCastSourcesEnabled(state)
       ? [...new Set(player.spellBook ?? [])].map((cardId) => ({ cardId, fromSpellBook: true as const }))
       : [])
   ];
@@ -3515,7 +3558,7 @@ export function instantHealSpellReactions(
 
   const sources: { cardId: CardId; fromSpellBook?: true }[] = [
     ...[...new Set(player.hand)].map((cardId) => ({ cardId })),
-    ...(spellBookRuleEnabled(state)
+    ...(bookCastSourcesEnabled(state)
       ? [...new Set(player.spellBook ?? [])].map((cardId) => ({ cardId, fromSpellBook: true as const }))
       : [])
   ];
@@ -3895,7 +3938,9 @@ function addUnitAbilityActions(actions: LegalAction[], state: GameState, playerI
       !activeUnit.attackedThisActivation
     ) {
       const player = state.players[playerId];
-      if ((player?.deck.length ?? 0) + (player?.discard.length ?? 0) > 0) {
+      const hasDeckCards = (player?.deck.length ?? 0) + (player?.discard.length ?? 0) > 0;
+      const hasPolishRefresh = !polishSpellBookEnabled(state) || (player?.spellBookUsed?.length ?? 0) > 0;
+      if (hasDeckCards && hasPolishRefresh) {
         actions.push({
           label: `${activeUnit.name}: ${ability.name} (discard ${ability.effect.count} from your deck, take a Spell)`,
           action: { type: "USE_GENIE_DECK_DRAW", playerId, unitId: activeUnit.id }
@@ -4649,11 +4694,77 @@ export function getLegalActions(
   cards: CardLibrary = cardLibrary,
   buildings: BuildingLibrary = sampleBuildings
 ): LegalAction[] {
+  const coreActions = getLegalActionsCore(state, playerId, cards, buildings);
   return withComputerAdvanceOffer(
     state,
     playerId,
-    getLegalActionsCore(state, playerId, cards, buildings),
+    polishSpellBookEnabled(state)
+      ? applyPolishSpellBookActionGate(state, playerId, coreActions)
+      : coreActions,
   );
+}
+
+function bookCastSourcesEnabled(state: GameState): boolean {
+  return spellBookRuleEnabled(state) || polishSpellBookEnabled(state);
+}
+
+/**
+ * Polish Book casts reuse every standard Book target/timing path, but are only
+ * exposed while a generic Cast-a-Spell card is in hand. The marker makes the
+ * reducer consume that enabler atomically with the selected refreshed Spell.
+ * Direct Book power-burning and playing Cast-a-Spell as an actual spell remain
+ * hidden; its printed hand-side +1 Power reaction is intentionally preserved.
+ */
+function applyPolishSpellBookActionGate(
+  state: GameState,
+  playerId: PlayerId,
+  actions: LegalAction[]
+): LegalAction[] {
+  const player = state.players[playerId];
+  const hasEnabler = Boolean(player?.hand.includes(CAST_A_SPELL_CARD_ID));
+  const gated: LegalAction[] = [];
+
+  for (const legal of actions) {
+    const action = legal.action;
+    if (action.type === "MOVE_SPELL_TO_SPELL_BOOK") {
+      continue;
+    }
+    if (
+      (action.type === "CAST_SPELL" || action.type === "PLAY_CARD" || action.type === "PLAY_REACTION") &&
+      isCastASpellCard(action.cardId) &&
+      !(action.type === "PLAY_REACTION" && action.asPowerBoost)
+    ) {
+      continue;
+    }
+    if (
+      (action.type === "CAST_SPELL" || action.type === "PLAY_CARD" || action.type === "PLAY_REACTION") &&
+      cardLibrary[action.cardId]?.kind === "spell" &&
+      !isCastASpellCard(action.cardId) &&
+      !action.fromSpellBook &&
+      !(action.type === "CAST_SPELL" && (action.fromScroll || action.fromSpellDeck || action.tarnumReturn)) &&
+      !(action.type === "PLAY_REACTION" && (action.fromScroll || action.tarnumReturn))
+    ) {
+      // Owned Polish Spells live only in the Book. This also heals legacy saves
+      // defensively: a stray hand Spell cannot bypass the Cast-a-Spell gate.
+      continue;
+    }
+    if (
+      (action.type === "CAST_SPELL" || action.type === "PLAY_CARD" || action.type === "PLAY_REACTION") &&
+      action.fromSpellBook
+    ) {
+      if (!hasEnabler || (action.type === "PLAY_REACTION" && action.asPowerBoost)) {
+        continue;
+      }
+      gated.push({
+        ...legal,
+        label: `${legal.label.replace(" (Spell Book)", "")} (Spell Book · Cast a Spell)`,
+        action: { ...action, castEnablerCardId: CAST_A_SPELL_CARD_ID }
+      });
+      continue;
+    }
+    gated.push(legal);
+  }
+  return gated;
 }
 
 /**
@@ -5211,7 +5322,7 @@ function getMisfortunePreWindowReactions(
   // dedicated pass only scanned the hand, so a Book Misfortune never opened.
   const sources: { cardId: CardId; fromSpellBook?: true }[] = [
     ...[...new Set(player.hand)].map((cardId) => ({ cardId })),
-    ...(spellBookRuleEnabled(state)
+    ...(bookCastSourcesEnabled(state)
       ? [...new Set(player.spellBook ?? [])].map((cardId) => ({ cardId, fromSpellBook: true as const }))
       : [])
   ];
@@ -5375,7 +5486,7 @@ function getLethalSaveReactions(
     // unit with a Spell you had set aside for that very emergency.
     const saveSources: { cardId: CardId; fromSpellBook?: true }[] = [
       ...[...new Set(player.hand)].map((cardId) => ({ cardId })),
-      ...(spellBookRuleEnabled(state)
+      ...(bookCastSourcesEnabled(state)
         ? [...new Set(player.spellBook ?? [])].map((cardId) => ({ cardId, fromSpellBook: true as const }))
         : [])
     ];
@@ -5516,7 +5627,7 @@ function getMagicMirrorReactions(
 
   const sources: { cardId: CardId; fromSpellBook?: true }[] = [
     ...[...new Set(player.hand)].map((cardId) => ({ cardId })),
-    ...(spellBookRuleEnabled(state)
+    ...(bookCastSourcesEnabled(state)
       ? [...new Set(player.spellBook ?? [])].map((cardId) => ({ cardId, fromSpellBook: true as const }))
       : [])
   ];
@@ -5702,7 +5813,7 @@ export function getLegalReactionsForTrigger(
     // card-kind/timing gates below drop anything that is not a playable instant.)
     const reactionSources: { cardId: CardId; fromSpellBook?: true }[] = [
       ...[...new Set(player.hand)].map((cardId) => ({ cardId })),
-      ...(spellBookRuleEnabled(state)
+      ...(bookCastSourcesEnabled(state)
         ? [...new Set(player.spellBook ?? [])].map((cardId) => ({ cardId, fromSpellBook: true as const }))
         : [])
     ];
@@ -5936,7 +6047,7 @@ export function getLegalReactionsForTrigger(
         // Book cancel an enemy attack-instant the same way a hand copy does.
         const cancelSources: { cardId: CardId; fromSpellBook?: true }[] = [
           ...[...new Set(player.hand)].map((cardId) => ({ cardId })),
-          ...(spellBookRuleEnabled(state)
+          ...(bookCastSourcesEnabled(state)
             ? [...new Set(player.spellBook ?? [])].map((cardId) => ({ cardId, fromSpellBook: true as const }))
             : [])
         ];
@@ -7599,6 +7710,30 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
         }
       }
     }
+
+    // Polish Unit Stacks are an optional Population purchase at the player's
+    // own Citadel. They do not require a dwelling and cost the Pack's printed
+    // gold plus its tier number (no recruit discounts or resource substitution).
+    if (houseRuleEnabled(state, "polish-unit-stacks") && canReinforce) {
+      for (const target of player.army) {
+        if (!polishArmyUnitCanBuyStack(target)) {
+          continue;
+        }
+        const cost = polishUnitStackCost(target.unitDefId);
+        if (!cost || !playerHasResources(player, cost)) {
+          continue;
+        }
+        const unitName = coreUnitDefinitions[target.unitDefId]?.name ?? target.unitDefId;
+        actions.push({
+          label: `Add Stack to ${unitName}`,
+          action: {
+            type: "POPULATION_ACTION",
+            playerId,
+            purchases: [{ kind: "stack", unitDefId: target.unitDefId, armyUnitId: target.id }]
+          }
+        });
+      }
+    }
   }
 
   // Mages (Astrologers): the Spell Book token is free this round and usable even
@@ -7610,12 +7745,19 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
       .map((buildingId) => coreBuildingDefinitions[buildingId])
       .find((building) => building?.effect?.type === "MAGE_GUILD");
     const cost = magesFree ? 0 : (mageGuild?.spellBookCost ?? 5);
+    const baseSearchCount = polishSpellBookEnabled(state) ? 3 : 2;
     if (magesFree || player.mageGuildBuiltRound !== state.round) {
       if (player.resources.gold >= cost) {
         actions.push({
-          label: `Buy spells (${cost} gold, Search 2)`,
+          label: `Buy spells (${cost} gold, Search ${baseSearchCount})`,
           action: { type: "SPELL_BOOK_ACTION", playerId }
         });
+        if (polishSpellBookEnabled(state)) {
+          actions.push({
+            label: `Buy Cast a Spell instead (${cost} gold)`,
+            action: { type: "SPELL_BOOK_ACTION", playerId, takeCastCard: true }
+          });
+        }
       }
 
       // Wisdom rides on the purchase: cheaper spells and a bigger search.
@@ -7642,6 +7784,25 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
           });
         }
       }
+    }
+  }
+
+  if (
+    polishSpellBookEnabled(state) &&
+    townHasBuildingEffect(state, playerId, "MAGE_GUILD") &&
+    player.resources.gold >= 3 &&
+    player.polishSpellRollUsedRound !== state.round
+  ) {
+    const rollCandidates = [
+      ...player.spellBook.map((cardId) => ({ cardId, source: "refreshed" as const })),
+      ...(player.spellBookUsed ?? []).map((cardId) => ({ cardId, source: "used" as const }))
+    ];
+    for (const candidate of rollCandidates) {
+      const name = cardLibrary[candidate.cardId]?.name ?? candidate.cardId;
+      actions.push({
+        label: `Rolling Spells: return ${name}${candidate.source === "used" ? " (used)" : ""}, pay 3 gold, Search 2`,
+        action: { type: "SPELL_BOOK_ACTION", playerId, rollSpell: candidate }
+      });
     }
   }
 

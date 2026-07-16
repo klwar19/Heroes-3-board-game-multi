@@ -47,6 +47,7 @@ import {
   grantCreatureBankReward,
   isCreatureBankId,
   placeCreatureBank,
+  polishBankSizeForAttackRolls,
   eliminatePlayer,
   finalizeStartOfTurnHand,
   fieldLayer,
@@ -209,6 +210,12 @@ import {
   wisdomSearchCount
 } from "./ruleset";
 import { houseRuleEnabled } from "./house-rules";
+import { polishArmyUnitCanBuyStack, polishUnitStackCost } from "./polish-unit-stacks";
+import {
+  CAST_A_SPELL_CARD_ID,
+  gainOwnedCard,
+  polishSpellBookEnabled
+} from "./polish-spell-book";
 import {
   HEX_DIRECTIONS,
   hexDistance,
@@ -224,6 +231,7 @@ import {
 } from "./hex";
 import type {
   ArmyUnitState,
+  BankSize,
   CardDefinition,
   CardId,
   CombatState,
@@ -1547,7 +1555,14 @@ function beginTileRotation(
   // Naval Battles: draw (face-up) the Creature Bank token this tile's Blocked
   // Field would host NOW, before the rotation is chosen, so the player rotates
   // knowing which bank they are about to carve.
-  reserveCreatureBankForTile(state, tile);
+  reserveCreatureBankForTile(state, tile, playerId);
+  openPolishBankChoiceBeforeRotation(state, tile, playerId);
+}
+
+const BANK_SIZE_ROMAN: Record<BankSize, string> = { 1: "I", 2: "II", 3: "III", 4: "IV" };
+
+function attackRollLabel(roll: number): string {
+  return roll > 0 ? `+${roll}` : String(roll);
 }
 
 /**
@@ -1559,7 +1574,7 @@ function beginTileRotation(
  * intact. No-op when the rule is off (no piles), the tile can't host a bank
  * (wrong group / no Blocked Field in its definition), or the pile is empty.
  */
-function reserveCreatureBankForTile(state: GameState, tile: MapTileState): void {
+function reserveCreatureBankForTile(state: GameState, tile: MapTileState, playerId: PlayerId): void {
   const adventure = state.adventure;
   if (!adventure) {
     return;
@@ -1577,9 +1592,91 @@ function reserveCreatureBankForTile(state: GameState, tile: MapTileState): void 
     return;
   }
   const bankId = pile[pile.length - 1];
-  if (isCreatureBankId(bankId)) {
-    tile.reservedBankId = bankId;
+  if (!isCreatureBankId(bankId)) {
+    return;
   }
+
+  tile.reservedBankId = bankId;
+  if (!houseRuleEnabled(state, "polish-bank-sizes")) {
+    tile.reservedBankOptions = undefined;
+    return;
+  }
+
+  const bankIds = [pile[pile.length - 1], pile[pile.length - 2]].filter(isCreatureBankId);
+  // The Polish reveal procedure always rolls two Attack dice for EACH of the
+  // two candidates before the hero chooses one, including the first Far tile.
+  const diceCount = 2;
+  const random = createSeededRandom(
+    `${state.seed}#adventure#bank-size-${tile.id}#${eventSeedNumber(state)}`
+  );
+
+  tile.reservedBankOptions = bankIds.map((candidateId, index) => {
+    const rolls = Array.from(
+      { length: diceCount },
+      () => ATTACK_DIE_FACES[random.nextInt(0, ATTACK_DIE_FACES.length - 1)] ?? 0
+    );
+    const size = polishBankSizeForAttackRolls(rolls);
+    const optionLetter = String.fromCharCode(65 + index);
+    appendEvent(state, {
+      type: "ADVENTURE_DICE_ROLLED",
+      playerId,
+      dice: "attack",
+      results: [
+        `Bank ${optionLetter}: ${rolls.map(attackRollLabel).join(" + ")} → size ${BANK_SIZE_ROMAN[size]}`
+      ],
+      attackRolls: rolls
+    });
+    return { bankId: candidateId, size };
+  });
+
+  if (tile.reservedBankOptions[0]) {
+    // Keep the legacy preview pointer aimed at candidate A.
+    tile.reservedBankId = tile.reservedBankOptions[0].bankId;
+  }
+}
+
+/**
+ * Polish ordering from the v1.2 sheet: after both face-up banks have had their
+ * sizes rolled, choose one BEFORE any rotation is offered. The chosen token is
+ * only reserved here (not consumed); after rotation/gate carving it is placed
+ * on the surviving Blocked Field and removed from the pile. With one token left
+ * there is no meaningful choice, so it is reserved automatically.
+ */
+function openPolishBankChoiceBeforeRotation(state: GameState, tile: MapTileState, playerId: PlayerId): void {
+  if (!houseRuleEnabled(state, "polish-bank-sizes")) {
+    return;
+  }
+  const candidates = tile.reservedBankOptions ?? [];
+  if (candidates.length <= 1) {
+    return;
+  }
+  const tier = creatureBankTierForGroup(tile.group);
+  if (!tier) {
+    return;
+  }
+
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId,
+    prompt: "Choose one of the two rolled Creature Banks. After choosing, rotate the tile.",
+    options: candidates.map((candidate, index) => ({
+      label: `${String.fromCharCode(65 + index)} · ${CREATURE_BANKS[candidate.bankId as CreatureBankId]?.name ?? "Creature Bank"} · size ${BANK_SIZE_ROMAN[candidate.size]}`
+    })),
+    context: "place-creature-bank",
+    creatureBank: {
+      // Fields do not materialize until rotation. The reducer ignores this
+      // placeholder on the discriminated preRotation path.
+      fieldId: tile.id,
+      tier,
+      candidates,
+      tileInstanceId: tile.id,
+      preRotation: true
+    },
+    returnPhase: state.phase
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = playerId;
 }
 
 /**
@@ -1885,7 +1982,30 @@ function offerCreatureBankPlacement(state: GameState, tile: MapTileState, player
     // this tile reserved at reveal is not placed. The pile was only peeked, so
     // nothing is consumed — just drop the reservation.
     tile.reservedBankId = undefined;
+    tile.reservedBankOptions = undefined;
     return;
+  }
+
+  // The Polish flow selected exactly one rolled bank before rotation. Place it
+  // automatically now that the final Blocked Field is known; do not reopen the
+  // standard post-rotation place/decline prompt.
+  if (houseRuleEnabled(state, "polish-bank-sizes") && tile.reservedBankOptions?.length === 1) {
+    const selected = tile.reservedBankOptions[0];
+    const tokenIndex = pile.lastIndexOf(selected.bankId);
+    if (tokenIndex < 0 || !isCreatureBankId(selected.bankId)) {
+      throw new Error("The selected Creature Bank is no longer available.");
+    }
+    pile.splice(tokenIndex, 1);
+    placeCreatureBank(state, blockedSpaceId, selected.bankId, selected.size);
+    tile.reservedBankId = undefined;
+    tile.reservedBankOptions = undefined;
+    return;
+  }
+
+  if (houseRuleEnabled(state, "polish-bank-sizes") && !tile.reservedBankOptions?.length) {
+    // Recovery for an in-progress snapshot created before sized reservations
+    // existed: roll the offer now so it remains resolvable after loading.
+    reserveCreatureBankForTile(state, tile, playerId);
   }
 
   // The bank was drawn face-up when the tile was revealed (so the player already
@@ -1896,18 +2016,34 @@ function offerCreatureBankPlacement(state: GameState, tile: MapTileState, player
   tile.reservedBankId = isCreatureBankId(reservedBankId) ? reservedBankId : undefined;
   const bankName = isCreatureBankId(reservedBankId) ? CREATURE_BANKS[reservedBankId]?.name ?? "Creature Bank" : "Creature Bank";
   const tierLabel = tile.group === "subterranean" ? "cavern" : tier === "far" ? "Far tile" : "Near tile";
+  const sizedCandidates = houseRuleEnabled(state, "polish-bank-sizes")
+    ? (tile.reservedBankOptions ?? []).filter((candidate) => pile.includes(candidate.bankId))
+    : [];
+  const options =
+    sizedCandidates.length > 0
+      ? [
+          ...sizedCandidates.map((candidate, index) => ({
+            label: `${String.fromCharCode(65 + index)} · Place ${CREATURE_BANKS[candidate.bankId as CreatureBankId]?.name ?? "Creature Bank"} · size ${BANK_SIZE_ROMAN[candidate.size]}`
+          })),
+          { label: "Leave it blocked" }
+        ]
+      : [{ label: `Place the ${bankName} Creature Bank` }, { label: "Leave it blocked" }];
 
   state.pendingChoice = {
     id: `choice_${nextEventNumber(state)}`,
     type: "OPTION_CHOICE",
     playerId,
-    prompt: `This ${tierLabel} has a Blocked Field — place the ${bankName} Creature Bank here?`,
-    options: [{ label: `Place the ${bankName} Creature Bank` }, { label: "Leave it blocked" }],
+    prompt:
+      sizedCandidates.length > 0
+        ? `This ${tierLabel} has a Blocked Field — choose a rolled Creature Bank, or leave it blocked.`
+        : `This ${tierLabel} has a Blocked Field — place the ${bankName} Creature Bank here?`,
+    options,
     context: "place-creature-bank",
     creatureBank: {
       fieldId: blockedSpaceId,
       tier,
       ...(tile.reservedBankId ? { bankId: tile.reservedBankId } : {}),
+      ...(sizedCandidates.length > 0 ? { candidates: sizedCandidates } : {}),
       tileInstanceId: tile.id
     },
     returnPhase: state.phase
@@ -4725,7 +4861,8 @@ function revealCreatureBankArmy(state: GameState, bankId: CreatureBankId): void 
     return;
   }
 
-  const { units, stackedCount } = buildCreatureBankCombatUnits(state, bankId);
+  const bankField = state.adventure?.fields[combat.context.fieldId];
+  const { units, stackedCount } = buildCreatureBankCombatUnits(state, bankId, bankField?.bankSize);
   combat.context.bankStackCount = stackedCount;
   // Bank defenders carry no tier, so the azure "no time limit" rule never fires.
   combat.context.hasAzure = false;
@@ -4754,7 +4891,10 @@ function revealCreatureBankArmy(state: GameState, bankId: CreatureBankId): void 
     fieldId: combat.context.fieldId,
     bankId,
     unitDefIds: units.map((unit) => unit.unitDefId ?? ""),
-    stackedCount
+    stackedCount,
+    ...(houseRuleEnabled(state, "polish-bank-sizes") && bankField?.bankSize !== undefined
+      ? { stackLayers: Math.max(0, bankField.bankSize - 1) }
+      : {})
   });
 
   // Same as a normal guard reveal: under PvP Neutral Control the controller
@@ -6697,6 +6837,13 @@ export function finalizeAdventureCombat(state: GameState): void {
       discardDefeatedArmyUnit(state, player, armyUnit);
     } else if (armyUnit.side !== "neutral") {
       armyUnit.side = unit.variant === "pack" ? "pack" : "few";
+      if (unit.variant === "pack" && (unit.armyStacks ?? 0) > 0) {
+        armyUnit.stacks = unit.armyStacks;
+      } else {
+        // A Pack casualty that flipped to Few is no longer a Group; every
+        // remaining Polish Stack token is lost with that side change.
+        delete armyUnit.stacks;
+      }
       // Carry the surviving specialty stack (Sandro's Cloak) back to the
       // unit card so it stays on across combats; a defeated Cloak already
       // peeled off into the discard pile mid-combat.
@@ -7474,9 +7621,22 @@ export function buildStructureAdventure(
   if (building.effect?.type === "MAGE_GUILD") {
     player.mageGuildBuiltRound = state.round;
     // Building the Mage Guild immediately searches the Spell deck twice.
+    const searchCount = polishSpellBookEnabled(state) ? 3 : 2;
     state.adventure?.rewardQueue.push(
-      { playerId: action.playerId, kind: "shared-deck-search", deckId: "spells", count: 2 },
-      { playerId: action.playerId, kind: "shared-deck-search", deckId: "spells", count: 2 }
+      {
+        playerId: action.playerId,
+        kind: "shared-deck-search",
+        deckId: "spells",
+        count: searchCount,
+        ...(polishSpellBookEnabled(state) ? { allowCastCardInstead: true } : {})
+      },
+      {
+        playerId: action.playerId,
+        kind: "shared-deck-search",
+        deckId: "spells",
+        count: searchCount,
+        ...(polishSpellBookEnabled(state) ? { allowCastCardInstead: true } : {})
+      }
     );
   }
 
@@ -7564,7 +7724,16 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
   }
 
   if (action.purchases.length === 0) {
-    throw new Error("Choose at least one recruit or reinforcement.");
+    throw new Error("Choose at least one recruit, reinforcement, or Stack.");
+  }
+
+  // Stack costs deliberately ignore every recruit/reinforce discount and the
+  // Freelancer's Guild substitution. Keep Stack batches separate so a mixed
+  // action cannot accidentally route a Stack through those discounts.
+  const buysStacks = action.purchases.some((purchase) => purchase.kind === "stack");
+  const buysUnits = action.purchases.some((purchase) => purchase.kind !== "stack");
+  if (buysStacks && buysUnits) {
+    throw new Error("Buy Unit Stacks separately from recruits and reinforcements.");
   }
 
   const tiers = unlockedRecruitTiers(state, action.playerId);
@@ -7580,7 +7749,7 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
 
   // Each purchase's actual (per-unit, non-stacking) discounted cost, kept so the
   // affordability check, the spend and the per-unit log all agree.
-  const priced: { ref: RecruitPurchaseRef; finalCost: ResourceCost }[] = [];
+  const priced: { ref?: RecruitPurchaseRef; finalCost: ResourceCost }[] = [];
 
   // Validate before mutating: simulate against a copy of the army.
   const armyCopy = player.army.map((unit) => ({ ...unit }));
@@ -7620,7 +7789,7 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
       addCost(finalCost);
       priced.push({ ref, finalCost });
       armyCopy.push({ id: `pending_${armyCopy.length}`, unitDefId: purchase.unitDefId, side: "few" });
-    } else {
+    } else if (purchase.kind === "reinforce") {
       if (!canReinforce) {
         throw new Error("Reinforcing needs a Citadel.");
       }
@@ -7650,14 +7819,36 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
       addCost(finalCost);
       priced.push({ ref, finalCost });
       target.side = "pack";
+    } else {
+      if (!houseRuleEnabled(state, "polish-unit-stacks")) {
+        throw new Error("The Polish Unit Stacks rule is not enabled.");
+      }
+      if (!canReinforce) {
+        throw new Error("Buying a Unit Stack needs a Citadel.");
+      }
+      const target = armyCopy.find((unit) => unit.id === purchase.armyUnitId);
+      if (!target || target.unitDefId !== purchase.unitDefId || !polishArmyUnitCanBuyStack(target)) {
+        throw new Error("Choose an eligible Pack unit below its Stack cap.");
+      }
+      const finalCost = polishUnitStackCost(purchase.unitDefId);
+      if (!finalCost) {
+        throw new Error("That unit cannot buy Stacks.");
+      }
+      addCost(finalCost);
+      priced.push({ finalCost });
+      target.stacks = (target.stacks ?? 0) + 1;
     }
   }
 
-  if (!hasRecruitResources(state, action.playerId, totalCost)) {
-    throw new Error("Not enough resources for those units.");
+  if (buysStacks ? !hasResources(player, totalCost) : !hasRecruitResources(state, action.playerId, totalCost)) {
+    throw new Error(buysStacks ? "Not enough resources for those Unit Stacks." : "Not enough resources for those units.");
   }
 
-  spendRecruitResources(state, action.playerId, totalCost, "population action");
+  if (buysStacks) {
+    spendResources(state, action.playerId, totalCost, "Polish Unit Stacks");
+  } else {
+    spendRecruitResources(state, action.playerId, totalCost, "population action");
+  }
   // The token is NOT consumed by a purchase: the player may keep recruiting and
   // reinforcing this round (BINH house rule). Marking the round "purchased" arms
   // the movement lock — the next time one of this player's heroes moves, the
@@ -7676,7 +7867,7 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
         kind: "recruit",
         cost: finalCost
       });
-    } else {
+    } else if (purchase.kind === "reinforce") {
       const target = player.army.find((unit) => unit.id === purchase.armyUnitId);
       if (target) {
         target.side = "pack";
@@ -7688,9 +7879,25 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
           cost: finalCost
         });
       }
+    } else {
+      const target = player.army.find((unit) => unit.id === purchase.armyUnitId);
+      if (target) {
+        target.stacks = (target.stacks ?? 0) + 1;
+        appendEvent(state, {
+          type: "ARMY_STACK_PURCHASED",
+          playerId: action.playerId,
+          armyUnitId: target.id,
+          unitDefId: target.unitDefId,
+          stacks: target.stacks,
+          cost: finalCost
+        });
+      }
     }
     // Spend the Legion voucher reserved for this exact unit (single-use).
-    consumeRecruitVoucherFor(state, action.playerId, priced[index]!.ref);
+    const recruitRef = priced[index]?.ref;
+    if (recruitRef) {
+      consumeRecruitVoucherFor(state, action.playerId, recruitRef);
+    }
   }
 }
 
@@ -7718,14 +7925,44 @@ export function spellBookAction(state: GameState, action: Extract<GameAction, { 
     throw new Error("Town actions cannot interrupt a combat.");
   }
 
-  if (!player.townTokens.spellBook) {
-    throw new Error("The Spell Book token was already used this round.");
-  }
-
   const town = getTownOfPlayer(state, action.playerId);
   const mageGuild = town?.buildings
     .map((buildingId) => coreBuildingDefinitions[buildingId])
     .find((building) => building?.effect?.type === "MAGE_GUILD");
+
+  if (action.rollSpell) {
+    if (!polishSpellBookEnabled(state) || !mageGuild) {
+      throw new Error("Rolling Spells needs the Polish Spell Book and a Mage Guild.");
+    }
+    if (player.polishSpellRollUsedRound === state.round) {
+      throw new Error("Rolling Spells is limited to once per turn.");
+    }
+    const source = action.rollSpell.source === "used" ? (player.spellBookUsed ??= []) : player.spellBook;
+    const spellIndex = source.indexOf(action.rollSpell.cardId);
+    if (spellIndex === -1) {
+      throw new Error("Choose one of your owned Spell Book cards to roll.");
+    }
+    if (!hasResources(player, { gold: 3 })) {
+      throw new Error("Rolling Spells costs 3 gold.");
+    }
+    spendResources(state, action.playerId, { gold: 3 }, "Rolling Spells");
+    source.splice(spellIndex, 1);
+    state.decks.spells?.discardPile.push(action.rollSpell.cardId);
+    player.polishSpellRollUsedRound = state.round;
+    state.adventure?.rewardQueue.push({
+      playerId: action.playerId,
+      kind: "shared-deck-search",
+      deckId: "spells",
+      count: 2
+    });
+    appendEvent(state, { type: "SPELLS_PURCHASED", playerId: action.playerId, cost: { gold: 3 } });
+    return;
+  }
+
+  if (!player.townTokens.spellBook) {
+    throw new Error("The Spell Book token was already used this round.");
+  }
+
   // Mages (Astrologers): the Spell Book token is free this round AND usable even
   // without a Mage Guild — so the guild requirement (and its "same round built"
   // restriction, which is about the guild) is waived and the gold cost is 0.
@@ -7739,8 +7976,11 @@ export function spellBookAction(state: GameState, action: Extract<GameAction, { 
   }
 
   let goldCost = magesFree ? 0 : (mageGuild?.spellBookCost ?? 5);
-  let searchCount = 2;
+  let searchCount = polishSpellBookEnabled(state) ? 3 : 2;
   const wisdom = action.wisdom;
+  if (action.takeCastCard && (!polishSpellBookEnabled(state) || wisdom)) {
+    throw new Error("Cast a Spell replaces a normal Polish Mage Guild purchase.");
+  }
 
   if (wisdom) {
     const card = cardLibrary[wisdom.cardId];
@@ -7790,6 +8030,11 @@ export function spellBookAction(state: GameState, action: Extract<GameAction, { 
   }
   player.townTokens.spellBook = false;
   appendEvent(state, { type: "SPELLS_PURCHASED", playerId: action.playerId, cost });
+
+  if (action.takeCastCard) {
+    player.hand.push(CAST_A_SPELL_CARD_ID);
+    return;
+  }
 
   state.adventure?.rewardQueue.push({
     playerId: action.playerId,
@@ -8534,13 +8779,18 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     // the same Search (X) runs again. Any other option keeps both cards.
     if (action.optionIndex === 0) {
       const handIndex = player.hand.indexOf(data.cardId);
-      if (handIndex === -1) {
-        throw new Error("The card gained from the Search is no longer in hand.");
+      const bookIndex = player.spellBook.indexOf(data.cardId);
+      if (handIndex === -1 && bookIndex === -1) {
+        throw new Error("The card gained from the Search is no longer available.");
       }
       if (!consumeHeldMoraleCard(state, action.playerId, MORALE_CARD_IDS.repeatSearch)) {
         throw new Error("That Positive Morale card is no longer held.");
       }
-      player.hand.splice(handIndex, 1);
+      if (handIndex !== -1) {
+        player.hand.splice(handIndex, 1);
+      } else {
+        player.spellBook.splice(bookIndex, 1);
+      }
       player.discard.push(data.cardId);
       if (state.adventure) {
         state.adventure.rewardQueue.unshift({
@@ -8619,22 +8869,57 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     const data = choice.creatureBank;
     const adventure = state.adventure;
     const bankTile = data
-      ? adventure?.tiles[data.tileInstanceId ?? adventure.fields[data.fieldId]?.tileInstanceId ?? ""]
+      ? adventure?.tiles[
+          data.tileInstanceId ?? (data.fieldId ? adventure.fields[data.fieldId]?.tileInstanceId : undefined) ?? ""
+        ]
       : undefined;
-    // Option 0 places the bank the tile drew (face-up) at reveal — consume the
-    // top token of the matching pile (it IS the reserved one) and carve it onto
-    // the Blocked Field; option 1 (or any other) leaves the field blocked and the
-    // peeked token stays in the pile for the next tile. Either way the tile's
-    // reservation is now spent.
-    if (data && adventure && action.optionIndex === 0) {
+    const sizedCandidates = data?.candidates ?? [];
+    if (data?.preRotation) {
+      const selected = sizedCandidates[action.optionIndex];
+      const pile = data.tier === "far" ? adventure?.creatureBankTokensFar : adventure?.creatureBankTokensNear;
+      if (!selected || !bankTile || !pile?.includes(selected.bankId) || !isCreatureBankId(selected.bankId)) {
+        throw new Error("Choose one of the two rolled Creature Banks.");
+      }
+      // Keep only the chosen bank on the rotating tile. Consumption waits for
+      // final placement, so a gate that destroys the Blocked Field cannot lose
+      // a physical token from the pile.
+      bankTile.reservedBankId = selected.bankId;
+      bankTile.reservedBankOptions = [selected];
+      state.pendingChoice = null;
+      state.phase = choice.returnPhase;
+      state.priorityPlayerId = null;
+      return;
+    }
+    if (data && adventure && sizedCandidates.length > 0) {
+      const pile = data.tier === "far" ? adventure.creatureBankTokensFar : adventure.creatureBankTokensNear;
+      const selected = sizedCandidates[action.optionIndex];
+      if (selected) {
+        const tokenIndex = pile?.lastIndexOf(selected.bankId) ?? -1;
+        if (!pile || tokenIndex < 0 || !isCreatureBankId(selected.bankId)) {
+          throw new Error("That rolled Creature Bank is no longer available.");
+        }
+        pile.splice(tokenIndex, 1);
+        if (!data.fieldId) {
+          throw new Error("That Creature Bank has no final Blocked Field.");
+        }
+        placeCreatureBank(state, data.fieldId, selected.bankId, selected.size);
+      } else if (action.optionIndex !== sizedCandidates.length) {
+        throw new Error("Choose one of the offered Creature Banks or leave the field blocked.");
+      }
+    } else if (data && adventure && action.optionIndex === 0) {
+      // Rule-off control: preserve the original single top-token flow exactly.
       const pile = data.tier === "far" ? adventure.creatureBankTokensFar : adventure.creatureBankTokensNear;
       const bankId = pile?.pop();
       if (bankId && isCreatureBankId(bankId)) {
+        if (!data.fieldId) {
+          throw new Error("That Creature Bank has no final Blocked Field.");
+        }
         placeCreatureBank(state, data.fieldId, bankId);
       }
     }
     if (bankTile) {
       bankTile.reservedBankId = undefined;
+      bankTile.reservedBankOptions = undefined;
     }
     state.pendingChoice = null;
     state.phase = choice.returnPhase;
@@ -8758,6 +9043,27 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     return;
   }
 
+  if (choice.context === "polish-spell-or-cast") {
+    const data = choice.polishSpellOrCast;
+    if (!data || !polishSpellBookEnabled(state)) {
+      throw new Error("That Polish Mage Guild reward is no longer available.");
+    }
+    state.pendingChoice = null;
+    state.phase = choice.returnPhase;
+    state.priorityPlayerId = null;
+    if (action.optionIndex === 1) {
+      state.players[action.playerId]?.hand.push(CAST_A_SPELL_CARD_ID);
+      return;
+    }
+    if (action.optionIndex !== 0) {
+      throw new Error("Choose a Spell search or Cast a Spell.");
+    }
+    beginSharedDeckSearchNow(state, action.playerId, "spells", data.count, false, {
+      strictExpertGate: data.strictExpertGate
+    });
+    return;
+  }
+
   if (choice.context === "combat-remove-then-search") {
     // Spellbinder's Hat (option A) played mid-combat: remove the picked hand
     // card from the game, then Search its own deck immediately (the reward
@@ -8872,7 +9178,7 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
       if (!deck || !takenCardId) {
         throw new Error("The discard pile is empty.");
       }
-      player.hand.push(takenCardId);
+      gainOwnedCard(state, action.playerId, takenCardId);
       // Mirror the DECK_SEARCH resolver: an Ability card pulled from the shared
       // deck is tracked so its printed ability can be granted.
       if (mode.deckId === "abilities") {
@@ -8927,10 +9233,14 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     // A starting-only Spell (Magic Arrow) has no Book home, so it always goes to
     // hand even if a fabricated pick names the Book.
     const destination = pick.destinations?.[action.optionIndex] ?? "hand";
-    const index = player.discard.lastIndexOf(cardId);
+    const source = pick.sources?.[action.optionIndex] ?? "discard";
+    const sourcePile = source === "polish-used" ? (player.spellBookUsed ??= []) : player.discard;
+    const index = sourcePile.lastIndexOf(cardId);
     if (index !== -1) {
-      player.discard.splice(index, 1);
-      if (destination === "spellBook" && spellCanEnterSpellBook(cardId)) {
+      sourcePile.splice(index, 1);
+      if (source === "polish-used") {
+        player.spellBook.push(cardId);
+      } else if (destination === "spellBook" && spellCanEnterSpellBook(cardId)) {
         player.spellBook.push(cardId);
       } else {
         player.hand.push(cardId);
@@ -9014,7 +9324,7 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     }
 
     if (action.optionIndex === 0) {
-      player.hand.push(dig.cardId);
+      gainOwnedCard(state, action.playerId, dig.cardId);
     } else {
       deck.discardPile.push(dig.cardId);
     }
@@ -10187,7 +10497,7 @@ function performSchoolFetch(state: GameState, playerId: PlayerId, deckId: string
   }
 
   if (fetchedCardId) {
-    player.hand.push(fetchedCardId);
+    gainOwnedCard(state, playerId, fetchedCardId);
   }
   deck.drawPile = shuffleCards(deck.drawPile, `${state.seed}#school-fetch#${eventSeedNumber(state)}`);
   return fetchedCardId;
@@ -10505,8 +10815,7 @@ export function openDiscardPickChoice(
     return false;
   }
 
-  const pool = pick.fromTop ? player.discard.slice(-pick.fromTop) : [...player.discard];
-  const candidates = pool.filter((cardId) => {
+  const matchesFilter = (cardId: CardId): boolean => {
     const kind = cardLibrary[cardId]?.kind;
     if (pick.filter === "spell") {
       return kind === "spell";
@@ -10528,7 +10837,22 @@ export function openDiscardPickChoice(
       return kind === "statistic" && (statisticType === "power" || statisticType === "knowledge");
     }
     return true;
-  });
+  };
+
+  const pool = pick.fromTop ? player.discard.slice(-pick.fromTop) : [...player.discard];
+  const polishRecovery =
+    polishSpellBookEnabled(state) &&
+    (pick.filter === "spell" || pick.filter === "spell-or-specialty" || pick.filter === "magic-arrow");
+  const candidates: { cardId: CardId; source: "discard" | "polish-used" }[] = [
+    ...pool
+      .filter((cardId) => matchesFilter(cardId) && !(polishRecovery && cardLibrary[cardId]?.kind === "spell"))
+      .map((cardId) => ({ cardId, source: "discard" as const })),
+    ...(polishRecovery
+      ? (player.spellBookUsed ?? [])
+          .filter(matchesFilter)
+          .map((cardId) => ({ cardId, source: "polish-used" as const }))
+      : [])
+  ];
 
   if (candidates.length === 0) {
     return false;
@@ -10541,13 +10865,22 @@ export function openDiscardPickChoice(
   // `destinations` stay parallel with `options`, so the pick reads the right card
   // and routes it to the right zone.
   const bookOn = spellBookRuleEnabled(state);
-  const entries: { cardId: CardId; destination: "hand" | "spellBook" }[] = [];
-  for (const cardId of candidates) {
-    entries.push({ cardId, destination: "hand" });
+  const entries: {
+    cardId: CardId;
+    destination: "hand" | "spellBook";
+    source: "discard" | "polish-used";
+  }[] = [];
+  for (const candidate of candidates) {
+    const { cardId, source } = candidate;
+    if (source === "polish-used") {
+      entries.push({ cardId, destination: "spellBook", source });
+      continue;
+    }
+    entries.push({ cardId, destination: "hand", source });
     // Magic Arrow (any starting-only Spell) goes only to hand — it has no Spell
     // Book home, so no "→ Spell Book" route is offered for it.
     if (bookOn && cardLibrary[cardId]?.kind === "spell" && spellCanEnterSpellBook(cardId)) {
-      entries.push({ cardId, destination: "spellBook" });
+      entries.push({ cardId, destination: "spellBook", source });
     }
   }
 
@@ -10557,7 +10890,9 @@ export function openDiscardPickChoice(
     playerId,
     prompt: `Take a card from your discard pile${pick.count > 1 ? ` (${pick.count} left)` : ""}`,
     options: entries.map((entry) =>
-      entry.destination === "spellBook"
+      entry.source === "polish-used"
+        ? { label: `Refresh ${cardLibrary[entry.cardId]?.name ?? entry.cardId} in the Spell Book` }
+        : entry.destination === "spellBook"
         ? { label: `Take ${cardLibrary[entry.cardId]?.name ?? entry.cardId} → Spell Book` }
         : { label: `Take ${cardLibrary[entry.cardId]?.name ?? entry.cardId}` }
     ),
@@ -10565,6 +10900,7 @@ export function openDiscardPickChoice(
     discardPick: {
       cardIds: entries.map((entry) => entry.cardId),
       destinations: entries.map((entry) => entry.destination),
+      sources: entries.map((entry) => entry.source),
       remaining: pick.count,
       filter: pick.filter,
       fromTop: pick.fromTop,
@@ -10673,6 +11009,27 @@ export function pumpAdventureQueues(state: GameState): void {
 
     if (reward.kind === "shared-deck-search") {
       adventure.rewardQueue.shift();
+      if (reward.allowCastCardInstead && polishSpellBookEnabled(state)) {
+        state.pendingChoice = {
+          id: `choice_${nextEventNumber(state)}`,
+          type: "OPTION_CHOICE",
+          playerId: reward.playerId,
+          prompt: `Mage Guild: Search (${reward.count}) for a Spell or gain Cast a Spell?`,
+          options: [
+            { label: `Search (${reward.count}) the Spell deck` },
+            { label: "Gain Cast a Spell" }
+          ],
+          context: "polish-spell-or-cast",
+          polishSpellOrCast: {
+            count: reward.count,
+            ...(reward.strictExpertGate ? { strictExpertGate: true } : {})
+          },
+          returnPhase: state.phase === "choice" ? "player-turn" : state.phase
+        };
+        state.phase = "choice";
+        state.priorityPlayerId = reward.playerId;
+        return;
+      }
       // "Spells"/"artifacts" are deck families; beginSharedDeckSearchNow does
       // the family expansion + deck-pick choice and opens the Search. The
       // strictExpertGate flag (Mage Guild expert-spell gating) is threaded

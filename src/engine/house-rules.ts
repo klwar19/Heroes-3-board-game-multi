@@ -22,7 +22,7 @@ import type { GameRuleset, GameState, GameSetupOptions, HouseRuleId } from "./st
  */
 export type { HouseRuleId };
 
-export type HouseRuleCategory = "decks" | "units" | "abilities" | "combat";
+export type HouseRuleCategory = "decks" | "units" | "abilities" | "combat" | "polish";
 
 export type HouseRuleDef = {
   id: HouseRuleId;
@@ -157,6 +157,33 @@ export const HOUSE_RULES: HouseRuleDef[] = [
       "House rule: the first visitor to an Obelisk locks an Attack-die face (−1: +1 morale, 0: Search (2) Artifact, +1: Treasure + Resource dice); later visitors get the same reward without re-rolling. Off: Obelisks stay multi-flaggable but grant no die reward. Holy Grail still counts visits toward dig unlock either way.",
     category: "combat",
     default: true
+  },
+  {
+    id: "polish-spell-book",
+    label: "Polish Spell Book",
+    description:
+      "Polish tournament variant: Spells live in a refreshed/used Spell Book and are cast with generic Cast-a-Spell cards. Uses one merged Spell deck and the strengthened Mage Guild. Mutually exclusive with the standard stash-style Spell Book.",
+    category: "polish",
+    default: false,
+    legacyDefault: false
+  },
+  {
+    id: "polish-bank-sizes",
+    label: "Rolled Creature Bank sizes",
+    description:
+      "Polish tournament variant: reveal up to two Banks, roll 2 Attack dice for each, choose one, then rotate. Size I-IV gives all four guards 0-3 full-health layers and reward X1-X4, replacing normal Bank Stack Tokens. Requires Creature Banks.",
+    category: "polish",
+    default: false,
+    legacyDefault: false
+  },
+  {
+    id: "polish-unit-stacks",
+    label: "Purchasable Unit Stacks",
+    description:
+      "Polish tournament variant: at a Citadel, Pack units may buy tier-capped Stack layers. Stacked Groups gain +1 Attack and each layer absorbs one full Pack health bar.",
+    category: "polish",
+    default: false,
+    legacyDefault: false
   }
 ];
 

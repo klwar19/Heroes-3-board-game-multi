@@ -81,6 +81,30 @@ describe("single-player multi-round soak", () => {
     expect(result.violations, result.violations.join("; ")).toEqual([]);
     assertInvariants(result.state, "soak-2p");
   });
+
+  it("all three Polish variants run for 3 rounds with 2 computers and no stall", () => {
+    const initial = createAdventureGameState({
+      seed: "polish-all-rules-soak",
+      scenarioId: "skirmish",
+      playerCount: 3,
+      sessionMode: "single-player",
+      houseRules: {
+        "polish-spell-book": true,
+        "polish-bank-sizes": true,
+        "polish-unit-stacks": true,
+      },
+    });
+    const result = playUntilRound(initial, 3, { maxLoops: 700 });
+    expect(result.stalled, result.reason).toBe(false);
+    expect(result.violations, result.violations.join("; ")).toEqual([]);
+    expect(result.state.round >= 3 || result.state.phase === "game-over").toBe(true);
+    expect(result.state.adventure?.houseRules).toMatchObject({
+      "polish-spell-book": true,
+      "polish-bank-sizes": true,
+      "polish-unit-stacks": true,
+    });
+    assertInvariants(result.state, "polish-all-rules-soak");
+  });
 });
 
 describe("single-player reconnect / resume", () => {

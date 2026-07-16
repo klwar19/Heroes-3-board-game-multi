@@ -16,6 +16,7 @@ import {
   getSeatIdentity,
   isBulwarkPlayer,
   playerSpellCastsIgnoreLimit,
+  polishSpellBookEnabled,
   seatPickSummary,
   spellBookRuleEnabled,
   type GameAction,
@@ -445,6 +446,7 @@ export function HandFan({
   // Its Spells cast like hand Spells (CAST_SPELL/PLAY_CARD with fromSpellBook);
   // the icon opens a window listing them with their available cast buttons.
   const spellBook = player.spellBook ?? [];
+  const spellBookUsed = player.spellBookUsed ?? [];
   const bookCastActions = cardActions.filter((legal) => legal.action.fromSpellBook);
   // Grouped for the grimoire modal: the cast offers per stored Spell id. While
   // a board tray interaction is active no casts are offered (the old popover's
@@ -459,7 +461,8 @@ export function HandFan({
   }
   // The Book icon is shown from the start whenever the house rule is on (even
   // empty), so the player can always open it to see what it holds.
-  const showSpellBook = spellBookRuleEnabled(state);
+  const polishBook = polishSpellBookEnabled(state);
+  const showSpellBook = spellBookRuleEnabled(state) || polishBook;
 
   return (
     <div className={`handFan ${trayActive ? "muted" : ""}`} aria-label="Your hand" data-fx-anchor={`hand:${viewerPlayerId}`}>
@@ -469,7 +472,7 @@ export function HandFan({
             <div className="shelfItem">
               <button
                 aria-expanded={shelfOpen === "book"}
-                className={`shelfIcon ${shelfOpen === "book" ? "open" : ""} ${spellBook.length === 0 ? "empty" : ""}`}
+                className={`shelfIcon ${shelfOpen === "book" ? "open" : ""} ${spellBook.length + spellBookUsed.length === 0 ? "empty" : ""}`}
                 onClick={() => {
                   const opening = shelfOpen !== "book";
                   setShelfOpen(opening ? "book" : null);
@@ -479,14 +482,16 @@ export function HandFan({
                   }
                 }}
                 title={
-                  spellBook.length === 0
+                  polishBook
+                    ? `${spellBook.length} refreshed, ${spellBookUsed.length} used - Cast a Spell is required`
+                    : spellBook.length === 0
                     ? "Spell Book — empty (stash Spells on your map turn to store them here)"
                     : "Spell Book — cast a stored Spell (normal Spell limit applies)"
                 }
                 type="button"
               >
                 <img alt="Spell Book" className="shelfGlyph" decoding="async" loading="lazy" src={assetUrl("/assets/ui/spell-book-button.png")} />
-                <span className="shelfCount">{spellBook.length}</span>
+                <span className="shelfCount">{spellBook.length}/{spellBook.length + spellBookUsed.length}</span>
               </button>
               {shelfOpen === "book" ? (
                 // The same full two-page grimoire the map opens — combat casts
@@ -494,6 +499,8 @@ export function HandFan({
                 // book button dispatches directly; the label appends the target.
                 <SpellBookModal
                   cardIds={[...new Set(spellBook)]}
+                  usedCardIds={polishBook ? spellBookUsed : []}
+                  polishMode={polishBook}
                   castsByCard={bookCastsByCard}
                   castLabel={(legal) => {
                     const action = legal.action;

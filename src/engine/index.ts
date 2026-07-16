@@ -239,6 +239,20 @@ export {
 } from "./house-rules";
 export type { HouseRuleCategory, HouseRuleDef } from "./house-rules";
 export {
+  CAST_A_SPELL_CARD_ID,
+  gainOwnedCard,
+  isCastASpellCard,
+  polishSpellBookEnabled,
+  polishSpellCanEnterBook
+} from "./polish-spell-book";
+
+export {
+  POLISH_UNIT_STACK_RULES,
+  polishArmyUnitCanBuyStack,
+  polishUnitStackCap,
+  polishUnitStackCost
+} from "./polish-unit-stacks";
+export {
   applyUnitCurrentSide,
   canPlaceTransformOn,
   insertUnitTransform,
@@ -423,6 +437,7 @@ export {
   legalTokenSlotsForTileDef,
   levelOfExperience,
   mapTokenLabel,
+  polishBankSizeForAttackRolls,
   tokenMayCoverFieldDef,
   planSubterraneanGates,
   legalGateHexPairs,
@@ -543,6 +558,7 @@ export type {
   ArtifactTier,
   AttackRollMode,
   AttackRollModifierNote,
+  BankSize,
   BattlefieldTokenKind,
   BattlefieldTokenState,
   BuildingDefinition,

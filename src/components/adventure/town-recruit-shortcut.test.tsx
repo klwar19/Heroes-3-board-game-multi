@@ -101,6 +101,24 @@ describe("Population recruit — unit view + one-click shortcut", () => {
     });
   });
 
+  it("shows the Polish Stack count/cost and dispatches the exact Stack purchase", () => {
+    const state = recruitReadyState();
+    state.adventure!.houseRules!["polish-unit-stacks"] = true;
+    state.players.p1.army = [{ id: "army_stack_1", unitDefId: "castle.griffins", side: "pack", stacks: 1 }];
+    const town = Object.values(state.towns).find((candidate) => candidate.controllerId === "p1")!;
+    town.buildings = town.buildings.filter((buildingId) => buildingId !== "castle.dwelling_bronze");
+    const { onAction } = renderRecruit(state);
+
+    expect(document.querySelector(".armyStackBadge")?.textContent).toContain("×1");
+    expect(screen.getByText(/Stack .*7.*1\/3/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Buy Stack for Griffins" }));
+    expect(onAction).toHaveBeenCalledWith({
+      type: "POPULATION_ACTION",
+      playerId: "p1",
+      purchases: [{ kind: "stack", unitDefId: "castle.griffins", armyUnitId: "army_stack_1" }]
+    });
+  });
+
   it("clicking the thumbnail opens the enlarged unit view instead of buying", () => {
     const { onAction } = renderRecruit(recruitReadyState());
     const thumb = document.querySelector(".recruitThumb") as HTMLElement;

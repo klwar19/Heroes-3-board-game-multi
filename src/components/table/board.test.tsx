@@ -1144,6 +1144,49 @@ describe("BattlefieldBoard — siege fortification art", () => {
   });
 })
 
+describe("BattlefieldBoard Polish army Stack badge", () => {
+  it("keeps army Stack counts visually and semantically separate from bank tokens", () => {
+    const state = createInitialGameState("army-stack-badge");
+    state.combat!.units.unit_p1_griffins.armyStacks = 2;
+    render(
+      <CardZoomProvider>
+        <BattlefieldBoard
+          state={state}
+          viewerPlayerId="p1"
+          legalActions={[]}
+          selectedCardAction={null}
+          onAction={vi.fn()}
+          onInspect={() => {}}
+        />
+      </CardZoomProvider>
+    );
+    expect(document.querySelector(".armyStackBadge.combat")?.textContent).toContain("×2");
+    expect(document.querySelectorAll(".stackTokenBadge")).toHaveLength(0);
+  });
+
+  it("shows the Polish bank coin layer count instead of a random-stat token", () => {
+    const state = createInitialGameState("bank-stack-badge");
+    const unit = state.combat!.units.unit_p2_skeletons;
+    unit.bankUnit = true;
+    unit.bankStacks = 3;
+    delete unit.stackToken;
+    render(
+      <CardZoomProvider>
+        <BattlefieldBoard
+          state={state}
+          viewerPlayerId="p1"
+          legalActions={[]}
+          selectedCardAction={null}
+          onAction={vi.fn()}
+          onInspect={() => {}}
+        />
+      </CardZoomProvider>
+    );
+    expect(document.querySelector(".bankStackBadge.size-4")?.textContent).toContain("3 Stacks");
+    expect(document.querySelectorAll(".stackTokenBadge")).toHaveLength(0);
+  });
+});
+
 describe("BattlefieldBoard - tied activation-order choice", () => {
   it("highlights every candidate and lets the player choose it on the board", () => {
     const state = createInitialGameState("board-activation-order-pick");

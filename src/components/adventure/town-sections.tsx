@@ -12,8 +12,11 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 import type { TownBuildingDefinition } from "@/data/factions/types";
 import {
   applyRecruitGoldDiscount,
+  houseRuleEnabled,
   inCombatPrep,
   legionVoucherDiscount,
+  polishUnitStackCap,
+  polishUnitStackCost,
   type GameAction,
   type GameState,
   type LegalAction,
@@ -355,6 +358,7 @@ export function TownRecruitSection({
   const canReinforce = town.buildings.some(
     (buildingId) => coreBuildingDefinitions[buildingId]?.effect?.type === "UNLOCK_REINFORCE"
   );
+  const polishStacksEnabled = houseRuleEnabled(state, "polish-unit-stacks");
 
   const basketCost: Record<string, number> = {};
   const addCost = (cost: Record<string, number | undefined>) => {
@@ -422,17 +426,65 @@ export function TownRecruitSection({
       </small>
       {faction.units.map((unitDefId) => {
         const unit = coreUnitDefinitions[unitDefId];
-        if (!unit?.few || !unlockedTiers.has(unit.tier)) {
+        const owned = player.army.find((candidate) => candidate.unitDefId === unitDefId);
+        // Stack purchases require only the owned Pack + Citadel, not that tier's
+        // dwelling. Keep such a Pack visible even when its dwelling is absent.
+        if (!unit?.few || (!unlockedTiers.has(unit.tier) && !(polishStacksEnabled && owned?.side === "pack"))) {
           return null;
         }
-        const owned = player.army.find((candidate) => candidate.unitDefId === unitDefId);
         // Pack (or recruited neutral): the card is complete, nothing to buy.
         if (owned && owned.side !== "few") {
+          const stackCap = owned.side === "pack" ? polishUnitStackCap(unitDefId) : 0;
+          const stackCost = stackCap > 0 ? polishUnitStackCost(unitDefId) : null;
+          const stackCount = owned.stacks ?? 0;
+          const stackAtCap = stackCap > 0 && stackCount >= stackCap;
+          const stackLegal = legalActions.find(
+            (legal) =>
+              legal.action.type === "POPULATION_ACTION" &&
+              legal.action.purchases.length === 1 &&
+              legal.action.purchases[0]?.kind === "stack" &&
+              legal.action.purchases[0].armyUnitId === owned.id
+          );
           return (
-            <div className="recruitRow done" key={unitDefId}>
+            <div
+              className={`recruitRow done ${polishStacksEnabled && owned.side === "pack" ? "unitStackRow" : ""}`}
+              key={unitDefId}
+            >
               <RecruitUnitView side="pack" unitDefId={unitDefId} />
               <Star aria-hidden="true" className={`tierStar ${unit.tier}`} size={12} />
               <span className="recruitName">{unit.name}</span>
+              {polishStacksEnabled && owned.side === "pack" && stackCost ? (
+                <>
+                  <span
+                    className={`armyStackBadge tier-${unit.tier} ${stackCount > 0 ? "active" : "empty"}`}
+                    title={`${stackCount} of ${stackCap} Unit Stacks`}
+                  >
+                    <img alt="" aria-hidden="true" src={assetUrl("/assets/ui/polish-unit-stacks-coin.webp")} />
+                    ×{stackCount}
+                  </span>
+                  <small className="stackPurchaseCost">
+                    Stack {formatCost(stackCost)} · {stackCount}/{stackCap}
+                  </small>
+                  <button
+                    aria-label={`Buy Stack for ${unit.name}`}
+                    className="recruitQuick stackQuick"
+                    disabled={!stackLegal}
+                    onClick={() => stackLegal && onAction(stackLegal.action)}
+                    title={
+                      stackAtCap
+                        ? `Maximum ${stackCap} Stack${stackCap === 1 ? "" : "s"} for a ${unit.tier} unit`
+                        : !canReinforce
+                          ? "Build the Citadel to buy Unit Stacks"
+                          : !costAffordable(stackCost, player.resources)
+                            ? "Not enough resources for this Unit Stack"
+                            : `Add one full-health Stack layer · ${formatCost(stackCost)}`
+                    }
+                    type="button"
+                  >
+                    {stackAtCap ? "Max" : "Add Stack"}
+                  </button>
+                </>
+              ) : null}
               <small className="recruitState">pack — fully mustered</small>
             </div>
           );

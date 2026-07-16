@@ -1,6 +1,7 @@
 import { expireEffectsForCombatEnd } from "./active-effects";
 import { getUnitSide } from "./adventure";
 import { appendEvent } from "./events";
+import { houseRuleEnabled } from "./house-rules";
 import { getRuleset, unitSideRuleOverrides } from "./ruleset";
 import { isArrowTowerUnit } from "./siege";
 import { getOnRemovalDetonation, getSelfRebirthAbility, getUnitsAdjacentTo, isUnitDamageImmune } from "./unit-abilities";
@@ -94,6 +95,66 @@ export function markUnitRemovedIfNeeded(state: GameState, unit: CombatUnitState)
     return;
   }
 
+  // Polish Unit Stacks (Rebirth already spent or absent): every paid Stack is
+  // one full extra Pack-health layer. Remove layers before the printed Pack can
+  // flip to Few, carrying ALL excess damage so one large hit may consume several
+  // layers. Recomputing the side after each loss drops the flat +1 Attack when
+  // the final Stack is gone.
+  while (
+    houseRuleEnabled(state, "polish-unit-stacks") &&
+    unit.variant === "pack" &&
+    (unit.armyStacks ?? 0) > 0 &&
+    unit.damage >= unit.maxHealth
+  ) {
+    const excess = Math.max(0, unit.damage - unit.maxHealth);
+    unit.armyStacks = Math.max(0, (unit.armyStacks ?? 0) - 1);
+    applyUnitCurrentSide(unit, getRuleset(state), unitSideRuleOverrides(state));
+    unit.damage = excess;
+
+    appendEvent(state, {
+      type: "ARMY_STACK_LOST",
+      unitId: unit.id,
+      playerId: unit.controllerId,
+      unitName: unit.name,
+      remainingStacks: unit.armyStacks,
+      excessDamage: excess
+    });
+  }
+
+  if (unit.damage < unit.maxHealth) {
+    return;
+  }
+
+  // Polish Creature Bank sizes use deterministic coin layers on EVERY bank
+  // defender (II/III/IV = 1/2/3). Peel complete bank-card health bars with
+  // carryover exactly like the sheet's Unit Stacks, keeping the same bank-card
+  // abilities; the flat +1 Attack disappears only when the final layer does.
+  // This is separate from the standard random-stat Stack Token below.
+  while (
+    houseRuleEnabled(state, "polish-bank-sizes") &&
+    unit.bankUnit &&
+    (unit.bankStacks ?? 0) > 0 &&
+    unit.damage >= unit.maxHealth
+  ) {
+    const excess = Math.max(0, unit.damage - unit.maxHealth);
+    unit.bankStacks = Math.max(0, (unit.bankStacks ?? 0) - 1);
+    applyUnitCurrentSide(unit, getRuleset(state), unitSideRuleOverrides(state));
+    unit.damage = excess;
+
+    appendEvent(state, {
+      type: "BANK_STACK_LOST",
+      unitId: unit.id,
+      playerId: unit.controllerId,
+      unitName: unit.name,
+      remainingStacks: unit.bankStacks,
+      excessDamage: excess
+    });
+  }
+
+  if (unit.damage < unit.maxHealth) {
+    return;
+  }
+
   // Creature Bank Stacked defenders (Rebirth already spent or absent): a Stack
   // Token absorbs the lethal blow — before any Pack→Few flip. "When it takes
   // damage equal to or greater than its Health, instead of removing the unit,
@@ -126,6 +187,8 @@ export function markUnitRemovedIfNeeded(state: GameState, unit: CombatUnitState)
     if (fewSide) {
       const excess = unit.damage - unit.maxHealth;
       unit.variant = "few";
+      // A Few card is no longer a Group and cannot carry Polish Stack layers.
+      delete unit.armyStacks;
       unit.damage = 0;
       applyUnitCurrentSide(unit, getRuleset(state), unitSideRuleOverrides(state));
       unit.damage = Math.min(unit.maxHealth, Math.max(0, excess));
