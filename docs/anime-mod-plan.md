@@ -26,20 +26,26 @@ docs, design notes only). Both are locked into engine-shaped slices here.
 **Naming & flavor conventions.** Two registers, one rule set:
 - **Ninefold Realms** content: EN primary + Vietnamese secondary in italics —
   **Foundation Establishment** (*Trúc cơ*), **Chen Fan** (*Trần Phàm*).
-- **Otherworld Gate** content: EN primary + Japanese-romaji secondary in
-  italics — **the Dungeon** (*Meikyū*), **Hikari** (*Akatsuki no Megami*).
+- **Otherworld Gate** content: the source-material names **verbatim**
+  (Laffey, Saber, Jonin, Goblin Slayer…), with Japanese-romaji secondary
+  flavor in italics where it helps — **the Dungeon** (*Meikyū*), **Hikari**
+  (*Akatsuki no Megami*).
 - Campaign/story text is bilingual **EN/VI** for BOTH packages (the shared
   story system is bilingual by construction, §11).
 
-**IP rule (non-negotiable for anything committed/pushed).** The isekai
-brainstorm names real anime properties (Azur Lane, Fate, Naruto, AoT, Bleach,
-One Piece, Goblin Slayer). This plan ships **IP-neutral homage content**:
-every id, asset filename and default display name is original, and ALL
+**Naming decision (user's call, 2026-07-16): the source anime names ship
+directly.** This is a personal single-player project, so the isekai package
+uses its source names as the real display names — **Fuyuki City** and the
+Servant classes, the **Hidden Leaf Village** roster, the **Azur Lane**
+shipgirls, **Goblin Slayer**'s party, **Titans**, **Hollows**, **Pacifista**,
+**Capsule Corp Lab**, **Urahara's Shop** — exactly as the brainstorm wrote
+them. Internal ids and asset filenames stay plain descriptive slugs, and all
 display names/flavor live in per-package dictionaries
-(`src/data/anime/terms.ts`) — so a private table that wants the original
-anime names can restore them with a data-only string swap, no engine or
-asset-id change. Nothing in `public/`, the repo history, or the CDN may carry
-trademarked names or traced/model-recognizable art.
+(`src/data/anime/terms.ts`) purely as engineering hygiene: if a rename is
+ever wanted (say, for a public release) it is a data-only string swap, no
+engine or asset-id change. Generated art may depict the source characters
+faithfully (recognizable renditions); never trace or copy official art files
+themselves.
 
 ---
 
@@ -55,6 +61,13 @@ trademarked names or traced/model-recognizable art.
    toggles behave identically. Every feature ships with mode-off CONTROL
    tests. All new `GameState`/`PlayerState` fields are optional
    (zero-migration, the Polish-rules precedent).
+2b. **Single-player FIRST.** The primary audience is the user's own
+   single-player table (one human + computer seats). Every module must be
+   fully playable solo — the Events-deck "multiplayer only" gating is
+   explicitly NOT copied anywhere in this mod. Multiplayer keeps working
+   (the engine is shared and every seam in §16 stays tested), but no feature
+   may be designed in a way that needs a second human to function, and the
+   §17 AI gates are release-blocking, not nice-to-have.
 3. **One mod, one spine.** The two packages share ONE options block, ONE
    story system, ONE campaign hub, ONE destiny/karma substrate, ONE quest
    vocabulary, ONE skin architecture and ONE new-arm ledger (§19). Never
@@ -95,8 +108,8 @@ both are on.
 | `anime.elixirPills` | 九 | OFF | **Elixir Pills** consumable mini-deck — Alchemy Pavilion, Secret Realms, quests (§5.9). Morale-cards data pattern. |
 | `anime.cultivation` | 九 | OFF | Per-hero **Cultivation Realm track** + **Heavenly Tribulation** breakthrough gauntlet (§5.6). |
 | `anime.destiny` | 九 | OFF | **Destiny & Karma**: the shared karma/fate substrate (§3.4) + **Mandate of Heaven** / **Demon Emperor** titles (§5.7). |
-| `anime.isekaiTowns` | 門 | OFF | Adds the isekai factions: **Summoner's Citadel** and **Hidden Village** (V1), **Steel Harbor** (stretch) (§6.1–6.3). **Bin** ships as a Summoner's Citadel hero, playable in ordinary multiplayer. |
-| `anime.isekaiNeutrals` | 門 | OFF | ~15 isekai neutral cards (goblin family, slimes, giants, specters — §6.8) + 4 isekai **Creature Banks** (bank half requires `creatureBanks`). |
+| `anime.isekaiTowns` | 門 | OFF | Adds the isekai factions: **Fuyuki City** and the **Hidden Leaf Village** (V1), the **Azur Lane Naval Base** (stretch) (§6.1–6.3). **Bin** ships as a Fuyuki City hero, playable on any table — single-player included. |
+| `anime.isekaiNeutrals` | 門 | OFF | ~15 isekai neutral cards (the goblin family, slimes, **Titans**, **Hollows**, **Pacifista** — §6.8) + 4 isekai **Creature Banks** (bank half requires `creatureBanks`). |
 | `anime.guild` | 門 | OFF | The **Adventurers' Guild**: global commission board, per-player ranks F→S with perks, rank-A **Party Member** unique neutrals (§6.4). Map-independent. |
 | `anime.monsterWaves` | 門 | OFF | **Calamity Waves**: scheduled monster invasions; every live seat fights a themed wave army; loss = pillage (§6.6). Cadence select (3rd/4th/5th round). Works in single-player. |
 | `anime.raidBosses` | 門 | OFF | **Raid Bosses**: persistent multi-layer world bosses — announced spawns or designer **Rift Lairs**, wounds persist between attempts, escalate if ignored, pay per layer broken (§6.5). |
@@ -113,10 +126,14 @@ gracefully, stated on the definitions); `destiny` OR `gods` activates the
 shared substrate (§3.4); Party Member recruiting requires `isekaiNeutrals`;
 karma-gated quests are inert without the substrate (documented in the
 designer). Everything else is independent — including cross-package mixes.
+The **WOG mod is a separate, composable crest**: all three option blocks
+(WOG + both anime packages) on one table is a supported, tested
+configuration — §3.9.
 
 **Ranked/MMR policy:** anime tables record W/L like any table; `ranked`
 stays whatever the room set. No Elo special-casing (mod flags are just game
-options).
+options). On the primary single-player tables this is moot — `sp-` rooms
+are never match-reported (existing invariant).
 
 ---
 
@@ -139,11 +156,15 @@ eventually a campaign finale.
   §13). **Erebos, God of the Silent End** cheats: his "natural disasters"
   (Calamity Waves) and "wild beasts" (Raid Bosses) are Accord-skirting
   interventions. The **Adventurers' Guild** is Restia's real government:
-  ranks F→S, commission boards, the receptionist **Mira**, guildmaster
+  ranks F→S, commission boards, the receptionist **Guild Girl**, guildmaster
   **Baldur**. The **goblin problem** is the continent's gritty corner:
   individually trivial, collectively its deadliest force, hunted by one
-  silent specialist (**the Slayer**, §6.4.4). The **Dungeon** under the old
-  capital is the Guild's living: floors, floor bosses, fair deals.
+  silent specialist (**Goblin Slayer**, §6.4.4). The **Dungeon** under the
+  old capital is the Guild's living: floors, floor bosses, fair deals. And
+  scattered across Restia stand the summoned enclaves — a Grail-War city, a
+  shinobi village, a shipgirl harbor — pulled through the Gate from other
+  worlds (the isekai conceit that lets the source rosters exist here
+  as-is).
 
 **Resource flavor is a pure re-skin** — label/tooltip subtitles under the
 skin classes only (§15); resource ids, icon semantics and every engine read
@@ -248,9 +269,40 @@ tag, the `requiresNotMoved` gate.)
 From P2 on, every phase re-runs: (a) the master byte-identical-when-off
 CONTROL (scripted game event-log identical to `main` with `anime` absent);
 (b) a fixed-seed single-player soak with **every module of both packages
-ON** reaching round 6 with zero stalls (joins `single-player-soak.test.ts`);
-(c) the mixed-package CONTROL (one module from each package on — no
-cross-talk).
+AND every WOG module ON** reaching round 6 with zero stalls (joins
+`single-player-soak.test.ts`); (c) the mixed-package CONTROL (one module
+from each package on — no cross-talk).
+
+### 3.9 WOG mod compatibility (per the user: a hard requirement)
+
+WOG is its own crest — `WogModOptions { enabled, commanders, newObjects,
+newCreatures }` (`src/engine/state.ts:114-126`, `newCreatures` defaults ON).
+The anime mod never reads or writes `wog.*`; instead it composes, and the
+composition is tested:
+
+- **Commanders** (`wog.commanders`): every anime/xianxia town gets its
+  Commander through the SAME toggle and setup path as core factions (§7 —
+  the bijection test grows to "every playable faction"; no anime-side
+  commander switch). Commanders fight in **wave, Raid-Boss and Dungeon
+  battles** whenever the MAIN hero fights (the existing commander-scope
+  rule); the 4-army-unit deployment cap applies in those fights exactly as
+  in any combat; and the tierless-both-ways convention holds — **Devour is
+  bronze-gated so it can never remove a commander**, and boss/wave minions
+  target the commander LAST (bank-guard convention). Each claim ships with
+  a wog-on test in the owning phase.
+- **Neutral decks** (`wog.newCreatures`): the WOG 15-card roster and both
+  anime neutral slices merge additively into the Bronze/Silver/Gold/Azure
+  decks through the one existing merge path. `family`/alignment reads
+  ignore untagged cards, so a "goblin cull" commission or a karma trigger
+  can never false-match a WOG card. Test: all three slices ON → deal/
+  recycle clean, no false family matches, wave tables never starve.
+- **Map objects** (`wog.newObjects`): WOG objects and the anime designer
+  objects (Quest Guards, Traps, Rift Lairs) coexist on one map — the
+  designer palette shows each behind its own gate; setup materializes both
+  through the standalone-object path with no slot contention (one object
+  per hex stays the invariant).
+- **Gate:** §3.8(b) runs with all WOG modules on, and P1's content test
+  includes a `wog.commanders`-on seat for the new town.
 
 ---
 
@@ -551,27 +603,29 @@ attack/defense/health/initiative/cost, tiers bronze/silver/gold, and every
 ability mapped to a mechanism. Anchor stat points: Phoenix gold A6/D2/H7/I12,
 Enchanters gold A4/D1/H5/I5.)*
 
-### 6.1 Summoner's Citadel (*Eirei no Shiro*) — the Holy-War homage town (flagship)
+### 6.1 Fuyuki City (*Fuyuki-shi*) — the Holy Grail War town (flagship)
 
 Violet / antique gold. Powerful independent singles, burst, spell economy.
-The seven unit lines are the seven **summon classes** (generic nouns — the
-homage stays legal). Lean into ritual circles, command sigils, translucent
-"spirit" shimmer on gold units; avoid generic European castle look.
+The seven unit lines are the seven **Servant classes** of the Grail War.
+Lean into leyline-lit city nights, ritual circles, Command Seals,
+translucent "spirit" shimmer on gold units; avoid generic European castle
+look.
 
 | Line (tier, type) | Few | Pack | Mechanism |
 | --- | --- | --- | --- |
 | **Assassins** — bronze, ground (A2/D1/H2/I7) | — | Presence Concealment: +1 Defense against ranged-TYPE attackers | REUSE `DEFENSE_VS_ATTACKER_TYPE` (Shield-spell semantics) |
 | **Riders** — bronze, ground (A2/D1/H2/I6) | — | Trample: a "+1" on its own attack die Paralyzes the target | SHARED die-face→token arm (paralysis @ "+1") |
-| **Lancers** — bronze, ground (A2/D1/H3/I5) | Piercing lunge: attack 2 spaces in a line | same + ignores retaliation | REUSE `mechanics-line-attack` / `ignores-retaliation` |
+| **Lancers** — bronze, ground (A2/D1/H3/I5) | Gáe Bolg (docx Reach): attack 2 spaces in a line | same + ignores retaliation (docx No Retaliation) | REUSE `mechanics-line-attack` / `ignores-retaliation` |
 | **Archers** — silver, ranged (A3/D2/H3/I5) | Ignore combat penalties | same + if it has NOT moved this activation, a full second attack on the same target | REUSE `ignore-combat-penalties`; REUSE `SECOND_ATTACK_SAME_TARGET_AFTER_RETALIATION` + NEW `requiresNotMoved` gate param |
 | **Casters** — silver, ranged (A2/D2/H3/I4) | +1 Power to your first spell each round | same + reduce spell damage 1 | REUSE `magi-power-boost` / `reduce-spell-damage-1` |
-| **Sabers** — gold, ground (A5/D3/H5/I6) | Radiant arc: also attack the unit behind the target | same + Charge | REUSE `SECOND_ATTACK_BEHIND_TARGET` / SHARED charge tag |
+| **Sabers** — gold, ground (A5/D3/H5/I6) | Excalibur (docx Cleave): also attack the unit behind the target | same + Charge | REUSE `SECOND_ATTACK_BEHIND_TARGET` / SHARED charge tag |
 | **Berserkers** — gold, ground (A6/D2/H7/I4) | God Hand: once per combat, when health drops to 0 set it to 1 | same + immune to all Spells (Mad Enhancement) | REUSE `phoenix-rebirth` (`abilities.ts:2120`) / `immune-all-spells` (Magic Elemental Pack) |
 
-Buildings: **Mana Font** (City Hall — `RESOURCE_ROUND_CHOICE` {4 gold |
-1 XP}); dwellings **Chapel of Blades / Hall of Legends / Throne of Heroes**
-(`UNLOCK_RECRUIT_TIER`); **Command Sigils** (Citadel — `UNLOCK_REINFORCE`);
-**Arcane Library** (`MAGE_GUILD`); **Summoning Circle** (unique — NEW
+Buildings: **Leyline Nexus** (City Hall — the docx building, normalized to
+this game's economy: `RESOURCE_ROUND_CHOICE` {4 gold | 1 XP}); dwellings
+**Church on the Hill / Mage's Workshop / Throne of Heroes**
+(`UNLOCK_RECRUIT_TIER`); **Command Seals** (Citadel — `UNLOCK_REINFORCE`);
+**Clock Tower Archive** (`MAGE_GUILD`); **Summoning Circle** (unique — NEW
 `SUMMON_GACHA`, §19: once per round pay 2 gold → roll the Attack die: "−1" =
 draw a bronze Neutral card free; "0" = choose a bronze Neutral draw OR 1
 gold back; "+1" = draw a silver Neutral card free. The gacha trope as dice;
@@ -584,63 +638,69 @@ Heroes:
 | Hero | Type | Specialty hook (pattern) |
 | --- | --- | --- |
 | **Bin, the Otherworlder** (*ihōjin*) | magic | The multiplayer-legal slice of the cheat fantasy: I "Status Screen" — draw 1 card at each combat start; IV "Save Scum" — once per combat, reroll any one of your own dice (standing `AttackRerollSource`, morale-card seam); VI "Admin Rights" — once per combat, cast one Spell over the per-round limit (fixed-parameter REUSE of the `TARNUM_OVERLIMIT` pipeline — the Ancient-Outer-Shade twin, §5.4) |
-| **Reina, the Once-and-Future** | might | Saber-line leadership: I +1 Attack on a Saber's attack; IV/VI scale targets/army (mightSpecialtyOne pattern) |
-| **Ruby, Gem Sorceress** | magic | +1 damage riders on damage spells (Deemer/Solmyr damage-ladder family) |
-| **Kanna, Blade Copyist** | might | Discard 1 Might card → +1 Attack for a unit's activation (discard-fueled patterns) |
-| **Sister Ilya** | magic | Berserker/heal economy: rebirth-adjacent heals (unitHealthSpecialty pattern) |
-| **Lord El-Aurie** | magic | Summon economy: Summoning-Circle discounts / extra rolls (map-economy specialty) |
+| **Shirou Emiya** | might | Tracing (docx): discard 1 Might card → +1 Attack for an allied unit's activation (discard-fueled patterns); IV/VI scale amount/uses. Starts with Armorer (docx) via the normal starting-ability data |
+| **Rin Tohsaka** | magic | Jewel Magecraft (docx): +1 damage riders on damage spells (Deemer/Solmyr damage-ladder family). Starts with Mysticism (docx) |
+| **Illyasviel** | magic | Berserker economy: rebirth-adjacent heals / God-Hand riders (unitHealthSpecialty pattern) |
+| **Kiritsugu, the Magus Killer** | might | Mark & execute: +Attack vs the marked strongest enemy (bounty-mark family) |
+| **Lord El-Melloi II** | magic | Summon economy: Summoning-Circle discounts / extra rolls (map-economy specialty) |
 
-### 6.2 Hidden Village (*Kakure Zato*) — the shinobi town
+### 6.2 Hidden Leaf Village (*Konohagakure*) — the shinobi town
 
 Leaf green / slate. Swarm tempo, mobility, battlefield control, trap
-synergy. Lean into masks, scarves, hand-sign sigils, forest canopy; avoid
-samurai plate.
+synergy. Lean into masks, scarves, headbands, hand-sign sigils, forest
+canopy; avoid samurai plate.
 
 | Line (tier, type) | Few | Pack | Mechanism |
 | --- | --- | --- | --- |
-| **Novice Shinobi** — bronze, ground | — | Squad tactics: +1 Attack while adjacent to a friendly unit | SHARED `ATTACK_BONUS_ADJACENT_ALLY` |
-| **Medic Shinobi** — bronze, ground | [activation] heal an adjacent unit 1 | [activation] heal an adjacent unit 2 OR remove one negative token from it | REUSE Enchanter heal-pick; token-removal pick = NEW-lite param on the same choice |
-| **Masked Ops** — bronze, ranged | Ignore combat penalties | same + teleport-move (body flicker) | REUSE / REUSE `teleport-move` |
-| **Elite Shinobi** — silver, ground | Charge | Charge + ignores retaliation | SHARED charge tag / REUSE |
-| **Great Toad** — silver, ground | Defense token | same + on removal, deal 1 damage to adjacent enemies (smoke-burst) | REUSE `SELF_DEFENSE_TOKEN` / `ON_REMOVAL_DAMAGE_ADJACENT` |
-| **Beast Vessel** — gold, ground | Shroud burst: after its attack, deal 1 damage to every other unit adjacent to it (friend AND foe) | Full second attack against every adjacent enemy | NEW `AFTER_ATTACK_SPLASH` / REUSE `SECOND_ATTACK_ALL_ADJACENT_TO_SELF` (enemies-only) |
-| **Guardian Avatar** — gold, ground | Absolute guard: each attack against it deals at most 2 damage | same + ongoing-effect immunity | REUSE the Cove Nix per-attack damage cap / `titan-ignore-ongoing` |
+| **Genin Squad** — bronze, ground | — | Swarm (docx): +1 Attack while another friendly Genin Squad is adjacent to the TARGET | SHARED `ATTACK_BONUS_ADJACENT_ALLY` (`adjacentTo: "target"` — the param the docx motivates) |
+| **Medical-Nin** — bronze, ground | [activation] heal an adjacent unit 1 | [activation] heal 2 OR remove one negative token from it (docx First Aid: "remove negative status tokens") | REUSE Enchanter heal-pick; token-removal pick = NEW-lite param on the same choice |
+| **Anbu Black Ops** — bronze, ranged | Ignore combat penalties (docx Obstacle Master) | same + teleport-move (body flicker) | REUSE / REUSE `teleport-move` |
+| **Jonin** — silver, ranged | Versatile (docx): ignore combat penalties (no penalty adjacent) | same + ignores retaliation | REUSE `ignore-combat-penalties` / `ignores-retaliation` |
+| **Giant Toad Summon** — silver, ground | Defense token (docx Block, normalized — "half damage" has no engine read; the Defend die is the tanking mechanic) | same + on removal, deal 1 damage to adjacent enemies (smoke-burst) | REUSE `SELF_DEFENSE_TOKEN` / `ON_REMOVAL_DAMAGE_ADJACENT` |
+| **Jinchuriki** — gold, ground | Frenzy (docx): after its attack, deal 1 damage to every other adjacent unit (friend AND foe) | Full second attack against every adjacent enemy (tailed-beast cloak) | NEW `AFTER_ATTACK_SPLASH` / REUSE `SECOND_ATTACK_ALL_ADJACENT_TO_SELF` (enemies-only) |
+| **Susanoo Avatar** — gold, ground | Armored (docx "ignore 1 damage from every source", normalized): each attack against it deals at most 2 damage | same + ongoing-effect immunity (docx "cannot be moved by Spells/Keywords") | REUSE the Cove Nix per-attack damage cap / `titan-ignore-ongoing` |
 
 Buildings: **Mission Board** (City Hall — `RESOURCE_ROUND_CHOICE` {3 gold |
-1 valuables}); dwellings **Academy / Forest Training Ground / Sanctum of the
-Beast**; **Village Walls** (Citadel — `UNLOCK_REINFORCE`); **Scroll Vault**
-(`MAGE_GUILD`); **Exam Arena** (unique — once per round pay 2 gold → Search
-(2) the Ability deck; pure `PAY_TO`+`SEARCH_SHARED_DECK` composition — the
-brainstorm's "level-ups offer more skills" translated to this game's skill
-economy).
+1 valuables}); dwellings **Ninja Academy / Forest of Death / Sanctum of the
+Tailed Beast**; **Village Walls** (Citadel — `UNLOCK_REINFORCE`); **Scroll
+Vault** (`MAGE_GUILD`); **Chunin Exam Arena** (unique, docx name — once per
+round pay 2 gold → Search (2) the Ability deck; pure
+`PAY_TO`+`SEARCH_SHARED_DECK` composition — the docx's "level-ups offer more
+skills" translated to this game's skill economy).
 
-Heroes: **the Shadow** (might; Novice-swarm doubling — Erdamon pattern),
-**Aoi, Blade Mistress** (might; Elite Shinobi twins), **the Copy Sage**
-(magic; Knowledge/recall economy), **Lady Katsuyu** (magic; heals/Medic
-riders), **the Warden** (might; trap synergy — I: your Creature-Bank/Dungeon
-combats start with one friendly spike-pit token placed (§6.7.2); IV/VI scale
-count/damage), **Gennosuke the Summoner** (magic; Great Toad + summon
-economy).
+Heroes: **Naruto Uzumaki** (might; Jinchuriki-line twins — unit-line
+specialty), **Sasuke Uchiha** (might; Jonin/assassination —
+ignores-retaliation riders), **Kakashi Hatake** (magic; Copy Ninja —
+Knowledge/recall economy), **Tsunade** (magic; heals/Medical-Nin riders; her
+Katsuyu summon flavors VI), **Shikamaru Nara** (might; trap strategy — I:
+your Creature-Bank/Dungeon combats start with one friendly spike-pit token
+placed (§6.7.2); IV/VI scale count/damage), **Jiraiya** (magic; Giant Toad +
+summon economy).
 
-### 6.3 Steel Harbor (*Kōtetsu no Minato*) — the ship-spirit town (stretch)
+### 6.3 Azur Lane Naval Base (*Bōkyaku no Minato*) — the shipgirl town (stretch)
 
 Navy / white-steel. Ranged superiority, escort formations, sea synergy with
 Cove content and the Abyss Kraken boss. Ships LAST; listed so its shared
-arms are planned once. Lines (mechanisms only): **Destroyer Sisters**
-(bronze ranged, high init; Pack: Defense token — REUSE), **Escort Maidens**
-(bronze ground; Pack: adjacent allies +1 Defense vs ranged-TYPE attackers —
-NEW aura arm `ADJACENT_ALLY_RANGED_GUARD`, the one true aura, attack-time
-stat read like §7's sword-formation), **Torpedo Squads** (bronze ranged;
-Pack: "+1" die drops a Corrosion token — SHARED die-face→token arm),
-**Cruiser Vanguard** (silver ground; ignores retaliation → + charge),
-**Carrier Oracle** (silver ranged; Enchanter heal-activation ladder),
-**Battleship Empress** (gold ranged; attack-roll advantage — REUSE
-`ATTACK_ROLL_ADVANTAGE`; Pack: + line attack behind target), **Flagship
-Sovereign** (gold ground; [activation] place an Initiative-down token on an
-adjacent enemy — SHARED `PLACE_TOKEN_ACTION` variant; Pack: + Defense
-token). Unique building **Wisdom Cube Laboratory**: once per round pay 1
-valuables → draw 2 from your own deck, keep 1, discard 1 (NEW
-`PAY_DRAW_FILTER` — the brainstorm's mechanic verbatim, re-costed).
+arms are planned once. The docx roster, engine-shaped:
+
+| Line (tier, type) | Ability (docx → engine) | Mechanism |
+| --- | --- | --- |
+| **Laffey** — bronze, ranged, high Init | Sleepy: while she has NOT moved this activation, roll the Defend die when attacked | REUSE `SELF_DEFENSE_TOKEN` + SHARED `requiresNotMoved` gate |
+| **Javelin** — bronze, ground | Dodge: roll the Defend die when attacked | REUSE `SELF_DEFENSE_TOKEN` |
+| **Sirius** — bronze, ground | Bodyguard: adjacent allies gain +1 Defense against ranged-TYPE attackers | NEW aura arm `ADJACENT_ALLY_RANGED_GUARD` (the one true aura, attack-time stat read like §7's sword-formation) |
+| **Noshiro** — silver, ground | Strike and Return, normalized (move-after-attack has no engine read): ignores retaliation; Pack + Charge | REUSE / SHARED charge tag |
+| **Unicorn** — silver, ranged, flying | Heal: [activation] heal an adjacent unit 1 / 2 | REUSE Enchanter heal-activation ladder |
+| **Nagato** — gold, ranged | Big Seven: attack-roll advantage; Pack + line attack behind the target (salvo) | REUSE `ATTACK_ROLL_ADVANTAGE` / `mechanics-line-attack` |
+| **Amagi** — gold, ground | Tactician, normalized from a passive aura to an action: [activation] place an Initiative-down token on an adjacent enemy; Pack + Defense token | SHARED `PLACE_TOKEN_ACTION` variant / REUSE |
+
+Unique building **Wisdom Cube Laboratory** (docx name + mechanic, re-costed):
+once per round pay 1 valuables → draw 2 from your own deck, keep 1, discard 1
+(NEW `PAY_DRAW_FILTER`). Heroes: **Honolulu** (might; docx — a standing
+attack-die reroll for SILVER units, a silver-scoped `AttackRerollSource`),
+**Yukikaze** (magic; "Nanoda!", docx normalized — once per combat round, an
+instant-reaction +1 Defense for an attacked friendly bronze unit, the
+Hierophant-Shield reaction seam), plus **Enterprise** (might), **Belfast**
+(magic), **Akagi** (magic), **Bismarck** (might) — sketched at P16.
 
 ### 6.4 The Adventurers' Guild (`anime.guild`)
 
@@ -686,24 +746,25 @@ rank-below CONTROL:
 | A | may recruit **Party Members** (§6.4.4) |
 | S | +1 fate each Astrologers round while held (substrate on; +1 gold instead when off — stated on the definition) + a public **S-Rank** seat chip (Mandate-style) |
 
-**6.4.4 Party Members (the goblin-hunter homage cast, rank-A recruits).**
-Three **unique neutral** cards (the Enchanters pattern —
+**6.4.4 Party Members (the Goblin Slayer cast, rank-A recruits).**
+Unique neutral cards (the Enchanters pattern —
 `src/data/factions/units.ts:1986`; recruit via `CONVERT_ARMY_UNIT` +
 `goldCost` + `unique`, `src/data/cards/adventure.ts:2318-2344`), recruitable
 at any own town while rank A+, one of each per player:
 
-- **The Slayer** — silver, ground (A3/D2/H4/I5, ~14 gold). *Only ever
+- **Goblin Slayer** — silver, ground (A3/D2/H4/I5, ~14 gold). *Only ever
   goblins:* +2 Attack against goblin-family units (bounty-mark REUSE keyed
   to the `family` flag instead of the mark token); ignores retaliation.
-- **Novice Priestess** — bronze, ranged (A1/D1/H3/I4, ~8 gold).
-  [activation] heal an adjacent unit 1 OR remove one negative token
-  (Medic-Shinobi twin — the shared param'd choice).
-- **Elf Ranger** — silver, ranged (A3/D1/H3/I7, ~13 gold). Ignore combat
-  penalties + attack-roll advantage when it has not moved (advantage REUSE +
-  the `requiresNotMoved` gate).
+- **Priestess** — bronze, ranged (A1/D1/H3/I4, ~8 gold). [activation] heal
+  an adjacent unit 1 OR remove one negative token — her miracles
+  (Medical-Nin twin — the shared param'd choice).
+- **High Elf Archer** — silver, ranged (A3/D1/H3/I7, ~13 gold). Ignore
+  combat penalties + attack-roll advantage when she has not moved
+  (advantage REUSE + the `requiresNotMoved` gate).
 
-They are also the isekai campaign's VN party (§12.2) — the cards double as
-story cast.
+**Dwarf Shaman** and **Lizard Priest** round out the party at P16 (stretch);
+until then they are campaign NPCs only. The party is also the isekai
+campaign's VN cast (§12.2) — the cards double as story characters.
 
 ### 6.5 Raid Bosses (`anime.raidBosses`)
 
@@ -728,13 +789,13 @@ battlefield uses the Creature-Bank formation machinery (`placementCellsFor`)
 with the boss pinned to the back-center cell.
 
 V1 roster (5): **Goblin King** (3 layers; each layer break refills a goblin
-minion — bank-guard placement reuse), **Titan of the Wall** (5 layers, slow;
-**Devour** — §19: on a "+1" attack die a BRONZE target side is removed
-outright — the `gorgon-death-stare` dice-removal machinery, tier-gated),
-**Abyss Kraken** (4 layers, sea hex — Cove/Steel-Harbor synergy),
-**Calamity Dragon** (6 layers, flying, line breath — REUSE), **Avatar of
-Erebos** (7 layers; campaign final + optional multiplayer superboss; Dread
-aura §6.8, Enrage).
+minion — bank-guard placement reuse), **Colossal Titan** (5 layers, slow;
+**Devour** — §19, the docx Bite normalized: on a "+1" attack die a BRONZE
+target side is removed outright — the `gorgon-death-stare` dice-removal
+machinery, tier-gated), **Abyss Kraken** (4 layers, sea hex —
+Cove/Naval-Base synergy), **Calamity Dragon** (6 layers, flying, line
+breath — REUSE), **Avatar of Erebos** (7 layers; campaign final + optional
+superboss on any table; Fear aura §6.8, Enrage).
 
 **6.5.3 Spawn, persistence, escalation, payout.**
 `adventure.raidBosses[bossInstanceId] = { defId, fieldId, layersLeft,
@@ -750,9 +811,10 @@ each attempt (wounds persist, including across snapshots); win/retreat/loss
 resolve through normal combat-end paths. Every layer broken pays the breaker
 immediately (2 gold + 1 rank point); the kill pays the killer the printed
 reward (relic-tier artifact draw + gold + fate/rank) — the participation
-ledger makes "soften it so I can finish it" a real multiplayer play.
-Escalation: an unslain boss regrows +1 layer (to its printed cap) every 4th
-round, announced. With **PvP Neutral Control** on, the next-clockwise player
+ledger makes "soften it so I can finish it" a real play. On a solo table the
+computer seats engage and chip layers too (§17), so the shared-raid arc
+plays out single-player as well. Escalation: an unslain boss regrows +1
+layer (to its printed cap) every 4th round, announced. With **PvP Neutral Control** on, the next-clockwise player
 PLAYS the boss — the existing controller machinery covers it verbatim (the
 mode's best moment; lobby tooltip says so).
 
@@ -780,7 +842,7 @@ resolution queue — explicit order pinned by test: income → Fortress Event
 **6.6.3 The assault.** Each live seat fights a **wave army**: composition
 from a wave table derived from `NEUTRAL_ARMY_TABLE` (`adventure.ts:143`)
 rows — wave 1 ≈ a difficulty-2 party, wave 2 ≈ 3, capping ≈ 5 — with a
-**theme** rotating per wave (goblin horde → restless dead → rift demons →
+**theme** rotating per wave (goblin horde → Hollow parade → rift demons →
 mixed + a miniboss card), themes drawn from the isekai neutral slice; with
 `isekaiNeutrals` OFF the table falls back to core neutral cards (stated
 limit, not a blocker); §8.4 adds xianxia themes. Win: 2 gold + 1 XP + 1 rank
@@ -827,7 +889,7 @@ token — a `fire_wall` sibling in the existing battlefield-token machinery
 damage on enter/stop; per-token `damage` verified parameterized) with
 `kind: "spike_pit"`, damage 1, whole-combat duration, own art. Pre-placed at
 combat start: goblin-family Creature-Bank fights and Dungeon floors place 2
-on defender-approach cells (data on the bank/floor definition); the Warden's
+on defender-approach cells (data on the bank/floor definition); Shikamaru's
 specialty (§6.2) places friendly ones. No new damage code.
 
 **6.7.3 The Dungeon (one per map, repeatable, per-player floors).** A
@@ -849,7 +911,7 @@ difficulty is the point — stated limit).
 
 **Neutral slice** (`src/data/anime/isekai-neutrals.ts`, mirroring
 `src/data/wog.ts`; ~15 cards; every card carries `family?: "goblin" |
-"undead" | "rift" | …` for waves/commissions/the Slayer):
+"undead" | "rift" | …` for waves/commissions/Goblin Slayer):
 
 - **Goblin family** (the world-build backbone): bronze **Goblin Scouts**
   (SHARED `ATTACK_BONUS_ADJACENT_ALLY`), bronze **Hobgoblin Brutes** (plain
@@ -861,40 +923,42 @@ difficulty is the point — stated limit).
 - **Slimes**: bronze **Slime Swarm** (resilience — Zombie REUSE), silver
   **Giant Slime** (reduce spell damage 1), gold **Sovereign Slime** (life
   drain + ongoing-effect immunity — the "reincarnated as a slime" gag).
-- **Colossal Giant** — gold (the brainstorm's Titan): slow, huge; **Devour**
-  (§19 arm, shared with the Titan boss: a "+1" die removes a bronze target
-  side outright).
-- **Masked Specter** — bronze (the brainstorm's Hollow): flying; **Dread** —
-  the enemy cannot USE morale while a Dread unit lives (token spends and
-  morale-card plays/spends/reactions gated; draws/gains still happen) — NEW
-  `MORALE_LOCK` (§19; wired at the `SPEND_MORALE` / `addMoraleActions` /
-  reaction-offer gates, with a "draws still occur" assertion + mode-off
-  CONTROL).
-- **Iron Automaton** — gold (the brainstorm's Pacifista): ranged; line laser
-  = line-breath REUSE; mechanical flag (`isMechanicalUnit` — Field-Repair/
-  Mechanic synergy).
+- **Titans** — gold (Attack on Titan): slow, huge; **Devour** (§19 arm,
+  shared with the Colossal Titan boss — the docx Bite, normalized from
+  "instantly kills 1 Bronze unit on a successful hit" to a die-gated
+  removal: a "+1" die removes a bronze target side outright).
+- **Hollows** — bronze (Bleach): flying; **Fear** (docx: "Heroes fighting
+  Hollows cannot use Morale tokens") — the enemy cannot USE morale while a
+  Fear unit lives (token spends and morale-card plays/spends/reactions
+  gated; draws/gains still happen) — NEW `MORALE_LOCK` (§19; wired at the
+  `SPEND_MORALE` / `addMoraleActions` / reaction-offer gates, with a "draws
+  still occur" assertion + mode-off CONTROL).
+- **Pacifista** — gold (One Piece): ranged; Laser (docx "hits in a straight
+  3-hex line") = line-breath REUSE; mechanical flag (`isMechanicalUnit` —
+  Field-Repair/Mechanic synergy).
 - Rounding out: bronze **Dire Wolves** (charge), silver **Harpy Matron**
   (flying, ignores retaliation), silver **Cultist Choir** (+1 Power to its
   side's first spell — `magi-power-boost` REUSE), gold **Parade Lich**
-  (lich splash REUSE), azure **Rift Tyrant** (Devour + Dread — the
+  (lich splash REUSE), azure **Rift Tyrant** (Devour + Fear — the
   wave-finale miniboss).
 
 **Isekai Creature Banks** (4, joining Far/Near piles; full
 `polish-bank-sizes` rows + `buildPolishCreatureBankReward` entries):
 **Goblin Nest** (far; goblins; gold + morale; a `win-vs-family` commission
 target; spike-pits pre-placed §6.7.2), **Slime Pit** (far; slimes;
-valuables), **Specter Shrine** (near; specters — Dread inside; artifact draw
-+ morale gamble `ATTACK_DIE_TABLE`), **Rift Maw** (near; rift demons;
-expert-spell Search (5) — the brainstorm's "Dimensional Breach" normalized
-to the bank vocabulary).
+valuables), **Hollow Shrine** (near; Hollows — Fear inside; artifact draw +
+morale gamble `ATTACK_DIE_TABLE`), **Dimensional Breach** (near, docx name
+and reward kept; rift demons; a Relic-tier artifact draw + valuables,
+scaled by X).
 
 **Map locations** (`locationDefinitions`, placed via isekai tiles/designer):
-**Otherworld Lab** (visitable; end your turn → Search (2) the Ability deck —
-the brainstorm's skip-turn-for-tech idea: reward + END_TURN force),
-**Curio Shop** (revisitable; pay 2 gold → reveal the top 3 of an Artifact
-deck, buy up to one at printed cost — the Artifact-Merchant event's
-peek-and-buy machinery relocated to a map site), **Guild Hall** (optional
-flavor; visiting = one free re-roll of the commission board — quiet action).
+**Capsule Corp Lab** (visitable, docx: give up the rest of your turn →
+Search (2) the Ability deck — the skip-turn-for-tech trade as reward +
+END_TURN force), **Urahara's Shop** (revisitable, docx verbatim: pay 2 gold
+→ reveal the top 3 of an Artifact deck, buy up to one at printed cost — the
+Artifact-Merchant peek-and-buy machinery relocated to a map site),
+**Guild Hall** (optional flavor; visiting = one free re-roll of the
+commission board — quiet action).
 
 ### 6.9 Gods & Blessings (`anime.gods`)
 
@@ -949,16 +1013,16 @@ path (`adventure-setup.ts:1916-1922`) — no mod-specific setup code.
 | Yaoguai Valley | **Fox Sage** (*Hồ Tiên*) | *Bewitching Gaze* — `initiative-shift` (Slow rider) | `wild-blessing`: at the start of a combat vs neutrals, one friendly unit gains +1 Attack for the combat (auto-picks strongest; `applyElementalScourge` wiring twin) |
 | Blood Demon Cult | **Demon Patriarch** (*Ma Tổ*) | *Blood Frenzy* — `attack-buff` with a 1-damage self-cost rider (parameter, not a new kind) | `blood-pact`: whenever the commander destroys an enemy side, its owner gains 1 gold (soul-reformer twin) |
 | Outer Court | **Void Envoy** (*Hư Không Sứ*) | *Time Dilation* — `initiative-shift` (Haste rider on own unit) | `void-veil`: ongoing-effect immunity from Magic grade 0 (per-slug override of `COMMANDER_MAGIC_ONGOING_IMMUNE_GRADE`) |
-| Summoner's Citadel | **Seal Bearer** | *Command Seal* — `attack-buff` | `contracted-blade`: +1 Attack while adjacent to a friendly GOLD unit (attack-time stat read) |
-| Hidden Village | **Shadow Guard** | *Body Flicker* — `initiative-shift` (Haste rider) | `substitution`: once per combat, when its health would drop to 0, set it to 1 (`phoenix-rebirth` wiring twin on the commander unit — the log-substitution gag) |
-| Steel Harbor | **Fleet Secretary** | *Emergency Repairs* — `defense-buff` (INSTANT REACTION, the Hierophant-Shield seam) | `supply-line`: +2 gold after each won combat (soul-reformer twin) |
+| Fuyuki City | **Ruler (Jeanne)** — the Grail War's arbiter class as the extra body | *Command Seal* — `attack-buff` | `contracted-blade`: +1 Attack while adjacent to a friendly GOLD unit (attack-time stat read) |
+| Hidden Leaf Village | **Might Guy** | *Body Flicker* — `initiative-shift` (Haste rider; the Eight Gates read as tempo) | `substitution`: once per combat, when his health would drop to 0, set it to 1 (`phoenix-rebirth` wiring twin on the commander unit — the substitution-jutsu log gag) |
+| Azur Lane Naval Base | **Vestal** — the repair ship | *Emergency Repairs* — `defense-buff` (INSTANT REACTION, the Hierophant-Shield seam) | `supply-line`: +2 gold after each won combat (soul-reformer twin) |
 
 New cast kinds needed: **none**. New specialty ids: 7 (union members +
 cases in `src/engine/commanders.ts`, mirrored on the existing 12). Voices
 map to existing sets in `commanderVoices` (Sword Saint → Swordsman, Fox Sage
 → Pixie/Sorceress mix, Demon Patriarch → Lich/Ogre mix, Void Envoy →
-Efreet, Seal Bearer → Swordsman, Shadow Guard → assassin-adjacent set, Fleet
-Secretary → Sea Dogs) — zero new sound files. Tests join
+Efreet, Ruler (Jeanne) → Monk, Might Guy → Ogre, Vestal → Sea Dogs) — zero
+new sound files. Tests join
 `wog-commanders.test.ts` / `wog-commander-casts.test.ts` with per-claim
 CONTROLs (one grade below / module-off / non-mod faction).
 
@@ -1147,18 +1211,19 @@ runs suspiciously like his favorite board game (the meta gag sets the tone;
 Hikari, having spent her divinity on the summon, tags along mortal, broke
 and indignant — the useless-goddess register played warm). Rival: **Kaito,
 Black-Blade** (A-rank, all flash). Antagonist chain: **Vesper**, High Priest
-of the Silent End → the Avatar → **Erebos**. Party: **Mira**
-(receptionist/exposition), **the Slayer**, **Novice Priestess**, **Elf
-Ranger** (§6.4.4 — their unique cards join the army as the story recruits
-them; the cards ARE the system↔story crossover).
+of the Silent End → the Avatar → **Erebos**. Party: **Guild Girl**
+(receptionist/exposition), **Goblin Slayer**, **Priestess**, **High Elf
+Archer** (§6.4.4 — their unique cards join the army as the story recruits
+them; the cards ARE the system↔story crossover), with **Dwarf Shaman** and
+**Lizard Priest** as NPCs until P16.
 
 Chapters: 1 **Summoned at Dawn** (tutorial; guild registration; first
-commissions; a goblin-cave bank with the Slayer's lesson — "goblins are no
-joke"; traps introduced gently) · 2 **Rank and File** (commission economy;
-the first scripted small Wave; Kaito intro; Priestess joins) · 3 **Into the
-Dungeon** (floors 1–5, the Minotaur; Vesper surfaces; Elf Ranger joins) ·
-4 **The Wave of Calamity** (full wave-defense set-piece; the Slayer's
-farm-rescue side chain — his homage episode) · 5A/5B **Hero of the Guild** /
+commissions; a goblin-cave bank with Goblin Slayer's lesson — "goblins are
+no joke"; traps introduced gently) · 2 **Rank and File** (commission
+economy; the first scripted small Wave; Kaito intro; Priestess joins) ·
+3 **Into the Dungeon** (floors 1–5, the Minotaur; Vesper surfaces; High Elf
+Archer joins) · 4 **The Wave of Calamity** (full wave-defense set-piece;
+Goblin Slayer's farm-rescue side chain — his episode) · 5A/5B **Hero of the Guild** /
 **The Dark Bargain** (route split on the karma axis: the S-rank exam
 boss-rush, or taking Erebos's Mark for corrupted cheats — bigger numbers,
 karma bleed, the Guild turns cold) · 6 **The Goblin King's Horde** (waves +
@@ -1225,23 +1290,52 @@ q82–92) → R2 sync automatic on push. Every consumption position through
 - *Otherworld Gate*: **anime-painterly hybrid** for card faces — clean
   lineart, cel-adjacent shading, muted saturation and painterly texture so
   cards sit beside the H3 scans without reading as stickers; full cel style
-  is allowed ONLY for VN sprites. Palettes: Citadel (ritual gold, command
-  sigils, spirit shimmer), Village (forest slate, masks, sign-seals), Harbor
-  (white steel, rigging halos, sea glare). Bosses get double-width hero-shot
-  art.
-- Hard constraints in every prompt: no text/numbers baked into art; no
-  trademarked designs or traced/model-recognizable characters (§ IP rule).
+  is allowed ONLY for VN sprites and CGs. Per-town palettes: Fuyuki City
+  (leyline-lit night streets, command seals, translucent servant shimmer),
+  Hidden Leaf (forest slate, headbands, hand-sign sigils, canopy light),
+  Naval Base (white steel, rigging halos, sea glare). Bosses get
+  double-width hero-shot art.
+- **Likeness rule (follows the §-header naming decision):** depict the
+  source characters **faithfully and recognizably** — Saber's blue-and-gold,
+  Naruto's orange-and-black with the Leaf headband, Laffey's white twintails
+  and sleepy eyes, Goblin Slayer's cheap steel helm — as freshly GENERATED
+  renditions; never trace, upscale or paste official art into an asset.
+  Identity reference images (user-supplied screenshots are fine for this
+  private project) go in `scripts/anime-art/refs/<slug>/` for the edit-mode
+  identity workflow (the repo's established consistency trick: one reference
+  sheet per character first, then expression/pose edits keep the face) —
+  add that folder to `.gitignore` so references never enter history,
+  `public/`, or the CDN.
+- Hard constraint in every prompt: no text/numbers baked into generated art
+  — titles, stats and glyphs are set by the compositor from
+  `scripts/card-glyphs/`.
 
-**Inventory & budget** (~630 images total across both packages, phased —
-this is months of asset work, not a weekend; counts drive §20 estimates):
-7 towns × (7 unit windows + 6 heroes×2 + 18 specialties + 7 buildings +
-town/board/tile) ≈ 420 · commanders 7 · xianxia neutrals ~15 + 6 realm
-fields + bank cards ~14 · isekai neutrals ~15 + 4 bank fields + ~10 bank
-cards · bosses 5–6 (large) + lair field art · guild ≈ 27 (board bg, 7 rank
-badges, ~16 commissions, 3 party members) · pills ~10 · traps/objects ~10 ·
-gods 4 + 2 portraits · VN ≈ 90 (both casts: ~22 sprites ×3–4 expressions,
-~26 backgrounds, ~18 CGs) · crests/UI ~16. Per-character sprite consistency:
-generate one reference sheet first, then expression edits.
+**Asset plan — exact deliverables** (isekai package; conventions follow the
+existing pipeline — faction slugs `fuyuki` / `hidden_leaf` / `azur_lane`;
+xianxia counts unchanged from §5):
+
+| Category | Exact deliverables | Filename convention |
+| --- | --- | --- |
+| Unit card windows (7 per town) | Fuyuki: assassins · riders · lancers · archers · casters · sabers · berserkers — Hidden Leaf: genin-squad · medical-nin · anbu-black-ops · jonin · giant-toad · jinchuriki · susanoo-avatar — Naval Base: laffey · javelin · sirius · noshiro · unicorn · nagato · amagi | `units-<faction>-<tier>-<line>-{few,pack}.webp`; one window reused across Few/Pack by the compositor (the Phoenix precedent) |
+| Hero portraits (×2 each: card + board) | Fuyuki: **bin** · shirou-emiya · rin-tohsaka · illyasviel · kiritsugu · lord-el-melloi — Hidden Leaf: naruto-uzumaki · sasuke-uchiha · kakashi-hatake · tsunade · shikamaru-nara · jiraiya — Naval Base: honolulu · yukikaze · enterprise · belfast · akagi · bismarck | `heroes-<faction>-<hero>.webp` + `hero_boardart-<hero>.webp` |
+| Specialty card art (18 per town) | one window per hero reused across I/IV/VI with a level tint (halves the count) | `specialty.<hero>.{1,4,6}` faces via the compositor |
+| Buildings (7 per town + town/board/tile) | incl. the Summoning Circle, Chunin Exam Arena, Wisdom Cube Laboratory as their towns' signature pieces | building sheet + `board/tiles/` starting-tile art |
+| Commanders | ruler-jeanne · might-guy · vestal (+ xianxia: sword-saint · fox-sage · demon-patriarch · void-envoy) | `units-commander-<slug>.webp` built by `build-anime-cards.mjs` |
+| Party Members | goblin-slayer · priestess · high-elf-archer (+P16: dwarf-shaman · lizard-priest) | neutral-card frame |
+| Isekai neutrals (~16) | goblin-scouts · hobgoblin-brutes · goblin-champion · goblin-shaman · goblin-lord · slime-swarm · giant-slime · sovereign-slime · titans · hollows · pacifista · dire-wolves · harpy-matron · cultist-choir · parade-lich · rift-tyrant | `units-neutral-<tier>-<slug>.webp` |
+| Raid bosses (double-width) | goblin-king · colossal-titan · abyss-kraken · calamity-dragon · avatar-of-erebos + Rift Lair field art | boss card faces + map field |
+| Banks & the Dungeon | goblin-nest · slime-pit · hollow-shrine · dimensional-breach field art + ~10 bank unit cards + the Dungeon gate field | creature-bank conventions |
+| Locations & objects | capsule-corp-lab · uraharas-shop · guild-hall fields; trap markers ×4 kinds (hidden marker is NO art by design — sprung markers only) + the spike-pit battlefield token | map token art |
+| Guild | board background · rank badges F/E/D/C/B/A/S · 16 commission card faces · the S-Rank seat chip | `ui/` + card frames |
+| Gods | hikari & erebos full portraits · patron cards hikari/tekkai/raiju | overlay + card art |
+| VN sprites (3–4 expressions each) | isekai cast: bin · hikari · guild-girl · goblin-slayer · priestess · high-elf-archer · kaito · vesper · erebos-avatar (+ cameo sprites: naruto, jeanne) — xianxia cast ~10 (chen-fan + the §12.1 cast) | `story/sprites/<char>-<expr>.webp`; reference sheet first, then expression edits |
+| VN backgrounds (~14) & CGs (~10 isekai) | bgs: Hikari's summoning chamber · guild hall · Fuyuki bridge at night · Leaf village gate · dungeon gate & depths · goblin cave · frontier farmstead · wave battlefield under the cracked sky · Erebos's void throne · dawn shrine · tavern · harbor · sea passage west — CGs keyed to chapter beats: the summoning · first wave · the Minotaur · the farm rescue · S-rank ceremony / the Dark Bargain · the Goblin King's fall · Admin Override · Godfall · the epilogue shore | `story/bg/`, `story/cg/`, 16:9 webp |
+| Crests & UI | anime crest · two package icons · wave/boss announcement banners · dungeon floor badge · patron chips | `ui/*.webp` |
+
+**Budget** ≈ 630 images across both packages (the 7 towns' ≈ 420 dominate)
+— months of asset work even AI-assisted, phased per §20; the counts above
+drive those estimates. Per-character consistency: reference sheet first,
+then edits (identity held by the edit workflow).
 
 **Audio**: unit/commander/boss voices — **zero new files** (map to existing
 H3 voice sets in `unit-sounds.ts`: goblins → Gnoll/Goblin, specters →
@@ -1283,9 +1377,14 @@ Menu/Decks tab, not new tabs. Global resource-subtitle rule per §2.
   pipeline, so controlled guards work unchanged; wave armies and raid
   bosses are played by the next-clockwise seat (the mode's showcase);
   `PLACE_TOKEN_ACTION` variants join the free-mode token offers.
+- **WOG mod**: the §3.9 contract — commanders join wave/boss/Dungeon fights
+  under the normal deployment cap, `wog.newCreatures` merges beside both
+  anime neutral slices with no false `family` matches, `wog.newObjects`
+  coexists with the anime designer objects, and the §3.8 soak runs all
+  three option blocks on.
 - **Morale Cards**: Mind-Calming vs negative-absorption ordering (§5.9); Qi
   Burst mirrors `combat_bonus` including the instant-window reaction seam;
-  `MORALE_LOCK` (Dread) gates spends/uses but never draws/gains — pinned
+  `MORALE_LOCK` (the Hollows' Fear) gates spends/uses but never draws/gains — pinned
   both ways.
 - **Events deck**: no mod Event cards in V1 (§22); the wave barrier orders
   explicitly after a drawn Fortress Event (§6.6.2).
@@ -1356,20 +1455,20 @@ arms are built once, parameterized, consumers wire data only:
 
 | Arm / system | Kind | Consumers |
 | --- | --- | --- |
-| `ATTACK_BONUS_ADJACENT_ALLY` (param `adjacentTo`) | SHARED arm | Outer Sect Disciples; Novice Shinobi; Goblin Scouts/Lord |
-| Die-face→token arm (params `face`, `token`) | SHARED arm | Tiger (par@−1), Serpent (cor@+1), Illusionist (weak@+1); Riders (par@+1), Torpedo Squads (cor@+1) |
-| `PLACE_TOKEN_ACTION` token variants (paralysis / initiative-down) | SHARED variant (arm exists, `abilities.ts:64`) | Nine-Tailed Fox; Flagship Sovereign; + free-mode PvP-neutral-control offers |
-| Charge as a unit tag (generalize `commander-charge`) | SHARED arm | True Inheritors, Dragon Horse; Sabers, Elite Shinobi, Dire Wolves |
-| `requiresNotMoved` ability-gate param | SHARED param | Archers, Elf Ranger |
+| `ATTACK_BONUS_ADJACENT_ALLY` (param `adjacentTo`) | SHARED arm | Outer Sect Disciples; Genin Squad (`adjacentTo: "target"`); Goblin Scouts/Lord |
+| Die-face→token arm (params `face`, `token`) | SHARED arm | Tiger (par@−1), Serpent (cor@+1), Illusionist (weak@+1); Riders (par@+1) |
+| `PLACE_TOKEN_ACTION` token variants (paralysis / initiative-down) | SHARED variant (arm exists, `abilities.ts:64`) | Nine-Tailed Fox; Amagi; + free-mode PvP-neutral-control offers |
+| Charge as a unit tag (generalize `commander-charge`) | SHARED arm | True Inheritors, Dragon Horse; Sabers, Noshiro, Dire Wolves |
+| `requiresNotMoved` ability-gate param | SHARED param | Archers, High Elf Archer, Laffey (Sleepy) |
 | `ON_REMOVAL_HEAL_ADJACENT` | NEW arm | Mountain Guardian |
 | `ON_REMOVAL_OWNER_RESOURCE` | NEW arm | Cult Initiates |
 | `SELF_DAMAGE_ATTACK_BOOST` | NEW arm | Blood Venerables (+ Demon Patriarch cast rider param) |
-| `AFTER_ATTACK_SPLASH` | NEW arm | Beast Vessel Few |
-| `MORALE_LOCK` (Dread) | NEW arm | Masked Specter, Rift Tyrant, Avatar of Erebos |
-| **Devour** (tier-gated die-face side removal; `gorgon-death-stare` machinery variant) | NEW arm | Colossal Giant, Titan of the Wall, Rift Tyrant |
+| `AFTER_ATTACK_SPLASH` | NEW arm | Jinchuriki Few |
+| `MORALE_LOCK` (Fear) | NEW arm | Hollows, Rift Tyrant, Avatar of Erebos |
+| **Devour** (tier-gated die-face side removal; `gorgon-death-stare` machinery variant) | NEW arm | Titans, Colossal Titan (boss), Rift Tyrant |
 | `requiresLayersAtMost` gate | NEW gate | boss Enrage phases |
-| `ADJACENT_ALLY_RANGED_GUARD` aura | NEW arm (Harbor only) | Escort Maidens |
-| Medic token-removal pick param | NEW-lite | Medic Shinobi, Novice Priestess |
+| `ADJACENT_ALLY_RANGED_GUARD` aura | NEW arm (Naval Base only) | Sirius |
+| Medic token-removal pick param | NEW-lite | Medical-Nin, Priestess |
 | `ELIXIR_SHOP` building | NEW building | Alchemy Pavilion |
 | `BLOOD_ALTAR` building | NEW building | Blood Demon Cult |
 | Morale-costed + tile-reveal `CityHallOption`s | NEW options | Blood Pool; Star Chart |
@@ -1377,7 +1476,7 @@ arms are built once, parameterized, consumers wire data only:
 | Free-extend Citadel rider (`CONTINUE_NEUTRAL_COMBAT` waiver) | NEW rider | Realm-Breach Platform |
 | `TOWN_GATE_TRAVEL` building | NEW building | Spatial Gate |
 | `SUMMON_GACHA` building | NEW building | Summoning Circle |
-| `PAY_DRAW_FILTER` building | NEW building (Harbor) | Wisdom Cube Laboratory |
+| `PAY_DRAW_FILTER` building | NEW building (Naval Base) | Wisdom Cube Laboratory |
 | Guild block (board/claims/ranks/perks) | NEW system | §6.4 |
 | Wave block (scheduler, wave table, pillage/overrun) | NEW system | §6.6 |
 | Raid-Boss block (registry, lair field/object, persistence ledger, announce/escalate) | NEW system | §6.5 |
@@ -1403,22 +1502,22 @@ user can reorder tracks without re-planning (§22 Q2).
 | Phase | Ships | Gate (beyond green lint/typecheck/test) |
 | --- | --- | --- |
 | **P0** | Spine: `AnimeModOptions`, crest + package quick-selects, `.animeMode` scaffold + both term dictionaries, art scaffolding (style bible, prompt sheets, shared compositor), CLAUDE.md section stub | §3.8(a) master CONTROL; quick-select = exact module groups; crest e2e |
-| **P1** | **Summoner's Citadel** complete (units/buildings/heroes incl. **Bin**/commander/tile/board/art) + Summoning Circle + its SHARED/NEW arms | content test; commander bijection updated; SP soak with a Citadel AI seat |
-| **P2** | **Isekai neutrals** + 4 isekai banks + Devour/`MORALE_LOCK` + isekai map locations | bank rows vs `polish-bank-sizes` on/off; Dread↔morale-deck interplay tests; §3.8 gates begin |
+| **P1** | **Fuyuki City** complete (units/buildings/heroes incl. **Bin**/commander **Ruler (Jeanne)**/tile/board/art) + Summoning Circle + its SHARED/NEW arms | content test; commander bijection updated with a `wog.commanders`-on seat; SP soak with a Fuyuki AI seat |
+| **P2** | **Isekai neutrals** + 4 isekai banks + Devour/`MORALE_LOCK` + isekai map locations | bank rows vs `polish-bank-sizes` on/off; Fear↔morale-deck interplay tests; §3.8 gates begin |
 | **P3** | **Adventurers' Guild** (board, ranks, commissions, Party Members) + the shared quest vocabulary (§3.5) | rank-perk tests each with rank-below CONTROL; claim race (parallel turns); AI claims in soak |
 | **P4** | **Calamity Waves** | barrier-order test (income→event→waves→City Hall); pillage/overrun effect tests; AFK-retreat + elimination CONTROLs; PvP-neutral-control wave test; AI wave soak |
 | **P5** | **Raid Bosses** (+ `boss_lair` object, announce/escalate) | persistence across attempts + snapshot; layer-payout ledger; escalation; PvP-neutral-control boss test |
 | **P6** | **Azure Breeze Sect** + Sword Saint + Alchemy Pavilion (+ its 2 NEW arms) | content test; ELIXIR_SHOP fallback (pills off) test |
 | **P7** | **Elixir Pills** + **Secret Realms** (6 banks, grade rows, realm-grade skin) + **xianxia neutrals** | pills morale-seam tests; bank grades vs polish on/off; Deity-Transformation ships-or-registers rule |
 | **P8** | **Quest Guard** object + **Traps** + xianxia map locations + Guild sites (the designer wave) | designer round-trip/sanitize; every quest kind + reward effect-tested; trap view-masking per player view; AFK/elimination/parallel CONTROLs; AI plays a quest+trap map |
-| **P9** | **Hidden Village** + **Yaoguai Valley** (+ Shadow Guard, Fox Sage, Exam Arena, Transformation Pill Hall) | content tests; `AFTER_ATTACK_SPLASH` + damage-cap CONTROLs; `armyUnitStacksActive` third-activator tests |
+| **P9** | **Hidden Leaf Village** + **Yaoguai Valley** (+ Might Guy, Fox Sage, Chunin Exam Arena, Transformation Pill Hall) | content tests; `AFTER_ATTACK_SPLASH` + damage-cap CONTROLs; `armyUnitStacksActive` third-activator tests |
 | **P10** | **Blood Demon Cult** + **Outer Court** (+ Demon Patriarch, Void Envoy, Blood Altar, Spatial Gate, over-limit specialties) | content tests; karma hooks land dormant (fire only when substrate on); Book-on over-limit tests (§10) |
 | **P11** | The divinity layer: **Destiny substrate + titles**, **Cultivation + Tribulation**, **Gods & Blessings**, and the §8 synergy pass (commission entries, wave themes, western boss, shop pills, realm-gate union) | every source/spend with mode-off CONTROLs; both-titles-on-one-axis test; each §8 item with a one-side-off CONTROL; all-on soak |
 | **P12** | **The Dungeon** (+ floor bosses) | floor progression/reward ladder; per-player floors across snapshot; AI delves in soak |
 | **P13** | **Story system** + campaign hub + **Bin chapters 1–3** + the System/cheat shell | scene-asset integrity; ch-1 boot-to-victory smoke; cheat-pick effect tests; reconnect cue test |
 | **P14** | **Bin chapters 4–7** (routes) + **Chen Fan chapters 1–3** | fixed-seed completion per Bin route |
 | **P15** | **Chen Fan chapters 4–7** (routes) + skin/phone polish + full both-package soak | fixed-seed completion per Chen Fan route; nightly soak green |
-| **P16** (stretch) | **Steel Harbor** + Abyss Kraken sea spawn + **The Two Continents** convergence arc + multiplayer Destiny-draft variant | content test; sea-boss spawn test; co-op scenario smoke |
+| **P16** (stretch) | **Azur Lane Naval Base** (+ Vestal, Enterprise/Belfast/Akagi/Bismarck, the Dwarf Shaman & Lizard Priest party pair) + Abyss Kraken sea spawn + **The Two Continents** convergence arc + the Destiny-draft variant | content test; sea-boss spawn test; co-op scenario smoke |
 
 Art rule per phase: no undeclared placeholders (the Factory "fake
 portraits" lesson — declared in a registry, then replaced).
@@ -1441,38 +1540,37 @@ first.
 
 ## 22. Open questions (defaults chosen so work can proceed)
 
-1. **IP naming** — default: IP-neutral homage names shipped; the terms
-   dictionaries make restoring the brainstorm's real anime names a private,
-   data-only swap. Confirm (recommended: yes — the repo and CDN are public).
-2. **Track order** — default: isekai systems first (P1–P5), xianxia towns
+1. **Track order** — default: isekai systems first (P1–P5), xianxia towns
    from P6, campaigns last. Confirm, or reorder tracks (they only share the
    P0 spine).
-3. **Town count** — 6 towns + Steel Harbor stretch is a LOT of art (§14).
-   Authorize the volume, cut a town per package, or accept
+2. **Town count** — 6 towns + the Azur Lane Naval Base stretch is a LOT of
+   art (§14). Authorize the volume, cut a town per package, or accept
    placeholder-then-replace pacing for P9–P10.
+3. **Commander picks** — Ruler (Jeanne) for Fuyuki City, Might Guy for the
+   Hidden Leaf, Vestal for the Naval Base, as specced in §7? Any swap is a
+   data-only change (slug + art + voice row).
 4. **Wave pillage harshness** — keep the mine/settlement overrun stake, or
    gold-only for V1? Default: ship both, tune at playtest.
 5. **Boss behavior** — default stationary lairs, +1 layer per 4 rounds;
    roaming bosses and a simultaneous "raid party" mode stay out of scope.
 6. **Bin's kit** — magic hero with draw/reroll/over-limit as specced?
    Default: yes (the cheat reads as knowledge).
-7. **Dread scope** — `MORALE_LOCK` blocks morale spends/uses but never
-   draws/gains. Confirm the reading of "cannot use Morale tokens".
+7. **Fear scope** — `MORALE_LOCK` blocks morale spends/uses but never
+   draws/gains. Confirm the reading of the docx's "cannot use Morale
+   tokens".
 8. **Gods depth** — V1 = one pick + one Miracle + the Bargain; a full
    divine-favor track is deferred. Confirm.
 9. **Dungeon shape** — 10 floors, bosses at 5/10, per-player progress; a
    shared-progress "race" variant is stretch. Confirm.
-10. **Waves in single-player** — default ON (PvE content), unlike the
-    multiplayer-only Events deck. Confirm.
-11. **Karma PvP trigger** ("bullying the weak", §5.7) — keep or cut after
+10. **Karma PvP trigger** ("bullying the weak", §5.7) — keep or cut after
     playtest? Default: ship behind the substrate, tune the 60% threshold.
-12. **Deity Transformation pill** (second activation) — attempt in P7, stub
+11. **Deity Transformation pill** (second activation) — attempt in P7, stub
     consciously if the machinery slips. Confirm.
-13. **Localization depth** — story text bilingual EN/VI by construction;
+12. **Localization depth** — story text bilingual EN/VI by construction;
     full UI translation NOT in scope. Confirm.
-14. **Music licensing** — CC0/licensed/user-supplied per register, or
+13. **Music licensing** — CC0/licensed/user-supplied per register, or
     none-at-ship (acceptable limit). Default: none-at-ship.
-15. **Account-synced campaign progress** — localStorage first; sync when
+14. **Account-synced campaign progress** — localStorage first; sync when
     the accounts backend grows a save slot. Default: later.
-16. **Mod Event cards** for the Events deck — natural post-P15 follow-on,
+15. **Mod Event cards** for the Events deck — natural post-P15 follow-on,
     out of scope here.
