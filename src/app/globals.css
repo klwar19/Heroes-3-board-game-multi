@@ -12413,11 +12413,19 @@ img.cardBack {
   position: relative;
 }
 
+/* Sits just off the board's right edge (the defender's wall side), but anchored
+   to the board's BOTTOM-right corner rather than its vertical middle. The card
+   juts fully OUTSIDE the felt (translate 100%) so it never covers battlefield
+   cells; and because the landscape 5x4 board is taller than the 320px right
+   rail's stacked content, the lower corner clears the inspect/command panels
+   instead of covering them at mid-height (the old top:50% overlapped them).
+   Phone mode (below) drops the absolute positioning entirely and flows it. */
 .arrowTower {
   position: absolute;
-  top: 50%;
+  top: auto;
+  bottom: 0;
   right: -8px;
-  transform: translate(100%, -50%);
+  transform: translate(100%, 0);
   display: flex;
   flex-direction: column;
   gap: 6px;
