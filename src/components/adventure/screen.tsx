@@ -63,6 +63,7 @@ import {
   MAX_PARALLEL_TURN_ROUNDS,
   parallelInteractionBlocker,
   parallelTurnsActive,
+  polishArmyUnitStackCap,
   readyCheckConfirmers,
   remainingParallelPlayerIds,
   observatoryRevealTargets,
@@ -2964,7 +2965,7 @@ export function ArmyPanel({ state, playerId }: { state: GameState; playerId: Pla
                 {(unit.stacks ?? 0) > 0 ? (
                   <span
                     className={`armyStackBadge tier-${def?.tier ?? "bronze"} active`}
-                    title={`${unit.stacks} Unit Stack${unit.stacks === 1 ? "" : "s"} · +1 Attack · max ${def?.tier === "gold" || def?.tier === "azure" ? 1 : def?.tier === "silver" ? 2 : 3}`}
+                    title={`${unit.stacks} Unit Stack${unit.stacks === 1 ? "" : "s"} · +1 Attack · max ${polishArmyUnitStackCap(unit) || unit.stacks}`}
                   >
                     <img alt="" aria-hidden="true" src={assetUrl("/assets/ui/polish-unit-stacks-coin.webp")} />
                     ×{unit.stacks}

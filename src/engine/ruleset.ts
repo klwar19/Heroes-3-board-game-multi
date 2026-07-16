@@ -1,7 +1,7 @@
 import type { UnitSideDefinition } from "@/data/factions/types";
 import { cardLibrary } from "@/data/cards/library";
 import { STARTING_ONLY_SPELLS } from "@/data/cards/spells";
-import { houseRuleEnabled } from "./house-rules";
+import { armyUnitStacksActive, houseRuleEnabled } from "./house-rules";
 import type {
   CardId,
   CardLibrary,
@@ -127,7 +127,9 @@ export function unitSideRuleOverrides(
   return {
     griffinBuff: houseRuleEnabled(state, "griffin-buff"),
     marksmanBuff: houseRuleEnabled(state, "marksman-buff"),
-    polishUnitStacks: houseRuleEnabled(state, "polish-unit-stacks")
+    // Either Polish rule activates army Stack layers: polish-unit-stacks sells
+    // them, polish-bank-sizes grants them with a unit bank's Pack reward.
+    polishUnitStacks: armyUnitStacksActive(state)
   };
 }
 

@@ -1626,8 +1626,12 @@ function reserveCreatureBankForTile(state: GameState, tile: MapTileState, player
   // First Far (Ⅱ–Ⅲ) bank for this seat: ONE Attack die per candidate (size
   // Ⅰ–Ⅲ only — a single die cannot sum to ±2). Later Far openings and every
   // Near bank still roll TWO dice each so gold size Ⅳ stays reachable.
+  // NOTE: every Far tile reaches rotation through finalizeFarTileFlip, which
+  // ticks farTilesOpenedByPlayer BEFORE beginTileRotation runs this reserve —
+  // so the seat's FIRST opening reads as 1 here (0 covers the legacy-snapshot
+  // recovery re-reserve of a tile that predates sized reservations).
   const farOpenings = adventure.farTilesOpenedByPlayer?.[playerId] ?? 0;
-  const diceCount = tier === "far" && farOpenings === 0 ? 1 : 2;
+  const diceCount = tier === "far" && farOpenings <= 1 ? 1 : 2;
   const random = createSeededRandom(
     `${state.seed}#adventure#bank-size-${tile.id}#${eventSeedNumber(state)}`
   );

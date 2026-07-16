@@ -8065,14 +8065,6 @@ export function polishBankMaxSize(bankId: CreatureBankId): BankSize {
 export { polishBankRewardScale } from "@/data/map/creature-banks";
 
 /**
- * Compact "X" for feed/UI: size Ⅰ → 0, size Ⅱ+ → 4 (full stack extras).
- * Size Ⅲ/Ⅳ gold base layers are separate (`polishBankRewardScale.extraBaseGoldLayers`).
- */
-export function polishBankRewardX(size: BankSize): number {
-  return polishBankRewardScale(size).stackedX;
-}
-
-/**
  * Builds the Creature Bank defenders for a combat. Standard banks place their
  * random statistic Stack Tokens using Scenario Difficulty (rulebook p.66-67).
  *

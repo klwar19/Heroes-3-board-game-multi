@@ -1,7 +1,7 @@
 import { expireEffectsForCombatEnd } from "./active-effects";
 import { getUnitSide } from "./adventure";
 import { appendEvent } from "./events";
-import { houseRuleEnabled } from "./house-rules";
+import { armyUnitStacksActive, houseRuleEnabled } from "./house-rules";
 import { getRuleset, unitSideRuleOverrides } from "./ruleset";
 import { isArrowTowerUnit } from "./siege";
 import { getOnRemovalDetonation, getSelfRebirthAbility, getUnitsAdjacentTo, isUnitDamageImmune } from "./unit-abilities";
@@ -102,7 +102,7 @@ export function markUnitRemovedIfNeeded(state: GameState, unit: CombatUnitState)
   // drops the flat +1 Attack when the final Stack is gone. Neutrals have no
   // Pack→Few flip — once stacks and the body die, the card is removed as usual.
   while (
-    houseRuleEnabled(state, "polish-unit-stacks") &&
+    armyUnitStacksActive(state) &&
     (unit.variant === "pack" || unit.variant === "neutral") &&
     (unit.armyStacks ?? 0) > 0 &&
     unit.damage >= unit.maxHealth

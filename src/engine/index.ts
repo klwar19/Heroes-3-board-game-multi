@@ -443,7 +443,6 @@ export {
   mapTokenLabel,
   polishBankMaxSize,
   polishBankRewardScale,
-  polishBankRewardX,
   polishBankSizeForAttackRolls,
   tokenMayCoverFieldDef,
   planSubterraneanGates,
