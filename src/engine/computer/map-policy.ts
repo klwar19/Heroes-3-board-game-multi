@@ -1,4 +1,4 @@
-import { coreBuildingDefinitions } from "@/data/factions/core";
+import { coreBuildingDefinitions, coreFactionDefinitions } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { cardLibrary } from "@/data/cards/library";
 import { locationDefinitions, TRADE_RATES } from "@/data/map/locations";
@@ -9,6 +9,7 @@ import {
   canHeroReachPlacedTile,
   getAdjacentSpaceIds,
   getUnitSide,
+  isFieldGuarded,
   isOuterEdgeSealed,
   neutralBattleLevel,
   playerHasPlaceableFarTile,
@@ -19,6 +20,7 @@ import type {
   GameAction,
   GameState,
   HeroState,
+  MapFieldState,
   MapSpaceId,
   MapTileState,
   PlayerId,
@@ -27,18 +29,20 @@ import type {
 } from "../state";
 import { cardKeepValue } from "./card-policy";
 import { cardTier } from "./card-values";
-import { playerArmyStrength } from "./army-strength";
+import { isPremiumEconomyField, playerArmyStrength } from "./army-strength";
 import { polishUnitStackCost } from "../polish-unit-stacks";
 import {
   armyDevelopmentProfile,
   armyReadyForContestedFight,
   assessDwellingRush,
   developmentResourceTargets,
+  hasOpenedFarEconomy,
   shouldPrioritizeFirstAidTent,
   shouldSeekLateWarMachineShop,
   shouldLaunchBronzeRush,
 } from "./development";
 import {
+  canBeatGuardedField,
   collectMapObjectives,
   objectiveDistanceField,
   ownTownSpaceId,
@@ -155,24 +159,31 @@ export function tradeUtility(
 ): number {
   const rate = TRADE_RATES[rateIndex];
   if (!rate) return -99;
-  // Valuables are the Gold-dwelling bottleneck. Keep the dwelling's last needed
-  // valuable until Gold is built — but once the seat holds TRUE surplus
-  // (target + 2 or more, e.g. from a valuables mine), sell extras for gold so
-  // income converts into build/recruit cash instead of rotting in the coffer.
-  if (
-    (rate.sell.valuables ?? 0) > 0 &&
-    (rate.buy.gold ?? 0) > 0 &&
-    !armyDevelopmentProfile(state, playerId).goldUnlocked
-  ) {
-    const target = developmentResourceTargets(state, playerId);
-    const vals = state.players[playerId]?.resources.valuables ?? 0;
-    const surplus = vals - (target.valuables ?? 0);
-    if (surplus < 2) return -99;
-  }
   const res = playerResources(state, playerId);
   // Must be able to pay (legal-actions already gates, but score still ranks).
   for (const key of Object.keys(rate.sell) as ResourceKey[]) {
     if ((res[key] ?? 0) < (rate.sell[key] ?? 0)) return -99;
+  }
+  // DWELLING-INPUT FLOOR: until the Gold dwelling stands, materials and
+  // valuables are the bottleneck the whole tempo hangs on, and the market
+  // spread makes every sell-then-rebuy a net loss (1m sells for 1g, rebuys at
+  // 2g; 1v sells for 3g, rebuys at 6g). Measured pre-fix: seven materials
+  // dumped at 1:1 plus a v→2m / 3m→v churn cycle in the round before the
+  // Silver dwelling. A trade may only sell m/v stock that stays a cushion
+  // ABOVE the current dwelling target after the sale (materials keep +3
+  // toward the NEXT dwelling's rebuild; valuables +2, they trickle slower).
+  // The margin also breaks the churn pair: after a v→m conversion the bought
+  // side sits at/above its target, so the reverse trade buys "nothing wanted"
+  // and scores below zero.
+  if (!armyDevelopmentProfile(state, playerId).goldUnlocked) {
+    const target = developmentResourceTargets(state, playerId);
+    const cushion = { buildingMaterials: 3, valuables: 2 } as const;
+    for (const key of ["buildingMaterials", "valuables"] as const) {
+      const sold = rate.sell[key] ?? 0;
+      if (sold > 0 && res[key] - sold < (target[key] ?? 0) + cushion[key]) {
+        return -99;
+      }
+    }
   }
   const deficit = resourceDeficits(state, playerId);
   let utility = 0;
@@ -297,7 +308,26 @@ function buildingScore(
       effect?.type === "UNLOCK_RECRUIT_TIER" &&
       effect.tier === "bronze"
     ) {
-      score = Math.max(score, 950);
+      // The starting army already holds every bronze type as a Few, so before
+      // the Citadel stands this dwelling unlocks NO purchase — it is only the
+      // Silver prerequisite. Buying it first burns the exact materials the
+      // Citadel needs (measured: bronze at R2 pushed the Citadel to R4 and the
+      // Pack core to R6). Hold it until reinforce is unlocked UNLESS a bronze
+      // unit is actually missing from the army (a casualty to re-recruit).
+      const player = state.players[playerId];
+      const factionBronzeMissing = (
+        coreFactionDefinitions[player?.factionId ?? ""]?.units ?? []
+      ).some((unitDefId) => {
+        const unit = coreUnitDefinitions[unitDefId];
+        return (
+          unit?.tier === "bronze" &&
+          !player?.army.some((armyUnit) => armyUnit.unitDefId === unitDefId)
+        );
+      });
+      score =
+        !development.reinforceUnlocked && !factionBronzeMissing
+          ? Math.min(score, 280)
+          : Math.max(score, 950);
     } else if (
       !development.reinforceUnlocked ||
       !development.bronzeUnlocked
@@ -330,7 +360,13 @@ function buildingScore(
     (development.phase === "establish-core" &&
       (effect?.type === "UNLOCK_REINFORCE" ||
         (effect?.type === "UNLOCK_RECRUIT_TIER" &&
-          effect.tier === "bronze"))) ||
+          effect.tier === "bronze") ||
+        // Citadel + Bronze prebuilt (live lobby default): the next missing
+        // dwelling is the real milestone even while the Pack core assembles.
+        (development.reinforceUnlocked &&
+          development.bronzeUnlocked &&
+          effect?.type === "UNLOCK_RECRUIT_TIER" &&
+          effect.tier === (development.silverUnlocked ? "gold" : "silver")))) ||
     (development.phase === "unlock-silver" &&
       effect?.type === "UNLOCK_RECRUIT_TIER" &&
       effect.tier === "silver") ||
@@ -346,10 +382,15 @@ function buildingScore(
   // (Mage Guild, economy, anything non-milestone) that would eat into the
   // dwelling fund waits — only genuine surplus may buy extras. Mirrors the
   // populationScore treasury guard so building and recruiting cannot each
-  // spend the same savings.
+  // spend the same savings. ALSO active in the prebuilt establish-core (the
+  // live default) — measured: a round-1 Necromancy Amplifier ate the silver
+  // dwelling's materials because no phase guard covered that window.
   if (
     development.phase === "unlock-silver" ||
-    development.phase === "unlock-gold"
+    development.phase === "unlock-gold" ||
+    (development.phase === "establish-core" &&
+      development.reinforceUnlocked &&
+      development.bronzeUnlocked)
   ) {
     const cost = coreBuildingDefinitions[buildingId]?.cost ?? {};
     const resources = playerResources(state, playerId);
@@ -478,6 +519,21 @@ function populationScore(
     development.phase === "unlock-silver" ||
     development.phase === "unlock-gold"
   ) {
+    // The FIRST silver body is exempt from the dwelling-fund guard: it turns
+    // the three-Pack bronze core into the force that takes lv3 premium guards
+    // on Impossible and diff-3/4 side guards everywhere (armyEngagementTier's
+    // soft silver unlock), and the fight loot it opens repays the dwelling fund
+    // faster than hoarding would. Every LATER silver/gold body saves normally.
+    const firstSilverBody =
+      development.silverUnits === 0 &&
+      action.purchases.some(
+        (purchase) =>
+          purchase.kind === "recruit" &&
+          coreUnitDefinitions[purchase.unitDefId]?.tier === "silver",
+      );
+    if (firstSilverBody) {
+      return Math.min(score, 945);
+    }
     const resources = player?.resources ?? {
       gold: 0,
       buildingMaterials: 0,
@@ -489,9 +545,25 @@ function populationScore(
       resources.buildingMaterials - spentMaterials >=
         target.buildingMaterials &&
       resources.valuables - spentValuables >= target.valuables;
+    if (!protectsNextDwelling) {
+      // A fund-breaking purchase only fires while the roster is still thin or
+      // a Pack needs rebuilding — a healthy 5-body army WAITS for the dwelling
+      // instead. A score cap alone never saved anything: recruits at 820 beat
+      // every mundane action, so seeds recruited every round, held gold at
+      // 0-2 for six straight rounds, and the Gold dwelling never landed.
+      // Reinforces (cheap, gold-only Pack upgrades that rebuild the fighting
+      // core after premium losses) stay exempt.
+      const onlyNewRecruits = action.purchases.every(
+        (purchase) => purchase.kind === "recruit",
+      );
+      if (onlyNewRecruits && development.totalUnits >= 5) {
+        return Math.min(score, 240);
+      }
+      return Math.min(score, 820);
+    }
     // Build the next dwelling before buying intermediate troops. Population
     // may still use genuine surplus without touching the saved Silver/Gold fund.
-    return Math.min(score, protectsNextDwelling ? 940 : 820);
+    return Math.min(score, 940);
   }
   return score;
 }
@@ -550,6 +622,17 @@ function moveScore(
   // The destination IS the sticky objective (or any objective if none sticky).
   const arriving = marchTargets.find((objective) => objective.spaceId === action.to);
   if (to === 0 && arriving) {
+    // A STAGED premium guard (listed as a march target while the army cannot
+    // cover it yet — see premiumEconomyWorthStaging) must never be ENTERED:
+    // stepping on would open the very fight the staging is waiting out. The
+    // hero parks adjacent instead; the entry unblocks the moment
+    // canBeatGuardedField flips true (first silver body bought).
+    if (
+      (isFieldGuarded(field) || field.location === "creature_bank") &&
+      !canBeatGuardedField(state, hero, field)
+    ) {
+      return 250;
+    }
     return OBJECTIVE_ENTER_SCORE[arriving.kind];
   }
 
@@ -692,10 +775,13 @@ function expansionPriorityScore(
  * a wall). Pure def geometry — the slot adjacency of the 7-hex flower is the
  * same under every rotation — so it is computed once per candidate entrance.
  */
-function tileSlotOnwardReach(tileDefId: string, entrySlot: number): number {
+function tileSlotsReachableFrom(
+  tileDefId: string,
+  entrySlot: number,
+): Set<number> {
   const def = allTileDefinitions[tileDefId];
   if (!def) {
-    return 0;
+    return new Set();
   }
   const cells = tileFootprint({ row: 8, col: 8 }, 0).map((cell) =>
     hexSpaceId(cell),
@@ -707,7 +793,7 @@ function tileSlotOnwardReach(tileDefId: string, entrySlot: number): number {
     );
   };
   if (!passable(entrySlot)) {
-    return 0;
+    return new Set();
   }
   const reached = new Set<number>([entrySlot]);
   const queue = [entrySlot];
@@ -727,7 +813,7 @@ function tileSlotOnwardReach(tileDefId: string, entrySlot: number): number {
       queue.push(other);
     }
   }
-  return reached.size;
+  return reached;
 }
 
 /**
@@ -870,10 +956,27 @@ function tileHeroEntryScore(
       // pocket (blocked fields / printed internal borders isolate it) strands
       // the hero on arrival — sink it below every connected entrance, even a
       // beatable-guard one. A broader open interior wins close calls.
-      const onward = tileSlotOnwardReach(tile.tileDefId, slot);
+      const reachableSlots = tileSlotsReachableFrom(tile.tileDefId, slot);
+      const onward = reachableSlots.size;
       entry += Math.min(12, (onward - 1) * 3);
       if (onward <= 1) {
         entry -= 60;
+      }
+      // PREMIUM REACHABILITY: never rotate the tile's own settlement / gold /
+      // valuables mine into a sealed pocket — the whole premium rush dies on a
+      // mine the hero can never path to (measured: a Far tile self-placed with
+      // its gold mine unreachable left the rush parked for the entire game).
+      // A rotation whose hero entrance can reach the premium slot dominates
+      // every equal-entrance rotation that walls it off.
+      for (const reachableSlot of reachableSlots) {
+        const reachableField = def?.fields[reachableSlot];
+        if (
+          reachableField &&
+          isPremiumEconomyField(reachableField as unknown as MapFieldState)
+        ) {
+          entry += 90;
+          break;
+        }
       }
       bestEntry = Math.max(bestEntry, entry);
     }
@@ -1543,16 +1646,24 @@ export function scoreMapAction(
         policy: "map.hire-secondary-hero",
       };
     }
-    case "DISCOVER_TILE":
+    case "DISCOVER_TILE": {
+      const farGroup =
+        state.adventure?.tiles[action.tileInstanceId]?.group === "far";
+      // FAR-TILE HUNT: flipping a face-down Ⅱ–Ⅲ tile while the seat has no Far
+      // economy is the settlement lottery the premium rush depends on — never
+      // let the "collect the nearby payoff first" collapse (640/670) defer it.
+      // 905 beats every move/enter score (≤ 890 short of a victory step) but
+      // stays under the town build milestones (950+), so the flip happens the
+      // moment the hero is adjacent. Measured pre-fix: own placed Far tiles sat
+      // face-down for 5+ rounds while premium capture slipped to R7+/never.
+      if (farGroup && !hasOpenedFarEconomy(state, observation.playerId)) {
+        return { score: 905, policy: "map.discover-far-economy" };
+      }
       return {
-        score: expansionPriorityScore(
-          observation,
-          action.heroId,
-          830,
-          state.adventure?.tiles[action.tileInstanceId]?.group === "far",
-        ),
+        score: expansionPriorityScore(observation, action.heroId, 830, farGroup),
         policy: "map.discover-tile",
       };
+    }
     case "PLACE_TILE": {
       // Ⅱ–Ⅲ placement is the escape hatch when the hero is boxed by sealed
       // Near/center faces (the "stare at VI–VII" stall). Boost further when no

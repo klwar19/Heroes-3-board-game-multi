@@ -257,14 +257,29 @@ describe("Far-tile opening and Bronze-rush tempo", () => {
     const rush = scoreMapAction(observe(state), discover)!;
     expect(primaryMapObjective(state, hero)?.spaceId).toBe(EMPTY);
     expect(primaryMapObjective(state, hero)?.kind).toBe("victory");
-    expect(rush.score).toBeLessThan(700);
+    // The FAR-TILE HUNT outranks even the rush commit as an ACTION while the
+    // seat has no Far economy (the guaranteed settlement funds everything) —
+    // but the win itself stays the march target (primary above), and entering
+    // it (980) still beats the flip.
+    expect(rush.policy).toBe("map.discover-far-economy");
+    expect(rush.score).toBeLessThan(950);
+    // CONTROL: with the seat's own Far economy open, the hunt is over — the
+    // flip loses its dedicated policy and drops well below the hunt score.
+    state.adventure!.farSettlementOpenedByPlayer = { p2: true };
+    const afterEconomy = scoreMapAction(observe(state), discover)!;
+    expect(afterEconomy.policy).toBe("map.discover-tile");
+    expect(afterEconomy.score).toBeLessThan(rush.score);
+    state.adventure!.farSettlementOpenedByPlayer = undefined;
   });
 
   it("does not bleed the three-Pack rush into a side neutral", () => {
     const state = game();
     const hero = p2Hero(state);
     establishP2PackCore(state);
-    hero.level = 3;
+    // Level 1 vs difficulty 1: an EVEN fight (no Quick Combat), the kind the
+    // rush preservation exists for. A strict level advantage is exercised in
+    // the quick-win case further down.
+    hero.level = 1;
     state.round = 2;
     // Off home tile — tile-Ⅰ difficulty-1 guards stay engageable during the
     // sweep; this CONTROL is a non-premium materials mine elsewhere.
@@ -277,6 +292,14 @@ describe("Far-tile opening and Bronze-rush tempo", () => {
     hero.spaceId = EMPTY;
     // No Far economy opened yet → the bronze rush refuses the side neutral.
     expect(canBeatGuardedField(state, hero, offHome)).toBe(false);
+
+    // A strict level advantage resolves as QUICK COMBAT before a battle opens
+    // — no army ever bleeds — so the main hero takes the free XP/loot even
+    // mid-rush (measured pre-fix: skipping every free cleanup flatlined hero
+    // levels at 2-3 for the whole mid-game).
+    hero.level = 3;
+    expect(canBeatGuardedField(state, hero, offHome)).toBe(true);
+    hero.level = 1;
 
     // Once THIS player has opened its own Far (II-III) economy (the scenario's
     // guaranteed Far Settlement), it is no longer in desperation-rush mode and
