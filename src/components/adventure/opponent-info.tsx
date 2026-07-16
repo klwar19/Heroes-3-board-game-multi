@@ -121,8 +121,12 @@ function OpponentInfoModal({
 
 /**
  * A row of buttons — one per opponent — that each open the read-only opponent
- * info panel. Self-contained (holds its own open-seat state), so it drops into
- * both the map left rail and the combat card strip with no extra wiring.
+ * info panel. Self-contained (holds its own open-seat state), so it drops in
+ * with no extra wiring. Two shapes:
+ * - `"hud"`: folds INTO the adventure HUD ribbon as an aligned `advHudCell`
+ *   (map screen) — no separate floating box.
+ * - `"combat"`: a self-contained bordered pill-box in the combat card strip.
+ * (`"map"` keeps the legacy standalone box for any caller that still wants it.)
  */
 export function OpponentInfoDock({
   state,
@@ -133,37 +137,59 @@ export function OpponentInfoDock({
   state: GameState;
   viewerPlayerId: PlayerId;
   seatIds: PlayerId[];
-  variant?: "map" | "combat";
+  variant?: "map" | "combat" | "hud";
 }) {
   const [openSeat, setOpenSeat] = useState<PlayerId | null>(null);
   const opponents = seatIds.filter((id) => id !== viewerPlayerId);
 
+  // No opponents (solo / a one-live-seat table) → render nothing at all, so
+  // neither the HUD ribbon nor the combat strip is left with an empty box.
   if (opponents.length === 0) {
     return null;
   }
 
+  const label = (
+    <span className="opponentInfoDockLabel">
+      <Users aria-hidden="true" size={13} /> Opponents
+    </span>
+  );
+  const buttons = opponents.map((id) => {
+    const identity = getSeatIdentity(state, id);
+    const name = identity.personName ?? identity.seatName;
+    return (
+      <button
+        className="opponentInfoBtn"
+        key={id}
+        onClick={() => setOpenSeat(id)}
+        title={`Show ${name}'s resources, units, hero level and buildings`}
+        type="button"
+      >
+        <span className="seatFactionDot" style={{ background: identity.factionColor ?? "#b08d2f" }} aria-hidden="true" />
+        {name}
+      </button>
+    );
+  });
+  const modal = openSeat ? (
+    <OpponentInfoModal onClose={() => setOpenSeat(null)} playerId={openSeat} state={state} />
+  ) : null;
+
+  // HUD variant: an aligned status cell (label over a button row) that lives in
+  // the same flex ribbon as Round / Resources / Crowns — no standalone box.
+  if (variant === "hud") {
+    return (
+      <div className="advHudCell opponents" aria-label="Opponent info">
+        {label}
+        <div className="opponentInfoBtnRow">{buttons}</div>
+        {modal}
+      </div>
+    );
+  }
+
   return (
     <div className={`opponentInfoDock ${variant}`} aria-label="Opponent info">
-      <span className="opponentInfoDockLabel">
-        <Users aria-hidden="true" size={13} /> Opponents
-      </span>
-      {opponents.map((id) => {
-        const identity = getSeatIdentity(state, id);
-        const name = identity.personName ?? identity.seatName;
-        return (
-          <button
-            className="opponentInfoBtn"
-            key={id}
-            onClick={() => setOpenSeat(id)}
-            title={`Show ${name}'s resources, units, hero level and buildings`}
-            type="button"
-          >
-            <span className="seatFactionDot" style={{ background: identity.factionColor ?? "#b08d2f" }} aria-hidden="true" />
-            {name}
-          </button>
-        );
-      })}
-      {openSeat ? <OpponentInfoModal onClose={() => setOpenSeat(null)} playerId={openSeat} state={state} /> : null}
+      {label}
+      {buttons}
+      {modal}
     </div>
   );
 }

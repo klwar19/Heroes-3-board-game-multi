@@ -9358,6 +9358,21 @@ span.recruitThumb {
   color: #ffe9bd;
 }
 
+/* Opponent info folded INTO the adventure HUD ribbon: an aligned status cell
+   (label over a wrapping button row) that shares the rhythm of the Round /
+   Resources / Crowns cells beside it — no separate floating box on the map. */
+.advHudCell.opponents {
+  gap: 4px;
+  justify-content: center;
+}
+
+.opponentInfoBtnRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
 .opponentInfoBackdrop {
   z-index: 120;
   padding: 16px;
