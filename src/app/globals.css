@@ -15501,6 +15501,15 @@ img.cardBack {
   object-fit: contain;
 }
 
+/* Crowns (expert-use budget) chip: the same golden crown the "spend a crown"
+   overlays use, sized to sit beside the move/morale glyphs. */
+.statChip .crownChipIcon {
+  width: 15px;
+  height: 15px;
+  align-self: center;
+  color: #f0c85a;
+}
+
 /* Second negative morale token: hand dump is deferred until End Turn. */
 .statChip.moraleDiscardPending b,
 .statChip.moraleDiscardPending small {

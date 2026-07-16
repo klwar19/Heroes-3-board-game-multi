@@ -4,6 +4,7 @@ import {
   createAdventureGameState,
   createInitialGameState,
   expertUsesAvailable,
+  expertUsesTotalThisRound,
   getLegalActions
 } from "./index";
 import { getMainHero, refreshRoundTokens } from "./adventure";
@@ -208,5 +209,44 @@ describe("expert-effect crown limit — crowns are shared between the map and th
     // The defender's crown stays spent: no fresh crown for the enemy-turn battle.
     expect(state.players.p2.combatStats.expertUsesSpentThisRound).toBe(1);
     expect(expertUsesAvailable(state.players.p2)).toBe(0);
+  });
+});
+
+describe("crown budget helpers — remaining vs round total (HUD read)", () => {
+  // The adventure HUD shows "remaining / total"; both numbers come straight from
+  // these pure helpers so the display can never drift from the engine's read.
+  it("total is the level budget plus one-shot bonus; remaining subtracts what was spent", () => {
+    const state = createInitialGameState("crown-helper-total");
+    const player = state.players.p1;
+    player.limits.expertUses = 3;
+    player.combatStats.expertUseBonusThisRound = 1;
+    player.combatStats.expertUsesSpentThisRound = 1;
+
+    // total = 3 (level) + 1 (bonus) = 4; remaining = 4 − 1 spent = 3.
+    expect(expertUsesTotalThisRound(player)).toBe(4);
+    expect(expertUsesAvailable(player)).toBe(3);
+  });
+
+  it("CONTROL: spending more crowns lowers remaining while total holds", () => {
+    const state = createInitialGameState("crown-helper-control");
+    const player = state.players.p1;
+    player.limits.expertUses = 3;
+    player.combatStats.expertUseBonusThisRound = 1;
+    player.combatStats.expertUsesSpentThisRound = 2;
+
+    // Same 4 total, but a second crown spent → remaining is 2, not 3.
+    expect(expertUsesTotalThisRound(player)).toBe(4);
+    expect(expertUsesAvailable(player)).toBe(2);
+  });
+
+  it("a missing (undefined) bonus is treated as zero on both helpers", () => {
+    const state = createInitialGameState("crown-helper-nobonus");
+    const player = state.players.p1;
+    player.limits.expertUses = 2;
+    player.combatStats.expertUseBonusThisRound = undefined;
+    player.combatStats.expertUsesSpentThisRound = 0;
+
+    expect(expertUsesTotalThisRound(player)).toBe(2);
+    expect(expertUsesAvailable(player)).toBe(2);
   });
 });
