@@ -344,6 +344,64 @@ describe("Polish Spell Book lifecycle", () => {
     expect(state.players.p1.discard).not.toContain(CAST_A_SPELL_CARD_ID);
   });
 
+  it("names the Spell Book (not the discard pile) when every recover option is a Book refresh, and refreshes exactly the picked Spell", () => {
+    let state = createAdventureGameState({
+      seed: "polish-book-refresh-prompt",
+      ruleset: "binh",
+      rollFirstPlayer: false,
+      houseRules: { "polish-spell-book": true }
+    });
+    state.players.p1.spellBook = [];
+    state.players.p1.spellBookUsed = ["spell.haste", "spell.slow", "spell.lightning_bolt"];
+    // Nothing in the discard pile — so every recover option is a Book refresh.
+    state.players.p1.discard = [];
+    expect(openDiscardPickChoice(state, "p1", { count: 1, filter: "spell" })).toBe(true);
+    if (state.pendingChoice?.type !== "OPTION_CHOICE") {
+      throw new Error("expected the Polish Book refresh choice");
+    }
+    // ONE option per USED Book Spell — the player picks which to refresh.
+    expect(state.pendingChoice.options).toHaveLength(3);
+    expect(state.pendingChoice.options.every((option) => option.label.startsWith("Refresh"))).toBe(true);
+    // Honest prompt: it NAMES the Spell Book and never the discard pile (nothing
+    // is being taken off the discard here).
+    expect(state.pendingChoice.prompt).toMatch(/Spell Book/);
+    expect(state.pendingChoice.prompt).not.toMatch(/discard pile/i);
+
+    // Pick Slow: exactly that Spell moves used → refreshed (castable again),
+    // leaving the other two used.
+    const slowIndex = state.pendingChoice.discardPick?.cardIds.indexOf("spell.slow") ?? -1;
+    expect(slowIndex).toBeGreaterThanOrEqual(0);
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: state.pendingChoice.id,
+      optionIndex: slowIndex
+    });
+    expect(state.players.p1.spellBook).toEqual(["spell.slow"]);
+    expect(new Set(state.players.p1.spellBookUsed)).toEqual(new Set(["spell.haste", "spell.lightning_bolt"]));
+  });
+
+  it("names BOTH the discard pile and the Spell Book when the recover pick mixes them", () => {
+    const state = createAdventureGameState({
+      seed: "polish-book-refresh-mixed",
+      ruleset: "binh",
+      rollFirstPlayer: false,
+      houseRules: { "polish-spell-book": true }
+    });
+    state.players.p1.spellBook = [];
+    state.players.p1.spellBookUsed = ["spell.haste"];
+    // A hero-specialty in the discard is a genuine "spell-or-specialty" discard
+    // candidate (not excluded like a discard Spell is), so the pick mixes a
+    // discard take with a Book refresh.
+    state.players.p1.discard = ["specialty.ciele.1"];
+    expect(openDiscardPickChoice(state, "p1", { count: 1, filter: "spell-or-specialty" })).toBe(true);
+    if (state.pendingChoice?.type !== "OPTION_CHOICE") {
+      throw new Error("expected the Polish Book mixed recover choice");
+    }
+    expect(state.pendingChoice.prompt).toMatch(/discard pile/i);
+    expect(state.pendingChoice.prompt).toMatch(/Spell Book/);
+  });
+
   it("lets Ciele I refresh a used Magic Arrow and Ciele IV cast a refreshed one for free", () => {
     let map = createAdventureGameState({
       seed: "polish-book-ciele-i",
