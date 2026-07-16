@@ -52,12 +52,15 @@ export {
   type EconomyFocus,
 } from "./memory";
 export {
+  armyCoversPremiumEconomyGuard,
   BANK_ENGAGE_RATIO,
   bankUnitStrength,
   canBeatCreatureBank,
   creatureBankStrength,
   ENEMY_ENGAGE_RATIO,
+  isPremiumEconomyField,
   playerArmyStrength,
+  premiumEconomyEngageCap,
   shouldAssaultEnemyHolding,
   shouldEngageEnemy,
   unitSideStrength,

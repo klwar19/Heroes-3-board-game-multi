@@ -259,8 +259,24 @@ export function nextDevelopmentBuildingCost(
         )?.cost ?? null
       );
     }
+    // Citadel + Bronze already stand (the live lobby pre-builds both): the
+    // Pack core needs only gold-paid Population reinforces, so the build
+    // milestone being SAVED FOR is already the next missing dwelling. Without
+    // this the opening rounds had no savings target at all and side buildings
+    // ate the dwelling's materials on round 1 (measured: silver slid to R6-R8).
   }
-  const tier = phase === "unlock-silver" ? "silver" : phase === "unlock-gold" ? "gold" : null;
+  const tier =
+    phase === "unlock-silver"
+      ? "silver"
+      : phase === "unlock-gold"
+        ? "gold"
+        : phase === "establish-core"
+          ? !profile.silverUnlocked
+            ? "silver"
+            : !profile.goldUnlocked
+              ? "gold"
+              : null
+          : null;
   if (!tier) return null;
   return (
     factionBuildingForEffect(

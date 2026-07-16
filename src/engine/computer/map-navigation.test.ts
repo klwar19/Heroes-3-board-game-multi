@@ -231,6 +231,15 @@ describe("Far-tile opening and Bronze-rush tempo", () => {
     const hero = p2Hero(state);
     establishP2PackCore(state);
     hero.movementPoints = 3;
+    // Home tile must already be drained — conquest never interrupts the tile-Ⅰ
+    // sweep of all three opening payoffs.
+    state.adventure!.fields[MINE].flagOwnerId = "p2";
+    state.adventure!.fields[MINE].everFlagged = true;
+    delete state.adventure!.fields[MINE].difficulty;
+    // TREASURE is a visitable (not flaggable) — blackCube is what retires it.
+    state.adventure!.fields[TREASURE].blackCube = true;
+    delete state.adventure!.fields[TREASURE].difficulty;
+    state.adventure!.fields[RESOURCE].blackCube = true;
     const target = state.adventure!.fields[EMPTY];
     target.location = state.adventure!.fields[TOWN].location;
     target.flagOwnerId = "p1";
@@ -257,38 +266,263 @@ describe("Far-tile opening and Bronze-rush tempo", () => {
     const rush = scoreMapAction(observe(state), discover)!;
     expect(primaryMapObjective(state, hero)?.spaceId).toBe(EMPTY);
     expect(primaryMapObjective(state, hero)?.kind).toBe("victory");
-    expect(rush.score).toBeLessThan(700);
+    // The FAR-TILE HUNT outranks even the rush commit as an ACTION while the
+    // seat has no Far economy (the guaranteed settlement funds everything) —
+    // but the win itself stays the march target (primary above), and entering
+    // it (980) still beats the flip.
+    expect(rush.policy).toBe("map.discover-far-economy");
+    expect(rush.score).toBeLessThan(950);
+    // CONTROL: with the seat's own Far economy open, the hunt is over — the
+    // flip loses its dedicated policy and drops well below the hunt score.
+    state.adventure!.farSettlementOpenedByPlayer = { p2: true };
+    const afterEconomy = scoreMapAction(observe(state), discover)!;
+    expect(afterEconomy.policy).toBe("map.discover-tile");
+    expect(afterEconomy.score).toBeLessThan(rush.score);
+    state.adventure!.farSettlementOpenedByPlayer = undefined;
   });
 
   it("does not bleed the three-Pack rush into a side neutral", () => {
     const state = game();
     const hero = p2Hero(state);
     establishP2PackCore(state);
-    hero.level = 3;
+    // Level 1 vs difficulty 1: an EVEN fight (no Quick Combat), the kind the
+    // rush preservation exists for. A strict level advantage is exercised in
+    // the quick-win case further down.
+    hero.level = 1;
     state.round = 2;
-    const guard = state.adventure!.fields[MINE];
-    guard.flagOwnerId = null;
-    guard.difficulty = 1;
+    // Off home tile — tile-Ⅰ difficulty-1 guards stay engageable during the
+    // sweep; this CONTROL is a non-premium materials mine elsewhere.
+    const offHome = state.adventure!.fields[EMPTY];
+    offHome.tileInstanceId = "tile_off_home_side";
+    offHome.flagOwnerId = null;
+    offHome.difficulty = 1;
+    offHome.location = "mine";
+    offHome.resource = "buildingMaterials";
+    hero.spaceId = EMPTY;
     // No Far economy opened yet → the bronze rush refuses the side neutral.
-    expect(canBeatGuardedField(state, hero, guard)).toBe(false);
+    expect(canBeatGuardedField(state, hero, offHome)).toBe(false);
+
+    // A strict level advantage resolves as QUICK COMBAT before a battle opens
+    // — no army ever bleeds — so the main hero takes the free XP/loot even
+    // mid-rush (measured pre-fix: skipping every free cleanup flatlined hero
+    // levels at 2-3 for the whole mid-game).
+    hero.level = 3;
+    expect(canBeatGuardedField(state, hero, offHome)).toBe(true);
+    hero.level = 1;
 
     // Once THIS player has opened its own Far (II-III) economy (the scenario's
     // guaranteed Far Settlement), it is no longer in desperation-rush mode and
     // will take a coverable difficulty-1 field.
     state.adventure!.farSettlementOpenedByPlayer = { p2: true };
-    expect(canBeatGuardedField(state, hero, guard)).toBe(true);
+    expect(canBeatGuardedField(state, hero, offHome)).toBe(true);
 
     // CONTROL (finding #1): a RIVAL (p1) opening Far economy must NOT lift p2's
     // rush refusal — the previous global field scan wrongly counted any player's
     // Far economy as our own.
     state.adventure!.farSettlementOpenedByPlayer = { p1: true };
-    expect(canBeatGuardedField(state, hero, guard)).toBe(false);
+    expect(canBeatGuardedField(state, hero, offHome)).toBe(false);
 
     // With our own economy opened, a difficulty-3 field still exceeds the bronze
     // core (the tier gate, not the rush gate, refuses it).
     state.adventure!.farSettlementOpenedByPlayer = { p2: true };
-    guard.difficulty = 3;
-    expect(canBeatGuardedField(state, hero, guard)).toBe(false);
+    offHome.difficulty = 3;
+    expect(canBeatGuardedField(state, hero, offHome)).toBe(false);
+  });
+
+  it("still hits a lv3 settlement / gold / valuables mine during bronze rush with 3 Packs + 1 silver", () => {
+    // Premium Far economy is the point of expanding — the rush must NOT refuse
+    // these, and 3 bronze Packs + 1 silver is enough for difficulty 3.
+    const state = game();
+    state.adventure!.difficulty = "impossible";
+    state.adventure!.victoryMode = "conquest";
+    const hero = p2Hero(state);
+    hero.level = 1;
+    state.round = 3;
+    const silverId = Object.keys(coreUnitDefinitions).find(
+      (key) => coreUnitDefinitions[key]?.tier === "silver",
+    )!;
+    const bronzeId = Object.keys(coreUnitDefinitions).find(
+      (key) => coreUnitDefinitions[key]?.tier === "bronze",
+    )!;
+    state.players.p2.army = [
+      { id: "bp-0", unitDefId: bronzeId, side: "pack" },
+      { id: "bp-1", unitDefId: bronzeId, side: "pack" },
+      { id: "bp-2", unitDefId: bronzeId, side: "pack" },
+      { id: "sv-0", unitDefId: silverId, side: "few" },
+    ];
+    // Drain home tile so premium Far can become the primary.
+    state.adventure!.fields[MINE].flagOwnerId = "p2";
+    state.adventure!.fields[MINE].everFlagged = true;
+    delete state.adventure!.fields[MINE].difficulty;
+    state.adventure!.fields[TREASURE].blackCube = true;
+    delete state.adventure!.fields[TREASURE].difficulty;
+    state.adventure!.fields[RESOURCE].blackCube = true;
+
+    for (const setup of [
+      { location: "settlement" as const, resource: undefined },
+      { location: "mine" as const, resource: "gold" as const },
+      { location: "mine" as const, resource: "valuables" as const },
+    ]) {
+      const field = state.adventure!.fields[EMPTY];
+      field.location = setup.location;
+      field.resource = setup.resource;
+      field.flagOwnerId = null;
+      field.difficulty = 3;
+      expect(
+        canBeatGuardedField(state, hero, field),
+        `${setup.location}/${setup.resource ?? "n/a"} must engage at lv3`,
+      ).toBe(true);
+      expect(
+        collectMapObjectives(state, hero).some(
+          (o) => o.spaceId === EMPTY && o.kind === "guard",
+        ),
+      ).toBe(true);
+    }
+
+    // CONTROL: plain materials mine at lv3 still refused (not premium, bronze
+    // rush + no army-tier cover for materials alone without silver? Wait - we
+    // HAVE silver so armyTier covers lv3 regardless of field type). The rush
+    // gate only refused non-premium; with silver the level-extension still
+    // engages a materials mine. So CONTROL is a bare difficulty-4 instead.
+    const materials = state.adventure!.fields[EMPTY];
+    materials.location = "mine";
+    materials.resource = "buildingMaterials";
+    materials.difficulty = 4;
+    expect(canBeatGuardedField(state, hero, materials)).toBe(false);
+  });
+
+  it("hard/normal/easy: 3 bronze Packs alone take lv3 premium economy ASAP (no silver required)", () => {
+    // Field-3 parties mix silver on hard/normal/easy, so the STRICT tier gate
+    // would wait — the premium Pack-core rush must engage on hard with just
+    // three bronze Packs so the AI hits gold/valuables/settlement ASAP.
+    const bronzeId = Object.keys(coreUnitDefinitions).find(
+      (key) => coreUnitDefinitions[key]?.tier === "bronze",
+    )!;
+    for (const difficulty of ["easy", "normal", "hard"] as const) {
+      const state = game();
+      state.adventure!.difficulty = difficulty;
+      state.adventure!.victoryMode = "dragon-hunt";
+      const hero = p2Hero(state);
+      hero.level = 1;
+      state.round = 3;
+      state.players.p2.army = [
+        { id: "bp-0", unitDefId: bronzeId, side: "pack" },
+        { id: "bp-1", unitDefId: bronzeId, side: "pack" },
+        { id: "bp-2", unitDefId: bronzeId, side: "pack" },
+      ];
+      // Drain home so premium can surface.
+      state.adventure!.fields[MINE].flagOwnerId = "p2";
+      state.adventure!.fields[MINE].everFlagged = true;
+      delete state.adventure!.fields[MINE].difficulty;
+      state.adventure!.fields[TREASURE].blackCube = true;
+      delete state.adventure!.fields[TREASURE].difficulty;
+      state.adventure!.fields[RESOURCE].blackCube = true;
+
+      const field = state.adventure!.fields[EMPTY];
+      field.location = "mine";
+      field.resource = "gold";
+      field.flagOwnerId = null;
+      field.difficulty = 3;
+      expect(
+        canBeatGuardedField(state, hero, field),
+        `${difficulty}: 3 Packs alone must engage lv3 gold mine`,
+      ).toBe(true);
+
+      field.location = "settlement";
+      delete field.resource;
+      expect(
+        canBeatGuardedField(state, hero, field),
+        `${difficulty}: 3 Packs alone must engage lv3 settlement`,
+      ).toBe(true);
+
+      // CONTROL: same force does NOT charge a materials lv3 (not premium).
+      field.location = "mine";
+      field.resource = "buildingMaterials";
+      expect(
+        canBeatGuardedField(state, hero, field),
+        `${difficulty}: materials lv3 stays refused without silver`,
+      ).toBe(false);
+    }
+  });
+
+  it("when valuables are short, prioritizes a valuables mine over gold at equal distance", () => {
+    const state = game();
+    state.adventure!.difficulty = "hard";
+    state.adventure!.victoryMode = "dragon-hunt";
+    const hero = p2Hero(state);
+    hero.level = 1;
+    state.round = 3;
+    const bronzeId = Object.keys(coreUnitDefinitions).find(
+      (key) => coreUnitDefinitions[key]?.tier === "bronze",
+    )!;
+    state.players.p2.army = [
+      { id: "bp-0", unitDefId: bronzeId, side: "pack" },
+      { id: "bp-1", unitDefId: bronzeId, side: "pack" },
+      { id: "bp-2", unitDefId: bronzeId, side: "pack" },
+    ];
+    // Treasury needs valuables for the next dwelling — zero held.
+    state.players.p2.resources = {
+      gold: 30,
+      buildingMaterials: 6,
+      valuables: 0,
+    };
+    state.adventure!.fields[MINE].flagOwnerId = "p2";
+    state.adventure!.fields[MINE].everFlagged = true;
+    delete state.adventure!.fields[MINE].difficulty;
+    state.adventure!.fields[TREASURE].blackCube = true;
+    delete state.adventure!.fields[TREASURE].difficulty;
+    state.adventure!.fields[RESOURCE].blackCube = true;
+    for (const tile of Object.values(state.adventure!.tiles)) {
+      tile.faceDown = false;
+    }
+    state.adventure!.playerFarTiles = {
+      ...(state.adventure!.playerFarTiles ?? {}),
+      p2: [],
+    };
+
+    // Two equal-distance premium mines off-home: gold vs valuables.
+    const arm = (() => {
+      // Local mini-arm so both sit 1 step from hero on EMPTY after park.
+      const fields = state.adventure!.fields;
+      hero.spaceId = EMPTY;
+      const goldId = getAdjacentSpaceIds(EMPTY).find((id) => !fields[id]);
+      expect(goldId).toBeDefined();
+      fields[goldId!] = {
+        ...fields[EMPTY],
+        spaceId: goldId!,
+        location: "mine",
+        resource: "gold",
+        difficulty: 3,
+        flagOwnerId: null,
+        tileInstanceId: "tile_prem_a",
+        blackCube: false,
+      };
+      const valsId = getAdjacentSpaceIds(EMPTY).find(
+        (id) => id !== goldId && !fields[id],
+      );
+      expect(valsId).toBeDefined();
+      fields[valsId!] = {
+        ...fields[EMPTY],
+        spaceId: valsId!,
+        location: "mine",
+        resource: "valuables",
+        difficulty: 3,
+        flagOwnerId: null,
+        tileInstanceId: "tile_prem_b",
+        blackCube: false,
+      };
+      return { goldId: goldId!, valsId: valsId! };
+    })();
+
+    expect(canBeatGuardedField(state, hero, state.adventure!.fields[arm.valsId])).toBe(
+      true,
+    );
+    expect(primaryMapObjective(state, hero)?.spaceId).toBe(arm.valsId);
+
+    // CONTROL: with surplus valuables, gold mine wins the equal-distance pick.
+    state.players.p2.resources.valuables = 4;
+    state.players.p2.resources.gold = 5;
+    expect(primaryMapObjective(state, hero)?.spaceId).toBe(arm.goldId);
   });
 });
 
@@ -378,18 +612,38 @@ describe("army-tier guard engagement reference (Step 5)", () => {
     ).toBe(true);
   });
 
-  it("guard rail: one lone silver unit does NOT charge a difficulty-3 camp; two do", () => {
+  it("guard rail: one lone silver WITHOUT a Pack core refuses lv3; three bronze Packs + one silver take it", () => {
     const state = game();
     state.adventure!.difficulty = "impossible";
     const hero = p2Hero(state);
     hero.level = 1;
     state.adventure!.fields[MINE].difficulty = 3;
 
-    // A single silver body (rest bronze) falls short of MIN_TIER_UNITS_FOR_ENGAGE.
+    // A single silver body with bronze Fews (no Pack core) still falls short —
+    // soft unlock requires three bronze PACKS. Bronze count still qualifies the
+    // army as "bronze", but bronze never extends the level gate to difficulty 3.
     setArmyTiers(state, ["silver", "bronze", "bronze"]);
+    for (const unit of state.players.p2.army) unit.side = "few";
     expect(armyEngagementTier(state, "p2")).toBe("bronze");
     expect(armyTierCoversGuardField(state, "p2", 3)).toBe(false);
+    expect(
+      canBeatGuardedField(state, hero, state.adventure!.fields[MINE]),
+    ).toBe(false);
 
+    // User bar: 3 bronze Packs + even just 1 silver → MUST hit lv3.
+    state.players.p2.army = [
+      { id: "bp-0", unitDefId: unitDefOfTier("bronze"), side: "pack" },
+      { id: "bp-1", unitDefId: unitDefOfTier("bronze"), side: "pack" },
+      { id: "bp-2", unitDefId: unitDefOfTier("bronze"), side: "pack" },
+      { id: "sv-0", unitDefId: unitDefOfTier("silver"), side: "few" },
+    ];
+    expect(armyEngagementTier(state, "p2")).toBe("silver");
+    expect(armyTierCoversGuardField(state, "p2", 3)).toBe(true);
+    expect(
+      canBeatGuardedField(state, hero, state.adventure!.fields[MINE]),
+    ).toBe(true);
+
+    // Two silvers still unlock without needing the Pack core (classic path).
     setArmyTiers(state, ["silver", "silver", "bronze"]);
     expect(armyTierCoversGuardField(state, "p2", 3)).toBe(true);
   });
@@ -795,19 +1049,56 @@ describe("sticky primary + explore objectives", () => {
     expect([MINE, TREASURE]).toContain(battleReady?.spaceId);
   });
 
-  it("CONTROL: past the opening window the home guard waits for the army core", () => {
-    // The sweep exemption is scoped to the first rounds. From round 4 the same
-    // difficulty-1 home guard is a fair fight again: a weak army prefers the
-    // safe visitable (development discipline) — proving the round gate, not the
-    // seed, is what drives the opening aggression.
+  it("home tile drains all three items even under conquest bronze-rush pressure", () => {
+    // User: get all 3 items on tile 1 EVERY game before expanding. Conquest
+    // victory scoring used to yank the hero off mid-sweep — the pool restriction
+    // keeps primary inside tile Ⅰ until MINE, TREASURE, and RESOURCE are gone.
+    const state = game();
+    const hero = p2Hero(state);
+    establishP2PackCore(state);
+    hero.level = 1;
+    state.round = 3;
+    state.adventure!.victoryMode = "conquest";
+    // Plant a juicy enemy-town victory one step away.
+    state.adventure!.fields[EMPTY].location = state.adventure!.fields[TOWN].location;
+    state.adventure!.fields[EMPTY].flagOwnerId = "p1";
+    delete state.adventure!.fields[EMPTY].difficulty;
+    for (const enemy of Object.values(state.heroes)) {
+      if (enemy.controllerId === "p1") enemy.spaceId = null;
+    }
+
+    const primary = primaryMapObjective(state, hero);
+    expect([MINE, TREASURE, RESOURCE]).toContain(primary?.spaceId);
+    expect(primary?.spaceId).not.toBe(EMPTY);
+
+    // After two guards are claimed, the free resource is still forced before leaving.
+    state.adventure!.fields[MINE].flagOwnerId = "p2";
+    state.adventure!.fields[MINE].everFlagged = true;
+    delete state.adventure!.fields[MINE].difficulty;
+    state.adventure!.fields[TREASURE].blackCube = true;
+    delete state.adventure!.fields[TREASURE].difficulty;
+    expect(primaryMapObjective(state, hero)?.spaceId).toBe(RESOURCE);
+
+    // Only once the home tile is empty may conquest / Far become primary.
+    state.adventure!.fields[RESOURCE].blackCube = true;
+    expect(primaryMapObjective(state, hero)?.spaceId).toBe(EMPTY);
+    expect(primaryMapObjective(state, hero)?.kind).toBe("victory");
+  });
+
+  it("still drains all three home-tile items even past the old round-3 window", () => {
+    // Home-tile drain is no longer round-capped: while the hero stands on tile Ⅰ
+    // with remaining local payoffs, it finishes them (all three, every game)
+    // before expanding — even on round 4+ with a still-developing army.
     const state = game();
     const hero = p2Hero(state);
     hero.level = 1;
     state.adventure!.victoryMode = "dragon-hunt";
-    state.round = 4; // past HOME_TILE_SWEEP_MAX_ROUND
+    state.round = 4;
     const developing = primaryMapObjective(state, hero);
-    expect(developing?.spaceId).toBe(RESOURCE);
-    expect(developing?.kind).toBe("visitable");
+    expect(developing?.kind).toBe("guard");
+    expect([MINE, TREASURE]).toContain(developing?.spaceId);
+    const objectives = collectMapObjectives(state, hero).map((o) => o.spaceId);
+    expect(objectives).toEqual(expect.arrayContaining([MINE, TREASURE, RESOURCE]));
   });
 
   it("commits to one primary objective (no multi-source thrash)", () => {
@@ -1132,6 +1423,79 @@ describe("opening home-tile sweep — development gate scoped to tile Ⅰ", () =
     fields[RESOURCE].location = "mine";
     fields[EMPTY].location = "settlement";
     expect(primaryMapObjective(state, hero)?.spaceId).toBe(EMPTY);
+  });
+
+  it("marches 3 turns toward a lv3 gold mine / settlement before round 6 with 3 Packs + 1 silver", () => {
+    // User: not afraid of unit losses; prepare a multi-turn hit before r6 (even
+    // r5). Once home is drained, a coverable lv3 premium economy outranks a
+    // closer generic leftover so the sticky march can commit 3+ steps out.
+    const state = game();
+    state.adventure!.difficulty = "normal";
+    state.adventure!.victoryMode = "dragon-hunt";
+    const hero = p2Hero(state);
+    hero.level = 1;
+    state.round = 3;
+    const silverId = Object.keys(coreUnitDefinitions).find(
+      (key) => coreUnitDefinitions[key]?.tier === "silver",
+    )!;
+    const bronzeId = Object.keys(coreUnitDefinitions).find(
+      (key) => coreUnitDefinitions[key]?.tier === "bronze",
+    )!;
+    state.players.p2.army = [
+      { id: "bp-0", unitDefId: bronzeId, side: "pack" },
+      { id: "bp-1", unitDefId: bronzeId, side: "pack" },
+      { id: "bp-2", unitDefId: bronzeId, side: "pack" },
+      { id: "sv-0", unitDefId: silverId, side: "few" },
+    ];
+    const fields = state.adventure!.fields;
+    fields[MINE].flagOwnerId = "p2";
+    fields[MINE].everFlagged = true;
+    delete fields[MINE].difficulty;
+    fields[TREASURE].blackCube = true;
+    delete fields[TREASURE].difficulty;
+    fields[RESOURCE].blackCube = true;
+    // Silence face-down explore so only the two hand-placed prizes compete.
+    for (const tile of Object.values(state.adventure!.tiles)) {
+      tile.faceDown = false;
+    }
+    state.adventure!.playerFarTiles = { ...(state.adventure!.playerFarTiles ?? {}), p2: [] };
+
+    // Open ghost corridor: intermediate cells stay EMPTY so the BFS walks
+    // THROUGH them (a guarded field is a "stop" and seals the corridor).
+    const arm = buildGhostArm(state, 4);
+    hero.spaceId = arm[0];
+    const goldMine = arm[3];
+    fields[goldMine].location = "mine";
+    fields[goldMine].resource = "gold";
+    fields[goldMine].difficulty = 3;
+    // Near leftover on a SIDE branch off the hero cell — not on the path.
+    const nearOpen = getAdjacentSpaceIds(arm[0]).find(
+      (id) => id !== arm[1] && !fields[id],
+    );
+    expect(nearOpen, "need a side cell for the near leftover").toBeDefined();
+    const nearLeftover = nearOpen!;
+    fields[nearLeftover] = {
+      ...fields[arm[0]],
+      spaceId: nearLeftover,
+      location: "mine",
+      resource: "buildingMaterials",
+      tileInstanceId: "tile_ghost_ctrl_arm",
+      flagOwnerId: null,
+      blackCube: false,
+      difficulty: 1,
+    };
+
+    expect(distanceFromHeroTo(state, hero, goldMine)).toBe(3);
+    expect(distanceFromHeroTo(state, hero, nearLeftover)).toBe(1);
+    expect(canBeatGuardedField(state, hero, fields[goldMine])).toBe(true);
+    const primary = primaryMapObjective(state, hero);
+    expect(primary?.spaceId).toBe(goldMine);
+    expect(primary?.kind).toBe("guard");
+
+    // Settlement at the same distance is also a primary-class target.
+    fields[goldMine].location = "settlement";
+    delete fields[goldMine].resource;
+    expect(primaryMapObjective(state, hero)?.spaceId).toBe(goldMine);
   });
 
   it("HARD INVARIANT: the map policy never reads the guaranteed-win house rule", () => {
