@@ -1697,6 +1697,41 @@ describe("MapDesigner — objects palette (gates / monolith / standalone)", () =
     { row: far.row, col: far.col, group: "far", faceDown: true }
   ];
 
+  // The lone-Monolith warning counts ACROSS SOURCES (like the gate warnings):
+  // a tile token partnered with a STANDALONE monolith object is a working
+  // 2-member network, so no warning — while a single standalone monolith alone
+  // (count 1) DOES warn. Regression: the count used to read plan tokens only,
+  // so a token+standalone pair warned forever and a lone standalone never did.
+  it("does not warn 'only 1 Monolith' when a tile token is partnered with a standalone monolith object", () => {
+    const withPair = renderWithObjects(
+      [
+        { row: town.row, col: town.col, group: "starting", faceDown: false },
+        { row: far.row, col: far.col, group: "far", faceDown: true, token: { kind: "monolith", slot: 0 } }
+      ],
+      [{ kind: "monolith", placement: { type: "standalone", row: 40, col: 40 } }]
+    );
+    const warnings = [...withPair.querySelectorAll(".designerCavernAlert")].map((node) => node.textContent ?? "");
+    expect(
+      warnings.some((text) => /at least 2/i.test(text) && /Monolith/i.test(text)),
+      "no lone-monolith warning for a token+standalone pair"
+    ).toBe(false);
+
+    cleanup();
+    // CONTROL: a single STANDALONE monolith with no tile token is a lone network
+    // member — the warning must fire for it too.
+    const loneStandalone = renderWithObjects(
+      [{ row: town.row, col: town.col, group: "starting", faceDown: false }],
+      [{ kind: "monolith", placement: { type: "standalone", row: 40, col: 40 } }]
+    );
+    const loneWarnings = [...loneStandalone.querySelectorAll(".designerCavernAlert")].map(
+      (node) => node.textContent ?? ""
+    );
+    expect(
+      loneWarnings.some((text) => /at least 2/i.test(text) && /Monolith/i.test(text)),
+      "lone standalone monolith warns"
+    ).toBe(true);
+  });
+
   // CANONICAL forms: an ON-tile teleporter is a plan.token; an OFF-tile one is a
   // standalone object. The designer never writes a tile-slot object any more.
   it("arms a Gate and places a TILE TOKEN on a face-up tile hex (canonical on-tile form)", () => {

@@ -886,6 +886,9 @@ export function MapDesigner({
   // Monolith/Whirlpool token bookkeeping: counts for the "needs at least 2 to
   // work" warnings and the plan-order Whirlpool numbers (+1, 0, -1 — the same
   // order the engine assigns at setup, so the preview matches the game).
+  // Counted ACROSS SOURCES like the gate warnings: tile `token`s PLUS map
+  // OBJECTS (standalone and legacy tile-slot alike carve real network fields at
+  // setup), so a tile Monolith partnered with a standalone one never warns.
   const tokenCounts = useMemo(() => {
     let monolith = 0;
     let whirlpool = 0;
@@ -896,8 +899,15 @@ export function MapDesigner({
         whirlpool += 1;
       }
     }
+    for (const object of objects) {
+      if (object.kind === "monolith") {
+        monolith += 1;
+      } else if (object.kind === "whirlpool") {
+        whirlpool += 1;
+      }
+    }
     return { monolith, whirlpool };
-  }, [customMap]);
+  }, [customMap, objects]);
   const whirlpoolNumberByIndex = useMemo(() => {
     const numbers = new Map<number, -1 | 0 | 1>();
     const order: (-1 | 0 | 1)[] = [1, 0, -1];
